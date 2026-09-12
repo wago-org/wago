@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -152,6 +153,106 @@ func TestI32HostEventInstanceRejectsCrossInstanceExport(t *testing.T) {
 	if export, err := in.ExportedFunc("run"); err == nil || export != nil || !strings.Contains(err.Error(), "deferred host events") {
 		t.Fatalf("ExportedFunc = %v, %v; want deferred-event boundary error", export, err)
 	}
+}
+
+func TestI32HostEventInstanceRejectsFuncrefTransferRoutes(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	module, err := rt.Compile(hostEventFuncrefTransferModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := rt.Instantiate(context.Background(), module, WithImports(Imports{
+		"env.event": I32HostEvent(func(int32) {}),
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+
+	if got, err := in.Invoke("get"); err == nil || got != nil || !strings.Contains(err.Error(), "deferred host events") {
+		t.Fatalf("returned funcref = %v, %v; want deferred-event boundary error", got, err)
+	}
+	if table, err := in.ExportedTable("table"); err == nil || table != nil || !strings.Contains(err.Error(), "deferred host events") {
+		t.Fatalf("ExportedTable = %v, %v; want deferred-event boundary error", table, err)
+	}
+	if global, err := in.ExportedGlobalObject("global"); err == nil || global != nil || !strings.Contains(err.Error(), "deferred host events") {
+		t.Fatalf("ExportedGlobalObject = %v, %v; want deferred-event boundary error", global, err)
+	}
+}
+
+func TestI32HostEventInstanceRejectsImportedFuncrefStorage(t *testing.T) {
+	t.Run("table", func(t *testing.T) {
+		table, err := NewTable(1, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer table.Close()
+		compiled := MustCompile(watToWasm(t, `(module
+			(import "env" "event" (func $event (param i32)))
+			(import "env" "shared" (table 1 funcref))
+			(func $target (i32.const 1) (call $event))
+			(elem (i32.const 0) func $target))`))
+		defer compiled.Close()
+		in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
+			"env.event":  I32HostEvent(func(int32) {}),
+			"env.shared": table,
+		}})
+		if err == nil || in != nil || !strings.Contains(err.Error(), "deferred host event cannot be used by a module that requires synchronous host control") {
+			t.Fatalf("Instantiate = %v, %v; want shared-table synchronous-mode rejection", in, err)
+		}
+	})
+
+	t.Run("global", func(t *testing.T) {
+		rt := NewRuntime()
+		defer rt.Close()
+		global, err := rt.NewFuncRefGlobal(NullFuncRef(), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer global.Close()
+		module, err := rt.Compile(watToWasm(t, `(module
+			(import "env" "event" (func $event (param i32)))
+			(import "env" "shared" (global $shared (mut funcref)))
+			(func $target (i32.const 1) (call $event))
+			(elem declare func $target)
+			(func (export "seed") (ref.func $target) (global.set $shared)))`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := rt.Instantiate(context.Background(), module, WithImports(Imports{
+			"env.event":  I32HostEvent(func(int32) {}),
+			"env.shared": global,
+		}))
+		if err == nil || in != nil || !strings.Contains(err.Error(), "cannot import a funcref global") {
+			t.Fatalf("Instantiate = %v, %v; want deferred funcref-global rejection", in, err)
+		}
+	})
+}
+
+func hostEventFuncrefTransferModule() []byte {
+	typeEvent := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
+	typeTarget := wasmtest.FuncType(nil, nil)
+	typeGet := wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef})
+	importEvent := append(wasmtest.Name("env"), wasmtest.Name("event")...)
+	importEvent = append(importEvent, 0x00, 0x00) // function import, type 0
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(typeEvent, typeTarget, typeGet)),
+		wasmtest.Section(2, wasmtest.Vec(importEvent)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})), // funcref table min=1
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, false, []byte{0xd2, 0x01, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("get", 0, 2),
+			wasmtest.ExportEntry("table", 1, 0),
+			wasmtest.ExportEntry("global", 3, 0),
+		)),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x01})), // elem (i32.const 0) [func 1]
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x01, 0x10, 0x00, 0x0b}), // target calls event(1)
+			wasmtest.Code([]byte{0xd2, 0x01, 0x0b}),             // get returns ref.func target
+		)),
+	)
 }
 
 func BenchmarkHostEventLoopManaged(b *testing.B) {

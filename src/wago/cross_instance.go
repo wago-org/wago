@@ -27,6 +27,14 @@ type InstanceExport struct {
 	results  []ValType
 }
 
+func deferredHostEventCalleeError() error {
+	return fmt.Errorf("instance with deferred host events cannot be used as a cross-instance native callee")
+}
+
+func valTypeMayCarryFuncref(typ ValType) bool {
+	return typ == ValFuncRef || typ == ValAnyRef
+}
+
 // ExportedFunc returns a handle to this instance's exported function `name`,
 // suitable as a cross-instance import value in another module's Imports. A
 // re-exported InstanceExport resolves to the original producer handle, preserving
@@ -41,7 +49,7 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 	}
 	defer in.endInvocation()
 	if in.hostEvents != nil {
-		return nil, fmt.Errorf("instance with deferred host events cannot be used as a cross-instance native callee")
+		return nil, deferredHostEventCalleeError()
 	}
 	gfi, ok := in.c.Exports[name]
 	if !ok {
@@ -969,6 +977,10 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 			return nil, fmt.Errorf("no exported table %q", name)
 		}
 	}
+	elementType := in.c.tableElementType(tableIndex)
+	if in.hostEvents != nil && valTypeMayCarryFuncref(elementType) {
+		return nil, deferredHostEventCalleeError()
+	}
 	if importDef, imported := in.c.tableImportAt(tableIndex); imported {
 		table, ok := in.imports.table(importDef.Key)
 		if !ok || len(table.desc) < 8 {
@@ -980,7 +992,6 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	if len(desc) < 8 {
 		return nil, fmt.Errorf("exported table %q index %d descriptor is invalid", name, tableIndex)
 	}
-	elementType := in.c.tableElementType(tableIndex)
 	store := in.refStore
 	if (elementType == ValExternRef || isGCRefValType(elementType)) && store == nil {
 		var err error
@@ -1077,6 +1088,9 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 		return nil, fmt.Errorf("exported global %q index %d out of range", name, idx)
 	}
 	g := in.globalCells[idx]
+	if in.hostEvents != nil && valTypeMayCarryFuncref(g.Type) {
+		return nil, deferredHostEventCalleeError()
+	}
 	if idx < len(in.c.GlobalImports) {
 		return g, nil
 	}

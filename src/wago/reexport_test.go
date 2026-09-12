@@ -2,6 +2,7 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,152 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestDirectHostReexportSupportsTypedSignatureMatrix(t *testing.T) {
+	tests := []struct {
+		name    string
+		params  []wasm.ValType
+		results []wasm.ValType
+		fn      any
+		args    []uint64
+		want    []uint64
+	}{
+		{name: "empty_to_empty", fn: func() {}},
+		{name: "i32_to_empty", params: []wasm.ValType{wasm.I32}, fn: func(int32) {}, args: []uint64{I32(7)}},
+		{name: "i32_to_i32", params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, fn: func(v int32) int32 { return v + 1 }, args: []uint64{I32(7)}, want: []uint64{I32(8)}},
+		{name: "i32_i32_to_empty", params: []wasm.ValType{wasm.I32, wasm.I32}, fn: func(int32, int32) {}, args: []uint64{I32(7), I32(9)}},
+		{name: "i32_i32_to_i32", params: []wasm.ValType{wasm.I32, wasm.I32}, results: []wasm.ValType{wasm.I32}, fn: func(a, b int32) int32 { return a + b }, args: []uint64{I32(7), I32(9)}, want: []uint64{I32(16)}},
+		{name: "i32_to_i32_i32", params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32, wasm.I32}, fn: func(v int32) (int32, int32) { return v, v + 1 }, args: []uint64{I32(7)}, want: []uint64{I32(7), I32(8)}},
+		{name: "i32_i32_to_i32_i32", params: []wasm.ValType{wasm.I32, wasm.I32}, results: []wasm.ValType{wasm.I32, wasm.I32}, fn: func(a, b int32) (int32, int32) { return a, b }, args: []uint64{I32(7), I32(9)}, want: []uint64{I32(7), I32(9)}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			compiled := MustCompile(directHostReexportModule(test.params, test.results))
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": test.fn}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			got, err := instance.Invoke("f", test.args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != len(test.want) {
+				t.Fatalf("results = %v, want %v", got, test.want)
+			}
+			for i := range got {
+				if got[i] != test.want[i] {
+					t.Fatalf("result %d = %#x, want %#x", i, got[i], test.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestDirectHostReexportEnforcesPluginGate(t *testing.T) {
+	tests := []struct {
+		name string
+		fn   any
+	}{
+		{name: "ordinary", fn: func(v int32) int32 { return v + 1 }},
+		{name: "host_call", fn: HostCallFunc(func(call HostCall) { call.SetI32(0, call.I32(0)+1) })},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gate := newPluginCallGate(test.name)
+			gated, err := gateHostImport(test.fn, gate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compiled := MustCompile(directHostReexportModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": gated}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			gate.deactivate()
+			got, err := instance.Invoke("f", I32(41))
+			if got != nil || !errors.Is(err, ErrPermissionDenied) {
+				t.Fatalf("inactive gated re-export = %v, %v; want ErrPermissionDenied", got, err)
+			}
+		})
+	}
+}
+
+func TestDirectHostReexportPluginGateDrainsActiveCallback(t *testing.T) {
+	gate := newPluginCallGate("drain")
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	gated, err := gateHostImport(func(v int32) int32 {
+		close(entered)
+		<-release
+		return v + 1
+	}, gate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := MustCompile(directHostReexportModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": gated}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+
+	invokeDone := make(chan error, 1)
+	go func() {
+		_, err := instance.Invoke("f", I32(41))
+		invokeDone <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("callback did not enter")
+	}
+	gate.deactivate()
+	drainDone := make(chan error, 1)
+	go func() { drainDone <- gate.closeAndWait() }()
+	select {
+	case err := <-drainDone:
+		t.Fatalf("gate drained before active callback returned: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(release)
+	if err := <-invokeDone; err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if err := <-drainDone; err != nil {
+		t.Fatalf("drain: %v", err)
+	}
+}
+
+func TestDirectHostReexportHonorsPluginOperationReservation(t *testing.T) {
+	gate := newPluginCallGate("reserved")
+	gated, err := gateHostImport(func(v int32) int32 { return v + 1 }, gate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := MustCompile(directHostReexportModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": gated}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	reservation, err := reservePluginOperation([]*pluginCallGate{gate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reservation.release()
+	instance.ensurePluginState().invocationID = newInvocationID()
+	gate.deactivate()
+	got, err := instance.invokeAdmitted("f", []uint64{I32(41)}, invocationContextSet{}, reservation)
+	if err != nil || len(got) != 1 || got[0] != I32(42) {
+		t.Fatalf("reserved gated re-export = %v, %v; want [42]", got, err)
+	}
+}
 
 func TestCompiledSignatureReportsImportedFunctionReexport(t *testing.T) {
 	c, err := Compile(nil, importedFunctionReexportModule())
@@ -367,6 +514,16 @@ func importedFunctionReexportModule() []byte {
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(2, wasmtest.Vec(imp)),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("forward", 0, 0))),
+	)
+}
+
+func directHostReexportModule(params, results []wasm.ValType) []byte {
+	imp := append(wasmtest.Name("env"), wasmtest.Name("f")...)
+	imp = append(imp, 0x00, 0x00) // function import, type 0
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, results))),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 	)
 }
 

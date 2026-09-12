@@ -723,6 +723,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			// the ~64 KiB buffer needs no instantiate-time zero-fill.
 			hostLog = ar.AllocNoZero(runtime.HostCallLogBytes)
 			jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
+			for _, global := range c.GlobalImports {
+				if valTypeMayCarryFuncref(global.Type) {
+					return nil, fmt.Errorf("deferred host-event instance cannot import a funcref global: %w", ErrPermissionDenied)
+				}
+			}
 		}
 	}
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting

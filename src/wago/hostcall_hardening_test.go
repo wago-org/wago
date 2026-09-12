@@ -131,6 +131,21 @@ func TestImportedStartHostFuncRuns(t *testing.T) {
 	}
 }
 
+func TestImportedStartNoArgsHostFuncRuns(t *testing.T) {
+	c := MustCompile(importedStartModule())
+	calls := 0
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.start": func() {
+		calls++
+	}}})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	if calls != 1 {
+		t.Fatalf("start called %d times, want 1", calls)
+	}
+}
+
 func TestImportedStartBadSignatureErrors(t *testing.T) {
 	c := MustCompile(importedStartModule())
 	// Bare functions matching a typed fast lane are accepted without reflection,

@@ -1614,7 +1614,48 @@ func (b *syncHostBinding) callable() bool {
 	return b.fn != nil || b.scalarKind >= syncHostTypedI32
 }
 
+// call is the common Go-level entry for a bound synchronous host function. It
+// owns plugin admission unless the caller carries an operation reservation for
+// this exact gate. Native guest dispatch uses representation-specific unchecked
+// helpers after performing the same admission around argument/result translation.
 func (b *syncHostBinding) call(caller instanceHostModule, args, results []uint64) {
+	if b.gate != nil && (caller.reservation == nil || !caller.reservation.allows(b.gate)) {
+		if err := b.gate.enter(); err != nil {
+			panic(HostTrap{Err: err})
+		}
+		defer b.gate.release()
+	}
+	b.callUnchecked(caller, args, results)
+}
+
+func (b *syncHostBinding) callUnchecked(caller instanceHostModule, args, results []uint64) {
+	if b.fn != nil {
+		b.callBoundUnchecked(caller, args, results)
+		return
+	}
+	switch b.scalarKind {
+	case syncHostTypedI32:
+		results[0] = I32(b.typedI32(AsI32(args[0])))
+	case syncHostTypedI32x2:
+		results[0] = I32(b.typedI32x2(AsI32(args[0]), AsI32(args[1])))
+	case syncHostTypedNone:
+		b.typedNone()
+	case syncHostTypedI32V:
+		b.typedI32V(AsI32(args[0]))
+	case syncHostTypedI32x2V:
+		b.typedI32x2V(AsI32(args[0]), AsI32(args[1]))
+	case syncHostTypedI32R2:
+		r0, r1 := b.typedI32R2(AsI32(args[0]))
+		results[0], results[1] = I32(r0), I32(r1)
+	case syncHostTypedI32x2R2:
+		r0, r1 := b.typedI32x2R2(AsI32(args[0]), AsI32(args[1]))
+		results[0], results[1] = I32(r0), I32(r1)
+	default:
+		panic(fmt.Sprintf("wago: invalid bound host function %T", b.fn))
+	}
+}
+
+func (b *syncHostBinding) callBoundUnchecked(caller instanceHostModule, args, results []uint64) {
 	switch fn := b.fn.(type) {
 	case CallerHostFunc:
 		fn(Caller{instanceHostModule: caller}, args, results)
@@ -2115,7 +2156,7 @@ func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, binding *syncHos
 	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation)
 	caller.exact = binding.exact
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
-	binding.call(caller, args, results)
+	binding.callBoundUnchecked(caller, args, results)
 }
 
 func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr, importIdx uint32, binding *syncHostBinding, sig FuncSig, exact *DefinedTypeDescriptor, exactTypes []DefinedTypeDescriptor, exactTypesPtr *[]DefinedTypeDescriptor, args, results []uint64, invocation hostInvocationContext) {
@@ -2124,7 +2165,7 @@ func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr,
 		return
 	}
 	if _, ok := binding.fn.(HostCallFunc); ok && !hasReferenceValType(sig.Params) && !hasReferenceValType(sig.Results) {
-		binding.call(instanceHostModule{}, args, results)
+		binding.callBoundUnchecked(instanceHostModule{}, args, results)
 		return
 	}
 	var exactParams, exactResults []ValueTypeDescriptor
@@ -2144,7 +2185,7 @@ func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr,
 	caller.ephemeralGCResults = &gcResultTemps
 	defer gcResultTemps.release(in)
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
-	binding.call(caller, args, results)
+	binding.callBoundUnchecked(caller, args, results)
 	if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults, exactTypes); err != nil {
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 	}
