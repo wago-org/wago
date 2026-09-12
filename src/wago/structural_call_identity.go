@@ -30,18 +30,19 @@ func (c *Compiled) prepareStructuralCallIdentities() error {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	memo := c.validateMemo
-	if memo.structuralCallIdentities != nil && memo.structuralCallIdentities != structuralCallIdentitySeenSentinel {
+	published := memo.structuralCallIdentities.Load()
+	if published != nil && published != structuralCallIdentitySeenSentinel {
 		return nil
 	}
-	if memo.structuralCallIdentities == nil {
-		memo.structuralCallIdentities = structuralCallIdentitySeenSentinel
+	if published == nil {
+		memo.structuralCallIdentities.Store(structuralCallIdentitySeenSentinel)
 		return nil
 	}
 	spanBytes := uint64(len(c.Types)) * structuralCallIdentitySpanBytes
 	if spanBytes > maxStructuralCallIdentityCacheBytes-structuralCallIdentityCacheHeaderBytes {
 		// A non-nil empty cache records that this module exceeded the bounded
 		// retention budget. Registrations keep reconstructing identities exactly.
-		memo.structuralCallIdentities = &structuralCallIdentityCache{}
+		memo.structuralCallIdentities.Store(&structuralCallIdentityCache{})
 		return nil
 	}
 	identityBudget := maxStructuralCallIdentityCacheBytes - structuralCallIdentityCacheHeaderBytes - int(spanBytes)
@@ -72,15 +73,19 @@ func (c *Compiled) prepareStructuralCallIdentities() error {
 		end := len(cache.identities)
 		cache.spans[sig.TypeIndex] = structuralCallIdentitySpan{start: uint32(start), end: uint32(end)}
 	}
-	memo.structuralCallIdentities = cache
+	memo.structuralCallIdentities.Store(cache)
 	return nil
 }
 
 func (c *Compiled) cachedStructuralCallIdentity(functionIndex int) ([]byte, bool) {
-	if c.validateMemo == nil || c.validateMemo.structuralCallIdentities == nil || c.validateMemo.structuralCallIdentities == structuralCallIdentitySeenSentinel {
+	if c.validateMemo == nil {
 		return nil, false
 	}
-	cache := c.validateMemo.structuralCallIdentities
+	// A single acquire load observes one fully constructed immutable cache.
+	cache := c.validateMemo.structuralCallIdentities.Load()
+	if cache == nil || cache == structuralCallIdentitySeenSentinel {
+		return nil, false
+	}
 	sig, ok := compiledFunctionSignature(c, functionIndex)
 	if !ok || !sig.HasTypeIndex || int(sig.TypeIndex) >= len(cache.spans) {
 		return nil, false

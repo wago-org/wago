@@ -506,7 +506,10 @@ func (c *RuntimeConfig) WithMaxModuleBytes(bytes uint64) *RuntimeConfig {
 	return &n
 }
 
-// WithMaxNativeCodeBytes caps generated native code bytes for one module. Zero
+// WithMaxNativeCodeBytes caps the accepted final native code image for one module.
+// The limit is checked after code generation and final compaction. It does not
+// bound peak compiler memory, temporary code, or compilation work. Function
+// workers share this one final module limit; it is not a per-worker allowance. Zero
 // is unbounded. Runtime.Module rechecks decoded artifacts against this quota.
 func (c *RuntimeConfig) WithMaxNativeCodeBytes(bytes uint64) *RuntimeConfig {
 	n := *c
