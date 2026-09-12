@@ -27,6 +27,7 @@ const (
 	executionFlagImportedGCDomain
 	executionFlagDynamicGCDomain
 	executionFlagStoreOwnedGCCollector
+	executionFlagPreparedActive
 )
 
 type invocationID uint64
@@ -309,8 +310,25 @@ func (in *Instance) markNativeControlShared() {
 		flags := in.executionFlags.Load()
 		if flags&executionFlagNativeControlShared != 0 ||
 			in.executionFlags.CompareAndSwap(flags, flags|executionFlagNativeControlShared) {
-			return
+			break
 		}
+	}
+	// Publishing the shared bit prevents new specialized entries. Do not return
+	// a shareable resource until the previous fast activation has left native
+	// code. The gate notification closes the check/wait race without spinning.
+	if in.executionFlags.Load()&executionFlagPreparedActive != 0 {
+		gate := &in.ensurePluginState().invokeMu
+		gate.mu.Lock()
+		for in.executionFlags.Load()&executionFlagPreparedActive != 0 {
+			if gate.changed == nil {
+				gate.changed = make(chan struct{})
+			}
+			changed := gate.changed
+			gate.mu.Unlock()
+			<-changed
+			gate.mu.Lock()
+		}
+		gate.mu.Unlock()
 	}
 }
 
@@ -435,8 +453,55 @@ func (in *Instance) preparedIsolatedEligible() bool {
 	return in.preparedEntryMode() == preparedEntryIsolated
 }
 
+// The cached entry shape is immutable; these ownership exclusions are not.
+func (in *Instance) preparedFastStateValid() bool {
+	const blocked = executionFlagNativeControlShared | executionFlagImportedGCDomain | executionFlagDynamicGCDomain | executionFlagStoreOwnedGCCollector
+	return in.executionFlags.Load()&blocked == 0
+}
+
+// Reservation and ownership revocation use the same atomic word. Thus a
+// revoker either prevents entry or waits for its reservation to finish. The
+// invocation gate permits only one fast activation per instance. Private paths
+// acquire the global lease first, since a revoker can already own that lease.
+func (in *Instance) lockPreparedFastState() bool {
+	const blocked = executionFlagNativeControlShared | executionFlagImportedGCDomain | executionFlagDynamicGCDomain | executionFlagStoreOwnedGCCollector | executionFlagPreparedActive
+	for {
+		flags := in.executionFlags.Load()
+		if flags&blocked != 0 {
+			return false
+		}
+		if in.executionFlags.CompareAndSwap(flags, flags|executionFlagPreparedActive) {
+			return true
+		}
+	}
+}
+
+func (in *Instance) unlockPreparedFastState() {
+	for {
+		flags := in.executionFlags.Load()
+		if !in.executionFlags.CompareAndSwap(flags, flags&^executionFlagPreparedActive) {
+			continue
+		}
+		if flags&executionFlagNativeControlShared != 0 {
+			gate := &in.ensurePluginState().invokeMu
+			gate.mu.Lock()
+			if gate.changed != nil {
+				close(gate.changed)
+				gate.changed = nil
+			}
+			gate.mu.Unlock()
+		}
+		return
+	}
+}
+
 func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error {
 	nativeExecutionMu.Lock()
+	if !in.lockPreparedFastState() {
+		nativeExecutionMu.Unlock()
+		return in.callNativeAsyncWithTrap(entry, true, activeTrap)
+	}
+	defer in.unlockPreparedFastState()
 	nativeExecutionEpoch++
 	defer nativeExecutionMu.Unlock()
 	if err := validateNativeGCEntry(in); err != nil {
@@ -449,6 +514,10 @@ func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error 
 }
 
 func (in *Instance) callPreparedIsolated(entry uintptr, activeTrap []byte) error {
+	if !in.lockPreparedFastState() {
+		return in.callNativeAsyncWithTrap(entry, true, activeTrap)
+	}
+	defer in.unlockPreparedFastState()
 	if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
 		return err
 	}

@@ -4405,7 +4405,8 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		// the audited rebinding and topology-lease route.
 		executionFlags := in.executionFlags.Load()
 		const directBlocked = executionFlagNativeControlShared | executionFlagImportedGCDomain | executionFlagDynamicGCDomain | executionFlagStoreOwnedGCCollector
-		if ic.directIntFast && executionFlags&directBlocked == 0 {
+		if ic.directIntFast && executionFlags&directBlocked == 0 && in.lockPreparedFastState() {
+			defer in.unlockPreparedFastState()
 			if len(args) != ic.paramSlots {
 				return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 			}

@@ -275,6 +275,11 @@ func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
 	// reference-result tokenization.
 	preparedLease := in.lockPreparedInvocation()
 	defer preparedLease.unlock()
+	return fn.invokeGeneralAdmitted(args)
+}
+
+func (fn *PreparedFunction) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
+	in := fn.in
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}
@@ -339,17 +344,14 @@ func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
 
 func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 	in := fn.in
-	if fn.privateFast {
-		if in.isLogicallyClosed() {
-			return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
-		}
-	} else {
-		if err := in.beginInvocation(); err != nil {
-			return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
-		}
-		defer in.endInvocation()
-		preparedLease := in.lockPreparedInvocation()
-		defer preparedLease.unlock()
+	if err := in.beginInvocation(); err != nil {
+		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+	}
+	defer in.endInvocation()
+	preparedLease := in.lockPreparedInvocation()
+	defer preparedLease.unlock()
+	if !in.preparedFastStateValid() {
+		return fn.invokeGeneralAdmitted(args)
 	}
 	if len(args) <= 4 {
 		put := func(slot int) {
