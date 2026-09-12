@@ -109,9 +109,9 @@ go run github.com/wago-org/wago/examples/02-runtime-typed@latest
 ```
 
 The example compiles a module, creates an instance, and invokes an exported
-function with `wago.I32`, `wago.I64`, `wago.F32`, `wago.F64`, and `wago.V128`
-value encodings. See [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago)
-for the complete guide.
+function with `wago.I32`, `wago.I64`, `wago.F32`, and `wago.F64` slot encodings;
+`wago.V128` represents vector values and occupies two slots. See
+[Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for the complete guide.
 
 Register synchronous imports with ordinary Go functions. Wago infers supported
 hot signatures once and dispatches them without reflection or allocation:
