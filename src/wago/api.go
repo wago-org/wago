@@ -4413,8 +4413,47 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], args[3])
 			}
 		}
+		if invokePrivateEntryEnabled && ic.entryMode != preparedEntryGeneral && executionFlags&directBlocked == 0 {
+			return in.invokeCachedNumericEntry(export, ic, args)
+		}
 	}
 	return in.invokeWithToken(export, args, contexts, state.invocationID, true, alreadyAdmitted, nil)
+}
+
+func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, args []uint64) ([]uint64, error) {
+	if len(args) != ic.paramSlots {
+		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
+	}
+	if len(args) > len(in.serArgs)/8 {
+		return nil, fmt.Errorf("%s requires %d arg slot(s), instance buffer has %d", export, len(args), len(in.serArgs)/8)
+	}
+	if ic.resultSlots > len(in.results)/8 {
+		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
+	}
+	marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, ic.slotWide[:ic.paramSlots])
+	if len(in.hostLog) > 0 {
+		binary.LittleEndian.PutUint32(in.hostLog, 0)
+	}
+	entry := in.base + uintptr(in.c.Entry[ic.li])
+	var err error
+	if ic.entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
+		err = in.callPreparedIsolated(entry, in.trap)
+	} else {
+		err = in.callPreparedPrivate(entry, in.trap)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(in.hostLog) != 0 {
+		if err := in.replayHostLog(); err != nil {
+			return nil, err
+		}
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:ic.resultSlots]
+	decodePublicScalarSlots(out, nativeUint64Slots(in.results), ic.slotWide[ic.paramSlots:])
+	return out, nil
 }
 
 //go:noinline
@@ -4565,7 +4604,7 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:ic.resultSlots]
-	for i, wide := range ic.resultWide {
+	for i, wide := range ic.slotWide[ic.paramSlots:] {
 		off := i * 8
 		if off+8 > len(in.results) {
 			return nil, fmt.Errorf("%s result slot %d exceeds instance result buffer", export, i)
@@ -4945,7 +4984,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		}
 		slot := &in.ic[int(in.icNext)%len(in.ic)]
 		in.icNext++
-		*slot = invokeCache{export: export, valid: true, li: -1 - gfi, resultWide: slot.resultWide[:0]}
+		*slot = invokeCache{export: export, valid: true, li: -1 - gfi, slotWide: slot.slotWide[:0]}
 		return slot, nil
 	}
 	li := gfi - in.c.NumImports
@@ -4963,33 +5002,29 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	}
 	slot := &in.ic[int(in.icNext)%len(in.ic)]
 	in.icNext++
-	rw := slot.resultWide[:0]
-	if cap(rw) < resultSlots {
-		rw = make([]bool, 0, resultSlots)
+	widths := slot.slotWide[:0]
+	if cap(widths) < paramSlots+resultSlots {
+		widths = make([]bool, 0, paramSlots+resultSlots)
 	}
-	for _, r := range sig.Results {
-		if r == ValV128 {
-			rw = append(rw, true, true)
-		} else {
-			rw = append(rw, isWideValType(r))
-		}
-	}
+	widths = appendValTypeSlotWidths(widths, sig.Params)
+	widths = appendValTypeSlotWidths(widths, sig.Results)
 	entryMode := preparedEntryGeneral
 	directEntryMode := preparedEntryGeneral
 	var scalarWideMask uint8
-	if !hasReferenceValType(sig.Params) && !hasReferenceValType(sig.Results) &&
-		paramSlots <= 4 && resultSlots <= 1 {
+	if !hasReferenceValType(sig.Params) && !hasReferenceValType(sig.Results) {
 		entryMode = in.preparedEntryMode()
 		directEntryMode = entryMode
 		if directEntryMode == preparedEntryGeneral && in.c.boundsMode == BoundsChecksSignalsBased && in.c.directPreparedAt(li) {
 			directEntryMode = in.preparedMemoryFreeEntryMode()
 		}
-		paramSlot := 0
-		for _, typ := range sig.Params {
-			if isWideValType(typ) {
-				scalarWideMask |= 1 << paramSlot
+		if paramSlots <= 4 {
+			paramSlot := 0
+			for _, typ := range sig.Params {
+				if isWideValType(typ) {
+					scalarWideMask |= 1 << paramSlot
+				}
+				paramSlot++
 			}
-			paramSlot++
 		}
 	}
 	directIntFast := preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
@@ -5002,13 +5037,13 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		directIntLight:    directIntFast && in.c.directPreparedLightAt(li),
 		directIntBounded:  directIntFast && in.c.directPreparedBoundedAt(li),
 		scalarWideMask:    scalarWideMask,
-		scalarResultWide:  resultSlots == 1 && rw[0],
+		scalarResultWide:  resultSlots == 1 && widths[paramSlots],
 		li:                li,
 		paramSlots:        paramSlots,
 		resultSlots:       resultSlots,
 		hasFuncRefParams:  hasReferenceValType(sig.Params),
 		hasFuncRefResults: hasReferenceValType(sig.Results),
-		resultWide:        rw,
+		slotWide:          widths,
 		entryMode:         entryMode,
 	}
 	return slot, nil
@@ -5030,6 +5065,36 @@ func marshalPublicScalarArgs(dst []byte, values []uint64, types []ValType) {
 		binary.LittleEndian.PutUint64(dst[slot*8:], bits)
 		slot++
 	}
+}
+
+func marshalPublicScalarSlotsByWidth(dst, values []uint64, wide []bool) {
+	for i, bits := range values {
+		if !wide[i] {
+			bits = uint64(uint32(bits))
+		}
+		dst[i] = bits
+	}
+}
+
+func decodePublicScalarSlots(dst, values []uint64, wide []bool) {
+	for i := range dst {
+		bits := values[i]
+		if !wide[i] {
+			bits = uint64(uint32(bits))
+		}
+		dst[i] = bits
+	}
+}
+
+func appendValTypeSlotWidths(dst []bool, types []ValType) []bool {
+	for _, typ := range types {
+		if typ == ValV128 {
+			dst = append(dst, true, true)
+		} else {
+			dst = append(dst, isWideValType(typ))
+		}
+	}
+	return dst
 }
 
 func hasValType(types []ValType, want ValType) bool {
