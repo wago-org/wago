@@ -654,8 +654,9 @@ Wago classifies ordinary functions with a concrete type switch and validates the
 inferred signature once. It does not use `reflect`, `reflect.Value.Call`, or a
 callback-time adapter allocation. The direct catalog includes the established
 zero-to-two-`i32` matrix plus unary and binary same-type `i64`, `f32`, and `f64`
-results. Unary `V128`, `FuncRef`, `ExternRef`, `ExnRef`, `GCRef`, and `I31Ref`
-forms are also accepted without signature names.
+results. Unary `FuncRef`, `ExternRef`, `ExnRef`, `GCRef`, and `I31Ref` forms are
+also accepted without signature names. V128 host callbacks are intentionally
+unsupported for now.
 
 No finite portable Go type switch can recognize arbitrary function arity. TinyGo
 0.41.1 also does not implement `reflect.Type.NumIn`, so complete coverage uses a
@@ -663,24 +664,21 @@ single explicit borrowed view:
 
 ```go
 module.Func("transform", func(call wago.HostCall) {
-    vector := call.V128(0)
-    object := call.ExternRef(1)
-    count := call.I64(2)
+    object := call.ExternRef(0)
+    count := call.I64(1)
 
-    call.SetV128(0, vector)
-    call.SetExternRef(1, object)
-    call.SetI64(2, count+1)
+    call.SetExternRef(0, object)
+    call.SetI64(1, count+1)
 }).
-    Params(wago.ValV128, wago.ValExternRef, wago.ValI64).
-    Results(wago.ValV128, wago.ValExternRef, wago.ValI64)
+    Params(wago.ValExternRef, wago.ValI64).
+    Results(wago.ValExternRef, wago.ValI64)
 ```
 
-`HostCall` indexes logical Wasm values, so `v128` is one index despite occupying
-two native slots. It exposes exact `ValueTypeDescriptor` metadata, typed accessors
-for every current core value category, and raw low/high access for future value
-types. High-arity codecs and adapters can use `ParamSlots()` and `ResultSlots()`
-to process the borrowed raw ABI buffers linearly; `v128` occupies two adjacent
-slots in that view. Its storage is valid only during the callback. The implementation passes
+`HostCall` indexes logical Wasm values. It exposes exact `ValueTypeDescriptor`
+metadata, typed scalar/reference accessors, and raw access for future value types.
+High-arity codecs and adapters can use `ParamSlots()` and `ResultSlots()` to
+process the borrowed raw ABI buffers linearly. Its storage is valid only during
+the callback. The implementation passes
 the view by value over the existing parked argument/result buffers; the tested
 dispatch path allocates zero bytes under both Go and TinyGo.
 Non-null exception references remain intentionally unable to cross the host

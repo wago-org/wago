@@ -2,7 +2,6 @@ package wago
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	goruntime "runtime"
@@ -94,7 +93,7 @@ type HostFunc func(m HostModule, params, results []uint64)
 
 // HostCall is a borrowed, logical view of one synchronous Wasm-to-Go call.
 // Values are indexed by WebAssembly parameter/result position, not raw ABI
-// slot: a v128 therefore occupies one index even though it uses two slots.
+// slot.
 // HostCall and values obtained from it are valid only until the callback
 // returns and must not be retained.
 type HostCall struct {
@@ -104,10 +103,11 @@ type HostCall struct {
 	exact   *DefinedTypeDescriptor
 }
 
-// HostCallFunc is the universal portable host callback. It supports arbitrary
-// parameter and result arity and every WebAssembly value type without
-// reflection or callback-time allocation. Ordinary Go functions recognized by
-// Func and Imports use more specialized direct lanes when available.
+// HostCallFunc is the universal portable host callback for scalar and reference
+// values. It supports arbitrary parameter and result arity without reflection
+// or callback-time allocation. V128 host boundaries are intentionally
+// unsupported. Ordinary Go functions recognized by Func and Imports use more
+// specialized direct lanes when available.
 type HostCallFunc func(HostCall)
 
 // CallerHostCallFunc is the universal form when a callback also needs memory,
@@ -128,14 +128,12 @@ func (c HostCall) ResultCount() int {
 	return len(c.sig.Results)
 }
 
-// ParamSlots returns the borrowed raw ABI slots for this call. Scalar values
-// occupy one slot and v128 occupies two consecutive little-endian slots. The
-// slice is valid only until the callback returns and must not be retained.
+// ParamSlots returns the borrowed raw ABI slots for this call. The slice is
+// valid only until the callback returns and must not be retained.
 func (c HostCall) ParamSlots() []uint64 { return c.params }
 
-// ResultSlots returns the borrowed writable raw ABI slots for this call. Scalar
-// values occupy one slot and v128 occupies two consecutive little-endian slots.
-// The slice is valid only until the callback returns and must not be retained.
+// ResultSlots returns the borrowed writable raw ABI slots for this call. The
+// slice is valid only until the callback returns and must not be retained.
 func (c HostCall) ResultSlots() []uint64 { return c.results }
 
 func (c HostCall) ParamType(i int) ValueTypeDescriptor {
@@ -166,14 +164,6 @@ func (c HostCall) ExnRef(i int) ExnRef { return ExnRef{token: c.paramSlot(i, Val
 func (c HostCall) GCRef(i int) GCRef   { return GCRef{token: c.paramSlot(i, ValAnyRef)} }
 func (c HostCall) I31Ref(i int) I31Ref { return I31Ref{bits: uint32(c.paramSlot(i, ValI31Ref))} }
 
-func (c HostCall) V128(i int) V128 {
-	slot := c.paramSlotIndex(i, ValV128)
-	var value V128
-	binary.LittleEndian.PutUint64(value[:8], c.params[slot])
-	binary.LittleEndian.PutUint64(value[8:], c.params[slot+1])
-	return value
-}
-
 func (c HostCall) SetI32(i int, v int32)       { c.setResultSlot(i, ValI32, I32(v)) }
 func (c HostCall) SetI64(i int, v int64)       { c.setResultSlot(i, ValI64, I64(v)) }
 func (c HostCall) SetF32(i int, v float32)     { c.setResultSlot(i, ValF32, F32(v)) }
@@ -186,14 +176,8 @@ func (c HostCall) SetExnRef(i int, v ExnRef) { c.setResultSlot(i, ValExnRef, v.t
 func (c HostCall) SetGCRef(i int, v GCRef)   { c.setResultSlot(i, ValAnyRef, v.token) }
 func (c HostCall) SetI31Ref(i int, v I31Ref) { c.setResultSlot(i, ValI31Ref, uint64(v.bits)) }
 
-func (c HostCall) SetV128(i int, v V128) {
-	slot := c.resultSlotIndex(i, ValV128)
-	c.results[slot] = binary.LittleEndian.Uint64(v[:8])
-	c.results[slot+1] = binary.LittleEndian.Uint64(v[8:])
-}
-
 // RawParam and SetRawResult are the complete, future-proof escape hatch for
-// value types added after this release. hi is non-zero-width only for v128.
+// value types added after this release.
 func (c HostCall) RawParam(i int) (lo, hi uint64) {
 	typ := c.paramType(i)
 	slot := hostCallSlot(c.sig.Params, i)
@@ -1444,7 +1428,7 @@ func isHostCallback(value any) bool {
 		func(int64) int64, func(int64, int64) int64,
 		func(float32) float32, func(float32, float32) float32,
 		func(float64) float64, func(float64, float64) float64,
-		func(V128) V128, func(FuncRef) FuncRef, func(ExternRef) ExternRef,
+		func(FuncRef) FuncRef, func(ExternRef) ExternRef,
 		func(ExnRef) ExnRef, func(GCRef) GCRef, func(I31Ref) I31Ref,
 		gatedNoArgsHostFunc, gatedI32HostFunc, gatedI32ToI32HostFunc,
 		gatedI32I32HostFunc, gatedI32I32ToI32HostFunc,
@@ -1484,8 +1468,6 @@ func inferredHostFuncSignature(value any) (params, results []ValType, ok bool) {
 		return []ValType{ValF64}, []ValType{ValF64}, true
 	case func(float64, float64) float64:
 		return []ValType{ValF64, ValF64}, []ValType{ValF64}, true
-	case func(V128) V128:
-		return []ValType{ValV128}, []ValType{ValV128}, true
 	case func(FuncRef) FuncRef:
 		return []ValType{ValFuncRef}, []ValType{ValFuncRef}, true
 	case func(ExternRef) ExternRef:
@@ -1574,7 +1556,7 @@ func gateHostImport(value any, gate *pluginCallGate) (any, error) {
 	case func(int64) int64, func(int64, int64) int64,
 		func(float32) float32, func(float32, float32) float32,
 		func(float64) float64, func(float64, float64) float64,
-		func(V128) V128, func(FuncRef) FuncRef, func(ExternRef) ExternRef,
+		func(FuncRef) FuncRef, func(ExternRef) ExternRef,
 		func(ExnRef) ExnRef, func(GCRef) GCRef, func(I31Ref) I31Ref:
 		return gatedOrdinaryHostFunc{fn: value, gate: gate}, nil
 	default:
@@ -1656,12 +1638,6 @@ func (b *syncHostBinding) call(caller instanceHostModule, args, results []uint64
 		results[0] = F64(fn(AsF64(args[0])))
 	case func(float64, float64) float64:
 		results[0] = F64(fn(AsF64(args[0]), AsF64(args[1])))
-	case func(V128) V128:
-		var value V128
-		binary.LittleEndian.PutUint64(value[:8], args[0])
-		binary.LittleEndian.PutUint64(value[8:], args[1])
-		value = fn(value)
-		results[0], results[1] = binary.LittleEndian.Uint64(value[:8]), binary.LittleEndian.Uint64(value[8:])
 	case func(FuncRef) FuncRef:
 		results[0] = fn(FuncRef{token: args[0]}).token
 	case func(ExternRef) ExternRef:
@@ -1680,6 +1656,9 @@ func (b *syncHostBinding) call(caller instanceHostModule, args, results []uint64
 }
 
 func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
+	if hasValType(sig.Params, ValV128) || hasValType(sig.Results, ValV128) {
+		return syncHostBinding{}, fmt.Errorf("v128 host callbacks are not supported")
+	}
 	switch fn := value.(type) {
 	case I32HostEvent, gatedI32HostEvent:
 		return syncHostBinding{}, fmt.Errorf("deferred host event cannot be used by a module that requires synchronous host control")
@@ -1771,11 +1750,6 @@ func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
 			return syncHostBinding{}, fmt.Errorf("typed host function is nil")
 		}
 		return bindSimpleTypedHostFunc(sig, ValF64, 2, syncHostBinding{fn: fn, scalarKind: syncHostTypedF64x2})
-	case func(V128) V128:
-		if fn == nil {
-			return syncHostBinding{}, fmt.Errorf("typed host function is nil")
-		}
-		return bindSimpleTypedHostFunc(sig, ValV128, 1, syncHostBinding{fn: fn})
 	case func(FuncRef) FuncRef:
 		if fn == nil {
 			return syncHostBinding{}, fmt.Errorf("typed host function is nil")

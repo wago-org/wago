@@ -1,22 +1,20 @@
 package wago
 
 import (
-	"encoding/binary"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func TestHostCallSupportsEveryABIValueType(t *testing.T) {
+func TestHostCallSupportsScalarAndReferenceValueTypes(t *testing.T) {
 	types := []ValType{
-		ValI32, ValI64, ValF32, ValF64, ValV128,
+		ValI32, ValI64, ValF32, ValF64,
 		ValFuncRef, ValExternRef, ValExnRef, ValAnyRef, ValI31Ref,
 	}
-	vec := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
-	lo, hi := binary.LittleEndian.Uint64(vec[:8]), binary.LittleEndian.Uint64(vec[8:])
 	args := []uint64{
-		I32(-7), I64(-9), F32(1.25), F64(-2.5), lo, hi,
+		I32(-7), I64(-9), F32(1.25), F64(-2.5),
 		11, 12, 0, 13, uint64(NewI31Ref(-3).bits),
 	}
 	results := make([]uint64, len(args))
@@ -29,20 +27,19 @@ func TestHostCallSupportsEveryABIValueType(t *testing.T) {
 		if call.I32(0) != -7 || call.I64(1) != -9 || call.F32(2) != 1.25 || call.F64(3) != -2.5 {
 			t.Fatal("numeric parameter mismatch")
 		}
-		if call.V128(4) != vec || call.FuncRef(5).token != 11 || call.ExternRef(6).token != 12 ||
-			!call.ExnRef(7).IsNull() || call.GCRef(8).token != 13 || call.I31Ref(9).Signed() != -3 {
-			t.Fatal("vector/reference parameter mismatch")
+		if call.FuncRef(4).token != 11 || call.ExternRef(5).token != 12 ||
+			!call.ExnRef(6).IsNull() || call.GCRef(7).token != 13 || call.I31Ref(8).Signed() != -3 {
+			t.Fatal("reference parameter mismatch")
 		}
 		call.SetI32(0, -7)
 		call.SetI64(1, -9)
 		call.SetF32(2, 1.25)
 		call.SetF64(3, -2.5)
-		call.SetV128(4, vec)
-		call.SetFuncRef(5, FuncRef{token: 11})
-		call.SetExternRef(6, ExternRef{token: 12})
-		call.SetExnRef(7, ExnRef{})
-		call.SetGCRef(8, GCRef{token: 13})
-		call.SetI31Ref(9, NewI31Ref(-3))
+		call.SetFuncRef(4, FuncRef{token: 11})
+		call.SetExternRef(5, ExternRef{token: 12})
+		call.SetExnRef(6, ExnRef{})
+		call.SetGCRef(7, GCRef{token: 13})
+		call.SetI31Ref(8, NewI31Ref(-3))
 	}, FuncSig{Params: types, Results: types})
 	if err != nil {
 		t.Fatal(err)
@@ -58,11 +55,7 @@ func TestHostCallSupportsEveryABIValueType(t *testing.T) {
 	}
 }
 
-func TestHostCallMixedSignatureRuntime(t *testing.T) {
-	if !hostSupportsSIMD() {
-		t.Skip("host SIMD unavailable")
-	}
-	vec := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+func TestHostCallRejectsV128Signature(t *testing.T) {
 	sig := wasmtest.FuncType(
 		[]wasm.ValType{wasm.I32, wasm.V128, wasm.I64},
 		[]wasm.ValType{wasm.V128, wasm.I32},
@@ -70,26 +63,11 @@ func TestHostCallMixedSignatureRuntime(t *testing.T) {
 	body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x10, 0x00, 0x0b}
 	compiled := MustCompile(returningImportModule(sig, body))
 	defer compiled.Close()
-	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": func(call HostCall) {
-			if call.I32(0) != 7 || call.V128(1) != vec || call.I64(2) != 9 {
-				t.Fatal("mixed HostCall parameters were decoded incorrectly")
-			}
-			call.SetV128(0, vec)
-			call.SetI32(1, 42)
-		},
+	_, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
+		"env.f": func(HostCall) {},
 	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer instance.Close()
-	lo, hi := hostV128Slots(vec)
-	results, err := instance.Invoke("g", I32(7), lo, hi, I64(9))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := hostV128FromSlots(results[0], results[1]); got != vec || AsI32(results[2]) != 42 {
-		t.Fatalf("mixed HostCall results = %x/%d", got, AsI32(results[2]))
+	if err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") {
+		t.Fatalf("Instantiate error = %v, want unsupported v128 host callback", err)
 	}
 }
 
@@ -121,33 +99,6 @@ func TestOrdinaryNumericFunctionsRuntime(t *testing.T) {
 				t.Fatalf("result = %#v, %v; want %#x", results, err, test.want)
 			}
 		})
-	}
-}
-
-func TestHostCallUsesLogicalV128Indexes(t *testing.T) {
-	sig := FuncSig{
-		Params:  []ValType{ValI32, ValV128, ValI64},
-		Results: []ValType{ValI32, ValV128, ValI64},
-	}
-	call := HostCall{
-		params:  []uint64{1, 2, 3, 4},
-		results: make([]uint64, 4),
-		sig:     &sig,
-	}
-	if lo, hi := call.RawParam(1); lo != 2 || hi != 3 {
-		t.Fatalf("v128 slots = %#x/%#x", lo, hi)
-	}
-	if got := call.ParamSlots(); len(got) != 4 || got[0] != 1 || got[3] != 4 {
-		t.Fatalf("parameter slots = %#v", got)
-	}
-	if got := call.I64(2); got != 4 {
-		t.Fatalf("post-v128 i64 = %d", got)
-	}
-	call.ResultSlots()[0] = 7
-	call.SetRawResult(1, 8, 9)
-	call.SetI64(2, 10)
-	if call.results[0] != 7 || call.results[1] != 8 || call.results[2] != 9 || call.results[3] != 10 {
-		t.Fatalf("results = %#v", call.results)
 	}
 }
 
@@ -255,6 +206,19 @@ func TestOrdinaryNumericFunctionsInferAndBind(t *testing.T) {
 		if _, err := bindSyncHostImport(test.fn, FuncSig{Params: params, Results: results}); err != nil {
 			t.Fatalf("bind %T: %v", test.fn, err)
 		}
+	}
+}
+
+func TestOrdinaryV128HostFunctionIsUnsupported(t *testing.T) {
+	fn := func(v V128) V128 { return v }
+	if isHostCallback(fn) {
+		t.Fatal("ordinary v128 function was recognized as a host callback")
+	}
+	if _, _, ok := inferredHostFuncSignature(fn); ok {
+		t.Fatal("ordinary v128 function signature was inferred")
+	}
+	if _, err := bindSyncHostImport(fn, FuncSig{Params: []ValType{ValV128}, Results: []ValType{ValV128}}); err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") {
+		t.Fatalf("bind error = %v, want unsupported v128 host callback", err)
 	}
 }
 

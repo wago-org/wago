@@ -267,34 +267,12 @@ func TestLegacyHostFuncInTableStillRunsIndirectly(t *testing.T) {
 	}
 }
 
-func TestSyncHostImportV128InTableRunsIndirectly(t *testing.T) {
-	if !hostSupportsSIMD() {
-		t.Skip("host SIMD unavailable")
-	}
-	inVec := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
-	outVec := V128{15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0}
+func TestSyncHostImportV128InTableRejected(t *testing.T) {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128})
 	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b} // local.get 0; i32.const 0; call_indirect type 0 table 0; end
 	c := MustCompile(tableHostImportModule(sig, body))
-	calls := 0
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) {
-		calls++
-		if got := hostV128FromSlots(p[0], p[1]); got != inVec {
-			t.Fatalf("v128 param = % x, want % x", got, inVec)
-		}
-		r[0], r[1] = hostV128Slots(outVec)
-	})}})
-	if err != nil {
-		t.Fatalf("instantiate: %v", err)
-	}
-	defer in.Close()
-	lo, hi := hostV128Slots(inVec)
-	res, err := in.Invoke("g", lo, hi)
-	if err != nil {
-		t.Fatalf("invoke: %v", err)
-	}
-	if got := hostV128FromSlots(res[0], res[1]); got != outVec || calls != 1 {
-		t.Fatalf("g/calls = % x/%d, want % x/1", got, calls, outVec)
+	if _, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}}); err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") {
+		t.Fatalf("instantiate error = %v, want unsupported v128 host callback", err)
 	}
 }
 
