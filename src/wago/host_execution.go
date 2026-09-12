@@ -318,11 +318,36 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	active.hostCall(ctrl, importIdx, args, results, invocation)
 }
 
+// parkIndependentHostCallback gives closure-based public host access the same
+// lease contract as the generic dispatcher. Reacquisition is deferred by the
+// caller, so errors and panics restore ownership too. No other goroutine gains
+// callback authority; public state access still acquires the native mutex.
+type parkedIndependentHostLease struct {
+	root     *Instance
+	state    *instancePluginState
+	reusable bool
+	mu       *sync.Mutex
+	version  uint64
+	ctrl     uintptr
+}
+
+func (a *hostLoopActivation) parkIndependentHostCallback(ctrl uintptr) parkedIndependentHostLease {
+	lease := parkedIndependentHostLease{root: a.root, state: a.state, reusable: a.parkedNativeContextReusable, mu: a.root.independentNativeExecutionMu(), version: a.state.nativeContextVersion.Load(), ctrl: ctrl}
+	lease.mu.Unlock()
+	return lease
+}
+
+func (l parkedIndependentHostLease) resume() {
+	l.mu.Lock()
+	if !l.reusable || !l.root.canReuseParkedNativeContextWithState(l.version, l.state) {
+		l.root.restoreTypedScalarNativeContext(l.ctrl)
+	}
+}
+
 // dispatchTypedScalarPortal is the capability-free root portal. Its callback
 // type cannot inspect Caller or obtain supported re-entry authority, and non-GC
 // activations have no native roots to publish while parked. Independent
-// instances retain their already-exclusive local lease; shared execution
-// releases the global lease so another instance may run. The context version or
+// and shared instances release their native lease while arbitrary Go runs. The context version or
 // global epoch still decides whether native context must be rebound before resume.
 func (a *hostLoopActivation) dispatchTypedScalarExpandedPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
 	active := a.root
@@ -347,10 +372,10 @@ func (a *hostLoopActivation) dispatchTypedScalarExpandedPortal(ctrl uintptr, imp
 		return 0, false
 	}
 
-	state := a.state
 	flags := active.executionFlags.Load()
 	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
-		version := state.nativeContextVersion.Load()
+		resume := a.parkIndependentHostCallback(ctrl)
+		defer resume.resume()
 		var result uint64
 		if binding.scalarKind == syncHostTypedI32 {
 			result = I32(binding.typedI32(AsI32(a0)))
@@ -358,11 +383,6 @@ func (a *hostLoopActivation) dispatchTypedScalarExpandedPortal(ctrl uintptr, imp
 			result = I32(binding.typedI32x2(AsI32(a0), AsI32(a1)))
 		} else {
 			result = binding.callTypedScalar(a0, a1)
-		}
-		if version == ^uint64(0) || !a.parkedNativeContextReusable ||
-			active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent ||
-			state.nativeContextVersion.Load() != version {
-			active.restoreTypedScalarNativeContext(ctrl)
 		}
 		return result, true
 	}
@@ -404,20 +424,15 @@ func (a *hostLoopActivation) dispatchTypedScalarPortal(ctrl uintptr, importIdx, 
 		return 0, false
 	}
 
-	state := a.state
 	flags := active.executionFlags.Load()
 	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
-		version := state.nativeContextVersion.Load()
+		resume := a.parkIndependentHostCallback(ctrl)
+		defer resume.resume()
 		var result uint64
 		if binding.scalarKind == syncHostTypedI32 {
 			result = I32(binding.typedI32(AsI32(a0)))
 		} else {
 			result = I32(binding.typedI32x2(AsI32(a0), AsI32(a1)))
-		}
-		if version == ^uint64(0) || !a.parkedNativeContextReusable ||
-			active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent ||
-			state.nativeContextVersion.Load() != version {
-			active.restoreTypedScalarNativeContext(ctrl)
 		}
 		return result, true
 	}
@@ -453,22 +468,17 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarPortal(ctrl uintptr, impor
 		return 0, false
 	}
 
-	state := a.state
 	flags := active.executionFlags.Load()
 	if flags&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
 		return a.dispatchTypedScalarPortal(ctrl, importIdx, rawSlots, a0, a1)
 	}
-	version := state.nativeContextVersion.Load()
+	resume := a.parkIndependentHostCallback(ctrl)
+	defer resume.resume()
 	var result uint64
 	if binding.scalarKind == syncHostTypedI32 {
 		result = I32(binding.typedI32(AsI32(a0)))
 	} else {
 		result = I32(binding.typedI32x2(AsI32(a0), AsI32(a1)))
-	}
-	if version == ^uint64(0) || !a.parkedNativeContextReusable ||
-		active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent ||
-		state.nativeContextVersion.Load() != version {
-		active.restoreTypedScalarNativeContext(ctrl)
 	}
 	return result, true
 }
@@ -483,18 +493,13 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarExpandedPortal(ctrl uintpt
 		return 0, false
 	}
 
-	state := a.state
 	flags := active.executionFlags.Load()
 	if flags&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
 		return a.dispatchTypedScalarExpandedPortal(ctrl, importIdx, rawSlots, a0, a1)
 	}
-	version := state.nativeContextVersion.Load()
+	resume := a.parkIndependentHostCallback(ctrl)
+	defer resume.resume()
 	result := binding.callTypedScalar(a0, a1)
-	if version == ^uint64(0) || !a.parkedNativeContextReusable ||
-		active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent ||
-		state.nativeContextVersion.Load() != version {
-		active.restoreTypedScalarNativeContext(ctrl)
-	}
 	return result, true
 }
 
@@ -516,16 +521,11 @@ func (a *hostLoopActivation) dispatchSingleHostCall(ctrl uintptr, importIdx uint
 		})
 	}
 
-	state := a.state
 	flags := active.executionFlags.Load()
 	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
-		version := state.nativeContextVersion.Load()
+		resume := a.parkIndependentHostCallback(ctrl)
+		defer resume.resume()
 		call()
-		if version == ^uint64(0) || !a.parkedNativeContextReusable ||
-			active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent ||
-			state.nativeContextVersion.Load() != version {
-			active.restoreTypedScalarNativeContext(ctrl)
-		}
 		return
 	}
 
@@ -558,16 +558,11 @@ func (a *hostLoopActivation) dispatchSingleHostCallView(ctrl uintptr, importIdx 
 		})
 	}
 
-	state := a.state
 	flags := active.executionFlags.Load()
 	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
-		version := state.nativeContextVersion.Load()
+		resume := a.parkIndependentHostCallback(ctrl)
+		defer resume.resume()
 		call()
-		if version == ^uint64(0) || !a.parkedNativeContextReusable ||
-			active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent ||
-			state.nativeContextVersion.Load() != version {
-			active.restoreTypedScalarNativeContext(ctrl)
-		}
 		return true
 	}
 
