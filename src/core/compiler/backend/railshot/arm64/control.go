@@ -1646,27 +1646,27 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 		}
 	}
 
-	var savedState [16]locState
-	var savedLocal [16]int
-	savedN := 0
+	// Use the same local-indexed snapshot as control-frame merges. Whole-function
+	// pins are only assigned within the range covered by packedLocStates; the
+	// combined GP/FP pin count is not bounded by sixteen.
+	var savedState packedLocStates
 	if f.usesCalls {
 		for x := range f.locals {
 			if _, _, ok := f.pinReg(x); !ok {
 				continue
 			}
-			if savedN == len(savedState) {
-				panic("arm64: too many pinned locals in EH route")
-			}
-			savedLocal[savedN] = x
-			savedState[savedN] = f.locals[x].state
-			savedN++
+			savedState.set(x, f.locals[x].state)
 			f.locals[x].state = lsMem
 		}
 	}
 	f.convergeBranchLocals(target)
 	f.branchJump(target)
-	for i := 0; i < savedN; i++ {
-		f.locals[savedLocal[i]].state = savedState[i]
+	if f.usesCalls {
+		for x := range f.locals {
+			if _, _, ok := f.pinReg(x); ok {
+				f.locals[x].state = savedState.get(x)
+			}
+		}
 	}
 }
 

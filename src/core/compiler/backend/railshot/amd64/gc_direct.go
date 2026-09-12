@@ -713,9 +713,15 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 }
 
 func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffset uint32, valueType wasm.ValType) error {
-	var savedLocals [16]locState
-	if len(f.pinnedLocals) > len(savedLocals) {
-		return fmt.Errorf("amd64: %d pinned locals exceed conditional GC store bound", len(f.pinnedLocals))
+	var inlineLocals [16]locState
+	savedLocals := inlineLocals[:]
+	if len(f.pinnedLocals) > len(inlineLocals) {
+		// Integer and floating-point pins share this snapshot. Their combined
+		// count can exceed either register bank; use the existing frame-state
+		// pool for wide functions while keeping small snapshots on the stack.
+		pooledLocals := f.newLocStateBuf()
+		savedLocals = pooledLocals
+		defer f.freeLocStateBuf(pooledLocals)
 	}
 	for i, local := range f.pinnedLocals {
 		savedLocals[i] = f.locals[local].state
@@ -751,9 +757,15 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
 }
 
 func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValType) error {
-	var savedLocals [16]locState
-	if len(f.pinnedLocals) > len(savedLocals) {
-		return fmt.Errorf("amd64: %d pinned locals exceed conditional GC store bound", len(f.pinnedLocals))
+	var inlineLocals [16]locState
+	savedLocals := inlineLocals[:]
+	if len(f.pinnedLocals) > len(inlineLocals) {
+		// Integer and floating-point pins share this snapshot. Their combined
+		// count can exceed either register bank; use the existing frame-state
+		// pool for wide functions while keeping small snapshots on the stack.
+		pooledLocals := f.newLocStateBuf()
+		savedLocals = pooledLocals
+		defer f.freeLocStateBuf(pooledLocals)
 	}
 	for i, local := range f.pinnedLocals {
 		savedLocals[i] = f.locals[local].state
