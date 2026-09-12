@@ -102,15 +102,36 @@ Add Wago to your module:
 go get github.com/wago-org/wago
 ```
 
-Run the typed API example:
+Run the Go API example:
 
 ```sh
 go run github.com/wago-org/wago/examples/02-runtime-typed@latest
 ```
 
-The example compiles a module, creates an instance, and calls an exported
-function. See [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for the
-complete guide.
+The example compiles a module, creates an instance, and invokes an exported
+function with `wago.I32`, `wago.I64`, `wago.F32`, and `wago.F64` slot encodings.
+See
+[Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for the complete guide.
+
+Register synchronous imports with ordinary Go functions. Wago infers supported
+hot signatures once and dispatches them without reflection or allocation:
+
+```go
+module.Func("add", func(a, b int32) int32 { return a + b })
+module.Func("hypot", func(a, b float64) float64 { return math.Hypot(a, b) })
+```
+
+For arbitrary arity, mixed scalar types, or references, use the same `Func`
+method with `func(wago.HostCall)`. The call is a borrowed logical view supported
+under both Go and TinyGo. Eligible wide scalar signatures use the parked
+argument/result slots directly. High-arity adapters can process the borrowed raw
+ABI slices directly with `ParamSlots()` and `ResultSlots()`. V128 values are
+intentionally unsupported at host callback boundaries for now.
+
+For high-frequency one-way `(i32) -> ()` imports, `wago.I32HostEvent` avoids a
+Go stack transition for every call. Events are delivered in order after the
+native invocation returns. This is an explicit deferred contract; use a normal
+host function when Wasm must observe the callback's effects immediately.
 
 ## Performance
 

@@ -89,7 +89,7 @@ func main() {
 	defer inst.Close()
 
 	for i := 0; i < 3; i++ {
-		out, _ := inst.Call(ctx, "roll")
-		fmt.Printf("roll() = %d\n", uint64(out[0].I64()))
+		out, _ := inst.InvokeContext(ctx, "roll")
+		fmt.Printf("roll() = %d\n", uint64(wago.AsI64(out[0])))
 	}
 }

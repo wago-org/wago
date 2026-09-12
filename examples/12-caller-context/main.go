@@ -99,9 +99,9 @@ func main() {
 	}
 	defer instance.Close()
 
-	result, err := instance.Call(context.Background(), "run", wago.ValueI32(41))
+	result, err := instance.Invoke("run", wago.I32(41))
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("guest callback returned", result[0].I32())
+	fmt.Println("guest callback returned", wago.AsI32(result[0]))
 }

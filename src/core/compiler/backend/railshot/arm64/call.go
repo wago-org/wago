@@ -1384,12 +1384,11 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	return nil
 }
 
-// HostIndirectThunk returns standalone machine code that logs a host call for
-// importIdx and returns — for a legacy HostFunc reached through call_indirect
-// (placed in a table as a funcref). It is entered with the wrapper ABI (X1 =
+// HostIndirectThunk returns standalone machine code that logs a deferred host
+// event for importIdx and returns. It is entered with the wrapper ABI (X1 =
 // linMem, X0 = args buffer), appends (importIdx, first-arg-i32) to the host-call
 // log at [linMem-offCustomCtx] exactly like callHost, and returns void, so the
-// normal post-invoke replay runs the host function. Emitted per host funcref into
+// normal post-invoke replay delivers the event. Emitted per host funcref into
 // a per-instance mapping; the same code is instance-independent (it reads the log
 // pointer from X1 at run time).
 func HostIndirectThunk(importIdx uint32) []byte {
@@ -1399,7 +1398,9 @@ func HostIndirectThunk(importIdx uint32) []byte {
 	a.Load32(X9, X0, 0)               // X9 = first arg (i32; a harmless slot read for 0-param funcs)
 	a.SubImm64(X10, X1, offCustomCtx) // X10 = &host-call log (X1 = linMem in the wrapper ABI)
 	a.Load64(X10, X10, 0)
-	a.Load32(X11, X10, 0)                 // count
+	a.Load32(X11, X10, 0) // count
+	a.CmpImm32LSL12(X11, runtime.HostCallLogEntries)
+	full := a.Bcond(condAE)
 	a.AddShifted(X12, X10, X11, 3, false) // entry = log + count*8
 	a.AddImm64(X12, X12, 8)               // + 8 header
 	a.MovImm64(X16, uint64(uint32(importIdx)))
@@ -1407,6 +1408,17 @@ func HostIndirectThunk(importIdx uint32) []byte {
 	a.Store32(X9, X12, 4)   // arg
 	a.AddImm32(X11, X11, 1) // count++
 	a.Store32(X11, X10, 0)
+	a.Ret()
+	a.PatchBranch19(full, a.Len())
+	a.SubImm64(X10, X1, offTrapCellPtr)
+	a.Load64(X10, X10, 0)
+	a.MovImm64(X16, uint64(runtime.TrapHostEventOverflow))
+	a.Store32(X16, X10, 0)
+	a.SubImm64(X10, X1, offTrapStackReentry)
+	a.Load64(X10, X10, 0)
+	a.SubImm64(X11, X1, offTrapHandlerPtr)
+	a.Load64(LR, X11, 0)
+	a.AddImm64(SP, X10, 0)
 	a.Ret()
 	return a.B
 }

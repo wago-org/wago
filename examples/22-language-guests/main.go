@@ -79,15 +79,15 @@ func run(rt *wago.Runtime, source []byte, initialize bool) int32 {
 	}
 	defer instance.Close()
 	if initialize {
-		if _, err := instance.Call(context.Background(), "_initialize"); err != nil {
+		if _, err := instance.Invoke("_initialize"); err != nil {
 			panic(err)
 		}
 	}
-	result, err := instance.Call(context.Background(), "run")
+	result, err := instance.Invoke("run")
 	if err != nil {
 		panic(err)
 	}
-	return result[0].I32()
+	return wago.AsI32(result[0])
 }
 
 func main() {

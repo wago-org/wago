@@ -27,7 +27,7 @@ func TestPreparedFunctionInvokeAndCacheIndependence(t *testing.T) {
 	// Replace every tiny Instance cache slot; the prepared signature must own its
 	// result-width metadata rather than aliasing a round-robin cache slot.
 	for i := range in.ic {
-		in.ic[i] = invokeCache{export: "other", valid: true, resultWide: []bool{true, true}}
+		in.ic[i] = invokeCache{export: "other", valid: true, slotWide: []bool{true, true}}
 	}
 	got, err := fn.Invoke(I32(41))
 	if err != nil {
@@ -361,6 +361,148 @@ func TestInvokeScalarUsesIsolatedEntry(t *testing.T) {
 	if got.err != nil || len(got.values) != 1 || AsI32(got.values[0]) != 43 {
 		t.Fatalf("shared-control invoke = %v, %v", got.values, got.err)
 	}
+}
+
+func TestNumericMultiResultFastPaths(t *testing.T) {
+	savedPrepared := preparedPrivateEntryEnabled
+	savedScalar := preparedScalarFastEnabled
+	savedInvoke := invokePrivateEntryEnabled
+	preparedPrivateEntryEnabled = true
+	preparedScalarFastEnabled = true
+	invokePrivateEntryEnabled = true
+	defer func() {
+		preparedPrivateEntryEnabled = savedPrepared
+		preparedScalarFastEnabled = savedScalar
+		invokePrivateEntryEnabled = savedInvoke
+	}()
+
+	compiled, err := Compile(
+		NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit),
+		hostToWasmI32SignatureModule(2, 2),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	prepared, err := in.PrepareFunction("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prepared.scalarFast || !prepared.privateFast {
+		t.Fatalf("numeric multi-result prepared path not selected: scalar=%v private=%v", prepared.scalarFast, prepared.privateFast)
+	}
+	check := func(name string, got []uint64, err error) {
+		t.Helper()
+		if err != nil || len(got) != 2 || AsI32(got[0]) != 7 || AsI32(got[1]) != 11 {
+			t.Fatalf("%s = %v, %v; want [7 11]", name, got, err)
+		}
+	}
+	values, callErr := in.Invoke("f", I32(7), I32(11))
+	check("Invoke", values, callErr)
+	values, callErr = prepared.Invoke(I32(7), I32(11))
+	check("PreparedFunction.Invoke", values, callErr)
+
+	ic := in.findInvokeCache("f")
+	if ic == nil || ic.entryMode == preparedEntryGeneral {
+		t.Fatalf("numeric multi-result Invoke cache mode = %v", ic)
+	}
+	// Native control may become shared after the cache is populated. The public
+	// Invoke fast path must honor that dynamic exclusion and take the serialized
+	// fallback rather than using its cached isolated entry.
+	in.markNativeControlShared()
+	type result struct {
+		values []uint64
+		err    error
+	}
+	done := make(chan result, 1)
+	nativeExecutionMu.Lock()
+	go func() {
+		values, err := in.Invoke("f", I32(7), I32(11))
+		done <- result{values: values, err: err}
+	}()
+	select {
+	case got := <-done:
+		nativeExecutionMu.Unlock()
+		t.Fatalf("shared-control multi-result invoke bypassed execution lease: %v, %v", got.values, got.err)
+	case <-time.After(20 * time.Millisecond):
+		nativeExecutionMu.Unlock()
+	}
+	got := <-done
+	check("shared-control Invoke", got.values, got.err)
+}
+
+func TestNumericFastPathsPreserveScalarWidths(t *testing.T) {
+	types := []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
+	body := make([]byte, 0, len(types)*2+1)
+	for i := range types {
+		body = append(body, 0x20, byte(i))
+	}
+	body = append(body, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	prepared, err := in.PrepareFunction("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := []uint64{I32(-7), I64(-9), F32(1.25), F64(-3.5)}
+	check := func(name string, got []uint64, err error) {
+		t.Helper()
+		if err != nil || len(got) != len(args) {
+			t.Fatalf("%s = %v, %v", name, got, err)
+		}
+		for i := range got {
+			if got[i] != args[i] {
+				t.Fatalf("%s result[%d] = %#x, want %#x", name, i, got[i], args[i])
+			}
+		}
+	}
+	values, callErr := in.Invoke("f", args...)
+	check("Invoke", values, callErr)
+	values, callErr = prepared.Invoke(args...)
+	check("PreparedFunction.Invoke", values, callErr)
+}
+
+func hostToWasmI32SignatureModule(params, results int) []byte {
+	paramTypes := make([]wasm.ValType, params)
+	for i := range paramTypes {
+		paramTypes[i] = wasm.I32
+	}
+	resultTypes := make([]wasm.ValType, results)
+	body := make([]byte, 0, results*2+1)
+	for i := range resultTypes {
+		resultTypes[i] = wasm.I32
+		if i < params {
+			body = append(body, 0x20, byte(i)) // local.get i
+		} else {
+			body = append(body, 0x41, byte(i+1)) // i32.const i+1
+		}
+	}
+	body = append(body, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(paramTypes, resultTypes))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
 }
 
 func BenchmarkPreparedInvokeAddOne(b *testing.B) {

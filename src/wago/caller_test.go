@@ -19,10 +19,10 @@ func callerTestCallback(concrete bool, fn HostFunc) any {
 func callerTestDeclare(module *ImportModuleBuilder, concrete bool) func(string, HostFunc) *ImportFuncBuilder {
 	if concrete {
 		return func(name string, fn HostFunc) *ImportFuncBuilder {
-			return module.CallerFunc(name, func(c Caller, p, r []uint64) { fn(c, p, r) })
+			return module.Func(name, CallerHostFunc(func(c Caller, p, r []uint64) { fn(c, p, r) }))
 		}
 	}
-	return module.Func
+	return func(name string, fn HostFunc) *ImportFuncBuilder { return module.Func(name, fn) }
 }
 
 func BenchmarkInvokeCallerHostFuncDirect(b *testing.B) {

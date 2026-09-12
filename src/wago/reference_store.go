@@ -1941,6 +1941,9 @@ func (s *referenceStore) issueMode(source *Instance, descriptor uint64, attached
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if entry := s.byIdentity[funcrefIdentity{descriptor: descriptor}]; entry != nil {
+		if entry.owner != nil && entry.owner.hostEvents != nil {
+			return 0, deferredHostEventCalleeError()
+		}
 		return entry.token, nil
 	}
 	if source == nil {
@@ -1950,13 +1953,22 @@ func (s *referenceStore) issueMode(source *Instance, descriptor uint64, attached
 	if !ok {
 		return 0, fmt.Errorf("invalid funcref result descriptor")
 	}
+	if owner.hostEvents != nil {
+		return 0, deferredHostEventCalleeError()
+	}
 	identity, hasIdentity := source.funcrefFunctionIdentity(descriptor)
 	if hasIdentity {
 		if entry := s.byIdentity[identity]; entry != nil {
+			if entry.owner != nil && entry.owner.hostEvents != nil {
+				return 0, deferredHostEventCalleeError()
+			}
 			return entry.token, nil
 		}
 	}
 	if entry := s.byIdentity[funcrefIdentity{descriptor: canonical}]; entry != nil {
+		if entry.owner != nil && entry.owner.hostEvents != nil {
+			return 0, deferredHostEventCalleeError()
+		}
 		return entry.token, nil
 	}
 	var retained bool

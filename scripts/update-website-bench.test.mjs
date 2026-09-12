@@ -40,6 +40,7 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       "Instantiate/json-as": { ns: 7 }, "WazeroInstantiate/json-as": { ns: 14 },
       "Exec/tiny.add": { ns: 3 }, "DraglineExec/tiny.add": { ns: 2 }, "WazeroExec/tiny.add": { ns: 4 },
       "ExecCallOverhead_wago": { ns: 100 }, "ExecCallOverhead_wazero": { ns: 104 },
+	  "ExecTypedCall_wago": { ns: 104 },
       "ExecHostCallback_wago": { ns: 33 }, "ExecHostRoundtrip_wago": { ns: 99 }, "ExecHostRoundtrip_wazero": { ns: 66 },
       "Exec/nbody.step": { ns: 20 }, "WazeroExec/nbody.step": { ns: 30 },
       "Exec/json-as.deserializeN": { ns: 25 }, "WazeroExec/json-as.deserializeN": { ns: 50 },
@@ -196,7 +197,7 @@ function assertDOMContract(html) {
       assert.equal(matches(general, new RegExp(`<span class="vs__label">${label}</span>`, "g")), 1);
     }
     assert.doesNotMatch(general, /Application commands|SIMD execution/);
-    assert.ok(general.includes('<span class="vs__sub">public entry</span>'));
+    assert.ok(general.includes('<span class="vs__sub">prepared (i32) → i32</span>'));
     assert.ok(general.includes('<span class="vs__sub">typed import callback</span>'));
 	const callStart = general.indexOf('<span class="vs__label">Host → Wasm</span>');
 	const callEnd = general.indexOf('<div class="vs__row" data-engine-row>', callStart);

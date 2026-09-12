@@ -11,7 +11,12 @@ import (
 // at their exact size and are unmapped instead of entering the one-entry cache.
 const InstantiateArenaCacheBytes = 1 << 20
 
-const HostCallLogBytes = 8 + ((1<<16)/8)*8
+const (
+	// HostCallLogEntries is the maximum number of deferred host events recorded
+	// by one native invocation before it traps without replaying a partial log.
+	HostCallLogEntries = 1 << 13
+	HostCallLogBytes   = 8 + HostCallLogEntries*8
+)
 
 // TrapBufferBytes reserves the 4-byte trap code, an 8-byte parked-host
 // control-frame pointer at offset 8, and an 8-byte packed Wasm source location

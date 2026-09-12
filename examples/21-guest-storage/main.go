@@ -100,9 +100,9 @@ func main() {
 		panic(err)
 	}
 	defer instance.Close()
-	result, err := instance.Call(context.Background(), "run")
+	result, err := instance.Invoke("run")
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("guest read %q from memory\n", byte(result[0].I32()))
+	fmt.Printf("guest read %q from memory\n", byte(wago.AsI32(result[0])))
 }

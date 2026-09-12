@@ -78,12 +78,17 @@ func BenchmarkHostRoundtripLoopTyped(b *testing.B) {
 	benchmarkHostRoundtripLoop(b, hostRoundtripTyped)
 }
 
+func BenchmarkHostRoundtripLoopCall(b *testing.B) {
+	benchmarkHostRoundtripLoop(b, hostRoundtripCall)
+}
+
 type hostRoundtripCallback uint8
 
 const (
 	hostRoundtripLegacy hostRoundtripCallback = iota
 	hostRoundtripCaller
 	hostRoundtripTyped
+	hostRoundtripCall
 )
 
 func benchmarkHostRoundtripLoop(b *testing.B, callbackKind hostRoundtripCallback) {
@@ -115,7 +120,9 @@ func benchmarkHostRoundtripLoop(b *testing.B, callbackKind hostRoundtripCallback
 								if callbackKind == hostRoundtripCaller {
 									callback = CallerHostFunc(func(_ Caller, p, r []uint64) { r[0] = p[0] + 1 })
 								} else if callbackKind == hostRoundtripTyped {
-									callback = I32ToI32HostFunc(func(v int32) int32 { return v + 1 })
+									callback = func(v int32) int32 { return v + 1 }
+								} else if callbackKind == hostRoundtripCall {
+									callback = func(call HostCall) { call.SetI32(0, call.I32(0)+1) }
 								}
 								in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.step": callback}})
 								if err != nil {

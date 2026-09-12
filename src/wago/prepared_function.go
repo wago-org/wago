@@ -25,6 +25,7 @@ type PreparedFunction struct {
 	resultTypes         []ValType
 	paramExact          []ValueTypeDescriptor
 	resultExact         []ValueTypeDescriptor
+	paramWide           []bool
 	hasReferenceParams  bool
 	hasReferenceResults bool
 	scalarWideMask      uint8
@@ -106,14 +107,13 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wago: prepare function %q exact signature: %w", export, err)
 	}
-	wide := append([]bool(nil), ic.resultWide...)
+	paramWide := append([]bool(nil), ic.slotWide[:ic.paramSlots]...)
+	resultWide := append([]bool(nil), ic.slotWide[ic.paramSlots:]...)
 	scalarFast := preparedScalarFastEnabled &&
 		!hasReferenceValType(sig.Params) &&
-		!hasReferenceValType(sig.Results) &&
-		ic.paramSlots <= 4 &&
-		ic.resultSlots <= 1
+		!hasReferenceValType(sig.Results)
 	var scalarWideMask uint8
-	if scalarFast {
+	if scalarFast && ic.paramSlots <= 4 {
 		slot := 0
 		for _, typ := range sig.Params {
 			if typ == ValV128 {
@@ -135,14 +135,15 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		resultSlots:         ic.resultSlots,
 		scalarWideMask:      scalarWideMask,
 		scalarFast:          scalarFast,
-		scalarResultWide:    ic.resultSlots == 1 && wide[0],
+		scalarResultWide:    ic.resultSlots == 1 && resultWide[0],
 		paramTypes:          append([]ValType(nil), sig.Params...),
 		resultTypes:         append([]ValType(nil), sig.Results...),
 		paramExact:          append([]ValueTypeDescriptor(nil), params...),
 		resultExact:         append([]ValueTypeDescriptor(nil), results...),
+		paramWide:           paramWide,
 		hasReferenceParams:  hasReferenceValType(sig.Params),
 		hasReferenceResults: hasReferenceValType(sig.Results),
-		resultWide:          wide,
+		resultWide:          resultWide,
 	}
 	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
 		entryMode := in.preparedEntryMode()
@@ -350,25 +351,29 @@ func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 		preparedLease := in.lockPreparedInvocation()
 		defer preparedLease.unlock()
 	}
-	put := func(slot int) {
-		bits := args[slot]
-		if fn.scalarWideMask&(1<<slot) == 0 {
-			bits = uint64(uint32(bits))
+	if len(args) <= 4 {
+		put := func(slot int) {
+			bits := args[slot]
+			if fn.scalarWideMask&(1<<slot) == 0 {
+				bits = uint64(uint32(bits))
+			}
+			binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
 		}
-		binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
-	}
-	switch len(args) {
-	case 4:
-		put(3)
-		fallthrough
-	case 3:
-		put(2)
-		fallthrough
-	case 2:
-		put(1)
-		fallthrough
-	case 1:
-		put(0)
+		switch len(args) {
+		case 4:
+			put(3)
+			fallthrough
+		case 3:
+			put(2)
+			fallthrough
+		case 2:
+			put(1)
+			fallthrough
+		case 1:
+			put(0)
+		}
+	} else {
+		marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, fn.paramWide)
 	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
@@ -399,12 +404,6 @@ func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:fn.resultSlots]
-	if fn.resultSlots == 1 {
-		if fn.scalarResultWide {
-			out[0] = binary.LittleEndian.Uint64(in.results)
-		} else {
-			out[0] = uint64(binary.LittleEndian.Uint32(in.results))
-		}
-	}
+	decodePublicScalarSlots(out, nativeUint64Slots(in.results), fn.resultWide)
 	return out, nil
 }

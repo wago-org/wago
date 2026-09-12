@@ -38,9 +38,10 @@ imports := wago.Imports{
 }
 ```
 
-`ImportModuleBuilder.CallerFunc` is the plugin equivalent of `Func`. It uses
-the existing plugin call gate, admission reservation and exact GC signature
-rules. The legacy `HostFunc` and owned `HostFuncRef` APIs are unchanged.
+`ImportModuleBuilder.Func` accepts both this concrete callback and ordinary Go
+functions. It uses the existing plugin call gate, admission reservation and
+exact GC signature rules. `HostFunc` and owned `HostFuncRef` remain available as
+low-level slot adapters.
 `Caller` implements the existing optional host-module interfaces, including
 guest storage, externrefs and GC result construction. Resolver, invoker,
 invocation-context and manager methods accept the concrete value through their
@@ -54,9 +55,9 @@ TinyGo represents each function value with 16 bytes, so its binding grows from
 32 to 48 bytes. The footprint test computes the exact compact layout from the
 two function-value sizes, descriptor pointer and index/flag; it does not accept
 an enlarged standard-Go layout just because TinyGo needs more space.
-The updated footprint assertion passes with Go. Local TinyGo linking stops at
-the checkout's existing duplicate `tinygo_task_exit` symbol, before tests run;
-the native CI TinyGo jobs are used to verify the 48-byte layout.
+The updated footprint assertion passes with Go. At this historical checkpoint,
+local TinyGo linking stopped at the checkout's duplicate `tinygo_task_exit`
+symbol before tests ran; native CI TinyGo jobs verified the 48-byte layout.
 Reference dispatch keeps argument translation, exact result validation and
 temporary root/token cleanup. Imported starts and re-exports also dispatch the
 concrete value directly. Raw callbacks do not gain plugin GC import authority.
@@ -641,17 +642,76 @@ profiles were collected after every meaningful production step. The public
 single-call benchmark is selected separately from loop sub-benchmark filters
 so it is never silently excluded by a slash-qualified regular expression.
 
-## Typed call-gate checkpoint (2026-09-11)
+## Portable host-function interface (2026-09-11)
+
+The plugin interface is now one method:
+
+```go
+module.Func("add", func(a, b int32) int32 { return a + b })
+```
+
+Wago classifies ordinary functions with a concrete type switch and validates the
+inferred signature once. It does not use `reflect`, `reflect.Value.Call`, or a
+callback-time adapter allocation. The direct catalog includes the established
+zero-to-two-`i32` matrix plus unary and binary same-type `i64`, `f32`, and `f64`
+results. Unary `FuncRef`, `ExternRef`, `ExnRef`, `GCRef`, and `I31Ref` forms are
+also accepted without signature names. V128 host callbacks are intentionally
+unsupported for now.
+
+No finite portable Go type switch can recognize arbitrary function arity. TinyGo
+0.41.1 also does not implement `reflect.Type.NumIn`, so complete coverage uses a
+single explicit borrowed view:
+
+```go
+module.Func("transform", func(call wago.HostCall) {
+    object := call.ExternRef(0)
+    count := call.I64(1)
+
+    call.SetExternRef(0, object)
+    call.SetI64(1, count+1)
+}).
+    Params(wago.ValExternRef, wago.ValI64).
+    Results(wago.ValExternRef, wago.ValI64)
+```
+
+`HostCall` indexes logical Wasm values. It exposes exact `ValueTypeDescriptor`
+metadata, typed scalar/reference accessors, and raw access for future value types.
+High-arity codecs and adapters can use `ParamSlots()` and `ResultSlots()` to
+process the borrowed raw ABI buffers linearly. Its storage is valid only during
+the callback. The implementation passes
+the view by value over the existing parked argument/result buffers; the tested
+dispatch path allocates zero bytes under both Go and TinyGo.
+Non-null exception references remain intentionally unable to cross the host
+boundary; `ExnRef` represents and validates the null value until rooted
+exception-token transfer is implemented.
+
+The full `just test tinygo` suite passes with this interface, including the
+portable `HostCall` coverage and the compact binding-footprint assertion.
+
+Callbacks that need caller authority use an explicit leading value without
+making every capability-free call copy it:
+
+```go
+module.Func("read", func(caller wago.Caller, call wago.HostCall) {
+    memory := caller.Memory()
+    call.SetI32(0, int32(memory[call.I32(0)]))
+}).Params(wago.ValI32).Results(wago.ValI32)
+```
+
+The previous signature-named builder methods were removed. The signature-named
+function types remain accepted as migration aliases, but new code should pass an
+ordinary function or `func(wago.HostCall)` directly.
+
+## Ordinary-function call-gate checkpoint (2026-09-11)
 
 The first specialized gates now sit beside, rather than replace, the managed
 callback path:
 
-- `I32ToI32HostFunc` and `I32I32ToI32HostFunc` are checked against the imported
-  Wasm signature at instantiation. Their bound dispatch calls the typed function
+- Ordinary `func(int32) int32` and `func(int32, int32) int32` values are checked
+  against the imported Wasm signature at instantiation. Their bound dispatch calls the function
   directly, without constructing a `Caller` or exposing argument/result slices.
-- `ImportModuleBuilder.I32ToI32Func` and `I32I32ToI32Func` preserve plugin
-  shutdown admission and operation reservations without granting callback
-  capabilities.
+- The single `ImportModuleBuilder.Func` method preserves plugin shutdown
+  admission and operation reservations without granting callback capabilities.
 - `PrepareI32ToI32` and `PrepareI32I32ToI32` bind local exports once and expose
   typed scalar calls over the existing compiler-verified prepared integer entry.
   They retain `PreparedFunction`'s ownership rule: calls must not race instance
@@ -712,7 +772,7 @@ Initial typed-dispatch baseline on Darwin/arm64, Go, Apple M4 Max, five
 | Path | ns per 1,024 callbacks | B/op | allocs/op |
 |---|---:|---:|---:|
 | Managed `CallerHostFunc` | 91,436 (90,278-93,604) | 0 | 0 |
-| Typed `I32ToI32HostFunc` | 77,015 (76,800-78,252) | 0 | 0 |
+| Ordinary `func(int32) int32` | 77,015 (76,800-78,252) | 0 | 0 |
 
 The matched 1,024-iteration guest control median was 673.5 ns per public
 invocation. Subtraction gives approximately 88.6 ns per managed callback and
@@ -734,3 +794,141 @@ where cumulative. This profile motivated the fixed-slot portal above rather
 than another callback adapter. Scheduler-transition elision remains disabled:
 `AnalyzeNativeSegment` still has no compiler-produced complete-continuation
 graph or cross-segment work budget.
+
+## Expanded typed signature matrix (2026-09-11)
+
+The fixed-slot portal now covers every zero-to-two-`i32` parameter/result shape
+requested for the public host API. The matrix runs 1,024 calls inside one Wasm
+invocation and reports elapsed time divided by 1,024. Generic and typed rows use
+the same compiled fixture. Five samples used Go 1.26.5, one logical CPU, an
+Apple M4 Max on Darwin/arm64 and a Ryzen 7 7800X3D on Linux/amd64.
+
+| Signature | Go type | ARM64 generic / typed ns | AMD64 generic / typed ns |
+|---|---|---:|---:|
+| `[] -> []` | `func()` | 87.50 / 44.85 | 120.8 / 60.94 |
+| `[i32] -> []` | `func(int32)` | 86.93 / 43.87 | 121.6 / 61.82 |
+| `[i32] -> [i32]` | `func(int32) int32` | 88.78 / 44.70 | 125.2 / 62.63 |
+| `[i32, i32] -> []` | `func(int32, int32)` | 89.53 / 46.15 | 126.4 / 63.22 |
+| `[i32, i32] -> [i32]` | `func(int32, int32) int32` | 88.82 / 44.66 | 129.1 / 63.71 |
+| `[i32] -> [i32, i32]` | `func(int32) (int32, int32)` | 89.37 / 46.09 | 127.7 / 65.24 |
+| `[i32, i32] -> [i32, i32]` | `func(int32, int32) (int32, int32)` | 89.91 / 47.41 | 128.7 / 63.02 |
+
+Every row reports 0 B/op and 0 allocs/op. Typed dispatch is 1.90-1.99x faster
+than generic dispatch on ARM64 and 1.96-2.04x faster on AMD64. The explicitly
+deferred `[i32] -> []` `I32HostEvent` path measures 7.297 ns/event on ARM64 and
+9.013 ns/event on AMD64, but delivery occurs only after the outer Wasm
+invocation returns and is not a synchronous-latency replacement.
+
+The expanded zero/two-result engine loop is separate from the original
+one-result loop. Eight alternating one-second measurements of the established
+`[i32] -> [i32]` benchmark gave 44,878 ns/1,024 calls for its parent and
+44,905.5 ns/1,024 calls for this change (+0.06%, noise), preserving the old
+portal's register allocation and binding-field layout. The corresponding
+AMD64 exact-main/head medians were 63,476.5 and 63,460.5 ns (-0.03%, noise).
+
+## Capability-free `HostCall` portal checkpoint (2026-09-11)
+
+Reference-free `HostCallFunc` imports now receive the same capability-free
+activation treatment as ordinary typed functions. For an instance with one
+ungated import and no collector domain, dispatch is selected once at native
+entry and skips callback-scoped authority, GC-root publication, import-kind
+checks, and generic interface dispatch. The callback still runs on the normal
+Go stack and may allocate, grow that stack, trigger Go GC, panic, or block. A
+cross-instance control frame or internal helper dispatch falls back to the full
+checked path. Reference parameters/results, plugin gates, `CallerHostCallFunc`,
+and collector-backed instances also retain the full path.
+
+Seven matched samples used Linux/amd64, Go 1.22.2, a Ryzen 7 7800X3D, one
+logical CPU (`taskset -c 7`, `GOMAXPROCS=1`), and 1,024 synchronous callbacks
+per public invocation:
+
+| Path | Before median (range), ns/1,024 | After median (range), ns/1,024 | Delta |
+|---|---:|---:|---:|
+| `func(HostCall)`, `[i32] -> [i32]` | 163595 (163335-164269) | 81953 (81908-82253) | -49.91% |
+| `func(int32) int32` | 69797 (69399-70106) | 68972 (68899-69043) | -1.18% |
+
+Both paths remain at 0 B/op and 0 allocs/op. The universal row is 80.03 raw
+ns/callback; the ordinary typed row is 67.36 raw ns/callback. These are
+unsubtracted round-trip costs. On an Apple M4 Max with the same one-CPU setup,
+the retained universal path measures 51,115 ns/1,024 (50,840-51,261), or 49.92
+raw ns/callback, also with zero allocations. No matched pre-portal ARM64
+snapshot was available for a delta.
+
+The AMD64 host and Apple M4 Max measured the universal view across the requested
+`i32` signature matrix (five samples, median):
+
+| Signature | ARM64 `func(HostCall)` ns/call | AMD64 `func(HostCall)` ns/call |
+|---|---:|---:|
+| `[] -> []` | 46.72 | 69.99 |
+| `[i32] -> []` | 45.47 | 69.88 |
+| `[i32] -> [i32]` | 52.05 | 79.07 |
+| `[i32, i32] -> []` | 47.36 | 71.65 |
+| `[i32, i32] -> [i32]` | 50.67 | 82.45 |
+| `[i32] -> [i32, i32]` | 56.93 | 91.04 |
+| `[i32, i32] -> [i32, i32]` | 55.12 | 90.99 |
+
+Every row reports zero allocations. A 15-second profile moved the generic
+`hostLoopActivation.dispatch` out of the hot path; the retained specialized
+dispatcher accounts for 22.06% cumulative CPU, while the engine park/resume
+loop remains 67.68% cumulative. That profile motivated a direct control-frame
+prototype for wide signatures; the retained form is described below.
+
+The arbitrary-arity benchmark invokes one imported function per public call,
+so these numbers include public `Invoke` overhead rather than reporting an
+inner-loop callback rate. All parameters and results are `i64`; the callback
+fills the borrowed `ResultSlots()` view:
+
+| Raw signature | AMD64 ns/op | B/op | allocs/op |
+|---|---:|---:|---:|
+| `[] -> []` | 278.0 | 0 | 0 |
+| `[1 x i64] -> []` | 285.0 | 0 | 0 |
+| `[1 x i64] -> [1 x i64]` | 288.8 | 0 | 0 |
+| `[4 x i64] -> [1 x i64]` | 297.7 | 0 | 0 |
+| `[8 x i64] -> [4 x i64]` | 319.2 | 0 | 0 |
+| `[16 x i64] -> [8 x i64]` | 353.9 | 0 | 0 |
+| `[64 x i64] -> [64 x i64]` | 699.4 | 0 | 0 |
+
+For wide inline calls, copying parked slots through the engine's scratch arrays
+became the dominant scalable cost. Wago now preclassifies a single eligible
+`HostCallFunc` at instantiation and, at 96 or more total parameter/result slots,
+passes borrowed slices over the parked control frame directly. Smaller calls
+retain the compact copied loop; calls exceeding the 64-slot inline capacity
+already use the control-frame extension directly. Keeping the wide loop in a
+separate compilation unit is performance-critical: placing it beside the
+compact loop regressed the 1,024-call `[i32] -> [i32]` control by about 3.4%.
+
+Five final interleaved 500 ms samples on the same pinned Ryzen core measured:
+
+| Raw signature | Copied median (range) ns/op | Direct median (range) ns/op | Delta |
+|---|---:|---:|---:|
+| `[48 x i64] -> [48 x i64]` | 583.7 (579.0-591.6) | 464.5 (459.0-465.7) | -20.42% |
+| `[64 x i64] -> [64 x i64]` | 681.3 (679.6-687.7) | 525.7 (525.2-528.0) | -22.84% |
+
+On the Apple M4 Max, five 500 ms samples show the same crossover: 48-to-48
+moves from a 401.6 ns median to 338.1 ns (-15.81%), and 64-to-64 moves from
+470.5 to 385.7 ns (-18.02%). The one-to-one control changes from 213.8 to
+214.3 ns (+0.23%, noise). All ARM64 rows also remain allocation-free.
+
+Both rows remain at 0 B/op and 0 allocs/op. The copied `[1 x i64] -> [1 x
+i64]` control moved from 291.8 ns/op (288.8-294.2) to 291.7 ns/op
+(289.9-292.9), -0.03%. The 1,024-call `[i32] -> [i32]` control moved from
+83,388 ns (83,131-83,651) to 83,709 ns (82,772-84,859), +0.38% with overlapping
+ranges, confirming that the established per-callback loop was not materially
+deoptimized.
+
+Matched five-second CPU profiles explain the gain. At 64-to-64, the copied
+engine loop accounts for 22.92% flat CPU; the direct-view loop accounts for
+1.99% flat CPU. The profiled benchmark moved from 691.3 to 531.9 ns/op, with
+zero allocations in both builds.
+
+The view remains valid only until the callback returns. Its backing storage is
+off-heap and stable while the callback allocates, grows the Go stack, triggers
+GC, blocks, or panics. Cross-instance frames return `handled=false` and use the
+existing checked dispatcher; references, gates, caller-capable callbacks, and
+GC domains never select this path.
+
+Using a typed logical setter for every wide result remains valid, but repeatedly
+mapping logical indexes around possible `v128` slots measured 1,990 ns for the
+64-to-64 case. A precomputed mapping prototype improved that case but regressed
+the common one-result callback by 3.7-7%, so it was reverted. The explicit bulk
+view keeps the common ABI compact and makes wide scalar processing linear.

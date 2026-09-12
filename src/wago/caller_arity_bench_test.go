@@ -12,7 +12,7 @@ import (
 )
 
 func BenchmarkCallerArity(b *testing.B) {
-	for _, arity := range [][2]int{{0, 0}, {1, 0}, {1, 1}, {4, 1}, {8, 4}, {16, 8}, {64, 64}} {
+	for _, arity := range [][2]int{{0, 0}, {1, 0}, {1, 1}, {4, 1}, {8, 4}, {16, 8}, {24, 12}, {32, 16}, {32, 32}, {48, 24}, {48, 48}, {64, 64}} {
 		b.Run(fmt.Sprintf("%d-%d", arity[0], arity[1]), func(b *testing.B) {
 			params, results := make([]wasm.ValType, arity[0]), make([]wasm.ValType, arity[1])
 			body := []byte{}
@@ -33,20 +33,30 @@ func BenchmarkCallerArity(b *testing.B) {
 			)
 			c := benchMustCompile(b, data)
 			defer c.Close()
-			for _, concrete := range []bool{false, true} {
-				b.Run(fmt.Sprintf("concrete%t", concrete), func(b *testing.B) {
-					var fn any = HostFunc(func(_ HostModule, _, r []uint64) {
-						for i := range r {
-							r[i] = uint64(i + 1)
-						}
-					})
-					if concrete {
-						fn = CallerHostFunc(func(_ Caller, _, r []uint64) {
-							for i := range r {
-								r[i] = uint64(i + 1)
-							}
-						})
+			paths := []struct {
+				name string
+				fn   any
+			}{
+				{name: "legacy", fn: HostFunc(func(_ HostModule, _, r []uint64) {
+					for i := range r {
+						r[i] = uint64(i + 1)
 					}
+				})},
+				{name: "caller", fn: CallerHostFunc(func(_ Caller, _, r []uint64) {
+					for i := range r {
+						r[i] = uint64(i + 1)
+					}
+				})},
+				{name: "call", fn: HostCallFunc(func(call HostCall) {
+					results := call.ResultSlots()
+					for i := range results {
+						results[i] = uint64(i + 1)
+					}
+				})},
+			}
+			for _, path := range paths {
+				b.Run(path.name, func(b *testing.B) {
+					fn := path.fn
 					in, err := Instantiate(c, Imports{"env.f": fn})
 					if err != nil {
 						b.Fatal(err)

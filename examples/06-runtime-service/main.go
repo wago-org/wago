@@ -39,11 +39,11 @@ func (s *service) add(ctx context.Context, a, b int32) (int32, error) {
 	}
 	defer instance.Close()
 
-	result, err := instance.Call(ctx, "add", wago.ValueI32(a), wago.ValueI32(b))
+	result, err := instance.InvokeContext(ctx, "add", wago.I32(a), wago.I32(b))
 	if err != nil {
 		return 0, err
 	}
-	return result[0].I32(), nil
+	return wago.AsI32(result[0]), nil
 }
 
 func (s *service) close(ctx context.Context) error {

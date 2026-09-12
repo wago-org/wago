@@ -27,8 +27,8 @@ type Instance struct {
 	memory                  *Memory // the memory object (owned or host-imported)
 	ar                      *runtime.Arena
 	base                    uintptr
-	hosts                   map[string]HostFunc
-	imports                 Imports // the imports as provided to Instantiate
+	hostEvents              *hostEventBindings // nil outside deferred event mode
+	imports                 Imports            // the imports as provided to Instantiate
 	hostLog                 []byte
 	ctrl                    []byte                              // sync host-call control frame (nil in async mode)
 	syncHosts               []syncHostBinding                   // immutable per-import sync host bindings
@@ -78,6 +78,15 @@ type Instance struct {
 	moduleIdentity ModuleIdentity
 }
 
+// nativeUint64Slots views an arena-backed, 8-byte-aligned byte buffer as native
+// value slots. Instance argument and result buffers satisfy both invariants.
+func nativeUint64Slots(bytes []byte) []uint64 {
+	if len(bytes) == 0 {
+		return nil
+	}
+	return unsafe.Slice((*uint64)(unsafe.Pointer(&bytes[0])), len(bytes)/8)
+}
+
 // instanceMemoryDirectory is allocated only after indexed memory execution is
 // admitted. Memory 0 stays in Instance.memory/ownsMem so ordinary single-memory
 // instances carry only this nil sidecar pointer.
@@ -107,5 +116,5 @@ type invokeCache struct {
 	resultSlots       int
 	hasFuncRefParams  bool
 	hasFuncRefResults bool
-	resultWide        []bool // one entry per returned uint64 slot; false means read low 32 bits
+	slotWide          []bool // parameter slots followed by result slots; false means a 32-bit scalar
 }

@@ -22,6 +22,7 @@ type (
 	Bits                            = impl.Bits
 	BoundsCheckMode                 = impl.BoundsCheckMode
 	Caller                          = impl.Caller
+	CallerHostCallFunc              = impl.CallerHostCallFunc
 	CallerHostFunc                  = impl.CallerHostFunc
 	CallerInvoker                   = impl.CallerInvoker
 	CallerResolver                  = impl.CallerResolver
@@ -51,6 +52,7 @@ type (
 	ElemInit                        = impl.ElemInit
 	ElemMode                        = impl.ElemMode
 	ExitError                       = impl.ExitError
+	ExnRef                          = impl.ExnRef
 	ExternRef                       = impl.ExternRef
 	ExternRefHostModule             = impl.ExternRefHostModule
 	FeatureInfo                     = impl.FeatureInfo
@@ -92,6 +94,8 @@ type (
 	Handle                          = impl.Handle
 	HandleTable                     = impl.HandleTable
 	HeapTypeDescriptor              = impl.HeapTypeDescriptor
+	HostCall                        = impl.HostCall
+	HostCallFunc                    = impl.HostCallFunc
 	HostExit                        = impl.HostExit
 	HostFunc                        = impl.HostFunc
 	HostFuncRef                     = impl.HostFuncRef
@@ -99,8 +103,13 @@ type (
 	HostModule                      = impl.HostModule
 	HostTrap                        = impl.HostTrap
 	I31Ref                          = impl.I31Ref
+	I32HostEvent                    = impl.I32HostEvent
+	I32HostFunc                     = impl.I32HostFunc
+	I32I32HostFunc                  = impl.I32I32HostFunc
 	I32I32ToI32HostFunc             = impl.I32I32ToI32HostFunc
+	I32I32ToI32I32HostFunc          = impl.I32I32ToI32I32HostFunc
 	I32ToI32HostFunc                = impl.I32ToI32HostFunc
+	I32ToI32I32HostFunc             = impl.I32ToI32I32HostFunc
 	ImplementationLimitError        = impl.ImplementationLimitError
 	ImportFuncBuilder               = impl.ImportFuncBuilder
 	ImportKind                      = impl.ImportKind
@@ -149,6 +158,7 @@ type (
 	ModuleSourceTransformer         = impl.ModuleSourceTransformer
 	ModuleView                      = impl.ModuleView
 	NativeMemoryStats               = impl.NativeMemoryStats
+	NoArgsHostFunc                  = impl.NoArgsHostFunc
 	OffsetInit                      = impl.OffsetInit
 	OperationIdentity               = impl.OperationIdentity
 	OptKnobInfo                     = impl.OptKnobInfo
@@ -321,6 +331,7 @@ const (
 	ImportTag                                  = impl.ImportTag
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateManaged                         = impl.InstantiateManaged
+	MaxDeferredHostEventsPerInvocation         = impl.MaxDeferredHostEventsPerInvocation
 	MaxFunctionLocalsLimit                     = impl.MaxFunctionLocalsLimit
 	MaxMemoriesPerModuleLimit                  = impl.MaxMemoriesPerModuleLimit
 	MaxNativeStackBytes                        = impl.MaxNativeStackBytes
@@ -501,6 +512,8 @@ func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewT
 func NewTable64(minSize uint32, maxSize uint32) (*Table, error) {
 	return impl.NewTable64(minSize, maxSize)
 }
+
+func NullExnRef() ExnRef { return impl.NullExnRef() }
 
 func NullExternRef() ExternRef { return impl.NullExternRef() }
 
