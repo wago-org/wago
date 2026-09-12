@@ -121,7 +121,7 @@ func TestRelease3DocumentationMatchesCommittedBaseline(t *testing.T) {
 	for _, path := range []string{
 		"../../../FEATURES.md",
 		"../../../ROADMAP.md",
-		"../../../VERIFICATION.md",
+		"../../../SPECTEST.md",
 	} {
 		doc, err := os.ReadFile(filepath.Clean(path))
 		if err != nil {
