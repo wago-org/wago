@@ -90,9 +90,9 @@ func (p *corePlugin) start(ctx context.Context) error {
 	if instantiateErr != nil {
 		return errors.Join(instantiateErr, module.Close())
 	}
-	values, callErr := owned.Instance().Call(ctx, "add", wago.ValueI32(20), wago.ValueI32(22))
+	values, callErr := owned.Instance().InvokeContext(ctx, "add", wago.I32(20), wago.I32(22))
 	if callErr == nil {
-		fmt.Println("startup worker returned", values[0].I32())
+		fmt.Println("startup worker returned", wago.AsI32(values[0]))
 	}
 	return errors.Join(callErr, owned.Close(), module.Close())
 }

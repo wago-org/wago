@@ -99,7 +99,7 @@ func main() {
 		panic(err)
 	}
 	defer instance.Close()
-	if _, err := instance.Call(context.Background(), "run"); err != nil {
+	if _, err := instance.Invoke("run"); err != nil {
 		panic(err)
 	}
 	fmt.Println("created and consumed one v256 value")

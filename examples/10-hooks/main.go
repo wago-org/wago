@@ -154,7 +154,7 @@ func main() {
 		panic(err)
 	}
 
-	if _, err := inst.Call(ctx, "add", wago.ValueI32(20), wago.ValueI32(22)); err != nil {
+	if _, err := inst.InvokeContext(ctx, "add", wago.I32(20), wago.I32(22)); err != nil {
 		panic(err)
 	}
 	if err := inst.Close(); err != nil {

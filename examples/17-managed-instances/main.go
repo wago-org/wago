@@ -70,14 +70,14 @@ func main() {
 	// caller must wait for active calls and terminal close hooks to finish.
 	defer owned.Close()
 
-	result, err := owned.Instance().Call(
+	result, err := owned.Instance().InvokeContext(
 		context.Background(),
 		"add",
-		wago.ValueI32(20),
-		wago.ValueI32(22),
+		wago.I32(20),
+		wago.I32(22),
 	)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("managed worker returned", result[0].I32())
+	fmt.Println("managed worker returned", wago.AsI32(result[0]))
 }

@@ -77,9 +77,9 @@ func main() {
 	}
 	defer instance.Close()
 
-	result, err := instance.Call(context.Background(), "add", wago.ValueI32(15), wago.ValueI32(3))
+	result, err := instance.Invoke("add", wago.I32(15), wago.I32(3))
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("i4.add(15, 3) =", result[0].I32())
+	fmt.Println("i4.add(15, 3) =", wago.AsI32(result[0]))
 }

@@ -102,15 +102,16 @@ Add Wago to your module:
 go get github.com/wago-org/wago
 ```
 
-Run the typed API example:
+Run the Go API example:
 
 ```sh
 go run github.com/wago-org/wago/examples/02-runtime-typed@latest
 ```
 
-The example compiles a module, creates an instance, and calls an exported
-function. See [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for the
-complete guide.
+The example compiles a module, creates an instance, and invokes an exported
+function with `wago.I32`, `wago.I64`, `wago.F32`, `wago.F64`, and `wago.V128`
+value encodings. See [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago)
+for the complete guide.
 
 Register synchronous imports with ordinary Go functions. Wago infers supported
 hot signatures once and dispatches them without reflection or allocation:
