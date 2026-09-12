@@ -4404,7 +4404,7 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		// Keep both dynamic security bits on the entry boundary and fall back to
 		// the audited rebinding and topology-lease route.
 		executionFlags := in.executionFlags.Load()
-		const directBlocked = executionFlagNativeControlShared | executionFlagImportedGCDomain | executionFlagDynamicGCDomain | executionFlagStoreOwnedGCCollector
+		const directBlocked = preparedFastBlocked
 		if ic.directIntFast && executionFlags&directBlocked == 0 && in.lockPreparedFastState() {
 			defer in.unlockPreparedFastState()
 			if len(args) != ic.paramSlots {

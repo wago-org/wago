@@ -19,6 +19,8 @@ type invocationGate struct {
 const (
 	invocationGateHeld    = uint32(1)
 	invocationGateWaiters = uint32(2)
+	invocationGateFast    = uint32(4)
+	invocationGateRevoked = uint32(8)
 )
 
 func (g *invocationGate) Lock() { _ = g.lockContext(nil) }
@@ -30,7 +32,7 @@ func (g *invocationGate) lockContext(ctx context.Context) error {
 				return err
 			}
 		}
-		if g.state.CompareAndSwap(0, invocationGateHeld) {
+		if g.state.CompareAndSwap(0, invocationGateHeld) || g.state.CompareAndSwap(invocationGateRevoked, invocationGateRevoked|invocationGateHeld) {
 			// Cancellation observed after acquisition wins; return the slot before
 			// the caller publishes an identity or arms an interrupt watcher.
 			if ctx != nil {
@@ -45,7 +47,7 @@ func (g *invocationGate) lockContext(ctx context.Context) error {
 		registered := false
 		for {
 			state := g.state.Load()
-			if state == 0 {
+			if state&invocationGateHeld == 0 {
 				break
 			}
 			// Registration and release use the same atomic word. If release wins,
@@ -76,18 +78,58 @@ func (g *invocationGate) lockContext(ctx context.Context) error {
 	}
 }
 
+// Unlock preserves revocation and releases either kind of owner with one CAS.
+// Sharing and waiter registration can force a retry and notification.
 func (g *invocationGate) Unlock() {
-	previous := g.state.Swap(0)
-	if previous&invocationGateHeld == 0 {
-		panic("unlock of unlocked invocation gate")
-	}
-	if previous&invocationGateWaiters != 0 {
-		g.mu.Lock()
-		if g.changed != nil {
-			close(g.changed)
-			g.changed = nil
+	for {
+		previous := g.state.Load()
+		if previous&invocationGateHeld == 0 {
+			panic("unlock of unlocked invocation gate")
 		}
+		if !g.state.CompareAndSwap(previous, previous&invocationGateRevoked) {
+			continue
+		}
+		if previous&invocationGateWaiters != 0 {
+			g.notify()
+		}
+		return
+	}
+}
+
+func (g *invocationGate) notify() {
+	g.mu.Lock()
+	if g.changed != nil {
+		close(g.changed)
+		g.changed = nil
+	}
+	g.mu.Unlock()
+}
+
+// revokeFast orders resource publication against direct entry on the same word
+// that owns ordinary invocation admission. Revocation is permanent. Ordinary
+// invocations may still acquire the gate and use their native/context guards.
+func (g *invocationGate) revokeFast() {
+	g.mu.Lock()
+	for {
+		state := g.state.Load()
+		next := state | invocationGateRevoked
+		if state&invocationGateFast != 0 {
+			next |= invocationGateWaiters
+		}
+		if !g.state.CompareAndSwap(state, next) {
+			continue
+		}
+		if state&invocationGateFast == 0 {
+			g.mu.Unlock()
+			return
+		}
+		if g.changed == nil {
+			g.changed = make(chan struct{})
+		}
+		changed := g.changed
 		g.mu.Unlock()
+		<-changed
+		g.mu.Lock()
 	}
 }
 

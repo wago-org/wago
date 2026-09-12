@@ -44,8 +44,13 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
 	}
 	defer in.endInvocation()
-	preparedLease := in.lockPreparedInvocation()
-	defer preparedLease.unlock()
+	narrow := fn.directIsolated && in.tryPreparedDirect()
+	if narrow {
+		defer in.ensurePluginState().invokeMu.Unlock()
+	} else {
+		preparedLease := in.lockPreparedInvocation()
+		defer preparedLease.unlock()
+	}
 	switch fn.paramSlots {
 	case 4:
 		if fn.scalarWideMask&8 == 0 {
@@ -72,14 +77,16 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 		nativeExecutionMu.Lock()
 		nativeExecutionEpoch++
 	}
-	if !in.lockPreparedFastState() {
+	if !narrow && !in.lockPreparedFastState() {
 		if locked {
 			nativeExecutionMu.Unlock()
 		}
 		args := [4]uint64{a0, a1, a2, a3}
 		return fn.invokeGeneralAdmitted(args[:fn.paramSlots])
 	}
-	defer in.unlockPreparedFastState()
+	if !narrow {
+		defer in.unlockPreparedFastState()
+	}
 	var result uint64
 	var err error
 	wruntime.PreparePreparedIntTrap(in.trap)
