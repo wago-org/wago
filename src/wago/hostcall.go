@@ -2555,7 +2555,20 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 	if in.hasSingleDirectTypedScalarHost() {
 		err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleTypedScalarPortal)
 	} else if in.hasSingleExpandedTypedScalarHost() {
-		err = in.eng.CallWithHostBaseScalarExpanded(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleTypedScalarExpandedPortal)
+		rawSlots, ok := in.syncHosts[0].typedScalarSlots()
+		if !ok {
+			panic("wago: invalid fixed scalar host signature")
+		}
+		fixed := runtime.FixedScalarHostCall(activation.dispatchSingleTypedScalarFixedPortal)
+		switch in.syncHosts[0].scalarKind {
+		case syncHostTypedI32x2V:
+			fixed = activation.dispatchSingleTypedI32x2VoidFixedPortal
+		case syncHostTypedI32R2:
+			fixed = activation.dispatchSingleTypedI32PairFixedPortal
+		case syncHostTypedI32x2R2:
+			fixed = activation.dispatchSingleTypedI32x2PairFixedPortal
+		}
+		err = in.eng.CallWithHostBaseScalarFixed(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatch, activation.dispatchTypedScalarExpandedPortal, fixed)
 	} else if in.hasExpandedTypedScalarHost() {
 		err = in.eng.CallWithHostBaseScalarExpanded(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchTypedScalarExpandedPortal)
 	} else if in.hasDirectTypedScalarHost() {

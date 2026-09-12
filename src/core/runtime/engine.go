@@ -278,6 +278,11 @@ func (e *Engine) CallWithHostBase(code uintptr, serArgs []byte, linMemBase uintp
 // the high 16 bits. Returning handled=false preserves the generic slice path.
 type ScalarHostCall func(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (result uint64, handled bool)
 
+// FixedScalarHostCall is the preselected portal for a root instance with one
+// capability-free scalar import. The engine validates the fixed slot shape once
+// at entry and uses the generic callbacks for any cross-instance control frame.
+type FixedScalarHostCall func(a0, a1 uint64) (result uint64)
+
 // CallWithHostBaseScalar adds a fixed-slot portal without changing the generic
 // host callback contract used for unsupported signatures and cross-instance
 // frames.

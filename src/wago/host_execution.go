@@ -584,27 +584,32 @@ func (a *hostLoopActivation) dispatchSingleHostCallView(ctrl uintptr, importIdx 
 }
 
 func (b *syncHostBinding) matchesTypedScalarSlots(raw uint32) bool {
+	want, ok := b.typedScalarSlots()
+	return ok && raw == want
+}
+
+func (b *syncHostBinding) typedScalarSlots() (uint32, bool) {
 	switch b.scalarKind {
 	case syncHostTypedNone:
-		return raw == 0
+		return 0, true
 	case syncHostTypedI32V:
-		return raw == 1
+		return 1, true
 	case syncHostTypedI32:
-		return raw == 1|1<<16
+		return 1 | 1<<16, true
 	case syncHostTypedI32x2V:
-		return raw == 2
+		return 2, true
 	case syncHostTypedI32x2:
-		return raw == 2|1<<16
+		return 2 | 1<<16, true
 	case syncHostTypedI32R2:
-		return raw == 1|2<<16
+		return 1 | 2<<16, true
 	case syncHostTypedI32x2R2:
-		return raw == 2|2<<16
+		return 2 | 2<<16, true
 	case syncHostTypedI64, syncHostTypedF32, syncHostTypedF64:
-		return raw == 1|1<<16
+		return 1 | 1<<16, true
 	case syncHostTypedI64x2, syncHostTypedF32x2, syncHostTypedF64x2:
-		return raw == 2|1<<16
+		return 2 | 1<<16, true
 	default:
-		return false
+		return 0, false
 	}
 }
 
