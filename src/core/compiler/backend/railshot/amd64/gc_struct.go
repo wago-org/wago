@@ -509,9 +509,14 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	if !ok {
 		return fmt.Errorf("amd64: function ref.test target type %d is unavailable", targetType)
 	}
-	var savedLocals [16]locState
-	if len(f.pinnedLocals) > len(savedLocals) {
-		return fmt.Errorf("amd64: %d pinned locals exceed conditional function ref.test bound", len(f.pinnedLocals))
+	var inlineLocals [16]locState
+	savedLocals := inlineLocals[:]
+	if len(f.pinnedLocals) > len(inlineLocals) {
+		// The snapshot includes both integer and floating-point pins. Keep the
+		// pooled slice separate so the inline buffer stays on the stack.
+		pooledLocals := f.newLocStateBuf()
+		savedLocals = pooledLocals
+		defer f.freeLocStateBuf(pooledLocals)
 	}
 	for i, local := range f.pinnedLocals {
 		savedLocals[i] = f.locals[local].state

@@ -1423,7 +1423,13 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 	// were left memory-only. Emit whatever reloads the target's previously fixed
 	// merge state requires, then restore the normal codegen state for the code
 	// emitted after this out-of-line handler.
-	var saved [8]locState
+	var inlineLocals [16]locState
+	saved := inlineLocals[:]
+	if f.usesCalls && len(f.pinnedLocals) > len(inlineLocals) {
+		pooledLocals := f.newLocStateBuf()
+		saved = pooledLocals
+		defer f.freeLocStateBuf(pooledLocals)
+	}
 	if f.usesCalls {
 		for i, x := range f.pinnedLocals {
 			saved[i] = f.locals[x].state

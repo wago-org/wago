@@ -21,7 +21,13 @@ guide.
   official core `.wast` files. WABT 1.0.41 remains the primary converter; the
   official WebAssembly/spec 3.0.0 reference interpreter from the same exact pin
   converts the 28 text files WABT cannot parse. Parser/tool failures remain hard.
-  The current red inventory has zero parser failures, 144 green and 114 red files,
+  The complete pinned 258-file corpus passes with **2,226 modules and 58,038
+  assertions**, with zero failures, skips, or gaps on linux/amd64 (explicit and
+  signal-backed bounds), linux/arm64, and darwin/arm64. The machine-readable
+  baseline is `tests/conformance/baselines/spec-v3-baseline.json`.
+
+  The following iteration record predates that complete baseline. Its historical
+  red inventory had zero parser failures, 144 green and 114 red files,
   modules pass=1,691/skip=535, and assertions pass=51,765/fail=5/skip=6,268.
   Iteration 13 strictly decodes compact import groups, executes the actual pinned
   imported grow/size and safe `linking0`-`3` modules under bounded staged gates,
