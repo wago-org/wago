@@ -28,9 +28,12 @@ func indexedGlobalClusterModule(n, cluster int) []byte {
 }
 
 func TestInternedGlobalDescriptorsRoundTrip(t *testing.T) {
+	if !SupportedFeatures().IsEnabled(CoreFeaturesV3) {
+		t.Skip("requires Core 3 features")
+	}
 	for _, n := range []int{1, 16, 17, 128} {
 		t.Run(fmt.Sprint(n), func(t *testing.T) {
-			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), indexedGlobalModule(n))
+			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), indexedGlobalModule(n))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -64,6 +67,9 @@ func TestInternedGlobalDescriptorsRoundTrip(t *testing.T) {
 }
 
 func BenchmarkCompileValueTypeInterning(b *testing.B) {
+	if !SupportedFeatures().IsEnabled(CoreFeaturesV3) {
+		b.Skip("requires Core 3 features")
+	}
 	for _, n := range []int{1, 4, 16, 128, 1024} {
 		b.Run(fmt.Sprintf("distinct%d", n), func(b *testing.B) {
 			source := indexedGlobalModule(n)
@@ -84,6 +90,9 @@ func BenchmarkCompileValueTypeInterning(b *testing.B) {
 }
 
 func BenchmarkCompileValueTypeClusters(b *testing.B) {
+	if !SupportedFeatures().IsEnabled(CoreFeaturesV3) {
+		b.Skip("requires Core 3 features")
+	}
 	for _, n := range []int{4, 128, 1024} {
 		b.Run(fmt.Sprintf("distinct%d", n), func(b *testing.B) {
 			source := indexedGlobalClusterModule(n, 16)
@@ -162,6 +171,9 @@ func TestValueTypeInternerMatchesLinear(t *testing.T) {
 }
 
 func TestInternedGlobalClusters(t *testing.T) {
+	if !SupportedFeatures().IsEnabled(CoreFeaturesV3) {
+		t.Skip("requires Core 3 features")
+	}
 	for _, n := range []int{4, 128} {
 		c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), indexedGlobalClusterModule(n, 16))
 		if err != nil {
