@@ -37,8 +37,8 @@ func Satisfies(version, constraint string) (bool, error) {
 //
 //	exact/x-range   1.2.3 · 1.2 · 1.x · 1 · * · "" (any)
 //	comparators     >=1.2.3 · >1.2 · <=2 · <2.0.0 · =1.2.3
-//	caret           ^1.2.3  (>=1.2.3 <2.0.0; 0.x-aware)
-//	tilde           ~1.2.3  (>=1.2.3 <1.3.0)
+//	caret           ^1.2.3  (>=1.2.3 <2.0.0-0; 0.x-aware)
+//	tilde           ~1.2.3  (>=1.2.3 <1.3.0-0)
 //	hyphen          1.2.3 - 2.3.4  (>=1.2.3 <=2.3.4)
 func ParseConstraint(s string) (Constraint, error) {
 	c := Constraint{raw: strings.TrimSpace(s)}
@@ -273,15 +273,25 @@ func anyRange() []comparator { return []comparator{{">=", Version{}}} }
 
 func ver(maj, min, pat uint64) Version { return Version{Major: maj, Minor: min, Patch: pat} }
 
+// minimumRangePrerelease is immutable. Constraints do not expose comparator
+// versions, so generated bounds can share this storage without an allocation.
+var minimumRangePrerelease = [...]string{"0"}
+
+// exclusiveUpper excludes the given release and all of its prereleases.
+func exclusiveUpper(v Version) comparator {
+	v.Pre = minimumRangePrerelease[:]
+	return comparator{"<", v}
+}
+
 // eqRange handles a bare version or "=": full is exact; a partial is an x-range.
 func eqRange(p partial) []comparator {
 	switch p.n {
 	case 0:
 		return anyRange()
 	case 1:
-		return []comparator{{">=", ver(p.major, 0, 0)}, {"<", ver(p.major+1, 0, 0)}}
+		return []comparator{{">=", ver(p.major, 0, 0)}, exclusiveUpper(ver(p.major+1, 0, 0))}
 	case 2:
-		return []comparator{{">=", ver(p.major, p.minor, 0)}, {"<", ver(p.major, p.minor+1, 0)}}
+		return []comparator{{">=", ver(p.major, p.minor, 0)}, exclusiveUpper(ver(p.major, p.minor+1, 0))}
 	default:
 		return []comparator{{"=", p.version()}}
 	}
@@ -305,7 +315,7 @@ func caretRange(p partial) []comparator {
 	default: // ^0.0.x
 		upper = ver(0, 0, p.patch+1)
 	}
-	return []comparator{{">=", p.version()}, {"<", upper}}
+	return []comparator{{">=", p.version()}, exclusiveUpper(upper)}
 }
 
 // tildeRange: patch-level changes if minor is given, else minor-level.
@@ -319,21 +329,24 @@ func tildeRange(p partial) []comparator {
 	} else {
 		upper = ver(p.major+1, 0, 0)
 	}
-	return []comparator{{">=", p.version()}, {"<", upper}}
+	return []comparator{{">=", p.version()}, exclusiveUpper(upper)}
 }
 
 // compRange completes a partial version for an explicit comparator per
-// node-semver's rules (e.g. ">1.2" -> ">=1.3.0", "<=1.2" -> "<1.3.0").
+// node-semver's rules (e.g. ">1.2" -> ">=1.3.0", "<=1.2" -> "<1.3.0-0").
 func compRange(op string, p partial) []comparator {
 	switch op {
 	case ">=":
 		return []comparator{{">=", p.version()}}
 	case "<":
+		if p.n < 3 {
+			return []comparator{exclusiveUpper(p.version())}
+		}
 		return []comparator{{"<", p.version()}}
 	case ">":
 		switch p.n {
 		case 0:
-			return []comparator{{"<", ver(0, 0, 0)}} // >* : matches nothing
+			return []comparator{exclusiveUpper(ver(0, 0, 0))} // >* : matches nothing
 		case 3:
 			return []comparator{{">", p.version()}}
 		case 2:
@@ -348,9 +361,9 @@ func compRange(op string, p partial) []comparator {
 		case 3:
 			return []comparator{{"<=", p.version()}}
 		case 2:
-			return []comparator{{"<", ver(p.major, p.minor+1, 0)}}
+			return []comparator{exclusiveUpper(ver(p.major, p.minor+1, 0))}
 		default:
-			return []comparator{{"<", ver(p.major+1, 0, 0)}}
+			return []comparator{exclusiveUpper(ver(p.major+1, 0, 0))}
 		}
 	}
 	return nil
@@ -377,9 +390,9 @@ func hyphenRange(aTok, bTok string) ([]comparator, error) {
 	case 3:
 		out = append(out, comparator{"<=", b.version()})
 	case 2:
-		out = append(out, comparator{"<", ver(b.major, b.minor+1, 0)})
+		out = append(out, exclusiveUpper(ver(b.major, b.minor+1, 0)))
 	default: // n == 1
-		out = append(out, comparator{"<", ver(b.major+1, 0, 0)})
+		out = append(out, exclusiveUpper(ver(b.major+1, 0, 0)))
 	}
 	return out, nil
 }
