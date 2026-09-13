@@ -223,6 +223,11 @@ func loopCompactionLimitArm64(policy CodegenPolicy) int {
 }
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
+	// Mandatory branch patches also occur after body lowering, in return, trap,
+	// and adapter code. Reject failures before any optional finalization path.
+	if f.representationLimit != functionRepresentationOK {
+		return 0, f.representationError()
+	}
 	if !nativeFinalizerEnabled {
 		return internalOff, nil
 	}

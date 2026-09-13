@@ -144,6 +144,7 @@ const (
 	functionRepresentationReturnSite
 	functionRepresentationFrameEnd
 	functionRepresentationCallReloc
+	functionRepresentationBranchRange
 )
 
 // fn holds the per-function code-generation state — the port's equivalent of
@@ -3231,7 +3232,7 @@ func (f *fn) patchReturnSites() {
 		word := rdWord(f.a.B, site)
 		head = word & 0x03ffffff
 		wrWord(f.a.B, site, word&0xfc000000)
-		f.a.PatchBranch26(site, f.a.Len())
+		f.patchBranch26(site, f.a.Len())
 	}
 }
 
@@ -4074,7 +4075,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	}
 	if hostAdapter {
 		if !cachedAdapter {
-			f.a.PatchBranch26(adapterCall, internalOff)
+			f.patchBranch26(adapterCall, internalOff)
 			if f.sc != nil {
 				f.sc.adapterTemplate.observe(f.ft, f.a.B[:internalOff], f.adapterReturnOff, f.adapterEndOff)
 			}

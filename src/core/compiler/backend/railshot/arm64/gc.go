@@ -163,7 +163,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				return fmt.Errorf("arm64: ref.cast heap %d requires a live collector", heap)
 			}
 			if nullable {
-				f.a.PatchBranch19(done, f.a.Len())
+				f.patchBranch19(done, f.a.Len())
 			}
 			f.pushReg(ref, mtI64).st.setGCRoot(gcRoot)
 			return nil
@@ -743,7 +743,7 @@ func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32,
 	f.trapAlways(trapCode)
 	done := f.a.Len()
 	for _, site := range success {
-		f.a.PatchBranch19(site, done)
+		f.patchBranch19(site, done)
 	}
 }
 
