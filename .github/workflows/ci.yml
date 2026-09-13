@@ -11,16 +11,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - issue: c03
-            commit: f16c30a81d4ed46c795872908417d69924a0f5e4
-            benchmark_file: branch_patch_bench_arm64_test.go
-            benchmark: '^BenchmarkCompileBranchPatchesARM64$'
-            tests: '^(TestBranchPatchResultsAreChecked|TestMandatoryBranchPatchRangeArm64|TestBranchFailureRejectsDisabledFinalizerArm64|TestBranchFailurePreservesFirstLimitArm64)$'
-          - issue: c04
-            commit: 4ac65072e0eb32cf0553452400517214caa70359
-            benchmark_file: table_offset_bench_arm64_test.go
-            benchmark: '^BenchmarkCompileIndirectTableOffsetARM64$'
-            tests: '^(TestIndirectCallTableShiftWidth|TestIndirectTableOffsetEncodingARM64)$'
+          - issue: p06
+            commit: aee81cce36c4d90f22abb1ed8d0a406df4752c7d
+            benchmark_file: branch_hint_lookup_bench_test.go
+            benchmark: '^BenchmarkCompileBranchHintLookupARM64$'
+            tests: '^TestCompileBranchHintLookupARM64Fixtures$'
     env:
       GOMAXPROCS: '2'
       PACKAGE: src/core/compiler/backend/railshot/arm64
@@ -48,6 +43,7 @@ jobs:
           cp "fixed/$PACKAGE/${{ matrix.benchmark_file }}" "baseline/$PACKAGE/"
           (cd baseline && go test -c -o "$RUNNER_TEMP/before.test" "./$PACKAGE")
           (cd fixed && go test -c -o "$RUNNER_TEMP/after.test" "./$PACKAGE")
+          (cd baseline && go test -count=1 -v -run '${{ matrix.tests }}' "./$PACKAGE") > evidence/baseline-tests.txt 2>&1
           (cd fixed && go test -count=1 -v -run '${{ matrix.tests }}' "./$PACKAGE") > evidence/tests.txt 2>&1
       - name: Measure paired native ARM64 compilation
         shell: bash
