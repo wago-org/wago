@@ -607,8 +607,8 @@ type instancePluginState struct {
 	hostScope            hostCallScope
 	activations          instanceActivations
 	nativeContextVersion atomic.Uint64
-	invokeMu             sync.Mutex // serializes unrelated public calls across parked host callbacks
-	nativeExecutionMu    sync.Mutex // serializes native entry for an independent instance
+	invokeMu             invocationGate // serializes unrelated public calls across parked host callbacks
+	nativeExecutionMu    sync.Mutex     // serializes native entry for an independent instance
 	invocationID         invocationID
 	close                atomic.Pointer[instanceCloseState]
 	gcConfig             *GCConfig

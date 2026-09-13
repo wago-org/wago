@@ -26,7 +26,10 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 		return nil, fmt.Errorf("call %q: %w", export, err)
 	}
 	defer in.endInvocation()
-	state := in.lockInvocation(0)
+	state, err := in.lockInvocationContext(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
 	defer state.unlockInvocation()
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {

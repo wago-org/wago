@@ -27,6 +27,7 @@ const (
 	executionFlagImportedGCDomain
 	executionFlagDynamicGCDomain
 	executionFlagStoreOwnedGCCollector
+	executionFlagPreparedActive
 )
 
 type invocationID uint64
@@ -305,12 +306,30 @@ func (in *Instance) usesIndependentExecution() bool {
 }
 
 func (in *Instance) markNativeControlShared() {
+	in.ensurePluginState().invokeMu.revokeFast()
 	for {
 		flags := in.executionFlags.Load()
 		if flags&executionFlagNativeControlShared != 0 ||
 			in.executionFlags.CompareAndSwap(flags, flags|executionFlagNativeControlShared) {
-			return
+			break
 		}
+	}
+	// Publishing the shared bit prevents new specialized entries. Do not return
+	// a shareable resource until the previous fast activation has left native
+	// code. The gate notification closes the check/wait race without spinning.
+	if in.executionFlags.Load()&executionFlagPreparedActive != 0 {
+		gate := &in.ensurePluginState().invokeMu
+		gate.mu.Lock()
+		for in.executionFlags.Load()&executionFlagPreparedActive != 0 {
+			if gate.changed == nil {
+				gate.changed = make(chan struct{})
+			}
+			changed := gate.changed
+			gate.mu.Unlock()
+			<-changed
+			gate.mu.Lock()
+		}
+		gate.mu.Unlock()
 	}
 }
 
@@ -435,8 +454,60 @@ func (in *Instance) preparedIsolatedEligible() bool {
 	return in.preparedEntryMode() == preparedEntryIsolated
 }
 
+// Shared control requires native locking/rebinding. Imported, dynamic, and
+// store-owned GC domains require general GC admission, even for numeric exports.
+// Non-private domains are registered before public entry. Late boundary stores
+// are private; an isolated module has no collector or imports to attach there.
+// Resource sharing revokes direct gate admission before setting the shared bit.
+const preparedFastBlocked = executionFlagNativeControlShared | executionFlagImportedGCDomain | executionFlagDynamicGCDomain | executionFlagStoreOwnedGCCollector
+
+func (in *Instance) preparedFastStateValid() bool {
+	return in.executionFlags.Load()&preparedFastBlocked == 0
+}
+
+// Reservation and ownership revocation use the same atomic word. Thus a
+// revoker either prevents entry or waits for its reservation to finish. The
+// invocation gate permits only one fast activation per instance. Private paths
+// acquire the global lease first, since a revoker can already own that lease.
+func (in *Instance) lockPreparedFastState() bool {
+	const blocked = preparedFastBlocked | executionFlagPreparedActive
+	for {
+		flags := in.executionFlags.Load()
+		if flags&blocked != 0 {
+			return false
+		}
+		if in.executionFlags.CompareAndSwap(flags, flags|executionFlagPreparedActive) {
+			return true
+		}
+	}
+}
+
+func (in *Instance) unlockPreparedFastState() {
+	for {
+		flags := in.executionFlags.Load()
+		if !in.executionFlags.CompareAndSwap(flags, flags&^executionFlagPreparedActive) {
+			continue
+		}
+		if flags&executionFlagNativeControlShared != 0 {
+			gate := &in.ensurePluginState().invokeMu
+			gate.mu.Lock()
+			if gate.changed != nil {
+				close(gate.changed)
+				gate.changed = nil
+			}
+			gate.mu.Unlock()
+		}
+		return
+	}
+}
+
 func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error {
 	nativeExecutionMu.Lock()
+	if !in.lockPreparedFastState() {
+		nativeExecutionMu.Unlock()
+		return in.callNativeAsyncWithTrap(entry, true, activeTrap)
+	}
+	defer in.unlockPreparedFastState()
 	nativeExecutionEpoch++
 	defer nativeExecutionMu.Unlock()
 	if err := validateNativeGCEntry(in); err != nil {
@@ -449,8 +520,32 @@ func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error 
 }
 
 func (in *Instance) callPreparedIsolated(entry uintptr, activeTrap []byte) error {
+	if !in.lockPreparedFastState() {
+		return in.callNativeAsyncWithTrap(entry, true, activeTrap)
+	}
+	defer in.unlockPreparedFastState()
 	if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
 		return err
 	}
 	return in.decorateTrap(in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results))
+}
+
+// tryPreparedDirect reserves both invocation ownership and private entry. The
+// caller holds a lifetime lease and has the compiler's direct-entry proof plus
+// the immutable isolated module shape: no imports/host calls, collector, global
+// cells, external memory, or externally reachable function context. A scalar
+// signature alone is not sufficient. Non-private GC domains are registered
+// during construction; late private stores cannot add GC to this module shape.
+// Resource export revokes this gate before publishing shared ownership. Direct
+// memory-free code uses its own engine and cannot need native context rebinding.
+func (in *Instance) tryPreparedDirect() bool {
+	gate := &in.ensurePluginState().invokeMu
+	if !gate.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
+		return false
+	}
+	if !in.preparedFastStateValid() {
+		gate.Unlock()
+		return false
+	}
+	return true
 }

@@ -50,9 +50,17 @@ func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
 
 func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
-	if in.isLogicallyClosed() {
-		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
+	if err := in.beginInvocation(); err != nil {
+		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
 	}
+	defer in.endInvocation()
+	if !fn.directIsolated || !in.tryPreparedDirect() {
+		lease := in.lockPreparedInvocation()
+		defer lease.unlock()
+		args := [4]uint64{a0, a1, a2, a3}
+		return fn.invokeGeneralAdmitted(args[:fn.paramSlots])
+	}
+	defer in.ensurePluginState().invokeMu.Unlock()
 	switch fn.paramSlots {
 	case 4:
 		if fn.scalarWideMask&8 == 0 {

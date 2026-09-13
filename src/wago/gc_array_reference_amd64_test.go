@@ -374,7 +374,8 @@ func TestStagedGCArrayReferenceFootprint(t *testing.T) {
 	} {
 		// The plugin sidecar includes instance-local counted activations and
 		// reservations, plus monotonic callback/context versions (72 bytes).
-		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 208}[name]
+		// Cancellable admission adds 16 bytes.
+		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 224}[name]
 		if got != want {
 			t.Fatalf("%s size = %d, want %d", name, got, want)
 		}

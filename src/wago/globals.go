@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -1170,7 +1171,7 @@ type validateMemo struct {
 	once                     sync.Once
 	err                      error
 	gcFrameRoots             *compiledGCFrameRoots // immutable compiled/codec native safepoint and callsite map
-	structuralCallIdentities *structuralCallIdentityCache
+	structuralCallIdentities atomic.Pointer[structuralCallIdentityCache]
 	// importModuleEnds stores one plus the module-name byte length for each
 	// non-global import, grouped as functions, tables, memories, then tags. A
 	// zero entry retains the legacy first-dot interpretation for hand-built

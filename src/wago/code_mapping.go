@@ -658,7 +658,7 @@ func (c *Compiled) releaseCode() {
 	}
 	if cc.refs == 0 && cc.closed {
 		if c.validateMemo != nil {
-			c.validateMemo.structuralCallIdentities = nil
+			c.validateMemo.structuralCallIdentities.Store(nil)
 		}
 	}
 }
@@ -713,7 +713,7 @@ func (c *Compiled) Close() error {
 		return nil
 	}
 	if c.validateMemo != nil {
-		c.validateMemo.structuralCallIdentities = nil
+		c.validateMemo.structuralCallIdentities.Store(nil)
 	}
 	if cc.mem == nil {
 		// Preserve compiler-produced metadata so a later Instantiate reaches the
