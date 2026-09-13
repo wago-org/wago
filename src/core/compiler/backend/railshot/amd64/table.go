@@ -525,7 +525,11 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 	f.pinned = f.pinned.remove(entry)
 	f.release(entry)
 	f.release(tbl)
-	f.pushReg(slot, mtI64)
+	value := f.pushReg(slot, mtI64)
+	// A table read can remain live after the table stops retaining its object.
+	if table, ok := f.m.TableType(tableIdx); ok {
+		value.st.setGCRoot(gcFrameRefType(f.m, wasm.RefVal(table.Ref)))
+	}
 	return nil
 }
 
