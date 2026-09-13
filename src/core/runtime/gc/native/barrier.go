@@ -45,6 +45,13 @@ type objectCard struct {
 	next   uint32 // one-based next card range for the same object
 }
 
+// objectCardBounds proves that head is an outermost range of its complete list.
+// The head supplies one outer edge; oppositeEdge supplies the other. A zero
+// head is invalid. Interior writes discard the proof and use the ordinary list.
+type objectCardBounds struct {
+	head, oppositeEdge uint32
+}
+
 type slotCard struct {
 	kind  SlotKind
 	index uint32
@@ -359,6 +366,33 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 		end = payloadBytes - 1
 	}
 
+	// A sparse traversal commonly extends the lowest or highest dirty card.
+	// Keep a proof only when the new head is an outermost range. No list walk
+	// or per-card state is needed to extend a previously proved interval.
+	previous := c.lastCardBounds
+	c.lastCardBounds = objectCardBounds{}
+	bounds := objectCardBounds{}
+	if e.cardSlot == 0 {
+		bounds = objectCardBounds{head: 1, oppositeEdge: start}
+	} else if previous.head == e.cardSlot {
+		if !slotIndexOK(previous.head-1, len(c.objectCards)) {
+			goto fallback
+		}
+		head := c.objectCards[previous.head-1]
+		if head.handle != h || head.end < head.index || head.end >= payloadBytes {
+			goto fallback
+		}
+		low, high := min(head.index, previous.oppositeEdge), max(head.end, previous.oppositeEdge)
+		if uint64(end)+1 < uint64(low) {
+			bounds = objectCardBounds{head: 1, oppositeEdge: high}
+			goto appendNewCard
+		}
+		if uint64(start) > uint64(high)+1 {
+			bounds = objectCardBounds{head: 1, oppositeEdge: low}
+			goto appendNewCard
+		}
+	}
+
 	// Ranges for one object form a short linked list. Dense writes expand one
 	// range; sparse writes retain disjoint cards instead of widening across the
 	// untouched middle of a large array. Move a matched range's interval to the
@@ -420,6 +454,7 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 		}
 		return
 	}
+appendNewCard:
 	{
 		card := objectCard{handle: h, index: start, end: end, next: e.cardSlot}
 		if slot := c.freeObjectCardSlot; slot != 0 {
@@ -433,6 +468,10 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 			c.freeObjectCardSlot = free.next
 			*free = card
 			e.cardSlot = slot
+			if bounds.head != 0 {
+				bounds.head = slot
+			}
+			c.lastCardBounds = bounds
 			return
 		}
 		if injectFailure(c, failObjectCardGrowth) != nil {
@@ -443,6 +482,10 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 		}
 		c.objectCards = append(c.objectCards, card)
 		e.cardSlot = uint32(len(c.objectCards))
+		if bounds.head != 0 {
+			bounds.head = e.cardSlot
+		}
+		c.lastCardBounds = bounds
 		c.refreshNativeCards()
 		return
 	}
@@ -468,6 +511,7 @@ func (c *Collector) releaseObjectCardSlot(pos uint32) {
 	if !slotIndexOK(pos, len(c.objectCards)) || c.objectCards[pos].handle == 0 {
 		return
 	}
+	c.lastCardBounds = objectCardBounds{}
 	c.objectCards[pos] = objectCard{next: c.freeObjectCardSlot}
 	c.freeObjectCardSlot = pos + 1
 }
@@ -595,6 +639,7 @@ func (c *Collector) removeCardsForHandle(h uint32) {
 	if h == 0 || int(h) >= len(c.handles) {
 		return
 	}
+	c.lastCardBounds = objectCardBounds{}
 	e := &c.handles[h]
 	if e.cardSlot == 0 {
 		return
@@ -611,6 +656,7 @@ func (c *Collector) removeCardsForHandle(h uint32) {
 	e.cardSlot = 0
 }
 func (c *Collector) clearCardMetadata() {
+	c.lastCardBounds = objectCardBounds{}
 	if c.telemetryEnabled() && c.cfg.Telemetry.active.active {
 		c.cfg.Telemetry.active.cards.ClearedCards += c.dirtyObjectCardCount() + uint64(len(c.slotCards))
 	}
