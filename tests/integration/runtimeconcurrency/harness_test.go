@@ -894,6 +894,9 @@ func (h *concurrencyHarness) testHostReentry(t *testing.T) {
 			}
 		}
 		nested <- callErr
+		if callErr != nil {
+			panic(wago.HostTrap{Err: callErr})
+		}
 	})
 	parked, err = wago.Instantiate(compiled, wago.InstantiateOptions{Imports: wago.Imports{"env.reenter": parkedHost}})
 	if err != nil {
