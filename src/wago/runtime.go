@@ -660,6 +660,9 @@ func (p *PreparedCompile) Adopt(c *Compiled) (*Module, error) {
 	if c == nil {
 		return nil, fmt.Errorf("wago: nil compiled artifact")
 	}
+	if err := checkArtifactAdmissionLimits(c, p.cfg.maxNativeCodeBytes, p.cfg.maxMemoriesPerModule); err != nil {
+		return nil, emitCompileError(p.hooks, p.compilation, joinPrimary(err, c.Close()))
+	}
 	return p.finishCompile(c)
 }
 
@@ -758,22 +761,8 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 	if len(hooks.afterCompile) != 0 || len(hooks.onCompileError) != 0 {
 		compilation = CompilationIdentity{value: &compilationIdentityToken{}}
 	}
-	if maxNativeCodeBytes != 0 && uint64(len(c.code)) > maxNativeCodeBytes {
-		return nil, emitCompileError(hooks, compilation, &coreruntime.ResourceLimitError{
-			Resource:  "native code bytes",
-			Scope:     "compile",
-			Requested: uint64(len(c.code)),
-			Limit:     maxNativeCodeBytes,
-		})
-	}
-	if memoryCount := uint64(c.memoryCount()); memoryCount > uint64(maxMemories) {
-		return nil, emitCompileError(hooks, compilation, &coreruntime.ResourceLimitError{
-			Resource:   "memories per module",
-			Scope:      "runtime configuration",
-			Requested:  memoryCount,
-			Limit:      uint64(maxMemories),
-			Suggestion: "use a smaller module or increase WithMaxMemoriesPerModule after you inspect the module metadata",
-		})
+	if err := checkArtifactAdmissionLimits(c, maxNativeCodeBytes, maxMemories); err != nil {
+		return nil, emitCompileError(hooks, compilation, err)
 	}
 	mod, err := buildModule(c, bindings)
 	if err != nil {
@@ -795,6 +784,30 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 	}
 	mod.ownsCompiled = ownsCompiled
 	return mod, nil
+}
+
+// checkArtifactAdmissionLimits applies destination limits to an existing image.
+// Prepared compilation supplies its captured configuration, not a later runtime
+// generation. Source compilation checks these limits during compilation.
+func checkArtifactAdmissionLimits(c *Compiled, maxNativeCodeBytes uint64, maxMemories uint32) error {
+	if maxNativeCodeBytes != 0 && uint64(len(c.code)) > maxNativeCodeBytes {
+		return &coreruntime.ResourceLimitError{
+			Resource:  "native code bytes",
+			Scope:     "compile",
+			Requested: uint64(len(c.code)),
+			Limit:     maxNativeCodeBytes,
+		}
+	}
+	if memoryCount := uint64(c.memoryCount()); memoryCount > uint64(maxMemories) {
+		return &coreruntime.ResourceLimitError{
+			Resource:   "memories per module",
+			Scope:      "runtime configuration",
+			Requested:  memoryCount,
+			Limit:      uint64(maxMemories),
+			Suggestion: "use a smaller module or increase WithMaxMemoriesPerModule after you inspect the module metadata",
+		}
+	}
+	return nil
 }
 
 // InstantiateOption configures a single Instantiate call.
