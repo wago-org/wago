@@ -571,8 +571,7 @@ func (rt *Runtime) prepareCompile(wasmBytes []byte, allowLoading bool) (*Prepare
 		var transformErr error
 		panicErr := callHookSafely("ModuleSourceTransformer", func() { next, transformErr = transform(ctx, source) })
 		if err := joinPrimary(transformErr, panicErr); err != nil {
-			operation.end()
-			return nil, emitCompileError(hooks, compilation, err)
+			return nil, finishPreparedCompileError(&operation, hooks, compilation, err)
 		}
 		if next == nil {
 			next = source
@@ -700,6 +699,13 @@ func (p *PreparedCompile) Close() error {
 	p.mu.Unlock()
 	p.finish()
 	return nil
+}
+
+// Keep the terminal observer inside its compile lifetime. This helper keeps the
+// defer outside the transform loop so the compiler can keep it on the stack.
+func finishPreparedCompileError(operation *runtimeOperation, hooks *hookRegistry, compilation CompilationIdentity, original error) error {
+	defer operation.end()
+	return emitCompileError(hooks, compilation, original)
 }
 
 func emitCompileError(hooks *hookRegistry, compilation CompilationIdentity, original error) error {
