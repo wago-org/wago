@@ -33,6 +33,8 @@ func (f *fn) representationError() error {
 		field = "forward control-end offset"
 	case functionRepresentationCallReloc:
 		field = "call relocation"
+	case functionRepresentationBranchRange:
+		return fmt.Errorf("arm64: native branch displacement exceeds instruction range")
 	default:
 		field = "unknown field"
 	}
@@ -978,7 +980,7 @@ func (f *fn) emitSelect() {
 		f.pinned = f.pinned.remove(condReg)
 		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
 		f.a.NeonMov16b(aX, bX)      // cond == 0 → a = b (all 128 bits)
-		f.a.PatchBranch19(skip, f.a.Len())
+		f.patchBranch19(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
 		f.releaseF(bX)
 		f.release(condReg)
@@ -1000,7 +1002,7 @@ func (f *fn) emitSelect() {
 		f.pinned = f.pinned.remove(condReg)
 		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
 		f.a.FmovReg(aX, bX, f64)    // cond == 0 → a = b
-		f.a.PatchBranch19(skip, f.a.Len())
+		f.patchBranch19(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
 		f.releaseF(bX)
 		f.release(condReg)

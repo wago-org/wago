@@ -379,7 +379,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 		}
 		over := f.a.Bcond(invertCond(cc))
 		f.branchJump(fr)
-		f.a.PatchBranch19(over, f.a.Len())
+		f.patchBranch19(over, f.a.Len())
 		return nil
 	}
 	if f.branchHintUnlikely && fr.kind != cfLoop {
@@ -399,6 +399,6 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	over := f.a.Bcond(invertCond(cc)) // fall through when the compare is false
 	f.a.B = append(f.a.B, f.edgeScratch...)
 	f.branchJump(fr)
-	f.a.PatchBranch19(over, f.a.Len())
+	f.patchBranch19(over, f.a.Len())
 	return nil
 }

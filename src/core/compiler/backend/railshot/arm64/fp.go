@@ -467,7 +467,7 @@ func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	}
 	jdone := f.a.Branch()
 
-	f.a.PatchBranch19(jdist, f.a.Len())
+	f.patchBranch19(jdist, f.a.Len())
 	// Distinct ordered operands: scalar FMAX/FMIN give the larger/smaller because
 	// the operands are neither NaN nor equal here.
 	if isMax {
@@ -477,11 +477,11 @@ func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	}
 	jdone2 := f.a.Branch()
 
-	f.a.PatchBranch19(jnan, f.a.Len())
+	f.patchBranch19(jnan, f.a.Len())
 	f.a.Fadd(xa, xa, xb, f64) // NaN + x -> quiet NaN.
 
-	f.a.PatchBranch26(jdone, f.a.Len())
-	f.a.PatchBranch26(jdone2, f.a.Len())
+	f.patchBranch26(jdone, f.a.Len())
+	f.patchBranch26(jdone2, f.a.Len())
 }
 
 // fminmaxInto lowers scalar wasm min/max through the shared lane helper used by
@@ -738,9 +738,9 @@ func (f *fn) truncU64InRange(x, r Reg, srcF64 bool) {
 	f.a.Add64(r, r, t)
 	f.release(t)
 	done := f.a.Branch()
-	f.a.PatchBranch19(simple, f.a.Len())
+	f.patchBranch19(simple, f.a.Len())
 	f.a.Fcvtzs(r, x, srcF64, true)
-	f.a.PatchBranch26(done, f.a.Len())
+	f.patchBranch26(done, f.a.Len())
 	f.releaseF(p63)
 }
 
@@ -778,7 +778,7 @@ func (f *fn) truncSatSigned(x, r Reg, f64src, dstWide bool) {
 	notNaN := f.a.Bcond(a64.CondVC) // ordered
 	f.a.MovImm64(r, 0)              // NaN → 0
 	toEnd := f.a.Branch()
-	f.a.PatchBranch19(notNaN, f.a.Len())
+	f.patchBranch19(notNaN, f.a.Len())
 	hi := f.loadFConstBits(floatBits(math.Ldexp(1, n-1), f64src), f64src) // 2^(n-1)
 	f.a.Fcmp(x, hi, f64src)
 	f.releaseF(hi)
@@ -788,8 +788,8 @@ func (f *fn) truncSatSigned(x, r Reg, f64src, dstWide bool) {
 	} else {
 		f.a.MovImm32(r, 0x7FFFFFFF)
 	}
-	f.a.PatchBranch19(below, f.a.Len())
-	f.a.PatchBranch26(toEnd, f.a.Len())
+	f.patchBranch19(below, f.a.Len())
+	f.patchBranch26(toEnd, f.a.Len())
 }
 
 func (f *fn) truncSatU32(x, r Reg, f64src bool) {
@@ -800,14 +800,14 @@ func (f *fn) truncSatU32(x, r Reg, f64src bool) {
 	pos := f.a.Bcond(a64.CondGT) // x > 0 (ordered; NaN → not taken)
 	f.a.MovImm64(r, 0)           // NaN/≤0 → 0
 	toEnd := f.a.Branch()
-	f.a.PatchBranch19(pos, f.a.Len())
+	f.patchBranch19(pos, f.a.Len())
 	hi := f.loadFConstBits(floatBits(math.Ldexp(1, 32), f64src), f64src)
 	f.a.Fcmp(x, hi, f64src)
 	f.releaseF(hi)
 	below := f.a.Bcond(a64.CondLT)
 	f.a.MovImm32(r, -1) // ≥2^32 → 0xFFFFFFFF
-	f.a.PatchBranch19(below, f.a.Len())
-	f.a.PatchBranch26(toEnd, f.a.Len())
+	f.patchBranch19(below, f.a.Len())
+	f.patchBranch26(toEnd, f.a.Len())
 }
 
 func (f *fn) truncSatU64(x, r Reg, f64src bool) {
@@ -817,14 +817,14 @@ func (f *fn) truncSatU64(x, r Reg, f64src bool) {
 	pos := f.a.Bcond(a64.CondGT)
 	f.a.MovImm64(r, 0)
 	end0 := f.a.Branch()
-	f.a.PatchBranch19(pos, f.a.Len())
+	f.patchBranch19(pos, f.a.Len())
 	hi := f.loadFConstBits(floatBits(math.Ldexp(1, 64), f64src), f64src)
 	f.a.Fcmp(x, hi, f64src)
 	f.releaseF(hi)
 	inRange := f.a.Bcond(a64.CondLT)
 	f.a.MovImm64(r, 0xFFFFFFFFFFFFFFFF) // ≥2^64 → all ones
 	endMax := f.a.Branch()
-	f.a.PatchBranch19(inRange, f.a.Len())
+	f.patchBranch19(inRange, f.a.Len())
 	p63 := f.loadFConstBits(floatBits2p63(f64src), f64src)
 	f.a.Fcmp(x, p63, f64src)
 	simple := f.a.Bcond(a64.CondLT)
@@ -835,12 +835,12 @@ func (f *fn) truncSatU64(x, r Reg, f64src bool) {
 	f.a.Add64(r, r, t)
 	f.release(t)
 	biasEnd := f.a.Branch()
-	f.a.PatchBranch19(simple, f.a.Len())
+	f.patchBranch19(simple, f.a.Len())
 	f.a.Fcvtzs(r, x, f64src, true)
-	f.a.PatchBranch26(biasEnd, f.a.Len())
+	f.patchBranch26(biasEnd, f.a.Len())
 	f.releaseF(p63)
-	f.a.PatchBranch26(endMax, f.a.Len())
-	f.a.PatchBranch26(end0, f.a.Len())
+	f.patchBranch26(endMax, f.a.Len())
+	f.patchBranch26(end0, f.a.Len())
 }
 
 func (f *fn) fpromote() { // f32 → f64

@@ -388,9 +388,9 @@ func (f *fn) patchFrameEndSite(packed uint32) {
 	conditional := packed&frameEndConditional != 0
 	site := int(packed&^frameEndConditional) - 1
 	if conditional {
-		f.a.PatchBranch19(site, f.a.Len())
+		f.patchBranch19(site, f.a.Len())
 	} else {
-		f.a.PatchBranch26(site, f.a.Len())
+		f.patchBranch26(site, f.a.Len())
 	}
 }
 
@@ -997,7 +997,7 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 	case cfLoop:
 		// Backward unconditional branch to the loop top (imm26, ±128 MiB): emit a B
 		// placeholder and patch it immediately since the target is already known.
-		f.a.PatchBranch26(f.a.Branch(), fr.controlSite)
+		f.patchBranch26(f.a.Branch(), fr.controlSite)
 	case cfFunc:
 		// The caller already converged the result to slot 0 (fr.height == 0); with
 		// the register-return hint the epilogue no longer reloads it, so load it
@@ -1353,11 +1353,11 @@ func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
 		panic("arm64: prechecked if arm immediate became unencodable")
 	}
 	toEnd := f.a.Branch()
-	f.a.PatchBranch19(toElse, f.a.Len())
+	f.patchBranch19(toElse, f.a.Len())
 	if !f.aluImm3(elseArm.op, dest, dest, elseArm.imm, false) {
 		panic("arm64: prechecked if arm immediate became unencodable")
 	}
-	f.a.PatchBranch26(toEnd, f.a.Len())
+	f.patchBranch26(toEnd, f.a.Len())
 	f.markLocalDirty(x)
 	f.stats.peep("if-local-sink")
 	return true, nil
@@ -1574,7 +1574,7 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	f.ld64(X16, ehReg, ehTargetOff)
 	f.a.AddImm64(SP, X17, 0)
 	f.a.Br(X16)
-	f.a.PatchBranch19(noHandler, f.a.Len())
+	f.patchBranch19(noHandler, f.a.Len())
 	f.trapAlways(trapUnhandledException)
 	f.unreachable = true
 	return nil
@@ -1599,7 +1599,7 @@ func (f *fn) opThrowRef() error {
 	f.ld64(X16, ehReg, ehTargetOff)
 	f.a.AddImm64(SP, X17, 0)
 	f.a.Br(X16)
-	f.a.PatchBranch19(noHandler, f.a.Len())
+	f.patchBranch19(noHandler, f.a.Len())
 	f.trapAlways(trapUnhandledException)
 	f.unreachable = true
 	return nil
@@ -1711,15 +1711,15 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	f.ld64(X17, X17, ehSavedSPOff)
 	f.a.AddImm64(SP, X17, 0)
 	f.a.Br(X16)
-	f.a.PatchBranch19(noPrevious, f.a.Len())
+	f.patchBranch19(noPrevious, f.a.Len())
 	f.trapAlways(trapUnhandledException)
 
 	for i := 0; i < dispatchN; i++ {
 		clause := &eh.catches[i]
 		if clause.kind == wasm.CatchAll || clause.kind == wasm.CatchAllRef {
-			f.a.PatchBranch26(int(clause.matchSite), f.a.Len())
+			f.patchBranch26(int(clause.matchSite), f.a.Len())
 		} else {
-			f.a.PatchBranch19(int(clause.matchSite), f.a.Len())
+			f.patchBranch19(int(clause.matchSite), f.a.Len())
 		}
 		f.emitEHCatchRoute(fr, clause, recordOff)
 	}
@@ -1760,7 +1760,7 @@ func (f *fn) opElse() error {
 		f.appendFrameEnd(fr, f.a.Branch(), false)
 		fr.set(ctrlEndReachable, true)
 	}
-	f.a.PatchBranch19(fr.controlSite, f.a.Len()) // the false edge is a B.cond (imm19)
+	f.patchBranch19(fr.controlSite, f.a.Len()) // the false edge is a B.cond (imm19)
 	fr.controlSite = -1
 	fr.set(ctrlHasElse, true)
 	f.setDepthTypesWithGCRoots(f.frameDepthTypesForFrame(fr, true), frameGCRootFlags(f.frameBaseGCRoots(fr), f.frameParamGCRoots(fr)))
@@ -1799,12 +1799,12 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 				skip = f.a.Branch()
 			}
 			for i := range coldEdges {
-				f.a.PatchBranch19(coldEdges[i].site, f.a.Len())
+				f.patchBranch19(coldEdges[i].site, f.a.Len())
 				f.a.B = append(f.a.B, coldEdges[i].code...)
 				f.branchJump(&fr) // branch from the cold edge to the shared epilogue
 			}
 			if skip != -1 {
-				f.a.PatchBranch26(skip, f.a.Len())
+				f.patchBranch26(skip, f.a.Len())
 			}
 		}
 		return nil
@@ -1862,7 +1862,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		if (fr.has(ctrlRegMerge1) || needLoads) && fallthroughReachable {
 			skip = f.a.Branch()
 		}
-		f.a.PatchBranch19(fr.controlSite, f.a.Len()) // the false edge is a B.cond (imm19)
+		f.patchBranch19(fr.controlSite, f.a.Len()) // the false edge is a B.cond (imm19)
 		if fr.has(ctrlRegMerge1) {
 			slot := slotsOfTypes(f.frameBaseTypes(&fr))
 			if fr.res0.isFloat() {
@@ -1877,7 +1877,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		f.convergeFrameBranchStateWithDead(&fr, deadGP, deadFP)
 		branchState = f.frameBranchState(&fr)
 		if skip != -1 {
-			f.a.PatchBranch26(skip, f.a.Len()) // the skip is an unconditional B (imm26)
+			f.patchBranch26(skip, f.a.Len()) // the skip is an unconditional B (imm26)
 		}
 		fr.set(ctrlEndReachable, true)
 	}
@@ -1887,12 +1887,12 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 			skip = f.a.Branch()
 		}
 		for i := range coldEdges {
-			f.a.PatchBranch19(coldEdges[i].site, f.a.Len())
+			f.patchBranch19(coldEdges[i].site, f.a.Len())
 			f.a.B = append(f.a.B, coldEdges[i].code...)
-			f.a.PatchBranch26(f.a.Branch(), fr.controlSite)
+			f.patchBranch26(f.a.Branch(), fr.controlSite)
 		}
 		if skip != -1 {
-			f.a.PatchBranch26(skip, f.a.Len())
+			f.patchBranch26(skip, f.a.Len())
 		}
 	}
 	// Emit deferred cold br_if edges immediately before this frame's target. A
@@ -1907,14 +1907,14 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 			skip = f.a.Branch()
 		}
 		for i := range coldEdges {
-			f.a.PatchBranch19(coldEdges[i].site, f.a.Len())
+			f.patchBranch19(coldEdges[i].site, f.a.Len())
 			f.a.B = append(f.a.B, coldEdges[i].code...)
 			f.appendFrameEnd(&fr, f.a.Branch(), false)
 			firstEnd, secondEnd, ends = f.frameEndSites(&fr)
 			fr.set(ctrlEndReachable, true)
 		}
 		if skip != -1 {
-			f.a.PatchBranch26(skip, f.a.Len())
+			f.patchBranch26(skip, f.a.Len())
 		}
 	}
 	f.patchFrameEndSites(firstEnd, secondEnd, ends)
@@ -1953,7 +1953,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		}
 		f.emitEHHandler(&fr)
 		if skip != -1 {
-			f.a.PatchBranch26(skip, f.a.Len())
+			f.patchBranch26(skip, f.a.Len())
 		}
 		f.ehTryDepth--
 	}
@@ -2046,7 +2046,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 			}
 			over := f.a.Cbz32(creg)
 			f.branchJump(fr)
-			f.a.PatchBranch19(over, f.a.Len())
+			f.patchBranch19(over, f.a.Len())
 			f.stats.peep("zero-branch")
 			return nil
 		}
@@ -2058,7 +2058,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		// Fold disabled / unsupported target / out of range: guarded form (edge empty).
 		over := f.a.Bcond(condE)
 		f.branchJump(fr)
-		f.a.PatchBranch19(over, f.a.Len())
+		f.patchBranch19(over, f.a.Len())
 		return nil
 	}
 	if f.branchHintUnlikely {
@@ -2078,7 +2078,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	over := f.a.Bcond(condE) // skip the edge when the condition is false (== 0)
 	f.a.B = append(f.a.B, f.edgeScratch...)
 	f.branchJump(fr)
-	f.a.PatchBranch19(over, f.a.Len()) // `over` is a B.cond (imm19)
+	f.patchBranch19(over, f.a.Len()) // `over` is a B.cond (imm19)
 	return nil
 }
 
@@ -2108,7 +2108,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 		f.moveBranchValues(fr, d, fr.branchArity())
 	}
 	f.branchJump(fr)
-	f.a.PatchBranch19(over, f.a.Len())
+	f.patchBranch19(over, f.a.Len())
 	fallthroughRef := f.allocReg(0)
 	f.ld64(fallthroughRef, SP, f.spillOff(refSlot))
 	f.pushReg(fallthroughRef, mtI64).st.setGCRoot(gcRoot)
@@ -2144,7 +2144,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 		f.moveBranchValues(fr, d, fr.branchArity())
 	}
 	f.branchJump(fr)
-	f.a.PatchBranch19(over, f.a.Len())
+	f.patchBranch19(over, f.a.Len())
 	_ = f.popValue()
 	return nil
 }
@@ -2179,7 +2179,7 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 		f.moveBranchValues(fr, d, fr.branchArity())
 	}
 	f.branchJump(fr)
-	f.a.PatchBranch19(over, f.a.Len())
+	f.patchBranch19(over, f.a.Len())
 	return nil
 }
 
@@ -2290,13 +2290,13 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 				i := encodedID - 1
 				p := f.a.Len()
 				compactStubAt[lbl] = -p - 1
-				f.a.PatchBranch26(vectorPos+4*i, p)
+				f.patchBranch26(vectorPos+4*i, p)
 				emitCase(lbl)
 			}
 			if encoded := compactStubAt[def]; encoded < 0 {
-				f.a.PatchBranch19(defSite, -encoded-1)
+				f.patchBranch19(defSite, -encoded-1)
 			} else {
-				f.a.PatchBranch19(defSite, f.a.Len())
+				f.patchBranch19(defSite, f.a.Len())
 				emitCase(def)
 			}
 			f.unreachable = true
@@ -2318,12 +2318,12 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 				p := f.a.Len()
 				f.a.PatchU32(tablePos+4*i, uint32(p-tablePos))
 				if i == defIdx {
-					f.a.PatchBranch19(defSite, p)
+					f.patchBranch19(defSite, p)
 				}
 				emitCase(lbl)
 			}
 			if defIdx < 0 {
-				f.a.PatchBranch19(defSite, f.a.Len())
+				f.patchBranch19(defSite, f.a.Len())
 				emitCase(def)
 			}
 			f.unreachable = true
@@ -2358,9 +2358,9 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 			f.a.PatchU32(tablePos+4*i, uint32(stub(lbl)-tablePos))
 		}
 		if p := stubAt[def]; p >= 0 {
-			f.a.PatchBranch19(defSite, p)
+			f.patchBranch19(defSite, p)
 		} else {
-			f.a.PatchBranch19(defSite, f.a.Len())
+			f.patchBranch19(defSite, f.a.Len())
 			emitCase(def)
 		}
 		f.unreachable = true
@@ -2370,7 +2370,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		f.a.CmpImm32(ireg, uint32(i)) // cmp ireg, i (i < brTableJumpMin, always fits imm12)
 		skip := f.a.Bcond(condNE)
 		emitCase(lbl)
-		f.a.PatchBranch19(skip, f.a.Len()) // `skip` is a B.cond (imm19)
+		f.patchBranch19(skip, f.a.Len()) // `skip` is a B.cond (imm19)
 	}
 	emitCase(def)
 	f.unreachable = true
