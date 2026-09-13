@@ -199,10 +199,13 @@ func (v *guestStorageView) MemoryInfo(index uint32) (GuestMemoryInfo, error) {
 	if err != nil {
 		return GuestMemoryInfo{}, err
 	}
-	bytes := memory.UnsafeBytes()
-	if bytes == nil && memory.jobMemory() == nil {
+	// The active consumer callback retains imported memory even after its
+	// producer is logically closed. UnsafeBytes is a public owner-scoped view.
+	jm := memory.jobMemory()
+	if jm == nil {
 		return GuestMemoryInfo{}, fmt.Errorf("wago: memory index %d is closed", index)
 	}
+	bytes := jm.HostBytes()
 	addressType := GuestMemory32
 	def := v.in.c.memoryDef(int(index))
 	if def.Addr64 {
@@ -219,10 +222,13 @@ func (v *guestStorageView) MemoryRange(index uint32, offset, length uint64, acce
 	if err != nil {
 		return nil, err
 	}
-	bytes := memory.UnsafeBytes()
-	if bytes == nil && memory.jobMemory() == nil {
+	// WithGuestStorage holds the consumer's lifetime and native-state leases;
+	// producer logical closure must not hide this retained mapping.
+	jm := memory.jobMemory()
+	if jm == nil {
 		return nil, fmt.Errorf("wago: memory index %d is closed", index)
 	}
+	bytes := jm.HostBytes()
 	if offset > math.MaxUint64-length {
 		return nil, fmt.Errorf("wago: memory range overflows")
 	}
