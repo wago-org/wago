@@ -2534,7 +2534,7 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 			panic(r)
 		}
 	}()
-	if err := in.jm.BindTrapCell(activeTrap); err != nil {
+	if err := in.jm.RebindTrapCell(activeTrap); err != nil {
 		return err
 	}
 	in.jm.SetStackFence(in.eng.StackLimit())
