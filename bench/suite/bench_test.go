@@ -284,11 +284,37 @@ func BenchmarkExecHostRoundtrip_wago(b *testing.B) {
 }
 
 // BenchmarkExecHostCallback_wago measures the same callback transaction through
-// Wago's allocation-free typed scalar portal, matching wazero's typed WithFunc
-// binding while retaining BenchmarkExecHostRoundtrip_wago as the legacy API
-// history series.
+// Wago's allocation-free typed scalar portal and a prepared typed export. This
+// matches wazero's timed path, which also resolves its exported function before
+// the benchmark loop, while retaining BenchmarkExecHostRoundtrip_wago as the
+// legacy arbitrary-entry API history series.
 func BenchmarkExecHostCallback_wago(b *testing.B) {
-	benchmarkExecHostRoundtripWago(b, wago.I32ToI32HostFunc(func(x int32) int32 { return x + 1 }))
+	c, err := wago.Compile(nil, hostcallWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{
+		"env.host": func(x int32) int32 { return x + 1 },
+	}})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareI32ToI32("roundtrip")
+	if err != nil {
+		b.Fatal(err)
+	}
+	if got, err := fn.Call(1); err != nil || got != 2 {
+		b.Fatalf("roundtrip(1) = %d, %v; want 2", got, err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := fn.Call(1); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 func benchmarkExecHostRoundtripWago(b *testing.B, callback any) {
