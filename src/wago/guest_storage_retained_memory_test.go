@@ -154,3 +154,40 @@ func BenchmarkGuestStorageMemoryAccess(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkGuestStorageBorrowMemoryAccess excludes invocation and host dispatch.
+func BenchmarkGuestStorageBorrowMemoryAccess(b *testing.B) {
+	compiled := stagedMultiMemoryCompile(b, guestStorageMemoryConsumer(1))
+	memory, err := NewMemory(1, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer memory.Close()
+	in, err := Instantiate(compiled, Imports{
+		"env.memory0":  memory,
+		"host.inspect": HostFunc(func(HostModule, []uint64, []uint64) {}),
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	host := in.beginHostCallScope()
+	defer host.scope.end(host.generation, host.parentGeneration)
+	access := func(storage GuestStorage) error {
+		if _, err := storage.MemoryInfo(0); err != nil {
+			return err
+		}
+		buf, err := storage.MemoryRange(0, 32, 8, GuestStorageWrite)
+		if err == nil {
+			buf[0]++
+		}
+		return err
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := host.WithGuestStorage(access); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

@@ -346,23 +346,21 @@ func (in *Instance) lockThreadedInstanceState() *sync.Mutex {
 }
 
 func (in *Instance) lockInstanceNativeStateForHostAccess() func() {
-	if in.usesIndependentExecution() {
-		mu := in.independentNativeExecutionMu()
-		mu.Lock()
-		in.invalidateNativeContext()
+	return in.acquireInstanceNativeStateForHostAccess().Unlock
+}
 
-		return mu.Unlock
+func (in *Instance) acquireInstanceNativeStateForHostAccess() *sync.Mutex {
+	mu := &nativeExecutionMu
+	if in.usesIndependentExecution() {
+		mu = in.independentNativeExecutionMu()
+	} else if in != nil && in.c != nil && in.c.threadedMemory0() {
+		mu = &in.memoryDir.nativeMu
 	}
-	if in != nil && in.c != nil && in.c.threadedMemory0() {
-		in.memoryDir.nativeMu.Lock()
-		in.invalidateNativeContext()
-		return in.memoryDir.nativeMu.Unlock
-	}
-	unlock := lockNativeExecutionForHostAccess()
+	mu.Lock()
 	if in != nil {
 		in.invalidateNativeContext()
 	}
-	return unlock
+	return mu
 }
 
 // lockNativeExecutionForHostAccess serializes direct host access to native-visible

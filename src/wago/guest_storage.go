@@ -108,11 +108,10 @@ type GuestStorageHostModule interface {
 }
 
 type guestStorageView struct {
-	in      *Instance
-	params  []ValueTypeDescriptor
-	results []ValueTypeDescriptor
-	types   []DefinedTypeDescriptor
-	active  atomic.Bool
+	in     *Instance
+	exact  *DefinedTypeDescriptor
+	types  []DefinedTypeDescriptor
+	active atomic.Bool
 }
 
 func (v *guestStorageView) ensureActive() error {
@@ -130,7 +129,7 @@ func (in *Instance) guestStorageBorrowed() bool {
 	return state != nil && state.guestStorageBorrow.Load() != 0
 }
 
-func beginGuestStorageBorrow(in *Instance) (func(), error) {
+func beginGuestStorageBorrow(in *Instance) (*instancePluginState, error) {
 	if in == nil {
 		return nil, fmt.Errorf("wago: guest storage has no instance")
 	}
@@ -138,7 +137,7 @@ func beginGuestStorageBorrow(in *Instance) (func(), error) {
 	if !state.guestStorageBorrow.CompareAndSwap(0, 1) {
 		return nil, fmt.Errorf("wago: guest storage is already borrowed: %w", ErrPermissionDenied)
 	}
-	return func() { state.guestStorageBorrow.Store(0) }, nil
+	return state, nil
 }
 
 func (h instanceHostModule) WithGuestStorage(fn func(GuestStorage) error) error {
@@ -148,13 +147,13 @@ func (h instanceHostModule) WithGuestStorage(fn func(GuestStorage) error) error 
 	if !h.valid() || h.in == nil {
 		return fmt.Errorf("wago: guest storage is outside its active host callback: %w", ErrPermissionDenied)
 	}
-	endBorrow, err := beginGuestStorageBorrow(h.in)
+	state, err := beginGuestStorageBorrow(h.in)
 	if err != nil {
 		return err
 	}
-	defer endBorrow()
-	unlockNative := h.in.lockInstanceNativeStateForHostAccess()
-	defer unlockNative()
+	defer state.guestStorageBorrow.Store(0)
+	nativeMu := h.in.acquireInstanceNativeStateForHostAccess()
+	defer nativeMu.Unlock()
 	if h.in.gc != nil {
 		lockedDomain := h.in.lockGCCollector()
 		defer unlockGCCollector(lockedDomain)
@@ -165,8 +164,7 @@ func (h instanceHostModule) WithGuestStorage(fn func(GuestStorage) error) error 
 	} else if h.in.c != nil {
 		types = h.in.c.Types
 	}
-	params, results := h.exactSignature()
-	view := &guestStorageView{in: h.in, params: params, results: results, types: types}
+	view := &guestStorageView{in: h.in, exact: h.exact, types: types}
 	view.active.Store(true)
 	defer view.active.Store(false)
 	return fn(view)
@@ -385,17 +383,17 @@ func (v *guestStorageView) GCArrayRef(ref GuestGCRef, index uint32) (GuestGCRef,
 }
 
 func (v *guestStorageView) ImportParamType(index int) (ValueTypeDescriptor, bool) {
-	if v == nil || !v.active.Load() || index < 0 || index >= len(v.params) {
+	if v == nil || !v.active.Load() || v.exact == nil || index < 0 || index >= len(v.exact.Params) {
 		return ValueTypeDescriptor{}, false
 	}
-	return v.params[index], true
+	return v.exact.Params[index], true
 }
 
 func (v *guestStorageView) ImportResultType(index int) (ValueTypeDescriptor, bool) {
-	if v == nil || !v.active.Load() || index < 0 || index >= len(v.results) {
+	if v == nil || !v.active.Load() || v.exact == nil || index < 0 || index >= len(v.exact.Results) {
 		return ValueTypeDescriptor{}, false
 	}
-	return v.results[index], true
+	return v.exact.Results[index], true
 }
 
 func (v *guestStorageView) DefinedType(index uint32) (DefinedTypeDescriptor, bool) {
