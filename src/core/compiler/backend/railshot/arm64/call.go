@@ -979,7 +979,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 		f.cmpRR(idx, ln, f.tableAddr64(tableIdx))
 		f.release(ln)
 		f.trapIf(condAE, trapIndirectOOB)
-		f.a.LslImm(idx, idx, 5, true)
+		f.a.LslImm64(idx, idx, 5)
 		f.a.Add64(idx, idx, tbl)
 		f.ld64(idx, idx, 8+runtime.TableEntryRefSlotOffset)
 		f.release(tbl)
@@ -1001,7 +1001,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.cmpRR(idx, ln, f.tableAddr64(tableIdx))
 	f.release(ln)
 	f.trapIf(condAE, trapIndirectOOB)
-	f.a.LslImm(idx, idx, 5, true)
+	f.a.LslImm64(idx, idx, 5)
 	f.a.Add64(idx, idx, tbl)
 	f.release(tbl)
 	code := f.allocReg(maskOf(idx))
@@ -2332,8 +2332,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.trapIf(condAE, trapIndirectOOB) // idx >= length → cold stub
 
 	// 64-bit pointer arithmetic: entry address = tbl + idx*32 (TableEntryBytes).
-	f.a.LslImm(idxReg, idxReg, 5, true) // idx *= 32
-	f.a.Add64(idxReg, idxReg, tbl)      // idx += tbl
+	f.a.LslImm64(idxReg, idxReg, 5) // idx *= 32
+	f.a.Add64(idxReg, idxReg, tbl)  // idx += tbl
 	f.pinned = f.pinned.remove(tbl)
 	f.release(tbl)
 
