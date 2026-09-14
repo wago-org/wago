@@ -587,6 +587,27 @@ func benchmarkExecCalls(b *testing.B, invoke func() error) {
 	b.ReportMetric(float64(batch), "calls/batch")
 }
 
+func preparedSessionInvoker(session *wago.PreparedSession, args []uint64) func() error {
+	switch len(args) {
+	case 0:
+		return func() error { _, err := session.Invoke0(); return err }
+	case 1:
+		a0 := args[0]
+		return func() error { _, err := session.Invoke1(a0); return err }
+	case 2:
+		a0, a1 := args[0], args[1]
+		return func() error { _, err := session.Invoke2(a0, a1); return err }
+	case 3:
+		a0, a1, a2 := args[0], args[1], args[2]
+		return func() error { _, err := session.Invoke3(a0, a1, a2); return err }
+	case 4:
+		a0, a1, a2, a3 := args[0], args[1], args[2], args[3]
+		return func() error { _, err := session.Invoke4(a0, a1, a2, a3); return err }
+	default:
+		return func() error { _, err := session.Invoke(args...); return err }
+	}
+}
+
 func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 	for _, m := range loadCorpus(b) {
 		if (len(m.Exec) == 0 && len(m.SemanticExec) == 0) || !m.supports("Exec") {
@@ -624,12 +645,15 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 			} else if !slices.Equal(got, e.Want) {
 				b.Fatalf("%s.%s results = %v, want %v", m.name(), e.Export, got, e.Want)
 			}
+			session, err := fn.OpenSession()
+			if err != nil {
+				b.Fatalf("%s open prepared session %s: %v", m.name(), e.Export, err)
+			}
+			invoke := preparedSessionInvoker(session, args)
 			b.Run(m.name()+"."+e.Export, func(b *testing.B) {
-				benchmarkExecCalls(b, func() error {
-					_, err := fn.Invoke(args...)
-					return err
-				})
+				benchmarkExecCalls(b, invoke)
 			})
+			session.Close()
 		}
 		for _, semantic := range semanticExecCases(b, m) {
 			if err := runSemanticOracle(semantic); err != nil {

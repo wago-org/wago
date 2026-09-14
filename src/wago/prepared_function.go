@@ -350,6 +350,11 @@ func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 	defer in.endInvocation()
 	preparedLease := in.lockPreparedInvocation()
 	defer preparedLease.unlock()
+	return fn.invokeScalarAdmitted(args)
+}
+
+func (fn *PreparedFunction) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
+	in := fn.in
 	if !in.preparedFastStateValid() {
 		return fn.invokeGeneralAdmitted(args)
 	}
@@ -402,6 +407,86 @@ func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 				return nil, err
 			}
 		}
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:fn.resultSlots]
+	decodePublicScalarSlots(out, nativeUint64Slots(in.results), fn.resultWide)
+	return out, nil
+}
+
+// invokeScalarReserved enters with both the instance lease and process native
+// context held by a PreparedSession. OpenSession has already validated and
+// bound the private import-free context, so the hot path is only scalar transfer
+// plus the native transition.
+func (fn *PreparedFunction) invokeScalarReserved(args []uint64, linMem uintptr) ([]uint64, error) {
+	in := fn.in
+	if len(args) <= 4 {
+		put := func(slot int) {
+			bits := args[slot]
+			if fn.scalarWideMask&(1<<slot) == 0 {
+				bits = uint64(uint32(bits))
+			}
+			binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
+		}
+		switch len(args) {
+		case 4:
+			put(3)
+			fallthrough
+		case 3:
+			put(2)
+			fallthrough
+		case 2:
+			put(1)
+			fallthrough
+		case 1:
+			put(0)
+		}
+	} else {
+		marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, fn.paramWide)
+	}
+	if err := in.decorateTrap(in.eng.CallPrepared(fn.entry, in.serArgs, linMem, in.trap, in.results)); err != nil {
+		return nil, err
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:fn.resultSlots]
+	decodePublicScalarSlots(out, nativeUint64Slots(in.results), fn.resultWide)
+	return out, nil
+}
+
+// invokeScalarHostReserved is the host-capable counterpart to
+// invokeScalarReserved. PreparedSession already owns and has bound the native
+// execution context, while callNativeSyncAdmitted retains the complete host
+// park/resume and panic/trap protocol.
+func (fn *PreparedFunction) invokeScalarHostReserved(args []uint64) ([]uint64, error) {
+	in := fn.in
+	if len(args) <= 4 {
+		put := func(slot int) {
+			bits := args[slot]
+			if fn.scalarWideMask&(1<<slot) == 0 {
+				bits = uint64(uint32(bits))
+			}
+			binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
+		}
+		switch len(args) {
+		case 4:
+			put(3)
+			fallthrough
+		case 3:
+			put(2)
+			fallthrough
+		case 2:
+			put(1)
+			fallthrough
+		case 1:
+			put(0)
+		}
+	} else {
+		marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, fn.paramWide)
+	}
+	if err := in.callNativeSyncAdmitted(fn.entry, in.trap, nil, true); err != nil {
+		return nil, err
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
