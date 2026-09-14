@@ -426,7 +426,7 @@ func (fn *PreparedFunction) invokeScalarAdmitted(args []uint64) ([]uint64, error
 // the ordinary scalar entry. PreparedSession already owns and has bound the
 // native execution context, while callNativeSyncAdmitted retains the complete
 // host park/resume and panic/trap protocol.
-func (fn *PreparedFunction) invokeScalarHostReserved(args []uint64, prepared *wruntime.PreparedHostScalarCall) ([]uint64, error) {
+func (fn *PreparedFunction) invokeScalarHostReserved(args []uint64, prepared *wruntime.PreparedHostScalarCall, fixed wruntime.FixedScalarHostCall, activation *hostLoopActivation) ([]uint64, error) {
 	in := fn.in
 	if len(args) <= 4 {
 		put := func(slot int) {
@@ -452,7 +452,7 @@ func (fn *PreparedFunction) invokeScalarHostReserved(args []uint64, prepared *wr
 	} else {
 		marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, fn.paramWide)
 	}
-	if err := in.callNativeSyncAdmitted(fn.entry, in.trap, nil, prepared); err != nil {
+	if err := in.callNativeSyncAdmitted(fn.entry, in.trap, nil, prepared, fixed, activation, nil); err != nil {
 		return nil, err
 	}
 	goruntime.KeepAlive(in)

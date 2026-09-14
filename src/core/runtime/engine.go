@@ -303,11 +303,34 @@ type PreparedHostScalarCall struct {
 	trap       []byte
 	results    []byte
 	ctrl       []byte
+	fixedSlots uint32
+	fixed      bool
 }
 
 // PrepareHostScalarCall validates and binds a reservation-held scalar host
 // entry. The returned handle is not safe for concurrent use.
 func (e *Engine) PrepareHostScalarCall(access runtimebridge.HostScalarCallAccess, code uintptr, serArgs []byte, memory *JobMemory, trap, results, ctrl []byte) (*PreparedHostScalarCall, error) {
+	return e.prepareHostScalarCall(access, code, serArgs, memory, trap, results, ctrl)
+}
+
+// PrepareHostScalarFixedCall validates and binds a reservation-held scalar host
+// entry whose root import has one immutable, compact slot shape. Foreign control
+// frames still use the complete checked dispatcher.
+func (e *Engine) PrepareHostScalarFixedCall(access runtimebridge.HostScalarCallAccess, code uintptr, serArgs []byte, memory *JobMemory, trap, results, ctrl []byte, rawSlots uint32) (*PreparedHostScalarCall, error) {
+	n, nres := int(rawSlots&0xffff), int(rawSlots>>16)
+	if n > 2 || nres > 2 {
+		return nil, fmt.Errorf("jit: fixed scalar host shape has %d parameter slots and %d result slots", n, nres)
+	}
+	prepared, err := e.prepareHostScalarCall(access, code, serArgs, memory, trap, results, ctrl)
+	if err != nil {
+		return nil, err
+	}
+	prepared.fixedSlots = rawSlots
+	prepared.fixed = true
+	return prepared, nil
+}
+
+func (e *Engine) prepareHostScalarCall(access runtimebridge.HostScalarCallAccess, code uintptr, serArgs []byte, memory *JobMemory, trap, results, ctrl []byte) (*PreparedHostScalarCall, error) {
 	if !access.Granted() {
 		return nil, fmt.Errorf("jit: prepared host-call access denied")
 	}
@@ -358,6 +381,37 @@ func (p *PreparedHostScalarCall) Call(host HostCall, scalar ScalarHostCall) erro
 		p.engine.hostScratchInUse = true
 		defer func() { p.engine.hostScratchInUse = false }()
 		callErr = p.engine.callWithHostLoop(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, host, scalar, p.engine.hostArgs[:], p.engine.hostResults[:])
+	}
+	goruntime.KeepAlive(p)
+	return callErr
+}
+
+// CallFixed enters a prepared host loop whose root import and scalar slot shape
+// were validated when the handle was created. Nested or foreign control frames
+// retain the generic host and scalar dispatchers.
+func (p *PreparedHostScalarCall) CallFixed(host HostCall, scalar ScalarHostCall, fixed FixedScalarHostCall) error {
+	if p == nil || p.engine == nil || !p.fixed {
+		return fmt.Errorf("jit: nil or non-fixed prepared host scalar call")
+	}
+	if host == nil {
+		return fmt.Errorf("jit: prepared host call dispatcher is nil")
+	}
+	if scalar == nil {
+		return fmt.Errorf("jit: prepared scalar host portal is nil")
+	}
+	if fixed == nil {
+		return fmt.Errorf("jit: prepared fixed scalar host portal is nil")
+	}
+	clearTrapUnlessInterrupted(p.trap)
+	ctrlPtr := slicePtr(p.ctrl)
+	var callErr error
+	if p.engine.hostScratchInUse {
+		var argBuf, resBuf [maxHostArity]uint64
+		callErr = p.engine.callWithHostLoopFixed(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, p.fixedSlots, host, scalar, fixed, argBuf[:], resBuf[:])
+	} else {
+		p.engine.hostScratchInUse = true
+		defer func() { p.engine.hostScratchInUse = false }()
+		callErr = p.engine.callWithHostLoopFixed(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, p.fixedSlots, host, scalar, fixed, p.engine.hostArgs[:], p.engine.hostResults[:])
 	}
 	goruntime.KeepAlive(p)
 	return callErr

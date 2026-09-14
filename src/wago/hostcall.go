@@ -609,6 +609,8 @@ type instancePluginState struct {
 	nativeContextVersion atomic.Uint64
 	invokeMu             invocationGate // serializes unrelated public calls across parked host callbacks
 	nativeExecutionMu    sync.Mutex     // serializes native entry for an independent instance
+	nativeShareMu        sync.Mutex     // coordinates retained local leases with resource publication
+	preparedHostGate     *preparedHostLeaseGate
 	invocationID         invocationID
 	close                atomic.Pointer[instanceCloseState]
 	gcConfig             *GCConfig
@@ -2471,8 +2473,8 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 	if err != nil {
 		return err
 	}
-	defer locked.unlockExecution()
-	return in.callNativeSyncAdmitted(entry, activeTrap, waitParent, nil)
+	defer in.unlockNativeEntry(locked)
+	return in.callNativeSyncAdmitted(entry, activeTrap, waitParent, nil, nil, nil, locked.local)
 }
 
 // callNativeSyncAdmitted drives one synchronous host-call activation while the
@@ -2480,13 +2482,7 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 // native context. PreparedSession uses this form to amortize that entry setup
 // across a run of calls; the callback dispatcher still parks and reacquires the
 // lease around arbitrary Go code.
-func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, prepared *runtime.PreparedHostScalarCall) (err error) {
-	if prepared == nil {
-		restoreInvocationContext := bindHostInvocationParent(in, waitParent)
-		defer restoreInvocationContext()
-		stopWaitContext := in.publishAtomicWaitContext(waitParent)
-		defer stopWaitContext()
-	}
+func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, prepared *runtime.PreparedHostScalarCall, preparedFixed runtime.FixedScalarHostCall, preparedActivation *hostLoopActivation, heldNativeMu *sync.Mutex) (err error) {
 	defer func() { err = in.decorateTrap(err) }()
 	defer func() {
 		if r := recover(); r != nil {
@@ -2545,14 +2541,29 @@ func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, wai
 			panic(r)
 		}
 	}()
-	if prepared == nil {
-		if err := in.jm.RebindTrapCell(activeTrap); err != nil {
-			return err
+	if prepared != nil {
+		if preparedActivation == nil {
+			return fmt.Errorf("wago: prepared host call has no activation")
 		}
-		in.jm.SetStackFence(in.eng.StackLimit())
-		if len(in.ctrl) >= runtime.HostCtrlFrameBytes {
-			in.jm.SetCustomCtx(uintptr(unsafe.Pointer(&in.ctrl[0])))
-		}
+		err = in.callPreparedHostSync(prepared, preparedFixed, preparedActivation)
+		goruntime.KeepAlive(in)
+		goruntime.KeepAlive(in.c)
+		return err
+	}
+	return in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, heldNativeMu)
+}
+
+func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, heldNativeMu *sync.Mutex) (err error) {
+	restoreInvocationContext := bindHostInvocationParent(in, waitParent)
+	defer restoreInvocationContext()
+	stopWaitContext := in.publishAtomicWaitContext(waitParent)
+	defer stopWaitContext()
+	if err := in.jm.RebindTrapCell(activeTrap); err != nil {
+		return err
+	}
+	in.jm.SetStackFence(in.eng.StackLimit())
+	if len(in.ctrl) >= runtime.HostCtrlFrameBytes {
+		in.jm.SetCustomCtx(uintptr(unsafe.Pointer(&in.ctrl[0])))
 	}
 	if in.hostCall == nil {
 		in.hostCall = in.newHostDispatch()
@@ -2563,14 +2574,11 @@ func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, wai
 		root:                        in,
 		ctrl:                        offHeapSlicePtr(in.ctrl),
 		state:                       in.ensurePluginState(),
+		entryNativeMu:               heldNativeMu,
 		parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
 	}
 	if in.hasSingleDirectTypedScalarHost() {
-		if prepared != nil {
-			err = prepared.Call(activation.dispatch, activation.dispatchSingleTypedScalarPortal)
-		} else {
-			err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleTypedScalarPortal)
-		}
+		err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleTypedScalarPortal)
 	} else if in.hasSingleExpandedTypedScalarHost() {
 		rawSlots, ok := in.syncHosts[0].typedScalarSlots()
 		if !ok {
@@ -2620,4 +2628,14 @@ func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, wai
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	return err
+}
+
+func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCall, fixed runtime.FixedScalarHostCall, activation *hostLoopActivation) error {
+	if preparedHostFixedEnabled {
+		if fixed == nil {
+			fixed = activation.dispatchSingleTypedScalarFixedPortal
+		}
+		return prepared.CallFixed(activation.dispatch, activation.dispatchSingleTypedScalarPortal, fixed)
+	}
+	return prepared.Call(activation.dispatch, activation.dispatchSingleTypedScalarPortal)
 }

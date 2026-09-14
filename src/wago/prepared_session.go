@@ -25,9 +25,17 @@ type preparedSessionState struct {
 	guardCalls     bool
 	entry          executionLease
 	hostCall       *runtime.PreparedHostScalarCall
+	hostFixed      runtime.FixedScalarHostCall
+	hostActivation hostLoopActivation
+	hostGate       preparedHostLeaseGate
 	active         atomic.Bool
 	closeRequested atomic.Bool
 	closed         atomic.Bool
+}
+
+type preparedHostLeaseGate struct {
+	active   *atomic.Bool
+	migrated atomic.Bool
 }
 
 // OpenSession acquires an instance reservation for repeated calls. Numeric
@@ -59,11 +67,26 @@ func (fn *PreparedFunction) OpenSession() (*PreparedSession, error) {
 	flags := in.executionFlags.Load()
 	noGCDomains := in.gc == nil && flags&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0
 	if fn.scalarFast && in.syncMode && noGCDomains && in.usesIndependentExecution() && in.hasSingleDirectTypedScalarHost() {
+		pluginState := in.ensurePluginState()
+		pluginState.nativeShareMu.Lock()
+		if !in.usesIndependentExecution() {
+			pluginState.nativeShareMu.Unlock()
+			return s, nil
+		}
 		entry, err := in.beginNativeEntry()
 		if err == nil {
-			prepared, prepareErr := in.eng.PrepareHostScalarCall(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm, in.trap, in.results, in.ctrl)
+			rawSlots, ok := in.syncHosts[0].typedScalarSlots()
+			if !ok {
+				entry.unlockExecution()
+				pluginState.nativeShareMu.Unlock()
+				state.lease.unlock()
+				in.endInvocation()
+				return nil, fmt.Errorf("wago: open prepared session host entry: invalid fixed scalar signature")
+			}
+			prepared, prepareErr := in.eng.PrepareHostScalarFixedCall(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm, in.trap, in.results, in.ctrl, rawSlots)
 			if prepareErr != nil {
 				entry.unlockExecution()
+				pluginState.nativeShareMu.Unlock()
 				state.lease.unlock()
 				in.endInvocation()
 				return nil, fmt.Errorf("wago: open prepared session host entry: %w", prepareErr)
@@ -71,8 +94,31 @@ func (fn *PreparedFunction) OpenSession() (*PreparedSession, error) {
 			state.host = true
 			state.entry = entry
 			state.hostCall = prepared
+			if in.hostCall == nil {
+				in.hostCall = in.newHostDispatch()
+			}
+			state.hostActivation = hostLoopActivation{
+				root:                        in,
+				ctrl:                        offHeapSlicePtr(in.ctrl),
+				state:                       pluginState,
+				entryNativeMu:               entry.local,
+				preparedMigration:           &state.hostGate.migrated,
+				parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
+			}
+			if preparedHostFixedEnabled {
+				switch in.syncHosts[0].scalarKind {
+				case syncHostTypedI32:
+					state.hostFixed = state.hostActivation.dispatchSingleTypedI32FixedPortal
+				case syncHostTypedI32x2:
+					state.hostFixed = state.hostActivation.dispatchSingleTypedI32x2FixedPortal
+				}
+			}
+			state.hostGate.active = &state.active
+			pluginState.preparedHostGate = &state.hostGate
+			pluginState.nativeShareMu.Unlock()
 			return s, nil
 		}
+		pluginState.nativeShareMu.Unlock()
 	}
 	return s, nil
 }
@@ -102,7 +148,7 @@ func (state *preparedSessionState) closeNow() {
 		fn.in.ensurePluginState().invokeMu.Unlock()
 	} else {
 		if state.host {
-			state.dropHostLease()
+			state.dropHostLease(false)
 		}
 		state.lease.unlock()
 	}
@@ -212,13 +258,15 @@ func (state *preparedSessionState) beginCall() (gcInvocationLease, error) {
 		if state.hostLeaseValid() {
 			return gcInvocationLease{}, nil
 		}
-		state.dropHostLease()
+		state.dropHostLease(false)
 	}
 	return in.lockGCInvocation(state.lease.state.invocationID), nil
 }
 
 func (state *preparedSessionState) endCall(gcLease gcInvocationLease) {
-	gcLease.unlock()
+	if gcLease.acquired {
+		gcLease.unlock()
+	}
 	if !state.guardCalls {
 		return
 	}
@@ -226,6 +274,10 @@ func (state *preparedSessionState) endCall(gcLease gcInvocationLease) {
 		state.closeNow()
 	}
 	state.active.Store(false)
+	// A publisher that observed an active call must see its local lease released.
+	if state.host && !state.hostLeaseValid() {
+		state.dropHostLease(state.hostGate.migrated.Load())
+	}
 }
 
 func (state *preparedSessionState) invokeScalarHostReserved(args []uint64) ([]uint64, error) {
@@ -234,10 +286,10 @@ func (state *preparedSessionState) invokeScalarHostReserved(args []uint64) ([]ui
 	// cached local lease and use the shared/general path.
 	defer func() {
 		if state.host && !state.hostLeaseValid() {
-			state.dropHostLease()
+			state.dropHostLease(state.hostGate.migrated.Load())
 		}
 	}()
-	return state.fn.invokeScalarHostReserved(args, state.hostCall)
+	return state.fn.invokeScalarHostReserved(args, state.hostCall, state.hostFixed, &state.hostActivation)
 }
 
 func (state *preparedSessionState) hostLeaseValid() bool {
@@ -246,8 +298,18 @@ func (state *preparedSessionState) hostLeaseValid() bool {
 	return in.gc == nil && flags&executionFlagIndependent != 0 && flags&preparedFastBlocked == 0
 }
 
-func (state *preparedSessionState) dropHostLease() {
-	state.entry.unlockExecution()
+func (state *preparedSessionState) dropHostLease(migrated bool) {
+	if migrated {
+		nativeExecutionMu.Unlock()
+	} else {
+		state.entry.unlockExecution()
+	}
+	pluginState := state.fn.in.ensurePluginState()
+	pluginState.nativeShareMu.Lock()
+	if pluginState.preparedHostGate == &state.hostGate {
+		pluginState.preparedHostGate = nil
+	}
+	pluginState.nativeShareMu.Unlock()
 	state.entry = executionLease{}
 	state.host = false
 	state.hostCall = nil

@@ -2,6 +2,8 @@ package wago
 
 import (
 	"errors"
+	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +24,51 @@ func preparedSessionReturningImportMemoryModule() []byte {
 			wasmtest.ExportEntry("memory", 2, 0),
 		)),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b}))),
+	)
+}
+
+func preparedSessionCallingImportTwiceMemoryModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x01})), // memory min=1, max=1
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("g", 0, 1),
+			wasmtest.ExportEntry("memory", 2, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x10, 0x00, // call import 0
+			0x10, 0x00, // call import 0 again before returning
+			0x0b,
+		}))),
+	)
+}
+
+func preparedSessionLoopWithoutCallingImportMemoryModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x01})), // memory min=1, max=1
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("g", 0, 1),
+			wasmtest.ExportEntry("memory", 2, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x02, 0x40, // block
+			0x03, 0x40, // loop
+			0x20, 0x00, // local.get 0
+			0x41, 0x01, // i32.const 1
+			0x6b,       // i32.sub
+			0x22, 0x00, // local.tee 0
+			0x0d, 0x00, // br_if loop
+			0x0b,       // end loop
+			0x0b,       // end block
+			0x20, 0x00, // local.get 0
+			0x0b,
+		}))),
 	)
 }
 
@@ -375,6 +422,88 @@ func TestPreparedSessionHostSharingRevokesCachedLease(t *testing.T) {
 	}
 }
 
+func TestPreparedSessionHostSharingBetweenCallbacksKeepsEntryLease(t *testing.T) {
+	compiled := MustCompile(preparedSessionCallingImportTwiceMemoryModule())
+	defer compiled.Close()
+	var in *Instance
+	var session *PreparedSession
+	var calls int
+	var migrated bool
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
+		"env.f": I32ToI32HostFunc(func(value int32) int32 {
+			calls++
+			if calls == 1 {
+				if _, exportErr := in.ExportedMemory("memory"); exportErr != nil {
+					panic(HostTrap{Err: exportErr})
+				}
+			} else {
+				migrated = session.state.hostGate.migrated.Load()
+			}
+			return value + 1
+		}),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareFunction("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err = fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if !session.state.host {
+		t.Fatal("typed host function did not acquire cached host lease")
+	}
+	if got, err := session.Invoke1(I32(41)); err != nil || len(got) != 1 || AsI32(got[0]) != 43 {
+		t.Fatalf("sharing between callbacks = %v, %v; want 43", got, err)
+	}
+	if calls != 2 {
+		t.Fatalf("host callback count = %d, want 2", calls)
+	}
+	if !migrated {
+		t.Fatal("parked host activation did not migrate to the process-wide native lease")
+	}
+	if session.state.host {
+		t.Fatal("session retained its private host lease after resource sharing")
+	}
+}
+
+func TestPreparedFunctionHostSharingBetweenCallbacksKeepsEntryLease(t *testing.T) {
+	compiled := MustCompile(preparedSessionCallingImportTwiceMemoryModule())
+	defer compiled.Close()
+	var in *Instance
+	var calls int
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
+		"env.f": I32ToI32HostFunc(func(value int32) int32 {
+			calls++
+			if calls == 1 {
+				if _, exportErr := in.ExportedMemory("memory"); exportErr != nil {
+					panic(HostTrap{Err: exportErr})
+				}
+			}
+			return value + 1
+		}),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareFunction("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := fn.Invoke1(I32(41)); err != nil || len(got) != 1 || AsI32(got[0]) != 43 {
+		t.Fatalf("sharing between prepared callbacks = %v, %v; want 43", got, err)
+	}
+	if calls != 2 {
+		t.Fatalf("host callback count = %d, want 2", calls)
+	}
+}
+
 func TestPreparedSessionHostSharingBeforeCallRevokesCachedLease(t *testing.T) {
 	compiled := MustCompile(preparedSessionReturningImportMemoryModule())
 	defer compiled.Close()
@@ -405,6 +534,140 @@ func TestPreparedSessionHostSharingBeforeCallRevokesCachedLease(t *testing.T) {
 	}
 	if session.state.host {
 		t.Fatal("session retained its private host lease after pre-call sharing")
+	}
+}
+
+func TestPreparedSessionConcurrentSharingDuringCallbackMigratesLease(t *testing.T) {
+	compiled := MustCompile(preparedSessionReturningImportMemoryModule())
+	defer compiled.Close()
+	entered, release := make(chan struct{}), make(chan struct{})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
+		"env.f": I32ToI32HostFunc(func(value int32) int32 {
+			close(entered)
+			<-release
+			return value + 1
+		}),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareFunction("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	callDone := make(chan error, 1)
+	go func() {
+		got, callErr := session.Invoke1(I32(41))
+		if callErr == nil && (len(got) != 1 || AsI32(got[0]) != 42) {
+			callErr = fmt.Errorf("result = %v, want 42", got)
+		}
+		callDone <- callErr
+	}()
+	<-entered
+	shareDone := make(chan error, 1)
+	go func() {
+		_, shareErr := in.ExportedMemory("memory")
+		shareDone <- shareErr
+	}()
+	select {
+	case err := <-shareDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("resource publication blocked on a parked callback")
+	}
+	close(release)
+	select {
+	case err := <-callDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("prepared callback did not resume after resource publication")
+	}
+	if !session.state.hostGate.migrated.Load() || session.state.host {
+		t.Fatal("concurrent resource publication did not migrate and retire the cached lease")
+	}
+}
+
+func TestPreparedSessionConcurrentSharingWithoutCallbackReleasesLease(t *testing.T) {
+	compiled := MustCompile(preparedSessionLoopWithoutCallingImportMemoryModule())
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
+		"env.f": I32ToI32HostFunc(func(value int32) int32 { return value + 1 }),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareFunction("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if !session.state.host {
+		t.Fatal("host-capable function did not acquire cached host lease")
+	}
+	callDone := make(chan error, 1)
+	go func() {
+		got, callErr := session.Invoke1(I32(50_000_000))
+		if callErr == nil && (len(got) != 1 || AsI32(got[0]) != 0) {
+			callErr = fmt.Errorf("result = %v, want 0", got)
+		}
+		callDone <- callErr
+	}()
+	deadline := time.Now().Add(time.Second)
+	for !session.state.active.Load() {
+		select {
+		case err := <-callDone:
+			if err != nil {
+				t.Error(err)
+			}
+			// Cooperative runtimes may run the native loop to completion before
+			// returning to this goroutine; the ordering stress is then inapplicable.
+			return
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Error("prepared call did not become active")
+			return
+		}
+		runtime.Gosched()
+	}
+	shareDone := make(chan error, 1)
+	go func() {
+		_, shareErr := in.ExportedMemory("memory")
+		shareDone <- shareErr
+	}()
+	select {
+	case err := <-callDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("host-capable call deadlocked during resource publication")
+	}
+	select {
+	case err := <-shareDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("resource publication did not finish after host-capable call")
+	}
+	if session.state.hostGate.migrated.Load() || session.state.host {
+		t.Fatal("non-callback publication retained or falsely migrated the cached lease")
 	}
 }
 

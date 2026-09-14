@@ -112,4 +112,25 @@ func TestPrepareHostScalarCallRejectsInvalidState(t *testing.T) {
 	if err := prepared.Call(host, nil); err == nil {
 		t.Fatal("prepared host call accepted a nil scalar portal")
 	}
+	if err := prepared.CallFixed(host, func(uintptr, uint32, uint32, uint64, uint64) (uint64, bool) { return 0, false }, func(uint64, uint64) uint64 { return 0 }); err == nil {
+		t.Fatal("non-fixed prepared host call accepted fixed dispatch")
+	}
+	if _, err := engine.PrepareHostScalarFixedCall(access, 1, nil, jm, trap, nil, ctrl, 3|1<<16); err == nil {
+		t.Fatal("fixed prepared host call accepted three parameter slots")
+	}
+	fixed, err := engine.PrepareHostScalarFixedCall(access, 1, nil, jm, trap, nil, ctrl, 1|1<<16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scalar := ScalarHostCall(func(uintptr, uint32, uint32, uint64, uint64) (uint64, bool) { return 0, false })
+	fixedPortal := FixedScalarHostCall(func(uint64, uint64) uint64 { return 0 })
+	if err := fixed.CallFixed(nil, scalar, fixedPortal); err == nil {
+		t.Fatal("fixed prepared host call accepted a nil host dispatcher")
+	}
+	if err := fixed.CallFixed(host, nil, fixedPortal); err == nil {
+		t.Fatal("fixed prepared host call accepted a nil scalar portal")
+	}
+	if err := fixed.CallFixed(host, scalar, nil); err == nil {
+		t.Fatal("fixed prepared host call accepted a nil fixed portal")
+	}
 }

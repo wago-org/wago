@@ -181,13 +181,14 @@ func (in *Instance) beginNativeEntry() (executionLease, error) {
 	if in.usesIndependentExecution() {
 		mu := in.independentNativeExecutionMu()
 		mu.Lock()
-		if err := in.bindAndValidateNativeContext(); err != nil {
-			mu.Unlock()
-
-			return executionLease{}, err
+		if in.usesIndependentExecution() {
+			if err := in.bindAndValidateNativeContext(); err != nil {
+				mu.Unlock()
+				return executionLease{}, err
+			}
+			return executionLease{local: mu}, nil
 		}
-
-		return executionLease{local: mu}, nil
+		mu.Unlock()
 	}
 	if in.c.threadedMemory0() {
 		mu := &in.memoryDir.nativeMu
@@ -288,6 +289,17 @@ func (l executionLease) unlockExecution() {
 	nativeExecutionMu.Unlock()
 }
 
+// unlockNativeEntry releases the mutex held after a host callback returns. A
+// resource published while an independent activation is parked revokes local
+// execution and makes the callback migrate to the process-wide mutex.
+func (in *Instance) unlockNativeEntry(l executionLease) {
+	if l.local != nil && !in.c.threadedMemory0() && !in.usesIndependentExecution() {
+		nativeExecutionMu.Unlock()
+		return
+	}
+	l.unlockExecution()
+}
+
 func (in *Instance) independentNativeExecutionMu() *sync.Mutex {
 	if in.memoryDir != nil {
 		return &in.memoryDir.nativeMu
@@ -306,7 +318,25 @@ func (in *Instance) usesIndependentExecution() bool {
 }
 
 func (in *Instance) markNativeControlShared() {
-	in.ensurePluginState().invokeMu.revokeFast()
+	state := in.ensurePluginState()
+	state.invokeMu.revokeFast()
+	// Ordinary publication takes the independent mutex before setting the shared
+	// bit. A retained prepared-session lease cannot do that while idle, so its
+	// registered gate publishes the shared bit before sampling call activity. A
+	// call therefore either observes revocation at start or makes publication
+	// synchronize with its parked/held local mutex. This closes both the
+	// check/publish race and idle deadlock.
+	var localMu *sync.Mutex
+	var retainedGate *preparedHostLeaseGate
+	state.nativeShareMu.Lock()
+	if in.usesIndependentExecution() {
+		if gate := state.preparedHostGate; gate != nil {
+			retainedGate = gate
+		} else {
+			localMu = in.independentNativeExecutionMu()
+			localMu.Lock()
+		}
+	}
 	for {
 		flags := in.executionFlags.Load()
 		if flags&executionFlagNativeControlShared != 0 ||
@@ -314,11 +344,19 @@ func (in *Instance) markNativeControlShared() {
 			break
 		}
 	}
+	if retainedGate != nil && retainedGate.active.Load() {
+		mu := in.independentNativeExecutionMu()
+		mu.Lock()
+		mu.Unlock()
+	} else if localMu != nil {
+		localMu.Unlock()
+	}
+	state.nativeShareMu.Unlock()
 	// Publishing the shared bit prevents new specialized entries. Do not return
 	// a shareable resource until the previous fast activation has left native
 	// code. The gate notification closes the check/wait race without spinning.
 	if in.executionFlags.Load()&executionFlagPreparedActive != 0 {
-		gate := &in.ensurePluginState().invokeMu
+		gate := &state.invokeMu
 		gate.mu.Lock()
 		for in.executionFlags.Load()&executionFlagPreparedActive != 0 {
 			if gate.changed == nil {
