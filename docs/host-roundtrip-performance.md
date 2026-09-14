@@ -61,6 +61,27 @@ validates the trap buffer and control frame, and binds their stable addresses
 once. The session's invocation lease keeps those owners alive, and the hot
 `Call` method accepts no caller-supplied native pointers or buffers.
 
+### Matched prepared-session measurements
+
+The following medians use 12 500 ms samples of the computation-free identity
+fixtures in `bench/suite`. Wago uses one caller-owned `PreparedSession`; wazero
+uses its public function call API. Both Wago paths return the same checked value
+as their wazero control.
+
+| Host | Boundary | Wago | wazero | Speedup | Wago allocations | wazero allocations |
+|---|---|---:|---:|---:|---:|---:|
+| Linux/amd64, Ryzen 7 7800X3D, Go 1.22.2 | host to Wasm | 10.53 ns | 37.39 ns | 3.55x | 0 B, 0 allocs | 16 B, 2 allocs |
+| Linux/amd64, Ryzen 7 7800X3D, Go 1.22.2 | Wasm to host to Wasm | 214.9 ns | 461.9 ns | 2.15x | 0 B, 0 allocs | 112 B, 7 allocs |
+| Darwin/arm64, Apple M4 Max, Go 1.26.5 | host to Wasm | 5.522 ns | 22.18 ns | 4.02x | 0 B, 0 allocs | 16 B, 2 allocs |
+| Darwin/arm64, Apple M4 Max, Go 1.26.5 | Wasm to host to Wasm | 158.8 ns | 295.2 ns | 1.86x | 0 B, 0 allocs | 112 B, 7 allocs |
+
+The cached host session rechecks all revocable execution and GC-domain flags
+before every call. While those flags still prove that no collector domain is
+reachable, it skips the otherwise empty per-call GC-domain lookup. Resource
+sharing or GC-domain publication drops the cached native lease and executes the
+same call through the ordinary admitted path. The scheduler park/restore around
+arbitrary Go callbacks is unchanged.
+
 ## Measurement method
 
 `BenchmarkHostRoundtripLoop` uses one compiled module and the same `run` export,

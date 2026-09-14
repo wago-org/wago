@@ -204,7 +204,17 @@ func (state *preparedSessionState) beginCall() (gcInvocationLease, error) {
 	if state.guardCalls && !state.active.CompareAndSwap(false, true) {
 		return gcInvocationLease{}, fmt.Errorf("wago: prepared session is already active")
 	}
-	return state.fn.in.lockGCInvocation(state.lease.state.invocationID), nil
+	in := state.fn.in
+	// Cached host admission proves that the instance has no local or reachable
+	// collector domain. Recheck the revocable flags on every call so resource
+	// sharing falls back to the ordinary per-call GC lease before dispatch.
+	if state.host {
+		if state.hostLeaseValid() {
+			return gcInvocationLease{}, nil
+		}
+		state.dropHostLease()
+	}
+	return in.lockGCInvocation(state.lease.state.invocationID), nil
 }
 
 func (state *preparedSessionState) endCall(gcLease gcInvocationLease) {
@@ -222,16 +232,18 @@ func (state *preparedSessionState) invokeScalarHostReserved(args []uint64) ([]ui
 	// A capability-free callback can still publish a captured resource. The
 	// current parked activation restores safely; all later calls must leave the
 	// cached local lease and use the shared/general path.
-	if !state.fn.in.usesIndependentExecution() {
-		state.dropHostLease()
-		return state.fn.invokeScalarAdmitted(args)
-	}
 	defer func() {
-		if state.host && !state.fn.in.usesIndependentExecution() {
+		if state.host && !state.hostLeaseValid() {
 			state.dropHostLease()
 		}
 	}()
 	return state.fn.invokeScalarHostReserved(args, state.hostCall)
+}
+
+func (state *preparedSessionState) hostLeaseValid() bool {
+	in := state.fn.in
+	flags := in.executionFlags.Load()
+	return in.gc == nil && flags&executionFlagIndependent != 0 && flags&preparedFastBlocked == 0
 }
 
 func (state *preparedSessionState) dropHostLease() {

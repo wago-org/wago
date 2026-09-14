@@ -6,8 +6,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func preparedSessionReturningImportMemoryModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x01})), // memory min=1, max=1
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("g", 0, 1),
+			wasmtest.ExportEntry("memory", 2, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b}))),
+	)
+}
 
 func TestPreparedSessionDirectReservation(t *testing.T) {
 	in, fn := narrowPreparedFixture(t)
@@ -206,17 +222,13 @@ func TestPreparedSessionRejectsCallbackReentryAndDefersCallbackClose(t *testing.
 }
 
 func TestPreparedSessionGuardsDeferredHostEventReplay(t *testing.T) {
-	compiled := MustCompile(watToWasm(t, `(module
-		(import "env" "event" (func $event (param i32)))
-		(func (export "run") (param i32)
-			local.get 0
-			call $event))`))
+	compiled := MustCompile(voidI32ImportCallerModule())
 	defer compiled.Close()
 	var session *PreparedSession
 	var reentryErr error
 	calls := 0
 	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.event": I32HostEvent(func(value int32) {
+		"env.log": I32HostEvent(func(value int32) {
 			calls++
 			if calls == 1 {
 				_, reentryErr = session.Invoke1(I32(value))
@@ -229,7 +241,7 @@ func TestPreparedSessionGuardsDeferredHostEventReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("run")
+	fn, err := in.PrepareFunction("g")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,12 +331,7 @@ func TestPreparedSessionReservationDoesNotHoldGCDomain(t *testing.T) {
 }
 
 func TestPreparedSessionHostSharingRevokesCachedLease(t *testing.T) {
-	compiled := MustCompile(watToWasm(t, `(module
-		(import "env" "f" (func $f (param i32) (result i32)))
-		(memory (export "memory") 1 1)
-		(func (export "g") (param i32) (result i32)
-			local.get 0
-			call $f))`))
+	compiled := MustCompile(preparedSessionReturningImportMemoryModule())
 	defer compiled.Close()
 	var in *Instance
 	var exported *Memory
@@ -365,6 +372,39 @@ func TestPreparedSessionHostSharingRevokesCachedLease(t *testing.T) {
 	}
 	if got, err := session.Invoke1(I32(41)); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
 		t.Fatalf("post-sharing fallback call = %v, %v; want 42", got, err)
+	}
+}
+
+func TestPreparedSessionHostSharingBeforeCallRevokesCachedLease(t *testing.T) {
+	compiled := MustCompile(preparedSessionReturningImportMemoryModule())
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
+		"env.f": I32ToI32HostFunc(func(value int32) int32 { return value + 1 }),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareFunction("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if !session.state.host {
+		t.Fatal("typed host function did not acquire cached host lease")
+	}
+	if _, err := in.ExportedMemory("memory"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := session.Invoke1(I32(41)); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("pre-shared fallback call = %v, %v; want 42", got, err)
+	}
+	if session.state.host {
+		t.Fatal("session retained its private host lease after pre-call sharing")
 	}
 }
 
@@ -409,6 +449,9 @@ func TestPreparedSessionHostPanicAndExitCleanup(t *testing.T) {
 		{name: "exit", first: func() { panic(HostExit{Code: 23}) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "panic" && !requireStandardGoTestRuntime(t) {
+				return
+			}
 			compiled := MustCompile(benchReturningImportModule())
 			defer compiled.Close()
 			calls := 0
