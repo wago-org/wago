@@ -22,10 +22,15 @@ func ParseElementExpr(e Expr) (ElementExpr, error) {
 		switch in := e.Instrs[0]; in.Kind {
 		case InstrRefNull:
 			ref := in.RefType()
-			if !EqualValType(RefVal(ref), FuncRef) && !EqualValType(RefVal(ref), ExternRef) {
-				return ElementExpr{}, fmt.Errorf("ref.null type %s is not funcref or externref", RefVal(ref))
+			if ref.Nullable() && !ref.Exact() && ref.Heap().Kind() == HeapAbs {
+				switch ref.Heap().Abs() {
+				case HeapFunc, HeapNoFunc:
+					return ElementExpr{RefType: FuncRef.Ref(), Null: true}, nil
+				case HeapExtern, HeapNoExtern:
+					return ElementExpr{RefType: ExternRef.Ref(), Null: true}, nil
+				}
 			}
-			return ElementExpr{RefType: ref, Null: true}, nil
+			return ElementExpr{}, fmt.Errorf("ref.null type %s is not funcref or externref", RefVal(ref))
 		case InstrRefFunc:
 			return ElementExpr{RefType: FuncRef.Ref(), FuncIndex: in.Index}, nil
 		case InstrGlobalGet:
