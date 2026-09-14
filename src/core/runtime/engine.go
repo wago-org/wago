@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/runtimebridge"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
@@ -290,26 +291,75 @@ func (e *Engine) CallWithHostBaseScalar(code uintptr, serArgs []byte, linMemBase
 	return e.callWithHostBase(code, serArgs, linMemBase, trap, results, ctrl, host, scalar)
 }
 
-// CallWithHostBaseScalarPrepared enters a reservation-held host-capable call.
-// The caller has already initialized ctrl and bound the stable trap cell into
-// linMemBase, so the zero-trap fast path can go directly to the host loop.
-func (e *Engine) CallWithHostBaseScalarPrepared(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, host HostCall, scalar ScalarHostCall) error {
-	clearTrapUnlessInterrupted(trap)
-	ctrlPtr := slicePtr(ctrl)
-	var callErr error
-	if e.hostScratchInUse {
-		var argBuf, resBuf [maxHostArity]uint64
-		callErr = e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, scalar, argBuf[:], resBuf[:])
-	} else {
-		e.hostScratchInUse = true
-		defer func() { e.hostScratchInUse = false }()
-		callErr = e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, scalar, e.hostArgs[:], e.hostResults[:])
+// PreparedHostScalarCall is a validated host-capable native entry. Its buffers
+// and JobMemory remain owned by the caller and must outlive the prepared call.
+// Keeping them behind this opaque handle prevents the hot path from accepting
+// unchecked pointers or short control/trap buffers on every invocation.
+type PreparedHostScalarCall struct {
+	engine     *Engine
+	code       uintptr
+	serArgs    []byte
+	linMemBase uintptr
+	trap       []byte
+	results    []byte
+	ctrl       []byte
+}
+
+// PrepareHostScalarCall validates and binds a reservation-held scalar host
+// entry. The returned handle is not safe for concurrent use.
+func (e *Engine) PrepareHostScalarCall(access runtimebridge.HostScalarCallAccess, code uintptr, serArgs []byte, memory *JobMemory, trap, results, ctrl []byte) (*PreparedHostScalarCall, error) {
+	if !access.Granted() {
+		return nil, fmt.Errorf("jit: prepared host-call access denied")
 	}
-	goruntime.KeepAlive(serArgs)
-	goruntime.KeepAlive(trap)
-	goruntime.KeepAlive(results)
-	goruntime.KeepAlive(ctrl)
-	goruntime.KeepAlive(e)
+	if e == nil {
+		return nil, fmt.Errorf("jit: nil engine")
+	}
+	if len(e.stack) < int(MinNativeStackBytes) || e.stackTop == 0 {
+		return nil, fmt.Errorf("jit: host-call engine is not initialized")
+	}
+	if code == 0 {
+		return nil, fmt.Errorf("jit: host-call code address is zero")
+	}
+	if memory == nil {
+		return nil, fmt.Errorf("jit: host-call memory is nil")
+	}
+	if err := validateTrapBuffer(trap); err != nil {
+		return nil, err
+	}
+	if err := InitHostCtrlFrame(ctrl); err != nil {
+		return nil, err
+	}
+	if err := memory.RebindTrapCell(trap); err != nil {
+		return nil, err
+	}
+	memory.SetStackFence(e.StackLimit())
+	memory.SetCustomCtx(slicePtr(ctrl))
+	return &PreparedHostScalarCall{engine: e, code: code, serArgs: serArgs, linMemBase: memory.LinMemBase(), trap: trap, results: results, ctrl: ctrl}, nil
+}
+
+// Call enters the validated reservation-held host loop.
+func (p *PreparedHostScalarCall) Call(host HostCall, scalar ScalarHostCall) error {
+	if p == nil || p.engine == nil {
+		return fmt.Errorf("jit: nil prepared host scalar call")
+	}
+	if host == nil {
+		return fmt.Errorf("jit: prepared host call dispatcher is nil")
+	}
+	if scalar == nil {
+		return fmt.Errorf("jit: prepared scalar host portal is nil")
+	}
+	clearTrapUnlessInterrupted(p.trap)
+	ctrlPtr := slicePtr(p.ctrl)
+	var callErr error
+	if p.engine.hostScratchInUse {
+		var argBuf, resBuf [maxHostArity]uint64
+		callErr = p.engine.callWithHostLoop(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, host, scalar, argBuf[:], resBuf[:])
+	} else {
+		p.engine.hostScratchInUse = true
+		defer func() { p.engine.hostScratchInUse = false }()
+		callErr = p.engine.callWithHostLoop(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, host, scalar, p.engine.hostArgs[:], p.engine.hostResults[:])
+	}
+	goruntime.KeepAlive(p)
 	return callErr
 }
 

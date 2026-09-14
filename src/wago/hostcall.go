@@ -2472,7 +2472,7 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 		return err
 	}
 	defer locked.unlockExecution()
-	return in.callNativeSyncAdmitted(entry, activeTrap, waitParent, false)
+	return in.callNativeSyncAdmitted(entry, activeTrap, waitParent, nil)
 }
 
 // callNativeSyncAdmitted drives one synchronous host-call activation while the
@@ -2480,8 +2480,8 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 // native context. PreparedSession uses this form to amortize that entry setup
 // across a run of calls; the callback dispatcher still parks and reacquires the
 // lease around arbitrary Go code.
-func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, prepared bool) (err error) {
-	if !prepared {
+func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, prepared *runtime.PreparedHostScalarCall) (err error) {
+	if prepared == nil {
 		restoreInvocationContext := bindHostInvocationParent(in, waitParent)
 		defer restoreInvocationContext()
 		stopWaitContext := in.publishAtomicWaitContext(waitParent)
@@ -2545,7 +2545,7 @@ func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, wai
 			panic(r)
 		}
 	}()
-	if !prepared {
+	if prepared == nil {
 		if err := in.jm.RebindTrapCell(activeTrap); err != nil {
 			return err
 		}
@@ -2566,8 +2566,8 @@ func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, wai
 		parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
 	}
 	if in.hasSingleDirectTypedScalarHost() {
-		if prepared {
-			err = in.eng.CallWithHostBaseScalarPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleTypedScalarPortal)
+		if prepared != nil {
+			err = prepared.Call(activation.dispatch, activation.dispatchSingleTypedScalarPortal)
 		} else {
 			err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleTypedScalarPortal)
 		}

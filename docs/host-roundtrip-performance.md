@@ -20,6 +20,47 @@ These constraints apply before and after each optimization:
 8. Every shortcut needs a conservative fallback. State exhaustion must not
    silently remove identity or authorization checks.
 
+## Reservation-held prepared calls
+
+`PreparedSession` amortizes public invocation admission across a caller-owned
+run of calls. All copies of a session share one close state: closing any copy
+releases the lease once and invalidates every alias. Calls and `Instance` access
+must not run concurrently with the session.
+
+The lock-free direct path remains limited to the compiler-proved isolated
+integer shape. A cached host-capable entry additionally requires one direct,
+capability-free typed scalar import, independent execution, and no local,
+imported, dynamic, or store-owned WasmGC collector domain. If captured host code
+publishes memory, a table, a global, or a function during a callback, the current
+parked activation restores through the existing version check and the session
+drops its cached local lease before any later call. Later calls use the ordinary
+shared-context path. Capability-bearing `HostFunc` callbacks never enter the
+cached session path.
+
+Non-direct import-free sessions do not retain the process-wide native execution
+lease between calls. They keep only instance admission and acquire native state
+through the ordinary per-call path, so an abandoned session cannot stall
+unrelated instances globally.
+
+Session reservations likewise retain only the instance invocation identity,
+not shared WasmGC domain ownership. GC domains are acquired and released around
+each call, so an idle or abandoned session cannot block collection or invocation
+in another instance that shares a collector domain.
+
+Host callbacks, including deferred `I32HostEvent` replay, cannot re-enter the
+same session while its outer call is active; that attempt returns an explicit
+already-active error before touching native buffers. A callback may close its
+session, but lease release is deferred until the outer activation has restored
+and returned.
+
+The core runtime represents cached host entry state as an opaque
+`PreparedHostScalarCall`. Its constructor requires a module-internal capability,
+so external consumers cannot supply arbitrary code or memory addresses.
+Preparation checks the engine state, rejects zero code or missing memory,
+validates the trap buffer and control frame, and binds their stable addresses
+once. The session's invocation lease keeps those owners alive, and the hot
+`Call` method accepts no caller-supplied native pointers or buffers.
+
 ## Measurement method
 
 `BenchmarkHostRoundtripLoop` uses one compiled module and the same `run` export,
