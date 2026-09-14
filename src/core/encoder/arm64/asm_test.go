@@ -31,6 +31,7 @@ func TestEncodings(t *testing.T) {
 		{"add x5,x6,#0", func(a *Asm) { a.AddImm64(X5, X6, 0) }, 0x910000c5},
 		{"add x5,x6,#4095", func(a *Asm) { a.AddImm64(X5, X6, 4095) }, 0x913ffcc5},
 		{"sub x5,x6,#256", func(a *Asm) { a.SubImm64(X5, X6, 256) }, 0xd10400c5},
+		{"subs w5,w6,#1", func(a *Asm) { a.SubsImm32(X5, X6, 1) }, 0x710004c5},
 		{"sub sp,sp,#16", func(a *Asm) { a.SubSP64(16) }, 0xd10043ff},
 		{"add sp,sp,#16", func(a *Asm) { a.AddSP64(16) }, 0x910043ff},
 		// moves
@@ -126,6 +127,27 @@ func TestEncodings(t *testing.T) {
 				t.Errorf("%s: got %#08x, want %#08x", c.name, got, c.want)
 			}
 		})
+	}
+}
+
+func TestLiteralFloatLoadPatch(t *testing.T) {
+	var a Asm
+	s := a.LdrLiteralF(X3, false)
+	d := a.LdrLiteralF(X7, true)
+	if s != 0 || d != 4 {
+		t.Fatalf("literal sites = %d/%d, want 0/4", s, d)
+	}
+	if !a.PatchLiteral19(s, 16) || !a.PatchLiteral19(d, 0) {
+		t.Fatal("in-range literal patch rejected")
+	}
+	if got := a.wordAt(s); got != 0x1C000083 {
+		t.Fatalf("LDR S literal = %#08x, want %#08x", got, uint32(0x1C000083))
+	}
+	if got := a.wordAt(d); got != 0x5CFFFFE7 {
+		t.Fatalf("LDR D literal = %#08x, want %#08x", got, uint32(0x5CFFFFE7))
+	}
+	if a.PatchLiteral19(s, 2) || a.PatchLiteral19(s, 1<<20) {
+		t.Fatal("invalid literal displacement accepted")
 	}
 }
 

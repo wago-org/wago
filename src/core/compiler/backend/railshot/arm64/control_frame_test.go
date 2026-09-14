@@ -29,6 +29,29 @@ func TestCtrlFrameSize(t *testing.T) {
 	}
 }
 
+func TestCountedLoopMetadataSharesLoopSetWordArm64(t *testing.T) {
+	for _, countedFirst := range []bool{false, true} {
+		var merge ctrlFrameMerge
+		if countedFirst {
+			if !merge.setCountedLoop(37) {
+				t.Fatal("failed to encode counted-loop local")
+			}
+			merge.setLoopSet(123, 19)
+		} else {
+			merge.setLoopSet(123, 19)
+			if !merge.setCountedLoop(37) {
+				t.Fatal("failed to encode counted-loop local")
+			}
+		}
+		if counter, ok := merge.countedLoop(); !ok || counter != 37 {
+			t.Fatalf("countedFirst=%t: counter = %d, %t; want 37, true", countedFirst, counter, ok)
+		}
+		if !merge.hasLoopSet() || merge.loopSetStart != 123 || merge.loopSetCount() != 19 {
+			t.Fatalf("countedFirst=%t: loop set = start %d count %d known %t", countedFirst, merge.loopSetStart, merge.loopSetCount(), merge.hasLoopSet())
+		}
+	}
+}
+
 func TestControlGCRootSegmentsShareBackingArm64(t *testing.T) {
 	var f fn
 	fr := ctrlFrame{height: 2, paramN: 2, resultN: 2}

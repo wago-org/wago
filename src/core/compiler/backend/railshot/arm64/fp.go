@@ -3,12 +3,28 @@
 package arm64
 
 import (
+	"encoding/binary"
+	"fmt"
 	"math"
+	"os"
 
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+var floatLiteralPoolEnabled = os.Getenv("WAGO_ARM64_NO_FCONST_POOL") != "1"
+
+type floatPoolConst struct {
+	bits uint64
+	head uint32 // floatPoolSites index + 1; zero ends the list
+	f64  bool
+}
+
+type floatPoolSite struct {
+	off  uint32
+	next uint32
+}
 
 // floatBits returns the bit pattern of v in the given float width.
 func floatBits(v float64, f64 bool) uint64 {
@@ -58,7 +74,7 @@ func (f *fn) fconstMask() regMask {
 // allocFReg returns a free V register, spilling the deepest float-resident stack
 // value if none is free.
 func (f *fn) allocFReg(avoid regMask) Reg {
-	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask())
+	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
 	for _, r := range fpAllocRegs {
 		if f.fregUser[r] == nil && !block.has(r) {
 			return r
@@ -276,11 +292,14 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	if bestN >= 2*firstN {
 		choice = best
 	}
+	oldSuppress := f.suppressFloatLiteral
+	f.suppressFloatLiteral = true
 	for _, i := range choice {
 		if i >= 0 {
 			f.floatConstReg(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
 		}
 	}
+	f.suppressFloatLiteral = oldSuppress
 }
 
 // pushFReg pushes a V-resident float value of the given type.
@@ -309,6 +328,11 @@ func (f *fn) loadFConst(r Reg, st storage) {
 			return
 		}
 	}
+	if f.floatLiteralPool && !f.suppressFloatLiteral {
+		f.recordFloatLiteral(uint64(st.cval), st.typ == mtF64, f.a.LdrLiteralF(r, st.typ == mtF64))
+		f.stats.peep("fp-literal-const")
+		return
+	}
 	t := f.allocReg(0)
 	if st.typ == mtF64 {
 		f.a.MovImm64(t, uint64(st.cval))
@@ -318,6 +342,61 @@ func (f *fn) loadFConst(r Reg, st storage) {
 		f.a.FmovFromGpr(r, t, false)
 	}
 	f.release(t)
+}
+
+func (f *fn) recordFloatLiteral(bits uint64, f64 bool, site int) {
+	if !f64 {
+		bits = uint64(uint32(bits))
+	}
+	for i := range f.floatPool {
+		c := &f.floatPool[i]
+		if c.bits == bits && c.f64 == f64 {
+			f.floatPoolSites = append(f.floatPoolSites, floatPoolSite{off: uint32(site), next: c.head})
+			c.head = uint32(len(f.floatPoolSites))
+			f.recordPCRelative(site)
+			return
+		}
+	}
+	f.floatPoolSites = append(f.floatPoolSites, floatPoolSite{off: uint32(site)})
+	f.floatPool = append(f.floatPool, floatPoolConst{bits: bits, head: uint32(len(f.floatPoolSites)), f64: f64})
+	f.recordPCRelative(site)
+}
+
+// emitFloatConstPool appends deduplicated scalar constants after the terminating
+// code and patches every LDR literal site. The pool is opaque to the native
+// finalizer, which still remaps each PC-relative load when it compacts code.
+func (f *fn) emitFloatConstPool() error {
+	if len(f.floatPool) == 0 {
+		return nil
+	}
+	poolStart := f.a.Len()
+	if poolStart&7 != 0 {
+		f.a.B = append(f.a.B, 0, 0, 0, 0)
+	}
+	for _, c := range f.floatPool {
+		off := f.a.Len()
+		var raw [8]byte
+		binary.LittleEndian.PutUint64(raw[:], c.bits)
+		size := 4
+		if c.f64 {
+			size = 8
+		}
+		f.a.B = append(f.a.B, raw[:size]...)
+		for head := c.head; head != 0; {
+			s := f.floatPoolSites[head-1]
+			if !f.a.PatchLiteral19(int(s.off), off) {
+				return fmt.Errorf("arm64: float literal at %d is out of range from load at %d", off, s.off)
+			}
+			head = s.next
+		}
+	}
+	f.recordOpaqueData(poolStart, f.a.Len())
+	if f.stats != nil {
+		f.stats.NativeSize.LiteralPoolBytes += f.a.Len() - poolStart
+	}
+	f.floatPool = f.floatPool[:0]
+	f.floatPoolSites = f.floatPoolSites[:0]
+	return nil
 }
 
 // encodeFPImmediate is the inverse of ARM's VFPExpandImm for f32/f64. The
@@ -405,12 +484,15 @@ func (f *fn) fconst(bits uint64, typ machineType) {
 // arm64 has no memory-source float ops (§4a): a stMemRef right operand is not
 // folded here; operandRegF materializes it with an explicit LDR (loadFMemRef).
 // memOp is retained for caller-signature parity with the amd64 twin and is unused.
-func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
+func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64, poolRHS bool) {
 	b := f.popValue()
 	a := f.popValue()
 	s1, o1 := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(s1)
+	oldSuppress := f.suppressFloatLiteral
+	f.suppressFloatLiteral = !poolRHS
 	s2, o2 := f.operandRegF(b)
+	f.suppressFloatLiteral = oldSuppress
 	// Destination: reuse an owned operand's register in place (it is being
 	// consumed), else a fresh register so a borrowed pinned local isn't clobbered.
 	var dst Reg

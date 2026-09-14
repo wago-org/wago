@@ -237,7 +237,10 @@ func TestMemoryCopyDynamicChunksArm64(t *testing.T) {
 	for _, setting := range settings {
 		for _, tc := range cases {
 			t.Run(fmt.Sprintf("%s/%s", setting.name, tc.name), func(t *testing.T) {
-				body := []byte{0x00, 0x41}
+				// Nineteen declared locals plus the length parameter select the
+				// bounded call-free-loop memory.copy specialization. The empty loop
+				// keeps this execution matrix focused on the specialized lowering.
+				body := []byte{0x01, 0x13, 0x7f, 0x03, 0x40, 0x0b, 0x41}
 				body = append(body, wasmtest.SLEB32(tc.dst)...)
 				body = append(body, 0x41)
 				body = append(body, wasmtest.SLEB32(tc.src)...)
@@ -247,8 +250,10 @@ func TestMemoryCopyDynamicChunksArm64(t *testing.T) {
 					0x0b,
 				)
 				m := modMem(t, 1, []wasm.ValType{wasm.I32}, nil, body)
+				var stats ModuleStats
 				cm, err := CompileModuleWith(m, CompileOptions{
 					ElideBoundsChecks: true,
+					Stats:             &stats,
 					Optimizations: map[string]bool{
 						"memcopy-tail4":  setting.tail4,
 						"memcopy-qpairs": setting.qpairs,
@@ -256,6 +261,9 @@ func TestMemoryCopyDynamicChunksArm64(t *testing.T) {
 				})
 				if err != nil {
 					t.Fatalf("compile: %v", err)
+				}
+				if got := stats.Funcs[0].Peephole["memcopy-forward-32"]; got != 1 {
+					t.Fatalf("memcopy-forward-32 = %d, want 1", got)
 				}
 				code, err := arm64spike.MapExec(cm.Code)
 				if err != nil {

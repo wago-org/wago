@@ -84,6 +84,42 @@ func TestFPImmediateConstExecArm64(t *testing.T) {
 	}
 }
 
+func TestFloatLiteralPoolExecArm64(t *testing.T) {
+	beforePool := floatLiteralPoolEnabled
+	beforeValidate := nativeFinalizerValidate
+	floatLiteralPoolEnabled = true
+	nativeFinalizerValidate = true
+	t.Cleanup(func() {
+		floatLiteralPoolEnabled = beforePool
+		nativeFinalizerValidate = beforeValidate
+	})
+
+	values := []float64{1.1, 2.2, 3.3}
+	body := []byte{0x00}
+	for i, value := range values {
+		body = appendF64ConstForCacheTest(body, value)
+		if i+1 < len(values) {
+			body = append(body, 0x1a) // drop
+		}
+	}
+	body = append(body, 0xbd, 0x0b) // i64.reinterpret_f64; end
+	m := mod1(t, nil, []wasm.ValType{wasm.I64}, body)
+	stats := &ModuleStats{}
+	got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Stats: stats, CompactNative: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := math.Float64bits(values[len(values)-1]); got != want {
+		t.Fatalf("result bits = %#x, want %#x", got, want)
+	}
+	if hits := stats.Funcs[0].Peephole["fp-literal-const"]; hits != 1 {
+		t.Fatalf("literal loads = %d, want 1", hits)
+	}
+	if got := stats.Funcs[0].NativeSize.LiteralPoolBytes; got < 8 {
+		t.Fatalf("literal pool bytes = %d, want at least 8", got)
+	}
+}
+
 func TestPreloadFloatConstsChoosesMostFrequent(t *testing.T) {
 	var code []byte
 	for _, value := range []float64{

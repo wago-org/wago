@@ -74,6 +74,40 @@ afterNativeIntLightCall:
 	MOVD R0, ret+56(FP)
 	RET
 
+// func enterNativeIntPreboundContextRaw(call *PreparedIntCall, a0, a1, a2, a3 uintptr) uintptr
+// The prepared block fixes code, linear memory, and foreign stack while values
+// remain direct Go ABI arguments. This is the ARM64 counterpart of AMD64's
+// prebound-context entry.
+TEXT ·enterNativeIntPreboundContextRaw(SB), NOSPLIT, $0-48
+	MOVD call+0(FP), R12
+	MOVD 0(R12), R9
+	MOVD 16(R12), R10
+	SUB  $32, R10, R10
+	MOVD RSP, R11
+	MOVD R11, 0(R10)
+	MOVD R26, 8(R10)
+	STP  (R29, R30), 16(R10)
+
+	MOVD 8(R12), R26
+	MOVD a0+8(FP), R0
+	MOVD a1+16(FP), R1
+	MOVD a2+24(FP), R2
+	MOVD a3+32(FP), R3
+	MOVD R10, RSP
+	MOVD ZR, R29
+	MOVD R10, -24(R26)
+	ADR  afterNativeIntPreboundContext, R11
+	MOVD R11, -32(R26)
+	BL   (R9)
+
+afterNativeIntPreboundContext:
+	MOVD 8(RSP), R26
+	LDP  16(RSP), (R29, R30)
+	MOVD 0(RSP), R11
+	MOVD R11, RSP
+	MOVD R0, ret+40(FP)
+	RET
+
 // func enterNativeIntCallRaw(call *PreparedIntCall) uintptr
 // The owning prepared handle admits only the caller-clobber-only light ABI.
 TEXT ·enterNativeIntCallRaw(SB), NOSPLIT, $0-16

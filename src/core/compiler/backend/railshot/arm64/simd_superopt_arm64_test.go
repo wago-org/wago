@@ -3,10 +3,60 @@
 package arm64
 
 import (
+	"math/bits"
+	"strconv"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func simdI32x4RotateRightBodyArm64(v [16]byte, shift byte) []byte {
+	body := []byte{0x01, 0x01, 0x7b} // one v128 local
+	body = append(body, simdConst(v)...)
+	body = append(body, 0x21, 0x00) // local.set 0
+	body = append(body, 0x20, 0x00, 0x41, shift)
+	body = append(body, simdOp(173)...) // i32x4.shr_u
+	body = append(body, 0x20, 0x00, 0x41, 32-shift)
+	body = append(body, simdOp(171)...) // i32x4.shl
+	body = append(body, simdOp(80)...)  // v128.or
+	return append(body, 0x0b)
+}
+
+func TestSIMDI32x4RotateRightSuperoptArm64(t *testing.T) {
+	values := []uint32{0x01234567, 0x89abcdef, 0x80000001, 0xfedcba98}
+	v := i32x4Bytes(int32(values[0]), int32(values[1]), int32(values[2]), int32(values[3]))
+	for _, shift := range []byte{1, 7, 12, 31} {
+		t.Run(strconv.Itoa(int(shift)), func(t *testing.T) {
+			body := simdI32x4RotateRightBodyArm64(v, shift)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			on := compileWithStats(t, m, false).Funcs[0]
+			if got := on.Peephole["simd-rotr-i32x4"]; got != 1 {
+				t.Fatalf("simd-rotr-i32x4 = %d, want 1 (all: %v)", got, on.Peephole)
+			}
+
+			var off *CodegenStats
+			func() {
+				saved := simdSuperoptEnabled
+				defer func() { simdSuperoptEnabled = saved }()
+				simdSuperoptEnabled = false
+				off = compileWithStats(t, m, false).Funcs[0]
+			}()
+			if got, want := off.CodeBytes-on.CodeBytes, 4; got != want {
+				t.Fatalf("code reduction = %d bytes, want %d", got, want)
+			}
+
+			want := i32x4Bytes(
+				int32(bits.RotateLeft32(values[0], -int(shift))),
+				int32(bits.RotateLeft32(values[1], -int(shift))),
+				int32(bits.RotateLeft32(values[2], -int(shift))),
+				int32(bits.RotateLeft32(values[3], -int(shift))),
+			)
+			if got := runArm64V128(t, m); got != want {
+				t.Fatalf("rotate-right %d = % x, want % x", shift, got, want)
+			}
+		})
+	}
+}
 
 func simdAndAnyTrueBodyArm64(a, b [16]byte) []byte {
 	body := []byte{0x00}
