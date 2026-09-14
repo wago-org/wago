@@ -279,7 +279,13 @@ func (v *funcValidator) step(in *Instruction) error {
 			}
 		}
 	case InstrLocalGet:
-		t, ok := v.localType(in.Index)
+		var t ValType
+		var ok bool
+		if len(v.localRuns) > 8 {
+			t, ok = v.localTypeIndexed(in.Index)
+		} else {
+			t, ok = v.localType(in.Index)
+		}
 		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
@@ -288,7 +294,13 @@ func (v *funcValidator) step(in *Instruction) error {
 		}
 		v.push(t)
 	case InstrLocalSet:
-		t, ok := v.localType(in.Index)
+		var t ValType
+		var ok bool
+		if len(v.localRuns) > 8 {
+			t, ok = v.localTypeIndexed(in.Index)
+		} else {
+			t, ok = v.localType(in.Index)
+		}
 		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
@@ -297,7 +309,13 @@ func (v *funcValidator) step(in *Instruction) error {
 		}
 		v.initializeLocal(in.Index, t)
 	case InstrLocalTee:
-		t, ok := v.localType(in.Index)
+		var t ValType
+		var ok bool
+		if len(v.localRuns) > 8 {
+			t, ok = v.localTypeIndexed(in.Index)
+		} else {
+			t, ok = v.localType(in.Index)
+		}
 		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
