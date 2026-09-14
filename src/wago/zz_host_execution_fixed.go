@@ -43,6 +43,24 @@ func (a *hostLoopActivation) dispatchSingleTypedI32VoidFixedPortal(a0, a1 uint64
 	return 0
 }
 
+func (a *hostLoopActivation) dispatchSingleTypedI32FixedPortal(a0, a1 uint64) uint64 {
+	if a.entryNativeMu == nil {
+		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
+	}
+	resume := a.parkPreparedHostCallback()
+	defer resume.resume()
+	return I32(a.root.syncHosts[0].typedI32(AsI32(a0)))
+}
+
+func (a *hostLoopActivation) dispatchSingleTypedI32x2FixedPortal(a0, a1 uint64) uint64 {
+	if a.entryNativeMu == nil {
+		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
+	}
+	resume := a.parkPreparedHostCallback()
+	defer resume.resume()
+	return I32(a.root.syncHosts[0].typedI32x2(AsI32(a0), AsI32(a1)))
+}
+
 func (a *hostLoopActivation) dispatchSingleTypedI64FixedPortal(a0, a1 uint64) uint64 {
 	active := a.root
 	if a.localNativeMu() == nil {

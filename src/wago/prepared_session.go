@@ -25,6 +25,7 @@ type preparedSessionState struct {
 	guardCalls     bool
 	entry          executionLease
 	hostCall       *runtime.PreparedHostScalarCall
+	hostFixed      runtime.FixedScalarHostCall
 	hostActivation hostLoopActivation
 	hostGate       preparedHostLeaseGate
 	active         atomic.Bool
@@ -74,7 +75,15 @@ func (fn *PreparedFunction) OpenSession() (*PreparedSession, error) {
 		}
 		entry, err := in.beginNativeEntry()
 		if err == nil {
-			prepared, prepareErr := in.eng.PrepareHostScalarCall(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm, in.trap, in.results, in.ctrl)
+			rawSlots, ok := in.syncHosts[0].typedScalarSlots()
+			if !ok {
+				entry.unlockExecution()
+				pluginState.nativeShareMu.Unlock()
+				state.lease.unlock()
+				in.endInvocation()
+				return nil, fmt.Errorf("wago: open prepared session host entry: invalid fixed scalar signature")
+			}
+			prepared, prepareErr := in.eng.PrepareHostScalarFixedCall(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm, in.trap, in.results, in.ctrl, rawSlots)
 			if prepareErr != nil {
 				entry.unlockExecution()
 				pluginState.nativeShareMu.Unlock()
@@ -95,6 +104,14 @@ func (fn *PreparedFunction) OpenSession() (*PreparedSession, error) {
 				entryNativeMu:               entry.local,
 				preparedMigration:           &state.hostGate.migrated,
 				parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
+			}
+			if preparedHostFixedEnabled {
+				switch in.syncHosts[0].scalarKind {
+				case syncHostTypedI32:
+					state.hostFixed = state.hostActivation.dispatchSingleTypedI32FixedPortal
+				case syncHostTypedI32x2:
+					state.hostFixed = state.hostActivation.dispatchSingleTypedI32x2FixedPortal
+				}
 			}
 			state.hostGate.active = &state.active
 			pluginState.preparedHostGate = &state.hostGate
@@ -268,7 +285,7 @@ func (state *preparedSessionState) invokeScalarHostReserved(args []uint64) ([]ui
 			state.dropHostLease(state.hostGate.migrated.Load())
 		}
 	}()
-	return state.fn.invokeScalarHostReserved(args, state.hostCall, &state.hostActivation)
+	return state.fn.invokeScalarHostReserved(args, state.hostCall, state.hostFixed, &state.hostActivation)
 }
 
 func (state *preparedSessionState) hostLeaseValid() bool {

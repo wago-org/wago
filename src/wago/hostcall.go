@@ -2474,7 +2474,7 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 		return err
 	}
 	defer in.unlockNativeEntry(locked)
-	return in.callNativeSyncAdmitted(entry, activeTrap, waitParent, nil, nil, locked.local)
+	return in.callNativeSyncAdmitted(entry, activeTrap, waitParent, nil, nil, nil, locked.local)
 }
 
 // callNativeSyncAdmitted drives one synchronous host-call activation while the
@@ -2482,7 +2482,7 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 // native context. PreparedSession uses this form to amortize that entry setup
 // across a run of calls; the callback dispatcher still parks and reacquires the
 // lease around arbitrary Go code.
-func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, prepared *runtime.PreparedHostScalarCall, preparedActivation *hostLoopActivation, heldNativeMu *sync.Mutex) (err error) {
+func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, prepared *runtime.PreparedHostScalarCall, preparedFixed runtime.FixedScalarHostCall, preparedActivation *hostLoopActivation, heldNativeMu *sync.Mutex) (err error) {
 	defer func() { err = in.decorateTrap(err) }()
 	defer func() {
 		if r := recover(); r != nil {
@@ -2545,7 +2545,7 @@ func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, wai
 		if preparedActivation == nil {
 			return fmt.Errorf("wago: prepared host call has no activation")
 		}
-		err = prepared.Call(preparedActivation.dispatch, preparedActivation.dispatchSingleTypedScalarPortal)
+		err = in.callPreparedHostSync(prepared, preparedFixed, preparedActivation)
 		goruntime.KeepAlive(in)
 		goruntime.KeepAlive(in.c)
 		return err
@@ -2628,4 +2628,14 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	return err
+}
+
+func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCall, fixed runtime.FixedScalarHostCall, activation *hostLoopActivation) error {
+	if preparedHostFixedEnabled {
+		if fixed == nil {
+			fixed = activation.dispatchSingleTypedScalarFixedPortal
+		}
+		return prepared.CallFixed(activation.dispatch, activation.dispatchSingleTypedScalarPortal, fixed)
+	}
+	return prepared.Call(activation.dispatch, activation.dispatchSingleTypedScalarPortal)
 }
