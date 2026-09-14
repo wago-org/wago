@@ -128,3 +128,72 @@ func TestModuleTypeCacheLookupFallsBackAndRejectsOutOfRange(t *testing.T) {
 		t.Fatal("cached out-of-range global lookup succeeded")
 	}
 }
+
+func TestModuleFunctionIndexParity(t *testing.T) {
+	m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}}}}}, {SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I64}}}}}}, FuncTypes: []wasm.TypeIdx{{Index: 1}, {Index: 0}}}
+	for i := 0; i < 64; i++ {
+		m.Imports = append(m.Imports, wasm.Import{Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I32})}, wasm.Import{Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: uint32(i % 2)})})
+	}
+	for _, bodyBytes := range []int{1, minParallelHintBodyBytes} {
+		c := buildModuleTypeCache(m, bodyBytes)
+		f := fn{m: m, sc: &scratch{moduleTypes: c}}
+		if got := f.importedFunctionCount(); got != m.ImportedFuncCount() {
+			t.Fatalf("import count=%d", got)
+		}
+		for index := uint32(0); index < 68; index++ {
+			want, ok := m.FuncSignature(index)
+			got, gotOK := f.functionSignature(index)
+			if got != want || gotOK != ok {
+				t.Fatalf("index=%d got=%p/%t want=%p/%t", index, got, gotOK, want, ok)
+			}
+		}
+	}
+}
+
+func TestModuleFunctionRangeParity(t *testing.T) {
+	for _, count := range []int{0, 1, 8, 64} {
+		for _, mixed := range []bool{false, true} {
+			m := &wasm.Module{
+				Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+				FuncTypes: []wasm.TypeIdx{{}},
+				Imports:   []wasm.Import{{Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I32})}},
+			}
+			for i := 0; i < count; i++ {
+				m.Imports = append(m.Imports, wasm.Import{Type: wasm.NewFuncExternType(wasm.TypeIdx{})})
+				if mixed {
+					m.Imports = append(m.Imports, wasm.Import{Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I32})})
+				}
+			}
+			m.Imports = append(m.Imports, wasm.Import{Type: wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I32})})
+			for _, size := range []int{0, minParallelHintBodyBytes} {
+				f := fn{m: m, sc: &scratch{moduleTypes: buildModuleTypeCache(m, size)}}
+				if f.importedFunctionCount() != count {
+					t.Fatal("incorrect import count")
+				}
+				for _, index := range []uint32{0, uint32(count / 2), uint32(count), uint32(count + 1), ^uint32(0)} {
+					want, wantOK := m.FuncSignature(index)
+					got, ok := f.functionSignature(index)
+					if got != want || ok != wantOK {
+						t.Fatalf("count=%d mixed=%t size=%d index=%d: signature mismatch", count, mixed, size, index)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestModuleFunctionCacheDoesNotAllocate(t *testing.T) {
+	m := &wasm.Module{Imports: make([]wasm.Import, 1024)}
+	for i := range m.Imports {
+		m.Imports[i].Type = wasm.NewFuncExternType(wasm.TypeIdx{})
+	}
+	var c moduleTypeCache
+	if allocs := testing.AllocsPerRun(100, func() {
+		c = buildModuleTypeCache(m, minParallelHintBodyBytes)
+	}); allocs != 0 {
+		t.Fatalf("function cache allocated %g times", allocs)
+	}
+	if !c.valid || c.funcCount != len(m.Imports) || !c.funcsContiguous {
+		t.Fatal("incomplete function cache")
+	}
+}
