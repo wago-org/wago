@@ -165,3 +165,11 @@ func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, result
 	}
 	return out, nil
 }
+
+func (fn *PreparedFunction) invokeDirectIntSession(a0, a1, a2, a3 uint64) ([]uint64, error) {
+	return fn.in.invokeDirectIntEntry(
+		fn.directEntry, fn.paramSlots, fn.resultSlots, fn.scalarWideMask,
+		fn.scalarResultWide, fn.directIsolated, fn.directIntLight, fn.directIntBounded,
+		a0, a1, a2, a3,
+	)
+}

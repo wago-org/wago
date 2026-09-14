@@ -2472,10 +2472,21 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 		return err
 	}
 	defer locked.unlockExecution()
-	restoreInvocationContext := bindHostInvocationParent(in, waitParent)
-	defer restoreInvocationContext()
-	stopWaitContext := in.publishAtomicWaitContext(waitParent)
-	defer stopWaitContext()
+	return in.callNativeSyncAdmitted(entry, activeTrap, waitParent, nil)
+}
+
+// callNativeSyncAdmitted drives one synchronous host-call activation while the
+// caller already owns the native execution lease and has bound this instance's
+// native context. PreparedSession uses this form to amortize that entry setup
+// across a run of calls; the callback dispatcher still parks and reacquires the
+// lease around arbitrary Go code.
+func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, prepared *runtime.PreparedHostScalarCall) (err error) {
+	if prepared == nil {
+		restoreInvocationContext := bindHostInvocationParent(in, waitParent)
+		defer restoreInvocationContext()
+		stopWaitContext := in.publishAtomicWaitContext(waitParent)
+		defer stopWaitContext()
+	}
 	defer func() { err = in.decorateTrap(err) }()
 	defer func() {
 		if r := recover(); r != nil {
@@ -2534,12 +2545,14 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 			panic(r)
 		}
 	}()
-	if err := in.jm.RebindTrapCell(activeTrap); err != nil {
-		return err
-	}
-	in.jm.SetStackFence(in.eng.StackLimit())
-	if len(in.ctrl) >= runtime.HostCtrlFrameBytes {
-		in.jm.SetCustomCtx(uintptr(unsafe.Pointer(&in.ctrl[0])))
+	if prepared == nil {
+		if err := in.jm.RebindTrapCell(activeTrap); err != nil {
+			return err
+		}
+		in.jm.SetStackFence(in.eng.StackLimit())
+		if len(in.ctrl) >= runtime.HostCtrlFrameBytes {
+			in.jm.SetCustomCtx(uintptr(unsafe.Pointer(&in.ctrl[0])))
+		}
 	}
 	if in.hostCall == nil {
 		in.hostCall = in.newHostDispatch()
@@ -2553,7 +2566,11 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 		parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
 	}
 	if in.hasSingleDirectTypedScalarHost() {
-		err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleTypedScalarPortal)
+		if prepared != nil {
+			err = prepared.Call(activation.dispatch, activation.dispatchSingleTypedScalarPortal)
+		} else {
+			err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleTypedScalarPortal)
+		}
 	} else if in.hasSingleExpandedTypedScalarHost() {
 		rawSlots, ok := in.syncHosts[0].typedScalarSlots()
 		if !ok {
