@@ -131,12 +131,16 @@ func TestRunPropagatesChildStopAndContinue(t *testing.T) {
 	const testName = "^TestRunPropagatesChildStopAndContinue$"
 	switch os.Getenv("WAGO_WATCH_STOP_ROLE") {
 	case "child":
+		continued := make(chan os.Signal, 1)
+		signal.Notify(continued, syscall.SIGCONT)
+		defer signal.Stop(continued)
 		if err := os.WriteFile(os.Getenv("WAGO_WATCH_STOP_READY"), []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if err := syscall.Kill(os.Getpid(), syscall.SIGSTOP); err != nil {
 			t.Fatal(err)
 		}
+		<-continued
 		if err := os.WriteFile(os.Getenv("WAGO_WATCH_STOP_CONTINUED"), []byte("continued"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -205,6 +209,12 @@ func TestRunPropagatesChildStopAndContinue(t *testing.T) {
 	}
 	if !status.Stopped() {
 		t.Fatal("supervisor did not mirror child stop")
+	}
+	if _, err := os.Stat(continuedPath); !os.IsNotExist(err) {
+		t.Fatalf("child resumed before supervisor SIGCONT: %v", err)
+	}
+	if child, ok := processByPID(childPID); !ok || (child.state != 'T' && child.state != 't') {
+		t.Fatalf("child is not stopped before supervisor SIGCONT: %+v", child)
 	}
 	if err := supervisor.Process.Signal(syscall.SIGCONT); err != nil {
 		t.Fatal(err)
