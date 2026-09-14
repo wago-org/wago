@@ -274,6 +274,10 @@ func (state *preparedSessionState) endCall(gcLease gcInvocationLease) {
 		state.closeNow()
 	}
 	state.active.Store(false)
+	// A publisher that observed an active call must see its local lease released.
+	if state.host && !state.hostLeaseValid() {
+		state.dropHostLease(state.hostGate.migrated.Load())
+	}
 }
 
 func (state *preparedSessionState) invokeScalarHostReserved(args []uint64) ([]uint64, error) {

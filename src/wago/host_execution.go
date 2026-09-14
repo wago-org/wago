@@ -283,6 +283,9 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		if localMu != nil {
 			if active == root {
 				migrated = reacquireRootNative(root, localMu)
+				if migrated && a.preparedMigration != nil {
+					a.preparedMigration.Store(true)
+				}
 			} else {
 				localMu.Lock()
 			}
@@ -397,6 +400,7 @@ func (a *hostLoopActivation) reacquirePreparedRootNative(localMu *sync.Mutex) bo
 	}
 	localMu.Unlock()
 	nativeExecutionMu.Lock()
+	nativeExecutionEpoch++
 	a.entryNativeMu = nil
 	if a.preparedMigration != nil {
 		a.preparedMigration.Store(true)
@@ -415,15 +419,20 @@ func reacquireRootNative(root *Instance, localMu *sync.Mutex) bool {
 	}
 	localMu.Unlock()
 	nativeExecutionMu.Lock()
+	nativeExecutionEpoch++
 	return true
 }
 
-// localNativeMu returns the entry mutex only while it remains the native lease
-// owner. Resource publication revokes independent execution; callback resume
-// transfers ownership to nativeExecutionMu before this begins returning nil.
+// localNativeMu reports ownership separately from pending prepared revocation.
 func (a *hostLoopActivation) localNativeMu() *sync.Mutex {
 	if a == nil || a.entryNativeMu == nil {
 		return nil
+	}
+	if a.preparedMigration != nil {
+		if a.preparedMigration.Load() {
+			return nil
+		}
+		return a.entryNativeMu
 	}
 	if a.root.c.threadedMemory0() || a.root.usesIndependentExecution() {
 		return a.entryNativeMu

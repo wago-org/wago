@@ -181,13 +181,14 @@ func (in *Instance) beginNativeEntry() (executionLease, error) {
 	if in.usesIndependentExecution() {
 		mu := in.independentNativeExecutionMu()
 		mu.Lock()
-		if err := in.bindAndValidateNativeContext(); err != nil {
-			mu.Unlock()
-
-			return executionLease{}, err
+		if in.usesIndependentExecution() {
+			if err := in.bindAndValidateNativeContext(); err != nil {
+				mu.Unlock()
+				return executionLease{}, err
+			}
+			return executionLease{local: mu}, nil
 		}
-
-		return executionLease{local: mu}, nil
+		mu.Unlock()
 	}
 	if in.c.threadedMemory0() {
 		mu := &in.memoryDir.nativeMu
