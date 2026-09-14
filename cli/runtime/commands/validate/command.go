@@ -60,6 +60,7 @@ func ModuleBytes(src []byte) error {
 
 func ModuleBytesWithPolicy(src []byte, policy int) error {
 	features := wasm.ValidationFeatures{
+		CompactImports:       true,
 		MultiMemory:          true,
 		ExtendedConstGlobals: true,
 		GCConstExpr:          true,
