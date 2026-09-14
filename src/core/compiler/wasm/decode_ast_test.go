@@ -105,11 +105,8 @@ func decodeASTCustomSectionForTest(m *Module, r *reader, seenName *bool) error {
 	if err != nil {
 		return err
 	}
-	if name == "name" {
-		if *seenName {
-			return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
-		}
-		ns, err := decodeNameSec(payload)
+	if name == "name" && !*seenName {
+		ns, err := decodeOptionalNameSec(payload, r.budget)
 		if err != nil {
 			return err
 		}
