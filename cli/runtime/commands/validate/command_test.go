@@ -114,6 +114,8 @@ func TestModuleBytesCore3(t *testing.T) {
 		{name: "i31 global", sections: []byte{6, 8, 1, 0x6c, 0, 0x41, 0, 0xfb, 0x1c, 0x0b}},
 		{name: "prior immutable global", sections: []byte{6, 11, 2, 0x7f, 0, 0x41, 1, 0x0b, 0x7f, 0, 0x23, 0, 0x0b}},
 		{name: "multiple memories", sections: []byte{5, 5, 2, 0, 1, 0, 1}},
+		{name: "compact mixed imports", sections: []byte{2, 13, 1, 3, 'e', 'n', 'v', 0, 0x7f, 1, 1, 'm', 2, 0, 1}},
+		{name: "compact same-kind imports", sections: []byte{2, 13, 1, 3, 'e', 'n', 'v', 0, 0x7e, 2, 1, 1, 'm', 0, 1}},
 		{name: "i31 wrong operand", sections: []byte{6, 8, 1, 0x6c, 0, 0x42, 0, 0xfb, 0x1c, 0x0b}, invalid: true},
 		{name: "prior mutable global", sections: []byte{6, 11, 2, 0x7f, 1, 0x41, 1, 0x0b, 0x7f, 0, 0x23, 0, 0x0b}, invalid: true},
 	} {
