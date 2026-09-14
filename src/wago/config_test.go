@@ -356,13 +356,16 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 func TestDefaultCoreFeaturePolicy(t *testing.T) {
 	want := coreFeaturesWithoutSidecar
 	if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
-		want |= defaultCore3Features
+		want |= CoreFeaturesV3
 	}
 	if got := NewRuntimeConfig().CoreFeatures(); got != want {
 		t.Fatalf("default features = %s, want %s", got, want)
 	}
-	if want.IsEnabled(CoreFeatureGC | CoreFeatureExceptionHandling | CoreFeatureThreads) {
-		t.Fatalf("default unexpectedly includes ownership-sensitive opt-in features: %s", want)
+	if want.IsEnabled(CoreFeatureThreads) {
+		t.Fatalf("default unexpectedly includes the opt-in threads proposal: %s", want)
+	}
+	if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) && !want.IsEnabled(CoreFeaturesV3) {
+		t.Fatalf("complete backend default = %s, want full Core 3 set %s", want, CoreFeaturesV3)
 	}
 	for _, info := range FeatureInfos() {
 		expected := want.IsEnabled(info.Feature)
@@ -384,7 +387,7 @@ func TestDefaultCoreFeaturePolicy(t *testing.T) {
 	)
 	compiled, err := Compile(nil, module)
 	if err != nil {
-		t.Fatalf("default compile of selected Core 3 tail call: %v", err)
+		t.Fatalf("default compile of Core 3 tail call: %v", err)
 	}
 	_ = compiled.Close()
 }

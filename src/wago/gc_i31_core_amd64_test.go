@@ -10,7 +10,7 @@ import (
 
 func TestStagedGCI31CoreExecutionAndPublicCategory(t *testing.T) {
 	data := stagedGCI31CoreBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(strings.ToLower(err.Error()), "i31") {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(strings.ToLower(err.Error()), "i31") {
 		t.Fatalf("public Compile i31 product = %v", err)
 	}
 	c, err := compileStagedGCI31(data)

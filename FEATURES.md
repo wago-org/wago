@@ -31,12 +31,11 @@ enables them.
 `CoreFeaturesV2` is the static WebAssembly 2.0 release group. `CoreFeaturesV3`
 describes the mandatory WebAssembly Core 3.0 scope.
 
-- The compatibility default is the Release 2 feature set plus completed extended
-  constants on incomplete backends.
-- Complete Core 3 backends also enable tail calls, typed function references,
-  multi-memory, memory64, and table64 by default. WasmGC and exception handling
-  remain opt-in. Select the full Release 3 surface with
-  `WithCoreFeatures(CoreFeaturesV3)`.
+- Complete Core 3 backends enable the entire Release 3 feature set by default,
+  including WasmGC and exception handling. Use
+  `WithCoreFeatures(CoreFeaturesV2)` when Release 2 compatibility is required.
+- Incomplete backends retain the Release 2 feature set plus completed extended
+  constants rather than silently admitting a partial Core 3 product.
 - Linux/amd64 explicit and signal builds, and Linux/Darwin arm64 explicit and
   signal builds, admit every Core 3 family. ARM64 signal mode uses guard faults
   for eligible memory-0 memory32 access. Indexed memories and memory64 keep

@@ -315,7 +315,7 @@ func TestTypedFunctionReferenceFeatureDisableFailsClosed(t *testing.T) {
 	}
 }
 
-func TestExceptionHandlingFixturesFailClosed(t *testing.T) {
+func TestExceptionHandlingFixturesRequireCore3(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "tests", "corpus", "regressions", "engine", "eh_*.wasm"))
 	if err != nil {
 		t.Fatalf("glob exception fixtures: %v", err)
@@ -330,7 +330,7 @@ func TestExceptionHandlingFixturesFailClosed(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read fixture: %v", err)
 			}
-			compiled, err := Compile(nil, wasmBytes)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2), wasmBytes)
 			if compiled != nil {
 				t.Fatal("unsupported exception-handling module compiled")
 			}
