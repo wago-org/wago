@@ -3,7 +3,7 @@ package wago
 func (a *hostLoopActivation) dispatchSingleHostCallFixedView(args, results []uint64) {
 	active := a.root
 	binding := &active.syncHosts[0]
-	if active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(a.ctrl)
 		defer resume.resume()
 		binding.fn.(HostCallFunc)(HostCall{params: args, results: results, sig: binding.sig, exact: binding.exact})
@@ -23,7 +23,7 @@ func (a *hostLoopActivation) dispatchSingleHostCallFixedView(args, results []uin
 
 func (a *hostLoopActivation) dispatchSingleTypedNoneFixedPortal(a0, a1 uint64) uint64 {
 	active := a.root
-	if active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(a.ctrl)
@@ -34,7 +34,7 @@ func (a *hostLoopActivation) dispatchSingleTypedNoneFixedPortal(a0, a1 uint64) u
 
 func (a *hostLoopActivation) dispatchSingleTypedI32VoidFixedPortal(a0, a1 uint64) uint64 {
 	active := a.root
-	if active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(a.ctrl)
@@ -45,7 +45,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI32VoidFixedPortal(a0, a1 uint64
 
 func (a *hostLoopActivation) dispatchSingleTypedI64FixedPortal(a0, a1 uint64) uint64 {
 	active := a.root
-	if active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(a.ctrl)
@@ -56,7 +56,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI64FixedPortal(a0, a1 uint64) ui
 
 func (a *hostLoopActivation) dispatchSingleTypedI64x2FixedPortal(a0, a1 uint64) uint64 {
 	active := a.root
-	if active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(a.ctrl)
@@ -67,7 +67,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI64x2FixedPortal(a0, a1 uint64) 
 
 func (a *hostLoopActivation) dispatchSingleTypedF32FixedPortal(a0, a1 uint64) uint64 {
 	active := a.root
-	if active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(a.ctrl)
@@ -78,7 +78,7 @@ func (a *hostLoopActivation) dispatchSingleTypedF32FixedPortal(a0, a1 uint64) ui
 
 func (a *hostLoopActivation) dispatchSingleTypedF32x2FixedPortal(a0, a1 uint64) uint64 {
 	active := a.root
-	if active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(a.ctrl)
@@ -89,7 +89,7 @@ func (a *hostLoopActivation) dispatchSingleTypedF32x2FixedPortal(a0, a1 uint64) 
 
 func (a *hostLoopActivation) dispatchSingleTypedF64FixedPortal(a0, a1 uint64) uint64 {
 	active := a.root
-	if active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(a.ctrl)
@@ -100,7 +100,7 @@ func (a *hostLoopActivation) dispatchSingleTypedF64FixedPortal(a0, a1 uint64) ui
 
 func (a *hostLoopActivation) dispatchSingleTypedF64x2FixedPortal(a0, a1 uint64) uint64 {
 	active := a.root
-	if active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(a.ctrl)
@@ -112,8 +112,7 @@ func (a *hostLoopActivation) dispatchSingleTypedF64x2FixedPortal(a0, a1 uint64) 
 func (a *hostLoopActivation) dispatchSingleTypedScalarFixedPortal(a0, a1 uint64) uint64 {
 	active := a.root
 	binding := &active.syncHosts[0]
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		rawSlots, ok := binding.typedScalarSlots()
 		if !ok {
 			panic("wago: fixed scalar host portal lost its bound signature")
@@ -133,8 +132,7 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarFixedPortal(a0, a1 uint64)
 func (a *hostLoopActivation) dispatchSingleTypedI32x2VoidFixedPortal(a0, a1 uint64) uint64 {
 	active := a.root
 	binding := &active.syncHosts[0]
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		rawSlots, ok := binding.typedScalarSlots()
 		if !ok {
 			panic("wago: fixed i32/i32 void host portal lost its bound signature")
@@ -154,8 +152,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI32x2VoidFixedPortal(a0, a1 uint
 func (a *hostLoopActivation) dispatchSingleTypedI32PairFixedPortal(a0, _ uint64) uint64 {
 	active := a.root
 	binding := &active.syncHosts[0]
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		rawSlots, ok := binding.typedScalarSlots()
 		if !ok {
 			panic("wago: fixed i32 pair-result host portal lost its bound signature")
@@ -176,8 +173,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI32PairFixedPortal(a0, _ uint64)
 func (a *hostLoopActivation) dispatchSingleTypedI32x2PairFixedPortal(a0, a1 uint64) uint64 {
 	active := a.root
 	binding := &active.syncHosts[0]
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		rawSlots, ok := binding.typedScalarSlots()
 		if !ok {
 			panic("wago: fixed i32/i32 pair-result host portal lost its bound signature")

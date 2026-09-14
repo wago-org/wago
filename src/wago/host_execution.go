@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -46,6 +47,8 @@ type hostLoopActivation struct {
 	ctrl                        uintptr
 	invocation                  hostInvocationContext
 	state                       *instancePluginState
+	entryNativeMu               *sync.Mutex
+	preparedMigration           *atomic.Bool
 	parkedNativeContextReusable bool
 }
 
@@ -255,12 +258,12 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	var epoch uint64
 	var localVersion uint64
 	state := a.stateFor(active)
-	if active.usesIndependentExecution() {
-		if active.memoryDir != nil {
-			localMu = &active.memoryDir.nativeMu
-		} else {
-			localMu = &state.nativeExecutionMu
-		}
+	if active == root && a.localNativeMu() != nil {
+		localMu = a.localNativeMu()
+		localVersion = state.nativeContextVersion.Load()
+		localMu.Unlock()
+	} else if active.usesIndependentExecution() {
+		localMu = active.independentNativeExecutionMu()
 		localVersion = state.nativeContextVersion.Load()
 		localMu.Unlock()
 	} else {
@@ -276,8 +279,13 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		if gcSuspension != nil {
 			gcSuspension.resume()
 		}
+		migrated := false
 		if localMu != nil {
-			localMu.Lock()
+			if active == root {
+				migrated = reacquireRootNative(root, localMu)
+			} else {
+				localMu.Lock()
+			}
 		} else {
 			nativeExecutionMu.Lock()
 		}
@@ -287,7 +295,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		// local lease. All root, interruption, and resume steps remain required.
 		restore := false
 		if localMu != nil {
-			restore = !active.canReuseParkedNativeContextWithState(localVersion, state)
+			restore = migrated || !active.canReuseParkedNativeContextWithState(localVersion, state)
 		} else {
 			restore = nativeExecutionEpoch != epoch
 		}
@@ -323,25 +331,104 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 // caller, so errors and panics restore ownership too. No other goroutine gains
 // callback authority; public state access still acquires the native mutex.
 type parkedIndependentHostLease struct {
-	root     *Instance
-	state    *instancePluginState
-	reusable bool
-	mu       *sync.Mutex
-	version  uint64
-	ctrl     uintptr
+	root      *Instance
+	state     *instancePluginState
+	reusable  bool
+	mu        *sync.Mutex
+	migration *atomic.Bool
+	version   uint64
+	ctrl      uintptr
 }
 
 func (a *hostLoopActivation) parkIndependentHostCallback(ctrl uintptr) parkedIndependentHostLease {
-	lease := parkedIndependentHostLease{root: a.root, state: a.state, reusable: a.parkedNativeContextReusable, mu: a.root.independentNativeExecutionMu(), version: a.state.nativeContextVersion.Load(), ctrl: ctrl}
+	mu := a.localNativeMu()
+	if mu == nil {
+		panic("wago: local host callback has no native execution lease")
+	}
+	lease := parkedIndependentHostLease{root: a.root, state: a.state, reusable: a.parkedNativeContextReusable, mu: mu, migration: a.preparedMigration, version: a.state.nativeContextVersion.Load(), ctrl: ctrl}
 	lease.mu.Unlock()
 	return lease
 }
 
 func (l parkedIndependentHostLease) resume() {
-	l.mu.Lock()
-	if !l.reusable || !l.root.canReuseParkedNativeContextWithState(l.version, l.state) {
+	migrated := reacquireRootNative(l.root, l.mu)
+	if migrated && l.migration != nil {
+		l.migration.Store(true)
+	}
+	if migrated || !l.reusable || l.version == ^uint64(0) || l.state.nativeContextVersion.Load() != l.version {
 		l.root.restoreTypedScalarNativeContext(l.ctrl)
 	}
+}
+
+// parkedPreparedHostLease is used only by a persistent PreparedSession
+// activation. Keeping the mutable owner on that heap-resident activation avoids
+// making ordinary per-call activations escape.
+type parkedPreparedHostLease struct {
+	activation *hostLoopActivation
+	root       *Instance
+	state      *instancePluginState
+	reusable   bool
+	mu         *sync.Mutex
+	version    uint64
+	ctrl       uintptr
+}
+
+func (a *hostLoopActivation) parkPreparedHostCallback() parkedPreparedHostLease {
+	mu := a.entryNativeMu
+	if mu == nil {
+		panic("wago: prepared host callback has no local native execution lease")
+	}
+	lease := parkedPreparedHostLease{activation: a, root: a.root, state: a.state, reusable: a.parkedNativeContextReusable, mu: mu, version: a.state.nativeContextVersion.Load(), ctrl: a.ctrl}
+	mu.Unlock()
+	return lease
+}
+
+func (l parkedPreparedHostLease) resume() {
+	migrated := l.activation.reacquirePreparedRootNative(l.mu)
+	if migrated || !l.reusable || l.version == ^uint64(0) || l.state.nativeContextVersion.Load() != l.version {
+		l.root.restoreTypedScalarNativeContext(l.ctrl)
+	}
+}
+
+func (a *hostLoopActivation) reacquirePreparedRootNative(localMu *sync.Mutex) bool {
+	localMu.Lock()
+	if a.root.c.threadedMemory0() || a.root.usesIndependentExecution() {
+		return false
+	}
+	localMu.Unlock()
+	nativeExecutionMu.Lock()
+	a.entryNativeMu = nil
+	if a.preparedMigration != nil {
+		a.preparedMigration.Store(true)
+	}
+	return true
+}
+
+// reacquireRootNative preserves the lease chosen at entry unless resource
+// publication revoked independent execution while the activation was parked.
+// In that case, transfer ownership to the process-wide lease before native code
+// can resume. The outer entry observes the revoked mode when it releases.
+func reacquireRootNative(root *Instance, localMu *sync.Mutex) bool {
+	localMu.Lock()
+	if root.c.threadedMemory0() || root.usesIndependentExecution() {
+		return false
+	}
+	localMu.Unlock()
+	nativeExecutionMu.Lock()
+	return true
+}
+
+// localNativeMu returns the entry mutex only while it remains the native lease
+// owner. Resource publication revokes independent execution; callback resume
+// transfers ownership to nativeExecutionMu before this begins returning nil.
+func (a *hostLoopActivation) localNativeMu() *sync.Mutex {
+	if a == nil || a.entryNativeMu == nil {
+		return nil
+	}
+	if a.root.c.threadedMemory0() || a.root.usesIndependentExecution() {
+		return a.entryNativeMu
+	}
+	return nil
 }
 
 // dispatchTypedScalarPortal is the capability-free root portal. Its callback
@@ -372,8 +459,7 @@ func (a *hostLoopActivation) dispatchTypedScalarExpandedPortal(ctrl uintptr, imp
 		return 0, false
 	}
 
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(ctrl)
 		defer resume.resume()
 		var result uint64
@@ -424,8 +510,7 @@ func (a *hostLoopActivation) dispatchTypedScalarPortal(ctrl uintptr, importIdx, 
 		return 0, false
 	}
 
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(ctrl)
 		defer resume.resume()
 		var result uint64
@@ -468,8 +553,7 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarPortal(ctrl uintptr, impor
 		return 0, false
 	}
 
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		return a.dispatchTypedScalarPortal(ctrl, importIdx, rawSlots, a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(ctrl)
@@ -493,8 +577,7 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarExpandedPortal(ctrl uintpt
 		return 0, false
 	}
 
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		return a.dispatchTypedScalarExpandedPortal(ctrl, importIdx, rawSlots, a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(ctrl)
@@ -521,8 +604,7 @@ func (a *hostLoopActivation) dispatchSingleHostCall(ctrl uintptr, importIdx uint
 		})
 	}
 
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(ctrl)
 		defer resume.resume()
 		call()
@@ -558,8 +640,7 @@ func (a *hostLoopActivation) dispatchSingleHostCallView(ctrl uintptr, importIdx 
 		})
 	}
 
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(ctrl)
 		defer resume.resume()
 		call()
