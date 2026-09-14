@@ -91,7 +91,7 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 	var err error
 	wruntime.PreparePreparedIntTrap(in.trap)
 	if fn.directIntMode == preparedIntCallBlock {
-		result = in.eng.EnterPreparedIntCallBounded(&fn.directIntCall, a0, a1, a2, a3)
+		result = in.eng.EnterPreparedIntPreboundContextBounded(&fn.directIntCall, a0, a1, a2, a3)
 	} else if fn.directIntBounded {
 		if fn.directIntLight {
 			result, err = in.eng.EnterPreparedIntLightBounded(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
@@ -164,7 +164,7 @@ func (fn *PreparedFunction) invokeDirectIntSession(a0, a1, a2, a3 uint64) ([]uin
 	var result uint64
 	var err error
 	if fn.directIntMode == preparedIntCallBlock {
-		result = in.eng.EnterPreparedIntCallBounded(&fn.directIntCall, a0, a1, a2, a3)
+		result = in.eng.EnterPreparedIntPreboundContextBounded(&fn.directIntCall, a0, a1, a2, a3)
 	} else if fn.directIntBounded {
 		if fn.directIntLight {
 			result, err = in.eng.EnterPreparedIntLightBounded(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)

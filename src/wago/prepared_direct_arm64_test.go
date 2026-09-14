@@ -122,6 +122,21 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 	if err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatalf("add(20,22) = %v, %v; want 42", got, err)
 	}
+	size, err := in.PrepareFunction("size")
+	if err != nil {
+		t.Fatalf("prepare size: %v", err)
+	}
+	if size.directIntFast {
+		t.Fatal("memory size prepared the ARM64 direct integer entry")
+	}
+	session, err := size.OpenSession()
+	if err != nil {
+		t.Fatalf("open size session: %v", err)
+	}
+	if got, err := session.Invoke0(); err != nil || len(got) != 1 || got[0] != 0 {
+		t.Fatalf("session memory.size() = %v, %v; want 0", got, err)
+	}
+	session.Close()
 
 	preparedIntCallBlockEnabled = false
 	fallback, err := in.PrepareFunction("add")

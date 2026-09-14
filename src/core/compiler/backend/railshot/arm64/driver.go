@@ -165,6 +165,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+		if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
+			return err
+		}
 		var value *elem
 		f.activateIntervalLocal(int(x), r.Offset(), true)
 		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
@@ -518,22 +521,22 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if done, err := f.tryFbinLocalSet(r, f.a.Fadd, false); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fadd, 0, false)
+		f.fbin(f.a.Fadd, 0, false, true)
 	case 0x93:
 		if done, err := f.tryFbinLocalSet(r, f.a.Fsub, false); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fsub, 0, false)
+		f.fbin(f.a.Fsub, 0, false, true)
 	case 0x94:
 		if done, err := f.tryFbinLocalSet(r, f.a.Fmul, false); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fmul, 0, false)
+		f.fbin(f.a.Fmul, 0, false, true)
 	case 0x95:
 		if done, err := f.tryFbinLocalSet(r, f.a.Fdiv, false); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fdiv, 0, false)
+		f.fbin(f.a.Fdiv, 0, false, false)
 	case 0x96:
 		if done, err := f.tryFminmaxLocalSet(r, false, false); done || err != nil {
 			return err
@@ -565,22 +568,22 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if done, err := f.tryFbinLocalSet(r, f.a.Fadd, true); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fadd, 0, true)
+		f.fbin(f.a.Fadd, 0, true, true)
 	case 0xa1:
 		if done, err := f.tryFbinLocalSet(r, f.a.Fsub, true); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fsub, 0, true)
+		f.fbin(f.a.Fsub, 0, true, true)
 	case 0xa2:
 		if done, err := f.tryFbinLocalSet(r, f.a.Fmul, true); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fmul, 0, true)
+		f.fbin(f.a.Fmul, 0, true, true)
 	case 0xa3:
 		if done, err := f.tryFbinLocalSet(r, f.a.Fdiv, true); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fdiv, 0, true)
+		f.fbin(f.a.Fdiv, 0, true, false)
 	case 0xa4:
 		if done, err := f.tryFminmaxLocalSet(r, true, false); done || err != nil {
 			return err
@@ -673,17 +676,19 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	return nil
 }
 
-// trySelectLocalSet fuses an integer select immediately followed by local.set
-// into the pinned destination register. Select is otherwise an eager sink, so
-// setLocal cannot pass its destination hint backward and the ordinary path emits
-// a final result-to-local move. All three operands are realized before CSEL
-// starts the destination's new lifetime, preserving local.get-at-read-time.
+// trySelectLocalSet fuses an integer select immediately followed by local.set or
+// local.tee into the pinned destination register. Select is otherwise an eager
+// sink, so setLocal cannot pass its destination hint backward and the ordinary
+// path emits a final result-to-local move. A tee leaves a borrowed reference to
+// that destination on the operand stack. All three operands are realized before
+// CSEL starts the destination's new lifetime, preserving local.get-at-read-time.
 func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 	save := r.Offset()
 	op, ok := r.Peek()
-	if !ok || op != 0x21 { // local.tee still needs a result stack value.
+	if !ok || (op != 0x21 && op != 0x22) {
 		return false, nil
 	}
+	tee := op == 0x22
 	if _, err := r.Byte(); err != nil {
 		return false, err
 	}
@@ -722,6 +727,7 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 	}
 
 	f.invalidateBoundsCertFor(1, uint32(x))
+	f.setFactsForLocal(x, 0)
 	// Refs below the select still require x's old value; refs in its three
 	// operand blocks are consumed before the final CSEL overwrites dest.
 	f.realizeLocalRefs(x, f.s.baseOfValentBlock(a))
@@ -755,6 +761,11 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 		f.release(aReg)
 	}
 	f.markLocalDirty(x)
+	if tee {
+		result := f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: dest, idx: uint32(x)})
+		result.st.setGCRoot(f.gcFrameLocal(x))
+		f.stats.peep("select-local-tee-sink")
+	}
 	f.stats.peep("select-local-sink")
 	return true, nil
 }

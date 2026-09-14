@@ -161,6 +161,7 @@ func (a *Asm) AddImm32(rd, rn Reg, imm uint32)  { a.addSubImm(0x11000000, rd, rn
 func (a *Asm) SubImm64(rd, rn Reg, imm uint32)  { a.addSubImm(0xD1000000, rd, rn, imm) }
 func (a *Asm) SubImm32(rd, rn Reg, imm uint32)  { a.addSubImm(0x51000000, rd, rn, imm) }
 func (a *Asm) SubsImm64(rd, rn Reg, imm uint32) { a.addSubImm(0xF1000000, rd, rn, imm) }
+func (a *Asm) SubsImm32(rd, rn Reg, imm uint32) { a.addSubImm(0x71000000, rd, rn, imm) }
 
 // CmpImm64 is SUBS XZR, Rn, #imm12.
 func (a *Asm) CmpImm64(rn Reg, imm uint32) { a.addSubImm(0xF1000000, XZR, rn, imm) }
@@ -583,5 +584,37 @@ func (a *Asm) PatchBranch19(at, target int) bool {
 		return false
 	}
 	a.patchWord(at, (uint32(d)&0x7FFFF)<<5)
+	return true
+}
+
+// LdrLiteralF emits an LDR S/D literal with a zero displacement and returns its
+// byte offset. Patch it with PatchLiteral19 once the literal address is known.
+func (a *Asm) LdrLiteralF(rt Reg, f64 bool) int {
+	at := a.Len()
+	base := uint32(0x1C000000) // LDR St, literal
+	if f64 {
+		base = 0x5C000000 // LDR Dt, literal
+	}
+	a.word(base | r(rt))
+	return at
+}
+
+// PatchLiteral19 fills the signed, word-scaled imm19 field of an LDR literal.
+// Returns false if target is unaligned or outside the +/-1 MiB range.
+func (a *Asm) PatchLiteral19(at, target int) bool {
+	delta := target - at
+	if delta&3 != 0 {
+		return false
+	}
+	d := delta / 4
+	if d < -(1<<18) || d >= 1<<18 {
+		return false
+	}
+	w := a.wordAt(at) &^ (0x7FFFF << 5)
+	w |= (uint32(d) & 0x7FFFF) << 5
+	a.B[at] = byte(w)
+	a.B[at+1] = byte(w >> 8)
+	a.B[at+2] = byte(w >> 16)
+	a.B[at+3] = byte(w >> 24)
 	return true
 }
