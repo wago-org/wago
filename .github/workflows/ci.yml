@@ -332,6 +332,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test -count=20 -run '^TestCompiledSnapshotPacksRepeatedNestedSlices$' ./src/wago
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -count=20 -run '^TestCredentialTemporaryFileIsPrivateAndReadersSeeCompleteJSON$' ./cli/manager/internal/registry
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location bench
           try {
             go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns)$' ./suite -args '-wago.corpus=quick'
