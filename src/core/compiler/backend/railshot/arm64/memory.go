@@ -1650,37 +1650,33 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	}
 	res := f.allocReg(maskOf(delta))
 	base := linMemReg
-	dir := regNone
-	entry := int32(0)
+	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	if memoryIndex != 0 {
-		dir = f.allocReg(maskOf(delta, res))
-		f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
-		entry = int32(memoryIndex) * abi.MemoryDirEntryBytes
-		base = f.allocReg(maskOf(delta, res, dir))
-		f.ld64(base, dir, entry)
+		base = f.allocReg(maskOf(delta, res))
+		f.ld64(base, linMemReg, -int32(offMemoryDirPtr))
+		f.ld64(base, base, entry)
 	}
 	f.ld32(res, base, -int32(bdCurPages))
-	avoid := maskOf(delta, res, base)
-	if dir != regNone {
-		avoid = avoid.add(dir)
-	}
-	nw := f.allocReg(avoid)
+	nw := f.allocReg(maskOf(delta, res, base))
 	f.a.MovReg32(nw, res)
 	f.a.Adds32(nw, nw, delta)
 	failOverflow := f.a.Bcond(a64.CondCS)
-	mx := f.allocReg(avoid.add(nw))
-	f.ld32(mx, base, -int32(bdMaxPages))
-	f.cmpRR(nw, mx, false)
+	// Delta is dead after the addition. Reuse its register budget for the
+	// limit, directory, and cache address to stay within the four-GP floor.
+	f.pinned = f.pinned.remove(delta)
+	f.release(delta)
+	tmp := f.allocReg(maskOf(res, base, nw))
+	f.ld32(tmp, base, -int32(bdMaxPages))
+	f.cmpRR(nw, tmp, false)
 	failMax := f.a.Bcond(condA)
+	f.ld64(tmp, linMemReg, -int32(offMemoryDirPtr))
 	noPolicyDir := -1
 	if memoryIndex == 0 {
-		dir = f.allocReg(avoid.add(nw).add(mx))
-		f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
-		noPolicyDir = f.zeroBranch(dir, true, true)
+		noPolicyDir = f.zeroBranch(tmp, true, true)
 	}
-	f.ld32(mx, dir, entry+abi.MemoryDirPolicyMaxPagesOffset)
-	noPolicy := f.zeroBranch(mx, false, true)
-	f.cmpRR(nw, mx, false)
+	f.ld32(tmp, tmp, entry+abi.MemoryDirPolicyMaxPagesOffset)
+	noPolicy := f.zeroBranch(tmp, false, true)
+	f.cmpRR(nw, tmp, false)
 	failPolicy := f.a.Bcond(condA)
 	policyDone := f.a.Len()
 	if noPolicyDir >= 0 {
@@ -1688,17 +1684,18 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	}
 	f.patchBranch19(noPolicy, policyDone)
 	f.st32(base, -int32(bdCurPages), nw)
-	f.a.MovReg32(mx, nw)
-	f.shiftImm(shLSL, mx, wasmPageLog, true)
-	cacheAddr := f.allocReg(avoid.add(nw).add(mx))
-	f.a.SubImm64(cacheAddr, base, uint32(bdCurBytes))
-	f.a.Store64(mx, cacheAddr, 0)
-	f.release(cacheAddr)
-	f.st32(base, -8, mx) // legacy u32 cache; wraps only at exactly 4 GiB
 	if memoryIndex != 0 {
-		f.st64(dir, entry+abi.MemoryDirCurrentBytesOffset, mx)
-		f.st32(dir, entry+abi.MemoryDirCurrentPagesOffset, nw)
+		f.ld64(tmp, linMemReg, -int32(offMemoryDirPtr))
+		f.st32(tmp, entry+abi.MemoryDirCurrentPagesOffset, nw)
 	}
+	f.shiftImm(shLSL, nw, wasmPageLog, true)
+	if memoryIndex != 0 {
+		f.st64(tmp, entry+abi.MemoryDirCurrentBytesOffset, nw)
+	}
+	f.a.SubImm64(tmp, base, uint32(bdCurBytes))
+	f.a.Store64(nw, tmp, 0)
+	f.st32(base, -8, nw) // legacy u32 cache; wraps only at exactly 4 GiB
+
 	done := f.a.Branch()
 	if failDelta >= 0 {
 		f.patchBranch19(failDelta, f.a.Len())
@@ -1715,15 +1712,10 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	if memoryIndex == 0 && f.memSizeReg != regNone {
 		f.ld64(f.memSizeReg, linMemReg, -int32(bdCurBytes))
 	}
-	f.pinned = f.pinned.remove(delta)
-	f.release(delta)
 	f.release(nw)
-	f.release(mx)
+	f.release(tmp)
 	if memoryIndex != 0 {
 		f.release(base)
-	}
-	if dir != regNone {
-		f.release(dir)
 	}
 	if memory64 {
 		f.pushReg(res, mtI64)
