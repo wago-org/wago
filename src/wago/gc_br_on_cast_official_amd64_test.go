@@ -231,7 +231,7 @@ func stagedGCBrOnCastLeaderDeltaFor(base string, data []byte, line int) (stagedG
 }
 
 func compileStagedGCBrOnCastAccounting(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	if stagedGCBrOnCastOfficialExecution {

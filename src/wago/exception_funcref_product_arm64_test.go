@@ -54,7 +54,7 @@ func stagedExceptionFuncrefProductModule(payloadType []byte, elemFlags byte, ref
 
 func compileStagedExceptionFuncrefProduct(t testing.TB, data []byte) *Compiled {
 	t.Helper()
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.ExceptionHandling = true
 	features.ExceptionReferences = true
@@ -68,10 +68,13 @@ func compileStagedExceptionFuncrefProduct(t testing.TB, data []byte) *Compiled {
 
 func TestStagedExceptionFuncrefProductIdentityLifetimeAndGates(t *testing.T) {
 	data := stagedExceptionFuncrefProductModule([]byte{0x64, 0x00}, 0x03, 0x00, true)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || (!strings.Contains(err.Error(), "disabled") && !strings.Contains(err.Error(), "exn")) {
-		t.Fatalf("public compile = %v, want a closed public Core 3 feature gate", err)
+	if _, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2), data); err == nil || (!strings.Contains(err.Error(), "disabled") && !strings.Contains(err.Error(), "exn")) {
+		t.Fatalf("Core 2 compile = %v, want a closed Core 3 feature gate", err)
 	}
-	c := compileStagedExceptionFuncrefProduct(t, data)
+	c, err := Compile(NewRuntimeConfig(), data)
+	if err != nil {
+		t.Fatalf("default Core 3 compile: %v", err)
+	}
 	meta := (&Module{c: c}).Metadata()
 	if len(meta.Tags) != 1 || len(meta.Types) == 0 {
 		c.Close()

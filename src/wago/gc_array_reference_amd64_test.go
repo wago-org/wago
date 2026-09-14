@@ -237,7 +237,7 @@ func TestStagedGCArrayReferenceElementAllocationAndDrop(t *testing.T) {
 
 func TestStagedGCArrayReferenceOfficialProduct(t *testing.T) {
 	data := stagedGCArrayReferenceBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public compile unexpectedly admitted reference GC arrays")
 	}
 	c, err := compileStagedGCArray(data)

@@ -148,7 +148,7 @@ func stagedGCRefCastLeaderDeltaFor(data []byte, line int) (stagedGCRefCastLeader
 }
 
 func compileStagedGCRefCastAccounting(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	if stagedGCRefCastOfficialExecution {

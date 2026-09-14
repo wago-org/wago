@@ -15,7 +15,7 @@ import (
 
 func TestStagedGCStructGetDefaultCollectorProfiles(t *testing.T) {
 	data := stagedGCStructGetOnlyBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
 		t.Fatalf("public compile = %v, want closed GC gate", err)
 	}
 
