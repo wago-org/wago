@@ -12,6 +12,7 @@ import (
 const maxModuleTypeCacheBytes = 1 << 20
 
 type moduleTypeCache struct {
+	functionTypes   wasm.FunctionTypeLookup
 	funcCount       int
 	funcStart       int
 	memories        []wasm.MemType
@@ -21,16 +22,17 @@ type moduleTypeCache struct {
 }
 
 func buildModuleTypeCache(m *wasm.Module, bodyBytes int) moduleTypeCache {
+	functionTypes := wasm.NewFunctionTypeLookup(m)
 	if bodyBytes < minParallelHintBodyBytes {
-		return moduleTypeCache{}
+		return moduleTypeCache{functionTypes: functionTypes}
 	}
 	memories, globals := m.MemCount(), m.GlobalCount()
 	bytes := uint64(memories)*uint64(unsafe.Sizeof(wasm.MemType{})) +
 		uint64(globals)*uint64(unsafe.Sizeof(wasm.GlobalType{}))
 	if bytes > maxModuleTypeCacheBytes {
-		return moduleTypeCache{}
+		return moduleTypeCache{functionTypes: functionTypes}
 	}
-	c := moduleTypeCache{valid: true, funcsContiguous: true}
+	c := moduleTypeCache{valid: true, funcsContiguous: true, functionTypes: functionTypes}
 	if memories != 0 {
 		c.memories = make([]wasm.MemType, memories)
 	}
