@@ -138,14 +138,16 @@ func RequestInterruptAsync(trap []byte) func() {
 	trapPtr := slicePtr(trap)
 	go func() {
 		defer close(stopped)
-		for attempt := 0; attempt < 256; attempt++ {
+		retry := time.NewTicker(darwinInterruptRetry)
+		defer retry.Stop()
+		for {
 			if requestDarwinInterrupt(trapPtr) {
 				return
 			}
 			select {
 			case <-done:
 				return
-			case <-time.After(darwinInterruptRetry):
+			case <-retry.C:
 			}
 		}
 	}()

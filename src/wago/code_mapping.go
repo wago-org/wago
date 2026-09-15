@@ -667,15 +667,26 @@ func (c *Compiled) releaseCode() {
 	if cc.refs > 0 {
 		cc.refs--
 	}
-	if cc.refs == 0 && cc.closed && cc.mem != nil {
-		_ = coreruntime.Unmap(cc.mem)
-		cc.mem = nil
-		cc.base = 0
-		c.code = nil
-	}
 	if cc.refs == 0 && cc.closed {
+		if cc.mem != nil {
+			_ = coreruntime.Unmap(cc.mem)
+			cc.mem = nil
+			cc.base = 0
+		}
+		c.clearCodeViewsLocked()
 		if c.validateMemo != nil {
 			c.validateMemo.structuralCallIdentities.Store(nil)
+		}
+	}
+}
+
+// clearCodeViewsLocked drops every slice header that can retain the staged or
+// mapped code image. Callers hold codeCache.mu and have established refs == 0.
+func (c *Compiled) clearCodeViewsLocked() {
+	c.code = nil
+	if memo := c.loadValidateMemo(); memo != nil {
+		if snapshot := memo.executionView(); snapshot != nil {
+			snapshot.code = nil
 		}
 	}
 }
@@ -730,6 +741,7 @@ func (c *Compiled) Close() error {
 	if cc.refs != 0 {
 		return nil
 	}
+	c.clearCodeViewsLocked()
 	if c.validateMemo != nil {
 		c.validateMemo.structuralCallIdentities.Store(nil)
 	}

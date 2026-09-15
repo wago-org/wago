@@ -132,6 +132,26 @@ func TestSerialCompiledCloseBeforeInstantiateReleasesCodeImage(t *testing.T) {
 	}
 }
 
+func TestCompilerCloseBeforeInstantiateReleasesSnapshotCodeImage(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), benchAddOneModule())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	snapshot := compiled.executionView()
+	if len(snapshot.code) == 0 {
+		t.Fatal("execution snapshot has no staged code before Close")
+	}
+	if _, err := compiled.MarshalBinary(); err != nil {
+		t.Fatalf("MarshalBinary before Close: %v", err)
+	}
+	if err := compiled.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if compiled.code != nil || snapshot.code != nil {
+		t.Fatalf("Close retained staged code: public=%d snapshot=%d", len(compiled.code), len(snapshot.code))
+	}
+}
+
 func TestCompiledCodeInspectionDoesNotExposeMutableStorage(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), benchAddOneModule())
 	if err != nil {

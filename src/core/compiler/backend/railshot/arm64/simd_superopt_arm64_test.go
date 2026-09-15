@@ -22,6 +22,18 @@ func simdI32x4RotateRightBodyArm64(v [16]byte, shift byte) []byte {
 	return append(body, 0x0b)
 }
 
+func simdI32x4SignedShiftOrBodyArm64(v [16]byte, shift byte) []byte {
+	body := []byte{0x01, 0x01, 0x7b} // one v128 local
+	body = append(body, simdConst(v)...)
+	body = append(body, 0x21, 0x00) // local.set 0
+	body = append(body, 0x20, 0x00, 0x41, shift)
+	body = append(body, simdOp(172)...) // i32x4.shr_s
+	body = append(body, 0x20, 0x00, 0x41, 32-shift)
+	body = append(body, simdOp(171)...) // i32x4.shl
+	body = append(body, simdOp(80)...)  // v128.or
+	return append(body, 0x0b)
+}
+
 func TestSIMDI32x4RotateRightSuperoptArm64(t *testing.T) {
 	values := []uint32{0x01234567, 0x89abcdef, 0x80000001, 0xfedcba98}
 	v := i32x4Bytes(int32(values[0]), int32(values[1]), int32(values[2]), int32(values[3]))
@@ -53,6 +65,29 @@ func TestSIMDI32x4RotateRightSuperoptArm64(t *testing.T) {
 			)
 			if got := runArm64V128(t, m); got != want {
 				t.Fatalf("rotate-right %d = % x, want % x", shift, got, want)
+			}
+		})
+	}
+}
+
+func TestSIMDI32x4RotateRightSuperoptRejectsSignedShiftArm64(t *testing.T) {
+	values := []uint32{0x80000000, 0x89abcdef, 0x7fffffff, 0xffffffff}
+	v := i32x4Bytes(int32(values[0]), int32(values[1]), int32(values[2]), int32(values[3]))
+	for _, shift := range []byte{1, 8, 16, 24, 31} {
+		t.Run(strconv.Itoa(int(shift)), func(t *testing.T) {
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, simdI32x4SignedShiftOrBodyArm64(v, shift))
+			stats := compileWithStats(t, m, false).Funcs[0]
+			if got := stats.Peephole["simd-rotr-i32x4"]; got != 0 {
+				t.Fatalf("signed shift matched simd-rotr-i32x4 %d time(s), want 0", got)
+			}
+			want := i32x4Bytes(
+				int32(uint32(int32(values[0])>>shift)|(values[0]<<(32-shift))),
+				int32(uint32(int32(values[1])>>shift)|(values[1]<<(32-shift))),
+				int32(uint32(int32(values[2])>>shift)|(values[2]<<(32-shift))),
+				int32(uint32(int32(values[3])>>shift)|(values[3]<<(32-shift))),
+			)
+			if got := runArm64V128(t, m); got != want {
+				t.Fatalf("signed shift/or %d = % x, want % x", shift, got, want)
 			}
 		})
 	}

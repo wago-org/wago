@@ -255,7 +255,23 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int) {
 	f.cmpRR(t, f.memSizeReg, true)
 	savedPC := f.wasmPC
 	f.wasmPC = loadPC
-	f.trapIf(condA, trapMemOOB)
+	mt, _ := f.m.MemoryType(0)
+	if mt.Limits.HasMax && mt.Limits.Max < 65536 {
+		f.trapIf(condA, trapMemOOB)
+	} else {
+		// A full 4 GiB memory32 admits aligned 8-byte accesses across modular
+		// i32 address wraparound. For every smaller memory, exceeding the widened
+		// end necessarily encounters an out-of-bounds scalar iteration first.
+		inBounds := f.a.Bcond(condBE)
+		f.a.MovImm64(t, 1<<32)
+		f.cmpRR(f.memSizeReg, t, true)
+		f.trapIf(condNE, trapMemOOB)
+		if !f.a.TstImm32(addrReg, 7) {
+			panic("arm64: i32 alignment mask is not encodable")
+		}
+		f.trapIf(condNE, trapMemOOB)
+		f.patchBranch19(inBounds, f.a.Len())
+	}
 	f.wasmPC = savedPC
 	f.release(t)
 	f.linearSumLoop = uint32(addr+1) | uint32(acc+1)<<16
@@ -2265,6 +2281,10 @@ func (f *fn) opElse() error {
 func (f *fn) opEnd(r *wasm.Reader) error {
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
+	if fr.kind == cfLoop && f.linearSumLoopDepth == uint16(last+1) {
+		f.linearSumLoop = 0
+		f.linearSumLoopDepth = 0
+	}
 	branchState := f.frameBranchState(&fr)
 	entryState := f.frameEntryState(&fr)
 	baseGCRoots := f.frameBaseGCRoots(&fr)

@@ -217,7 +217,22 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFram
 	f.a.Cmp64(t, f.memSizeReg)
 	savedPC := f.wasmPC
 	f.wasmPC = loadPC
-	f.trapIf(condA, trapMemOOB)
+	mt, _ := f.m.MemoryType(0)
+	if mt.Limits.HasMax && mt.Limits.Max < 65536 {
+		f.trapIf(condA, trapMemOOB)
+	} else {
+		// A widened end above the current memory normally proves that the scalar
+		// loop traps. The sole exception is a full 4 GiB memory32: aligned 8-byte
+		// accesses remain valid while the i32 induction address wraps. Preserve
+		// that modular Wasm behavior without giving up the unrolled fast path.
+		inBounds := f.a.JccPlaceholder(condBE)
+		f.a.MovImm64(t, 1<<32)
+		f.a.Cmp64(f.memSizeReg, t)
+		f.trapIf(condNE, trapMemOOB)
+		f.a.TestImm(addrReg, 7, false)
+		f.trapIf(condNE, trapMemOOB)
+		f.a.PatchRel32(inBounds, f.a.Len())
+	}
 	f.wasmPC = savedPC
 	f.release(t)
 	f.linearSumLoop = uint32(addr+1) | uint32(acc+1)<<16

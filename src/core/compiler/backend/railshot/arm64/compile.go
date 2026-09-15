@@ -2962,7 +2962,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.stats.peep("all-calls-inlined")
 	}
 	if commonBoundsLimitEnabled && hints.bounds4OpCount() >= 2 && f.memSizeReg != regNone && !hasCall && hints.flags.has(hintHasControlFlow) && len(modGlobals) == 0 &&
-		len(m.Memories) > 0 && m.Memories[0].Limits.Min != 0 && touchesMemory {
+		mt0.Limits.Min != 0 && touchesMemory {
 		f.memLimitReg, f.memLimitExtent = X25, 4
 		f.reserved = f.reserved.add(f.memLimitReg)
 		f.stats.peep("common-bounds-limit")

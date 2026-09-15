@@ -869,7 +869,7 @@ func (f *fn) v128I32x4ConvertToFloat(r *wasm.Reader, f64dst, signed bool) error 
 	return f.v128Unary(r, op)
 }
 
-func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), countMask int32, laneSize int, right bool) error {
+func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), countMask int32, laneSize int, right, rotateRight bool) error {
 	if !f.opt(optV128DirectResults) {
 		return f.v128ShiftLegacy(op, opImm, countMask, laneSize, right)
 	}
@@ -877,7 +877,7 @@ func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst,
 	if countElem.st.kind == stConst {
 		value := f.popValue()
 		shift := uint8(countElem.st.cval & int64(countMask))
-		if laneSize == 4 && right && shift != 0 && f.tryI32x4RotateRight(r, value, shift) {
+		if rotateRight && shift != 0 && f.tryI32x4RotateRight(r, value, shift) {
 			return nil
 		}
 		src, owned := f.operandRegV128(value)
@@ -1004,19 +1004,19 @@ func (f *fn) v128ShiftLegacy(op func(dst, s1, s2 Reg), opImm func(dst, src Reg, 
 	return nil
 }
 func (f *fn) i8x16Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
-	return f.v128Shift(r, op, opImm, 7, 1, right)
+	return f.v128Shift(r, op, opImm, 7, 1, right, false)
 }
 
 func (f *fn) i16x8Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
-	return f.v128Shift(r, op, opImm, 15, 2, right)
+	return f.v128Shift(r, op, opImm, 15, 2, right, false)
 }
 
-func (f *fn) i32x4Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
-	return f.v128Shift(r, op, opImm, 31, 4, right)
+func (f *fn) i32x4Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right, rotateRight bool) error {
+	return f.v128Shift(r, op, opImm, 31, 4, right, rotateRight)
 }
 
 func (f *fn) i64x2Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
-	return f.v128Shift(r, op, opImm, 63, 8, right)
+	return f.v128Shift(r, op, opImm, 63, 8, right, false)
 }
 
 // i64x2.shr_s uses the same packed SSHL path as every other vector shift: SSHL.2D
@@ -2411,11 +2411,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 170: // i32x4.extend_high_i16x8_u
 		return f.i32x4ExtendI16x8(r, false, true)
 	case 171: // i32x4.shl
-		return f.i32x4Shift(r, f.a.NeonUshlS, f.a.NeonShlS, false)
+		return f.i32x4Shift(r, f.a.NeonUshlS, f.a.NeonShlS, false, false)
 	case 172: // i32x4.shr_s
-		return f.i32x4Shift(r, f.a.NeonSshrvS, f.a.NeonSshrS, true)
+		return f.i32x4Shift(r, f.a.NeonSshrvS, f.a.NeonSshrS, true, false)
 	case 173: // i32x4.shr_u
-		return f.i32x4Shift(r, f.a.NeonUshrvS, f.a.NeonUshrS, true)
+		return f.i32x4Shift(r, f.a.NeonUshrvS, f.a.NeonUshrS, true, true)
 	case 199: // i64x2.extend_low_i32x4_s
 		return f.i64x2ExtendI32x4(r, true, false)
 	case 200: // i64x2.extend_high_i32x4_s

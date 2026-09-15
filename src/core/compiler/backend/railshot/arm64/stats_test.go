@@ -4,11 +4,13 @@ package arm64
 
 import (
 	"bytes"
+	"encoding/binary"
 	"strings"
 	"testing"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 func TestCompileResourceStatsArm64(t *testing.T) {
@@ -369,5 +371,59 @@ func TestModuleGlobalPinRequiresABIWideReuseArm64(t *testing.T) {
 	got := pickModuleGlobals(m, 1, []int64{bar})
 	if len(got) != 1 || got[0].global != 0 || got[0].reg != moduleGlobalRegs[0] {
 		t.Fatalf("hot global pin = %+v, want g0 -> %s", got, regName(moduleGlobalRegs[0]))
+	}
+}
+
+func TestCommonBoundsLimitUsesMemoryZeroMinimumArm64(t *testing.T) {
+	body := []byte{
+		0x00,
+		0x02, 0x40,
+		0x20, 0x00, 0x28, 0x02, 0x00, 0x1a,
+		0x20, 0x00, 0x28, 0x02, 0x00, 0x1a,
+		0x0b,
+		0x0b,
+	}
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, nil, body)
+	m.Imports = append(m.Imports, wasm.Import{
+		Module: "host",
+		Name:   "memory0",
+		Type:   wasm.NewMemExternType(wasm.MemType{Limits: wasm.Limits{Min: 0}}),
+	})
+	var moduleStats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: &moduleStats})
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	defer cm.CodeImage.Close()
+	stats := moduleStats.Funcs[0]
+	if got := stats.Peephole["common-bounds-limit"]; got != 0 {
+		t.Fatalf("common bounds limit selected %d time(s) from local memory minimum, want 0", got)
+	}
+
+	eng, err := coreruntime.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	jm, err := coreruntime.NewJobMemory(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	arena, err := coreruntime.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer arena.Close()
+	code, entry, err := coreruntime.MapCode(cm.Code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coreruntime.Unmap(code)
+	args, results := arena.Alloc(8), arena.Alloc(8)
+	trap := arena.Alloc(coreruntime.TrapBufferBytes)
+	binary.LittleEndian.PutUint32(args, 0)
+	if err := eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results); err == nil {
+		t.Fatal("zero-length imported memory access did not trap")
 	}
 }

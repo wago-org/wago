@@ -878,8 +878,8 @@ func TestSIMDShiftLowering(t *testing.T) {
 		{"i8-right", func(f *fn) error { return f.i8x16Shift(wasm.NewReader(nil), f.a.NeonUshrvB, f.a.NeonUshrB, true) }},
 		{"i16-left", func(f *fn) error { return f.i16x8Shift(wasm.NewReader(nil), f.a.NeonUshlH, f.a.NeonShlH, false) }},
 		{"i16-right", func(f *fn) error { return f.i16x8Shift(wasm.NewReader(nil), f.a.NeonSshrvH, f.a.NeonSshrH, true) }},
-		{"i32-left", func(f *fn) error { return f.i32x4Shift(wasm.NewReader(nil), f.a.NeonUshlS, f.a.NeonShlS, false) }},
-		{"i32-right", func(f *fn) error { return f.i32x4Shift(wasm.NewReader(nil), f.a.NeonUshrvS, f.a.NeonUshrS, true) }},
+		{"i32-left", func(f *fn) error { return f.i32x4Shift(wasm.NewReader(nil), f.a.NeonUshlS, f.a.NeonShlS, false, false) }},
+		{"i32-right", func(f *fn) error { return f.i32x4Shift(wasm.NewReader(nil), f.a.NeonUshrvS, f.a.NeonUshrS, true, true) }},
 		{"i64-left", func(f *fn) error { return f.i64x2Shift(wasm.NewReader(nil), f.a.NeonUshlD, f.a.NeonShlD, false) }},
 		{"i64-right", func(f *fn) error { return f.i64x2Shift(wasm.NewReader(nil), f.a.NeonSshrvD, f.a.NeonSshrD, true) }},
 	} {
