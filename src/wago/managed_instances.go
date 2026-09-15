@@ -463,10 +463,10 @@ func (m *ManagedInstance) finishTerminalClose(state *instanceCloseState) {
 		manager.mu.Lock()
 		delete(manager.instances, m)
 		delete(manager.byInstance, m.closedValue)
-		close(state.terminalDone)
+		state.signalTerminalDone()
 		manager.mu.Unlock()
 	} else {
-		close(state.terminalDone)
+		state.signalTerminalDone()
 	}
 	m.mu.Unlock()
 }

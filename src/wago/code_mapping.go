@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"errors"
 	"fmt"
 	goruntime "runtime"
 	"strings"
@@ -48,6 +49,15 @@ type compiledCodeCache struct {
 	// direct-Instantiation native stack capacity without growing this sidecar.
 	// Neither half is serialized; codec reload restores only generic features.
 	stagedFeatures CoreFeatures
+	// hostThunks lazily owns immutable async and sync import wrappers. Instances
+	// retain them through the same refs counter as the primary code image.
+	hostThunks [2]compiledHostThunkCache
+}
+
+type compiledHostThunkCache struct {
+	mem     []byte
+	base    uintptr
+	offsets []int
 }
 
 // compilerCompiledState groups the fixed private state owned for the complete
@@ -673,9 +683,20 @@ func (c *Compiled) releaseCode() {
 			cc.mem = nil
 			cc.base = 0
 		}
+		cc.releaseHostThunksLocked()
 		c.clearCodeViewsLocked()
 		if c.validateMemo != nil {
 			c.validateMemo.structuralCallIdentities.Store(nil)
+		}
+	}
+}
+
+func (cc *compiledCodeCache) releaseHostThunksLocked() {
+	for i := range cc.hostThunks {
+		cache := &cc.hostThunks[i]
+		if cache.mem != nil {
+			_ = coreruntime.Unmap(cache.mem)
+			*cache = compiledHostThunkCache{}
 		}
 	}
 }
@@ -704,14 +725,23 @@ func (c *Compiled) replaceDecoded(decoded Compiled, snapshotLimit uint64) error 
 		mem := cc.mem
 		cc.mem = nil
 		cc.base = 0
+		hostThunks := cc.hostThunks
+		cc.hostThunks = [2]compiledHostThunkCache{}
 		cc.closed = true
 		c.code = nil
 		cc.mu.Unlock()
 		goruntime.SetFinalizer(c, nil)
+		var releaseErr error
 		if mem != nil {
-			if err := coreruntime.Unmap(mem); err != nil {
-				return fmt.Errorf("release replaced compiled code: %w", err)
+			releaseErr = errors.Join(releaseErr, coreruntime.Unmap(mem))
+		}
+		for i := range hostThunks {
+			if hostThunks[i].mem != nil {
+				releaseErr = errors.Join(releaseErr, coreruntime.Unmap(hostThunks[i].mem))
 			}
+		}
+		if releaseErr != nil {
+			return fmt.Errorf("release replaced compiled mappings: %w", releaseErr)
 		}
 	}
 	*c = decoded
@@ -753,5 +783,13 @@ func (c *Compiled) Close() error {
 	mem := cc.mem
 	cc.mem = nil
 	cc.base = 0
-	return coreruntime.Unmap(mem)
+	hostThunks := cc.hostThunks
+	cc.hostThunks = [2]compiledHostThunkCache{}
+	err := coreruntime.Unmap(mem)
+	for i := range hostThunks {
+		if hostThunks[i].mem != nil {
+			err = errors.Join(err, coreruntime.Unmap(hostThunks[i].mem))
+		}
+	}
+	return err
 }
