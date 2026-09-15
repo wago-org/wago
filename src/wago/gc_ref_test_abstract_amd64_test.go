@@ -39,7 +39,7 @@ func stagedGCRefTestAbstractBytes(t testing.TB) []byte {
 
 func TestStagedGCRefTestAbstractMixedTableLifecycle(t *testing.T) {
 	data := stagedGCRefTestAbstractBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public Compile admitted staged abstract ref.test product")
 	}
 	c, err := compileStagedGCRefTestAccounting(data)

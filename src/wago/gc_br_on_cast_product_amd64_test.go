@@ -58,7 +58,7 @@ func stagedGCBrOnCastProductFor(base string, class stagedGCBrOnCastClass) staged
 }
 
 func compileStagedGCBrOnCastProduct(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCStructProducts = true
@@ -83,7 +83,7 @@ func TestStagedGCBrOnCastProductBoundaryLifecycle(t *testing.T) {
 	for _, base := range bases {
 		for _, class := range classes {
 			data := stagedGCBrOnCastBytes(t, base, class)
-			if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+			if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 				t.Fatalf("public Compile admitted staged %s %s product", base, class)
 			}
 			guardCfg := NewRuntimeConfig()

@@ -16,7 +16,7 @@ import (
 )
 
 func compileStagedGCTypeSubtypingProductForTest(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCTypeSubtypingProducts = true
@@ -242,7 +242,7 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 	for i, pin := range stagedGCTypeSubtypingProductPins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
-			if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
+			if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
 				t.Fatalf("public compile = %v, want closed GC type gate", err)
 			}
 			c, err := compileStagedGCTypeSubtypingProductForTest(data)

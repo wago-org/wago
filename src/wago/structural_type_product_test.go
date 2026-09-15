@@ -78,7 +78,7 @@ func TestStagedTypeRecLeaderInventory(t *testing.T) {
 }
 
 func compileStagedStructuralTypeProductForTest(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.StructuralTypeProducts = true

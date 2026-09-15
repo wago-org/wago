@@ -25,7 +25,7 @@ func stagedGCArrayPackedDataBytes(t testing.TB) []byte {
 
 func TestStagedGCArrayPackedDataOfficialProduct(t *testing.T) {
 	data := stagedGCArrayPackedDataBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public compile unexpectedly admitted packed GC array data instructions")
 	}
 	profiles := []struct {

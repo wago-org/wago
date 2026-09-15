@@ -148,7 +148,7 @@ func stagedGCI31LeaderDeltaFor(data []byte, line int) (stagedGCI31LeaderDelta, s
 }
 
 func compileStagedGCI31(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	if _, ok := stagedGCI31PinnedProduct(data); ok {

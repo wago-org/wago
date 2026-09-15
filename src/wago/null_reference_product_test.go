@@ -111,7 +111,7 @@ func namesForBottomNullReferenceProduct() []string {
 }
 
 func compileStagedNullReferenceProductForTest(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.NullReferenceProducts = true
