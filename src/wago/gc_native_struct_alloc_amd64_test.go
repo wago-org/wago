@@ -18,26 +18,43 @@ func TestGCNativeStructAllocPreparedAcrossCollections(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{StressNurseryBytes: 128, VerifyAfterCollect: true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	fn, err := in.PrepareFunction("new_get")
-	if err != nil {
-		t.Fatal(err)
-	}
-	lo, hi := uint64(0x0706050403020100), uint64(0x0f0e0d0c0b0a0908)
-	for i := 0; i < 2000; i++ {
-		got, err := fn.Invoke(lo+uint64(i), hi^uint64(i))
-		want := []uint64{lo + uint64(i), hi ^ uint64(i)}
-		if err != nil || !reflect.DeepEqual(got, want) {
-			t.Fatalf("iteration %d = %#x, %v; want %#x", i, got, err, want)
+	var ordinary corergc.Stats
+	for _, prepared := range []bool{false, true} {
+		in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{StressNurseryBytes: 128, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	stats := in.gc.Stats()
-	if stats.Allocations != 2001 || stats.MinorCollections == 0 {
-		t.Fatalf("collector stats = %+v, want one global plus 2000 call allocations across minor collections", stats)
+		defer in.Close()
+		call := func(args ...uint64) ([]uint64, error) { return in.Invoke("new_get", args...) }
+		if prepared {
+			fn, err := in.PrepareFunction("new_get")
+			if err != nil {
+				t.Fatal(err)
+			}
+			call = fn.Invoke
+		}
+		lo, hi := uint64(0x0706050403020100), uint64(0x0f0e0d0c0b0a0908)
+		for i := 0; i < 2000; i++ {
+			got, err := call(lo+uint64(i), hi^uint64(i))
+			want := []uint64{lo + uint64(i), hi ^ uint64(i)}
+			if err != nil || !reflect.DeepEqual(got, want) {
+				t.Fatalf("prepared=%v iteration %d = %#x, %v; want %#x", prepared, i, got, err, want)
+			}
+		}
+		stats := in.gc.Stats()
+		if stats.Allocations != 2001 || stats.MinorCollections == 0 || stats.FullCollections != 0 {
+			t.Fatalf("prepared=%v collector stats = %+v, want one global plus 2000 call allocations across policy-driven minor collections", prepared, stats)
+		}
+		if prepared && stats != ordinary {
+			t.Fatalf("prepared stats = %+v, ordinary = %+v", stats, ordinary)
+		}
+		ordinary = stats
+		if err := in.CollectGC(); err != nil {
+			t.Fatal(err)
+		}
+		if live := in.gc.Stats().LiveObjects; live != 1 {
+			t.Fatalf("prepared=%v retained %d objects after collection, want one global", prepared, live)
+		}
 	}
 }
 
