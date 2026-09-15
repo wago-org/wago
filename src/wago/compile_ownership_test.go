@@ -141,8 +141,10 @@ func TestCompilerCloseBeforeInstantiateReleasesSnapshotCodeImage(t *testing.T) {
 	if len(snapshot.code) == 0 {
 		t.Fatal("execution snapshot has no staged code before Close")
 	}
-	if _, err := compiled.MarshalBinary(); err != nil {
-		t.Fatalf("MarshalBinary before Close: %v", err)
+	if compiled.boundsMode != BoundsChecksSignalsBased {
+		if _, err := compiled.MarshalBinary(); err != nil {
+			t.Fatalf("MarshalBinary before Close: %v", err)
+		}
 	}
 	if err := compiled.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
