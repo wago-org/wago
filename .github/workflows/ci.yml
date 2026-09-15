@@ -534,9 +534,9 @@ jobs:
 
       # TinyGo links native linux/amd64 binaries with LLVM lld; the runner needs
       # ld.lld on PATH (otherwise: "ROM segments are non-contiguous").
-      - name: Install lld and native debugger
+      - name: Install lld
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y gdb lld
+        run: sudo apt-get update && sudo apt-get install -y lld
 
       # Drive the manager with standard Go while TinyGo links and executes the
       # final runtime-only binary. This covers target-policy handoff, portable
@@ -580,20 +580,6 @@ jobs:
         run: |
           tinygo build -scheduler=tasks -no-debug -opt=z -gc=conservative \
             -tags wago_runtime,wago_lean,wago_minimal -o wago-tinygo-release ./cli/wago
-          if [ "${{ matrix.name }}" = "Linux / amd64" ]; then
-            for attempt in 1 2 3; do
-              gdb -q -batch \
-                -ex 'set pagination off' \
-                -ex run \
-                -ex 'thread apply all bt full' \
-                -ex 'info registers' \
-                -ex 'x/32gx $rsp' \
-                --args ./wago-tinygo-release --version 2>&1 | tee "gdb-$attempt.log"
-              if grep -q 'Program received signal SIGSEGV' "gdb-$attempt.log"; then
-                exit 1
-              fi
-            done
-          fi
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             ./wago-tinygo-release --version
             out="$(./wago-tinygo-release run --invoke fib tests/fixtures/wasm/fib.wasm 20)"

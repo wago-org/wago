@@ -85,7 +85,7 @@ func (s Selection) Enabled(name string) bool {
 	if s.bindings == nil {
 		return false
 	}
-	index, ok := s.bindings.index[name]
+	index, ok := s.bindings.indexOf(name)
 	return ok && s.bits&(uint64(1)<<index) != 0
 }
 
@@ -109,7 +109,7 @@ func (s Selection) Valid() bool { return s.bindings != nil }
 // for an unknown name because backend option inventories are initialization
 // invariants already checked by NewBindings.
 func (b *Bindings) Option(name string) Option {
-	index, ok := b.index[name]
+	index, ok := b.indexOf(name)
 	if !ok {
 		panic(fmt.Sprintf("unknown %s optimization %q", b.arch, name))
 	}
@@ -123,45 +123,61 @@ type Bindings struct {
 	mu       sync.Mutex
 	arch     string
 	entries  []binding
-	index    map[string]int
 	before   []bool
 	changed  []int
 	revision uint64
 }
 
 func NewBindings(arch string, specs ...BindingSpec) *Bindings {
-	byName := make(map[string]BindingSpec, len(specs))
-	for _, spec := range specs {
+	for index, spec := range specs {
 		if spec.Value == nil {
 			panic(fmt.Sprintf("%s optimization binding %q has a nil value", arch, spec.Name))
 		}
-		if _, exists := byName[spec.Name]; exists {
-			panic(fmt.Sprintf("%s optimization binding %q is duplicated", arch, spec.Name))
+		for previous := 0; previous < index; previous++ {
+			if specs[previous].Name == spec.Name {
+				panic(fmt.Sprintf("%s optimization binding %q is duplicated", arch, spec.Name))
+			}
 		}
 		if _, ok := Lookup(arch, spec.Name); !ok {
 			panic(fmt.Sprintf("%s optimization binding %q is not registered", arch, spec.Name))
 		}
-		byName[spec.Name] = spec
 	}
 	definitions := ForArch(arch)
 	bindings := &Bindings{
 		arch:     arch,
 		entries:  make([]binding, 0, len(definitions)),
-		index:    make(map[string]int, len(definitions)),
 		before:   make([]bool, len(definitions)),
 		changed:  make([]int, len(definitions)),
 		revision: 1,
 	}
 	for _, definition := range definitions {
-		spec, ok := byName[definition.Name]
-		if !ok {
+		var spec BindingSpec
+		found := false
+		for _, candidate := range specs {
+			if candidate.Name == definition.Name {
+				spec, found = candidate, true
+				break
+			}
+		}
+		if !found {
 			panic(fmt.Sprintf("%s optimization %q has no backend binding", arch, definition.Name))
 		}
 		bindings.entries = append(bindings.entries, binding{definition: definition, value: spec.Value, inverted: spec.Inverted})
-		bindings.index[definition.Name] = len(bindings.entries) - 1
-		delete(byName, definition.Name)
 	}
 	return bindings
+}
+
+// indexOf resolves names against the small, fixed catalog. Bindings are created
+// once during package initialization and options are pre-resolved for hot
+// lowering, so a linear lookup avoids two startup hash maps without moving map
+// work onto generated-code paths.
+func (b *Bindings) indexOf(name string) (int, bool) {
+	for index := range b.entries {
+		if b.entries[index].definition.Name == name {
+			return index, true
+		}
+	}
+	return 0, false
 }
 
 // Infos returns current binding values in catalog order.
@@ -210,7 +226,7 @@ func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[
 		}
 	}
 	for name, on := range overrides {
-		index, ok := b.index[name]
+		index, ok := b.indexOf(name)
 		if !ok {
 			return Selection{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
 		}
@@ -245,7 +261,7 @@ func (b *Bindings) infosLocked() []Info {
 func (b *Bindings) Set(name string, on bool) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	index, ok := b.index[name]
+	index, ok := b.indexOf(name)
 	if !ok {
 		return false
 	}
@@ -308,7 +324,7 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 	if snapshot.bindings == b && snapshot.revision == b.revision && b.deltasMatchLocked(overrides, deltas) {
 		changed := 0
 		for name := range deltas {
-			index := b.index[name]
+			index, _ := b.indexOf(name)
 			b.changed[changed] = index
 			changed++
 		}
@@ -327,7 +343,7 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 		b.before[index] = *entry.value
 	}
 	for name, on := range overrides {
-		index, ok := b.index[name]
+		index, ok := b.indexOf(name)
 		if !ok {
 			for index, entry := range b.entries {
 				*entry.value = b.before[index]
@@ -350,7 +366,7 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 func (b *Bindings) deltasMatchLocked(overrides, deltas map[string]bool) bool {
 	changed := 0
 	for name, on := range overrides {
-		index, ok := b.index[name]
+		index, ok := b.indexOf(name)
 		if !ok {
 			return false
 		}
