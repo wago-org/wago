@@ -964,6 +964,12 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers *native
 		if len(operands) != 2 || !nativeImmediateShiftUse(consumer.Op) {
 			continue
 		}
+		if plan.Machine.Target == railmach.TargetAMD64 && nativeAMD64VectorShiftUse(consumer.Op) {
+			// AMD64 vector shifts consume the count through an XMM register. Do
+			// not elide its scalar constant producer as though the finalizer had
+			// an immediate vector-shift form.
+			continue
+		}
 		value := operands[1].Reg
 		if value == 0 || int(value) >= len(plan.Machine.VRegs) {
 			continue
@@ -1015,6 +1021,18 @@ func nativeImmediateShiftUse(op railmach.MOpcode) bool {
 		wasm.InstrI32Rotl, wasm.InstrI64Rotl,
 		wasm.InstrI32Rotr, wasm.InstrI64Rotr,
 		wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU,
+		wasm.InstrI16x8Shl, wasm.InstrI16x8ShrS, wasm.InstrI16x8ShrU,
+		wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU,
+		wasm.InstrI64x2Shl, wasm.InstrI64x2ShrS, wasm.InstrI64x2ShrU:
+		return true
+	default:
+		return false
+	}
+}
+
+func nativeAMD64VectorShiftUse(op railmach.MOpcode) bool {
+	switch railmach.SemanticOpcode(op) {
+	case wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU,
 		wasm.InstrI16x8Shl, wasm.InstrI16x8ShrS, wasm.InstrI16x8ShrU,
 		wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU,
 		wasm.InstrI64x2Shl, wasm.InstrI64x2ShrS, wasm.InstrI64x2ShrU:

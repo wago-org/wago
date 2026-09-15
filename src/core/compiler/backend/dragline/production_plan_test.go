@@ -1464,18 +1464,22 @@ func TestNativeBackendPlannerConsumesProfileEdgeLayout(t *testing.T) {
 }
 
 func TestNativeBackendPlannerShrinkWrapsProfileColdCalleeSave(t *testing.T) {
-	body := []byte{0x20, 0x00, 0x04, 0x7e}
-	for value := byte(1); value <= 18; value++ {
-		body = append(body, 0x20, 0x01, 0x42, value, 0x7c)
+	body := []byte{0x01, 0x0a, 0x7e, 0x20, 0x00, 0x04, 0x7e} // ten i64 locals; if (result i64)
+	for local := byte(1); local <= 10; local++ {
+		body = append(body, 0x42, local, 0x21, local)
 	}
-	for range 17 {
+	for local := byte(1); local <= 10; local++ {
+		body = append(body, 0x20, local)
+	}
+	for range 9 {
 		body = append(body, 0x7c)
 	}
 	body = append(body, 0x05, 0x42, 0x00, 0x0b, 0x0b)
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
 	source := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
 	)
 	m, err := wasm.DecodeModule(source)
 	if err != nil {
@@ -1485,10 +1489,9 @@ func TestNativeBackendPlannerShrinkWrapsProfileColdCalleeSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Fix the target so this register-pressure fixture has the same callee-save
+	// contract when the test suite itself runs on ARM64.
+	target := corecompiler.Target{GOOS: "linux", GOARCH: "amd64", Mode: corecompiler.TargetCompatibility}
 	var baselinePlanner nativeBackendPlanner
 	baseline, err := baselinePlanner.Plan(stack, target)
 	if err != nil {

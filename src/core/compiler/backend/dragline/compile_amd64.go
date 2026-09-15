@@ -36,6 +36,11 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, moduleHasDe
 		return false
 	}
 	if len(stack.Instrs) > 512 {
+		if stack.MaxLoopDepth > 1 && len(stack.Params) == 0 {
+			// Large parameterless nested loops have not proved their backedge
+			// value flow through the AMD64 machine pipeline yet.
+			return false
+		}
 		for _, instruction := range stack.Instrs {
 			if instruction.Kind == wasm.InstrMemoryCopy {
 				// Large memory.copy control graphs still expose incomplete AMD64
@@ -56,6 +61,9 @@ func amd64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, modul
 		return "amd64-dense-global-loop"
 	}
 	if len(stack.Instrs) > 512 {
+		if stack.MaxLoopDepth > 1 && len(stack.Params) == 0 {
+			return "amd64-large-parameterless-nested-loop"
+		}
 		for _, instruction := range stack.Instrs {
 			if instruction.Kind == wasm.InstrMemoryCopy {
 				return "amd64-large-memory.copy"
@@ -495,7 +503,8 @@ func amd64RailMachMayUseBMI2(plan *nativeBackendPlan) bool {
 		if !plan.ImmediateProducer.has(uint32(instructionID)) {
 			continue
 		}
-		if instruction.Op == wasm.InstrI32Rotl || instruction.Op == wasm.InstrI32Rotr || instruction.Op == wasm.InstrI64Rotl || instruction.Op == wasm.InstrI64Rotr {
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		if semanticOp == wasm.InstrI32Rotl || semanticOp == wasm.InstrI32Rotr || semanticOp == wasm.InstrI64Rotl || semanticOp == wasm.InstrI64Rotr {
 			return true
 		}
 	}
@@ -4571,7 +4580,7 @@ func amd64RailMachRotatedZeroTestLatch(plan *nativeBackendPlan, block, backedge 
 			return 0, 0, false
 		}
 		definition := data.Def / 6
-		if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Op != wasm.InstrI32Sub {
+		if int(definition) >= len(plan.Machine.Insts) || railmach.SemanticOpcode(plan.Machine.Insts[definition].Op) != wasm.InstrI32Sub {
 			return 0, 0, false
 		}
 		operands := plan.Machine.InstructionOperands(definition)

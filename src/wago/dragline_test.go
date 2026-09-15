@@ -6516,6 +6516,9 @@ func TestDraglineRailMachVectorTruncSatExecution(t *testing.T) {
 }
 
 func TestDraglineRailMachRelaxedVectorExecution(t *testing.T) {
+	if CoreFeaturesV3&^platformCoreFeatures() != 0 {
+		t.Skip("this product does not compile the CoreFeaturesV3 relaxed SIMD fixture")
+	}
 	repeat := func(value byte) (out [16]byte) {
 		for lane := range out {
 			out[lane] = value

@@ -73,6 +73,9 @@ func preparedSessionLoopWithoutCallingImportMemoryModule() []byte {
 }
 
 func TestPreparedSessionDirectReservation(t *testing.T) {
+	if !preparedDirectIntSupported {
+		t.Skip("prepared direct entry is not supported on this platform")
+	}
 	in, fn := narrowPreparedFixture(t)
 	s, err := fn.OpenSession()
 	if err != nil {

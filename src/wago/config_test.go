@@ -923,6 +923,10 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 }
 
 func TestDraglineFunctionWorkersPreserveExactArtifact(t *testing.T) {
+	if runtime.Compiler == "tinygo" {
+		t.Log("native Dragline worker artifact test requires standard Go")
+		return
+	}
 	module := benchImportedModule(64, 16)
 	compile := func(workers int) *Compiled {
 		t.Helper()

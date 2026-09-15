@@ -279,17 +279,36 @@ func TestAMD64StructuredScalarResidencyPinsHotSubsetWithoutSIMD(t *testing.T) {
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(10, wasmtest.Vec(code)),
 	)
-	output := compileAMD64EmissionTest(t, source)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner railssa.EmissionPlanner
+	plan, err := planCompilerFunc(fn, &planner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	native, _, _, err := emitAMD64Stack(fn, plan, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var pinned amd64.Asm
 	pinned.MovReg64(amd64.R12, amd64.RAX)
-	if !bytes.Contains(output.Code, pinned.B) {
-		t.Fatalf("structured scalar function did not pin its hot parameter: %x", output.Code)
+	if !bytes.Contains(native, pinned.B) {
+		t.Fatalf("structured scalar function did not pin its hot parameter: %x", native)
 	}
 	var directSet, directGet amd64.Asm
 	directSet.MovReg64(amd64.R12, amd64.RDI)
 	directGet.MovReg64(amd64.RDI, amd64.R12)
-	if !bytes.Contains(output.Code, directSet.B) || !bytes.Contains(output.Code, directGet.B) {
-		t.Fatalf("structured pinned local still round-trips through scratch: %x", output.Code)
+	if !bytes.Contains(native, directSet.B) || !bytes.Contains(native, directGet.B) {
+		t.Fatalf("structured pinned local still round-trips through scratch: %x", native)
 	}
 }
 
@@ -939,7 +958,8 @@ func TestAMD64RailMachFinalizesSaturatingConversionWithLiveScratch(t *testing.T)
 	}
 	liveScratch := false
 	for instructionID, instruction := range plan.Machine.Insts {
-		if instruction.Op >= wasm.InstrI32TruncSatF32S && instruction.Op <= wasm.InstrI64TruncSatF64U &&
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		if semanticOp >= wasm.InstrI32TruncSatF32S && semanticOp <= wasm.InstrI64TruncSatF64U &&
 			(railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankGPR, 0) ||
 				railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankFPR, 1)) {
 			liveScratch = true
