@@ -14,14 +14,12 @@ type validationStageFixture struct {
 
 func validationStageFixtures() []validationStageFixture {
 	root := filepath.Clean("../../../..")
-	corpus := filepath.Join(root, "bench", "corpus")
+	corpus := filepath.Join(root, "corpus", "workloads")
 	return []validationStageFixture{
-		{name: "tiny", path: filepath.Join(corpus, "tiny.wasm")},
-		{name: "json-as", path: filepath.Join(corpus, "json-as.wasm")},
-		{name: "wasm3", path: filepath.Join(corpus, "wasm3.wasm")},
-		{name: "sqlite3", path: filepath.Join(corpus, "sqlite3.wasm")},
-		{name: "ruby", path: filepath.Join(corpus, "ruby.wasm")},
-		{name: "esbuild", path: filepath.Join(corpus, "esbuild.wasm")},
+		{name: "tiny", path: filepath.Join(corpus, "synthetic", "tiny.wasm")},
+		{name: "json-as", path: filepath.Join(corpus, "assemblyscript", "json-as.wasm")},
+		{name: "coremark", path: filepath.Join(corpus, "semantic", "coremark", "coremark.wasm")},
+		{name: "polybench-gemm", path: filepath.Join(corpus, "polybench", "gemm.wasm")},
 		{name: "starshine", env: "WAGO_STARSHINE_SMOKE_WASM"},
 	}
 }

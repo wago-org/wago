@@ -36,6 +36,7 @@ func TestLEB128Decoding(t *testing.T) {
 			{[]byte{0xff, 0xff, 0xff, 0xff, 0x0f}, math.MaxUint32, false},
 			{[]byte{0x00}, 0, false},
 			{[]byte{0x04}, 4, false},
+			{[]byte{0x7f}, 127, false},
 			{[]byte{0x80, 0x00}, 0, false},
 			{[]byte{0x80, 0x7f}, 16256, false},
 			{[]byte{0xe5, 0x8e, 0x26}, 624485, false},
@@ -90,6 +91,8 @@ func TestLEB128Decoding(t *testing.T) {
 			wantErr bool
 		}{
 			{[]byte{0x13}, 19, false},
+			{[]byte{0x3f}, 63, false},
+			{[]byte{0x40}, -64, false},
 			{[]byte{0xff, 0x00}, 127, false},
 			{[]byte{0x81, 0x01}, 129, false},
 			{[]byte{0x7f}, -1, false},

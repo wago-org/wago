@@ -82,15 +82,180 @@ func (f *fn) stV128(base Reg, disp int32, rt Reg) {
 	f.a.StrQ(base, disp, rt)
 }
 
+type v128ConstReg struct {
+	lo, hi uint64
+	reg    Reg
+}
+
+const maxV128Consts = 4
+
+func (f *fn) v128ConstMask() regMask {
+	var m regMask
+	for _, c := range f.vconsts {
+		m = m.add(c.reg)
+	}
+	return m
+}
+
+func (f *fn) v128ConstCached(lo, hi uint64) (Reg, bool) {
+	for _, c := range f.vconsts {
+		if c.lo == lo && c.hi == hi {
+			return c.reg, true
+		}
+	}
+	return regNone, false
+}
+
 // v128ConstReg returns a fresh owned V register holding the 128-bit constant.
 func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 	x := f.allocFReg(0)
+	if c, ok := f.v128ConstCached(lo, hi); ok {
+		f.a.NeonMov16b(x, c)
+		f.stats.peep("v128-const-cache-hit")
+		return x
+	}
 	if lo == 0 && hi == 0 {
 		f.a.NeonEor16b(x, x, x)
 		return x
 	}
 	f.buildV128Const(x, lo, hi)
 	return x
+}
+
+func (f *fn) pinnedV128LocalCount() int {
+	n := 0
+	for i := range f.locals {
+		if i >= len(f.localType) {
+			break
+		}
+		if f.locals[i].reg != regNone && f.localType[i] == mtV128 {
+			n++
+		}
+	}
+	return n
+}
+
+// preloadV128Consts reserves up to four non-zero vector constants in call-free
+// functions. Besides explicit v128.const values, a repeated rotate-by-8 shuffle
+// contributes its TBL index vector. Requiring two static shuffles keeps a lone
+// straight-line operation on the cheaper USHR+SLI path; dense kernels amortize
+// the cached index at every dynamic invocation. The cache is withheld when
+// vector-local pressure is already high.
+func (f *fn) preloadV128Consts(code []byte) {
+	if !f.opt(optV128ConstCache) || f.usesCalls || f.syncHostCalls {
+		return
+	}
+	limit := maxV128Consts
+	if f.pinnedV128LocalCount() >= 2 {
+		limit = 1
+	}
+	var cand [8]struct {
+		lo, hi uint64
+		n      int
+	}
+	nCand := 0
+	rotate8N := 0
+	addCand := func(lo, hi uint64) {
+		if lo == 0 && hi == 0 {
+			return
+		}
+		for i := 0; i < nCand; i++ {
+			if cand[i].lo == lo && cand[i].hi == hi {
+				cand[i].n++
+				return
+			}
+		}
+		if nCand < len(cand) {
+			cand[nCand].lo, cand[nCand].hi, cand[nCand].n = lo, hi, 1
+			nCand++
+		}
+	}
+	r := wasm.NewReader(code)
+	var imm wasm.InstructionImmediate
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return
+		}
+		if op != 0xfd {
+			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+				return
+			}
+			continue
+		}
+		afterPrefix := r.Offset()
+		sub, err := r.U32()
+		if err != nil {
+			return
+		}
+		switch sub {
+		case 12:
+			lo, err := r.LEU64()
+			if err != nil {
+				return
+			}
+			hi, err := r.LEU64()
+			if err != nil {
+				return
+			}
+			addCand(lo, hi)
+			continue
+		case 13:
+			b, err := r.Bytes(16)
+			if err != nil {
+				return
+			}
+			var lanes [16]byte
+			copy(lanes[:], b)
+			if lanes == i8x16Rotate8 {
+				rotate8N++
+			}
+			_, ext := i8x16ExtOffset(lanes)
+			optimized := ext || lanes == i8x16Rotate16 || lanes == i8x16Rotate8 ||
+				lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S
+			if !optimized {
+				var aMask, bMask [16]byte
+				for i := range aMask {
+					aMask[i], bMask[i] = 0x80, 0x80
+				}
+				for i, lane := range lanes {
+					if lane < 16 {
+						aMask[i] = lane
+					} else {
+						bMask[i] = lane - 16
+					}
+				}
+				lo, hi := v128MaskBits(aMask)
+				addCand(lo, hi)
+				lo, hi = v128MaskBits(bMask)
+				addCand(lo, hi)
+			}
+			continue
+		}
+		if err := r.JumpTo(afterPrefix); err != nil {
+			return
+		}
+		if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+			return
+		}
+	}
+	if rotate8N >= 2 {
+		lo, hi := v128MaskBits(i8x16Rotate8)
+		for range rotate8N {
+			addCand(lo, hi)
+		}
+	}
+	for i := 1; i < nCand; i++ {
+		for j := i; j > 0 && cand[j].n > cand[j-1].n; j-- {
+			cand[j], cand[j-1] = cand[j-1], cand[j]
+		}
+	}
+	for i := 0; i < nCand && len(f.vconsts) < limit; i++ {
+		x := f.allocFReg(0)
+		f.buildV128Const(x, cand[i].lo, cand[i].hi)
+		f.vconsts = append(f.vconsts, v128ConstReg{lo: cand[i].lo, hi: cand[i].hi, reg: x})
+		f.stats.peep("v128-const-cache")
+	}
 }
 
 // buildV128Const materializes the 128-bit constant (lo,hi) into V register x.
@@ -255,7 +420,9 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 
 	// AssemblyScript spells BLAKE's per-i32 rotate-right-by-16 and -8 as
 	// one-input byte shuffles. Lower those masks directly: REV32.8H swaps the
-	// halfwords in every i32 lane, while USHR+SLI rotates every lane by 8.
+	// halfwords in every i32 lane. When either shuffle immediately replaces the
+	// same pinned local, REV32 or a cached-index TBL safely updates that register
+	// in place. Other rotate-by-8 shapes use USHR+SLI.
 	// The second wasm operand is unselected by both masks, so only its consumed
 	// owned register (if any) needs releasing.
 	if lanes == i8x16Rotate16 || lanes == i8x16Rotate8 {
@@ -266,6 +433,44 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 		aElem := f.popValue()
 		src, owned := f.operandRegV128(aElem)
 		f.fpinned = f.fpinned.add(src)
+		if !owned && aElem.st.kind == stLocalReg {
+			mask, canUpdate := regNone, lanes == i8x16Rotate16
+			if lanes == i8x16Rotate8 {
+				lo, hi := v128MaskBits(lanes)
+				mask, canUpdate = f.v128ConstCached(lo, hi)
+			}
+			if canUpdate {
+				r2 := *r
+				if op, err := r2.Byte(); err == nil && (op == 0x21 || op == 0x22) { // local.set/local.tee
+					if local, err := r2.U32(); err == nil {
+						x := int(local) + f.localBase
+						if x >= 0 && x < len(f.locals) && f.localType[x] == mtV128 &&
+							aElem.st.idx == uint32(x) && f.locals[x].reg == src {
+							if err := r.JumpTo(r2.Offset()); err != nil {
+								return err
+							}
+							f.realizeLocalRefs(x, nil)
+							if lanes == i8x16Rotate16 {
+								f.a.NeonRev32H(src, src)
+							} else {
+								f.a.NeonTbl(src, src, mask)
+							}
+							f.fpinned = f.fpinned.remove(src)
+							f.markLocalDirty(x)
+							if op == 0x22 {
+								f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: src, idx: uint32(x)})
+							}
+							if lanes == i8x16Rotate16 {
+								f.stats.peep("simd-shuffle-rotr16-inplace")
+							} else {
+								f.stats.peep("simd-shuffle-rotr8-tbl-inplace")
+							}
+							return nil
+						}
+					}
+				}
+			}
+		}
 		dst := f.allocFReg(maskOf(src))
 		if lanes == i8x16Rotate16 {
 			f.a.NeonRev32H(dst, src)
@@ -376,6 +581,23 @@ func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 	f.fpinned = f.fpinned.add(s1)
 	s2, o2 := f.operandRegV128(b)
 	f.fpinned = f.fpinned.add(s2)
+	if x, dst, tee, ok := f.takeV128LocalSink(r); ok {
+		f.realizeLocalRefs(x, nil)
+		op(dst, s1, s2)
+		f.fpinned = f.fpinned.remove(s1).remove(s2)
+		if o1 && dst != s1 {
+			f.releaseF(s1)
+		}
+		if o2 && dst != s2 {
+			f.releaseF(s2)
+		}
+		f.markLocalDirty(x)
+		if tee {
+			f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: dst, idx: uint32(x)})
+		}
+		f.stats.peep("v128-local-sink")
+		return nil
+	}
 	dst := s1
 	if !o1 {
 		f.stats.peep("v128-direct-result")
@@ -395,6 +617,65 @@ func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 	}
 	f.pushVReg(dst)
 	return nil
+}
+
+func (f *fn) takeV128LocalSink(r *wasm.Reader) (x int, reg Reg, tee, ok bool) {
+	r2 := *r
+	op, err := r2.Byte()
+	if err != nil || (op != 0x21 && op != 0x22) { // local.set/local.tee
+		return 0, regNone, false, false
+	}
+	local, err := r2.U32()
+	if err != nil {
+		return 0, regNone, false, false
+	}
+	x = int(local) + f.localBase
+	if x < 0 || x >= len(f.locals) || f.localType[x] != mtV128 || f.locals[x].reg == regNone {
+		return 0, regNone, false, false
+	}
+	if err := r.JumpTo(r2.Offset()); err != nil {
+		return 0, regNone, false, false
+	}
+	return x, f.locals[x].reg, op == 0x22, true
+}
+
+// v128BinDirect selects any owned input as the destination of a three-register
+// NEON operation. Borrowed locals remain read-only; when both inputs are
+// borrowed, only the result register is allocated. swap changes semantic input
+// order without introducing a copy, and invert applies a full-width boolean
+// complement after the operation.
+func (f *fn) v128BinDirect(op func(dst, s1, s2 Reg), swap, invert bool) {
+	b := f.popValue()
+	a := f.popValue()
+	s1, o1 := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(s1)
+	s2, o2 := f.operandRegV128(b)
+	f.fpinned = f.fpinned.add(s2)
+	dst := s1
+	if !o1 {
+		f.stats.peep("v128-direct-result")
+		if o2 {
+			dst = s2
+		} else {
+			dst = f.allocFReg(maskOf(s1, s2))
+		}
+	}
+	if swap {
+		op(dst, s2, s1)
+	} else {
+		op(dst, s1, s2)
+	}
+	if invert {
+		f.a.NeonNot16b(dst, dst)
+	}
+	f.fpinned = f.fpinned.remove(s1).remove(s2)
+	if o1 && dst != s1 {
+		f.releaseF(s1)
+	}
+	if o2 && dst != s2 {
+		f.releaseF(s2)
+	}
+	f.pushVReg(dst)
 }
 
 // v128Unary lowers a single-instruction unary v128 op (op(dst, src)).
@@ -588,16 +869,20 @@ func (f *fn) v128I32x4ConvertToFloat(r *wasm.Reader, f64dst, signed bool) error 
 	return f.v128Unary(r, op)
 }
 
-func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), countMask int32, laneSize int, right bool) error {
+func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), countMask int32, laneSize int, right, rotateRight bool) error {
 	if !f.opt(optV128DirectResults) {
 		return f.v128ShiftLegacy(op, opImm, countMask, laneSize, right)
 	}
 	countElem := f.popValue()
 	if countElem.st.kind == stConst {
 		value := f.popValue()
+		shift := uint8(countElem.st.cval & int64(countMask))
+		if rotateRight && shift != 0 && f.tryI32x4RotateRight(r, value, shift) {
+			return nil
+		}
 		src, owned := f.operandRegV128(value)
 		dst := src
-		if shift := uint8(countElem.st.cval & int64(countMask)); shift != 0 {
+		if shift != 0 {
 			if !owned {
 				f.stats.peep("v128-direct-result")
 				f.fpinned = f.fpinned.add(src)
@@ -637,6 +922,59 @@ func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst,
 	return nil
 }
 
+// tryI32x4RotateRight recognizes the canonical Wasm spelling of a packed
+// rotate-right over one local:
+//
+//	local.get x; i32.const n; i32x4.shr_u
+//	local.get x; i32.const (32-n); i32x4.shl; v128.or
+//
+// NEON's shift-and-insert form lowers this to USHR+SLI, eliminating the second
+// full shift and the ORR. The reader is advanced only after the complete pattern
+// and the identical local source have been validated.
+func (f *fn) tryI32x4RotateRight(r *wasm.Reader, value *elem, shift uint8) bool {
+	if !f.opt(optSIMDSuperopt) || shift >= 32 || value.elemKind() != ekValue ||
+		(value.st.kind != stLocalRef && value.st.kind != stLocalReg) {
+		return false
+	}
+
+	r2 := *r
+	op, err := r2.Byte()
+	if err != nil || op != 0x20 { // local.get
+		return false
+	}
+	x, err := r2.U32()
+	if err != nil || uint32(int(x)+f.localBase) != value.st.idx {
+		return false
+	}
+	op, err = r2.Byte()
+	if err != nil || op != 0x41 { // i32.const
+		return false
+	}
+	left, err := r2.I32()
+	if err != nil || uint8(left&31) != 32-shift {
+		return false
+	}
+	if !matchNextSIMDOp(&r2, 171) || !matchNextSIMDOp(&r2, 80) { // i32x4.shl; v128.or
+		return false
+	}
+	if err := r.JumpTo(r2.Offset()); err != nil {
+		return false
+	}
+
+	src, owned := f.operandRegV128(value)
+	f.fpinned = f.fpinned.add(src)
+	dst := f.allocFReg(maskOf(src))
+	f.fpinned = f.fpinned.remove(src)
+	f.a.NeonUshrS(dst, src, shift)
+	f.a.NeonSliS(dst, src, 32-shift)
+	if owned {
+		f.releaseF(src)
+	}
+	f.pushVReg(dst)
+	f.stats.peep("simd-rotr-i32x4")
+	return true
+}
+
 func (f *fn) v128ShiftLegacy(op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), countMask int32, laneSize int, right bool) error {
 	countElem := f.popValue()
 	if countElem.st.kind == stConst {
@@ -666,19 +1004,19 @@ func (f *fn) v128ShiftLegacy(op func(dst, s1, s2 Reg), opImm func(dst, src Reg, 
 	return nil
 }
 func (f *fn) i8x16Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
-	return f.v128Shift(r, op, opImm, 7, 1, right)
+	return f.v128Shift(r, op, opImm, 7, 1, right, false)
 }
 
 func (f *fn) i16x8Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
-	return f.v128Shift(r, op, opImm, 15, 2, right)
+	return f.v128Shift(r, op, opImm, 15, 2, right, false)
 }
 
-func (f *fn) i32x4Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
-	return f.v128Shift(r, op, opImm, 31, 4, right)
+func (f *fn) i32x4Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right, rotateRight bool) error {
+	return f.v128Shift(r, op, opImm, 31, 4, right, rotateRight)
 }
 
 func (f *fn) i64x2Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), right bool) error {
-	return f.v128Shift(r, op, opImm, 63, 8, right)
+	return f.v128Shift(r, op, opImm, 63, 8, right, false)
 }
 
 // i64x2.shr_s uses the same packed SSHL path as every other vector shift: SSHL.2D
@@ -940,6 +1278,10 @@ func (f *fn) i16x8Q15mulrSatS(r *wasm.Reader) error {
 
 // v128BinNot lowers `ne` = not(eq): the compare op, then a full-width NOT.
 func (f *fn) v128BinNot(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
+	if f.opt(optV128DirectResults) {
+		f.v128BinDirect(op, false, true)
+		return nil
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -954,6 +1296,10 @@ func (f *fn) v128BinNot(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 }
 
 func (f *fn) v128SignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap, invert bool) error {
+	if f.opt(optV128DirectResults) {
+		f.v128BinDirect(op, swap, invert)
+		return nil
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -974,6 +1320,10 @@ func (f *fn) v128SignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap, inver
 }
 
 func (f *fn) v128UnsignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap bool) error {
+	if f.opt(optV128DirectResults) {
+		f.v128BinDirect(op, swap, false)
+		return nil
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -1004,6 +1354,10 @@ func (f *fn) i64x2SignedCmp(r *wasm.Reader, cc Cond) error {
 		op, swap = f.a.NeonCmgeD, false
 	default:
 		panic("arm64: unsupported i64x2 signed compare")
+	}
+	if f.opt(optV128DirectResults) {
+		f.v128BinDirect(op, swap, false)
+		return nil
 	}
 	b := f.popValue()
 	a := f.popValue()
@@ -2057,11 +2411,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 170: // i32x4.extend_high_i16x8_u
 		return f.i32x4ExtendI16x8(r, false, true)
 	case 171: // i32x4.shl
-		return f.i32x4Shift(r, f.a.NeonUshlS, f.a.NeonShlS, false)
+		return f.i32x4Shift(r, f.a.NeonUshlS, f.a.NeonShlS, false, false)
 	case 172: // i32x4.shr_s
-		return f.i32x4Shift(r, f.a.NeonSshrvS, f.a.NeonSshrS, true)
+		return f.i32x4Shift(r, f.a.NeonSshrvS, f.a.NeonSshrS, true, false)
 	case 173: // i32x4.shr_u
-		return f.i32x4Shift(r, f.a.NeonUshrvS, f.a.NeonUshrS, true)
+		return f.i32x4Shift(r, f.a.NeonUshrvS, f.a.NeonUshrS, true, true)
 	case 199: // i64x2.extend_low_i32x4_s
 		return f.i64x2ExtendI32x4(r, true, false)
 	case 200: // i64x2.extend_high_i32x4_s

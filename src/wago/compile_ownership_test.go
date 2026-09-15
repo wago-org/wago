@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 var compilerCompiledAllocationSink *Compiled
@@ -91,14 +91,14 @@ func TestCompileDoesNotRetainSourceForLinking(t *testing.T) {
 	}
 }
 
-func TestSerialCompileSealsNativeCodeWithoutCopy(t *testing.T) {
+func TestCompileDefersExecutableCodeUntilInstantiate(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), benchAddOneModule())
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
 	defer compiled.Close()
-	if compiled.codeCache == nil || compiled.codeCache.flags&compiledCacheWritableCode == 0 {
-		t.Fatal("serial compiler did not transfer its code image")
+	if compiled.codeCache == nil || compiled.codeCache.mem != nil || compiled.codeCache.flags&compiledCacheWritableCode != 0 {
+		t.Fatal("Compile eagerly retained a writable executable code image")
 	}
 	before := uintptr(unsafe.Pointer(&compiled.code[0]))
 	instance, err := Instantiate(compiled, InstantiateOptions{})
@@ -106,9 +106,12 @@ func TestSerialCompileSealsNativeCodeWithoutCopy(t *testing.T) {
 		t.Fatalf("Instantiate: %v", err)
 	}
 	defer instance.Close()
-	after := uintptr(unsafe.Pointer(&compiled.code[0]))
-	if after != before {
-		t.Fatalf("first Instantiate copied native code: %#x -> %#x", before, after)
+	if compiled.codeCache.mem == nil {
+		t.Fatal("first Instantiate did not allocate executable memory")
+	}
+	after := uintptr(unsafe.Pointer(&compiled.codeCache.mem[0]))
+	if after == before {
+		t.Fatalf("first Instantiate did not map native code: %#x -> %#x", before, after)
 	}
 }
 
@@ -125,6 +128,28 @@ func TestSerialCompiledCloseBeforeInstantiateReleasesCodeImage(t *testing.T) {
 	}
 	if _, err := Instantiate(compiled, InstantiateOptions{}); err == nil {
 		t.Fatal("Instantiate succeeded after Close")
+	}
+}
+
+func TestCompilerCloseBeforeInstantiateReleasesSnapshotCodeImage(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), benchAddOneModule())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	snapshot := compiled.executionView()
+	if len(snapshot.code) == 0 {
+		t.Fatal("execution snapshot has no staged code before Close")
+	}
+	if compiled.boundsMode != BoundsChecksSignalsBased {
+		if _, err := compiled.MarshalBinary(); err != nil {
+			t.Fatalf("MarshalBinary before Close: %v", err)
+		}
+	}
+	if err := compiled.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if compiled.code != nil || snapshot.code != nil {
+		t.Fatalf("Close retained staged code: public=%d snapshot=%d", len(compiled.code), len(snapshot.code))
 	}
 }
 
@@ -218,5 +243,47 @@ func TestCompileMemoryPressureOnlyForLargeSources(t *testing.T) {
 	}
 	if at, pressure := compileMemoryPressure(8 << 20); at != 0 || pressure == nil {
 		t.Fatalf("large source pressure = (%d, %v), want (auto, enabled)", at, pressure != nil)
+	}
+}
+
+func TestCompilerPublicationReleasesHeapCodeBacking(t *testing.T) {
+	// Parallel compilation emits a Go slice. Its grouped staging owner remains
+	// reachable through the cache even after the public result is copied out.
+	original := bytes.Repeat([]byte{0x5a}, 1<<20)
+	staged := installCompilerCompiledFinalizer(newCompilerCompiled(Compiled{code: original}))
+	published, err := publishCompilerCompiled(staged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer published.Close()
+	if staged.code != nil || staged.codeCache != nil || staged.validateMemo != nil {
+		t.Fatal("compiler staging view retained code or metadata after publication")
+	}
+	if len(published.codeCache.mem) != 0 {
+		t.Fatal("publication eagerly mapped compiler code")
+	}
+	if err := published.prepareCodeMapping(); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := published.executionView()
+	mapped := published.codeCache.mem
+	if len(mapped) < len(original) || len(published.code) != len(original) || len(snapshot.code) != len(original) {
+		t.Fatalf("image sizes: heap=%d public=%d execution=%d mapping=%d", len(original), len(published.code), len(snapshot.code), len(mapped))
+	}
+	if unsafe.SliceData(published.code) != unsafe.SliceData(mapped) || unsafe.SliceData(snapshot.code) != unsafe.SliceData(mapped) {
+		t.Fatal("published views do not share the executable mapping")
+	}
+	if unsafe.SliceData(mapped) == unsafe.SliceData(original) {
+		t.Fatal("publication retained heap-backed code")
+	}
+	var output bytes.Buffer
+	if _, err := published.WriteCodeTo(&output); err != nil || !bytes.Equal(output.Bytes(), original) {
+		t.Fatalf("code inspection after publication: %v", err)
+	}
+	if err := published.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if published.CodeSize() != 0 || published.codeCache.mem != nil {
+		t.Fatal("Close retained code mapping")
 	}
 }

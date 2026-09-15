@@ -4,11 +4,13 @@ package wago
 
 import (
 	"context"
+	"errors"
 	gruntime "runtime"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	wruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestNestedHostReentryPreservesConfiguredNativeStack(t *testing.T) {
@@ -71,6 +73,59 @@ func TestNestedHostReentryPreservesConfiguredNativeStack(t *testing.T) {
 	got, err := in.Invoke("outer")
 	if err != nil || len(got) != 1 || got[0] != stackBytes {
 		t.Fatalf("nested host-observed stack = %v, %v; want [%d]", got, err, uint64(stackBytes))
+	}
+}
+
+func TestNestedHostReentryRestorePropagatesCloseInterrupt(t *testing.T) {
+	c := MustCompile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
+	))
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{
+		forceSyncHost: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if err := in.beginInvocation(); err != nil {
+		t.Fatal(err)
+	}
+	defer in.endInvocation()
+
+	outerTrap := in.trap
+	restore, err := in.prepareHostReentryState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	nestedTrap := in.trap
+	if &nestedTrap[0] == &outerTrap[0] {
+		restore()
+		t.Fatal("host re-entry reused the parked outer trap cell")
+	}
+	if err := in.Close(); err != nil {
+		restore()
+		t.Fatal(err)
+	}
+	// Entry must preserve the published interrupt without help from retries.
+	in.ensurePluginState().close.Load().interruptStop()
+	if got := wruntime.PreparedIntTrapCode(nestedTrap); got != wruntime.TrapInterrupted {
+		restore()
+		t.Fatalf("nested trap after close = %v, want interrupted", got)
+	}
+	entry := in.base + uintptr(in.c.Entry[0])
+	callErr := in.callNativeSyncWithTrapContext(entry, nestedTrap, nil)
+	var trap *wruntime.TrapError
+	if !errors.As(callErr, &trap) || trap.Code != wruntime.TrapInterrupted {
+		restore()
+		t.Fatalf("nested entry after close = %v, want interrupted", callErr)
+	}
+	restore()
+	if got := wruntime.PreparedIntTrapCode(outerTrap); got != wruntime.TrapInterrupted {
+		t.Fatalf("restored outer trap after close = %v, want interrupted", got)
 	}
 }
 

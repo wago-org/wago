@@ -1,57 +1,65 @@
 # Startup-latency sweep
 
-Full-process, cross-runtime cold-start timing that feeds the website's
-**Startup latency** section. Times `exec()` → load → compile → instantiate →
-run `_start` → exit for one real binary per workload, across a mix of
-interpreters and JITs, with [hyperfine](https://github.com/sharkdp/hyperfine).
+Use this sweep to refresh the website's **End-to-end latency** data. It measures
+the whole process path for one real binary per workload:
 
-This is the data half of the pipeline; the website half is
-`scripts/update-website-startup.mjs` (analogous to `update-website-bench.mjs`
-for the performance section).
+```text
+exec() → load → compile → instantiate → run _start → exit
+```
+
+It compares interpreters and compilers with
+[hyperfine](https://github.com/sharkdp/hyperfine). This directory creates the
+data. `scripts/update-website-startup.mjs` creates the website section from that
+data; `scripts/update-website-bench.mjs` does the same for performance data.
+
+## Before You Run
+
+Install Node.js, `hyperfine`, and every runtime in `runtimes.json`. The sweep
+requires the complete runtime set so a partial comparison cannot be published.
 
 ## Layout
 
-- `runtimes.json` — the runtime list (invocation + engine `tag`) and the
-  workload list. Each runtime's binary is `bin` on `PATH`, overridable with the
-  `env` var named there (e.g. `WASM3_BIN=/path/to/wasm3`).
-- `twins/*.wasm` — committed **work twins**: each runs its whole workload from
-  `_start` so every CLI executes it with a plain `run`. Checked in so the sweep
-  needs no toolchain — only the runtimes.
-- `src/*.rs` — sources for the Rust compute twins (a `_start` wrapper appended
-  to the corresponding `bench/corpus/rust/*.rs` kernel). The `json-as` twin is
-  AssemblyScript; see `skills/startup-latency-bench` for its build.
-- `run.mjs` — the sweep. Skips any runtime whose binary isn't found and still
-  writes the rest. Run it once per architecture.
-- `startup-arm64.json` and `startup-amd64.json` — the matched datasets the
-  website generator consumes (committed). The UI labels Railshot as
-  `wago single-pass` and Dragline as `wago multi-pass`.
+- `runtimes.json` lists runtimes, their command shape, engine `tag`, and
+  workloads. Each runtime's binary is `bin` on `PATH`. Set the named `env`
+  variable to override it, such as `WASM3_BIN=/path/to/wasm3`.
+- `twins/*.wasm` are committed work twins. Each runs its full workload from
+  `_start`, so every CLI uses a plain `run`. The sweep needs only the runtimes,
+  not a wasm toolchain.
+- `src/*.rs` contains the Rust compute-twin sources. A `_start` wrapper is
+  appended to the matching `corpus/sources/rust/*.rs` kernel.
+- `run.mjs` performs one host sweep and writes `startup-arm64.json` or
+  `startup-amd64.json`.
+- Both architecture-specific JSON files are committed inputs to the website
+  generator. The generator requires matching source commits, workload order,
+  runtime metadata, and result sets.
 
-## Run it
+## Run the Sweep
 
 ```sh
-make bench-startup                 # → bench/startup/startup-$(go env GOARCH).json
+just bench startup                 # → startup-<host-arch>.json
 # or point at specific binaries:
-V8_BIN=… WASM3_BIN=… IWASM_BIN=… node bench/startup/run.mjs
+V8_BIN=… WASM3_BIN=… WASMI_BIN=… WAVM_BIN=… node bench/startup/run.mjs
 ```
 
-Then regenerate the site from the data (no benchmarking):
+Then regenerate the site from the saved data. This does not benchmark again:
 
 ```sh
-make site                          # startup + performance + stats, then build
+just site                          # startup + performance + stats, then build
 # or just the startup section:
-make startup-website
+just site startup
 ```
 
 ## Method
 
-`hyperfine -N --warmup 5 --min-runs 30`, cold caches. Run the same runtime set
-on both architectures. Each workload is one hyperfine invocation with one
-named command per runtime, so all engines are timed back-to-back under
-identical conditions. The website panel sorts each workload ascending and
-scales every bar against that workload's highest latency, which always fills
-the rail. Wago's runtime binary is measured twice, once with `--railshot`
-(`wago single-pass`) and once with `--dragline` (`wago multi-pass`); enable the
-experimental Dragline setting in an isolated benchmark configuration first.
+The command is `hyperfine -N --warmup 5 --min-runs 30`. Each
+workload uses one hyperfine invocation with one named command per runtime. This
+times every engine back to back under the same conditions, with a fresh process
+from spawn through exit for every run. The harness first runs every command once
+as a correctness preflight.
 
-See `skills/startup-latency-bench/SKILL.md` for the twin construction, the
-cold-cache gotchas per runtime, and how to attribute wago's own startup.
+The website sorts each workload from fastest to slowest. It scales bar widths
+against the slowest runtime in that workload.
+
+Keep the command and work twins unchanged when you compare results. Capture both
+architectures from the exact same committed Wago revision. When you add or
+rebuild a twin, document its source and build steps in this README.

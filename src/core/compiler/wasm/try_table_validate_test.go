@@ -5,6 +5,39 @@ import (
 	"testing"
 )
 
+func TestTryTableUnreachableBodyKeepsDeclaredResult(t *testing.T) {
+	for _, path := range []string{"AST", "byte-backed"} {
+		for _, result := range []ValType{I32, F32} {
+			t.Run(path+"/"+result.String(), func(t *testing.T) {
+				v := coverageFuncValidator(&Module{}, nil)
+				bt := BlockType{Kind: BlockVal, Val: I32}
+				var err error
+				if path == "AST" {
+					err = v.stepTryTable(Instruction{Kind: InstrTryTable, ext: &instrExt{
+						BlockType: bt, Body: Expr{Instrs: []Instruction{{Kind: InstrUnreachable}}},
+					}})
+				} else {
+					if err = v.directStartTryTable(bt, nil); err != nil {
+						t.Fatal(err)
+					}
+					v.unreachable()
+					err = v.directEnd()
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if v.top().unreachable {
+					t.Fatal("try_table changed parent reachability")
+				}
+				err = v.popExpect(result)
+				if (err == nil) != (result == I32) {
+					t.Fatalf("consume %v: %v", result, err)
+				}
+			})
+		}
+	}
+}
+
 func tryTableValidationModule(kind CatchKind, labelDepth byte, labelType byte, nullableLabelRef bool) []byte {
 	// type 0: tag (i32) -> (); type 1: function () -> ().
 	types := []byte{0x02, 0x60, 0x01, 0x7f, 0x00, 0x60, 0x00, 0x00}
@@ -54,6 +87,7 @@ func tryTableValidationModule(kind CatchKind, labelDepth byte, labelType byte, n
 		0x41, 0x01, // i32.const 1
 		0x08, 0x00, // throw tag 0
 		0x0b, // end try_table
+		0x00, // unreachable normal continuation; catches branch to outer labels
 	)
 	if labelDepth != 0 {
 		body = append(body,

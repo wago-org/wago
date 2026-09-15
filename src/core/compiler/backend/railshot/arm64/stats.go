@@ -3,7 +3,7 @@
 package arm64
 
 // CodegenStats is the railshot "explain" dashboard: per-function counters that
-// make every later optimization prove itself (docs/no-ir-plan.md P1). Collection
+// make every later optimization prove itself. Collection
 // is opt-in â a *CodegenStats is threaded through the fn only when the caller asks
 // (CompileOptions.Stats) or WAGO_EXPLAIN=1 is set. When off, the field is nil and
 // every counter method is a no-op (nil-receiver methods), so the hot compile path
@@ -56,10 +56,47 @@ var (
 	// v128DirectResultEnabled lets NEON's non-destructive destination forms read
 	// pinned locals directly instead of copying a source into an accumulator.
 	v128DirectResultEnabled = os.Getenv("WAGO_ARM64_NO_V128_DIRECT_RESULTS") != "1"
+	v128ConstCacheEnabled   = os.Getenv("WAGO_ARM64_NO_V128_CONST_CACHE") != "1"
 	// intervalRegionPinsEnabled reuses GP registers across integer-local
 	// lifetimes in bounded call-free straight-line functions. The cache is
 	// pressure-spillable and releases a register at the local's final get.
 	intervalRegionPinsEnabled = os.Getenv("WAGO_ARM64_INTERVAL_REGIONS") != "0"
+	// intervalNextUseEnabled chooses regional victims by the exact next local
+	// access and drops dirty values killed before any subsequent read.
+	intervalNextUseEnabled = true
+	// linearSumLoopEnabled hoists the single exact memory bound for a scalar
+	// i64 reduction and executes the remaining iterations through four independent
+	// accumulators. RuntimeConfig optimization selection is the A/B oracle.
+	linearSumLoopEnabled     = true
+	memcopyTail4Enabled      = os.Getenv("WAGO_ARM64_NO_MEMCOPY_TAIL4") != "1"
+	commonBoundsLimitEnabled = os.Getenv("WAGO_ARM64_NO_COMMON_BOUNDS_LIMIT") != "1"
+	// multiBoundsCertEnabled keeps independent straight-line bounds proofs for a
+	// small set of address sources. The kill switch restores the single proof.
+	multiBoundsCertEnabled = os.Getenv("WAGO_ARM64_SINGLE_BOUNDS_CERT") != "1"
+	// leafScratchMemSizeEnabled caches memBytes in backend scratch X17 for bounded
+	// straight-line regional leaves, freeing X27 for one more resident local.
+	leafScratchMemSizeEnabled = os.Getenv("WAGO_ARM64_NO_LEAF_SCRATCH_MEMSIZE") != "1"
+	// loopTrapCellEnabled keeps the invocation's stable trap-cell pointer in a
+	// dedicated register across call-free loops, leaving every cancellation poll
+	// intact while removing its repeated basedata load. This is independent of
+	// whether the loop also accesses linear memory.
+	loopTrapCellEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_TRAP_CELL") != "1"
+	// preparedDirectEntryEnabled admits the compiler-proved register-ABI entry
+	// family. Disabling it removes all direct/light/bounded entry metadata, so
+	// prepared calls retain the ordinary adapter as a correctness and A/B oracle.
+	preparedDirectEntryEnabled  = os.Getenv("WAGO_ARM64_NO_PREPARED_DIRECT_ENTRY") != "1"
+	preparedLightEntryEnabled   = os.Getenv("WAGO_ARM64_NO_PREPARED_LIGHT_ENTRY") != "1"
+	preparedBoundedEntryEnabled = os.Getenv("WAGO_ARM64_NO_PREPARED_BOUNDED_ENTRY") != "1"
+	loopIntConstEnabled         = os.Getenv("WAGO_ARM64_NO_LOOP_INT_CONST") != "1"
+	indexedBaseReuseEnabled     = os.Getenv("WAGO_ARM64_NO_INDEXED_BASE_REUSE") != "1"
+	convertReadEnabled          = os.Getenv("WAGO_ARM64_NO_CONVERT_READ") != "1"
+	// shiftedRegisterALUEnabled folds an integer constant shift used as the right
+	// operand of ADD/SUB/AND/OR/XOR into AArch64's shifted-register ALU form.
+	shiftedRegisterALUEnabled = os.Getenv("WAGO_ARM64_NO_SHIFTED_REGISTER_ALU") != "1"
+	// fpImmediateConstEnabled selects exact AArch64 FMOV immediates (and the zero
+	// register for +0) before falling back to integer-bit materialization.
+	fpImmediateConstEnabled  = os.Getenv("WAGO_ARM64_NO_FP_IMMEDIATE_CONST") != "1"
+	coldCallLocalPinsEnabled = os.Getenv("WAGO_ARM64_NO_COLD_CALL_LOCAL_PINS") != "1"
 	// entryInitElisionEnabled skips zero-initialization for declared locals whose
 	// first straight-line access is a set/tee. The kill switch is the A/B oracle.
 	entryInitElisionEnabled = os.Getenv("WAGO_ARM64_NO_ENTRY_INIT_ELISION") != "1"
@@ -165,6 +202,7 @@ type CodegenStats struct {
 	// Pins.
 	PinnedLocals       int // integer/float locals given a dedicated register
 	PinnedGlobalsValue int // hot mutable-int globals value-pinned in this function
+	Residency          shared.ResidencyStats
 
 	CompileNanos     uint64
 	FunctionAttempts uint64
@@ -574,6 +612,17 @@ func (s *CodegenStats) report() string {
 		s.Flushes, s.FlushRoots, s.FlushDeferredRoots, s.FlushBelows, s.FlushBelowRoots, s.FlushBelowDeferred, s.CallFlushes, s.LocalSetDeferred, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)
+	if r := s.Residency; r.Active() {
+		fmt.Fprintf(&b, "    residency: events=%d overflows=%d candidates=%d activations=%d loads=%d misses=%d evictions=%d writebacks=%d final-transfers=%d max-active=%d\n",
+			r.Events, r.EventOverflows, r.Candidates, r.Activations, r.ActivationLoads, r.PressureMisses,
+			r.Evictions, r.DirtyWritebacks, r.FinalTransfers, r.MaxActive)
+		if p := r.Shadow; p.Active() {
+			fmt.Fprintf(&b, "    residency-shadow: candidates=%d versions=%d segments=%d profitable=%d reads=%d defines=%d loads-avoided=%d sync-debt=%d pressure-debt=%d max-live=%d admissions=%d evictions=%d reloads=%d writebacks=%d fail-soft=%d\n",
+				p.Candidates, p.Versions, p.Segments, p.Profitable, p.Reads, p.Defines,
+				p.LoadsAvoided, p.SyncDebt, p.PressureDebt, p.MaxLive, p.Admissions,
+				p.Evictions, p.Reloads, p.Writebacks, p.FailSoft)
+		}
+	}
 	if s.InlineSiteBytes != 0 {
 		fmt.Fprintf(&b, "    inline-site-bytes: %d\n", s.InlineSiteBytes)
 	}

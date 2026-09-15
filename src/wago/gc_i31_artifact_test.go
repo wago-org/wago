@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func i31ElementArtifactModule(heap wasm.AbsHeapType, passive, importedGlobal bool, expr []byte) []byte {

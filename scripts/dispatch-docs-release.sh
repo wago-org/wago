@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -ne 3 ]]; then
-  echo "usage: $0 <canary|nightly|release> <tag> <40-character-sha>" >&2
+  echo "usage: $0 <canary|beta|release> <tag> <40-character-sha>" >&2
   exit 2
 fi
 
@@ -11,7 +11,7 @@ tag=$2
 sha=$3
 
 case "$channel" in
-  canary|nightly|release) ;;
+  canary|beta|release) ;;
   *)
     echo "unsupported documentation channel: $channel" >&2
     exit 2

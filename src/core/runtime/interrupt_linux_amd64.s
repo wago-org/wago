@@ -5,16 +5,21 @@
 // SA_SIGINFO handler: DI=signal, SI=*siginfo, DX=*ucontext.
 // Linux amd64 ucontext has saved RBX at +128, RSP at +160, and RIP at +168.
 // Generated Wasm pins linMem in RBX; [linMem-104] is its active trap pointer.
-// interruptRequest is {trap uintptr, ack u32, refs u32}, 16 bytes.
+// interruptRequest is {trap uintptr, ack u32, refs u32, token u64}, 24 bytes.
 TEXT ·interruptSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	MOVQ	DX, R8
-	CMPL	8(SI), $-6                  // only Wago's tgkill broadcast is ours
+	CMPL	8(SI), $-1                  // SI_QUEUE, carrying Wago's token
+	JE	check_cookie
+	CMPL	8(SI), $-2                  // SI_TIMER
+	JNE	chain_unowned
+check_cookie:
+	MOVL	·interruptCookie(SB), AX
+	CMPL	28(SI), AX
 	JE	check_pc
-	CMPL	8(SI), $-2                  // per-thread deadline timer
-	JE	check_pc
+chain_unowned:
 	MOVQ	·interruptOldHandler(SB), AX
-	TESTQ	AX, AX
-	JNZ	chain_old_handler
+	CMPQ	AX, $1
+	JA	chain_old_handler
 handler_return:
 	RET
 chain_old_handler:
@@ -71,8 +76,12 @@ linmem_match:
 	MOVQ	$64, R12
 request_loop:
 	CMPQ	0(R9), R10
+	JNE	request_next
+	MOVQ	24(SI), AX
+	CMPQ	16(R9), AX
 	JE	request_match
-	ADDQ	$16, R9
+request_next:
+	ADDQ	$24, R9
 	DECQ	R12
 	JNZ	request_loop
 	JMP	reader_release

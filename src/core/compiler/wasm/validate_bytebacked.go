@@ -79,7 +79,7 @@ func ValidateByteBackedModuleWithConfig(data []byte, features ValidationFeatures
 }
 
 func validateByteBackedModule(data []byte, workers int, features ValidationFeatures, limits ValidationLimits) error {
-	dm, err := DecodeModuleByteBacked(data)
+	dm, err := DecodeModuleByteBackedWithFeatures(data, features)
 	if err != nil {
 		return err
 	}
@@ -91,7 +91,17 @@ func validateByteBackedModule(data []byte, workers int, features ValidationFeatu
 // and BodyBytes, while Body is left empty. Call ValidateDecodedByteBackedModule
 // before handing the module to lowering or execution paths.
 func DecodeModuleByteBacked(data []byte) (*DecodedByteBackedModule, error) {
-	dm, err := decodeDirectModule(data)
+	return DecodeModuleByteBackedWithFeatures(data, ValidationFeatures{MultiMemory: true})
+}
+
+// DecodeModuleByteBackedWithFeatures selects wire grammar from explicit features.
+func DecodeModuleByteBackedWithFeatures(data []byte, features ValidationFeatures) (*DecodedByteBackedModule, error) {
+	return DecodeModuleByteBackedWithLimits(data, features, DecodeLimits{})
+}
+
+// DecodeModuleByteBackedWithLimits selects wire features and metadata limits.
+func DecodeModuleByteBackedWithLimits(data []byte, features ValidationFeatures, limits DecodeLimits) (*DecodedByteBackedModule, error) {
+	dm, err := decodeDirectModuleLimited(data, features, limits)
 	if err != nil {
 		return nil, err
 	}
@@ -181,17 +191,17 @@ func directExpr(e directConstExpr) Expr {
 	return Expr{BodyBytes: e.body}
 }
 
-func decodeDirectModule(data []byte) (*directModule, error) {
-	dm, err := decodeDirectModuleInner(data)
+func decodeDirectModuleLimited(data []byte, features ValidationFeatures, limits DecodeLimits) (*directModule, error) {
+	dm, err := decodeDirectModuleInnerLimits(data, features, limits)
 	runtime.KeepAlive(data)
 	return dm, err
 }
 
-func decodeDirectModuleInner(data []byte) (*directModule, error) {
+func decodeDirectModuleInnerLimits(data []byte, features ValidationFeatures, limits DecodeLimits) (*directModule, error) {
 	// Keep the top-level cursor in this frame. TinyGo's conservative collector
 	// can otherwise lose the heap-allocated reader while its backing slice is
 	// still being consumed across allocation-heavy section decoding.
-	var r reader
+	r := reader{budget: newDecodeBudget(limits)}
 	r.reset(data)
 	magic, err := r.bytes(4)
 	if err != nil {
@@ -210,7 +220,7 @@ func decodeDirectModuleInner(data []byte) (*directModule, error) {
 	dm := &directModule{}
 	var lastOrder uint8
 	var seen uint16 // standard section IDs are the dense range 1..13
-	var sub reader
+	sub := reader{budget: r.budget}
 	for r.has() {
 		id, err := r.byte()
 		if err != nil {
@@ -252,7 +262,7 @@ func decodeDirectModuleInner(data []byte) (*directModule, error) {
 		case secElement:
 			err = decodeDirectElementSection(dm, &sub)
 		case secCode:
-			dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSectionWithModule(&sub, &dm.m, dm.m.MemCount() > 1)
+			dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSectionWithModule(&sub, &dm.m, features.MultiMemory)
 			dm.seenCode = true
 		case secData:
 			err = decodeDirectDataSection(dm, &sub)
@@ -288,19 +298,25 @@ func decodeDirectModuleInner(data []byte) (*directModule, error) {
 }
 
 func (dm *directModule) decodeDirectCustomSection(r *reader) error {
+	if err := r.reserve(1, 512); err != nil {
+		return err
+	}
 	name, err := r.name()
 	if err != nil {
+		return err
+	}
+	// Every custom payload retains one owned byte copy. Structured decoders
+	// separately reserve their exact containers through the same parent budget.
+	if err := r.reserve(uint64(r.left()), 2); err != nil {
 		return err
 	}
 	payload, err := r.bytes(r.left())
 	if err != nil {
 		return err
 	}
-	if name == "name" {
-		if dm.seenName {
-			return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
-		}
-		ns, err := decodeNameSec(payload)
+	firstName := name == "name" && !dm.seenName
+	if firstName {
+		ns, err := decodeOptionalNameSec(payload, r.budget)
 		if err != nil {
 			return err
 		}
@@ -311,7 +327,7 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 		if dm.seenBranchHints || dm.seenCode {
 			return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
 		}
-		hints, err := decodeBranchHintSection(payload)
+		hints, err := decodeBranchHintSectionWithBudget(payload, r.budget)
 		if err != nil {
 			return err
 		}
@@ -319,7 +335,7 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 		dm.seenBranchHints = true
 	}
 	ownedPayload := append([]byte(nil), payload...)
-	if name == "name" {
+	if firstName {
 		dm.m.RawNameSecPayload = ownedPayload
 	}
 	dm.m.Customs = append(dm.m.Customs, CustomSec{Name: name, Data: ownedPayload})
@@ -329,6 +345,9 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 func decodeDirectTableSection(dm *directModule, r *reader) error {
 	n, err := r.u32()
 	if err != nil {
+		return err
+	}
+	if err := reserveDecodedSlice[Table](r, n); err != nil {
 		return err
 	}
 	capHint := boundedVecCap(n, r.left())
@@ -371,6 +390,9 @@ func decodeDirectGlobalSection(dm *directModule, r *reader) error {
 	if err != nil {
 		return err
 	}
+	if err := reserveDecodedSlice[Global](r, n); err != nil {
+		return err
+	}
 	capHint := boundedVecCap(n, r.left())
 	dm.m.Globals = make([]Global, 0, capHint)
 	dm.direct.globalInits = make([]directConstExpr, 0, capHint)
@@ -392,6 +414,9 @@ func decodeDirectGlobalSection(dm *directModule, r *reader) error {
 func decodeDirectDataSection(dm *directModule, r *reader) error {
 	n, err := r.u32()
 	if err != nil {
+		return err
+	}
+	if err := reserveDecodedSlice[Data](r, n); err != nil {
 		return err
 	}
 	capHint := boundedVecCap(n, r.left())
@@ -453,6 +478,9 @@ func decodeDirectData(r *reader) (Data, directConstExpr, error) {
 func decodeDirectElementSection(dm *directModule, r *reader) error {
 	n, err := r.u32()
 	if err != nil {
+		return err
+	}
+	if err := reserveDecodedSlice[Elem](r, n); err != nil {
 		return err
 	}
 	capHint := boundedVecCap(n, r.left())
@@ -616,6 +644,9 @@ func readDirectFuncIdxSummary(r *reader, de *directElem) error {
 		return err
 	}
 	de.elemLen = n
+	if err := reserveDecodedSlice[FuncIdx](r, n); err != nil {
+		return err
+	}
 	capHint := boundedVecCap(n, r.left())
 	de.funcs = make([]FuncIdx, 0, capHint)
 	for i := uint32(0); i < n; i++ {
@@ -636,6 +667,9 @@ func readDirectFuncIdxSummary(r *reader, de *directElem) error {
 func readDirectConstExprVec(r *reader) ([]directConstExpr, error) {
 	n, err := r.u32()
 	if err != nil {
+		return nil, err
+	}
+	if err := reserveDecodedSlice[Expr](r, n); err != nil {
 		return nil, err
 	}
 	capHint := boundedVecCap(n, r.left())
@@ -689,9 +723,15 @@ func decodeDirectCodeSectionWithWidths(r *reader, widths memargWidths, multiMemo
 	if err != nil {
 		return nil, false, err
 	}
+	if err := reserveDecodedSlice[Func](r, n); err != nil {
+		return nil, false, err
+	}
 	capHint := boundedVecCap(n, r.left())
 	out := make([]Func, 0, capHint)
-	var sub reader
+	sub := reader{budget: r.budget}
+	if err := r.reserve(uint64(min(r.left(), maxInstructionNestingDepth)), 32); err != nil {
+		return nil, false, err
+	}
 	var frames []exprSkipFrame
 	usesDataCountInstr := false
 	for i := uint32(0); i < n; i++ {
@@ -777,7 +817,7 @@ func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, widths memargWidt
 }
 
 func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValType) error {
-	return v.validateConstExprDirectWithGlobalLimit(e, want, v.m.ImportedGlobalCount()+len(v.m.Globals))
+	return v.validateConstExprDirectWithGlobalLimit(e, want, len(v.importsOfKind(ExternGlobal))+len(v.m.Globals))
 }
 
 func (v *moduleValidator) validateConstExprDirectWithGlobalLimit(e directConstExpr, want ValType, globalLimit int) error {
@@ -839,7 +879,7 @@ func (v *moduleValidator) validateDirectElem(e directElem) error {
 func (v *moduleValidator) validateDirectElemPayload(e directElem) (RefType, error) {
 	switch e.kind {
 	case ElemFuncs:
-		if e.hasFuncs && int(e.maxFunc) >= v.m.FuncCount() {
+		if e.hasFuncs && int(e.maxFunc) >= (len(v.importsOfKind(ExternFunc))+len(v.m.FuncTypes)) {
 			return RefType{}, v.err(ErrUnknownFunc, "elem")
 		}
 		return Ref(false, AbsHeap(HeapFunc), false), nil
@@ -882,7 +922,7 @@ func (v *funcValidator) directElemRefType(index uint32) (RefType, error) {
 	}
 }
 
-func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, widths memargWidths, multiMemory bool) error {
+func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, widths memargWidths, multiMemory bool, segmentCounts *validationSegmentCounts) error {
 	v.localParams = ft.Params
 	v.localRuns = body.locals.Runs
 	var overflow bool
@@ -903,6 +943,32 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	v.rd.reset(body.body)
 	r := &v.rd
 	var op directOp // reused across the loop; decodeDirectOp overwrites it each step
+	facts := v.analysisFacts()
+	if facts != nil {
+		for {
+			if len(v.ctrls) == 0 {
+				if r.has() {
+					return &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
+				}
+				return nil
+			}
+			if err := v.decodeDirectOp(r, widths, multiMemory, &op); err != nil {
+				return err
+			}
+			if err := v.stepDirectOp(&op); err != nil {
+				return err
+			}
+			if op.kind == directInstr {
+				kind := op.instr.Kind
+				facts.Flags |= validatedFuncFlagsByKind[kind]
+				if validatedFuncNeedsPayloadByKind[kind] {
+					v.observeValidatedInstructionPayload(facts, &op.instr, segmentCounts)
+				}
+			} else {
+				facts.observeStructuredDirect(&op)
+			}
+		}
+	}
 	for {
 		if len(v.ctrls) == 0 {
 			if r.has() {
@@ -917,6 +983,13 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 			return err
 		}
 	}
+}
+
+func segmentStateCount(index uint32) uint32 {
+	if index == ^uint32(0) {
+		return index
+	}
+	return index + 1
 }
 
 type directOpKind uint8
@@ -939,6 +1012,7 @@ type directOp struct {
 }
 
 func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemory bool, out *directOp) error {
+	widths.multiMemory = multiMemory
 	op, err := r.byte()
 	if err != nil {
 		*out = directOp{}
@@ -1123,7 +1197,7 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfc:
-		in, err := decodeFC(r)
+		in, err := decodeFCWithMultiMemory(r, multiMemory)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfd:
@@ -1234,9 +1308,6 @@ func (v *funcValidator) directEnd() error {
 	f := *v.top()
 	if _, err := v.popCtrl(); err != nil {
 		return err
-	}
-	if f.kind == ctrlTry && f.unreachable {
-		v.unreachable()
 	}
 	if f.kind == ctrlIf {
 		if f.ifSeenElse {

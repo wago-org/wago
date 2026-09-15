@@ -12,7 +12,9 @@ import (
 func emitTwoTrapGroupsArm64(compact bool) (*fn, int) {
 	a := &a64.Asm{}
 	sc := &scratch{asm: a}
-	f := &fn{a: a, sc: sc, stats: &CodegenStats{}, policy: CodegenPolicy{CompactNative: compact}}
+	policy := currentCodegenPolicy()
+	policy.CompactNative = compact
+	f := &fn{a: a, sc: sc, stats: &CodegenStats{}, policy: policy}
 	sc.trapSites[trapUnreachable] = append(sc.trapSites[trapUnreachable], f.trapSite(a.Branch()|1))
 	sc.trapSites[trapMemOOB] = append(sc.trapSites[trapMemOOB], f.trapSite(a.Branch()|1))
 	f.emitTrapStubs()

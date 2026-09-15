@@ -9,10 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/wago-org/wago/internal/jsonstrict"
+	"github.com/wago-org/wago/internal/namecheck"
 	"github.com/wago-org/wago/src/core/semver"
 )
 
@@ -349,6 +350,9 @@ func canonicalPluginDefinition(def PluginDefinition) (PluginDefinition, error) {
 }
 
 func canonicalJSON(raw []byte) ([]byte, error) {
+	if err := jsonstrict.ValidateUniqueJSON(raw); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var value any
@@ -565,10 +569,8 @@ func validateContractSpec(spec ContractSpec) error {
 	return nil
 }
 
-var canonicalPathPattern = regexp.MustCompile(`^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:/[A-Za-z0-9](?:[A-Za-z0-9._~-]*[A-Za-z0-9])?)+$`)
-
 func validCanonicalPath(id string) bool {
-	return len(id) <= 300 && canonicalPathPattern.MatchString(id)
+	return len(id) <= 300 && namecheck.CanonicalPath(id)
 }
 
 func validateAuthorityScope(authority Authority, scope AuthorityScope) error {

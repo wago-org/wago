@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const (
@@ -398,11 +398,15 @@ func (f *fn) callGCArrayFixedSpill(typeIndex, count uint32, resultType wasm.ValT
 	if err := f.callGCStructHelper(gcArrayAllocFixedV128Spill, []wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
 		return err
 	}
-	result := f.materialize(f.popValue())
+	resultValue := f.popValue()
+	// Removing constructor operands must not erase the helper result's root.
+	resultIsRoot := resultValue.st.hasGCRoot()
+	result := f.materialize(resultValue)
 	for i := uint32(0); i < count; i++ {
 		f.popValue()
 	}
-	f.pushReg(result, mtI64)
+	value := f.pushReg(result, mtI64)
+	value.st.setGCRoot(resultIsRoot)
 	return nil
 }
 

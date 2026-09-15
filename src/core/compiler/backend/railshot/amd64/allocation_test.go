@@ -52,8 +52,8 @@ func TestGPPinLimitReservesTransientLoweringRegisters(t *testing.T) {
 }
 
 func TestCompileRegisterPressureCorpusUsesOneAttemptPerFunction(t *testing.T) {
-	root := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
-	for _, name := range []string{"regexmatch.wasm", "ruby.wasm", "sqlite3.wasm"} {
+	root := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
+	for _, name := range []string{"applications/embench/embench-matmult-int.wasm"} {
 		t.Run(name, func(t *testing.T) {
 			m := readParallelTestModule(t, filepath.Join(root, name))
 			var stats ModuleStats
@@ -79,7 +79,7 @@ func TestCompileRegisterPressureCorpusUsesOneAttemptPerFunction(t *testing.T) {
 }
 
 func TestWideMixedLocalsUseOneCompileAttempt(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "..", "..", "..", "tests", "regressions", "fuzzcases", "1797d.wasm")
+	path := filepath.Join("..", "..", "..", "..", "..", "..", "tests", "corpus", "regressions", "fuzzcases", "1797d.wasm")
 	m := readParallelTestModule(t, path)
 	var stats ModuleStats
 	cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
@@ -100,15 +100,15 @@ func TestWideMixedLocalsUseOneCompileAttempt(t *testing.T) {
 }
 
 func TestCompileModuleHintLocalCountAllocationAndCodeIdentity(t *testing.T) {
-	root := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
+	root := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
 	tests := []struct {
 		name      string
 		module    *wasm.Module
 		maxAllocs float64
 	}{
-		{name: "tiny", module: readParallelTestModule(t, filepath.Join(root, "tiny.wasm")), maxAllocs: 32},
-		{name: "many_funcs", module: readParallelTestModule(t, filepath.Join(root, "many_funcs.wasm")), maxAllocs: 360},
-		{name: "blake-as", module: readParallelTestModule(t, filepath.Join(root, "blake-as.wasm")), maxAllocs: 190},
+		{name: "tiny", module: readParallelTestModule(t, filepath.Join(root, "synthetic/tiny.wasm")), maxAllocs: 32},
+		{name: "many_funcs", module: readParallelTestModule(t, filepath.Join(root, "synthetic/many_funcs.wasm")), maxAllocs: 360},
+		{name: "blake-as", module: readParallelTestModule(t, filepath.Join(root, "assemblyscript/blake-as.wasm")), maxAllocs: 190},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -171,7 +171,7 @@ func TestCompileSIMDHeavyAllocationBudget(t *testing.T) {
 }
 
 func TestCompileParallelAllocationBudget(t *testing.T) {
-	m := readParallelTestModule(t, filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus", "json-as.wasm"))
+	m := readParallelTestModule(t, filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads", "assemblyscript", "json-as.wasm"))
 	oldProcs := runtime.GOMAXPROCS(4)
 	defer runtime.GOMAXPROCS(oldProcs)
 

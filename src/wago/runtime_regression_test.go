@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 const uremRegallocWasmBase64 = "AGFzbQEAAAABEgNgBH9/f38Bf2ABfwBgAn9/AAIWAQVyZXBybwx1cGRhdGVfbm9uY2UAAQMEAwIAAAUDAQARBgYBfwFBAAsHIQIPX19zdGFja19wb2ludGVyAwALZmlsbF9ibG9ja3MAAwq5CQMDAAALBABBEgutCQIafwt+IwAiBCEaIAQkACAAKAIQIhhBAnQiBEVFBEABQQYhGQJAAkACQAJAIAAoAggiEyAYQQN0IgcgEyAHSxsgBG4iCCAEbCIVIAJLIgYNACAIQQJ0IhRFDQMgACgCDCEJIBQgFSAVIBRwayIXS0UEQAEgFEEKdCEKQQAhCyABIQUDQCALIg5BAWohCyAXIBRrIRcgBSAKaiEFQQAhFkEAIQQDQCARQQQ2AtQIIBFBBDYCzAggEUHAADYCxAggESADNgLACCARIBY2AjwgESAONgJAIBEgEUHAAGo2AtAIIBEgEUE8ajYCyAggEUHAEGpBAEEB/AsAIBFBwAhqQQMgEUHAEGpBgAgQAiIZQf8BcUESRw0DIARBgAhqIQwgFkEBaiEWIBFBwBBqIQJBgAghBEEAIRNBgQEhBwNAIARBB00NBiAHQX9qIgdFDQUgEyACKQAANwMAIBNBAWohEyACIARBCCAEQQhJGyISaiECIAQgEmsiBA0ACyAMIgQgBEcNAAsgFCAXTQ0ACwtBEiEZIAlFDQBBACABIAYbIQ8gCEEDbCIXQX9qIQsgAC0AUCIErUIDgyEmQgEhJyAJrSEkIBWtIShCACEfIAAoAkRBEEYhGyAEIRADQCAfIiBCAXwhHyAbICBQIgxyIQ4gECAMcSEcQgAhIQNAICEhHiARQQFGBH9BAQUBIBwLIRYgHkIBfCEhIBhFRQRAASAeUCEdIAghAyAIIB6nbCEKIB4gIIRC/////w+DISVCACEiA0AgEUHAAGpBAEGACPwLACARQcAIakEAQYAI/AsAIBFBwBBqQQBBgAj8CwACfwJAAkAgFkVFBEABIBEgJjcD6AggESAkNwPgCCARICg3A9gIIBEgHjcD0AggESAiNwPICCARICA3A8AIICVQRQ0BDAILICVQDQELIBQgIqdsIApqIgcgHWohBEEAIRIgCiEGIBEMAQtBAiESIBQgIqdsQQJyIgchBEEBCyEAIBIgCE9FBEABIAYhCSAEQX9qIQQgASAHQQp0aiETICKnIQUDQAJAAkAgFkUEQAEgBCAVTw0BIA8gBEEKdGohAgwCCwJAIBJB/wBxIgINAAsgEUHAAGogAkEDdGohAgwBCwALIAIpAwAhIwJ/IAxFRQRAASAARUUEQAEgBSENIBJBf2oMAgsgIiAjQiCIpyAYcCINrVFFBEABIAYgEkVrDAILIAkgEmoMAQsgIiAjQiCIpyAYcCINrVFFBEABIBcgEkVrDAELIAsgEmoLIgIgA2ogI0L/////D4MiIyAjfkIgiCACrX5CIIinQX9zaiAUcCECAkACQAJAAkAgBCAVT0UEQAEgAiANIBRsaiAVTw0BIA5FBEABIAcgFU8NA0EAIQQDQCATIARqIgIgAikDACARQcAYaiAEaikDAIU3AwAgBEEIaiIEQYAIRw0ACwwFCyAHIBVJDQMACwALAAsACyABIAdBCnRqIBFBwBhqQYAI/AoAAAsgE0EAaiETIAciBEEBaiEHIBJBAWoiEiAISQ0ACwsgIkIBfCIiICdSDQALCyAhQgRSDQALIB8gJFINAAsLIBokACAZDwsACwALAAsACw=="
@@ -458,7 +458,7 @@ func (crossRuntimeImportExt) Register(reg *Registry) error {
 }
 
 func TestHugeCallStackUnwindsToStartTrap(t *testing.T) {
-	mod, err := os.ReadFile(filepath.Join("..", "..", "tests", "regressions", "engine", "huge_call_stack_unwind.wasm"))
+	mod, err := os.ReadFile(filepath.Join("..", "..", "tests", "corpus", "regressions", "engine", "huge_call_stack_unwind.wasm"))
 	if err != nil {
 		t.Fatalf("read upstream fixture: %v", err)
 	}
@@ -524,7 +524,7 @@ func TestCrossRuntimeInstantiationUsesStructuralImportTypes(t *testing.T) {
 }
 
 func TestHugeMixedValueStack(t *testing.T) {
-	mod, err := os.ReadFile(filepath.Join("..", "..", "tests", "regressions", "engine", "hugestack.wasm"))
+	mod, err := os.ReadFile(filepath.Join("..", "..", "tests", "corpus", "regressions", "engine", "hugestack.wasm"))
 	if err != nil {
 		t.Fatalf("read upstream fixture: %v", err)
 	}

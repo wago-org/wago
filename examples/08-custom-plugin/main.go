@@ -12,6 +12,7 @@ import (
 	"fmt"
 
 	wago "github.com/wago-org/wago"
+	"github.com/wago-org/wago/examples/internal/exampleplugin"
 	"github.com/wago-org/wago/examples/internal/mods"
 )
 
@@ -69,27 +70,9 @@ func (e *randPlugin) Register(reg *wago.Registrar) error {
 }
 
 func randPluginSet() wago.PluginSet {
-	provider := wago.PluginProvider{
-		Definition: randDefinition,
-		New:        func() wago.Plugin { return &randPlugin{seed: 42} },
-	}
-	digest, err := wago.DefinitionDigest(randDefinition)
-	if err != nil {
-		panic(err)
-	}
-	return wago.PluginSet{
-		Providers: []wago.PluginProvider{provider},
-		Selections: []wago.PluginSelection{{
-			ID:               randDefinition.ID,
-			DefinitionDigest: digest,
-			Direct:           true,
-			Dependencies:     map[string]string{},
-			Grants: []wago.AuthorityGrant{{
-				Name:  wago.AuthorityHostImportDefine,
-				Scope: wago.AuthorityScope{Modules: []string{"wago_rand"}},
-			}},
-		}},
-	}
+	return exampleplugin.MustSet(randDefinition, func() wago.Plugin {
+		return &randPlugin{seed: 42}
+	})
 }
 
 func main() {
@@ -106,7 +89,7 @@ func main() {
 	defer inst.Close()
 
 	for i := 0; i < 3; i++ {
-		out, _ := inst.Call(ctx, "roll")
-		fmt.Printf("roll() = %d\n", uint64(out[0].I64()))
+		out, _ := inst.InvokeContext(ctx, "roll")
+		fmt.Printf("roll() = %d\n", uint64(wago.AsI64(out[0])))
 	}
 }

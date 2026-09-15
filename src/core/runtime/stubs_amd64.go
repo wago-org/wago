@@ -103,34 +103,3 @@ const loopSentinel = 0x5A5A5A5A
 // The synchronous host-import re-entry protocol (control-frame layout,
 // hostCallStub, hostCallPending, resumeNative) lives in hostcall_amd64.go; the
 // earlier single-scalar "V2 spike" stub that lived here was superseded by it.
-
-// stubLoopHeartbeat is like stubLoop but writes the live counter into linMem[0]
-// on every iteration, so another goroutine can observe that native code is
-// actively running (heartbeat != 0) and time a GC requested mid-run.
-//
-//	8B 07                  mov   eax, [rdi]            ; iterations
-//
-// loop:
-//
-//	89 06                  mov   [rsi], eax            ; linMem[0] = counter (heartbeat)
-//	85 C0                  test  eax, eax
-//	74 05                  jz    done
-//	83 E8 01               sub   eax, 1
-//	EB F5                  jmp   loop
-//
-// done:
-//
-//	C7 01 5A 5A 5A 5A      mov   dword [rcx], 0x5A5A5A5A
-//	C7 02 00 00 00 00      mov   dword [rdx], 0
-//	C3                     ret
-var stubLoopHeartbeat = []byte{
-	0x8B, 0x07,
-	0x89, 0x06,
-	0x85, 0xC0,
-	0x74, 0x05,
-	0x83, 0xE8, 0x01,
-	0xEB, 0xF5,
-	0xC7, 0x01, 0x5A, 0x5A, 0x5A, 0x5A,
-	0xC7, 0x02, 0x00, 0x00, 0x00, 0x00,
-	0xC3,
-}

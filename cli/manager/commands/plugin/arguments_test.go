@@ -44,6 +44,7 @@ func TestParseAuthorityScopeOverridesRejectsAmbiguousJSON(t *testing.T) {
 		`{"github.com/acme/plugin":{"host.import.define":{"modules":["env"]}},"github.com/acme/plugin":{"instance.manage":{"maxInstances":1,"maxMemoryBytes":1}}}`,
 		`{"github.com/acme/plugin":{"host.import.define":{"modules":["env"]},"host.import.define":{"modules":["clock"]}}}`,
 		`{"github.com/acme/plugin":{"instance.manage":{"maxInstances":1,"maxInstances":2,"maxMemoryBytes":1}}}`,
+		`{"github.com/acme/plugin":{"instance.manage":{"maxInstances":1,"MaxInstances":2,"maxMemoryBytes":1}}}`,
 	}
 	for _, raw := range tests {
 		if _, err := ParseAuthorityScopeOverrides(raw); err == nil {

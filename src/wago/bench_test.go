@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 var benchResultSink []uint64
@@ -1481,11 +1481,7 @@ func BenchmarkRuntimeInstantiateSmallScalar(b *testing.B) {
 func BenchmarkRuntimeInstantiateUnrelatedImports(b *testing.B) {
 	for _, namespaceSize := range []int{0, 10, 1_000, 10_000} {
 		b.Run(fmt.Sprintf("Namespace=%d", namespaceSize), func(b *testing.B) {
-			rt := NewRuntime()
-			fn := HostFunc(func(HostModule, []uint64, []uint64) {})
-			for i := 0; i < namespaceSize; i++ {
-				rt.imports[fmt.Sprintf("unused.%d", i)] = fn
-			}
+			rt := benchmarkRegisteredRuntime(b, namespaceSize)
 			mod, err := rt.Compile(benchAddOneModule())
 			if err != nil {
 				b.Fatalf("Compile: %v", err)

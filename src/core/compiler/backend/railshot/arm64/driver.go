@@ -33,6 +33,8 @@ func (f *fn) representationError() error {
 		field = "forward control-end offset"
 	case functionRepresentationCallReloc:
 		field = "call relocation"
+	case functionRepresentationBranchRange:
+		return fmt.Errorf("arm64: native branch displacement exceeds instruction range")
 	default:
 		field = "unknown field"
 	}
@@ -136,14 +138,8 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		f.emitSelect()
 	case 0x1c: // select t (typed) — consume the declared result types
-		n, err := r.U32()
-		if err != nil {
+		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
 			return err
-		}
-		for k := uint32(0); k < n; k++ {
-			if _, err := r.Byte(); err != nil {
-				return err
-			}
 		}
 		if done, err := f.trySelectLocalSet(r); done || err != nil {
 			return err
@@ -169,6 +165,11 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
+				return err
+			}
+		}
 		var value *elem
 		f.activateIntervalLocal(int(x), r.Offset(), true)
 		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
@@ -196,6 +197,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		x, err := r.U32()
 		if err != nil {
 			return err
+		}
+		written := int(x) + f.localBase
+		if written >= 0 && written < 64 {
+			f.localWritten |= 1 << written
 		}
 		if op == 0x22 {
 			// Specialized tee rewrites bypass setLocal. Invalidate first; a failed
@@ -522,22 +527,22 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if done, err := f.tryFbinLocalSet(r, f.a.Fadd, false); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fadd, 0, false)
+		f.fbin(f.a.Fadd, 0, false, true)
 	case 0x93:
 		if done, err := f.tryFbinLocalSet(r, f.a.Fsub, false); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fsub, 0, false)
+		f.fbin(f.a.Fsub, 0, false, true)
 	case 0x94:
 		if done, err := f.tryFbinLocalSet(r, f.a.Fmul, false); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fmul, 0, false)
+		f.fbin(f.a.Fmul, 0, false, true)
 	case 0x95:
 		if done, err := f.tryFbinLocalSet(r, f.a.Fdiv, false); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fdiv, 0, false)
+		f.fbin(f.a.Fdiv, 0, false, false)
 	case 0x96:
 		if done, err := f.tryFminmaxLocalSet(r, false, false); done || err != nil {
 			return err
@@ -569,22 +574,22 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if done, err := f.tryFbinLocalSet(r, f.a.Fadd, true); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fadd, 0, true)
+		f.fbin(f.a.Fadd, 0, true, true)
 	case 0xa1:
 		if done, err := f.tryFbinLocalSet(r, f.a.Fsub, true); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fsub, 0, true)
+		f.fbin(f.a.Fsub, 0, true, true)
 	case 0xa2:
 		if done, err := f.tryFbinLocalSet(r, f.a.Fmul, true); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fmul, 0, true)
+		f.fbin(f.a.Fmul, 0, true, true)
 	case 0xa3:
 		if done, err := f.tryFbinLocalSet(r, f.a.Fdiv, true); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.Fdiv, 0, true)
+		f.fbin(f.a.Fdiv, 0, true, false)
 	case 0xa4:
 		if done, err := f.tryFminmaxLocalSet(r, true, false); done || err != nil {
 			return err
@@ -677,17 +682,19 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	return nil
 }
 
-// trySelectLocalSet fuses an integer select immediately followed by local.set
-// into the pinned destination register. Select is otherwise an eager sink, so
-// setLocal cannot pass its destination hint backward and the ordinary path emits
-// a final result-to-local move. All three operands are realized before CSEL
-// starts the destination's new lifetime, preserving local.get-at-read-time.
+// trySelectLocalSet fuses an integer select immediately followed by local.set or
+// local.tee into the pinned destination register. Select is otherwise an eager
+// sink, so setLocal cannot pass its destination hint backward and the ordinary
+// path emits a final result-to-local move. A tee leaves a borrowed reference to
+// that destination on the operand stack. All three operands are realized before
+// CSEL starts the destination's new lifetime, preserving local.get-at-read-time.
 func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 	save := r.Offset()
 	op, ok := r.Peek()
-	if !ok || op != 0x21 { // local.tee still needs a result stack value.
+	if !ok || (op != 0x21 && op != 0x22) {
 		return false, nil
 	}
+	tee := op == 0x22
 	if _, err := r.Byte(); err != nil {
 		return false, err
 	}
@@ -725,9 +732,8 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 		return false, nil
 	}
 
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
+	f.setFactsForLocal(x, 0)
 	// Refs below the select still require x's old value; refs in its three
 	// operand blocks are consumed before the final CSEL overwrites dest.
 	f.realizeLocalRefs(x, f.s.baseOfValentBlock(a))
@@ -761,6 +767,11 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 		f.release(aReg)
 	}
 	f.markLocalDirty(x)
+	if tee {
+		result := f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: dest, idx: uint32(x)})
+		result.st.setGCRoot(f.gcFrameLocal(x))
+		f.stats.peep("select-local-tee-sink")
+	}
 	f.stats.peep("select-local-sink")
 	return true, nil
 }
@@ -793,9 +804,7 @@ func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	if err := f.brIfFusedSet(top, idx, pr); err != nil {
 		return false, err
 	}
@@ -892,9 +901,7 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 		}
 		return false, nil
 	}
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	right := f.s.back()
 	if right == nil {
 		if err := r.JumpTo(save); err != nil {
@@ -938,9 +945,7 @@ func (f *fn) tryFminmaxLocalSet(r *wasm.Reader, f64, isMax bool) (bool, error) {
 		}
 		return false, nil
 	}
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	right := f.s.back()
 	if right == nil {
 		if err := r.JumpTo(save); err != nil {
@@ -992,7 +997,7 @@ func (f *fn) emitSelect() {
 		f.pinned = f.pinned.remove(condReg)
 		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
 		f.a.NeonMov16b(aX, bX)      // cond == 0 → a = b (all 128 bits)
-		f.a.PatchBranch19(skip, f.a.Len())
+		f.patchBranch19(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
 		f.releaseF(bX)
 		f.release(condReg)
@@ -1014,7 +1019,7 @@ func (f *fn) emitSelect() {
 		f.pinned = f.pinned.remove(condReg)
 		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
 		f.a.FmovReg(aX, bX, f64)    // cond == 0 → a = b
-		f.a.PatchBranch19(skip, f.a.Len())
+		f.patchBranch19(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
 		f.releaseF(bX)
 		f.release(condReg)
@@ -1132,9 +1137,7 @@ func subtreeRefsLocal(s *stack, e *elem, x int) bool {
 }
 
 func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert() // the certified base local changed value
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	e := f.s.back()
 	if e != nil && e.elemKind() == ekValue && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
@@ -1144,7 +1147,8 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	}
 	// Capture the semantic result before condensing or moving it. Every assignment
 	// replaces the current straight-line version of the local.
-	f.setFactsForLocal(x, e.st.valueFacts())
+	assignedFacts := e.st.valueFacts()
+	f.setFactsForLocal(x, assignedFacts)
 	// In-place self-update `local.set $x (binop (local.get $x) …)`: let condenseInto
 	// consume the top expression straight into x's register instead of pre-copying
 	// its (local.get $x) operand. condenseBinary handles an operand aliasing dest.
@@ -1166,6 +1170,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		// expressions; clear that ownership because pinned-local registers are not
 		// allocator scratch registers.
 		f.condenseInto(e, pr)
+		f.canonicalizeI32LocalAssignment(x, pr, assignedFacts)
 		f.release(pr)
 		f.markLocalDirty(x) // value now lives (only) in the register
 		if tee {
@@ -1245,6 +1250,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.condense(e, regNone)
 	}
 	r := f.materialize(e)
+	f.canonicalizeI32LocalAssignment(x, r, assignedFacts)
 	f.st64(SP, f.localOff(x), r) // helper hides the scaled-offset fallback (§6.1)
 	f.locals[x].state = lsMem
 	if !tee {

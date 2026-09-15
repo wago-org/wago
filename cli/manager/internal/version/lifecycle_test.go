@@ -99,8 +99,8 @@ func TestVersionStorageRejectsPathTraversal(t *testing.T) {
 		t.Fatalf("path-traversing uninstall changed outside data: %q, %v", data, err)
 	}
 	for _, name := range []string{
-		"v1.2.3", "v1.2.3-rc.1+build", "canary", "nightly-20260712-deadbee",
-		"nightly@0123456789abcdef0123456789abcdef01234567", "release_candidate",
+		"v1.2.3", "v1.2.3-rc.1+build", "canary", "v0.1.0-beta.2",
+		"beta@0123456789abcdef0123456789abcdef01234567", "release_candidate",
 	} {
 		if err := validateVersionStorageName(name); err != nil {
 			t.Errorf("valid version %q rejected: %v", name, err)
@@ -277,14 +277,14 @@ func TestOfferUseUpdatedPromptsEvenWhenChannelIsCurrentAndDefaultsYes(t *testing
 		Config: filepath.Join(root, "config"), Data: filepath.Join(root, "data"),
 		Versions: filepath.Join(root, "data", "versions"), Cache: filepath.Join(root, "cache"),
 	}
-	path := d.RuntimeBinary("nightly", "standard", "normal")
+	path := d.RuntimeBinary("beta", "standard", "normal")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte("runtime"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := setActiveInstallation(d, "nightly", wagopaths.ProfileStandard, wagopaths.BuildNormal); err != nil {
+	if err := setActiveInstallation(d, "beta", wagopaths.ProfileStandard, wagopaths.BuildNormal); err != nil {
 		t.Fatal(err)
 	}
 
@@ -305,25 +305,25 @@ func TestOfferUseUpdatedPromptsEvenWhenChannelIsCurrentAndDefaultsYes(t *testing
 	}
 	_ = inputWrite.Close()
 	os.Stdin, os.Stdout = inputRead, outputWrite
-	offerUseUpdated(d, "nightly", wagopaths.ProfileStandard, wagopaths.BuildNormal, "")
+	offerUseUpdated(d, "beta", wagopaths.ProfileStandard, wagopaths.BuildNormal, "")
 	_ = outputWrite.Close()
 	os.Stdin, os.Stdout = oldStdin, oldStdout
 	output, err := io.ReadAll(outputRead)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text := string(output); !strings.Contains(text, "Use Wago Nightly (standard/normal) now? [Y/n]") || !strings.Contains(text, "Using Wago Nightly") {
+	if text := string(output); !strings.Contains(text, "Use Wago Beta (standard/normal) now? [Y/n]") || !strings.Contains(text, "Using Wago Beta") {
 		t.Fatalf("updated-version prompt/output = %q", text)
 	}
 }
 
 func TestUpdateChannelPickerDefaultsToCurrentChannel(t *testing.T) {
-	p := updateChannelPicker("nightly")
-	if got := p.Selected(); got != "nightly" {
-		t.Fatalf("selected channel = %q, want nightly", got)
+	p := updateChannelPicker("beta")
+	if got := p.Selected(); got != "beta" {
+		t.Fatalf("selected channel = %q, want beta", got)
 	}
 	frame := p.Frame()
-	for _, want := range []string{"Update Wago channel", "Canary", "Nightly", "enter/→ select"} {
+	for _, want := range []string{"Update Wago channel", "Canary", "Beta", "enter/→ select"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("update picker missing %q:\n%s", want, frame)
 		}
@@ -339,7 +339,7 @@ func TestUninstallVersionPickerListsAllVersionsAndCurrent(t *testing.T) {
 		Config: filepath.Join(root, "config"), Data: filepath.Join(root, "data"),
 		Versions: filepath.Join(root, "data", "versions"), Cache: filepath.Join(root, "cache"),
 	}
-	for _, version := range []string{"canary", "nightly", "v0.2.0"} {
+	for _, version := range []string{"canary", "beta", "v0.2.0"} {
 		path := d.RuntimeBinary(version, "standard", "normal")
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
@@ -348,7 +348,7 @@ func TestUninstallVersionPickerListsAllVersionsAndCurrent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := setActiveInstallation(d, "nightly", wagopaths.ProfileStandard, wagopaths.BuildNormal); err != nil {
+	if err := setActiveInstallation(d, "beta", wagopaths.ProfileStandard, wagopaths.BuildNormal); err != nil {
 		t.Fatal(err)
 	}
 	m := uninstallVersionPicker(d, installedVersions(d))
@@ -356,7 +356,7 @@ func TestUninstallVersionPickerListsAllVersionsAndCurrent(t *testing.T) {
 		t.Fatalf("uninstall items = %d, want 3", len(m.Items))
 	}
 	frame := m.Frame()
-	for _, want := range []string{"Uninstall Wago versions", "canary", "nightly", "v0.2.0", "current", "space toggle", "a toggle all", "enter/→ uninstall"} {
+	for _, want := range []string{"Uninstall Wago versions", "canary", "beta", "v0.2.0", "current", "space toggle", "a toggle all", "enter/→ uninstall"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("uninstall picker missing %q:\n%s", want, frame)
 		}
@@ -380,7 +380,7 @@ func TestInstalledVersionPickerShowsCurrentProfileAndBrowsesProfiles(t *testing.
 		}
 	}
 	installProfile("canary", wagopaths.ProfileStandard)
-	installProfile("nightly-20260725-c18b63d", wagopaths.ProfileMinimal)
+	installProfile("v0.1.0-beta.1", wagopaths.ProfileMinimal)
 	if err := setActiveInstallation(d, "canary", wagopaths.ProfileStandard, wagopaths.BuildNormal); err != nil {
 		t.Fatal(err)
 	}
@@ -389,9 +389,9 @@ func TestInstalledVersionPickerShowsCurrentProfileAndBrowsesProfiles(t *testing.
 	frame := p.Frame()
 	for _, want := range []string{
 		"Select installed Wago version",
-		"› ◉ canary          (standard/normal) →  current",
+		"› ◉ canary        (standard/normal) →  current",
 		"current",
-		"○ nightly-c18b63d (minimal/normal)  →",
+		"○ v0.1.0-beta.1 (minimal/normal)  →",
 		"→ select/browse",
 	} {
 		if !strings.Contains(frame, want) {
@@ -428,8 +428,8 @@ func TestInstalledWagoLabel(t *testing.T) {
 		build     wagopaths.Build
 		want      string
 	}{
-		{"canary", "canary-20260728-7d8c58a", wagopaths.ProfileStandard, wagopaths.BuildTiny, "Wago Canary (7d8c58a/standard/tiny)"},
-		{"nightly-20260725-c18b63d", "nightly-20260725-c18b63d", wagopaths.ProfileMinimal, wagopaths.BuildNormal, "Wago Nightly (c18b63d/minimal/normal)"},
+		{"canary", "v0.1.0-canary.g7d8c58a", wagopaths.ProfileStandard, wagopaths.BuildTiny, "Wago Canary (7d8c58a/standard/tiny)"},
+		{"v0.1.0-beta.1", "v0.1.0-beta.1", wagopaths.ProfileMinimal, wagopaths.BuildNormal, "Wago Beta (minimal/normal)"},
 		{"v0.2.0", "v0.2.0", wagopaths.ProfileStandard, wagopaths.BuildNormal, "Wago v0.2.0 (standard/normal)"},
 	}
 	for _, tt := range tests {
@@ -441,27 +441,27 @@ func TestInstalledWagoLabel(t *testing.T) {
 
 func TestUpdateVersionTarget(t *testing.T) {
 	tests := []struct {
-		name            string
-		active          string
-		args            []string
-		nightly, canary bool
-		want            string
-		wantErr         string
+		name         string
+		active       string
+		args         []string
+		beta, canary bool
+		want         string
+		wantErr      string
 	}{
 		{name: "active canary", active: "canary", want: "canary"},
-		{name: "named nightly", active: "0.5.0", args: []string{"nightly"}, want: "nightly"},
+		{name: "named beta", active: "0.5.0", args: []string{"beta"}, want: "beta"},
 		{name: "active pinned", active: "0.5.0", wantErr: "is pinned"},
 		{name: "named pinned", active: "0.5.0", args: []string{"0.6.0"}, wantErr: "is pinned"},
-		{name: "nightly", active: "0.5.0", nightly: true, want: "nightly"},
+		{name: "beta", active: "0.5.0", beta: true, want: "beta"},
 		{name: "canary", active: "0.5.0", canary: true, want: "canary"},
 		{name: "missing active", wantErr: "no active version"},
-		{name: "both channels", nightly: true, canary: true, wantErr: "cannot be used together"},
-		{name: "channel plus version", args: []string{"0.6.0"}, nightly: true, wantErr: "cannot be used with [version]"},
+		{name: "both channels", beta: true, canary: true, wantErr: "cannot be used together"},
+		{name: "channel plus version", args: []string{"0.6.0"}, beta: true, wantErr: "cannot be used with [version]"},
 		{name: "too many versions", args: []string{"0.5.0", "0.6.0"}, wantErr: "at most one"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := updateVersionTarget(tt.active, tt.args, tt.nightly, tt.canary)
+			got, err := updateVersionTarget(tt.active, tt.args, tt.beta, tt.canary)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("updateVersionTarget() error = %v, want %q", err, tt.wantErr)
@@ -479,18 +479,18 @@ func TestUpdateVersionTarget(t *testing.T) {
 }
 
 func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
-	tags := []string{"nightly-20260712-deadbee", "v0.1.4", "canary-cafef00", "nightly-20260711-abcdef0", "v0.2.0", "0.1.0", "canary"}
+	tags := []string{"v0.1.0-beta.2", "v0.1.4", "v0.1.0-canary.gcafef00", "v0.1.0-beta.1", "v0.2.0", "0.1.0", "canary"}
 	if got, want := stableReleaseNames(tags), []string{"v0.2.0", "v0.1.4", "v0.1.0"}; !slices.Equal(got, want) {
 		t.Fatalf("stableReleaseNames = %v, want %v", got, want)
 	}
-	if got, want := channelReleaseNames(tags, "nightly"), []string{"nightly-20260712-deadbee", "nightly-20260711-abcdef0"}; !slices.Equal(got, want) {
+	if got, want := channelReleaseNames(tags, "beta"), []string{"v0.1.0-beta.2", "v0.1.0-beta.1"}; !slices.Equal(got, want) {
 		t.Fatalf("channelReleaseNames = %v, want %v", got, want)
 	}
 	releases := []remoteRelease{
-		{TagName: "nightly-20260728-7d8c58a", TargetCommitish: "7d8c58a123456789012345678901234567890123", PublishedAt: "2026-07-28T08:31:22Z"},
+		{TagName: "v0.1.0-beta.2", TargetCommitish: "7d8c58a123456789012345678901234567890123", PublishedAt: "2026-07-28T08:31:22Z"},
 		{TagName: "v0.1.4", PublishedAt: "2026-06-30T12:00:00Z"},
-		{TagName: "canary-cafef00", PublishedAt: "2026-07-28T00:48:44Z"},
-		{TagName: "nightly-20260711-abcdef0", PublishedAt: "2026-07-11T08:31:22Z"},
+		{TagName: "v0.1.0-canary.gcafef00", PublishedAt: "2026-07-28T00:48:44Z"},
+		{TagName: "v0.1.0-beta.1", PublishedAt: "2026-07-11T08:31:22Z"},
 		{TagName: "v0.2.0", PublishedAt: "2026-07-28T08:31:22Z"},
 		{TagName: "0.1.0", PublishedAt: "2026-06-01T12:00:00Z"},
 		{TagName: "canary"},
@@ -500,26 +500,73 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 	commits[1].Commit.Author.Date = "2026-07-27T00:48:44Z"
 	now := time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
 	items := versionPickerItemsWithCommits(releases, commits, now)
-	if got, want := []string{items[0].Children[0].Value, items[0].Children[1].Value, items[0].Children[2].Value}, []string{"canary", canaryCommitTarget(commits[0].SHA), canaryCommitTarget(commits[1].SHA)}; !slices.Equal(got, want) {
+	if got, want := []string{items[0].Label, items[1].Label, items[2].Label}, []string{"Official", "Beta", "Canary"}; !slices.Equal(got, want) {
+		t.Fatalf("channel order = %v, want %v", got, want)
+	}
+	if got, want := []string{items[2].Children[0].Value, items[2].Children[1].Value, items[2].Children[2].Value}, []string{"canary", canaryCommitTarget(commits[0].SHA), canaryCommitTarget(commits[1].SHA)}; !slices.Equal(got, want) {
 		t.Fatalf("canary picker children = %v, want %v", got, want)
 	}
-	if got, want := []string{items[2].Children[0].Value, items[2].Children[1].Value, items[2].Children[2].Value, items[2].Children[3].Value}, []string{"latest", "v0.2.0", "v0.1.4", "0.1.0"}; !slices.Equal(got, want) {
+	if got, want := []string{items[0].Children[0].Value, items[0].Children[1].Value, items[0].Children[2].Value, items[0].Children[3].Value}, []string{"latest", "v0.2.0", "v0.1.4", "0.1.0"}; !slices.Equal(got, want) {
 		t.Fatalf("latest picker children = %v, want %v", got, want)
 	}
-	nightly := items[1].Children[1]
-	if nightly.Label != "nightly-7d8c58a" || nightly.Value != "nightly-20260728-7d8c58a@7d8c58a123456789012345678901234567890123" || nightly.Description != "07/28/2026  1d ago" {
-		t.Fatalf("nightly picker item = %#v", nightly)
+	beta := items[1].Children[1]
+	if beta.Label != "v0.1.0-beta.2" || beta.Value != "v0.1.0-beta.2" || beta.Description != "07/28/2026  1d ago" {
+		t.Fatalf("beta picker item = %#v", beta)
 	}
-	canary := items[0].Children[1]
+	canary := items[2].Children[1]
 	if canary.Label != "canary-cafef00" || canary.Description != "07/28/2026  1d ago" {
 		t.Fatalf("canary picker item = %#v", canary)
 	}
-	if got := releaseAssetVersion(canary.Value); got != "canary-cafef00123456789012345678901234567890123" {
+	if got := releaseAssetVersion(canary.Value); got != canary.Value {
 		t.Fatalf("canary commit release asset = %q", got)
 	}
 	if got := releasePickerLabel("canary"); got != "canary" {
 		t.Fatalf("releasePickerLabel(canary) = %q", got)
 	}
+}
+
+func TestInstallPickerMovesUnavailableChannelsToBottom(t *testing.T) {
+	releases := []remoteRelease{{TagName: "v0.2.0", PublishedAt: "2026-07-28T08:31:22Z"}}
+	items := installPickerItemsWithCommits(releases, nil, time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC))
+	if got, want := []string{items[0].Label, items[1].Label, items[2].Label, items[3].Label}, []string{"Official", "v0.2.0", "Beta", "Canary"}; !slices.Equal(got, want) {
+		t.Fatalf("picker order = %v, want %v", got, want)
+	}
+	for _, item := range items[2:] {
+		if !item.Disabled || item.Description != "no releases available" || len(item.AcceptItems) != 0 || len(item.Children) != 0 {
+			t.Fatalf("unavailable channel is selectable: %#v", item)
+		}
+	}
+	p := tui.NewPicker("Install Wago version", items)
+	p.Apply(tui.KeyDown)
+	p.Apply(tui.KeyDown)
+	if got := p.Selected(); got != "v0.2.0" {
+		t.Fatalf("picker moved onto unavailable channel: %q", got)
+	}
+}
+
+func TestInstallPickerIncludesBetaReleasesWithBranchTargets(t *testing.T) {
+	releases := []remoteRelease{
+		{TagName: "v0.1.0-beta.6", TargetCommitish: "main", PublishedAt: "2026-09-10T22:36:40Z"},
+		{TagName: "v0.1.0-beta.5", TargetCommitish: "main", PublishedAt: "2026-09-10T21:58:04Z"},
+	}
+	items := versionPickerItemsWithCommits(releases, nil, time.Date(2026, 9, 10, 23, 0, 0, 0, time.UTC))
+	for _, item := range items {
+		if item.Value != "beta" {
+			continue
+		}
+		if item.Disabled {
+			t.Fatal("Beta channel is disabled")
+		}
+		got := make([]string, len(item.Children))
+		for index := range item.Children {
+			got[index] = item.Children[index].Label
+		}
+		if want := []string{"latest", "v0.1.0-beta.6", "v0.1.0-beta.5"}; !slices.Equal(got, want) {
+			t.Fatalf("Beta releases = %v, want %v", got, want)
+		}
+		return
+	}
+	t.Fatal("Beta channel is missing")
 }
 
 func TestInstallPickerProfilePageReturnsToReleasePage(t *testing.T) {
@@ -529,6 +576,7 @@ func TestInstallPickerProfilePageReturnsToReleasePage(t *testing.T) {
 	commits := []remoteCommit{{SHA: "7d8c58a123456789012345678901234567890123"}}
 	commits[0].Commit.Author.Date = "2026-07-28T08:31:22Z"
 	p := tui.NewPicker("Install Wago version", installPickerItemsWithCommits(releases, commits, time.Now()))
+	p.Apply(tui.KeyDown)  // choose Canary
 	p.Apply(tui.KeyRight) // browse canary releases
 	p.Apply(tui.KeyDown)  // choose the immutable canary build
 	if done, cancelled := p.Apply(tui.KeyAccept); done || cancelled {
@@ -569,9 +617,9 @@ func TestPaginatedInstallPickerKeepsChannelsSelectableAndLoadActionsTerminal(t *
 		channel    string
 		loadAction string
 	}{
-		{name: "canary", item: items[0], channel: "canary", loadAction: pickerLoadMoreCommits},
-		{name: "nightly", item: items[1], channel: "nightly", loadAction: pickerLoadMoreReleases},
-		{name: "latest", item: items[2], channel: "latest", loadAction: pickerLoadMoreReleases},
+		{name: "official", item: items[0], channel: "latest", loadAction: pickerLoadMoreReleases},
+		{name: "beta", item: items[1], channel: "beta", loadAction: pickerLoadMoreReleases},
+		{name: "canary", item: items[2], channel: "canary", loadAction: pickerLoadMoreCommits},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

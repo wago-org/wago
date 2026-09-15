@@ -1,8 +1,7 @@
-// Example 02: runtime + typed Call.
+// Example 02: runtime invocation.
 //
-// The high-level Runtime wraps compile/instantiate and gives you a typed,
-// context-aware Call where arguments and results are checked against the export's
-// signature. Run:
+// The high-level Runtime wraps compile/instantiate. InvokeContext accepts Wasm
+// values encoded with wago.I32, wago.I64, wago.F32, and wago.F64. Run:
 //
 //	go run ./examples/02-runtime-typed
 package main
@@ -32,13 +31,12 @@ func main() {
 	}
 	defer inst.Close()
 
-	// Call takes typed Values and returns typed Values — no manual slot encoding.
 	// The context is honored for cancellation.
-	out, err := inst.Call(ctx, "add", wago.ValueI32(2), wago.ValueI32(3))
+	out, err := inst.InvokeContext(ctx, "add", wago.I32(2), wago.I32(3))
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("add(2, 3) = %d (type %s)\n", out[0].I32(), out[0].Type())
+	fmt.Printf("add(2, 3) = %d\n", wago.AsI32(out[0]))
 
 	// Inspect the module.
 	fmt.Println("exports:", mod.Exports())

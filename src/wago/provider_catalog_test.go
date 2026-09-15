@@ -253,10 +253,12 @@ func TestDecodeProviderCatalogRejectsNoncanonicalArtifacts(t *testing.T) {
 	}
 
 	for name, raw := range map[string][]byte{
-		"unknown document field":   bytes.Replace(encoded, []byte(`"providers":`), []byte(`"future":true,"providers":`), 1),
-		"unknown entry field":      bytes.Replace(encoded, []byte(`"importPath":`), []byte(`"future":true,"importPath":`), 1),
-		"unknown definition field": bytes.Replace(encoded, []byte(`"version": "1.2.3"`), []byte(`"version": "1.2.3", "future": true`), 1),
-		"trailing value":           append(append([]byte(nil), encoded...), []byte("{}")...),
+		"unknown document field":    bytes.Replace(encoded, []byte(`"providers":`), []byte(`"future":true,"providers":`), 1),
+		"unknown entry field":       bytes.Replace(encoded, []byte(`"importPath":`), []byte(`"future":true,"importPath":`), 1),
+		"unknown definition field":  bytes.Replace(encoded, []byte(`"version": "1.2.3"`), []byte(`"version": "1.2.3", "future": true`), 1),
+		"duplicate document field":  bytes.Replace(encoded, []byte(`"providers":`), []byte(`"$schema":"`+ProviderCatalogSchemaURI+`","providers":`), 1),
+		"case alias document field": bytes.Replace(encoded, []byte(`"providers":`), []byte(`"$Schema":"`+ProviderCatalogSchemaURI+`","providers":`), 1),
+		"trailing value":            append(append([]byte(nil), encoded...), []byte("{}")...),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := DecodeProviderCatalog(raw); err == nil {

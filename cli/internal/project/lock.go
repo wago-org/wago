@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/wago-org/wago/internal/jsonstrict"
+	"github.com/wago-org/wago/internal/regularfile"
 	"io"
 	"os"
 	"path/filepath"
@@ -139,7 +141,7 @@ func ReadLock(dir string) (LockDocument, error) {
 }
 
 func readLock(dir string) (LockDocument, error) {
-	data, err := os.ReadFile(LockPath(dir))
+	data, err := regularfile.Read(LockPath(dir), maxProjectMetadataBytes)
 	if os.IsNotExist(err) {
 		return NewLockDocument(), nil
 	}
@@ -154,6 +156,12 @@ func readLock(dir string) (LockDocument, error) {
 }
 
 func DecodeLock(data []byte) (LockDocument, error) {
+	if len(data) > maxProjectMetadataBytes {
+		return LockDocument{}, fmt.Errorf("project lock exceeds byte limit %d", maxProjectMetadataBytes)
+	}
+	if err := jsonstrict.ValidateTypedJSONWithLimits(data, LockDocument{}, projectJSONLimits); err != nil {
+		return LockDocument{}, err
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var document LockDocument
@@ -183,7 +191,16 @@ func EncodeLock(document LockDocument) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(data, '\n'), nil
+	data = append(data, '\n')
+	if len(data) > maxProjectMetadataBytes {
+		return nil, fmt.Errorf("project lock exceeds byte limit %d", maxProjectMetadataBytes)
+	}
+	// The graph was validated above. Preserve the strict token/collection pass
+	// for RawMessage data without rebuilding and validating the same graph.
+	if err := jsonstrict.ValidateTypedJSONWithLimits(data, LockDocument{}, projectJSONLimits); err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func WriteLock(dir string, document LockDocument) error {

@@ -12,7 +12,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const stagedGCArrayReferenceHex = "0061736d0100000001cd808080000f5e78005e6400005e6400015e6300005e6e0160000164016000016403600001640460037f7f6401017f60027f7f017f60047f7f64027f017f60037f7f7f017f6001646a017f6000017f600000038c808080000b0505060708090a0b0c0d0e07b88080800006036e657700000c6e65772d6f766572666c6f770001036765740005077365745f6765740007036c656e00090964726f705f73656773000a099680808000010564000241074103fb06000b41014102fb0800020b0abf818080000b8a808080000041004102fb0a01000b928080800000418080808078418080808078fb0a01000b8a808080000041004102fb0a03000b8a808080000041004102fb0a04000b8e808080000020022000fb0b012001fb0d000b8a808080000020002001100010040b9c80808000002002200020022003fb0b02fb0e0220022000fb0b022001fb0d000b9280808000002000200141004102fb0a0200200210060b8680808000002000fb0f0b868080800000100010080b858080800000fc0d000b"
@@ -237,7 +237,7 @@ func TestStagedGCArrayReferenceElementAllocationAndDrop(t *testing.T) {
 
 func TestStagedGCArrayReferenceOfficialProduct(t *testing.T) {
 	data := stagedGCArrayReferenceBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public compile unexpectedly admitted reference GC arrays")
 	}
 	c, err := compileStagedGCArray(data)
@@ -372,7 +372,10 @@ func TestStagedGCArrayReferenceFootprint(t *testing.T) {
 		"compiledMemoryDirectory": unsafe.Sizeof(compiledMemoryDirectory{}),
 		"instancePluginState":     unsafe.Sizeof(instancePluginState{}),
 	} {
-		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 136}[name]
+		// The plugin sidecar includes instance-local counted activations and
+		// reservations, plus monotonic callback/context versions (72 bytes).
+		// Cancellable admission and retained-lease publication add 16 bytes each.
+		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 240}[name]
 		if got != want {
 			t.Fatalf("%s size = %d, want %d", name, got, want)
 		}

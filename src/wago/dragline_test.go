@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func draglineUnaryModule(param, result wasm.ValType, body []byte) []byte {
@@ -4515,12 +4515,27 @@ func TestDraglineRailMachV128ImportCallExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.identity": HostFunc(func(_ HostModule, params, results []uint64) {
-		if len(params) != 2 || len(results) != 2 {
-			t.Fatalf("vector import slots = params:%d results:%d", len(params), len(results))
-		}
-		results[0], results[1] = params[0], params[1]
-	})}})
+	providerModule := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("identity", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))),
+	)
+	providerCompiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), providerModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer providerCompiled.Close()
+	provider, err := Instantiate(providerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	identity, err := provider.ExportedFunc("identity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.identity": identity}})
 	if err != nil {
 		t.Fatal(err)
 	}

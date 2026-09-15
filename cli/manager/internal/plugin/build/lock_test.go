@@ -1,6 +1,7 @@
 package build
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -59,5 +60,43 @@ func TestBuildLockSerializesModuleAccess(t *testing.T) {
 	wg.Wait()
 	if overlap.Load() {
 		t.Fatal("plugin build module operations overlapped")
+	}
+}
+
+func TestBuildLockRetriesRemovalRace(t *testing.T) {
+	lockDir := filepath.Join(t.TempDir(), "plugins.lock")
+	attempts := 0
+	err := acquireBuildLock(lockDir, func(path string, mode os.FileMode) error {
+		attempts++
+		if attempts == 1 {
+			// The old owner removed the directory between mkdir and Stat.
+			return &os.PathError{Op: "mkdir", Path: path, Err: os.ErrPermission}
+		}
+		return os.Mkdir(path, mode)
+	})
+	if err != nil {
+		t.Fatalf("acquire after removal: %v", err)
+	}
+	defer os.Remove(lockDir)
+	if attempts != 2 {
+		t.Fatalf("mkdir attempts = %d, want 2", attempts)
+	}
+	if info, err := os.Stat(lockDir); err != nil || !info.IsDir() {
+		t.Fatalf("lock was not acquired: %v", err)
+	}
+}
+
+func TestBuildLockReportsPersistentPermissionFailure(t *testing.T) {
+	lockDir := filepath.Join(t.TempDir(), "plugins.lock")
+	attempts := 0
+	err := acquireBuildLock(lockDir, func(path string, _ os.FileMode) error {
+		attempts++
+		return &os.PathError{Op: "mkdir", Path: path, Err: os.ErrPermission}
+	})
+	if !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("acquire error = %v, want permission error", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("mkdir attempts = %d, want 2", attempts)
 	}
 }

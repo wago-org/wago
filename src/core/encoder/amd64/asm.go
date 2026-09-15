@@ -362,11 +362,22 @@ func (a *Asm) Grow(n int) {
 	}
 }
 
-func (a *Asm) emit(bs ...byte) { a.B = append(a.B, bs...) }
+func (a *Asm) emit(bs ...byte) {
+	switch len(bs) {
+	case 1:
+		a.B = append(a.B, bs[0])
+	case 2:
+		a.B = append(a.B, bs[0], bs[1])
+	case 3:
+		a.B = append(a.B, bs[0], bs[1], bs[2])
+	case 4:
+		a.B = append(a.B, bs[0], bs[1], bs[2], bs[3])
+	default:
+		a.B = append(a.B, bs...)
+	}
+}
 func (a *Asm) imm32(v int32) {
-	var t [4]byte
-	binary.LittleEndian.PutUint32(t[:], uint32(v))
-	a.B = append(a.B, t[:]...)
+	a.B = append(a.B, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 }
 func (a *Asm) Len() int                  { return len(a.B) }
 func (a *Asm) PatchU32(at int, v uint32) { binary.LittleEndian.PutUint32(a.B[at:], v) }
@@ -1338,6 +1349,12 @@ func (a *Asm) AlignLoop() {
 	if offset >= 24 {
 		pad = 32 - offset + 8
 	}
+	a.nop(pad)
+}
+
+// AlignLoop32 places a compact loop at the start of a 32-byte fetch block.
+func (a *Asm) AlignLoop32() {
+	pad := (32 - len(a.B)%32) % 32
 	a.nop(pad)
 }
 

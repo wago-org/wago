@@ -35,13 +35,16 @@ func TestGCFrameOffsetInternerSharesImmutableMaps(t *testing.T) {
 	}
 }
 
-func TestSerialCompiledSealsExecutableMappingInPlace(t *testing.T) {
+func TestCompiledMapsExecutableCodeAtFirstInstantiate(t *testing.T) {
 	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), fibWasm)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
 	original := unsafe.Pointer(&c.code[0])
+	if len(c.codeCache.mem) != 0 {
+		t.Fatal("Compile eagerly allocated executable memory")
+	}
 	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -51,11 +54,8 @@ func TestSerialCompiledSealsExecutableMappingInPlace(t *testing.T) {
 		t.Fatal("executable mapping or readable code view is empty")
 	}
 	mapped := unsafe.Pointer(&c.codeCache.mem[0])
-	if got := unsafe.Pointer(&c.code[0]); got != mapped {
-		t.Fatalf("compiled code still uses heap backing %p (mapped %p, original %p)", got, mapped, original)
-	}
-	if mapped != original {
-		t.Fatalf("first Instantiate copied serial native code: mapped %p, original %p", mapped, original)
+	if mapped == original {
+		t.Fatalf("first Instantiate did not move heap staging into executable memory: %p", mapped)
 	}
 	if _, err := c.MarshalBinary(); err != nil {
 		t.Fatalf("marshal mapped code: %v", err)

@@ -26,18 +26,18 @@ placeholder() {
 # both corpora.
 if [ -z "${SPEC_LOG_DIR:-}" ]; then
 	command -v wast2json >/dev/null 2>&1 || placeholder "wast2json (wabt) not installed"
-	[ -f tests/spec/i32.wast ] || git submodule update --init tests/spec >/dev/null 2>&1 || true
-	[ -f tests/spec/i32.wast ] || placeholder "tests/spec submodule not present"
-	[ -f tests/spec-v2/test/core/i32.wast ] || git submodule update --init tests/spec-v2 >/dev/null 2>&1 || true
-	[ -f tests/spec-v2/test/core/i32.wast ] || placeholder "tests/spec-v2 submodule not present"
+	[ -f tests/conformance/spec-v1/i32.wast ] || git submodule update --init tests/conformance/spec-v1 >/dev/null 2>&1 || true
+	[ -f tests/conformance/spec-v1/i32.wast ] || placeholder "tests/conformance/spec-v1 submodule not present"
+	[ -f tests/conformance/spec-v2/test/core/i32.wast ] || git submodule update --init tests/conformance/spec-v2 >/dev/null 2>&1 || true
+	[ -f tests/conformance/spec-v2/test/core/i32.wast ] || placeholder "tests/conformance/spec-v2 submodule not present"
 fi
 
 rows=""
 summary=""
 for v in 1.0 2.0 3.0; do
 	case "$v" in
-		2.0) suite="$root/tests/spec-v2" ;;
-		*)   suite="$root/tests/spec" ;;
+		2.0) suite="$root/tests/conformance/spec-v2" ;;
+		*)   suite="$root/tests/conformance/spec-v1" ;;
 	esac
 	if [ -n "${SPEC_LOG_DIR:-}" ]; then
 		log="$SPEC_LOG_DIR/$v.log"

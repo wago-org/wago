@@ -173,8 +173,8 @@ func TestExternrefOnlyTableUsesEightByteEntriesWithoutFuncrefArena(t *testing.T)
 }
 
 func TestExternrefTableStructFootprintsRemainBounded(t *testing.T) {
-	if got := unsafe.Sizeof(Compiled{}); got != 784 {
-		t.Fatalf("Compiled size = %d, want 784 bytes", got)
+	if got := unsafe.Sizeof(Compiled{}); got != 792 {
+		t.Fatalf("Compiled size = %d, want 792 bytes", got)
 	}
 	if got := unsafe.Sizeof(tableDef{}); got != 56 {
 		t.Fatalf("tableDef size = %d, want 56 bytes with exact table address form", got)
@@ -291,7 +291,7 @@ func TestRelease2ExternrefTableSourceGuard(t *testing.T) {
 		},
 	}
 	for file, snippets := range sites {
-		raw, err := os.ReadFile(filepath.Clean("../../tests/spec-v2/test/core/" + file))
+		raw, err := os.ReadFile(filepath.Clean("../../tests/conformance/spec-v2/test/core/" + file))
 		if err != nil {
 			t.Skipf("Release 2 %s unavailable: %v", file, err)
 		}

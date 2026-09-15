@@ -9,7 +9,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestStagedStructuralProductSidecarFootprint(t *testing.T) {
@@ -25,7 +25,7 @@ func TestStagedStructuralMetadataProducts(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
+			if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
 				t.Fatalf("public compile = %v, want closed GC type gate", err)
 			}
 			c, err := compileStagedStructuralTypeProductForTest(data)

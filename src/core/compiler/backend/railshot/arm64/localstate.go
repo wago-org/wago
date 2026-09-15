@@ -37,21 +37,25 @@ const (
 	lsConstZero                 // declared local's initial zero, not materialized yet
 )
 
-// packedLocStates stores the four local merge states in two bits each while
-// retaining stable local-index addressing for region pins whose membership may
-// change across nested control.
-type packedLocStates []byte
+// packedLocStates stores up to 64 local merge states in two bits each. Functions
+// with more locals do not admit whole-function pins, so they never need a
+// snapshot. A recorded snapshot contains at least one pinned local in
+// lsStackReg or lsMem; the all-zero value is therefore the absent sentinel.
+type packedLocStates [2]uint64
 
-func packedLocStateBytes(n int) int { return (n + 3) / 4 }
+type localStateSnapshot [64]locState
+
+func (s packedLocStates) empty() bool { return s[0]|s[1] == 0 }
 
 func (s packedLocStates) get(index int) locState {
-	return locState(s[index>>2] >> (uint(index&3) * 2) & 3)
+	return locState(s[index>>5] >> (uint(index&31) * 2) & 3)
 }
 
-func (s packedLocStates) set(index int, state locState) {
-	shift := uint(index&3) * 2
-	mask := byte(3 << shift)
-	s[index>>2] = s[index>>2]&^mask | byte(state)<<shift
+func (s *packedLocStates) set(index int, state locState) {
+	word := index >> 5
+	shift := uint(index&31) * 2
+	mask := uint64(3) << shift
+	s[word] = s[word]&^mask | uint64(state)<<shift
 }
 
 type localDef struct {
@@ -170,6 +174,40 @@ func (f *fn) markLocalDirty(x int) {
 	}
 }
 
+func (f *fn) markPinnedLocalsDirty() {
+	for x := range f.locals {
+		if _, _, ok := f.pinReg(x); ok {
+			f.locals[x].state = lsReg
+		}
+	}
+}
+
+// prepareCallFreeLoopEntry establishes one register-resident state for a loop
+// that cannot call. Unlike reconcileLocals it never writes an already-live pin
+// to its canonical slot: the loop cannot observe that slot, and its backedges
+// preserve the dedicated register. Memory-only pins are reloaded once before
+// the header so the same instruction stream is correct on every iteration.
+func (f *fn) prepareCallFreeLoopEntry() {
+	for x := 0; x < f.nLocals; x++ {
+		reg, isFloat, pinned := f.pinReg(x)
+		if f.locals[x].state == lsConstZero {
+			f.materializeZeroLocal(x, !pinned)
+			continue
+		}
+		if !pinned {
+			continue
+		}
+		if f.locals[x].state == lsMem {
+			f.loadLocalReg(x, reg, isFloat)
+			f.stats.peep("callfree-loop-entry-reload")
+		}
+		if f.locals[x].state == lsReg {
+			f.stats.peep("callfree-loop-entry-store-elide")
+		}
+		f.locals[x].state = lsReg
+	}
+}
+
 func (f *fn) materializeGCFrameLocalsAt(site int, call bool) {
 	if f.gcFrameRoots == nil || !f.lazyZero {
 		return
@@ -201,6 +239,9 @@ func (f *fn) spillLocalsForCall() {
 // sequences that do not make a native call use this to preserve their actual
 // scratch bank without evicting unrelated local pins.
 func (f *fn) spillLocalsForClobbers(gpClobbers, fpClobbers regMask) {
+	if f.pinnedLocalMask&gpClobbers == 0 && f.fpinnedLocalMask&fpClobbers == 0 {
+		return
+	}
 	for x := 0; x < f.nLocals; x++ {
 		reg, isFloat, ok := f.pinReg(x)
 		if !ok {
@@ -272,6 +313,11 @@ func (f *fn) reconcileLocals() {
 	if !f.usesCalls {
 		return
 	}
+	// Call-making functions with no local pins retain the register-call frame
+	// shape but have no local register state to reconcile.
+	if f.pinnedLocalMask == 0 && f.fpinnedLocalMask == 0 {
+		return
+	}
 	for x := 0; x < f.nLocals; x++ {
 		reg, isFloat, ok := f.pinReg(x)
 		if !ok {
@@ -300,45 +346,6 @@ func (f *fn) reconcileLocals() {
 // recorded) — always safe: the merge assumes only the target. The merge point
 // itself must then install the recorded target as the tracked state
 // (setLocalsState).
-
-func (f *fn) newLocStateBuf() packedLocStates {
-	n := packedLocStateBytes(f.nLocals)
-	for i := len(f.lsPool) - 1; i >= 0; i-- {
-		b := f.lsPool[i]
-		if cap(b) < n {
-			continue
-		}
-		last := len(f.lsPool) - 1
-		f.lsPool[i] = f.lsPool[last]
-		f.lsPool[last] = nil
-		f.lsPool = f.lsPool[:last]
-		f.lsPoolBytes -= cap(b)
-		return b[:n]
-	}
-	// No retained buffer is large enough. Drop one undersized entry before
-	// replacing it so the module-wide pool is bounded by maximum simultaneous
-	// control depth, not by the number of different local counts encountered.
-	if last := len(f.lsPool) - 1; last >= 0 {
-		b := f.lsPool[last]
-		f.lsPool[last] = nil
-		f.lsPool = f.lsPool[:last]
-		f.lsPoolBytes -= cap(b)
-	}
-	return make(packedLocStates, n)
-}
-
-func (f *fn) freeLocStateBuf(b packedLocStates) {
-	if cap(b) >= packedLocStateBytes(f.nLocals) && f.nLocals > 0 && len(f.lsPool) < maxRetainedLocStateBufs && f.lsPoolBytes+cap(b) <= maxRetainedLocStateBytes {
-		if len(f.lsPool) == cap(f.lsPool) {
-			newCap := min(max(16, 2*cap(f.lsPool)), maxRetainedLocStateBufs)
-			pool := make([]packedLocStates, len(f.lsPool), newCap)
-			copy(pool, f.lsPool)
-			f.lsPool = pool
-		}
-		f.lsPool = append(f.lsPool, b[:cap(b)])
-		f.lsPoolBytes += cap(b)
-	}
-}
 
 const frameEndConditional uint32 = 1 << 31
 
@@ -389,6 +396,11 @@ func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regM
 	if !f.usesCalls {
 		return
 	}
+	// Merge snapshots describe only register-homed locals. Avoid allocating and
+	// copying an all-dead snapshot for call-making functions with no local pins.
+	if f.pinnedLocalMask == 0 && f.fpinnedLocalMask == 0 {
+		return
+	}
 	for x := 0; x < f.nLocals; x++ {
 		reg, isFloat, ok := f.pinReg(x)
 		if !ok {
@@ -399,8 +411,8 @@ func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regM
 			f.locals[x].state = lsStackReg
 		}
 	}
-	if *target == nil { // first edge fixes the frame's merge state
-		t := f.newLocStateBuf()
+	if target.empty() { // first edge fixes the frame's merge state
+		var t packedLocStates
 		for x := 0; x < f.nLocals; x++ {
 			t.set(x, f.locals[x].state)
 		}
@@ -437,14 +449,14 @@ const maxMergeNextUseOps = shared.MergeNextUseFuel
 // uses constant storage; uncertainty, nested control, and fuel exhaustion keep
 // the existing eager edge reload.
 func (f *fn) planForwardMergeDeadLocals(r *wasm.Reader, target, source packedLocStates) (deadGP, deadFP regMask) {
-	if !f.opt(optMergeNextUse) || !f.usesCalls || f.moduleEH || target == nil {
+	if !f.opt(optMergeNextUse) || !f.usesCalls || f.moduleEH || target.empty() {
 		return 0, 0
 	}
 	var candidates [64]shared.MergeLocalCandidate
 	n := 0
 	for x := 0; x < f.nLocals; x++ {
 		state := f.locals[x].state
-		if source != nil {
+		if !source.empty() {
 			state = source.get(x)
 		}
 		if target.get(x) != lsStackReg || state != lsMem {
@@ -473,12 +485,32 @@ func (f *fn) planForwardMergeDeadLocals(r *wasm.Reader, target, source packedLoc
 // setLocalsState installs a merge point's recorded target as the tracked state
 // (no code): every reaching edge guaranteed at least this much.
 func (f *fn) setLocalsState(t packedLocStates) {
-	if !f.usesCalls || t == nil {
+	if !f.usesCalls || t.empty() {
 		return
 	}
 	for x := 0; x < f.nLocals; x++ {
 		if _, _, ok := f.pinReg(x); ok {
 			f.locals[x].state = t.get(x)
 		}
+	}
+}
+
+// snapshotLocalStates captures the complete local-state tracker for speculative
+// edge emission. Whole-function pins are admitted only for functions covered by
+// packedLocStates, so larger functions have no profitable edge state to defer.
+func (f *fn) snapshotLocalStates() (localStateSnapshot, bool) {
+	var snapshot localStateSnapshot
+	if len(f.locals) > len(snapshot) {
+		return snapshot, false
+	}
+	for x := range f.locals {
+		snapshot[x] = f.locals[x].state
+	}
+	return snapshot, true
+}
+
+func (f *fn) restoreLocalStates(snapshot localStateSnapshot) {
+	for x := range f.locals {
+		f.locals[x].state = snapshot[x]
 	}
 }

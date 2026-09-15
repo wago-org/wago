@@ -3,7 +3,7 @@ package wago
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // GuestGCArrayAllocatorHostModule is the optional host-callback surface for
@@ -29,13 +29,14 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 	if !h.valid() || h.in == nil {
 		return 0, fmt.Errorf("wago: GC result allocation is outside its active host callback: %w", ErrPermissionDenied)
 	}
-	if resultIndex < 0 || resultIndex >= len(h.exactResults) {
+	_, results := h.exactSignature()
+	if resultIndex < 0 || resultIndex >= len(results) {
 		return 0, fmt.Errorf("wago: host result index %d is out of range", resultIndex)
 	}
 	if h.ephemeralGCResults == nil {
 		return 0, fmt.Errorf("wago: GC result allocation requires the active host dispatch: %w", ErrPermissionDenied)
 	}
-	required := h.exactResults[resultIndex]
+	required := results[resultIndex]
 	if required.Kind != ValueTypeReference || !required.Ref.Heap.Defined {
 		return 0, fmt.Errorf("wago: host result %d is not a defined GC reference type", resultIndex)
 	}
@@ -63,13 +64,13 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 		return 0, fmt.Errorf("wago: host result type %d has no Runtime-domain identity", localType)
 	}
 
-	endBorrow, err := beginGuestStorageBorrow(h.in)
+	borrowState, err := beginGuestStorageBorrow(h.in)
 	if err != nil {
 		return 0, err
 	}
-	defer endBorrow()
-	unlockNative := h.in.lockInstanceNativeStateForHostAccess()
-	defer unlockNative()
+	defer borrowState.guestStorageBorrow.Store(0)
+	nativeMu := h.in.acquireInstanceNativeStateForHostAccess()
+	defer nativeMu.Unlock()
 	lockedDomain := h.in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
 	state := h.in.publicGCState()

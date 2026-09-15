@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Call arguments and results are raw uint64 value slots: the function
@@ -34,34 +35,11 @@ func valTypeCode(t wasm.ValType) byte {
 }
 
 // Imports supplies a module's imports by "module.name" key, JS-style: one
-// namespace whose values may be a HostFunc, a GlobalImport or *Global, or a
-// *Memory — mirroring the WebAssembly JS API's single imports object.
+// namespace whose function values may be an ordinary supported Go function,
+// HostCallFunc, HostFunc, CallerHostFunc, or I32HostEvent, alongside a GlobalImport, *Global, or
+// *Memory.
+// This mirrors the WebAssembly JS API's single imports object.
 type Imports map[string]any
-
-// hostFuncs extracts the HostFunc entries (the import-function wiring).
-func (im Imports) hostFuncs() map[string]HostFunc {
-	var m map[string]HostFunc
-	for k, v := range im {
-		var fn HostFunc
-		switch value := v.(type) {
-		case HostFunc:
-			fn = value
-		case *HostFuncRef:
-			if value != nil {
-				value.mu.Lock()
-				fn = value.fn
-				value.mu.Unlock()
-			}
-		}
-		if fn != nil {
-			if m == nil {
-				m = make(map[string]HostFunc, len(im))
-			}
-			m[k] = fn
-		}
-	}
-	return m
-}
 
 // global returns the imported global for key, accepting either a GlobalImport
 // value or a *Global object.
@@ -515,11 +493,24 @@ func (g *Global) Close() error {
 	return err
 }
 
+// accessMetadata returns canonical storage metadata and rejects public-field edits.
+// Owner type and mutability are fixed when the cell is created.
+func (g *Global) accessMetadata() (ValType, bool, bool) {
+	if g == nil {
+		return 0, false, false
+	}
+	if g.owner != nil {
+		return g.owner.typ, g.owner.mutable, g.Type == g.owner.typ && g.Mutable == g.owner.mutable
+	}
+	return g.Type, g.Mutable, true
+}
+
 // Get returns the global's current numeric scalar value as raw bits (decode
 // with AsI32/etc). It returns zero for reference globals so descriptor addresses
 // never cross the public boundary. For v128 globals use GetV128.
 func (g *Global) Get() uint64 {
-	if g == nil || isReferenceValType(g.Type) {
+	typ, _, valid := g.accessMetadata()
+	if !valid || isReferenceValType(typ) {
 		return 0
 	}
 	end, ok := g.beginOwnerAccess()
@@ -530,18 +521,19 @@ func (g *Global) Get() uint64 {
 	if g.owner != nil {
 		g.owner.mu.Lock()
 		defer g.owner.mu.Unlock()
-		if g.owner.closed || len(g.cell) < globalCellSize(g.Type) {
+		if g.owner.closed || len(g.cell) < globalCellSize(typ) {
 			return 0
 		}
 	}
-	return readGlobalObject(g, g.Type)
+	return readGlobalObject(g, typ)
 }
 
 // GetV128 returns the global's current v128 value. Non-v128 globals return the
-// low scalar bits in bytes 0..7 for debugging convenience; callers should prefer
-// Type metadata when choosing this accessor.
+// low scalar bits in bytes 0..7 for debugging convenience. Reference globals
+// and inconsistent public metadata return zero.
 func (g *Global) GetV128() V128 {
-	if g == nil {
+	typ, _, valid := g.accessMetadata()
+	if !valid || isReferenceValType(typ) {
 		return V128{}
 	}
 	end, ok := g.beginOwnerAccess()
@@ -552,7 +544,7 @@ func (g *Global) GetV128() V128 {
 	if g.owner != nil {
 		g.owner.mu.Lock()
 		defer g.owner.mu.Unlock()
-		if g.owner.closed || len(g.cell) < globalCellSize(g.Type) {
+		if g.owner.closed || len(g.cell) < globalCellSize(typ) {
 			return V128{}
 		}
 	}
@@ -562,31 +554,32 @@ func (g *Global) GetV128() V128 {
 // Set updates a mutable host-owned scalar global; bits are interpreted as the
 // global's type. For v128 globals use SetV128.
 func (g *Global) Set(bits uint64) error {
-	if g == nil {
-		return fmt.Errorf("global is nil")
+	typ, mutable, valid := g.accessMetadata()
+	if !valid {
+		return fmt.Errorf("global owner metadata is invalid")
 	}
 	end, ok := g.beginOwnerAccess()
 	if !ok {
 		return fmt.Errorf("global owner instance is closed")
 	}
 	defer end()
-	if !g.Mutable {
+	if !mutable {
 		return fmt.Errorf("global is immutable")
 	}
-	if g.Type == ValV128 {
+	if typ == ValV128 {
 		return fmt.Errorf("global is v128; use SetV128")
 	}
-	if isReferenceValType(g.Type) {
+	if isReferenceValType(typ) {
 		return fmt.Errorf("global is a reference type; use an instance typed accessor")
 	}
 	if g.owner != nil {
 		g.owner.mu.Lock()
 		defer g.owner.mu.Unlock()
-		if g.owner.closed || len(g.cell) < globalCellSize(g.Type) {
+		if g.owner.closed || len(g.cell) < globalCellSize(typ) {
 			return fmt.Errorf("global storage is closed")
 		}
 	}
-	writeGlobalObject(g, g.Type, bits)
+	writeGlobalObject(g, typ, bits)
 	return nil
 }
 
@@ -749,19 +742,20 @@ func (g *Global) setValueNoLease(v Value) error {
 
 // SetV128 updates a mutable host-owned v128 global.
 func (g *Global) SetV128(v V128) error {
-	if g == nil {
-		return fmt.Errorf("global is nil")
+	typ, mutable, valid := g.accessMetadata()
+	if !valid {
+		return fmt.Errorf("global owner metadata is invalid")
 	}
 	end, ok := g.beginOwnerAccess()
 	if !ok {
 		return fmt.Errorf("global owner instance is closed")
 	}
 	defer end()
-	if !g.Mutable {
+	if !mutable {
 		return fmt.Errorf("global is immutable")
 	}
-	if g.Type != ValV128 {
-		return fmt.Errorf("global is %s, not v128", g.Type)
+	if typ != ValV128 {
+		return fmt.Errorf("global is %s, not v128", typ)
 	}
 	if g.owner != nil {
 		g.owner.mu.Lock()
@@ -1012,7 +1006,8 @@ type compiledTagDef struct {
 
 // Compiled owns emitted machine code plus instantiate-time metadata. Native
 // bytes are intentionally private; use CodeSize or WriteCodeTo for diagnostics.
-// Function exports remain isolated in the public Exports map. Call Close when
+// Public metadata is a compatibility view; changing it after compilation or
+// loading does not change the private execution snapshot. Call Close when
 // no new instances are needed; existing instances retain their executable image
 // until they close.
 type Compiled struct {
@@ -1127,54 +1122,60 @@ type Compiled struct {
 	requiresAVX512     bool
 	requiresARM64MOPS  bool
 	requiresARM64SHA2  bool
+	syncHostSlots      uint16
 	// independentInstances allows instances without cross-instance Wasm imports
 	// to use instance-local native execution leases. It is intentionally not
 	// serialized because it is runtime policy rather than a module property.
 	independentInstances bool
-	syncHostSlots        uint16
+	// preparedIsolatedTables is a fresh-compilation proof that every table is
+	// local, unexported, immutable, and limited to local function descriptors.
+	// Like direct-prepared entry selection, codecs conservatively discard it.
+	preparedIsolatedTables bool
 }
 
-// Compiler reports the engine that produced this module. The zero value is
-// Railshot, preserving compatibility with legacy hand-built Compiled values.
+// The sign bit of a fresh compilation's internal-entry offset carries the
+// optional direct-prepared selection without growing Compiled. Native code
+// offsets are non-negative and bounded far below the host int range. The codec
+// strips this compile-only bit, so decoded artifacts retain the wrapper fallback.
+var (
+	directPreparedEntryMask   = ^(^uint(0) >> 1)
+	directPreparedLightMask   = directPreparedEntryMask >> 1
+	directPreparedBoundedMask = directPreparedEntryMask >> 2
+	directLeafPreparedMask    = directPreparedEntryMask >> 3
+	directTrapPreparedMask    = directPreparedEntryMask >> 4
+	contextFreeLoopMask       = directPreparedEntryMask >> 5
+)
+
+func markDirectPreparedEntry(off int) int { return int(uint(off) | directPreparedEntryMask) }
+func directPreparedEntry(off int) bool    { return uint(off)&directPreparedEntryMask != 0 }
+func markDirectPreparedLightEntry(off int) int {
+	return int(uint(off) | directPreparedLightMask)
+}
+func directPreparedLightEntry(off int) bool { return uint(off)&directPreparedLightMask != 0 }
+func markDirectPreparedBoundedEntry(off int) int {
+	return int(uint(off) | directPreparedBoundedMask)
+}
+func directPreparedBoundedEntry(off int) bool { return uint(off)&directPreparedBoundedMask != 0 }
+func markDirectLeafPreparedEntry(off int) int {
+	return int(uint(off) | directPreparedEntryMask | directLeafPreparedMask)
+}
+func directLeafPreparedEntry(off int) bool { return uint(off)&directLeafPreparedMask != 0 }
+func markDirectTrapPreparedEntry(off int) int {
+	return int(uint(off) | directPreparedEntryMask | directTrapPreparedMask)
+}
+func directTrapPreparedEntry(off int) bool         { return uint(off)&directTrapPreparedMask != 0 }
+func markContextFreeLoopPreparedEntry(off int) int { return int(uint(off) | contextFreeLoopMask) }
+func contextFreeLoopPreparedEntry(off int) bool    { return uint(off)&contextFreeLoopMask != 0 }
+func internalEntryOffset(off int) int {
+	return int(uint(off) &^ (directPreparedEntryMask | directPreparedLightMask | directPreparedBoundedMask | directLeafPreparedMask | directTrapPreparedMask | contextFreeLoopMask))
+}
+
+// Compiler reports the engine that produced this module.
 func (c *Compiled) Compiler() CompilerEngine {
 	if c == nil {
 		return CompilerRailshot
 	}
 	return c.compiler
-}
-
-// The high bits of a fresh compilation's internal-entry offset carry optional
-// direct-prepared entry selections without growing
-// Compiled. Native code offsets are non-negative and bounded far below the host
-// int range. The codec strips these compile-only bits, so decoded artifacts
-// retain the wrapper fallback.
-var directPreparedEntryMask = ^(^uint(0) >> 1)
-var directLeafPreparedEntryMask = directPreparedEntryMask >> 1
-var directTrapPreparedEntryMask = directLeafPreparedEntryMask >> 1
-var contextFreeLoopPreparedEntryMask = directTrapPreparedEntryMask >> 1
-
-func markDirectPreparedEntry(off int) int { return int(uint(off) | directPreparedEntryMask) }
-func markDirectLeafPreparedEntry(off int) int {
-	return int(uint(off) | directPreparedEntryMask | directLeafPreparedEntryMask)
-}
-func markDirectTrapPreparedEntry(off int) int {
-	return int(uint(off) | directPreparedEntryMask | directTrapPreparedEntryMask)
-}
-func markContextFreeLoopPreparedEntry(off int) int {
-	return int(uint(off) | contextFreeLoopPreparedEntryMask)
-}
-func directPreparedEntry(off int) bool { return uint(off)&directPreparedEntryMask != 0 }
-func directLeafPreparedEntry(off int) bool {
-	return uint(off)&directLeafPreparedEntryMask != 0
-}
-func directTrapPreparedEntry(off int) bool {
-	return uint(off)&directTrapPreparedEntryMask != 0
-}
-func contextFreeLoopPreparedEntry(off int) bool {
-	return uint(off)&contextFreeLoopPreparedEntryMask != 0
-}
-func internalEntryOffset(off int) int {
-	return int(uint(off) &^ (directPreparedEntryMask | directLeafPreparedEntryMask | directTrapPreparedEntryMask | contextFreeLoopPreparedEntryMask))
 }
 
 // RequiresBMI2 reports whether compilation selected BMI2 instructions.
@@ -1186,19 +1187,18 @@ func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
 // RequiresAVX512 reports whether compilation selected an AVX-512 plugin lowering.
 func (c *Compiled) RequiresAVX512() bool { return c != nil && c.requiresAVX512 }
 
-// RequiresARM64MOPS reports whether compilation selected ARM FEAT_MOPS
-// memory-copy or memory-set instructions.
 func (c *Compiled) RequiresARM64MOPS() bool { return c != nil && c.requiresARM64MOPS }
-
-// RequiresARM64SHA2 reports whether compilation selected ARM FEAT_SHA256
-// instructions.
 func (c *Compiled) RequiresARM64SHA2() bool { return c != nil && c.requiresARM64SHA2 }
 
 type validateMemo struct {
+	execution     *Compiled // private deeply owned execution metadata
+	snapshotLimit uint64    // source admission policy; zero selects the default
+	snapshotBytes uint64    // protected by the code-cache lock
+
 	once                     sync.Once
 	err                      error
 	gcFrameRoots             *compiledGCFrameRoots // immutable compiled/codec native safepoint and callsite map
-	structuralCallIdentities *structuralCallIdentityCache
+	structuralCallIdentities atomic.Pointer[structuralCallIdentityCache]
 	// importModuleEnds stores one plus the module-name byte length for each
 	// non-global import, grouped as functions, tables, memories, then tags. A
 	// zero entry retains the legacy first-dot interpretation for hand-built
@@ -1225,11 +1225,13 @@ func (c *Compiled) compactNativeFunctions() []uint32 {
 // validateCached returns the metadata-validation result, running the full check
 // once per compiler-produced Compiled and every time for a hand-constructed one.
 func (c *Compiled) validateCached() error {
-	if c == nil || c.validateMemo == nil {
+	c = c.executionView()
+	memo := c.loadValidateMemo()
+	if memo == nil {
 		return c.validate()
 	}
-	c.validateMemo.once.Do(func() { c.validateMemo.err = c.validate() })
-	return c.validateMemo.err
+	memo.once.Do(func() { memo.err = c.validate() })
+	return memo.err
 }
 
 // memorySizeBytes returns the initial and maximum (grow ceiling) linear-memory
@@ -1257,21 +1259,27 @@ func (c *Compiled) memorySizeBytes() (initial, max int) {
 
 // ImportedGlobalCount returns the number of imported globals at the front of
 // the wasm global-index space.
-func (c *Compiled) ImportedGlobalCount() int { return len(c.GlobalImports) }
+func (c *Compiled) ImportedGlobalCount() int { return len(c.executionView().GlobalImports) }
 
 // LocalGlobalCount returns the number of module-defined globals.
-func (c *Compiled) LocalGlobalCount() int { return len(c.Globals) - len(c.GlobalImports) }
+func (c *Compiled) LocalGlobalCount() int {
+	c = c.executionView()
+	return len(c.Globals) - len(c.GlobalImports)
+}
 
 // GlobalSlot maps a wasm global index to its pointer-table byte offset.
 func (c *Compiled) GlobalSlot(idx int) int { return idx * 8 }
 
 // ExportedGlobal returns metadata for a named exported global.
 func (c *Compiled) ExportedGlobal(name string) (GlobalDef, bool) {
+	c = c.executionView()
 	idx, ok := c.GlobalExports[name]
 	if !ok || idx < 0 || idx >= len(c.Globals) {
 		return GlobalDef{}, false
 	}
-	return c.Globals[idx], true
+	def := c.Globals[idx]
+	def.InitExpr = append([]byte(nil), def.InitExpr...)
+	return def, true
 }
 
 func (c *Compiled) globalExactType(index int) (ValueTypeDescriptor, error) {

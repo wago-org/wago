@@ -11,7 +11,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func compileDynamicFuncrefFixture(t testing.TB, filename string) *Compiled {
@@ -28,6 +28,28 @@ func compileDynamicFuncrefFixture(t testing.TB, filename string) *Compiled {
 		t.Fatalf("compile %s: %v", filename, err)
 	}
 	return compiled
+}
+
+func TestDynamicFuncrefValidationAnalysisParity(t *testing.T) {
+	for _, filename := range []string{"dynamic_funcref_cast.wasm", "dynamic_funcref_import_consumer.wasm"} {
+		t.Run(filename, func(t *testing.T) {
+			data, err := os.ReadFile("testdata/" + filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := wasm.DecodeModule(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var analysis wasm.ValidatedModuleAnalysis
+			if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, &analysis); err != nil {
+				t.Fatal(err)
+			}
+			if got, want := moduleDynamicFuncrefEscapeWithValidation(m, &analysis), moduleDynamicFuncrefEscape(m); got != want {
+				t.Fatalf("dynamic reference-call fact = %v, want %v", got, want)
+			}
+		})
+	}
 }
 
 func instantiateDynamicFuncrefImportPair(t testing.TB, consumerFilename string) (*Instance, *Instance, *Compiled) {

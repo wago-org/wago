@@ -1,6 +1,9 @@
 package shared
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 // ResolveWorkers caps a requested per-function worker count to the process and
 // module limits. Values <= 1 preserve the serial fast path.
@@ -46,6 +49,7 @@ func ModuleEntries(functions int) (entry, internal []int) {
 // parallel compilation. Keeping this once per module avoids an error interface
 // in every per-function result while preserving deterministic diagnostics.
 type LowestIndexError struct {
+	limit atomic.Int64
 	mu    sync.Mutex
 	index int
 	err   error
@@ -54,6 +58,13 @@ type LowestIndexError struct {
 // Reset clears the result and sets the exclusive function-index limit.
 func (e *LowestIndexError) Reset(limit int) {
 	e.index, e.err = limit, nil
+	e.limit.Store(int64(limit))
+}
+
+// ShouldStart preserves all work below the lowest known error. Callers must
+// allocate work indexes in increasing order, so no lower index is skipped.
+func (e *LowestIndexError) ShouldStart(index int) bool {
+	return int64(index) < e.limit.Load()
 }
 
 // Record retains err when index is lower than every previously recorded index.
@@ -64,6 +75,7 @@ func (e *LowestIndexError) Record(index int, err error) {
 	e.mu.Lock()
 	if index < e.index {
 		e.index, e.err = index, err
+		e.limit.Store(int64(index))
 	}
 	e.mu.Unlock()
 }

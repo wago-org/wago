@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-const stagedMemory64DeltaPath = "tests/spec-v3-staged-memory64.json"
+const stagedMemory64DeltaPath = "tests/conformance/baselines/spec-v3-staged-memory64.json"
 
 // stagedMemory64OfficialFiles is the complete pinned Release 3 memory64 family
 // excluding the nine table64-specific files, which have their own accounting

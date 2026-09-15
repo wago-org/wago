@@ -13,7 +13,7 @@ import (
 	"github.com/wago-org/wago/codegen"
 	amd64codegen "github.com/wago-org/wago/codegen/amd64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 type instructionTestExt struct {

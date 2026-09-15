@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func stagedGCStructNumericGlobalsBytes(t testing.TB) []byte {
@@ -21,7 +21,7 @@ func stagedGCStructNumericGlobalsBytes(t testing.TB) []byte {
 
 func TestStagedGCStructGlobalRootsAndPublicEgress(t *testing.T) {
 	data := stagedGCStructNumericGlobalsBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public compile unexpectedly admitted GC constant-expression globals")
 	}
 

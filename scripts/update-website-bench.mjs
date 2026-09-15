@@ -25,11 +25,10 @@ const websiteDir = resolve(process.env.WAGO_WEBSITE_DIR || join(root, "..", "web
 const indexPath = join(websiteDir, "index.html");
 const requestedUpdateArch = process.env.WAGO_BENCH_UPDATE_ARCH || "";
 const ENGINES = [
-  { id: "railshot", label: "Railshot" },
+  { id: "railshot", label: "wago" },
   { id: "dragline", label: "Dragline" },
   { id: "wazero", label: "wazero" },
 ];
-
 const benchmarkSets = await loadBenchmarkSets();
 
 // Row/group spec helpers. A spec is pure data (no metric access) — buildRow
@@ -63,125 +62,87 @@ const TABS = [
       rs("JSON deserialize", "json-as, SWAR", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN"),
     ],
   },
-  {
-    id: "compile",
-    label: "Compile",
-    items: [
-      grp("Micro modules"),
-      rs("tiny", "smallest valid module", "CompileFull/tiny", "WazeroCompile/tiny"),
-      rs("fib_rec", "recursive fib", "CompileFull/fib_rec", "WazeroCompile/fib_rec"),
-      rs("dispatch", "call_indirect table", "CompileFull/dispatch", "WazeroCompile/dispatch"),
-      rs("many_funcs", "thousands of functions", "CompileFull/many_funcs", "WazeroCompile/many_funcs"),
-      grp("Compute kernels"),
-      rs("linked_list", "dependent-load chase", "CompileFull/linked_list", "WazeroCompile/linked_list"),
-      rs("memory_tree", "loads + calls", "CompileFull/memory_tree", "WazeroCompile/memory_tree"),
-      rs("sieve", "Eratosthenes", "CompileFull/sieve", "WazeroCompile/sieve"),
-      rs("mandelbrot", "f64 escape-time", "CompileFull/mandelbrot", "WazeroCompile/mandelbrot"),
-      grp("Benchmarks Game (Rust)"),
-      rs("nbody", "leapfrog integrator", "CompileFull/nbody", "WazeroCompile/nbody"),
-      rs("spectralnorm", "AᵀA power iteration", "CompileFull/spectralnorm", "WazeroCompile/spectralnorm"),
-      rs("fannkuch", "permutation pancake-flips", "CompileFull/fannkuch", "WazeroCompile/fannkuch"),
-      grp("Crypto & graphics (Rust)"),
-      rs("matmul", "64³ f64 multiply-add", "CompileFull/matmul", "WazeroCompile/matmul"),
-      rs("quicksort", "recursive int sort", "CompileFull/quicksort", "WazeroCompile/quicksort"),
-      rs("crc32", "table-driven checksum", "CompileFull/crc32", "WazeroCompile/crc32"),
-      rs("sha256", "SHA-256 hash", "CompileFull/sha256", "WazeroCompile/sha256"),
-      rs("raytrace", "recursive ray tracer", "CompileFull/raytrace", "WazeroCompile/raytrace"),
-      grp("Real-world (AssemblyScript)"),
-      rs("json-as", "JSON SWAR", "CompileFull/json-as", "WazeroCompile/json-as"),
-      rs("blake-as", "BLAKE3 SWAR", "CompileFull/blake-as", "WazeroCompile/blake-as"),
-      rs("utf-as", "UTF SWAR transcode", "CompileFull/utf-as", "WazeroCompile/utf-as"),
-      // Real-world interpreters/engines. These carry WASI/host imports so they
-      // can't yet be executed here, but the backend compiles them — so this is a
-      // like-for-like FULL-compile race (decode + validate + codegen) vs wazero's
-      // CompileModule. wago's CompileFull is the matching whole-pipeline metric.
-      grp("Real-world programs — full compile: decode + validate + codegen"),
-      rs("Lua 5.4", "interpreter · 270 KB", "CompileFull/lua", "WazeroCompile/lua"),
-      rs("SQLite 3.46", "database engine · 920 KB", "CompileFull/sqlite3", "WazeroCompile/sqlite3"),
-      rs("esbuild", "Go bundler · 12 MB", "CompileFull/esbuild", "WazeroCompile/esbuild"),
-      rs("Ruby 3.3", "interpreter · 16 MB, 17k funcs", "CompileFull/ruby", "WazeroCompile/ruby"),
-    ],
-  },
-  {
-    id: "instantiate",
-    label: "Instantiate",
-    items: [
-      grp("Micro modules"),
-      rs("tiny", "smallest valid module", "Instantiate/tiny", "WazeroInstantiate/tiny"),
-      rs("fib_rec", "recursive fib", "Instantiate/fib_rec", "WazeroInstantiate/fib_rec"),
-      rs("many_funcs", "thousands of functions", "Instantiate/many_funcs", "WazeroInstantiate/many_funcs"),
-      grp("Compute kernels"),
-      rs("linked_list", "dependent-load chase", "Instantiate/linked_list", "WazeroInstantiate/linked_list"),
-      rs("sieve", "Eratosthenes", "Instantiate/sieve", "WazeroInstantiate/sieve"),
-      rs("nbody", "leapfrog integrator", "Instantiate/nbody", "WazeroInstantiate/nbody"),
-      rs("matmul", "64³ f64 multiply-add", "Instantiate/matmul", "WazeroInstantiate/matmul"),
-      rs("raytrace", "recursive ray tracer", "Instantiate/raytrace", "WazeroInstantiate/raytrace"),
-      grp("AssemblyScript"),
-      rs("json-as", "JSON SWAR", "Instantiate/json-as", "WazeroInstantiate/json-as"),
-      rs("blake-as", "BLAKE3 SWAR", "Instantiate/blake-as", "WazeroInstantiate/blake-as"),
-      rs("utf-as", "UTF SWAR transcode", "Instantiate/utf-as", "WazeroInstantiate/utf-as"),
-    ],
-  },
-  {
-    id: "memory",
-    label: "Memory",
-    items: [
-      grp("Instantiation"),
-      rs("fib_rec instance", "bytes allocated per fresh instance", "Instantiate/fib_rec", "WazeroInstantiate/fib_rec", "leaner", "bytes"),
-      rs("fib_rec instance", "allocation objects per fresh instance", "Instantiate/fib_rec", "WazeroInstantiate/fib_rec", "leaner", "count"),
-      grp("Full compile — allocation bytes"),
-      rs("tiny", "smallest module", "CompileFull/tiny", "WazeroCompile/tiny", "leaner", "bytes"),
-      rs("memory tree", "calls + linear-memory access", "CompileFull/memory_tree", "WazeroCompile/memory_tree", "leaner", "bytes"),
-      rs("json-as", "AssemblyScript JSON", "CompileFull/json-as", "WazeroCompile/json-as", "leaner", "bytes"),
-      rs("blake-as", "AssemblyScript BLAKE3", "CompileFull/blake-as", "WazeroCompile/blake-as", "leaner", "bytes"),
-      rs("esbuild", "Go bundler · 12 MB", "CompileFull/esbuild", "WazeroCompile/esbuild", "leaner", "bytes"),
-      rs("Ruby 3.3", "interpreter · 16 MB", "CompileFull/ruby", "WazeroCompile/ruby", "leaner", "bytes"),
-      grp("Full compile — allocation objects"),
-      rs("tiny", "smallest module", "CompileFull/tiny", "WazeroCompile/tiny", "leaner", "count"),
-      rs("memory tree", "calls + linear-memory access", "CompileFull/memory_tree", "WazeroCompile/memory_tree", "leaner", "count"),
-      rs("json-as", "AssemblyScript JSON", "CompileFull/json-as", "WazeroCompile/json-as", "leaner", "count"),
-      rs("blake-as", "AssemblyScript BLAKE3", "CompileFull/blake-as", "WazeroCompile/blake-as", "leaner", "count"),
-      rs("esbuild", "Go bundler · 12 MB", "CompileFull/esbuild", "WazeroCompile/esbuild", "leaner", "count"),
-      rs("Ruby 3.3", "interpreter · 16 MB", "CompileFull/ruby", "WazeroCompile/ruby", "leaner", "count"),
-    ],
-  },
-  {
-    id: "exec",
-    label: "Exec",
-    items: [
-      grp("Micro ops"),
-      rs("Call overhead", "tiny host → wasm call", "Exec/tiny.add", "WazeroExec/tiny.add"),
-      rs("Iterative fib", "fib_iter loop", "Exec/fib_iter.fib", "WazeroExec/fib_iter.fib"),
-      rs("Recursive fib", "fib_rec", "Exec/fib_rec.fib", "WazeroExec/fib_rec.fib"),
-      rs("Dispatch", "call_indirect apply", "Exec/dispatch.apply", "WazeroExec/dispatch.apply"),
-      grp("Compute kernels"),
-      rs("Linked list", "dependent-load chase", "Exec/linked_list.sum", "WazeroExec/linked_list.sum"),
-      rs("Recursive tree", "memory_tree, loads + calls", "Exec/memory_tree.run", "WazeroExec/memory_tree.run"),
-      rs("Sieve", "Eratosthenes", "Exec/sieve.count", "WazeroExec/sieve.count"),
-      rs("Mandelbrot", "f64 escape-time", "Exec/mandelbrot.render", "WazeroExec/mandelbrot.render"),
-      grp("Benchmarks Game (Rust)"),
-      rs("N-body", "leapfrog solar-system integrator", "Exec/nbody.step", "WazeroExec/nbody.step"),
-      rs("Spectral norm", "AᵀA power iteration + div", "Exec/spectralnorm.run", "WazeroExec/spectralnorm.run"),
-      rs("Fannkuch-redux", "permutation pancake-flips", "Exec/fannkuch.run", "WazeroExec/fannkuch.run"),
-      grp("Crypto & graphics (Rust)"),
-      rs("Matrix multiply", "64³ f64 multiply-add", "Exec/matmul.run", "WazeroExec/matmul.run"),
-      rs("Quicksort", "recursive int sort", "Exec/quicksort.sortN", "WazeroExec/quicksort.sortN"),
-      rs("CRC-32", "table-driven checksum", "Exec/crc32.hashN", "WazeroExec/crc32.hashN"),
-      rs("SHA-256", "64-round hash, 8 KiB", "Exec/sha256.hashN", "WazeroExec/sha256.hashN"),
-      rs("Ray tracer", "recursive Whitted, depth-4 mirrors", "Exec/raytrace.render", "WazeroExec/raytrace.render"),
-      grp("Real-world (AssemblyScript)"),
-      rs("JSON serialize", "json-as, SWAR", "Exec/json-as.serializeN", "WazeroExec/json-as.serializeN"),
-      rs("JSON deserialize", "json-as, SWAR", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN"),
-      rs("BLAKE3 hash", "blake-as, SWAR", "Exec/blake-as.hashN", "WazeroExec/blake-as.hashN"),
-      rs("UTF transcode", "utf-as, SWAR", "Exec/utf-as.convertN", "WazeroExec/utf-as.convertN"),
-      grp("AssemblyScript SIMD"),
-      rs("JSON serialize", "json-as SIMD", "Exec/json-as-simd.serializeN", "WazeroExec/json-as-simd.serializeN"),
-      rs("JSON deserialize", "json-as SIMD", "Exec/json-as-simd.deserializeN", "WazeroExec/json-as-simd.deserializeN"),
-      rs("BLAKE3 hash", "blake-as SIMD, 4 KiB", "Exec/blake-as-simd.hashN", "WazeroExec/blake-as-simd.hashN"),
-      rs("UTF transcode", "utf-as SIMD, mixed text", "Exec/utf-as-simd.convertN", "WazeroExec/utf-as-simd.convertN"),
-    ],
-  },
 ];
+
+// The detailed tables are derived from the benchmark corpus instead of a
+// hand-picked shortlist. This keeps every available module/export visible when
+// the manifest grows and makes missing benchmark pairs obvious during review.
+TABS.push(...buildCorpusTabs(benchmarkSets));
+
+function buildCorpusTabs(sets) {
+  const modules = [];
+  const seenModules = new Set();
+  for (const set of sets) {
+    for (const [name, info] of Object.entries(set.modules ?? {})) {
+      if (seenModules.has(name)) continue;
+      seenModules.add(name);
+      modules.push({
+        name,
+        category: info.category || "other",
+        suite: info.suite || "",
+        desc: info.desc || "",
+      });
+    }
+  }
+  const categoryLabels = new Map([
+    ["micro", "Micro modules"], ["loop", "Loops"], ["calls", "Calls"],
+    ["calls+memory", "Calls and memory"], ["alu", "Integer arithmetic"],
+    ["fp", "Floating point"], ["memory", "Memory"], ["globals", "Globals"],
+    ["control", "Control flow"], ["scale", "Scale"], ["compute", "Compute kernels"],
+    ["real", "Real-world programs"], ["real-simd", "Real-world SIMD"],
+    ["semantic", "Semantic corpus"], ["real-large", "Large real-world programs"],
+    ["application", "Application corpora"],
+    ["statistics", "Statistics"], ["blas", "BLAS"],
+    ["linear-algebra", "Linear algebra"], ["solver", "Solvers"],
+    ["stencil", "Stencils"], ["graph", "Graph algorithms"],
+    ["dynamic-programming", "Dynamic programming"],
+    ["image-processing", "Image processing"],
+    ["regression-only", "Regression corpus"], ["other", "Other"],
+  ]);
+  const grouped = (makeItems) => {
+    const groups = new Map();
+    for (const module of modules) {
+      const items = makeItems(module);
+      if (items.length === 0) continue;
+      const group = groups.get(module.category) ?? [];
+      group.push(...items);
+      groups.set(module.category, group);
+    }
+    return [...groups].flatMap(([category, items]) => [grp(categoryLabels.get(category) ?? category), ...items]);
+  };
+  const moduleRows = (wagoPrefix, wazeroPrefix, kind = "ns") => grouped(({ name, category, suite, desc }) => [
+    rs(suite ? `${suite} · ${name.replace(/^[^-]+-/, "")}` : name, desc || `${category} corpus`, `${wagoPrefix}${name}`, `${wazeroPrefix}${name}`,
+      kind === "ns" ? "faster" : "smaller", kind),
+  ]);
+  const execRows = grouped(({ name, category, suite, desc }) => {
+    const keys = new Set();
+    let hasCommand = false;
+    for (const set of sets) {
+      for (const key of set.metrics.keys()) {
+        for (const prefix of ["Exec/", "DraglineExec/", "WazeroExec/"]) {
+          if (key.startsWith(`${prefix}${name}.`)) keys.add(key.slice(prefix.length));
+        }
+        if (key === `CommandExec/${name}` || key === `WazeroCommandExec/${name}`) hasCommand = true;
+      }
+    }
+    const rows = [...keys].sort().map((tail) => {
+      const exportName = tail.slice(name.length + 1);
+      return rs(name, `${exportName} · ${category} corpus`, `Exec/${tail}`, `WazeroExec/${tail}`);
+    });
+    if (hasCommand) {
+      rows.push(rs(suite ? `${suite} · ${name.replace(/^[^-]+-/, "")}` : name,
+        desc || "fresh instance + fixed command", `CommandExec/${name}`, `WazeroCommandExec/${name}`));
+    }
+    return rows;
+  });
+  return [
+    { id: "compile", label: "Compile latency", items: moduleRows("CompileFull/", "WazeroCompile/") },
+    { id: "compile-memory", label: "Compile memory", items: moduleRows("CompileFull/", "WazeroCompile/", "bytes") },
+    { id: "instantiate", label: "Instantiate latency", items: moduleRows("Instantiate/", "WazeroInstantiate/") },
+    { id: "machine-code", label: "Machine code", items: moduleRows("CompileFull/", "WazeroCompile/", "code") },
+    { id: "execution", label: "Execution", items: execRows },
+  ];
+}
 
 const html = await readFile(indexPath, "utf8");
 const updateArch = requestedUpdateArch || (
@@ -196,7 +157,7 @@ const pluginsAnchor = "            <!-- ░░░ PLUGINS ░░░ -->";
 const perfStart = html.indexOf(perfAnchor);
 const pluginsStart = html.indexOf(pluginsAnchor, perfStart + perfAnchor.length);
 if (perfStart < 0 || pluginsStart < 0) {
-  throw new Error("could not find website performance section to replace");
+  throw new Error("could not find website performance section boundaries");
 }
 let updated;
 if (updateArch) {
@@ -209,10 +170,14 @@ if (updateArch) {
     `arch-panel-${updateArch}`,
     renderExistingArchitecture(TABS, set),
   );
-  updated = replacePerformanceFoot(updated);
 } else {
-  const section = renderSection(TABS, benchmarkSets);
-  updated = `${html.slice(0, perfStart)}${perfAnchor}\n${section}${html.slice(pluginsStart)}`;
+  updated = replaceDivByClassWithin(
+    html,
+    "vs",
+    renderBenchmark(TABS, benchmarkSets),
+    perfStart,
+    pluginsStart,
+  );
 }
 
 await writeFile(indexPath, updated);
@@ -241,7 +206,7 @@ async function loadRunMetrics(path, fallbackArch = "") {
   const run = JSON.parse(await readFile(path, "utf8"));
   const metrics = new Map();
   for (const [key, m] of Object.entries(run.metrics ?? {})) {
-    metrics.set(key, { ns: Number(m.ns ?? 0), bytes: Number(m.bytes ?? 0), allocs: Number(m.allocs ?? 0) });
+    metrics.set(key, { ns: Number(m.ns ?? 0), bytes: Number(m.bytes ?? 0), allocs: Number(m.allocs ?? 0), codeBytes: Number(m.codeBytes ?? 0) });
   }
   const arch = run.goarch || fallbackArch;
   const generalPath = resolve(
@@ -256,18 +221,19 @@ async function loadRunMetrics(path, fallbackArch = "") {
   if (generalRaw?.commit && run.commit && !String(run.commit).startsWith(generalRaw.commit) && !String(generalRaw.commit).startsWith(run.commit)) {
     throw new Error(`general benchmark commit ${generalRaw.commit} does not match ${run.commit}`);
   }
-  const general = generalRaw ? buildGeneralSummary(metrics, generalRaw) : null;
-  return { metrics, general, external: generalRaw, source: path, arch, goos: run.goos || "", commit: run.commit || "", cpu: run.cpu || "" };
+  const modules = run.modules ?? {};
+  const general = buildGeneralSummary(metrics, generalRaw, modules);
+  return { metrics, modules, general, external: generalRaw, source: path, arch, goos: run.goos || "", commit: run.commit || "", cpu: run.cpu || "" };
 }
 
-function buildGeneralSummary(metrics, raw) {
+function buildGeneralSummary(metrics, raw, modules) {
   const compileNames = new Map([
     ["railshot-native", "railshot"],
     ["dragline-native", "dragline"],
     ["wazero", "wazero"],
   ]);
   const compile = new Map();
-  for (const report of raw.compile ?? []) {
+  for (const report of raw?.compile ?? []) {
     const byEngine = new Map();
     for (const run of report.runs ?? []) {
       const engine = compileNames.get(run.engine);
@@ -282,51 +248,95 @@ function buildGeneralSummary(metrics, raw) {
       compile.set(engine, aggregate);
     }
   }
-  const runtime = raw.runtime ?? raw.wasmtimeRuntime ?? [];
-  const runtimeValues = (stage, grouped = false) => Object.fromEntries(
-    ENGINES.map(({ id }) => [id,
-      id === "railshot" ? metricGeomean(metrics, stage === "instantiate" ? "Instantiate/" : "Exec/", grouped) :
-      id === "dragline" ? metricGeomean(metrics, stage === "instantiate" ? "DraglineInstantiate/" : "DraglineExec/", grouped) :
-      id === "wazero" ? metricGeomean(metrics, stage === "instantiate" ? "WazeroInstantiate/" : "WazeroExec/", grouped) :
-      externalRuntimeGeomean(runtime, stage, grouped, id),
-    ]),
+  // Summary means use only exact Wago/wazero pairs from the catalog recorded in
+  // the benchmark run. Missing pairs never enter one side as zero-valued data.
+  const catalogModules = new Set(Object.keys(modules));
+  const includedModules = catalogModules.size === 0 ? null : catalogModules;
+  const instantiate = pairedMetricGeomeans(metrics, "Instantiate/", "WazeroInstantiate/", false, includedModules);
+  const execution = pairedMetricGeomeans(metrics, "Exec/", "WazeroExec/", true, includedModules);
+  const machineCode = pairedMetricGeomeans(
+    metrics,
+    "CompileFull/",
+    "WazeroCompile/",
+    false,
+    includedModules,
+    "codeBytes",
   );
-  const instantiate = runtimeValues("instantiate");
-  const execution = runtimeValues("exec", true);
-  const tinyCall = Object.fromEntries(ENGINES.map(({ id }) => [id,
-    id === "railshot" ? Number(metrics.get("Exec/tiny.add")?.ns ?? 0) :
-    id === "dragline" ? Number(metrics.get("DraglineExec/tiny.add")?.ns ?? 0) :
-    id === "wazero" ? Number(metrics.get("WazeroExec/tiny.add")?.ns ?? 0) :
-    externalRuntimeMetric(runtime, id, "exec", "tiny", "add"),
-  ]));
-  const compileTime = Object.fromEntries([...compile].map(([engine, values]) => [engine, geomean(values.wall)]));
-  return [
-    ["Compile mean", "Corpus geometric mean · fresh process", "ns", compileTime],
-    ["Compile heap", "Go heap bytes allocated per full compile · geometric mean", "bytes", {
-      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes"),
-      dragline: metricGeomean(metrics, "DraglineCompileFull/", false, "bytes"),
-      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes"),
+  const compileTime = {
+    railshot: metricGeomean(metrics, "CompileFull/", false, "ns", includedModules),
+    dragline: metricGeomean(metrics, "DraglineCompileFull/", false, "ns", includedModules),
+    wazero: metricGeomean(metrics, "WazeroCompile/", false, "ns", includedModules),
+  };
+	instantiate.dragline = metricGeomean(metrics, "DraglineInstantiate/", false, "ns", includedModules);
+	execution.dragline = metricGeomean(metrics, "DraglineExec/", true, "ns", includedModules);
+	machineCode.dragline = metricGeomean(metrics, "DraglineCompileFull/", false, "codeBytes", includedModules);
+  const summary = [
+    ["Compile", "fresh process", "ns", compileTime],
+    ["Compile heap", "per compile", "bytes", {
+      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes", includedModules),
+      dragline: metricGeomean(metrics, "DraglineCompileFull/", false, "bytes", includedModules),
+      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes", includedModules),
     }],
-    ["Instantiate mean", "Runnable corpus geometric mean", "ns", instantiate],
-    ["Execution mean", "Runnable corpus geometric mean", "ns", execution],
-    ["Call latency", "tiny.add host → Wasm", "ns", tinyCall],
-    ["End-to-end latency", "Compile + instantiate corpus means", "ns", Object.fromEntries(
+    ["Machine code", "compiled corpus", "code", machineCode],
+    ["Instantiate", "runnable corpus", "ns", instantiate],
+    ["Execution", "runnable corpus", "ns", execution],
+    ["End-to-end latency", "compile + instantiate", "ns", Object.fromEntries(
       ENGINES.map(({ id }) => [id, Number(compileTime[id] ?? 0) + Number(instantiate[id] ?? 0)]),
     )],
   ].map(([label, sub, kind, values]) => ({ label, sub, kind, values }));
+  const boundary = [
+    generalPairedMetric(metrics, "Host → Wasm", "prepared (i32) → i32", "ExecTypedCall_wago", "ExecCallOverhead_wazero"),
+    generalPairedMetric(metrics, "Wasm → host", "typed import callback", "ExecHostCallback_wago", "ExecHostRoundtrip_wazero"),
+  ].filter(Boolean);
+  return [...summary, ...boundary];
 }
 
-function metricGeomean(metrics, prefix, groupExports = false, field = "ns") {
+function generalPairedMetric(metrics, label, sub, railshotKey, wazeroKey) {
+  const railshot = Number(metrics.get(railshotKey)?.ns ?? 0);
+  const wazero = Number(metrics.get(wazeroKey)?.ns ?? 0);
+  if (!(railshot > 0) || !(wazero > 0)) return null;
+  return { label, sub, kind: "ns", values: { railshot, wazero } };
+}
+
+function metricGeomean(metrics, prefix, groupExports = false, field = "ns", includedModules = null) {
   const groups = new Map();
   for (const [key, metric] of metrics) {
     if (!key.startsWith(prefix) || !(Number(metric[field]) > 0)) continue;
     const tail = key.slice(prefix.length);
-    const group = groupExports ? tail.split(".", 1)[0] : tail;
+    const module = tail.split(".", 1)[0];
+    if (includedModules && !includedModules.has(module)) continue;
+    const group = groupExports ? module : tail;
     const values = groups.get(group) ?? [];
     values.push(Number(metric[field]));
     groups.set(group, values);
   }
   return geomean([...groups.values()].map(geomean));
+}
+
+function pairedMetricGeomeans(metrics, wagoPrefix, wazeroPrefix, groupExports, includedModules, field = "ns") {
+  const wagoGroups = new Map();
+  const wazeroGroups = new Map();
+  for (const [key, wagoMetric] of metrics) {
+    if (!key.startsWith(wagoPrefix)) continue;
+    const tail = key.slice(wagoPrefix.length);
+    const module = tail.split(".", 1)[0];
+    if (includedModules && !includedModules.has(module)) continue;
+    const wazeroMetric = metrics.get(`${wazeroPrefix}${tail}`);
+    const wago = Number(wagoMetric[field]);
+    const wazero = Number(wazeroMetric?.[field]);
+    if (!(wago > 0) || !(wazero > 0)) continue;
+    const group = groupExports ? module : tail;
+    const wagoValues = wagoGroups.get(group) ?? [];
+    const wazeroValues = wazeroGroups.get(group) ?? [];
+    wagoValues.push(wago);
+    wazeroValues.push(wazero);
+    wagoGroups.set(group, wagoValues);
+    wazeroGroups.set(group, wazeroValues);
+  }
+  return {
+    railshot: geomean([...wagoGroups.values()].map(geomean)),
+    wazero: geomean([...wazeroGroups.values()].map(geomean)),
+  };
 }
 
 function externalRuntimeGeomean(rows, stage, groupExports = false, engine = "wasmtime") {
@@ -397,16 +407,12 @@ function parseBench(text) {
 // when either side is missing so the row is skipped rather than crashing.
 function backendMetricKey(key, backend) {
   if (backend === "railshot") return key;
-  for (const [stage, replacement] of [
-    ["CompileFull/", "DraglineCompileFull/"],
-    ["Instantiate/", "DraglineInstantiate/"],
-    ["Exec/", "DraglineExec/"],
-  ]) {
-    if (key.startsWith(stage)) return replacement + key.slice(stage.length);
+  if (backend === "dragline") {
+    return key
+      .replace(/^CompileFull\//, "DraglineCompileFull/")
+      .replace(/^Instantiate\//, "DraglineInstantiate/")
+      .replace(/^Exec\//, "DraglineExec/");
   }
-  // Decode and validation are shared frontend work. Backend-specific tabs omit
-  // fixed microbenchmarks and runtime integrations without a paired Dragline row.
-  if (key.startsWith("Decode/") || key.startsWith("Validate/")) return key;
   return "";
 }
 
@@ -425,11 +431,12 @@ function buildRow(spec, metrics, backend) {
   const zv = pick(z);
   const max = Math.max(wv, zv, 1);
   const wWins = wv <= zv;
-  const same = Math.abs(wv - zv) / Math.max(wv, zv, 1) < 0.03;
+  const magnitude = Math.max(wv, zv) / Math.max(Math.min(wv, zv), 1);
+  const same = Math.abs(wv - zv) / Math.max(wv, zv, 1) < 0.03 || Number(ratio(magnitude)) === 1;
   const winWord = spec.winWord ?? "faster";
   const delta =
     spec.forcedDelta ||
-    (same ? "same speed" : `${ratio(Math.max(wv, zv) / Math.max(Math.min(wv, zv), 1))}×${wWins ? ` ${winWord}` : " slower"}`);
+    (same ? "parity" : `${ratio(magnitude)}×${wWins ? ` ${winWord}` : " slower"}`);
   return {
     label: spec.label,
     sub: spec.sub,
@@ -505,7 +512,7 @@ function fmtNs(ns) {
 function fmtBytes(bytes) {
   if (bytes >= 1 << 20) return trim(bytes / (1 << 20), 1) + " MB";
   if (bytes >= 1 << 10) return trim(bytes / (1 << 10), bytes >= 100 << 10 ? 0 : 1) + " KB";
-  return `${bytes} B`;
+  return `${trim(bytes, bytes >= 100 ? 0 : 1)} B`;
 }
 
 function fmtCount(n) {
@@ -516,25 +523,10 @@ function trim(v, digits) {
   return v.toFixed(digits).replace(/\.0$/, "");
 }
 
-function renderSection(tabs, sets) {
-  const multiArch = sets.length > 1;
+function renderBenchmark(tabs, sets) {
   const archTabs = sets.map((set, i) => `                            <button class="vs__archbtn" role="tab" id="arch-tab-${set.arch}" aria-controls="arch-panel-${set.arch}" aria-selected="${i === 0 ? "true" : "false"}" tabindex="${i === 0 ? "0" : "-1"}">${esc(set.arch || "host")}</button>`).join("\n");
   const archPanels = sets.map((set, i) => renderArchitecture(tabs, set, i)).join("\n");
-  const foot = multiArch
-    ? "Measured separately on each listed architecture; compare values within an architecture, not across machines."
-    : `Measured on ${archLabel(sets[0])}; each selected Wago backend is compared with wazero over the same corpus.`;
-  const out = `            <section id="performance" class="section">
-                <div class="eyebrow eyebrow--center">Performance</div>
-                <h2 class="section__title">
-                    Three Go engines,
-                    <span class="section__title-accent">one corpus</span>
-                </h2>
-                <p class="section__lead">
-                    Compare Railshot, Dragline, and wazero directly.
-                    Every published row uses the same workload on the shown
-                    AMD64 or ARM64 machine.
-                </p>
-                <div class="vs">
+  const out = `                <div class="vs">
                     <div class="vs__body">
                         <div class="vs__side" role="tablist" aria-label="Benchmark platform" data-arch-toggle>
 ${archTabs}
@@ -543,24 +535,13 @@ ${archTabs}
 ${archPanels}
                         </div>
                     </div>
-                </div>
-                <p class="vs__foot">
-                    ${foot} Rows appear only when an engine completes
-                    the workload. Numbers shift as the engine evolves — see the
-                    <a href="https://github.com/wago-org/wago/tree/main/bench" target="_blank" rel="noopener">benchmark corpus &amp; methodology</a>.
-                </p>
-            </section>
-`;
+                </div>`;
   for (const marker of ["vs__body", "vs__side", "data-arch-toggle", "vs__stage"]) {
     if (!out.includes(marker)) {
       throw new Error(`benchmark section renderer lost required ${marker} markup`);
     }
   }
   return out;
-}
-
-function archLabel(set) {
-  return [set.goos, set.arch].filter(Boolean).join("/") || "current host";
 }
 
 function renderArchitecture(tabs, set, index) {
@@ -647,18 +628,29 @@ function replaceDivByID(html, id, replacement) {
   throw new Error(`unterminated website element ${id}`);
 }
 
-function replacePerformanceFoot(html) {
-  const start = html.indexOf('                <p class="vs__foot">');
-  const end = html.indexOf("</p>", start);
-  if (start < 0 || end < 0) throw new Error("could not find website performance footnote");
-  const foot = `                <p class="vs__foot">
-                    Measured separately on each listed architecture; compare
-                    values within an architecture, not across machines. Rows
-                    appear only when an engine completes the workload. Numbers
-                    shift as the engine evolves — see the
-                    <a href="https://github.com/wago-org/wago/tree/main/bench" target="_blank" rel="noopener">benchmark corpus &amp; methodology</a>.
-                </p>`;
-  return `${html.slice(0, start)}${foot}${html.slice(end + 4)}`;
+function replaceDivByClassWithin(html, className, replacement, rangeStart, rangeEnd) {
+  const open = new RegExp(`<div\\b[^>]*class="[^"]*\\b${className}\\b[^"]*"[^>]*>`, "g");
+  open.lastIndex = rangeStart;
+  const match = open.exec(html);
+  if (!match || match.index >= rangeEnd) {
+    throw new Error(`could not find website .${className} inside performance section`);
+  }
+  const start = match.index;
+  const lineStart = html.lastIndexOf("\n", start) + 1;
+  const replaceStart = /^\s*$/.test(html.slice(lineStart, start)) ? lineStart : start;
+  const tags = /<\/?div\b[^>]*>/g;
+  tags.lastIndex = start;
+  let depth = 0;
+  for (let tag; (tag = tags.exec(html)); ) {
+    depth += tag[0].startsWith("</") ? -1 : 1;
+    if (depth === 0) {
+      if (tags.lastIndex > rangeEnd) {
+        throw new Error(`website .${className} extends beyond performance section`);
+      }
+      return `${html.slice(0, replaceStart)}${replacement}${html.slice(tags.lastIndex)}`;
+    }
+  }
+  throw new Error(`unterminated website .${className}`);
 }
 
 function renderPanel(tab, index, set, arch) {
@@ -710,14 +702,14 @@ function renderGeneralPanel(tab, index, summary, arch) {
                         id="perf-${arch}-panel-${tab.id}"
                         aria-labelledby="perf-${arch}-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
                     >
-                        <div class="vs__generalkicker">Corpus geometric means · lower is better</div>
+                        <div class="vs__generalkicker">Summary metrics · lower is better</div>
 ${rows}
                     </div>`;
 }
 
 function buildEngineRow(spec, set, tabID) {
   const kind = spec.kind ?? "ns";
-  const pick = (metric) => kind === "bytes" ? metric.bytes : kind === "count" ? metric.allocs : metric.ns;
+  const pick = (metric) => kind === "bytes" ? metric.bytes : kind === "count" ? metric.allocs : kind === "code" ? metric.codeBytes : metric.ns;
   const values = [];
   for (const engine of ENGINES) {
     let value = 0;
@@ -758,7 +750,8 @@ function externalRowMetric(raw, engine, tabID, key) {
 function renderEngineRow(row, indent) {
   const pad = " ".repeat(indent);
   const max = Math.max(1, ...row.values.map(({ value }) => value));
-  const format = row.kind === "bytes" ? fmtBytes : row.kind === "count" ? fmtCount : fmtNs;
+  const format = row.kind === "bytes" || row.kind === "code" ? fmtBytes : row.kind === "count" ? fmtCount : fmtNs;
+  const delta = comparisonDelta(row);
   const lines = row.values.map(({ engine, value }) => `${pad}        <div class="vs__line" data-engine="${engine.id}">
 ${pad}            <span class="vs__engine">${esc(engine.label)}</span>
 ${pad}            <span class="vs__track"><span class="vs__fill vs__fill--${engine.id}" data-bar data-value="${value}" data-width="${barWidth(value, max)}"></span></span>
@@ -769,7 +762,23 @@ ${pad}    <div class="vs__meta"><span class="vs__label">${esc(row.label)}</span>
 ${pad}    <div class="vs__bars">
 ${lines}
 ${pad}    </div>
-${pad}</div>`;
+${delta ? `${pad}    <span class="vs__delta vs__delta--${delta.className}">${delta.text}</span>\n` : ""}${pad}</div>`;
+}
+
+function comparisonDelta(row) {
+  const railshot = row.values.find(({ engine }) => engine.id === "railshot")?.value;
+  const wazero = row.values.find(({ engine }) => engine.id === "wazero")?.value;
+  if (!(railshot > 0) || !(wazero > 0)) return null;
+  const ratioValue = Math.max(railshot, wazero) / Math.min(railshot, wazero);
+  const same = Math.abs(railshot - wazero) / Math.max(railshot, wazero) < 0.03 || Number(trim(ratioValue, 1)) === 1;
+  if (same) return { text: "parity", className: "tie" };
+  const railshotWins = railshot < wazero;
+  const magnitude = trim(ratioValue, 1);
+  const resource = row.kind === "bytes" || row.kind === "code" || row.kind === "count";
+  const word = resource
+    ? railshotWins ? "less" : "more"
+    : railshotWins ? "faster" : "slower";
+  return { text: `${magnitude}× ${word}`, className: railshotWins ? "win" : "behind" };
 }
 
 function renderGroup(title) {

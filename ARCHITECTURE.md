@@ -1,11 +1,71 @@
-# Architecture
+# Wago architecture
 
-`wago` is a pure-Go (no-cgo) WebAssembly engine. It decodes, validates, and
-compiles wasm modules to native machine code with a single-pass backend, then
-executes that code directly from Go — no C toolchain, no cgo, no FFI. The
+Wago is a pure-Go, no-cgo WebAssembly engine. It decodes, validates, and
+compiles Wasm modules to native machine code with a single-pass backend. It then
+executes that code directly from Go. It needs no C toolchain, cgo, or FFI. The
 host-boundary shape and runtime ABI are derived from
 [WARP](https://github.com/wago-org/warp), a C++ single-pass wasm engine maintained
 as a separate repository.
+
+The amd64 GP allocator must only spill GP values. Scalar float, SIMD, and
+custom XMM values use a separate register bank, even when register numbers match.
+
+Context-aware invocation checks cancellation after it acquires the instance
+gate, before it reads export metadata or enters guest or host code.
+
+CLI feature settings apply enables before disables. An explicit disable of
+`extended-constant-expressions` also disables `extended-const-expressions`.
+Version-1 global and local settings accept known retired optimization names as
+compatibility no-ops. Unknown names still produce an error.
+The retired list includes `inline-loop-callees` and `deep-fp-pins` from v1.
+
+Host calls convert both `HostExit` and non-nil `*HostExit` panics to `ExitError`,
+including calls through a Wasm wrapper and replayed host logs.
+
+Both native backends consume the complete result-type vector of a typed
+`select` through the shared Wasm immediate reader. Explicit reference types
+include a nullable/non-null prefix and a signed heap-type index, which can span
+multiple bytes. No heap-type byte may re-enter the instruction stream.
+`TestTypedSelectReferenceImmediates` checks reference identity and selection for
+both nullability forms and one-byte/multi-byte type indexes.
+
+Reference instructions constrain an unreachable stack value to a reference.
+The validator uses an internal heap bottom type for this value; it cannot match
+a numeric or vector operand and has no binary encoding.
+An unreachable `try_table` body still produces its declared results at the
+parent validation frame, just like a block.
+
+Generated trap exits persist dirty value-pinned globals as well as module pins. Entry
+traps first reload value pins because the prologue has not initialized them.
+Cold trap stores use a fixed scratch register and preserve pins until stored.
+
+## Start here
+
+Wago processes a module in five steps: **decode**, **validate**, **compile**,
+**instantiate**, and **call**. Start with [the pipeline](#1-the-pipeline) for the
+full path from Wasm bytes to a function call.
+
+| If you want to understand... | Start with... |
+|---|---|
+| where source code lives | [Repository layout](#2-repository-layout) |
+| how Wago rejects invalid modules | [Front end](#3-front-end--decode-and-validate-srccorecompilerwasm) |
+| how native code is made | [Back end](#4-back-end--valent-block-code-generation-srccorecompilerbackendrailshot) |
+| how an instance runs native code | [Runtime](#7-runtime-srccoreruntime) |
+| public Go APIs | [Public API](#13-public-api--the-generated-facade) |
+| supported features | [FEATURES.md](FEATURES.md) |
+
+The rest of this introduction records platform and implementation rules. The
+numbered sections explain the system in the order that a module moves through it.
+
+### Terms used here
+
+- **Module:** a WebAssembly binary that Wago decodes and compiles.
+- **Compiled:** Wago's compiled module: native code plus the metadata needed to
+  create an instance.
+- **Instance:** a runnable copy of a Compiled module with its own runtime state.
+- **Trap:** a Wasm runtime error, such as an invalid memory access.
+
+## Platform and artifact rules
 
 <!-- architecture:targets linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 -->
 Railshot compilation and the native runtime support Linux, macOS, and Windows
@@ -15,23 +75,25 @@ cooperative cancellation safepoints.
 
 <!-- artifact:codec-version 2 -->
 
-Compiled artifact version 1 is a strict ordered section stream: a fixed header
-and section count followed by length-delimited native-code and metadata sections.
-Unknown, duplicate, reordered, truncated, over-limit, and non-canonical section
-encodings fail closed. `Compiled.WriteTo` streams code without constructing a
-second full image; `Compiled.ReadFromWithLimits` reads code directly into an RW
-mapping, bounds code and metadata independently, validates all metadata, and
-seals that same mapping RX on first use. Non-global imports retain their legacy
-flat lookup key plus a validated module-name boundary, so source compilation and
-artifact loading expose the same exact module/name pair without decoding source
-again. Plugin bindings must match that exact pair before they can satisfy an
-import, preventing dotted flat-key collisions from crossing module authority
-boundaries. Artifact decoding separately caps the expanded function-import
-directory at 64 MiB so compact empty names cannot amplify into an unbounded
-slice allocation. Wago is unreleased, so incompatible
-development layouts were consolidated into version 1 instead of consuming public
-version numbers. Any artifact version other than 1 is rejected; there is no
-compatibility decoder or dual-format ambiguity.
+Compiled artifact version 2 is a strict ordered section stream. It has a fixed
+header and section count, followed by length-delimited native-code and metadata
+sections. Wago rejects unknown, duplicate, reordered, truncated, over-limit, and
+non-canonical section encodings. `Compiled.WriteTo` streams code without making a
+second full image. `Compiled.ReadFromWithLimits` reads code directly into an RW
+mapping, applies separate code and metadata bounds, validates all metadata, and
+seals that mapping RX on first use. Non-global imports keep their legacy flat
+lookup key and a validated module-name boundary. Source compilation and artifact
+loading therefore expose the same module/name pair without decoding source again.
+Plugin bindings must match that pair before they satisfy an import. This prevents
+dotted flat-key collisions from crossing module authority boundaries. Artifact
+decoding also caps the expanded function-import directory at 64 MiB, so compact
+empty names cannot produce an unbounded slice allocation. Version 2 replaced the
+initial version 1 format when generated `memory.grow` code and the native instance
+context gained a runtime memory-page quota. Wago rejects every artifact version
+other than 2, including version 1. There is no compatibility decoder or
+dual-format ambiguity.
+
+### CPU and SIMD baseline
 
 **CPU baseline: modern x86-64 with SSSE3/SSE4.1/SSE4.2 plus AVX/VEX.128 XMM encodings.** The backend emits
 some instructions beyond original x86-64 without a CPUID gate or fallback:
@@ -61,8 +123,10 @@ i16 q15mulr_sat_s, i8/i16/i32/i64 lane shifts, mul for i16/i32/i64 lanes, eq/ne 
 i8/i16/i32 lanes, signed/unsigned min/max for i8/i16/i32 lanes, unsigned rounding
 averages for i8/i16 lanes, and f32x4/f64x2 packed abs/neg/ceil/floor/trunc/nearest/sqrt/add/sub/mul/div/min/max/pmin/pmax,
 packed float/int conversions and f32/f64 lane-width demote/promote, plus comparisons. Core packed-float min/max use a branchless packed Wasm-correct sequence for NaN and signed-zero behavior; core packed rounding uses SSE4.1 VROUNDPS/VROUNDPD with suppress-precision immediates for ceil/floor/trunc/nearest-even while preserving signed-zero and NaN result semantics covered by tests. Packed float/int conversions use branchless packed sequences, including exact unsigned conversions and f64x2-to-i32 saturation; f32x4.demote_f64x2_zero and f64x2.promote_low_f32x4 use VCVTPD2PS/VCVTPS2PD. Core pmin/pmax use swapped native packed min/max so the first operand wins equal and NaN-second lanes. Relaxed truncations intentionally use the conservative saturating result policy (NaN and negative unsigned lanes become zero; overflows clamp; f64x2-zero forms clear high lanes). Relaxed packed-float min/max intentionally use native MINPS/MAXPS/MINPD/MAXPD, returning the second source for NaN and equal signed-zero lanes under the current lowering order; relaxed packed-float madd/nmadd intentionally use separate packed multiply plus add/subtract instead of FMA. Relaxed dot products currently use deterministic signed i8 products, signed saturating i16 pair sums, scalar SSE4.1 lane extraction/insertion, and GPR arithmetic instead of AVX2/VNNI. `i64x2.shr_s` uses a baseline-safe scalarized qword-lane sequence that masks shift counts modulo 64; signed ordered `i64x2` comparisons and abs use SSE4.2 `pcmpgtq`.
-Unsupported `0xfd` opcodes remain frontend errors instead of falling through to
-backend codegen.
+Unsupported `0xfd` opcodes remain front-end errors instead of falling through to
+backend code generation.
+
+### WasmGC boundary
 
 WasmGC uses stable compact references and bounded collector heaps. Generated
 modules collect only where exact native roots are published; unsupported root
@@ -150,7 +214,7 @@ GC transfers remain fail-closed when exact ownership is unproved.
 ## 1. The pipeline
 
 ```
- wasm bytes
+ Wasm bytes
      │
      ▼
  ┌─────────┐   ┌──────────┐   ┌─────────────────────┐   ┌──────────┐
@@ -171,7 +235,15 @@ GC transfers remain fail-closed when exact ownership is unproved.
                                               src/wago + src/core/runtime
 ```
 
-`Compile` (in `src/wago/api.go`) runs decode → validate → backend codegen and
+In order:
+
+1. **Decode** reads the Wasm binary format.
+2. **Validate** checks the module against WebAssembly type and structure rules.
+3. **Compile** creates native machine code and metadata.
+4. **Instantiate** creates memory, globals, tables, and import bindings.
+5. **Invoke** calls one exported function.
+
+`Compile` (in `src/wago/api.go`) runs decode → validate → backend code generation and
 returns a `*Compiled`: machine code plus the instantiate-time metadata
 (signatures, imports/exports, globals, element/data segments, table size).
 Validation and codegen can use the same bounded per-module function-worker policy;
@@ -192,7 +264,9 @@ src/wago/                         public API implementation (package wago)
   import_attachments.go           imported owner attachment and root retention
 wago.go                           generated root facade (re-exports src/wago)
 internal/genfacade/               generator for wago.go (+ up-to-date test)
-cli/wago/                         CLI entry point and command implementation
+cli/wago/                         manager and runtime command entry point
+cli/wago-installer/               installer command entry point
+cli/installer/                    shared installer implementation
 src/core/compiler/wasm/           decoder + validator (front end)
 src/core/compiler/backend/railshot/  direct native codegen (Valent-Block)
   amd64/                            x86-64 selection, registers, ABI, encoding
@@ -200,13 +274,13 @@ src/core/compiler/backend/railshot/  direct native codegen (Valent-Block)
   shared/                           architecture-neutral policy and metadata
 src/core/runtime/                 mmap, foreign stack, JobMemory, traps
 src/core/runtime/abi/             layout constants shared by codegen + runtime
-tests/spec/                       WebAssembly spec testsuite (submodule, MVP-pinned)
-tests/spec-v2/                    WebAssembly 2.0 specification (submodule)
-tests/fixtures/                   small Wasm, benchmark, and parser fixtures
-tests/regressions/                pinned binary regression corpus
-tests/spectest/                   shared specification-test helpers
-tests/wasmtest/                   programmatic Wasm fixture builders
-tests/scripts/                    shell integration tests
+tests/conformance/spec-v1/      WebAssembly spec testsuite (submodule, MVP-pinned)
+tests/conformance/spec-v2/      WebAssembly 2.0 specification (submodule)
+tests/fixtures/                 small Wasm, benchmark, and parser fixtures
+tests/corpus/regressions/       pinned binary regression corpus
+tests/conformance/spectest/     shared specification-test helpers
+tests/support/wasmtest/         programmatic Wasm fixture builders
+tests/scripts/                  shell integration tests
 spectest_exec_test.go             wasm 1.0 conformance harness (+ SPECTEST.md)
 bench/                            benchmarks vs wazero (separate Go module)
 ```
@@ -216,13 +290,23 @@ so the public package stays clean.
 
 ---
 
-## 3. Front end — decode & validate (`src/core/compiler/wasm`)
+## 3. Front end — decode and validate (`src/core/compiler/wasm`)
+
+Validation can return one eight-byte fact record per local function. The record
+storage is private. Accessors return copies, and consumers must check `ValidFor`
+before use. The compile phase owns the decoded module and keeps it immutable
+until the last fact consumer finishes. Changes to a module require new validation.
+Tree-based validation does not yet gather these facts; tree or mixed modules use
+the existing exact scans. An absent analysis is not proof that a function cannot
+collect. Fast admission is limited to fully classified instruction families.
+Type-indexed control encodings record multi-value even for zero or one result.
+
 
 - `decode.go` parses the binary into a `Module` (types, funcs, tables, memory,
   globals, imports/exports, element/data segments, code bodies).
 - `validate.go` / `validate_ops.go` enforce the wasm type rules: a structured
   operand-stack/control-frame validator that type-checks every opcode and
-  rejects malformed or ill-typed modules before any code is emitted.
+  rejects malformed or ill-typed modules before it emits code.
 - Module declarations and constant expressions, including element initializers,
   validate serially. With function workers enabled, independent bodies use
   worker-local stacks/readers. Shared module/element metadata is immutable, the
@@ -230,7 +314,7 @@ so the public package stays clean.
   errors are selected by lowest function index so diagnostics match serial
   validation.
 - Unsupported value types and opcodes are rejected explicitly rather than
-  silently accepted — correctness and explicit failure come first.
+  silently accepted. Correctness and clear failure come first.
 
 Validation is intentionally stricter than the narrow const-expression decoder
 the compiler uses for global/segment initializers: the validator guarantees
@@ -238,7 +322,42 @@ shape, the backend then trusts it.
 
 ---
 
-## 4. Back end — Valent-Block codegen (`src/core/compiler/backend/railshot`)
+## 4. Back end — Valent-Block code generation (`src/core/compiler/backend/railshot`)
+
+Small operand arenas use half the body bytes plus local and immediate-free
+instruction allowances. The density counter saturates at 256 and occupies two
+padding bytes in each backend's 28-byte hint header. It is only a size hint:
+stable chunks still grow for valid code. Below 256 nodes, overflow fills to a
+power-of-two total, then doubles that total. This avoids tripling storage after
+a one-node underestimate. The existing large-arena growth and retention limits
+remain unchanged. Sparse global-hint storage uses the same power-of-two capacity
+rule in serial and parallel scans, starting at one record instead of eight.
+
+Parallel non-compact codegen sizes its final heap join from completed native
+worker bytes when that is below the original Wasm expansion estimate. Checked
+arithmetic adds per-function alignment space and a 4 KiB module-tail allowance.
+This remains a capacity hint, not an output limit: append can grow. Compact
+adapter sharing keeps its old estimate because it temporarily appends an island
+before compaction. Code layout, relocation checks, and emitted bytes are unchanged.
+Dynamic `memory.copy` lowering uses stack-backed lists for its four fixed branch
+patch sites (two per branch encoding on ARM64), with ordinary append fallback.
+
+Parallel codegen reserves at most 64 local slots per worker; a larger function
+uses the normal growth path. Parallel hint scans allocate dense global scratch
+once, then give each worker exclusive, capacity-bounded slices. Each worker has
+inline space for four eligibility frames, eight global indexes, and eight
+temporary retained global hints, with normal slice growth beyond those sizes.
+The retained spans are copied into the final detached sidecar; its serial and
+parallel capacity contract is unchanged. Both parallel compiler phases allocate
+their captured worker context once, while keeping worker scratch private.
+Temporary global offsets use the existing
+per-function hint fields until flattening; worker and event ownership retain
+full-width 32-bit indexes. This removes duplicate range storage without changing
+global ordering, feature checks, deterministic errors, or final resource counts.
+ARM64 loop-constant facts use worker-local sparse lists, merged in function order
+with the same backing-capacity contract as serial scans. Address clearing can
+only be omitted for a proven machine value. An `i32` type does not by itself prove
+that a serialized 64-bit parameter carrier has zero high bits.
 
 The backend is a **single forward pass** that fuses code generation and register
 allocation. It uses the *Valent-Block* technique from WARP: instead of emitting
@@ -441,7 +560,7 @@ dereferencing the 8-byte cell.
   `*Global` cell is pointed at directly, so writes from wasm, `Instance.SetGlobal`,
   `g.Set`, and other instances importing the same `*Global` all observe the same
   storage. Duplicate imports of one key alias the same cell.
-- Coherence invariant (see `docs/runtime-abi.md`): the cell is the sole
+- Coherence invariant: the cell is the sole
   host-/cross-instance-visible storage. The current backend reads/writes it on
   every `global.get`/`global.set`; a future register-caching pass must spill at
   function return and around calls.
@@ -478,9 +597,36 @@ actual call site, Go writes results, and the same foreign-stack invocation
 resumes. One instance selects exactly one host protocol because both use the
 same context slot.
 
+Synchronous activation counts and operation reservations belong to each
+instance. Callback values retain an immutable generation snapshot and point to
+their compiled signature. The runtime resolves root invocation identity once
+and passes it to the active callee's dispatcher. Private, non-GC, non-threaded
+instances can reuse parked native context if its version has not changed;
+nested entries and guarded host access invalidate it. Shared or unknown state
+uses full restoration. Native and collector leases, parked roots, and scheduler
+entry/resume protocols are still required. See
+[host-call measurements and proof limits](docs/host-roundtrip-performance.md).
+
+`CallerHostFunc` is an optional concrete-value callback ABI. Its `Caller` wraps
+the same private immutable token as the legacy `HostModule` value. Dispatch
+passes it directly, without an interface box; both representations share the
+same capability resolver. Plugin `CallerFunc` registration retains the normal
+gate and reservation checks. See the
+[concrete caller design and measurements](docs/host-caller-performance.md).
+
 ---
 
 ## 12. Memory model
+
+Public invocation results stay in Go-owned memory. Up to two result slots use
+storage inside the Instance; larger signatures use an exact-sized heap slice.
+This removes a tiny allocation and keeps independently written small results
+away from adjacent instances' tiny heap objects. Returned slices still use the
+same per-instance reuse rule. They never alias mmap-backed native result bytes.
+A retained small result slice also retains its Instance; copy results that must
+outlive the next call or the instance.
+Host re-entry retains its separate save/restore buffer, and all entry, close,
+reference-token, and trap checks remain in place.
 
 Linear memory is the mmap-backed tail of JobMemory, exposed zero-copy via
 `Instance.Memory().UnsafeBytes()` — writes are visible in both directions without
@@ -530,7 +676,7 @@ to build and test the Go module.
 ## 15. Conformance & testing
 
 - **Execution conformance** (`spectest_exec_test.go`, `TestSpecExec`): runs the
-  official WebAssembly testsuite (`tests/spec`, pinned to a pre-reference-types
+  official WebAssembly testsuite (`tests/conformance/spec-v1`, pinned to a pre-reference-types
   MVP commit) through compile→instantiate→invoke, scoring `assert_return` /
   `assert_trap` per file. Each file runs in an **isolated subprocess** so a JIT
   fault is recorded as `CRASH` rather than aborting the run. Results are written
@@ -552,12 +698,12 @@ to build and test the Go module.
 - Linux, macOS, and Windows on amd64 and arm64 execute the native JIT and are
   required CI and release targets. Signal-backed guard pages remain specific to
   Linux/amd64, Linux/arm64, and Darwin/arm64; other targets use explicit bounds.
-- WebAssembly 1.0, the documented WebAssembly 2.0 feature set, and the
-  opt-in WebAssembly Core 3.0 feature families (tail calls, typed references,
-  WasmGC, exception handling, multi-memory, memory64, table64, extended
-  constants, and relaxed SIMD) are complete on linux/amd64, linux/arm64, and
-  darwin/arm64. Threads & atomics are available as the bounded experimental
-  explicit-bounds product documented in [FEATURES.md](FEATURES.md), which is the
+- WebAssembly 1.0, the documented WebAssembly 2.0 feature set, and the default
+  WebAssembly Core 3.0 feature families on complete backends (tail calls, typed
+  references, WasmGC, exception handling, multi-memory, memory64, table64,
+  extended constants, and relaxed SIMD) are complete on linux/amd64,
+  linux/arm64, and darwin/arm64. Threads & atomics are available as the bounded
+  experimental explicit-bounds product documented in [FEATURES.md](FEATURES.md), which is the
   source of truth for per-feature status.
 - The off-path `src/core/compiler/ir` package is a research/debug oracle, not an
   execution tier. Railshot is the only production backend.

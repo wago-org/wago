@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	goruntime "runtime"
+
+	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 // PreparedFunction is a resolved local Wasm export ready for repeated calls.
@@ -16,14 +18,17 @@ type PreparedFunction struct {
 	export              string
 	entry               uintptr
 	directEntry         uintptr
+	directLinMem        uintptr
 	paramSlots          int
 	resultSlots         int
 	paramTypes          []ValType
 	resultTypes         []ValType
 	paramExact          []ValueTypeDescriptor
 	resultExact         []ValueTypeDescriptor
+	paramWide           []bool
 	hasReferenceParams  bool
 	hasReferenceResults bool
+	gcMaintenance       bool
 	scalarWideMask      uint8
 	scalarFast          bool
 	scalarResultWide    bool
@@ -31,13 +36,34 @@ type PreparedFunction struct {
 	privateFast         bool
 	isolatedFast        bool
 	privateLifetime     bool
+	directIsolated      bool
 	directIntFast       bool
 	directLeafIntFast   bool
 	directTrapIntFast   bool
+	directIntLight      bool
+	directIntBounded    bool
+	directIntMode       preparedIntCallMode
+	directIntCall       wruntime.PreparedIntCall
 }
+
+type preparedIntCallMode uint8
+
+const (
+	preparedIntCallNone preparedIntCallMode = iota
+	preparedIntCallBlock
+	preparedIntCallPrebound
+)
 
 func (c *Compiled) directPreparedAt(local int) bool {
 	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedEntry(c.InternalEntry[local])
+}
+
+func (c *Compiled) directPreparedLightAt(local int) bool {
+	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedLightEntry(c.InternalEntry[local])
+}
+
+func (c *Compiled) directPreparedBoundedAt(local int) bool {
+	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedBoundedEntry(c.InternalEntry[local])
 }
 
 func preparedDirectIntSignature(sig FuncSig) bool {
@@ -85,14 +111,13 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wago: prepare function %q exact signature: %w", export, err)
 	}
-	wide := append([]bool(nil), ic.resultWide...)
+	paramWide := append([]bool(nil), ic.slotWide[:ic.paramSlots]...)
+	resultWide := append([]bool(nil), ic.slotWide[ic.paramSlots:]...)
 	scalarFast := preparedScalarFastEnabled &&
 		!hasReferenceValType(sig.Params) &&
-		!hasReferenceValType(sig.Results) &&
-		ic.paramSlots <= 4 &&
-		ic.resultSlots <= 1
+		!hasReferenceValType(sig.Results)
 	var scalarWideMask uint8
-	if scalarFast {
+	if scalarFast && ic.paramSlots <= 4 {
 		slot := 0
 		for _, typ := range sig.Params {
 			if typ == ValV128 {
@@ -114,34 +139,46 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		resultSlots:         ic.resultSlots,
 		scalarWideMask:      scalarWideMask,
 		scalarFast:          scalarFast,
-		scalarResultWide:    ic.resultSlots == 1 && wide[0],
+		scalarResultWide:    ic.resultSlots == 1 && resultWide[0],
 		paramTypes:          append([]ValType(nil), sig.Params...),
 		resultTypes:         append([]ValType(nil), sig.Results...),
 		paramExact:          append([]ValueTypeDescriptor(nil), params...),
 		resultExact:         append([]ValueTypeDescriptor(nil), results...),
+		paramWide:           paramWide,
 		hasReferenceParams:  hasReferenceValType(sig.Params),
 		hasReferenceResults: hasReferenceValType(sig.Results),
-		resultWide:          wide,
+		gcMaintenance:       in.gc != nil && (in.c.genericGCBoundaryCollectionSafe() || in.c.hasGCRefGlobals()),
+		resultWide:          resultWide,
 	}
-	// Signal-backed instances normally require the guarded wrapper entry. A
-	// compiler-proven signal-guard-free call closure can retain the ordinary
-	// interruptible foreign-stack wrapper because it cannot take a memory signal,
-	// while direct leaf/trap entries carry their own narrower proofs.
-	contextFreeLoopCandidate := contextFreeLoopPreparedEntry(in.c.InternalEntry[ic.li])
-	directEntryCandidate := !in.tierable() && scalarFast && preparedPrivateEntryEnabled &&
-		preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) &&
-		in.c.directPreparedAt(ic.li) &&
-		(directLeafPreparedEntry(in.c.InternalEntry[ic.li]) || directTrapPreparedEntry(in.c.InternalEntry[ic.li]))
-	privateEligible := in.preparedPrivateEligible()
-	if preparedCallEnabled && !in.tierable() && scalarFast && preparedPrivateEntryEnabled && (privateEligible || directEntryCandidate || contextFreeLoopCandidate) {
-		fn.privateFast = privateEligible || contextFreeLoopCandidate
-		fn.isolatedFast = preparedIsolatedEntryEnabled && (in.preparedIsolatedEligible() || contextFreeLoopCandidate && in.preparedContextFreeIsolatedEligible())
-		fn.privateLifetime = contextFreeLoopCandidate && !privateEligible
-		if (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
-			fn.directIntFast = true
-			fn.directLeafIntFast = directLeafPreparedEntry(in.c.InternalEntry[ic.li])
-			fn.directTrapIntFast = directTrapPreparedEntry(in.c.InternalEntry[ic.li])
-			fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
+		entryMode := in.preparedEntryMode()
+		if entryMode == preparedEntryGeneral && contextFreeLoopPreparedEntry(in.c.InternalEntry[ic.li]) {
+			entryMode = in.preparedMemoryFreeEntryMode()
+			fn.privateLifetime = entryMode != preparedEntryGeneral
+		}
+		if entryMode != preparedEntryGeneral {
+			fn.privateFast = true
+			fn.isolatedFast = preparedIsolatedEntryEnabled && entryMode == preparedEntryIsolated
+		}
+		if preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
+			// directPreparedAt is the compiler proof that this internal entry is
+			// memory-free. Re-evaluate only the bounds-mode exclusion; every other
+			// ownership and lifecycle exclusion remains in force.
+			directMode := entryMode
+			if directMode == preparedEntryGeneral && in.c.boundsMode == BoundsChecksSignalsBased {
+				directMode = in.preparedMemoryFreeEntryMode()
+			}
+			fn.directIsolated = preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated
+			if fn.directIsolated || (preparedDirectIntPrivateSupported && directMode == preparedEntryPrivate) {
+				fn.directIntFast = true
+				fn.directLeafIntFast = directLeafPreparedEntry(in.c.InternalEntry[ic.li])
+				fn.directTrapIntFast = directTrapPreparedEntry(in.c.InternalEntry[ic.li])
+				fn.directIntLight = in.c.directPreparedLightAt(ic.li)
+				fn.directIntBounded = in.c.directPreparedBoundedAt(ic.li)
+				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+				fn.directLinMem = in.jm.LinMemBase()
+				fn.initDirectIntCall()
+			}
 		}
 	}
 	return fn, nil
@@ -152,7 +189,18 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 	if fn != nil && fn.in != nil && len(args) == fn.paramSlots {
 		if fn.directIntFast {
-			return fn.invokeDirectInt(args)
+			switch len(args) {
+			case 0:
+				return fn.invokeDirectIntFixed(0, 0, 0, 0)
+			case 1:
+				return fn.invokeDirectIntFixed(args[0], 0, 0, 0)
+			case 2:
+				return fn.invokeDirectIntFixed(args[0], args[1], 0, 0)
+			case 3:
+				return fn.invokeDirectIntFixed(args[0], args[1], args[2], 0)
+			case 4:
+				return fn.invokeDirectIntFixed(args[0], args[1], args[2], args[3])
+			}
 		}
 		if fn.scalarFast {
 			return fn.invokeScalar(args)
@@ -162,6 +210,7 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 }
 
 type preparedInvocationLease struct {
+	in    *Instance
 	state *instancePluginState
 	gc    gcInvocationLease
 }
@@ -171,11 +220,21 @@ func (in *Instance) lockPreparedInvocation() preparedInvocationLease {
 	state.invokeMu.Lock()
 	id := newInvocationID()
 	state.invocationID = id
-	return preparedInvocationLease{state: state, gc: in.lockGCInvocation(id)}
+	return preparedInvocationLease{in: in, state: state, gc: in.lockGCInvocation(id)}
+}
+
+func (in *Instance) lockPreparedSessionInvocation() preparedInvocationLease {
+	state := in.ensurePluginState()
+	state.invokeMu.Lock()
+	state.invocationID = newInvocationID()
+	return preparedInvocationLease{state: state}
 }
 
 func (l preparedInvocationLease) unlock() {
 	l.gc.unlock()
+	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
+		l.in.reconcileFuncrefRoots()
+	}
 	l.state.invocationID = 0
 	l.state.invokeMu.Unlock()
 }
@@ -244,8 +303,16 @@ func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
 	// reference-result tokenization.
 	preparedLease := in.lockPreparedInvocation()
 	defer preparedLease.unlock()
+	return fn.invokeGeneralAdmitted(args)
+}
+
+func (fn *PreparedFunction) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
+	in := fn.in
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
+	}
+	if err := in.collectGenericGCAtBoundary(); err != nil {
+		return nil, err
 	}
 	if fn.hasReferenceParams {
 		defer in.clearGCRefArgumentRoots()
@@ -273,6 +340,9 @@ func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
 				return nil, err
 			}
 		}
+	}
+	if err := in.reconcileGCGlobalRoots(); err != nil {
+		return nil, err
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
@@ -313,37 +383,45 @@ func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 			return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
 		}
 		defer in.endPrivateInvocation()
-	} else if fn.privateFast {
-		if in.isLogicallyClosed() {
-			return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
-		}
 	} else {
 		if err := in.beginInvocation(); err != nil {
 			return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
 		}
 		defer in.endInvocation()
-		preparedLease := in.lockPreparedInvocation()
-		defer preparedLease.unlock()
 	}
-	put := func(slot int) {
-		bits := args[slot]
-		if fn.scalarWideMask&(1<<slot) == 0 {
-			bits = uint64(uint32(bits))
+	preparedLease := in.lockPreparedInvocation()
+	defer preparedLease.unlock()
+	return fn.invokeScalarAdmitted(args)
+}
+
+func (fn *PreparedFunction) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
+	in := fn.in
+	if fn.gcMaintenance || !in.preparedFastStateValid() {
+		return fn.invokeGeneralAdmitted(args)
+	}
+	if len(args) <= 4 {
+		put := func(slot int) {
+			bits := args[slot]
+			if fn.scalarWideMask&(1<<slot) == 0 {
+				bits = uint64(uint32(bits))
+			}
+			binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
 		}
-		binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
-	}
-	switch len(args) {
-	case 4:
-		put(3)
-		fallthrough
-	case 3:
-		put(2)
-		fallthrough
-	case 2:
-		put(1)
-		fallthrough
-	case 1:
-		put(0)
+		switch len(args) {
+		case 4:
+			put(3)
+			fallthrough
+		case 3:
+			put(2)
+			fallthrough
+		case 2:
+			put(1)
+			fallthrough
+		case 1:
+			put(0)
+		}
+	} else {
+		marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, fn.paramWide)
 	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
@@ -374,12 +452,46 @@ func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:fn.resultSlots]
-	if fn.resultSlots == 1 {
-		if fn.scalarResultWide {
-			out[0] = binary.LittleEndian.Uint64(in.results)
-		} else {
-			out[0] = uint64(binary.LittleEndian.Uint32(in.results))
+	decodePublicScalarSlots(out, nativeUint64Slots(in.results), fn.resultWide)
+	return out, nil
+}
+
+// invokeScalarHostReserved is the host-capable counterpart to
+// the ordinary scalar entry. PreparedSession already owns and has bound the
+// native execution context, while callNativeSyncAdmitted retains the complete
+// host park/resume and panic/trap protocol.
+func (fn *PreparedFunction) invokeScalarHostReserved(args []uint64, prepared *wruntime.PreparedHostScalarCall, fixed wruntime.FixedScalarHostCall, activation *hostLoopActivation) ([]uint64, error) {
+	in := fn.in
+	if len(args) <= 4 {
+		put := func(slot int) {
+			bits := args[slot]
+			if fn.scalarWideMask&(1<<slot) == 0 {
+				bits = uint64(uint32(bits))
+			}
+			binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
 		}
+		switch len(args) {
+		case 4:
+			put(3)
+			fallthrough
+		case 3:
+			put(2)
+			fallthrough
+		case 2:
+			put(1)
+			fallthrough
+		case 1:
+			put(0)
+		}
+	} else {
+		marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, fn.paramWide)
 	}
+	if err := in.callNativeSyncAdmitted(fn.entry, in.trap, nil, prepared, fixed, activation, nil); err != nil {
+		return nil, err
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:fn.resultSlots]
+	decodePublicScalarSlots(out, nativeUint64Slots(in.results), fn.resultWide)
 	return out, nil
 }

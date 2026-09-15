@@ -17,6 +17,7 @@ concurrency:
 
 env:
   GO_VERSION: "1.22"
+  JUST_VERSION: "1.58.0"
 
 jobs:
   # Decide whether the change can affect executable code. Docs-only changes skip
@@ -36,11 +37,13 @@ jobs:
           # Avoid a separate PR-files API call; compare the checked-out merge
           # ref with the base SHA from the pull_request event instead.
           token: ''
+          # Every change validates documentation. Code additionally requires
+          # every exclusion below to match, so documentation-only changes do
+          # not schedule the native matrix.
+          predicate-quantifier: 'every'
           filters: |
             docs:
-              - '**/*.md'
-              - 'docs/**'
-              - 'LICENSE'
+              - '**'
             code:
               - '**'
               - '!**/*.md'
@@ -58,18 +61,21 @@ jobs:
   docs:
     name: Documentation
     needs: changes
-    # Code-only changes can delete or rename a path referenced by unchanged
-    # documentation, so validate both documentation and executable changes.
-    if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.code == 'true'
+    # Code changes can delete or rename a path referenced by unchanged
+    # documentation, so every change validates documentation.
+    if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: ${{ env.JUST_VERSION }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       - name: Validate documentation
-        run: make docs-check
+        run: just docs
 
   lint:
     name: Lint & format
@@ -78,20 +84,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: ${{ env.JUST_VERSION }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
           cache: false
 
-      # `make lint` runs staticcheck when it is on PATH; install it first so CI
+      # `just lint` runs staticcheck when it is on PATH; install it first so CI
       # enforces it (locally it is an optional skip). Other checks (gofmt, go
       # generate sync, go vet) use the toolchain directly.
       - name: Install staticcheck
         run: go install honnef.co/go/tools/cmd/staticcheck@2024.1.1
 
       - name: Lint
-        run: make lint
+        run: just lint
 
   regression-corpus:
     name: Regression corpus provenance
@@ -112,9 +121,9 @@ jobs:
       - name: Read pinned WABT provenance
         id: wabt
         run: |
-          go test ./tests/regressioncorpus
-          repo="$(jq -er '.wabt_repo | select(test("^https://[^[:space:]]+$"))' tests/regressions/runtime/PROVENANCE.json)"
-          revision="$(jq -er '.wabt_revision | select(test("^[0-9a-f]{40}$"))' tests/regressions/runtime/PROVENANCE.json)"
+          go test ./tests/support/regressioncorpus
+          repo="$(jq -er '.wabt_repo | select(test("^https://[^[:space:]]+$"))' tests/corpus/regressions/runtime/PROVENANCE.json)"
+          revision="$(jq -er '.wabt_revision | select(test("^[0-9a-f]{40}$"))' tests/corpus/regressions/runtime/PROVENANCE.json)"
           printf 'repo=%s\n' "$repo" >> "$GITHUB_OUTPUT"
           printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
       - name: Build pinned WABT from verified source
@@ -157,6 +166,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: ${{ env.JUST_VERSION }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -165,7 +177,7 @@ jobs:
         env:
           WAGO_CONCURRENCY_SEED: 439000001,439000019,439000043,439000081
           WAGO_CONCURRENCY_ROUNDS: 24
-        run: make test-concurrency
+        run: just test concurrency
 
   race:
     name: Race detector / Linux amd64
@@ -183,9 +195,9 @@ jobs:
       # deciding whether an unavailable conversion tool makes the case skippable.
       # Fetch the corpus so the race lane reports races rather than checkout noise.
       - name: Initialize Release 3 suite
-        run: git submodule update --init --depth=1 tests/spec-v3
+        run: git submodule update --init --depth=1 tests/conformance/spec-v3
       - name: Run focused runtime race suites
-        run: go test -race -count=1 ./src/wago ./src/core/runtime ./tests/runtimeconcurrency
+        run: go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency
 
   platform-test:
     name: ${{ matrix.name }}
@@ -240,6 +252,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        if: runner.os != 'Windows'
+        with:
+          just-version: ${{ env.JUST_VERSION }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -260,7 +276,7 @@ jobs:
       # toolchain and verify the portable/backend surface directly.
       - name: Initialize Release 3 suite
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
-        run: git submodule update --init --depth=1 tests/spec-v3
+        run: git submodule update --init --depth=1 tests/conformance/spec-v3
 
       - name: Install Release 3 interpreter toolchain
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
@@ -300,65 +316,78 @@ jobs:
 
       - name: Build & test
         if: matrix.runtime && runner.os != 'Windows'
-        run: make test
+        run: just test
 
       - name: Build & test (Windows)
         if: matrix.runtime && runner.os == 'Windows'
         shell: pwsh
         run: |
           go build ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go build -tags wago_runtime ./cli/...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test -count=1 ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test -count=1 -tags wago_runtime ./cli/...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -count=20 -run '^TestCompiledSnapshotPacksRepeatedNestedSlices$' ./src/wago
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -count=20 -run '^TestCredentialTemporaryFileIsPrivateAndReadersSeeCompleteJSON$' ./cli/manager/internal/registry
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location bench
+          try {
+            go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns)$' ./suite -args '-wago.corpus=quick'
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
 
-      # Guard-page (signals-based) mode is behind a build tag, so `make test`
+      # Guard-page (signals-based) mode is behind a build tag, so `just test`
       # never exercises it — which is how a broken SIGSEGV fault->trap handler
       # stayed CI-invisible. This runs the fault->trap path plus in-bounds
       # differential correctness under the tag.
       - name: Guard-page trap tests
         if: matrix.guard && runner.os != 'Windows'
-        run: make test-guard
+        run: just test guard
 
       - name: Guard-page trap tests (Windows)
         if: matrix.guard && runner.os == 'Windows'
         shell: pwsh
         run: |
-          go test -v -count=1 -tags wago_guardpage ./src/wago/
+          go test -v -count=1 -tags wago_guardpage ./src/core/runtime ./src/wago/
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location bench
           try {
-            go test -v -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+            go test -v -count=1 -tags wago_guardpage -run '^(TestCorpus|TestJsonAsGuardCorrect)$' ./suite -args '-wago.corpus=quick'
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Pop-Location
           }
 
       - name: Corpus correctness matrix
-        if: matrix.corpus && runner.os != 'Windows'
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
         env:
           WAGO_CORPUS_TIMEOUT: 20s
-        run: make test-corpus
+        run: just test corpus all
 
-      - name: Corpus correctness matrix (Windows)
-        if: matrix.corpus && runner.os == 'Windows'
-        shell: pwsh
-        working-directory: bench
-        env:
-          WAGO_CORPUS_TIMEOUT: 20s
-        run: go test -count=1 -run '^TestCorpus$' .
+      - name: Benchmark wiring smoke test
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: just bench check
 
       - name: Fetch SIMD proposal suite
         if: matrix.runtime
-        run: git submodule update --init tests/spec
+        run: git submodule update --init tests/conformance/spec-v1
 
       - name: SIMD execution suite
         if: matrix.runtime && runner.os != 'Windows'
-        run: make simd
+        run: just test spec simd
 
       - name: SIMD execution suite (Windows)
         if: matrix.runtime && runner.os == 'Windows'
         shell: pwsh
         run: |
-          git submodule update --init tests/spec
-          $env:WAGO_SPECTEST_DIR = (Resolve-Path tests/spec)
+          git submodule update --init tests/conformance/spec-v1
+          $env:WAGO_SPECTEST_DIR = (Resolve-Path tests/conformance/spec-v1)
           $env:WAGO_SPEC_VERSION = 'simd'
           go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
 
@@ -377,6 +406,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: ${{ env.JUST_VERSION }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -384,13 +416,13 @@ jobs:
 
       # This is the mandatory exact Release 2 gate, not the informational CI
       # card summary. Provision the parser explicitly and fetch only the pinned
-      # WebAssembly/spec v2.0.0 submodule consumed by make spec2.
+      # WebAssembly/spec v2.0.0 submodule consumed by `just test spec v2`.
       - name: Install WABT
         run: sudo apt-get update && sudo apt-get install -y wabt
       - name: Fetch pinned Core v2 corpus
-        run: git submodule update --init tests/spec-v2
+        run: git submodule update --init tests/conformance/spec-v2
       - name: Run exact Core v2 validation and execution
-        run: make spec2
+        run: just test spec v2
 
   core-v3:
     name: Core v3 conformance / ${{ matrix.name }}
@@ -402,25 +434,28 @@ jobs:
         include:
           - name: Linux amd64 / explicit
             runner: ubuntu-24.04
-            target: spec3
+            target: v3
           - name: Linux amd64 / signals
             runner: ubuntu-24.04
-            target: spec3-signals
+            target: v3-signals
           - name: Linux arm64 / explicit
             runner: ubuntu-24.04-arm
-            target: spec3
+            target: v3
           - name: Linux arm64 / signals
             runner: ubuntu-24.04-arm
-            target: spec3-signals
+            target: v3-signals
           - name: Darwin arm64 / explicit
             runner: macos-15
-            target: spec3
+            target: v3
           - name: Darwin arm64 / signals
             runner: macos-15
-            target: spec3-signals
+            target: v3-signals
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: ${{ env.JUST_VERSION }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -434,9 +469,27 @@ jobs:
             brew install ocaml dune menhir
           fi
       - name: Fetch pinned Core v3 corpus
-        run: git submodule update --init tests/spec-v3
+        run: git submodule update --init tests/conformance/spec-v3
       - name: Run exact Core v3 validation and execution
-        run: make ${{ matrix.target }}
+        run: just test spec ${{ matrix.target }}
+
+  fuzz:
+    name: Bounded fuzzing / Linux amd64
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Run bounded fuzzing gates
+        run: just test fuzz
 
   tinygo:
     name: TinyGo / ${{ matrix.name }}
@@ -465,6 +518,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: ${{ env.JUST_VERSION }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -494,13 +550,13 @@ jobs:
       # not end in .bin, which TinyGo treats as a firmware image.
       - name: Build CLI with TinyGo
         if: matrix.cli
-        run: make tinygo-build
+        run: just build tinygo
 
       # Runtime behavior exercises the generated amd64/arm64 foreign-stack
       # trampolines and synchronous host-call resume path natively.
       - name: Test (runtime + public API) under TinyGo
         if: matrix.runtime
-        run: make tinygo-test
+        run: just test tinygo
 
       # Darwin/amd64 mirrors the Big Go matrix: the native JIT ABI is not yet
       # implemented, but architecture-neutral compiler and encoder code must
@@ -515,59 +571,21 @@ jobs:
         run: |
           out="$(./wago-tinygo run --invoke fib tests/fixtures/wasm/fib.wasm 20)"
           echo "$out"
-          test "$out" = "fib(20) = 6765"
+          test "$out" = "6765"
 
-  # Coverage is deliberately kept off pull requests and runs after code changes
-  # land on main. The size job remains a separate pull-request and main gate.
-  coverage:
-    name: Coverage
-    needs: changes
-    if: github.event_name == 'push' && needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
-          cache: false
-
-      - name: Initialize Release 3 suite
-        run: git submodule update --init --depth=1 tests/spec-v3
-
-      # Coverage executes the same Core 3 tests as the native matrix, including
-      # source forms that require the official interpreter fallback.
-      - name: Install Release 3 interpreter toolchain
-        run: sudo apt-get update && sudo apt-get install -y ocaml-nox ocaml-dune menhir
-
-      - name: Bootstrap pinned Core 3 tools
+      # Debug builds alone did not expose an intermittent failure in optimized
+      # startup. Exercise the shipped optimizer/GC settings in fresh processes.
+      - name: Smoke-run optimized TinyGo release settings
+        if: matrix.cli
         run: |
-          scripts/bootstrap-wabt.sh --verify
-          echo "$(dirname "$(scripts/bootstrap-wabt.sh --print-path)")" >> "$GITHUB_PATH"
-          interpreter="$(scripts/bootstrap-spec-interpreter.sh --print-path)"
-          scripts/bootstrap-spec-interpreter.sh --verify
-          echo "WAGO_SPEC_INTERPRETER=$interpreter" >> "$GITHUB_ENV"
-          echo "WAGO_SPEC_INTERPRETER_REVISION=$(scripts/bootstrap-spec-interpreter.sh --print-revision)" >> "$GITHUB_ENV"
-
-      # Coverage merges normal, focused wago_gcstats collector, guard-page,
-      # spec1, spec2, and SIMD gates after the change reaches main.
-      # The spec card still renders its own per-version accounting afterward.
-      - name: Produce card fragments
-        run: make card-fragments
-
-      - name: Upload card fragments
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: card-fragments
-          path: ci-card
-          if-no-files-found: error
-
-      - name: Upload coverage profile
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: coverage
-          path: coverage.out
-          if-no-files-found: error
+          tinygo build -scheduler=tasks -no-debug -opt=z -gc=conservative \
+            -tags wago_runtime,wago_lean,wago_minimal -o wago-tinygo-release ./cli/wago
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            ./wago-tinygo-release --version
+            out="$(./wago-tinygo-release run --invoke fib tests/fixtures/wasm/fib.wasm 20)"
+            echo "$out"
+            test "$out" = "6765"
+          done
 
   size:
     name: Build size
@@ -613,7 +631,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, docs, lint, regression-corpus, runtime-concurrency, race, platform-test, core-v2, core-v3, tinygo, coverage, size]
+    needs: [changes, docs, lint, regression-corpus, runtime-concurrency, race, platform-test, core-v2, core-v3, fuzz, tinygo, size]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed

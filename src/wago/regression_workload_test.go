@@ -20,7 +20,7 @@ func TestRuntimeRegressionPortRustFannkuchExecution(t *testing.T) {
 	if runRegressionIsolatedPortTest(t) {
 		return
 	}
-	data, err := os.ReadFile("../../tests/regressions/runtime/core/rust_fannkuch/commands.0.wasm")
+	data, err := os.ReadFile("../../tests/corpus/regressions/runtime/core/rust_fannkuch/commands.0.wasm")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,9 +45,9 @@ func TestRuntimeRegressionPortRustFannkuchExecution(t *testing.T) {
 		{n: 9, want: 8629},
 	} {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		got, err := in.Call(ctx, "run_fannkuch", wago.ValueI32(tc.n))
+		got, err := in.InvokeContext(ctx, "run_fannkuch", wago.I32(tc.n))
 		cancel()
-		if err != nil || len(got) != 1 || got[0].Type() != wago.ValI32 || got[0].I32() != tc.want {
+		if err != nil || len(got) != 1 || wago.AsI32(got[0]) != tc.want {
 			t.Fatalf("run_fannkuch(%d) = %v, %v; want %d", tc.n, got, err, tc.want)
 		}
 	}
@@ -90,7 +90,7 @@ func runRegressionEmbenchen(t *testing.T, name string) (int32, []byte) {
 	t.Helper()
 	rt := wago.NewRuntime()
 	t.Cleanup(func() { _ = rt.Close() })
-	data, err := os.ReadFile("../../tests/regressions/runtime/core/" + name + "/commands.1.wasm")
+	data, err := os.ReadFile("../../tests/corpus/regressions/runtime/core/" + name + "/commands.1.wasm")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,14 +232,14 @@ func runRegressionEmbenchen(t *testing.T, name string) (int32, []byte) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	got, err := in.Call(ctx, "_main", wago.ValueI32(2), wago.ValueI32(int32(argv)))
+	got, err := in.InvokeContext(ctx, "_main", wago.I32(2), wago.I32(int32(argv)))
 	if err != nil {
 		t.Fatalf("_main: %v", err)
 	}
-	if len(got) != 1 || got[0].Type() != wago.ValI32 {
+	if len(got) != 1 {
 		t.Fatalf("_main result = %v, want one i32", got)
 	}
-	return got[0].I32(), output
+	return wago.AsI32(got[0]), output
 }
 
 func regressionEmbenchenSlice(memory []byte, offset, length uint32, what string) []byte {

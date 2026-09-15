@@ -26,13 +26,11 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 		return nil, fmt.Errorf("call %q: %w", export, err)
 	}
 	defer in.endInvocation()
-	state := in.ensurePluginState()
-	state.invokeMu.Lock()
-	state.invocationID = newInvocationID()
-	defer func() {
-		state.invocationID = 0
-		state.invokeMu.Unlock()
-	}()
+	state, err := in.lockInvocationContext(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer state.unlockInvocation()
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
 			return nil, err

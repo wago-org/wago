@@ -1,34 +1,32 @@
 {
-  "_comment": "Cross-runtime startup-latency sweep config. Each runtime: how to invoke it on a module ({wasm} is substituted) and its engine `tag` for the website. `bin` is the default binary; override any path with the UPPERCASE env var in `env` (e.g. WAGO_BIN=/path/to/wago). Cold-cache flags matter \u2014 see skills/startup-latency-bench. A runtime whose binary isn't found is skipped with a warning (the sweep still writes the rest).",
+  "_comment": "Cross-runtime end-to-end latency sweep config. Every listed runtime is required. Override a binary with its named environment variable (for example, WAGO_BIN=/path/to/wago).",
   "order": [
-    "railshot",
+    "wago",
     "dragline",
     "wazero",
     "wasmtime",
-    "wasmer",
     "v8",
     "wasm3",
     "wasmi",
-    "iwasm",
     "wavm"
   ],
   "runtimes": {
-    "railshot": {
-      "label": "wago single-pass",
-      "tag": "wago",
+    "wago": {
+      "tag": "single-pass",
       "bin": "wago",
       "env": "WAGO_BIN",
+      "versionLine": 2,
       "args": [
         "run",
-        "--railshot",
         "{wasm}"
       ]
     },
     "dragline": {
-      "label": "wago multi-pass",
-      "tag": "wago",
+      "label": "wago",
+      "tag": "multi-pass",
       "bin": "wago",
       "env": "WAGO_BIN",
+      "versionLine": 2,
       "args": [
         "run",
         "--dragline",
@@ -36,16 +34,19 @@
       ]
     },
     "wazero": {
-      "tag": "JIT",
+      "tag": "compiler",
       "bin": "wazero",
       "env": "WAZERO_BIN",
+      "versionArgs": [
+        "version"
+      ],
       "args": [
         "run",
         "{wasm}"
       ]
     },
     "wasmtime": {
-      "tag": "JIT",
+      "tag": "cranelift",
       "bin": "wasmtime",
       "env": "WASMTIME_BIN",
       "args": [
@@ -55,18 +56,8 @@
         "{wasm}"
       ]
     },
-    "wasmer": {
-      "tag": "JIT",
-      "bin": "wasmer",
-      "env": "WASMER_BIN",
-      "args": [
-        "run",
-        "--disable-cache",
-        "{wasm}"
-      ]
-    },
     "v8": {
-      "tag": "JIT",
+      "tag": "turboshaft",
       "bin": "v8",
       "env": "V8_BIN",
       "args": [
@@ -76,7 +67,7 @@
       ]
     },
     "wasm3": {
-      "tag": "interp",
+      "tag": "interpreter",
       "bin": "wasm3",
       "env": "WASM3_BIN",
       "args": [
@@ -84,25 +75,20 @@
       ]
     },
     "wasmi": {
-      "tag": "interp",
+      "tag": "interpreter",
       "bin": "wasmi_cli",
       "env": "WASMI_BIN",
       "args": [
         "{wasm}"
       ]
     },
-    "iwasm": {
-      "tag": "interp",
-      "bin": "iwasm",
-      "env": "IWASM_BIN",
-      "args": [
-        "{wasm}"
-      ]
-    },
     "wavm": {
-      "tag": "LLVM",
+      "tag": "llvm",
       "bin": "wavm",
       "env": "WAVM_BIN",
+      "versionArgs": [
+        "version"
+      ],
       "args": [
         "run",
         "--abi=bare",
@@ -113,16 +99,16 @@
   },
   "workloads": [
     {
-      "id": "json-as",
-      "label": "json-as",
-      "twin": "json-as.wasm",
-      "desc": "AssemblyScript JSON serialize + parse (SWAR)"
-    },
-    {
       "id": "nbody",
       "label": "nbody",
       "twin": "nbody.wasm",
       "desc": "Benchmarks-Game N-body leapfrog integrator (f64)"
+    },
+    {
+      "id": "fib",
+      "label": "fib",
+      "twin": "fib.wasm",
+      "desc": "recursive Fibonacci"
     },
     {
       "id": "spectralnorm",

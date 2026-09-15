@@ -40,7 +40,7 @@ var stagedMultiMemorySpecFiles = []stagedSpecFile{
 }
 
 const (
-	stagedMultiMemoryDeltaPath = "tests/spec-v3-staged-multi-memory.json"
+	stagedMultiMemoryDeltaPath = "tests/conformance/baselines/spec-v3-staged-multi-memory.json"
 	stagedRelease3Revision     = "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
 )
 

@@ -237,9 +237,10 @@ func TestBranchTableFrameEpochDeduplicatesWithoutAllocation(t *testing.T) {
 }
 
 func TestBranchTableFrameEpochFitsValidatorPadding(t *testing.T) {
-	wantValidator, wantFrame := uintptr(656), uintptr(80)
+	// The embedded byte reader also holds the shared decode-budget pointer.
+	wantValidator, wantFrame := uintptr(656)+unsafe.Sizeof((*decodeBudget)(nil)), uintptr(80)
 	if unsafe.Sizeof(uintptr(0)) == 4 {
-		wantValidator, wantFrame = 412, 44
+		wantValidator, wantFrame = 412+unsafe.Sizeof((*decodeBudget)(nil)), 44
 	}
 	if got := unsafe.Sizeof(funcValidator{}); got != wantValidator {
 		t.Fatalf("funcValidator size = %d, want %d", got, wantValidator)

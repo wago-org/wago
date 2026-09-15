@@ -1,8 +1,7 @@
 // Example 03: host imports.
 //
-// A guest can call back into the host. Host functions use the single, portable
-// stack form wago.HostFunc — it reads params and writes results as raw slots and
-// binds identically on standard Go and TinyGo (no reflection). Run:
+// A guest can call back into the host. Ordinary Go functions bind directly and
+// identically on standard Go and TinyGo (no reflection). Run:
 //
 //	go run ./examples/03-host-import
 package main
@@ -21,14 +20,9 @@ func main() {
 		panic(err)
 	}
 
-	// A HostFunc reads its wasm params from params[] and writes results into
-	// results[]. Here: mul(a, b) = a * b.
-	mul := wago.HostFunc(func(_ wago.HostModule, params, results []uint64) {
-		a, b := wago.AsI32(params[0]), wago.AsI32(params[1])
-		results[0] = wago.I32(a * b)
-	})
-
-	inst, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: wago.Imports{"host.mul": mul}})
+	inst, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: wago.Imports{
+		"host.mul": func(a, b int32) int32 { return a * b },
+	}})
 	if err != nil {
 		panic(err)
 	}

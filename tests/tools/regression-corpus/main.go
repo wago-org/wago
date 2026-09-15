@@ -21,7 +21,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/wago-org/wago/tests/regressioncorpus"
+	"github.com/wago-org/wago/tests/support/regressioncorpus"
 )
 
 type provenance = regressioncorpus.Provenance
@@ -43,7 +43,7 @@ func main() {
 }
 
 func run(repoRoot, upstreamRoot, wast2json string, fetch, write bool) error {
-	metadataRoot := filepath.Join(repoRoot, "tests", "regressions", "runtime")
+	metadataRoot := filepath.Join(repoRoot, "tests", "corpus", "regressions", "runtime")
 	provPath := filepath.Join(metadataRoot, "PROVENANCE.json")
 	manifestPath := filepath.Join(metadataRoot, "MANIFEST.tsv")
 	inventoryPath := filepath.Join(metadataRoot, "UPSTREAM_INVENTORY.tsv")

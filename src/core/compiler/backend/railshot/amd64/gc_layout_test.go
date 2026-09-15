@@ -11,7 +11,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func gcLayoutTestModule(groupN, fieldN int) *wasm.Module {
@@ -109,8 +109,9 @@ func TestGCLayoutMetadataMatchesLegacyDerivation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	withMetadata := &fn{m: m, gcTypeLayouts: metadata.Layouts}
-	withoutMetadata := &fn{m: m}
+	policy := currentCodegenPolicy()
+	withMetadata := &fn{m: m, gcTypeLayouts: metadata.Layouts, policy: policy}
+	withoutMetadata := &fn{m: m, policy: policy}
 	for typeIndex := uint32(0); typeIndex < 8; typeIndex++ {
 		for fieldIndex := uint32(0); fieldIndex < 12; fieldIndex++ {
 			gotOffset, gotScalar, gotFinal, gotOK := withMetadata.directGCStructLayout(typeIndex, fieldIndex)

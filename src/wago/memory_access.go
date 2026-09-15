@@ -11,7 +11,7 @@ import (
 // check, which is faster than reaching for encoding/binary on
 // Memory().UnsafeBytes() —
 // and it closes the host-side gap under TinyGo, whose LLVM backend optimizes
-// encoding/binary's per-byte assembly less aggressively (see docs/tinygo.md;
+// encoding/binary's per-byte assembly less aggressively (about
 // ~0.43 ns/op vs ~1.6 ns/op for the binary idiom, at parity with the standard
 // toolchain). wago targets little-endian amd64, so a native load already yields
 // little-endian byte order.
@@ -245,11 +245,12 @@ func (in *Instance) Read(offset, length uint32) ([]byte, bool) {
 	}
 	defer in.endInvocation()
 	mem := in.mem()
-	if uint64(offset)+uint64(length) > uint64(len(mem)) {
+	end := uint64(offset) + uint64(length)
+	if end > uint64(len(mem)) {
 		return nil, false
 	}
 	out := make([]byte, length)
-	copy(out, mem[offset:offset+length])
+	copy(out, mem[offset:end])
 	return out, true
 }
 

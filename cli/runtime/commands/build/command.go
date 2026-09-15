@@ -88,6 +88,22 @@ func (cmd implementation) Run(c *command.Ctx) {
 		automation.PrintPlan("build artifact", plan)
 		return
 	}
+	if filepath.Clean(output) == filepath.Clean(input) {
+		ui.Usage("build: output path must differ from input")
+	}
+	// Stat follows links and compares identities across relative/absolute names.
+	// A missing output is normal; inspect the input only for existing outputs.
+	if outputInfo, err := os.Stat(output); err == nil {
+		inputInfo, err := os.Stat(input)
+		if err != nil {
+			ui.Fatal("build: %v", err)
+		}
+		if os.SameFile(inputInfo, outputInfo) {
+			ui.Usage("build: output path must differ from input")
+		}
+	} else if !os.IsNotExist(err) {
+		ui.Fatal("build: %v", err)
+	}
 	source, err := os.ReadFile(input)
 	if err != nil {
 		ui.Fatal("build: %v", err)
@@ -105,9 +121,6 @@ func (cmd implementation) Run(c *command.Ctx) {
 	artifact, err := module.Compiled().MarshalBinary()
 	if err != nil {
 		ui.Fatal("build: %v", err)
-	}
-	if filepath.Clean(output) == filepath.Clean(input) {
-		ui.Usage("build: output path must differ from input")
 	}
 	if err := os.WriteFile(output, artifact, 0o644); err != nil {
 		ui.Fatal("build: %v", err)

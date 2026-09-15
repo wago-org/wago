@@ -3,7 +3,7 @@
 package amd64
 
 // CodegenStats is the railshot "explain" dashboard: per-function counters that
-// make every later optimization prove itself (docs/no-ir-plan.md P1). Collection
+// make every later optimization prove itself. Collection
 // is opt-in — a *CodegenStats is threaded through the fn only when the caller asks
 // (CompileOptions.Stats) or WAGO_EXPLAIN=1 is set. When off, the field is nil and
 // every counter method is a no-op (nil-receiver methods), so the hot compile path
@@ -17,6 +17,7 @@ package amd64
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"unsafe"
@@ -41,6 +42,25 @@ var (
 	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check — the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
+	// preparedDirectEntryEnabled admits compiler-proved register-ABI entries.
+	// preparedBoundedEntryEnabled further marks the loop-free subset which may
+	// retain its P across the tightly bounded native activation.
+	preparedDirectEntryEnabled  = os.Getenv("WAGO_AMD64_NO_PREPARED_DIRECT_ENTRY") != "1"
+	preparedBoundedEntryEnabled = os.Getenv("WAGO_AMD64_NO_PREPARED_BOUNDED_ENTRY") != "1"
+	// wideLoopIntConstEnabled keeps repeatedly materialized non-imm32 i64 loop
+	// constants in otherwise-idle registers. It defaults on only for the
+	// Linux/AMD64 target whose native corpus qualifies its fixed-register
+	// interactions; explicit optimization policy can still enable it elsewhere.
+	// WAGO_AMD64_NO_WIDE_LOOP_INT_CONST=1 is the bounded rollback switch.
+	wideLoopIntConstEnabled = wideLoopIntConstPlatformDefault(runtime.GOOS) && os.Getenv("WAGO_AMD64_NO_WIDE_LOOP_INT_CONST") != "1"
+	// memSizeRegionalLeaseEnabled lets a large straight-line, call-free regional
+	// allocator borrow R15. Bounds checks read the immutable current byte size
+	// directly, and the register-ABI return reloads R15 for its caller.
+	memSizeRegionalLeaseEnabled      = os.Getenv("WAGO_AMD64_NO_MEMSIZE_REGIONAL_LEASE") != "1"
+	moduleGlobalRegionalLeaseEnabled = os.Getenv("WAGO_AMD64_NO_MODULE_GLOBAL_REGIONAL_LEASE") != "1"
+	// compactLoopAlign32Enabled gives small loop functions a complete 32-byte
+	// fetch block. Larger functions retain the lower-padding mixed policy.
+	compactLoopAlign32Enabled = os.Getenv("WAGO_AMD64_NO_COMPACT_LOOP_ALIGN32") != "1"
 	// compactI32FrameEnabled packs i32 locals in admitted kernels.
 	compactI32FrameEnabled = os.Getenv("WAGO_NO_COMPACT_I32_FRAME") != "1"
 	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings on
@@ -60,7 +80,8 @@ var (
 	// commuteSelfUpdateEnabled makes a non-fixed destination the accumulator for
 	// commutative x=f(y) op x expressions instead of spilling x first.
 	// WAGO_AMD64_NO_COMMUTE_SELF_UPDATE=1 is the A/B oracle.
-	commuteSelfUpdateEnabled = os.Getenv("WAGO_AMD64_NO_COMMUTE_SELF_UPDATE") != "1"
+	commuteSelfUpdateEnabled      = os.Getenv("WAGO_AMD64_NO_COMMUTE_SELF_UPDATE") != "1"
+	commuteFixedSelfUpdateEnabled = os.Getenv("WAGO_AMD64_NO_COMMUTE_FIXED_SELF_UPDATE") != "1"
 	// i64Mask32Enabled lowers i64.and with any low-32-bit mask to a 32-bit AND whose
 	// destination write implicitly zero-extends. WAGO_AMD64_NO_I64_MASK32=1 is the
 	// A/B oracle.
@@ -99,6 +120,8 @@ var (
 	// WAGO_NO_COMMUTE_FMEM=1 is the A/B oracle.
 	commuteFMemEnabled = os.Getenv("WAGO_NO_COMMUTE_FMEM") != "1"
 )
+
+func wideLoopIntConstPlatformDefault(goos string) bool { return goos == "linux" }
 
 const (
 	callKindInline         = shared.CallInline
@@ -177,6 +200,7 @@ type CodegenStats struct {
 	PinnedLocals       int // integer/float locals given a dedicated register
 	PinnedGlobalsValue int // hot mutable-int globals value-pinned in this function
 	PinRelinquishments int // pinned locals temporarily homed at exact exhaustion points
+	Residency          shared.ResidencyStats
 
 	CompileNanos     uint64
 	FunctionAttempts uint64
@@ -635,6 +659,17 @@ func (s *CodegenStats) report() string {
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d relinquish=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue, s.PinRelinquishments)
+	if r := s.Residency; r.Active() {
+		fmt.Fprintf(&b, "    residency: events=%d overflows=%d candidates=%d activations=%d loads=%d misses=%d evictions=%d writebacks=%d final-transfers=%d max-active=%d\n",
+			r.Events, r.EventOverflows, r.Candidates, r.Activations, r.ActivationLoads, r.PressureMisses,
+			r.Evictions, r.DirtyWritebacks, r.FinalTransfers, r.MaxActive)
+		if p := r.Shadow; p.Active() {
+			fmt.Fprintf(&b, "    residency-shadow: candidates=%d versions=%d segments=%d profitable=%d reads=%d defines=%d loads-avoided=%d sync-debt=%d pressure-debt=%d max-live=%d admissions=%d evictions=%d reloads=%d writebacks=%d fail-soft=%d\n",
+				p.Candidates, p.Versions, p.Segments, p.Profitable, p.Reads, p.Defines,
+				p.LoadsAvoided, p.SyncDebt, p.PressureDebt, p.MaxLive, p.Admissions,
+				p.Evictions, p.Reloads, p.Writebacks, p.FailSoft)
+		}
+	}
 	if s.InlineSiteBytes != 0 {
 		fmt.Fprintf(&b, "    inline-site-bytes: %d\n", s.InlineSiteBytes)
 	}

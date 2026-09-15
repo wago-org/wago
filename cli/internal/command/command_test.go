@@ -58,6 +58,20 @@ func TestParseAndHelpRecognition(t *testing.T) {
 	}
 }
 
+func TestParsePreservesRepeatedStringFlagsInOrder(t *testing.T) {
+	cmd := &Cmd{Flags: []Flag{{Name: "invoke", Short: "e", Arg: "<name>"}}}
+	ctx, err := cmd.Parse("wago run", []string{"--invoke=setup", "-e", "add"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(ctx.Strings("invoke"), ","); got != "setup,add" {
+		t.Fatalf("invoke values = %q", got)
+	}
+	if got := ctx.Str("invoke"); got != "add" {
+		t.Fatalf("last invoke = %q", got)
+	}
+}
+
 func TestPassThroughRecognizesInterspersedCommandFlags(t *testing.T) {
 	cmd := &Cmd{
 		Name:        "run",

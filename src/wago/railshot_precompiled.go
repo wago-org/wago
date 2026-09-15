@@ -24,6 +24,7 @@ type railshotCompileOptions struct {
 	OptimizationSnapshot   railshotOptimizationSnapshot
 	OptimizationDeltas     map[string]bool
 	Workers                int
+	DeferCodeMapping       bool
 	ElideBoundsChecks      bool
 	NoBoundsFacts          bool
 	ImportBindings         []railshotImportBinding

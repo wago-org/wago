@@ -72,3 +72,35 @@ func TestPluginBuildTargetsActiveRuntime(t *testing.T) {
 		t.Fatalf("plugin build dir = %q, want suffix %q", dir, wantSuffix)
 	}
 }
+
+func TestPluginOperationKeepsCapturedRuntime(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+	t.Setenv("WAGO_RUNTIME_BUILD", "")
+	t.Setenv("WAGO_RUNTIME_PROFILE", "")
+	dirs := wagopaths.DirsFor(managerVersion())
+	if err := managerversion.SetActiveInstallation(dirs, "runtime-a", wagopaths.ProfileMinimal, wagopaths.BuildTiny); err != nil {
+		t.Fatal(err)
+	}
+	selection := capturePluginRuntime()
+	if err := managerversion.SetActiveInstallation(dirs, "runtime-b", wagopaths.ProfileStandard, wagopaths.BuildNormal); err != nil {
+		t.Fatal(err)
+	}
+	// Include environment overrides: both state sources belong to the operation.
+	t.Setenv("WAGO_RUNTIME_BUILD", "normal")
+	for _, global := range []bool{false, true} {
+		dir, err := selection.buildDirFor(global)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := filepath.Join("runtime-a", "standard", "tiny")
+		if !strings.Contains(dir, want) {
+			t.Fatalf("captured build dir %q does not contain %q", dir, want)
+		}
+	}
+	if config := selection.config(); config.RuntimeVersion != "runtime-a" || config.Profile != "standard" {
+		t.Fatalf("build config changed during operation: %+v", config)
+	}
+	if next := capturePluginRuntime(); next.version != "runtime-b" || next.build != "normal" {
+		t.Fatalf("next operation did not see new state: %+v", next)
+	}
+}

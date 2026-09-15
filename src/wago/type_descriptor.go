@@ -353,18 +353,6 @@ func valTypesFromDescriptors(ts []ValueTypeDescriptor, types []DefinedTypeDescri
 	return out, nil
 }
 
-func equalValTypes(a, b []ValType) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func exactValueType(legacy ValType, has bool, index uint32, pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) (ValueTypeDescriptor, error) {
 	if !has {
 		v, ok := valueTypeDescriptorFromValType(legacy)
@@ -639,6 +627,45 @@ func exactFuncSignatureView(sig FuncSig, types []DefinedTypeDescriptor) (params,
 	return d.Params, d.Results, nil
 }
 
+// validateFuncSignature checks the exact-to-ABI contract without constructing
+// temporary descriptor or ABI slices. Public signature accessors still clone.
+func validateFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) error {
+	if !sig.HasTypeIndex {
+		for _, values := range [][]ValType{sig.Params, sig.Results} {
+			for i, value := range values {
+				if _, ok := valueTypeDescriptorFromValType(value); !ok {
+					return fmt.Errorf("value %d: unsupported ABI value type %s", i, value)
+				}
+			}
+		}
+		return nil
+	}
+	params, results, err := exactFuncSignatureView(sig, types)
+	if err != nil {
+		return err
+	}
+	if !descriptorABIEquals(params, sig.Params, types) {
+		return fmt.Errorf("structural params do not match ABI params")
+	}
+	if !descriptorABIEquals(results, sig.Results, types) {
+		return fmt.Errorf("structural results do not match ABI results")
+	}
+	return nil
+}
+
+func descriptorABIEquals(exact []ValueTypeDescriptor, legacy []ValType, types []DefinedTypeDescriptor) bool {
+	if len(exact) != len(legacy) {
+		return false
+	}
+	for i, typ := range exact {
+		abi, ok := typ.ABIType(types)
+		if !ok || abi != legacy[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func exactFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) (params, results []ValueTypeDescriptor, err error) {
 	if !sig.HasTypeIndex {
 		params, err = valueTypeDescriptorsFromValTypes(sig.Params)
@@ -648,31 +675,37 @@ func exactFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) (params, res
 		results, err = valueTypeDescriptorsFromValTypes(sig.Results)
 		return params, results, err
 	}
-	params, results, err = exactFuncSignatureView(sig, types)
-	if err != nil {
+	if err := validateFuncSignature(sig, types); err != nil {
 		return nil, nil, err
 	}
-	legacyParams, e := valTypesFromDescriptors(params, types)
-	if e != nil || !equalValTypes(legacyParams, sig.Params) {
-		return nil, nil, fmt.Errorf("structural params do not match ABI params")
-	}
-	legacyResults, e := valTypesFromDescriptors(results, types)
-	if e != nil || !equalValTypes(legacyResults, sig.Results) {
-		return nil, nil, fmt.Errorf("structural results do not match ABI results")
-	}
+	params, results, _ = exactFuncSignatureView(sig, types)
 	return append([]ValueTypeDescriptor(nil), params...), append([]ValueTypeDescriptor(nil), results...), nil
 }
 
 func cloneDefinedTypeDescriptors(in []DefinedTypeDescriptor) []DefinedTypeDescriptor {
+	out, _ := cloneDefinedTypeDescriptorsAndValues(in, nil)
+	return out
+}
+
+func cloneDefinedTypeDescriptorsAndValues(in []DefinedTypeDescriptor, trailingValues []ValueTypeDescriptor) ([]DefinedTypeDescriptor, []ValueTypeDescriptor) {
+	var superCount, valueTypeCount, fieldCount int
+	for i := range in {
+		superCount += len(in[i].Supers)
+		valueTypeCount += len(in[i].Params) + len(in[i].Results)
+		fieldCount += len(in[i].Fields)
+	}
+	supers := packedCloneStorage[uint32]{values: make([]uint32, superCount)}
+	valueTypes := packedCloneStorage[ValueTypeDescriptor]{values: make([]ValueTypeDescriptor, valueTypeCount+len(trailingValues))}
+	fields := packedCloneStorage[FieldTypeDescriptor]{values: make([]FieldTypeDescriptor, fieldCount)}
 	out := make([]DefinedTypeDescriptor, len(in))
 	for i := range in {
 		out[i] = in[i]
-		out[i].Supers = append([]uint32(nil), in[i].Supers...)
-		out[i].Params = append([]ValueTypeDescriptor(nil), in[i].Params...)
-		out[i].Results = append([]ValueTypeDescriptor(nil), in[i].Results...)
-		out[i].Fields = append([]FieldTypeDescriptor(nil), in[i].Fields...)
+		out[i].Supers = supers.clone(in[i].Supers)
+		out[i].Params = valueTypes.clone(in[i].Params)
+		out[i].Results = valueTypes.clone(in[i].Results)
+		out[i].Fields = fields.clone(in[i].Fields)
 	}
-	return out
+	return out, valueTypes.clone(trailingValues)
 }
 
 func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup int, descriptorGroup uint32, params, results []ValueTypeDescriptor) (DefinedTypeDescriptor, error) {

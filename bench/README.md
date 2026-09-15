@@ -1,217 +1,39 @@
-# wago benchmarks
+# Benchmarks
 
-Kept in a **separate Go module** so the root package stays dependency-free. Two
-complementary suites live here:
+The benchmark implementation lives in `bench/suite`; the workload definitions
+and artifacts live in the repository-level `corpus` directory. The benchmark
+module is deliberately separate from the runtime module so comparison-engine
+dependencies do not become runtime dependencies.
 
-1. **Comparison** (`bench_test.go`) — `wago` versus
-   [wazero](https://github.com/tetratelabs/wazero) v1.9 on a fixed set of
-   programs. Charted by `./chart`.
-2. **Stage suite** (`suite_test.go`) — wago-only, every pipeline **stage** across
-   a curated **corpus** of modules (`corpus/`). This is what feeds the
-   **perf-over-time** history. Published by `./cmd/benchpub`.
+Run benchmarks from the repository root through `just`:
 
-## Run
-
-```bash
-go test -bench . -benchmem                  # everything, raw numbers
-go test -bench '^BenchmarkCompile$' -benchmem   # one stage across the corpus
-go test -bench 'Decode|Exec' -benchmem      # a couple of stages
-go test -bench '^BenchmarkValidateWorkers' -benchmem  # validation p1/p2/p4/p8 matrix
-go test -bench '^BenchmarkCompileFullWorkers' -benchmem # public pipeline worker matrix
-go test -bench . -benchmem -wago.bench.isa  # include generated ISA micro-suite
-WAGO_BOUNDS=signals go test -tags wago_guardpage -bench '^BenchmarkExec/memory_tree\.run$' -benchmem
-make bench BENCHTIME=1x BENCH_ISA=1         # all corpora once; uses guard-page only on supported hosts
-
-go run ./chart                              # wago-vs-wazero charts (gitignored)
-go run ./cmd/benchpub -out out              # stage suite -> JSON + trend charts
-go run ./cmd/benchpub -isa -out out         # include generated ISA micro-suite
-go run ./cmd/validatestats -runs 30         # repeated validate wall-time stats
-../scripts/update-website-bench.mjs         # refresh ../website performance copy
+```sh
+just bench                              # quick profile, all benchmark groups
+just bench run algorithms exec          # representative raw algorithms
+just bench run tag:polybench exec
+just bench run tag:compute exec
+just bench run tiny,fib_rec compile
+just bench run all                      # every admitted workload
+just bench check                        # one iteration, wiring only
 ```
 
-## Stage suite + corpus
+`CORPUS` accepts `quick`, `algorithms`, `all`, `tag:<tag>`, or comma-separated benchmark IDs.
+`BENCH` accepts `all`, `pipeline`, `compile`, `exec`, or a Go benchmark regex.
+The remaining positional arguments set count, duration, and output; environment
+variables remain available for automation. `just bench check` is a
+correctness/wiring smoke test; its numbers must not be published as performance
+results.
 
-`suite_test.go` benchmarks each module in `corpus/` through every stage, so
-results read as `Stage/<module>`:
+Every executable benchmark proves its catalog oracle before the timer starts.
+Core exports compare exact return values, semantic workloads use their published
+return/memory/vector oracles, and command workloads use self-checking exit status
+or exact stdout/stderr hashes. A module that merely avoids trapping is not an
+executable benchmark.
 
-| Stage | Times |
-|---|---|
-| `Decode` | wasm bytes → byte-backed `*Module` (function locals + raw BodyBytes, no production function-body AST) |
-| `Validate` | type-check a decoded module serially |
-| `ValidateWorkers` | type-check function bodies at forced p1/p2/p4/p8 worker counts |
-| `Compile` | native codegen for a decoded+validated module |
-| `CompileFull` | end-to-end `wago.Compile` (decode+validate+compile) |
-| `Instantiate` | instance setup for a compiled module |
-| `Exec` | host→wasm call of each module's manifest entry point(s) |
+There are no compile-only corpus entries. Compilation remains a measured stage
+for every executable workload, but admission requires the same artifact to run
+end-to-end and pass its oracle.
 
-The corpus (see `corpus/manifest.json`) spans three tiers, all with `.wasm`
-checked in so the suite needs no toolchain at run time:
-
-- **synthetic micros** — one codegen aspect each (micro / loop / calls /
-  calls+memory / alu / fp / memory / globals / control / scale). Hand-written
-  `.wat` in `corpus/src/` (plus the `many_funcs` generator); regenerate with
-  `corpus/build.sh` (needs `wat2wasm`). The `calls+memory` fixture (`memory_tree`)
-  is a recursive call tree that churns linear memory at every node, to expose
-  regressions that only appear when internal calls and load/store traffic combine.
-- **`compute` kernels** — real algorithms exercising several aspects together.
-  Two sub-sets, both run end-to-end by the backend:
-  - hand-written `.wat` via `corpus/build.sh`: `linked_list` (dependent-load
-    pointer chase), `mandelbrot` (f64 escape-time), `sieve` (memory + strided
-    marking + branches).
-  - **Rust-compiled** via `corpus/build-rust.sh`: the Computer Language
-    Benchmarks Game classics `nbody` (leapfrog N-body, f64 mul/add/div/sqrt),
-    `spectralnorm` (power iteration, f64 + integer-div inner loop) and `fannkuch`
-    (permutation + pancake-flip, pure branch/array churn), plus `matmul` (dense
-    f64 multiply-add + strided memory), `quicksort` (recursive branchy partition +
-    swaps), `crc32` and a standards-correct `sha256` (integer hash kernels), and
-    `raytrace` — a recursive Whitted ray tracer (four spheres + a checker plane,
-    depth-4 mirror reflections), the corpus's heaviest sustained-f64 program and
-    its "large real program" on the compilable exec path. Each source in
-    `corpus/rust/*.rs` is a self-contained `#![no_std]` cdylib: no imports, no heap
-    (fixed stack/static arrays), one `i32`-count export returning an `i32` DCE
-    sink, deterministic across calls. Regenerate with `corpus/build-rust.sh` (needs
-    `rustc` + `rustup target add wasm32-unknown-unknown`). Their results are pinned
-    as golden constants in `corpus_differential_test.go`, which also checks the
-    explicit and guard-page bounds modes agree.
-- **`real` / `real-large` programs** — third-party code. The `real` tier is the
-  AssemblyScript libraries `json-as` (JSON serialize/deserialize), `blake-as`
-  (BLAKE3 hash) and `utf-as` (UTF-8↔UTF-16 transcode): host-driven bench builds
-  (`assembly/wago-bench.ts` in each library — an i32-count loop returning an i32
-  DCE sink), regenerated with `corpus/build-as.sh` (needs the AS libraries under
-  `$AS_ROOT` + `asc`). wago has no start section, so they set the manifest's `init`
-  to `_initialize` (the host calls it once after instantiate) and any host import
-  (`env.abort`) is satisfied with a no-op stub.
-
-  Their SIMD twins (`json-as-simd`, `blake-as-simd`, and `utf-as-simd`) are
-  generated from checked-in `corpus/as/` entrypoints. Rebuild just those
-  reproducibly with `AS_ROOT=... SIMD_ONLY=1 sh corpus/build-as.sh`.
-
-  The `real-large` tier is whole real-world programs — the `wasm3` interpreter,
-  the `lua` (Lua 5.4) interpreter and the `sqlite3` (SQLite 3.46) engine committed
-  directly, plus the multi-megabyte `ruby` (Ruby 3.3, ~16 MiB, ~17k functions) and
-  `esbuild` (Go→wasm bundler, ~12 MiB) fetched into `corpus/vendor/` by
-  `corpus/fetch.sh` (gitignored; referenced by manifest `path` and skipped when
-  absent). All carry host imports the backend can't compile yet, so they run
-  `Decode`/`Validate` only — the tier that shows where wago's byte-backed
-  decode/validate path spends time on very large inputs.
-
-- **`isa` micro-suite** — opt-in via `-wago.bench.isa`, `benchpub -isa`, or
-  `make bench BENCH_ISA=1`. It has one exported function per *individual opcode* (i32/i64
-  arithmetic·logic·shift·div·bitcount, f32/f64 arith·min/max·sqrt·rounding, memory
-  load/store sequential+strided, bulk-memory forward/overlapping-backward copy
-  and fill at 64 B/256 B/4 KiB, control br_if/if_else/br_table/select, direct +
-  indirect calls, local/global get·set, width/type conversions). Each isolates its
-  opcode in a **coupled dual-accumulator dependent chain** (`a=a OP b; b=b OP a`)
-  so there is no ILP, CSE, constant fold, or DCE to hide latency — the raw ns/op is
-  directly comparable between opcodes and between engines. This is the tier for
-  finding base-level per-primitive codegen gaps. Generated (`.wat` + a standalone
-  `corpus/isa-manifest.json`) by `corpus/gen`; regenerate with `corpus/build.sh`.
-  Compare a family across engines with e.g.
-  `go test -run '^$' -bench 'Exec/isa_f64' -count 6 .` (wago) next to the matching
-  `WazeroExec/isa_f64` rows. The bulk-memory functions repeat each operation 256
-  times per host call so engine call overhead is amortized consistently.
-
-  The shared AMD64/ARM64 SIMD set adds vector bitwise operations; integer
-  arithmetic, shifts, comparisons, saturation, narrowing, widening, extmul,
-  dot products, and reductions at every lane width; packed f32/f64 arithmetic,
-  comparisons, rounding, min/max, and integer conversions. Generate a complete
-  median comparison table from a repeated run with:
-
-  ```bash
-  go test -run '^$' -bench '^(BenchmarkExec|BenchmarkWazeroExec)/isa_' \
-    -wago.bench.isa -benchmem -benchtime=100ms -count=3 > isa.txt
-  go run ./cmd/isatable -input isa.txt -out isa.md -cpu "$(uname -m)"
-  ```
-
-A module's unsupported stages (via a `stages` list, or because the backend can't
-compile it) are simply not benchmarked. Optional extra binaries can still be
-dropped in via manifest `path` entries (skipped if absent; see `corpus/fetch.sh`).
-
-## Cross-engine comparison
-
-`compare_test.go` runs **wazero** (`CompileModule` + exec) over the same corpus,
-and `benchpub -warp <harness>` shells out to **WARP**'s native harness for both
-compile and exec. Build `vb_bench` from an independent
-[WARP checkout](https://github.com/wago-org/warp), apply the same benchmark
-configuration used for the published comparison, and pass its path explicitly.
-Two extra charts are produced:
-
-- `compile-engines.svg` — compile time per module, wago vs wazero vs WARP. Where
-  the backend can't compile a module yet, wago's **validate** time is shown
-  (dimmed) so the big binaries still appear.
-- `exec-engines.svg` — execution time per export, wago vs wazero vs WARP, on the
-  real workloads (same manifest args for all three engines).
-
-wazero compiles everything in the corpus, so the comparison shows
-both where wago's single-pass compiler wins (small modules) and where its
-byte-backed decode/validate path still dominates time on very large inputs.
-
-## Perf over time
-
-For focused validator work, `cmd/validatestats` measures repeated wall-clock
-runs and reports average, median, and max duration for the validator path:
-
-```bash
-cd bench
-go run ./cmd/validatestats -runs 30 -warmup 5         # full corpus
-go run ./cmd/validatestats -file ../tests/fixtures/wasm/fib.wasm
-```
-
-The measured path is the default serial `wago validate <file>` flow:
-byte-backed `DecodeModule` + `ValidateModule`. Use `BenchmarkValidateWorkers` for
-parallel validation measurements. Neither path builds or verifies IR.
-
-`cmd/benchpub` runs the stage suite, records a **versioned** JSON run
-(`git describe` + commit + date + cpu), appends it to a rolling `history.json`,
-and renders per-stage **latency** (this run) and per-stage **trend** (across
-versions). When real-world modules are enabled in the manifest (`compute` /
-`real` / `real-large`), it also renders a dedicated **real-world** chart
-(`realworld.svg`) comparing them side by side — one group per module (ordered by
-wasm size), one bar per pipeline stage it reaches, so the big binaries that only
-decode/validate read as gaps. With the default synthetic-only manifest that chart
-is simply not produced. `scripts/publish-bench.sh` does this against the
-[`wago-org/docs`](https://github.com/wago-org/docs) repo so the history
-accumulates in `docs/bench/`:
-
-```bash
-./scripts/publish-bench.sh      # run + append history + push charts (stable machine)
-```
-
-`make bench-website` updates the sibling `../website` checkout's static
-performance section from the latest `bench/.bench-run.txt`, runs the website
-stats sync, and rebuilds its `dist/` directory. `make bench-publish` does the
-same update automatically when `../website` exists.
-
-When the website already has architecture tabs, a single `bench/out/bench.json`
-refreshes only the matching `goarch` panel and preserves measurements from other
-machines. Set `WAGO_BENCH_JSON_AMD64` and `WAGO_BENCH_JSON_ARM64` to rebuild both
-panels from JSON snapshots. Rows without both Wago and wazero measurements are
-omitted instead of publishing a one-sided comparison.
-
-## What's measured
-
-| Benchmark | What it times |
-|---|---|
-| `Compile` | decode + validate + compile a module |
-| `Instantiate` | set up an executable instance |
-| `ExecCallOverhead` | host→wasm round trip (tiny function) |
-| `ExecFibLoop` | iterative `fib(30)` |
-| `ExecFibRec` | recursive `fib` (internal-call heavy) |
-| `ExecGlobalGet` / `ExecGlobalSet` | exported-function access to a mutable global |
-| `ExecLocalGet` / `ExecMemoryLoad` | context for globals versus local and memory access |
-
-## Charts
-
-`go run ./chart` renders SVG bar charts into `bench/charts/` (gitignored) — a
-pure-Go, zero-dependency take on json-as's hand-built SVG charts (no Chart.js /
-browser):
-
-- `speedup.svg` — speedup vs wazero per benchmark (log scale; green = wago
-  faster, red = slower)
-- `latency.svg` — ns/op, wago vs wazero (grouped, log scale)
-
-The published copies live in the [`wago-org/docs`](https://github.com/wago-org/docs)
-repo under `charts/` and are embedded in the root README via raw URLs. Run
-`./scripts/publish-charts.sh` (from the repo root) to regenerate on a stable
-machine and push them there — benchmarks are never charted from CI, where shared
-runners make the numbers noisy.
+The default benchmark writes `bench/.bench-run.txt`. `just bench render`,
+`just bench website`, and `just bench publish` consume that capture without
+silently changing the selected corpus.

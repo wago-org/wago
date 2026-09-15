@@ -27,7 +27,7 @@ import (
 // suiteRegex selects the wago stage suite plus the cross-engine wazero
 // benchmarks (compare_test.go). The fixed wago-vs-wazero set in bench_test.go is
 // excluded — these fan out over the same corpus as the wago stages.
-const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompileFull|BenchmarkDraglineCompileFull|BenchmarkInstantiate|BenchmarkDraglineInstantiate|BenchmarkExec|BenchmarkDraglineExec|BenchmarkWazeroCompile|BenchmarkWazeroInstantiate|BenchmarkWazeroExec)$`
+const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkDraglineCompileFull|BenchmarkInstantiate|BenchmarkDraglineInstantiate|BenchmarkExec|BenchmarkDraglineExec|BenchmarkCommandExec|BenchmarkWazeroCompile|BenchmarkWazeroInstantiate|BenchmarkWazeroExec|BenchmarkWazeroCommandExec|BenchmarkExecCallOverhead_(wago|wazero)|BenchmarkExecTypedCall_wago|BenchmarkExecHostCallback_wago|BenchmarkExecHostRoundtrip_(wago|wazero))$`
 
 // stampPath (bench-relative — benchpub runs with cwd=bench/) records the commit
 // the last published/charted numbers reflect and the wall-clock time benchpub
@@ -43,19 +43,22 @@ type stamp struct {
 }
 
 // stageOrder fixes chart/JSON ordering and is the canonical pipeline sequence.
-var stageOrder = []string{"Decode", "Validate", "Compile", "CompileFull", "Instantiate", "Exec"}
+var stageOrder = []string{"Decode", "Validate", "Compile", "CompileFull", "Instantiate", "Exec", "CommandExec"}
 
 // Metric is one benchmark's central result.
 type Metric struct {
-	Ns     float64 `json:"ns"`
-	Bytes  int64   `json:"bytes"`
-	Allocs int64   `json:"allocs"`
+	Ns        float64 `json:"ns"`
+	Bytes     int64   `json:"bytes"`
+	Allocs    int64   `json:"allocs"`
+	CodeBytes int64   `json:"codeBytes,omitempty"`
 }
 
 // ModuleInfo is corpus metadata for one module, recorded so charts can select
 // and label modules (e.g. the real-world subset) without re-reading the manifest.
 type ModuleInfo struct {
 	Category string `json:"category"`
+	Suite    string `json:"suite,omitempty"`
+	Desc     string `json:"desc,omitempty"`
 	Bytes    int64  `json:"bytes"` // wasm file size
 }
 
@@ -83,7 +86,7 @@ func main() {
 	benchtime := flag.String("benchtime", "1s", "benchtime for the suite run")
 	count := flag.Int("count", 1, "count for the suite run (median is taken)")
 	base := flag.String("base", "", "load this bench.json as the run and skip the suite (only re-collect engines and re-render)")
-	includeISA := flag.Bool("isa", false, "include the generated ISA micro-suite (off by default)")
+	corpus := flag.String("corpus", "all", "corpus profile, tag:<tag>, all, or comma-separated IDs")
 	flag.Parse()
 
 	var run Run
@@ -99,13 +102,13 @@ func main() {
 		// commit the numbers actually reflect), not current HEAD.
 		gitInfoFromCapture(&run, captureCommit(text))
 	default:
-		run = parseRun(runSuite(*benchtime, *count, *includeISA))
+		run = parseRun(runSuite(*benchtime, *count, *corpus))
 		gitInfo(&run)
 	}
 
 	// Best-effort: never abort on stale/empty results — regenerate what we can
 	// and warn. The stamp records what the current numbers reflect so staleness
-	// against HEAD is detectable later (by benchpub and by `make`).
+	// against HEAD is detectable later (by benchpub and by `just`).
 	if len(run.Metrics) == 0 {
 		fmt.Println("benchpub: WARNING no benchmark results parsed; benches were not updated")
 	}
@@ -114,10 +117,10 @@ func main() {
 	warnIfStale(run.Commit, head, dirty && fresh)
 	writeStamp(run.Commit, dirty && fresh)
 
-	cor := readCorpus(*includeISA)
+	cor := readCorpus()
 	run.Modules = map[string]ModuleInfo{}
 	for _, c := range cor {
-		run.Modules[c.Name] = ModuleInfo{Category: c.Category, Bytes: c.Bytes}
+		run.Modules[c.Name] = ModuleInfo{Category: c.Category, Suite: c.Suite, Desc: c.Desc, Bytes: c.Bytes}
 	}
 
 	hp := *historyPath
@@ -137,15 +140,12 @@ func main() {
 	fmt.Printf("benchpub: wrote %s/{bench.json,history.json,charts/*.svg}\n", *out)
 }
 
-func runSuite(benchtime string, count int, includeISA bool) string {
+func runSuite(benchtime string, count int, corpus string) string {
 	// -timeout 0 disables go test's default 10-minute cap: the full corpus at
 	// count>1 (a 9 MB module decoded/validated repeatedly, plus wazero) easily
 	// runs longer, and a timeout kills the whole binary mid-run.
 	args := []string{"test", "-run", "^$", "-bench", suiteRegex, "-benchmem",
-		"-timeout", "0", "-benchtime", benchtime, "-count", strconv.Itoa(count), "."}
-	if includeISA {
-		args = append(args[:len(args)-1], "-wago.bench.isa", args[len(args)-1])
-	}
+		"-timeout", "0", "-benchtime", benchtime, "-count", strconv.Itoa(count), "./suite", "-args", "-wago.corpus=" + corpus}
 	cmd := exec.Command("go", args...)
 	fmt.Printf("benchpub: running suite (benchtime=%s count=%d)...\n", benchtime, count)
 	// CombinedOutput so a build error or panic is captured too. A single flaky
@@ -225,7 +225,15 @@ func parseRun(text string) Run {
 // normalizeName turns "Decode/tiny" / "Exec/fib_rec.fib" into the stable
 // "Stage/key" form used as the metric key (the leading function name's
 // "Benchmark" is already stripped by benchRe).
-func normalizeName(n string) string { return n }
+func normalizeName(n string) string {
+	if strings.HasPrefix(n, "CommandExec/") {
+		return n
+	}
+	if strings.HasPrefix(n, "WazeroCommandExec/") {
+		return n
+	}
+	return n
+}
 
 // parseMetrics reads the "X ns/op Y B/op Z allocs/op" tail of a bench line.
 func parseMetrics(tail string) (Metric, bool) {
@@ -245,6 +253,8 @@ func parseMetrics(tail string) (Metric, bool) {
 			met.Bytes = int64(v)
 		case "allocs/op":
 			met.Allocs = int64(v)
+		case "code-B":
+			met.CodeBytes = int64(v)
 		}
 	}
 	return met, gotNs
@@ -254,13 +264,15 @@ func median(s []Metric) Metric {
 	ns := make([]float64, len(s))
 	by := make([]int64, len(s))
 	al := make([]int64, len(s))
+	code := make([]int64, len(s))
 	for i, m := range s {
-		ns[i], by[i], al[i] = m.Ns, m.Bytes, m.Allocs
+		ns[i], by[i], al[i], code[i] = m.Ns, m.Bytes, m.Allocs, m.CodeBytes
 	}
 	sort.Float64s(ns)
 	sort.Slice(by, func(i, j int) bool { return by[i] < by[j] })
 	sort.Slice(al, func(i, j int) bool { return al[i] < al[j] })
-	return Metric{Ns: medianFloat(ns), Bytes: medianInt(by), Allocs: medianInt(al)}
+	sort.Slice(code, func(i, j int) bool { return code[i] < code[j] })
+	return Metric{Ns: medianFloat(ns), Bytes: medianInt(by), Allocs: medianInt(al), CodeBytes: medianInt(code)}
 }
 
 // medianFloat/medianInt return the true median of a sorted slice, averaging the
@@ -291,51 +303,41 @@ func medianInt(x []int64) int64 {
 // corpusEntry is one manifest module with the bits benchpub needs for chart
 // metadata: name, byte size, and category.
 type corpusEntry struct {
-	Name, Category string
-	Bytes          int64
+	Name, Category, Suite, Desc string
+	Bytes                       int64
 }
 
-// readCorpus reads the manifests for module metadata. Best-effort: nil on error.
-// The generated isa-manifest.json shares the schema but is opt-in because it is
-// large and one export per opcode can dominate local runs and charts.
-func readCorpus(includeISA bool) []corpusEntry {
+// readCorpus reads the catalog for module metadata. Best-effort: nil on error.
+func readCorpus() []corpusEntry {
 	var out []corpusEntry
-	files := []string{"manifest.json"}
-	if includeISA {
-		files = append(files, "isa-manifest.json")
+	raw, err := os.ReadFile(filepath.Join("..", "corpus", "catalog.json"))
+	if err != nil {
+		return nil
 	}
-	for _, file := range files {
-		raw, err := os.ReadFile(filepath.Join("corpus", file))
-		if err != nil {
-			continue
+	var catalog struct {
+		Benchmarks []struct {
+			ID, Artifact, Suite, Desc string
+			Tags                      []string
+		} `json:"benchmarks"`
+	}
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		return nil
+	}
+	for _, mod := range catalog.Benchmarks {
+		var size int64
+		if fi, err := os.Stat(filepath.Join("..", "corpus", filepath.FromSlash(mod.Artifact))); err == nil {
+			size = fi.Size()
 		}
-		var m struct {
-			Modules []struct {
-				File, Path, Category string
-			} `json:"modules"`
+		category := "other"
+		if len(mod.Tags) != 0 {
+			category = mod.Tags[0]
 		}
-		if err := json.Unmarshal(raw, &m); err != nil {
-			continue
-		}
-		for _, mod := range m.Modules {
-			path := filepath.Join("corpus", mod.File)
-			if mod.Path != "" {
-				path = mod.Path
-			}
-			var b int64
-			if fi, err := os.Stat(path); err == nil {
-				b = fi.Size()
-			}
-			out = append(out, corpusEntry{
-				Name:     strings.TrimSuffix(mod.File, ".wasm"),
-				Category: mod.Category, Bytes: b,
-			})
-		}
+		out = append(out, corpusEntry{Name: mod.ID, Category: category, Suite: mod.Suite, Desc: mod.Desc, Bytes: size})
 	}
 	return out
 }
 
-// captureCommit extracts the "# git <hash>" stamp that `make bench` writes as
+// captureCommit extracts the "# git <hash>" stamp that `just bench` writes as
 // the first line of a capture file, or "" if the capture carries no stamp.
 func captureCommit(text string) string {
 	for _, ln := range strings.Split(text, "\n") {
@@ -396,7 +398,7 @@ func warnIfStale(numbersCommit, headCommit string, dirty bool) {
 	case numbersCommit == "":
 		fmt.Println("benchpub: WARNING no commit recorded for these numbers; staleness unknown")
 	case short(numbersCommit) != short(headCommit):
-		fmt.Printf("benchpub: WARNING benches are stale — numbers reflect %s but HEAD is %s; run 'make bench' to regenerate\n",
+		fmt.Printf("benchpub: WARNING benches are stale — numbers reflect %s but HEAD is %s; run 'just bench' to regenerate\n",
 			short(numbersCommit), short(headCommit))
 	case dirty:
 		fmt.Printf("benchpub: WARNING working tree is dirty at %s; benches may not reflect uncommitted changes\n", short(headCommit))

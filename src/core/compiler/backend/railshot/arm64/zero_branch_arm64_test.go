@@ -128,3 +128,43 @@ func TestZeroBranchEqzIfArm64(t *testing.T) {
 		t.Fatalf("zero-branch hits = %d, want 1", got)
 	}
 }
+
+func TestZeroBranchEqzBrIfArm64(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		typ  wasm.ValType
+		eqz  byte
+	}{
+		{"i32", wasm.I32, 0x45},
+		{"i64", wasm.I64, 0x50},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// block; local.get 0; eqz; br_if 0; return 11; end; return 22
+			body := []byte{0x00, 0x02, 0x40, 0x20, 0x00, tc.eqz, 0x0d, 0x00, 0x41, 0x0b, 0x0f, 0x0b, 0x41, 0x16, 0x0b}
+			m := mod1(t, []wasm.ValType{tc.typ}, []wasm.ValType{wasm.I32}, body)
+			args := map[uint64]uint32{0: 22, 1: 11}
+			if tc.typ == wasm.I64 {
+				args[1<<32] = 11 // catches accidental selection of the W-register CBZ
+			}
+			for _, enabled := range []bool{false, true} {
+				for arg, want := range args {
+					got, err := runArm64WrapperWithOptions(t, m, zeroBranchOptions(enabled, false, nil), arg)
+					if err != nil || uint32(got) != want {
+						t.Fatalf("eqz br_if(%d), enabled=%t = %d, err=%v, want %d", arg, enabled, got, err, want)
+					}
+				}
+			}
+			long := compileZeroBranchStats(t, m, false, false)
+			short := compileZeroBranchStats(t, m, true, false)
+			if long.CodeBytes != short.CodeBytes {
+				t.Fatalf("zero-branch code = %d bytes, rollback = %d; following-function phase changed", short.CodeBytes, long.CodeBytes)
+			}
+			if got := short.Peephole["zero-branch"]; got != 1 {
+				t.Fatalf("zero-branch hits = %d, want 1", got)
+			}
+			if got := short.Peephole["cmp-branch-fuse"]; got != 0 {
+				t.Fatalf("eqz branch still materialized flags %d time(s)", got)
+			}
+		})
+	}
+}

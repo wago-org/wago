@@ -8,7 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoots {

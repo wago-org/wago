@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func v128ArrayCodeWithLocals(locals, body []byte) []byte {
@@ -308,8 +308,11 @@ func TestGCArrayV128HelpersPreserveBothSlots(t *testing.T) {
 	if allocs != 0 {
 		t.Fatalf("v128 array helper allocations = %v, want 0", allocs)
 	}
-	if stats := in.gc.Stats(); stats.FullCollections == 0 || stats.LiveObjects > 2 {
-		t.Fatalf("generic GC boundary collection stats = %+v, want collections and at most global+current objects", stats)
+	if err := in.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	if stats := in.gc.Stats(); stats.FullCollections != 1 || stats.LiveObjects != 1 {
+		t.Fatalf("explicit GC collection stats = %+v, want one collection and only the global object", stats)
 	}
 	if _, err := in.Invoke("drop_data"); err != nil {
 		t.Fatalf("data.drop: %v", err)

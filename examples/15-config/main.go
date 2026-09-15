@@ -41,6 +41,6 @@ func main() {
 	inst, _ := rt.Instantiate(ctx, mod)
 	defer inst.Close()
 
-	out, _ := inst.Call(ctx, "add", wago.ValueI32(1), wago.ValueI32(2))
-	fmt.Printf("add(1, 2) = %d\n", out[0].I32())
+	out, _ := inst.InvokeContext(ctx, "add", wago.I32(1), wago.I32(2))
+	fmt.Printf("add(1, 2) = %d\n", wago.AsI32(out[0]))
 }

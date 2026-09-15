@@ -49,11 +49,17 @@ func gcFrameFixedOffsets(rootMap *nativeabi.FunctionRootMap) []uint32 {
 	return offsets
 }
 
-func gcFramePrepareModuleRootPlan(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier) (*shared.GCModuleFrameRootPlan, error) {
+func gcFramePrepareModuleRootPlan(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, analysis *wasm.ValidatedModuleAnalysis) (*shared.GCModuleFrameRootPlan, error) {
 	module := shared.NewGCModuleFrameRootPlan(len(m.Code))
 	collectingFunctions := 0
 	for function := range m.Code {
-		if gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, classifier) {
+		mayCollect := false
+		if analysis.ValidFor(m) {
+			mayCollect = analysis.Func(function).Flags&wasm.ValidatedFuncMayCollect != 0
+		} else {
+			mayCollect = gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, classifier)
+		}
+		if mayCollect {
 			if !module.MarkFunction(function) {
 				return nil, fmt.Errorf("function %d root plan ownership is invalid", function)
 			}
@@ -171,6 +177,13 @@ func moduleHasGCAllocationSites(m *wasm.Module) bool {
 	return false
 }
 
+func moduleHasGCAllocationSitesWithValidation(m *wasm.Module, analysis *wasm.ValidatedModuleAnalysis) bool {
+	if analysis.ValidFor(m) {
+		return analysis.Flags()&wasm.ValidatedFuncMayAllocate != 0
+	}
+	return moduleHasGCAllocationSites(m)
+}
+
 func moduleHasCollectorReferenceFrames(m *wasm.Module) bool {
 	if m == nil {
 		return false
@@ -250,12 +263,7 @@ func draglineGCFrameRoots(output corecompiler.Output) (*compiledGCFrameRoots, er
 		if len(offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(offsets, callsite.FrameBytes) {
 			return nil, fmt.Errorf("dragline GC callsite %d roots are malformed", index)
 		}
-		rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{
-			returnOffset: callsite.ReturnOffset,
-			frameBytes:   callsite.FrameBytes,
-			stackAdjust:  callsite.StackAdjust,
-			offsets:      interner.intern(offsets, true),
-		})
+		rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: callsite.ReturnOffset, frameBytes: callsite.FrameBytes, stackAdjust: callsite.StackAdjust, offsets: interner.intern(offsets, true)})
 		rootEnd = nextRootEnd
 		previousReturn = callsite.ReturnOffset
 	}
@@ -282,6 +290,7 @@ type GCNativeRootAdmission struct {
 // GCNativeRootAdmission reports exact native-root coverage and actionable
 // fail-closed diagnostics without exposing live frames or process-local handles.
 func (c *Compiled) GCNativeRootAdmission() GCNativeRootAdmission {
+	c = c.executionView()
 	status := GCNativeRootAdmission{Required: c != nil && c.needsExactNativeGCRoots()}
 	if c == nil {
 		status.Reason = "nil compiled module"

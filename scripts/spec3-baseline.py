@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert a full make spec3 log into the committed Release 3 red inventory."""
+"""Convert a full `just test spec v3` log into the Release 3 red inventory."""
 
 import argparse
 import json
@@ -134,7 +134,7 @@ def main():
                 "version": "3.0.0", "revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
             },
         },
-        "command": "make spec3",
+        "command": "just test spec v3",
         "exit_code": args.exit_code,
         "result": "fail" if args.exit_code else "pass",
         "totals_excluding_parser_failures": total,

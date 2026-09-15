@@ -14,11 +14,11 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/spectest"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/conformance/spectest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-const stagedTable64DeltaPath = "tests/spec-v3-staged-table64.json"
+const stagedTable64DeltaPath = "tests/conformance/baselines/spec-v3-staged-table64.json"
 
 var stagedTable64OfficialFiles = []string{
 	"table64", "table_copy64", "table_copy_mixed", "table_fill64", "table_get64",
@@ -75,7 +75,7 @@ func compileStagedTable64Official(data []byte) (*Compiled, error) {
 
 func stagedOfficialTable64JSON(t *testing.T, base string, dst any) string {
 	t.Helper()
-	checkout := filepath.Clean("../../tests/spec-v3")
+	checkout := filepath.Clean("../../tests/conformance/spec-v3")
 	suite, err := spectest.DiscoverRelease3(checkout)
 	if err != nil {
 		t.Fatalf("discover pinned Release 3 suite: %v", err)

@@ -129,14 +129,8 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x1b: // select
 		f.emitSelect()
 	case 0x1c: // select t (typed) — consume the declared result types
-		n, err := r.U32()
-		if err != nil {
+		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
 			return err
-		}
-		for k := uint32(0); k < n; k++ {
-			if _, err := r.Byte(); err != nil {
-				return err
-			}
 		}
 		f.emitSelect()
 
@@ -159,6 +153,11 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
+				return err
+			}
+		}
 		if f.localType[x] == mtV128 {
 			next, _ := r.Peek()
 			if f.forwardV128Local(int(x), next == 0xfd) {
@@ -190,6 +189,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		x, err := r.U32()
 		if err != nil {
 			return err
+		}
+		written := int(x) + f.localBase
+		if written >= 0 && written < 64 {
+			f.localWritten |= 1 << written
 		}
 		f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
 	case 0x23: // global.get
@@ -855,12 +858,14 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	}
 	w := at.is64() || bt.is64()
 	// Materialize both branches into owned registers BEFORE the compare: their loads
-	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
-	// are pinned so condensing the compare's operands cannot spill them.
+	// clobber flags harmlessly (the CMP comes after and sets them cleanly). Keep them
+	// out of x86's fixed-role registers: nested div/rem and shifts reclaim RAX/RDX/RCX
+	// even when ordinary allocator pins are set, so caching one of those register
+	// numbers across condenseToFlags would make the CMOV read a clobbered value.
 	gcRoot := (aRoot.isValue() && aRoot.st.hasGCRoot()) || (bRoot.isValue() && bRoot.st.hasGCRoot())
-	aReg := f.materialize(aRoot)
+	aReg := f.materializeSelectBranch(aRoot, at)
 	f.pinned = f.pinned.add(aReg)
-	bReg := f.materialize(bRoot)
+	bReg := f.materializeSelectBranch(bRoot, bt)
 	f.pinned = f.pinned.add(bReg)
 	cc := f.condenseToFlags(cond) // emits the CMP (last flag-affecting insn), consumes cond
 	f.stats.peep("select-flags")
@@ -873,6 +878,18 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	result := f.pushReg(aReg, mtI32OrWide(w))
 	result.st.setGCRoot(gcRoot)
 	return true
+}
+
+func (f *fn) materializeSelectBranch(e *elem, typ machineType) Reg {
+	r := f.materialize(e)
+	if r != RAX && r != RDX && r != RCX {
+		return r
+	}
+	safe := f.allocReg(maskOf(RAX, RDX, RCX))
+	f.moveInt(safe, r, typ)
+	f.release(r)
+	f.occupy(e, safe)
+	return safe
 }
 
 // setLocal stores the top-of-stack value into local x. For local.tee the value
@@ -984,6 +1001,13 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	f.invalidateGCLoadFactsForLocal(x)
 	if e != nil && e.isValue() && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
+	}
+	// A deferred load can borrow x's pinned register as its address. Condensing
+	// another child directly into x first would destroy that address. Materialize
+	// the complete value into ordinary allocator storage before considering the
+	// in-place local sink.
+	if e != nil && e.isDeferred() && subtreeBorrowsLocalAddress(e, x) {
+		f.condense(e, regNone)
 	}
 	// In-place self-update `local.set $x (op (local.get $x) …)`: let condenseInto
 	// consume the top expression straight into x's register instead of pre-copying

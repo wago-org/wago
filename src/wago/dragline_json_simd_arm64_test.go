@@ -11,7 +11,7 @@ import (
 )
 
 func TestDraglineJSONSIMDCorpusMatchesRailshot(t *testing.T) {
-	source, err := os.ReadFile(filepath.Join("..", "..", "bench", "corpus", "json-as-simd.wasm"))
+	source, err := os.ReadFile(filepath.Join("..", "..", "corpus", "workloads", "assemblyscript", "json-as-simd.wasm"))
 	if err != nil {
 		t.Fatal(err)
 	}

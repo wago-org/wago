@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func indexedSIMDMemOp(sub uint32, align byte, offset uint32, lane ...byte) []byte {

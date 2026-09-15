@@ -8,12 +8,13 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // signExtModule exports f(i32)->i32 = i32.extend8_s(local0).
@@ -400,13 +401,16 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 func TestDefaultCoreFeaturePolicy(t *testing.T) {
 	want := coreFeaturesWithoutSidecar
 	if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
-		want |= defaultCore3Features
+		want |= CoreFeaturesV3
 	}
 	if got := NewRuntimeConfig().CoreFeatures(); got != want {
 		t.Fatalf("default features = %s, want %s", got, want)
 	}
-	if want.IsEnabled(CoreFeatureGC | CoreFeatureExceptionHandling | CoreFeatureThreads) {
-		t.Fatalf("default unexpectedly includes ownership-sensitive opt-in features: %s", want)
+	if want.IsEnabled(CoreFeatureThreads) {
+		t.Fatalf("default unexpectedly includes the opt-in threads proposal: %s", want)
+	}
+	if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) && !want.IsEnabled(CoreFeaturesV3) {
+		t.Fatalf("complete backend default = %s, want full Core 3 set %s", want, CoreFeaturesV3)
 	}
 	for _, info := range FeatureInfos() {
 		expected := want.IsEnabled(info.Feature)
@@ -428,7 +432,7 @@ func TestDefaultCoreFeaturePolicy(t *testing.T) {
 	)
 	compiled, err := Compile(nil, module)
 	if err != nil {
-		t.Fatalf("default compile of selected Core 3 tail call: %v", err)
+		t.Fatalf("default compile of Core 3 tail call: %v", err)
 	}
 	_ = compiled.Close()
 }
@@ -755,16 +759,23 @@ func TestMeasuredLowValueOptimizationsAreRemoved(t *testing.T) {
 var defaultRuntimeConfigAllocationSink *RuntimeConfig
 
 func TestDefaultRuntimeConfigAllocationBudget(t *testing.T) {
-	maxConfigAllocs := 1.0
-	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-		// Go's Windows/ARM64 environment lookup currently adds two allocations.
-		maxConfigAllocs = 3
-	}
+	t.Setenv("WAGO_BOUNDS", "")
+	t.Setenv("WAGO_AMD64_NO_BMI2_RORX", "")
+	// Keep the constructor's one-allocation budget independent of the Go
+	// version's Windows environment conversion costs. Measure that OS baseline
+	// separately; additional configuration storage must still fail this test.
+	envAllocs := testing.AllocsPerRun(1000, func() {
+		_ = os.Getenv("WAGO_BOUNDS")
+		if runtime.GOARCH == "amd64" && hostSupportsBMI2() {
+			_ = os.Getenv("WAGO_AMD64_NO_BMI2_RORX")
+		}
+	})
+	maxConfigAllocs := 1 + envAllocs
 	configAllocs := testing.AllocsPerRun(1000, func() {
 		defaultRuntimeConfigAllocationSink = NewRuntimeConfig()
 	})
 	if configAllocs > maxConfigAllocs {
-		t.Fatalf("NewRuntimeConfig allocations = %.0f, want <= %.0f", configAllocs, maxConfigAllocs)
+		t.Fatalf("NewRuntimeConfig allocations = %.0f, want <= %.0f (including %.0f environment lookup allocations)", configAllocs, maxConfigAllocs, envAllocs)
 	}
 
 	module := benchAddOneModule()
@@ -893,6 +904,22 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 	if !loaded.dynamicImports {
 		t.Fatal("serialized imported module lost dynamic dispatch metadata")
 	}
+	for _, compiled := range []*Compiled{serial, parallel, &loaded} {
+		instance, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer instance.Close()
+		mapped := compiled.codeCache.mem
+		if len(compiled.code) == 0 || len(mapped) == 0 || &compiled.code[0] != &mapped[0] {
+			t.Fatal("live compiled public view retained separate heap code backing")
+		}
+		result, err := instance.Invoke("f0", I32(1))
+		if err != nil || len(result) != 1 || AsI32(result[0]) != 18 {
+			t.Fatalf("mapped imported code = %v, %v", result, err)
+		}
+	}
+
 }
 
 func TestDraglineFunctionWorkersPreserveExactArtifact(t *testing.T) {

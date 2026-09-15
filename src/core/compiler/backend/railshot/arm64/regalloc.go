@@ -4,6 +4,59 @@ package arm64
 
 import "github.com/wago-org/wago/src/core/runtime"
 
+type intConstReg struct {
+	typ  machineType
+	bits int64
+	reg  Reg
+}
+
+func (f *fn) cachedIntConst(st storage) (Reg, bool) {
+	for i := 0; i < int(f.iconstN); i++ {
+		c := f.iconsts[i]
+		if c.typ == st.typ && c.bits == st.cval {
+			return c.reg, true
+		}
+	}
+	return regNone, false
+}
+
+func (f *fn) preloadLoopIntConsts(h *funcHintView) {
+	if !f.opt(optLoopIntConst) || f.usesCalls || h.loopIntConstCount == 0 {
+		return
+	}
+	for i := 0; i < int(h.loopIntConstCount) && i < len(f.iconsts); i++ {
+		reg := regNone
+		for _, candidate := range [...]Reg{X25, X24, X23, X27} {
+			if !f.reserved.has(candidate) && !f.pinnedLocalMask.has(candidate) {
+				reg = candidate
+				break
+			}
+		}
+		if reg == regNone {
+			break
+		}
+		typ := mtI32
+		if h.loopIntConstTypes>>(2*i)&3 == 2 {
+			typ = mtI64
+		}
+		bits := h.loopIntConst[i]
+		f.loadConst(reg, storage{kind: stConst, typ: typ, cval: bits})
+		f.iconsts[f.iconstN] = intConstReg{typ: typ, bits: bits, reg: reg}
+		f.iconstN++
+		f.reserved = f.reserved.add(reg)
+		f.stats.peep("loop-int-const")
+	}
+}
+
+func (f *fn) intConstReadReg(st storage, avoid regMask) (Reg, bool) {
+	if reg, ok := f.cachedIntConst(st); ok {
+		return reg, false
+	}
+	reg := f.allocReg(avoid)
+	f.loadConst(reg, st)
+	return reg, true
+}
+
 // On-the-fly register allocator — the core of WARP's speed. Values (locals,
 // temporaries, deferred results) live in registers over the whole general-purpose
 // file and are spilled to frame slots only when the allocator runs out. Ported

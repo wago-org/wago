@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wago-org/wago/internal/jsonstrict"
 	"github.com/wago-org/wago/src/core/semver"
 )
 
@@ -224,8 +225,10 @@ func validateImmutablePlan(set PluginSet) (*immutablePlan, error) {
 		if selection.DefinitionDigest != plan.digests[selection.ID] {
 			return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseValidate, Path: "definitionDigest", Err: fmt.Errorf("linked definition digest %q does not match reviewed digest %q", plan.digests[selection.ID], selection.DefinitionDigest)}
 		}
-		if len(selection.Config) != 0 && !json.Valid(selection.Config) {
-			return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseConfigure, Path: "config", Err: fmt.Errorf("invalid JSON")}
+		if len(selection.Config) != 0 {
+			if err := jsonstrict.ValidateUniqueJSON(selection.Config); err != nil {
+				return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseConfigure, Path: "config", Err: err}
+			}
 		}
 		if err := validateGrants(provider.Definition, selection.Grants); err != nil {
 			return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseAuthorize, Err: err}
@@ -585,8 +588,13 @@ func validateRegistration(reg *Registrar) error {
 		}
 	}
 	for _, imp := range reg.imports {
-		if imp.fn == nil || imp.module == "" || imp.name == "" {
+		if imp.fn == nil && imp.eventI32 == nil || imp.module == "" || imp.name == "" {
 			return fmt.Errorf("invalid host import %q", imp.key())
+		}
+		if imp.fn != nil {
+			if _, err := gateHostImport(imp.fn, reg.callGate); err != nil {
+				return fmt.Errorf("invalid host import %q: %w", imp.key(), err)
+			}
 		}
 	}
 	if len(reg.imports) != 0 {
@@ -749,6 +757,7 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 	if err := validatePluginCommitConflicts(plan, rt.instructions, rt.overridePolicy); err != nil {
 		return err
 	}
+	rt.writableImportsLocked()
 	needsInstructionABI := false
 	hooks := rt.hooks.clone()
 	for _, p := range plan {
@@ -756,7 +765,15 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 		needsInstructionABI = needsInstructionABI || len(p.reg.instructions) != 0
 		for _, imp := range p.reg.imports {
 			key := imp.key()
-			rt.imports[key] = p.reg.callGate.wrap(imp.fn)
+			if imp.eventI32 != nil {
+				rt.imports[key] = gatedI32HostEvent{fn: imp.eventI32, gate: p.reg.callGate}
+			} else {
+				gated, err := gateHostImport(imp.fn, p.reg.callGate)
+				if err != nil {
+					return fmt.Errorf("plugin %q host import %q: %w", id, key, err)
+				}
+				rt.imports[key] = gated
+			}
 			rt.importMeta[key] = cloneRegisteredImport(imp)
 			rt.importOwner[key] = id
 			rt.moduleOwner[imp.module] = id

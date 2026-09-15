@@ -312,7 +312,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return v.verr(ErrUnknownGlobal, "")
 		}
 		if v.constOnly && (mutable || int(in.Index) >= v.constGlobalLimit ||
-			(int(in.Index) >= v.m.ImportedGlobalCount() && !v.features.ExtendedConstGlobals)) {
+			(int(in.Index) >= len(v.importsOfKind(ExternGlobal)) && !v.features.ExtendedConstGlobals)) {
 			return v.verr(ErrConstExprRequired, "global.get")
 		}
 		v.push(typ)
@@ -398,10 +398,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		if !x.unknown && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "ref.as_non_null")
 		}
-		if !x.unknown {
-			x.t = RefVal(x.t.Ref().WithNullable(false))
-		}
-		v.vals = append(v.vals, x)
+		v.push(nonNullValidationType(x))
 	case InstrBrOnNull:
 		lt, err := v.label(in.Index)
 		if err != nil {
@@ -418,10 +415,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		v.pushAll(lt)
-		if !x.unknown {
-			x.t = RefVal(x.t.Ref().WithNullable(false))
-		}
-		v.vals = append(v.vals, x)
+		v.push(nonNullValidationType(x))
 	case InstrBrOnNonNull:
 		lt, err := v.label(in.Index)
 		if err != nil {

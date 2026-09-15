@@ -17,7 +17,7 @@ import (
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const stagedGCArrayDeltaPath = "tests/spec-v3-staged-gc-array.json"
+const stagedGCArrayDeltaPath = "tests/conformance/baselines/spec-v3-staged-gc-array.json"
 
 type stagedGCArrayClass uint8
 
@@ -156,7 +156,7 @@ func stagedGCArrayLeaderDeltaFor(data []byte, line int) (stagedGCArrayLeaderDelt
 }
 
 func compileStagedGCArray(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.ReferenceTypes = true
 	features.TypedFunctionReferences = true

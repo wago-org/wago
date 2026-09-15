@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func guestStorageHostModuleBytes() []byte {
@@ -132,6 +132,69 @@ func TestHostGuestStorageCallbackLifetimeAndReentry(t *testing.T) {
 	}
 	if _, err := retained.MemoryInfo(0); err == nil || !strings.Contains(err.Error(), "no longer active") {
 		t.Fatalf("expired guest-storage view error = %v", err)
+	}
+}
+
+func TestHostGuestStorageCleanupAfterErrorAndPanic(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), guestStorageHostModuleBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	host := HostFunc(func(m HostModule, _, results []uint64) {
+		module := m.(GuestStorageHostModule)
+		var expired GuestStorage
+		for _, panics := range []bool{false, true} {
+			func() {
+				if panics {
+					defer func() {
+						if got := recover(); got != context.Canceled {
+							t.Errorf("panic = %v, want context.Canceled", got)
+						}
+					}()
+				}
+				err := module.WithGuestStorage(func(storage GuestStorage) error {
+					expired = storage
+					if panics {
+						panic(context.Canceled)
+					}
+					return context.Canceled
+				})
+				if !panics && err != context.Canceled {
+					t.Errorf("callback error = %v, want context.Canceled", err)
+				}
+			}()
+			if err := module.WithGuestStorage(func(storage GuestStorage) error {
+				if _, err := expired.MemoryInfo(0); err == nil {
+					t.Error("expired view became active during the next borrow")
+				}
+				if _, ok := expired.ImportParamType(0); ok {
+					t.Error("expired parameter type remains available")
+				}
+				if _, ok := expired.ImportResultType(0); ok {
+					t.Error("expired result type remains available")
+				}
+				if param, ok := storage.ImportParamType(0); !ok || param.Kind != ValueTypeI32 {
+					t.Error("new borrow lost its parameter type")
+				}
+				if result, ok := storage.ImportResultType(0); !ok || result.Kind != ValueTypeI64 {
+					t.Error("new borrow lost its result type")
+				}
+				_, err := storage.MemoryRange(0, 0, 1, GuestStorageWrite)
+				return err
+			}); err != nil {
+				panic(HostTrap{Err: err})
+			}
+		}
+		results[0] = 0
+	})
+	in, err := Instantiate(compiled, Imports{"host.inspect": host})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("run"); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func stagedGCRefEqBytes(t testing.TB) []byte {
@@ -37,7 +37,7 @@ func stagedGCRefEqBytes(t testing.TB) []byte {
 }
 
 func compileStagedGCRefEqProduct(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCStructProducts = true
@@ -48,7 +48,7 @@ func compileStagedGCRefEqProduct(data []byte) (*Compiled, error) {
 
 func TestStagedGCRefEqProductBoundaryLifecycle(t *testing.T) {
 	data := stagedGCRefEqBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public Compile admitted staged gc/ref_eq product")
 	}
 	guardCfg := NewRuntimeConfig()

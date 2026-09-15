@@ -6,7 +6,7 @@ func TestInternalGCHelperKeepsNativeExecutionLease(t *testing.T) {
 	in := &Instance{ctrl: make([]byte, 64)}
 	ctrl := offHeapSlicePtr(in.ctrl)
 	var helperObservedUnlocked bool
-	in.hostCall = func(uintptr, uint32, []uint64, []uint64) {
+	in.hostCall = func(uintptr, uint32, []uint64, []uint64, hostInvocationContext) {
 		if nativeExecutionMu.TryLock() {
 			helperObservedUnlocked = true
 			nativeExecutionMu.Unlock()
@@ -25,7 +25,7 @@ func TestOrdinaryHostCallReleasesNativeExecutionLease(t *testing.T) {
 	in := &Instance{ctrl: make([]byte, 64)}
 	ctrl := offHeapSlicePtr(in.ctrl)
 	var hostObservedUnlocked bool
-	in.hostCall = func(uintptr, uint32, []uint64, []uint64) {
+	in.hostCall = func(uintptr, uint32, []uint64, []uint64, hostInvocationContext) {
 		if nativeExecutionMu.TryLock() {
 			hostObservedUnlocked = true
 			nativeExecutionMu.Unlock()

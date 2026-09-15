@@ -6,10 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestStoreBoundExternrefGlobalImportsShareExactState(t *testing.T) {
@@ -312,6 +313,13 @@ func TestReferenceGlobalCloseOrderingAliasesAndStoreRoots(t *testing.T) {
 	if err := in.Close(); err != nil {
 		t.Fatalf("Instance.Close: %v", err)
 	}
+	// Runtime.Close may already own the instance close on its shutdown worker.
+	// Join that worker before inspecting the released importer roots.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := rt.WaitClosed(ctx); err != nil {
+		t.Fatalf("Runtime.WaitClosed: %v", err)
+	}
 	if got := shared.owner.importers; got != 0 {
 		t.Fatalf("importers after close = %d, want 0", got)
 	}
@@ -331,8 +339,8 @@ func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
 		t.Fatalf("Global size = %d, want 40", got)
 	}
 	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
-	if got := unsafe.Sizeof(Compiled{}); got != 784 {
-		t.Fatalf("Compiled size = %d, want 784", got)
+	if got := unsafe.Sizeof(Compiled{}); got != 792 {
+		t.Fatalf("Compiled size = %d, want 792", got)
 	}
 	if got := unsafe.Sizeof(referenceStore{}); got != 120 {
 		t.Fatalf("referenceStore size = %d, want 120 with shared GC domain", got)
@@ -348,7 +356,7 @@ func TestRelease2ImportedReferenceGlobalSourceGuard(t *testing.T) {
 	if !requireStandardGoTestRuntime(t) {
 		return
 	}
-	raw, err := os.ReadFile(filepath.Clean("../../tests/spec-v2/test/core/linking.wast"))
+	raw, err := os.ReadFile(filepath.Clean("../../tests/conformance/spec-v2/test/core/linking.wast"))
 	if err != nil {
 		t.Skipf("Release 2 linking.wast unavailable: %v", err)
 	}

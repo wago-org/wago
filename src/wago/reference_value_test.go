@@ -9,7 +9,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestPublicReferenceValueTypesAndNulls(t *testing.T) {
@@ -86,7 +86,9 @@ func TestReferenceSignatureConversionPreservesTypes(t *testing.T) {
 }
 
 func TestTypedCallCarriesOpaqueExternRefTokensInWideSlots(t *testing.T) {
-	c := MustCompile(referenceSlotIdentityModule())
+	original := MustCompile(referenceSlotIdentityModule())
+	defer original.Close()
+	c := mutableCompiledFixture(original)
 	c.Funcs[0] = FuncSig{Params: []ValType{ValExternRef}, Results: []ValType{ValExternRef}}
 	in, err := Instantiate(c)
 	if err != nil {

@@ -22,15 +22,18 @@ func TestLocalRootClearsOverrides(t *testing.T) {
 	}
 }
 
-func TestExperimentalPreviewIsGeneratedFromRuntimeFeatures(t *testing.T) {
-	catalog := settings.Experimental()
-	foundGC, foundDragline := false, false
-	for _, setting := range catalog {
-		if setting.Key == "features.gc" {
-			foundGC = true
-			if !setting.Experimental {
-				t.Fatal("WasmGC should remain experimental")
-			}
+func TestCore3FeaturesAreStableAndThreadsRemainExperimental(t *testing.T) {
+	stable := map[string]bool{}
+	for _, setting := range settings.Features() {
+		stable[setting.Key] = true
+	}
+	if !stable["features.gc"] || !stable["features.exception-handling"] {
+		t.Fatalf("stable features = %v, want WasmGC and exception handling", stable)
+	}
+	foundThreads, foundDragline := false, false
+	for _, setting := range settings.Experimental() {
+		if setting.Key == "features.threads" {
+			foundThreads = true
 		}
 		if setting.Key == "experimental.dragline" {
 			foundDragline = true
@@ -39,15 +42,15 @@ func TestExperimentalPreviewIsGeneratedFromRuntimeFeatures(t *testing.T) {
 			}
 		}
 	}
-	if !foundGC || !foundDragline {
-		t.Fatalf("experimental previews: WasmGC=%v Dragline=%v", foundGC, foundDragline)
+	if !foundThreads || !foundDragline {
+		t.Fatalf("experimental previews: threads=%v Dragline=%v", foundThreads, foundDragline)
 	}
 }
 
 func TestPrintIncludesExperimentalSectionOnRequest(t *testing.T) {
 	var output bytes.Buffer
 	Print(&output, settings.Default(), true, settings.ScopeLocal, "./wago.json", []settings.Override{{Key: "features.simd", Base: "false", Value: "true"}})
-	for _, want := range []string{"Wago configuration", "WebAssembly features", "Compiler optimizations", "Experimental preview", "dragline", "gc", "override"} {
+	for _, want := range []string{"Wago configuration", "WebAssembly features", "Compiler optimizations", "Experimental preview", "dragline", "threads", "override"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("output missing %q:\n%s", want, output.String())
 		}

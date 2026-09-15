@@ -1,4 +1,4 @@
-//go:build !linux || (!amd64 && !arm64) || tinygo || wago_target_tinygo
+//go:build (!linux && !(darwin && arm64)) || (!amd64 && !arm64) || tinygo || wago_target_tinygo
 
 package runtime
 
@@ -23,7 +23,7 @@ func RequestInterruptAsync(trap []byte) func() {
 	RequestInterrupt(trap)
 	return func() {}
 }
-func SetInterruptDeadline([]byte, time.Time) func() { return func() {} }
+func SetInterruptDeadline([]byte, time.Time) (func(), error) { return func() {}, nil }
 
 // HostInterruptSupported reports whether this build can asynchronously unwind
 // generated Wasm without compiler-inserted safepoints.

@@ -6,14 +6,23 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestSyncHostBindingStaysCompact(t *testing.T) {
-	// Standard Go packs the trailing scalar flag into 24 bytes. TinyGo may align
-	// the same pointer-bearing shape to 32 bytes on some targets.
-	if got := unsafe.Sizeof(syncHostBinding{}); got != 24 && got != 32 {
-		t.Fatalf("syncHostBinding size = %d, want 24 or 32", got)
+	// One tagged callback, seven dedicated hot representations, three pointers,
+	// the index, and a
+	// classification byte.
+	// TinyGo function values are larger than standard Go function values. Keep
+	// the budget exact for this compiler instead of accepting either footprint.
+	want := unsafe.Sizeof(any(nil)) + unsafe.Sizeof(NoArgsHostFunc(nil)) + unsafe.Sizeof(I32HostFunc(nil)) +
+		unsafe.Sizeof(I32ToI32HostFunc(nil)) + unsafe.Sizeof(I32I32HostFunc(nil)) +
+		unsafe.Sizeof(I32I32ToI32HostFunc(nil)) + unsafe.Sizeof(I32ToI32I32HostFunc(nil)) +
+		unsafe.Sizeof(I32I32ToI32I32HostFunc(nil)) + 3*unsafe.Sizeof((*DefinedTypeDescriptor)(nil)) + 5
+	align := unsafe.Alignof(syncHostBinding{})
+	want = (want + align - 1) &^ (align - 1)
+	if got := unsafe.Sizeof(syncHostBinding{}); got != want {
+		t.Fatalf("syncHostBinding size = %d, want %d", got, want)
 	}
 }
 
@@ -118,7 +127,7 @@ func requireBoundedInstanceFootprint(t *testing.T, got uintptr) {
 	// Indexed-memory state and canonical Runtime-domain GC type translation each
 	// add one nil sidecar pointer; ordinary single-memory instances retain no
 	// additional slice headers.
-	if got != 808 && got != 832 && got != 840 && got != 856 && got != 872 && got != 880 && got != 888 {
-		t.Fatalf("Instance size = %d, want supported 808-, 832-, 840-, 856-, 872-, 880-, or 888-byte layout", got)
+	if got != 808 && got != 832 && got != 840 && got != 856 && got != 872 && got != 880 && got != 888 && got != 896 {
+		t.Fatalf("Instance size = %d, want supported 808-, 832-, 840-, 856-, 872-, 880-, 888-, or 896-byte layout", got)
 	}
 }

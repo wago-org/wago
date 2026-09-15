@@ -41,14 +41,14 @@ func TestRunUsesWindowsConsoleInput(t *testing.T) {
 
 	picker := NewPicker("Install Wago version", []Item{
 		{Label: "canary", Value: "canary"},
-		{Label: "nightly", Value: "nightly"},
+		{Label: "beta", Value: "beta"},
 	})
 	submitted, cancelled := Run(picker)
 	if !submitted || cancelled {
 		t.Fatalf("Run() = submitted %t, cancelled %t; want true, false", submitted, cancelled)
 	}
-	if selected := picker.Selected(); selected != "nightly" {
-		t.Fatalf("selected %q, want nightly", selected)
+	if selected := picker.Selected(); selected != "beta" {
+		t.Fatalf("selected %q, want beta", selected)
 	}
 	if !console.closed {
 		t.Fatal("console was not restored")

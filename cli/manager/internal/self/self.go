@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/wago-org/wago/cli/internal/tui"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	selfreplace "github.com/wago-org/wago/cli/manager/internal/self/replace"
 	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
 	"github.com/wago-org/wago/internal/atomicfile"
+	"github.com/wago-org/wago/internal/filelock"
+	"github.com/wago-org/wago/internal/managedrelease"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -81,15 +85,24 @@ func selfExecutablePath() string {
 		return os.Args[0]
 	}
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
-		return resolved
+		return managedrelease.Launcher(resolved)
 	}
-	return path
+	return managedrelease.Launcher(path)
 }
 
 var (
 	resolveManagerUpdate  = managerversion.ResolveManagerUpdate
 	installManagerPayload = managerversion.InstallManagerPayload
 	syncManagerSource     = managerversion.SyncInstalledSource
+	verifyManagerRelease  = func(binary string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		output, err := exec.CommandContext(ctx, binary, "self", "--help").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("%w: %s", err, output)
+		}
+		return nil
+	}
 )
 
 func selfUpdate(current, executable string, force bool) {
@@ -129,42 +142,23 @@ func selfUpdateUsing(
 		progress.Finish("Wago is already up to date (" + managerversion.DisplayRelease(resolved) + ")")
 		return
 	}
-	staged, err := createSelfUpdateStage(executable)
-	if err != nil {
-		fatal("self update: prepare replacement: %v", err)
-	}
-	if err := install(resolved, staged, sourceOnly, progress); err != nil {
-		_ = os.Remove(staged)
-		fatal("self update: %v", err)
-	}
-	if source := managedSourceForUpdate(executable); source != "" {
-		if err := syncSource(resolved, source, progress); err != nil {
-			_ = os.Remove(staged)
-			fatal("self update: sync plugin build source: %v", err)
+	launcher := managedrelease.Launcher(executable)
+	release, err := managedrelease.Prepare(launcher, resolved, func(binary, source string) error {
+		if err := install(resolved, binary, sourceOnly, progress); err != nil {
+			return err
 		}
-	}
-	deferred, err := selfreplace.Executable(executable, staged)
+		return syncSource(resolved, source, progress)
+	}, verifyManagerRelease)
 	if err != nil {
-		_ = os.Remove(staged)
-		fatal("self update: %v", err)
+		fatal("self update: stage release: %v", err)
 	}
-	if deferred {
-		progress.Finish("Wago " + managerversion.DisplayRelease(resolved) + " will be active after restart")
-		return
+	// This manager already supports dispatch. The existing executable becomes
+	// the stable launcher; its old binary and legacy source remain rollback state.
+	if err := managedrelease.Publish(release, nil, nil); err != nil {
+		fatal("self update: publish release (pair retained at %s): %v", release.Directory, err)
 	}
 	progress.Finish("Updated Wago to " + managerversion.DisplayRelease(resolved))
-	printDetail(progress.Writer(), "location", displayPath(executable))
-}
-
-func managedSourceForUpdate(executable string) string {
-	source := InstalledSourcePath()
-	if source == "" {
-		return ""
-	}
-	if os.Getenv("WAGO_SRC_DIR") != "" || pathContains(filepath.Dir(source), executable) {
-		return source
-	}
-	return ""
+	printDetail(progress.Writer(), "location", displayPath(launcher))
 }
 
 func createSelfUpdateStage(executable string) (string, error) {
@@ -188,6 +182,7 @@ func selfUninstall(
 	in io.Reader,
 	out io.Writer,
 ) {
+	executable = managedrelease.Launcher(executable)
 	targets := Targets(dirs, executable, mode)
 	shellConfigs, err := InstallerPathConfigs()
 	if err != nil {
@@ -205,22 +200,33 @@ func selfUninstall(
 		fmt.Fprintln(out, "Cancelled.")
 		return
 	}
+	lockPath := managedrelease.PublicationLockPath(executable)
+	lock, err := filelock.Acquire(context.Background(), lockPath)
+	if err != nil {
+		fatal("self uninstall: lock publication: %v", err)
+	}
+	defer lock.Close()
+	// Publication may have completed while the confirmation was open.
+	targets = append(Targets(dirs, executable, mode), managedrelease.CleanupPaths(executable)...)
+	installationDir := ""
+	if mode == Full {
+		installationDir = filepath.Dir(executable)
+	}
+	emptyDirs := emptyCleanupDirs(lockPath, targets, installationDir)
 
 	for _, config := range shellConfigs {
 		if err := RemoveInstallerPathBlocks(config); err != nil {
 			fatal("self uninstall: clean PATH in %s: %v", displayPath(config), err)
 		}
 	}
-	if deferred, err := selfreplace.ScheduleTargetRemoval(executable, targets); err != nil {
+	if deferred, err := selfreplace.ScheduleTargetRemoval(executable, targets, lockPath, emptyDirs); err != nil {
 		fatal("self uninstall: schedule removal: %v", err)
 	} else if deferred {
 		fmt.Fprintln(out, cyan("✓"), "Wago cleanup will finish after the manager exits")
 		return
 	}
 	stageTargets := targets
-	installationDir := ""
 	if mode == Full {
-		installationDir = filepath.Dir(executable)
 		stageTargets = append(append([]string(nil), targets...), installationDir)
 	}
 	removalExecutable, err := selfreplace.StageRemoval(executable, stageTargets)
@@ -231,7 +237,7 @@ func selfUninstall(
 		if filepath.Clean(target) == filepath.Clean(executable) {
 			continue
 		}
-		if err := RemoveManagedPath(target); err != nil {
+		if err := removeManagedPathKeepingLock(target, lockPath); err != nil {
 			fatal("self uninstall: remove %s: %v", displayPath(target), err)
 		}
 	}
@@ -239,9 +245,14 @@ func selfUninstall(
 	if err != nil {
 		fatal("self uninstall: remove %s: %v", displayPath(executable), err)
 	}
-	if installationDir != "" {
-		if err := removeEmptyInstallationDir(installationDir); err != nil {
-			fatal("self uninstall: remove empty installation directory %s: %v", displayPath(installationDir), err)
+	if err := lock.Retire(lockPath); err != nil {
+		fatal("self uninstall: retire publication lock: %v", err)
+	}
+	// Only empty-directory removal is allowed after retirement. A fresh
+	// publisher may already be preparing a new installation on a new lock.
+	for _, dir := range emptyDirs {
+		if err := removeEmptyInstallationDir(dir); err != nil {
+			fatal("self uninstall: remove empty installation directory %s: %v", displayPath(dir), err)
 		}
 	}
 	if deferred {

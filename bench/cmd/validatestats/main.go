@@ -20,7 +20,7 @@ import (
 	wasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const corpusDir = "corpus"
+const corpusDir = "../corpus"
 
 type execEntry struct {
 	Export string  `json:"export"`
@@ -28,20 +28,18 @@ type execEntry struct {
 }
 
 type corpusModule struct {
-	File     string      `json:"file"`
-	Path     string      `json:"path"`
-	Category string      `json:"category"`
+	ID       string      `json:"id"`
+	Artifact string      `json:"artifact"`
 	Desc     string      `json:"desc"`
 	Stages   []string    `json:"stages"`
 	Init     string      `json:"init"`
 	Exec     []execEntry `json:"exec"`
 
 	bytes []byte
-	avail bool
 }
 
 type manifest struct {
-	Modules []corpusModule `json:"modules"`
+	Modules []corpusModule `json:"benchmarks"`
 }
 
 type result struct {
@@ -107,31 +105,23 @@ func modules(file string) ([]corpusModule, error) {
 		if err != nil {
 			return nil, err
 		}
-		return []corpusModule{{File: filepath.Base(file), bytes: b, avail: true}}, nil
+		return []corpusModule{{ID: strings.TrimSuffix(filepath.Base(file), filepath.Ext(file)), bytes: b}}, nil
 	}
 
-	mods := append(readManifest("manifest.json"), readManifest("isa-manifest.json")...)
+	mods := readManifest("catalog.json")
 	out := mods[:0]
 	for i := range mods {
 		mod := &mods[i]
 		if !mod.supports("Validate") {
 			continue
 		}
-		path := filepath.Join(corpusDir, mod.File)
-		if mod.Path != "" {
-			path = mod.Path
-		}
+		path := filepath.Join(corpusDir, filepath.FromSlash(mod.Artifact))
 		b, err := os.ReadFile(path)
-		switch {
-		case err == nil:
-			mod.bytes = b
-			mod.avail = true
-			out = append(out, *mod)
-		case mod.Path != "":
-			fmt.Fprintf(os.Stderr, "corpus: %s not present (%s), skipping\n", mod.File, mod.Path)
-		default:
-			return nil, fmt.Errorf("read %s: %w", mod.File, err)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", mod.Artifact, err)
 		}
+		mod.bytes = b
+		out = append(out, *mod)
 	}
 	return out, nil
 }
@@ -161,11 +151,7 @@ func (m corpusModule) supports(stage string) bool {
 }
 
 func (m corpusModule) name() string {
-	base := m.File
-	if base == "" {
-		base = filepath.Base(m.Path)
-	}
-	return strings.TrimSuffix(base, filepath.Ext(base))
+	return m.ID
 }
 
 func validateBytes(b []byte) error {

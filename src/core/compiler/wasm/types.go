@@ -42,6 +42,8 @@ const (
 	HeapAbs HeapTypeKind = iota
 	HeapTypeIndex
 	HeapDefType
+	// heapBottom is validator-only and has no binary encoding.
+	heapBottom
 )
 
 // HeapType, RefType, ValType, StorageType, and FieldType share one canonical,
@@ -173,6 +175,8 @@ func (rt RefType) String() string {
 
 func (h HeapType) String() string {
 	switch h.Kind() {
+	case heapBottom:
+		return "bot"
 	case HeapAbs:
 		return h.Abs().String()
 	case HeapTypeIndex:
@@ -730,16 +734,26 @@ func (m *Module) ImportedFuncCount() int { return m.importCount(ExternFunc) }
 // not allocate; most modules have no branch-hint section, and the section's
 // function entries are already required to be sorted.
 func (m *Module) BranchHintsForFunc(funcIndex uint32) []BranchHint {
-	for i := range m.BranchHints {
-		if m.BranchHints[i].FuncIndex == funcIndex {
-			return m.BranchHints[i].Hints
+	hints := m.BranchHints
+	for len(hints) > 8 {
+		mid := len(hints) / 2
+		if hints[mid].FuncIndex < funcIndex {
+			hints = hints[mid+1:]
+		} else {
+			hints = hints[:mid+1]
 		}
-		if m.BranchHints[i].FuncIndex > funcIndex {
+	}
+	for i := range hints {
+		if hints[i].FuncIndex == funcIndex {
+			return hints[i].Hints
+		}
+		if hints[i].FuncIndex > funcIndex {
 			break
 		}
 	}
 	return nil
 }
+
 func (m *Module) ImportedTableCount() int  { return m.importCount(ExternTable) }
 func (m *Module) ImportedMemCount() int    { return m.importCount(ExternMem) }
 func (m *Module) ImportedGlobalCount() int { return m.importCount(ExternGlobal) }

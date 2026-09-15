@@ -100,7 +100,7 @@ func TestMemoryAccessors(t *testing.T) {
 
 // BenchmarkInstanceUint32 exercises the typed accessor on the real mmap-backed
 // linear memory (no DCE): a single bounds-checked aligned load/store, ~3-4x
-// faster than the encoding/binary idiom under TinyGo (see docs/tinygo.md).
+// faster than the encoding/binary idiom under TinyGo.
 func BenchmarkInstanceUint32(b *testing.B) {
 	c, err := Compile(nil, memprogWasm)
 	if err != nil {

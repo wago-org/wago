@@ -1,16 +1,29 @@
-//go:build arm64 && !tinygo && (linux || darwin)
+//go:build arm64 && !tinygo && (linux || darwin || windows)
 
 package wago
 
 import (
-	"math/bits"
+	"fmt"
+	"runtime"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func TestPreparedIntCallBlockDefaultARM64(t *testing.T) {
+	if !preparedIntCallBlockDefault {
+		t.Fatal("ARM64 call block defaults off; the prepared struct thunk is faster")
+	}
+}
+
 func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
+	beforeCallBlock := preparedIntCallBlockEnabled
+	preparedIntCallBlockEnabled = true
+	defer func() { preparedIntCallBlockEnabled = beforeCallBlock }()
+
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}),
@@ -36,11 +49,53 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 	if !compiled.directPreparedAt(0) {
 		t.Fatal("memory-independent function did not select the ARM64 direct prepared entry")
 	}
+	if !compiled.directPreparedLightAt(0) {
+		t.Fatal("caller-clobber-only function did not select the light ARM64 entry thunk")
+	}
+	if !compiled.directPreparedBoundedAt(0) {
+		t.Fatal("straight-line caller-clobber-only function did not select the bounded ARM64 entry thunk")
+	}
 	if compiled.directPreparedAt(1) {
 		t.Fatal("memory.size function selected the ARM64 direct prepared entry")
 	}
 	if compiled.directPreparedAt(2) {
 		t.Fatal("function calling memory.size selected the ARM64 direct prepared entry")
+	}
+	directRollback, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimization("prepared-direct-entry", false), module)
+	if err != nil {
+		t.Fatalf("compile direct rollback: %v", err)
+	}
+	if directRollback.directPreparedAt(0) || directRollback.directPreparedLightAt(0) || directRollback.directPreparedBoundedAt(0) {
+		t.Fatalf("direct rollback retained direct/light/bounded metadata = %v/%v/%v", directRollback.directPreparedAt(0), directRollback.directPreparedLightAt(0), directRollback.directPreparedBoundedAt(0))
+	}
+	rollbackInstance, err := Instantiate(directRollback, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate direct rollback: %v", err)
+	}
+	defer rollbackInstance.Close()
+	rollbackFunction, err := rollbackInstance.PrepareFunction("add")
+	if err != nil {
+		t.Fatalf("prepare direct rollback: %v", err)
+	}
+	if rollbackFunction.directIntFast || rollbackFunction.directIntLight || rollbackFunction.directIntBounded {
+		t.Fatalf("direct rollback prepared direct/light/bounded path = %v/%v/%v", rollbackFunction.directIntFast, rollbackFunction.directIntLight, rollbackFunction.directIntBounded)
+	}
+	if got, err := rollbackFunction.Invoke2(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatalf("direct rollback add(20,22) = %v, %v; want 42", got, err)
+	}
+	rollback, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimization("prepared-light-entry", false), module)
+	if err != nil {
+		t.Fatalf("compile rollback: %v", err)
+	}
+	if !rollback.directPreparedAt(0) || rollback.directPreparedLightAt(0) || !rollback.directPreparedBoundedAt(0) {
+		t.Fatalf("light rollback direct/light/bounded selection = %v/%v/%v, want true/false/true", rollback.directPreparedAt(0), rollback.directPreparedLightAt(0), rollback.directPreparedBoundedAt(0))
+	}
+	boundedRollback, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimization("prepared-bounded-entry", false), module)
+	if err != nil {
+		t.Fatalf("compile bounded rollback: %v", err)
+	}
+	if !boundedRollback.directPreparedAt(0) || !boundedRollback.directPreparedLightAt(0) || boundedRollback.directPreparedBoundedAt(0) {
+		t.Fatalf("bounded rollback direct/light/bounded selection = %v/%v/%v, want true/true/false", boundedRollback.directPreparedAt(0), boundedRollback.directPreparedLightAt(0), boundedRollback.directPreparedBoundedAt(0))
 	}
 	in, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
@@ -54,9 +109,45 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 	if !fn.directIntFast {
 		t.Fatal("memory-independent function did not prepare the ARM64 direct integer entry")
 	}
+	if !fn.directIntLight {
+		t.Fatal("memory-independent function did not retain the light entry proof")
+	}
+	if !fn.directIntBounded {
+		t.Fatal("memory-independent function did not retain the bounded entry proof")
+	}
+	if fn.directIntMode != preparedIntCallBlock {
+		t.Fatal("bounded light function did not select the immutable call block")
+	}
 	got, err := fn.Invoke2(20, 22)
 	if err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatalf("add(20,22) = %v, %v; want 42", got, err)
+	}
+	size, err := in.PrepareFunction("size")
+	if err != nil {
+		t.Fatalf("prepare size: %v", err)
+	}
+	if size.directIntFast {
+		t.Fatal("memory size prepared the ARM64 direct integer entry")
+	}
+	session, err := size.OpenSession()
+	if err != nil {
+		t.Fatalf("open size session: %v", err)
+	}
+	if got, err := session.Invoke0(); err != nil || len(got) != 1 || got[0] != 0 {
+		t.Fatalf("session memory.size() = %v, %v; want 0", got, err)
+	}
+	session.Close()
+
+	preparedIntCallBlockEnabled = false
+	fallback, err := in.PrepareFunction("add")
+	if err != nil {
+		t.Fatalf("prepare call-block rollback: %v", err)
+	}
+	if fallback.directIntMode == preparedIntCallBlock {
+		t.Fatal("call-block rollback retained the call block")
+	}
+	if got, err := fallback.Invoke2(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatalf("call-block rollback add(20,22) = %v, %v; want 42", got, err)
 	}
 }
 
@@ -182,140 +273,279 @@ func testPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T, module []b
 	}
 }
 
-func TestPreparedDirectARM64BranchTable(t *testing.T) {
+func TestPreparedDirectARM64ContinuationTrapRecovery(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		code      []byte
+		wantLight bool
+	}{
+		{
+			name:      "light",
+			code:      wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x6d, 0x03, 0x40, 0x0b, 0x0b}),
+			wantLight: true,
+		},
+		{
+			name: "full-save",
+			code: func() []byte {
+				body := []byte{
+					0x01, 0x01, 0x7f, // one i32 local
+					0x20, 0x00, 0x21, 0x02,
+					0x20, 0x02, 0x20, 0x01, 0x6d,
+					0x03, 0x40, 0x0b, // an empty loop makes scheduler retention ineligible
+					0x0b,
+				}
+				return append(wasmtest.ULEB(uint32(len(body))), body...)
+			}(),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("div", 0, 0))),
+				wasmtest.Section(10, wasmtest.Vec(tc.code)),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+			if err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			if !compiled.directPreparedAt(0) || compiled.directPreparedLightAt(0) != tc.wantLight || compiled.directPreparedBoundedAt(0) {
+				t.Fatalf("direct/light/bounded selection = %v/%v/%v, want true/%v/false",
+					compiled.directPreparedAt(0), compiled.directPreparedLightAt(0), compiled.directPreparedBoundedAt(0), tc.wantLight)
+			}
+			in, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatalf("instantiate: %v", err)
+			}
+			defer in.Close()
+			fn, err := in.PrepareFunction("div")
+			if err != nil {
+				t.Fatalf("prepare: %v", err)
+			}
+			if !fn.directIntFast || fn.directIntLight != tc.wantLight || fn.directIntBounded {
+				t.Fatalf("prepared direct/light/bounded path = %v/%v/%v, want true/%v/false",
+					fn.directIntFast, fn.directIntLight, fn.directIntBounded, tc.wantLight)
+			}
+			if _, err := fn.Invoke2(I32(7), I32(0)); err == nil {
+				t.Fatal("division by zero did not unwind through the prepared continuation")
+			}
+			got, err := fn.Invoke2(I32(8), I32(2))
+			if err != nil || len(got) != 1 || AsI32(got[0]) != 4 {
+				t.Fatalf("post-trap div(8,2) = %v, %v; want [4], nil", got, err)
+			}
+		})
+	}
+}
+
+func TestPreparedDirectARM64BoundedEntryRejectsLoop(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x03, 0x40, 0x0c, 0x00, 0x0b, 0x0b}),
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !compiled.directPreparedAt(0) || !compiled.directPreparedLightAt(0) {
+		t.Fatalf("loop direct/light selection = %v/%v, want true/true", compiled.directPreparedAt(0), compiled.directPreparedLightAt(0))
+	}
+	if compiled.directPreparedBoundedAt(0) {
+		t.Fatal("loop selected the no-scheduler-release bounded entry")
+	}
+}
+
+func TestPreparedDirectARM64BoundedEntryRejectsRecursiveCallGraph(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x10, 0x00, 0x0b}),
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !compiled.directPreparedAt(0) {
+		t.Fatal("recursive function did not retain ordinary scheduler-releasing direct entry")
+	}
+	if compiled.directPreparedBoundedAt(0) {
+		t.Fatal("recursive call graph selected no-scheduler-release bounded entry")
+	}
+}
+
+func TestPreparedDirectARM64BoundedEntryRejectsInlinedCall(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b}),
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !compiled.directPreparedAt(1) {
+		t.Fatal("inlined caller did not retain ordinary scheduler-releasing direct entry")
+	}
+	if compiled.directPreparedBoundedAt(1) {
+		t.Fatal("caller admitted to bounded entry after inlining")
+	}
+}
+
+func TestPreparedDirectARM64BoundedEntryRejectsBulkAndTableMutation(t *testing.T) {
+	tableSection := func() []byte {
+		table := append([]byte{0x70, 0x01}, wasmtest.ULEB(1)...)
+		table = append(table, wasmtest.ULEB(65535)...)
+		return wasmtest.Section(4, wasmtest.Vec(table))
+	}
+	tableModule := func(body []byte, sections ...[]byte) []byte {
+		moduleSections := [][]byte{
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			tableSection(),
+		}
+		moduleSections = append(moduleSections, sections...)
+		moduleSections = append(moduleSections, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
+		return wasmtest.Module(moduleSections...)
+	}
+
+	tests := []struct {
+		name       string
+		module     []byte
+		wantDirect bool
+	}{
+		{name: "memory.copy", module: benchBulkMemoryModule(0x0a)},
+		{name: "memory.fill", module: benchBulkMemoryModule(0x0b)},
+		{name: "table.copy", module: tableModule([]byte{0x41, 0x00, 0x41, 0x00, 0x20, 0x00, 0xfc, 0x0e, 0x00, 0x00, 0x0b}), wantDirect: true},
+		{name: "table.init", module: tableModule(
+			[]byte{0x41, 0x00, 0x41, 0x00, 0x20, 0x00, 0xfc, 0x0c, 0x00, 0x00, 0x0b},
+			wasmtest.Section(9, wasmtest.Vec(tableTestPassiveElem(0))),
+		), wantDirect: true},
+		{name: "table.grow", module: tableModule([]byte{0xd0, 0x70, 0x20, 0x00, 0xfc, 0x0f, 0x00, 0x1a, 0x0b}), wantDirect: true},
+		{name: "table.fill", module: tableModule([]byte{0x41, 0x00, 0xd0, 0x70, 0x20, 0x00, 0xfc, 0x11, 0x00, 0x0b}), wantDirect: true},
+	}
+	configs := []struct {
+		name   string
+		bounds BoundsCheckMode
+	}{
+		{name: "explicit", bounds: BoundsChecksExplicit},
+	}
+	if GuardPageSupported() {
+		configs = append(configs, struct {
+			name   string
+			bounds BoundsCheckMode
+		}{name: "signals", bounds: BoundsChecksSignalsBased})
+	}
+	for _, config := range configs {
+		for _, tc := range tests {
+			t.Run(config.name+"/"+tc.name, func(t *testing.T) {
+				compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(config.bounds), tc.module)
+				if err != nil {
+					t.Fatalf("compile: %v", err)
+				}
+				if compiled.directPreparedAt(0) != tc.wantDirect {
+					t.Fatalf("ordinary direct entry = %v, want %v", compiled.directPreparedAt(0), tc.wantDirect)
+				}
+				if compiled.directPreparedBoundedAt(0) {
+					t.Fatal("bulk or table-mutating function selected the no-scheduler-release bounded entry")
+				}
+			})
+		}
+	}
+}
+
+func TestPreparedDirectARM64BoundedEntryAllowsFullRegisterSave(t *testing.T) {
 	body := []byte{
-		0x02, 0x40, 0x02, 0x40, 0x02, 0x40, 0x02, 0x40,
-		0x20, 0x00, 0x0e, 0x03, 0x00, 0x01, 0x02, 0x03,
-		0x0b, 0x41, 0x0a, 0x0f,
-		0x0b, 0x41, 0x14, 0x0f,
-		0x0b, 0x41, 0x1e, 0x0f,
-		0x0b, 0x41, 0x28, 0x0b,
+		0x01, 0x01, 0x7f, // one i32 local
+		0x20, 0x00, // local.get 0
+		0x21, 0x01, // local.set 1
+		0x20, 0x01, // local.get 1
+		0x0b,
 	}
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("classify", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
-	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	if !compiled.directPreparedAt(0) {
-		t.Fatal("branch-table function did not select the ARM64 direct prepared entry")
+	if !compiled.directPreparedAt(0) || compiled.directPreparedLightAt(0) || !compiled.directPreparedBoundedAt(0) {
+		t.Fatalf("declared-local direct/light/bounded selection = %v/%v/%v, want true/false/true", compiled.directPreparedAt(0), compiled.directPreparedLightAt(0), compiled.directPreparedBoundedAt(0))
 	}
 	in, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("classify")
+	fn, err := in.PrepareFunction("f")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	if !fn.directLeafIntFast {
-		t.Fatal("branch-table leaf did not prepare the ARM64 direct leaf entry")
+	if !fn.directIntBounded || fn.directIntLight {
+		t.Fatalf("prepared bounded/light selection = %v/%v, want true/false", fn.directIntBounded, fn.directIntLight)
 	}
-	for _, tc := range []struct {
-		selector, want uint64
-	}{{0, 10}, {1, 20}, {2, 30}, {3, 40}, {100, 40}} {
-		got, err := fn.Invoke1(tc.selector)
-		if err != nil || len(got) != 1 || got[0] != tc.want {
-			t.Fatalf("classify(%d) = %v, %v; want %d", tc.selector, got, err, tc.want)
-		}
+	got, err := fn.Invoke1(I32(42))
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("f(42) = %v, %v; want [42], nil", got, err)
 	}
 }
 
-func TestPreparedDirectARM64PureIntegerLeaf(t *testing.T) {
-	body := make([]byte, 0, 48)
-	term := func(shift int64, mask int64) {
-		body = append(body, 0x20, 0x00)
-		if shift != 0 {
-			body = append(body, 0x42)
-			body = append(body, wasmtest.SLEB64(shift)...)
-			body = append(body, 0x88)
-		}
-		body = append(body, 0x42)
-		body = append(body, wasmtest.SLEB64(mask)...)
-		body = append(body, 0x83)
-	}
-	term(24, 0xff000000)
-	term(16, 0x00ff0000)
-	term(0, 0x000000ff)
-	term(8, 0x0000ff00)
-	body = append(body, 0x84, 0x84, 0x84, 0xa7, 0x0b)
-	module := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("pack", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
-	)
-	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
+func TestPreparedDirectARM64BoundedEntryAllowsGCProgress(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchAddOneModule())
 	if err != nil {
 		t.Fatalf("compile: %v", err)
-	}
-	if !compiled.directPreparedAt(0) {
-		t.Fatal("pure integer leaf did not select the ARM64 direct prepared entry")
 	}
 	in, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("pack")
+	fn, err := in.PrepareFunction("f")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	for _, x := range []uint64{0, 0x12345678, 0x0044004300420041, ^uint64(0)} {
-		want := uint32(x>>24&0xff000000 | x>>16&0x00ff0000 | x&0x000000ff | x>>8&0x0000ff00)
-		got, err := fn.Invoke1(x)
-		if err != nil || len(got) != 1 || got[0] != uint64(want) {
-			t.Fatalf("pack(%#x) = %v, %v; want %#x", x, got, err, want)
-		}
+	if !fn.directIntBounded {
+		t.Fatal("test function did not select bounded entry")
 	}
-}
 
-func TestPreparedDirectARM64UnsignedMultiplyHigh(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, 0x42, 0x20, 0x88, 0x22, 0x02,
-		0x20, 0x01, 0x42, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x83, 0x22, 0x03, 0x7e,
-		0x20, 0x00, 0x42, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x83, 0x22, 0x00,
-		0x20, 0x03, 0x7e, 0x42, 0x20, 0x88, 0x7c, 0x21, 0x03,
-		0x20, 0x01, 0x42, 0x20, 0x88, 0x22, 0x01, 0x20, 0x02, 0x7e,
-		0x20, 0x03, 0x42, 0x20, 0x88, 0x7c,
-		0x20, 0x00, 0x20, 0x01, 0x7e,
-		0x20, 0x03, 0x42, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x83, 0x7c,
-		0x42, 0x20, 0x88, 0x7c, 0x0b,
-	}
-	function := append([]byte{0x01, 0x02, 0x7e}, body...) // two declared i64 locals
-	code := append(wasmtest.ULEB(uint32(len(function))), function...)
-	module := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("mulhi", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(code)),
-	)
-	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
-	if !compiled.directPreparedAt(0) {
-		t.Fatal("multiply-high leaf did not select the ARM64 direct prepared entry")
-	}
-	in, err := Instantiate(compiled, InstantiateOptions{})
-	if err != nil {
-		t.Fatalf("instantiate: %v", err)
-	}
-	defer in.Close()
-	fn, err := in.PrepareFunction("mulhi")
-	if err != nil {
-		t.Fatalf("prepare: %v", err)
-	}
-	for _, tc := range [][2]uint64{{0, 0}, {1, 1}, {^uint64(0), ^uint64(0)}, {0x123456789abcdef0, 0xfedcba9876543210}} {
-		want, _ := bits.Mul64(tc[0], tc[1])
-		got, err := fn.Invoke2(tc[0], tc[1])
-		if err != nil || len(got) != 1 || got[0] != want {
-			t.Fatalf("mulhi(%#x,%#x) = %v, %v; want %#x", tc[0], tc[1], got, err, want)
+	var stop atomic.Bool
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		close(started)
+		for !stop.Load() {
+			got, err := fn.Invoke1(I32(41))
+			if err != nil {
+				done <- err
+				return
+			}
+			if len(got) != 1 || AsI32(got[0]) != 42 {
+				done <- fmt.Errorf("bounded invoke = %v, want [42]", got)
+				return
+			}
 		}
+		done <- nil
+	}()
+	<-started
+	for range 8 {
+		runtime.GC()
+	}
+	stop.Store(true)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("bounded native entry prevented GC or goroutine progress")
 	}
 }

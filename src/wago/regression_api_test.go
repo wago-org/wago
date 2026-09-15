@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/regressiontest"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/regressiontest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestRuntimeRegressionCanonicalBoundsMode(t *testing.T) {
@@ -17,7 +17,7 @@ func TestRuntimeRegressionCanonicalBoundsMode(t *testing.T) {
 		want = BoundsChecksSignalsBased
 	}
 	if got := NewRuntimeConfig().BoundsChecks(); got != want {
-		t.Fatalf("canonical Regression bounds mode = %v, want %v; use make test or make test-guard", got, want)
+		t.Fatalf("canonical Regression bounds mode = %v, want %v; use just test or just test guard", got, want)
 	}
 }
 

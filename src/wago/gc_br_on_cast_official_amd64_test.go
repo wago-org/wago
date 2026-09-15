@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	stagedGCBrOnCastDeltaPath         = "tests/spec-v3-staged-gc-br-on-cast.json"
+	stagedGCBrOnCastDeltaPath         = "tests/conformance/baselines/spec-v3-staged-gc-br-on-cast.json"
 	stagedGCBrOnCastOfficialExecution = true
 )
 
@@ -231,7 +231,7 @@ func stagedGCBrOnCastLeaderDeltaFor(base string, data []byte, line int) (stagedG
 }
 
 func compileStagedGCBrOnCastAccounting(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	if stagedGCBrOnCastOfficialExecution {

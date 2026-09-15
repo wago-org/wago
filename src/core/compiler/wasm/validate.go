@@ -83,7 +83,28 @@ func ValidateModuleWithConfig(m *Module, features ValidationFeatures, workers in
 	return validateModuleWithWorkersFeaturesAndLimits(m, nil, workers, features, limits)
 }
 
+// ValidateModuleWithAnalysis validates a module and gathers transient,
+// architecture-neutral facts during the same function-body walk. analysis is
+// cleared on failure. Callers must use ValidFor: successful tree validation
+// does not produce complete facts. Keep the module immutable until all summary
+// consumers finish; edits require a new validation.
+func ValidateModuleWithAnalysis(m *Module, features ValidationFeatures, workers int, limits ValidationLimits, analysis *ValidatedModuleAnalysis) error {
+	return validateModuleWithWorkersFeaturesAndLimitsAnalysis(m, nil, workers, features, limits, analysis)
+}
+
 func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits) error {
+	return validateModuleWithWorkersFeaturesAndLimitsAnalysis(m, direct, workers, features, limits, nil)
+}
+
+func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits, analysis *ValidatedModuleAnalysis) (err error) {
+	if analysis != nil {
+		analysis.reset(m)
+		defer func() {
+			if err != nil {
+				*analysis = ValidatedModuleAnalysis{}
+			}
+		}()
+	}
 	if limits.MaxFunctionLocals == 0 {
 		limits.MaxFunctionLocals = DefaultMaxFunctionLocals
 	}
@@ -100,13 +121,25 @@ func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidat
 	// collector can otherwise lose a short-lived heap validator while nested
 	// decoding allocates, leaving its inline operand/control stacks reclaimed
 	// during validation.
-	v := moduleValidator{m: m, funcIndex: -1, direct: direct, features: features, limits: limits}
+	v := moduleValidator{
+		m:                m,
+		funcIndex:        -1,
+		direct:           direct,
+		features:         features,
+		limits:           limits,
+		analysis:         analysis,
+		analysisFuncBase: m.ImportedFuncCount(),
+	}
+	v.ensureImportIndexes()
 	if err := v.validateModule(); err != nil {
 		runtime.KeepAlive(m)
 		runtime.KeepAlive(direct)
 		return err
 	}
-	err := v.validateFunctions(workers)
+	err = v.validateFunctions(workers)
+	if err == nil && analysis != nil {
+		analysis.finish()
+	}
 	// TinyGo's conservative collector needs the metadata owners to remain live
 	// while validators consume their nested byte slices and type views.
 	runtime.KeepAlive(m)
@@ -126,35 +159,57 @@ func (v *moduleValidator) validateFunctions(workers int) error {
 }
 
 func (v *moduleValidator) validateFunctionsSerial() error {
-	importedFuncs := v.m.ImportedFuncCount()
+	importedFuncs := len(v.importsOfKind(ExternFunc))
 	widths := moduleMemargWidths(v.m)
 	// Keep the reusable operand/control-stack owner in the validating frame.
 	// Besides avoiding one allocation, this makes its lifetime explicit for
 	// TinyGo's conservative collector across allocation-heavy decode steps.
 	fv := funcValidator{moduleValidator: v}
+	var summary validationSegmentCounts
 	for i := range v.m.Code {
-		if err := v.validateFunction(&fv, i, importedFuncs, widths); err != nil {
+		counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+		if err != nil {
 			return err
 		}
+		summary.merge(counts)
+	}
+	if v.analysis != nil {
+		v.analysis.elemStateCount = summary.elem
+		v.analysis.dataStateCount = summary.data
 	}
 	return nil
 }
 
-func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) error {
+func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) (counts validationSegmentCounts, err error) {
 	fn := &v.m.Code[localIndex]
 	abs := importedFuncs + localIndex
 	if localIndex >= len(v.m.FuncTypes) {
-		return v.err(ErrUnknownFunc, "code without function type")
+		return counts, v.err(ErrUnknownFunc, "code without function type")
 	}
 	ft, ok := v.funcType(uint32(abs))
 	if !ok {
-		return v.err(ErrUnknownType, "function type")
+		return counts, v.err(ErrUnknownType, "function type")
+	}
+	if v.analysis != nil {
+		v.analysis.funcs[localIndex] = ValidatedFuncFacts{BodyBytes: saturatingUint32(len(fn.BodyBytes))}
 	}
 	fv.beginFunc(abs)
 	if len(fn.BodyBytes) != 0 {
-		return fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory)
+		err = fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory, &counts)
+	} else {
+		err = fv.validateFunc(*fn, ft)
 	}
-	return fv.validateFunc(*fn, ft)
+	return counts, err
+}
+
+type validationSegmentCounts struct {
+	elem uint32
+	data uint32
+}
+
+func (s *validationSegmentCounts) merge(other validationSegmentCounts) {
+	s.elem = max(s.elem, other.elem)
+	s.data = max(s.data, other.data)
 }
 
 // validateFunctionsParallel is split from the serial path so its goroutine
@@ -163,11 +218,13 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 // declared-function bits are immutable, the component-type cache is frozen, and
 // the serial const-expression validator is no longer reachable from body checks.
 func (v *moduleValidator) validateFunctionsParallel(workers int) error {
-	importedFuncs := v.m.ImportedFuncCount()
+	importedFuncs := len(v.importsOfKind(ExternFunc))
 	widths := moduleMemargWidths(v.m)
 	type result struct {
-		index int
-		err   error
+		index          int
+		err            error
+		elemStateCount uint32
+		dataStateCount uint32
 	}
 	results := make([]result, workers)
 	var next atomic.Int64
@@ -178,15 +235,22 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 		go func() {
 			defer wg.Done()
 			fv := funcValidator{moduleValidator: v}
+			var summary validationSegmentCounts
+			defer func() {
+				results[worker].elemStateCount = summary.elem
+				results[worker].dataStateCount = summary.data
+			}()
 			for {
 				i := int(next.Add(1) - 1)
 				if i >= len(v.m.Code) {
 					return
 				}
-				if err := v.validateFunction(&fv, i, importedFuncs, widths); err != nil {
+				counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+				if err != nil {
 					results[worker] = result{index: i, err: err}
 					return
 				}
+				summary.merge(counts)
 			}
 		}()
 	}
@@ -197,6 +261,12 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 		if results[i].err != nil && results[i].index < lowest {
 			lowest = results[i].index
 			first = results[i].err
+		}
+	}
+	if first == nil && v.analysis != nil {
+		for i := range results {
+			v.analysis.elemStateCount = max(v.analysis.elemStateCount, results[i].elemStateCount)
+			v.analysis.dataStateCount = max(v.analysis.dataStateCount, results[i].dataStateCount)
 		}
 	}
 	return first
@@ -214,11 +284,17 @@ func (v *moduleValidator) freezeCompCache() {
 }
 
 type moduleValidator struct {
-	m         *Module
-	funcIndex int
-	direct    *directValidationEnv
-	features  ValidationFeatures
-	limits    ValidationLimits
+	importIndexes    [5][]uint32
+	importIndexReady bool
+	m                *Module
+	funcIndex        int
+	direct           *directValidationEnv
+	features         ValidationFeatures
+	limits           ValidationLimits
+	analysis         *ValidatedModuleAnalysis
+	// analysisFuncBase converts the absolute funcIndex already carried by a
+	// funcValidator into the caller-owned declared-function summary index.
+	analysisFuncBase int
 
 	// declaredFuncBits is the module validation context's declared function-
 	// reference set. The inline word keeps the common <=64-function module from
@@ -330,11 +406,11 @@ func (v *moduleValidator) validateModule() error {
 			return err
 		}
 	}
-	if v.m.MemCount() > 1 && !v.features.MultiMemory {
+	if (len(v.importsOfKind(ExternMem))+len(v.m.Memories)) > 1 && !v.features.MultiMemory {
 		return v.err(ErrUnsupportedFeature, "multiple memories")
 	}
-	if uint64(v.m.MemCount()) > uint64(v.limits.MaxMemoriesPerModule) {
-		return v.err(ErrResourceLimitExceeded, fmt.Sprintf("memory count %d exceeds configured limit %d", v.m.MemCount(), v.limits.MaxMemoriesPerModule))
+	if uint64((len(v.importsOfKind(ExternMem)) + len(v.m.Memories))) > uint64(v.limits.MaxMemoriesPerModule) {
+		return v.err(ErrResourceLimitExceeded, fmt.Sprintf("memory count %d exceeds configured limit %d", (len(v.importsOfKind(ExternMem))+len(v.m.Memories)), v.limits.MaxMemoriesPerModule))
 	}
 	for _, tag := range v.m.Tags {
 		if err := v.validateTagType(tag, "tag"); err != nil {
@@ -345,7 +421,7 @@ func (v *moduleValidator) validateModule() error {
 		if err := v.validateGlobalType(g.Type); err != nil {
 			return err
 		}
-		globalLimit := v.m.ImportedGlobalCount() + i
+		globalLimit := len(v.importsOfKind(ExternGlobal)) + i
 		if v.direct != nil {
 			if i >= len(v.direct.globalInits) {
 				return v.err(ErrTypeMismatch, "global init")
@@ -478,7 +554,7 @@ func (v *moduleValidator) collectDeclaredFuncsInExpr(expr Expr) {
 }
 
 func (v *moduleValidator) declareFunc(idx uint32) {
-	funcCount := v.m.FuncCount()
+	funcCount := (len(v.importsOfKind(ExternFunc)) + len(v.m.FuncTypes))
 	if uint64(idx) >= uint64(funcCount) {
 		return
 	}
@@ -679,15 +755,12 @@ func (v *moduleValidator) validateMemType(mt MemType) error {
 	return nil
 }
 func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternFunc {
-			if n == idx {
-				ft := v.funcTypeFromTypeIdx(im.Type.FuncType())
-				return ft, ft != nil
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternFunc)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		ft := v.funcTypeFromTypeIdx(im.Type.FuncType())
+		return ft, ft != nil
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.FuncTypes) {
@@ -701,14 +774,11 @@ func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
 // packed, so returning a pointer would force their reconstructed value to
 // escape on every global.get/global.set validation.
 func (v *moduleValidator) globalType(idx uint32) (GlobalType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternGlobal {
-			if n == idx {
-				return im.Type.GlobalType(), true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternGlobal)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.GlobalType(), true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Globals) {
@@ -718,14 +788,11 @@ func (v *moduleValidator) globalType(idx uint32) (GlobalType, bool) {
 }
 
 func (v *moduleValidator) globalProperties(idx uint32) (typ ValType, mutable bool, ok bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternGlobal {
-			if n == idx {
-				return im.Type.value, im.Type.flags&externTypeMutable != 0, true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternGlobal)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.value, im.Type.flags&externTypeMutable != 0, true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Globals) {
@@ -735,14 +802,11 @@ func (v *moduleValidator) globalProperties(idx uint32) (typ ValType, mutable boo
 	return gt.Type, gt.Mutable, true
 }
 func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternTable {
-			if n == idx {
-				return im.Type.TableType(), true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternTable)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.TableType(), true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Tables) {
@@ -755,14 +819,11 @@ func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
 // packed, so returning a pointer would make reconstruction escape on every
 // load/store validated by checkMemArg.
 func (v *moduleValidator) memoryType(idx uint32) (MemType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternMem {
-			if n == idx {
-				return im.Type.MemType(), true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternMem)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.MemType(), true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Memories) {
@@ -772,14 +833,11 @@ func (v *moduleValidator) memoryType(idx uint32) (MemType, bool) {
 }
 
 func (v *moduleValidator) memoryProperties(idx uint32) (uint8, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternMem {
-			if n == idx {
-				return im.Type.flags, true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternMem)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.flags, true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Memories) {
@@ -798,21 +856,21 @@ func (v *moduleValidator) memoryProperties(idx uint32) (uint8, bool) {
 func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 	switch x.Kind {
 	case ExternFunc:
-		return int(x.Index) < v.m.FuncCount()
+		return int(x.Index) < (len(v.importsOfKind(ExternFunc)) + len(v.m.FuncTypes))
 	case ExternTable:
-		return int(x.Index) < v.m.TableCount()
+		return int(x.Index) < (len(v.importsOfKind(ExternTable)) + len(v.m.Tables))
 	case ExternMem:
-		return int(x.Index) < v.m.MemCount()
+		return int(x.Index) < (len(v.importsOfKind(ExternMem)) + len(v.m.Memories))
 	case ExternGlobal:
-		return int(x.Index) < v.m.GlobalCount()
+		return int(x.Index) < (len(v.importsOfKind(ExternGlobal)) + len(v.m.Globals))
 	case ExternTag:
-		return int(x.Index) < v.m.TagCount()
+		return int(x.Index) < (len(v.importsOfKind(ExternTag)) + len(v.m.Tags))
 	}
 	return false
 }
 
 func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
-	return v.validateConstExprWithGlobalLimit(e, want, v.m.ImportedGlobalCount()+len(v.m.Globals))
+	return v.validateConstExprWithGlobalLimit(e, want, len(v.importsOfKind(ExternGlobal))+len(v.m.Globals))
 }
 
 func (v *moduleValidator) validateConstExprWithGlobalLimit(e Expr, want ValType, globalLimit int) error {
@@ -860,7 +918,7 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 	switch e.Kind.Kind {
 	case ElemFuncs:
 		for _, f := range e.Kind.Funcs {
-			if int(f) >= v.m.FuncCount() {
+			if int(f) >= (len(v.importsOfKind(ExternFunc)) + len(v.m.FuncTypes)) {
 				return RefType{}, v.err(ErrUnknownFunc, "elem")
 			}
 		}
@@ -914,6 +972,15 @@ type val struct {
 	t       ValType
 	unknown bool
 }
+
+func nonNullValidationType(x val) ValType {
+	if x.unknown {
+		// A reference instruction constrains value bottom to reference bottom.
+		return RefVal(Ref(false, HeapType{lo: uint64(heapBottom)}, false))
+	}
+	return RefVal(x.t.Ref().WithNullable(false))
+}
+
 type ctrlKind uint8
 
 const (
@@ -985,6 +1052,17 @@ func (v *funcValidator) verr(c ValidationErrorCode, d string) error {
 	return &ValidationError{Code: c, Func: v.funcIndex, Detail: d}
 }
 
+func (v *funcValidator) analysisFacts() *ValidatedFuncFacts {
+	if v.moduleValidator == nil || v.analysis == nil {
+		return nil
+	}
+	index := v.funcIndex - v.analysisFuncBase
+	if index < 0 || index >= len(v.analysis.funcs) {
+		return nil
+	}
+	return &v.analysis.funcs[index]
+}
+
 // beginFunc resets the per-function operand/control stacks so a single
 // funcValidator can be reused across every function body in a module. Reusing
 // the value and control slices keeps their capacity between functions, avoiding
@@ -1034,7 +1112,9 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	return err
 }
 func (v *funcValidator) top() *ctrlFrame { return &v.ctrls[len(v.ctrls)-1] }
-func (v *funcValidator) push(t ValType)  { v.vals = append(v.vals, val{t: t}) }
+func (v *funcValidator) push(t ValType) {
+	v.vals = append(v.vals, val{t: t})
+}
 func (v *funcValidator) pushAll(ts []ValType) {
 	for _, t := range ts {
 		v.push(t)

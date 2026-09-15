@@ -30,19 +30,19 @@ type InstanceManager struct {
 	dispatchBase uintptr
 	pending      sync.WaitGroup
 	draining     []*Instance
+	drainOnce    sync.Once
+	drainErr     error
 }
 
 // ManagedInstance is one instance whose lifetime is owned by an
-// InstanceManager. Instance exposes the normal call surface; Close releases the
-// ownership record and closes the instance exactly once.
+// InstanceManager. Close initiates logical close; WaitClosed waits for terminal
+// completion. Manager ownership ends automatically at terminal completion.
 type ManagedInstance struct {
 	mu          sync.Mutex
 	manager     *InstanceManager
 	value       *Instance
 	closed      bool
-	done        chan struct{}
 	closedValue *Instance
-	err         error
 	memoryBytes uint64
 }
 
@@ -63,7 +63,7 @@ func (m *InstanceManager) activate(rt *Runtime) {
 }
 
 func (m *InstanceManager) caller(caller HostModule) (*Instance, error) {
-	h, ok := caller.(instanceHostModule)
+	h, ok := resolveHostCaller(caller)
 	if !ok || !h.valid() || h.in == nil || h.in.rt != m.rt {
 		return nil, fmt.Errorf("wago: managed operation requires an active caller: %w", ErrPermissionDenied)
 	}
@@ -98,7 +98,7 @@ func (m *InstanceManager) CallerIdentity(caller HostModule) (InstanceIdentity, e
 // WatchCaller returns a channel signaled when caller's synchronous authority
 // expires. The cancel function must be called when the watcher is no longer used.
 func (m *InstanceManager) WatchCaller(caller HostModule) (<-chan struct{}, func(), error) {
-	h, ok := caller.(instanceHostModule)
+	h, ok := resolveHostCaller(caller)
 	if !ok || !h.valid() || h.in == nil || h.in.rt != m.rt {
 		return nil, nil, fmt.Errorf("wago: managed operation requires an active caller: %w", ErrPermissionDenied)
 	}
@@ -113,6 +113,12 @@ func (m *InstanceManager) WatchCaller(caller HostModule) (<-chan struct{}, func(
 func (m *InstanceManager) Instantiate(ctx context.Context, mod *Module, opts ...InstantiateOption) (*ManagedInstance, error) {
 	if m == nil {
 		return nil, fmt.Errorf("wago: nil instance manager")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	memoryBytes, err := managedMemoryReservation(mod)
 	if err != nil {
@@ -158,15 +164,21 @@ func managedMemoryReservation(mod *Module) (uint64, error) {
 func (m *InstanceManager) adopt(in *Instance, memoryBytes uint64) (*ManagedInstance, error) {
 	owned := &ManagedInstance{manager: m, value: in, memoryBytes: memoryBytes}
 	in.referenceLifetime().afterPhysicalRelease(func() { m.releaseReservation(memoryBytes) })
+	// Registration and terminal detachment use the same lock order. A child
+	// closed during creation must not acquire an ownership record afterward.
+	in.lifeMu.Lock()
 	m.mu.Lock()
-	if m.closed {
+	if m.closed || in.isLogicallyClosed() {
 		m.mu.Unlock()
+		in.lifeMu.Unlock()
 		closeErr := in.closeAndWait()
-		return nil, joinPrimary(fmt.Errorf("wago: instance manager closed during instantiation"), closeErr)
+		return nil, joinPrimary(fmt.Errorf("wago: instance or manager closed during instantiation"), closeErr)
 	}
 	m.instances[owned] = struct{}{}
 	m.byInstance[in] = owned
+	in.finalizers.managed = owned
 	m.mu.Unlock()
+	in.lifeMu.Unlock()
 	return owned, nil
 }
 
@@ -174,6 +186,12 @@ func (m *InstanceManager) adopt(in *Instance, memoryBytes uint64) (*ManagedInsta
 // safe host functions, by-value globals, GC configuration, and runtime policy.
 // Borrowed memories, tables, globals, and cross-instance exports are rejected.
 func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*ManagedInstance, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	parent, err := m.caller(caller)
 	if err != nil {
 		return nil, err
@@ -220,7 +238,11 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 		gc = *state.gcConfig
 	}
 	pluginGCImports := parent.pluginGCImportSet()
-	child, err := rt.instantiateWithHooksOrigin(buildModule(parent.c, bindings), imports, pluginGCImports, gc, hasGC, false, InstantiateManaged, hooks, operation.reservation, nil)
+	mod, err := buildModule(parent.c, bindings)
+	var child *Instance
+	if err == nil {
+		child, err = rt.instantiateWithHooksOrigin(ctx, mod, imports, pluginGCImports, gc, hasGC, parent.syncMode, InstantiateManaged, hooks, operation.reservation)
+	}
 	if err != nil {
 		m.mu.Lock()
 		m.live--
@@ -238,9 +260,12 @@ func managedForkImports(parent *Instance) (Imports, error) {
 		if !ok {
 			return fmt.Errorf("managed fork import %q is missing", key)
 		}
+		_, ownedHostRef := v.(*HostFuncRef)
+		if !ownedHostRef && isHostCallback(v) {
+			imports[key] = v
+			return nil
+		}
 		switch x := v.(type) {
-		case HostFunc:
-			imports[key] = x
 		case GlobalImport:
 			if x.Global != nil {
 				return fmt.Errorf("managed fork import %q borrows a global: %w", key, ErrManagedImportLifetime)
@@ -326,6 +351,8 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 		return fmt.Errorf("wago: managed instance invocation: %w", err)
 	}
 	defer in.endInvocation()
+	state := in.lockInvocation(0)
+	defer state.unlockInvocation()
 	if err := validateVoidTableEntry(in, index); err != nil {
 		return err
 	}
@@ -340,30 +367,7 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 		return fmt.Errorf("wago: managed invocation argument buffer is unavailable")
 	}
 	binary.LittleEndian.PutUint64(in.serArgs, uint64(index))
-	if len(in.hostLog) > 0 {
-		binary.LittleEndian.PutUint32(in.hostLog, 0)
-	}
-	if ctx.Done() == nil {
-		// Keep the common non-cancelable path identical to the original dispatch:
-		// Go 1.22 otherwise retains the context through the trap translation call
-		// and adds a heap allocation even though no watcher can ever fire.
-		if in.syncMode {
-			return in.callNativeSync(base)
-		}
-		if err := in.callNativeAsync(base, false); err != nil {
-			return err
-		}
-		return in.replayHostLog()
-	}
-	stopCancel := in.startCancellationWatch(ctx, in.trap)
-	defer stopCancel()
-	if in.syncMode {
-		return contextInterruptError(ctx, in.callNativeSyncWithTrapContext(base, in.trap, ctx))
-	}
-	if err := in.callNativeAsync(base, false); err != nil {
-		return contextInterruptError(ctx, err)
-	}
-	return contextInterruptError(ctx, in.replayHostLog())
+	return in.invokeVoidEntry(ctx, base, nil)
 }
 
 func (m *InstanceManager) ensureVoidDispatcher() (uintptr, error) {
@@ -421,15 +425,50 @@ func (m *ManagedInstance) Identity() InstanceIdentity {
 	return InstanceIdentity{value: m.Instance()}
 }
 
+// Close initiates logical close without waiting for active invocations or
+// terminal close hooks. The first call runs BeforeClose synchronously and
+// returns its logical-close error. Repeated calls, including calls from
+// BeforeClose and AfterClose, join the same operation without waiting for it.
+// Manager ownership is removed automatically at terminal completion.
 func (m *ManagedInstance) Close() error {
+	_, err := m.closeLogical()
+	return err
+}
+
+// WaitClosed initiates close if necessary, then waits until logical close,
+// admitted invocations, and terminal close hooks are complete. It returns the
+// joined logical and terminal errors, without waiting for retained references
+// to release physical resources. Do not call it from a close callback on the
+// same instance: that callback is part of the completion condition.
+func (m *ManagedInstance) WaitClosed() error {
 	in, err := m.closeLogical()
 	if in != nil {
-		state := in.ensurePluginState().close.Load()
-		if state != nil {
-			<-state.quiesced
-		}
+		return in.waitTerminalClose()
 	}
 	return err
+}
+
+// Called exactly once by the instance's terminal finalizer, with lifeMu held.
+// Publish completion under the manager lock so drain cannot miss a record
+// whose terminal work is still in progress. No plugin hooks run under locks.
+func (m *ManagedInstance) finishTerminalClose(state *instanceCloseState) {
+	m.mu.Lock()
+	manager := m.manager
+	m.manager = nil
+	if !m.closed {
+		m.closed, m.closedValue, m.value = true, m.value, nil
+		m.memoryBytes = 0
+	}
+	if manager != nil {
+		manager.mu.Lock()
+		delete(manager.instances, m)
+		delete(manager.byInstance, m.closedValue)
+		close(state.terminalDone)
+		manager.mu.Unlock()
+	} else {
+		close(state.terminalDone)
+	}
+	m.mu.Unlock()
 }
 
 func (m *ManagedInstance) closeLogical() (*Instance, error) {
@@ -437,39 +476,23 @@ func (m *ManagedInstance) closeLogical() (*Instance, error) {
 		return nil, nil
 	}
 	m.mu.Lock()
-	if m.closed {
-		done := m.done
-		m.mu.Unlock()
-		if done != nil {
-			<-done
-		}
-		m.mu.Lock()
-		in, err := m.closedValue, m.err
-		m.mu.Unlock()
-		return in, err
+	if !m.closed {
+		m.closed, m.closedValue, m.value = true, m.value, nil
+		m.memoryBytes = 0
 	}
-	m.closed = true
-	m.done = make(chan struct{})
-	in, manager, done := m.value, m.manager, m.done
-	m.closedValue = in
-	m.value, m.manager = nil, nil
-	m.memoryBytes = 0
+	in, manager := m.closedValue, m.manager
 	m.mu.Unlock()
-	var err error
-	if in != nil {
-		err = in.Close()
-	}
 	if manager != nil {
 		manager.mu.Lock()
-		delete(manager.instances, m)
 		delete(manager.byInstance, in)
 		manager.mu.Unlock()
 	}
-	m.mu.Lock()
-	m.err = err
-	close(done)
-	m.mu.Unlock()
-	return in, err
+	// Instance.Close owns preparation and its result. Calling it even when
+	// another managed caller won admission avoids a second publication barrier.
+	if in != nil {
+		return in, in.Close()
+	}
+	return nil, nil
 }
 
 func (m *InstanceManager) releaseReservation(memoryBytes uint64) {
@@ -504,6 +527,11 @@ func (m *InstanceManager) drain() error {
 	if m == nil {
 		return nil
 	}
+	m.drainOnce.Do(func() { m.drainErr = m.drainInstances() })
+	return m.drainErr
+}
+
+func (m *InstanceManager) drainInstances() error {
 	// closed was published under m.mu before this wait, so no later pending.Add
 	// can race the Wait. In-flight creators either fail or close their partial
 	// instance in adopt before signaling Done.
@@ -515,25 +543,20 @@ func (m *InstanceManager) drain() error {
 	}
 	m.mu.Unlock()
 	var errs []error
-	list := make([]*Instance, 0, len(owned))
 	for _, managed := range owned {
-		in, err := managed.closeLogical()
-		if err != nil {
-			errs = append(errs, err)
-		}
-		if in != nil {
-			list = append(list, in)
-		}
+		_ = managed.Close()
 	}
 	m.mu.Lock()
-	list = append(list, m.draining...)
-	m.instances = nil
-	m.byInstance = nil
+	list := m.draining
 	m.mu.Unlock()
+	for _, managed := range owned {
+		if err := managed.WaitClosed(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	for _, in := range list {
-		state := in.ensurePluginState().close.Load()
-		if state != nil {
-			<-state.quiesced
+		if err := in.waitTerminalClose(); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	m.mu.Lock()

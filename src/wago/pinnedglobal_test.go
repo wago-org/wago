@@ -2,7 +2,7 @@
 
 // Like callargs_test.go, this builds fixtures via wat2wasm through os/exec, which
 // TinyGo does not support, so it is excluded from the TinyGo build. See
-// docs/tinygo.md.
+// the TinyGo-specific test constraints.
 
 package wago
 

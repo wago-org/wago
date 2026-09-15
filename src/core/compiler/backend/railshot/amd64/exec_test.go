@@ -13,7 +13,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func f32b(v float32) uint64 { return uint64(math.Float32bits(v)) }

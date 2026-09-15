@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/wago-org/wago/internal/namecheck"
 	"github.com/wago-org/wago/src/core/semver"
 )
 
@@ -15,10 +15,6 @@ type PluginRequirement struct {
 	ID         string
 	Constraint string
 }
-
-var (
-	pluginIDPattern = regexp.MustCompile(`^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:/[A-Za-z0-9](?:[A-Za-z0-9._~-]*[A-Za-z0-9])?)+$`)
-)
 
 func Requirements(dir string) ([]PluginRequirement, error) {
 	manifest, err := Read(dir)
@@ -260,7 +256,7 @@ func ValidateConstraint(constraint string) error {
 // IDs are never registry-relative aliases: the same full path identifies a
 // provider in the manifest, catalog, lockfile, generated build, and runtime.
 func ValidatePluginID(id string) error {
-	if len(id) > 300 || !pluginIDPattern.MatchString(id) {
+	if len(id) > 300 || !namecheck.CanonicalPath(id) {
 		return fmt.Errorf("plugin ID %q must be fully qualified, such as github.com/wago-org/wasi", id)
 	}
 	return nil

@@ -8,7 +8,7 @@ import (
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	runtimeabi "github.com/wago-org/wago/src/core/runtime/abi"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestAMD64PublishesDirectPreparedLeafAcrossCompilerPaths(t *testing.T) {

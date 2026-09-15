@@ -4,7 +4,7 @@
 // TinyGo does not support; combined with TinyGo's testing package not honoring
 // t.Skip/t.Fatal (no runtime.Goexit), it cannot run under TinyGo. Excluded from
 // the TinyGo build — the public API is still covered there by the embedded-
-// fixture tests in wago_test.go. See docs/tinygo.md.
+// fixture tests in wago_test.go.
 
 package wago
 

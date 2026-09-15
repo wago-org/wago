@@ -10,7 +10,7 @@ import (
 	"testing"
 	"unsafe"
 
-	corergc "github.com/wago-org/wago/src/core/runtime/gc"
+	corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func stagedGCArrayInitLeaderBytes(t testing.TB, filename string) []byte {
@@ -131,7 +131,7 @@ func TestStagedGCArrayInitDataProductBoundary(t *testing.T) {
 
 func TestStagedGCArrayInitElemProductBoundaryAndTinyLifecycle(t *testing.T) {
 	data := stagedGCArrayInitLeaderBytes(t, "array_init_elem.3.wasm")
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public compile unexpectedly admitted array.init_elem")
 	}
 	guardCfg := NewRuntimeConfig()

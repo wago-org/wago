@@ -6,7 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // offHeapPtr reinterprets a known off-heap address — JIT arena / table-descriptor
@@ -28,12 +28,12 @@ type Instance struct {
 	ar                      *runtime.Arena
 	profile                 *instanceRailshotProfile // nil unless experimental collection is enabled
 	base                    uintptr
-	hosts                   map[string]HostFunc
-	imports                 Imports // the imports as provided to Instantiate
+	hostEvents              *hostEventBindings // nil outside deferred event mode
+	imports                 Imports            // the imports as provided to Instantiate
 	hostLog                 []byte
 	ctrl                    []byte                              // sync host-call control frame (nil in async mode)
 	syncHosts               []syncHostBinding                   // immutable per-import sync host bindings
-	hostCall                runtime.HostCall                    // active instance's bound host imports
+	hostCall                resolvedHostCall                    // active instance's bound host imports
 	pluginState             atomic.Pointer[instancePluginState] // allocated only after privileged instance services activate
 	globals                 []byte                              // pointer table handed to JIT code
 	globalCells             []*Global
@@ -48,6 +48,7 @@ type Instance struct {
 	gcNativeView            *gc.NativeInstanceView
 	serArgs, results, trap  []byte
 	resultVals              []uint64       // reusable Invoke result buffer (valid until the next call)
+	resultInline            [2]uint64      // small results stay with their instance, not in adjacent tiny heap objects
 	ic                      [4]invokeCache // tiny fixed export resolution cache
 	pluginGCImports         map[uint32]struct{}
 	refStore                *referenceStore
@@ -57,8 +58,8 @@ type Instance struct {
 	closed                  bool          // logical close; retained references may defer physical release
 	finalizing              bool          // one goroutine owns quiescent finalization
 	resourcesClosed         bool
-	icNext                  uint8 // round-robin invoke-cache replacement cursor
-	physicalFinalizer       func()
+	icNext                  uint8                    // round-robin invoke-cache replacement cursor
+	finalizers              *instanceFinalizers      // optional lifecycle callbacks; lifeMu protects access
 	ownsMem                 bool                     // false when memory 0 is host-imported (don't close it)
 	memoryDir               *instanceMemoryDirectory // allocated only for indexed memory execution
 	syncMode                bool                     // true when host imports use the synchronous re-entry protocol
@@ -76,6 +77,15 @@ type Instance struct {
 	// moduleIdentity is an opaque token, not a Compiled pointer. It lets an
 	// instance finish its own lifecycle after its Module wrapper has closed.
 	moduleIdentity ModuleIdentity
+}
+
+// nativeUint64Slots views an arena-backed, 8-byte-aligned byte buffer as native
+// value slots. Instance argument and result buffers satisfy both invariants.
+func nativeUint64Slots(bytes []byte) []uint64 {
+	if len(bytes) == 0 {
+		return nil
+	}
+	return unsafe.Slice((*uint64)(unsafe.Pointer(&bytes[0])), len(bytes)/8)
 }
 
 // instanceMemoryDirectory is allocated only after indexed memory execution is
@@ -97,10 +107,15 @@ type invokeCache struct {
 	export            string
 	valid             bool
 	entryMode         preparedEntryMode
+	directIntFast     bool
+	directIntLight    bool
+	directIntBounded  bool
+	scalarWideMask    uint8
+	scalarResultWide  bool
 	li                int // local index, or -1-import index for an InstanceExport re-export
 	paramSlots        int
 	resultSlots       int
 	hasFuncRefParams  bool
 	hasFuncRefResults bool
-	resultWide        []bool // one entry per returned uint64 slot; false means read low 32 bits
+	slotWide          []bool // parameter slots followed by result slots; false means a 32-bit scalar
 }

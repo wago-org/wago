@@ -7554,7 +7554,7 @@ func emitARM64FloatConstant(a *arm64.Asm, dst arm64.Reg, bits uint64, f64 bool) 
 		a.FmovFromGpr(dst, arm64.XZR, f64)
 		return
 	}
-	if a.FmovImm(dst, bits, f64) {
+	if a.FmovBits(dst, bits, f64) {
 		return
 	}
 	a.MovImm64(arm64.X16, bits)

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func stagedFirstNullReferenceModule(mutableAnyGlobal bool) []byte {
@@ -111,7 +111,7 @@ func namesForBottomNullReferenceProduct() []string {
 }
 
 func compileStagedNullReferenceProductForTest(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.NullReferenceProducts = true

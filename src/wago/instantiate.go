@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -9,15 +10,21 @@ import (
 
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // InstantiateOptions configures instance creation from a *Compiled.
 type InstantiateOptions struct {
-	Imports Imports
-	GC      GCConfig
-	store   *referenceStore
+	// MaxCompiledMetadataBytes bounds the frozen Go metadata snapshot. Zero
+	// uses the source policy or the 256 MiB default; native instance storage
+	// has a separate quota. A stricter limit also applies to an existing snapshot.
+	MaxCompiledMetadataBytes uint64
+	Imports                  Imports
+	GC                       GCConfig
+	store                    *referenceStore
+	startContext             context.Context
 
+	ownedImports             bool // private Runtime resolution has transferred ownership
 	runtime                  *Runtime
 	origin                   InstantiateOrigin
 	pluginGC                 *GCConfig
@@ -117,8 +124,22 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 }
 
 func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, moduleUse *Module) (*Instance, error) {
+	defer goruntime.KeepAlive(c)
+	// Keep validation, native linking, public lookup, and teardown on one binding set.
+	if opts.Imports != nil && !opts.ownedImports {
+		imports := make(Imports, len(opts.Imports))
+		for key, value := range opts.Imports {
+			imports[key] = value
+		}
+		opts.Imports = imports
+	}
 	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports, moduleUse: moduleUse}
 	defer b.releaseModuleUse()
+	if opts.startContext != nil {
+		if err := opts.startContext.Err(); err != nil {
+			return nil, err
+		}
+	}
 	if c == nil {
 		return nil, errors.New("wago: instantiate: nil compiled module")
 	}
@@ -131,6 +152,19 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	if len(c.compactNativeFunctions()) != 0 {
 		return nil, errors.New("wago: compact native clone must be installed on a tierable compatibility instance")
 	}
+	mappingOwner := c
+	if moduleUse != nil && moduleUse.compiledView != nil {
+		mappingOwner = moduleUse.compiledView
+	}
+	if err := mappingOwner.prepareCodeMapping(); err != nil {
+		return nil, fmt.Errorf("wago: instantiate: map code: %w", err)
+	}
+	var err error
+	c, err = c.freezeExecution(opts.MaxCompiledMetadataBytes)
+	if err != nil {
+		return nil, err
+	}
+	b.c = c
 	if err := c.preflightImportBindings(opts.Imports); err != nil {
 		return nil, err
 	}
@@ -247,7 +281,7 @@ func (b *instanceBuilder) prepareCollector() error {
 		if err != nil {
 			return err
 		}
-		collector, mapping, err := b.opts.store.acquireGCCollector(gcConfig, b.c, preferred)
+		collector, mapping, err := b.opts.store.acquireGCCollector(b.opts.startContext, gcConfig, b.c, preferred)
 		if err != nil {
 			return err
 		}
@@ -691,6 +725,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	// while this reference keeps its native mapping live.
 	b.releaseModuleUse()
 	var hostLog, ctrl []byte
+	var hostEvents *hostEventBindings
 	var syncHosts []syncHostBinding
 	if syncMode {
 		// Synchronous host-call path: install the control frame (not the async
@@ -716,21 +751,30 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			hasHostImport = true
 			if imports[key] == nil {
-				return nil, fmt.Errorf("import %q: legacy async host calls require wago.HostFunc or *wago.HostFuncRef", key)
+				return nil, fmt.Errorf("import %q: deferred host event is missing", key)
 			}
 			if i >= len(c.importFuncSigs) {
 				return nil, fmt.Errorf("import %q: missing signature", key)
 			}
-			if _, err := bindHostImport(imports[key], c.importFuncSigs[i]); err != nil {
-				return nil, fmt.Errorf("import %q: legacy async host call: %w", key, err)
+			if _, err := bindI32HostEvent(imports[key], c.importFuncSigs[i]); err != nil {
+				return nil, err
 			}
 		}
 		if hasHostImport {
+			hostEvents, err = c.buildHostEvents(imports)
+			if err != nil {
+				return nil, fmt.Errorf("instantiate: %w", err)
+			}
 			// The log's count header is reset at the start of every Invoke and its
-			// body is written by native code before the host reads it, so the ~64 KiB
-			// buffer needs no instantiate-time zero-fill.
+			// body is written by native code before deferred callbacks read it, so
+			// the ~64 KiB buffer needs no instantiate-time zero-fill.
 			hostLog = ar.AllocNoZero(runtime.HostCallLogBytes)
 			jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
+			for _, global := range c.GlobalImports {
+				if valTypeMayCarryFuncref(global.Type) {
+					return nil, fmt.Errorf("deferred host-event instance cannot import a funcref global: %w", ErrPermissionDenied)
+				}
+			}
 		}
 	}
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
@@ -892,8 +936,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					internal = internalEntryOffset(c.InternalEntry[li])
 				}
 				regABIEnabled := !c.registerABIDisabled
-				stagedTailRegABI := regABIEnabled && c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (funcSigLocalRegABI(c.Funcs[li]) || funcSigReferenceResultRegABI(c.Funcs[li]))
 				localRegABI := regABIEnabled && funcSigLocalRegABI(c.Funcs[li])
+				stagedTailRegABI := regABIEnabled && c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (localRegABI || funcSigReferenceResultRegABI(c.Funcs[li]))
 				// Equal wrapper/internal offsets on a register-ABI function encode an
 				// intentionally wrapperless direct-only function. It cannot be a valid
 				// ref.func target; leave its unused descriptor entry invalid instead of
@@ -1522,11 +1566,16 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcNativeView))))
 	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, profile: profileState, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
-		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, profile: profileState, base: base, hostEvents: hostEvents, imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
+		serArgs: serArgs, results: results, trap: trap, rt: opts.runtime,
 		nativeContext:   nativeContextPtr,
 		moduleIdentity:  opts.moduleIdentity,
 		pluginGCImports: opts.pluginGCImports,
+	}
+	if c.maxResultSlots <= len(in.resultInline) {
+		in.resultVals = in.resultInline[:c.maxResultSlots:c.maxResultSlots]
+	} else {
+		in.resultVals = make([]uint64, c.maxResultSlots)
 	}
 	independentInstances := c.independentInstances
 	if opts.hasExecutionPolicy {
@@ -1679,6 +1728,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 
 	// Run the start function (() -> ()) now that memory, globals, table, and data
 	// are initialized. A trap here aborts instantiation.
+	if opts.startContext != nil {
+		if err := opts.startContext.Err(); err != nil {
+			return nil, err
+		}
+	}
 	if c.HasStart {
 		if c.StartIsImport {
 			// Imported start: run the imported function through the same normalized
@@ -1691,7 +1745,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil {
 				return nil, fmt.Errorf("start function %q is a cross-instance import; cross-instance imported starts are unsupported", key)
 			}
-			fn, err := bindHostImport(imports[key], FuncSig{})
+			fn, err := bindSyncHostImport(imports[key], FuncSig{})
 			if err != nil {
 				return nil, fmt.Errorf("start function %q: %w", key, err)
 			}
@@ -1710,22 +1764,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			// tenant's native result before public tokenization. The instance gate is
 			// acquired first, matching Invoke and prepared-call lock ordering.
 			startErr := func() error {
-				state := in.ensurePluginState()
-				state.invokeMu.Lock()
-				id := newInvocationID()
-				state.invocationID = id
-				defer func() {
-					state.invocationID = 0
-					state.invokeMu.Unlock()
-				}()
-				gcLease := in.lockGCInvocation(id)
-				defer gcLease.unlock()
-				previousReservation := in.swapInvocationReservation(in.constructionReservationSnapshot())
-				defer in.swapInvocationReservation(previousReservation)
-				if in.syncMode {
-					return in.callNativeSync(startEntry)
-				}
-				return in.callNativeAsync(startEntry, false)
+				state := in.lockInvocation(0)
+				defer state.unlockInvocation()
+				return in.invokeVoidEntry(opts.startContext, startEntry, in.constructionReservationSnapshot())
 			}()
 			if startErr != nil {
 				// Instantiation writes to imported tables are store side effects. If a
@@ -1750,7 +1791,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	return in, nil
 }
 
-func callImportedStart(fn HostFunc, caller instanceHostModule) (err error) {
+func callImportedStart(fn syncHostBinding, caller instanceHostModule) (err error) {
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -1770,7 +1811,7 @@ func callImportedStart(fn HostFunc, caller instanceHostModule) (err error) {
 			}
 		}
 	}()
-	fn(caller, nil, nil)
+	fn.call(caller, nil, nil)
 	return nil
 }
 
@@ -1839,7 +1880,12 @@ func funcSigIntRegABI(sig FuncSig) bool {
 	if len(sig.Results) > 2 || len(sig.Params) > 8 {
 		return false
 	}
-	for _, t := range append(append([]ValType{}, sig.Params...), sig.Results...) {
+	for _, t := range sig.Params {
+		if t != ValI32 && t != ValI64 {
+			return false
+		}
+	}
+	for _, t := range sig.Results {
 		if t != ValI32 && t != ValI64 {
 			return false
 		}
@@ -1891,13 +1937,12 @@ func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (map[uint3
 			}
 			continue
 		}
-		switch imports[key].(type) {
-		case HostFunc, *HostFuncRef:
+		if isHostCallback(imports[key]) {
 			offs[uint32(fidx)] = len(blob)
 			blob = append(blob, railshotHostIndirectThunk(uint32(fidx))...)
-		default:
+		} else {
 			if imports[key] != nil {
-				return nil, nil, fmt.Errorf("import %q is %T; async host wrappers support wago.HostFunc or *wago.HostFuncRef bindings", key, imports[key])
+				return nil, nil, fmt.Errorf("import %q is %T; async host wrappers require wago.I32HostEvent", key, imports[key])
 			}
 		}
 	}

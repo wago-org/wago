@@ -17,7 +17,7 @@ import (
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const stagedExceptionHandlingDeltaPath = "tests/spec-v3-staged-exception-handling.json"
+const stagedExceptionHandlingDeltaPath = "tests/conformance/baselines/spec-v3-staged-exception-handling.json"
 
 var stagedExceptionHandlingOfficialFiles = []string{
 	"exceptions/tag", "exceptions/throw", "exceptions/throw_ref", "exceptions/try_table", "ref_null",

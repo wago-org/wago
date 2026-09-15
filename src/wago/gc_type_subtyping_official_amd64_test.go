@@ -19,7 +19,7 @@ import (
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const stagedGCTypeSubtypingDeltaPath = "tests/spec-v3-staged-gc-type-subtyping.json"
+const stagedGCTypeSubtypingDeltaPath = "tests/conformance/baselines/spec-v3-staged-gc-type-subtyping.json"
 
 var stagedGCTypeSubtypingLeaderSourceLines = []int{
 	3, 15, 24, 37, 43, 53, 68, 89, 115, 124, 151, 159, 177, 188,

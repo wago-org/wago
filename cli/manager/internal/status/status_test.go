@@ -21,14 +21,14 @@ func TestInspectReportsActiveRuntime(t *testing.T) {
 		Cache:    filepath.Join(root, "cache", "canary"),
 		Version:  "canary",
 	}
-	runtimePath := dirs.RuntimeBinary("nightly", "minimal", "tiny")
+	runtimePath := dirs.RuntimeBinary("beta", "minimal", "tiny")
 	if err := os.MkdirAll(filepath.Dir(runtimePath), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(runtimePath, []byte("runtime"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := managerversion.SetActiveInstallation(dirs, "nightly", wagopaths.ProfileMinimal, wagopaths.BuildTiny); err != nil {
+	if err := managerversion.SetActiveInstallation(dirs, "beta", wagopaths.ProfileMinimal, wagopaths.BuildTiny); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(project.BareEnv, "1")
@@ -38,7 +38,7 @@ func TestInspectReportsActiveRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.RuntimeVersion != "nightly" || report.RuntimeProfile != "minimal" || report.RuntimeBuild != "tiny" || report.RuntimePath != runtimePath {
+	if report.RuntimeVersion != "beta" || report.RuntimeProfile != "minimal" || report.RuntimeBuild != "tiny" || report.RuntimePath != runtimePath {
 		t.Fatalf("runtime report = %#v", report)
 	}
 	if report.Scope != "bare" {
@@ -81,7 +81,7 @@ func TestPrintKeepsStatusCompact(t *testing.T) {
 	var output bytes.Buffer
 	Print(&output, Report{
 		ManagerVersion:  "canary-abc1234",
-		RuntimeVersion:  "nightly",
+		RuntimeVersion:  "beta",
 		RuntimeProfile:  "standard",
 		RuntimeBuild:    "normal",
 		RuntimePath:     filepath.FromSlash("/tmp/wago-runtime"),
@@ -94,7 +94,7 @@ func TestPrintKeepsStatusCompact(t *testing.T) {
 		ConfigPath:      filepath.FromSlash("/tmp/project/wago.json"),
 		ConfigOverrides: 2,
 	})
-	for _, want := range []string{"Wago status", "nightly (standard/normal)", "local", "2 overrides", "settings", "directory", filepath.FromSlash("/tmp/project"), "2 enabled", "up to date"} {
+	for _, want := range []string{"Wago status", "beta (standard/normal)", "local", "2 overrides", "settings", "directory", filepath.FromSlash("/tmp/project"), "2 enabled", "up to date"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("output does not contain %q:\n%s", want, output.String())
 		}

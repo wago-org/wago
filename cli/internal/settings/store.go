@@ -8,11 +8,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/internal/atomicfile"
+	"github.com/wago-org/wago/internal/jsonstrict"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -100,6 +101,9 @@ func LoadFile(path string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	if err := jsonstrict.ValidateTypedJSON(data, &storedConfig{}); err != nil {
+		return Config{}, fmt.Errorf("decode %s: %w", path, err)
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var stored storedConfig
@@ -112,20 +116,31 @@ func LoadFile(path string) (Config, error) {
 	if stored.Version != Version {
 		return Config{}, fmt.Errorf("unsupported settings version %d (want %d)", stored.Version, Version)
 	}
+	featureNames := make(map[string]string, len(stored.Features))
 	for name, value := range stored.Features {
 		setting, ok := Lookup("features." + name)
 		if !ok {
 			return Config{}, fmt.Errorf("unknown feature setting %q", name)
+		}
+		if err := recordCanonicalSetting(featureNames, setting.Key, name, "feature"); err != nil {
+			return Config{}, err
 		}
 		if value && !setting.Available {
 			return Config{}, fmt.Errorf("feature setting %q is unavailable", name)
 		}
 		setting.SetValue(&config, value)
 	}
+	optimizationNames := make(map[string]string, len(stored.Optimizations))
 	for name, value := range stored.Optimizations {
+		if project.IsRetiredOptimizationName(name) {
+			continue
+		}
 		if setting, ok := Lookup("optimizations." + name); !ok || !setting.Available {
 			return Config{}, fmt.Errorf("unknown optimization setting %q for %s", name, filepath.Base(path))
 		} else {
+			if err := recordCanonicalSetting(optimizationNames, setting.Key, name, "optimization"); err != nil {
+				return Config{}, err
+			}
 			setting.SetValue(&config, value)
 		}
 	}
@@ -153,11 +168,10 @@ func LoadFile(path string) (Config, error) {
 
 func Save(config Config) error { return SaveFile(Path(), config) }
 
+var replaceSettingsFile = atomicfile.ReplaceFile
+
 func SaveFile(path string, config Config) error {
 	if err := Validate(config); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(config, "", "  ")
@@ -165,34 +179,10 @@ func SaveFile(path string, config Config) error {
 		return err
 	}
 	data = append(data, '\n')
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".settings-*.json")
-	if err != nil {
+	return replaceSettingsFile(path, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+		_, err := writer.Write(data)
 		return err
-	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	if err := temporary.Chmod(0o644); err != nil {
-		temporary.Close()
-		return err
-	}
-	if _, err := temporary.Write(data); err != nil {
-		temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	renameErr := os.Rename(temporaryPath, path)
-	if renameErr == nil {
-		return nil
-	}
-	if runtime.GOOS != "windows" {
-		return renameErr
-	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return os.Rename(temporaryPath, path)
+	})
 }
 
 func Validate(config Config) error {

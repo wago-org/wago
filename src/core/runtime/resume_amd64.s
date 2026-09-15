@@ -13,11 +13,11 @@
 // enterNative's shared epilogue — reached via the return address still parked at
 // foreignStackTop-72 — which restores this Go context and returns here. Then it
 // reloads the saved wasm registers + RSP and RETs into wasm at the instruction
-// after the host CALL. See docs/host-import-results-plan.md §2.
+// after the host CALL.
 //
 // The deep wasm frames below the save area are untouched while Go runs (Go
 // executes on the goroutine stack), so the parked stack is intact on resume.
-TEXT ·resumeNative(SB), NOSPLIT, $0-16
+TEXT ·resumeNativeRaw(SB), NOSPLIT, $0-16
 	MOVQ ctrl+0(FP), R9            // read args before altering SP (FP still valid)
 	MOVQ foreignStackTop+8(FP), R10
 

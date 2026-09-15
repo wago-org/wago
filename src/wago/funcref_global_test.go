@@ -9,7 +9,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestRelease2RefFuncGlobalInitializersWithoutTable(t *testing.T) {
@@ -272,7 +272,7 @@ func TestRelease2NullableFuncrefGlobalSourceGuard(t *testing.T) {
 	if !requireStandardGoTestRuntime(t) {
 		return
 	}
-	path := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
+	path := filepath.Clean("../../tests/conformance/spec-v2/test/core/linking.wast")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Skipf("Release 2 linking fixture unavailable: %v", err)

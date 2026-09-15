@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	corergc "github.com/wago-org/wago/src/core/runtime/gc"
-	"github.com/wago-org/wago/tests/wasmtest"
+	corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func gcNativeDefinedTypeModule() []byte {

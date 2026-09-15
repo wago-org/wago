@@ -113,15 +113,6 @@ const (
 		CoreFeatureSIMD |
 		CoreFeatureExtendedConst |
 		CoreFeatureExtendedConstExpressions
-
-	// defaultCore3Features contains the finalized Core 3 families that extend
-	// validation and execution without making managed-object lifetime or native
-	// exception unwinding part of every runtime's default contract.
-	defaultCore3Features = CoreFeatureTailCall |
-		CoreFeatureTypedFunctionReferences |
-		CoreFeatureMultiMemory |
-		CoreFeatureMemory64 |
-		CoreFeatureTable64
 )
 
 // IsEnabled returns true if all bits in feature are set.
@@ -173,8 +164,8 @@ var featureRegistry = []FeatureInfo{
 	{Feature: CoreFeatureExtendedConstExpressions, Name: "extended-const-expressions", Label: "Extended constant expressions", Description: "imported globals in constant expressions"},
 	{Feature: CoreFeatureTailCall, Name: "tail-call", Label: "Tail calls", Description: "return_call, return_call_indirect, and return_call_ref"},
 	{Feature: CoreFeatureTypedFunctionReferences, Name: "typed-function-references", Label: "Typed function references", Description: "typed references, call_ref, and related casts"},
-	{Feature: CoreFeatureGC, Name: "gc", Label: "Garbage collection", Description: "struct, array, i31, and managed reference instructions", Experimental: true},
-	{Feature: CoreFeatureExceptionHandling, Name: "exception-handling", Label: "Exception handling", Description: "tags, throw, and try_table", Experimental: true},
+	{Feature: CoreFeatureGC, Name: "gc", Label: "Garbage collection", Description: "struct, array, i31, and managed reference instructions"},
+	{Feature: CoreFeatureExceptionHandling, Name: "exception-handling", Label: "Exception handling", Description: "tags, throw, and try_table"},
 	{Feature: CoreFeatureMultiMemory, Name: "multi-memory", Label: "Multiple memories", Description: "multiple memories and indexed memory instructions"},
 	{Feature: CoreFeatureMemory64, Name: "memory64", Label: "64-bit memory", Description: "64-bit linear-memory limits and addresses"},
 	{Feature: CoreFeatureTable64, Name: "table64", Label: "64-bit tables", Description: "64-bit table limits and indexes"},
@@ -216,8 +207,8 @@ const (
 	// default; needs no signal handler.
 	BoundsChecksExplicit BoundsCheckMode = iota
 	// BoundsChecksSignalsBased elides eligible memory-0 memory32 checks and relies
-	// on a guard-page mapping plus a SIGSEGV/SIGBUS handler (see
-	// docs/guardpage-spike.md). Indexed nonzero memories and memory64 retain
+	// on a guard-page mapping plus a SIGSEGV/SIGBUS handler. Indexed nonzero
+	// memories and memory64 retain
 	// explicit checks. The mode is faster on memory-heavy code, but installs
 	// process-wide signal handlers and requires a `wago_guardpage` build.
 	BoundsChecksSignalsBased
@@ -246,6 +237,7 @@ type RuntimeConfig struct {
 	maxFunctionLocals        uint32 // total function parameters plus declared locals
 	maxMemoriesPerModule     uint32
 	maxInstanceMetadataBytes uint64
+	maxCompiledMetadataBytes uint64
 	maxModuleBytes           uint64
 	maxNativeCodeBytes       uint64
 	boundsChecks             BoundsCheckMode
@@ -366,6 +358,7 @@ func NewRuntimeConfig() *RuntimeConfig {
 		optimizationDeltas:   optimizationDeltas,
 		trustedOptimizations: true,
 		maxMemoryPages:       defaultMaxMemoryPages,
+		maxModuleBytes:       64 << 20,
 		maxFunctionLocals:    DefaultMaxFunctionLocals,
 		maxMemoriesPerModule: DefaultMaxMemoriesPerModule,
 		boundsChecks:         bounds,
@@ -594,15 +587,32 @@ func (c *RuntimeConfig) WithMaxInstanceMetadataBytes(bytes uint64) *RuntimeConfi
 	return &n
 }
 
+// WithMaxCompiledMetadataBytes bounds owned execution-snapshot metadata before
+// cloning. Zero selects the 256 MiB default. This is separate from native
+// instance metadata and applies to compilation and precompiled module admission.
+func (c *RuntimeConfig) WithMaxCompiledMetadataBytes(bytes uint64) *RuntimeConfig {
+	n := *c
+	n.maxCompiledMetadataBytes = bytes
+	return &n
+}
+
+// MaxCompiledMetadataBytes returns the configured snapshot quota; zero selects
+// the default decoded metadata quota.
+func (c *RuntimeConfig) MaxCompiledMetadataBytes() uint64 { return c.maxCompiledMetadataBytes }
+
 // WithMaxModuleBytes caps input Wasm bytes accepted by compilation. Zero is
-// unbounded. This is a cheap front-door compile resource quota.
+// unbounded. The default is 64 MiB. Decode-time type and metadata limits still
+// apply independently. This is a cheap front-door compile resource quota.
 func (c *RuntimeConfig) WithMaxModuleBytes(bytes uint64) *RuntimeConfig {
 	n := *c
 	n.maxModuleBytes = bytes
 	return &n
 }
 
-// WithMaxNativeCodeBytes caps generated native code bytes for one module. Zero
+// WithMaxNativeCodeBytes caps the accepted final native code image for one module.
+// The limit is checked after code generation and final compaction. It does not
+// bound peak compiler memory, temporary code, or compilation work. Function
+// workers share this one final module limit; it is not a per-worker allowance. Zero
 // is unbounded. Runtime.Module rechecks decoded artifacts against this quota.
 func (c *RuntimeConfig) WithMaxNativeCodeBytes(bytes uint64) *RuntimeConfig {
 	n := *c
@@ -882,8 +892,8 @@ func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
 }
 
 func (c *RuntimeConfig) String() string {
-	return fmt.Sprintf("RuntimeConfig{compiler: %s, target: %s, objective: %s, fallback: %s, features: %s, optimizations: %d, hostEffects: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, maxMemoriesPerModule: %d, maxInstanceMetadataBytes: %d, maxModuleBytes: %d, maxNativeCodeBytes: %d, functionWorkers: %d, nativeStackBytes: %d, independentInstances: %t}",
-		c.compiler, c.compilerTarget, c.objective, c.compilerFallback, c.features, len(c.optimizations), len(c.hostEffects), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.maxMemoriesPerModule, c.maxInstanceMetadataBytes, c.maxModuleBytes, c.maxNativeCodeBytes, c.functionWorkers, c.nativeStackBytes, c.independentInstances)
+	return fmt.Sprintf("RuntimeConfig{compiler: %s, target: %s, objective: %s, fallback: %s, features: %s, optimizations: %d, hostEffects: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, maxMemoriesPerModule: %d, maxInstanceMetadataBytes: %d, maxCompiledMetadataBytes: %d, maxModuleBytes: %d, maxNativeCodeBytes: %d, functionWorkers: %d, nativeStackBytes: %d, independentInstances: %t}",
+		c.compiler, c.compilerTarget, c.objective, c.compilerFallback, c.features, len(c.optimizations), len(c.hostEffects), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.maxMemoriesPerModule, c.maxInstanceMetadataBytes, c.maxCompiledMetadataBytes, c.maxModuleBytes, c.maxNativeCodeBytes, c.functionWorkers, c.nativeStackBytes, c.independentInstances)
 }
 
 // SupportedFeatures reports the WebAssembly feature set this wago build can
@@ -920,12 +930,12 @@ func platformCoreFeatures() CoreFeatures {
 	return supported
 }
 
-// defaultCoreFeatures admits selected finalized Core 3 families on backends that
-// implement the complete product. Other targets retain the portable Release 2
-// plus extended-constant surface instead of silently accepting partial support.
-// GC, exception handling, and the separate threads proposal remain opt-in.
+// defaultCoreFeatures admits the complete Core 3 release on backends that
+// implement it. Other targets retain the portable Release 2 plus
+// extended-constant surface instead of silently accepting partial support.
+// The separate threads proposal remains opt-in.
 func defaultCoreFeatures() CoreFeatures {
-	return coreFeaturesWithoutSidecar | (defaultCore3Features & platformCoreFeatures())
+	return coreFeaturesWithoutSidecar | (CoreFeaturesV3 & platformCoreFeatures())
 }
 
 func SupportedFeatures() CoreFeatures {

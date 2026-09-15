@@ -24,7 +24,7 @@ WAGO_REGRESSION_PRESERVE_KNOBS=1 \
 WAGO_BOUNDS=signals \
 	go test -count=3 -shuffle=on -tags wago_guardpage ./src/wago -run '^TestRuntimeRegression'
 
-go test ./tests/regressioncorpus -run '^$' -fuzz '^FuzzValidateRelativePathAndRustScannerDoNotPanic$' -fuzztime="$fuzztime"
+go test ./tests/support/regressioncorpus -run '^$' -fuzz '^FuzzValidateRelativePathAndRustScannerDoNotPanic$' -fuzztime="$fuzztime"
 go test ./tests/tools/regression-corpus -run '^$' -fuzz '^FuzzNormalizeWABTJSONDoesNotPanic$' -fuzztime="$fuzztime"
 go test ./src/wago -run '^$' -fuzz '^FuzzSpecTrapMatchingDoesNotPanic$' -fuzztime="$fuzztime"
 go test ./src/wago -run '^$' -fuzz '^FuzzRegressionEmbenchenSliceBounds$' -fuzztime="$fuzztime"

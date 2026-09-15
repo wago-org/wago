@@ -2,7 +2,12 @@
 
 package arm64
 
-import "math/bits"
+import (
+	"fmt"
+	"math/bits"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // Compare→branch fusion: when a relational compare (or eqz) feeds directly into
 // br_if or if, emit the compare's CMP and branch on its NZCV flags, skipping the
@@ -46,10 +51,11 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 		emitted = f.a.TstImm32(x, uint32(c))
 	}
 	if !emitted {
-		t := f.allocReg(maskOf(x))
-		f.loadConst(t, storage{kind: stConst, typ: inner.st.typ, cval: int64(c)})
+		t, tempOwned := f.intConstReadReg(storage{kind: stConst, typ: inner.st.typ, cval: int64(c)}, maskOf(x))
 		f.a.TstReg(x, t, !wide)
-		f.release(t)
+		if tempOwned {
+			f.release(t)
+		}
 	} else if c&(c-1) == 0 {
 		f.recordSingleBitTest(testOff, x, uint8(bits.TrailingZeros64(c)))
 	}
@@ -225,10 +231,11 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 				f.a.CmpImm32(L, uint32(v))
 			}
 		} else {
-			t := f.allocReg(maskOf(L))
-			f.loadConst(t, right.st)
+			t, owned := f.intConstReadReg(right.st, maskOf(L))
 			f.cmpRR(L, t, w)
-			f.release(t)
+			if owned {
+				f.release(t)
+			}
 		}
 	case stReg:
 		f.cmpRR(L, right.st.reg, w)
@@ -285,10 +292,87 @@ func (f *fn) condenseSimpleEqzOperand(node *elem) (reg Reg, owned, wide, ok bool
 	default:
 		reg, owned = f.materialize(a), true
 	}
-	wide = node.st.typ.is64()
+	wide = a.st.typ.is64()
 	f.consumeBlockBelow(node)
 	f.erase(node)
 	return reg, owned, wide, true
+}
+
+// brIfSimpleEqz selects CBZ directly for an empty branch edge. The branch has
+// exactly the same integer-width test and target as `<integer>.eqz; br_if`, and
+// convergence/flush work remains before the test just as in brIfFused.
+func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, error) {
+	if !f.opt(optZeroBranch) || top == nil || top.deferredOp() != opEqz {
+		return false, nil
+	}
+	fi := len(f.ctrl) - 1 - int(labelIdx)
+	if fi < 0 {
+		return false, errBadLabel
+	}
+	fr := &f.ctrl[fi]
+	if fr.branchArity() != 0 || (fr.kind != cfLoop && fr.kind != cfBlock && fr.kind != cfIf) {
+		return false, nil
+	}
+	loopHeader := false
+	counter := -1
+	if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && labelIdx == 1 && len(f.ctrl) >= 2 && fi == len(f.ctrl)-2 {
+		loop := &f.ctrl[len(f.ctrl)-1]
+		counter, loopHeader = localAddressKey(f.s.arg0(top))
+		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&
+			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == loop.controlSite
+	}
+	mark := f.a.Len()
+	canDefer := f.callFreeLoopExit(fi)
+	var saved localStateSnapshot
+	if canDefer {
+		saved, canDefer = f.snapshotLocalStates()
+	}
+	f.convergeBranchLocals(fr)
+	var coldEdgeCode []byte
+	if canDefer && f.a.Len() != mark {
+		coldEdgeCode = append(coldEdgeCode, f.a.B[mark:]...)
+		f.a.B = f.a.B[:mark]
+		f.restoreLocalStates(saved)
+	}
+	f.flushBelow(top)
+	reg, owned, wide, ok := f.condenseSimpleEqzOperand(top)
+	if !ok {
+		return false, nil
+	}
+	var site int
+	if wide {
+		site = f.a.Cbz64(reg)
+	} else {
+		site = f.a.Cbz32(reg)
+	}
+	if owned {
+		f.release(reg)
+	}
+	if len(coldEdgeCode) != 0 {
+		f.appendFrameColdEdge(fr, coldEdge{site: site, code: coldEdgeCode})
+		fr.set(ctrlEndReachable, true)
+		f.stats.peep("callfree-loop-exit-cold")
+	} else if fr.kind == cfLoop {
+		if !f.a.PatchBranch19(site, fr.controlSite) {
+			return false, fmt.Errorf("arm64: direct eqz loop branch out of range")
+		}
+	} else {
+		f.appendFrameEnd(fr, site, true)
+		fr.set(ctrlEndReachable, true)
+	}
+	f.stats.peep("zero-branch")
+	if loopHeader {
+		loop := &f.ctrl[len(f.ctrl)-1]
+		_, isFloat, pinned := f.pinReg(counter)
+		if pinned && !isFloat {
+			f.tryHoistLinearSumBounds(r, counter)
+			f.ensureCtrlMerge(loop).setCountedLoop(counter)
+		}
+	}
+	// Keep the next function's entry address unchanged. The removed CMP was hot;
+	// this replacement word is emitted after every reachable return and trap tail.
+	f.phasePadWords++
+	return true, nil
 }
 
 // brIfFused lowers `<compare> br_if L` as CMP + conditional branch.
@@ -305,7 +389,19 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
+	reconcileMark := f.a.Len()
+	canDefer := f.callFreeLoopExit(fi)
+	var saved localStateSnapshot
+	if canDefer {
+		saved, canDefer = f.snapshotLocalStates()
+	}
 	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
+	var coldEdgeCode []byte
+	if canDefer && f.a.Len() != reconcileMark {
+		coldEdgeCode = append(coldEdgeCode, f.a.B[reconcileMark:]...)
+		f.a.B = f.a.B[:reconcileMark]
+		f.restoreLocalStates(saved)
+	}
 	k := f.flushBelow(top)
 	cc := f.condenseToFlags(top)
 	if setDst != regNone {
@@ -321,6 +417,15 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	} else {
 		f.moveBranchValues(fr, k, a)
 	}
+	if len(coldEdgeCode) != 0 {
+		coldEdgeCode = append(coldEdgeCode, f.a.B[mark:]...)
+		f.a.B = f.a.B[:mark]
+		site := f.a.Bcond(cc)
+		f.appendFrameColdEdge(fr, coldEdge{site: site, code: coldEdgeCode})
+		fr.set(ctrlEndReachable, true)
+		f.stats.peep("callfree-loop-exit-cold")
+		return nil
+	}
 	if f.a.Len() == mark {
 		// Empty edge: branch straight to the target when the compare holds — one
 		// instruction, no skip branch, no padding NOP in the loop body.
@@ -329,7 +434,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 		}
 		over := f.a.Bcond(invertCond(cc))
 		f.branchJump(fr)
-		f.a.PatchBranch19(over, f.a.Len())
+		f.patchBranch19(over, f.a.Len())
 		return nil
 	}
 	if f.branchHintUnlikely && fr.kind != cfLoop {
@@ -349,6 +454,6 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	over := f.a.Bcond(invertCond(cc)) // fall through when the compare is false
 	f.a.B = append(f.a.B, f.edgeScratch...)
 	f.branchJump(fr)
-	f.a.PatchBranch19(over, f.a.Len())
+	f.patchBranch19(over, f.a.Len())
 	return nil
 }

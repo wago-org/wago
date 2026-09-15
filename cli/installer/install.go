@@ -1,10 +1,11 @@
-package main
+package installer
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/wago-org/wago/internal/managedrelease"
 	"io"
 	"net/http"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wago-org/wago/internal/actionartifact"
 	"github.com/wago-org/wago/internal/installbootstrap"
 	"github.com/wago-org/wago/internal/sourcearchive"
 )
@@ -28,7 +30,11 @@ type installer struct {
 	repoURL             string
 	archiveURL          string
 	releaseAPI          string
+	actionsArtifactAPI  string
+	actionsArtifactRepo string
 	releaseDownloadBase string
+	localManagerPath    string
+	localManagerSource  string
 	binDir              string
 	srcDir              string
 	dataDir             string
@@ -82,6 +88,10 @@ var installerSourceArchiveURL = func(repo, ref string) string {
 	return "https://api.github.com/repos/" + repo + "/zipball/" + ref
 }
 
+var downloadInstallerActionArtifact = actionartifact.DownloadExecutable
+var downloadInstallerCanaryArtifact = actionartifact.DownloadCanaryExecutable
+var latestInstallerCanaryCommit = actionartifact.LatestCanaryCommit
+
 func newInstaller(out io.Writer) (*installer, error) {
 	home, err := os.UserHomeDir()
 	if value := firstEnv("HOME", "USERPROFILE"); value != "" {
@@ -110,7 +120,11 @@ func newInstaller(out io.Writer) (*installer, error) {
 		repoURL:             envOr("WAGO_REPO_URL", "https://github.com/wago-org/wago.git"),
 		archiveURL:          envOr("WAGO_ARCHIVE_URL", installerSourceArchiveURL(releaseRepo, archiveRef)),
 		releaseAPI:          envOr("WAGO_RELEASES_API_URL", "https://api.github.com/repos/"+releaseRepo+"/releases"),
+		actionsArtifactAPI:  envOr("WAGO_ACTIONS_ARTIFACT_API", "https://api.github.com/repos/"+releaseRepo+"/actions/artifacts"),
+		actionsArtifactRepo: releaseRepo,
 		releaseDownloadBase: envOr("WAGO_RELEASE_DOWNLOAD_BASE", "https://github.com/"+releaseRepo+"/releases"),
+		localManagerPath:    strings.TrimSpace(os.Getenv("WAGO_MANAGER_PATH")),
+		localManagerSource:  strings.TrimSpace(os.Getenv("WAGO_MANAGER_SOURCE")),
 		binDir:              filepath.Clean(binDir),
 		srcDir:              filepath.Clean(envOr("WAGO_SRC_DIR", filepath.Join(home, ".wago", "src"))),
 		dataDir:             dataDir,
@@ -168,20 +182,35 @@ func (i *installer) run() error {
 			return err
 		}
 	}
-	if reinstallMode != "minimal" {
-		if err := i.cleanExisting(reinstallMode); err != nil {
+	installed := filepath.Join(i.binDir, executableName("wago"))
+	release, err := managedrelease.Prepare(installed, i.version, func(binary, source string) error {
+		if err := managedrelease.CopyFile(managerPath, binary); err != nil {
 			return err
 		}
-	}
-	installed := filepath.Join(i.binDir, executableName("wago"))
-	if err := i.installManager(managerPath, installed); err != nil {
+		legacy := i.srcDir
+		i.srcDir = source
+		defer func() { i.srcDir = legacy }()
+		return i.saveSource(sourceDir)
+	}, i.verify)
+	if err != nil {
 		return err
 	}
-	if err := i.saveSource(sourceDir); err != nil {
+	installerExecutable, err := os.Executable()
+	if err != nil {
 		return err
 	}
-	if err := i.verify(installed); err != nil {
-		return err
+	// The installer also supplies the stable dispatcher, so older manager
+	// payloads can use the paired source through WAGO_SRC without a new build.
+	bootstrap := func() (func() error, error) {
+		return managedrelease.BootstrapLauncher(release, installerExecutable, installed)
+	}
+	if err := managedrelease.Publish(release, bootstrap, nil); err != nil {
+		return fmt.Errorf("publish manager release (pair retained at %s): %w", release.Directory, err)
+	}
+	if reinstallMode != "minimal" {
+		if err := i.cleanReinstallData(reinstallMode); err != nil {
+			return err
+		}
 	}
 
 	pathReady, configFile := i.offerPathSetup()
@@ -255,7 +284,7 @@ func (i *installer) plan() {
 	fmt.Fprintf(i.out, "\n%sPlan%s\n", s.bold, s.reset)
 	i.detail("Version", i.version)
 	i.detail("Command", displayPath(filepath.Join(i.binDir, executableName("wago")), i.home))
-	i.detail("Source", displayPath(i.srcDir, i.home))
+	i.detail("Source", displayPath(filepath.Join(i.binDir, ".wago-releases"), i.home))
 	fmt.Fprintf(i.out, "\n%sDry run · no changes made.%s\n", s.dim, s.reset)
 }
 
@@ -386,34 +415,157 @@ func reinstallLabel(mode string) string {
 }
 
 func (i *installer) downloadManager(target string) error {
-	resolved := installbootstrap.ResolvedRelease{Tag: i.version, SourceRef: installerSourceRef(i.version)}
-	base := ""
-	if os.Getenv("WAGO_MANAGER_URL") == "" {
-		var err error
-		resolved, base, err = i.resolveRelease()
+	if i.localManagerPath != "" {
+		i.begin("Using local Wago manager")
+		if err := managedrelease.CopyFile(i.localManagerPath, target); err != nil {
+			return fmt.Errorf("copy local Wago manager: %w", err)
+		}
+		i.managerTag = i.version
+		i.managerFromRelease = true
+		i.done("Used local Wago manager")
+		return nil
+	}
+	if channel, sha, canonical := installerRollingCommit(i.version); canonical && channel == "canary" {
+		return i.downloadCanaryCommitManager(sha, target)
+	}
+	if i.version == "canary" {
+		sha, err := i.latestCanaryCommit(runtime.GOOS + "-" + runtime.GOARCH)
 		if err != nil {
 			return err
 		}
+		return i.downloadCanaryCommitManager(sha, target)
 	}
-	tag := resolved.Tag
+	if installerCanaryTag(i.version) {
+		return i.downloadCanaryManager(i.version, "", target)
+	}
 	asset, err := installbootstrap.Asset("wago", runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return err
 	}
-	url := base + "/" + asset
-	if override := os.Getenv("WAGO_MANAGER_URL"); override != "" {
-		url = override
+	override := os.Getenv("WAGO_MANAGER_URL")
+	candidates := []installbootstrap.ResolvedRelease{{Tag: i.version, SourceRef: installerSourceRef(i.version)}}
+	if override == "" {
+		candidates, err = installbootstrap.ResolveReleaseCandidates(i.version, installerReleaseCatalog{i})
+		if err != nil {
+			return err
+		}
 	}
-	i.begin("Downloading Wago manager " + tag)
-	if err := i.downloadChecked(url, target); err != nil {
+	var downloadErr error
+	for _, resolved := range candidates {
+		url := override
+		if url == "" {
+			url = i.releaseDownloadBase + "/download/" + resolved.Tag + "/" + asset
+		}
+		i.begin("Downloading Wago manager " + resolved.Tag)
+		if err := i.downloadChecked(url, target); err != nil {
+			if errors.Is(err, errChecksumVerification) {
+				return err
+			}
+			if !releaseAssetUnavailable(err) {
+				return err
+			}
+			downloadErr = err
+			continue
+		}
+		if err := os.Chmod(target, 0o755); err != nil {
+			return err
+		}
+		i.managerTag, i.managerSourceRef, i.managerFromRelease = resolved.Tag, resolved.SourceRef, true
+		i.done("Downloaded Wago manager " + resolved.Tag)
+		return nil
+	}
+	if i.version == "main" {
+		sha, err := i.latestCanaryCommit(runtime.GOOS + "-" + runtime.GOARCH)
+		if err != nil {
+			return errors.Join(downloadErr, err)
+		}
+		return i.downloadCanaryCommitManager(sha, target)
+	}
+	return downloadErr
+}
+
+func (i *installer) latestCanaryCommit(target string) (string, error) {
+	return latestInstallerCanaryCommit(i.installContext(), actionartifact.Config{
+		CatalogURL: i.actionsArtifactAPI,
+		Repository: i.actionsArtifactRepo,
+		Token:      actionartifact.TokenFromEnvironment(),
+		HTTPClient: i.httpClient,
+	}, target)
+}
+
+func (i *installer) downloadCanaryCommitManager(sha, target string) error {
+	identity := "canary@" + strings.ToLower(strings.TrimSpace(sha))
+	i.managerTag = identity
+	i.managerSourceRef = sha
+	asset, err := installbootstrap.Asset("wago", runtime.GOOS, runtime.GOARCH)
+	if err != nil {
 		return err
 	}
-	if err := os.Chmod(target, 0o755); err != nil {
-		return err
+	i.begin("Downloading Wago manager " + identity + " workflow artifact")
+	err = downloadInstallerCanaryArtifact(i.installContext(), actionartifact.Config{
+		CatalogURL: i.actionsArtifactAPI,
+		Repository: i.actionsArtifactRepo,
+		Token:      actionartifact.TokenFromEnvironment(),
+		HTTPClient: i.httpClient,
+	}, sha, runtime.GOOS+"-"+runtime.GOARCH, asset, target)
+	if err != nil {
+		return fmt.Errorf("download canary workflow artifact: %w", err)
 	}
-	i.managerTag, i.managerSourceRef, i.managerFromRelease = tag, resolved.SourceRef, true
-	i.done("Downloaded Wago manager " + tag)
+	i.managerFromRelease = true
+	i.done("Downloaded and verified Wago manager " + identity)
 	return nil
+}
+
+func (i *installer) downloadCanaryManager(tag, sha, target string) error {
+	i.managerTag = tag
+	i.managerSourceRef = sha
+	if i.managerSourceRef == "" {
+		i.managerSourceRef = tag
+	}
+	asset, err := installbootstrap.Asset("wago", runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+	i.begin("Downloading Wago manager " + tag + " workflow artifact")
+	err = downloadInstallerActionArtifact(i.installContext(), actionartifact.Config{
+		CatalogURL: i.actionsArtifactAPI,
+		Repository: i.actionsArtifactRepo,
+		Token:      actionartifact.TokenFromEnvironment(),
+		HTTPClient: i.httpClient,
+	}, tag, sha, runtime.GOOS+"-"+runtime.GOARCH, asset, target)
+	if err != nil {
+		return fmt.Errorf("download canary workflow artifact: %w", err)
+	}
+	i.managerFromRelease = true
+	i.done("Downloaded and verified Wago manager " + tag)
+	return nil
+}
+
+func installerCanaryTag(tag string) bool {
+	core, short, found := strings.Cut(strings.TrimSpace(tag), "-canary.g")
+	if !found || len(short) != 7 || !strings.HasPrefix(core, "v") {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(core, "v"), ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" || (len(part) > 1 && part[0] == '0') {
+			return false
+		}
+		for _, char := range part {
+			if char < '0' || char > '9' {
+				return false
+			}
+		}
+	}
+	for _, char := range short {
+		if !strings.ContainsRune("0123456789abcdef", char) {
+			return false
+		}
+	}
+	return true
 }
 
 func (i *installer) resolveRelease() (installbootstrap.ResolvedRelease, string, error) {
@@ -426,6 +578,12 @@ func (i *installer) resolveRelease() (installbootstrap.ResolvedRelease, string, 
 
 type installerReleaseCatalog struct{ installer *installer }
 
+const (
+	installerReleasePageSize  = 20
+	installerReleasePageLimit = 50
+	installerReleaseJSONLimit = int64(4 << 20)
+)
+
 func (catalog installerReleaseCatalog) Latest() (installbootstrap.Release, error) {
 	var item installbootstrap.Release
 	err := catalog.installer.getJSON(catalog.installer.releaseAPI+"/latest", &item)
@@ -433,35 +591,38 @@ func (catalog installerReleaseCatalog) Latest() (installbootstrap.Release, error
 }
 
 func (catalog installerReleaseCatalog) Releases() ([]installbootstrap.Release, error) {
-	const pageLimit = 10
 	var releases []installbootstrap.Release
 	base, err := url.Parse(catalog.installer.releaseAPI)
 	if err != nil {
 		return nil, fmt.Errorf("parse release catalog URL: %w", err)
 	}
-	for page := 1; page <= pageLimit; page++ {
+	for page := 1; page <= installerReleasePageLimit; page++ {
 		var batch []installbootstrap.Release
 		address := *base
 		query := address.Query()
-		query.Set("per_page", "100")
+		query.Set("per_page", strconv.Itoa(installerReleasePageSize))
 		query.Set("page", strconv.Itoa(page))
 		address.RawQuery = query.Encode()
 		if err := catalog.installer.getJSON(address.String(), &batch); err != nil {
 			return nil, err
 		}
-		if len(batch) > 100 {
+		if len(batch) > installerReleasePageSize {
 			return nil, fmt.Errorf("release catalog returned too many releases on page %d", page)
 		}
 		releases = append(releases, batch...)
-		if len(batch) < 100 {
+		if len(batch) < installerReleasePageSize {
 			return releases, nil
 		}
 	}
-	return nil, fmt.Errorf("release catalog exceeded %d pages", pageLimit)
+	return nil, fmt.Errorf("release catalog exceeded %d pages", installerReleasePageLimit)
 }
 
 func (i *installer) getJSON(url string, value any) error {
-	response, err := i.httpClient.Get(url)
+	request, err := http.NewRequestWithContext(i.installContext(), http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	response, err := i.httpClient.Do(request)
 	if err != nil {
 		return err
 	}
@@ -469,7 +630,22 @@ func (i *installer) getJSON(url string, value any) error {
 	if response.StatusCode/100 != 2 {
 		return fmt.Errorf("%s returned %s", url, response.Status)
 	}
-	return json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(value)
+	limited := &io.LimitedReader{R: response.Body, N: installerReleaseJSONLimit + 1}
+	decoder := json.NewDecoder(limited)
+	if err := decoder.Decode(value); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("release metadata contains multiple JSON values")
+		}
+		return fmt.Errorf("release metadata contains trailing data: %w", err)
+	}
+	if limited.N == 0 {
+		return fmt.Errorf("release metadata exceeds %d-byte limit", installerReleaseJSONLimit)
+	}
+	return nil
 }
 
 func (i *installer) downloadChecked(url, target string) error {
@@ -492,9 +668,24 @@ func (i *installer) downloadChecked(url, target string) error {
 		return err
 	}
 	if err := installbootstrap.VerifyFile(payload, wantData); err != nil {
-		return err
+		return fmt.Errorf("%w: %v", errChecksumVerification, err)
 	}
 	return os.Rename(payload, target)
+}
+
+var errChecksumVerification = errors.New("downloaded file checksum verification failed")
+
+type downloadHTTPError struct {
+	url        string
+	status     string
+	statusCode int
+}
+
+func (err *downloadHTTPError) Error() string { return err.url + " returned " + err.status }
+
+func releaseAssetUnavailable(err error) bool {
+	var statusErr *downloadHTTPError
+	return errors.As(err, &statusErr) && (statusErr.statusCode == http.StatusNotFound || statusErr.statusCode == http.StatusGone)
 }
 
 func (i *installer) download(url, target string) error {
@@ -508,7 +699,7 @@ func (i *installer) download(url, target string) error {
 	}
 	defer response.Body.Close()
 	if response.StatusCode/100 != 2 {
-		return fmt.Errorf("%s returned %s", url, response.Status)
+		return &downloadHTTPError{url: url, status: response.Status, statusCode: response.StatusCode}
 	}
 	file, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -532,8 +723,27 @@ var runInstallerGit = func(args ...string) ([]byte, error) {
 
 func (i *installer) fetchSource() (string, error) {
 	target := filepath.Join(i.tmpDir, "src")
+	if i.localManagerSource != "" {
+		i.begin("Using local Wago source")
+		info, err := os.Stat(i.localManagerSource)
+		if err != nil {
+			return "", fmt.Errorf("inspect local Wago source: %w", err)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("local Wago source is not a directory: %s", i.localManagerSource)
+		}
+		if err := os.Mkdir(target, 0o700); err != nil {
+			return "", err
+		}
+		if err := copyDirectoryContents(i.localManagerSource, target); err != nil {
+			return "", fmt.Errorf("copy local Wago source: %w", err)
+		}
+		i.sourceMethod = "local"
+		i.done("Used local Wago source")
+		return target, nil
+	}
 	sourceVersion := installerSourceRef(i.version)
-	if i.managerFromRelease && i.managerSourceRef != "" {
+	if i.managerSourceRef != "" {
 		sourceVersion = i.managerSourceRef
 	}
 	archiveURL := i.archiveURL
@@ -611,7 +821,7 @@ func fullInstallerCommitSHA(value string) bool {
 
 func installerRollingCommit(version string) (channel, sha string, canonical bool) {
 	channel, sha, found := strings.Cut(strings.ToLower(strings.TrimSpace(version)), "@")
-	if !found || (channel != "canary" && channel != "nightly") || len(sha) != 40 {
+	if !found || (channel != "canary" && channel != "beta") || len(sha) != 40 {
 		return "", "", false
 	}
 	for _, char := range sha {
@@ -624,7 +834,13 @@ func installerRollingCommit(version string) (channel, sha string, canonical bool
 
 func (i *installer) buildManager(sourceDir, target string) error {
 	i.begin("Building Wago")
-	command := exec.Command("go", "build", "-trimpath", "-ldflags", "-s -w -X main.version="+i.version, "-o", target, "./cli/wago")
+	stamp := i.version
+	if fullInstallerCommitSHA(i.managerSourceRef) && (i.version == "main" || i.version == "canary") {
+		stamp = "canary@" + i.managerSourceRef
+	} else if channel, sha, canonical := installerRollingCommit(i.version); canonical && channel == "canary" {
+		stamp = channel + "@" + sha
+	}
+	command := exec.Command("go", "build", "-trimpath", "-ldflags", "-s -w -X main.version="+stamp, "-o", target, "./cli/wago")
 	command.Dir = sourceDir
 	command.Env = append(os.Environ(), "CGO_ENABLED=0")
 	output, err := command.CombinedOutput()
@@ -633,19 +849,6 @@ func (i *installer) buildManager(sourceDir, target string) error {
 	}
 	i.done("Built Wago")
 	return nil
-}
-
-func (i *installer) cleanExisting(mode string) error {
-	i.begin("Cleaning existing Wago installation")
-	if err := cleanPlatformInstall(mode, i.home, i.binDir, i.srcDir, i.dataDir, i.configDir, i.cacheDir); err != nil {
-		return fmt.Errorf("clean existing installation: %w", err)
-	}
-	i.done("Cleaned existing Wago installation")
-	return nil
-}
-
-func (i *installer) installManager(source, target string) error {
-	return i.installManagerUsing(source, target, os.Rename, isCrossDeviceError)
 }
 
 type pathRenamer func(string, string) error
@@ -675,12 +878,17 @@ func (i *installer) saveSourceUsing(source string, rename pathRenamer, crossDevi
 		return err
 	}
 	var backupRoot, backup string
+	removeBackup := true
 	if _, err := os.Stat(i.srcDir); err == nil {
 		backupRoot, err = os.MkdirTemp(filepath.Dir(i.srcDir), ".wago-source-backup-")
 		if err != nil {
 			return err
 		}
-		defer os.RemoveAll(backupRoot)
+		defer func() {
+			if removeBackup {
+				_ = os.RemoveAll(backupRoot)
+			}
+		}()
 		backup = filepath.Join(backupRoot, "source")
 		if err := rename(i.srcDir, backup); err != nil {
 			return err
@@ -690,7 +898,10 @@ func (i *installer) saveSourceUsing(source string, rename pathRenamer, crossDevi
 	}
 	if err := movePathUsing(source, i.srcDir, rename, crossDevice); err != nil {
 		if backup != "" {
-			_ = rename(backup, i.srcDir)
+			if restoreErr := rename(backup, i.srcDir); restoreErr != nil {
+				removeBackup = false
+				err = errors.Join(err, fmt.Errorf("restore source failed; backup retained at %s: %w", backup, restoreErr))
+			}
 		}
 		return fmt.Errorf("save Wago source: %w", err)
 	}

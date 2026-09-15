@@ -14,7 +14,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func noMaxTable64Type() []byte { return []byte{0x70, 0x04, 0x00} }
@@ -2092,7 +2092,11 @@ func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 		t.Fatalf("table64 import metadata = %#v", meta.Tables)
 	}
 	rt := &Runtime{imports: Imports{}}
-	imports := rt.buildModule(consumerCompiled).Imports()
+	consumerModule, err := rt.buildModule(consumerCompiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imports := consumerModule.Imports()
 	if len(imports) != 1 || imports[0].Kind != ImportTable || !imports[0].Addr64 || imports[0].Min != 2 || imports[0].Max != 4 || !imports[0].HasMax {
 		t.Fatalf("table64 import inspection = %#v", imports)
 	}

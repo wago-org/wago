@@ -7,7 +7,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 var (
@@ -288,6 +288,11 @@ func (in *Instance) syncGenericGCGlobalRootsLocked(public *gcPublicState) error 
 
 func (in *Instance) collectGenericGCAtBoundary() error {
 	if in == nil || in.gc == nil || in.c == nil || !in.c.genericGCBoundaryCollectionSafe() {
+		return nil
+	}
+	// Exact native roots permit allocation-pressure and stress collections.
+	// Keep the boundary fallback when native collection is unavailable.
+	if in.c.genericGCFrameRoots() != nil && in.gc.CollectsOnAllocation() {
 		return nil
 	}
 	return in.collectGC()

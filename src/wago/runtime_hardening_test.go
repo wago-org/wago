@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"reflect"
@@ -9,7 +10,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestRuntimeConfigOwnsConstructionSnapshot(t *testing.T) {
@@ -210,6 +211,29 @@ func TestPreparedCompileAdoptNilConsumesPreparation(t *testing.T) {
 	}
 	if _, err := prepared.Compile(); err == nil || !strings.Contains(err.Error(), "already consumed") {
 		t.Fatalf("Compile after Adopt(nil) = %v", err)
+	}
+}
+
+func TestPreparedCompileFailedAdoptClosesArtifact(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	prepared, err := rt.PrepareCompile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prepared.Close(); err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepared.Adopt(compiled); err == nil || !strings.Contains(err.Error(), "already consumed") {
+		t.Fatalf("Adopt after Close = %v", err)
+	}
+	var code bytes.Buffer
+	if _, err := compiled.WriteCodeTo(&code); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("rejected compiled artifact remains open: %v", err)
 	}
 }
 

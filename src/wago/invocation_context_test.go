@@ -3,14 +3,16 @@ package wago
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
 
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 type invocationContextTestState struct {
+	concrete bool
 	resolver *CallerResolver
 	manager  *InstanceManager
 	outer    HostFunc
@@ -53,12 +55,13 @@ func (p invocationContextTestPlugin) Register(reg *Registrar) error {
 	}
 	p.state.resolver = resolver
 	p.state.manager = manager
-	module.Func("outer", func(m HostModule, params, results []uint64) {
+	define := callerTestDeclare(module, p.state.concrete)
+	define("outer", func(m HostModule, params, results []uint64) {
 		if p.state.outer != nil {
 			p.state.outer(m, params, results)
 		}
 	})
-	module.Func("inner", func(m HostModule, params, results []uint64) {
+	define("inner", func(m HostModule, params, results []uint64) {
 		if p.state.inner != nil {
 			p.state.inner(m, params, results)
 		}
@@ -132,14 +135,34 @@ func invocationContextManagedTableModule() []byte {
 	)
 }
 
+// Callback lifetimes also apply to schedulers that cannot interrupt native
+// execution. Those schedulers exercise these paths with a background parent;
+// the cancellation test below separately requires rejection before host entry.
+func invocationContextTestParent(parent context.Context, deadline time.Time) (context.Context, context.CancelFunc) {
+	if nativeCancellationSupported() {
+		return context.WithDeadline(parent, deadline)
+	}
+	return parent, func() {}
+}
+
+func invocationContextTestDeadline(ctx context.Context, want time.Time) bool {
+	got, ok := ctx.Deadline()
+	return ok == nativeCancellationSupported() && (!ok || got.Equal(want))
+}
+
 func TestCallerResolverInvocationContextContract(t *testing.T) {
-	state := new(invocationContextTestState)
+	t.Run("legacy", func(t *testing.T) { testCallerResolverInvocationContextContract(t, false) })
+	t.Run("concrete", func(t *testing.T) { testCallerResolverInvocationContextContract(t, true) })
+}
+
+func testCallerResolverInvocationContextContract(t *testing.T, concrete bool) {
+	state := &invocationContextTestState{concrete: concrete}
 	rt := newInvocationContextTestRuntime(t, state)
 	defer rt.Close()
 
 	type contextKey struct{}
 	deadline := time.Now().Add(time.Hour)
-	parent, cancel := context.WithDeadline(context.WithValue(context.Background(), contextKey{}, "private"), deadline)
+	parent, cancel := invocationContextTestParent(context.WithValue(context.Background(), contextKey{}, "private"), deadline)
 	defer cancel()
 	var retained context.Context
 	var retainedCaller HostModule
@@ -160,8 +183,7 @@ func TestCallerResolverInvocationContextContract(t *testing.T) {
 		retained = first
 		same = first == second
 		hidValue = first.Value(contextKey{}) == nil
-		gotDeadline, ok := first.Deadline()
-		deadlineMatches = ok && gotDeadline.Equal(deadline)
+		deadlineMatches = invocationContextTestDeadline(first, deadline)
 		callbackErr = first.Err()
 	}
 	module, err := rt.Compile(invocationContextImportModule("outer"))
@@ -266,6 +288,19 @@ func TestCallerResolverInvocationContextParentCancellationAndTrap(t *testing.T) 
 		}
 		defer in.Close()
 		parent, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		if !nativeCancellationSupported() {
+			_, err := in.Call(parent, "call")
+			if err == nil || !strings.Contains(err.Error(), "requires a concurrent scheduler") {
+				t.Errorf("Call error = %v, want explicit scheduler rejection", err)
+			}
+			select {
+			case <-entered:
+				t.Error("unsupported cancellation entered the host callback")
+			default:
+			}
+			return
+		}
 		callDone := make(chan error, 1)
 		go func() {
 			_, err := in.Call(parent, "call")
@@ -474,9 +509,9 @@ func TestCallerResolverInvocationContextReentryLifetimes(t *testing.T) {
 	defer in.Close()
 	outerDeadline := time.Now().Add(2 * time.Hour)
 	nestedDeadline := time.Now().Add(time.Hour)
-	outerParent, outerCancel := context.WithDeadline(context.Background(), outerDeadline)
+	outerParent, outerCancel := invocationContextTestParent(context.Background(), outerDeadline)
 	defer outerCancel()
-	nestedParent, nestedCancel := context.WithDeadline(context.Background(), nestedDeadline)
+	nestedParent, nestedCancel := invocationContextTestParent(context.Background(), nestedDeadline)
 	defer nestedCancel()
 	var outerContext, nestedContext context.Context
 	var nestedCallErr error
@@ -484,8 +519,7 @@ func TestCallerResolverInvocationContextReentryLifetimes(t *testing.T) {
 	state.inner = func(caller HostModule, _, _ []uint64) {
 		nestedContext, nestedCallErr = state.resolver.InvocationContext(caller)
 		if nestedCallErr == nil {
-			got, ok := nestedContext.Deadline()
-			nestedDeadlineOK = ok && got.Equal(nestedDeadline)
+			nestedDeadlineOK = invocationContextTestDeadline(nestedContext, nestedDeadline)
 		}
 	}
 	state.outer = func(caller HostModule, _, _ []uint64) {
@@ -493,8 +527,7 @@ func TestCallerResolverInvocationContextReentryLifetimes(t *testing.T) {
 		if nestedCallErr != nil {
 			return
 		}
-		got, ok := outerContext.Deadline()
-		outerDeadlineOK = ok && got.Equal(outerDeadline)
+		outerDeadlineOK = invocationContextTestDeadline(outerContext, outerDeadline)
 		_, nestedCallErr = in.InvokeFromHost(nestedParent, caller, "nested")
 		outerLiveAfterNested = outerContext.Err() == nil
 		nestedExpired = nestedContext != nil && nestedContext.Err() == context.Canceled
@@ -577,7 +610,7 @@ func TestCallerResolverInvocationContextEntryPaths(t *testing.T) {
 			rt := newInvocationContextTestRuntime(t, state)
 			defer rt.Close()
 			deadline := time.Now().Add(time.Hour)
-			parent, cancel := context.WithDeadline(context.Background(), deadline)
+			parent, cancel := invocationContextTestParent(context.Background(), deadline)
 			defer cancel()
 			var callbackContext context.Context
 			var callbackErr error
@@ -585,8 +618,7 @@ func TestCallerResolverInvocationContextEntryPaths(t *testing.T) {
 			state.outer = func(caller HostModule, _, _ []uint64) {
 				callbackContext, callbackErr = state.resolver.InvocationContext(caller)
 				if callbackErr == nil {
-					got, ok := callbackContext.Deadline()
-					deadlineOK = ok && got.Equal(deadline)
+					deadlineOK = invocationContextTestDeadline(callbackContext, deadline)
 				}
 			}
 			test.run(t, rt, state, parent)

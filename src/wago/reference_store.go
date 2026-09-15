@@ -2,6 +2,7 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
@@ -13,7 +14,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // referenceStore owns public reference tokens. Runtime-created instances share
@@ -47,7 +48,7 @@ type referenceStore struct {
 // lease together with collector leases, allowing instantiation and teardown to
 // update the list before native resume.
 type gcDomainTopology struct {
-	sync.RWMutex
+	gcTopologyGate
 	first *gcStoreDomain
 	last  *gcStoreDomain
 	n     int
@@ -67,7 +68,7 @@ type gcStoreDomain struct {
 	// and helper locks alone leave a window where another tenant can collect an
 	// as-yet-unrooted result from this shared collector. Arbitrary host callbacks
 	// suspend this lease while exact parked roots remain published.
-	invocationMu    sync.Mutex
+	invocationMu    invocationGate
 	invocationState sync.Mutex
 	invocationOwner invocationID
 	id              uint64
@@ -1034,6 +1035,19 @@ func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
 }
 
 func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
+	lease, _ := in.lockGCInvocationContext(context.Background(), owner)
+	return lease
+}
+
+func (in *Instance) lockGCInvocationContext(ctx context.Context, owner invocationID) (gcInvocationLease, error) {
+	if ctx != nil && ctx.Done() == nil {
+		ctx = nil
+	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return gcInvocationLease{}, err
+		}
+	}
 	if owner == 0 {
 		owner = newInvocationID()
 	}
@@ -1046,14 +1060,16 @@ func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 		if topology == nil {
 			panic("wago: dynamic Runtime GC invocation has no topology")
 		}
-		topology.RLock()
+		if err := topology.lockContext(ctx, false); err != nil {
+			return gcInvocationLease{}, err
+		}
 	}
 	domains := in.gcInvocationDomains()
 	if domains.len() == 0 {
 		if dynamic {
-			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}
+			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}, nil
 		}
-		return gcInvocationLease{}
+		return gcInvocationLease{}, nil
 	}
 	// A native cross-instance call reuses the public root's invocation identity.
 	// The root pre-acquires the transitive, globally ordered domain set, so a
@@ -1070,11 +1086,18 @@ func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 		if dynamic {
 			topology.RUnlock()
 		}
-		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner}
+		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner}, nil
 	}
-	domains.lock()
+	if ctx == nil {
+		domains.lock()
+	} else if err := domains.lockContext(ctx); err != nil {
+		if dynamic {
+			topology.RUnlock()
+		}
+		return gcInvocationLease{}, err
+	}
 	domains.claim(owner)
-	return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, dynamic: dynamic}
+	return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, dynamic: dynamic}, nil
 }
 
 func (l gcInvocationLease) unlock() {
@@ -1110,6 +1133,16 @@ type gcInvocationSuspension struct {
 	owner    invocationID
 	dynamic  bool
 	active   bool
+}
+
+// hostCallNeedsGCSuspension is checked on the actual lease owner under native
+// ownership. Collector identity and domain-admission flags are established
+// before invocation. Dynamic topology always falls back, even when empty now.
+// No signature-based test can replace this predicate: a scalar relay can own
+// imported domains without having a local collector.
+func (in *Instance) hostCallNeedsGCSuspension() bool {
+	return in != nil && (in.gc != nil || in.executionFlags.Load()&
+		(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) != 0)
 }
 
 func (in *Instance) suspendGCInvocation(owner invocationID) gcInvocationSuspension {
@@ -1246,18 +1279,30 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 	}
 	s.mu.Lock()
 	topology := s.gcDomains
-	s.mu.Unlock()
 	if topology == nil {
+		s.mu.Unlock()
 		return
 	}
+	// A failed construction can drop its claim without waiting for live readers.
+	for domain := topology.first; domain != nil; domain = domain.next {
+		if domain.collector != collector {
+			continue
+		}
+		if domain.claims > 0 {
+			domain.claims--
+		}
+		if domain.refs != 0 || domain.claims != 0 {
+			s.mu.Unlock()
+			return
+		}
+		break
+	}
+	s.mu.Unlock()
 	topology.Lock()
 	defer topology.Unlock()
 	s.mu.Lock()
 	for domain := topology.first; domain != nil; domain = domain.next {
 		if domain.collector == collector {
-			if domain.claims > 0 {
-				domain.claims--
-			}
 			if domain.refs != 0 || domain.claims != 0 {
 				s.mu.Unlock()
 				return
@@ -1291,7 +1336,7 @@ func equalGCConfigs(a, b gc.Config) bool {
 	return a == b
 }
 
-func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, preferred *gc.Collector) (*gc.Collector, *gcTypeMapping, error) {
+func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Config, c *Compiled, preferred *gc.Collector) (*gc.Collector, *gcTypeMapping, error) {
 	if !gc.TelemetryAvailable() {
 		config.Telemetry = nil
 	}
@@ -1299,7 +1344,9 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 		return nil, nil, fmt.Errorf("wago: shared WasmGC ownership requires an explicit Runtime")
 	}
 	topology := s.ensureGCTopology()
-	topology.Lock()
+	if err := topology.lockContext(ctx, true); err != nil {
+		return nil, nil, err
+	}
 	topologyLocked := true
 	defer func() {
 		if topologyLocked {
@@ -1385,7 +1432,10 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 	// Native subtype readers hold invocationMu but do not enter Go or selected.mu.
 	// Quiesce the whole domain before replacing and republishing the interval
 	// backing, then follow the ordinary invocationMu -> mu lock order.
-	selected.invocationMu.Lock()
+	if err := selected.invocationMu.lockContext(ctx); err != nil {
+		s.releaseUnclaimedGCCollector(selected.collector)
+		return nil, nil, err
+	}
 	selected.mu.Lock()
 	mapping, types, reps, err := gcCanonicalTypePlan(c, selected.typeReps, selected.types, preferred != nil)
 	if err == nil && len(types) > len(selected.types) {
@@ -1464,7 +1514,13 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	// the compact key authoritatively: the store invariant guarantees that one key
 	// never denotes two distinct live structural types.
 	candidate := make(map[uint64]structuralTypeRegistration)
-	keys := make([]uint64, 0, len(in.c.FuncTypeID))
+	keyCapacity := len(in.c.FuncTypeID)
+	if types := len(in.c.Types); types > 0 && types < keyCapacity {
+		// Most functions reuse declared types. This is only an allocation hint:
+		// append still accepts every distinct key, including legacy metadata.
+		keyCapacity = types
+	}
+	keys := make([]uint64, 0, keyCapacity)
 	for i, key := range in.c.FuncTypeID {
 		canonical, cached := in.c.cachedStructuralCallIdentity(i)
 		if !cached {
@@ -1935,6 +1991,9 @@ func (s *referenceStore) issueMode(source *Instance, descriptor uint64, attached
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if entry := s.byIdentity[funcrefIdentity{descriptor: descriptor}]; entry != nil {
+		if entry.owner != nil && entry.owner.hostEvents != nil {
+			return 0, deferredHostEventCalleeError()
+		}
 		return entry.token, nil
 	}
 	if source == nil {
@@ -1944,13 +2003,22 @@ func (s *referenceStore) issueMode(source *Instance, descriptor uint64, attached
 	if !ok {
 		return 0, fmt.Errorf("invalid funcref result descriptor")
 	}
+	if owner.hostEvents != nil {
+		return 0, deferredHostEventCalleeError()
+	}
 	identity, hasIdentity := source.funcrefFunctionIdentity(descriptor)
 	if hasIdentity {
 		if entry := s.byIdentity[identity]; entry != nil {
+			if entry.owner != nil && entry.owner.hostEvents != nil {
+				return 0, deferredHostEventCalleeError()
+			}
 			return entry.token, nil
 		}
 	}
 	if entry := s.byIdentity[funcrefIdentity{descriptor: canonical}]; entry != nil {
+		if entry.owner != nil && entry.owner.hostEvents != nil {
+			return 0, deferredHostEventCalleeError()
+		}
 		return entry.token, nil
 	}
 	var retained bool

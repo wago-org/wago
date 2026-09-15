@@ -39,12 +39,13 @@ func pkgAddMany(specs []string, options pkgOpts) {
 	}
 	progress.Title("Installing plugins")
 	progress.Begin("Fetching plugins")
-	src, err := depsSource(options.global)
+	selection := capturePluginRuntime()
+	src, err := selection.depsSource(options.global)
 	if err != nil {
 		progress.Fail("Plugin fetch failed")
 		fatal("add: %v", err)
 	}
-	buildDir, err := buildDirFor(options.global)
+	buildDir, err := selection.buildDirFor(options.global)
 	if err != nil {
 		progress.Fail("Plugin fetch failed")
 		fatal("add: %v", err)
@@ -101,7 +102,7 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		printPluginPlanWarnings(reviewed.Warnings)
 		progress.Finish("Permissions checked")
 		progress.Begin("Building plugin runtime")
-		if err := stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose); err != nil {
+		if err := stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose, selection.config()); err != nil {
 			return err
 		}
 		installedLock = reviewed.Lock
@@ -165,11 +166,12 @@ func reportCompletedPluginInstalls(ctx context.Context, specs []string, lock pro
 }
 
 func pkgRemove(name string, options pkgOpts) {
-	src, err := depsSource(options.global)
+	selection := capturePluginRuntime()
+	src, err := selection.depsSource(options.global)
 	if err != nil {
 		fatal("plugin remove: %v", err)
 	}
-	buildDir, err := buildDirFor(options.global)
+	buildDir, err := selection.buildDirFor(options.global)
 	if err != nil {
 		fatal("plugin remove: %v", err)
 	}
@@ -210,7 +212,7 @@ func pkgRemove(name string, options pkgOpts) {
 			printPluginPlanWarnings(reviewed.Warnings)
 			lock = reviewed.Lock
 		}
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false)
+		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false, selection.config())
 	})
 	if err != nil {
 		fatal("plugin remove: %v", err)
@@ -226,11 +228,12 @@ func reviewRemovalResolution(plan ResolutionPlan, options pkgOpts) (reviewedPlug
 }
 
 func pkgUpdate(target string, options pkgOpts) {
-	src, err := depsSource(options.global)
+	selection := capturePluginRuntime()
+	src, err := selection.depsSource(options.global)
 	if err != nil {
 		fatal("plugin update: %v", err)
 	}
-	buildDir, err := buildDirFor(options.global)
+	buildDir, err := selection.buildDirFor(options.global)
 	if err != nil {
 		fatal("plugin update: %v", err)
 	}
@@ -269,7 +272,7 @@ func pkgUpdate(target string, options pkgOpts) {
 			return err
 		}
 		printPluginPlanWarnings(reviewed.Warnings)
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose)
+		return stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose, selection.config())
 	})
 	if err != nil {
 		fatal("plugin update: %v", err)
@@ -277,7 +280,7 @@ func pkgUpdate(target string, options pkgOpts) {
 	fmt.Printf("%s updated the complete plugin graph\n", cyan("✓"))
 }
 
-func stageAndPublishLockedState(mutation *project.Mutation, manifestDir, buildDir string, manifest map[string]any, lock project.LockDocument, verbose bool) error {
+func stageAndPublishLockedState(mutation *project.Mutation, manifestDir, buildDir string, manifest map[string]any, lock project.LockDocument, verbose bool, config pluginbuild.Config) error {
 	manifestData, err := project.EncodeManifest(manifest)
 	if err != nil {
 		return err
@@ -315,7 +318,7 @@ func stageAndPublishLockedState(mutation *project.Mutation, manifestDir, buildDi
 	if err := verifySourceChecksums(staged, input.Sources); err != nil {
 		return err
 	}
-	bin, _, err := pluginbuild.EnsureBinary(staged, input, true, verbose, pluginBuildConfig())
+	bin, _, err := pluginbuild.EnsureBinary(staged, input, true, verbose, config)
 	if err != nil {
 		return err
 	}
@@ -487,7 +490,7 @@ func pluginRuntimeBinary() (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	bin, _, err := pluginbuild.EnsureBinary(environment.buildDir, input, changed, false, pluginBuildConfig())
+	bin, _, err := pluginbuild.EnsureBinary(environment.buildDir, input, changed, false, environment.selection.config())
 	return bin, err == nil, err
 }
 

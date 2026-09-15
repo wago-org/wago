@@ -6,8 +6,9 @@ import (
 )
 
 type reader struct {
-	data []byte
-	pos  int
+	data   []byte
+	pos    int
+	budget *decodeBudget
 }
 
 func newReader(data []byte) *reader { return &reader{data: data} }
@@ -100,12 +101,34 @@ func (r *reader) leb(signed bool, maxBits uint32) (uint64, error) {
 		}
 	}
 }
-func (r *reader) u32() (uint32, error) { v, err := r.leb(false, 32); return uint32(v), err }
+func (r *reader) u32() (uint32, error) {
+	if r.pos < len(r.data) {
+		if b := r.data[r.pos]; b < 0x80 {
+			r.pos++
+			return uint32(b), nil
+		}
+	}
+	v, err := r.leb(false, 32)
+	return uint32(v), err
+}
 func (r *reader) u33() (uint64, error) { return r.leb(false, 33) }
 func (r *reader) u64() (uint64, error) { return r.leb(false, 64) }
 func (r *reader) s33() (int64, error)  { v, err := r.leb(true, 33); return int64(v), err }
-func (r *reader) i32() (int32, error)  { v, err := r.leb(true, 32); return int32(v), err }
-func (r *reader) i64() (int64, error)  { v, err := r.leb(true, 64); return int64(v), err }
+func (r *reader) i32() (int32, error) {
+	if r.pos < len(r.data) {
+		if b := r.data[r.pos]; b < 0x80 {
+			r.pos++
+			value := int32(b)
+			if b&0x40 != 0 {
+				value |= ^int32(0x7f)
+			}
+			return value, nil
+		}
+	}
+	v, err := r.leb(true, 32)
+	return int32(v), err
+}
+func (r *reader) i64() (int64, error) { v, err := r.leb(true, 64); return int64(v), err }
 func (r *reader) name() (string, error) {
 	n, err := r.u32()
 	if err != nil {
@@ -119,12 +142,18 @@ func (r *reader) name() (string, error) {
 	if !utf8.Valid(b) {
 		return "", &DecodeError{Code: ErrInvalidSection, Offset: start}
 	}
+	if err := r.reserve(uint64(len(b)), 2); err != nil {
+		return "", err
+	}
 	return string(b), nil
 }
 
 func readVec[T any](r *reader, fn func(*reader) (T, error)) ([]T, error) {
 	n, err := r.u32()
 	if err != nil {
+		return nil, err
+	}
+	if err := reserveDecodedSlice[T](r, n); err != nil {
 		return nil, err
 	}
 	capHint := boundedVecCap(n, r.left())

@@ -17,7 +17,7 @@ func RuntimeCommands() []*command.Cmd {
 	profileFlags := runtimeProfileFlags()
 	knobs := runtimeCompilationKnobs()
 	runFlags := []command.Flag{
-		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
+		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call; repeat to call multiple exports in order"},
 		{Name: "allow-native-artifact", Bool: true, Help: "execute a trusted .wago native-code artifact"},
 	}
 	runFlags = append(runFlags, runtimeWatchFlags()...)

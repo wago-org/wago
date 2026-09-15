@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/wago-org/wago/internal/jsonstrict"
 )
 
 // Registrar is the declarative builder passed to Plugin.Register. It is scoped
@@ -86,6 +88,9 @@ func (r *Registrar) Config(dst any) error {
 	if len(b) == 0 {
 		b = []byte("{}")
 	}
+	if err := jsonstrict.ValidateTypedJSON(b, dst); err != nil {
+		return &PluginError{Plugin: r.definition.ID, Phase: PluginPhaseConfigure, Path: "config", Err: err}
+	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
@@ -155,14 +160,15 @@ func CapabilityDocs(docs string) CapabilityOption {
 
 // registeredImport is one declared host function.
 type registeredImport struct {
-	module  string
-	name    string
-	fn      HostFunc
-	params  []ValType
-	results []ValType
-	cap     Capability
-	hasCap  bool
-	docs    string
+	module   string
+	name     string
+	fn       any
+	eventI32 I32HostEvent
+	params   []ValType
+	results  []ValType
+	cap      Capability
+	hasCap   bool
+	docs     string
 }
 
 func (i *registeredImport) key() string { return i.module + "." + i.name }
@@ -183,11 +189,29 @@ type ImportModuleBuilder struct {
 	module string
 }
 
-func (m *ImportModuleBuilder) Func(name string, fn HostFunc) *ImportFuncBuilder {
+// Func declares a synchronous host import. Ordinary Go functions use a
+// reflection-free specialized lane when their shape is recognized. HostCallFunc
+// (or func(HostCall)) is the universal form for arbitrary arity and every Wasm
+// value type; declare its signature with Params and Results.
+func (m *ImportModuleBuilder) Func(name string, fn any) *ImportFuncBuilder {
 	if m == nil {
 		return &ImportFuncBuilder{}
 	}
 	imp := &registeredImport{module: m.module, name: name, fn: fn}
+	imp.params, imp.results, _ = inferredHostFuncSignature(fn)
+	if m.reg != nil && !m.reg.sealed {
+		m.reg.imports = append(m.reg.imports, imp)
+	}
+	return &ImportFuncBuilder{imp: imp}
+}
+
+// I32Event declares a deferred capability-free (i32) -> () import. Calls are
+// delivered in order after the native invocation returns.
+func (m *ImportModuleBuilder) I32Event(name string, fn I32HostEvent) *ImportFuncBuilder {
+	if m == nil {
+		return &ImportFuncBuilder{}
+	}
+	imp := &registeredImport{module: m.module, name: name, eventI32: fn, params: []ValType{ValI32}}
 	if m.reg != nil && !m.reg.sealed {
 		m.reg.imports = append(m.reg.imports, imp)
 	}

@@ -11,7 +11,7 @@ import (
 	"unsafe"
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func stagedGCExternBytes(t testing.TB) []byte {
@@ -49,7 +49,7 @@ func TestStagedGCExternProductBoundaryLifecycle(t *testing.T) {
 	if err := corewasm.ValidateModuleWithFeatures(m, corewasm.ValidationFeatures{GCConstExpr: true}); err != nil {
 		t.Fatalf("staged GC conversion constant validation: %v", err)
 	}
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public Compile admitted staged gc/extern product")
 	}
 	guardCfg := NewRuntimeConfig()

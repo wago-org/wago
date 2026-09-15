@@ -7,7 +7,7 @@ package main
 import "github.com/wago-org/wago/cli/manager"
 
 // version is stamped at build time via -ldflags "-X main.version=<tag>" (see
-// `make build`). It must be an uninitialized var: TinyGo only honors -X for
+// `just build`). It must be an uninitialized var: TinyGo only honors -X for
 // variables declared without an initializer.
 var version string
 

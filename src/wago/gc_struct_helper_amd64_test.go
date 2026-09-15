@@ -10,12 +10,12 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestStagedGCStructGetDefaultCollectorProfiles(t *testing.T) {
 	data := stagedGCStructGetOnlyBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
 		t.Fatalf("public compile = %v, want closed GC gate", err)
 	}
 

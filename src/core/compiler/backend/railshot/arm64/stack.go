@@ -240,7 +240,8 @@ func (e *elem) isDeferred() bool { return e.elemKind() == ekDeferred }
 
 // stack is the operand stack: a sentinel-terminated doubly-linked list with a
 // bump arena of elems (never freed mid-function; that matches single-pass usage
-// and keeps temporary *elem views stable). Sub-default hints preserve doubling.
+// and keeps temporary *elem views stable). Sub-default hints fill to a
+// power-of-two total before doubling.
 // At or above 256, growth fills to the next legacy cumulative boundary before
 // resuming geometric chunks, so an underestimate cannot regress legacy retention.
 type stack struct {
@@ -279,15 +280,13 @@ func newStackWithCap(capHint int) *stack {
 
 func stackArenaGrowthCaps(firstCap int) (next, geometric int) {
 	if firstCap < defaultStackArenaCap {
-		next = firstCap * 2
-		if next > maxStackChunkCap {
-			next = maxStackChunkCap
+		// Fill to the next power-of-two total, then double the total.
+		// A one-node underestimate must not triple retained small arenas.
+		total := minStackArenaCap
+		for total <= firstCap {
+			total *= 2
 		}
-		geometric = next * 2
-		if geometric > maxStackChunkCap {
-			geometric = maxStackChunkCap
-		}
-		return next, geometric
+		return total - firstCap, total
 	}
 	total, geometric := defaultStackArenaCap, defaultStackArenaCap*2
 	for total < firstCap {
@@ -401,17 +400,13 @@ func (s *stack) resetGrowthCaps() {
 }
 
 func stackArenaCapForBody(bodyLen, nLocals int) int {
-	return stackArenaCapForHints(bodyLen, nLocals, 0)
-}
-
-func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
-	// The arena is a per-function bump allocation for all stack nodes created while
-	// walking the bytecode. Historically the hint was one node per body byte; keep
-	// that as a ceiling, but let the pre-scan's opcode-based estimate avoid
-	// reserving nodes for long immediates (notably 16-byte SIMD constants). The
-	// chunked arena grows past an underestimate without moving prior nodes, so
-	// pointer stability is preserved.
-	return shared.StackArenaCapacity(bodyLen, nLocals, nodeHint)
+	// Most node-producing opcodes are one byte, while locals, constants, calls,
+	// memory operations, and prefixed instructions also carry immediates. One
+	// node per two body bytes is a cheap corpus-backed estimate that avoids the
+	// former per-opcode predictor. Stable chunk growth preserves correctness when
+	// an unusually dense function exceeds it.
+	nodes := bodyLen / 2
+	return nodes + nLocals/4 + 1
 }
 
 func (s *stack) node(id nodeID) *elem {

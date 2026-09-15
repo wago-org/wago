@@ -2,13 +2,59 @@ package wago
 
 import (
 	"bytes"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestValidatedAnalysisRequirementsCorpusParity(t *testing.T) {
+	var paths []string
+	err := filepath.WalkDir("../../corpus/workloads", func(path string, entry fs.DirEntry, err error) error {
+		if err == nil && !entry.IsDir() && filepath.Ext(path) == ".wasm" {
+			paths = append(paths, path)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compared := 0
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, err := wasm.DecodeModule(data)
+		if err != nil {
+			continue
+		}
+		var analysis wasm.ValidatedModuleAnalysis
+		if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{
+			CompactImports:       true,
+			MultiMemory:          true,
+			ExtendedConstGlobals: true,
+			GCConstExpr:          true,
+		}, 1, wasm.ValidationLimits{}, &analysis); err != nil {
+			continue
+		}
+		want := analyzeModuleRequirements(m)
+		got := analyzeModuleRequirementsWithValidation(m, &analysis)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s requirements differ:\nvalidation: %#v\nlegacy:     %#v", filepath.Base(path), got, want)
+		}
+		compared++
+	}
+	if compared < 20 {
+		t.Fatalf("compared %d validated corpus modules, want at least 20", compared)
+	}
+}
 
 func typedBottomElementModule(heap wasm.AbsHeapType, declarative bool) []byte {
 	flags := byte(0x05) // passive, typed expression elements
@@ -75,12 +121,11 @@ func TestTypedBottomElementRequirementsAndAdmission(t *testing.T) {
 				t.Fatalf("run = %v, %v; want [0], nil", result, err)
 			}
 
-			if defaultCompiled, err := NewRuntimeConfig().Compile(module); err == nil {
-				defaultCompiled.Close()
-				t.Fatal("default GC-off feature set accepted a typed bottom element")
-			} else if !strings.Contains(err.Error(), "unsupported reference type") {
-				t.Fatalf("default feature error = %v, want GC reference rejection", err)
+			defaultCompiled, err := NewRuntimeConfig().Compile(module)
+			if err != nil {
+				t.Fatalf("default Core 3 compile: %v", err)
 			}
+			defaultCompiled.Close()
 		})
 	}
 }

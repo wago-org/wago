@@ -85,7 +85,8 @@ func Tree(request MaintenanceRequest) {
 }
 
 func Rebuild(request MaintenanceRequest) {
-	dir, global := maintenanceSource(request)
+	selection := capturePluginRuntime()
+	dir, global := selection.maintenanceSource(request)
 	requirements, lock := maintenanceState(dir)
 	if len(requirements) == 0 {
 		fatal("plugin rebuild: no plugins enabled")
@@ -93,7 +94,7 @@ func Rebuild(request MaintenanceRequest) {
 	if err := project.ValidateLockedResolution(requirements, lock); err != nil {
 		fatal("plugin rebuild: %v", err)
 	}
-	buildDir, err := buildDirFor(global)
+	buildDir, err := selection.buildDirFor(global)
 	if err != nil {
 		fatal("plugin rebuild: %v", err)
 	}
@@ -104,7 +105,7 @@ func Rebuild(request MaintenanceRequest) {
 	if _, err := syncLockedPluginVersions(buildDir, dir, request.Verbose); err != nil {
 		fatal("plugin rebuild: %v", err)
 	}
-	bin, _, err := pluginbuild.EnsureBinary(buildDir, input, true, request.Verbose, pluginBuildConfig())
+	bin, _, err := pluginbuild.EnsureBinary(buildDir, input, true, request.Verbose, selection.config())
 	if err != nil {
 		fatal("plugin rebuild: %v", err)
 	}
@@ -115,8 +116,12 @@ func Rebuild(request MaintenanceRequest) {
 }
 
 func maintenanceSource(request MaintenanceRequest) (string, bool) {
+	return capturePluginRuntime().maintenanceSource(request)
+}
+
+func (selection pluginRuntimeSelection) maintenanceSource(request MaintenanceRequest) (string, bool) {
 	if !request.Global && !request.Local {
-		environment, err := resolvePluginEnvironment()
+		environment, err := selection.resolveEnvironment()
 		if err != nil {
 			fatal("plugin: %v", err)
 		}
@@ -126,7 +131,7 @@ func maintenanceSource(request MaintenanceRequest) (string, bool) {
 		return environment.manifestDir, environment.scope != "local"
 	}
 	global := mustMutationScope(request.Global, request.Local)
-	dir, err := depsSource(global)
+	dir, err := selection.depsSource(global)
 	if err != nil {
 		fatal("plugin: %v", err)
 	}

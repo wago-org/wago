@@ -69,8 +69,11 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 		// based native code is also deliberately nonserializable.
 		cacheableGeneration = false
 	}
-	path, cacheable := cache.path(prepared.Source(), config)
-	cacheable = cacheable && cacheableGeneration
+	var path string
+	var cacheable bool
+	if cacheableGeneration {
+		path, cacheable = cache.path(prepared.Source(), config)
+	}
 	if cacheable {
 		if compiled, hit := loadArtifact(path); hit {
 			return prepared.Adopt(compiled)

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func i64Mask32Module(t *testing.T, mask uint64, maskFirst, tee bool) *wasm.Module {

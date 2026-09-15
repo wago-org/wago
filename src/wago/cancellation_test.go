@@ -11,8 +11,41 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestQueuedInvocationChecksCancellationAfterGate(t *testing.T) {
+	for _, entry := range []string{"invoke", "host-token"} {
+		t.Run(entry, func(t *testing.T) {
+			in := &Instance{}
+			state := in.ensurePluginState()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			contexts := invocationContextSetFor(ctx)
+			state.invokeMu.Lock()
+			done := make(chan error, 1)
+			go func() {
+				var err error
+				if entry == "invoke" {
+					_, err = in.invokeEntry("unused", nil, contexts, false)
+				} else {
+					_, err = in.invokeWithToken("unused", nil, contexts, newInvocationID(), false, false, nil)
+				}
+				done <- err
+			}()
+			cancel()
+			state.invokeMu.Unlock()
+			select {
+			case err := <-done:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("queued call = %v, want context.Canceled", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("queued call did not release the instance gate")
+			}
+		})
+	}
+}
 
 func TestCallContextInterruptsNativeLoop(t *testing.T) {
 	mod := wasmtest.Module(
@@ -203,5 +236,37 @@ func TestInvokeContextInterruptsNativeLoop(t *testing.T) {
 	out, err := in.InvokeContext(context.Background(), "value")
 	if err != nil || len(out) != 1 || out[0] != 7 {
 		t.Fatalf("post-cancel value = %v, %v; want 7", out, err)
+	}
+}
+
+func TestInvokeContextInterruptsCachedMemoryLoop(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})), // memory 1
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("spin", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x03, 0x40, // loop
+			0x41, 0x00, 0x28, 0x02, 0x00, 0x1a, // drop(i32.load(0))
+			0x0c, 0x00, // br 0
+			0x0b, 0x0b,
+		}))),
+	)
+	compiled := MustCompile(mod)
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if _, err := in.InvokeContext(ctx, "spin"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("memory spin error = %v, want context deadline", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("cached memory-loop cancellation took %v, want bounded interruption", elapsed)
 	}
 }

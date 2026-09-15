@@ -14,6 +14,11 @@ func TestPortIntEncodings(t *testing.T) {
 		want uint32
 	}{
 		{"add x0,x1,x2,lsl#3", func(a *Asm) { a.AddShifted(X0, X1, X2, 3, false) }, 0x8b020c20},
+		{"add x0,x1,x2,lsr#7", func(a *Asm) { a.AddShiftedReg(X0, X1, X2, RegShiftLSR, 7, false) }, 0x8b421c20},
+		{"sub w3,w4,w5,asr#11", func(a *Asm) { a.SubShiftedReg(X3, X4, X5, RegShiftASR, 11, true) }, 0x4b852c83},
+		{"and x6,x7,x8,ror#13", func(a *Asm) { a.AndShiftedReg(X6, X7, X8, RegShiftROR, 13, false) }, 0x8ac834e6},
+		{"orr w9,w10,w11,lsl#17", func(a *Asm) { a.OrrShiftedReg(X9, X10, X11, RegShiftLSL, 17, true) }, 0x2a0b4549},
+		{"eor x12,x13,x14,lsr#29", func(a *Asm) { a.EorShiftedReg(X12, X13, X14, RegShiftLSR, 29, false) }, 0xca4e75ac},
 		{"add x0,x1,w2,uxtw", func(a *Asm) { a.AddExtUXTW(X0, X1, X2) }, 0x8b224020},
 		{"add x25,x25,w19,uxtw", func(a *Asm) { a.AddExtUXTW(X25, X25, X19) }, 0x8b334339},
 		{"uxtl v31.8h,v31.8b", func(a *Asm) { a.NeonUxtl8h(31, 31) }, 0x2f08a7ff},
@@ -50,6 +55,10 @@ func TestPortIntEncodings(t *testing.T) {
 		{"umulh x0,x1,x2", func(a *Asm) { a.Umulh(X0, X1, X2) }, 0x9bc27c20},
 		{"smull x0,w1,w2", func(a *Asm) { a.Smull(X0, X1, X2) }, 0x9b227c20},
 		{"umull x0,w1,w2", func(a *Asm) { a.Umull(X0, X1, X2) }, 0x9ba27c20},
+		{"ldp q16,q17,[x10]", func(a *Asm) { a.LdpQ(X16, X17, X10, 0) }, 0xad404550},
+		{"stp q16,q17,[x9]", func(a *Asm) { a.StpQ(X16, X17, X9, 0) }, 0xad004530},
+		{"ldp q18,q19,[x10,#32]", func(a *Asm) { a.LdpQ(X18, X19, X10, 32) }, 0xad414d52},
+		{"stp q18,q19,[x9,#32]", func(a *Asm) { a.StpQ(X18, X19, X9, 32) }, 0xad014d32},
 		{"csel w0,w1,w2,eq", func(a *Asm) { a.Csel32(X0, X1, X2, CondEQ) }, 0x1a820020},
 		{"ccmp w1,w2,#2,ls", func(a *Asm) { a.CcmpReg32(X1, X2, 2, CondLS) }, 0x7a429022},
 		{"tst x1,x2", func(a *Asm) { a.TstReg(X1, X2, false) }, 0xea02003f},
@@ -77,6 +86,89 @@ func TestPortIntEncodings(t *testing.T) {
 	}
 }
 
+func TestLogicalImmediatePredicates(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		v32  uint32
+		v64  uint64
+		ok32 bool
+		ok64 bool
+	}{
+		{name: "byte-mask", v32: 0x00ff00ff, v64: 0x00ff00ff00ff00ff, ok32: true, ok64: true},
+		{name: "high-bits", v32: 0x80000000, v64: 0x8000000000000000, ok32: true, ok64: true},
+		{name: "irregular", v32: 0x12345678, v64: 0x123456789abcdef0},
+		{name: "zero", v32: 0, v64: 0},
+		{name: "ones", v32: ^uint32(0), v64: ^uint64(0)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := LogicalImmediate32(tc.v32); got != tc.ok32 {
+				t.Fatalf("LogicalImmediate32(%#x) = %v, want %v", tc.v32, got, tc.ok32)
+			}
+			if got := LogicalImmediate64(tc.v64); got != tc.ok64 {
+				t.Fatalf("LogicalImmediate64(%#x) = %v, want %v", tc.v64, got, tc.ok64)
+			}
+		})
+	}
+}
+
+func TestAdjacentIndexedBaseReuse(t *testing.T) {
+	var a Asm
+	a.DenseIdxDisp = true
+	a.ReuseIndexedBase = true
+	a.LoadIdx(X0, X26, X22, 4, 4, false, false)
+	a.StoreIdx(X26, X22, X1, 8, 4)
+	if got := len(a.B); got != 12 {
+		t.Fatalf("reused sequence = %d bytes, want 12", got)
+	}
+	if a.IndexedBaseReuses != 1 {
+		t.Fatalf("indexed base reuses = %d, want 1", a.IndexedBaseReuses)
+	}
+
+	var overwrite Asm
+	overwrite.DenseIdxDisp = true
+	overwrite.ReuseIndexedBase = true
+	overwrite.LoadIdx(X22, X26, X22, 4, 4, false, false)
+	overwrite.StoreIdx(X26, X22, X1, 8, 4)
+	if got := len(overwrite.B); got != 16 || overwrite.IndexedBaseReuses != 0 {
+		t.Fatalf("address-input overwrite = %d bytes/%d reuses, want 16/0", got, overwrite.IndexedBaseReuses)
+	}
+
+	var disabled Asm
+	disabled.DenseIdxDisp = true
+	disabled.LoadIdx(X0, X26, X22, 4, 4, false, false)
+	disabled.StoreIdx(X26, X22, X1, 8, 4)
+	if got := len(disabled.B); got != 16 || disabled.IndexedBaseReuses != 0 {
+		t.Fatalf("disabled reuse = %d bytes/%d hits, want 16/0", got, disabled.IndexedBaseReuses)
+	}
+}
+
+func TestCanonicalIndexedBaseReuseAcrossAccumulator(t *testing.T) {
+	var a Asm
+	a.DenseIdxDisp = true
+	a.ReuseIndexedBase = true
+	a.MovReg32(X22, X22)
+	a.AddShifted(X16, X26, X22, 0, false)
+	a.Load32(X0, X16, 0)
+	a.Add32(X1, X1, X0)
+	a.MovReg32(X22, X22)
+	a.LoadIdx(X2, X26, X22, 4, 4, false, false)
+	if got := len(a.B); got != 24 || a.IndexedBaseReuses != 1 {
+		t.Fatalf("canonical stable reuse = %d bytes/%d hits, want 24/1", got, a.IndexedBaseReuses)
+	}
+
+	var unsafe Asm
+	unsafe.DenseIdxDisp = true
+	unsafe.ReuseIndexedBase = true
+	unsafe.AddShifted(X16, X26, X22, 0, false)
+	unsafe.Load32(X0, X16, 0)
+	unsafe.Add32(X1, X1, X0)
+	unsafe.MovReg32(X22, X22)
+	unsafe.LoadIdx(X2, X26, X22, 4, 4, false, false)
+	if got := len(unsafe.B); got != 24 || unsafe.IndexedBaseReuses != 0 {
+		t.Fatalf("uncanonical stable reuse = %d bytes/%d hits, want 24/0", got, unsafe.IndexedBaseReuses)
+	}
+}
+
 // Goldens for the scalar-FP + SP + branch batch.
 func TestPortFPEncodings(t *testing.T) {
 	cases := []struct {
@@ -98,21 +190,8 @@ func TestPortFPEncodings(t *testing.T) {
 		{"fmov d0,d1", func(a *Asm) { a.FmovReg(X0, X1, true) }, 0x1e604020},
 		{"fmov s0,w1", func(a *Asm) { a.FmovFromGpr(X0, X1, false) }, 0x1e270020},
 		{"fmov d0,x1", func(a *Asm) { a.FmovFromGpr(X0, X1, true) }, 0x9e670020},
-		{"fmov d0,#1.0", func(a *Asm) {
-			if !a.FmovImm(X0, 0x3ff0000000000000, true) {
-				t.Fatal("f64 1.0 immediate was rejected")
-			}
-		}, 0x1e6e1000},
-		{"fmov d3,#-1.0", func(a *Asm) {
-			if !a.FmovImm(X3, 0xbff0000000000000, true) {
-				t.Fatal("f64 -1.0 immediate was rejected")
-			}
-		}, 0x1e7e1003},
-		{"fmov s7,#2.0", func(a *Asm) {
-			if !a.FmovImm(X7, 0x40000000, false) {
-				t.Fatal("f32 2.0 immediate was rejected")
-			}
-		}, 0x1e201007},
+		{"fmov s5,#0.5", func(a *Asm) { a.FmovImm(X5, 0x60, false) }, 0x1e2c1005},
+		{"fmov d0,#1.0", func(a *Asm) { a.FmovImm(X0, 0x70, true) }, 0x1e6e1000},
 		{"fmov w0,s1", func(a *Asm) { a.FmovToGpr(X0, X1, false) }, 0x1e260020},
 		{"fmov x0,d1", func(a *Asm) { a.FmovToGpr(X0, X1, true) }, 0x9e660020},
 		{"fcmp s0,s1", func(a *Asm) { a.Fcmp(X0, X1, false) }, 0x1e212000},
@@ -159,7 +238,7 @@ func TestPortFPEncodings(t *testing.T) {
 		f64  bool
 	}{{0, true}, {0x3ff199999999999a, true}, {0x3f8ccccd, false}} {
 		var a Asm
-		if a.FmovImm(X0, c.bits, c.f64) || len(a.B) != 0 {
+		if a.FmovBits(X0, c.bits, c.f64) || len(a.B) != 0 {
 			t.Fatalf("unencodable FP immediate %#x (f64=%t) was emitted", c.bits, c.f64)
 		}
 	}

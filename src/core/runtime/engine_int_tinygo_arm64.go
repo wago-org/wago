@@ -53,17 +53,37 @@ func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint6
 	return uint64(call(linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3))), nil
 }
 
-// EnterPreparedLeafInt retains TinyGo's generated foreign-stack transition.
-// The normal Go assembler path has a narrower leaf entry, but TinyGo cannot
-// link that assembler symbol.
 func (e *Engine) EnterPreparedLeafInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
 	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
 }
 
-// TinyGo retains the established foreign-stack transition for trap-capable
-// prepared entries.
 func (e *Engine) EnterPreparedTrapInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
 	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
+}
+
+func (e *Engine) EnterPreparedIntLight(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
+}
+
+func (e *Engine) EnterPreparedIntBounded(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
+}
+
+func (e *Engine) EnterPreparedIntLightBounded(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
+}
+
+func (e *Engine) PrepareIntCall(call *PreparedIntCall, code, linMem uintptr) {
+	call.code, call.linMem, call.stack = code, linMem, e.stackTop
+}
+
+func (e *Engine) EnterPreparedIntCallBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
+	result, _ := e.EnterPreparedIntLightBounded(call.code, call.linMem, a0, a1, a2, a3)
+	return result
+}
+
+func (e *Engine) EnterPreparedIntPreboundContextBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
+	return e.EnterPreparedIntCallBounded(call, a0, a1, a2, a3)
 }
 
 func PreparedIntTrapCode(trap []byte) TrapCode {

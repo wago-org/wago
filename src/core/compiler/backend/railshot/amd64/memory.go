@@ -183,11 +183,35 @@ func compactTrapBranch(branch int) uint32 {
 	return uint32(branch)
 }
 
+// Entry checks precede pin initialization. On those cold edges, reload value
+// pins before the common trap exit writes them back.
+func (f *fn) prepareEntryTrapPins() {
+	needed := false
+	for g, state := range f.globalReg {
+		needed = needed || (!f.isModuleGlobal(g) && globalRegIsDirty(state))
+	}
+	if !needed {
+		return
+	}
+	for _, code := range [...]uint32{trapStackFence, trapInterrupted} {
+		sites := f.sc.trapSites[code]
+		for i := range sites {
+			if int(sites[i].branch) >= f.entryTrapEnd {
+				break
+			}
+			f.a.PatchRel32(int(sites[i].branch), f.a.Len())
+			f.derivePinnedGlobals()
+			sites[i].branch = compactTrapBranch(f.a.JmpPlaceholder())
+		}
+	}
+}
+
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
 	before := f.a.Len()
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
+	f.prepareEntryTrapPins()
 	groups := 0
 	for code := uint32(1); code <= trapMax; code++ {
 		sites := f.sc.trapSites[code]
@@ -239,7 +263,8 @@ func (f *fn) emitTrapStubs() {
 					f.a.PatchRel32(int(site.branch), common)
 				}
 			}
-			f.storeModuleGlobals(RSI)
+			f.restoreModuleGlobalRegionalLease()
+			f.storeGlobalPins(RSI, true)
 			f.emitTrap(code, first.function)
 			if commonJump >= 0 {
 				f.a.PatchRel32(commonJump, common)
@@ -288,7 +313,8 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 
 	common := f.a.Len()
 	f.trapBodyOff = common
-	f.storeModuleGlobals(RSI)
+	f.restoreModuleGlobalRegionalLease()
+	f.storeGlobalPins(RSI, true)
 	f.a.Load64(RSI, RBX, -offTrapCellPtr)
 	f.a.Store32(RSI, 16, RCX)
 	f.a.Store32(RSI, 20, RAX)
@@ -354,6 +380,11 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
 	bcKind, bcIdx := boundsSource(e.st)
+	hoistedLoopBounds := f.hoistedLoopBoundsCover(bcKind, bcIdx)
+	// The preheader proof zero-extends the induction local, and the admitted
+	// update is a 32-bit add. Its physical register therefore remains canonical
+	// throughout the loop; don't emit a self-move before every access.
+	cleanAddress = cleanAddress || hoistedLoopBounds
 	disp = 0
 	borrow = -1
 	leaDisp := int32(size)
@@ -386,6 +417,10 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	if f.guardMode {
 		return ea, eaOwned, borrow, disp
 	}
+	if hoistedLoopBounds {
+		f.stats.addBoundsElidable()
+		return ea, eaOwned, borrow, disp
+	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
 	// same-source check in this straight-line region already proved this access
 	// in-bounds. Sound because linear memory only grows and the certificate is
@@ -414,6 +449,8 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	f.a.LeaDisp(t, ea, leaDisp) // t = ea + off + size
 	if f.memSizeReg != regNone {
 		f.a.Cmp64(t, f.memSizeReg) // memBytes lives in a register (WARP REGS::memSize)
+	} else if f.memSizeRegionalLease {
+		f.a.AluRM(cmpRMcode, t, RBX, -bdCurBytes, true)
 	} else {
 		mb := f.allocReg(maskOf(t))
 		f.a.Load64(mb, RBX, -bdCurBytes) // memory size in bytes
@@ -424,6 +461,20 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	f.release(t)
 	f.pinned = f.pinned.remove(ea)
 	return ea, eaOwned, borrow, disp
+}
+
+func (f *fn) hoistedLoopBoundsCover(kind uint8, idx uint32) bool {
+	if kind != 1 {
+		return false
+	}
+	for i := len(f.ctrl) - 1; i >= 0; i-- {
+		fr := &f.ctrl[i]
+		if fr.kind != cfLoop {
+			continue
+		}
+		return f.linearSumLoopDepth == uint16(i+1) && uint32(uint16(f.linearSumLoop)) == idx+1
+	}
+	return false
 }
 
 type boundsCert struct {
@@ -542,6 +593,8 @@ func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, 
 	f.trapIf(condB, trapMemOOB)
 	if f.memSizeReg != regNone {
 		f.a.Cmp64(t, f.memSizeReg)
+	} else if f.memSizeRegionalLease {
+		f.a.AluRM(cmpRMcode, t, RBX, -bdCurBytes, true)
 	} else {
 		mb := f.allocReg(maskOf(t))
 		f.a.Load64(mb, RBX, -bdCurBytes)
@@ -646,7 +699,7 @@ func (f *fn) inLoop() bool {
 }
 
 func (f *fn) memoryAddr64(memoryIndex uint32) bool {
-	mt, ok := f.m.MemoryType(memoryIndex)
+	mt, ok := f.memoryType(memoryIndex)
 	return ok && mt.Limits.Addr64
 }
 
@@ -725,10 +778,11 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 }
 
 // cleanMemory32Address reports concrete storage forms whose materialization
-// necessarily writes a 32-bit destination. Borrowed local/global registers,
-// spill slots, and deferred operations are deliberately excluded: their
-// native-width carriers may have nonzero high bits, including after local.tee,
-// a sign-extending narrow load, or an identity-folded deferred operation.
+// necessarily writes a 32-bit destination. Regional i32 pins are loaded from
+// canonical frame homes; call-free whole-function pins are canonicalized at
+// ingress and only receive 32-bit writes; i32 spills reload at their value width.
+// Call-making whole-function pins, globals, and deferred operations remain
+// excluded because their carrier may still have nonzero high bits.
 func (f *fn) cleanMemory32Address(e *elem) bool {
 	if !f.opt(optAddrZExtElim) || e == nil {
 		return false
@@ -739,8 +793,31 @@ func (f *fn) cleanMemory32Address(e *elem) bool {
 	switch e.st.kind {
 	case stConst, stLocalRef:
 		return true
+	case stLocalReg:
+		if len(f.intervalReg) != 0 {
+			return f.opt(optCanonicalI32)
+		}
+		if f.usesCalls {
+			return false
+		}
+		return f.profitableCanonicalI32Carrier()
+	case stSlot:
+		return f.profitableCanonicalI32Carrier()
 	}
 	return false
+}
+
+// profitableCanonicalI32Carrier waits for the third eligible use before
+// changing code shape. Canonicalizing isolated carriers is semantically safe
+// but can perturb hot-loop placement for no amortized instruction saving.
+func (f *fn) profitableCanonicalI32Carrier() bool {
+	if !f.opt(optCanonicalI32) {
+		return false
+	}
+	if f.canonicalI32Uses != ^uint8(0) {
+		f.canonicalI32Uses++
+	}
+	return f.canonicalI32Uses >= 3
 }
 
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;
@@ -1183,7 +1260,10 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	// loop (WARP emitMemcpyNoBoundsCheck) — `rep movsb`'s ~30-cycle startup
 	// dominates the string-append copies AssemblyScript's __renew makes
 	// constantly; large copies keep rep movsb (ERMSB wins at size).
-	var joins []int
+	// Four exits are emitted below. Keep their patch sites on the Go stack;
+	// append still grows if a later lowering adds more exits.
+	var joinScratch [4]int
+	joins := joinScratch[:0]
 	f.a.AluRI(cmpDigit, RCX, smallBulkMax, true)
 	big := f.a.JccPlaceholder(condAE)
 

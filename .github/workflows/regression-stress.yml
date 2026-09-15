@@ -54,7 +54,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       - name: Run collector oracle, injection, fuzz seeds, and stress suites
-        run: go test -count=3 -tags '${{ matrix.tags }}' ./src/core/runtime/gc
+        run: go test -count=3 -tags '${{ matrix.tags }}' ./src/core/runtime/gc/...
       - name: Run native GC root and host-transition stress
         run: go test -count=3 -tags '${{ matrix.tags }}' -run 'Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$' ./src/wago
 

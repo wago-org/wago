@@ -17,9 +17,47 @@ func wbase(w bool, base32, base64 uint32) uint32 {
 	return base64
 }
 
-// AddShifted is ADD rd, rn, rm, LSL #shift (shift 0..63/31).
+// RegShift selects the modifier on AArch64 shifted-register ALU operands.
+// ADD/SUB admit LSL/LSR/ASR; logical operations additionally admit ROR.
+type RegShift uint8
+
+const (
+	RegShiftLSL RegShift = iota
+	RegShiftLSR
+	RegShiftASR
+	RegShiftROR
+)
+
+// shiftedReg emits the common shifted-register fields. The caller supplies an
+// operation base whose shift field is bits 23:22 and whose imm6 is bits 15:10.
+func (a *Asm) shiftedReg(base32, base64 uint32, rd, rn, rm Reg, kind RegShift, shift uint8, w bool) {
+	a.word(wbase(w, base32, base64) | uint32(kind&3)<<22 | r(rm)<<16 |
+		(uint32(shift)&0x3F)<<10 | r(rn)<<5 | r(rd))
+}
+
+// AddShifted is retained for existing LSL-only users.
 func (a *Asm) AddShifted(rd, rn, rm Reg, shift uint8, w bool) {
-	a.word(wbase(w, 0x0B000000, 0x8B000000) | r(rm)<<16 | (uint32(shift)&0x3F)<<10 | r(rn)<<5 | r(rd))
+	a.AddShiftedReg(rd, rn, rm, RegShiftLSL, shift, w)
+}
+
+func (a *Asm) AddShiftedReg(rd, rn, rm Reg, kind RegShift, shift uint8, w bool) {
+	a.shiftedReg(0x0B000000, 0x8B000000, rd, rn, rm, kind, shift, w)
+}
+
+func (a *Asm) SubShiftedReg(rd, rn, rm Reg, kind RegShift, shift uint8, w bool) {
+	a.shiftedReg(0x4B000000, 0xCB000000, rd, rn, rm, kind, shift, w)
+}
+
+func (a *Asm) AndShiftedReg(rd, rn, rm Reg, kind RegShift, shift uint8, w bool) {
+	a.shiftedReg(0x0A000000, 0x8A000000, rd, rn, rm, kind, shift, w)
+}
+
+func (a *Asm) OrrShiftedReg(rd, rn, rm Reg, kind RegShift, shift uint8, w bool) {
+	a.shiftedReg(0x2A000000, 0xAA000000, rd, rn, rm, kind, shift, w)
+}
+
+func (a *Asm) EorShiftedReg(rd, rn, rm Reg, kind RegShift, shift uint8, w bool) {
+	a.shiftedReg(0x4A000000, 0xCA000000, rd, rn, rm, kind, shift, w)
 }
 
 // AddExtUXTW is ADD Xd, Xn, Wm, UXTW — the 64-bit extended-register add that
@@ -123,6 +161,19 @@ func (a *Asm) OrrImm32(rd, rn Reg, val uint32) bool { return a.logicalImm32(0x32
 func (a *Asm) EorImm32(rd, rn Reg, val uint32) bool { return a.logicalImm32(0x52000000, rd, rn, val) }
 func (a *Asm) TstImm32(rn Reg, val uint32) bool     { return a.logicalImm32(0x7200001F, ZR, rn, val) }
 
+// LogicalImmediate32/64 report whether val has AArch64's repeated rotated-mask
+// shape. Compiler pre-scans use these pure predicates to avoid reserving a
+// constant register for a value the eventual ALU instruction can encode itself.
+func LogicalImmediate32(val uint32) bool {
+	n, _, _, ok := encodeLogicalImm(uint64(val), false)
+	return ok && n == 0
+}
+
+func LogicalImmediate64(val uint64) bool {
+	_, _, _, ok := encodeLogicalImm(val, true)
+	return ok
+}
+
 func (a *Asm) logicalImm32(base uint32, rd, rn Reg, val uint32) bool {
 	n, immr, imms, ok := encodeLogicalImm(uint64(val), false)
 	if !ok || n != 0 { // the 32-bit form has no N bit
@@ -175,9 +226,16 @@ func (a *Asm) FmovFromGpr(rd, rn Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E270000, 0x9E670000) | r(rn)<<5 | r(rd))
 }
 
-// FmovImm materializes an exactly encodable ARM scalar floating-point
-// immediate. bits contains the IEEE-754 binary32 or binary64 representation.
-func (a *Asm) FmovImm(rd Reg, bits uint64, f64 bool) bool {
+// FmovImm emits FMOV Sd/Dd, #imm from the architecture's exact eight-bit
+// floating-point immediate encoding. Callers are responsible for admitting only
+// values representable by VFPExpandImm.
+func (a *Asm) FmovImm(rd Reg, imm8 uint8, f64 bool) {
+	a.word(fbase(f64, 0x1E201000, 0x1E601000) | uint32(imm8)<<13 | r(rd))
+}
+
+// FmovBits materializes an exactly encodable ARM scalar floating-point
+// immediate from its IEEE-754 representation.
+func (a *Asm) FmovBits(rd Reg, bits uint64, f64 bool) bool {
 	var sign, exponent, fraction, repeated uint64
 	if f64 {
 		sign = bits >> 63
@@ -219,7 +277,7 @@ func (a *Asm) FmovImm(rd Reg, bits uint64, f64 bool) bool {
 		return false
 	}
 	imm8 := sign<<7 | b<<6 | (exponent&3)<<4 | fraction
-	a.word(fbase(f64, 0x1E201000, 0x1E601000) | uint32(imm8)<<13 | r(rd))
+	a.FmovImm(rd, uint8(imm8), f64)
 	return true
 }
 func (a *Asm) FmovToGpr(rd, rn Reg, f64 bool) {
@@ -500,6 +558,20 @@ func (a *Asm) StrQ(base Reg, disp int32, src Reg) {
 	a.ldStrScaled(0x3D800000, 4, src, scratch, 0)
 }
 
+// LdpQ / StpQ load or store two adjacent 128-bit SIMD registers without
+// modifying the base. off is a signed byte offset, aligned to 16 bytes, in
+// [-1024, 1008]. Keep the explicit validation here: silently truncating the
+// scaled imm7 would turn a compiler mistake into a wrong-address access.
+func (a *Asm) LdpQ(rt, rt2, rn Reg, off int32) { a.pairQ(0xAD400000, rt, rt2, rn, off) }
+func (a *Asm) StpQ(rt, rt2, rn Reg, off int32) { a.pairQ(0xAD000000, rt, rt2, rn, off) }
+
+func (a *Asm) pairQ(base uint32, rt, rt2, rn Reg, off int32) {
+	if off < -1024 || off > 1008 || off&15 != 0 {
+		panic("arm64: Q-register pair offset out of range or unaligned")
+	}
+	a.word(base | uint32((off/16)&0x7f)<<15 | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
 // LoadIdx / StoreIdx / StoreImmIdx are the base+index(+disp) linear-memory
 // accessors the port calls with the amd64 shape. AArch64 has no base+index+disp
 // form, so a nonzero displacement is folded by computing the effective address
@@ -589,8 +661,11 @@ func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wideDe
 		a.LdrIdx(dst, base, index, size, signed, wideDest)
 		return
 	}
-	if foldIdxDispEnabled && a.DenseIdxDisp {
-		a.AddShifted(X16, base, index, 0, false)
+	reused := foldIdxDispEnabled && (a.reuseIndexedBase(base, index) || a.reuseIndexedBaseStablePhase(base, index))
+	if foldIdxDispEnabled && (a.DenseIdxDisp || reused) {
+		if !reused {
+			a.AddShifted(X16, base, index, 0, false)
+		}
 		if a.loadDisp(dst, X16, disp, size, signed, wideDest) {
 			return
 		}
@@ -653,7 +728,9 @@ func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 		return
 	}
 	if foldIdxDispEnabled && a.DenseIdxDisp {
-		a.AddShifted(X16, base, index, 0, false)
+		if !a.reuseIndexedBase(base, index) && !a.reuseIndexedBaseStablePhase(base, index) {
+			a.AddShifted(X16, base, index, 0, false)
+		}
 		if a.storeDisp(src, X16, disp, size) {
 			return
 		}
@@ -662,6 +739,91 @@ func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 	}
 	a.addDispX16(disp)
 	a.StrIdx(src, X16, XZR, size)
+}
+
+// reuseIndexedBase proves that the immediately preceding memory access left
+// X16 holding this exact base+index value. The accepted sequence is deliberately
+// tiny: ADD X16,base,index followed by one non-writeback unsigned-immediate
+// load/store through X16. Loads must not replace either address input. No branch,
+// call, unknown instruction, local-version reasoning, or multi-word search is
+// involved, so omitting the duplicate ADD cannot reuse stale address state.
+func (a *Asm) reuseIndexedBase(base, index Reg) bool {
+	if !a.ReuseIndexedBase || len(a.B) < 8 {
+		return false
+	}
+	add := a.wordAt(len(a.B) - 8)
+	wantAdd := uint32(0x8B000000) | uint32(index&31)<<16 | uint32(base&31)<<5 | uint32(X16)
+	if add != wantAdd {
+		return false
+	}
+	mem := a.wordAt(len(a.B) - 4)
+	// Unsigned-immediate scalar loads/stores have fixed base bits 0x39000000;
+	// bits 9:5 are Rn. This form never writes its base register back.
+	if mem&0x3B000000 != 0x39000000 || Reg(mem>>5&31) != X16 {
+		return false
+	}
+	if mem&(1<<22) != 0 { // load: Rt is a destination
+		dst := Reg(mem & 31)
+		if dst == X16 || dst == base || dst == index {
+			return false
+		}
+	}
+	a.IndexedBaseReuses++
+	return true
+}
+
+// reuseIndexedBaseStablePhase recognizes the same address across a tiny
+// straight-line window. The redundant ADD is omitted: branch relocations are
+// resolved after emission, so later instruction addresses may move safely.
+func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
+	if !a.ReuseIndexedBase || len(a.B) < 12 {
+		return false
+	}
+	wantAdd := uint32(0x8B000000) | uint32(index&31)<<16 | uint32(base&31)<<5 | uint32(X16)
+	wantCanonical := uint32(0x2A000000) | uint32(index&31)<<16 | uint32(XZR)<<5 | uint32(index&31)
+	sawCanonical := false
+	for words := 1; words <= 4 && words*4 <= len(a.B); words++ {
+		instruction := a.wordAt(len(a.B) - words*4)
+		if instruction == wantAdd {
+			if sawCanonical {
+				before := len(a.B) - (words+1)*4
+				if before < 0 || a.wordAt(before) != wantCanonical {
+					return false
+				}
+			}
+			a.IndexedBaseReuses++
+			return true
+		}
+		if instruction == wantCanonical {
+			sawCanonical = true
+			continue
+		}
+		if !preservesIndexedBase(instruction, base, index) {
+			return false
+		}
+	}
+	return false
+}
+
+func preservesIndexedBase(instruction uint32, base, index Reg) bool {
+	writesAddress := func(dst Reg) bool {
+		return dst == X16 || dst == base || dst == index
+	}
+	if instruction&0x3B000000 == 0x39000000 {
+		return instruction&(1<<22) == 0 || !writesAddress(Reg(instruction&31))
+	}
+	if instruction&0x3B20FC00 == 0x38206800 {
+		return instruction&(3<<22) == 0 || !writesAddress(Reg(instruction&31))
+	}
+	if instruction&0x1F000000 == 0x11000000 {
+		return !writesAddress(Reg(instruction & 31))
+	}
+	// ADD/SUB (shifted register), including flag-setting forms, writes only Rd.
+	// Operand width and NZCV changes do not affect the cached 64-bit address.
+	if instruction&0x1F000000 == 0x0B000000 {
+		return !writesAddress(Reg(instruction & 31))
+	}
+	return false
 }
 func (a *Asm) StoreImmIdx(base, index Reg, disp, val int32, size int) {
 	// The store value lives in X17 (a nonzero immediate); XZR when zero. X17 is
@@ -806,6 +968,19 @@ func (a *Asm) Stur32(rt, rn Reg, off int32) {
 
 // Nop is the canonical A64 no-op.
 func (a *Asm) Nop() { a.word(0xD503201F) }
+
+// Nop4 emits four canonical no-ops with one slice-capacity check. Loop-header
+// phase padding uses this exact fixed-width run for every admitted poll-free
+// loop, so keeping it as one encoder operation avoids four append checks in a
+// hot compilation path.
+func (a *Asm) Nop4() {
+	a.B = append(a.B,
+		0x1f, 0x20, 0x03, 0xd5,
+		0x1f, 0x20, 0x03, 0xd5,
+		0x1f, 0x20, 0x03, 0xd5,
+		0x1f, 0x20, 0x03, 0xd5,
+	)
+}
 
 // Align16 pads the buffer to a 16-byte boundary with NOPs (A64 insns are 4 bytes,
 // so the buffer length is always a multiple of 4).

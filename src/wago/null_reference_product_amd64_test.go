@@ -13,7 +13,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestStagedFirstNullReferenceProductExecution(t *testing.T) {
@@ -21,7 +21,7 @@ func TestStagedFirstNullReferenceProductExecution(t *testing.T) {
 	if len(data) != 149 {
 		t.Fatalf("first synthetic null-reference fixture size = %d, want 149 bytes", len(data))
 	}
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "ref null any") {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(err.Error(), "ref null any") {
 		t.Fatalf("public compile = %v, want closed any-reference gate", err)
 	}
 	c, err := compileStagedNullReferenceProductForTest(data)
@@ -128,7 +128,7 @@ func TestStagedBottomNullReferenceGlobalsExecution(t *testing.T) {
 	if len(data) != 308 {
 		t.Fatalf("bottom-global synthetic null fixture size = %d, want 308 bytes", len(data))
 	}
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "ref null any") {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(err.Error(), "ref null any") {
 		t.Fatalf("public compile = %v, want closed abstract-reference gate", err)
 	}
 	c, err := compileStagedNullReferenceProductForTest(data)

@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -32,7 +33,8 @@ func offerUseInstallation(d wagopaths.Dirs, ver string, profile wagopaths.Profil
 }
 
 func finishVersionInstall(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, mode string) {
-	if activeVersion(d) == ver && activeProfile(d) == profile && activeBuild(d) == build {
+	active, currentProfile, currentBuild := activeTuple(d)
+	if active == ver && currentProfile == profile && currentBuild == build {
 		return
 	}
 	offerUseInstallation(d, ver, profile, build, mode)
@@ -49,14 +51,14 @@ func useInstalledPicker(ver string, profile wagopaths.Profile, build wagopaths.B
 func updateChannelPicker(active string) *tui.Picker {
 	items := []tui.Item{
 		{Label: "Canary", Value: "canary"},
-		{Label: "Nightly", Value: "nightly"},
+		{Label: "Beta", Value: "beta"},
 	}
 	p := tui.NewPicker("Update Wago channel", items)
 	channel := active
 	if !isRollingChannel(channel) {
 		channel = channelRelease(channel)
 	}
-	if channel == "nightly" {
+	if channel == "beta" {
 		p.SetCursor(1)
 	}
 	return p
@@ -115,7 +117,7 @@ func vmChooseInstalled(d wagopaths.Dirs) {
 }
 
 func installedVersionPicker(d wagopaths.Dirs, vers []string) *tui.Picker {
-	active, currentProfile, currentBuild := activeVersion(d), activeProfile(d), activeBuild(d)
+	active, currentProfile, currentBuild := activeTuple(d)
 	items := make([]tui.Item, 0, len(vers))
 	cursor := 0
 	profileWidth := 0
@@ -331,14 +333,11 @@ func releaseCommit(release string) string {
 	if _, sha, canonical := rollingCommitSHA(release); canonical {
 		return sha[:7]
 	}
-	if channelRelease(release) == "" {
-		return ""
+	if channelRelease(release) == "canary" {
+		_, identity, _ := strings.Cut(strings.ToLower(release), "-canary.g")
+		return identity[:7]
 	}
-	parts := strings.Split(release, "-")
-	if len(parts) < 3 {
-		return ""
-	}
-	return parts[len(parts)-1]
+	return ""
 }
 
 func vmUninstall(d wagopaths.Dirs, ver string) {
@@ -349,6 +348,11 @@ func vmUninstall(d wagopaths.Dirs, ver string) {
 }
 
 func removeInstalledVersion(d wagopaths.Dirs, ver string) error {
+	lock, err := versionMutationLock(context.Background(), d, ver)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 	dir, err := versionDirectory(d, ver)
 	if err != nil {
 		return err
@@ -359,12 +363,7 @@ func removeInstalledVersion(d wagopaths.Dirs, ver string) error {
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
-	if activeVersion(d) == ver {
-		_ = os.Remove(d.ConfigFile("active-version"))
-		_ = os.Remove(d.ConfigFile("active-profile"))
-		_ = os.Remove(d.ConfigFile("active-build"))
-	}
-	return nil
+	return clearActiveInstallation(d, ver)
 }
 
 func uninstallVersionPicker(d wagopaths.Dirs, versions []string) *tui.MultiSelect {
@@ -404,6 +403,7 @@ func vmChooseUninstall(d wagopaths.Dirs) {
 }
 
 // rollingChannels are version names whose build moves under a fixed name:
-// "canary" tracks the latest main commit, "nightly" the latest nightly release.
+// "canary" tracks the latest qualified main build, while "beta" tracks the
+// latest manually qualified beta release.
 // Installing or updating one always re-fetches, unlike an immutable release.
-var rollingChannels = map[string]bool{"canary": true, "nightly": true}
+var rollingChannels = map[string]bool{"canary": true, "beta": true}

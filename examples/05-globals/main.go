@@ -32,8 +32,8 @@ func main() {
 
 	// Each inc() bumps the global.
 	for i := 0; i < 3; i++ {
-		out, _ := inst.Call(ctx, "inc")
-		fmt.Printf("inc() = %d\n", out[0].I32())
+		out, _ := inst.InvokeContext(ctx, "inc")
+		fmt.Printf("inc() = %d\n", wago.AsI32(out[0]))
 	}
 
 	// Read the global directly, typed.
@@ -41,7 +41,7 @@ func main() {
 	fmt.Printf("count global = %d\n", v.I32())
 
 	// Set it from the host, then observe the guest continue from there.
-	_ = inst.SetGlobalValue("count", wago.ValueI32(100))
-	out, _ := inst.Call(ctx, "inc")
-	fmt.Printf("after set to 100, inc() = %d\n", out[0].I32())
+	_ = inst.SetGlobal("count", wago.I32(100))
+	out, _ := inst.InvokeContext(ctx, "inc")
+	fmt.Printf("after set to 100, inc() = %d\n", wago.AsI32(out[0]))
 }

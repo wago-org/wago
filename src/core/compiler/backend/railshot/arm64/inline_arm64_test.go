@@ -12,7 +12,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/src/core/runtime/arm64spike"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestCollectInlinedCalleesDeduplicatesPastStackSetArm64(t *testing.T) {
@@ -34,6 +34,61 @@ func TestCollectInlinedCalleesDeduplicatesPastStackSetArm64(t *testing.T) {
 		if target.globalIdx != i {
 			t.Fatalf("inline target %d = %d, want %d", i, target.globalIdx, i)
 		}
+	}
+}
+
+func TestCollectInlinedCalleesFastImmediateDecodeArm64(t *testing.T) {
+	data := &inlineTargetData{slots: []uint32{1, 2}, targets: make([]inlineTarget, 2)}
+	data.targets[0].globalIdx = 0
+	data.targets[1].globalIdx = 1
+	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
+	body := []byte{
+		0x00,       // unreachable (immediate-free; stands in for the local decl byte)
+		0x20, 0x00, // local.get 0
+		0x41, 0x7f, // i32.const -1
+		0x10, 0x01, // call 1
+		0x44, 0, 0, 0, 0, 0, 0, 0, 0, // f64.const 0
+		0x23, 0x00, // global.get 0
+		0x10, 0x00, // call 0
+		0x28, 0x00, 0x00, // i32.load align=0 offset=0 (classifier fallback)
+		0x10, 0x01, // duplicate call 1
+		0x0b,
+	}
+	got := collectInlinedCallees(&wasm.Func{BodyBytes: body}, targets)
+	if len(got) != 2 || got[0].globalIdx != 1 || got[1].globalIdx != 0 {
+		t.Fatalf("inline targets = %#v, want [1 0] in first-call order", got)
+	}
+}
+
+func TestAllCallsWillInlineDeepControlArm64(t *testing.T) {
+	data := &inlineTargetData{slots: []uint32{1}, targets: []inlineTarget{{globalIdx: 0}}}
+	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
+	policy := currentCodegenPolicy()
+
+	// Exercise the allocation-free 64-frame bit stack and its bounded deep fallback.
+	body := []byte{0x00}
+	for range 65 {
+		body = append(body, 0x02, 0x40) // block void
+	}
+	body = append(body, 0x10, 0x00) // call 0
+	for range 66 {                  // close 65 blocks and the function
+		body = append(body, 0x0b)
+	}
+	if !allCallsWillInline(&wasm.Func{BodyBytes: body}, targets, policy) {
+		t.Fatal("deep block-nested direct call was not recognized as fully inlineable")
+	}
+
+	// A loop in the deep fallback must still activate the loop regression guard.
+	body = []byte{0x00}
+	for range 64 {
+		body = append(body, 0x02, 0x40)
+	}
+	body = append(body, 0x03, 0x40, 0x10, 0x00) // loop void; call 0
+	for range 66 {
+		body = append(body, 0x0b)
+	}
+	if allCallsWillInline(&wasm.Func{BodyBytes: body}, targets, policy) {
+		t.Fatal("regressive call in a deeply nested loop was classified as fully inlineable")
 	}
 }
 
@@ -132,6 +187,12 @@ func TestInlineLeafExecAndStatsArm64(t *testing.T) {
 	inlineEnabled = true
 	var ms ModuleStats
 	if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
+		t.Fatalf("stats-only compile: %v", err)
+	}
+	if ms.Inline != nil {
+		t.Fatalf("stats-only inline report = %#v, want nil", ms.Inline)
+	}
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms, CollectInlineReport: true}); err != nil {
 		t.Fatalf("compile: %v", err)
 	}
 	if ms.Inline == nil || ms.Inline.NumCandidates != 1 {
@@ -192,6 +253,46 @@ func TestInlineRejectsRecursiveArm64(t *testing.T) {
 	}
 	if rep.Funcs[1].Candidate {
 		t.Fatalf("recursive function incorrectly marked inline candidate")
+	}
+}
+
+func TestInlineExecOneLevelRecursiveArm64(t *testing.T) {
+	savedInline, savedRecursive := inlineEnabled, recursiveInlineEnabled
+	inlineEnabled, recursiveInlineEnabled = true, true
+	t.Cleanup(func() { inlineEnabled, recursiveInlineEnabled = savedInline, savedRecursive })
+
+	// fib(n) = n < 2 ? n : fib(n-1) + fib(n-2).
+	body := []byte{0x00, 0x20, 0x00, 0x41, 0x02, 0x48, 0x04, 0x7e,
+		0x20, 0x00, 0xac, 0x05,
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x10, 0x00,
+		0x20, 0x00, 0x41, 0x02, 0x6b, 0x10, 0x00, 0x7c, 0x0b, 0x0b}
+	m := modFuncs(t, funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I64}, body: body})
+	if got := runArm64Internal2(t, m, 10, 0); got != 55 {
+		t.Fatalf("fib(10) = %d, want 55", got)
+	}
+	s := compileWithStats(t, m, false).Funcs[0]
+	if s.Calls["inline"] != 2 || s.Calls["regabi"] != 4 {
+		t.Fatalf("recursive call lowering = %v, want inline=2 regabi=4", s.Calls)
+	}
+	rep, err := AnalyzeInlineCandidates(m)
+	if err != nil || rep.NumCandidates != 1 || !rep.Funcs[0].Candidate {
+		t.Fatalf("recursive inline report = %#v, err=%v", rep, err)
+	}
+}
+
+func TestInlineBodyLimitArm64(t *testing.T) {
+	saved := inlineMaxBytes
+	inlineMaxBytes = inlineMaxBodyBytes
+	t.Cleanup(func() { inlineMaxBytes = saved })
+
+	policy := currentCodegenPolicy()
+	facts := inlineFacts{bodyBytes: inlineMaxBodyBytes, regABIIntOnly: true}
+	if !inlineOK(facts, policy) {
+		t.Fatalf("%d-byte leaf rejected at the inline limit", inlineMaxBodyBytes)
+	}
+	facts.bodyBytes++
+	if inlineOK(facts, policy) {
+		t.Fatalf("%d-byte leaf accepted above the inline limit", facts.bodyBytes)
 	}
 }
 

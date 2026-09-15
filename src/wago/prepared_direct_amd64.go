@@ -4,6 +4,7 @@ package wago
 
 import (
 	"fmt"
+	"os"
 	goruntime "runtime"
 
 	wruntime "github.com/wago-org/wago/src/core/runtime"
@@ -14,6 +15,23 @@ const preparedDirectIntSupported = true
 // AMD64's direct prepared path retains the established foreign-stack transition;
 // the compiler-proven private entry only removes wrapper marshalling.
 const preparedDirectIntPrivateSupported = true
+const preparedIntCallBlockDefault = false
+
+var preparedIntPreboundContextEnabled = os.Getenv("WAGO_PREPARED_INT_PREBOUND_CONTEXT") != "0"
+
+func (fn *PreparedFunction) initDirectIntCall() {
+	if preparedIntPreboundContextEnabled && !preparedIntCallBlockEnabled && fn.directIntBounded {
+		fn.in.eng.PrepareBoundedIntContext(fn.directLinMem)
+	}
+	if fn.directIntBounded && (preparedIntCallBlockEnabled || preparedIntPreboundContextEnabled) {
+		fn.in.eng.PrepareIntCall(&fn.directIntCall, fn.directEntry, fn.directLinMem)
+	}
+	if preparedIntCallBlockEnabled && fn.directIntBounded {
+		fn.directIntMode = preparedIntCallBlock
+	} else if preparedIntPreboundContextEnabled && fn.directIntBounded {
+		fn.directIntMode = preparedIntCallPrebound
+	}
+}
 
 func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
 	var a0, a1, a2, a3 uint64
@@ -35,28 +53,164 @@ func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
 
 func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
-	if in.isLogicallyClosed() {
-		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
+	if err := in.beginInvocation(); err != nil {
+		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
 	}
-	if fn.scalarWideMask&1 == 0 {
-		a0 = uint64(uint32(a0))
+	defer in.endInvocation()
+	if !fn.directIsolated || !in.tryPreparedDirect() {
+		lease := in.lockPreparedInvocation()
+		defer lease.unlock()
+		args := [4]uint64{a0, a1, a2, a3}
+		return fn.invokeGeneralAdmitted(args[:fn.paramSlots])
 	}
-	if fn.scalarWideMask&2 == 0 {
-		a1 = uint64(uint32(a1))
+	defer in.ensurePluginState().invokeMu.Unlock()
+	switch fn.paramSlots {
+	case 4:
+		if fn.scalarWideMask&8 == 0 {
+			a3 = uint64(uint32(a3))
+		}
+		fallthrough
+	case 3:
+		if fn.scalarWideMask&4 == 0 {
+			a2 = uint64(uint32(a2))
+		}
+		fallthrough
+	case 2:
+		if fn.scalarWideMask&2 == 0 {
+			a1 = uint64(uint32(a1))
+		}
+		fallthrough
+	case 1:
+		if fn.scalarWideMask&1 == 0 {
+			a0 = uint64(uint32(a0))
+		}
 	}
-	if fn.scalarWideMask&4 == 0 {
-		a2 = uint64(uint32(a2))
+	var result uint64
+	var err error
+	wruntime.PreparePreparedIntTrap(in.trap)
+	if fn.directIntMode == preparedIntCallPrebound {
+		result = in.eng.EnterPreparedIntPreboundContextBounded(&fn.directIntCall, a0, a1, a2, a3)
+	} else if fn.directIntMode == preparedIntCallBlock {
+		result = in.eng.EnterPreparedIntCallBounded(&fn.directIntCall, a0, a1, a2, a3)
+	} else if fn.directIntBounded {
+		result, err = in.eng.EnterPreparedIntBounded(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
+	} else {
+		result, err = in.eng.EnterPreparedInt(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
 	}
-	if fn.scalarWideMask&8 == 0 {
-		a3 = uint64(uint32(a3))
-	}
-	result, err := in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
 	if err != nil {
 		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
 	}
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
 		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
 	}
+	goruntime.KeepAlive(fn)
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:fn.resultSlots]
+	if fn.resultSlots == 1 {
+		if fn.scalarResultWide {
+			out[0] = result
+		} else {
+			out[0] = uint64(uint32(result))
+		}
+	}
+	return out, nil
+}
+
+func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, resultSlots int, scalarWideMask uint8, scalarResultWide, _, _, bounded bool, a0, a1, a2, a3 uint64) ([]uint64, error) {
+	if in.isLogicallyClosed() {
+		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
+	}
+	switch paramSlots {
+	case 4:
+		if scalarWideMask&8 == 0 {
+			a3 = uint64(uint32(a3))
+		}
+		fallthrough
+	case 3:
+		if scalarWideMask&4 == 0 {
+			a2 = uint64(uint32(a2))
+		}
+		fallthrough
+	case 2:
+		if scalarWideMask&2 == 0 {
+			a1 = uint64(uint32(a1))
+		}
+		fallthrough
+	case 1:
+		if scalarWideMask&1 == 0 {
+			a0 = uint64(uint32(a0))
+		}
+	}
+	var result uint64
+	var err error
+	wruntime.PreparePreparedIntTrap(in.trap)
+	if bounded {
+		result, err = in.eng.EnterPreparedIntBounded(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	} else {
+		result, err = in.eng.EnterPreparedInt(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
+	}
+	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:resultSlots]
+	if resultSlots == 1 {
+		if scalarResultWide {
+			out[0] = result
+		} else {
+			out[0] = uint64(uint32(result))
+		}
+	}
+	return out, nil
+}
+
+func (fn *PreparedFunction) invokeDirectIntSession(a0, a1, a2, a3 uint64) ([]uint64, error) {
+	in := fn.in
+	switch fn.paramSlots {
+	case 4:
+		if fn.scalarWideMask&8 == 0 {
+			a3 = uint64(uint32(a3))
+		}
+		fallthrough
+	case 3:
+		if fn.scalarWideMask&4 == 0 {
+			a2 = uint64(uint32(a2))
+		}
+		fallthrough
+	case 2:
+		if fn.scalarWideMask&2 == 0 {
+			a1 = uint64(uint32(a1))
+		}
+		fallthrough
+	case 1:
+		if fn.scalarWideMask&1 == 0 {
+			a0 = uint64(uint32(a0))
+		}
+	}
+	wruntime.PreparePreparedIntTrap(in.trap)
+	var result uint64
+	var err error
+	if fn.directIntMode == preparedIntCallPrebound {
+		result = in.eng.EnterPreparedIntPreboundContextBounded(&fn.directIntCall, a0, a1, a2, a3)
+	} else if fn.directIntMode == preparedIntCallBlock {
+		result = in.eng.EnterPreparedIntCallBounded(&fn.directIntCall, a0, a1, a2, a3)
+	} else if fn.directIntBounded {
+		result, err = in.eng.EnterPreparedIntBounded(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
+	} else {
+		result, err = in.eng.EnterPreparedInt(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
+	}
+	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+	}
+	goruntime.KeepAlive(fn)
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:fn.resultSlots]

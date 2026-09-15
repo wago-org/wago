@@ -360,6 +360,10 @@ type Output struct {
 	Entry          []int
 	InternalEntry  []int
 	DirectPrepared []uint64
+	// DirectPreparedLight and DirectPreparedBounded retain Railshot's refined
+	// prepared-entry proofs through the backend-neutral router.
+	DirectPreparedLight   []uint64
+	DirectPreparedBounded []uint64
 	// DirectLeafPrepared is the subset of DirectPrepared whose private entry is
 	// a bounded, call-free, trap-free leaf that does not require guest context.
 	DirectLeafPrepared []uint64
@@ -370,6 +374,7 @@ type Output struct {
 	// cannot access linear memory, so its wrapper can safely bypass signal-guard
 	// activation while retaining the interruptible foreign-stack transition.
 	ContextFreeLoopPrepared []uint64
+	PreparedIsolatedTables  bool
 
 	GCCallsites            []GCFrameCallsite
 	GCRoots                []uint32

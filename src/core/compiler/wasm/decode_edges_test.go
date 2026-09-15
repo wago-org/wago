@@ -145,6 +145,16 @@ func TestDecodeNameSectionStrictness(t *testing.T) {
 		code DecodeErrorCode
 	}{
 		{
+			name: "truncated subsection",
+			sec:  []byte{0, 2, 1},
+			code: ErrIndexOutOfBounds,
+		},
+		{
+			name: "malformed subsection length",
+			sec:  []byte{0, 0xff, 0xff, 0xff, 0xff, 0x10},
+			code: ErrMalformedLEB,
+		},
+		{
 			name: "duplicate module-name subsection",
 			sec:  append(subsection(0, moduleName...), subsection(0, moduleName...)...),
 			code: ErrInvalidSection,
@@ -167,47 +177,72 @@ func TestDecodeNameSectionStrictness(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := DecodeModule(module(custom("name", tc.sec...)))
+			_, err := decodeNameSec(tc.sec)
 			var de *DecodeError
 			if !errors.As(err, &de) || de.Code != tc.code {
 				t.Fatalf("expected %v, got %#v / %v", tc.code, de, err)
 			}
+			requireIgnoredNamePayload(t, tc.sec)
 		})
+	}
+}
+
+func requireIgnoredNamePayload(t *testing.T, payload []byte) {
+	t.Helper()
+	data := module(custom("name", payload...))
+	for _, decode := range []func([]byte) (*Module, error){DecodeModule, decodeModuleASTForTest} {
+		m, err := decode(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.NameSec != nil {
+			t.Fatal("malformed name metadata was retained")
+		}
+		if string(m.RawNameSecPayload) != string(payload) || len(m.Customs) != 1 || string(m.Customs[0].Data) != string(payload) {
+			t.Fatal("raw name payload changed")
+		}
+		if err := ValidateModule(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ValidateByteBackedModule(data); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestDecodeDuplicateNameCustomSection(t *testing.T) {
-	payload := []byte{0x00, 0x02, 0x01, 'm'}
-	_, err := DecodeModule(module(custom("name", payload...), custom("name", payload...)))
-	var de *DecodeError
-	if !errors.As(err, &de) || de.Code != ErrInvalidSection {
-		t.Fatalf("expected duplicate name-section error, got %#v / %v", de, err)
+	first := []byte{0x00, 0x02, 0x01, 'm'}
+	second := []byte{0x00, 0x02, 0x01, 'n'}
+	for _, payload := range [][]byte{first, {}, {0xff}} {
+		data := module(custom("name", payload...), custom("name", second...))
+		for _, decode := range []func([]byte) (*Module, error){DecodeModule, decodeModuleASTForTest} {
+			m, err := decode(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(m.Customs) != 2 || string(m.Customs[1].Data) != string(second) || string(m.RawNameSecPayload) != string(payload) {
+				t.Fatal("duplicate name payloads changed")
+			}
+			if len(payload) == len(first) && (m.NameSec == nil || m.NameSec.ModuleName == nil || *m.NameSec.ModuleName != "m") {
+				t.Fatal("first module name changed")
+			}
+			if len(payload) != len(first) && m.NameSec != nil && m.NameSec.ModuleName != nil {
+				t.Fatal("duplicate section replaced first name metadata")
+			}
+			if err := ValidateModule(m); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }
 
 func TestDecodeInvalidUTF8Name(t *testing.T) {
-	tests := []struct {
-		name string
-		mod  []byte
-	}{
-		{
-			name: "custom section name",
-			mod:  module(section(secCustom, 0x01, 0xff)),
-		},
-		{
-			name: "name subsection payload",
-			mod:  module(custom("name", 0x00, 0x02, 0x01, 0xff)),
-		},
+	_, err := DecodeModule(module(section(secCustom, 0x01, 0xff)))
+	var de *DecodeError
+	if !errors.As(err, &de) || de.Code != ErrInvalidSection {
+		t.Fatalf("expected invalid custom-section name error, got %v", err)
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := DecodeModule(tc.mod)
-			var de *DecodeError
-			if !errors.As(err, &de) || de.Code != ErrInvalidSection {
-				t.Fatalf("expected invalid utf-8 decode error, got %#v / %v", de, err)
-			}
-		})
-	}
+	requireIgnoredNamePayload(t, []byte{0x00, 0x02, 0x01, 0xff})
 }
 
 func TestDecodeLEBBoundaries(t *testing.T) {
@@ -351,7 +386,7 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 		} {
 			t.Run(tc.name+"/zero", func(t *testing.T) {
 				r := newReader([]byte{tc.op, 0x00})
-				in, err := decodeInstruction(r, 0)
+				in, err := decodeInstructionWithMemargWidths(r, 0, memargWidths{})
 				if err != nil || in.Kind != tc.kind || in.Index != 0 || r.has() {
 					t.Fatalf("instr=%#v left=%d err=%v", in, r.left(), err)
 				}
@@ -365,7 +400,7 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 			} {
 				name := fmt.Sprintf("%x", immediate)
 				t.Run(tc.name+"/reject-"+name, func(t *testing.T) {
-					_, err := decodeInstruction(newReader(append([]byte{tc.op}, immediate...)), 0)
+					_, err := decodeInstructionWithMemargWidths(newReader(append([]byte{tc.op}, immediate...)), 0, memargWidths{})
 					var de *DecodeError
 					if !errors.As(err, &de) || de.Code != ErrInvalidInstruction || de.Offset != 1 {
 						t.Fatalf("error=%#v / %v, want invalid instruction at immediate", de, err)

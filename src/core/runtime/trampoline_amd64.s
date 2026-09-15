@@ -11,18 +11,12 @@
 // scan frames with no pointer maps). We switch RSP to a fixed mmap'd stack and
 // switch back on return.
 //
-// The goroutine stays in _Grunning (no entersyscall). That is safe because:
-//   - This is a NOSPLIT leaf with no Go safepoint, so the goroutine is not
-//     migrated/preempted while inside it.
-//   - Async-preempt (SIGURG) arriving while PC is in native code is declined
-//     (findfunc fails for non-Go PC) and benignly resumed.
-//   - getg() in signal handlers reads g from TLS, not R14, so signals stay
-//     correct even though native code clobbers R14.
-// The caller must keep every native run BOUNDED (a never-returning native loop
-// would stall stop-the-world GC, which waits for this goroutine's safepoint).
+// The Go wrapper releases its P and records a scannable Go stack before this
+// leaf runs. It reacquires a P after the Go stack is restored. No Go callback
+// runs on the foreign stack.
 //
 // WasmWrapper System V mapping: serArgs->RDI, linMem->RSI, trap->RDX, results->RCX.
-TEXT ·enterNative(SB), NOSPLIT, $0-48
+TEXT ·enterNativeRaw(SB), NOSPLIT, $0-48
 	MOVQ code+0(FP), R11            // R11 = native entry (scratch; not an arg reg)
 	MOVQ serArgs+8(FP), DI          // gpParams[0]
 	MOVQ linMem+16(FP), SI          // gpParams[1] (becomes WasmABI linMem/RBX inside)

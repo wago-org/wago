@@ -18,7 +18,7 @@ import (
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const stagedGCRefTestDeltaPath = "tests/spec-v3-staged-gc-ref-test.json"
+const stagedGCRefTestDeltaPath = "tests/conformance/baselines/spec-v3-staged-gc-ref-test.json"
 
 type stagedGCRefTestClass uint8
 
@@ -151,7 +151,7 @@ func stagedGCRefTestLeaderDeltaFor(data []byte, line int) (stagedGCRefTestLeader
 }
 
 func compileStagedGCRefTestAccounting(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	if product, ok := stagedGCStructExecutionProduct(data); ok && (product == stagedGCStructRefTestConcrete || product == stagedGCStructRefTestAbstract) {

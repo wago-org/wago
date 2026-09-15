@@ -3,10 +3,75 @@
 package arm64
 
 import (
+	"encoding/binary"
+	"path/filepath"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func TestIntervalNextUseCoordinatesArm64(t *testing.T) {
+	body := []byte{
+		0x21, 0x00,
+		0x20, 0x00,
+		0x1a,
+		0x21, 0x00,
+		0x20, 0x00,
+		0x0b,
+	}
+	f := fn{
+		m:             &wasm.Module{},
+		nLocals:       1,
+		localType:     []machineType{mtI32},
+		intervalLast:  []uint32{7},
+		intervalScore: []uint32{8},
+		tracePCBase:   0x1234,
+		wasmPC:        0x1234,
+	}
+	f.classifier = wasm.NewModuleInstructionClassifier(f.m, true)
+	f.prepareIntervalEvents(body, 5)
+	if next, dead := f.nextIntervalLocalAccess(0); next != 2 || dead {
+		t.Fatalf("next read = (%d, %t), want (2, false)", next, dead)
+	}
+	f.wasmPC = f.tracePCBase + 4
+	if next, dead := f.nextIntervalLocalAccess(0); next != 5 || !dead {
+		t.Fatalf("next overwrite = (%d, %t), want (5, true)", next, dead)
+	}
+}
+
+func compileIntervalCorpusArm64(t testing.TB, name string, on bool) (int, *CodegenStats) {
+	t.Helper()
+	root := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads", "assemblyscript", name)
+	m := readParallelTestModuleArm64(t, root)
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Stats: &stats, Optimizations: map[string]bool{"interval-next-use": on}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		_ = cm.CodeImage.Close()
+	}
+	return len(cm.Code), stats.Funcs[0]
+}
+
+func TestIntervalNextUseShrinksScalarBlakeArm64(t *testing.T) {
+	baseBytes, base := compileIntervalCorpusArm64(t, "blake-as.wasm", false)
+	nextBytes, next := compileIntervalCorpusArm64(t, "blake-as.wasm", true)
+	if next.Peephole["interval-dead-store-elide"] == 0 {
+		t.Fatalf("next-use planning found no dead stores: %v", next.Peephole)
+	}
+	if nextBytes >= baseBytes || next.CodeBytes >= base.CodeBytes {
+		t.Fatalf("next-use code module/function = %d/%d, baseline %d/%d", nextBytes, next.CodeBytes, baseBytes, base.CodeBytes)
+	}
+}
+
+func TestIntervalNextUseRejectsSIMDModuleArm64(t *testing.T) {
+	baseBytes, base := compileIntervalCorpusArm64(t, "blake-as-simd.wasm", false)
+	nextBytes, next := compileIntervalCorpusArm64(t, "blake-as-simd.wasm", true)
+	if next.Peephole["interval-dead-store-elide"] != 0 || nextBytes != baseBytes || next.CodeBytes != base.CodeBytes {
+		t.Fatalf("SIMD module changed under next-use: module %d/%d function %d/%d peep=%v", nextBytes, baseBytes, next.CodeBytes, base.CodeBytes, next.Peephole)
+	}
+}
 
 func intervalRegionModuleArm64(t *testing.T) *wasm.Module {
 	body := []byte{0x01, 0x20, 0x7f}            // thirty-two i32 locals
@@ -37,6 +102,12 @@ func TestIntervalRegionDynamicReuseArm64(t *testing.T) {
 	if on.Peephole["interval-region-reactivate"] == 0 {
 		t.Fatalf("dynamic regional cache did not reuse a register: %v", on.Peephole)
 	}
+	if r := on.Residency; r.Events == 0 || r.EventOverflows != 0 || r.Candidates != 32 || r.Activations == 0 || r.MaxActive == 0 || r.MaxActive > maxIntervalRegionRegs || r.FinalTransfers == 0 {
+		t.Fatalf("residency stats = %+v", r)
+	}
+	if p := on.Residency.Shadow; p.Candidates == 0 || p.Segments == 0 || p.FailSoft != 0 {
+		t.Fatalf("residency shadow = %+v", p)
+	}
 
 	intervalRegionPinsEnabled = false
 	off := compileWithStats(t, m, false).Funcs[0]
@@ -45,6 +116,61 @@ func TestIntervalRegionDynamicReuseArm64(t *testing.T) {
 	}
 	if got := runArm64(t, m); got != 496 {
 		t.Fatalf("disabled result = %d, want 496", got)
+	}
+}
+
+func TestIntervalRegionLeavesTransientFloorArm64(t *testing.T) {
+	// BLAKE3 produces incorrect output at 20 leases: only X2/X3 remain from the
+	// ordered scratch-capable tail and ordinary lowering can require one more.
+	const transientFloor = 3
+	if got, want := maxIntervalRegionRegs, len(intervalRegionOrder)-transientFloor; got != want {
+		t.Fatalf("regional leases = %d, want %d to preserve %d transient registers", got, want, transientFloor)
+	}
+}
+
+func TestIntervalRegionBoundsModePreservesTransientFloorArm64(t *testing.T) {
+	if got, want := intervalRegionRegLimit(true), maxIntervalRegionRegs-1; got != want {
+		t.Fatalf("explicit-bounds regional leases = %d, want %d", got, want)
+	}
+	if got := intervalRegionRegLimit(false); got != maxIntervalRegionRegs {
+		t.Fatalf("signals-based regional leases = %d, want %d", got, maxIntervalRegionRegs)
+	}
+}
+
+func TestIntervalRegionCachesMemSizeInLeafScratchArm64(t *testing.T) {
+	body := []byte{0x01, 0x20, 0x7f}            // thirty-two i32 locals
+	body = append(body, 0x41, 0x00, 0x21, 0x00) // sum = 0
+	for x := byte(1); x < 32; x++ {
+		body = append(body,
+			0x41, x, 0x21, x,
+			0x20, 0x00, 0x20, x, 0x6a, 0x21, 0x00,
+		)
+	}
+	body = append(body, 0x20, 0x00, 0x2d, 0x00, 0x00, 0x0b)
+	m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+
+	saved := leafScratchMemSizeEnabled
+	defer SetOptKnob("leaf-scratch-memsize", saved)
+	if !SetOptKnob("leaf-scratch-memsize", true) {
+		t.Fatal("leaf-scratch-memsize is not registered")
+	}
+	on := compileWithStats(t, m, false).Funcs[0]
+	if got := on.Peephole["interval-region-scratch-memsize"]; got != 1 {
+		t.Fatalf("scratch memsize = %d, want 1 (all: %v)", got, on.Peephole)
+	}
+	got, err := runArm64WrapperMem(t, m, 0, func(mem []byte) {
+		binary.LittleEndian.PutUint32(mem[496:], 0xa5)
+	})
+	if err != nil || got != 0xa5 {
+		t.Fatalf("load = %#x, %v; want 0xa5", got, err)
+	}
+
+	if !SetOptKnob("leaf-scratch-memsize", false) {
+		t.Fatal("leaf-scratch-memsize is not registered")
+	}
+	off := compileWithStats(t, m, false).Funcs[0]
+	if got := off.Peephole["interval-region-scratch-memsize"]; got != 0 {
+		t.Fatalf("disabled scratch memsize = %d, want 0", got)
 	}
 }
 

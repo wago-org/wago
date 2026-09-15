@@ -7,7 +7,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func newGCFrameRootPlan(_ *wasm.Module, exactRoots bool, diagnostic *string) *shared.GCModuleFrameRootPlan {
+func newGCFrameRootPlan(_ *wasm.Module, exactRoots bool, diagnostic *string, _ *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
 	if diagnostic != nil {
 		*diagnostic = ""
 	}

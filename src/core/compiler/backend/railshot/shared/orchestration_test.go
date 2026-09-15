@@ -30,6 +30,26 @@ func TestLowestIndexError(t *testing.T) {
 	}
 }
 
+func TestLowestIndexErrorCutoffKeepsLowerWork(t *testing.T) {
+	var failures LowestIndexError
+	failures.Reset(20)
+	if !failures.ShouldStart(19) || failures.ShouldStart(20) {
+		t.Fatal("initial cutoff")
+	}
+	failures.Record(12, errors.New("later function"))
+	if !failures.ShouldStart(11) || failures.ShouldStart(12) {
+		t.Fatal("cutoff lost lower work")
+	}
+	failures.Record(3, errors.New("earlier function"))
+	if !failures.ShouldStart(2) || failures.ShouldStart(4) {
+		t.Fatal("cutoff did not decrease")
+	}
+	index, err := failures.Result()
+	if index != 3 || err == nil {
+		t.Fatalf("result %d, %v", index, err)
+	}
+}
+
 func TestResolveWorkers(t *testing.T) {
 	for _, tc := range []struct {
 		requested, functions, gomaxprocs int

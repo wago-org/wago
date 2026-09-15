@@ -8,12 +8,16 @@ package hostthunk
 import "github.com/wago-org/wago/src/core/encoder/amd64"
 
 const (
-	offCustomCtx = 40
-	hcTrampoline = 56
-	hcImportIdx  = 64
-	hcNArgs      = 68
-	hcArgs       = 72
-	hcResults    = 584
+	offTrapStackReentry = 24
+	offCustomCtx        = 40
+	offTrapCellPtr      = 104
+	hostCallLogEntries  = 1 << 13
+	trapHostEventFull   = 22
+	hcTrampoline        = 56
+	hcImportIdx         = 64
+	hcNArgs             = 68
+	hcArgs              = 72
+	hcResults           = 584
 )
 
 func Indirect(importIdx uint32) []byte {
@@ -21,11 +25,18 @@ func Indirect(importIdx uint32) []byte {
 	a.Load32(amd64.RAX, amd64.RDI, 0)
 	a.Load64(amd64.R8, amd64.RSI, -offCustomCtx)
 	a.Load32(amd64.RCX, amd64.R8, 0)
+	a.AluRI(7, amd64.RCX, hostCallLogEntries, false)
+	full := a.JccPlaceholder(amd64.CondAE)
 	a.LeaScaled(amd64.RDX, amd64.R8, amd64.RCX, 3, 8)
 	a.StoreImm32Mem(amd64.RDX, 0, int32(importIdx))
 	a.Store32(amd64.RDX, 4, amd64.RAX)
 	a.AluRI(0, amd64.RCX, 1, false)
 	a.Store32(amd64.R8, 0, amd64.RCX)
+	a.Ret()
+	a.PatchRel32(full, a.Len())
+	a.Load64(amd64.R8, amd64.RSI, -offTrapCellPtr)
+	a.StoreImm32Mem(amd64.R8, 0, trapHostEventFull)
+	a.Load64(amd64.RSP, amd64.RSI, -offTrapStackReentry)
 	a.Ret()
 	return a.B
 }

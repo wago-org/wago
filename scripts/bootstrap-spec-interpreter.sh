@@ -3,7 +3,7 @@ set -eu
 
 revision=9d36019973201a19f9c9ebb0f10828b2fe2374aa
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-suite="$repo/tests/spec-v3"
+suite="$repo/tests/conformance/spec-v3"
 source_dir="$suite/interpreter"
 root="$repo/.tools/spec-interpreter-$revision"
 bin="$root/wasm"
@@ -17,8 +17,8 @@ actual_revision() {
 require_source() {
 	actual=$(actual_revision)
 	if [ "$actual" != "$revision" ]; then
-		echo "bootstrap-spec-interpreter: tests/spec-v3 revision ${actual:-unavailable}, want $revision" >&2
-		echo "bootstrap-spec-interpreter: initialize the pinned submodule with: git submodule update --init tests/spec-v3" >&2
+		echo "bootstrap-spec-interpreter: tests/conformance/spec-v3 revision ${actual:-unavailable}, want $revision" >&2
+		echo "bootstrap-spec-interpreter: initialize the pinned submodule with: git submodule update --init tests/conformance/spec-v3" >&2
 		exit 1
 	fi
 	[ -f "$source_dir/dune-project" ] || {
