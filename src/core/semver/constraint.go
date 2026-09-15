@@ -152,7 +152,7 @@ func tokenizeRange(s string) []string {
 		for i < len(s) && strings.IndexByte("<>=~^", s[i]) >= 0 {
 			i++
 		}
-		op := s[opStart:i]
+		opEnd := i
 		for i < len(s) && s[i] == ' ' {
 			i++
 		}
@@ -160,7 +160,11 @@ func tokenizeRange(s string) []string {
 		for i < len(s) && s[i] != ' ' {
 			i++
 		}
-		toks = append(toks, op+s[vStart:i])
+		token := s[opStart:i]
+		if opEnd != vStart {
+			token = s[opStart:opEnd] + s[vStart:i]
+		}
+		toks = append(toks, token)
 	}
 	return toks
 }
@@ -278,12 +282,22 @@ func parsePartial(s string) (partial, error) {
 		}
 		main = main[:d]
 	}
-	parts := strings.Split(main, ".")
-	if len(parts) > 3 {
-		return partial{}, fmt.Errorf("semver: too many components in %q", s)
+	var parts [3]string
+	nparts := 0
+	for {
+		if nparts == len(parts) {
+			return partial{}, fmt.Errorf("semver: too many components in %q", s)
+		}
+		part, rest, more := strings.Cut(main, ".")
+		parts[nparts] = part
+		nparts++
+		if !more {
+			break
+		}
+		main = rest
 	}
 	var out partial
-	for idx, part := range parts {
+	for idx, part := range parts[:nparts] {
 		if part == "" {
 			return partial{}, fmt.Errorf("semver: empty component in %q", s)
 		}

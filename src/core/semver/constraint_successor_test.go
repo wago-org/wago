@@ -46,7 +46,7 @@ func TestConstraintSuccessorRepresentable(t *testing.T) {
 }
 
 func BenchmarkConstraintSuccessor(b *testing.B) {
-	for _, input := range []string{"^1.2.3", "~1.2.3", "1.2.x", "1.2.3 - 2.3", ">=1.2.3 <2.0.0"} {
+	for _, input := range []string{"^1.2.3", "~1.2.3", "1.2.x", "1.2.3 - 2.3", ">=1.2.3 <2.0.0", "^ 1.2.3", "1.2.3-alpha+build.7", ">=1.2.3 <2.0.0 || ^3.4.5"} {
 		b.Run(input, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
