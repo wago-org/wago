@@ -42,13 +42,19 @@ func TestGCNativeStructAllocPreparedAcrossCollections(t *testing.T) {
 			}
 		}
 		stats := in.gc.Stats()
-		if stats.Allocations != 2001 || stats.FullCollections != 2000 || stats.LiveObjects != 2 {
-			t.Fatalf("prepared=%v collector stats = %+v, want one global, 2000 boundary collections, and one last call object", prepared, stats)
+		if stats.Allocations != 2001 || stats.MinorCollections == 0 || stats.FullCollections != 0 {
+			t.Fatalf("prepared=%v collector stats = %+v, want one global plus 2000 call allocations across policy-driven minor collections", prepared, stats)
 		}
 		if prepared && stats != ordinary {
 			t.Fatalf("prepared stats = %+v, ordinary = %+v", stats, ordinary)
 		}
 		ordinary = stats
+		if err := in.CollectGC(); err != nil {
+			t.Fatal(err)
+		}
+		if live := in.gc.Stats().LiveObjects; live != 1 {
+			t.Fatalf("prepared=%v retained %d objects after collection, want one global", prepared, live)
+		}
 	}
 }
 
