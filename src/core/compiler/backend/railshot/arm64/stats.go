@@ -63,11 +63,11 @@ var (
 	intervalRegionPinsEnabled = os.Getenv("WAGO_ARM64_INTERVAL_REGIONS") != "0"
 	// intervalNextUseEnabled chooses regional victims by the exact next local
 	// access and drops dirty values killed before any subsequent read.
-	intervalNextUseEnabled = os.Getenv("WAGO_ARM64_NO_INTERVAL_NEXT_USE") != "1"
+	intervalNextUseEnabled = true
 	// linearSumLoopEnabled hoists the single exact memory bound for a scalar
 	// i64 reduction and executes the remaining iterations through four independent
-	// accumulators. The environment switch is the correctness and A/B oracle.
-	linearSumLoopEnabled     = os.Getenv("WAGO_ARM64_NO_LINEAR_SUM_LOOP") != "1"
+	// accumulators. RuntimeConfig optimization selection is the A/B oracle.
+	linearSumLoopEnabled     = true
 	memcopyTail4Enabled      = os.Getenv("WAGO_ARM64_NO_MEMCOPY_TAIL4") != "1"
 	commonBoundsLimitEnabled = os.Getenv("WAGO_ARM64_NO_COMMON_BOUNDS_LIMIT") != "1"
 	// multiBoundsCertEnabled keeps independent straight-line bounds proofs for a

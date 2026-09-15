@@ -53,8 +53,8 @@ var countedLoopLatchEnabled = os.Getenv("WAGO_ARM64_NO_COUNTED_LOOP_LATCH") != "
 
 // callFreeLoopColdExitEnabled moves local-slot reconciliation from a conditional
 // exit's hot fall-through into its taken edge when the exited loop cannot call.
-// WAGO_ARM64_NO_CALLFREE_LOOP_COLD_EXIT=1 restores eager edge reconciliation.
-var callFreeLoopColdExitEnabled = os.Getenv("WAGO_ARM64_NO_CALLFREE_LOOP_COLD_EXIT") != "1"
+// RuntimeConfig optimization selection restores eager edge reconciliation.
+var callFreeLoopColdExitEnabled = true
 
 // These two switches isolate the loop-header and nested-region halves of the
 // call-free state experiment. They remain separate from cold-edge placement so

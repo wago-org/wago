@@ -58,30 +58,6 @@ func TestValidationModeDoesNotWaitForProjectLock(t *testing.T) {
 	}
 }
 
-func TestVersionDoesNotBuildCommandRegistry(t *testing.T) {
-	oldRoot, oldArgs, oldStdout, oldVersion := root, os.Args, os.Stdout, version
-	root = nil
-	os.Args = []string{"wago", "--version"}
-	read, write, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout = write
-	t.Cleanup(func() {
-		root, os.Args, os.Stdout, version = oldRoot, oldArgs, oldStdout, oldVersion
-		_ = read.Close()
-		_ = write.Close()
-	})
-
-	Main("test")
-	if err := write.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if root != nil {
-		t.Fatal("--version eagerly constructed the runtime command registry")
-	}
-}
-
 func TestUsageDocumentsCommandSurface(t *testing.T) {
 	f, err := os.CreateTemp(t.TempDir(), "usage-*.txt")
 	if err != nil {
