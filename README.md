@@ -56,21 +56,8 @@ irm https://install.wago.sh/ps | iex
 Or run the installer with Go:
 
 ```sh
-go run github.com/wago-org/wago/cli/wago-installer@main
+go run github.com/wago-org/wago/cli/wago-installer@latest
 ```
-
-To keep the installer command:
-
-```sh
-go install github.com/wago-org/wago/cli/wago-installer@latest
-wago-installer
-```
-
-These commands install the Wago manager. Run `wago version install` to install
-a runtime. Its picker lists available Official, Beta, and Canary channels in
-that order; unavailable channels remain visible and disabled at the bottom. See
-[Getting started](https://docs.wago.sh/getting-started) for other installation
-methods, release channels, and source builds.
 
 ## Run a module
 
