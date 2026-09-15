@@ -43,6 +43,8 @@ const (
 // lsStackReg or lsMem; the all-zero value is therefore the absent sentinel.
 type packedLocStates [2]uint64
 
+type localStateSnapshot [64]locState
+
 func (s packedLocStates) empty() bool { return s[0]|s[1] == 0 }
 
 func (s packedLocStates) get(index int) locState {
@@ -168,6 +170,40 @@ func (f *fn) recoverLocal(x int) {
 // markLocalDirty records that pinned local x was just written (value only in reg).
 func (f *fn) markLocalDirty(x int) {
 	if f.usesCalls || f.lazyZero || len(f.intervalLast) != 0 {
+		f.locals[x].state = lsReg
+	}
+}
+
+func (f *fn) markPinnedLocalsDirty() {
+	for x := range f.locals {
+		if _, _, ok := f.pinReg(x); ok {
+			f.locals[x].state = lsReg
+		}
+	}
+}
+
+// prepareCallFreeLoopEntry establishes one register-resident state for a loop
+// that cannot call. Unlike reconcileLocals it never writes an already-live pin
+// to its canonical slot: the loop cannot observe that slot, and its backedges
+// preserve the dedicated register. Memory-only pins are reloaded once before
+// the header so the same instruction stream is correct on every iteration.
+func (f *fn) prepareCallFreeLoopEntry() {
+	for x := 0; x < f.nLocals; x++ {
+		reg, isFloat, pinned := f.pinReg(x)
+		if f.locals[x].state == lsConstZero {
+			f.materializeZeroLocal(x, !pinned)
+			continue
+		}
+		if !pinned {
+			continue
+		}
+		if f.locals[x].state == lsMem {
+			f.loadLocalReg(x, reg, isFloat)
+			f.stats.peep("callfree-loop-entry-reload")
+		}
+		if f.locals[x].state == lsReg {
+			f.stats.peep("callfree-loop-entry-store-elide")
+		}
 		f.locals[x].state = lsReg
 	}
 }
@@ -456,5 +492,25 @@ func (f *fn) setLocalsState(t packedLocStates) {
 		if _, _, ok := f.pinReg(x); ok {
 			f.locals[x].state = t.get(x)
 		}
+	}
+}
+
+// snapshotLocalStates captures the complete local-state tracker for speculative
+// edge emission. Whole-function pins are admitted only for functions covered by
+// packedLocStates, so larger functions have no profitable edge state to defer.
+func (f *fn) snapshotLocalStates() (localStateSnapshot, bool) {
+	var snapshot localStateSnapshot
+	if len(f.locals) > len(snapshot) {
+		return snapshot, false
+	}
+	for x := range f.locals {
+		snapshot[x] = f.locals[x].state
+	}
+	return snapshot, true
+}
+
+func (f *fn) restoreLocalStates(snapshot localStateSnapshot) {
+	for x := range f.locals {
+		f.locals[x].state = snapshot[x]
 	}
 }

@@ -151,6 +151,12 @@ var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
 // pin allocator as an A/B and correctness oracle.
 var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
 
+// intervalNextUseEnabled builds a compact per-local event tape for bounded
+// straight-line regions, letting eviction choose the farthest next access and
+// discard values killed by a later definition. RuntimeConfig optimization
+// selection retains the former static-hotness victim policy as an oracle.
+var intervalNextUseEnabled = os.Getenv("WAGO_AMD64_NO_INTERVAL_NEXT_USE") != "1"
+
 // intervalScratchLeaseEnabled lets straight-line integer regions with at most
 // one result borrow RDX when the hint scan proves that no div/rem instruction
 // needs the architectural pair. Ordinary expression pressure can still evict
@@ -166,6 +172,16 @@ var intervalR8LeaseEnabled = os.Getenv("WAGO_AMD64_NO_INTERVAL_R8_LEASE") != "1"
 // loops onto their decrement flags. WAGO_AMD64_NO_COUNTED_LOOP_LATCH=1 keeps
 // the ordinary header-test backedge.
 var countedLoopLatchEnabled = os.Getenv("WAGO_AMD64_NO_COUNTED_LOOP_LATCH") != "1"
+
+// linearSumLoopEnabled hoists one exact bounds proof and unrolls recognized
+// scalar i64 memory reductions across four native accumulators. RuntimeConfig
+// selection retains the ordinary counted-loop lowering as an oracle.
+var linearSumLoopEnabled = os.Getenv("WAGO_AMD64_NO_LINEAR_SUM_LOOP") != "1"
+
+// callFreeLoopColdExitEnabled defers pinned-local reconciliation from a loop's
+// hot conditional fall-through to its taken exit when a complete scan proves
+// the loop cannot call, grow memory, or enter a helper.
+var callFreeLoopColdExitEnabled = os.Getenv("WAGO_AMD64_NO_CALLFREE_LOOP_COLD_EXIT") != "1"
 
 // intervalI64WeightEnabled prices a packed full-width local reload above an i32
 // reload when regional pressure chooses an eviction victim. The relative score
@@ -284,14 +300,20 @@ type fn struct {
 	// Bounded straight-line local intervals. A non-regNone intervalReg entry marks
 	// an eligible local; locals[x].reg is populated only while its cached value is
 	// live. Physical registers are selected and reclaimed dynamically.
-	intervalReg      []Reg
-	intervalLast     []uint32
-	intervalScore    []uint32
-	intervalOwner    [16]int
-	intervalRegLimit int
-	intervalScratch  bool
-	intervalR8       bool
-	moduleHasSIMD    bool
+	intervalReg       []Reg
+	intervalLast      []uint32
+	intervalScore     []uint32
+	intervalEvents    []intervalLocalEvent
+	intervalHead      []uint32
+	intervalOwner     [16]int
+	intervalRegLimit  int
+	intervalActive    int
+	intervalNext      bool
+	intervalI64Weight bool
+	intervalScratch   bool
+	intervalR8        bool
+	moduleHasSIMD     bool
+	localWritten      uint64 // conservative lexical write history for the first 64 locals
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -312,25 +334,28 @@ type fn struct {
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
 	// canonicalization stages values above both their old homes and destinations.
 	spillFloor              int
-	subRspAt                int   // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
-	addRspAt                int   // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
-	adapterReturnOff        int   // offset immediately after this function's root adapter CALL
-	adapterEndOff           int   // end of the wrapper before internal-entry alignment
-	adapterReturnReferenced bool  // cross-tail reuse embeds the local return PC; keep that tail local
-	trapBodyOff             int   // complete shared trap body start; zero when not emitted
-	trapBodyEnd             int   // complete shared trap body end before any literal pool
-	entryTrapEnd            int   // checks before value-pinned globals are initialized
-	guardMode               bool  // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts             bool  // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	interruptible           bool  // emit context-cancellation polls at entries and loop headers
-	lazyZero                bool  // defer declared-local zeroing for small call+memory functions
-	skipFence               bool  // call-free leaf with a provably small frame: no stack-fence check
-	frameElided             bool  // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
-	threadedMemory0         bool  // route shared memory zero through the private instance directory
-	hasLoop                 bool  // retain loop alignment until it becomes a relaxable fragment
-	compactLoopAlign32      bool  // small bodies use a full 32-byte loop fetch block
-	canonicalI32Uses        uint8 // saturated eligible uses; first two retain conservative code
-	hasJumpTableData        bool  // typed embedded data is remapped, but branches retain fixed widths
+	subRspAt                int    // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
+	addRspAt                int    // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
+	adapterReturnOff        int    // offset immediately after this function's root adapter CALL
+	adapterEndOff           int    // end of the wrapper before internal-entry alignment
+	adapterReturnReferenced bool   // cross-tail reuse embeds the local return PC; keep that tail local
+	trapBodyOff             int    // complete shared trap body start; zero when not emitted
+	trapBodyEnd             int    // complete shared trap body end before any literal pool
+	entryTrapEnd            int    // checks before value-pinned globals are initialized
+	guardMode               bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts             bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible           bool   // emit context-cancellation polls at entries and loop headers
+	lazyZero                bool   // defer declared-local zeroing for small call+memory functions
+	skipFence               bool   // call-free leaf with a provably small frame: no stack-fence check
+	frameElided             bool   // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
+	threadedMemory0         bool   // route shared memory zero through the private instance directory
+	hasLoop                 bool   // retain loop alignment until it becomes a relaxable fragment
+	compactLoopAlign32      bool   // small bodies use a full 32-byte loop fetch block
+	bmi2Rorx                bool   // use non-destructive rotates below the dense-code crossover
+	linearSumLoop           uint32 // packed +1 address/accumulator locals for one exact active loop
+	linearSumLoopDepth      uint16 // control depth owning linearSumLoop; zero when inactive
+	canonicalI32Uses        uint8  // saturated eligible uses; first two retain conservative code
+	hasJumpTableData        bool   // typed embedded data is remapped, but branches retain fixed widths
 
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
@@ -438,6 +463,7 @@ type fn struct {
 	inlineTargets inlineTargetTable
 	inlineBase    map[int]int
 	localBase     int
+	inlineDepth   int
 	// inlineRetFrame is the f.ctrl index of the synthetic block frame standing in
 	// for an inlined control-flow callee's function boundary: `return` inside the
 	// callee branches to it (not the real function frame). 0 when not inside such a
@@ -472,34 +498,33 @@ type fn struct {
 }
 
 func (f *fn) opt(option optimization.Option) bool {
-	if f.policy.Valid() {
-		return f.policy.EnabledOption(option)
-	}
-	return currentCodegenPolicy().EnabledOption(option)
+	return f.policy.EnabledResolvedOption(option)
 }
 
 type transient struct {
-	lsPool         [][]locState
-	lsPoolBytes    int
-	inlineBasePool map[int]int
-	endsPool       [][]uint32
-	tmpRoots       []*elem
-	tmpTypes       []machineType
-	tmpTypes2      []machineType
-	tmpGCRoots     []bool
-	tmpGCRoots2    []bool
-	tmpGCOffsets   []uint32
-	tmpFlushTypes  []machineType
-	tmpRegs        []Reg
-	tmpStackSlots  []uint32 // operand slot prefixes; successful native frames fit uint32 exactly
-	tmpMoves       []regMove
-	tmpLabels      []uint32
-	tmpDeferred    []deferredArg
-	tmpBelow       []*elem
-	tmpIntervalReg []Reg
-	v128Pool       []poolConst // reusable 4/8/16-byte trailing rip-relative constants
-	poolSites      []poolSite  // flat intrusive site lists; no per-constant allocation
-	literalWords   []uint64    // packed compaction island plan; reusable per worker
+	lsPool            [][]locState
+	lsPoolBytes       int
+	inlineBasePool    map[int]int
+	endsPool          [][]uint32
+	tmpRoots          []*elem
+	tmpTypes          []machineType
+	tmpTypes2         []machineType
+	tmpGCRoots        []bool
+	tmpGCRoots2       []bool
+	tmpGCOffsets      []uint32
+	tmpFlushTypes     []machineType
+	tmpRegs           []Reg
+	tmpStackSlots     []uint32 // operand slot prefixes; successful native frames fit uint32 exactly
+	tmpMoves          []regMove
+	tmpLabels         []uint32
+	tmpDeferred       []deferredArg
+	tmpBelow          []*elem
+	tmpIntervalReg    []Reg
+	tmpIntervalEvents []intervalLocalEvent
+	tmpIntervalIndex  []uint32
+	v128Pool          []poolConst // reusable 4/8/16-byte trailing rip-relative constants
+	poolSites         []poolSite  // flat intrusive site lists; no per-constant allocation
+	literalWords      []uint64    // packed compaction island plan; reusable per worker
 }
 
 // gpCand is a hot int local or global competing for a GP pin register, ranked by
@@ -1434,6 +1459,10 @@ type CompileOptions struct {
 	// Values <= 1 retain the exact serial fast path. Values > 1 are capped by
 	// runtime.GOMAXPROCS(0) and the module's local-function count.
 	Workers int
+	// DeferCodeMapping retains native bytes on the Go heap until the first
+	// instance needs executable code. Public compilation uses this to avoid an
+	// executable mapping for modules that are cached, serialized, or discarded.
+	DeferCodeMapping bool
 
 	// ElideBoundsChecks omits inline linear-memory bounds checks, relying on
 	// a guard-page mapping + SIGSEGV handler (see runtime/sigtrap_linux_amd64.go).
@@ -1727,7 +1756,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	codeCap := moduleCodeCapacityAMD64(totalBody, n, policy)
 	moduleTypes := buildModuleTypeCache(m, totalBody)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
-	if workers <= 1 {
+	// A one-worker join pays for a second arena and copy. It wins for large bodies,
+	// while serial heap staging is cheaper for modules made mostly of small
+	// functions.
+	serialHeap := opts.DeferCodeMapping && (len(m.Code) == 1 && totalBody < 2<<10 ||
+		len(m.Code) >= 32 && totalBody/len(m.Code) < 2<<10)
+	if workers <= 1 && (!opts.DeferCodeMapping || serialHeap) {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts, policy)
@@ -1739,7 +1773,13 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.reserveControlFrames(ctrlCap)
 		}
-		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
+		var codeBuffer *coreruntime.CodeBuffer
+		var err error
+		if opts.DeferCodeMapping {
+			codeBuffer, err = coreruntime.NewHeapCodeBuffer(codeCap)
+		} else {
+			codeBuffer, err = coreruntime.NewCodeBuffer(codeCap)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("amd64: allocate code image: %w", err)
 		}
@@ -1909,6 +1949,13 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		ms.finalizeCompileResourceStats()
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
+		}
+		if opts.DeferCodeMapping {
+			code, err = codeBuffer.TakeHeap()
+			if err != nil {
+				return nil, fmt.Errorf("amd64: transfer heap code image: %w", err)
+			}
+			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 		}
 		keepCodeBuffer = true
 		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
@@ -2599,10 +2646,10 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 // serial and parallel scans. Each worker owns its tape; output slots are
 // assigned in function order before workers start.
 func summarizeHintResidency(tape *shared.LocalEventTape, nLocals int, detailed bool) shared.ResidencyShadowSummary {
-	if detailed {
-		return shared.PlanResidencyTransitionShadow(tape.Events, nLocals, maxIntervalRegionRegs, tape.Overflow)
+	if !detailed {
+		return shared.ResidencyShadowSummary{}
 	}
-	return shared.PlanResidencyShadow(tape.Events, nLocals, maxIntervalRegionRegs, tape.Overflow)
+	return shared.PlanResidencyTransitionShadow(tape.Events, nLocals, maxIntervalRegionRegs, tape.Overflow)
 }
 
 const (
@@ -3166,7 +3213,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	sc.asm.CompactAccumulatorImmediates = compactAccumulatorImmediatePolicy(policy)
 	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), moduleHasSIMD: moduleHasSIMD, compactLoopAlign32: policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64, gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
+	bmi2Rorx := policy.EnabledOption(optBMI2Rorx)
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), moduleHasSIMD: moduleHasSIMD, compactLoopAlign32: policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64, bmi2Rorx: bmi2Rorx, gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
+	if f.nParams >= 64 {
+		f.localWritten = ^uint64(0)
+	} else if f.nParams != 0 {
+		f.localWritten = 1<<f.nParams - 1
+	}
 	f.relocs = sc.relocs[:0]
 	if count := int(hints.callRelocSiteCount()); count >= minPreallocatedCallRelocs && cap(f.relocs) < count {
 		f.relocs = make([]callReloc, 0, count)
@@ -3253,6 +3306,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// a caller whose own body never touched memory.
 	inlinePlan := buildInlineCallerPlan(c, inlineTargets)
 	inlinedCallees := inlinePlan.callees
+	boundedSpecializedInline := inlinePlan.allCallsInline && len(inlinedCallees) != 0
+	for _, target := range inlinedCallees {
+		boundedSpecializedInline = boundedSpecializedInline && target.isI32AddConst()
+	}
 	if inlinePlanTouchesMemory(inlinedCallees) {
 		touchesMemory = true
 	}
@@ -3389,7 +3446,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		fpPinLimit = 0
 	}
 	f.noteResidencyEvents(hints)
-	intervalRegion := pinLocals && regABI && !hasCall && !hints.flags.has(hintHasControlFlow) && !hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
+	intervalEligible := pinLocals && regABI && !hasCall && !hints.flags.has(hintHasControlFlow) && !hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0
+	if f.bmi2Rorx && intervalEligible && denseRotateRegionalBody(c.BodyBytes, hints, f.localType, sc.classifier) {
+		f.bmi2Rorx = false
+		f.stats.peep("dense-rotate-legacy")
+	}
+	intervalRegion := intervalEligible && f.prepareIntervalRegion(c.BodyBytes, hints)
 	if intervalRegion {
 		gpPool = nil // regional GP assignments supersede whole-function GP pins
 	}
@@ -3448,7 +3510,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		// admitted local functions or private immutable-table targets.
 		sc.directPrepared = directPrepared
 		sc.directPreparedBounded = directPrepared && !f.hasLoop &&
-			!hints.flags.has(hintUsesBulkMem|hintMutatesTable|hintHasTailCall) && len(inlinedCallees) == 0 && len(custom) == 0 && f.opt(optPreparedBoundedEntry)
+			!hints.flags.has(hintUsesBulkMem|hintMutatesTable|hintHasTailCall) &&
+			(len(inlinedCallees) == 0 || boundedSpecializedInline) && len(custom) == 0 && f.opt(optPreparedBoundedEntry)
 		internalOff, err := f.emitRegABI(c, hostAdapter, hints.flags.has(hintHasFloatConst), hints.flags.has(hintHasSIMD), hints.localScore, hints)
 		if err != nil {
 			return nil, nil, 0, err
@@ -3500,6 +3563,56 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	return f.a.B, f.relocs, 0, nil
+}
+
+// denseRotateBody identifies only large, unrolled rotate-heavy functions where
+// RORX's three-byte VEX prefix becomes a measured instruction-fetch liability.
+// The module-aware classifier keeps proposal immediates synchronized; malformed
+// input fails closed to the ordinary BMI2 selection and is rejected later by
+// normal lowering.
+func denseRotateBody(body []byte, classifier wasm.ModuleInstructionClassifier) bool {
+	r := wasm.ReaderFrom(body)
+	rotates := 0
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		switch op {
+		case 0x77, 0x78, 0x89, 0x8a: // i32/i64 rotl/rotr
+			rotates++
+			if rotates >= denseRorxOpCrossover {
+				return true
+			}
+		}
+		if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
+			continue
+		}
+		var imm wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
+			return false
+		}
+	}
+	return false
+}
+
+// denseRotateRegionalBody limits the code-density trade to high-pressure
+// functions that will use the regional local allocator. RORX's extra destination
+// is valuable in ordinary pinned-local code, while regional allocation already
+// moves values independently and benefits from the shorter legacy rotates.
+func denseRotateRegionalBody(body []byte, hints *funcHintView, localTypes []machineType, classifier wasm.ModuleInstructionClassifier) bool {
+	if len(body) < denseRorxBodyCrossover ||
+		!hints.flags.has(hintIntervalRegionStorage) ||
+		len(hints.localScore) != len(localTypes) || len(hints.localLastGet) != len(localTypes) {
+		return false
+	}
+	hotLocals := 0
+	for i, mt := range localTypes {
+		if (mt == mtI32 || mt == mtI64) && hints.localLastGet[i] != 0 && localHotness(hints.localScore[i]) >= 2 {
+			hotLocals++
+		}
+	}
+	return hotLocals >= minIntervalRegionLocals && denseRotateBody(body, classifier)
 }
 
 func compactAccumulatorImmediatePolicy(policy CodegenPolicy) bool {

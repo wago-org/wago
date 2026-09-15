@@ -136,7 +136,7 @@ func (f *fn) emitInterruptCheck(preserveLayout bool) {
 	if preserveLayout && f.trapCellReg != regNone {
 		// Keep the following loop body at the same address as the uncached form.
 		// Replacing the dependent pointer load with a NOP isolates the latency win
-		// from fetch-block phase changes across unrelated corpus functions.
+		// from fetch-block phase changes in unrelated functions.
 		f.a.Nop()
 	}
 }
@@ -527,6 +527,16 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) 
 		}
 	}
 	f.pinned = f.pinned.add(ea)
+	if f.memLimitReg != regNone && leaDisp == f.memLimitExtent {
+		f.cmpRR(ea, f.memLimitReg, true)
+		f.stats.peep("common-bounds-limit-hit")
+		f.trapIf(condA, trapMemOOB)
+		// Preserve later function entry addresses: relocate the removed hot ADD to
+		// this function's cold tail instead of shifting the rest of the module.
+		f.phasePadWords++
+		f.pinned = f.pinned.remove(ea)
+		return ea, eaOwned, borrow, disp
+	}
 	t := f.allocReg(0)
 	f.leaDisp(t, ea, leaDisp, true) // t = ea + off + size
 	if f.memSizeReg != regNone {
@@ -894,11 +904,45 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	// that local realizes the load first, and consumers neither write nor
 	// release the register.
 	addrLocal, addrOK := localAddressKey(f.s.back())
+	seedIndexedBase := false
+	if addrOK && size == 4 && !signed && !wide && f.opt(optIndexedBaseReuse) {
+		scan := *r
+		if op, scanErr := scan.Byte(); scanErr == nil && op == 0x6a { // i32.add
+			if op, scanErr = scan.Byte(); scanErr == nil && op == 0x21 { // local.set accumulator
+				setLocal, setErr := scan.U32()
+				if setErr == nil && int(setLocal)+f.localBase != addrLocal {
+					if op, scanErr = scan.Byte(); scanErr == nil && op == 0x20 { // local.get same address
+						getLocal, getErr := scan.U32()
+						if getErr == nil && int(getLocal)+f.localBase == addrLocal {
+							if op, scanErr = scan.Byte(); scanErr == nil && op == 0x28 { // i32.load
+								memory2, off2, argErr := f.readMemArg(&scan)
+								seedIndexedBase = argErr == nil && memory2 == 0 && off2 == off+4
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 	aliasLocal := -1
 	if addrOK {
 		aliasLocal = addrLocal
 	}
 	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, rangeExtent)
+	if seedIndexedBase && borrow == addrLocal && disp >= 0 && disp%4 == 0 && disp/4 <= 4095 {
+		f.a.AddShifted(X16, linMemReg, ea, 0, false)
+		out := f.allocReg(maskOf(ea))
+		if f.a.Load32(out, X16, uint32(disp)) {
+			if eaOwned {
+				f.release(ea)
+			}
+			value := f.pushReg(out, mtI32)
+			value.st.setValueFacts(factUpper32Zero)
+			f.stats.peep("indexed-base-seed")
+			return nil
+		}
+		f.release(out)
+	}
 	if f.opt(optLoadPair) && !f.memoryAddr64(0) && !f.guardMode && !f.threadedMemory0 && !signed &&
 		(size == 4 && !wide || size == 8 && wide) && addrOK {
 		if first := f.s.back(); first != nil && first.elemKind() == ekValue && first.st.kind == stMemRef &&
@@ -1433,20 +1477,21 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
-	f.ld64(X10, SP, f.spillOff(d-2)) // src offset
-	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	const dst, src, count, scratch = X9, X10, X11, X12
+	f.ld64(dst, SP, f.spillOff(d-3))   // dst offset
+	f.ld64(src, SP, f.spillOff(d-2))   // src offset
+	f.ld64(count, SP, f.spillOff(d-1)) // n
 	if !f.memoryAddr64(dstMemory) {
-		f.a.MovReg32(X9, X9)
+		f.a.MovReg32(dst, dst)
 	}
 	if !f.memoryAddr64(srcMemory) {
-		f.a.MovReg32(X10, X10)
+		f.a.MovReg32(src, src)
 	}
 	if !f.memoryAddr64(dstMemory) || !f.memoryAddr64(srcMemory) {
-		f.a.MovReg32(X11, X11)
+		f.a.MovReg32(count, count)
 	}
-	f.absoluteBulkAddr(dstMemory, X9, X11)
-	f.absoluteBulkAddr(srcMemory, X10, X11)
+	f.absoluteBulkAddr(dstMemory, dst, count)
+	f.absoluteBulkAddr(srcMemory, src, count)
 	if f.memcopyQPairs {
 		f.stats.peep("memcopy-qpairs")
 	}
@@ -1456,68 +1501,91 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	// dominates the string-append copies AssemblyScript's __renew makes constantly;
 	// large copies fall through to the block byte-copy loops. joins26 collects the
 	// unconditional B (imm26) exits, joins19 the CBZ (imm19) exits.
-	// Two exits of each encoding are emitted below. These are compiler-local
+	// Three imm26 exits and two imm19 exits are emitted below. These are compiler-local
 	// patch sites, not runtime state; append retains its ordinary growth path.
-	var scratch26, scratch19 [2]int
+	var scratch26 [3]int
+	var scratch19 [2]int
 	joins26, joins19 := scratch26[:0], scratch19[:0]
-	f.cmpImm(X11, smallBulkMax, true)
+	f.cmpImm(count, smallBulkMax, true)
 	big := f.a.Bcond(condAE)
 
-	f.cmpRR(X10, X9, true)
+	f.cmpRR(src, dst, true)
 	fwdSmall := f.a.Bcond(condA) // src > dst → forward copy is overlap-safe
 	// dst >= src: copy backward, indexing [ptr+n-k] while counting n down.
 	back8 := f.a.Len()
-	f.cmpImm(X11, 8, false)
+	f.cmpImm(count, 8, false)
 	b8done := f.a.Bcond(condB)
-	f.a.LoadIdx(X12, X10, X11, -8, 8, false, true)
-	f.a.StoreIdx(X9, X11, X12, -8, 8)
-	f.a.SubImm32(X11, X11, 8) // n -= 8
+	f.a.LoadIdx(scratch, src, count, -8, 8, false, true)
+	f.a.StoreIdx(dst, count, scratch, -8, 8)
+	f.a.SubImm32(count, count, 8) // n -= 8
 	f.patchBranch26(f.a.Branch(), back8)
 	f.patchBranch19(b8done, f.a.Len())
 	if f.memcopyTail4 {
-		f.cmpImm(X11, 4, false)
+		f.cmpImm(count, 4, false)
 		done := f.a.Bcond(condB)
-		f.a.LoadIdx(X12, X10, X11, -4, 4, false, false)
-		f.a.StoreIdx(X9, X11, X12, -4, 4)
-		f.a.SubImm32(X11, X11, 4)
+		f.a.LoadIdx(scratch, src, count, -4, 4, false, false)
+		f.a.StoreIdx(dst, count, scratch, -4, 4)
+		f.a.SubImm32(count, count, 4)
 		f.patchBranch19(done, f.a.Len())
 	}
-	joins19 = append(joins19, f.a.Cbz64(X11)) // n == 0 → done
+	joins19 = append(joins19, f.a.Cbz64(count)) // n == 0 → done
 	back1 := f.a.Len()
-	f.a.LoadIdx(X12, X10, X11, -1, 1, false, false)
-	f.a.StoreIdx(X9, X11, X12, -1, 1)
-	f.a.SubImm32(X11, X11, 1)
-	f.patchBranch19(f.a.Cbnz64(X11), back1)
+	f.a.LoadIdx(scratch, src, count, -1, 1, false, false)
+	f.a.StoreIdx(dst, count, scratch, -1, 1)
+	f.a.SubImm32(count, count, 1)
+	f.patchBranch19(f.a.Cbnz64(count), back1)
 	joins26 = append(joins26, f.a.Branch())
 
 	// src > dst: copy forward via a negative index climbing to zero (WARP's shape).
 	f.patchBranch19(fwdSmall, f.a.Len())
-	f.a.Add64(X10, X10, X11)
-	f.a.Add64(X9, X9, X11)
-	f.a.Sub64(X11, ZR, X11) // neg n (NEG = SUB from XZR)
+	// Thirty-two bytes is a common small-array copy. Keep the scalar 8-byte store
+	// width (which forwards efficiently into following i32 loads) but remove the
+	// four counted-loop iterations when the dynamic length hits this exact shape.
+	// Restrict the extra dispatch to call-free loop kernels with a bounded local
+	// set; allocator-heavy string paths copy many other sizes and measurably lose
+	// to even one additional branch in their hot helper.
+	exact32 := -1
+	if !f.usesCalls && f.hasLoop && f.nLocals >= 16 && f.nLocals <= 32 {
+		f.cmpImm(count, 32, false)
+		exact32 = f.a.Bcond(condE)
+	}
+	f.a.Add64(src, src, count)
+	f.a.Add64(dst, dst, count)
+	f.a.Sub64(count, ZR, count) // neg n (NEG = SUB from XZR)
 	fwd8 := f.a.Len()
-	f.cmpImmS(X11, -8, true)
+	f.cmpImmS(count, -8, true)
 	f8done := f.a.Bcond(condG)
-	f.a.LoadIdx(X12, X10, X11, 0, 8, false, true)
-	f.a.StoreIdx(X9, X11, X12, 0, 8)
-	f.a.AddImm64(X11, X11, 8) // n += 8
+	f.a.LoadIdx(scratch, src, count, 0, 8, false, true)
+	f.a.StoreIdx(dst, count, scratch, 0, 8)
+	f.a.AddImm64(count, count, 8) // n += 8
 	f.patchBranch26(f.a.Branch(), fwd8)
 	f.patchBranch19(f8done, f.a.Len())
 	if f.memcopyTail4 {
-		f.cmpImmS(X11, -4, true)
+		f.cmpImmS(count, -4, true)
 		done := f.a.Bcond(condG)
-		f.a.LoadIdx(X12, X10, X11, 0, 4, false, false)
-		f.a.StoreIdx(X9, X11, X12, 0, 4)
-		f.a.AddImm64(X11, X11, 4)
+		f.a.LoadIdx(scratch, src, count, 0, 4, false, false)
+		f.a.StoreIdx(dst, count, scratch, 0, 4)
+		f.a.AddImm64(count, count, 4)
 		f.patchBranch19(done, f.a.Len())
 	}
-	joins19 = append(joins19, f.a.Cbz64(X11))
+	joins19 = append(joins19, f.a.Cbz64(count))
 	fwd1 := f.a.Len()
-	f.a.LoadIdx(X12, X10, X11, 0, 1, false, false)
-	f.a.StoreIdx(X9, X11, X12, 0, 1)
-	f.a.AddImm64(X11, X11, 1)
-	f.patchBranch19(f.a.Cbnz64(X11), fwd1)
+	f.a.LoadIdx(scratch, src, count, 0, 1, false, false)
+	f.a.StoreIdx(dst, count, scratch, 0, 1)
+	f.a.AddImm64(count, count, 1)
+	f.patchBranch19(f.a.Cbnz64(count), fwd1)
 	joins26 = append(joins26, f.a.Branch())
+	if exact32 >= 0 {
+		f.patchBranch19(exact32, f.a.Len())
+		for off := uint32(0); off < 32; off += 8 {
+			f.a.Load32(X12, src, off)
+			f.a.Load32(X13, src, off+4)
+			f.a.Store32(X12, dst, off)
+			f.a.Store32(X13, dst, off+4)
+		}
+		joins26 = append(joins26, f.a.Branch())
+		f.stats.peep("memcopy-forward-32")
+	}
 
 	// Large: overlap-safe block copy. Copy backward only when the regions truly
 	// overlap with dst ahead of src; a disjoint copy (dst >= src+n, e.g.
@@ -1525,16 +1593,16 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	// byte loop is the common case — so route disjoint high-dst copies to the
 	// forward loop instead of the slower backward one.
 	f.patchBranch19(big, f.a.Len())
-	f.cmpRR(X9, X10, true)
-	fwd := f.a.Bcond(condBE)               // dst <= src → forward
-	f.leaScaled(X12, X10, X11, 0, 0, true) // X12 = src + n
-	f.cmpRR(X9, X12, true)
+	f.cmpRR(dst, src, true)
+	fwd := f.a.Bcond(condBE)                     // dst <= src → forward
+	f.leaScaled(scratch, src, count, 0, 0, true) // scratch = src + n
+	f.cmpRR(dst, scratch, true)
 	fwdDisjoint := f.a.Bcond(condAE) // dst >= src+n → disjoint → forward
-	f.copyBackLoop(X9, X10, X11)     // dst ahead of src and overlapping → backward
+	f.copyBackLoop(dst, src, count)  // dst ahead of src and overlapping → backward
 	done := f.a.Branch()
 	f.patchBranch19(fwd, f.a.Len())
 	f.patchBranch19(fwdDisjoint, f.a.Len())
-	f.copyFwdLoop(X9, X10, X11) // forward
+	f.copyFwdLoop(dst, src, count) // forward
 	f.patchBranch26(done, f.a.Len())
 	for _, j := range joins26 {
 		f.patchBranch26(j, f.a.Len())
@@ -1542,7 +1610,6 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	for _, j := range joins19 {
 		f.patchBranch19(j, f.a.Len())
 	}
-
 	f.setDepth(d - 3)
 	return nil
 }
@@ -1711,6 +1778,9 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.patchBranch26(done, f.a.Len())
 	if memoryIndex == 0 && f.memSizeReg != regNone {
 		f.ld64(f.memSizeReg, linMemReg, -int32(bdCurBytes))
+		if f.memLimitReg != regNone {
+			f.a.SubImm64(f.memLimitReg, f.memSizeReg, uint32(f.memLimitExtent))
+		}
 	}
 	f.release(nw)
 	f.release(tmp)

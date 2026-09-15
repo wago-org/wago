@@ -528,8 +528,9 @@ func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wideDe
 		a.LdrIdx(dst, base, index, size, signed, wideDest)
 		return
 	}
-	if foldIdxDispEnabled && a.DenseIdxDisp {
-		if !a.reuseIndexedBase(base, index) && !a.reuseIndexedBaseStablePhase(base, index) {
+	reused := foldIdxDispEnabled && (a.reuseIndexedBase(base, index) || a.reuseIndexedBaseStablePhase(base, index))
+	if foldIdxDispEnabled && (a.DenseIdxDisp || reused) {
+		if !reused {
 			a.AddShifted(X16, base, index, 0, false)
 		}
 		if a.loadDisp(dst, X16, disp, size, signed, wideDest) {
@@ -614,11 +615,23 @@ func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
 		return false
 	}
 	wantAdd := uint32(0x8B000000) | uint32(index&31)<<16 | uint32(base&31)<<5 | uint32(X16)
+	wantCanonical := uint32(0x2A000000) | uint32(index&31)<<16 | uint32(XZR)<<5 | uint32(index&31)
+	sawCanonical := false
 	for words := 1; words <= 4 && words*4 <= len(a.B); words++ {
 		instruction := a.wordAt(len(a.B) - words*4)
 		if instruction == wantAdd {
+			if sawCanonical {
+				before := len(a.B) - (words+1)*4
+				if before < 0 || a.wordAt(before) != wantCanonical {
+					return false
+				}
+			}
 			a.IndexedBaseReuses++
 			return true
+		}
+		if instruction == wantCanonical {
+			sawCanonical = true
+			continue
 		}
 		if !preservesIndexedBase(instruction, base, index) {
 			return false
@@ -638,6 +651,11 @@ func preservesIndexedBase(instruction uint32, base, index Reg) bool {
 		return instruction&(3<<22) == 0 || !writesAddress(Reg(instruction&31))
 	}
 	if instruction&0x1F000000 == 0x11000000 {
+		return !writesAddress(Reg(instruction & 31))
+	}
+	// ADD/SUB (shifted register), including flag-setting forms, writes only Rd.
+	// Operand width and NZCV changes do not affect the cached 64-bit address.
+	if instruction&0x1F000000 == 0x0B000000 {
 		return !writesAddress(Reg(instruction & 31))
 	}
 	return false

@@ -166,7 +166,11 @@ func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineRepor
 			CallSites: callSites[globalIdx],
 		}
 		facts[i].callSites = callSites[globalIdx]
-		info.Candidate, info.Reason = inlineDecision(facts[i], callSites[globalIdx], policy)
+		if recursiveInlineFactsCandidate(m, i, facts[i], policy) {
+			info.Candidate, info.Reason = true, fmt.Sprintf("one-level self-recursive, %dB, %d site(s)", facts[i].bodyBytes, callSites[globalIdx])
+		} else {
+			info.Candidate, info.Reason = inlineDecision(facts[i], callSites[globalIdx], policy)
+		}
 		if info.Candidate {
 			rep.NumCandidates++
 			rep.TotalInlinableCallSites += info.CallSites
@@ -225,13 +229,9 @@ func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 	case !f.regABIIntOnly:
 		return false, "signature not int-only reg-ABI"
 	case f.hasLoop:
-		// A leaf callee that contains a LOOP is a net-negative to splice: its loop
-		// body lands inside the caller's hot region and adds register pressure /
-		// code that outweighs the call it removes. Measured: excluding these speeds
-		// Impart's libinjection SQLi rule ~3% and sha256 ~2.7% (both big scan/hash
-		// functions), with no measurable regression elsewhere on the corpus (the
-		// straight-line and simple-branch leaf helpers — the real inline win, e.g.
-		// many_funcs, json serialize — are unaffected).
+		// A leaf callee that contains a LOOP is excluded: splicing its loop into the
+		// caller's hot region adds sustained register pressure and code size, while
+		// straight-line and simple-branch leaf helpers retain the ordinary inline win.
 		return false, "leaf callee contains a loop"
 	case f.bodyBytes > inlineMaxBytes:
 		return false, fmt.Sprintf("too big (%dB > %dB)", f.bodyBytes, inlineMaxBytes)
@@ -450,6 +450,12 @@ func truncName(s string) string {
 // WAGO_INLINE=0/off/false to disable it for A/B runs.
 var inlineEnabled = envDefaultOn(os.Getenv("WAGO_INLINE"))
 
+// recursiveInlineEnabled admits one deliberately narrow non-leaf class: a
+// small, numeric, single-function module whose direct calls can only target
+// itself. Each call site is expanded one level; calls encountered while lowering
+// that expansion remain native calls, which bounds code growth and compile work.
+var recursiveInlineEnabled = envDefaultOn(os.Getenv("WAGO_RECURSIVE_INLINE"))
+
 // envDefaultOn parses a default-on (opt-out) boolean knob: empty/unset means
 // enabled; 0/false/off/no disables it.
 func envDefaultOn(v string) bool {
@@ -476,6 +482,17 @@ type inlineTarget struct {
 	hasCtrl        bool // the body has control flow → splice through a synthetic boundary frame
 	omitStandalone bool // module layout may omit this unreachable standalone body
 }
+
+const (
+	inlineI32AddConstFlag = uint32(1 << 31)
+	inlineRecursiveFlag   = uint32(1 << 30)
+	inlineParamMask       = inlineRecursiveFlag - 1
+)
+
+func (t *inlineTarget) isI32AddConst() bool    { return t.params&inlineI32AddConstFlag != 0 }
+func (t *inlineTarget) i32AddImmediate() int32 { return int32(t.localDeclBytes) }
+func (t *inlineTarget) recursive() bool        { return t.params&inlineRecursiveFlag != 0 }
+func (t *inlineTarget) paramCount() int        { return int(t.params & inlineParamMask) }
 
 // inlineTargetData keeps the dense local-function lookup separate from the
 // pointer-rich records for admitted callees. Most modules have many functions
@@ -602,14 +619,24 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		if len(ft.Results) > 0 {
 			res0 = data.types[localEnd]
 		}
+		addConst, addImmediate := inlineI32AddConst(m.Code[i].BodyBytes, ft)
+		localDeclBytes := m.Code[i].LocalDeclBytes
+		params := uint32(facts.params)
+		if addConst {
+			params |= inlineI32AddConstFlag
+			localDeclBytes = uint32(addImmediate)
+		}
+		if recursiveInlineCandidate(m, allHints, i, facts, policy) {
+			params |= inlineRecursiveFlag
+		}
 		data.targets = append(data.targets, inlineTarget{
 			body:           m.Code[i].BodyBytes,
 			globalIdx:      importedFuncs + i,
-			localDeclBytes: m.Code[i].LocalDeclBytes,
+			localDeclBytes: localDeclBytes,
 			typeStart:      uint32(localStart),
 			localTypeEnd:   uint32(localEnd),
 			resultTypeEnd:  uint32(resultEnd),
-			params:         uint32(facts.params),
+			params:         params,
 			res0:           res0,
 			touchesMem:     facts.touchesMem,
 			hasCtrl:        facts.hasControlFlow,
@@ -622,6 +649,36 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		pruneNestedSizeInlineTargets(m, &targets)
 	}
 	return targets
+}
+
+func inlineI32AddConst(body []byte, ft *wasm.CompType) (bool, int32) {
+	if ft == nil || len(ft.Params) != 1 || ft.Params[0] != wasm.I32 ||
+		len(ft.Results) != 1 || ft.Results[0] != wasm.I32 {
+		return false, 0
+	}
+	r := wasm.NewReader(body)
+	op, err := r.Byte()
+	if err != nil || op != 0x20 {
+		return false, 0
+	}
+	x, err := r.U32()
+	if err != nil || x != 0 {
+		return false, 0
+	}
+	op, err = r.Byte()
+	if err != nil || op != 0x41 {
+		return false, 0
+	}
+	c, err := r.I32()
+	if err != nil {
+		return false, 0
+	}
+	add, err := r.Byte()
+	if err != nil || add != 0x6a {
+		return false, 0
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && !r.HasNext(), c
 }
 
 func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy CodegenPolicy) (*wasm.CompType, inlineFacts, bool) {
@@ -651,7 +708,30 @@ func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy Codeg
 	if h.flags.has(hintHasCall) {
 		facts.calleeCount = 1
 	}
-	return ft, facts, inlineOK(facts, policy)
+	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy)
+}
+
+func recursiveInlineCandidate(m *wasm.Module, allHints []funcHints, i int, facts inlineFacts, policy CodegenPolicy) bool {
+	if !recursiveInlineEnabled || policy.CompactNative || len(m.Code) != 1 || m.ImportedFuncCount() != 0 || i != 0 {
+		return false
+	}
+	h := allHints[i]
+	return h.flags.has(hintCallsSelf) && !h.flags.has(hintHasLoop|hintTouchesMemory|hintUsesBulkMem|hintModuleEH) && !h.hasNonDirectCall() &&
+		h.globalCount == 0 && facts.regABIIntOnly && facts.declaredLocals == 0 && facts.bodyBytes <= 64 && h.callRelocSiteCount() <= 2
+}
+
+func recursiveInlineFactsCandidate(m *wasm.Module, i int, facts inlineFacts, policy CodegenPolicy) bool {
+	if !recursiveInlineEnabled || policy.CompactNative || len(m.Code) != 1 || m.ImportedFuncCount() != 0 || i != 0 ||
+		facts.hasControlCall || facts.hasLoop || facts.touchesMem || facts.touchesGlobal || !facts.regABIIntOnly ||
+		facts.declaredLocals != 0 || facts.bodyBytes > 64 || len(facts.callees) == 0 || len(facts.callees) > 2 {
+		return false
+	}
+	for _, callee := range facts.callees {
+		if callee != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // pruneNestedSizeInlineTargets prevents transitive body omission without a
@@ -715,6 +795,9 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 		f.inlineBase = make(map[int]int, len(callees))
 	}
 	for _, t := range callees {
+		if t.isI32AddConst() {
+			continue
+		}
 		base := len(f.localType)
 		localTypes := targets.localTypes(t)
 		for _, lt := range localTypes {
@@ -778,6 +861,9 @@ func buildInlineCallerPlan(caller *wasm.Func, targets inlineTargetTable) inlineC
 			if t == nil {
 				allInline = false
 				continue
+			}
+			if t.recursive() {
+				allInline = false
 			}
 			duplicate := false
 			if largeSeen != nil {
@@ -888,6 +974,13 @@ func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
 func (f *fn) inlineCall(t *inlineTarget) error {
 	f.stats.call(callKindInline)
 	start := f.a.Len()
+	if t.isI32AddConst() {
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(t.i32AddImmediate())})
+		f.pushBinOp(opAdd, mtI32)
+		f.stats.peep("inline-i32-add-const")
+		f.stats.addInlineSiteBytes(f.a.Len() - start)
+		return nil
+	}
 	base := f.inlineBase[t.globalIdx]
 	f.bindInlineParams(t, base)
 
@@ -895,6 +988,8 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	oldTraceFunc, oldTraceBase, oldPC := f.traceFuncIdx, f.tracePCBase, f.wasmPC
 	f.localBase = base
 	f.traceFuncIdx, f.tracePCBase = uint32(t.globalIdx), t.localDeclBytes
+	oldInlineDepth := f.inlineDepth
+	f.inlineDepth++
 	var err error
 	if t.hasCtrl {
 		err = f.inlineBodyCtrl(t)
@@ -902,6 +997,7 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 		err = f.inlineBody(t.body)
 	}
 	f.localBase = old
+	f.inlineDepth = oldInlineDepth
 	f.traceFuncIdx, f.tracePCBase, f.wasmPC = oldTraceFunc, oldTraceBase, oldPC
 	if err != nil {
 		return err
@@ -924,7 +1020,7 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 // local is cleared across its full slot width (a v128 local clears both halves).
 func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 	nLocals := int(t.localTypeEnd - t.typeStart)
-	params := int(t.params)
+	params := t.paramCount()
 	localTypes := f.inlineTargets.localTypes(t)
 	// The p args are the top operands (deepest = param 0). Pop each into its param
 	// local. setLocal takes the absolute index (localBase is still 0 here).

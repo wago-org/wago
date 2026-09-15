@@ -177,7 +177,7 @@ func TestPreparedBoundedAMD64RejectsLoop(t *testing.T) {
 	}
 }
 
-func TestPreparedBoundedAMD64RejectsInlinedCall(t *testing.T) {
+func TestPreparedBoundedAMD64AllowsSpecializedInlinedCall(t *testing.T) {
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
@@ -191,8 +191,27 @@ func TestPreparedBoundedAMD64RejectsInlinedCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
+	if !compiled.directPreparedBoundedAt(1) {
+		t.Fatal("specialized call-free inline caller was not admitted to bounded entry")
+	}
+}
+
+func TestPreparedBoundedAMD64RejectsGenericInlinedCall(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("caller", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x41, 0x03, 0x6c, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b}),
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
 	if compiled.directPreparedBoundedAt(1) {
-		t.Fatal("caller admitted to bounded entry after inlining")
+		t.Fatal("generic inline caller admitted to bounded entry")
 	}
 }
 

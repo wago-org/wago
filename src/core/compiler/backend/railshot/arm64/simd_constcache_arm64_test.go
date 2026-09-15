@@ -47,3 +47,30 @@ func TestSIMDV128ConstSplatMaterialization(t *testing.T) {
 		})
 	}
 }
+
+func TestSIMDV128ConstCacheArm64(t *testing.T) {
+	v := i64x2Bytes(0x0123456789abcdef, 0x76543210fedcba98)
+	body := append([]byte{0x00}, simdConst(v)...)
+	body = append(body, simdConst(v)...)
+	body = append(body, simdOp(81)...) // v128.xor
+	body = append(body, simdOp(29)...) // i64x2.extract_lane
+	body = append(body, 0x00, 0x0b)    // lane 0; end
+	m := mod1(t, nil, []wasm.ValType{wasm.I64}, body)
+	stats := &ModuleStats{}
+	got, err := runArm64WrapperWithOptions(t, m, CompileOptions{
+		Stats:         stats,
+		Optimizations: map[string]bool{"v128-const-cache": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 0 {
+		t.Fatalf("result = %#x, want 0", got)
+	}
+	if n := stats.Funcs[0].Peephole["v128-const-cache"]; n != 1 {
+		t.Fatalf("cache reservations = %d, want 1 (%v)", n, stats.Funcs[0].Peephole)
+	}
+	if n := stats.Funcs[0].Peephole["v128-const-cache-hit"]; n != 2 {
+		t.Fatalf("cache hits = %d, want 2 (%v)", n, stats.Funcs[0].Peephole)
+	}
+}

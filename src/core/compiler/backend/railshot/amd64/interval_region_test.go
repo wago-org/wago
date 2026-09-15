@@ -3,11 +3,82 @@
 package amd64
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func TestIntervalNextUseUsesFunctionRelativeCoordinates(t *testing.T) {
+	body := []byte{
+		0x21, 0x00, // current local.set 0
+		0x20, 0x00, // next local.get 0
+		0x1a,       // current drop for the second query
+		0x21, 0x00, // next local.set 0 kills the prior version
+		0x20, 0x00, // later local.get 0 belongs to the new version
+		0x0b,
+	}
+	f := fn{
+		m:           &wasm.Module{},
+		nLocals:     1,
+		intervalReg: []Reg{RSP},
+		tracePCBase: 0x1234,
+		wasmPC:      0x1234,
+	}
+	f.classifier = wasm.NewModuleInstructionClassifier(f.m, true)
+	f.prepareIntervalEvents(body, 5)
+	if next, dead := f.nextIntervalLocalAccess(0); next != 2 || dead {
+		t.Fatalf("next read = (%d, %t), want (2, false)", next, dead)
+	}
+	f.wasmPC = f.tracePCBase + 4
+	if next, dead := f.nextIntervalLocalAccess(0); next != 5 || !dead {
+		t.Fatalf("next overwrite = (%d, %t), want (5, true)", next, dead)
+	}
+}
+
+func TestIntervalNextUseRejectsPendingLocalBorrow(t *testing.T) {
+	f := fn{s: newStack(), locals: make([]localDef, 4)}
+	f.locals[3].reg = R12
+	f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: R12, idx: 3})
+	if !f.intervalLocalBorrowed(3) {
+		t.Fatal("pending local reference was not treated as an eviction blocker")
+	}
+	if f.intervalLocalBorrowed(2) {
+		t.Fatal("unreferenced local was treated as borrowed")
+	}
+	if got := f.intervalBorrowedRegs(); !got.has(R12) || got&^maskOf(R12) != 0 {
+		t.Fatalf("borrowed register mask = %#x, want only R12", got)
+	}
+}
+
+func TestIntervalNextUseShrinksBlakeKernel(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads", "assemblyscript", "blake-as.wasm")
+	m := readParallelTestModule(t, root)
+	compile := func(on bool) (int, CodegenStats) {
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{
+			Workers:       1,
+			Stats:         &stats,
+			Optimizations: map[string]bool{"interval-next-use": on},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cm.CodeImage != nil {
+			defer cm.CodeImage.Close()
+		}
+		return len(cm.Code), *stats.Funcs[0]
+	}
+	baseBytes, base := compile(false)
+	nextBytes, next := compile(true)
+	if next.Peephole["interval-dead-store-elide"] == 0 {
+		t.Fatalf("next-use planning found no dead local stores: %v", next.Peephole)
+	}
+	if nextBytes >= baseBytes || next.CodeBytes >= base.CodeBytes {
+		t.Fatalf("next-use code size module/function = %d/%d, baseline %d/%d", nextBytes, next.CodeBytes, baseBytes, base.CodeBytes)
+	}
+}
 
 func TestIntervalRegionI64ResidencyWeightPolicy(t *testing.T) {
 	policy := func(on bool) CodegenPolicy {
@@ -19,10 +90,12 @@ func TestIntervalRegionI64ResidencyWeightPolicy(t *testing.T) {
 	}
 	base := fn{intervalScore: []uint32{8, 8}, localType: []machineType{mtI32, mtI64}}
 	base.policy = policy(false)
+	base.intervalI64Weight = false
 	if i32, i64 := base.intervalResidencyScore(0), base.intervalResidencyScore(1); i32 != 8 || i64 != i32 {
 		t.Fatalf("equal-width scores = i32 %d i64 %d, want 8/8", i32, i64)
 	}
 	base.policy = policy(true)
+	base.intervalI64Weight = true
 	if i32, i64 := base.intervalResidencyScore(0), base.intervalResidencyScore(1); i32 != 8 || i64 != 12 {
 		t.Fatalf("weighted scores = i32 %d i64 %d, want 8/12", i32, i64)
 	}

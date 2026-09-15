@@ -380,6 +380,11 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
 	bcKind, bcIdx := boundsSource(e.st)
+	hoistedLoopBounds := f.hoistedLoopBoundsCover(bcKind, bcIdx)
+	// The preheader proof zero-extends the induction local, and the admitted
+	// update is a 32-bit add. Its physical register therefore remains canonical
+	// throughout the loop; don't emit a self-move before every access.
+	cleanAddress = cleanAddress || hoistedLoopBounds
 	disp = 0
 	borrow = -1
 	leaDisp := int32(size)
@@ -410,6 +415,10 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	}
 
 	if f.guardMode {
+		return ea, eaOwned, borrow, disp
+	}
+	if hoistedLoopBounds {
+		f.stats.addBoundsElidable()
 		return ea, eaOwned, borrow, disp
 	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
@@ -452,6 +461,20 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	f.release(t)
 	f.pinned = f.pinned.remove(ea)
 	return ea, eaOwned, borrow, disp
+}
+
+func (f *fn) hoistedLoopBoundsCover(kind uint8, idx uint32) bool {
+	if kind != 1 {
+		return false
+	}
+	for i := len(f.ctrl) - 1; i >= 0; i-- {
+		fr := &f.ctrl[i]
+		if fr.kind != cfLoop {
+			continue
+		}
+		return f.linearSumLoopDepth == uint16(i+1) && uint32(uint16(f.linearSumLoop)) == idx+1
+	}
+	return false
 }
 
 type boundsCert struct {

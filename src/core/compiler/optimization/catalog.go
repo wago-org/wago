@@ -85,7 +85,7 @@ func (s Selection) Enabled(name string) bool {
 	if s.bindings == nil {
 		return false
 	}
-	index, ok := s.bindings.index[name]
+	index, ok := s.bindings.indexOf(name)
 	return ok && s.bits&(uint64(1)<<index) != 0
 }
 
@@ -95,6 +95,13 @@ func (s Selection) EnabledOption(option Option) bool {
 	return s.bindings != nil && s.bindings == option.bindings && s.bits&option.mask != 0
 }
 
+// EnabledResolvedOption is the hot-path form for an Option resolved by the
+// same Bindings that produced this Selection. Backend initialization validates
+// that ownership once, so per-instruction lowering need only test the bit.
+func (s Selection) EnabledResolvedOption(option Option) bool {
+	return s.bits&option.mask != 0
+}
+
 // Valid reports whether the selection was resolved by a Bindings owner.
 func (s Selection) Valid() bool { return s.bindings != nil }
 
@@ -102,7 +109,7 @@ func (s Selection) Valid() bool { return s.bindings != nil }
 // for an unknown name because backend option inventories are initialization
 // invariants already checked by NewBindings.
 func (b *Bindings) Option(name string) Option {
-	index, ok := b.index[name]
+	index, ok := b.indexOf(name)
 	if !ok {
 		panic(fmt.Sprintf("unknown %s optimization %q", b.arch, name))
 	}
@@ -116,45 +123,61 @@ type Bindings struct {
 	mu       sync.Mutex
 	arch     string
 	entries  []binding
-	index    map[string]int
 	before   []bool
 	changed  []int
 	revision uint64
 }
 
 func NewBindings(arch string, specs ...BindingSpec) *Bindings {
-	byName := make(map[string]BindingSpec, len(specs))
-	for _, spec := range specs {
+	for index, spec := range specs {
 		if spec.Value == nil {
 			panic(fmt.Sprintf("%s optimization binding %q has a nil value", arch, spec.Name))
 		}
-		if _, exists := byName[spec.Name]; exists {
-			panic(fmt.Sprintf("%s optimization binding %q is duplicated", arch, spec.Name))
+		for previous := 0; previous < index; previous++ {
+			if specs[previous].Name == spec.Name {
+				panic(fmt.Sprintf("%s optimization binding %q is duplicated", arch, spec.Name))
+			}
 		}
 		if _, ok := Lookup(arch, spec.Name); !ok {
 			panic(fmt.Sprintf("%s optimization binding %q is not registered", arch, spec.Name))
 		}
-		byName[spec.Name] = spec
 	}
 	definitions := ForArch(arch)
 	bindings := &Bindings{
 		arch:     arch,
 		entries:  make([]binding, 0, len(definitions)),
-		index:    make(map[string]int, len(definitions)),
 		before:   make([]bool, len(definitions)),
 		changed:  make([]int, len(definitions)),
 		revision: 1,
 	}
 	for _, definition := range definitions {
-		spec, ok := byName[definition.Name]
-		if !ok {
+		var spec BindingSpec
+		found := false
+		for _, candidate := range specs {
+			if candidate.Name == definition.Name {
+				spec, found = candidate, true
+				break
+			}
+		}
+		if !found {
 			panic(fmt.Sprintf("%s optimization %q has no backend binding", arch, definition.Name))
 		}
 		bindings.entries = append(bindings.entries, binding{definition: definition, value: spec.Value, inverted: spec.Inverted})
-		bindings.index[definition.Name] = len(bindings.entries) - 1
-		delete(byName, definition.Name)
 	}
 	return bindings
+}
+
+// indexOf resolves names against the small, fixed catalog. Bindings are created
+// once during package initialization and options are pre-resolved for hot
+// lowering, so a linear lookup avoids two startup hash maps without moving map
+// work onto generated-code paths.
+func (b *Bindings) indexOf(name string) (int, bool) {
+	for index := range b.entries {
+		if b.entries[index].definition.Name == name {
+			return index, true
+		}
+	}
+	return 0, false
 }
 
 // Infos returns current binding values in catalog order.
@@ -203,7 +226,7 @@ func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[
 		}
 	}
 	for name, on := range overrides {
-		index, ok := b.index[name]
+		index, ok := b.indexOf(name)
 		if !ok {
 			return Selection{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
 		}
@@ -238,7 +261,7 @@ func (b *Bindings) infosLocked() []Info {
 func (b *Bindings) Set(name string, on bool) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	index, ok := b.index[name]
+	index, ok := b.indexOf(name)
 	if !ok {
 		return false
 	}
@@ -301,7 +324,7 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 	if snapshot.bindings == b && snapshot.revision == b.revision && b.deltasMatchLocked(overrides, deltas) {
 		changed := 0
 		for name := range deltas {
-			index := b.index[name]
+			index, _ := b.indexOf(name)
 			b.changed[changed] = index
 			changed++
 		}
@@ -320,7 +343,7 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 		b.before[index] = *entry.value
 	}
 	for name, on := range overrides {
-		index, ok := b.index[name]
+		index, ok := b.indexOf(name)
 		if !ok {
 			for index, entry := range b.entries {
 				*entry.value = b.before[index]
@@ -343,7 +366,7 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 func (b *Bindings) deltasMatchLocked(overrides, deltas map[string]bool) bool {
 	changed := 0
 	for name, on := range overrides {
-		index, ok := b.index[name]
+		index, ok := b.indexOf(name)
 		if !ok {
 			return false
 		}
@@ -383,6 +406,7 @@ var catalog = []Definition{
 	arm64("uxtw-add", "Extended adds", "fold zero-extension into ADD UXTW"),
 	arm64("shifted-register-alu", "Shifted-register ALU", "fold constant shifts into integer ALU operands"),
 	arm64("fp-immediate-const", "Float immediates", "materialize exact AArch64 floating-point immediates directly"),
+	arm64("fp-literal-pool", "Float literal pool", "load non-immediate scalar float constants from a deduplicated PC-relative pool"),
 	both("value-facts", "Value facts", "propagate bounded upper-zero and boolean provenance"),
 	arm64("load-pair", "Adjacent load pairs", "combine adjacent full-width scalar loads from one local address into LDP"),
 	arm64("entry-param-pairs", "Entry parameter pairs", "pair adjacent serialized wrapper parameter homes in function prologues"),
@@ -391,6 +415,7 @@ var catalog = []Definition{
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
 	both("ext-fp-pins", "Extended float pins", "use the larger floating-point register pool"),
 	arm64("merge-next-use", "Merge next-use", "keep dead forward-merge locals lazy with bounded post-merge lookahead"),
+	both("callfree-loop-cold-exit", "Call-free loop cold exits", "move local reconciliation from a call-free loop's hot conditional fall-through to its taken exit edge"),
 	arm64("weighted-scalar-merge", "Weighted scalar merges", "reserve the canonical merge register for loop-hot scalar result joins"),
 	amd64("tree-order", "Valent tree ordering", "schedule bounded commutative trees by register need"),
 	amd64("assoc-tree", "Associative tree cover", "cover high-pressure bounded associative trees with one accumulator"),
@@ -398,7 +423,8 @@ var catalog = []Definition{
 	arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),
 	arm64("leaf-scratch-memsize", "Leaf scratch memory size", "cache memory size in backend scratch for straight-line regional leaves"),
 	arm64("loop-trap-cell", "Loop trap cell", "cache the stable cancellation cell across call-free loops"),
-	amd64("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
+	both("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
+	both("linear-sum-loop", "Linear sum loops", "hoist bounds and split exact i64 memory reductions across four accumulators"),
 	both("prepared-direct-entry", "Direct prepared entry", "enter compiler-proved integer functions through the register ABI"),
 	arm64("prepared-light-entry", "Light prepared entry", "use caller-clobber proofs to select a smaller native entry thunk"),
 	both("prepared-bounded-entry", "Bounded prepared entry", "keep compiler-bounded native leaves on the Go scheduler"),
@@ -407,6 +433,7 @@ var catalog = []Definition{
 	amd64("interval-scratch-lease", "Regional scratch leasing", "lend idle RDX to proved straight-line integer local regions"),
 	amd64("interval-r8-lease", "Regional R8 leasing", "lend R8 to signal-bounded straight-line integer regions after excluding fixed-register lowerings"),
 	amd64("interval-i64-weight", "Regional i64 weighting", "price packed 64-bit local reloads more heavily in regional eviction"),
+	both("interval-next-use", "Regional next-use eviction", "use a compact local-event tape to evict the farthest local version and elide dead stores"),
 	amd64("memsize-regional-lease", "Regional memory-size leasing", "lend the memory-size register to proved straight-line local regions"),
 	amd64("module-global-regional-lease", "Regional module-global leasing", "lend an unreferenced module-global register to proved straight-line local regions"),
 	arm64("loop-int-const", "Loop integer constants", "keep costly loop-invariant integer constants in otherwise-idle registers"),
@@ -436,7 +463,7 @@ var catalog = []Definition{
 	arm64("v128-direct-results", "Direct vector results", "write vector results directly into eligible pinned locals"),
 	amd64("dead-gc-new", "Dead GC constructors", "remove dropped GC constructor trees while preserving traps"),
 	amd64("gc-native-alloc", "Native GC allocation", "allocate admitted GC objects through native nursery fast paths"),
-	amd64("v128-const-cache", "AMD64 constant cache", "reserve vector constants and pool implicit scalar float masks"),
+	both("v128-const-cache", "Vector constant cache", "reserve repeated vector constants and target-specific masks"),
 	both("v128-pins", "Vector pins", "pin hot vector locals in registers"),
 	both("reg-abi", "Register ABI", "use Wago's internal register calling convention"),
 	both("inline", "Inlining", "inline eligible callees"),

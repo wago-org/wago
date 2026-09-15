@@ -136,6 +136,33 @@ func TestAdjacentIndexedBaseReuse(t *testing.T) {
 	}
 }
 
+func TestCanonicalIndexedBaseReuseAcrossAccumulator(t *testing.T) {
+	var a Asm
+	a.DenseIdxDisp = true
+	a.ReuseIndexedBase = true
+	a.MovReg32(X22, X22)
+	a.AddShifted(X16, X26, X22, 0, false)
+	a.Load32(X0, X16, 0)
+	a.Add32(X1, X1, X0)
+	a.MovReg32(X22, X22)
+	a.LoadIdx(X2, X26, X22, 4, 4, false, false)
+	if got := len(a.B); got != 24 || a.IndexedBaseReuses != 1 {
+		t.Fatalf("canonical stable reuse = %d bytes/%d hits, want 24/1", got, a.IndexedBaseReuses)
+	}
+
+	var unsafe Asm
+	unsafe.DenseIdxDisp = true
+	unsafe.ReuseIndexedBase = true
+	unsafe.AddShifted(X16, X26, X22, 0, false)
+	unsafe.Load32(X0, X16, 0)
+	unsafe.Add32(X1, X1, X0)
+	unsafe.MovReg32(X22, X22)
+	unsafe.LoadIdx(X2, X26, X22, 4, 4, false, false)
+	if got := len(unsafe.B); got != 24 || unsafe.IndexedBaseReuses != 0 {
+		t.Fatalf("uncanonical stable reuse = %d bytes/%d hits, want 24/0", got, unsafe.IndexedBaseReuses)
+	}
+}
+
 // Goldens for the scalar-FP + SP + branch batch.
 func TestPortFPEncodings(t *testing.T) {
 	cases := []struct {

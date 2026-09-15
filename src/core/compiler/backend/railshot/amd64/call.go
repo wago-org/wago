@@ -269,7 +269,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// so this is a pure operand-stack/local transform.
 	if !f.inlineTargets.empty() {
 		if t := f.inlineTargets.target(int(idx)); t != nil {
-			if _, ok := f.inlineBase[int(idx)]; ok {
+			if _, ok := f.inlineBase[int(idx)]; (t.isI32AddConst() || ok) && (!t.recursive() || f.inlineDepth == 0) {
 				return f.inlineCall(t)
 			}
 		}

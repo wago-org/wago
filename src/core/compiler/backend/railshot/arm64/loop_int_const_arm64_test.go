@@ -48,13 +48,13 @@ func TestLoopIntConstHintsOnlyRegisterConsumersArm64(t *testing.T) {
 
 func TestLoopIntConstUsesOnlyIdleRegistersArm64(t *testing.T) {
 	h := funcHintView{loopIntConstCount: 4, loopIntConstTypes: 0x55, loopIntConst: [4]int64{1, 2, 3, 4}}
-	f := fn{a: &a64.Asm{}, reserved: maskOf(X25, X23), pinnedLocalMask: maskOf(X24)}
+	f := fn{a: &a64.Asm{}, reserved: maskOf(X25, X23), pinnedLocalMask: maskOf(X24), policy: currentCodegenPolicy()}
 	f.preloadLoopIntConsts(&h)
 	if f.iconstN != 1 || f.iconsts[0].reg != X27 {
 		t.Fatalf("cached constants = %#v, want only X27", f.iconsts[:f.iconstN])
 	}
 
-	called := fn{usesCalls: true}
+	called := fn{usesCalls: true, policy: currentCodegenPolicy()}
 	called.preloadLoopIntConsts(&h)
 	if called.iconstN != 0 {
 		t.Fatalf("call-making function cached %d constants", called.iconstN)
