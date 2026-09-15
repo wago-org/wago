@@ -531,6 +531,7 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 	return masks, nil
 }
 
+//lint:ignore U1000 retained for callers without a reusable instruction classifier
 func gcFrameBodyMayCollect(body []byte) bool {
 	classifier := wasm.NewModuleInstructionClassifier(nil, true)
 	return gcFrameBodyMayCollectWithClassifier(body, &classifier)

@@ -9,9 +9,9 @@ run corpus=env('CORPUS', 'quick') group=env('BENCH', 'all') count=env('COUNT', '
     set -euo pipefail
     case '{{ group }}' in
       all) pattern='.' ;;
-      pipeline) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate)$' ;;
-      compile) pattern='^Benchmark(Decode|Validate|Compile|CompileFull)$' ;;
-      exec) pattern='^Benchmark(Exec|CommandExec)$|^BenchmarkExec(CallOverhead|HostCallback|HostRoundtrip)_' ;;
+      pipeline) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|DraglineCompileFull|Instantiate|DraglineInstantiate)$' ;;
+      compile) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|DraglineCompileFull)$' ;;
+      exec) pattern='^Benchmark(Exec|DraglineExec|CommandExec)$|^BenchmarkExec(CallOverhead|HostCallback|HostRoundtrip)_' ;;
       *) pattern='{{ group }}' ;;
     esac
     { echo '# git {{ head }}'; (cd bench && WAGO_BOUNDS=signals go test -run '^$' -tags wago_guardpage -bench "$pattern" -benchmem -count '{{ count }}' -benchtime '{{ time }}' -timeout 0 ./suite -args -wago.corpus='{{ corpus }}'); } | tee '{{ output }}'
@@ -22,9 +22,9 @@ check corpus=env('CORPUS', 'quick') group=env('BENCH', 'all'):
     set -euo pipefail
     case '{{ group }}' in
       all) pattern='.' ;;
-      pipeline) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate)$' ;;
-      compile) pattern='^Benchmark(Decode|Validate|Compile|CompileFull)$' ;;
-      exec) pattern='^Benchmark(Exec|CommandExec)$|^BenchmarkExec(CallOverhead|HostCallback|HostRoundtrip)_' ;;
+      pipeline) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|DraglineCompileFull|Instantiate|DraglineInstantiate)$' ;;
+      compile) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|DraglineCompileFull)$' ;;
+      exec) pattern='^Benchmark(Exec|DraglineExec|CommandExec)$|^BenchmarkExec(CallOverhead|HostCallback|HostRoundtrip)_' ;;
       *) pattern='{{ group }}' ;;
     esac
     cd bench
@@ -34,12 +34,12 @@ check corpus=env('CORPUS', 'quick') group=env('BENCH', 'all'):
 no-guard corpus=env('CORPUS', 'quick') group=env('BENCH', 'all') count=env('COUNT', '1') time=env('BENCHTIME', '1s') output=env('BENCH_RUN', 'bench/.bench-run.txt'):
     #!/usr/bin/env bash
     set -euo pipefail
-    case '{{ group }}' in all) pattern='.' ;; pipeline) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate)$' ;; compile) pattern='^Benchmark(Decode|Validate|Compile|CompileFull)$' ;; exec) pattern='^Benchmark(Exec|CommandExec)$|^BenchmarkExec(CallOverhead|HostCallback|HostRoundtrip)_' ;; *) pattern='{{ group }}' ;; esac
+    case '{{ group }}' in all) pattern='.' ;; pipeline) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|DraglineCompileFull|Instantiate|DraglineInstantiate)$' ;; compile) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|DraglineCompileFull)$' ;; exec) pattern='^Benchmark(Exec|DraglineExec|CommandExec)$|^BenchmarkExec(CallOverhead|HostCallback|HostRoundtrip)_' ;; *) pattern='{{ group }}' ;; esac
     { echo '# git {{ head }}'; (cd bench && go test -run '^$' -bench "$pattern" -benchmem -count '{{ count }}' -benchtime '{{ time }}' -timeout 0 ./suite -args -wago.corpus='{{ corpus }}'); } | tee '{{ output }}'
 
 # Run only Wago benchmarks.
 wago corpus=env('CORPUS', 'quick') count=env('COUNT', '1') time=env('BENCHTIME', '1s'):
-    cd bench && go test -run '^$' -bench '^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Exec|CommandExec)$|_wago$' -benchmem -count '{{ count }}' -benchtime '{{ time }}' -timeout 0 ./suite -args -wago.corpus='{{ corpus }}'
+    cd bench && go test -run '^$' -bench '^Benchmark(Decode|Validate|Compile|CompileFull|DraglineCompileFull|Instantiate|DraglineInstantiate|Exec|DraglineExec|CommandExec)$|_wago$' -benchmem -count '{{ count }}' -benchtime '{{ time }}' -timeout 0 ./suite -args -wago.corpus='{{ corpus }}'
 
 # Run only wazero benchmarks.
 wazero corpus=env('CORPUS', 'quick') count=env('COUNT', '1') time=env('BENCHTIME', '1s'):

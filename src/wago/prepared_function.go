@@ -35,8 +35,11 @@ type PreparedFunction struct {
 	resultWide          []bool
 	privateFast         bool
 	isolatedFast        bool
+	privateLifetime     bool
 	directIsolated      bool
 	directIntFast       bool
+	directLeafIntFast   bool
+	directTrapIntFast   bool
 	directIntLight      bool
 	directIntBounded    bool
 	directIntMode       preparedIntCallMode
@@ -131,7 +134,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 	fn := &PreparedFunction{
 		in:                  in,
 		export:              export,
-		entry:               in.base + uintptr(in.c.Entry[ic.li]),
+		entry:               in.wrapperEntry(ic.li),
 		paramSlots:          ic.paramSlots,
 		resultSlots:         ic.resultSlots,
 		scalarWideMask:      scalarWideMask,
@@ -149,6 +152,10 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 	}
 	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
 		entryMode := in.preparedEntryMode()
+		if entryMode == preparedEntryGeneral && contextFreeLoopPreparedEntry(in.c.InternalEntry[ic.li]) {
+			entryMode = in.preparedMemoryFreeEntryMode()
+			fn.privateLifetime = entryMode != preparedEntryGeneral
+		}
 		if entryMode != preparedEntryGeneral {
 			fn.privateFast = true
 			fn.isolatedFast = preparedIsolatedEntryEnabled && entryMode == preparedEntryIsolated
@@ -164,6 +171,8 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 			fn.directIsolated = preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated
 			if fn.directIsolated || (preparedDirectIntPrivateSupported && directMode == preparedEntryPrivate) {
 				fn.directIntFast = true
+				fn.directLeafIntFast = directLeafPreparedEntry(in.c.InternalEntry[ic.li])
+				fn.directTrapIntFast = directTrapPreparedEntry(in.c.InternalEntry[ic.li])
 				fn.directIntLight = in.c.directPreparedLightAt(ic.li)
 				fn.directIntBounded = in.c.directPreparedBoundedAt(ic.li)
 				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
@@ -248,6 +257,9 @@ func (fn *PreparedFunction) Invoke2(a0, a1 uint64) ([]uint64, error) {
 
 // Invoke3 calls a prepared export with three argument slots.
 func (fn *PreparedFunction) Invoke3(a0, a1, a2 uint64) ([]uint64, error) {
+	if fn != nil && fn.in != nil && fn.paramSlots == 3 && fn.directTrapIntFast {
+		return fn.invokeDirectTrapIntFixed(a0, a1, a2, 0)
+	}
 	return fn.invokeFixed(3, a0, a1, a2, 0)
 }
 
@@ -262,6 +274,9 @@ func (fn *PreparedFunction) invokeFixed(count int, a0, a1, a2, a3 uint64) ([]uin
 	}
 	if count != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, count)
+	}
+	if fn.directTrapIntFast {
+		return fn.invokeDirectTrapIntFixed(a0, a1, a2, a3)
 	}
 	if fn.directIntFast {
 		return fn.invokeDirectIntFixed(a0, a1, a2, a3)
@@ -363,10 +378,17 @@ func (fn *PreparedFunction) invokeGeneralAdmitted(args []uint64) ([]uint64, erro
 
 func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 	in := fn.in
-	if err := in.beginInvocation(); err != nil {
-		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+	if fn.privateLifetime {
+		if err := in.beginPrivateInvocation(); err != nil {
+			return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+		}
+		defer in.endPrivateInvocation()
+	} else {
+		if err := in.beginInvocation(); err != nil {
+			return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+		}
+		defer in.endInvocation()
 	}
-	defer in.endInvocation()
 	preparedLease := in.lockPreparedInvocation()
 	defer preparedLease.unlock()
 	return fn.invokeScalarAdmitted(args)

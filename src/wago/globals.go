@@ -1092,6 +1092,7 @@ type Compiled struct {
 	// registerABIDisabled keeps descriptor publication aligned with the actual
 	// compile policy. False preserves legacy hand-built Compiled behavior.
 	registerABIDisabled bool
+	compiler            CompilerEngine
 	requiredFeatures    CoreFeatures
 	importFuncSigs      []FuncSig
 
@@ -1119,6 +1120,8 @@ type Compiled struct {
 	requiresBMI2       bool
 	requiresAVX2       bool
 	requiresAVX512     bool
+	requiresARM64MOPS  bool
+	requiresARM64SHA2  bool
 	syncHostSlots      uint16
 	// independentInstances allows instances without cross-instance Wasm imports
 	// to use instance-local native execution leases. It is intentionally not
@@ -1138,6 +1141,9 @@ var (
 	directPreparedEntryMask   = ^(^uint(0) >> 1)
 	directPreparedLightMask   = directPreparedEntryMask >> 1
 	directPreparedBoundedMask = directPreparedEntryMask >> 2
+	directLeafPreparedMask    = directPreparedEntryMask >> 3
+	directTrapPreparedMask    = directPreparedEntryMask >> 4
+	contextFreeLoopMask       = directPreparedEntryMask >> 5
 )
 
 func markDirectPreparedEntry(off int) int { return int(uint(off) | directPreparedEntryMask) }
@@ -1150,8 +1156,26 @@ func markDirectPreparedBoundedEntry(off int) int {
 	return int(uint(off) | directPreparedBoundedMask)
 }
 func directPreparedBoundedEntry(off int) bool { return uint(off)&directPreparedBoundedMask != 0 }
+func markDirectLeafPreparedEntry(off int) int {
+	return int(uint(off) | directPreparedEntryMask | directLeafPreparedMask)
+}
+func directLeafPreparedEntry(off int) bool { return uint(off)&directLeafPreparedMask != 0 }
+func markDirectTrapPreparedEntry(off int) int {
+	return int(uint(off) | directPreparedEntryMask | directTrapPreparedMask)
+}
+func directTrapPreparedEntry(off int) bool         { return uint(off)&directTrapPreparedMask != 0 }
+func markContextFreeLoopPreparedEntry(off int) int { return int(uint(off) | contextFreeLoopMask) }
+func contextFreeLoopPreparedEntry(off int) bool    { return uint(off)&contextFreeLoopMask != 0 }
 func internalEntryOffset(off int) int {
-	return int(uint(off) &^ (directPreparedEntryMask | directPreparedLightMask | directPreparedBoundedMask))
+	return int(uint(off) &^ (directPreparedEntryMask | directPreparedLightMask | directPreparedBoundedMask | directLeafPreparedMask | directTrapPreparedMask | contextFreeLoopMask))
+}
+
+// Compiler reports the engine that produced this module.
+func (c *Compiled) Compiler() CompilerEngine {
+	if c == nil {
+		return CompilerRailshot
+	}
+	return c.compiler
 }
 
 // RequiresBMI2 reports whether compilation selected BMI2 instructions.
@@ -1162,6 +1186,9 @@ func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
 
 // RequiresAVX512 reports whether compilation selected an AVX-512 plugin lowering.
 func (c *Compiled) RequiresAVX512() bool { return c != nil && c.requiresAVX512 }
+
+func (c *Compiled) RequiresARM64MOPS() bool { return c != nil && c.requiresARM64MOPS }
+func (c *Compiled) RequiresARM64SHA2() bool { return c != nil && c.requiresARM64SHA2 }
 
 type validateMemo struct {
 	execution     *Compiled // private deeply owned execution metadata
@@ -1177,12 +1204,22 @@ type validateMemo struct {
 	// zero entry retains the legacy first-dot interpretation for hand-built
 	// Compiled values; source compilation always records an exact nonzero end.
 	importModuleEnds []uint64
+	// nativeCloneFunctions marks a compact, non-standalone Dragline image. The
+	// sorted original-Wasm indexes must match InstallDraglineTier exactly.
+	nativeCloneFunctions []uint32
 
 	// Fresh low-level compilation records runtime-only quotas here for a later
 	// package-level Instantiate without growing Compiled. Decoded cache artifacts
 	// receive the destination Runtime's current policy through InstantiateOptions.
 	memoryLimitPages         uint32
 	maxInstanceMetadataBytes uint64
+}
+
+func (c *Compiled) compactNativeFunctions() []uint32 {
+	if c == nil || c.validateMemo == nil {
+		return nil
+	}
+	return c.validateMemo.nativeCloneFunctions
 }
 
 // validateCached returns the metadata-validation result, running the full check

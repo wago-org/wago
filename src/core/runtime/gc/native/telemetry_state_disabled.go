@@ -14,7 +14,8 @@ type Telemetry struct {
 	paths                   PathTelemetry
 	barriers                BarrierTelemetry
 	pendingDuplicateDirties uint64
-	allocationBaseline      uint64
+	//lint:ignore U1000 mirrors enabled telemetry layout state for build-tag-neutral callers
+	allocationBaseline uint64
 }
 
 type telemetryCycleKind uint8

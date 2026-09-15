@@ -24,7 +24,8 @@ func TestRegisteredBooleanSettingOwnsValueAccess(t *testing.T) {
 func TestSchemaNamesComeFromRegisteredSettings(t *testing.T) {
 	names := SchemaNames()
 	want := len(allKnownBoolean()) + len(project.RetiredOptimizationNames())
-	if len(names["features"])+len(names["optimizations"]) != want {
-		t.Fatalf("schema names = %d, active plus retired v1 settings = %d", len(names["features"])+len(names["optimizations"]), want)
+	count := len(names["features"]) + len(names["optimizations"]) + len(names["experimental"])
+	if count != want {
+		t.Fatalf("schema names = %d, active plus retired v1 settings = %d", count, want)
 	}
 }

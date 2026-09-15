@@ -1,0 +1,1490 @@
+package dragline
+
+import (
+	"crypto/sha256"
+	"encoding/binary"
+	"fmt"
+	"math"
+	"runtime"
+	"strings"
+	"testing"
+
+	corecompiler "github.com/wago-org/wago/src/core/compiler"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railmach"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
+	compilerprofile "github.com/wago-org/wago/src/core/compiler/profile"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+)
+
+func TestCompilerReportsPerFunctionMetricsAndPeakLiveBytes(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0x02, 0x7f, 0x41, 0, 0x28, 2, 0, 0x0b, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := corecompiler.Target{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}
+	var metrics Metrics
+	output, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metrics.Version != MetricsVersion || metrics.TargetFingerprint != target.Fingerprint() {
+		t.Fatalf("metric identity = version %d fingerprint %x", metrics.Version, metrics.TargetFingerprint)
+	}
+	if len(metrics.Functions) != 2 {
+		t.Fatalf("function rows = %d, want 2", len(metrics.Functions))
+	}
+	if metrics.Functions[0].RailSSAInstructions == 0 || metrics.Functions[0].StackInstructions != 0 {
+		t.Fatalf("straight row = %#v", metrics.Functions[0])
+	}
+	if metrics.Functions[1].StackInstructions == 0 || metrics.Functions[1].RailSSAInstructions == 0 || metrics.Functions[1].SemanticArguments == 0 || metrics.Functions[1].BoundsChecksElided != 1 || metrics.Functions[1].ProofQueries != 1 {
+		t.Fatalf("structured row = %#v", metrics.Functions[1])
+	}
+	for i, row := range metrics.Functions {
+		if row.Function != uint32(i) || row.BodyBytes == 0 || row.NativeBytes == 0 || row.PeakLiveBytes == 0 {
+			t.Fatalf("incomplete row %d: %#v", i, row)
+		}
+	}
+	if row := metrics.Functions[0]; row.liveBaseBytes == 0 || row.PeakLiveBytes < row.liveBaseBytes {
+		t.Fatalf("RailMach row does not retain its planner base: %#v", row)
+	}
+	if row := metrics.Functions[0]; row.RailSSARetainedBytes == 0 || row.RailMachRetainedBytes == 0 || row.RailSSARetainedBytes+row.RailMachRetainedBytes+row.NativePlannerRetainedBytes >= row.PeakLiveBytes {
+		t.Fatalf("RailMach retained-capacity attribution is incomplete: %#v", row)
+	}
+	if row := metrics.Functions[0]; row.NativePlannerCapacity.Total() != row.NativePlannerRetainedBytes {
+		t.Fatalf("native planner capacity categories = %#v, want total %d", row.NativePlannerCapacity, row.NativePlannerRetainedBytes)
+	}
+	if metrics.NativeBytes != uint64(len(output.Code)) || metrics.PeakLiveBytes < metrics.Functions[0].PeakLiveBytes || metrics.PeakLiveBytes < metrics.Functions[1].PeakLiveBytes {
+		t.Fatalf("module metrics = %#v, native output = %d", metrics, len(output.Code))
+	}
+	if metrics.RailMach.Functions+metrics.Structured.Functions != 2 ||
+		metrics.RailMach.NativeBytes+metrics.Structured.NativeBytes != uint64(metrics.Functions[0].NativeBytes+metrics.Functions[1].NativeBytes) ||
+		metrics.RailMach.BodyBytes+metrics.Structured.BodyBytes != uint64(metrics.Functions[0].BodyBytes+metrics.Functions[1].BodyBytes) {
+		t.Fatalf("emitter attribution = RailMach %#v, structured %#v", metrics.RailMach, metrics.Structured)
+	}
+}
+
+func TestCompilerReportsDominatingBoundsCheckReuse(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x28, 0x02, 0x00, 0x1a, // load and discard
+			0x20, 0x00, 0x28, 0x02, 0x00, 0x0b, // same address and width
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].BoundsChecksReused != 1 {
+		t.Fatalf("dominating bounds-check reuse = %#v", metrics.Functions)
+	}
+}
+
+func TestFunctionMetricsSeparatesLivePhases(t *testing.T) {
+	var metrics FunctionMetrics
+	metrics.beginLivePhase(100)
+	metrics.observe(50)
+	metrics.beginLivePhase(20)
+	metrics.observe(30)
+	if metrics.PeakLiveBytes != 150 {
+		t.Fatalf("function peak = %d, want 150", metrics.PeakLiveBytes)
+	}
+	if metrics.livePhasePeakBytes != 50 {
+		t.Fatalf("current phase peak = %d, want 50", metrics.livePhasePeakBytes)
+	}
+}
+
+func TestMetricsSummarizesEmitters(t *testing.T) {
+	metrics := Metrics{Functions: []FunctionMetrics{
+		{BodyBytes: 7, NativeBytes: 11, LowerNanos: 13, EmitNanos: 17, RailMachFinalized: true, CacheHit: true},
+		{BodyBytes: 19, NativeBytes: 23, LowerNanos: 29, EmitNanos: 31},
+		{BodyBytes: 37}, // Unselected tier-clone row.
+	}}
+	metrics.summarizeEmitters()
+	if metrics.RailMach != (EmitterMetrics{Functions: 1, BodyBytes: 7, NativeBytes: 11, LowerNanos: 13, EmitNanos: 17, CacheHits: 1}) ||
+		metrics.Structured != (EmitterMetrics{Functions: 1, BodyBytes: 19, NativeBytes: 23, LowerNanos: 29, EmitNanos: 31}) {
+		t.Fatalf("emitter attribution = RailMach %#v, structured %#v", metrics.RailMach, metrics.Structured)
+	}
+}
+
+func TestRecordNativePlanMetricsKeepsRailSSAAndRailMachDistinct(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Semantic: &railssa.SemanticFunc{Insts: make([]railssa.SemanticInst, 11), Args: make([]railssa.FlowValueID, 9)},
+		Machine: &railmach.Func{
+			Insts:  make([]railmach.Inst, 2),
+			Blocks: []railmach.Block{{}, {Flags: railssa.BlockLoopHeader}},
+			Edges:  []railmach.Edge{{From: 0, To: 1}, {From: 1, To: 1}},
+		},
+		Selection: &railmach.SelectionPlan{Combinations: make([]railmach.Combination, 3)},
+		DAG:       &railmach.DependencyDAG{Dependencies: make([]railmach.Dependency, 8)},
+		Allocation: &railmach.GreedyAllocation{
+			Allocation: railmach.Allocation{
+				Intervals:         make([]railmach.LiveInterval, 4),
+				LiveSegments:      make([]railmach.LiveSegment, 3),
+				LiveSegmentRanges: []railmach.LiveSegmentRange{{Reg: 1, SegmentCount: 3}},
+			},
+			Fragments: make([]railmach.AllocationFragment, 2),
+		},
+		Exit: &railmach.SSAExit{
+			Debt:       railmach.CopyDebt{Physical: 7, Coalesced: 5, Rematerialized: 2},
+			EdgeMoves:  []railmach.MoveRange{{Count: 2}, {Start: 2, Count: 3}},
+			FixedMoves: []railmach.MoveRange{{Start: 5, Count: 2}},
+		},
+		Simplified:         &railssa.SimplifyResult{},
+		BackendAttempts:    2,
+		ScheduleCandidates: 6,
+		InitialScheduleScores: [3]railmach.ScheduleScore{
+			{Kind: railmach.ScheduleKindLatencyFusion, EstimatedCycles: 101, ResourceCycles: 77, SelectedBytes: 32, PostRARewrites: 3, PostRAElisions: 2, PostRAWrapSpills: 1, EliminatedMoves: 4, WeightedSpillDebt: 13, PhysicalCopies: 7, CopyCycles: 2, CopyMotion: 3, FixedRepairs: 4, BrokenFusions: 5, LoopInvariantOps: 6},
+			{Kind: railmach.ScheduleKindPressure, WeightedSpillDebt: 8, PhysicalCopies: 4},
+			{Kind: railmach.ScheduleKindSourceStable, WeightedSpillDebt: 10, PhysicalCopies: 5},
+		},
+		InitialScheduleScoreCount: 3,
+		InitialCandidateFrontier:  1,
+		RetryScheduleScores: [3]railmach.ScheduleScore{
+			{Kind: railmach.ScheduleKindLatencyFusion, EstimatedCycles: 99, PostRARewrites: 4, PostRAElisions: 3, WeightedSpillDebt: 9},
+		},
+		RetryScheduleScoreCount:  1,
+		RetryCandidateFrontier:   1,
+		SegmentedBaselineDebt:    13,
+		SegmentedCandidateDebt:   8,
+		SegmentedBaselineCopies:  7,
+		SegmentedCandidateCopies: 4,
+		SegmentedCandidateRanges: 1,
+		SegmentedAttempted:       true,
+		SegmentedAdmitted:        true,
+	}
+	metrics := FunctionMetrics{}
+	recordNativePlanMetrics(&metrics, plan)
+	if metrics.RailSSAInstructions != 11 || metrics.SemanticArguments != 9 || metrics.RailMachInstructions != 2 {
+		t.Fatalf("IR metrics = RailSSA:%d args:%d RailMach:%d", metrics.RailSSAInstructions, metrics.SemanticArguments, metrics.RailMachInstructions)
+	}
+	if metrics.ScheduleCandidates != 6 || metrics.SelectionCombinations != 3 || metrics.Dependencies != 8 || metrics.LiveIntervals != 4 || metrics.LiveSegments != 6 || metrics.SegmentedRanges != 1 || metrics.AllocationFragments != 2 {
+		t.Fatalf("quality-search metrics = candidates:%d combinations:%d dependencies:%d intervals:%d segments:%d segmented:%d fragments:%d", metrics.ScheduleCandidates, metrics.SelectionCombinations, metrics.Dependencies, metrics.LiveIntervals, metrics.LiveSegments, metrics.SegmentedRanges, metrics.AllocationFragments)
+	}
+	if metrics.InitialScheduleScoreCount != 3 || metrics.InitialCandidateFrontier != 1 || metrics.InitialScheduleScores[0] != (ScheduleCandidateMetrics{Kind: uint8(railmach.ScheduleKindLatencyFusion), Nondominated: true, EstimatedCycles: 101, ResourceCycles: 77, SelectedBytes: 32, PostRARewrites: 3, PostRAElisions: 2, PostRAWrapSpills: 1, EliminatedMoves: 4, WeightedSpillDebt: 13, PhysicalCopies: 7, CopyCycles: 2, CopyMotion: 3, FixedRepairs: 4, BrokenFusions: 5, LoopInvariantOps: 6}) || metrics.InitialScheduleScores[1].WeightedSpillDebt != 8 || metrics.InitialScheduleScores[2].WeightedSpillDebt != 10 {
+		t.Fatalf("initial schedule scores = count:%d scores:%#v", metrics.InitialScheduleScoreCount, metrics.InitialScheduleScores)
+	}
+	if metrics.RetryScheduleScoreCount != 1 || metrics.RetryCandidateFrontier != 1 || metrics.RetryScheduleScores[0] != (ScheduleCandidateMetrics{Kind: uint8(railmach.ScheduleKindLatencyFusion), Nondominated: true, EstimatedCycles: 99, PostRARewrites: 4, PostRAElisions: 3, WeightedSpillDebt: 9}) {
+		t.Fatalf("retry schedule scores = count:%d scores:%#v", metrics.RetryScheduleScoreCount, metrics.RetryScheduleScores)
+	}
+	if !metrics.SegmentedAttempted || !metrics.SegmentedAdmitted || metrics.SegmentedBaselineDebt != 13 || metrics.SegmentedCandidateDebt != 8 || metrics.SegmentedBaselineCopies != 7 || metrics.SegmentedCandidateCopies != 4 || metrics.SegmentedCandidateRanges != 1 {
+		t.Fatalf("segmented trial metrics = attempted:%t admitted:%t debt:%d->%d copies:%d->%d ranges:%d", metrics.SegmentedAttempted, metrics.SegmentedAdmitted, metrics.SegmentedBaselineDebt, metrics.SegmentedCandidateDebt, metrics.SegmentedBaselineCopies, metrics.SegmentedCandidateCopies, metrics.SegmentedCandidateRanges)
+	}
+	if metrics.PhysicalCopies != 7 || metrics.CoalescedCopies != 5 || metrics.CopyRematerializations != 2 {
+		t.Fatalf("copy metrics = physical:%d coalesced:%d rematerialized:%d", metrics.PhysicalCopies, metrics.CoalescedCopies, metrics.CopyRematerializations)
+	}
+	if metrics.EdgeMoves != 5 || metrics.LoopBackedgeMoves != 3 || metrics.LoopBackedgesWithMoves != 1 || metrics.MaxEdgeMoveBundle != 3 || metrics.FixedMoves != 2 {
+		t.Fatalf("move placement metrics = edge:%d backedge:%d backedges:%d max:%d fixed:%d", metrics.EdgeMoves, metrics.LoopBackedgeMoves, metrics.LoopBackedgesWithMoves, metrics.MaxEdgeMoveBundle, metrics.FixedMoves)
+	}
+}
+
+func TestRecordSpecializationMetricsIncludesGCFacts(t *testing.T) {
+	plan := &railssa.SpecializationPlan{Entries: []railssa.Specialization{
+		{Kind: railssa.SpecializeHostEffects},
+		{Kind: railssa.SpecializeExactGCType},
+		{Kind: railssa.SpecializeFreshObject},
+	}}
+	var metrics FunctionMetrics
+	recordSpecializationMetrics(&metrics, plan)
+	if metrics.HostEffectSpecializations != 1 || metrics.ExactGCTypeSpecializations != 1 || metrics.FreshObjectSpecializations != 1 {
+		t.Fatalf("specialization metrics = %#v", metrics)
+	}
+}
+
+func TestCompilerMetricsResetBetweenCompiles(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	compiler := Compiler{Metrics: &metrics}
+	input := corecompiler.Input{Module: m, Source: source, Target: corecompiler.Target{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}}
+	if _, err := compiler.Compile(input); err != nil {
+		t.Fatal(err)
+	}
+	metrics.Functions = append(metrics.Functions, FunctionMetrics{Function: 99})
+	if _, err := compiler.Compile(input); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || metrics.Functions[0].Function != 0 {
+		t.Fatalf("metrics accumulated across compiles: %#v", metrics.Functions)
+	}
+}
+
+func TestCompilerTargetModesIdentifyRailMachFinalization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x42, 7, 0x7c, 0x20, 1, 0x42, 3, 0x7d, 0x84, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []corecompiler.TargetMode{corecompiler.TargetCompatibility, corecompiler.TargetNative} {
+		t.Run(mode.String(), func(t *testing.T) {
+			target, err := corecompiler.HostTarget(mode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var metrics Metrics
+			_, err = (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].ScheduleKind == 0 || metrics.Functions[0].RailSSAInstructions == 0 || metrics.Functions[0].RailMachInstructions == 0 || metrics.Functions[0].TargetSelectedInstructions == 0 || metrics.Functions[0].TargetSelectedInstructions+metrics.Functions[0].GenericMachineInstructions != metrics.Functions[0].RailMachInstructions || metrics.Functions[0].ScheduleCandidates != 3 || metrics.Functions[0].ScheduleReadySteps == 0 || metrics.Functions[0].ScheduleReadyWidthTotal < uint64(metrics.Functions[0].ScheduleReadySteps) || metrics.Functions[0].ScheduleReadyWidthMax == 0 || metrics.Functions[0].ScheduleCriticalPathCost == 0 || metrics.Functions[0].LiveSegments == 0 || metrics.Functions[0].ImmediateFolds != 2 || runtime.GOARCH == "amd64" && metrics.Functions[0].PostRARewrites == 0 {
+				t.Fatalf("%s metrics = %#v", mode, metrics.Functions)
+			}
+		})
+	}
+}
+
+func TestCompilerDiagnosticScheduleOverrideUsesNormalFinalizer(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x42, 7, 0x7c, 0x20, 1, 0x42, 3, 0x7d, 0x84, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetCompatibility)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forced := range []ScheduleDiagnosticKind{ScheduleDiagnosticSourceStable, ScheduleDiagnosticLatencyFusion, ScheduleDiagnosticPressure} {
+		t.Run(fmt.Sprint(forced), func(t *testing.T) {
+			metrics := Metrics{ScheduleOverride: forced}
+			output, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if metrics.ScheduleOverride != forced || metrics.NativeBytes != uint64(len(output.Code)) {
+				t.Fatalf("override/output metrics = %#v, code=%d", metrics, len(output.Code))
+			}
+			if len(metrics.Functions) != 1 || !metrics.Functions[0].ScheduleForced || metrics.Functions[0].InitialScheduleScoreCount != 1 || metrics.Functions[0].InitialScheduleScores[0].Kind != uint8(forced) || metrics.Functions[0].ScheduleKind != uint8(forced) {
+				t.Fatalf("forced schedule %d metrics = %#v", forced, metrics.Functions)
+			}
+		})
+	}
+}
+
+func TestCompilerRejectsInvalidDiagnosticScheduleOverride(t *testing.T) {
+	metrics := Metrics{ScheduleOverride: ScheduleDiagnosticKind(4)}
+	_, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{})
+	if err == nil || !strings.Contains(err.Error(), "invalid diagnostic schedule override 4") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestCompilerSkipsRedundantScheduleCandidates(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	target, err := corecompiler.HostTarget(corecompiler.TargetCompatibility)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].ScheduleCandidates != 1 {
+		t.Fatalf("serial function schedule metrics = %#v", metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachBranchCastEdgeRefinement(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x00},
+			wasmtest.FuncType([]wasm.ValType{wasm.AnyRef, wasm.V128}, []wasm.ValType{wasm.V128}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.EqRef}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x02, 0x02,
+			0x20, 0x00,
+			0xfb, 0x18, 0x03, 0x00, 0x6e, 0x6d,
+			0x00,
+			0x0b,
+			0x1a, 0x20, 0x01,
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan == nil || len(plan.CFG.Refinements) != 2 {
+		t.Fatalf("branch-cast refinements = %#v", func() any {
+			if plan == nil {
+				return nil
+			}
+			return plan.CFG.Refinements
+		}())
+	}
+	flow := &planner.flow
+	branchValue := flow.InstructionValues[2]
+	if branchValue == 0 || flow.Values[branchValue].Type != wasm.I32 {
+		t.Fatalf("branch-cast condition = v%d %#v", branchValue, flow.Values)
+	}
+	refinedParams := 0
+	for _, param := range flow.Params {
+		if flow.Values[param.Value].Type.Kind() == wasm.ValRef {
+			refinedParams++
+		}
+	}
+	if refinedParams < 2 {
+		t.Fatalf("branch-cast refined params = %d; params=%#v", refinedParams, flow.Params)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("branch-cast finalization = %#v", metrics.Functions)
+	}
+}
+
+func TestCompilerProductionGCAllocationFactsReachSpecialization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfb, 0x01, 0x00, 0x1a, 0x41, 0x00, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead := 0
+	for _, reservation := range plan.DeadGCReservations {
+		if reservation {
+			dead++
+		}
+	}
+	if dead != 1 {
+		t.Fatalf("dead GC reservations = %d; plan=%v", dead, plan.DeadGCReservations)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || metrics.Functions[0].ExactGCTypeSpecializations != 1 || metrics.Functions[0].FreshObjectSpecializations != 1 {
+		t.Fatalf("production GC specializations = %#v", metrics.Functions)
+	}
+}
+
+func TestCompilerPlansCheckedDeadGCConstructorFamilies(t *testing.T) {
+	passive := append([]byte{0x01}, append(wasmtest.ULEB(3), []byte("abc")...)...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7e, 0x01}, // (struct (field (mut i64)))
+			[]byte{0x5e, 0x7e, 0x01},       // (array (mut i64))
+			[]byte{0x5e, 0x78, 0x01},       // (array (mut i8))
+			[]byte{0x5e, 0x63, 0x00, 0x01}, // (array (mut (ref null 0)))
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(
+			wasmtest.ULEB(4), wasmtest.ULEB(4), wasmtest.ULEB(4), wasmtest.ULEB(4), wasmtest.ULEB(4), wasmtest.ULEB(4),
+		)),
+		wasmtest.Section(12, wasmtest.ULEB(1)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x42, 0x2a, 0xfb, 0x00, 0x00, 0x1a, 0x41, 0x07, 0x0b}),
+			wasmtest.Code([]byte{0x41, 0x02, 0xfb, 0x07, 0x01, 0x1a, 0x41, 0x07, 0x0b}),
+			wasmtest.Code([]byte{0x42, 0x2a, 0x41, 0x02, 0xfb, 0x06, 0x01, 0x1a, 0x41, 0x07, 0x0b}),
+			wasmtest.Code([]byte{0x42, 0x01, 0x42, 0x02, 0xfb, 0x08, 0x01, 0x02, 0x1a, 0x41, 0x07, 0x0b}),
+			wasmtest.Code([]byte{0x41, 0x00, 0x41, 0x02, 0xfb, 0x09, 0x02, 0x00, 0x1a, 0x41, 0x07, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0x00, 0x41, 0x02, 0xfb, 0x06, 0x03, 0x1a, 0x41, 0x07, 0x0b}),
+		)),
+		wasmtest.Section(11, wasmtest.Vec(passive)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for function := 0; function < 6; function++ {
+		stack, err := railssa.BuildStackFunc(m, function)
+		if err != nil {
+			t.Fatalf("function %d: %v", function, err)
+		}
+		var planner nativeBackendPlanner
+		plan, err := planner.Plan(stack, target)
+		if err != nil {
+			t.Fatalf("function %d: %v", function, err)
+		}
+		dead := 0
+		for _, reservation := range plan.DeadGCReservations {
+			if reservation {
+				dead++
+			}
+		}
+		want := 1
+		if function == 5 {
+			want = 0
+		}
+		if dead != want {
+			t.Fatalf("function %d dead GC reservations = %d, want %d; plan=%v", function, dead, want, plan.DeadGCReservations)
+		}
+	}
+}
+
+func TestCompilerPlansProvenNoBarrierGCStores(t *testing.T) {
+	structType := []byte{0x5f}
+	structType = append(structType, wasmtest.Vec([]byte{0x6d, 0x01})...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			structType,
+			[]byte{0x5e, 0x6d, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0xd0, 0x6d, 0xfb, 0x00, 0x00,
+			0x41, 0x07, 0xfb, 0x1c, 0xfb, 0x05, 0x00, 0x00,
+			0x41, 0x01, 0xfb, 0x07, 0x01,
+			0x41, 0x00, 0xd0, 0x6d, 0xfb, 0x0e, 0x01,
+			0xd0, 0x6d, 0xfb, 0x00, 0x00,
+			0xd0, 0x6d, 0xfb, 0x00, 0x00, 0xfb, 0x05, 0x00, 0x00,
+			0x41, 0x02, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proved := 0
+	for _, noBarrier := range plan.NoBarrierGCStores {
+		if noBarrier {
+			proved++
+		}
+	}
+	if proved != 2 {
+		t.Fatalf("proven no-barrier GC stores = %d, want 2; plan=%v", proved, plan.NoBarrierGCStores)
+	}
+}
+
+func TestCompilerNativeRailMachTargetConstraintBoundary(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x86, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("%s shift finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachFixedShiftRepairFinalization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x7c, 0x20, 2, 0x86, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOARCH == "amd64" {
+		hasRepair := false
+		for _, moveRange := range plan.Exit.FixedMoves {
+			hasRepair = hasRepair || moveRange.Count != 0
+		}
+		if !hasRepair {
+			t.Fatal("expected an AMD64 fixed shift-count repair")
+		}
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("%s fixed shift finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachDivisionFinalization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x7f, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("%s division finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachFixedDivisionRepairFinalization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 2, 0x20, 1, 0x7f, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOARCH == "amd64" {
+		hasRepair := false
+		for _, moveRange := range plan.Exit.FixedMoves {
+			hasRepair = hasRepair || moveRange.Count != 0
+		}
+		if !hasRepair {
+			t.Fatal("expected an AMD64 fixed division-input repair")
+		}
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("%s fixed division finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachCallLiveFinalization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 0, 0x10, 1, 0x7c, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x42, 1, 0x7c, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 2 || !metrics.Functions[0].RailMachFinalized || !metrics.Functions[1].RailMachFinalized {
+		t.Fatalf("%s call-live finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+	if metrics.Functions[0].IPRARefinedCalls != 1 || metrics.Functions[0].PreservationCost != 0 {
+		t.Fatalf("%s exact callee contract was not used: %#v", runtime.GOARCH, metrics.Functions[0])
+	}
+}
+
+func TestRailMachTrappingTruncExcludesIntegerExtension(t *testing.T) {
+	for _, kind := range []wasm.InstrKind{
+		wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U,
+		wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
+		wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U,
+		wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U,
+	} {
+		if !railMachTrappingTrunc(kind) {
+			t.Fatalf("%s was not classified as a trapping conversion", kind)
+		}
+	}
+	for _, kind := range []wasm.InstrKind{wasm.InstrI64ExtendI32S, wasm.InstrI64ExtendI32U} {
+		if railMachTrappingTrunc(kind) {
+			t.Fatalf("%s was classified as a trapping conversion", kind)
+		}
+	}
+}
+
+func TestCompilerNativeRecursiveSCCRemainsConservative(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x10, 1, 0x0b}),
+			wasmtest.Code([]byte{0x10, 0, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 2 || metrics.Functions[0].IPRARefinedCalls != 0 || metrics.Functions[1].IPRARefinedCalls != 0 {
+		t.Fatalf("recursive SCC used a partial contract: %#v", metrics.Functions)
+	}
+}
+
+func TestCompilerNativeHotRecursiveSCCUsesCompleteContracts(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x10, 1, 0x0b}),
+			wasmtest.Code([]byte{0x10, 0, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observations := &compilerprofile.Module{Version: compilerprofile.Version, Source: compilerprofile.SourceStatic, Phase: compilerprofile.PhaseSteady, FunctionCounts: []uint64{100, 1}}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target, Profile: observations}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 2 || metrics.Functions[0].IPRARefinedCalls != 1 || metrics.Functions[1].IPRARefinedCalls != 1 {
+		t.Fatalf("hot recursive SCC did not use complete contracts: %#v", metrics.Functions)
+	}
+}
+
+func TestCompilerNativeHotFormerMixedEmitterSCCUsesCompleteContracts(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x03, 0x40, 0x03, 0x40, 0x0b, 0x0b, 0x10, 1, 0x0b}),
+			wasmtest.Code([]byte{0x10, 0, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observations := &compilerprofile.Module{Version: compilerprofile.Version, Source: compilerprofile.SourceStatic, Phase: compilerprofile.PhaseSteady, FunctionCounts: []uint64{100, 100}}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target, Profile: observations}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 2 || metrics.Functions[0].IPRARefinedCalls != 1 || metrics.Functions[1].IPRARefinedCalls != 1 {
+		t.Fatalf("fully machine-lowered SCC did not publish complete contracts: %#v", metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachFloatFinalization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64, wasm.F64}, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0xa2, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].ClobberFPR == 0 {
+		t.Fatalf("%s float finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachV128FoundationFinalization(t *testing.T) {
+	constant := [16]byte{0x80, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	body := []byte{0x41, 0x20, 0x41, 0x00, 0xfd, 0x00, 0x04, 0x00}
+	body = append(body, 0xfd, 0x0c)
+	body = append(body, constant[:]...)
+	body = append(body, 0xfd)
+	body = append(body, wasmtest.ULEB(174)...)
+	body = append(body, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !railMachCandidate(stack, true) {
+		t.Fatalf("v128 foundation was not a candidate: params=%v results=%v locals=%v globals=%v result-types=%v instructions=%v", stack.Params, stack.Results, stack.Locals, stack.Globals, stack.ResultTypes, stack.Instrs)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target, Bounds: corecompiler.BoundsExplicit}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("%s v128 foundation finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachARM64PairFinalization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x29, 3, 0, 0x20, 0, 0x29, 3, 8, 0x7c, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("%s pair finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+	if runtime.GOARCH == "arm64" && (metrics.Functions[0].PostRARewrites == 0 || metrics.Functions[0].PostRAByteSavings <= 0) {
+		t.Fatalf("ARM64 pair did not report an exact byte saving: %#v", metrics.Functions[0])
+	}
+	if runtime.GOARCH == "arm64" && (metrics.Functions[0].InitialScheduleScoreCount == 0 || metrics.Functions[0].InitialScheduleScores[0].PostRARewrites == 0 || metrics.Functions[0].InitialScheduleScores[0].PostRAElisions == 0) {
+		t.Fatalf("ARM64 pair did not report initial-candidate post-RA opportunity: %#v", metrics.Functions[0].InitialScheduleScores)
+	}
+}
+
+func TestCompilerNativeRailMachRejectsUnalignedARM64Pair(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x29, 3, 20, 0x20, 0, 0x29, 3, 28, 0x7c, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("%s unaligned pair finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+	if runtime.GOARCH == "arm64" && (metrics.Functions[0].PostRARewrites != 2 || metrics.Functions[0].PostRAByteSavings <= 0) {
+		// Both accesses independently use legal pre-index forms. A realized pair
+		// would add a third rewrite, and remains illegal at this alignment.
+		t.Fatalf("ARM64 unaligned pair/pre-index realization = %#v", metrics.Functions[0])
+	}
+}
+
+func TestCompilerNativeRailMachStoreLoadForwardFinalization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x37, 3, 0, 0x20, 0, 0x29, 3, 0, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("%s store-load finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+	if metrics.Functions[0].PostRARewrites == 0 {
+		t.Fatalf("%s store-load forwarding was planned but not emitted: %#v", runtime.GOARCH, metrics.Functions[0])
+	}
+}
+
+func TestCompilerNativeRailMachConsumesDischargedDivisorCheck(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x41, 0x03, 0x6d, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].ObligationsElided == 0 {
+		t.Fatalf("%s discharged divisor check = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeAMD64EmitsImmediateSubLEA(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("AMD64 post-RA realization")
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x42, 0x07, 0x7d, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].PostRARewrites == 0 {
+		t.Fatalf("AMD64 immediate subtraction LEA = %#v", metrics.Functions)
+	}
+}
+
+func TestCompilerNativeAMD64ReportsMemoryFold(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("AMD64 post-RA realization")
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x01, 0x20, 0x00, 0x28, 0x02, 0x00, 0x6a, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || metrics.Functions[0].MemoryFolds != 1 || metrics.Functions[0].PostRARewrites == 0 {
+		t.Fatalf("AMD64 memory-fold metrics = %#v", metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachSpillFinalization(t *testing.T) {
+	params := make([]wasm.ValType, 21)
+	for index := range params {
+		params[index] = wasm.I64
+	}
+	body := make([]byte, 0, len(params)*3)
+	for index := range params {
+		body = append(body, 0x20)
+		body = append(body, wasmtest.ULEB(uint32(index))...)
+	}
+	for range len(params) - 1 {
+		body = append(body, 0x7c)
+	}
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Allocation.SpillSlots == 0 {
+		t.Fatalf("high-pressure %s function did not force a spill", runtime.GOARCH)
+	}
+	if plan.BackendAttempts != railmach.MaxBackendAttempts {
+		t.Fatalf("high-pressure %s backend attempts = %d, want %d (debt=%d copies=%d cycles=%d)", runtime.GOARCH, plan.BackendAttempts, railmach.MaxBackendAttempts, plan.Allocation.Metrics.WeightedDebt, plan.Exit.Debt.Physical, plan.Exit.Debt.Cycles)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].FrameBytes == 0 || metrics.Functions[0].AllocationStage != 4 || metrics.Functions[0].SpillSlots == 0 || metrics.Functions[0].BackendAttempts != railmach.MaxBackendAttempts {
+		t.Fatalf("%s spill finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachSpillEdgeFinalization(t *testing.T) {
+	params := make([]wasm.ValType, 22)
+	for index := range 21 {
+		params[index] = wasm.I64
+	}
+	params[21] = wasm.I32
+	body := []byte{0x20, 21, 0x04, 0x40}
+	appendUpdates := func(delta byte) {
+		for index := range 21 {
+			body = append(body, 0x20, byte(index), 0x42, delta, 0x7c, 0x21, byte(index))
+		}
+	}
+	appendUpdates(1)
+	body = append(body, 0x05)
+	appendUpdates(2)
+	body = append(body, 0x0b)
+	for index := range 21 {
+		body = append(body, 0x20, byte(index))
+	}
+	for range 20 {
+		body = append(body, 0x7c)
+	}
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spillMove := false
+	for _, move := range plan.Exit.Moves {
+		spillMove = spillMove || move.Src.Kind == railmach.LocationSpill || move.Dst.Kind == railmach.LocationSpill
+	}
+	if plan.Allocation.SpillSlots == 0 || !spillMove {
+		t.Fatalf("%s high-pressure merge lacks spill edge: slots=%d moves=%#v", runtime.GOARCH, plan.Allocation.SpillSlots, plan.Exit.Moves)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("%s spill-edge finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachRematerializationFinalization(t *testing.T) {
+	const locals = 28
+	body := make([]byte, 0, locals*14)
+	body = append(body, 0x02, 0x40) // block; constants remain live in locals across the edge.
+	for index := range 28 {
+		body = append(body, 0x44)
+		var bits [8]byte
+		binary.LittleEndian.PutUint64(bits[:], math.Float64bits(float64(index+1)))
+		body = append(body, bits[:]...)
+		body = append(body, 0x21)
+		body = append(body, wasmtest.ULEB(uint32(index))...)
+	}
+	body = append(body, 0x0b)
+	for index := range locals {
+		body = append(body, 0x20)
+		body = append(body, wasmtest.ULEB(uint32(index))...)
+	}
+	for range 27 {
+		body = append(body, 0xa0)
+	}
+	body = append(body, 0x0b)
+	function := append([]byte{0x01, locals, 0x7c}, body...)
+	code := append(wasmtest.ULEB(uint32(len(function))), function...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rematerialized := 0
+	for _, location := range plan.Allocation.Locations {
+		if location.Kind == railmach.LocationRematerialize {
+			rematerialized++
+		}
+	}
+	if rematerialized == 0 {
+		t.Fatalf("high-pressure %s function did not rematerialize", runtime.GOARCH)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("%s rematerialization finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachControlFinalization(t *testing.T) {
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string][]byte{
+		"if":       {0x20, 0, 0x04, 0x7f, 0x41, 7, 0x05, 0x41, 9, 0x0b, 0x0b},
+		"cmp-if":   {0x20, 0, 0x41, 7, 0x48, 0x04, 0x7f, 0x41, 7, 0x05, 0x41, 9, 0x0b, 0x0b},
+		"br_table": {0x02, 0x40, 0x02, 0x40, 0x20, 0, 0x0e, 2, 0, 1, 1, 0x0b, 0x41, 10, 0x0f, 0x0b, 0x41, 20, 0x0b},
+	} {
+		t.Run(name, func(t *testing.T) {
+			source := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var metrics Metrics
+			if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+				t.Fatal(err)
+			}
+			if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+				t.Fatalf("%s control finalization = %#v", runtime.GOARCH, metrics.Functions)
+			}
+			if name == "cmp-if" && metrics.Functions[0].PostRARewrites == 0 {
+				t.Fatalf("%s compare/branch fusion was planned but not emitted: %#v", runtime.GOARCH, metrics.Functions[0])
+			}
+		})
+	}
+}
+
+func TestCompilerNativeRailMachNestedLoopAndLoopIfFinalization(t *testing.T) {
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string][]byte{
+		"loop_if": {
+			0x02, 0x40, 0x03, 0x40,
+			0x20, 0, 0x45, 0x0d, 1,
+			0x20, 0, 0x45, 0x04, 0x40, 0x00, 0x0b,
+			0x20, 0, 0x41, 1, 0x6b, 0x21, 0, 0x0c, 0,
+			0x0b, 0x0b, 0x20, 0, 0x0b,
+		},
+		"nested_loop": {
+			0x02, 0x40, 0x03, 0x40, 0x02, 0x40, 0x03, 0x40,
+			0x20, 0, 0x45, 0x0d, 1,
+			0x20, 0, 0x41, 1, 0x6b, 0x21, 0, 0x0c, 0,
+			0x0b, 0x0b,
+			0x20, 0, 0x45, 0x0d, 1, 0x0c, 0,
+			0x0b, 0x0b, 0x20, 0, 0x0b,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			source := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var metrics Metrics
+			if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+				t.Fatal(err)
+			}
+			if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+				t.Fatalf("%s RailMach finalization = %#v", runtime.GOARCH, metrics.Functions)
+			}
+		})
+	}
+}
+
+func TestCompilerNativeRailMachDirectCallFinalization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x10, 0, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 2 || !metrics.Functions[0].RailMachFinalized || !metrics.Functions[1].RailMachFinalized || metrics.Functions[1].Relocations != 1 {
+		t.Fatalf("%s direct-call finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachIndirectCallFinalization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x11, 0, 0, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 2 || !metrics.Functions[0].RailMachFinalized || !metrics.Functions[1].RailMachFinalized {
+		t.Fatalf("%s indirect-call finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachProfiledIndirectCallFinalization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x11, 0, 0, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observations := &compilerprofile.Module{
+		Version: compilerprofile.Version, ModuleHash: sha256.Sum256(source), Source: compilerprofile.SourceStatic, Phase: compilerprofile.PhaseSteady,
+		CallTargets: []compilerprofile.TargetHistogram{{Site: compilerprofile.Site{Function: 1, Offset: 4}, Targets: []compilerprofile.TargetCount{{Function: 0, Count: 10}}}},
+	}
+	var metrics Metrics
+	_, err = (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target, Profile: observations})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 2 || metrics.Functions[1].GuardedIndirectCalls != 1 || metrics.Functions[1].Relocations != 1 {
+		t.Fatalf("%s profiled indirect-call finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachIndirectFloatCallLiveFinalization(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}),
+			wasmtest.FuncType([]wasm.ValType{wasm.F64, wasm.I32}, []wasm.ValType{wasm.F64}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 0, 0x20, 1, 0x11, 0, 0, 0xa0, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOARCH == "amd64" && plan.ExternalCallFPRs == 0 {
+		t.Fatal("AMD64 indirect float call-live mask is empty")
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 2 || !metrics.Functions[0].RailMachFinalized || !metrics.Functions[1].RailMachFinalized || metrics.Functions[1].FrameBytes == 0 {
+		t.Fatalf("%s indirect float call-live finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachImportedCallFinalization(t *testing.T) {
+	importEntry := append(wasmtest.Name("env"), wasmtest.Name("add")...)
+	importEntry = append(importEntry, 0)
+	importEntry = append(importEntry, wasmtest.ULEB(0)...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 20, 0x41, 22, 0x10, 0, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{
+		Module: m, Source: source, Target: target,
+		HostEffects: []corecompiler.HostEffectBinding{{Declared: true, Contract: corecompiler.HostEffectContract{Reads: corecompiler.HostHeapGlobal}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].Relocations != 0 || metrics.Functions[0].HostEffectSpecializations != 1 {
+		t.Fatalf("%s imported-call finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestCompilerNativeRailMachImportedFloatCallLiveFinalization(t *testing.T) {
+	importEntry := append(wasmtest.Name("env"), wasmtest.Name("step")...)
+	importEntry = append(importEntry, 0)
+	importEntry = append(importEntry, wasmtest.ULEB(0)...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x20, 0, 0x10, 0, 0xa0, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOARCH == "amd64" && (plan.ExternalCallFPRs == 0 || plan.Frame.TotalBytes == 0) {
+		t.Fatalf("AMD64 external float preservation = mask %#x frame %d", plan.ExternalCallFPRs, plan.Frame.TotalBytes)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].FrameBytes == 0 {
+		t.Fatalf("%s imported float call-live finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}

@@ -26,6 +26,7 @@ const indexPath = join(websiteDir, "index.html");
 const requestedUpdateArch = process.env.WAGO_BENCH_UPDATE_ARCH || "";
 const ENGINES = [
   { id: "railshot", label: "wago" },
+  { id: "dragline", label: "Dragline" },
   { id: "wazero", label: "wazero" },
 ];
 const benchmarkSets = await loadBenchmarkSets();
@@ -118,7 +119,7 @@ function buildCorpusTabs(sets) {
     let hasCommand = false;
     for (const set of sets) {
       for (const key of set.metrics.keys()) {
-        for (const prefix of ["Exec/", "WazeroExec/"]) {
+        for (const prefix of ["Exec/", "DraglineExec/", "WazeroExec/"]) {
           if (key.startsWith(`${prefix}${name}.`)) keys.add(key.slice(prefix.length));
         }
         if (key === `CommandExec/${name}` || key === `WazeroCommandExec/${name}`) hasCommand = true;
@@ -228,6 +229,7 @@ async function loadRunMetrics(path, fallbackArch = "") {
 function buildGeneralSummary(metrics, raw, modules) {
   const compileNames = new Map([
     ["railshot-native", "railshot"],
+    ["dragline-native", "dragline"],
     ["wazero", "wazero"],
   ]);
   const compile = new Map();
@@ -262,12 +264,17 @@ function buildGeneralSummary(metrics, raw, modules) {
   );
   const compileTime = {
     railshot: metricGeomean(metrics, "CompileFull/", false, "ns", includedModules),
+    dragline: metricGeomean(metrics, "DraglineCompileFull/", false, "ns", includedModules),
     wazero: metricGeomean(metrics, "WazeroCompile/", false, "ns", includedModules),
   };
+	instantiate.dragline = metricGeomean(metrics, "DraglineInstantiate/", false, "ns", includedModules);
+	execution.dragline = metricGeomean(metrics, "DraglineExec/", true, "ns", includedModules);
+	machineCode.dragline = metricGeomean(metrics, "DraglineCompileFull/", false, "codeBytes", includedModules);
   const summary = [
     ["Compile", "fresh process", "ns", compileTime],
     ["Compile heap", "per compile", "bytes", {
       railshot: metricGeomean(metrics, "CompileFull/", false, "bytes", includedModules),
+      dragline: metricGeomean(metrics, "DraglineCompileFull/", false, "bytes", includedModules),
       wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes", includedModules),
     }],
     ["Machine code", "compiled corpus", "code", machineCode],
@@ -400,6 +407,12 @@ function parseBench(text) {
 // when either side is missing so the row is skipped rather than crashing.
 function backendMetricKey(key, backend) {
   if (backend === "railshot") return key;
+  if (backend === "dragline") {
+    return key
+      .replace(/^CompileFull\//, "DraglineCompileFull/")
+      .replace(/^Instantiate\//, "DraglineInstantiate/")
+      .replace(/^Exec\//, "DraglineExec/");
+  }
   return "";
 }
 
@@ -700,7 +713,7 @@ function buildEngineRow(spec, set, tabID) {
   const values = [];
   for (const engine of ENGINES) {
     let value = 0;
-    if (engine.id === "railshot" || engine.id === "wazero") {
+    if (engine.id === "railshot" || engine.id === "dragline" || engine.id === "wazero") {
       const key = engine.id === "wazero" ? spec.wazeroKey : backendMetricKey(spec.wagoKey, engine.id);
       const metric = key ? set.metrics.get(key) : null;
       value = metric ? pick(metric) : 0;

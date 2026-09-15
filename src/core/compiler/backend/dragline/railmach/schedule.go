@@ -1,0 +1,1281 @@
+package railmach
+
+import (
+	"fmt"
+	"slices"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railspec"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+type DependencyKind uint8
+
+const (
+	DependencyData DependencyKind = 1 << iota
+	DependencyEffect
+	DependencyTrap
+	DependencyFixed
+	DependencyFusion
+)
+
+type Dependency struct {
+	Instruction uint32
+	Kind        DependencyKind
+	_           [3]byte
+}
+
+type DependencyDAG struct {
+	Offsets      []uint32
+	Dependencies []Dependency
+	// SuccessorOffsets and Successors are the exact reverse CSR used by the
+	// scheduler to update ready counts without rescanning every candidate's
+	// predecessor list after each placement.
+	SuccessorOffsets []uint32
+	Successors       []uint32
+
+	scratch         []Dependency
+	verifySeen      []uint32
+	definition      []uint32
+	defined         []bool
+	successorCursor []uint32
+}
+
+// HasScheduleAlternatives reports whether scheduling effort can change the
+// machine order. A direct dependency from every instruction to its source
+// predecessor proves a unique block-local topological order. Uncertain input
+// and cross-block LICM remain eligible so this gate can only remove redundant
+// candidates, never suppress a known transformation.
+func HasScheduleAlternatives(f *Func, dag *DependencyDAG, pressure *railssa.PressurePlan) bool {
+	if f == nil || dag == nil || len(dag.Offsets) != len(f.Insts)+1 || pressure != nil && len(pressure.LICM) != 0 {
+		return true
+	}
+	for _, block := range f.Blocks {
+		end := block.InstStart + block.InstCount
+		if end > uint32(len(f.Insts)) {
+			return true
+		}
+		for instruction := block.InstStart + 1; instruction < end; instruction++ {
+			start, dependencyEnd := dag.Offsets[instruction], dag.Offsets[instruction+1]
+			if dependencyEnd < start || dependencyEnd > uint32(len(dag.Dependencies)) {
+				return true
+			}
+			found := false
+			for _, dependency := range dag.Dependencies[start:dependencyEnd] {
+				if dependency.Instruction == instruction-1 {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ResetVerifierScratch detaches reusable verifier state from a shallow DAG
+// copy. Immutable offsets and dependencies remain shared, allowing independent
+// candidate verification without duplicating the graph.
+func (dag *DependencyDAG) ResetVerifierScratch() {
+	if dag != nil {
+		dag.verifySeen = nil
+	}
+}
+
+func BuildDependencyDAG(f *Func, selection *SelectionPlan, metadata *railssa.Metadata, reuse *DependencyDAG) (*DependencyDAG, error) {
+	if err := Verify(f); err != nil {
+		return nil, err
+	}
+	if selection == nil || len(selection.Selections) != len(f.Insts) || metadata == nil {
+		return nil, fmt.Errorf("railmach: dependency DAG requires selection and metadata")
+	}
+	if reuse == nil {
+		reuse = new(DependencyDAG)
+	}
+	offsets := resize(reuse.Offsets, len(f.Insts)+1)
+	dependencies := reuse.Dependencies[:0]
+	successorOffsets := resize(reuse.SuccessorOffsets, len(f.Insts)+1)
+	successors := reuse.Successors[:0]
+	scratch := reuse.scratch[:0]
+	if cap(dependencies) == 0 {
+		// Data dependencies are bounded by machine operands; instruction and
+		// combination counts cover the usual effect, trap, fixed, and fusion
+		// edges. Both slabs are reusable and remain function-bounded if an
+		// unusually dense barrier graph needs to grow beyond this first hint.
+		capacity := len(f.Operands) + len(f.Insts) + len(selection.Combinations)
+		dependencies = make([]Dependency, 0, capacity)
+		scratch = make([]Dependency, 0, capacity)
+	}
+	verifySeen := reuse.verifySeen
+	definition := resize(reuse.definition, len(f.VRegs))
+	defined := resize(reuse.defined, len(f.VRegs))
+	successorCursor := reuse.successorCursor
+	*reuse = DependencyDAG{Offsets: offsets, Dependencies: dependencies, SuccessorOffsets: successorOffsets, Successors: successors, scratch: scratch, verifySeen: verifySeen, definition: definition, defined: defined, successorCursor: successorCursor}
+	for instructionID, instruction := range f.Insts {
+		for ordinal := uint32(0); ordinal < instruction.ResultCount(); ordinal++ {
+			result := instruction.Result + VReg(ordinal)
+			reuse.definition[result], reuse.defined[result] = uint32(instructionID), true
+		}
+	}
+	combinationsSorted := true
+	for index := 1; index < len(selection.Combinations); index++ {
+		combinationsSorted = combinationsSorted && selection.Combinations[index-1].Consumer <= selection.Combinations[index].Consumer
+	}
+	combinationCursor := 0
+	for _, block := range f.Blocks {
+		lastTrap, lastCall, lastBarrier := ^uint32(0), ^uint32(0), ^uint32(0)
+		var lastHeap [9]uint32
+		var hasHeap [9]bool
+		var lastFixed [2][256]uint32
+		var hasFixed [2][256]bool
+		for instructionID := block.InstStart; instructionID < block.InstStart+block.InstCount; instructionID++ {
+			reuse.Offsets[instructionID] = uint32(len(reuse.Dependencies))
+			dependencyStart := len(reuse.Dependencies)
+			instruction := f.Insts[instructionID]
+			for _, operand := range f.InstructionOperands(instructionID) {
+				if reuse.defined[operand.Reg] && reuse.definition[operand.Reg] < instructionID {
+					appendDependency(&reuse.Dependencies, reuse.definition[operand.Reg], DependencyData)
+				}
+				if operand.Flags&OperandFixed != 0 {
+					bank := 0
+					if operand.Bank == BankFPR {
+						bank = 1
+					}
+					if hasFixed[bank][operand.Fixed] {
+						appendDependency(&reuse.Dependencies, lastFixed[bank][operand.Fixed], DependencyFixed)
+					}
+					lastFixed[bank][operand.Fixed], hasFixed[bank][operand.Fixed] = instructionID, true
+				}
+			}
+			meta := metadata.Instructions[instruction.Source]
+			barrier := meta.Flags&(railssa.EffectMayGrow|railssa.EffectMayAllocate|railssa.EffectMayCollect|railssa.EffectMayReenter|railssa.EffectMayThrow|railssa.EffectMayTrap) != 0
+			if (meta.Reads != 0 || meta.Writes != 0 || meta.Flags != 0) && lastBarrier != ^uint32(0) {
+				appendUniqueDependency(&reuse.Dependencies, dependencyStart, lastBarrier, DependencyEffect)
+			}
+			if barrier {
+				for heap := range lastHeap {
+					if hasHeap[heap] {
+						appendUniqueDependency(&reuse.Dependencies, dependencyStart, lastHeap[heap], DependencyEffect)
+					}
+				}
+				if lastCall != ^uint32(0) {
+					appendUniqueDependency(&reuse.Dependencies, dependencyStart, lastCall, DependencyEffect)
+				}
+				for heap := range lastHeap {
+					lastHeap[heap], hasHeap[heap] = instructionID, true
+				}
+				lastBarrier = instructionID
+			} else {
+				heaps := meta.Reads | meta.Writes
+				for heap := range lastHeap {
+					bit := railssa.HeapMask(1) << heap
+					if heaps&bit == 0 {
+						continue
+					}
+					if hasHeap[heap] {
+						appendUniqueDependency(&reuse.Dependencies, dependencyStart, lastHeap[heap], DependencyEffect)
+					}
+					lastHeap[heap], hasHeap[heap] = instructionID, true
+				}
+			}
+			if meta.Flags&railssa.EffectCall != 0 {
+				if lastCall != ^uint32(0) {
+					appendUniqueDependency(&reuse.Dependencies, dependencyStart, lastCall, DependencyEffect)
+				}
+				lastCall = instructionID
+			}
+			if meta.Traps != 0 {
+				if lastTrap != ^uint32(0) {
+					appendDependency(&reuse.Dependencies, lastTrap, DependencyTrap)
+				}
+				lastTrap = instructionID
+			}
+			if combinationsSorted {
+				for combinationCursor < len(selection.Combinations) && selection.Combinations[combinationCursor].Consumer < instructionID {
+					combinationCursor++
+				}
+				for index := combinationCursor; index < len(selection.Combinations) && selection.Combinations[index].Consumer == instructionID; index++ {
+					combination := selection.Combinations[index]
+					if combination.Producer != ^uint32(0) && combination.Producer < instructionID {
+						appendDependency(&reuse.Dependencies, combination.Producer, DependencyFusion)
+					}
+				}
+			} else {
+				for _, combination := range selection.Combinations {
+					if combination.Consumer == instructionID && combination.Producer != ^uint32(0) && combination.Producer < instructionID {
+						appendDependency(&reuse.Dependencies, combination.Producer, DependencyFusion)
+					}
+				}
+			}
+		}
+	}
+	reuse.Offsets[len(f.Insts)] = uint32(len(reuse.Dependencies))
+	// Deduplication compacts each tail in place but cannot resize the aggregate;
+	// rebuild once into the reusable slab with exact per-node ranges.
+	compacted := reuse.scratch[:0]
+	for instructionID := range f.Insts {
+		start, end := reuse.Offsets[instructionID], reuse.Offsets[instructionID+1]
+		reuse.Offsets[instructionID] = uint32(len(compacted))
+		for _, dependency := range reuse.Dependencies[start:end] {
+			duplicate := false
+			for index := range compacted[reuse.Offsets[instructionID]:] {
+				item := &compacted[int(reuse.Offsets[instructionID])+index]
+				if item.Instruction == dependency.Instruction {
+					item.Kind |= dependency.Kind
+					duplicate = true
+					break
+				}
+			}
+			if !duplicate {
+				compacted = append(compacted, dependency)
+			}
+		}
+	}
+	reuse.Offsets[len(f.Insts)] = uint32(len(compacted))
+	reuse.Dependencies = append(reuse.Dependencies[:0], compacted...)
+	reuse.scratch = compacted[:0]
+	clear(reuse.SuccessorOffsets)
+	for _, dependency := range reuse.Dependencies {
+		reuse.SuccessorOffsets[dependency.Instruction+1]++
+	}
+	for instruction := 1; instruction < len(reuse.SuccessorOffsets); instruction++ {
+		reuse.SuccessorOffsets[instruction] += reuse.SuccessorOffsets[instruction-1]
+	}
+	reuse.Successors = resize(reuse.Successors, len(reuse.Dependencies))
+	cursor := resize(reuse.successorCursor, len(f.Insts))
+	copy(cursor, reuse.SuccessorOffsets[:len(f.Insts)])
+	for consumer := range f.Insts {
+		for _, dependency := range reuse.Dependencies[reuse.Offsets[consumer]:reuse.Offsets[consumer+1]] {
+			reuse.Successors[cursor[dependency.Instruction]] = uint32(consumer)
+			cursor[dependency.Instruction]++
+		}
+	}
+	reuse.successorCursor = cursor
+	if err := verifyDependencyDAGReusingScratch(f, reuse); err != nil {
+		return nil, err
+	}
+	return reuse, nil
+}
+
+func appendDependency(out *[]Dependency, instruction uint32, kind DependencyKind) {
+	*out = append(*out, Dependency{Instruction: instruction, Kind: kind})
+}
+
+func appendUniqueDependency(out *[]Dependency, start int, instruction uint32, kind DependencyKind) {
+	for index := start; index < len(*out); index++ {
+		if (*out)[index].Instruction == instruction {
+			(*out)[index].Kind |= kind
+			return
+		}
+	}
+	appendDependency(out, instruction, kind)
+}
+
+func VerifyDependencyDAG(f *Func, dag *DependencyDAG) error {
+	return verifyDependencyDAG(f, dag, make([]uint32, len(f.Insts)))
+}
+
+func verifyDependencyDAGReusingScratch(f *Func, dag *DependencyDAG) error {
+	if dag == nil {
+		return fmt.Errorf("railmach: malformed dependency DAG")
+	}
+	seen := resize(dag.verifySeen, len(f.Insts))
+	dag.verifySeen = seen
+	return verifyDependencyDAG(f, dag, seen)
+}
+
+func verifyDependencyDAG(f *Func, dag *DependencyDAG, seen []uint32) error {
+	if dag == nil || len(dag.Offsets) != len(f.Insts)+1 || dag.Offsets[0] != 0 || int(dag.Offsets[len(f.Insts)]) != len(dag.Dependencies) {
+		return fmt.Errorf("railmach: malformed dependency DAG")
+	}
+	generation := uint32(0)
+	for instruction := range f.Insts {
+		if dag.Offsets[instruction] > dag.Offsets[instruction+1] {
+			return fmt.Errorf("railmach: dependency offsets regress at %d", instruction)
+		}
+		generation++
+		for _, dependency := range dag.Dependencies[dag.Offsets[instruction]:dag.Offsets[instruction+1]] {
+			if dependency.Instruction >= uint32(instruction) || dependency.Kind == 0 || seen[dependency.Instruction] == generation {
+				return fmt.Errorf("railmach: instruction %d has invalid dependency %#v", instruction, dependency)
+			}
+			seen[dependency.Instruction] = generation
+		}
+	}
+	if len(dag.SuccessorOffsets) != 0 || len(dag.Successors) != 0 {
+		if len(dag.SuccessorOffsets) != len(f.Insts)+1 || dag.SuccessorOffsets[0] != 0 || int(dag.SuccessorOffsets[len(f.Insts)]) != len(dag.Successors) || len(dag.Successors) != len(dag.Dependencies) {
+			return fmt.Errorf("railmach: malformed dependency successor graph")
+		}
+		for producer := range f.Insts {
+			if dag.SuccessorOffsets[producer] > dag.SuccessorOffsets[producer+1] {
+				return fmt.Errorf("railmach: successor offsets regress at %d", producer)
+			}
+			previous, havePrevious := uint32(0), false
+			for _, consumer := range dag.Successors[dag.SuccessorOffsets[producer]:dag.SuccessorOffsets[producer+1]] {
+				if consumer <= uint32(producer) || int(consumer) >= len(f.Insts) {
+					return fmt.Errorf("railmach: instruction %d has invalid successor %d", producer, consumer)
+				}
+				if havePrevious && consumer <= previous {
+					return fmt.Errorf("railmach: instruction %d has duplicate or unordered successor %d", producer, consumer)
+				}
+				previous, havePrevious = consumer, true
+				found := false
+				for _, dependency := range dag.Dependencies[dag.Offsets[consumer]:dag.Offsets[consumer+1]] {
+					found = found || dependency.Instruction == uint32(producer)
+				}
+				if !found {
+					return fmt.Errorf("railmach: successor %d -> %d has no dependency", producer, consumer)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+type ScheduleKind uint8
+
+const (
+	ScheduleKindSourceStable ScheduleKind = iota + 1
+	ScheduleKindLatencyFusion
+	ScheduleKindPressure
+)
+
+type Schedule struct {
+	Kind                ScheduleKind
+	Order               []uint32
+	BlockRanges         []MoveRange
+	Score               uint64
+	CommittedSinks      uint32
+	CommittedInductions uint32
+	CommittedLICM       uint32
+	CommittedFusions    uint32
+	BlockOf             []railssa.BlockID
+
+	remaining             []bool
+	sinkBefore            []uint32
+	sinkProducer          []uint32
+	lateBefore            []uint32
+	lateProducer          []uint32
+	fusionBefore          []uint32
+	fusionSource          []uint32
+	verifyPosition        []uint32
+	verifySeen            []bool
+	uses                  []uint32
+	remainingUses         []uint32
+	criticalHeight        []uint64
+	resultCounts          []uint8
+	remainingDependencies []uint32
+	blockCandidates       []uint32
+	readyCandidates       []uint32
+	pressureSpecial       []uint32
+}
+
+func BuildSchedule(f *Func, selection *SelectionPlan, dag *DependencyDAG, kind ScheduleKind, reuse *Schedule) (*Schedule, error) {
+	return BuildScheduleWithPressure(f, selection, dag, kind, nil, reuse)
+}
+
+// BuildScheduleWithPressure commits verifier-produced cheap-operation sinks in
+// the pressure candidate. A sink is delayed until every other dependency of
+// its sole consumer is ready, then the pair is emitted adjacently.
+func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *DependencyDAG, kind ScheduleKind, pressure *railssa.PressurePlan, reuse *Schedule) (*Schedule, error) {
+	if err := verifyDependencyDAGReusingScratch(f, dag); err != nil {
+		return nil, err
+	}
+	if reuse == nil {
+		reuse = new(Schedule)
+	}
+	order := reuse.Order[:0]
+	ranges := resize(reuse.BlockRanges, len(f.Blocks))
+	remainingScratch := reuse.remaining[:0]
+	blockOf := resize(reuse.BlockOf, len(f.Insts))
+	for blockID, block := range f.Blocks {
+		for instruction := block.InstStart; instruction < block.InstStart+block.InstCount; instruction++ {
+			blockOf[instruction] = railssa.BlockID(blockID)
+		}
+	}
+	sinkBefore := resize(reuse.sinkBefore, len(f.Insts))
+	sinkProducer := resize(reuse.sinkProducer, len(f.Insts))
+	lateBefore := resize(reuse.lateBefore, len(f.Insts))
+	lateProducer := resize(reuse.lateProducer, len(f.Insts))
+	fusionBefore := resize(reuse.fusionBefore, len(f.Insts))
+	fusionSource := resize(reuse.fusionSource, len(f.Insts))
+	for index := range sinkBefore {
+		sinkBefore[index] = ^uint32(0)
+		sinkProducer[index] = ^uint32(0)
+		lateBefore[index] = ^uint32(0)
+		lateProducer[index] = ^uint32(0)
+		fusionBefore[index] = ^uint32(0)
+		fusionSource[index] = ^uint32(0)
+	}
+	uses := resize(reuse.uses, len(f.VRegs))
+	reuse.uses = uses
+	for instructionID := range f.Insts {
+		for _, operand := range f.InstructionOperands(uint32(instructionID)) {
+			uses[operand.Reg]++
+		}
+	}
+	if kind == ScheduleKindPressure && pressure != nil {
+		for _, sink := range pressure.Sinks {
+			if err := validatePressureSink(f, sink, uses); err != nil {
+				if pressureSinkInvalidatedByElision(f, sink, uses) {
+					continue
+				}
+				return nil, err
+			}
+			previous := sinkProducer[sink.Before]
+			if previous != ^uint32(0) && previous > sink.Instruction {
+				continue
+			}
+			if previous != ^uint32(0) {
+				sinkBefore[previous] = ^uint32(0)
+			}
+			sinkBefore[sink.Instruction] = sink.Before
+			sinkProducer[sink.Before] = sink.Instruction
+		}
+		// An instruction cannot be adjacent to both its own producer and its
+		// consumer. Prefer the later pair, which shortens the outer live range.
+		for consumer, producer := range sinkProducer {
+			if producer != ^uint32(0) && sinkBefore[consumer] != ^uint32(0) {
+				sinkBefore[producer] = ^uint32(0)
+				sinkProducer[consumer] = ^uint32(0)
+			}
+		}
+		for _, induction := range pressure.Inductions {
+			instruction, terminator, ok := validateInductionPlacement(f, induction)
+			if !ok || lateBefore[instruction] != ^uint32(0) {
+				continue
+			}
+			if previous := lateProducer[terminator]; previous != ^uint32(0) {
+				if previous > instruction {
+					continue
+				}
+				lateBefore[previous] = ^uint32(0)
+			}
+			if producer := sinkProducer[terminator]; producer != ^uint32(0) {
+				sinkBefore[producer], sinkProducer[terminator] = ^uint32(0), ^uint32(0)
+			}
+			sinkBefore[instruction] = ^uint32(0)
+			lateBefore[instruction] = terminator
+			lateProducer[terminator] = instruction
+		}
+		for _, move := range pressure.LICM {
+			if move.Instruction >= uint32(len(f.Insts)) || int(move.From) >= len(f.Blocks) || int(move.Preheader) >= len(f.Blocks) || int(move.Loop) >= len(f.Blocks) || blockOf[move.Instruction] != move.From {
+				return nil, fmt.Errorf("railmach: invalid LICM placement %#v", move)
+			}
+			if target := sinkBefore[move.Instruction]; target != ^uint32(0) {
+				sinkProducer[target] = ^uint32(0)
+				sinkBefore[move.Instruction] = ^uint32(0)
+			}
+			if producer := sinkProducer[move.Instruction]; producer != ^uint32(0) {
+				sinkBefore[producer] = ^uint32(0)
+				sinkProducer[move.Instruction] = ^uint32(0)
+			}
+			blockOf[move.Instruction] = move.Preheader
+		}
+	}
+	for _, transfer := range f.Transfers {
+		uses[transfer.Src]++
+	}
+	for _, result := range f.Results {
+		uses[result]++
+	}
+	if f.Target == TargetAMD64 || f.Target == TargetARM64 {
+		for _, combination := range selection.Combinations {
+			producer, consumer := combination.Producer, combination.Consumer
+			if combination.Kind != CombineCompareBranch || producer == ^uint32(0) || int(producer) >= len(f.Insts) || int(consumer) >= len(f.Insts) || blockOf[producer] != blockOf[consumer] || !compareBranchFusionRepairable(f.Target, f, producer, consumer, uses) {
+				continue
+			}
+			if lateProducer[consumer] != ^uint32(0) || sinkProducer[consumer] != ^uint32(0) && sinkProducer[consumer] != producer || sinkBefore[producer] != ^uint32(0) || lateBefore[producer] != ^uint32(0) {
+				continue
+			}
+			fusionBefore[producer] = consumer
+			fusionSource[consumer] = producer
+			if sinkProducer[consumer] == producer {
+				sinkBefore[producer] = ^uint32(0)
+				sinkProducer[consumer] = ^uint32(0)
+			}
+		}
+	}
+	if f.Target == TargetARM64 {
+		for firstID, first := range f.Insts {
+			if !isMemoryOp(first.Op) {
+				continue
+			}
+			for distance := 1; distance <= PostRAScanLimit && firstID+distance < len(f.Insts); distance++ {
+				secondID := firstID + distance
+				second := f.Insts[secondID]
+				if isMemoryBarrier(second.Op) {
+					break
+				}
+				if !isMemoryOp(second.Op) {
+					continue
+				}
+				firstIndex, secondIndex := uint32(firstID), uint32(secondID)
+				if blockOf[firstIndex] == blockOf[secondIndex] && pairableMemory(first, second) && sameMemoryBase(f, firstIndex, secondIndex) &&
+					schedulePairDependenciesReady(firstIndex, secondIndex, dag, blockOf) &&
+					fusionBefore[firstIndex] == ^uint32(0) && fusionSource[firstIndex] == ^uint32(0) &&
+					fusionBefore[secondIndex] == ^uint32(0) && fusionSource[secondIndex] == ^uint32(0) &&
+					sinkBefore[firstIndex] == ^uint32(0) && sinkProducer[firstIndex] == ^uint32(0) &&
+					lateBefore[firstIndex] == ^uint32(0) && lateProducer[firstIndex] == ^uint32(0) &&
+					sinkBefore[secondIndex] == ^uint32(0) && sinkProducer[secondIndex] == ^uint32(0) &&
+					lateBefore[secondIndex] == ^uint32(0) && lateProducer[secondIndex] == ^uint32(0) {
+					fusionBefore[firstIndex] = secondIndex
+					fusionSource[secondIndex] = firstIndex
+				}
+				break
+			}
+		}
+	}
+	remainingDependencies := resize(reuse.remainingDependencies, len(f.Insts))
+	clear(remainingDependencies)
+	hasSuccessors := len(dag.SuccessorOffsets) == len(f.Insts)+1 && len(dag.Successors) == len(dag.Dependencies)
+	if hasSuccessors {
+		for instruction := range f.Insts {
+			for _, dependency := range dag.Dependencies[dag.Offsets[instruction]:dag.Offsets[instruction+1]] {
+				if blockOf[dependency.Instruction] == blockOf[instruction] {
+					remainingDependencies[instruction]++
+				}
+			}
+		}
+	}
+	ready := func(block railssa.BlockID, instruction uint32, remaining []bool) bool {
+		if hasSuccessors {
+			return int(instruction) < len(blockOf) && blockOf[instruction] == block && remainingDependencies[instruction] == 0
+		}
+		return scheduleReadyPlaced(block, instruction, dag, remaining, blockOf, ^uint32(0))
+	}
+	committed := uint32(0)
+	committedInductions := uint32(0)
+	committedLICM := uint32(0)
+	committedFusions := uint32(0)
+	for _, target := range sinkBefore {
+		if target != ^uint32(0) {
+			committed++
+		}
+	}
+	for _, target := range lateBefore {
+		if target != ^uint32(0) {
+			committedInductions++
+		}
+	}
+	for _, target := range fusionBefore {
+		if target != ^uint32(0) {
+			committedFusions++
+		}
+	}
+	if kind == ScheduleKindPressure && pressure != nil {
+		committedLICM = uint32(len(pressure.LICM))
+	}
+	criticalHeight := resize(reuse.criticalHeight, len(f.Insts))
+	clear(criticalHeight)
+	for instruction := len(f.Insts) - 1; instruction >= 0; instruction-- {
+		cost := uint64(scheduleInstructionLatency(f.Target, f.Insts[instruction].Op, selection.Selections[instruction].Cost.Latency))
+		criticalHeight[instruction] = max(criticalHeight[instruction], cost)
+		for _, dependency := range dag.Dependencies[dag.Offsets[instruction]:dag.Offsets[instruction+1]] {
+			if blockOf[dependency.Instruction] != blockOf[instruction] {
+				continue
+			}
+			dependencyCost := uint64(scheduleInstructionLatency(f.Target, f.Insts[dependency.Instruction].Op, selection.Selections[dependency.Instruction].Cost.Latency))
+			criticalHeight[dependency.Instruction] = max(criticalHeight[dependency.Instruction], dependencyCost+criticalHeight[instruction])
+		}
+	}
+	resultCounts := resize(reuse.resultCounts, len(f.Insts))
+	if kind != ScheduleKindSourceStable {
+		for instruction := range f.Insts {
+			resultCounts[instruction] = uint8(f.Insts[instruction].ResultCount())
+		}
+	}
+	remainingUses := resize(reuse.remainingUses, len(uses))
+	copy(remainingUses, uses)
+	pressureSpecial := reuse.pressureSpecial[:0]
+	if kind == ScheduleKindPressure {
+		for instruction := range f.Insts {
+			if sinkBefore[instruction] != ^uint32(0) || lateBefore[instruction] != ^uint32(0) {
+				pressureSpecial = append(pressureSpecial, uint32(instruction))
+			}
+		}
+	}
+	verifyPosition, verifySeen, uses := reuse.verifyPosition, reuse.verifySeen, reuse.uses
+	blockCandidates, readyCandidates := reuse.blockCandidates[:0], reuse.readyCandidates[:0]
+	*reuse = Schedule{Kind: kind, Order: order, BlockRanges: ranges, CommittedSinks: committed, CommittedInductions: committedInductions, CommittedLICM: committedLICM, CommittedFusions: committedFusions, BlockOf: blockOf, remaining: remainingScratch, sinkBefore: sinkBefore, sinkProducer: sinkProducer, lateBefore: lateBefore, lateProducer: lateProducer, fusionBefore: fusionBefore, fusionSource: fusionSource, verifyPosition: verifyPosition, verifySeen: verifySeen, uses: uses, remainingUses: remainingUses, criticalHeight: criticalHeight, resultCounts: resultCounts, remainingDependencies: remainingDependencies, blockCandidates: blockCandidates, readyCandidates: readyCandidates, pressureSpecial: pressureSpecial}
+	for blockID := range f.Blocks {
+		start := uint32(len(reuse.Order))
+		remaining := resize(reuse.remaining, len(f.Insts))
+		candidates := reuse.blockCandidates[:0]
+		block := f.Blocks[blockID]
+		for candidate := block.InstStart; candidate < block.InstStart+block.InstCount; candidate++ {
+			if reuse.BlockOf[candidate] == railssa.BlockID(blockID) {
+				candidates = append(candidates, candidate)
+				remaining[candidate] = true
+			}
+		}
+		if kind == ScheduleKindPressure && pressure != nil {
+			for _, move := range pressure.LICM {
+				if move.Preheader == railssa.BlockID(blockID) && (move.Instruction < block.InstStart || move.Instruction >= block.InstStart+block.InstCount) {
+					candidates = append(candidates, move.Instruction)
+					remaining[move.Instruction] = true
+				}
+			}
+		}
+		readyCandidates := reuse.readyCandidates[:0]
+		if hasSuccessors {
+			for _, candidate := range candidates {
+				if remainingDependencies[candidate] == 0 {
+					readyCandidates = append(readyCandidates, candidate)
+				}
+			}
+		}
+		staticPriority := kind == ScheduleKindPressure && !hasSuccessors
+		if staticPriority {
+			slices.SortFunc(candidates, func(a, b uint32) int {
+				aScore := pressureSchedulePriority(f.Insts[a], reuse.resultCounts[a], a)
+				bScore := pressureSchedulePriority(f.Insts[b], reuse.resultCounts[b], b)
+				if aScore > bScore {
+					return -1
+				}
+				if aScore < bScore {
+					return 1
+				}
+				return int(a) - int(b)
+			})
+		}
+		reuse.blockCandidates = candidates
+		reuse.readyCandidates = readyCandidates
+		lastUseHeightCredit := scheduleLastUseHeightCredit(f.Target, pressure, blockID)
+		blockCount := uint32(len(candidates))
+		for emitted := uint32(0); emitted < blockCount; emitted++ {
+			pendingCount := blockCount - emitted
+			best := ^uint32(0)
+			bestScore := int64(-1 << 60)
+			if len(reuse.Order) > int(start) {
+				previous := reuse.Order[len(reuse.Order)-1]
+				target := reuse.fusionBefore[previous]
+				if kind == ScheduleKindPressure && target == ^uint32(0) {
+					target = reuse.sinkBefore[previous]
+					if target == ^uint32(0) {
+						target = reuse.lateBefore[previous]
+					}
+				}
+				if target < uint32(len(remaining)) && remaining[target] && ready(railssa.BlockID(blockID), target, remaining) {
+					best = target
+				}
+			}
+			if best == ^uint32(0) {
+				// Dynamic pressure bonuses exist only on the bounded sink/late
+				// candidate list. Select a positive special candidate first; it
+				// outranks every ordinary static-priority candidate.
+				if kind == ScheduleKindPressure {
+					for _, candidate := range reuse.pressureSpecial {
+						if !remaining[candidate] || reuse.BlockOf[candidate] != railssa.BlockID(blockID) || scheduleControlOp(f.Insts[candidate].Op) && pendingCount != 1 {
+							continue
+						}
+						if target := reuse.fusionBefore[candidate]; target != ^uint32(0) && remaining[target] && pendingCount != 2 && scheduleControlOp(f.Insts[target].Op) {
+							continue
+						}
+						if target := reuse.fusionBefore[candidate]; target != ^uint32(0) && remaining[target] && !scheduleControlOp(f.Insts[target].Op) &&
+							!scheduleReadyPlaced(railssa.BlockID(blockID), target, dag, remaining, reuse.BlockOf, candidate) {
+							continue
+						}
+						if reuse.lateProducer[candidate] != ^uint32(0) && remaining[reuse.lateProducer[candidate]] || !ready(railssa.BlockID(blockID), candidate, remaining) {
+							continue
+						}
+						score := pressureSchedulePriority(f.Insts[candidate], reuse.resultCounts[candidate], candidate)
+						if target := reuse.sinkBefore[candidate]; target != ^uint32(0) {
+							if scheduleReadyPlaced(railssa.BlockID(blockID), target, dag, remaining, reuse.BlockOf, candidate) {
+								score += 1 << 40
+							} else {
+								score -= 1 << 40
+							}
+						}
+						if target := reuse.lateBefore[candidate]; target != ^uint32(0) {
+							if pendingCount == 2 && remaining[target] {
+								score += 1 << 39
+							} else {
+								score -= 1 << 39
+							}
+						}
+						if score > 1<<38 && (best == ^uint32(0) || score > bestScore || score == bestScore && candidate < best) {
+							best, bestScore = candidate, score
+						}
+					}
+				}
+			}
+			if best == ^uint32(0) {
+				scanCandidates := candidates
+				if hasSuccessors {
+					scanCandidates = reuse.readyCandidates
+				}
+				for _, candidate := range scanCandidates {
+					if !remaining[candidate] {
+						continue
+					}
+					if scheduleControlOp(f.Insts[candidate].Op) && pendingCount != 1 {
+						continue
+					}
+					if target := reuse.fusionBefore[candidate]; target != ^uint32(0) && remaining[target] && pendingCount != 2 && scheduleControlOp(f.Insts[target].Op) {
+						continue
+					}
+					if target := reuse.fusionBefore[candidate]; target != ^uint32(0) && remaining[target] && !scheduleControlOp(f.Insts[target].Op) &&
+						!scheduleReadyPlaced(railssa.BlockID(blockID), target, dag, remaining, reuse.BlockOf, candidate) {
+						continue
+					}
+					if kind == ScheduleKindPressure && reuse.lateProducer[candidate] != ^uint32(0) && remaining[reuse.lateProducer[candidate]] {
+						continue
+					}
+					if !ready(railssa.BlockID(blockID), candidate, remaining) {
+						continue
+					}
+					score := -int64(candidate)
+					switch kind {
+					case ScheduleKindLatencyFusion:
+						score = latencySchedulePriority(f, selection, candidate, reuse.remainingUses, reuse.criticalHeight, reuse.resultCounts, lastUseHeightCredit)
+					case ScheduleKindPressure:
+						score = pressureSchedulePriority(f.Insts[candidate], reuse.resultCounts[candidate], candidate)
+					}
+					if kind == ScheduleKindPressure && reuse.sinkBefore[candidate] != ^uint32(0) {
+						if scheduleReadyPlaced(railssa.BlockID(blockID), reuse.sinkBefore[candidate], dag, remaining, reuse.BlockOf, candidate) {
+							score += 1 << 40
+						} else {
+							score -= 1 << 40
+						}
+					}
+					if kind == ScheduleKindPressure && reuse.lateBefore[candidate] != ^uint32(0) {
+						if pendingCount == 2 && remaining[reuse.lateBefore[candidate]] {
+							score += 1 << 39
+						} else {
+							score -= 1 << 39
+						}
+					}
+					if best == ^uint32(0) || score > bestScore || score == bestScore && candidate < best {
+						best, bestScore = candidate, score
+						// Source-stable candidates are source ordered. Pressure candidates
+						// are priority ordered above and need a complete scan only when
+						// sink/late placement adds dynamic bonuses. Latency priorities use
+						// remaining-use counts and must always inspect every ready candidate.
+						ordinaryPressure := kind == ScheduleKindPressure && reuse.sinkBefore[candidate] == ^uint32(0) && reuse.lateBefore[candidate] == ^uint32(0)
+						if !hasSuccessors && (kind == ScheduleKindSourceStable || ordinaryPressure) {
+							break
+						}
+					}
+				}
+			}
+			if best == ^uint32(0) {
+				return nil, fmt.Errorf("railmach: scheduler found a cycle in block %d", blockID)
+			}
+			remaining[best] = false
+			if hasSuccessors {
+				for index, candidate := range reuse.readyCandidates {
+					if candidate == best {
+						reuse.readyCandidates[index] = reuse.readyCandidates[len(reuse.readyCandidates)-1]
+						reuse.readyCandidates = reuse.readyCandidates[:len(reuse.readyCandidates)-1]
+						break
+					}
+				}
+			}
+			reuse.Order = append(reuse.Order, best)
+			reuse.Score += uint64(max(bestScore, 0))
+			if hasSuccessors {
+				for _, successor := range dag.Successors[dag.SuccessorOffsets[best]:dag.SuccessorOffsets[best+1]] {
+					if reuse.BlockOf[successor] == railssa.BlockID(blockID) && remaining[successor] && remainingDependencies[successor] != 0 {
+						remainingDependencies[successor]--
+						if remainingDependencies[successor] == 0 {
+							reuse.readyCandidates = append(reuse.readyCandidates, successor)
+						}
+					}
+				}
+			}
+			for _, operand := range f.InstructionOperands(best) {
+				if reuse.remainingUses[operand.Reg] != 0 {
+					reuse.remainingUses[operand.Reg]--
+				}
+			}
+		}
+		reuse.BlockRanges[blockID] = MoveRange{Start: start, Count: uint32(len(reuse.Order)) - start}
+		reuse.remaining = remaining[:0]
+	}
+	if f.Target == TargetARM64 {
+		hoistARM64AdjacentLoadAddresses(f, dag, reuse)
+	}
+	dropUncommittedMemoryPairs(f, reuse)
+	if err := verifyScheduleReusingScratch(f, dag, reuse); err != nil {
+		return nil, err
+	}
+	if kind == ScheduleKindPressure && pressure != nil {
+		if err := verifyCommittedSinks(reuse); err != nil {
+			return nil, err
+		}
+	}
+	if err := verifyCommittedFusions(f, reuse); err != nil {
+		return nil, err
+	}
+	return reuse, nil
+}
+
+// hoistARM64AdjacentLoadAddresses moves a pure, single-use address addition
+// across the preceding load when that makes two equal-width loads adjacent. A
+// constant immediately before the addition moves with it: constants are often
+// rematerialized away after scheduling, but still separate the loads in the
+// machine order. The loads retain their Wasm order; only non-trapping integer
+// arithmetic is moved. ARM64 can then validate both addresses with one
+// CMP/CCMP branch.
+func hoistARM64AdjacentLoadAddresses(f *Func, dag *DependencyDAG, schedule *Schedule) uint32 {
+	if f == nil || dag == nil || schedule == nil || len(dag.Offsets) != len(f.Insts)+1 || len(schedule.uses) != len(f.VRegs) {
+		return 0
+	}
+	position := resize(schedule.verifyPosition, len(f.Insts))
+	schedule.verifyPosition = position
+	for index, instruction := range schedule.Order {
+		position[instruction] = uint32(index)
+	}
+	reserved := func(instruction uint32) bool {
+		return schedule.fusionBefore[instruction] != ^uint32(0) || schedule.fusionSource[instruction] != ^uint32(0) ||
+			schedule.sinkBefore[instruction] != ^uint32(0) || schedule.sinkProducer[instruction] != ^uint32(0) ||
+			schedule.lateBefore[instruction] != ^uint32(0) || schedule.lateProducer[instruction] != ^uint32(0)
+	}
+	var committed uint32
+	for _, block := range schedule.BlockRanges {
+		order := schedule.Order[block.Start : block.Start+block.Count]
+		for index := 0; index+2 < len(order); index++ {
+			addressIndex, secondIndex := index+1, index+2
+			if index+3 < len(order) && arm64IntegerConstant(f.Insts[order[index+1]].Op) {
+				addressIndex, secondIndex = index+2, index+3
+			}
+			firstID, addressID, secondID := order[index], order[addressIndex], order[secondIndex]
+			first, address, second := f.Insts[firstID], f.Insts[addressID], f.Insts[secondID]
+			if reserved(firstID) || reserved(addressID) || reserved(secondID) ||
+				first.Op != second.Op || uint32(first.Aux) != uint32(second.Aux) || !arm64FullWidthLoad(first.Op) ||
+				address.Result == 0 || schedule.uses[address.Result] != 1 || address.Op != wasm.InstrI32Add && address.Op != wasm.InstrI64Add {
+				continue
+			}
+			if addressIndex != index+1 && reserved(order[index+1]) {
+				continue
+			}
+			firstOperands, addressOperands, secondOperands := f.InstructionOperands(firstID), f.InstructionOperands(addressID), f.InstructionOperands(secondID)
+			if len(firstOperands) != 1 || len(addressOperands) != 2 || len(secondOperands) != 1 ||
+				secondOperands[0].Reg != address.Result || firstOperands[0].Reg == secondOperands[0].Reg {
+				continue
+			}
+			ready := true
+			firstPosition := position[firstID]
+			for _, dependency := range dag.Dependencies[dag.Offsets[addressID]:dag.Offsets[addressID+1]] {
+				movingConstant := addressIndex != index+1 && dependency.Instruction == order[index+1]
+				if position[dependency.Instruction] >= firstPosition && !movingConstant {
+					ready = false
+					break
+				}
+			}
+			if !ready {
+				continue
+			}
+			if addressIndex == index+1 {
+				order[index], order[index+1] = addressID, firstID
+				position[addressID], position[firstID] = firstPosition, firstPosition+1
+			} else {
+				constantID := order[index+1]
+				order[index], order[index+1], order[index+2] = constantID, addressID, firstID
+				position[constantID], position[addressID], position[firstID] = firstPosition, firstPosition+1, firstPosition+2
+			}
+			committed++
+			index = secondIndex - 1
+		}
+	}
+	return committed
+}
+
+func arm64IntegerConstant(kind wasm.InstrKind) bool {
+	return kind == wasm.InstrI32Const || kind == wasm.InstrI64Const
+}
+
+func arm64FullWidthLoad(kind wasm.InstrKind) bool {
+	return kind == wasm.InstrI32Load || kind == wasm.InstrI64Load || kind == wasm.InstrF32Load || kind == wasm.InstrF64Load
+}
+
+func dropUncommittedMemoryPairs(f *Func, schedule *Schedule) {
+	position := resize(schedule.verifyPosition, len(f.Insts))
+	schedule.verifyPosition = position
+	for index, instruction := range schedule.Order {
+		position[instruction] = uint32(index)
+	}
+	committed := uint32(0)
+	for producer, consumer := range schedule.fusionBefore {
+		if consumer == ^uint32(0) {
+			continue
+		}
+		if int(consumer) < len(f.Insts) && isMemoryOp(f.Insts[consumer].Op) && position[consumer] != position[producer]+1 {
+			schedule.fusionBefore[producer] = ^uint32(0)
+			if int(consumer) < len(schedule.fusionSource) && schedule.fusionSource[consumer] == uint32(producer) {
+				schedule.fusionSource[consumer] = ^uint32(0)
+			}
+			continue
+		}
+		committed++
+	}
+	schedule.CommittedFusions = committed
+}
+
+func verifyCommittedFusions(f *Func, schedule *Schedule) error {
+	if schedule.CommittedFusions == 0 {
+		return nil
+	}
+	position := resize(schedule.verifyPosition, len(f.Insts))
+	schedule.verifyPosition = position
+	for index, instruction := range schedule.Order {
+		position[instruction] = uint32(index)
+	}
+	var committed uint32
+	for producer, consumer := range schedule.fusionBefore {
+		if consumer == ^uint32(0) {
+			continue
+		}
+		committed++
+		if int(consumer) >= len(f.Insts) || schedule.fusionSource[consumer] != uint32(producer) || schedule.BlockOf[producer] != schedule.BlockOf[consumer] || position[consumer] != position[producer]+1 {
+			return fmt.Errorf("railmach: committed fusion %d -> %d is not adjacent", producer, consumer)
+		}
+	}
+	if committed != schedule.CommittedFusions {
+		return fmt.Errorf("railmach: committed fusion count %d does not match %d", committed, schedule.CommittedFusions)
+	}
+	return nil
+}
+
+func pressureSinkInvalidatedByElision(f *Func, sink railssa.SinkMove, uses []uint32) bool {
+	if sink.Instruction >= uint32(len(f.Insts)) {
+		return false
+	}
+	result := f.Insts[sink.Instruction].Result
+	if result == 0 || int(result) >= len(uses) {
+		return false
+	}
+	if uses[result] == 0 {
+		return true
+	}
+	if sink.Before < uint32(len(f.Insts)) {
+		consumerResult := f.Insts[sink.Before].Result
+		if consumerResult != 0 && f.VRegs[consumerResult].Flags&VRegElided != 0 {
+			return true
+		}
+	}
+	// Simplification may remove or alias the sole consumer after pressure
+	// planning. With no machine use left, the optional sink has no placement
+	// obligation and must not turn a valid function into a scheduler error.
+	return false
+}
+
+func scheduleReadyPlaced(block railssa.BlockID, instruction uint32, dag *DependencyDAG, remaining []bool, blockOf []railssa.BlockID, ignore uint32) bool {
+	if int(instruction) >= len(blockOf) || blockOf[instruction] != block {
+		return false
+	}
+	for _, dependency := range dag.Dependencies[dag.Offsets[instruction]:dag.Offsets[instruction+1]] {
+		if dependency.Instruction != ignore && blockOf[dependency.Instruction] == block && remaining[dependency.Instruction] {
+			return false
+		}
+	}
+	return true
+}
+
+func validateInductionPlacement(f *Func, induction railssa.Induction) (instruction, terminator uint32, ok bool) {
+	if induction.Value == 0 || int(induction.Value) >= len(f.VRegs) || int(induction.Block) >= len(f.Blocks) {
+		return 0, 0, false
+	}
+	instruction = f.VRegs[induction.Value].Def / 6
+	block := f.Blocks[induction.Block]
+	if instruction < block.InstStart || instruction >= block.InstStart+block.InstCount || block.InstCount == 0 {
+		return 0, 0, false
+	}
+	terminator = block.InstStart + block.InstCount - 1
+	if !scheduleControlOp(f.Insts[terminator].Op) {
+		return 0, 0, false
+	}
+	for candidate := range f.Insts {
+		for _, operand := range f.InstructionOperands(uint32(candidate)) {
+			if operand.Reg == VReg(induction.Value) {
+				return 0, 0, false
+			}
+		}
+	}
+	for _, transfer := range f.Transfers {
+		if transfer.From == induction.Block && transfer.Src == VReg(induction.Value) {
+			return instruction, terminator, true
+		}
+	}
+	return 0, 0, false
+}
+
+func scheduleControlOp(kind wasm.InstrKind) bool {
+	return kind == wasm.InstrIf || kind == wasm.InstrBr || kind == wasm.InstrBrIf || kind == wasm.InstrBrTable || kind == wasm.InstrReturn || kind == wasm.InstrUnreachable
+}
+
+func validatePressureSink(f *Func, sink railssa.SinkMove, useCounts []uint32) error {
+	if sink.Instruction >= uint32(len(f.Insts)) || sink.Before >= uint32(len(f.Insts)) || sink.Instruction >= sink.Before || int(sink.Block) >= len(f.Blocks) {
+		return fmt.Errorf("railmach: invalid pressure sink %#v", sink)
+	}
+	block := f.Blocks[sink.Block]
+	if sink.Instruction < block.InstStart || sink.Before >= block.InstStart+block.InstCount {
+		return fmt.Errorf("railmach: pressure sink crosses block %#v", sink)
+	}
+	result := f.Insts[sink.Instruction].Result
+	if result == 0 {
+		return fmt.Errorf("railmach: pressure sink has no result %#v", sink)
+	}
+	uses := uint32(0)
+	if int(result) < len(useCounts) {
+		uses = useCounts[result]
+	}
+	if uses != 1 {
+		return fmt.Errorf("railmach: pressure sink result has %d uses %#v", uses, sink)
+	}
+	for _, operand := range f.InstructionOperands(sink.Before) {
+		if operand.Reg == result {
+			return nil
+		}
+	}
+	return fmt.Errorf("railmach: pressure sink result has a different consumer %#v", sink)
+}
+
+func verifyCommittedSinks(schedule *Schedule) error {
+	position := resize(schedule.verifyPosition, len(schedule.Order))
+	schedule.verifyPosition = position
+	for index, instruction := range schedule.Order {
+		position[instruction] = uint32(index)
+	}
+	verified := uint32(0)
+	for instruction, target := range schedule.sinkBefore {
+		if target == ^uint32(0) {
+			continue
+		}
+		if position[instruction]+1 != position[target] {
+			return fmt.Errorf("railmach: pressure sink %d was not committed before %d in %v", instruction, target, schedule.Order)
+		}
+		verified++
+	}
+	if verified != schedule.CommittedSinks {
+		return fmt.Errorf("railmach: verified %d of %d committed pressure sinks", verified, schedule.CommittedSinks)
+	}
+	verifiedInductions := uint32(0)
+	for instruction, target := range schedule.lateBefore {
+		if target == ^uint32(0) {
+			continue
+		}
+		if position[instruction]+1 != position[target] {
+			return fmt.Errorf("railmach: induction %d was not placed before terminator %d in %v", instruction, target, schedule.Order)
+		}
+		verifiedInductions++
+	}
+	if verifiedInductions != schedule.CommittedInductions {
+		return fmt.Errorf("railmach: verified %d of %d committed inductions", verifiedInductions, schedule.CommittedInductions)
+	}
+	return nil
+}
+
+func latencySchedulePriority(f *Func, selection *SelectionPlan, instruction uint32, remainingUses []uint32, criticalHeight []uint64, resultCounts []uint8, lastUseHeightCredit uint64) int64 {
+	selected := selection.Selections[instruction]
+	lastUses := uint64(0)
+	operands := f.InstructionOperands(instruction)
+	for index, operand := range operands {
+		duplicate := false
+		occurrences := uint32(1)
+		for previous := 0; previous < index; previous++ {
+			duplicate = duplicate || operands[previous].Reg == operand.Reg
+		}
+		if duplicate || int(operand.Reg) >= len(remainingUses) {
+			continue
+		}
+		for following := index + 1; following < len(operands); following++ {
+			if operands[following].Reg == operand.Reg {
+				occurrences++
+			}
+		}
+		if remainingUses[operand.Reg] == occurrences {
+			lastUses++
+		}
+	}
+	height := uint64(0)
+	if int(instruction) < len(criticalHeight) {
+		height = criticalHeight[instruction]
+	}
+	if lastUseHeightCredit == 0 {
+		lastUses = 0
+	}
+	// Killing an input is useful only when the block is near the target's
+	// allocator capacity, and may buy at most a small delay in critical-path
+	// work. This keeps LUC from serializing a long dependency chain merely to
+	// shorten one range while still breaking close choices toward lower pressure.
+	height += min(lastUses, 4) * lastUseHeightCredit
+	uses, defines := len(operands), int(resultCounts[instruction])
+	pressureDelta := min(max(int64(uses-defines)+64, 0), 127)
+	priority := int64(min(height, (uint64(1)<<24)-1))<<32 + int64(min(lastUses, 255))<<24 + int64(selected.Cost.ResourceCost)<<7 + pressureDelta
+	if selected.ResultForm == FormFlags {
+		priority += 1 << 23
+	}
+	return priority
+}
+
+func pressureSchedulePriority(instruction Inst, resultCount uint8, instructionID uint32) int64 {
+	return int64(int(instruction.OperandCount)-int(resultCount))*1024 - int64(instructionID)
+}
+
+func scheduleLastUseHeightCredit(target Target, pressure *railssa.PressurePlan, blockID int) uint64 {
+	if pressure == nil || blockID < 0 || blockID >= len(pressure.Blocks) {
+		return 0
+	}
+	capacity := DefaultLinearQConfig(target)
+	block := pressure.Blocks[blockID]
+	severeGPR := uint16(capacity.GPRs) + (uint16(capacity.GPRs)*3+3)/4
+	if capacity.GPRs != 0 && block.PeakGPR >= severeGPR {
+		return 3
+	}
+	if capacity.GPRs != 0 && block.PeakGPR >= uint16(capacity.GPRs) || capacity.FPRs != 0 && block.PeakFPR >= uint16(capacity.FPRs) {
+		return 2
+	}
+	return 0
+}
+
+// scheduleInstructionLatency refines the rule-form cost for operations whose
+// latency is intrinsic to the opcode rather than its register encoding. The
+// selection table deliberately shares one generic register rule across most
+// scalar operations, so without this refinement the latency candidate treats
+// a move, multiply, conversion, division, and square root as equivalent.
+func scheduleInstructionLatency(target Target, op wasm.InstrKind, fallback uint16) uint16 {
+	latency := max(fallback, 1)
+	if target != TargetAMD64 {
+		return latency
+	}
+	switch op {
+	case wasm.InstrF32Sqrt, wasm.InstrF64Sqrt:
+		return max(latency, 18)
+	case wasm.InstrF32Div, wasm.InstrF64Div:
+		return max(latency, 14)
+	case wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
+		wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU:
+		return max(latency, 16)
+	case wasm.InstrF32ConvertI32S, wasm.InstrF32ConvertI32U,
+		wasm.InstrF32ConvertI64S, wasm.InstrF32ConvertI64U,
+		wasm.InstrF64ConvertI32S, wasm.InstrF64ConvertI32U,
+		wasm.InstrF64ConvertI64S, wasm.InstrF64ConvertI64U,
+		wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U,
+		wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
+		wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U,
+		wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U:
+		return max(latency, 5)
+	case wasm.InstrF32Mul, wasm.InstrF64Mul:
+		return max(latency, 4)
+	case wasm.InstrF32Add, wasm.InstrF64Add, wasm.InstrF32Sub, wasm.InstrF64Sub,
+		wasm.InstrI32Mul, wasm.InstrI64Mul:
+		return max(latency, 3)
+	case wasm.InstrI32Load, wasm.InstrI64Load, wasm.InstrF32Load, wasm.InstrF64Load,
+		wasm.InstrI32Load8S, wasm.InstrI32Load8U, wasm.InstrI32Load16S, wasm.InstrI32Load16U,
+		wasm.InstrI64Load8S, wasm.InstrI64Load8U, wasm.InstrI64Load16S, wasm.InstrI64Load16U,
+		wasm.InstrI64Load32S, wasm.InstrI64Load32U:
+		if target == TargetAMD64 {
+			return max(latency, 4)
+		}
+		return max(latency, 3)
+	default:
+		return latency
+	}
+}
+
+func schedulePairDependenciesReady(first, second uint32, dag *DependencyDAG, blockOf []railssa.BlockID) bool {
+	if dag == nil || int(second)+1 >= len(dag.Offsets) || int(second) >= len(blockOf) {
+		return false
+	}
+	block := blockOf[second]
+	for _, dependency := range dag.Dependencies[dag.Offsets[second]:dag.Offsets[second+1]] {
+		if dependency.Instruction != first && int(dependency.Instruction) < len(blockOf) && blockOf[dependency.Instruction] == block && dependency.Instruction > first {
+			return false
+		}
+	}
+	return true
+}
+
+func VerifySchedule(f *Func, dag *DependencyDAG, schedule *Schedule) error {
+	return verifySchedule(f, dag, schedule, make([]uint32, len(f.Insts)), make([]bool, len(f.Insts)))
+}
+
+func verifyScheduleReusingScratch(f *Func, dag *DependencyDAG, schedule *Schedule) error {
+	if schedule == nil {
+		return fmt.Errorf("railmach: malformed schedule")
+	}
+	position := resize(schedule.verifyPosition, len(f.Insts))
+	seen := resize(schedule.verifySeen, len(f.Insts))
+	schedule.verifyPosition, schedule.verifySeen = position, seen
+	return verifySchedule(f, dag, schedule, position, seen)
+}
+
+func verifySchedule(f *Func, dag *DependencyDAG, schedule *Schedule, position []uint32, seen []bool) error {
+	if schedule == nil || len(schedule.Order) != len(f.Insts) || len(schedule.BlockRanges) != len(f.Blocks) || len(schedule.BlockOf) != 0 && len(schedule.BlockOf) != len(f.Insts) {
+		return fmt.Errorf("railmach: malformed schedule")
+	}
+	expectedStart := uint32(0)
+	for blockID, range_ := range schedule.BlockRanges {
+		if range_.Start != expectedStart || uint64(range_.Start)+uint64(range_.Count) > uint64(len(schedule.Order)) {
+			return fmt.Errorf("railmach: schedule block %d has malformed range %#v", blockID, range_)
+		}
+		for _, instruction := range schedule.Order[range_.Start : range_.Start+range_.Count] {
+			planned := scheduleInstructionBlock(f, schedule, instruction)
+			if planned != railssa.BlockID(blockID) {
+				return fmt.Errorf("railmach: instruction %d is emitted in block %d, planned %d", instruction, blockID, planned)
+			}
+		}
+		expectedStart += range_.Count
+	}
+	if expectedStart != uint32(len(schedule.Order)) {
+		return fmt.Errorf("railmach: schedule ranges cover %d of %d instructions", expectedStart, len(schedule.Order))
+	}
+	for index, instruction := range schedule.Order {
+		if int(instruction) >= len(f.Insts) || seen[instruction] {
+			return fmt.Errorf("railmach: schedule position %d has invalid instruction %d", index, instruction)
+		}
+		seen[instruction], position[instruction] = true, uint32(index)
+	}
+	for instruction := range f.Insts {
+		for _, dependency := range dag.Dependencies[dag.Offsets[instruction]:dag.Offsets[instruction+1]] {
+			if position[dependency.Instruction] >= position[instruction] {
+				return fmt.Errorf("railmach: schedule violates %d -> %d", dependency.Instruction, instruction)
+			}
+		}
+	}
+	return nil
+}
+
+func scheduleInstructionBlock(f *Func, schedule *Schedule, instruction uint32) railssa.BlockID {
+	if schedule != nil && len(schedule.BlockOf) == len(f.Insts) {
+		return schedule.BlockOf[instruction]
+	}
+	for blockID, block := range f.Blocks {
+		if instruction >= block.InstStart && instruction < block.InstStart+block.InstCount {
+			return railssa.BlockID(blockID)
+		}
+	}
+	return ^railssa.BlockID(0)
+}
+
+type RetryDecision struct {
+	Retry  bool
+	Reason uint8
+}
+
+const MaxBackendAttempts = 2
+
+func DecideRetry(attempt uint8, allocation *GreedyAllocation, debt CopyDebt) RetryDecision {
+	if attempt+1 >= MaxBackendAttempts || allocation == nil {
+		return RetryDecision{}
+	}
+	// The debt is already profile-weighted, but a fixed threshold made a handful
+	// of spill units rebuild every schedule for thousand-value functions. Scale
+	// the opportunity gate with allocation size so retries remain reserved for
+	// material pressure rather than sparse residual debt.
+	spillThreshold := uint64(max(4, len(allocation.Intervals)/32))
+	if allocation.Metrics.WeightedDebt > spillThreshold {
+		return RetryDecision{Retry: true, Reason: 1}
+	}
+	if debt.Physical > debt.Coalesced+32 || debt.Cycles > 2 {
+		return RetryDecision{Retry: true, Reason: 2}
+	}
+	return RetryDecision{}
+}
+
+func RuleCost(plan *SelectionPlan, instruction uint32) railspec.Rule {
+	return railspec.Rules[plan.Selections[instruction].Rule]
+}

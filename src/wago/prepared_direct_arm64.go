@@ -1,4 +1,4 @@
-//go:build arm64 && (linux || darwin || (windows && !tinygo))
+//go:build arm64 && (linux || darwin)
 
 package wago
 
@@ -90,7 +90,11 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 	var result uint64
 	var err error
 	wruntime.PreparePreparedIntTrap(in.trap)
-	if fn.directIntMode == preparedIntCallBlock {
+	if fn.directLeafIntFast {
+		result, err = in.eng.EnterPreparedLeafInt(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
+	} else if fn.directTrapIntFast {
+		result, err = in.eng.EnterPreparedTrapInt(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
+	} else if fn.directIntMode == preparedIntCallBlock {
 		result = in.eng.EnterPreparedIntPreboundContextBounded(&fn.directIntCall, a0, a1, a2, a3)
 	} else if fn.directIntBounded {
 		if fn.directIntLight {
@@ -131,6 +135,10 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 		nativeExecutionMu.Unlock()
 	}
 	return out, nil
+}
+
+func (fn *PreparedFunction) invokeDirectTrapIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
+	return fn.invokeDirectIntFixed(a0, a1, a2, a3)
 }
 
 // invokeDirectIntSession is the reservation-held form of direct integer entry.

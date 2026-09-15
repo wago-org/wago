@@ -11,7 +11,10 @@ import (
 )
 
 const preparedDirectIntSupported = true
-const preparedDirectIntPrivateSupported = false
+
+// AMD64's direct prepared path retains the established foreign-stack transition;
+// the compiler-proven private entry only removes wrapper marshalling.
+const preparedDirectIntPrivateSupported = true
 const preparedIntCallBlockDefault = false
 
 var preparedIntPreboundContextEnabled = os.Getenv("WAGO_PREPARED_INT_PREBOUND_CONTEXT") != "0"
@@ -219,4 +222,8 @@ func (fn *PreparedFunction) invokeDirectIntSession(a0, a1, a2, a3 uint64) ([]uin
 		}
 	}
 	return out, nil
+}
+
+func (fn *PreparedFunction) invokeDirectTrapIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
+	return fn.invokeDirectIntFixed(a0, a1, a2, a3)
 }

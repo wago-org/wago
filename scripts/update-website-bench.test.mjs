@@ -228,10 +228,11 @@ function assertDOMContract(html) {
   const heapStart = html.indexOf("Compile heap");
   const heapEnd = html.indexOf('<div class="vs__row" data-engine-row>', heapStart);
   const heapRow = html.slice(heapStart, heapEnd);
-  for (const engine of ["railshot", "wazero"]) {
+  for (const engine of ["railshot", "dragline", "wazero"]) {
     assert.match(heapRow, new RegExp(`data-engine="${engine}"`));
   }
-  assert.doesNotMatch(html, /dragline/i);
+  assert.match(html, /data-engine="dragline"/);
+  assert.match(html, /<span class="vs__engine">Dragline<\/span>/);
   assert.doesNotMatch(html, />Railshot</);
   assert.match(html, /<span class="vs__engine">wago<\/span>/);
   assert.doesNotMatch(html, /data-engine="(?:wasmtime|v8|wavm)"|data-engine-toggle="(?:wasmtime|v8|wavm)"/);

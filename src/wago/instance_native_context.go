@@ -490,6 +490,27 @@ func (in *Instance) preparedIsolatedEligible() bool {
 	return in.preparedEntryMode() == preparedEntryIsolated
 }
 
+// preparedContextFreeIsolatedEligible applies the isolated-state test without
+// rejecting signal bounds. Compiler-proven signal-guard-free call closures
+// cannot touch memory, so they do not require guard-fault activation for this
+// invocation.
+func (in *Instance) preparedContextFreeIsolatedEligible() bool {
+	if in == nil || in.c == nil || in.memoryDir != nil || in.nativeControlIsShared() || in.syncMode {
+		return false
+	}
+	if in.memory != nil {
+		if !in.ownsMem {
+			return false
+		}
+		_, shared := in.memory.importShape()
+		if shared {
+			return false
+		}
+	}
+	return len(in.globalCells) == 0 && in.tableDescPtr == 0 && in.gc == nil &&
+		in.c.NumImports == 0 && !in.c.needsFuncRefContext()
+}
+
 // Shared control requires native locking/rebinding. Imported, dynamic, and
 // store-owned GC domains require general GC admission, even for numeric exports.
 // Non-private domains are registered before public entry. Late boundary stores

@@ -31,6 +31,7 @@ type railshotCompileOptions struct {
 	SyncHostCalls          bool
 	SyncHostSlots          int
 	Interruptible          bool
+	FunctionCounters       bool
 	MemoryPressureAt       int
 	MemoryPressure         func()
 	GCTypeSubtypingRefTest bool

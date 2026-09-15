@@ -1,0 +1,32 @@
+{
+  "version": 2,
+  "engines": [
+    {
+      "name": "dragline-compat",
+      "builtin": "dragline",
+      "target": "compat",
+      "workers": 8,
+      "required": true
+    },
+    {
+      "name": "dragline-native",
+      "builtin": "dragline",
+      "target": "native",
+      "workers": 8,
+      "required": true
+    },
+    {
+      "name": "cranelift",
+      "command": "wasmtime",
+      "args": ["compile", "-O", "opt-level=2,regalloc-algorithm=backtracking", "-o", "{artifact}", "{wasm}"],
+      "version_args": ["--version"],
+      "required": true
+    },
+    {
+      "name": "llvm",
+      "command": "wasmer-llvm",
+      "args": ["compile", "-o", "{artifact}", "{wasm}"],
+      "version_args": ["--version"]
+    }
+  ]
+}

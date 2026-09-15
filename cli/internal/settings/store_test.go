@@ -47,6 +47,9 @@ func TestSettingsRoundTripAndDefaults(t *testing.T) {
 	if err := Set(&config, "runtime.parallel", "auto", false); err != nil {
 		t.Fatal(err)
 	}
+	if err := Set(&config, "dragline", "on", true); err != nil {
+		t.Fatal(err)
+	}
 	if err := SaveFile(path, config); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +57,7 @@ func TestSettingsRoundTripAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Features["simd"] || loaded.Runtime.Parallel != "auto" {
+	if loaded.Features["simd"] || loaded.Runtime.Parallel != "auto" || !loaded.Experimental["dragline"] {
 		t.Fatalf("loaded = %#v", loaded)
 	}
 }
@@ -129,18 +132,21 @@ func TestSettingsRejectPreviewAndUnknown(t *testing.T) {
 		}
 	}
 	if experimental.Key != "" {
+		name := experimental.Key[strings.IndexByte(experimental.Key, '.')+1:]
 		if err := Set(&config, experimental.Key, "on", false); err == nil {
 			t.Fatal("experimental setting was enabled without the flag")
 		}
 		if err := Set(&config, experimental.Key, "on", true); err != nil {
 			t.Fatalf("experimental setting was not enabled with flag: %v", err)
 		}
-		name := experimental.Key[strings.IndexByte(experimental.Key, '.')+1:]
 		if strings.HasPrefix(experimental.Key, "features.") && !config.Features[name] {
 			t.Fatal("experimental feature was not stored")
 		}
 		if strings.HasPrefix(experimental.Key, "optimizations.") && !config.Optimizations[name] {
 			t.Fatal("experimental optimization was not stored")
+		}
+		if strings.HasPrefix(experimental.Key, "experimental.") && !config.Experimental[name] {
+			t.Fatal("experimental preview was not stored")
 		}
 	}
 	if err := Set(&config, "not-a-setting", "on", false); err == nil {

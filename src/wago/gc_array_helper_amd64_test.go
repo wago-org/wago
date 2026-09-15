@@ -335,8 +335,8 @@ func TestStagedGCArrayNumericFixedOfficialProduct(t *testing.T) {
 }
 
 func TestStagedGCArrayHelperFootprint(t *testing.T) {
-	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
-		t.Fatalf("compiledCodeCache size = %d, want 64", got)
+	if got := unsafe.Sizeof(compiledCodeCache{}); got != 104 {
+		t.Fatalf("compiledCodeCache size = %d, want 104", got)
 	}
 	if got := unsafe.Sizeof(gcArrayGlobalInit{}); got != 40 {
 		t.Fatalf("gcArrayGlobalInit size = %d, want 40 with dynamic value storage", got)
