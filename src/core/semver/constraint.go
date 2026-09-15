@@ -32,8 +32,9 @@ func Satisfies(version, constraint string) (bool, error) {
 	return c.Check(v), nil
 }
 
-// ParseConstraint parses a range string. Supported forms (composable with spaces
-// for AND and "||" for OR):
+// ParseConstraint parses a range string. It rejects generated bounds whose
+// successor exceeds the supported uint64 version components. Supported forms
+// can be composed with spaces for AND and "||" for OR:
 //
 //	exact/x-range   1.2.3 · 1.2 · 1.x · 1 · * · "" (any)
 //	comparators     >=1.2.3 · >1.2 · <=2 · <2.0.0 · =1.2.3
@@ -151,7 +152,7 @@ func tokenizeRange(s string) []string {
 		for i < len(s) && strings.IndexByte("<>=~^", s[i]) >= 0 {
 			i++
 		}
-		op := s[opStart:i]
+		opEnd := i
 		for i < len(s) && s[i] == ' ' {
 			i++
 		}
@@ -159,7 +160,11 @@ func tokenizeRange(s string) []string {
 		for i < len(s) && s[i] != ' ' {
 			i++
 		}
-		toks = append(toks, op+s[vStart:i])
+		token := s[opStart:i]
+		if opEnd != vStart {
+			token = s[opStart:opEnd] + s[vStart:i]
+		}
+		toks = append(toks, token)
 	}
 	return toks
 }
@@ -190,6 +195,9 @@ func expandToken(t string) ([]comparator, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateRangeSuccessor(op, p); err != nil {
+		return nil, err
+	}
 	switch op {
 	case "^":
 		return caretRange(p), nil
@@ -200,6 +208,46 @@ func expandToken(t string) ([]comparator, error) {
 	default: // "" or "="
 		return eqRange(p), nil
 	}
+}
+
+// validateRangeSuccessor checks only the component that expansion increments.
+// Exact comparators remain valid at the largest supported component values.
+func validateRangeSuccessor(op string, p partial) error {
+	if p.n == 0 {
+		return nil
+	}
+	var component uint64
+	switch op {
+	case "^":
+		switch {
+		case p.major != 0 || p.n == 1:
+			component = p.major
+		case p.minor != 0 || p.n == 2:
+			component = p.minor
+		default:
+			component = p.patch
+		}
+	case "~":
+		component = p.major
+		if p.n >= 2 {
+			component = p.minor
+		}
+	case "", "=", ">", "<=":
+		switch p.n {
+		case 1:
+			component = p.major
+		case 2:
+			component = p.minor
+		default:
+			return nil
+		}
+	default:
+		return nil
+	}
+	if component == ^uint64(0) {
+		return fmt.Errorf("semver: range successor exceeds uint64 version component limit")
+	}
+	return nil
 }
 
 // partial is a possibly-incomplete version: n is how many of major.minor.patch
@@ -234,12 +282,22 @@ func parsePartial(s string) (partial, error) {
 		}
 		main = main[:d]
 	}
-	parts := strings.Split(main, ".")
-	if len(parts) > 3 {
-		return partial{}, fmt.Errorf("semver: too many components in %q", s)
+	var parts [3]string
+	nparts := 0
+	for {
+		if nparts == len(parts) {
+			return partial{}, fmt.Errorf("semver: too many components in %q", s)
+		}
+		part, rest, more := strings.Cut(main, ".")
+		parts[nparts] = part
+		nparts++
+		if !more {
+			break
+		}
+		main = rest
 	}
 	var out partial
-	for idx, part := range parts {
+	for idx, part := range parts[:nparts] {
 		if part == "" {
 			return partial{}, fmt.Errorf("semver: empty component in %q", s)
 		}
@@ -377,6 +435,9 @@ func hyphenRange(aTok, bTok string) ([]comparator, error) {
 	}
 	b, err := parsePartial(bTok)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateRangeSuccessor("", b); err != nil {
 		return nil, err
 	}
 	var out []comparator
