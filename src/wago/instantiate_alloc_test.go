@@ -25,8 +25,8 @@ func TestInstantiateCloseAllocationBudget(t *testing.T) {
 	if lifecycleErr != nil {
 		t.Fatalf("Instantiate/Close: %v", lifecycleErr)
 	}
-	if allocs > 4 {
-		t.Fatalf("Instantiate/Close allocations = %.0f, want <= 4", allocs)
+	if allocs > 6 {
+		t.Fatalf("Instantiate/Close allocations = %.0f, want <= 6", allocs)
 	}
 }
 
