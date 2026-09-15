@@ -155,7 +155,7 @@ var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
 // straight-line regions, letting eviction choose the farthest next access and
 // discard values killed by a later definition. RuntimeConfig optimization
 // selection retains the former static-hotness victim policy as an oracle.
-var intervalNextUseEnabled = true
+var intervalNextUseEnabled = os.Getenv("WAGO_AMD64_NO_INTERVAL_NEXT_USE") != "1"
 
 // intervalScratchLeaseEnabled lets straight-line integer regions with at most
 // one result borrow RDX when the hint scan proves that no div/rem instruction
@@ -176,12 +176,12 @@ var countedLoopLatchEnabled = os.Getenv("WAGO_AMD64_NO_COUNTED_LOOP_LATCH") != "
 // linearSumLoopEnabled hoists one exact bounds proof and unrolls recognized
 // scalar i64 memory reductions across four native accumulators. RuntimeConfig
 // selection retains the ordinary counted-loop lowering as an oracle.
-var linearSumLoopEnabled = true
+var linearSumLoopEnabled = os.Getenv("WAGO_AMD64_NO_LINEAR_SUM_LOOP") != "1"
 
 // callFreeLoopColdExitEnabled defers pinned-local reconciliation from a loop's
 // hot conditional fall-through to its taken exit when a complete scan proves
 // the loop cannot call, grow memory, or enter a helper.
-var callFreeLoopColdExitEnabled = true
+var callFreeLoopColdExitEnabled = os.Getenv("WAGO_AMD64_NO_CALLFREE_LOOP_COLD_EXIT") != "1"
 
 // intervalI64WeightEnabled prices a packed full-width local reload above an i32
 // reload when regional pressure chooses an eviction victim. The relative score
