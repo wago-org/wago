@@ -45,7 +45,6 @@ func runtimeCommandRegistry() *command.Cmd {
 // Main runs the runtime command matching os.Args.
 func Main(v string) {
 	version = v
-	registry := runtimeCommandRegistry()
 	args, err := automation.ParseLeading(os.Args[1:])
 	if err != nil {
 		ui.Usage("%v", err)
@@ -75,6 +74,7 @@ func Main(v string) {
 		runtimeversion.Print(versionString(), profile.Name(), profile.Build(), runtimeplugin.Summary())
 		return
 	}
+	registry := runtimeCommandRegistry()
 	// Help describes the invoked CLI, not a generated plugin artifact that may
 	// have been compiled by an older Wago. Resolve it before plugin handoff so
 	// every command advertises the current interface.
