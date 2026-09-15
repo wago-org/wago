@@ -113,6 +113,8 @@ TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
 	MOVQ	AX, 88(SP)
 	LEAQ	16(R11), R11           // original synthetic frame
 	MOVQ	R11, 192(SP)
+	MOVQ	8(R11), AX             // faulting R8 carried by the VEH frame
+	MOVQ	AX, 56(SP)             // replace Windows' continuation-time R8
 	MOVOU	X0, 96(SP)
 	MOVOU	X1, 112(SP)
 	MOVOU	X2, 128(SP)
