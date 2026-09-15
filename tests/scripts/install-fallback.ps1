@@ -29,13 +29,18 @@ function Get-WagoBetaTag {
 }
 function Assert-Tags([string]$selector, [string[]]$expected) {
     $actual = @(Get-WagoDownloadTags $selector)
-    if (($actual -join "|") -ne ($expected -join "|")) {
+    if ($actual.Count -ne $expected.Count -or ($actual -join "|") -ne ($expected -join "|")) {
         throw "Selector $selector returned $actual; expected $expected"
     }
 }
-function Assert-Failure([string]$selector) {
+function Assert-Failure([string]$selector, [string]$expected) {
     $failed = $false
-    try { $null = Get-WagoDownloadTags $selector } catch { $failed = $true }
+    try { $null = Get-WagoDownloadTags $selector } catch {
+        $failed = $true
+        if ($_.Exception.Message -ne $expected) {
+            throw "Selector $selector failed with $_; expected $expected"
+        }
+    }
     if (-not $failed) { throw "Selector $selector should fail" }
 }
 
@@ -59,12 +64,23 @@ if ($BenchmarkIterations -gt 0) {
 Assert-Tags "main" @("v1.1.0", "v1.2.0-beta.1")
 $script:betaFails = $true
 Assert-Tags "main" @("v1.1.0")
-Assert-Failure "beta"
+Assert-Tags "latest" @("v1.1.0")
+Assert-Failure "beta" "beta lookup failed"
+Assert-Failure "canary" "beta lookup failed"
 $script:latestFails = $true
-Assert-Failure "main"
+Assert-Failure "main" "beta lookup failed"
+Assert-Failure "latest" "latest lookup failed"
+Assert-Tags "v1.1.0" @("v1.1.0")
+Assert-Tags "v1.2.0-beta.1" @("v1.2.0-beta.1")
+Assert-Tags "invalid" @()
 $script:betaFails = $false
 Assert-Tags "main" @("v1.2.0-beta.1")
+Assert-Tags "beta" @("v1.2.0-beta.1")
+Assert-Tags "canary" @("v1.2.0-beta.1")
+$script:betaTag = $null
+Assert-Tags "main" @()
 $script:latestFails = $false
+Assert-Tags "main" @("v1.1.0")
 $script:betaTag = "v1.1.0"
 Assert-Tags "main" @("v1.1.0")
 Assert-Tags "latest" @("v1.1.0")
