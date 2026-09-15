@@ -1,4 +1,4 @@
-//go:build !tinygo
+//go:build !tinygo && (!wago_guardpage || !windows || !arm64)
 
 package wago
 
