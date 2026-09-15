@@ -1937,7 +1937,11 @@ func (c *Compiled) sharedHostFuncThunks(syncMode bool) (uintptr, []int, error) {
 	cc := c.codeCache
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
-	cache := &cc.hostThunks[cacheIndex]
+	memo := c.loadValidateMemo()
+	if memo == nil {
+		return 0, nil, fmt.Errorf("shared host import wrapper thunk: validation metadata is missing")
+	}
+	cache := &memo.hostThunks[cacheIndex]
 	if cache.mem != nil {
 		return cache.base, cache.offsets, nil
 	}

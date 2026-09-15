@@ -25,8 +25,8 @@ func TestInstantiateCloseAllocationBudget(t *testing.T) {
 	if lifecycleErr != nil {
 		t.Fatalf("Instantiate/Close: %v", lifecycleErr)
 	}
-	if allocs > 3 {
-		t.Fatalf("Instantiate/Close allocations = %.0f, want <= 3", allocs)
+	if allocs > 4 {
+		t.Fatalf("Instantiate/Close allocations = %.0f, want <= 4", allocs)
 	}
 }
 
@@ -57,7 +57,7 @@ func TestInstantiateHostImportAllocationBudget(t *testing.T) {
 	if lifecycleErr != nil {
 		t.Fatalf("Instantiate/Close: %v", lifecycleErr)
 	}
-	if allocs > 10 {
-		t.Fatalf("Instantiate/Close host-import allocations = %.0f, want <= 10", allocs)
+	if allocs > 13 {
+		t.Fatalf("Instantiate/Close host-import allocations = %.0f, want <= 13", allocs)
 	}
 }

@@ -46,7 +46,7 @@ func TestRuntimeGCInstanceSharesHostThunkUntilCompiledClose(t *testing.T) {
 	}
 	cache := in.c.codeCache
 	cache.mu.Lock()
-	sharedThunkBytes := len(cache.hostThunks[1].mem)
+	sharedThunkBytes := len(in.c.validateMemo.hostThunks[1].mem)
 	cache.mu.Unlock()
 	if sharedThunkBytes == 0 || in.thunkMem != nil {
 		t.Fatalf("host thunk ownership: shared=%d instance=%d", sharedThunkBytes, len(in.thunkMem))
@@ -58,7 +58,7 @@ func TestRuntimeGCInstanceSharesHostThunkUntilCompiledClose(t *testing.T) {
 		t.Fatalf("closed GC instance retained physical resources: released=%v thunk=%d", in.resourcesClosed, len(in.thunkMem))
 	}
 	cache.mu.Lock()
-	sharedThunkBytes = len(cache.hostThunks[1].mem)
+	sharedThunkBytes = len(in.c.validateMemo.hostThunks[1].mem)
 	cache.mu.Unlock()
 	if sharedThunkBytes == 0 {
 		t.Fatal("instance close released the compiled module's shared host thunks")
@@ -67,7 +67,7 @@ func TestRuntimeGCInstanceSharesHostThunkUntilCompiledClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	cache.mu.Lock()
-	sharedThunkBytes = len(cache.hostThunks[1].mem)
+	sharedThunkBytes = len(in.c.validateMemo.hostThunks[1].mem)
 	cache.mu.Unlock()
 	if sharedThunkBytes != 0 {
 		t.Fatalf("compiled close retained %d host thunk bytes", sharedThunkBytes)

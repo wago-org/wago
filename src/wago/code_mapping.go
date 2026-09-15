@@ -49,9 +49,6 @@ type compiledCodeCache struct {
 	// direct-Instantiation native stack capacity without growing this sidecar.
 	// Neither half is serialized; codec reload restores only generic features.
 	stagedFeatures CoreFeatures
-	// hostThunks lazily owns immutable async and sync import wrappers. Instances
-	// retain them through the same refs counter as the primary code image.
-	hostThunks [2]compiledHostThunkCache
 }
 
 type compiledHostThunkCache struct {
@@ -683,7 +680,7 @@ func (c *Compiled) releaseCode() {
 			cc.mem = nil
 			cc.base = 0
 		}
-		cc.releaseHostThunksLocked()
+		c.releaseHostThunksLocked()
 		c.clearCodeViewsLocked()
 		if c.validateMemo != nil {
 			c.validateMemo.structuralCallIdentities.Store(nil)
@@ -691,14 +688,28 @@ func (c *Compiled) releaseCode() {
 	}
 }
 
-func (cc *compiledCodeCache) releaseHostThunksLocked() {
-	for i := range cc.hostThunks {
-		cache := &cc.hostThunks[i]
+func (c *Compiled) releaseHostThunksLocked() {
+	memo := c.loadValidateMemo()
+	if memo == nil {
+		return
+	}
+	for i := range memo.hostThunks {
+		cache := &memo.hostThunks[i]
 		if cache.mem != nil {
 			_ = coreruntime.Unmap(cache.mem)
 			*cache = compiledHostThunkCache{}
 		}
 	}
+}
+
+func (c *Compiled) takeHostThunksLocked() [2]compiledHostThunkCache {
+	memo := c.loadValidateMemo()
+	if memo == nil {
+		return [2]compiledHostThunkCache{}
+	}
+	hostThunks := memo.hostThunks
+	memo.hostThunks = [2]compiledHostThunkCache{}
+	return hostThunks
 }
 
 // clearCodeViewsLocked drops every slice header that can retain the staged or
@@ -725,8 +736,7 @@ func (c *Compiled) replaceDecoded(decoded Compiled, snapshotLimit uint64) error 
 		mem := cc.mem
 		cc.mem = nil
 		cc.base = 0
-		hostThunks := cc.hostThunks
-		cc.hostThunks = [2]compiledHostThunkCache{}
+		hostThunks := c.takeHostThunksLocked()
 		cc.closed = true
 		c.code = nil
 		cc.mu.Unlock()
@@ -783,8 +793,7 @@ func (c *Compiled) Close() error {
 	mem := cc.mem
 	cc.mem = nil
 	cc.base = 0
-	hostThunks := cc.hostThunks
-	cc.hostThunks = [2]compiledHostThunkCache{}
+	hostThunks := c.takeHostThunksLocked()
 	err := coreruntime.Unmap(mem)
 	for i := range hostThunks {
 		if hostThunks[i].mem != nil {
