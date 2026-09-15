@@ -278,7 +278,7 @@ func (b *instanceBuilder) prepareCollector() error {
 		if err != nil {
 			return err
 		}
-		collector, mapping, err := b.opts.store.acquireGCCollector(gcConfig, b.c, preferred)
+		collector, mapping, err := b.opts.store.acquireGCCollector(b.opts.startContext, gcConfig, b.c, preferred)
 		if err != nil {
 			return err
 		}

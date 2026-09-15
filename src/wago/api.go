@@ -4497,7 +4497,10 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 		defer in.endInvocation()
 	}
-	gcLease := in.lockGCInvocation(id)
+	gcLease, err := in.lockGCInvocationContext(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	var reconcileAttached *Instance
 	defer func() {
 		gcLease.unlock()
@@ -4653,7 +4656,10 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, contexts invocatio
 		return nil, fmt.Errorf("invoke function %d: %w", li, err)
 	}
 	defer in.endInvocation()
-	gcLease := in.lockGCInvocation(in.currentInvocationID())
+	gcLease, err := in.lockGCInvocationContext(contexts.admissionContext(), in.currentInvocationID())
+	if err != nil {
+		return nil, err
+	}
 	defer func() {
 		gcLease.unlock()
 		if in.importsFuncrefStorage() || in.table != nil {

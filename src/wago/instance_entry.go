@@ -173,7 +173,10 @@ func (in *Instance) invokeVoidEntry(ctx context.Context, entry uintptr, reservat
 			return err
 		}
 	}
-	gcLease := in.lockGCInvocation(in.currentInvocationID())
+	gcLease, err := in.lockGCInvocationContext(ctx, in.currentInvocationID())
+	if err != nil {
+		return err
+	}
 	defer func() {
 		gcLease.unlock()
 		if in.importsFuncrefStorage() || in.table != nil {

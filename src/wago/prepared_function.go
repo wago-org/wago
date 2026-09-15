@@ -28,6 +28,7 @@ type PreparedFunction struct {
 	paramWide           []bool
 	hasReferenceParams  bool
 	hasReferenceResults bool
+	gcMaintenance       bool
 	scalarWideMask      uint8
 	scalarFast          bool
 	scalarResultWide    bool
@@ -143,6 +144,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		paramWide:           paramWide,
 		hasReferenceParams:  hasReferenceValType(sig.Params),
 		hasReferenceResults: hasReferenceValType(sig.Results),
+		gcMaintenance:       in.gc != nil && (in.c.genericGCBoundaryCollectionSafe() || in.c.hasGCRefGlobals()),
 		resultWide:          resultWide,
 	}
 	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
@@ -199,6 +201,7 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 }
 
 type preparedInvocationLease struct {
+	in    *Instance
 	state *instancePluginState
 	gc    gcInvocationLease
 }
@@ -208,7 +211,7 @@ func (in *Instance) lockPreparedInvocation() preparedInvocationLease {
 	state.invokeMu.Lock()
 	id := newInvocationID()
 	state.invocationID = id
-	return preparedInvocationLease{state: state, gc: in.lockGCInvocation(id)}
+	return preparedInvocationLease{in: in, state: state, gc: in.lockGCInvocation(id)}
 }
 
 func (in *Instance) lockPreparedSessionInvocation() preparedInvocationLease {
@@ -220,6 +223,9 @@ func (in *Instance) lockPreparedSessionInvocation() preparedInvocationLease {
 
 func (l preparedInvocationLease) unlock() {
 	l.gc.unlock()
+	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
+		l.in.reconcileFuncrefRoots()
+	}
 	l.state.invocationID = 0
 	l.state.invokeMu.Unlock()
 }
@@ -290,6 +296,9 @@ func (fn *PreparedFunction) invokeGeneralAdmitted(args []uint64) ([]uint64, erro
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}
+	if err := in.collectGenericGCAtBoundary(); err != nil {
+		return nil, err
+	}
 	if fn.hasReferenceParams {
 		defer in.clearGCRefArgumentRoots()
 		if err := in.marshalPublicReferenceArgs(fn.export, args, fn.paramTypes, fn.paramExact); err != nil {
@@ -316,6 +325,9 @@ func (fn *PreparedFunction) invokeGeneralAdmitted(args []uint64) ([]uint64, erro
 				return nil, err
 			}
 		}
+	}
+	if err := in.reconcileGCGlobalRoots(); err != nil {
+		return nil, err
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
@@ -362,7 +374,7 @@ func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 
 func (fn *PreparedFunction) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	in := fn.in
-	if !in.preparedFastStateValid() {
+	if fn.gcMaintenance || !in.preparedFastStateValid() {
 		return fn.invokeGeneralAdmitted(args)
 	}
 	if len(args) <= 4 {

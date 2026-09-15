@@ -267,6 +267,9 @@ func (state *preparedSessionState) endCall(gcLease gcInvocationLease) {
 	if gcLease.acquired {
 		gcLease.unlock()
 	}
+	if in := state.fn.in; in.importsFuncrefStorage() || in.table != nil {
+		in.reconcileFuncrefRoots()
+	}
 	if !state.guardCalls {
 		return
 	}
