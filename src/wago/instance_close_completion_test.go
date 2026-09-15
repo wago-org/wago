@@ -149,7 +149,7 @@ func TestCloseTerminalWaiters(t *testing.T) {
 				ended := make(chan struct{})
 				go func() { in.endInvocation(); close(ended) }()
 				awaitCloseSignal(t, entered)
-				state := in.ensurePluginState().close.Load()
+				state := in.closeState.Load()
 				select {
 				case <-state.quiesced:
 				default:

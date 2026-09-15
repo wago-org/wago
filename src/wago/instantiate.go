@@ -667,7 +667,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		runtime.ReleaseEngine(eng)
 		return nil, err
 	}
-	var thunkMem []byte // host-func-in-table log thunks; unmapped on failure/close
+	var thunkMem []byte // instance-specific HostFuncRef thunks; unmapped on failure/close
 	defer func() {
 		if b.success {
 			return
@@ -739,7 +739,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
 
-	thunkAddr, generatedThunks, err := buildHostFuncThunks(c, imports, syncMode)
+	sharedThunkBase, sharedThunkOffsets, ownedThunkAddr, generatedThunks, err := buildHostFuncThunks(c, imports, syncMode)
 	if err != nil {
 		return nil, err
 	}
@@ -759,8 +759,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCallerContextOffset:], uint64(nativeContextPtr))
 				continue
 			}
-			addr, ok := thunkAddr[uint32(i)]
-			if !ok {
+			addr := uint64(0)
+			if ownedThunkAddr != nil {
+				addr = ownedThunkAddr[uint32(i)]
+			}
+			if addr == 0 && i < len(sharedThunkOffsets) && sharedThunkOffsets[i] != noHostThunkOffset {
+				addr = uint64(sharedThunkBase) + uint64(sharedThunkOffsets[i])
+			}
+			if addr == 0 {
 				return nil, fmt.Errorf("import %q has no host dispatch thunk", key)
 			}
 			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], addr)
@@ -920,7 +926,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					home = uint64(ex.inst.jm.LinMemBase())
 					targetContext = uint64(ex.inst.nativeContext)
 					kind = abi.FuncRefEntryCrossInstanceWrapper
-				} else if addr, ok := thunkAddr[uint32(fidx)]; ok {
+				} else if addr, ok := hostThunkAddr(fidx, sharedThunkBase, sharedThunkOffsets, ownedThunkAddr); ok {
 					code, home = addr, selfLinMem
 					kind = abi.FuncRefEntryHostThunk
 				}
@@ -1665,10 +1671,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			return nil, err
 		}
 	}
-	if in.syncMode {
-		in.hostCall = in.newHostDispatch()
-	}
-
 	if initErr != nil {
 		if opts.runtime == nil {
 			tableRetained := retainProducerRootsInImportedTables(in)
@@ -1853,10 +1855,28 @@ func funcSigIntRegABI(sig FuncSig) bool {
 	return true
 }
 
-// buildHostFuncThunks generates wrapper-ABI targets for every host-bound import.
-// The same target serves direct imported calls through the instance dispatch
-// table and host funcrefs stored in Wasm tables.
-func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (map[uint32]uint64, []byte, error) {
+// buildHostFuncThunks resolves wrapper-ABI targets for every host-bound import.
+// Ordinary targets are immutable and shared with the Compiled code image;
+// HostFuncRef dispatch indexes remain instance-specific.
+const noHostThunkOffset = -1
+
+func hostThunkAddr(fidx int, sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64) (uint64, bool) {
+	if ownedAddr != nil {
+		if addr := ownedAddr[uint32(fidx)]; addr != 0 {
+			return addr, true
+		}
+	}
+	if fidx >= 0 && fidx < len(sharedOffsets) && sharedOffsets[fidx] != noHostThunkOffset {
+		return uint64(sharedBase) + uint64(sharedOffsets[fidx]), true
+	}
+	return 0, false
+}
+
+func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64, ownedMem []byte, err error) {
+	sharedBase, sharedOffsets, err = c.sharedHostFuncThunks(syncMode)
+	if err != nil {
+		return 0, nil, nil, nil, err
+	}
 	var blob []byte
 	offs := map[uint32]int{}
 	for fidx := 0; fidx < c.NumImports; fidx++ {
@@ -1865,57 +1885,94 @@ func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (map[uint3
 			continue // cross-instance funcref, not a host function
 		}
 		if syncMode {
-			if fidx >= len(c.importFuncSigs) {
-				return nil, nil, fmt.Errorf("import %q wrapper signature is missing", key)
-			}
-			sig := c.importFuncSigs[fidx]
-			paramSlots, err := valTypesSlots(sig.Params)
-			if err != nil {
-				return nil, nil, fmt.Errorf("import %q wrapper params: %w", key, err)
-			}
-			resultSlots, err := valTypesSlots(sig.Results)
-			if err != nil {
-				return nil, nil, fmt.Errorf("import %q wrapper results: %w", key, err)
-			}
-			dispatch := uint32(fidx)
-			owned := false
 			if owner, ok := imports[key].(*HostFuncRef); ok && owner != nil {
+				sig := c.importFuncSigs[fidx]
+				paramSlots, slotErr := valTypesSlots(sig.Params)
+				if slotErr != nil {
+					return 0, nil, nil, nil, fmt.Errorf("import %q wrapper params: %w", key, slotErr)
+				}
+				resultSlots, slotErr := valTypesSlots(sig.Results)
+				if slotErr != nil {
+					return 0, nil, nil, nil, fmt.Errorf("import %q wrapper results: %w", key, slotErr)
+				}
 				owner.mu.Lock()
 				dispatchIndex := owner.dispatchIndex
 				owner.mu.Unlock()
 				if binding, ok := owner.dispatchBinding(c, fidx); ok {
 					dispatchIndex = binding.dispatchIndex
 				}
-				dispatch = hostFuncRefDispatchBit | dispatchIndex
-				owned = true
-			}
-			offs[uint32(fidx)] = len(blob)
-			if owned {
-				blob = append(blob, railshotHostIndirectOwnedSyncThunk(dispatch, paramSlots, resultSlots)...)
-			} else {
-				blob = append(blob, railshotHostIndirectSyncThunk(dispatch, paramSlots, resultSlots)...)
+				offs[uint32(fidx)] = len(blob)
+				blob = append(blob, railshotHostIndirectOwnedSyncThunk(hostFuncRefDispatchBit|dispatchIndex, paramSlots, resultSlots)...)
 			}
 			continue
 		}
-		if isHostCallback(imports[key]) {
-			offs[uint32(fidx)] = len(blob)
-			blob = append(blob, railshotHostIndirectThunk(uint32(fidx))...)
-		} else {
+		if !isHostCallback(imports[key]) {
 			if imports[key] != nil {
-				return nil, nil, fmt.Errorf("import %q is %T; async host wrappers require wago.I32HostEvent", key, imports[key])
+				return 0, nil, nil, nil, fmt.Errorf("import %q is %T; async host wrappers require wago.I32HostEvent", key, imports[key])
 			}
 		}
 	}
 	if len(blob) == 0 {
-		return nil, nil, nil
+		return sharedBase, sharedOffsets, nil, nil, nil
 	}
 	mem, base, err := runtime.MapCode(blob)
 	if err != nil {
-		return nil, nil, fmt.Errorf("host import wrapper thunk: %w", err)
+		return 0, nil, nil, nil, fmt.Errorf("host import wrapper thunk: %w", err)
 	}
 	addr := make(map[uint32]uint64, len(offs))
 	for fidx, o := range offs {
 		addr[fidx] = uint64(base) + uint64(o)
 	}
-	return addr, mem, nil
+	return sharedBase, sharedOffsets, addr, mem, nil
+}
+
+func (c *Compiled) sharedHostFuncThunks(syncMode bool) (uintptr, []int, error) {
+	if c.NumImports == 0 {
+		return 0, nil, nil
+	}
+	cacheIndex := 0
+	if syncMode {
+		cacheIndex = 1
+	}
+	cc := c.codeCache
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	memo := c.loadValidateMemo()
+	if memo == nil {
+		return 0, nil, fmt.Errorf("shared host import wrapper thunk: validation metadata is missing")
+	}
+	cache := &memo.hostThunks[cacheIndex]
+	if cache.mem != nil {
+		return cache.base, cache.offsets, nil
+	}
+	offsets := make([]int, c.NumImports)
+	var blob []byte
+	for fidx := 0; fidx < c.NumImports; fidx++ {
+		offsets[fidx] = noHostThunkOffset
+		if syncMode {
+			if fidx >= len(c.importFuncSigs) {
+				return 0, nil, fmt.Errorf("import %q wrapper signature is missing", c.Imports[fidx])
+			}
+			sig := c.importFuncSigs[fidx]
+			paramSlots, err := valTypesSlots(sig.Params)
+			if err != nil {
+				return 0, nil, fmt.Errorf("import %q wrapper params: %w", c.Imports[fidx], err)
+			}
+			resultSlots, err := valTypesSlots(sig.Results)
+			if err != nil {
+				return 0, nil, fmt.Errorf("import %q wrapper results: %w", c.Imports[fidx], err)
+			}
+			offsets[fidx] = len(blob)
+			blob = append(blob, railshotHostIndirectSyncThunk(uint32(fidx), paramSlots, resultSlots)...)
+			continue
+		}
+		offsets[fidx] = len(blob)
+		blob = append(blob, railshotHostIndirectThunk(uint32(fidx))...)
+	}
+	mem, base, err := runtime.MapCode(blob)
+	if err != nil {
+		return 0, nil, fmt.Errorf("shared host import wrapper thunk: %w", err)
+	}
+	cache.mem, cache.base, cache.offsets = mem, base, offsets
+	return base, offsets, nil
 }

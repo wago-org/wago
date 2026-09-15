@@ -57,6 +57,44 @@ func TestConcurrentInstantiateSharedCompiled(t *testing.T) {
 	}
 }
 
+func TestConcurrentInstantiateSharesHostThunks(t *testing.T) {
+	compiled := MustCompile(returningImportModule(returningI32Sig(), []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}))
+	defer compiled.Close()
+	imports := Imports{"env.f": I32ToI32HostFunc(func(value int32) int32 { return value + 1 })}
+
+	const workers = 16
+	start := make(chan struct{})
+	errs := make(chan error, workers)
+	var wait sync.WaitGroup
+	for range workers {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			instance, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
+			if err != nil {
+				errs <- err
+				return
+			}
+			defer instance.Close()
+			values, err := instance.Invoke("g", I32(41))
+			if err != nil {
+				errs <- err
+				return
+			}
+			if len(values) != 1 || AsI32(values[0]) != 42 {
+				errs <- &concurrentInstantiateResultError{values: values}
+			}
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+}
+
 type concurrentInstantiateResultError struct{ values []uint64 }
 
 func (e *concurrentInstantiateResultError) Error() string {
