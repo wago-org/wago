@@ -58,6 +58,123 @@ func TestSIMDI32x4RotateRightSuperoptArm64(t *testing.T) {
 	}
 }
 
+func TestSIMDShuffleRotate8CachedInPlaceArm64(t *testing.T) {
+	values := []uint32{0x01234567, 0x89abcdef, 0x80000001, 0xfedcba98}
+	v := i32x4Bytes(int32(values[0]), int32(values[1]), int32(values[2]), int32(values[3]))
+	body := []byte{0x01, 0x01, 0x7b} // one v128 local
+	body = append(body, simdConst(v)...)
+	body = append(body, 0x21, 0x00) // local.set 0
+	for range 2 {
+		body = append(body, 0x20, 0x00, 0x20, 0x00) // local.get 0 twice
+		body = append(body, simdOp(13)...)
+		body = append(body, i8x16Rotate8[:]...)
+		body = append(body, 0x21, 0x00) // local.set 0
+	}
+	body = append(body, 0x20, 0x00, 0x0b)
+	m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+	stats := compileWithStats(t, m, false).Funcs[0]
+	if got := stats.Peephole["simd-shuffle-rotr8-tbl-inplace"]; got != 2 {
+		t.Fatalf("in-place rotate8 shuffles = %d, want 2 (all: %v)", got, stats.Peephole)
+	}
+	want := i32x4Bytes(
+		int32(bits.RotateLeft32(values[0], -16)),
+		int32(bits.RotateLeft32(values[1], -16)),
+		int32(bits.RotateLeft32(values[2], -16)),
+		int32(bits.RotateLeft32(values[3], -16)),
+	)
+	if got := runArm64V128(t, m); got != want {
+		t.Fatalf("two rotate-right-8 shuffles = % x, want % x", got, want)
+	}
+	func() {
+		saved := v128ConstCacheEnabled
+		defer func() { v128ConstCacheEnabled = saved }()
+		v128ConstCacheEnabled = false
+		if got := compileWithStats(t, m, false).Funcs[0].Peephole["simd-shuffle-rotr8-tbl-inplace"]; got != 0 {
+			t.Fatalf("disabled in-place rotate8 shuffles = %d, want 0", got)
+		}
+		if got := runArm64V128(t, m); got != want {
+			t.Fatalf("uncached two rotate-right-8 shuffles = % x, want % x", got, want)
+		}
+	}()
+}
+
+func TestSIMDShuffleRotate16InPlaceArm64(t *testing.T) {
+	values := []uint32{0x01234567, 0x89abcdef, 0x80000001, 0xfedcba98}
+	v := i32x4Bytes(int32(values[0]), int32(values[1]), int32(values[2]), int32(values[3]))
+	body := []byte{0x01, 0x01, 0x7b} // one v128 local
+	body = append(body, simdConst(v)...)
+	body = append(body, 0x21, 0x00)             // local.set 0
+	body = append(body, 0x20, 0x00, 0x20, 0x00) // local.get 0 twice
+	body = append(body, simdOp(13)...)
+	body = append(body, i8x16Rotate16[:]...)
+	body = append(body, 0x21, 0x00, 0x20, 0x00, 0x0b) // local.set 0; local.get 0; end
+	m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+	stats := compileWithStats(t, m, false).Funcs[0]
+	if got := stats.Peephole["simd-shuffle-rotr16-inplace"]; got != 1 {
+		t.Fatalf("in-place rotate16 shuffles = %d, want 1 (all: %v)", got, stats.Peephole)
+	}
+	want := i32x4Bytes(
+		int32(bits.RotateLeft32(values[0], -16)),
+		int32(bits.RotateLeft32(values[1], -16)),
+		int32(bits.RotateLeft32(values[2], -16)),
+		int32(bits.RotateLeft32(values[3], -16)),
+	)
+	if got := runArm64V128(t, m); got != want {
+		t.Fatalf("rotate-right-16 shuffle = % x, want % x", got, want)
+	}
+
+	other := []byte{0x01, 0x02, 0x7b} // two v128 locals
+	other = append(other, simdConst(v)...)
+	other = append(other, 0x21, 0x00)             // local.set 0
+	other = append(other, 0x20, 0x00, 0x20, 0x00) // local.get 0 twice
+	other = append(other, simdOp(13)...)
+	other = append(other, i8x16Rotate16[:]...)
+	other = append(other, 0x21, 0x01, 0x20, 0x01, 0x0b) // local.set 1; local.get 1; end
+	otherModule := mod1(t, nil, []wasm.ValType{wasm.V128}, other)
+	if got := compileWithStats(t, otherModule, false).Funcs[0].Peephole["simd-shuffle-rotr16-inplace"]; got != 0 {
+		t.Fatalf("different-local rotate16 sink fired %d time(s), want 0", got)
+	}
+	if got := runArm64V128(t, otherModule); got != want {
+		t.Fatalf("different-local rotate-right-16 shuffle = % x, want % x", got, want)
+	}
+}
+
+func TestV128BinaryLocalSinkArm64(t *testing.T) {
+	value := [16]byte{0xff, 0x0f, 0xf0, 0xaa, 1, 2, 3, 4, 0x55, 0xcc, 9, 8, 7, 6, 5, 4}
+	mask := [16]byte{0x0f, 0xff, 0x0f, 0x55, 0xff, 0, 0xff, 0, 0xaa, 0x33, 0xff, 0, 0xff, 0, 0xff, 0}
+	var want [16]byte
+	for i := range want {
+		want[i] = value[i] & mask[i]
+	}
+	for _, tc := range []struct {
+		name string
+		sink byte
+		tail []byte
+	}{
+		{name: "set", sink: 0x21, tail: []byte{0x20, 0x00}},
+		{name: "tee", sink: 0x22, tail: []byte{0x1a, 0x20, 0x00}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x01, 0x01, 0x7b} // one v128 local
+			body = append(body, simdConst(value)...)
+			body = append(body, 0x21, 0x00, 0x20, 0x00) // local.set 0; local.get 0
+			body = append(body, simdConst(mask)...)
+			body = append(body, simdOp(78)...) // v128.and
+			body = append(body, tc.sink, 0x00)
+			body = append(body, tc.tail...)
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			stats := compileWithStats(t, m, false).Funcs[0]
+			if got := stats.Peephole["v128-local-sink"]; got != 1 {
+				t.Fatalf("v128 local sinks = %d, want 1 (all: %v)", got, stats.Peephole)
+			}
+			if got := runArm64V128(t, m); got != want {
+				t.Fatalf("v128 local sink = % x, want % x", got, want)
+			}
+		})
+	}
+}
+
 func simdAndAnyTrueBodyArm64(a, b [16]byte) []byte {
 	body := []byte{0x00}
 	body = append(body, simdConst(a)...)

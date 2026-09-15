@@ -153,8 +153,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
-		if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
-			return err
+		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
+				return err
+			}
 		}
 		if f.localType[x] == mtV128 {
 			next, _ := r.Peek()
@@ -187,6 +189,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		x, err := r.U32()
 		if err != nil {
 			return err
+		}
+		written := int(x) + f.localBase
+		if written >= 0 && written < 64 {
+			f.localWritten |= 1 << written
 		}
 		f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
 	case 0x23: // global.get

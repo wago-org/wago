@@ -154,6 +154,192 @@ func (m *ctrlFrameMerge) countedLoop() (counter int, ok bool) {
 	return int(encoded - 1), true
 }
 
+// inspectLinearSumLoop recognizes the exact scalar reduction
+//
+//	acc += i64.load(addr); addr += 8; counter--; br 0
+//
+// following a top-tested counter==0 exit. It is deliberately exact: admitting
+// arbitrary loop bodies would require a general induction/range proof and could
+// move a memory trap across an observable effect.
+func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, loadPC uint32, ok bool) {
+	r2 := *r
+	readLocal := func(op byte) (int, bool) {
+		got, err := r2.Byte()
+		if err != nil || got != op {
+			return 0, false
+		}
+		x, err := r2.U32()
+		return int(x) + f.localBase, err == nil
+	}
+	readOp := func(want byte) bool {
+		got, err := r2.Byte()
+		return err == nil && got == want
+	}
+
+	acc, yes := readLocal(0x20) // local.get acc
+	if !yes {
+		return 0, 0, 0, false
+	}
+	addr, yes = readLocal(0x20) // local.get addr
+	if !yes {
+		return 0, 0, 0, false
+	}
+	loadPC = f.tracePCBase + uint32(r2.Offset())
+	if !readOp(0x29) { // i64.load
+		return 0, 0, 0, false
+	}
+	memoryIndex, off, err := f.readMemArg(&r2)
+	if err != nil || memoryIndex != 0 || off != 0 || !readOp(0x7c) { // i64.add
+		return 0, 0, 0, false
+	}
+	setAcc, yes := readLocal(0x21)
+	if !yes || setAcc != acc {
+		return 0, 0, 0, false
+	}
+	getAddr, yes := readLocal(0x20)
+	if !yes || getAddr != addr || !readOp(0x41) {
+		return 0, 0, 0, false
+	}
+	stride, err := r2.I32()
+	if err != nil || stride != 8 || !readOp(0x6a) { // i32.add
+		return 0, 0, 0, false
+	}
+	setAddr, yes := readLocal(0x21)
+	if !yes || setAddr != addr {
+		return 0, 0, 0, false
+	}
+	getCounter, yes := readLocal(0x20)
+	if !yes || getCounter != counter || !readOp(0x41) {
+		return 0, 0, 0, false
+	}
+	one, err := r2.I32()
+	if err != nil || one != 1 || !readOp(0x6b) { // i32.sub
+		return 0, 0, 0, false
+	}
+	setCounter, yes := readLocal(0x21)
+	if !yes || setCounter != counter || !readOp(0x0c) {
+		return 0, 0, 0, false
+	}
+	label, err := r2.U32()
+	if err != nil || label != 0 || !readOp(0x0b) || !readOp(0x0b) {
+		return 0, 0, 0, false
+	}
+	if acc < 0 || acc >= len(f.localType) || f.localType[acc] != mtI64 ||
+		addr < 0 || addr >= len(f.localType) || f.localType[addr] != mtI32 || addr == counter ||
+		addr >= 1<<16-1 || acc >= 1<<16-1 {
+		return 0, 0, 0, false
+	}
+	return addr, acc, loadPC, true
+}
+
+func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int) {
+	if !f.opt(optLinearSumLoop) || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.memSizeReg == regNone {
+		return
+	}
+	addr, acc, loadPC, ok := f.inspectLinearSumLoop(r, counter)
+	if !ok {
+		return
+	}
+	counterReg, counterFloat, counterPinned := f.pinReg(counter)
+	addrReg, addrFloat, addrPinned := f.pinReg(addr)
+	if !counterPinned || counterFloat || !addrPinned || addrFloat {
+		return
+	}
+	// Both operands are i32 values. Zero-extend before native-width arithmetic;
+	// counter*8 cannot overflow uint64, and a bounded end proves every load.
+	t := f.allocReg(0)
+	f.a.MovReg32(t, counterReg)
+	f.a.LslImm(t, t, 3, false)
+	f.a.MovReg32(addrReg, addrReg)
+	f.a.Add64(t, t, addrReg)
+	f.cmpRR(t, f.memSizeReg, true)
+	savedPC := f.wasmPC
+	f.wasmPC = loadPC
+	f.trapIf(condA, trapMemOOB)
+	f.wasmPC = savedPC
+	f.release(t)
+	f.linearSumLoop = uint32(addr+1) | uint32(acc+1)<<16
+	f.linearSumLoopDepth = uint16(len(f.ctrl))
+	f.stats.peep("counted-loop-bounds-hoist")
+}
+
+// tryUnrolledLinearSumLatch splits an exact i64 reduction across four native
+// accumulators. Addition is associative modulo 2^64, so regrouping preserves
+// Wasm semantics while exposing independent load/add chains to the CPU.
+func (f *fn) tryUnrolledLinearSumLatch(counter int) bool {
+	if f.linearSumLoop == 0 || f.linearSumLoopDepth != uint16(len(f.ctrl)) {
+		return false
+	}
+	addr := int(uint16(f.linearSumLoop) - 1)
+	acc := int(uint16(f.linearSumLoop>>16) - 1)
+	counterReg, counterFloat, counterPinned := f.pinReg(counter)
+	addrReg, addrFloat, addrPinned := f.pinReg(addr)
+	accReg, accFloat, accPinned := f.pinReg(acc)
+	if !counterPinned || counterFloat || !addrPinned || addrFloat || !accPinned || accFloat {
+		return false
+	}
+
+	p1 := f.allocReg(0)
+	f.pinned = f.pinned.add(p1)
+	p2 := f.allocReg(0)
+	f.pinned = f.pinned.add(p2)
+	p3 := f.allocReg(0)
+	f.pinned = f.pinned.add(p3)
+	f.a.MovImm64(p1, 0)
+	f.a.MovImm64(p2, 0)
+	f.a.MovImm64(p3, 0)
+
+	// The scalar body already consumed the first element and advanced addr.
+	f.a.SubsImm32(counterReg, counterReg, 1)
+	firstDone := f.a.Bcond(condE)
+	f.a.CmpImm32(counterReg, 4)
+	toRemainder := f.a.Bcond(condB)
+
+	group := f.a.Len()
+	f.a.LoadIdx(X16, linMemReg, addrReg, 0, 8, false, true)
+	f.a.Add64(accReg, accReg, X16)
+	f.a.LoadIdx(X16, linMemReg, addrReg, 8, 8, false, true)
+	f.a.Add64(p1, p1, X16)
+	f.a.LoadIdx(X16, linMemReg, addrReg, 16, 8, false, true)
+	f.a.Add64(p2, p2, X16)
+	f.a.LoadIdx(X16, linMemReg, addrReg, 24, 8, false, true)
+	f.a.Add64(p3, p3, X16)
+	f.a.AddImm32(addrReg, addrReg, 32)
+	f.a.SubImm32(counterReg, counterReg, 4)
+	f.a.CmpImm32(counterReg, 4)
+	moreGroups := f.a.Bcond(condAE)
+	_ = f.a.PatchBranch19(moreGroups, group)
+
+	_ = f.a.PatchBranch19(toRemainder, f.a.Len())
+	noRemainder := f.a.Cbz32(counterReg)
+	remainder := f.a.Len()
+	f.a.LoadIdx(X16, linMemReg, addrReg, 0, 8, false, true)
+	f.a.Add64(accReg, accReg, X16)
+	f.a.AddImm32(addrReg, addrReg, 8)
+	f.a.SubsImm32(counterReg, counterReg, 1)
+	moreRemainder := f.a.Bcond(condNE)
+	_ = f.a.PatchBranch19(moreRemainder, remainder)
+
+	combine := f.a.Len()
+	_ = f.a.PatchBranch19(firstDone, combine)
+	_ = f.a.PatchBranch19(noRemainder, combine)
+	f.a.Add64(accReg, accReg, p1)
+	f.a.Add64(accReg, accReg, p2)
+	f.a.Add64(accReg, accReg, p3)
+	f.pinned = f.pinned.remove(p3).remove(p2).remove(p1)
+	f.release(p3)
+	f.release(p2)
+	f.release(p1)
+	f.markLocalDirty(counter)
+	f.markLocalDirty(addr)
+	f.markLocalDirty(acc)
+	f.setFactsForLocal(counter, 0)
+	f.linearSumLoop = 0
+	f.linearSumLoopDepth = 0
+	f.stats.peep("linear-sum-unroll4")
+	return true
+}
+
 // tryCountedLoopLatch recognizes the exact tail of a top-tested i32 countdown
 // and branches from the decrement flags directly to the loop body. Interruptible
 // loops retain their header poll and are deliberately excluded.
@@ -221,6 +407,10 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
 	f.convergeBranchLocals(loop)
 	f.invalidateBoundsCertFor(1, uint32(x))
 	f.setFactsForLocal(x, 0)
+	if f.tryUnrolledLinearSumLatch(x) {
+		f.stats.peep("counted-loop-latch")
+		return true, nil
+	}
 	f.a.SubsImm32(reg, reg, 1)
 	f.markLocalDirty(x)
 	site := f.a.Bcond(condNE)
@@ -1291,6 +1481,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		kind = cfIf
 	}
 	if kind == cfIf && !f.unreachable && pN == 0 && rN == 1 && res0 == mtI32 {
+		if done, err := f.tryAffineIfSelect(r); done || err != nil {
+			return err
+		}
 		if done, err := f.trySimpleIfLocalSet(r); done || err != nil {
 			return err
 		}
@@ -1400,6 +1593,142 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	}
 	f.pushCtrl(&fr)
 	return nil
+}
+
+// tryAffineIfSelect if-converts a side-effect-free integer diamond of the form
+//
+//	if (result i32) cond { 0 } else { (local + imm) * powerOfTwo }
+//
+// into ADD/LSL/CSEL. Besides removing both branches, this deliberately leaves
+// operands below the condition in their existing registers. The ordinary
+// structured-control path must canonicalize those operands at the split, which
+// can otherwise spill a borrowed address in tight construction loops.
+func (f *fn) tryAffineIfSelect(r *wasm.Reader) (bool, error) {
+	r2 := *r
+	op, err := r2.Byte()
+	if err != nil || op != 0x41 {
+		return false, nil
+	}
+	zero, err := r2.I32()
+	if err != nil || zero != 0 {
+		return false, nil
+	}
+	if op, err = r2.Byte(); err != nil || op != 0x05 { // else
+		return false, nil
+	}
+	if op, err = r2.Byte(); err != nil || op != 0x20 { // local.get
+		return false, nil
+	}
+	local, err := r2.U32()
+	if err != nil {
+		return false, nil
+	}
+	if op, err = r2.Byte(); err != nil || op != 0x41 {
+		return false, nil
+	}
+	add, err := r2.I32()
+	if err != nil || add < 0 || add > 0xfff {
+		return false, nil
+	}
+	if op, err = r2.Byte(); err != nil || op != 0x6a { // i32.add
+		return false, nil
+	}
+	if op, err = r2.Byte(); err != nil || op != 0x41 {
+		return false, nil
+	}
+	mul, err := r2.I32()
+	if err != nil || mul <= 0 || mul&(mul-1) != 0 {
+		return false, nil
+	}
+	shift := uint8(0)
+	for v := uint32(mul); v > 1; v >>= 1 {
+		shift++
+	}
+	if shift >= 32 {
+		return false, nil
+	}
+	if op, err = r2.Byte(); err != nil || op != 0x6c { // i32.mul
+		return false, nil
+	}
+	if op, err = r2.Byte(); err != nil || op != 0x0b { // end if
+		return false, nil
+	}
+	x := int(local) + f.localBase
+	if x < 0 || x >= len(f.localType) || f.localType[x] != mtI32 {
+		return false, nil
+	}
+	src, isFloat, ok := f.pinReg(x)
+	if !ok || isFloat {
+		return false, nil
+	}
+	cond := f.s.back()
+	if cond == nil {
+		return false, fmt.Errorf("arm64: if without condition")
+	}
+	if err := r.JumpTo(r2.Offset()); err != nil {
+		return false, err
+	}
+	f.recoverLocal(x)
+	// When the condition is `(local + (add-1)) == other`, reuse that exact
+	// intermediate with CSINC: equality selects zero, while inequality selects
+	// intermediate+1. This computes the affine arm and the selection in four
+	// instructions (ADD/CMP/CSINC/LSL) without materializing both arms.
+	if cond.isDeferred() && cond.deferredOp() == opEq && add > 0 {
+		left, right := f.s.arg0(cond), f.s.arg1(cond)
+		var sum, other *elem
+		if left != nil && left.isDeferred() && left.deferredOp() == opAdd {
+			sum, other = left, right
+		} else if right != nil && right.isDeferred() && right.deferredOp() == opAdd {
+			sum, other = right, left
+		}
+		if sum != nil && other != nil && other.elemKind() == ekValue && other.st.kind == stLocalReg {
+			a, b := f.s.arg0(sum), f.s.arg1(sum)
+			matches := func(localElem, constElem *elem) bool {
+				return localElem != nil && localElem.elemKind() == ekValue &&
+					(localElem.st.kind == stLocalReg || localElem.st.kind == stLocalRef) && localElem.st.idx == uint32(x) &&
+					constElem != nil && constElem.elemKind() == ekValue && constElem.st.kind == stConst && constElem.st.cval == int64(add-1)
+			}
+			if matches(a, b) || matches(b, a) {
+				dest := f.allocReg(maskOf(src, other.st.reg))
+				f.a.AddImm32(dest, src, uint32(add-1))
+				f.cmpRR(dest, other.st.reg, false)
+				f.a.Csinc32(dest, ZR, dest, condE)
+				if shift != 0 {
+					f.a.LslImm(dest, dest, shift, true)
+				}
+				f.consumeBlockBelow(cond)
+				f.erase(cond)
+				result := f.pushReg(dest, mtI32)
+				result.st.setValueFacts(factUpper32Zero)
+				f.stats.peep("if-affine-select")
+				f.stats.peep("if-affine-csinc")
+				return true, nil
+			}
+		}
+	}
+	dest := f.allocReg(maskOf(src))
+	f.a.AddImm32(dest, src, uint32(add))
+	if shift != 0 {
+		f.a.LslImm(dest, dest, shift, true)
+	}
+	f.pinned = f.pinned.add(dest)
+	var cc Cond
+	if isFusableCompare(cond) {
+		cc = f.condenseToFlags(cond)
+	} else {
+		creg, owned := f.materializeRead(f.popValue())
+		f.a.CmpImm32(creg, 0)
+		cc = condNE
+		if owned {
+			f.release(creg)
+		}
+	}
+	f.a.Csel(dest, ZR, dest, cc, false)
+	f.pinned = f.pinned.remove(dest)
+	result := f.pushReg(dest, mtI32)
+	result.st.setValueFacts(factUpper32Zero)
+	f.stats.peep("if-affine-select")
+	return true, nil
 }
 
 // trySimpleIfLocalSet fuses a bounded, side-effect-free integer if immediately
@@ -2167,7 +2496,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		if err != nil {
 			return err
 		}
-		if done, err := f.brIfSimpleEqz(top, idx); done || err != nil {
+		if done, err := f.brIfSimpleEqz(r, top, idx); done || err != nil {
 			return err
 		}
 		return f.brIfFused(top, idx)
@@ -2192,8 +2521,11 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	}
 	fr := &f.ctrl[fi]
 	reconcileMark := f.a.Len()
-	saved, canDefer := f.snapshotLocalStates()
-	canDefer = canDefer && f.callFreeLoopExit(fi)
+	canDefer := f.callFreeLoopExit(fi)
+	var saved localStateSnapshot
+	if canDefer {
+		saved, canDefer = f.snapshotLocalStates()
+	}
 	f.convergeBranchLocals(fr)
 	var coldEdgeCode []byte
 	if canDefer && f.a.Len() != reconcileMark {

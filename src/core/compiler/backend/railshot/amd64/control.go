@@ -40,6 +40,7 @@ const (
 	ctrlHasBaseGCRoots
 	ctrlHasParamGCRoots
 	ctrlHasResultGCRoots
+	ctrlLoopCallFree
 )
 
 // ctrlFrame is one open control construct (or the implicit function frame).
@@ -114,6 +115,184 @@ func (m *ctrlFrameMerge) countedLoop() (counter, bodySite int, ok bool) {
 	return int(m.firstEndSite - 1), int(m.secondEndSite - 1), true
 }
 
+// inspectLinearSumLoop recognizes the exact scalar reduction
+//
+//	acc += i64.load(addr); addr += 8; counter--; br 0
+//
+// following a top-tested counter==0 exit. It is deliberately exact: admitting
+// arbitrary loop bodies would require a general induction/range proof and could
+// move a memory trap across an observable effect.
+func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, loadPC uint32, ok bool) {
+	r2 := *r
+	readLocal := func(op byte) (int, bool) {
+		got, err := r2.Byte()
+		if err != nil || got != op {
+			return 0, false
+		}
+		x, err := r2.U32()
+		return int(x) + f.localBase, err == nil
+	}
+	readOp := func(want byte) bool {
+		got, err := r2.Byte()
+		return err == nil && got == want
+	}
+
+	acc, yes := readLocal(0x20) // local.get acc
+	if !yes {
+		return 0, 0, 0, false
+	}
+	addr, yes = readLocal(0x20) // local.get addr
+	if !yes {
+		return 0, 0, 0, false
+	}
+	loadPC = f.tracePCBase + uint32(r2.Offset())
+	if !readOp(0x29) { // i64.load
+		return 0, 0, 0, false
+	}
+	memoryIndex, off, err := f.readMemArg(&r2)
+	if err != nil || memoryIndex != 0 || off != 0 || !readOp(0x7c) { // i64.add
+		return 0, 0, 0, false
+	}
+	setAcc, yes := readLocal(0x21)
+	if !yes || setAcc != acc {
+		return 0, 0, 0, false
+	}
+	getAddr, yes := readLocal(0x20)
+	if !yes || getAddr != addr || !readOp(0x41) {
+		return 0, 0, 0, false
+	}
+	stride, err := r2.I32()
+	if err != nil || stride != 8 || !readOp(0x6a) { // i32.add
+		return 0, 0, 0, false
+	}
+	setAddr, yes := readLocal(0x21)
+	if !yes || setAddr != addr {
+		return 0, 0, 0, false
+	}
+	getCounter, yes := readLocal(0x20)
+	if !yes || getCounter != counter || !readOp(0x41) {
+		return 0, 0, 0, false
+	}
+	one, err := r2.I32()
+	if err != nil || one != 1 || !readOp(0x6b) { // i32.sub
+		return 0, 0, 0, false
+	}
+	setCounter, yes := readLocal(0x21)
+	if !yes || setCounter != counter || !readOp(0x0c) {
+		return 0, 0, 0, false
+	}
+	label, err := r2.U32()
+	if err != nil || label != 0 || !readOp(0x0b) || !readOp(0x0b) {
+		return 0, 0, 0, false
+	}
+	if acc < 0 || acc >= len(f.localType) || f.localType[acc] != mtI64 ||
+		addr < 0 || addr >= len(f.localType) || f.localType[addr] != mtI32 || addr == counter ||
+		addr >= 1<<16-1 || acc >= 1<<16-1 {
+		return 0, 0, 0, false
+	}
+	return addr, acc, loadPC, true
+}
+
+func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFrame) {
+	if !f.opt(optLinearSumLoop) || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.memSizeReg == regNone {
+		return
+	}
+	addr, acc, loadPC, ok := f.inspectLinearSumLoop(r, counter)
+	if !ok {
+		return
+	}
+	counterReg, counterFloat, counterPinned := f.pinReg(counter)
+	addrReg, addrFloat, addrPinned := f.pinReg(addr)
+	if !counterPinned || counterFloat || !addrPinned || addrFloat {
+		return
+	}
+	// counter and addr are i32 values. Zero-extend both before native-width
+	// arithmetic; counter*8 cannot overflow uint64. If the inclusive end is in
+	// bounds, every visited address is in bounds and memory32 cannot wrap first.
+	t := f.allocReg(0)
+	f.a.MovRegReg32(t, counterReg)
+	f.a.ShiftImm(4, t, 3, true)
+	f.a.MovRegReg32(addrReg, addrReg)
+	f.a.Add64(t, addrReg)
+	f.a.Cmp64(t, f.memSizeReg)
+	savedPC := f.wasmPC
+	f.wasmPC = loadPC
+	f.trapIf(condA, trapMemOOB)
+	f.wasmPC = savedPC
+	f.release(t)
+	f.linearSumLoop = uint32(addr+1) | uint32(acc+1)<<16
+	f.linearSumLoopDepth = uint16(len(f.ctrl))
+	f.stats.peep("counted-loop-bounds-hoist")
+}
+
+// tryUnrolledLinearSumLatch splits an exact i64 reduction across four native
+// accumulators. Integer addition is associative modulo 2^64, so regrouping does
+// not change Wasm results, while independent dependency chains let AMD64 retire
+// the four loads at load-port throughput instead of add latency.
+func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
+	if f.linearSumLoop == 0 || f.linearSumLoopDepth != uint16(len(f.ctrl)) {
+		return false
+	}
+	addr := int(uint16(f.linearSumLoop) - 1)
+	acc := int(uint16(f.linearSumLoop>>16) - 1)
+	counterReg, counterFloat, counterPinned := f.pinReg(counter)
+	addrReg, addrFloat, addrPinned := f.pinReg(addr)
+	accReg, accFloat, accPinned := f.pinReg(acc)
+	if !counterPinned || counterFloat || !addrPinned || addrFloat || !accPinned || accFloat {
+		return false
+	}
+
+	p1 := f.allocReg(0)
+	f.pinned = f.pinned.add(p1)
+	p2 := f.allocReg(0)
+	f.pinned = f.pinned.add(p2)
+	p3 := f.allocReg(0)
+	f.pinned = f.pinned.add(p3)
+	f.a.Xor32(p1, p1)
+	f.a.Xor32(p2, p2)
+	f.a.Xor32(p3, p3)
+	// The scalar body already consumed the first element and advanced addr.
+	f.a.AluRI(aluTable[opSub].digit, counterReg, 1, false)
+	firstDone := f.a.JccPlaceholder(condE)
+	f.a.AluRI(cmpDigit, counterReg, 4, false)
+	toRemainder := f.a.JccPlaceholder(condB)
+
+	group := f.a.Len()
+	f.a.AluIdx(aluTable[opAdd].rm, accReg, RBX, addrReg, 0, true)
+	f.a.AluIdx(aluTable[opAdd].rm, p1, RBX, addrReg, 8, true)
+	f.a.AluIdx(aluTable[opAdd].rm, p2, RBX, addrReg, 16, true)
+	f.a.AluIdx(aluTable[opAdd].rm, p3, RBX, addrReg, 24, true)
+	f.a.AluRI(aluTable[opAdd].digit, addrReg, 32, false)
+	f.a.AluRI(aluTable[opSub].digit, counterReg, 4, false)
+	f.a.AluRI(cmpDigit, counterReg, 4, false)
+	moreGroups := f.a.JccPlaceholder(condAE)
+	f.a.PatchRel32(moreGroups, group)
+
+	f.a.PatchRel32(toRemainder, f.a.Len())
+	f.a.TestSelf(counterReg, false)
+	noRemainder := f.a.JccPlaceholder(condE)
+	remainder := f.a.Len()
+	f.a.AluIdx(aluTable[opAdd].rm, accReg, RBX, addrReg, 0, true)
+	f.a.AluRI(aluTable[opAdd].digit, addrReg, 8, false)
+	f.a.AluRI(aluTable[opSub].digit, counterReg, 1, false)
+	moreRemainder := f.a.JccPlaceholder(condNE)
+	f.a.PatchRel32(moreRemainder, remainder)
+
+	combine := f.a.Len()
+	f.a.PatchRel32(firstDone, combine)
+	f.a.PatchRel32(noRemainder, combine)
+	f.a.Add64(accReg, p1)
+	f.a.Add64(accReg, p2)
+	f.a.Add64(accReg, p3)
+	f.pinned = f.pinned.remove(p3).remove(p2).remove(p1)
+	f.release(p3)
+	f.release(p2)
+	f.release(p1)
+	f.markLocalDirty(counter)
+	f.stats.peep("linear-sum-unroll4")
+	return true
+}
+
 // tryCountedLoopLatch recognizes the exact tail of a top-tested i32 countdown
 // and branches from the decrement flags directly to the loop body. Interruptible
 // loops retain their header poll and are deliberately excluded.
@@ -173,6 +352,10 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
 	}
 	f.convergeBranchLocals(loop)
 	f.invalidateBoundsCertFor(1, uint32(x))
+	if f.tryUnrolledLinearSumLatch(loop, x) {
+		f.stats.peep("counted-loop-latch")
+		return true, nil
+	}
 	f.unitAdjust(reg, false, false)
 	f.markLocalDirty(x)
 	site := f.a.JccPlaceholder(condNE)
@@ -1019,6 +1202,37 @@ func (f *fn) convergeBranchLocals(fr *ctrlFrame) {
 	f.convergeFrameBranchState(fr)
 }
 
+type localStateSnapshot [64]locState
+
+func (f *fn) snapshotLocalStates() (localStateSnapshot, bool) {
+	var snapshot localStateSnapshot
+	if len(f.locals) > len(snapshot) {
+		return snapshot, false
+	}
+	for x := range f.locals {
+		snapshot[x] = f.locals[x].state
+	}
+	return snapshot, true
+}
+
+func (f *fn) restoreLocalStates(snapshot localStateSnapshot) {
+	for x := range f.locals {
+		f.locals[x].state = snapshot[x]
+	}
+}
+
+func (f *fn) callFreeLoopExit(fi int) bool {
+	if !f.opt(optCallFreeLoopColdExit) {
+		return false
+	}
+	for i := len(f.ctrl) - 1; i > fi; i-- {
+		if f.ctrl[i].kind == cfLoop && f.ctrl[i].has(ctrlLoopCallFree) {
+			return true
+		}
+	}
+	return false
+}
+
 // branchJump emits the jump for a branch that targets frame fr.
 func (f *fn) branchJump(fr *ctrlFrame) {
 	switch fr.kind {
@@ -1043,6 +1257,39 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 }
 
 // --- control opcodes ---
+
+// scanLoopCallFree scans from a loop body's first opcode to its matching end.
+// The module-aware classifier keeps every proposal immediate synchronized; any
+// uncertainty conservatively rejects the proof.
+func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool) bool {
+	r2 := *r
+	depth := 0
+	var imm wasm.InstructionImmediate
+	for {
+		op, err := r2.Byte()
+		if err != nil || classifier.ClassifyInto(&r2, op, &imm) != nil {
+			return false
+		}
+		switch imm.Kind {
+		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrReturnCall,
+			wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef,
+			wasm.InstrMemoryGrow:
+			return false
+		}
+		if gcOrAtomicInstructionMayCall(imm.Kind, gcStructHelpers) {
+			return false
+		}
+		switch op {
+		case 0x02, 0x03, 0x04, 0x1f:
+			depth++
+		case 0x0b:
+			if depth == 0 {
+				return true
+			}
+			depth--
+		}
+	}
+}
 
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	paramTypes, resultTypes, frameTypes, res0, err := f.blockType(r)
@@ -1071,6 +1318,10 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
+	if kind == cfLoop && !f.unreachable && f.usesCalls && !f.moduleEH && len(f.customInstructions) == 0 && scanLoopCallFree(r, f.classifier, f.gcStructHelpers) {
+		fr.set(ctrlLoopCallFree, true)
+		f.stats.peep("callfree-loop")
+	}
 	if f.unreachable {
 		f.pushCtrl(&fr)
 		f.releaseCtrlMerge(&fr)
@@ -1546,6 +1797,10 @@ func (f *fn) opElse() error {
 func (f *fn) opEnd() error {
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
+	if fr.kind == cfLoop && f.linearSumLoopDepth == uint16(last+1) {
+		f.linearSumLoop = 0
+		f.linearSumLoopDepth = 0
+	}
 	branchState := f.frameBranchState(&fr)
 	entryState := f.frameEntryState(&fr)
 	baseGCRoots := f.frameBaseGCRoots(&fr)
@@ -1710,7 +1965,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		if err != nil {
 			return err
 		}
-		return f.brIfFused(top, idx)
+		return f.brIfFused(r, top, idx)
 	}
 	var creg Reg
 	cOwned := false
@@ -1731,7 +1986,14 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		return nil
 	}
 	fr := &f.ctrl[fi]
-	f.convergeBranchLocals(fr)
+	coldExit := f.callFreeLoopExit(fi)
+	var saved localStateSnapshot
+	if coldExit {
+		saved, coldExit = f.snapshotLocalStates()
+	}
+	if !coldExit {
+		f.convergeBranchLocals(fr)
+	}
 	a, d := fr.branchArity(), f.depth()
 	f.flush()
 	f.a.TestSelf(creg, false)
@@ -1739,6 +2001,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		f.release(creg)
 	}
 	over := f.a.JccPlaceholder(condE)
+	if coldExit {
+		f.convergeBranchLocals(fr)
+	}
 	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
@@ -1746,6 +2011,10 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	}
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
+	if coldExit {
+		f.restoreLocalStates(saved)
+		f.stats.peep("callfree-loop-exit-cold")
+	}
 	f.recordBrFold(over)
 	return nil
 }

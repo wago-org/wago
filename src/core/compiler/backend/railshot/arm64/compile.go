@@ -195,9 +195,14 @@ type fn struct {
 
 	// Bounded straight-line local intervals. A nonzero last-get offset plus the
 	// score marks eligibility; locals[x].reg exists only while the cache is live.
-	intervalLast  []uint32
-	intervalScore []uint32
-	intervalOwner [32]int
+	intervalLast   []uint32
+	intervalScore  []uint32
+	intervalEvents []intervalLocalEvent
+	intervalHead   []uint32
+	intervalOwner  [32]int
+	intervalActive int
+	intervalNext   bool
+	localWritten   uint64 // conservative lexical write history for the first 64 locals
 
 	// WARP STACK_REG lazy-spill model for pinned locals in CALL-MAKING functions
 	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
@@ -294,6 +299,11 @@ type fn struct {
 	// memory.grow, and established once at every offset-0 entry (wrapper prologue /
 	// reg-ABI adapter — the only ways an activation enters from Go).
 	memSizeReg Reg
+	// memLimitReg caches memBytes-memLimitExtent in call-free explicit-bounds
+	// functions. Exact matching accesses compare their canonical memory32 address
+	// directly with this inclusive limit, removing the per-access end-address ADD.
+	memLimitReg    Reg
+	memLimitExtent int32
 	// trapCellReg caches [linMemReg-offTrapCellPtr] in call-free interruptible
 	// loops. The pointer is fixed for an activation; calls are excluded because
 	// cross-instance entry can replace the active trap cell.
@@ -366,6 +376,7 @@ type fn struct {
 	inlineTargets inlineTargetTable
 	inlineBase    map[int]int
 	localBase     int
+	inlineDepth   int
 	// inlineRetFrame is the f.ctrl index of the synthetic block frame standing in
 	// for an inlined control-flow callee's function boundary: `return` inside the
 	// callee branches to it (not the real function frame). 0 when not inside such a
@@ -411,37 +422,40 @@ type fn struct {
 	// threadedMemory0 routes shared memory zero through the instance-owned memory
 	// directory, leaving linMemReg's negative basedata private to the instance.
 	threadedMemory0 bool
+	// linearSumLoop encodes the exact reduction's address and accumulator locals;
+	// its depth limits the state to the loop whose top test established it.
+	linearSumLoop      uint32
+	linearSumLoopDepth uint16
 }
 
 func (f *fn) opt(option optimization.Option) bool {
-	if f.policy.Valid() {
-		return f.policy.EnabledOption(option)
-	}
-	return currentCodegenPolicy().EnabledOption(option)
+	return f.policy.EnabledResolvedOption(option)
 }
 
 // transient is the per-function workspace handed back to module scratch after
 // each compile. Embedding it keeps hot call sites terse while making ownership
 // and lifetime a single assignment instead of a list of parallel fields.
 type transient struct {
-	inlineBasePool map[int]int
-	endsPool       [][]uint32
-	tmpRoots       []*elem
-	tmpTypes       []machineType
-	tmpTypes2      []machineType
-	tmpGCRoots     []bool
-	tmpGCRoots2    []bool
-	tmpGCOffsets   []uint32
-	tmpFlushTypes  []machineType
-	tmpRegs        []Reg
-	tmpStackSlots  []uint32 // operand slot prefixes; successful native frames fit uint32 exactly
-	tmpMoves       []regMove
-	tmpLabels      []uint32
-	tmpDeferred    []deferredArg
-	loopSetLocals  []uint16
-	edgeScratch    []byte
-	floatPool      []floatPoolConst
-	floatPoolSites []floatPoolSite
+	inlineBasePool    map[int]int
+	endsPool          [][]uint32
+	tmpRoots          []*elem
+	tmpTypes          []machineType
+	tmpTypes2         []machineType
+	tmpGCRoots        []bool
+	tmpGCRoots2       []bool
+	tmpGCOffsets      []uint32
+	tmpFlushTypes     []machineType
+	tmpRegs           []Reg
+	tmpStackSlots     []uint32 // operand slot prefixes; successful native frames fit uint32 exactly
+	tmpMoves          []regMove
+	tmpLabels         []uint32
+	tmpDeferred       []deferredArg
+	loopSetLocals     []uint16
+	edgeScratch       []byte
+	tmpIntervalEvents []intervalLocalEvent
+	tmpIntervalIndex  []uint32
+	floatPool         []floatPoolConst
+	floatPoolSites    []floatPoolSite
 }
 
 type storeForward struct {
@@ -1354,6 +1368,10 @@ type CompileOptions struct {
 	// Values <= 1 retain the exact serial fast path. Values > 1 are capped by
 	// runtime.GOMAXPROCS(0) and the module's local-function count.
 	Workers int
+	// DeferCodeMapping retains native bytes on the Go heap until the first
+	// instance needs executable code. Public compilation uses this to avoid an
+	// executable mapping for modules that are cached, serialized, or discarded.
+	DeferCodeMapping bool
 
 	// ElideBoundsChecks omits inline linear-memory bounds checks, relying on
 	// a guard-page mapping + SIGSEGV handler (see runtime/sigtrap_linux_arm64.go).
@@ -1591,7 +1609,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	codeCap := shared.TaperedModuleCodeCapacity(totalBody, n, 32, 28, 768<<10)
 	moduleTypes := buildModuleTypeCache(m, totalBody)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
-	if workers <= 1 {
+	// A one-worker join pays for a second arena and copy. It wins for large bodies,
+	// while serial heap staging is cheaper for modules made mostly of small
+	// functions.
+	serialHeap := opts.DeferCodeMapping && (len(m.Code) == 1 && totalBody < 2<<10 ||
+		len(m.Code) >= 32 && totalBody/len(m.Code) < 2<<10)
+	if workers <= 1 && (!opts.DeferCodeMapping || serialHeap) {
 		relocs := newCallRelocTable(n, relocCap)
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
@@ -1603,7 +1626,13 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.reserveControlFrames(ctrlCap)
 		}
-		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
+		var codeBuffer *coreruntime.CodeBuffer
+		var err error
+		if opts.DeferCodeMapping {
+			codeBuffer, err = coreruntime.NewHeapCodeBuffer(codeCap)
+		} else {
+			codeBuffer, err = coreruntime.NewCodeBuffer(codeCap)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("arm64: allocate code image: %w", err)
 		}
@@ -1730,6 +1759,13 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		ms.finalizeCompileResourceStats()
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
+		}
+		if opts.DeferCodeMapping {
+			code, err = codeBuffer.TakeHeap()
+			if err != nil {
+				return nil, fmt.Errorf("arm64: transfer heap code image: %w", err)
+			}
+			return &a64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
 		}
 		keepCodeBuffer = true
 		return &a64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
@@ -2303,9 +2339,14 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			}
 		}
 	}
-	if moduleEH {
+	moduleSIMD := false
+	for i := range allHints {
+		moduleSIMD = moduleSIMD || allHints[i].flags.has(hintModuleSIMD)
+	}
+	if moduleEH || moduleSIMD {
 		for i := range allHints {
-			allHints[i].flags.set(hintModuleEH)
+			allHints[i].flags.assign(hintModuleEH, moduleEH)
+			allHints[i].flags.assign(hintModuleSIMD, moduleSIMD)
 		}
 	}
 	if moduleEH && !storageModuleEH {
@@ -2330,10 +2371,10 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 // serial and parallel scans. Each worker owns its tape; output slots are
 // assigned in function order before workers start.
 func summarizeHintResidency(tape *shared.LocalEventTape, nLocals int, detailed bool) shared.ResidencyShadowSummary {
-	if detailed {
-		return shared.PlanResidencyTransitionShadow(tape.Events, nLocals, maxIntervalRegionRegs, tape.Overflow)
+	if !detailed {
+		return shared.ResidencyShadowSummary{}
 	}
-	return shared.PlanResidencyShadow(tape.Events, nLocals, maxIntervalRegionRegs, tape.Overflow)
+	return shared.PlanResidencyTransitionShadow(tape.Events, nLocals, maxIntervalRegionRegs, tape.Overflow)
 }
 
 const (
@@ -2826,7 +2867,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	nLocals := hints.nLocals
 
 	sc.reset()
-	sc.asm.DenseIdxDisp = hints.memOps >= 8
+	sc.asm.DenseIdxDisp = hints.memOpCount() >= 8
 	sc.asm.ReuseIndexedBase = policy.EnabledOption(optIndexedBaseReuse)
 	sc.asm.DisableLogicalMoveImmediate = !logicalMoveImmediateEnabled ||
 		!policy.CompactNative
@@ -2837,8 +2878,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f := &sc.fnState
 	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
-	boundedMemcopy := len(c.BodyBytes) <= 4096 && hints.memOps <= 128
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
+	boundedMemcopy := len(c.BodyBytes) <= 4096 && hints.memOpCount() <= 128
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, memLimitReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
+	if f.nParams >= 64 {
+		f.localWritten = ^uint64(0)
+	} else if f.nParams != 0 {
+		f.localWritten = 1<<f.nParams - 1
+	}
 	// Relocations are transient until the module owner copies them into its flat
 	// arena. Reuse one function buffer instead of allocating one backing per
 	// caller; larger decoded call counts can still reserve the exact target-cost
@@ -2915,6 +2961,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		hasCall = false
 		f.stats.peep("all-calls-inlined")
 	}
+	if commonBoundsLimitEnabled && hints.bounds4OpCount() >= 2 && f.memSizeReg != regNone && !hasCall && hints.flags.has(hintHasControlFlow) && len(modGlobals) == 0 &&
+		len(m.Memories) > 0 && m.Memories[0].Limits.Min != 0 && touchesMemory {
+		f.memLimitReg, f.memLimitExtent = X25, 4
+		f.reserved = f.reserved.add(f.memLimitReg)
+		f.stats.peep("common-bounds-limit")
+		f.stats.peepN("common-bounds-limit-candidate", int(hints.bounds4OpCount()))
+	}
 	if inlinePlanTouchesMemory(inlinedCallees) {
 		touchesMemory = true
 	}
@@ -2962,6 +3015,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	var gpPoolStorage [24]Reg
 	gpPool := gpPinPoolWithPolicy(gpPoolStorage[:0], regABI, f.nParams, !hasCall, policy)
+	if f.memLimitReg != regNone {
+		gpPool = withoutReg(gpPool, f.memLimitReg)
+	}
 	if f.moduleEH {
 		// X22 carries the active handler across every local call in an
 		// exception-enabled module. Cross-instance call paths save it explicitly.
@@ -3002,12 +3058,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		gpPool = withoutReg(gpPool, mergeReg)
 		f.stats.peep("weighted-reg-merge")
 	}
-	// Direct local calls use the same STACK_REG dirty-spill/lazy-reload contract
-	// as amd64. Classify this from the function's own callsites: unrelated module
-	// imports and tables do not invalidate an otherwise-local call graph.
-	safeDirectLocalCalls := !hints.flags.has(hintHasNonDirectCall | hintCallsImport)
-	if touchesMemory && hasCall && !safeDirectLocalCalls {
-		gpPool = nil
+	// Memory-touching call-makers with imports or tables retain only the native
+	// callee-saved pin block. Host/cross-instance/indirect setup has a wider
+	// caller-clobbered surface, but X19-X25 survive those boundaries and the
+	// STACK_REG model still publishes dirty values before calls. Keeping this
+	// narrow block also lets hot loops remain resident when a cold import follows
+	// them, matching the safe AMD64 treatment of its callee-saved pin set.
+	safeColdLocalCalls := f.opt(optColdCallLocalPins) && !hints.flags.has(hintHasLoopCall) && !hints.flags.has(hintHasNonDirectCall) && !hints.flags.has(hintCallsImport)
+	safeMemoryCallPins := ((hints.flags.has(hintCallsSelf) && m.ImportedFuncCount() == 0) || safeColdLocalCalls) && len(m.Tables) == 0
+	if touchesMemory && hasCall && !safeMemoryCallPins {
+		gpPool = gpPool[:min(len(gpPool), len(pinnedLocalRegs)+2)]
 	}
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // X27 is the module-wide memBytes cache
@@ -3309,7 +3369,11 @@ func gpPinPoolWithPolicy(pool []Reg, regABI bool, nParams int, callFree bool, po
 	if !regABI || nParams <= 4 {
 		pool = append(pool, X9, X10, X11)
 	}
-	return append(pool, X15)
+	pool = append(pool, X15)
+	if !callFree {
+		pool = append(pool, X27)
+	}
+	return pool
 }
 
 // gpPinLimit leaves enough of the target's unreserved allocatable file for the
@@ -3410,6 +3474,17 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		// base slots so byte-backed decoded bodies keep the first-N fallback.
 		if k >= len(pinnedLocalRegs) && c.score == 0 {
 			break
+		}
+		// X27 is the last, opportunistic call-making pin. Spending it adds one
+		// more entry home and call-boundary state transition, so require enough
+		// loop-weighted traffic to repay that fixed cost. Twenty loop-level local
+		// references (20*loopWeight(1)) separates dense kernels from marginal
+		// residents without changing the established X19-X25/X15 assignments.
+		if gpPool[k] == X27 && hasCall && c.score < 200 {
+			break
+		}
+		if gpPool[k] == X27 {
+			f.stats.peep("cold-call-x27-pin")
 		}
 		idx := int(c.idx)
 		if c.global {
@@ -3689,6 +3764,9 @@ func (f *fn) prologue(localScores []uint32) {
 		// Offset-0 entry: establish the module-wide memBytes cache. Direct wasm→wasm
 		// register-ABI calls skip this (the caller's value is valid by construction).
 		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
+		if f.memLimitReg != regNone {
+			f.a.SubImm64(f.memLimitReg, f.memSizeReg, uint32(f.memLimitExtent))
+		}
 	}
 	f.emitStackFenceCheck(linMemReg, X16)
 	f.emitInterruptCheck(false)
@@ -4067,6 +4145,12 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		// X17 is caller-clobbered backend scratch, so establish this leaf-local
 		// cache after entry setup and immediately before the body that consumes it.
 		f.ld64(X17, linMemReg, -bdCurBytes)
+	}
+	if f.memLimitReg != regNone {
+		// The register-ABI internal entry can be reached directly from another Wasm
+		// function, so derive the function-local adjusted limit here rather than in
+		// the host adapter alone.
+		f.a.SubImm64(f.memLimitReg, f.memSizeReg, uint32(f.memLimitExtent))
 	}
 	if err := f.runBody(c); err != nil {
 		return 0, err

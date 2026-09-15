@@ -149,6 +149,13 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	mappingOwner := c
+	if moduleUse != nil && moduleUse.compiledView != nil {
+		mappingOwner = moduleUse.compiledView
+	}
+	if err := mappingOwner.prepareCodeMapping(); err != nil {
+		return nil, fmt.Errorf("wago: instantiate: map code: %w", err)
+	}
 	var err error
 	c, err = c.freezeExecution(opts.MaxCompiledMetadataBytes)
 	if err != nil {

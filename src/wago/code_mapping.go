@@ -590,7 +590,33 @@ func (c *Compiled) mapCodeLocked() error {
 	cc.mem, cc.base = mem, base
 	// The mapping can be page-rounded; code and artifact sizes must stay exact.
 	c.code = mem[:codeLen:codeLen]
+	// Compiler publication freezes an execution snapshot before code is mapped.
+	// Keep that immutable metadata view on the same exact code backing so the
+	// first mapping releases the compiler's heap image instead of retaining one
+	// copy through each view.
+	if memo := c.loadValidateMemo(); memo != nil {
+		if snapshot := memo.executionView(); snapshot != nil {
+			snapshot.code = c.code
+		}
+	}
 	return nil
+}
+
+// prepareCodeMapping maps the public compiler view before instantiation freezes
+// or consumes its execution snapshot. Runtime-bound modules pass their original
+// public view so both views transition away from the heap backing together.
+func (c *Compiled) prepareCodeMapping() error {
+	if c == nil {
+		return fmt.Errorf("compiled module is nil")
+	}
+	c.ensureCodeCache()
+	cc := c.codeCache
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	if cc.closed {
+		return fmt.Errorf("compiled module is closed")
+	}
+	return c.mapCodeLocked()
 }
 
 // publishCompilerCompiled maps heap-backed parallel output before snapshotting.
@@ -598,15 +624,6 @@ func (c *Compiled) mapCodeLocked() error {
 // Clear the embedded staging value:
 // its allocation remains live through pointers to the grouped private state.
 func publishCompilerCompiled(c *Compiled) (*Compiled, error) {
-	if len(c.code) != 0 {
-		c.codeCache.mu.Lock()
-		err := c.mapCodeLocked()
-		c.codeCache.mu.Unlock()
-		if err != nil {
-			_ = c.Close()
-			return nil, fmt.Errorf("compile: map code image: %w", err)
-		}
-	}
 	goruntime.SetFinalizer(c, nil)
 	published := new(Compiled)
 	*published = *c
@@ -708,6 +725,7 @@ func (c *Compiled) Close() error {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	cc.closed = true
+	c.code = nil
 	goruntime.SetFinalizer(c, nil)
 	if cc.refs != 0 {
 		return nil
@@ -723,6 +741,5 @@ func (c *Compiled) Close() error {
 	mem := cc.mem
 	cc.mem = nil
 	cc.base = 0
-	c.code = nil
 	return coreruntime.Unmap(mem)
 }

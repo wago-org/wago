@@ -135,9 +135,12 @@ func (f *fn) pinnedV128LocalCount() int {
 	return n
 }
 
-// preloadV128Consts reserves up to four non-zero v128.const values in call-free
-// functions. A static occurrence can execute in a loop, so one occurrence is
-// sufficient; the cache is withheld when vector-local pressure is already high.
+// preloadV128Consts reserves up to four non-zero vector constants in call-free
+// functions. Besides explicit v128.const values, a repeated rotate-by-8 shuffle
+// contributes its TBL index vector. Requiring two static shuffles keeps a lone
+// straight-line operation on the cheaper USHR+SLI path; dense kernels amortize
+// the cached index at every dynamic invocation. The cache is withheld when
+// vector-local pressure is already high.
 func (f *fn) preloadV128Consts(code []byte) {
 	if !f.opt(optV128ConstCache) || f.usesCalls || f.syncHostCalls {
 		return
@@ -151,6 +154,7 @@ func (f *fn) preloadV128Consts(code []byte) {
 		n      int
 	}
 	nCand := 0
+	rotate8N := 0
 	addCand := func(lo, hi uint64) {
 		if lo == 0 && hi == 0 {
 			return
@@ -203,6 +207,9 @@ func (f *fn) preloadV128Consts(code []byte) {
 			}
 			var lanes [16]byte
 			copy(lanes[:], b)
+			if lanes == i8x16Rotate8 {
+				rotate8N++
+			}
 			_, ext := i8x16ExtOffset(lanes)
 			optimized := ext || lanes == i8x16Rotate16 || lanes == i8x16Rotate8 ||
 				lanes == i8x16Zip1D || lanes == i8x16Zip2D || lanes == i8x16Zip1S || lanes == i8x16Zip2S
@@ -230,6 +237,12 @@ func (f *fn) preloadV128Consts(code []byte) {
 		}
 		if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
 			return
+		}
+	}
+	if rotate8N >= 2 {
+		lo, hi := v128MaskBits(i8x16Rotate8)
+		for range rotate8N {
+			addCand(lo, hi)
 		}
 	}
 	for i := 1; i < nCand; i++ {
@@ -407,7 +420,9 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 
 	// AssemblyScript spells BLAKE's per-i32 rotate-right-by-16 and -8 as
 	// one-input byte shuffles. Lower those masks directly: REV32.8H swaps the
-	// halfwords in every i32 lane, while USHR+SLI rotates every lane by 8.
+	// halfwords in every i32 lane. When either shuffle immediately replaces the
+	// same pinned local, REV32 or a cached-index TBL safely updates that register
+	// in place. Other rotate-by-8 shapes use USHR+SLI.
 	// The second wasm operand is unselected by both masks, so only its consumed
 	// owned register (if any) needs releasing.
 	if lanes == i8x16Rotate16 || lanes == i8x16Rotate8 {
@@ -418,6 +433,44 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 		aElem := f.popValue()
 		src, owned := f.operandRegV128(aElem)
 		f.fpinned = f.fpinned.add(src)
+		if !owned && aElem.st.kind == stLocalReg {
+			mask, canUpdate := regNone, lanes == i8x16Rotate16
+			if lanes == i8x16Rotate8 {
+				lo, hi := v128MaskBits(lanes)
+				mask, canUpdate = f.v128ConstCached(lo, hi)
+			}
+			if canUpdate {
+				r2 := *r
+				if op, err := r2.Byte(); err == nil && (op == 0x21 || op == 0x22) { // local.set/local.tee
+					if local, err := r2.U32(); err == nil {
+						x := int(local) + f.localBase
+						if x >= 0 && x < len(f.locals) && f.localType[x] == mtV128 &&
+							aElem.st.idx == uint32(x) && f.locals[x].reg == src {
+							if err := r.JumpTo(r2.Offset()); err != nil {
+								return err
+							}
+							f.realizeLocalRefs(x, nil)
+							if lanes == i8x16Rotate16 {
+								f.a.NeonRev32H(src, src)
+							} else {
+								f.a.NeonTbl(src, src, mask)
+							}
+							f.fpinned = f.fpinned.remove(src)
+							f.markLocalDirty(x)
+							if op == 0x22 {
+								f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: src, idx: uint32(x)})
+							}
+							if lanes == i8x16Rotate16 {
+								f.stats.peep("simd-shuffle-rotr16-inplace")
+							} else {
+								f.stats.peep("simd-shuffle-rotr8-tbl-inplace")
+							}
+							return nil
+						}
+					}
+				}
+			}
+		}
 		dst := f.allocFReg(maskOf(src))
 		if lanes == i8x16Rotate16 {
 			f.a.NeonRev32H(dst, src)
@@ -528,6 +581,23 @@ func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 	f.fpinned = f.fpinned.add(s1)
 	s2, o2 := f.operandRegV128(b)
 	f.fpinned = f.fpinned.add(s2)
+	if x, dst, tee, ok := f.takeV128LocalSink(r); ok {
+		f.realizeLocalRefs(x, nil)
+		op(dst, s1, s2)
+		f.fpinned = f.fpinned.remove(s1).remove(s2)
+		if o1 && dst != s1 {
+			f.releaseF(s1)
+		}
+		if o2 && dst != s2 {
+			f.releaseF(s2)
+		}
+		f.markLocalDirty(x)
+		if tee {
+			f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: dst, idx: uint32(x)})
+		}
+		f.stats.peep("v128-local-sink")
+		return nil
+	}
 	dst := s1
 	if !o1 {
 		f.stats.peep("v128-direct-result")
@@ -547,6 +617,26 @@ func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 	}
 	f.pushVReg(dst)
 	return nil
+}
+
+func (f *fn) takeV128LocalSink(r *wasm.Reader) (x int, reg Reg, tee, ok bool) {
+	r2 := *r
+	op, err := r2.Byte()
+	if err != nil || (op != 0x21 && op != 0x22) { // local.set/local.tee
+		return 0, regNone, false, false
+	}
+	local, err := r2.U32()
+	if err != nil {
+		return 0, regNone, false, false
+	}
+	x = int(local) + f.localBase
+	if x < 0 || x >= len(f.locals) || f.localType[x] != mtV128 || f.locals[x].reg == regNone {
+		return 0, regNone, false, false
+	}
+	if err := r.JumpTo(r2.Offset()); err != nil {
+		return 0, regNone, false, false
+	}
+	return x, f.locals[x].reg, op == 0x22, true
 }
 
 // v128BinDirect selects any owned input as the destination of a three-register

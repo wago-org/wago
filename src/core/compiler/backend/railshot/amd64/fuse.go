@@ -2,7 +2,11 @@
 
 package amd64
 
-import "math/bits"
+import (
+	"math/bits"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // Compare→branch fusion: when a relational compare (or eqz) feeds directly into
 // br_if or if, emit the compare's CMP/TEST and branch on its flags, skipping the
@@ -262,7 +266,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 }
 
 // brIfFused lowers `<compare> br_if L` as CMP + conditional jump.
-func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
+func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 	fi := len(f.ctrl) - 1 - int(labelIdx)
 	if fi < 0 {
 		return errBadLabel
@@ -277,7 +281,14 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&
 			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == loop.controlSite
 	}
-	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
+	coldExit := f.callFreeLoopExit(fi)
+	var saved localStateSnapshot
+	if coldExit {
+		saved, coldExit = f.snapshotLocalStates()
+	}
+	if !coldExit {
+		f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
+	}
 	k := f.flushBelow(top)
 	if loopHeader && f.a.Len() != f.ctrl[len(f.ctrl)-1].controlSite {
 		loopHeader = false
@@ -285,6 +296,11 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	cc := f.condenseToFlags(top)
 	a := fr.branchArity()
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
+	if coldExit {
+		// MOV loads/stores used by local reconciliation preserve x86 flags, so
+		// the taken exit alone pays this work after the fused compare.
+		f.convergeBranchLocals(fr)
+	}
 	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, k)
 	} else {
@@ -292,11 +308,16 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	}
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
+	if coldExit {
+		f.restoreLocalStates(saved)
+		f.stats.peep("callfree-loop-exit-cold")
+	}
 	f.recordBrFold(over)
 	if loopHeader {
 		loop := &f.ctrl[len(f.ctrl)-1]
 		_, isFloat, pinned := f.pinReg(counter)
 		if pinned && !isFloat {
+			f.tryHoistLinearSumBounds(r, counter, loop)
 			f.ensureCtrlMerge(loop).setCountedLoop(counter, f.a.Len())
 		}
 	}

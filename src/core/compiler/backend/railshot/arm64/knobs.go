@@ -13,6 +13,8 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
+	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
+	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
 	optimization.Bind("leaf-scratch-memsize", &leafScratchMemSizeEnabled),
 	optimization.Bind("loop-trap-cell", &loopTrapCellEnabled),
@@ -74,6 +76,8 @@ var (
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
 	optSIMDSuperopt         = optimizationBindings.Option("simd-superopt")
 	optIntervalRegionPins   = optimizationBindings.Option("interval-region-pins")
+	optIntervalNextUse      = optimizationBindings.Option("interval-next-use")
+	optLinearSumLoop        = optimizationBindings.Option("linear-sum-loop")
 	optMultiBoundsCert      = optimizationBindings.Option("multi-bounds-cert")
 	optLeafScratchMemSize   = optimizationBindings.Option("leaf-scratch-memsize")
 	optLoopTrapCell         = optimizationBindings.Option("loop-trap-cell")

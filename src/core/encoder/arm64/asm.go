@@ -442,6 +442,11 @@ func (a *Asm) Csel64(rd, rn, rm Reg, c Cond) {
 	a.word(0x9A800000 | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | r(rd))
 }
 
+// Csinc32 is Rd = cond ? Rn : Rm+1 in the low 32 bits.
+func (a *Asm) Csinc32(rd, rn, rm Reg, c Cond) {
+	a.word(0x1A800400 | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | r(rd))
+}
+
 // Cset64 is Rd = cond ? 1 : 0, encoded as CSINC Rd, XZR, XZR, invert(cond).
 func (a *Asm) Cset64(rd Reg, c Cond) {
 	a.word(0x9A800400 | r(XZR)<<16 | uint32(c.Invert())<<12 | r(XZR)<<5 | r(rd))

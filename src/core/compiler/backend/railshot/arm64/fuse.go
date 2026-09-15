@@ -5,6 +5,8 @@ package arm64
 import (
 	"fmt"
 	"math/bits"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // Compare→branch fusion: when a relational compare (or eqz) feeds directly into
@@ -299,7 +301,7 @@ func (f *fn) condenseSimpleEqzOperand(node *elem) (reg Reg, owned, wide, ok bool
 // brIfSimpleEqz selects CBZ directly for an empty branch edge. The branch has
 // exactly the same integer-width test and target as `<integer>.eqz; br_if`, and
 // convergence/flush work remains before the test just as in brIfFused.
-func (f *fn) brIfSimpleEqz(top *elem, labelIdx uint32) (bool, error) {
+func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, error) {
 	if !f.opt(optZeroBranch) || top == nil || top.deferredOp() != opEqz {
 		return false, nil
 	}
@@ -320,8 +322,11 @@ func (f *fn) brIfSimpleEqz(top *elem, labelIdx uint32) (bool, error) {
 			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == loop.controlSite
 	}
 	mark := f.a.Len()
-	saved, canDefer := f.snapshotLocalStates()
-	canDefer = canDefer && f.callFreeLoopExit(fi)
+	canDefer := f.callFreeLoopExit(fi)
+	var saved localStateSnapshot
+	if canDefer {
+		saved, canDefer = f.snapshotLocalStates()
+	}
 	f.convergeBranchLocals(fr)
 	var coldEdgeCode []byte
 	if canDefer && f.a.Len() != mark {
@@ -360,6 +365,7 @@ func (f *fn) brIfSimpleEqz(top *elem, labelIdx uint32) (bool, error) {
 		loop := &f.ctrl[len(f.ctrl)-1]
 		_, isFloat, pinned := f.pinReg(counter)
 		if pinned && !isFloat {
+			f.tryHoistLinearSumBounds(r, counter)
 			f.ensureCtrlMerge(loop).setCountedLoop(counter)
 		}
 	}
@@ -384,8 +390,11 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	}
 	fr := &f.ctrl[fi]
 	reconcileMark := f.a.Len()
-	saved, canDefer := f.snapshotLocalStates()
-	canDefer = canDefer && f.callFreeLoopExit(fi)
+	canDefer := f.callFreeLoopExit(fi)
+	var saved localStateSnapshot
+	if canDefer {
+		saved, canDefer = f.snapshotLocalStates()
+	}
 	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
 	var coldEdgeCode []byte
 	if canDefer && f.a.Len() != reconcileMark {

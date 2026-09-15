@@ -95,6 +95,13 @@ func (s Selection) EnabledOption(option Option) bool {
 	return s.bindings != nil && s.bindings == option.bindings && s.bits&option.mask != 0
 }
 
+// EnabledResolvedOption is the hot-path form for an Option resolved by the
+// same Bindings that produced this Selection. Backend initialization validates
+// that ownership once, so per-instruction lowering need only test the bit.
+func (s Selection) EnabledResolvedOption(option Option) bool {
+	return s.bits&option.mask != 0
+}
+
 // Valid reports whether the selection was resolved by a Bindings owner.
 func (s Selection) Valid() bool { return s.bindings != nil }
 
@@ -392,7 +399,7 @@ var catalog = []Definition{
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
 	both("ext-fp-pins", "Extended float pins", "use the larger floating-point register pool"),
 	arm64("merge-next-use", "Merge next-use", "keep dead forward-merge locals lazy with bounded post-merge lookahead"),
-	arm64("callfree-loop-cold-exit", "Call-free loop cold exits", "move local reconciliation from a call-free loop's hot conditional fall-through to its taken exit edge"),
+	both("callfree-loop-cold-exit", "Call-free loop cold exits", "move local reconciliation from a call-free loop's hot conditional fall-through to its taken exit edge"),
 	arm64("weighted-scalar-merge", "Weighted scalar merges", "reserve the canonical merge register for loop-hot scalar result joins"),
 	amd64("tree-order", "Valent tree ordering", "schedule bounded commutative trees by register need"),
 	amd64("assoc-tree", "Associative tree cover", "cover high-pressure bounded associative trees with one accumulator"),
@@ -401,6 +408,7 @@ var catalog = []Definition{
 	arm64("leaf-scratch-memsize", "Leaf scratch memory size", "cache memory size in backend scratch for straight-line regional leaves"),
 	arm64("loop-trap-cell", "Loop trap cell", "cache the stable cancellation cell across call-free loops"),
 	both("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
+	both("linear-sum-loop", "Linear sum loops", "hoist bounds and split exact i64 memory reductions across four accumulators"),
 	both("prepared-direct-entry", "Direct prepared entry", "enter compiler-proved integer functions through the register ABI"),
 	arm64("prepared-light-entry", "Light prepared entry", "use caller-clobber proofs to select a smaller native entry thunk"),
 	both("prepared-bounded-entry", "Bounded prepared entry", "keep compiler-bounded native leaves on the Go scheduler"),
@@ -409,6 +417,7 @@ var catalog = []Definition{
 	amd64("interval-scratch-lease", "Regional scratch leasing", "lend idle RDX to proved straight-line integer local regions"),
 	amd64("interval-r8-lease", "Regional R8 leasing", "lend R8 to signal-bounded straight-line integer regions after excluding fixed-register lowerings"),
 	amd64("interval-i64-weight", "Regional i64 weighting", "price packed 64-bit local reloads more heavily in regional eviction"),
+	both("interval-next-use", "Regional next-use eviction", "use a compact local-event tape to evict the farthest local version and elide dead stores"),
 	amd64("memsize-regional-lease", "Regional memory-size leasing", "lend the memory-size register to proved straight-line local regions"),
 	amd64("module-global-regional-lease", "Regional module-global leasing", "lend an unreferenced module-global register to proved straight-line local regions"),
 	arm64("loop-int-const", "Loop integer constants", "keep costly loop-invariant integer constants in otherwise-idle registers"),

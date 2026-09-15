@@ -136,7 +136,7 @@ func (f *fn) emitInterruptCheck(preserveLayout bool) {
 	if preserveLayout && f.trapCellReg != regNone {
 		// Keep the following loop body at the same address as the uncached form.
 		// Replacing the dependent pointer load with a NOP isolates the latency win
-		// from fetch-block phase changes across unrelated corpus functions.
+		// from fetch-block phase changes in unrelated functions.
 		f.a.Nop()
 	}
 }
@@ -527,6 +527,16 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) 
 		}
 	}
 	f.pinned = f.pinned.add(ea)
+	if f.memLimitReg != regNone && leaDisp == f.memLimitExtent {
+		f.cmpRR(ea, f.memLimitReg, true)
+		f.stats.peep("common-bounds-limit-hit")
+		f.trapIf(condA, trapMemOOB)
+		// Preserve later function entry addresses: relocate the removed hot ADD to
+		// this function's cold tail instead of shifting the rest of the module.
+		f.phasePadWords++
+		f.pinned = f.pinned.remove(ea)
+		return ea, eaOwned, borrow, disp
+	}
 	t := f.allocReg(0)
 	f.leaDisp(t, ea, leaDisp, true) // t = ea + off + size
 	if f.memSizeReg != regNone {
@@ -894,11 +904,45 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	// that local realizes the load first, and consumers neither write nor
 	// release the register.
 	addrLocal, addrOK := localAddressKey(f.s.back())
+	seedIndexedBase := false
+	if addrOK && size == 4 && !signed && !wide && f.opt(optIndexedBaseReuse) {
+		scan := *r
+		if op, scanErr := scan.Byte(); scanErr == nil && op == 0x6a { // i32.add
+			if op, scanErr = scan.Byte(); scanErr == nil && op == 0x21 { // local.set accumulator
+				setLocal, setErr := scan.U32()
+				if setErr == nil && int(setLocal)+f.localBase != addrLocal {
+					if op, scanErr = scan.Byte(); scanErr == nil && op == 0x20 { // local.get same address
+						getLocal, getErr := scan.U32()
+						if getErr == nil && int(getLocal)+f.localBase == addrLocal {
+							if op, scanErr = scan.Byte(); scanErr == nil && op == 0x28 { // i32.load
+								memory2, off2, argErr := f.readMemArg(&scan)
+								seedIndexedBase = argErr == nil && memory2 == 0 && off2 == off+4
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 	aliasLocal := -1
 	if addrOK {
 		aliasLocal = addrLocal
 	}
 	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, rangeExtent)
+	if seedIndexedBase && borrow == addrLocal && disp >= 0 && disp%4 == 0 && disp/4 <= 4095 {
+		f.a.AddShifted(X16, linMemReg, ea, 0, false)
+		out := f.allocReg(maskOf(ea))
+		if f.a.Load32(out, X16, uint32(disp)) {
+			if eaOwned {
+				f.release(ea)
+			}
+			value := f.pushReg(out, mtI32)
+			value.st.setValueFacts(factUpper32Zero)
+			f.stats.peep("indexed-base-seed")
+			return nil
+		}
+		f.release(out)
+	}
 	if f.opt(optLoadPair) && !f.memoryAddr64(0) && !f.guardMode && !f.threadedMemory0 && !signed &&
 		(size == 4 && !wide || size == 8 && wide) && addrOK {
 		if first := f.s.back(); first != nil && first.elemKind() == ekValue && first.st.kind == stMemRef &&
@@ -1734,6 +1778,9 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.patchBranch26(done, f.a.Len())
 	if memoryIndex == 0 && f.memSizeReg != regNone {
 		f.ld64(f.memSizeReg, linMemReg, -int32(bdCurBytes))
+		if f.memLimitReg != regNone {
+			f.a.SubImm64(f.memLimitReg, f.memSizeReg, uint32(f.memLimitExtent))
+		}
 	}
 	f.release(nw)
 	f.release(tmp)

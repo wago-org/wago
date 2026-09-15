@@ -60,6 +60,8 @@ func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
 		"amd64": {
 			"simd-superopt",
 			"interval-region-pins",
+			"interval-next-use",
+			"linear-sum-loop",
 			"magic-div",
 			"shared-trap-body",
 			"shared-adapters",

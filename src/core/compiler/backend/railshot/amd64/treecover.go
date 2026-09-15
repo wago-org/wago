@@ -10,6 +10,11 @@ const minAssociativeDestNeed = 4
 // eligible, and the two bounded walks allocate no scratch storage. Destination-
 // hinted trees keep the established local-sink alias handling.
 func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
+	if node.deferredOp() == opAdd {
+		if r := f.tryAffineAddTree(node, dest); r != regNone {
+			return r
+		}
+	}
 	requestedDest := dest != regNone
 	need := treeRegisterNeed(node)
 	if !associativeOp(node.deferredOp()) || need < 3 {
@@ -17,8 +22,8 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 	}
 	// A destination hint already removes the ordinary path's result copy. Spend
 	// whole-tree selection only where the unflattened expression has materially
-	// higher register pressure; need-three destination trees changed layout in hot
-	// corpus functions without reducing spills and regressed their execution.
+	// higher register pressure; need-three destination trees change layout without
+	// reducing spills and can regress execution.
 	if requestedDest && need < minAssociativeDestNeed {
 		return regNone
 	}
@@ -83,6 +88,71 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 	f.occupy(node, dest)
 	node.setDeferredOp(opNone)
 	return dest
+}
+
+// tryAffineAddTree folds a pure associative sum whose nonconstant leaves all
+// read the same pinned integer into one LEA. This covers expressions such as
+// (x+a)+(x+b)+(x+c) as 3*x+(a+b+c), preserving Wasm's wrapping arithmetic.
+func (f *fn) tryAffineAddTree(node *elem, dest Reg) Reg {
+	if !f.opt(optAssocTree) || node.valueType() != mtI32 && node.valueType() != mtI64 {
+		return regNone
+	}
+	reg, count, constant, ok := inspectAffineAddTree(node, node.valueType(), regNone, 0, 0)
+	if !ok || count < 2 {
+		return regNone
+	}
+	var scale uint8
+	switch count {
+	case 2:
+		scale = 0
+	case 3:
+		scale = 1
+	case 5:
+		scale = 2
+	case 9:
+		scale = 3
+	default:
+		return regNone
+	}
+	if node.valueType() == mtI32 {
+		constant = int64(int32(uint32(constant)))
+	}
+	if !fitsImm32(constant) {
+		return regNone
+	}
+	if dest == regNone {
+		dest = f.allocReg(maskOf(reg))
+	}
+	f.a.LeaScaledW(dest, reg, reg, scale, int32(constant), node.valueType().is64())
+	f.stats.peep("assoc-affine-add")
+	f.consumeBlockBelow(node)
+	f.occupy(node, dest)
+	node.setDeferredOp(opNone)
+	return dest
+}
+
+func inspectAffineAddTree(e *elem, typ machineType, reg Reg, count int, constant int64) (Reg, int, int64, bool) {
+	if e.isDeferred() && e.deferredOp() == opAdd && e.valueType() == typ {
+		reg, count, constant, ok := inspectAffineAddTree(e.arg0, typ, reg, count, constant)
+		if !ok {
+			return regNone, 0, 0, false
+		}
+		return inspectAffineAddTree(e.arg1, typ, reg, count, constant)
+	}
+	if !e.isValue() || e.st.typ != typ {
+		return regNone, 0, 0, false
+	}
+	switch e.st.kind {
+	case stConst:
+		return reg, count, constant + e.st.cval, true
+	case stLocalReg, stGlobReg:
+		if reg != regNone && reg != e.st.reg {
+			return regNone, 0, 0, false
+		}
+		return e.st.reg, count + 1, constant, true
+	default:
+		return regNone, 0, 0, false
+	}
 }
 
 // associativeDestLeaves counts flattened leaves whose subtree reads dest and
