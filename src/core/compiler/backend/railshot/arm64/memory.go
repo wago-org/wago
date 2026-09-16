@@ -72,7 +72,7 @@ const (
 // smallBulkMax is the dynamic memory.copy/fill length below which the inline
 // 8-byte chunk loops beat the NEON loop startup latency. At the boundary the
 // NEON path wins, so its dispatch uses n >= smallBulkMax.
-const smallBulkMax = 64
+const smallBulkMax = 32
 
 // offTrapCellPtr is the basedata slot holding the address of the trap cell
 // (runtime installTrapCell / abi.TrapCellPtrOffset). The trap pointer is NOT
@@ -1205,7 +1205,6 @@ func (f *fn) copyFwdLoop(dst, src, n Reg) {
 	f.patchBranch19(wideTail, f.a.Len())
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
-	vecLoop32 := f.a.Len()
 	if f.memcopyQPairs {
 		f.a.LdpQ(X16, X17, src, 0)
 		f.a.StpQ(X16, X17, dst, 0)
@@ -1218,30 +1217,22 @@ func (f *fn) copyFwdLoop(dst, src, n Reg) {
 	f.a.AddImm64(src, src, 32)
 	f.a.AddImm64(dst, dst, 32)
 	f.a.SubImm64(n, n, 32)
-	f.cmpImm(n, 32, true)
-	f.patchBranch19(f.a.Bcond(condAE), vecLoop32)
 	f.patchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
-	vecLoop := f.a.Len()
 	f.a.LdrQ(X16, src, 0)
 	f.a.StrQ(dst, 0, X16)
 	f.a.AddImm64(src, src, 16)
 	f.a.AddImm64(dst, dst, 16)
 	f.a.SubImm64(n, n, 16)
-	f.cmpImm(n, 16, true)
-	f.patchBranch19(f.a.Bcond(condAE), vecLoop)
 	f.patchBranch19(wordTail, f.a.Len())
 	f.cmpImm(n, 8, true)
 	byteTail := f.a.Bcond(condB)
-	wordLoop := f.a.Len()
 	f.a.Load64(X16, src, 0)
 	f.a.Store64(X16, dst, 0)
 	f.a.AddImm64(src, src, 8)
 	f.a.AddImm64(dst, dst, 8)
 	f.a.SubImm64(n, n, 8)
-	f.cmpImm(n, 8, true)
-	f.patchBranch19(f.a.Bcond(condAE), wordLoop)
 	f.patchBranch19(byteTail, f.a.Len())
 	done := f.a.Cbz64(n)
 	loop := f.a.Len()
@@ -1291,7 +1282,6 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 	f.patchBranch19(wideTail, f.a.Len())
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
-	vecLoop32 := f.a.Len()
 	f.a.SubImm64(src, src, 32)
 	f.a.SubImm64(dst, dst, 32)
 	if f.memcopyQPairs {
@@ -1304,30 +1294,22 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 		f.a.StrQ(dst, 16, X17)
 	}
 	f.a.SubImm64(n, n, 32)
-	f.cmpImm(n, 32, true)
-	f.patchBranch19(f.a.Bcond(condAE), vecLoop32)
 	f.patchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
-	vecLoop := f.a.Len()
 	f.a.SubImm64(src, src, 16)
 	f.a.SubImm64(dst, dst, 16)
 	f.a.LdrQ(X16, src, 0)
 	f.a.StrQ(dst, 0, X16)
 	f.a.SubImm64(n, n, 16)
-	f.cmpImm(n, 16, true)
-	f.patchBranch19(f.a.Bcond(condAE), vecLoop)
 	f.patchBranch19(wordTail, f.a.Len())
 	f.cmpImm(n, 8, true)
 	byteTail := f.a.Bcond(condB)
-	wordLoop := f.a.Len()
 	f.a.SubImm64(src, src, 8)
 	f.a.SubImm64(dst, dst, 8)
 	f.a.Load64(X16, src, 0)
 	f.a.Store64(X16, dst, 0)
 	f.a.SubImm64(n, n, 8)
-	f.cmpImm(n, 8, true)
-	f.patchBranch19(f.a.Bcond(condAE), wordLoop)
 	f.patchBranch19(byteTail, f.a.Len())
 	done := f.a.Cbz64(n)
 	loop := f.a.Len()
@@ -1362,31 +1344,22 @@ func (f *fn) fillLoop(dst, pat, n Reg) {
 	f.patchBranch19(wideTail, f.a.Len())
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
-	vecLoop32 := f.a.Len()
 	f.a.StrQ(dst, 0, X16)
 	f.a.StrQ(dst, 16, X16)
 	f.a.AddImm64(dst, dst, 32)
 	f.a.SubImm64(n, n, 32)
-	f.cmpImm(n, 32, true)
-	f.patchBranch19(f.a.Bcond(condAE), vecLoop32)
 	f.patchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
-	vecLoop := f.a.Len()
 	f.a.StrQ(dst, 0, X16)
 	f.a.AddImm64(dst, dst, 16)
 	f.a.SubImm64(n, n, 16)
-	f.cmpImm(n, 16, true)
-	f.patchBranch19(f.a.Bcond(condAE), vecLoop)
 	f.patchBranch19(wordTail, f.a.Len())
 	f.cmpImm(n, 8, true)
 	byteTail := f.a.Bcond(condB)
-	wordLoop := f.a.Len()
 	f.a.Store64(pat, dst, 0)
 	f.a.AddImm64(dst, dst, 8)
 	f.a.SubImm64(n, n, 8)
-	f.cmpImm(n, 8, true)
-	f.patchBranch19(f.a.Bcond(condAE), wordLoop)
 	f.patchBranch19(byteTail, f.a.Len())
 	done := f.a.Cbz64(n)
 	loop := f.a.Len()
@@ -1724,6 +1697,10 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 		f.ld64(base, base, entry)
 	}
 	f.ld32(res, base, -int32(bdCurPages))
+	// memory.grow 0 cannot change memory state and always returns the current
+	// size. Bypass maximum checks and cache publication; this operation is used
+	// as a cheap size query by generated runtimes.
+	zeroDelta := f.zeroBranch(delta, false, true)
 	nw := f.allocReg(maskOf(delta, res, base))
 	f.a.MovReg32(nw, res)
 	f.a.Adds32(nw, nw, delta)
@@ -1762,6 +1739,14 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.a.SubImm64(tmp, base, uint32(bdCurBytes))
 	f.a.Store64(nw, tmp, 0)
 	f.st32(base, -8, nw) // legacy u32 cache; wraps only at exactly 4 GiB
+	if memoryIndex == 0 && f.memSizeReg != regNone {
+		// The successful path already has the new byte size in nw. Forward it to
+		// the regional bounds cache instead of reloading the value just stored.
+		f.a.MovReg64(f.memSizeReg, nw)
+		if f.memLimitReg != regNone {
+			f.a.SubImm64(f.memLimitReg, f.memSizeReg, uint32(f.memLimitExtent))
+		}
+	}
 
 	done := f.a.Branch()
 	if failDelta >= 0 {
@@ -1775,13 +1760,16 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	} else {
 		f.a.MovImm64(res, uint64(0xffffffff))
 	}
-	f.patchBranch26(done, f.a.Len())
 	if memoryIndex == 0 && f.memSizeReg != regNone {
+		// Failure preserves the old memory size, so reload the cache only on this
+		// path. Success forwarded nw before jumping here.
 		f.ld64(f.memSizeReg, linMemReg, -int32(bdCurBytes))
 		if f.memLimitReg != regNone {
 			f.a.SubImm64(f.memLimitReg, f.memSizeReg, uint32(f.memLimitExtent))
 		}
 	}
+	f.patchBranch26(done, f.a.Len())
+	f.patchBranch19(zeroDelta, f.a.Len())
 	f.release(nw)
 	f.release(tmp)
 	if memoryIndex != 0 {

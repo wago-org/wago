@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	goruntime "runtime"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -2404,6 +2405,248 @@ func benchBulkMemoryModule(op byte) []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
+}
+
+// benchBulkMemoryLoopModule runs one dynamic bulk-memory operation per guest
+// loop iteration. Batching the operation in Wasm keeps invocation admission
+// out of the bulk-memory measurements while preserving the generated code used
+// by ordinary modules.
+func benchBulkMemoryLoopModule(op byte) []byte {
+	body := []byte{
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x20, 0x00, 0x20, 0x01, 0x20, 0x02, // dst, src/value, n
+	}
+	if op == 0x0b {
+		body = append(body, 0xfc, op, 0x00) // memory.fill 0
+	} else {
+		body = append(body, 0xfc, op, 0x00, 0x00) // memory.copy 0 0
+	}
+	body = append(body,
+		0x20, 0x03, 0x41, 0x01, 0x6b, 0x22, 0x03, // --iterations
+		0x0d, 0x00, // br_if loop
+		0x0b, 0x0b, 0x0b, // end loop, block, function
+	)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
+			[]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil,
+		))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, []byte{0x01, 0x00, 0x02}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func benchMemoryInitLoopModule() []byte {
+	body := []byte{
+		0x02, 0x40, 0x03, 0x40, // block; loop
+		0x20, 0x00, 0x20, 0x01, 0x20, 0x02, // dst, src, n
+		0xfc, 0x08, 0x00, 0x00, // memory.init data=0 memory=0
+		0x20, 0x03, 0x41, 0x01, 0x6b, 0x22, 0x03, // --iterations
+		0x0d, 0x00, 0x0b, 0x0b, 0x0b, // br_if loop; end loop, block, function
+	}
+	data := make([]byte, 65536)
+	for i := range data {
+		data[i] = byte(i)
+	}
+	segment := append([]byte{0x01}, wasmtest.ULEB(uint32(len(data)))...)
+	segment = append(segment, data...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
+			[]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil,
+		))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, []byte{0x01, 0x00, 0x02}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(12, wasmtest.ULEB(1)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		wasmtest.Section(11, wasmtest.Vec(segment)),
+	)
+}
+
+func BenchmarkBulkMemoryKernel(b *testing.B) {
+	const batch = uint64(256)
+	for _, tc := range []struct {
+		name string
+		op   byte
+	}{
+		{"copy-forward", 0x0a},
+		{"copy-backward-overlap", 0x0a},
+		{"fill", 0x0b},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			c := benchMustCompile(b, benchBulkMemoryLoopModule(tc.op))
+			in, err := Instantiate(c, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.WasmFunc("run")
+			if err != nil {
+				b.Fatal(err)
+			}
+			mem := in.Memory().UnsafeBytes()
+			for i := range mem {
+				mem[i] = byte(i)
+			}
+			for _, n := range []uint64{0, 1, 7, 8, 15, 16, 31, 32, 63, 64, 80, 95, 96, 112, 120, 127, 128, 129, 144, 160, 192, 224, 255, 256, 512, 1024, 4096, 65536} {
+				b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
+					dst, arg := uint64(65536), uint64(0)
+					switch tc.name {
+					case "copy-backward-overlap":
+						dst, arg = 1, 0
+					case "fill":
+						arg = 0xa5
+					}
+					b.ReportAllocs()
+					b.SetBytes(int64(n * batch))
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						if _, err := fn.Invoke(dst, arg, n, batch); err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func BenchmarkMemoryInitKernel(b *testing.B) {
+	const batch = uint64(256)
+	c := benchMustCompile(b, benchMemoryInitLoopModule())
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("run")
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, n := range []uint64{0, 8, 16, 32, 64, 128, 256, 1024, 4096, 65536} {
+		b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(n * batch))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := fn.Invoke(65536, 0, n, batch); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func benchBulkTableWAT(op string) string {
+	extra := ""
+	operation := ""
+	switch op {
+	case "copy":
+		operation = "local.get $dst local.get $arg local.get $n table.copy 0 0"
+	case "copy-overlap":
+		operation = "local.get $dst local.get $arg local.get $n table.copy 0 0"
+	case "init":
+		extra = "(elem $e funcref " + strings.Repeat("(ref.func $target) ", 256) + ")"
+		operation = "local.get $dst local.get $arg local.get $n table.init 0 $e"
+	case "fill":
+		extra = "(elem declare func $target)"
+		operation = "local.get $dst ref.func $target local.get $n table.fill 0"
+	}
+	return fmt.Sprintf(`(module
+		(func $target)
+		(table 512 512 funcref)
+		%s
+		(func (export "run") (param $dst i32) (param $arg i32) (param $n i32) (param $iterations i32)
+			(block $done (loop $loop
+				%s
+				local.get $iterations i32.const 1 i32.sub local.tee $iterations br_if $loop))))`, extra, operation)
+}
+
+func BenchmarkBulkTableKernel(b *testing.B) {
+	const batch = uint64(256)
+	for _, op := range []string{"copy", "copy-overlap", "init", "fill"} {
+		b.Run(op, func(b *testing.B) {
+			c := benchMustCompile(b, watToWasm(b, benchBulkTableWAT(op)))
+			in, err := Instantiate(c, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.WasmFunc("run")
+			if err != nil {
+				b.Fatal(err)
+			}
+			for _, n := range []uint64{0, 1, 4, 8, 16, 32, 64, 128, 256} {
+				b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
+					dst, arg := uint64(256), uint64(0)
+					if op == "copy-overlap" {
+						dst = 1
+					}
+					b.ReportAllocs()
+					b.SetBytes(int64(n * batch * 32))
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						if _, err := fn.Invoke(dst, arg, n, batch); err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func benchMemoryGrowLoopModule(maxPages byte) []byte {
+	body := []byte{
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x20, 0x00, 0x40, 0x00, 0x1a, // local.get delta; memory.grow 0; drop
+		0x20, 0x01, 0x41, 0x01, 0x6b, 0x22, 0x01, // --iterations
+		0x0d, 0x00, // br_if loop
+		0x0b, 0x0b, 0x0b, // end loop, block, function
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
+			[]wasm.ValType{wasm.I32, wasm.I32}, nil,
+		))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, []byte{0x01, 0x01, 0x01, maxPages}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func BenchmarkMemoryGrowKernel(b *testing.B) {
+	const batch = uint64(256)
+	for _, tc := range []struct {
+		name  string
+		delta uint64
+	}{
+		{"zero", 0},
+		{"failure", 1},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			c := benchMustCompile(b, benchMemoryGrowLoopModule(1))
+			in, err := Instantiate(c, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.WasmFunc("run")
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := fn.Invoke(tc.delta, batch); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }
 
 func BenchmarkBulkMemoryARM64(b *testing.B) {
