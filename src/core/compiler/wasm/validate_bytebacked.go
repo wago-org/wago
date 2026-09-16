@@ -938,6 +938,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 			return err
 		}
 	}
+	v.prepareLocalLookup()
 	v.resetLocalInitialization()
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
 	v.rd.reset(body.body)

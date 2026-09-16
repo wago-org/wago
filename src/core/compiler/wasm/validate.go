@@ -1020,12 +1020,14 @@ type funcValidator struct {
 	// Small inline backing stores cover the common straight-line function and
 	// const-expression cases without heap-allocating separate stack slices. Larger
 	// or deeply nested functions still grow normally and reuse that capacity.
-	valBuf      [2]val
-	ctrlBuf     [1]ctrlFrame
-	constResult [1]ValType
-	localParams []ValType
-	localRuns   []LocalRun
-	localCount  uint64
+	valBuf          [2]val
+	ctrlBuf         [1]ctrlFrame
+	constResult     [1]ValType
+	localParams     []ValType
+	localRuns       []LocalRun
+	localRunStarts  []uint64 // worker-owned prefix index; never retained by the module
+	localLookupWork uint64
+	localCount      uint64
 	// Non-nullable reference locals have no default value. Track successful
 	// local.set/local.tee operations sparsely and roll them back at structured
 	// control boundaries. The map grows only with locals actually initialized by
@@ -1101,6 +1103,7 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 			return err
 		}
 	}
+	v.prepareLocalLookup()
 	v.resetLocalInitialization()
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
 	for _, in := range fn.Body.Instrs {
@@ -1179,11 +1182,70 @@ func (v *funcValidator) unreachable() {
 	v.vals = v.vals[:f.height]
 	v.ctrls[len(v.ctrls)-1].unreachable = true
 }
+
+// localType retains the small declaration path and its inlining budget.
 func (v *funcValidator) localType(idx uint32) (ValType, bool) {
 	if uint64(idx) >= v.localCount {
 		return ValType{}, false
 	}
 	return LocalType(v.localParams, v.localRuns, idx)
+}
+
+func (v *funcValidator) localTypeIndexed(idx uint32) (ValType, bool) {
+	if uint64(idx) >= v.localCount {
+		return ValType{}, false
+	}
+	if len(v.localRuns) <= 8 || uint64(idx) < uint64(len(v.localParams)) {
+		return LocalType(v.localParams, v.localRuns, idx)
+	}
+	if len(v.localRunStarts) == 0 {
+		// Defer construction until prior lookups have visited four times the
+		// run count. Few accesses and repeated early-run accesses stay linear.
+		if v.localLookupWork < 4*uint64(len(v.localRuns)) {
+			rem := uint64(idx) - uint64(len(v.localParams))
+			for i, run := range v.localRuns {
+				if rem < uint64(run.Count) {
+					v.localLookupWork += uint64(i + 1)
+					return run.Type, true
+				}
+				rem -= uint64(run.Count)
+			}
+			return ValType{}, false
+		}
+		v.buildLocalLookup()
+	}
+	// Repeated starts from zero-count runs require an upper-bound search.
+	lo, hi := 0, len(v.localRunStarts)
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		if v.localRunStarts[mid] <= uint64(idx) {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return v.localRuns[lo-1].Type, true
+}
+
+func (v *funcValidator) prepareLocalLookup() {
+	v.localRunStarts = v.localRunStarts[:0]
+	v.localLookupWork = 0
+}
+
+// Each validation worker owns and reuses its buffer. Construction is lazy and
+// uses one prefix entry per run, not per declared local.
+func (v *funcValidator) buildLocalLookup() {
+	n := len(v.localRuns)
+	if cap(v.localRunStarts) < n {
+		v.localRunStarts = make([]uint64, n)
+	} else {
+		v.localRunStarts = v.localRunStarts[:n]
+	}
+	next := uint64(len(v.localParams))
+	for i, run := range v.localRuns {
+		v.localRunStarts[i] = next
+		next += uint64(run.Count)
+	}
 }
 
 func (v *funcValidator) resetLocalInitialization() {
