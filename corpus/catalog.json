@@ -13,6 +13,14 @@
       "json-as-simd",
       "coremark",
       "blake3",
+      "yyjson",
+      "utf8proc",
+      "xxhash",
+      "libtommath",
+      "tinyxml2",
+      "nanosvg",
+      "kissfft",
+      "lua",
       "embench-crc32",
       "sightglass-shootout-base64",
       "tacle-bsort",
@@ -856,6 +864,114 @@
         "zstd",
         "c"
       ]
+    },
+    {
+      "id": "yyjson/parse-edit-write",
+      "artifact": "workloads/semantic/yyjson/yyjson.wasm",
+      "artifact_sha256": "437fe28183aa435bb89af1e88e58a70c30d0cfe278d93485c021238ea94d39e0",
+      "abi": "core",
+      "source": {
+        "repository": "https://github.com/ibireme/yyjson.git",
+        "revision": "6447536015f3d600f3d65323b10976103b337ca7",
+        "revision_date": "2026-09-09",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "invoke": { "export": "yyjson_run" },
+      "expect": { "return": ["0xd4809d398dd1ec"] },
+      "limits": { "timeout_ms": 15000 },
+      "tags": ["json", "parser", "serialization", "c"]
+    },
+    {
+      "id": "utf8proc/normalize-casefold",
+      "artifact": "workloads/semantic/utf8proc/utf8proc.wasm",
+      "artifact_sha256": "80c8881614613fdac473095ae343f856db5023a231f244bee1711613cd5e3314",
+      "abi": "core",
+      "source": {
+        "repository": "https://github.com/JuliaStrings/utf8proc.git",
+        "revision": "0075ed7d0adba45682ee6bf7a83b10f8fd110163",
+        "revision_date": "2026-07-22",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "invoke": { "export": "utf8proc_run" },
+      "expect": { "return": ["0xe4b234ea8fbeb247"] },
+      "limits": { "timeout_ms": 15000 },
+      "tags": ["unicode", "normalization", "text", "c"]
+    },
+    {
+      "id": "xxhash/xxh3-boundaries",
+      "artifact": "workloads/semantic/xxhash/xxhash.wasm",
+      "artifact_sha256": "41635d2004fe738744181688d7089669d60552ceb1de2bb5e120ffc985674f9c",
+      "abi": "core",
+      "source": {
+        "repository": "https://github.com/Cyan4973/xxHash.git",
+        "revision": "f7009014c049235e14b32af0bfe1914906a00d17",
+        "revision_date": "2026-09-16",
+        "license": "BSD-2-Clause",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "invoke": { "export": "xxhash_run" },
+      "expect": { "return": ["0x8e8daba4b0711b5e"] },
+      "limits": { "timeout_ms": 15000 },
+      "tags": ["hashing", "streaming", "integer", "c"]
+    },
+    {
+      "id": "libtommath/modular-arithmetic",
+      "artifact": "workloads/semantic/libtommath/libtommath.wasm",
+      "artifact_sha256": "296e31b7bffcc13e922b97071d6d7d5e197608efa78195bbdd0f8f016032a3f3",
+      "abi": "core",
+      "source": {
+        "repository": "https://github.com/libtom/libtommath.git",
+        "revision": "ae40a87a920099a7d9d00979570e0c8d917a1fd7",
+        "revision_date": "2026-04-20",
+        "license": "Unlicense",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "invoke": { "export": "libtommath_run" },
+      "expect": { "return": ["0xe8d2dfc0485aa044"] },
+      "limits": { "timeout_ms": 15000 },
+      "tags": ["bigint", "modular-arithmetic", "crypto", "c"]
+    },
+    {
+      "id": "nanosvg/parse-rasterize",
+      "artifact": "workloads/semantic/nanosvg/nanosvg.wasm",
+      "artifact_sha256": "ef34d4e5056c3d9201c9c365630aa8a59b4c684301e709c9904b4ed08d73ae10",
+      "abi": "core",
+      "source": {
+        "repository": "https://github.com/memononen/nanosvg.git",
+        "revision": "239e102ec2c691f2902e20ace2ed36ee4a35cfe6",
+        "revision_date": "2026-07-10",
+        "license": "Zlib",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "invoke": { "export": "nanosvg_run" },
+      "expect": { "return": ["0xf3a1bb6295ed7296"] },
+      "limits": { "timeout_ms": 15000 },
+      "tags": ["svg", "parser", "rasterization", "graphics", "c"]
+    },
+    {
+      "id": "kissfft/complex-roundtrip",
+      "artifact": "workloads/semantic/kissfft/kissfft.wasm",
+      "artifact_sha256": "3abf784eb0ac0c9b10168db72ad9301b5df6818874451b178f001611e8c77fb6",
+      "abi": "core",
+      "source": {
+        "repository": "https://github.com/mborgerding/kissfft.git",
+        "revision": "e5e3fac46e0d94a8f8170c06706b7a4218828333",
+        "revision_date": "2026-08-12",
+        "license": "BSD-3-Clause",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "invoke": { "export": "kissfft_run" },
+      "expect": { "return": ["0xa3e64611f12f3e45"] },
+      "limits": { "timeout_ms": 15000 },
+      "tags": ["fft", "numerical", "floating-point", "c"]
     }
   ],
   "benchmarks": [
@@ -1334,6 +1450,100 @@
         "semantic"
       ],
       "artifact_sha256": "d59854de5e69e02b595ca57a2fd1a70417380ce6841b424c6205f5b882763a9f"
+    },
+    {
+      "desc": "yyjson parse, DOM edit, and serialization workload",
+      "semantic_exec": ["yyjson/parse-edit-write"],
+      "id": "yyjson",
+      "artifact": "workloads/semantic/yyjson/yyjson.wasm",
+      "tags": ["semantic", "json", "parser"],
+      "artifact_sha256": "437fe28183aa435bb89af1e88e58a70c30d0cfe278d93485c021238ea94d39e0"
+    },
+    {
+      "desc": "utf8proc Unicode compatibility normalization and case folding",
+      "semantic_exec": ["utf8proc/normalize-casefold"],
+      "id": "utf8proc",
+      "artifact": "workloads/semantic/utf8proc/utf8proc.wasm",
+      "tags": ["semantic", "unicode", "text"],
+      "artifact_sha256": "80c8881614613fdac473095ae343f856db5023a231f244bee1711613cd5e3314"
+    },
+    {
+      "desc": "XXH3 hashing across short, boundary, and large inputs",
+      "semantic_exec": ["xxhash/xxh3-boundaries"],
+      "id": "xxhash",
+      "artifact": "workloads/semantic/xxhash/xxhash.wasm",
+      "tags": ["semantic", "hashing", "integer"],
+      "artifact_sha256": "41635d2004fe738744181688d7089669d60552ceb1de2bb5e120ffc985674f9c"
+    },
+    {
+      "desc": "LibTomMath modular exponentiation, GCD, and serialization",
+      "semantic_exec": ["libtommath/modular-arithmetic"],
+      "id": "libtommath",
+      "artifact": "workloads/semantic/libtommath/libtommath.wasm",
+      "tags": ["semantic", "bigint", "crypto"],
+      "artifact_sha256": "296e31b7bffcc13e922b97071d6d7d5e197608efa78195bbdd0f8f016032a3f3"
+    },
+    {
+      "desc": "NanoSVG parse and software rasterization workload",
+      "semantic_exec": ["nanosvg/parse-rasterize"],
+      "id": "nanosvg",
+      "artifact": "workloads/semantic/nanosvg/nanosvg.wasm",
+      "tags": ["semantic", "svg", "graphics"],
+      "artifact_sha256": "ef34d4e5056c3d9201c9c365630aa8a59b4c684301e709c9904b4ed08d73ae10"
+    },
+    {
+      "desc": "KissFFT 257-point complex forward and inverse transforms",
+      "semantic_exec": ["kissfft/complex-roundtrip"],
+      "id": "kissfft",
+      "artifact": "workloads/semantic/kissfft/kissfft.wasm",
+      "tags": ["semantic", "fft", "numerical", "floating-point"],
+      "artifact_sha256": "3abf784eb0ac0c9b10168db72ad9301b5df6818874451b178f001611e8c77fb6"
+    },
+    {
+      "suite": "TinyXML-2",
+      "desc": "TinyXML-2 parse, query, and DOM mutation workload",
+      "source": {
+        "repository": "https://github.com/leethomason/tinyxml2.git",
+        "revision": "8224e427b655b83dae5e2298f1e6919523a78737",
+        "revision_date": "2026-05-23",
+        "license": "Zlib",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "tinyxml2_run",
+        "want": [8269108264062527871]
+      },
+      "id": "tinyxml2",
+      "artifact": "workloads/semantic/tinyxml2/tinyxml2.wasm",
+      "tags": ["application", "xml", "parser", "cpp"],
+      "artifact_sha256": "d6a43bf55b5eef38eb9306bae12a015c311c57c8d2ed5b2089ab5bf089f1184f"
+    },
+    {
+      "suite": "Lua",
+      "desc": "Lua 5.4 interpreter running tables, closures, patterns, and GC",
+      "source": {
+        "repository": "https://github.com/lua/lua.git",
+        "revision": "6e22fedb74cf0c9b6656e9fce8b7331db847c605",
+        "revision_date": "2025-05-21",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "lua_run",
+        "want": [228381192]
+      },
+      "id": "lua",
+      "artifact": "workloads/semantic/lua/lua.wasm",
+      "tags": ["application", "interpreter", "language", "c"],
+      "artifact_sha256": "63ebbb2fc40a6394374659b868bb0b7ed68751cc06e34abd5ef230b6028c4b09"
     },
     {
       "suite": "Embench",
