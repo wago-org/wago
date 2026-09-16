@@ -8,7 +8,7 @@ import (
 func TestFailedInstantiationReleasesCodeAndImportState(t *testing.T) {
 	compiled := MustCompile(failingLocalStartModule())
 	defer compiled.Close()
-	imports := Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}
+	imports := testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 
 	for attempt := 0; attempt < 8; attempt++ {
 		instance, err := Instantiate(compiled, imports)

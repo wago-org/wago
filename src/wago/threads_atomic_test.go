@@ -309,7 +309,7 @@ func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 	}
 	defer memory.Close()
 
-	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	instance, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatalf("instantiate shared atomic module: %v", err)
 	}
@@ -339,7 +339,7 @@ func TestThreadsSameInstanceConcurrentInvokeSerializesScratch(t *testing.T) {
 	defer compiled.Close()
 	memory, _ := NewSharedMemory(1, 1)
 	defer memory.Close()
-	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	instance, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +388,7 @@ func TestThreadsHostGlobalAccessSerializesWithInvoke(t *testing.T) {
 	defer compiled.Close()
 	memory, _ := NewSharedMemory(1, 1)
 	defer memory.Close()
-	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	instance, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,7 +464,7 @@ func TestThreadsRejectsOrdinaryMemoryForSharedImport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer memory.Close()
-	if instance, err := Instantiate(compiled, Imports{"env.memory": memory}); err == nil {
+	if instance, err := Instantiate(compiled, testImports("env.memory", memory)); err == nil {
 		instance.Close()
 		t.Fatal("shared memory import accepted an ordinary host memory")
 	}
@@ -520,7 +520,7 @@ func TestThreadsAtomicLoadStoreAndFenceExecute(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer memory.Close()
-	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	instance, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -570,7 +570,7 @@ func TestThreadsAtomicLoadStoreWidthAndExtensionMatrix(t *testing.T) {
 			const initial = uint64(0xaabbccddeeff0011)
 			const value = uint64(0x1122334455667788)
 			binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], initial)
-			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+			instance, err := Instantiate(compiled, testImports("env.memory", memory))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -619,7 +619,7 @@ func TestThreadsAtomicRMWOperationAndWidthMatrix(t *testing.T) {
 			}
 			defer memory.Close()
 			binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], tc.old)
-			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+			instance, err := Instantiate(compiled, testImports("env.memory", memory))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -664,7 +664,7 @@ func TestThreadsAtomicCmpxchgSuccessFailureAndWidths(t *testing.T) {
 			}
 			defer memory.Close()
 			binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], tc.old)
-			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+			instance, err := Instantiate(compiled, testImports("env.memory", memory))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -699,7 +699,7 @@ func TestThreadsAtomicRMWRejectsUnalignedAddressBeforeWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer memory.Close()
-	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	instance, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -766,7 +766,7 @@ func TestThreadsAtomicWriteMatrixTrapsBeforeMutation(t *testing.T) {
 				memory.UnsafeBytes()[i] = byte(i*131 + 17)
 			}
 			want := append([]byte(nil), memory.UnsafeBytes()...)
-			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+			instance, err := Instantiate(compiled, testImports("env.memory", memory))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -813,7 +813,7 @@ func TestThreadsDistinctInstancesOverlapInNativeExecution(t *testing.T) {
 
 	instances := make([]*Instance, 2)
 	for i := range instances {
-		instances[i], err = Instantiate(compiled, Imports{"env.memory": memory})
+		instances[i], err = Instantiate(compiled, testImports("env.memory", memory))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -865,12 +865,12 @@ func TestThreadsAtomicWaitNotifyExecutesAcrossInstances(t *testing.T) {
 	}
 	memory, _ := NewSharedMemory(1, 1)
 	defer memory.Close()
-	waiter, err := Instantiate(compiled, Imports{"env.memory": memory})
+	waiter, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer waiter.Close()
-	notifier, err := Instantiate(compiled, Imports{"env.memory": memory})
+	notifier, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -981,7 +981,7 @@ func TestThreadsAtomicWaitNotifyOnImportedUnsharedMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer memory.Close()
-	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	instance, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1006,7 +1006,7 @@ func TestThreadsAtomicWaitHelperAdmissionSurvivesArtifactRoundTrip(t *testing.T)
 	}
 	memory, _ := NewSharedMemory(1, 1)
 	defer memory.Close()
-	instance, err := Instantiate(loaded, Imports{"env.memory": memory})
+	instance, err := Instantiate(loaded, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1049,7 +1049,7 @@ func TestThreadsAtomicWaitHonorsInvokeCancellationAndClose(t *testing.T) {
 	t.Run("context", func(t *testing.T) {
 		memory, _ := NewSharedMemory(1, 1)
 		defer memory.Close()
-		instance, _ := Instantiate(compiled, Imports{"env.memory": memory})
+		instance, _ := Instantiate(compiled, testImports("env.memory", memory))
 		defer instance.Close()
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
@@ -1073,7 +1073,7 @@ func TestThreadsAtomicWaitHonorsInvokeCancellationAndClose(t *testing.T) {
 	t.Run("close", func(t *testing.T) {
 		memory, _ := NewSharedMemory(1, 1)
 		defer memory.Close()
-		instance, _ := Instantiate(compiled, Imports{"env.memory": memory})
+		instance, _ := Instantiate(compiled, testImports("env.memory", memory))
 		done := make(chan error, 1)
 		go func() {
 			_, err := instance.Invoke("wait32", I32(0), I32(0), I64(-1))

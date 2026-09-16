@@ -862,7 +862,7 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 	}
 
 	mod := benchImportedModule(64, 16)
-	imports := Imports{"env.f": f}
+	imports := testImports("env.f", f)
 	compile := func(workers int) *Compiled {
 		t.Helper()
 		c, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(workers).Compile(mod)
@@ -872,7 +872,7 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 		if !c.dynamicImports || len(c.code) == 0 {
 			t.Fatalf("workers=%d dynamic=%v code=%d", workers, c.dynamicImports, len(c.code))
 		}
-		if err := c.validateImportBindings(imports, nil); err != nil {
+		if err := c.validateImportBindings(imports.bindings, nil); err != nil {
 			_ = c.Close()
 			t.Fatalf("workers=%d bindings: %v", workers, err)
 		}

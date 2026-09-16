@@ -10,7 +10,7 @@ import (
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-// Call is the high-level, context-aware, typed invocation: arguments and results
+// InvokeValues is the high-level, context-aware, typed invocation: arguments and results
 // are typed Values checked against the export's signature. It wraps the low-level
 // Invoke (untyped uint64 slots). ctx is honored for cancellation before the call
 // begins. When the instance was created through a Runtime, its BeforeInvoke and
@@ -21,7 +21,7 @@ import (
 // its producer Instance. Accepting a reference-typed module remains controlled
 // by compiler feature support. v128
 // parameters/results are not expressible as a Value; use Invoke for those.
-func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]Value, error) {
+func (in *Instance) InvokeValues(ctx context.Context, export string, args ...Value) ([]Value, error) {
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("call %q: %w", export, err)
 	}
@@ -125,7 +125,7 @@ func contextInterruptError(ctx context.Context, err error) error {
 }
 
 // callInnerAdmitted performs the actual invocation and result decoding under
-// the invocation lease already held by Call.
+// the invocation lease already held by InvokeValues.
 func (in *Instance) callInnerAdmitted(export string, slots []uint64, results []ValType, contexts invocationContextSet, reservation *pluginOperationReservation) ([]Value, error) {
 	raw, err := in.invokeAdmitted(export, slots, contexts, reservation)
 	if err != nil {

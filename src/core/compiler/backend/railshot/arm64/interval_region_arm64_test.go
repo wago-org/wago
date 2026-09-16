@@ -122,18 +122,23 @@ func TestIntervalRegionDynamicReuseArm64(t *testing.T) {
 func TestIntervalRegionLeavesTransientFloorArm64(t *testing.T) {
 	// BLAKE3 produces incorrect output at 20 leases: only X2/X3 remain from the
 	// ordered scratch-capable tail and ordinary lowering can require one more.
-	const transientFloor = 3
-	if got, want := maxIntervalRegionRegs, len(intervalRegionOrder)-transientFloor; got != want {
-		t.Fatalf("regional leases = %d, want %d to preserve %d transient registers", got, want, transientFloor)
+	if got, want := maxIntervalRegionRegs, len(intervalRegionOrder)-intervalRegionTransientFloor; got != want {
+		t.Fatalf("regional leases = %d, want %d to preserve %d transient registers", got, want, intervalRegionTransientFloor)
 	}
 }
 
 func TestIntervalRegionBoundsModePreservesTransientFloorArm64(t *testing.T) {
-	if got, want := intervalRegionRegLimit(true), maxIntervalRegionRegs-1; got != want {
+	if got, want := intervalRegionRegLimit(maskOf(X27)), maxIntervalRegionRegs-1; got != want {
 		t.Fatalf("explicit-bounds regional leases = %d, want %d", got, want)
 	}
-	if got := intervalRegionRegLimit(false); got != maxIntervalRegionRegs {
+	if got := intervalRegionRegLimit(0); got != maxIntervalRegionRegs {
 		t.Fatalf("signals-based regional leases = %d, want %d", got, maxIntervalRegionRegs)
+	}
+	if got, want := intervalRegionRegLimit(maskOf(X25, X24)), maxIntervalRegionRegs-2; got != want {
+		t.Fatalf("two module globals regional leases = %d, want %d", got, want)
+	}
+	if got, want := intervalRegionRegLimit(maskOf(X27, X25, X24)), maxIntervalRegionRegs-3; got != want {
+		t.Fatalf("memory size plus two module globals regional leases = %d, want %d", got, want)
 	}
 }
 

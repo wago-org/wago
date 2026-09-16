@@ -42,7 +42,7 @@ func TestReferenceStoreInvocationDomainsIgnoreUnusedImportBindings(t *testing.T)
 
 	consumer := &Instance{
 		c:       &Compiled{},
-		imports: Imports{"env.unused": &InstanceExport{inst: producer}},
+		imports: testImports("env.unused", &InstanceExport{inst: producer}).bindings,
 	}
 	if err := store.registerInstance(consumer); err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestDynamicFuncrefImportOfPrivateGCInvocationDomainRejected(t *testing.T) {
 		TableType:      ValFuncRef,
 	}
 
-	err := consumer.validateImportBindings(Imports{"env.run": export}, store)
+	err := consumer.validateImportBindings(testImports("env.run", export).bindings, store)
 	if err == nil || !strings.Contains(err.Error(), "dynamic funcref import") || !strings.Contains(err.Error(), "private GC invocation domain") {
 		t.Fatalf("dynamic private-domain import error = %v, want explicit rejection", err)
 	}
@@ -100,7 +100,7 @@ func TestDynamicFuncrefImportOfTransitivePrivateGCInvocationDomainRejected(t *te
 		TableType:      ValFuncRef,
 	}
 
-	err := consumer.validateImportBindings(Imports{"env.run": export}, store)
+	err := consumer.validateImportBindings(testImports("env.run", export).bindings, store)
 	if err == nil || !strings.Contains(err.Error(), "dynamic funcref import") || !strings.Contains(err.Error(), "private GC invocation domain") {
 		t.Fatalf("dynamic transitive private-domain import error = %v, want explicit rejection", err)
 	}
@@ -206,7 +206,7 @@ func TestForeignRuntimeStaticGCProducerImportRejectedForDynamicConsumer(t *testi
 		TableType:      ValFuncRef,
 	}
 
-	err := consumer.validateImportBindings(Imports{"env.run": export}, newReferenceStore(false))
+	err := consumer.validateImportBindings(testImports("env.run", export).bindings, newReferenceStore(false))
 	if err == nil || !strings.Contains(err.Error(), "GC-domain producer") || !strings.Contains(err.Error(), "same Runtime") {
 		t.Fatalf("foreign static GC producer import error = %v, want same-Runtime rejection", err)
 	}
@@ -225,7 +225,7 @@ func TestForeignRuntimeDynamicFuncrefProducerImportRejected(t *testing.T) {
 		importFuncSigs: []FuncSig{{Results: []ValType{ValI32}}},
 	}
 
-	err := consumer.validateImportBindings(Imports{"env.run": export}, newReferenceStore(false))
+	err := consumer.validateImportBindings(testImports("env.run", export).bindings, newReferenceStore(false))
 	if err == nil || !strings.Contains(err.Error(), "dynamic funcref producer") || !strings.Contains(err.Error(), "same Runtime") {
 		t.Fatalf("foreign dynamic producer import error = %v, want same-Runtime rejection", err)
 	}

@@ -33,14 +33,14 @@ func TestDraglineSignalBackedLeafUsesDirectPreparedEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	prepared, err := instance.PrepareFunction("run")
+	prepared, err := instance.WasmFunc("run")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !prepared.directIntFast || !prepared.directLeafIntFast {
 		t.Fatalf("signal-backed integer leaf selected direct=%t leaf=%t", prepared.directIntFast, prepared.directLeafIntFast)
 	}
-	result, err := prepared.Invoke1(I32(5))
+	result, err := prepared.Invoke(I32(5))
 	if err != nil || len(result) != 1 || AsI32(result[0]) != 12 {
 		t.Fatalf("prepared run(5) = %v, %v; want 12", result, err)
 	}
@@ -79,14 +79,14 @@ func TestDraglineSignalBackedContextFreeLoopUsesPrivatePreparedEntry(t *testing.
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	prepared, err := instance.PrepareFunction("run")
+	prepared, err := instance.WasmFunc("run")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !prepared.privateFast || !prepared.isolatedFast || !prepared.privateLifetime || prepared.directLeafIntFast || prepared.directTrapIntFast {
 		t.Fatalf("signal-backed loop selected private=%t isolated=%t lifetime=%t leaf=%t trap=%t", prepared.privateFast, prepared.isolatedFast, prepared.privateLifetime, prepared.directLeafIntFast, prepared.directTrapIntFast)
 	}
-	result, err := prepared.Invoke1(I32(10))
+	result, err := prepared.Invoke(I32(10))
 	if err != nil || len(result) != 1 || AsI32(result[0]) != 55 {
 		t.Fatalf("prepared run(10) = %v, %v; want 55", result, err)
 	}

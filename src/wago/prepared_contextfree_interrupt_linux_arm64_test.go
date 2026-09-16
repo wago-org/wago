@@ -29,7 +29,7 @@ func TestCloseInterruptsSignalBackedPreparedContextFreeLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := instance.PrepareFunction("spin")
+	prepared, err := instance.WasmFunc("spin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestCloseInterruptsSignalBackedPreparedContextFreeLoop(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := prepared.Invoke0()
+		_, err := prepared.Invoke()
 		done <- err
 	}()
 	time.Sleep(20 * time.Millisecond)

@@ -256,9 +256,7 @@ func BenchmarkRailshotDraglineSIMDCorpusExec(b *testing.B) {
 						b.Fatal(err)
 					}
 					defer compiled.Close()
-					instance, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: wago.Imports{
-						"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {}),
-					}})
+					instance, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: abortImports()})
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -272,7 +270,7 @@ func BenchmarkRailshotDraglineSIMDCorpusExec(b *testing.B) {
 					for i, arg := range entry.Args {
 						args[i] = wago.I32(arg)
 					}
-					fn, err := instance.PrepareFunction(entry.Export)
+					fn, err := instance.WasmFunc(entry.Export)
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -291,9 +289,7 @@ func BenchmarkRailshotDraglineSIMDCorpusExec(b *testing.B) {
 func runCorpusPair(t *testing.T, module corpusModule, railshot, dragline *wago.Compiled) {
 	t.Helper()
 	instantiate := func(compiled *wago.Compiled) *wago.Instance {
-		instance, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: wago.Imports{
-			"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {}),
-		}})
+		instance, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: abortImports()})
 		if err != nil {
 			t.Fatalf("instantiate %s with %s: %v", module.File, compiled.Compiler(), err)
 		}

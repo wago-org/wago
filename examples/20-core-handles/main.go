@@ -72,8 +72,8 @@ func (p *corePlugin) Register(reg *wago.Registrar) error {
 
 func (p *corePlugin) start(ctx context.Context) error {
 	callback, err := p.functions.New(
-		func(_ wago.HostModule, params, results []uint64) {
-			results[0] = wago.I32(wago.AsI32(params[0]) + 1)
+		func(call wago.HostCall) {
+			call.SetI32(0, call.I32(0)+1)
 		},
 		wago.FuncSig{Params: []wago.ValType{wago.ValI32}, Results: []wago.ValType{wago.ValI32}},
 	)

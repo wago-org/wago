@@ -34,7 +34,7 @@ func TestGuardedImportedGrownMemoryAcceptsActiveData(t *testing.T) {
 		t.Fatalf("compile consumer: %v", err)
 	}
 	defer consumerCode.Close()
-	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.mem": memory}})
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: testImports("env.mem", memory)})
 	if err != nil {
 		t.Fatalf("instantiate consumer after grow: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestImportedMemoryGuardPage(t *testing.T) {
 	if guarded, _ := mem.importShape(); !guarded {
 		t.Fatal("NewMemory should be guard-page backed in a wago_guardpage build")
 	}
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		t.Fatalf("instantiate imported memory under guard-page mode: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestImportedMemoryGuardPageCrossInstance(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x2d, 0x00, 0x00, 0x0b}),             // load8_u
 		)),
 	)
-	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: Imports{"env.mem": memImport}})
+	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: testImports("env.mem", memImport)})
 	if err != nil {
 		t.Fatalf("instantiate B on shared guard-page memory: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestSignalsRequestedExplicitFallbackStillExportsGuardedSecondaryMemory(t *t
 		t.Fatal(err)
 	}
 	defer importer.Close()
-	imported, err := Instantiate(importer, InstantiateOptions{Imports: Imports{"env.mem": memory}})
+	imported, err := Instantiate(importer, InstantiateOptions{Imports: testImports("env.mem", memory)})
 	if err != nil {
 		t.Fatalf("re-import guarded secondary memory: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestImportedMemoryGuardPageRejectsPlainMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile importer: %v", err)
 	}
-	if _, err := Instantiate(importer, InstantiateOptions{Imports: Imports{"env.mem": memImport}}); err == nil {
+	if _, err := Instantiate(importer, InstantiateOptions{Imports: testImports("env.mem", memImport)}); err == nil {
 		t.Fatal("signals-based module importing an unguarded memory should be rejected")
 	}
 }

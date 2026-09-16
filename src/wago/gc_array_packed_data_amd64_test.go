@@ -87,7 +87,7 @@ func TestStagedGCArrayPackedDataOfficialProduct(t *testing.T) {
 			if err := in.ReleaseGCRef(ValueOf(ValAnyRef, token).GCRef()); err != nil {
 				t.Fatal(err)
 			}
-			values, err := in.Call(context.Background(), "new")
+			values, err := in.InvokeValues(context.Background(), "new")
 			if err != nil || len(values) != 1 || values[0].GCRef().IsNull() {
 				t.Fatalf("Call new = %v, %v", values, err)
 			}

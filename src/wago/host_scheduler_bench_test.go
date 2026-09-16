@@ -23,7 +23,7 @@ func BenchmarkHostSchedulerPotential(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer in.Close()
-			fn, err := in.PrepareFunction("f")
+			fn, err := in.WasmFunc("f")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -33,7 +33,7 @@ func BenchmarkHostSchedulerPotential(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				got, err := fn.Invoke1(41)
+				got, err := fn.Invoke(41)
 				if err != nil || len(got) != 1 || got[0] != 42 {
 					b.Fatalf("invoke=%v, %v", got, err)
 				}
@@ -53,15 +53,15 @@ func BenchmarkPreparedTypedI32ToI32(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareI32ToI32("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		got, err := fn.Call(41)
-		if err != nil || got != 42 {
+		got, err := fn.Invoke(41)
+		if err != nil || len(got) != 1 || got[0] != 42 {
 			b.Fatalf("invoke=%d, %v", got, err)
 		}
 	}

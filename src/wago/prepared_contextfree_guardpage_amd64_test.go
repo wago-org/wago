@@ -33,14 +33,14 @@ func TestAMD64SignalBackedPreparedCallClosureBypassesGuardActivation(t *testing.
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	prepared, err := instance.PrepareFunction("run")
+	prepared, err := instance.WasmFunc("run")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !prepared.privateFast || !prepared.isolatedFast || !prepared.privateLifetime {
 		t.Fatalf("signal-backed closure selected private=%t isolated=%t lifetime=%t", prepared.privateFast, prepared.isolatedFast, prepared.privateLifetime)
 	}
-	results, err := prepared.Invoke1(35)
+	results, err := prepared.Invoke(35)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,14 +73,14 @@ func TestAMD64SignalBackedPreparedMemoryClosureKeepsGuardActivation(t *testing.T
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	prepared, err := instance.PrepareFunction("run")
+	prepared, err := instance.WasmFunc("run")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if prepared.privateFast || prepared.isolatedFast || prepared.privateLifetime {
 		t.Fatalf("memory closure selected private=%t isolated=%t lifetime=%t", prepared.privateFast, prepared.isolatedFast, prepared.privateLifetime)
 	}
-	results, err := prepared.Invoke0()
+	results, err := prepared.Invoke()
 	if err != nil {
 		t.Fatal(err)
 	}

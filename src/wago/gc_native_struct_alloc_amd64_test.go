@@ -27,7 +27,7 @@ func TestGCNativeStructAllocPreparedAcrossCollections(t *testing.T) {
 		defer in.Close()
 		call := func(args ...uint64) ([]uint64, error) { return in.Invoke("new_get", args...) }
 		if prepared {
-			fn, err := in.PrepareFunction("new_get")
+			fn, err := in.WasmFunc("new_get")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -72,7 +72,7 @@ func TestGCNativeStructAllocMalformedMetadataFallsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("new_get")
+	fn, err := in.WasmFunc("new_get")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestGCNativeStructAllocReferenceFieldsRemainRooted(t *testing.T) {
 	if err := in.gc.ForcePromote(parent); err != nil {
 		t.Fatal(err)
 	}
-	fn, err := in.PrepareFunction("set_child")
+	fn, err := in.WasmFunc("set_child")
 	if err != nil {
 		t.Fatal(err)
 	}

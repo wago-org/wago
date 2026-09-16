@@ -573,7 +573,7 @@ func benchmarkISAExport(b *testing.B, compiler wago.CompilerEngine, m corpusModu
 			b.Fatalf("%s install Dragline tier: %v", m.name(), err)
 		}
 	}
-	fn, err := instance.PrepareFunction(entry.Export)
+	fn, err := instance.WasmFunc(entry.Export)
 	if err != nil {
 		b.Fatalf("%s prepare %s with %s: %v", m.name(), entry.Export, compiler, err)
 	}

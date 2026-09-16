@@ -34,9 +34,9 @@ func TestDraglineJSONSIMDCorpusMatchesRailshot(t *testing.T) {
 	native = append(native, compile(cacheConfig), compile(cacheConfig))
 	instantiate := func(compiled *Compiled) *Instance {
 		t.Helper()
-		instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-			"env.abort": HostFunc(func(HostModule, []uint64, []uint64) {}),
-		}})
+		instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports(
+			"env.abort", slotHostFunc(func(HostModule, []uint64, []uint64) {}),
+		)})
 		if err != nil {
 			t.Fatal(err)
 		}

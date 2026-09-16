@@ -468,13 +468,13 @@ func (m *Memory) ownerClosed() {
 }
 
 // memory returns the *Memory provided for key, if any.
-func (im Imports) memory(key string) (*Memory, bool) {
+func (im resolvedImports) memory(key string) (*Memory, bool) {
 	m, ok := im[key].(*Memory)
 	return m, ok
 }
 
 // table returns the *Table provided for key, if any.
-func (im Imports) table(key string) (*Table, bool) {
+func (im resolvedImports) table(key string) (*Table, bool) {
 	t, ok := im[key].(*Table)
 	return t, ok
 }

@@ -7,11 +7,9 @@ import "testing"
 func TestScalarSyncHostCallUsesOneScopedHandleAllocation(t *testing.T) {
 	compiled := MustCompile(benchReturningImportModule())
 	defer compiled.Close()
-	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": HostFunc(func(_ HostModule, params, results []uint64) {
-			results[0] = params[0] + 1
-		}),
-	}})
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, params, results []uint64) {
+		results[0] = params[0] + 1
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,9 +30,7 @@ func TestScalarSyncHostCallUsesOneScopedHandleAllocation(t *testing.T) {
 func TestTypedScalarSyncHostCallAllocatesNothing(t *testing.T) {
 	compiled := MustCompile(benchReturningImportModule())
 	defer compiled.Close()
-	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": func(v int32) int32 { return v + 1 },
-	}})
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", func(v int32) int32 { return v + 1 })})
 	if err != nil {
 		t.Fatal(err)
 	}

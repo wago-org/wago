@@ -50,7 +50,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "compile:", err)
 		os.Exit(1)
 	}
-	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})}})
+	imports := wago.NewImports()
+	imports.HostFunc("env", "abort", func(wago.HostCall) {})
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "instantiate:", err)
 		os.Exit(1)
@@ -61,12 +63,12 @@ func main() {
 	}
 
 	writePerfMap(in, c)
-	serialize, err := in.PrepareFunction("serializeN")
+	serialize, err := in.WasmFunc("serializeN")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "prepare serializeN:", err)
 		os.Exit(1)
 	}
-	deserialize, err := in.PrepareFunction("deserializeN")
+	deserialize, err := in.WasmFunc("deserializeN")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "prepare deserializeN:", err)
 		os.Exit(1)
@@ -79,7 +81,7 @@ func main() {
 	for time.Now().Before(deadline) {
 		for i := 0; i < 200; i++ {
 			if only != "deser" {
-				r, err := serialize.Invoke1(wago.I32(200))
+				r, err := serialize.Invoke(wago.I32(200))
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "serializeN:", err)
 					os.Exit(1)
@@ -87,7 +89,7 @@ func main() {
 				sink += int64(r[0])
 			}
 			if only != "ser" {
-				r, err := deserialize.Invoke1(wago.I32(200))
+				r, err := deserialize.Invoke(wago.I32(200))
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "deserializeN:", err)
 					os.Exit(1)

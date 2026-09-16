@@ -113,23 +113,15 @@ func lifecycleCaller(t *testing.T, in *Instance, mode, export string) func(...ui
 	if mode == "ordinary" {
 		return func(args ...uint64) ([]uint64, error) { return in.Invoke(export, args...) }
 	}
-	fn, err := in.PrepareFunction(export)
+	fn, err := in.WasmFunc(export)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mode == "prepared" {
-		return fn.Invoke
-	}
-	session, err := fn.OpenSession()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(session.Close)
-	return session.Invoke
+	return fn.Invoke
 }
 
-func TestPreparedGCGlobalMaintenance(t *testing.T) {
-	for _, mode := range []string{"ordinary", "prepared", "session"} {
+func TestWasmFuncGCGlobalMaintenance(t *testing.T) {
+	for _, mode := range []string{"ordinary", "resolved"} {
 		t.Run(mode, func(t *testing.T) {
 			_, in := newGCLifecycleInstance(t)
 			call := lifecycleCaller(t, in, mode, "set")
@@ -199,7 +191,7 @@ func TestGCAdmissionPublicCancellation(t *testing.T) {
 }
 
 func TestPreparedGCResultAndTrapMaintenance(t *testing.T) {
-	for _, mode := range []string{"ordinary", "prepared", "session"} {
+	for _, mode := range []string{"ordinary", "resolved"} {
 		t.Run(mode, func(t *testing.T) {
 			_, in := newGCLifecycleInstance(t)
 			if _, err := in.Invoke("set", 42); err != nil {
@@ -285,14 +277,12 @@ func TestCollectGCHostCallbackLifetime(t *testing.T) {
 	}
 	defer mod.Close()
 	called := false
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
-		"env.mark": HostFunc(func(h HostModule, _ []uint64, _ []uint64) {
-			called = true
-			if err := h.(GCHostModule).CollectGC(); err != nil {
-				t.Error(err)
-			}
-		}),
-	}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.mark", slotHostFunc(func(h HostModule, _ []uint64, _ []uint64) {
+		called = true
+		if err := h.(GCHostModule).CollectGC(); err != nil {
+			t.Error(err)
+		}
+	}))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,7 +352,7 @@ func TestGCAdmissionInstantiationCancellation(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer mod.Close()
-			imports := Imports{"env.mark": HostFunc(func(HostModule, []uint64, []uint64) {})}
+			imports := testImports("env.mark", slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 			first, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 			if err != nil {
 				t.Fatal(err)
@@ -438,11 +428,11 @@ func TestGCAdmissionInstantiationCancellation(t *testing.T) {
 
 func TestPreparedFuncrefProducerMaintenance(t *testing.T) {
 	for _, container := range []string{"table", "global"} {
-		for _, mode := range []string{"ordinary", "prepared", "session"} {
+		for _, mode := range []string{"ordinary", "resolved"} {
 			t.Run(container+"/"+mode, func(t *testing.T) {
 				rt := NewRuntime()
 				defer rt.Close()
-				imports := Imports{}
+				imports := testImports()
 				var imp, set, clear []byte
 				if container == "table" {
 					table, err := NewTable(1, 1)
@@ -450,7 +440,7 @@ func TestPreparedFuncrefProducerMaintenance(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer table.Close()
-					imports["env.state"] = table
+					testSetImport(imports, "env.state", table)
 					imp = append(append(wasmtest.Name("env"), wasmtest.Name("state")...), 1, 0x70, 1, 1, 1)
 					set = []byte{0x41, 0, 0xd2, 0, 0x26, 0, 0x0b}
 					clear = []byte{0x41, 0, 0xd0, 0x70, 0x26, 0, 0x0b}
@@ -460,7 +450,7 @@ func TestPreparedFuncrefProducerMaintenance(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer global.Close()
-					imports["env.state"] = global
+					testSetImport(imports, "env.state", global)
 					imp = append(append(wasmtest.Name("env"), wasmtest.Name("state")...), 3, 0x70, 1)
 					set = []byte{0xd2, 0, 0x24, 0, 0x0b}
 					clear = []byte{0xd0, 0x70, 0x24, 0, 0x0b}
@@ -522,19 +512,14 @@ func TestGCLifecycleIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer waiter.Close()
-	fn, err := preparedInstance.PrepareFunction("set")
+	fn, err := preparedInstance.WasmFunc("set")
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := fn.OpenSession()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
 	domain := preparedInstance.gcInvocationDomain()
 	for round := 0; round < 8; round++ {
 		for i := uint64(0); i < 16; i++ {
-			if _, err := session.Invoke(i); err != nil {
+			if _, err := fn.Invoke(i); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -581,12 +566,11 @@ func TestGCLifecycleIntegration(t *testing.T) {
 		if releases.Load() != 1 || collecting.hasPhysicalResources() {
 			t.Fatal("collection did not finalize")
 		}
-		if _, err := session.Invoke(42); err != nil {
+		if _, err := fn.Invoke(42); err != nil {
 			t.Fatal(err)
 		}
 	}
-	session.Close()
-	get, err := preparedInstance.PrepareFunction("get")
+	get, err := preparedInstance.WasmFunc("get")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -652,14 +636,14 @@ func BenchmarkPreparedGCMaintenance(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("set")
+	fn, err := in.WasmFunc("set")
 	if err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := fn.Invoke1(uint64(i)); err != nil {
+		if _, err := fn.Invoke(uint64(i)); err != nil {
 			b.Fatal(err)
 		}
 	}

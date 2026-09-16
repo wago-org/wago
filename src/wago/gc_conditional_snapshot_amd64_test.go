@@ -292,7 +292,7 @@ func TestDynamicFunctionConditionalSnapshot(t *testing.T) {
 			if !compiled.usesDynamicFuncRefTest() {
 				t.Fatal("ref.test was classified statically")
 			}
-			in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+			in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", export)})
 			if err != nil {
 				t.Fatal(err)
 			}

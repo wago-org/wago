@@ -22,14 +22,14 @@ func TestPreparedDirectMemoryFreeEntryWithSignalBounds(t *testing.T) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
 	if !fn.directIntFast || !fn.directIsolated {
 		t.Fatalf("signal-bounds direct/isolated selection = %v/%v, want true/true", fn.directIntFast, fn.directIsolated)
 	}
-	got, err := fn.Invoke1(I32(41))
+	got, err := fn.Invoke(I32(41))
 	if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
 		t.Fatalf("invoke = %v, %v; want [42], nil", got, err)
 	}
@@ -61,14 +61,14 @@ func TestPreparedDirectSignalEntryClearsPriorExportTrap(t *testing.T) {
 	if _, err := in.Invoke("trap", I32(65536)); err == nil {
 		t.Fatal("out-of-bounds load did not trap")
 	}
-	add, err := in.PrepareFunction("add")
+	add, err := in.WasmFunc("add")
 	if err != nil {
 		t.Fatalf("prepare add: %v", err)
 	}
 	if !add.directIntFast {
 		t.Fatal("memory-free add did not select direct entry")
 	}
-	if got, err := add.Invoke1(I32(41)); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+	if got, err := add.Invoke(I32(41)); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
 		t.Fatalf("direct add after prior export trap = %v, %v; want [42], nil", got, err)
 	}
 }

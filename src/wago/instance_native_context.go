@@ -320,22 +320,11 @@ func (in *Instance) usesIndependentExecution() bool {
 func (in *Instance) markNativeControlShared() {
 	state := in.ensurePluginState()
 	state.invokeMu.revokeFast()
-	// Ordinary publication takes the independent mutex before setting the shared
-	// bit. A retained prepared-session lease cannot do that while idle, so its
-	// registered gate publishes the shared bit before sampling call activity. A
-	// call therefore either observes revocation at start or makes publication
-	// synchronize with its parked/held local mutex. This closes both the
-	// check/publish race and idle deadlock.
 	var localMu *sync.Mutex
-	var retainedGate *preparedHostLeaseGate
 	state.nativeShareMu.Lock()
 	if in.usesIndependentExecution() {
-		if gate := state.preparedHostGate; gate != nil {
-			retainedGate = gate
-		} else {
-			localMu = in.independentNativeExecutionMu()
-			localMu.Lock()
-		}
+		localMu = in.independentNativeExecutionMu()
+		localMu.Lock()
 	}
 	for {
 		flags := in.executionFlags.Load()
@@ -344,11 +333,7 @@ func (in *Instance) markNativeControlShared() {
 			break
 		}
 	}
-	if retainedGate != nil && retainedGate.active.Load() {
-		mu := in.independentNativeExecutionMu()
-		mu.Lock()
-		mu.Unlock()
-	} else if localMu != nil {
+	if localMu != nil {
 		localMu.Unlock()
 	}
 	state.nativeShareMu.Unlock()
@@ -484,7 +469,7 @@ func (in *Instance) preparedPrivateEligible() bool {
 
 // preparedIsolatedEligible identifies instances whose native execution has no
 // process-visible state that direct host access or another instance can observe.
-// PreparedFunction already forbids concurrent calls on one Instance; each such
+// WasmFunc already forbids concurrent calls on one Instance; each such
 // instance owns its Engine, stack, trap cell, argument/result buffers, and memory.
 func (in *Instance) preparedIsolatedEligible() bool {
 	return in.preparedEntryMode() == preparedEntryIsolated

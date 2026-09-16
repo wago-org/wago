@@ -88,7 +88,7 @@ func TestStagedFirstNullReferenceProductExecution(t *testing.T) {
 		if err != nil || len(got) != 1 || got[0] != 0 {
 			t.Fatalf("Invoke(%q) = %v, %v, want one zero slot", name, got, err)
 		}
-		typed, err := in.Call(context.Background(), name)
+		typed, err := in.InvokeValues(context.Background(), name)
 		if err != nil || len(typed) != 1 || typed[0].Type() != wantResults[i] || typed[0].Bits() != 0 {
 			t.Fatalf("Call(%q) = %v, %v, want null %s", name, typed, err, wantResults[i])
 		}
@@ -194,7 +194,7 @@ func TestStagedBottomNullReferenceGlobalsExecution(t *testing.T) {
 		if err != nil || len(got) != 1 || got[0] != 0 {
 			t.Fatalf("Invoke(%q) = %v, %v, want one zero slot", name, got, err)
 		}
-		typed, err := in.Call(context.Background(), name)
+		typed, err := in.InvokeValues(context.Background(), name)
 		if err != nil || len(typed) != 1 || typed[0].Type() != wantResults[i] || typed[0].Bits() != 0 {
 			t.Fatalf("Call(%q) = %v, %v, want null %s", name, typed, err, wantResults[i])
 		}

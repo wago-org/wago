@@ -58,7 +58,7 @@ func TestHostGuestStorageCallbackLifetimeAndReentry(t *testing.T) {
 	var in *Instance
 	var retained GuestStorage
 	var callbackCalls int
-	host := HostFunc(func(m HostModule, args, results []uint64) {
+	host := slotHostFunc(func(m HostModule, args, results []uint64) {
 		callbackCalls++
 		if len(args) != 1 || uint32(args[0]) != 7 || len(results) != 1 {
 			panic(HostTrap{Err: context.Canceled})
@@ -115,7 +115,7 @@ func TestHostGuestStorageCallbackLifetimeAndReentry(t *testing.T) {
 		}
 	})
 
-	in, err = Instantiate(compiled, InstantiateOptions{Imports: Imports{"host.inspect": host}})
+	in, err = Instantiate(compiled, InstantiateOptions{Imports: testImports("host.inspect", host)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestHostGuestStorageCleanupAfterErrorAndPanic(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	host := HostFunc(func(m HostModule, _, results []uint64) {
+	host := slotHostFunc(func(m HostModule, _, results []uint64) {
 		module := m.(GuestStorageHostModule)
 		var expired GuestStorage
 		for _, panics := range []bool{false, true} {
@@ -188,7 +188,7 @@ func TestHostGuestStorageCleanupAfterErrorAndPanic(t *testing.T) {
 		}
 		results[0] = 0
 	})
-	in, err := Instantiate(compiled, Imports{"host.inspect": host})
+	in, err := Instantiate(compiled, testImports("host.inspect", host))
 	if err != nil {
 		t.Fatal(err)
 	}

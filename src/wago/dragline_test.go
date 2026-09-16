@@ -106,14 +106,14 @@ func TestDraglineNativeTinyPreparedUsesDirectIntegerEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	prepared, err := instance.PrepareFunction("run")
+	prepared, err := instance.WasmFunc("run")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !prepared.directIntFast {
 		t.Fatal("tiny integer RailMach export did not select direct prepared invocation")
 	}
-	result, err := prepared.Invoke1(I32(5))
+	result, err := prepared.Invoke(I32(5))
 	if err != nil || len(result) != 1 || AsI32(result[0]) != 12 {
 		t.Fatalf("prepared run(5) = %v, %v; want 12", result, err)
 	}
@@ -147,11 +147,11 @@ func TestDraglineNativePreparedInlinesTinyIntegerCallees(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	prepared, err := instance.PrepareFunction("run")
+	prepared, err := instance.WasmFunc("run")
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := prepared.Invoke1(I32(5))
+	result, err := prepared.Invoke(I32(5))
 	if err != nil || len(result) != 1 || AsI32(result[0]) != 17 {
 		t.Fatalf("prepared run(5) = %v, %v; want 17", result, err)
 	}
@@ -2393,11 +2393,11 @@ func TestDraglineNativeRailMachMultiResultRegisterAndOverflowABI(t *testing.T) {
 			}
 		}
 	}
-	prepared, err := instance.PrepareFunction("caller")
+	prepared, err := instance.WasmFunc("caller")
 	if err != nil {
 		t.Fatal(err)
 	}
-	preparedResults, err := prepared.Invoke0()
+	preparedResults, err := prepared.Invoke()
 	if err != nil || len(preparedResults) != len(want) {
 		t.Fatalf("prepared caller results = %v, %v; want %v", preparedResults, err, want)
 	}
@@ -2421,9 +2421,9 @@ func TestDraglineNativeRailMachMultiResultHostCall(t *testing.T) {
 	}
 	defer compiled.Close()
 	want := []uint64{101, 202, uint64(math.Float32bits(3.5)), math.Float64bits(4.5), 505, 606}
-	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, _ []uint64, results []uint64) {
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) {
 		copy(results, want)
-	})}})
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3086,9 +3086,9 @@ func TestDraglineNativeRailMachImportedFloatCallLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.step": HostFunc(func(_ HostModule, params, results []uint64) {
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.step", slotHostFunc(func(_ HostModule, params, results []uint64) {
 		results[0] = math.Float64bits(math.Float64frombits(params[0]) + 1)
-	})}})
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4535,7 +4535,7 @@ func TestDraglineRailMachV128ImportCallExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.identity": identity}})
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.identity", identity)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7936,9 +7936,9 @@ func TestDraglineImportedCalls(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer compiled.Close()
-		instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.add": HostFunc(func(_ HostModule, params, results []uint64) {
+		instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.add", slotHostFunc(func(_ HostModule, params, results []uint64) {
 			results[0] = uint64(uint32(params[0]) + uint32(params[1]))
-		})}})
+		}))})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -7963,9 +7963,9 @@ func TestDraglineImportedCalls(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer compiled.Close()
-		instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.inc": HostFunc(func(_ HostModule, params, results []uint64) {
+		instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.inc", slotHostFunc(func(_ HostModule, params, results []uint64) {
 			results[0] = uint64(uint32(params[0]) + 1)
-		})}})
+		}))})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -8001,7 +8001,7 @@ func TestDraglineImportedCalls(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer consumerCode.Close()
-		consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.add": add}})
+		consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: testImports("env.add", add)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -8044,7 +8044,7 @@ func TestDraglineImportedCalls(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer consumerCode.Close()
-		consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.fail": fail}})
+		consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: testImports("env.fail", fail)})
 		if err != nil {
 			t.Fatal(err)
 		}

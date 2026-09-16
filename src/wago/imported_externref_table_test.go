@@ -51,12 +51,12 @@ func TestStoreBoundExternrefTableImportsShareExactTypeStoreAndAliases(t *testing
 	if err != nil {
 		t.Fatalf("Compile imported externref table: %v", err)
 	}
-	first, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.t": shared}))
+	first, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.t", shared)))
 	if err != nil {
 		t.Fatalf("Instantiate first importer: %v", err)
 	}
 	defer first.Close()
-	second, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.t": shared}))
+	second, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.t", shared)))
 	if err != nil {
 		t.Fatalf("Instantiate second importer: %v", err)
 	}
@@ -67,25 +67,25 @@ func TestStoreBoundExternrefTableImportsShareExactTypeStoreAndAliases(t *testing
 	}
 	refA := issueExternref(t, rt, "shared-a")
 	refB := issueExternref(t, rt, "shared-b")
-	if _, err := first.Call(context.Background(), "set", ValueI32(1), ValueExternRef(refA)); err != nil {
+	if _, err := first.InvokeValues(context.Background(), "set", ValueI32(1), ValueExternRef(refA)); err != nil {
 		t.Fatalf("first set: %v", err)
 	}
-	out, err := second.Call(context.Background(), "get", ValueI32(1))
+	out, err := second.InvokeValues(context.Background(), "get", ValueI32(1))
 	if err != nil || len(out) != 1 || out[0].ExternRef() != refA {
 		t.Fatalf("second get after alias write = %v, %v; want %v", out, err, refA)
 	}
-	out, err = second.Call(context.Background(), "grow", ValueExternRef(refB), ValueI32(2))
+	out, err = second.InvokeValues(context.Background(), "grow", ValueExternRef(refB), ValueI32(2))
 	if err != nil || len(out) != 1 || out[0].I32() != 2 {
 		t.Fatalf("grow shared table = %v, %v; want old size 2", out, err)
 	}
 	if got := tableTestCallI32(t, first, "size"); got != 4 {
 		t.Fatalf("aliased size after grow = %d, want 4", got)
 	}
-	if _, err := first.Call(context.Background(), "fill", ValueI32(2), ValueExternRef(refA), ValueI32(2)); err != nil {
+	if _, err := first.InvokeValues(context.Background(), "fill", ValueI32(2), ValueExternRef(refA), ValueI32(2)); err != nil {
 		t.Fatalf("fill shared table: %v", err)
 	}
 	for _, index := range []int32{2, 3} {
-		out, err := second.Call(context.Background(), "get", ValueI32(index))
+		out, err := second.InvokeValues(context.Background(), "get", ValueI32(index))
 		if err != nil || len(out) != 1 || out[0].ExternRef() != refA {
 			t.Fatalf("get(%d) after fill = %v, %v; want %v", index, out, err, refA)
 		}
@@ -124,16 +124,16 @@ func TestLocalExternrefTableExportReimportsOnlyWithinItsStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExportedTable(t): %v", err)
 	}
-	consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(Imports{"producer.t": table}))
+	consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(testImports("producer.t", table)))
 	if err != nil {
 		t.Fatalf("same-store re-import: %v", err)
 	}
 	defer consumer.Close()
 	ref := issueExternref(t, rt, "local-export")
-	if _, err := consumer.Call(context.Background(), "set", ValueI32(0), ValueExternRef(ref)); err != nil {
+	if _, err := consumer.InvokeValues(context.Background(), "set", ValueI32(0), ValueExternRef(ref)); err != nil {
 		t.Fatalf("consumer set: %v", err)
 	}
-	out, err := producer.Call(context.Background(), "get", ValueI32(0))
+	out, err := producer.InvokeValues(context.Background(), "get", ValueI32(0))
 	if err != nil || len(out) != 1 || out[0].ExternRef() != ref {
 		t.Fatalf("producer get after consumer write = %v, %v; want %v", out, err, ref)
 	}
@@ -147,7 +147,7 @@ func TestLocalExternrefTableExportReimportsOnlyWithinItsStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile foreign consumer: %v", err)
 	}
-	if _, err := foreignRT.Instantiate(context.Background(), foreignMod, WithImports(Imports{"producer.t": table})); err == nil || !strings.Contains(err.Error(), "reference store") {
+	if _, err := foreignRT.Instantiate(context.Background(), foreignMod, WithImports(testImports("producer.t", table))); err == nil || !strings.Contains(err.Error(), "reference store") {
 		t.Fatalf("cross-runtime import error = %v, want incompatible reference store", err)
 	}
 
@@ -156,7 +156,7 @@ func TestLocalExternrefTableExportReimportsOnlyWithinItsStore(t *testing.T) {
 		t.Fatalf("Compile private consumer: %v", err)
 	}
 	defer privateCompiled.Close()
-	if _, err := Instantiate(privateCompiled, Imports{"producer.t": table}); err == nil || !strings.Contains(err.Error(), "reference store") {
+	if _, err := Instantiate(privateCompiled, testImports("producer.t", table)); err == nil || !strings.Contains(err.Error(), "reference store") {
 		t.Fatalf("private-store import error = %v, want explicit compatible reference store", err)
 	}
 }
@@ -197,13 +197,13 @@ func TestStoreBoundExternrefTableRejectsTypeLimitsAndCloseOrder(t *testing.T) {
 		"maximum":              {tooSmallMax, shared, "required maximum"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := rt.Instantiate(context.Background(), tc.mod, WithImports(Imports{"env.t": tc.table})); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if _, err := rt.Instantiate(context.Background(), tc.mod, WithImports(testImports("env.t", tc.table))); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Instantiate error = %v, want %q", err, tc.want)
 			}
 		})
 	}
 
-	live, err := rt.Instantiate(context.Background(), externMod, WithImports(Imports{"env.t": shared}))
+	live, err := rt.Instantiate(context.Background(), externMod, WithImports(testImports("env.t", shared)))
 	if err != nil {
 		t.Fatalf("Instantiate live importer: %v", err)
 	}
@@ -241,12 +241,12 @@ func TestStoreBoundExternrefTableReleasesRootsAtRuntimeClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile root fixture: %v", err)
 	}
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.t": shared}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.t", shared)))
 	if err != nil {
 		t.Fatalf("Instantiate root fixture: %v", err)
 	}
 	ref := issueExternref(t, rt, "rooted-by-store-table")
-	if _, err := in.Call(context.Background(), "set", ValueExternRef(ref)); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "set", ValueExternRef(ref)); err != nil {
 		t.Fatalf("table.set root: %v", err)
 	}
 	if err := rt.Close(); err != nil {

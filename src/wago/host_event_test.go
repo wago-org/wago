@@ -60,9 +60,7 @@ func TestI32HostEventDefersOrderedDelivery(t *testing.T) {
 	defer c.Close()
 
 	var got []int32
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-		"env.event": I32HostEvent(func(value int32) { got = append(got, value) }),
-	}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.event", I32HostEvent(func(value int32) { got = append(got, value) }))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,9 +80,7 @@ func TestI32HostEventDefersOrderedDelivery(t *testing.T) {
 func TestI32HostEventRequiresExactSignature(t *testing.T) {
 	c := MustCompile(hostRoundtripLoopModule(t, 0))
 	defer c.Close()
-	if in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-		"env.step": I32HostEvent(func(int32) {}),
-	}}); err == nil || in != nil {
+	if in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.step", I32HostEvent(func(int32) {}))}); err == nil || in != nil {
 		t.Fatalf("Instantiate = %v, %v; want signature error", in, err)
 	}
 }
@@ -92,10 +88,7 @@ func TestI32HostEventRequiresExactSignature(t *testing.T) {
 func TestI32HostEventRejectsMixedSynchronousModule(t *testing.T) {
 	c := MustCompile(mixedHostEventModule())
 	defer c.Close()
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-		"env.event": I32HostEvent(func(int32) {}),
-		"env.query": I32ToI32HostFunc(func(value int32) int32 { return value }),
-	}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.event", I32HostEvent(func(int32) {}), "env.query", i32ToI32HostFunc(func(value int32) int32 { return value }))})
 	if err == nil || in != nil || !strings.Contains(err.Error(), "cannot be used by a module that requires synchronous host control") {
 		t.Fatalf("Instantiate = %v, %v; want mixed-mode rejection", in, err)
 	}
@@ -106,9 +99,7 @@ func TestI32HostEventOverflowTrapsWithoutPartialReplay(t *testing.T) {
 	defer c.Close()
 
 	delivered := 0
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-		"env.event": I32HostEvent(func(int32) { delivered++ }),
-	}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.event", I32HostEvent(func(int32) { delivered++ }))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,9 +119,7 @@ func TestI32HostEventPanicUsesHostTrapSemantics(t *testing.T) {
 	c := MustCompile(hostEventLoopModule())
 	defer c.Close()
 
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-		"env.event": I32HostEvent(func(int32) { panic(HostTrap{Err: errors.New("event failed")}) }),
-	}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.event", I32HostEvent(func(int32) { panic(HostTrap{Err: errors.New("event failed")}) }))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,9 +132,7 @@ func TestI32HostEventPanicUsesHostTrapSemantics(t *testing.T) {
 func TestI32HostEventInstanceRejectsCrossInstanceExport(t *testing.T) {
 	c := MustCompile(hostEventLoopModule())
 	defer c.Close()
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-		"env.event": I32HostEvent(func(int32) {}),
-	}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.event", I32HostEvent(func(int32) {}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,9 +149,7 @@ func TestI32HostEventInstanceRejectsFuncrefTransferRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := rt.Instantiate(context.Background(), module, WithImports(Imports{
-		"env.event": I32HostEvent(func(int32) {}),
-	}))
+	in, err := rt.Instantiate(context.Background(), module, WithImports(testImports("env.event", I32HostEvent(func(int32) {}))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,10 +179,7 @@ func TestI32HostEventInstanceRejectsImportedFuncrefStorage(t *testing.T) {
 			(func $target (i32.const 1) (call $event))
 			(elem (i32.const 0) func $target))`))
 		defer compiled.Close()
-		in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-			"env.event":  I32HostEvent(func(int32) {}),
-			"env.shared": table,
-		}})
+		in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.event", I32HostEvent(func(int32) {}), "env.shared", table)})
 		if err == nil || in != nil || !strings.Contains(err.Error(), "deferred host event cannot be used by a module that requires synchronous host control") {
 			t.Fatalf("Instantiate = %v, %v; want shared-table synchronous-mode rejection", in, err)
 		}
@@ -220,10 +202,7 @@ func TestI32HostEventInstanceRejectsImportedFuncrefStorage(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		in, err := rt.Instantiate(context.Background(), module, WithImports(Imports{
-			"env.event":  I32HostEvent(func(int32) {}),
-			"env.shared": global,
-		}))
+		in, err := rt.Instantiate(context.Background(), module, WithImports(testImports("env.event", I32HostEvent(func(int32) {}), "env.shared", global)))
 		if err == nil || in != nil || !strings.Contains(err.Error(), "cannot import a funcref global") {
 			t.Fatalf("Instantiate = %v, %v; want deferred funcref-global rejection", in, err)
 		}
@@ -267,15 +246,13 @@ func benchmarkHostEventLoop(b *testing.B, deferred bool) {
 	c := MustCompile(hostEventLoopModule())
 	defer c.Close()
 	var sum int64
-	var callback any = HostFunc(func(_ HostModule, params, _ []uint64) {
+	var callback any = slotHostFunc(func(_ HostModule, params, _ []uint64) {
 		sum += int64(AsI32(params[0]))
 	})
 	if deferred {
 		callback = I32HostEvent(func(value int32) { sum += int64(value) })
 	}
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-		"env.event": callback,
-	}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.event", callback)})
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -80,7 +80,7 @@ func TestFacadeForwards(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatalf("Runtime.Close: %v", err)
 	}
-	_ = WithImports(Imports{})
+	_ = WithImports(NewImports())
 	_ = WithPolicy(Policy{})
 	_ = WithGC(GCConfig{})
 	_ = IsGuardPageUnavailable(nil)

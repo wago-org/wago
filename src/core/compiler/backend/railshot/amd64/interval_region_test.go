@@ -321,6 +321,27 @@ func TestIntervalRegionRegisterPolicy(t *testing.T) {
 	}
 }
 
+func TestIntervalScratchLeasePreservesTransientRegisterFloor(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		reserved  regMask
+		guardMode bool
+		want      bool
+	}{
+		{name: "none", want: true},
+		{name: "one module global", reserved: maskOf(R13), want: true},
+		{name: "two module globals", reserved: maskOf(R12, R13), want: false},
+		{name: "two module globals guard mode", reserved: maskOf(R12, R13), guardMode: true, want: false},
+		{name: "scratch register does not reduce base pool", reserved: maskOf(RAX, RCX), want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := intervalScratchLeaseEligible(tc.reserved, tc.guardMode); got != tc.want {
+				t.Fatalf("eligible = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIntervalRegionRegisterLimitByBoundsMode(t *testing.T) {
 	if got, want := intervalRegionRegLimit(false), maxIntervalRegionRegs; got != want {
 		t.Fatalf("explicit-bounds register limit = %d, want %d", got, want)

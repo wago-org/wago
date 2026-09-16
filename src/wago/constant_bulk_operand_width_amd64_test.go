@@ -138,11 +138,9 @@ func invokeConstantBulk(t testing.TB, cfg *RuntimeConfig, op constantBulkOp, n, 
 		t.Fatalf("compile %s n=%d: %v", op, n, err)
 	}
 	defer compiled.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.addr": HostFunc(func(_ HostModule, _, results []uint64) {
-			results[0] = 0xdead_beef_0000_0000 | uint64(low)
-		}),
-	}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.addr", slotHostFunc(func(_ HostModule, _, results []uint64) {
+		results[0] = 0xdead_beef_0000_0000 | uint64(low)
+	}))})
 	if err != nil {
 		t.Fatalf("instantiate %s n=%d: %v", op, n, err)
 	}

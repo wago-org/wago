@@ -65,14 +65,14 @@ func TestRailshotInstanceInstallsSourceIdenticalDraglineTier(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	prepared, err := in.PrepareFunction("mix")
+	prepared, err := in.WasmFunc("mix")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := in.ActiveCompiler(); got != CompilerRailshot {
 		t.Fatalf("active compiler = %s, want railshot", got)
 	}
-	before, err := prepared.Invoke2(I64(10), I64(5))
+	before, err := prepared.Invoke(I64(10), I64(5))
 	if err != nil || AsI64(before[0]) != 12 {
 		t.Fatalf("Railshot mix(10, 5) = %v, %v", before, err)
 	}
@@ -84,7 +84,7 @@ func TestRailshotInstanceInstallsSourceIdenticalDraglineTier(t *testing.T) {
 	}
 	// The prepared handle predates installation and therefore proves that its
 	// cached address is the stable thunk rather than the original code image.
-	after, err := prepared.Invoke2(I64(10), I64(5))
+	after, err := prepared.Invoke(I64(10), I64(5))
 	if err != nil || AsI64(after[0]) != 12 {
 		t.Fatalf("Dragline mix(10, 5) = %v, %v", after, err)
 	}
@@ -314,7 +314,7 @@ func TestCrossInstanceImportFollowsInstalledDraglineTier(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumerCode.Close()
-	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.mix": exported}})
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: testImports("env.mix", exported)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +350,7 @@ func TestInstallDraglineConcurrentWithNativeEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	prepared, err := in.PrepareFunction("mix")
+	prepared, err := in.WasmFunc("mix")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +359,7 @@ func TestInstallDraglineConcurrentWithNativeEntries(t *testing.T) {
 	go func() {
 		close(started)
 		for range 2000 {
-			got, callErr := prepared.Invoke2(I64(19), I64(23))
+			got, callErr := prepared.Invoke(I64(19), I64(23))
 			if callErr != nil {
 				done <- callErr
 				return

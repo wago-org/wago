@@ -53,17 +53,12 @@ func (e *randPlugin) Register(reg *wago.Registrar) error {
 	if err != nil {
 		return err
 	}
-	module, err := imports.Module("wago_rand")
-	if err != nil {
-		return err
-	}
-
 	// next() -> i64 advances an xorshift state and returns it.
-	module.Func("next", func(_ wago.HostModule, _, results []uint64) {
+	imports.HostFunc("wago_rand", "next", func(call wago.HostCall) {
 		e.seed ^= e.seed << 13
 		e.seed ^= e.seed >> 7
 		e.seed ^= e.seed << 17
-		results[0] = e.seed
+		call.SetI64(0, int64(e.seed))
 	}).Results(wago.ValI64).Capability(CapRand).
 		Docs("advance the RNG and return the next 64-bit value")
 	return nil
