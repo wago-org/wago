@@ -21,6 +21,14 @@
       "nanosvg",
       "kissfft",
       "lua",
+      "cjson",
+      "miniz",
+      "monocypher",
+      "drwav",
+      "lodepng",
+      "fastfloat",
+      "pcre2",
+      "wren",
       "embench-crc32",
       "sightglass-shootout-base64",
       "tacle-bsort",
@@ -972,6 +980,96 @@
       "expect": { "return": ["0xa3e64611f12f3e45"] },
       "limits": { "timeout_ms": 15000 },
       "tags": ["fft", "numerical", "floating-point", "c"]
+    },
+    {
+      "id": "miniz/deflate-roundtrip",
+      "artifact": "workloads/semantic/miniz/miniz.wasm",
+      "artifact_sha256": "1335204dfa6838468017478cc402263b3d15af20556ee47a17c4d784c625ed6b",
+      "abi": "core",
+      "source": {
+        "repository": "https://github.com/richgel999/miniz.git",
+        "revision": "77d0dce8627735138c51770d1799a1ef48f2117d",
+        "revision_date": "2026-07-01",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "invoke": { "export": "miniz_run" },
+      "expect": { "return": ["0xaa4398509b59981d"] },
+      "limits": { "timeout_ms": 15000 },
+      "tags": ["compression", "deflate", "roundtrip", "c"]
+    },
+    {
+      "id": "monocypher/aead-blake2b",
+      "artifact": "workloads/semantic/monocypher/monocypher.wasm",
+      "artifact_sha256": "4db64df0302b7aabc0d888072995cb79fb4f9e95fb98d98ba31b3a4c9864164a",
+      "abi": "core",
+      "source": {
+        "repository": "https://github.com/LoupVaillant/Monocypher.git",
+        "revision": "1830c06d5910fba451cec329c8f30f348fc607db",
+        "revision_date": "2026-07-28",
+        "license": "BSD-2-Clause OR CC0-1.0",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "invoke": { "export": "monocypher_run" },
+      "expect": { "return": ["0x1f4d3a1f1c2cb0"] },
+      "limits": { "timeout_ms": 15000 },
+      "tags": ["crypto", "aead", "blake2b", "c"]
+    },
+    {
+      "id": "drwav/pcm-decode-seek",
+      "artifact": "workloads/semantic/drwav/drwav.wasm",
+      "artifact_sha256": "1a67a076c59c2e5f239899af85935c716ad626bdc05d63b987a16e4572068fbd",
+      "abi": "core",
+      "source": {
+        "repository": "https://github.com/mackron/dr_libs.git",
+        "revision": "dfe8377631000664666519fdb83da193fd8037f4",
+        "revision_date": "2026-09-01",
+        "license": "Unlicense OR MIT-0",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "invoke": { "export": "drwav_run" },
+      "expect": { "return": ["0xb04d4725e0903857"] },
+      "limits": { "timeout_ms": 15000 },
+      "tags": ["audio", "wav", "decoder", "c"]
+    },
+    {
+      "id": "fastfloat/decimal-parse",
+      "artifact": "workloads/semantic/fastfloat/fastfloat.wasm",
+      "artifact_sha256": "5614ed6a7654896c918f0bfbbf68707cb500a5eff7d74332e71c867bff97589e",
+      "abi": "core",
+      "source": {
+        "repository": "https://github.com/fastfloat/fast_float.git",
+        "revision": "b0ab987b3dfdde13fa1915f65ef2a5c068d9208c",
+        "revision_date": "2026-09-15",
+        "license": "MIT OR Apache-2.0 OR BSL-1.0",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "invoke": { "export": "fastfloat_run" },
+      "expect": { "return": ["0xf3a5520f8bb1ba22"] },
+      "limits": { "timeout_ms": 15000 },
+      "tags": ["floating-point", "parser", "cpp"]
+    },
+    {
+      "id": "pcre2/compile-match",
+      "artifact": "workloads/semantic/pcre2/pcre2.wasm",
+      "artifact_sha256": "a65f6eef61477be35439692bb2a7474793079a8d6d23f17c704164f8eabaed33",
+      "abi": "core",
+      "source": {
+        "repository": "https://github.com/PCRE2Project/pcre2.git",
+        "revision": "085f8170c27b8336f0bd61f8e99518717ad0950d",
+        "revision_date": "2026-09-16",
+        "license": "BSD-3-Clause WITH PCRE2-exception",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "invoke": { "export": "pcre2_run" },
+      "expect": { "return": ["0x84e7c9d181489c1f"] },
+      "limits": { "timeout_ms": 15000 },
+      "tags": ["regex", "unicode", "parser", "c"]
     }
   ],
   "benchmarks": [
@@ -1498,6 +1596,115 @@
       "artifact": "workloads/semantic/kissfft/kissfft.wasm",
       "tags": ["semantic", "fft", "numerical", "floating-point"],
       "artifact_sha256": "3abf784eb0ac0c9b10168db72ad9301b5df6818874451b178f001611e8c77fb6"
+    },
+    {
+      "desc": "miniz deflate compression and decompression round trip",
+      "semantic_exec": ["miniz/deflate-roundtrip"],
+      "id": "miniz",
+      "artifact": "workloads/semantic/miniz/miniz.wasm",
+      "tags": ["semantic", "compression", "deflate"],
+      "artifact_sha256": "1335204dfa6838468017478cc402263b3d15af20556ee47a17c4d784c625ed6b"
+    },
+    {
+      "desc": "Monocypher authenticated encryption and streaming BLAKE2b",
+      "semantic_exec": ["monocypher/aead-blake2b"],
+      "id": "monocypher",
+      "artifact": "workloads/semantic/monocypher/monocypher.wasm",
+      "tags": ["semantic", "crypto", "aead", "hashing"],
+      "artifact_sha256": "4db64df0302b7aabc0d888072995cb79fb4f9e95fb98d98ba31b3a4c9864164a"
+    },
+    {
+      "desc": "dr_wav in-memory PCM decoding, chunked reads, and seeking",
+      "semantic_exec": ["drwav/pcm-decode-seek"],
+      "id": "drwav",
+      "artifact": "workloads/semantic/drwav/drwav.wasm",
+      "tags": ["semantic", "audio", "wav", "decoder"],
+      "artifact_sha256": "1a67a076c59c2e5f239899af85935c716ad626bdc05d63b987a16e4572068fbd"
+    },
+    {
+      "desc": "fast_float decimal parsing across IEEE-754 boundary values",
+      "semantic_exec": ["fastfloat/decimal-parse"],
+      "id": "fastfloat",
+      "artifact": "workloads/semantic/fastfloat/fastfloat.wasm",
+      "tags": ["semantic", "floating-point", "parser", "cpp"],
+      "artifact_sha256": "5614ed6a7654896c918f0bfbbf68707cb500a5eff7d74332e71c867bff97589e"
+    },
+    {
+      "desc": "PCRE2 Unicode pattern compilation, matching, and capture extraction",
+      "semantic_exec": ["pcre2/compile-match"],
+      "id": "pcre2",
+      "artifact": "workloads/semantic/pcre2/pcre2.wasm",
+      "tags": ["semantic", "regex", "unicode", "parser"],
+      "artifact_sha256": "a65f6eef61477be35439692bb2a7474793079a8d6d23f17c704164f8eabaed33"
+    },
+    {
+      "suite": "cJSON",
+      "desc": "cJSON parse, DOM mutation, and compact serialization workload",
+      "source": {
+        "repository": "https://github.com/DaveGamble/cJSON.git",
+        "revision": "6d9f2443ab071f86e5d9b43025a40929ec41c46c",
+        "revision_date": "2026-09-16",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "cjson_run",
+        "want": [16875283935467660008]
+      },
+      "id": "cjson",
+      "artifact": "workloads/semantic/cjson/cjson.wasm",
+      "tags": ["application", "json", "parser", "serialization", "c"],
+      "artifact_sha256": "3c28ed68635edc7fd61643716e41517a108a43d353edf456f0b5dfc12c68d690"
+    },
+    {
+      "suite": "LodePNG",
+      "desc": "LodePNG RGBA encoding, decoding, and exact pixel round trip",
+      "source": {
+        "repository": "https://github.com/lvandeve/lodepng.git",
+        "revision": "ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a",
+        "revision_date": "2026-05-28",
+        "license": "Zlib",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "lodepng_run",
+        "want": [6101279919946906916]
+      },
+      "id": "lodepng",
+      "artifact": "workloads/semantic/lodepng/lodepng.wasm",
+      "tags": ["application", "png", "image", "codec", "cpp"],
+      "artifact_sha256": "e169be971b1b423936967b24b05b4596e27ec20a219d4e355bffda7629a7bf54"
+    },
+    {
+      "suite": "Wren",
+      "desc": "Wren VM compiling and executing allocation-heavy prime computation",
+      "source": {
+        "repository": "https://github.com/wren-lang/wren.git",
+        "revision": "99d2f0b8fc2686134b32b18166e037639f7e9f2c",
+        "revision_date": "2025-11-19",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "wren_run",
+        "want": [210661955]
+      },
+      "id": "wren",
+      "artifact": "workloads/semantic/wren/wren.wasm",
+      "tags": ["application", "interpreter", "language", "gc", "c"],
+      "artifact_sha256": "4c5349da94ef84075e644a5b753716b3db28b8eb381a1d071ed8118b3e775bc3"
     },
     {
       "suite": "TinyXML-2",
