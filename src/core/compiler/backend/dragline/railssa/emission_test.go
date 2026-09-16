@@ -74,6 +74,58 @@ func TestEmissionPlannerUsesCompactMaskedLoopProof(t *testing.T) {
 	}
 }
 
+func TestEmissionPlannerReplaysSIMDResultsInMaskedLoop(t *testing.T) {
+	constant := []byte{0xfd, 0x0c, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	typeSec := wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})))
+	funcSec := wasmtest.Section(3, wasmtest.Vec([]byte{0}))
+	memorySec := wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01}))
+	body := []byte{0x02, 0x40, 0x03, 0x40}
+	body = append(body, constant...)
+	body = append(body, constant...)
+	body = append(body,
+		0xfd, 0x51, // v128.xor
+		0x1a,       // drop
+		0x20, 0x01, // local.get 1
+		0x28, 0x02, 0x00, // i32.load
+		0x1a,       // drop
+		0x20, 0x01, // local.get 1
+		0x41, 0x08, // i32.const 8
+		0x6a, // i32.add
+		0x41, // i32.const
+	)
+	body = append(body, wasmtest.SLEB32(65535)...)
+	body = append(body,
+		0x71,       // i32.and
+		0x21, 0x01, // local.set 1
+		0x20, 0x00, // local.get 0
+		0x0d, 0x00, // br_if 0
+		0x0b, 0x0b, // end loop, block
+		0x41, 0x00, // i32.const 0
+		0x0b,
+	)
+	function := append([]byte{0x01, 0x01, 0x7f}, body...)
+	code := append(wasmtest.ULEB(uint32(len(function))), function...)
+	m, err := wasm.DecodeModule(wasmtest.Module(typeSec, funcSec, memorySec, wasmtest.Section(10, wasmtest.Vec(code))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	f, err := BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner EmissionPlanner
+	plan, err := planner.Plan(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.ElidedBoundsChecks() != 1 {
+		t.Fatalf("SIMD masked-loop elisions = %d, want 1", plan.ElidedBoundsChecks())
+	}
+}
+
 func TestEmissionPlannerRejectsPreinitializedMaskedLoopLocal(t *testing.T) {
 	prefix := []byte{0x41, 0x07, 0x21, 0x01}
 	f, err := BuildStackFunc(maskedInductionModuleWithPrefix(t, 8, 65535, prefix), 0)

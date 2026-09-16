@@ -296,7 +296,13 @@ func (p *EmissionPlanner) scanStructuredLoopAccesses(f *StackFunc, region Region
 		if err := pop(operands); err != nil {
 			return fmt.Errorf("railssa: structured address replay instruction %d %s operands=%d depth=%d: %w", index, instruction.Kind, operands, len(stack), err)
 		}
-		if stackInstructionHasValueResult(instruction) {
+		results := uint32(0)
+		if instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect {
+			results = f.InstructionResultCount(index, instruction)
+		} else if stackInstructionHasValueResult(instruction) {
+			results = 1
+		}
+		for range results {
 			if err := push(0); err != nil {
 				return err
 			}
@@ -309,6 +315,8 @@ func stackInstructionHasValueResult(instruction StackInstr) bool {
 	kind := instruction.Kind
 	switch {
 	case kind == wasm.InstrCall || kind == wasm.InstrCallIndirect:
+		return instruction.HasResult()
+	case wasm.IsSIMDValidationInstructionKind(kind):
 		return instruction.HasResult()
 	case kind == wasm.InstrGlobalGet || kind == wasm.InstrMemorySize || kind == wasm.InstrMemoryGrow ||
 		kind == wasm.InstrI32Const || kind == wasm.InstrI64Const || kind == wasm.InstrF32Const || kind == wasm.InstrF64Const ||
