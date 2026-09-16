@@ -13,18 +13,15 @@ func TestInstantiateCloseAllocationBudget(t *testing.T) {
 	c := MustCompile(multiValueControlCallModule())
 	defer c.Close()
 
-	var lifecycleErr error
 	allocs := testing.AllocsPerRun(1000, func() {
 		in, err := Instantiate(c, InstantiateOptions{})
 		if err != nil {
-			lifecycleErr = err
-			return
+			t.Fatalf("Instantiate: %v", err)
 		}
-		lifecycleErr = in.Close()
+		if err := in.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
 	})
-	if lifecycleErr != nil {
-		t.Fatalf("Instantiate/Close: %v", lifecycleErr)
-	}
 	if allocs > 6 {
 		t.Fatalf("Instantiate/Close allocations = %.0f, want <= 6", allocs)
 	}
@@ -45,18 +42,15 @@ func TestInstantiateHostImportAllocationBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var lifecycleErr error
 	allocs := testing.AllocsPerRun(1000, func() {
 		in, err := Instantiate(c, InstantiateOptions{Imports: imports})
 		if err != nil {
-			lifecycleErr = err
-			return
+			t.Fatalf("Instantiate: %v", err)
 		}
-		lifecycleErr = in.Close()
+		if err := in.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
 	})
-	if lifecycleErr != nil {
-		t.Fatalf("Instantiate/Close: %v", lifecycleErr)
-	}
 	// The public Imports snapshot introduced on main adds four allocations on
 	// Go 1.22 (five on newer Go releases). Keep a small portability margin while
 	// still guarding the reduction from main's 32 allocations on Go 1.22.

@@ -1879,12 +1879,9 @@ func hostThunkAddr(fidx int, sharedBase uintptr, sharedOffsets []int, ownedAddr 
 }
 
 func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool) (sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64, ownedMem []byte, err error) {
-	sharedBase, sharedOffsets, err = c.sharedHostFuncThunks(syncMode)
-	if err != nil {
-		return 0, nil, nil, nil, err
-	}
 	var blob []byte
 	offs := map[uint32]int{}
+	needsShared := false
 	for fidx := 0; fidx < c.NumImports; fidx++ {
 		displayKey := c.Imports[fidx]
 		key := c.functionImportBindingKey(fidx)
@@ -1913,13 +1910,22 @@ func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool) (s
 				}
 				offs[uint32(fidx)] = len(blob)
 				blob = append(blob, railshotHostIndirectOwnedSyncThunk(hostFuncRefDispatchBit|dispatchIndex, paramSlots, resultSlots)...)
+				continue
 			}
+			needsShared = true
 			continue
 		}
 		if !isHostCallback(imports[key]) {
 			if imports[key] != nil {
 				return 0, nil, nil, nil, fmt.Errorf("import %q is %T; async host wrappers require wago.I32HostEvent", displayKey, imports[key])
 			}
+		}
+		needsShared = true
+	}
+	if needsShared {
+		sharedBase, sharedOffsets, err = c.sharedHostFuncThunks(syncMode)
+		if err != nil {
+			return 0, nil, nil, nil, err
 		}
 	}
 	if len(blob) == 0 {
