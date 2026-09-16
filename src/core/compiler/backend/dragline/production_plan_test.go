@@ -814,6 +814,11 @@ func TestNativeImmediateCombinationsFoldRepeatedVectorShiftCounts(t *testing.T) 
 	if producers.has(1) || !producers.has(2) {
 		t.Fatalf("packed-byte shift immediate relation = %v", producers)
 	}
+	machine.Insts[1].Op = wasm.InstrI64x2ShrS
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
+	if producers.has(1) || !producers.has(2) {
+		t.Fatalf("signed packed-qword shift immediate relation = %v", producers)
+	}
 }
 
 func TestNativeAMD64ShuffleScratchCount(t *testing.T) {

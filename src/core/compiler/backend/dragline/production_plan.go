@@ -1047,7 +1047,7 @@ func nativeImmediateShiftUse(op railmach.MOpcode) bool {
 
 func nativeAMD64VectorShiftNeedsRegister(op railmach.MOpcode) bool {
 	switch railmach.SemanticOpcode(op) {
-	case wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU:
+	case wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU, wasm.InstrI64x2ShrS:
 		return true
 	default:
 		return false
