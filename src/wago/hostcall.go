@@ -650,7 +650,6 @@ type instancePluginState struct {
 	nativeExecutionMu    sync.Mutex     // serializes native entry for an independent instance
 	nativeShareMu        sync.Mutex     // coordinates retained local leases with resource publication
 	invocationID         invocationID
-	close                atomic.Pointer[instanceCloseState]
 	gcConfig             *GCConfig
 	origin               InstantiateOrigin
 	gcGlobalRootCount    uint32
@@ -664,17 +663,20 @@ type instancePluginState struct {
 }
 
 type instanceCloseState struct {
-	done            chan struct{}
-	quiesced        chan struct{}
-	quiescedOnce    sync.Once
-	prepared        atomic.Bool // publishes hook data and completion of all BeforeClose work
-	result          error
-	interruptStop   func()
-	hooks           *hookRegistry
-	event           *InstanceCloseEvent
-	terminalStarted atomic.Bool
-	terminalDone    chan struct{} // publishes terminalResult, independently of quiescence
-	terminalResult  error
+	doneMu           sync.Mutex
+	done             chan struct{}
+	completed        atomic.Bool
+	quiesced         chan struct{}
+	quiescedOnce     sync.Once
+	prepared         atomic.Bool // publishes hook data and completion of all BeforeClose work
+	result           error
+	interruptStop    func()
+	hooks            *hookRegistry
+	event            *InstanceCloseEvent
+	terminalStarted  atomic.Bool
+	terminalComplete atomic.Bool
+	terminalDone     chan struct{} // publishes terminalResult, independently of quiescence
+	terminalResult   error
 }
 
 func (in *Instance) instantiateOrigin() InstantiateOrigin {
@@ -2257,65 +2259,10 @@ func dispatchSyncHostReferenceGated(in *Instance, scope *hostCallScope, ctrl uin
 	dispatchSyncHostReference(in, scope, ctrl, importIdx, &ungated, sig, exact, exactTypes, exactTypesPtr, args, results, invocation)
 }
 
-// newHostDispatch builds the runtime callback the CallWithHost loop invokes: it
-// maps the wasm import index to the bound slotHostFunc and runs it with a HostModule
-// bound to this instance. It is constructed once at instantiation so hot Invoke
-// paths do not allocate a fresh closure per call.
+// newHostDispatch builds the optional specialized callback used by injected
+// paths. Ordinary calls dispatch through dispatchHostCall directly
+// so a never-invoked instance does not allocate a closure or plugin sidecar.
 func (in *Instance) newHostDispatch() resolvedHostCall {
-	// Atomic publication happens once; the sidecar is never replaced. Cache
-	// only its address, not authority: each callback still gets a fresh atomic
-	// generation and the runtime-resolved invocation identity passed below.
-	scope := &in.ensurePluginState().hostScope
-	dispatch := func(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
-		if importIdx&shared.AtomicWaitDispatchBit != 0 {
-			if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
-				panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
-			}
-			in.dispatchAtomicWaitHelper(importIdx&^shared.AtomicWaitDispatchBit, args, results)
-			return
-		}
-		if importIdx&gcStructDispatchBit != 0 {
-			if importIdx&hostFuncRefDispatchBit != 0 {
-				panic(gcStructHelperError{err: fmt.Errorf("invalid overlapping GC/host dispatch index %#x", importIdx)})
-			}
-			helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)
-			in.dispatchGCHelperParked(ctrl, helper, safepoint, args, results)
-			return
-		}
-		if importIdx&hostFuncRefDispatchBit != 0 {
-			owner, exact := in.refStore.hostFuncRefDispatch(importIdx)
-			if owner == nil {
-				panic(missingHostFunc{importIdx: importIdx})
-			}
-			owner.mu.Lock()
-			fn, sig := owner.fn, owner.sig
-			owner.mu.Unlock()
-			if fn == nil {
-				panic(missingHostFunc{importIdx: importIdx})
-			}
-			var signature *DefinedTypeDescriptor
-			var exactTypes []DefinedTypeDescriptor
-			var exactTypesPtr *[]DefinedTypeDescriptor
-			if exact != nil {
-				sig = exact.sig
-				// Dispatch bindings are created only after exact signature validation.
-				signature = &exact.types[sig.TypeIndex]
-				exactTypes = exact.types
-				exactTypesPtr = &exact.types
-			}
-			dispatchSyncHostReference(in, scope, ctrl, importIdx, &syncHostBinding{fn: fn}, sig, signature, exactTypes, exactTypesPtr, args, results, invocation)
-			return
-		}
-		if int(importIdx) >= len(in.syncHosts) || !in.syncHosts[importIdx].callable() {
-			panic(missingHostFunc{importIdx: importIdx})
-		}
-		binding := &in.syncHosts[importIdx]
-		if binding.scalarKind != syncHostNonScalar {
-			dispatchSyncHostScalar(in, scope, binding, args, results, invocation)
-		} else {
-			dispatchSyncHostReference(in, scope, ctrl, importIdx, binding, in.c.importFuncSigs[importIdx], binding.exact, in.c.Types, &in.c.Types, args, results, invocation)
-		}
-	}
 	if len(in.syncHosts) == 1 {
 		binding := &in.syncHosts[0]
 		if binding.hostCall && binding.gate == nil && binding.scalarKind != syncHostNonScalar {
@@ -2326,11 +2273,62 @@ func (in *Instance) newHostDispatch() resolvedHostCall {
 					fn(HostCall{params: args, results: results, sig: sig, exact: exact})
 					return
 				}
-				dispatch(ctrl, importIdx, args, results, invocation)
+				in.dispatchHostCall(ctrl, importIdx, args, results, invocation)
 			}
 		}
 	}
-	return dispatch
+	return in.dispatchHostCall
+}
+
+func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
+	scope := &in.ensurePluginState().hostScope
+	if importIdx&shared.AtomicWaitDispatchBit != 0 {
+		if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
+			panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
+		}
+		in.dispatchAtomicWaitHelper(importIdx&^shared.AtomicWaitDispatchBit, args, results)
+		return
+	}
+	if importIdx&gcStructDispatchBit != 0 {
+		if importIdx&hostFuncRefDispatchBit != 0 {
+			panic(gcStructHelperError{err: fmt.Errorf("invalid overlapping GC/host dispatch index %#x", importIdx)})
+		}
+		helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)
+		in.dispatchGCHelperParked(ctrl, helper, safepoint, args, results)
+		return
+	}
+	if importIdx&hostFuncRefDispatchBit != 0 {
+		owner, exact := in.refStore.hostFuncRefDispatch(importIdx)
+		if owner == nil {
+			panic(missingHostFunc{importIdx: importIdx})
+		}
+		owner.mu.Lock()
+		fn, sig := owner.fn, owner.sig
+		owner.mu.Unlock()
+		if fn == nil {
+			panic(missingHostFunc{importIdx: importIdx})
+		}
+		var signature *DefinedTypeDescriptor
+		var exactTypes []DefinedTypeDescriptor
+		var exactTypesPtr *[]DefinedTypeDescriptor
+		if exact != nil {
+			sig = exact.sig
+			signature = &exact.types[sig.TypeIndex]
+			exactTypes = exact.types
+			exactTypesPtr = &exact.types
+		}
+		dispatchSyncHostReference(in, scope, ctrl, importIdx, &syncHostBinding{fn: fn}, sig, signature, exactTypes, exactTypesPtr, args, results, invocation)
+		return
+	}
+	if int(importIdx) >= len(in.syncHosts) || !in.syncHosts[importIdx].callable() {
+		panic(missingHostFunc{importIdx: importIdx})
+	}
+	binding := &in.syncHosts[importIdx]
+	if binding.scalarKind != syncHostNonScalar {
+		dispatchSyncHostScalar(in, scope, binding, args, results, invocation)
+	} else {
+		dispatchSyncHostReference(in, scope, ctrl, importIdx, binding, in.c.importFuncSigs[importIdx], binding.exact, in.c.Types, &in.c.Types, args, results, invocation)
+	}
 }
 
 func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType, exact []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor, gcTemps *gcHostTempTokens) error {
@@ -2606,9 +2604,6 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 	in.jm.SetStackFence(in.eng.StackLimit())
 	if len(in.ctrl) >= runtime.HostCtrlFrameBytes {
 		in.jm.SetCustomCtx(uintptr(unsafe.Pointer(&in.ctrl[0])))
-	}
-	if in.hostCall == nil {
-		in.hostCall = in.newHostDispatch()
 	}
 	// Resolve stable root context lazily in this activation, not on the instance.
 	// Each nested native entry receives a separate snapshot and fresh callbacks.

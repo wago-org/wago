@@ -108,7 +108,7 @@ func TestNestedHostReentryRestorePropagatesCloseInterrupt(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Entry must preserve the published interrupt without help from retries.
-	in.ensurePluginState().close.Load().interruptStop()
+	in.closeState.Load().interruptStop()
 	if got := wruntime.PreparedIntTrapCode(nestedTrap); got != wruntime.TrapInterrupted {
 		restore()
 		t.Fatalf("nested trap after close = %v, want interrupted", got)
