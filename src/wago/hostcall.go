@@ -181,7 +181,10 @@ func (c HostCall) SetI31Ref(i int, v I31Ref) { c.setResultSlot(i, ValI31Ref, uin
 // value types added after this release.
 func (c HostCall) RawParam(i int) (lo, hi uint64) {
 	typ := c.paramType(i)
-	slot := hostCallSlot(c.sig.Params, i)
+	slot := i
+	if len(c.params) != len(c.sig.Params) {
+		slot = hostCallSlot(c.sig.Params, i)
+	}
 	lo = c.params[slot]
 	if typ == ValV128 {
 		hi = c.params[slot+1]
@@ -191,7 +194,10 @@ func (c HostCall) RawParam(i int) (lo, hi uint64) {
 
 func (c HostCall) SetRawResult(i int, lo, hi uint64) {
 	typ := c.resultType(i)
-	slot := hostCallSlot(c.sig.Results, i)
+	slot := i
+	if len(c.results) != len(c.sig.Results) {
+		slot = hostCallSlot(c.sig.Results, i)
+	}
 	c.results[slot] = lo
 	if typ == ValV128 {
 		c.results[slot+1] = hi
@@ -237,6 +243,11 @@ func (c HostCall) paramSlotIndex(i int, want ValType) int {
 	if got != want {
 		panic(fmt.Sprintf("wago: host parameter %d is %s, not %s", i, got, want))
 	}
+	// Equal logical and physical counts mean every value occupies one slot.
+	// Read the current view instead of caching offsets in public signatures.
+	if len(c.params) == len(c.sig.Params) {
+		return i
+	}
 	return hostCallSlot(c.sig.Params, i)
 }
 
@@ -251,6 +262,9 @@ func (c HostCall) resultSlotIndex(i int, want ValType) int {
 	got := c.resultType(i)
 	if got != want {
 		panic(fmt.Sprintf("wago: host result %d is %s, not %s", i, got, want))
+	}
+	if len(c.results) == len(c.sig.Results) {
+		return i
 	}
 	return hostCallSlot(c.sig.Results, i)
 }
