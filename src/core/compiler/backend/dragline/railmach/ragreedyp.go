@@ -18,6 +18,9 @@ type GreedyConfig struct {
 	MaxStage        uint8
 	PreserveGPRCost uint16
 	PreserveFPRCost uint16
+	// RecursiveCalls keeps scalar-FP allocation on the conservative cost model
+	// until recursive multi-result moves have an exact preservation contract.
+	RecursiveCalls bool
 	// CallClobbers overrides the conservative caller-register mask for direct
 	// calls whose callee has already been allocated. Unlisted calls retain the
 	// target's complete caller-clobbered mask.
@@ -194,7 +197,8 @@ func AllocateFastMachineForSchedule(f *Func, schedule *Schedule, config GreedyCo
 	reuse.SpillSets = spillSets
 	reuse.SpillMembers = spillMembers
 	reuse.Fragments = fragments
-	useDensityCost := greedyUsesDensityCost(f)
+	useDensityCost := greedyUsesDensityCost(f, config.RecursiveCalls)
+	densityLongRangeFloor := greedyUsesDensityLongRangeFloor(f, config.RecursiveCalls)
 	callPositions := collectCallPositions(f, &reuse.Allocation, reuse.callPositions[:0])
 	reuse.callPositions = callPositions
 	clear(reuse.occupantHead[:])
@@ -247,7 +251,7 @@ func AllocateFastMachineForSchedule(f *Func, schedule *Schedule, config GreedyCo
 			if conservativeCallMask(config, interval.Bank)&(uint64(1)<<physical) == 0 && calleeUsed[bank]&(uint64(1)<<physical) == 0 {
 				additionalPreservation = uint64(preserveCost)
 			}
-			if greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost) <= additionalPreservation {
+			if greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost, densityLongRangeFloor) <= additionalPreservation {
 				continue
 			}
 			reuse.Locations[interval.Reg] = Location{Kind: LocationRegister, Bank: interval.Bank, Index: physical}
@@ -268,7 +272,7 @@ func AllocateFastMachineForSchedule(f *Func, schedule *Schedule, config GreedyCo
 	reuse.Metrics.SpillSlots = uint32(reuse.SpillSlots)
 	for _, interval := range reuse.Intervals {
 		if reuse.Locations[interval.Reg].Kind == LocationSpill {
-			reuse.Metrics.WeightedDebt += greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost)
+			reuse.Metrics.WeightedDebt += greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost, densityLongRangeFloor)
 		}
 	}
 	if err := buildSpillSets(reuse); err != nil {
@@ -315,7 +319,8 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 	callSurvivorMask := func(interval LiveInterval) uint64 {
 		return allocationCallSurvivorMask(config, &reuse.Allocation, interval, callPositions)
 	}
-	useDensityCost := greedyUsesDensityCost(f)
+	useDensityCost := greedyUsesDensityCost(f, config.RecursiveCalls)
+	densityLongRangeFloor := greedyUsesDensityLongRangeFloor(f, config.RecursiveCalls)
 	hasCall := false
 	for _, instruction := range f.Insts {
 		if IsCall(instruction.Op) {
@@ -339,7 +344,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 	config.MaxStage = greedyEffectiveMaxStage(f.Target, len(f.Insts), useDensityCost, unsafeCyclicCallFragments, config.MaxStage)
 	reuse.Stage = config.MaxStage
 	spillCost := func(interval LiveInterval) uint64 {
-		return greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost)
+		return greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost, densityLongRangeFloor)
 	}
 	var calleeUsed [2]uint64
 	clear(reuse.occupantHead[:])
@@ -548,7 +553,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 	return reuse, nil
 }
 
-func greedyUsesDensityCost(f *Func) bool {
+func greedyUsesDensityCost(f *Func, recursiveCalls bool) bool {
 	if f == nil || len(f.Insts) < greedyDensityMinInstructions {
 		return false
 	}
@@ -565,7 +570,19 @@ func greedyUsesDensityCost(f *Func) bool {
 		}
 		hasScalarFPR = hasScalarFPR || f.VRegs[reg].Bank == BankFPR
 	}
-	return !hasScalarFPR
+	return !hasScalarFPR || !recursiveCalls
+}
+
+func greedyUsesDensityLongRangeFloor(f *Func, recursiveCalls bool) bool {
+	if f == nil || f.Target != TargetAMD64 || recursiveCalls {
+		return false
+	}
+	for reg := VReg(1); int(reg) < len(f.VRegs); reg++ {
+		if f.VRegs[reg].Bank == BankFPR && f.VRegs[reg].Type != TypeV128 {
+			return true
+		}
+	}
+	return false
 }
 
 func greedyEffectiveMaxStage(target Target, functionInstructions int, density, hasCyclicCall bool, configured uint8) uint8 {
@@ -596,7 +613,7 @@ func greedyUsesColdRegionalFragments(f *Func) bool {
 	return true
 }
 
-func greedySpillCost(interval LiveInterval, functionInstructions uint64, density bool) uint64 {
+func greedySpillCost(interval LiveInterval, functionInstructions uint64, density, longRangeFloor bool) uint64 {
 	cost := uint64(interval.Weight)
 	length := uint64(interval.End - interval.Start + 1)
 	if !density {
@@ -606,9 +623,13 @@ func greedySpillCost(interval LiveInterval, functionInstructions uint64, density
 	// instructions. Range-area priority pins that state and spills dense
 	// temporaries at every use. Squared use density instead spends registers on
 	// the values that avoid the most dynamic spill traffic. Keep the conservative
-	// area score for smaller functions and scalar floating-point kernels, whose
-	// control-edge and bank-transfer costs need separate evidence.
-	return max(uint64(1), cost*functionInstructions*functionInstructions/(length*length))
+	// area score for smaller and recursive scalar floating-point functions,
+	// whose call-result preservation costs need a separate exact contract.
+	densityCost := max(uint64(1), cost*functionInstructions*functionInstructions/(length*length))
+	if longRangeFloor {
+		densityCost += cost * length / functionInstructions
+	}
+	return densityCost
 }
 
 func firstCallAfter(calls []callPosition, position uint32) int {

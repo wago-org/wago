@@ -1345,6 +1345,22 @@ func TestNativeCallClobbersTreatStructuredCalleeAsFullyClobbering(t *testing.T) 
 	}
 }
 
+func TestNativeFunctionHasRecursiveCallUsesCallGraphComponents(t *testing.T) {
+	machine := &railmach.Func{Insts: []railmach.Inst{{Op: wasm.InstrCall, Aux: 3}}}
+	components := []int{0, 1, 0}
+	if !nativeFunctionHasRecursiveCall(machine, 1, components, 0) {
+		t.Fatal("call within the caller component was not recursive")
+	}
+	components[2] = 2
+	if nativeFunctionHasRecursiveCall(machine, 1, components, 0) {
+		t.Fatal("call into another component was recursive")
+	}
+	machine.Insts[0].Op = wasm.InstrCallIndirect
+	if nativeFunctionHasRecursiveCall(machine, 1, components, 0) {
+		t.Fatal("indirect call was classified as a recursive direct call")
+	}
+}
+
 func TestNativeBackendPlannerKeepsLoopInvariantLiveAcrossResultIf(t *testing.T) {
 	body := []byte{
 		0x02, 0x40, 0x03, 0x40,

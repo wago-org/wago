@@ -1610,6 +1610,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		defaultGreedy.Linear.GPRs = nativeARM64CachedGlobalDescriptorRegister
 	}
 	defaultGreedy.CallClobbers = nativeCallClobberOverrides(machine, stack.ImportedFuncs, moduleContracts, components, refinedRecursive, localIndex, defaultGreedy)
+	defaultGreedy.RecursiveCalls = nativeFunctionHasRecursiveCall(machine, stack.ImportedFuncs, components, localIndex)
 	usesFPR := false
 	for _, data := range machine.VRegs {
 		usesFPR = usesFPR || data.Bank == railmach.BankFPR
@@ -3146,6 +3147,22 @@ func nativeCallClobberOverrides(machine *railmach.Func, imported uint32, contrac
 		})
 	}
 	return overrides
+}
+
+func nativeFunctionHasRecursiveCall(machine *railmach.Func, imported uint32, components []int, caller int) bool {
+	if machine == nil || caller < 0 || caller >= len(components) {
+		return false
+	}
+	for _, instruction := range machine.Insts {
+		if railmach.SemanticOpcode(instruction.Op) != wasm.InstrCall || uint32(instruction.Aux) < imported {
+			continue
+		}
+		callee := int(uint32(instruction.Aux) - imported)
+		if callee >= 0 && callee < len(components) && components[callee] == components[caller] {
+			return true
+		}
+	}
+	return false
 }
 
 func refineNativeCallContracts(calls []railmach.CallContract, imported uint32, contracts []railmach.ABIContract, components []int, refinedRecursive []bool, caller int) uint32 {

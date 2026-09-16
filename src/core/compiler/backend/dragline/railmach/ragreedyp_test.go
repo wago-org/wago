@@ -9,11 +9,14 @@ import (
 func TestGreedySpillDensityPrioritizesFrequentlyUsedShortRange(t *testing.T) {
 	sparse := LiveInterval{Start: 0, End: 999, Weight: 2}
 	dense := LiveInterval{Start: 0, End: 9, Weight: 8}
-	if sparseCost, denseCost := greedySpillCost(sparse, 1000, false), greedySpillCost(dense, 1000, false); sparseCost <= denseCost {
+	if sparseCost, denseCost := greedySpillCost(sparse, 1000, false, false), greedySpillCost(dense, 1000, false, false); sparseCost <= denseCost {
 		t.Fatalf("area costs sparse/dense = %d/%d, want sparse range prioritized", sparseCost, denseCost)
 	}
-	if sparseCost, denseCost := greedySpillCost(sparse, 1000, true), greedySpillCost(dense, 1000, true); denseCost <= sparseCost {
+	if sparseCost, denseCost := greedySpillCost(sparse, 1000, true, false), greedySpillCost(dense, 1000, true, false); denseCost <= sparseCost {
 		t.Fatalf("density costs sparse/dense = %d/%d, want dense range prioritized", sparseCost, denseCost)
+	}
+	if plain, floored := greedySpillCost(sparse, 1000, true, false), greedySpillCost(sparse, 1000, true, true); floored <= plain {
+		t.Fatalf("long-range density costs plain/floored = %d/%d, want scalar-FP floor", plain, floored)
 	}
 	if got := greedyEffectiveMaxStage(TargetARM64, 391, true, false, 4); got != 3 {
 		t.Fatalf("medium density max stage = %d, want 3", got)
@@ -38,7 +41,7 @@ func TestGreedySpillDensityPrioritizesFrequentlyUsedShortRange(t *testing.T) {
 	}
 }
 
-func TestGreedyDensitySupportsAMD64VectorsButNotScalarFPRs(t *testing.T) {
+func TestGreedyDensitySupportsAMD64ScalarFPRs(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		target Target
@@ -48,7 +51,7 @@ func TestGreedyDensitySupportsAMD64VectorsButNotScalarFPRs(t *testing.T) {
 	}{
 		{name: "arm64 scalar float", target: TargetARM64, type_: TypeF64, bank: BankFPR, want: true},
 		{name: "amd64 vector", target: TargetAMD64, type_: TypeV128, bank: BankFPR, want: true},
-		{name: "amd64 scalar float", target: TargetAMD64, type_: TypeF64, bank: BankFPR, want: false},
+		{name: "amd64 scalar float", target: TargetAMD64, type_: TypeF64, bank: BankFPR, want: true},
 		{name: "amd64 integer", target: TargetAMD64, type_: TypeI64, bank: BankGPR, want: true},
 		{name: "unsupported", target: 0, want: false},
 	} {
@@ -58,10 +61,28 @@ func TestGreedyDensitySupportsAMD64VectorsButNotScalarFPRs(t *testing.T) {
 				Insts:  make([]Inst, greedyDensityMinInstructions),
 				VRegs:  []VRegData{{}, {Type: test.type_, Bank: test.bank}},
 			}
-			if got := greedyUsesDensityCost(f); got != test.want {
+			if got := greedyUsesDensityCost(f, false); got != test.want {
 				t.Fatalf("greedyUsesDensityCost = %t, want %t", got, test.want)
 			}
 		})
+	}
+}
+
+func TestGreedyDensityRetainsConservativeScalarFPRPolicyForRecursiveCalls(t *testing.T) {
+	f := &Func{
+		Target: TargetAMD64,
+		Insts:  make([]Inst, greedyDensityMinInstructions),
+		VRegs:  []VRegData{{}, {Type: TypeF64, Bank: BankFPR}},
+	}
+	if greedyUsesDensityCost(f, true) {
+		t.Fatal("recursive scalar-FP function enabled density priority")
+	}
+	if !greedyUsesDensityLongRangeFloor(f, false) || greedyUsesDensityLongRangeFloor(f, true) {
+		t.Fatal("scalar-FP long-range floor did not follow recursive-call policy")
+	}
+	f.VRegs[1] = VRegData{Type: TypeI64, Bank: BankGPR}
+	if !greedyUsesDensityCost(f, true) {
+		t.Fatal("recursive integer function disabled density priority")
 	}
 }
 
