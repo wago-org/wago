@@ -3543,6 +3543,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						return nil, 0, true, err
 					}
 				} else if instruction.Result != 0 {
+					location := plan.Allocation.LocationAt(instruction.Result, currentPosition)
 					dst := reg(instruction.Result)
 					if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
 						if dst != arm64FPParamRegisters[0] {
@@ -3558,6 +3559,11 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						}
 					} else if dst != arm64.X0 {
 						a.MovReg64(dst, arm64.X0)
+					}
+					if location.Kind == railmach.LocationSpill {
+						if err := arm64RailMachWriteLocation(&a, plan, instruction.Result, location, dst); err != nil {
+							return nil, 0, true, err
+						}
 					}
 				}
 				if err := emitARM64RailMachRoots(&a, plan, instruction.Source, currentPosition, true); err != nil {
@@ -12120,7 +12126,7 @@ func emitARM64StackMode(fn *railssa.Func, plan *railssa.EmissionPlan, target cor
 					}
 				}
 			}
-			if callBoundary && !calleePreservesPinned && cacheMemorySize {
+			if callBoundary && cacheMemorySize {
 				a.SubImm64(arm64.X25, arm64.X26, abi.ActualLinMemByteSize64Offset)
 				if !a.Load64(arm64.X25, arm64.X25, 0) {
 					return nil, 0, nil, fmt.Errorf("byte %d: cached memory size reload is not encodable", instr.Offset)
