@@ -76,6 +76,41 @@ func TestDraglineMemoryTreeDifferential(t *testing.T) {
 	}
 }
 
+func TestDraglineImmutableDispatchDifferential(t *testing.T) {
+	moduleBytes, err := os.ReadFile(filepath.Join(corpusDir, "workloads", "synthetic", "dispatch.wasm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compile := func(engine wago.CompilerEngine) *wago.Compiled {
+		compiled, err := wago.NewRuntimeConfig().WithCompiler(engine).WithTarget(wago.TargetNative).Compile(moduleBytes)
+		if err != nil {
+			t.Fatalf("%s compile: %v", engine, err)
+		}
+		t.Cleanup(func() { compiled.Close() })
+		return compiled
+	}
+	wantCode, gotCode := compile(wago.CompilerRailshot), compile(wago.CompilerDragline)
+	want, err := wago.Instantiate(wantCode, wago.InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer want.Close()
+	got, err := wago.Instantiate(gotCode, wago.InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer got.Close()
+	for selector := int32(0); selector <= 4; selector++ {
+		for _, args := range [][2]int32{{6, 7}, {-13, 5}, {0, -1}} {
+			wantResult, wantErr := want.Invoke("apply", wago.I32(selector), wago.I32(args[0]), wago.I32(args[1]))
+			gotResult, gotErr := got.Invoke("apply", wago.I32(selector), wago.I32(args[0]), wago.I32(args[1]))
+			if (wantErr == nil) != (gotErr == nil) || !slices.Equal(gotResult, wantResult) {
+				t.Fatalf("apply(%d,%d,%d): Dragline=(%#x,%v), Railshot=(%#x,%v)", selector, args[0], args[1], gotResult, gotErr, wantResult, wantErr)
+			}
+		}
+	}
+}
+
 func TestDraglineMulhiDifferential(t *testing.T) {
 	moduleBytes, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "bench", "xjb-mulhi.wasm"))
 	if err != nil {

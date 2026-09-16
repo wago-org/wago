@@ -2047,6 +2047,65 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				loadArgumentRegisters()
 				a.Load32(amd64.R10, amd64.RDI, selectorOffset)
+				if targets, immutableTable := nativeDenseLocalTableTargets(plan.Stack.Module); immutableTable {
+					// A private, unmodified dense table has no runtime null or
+					// descriptor state to inspect. Dispatch directly from the proven
+					// selector vector and retain call_indirect's bounds/type traps.
+					a.AluRI(7, amd64.R10, int32(len(targets)), false)
+					inBounds := a.JccPlaceholder(amd64.CondB)
+					metadata.recordTrap(a.Len(), wasmOffset, 5)
+					amd64EmitTrap(&a, 5, fn.Index, wasmOffset)
+					a.PatchRel32(inBounds, a.Len())
+					var done []int
+					callTypeKey := plan.Stack.TypeKeys[uint32(instruction.Aux)]
+					emitTarget := func(target uint32) {
+						targetType, typeOK := plan.Stack.Module.FuncTypeIndex(target)
+						if !typeOK || plan.Stack.Module.StructuralTypeKey(targetType.Index) != callTypeKey {
+							metadata.recordTrap(a.Len(), wasmOffset, 6)
+							amd64EmitTrap(&a, 6, fn.Index, wasmOffset)
+						} else {
+							loadArgumentRegisters()
+							if kind, inline := nativeInlineI32BinaryTarget(plan.Stack.Module, target); inline && len(args) == 2 && instruction.ResultCount() == 1 {
+								emitAMD64DirectIntegerBinary(&a, kind, amd64.RAX, amd64.RAX, amd64.RCX)
+							} else {
+								if instruction.ResultCount() > railmach.PrivateResultRegisters {
+									a.MovReg64(amd64.R10, amd64.RDI)
+								}
+								*relocs = append(*relocs, amd64CallReloc{at: a.CallRel32(), target: target - plan.Stack.ImportedFuncs})
+								metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 0)
+							}
+							amd64StagePrivateCallResults(&a, plan, instruction, callOffset)
+							done = append(done, a.JmpPlaceholder())
+						}
+					}
+					var emitRange func(int, int)
+					emitRange = func(low, high int) {
+						if high-low == 1 {
+							emitTarget(targets[low])
+							return
+						}
+						mid := low + (high-low)/2
+						a.AluRI(7, amd64.R10, int32(mid), false)
+						left := a.JccPlaceholder(amd64.CondB)
+						emitRange(mid, high)
+						a.PatchRel32(left, a.Len())
+						emitRange(low, mid)
+					}
+					emitRange(0, len(targets))
+					for _, branch := range done {
+						a.PatchRel32(branch, a.Len())
+					}
+					if err := amd64MaterializeCallResults(&a, plan, instruction, callOffset, currentPosition); err != nil {
+						return nil, 0, true, err
+					}
+					emitAMD64ExternalCallFPRSave(&a, plan, true)
+					if err := emitAMD64RailMachRoots(&a, plan, instruction.Source, currentPosition, true); err != nil {
+						return nil, 0, true, err
+					}
+					reloadGlobalDescriptors()
+					reloadStackCachedGlobal()
+					continue
+				}
 				a.Load64(amd64.R11, amd64.RBX, -80)
 				a.Load32(amd64.RAX, amd64.R11, 0)
 				a.Cmp32(amd64.R10, amd64.RAX)
@@ -2069,30 +2128,6 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				metadata.recordTrap(a.Len(), wasmOffset, 6)
 				amd64EmitTrap(&a, 6, fn.Index, wasmOffset)
 				a.PatchRel32(sigOK, a.Len())
-				var immutableDone []int
-				if targets, ok := nativeDenseLocalTableTargets(plan.Stack.Module); ok {
-					// Keep the runtime OOB/null/signature checks, then use the proven
-					// dense local table to enter Dragline's private ABI directly.
-					a.Load32(amd64.RAX, amd64.RDI, selectorOffset)
-					for slot, target := range targets {
-						a.AluRI(7, amd64.RAX, int32(slot), false)
-						next := a.JccPlaceholder(amd64.CondNE)
-						loadArgumentRegisters()
-						if kind, inline := nativeInlineI32BinaryTarget(plan.Stack.Module, target); inline && len(args) == 2 && instruction.ResultCount() == 1 {
-							emitAMD64DirectIntegerBinary(&a, kind, amd64.RAX, amd64.RAX, amd64.RCX)
-						} else {
-							if instruction.ResultCount() > railmach.PrivateResultRegisters {
-								a.MovReg64(amd64.R10, amd64.RDI)
-							}
-							*relocs = append(*relocs, amd64CallReloc{at: a.CallRel32(), target: target - plan.Stack.ImportedFuncs})
-							metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 0)
-						}
-						amd64StagePrivateCallResults(&a, plan, instruction, callOffset)
-						immutableDone = append(immutableDone, a.JmpPlaceholder())
-						a.PatchRel32(next, a.Len())
-					}
-					a.Load64(amd64.R10, amd64.R11, 8+coreruntime.TableEntryCodePtrOffset)
-				}
 				specializedDone := -1
 				if target, ok := nativeIndirectTarget(plan, instructionID); ok {
 					if metrics != nil {
@@ -2153,9 +2188,6 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.Pop(amd64.RBX)
 				amd64CopyDraglineInstanceContext(&a, amd64.RBX, amd64.R9)
 				a.PatchRel32(sameInstanceDone, a.Len())
-				for _, done := range immutableDone {
-					a.PatchRel32(done, a.Len())
-				}
 				if specializedDone >= 0 {
 					a.PatchRel32(specializedDone, a.Len())
 				}
