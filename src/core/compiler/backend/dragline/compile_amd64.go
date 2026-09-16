@@ -1418,6 +1418,20 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				return nil, 0, true, err
 			}
 		}
+		iterationStart := a.Len()
+		iterationRel32Start := len(a.Rel32Sites)
+		iterationFloatPatchStart := len(floatConstantPatches)
+		iterationSIMDPatchStart := len(simdConstantPatches)
+		iterationRelocStart := 0
+		if relocs != nil {
+			iterationRelocStart = len(*relocs)
+		}
+		iterationTrapStart, iterationSafepointStart, iterationSourceStart := 0, 0, 0
+		if metadata != nil {
+			iterationTrapStart = len(metadata.Traps)
+			iterationSafepointStart = len(metadata.Safepoints)
+			iterationSourceStart = len(metadata.Sources)
+		}
 		for _, instructionID := range plan.Schedule.Order[blockRange.Start : blockRange.Start+blockRange.Count] {
 			nextPosition := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 			forwardedSpill = 0
@@ -4343,10 +4357,47 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, err
 				}
 				counterLocation := plan.Allocation.Locations[counter]
+				unroll := plan.SignalsBounds && a.Len()-iterationStart <= 96 &&
+					len(a.Rel32Sites) == iterationRel32Start && len(floatConstantPatches) == iterationFloatPatchStart &&
+					len(simdConstantPatches) == iterationSIMDPatchStart && (relocs == nil || len(*relocs) == iterationRelocStart)
+				if metadata != nil {
+					unroll = unroll && len(metadata.Traps) == iterationTrapStart && len(metadata.Safepoints) == iterationSafepointStart
+				}
+				for _, region := range plan.CalleeSaves {
+					if region.RestoreBefore >= blockRange.Start && region.RestoreBefore < blockRange.Start+blockRange.Count {
+						unroll = false
+						break
+					}
+				}
+				var exitSites []int
+				if unroll {
+					iterationEnd := a.Len()
+					iteration := append([]byte(nil), a.B[iterationStart:iterationEnd]...)
+					var sources []corecompiler.FunctionSourceMap
+					if metadata != nil {
+						sources = append(sources, metadata.Sources[iterationSourceStart:]...)
+					}
+					for range 3 {
+						a.TestSelf(amd64RailMachPhysical(counterLocation), false)
+						exitSites = append(exitSites, a.JccPlaceholder(amd64.CondE))
+						copyStart := a.Len()
+						a.B = append(a.B, iteration...)
+						if metadata != nil {
+							delta := copyStart - iterationStart
+							for _, source := range sources {
+								metadata.recordSource(int(source.NativeOffset)+delta, source.WasmOffset)
+							}
+						}
+					}
+				}
 				a.TestSelf(amd64RailMachPhysical(counterLocation), false)
 				patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(amd64.CondNE), Target: uint32(blockID)})
+				exitSite := a.Len()
 				if exit != layoutSuccessor {
 					patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: exit})
+				}
+				for _, site := range exitSites {
+					a.PatchRel32(site, exitSite)
 				}
 				continue
 			}

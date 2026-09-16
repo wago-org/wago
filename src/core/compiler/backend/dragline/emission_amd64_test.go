@@ -115,6 +115,14 @@ func TestAMD64RailMachRotatesCanonicalCountdownLoop(t *testing.T) {
 	if !backwardJNE {
 		t.Fatal("rotated countdown has no backward JNE")
 	}
+	plan.SignalsBounds = true
+	unrolled, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("unrolled countdown finalization = used %t, err %v", used, err)
+	}
+	if len(unrolled) <= len(native)+16 {
+		t.Fatalf("signals countdown code = %d bytes, checked code = %d; loop was not unrolled", len(unrolled), len(native))
+	}
 	oldCount := plan.Schedule.BlockRanges[rotatedBlock].Count
 	plan.Schedule.BlockRanges[rotatedBlock].Count = 9
 	if _, _, ok := amd64RailMachRotatedZeroTestLatch(plan, rotatedBlock, rotatedEdge); ok {
