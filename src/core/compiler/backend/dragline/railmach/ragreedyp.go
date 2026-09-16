@@ -555,12 +555,17 @@ func greedyUsesDensityCost(f *Func) bool {
 	if f.Target == TargetARM64 {
 		return true
 	}
-	for reg := VReg(1); int(reg) < len(f.VRegs); reg++ {
-		if f.VRegs[reg].Bank == BankFPR {
-			return false
-		}
+	if f.Target != TargetAMD64 {
+		return false
 	}
-	return true
+	hasScalarFPR := false
+	for reg := VReg(1); int(reg) < len(f.VRegs); reg++ {
+		if f.VRegs[reg].Type == TypeV128 {
+			return true
+		}
+		hasScalarFPR = hasScalarFPR || f.VRegs[reg].Bank == BankFPR
+	}
+	return !hasScalarFPR
 }
 
 func greedyEffectiveMaxStage(target Target, functionInstructions int, density, hasCyclicCall bool, configured uint8) uint8 {
@@ -597,12 +602,12 @@ func greedySpillCost(interval LiveInterval, functionInstructions uint64, density
 	if !density {
 		return cost * length
 	}
-	// Large straight-line integer kernels carry sparse state across hundreds of
+	// Large straight-line kernels carry sparse state across hundreds of
 	// instructions. Range-area priority pins that state and spills dense
 	// temporaries at every use. Squared use density instead spends registers on
 	// the values that avoid the most dynamic spill traffic. Keep the conservative
-	// area score for smaller and floating-point functions, whose control-edge and
-	// bank-transfer costs need separate evidence before broadening this policy.
+	// area score for smaller functions and scalar floating-point kernels, whose
+	// control-edge and bank-transfer costs need separate evidence.
 	return max(uint64(1), cost*functionInstructions*functionInstructions/(length*length))
 }
 

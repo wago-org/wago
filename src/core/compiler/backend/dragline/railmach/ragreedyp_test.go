@@ -38,20 +38,25 @@ func TestGreedySpillDensityPrioritizesFrequentlyUsedShortRange(t *testing.T) {
 	}
 }
 
-func TestGreedyDensityWithFPRsIsARM64Only(t *testing.T) {
+func TestGreedyDensitySupportsAMD64VectorsButNotScalarFPRs(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		target Target
+		type_  MachineType
+		bank   Bank
 		want   bool
 	}{
-		{name: "arm64", target: TargetARM64, want: true},
-		{name: "amd64", target: TargetAMD64, want: false},
+		{name: "arm64 scalar float", target: TargetARM64, type_: TypeF64, bank: BankFPR, want: true},
+		{name: "amd64 vector", target: TargetAMD64, type_: TypeV128, bank: BankFPR, want: true},
+		{name: "amd64 scalar float", target: TargetAMD64, type_: TypeF64, bank: BankFPR, want: false},
+		{name: "amd64 integer", target: TargetAMD64, type_: TypeI64, bank: BankGPR, want: true},
+		{name: "unsupported", target: 0, want: false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f := &Func{
 				Target: test.target,
 				Insts:  make([]Inst, greedyDensityMinInstructions),
-				VRegs:  []VRegData{{}, {Bank: BankFPR}},
+				VRegs:  []VRegData{{}, {Type: test.type_, Bank: test.bank}},
 			}
 			if got := greedyUsesDensityCost(f); got != test.want {
 				t.Fatalf("greedyUsesDensityCost = %t, want %t", got, test.want)
