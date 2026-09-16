@@ -322,6 +322,14 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	// call chain cannot masquerade as this parked activation.
 	markNativeActiveState(state, id)
 	defer unmarkNativeActiveState(state, id)
+	if root != nil && root != active {
+		// The producer parked on the root's native activation and invocation gate.
+		// A callback authorized by that invocation may therefore re-enter either
+		// the active producer or the public relay without waiting on its own gate.
+		rootState := a.stateFor(root)
+		markNativeActiveState(rootState, id)
+		defer unmarkNativeActiveState(rootState, id)
+	}
 	if active != root {
 		restoreInvocationContext := bindHostInvocationContext(ctrl, invocation)
 		defer restoreInvocationContext()
