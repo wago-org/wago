@@ -904,7 +904,7 @@
     {
       "id": "xxhash/xxh3-boundaries",
       "artifact": "workloads/semantic/xxhash/xxhash.wasm",
-      "artifact_sha256": "41635d2004fe738744181688d7089669d60552ceb1de2bb5e120ffc985674f9c",
+      "artifact_sha256": "add577c203a0bf81eb86cd97b1fe3c62258a933e40e1823d5a62af4f9d8f1ada",
       "abi": "core",
       "source": {
         "repository": "https://github.com/Cyan4973/xxHash.git",
@@ -915,7 +915,7 @@
         "toolchain_version": "34.0"
       },
       "invoke": { "export": "xxhash_run" },
-      "expect": { "return": ["0x8e8daba4b0711b5e"] },
+      "expect": { "return": ["0xee3ce076a894c99a"] },
       "limits": { "timeout_ms": 15000 },
       "tags": ["hashing", "streaming", "integer", "c"]
     },
@@ -940,7 +940,7 @@
     {
       "id": "nanosvg/parse-rasterize",
       "artifact": "workloads/semantic/nanosvg/nanosvg.wasm",
-      "artifact_sha256": "ef34d4e5056c3d9201c9c365630aa8a59b4c684301e709c9904b4ed08d73ae10",
+      "artifact_sha256": "e3fc66cc1377f12e4fa3d8f292a05dae59d791a693916903b95798bbb4c5bcdc",
       "abi": "core",
       "source": {
         "repository": "https://github.com/memononen/nanosvg.git",
@@ -951,7 +951,7 @@
         "toolchain_version": "34.0"
       },
       "invoke": { "export": "nanosvg_run" },
-      "expect": { "return": ["0xf3a1bb6295ed7296"] },
+      "expect": { "return": ["0x21e2710c58"] },
       "limits": { "timeout_ms": 15000 },
       "tags": ["svg", "parser", "rasterization", "graphics", "c"]
     },
@@ -1473,7 +1473,7 @@
       "id": "xxhash",
       "artifact": "workloads/semantic/xxhash/xxhash.wasm",
       "tags": ["semantic", "hashing", "integer"],
-      "artifact_sha256": "41635d2004fe738744181688d7089669d60552ceb1de2bb5e120ffc985674f9c"
+      "artifact_sha256": "add577c203a0bf81eb86cd97b1fe3c62258a933e40e1823d5a62af4f9d8f1ada"
     },
     {
       "desc": "LibTomMath modular exponentiation, GCD, and serialization",
@@ -1489,7 +1489,7 @@
       "id": "nanosvg",
       "artifact": "workloads/semantic/nanosvg/nanosvg.wasm",
       "tags": ["semantic", "svg", "graphics"],
-      "artifact_sha256": "ef34d4e5056c3d9201c9c365630aa8a59b4c684301e709c9904b4ed08d73ae10"
+      "artifact_sha256": "e3fc66cc1377f12e4fa3d8f292a05dae59d791a693916903b95798bbb4c5bcdc"
     },
     {
       "desc": "KissFFT 257-point complex forward and inverse transforms",

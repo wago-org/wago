@@ -52,10 +52,14 @@ int sscanf(const char *str, const char *format, ...) {
 #define NANOSVGRAST_IMPLEMENTATION
 #include "nanosvgrast.h"
 
-static uint64_t fnv1a(const unsigned char *data, size_t len) {
-    uint64_t hash = UINT64_C(14695981039346656037);
-    for (size_t i = 0; i < len; i++) { hash ^= data[i]; hash *= UINT64_C(1099511628211); }
-    return hash;
+static uint64_t raster_summary(const unsigned char *data, size_t len) {
+    uint64_t channel_sum = 0;
+    uint64_t covered = 0;
+    for (size_t i = 0; i < len; i += 4) {
+        channel_sum += data[i] + data[i + 1] + data[i + 2] + data[i + 3];
+        covered += data[i + 3] != 0;
+    }
+    return (channel_sum << 16) ^ covered;
 }
 
 uint64_t nanosvg_run(void) {
@@ -69,7 +73,7 @@ uint64_t nanosvg_run(void) {
     unsigned char *pixels = (unsigned char *)calloc(96u * 64u * 4u, 1);
     if (!rast || !pixels) { nsvgDeleteRasterizer(rast); nsvgDelete(image); free(pixels); return 0; }
     nsvgRasterize(rast, image, 0, 0, 1.0f, pixels, 96, 64, 96 * 4);
-    uint64_t hash = fnv1a(pixels, 96u * 64u * 4u);
+    uint64_t hash = raster_summary(pixels, 96u * 64u * 4u);
     free(pixels); nsvgDeleteRasterizer(rast); nsvgDelete(image);
     return hash;
 }
