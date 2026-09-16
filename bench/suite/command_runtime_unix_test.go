@@ -11,7 +11,14 @@ import (
 	"github.com/wago-org/wasi/p1"
 )
 
-func commandRuntimeImports(m corpusModule, stdin []byte, stdout, stderr io.Writer) (wago.Imports, error) {
+type fixedCommandClock struct{}
+
+func (fixedCommandClock) Realtime() (uint64, uint64, error)   { return 0, 1, nil }
+func (fixedCommandClock) Monotonic() (uint64, uint64, error)  { return 0, 1, nil }
+func (fixedCommandClock) ProcessCPU() (uint64, uint64, error) { return 0, 1, nil }
+func (fixedCommandClock) ThreadCPU() (uint64, uint64, error)  { return 0, 1, nil }
+
+func commandRuntimeImports(m corpusModule, stdin []byte, stdout, stderr io.Writer) (*wago.Imports, error) {
 	switch m.Command.Runtime {
 	case "core":
 		return nil, nil
@@ -19,10 +26,10 @@ func commandRuntimeImports(m corpusModule, stdin []byte, stdout, stderr io.Write
 		cfg := p1.Config{
 			Args: commandArgs(m), Stdin: bytes.NewReader(stdin),
 			Stdout: stdout, Stderr: stderr,
-			Now: func() int64 { return 0 },
+			Clocks: fixedCommandClock{},
 		}
 		if dir := commandPreopen(m); dir != "" {
-			cfg.Preopens = map[string]string{"/": dir}
+			cfg.Mounts = []p1.Preopen{{GuestPath: "/", HostPath: dir, Read: true, Write: true, MutateDirectory: true}}
 		}
 		return p1.Imports(cfg), nil
 	default:

@@ -149,7 +149,7 @@ func wagoSetup(b *testing.B, wasmBytes []byte, export string) (func(n int32) int
 	lin := jm.LinearMemory()
 	call := func(n int32) int32 {
 		binary.LittleEndian.PutUint32(serArgs, uint32(n))
-		if err := eng.Invoke(entry, serArgs, lin, trap, results); err != nil {
+		if err := eng.Call(entry, serArgs, lin, trap, results); err != nil {
 			b.Fatal(err)
 		}
 		return int32(binary.LittleEndian.Uint32(results))
@@ -183,7 +183,7 @@ func BenchmarkExecFibLoop_wazero(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		fn.Invoke(ctx, 30)
+		fn.Call(ctx, 30)
 	}
 }
 
@@ -202,7 +202,7 @@ func BenchmarkExecFibRec_wazero(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		fn.Invoke(ctx, 25)
+		fn.Call(ctx, 25)
 	}
 }
 
@@ -232,7 +232,7 @@ func BenchmarkExecCallOverhead_wazero(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		fn.Invoke(ctx, 1)
+		fn.Call(ctx, 1)
 	}
 }
 
@@ -355,13 +355,13 @@ func BenchmarkExecHostRoundtrip_wazero(b *testing.B) {
 		b.Fatal(err)
 	}
 	fn := mod.ExportedFunction("roundtrip")
-	if _, err := fn.Invoke(ctx, 1); err != nil { // warm up
+	if _, err := fn.Call(ctx, 1); err != nil { // warm up
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := fn.Invoke(ctx, 1); err != nil {
+		if _, err := fn.Call(ctx, 1); err != nil {
 			b.Fatal(err)
 		}
 	}
