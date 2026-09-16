@@ -1503,6 +1503,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 			}
 			_, fusedComparison := nativeAMD64FusionConsumer(plan, instructionID)
+			if _, _, fusedSelect := nativeAMD64ComparisonSelectConsumer(plan, instructionID); fusedSelect {
+				fusedComparison = true
+			}
 			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect && instruction.Result != 0 &&
 				plan.Allocation.LocationAt(instruction.Result, currentPosition).Kind == railmach.LocationSpill && !fusedComparison {
 				pendingSpill = instruction.Result
@@ -3696,10 +3699,15 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			if semanticOp == wasm.InstrSelect {
 				rhs := reg(operands[1].Reg)
-				condition := reg(operands[2].Reg)
-				a.TestSelf(condition, false)
+				falseCondition := amd64.CondE
+				if _, comparison, fused := nativeAMD64ComparisonSelectProducer(plan, instructionID); fused {
+					falseCondition = comparison ^ 1
+				} else {
+					condition := reg(operands[2].Reg)
+					a.TestSelf(condition, false)
+				}
 				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
-					chooseRHS := a.JccPlaceholder(amd64.CondE)
+					chooseRHS := a.JccPlaceholder(falseCondition)
 					a.FMov(dst, lhs, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
 					done := a.JmpPlaceholder()
 					a.PatchRel32(chooseRHS, a.Len())
@@ -3713,7 +3721,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					if out != lhs {
 						a.MovReg64(out, lhs)
 					}
-					a.Cmovcc(amd64.CondE, out, rhs, plan.Machine.VRegs[instruction.Result].Type.IsWideGPR())
+					a.Cmovcc(falseCondition, out, rhs, plan.Machine.VRegs[instruction.Result].Type.IsWideGPR())
 					if out != dst {
 						a.MovReg64(dst, out)
 					}
@@ -4623,6 +4631,61 @@ func nativeAMD64FusionProducer(plan *nativeBackendPlan, consumer uint32) (uint32
 		return 0, false
 	}
 	return producer, producer < consumer && int(producer) < len(plan.Machine.Insts)
+}
+
+func nativeAMD64ComparisonSelectConsumer(plan *nativeBackendPlan, producer uint32) (consumer uint32, condition amd64.Cond, ok bool) {
+	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.Allocation == nil || int(producer) >= len(plan.Machine.Insts) || int(producer) >= len(plan.Allocation.InstructionPositions) || int(producer) >= len(plan.Schedule.BlockOf) {
+		return 0, 0, false
+	}
+	position := plan.Allocation.InstructionPositions[producer]
+	if int(position)+1 >= len(plan.Schedule.Order) {
+		return 0, 0, false
+	}
+	consumer = plan.Schedule.Order[position+1]
+	if int(consumer) >= len(plan.Machine.Insts) || int(consumer) >= len(plan.Schedule.BlockOf) || plan.Schedule.BlockOf[producer] != plan.Schedule.BlockOf[consumer] {
+		return 0, 0, false
+	}
+	producerInstruction := plan.Machine.Insts[producer]
+	condition, ok = amd64FusedComparisonCond(railmach.SemanticOpcode(producerInstruction.Op))
+	if !ok || producerInstruction.Result == 0 || railmach.SemanticOpcode(plan.Machine.Insts[consumer].Op) != wasm.InstrSelect {
+		return 0, 0, false
+	}
+	operands := plan.Machine.InstructionOperands(consumer)
+	if len(operands) != 3 || operands[2].Reg != producerInstruction.Result {
+		return 0, 0, false
+	}
+	uses := uint32(0)
+	for instructionID := range plan.Machine.Insts {
+		for _, operand := range plan.Machine.InstructionOperands(uint32(instructionID)) {
+			if operand.Reg == producerInstruction.Result {
+				uses++
+			}
+		}
+	}
+	for _, transfer := range plan.Machine.Transfers {
+		if transfer.Src == producerInstruction.Result {
+			uses++
+		}
+	}
+	for _, result := range plan.Machine.Results {
+		if result == producerInstruction.Result {
+			uses++
+		}
+	}
+	return consumer, condition, uses == 1
+}
+
+func nativeAMD64ComparisonSelectProducer(plan *nativeBackendPlan, consumer uint32) (producer uint32, condition amd64.Cond, ok bool) {
+	if plan == nil || plan.Schedule == nil || plan.Allocation == nil || int(consumer) >= len(plan.Allocation.InstructionPositions) {
+		return 0, 0, false
+	}
+	position := plan.Allocation.InstructionPositions[consumer]
+	if position == 0 || int(position) > len(plan.Schedule.Order)-1 {
+		return 0, 0, false
+	}
+	producer = plan.Schedule.Order[position-1]
+	gotConsumer, condition, ok := nativeAMD64ComparisonSelectConsumer(plan, producer)
+	return producer, condition, ok && gotConsumer == consumer
 }
 
 // amd64RailMachRotatedZeroTestLatch recognizes a recurrence whose loop header

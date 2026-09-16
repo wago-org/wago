@@ -620,6 +620,27 @@ func TestAMD64RailMachShuffleUsesSelectedRegisterForms(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachFusesIntegerComparisonIntoSelect(t *testing.T) {
+	body := []byte{
+		0x20, 0x02, // local.get 2: true value
+		0x20, 0x03, // local.get 3: false value
+		0x20, 0x00, // local.get 0
+		0x20, 0x01, // local.get 1
+		0x48, // i32.lt_s
+		0x1b, // select
+		0x0b,
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	if bytes.Contains(output.Code, []byte{0x0f, 0x9c}) || !bytes.Contains(output.Code, []byte{0x0f, 0x4d}) {
+		t.Fatalf("comparison-fed select did not use flags directly: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredContiguousShuffleUsesAlignr(t *testing.T) {
 	body := []byte{
 		0x20, 0x00, // local.get 0

@@ -3895,6 +3895,79 @@ func TestDraglineNativeRailMachSelect(t *testing.T) {
 	}
 }
 
+func TestDraglineNativeRailMachComparisonSelect(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		opcode byte
+		want   int32
+	}{
+		{"eq", 0x46, 22},
+		{"ne", 0x47, 11},
+		{"lt_s", 0x48, 11},
+		{"lt_u", 0x49, 22},
+		{"gt_s", 0x4a, 22},
+		{"gt_u", 0x4b, 11},
+		{"le_s", 0x4c, 11},
+		{"le_u", 0x4d, 22},
+		{"ge_s", 0x4e, 22},
+		{"ge_u", 0x4f, 11},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x20, 0x02, 0x20, 0x03, 0x20, 0x00, 0x20, 0x01, test.opcode, 0x1b, 0x0b}
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			result, err := instance.Invoke("run", I32(-1), I32(1), I32(11), I32(22))
+			if err != nil || len(result) != 1 || AsI32(result[0]) != test.want {
+				t.Fatalf("comparison select = %v, %v; want %d", result, err, test.want)
+			}
+		})
+	}
+}
+
+func TestDraglineNativeRailMachWideComparisonFloatSelect(t *testing.T) {
+	body := []byte{0x20, 0x02, 0x20, 0x03, 0x20, 0x00, 0x20, 0x01, 0x53, 0x1b, 0x0b}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.F64, wasm.F64}, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	lhs, rhs := math.Float64bits(1.25), math.Float64bits(2.5)
+	for _, test := range []struct {
+		a, b int64
+		want uint64
+	}{{-1, 1, lhs}, {1, -1, rhs}} {
+		result, err := instance.Invoke("run", I64(test.a), I64(test.b), lhs, rhs)
+		if err != nil || len(result) != 1 || result[0] != test.want {
+			t.Fatalf("wide comparison float select = %v, %v; want %#x", result, err, test.want)
+		}
+	}
+}
+
 func TestDraglineNativeRailMachGlobals(t *testing.T) {
 	for _, test := range []struct {
 		name string
