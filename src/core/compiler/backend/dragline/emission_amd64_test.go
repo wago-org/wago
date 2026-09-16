@@ -330,6 +330,45 @@ func TestAMD64StructuredScalarResidencyPinsHotSubsetWithoutSIMD(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredLoadsSIMDDirectlyFromPinnedI32Address(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0xfd, 0x00, 0x04, 0x10, // v128.load offset=16
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner railssa.EmissionPlanner
+	plan, err := planCompilerFunc(fn, &planner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	native, _, _, err := emitAMD64Stack(fn, plan, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var direct amd64.Asm
+	direct.MovReg32(amd64.R10, amd64.R12)
+	direct.VMovdquLoadIdx(4, amd64.RBX, amd64.R10, 16)
+	if !bytes.Contains(native, direct.B) {
+		t.Fatalf("structured pinned-address SIMD load was not direct: %x", native)
+	}
+}
+
 func TestAMD64StructuredSIMDHighRegistersRespectStackPressure(t *testing.T) {
 	if !amd64StructuredSIMDHighRegisterWorthwhile(5, 0, 10) {
 		t.Fatal("the base six resident registers must remain available")

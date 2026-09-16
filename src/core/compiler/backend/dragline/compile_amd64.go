@@ -6187,6 +6187,48 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		if flushVector {
 			flushVectorStackCache()
 		}
+		if reachable && instr.Kind == wasm.InstrLocalGet && int(instr.U32()) < len(sf.Locals) &&
+			sf.Locals[instr.U32()] == wasm.I32 && localPinned[instr.U32()] && instrIndex+1 < len(sf.Instrs) {
+			descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex + 1))
+			if ok && descriptor.Kind == wasm.InstrV128Load && descriptor.MemArg.Offset <= math.MaxInt32 &&
+				descriptor.MemArg.Offset <= math.MaxUint64-16 {
+				if len(stackTypes) >= int(sf.MaxStack) {
+					return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
+				}
+				elideBounds := plan.ElidesBoundsCheck(uint32(instrIndex+1)) || localMemoryChecksElided[instrIndex+1]
+				if !elideBounds {
+					a.MovReg32(amd64.R11, localRegisters[instr.U32()])
+					end := descriptor.MemArg.Offset + 16
+					if planned := localMemoryCheckEnds[instrIndex+1]; planned != 0 {
+						end = planned
+					}
+					if end <= math.MaxInt32 {
+						a.AluRI(0, amd64.R11, int32(end), true)
+					} else {
+						a.MovImm64(amd64.RAX, end)
+						a.Add64(amd64.R11, amd64.RAX)
+					}
+					bound := amd64.RBP
+					if !cacheMemorySize {
+						a.Load64(amd64.RAX, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+						bound = amd64.RAX
+					}
+					a.Cmp64(amd64.R11, bound)
+					inBounds := a.JccPlaceholder(amd64.CondBE)
+					next := sf.Instrs[instrIndex+1]
+					metadata.recordTrap(a.Len(), next.Offset, 3)
+					amd64EmitTrap(&a, 3, fn.Index, next.Offset)
+					a.PatchRel32(inBounds, a.Len())
+				}
+				a.MovReg32(amd64.R10, localRegisters[instr.U32()])
+				dst := reserveV128(len(stackTypes))
+				a.VMovdquLoadIdx(dst, amd64.RBX, amd64.R10, int32(descriptor.MemArg.Offset))
+				stackTypes = append(stackTypes, wasm.V128)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+				instrIndex++
+				continue
+			}
+		}
 		if !registerLocals && reachable && instrIndex+3 < len(sf.Instrs) && instr.Kind == wasm.InstrLocalGet &&
 			(sf.Instrs[instrIndex+3].Kind == wasm.InstrIf || sf.Instrs[instrIndex+3].Kind == wasm.InstrBrIf) {
 			comparison := sf.Instrs[instrIndex+2]
