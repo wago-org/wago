@@ -383,6 +383,109 @@ func TestSparseSimplifyGVNsAcrossUniquePredecessor(t *testing.T) {
 	}
 }
 
+func TestSparseSimplifyGVNsGlobalGetAcrossUnrelatedMemoryWrite(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x23, 0x00, // global.get 0
+			0x41, 0x00, // i32.const 0
+			0x36, 0x02, 0x00, // i32.store
+			0x23, 0x00, // global.get 0
+			0x1a,       // drop
+			0x41, 0x04, // i32.const 4
+			0x24, 0x00, // global.set 0
+			0x23, 0x00, // global.get 0
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, semantic, _, result := buildSimplifyTest(t, m)
+	gets := make([]FlowValueID, 0, 3)
+	for _, instruction := range semantic.Insts {
+		if instruction.Op == wasm.InstrGlobalGet {
+			gets = append(gets, instruction.Result)
+		}
+	}
+	if len(gets) != 3 || resolveAlias(result.Aliases, gets[1]) != gets[0] {
+		t.Fatalf("global.get aliases = %v, want second -> first", result.Aliases)
+	}
+	if resolveAlias(result.Aliases, gets[2]) == gets[0] {
+		t.Fatal("global.set did not invalidate global.get GVN")
+	}
+}
+
+func TestSparseSimplifyGVNsGlobalGetAcrossUniquePredecessor(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x23, 0x00, // global.get 0
+			0x1a,       // drop
+			0x20, 0x00, // local.get 0
+			0x04, 0x7f, // if (result i32)
+			0x23, 0x00, //   global.get 0
+			0x05,       // else
+			0x41, 0x00, //   i32.const 0
+			0x0b, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, semantic, _, result := buildSimplifyTest(t, m)
+	gets := make([]FlowValueID, 0, 2)
+	for _, instruction := range semantic.Insts {
+		if instruction.Op == wasm.InstrGlobalGet {
+			gets = append(gets, instruction.Result)
+		}
+	}
+	if len(gets) != 2 || resolveAlias(result.Aliases, gets[1]) != gets[0] || result.Metrics.CrossBlockAliases == 0 {
+		t.Fatalf("global.get values=%v aliases=%v metrics=%#v", gets, result.Aliases, result.Metrics)
+	}
+}
+
+func TestSparseSimplifyDoesNotGVNGlobalGetAcrossPredecessorWrite(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x23, 0x00, // global.get 0
+			0x1a,       // drop
+			0x41, 0x04, // i32.const 4
+			0x24, 0x00, // global.set 0
+			0x20, 0x00, // local.get 0
+			0x04, 0x7f, // if (result i32)
+			0x23, 0x00, //   global.get 0
+			0x05,       // else
+			0x41, 0x00, //   i32.const 0
+			0x0b, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, semantic, _, result := buildSimplifyTest(t, m)
+	gets := make([]FlowValueID, 0, 2)
+	for _, instruction := range semantic.Insts {
+		if instruction.Op == wasm.InstrGlobalGet {
+			gets = append(gets, instruction.Result)
+		}
+	}
+	if len(gets) != 2 || resolveAlias(result.Aliases, gets[1]) == gets[0] {
+		t.Fatalf("global.get values=%v aliases=%v", gets, result.Aliases)
+	}
+}
+
 func TestSparseSimplifyGVNsEquivalentFloatArithmeticAcrossUniquePredecessor(t *testing.T) {
 	m := scalarModule([]wasm.ValType{wasm.F64, wasm.I32}, []wasm.ValType{wasm.F64}, []byte{
 		0x20, 0x00, 0x20, 0x00, 0xa2, 0x1a, // f64.mul(local 0, local 0); drop

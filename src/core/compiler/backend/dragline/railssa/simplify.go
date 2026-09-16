@@ -523,9 +523,9 @@ func localPureGVN(cfg *CFG, flow *ValueFlow, semantic *SemanticFunc, metadata *M
 	result.gvnKeys = resizeClear(result.gvnKeys, size)
 	result.gvnValues = resizeClear(result.gvnValues, size)
 	mask := uint64(size - 1)
-	insert := func(instructionID uint32) {
+	insert := func(instructionID uint32, globalClean bool) {
 		instruction := semantic.Insts[instructionID]
-		if instruction.Result == 0 || !pureGVNOp(instruction.Op) {
+		if instruction.Result == 0 || !pureGVNOp(instruction.Op) || instruction.Op == wasm.InstrGlobalGet && !globalClean {
 			return
 		}
 		meta := metadata.Instructions[instruction.Source]
@@ -533,6 +533,9 @@ func localPureGVN(cfg *CFG, flow *ValueFlow, semantic *SemanticFunc, metadata *M
 			return
 		}
 		hash := gvnHash(semantic, result.Aliases, instructionID)
+		if instruction.Op == wasm.InstrGlobalGet {
+			hash ^= uint64(1) * 0x9e3779b97f4a7c15
+		}
 		key := hash
 		if key == 0 {
 			key = 1
@@ -554,6 +557,7 @@ func localPureGVN(cfg *CFG, flow *ValueFlow, semantic *SemanticFunc, metadata *M
 		// early-exit checks. Stop at a join or cycle; the independent verifier
 		// repeats the same dominance walk for every committed alias.
 		predecessorOf := BlockID(blockID)
+		globalClean := true
 		for steps := 0; steps < len(cfg.Blocks); steps++ {
 			predRecord := cfg.Blocks[predecessorOf]
 			if predRecord.PredCount != 1 {
@@ -564,26 +568,41 @@ func localPureGVN(cfg *CFG, flow *ValueFlow, semantic *SemanticFunc, metadata *M
 				break
 			}
 			predBlock := semantic.Blocks[predecessor]
+			lastGlobalWrite := predBlock.InstStart
+			for instructionID := predBlock.InstStart; instructionID < predBlock.InstStart+predBlock.InstCount; instructionID++ {
+				meta := metadata.Instructions[semantic.Insts[instructionID].Source]
+				if meta.Writes&HeapGlobal != 0 {
+					lastGlobalWrite = instructionID + 1
+				}
+			}
 			for instructionID := predBlock.InstStart; instructionID < predBlock.InstStart+predBlock.InstCount; instructionID++ {
 				// Runtime-state reads are CSEd only inside one basic block. This
 				// avoids needing path-sensitive memory epochs at joins.
 				if semantic.Insts[instructionID].Op == wasm.InstrMemorySize {
 					continue
 				}
-				insert(instructionID)
+				insert(instructionID, globalClean && instructionID >= lastGlobalWrite)
 			}
+			globalClean = globalClean && lastGlobalWrite == predBlock.InstStart
 			predecessorOf = predecessor
 		}
+		globalEpoch := uint64(1)
 		for instructionID := block.InstStart; instructionID < block.InstStart+block.InstCount; instructionID++ {
 			instruction := semantic.Insts[instructionID]
+			meta := metadata.Instructions[instruction.Source]
+			if meta.Writes&HeapGlobal != 0 {
+				globalEpoch++
+			}
 			if instruction.Result == 0 || !pureGVNOp(instruction.Op) {
 				continue
 			}
-			meta := metadata.Instructions[instruction.Source]
 			if !gvnEligible(instruction.Op, meta) {
 				continue
 			}
 			hash := gvnHash(semantic, result.Aliases, instructionID)
+			if instruction.Op == wasm.InstrGlobalGet {
+				hash ^= globalEpoch * 0x9e3779b97f4a7c15
+			}
 			key := hash
 			if key == 0 {
 				key = 1
@@ -664,6 +683,7 @@ func equivalentSIMDImmediate(a, b SemanticSIMDImmediate) bool {
 func pureGVNOp(kind wasm.InstrKind) bool {
 	switch kind {
 	case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrV128Const,
+		wasm.InstrGlobalGet,
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 		wasm.InstrI32Clz, wasm.InstrI32Ctz, wasm.InstrI32Popcnt,
 		wasm.InstrI64Clz, wasm.InstrI64Ctz, wasm.InstrI64Popcnt,
@@ -692,7 +712,52 @@ func gvnEligible(kind wasm.InstrKind, meta InstructionMetadata) bool {
 	if kind == wasm.InstrMemorySize {
 		return meta.Reads == HeapLinearMemory|HeapRuntimeState
 	}
+	if kind == wasm.InstrGlobalGet {
+		return meta.Reads == HeapGlobal
+	}
 	return meta.Reads == 0
+}
+
+func globalGVNEquivalent(cfg *CFG, semantic *SemanticFunc, metadata *Metadata, previous, current uint32) bool {
+	if cfg == nil || semantic == nil || metadata == nil || previous >= current || int(current) >= len(semantic.Insts) {
+		return false
+	}
+	previousBlock, currentBlock := semanticInstructionBlock(semantic, previous), semanticInstructionBlock(semantic, current)
+	cleanRange := func(start, end uint32) bool {
+		for instructionID := start; instructionID < end; instructionID++ {
+			source := semantic.Insts[instructionID].Source
+			if int(source) >= len(metadata.Instructions) || metadata.Instructions[source].Writes&HeapGlobal != 0 {
+				return false
+			}
+		}
+		return true
+	}
+	if previousBlock == currentBlock {
+		return cleanRange(previous+1, current)
+	}
+	if !cleanRange(semantic.Blocks[currentBlock].InstStart, current) {
+		return false
+	}
+	block := currentBlock
+	for steps := 0; steps < len(cfg.Blocks); steps++ {
+		record := cfg.Blocks[block]
+		if record.PredCount != 1 {
+			return false
+		}
+		block = cfg.Preds[record.PredStart]
+		if block == previousBlock {
+			previousRecord := semantic.Blocks[previousBlock]
+			return cleanRange(previous+1, previousRecord.InstStart+previousRecord.InstCount)
+		}
+		if int(block) >= len(semantic.Blocks) {
+			return false
+		}
+		recordSemantic := semantic.Blocks[block]
+		if !cleanRange(recordSemantic.InstStart, recordSemantic.InstStart+recordSemantic.InstCount) {
+			return false
+		}
+	}
+	return false
 }
 
 func resolveAlias(aliases []FlowValueID, value FlowValueID) FlowValueID {
@@ -1162,7 +1227,7 @@ func VerifySimplify(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *SemanticF
 				previous := semantic.InstructionMap[targetDef.Instr]
 				previousBlock, currentBlock := semanticInstructionBlock(semantic, previous-1), semanticInstructionBlock(semantic, current-1)
 				currentInstruction := semantic.Insts[current-1]
-				if previous == 0 || previous >= current || !gvnBlockDominates(cfg, previousBlock, currentBlock) || !pureGVNOp(currentInstruction.Op) || !gvnEquivalent(flow, semantic, result.Aliases, current-1, target) || currentInstruction.Op == wasm.InstrMemorySize && previousBlock != currentBlock {
+				if previous == 0 || previous >= current || !gvnBlockDominates(cfg, previousBlock, currentBlock) || !pureGVNOp(currentInstruction.Op) || !gvnEquivalent(flow, semantic, result.Aliases, current-1, target) || currentInstruction.Op == wasm.InstrMemorySize && previousBlock != currentBlock || currentInstruction.Op == wasm.InstrGlobalGet && !globalGVNEquivalent(cfg, semantic, metadata, previous-1, current-1) {
 					return fmt.Errorf("railssa: GVN alias v%d -> v%d lacks dominating equivalence", id, target)
 				}
 				previousMeta := metadata.Instructions[semantic.Insts[previous-1].Source]

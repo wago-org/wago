@@ -736,8 +736,8 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 		t.Fatal("single-loop dense-global call helper was rejected")
 	}
 	stack.MaxLoopDepth = 2
-	if amd64RailMachCandidate(stack, false, true) {
-		t.Fatal("nested-loop dense-global call helper was admitted")
+	if !amd64RailMachCandidate(stack, false, true) {
+		t.Fatal("nested-loop dense-global call helper was rejected")
 	}
 	stack.MaxLoopDepth = 0
 	stack.HasReferences = false
@@ -760,14 +760,14 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 	}
 }
 
-func TestAMD64RailMachDenseGlobalGateOnlyAppliesToGlobalUsers(t *testing.T) {
+func TestAMD64RailMachAdmitsDenseGlobalNestedLoops(t *testing.T) {
 	withoutGlobals := &railssa.StackFunc{MaxLoopDepth: 2, Instrs: []railssa.StackInstr{{Kind: wasm.InstrI64Add}}}
 	if !amd64RailMachCandidate(withoutGlobals, false, true) {
 		t.Fatal("global-free nested loop was rejected in a dense-global module")
 	}
 	withGlobals := &railssa.StackFunc{MaxLoopDepth: 2, Instrs: []railssa.StackInstr{{Kind: wasm.InstrGlobalGet}}}
-	if amd64RailMachCandidate(withGlobals, false, true) {
-		t.Fatal("global-backed nested loop was admitted in a dense-global module")
+	if !amd64RailMachCandidate(withGlobals, false, true) {
+		t.Fatal("global-backed nested loop was rejected in a dense-global module")
 	}
 }
 

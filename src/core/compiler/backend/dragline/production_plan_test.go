@@ -226,6 +226,34 @@ func TestNativeAMD64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
 	}
 }
 
+func TestNativeAMD64StackCachesProfitableCallCrossingGlobals(t *testing.T) {
+	stack := &railssa.StackFunc{Globals: []wasm.ValType{wasm.I32, wasm.I64, wasm.ExternRef}}
+	machine := &railmach.Func{
+		Target: railmach.TargetAMD64,
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrCall},
+			{Op: wasm.InstrGlobalGet, Aux: 0},
+			{Op: wasm.InstrGlobalGet, Aux: 1},
+			{Op: wasm.InstrGlobalGet, Aux: 2},
+			{Op: wasm.InstrGlobalGet, Aux: 0},
+		},
+		Blocks: []railmach.Block{
+			{InstStart: 0, InstCount: 1, Weight: 1},
+			{InstStart: 1, InstCount: 1, Weight: 64},
+			{InstStart: 2, InstCount: 1, Weight: 32},
+			{InstStart: 3, InstCount: 1, Weight: 128},
+			{InstStart: 4, InstCount: 1, Weight: 1},
+		},
+	}
+	if globals, count := nativeAMD64StackCachedGlobals(stack, machine); count != 2 || globals != [2]uint32{0, 1} {
+		t.Fatalf("stack-cached globals = %v, %d; want [0 1], 2", globals, count)
+	}
+	machine.Insts[0].Op = wasm.InstrNop
+	if _, count := nativeAMD64StackCachedGlobals(stack, machine); count != 0 {
+		t.Fatal("call-free function enabled the call-crossing frame cache")
+	}
+}
+
 func TestNativeAMD64CachedMemoryBoundSelectsHotAccessEnd(t *testing.T) {
 	p := new(nativeBackendPlanner)
 	stack := &railssa.StackFunc{MemoryMinBytes: 1 << 16}

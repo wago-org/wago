@@ -92,6 +92,12 @@ type nativeBackendPlan struct {
 	// memory-0 byte length cached in the final allocatable GPR. Zero disables
 	// the cache.
 	AMD64MemoryBoundEnd uint64
+	// AMD64StackCachedGlobals keep call-crossing scalar globals in frame homes
+	// when their weighted reads repay the call refreshes. The backing globals
+	// remain write-through, so calls and traps always observe current state.
+	AMD64StackCachedGlobals      [2]uint32
+	AMD64StackCachedGlobalOffset uint32
+	AMD64StackCachedGlobalCount  uint8
 
 	BlockOffsets        []int
 	BranchPatches       []nativeBranchPatch
@@ -1960,6 +1966,19 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if err != nil {
 		return nil, err
 	}
+	stackCachedGlobals, stackCachedGlobalCount := nativeAMD64StackCachedGlobals(stack, machine)
+	stackCachedGlobalOffset := uint32(0)
+	stackCachedGlobalRuntimeOffset := requirements.RuntimeBytes
+	if stackCachedGlobalCount != 0 {
+		requirements.RuntimeBytes += uint32(stackCachedGlobalCount) * 8
+		frame, err = railmach.ComposeFrame(requirements)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if stackCachedGlobalCount != 0 {
+		stackCachedGlobalOffset = frame.RuntimeOffset + stackCachedGlobalRuntimeOffset
+	}
 	externalCallFPRs, externalCallVectorFPRs := nativeExternalCallFPRMasks(stack, machine, allocation)
 	if p.rootPlan.SlotCount != 0 || externalCallFPRs != 0 {
 		requirements.RootSlots = p.rootPlan.SlotCount
@@ -2037,6 +2056,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		RetryScheduleScores: retryScheduleScores, RetryScheduleScoreCount: retryScheduleScoreCount, RetryCandidateFrontier: retryCandidateFrontier,
 		SegmentedBaselineDebt: segmentedBaselineDebt, SegmentedCandidateDebt: segmentedCandidateDebt, SegmentedBaselineCopies: segmentedBaselineCopies, SegmentedCandidateCopies: segmentedCandidateCopies, SegmentedCandidateRanges: segmentedCandidateRanges, SegmentedAttempted: segmentedAttempted, SegmentedAdmitted: segmentedAdmitted,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
+		AMD64StackCachedGlobals: stackCachedGlobals, AMD64StackCachedGlobalOffset: stackCachedGlobalOffset, AMD64StackCachedGlobalCount: uint8(stackCachedGlobalCount),
 		AMD64BMI2:           target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
 		PostRAPairWith:      p.postRAPairWith,
 		PostRASkip:          p.postRASkip,
@@ -2575,6 +2595,68 @@ func nativeAMD64CachedGlobal(machine *railmach.Func) (uint32, bool) {
 		}
 	}
 	return bestIndex, bestWeight >= 16
+}
+
+func nativeAMD64StackCachedGlobals(stack *railssa.StackFunc, machine *railmach.Func) ([2]uint32, int) {
+	if stack == nil || machine == nil || machine.Target != railmach.TargetAMD64 || !nativeAMD64CachesGlobalDescriptors(machine) {
+		return [2]uint32{}, 0
+	}
+	type cost struct {
+		reads uint64
+		sets  uint64
+	}
+	costs := make([]cost, len(stack.Globals))
+	var calls uint64
+	for _, block := range machine.Blocks {
+		weight := uint64(max(block.Weight, 1))
+		for instructionID := block.InstStart; instructionID < block.InstStart+block.InstCount; instructionID++ {
+			instruction := machine.Insts[instructionID]
+			if railmach.IsCall(instruction.Op) {
+				calls += weight
+				continue
+			}
+			semanticOp := railmach.SemanticOpcode(instruction.Op)
+			if semanticOp != wasm.InstrGlobalGet && semanticOp != wasm.InstrGlobalSet {
+				continue
+			}
+			index := uint32(instruction.Aux)
+			if int(index) >= len(stack.Globals) || stack.Globals[index] != wasm.I32 && stack.Globals[index] != wasm.I64 {
+				continue
+			}
+			if semanticOp == wasm.InstrGlobalGet {
+				costs[index].reads += weight
+			} else {
+				costs[index].sets += weight
+			}
+		}
+	}
+	if calls == 0 {
+		return [2]uint32{}, 0
+	}
+	var selected [2]uint32
+	selectedCount := 0
+	for slot := range selected {
+		bestIndex, bestBenefit := uint32(0), uint64(0)
+		for index, candidate := range costs {
+			alreadySelected := false
+			for previous := 0; previous < slot; previous++ {
+				alreadySelected = alreadySelected || uint32(index) == selected[previous]
+			}
+			// A cached read removes one descriptor load. Entry initialization and
+			// each call refresh cost a descriptor load, value load, and frame store;
+			// write-through sets add one frame store.
+			cost := (calls+1)*3 + candidate.sets
+			if !alreadySelected && candidate.reads > cost && candidate.reads-cost > bestBenefit {
+				bestIndex, bestBenefit = uint32(index), candidate.reads-cost
+			}
+		}
+		if bestBenefit < 8 {
+			break
+		}
+		selected[slot] = bestIndex
+		selectedCount++
+	}
+	return selected, selectedCount
 }
 
 func nativeARM64CachesGlobals(machine *railmach.Func) bool {

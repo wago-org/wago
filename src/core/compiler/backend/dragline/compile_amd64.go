@@ -25,14 +25,8 @@ var amd64ParamRegisters = [...]amd64.Reg{amd64.RAX, amd64.RCX, amd64.RDX, amd64.
 
 const amd64RailMachDenseGlobalThreshold = 20
 
-func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, moduleHasDenseGlobals bool) bool {
+func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, _ bool) bool {
 	if !railMachCandidate(stack, moduleHasV128) {
-		return false
-	}
-	if moduleHasDenseGlobals && stack.MaxLoopDepth > 1 && amd64StructuredUsesGlobals(stack) {
-		// Dense mutable-global functions with nested loops still expose
-		// incomplete global-backed edge flow. Single-loop and acyclic functions
-		// use the verified RailMach path; nested loops retain structured lowering.
 		return false
 	}
 	if len(stack.Instrs) > 512 {
@@ -43,9 +37,6 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, moduleHasDe
 		}
 		for _, instruction := range stack.Instrs {
 			if instruction.Kind == wasm.InstrMemoryCopy {
-				// Large memory.copy control graphs still expose incomplete AMD64
-				// loop-edge value flow. Smaller kernels use the verified RailMach
-				// parallel-move lowering below.
 				return false
 			}
 		}
@@ -53,12 +44,9 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, moduleHasDe
 	return true
 }
 
-func amd64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, moduleHasDenseGlobals bool) string {
+func amd64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, _ bool) string {
 	if reason := railMachRejectionReason(stack, moduleHasV128); reason != "" {
 		return reason
-	}
-	if moduleHasDenseGlobals && stack.MaxLoopDepth > 1 && amd64StructuredUsesGlobals(stack) {
-		return "amd64-dense-global-loop"
 	}
 	if len(stack.Instrs) > 512 {
 		if stack.MaxLoopDepth > 1 && len(stack.Params) == 0 {
@@ -71,15 +59,6 @@ func amd64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, modul
 		}
 	}
 	return ""
-}
-
-func amd64StructuredUsesGlobals(stack *railssa.StackFunc) bool {
-	for _, instruction := range stack.Instrs {
-		if instruction.Kind == wasm.InstrGlobalGet || instruction.Kind == wasm.InstrGlobalSet {
-			return true
-		}
-	}
-	return false
 }
 
 var amd64StackLocalRegisters = [...]amd64.Reg{amd64.R12, amd64.R13, amd64.R14, amd64.R15, amd64.R8, amd64.R9}
@@ -1102,6 +1081,21 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			a.Load64(amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister], amd64.RBX, -int32(abi.GlobalsPtrOffset))
 		}
 	}
+	reloadStackCachedGlobal := func() {
+		for slot, global := range plan.AMD64StackCachedGlobals[:plan.AMD64StackCachedGlobalCount] {
+			a.Load64(amd64.R10, amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister], int32(global)*8)
+			a.Load64(amd64.R10, amd64.R10, 0)
+			a.StoreRsp64(int32(plan.AMD64StackCachedGlobalOffset)+int32(slot)*8, amd64.R10)
+		}
+	}
+	stackCachedGlobalSlot := func(global uint32) (int32, bool) {
+		for slot, candidate := range plan.AMD64StackCachedGlobals[:plan.AMD64StackCachedGlobalCount] {
+			if global == candidate {
+				return int32(plan.AMD64StackCachedGlobalOffset) + int32(slot)*8, true
+			}
+		}
+		return 0, false
+	}
 	floatConstantPatches := make([]amd64FloatConstantPatch, 0, 4)
 	simdConstantPatches := make([]amd64SIMDConstantPatch, 0, 2)
 	materializeFloatConstant := func(dst amd64.Reg, bits uint64, f64 bool) {
@@ -1185,6 +1179,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		}
 	}
 	reloadGlobalDescriptors()
+	reloadStackCachedGlobal()
 	if cachesGlobal {
 		a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
 		a.Load64(amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister], amd64.R10, int32(cachedGlobalIndex)*8)
@@ -1699,6 +1694,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, err
 				}
 				reloadGlobalDescriptors()
+				reloadStackCachedGlobal()
 				continue
 			}
 			if semanticOp == wasm.InstrStructGet || semanticOp == wasm.InstrStructGetS || semanticOp == wasm.InstrStructGetU {
@@ -2175,6 +2171,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, err
 				}
 				reloadGlobalDescriptors()
+				reloadStackCachedGlobal()
 				continue
 			}
 			if semanticOp == wasm.InstrCall {
@@ -2287,6 +2284,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, err
 				}
 				reloadGlobalDescriptors()
+				reloadStackCachedGlobal()
 				continue
 			}
 			if semanticOp == wasm.InstrMemoryCopy || semanticOp == wasm.InstrMemoryFill {
@@ -3440,6 +3438,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if semanticOp == wasm.InstrGlobalGet {
+				if offset, ok := stackCachedGlobalSlot(uint32(instruction.Aux)); ok {
+					if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeI32 {
+						a.LoadRsp32(dst, offset)
+					} else {
+						a.LoadRsp64(dst, offset)
+					}
+					continue
+				}
 				if cachesGlobal && uint32(instruction.Aux) == cachedGlobalIndex {
 					cached := amd64RailMachGPRRegisters[nativeAMD64CachedGlobalValueRegister]
 					if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
@@ -3453,11 +3459,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				descriptor := amd64.R10
 				if cachesGlobalDescriptors {
-					a.MovReg64(amd64.R10, amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister])
+					a.Load64(amd64.R10, amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister], int32(uint32(instruction.Aux))*8)
 				} else {
 					a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
+					a.Load64(amd64.R10, amd64.R10, int32(uint32(instruction.Aux))*8)
 				}
-				a.Load64(amd64.R10, amd64.R10, int32(uint32(instruction.Aux))*8)
 				if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
 					a.VMovdquLoadDisp(dst, descriptor, 0)
 				} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
@@ -3535,11 +3541,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					descriptor = amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister]
 				} else {
 					if cachesGlobalDescriptors {
-						a.MovReg64(amd64.R10, amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister])
+						a.Load64(amd64.R10, amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister], int32(uint32(instruction.Aux))*8)
 					} else {
 						a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
+						a.Load64(amd64.R10, amd64.R10, int32(uint32(instruction.Aux))*8)
 					}
-					a.Load64(amd64.R10, amd64.R10, int32(uint32(instruction.Aux))*8)
 				}
 				src := lhs
 				if plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeV128 {
@@ -3554,6 +3560,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					src = amd64RailMachGPRRegisters[nativeAMD64CachedGlobalValueRegister]
 				}
 				a.Store64(descriptor, 0, src)
+				if offset, ok := stackCachedGlobalSlot(uint32(instruction.Aux)); ok {
+					a.StoreRsp64(offset, src)
+				}
 				continue
 			}
 			if semanticOp == wasm.InstrMemoryGrow {
