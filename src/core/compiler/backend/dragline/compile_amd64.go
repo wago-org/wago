@@ -93,6 +93,8 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	if err != nil {
 		return corecompiler.Output{}, err
 	}
+	_, preparedIsolatedTables := nativeDenseLocalTableTargets(m)
+	preparedIsolatedTables = preparedIsolatedTables && selected == nil
 	if input.FunctionWorkers > 1 && metrics == nil && functionCache == nil && !captureGC && selected == nil {
 		return compileNativeParallelAMD64(input, m)
 	}
@@ -463,7 +465,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		metrics.observe(sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(signalGuardFreePrepared) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(moduleContracts))
 		metrics.summarizeEmitters()
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, ContextFreeLoopPrepared: signalGuardFreePrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresBMI2: requiresBMI2}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, ContextFreeLoopPrepared: signalGuardFreePrepared, PreparedIsolatedTables: preparedIsolatedTables, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresBMI2: requiresBMI2}, nil
 }
 
 func amd64RailMachMayUseBMI2(plan *nativeBackendPlan) bool {
@@ -771,7 +773,8 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 	if len(code) == 0 {
 		code = []byte{0xc3}
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, ContextFreeLoopPrepared: signalGuardFreePrepared, RequiresBMI2: requiresBMI2}, nil
+	_, preparedIsolatedTables := nativeDenseLocalTableTargets(m)
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, ContextFreeLoopPrepared: signalGuardFreePrepared, PreparedIsolatedTables: preparedIsolatedTables, RequiresBMI2: requiresBMI2}, nil
 }
 
 func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []amd64CallReloc, bool, error) {
@@ -1994,6 +1997,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if semanticOp == wasm.InstrCallIndirect {
+				if emitted, err := emitAMD64RailMachInlineImmutableIndirect(&a, plan, instruction, operands, currentPosition, wasmOffset, fn.Index, metadata); err != nil {
+					return nil, 0, true, err
+				} else if emitted {
+					continue
+				}
 				if err := emitAMD64RailMachRoots(&a, plan, instruction.Source, currentPosition, false); err != nil {
 					return nil, 0, true, err
 				}
@@ -7982,6 +7990,94 @@ func emitAMD64DirectIntegerBinary(a *amd64.Asm, kind wasm.InstrKind, dst, lhs, r
 		}
 		a.ShiftCL(digit, dst, wide)
 	}
+}
+
+func emitAMD64RailMachInlineImmutableIndirect(a *amd64.Asm, plan *nativeBackendPlan, instruction railmach.Inst, operands []railmach.Operand, position uint32, wasmOffset, function uint32, metadata *functionEmissionMetadata) (bool, error) {
+	if plan == nil || plan.Stack == nil || plan.Machine == nil || len(operands) != 3 || instruction.ResultCount() != 1 {
+		return false, nil
+	}
+	for _, operand := range operands {
+		if int(operand.Reg) >= len(plan.Machine.VRegs) || plan.Machine.VRegs[operand.Reg].Type != railmach.TypeI32 {
+			return false, nil
+		}
+	}
+	if int(instruction.Result) >= len(plan.Machine.VRegs) || plan.Machine.VRegs[instruction.Result].Type != railmach.TypeI32 {
+		return false, nil
+	}
+	targets, ok := nativeDenseLocalTableTargets(plan.Stack.Module)
+	if !ok || len(targets) == 0 {
+		return false, nil
+	}
+	kinds := make([]wasm.InstrKind, len(targets))
+	for index, target := range targets {
+		kind, inline := nativeInlineI32BinaryTarget(plan.Stack.Module, target)
+		if !inline {
+			return false, nil
+		}
+		kinds[index] = kind
+	}
+	lhs, err := amd64RailMachReadValueAt(a, plan, operands[0].Reg, amd64.RDI, 0)
+	if err != nil {
+		return false, err
+	}
+	if lhs != amd64.RDI {
+		a.MovReg32(amd64.RDI, lhs)
+	}
+	rhs, err := amd64RailMachReadValueAt(a, plan, operands[1].Reg, amd64.RSI, 0)
+	if err != nil {
+		return false, err
+	}
+	if rhs != amd64.RSI {
+		a.MovReg32(amd64.RSI, rhs)
+	}
+	selector, err := amd64RailMachReadValueAt(a, plan, operands[2].Reg, amd64.R10, 0)
+	if err != nil {
+		return false, err
+	}
+	if selector != amd64.R10 {
+		a.MovReg32(amd64.R10, selector)
+	}
+	a.AluRI(7, amd64.R10, int32(len(targets)), false)
+	inBounds := a.JccPlaceholder(amd64.CondB)
+	metadata.recordTrap(a.Len(), wasmOffset, 5)
+	amd64EmitTrap(a, 5, function, wasmOffset)
+	a.PatchRel32(inBounds, a.Len())
+	callTypeKey := plan.Stack.TypeKeys[uint32(instruction.Aux)]
+	done := make([]int, 0, len(targets))
+	emitTarget := func(index int) {
+		targetType, typeOK := plan.Stack.Module.FuncTypeIndex(targets[index])
+		if !typeOK || plan.Stack.Module.StructuralTypeKey(targetType.Index) != callTypeKey {
+			metadata.recordTrap(a.Len(), wasmOffset, 6)
+			amd64EmitTrap(a, 6, function, wasmOffset)
+			return
+		}
+		emitAMD64DirectIntegerBinary(a, kinds[index], amd64.R11, amd64.RDI, amd64.RSI)
+		done = append(done, a.JmpPlaceholder())
+	}
+	var emitRange func(int, int)
+	emitRange = func(low, high int) {
+		if high-low == 1 {
+			emitTarget(low)
+			return
+		}
+		mid := low + (high-low)/2
+		a.AluRI(7, amd64.R10, int32(mid), false)
+		left := a.JccPlaceholder(amd64.CondB)
+		emitRange(mid, high)
+		a.PatchRel32(left, a.Len())
+		emitRange(low, mid)
+	}
+	emitRange(0, len(targets))
+	for _, branch := range done {
+		a.PatchRel32(branch, a.Len())
+	}
+	location := plan.Allocation.LocationAt(instruction.Result, position)
+	if location.Kind != railmach.LocationInvalid {
+		if err := amd64RailMachWriteLocation(a, plan, instruction.Result, location, amd64.R11); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 func amd64DirectFloatBinaryKind(kind wasm.InstrKind) bool {

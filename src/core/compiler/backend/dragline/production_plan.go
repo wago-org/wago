@@ -3329,22 +3329,38 @@ func nativeInlineI32BinaryTarget(m *wasm.Module, target uint32) (wasm.InstrKind,
 	if !ok || len(typ.Params) != 2 || typ.Params[0] != wasm.I32 || typ.Params[1] != wasm.I32 || len(typ.Results) != 1 || typ.Results[0] != wasm.I32 {
 		return wasm.InstrInvalid, false
 	}
-	body := m.Code[local].BodyBytes
-	if len(body) != 6 || body[0] != 0x20 || body[1] != 0 || body[2] != 0x20 || body[3] != 1 || body[5] != 0x0b {
+	stack, err := railssa.BuildStackFunc(m, local)
+	if err != nil {
 		return wasm.InstrInvalid, false
 	}
-	switch body[4] {
-	case 0x6a:
+	var semantic [3]railssa.StackInstr
+	count := 0
+	for _, instruction := range stack.Instrs {
+		if instruction.Kind == wasm.InstrInvalid || instruction.Kind == wasm.InstrNop {
+			continue
+		}
+		if count == len(semantic) {
+			return wasm.InstrInvalid, false
+		}
+		semantic[count] = instruction
+		count++
+	}
+	if count != len(semantic) || semantic[0].Kind != wasm.InstrLocalGet || semantic[0].U32() != 0 ||
+		semantic[1].Kind != wasm.InstrLocalGet || semantic[1].U32() != 1 {
+		return wasm.InstrInvalid, false
+	}
+	switch semantic[2].Kind {
+	case wasm.InstrI32Add:
 		return wasm.InstrI32Add, true
-	case 0x6b:
+	case wasm.InstrI32Sub:
 		return wasm.InstrI32Sub, true
-	case 0x6c:
+	case wasm.InstrI32Mul:
 		return wasm.InstrI32Mul, true
-	case 0x71:
+	case wasm.InstrI32And:
 		return wasm.InstrI32And, true
-	case 0x72:
+	case wasm.InstrI32Or:
 		return wasm.InstrI32Or, true
-	case 0x73:
+	case wasm.InstrI32Xor:
 		return wasm.InstrI32Xor, true
 	default:
 		return wasm.InstrInvalid, false

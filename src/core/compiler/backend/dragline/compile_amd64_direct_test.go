@@ -3,13 +3,72 @@
 package dragline
 
 import (
+	"bytes"
 	"testing"
 
+	"github.com/wago-org/wago/codegen/amd64"
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	runtimeabi "github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestAMD64ImmutableInlineIndirectAvoidsCallAreaMarshalling(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x02})),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x02, 0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(
+			// Nops and encoding details must not affect the decoded semantic proof.
+			wasmtest.Code([]byte{0x01, 0x20, 0, 0x20, 1, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x6b, 0x0b}),
+			wasmtest.Code([]byte{0x20, 1, 0x20, 2, 0x20, 0, 0x11, 0, 0, 0x0b}),
+		)),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := corecompiler.Input{
+		Module: module, Source: source, Runtime: corecompiler.RuntimeContract{ABIRevision: runtimeabi.Revision},
+		Target: target, Objective: corecompiler.ObjectiveSpeed, Bounds: corecompiler.BoundsSignals,
+		ConfigurationFingerprint: [32]byte{4},
+	}
+	for _, workers := range []int{1, 2} {
+		t.Run(map[int]string{1: "sequential", 2: "parallel"}[workers], func(t *testing.T) {
+			input.FunctionWorkers = workers
+			output, err := (Compiler{}).Compile(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(output.InternalEntry) != 3 {
+				t.Fatalf("internal entries = %v", output.InternalEntry)
+			}
+			if !output.PreparedIsolatedTables {
+				t.Fatal("immutable local table proof was not published")
+			}
+			body := output.Code[output.InternalEntry[2]:]
+			var callArea amd64.Asm
+			callArea.StoreRsp64(0, amd64.RCX)
+			callArea.StoreRsp64(8, amd64.RDX)
+			callArea.StoreRsp64(16, amd64.RAX)
+			if bytes.Contains(body, callArea.B) {
+				t.Fatalf("immutable inline indirect retained generic call-area marshalling: %x", body)
+			}
+		})
+	}
+}
 
 func TestAMD64PublishesDirectPreparedLeafAcrossCompilerPaths(t *testing.T) {
 	source := wasmtest.Module(
