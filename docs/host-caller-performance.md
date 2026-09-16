@@ -648,10 +648,10 @@ so it is never silently excluded by a slash-qualified regular expression.
 
 ## Portable host-function interface (2026-09-11)
 
-The plugin interface is now one method:
+The host-import interface is one flat method:
 
 ```go
-module.Func("add", func(a, b int32) int32 { return a + b })
+imports.HostFunc("env", "add", func(a, b int32) int32 { return a + b })
 ```
 
 Wago classifies ordinary functions with a concrete type switch and validates the
@@ -667,7 +667,7 @@ No finite portable Go type switch can recognize arbitrary function arity. TinyGo
 single explicit borrowed view:
 
 ```go
-module.Func("transform", func(call wago.HostCall) {
+imports.HostFunc("env", "transform", func(call wago.HostCall) {
     object := call.ExternRef(0)
     count := call.I64(1)
 
@@ -696,7 +696,7 @@ Callbacks that need caller authority use an explicit leading value without
 making every capability-free call copy it:
 
 ```go
-module.Func("read", func(caller wago.Caller, call wago.HostCall) {
+imports.HostFunc("env", "read", func(caller wago.Caller, call wago.HostCall) {
     memory := caller.Memory()
     call.SetI32(0, int32(memory[call.I32(0)]))
 }).Params(wago.ValI32).Results(wago.ValI32)
