@@ -40,7 +40,7 @@ func firstImportDispatchCode(in *Instance) uintptr {
 	if dispatch == 0 {
 		return 0
 	}
-	return uintptr(*(*uint64)(unsafe.Add(unsafe.Pointer(dispatch), coreruntime.ImportDispatchCodePtrOffset)))
+	return uintptr(*(*uint64)(unsafe.Add(offHeapPtr(dispatch), coreruntime.ImportDispatchCodePtrOffset)))
 }
 
 func identityI32Module() []byte {
