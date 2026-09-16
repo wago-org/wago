@@ -101,7 +101,7 @@ func TestDraglineImportedMemoryGuardPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mem.Close()
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
