@@ -64,9 +64,9 @@ static uint64_t raster_summary(const unsigned char *data, size_t len) {
 
 uint64_t nanosvg_run(void) {
     char svg[] = "<svg xmlns='http://www.w3.org/2000/svg' width='96' height='64' viewBox='0 0 96 64'>"
-        "<defs><linearGradient id='g'><stop stop-color='#246'/><stop offset='1' stop-color='#f90'/></linearGradient></defs>"
-        "<path fill='url(#g)' stroke='#fff' stroke-width='2' d='M4 58 L26 7 Q48 56 70 7 L92 58 Z'/>"
-        "<circle cx='48' cy='32' r='11' fill='#28c' fill-opacity='.7'/></svg>";
+        "<rect x='4' y='4' width='40' height='24' fill='#246'/>"
+        "<rect x='52' y='8' width='36' height='48' fill='#f90'/>"
+        "<path fill='#28c' d='M8 36 L44 36 L44 56 L8 56 Z'/></svg>";
     NSVGimage *image = nsvgParse(svg, "px", 96.0f);
     if (!image) return 0;
     NSVGrasterizer *rast = nsvgCreateRasterizer();

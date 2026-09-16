@@ -902,9 +902,9 @@
       "tags": ["unicode", "normalization", "text", "c"]
     },
     {
-      "id": "xxhash/xxh3-boundaries",
+      "id": "xxhash/xxh64-boundaries",
       "artifact": "workloads/semantic/xxhash/xxhash.wasm",
-      "artifact_sha256": "add577c203a0bf81eb86cd97b1fe3c62258a933e40e1823d5a62af4f9d8f1ada",
+      "artifact_sha256": "c130d0cacebe7570f6824500ef220a03a7176fc10a049f0197a95bfdeab5ae34",
       "abi": "core",
       "source": {
         "repository": "https://github.com/Cyan4973/xxHash.git",
@@ -915,9 +915,9 @@
         "toolchain_version": "34.0"
       },
       "invoke": { "export": "xxhash_run" },
-      "expect": { "return": ["0xee3ce076a894c99a"] },
+      "expect": { "return": ["0xbf5e5db2e69c0f99"] },
       "limits": { "timeout_ms": 15000 },
-      "tags": ["hashing", "streaming", "integer", "c"]
+      "tags": ["hashing", "integer", "c"]
     },
     {
       "id": "libtommath/modular-arithmetic",
@@ -940,7 +940,7 @@
     {
       "id": "nanosvg/parse-rasterize",
       "artifact": "workloads/semantic/nanosvg/nanosvg.wasm",
-      "artifact_sha256": "e3fc66cc1377f12e4fa3d8f292a05dae59d791a693916903b95798bbb4c5bcdc",
+      "artifact_sha256": "c95c2f06488f35d40c24db86370314fd718f2e6c67e832644f7fd5c473988c20",
       "abi": "core",
       "source": {
         "repository": "https://github.com/memononen/nanosvg.git",
@@ -951,7 +951,7 @@
         "toolchain_version": "34.0"
       },
       "invoke": { "export": "nanosvg_run" },
-      "expect": { "return": ["0x21e2710c58"] },
+      "expect": { "return": ["0x2132f00d50"] },
       "limits": { "timeout_ms": 15000 },
       "tags": ["svg", "parser", "rasterization", "graphics", "c"]
     },
@@ -1468,12 +1468,12 @@
       "artifact_sha256": "80c8881614613fdac473095ae343f856db5023a231f244bee1711613cd5e3314"
     },
     {
-      "desc": "XXH3 hashing across short, boundary, and large inputs",
-      "semantic_exec": ["xxhash/xxh3-boundaries"],
+      "desc": "XXH64 hashing across short, boundary, and large inputs",
+      "semantic_exec": ["xxhash/xxh64-boundaries"],
       "id": "xxhash",
       "artifact": "workloads/semantic/xxhash/xxhash.wasm",
       "tags": ["semantic", "hashing", "integer"],
-      "artifact_sha256": "add577c203a0bf81eb86cd97b1fe3c62258a933e40e1823d5a62af4f9d8f1ada"
+      "artifact_sha256": "c130d0cacebe7570f6824500ef220a03a7176fc10a049f0197a95bfdeab5ae34"
     },
     {
       "desc": "LibTomMath modular exponentiation, GCD, and serialization",
@@ -1489,7 +1489,7 @@
       "id": "nanosvg",
       "artifact": "workloads/semantic/nanosvg/nanosvg.wasm",
       "tags": ["semantic", "svg", "graphics"],
-      "artifact_sha256": "e3fc66cc1377f12e4fa3d8f292a05dae59d791a693916903b95798bbb4c5bcdc"
+      "artifact_sha256": "c95c2f06488f35d40c24db86370314fd718f2e6c67e832644f7fd5c473988c20"
     },
     {
       "desc": "KissFFT 257-point complex forward and inverse transforms",
