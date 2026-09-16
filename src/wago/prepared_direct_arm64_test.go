@@ -191,6 +191,64 @@ func TestPreparedDirectARM64I64HashLoop(t *testing.T) {
 	}
 }
 
+func TestPreparedDirectARM64AdditivePairLoop(t *testing.T) {
+	body := []byte{
+		0x42, 0x00, 0x21, 0x01, // a = 0
+		0x42, 0x01, 0x21, 0x02, // b = 1
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x20, 0x00, 0x45, 0x0d, 0x01, // break when n == 0
+		0x20, 0x01, 0x20, 0x02, 0x7c, 0x21, 0x03, // next = a + b
+		0x20, 0x02, 0x21, 0x01, // a = b
+		0x20, 0x03, 0x21, 0x02, // b = next
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, // n--
+		0x0c, 0x00, 0x0b, 0x0b, // continue; end loop/block
+		0x20, 0x01, 0x0b,
+	}
+	function := append([]byte{0x01, 0x03, 0x7e}, body...)
+	code := append(wasmtest.ULEB(uint32(len(function))), function...)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	fn, err := instance.WasmFunc("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fibonacci := func(n uint32) uint64 {
+		a, b := uint64(0), uint64(1)
+		for bit := uint32(1 << 31); bit != 0; bit >>= 1 {
+			d := a * (2*b - a)
+			e := a*a + b*b
+			if n&bit == 0 {
+				a, b = d, e
+			} else {
+				a, b = e, d+e
+			}
+		}
+		return a
+	}
+	for _, count := range []uint32{0, 1, 2, 3, 10, 63, 64, 101, 15_000_000, 1 << 31, ^uint32(0)} {
+		got, err := fn.Invoke(uint64(count))
+		want := fibonacci(count)
+		if err != nil || len(got) != 1 || got[0] != want {
+			t.Fatalf("run(%d) = %v, %v; want %#x", count, got, err, want)
+		}
+	}
+}
+
 func TestPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T) {
 	twoI32 := []wasm.ValType{wasm.I32, wasm.I32}
 	threeI32 := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}

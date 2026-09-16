@@ -2641,8 +2641,8 @@ func TestARM64RailMachDefersUnreachableTrapsPastHotReturn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, ok := arm64RailMachFibonacciLoop(plan); !ok {
-		t.Fatal("canonical Fibonacci recurrence was not recognized")
+	if _, _, ok := arm64RailMachAdditivePairLoop(plan); !ok {
+		t.Fatal("canonical additive pair recurrence was not recognized")
 	}
 	var metadata functionEmissionMetadata
 	var metrics FunctionMetrics
@@ -2660,7 +2660,7 @@ func TestARM64RailMachDefersUnreachableTrapsPastHotReturn(t *testing.T) {
 		t.Fatalf("first unreachable trap offset = %d; hot return does not precede cold traps", firstTrap)
 	}
 	if metrics.PostRARewrites != 1 || len(codeBytes) > 256 {
-		t.Fatalf("Fibonacci recurrence rewrite = %d, code bytes = %d", metrics.PostRARewrites, len(codeBytes))
+		t.Fatalf("additive pair recurrence rewrite = %d, code bytes = %d", metrics.PostRARewrites, len(codeBytes))
 	}
 }
 

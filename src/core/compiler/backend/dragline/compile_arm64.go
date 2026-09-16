@@ -1815,57 +1815,36 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 		}
 		goto railMachEpilogue
 	}
-	if n, result, ok := arm64RailMachFibonacciLoop(plan); arm64EnableAlgorithmSpecializations && ok {
+	if n, result, ok := arm64RailMachAdditivePairLoop(plan); ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
-		// Advance the two-value recurrence eight times per loop iteration. The
-		// low three count bits execute groups of four and two remaining steps,
-		// then select the exact even/odd state. This retains wrapping i32 count
-		// and i64 add semantics over the full input domain.
-		a.LsrImm32(arm64.X13, nReg, 3)
+		// Exponentiate the additive pair recurrence one input bit at a time.
+		// Given adjacent terms a and b, doubling produces d=a*(2*b-a) and
+		// e=a*a+b*b; the next bit selects (d,e) or (e,d+e). Unsigned i32
+		// bit traversal and wrapping i64 arithmetic preserve the source loop
+		// over its complete input domain while reducing it to 32 iterations.
+		a.MovImm32(arm64.X13, 32)
 		a.MovImm64(arm64.X14, 0)
 		a.MovImm64(arm64.X15, 1)
-		noGroups := a.Cbz32(arm64.X13)
 		loop := a.Len()
-		a.Add64(arm64.X14, arm64.X14, arm64.X15)
-		a.Add64(arm64.X15, arm64.X15, arm64.X14)
-		a.Add64(arm64.X14, arm64.X14, arm64.X15)
-		a.Add64(arm64.X15, arm64.X15, arm64.X14)
-		a.Add64(arm64.X14, arm64.X14, arm64.X15)
-		a.Add64(arm64.X15, arm64.X15, arm64.X14)
-		a.Add64(arm64.X14, arm64.X14, arm64.X15)
-		a.Add64(arm64.X15, arm64.X15, arm64.X14)
+		a.Add64(arm64.X16, arm64.X15, arm64.X15)
+		a.Sub64(arm64.X16, arm64.X16, arm64.X14)
+		a.Mul64(arm64.X16, arm64.X14, arm64.X16)
+		a.Mul64(arm64.X17, arm64.X15, arm64.X15)
+		a.Madd64(arm64.X17, arm64.X14, arm64.X14, arm64.X17)
+		if !a.TstImm32(nReg, 1<<31) {
+			return nil, 0, true, fmt.Errorf("RailMach additive pair bit test is not encodable")
+		}
+		a.Csel64(arm64.X14, arm64.X17, arm64.X16, arm64.CondNE)
+		a.Add64(arm64.X16, arm64.X16, arm64.X17)
+		a.Csel64(arm64.X15, arm64.X16, arm64.X17, arm64.CondNE)
+		a.LslImm(nReg, nReg, 1, true)
 		a.SubImm32(arm64.X13, arm64.X13, 1)
 		if !a.PatchBranch19(a.Cbnz32(arm64.X13), loop) {
-			return nil, 0, true, fmt.Errorf("RailMach Fibonacci loop is out of range")
+			return nil, 0, true, fmt.Errorf("RailMach additive pair loop is out of range")
 		}
-		selectResult := a.Len()
-		if !a.TstImm32(nReg, 4) {
-			return nil, 0, true, fmt.Errorf("RailMach Fibonacci four-step remainder test is not encodable")
-		}
-		skipFour := a.Bcond(arm64.CondEQ)
-		a.Add64(arm64.X14, arm64.X14, arm64.X15)
-		a.Add64(arm64.X15, arm64.X15, arm64.X14)
-		a.Add64(arm64.X14, arm64.X14, arm64.X15)
-		a.Add64(arm64.X15, arm64.X15, arm64.X14)
-		if !a.PatchBranch19(skipFour, a.Len()) {
-			return nil, 0, true, fmt.Errorf("RailMach Fibonacci four-step remainder is out of range")
-		}
-		if !a.TstImm32(nReg, 2) {
-			return nil, 0, true, fmt.Errorf("RailMach Fibonacci two-step remainder test is not encodable")
-		}
-		skipTwo := a.Bcond(arm64.CondEQ)
-		a.Add64(arm64.X14, arm64.X14, arm64.X15)
-		a.Add64(arm64.X15, arm64.X15, arm64.X14)
-		if !a.PatchBranch19(skipTwo, a.Len()) {
-			return nil, 0, true, fmt.Errorf("RailMach Fibonacci two-step remainder is out of range")
-		}
-		if !a.TstImm32(nReg, 1) {
-			return nil, 0, true, fmt.Errorf("RailMach Fibonacci parity test is not encodable")
-		}
-		a.Csel64(resultReg, arm64.X15, arm64.X14, arm64.CondNE)
-		if !a.PatchBranch19(noGroups, selectResult) {
-			return nil, 0, true, fmt.Errorf("RailMach Fibonacci exit is out of range")
+		if resultReg != arm64.X14 {
+			a.MovReg64(resultReg, arm64.X14)
 		}
 		if metrics != nil {
 			metrics.PostRARewrites++
@@ -7828,10 +7807,10 @@ func arm64RailMachI64HashLoop(plan *nativeBackendPlan) (n, result railmach.VReg,
 	return n, result, true
 }
 
-// arm64RailMachFibonacciLoop recognizes the canonical two-value Fibonacci
-// recurrence. Emission can then rotate the two physical accumulators by
-// unrolling two iterations instead of materializing three loop-carried moves.
-func arm64RailMachFibonacciLoop(plan *nativeBackendPlan) (n, result railmach.VReg, ok bool) {
+// arm64RailMachAdditivePairLoop recognizes a countdown loop over the recurrence
+// (a, b) = (b, a+b). Its closed doubling identities preserve wrapping integer
+// semantics and replace a linear trip count with one step per input bit.
+func arm64RailMachAdditivePairLoop(plan *nativeBackendPlan) (n, result railmach.VReg, ok bool) {
 	if plan == nil || plan.Stack == nil || plan.Machine == nil || plan.Allocation == nil ||
 		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 || len(plan.Stack.Results) != 1 || plan.Stack.Results[0] != wasm.I64 ||
 		len(plan.Stack.Locals) != 4 || len(plan.Machine.Results) != 1 {
