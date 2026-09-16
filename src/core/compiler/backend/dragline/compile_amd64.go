@@ -30,11 +30,6 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, _ bool) boo
 		return false
 	}
 	if len(stack.Instrs) > 512 {
-		if stack.MaxLoopDepth > 1 && len(stack.Params) == 0 {
-			// Large parameterless nested loops have not proved their backedge
-			// value flow through the AMD64 machine pipeline yet.
-			return false
-		}
 		for _, instruction := range stack.Instrs {
 			if instruction.Kind == wasm.InstrMemoryCopy {
 				return false
@@ -49,9 +44,6 @@ func amd64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, _ boo
 		return reason
 	}
 	if len(stack.Instrs) > 512 {
-		if stack.MaxLoopDepth > 1 && len(stack.Params) == 0 {
-			return "amd64-large-parameterless-nested-loop"
-		}
 		for _, instruction := range stack.Instrs {
 			if instruction.Kind == wasm.InstrMemoryCopy {
 				return "amd64-large-memory.copy"
@@ -932,8 +924,10 @@ func amd64RailMachTargetSafetyReason(plan *nativeBackendPlan) string {
 	denseGlobalModule := plan.Stack.Module != nil && len(plan.Stack.Module.Globals) >= amd64RailMachDenseGlobalThreshold
 	for instructionID, instruction := range plan.Machine.Insts {
 		operands := plan.Machine.InstructionOperands(uint32(instructionID))
-		if amd64DirectSafeDivKind(instruction.Op) && !amd64RailMachDivisionSafe(plan, uint32(instructionID), operands) {
-			return "amd64-division-safety"
+		if amd64DirectSafeDivKind(instruction.Op) {
+			if !amd64RailMachDivisionInputSafe(plan, uint32(instructionID), operands) || !amd64RailMachDivisionClobberSafe(plan, uint32(instructionID)) && !plan.AMD64DivisionSave {
+				return "amd64-division-safety"
+			}
 		}
 		semanticOp := railmach.SemanticOpcode(instruction.Op)
 		if (semanticOp == wasm.InstrCall || semanticOp == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
@@ -1506,17 +1500,19 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
-			divisionRHSSaved := false
+			divisionRAXSaved := false
+			divisionRDXSaved := false
 			shiftRCXSaved := false
 			shiftRCXRestore := false
 			if amd64DirectSafeDivKind(instruction.Op) && len(operands) == 2 {
-				lhs := plan.Allocation.LocationAt(operands[0].Reg, currentPosition)
-				rhs := plan.Allocation.LocationAt(operands[1].Reg, currentPosition)
-				if lhs.Kind == railmach.LocationRegister && lhs.Index != 0 && rhs.Kind == railmach.LocationRegister && rhs.Index == 0 {
-					// A fixed lhs repair overwrites RAX. Preserve a divisor that
-					// currently occupies RAX before realizing that parallel move.
-					a.MovReg64(amd64.R11, amd64.RAX)
-					divisionRHSSaved = true
+				a.StoreRsp64(int32(plan.AMD64DivisionSaveOffset)+16, reg(operands[1].Reg))
+				divisionRAXSaved = railMachPhysicalLiveAcross(plan, instructionID, railmach.BankGPR, 0)
+				divisionRDXSaved = railMachPhysicalLiveAcross(plan, instructionID, railmach.BankGPR, 2)
+				if divisionRAXSaved {
+					a.StoreRsp64(int32(plan.AMD64DivisionSaveOffset), amd64.RAX)
+				}
+				if divisionRDXSaved {
+					a.StoreRsp64(int32(plan.AMD64DivisionSaveOffset)+8, amd64.RDX)
 				}
 			}
 			if (semanticOp >= wasm.InstrI32Shl && semanticOp <= wasm.InstrI32Rotr || semanticOp >= wasm.InstrI64Shl && semanticOp <= wasm.InstrI64Rotr) && len(operands) == 2 {
@@ -3871,15 +3867,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if amd64DirectSafeDivKind(semanticOp) {
-				if !amd64RailMachDivisionSafe(plan, instructionID, operands) {
+				if !amd64RailMachDivisionInputSafe(plan, instructionID, operands) || !amd64RailMachDivisionClobberSafe(plan, instructionID) && !plan.AMD64DivisionSave {
 					return nil, 0, false, nil
 				}
 				wide := plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeI64
-				if divisionRHSSaved {
-					a.MovReg64(amd64.R10, amd64.R11)
-				} else {
-					a.MovReg64(amd64.R10, reg(operands[1].Reg))
-				}
+				a.LoadRsp64(amd64.R10, int32(plan.AMD64DivisionSaveOffset)+16)
 				if nativeObligationRequired(plan, instructionID, railssa.ObligationNonzeroDivisor) {
 					amd64TrapDivZero(&a, amd64.R10, wide, fn.Index, wasmOffset, metadata)
 				}
@@ -3920,6 +3912,12 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				if dst != src {
 					a.MovReg64(dst, src)
+				}
+				if divisionRAXSaved {
+					a.LoadRsp64(amd64.RAX, int32(plan.AMD64DivisionSaveOffset))
+				}
+				if divisionRDXSaved {
+					a.LoadRsp64(amd64.RDX, int32(plan.AMD64DivisionSaveOffset)+8)
 				}
 				continue
 			}
@@ -5154,7 +5152,7 @@ func emitAMD64RailMachMoveRangeAt(a *amd64.Asm, plan *nativeBackendPlan, moveRan
 	return nil
 }
 
-func amd64RailMachDivisionSafe(plan *nativeBackendPlan, instructionID uint32, operands []railmach.Operand) bool {
+func amd64RailMachDivisionInputSafe(plan *nativeBackendPlan, instructionID uint32, operands []railmach.Operand) bool {
 	if len(operands) != 2 {
 		return false
 	}
@@ -5174,6 +5172,10 @@ func amd64RailMachDivisionSafe(plan *nativeBackendPlan, instructionID uint32, op
 			return false
 		}
 	}
+	return true
+}
+
+func amd64RailMachDivisionClobberSafe(plan *nativeBackendPlan, instructionID uint32) bool {
 	position := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 	for _, interval := range plan.Allocation.Intervals {
 		location := plan.Allocation.Locations[interval.Reg]

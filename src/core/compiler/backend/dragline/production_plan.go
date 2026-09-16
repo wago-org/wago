@@ -98,6 +98,12 @@ type nativeBackendPlan struct {
 	AMD64StackCachedGlobals      [2]uint32
 	AMD64StackCachedGlobalOffset uint32
 	AMD64StackCachedGlobalCount  uint8
+	// AMD64DivisionSaveOffset names three frame homes used to preserve unrelated
+	// values allocated in RAX and RDX across x86's implicit integer-division
+	// clobbers and to stage the divisor across fixed-register repair.
+	// AMD64DivisionSave is false when the function has no division.
+	AMD64DivisionSaveOffset uint32
+	AMD64DivisionSave       bool
 
 	BlockOffsets        []int
 	BranchPatches       []nativeBranchPatch
@@ -1966,11 +1972,18 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if err != nil {
 		return nil, err
 	}
+	amd64DivisionSave := nativeAMD64HasDivision(machine)
+	amd64DivisionSaveRuntimeOffset := requirements.RuntimeBytes
+	if amd64DivisionSave {
+		requirements.RuntimeBytes += 24
+	}
 	stackCachedGlobals, stackCachedGlobalCount := nativeAMD64StackCachedGlobals(stack, machine)
 	stackCachedGlobalOffset := uint32(0)
 	stackCachedGlobalRuntimeOffset := requirements.RuntimeBytes
 	if stackCachedGlobalCount != 0 {
 		requirements.RuntimeBytes += uint32(stackCachedGlobalCount) * 8
+	}
+	if amd64DivisionSave || stackCachedGlobalCount != 0 {
 		frame, err = railmach.ComposeFrame(requirements)
 		if err != nil {
 			return nil, err
@@ -1978,6 +1991,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	}
 	if stackCachedGlobalCount != 0 {
 		stackCachedGlobalOffset = frame.RuntimeOffset + stackCachedGlobalRuntimeOffset
+	}
+	amd64DivisionSaveOffset := uint32(0)
+	if amd64DivisionSave {
+		amd64DivisionSaveOffset = frame.RuntimeOffset + amd64DivisionSaveRuntimeOffset
 	}
 	externalCallFPRs, externalCallVectorFPRs := nativeExternalCallFPRMasks(stack, machine, allocation)
 	if p.rootPlan.SlotCount != 0 || externalCallFPRs != 0 {
@@ -2057,6 +2074,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		SegmentedBaselineDebt: segmentedBaselineDebt, SegmentedCandidateDebt: segmentedCandidateDebt, SegmentedBaselineCopies: segmentedBaselineCopies, SegmentedCandidateCopies: segmentedCandidateCopies, SegmentedCandidateRanges: segmentedCandidateRanges, SegmentedAttempted: segmentedAttempted, SegmentedAdmitted: segmentedAdmitted,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64StackCachedGlobals: stackCachedGlobals, AMD64StackCachedGlobalOffset: stackCachedGlobalOffset, AMD64StackCachedGlobalCount: uint8(stackCachedGlobalCount),
+		AMD64DivisionSaveOffset: amd64DivisionSaveOffset, AMD64DivisionSave: amd64DivisionSave,
 		AMD64BMI2:           target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
 		PostRAPairWith:      p.postRAPairWith,
 		PostRASkip:          p.postRASkip,
@@ -2657,6 +2675,19 @@ func nativeAMD64StackCachedGlobals(stack *railssa.StackFunc, machine *railmach.F
 		selectedCount++
 	}
 	return selected, selectedCount
+}
+
+func nativeAMD64HasDivision(machine *railmach.Func) bool {
+	if machine == nil || machine.Target != railmach.TargetAMD64 {
+		return false
+	}
+	for _, instruction := range machine.Insts {
+		if kind := railmach.SemanticOpcode(instruction.Op); kind == wasm.InstrI32DivS || kind == wasm.InstrI32DivU || kind == wasm.InstrI32RemS || kind == wasm.InstrI32RemU ||
+			kind == wasm.InstrI64DivS || kind == wasm.InstrI64DivU || kind == wasm.InstrI64RemS || kind == wasm.InstrI64RemU {
+			return true
+		}
+	}
+	return false
 }
 
 func nativeARM64CachesGlobals(machine *railmach.Func) bool {

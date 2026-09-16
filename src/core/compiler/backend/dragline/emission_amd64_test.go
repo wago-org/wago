@@ -746,8 +746,8 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 		t.Fatal("large acyclic parameterless function was rejected")
 	}
 	stack.MaxLoopDepth = 2
-	if amd64RailMachCandidate(stack, false, false) {
-		t.Fatal("large nested-loop parameterless function was admitted")
+	if !amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("large nested-loop parameterless function was rejected")
 	}
 	stack.Params = []wasm.ValType{wasm.I32}
 	stack.MaxLoopDepth = 0

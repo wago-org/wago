@@ -254,6 +254,22 @@ func TestNativeAMD64StackCachesProfitableCallCrossingGlobals(t *testing.T) {
 	}
 }
 
+func TestNativeAMD64HasDivision(t *testing.T) {
+	machine := &railmach.Func{Target: railmach.TargetAMD64, Insts: []railmach.Inst{{Op: wasm.InstrI32Add}, {Op: railmach.OpAMD64I64RemU}}}
+	if !nativeAMD64HasDivision(machine) {
+		t.Fatal("AMD64 division was not detected")
+	}
+	machine.Target = railmach.TargetARM64
+	if nativeAMD64HasDivision(machine) {
+		t.Fatal("ARM64 function requested AMD64 division save homes")
+	}
+	machine.Target = railmach.TargetAMD64
+	machine.Insts[1].Op = wasm.InstrI64Add
+	if nativeAMD64HasDivision(machine) {
+		t.Fatal("division-free AMD64 function requested division save homes")
+	}
+}
+
 func TestNativeAMD64CachedMemoryBoundSelectsHotAccessEnd(t *testing.T) {
 	p := new(nativeBackendPlanner)
 	stack := &railssa.StackFunc{MemoryMinBytes: 1 << 16}
