@@ -205,14 +205,7 @@ func TestAuthorityExactGrantsAndHostScope(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			if _, err := host.Module("other"); !errors.Is(err, ErrPermissionDenied) {
-				return fmt.Errorf("out-of-scope=%v", err)
-			}
-			module, err := host.Module("env")
-			if err != nil {
-				return err
-			}
-			module.Func("f", func(HostModule, []uint64, []uint64) {})
+			host.HostFunc("env", "f", func() {})
 			return nil
 		})
 	}}
@@ -258,8 +251,7 @@ func TestInspectIsSideEffectFreeAndCommitAtomic(t *testing.T) {
 		return PluginProvider{Definition: def, New: func() Plugin {
 			return pluginFunc(func(r *Registrar) error {
 				h, _ := r.HostImports()
-				m, _ := h.Module("env")
-				m.Func(def.ID, func(HostModule, []uint64, []uint64) {})
+				testRegisterHostFunc(h, "env", def.ID, func(HostModule, []uint64, []uint64) {})
 				return nil
 			})
 		}}
@@ -1127,7 +1119,7 @@ func TestObserverViewsAreOpaqueAndCorrelated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := in.Call(context.Background(), "f"); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "f"); err != nil {
 		t.Fatal(err)
 	}
 	if err := in.Close(); err != nil {
@@ -1154,11 +1146,7 @@ func TestPostCreateInterceptorRunsBeforeStartAndAbortsTransactionally(t *testing
 				if err != nil {
 					return err
 				}
-				module, err := imports.Module("env")
-				if err != nil {
-					return err
-				}
-				module.Func("start", func(HostModule, []uint64, []uint64) {
+				testRegisterHostFunc(imports, "env", "start", func(HostModule, []uint64, []uint64) {
 					if attached.IsZero() {
 						t.Error("start ran before post-create attachment")
 					}

@@ -39,9 +39,7 @@ func TestRuntimeGCInstanceCloseReleasesHostThunk(t *testing.T) {
 	}
 	defer mod.Close()
 
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
-		"env.mark": HostFunc(func(HostModule, []uint64, []uint64) {}),
-	}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.mark", slotHostFunc(func(HostModule, []uint64, []uint64) {}))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,11 +154,7 @@ func TestReverseCloseReexportChainReleasesFuncrefCycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		provider, err = rt.Instantiate(context.Background(), relayModule, WithImports(Imports{
-			"link.state_table":      table,
-			"link.state_memory":     memory,
-			"link.state_global_i32": global,
-		}))
+		provider, err = rt.Instantiate(context.Background(), relayModule, WithImports(testImports("link.state_table", table, "link.state_memory", memory, "link.state_global_i32", global)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -178,11 +172,7 @@ func TestReverseCloseReexportChainReleasesFuncrefCycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer, err := rt.Instantiate(context.Background(), consumerModule, WithImports(Imports{
-		"link.state_table":      table,
-		"link.state_memory":     memory,
-		"link.state_global_i32": global,
-	}))
+	consumer, err := rt.Instantiate(context.Background(), consumerModule, WithImports(testImports("link.state_table", table, "link.state_memory", memory, "link.state_global_i32", global)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,15 +214,11 @@ func TestThreadedMemoryReleasePreservesTransferredAttachment(t *testing.T) {
 		t.Fatal(err)
 	}
 	binary.LittleEndian.PutUint32(memory.UnsafeBytes(), 0x12345678)
-	observer, err := rt.Instantiate(context.Background(), module, WithImports(Imports{
-		"link.state_memory": memory,
-	}))
+	observer, err := rt.Instantiate(context.Background(), module, WithImports(testImports("link.state_memory", memory)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	transferred, err := rt.Instantiate(context.Background(), module, WithImports(Imports{
-		"link.state_memory": memory,
-	}))
+	transferred, err := rt.Instantiate(context.Background(), module, WithImports(testImports("link.state_memory", memory)))
 	if err != nil {
 		t.Fatal(err)
 	}

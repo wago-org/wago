@@ -60,7 +60,7 @@ func TestStagedTypedReferenceResultReturnCallRef(t *testing.T) {
 	}
 	defer in.Close()
 	for _, name := range []string{"direct", "tail"} {
-		got, err := in.Call(context.Background(), name)
+		got, err := in.InvokeValues(context.Background(), name)
 		if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() {
 			t.Fatalf("%s reference result = %v, err=%v", name, got, err)
 		}
@@ -141,7 +141,7 @@ func instantiateTypedCrossTail(t testing.TB) (*Instance, *Instance) {
 		t.Fatalf("export typed-tail producer: %v", err)
 	}
 	consumerCompiled := stagedTypedTailCompile(t, typedCrossTailConsumerModule())
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		producer.Close()
 		t.Fatalf("instantiate typed-tail consumer: %v", err)
@@ -223,14 +223,14 @@ func TestStagedTypedCrossInstanceReturnCallRefRootTransfer(t *testing.T) {
 	}
 
 	rt := NewRuntime()
-	host, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, args, results []uint64) {
+	host, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, args, results []uint64) {
 		results[0] = args[0] + 1
 	}), FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}})
 	if err != nil {
 		t.Fatalf("create host funcref: %v", err)
 	}
 	hostConsumerCompiled := stagedTypedTailCompile(t, typedCrossTailConsumerModule())
-	hostConsumer, err := instantiateCore(hostConsumerCompiled, InstantiateOptions{Imports: Imports{"env.f": host}, store: rt.refStore})
+	hostConsumer, err := instantiateCore(hostConsumerCompiled, InstantiateOptions{Imports: testImports("env.f", host), store: rt.refStore})
 	if err != nil {
 		t.Fatalf("instantiate host typed-tail consumer: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestStagedTypedCrossInstanceReturnCallRefTwoResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	consumerCompiled := stagedTypedTailCompile(t, typedCrossTailPairConsumerModule())
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.pair": export}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.pair", export)})
 	if err != nil {
 		producer.Close()
 		t.Fatalf("instantiate pair consumer: %v", err)

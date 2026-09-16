@@ -18,14 +18,14 @@ import (
 type proposalReplayModule struct {
 	inst        *Instance
 	compiled    *Compiled
-	imports     Imports
+	imports     *Imports
 	schema      map[string]proposalExternType
 	hostExports map[string]*HostFuncRef
 }
 
 type proposalReplayState struct {
 	rt            *Runtime
-	standard      Imports
+	standard      *Imports
 	standardTypes map[string]proposalExternType
 	current       *proposalReplayModule
 	named         map[string]*proposalReplayModule
@@ -505,23 +505,9 @@ func (s *proposalReplayState) compareActionResult(inst *Instance, index int, got
 	}
 }
 
-func proposalSpectestImports(table *Table, memory *Memory) Imports {
-	noop := HostFunc(func(HostModule, []uint64, []uint64) {})
-	return Imports{
-		"spectest.print":         noop,
-		"spectest.print_i32":     noop,
-		"spectest.print_i64":     noop,
-		"spectest.print_f32":     noop,
-		"spectest.print_f64":     noop,
-		"spectest.print_i32_f32": noop,
-		"spectest.print_f64_f64": noop,
-		"spectest.global_i32":    GlobalImport{Type: ValI32, Bits: I32(666)},
-		"spectest.global_i64":    GlobalImport{Type: ValI64, Bits: I64(666)},
-		"spectest.global_f32":    GlobalImport{Type: ValF32, Bits: F32(666)},
-		"spectest.global_f64":    GlobalImport{Type: ValF64, Bits: F64(666)},
-		"spectest.memory":        memory,
-		"spectest.table":         table,
-	}
+func proposalSpectestImports(table *Table, memory *Memory) *Imports {
+	noop := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	return testImports("spectest.print", noop, "spectest.print_i32", noop, "spectest.print_i64", noop, "spectest.print_f32", noop, "spectest.print_f64", noop, "spectest.print_i32_f32", noop, "spectest.print_f64_f64", noop, "spectest.global_i32", GlobalImport{Type: ValI32, Bits: I32(666)}, "spectest.global_i64", GlobalImport{Type: ValI64, Bits: I64(666)}, "spectest.global_f32", GlobalImport{Type: ValF32, Bits: F32(666)}, "spectest.global_f64", GlobalImport{Type: ValF64, Bits: F64(666)}, "spectest.memory", memory, "spectest.table", table)
 }
 
 func proposalSpectestTypes() map[string]proposalExternType {
@@ -721,31 +707,43 @@ func (s *proposalReplayState) exactLinkError(imports proposalImportTypes) error 
 	return nil
 }
 
-func (s *proposalReplayState) importsFor(compiled *Compiled, exact proposalImportTypes) (Imports, error) {
-	imports := make(Imports, len(s.standard))
-	for key, value := range s.standard {
-		imports[key] = value
+func (s *proposalReplayState) importsFor(compiled *Compiled, exact proposalImportTypes) (*Imports, error) {
+	imports := NewImports()
+	put := func(module, name string, value any) {
+		key := importBindingMapKey(module, name)
+		imports.bindings[key] = value
+		imports.identities[key] = importBindingKey{module: module, name: name}
+	}
+	for key, value := range s.standard.bindings {
+		module, name, ok := splitImportBindingMapKey(key)
+		if !ok {
+			module, name = splitImportKey(key)
+		}
+		put(module, name, value)
 	}
 	for _, key := range compiled.Imports {
 		value, err := s.resolveImport(key, proposalExternFunc, exact.byKey[key])
 		if err != nil {
 			return nil, err
 		}
-		imports[key] = value
+		module, name := splitImportKey(key)
+		put(module, name, value)
 	}
 	if key, ok := compiled.MemoryImport(); ok {
 		value, err := s.resolveImport(key, proposalExternMemory, exact.byKey[key])
 		if err != nil {
 			return nil, err
 		}
-		imports[key] = value
+		module, name := splitImportKey(key)
+		put(module, name, value)
 	}
 	for _, key := range compiled.TableImports() {
 		value, err := s.resolveImport(key, proposalExternTable, exact.byKey[key])
 		if err != nil {
 			return nil, err
 		}
-		imports[key] = value
+		module, name := splitImportKey(key)
+		put(module, name, value)
 	}
 	for _, imp := range compiled.GlobalImports {
 		key := imp.Module + "." + imp.Name
@@ -753,7 +751,7 @@ func (s *proposalReplayState) importsFor(compiled *Compiled, exact proposalImpor
 		if err != nil {
 			return nil, err
 		}
-		imports[key] = value
+		put(imp.Module, imp.Name, value)
 	}
 	return imports, nil
 }
@@ -763,7 +761,7 @@ func (s *proposalReplayState) resolveImport(key string, want proposalExternKind,
 	if !ok {
 		return nil, fmt.Errorf("unknown import %q: malformed key", key)
 	}
-	if value, found := s.standard[key]; found {
+	if value, found := s.standard.bindings[importBindingMapKey(moduleName, field)]; found {
 		actual, typed := s.standardTypes[key]
 		if proposalImportValueKind(value) != want || !typed || !proposalExternTypesCompatible(actual, expected) {
 			return nil, fmt.Errorf("incompatible import type for %q", key)
@@ -929,8 +927,11 @@ func proposalLimitsCompatible(actual, expected corewasm.Limits) bool {
 }
 
 func proposalImportValueKind(value any) proposalExternKind {
+	if isHostCallback(value) || isHostCallCallback(value) {
+		return proposalExternFunc
+	}
 	switch value.(type) {
-	case HostFunc, *HostFuncRef, *InstanceExport:
+	case *HostFuncRef, *InstanceExport:
 		return proposalExternFunc
 	case GlobalImport, *Global:
 		return proposalExternGlobal
@@ -951,14 +952,14 @@ func (s *proposalReplayState) exportedFunction(provider *proposalReplayModule, f
 	if gfi >= provider.compiled.NumImports {
 		return provider.inst.ExportedFunc(field)
 	}
-	key := provider.compiled.Imports[gfi]
-	if value, ok := provider.imports[key].(*InstanceExport); ok {
+	key := provider.compiled.functionImportBindingKey(gfi)
+	if value, ok := provider.imports.bindings[key].(*InstanceExport); ok {
 		return value, nil
 	}
-	if value, ok := provider.imports[key].(*HostFuncRef); ok {
+	if value, ok := provider.imports.bindings[key].(*HostFuncRef); ok {
 		return value, nil
 	}
-	fn, ok := provider.imports[key].(HostFunc)
+	fn, ok := provider.imports.bindings[key].(slotHostFunc)
 	if !ok || fn == nil || gfi >= len(provider.compiled.importFuncSigs) {
 		return nil, fmt.Errorf("exported imported function %q has no typed owner", field)
 	}

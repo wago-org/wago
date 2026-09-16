@@ -22,9 +22,7 @@ func TestHostExitValueAndPointerThroughWasm(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = c.Close() })
-		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-			"env.f": HostFunc(func(HostModule, []uint64, []uint64) { panic(value) }),
-		}})
+		in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) { panic(value) }))})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -44,9 +42,9 @@ func TestIndependentInstanceExecutionBypassesProcessLease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, _, results []uint64) {
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(7)
-	})}})
+	}))})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -82,7 +80,7 @@ func TestIndependentHostDispatchDoesNotRaceProcessEpoch(t *testing.T) {
 			t.Fatalf("compile: %v", err)
 		}
 		t.Cleanup(func() { _ = compiled.Close() })
-		in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}})
+		in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) {}))})
 		if err != nil {
 			t.Fatalf("instantiate: %v", err)
 		}
@@ -205,12 +203,12 @@ func returningImportModule(sig, body []byte, extra ...[]byte) []byte {
 }
 
 // TestSyncHostImportSlotForm binds a returning host import as a reflection-free
-// HostFunc (the TinyGo-safe form) and runs it through the public API.
+// slotHostFunc (the TinyGo-safe form) and runs it through the public API.
 func TestSyncHostImportSlotForm(t *testing.T) {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 	body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b} // local.get 0; call 0; end
 	c := MustCompile(returningImportModule(sig, body))
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] * 3 })}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] * 3 }))})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -230,9 +228,7 @@ func TestTypedI32HostImports(t *testing.T) {
 		body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b} // local.get 0; call 0; end
 		c := MustCompile(returningImportModule(sig, body))
 		defer c.Close()
-		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-			"env.f": func(v int32) int32 { return v - 1 },
-		}})
+		in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", func(v int32) int32 { return v - 1 })})
 		if err != nil {
 			t.Fatalf("instantiate: %v", err)
 		}
@@ -250,9 +246,7 @@ func TestTypedI32HostImports(t *testing.T) {
 		body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x10, 0x00, 0x0b} // local.get 0, 1; call 0; end
 		c := MustCompile(returningImportModule(sig, body))
 		defer c.Close()
-		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-			"env.f": I32I32ToI32HostFunc(func(a, b int32) int32 { return a + b }),
-		}})
+		in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", i32I32ToI32HostFunc(func(a, b int32) int32 { return a + b }))})
 		if err != nil {
 			t.Fatalf("instantiate: %v", err)
 		}
@@ -267,9 +261,7 @@ func TestTypedI32HostImports(t *testing.T) {
 		body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}
 		c := MustCompile(returningImportModule(sig, body))
 		defer c.Close()
-		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-			"env.f": I32ToI32HostFunc(func(int32) int32 { panic(HostExit{Code: 23}) }),
-		}})
+		in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", i32ToI32HostFunc(func(int32) int32 { panic(HostExit{Code: 23}) }))})
 		if err != nil {
 			t.Fatalf("instantiate: %v", err)
 		}
@@ -285,23 +277,23 @@ func TestTypedI32HostImports(t *testing.T) {
 func TestTypedI32HostImportBindingRejectsInvalidFunctions(t *testing.T) {
 	oneI32 := FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}}
 	twoI32 := FuncSig{Params: []ValType{ValI32, ValI32}, Results: []ValType{ValI32}}
-	one, err := bindSyncHostImport(I32ToI32HostFunc(func(v int32) int32 { return v }), oneI32)
+	one, err := bindSyncHostImport(i32ToI32HostFunc(func(v int32) int32 { return v }), oneI32)
 	if err != nil || one.scalarKind != syncHostTypedI32 {
 		t.Fatalf("one-parameter typed binding = kind %d, %v; want kind %d", one.scalarKind, err, syncHostTypedI32)
 	}
-	two, err := bindSyncHostImport(I32I32ToI32HostFunc(func(a, b int32) int32 { return a + b }), twoI32)
+	two, err := bindSyncHostImport(i32I32ToI32HostFunc(func(a, b int32) int32 { return a + b }), twoI32)
 	if err != nil || two.scalarKind != syncHostTypedI32x2 {
 		t.Fatalf("two-parameter typed binding = kind %d, %v; want kind %d", two.scalarKind, err, syncHostTypedI32x2)
 	}
 
-	var nilOne I32ToI32HostFunc
+	var nilOne i32ToI32HostFunc
 	if _, err := bindSyncHostImport(nilOne, oneI32); err == nil {
 		t.Fatal("nil typed host function was accepted")
 	}
-	if _, err := bindSyncHostImport(I32I32ToI32HostFunc(func(a, b int32) int32 { return a + b }), oneI32); err == nil {
+	if _, err := bindSyncHostImport(i32I32ToI32HostFunc(func(a, b int32) int32 { return a + b }), oneI32); err == nil {
 		t.Fatal("two-parameter typed host function accepted a one-parameter signature")
 	}
-	if _, err := bindSyncHostImport(I32ToI32HostFunc(func(v int32) int32 { return v }), twoI32); err == nil {
+	if _, err := bindSyncHostImport(i32ToI32HostFunc(func(v int32) int32 { return v }), twoI32); err == nil {
 		t.Fatal("one-parameter typed host function accepted a two-parameter signature")
 	}
 }
@@ -312,13 +304,13 @@ func TestTypedHostSignatureMatrixRejectsMismatches(t *testing.T) {
 		fn   any
 		bad  FuncSig
 	}{
-		{name: "empty_to_empty", fn: NoArgsHostFunc(func() {}), bad: FuncSig{Params: []ValType{ValI32}}},
-		{name: "i32_to_empty", fn: I32HostFunc(func(int32) {}), bad: FuncSig{}},
-		{name: "i32_to_i32", fn: I32ToI32HostFunc(func(v int32) int32 { return v }), bad: FuncSig{Params: []ValType{ValI32}}},
-		{name: "i32_i32_to_empty", fn: I32I32HostFunc(func(int32, int32) {}), bad: FuncSig{Params: []ValType{ValI32}}},
-		{name: "i32_i32_to_i32", fn: I32I32ToI32HostFunc(func(a, b int32) int32 { return a + b }), bad: FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}}},
-		{name: "i32_to_i32_i32", fn: I32ToI32I32HostFunc(func(v int32) (int32, int32) { return v, v }), bad: FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}}},
-		{name: "i32_i32_to_i32_i32", fn: I32I32ToI32I32HostFunc(func(a, b int32) (int32, int32) { return a, b }), bad: FuncSig{Params: []ValType{ValI32, ValI32}, Results: []ValType{ValI32}}},
+		{name: "empty_to_empty", fn: noArgsHostFunc(func() {}), bad: FuncSig{Params: []ValType{ValI32}}},
+		{name: "i32_to_empty", fn: i32HostFunc(func(int32) {}), bad: FuncSig{}},
+		{name: "i32_to_i32", fn: i32ToI32HostFunc(func(v int32) int32 { return v }), bad: FuncSig{Params: []ValType{ValI32}}},
+		{name: "i32_i32_to_empty", fn: i32I32HostFunc(func(int32, int32) {}), bad: FuncSig{Params: []ValType{ValI32}}},
+		{name: "i32_i32_to_i32", fn: i32I32ToI32HostFunc(func(a, b int32) int32 { return a + b }), bad: FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}}},
+		{name: "i32_to_i32_i32", fn: i32ToI32I32HostFunc(func(v int32) (int32, int32) { return v, v }), bad: FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}}},
+		{name: "i32_i32_to_i32_i32", fn: i32I32ToI32I32HostFunc(func(a, b int32) (int32, int32) { return a, b }), bad: FuncSig{Params: []ValType{ValI32, ValI32}, Results: []ValType{ValI32}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -366,7 +358,7 @@ func TestSyncHostImportV128SlotFormRejected(t *testing.T) {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.V128, wasm.I64}, []wasm.ValType{wasm.V128, wasm.I32})
 	body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x10, 0x00, 0x0b} // local.get 0,1,2; call 0; end
 	c := MustCompile(returningImportModule(sig, body))
-	if _, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}}); err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") {
+	if _, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) {}))}); err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") {
 		t.Fatalf("instantiate error = %v, want unsupported v128 host callback", err)
 	}
 }
@@ -384,7 +376,7 @@ func TestSyncHostImportVoidV128Rejected(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x41, 0x07, 0x0b}))), // local.get 0; call 0; i32.const 7; end
 	)
 	c := MustCompile(mod)
-	if _, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}}); err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") {
+	if _, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) {}))}); err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") {
 		t.Fatalf("instantiate error = %v, want unsupported v128 host callback", err)
 	}
 }

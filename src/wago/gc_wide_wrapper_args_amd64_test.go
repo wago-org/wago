@@ -113,7 +113,7 @@ func TestCrossInstanceWideWrapperStagesSpillsCreatedDuringFlush(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumerCode.Close()
-	consumer, err := instantiateCore(consumerCode, InstantiateOptions{Imports: Imports{"env.f": exported}})
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{Imports: testImports("env.f", exported)})
 	if err != nil {
 		t.Fatal(err)
 	}

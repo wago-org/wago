@@ -4,7 +4,7 @@ import "fmt"
 
 const instructionABIModule = "wago:abi"
 
-type instructionHostFunc HostFunc
+type instructionHostFunc slotHostFunc
 type instructionTrap struct{ err error }
 
 type instructionResultPack struct{ values []Bits }
@@ -143,7 +143,7 @@ func instructionImport(ins *registeredInstruction) *registeredImport {
 			result[0] = uint64(in.instructionState.allocPack(out))
 		}
 	})
-	return &registeredImport{module: ins.spec.Module, name: ins.spec.Name, fn: HostFunc(fn), params: params, results: results, docs: "custom instruction"}
+	return &registeredImport{module: ins.spec.Module, name: ins.spec.Name, fn: slotHostFunc(fn), params: params, results: results, docs: "custom instruction"}
 }
 
 func instructionABIImports() []*registeredImport {
@@ -187,9 +187,9 @@ func instructionABIImports() []*registeredImport {
 		delete(in.instructionState.values, id)
 	})
 	return []*registeredImport{
-		{module: instructionABIModule, name: "result.get", fn: HostFunc(get), params: []ValType{ValI32, ValI32}, results: []ValType{ValI32}, docs: "project a custom-instruction result pack"},
-		{module: instructionABIModule, name: "result.drop", fn: HostFunc(dropResult), params: []ValType{ValI32}, docs: "release a custom-instruction result pack"},
-		{module: instructionABIModule, name: "value.drop", fn: HostFunc(dropValue), params: []ValType{ValI32}, docs: "release a wide custom-instruction value"},
+		{module: instructionABIModule, name: "result.get", fn: slotHostFunc(get), params: []ValType{ValI32, ValI32}, results: []ValType{ValI32}, docs: "project a custom-instruction result pack"},
+		{module: instructionABIModule, name: "result.drop", fn: slotHostFunc(dropResult), params: []ValType{ValI32}, docs: "release a custom-instruction result pack"},
+		{module: instructionABIModule, name: "value.drop", fn: slotHostFunc(dropValue), params: []ValType{ValI32}, docs: "release a wide custom-instruction value"},
 	}
 }
 

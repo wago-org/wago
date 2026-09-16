@@ -31,7 +31,7 @@ func TestCallCancellationWhileWaitingForAdmission(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { _, err := in.Call(ctx, "f", ValueI32(41)); done <- err }()
+	go func() { _, err := in.InvokeValues(ctx, "f", ValueI32(41)); done <- err }()
 	cancel()
 	select {
 	case err := <-done:
@@ -46,7 +46,7 @@ func TestCallCancellationWhileWaitingForAdmission(t *testing.T) {
 	}
 	state.unlockInvocation()
 	released = true
-	out, err := in.Call(context.Background(), "f", ValueI32(41))
+	out, err := in.InvokeValues(context.Background(), "f", ValueI32(41))
 	if err != nil || len(out) != 1 || out[0].I32() != 42 {
 		t.Fatalf("next Call = %v, %v", out, err)
 	}
@@ -117,17 +117,17 @@ func TestCallDeadlineWhileCallbackOwnsAdmission(t *testing.T) {
 	defer c.Close()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": func(v int32) int32 {
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", func(v int32) int32 {
 		once.Do(func() { close(entered); <-release })
 		return v + 1
-	}}})
+	})})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
 	done := make(chan error, 1)
 	go func() {
-		out, err := in.Call(context.Background(), "g", ValueI32(41))
+		out, err := in.InvokeValues(context.Background(), "g", ValueI32(41))
 		if err == nil && (len(out) != 1 || out[0].I32() != 42) {
 			err = fmt.Errorf("first call = %v", out)
 		}
@@ -142,7 +142,7 @@ func TestCallDeadlineWhileCallbackOwnsAdmission(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	waiter := make(chan error, 1)
-	go func() { _, err := in.Call(ctx, "g", ValueI32(9)); waiter <- err }()
+	go func() { _, err := in.InvokeValues(ctx, "g", ValueI32(9)); waiter <- err }()
 	select {
 	case err := <-waiter:
 		if !errors.Is(err, context.DeadlineExceeded) {
@@ -158,7 +158,7 @@ func TestCallDeadlineWhileCallbackOwnsAdmission(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	out, err := in.Call(context.Background(), "g", ValueI32(41))
+	out, err := in.InvokeValues(context.Background(), "g", ValueI32(41))
 	if err != nil || len(out) != 1 || out[0].I32() != 42 {
 		t.Fatalf("next call = %v, %v", out, err)
 	}
@@ -175,7 +175,7 @@ func BenchmarkCallAdmission(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := in.Call(context.Background(), "f", ValueI32(41)); err != nil {
+		if _, err := in.InvokeValues(context.Background(), "f", ValueI32(41)); err != nil {
 			b.Fatal(err)
 		}
 	}

@@ -143,7 +143,7 @@ func TestEngineBehaviorFixtures(t *testing.T) {
 	})
 	t.Run("host_memory", func(t *testing.T) {
 		var observed []byte
-		imports := Imports{"host.store_int": HostFunc(func(m HostModule, params, results []uint64) {
+		imports := testImports("host.store_int", slotHostFunc(func(m HostModule, params, results []uint64) {
 			mem := m.Memory()
 			off := int(uint32(params[0]))
 			if off < 0 || off+8 > len(mem) {
@@ -152,7 +152,7 @@ func TestEngineBehaviorFixtures(t *testing.T) {
 			}
 			binary.LittleEndian.PutUint64(mem[off:], params[1])
 			observed = mem
-		})}
+		}))
 		in := instantiateEngineFixture(t, "host_memory.wasm", imports)
 		defer in.Close()
 		got, err := in.Invoke("store_int", I32(1), math.MaxUint64)
@@ -170,9 +170,9 @@ func TestEngineBehaviorFixtures(t *testing.T) {
 	t.Run("recursive_entry", func(t *testing.T) {
 		var in *Instance
 		var nestedErr error
-		imports := Imports{"env.host_func": HostFunc(func(mod HostModule, _, _ []uint64) {
+		imports := testImports("env.host_func", slotHostFunc(func(mod HostModule, _, _ []uint64) {
 			_, nestedErr = in.InvokeFromHost(context.Background(), mod, "called_by_host_func")
-		})}
+		}))
 		in = instantiateEngineFixture(t, "recursive.wasm", imports)
 		defer in.Close()
 		if _, err := in.Invoke("main", I32(1)); err != nil || nestedErr != nil {
@@ -183,9 +183,9 @@ func TestEngineBehaviorFixtures(t *testing.T) {
 		if !requireStandardGoTestRuntime(t) {
 			return
 		}
-		in := instantiateEngineFixture(t, "unreachable.wasm", Imports{"host.cause_unreachable": HostFunc(func(_ HostModule, _, _ []uint64) {
+		in := instantiateEngineFixture(t, "unreachable.wasm", testImports("host.cause_unreachable", slotHostFunc(func(_ HostModule, _, _ []uint64) {
 			panic(errors.New("panic in host function"))
-		})})
+		})))
 		defer in.Close()
 		defer func() {
 			r := recover()
@@ -210,12 +210,12 @@ func TestEngineBehaviorFixtures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"host.externref": HostFunc(func(_ HostModule, params, results []uint64) {
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("host.externref", slotHostFunc(func(_ HostModule, params, results []uint64) {
 			if len(params) != 1 || params[0] != 0 {
 				panic("ref.null externref argument was not null")
 			}
 			results[0] = ValueExternRef(ref).Bits()
-		})}))
+		}))))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -255,7 +255,7 @@ func TestEngineBehaviorFixtures(t *testing.T) {
 	})
 }
 
-func instantiateEngineFixture(t *testing.T, name string, imports Imports) *Instance {
+func instantiateEngineFixture(t *testing.T, name string, imports *Imports) *Instance {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("..", "..", "tests", "corpus", "regressions", "engine", name))
 	if err != nil {

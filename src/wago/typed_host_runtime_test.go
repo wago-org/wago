@@ -13,21 +13,27 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func invokeWasmI32(fn *WasmFunc, value int32) (int32, error) {
+	out, err := fn.Invoke(I32(value))
+	if err != nil {
+		return 0, err
+	}
+	return AsI32(out[0]), nil
+}
+
 func TestHostCallPortalMayGrowStackCollectAndRecoverFromTrap(t *testing.T) {
 	compiled := MustCompile(benchReturningImportModule())
 	defer compiled.Close()
 	calls := 0
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": HostCallFunc(func(call HostCall) {
-			calls++
-			value := typedHostGrowStack(128, call.I32(0))
-			runtime.GC()
-			if calls == 1 {
-				panic(HostTrap{Err: errors.New("expected portal trap")})
-			}
-			call.SetI32(0, value+1)
-		}),
-	}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", HostCallFunc(func(call HostCall) {
+		calls++
+		value := typedHostGrowStack(128, call.I32(0))
+		runtime.GC()
+		if calls == 1 {
+			panic(HostTrap{Err: errors.New("expected portal trap")})
+		}
+		call.SetI32(0, value+1)
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,27 +53,25 @@ func TestWideHostCallViewMayGrowStackCollectAndRecoverFromTrap(t *testing.T) {
 	compiled := MustCompile(hostSignatureLoopModule(48, 48))
 	defer compiled.Close()
 	calls := 0
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": HostCallFunc(func(call HostCall) {
-			calls++
-			if len(call.ParamSlots()) != 48 || len(call.ResultSlots()) != 48 {
-				t.Fatalf("wide slot counts = %d/%d", len(call.ParamSlots()), len(call.ResultSlots()))
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", HostCallFunc(func(call HostCall) {
+		calls++
+		if len(call.ParamSlots()) != 48 || len(call.ResultSlots()) != 48 {
+			t.Fatalf("wide slot counts = %d/%d", len(call.ParamSlots()), len(call.ResultSlots()))
+		}
+		for i, result := range call.ResultSlots() {
+			if result != 0 {
+				t.Fatalf("wide result slot %d was not cleared: %#x", i, result)
 			}
-			for i, result := range call.ResultSlots() {
-				if result != 0 {
-					t.Fatalf("wide result slot %d was not cleared: %#x", i, result)
-				}
-			}
-			_ = typedHostGrowStack(128, int32(call.ParamSlots()[0]))
-			runtime.GC()
-			if calls == 1 {
-				panic(HostTrap{Err: errors.New("expected wide-view trap")})
-			}
-			for i := range call.ResultSlots() {
-				call.ResultSlots()[i] = 7
-			}
-		}),
-	}})
+		}
+		_ = typedHostGrowStack(128, int32(call.ParamSlots()[0]))
+		runtime.GC()
+		if calls == 1 {
+			panic(HostTrap{Err: errors.New("expected wide-view trap")})
+		}
+		for i := range call.ResultSlots() {
+			call.ResultSlots()[i] = 7
+		}
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +101,7 @@ func TestHostCallPortalMayBlockWhileOtherInstanceRuns(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer other.Close()
-			otherFn, err := other.PrepareI32ToI32("f")
+			otherFn, err := other.WasmFunc("f")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -108,13 +112,11 @@ func TestHostCallPortalMayBlockWhileOtherInstanceRuns(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer compiled.Close()
-			in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-				"env.f": HostCallFunc(func(call HostCall) {
-					close(entered)
-					<-release
-					call.SetI32(0, call.I32(0)+1)
-				}),
-			}})
+			in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", HostCallFunc(func(call HostCall) {
+				close(entered)
+				<-release
+				call.SetI32(0, call.I32(0)+1)
+			}))})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -131,7 +133,7 @@ func TestHostCallPortalMayBlockWhileOtherInstanceRuns(t *testing.T) {
 			<-entered
 			otherDone := make(chan error, 1)
 			go func() {
-				got, callErr := otherFn.Call(1)
+				got, callErr := invokeWasmI32(otherFn, 1)
 				if callErr == nil && got != 2 {
 					callErr = fmt.Errorf("other result = %d, want 2", got)
 				}
@@ -169,13 +171,11 @@ func TestTypedI32HostCallbackMayGrowStackAndCollect(t *testing.T) {
 	body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}
 	compiled := MustCompile(returningImportModule(sig, body))
 	defer compiled.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": I32ToI32HostFunc(func(value int32) int32 {
-			value = typedHostGrowStack(128, value)
-			runtime.GC()
-			return value + 1
-		}),
-	}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", i32ToI32HostFunc(func(value int32) int32 {
+		value = typedHostGrowStack(128, value)
+		runtime.GC()
+		return value + 1
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,17 +189,15 @@ func TestTypedExpandedHostCallbackMayGrowStackCollectAndRecoverFromTrap(t *testi
 	compiled := MustCompile(hostSignatureLoopModule(1, 1, wasm.F64))
 	defer compiled.Close()
 	calls := 0
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": func(value float64) float64 {
-			calls++
-			_ = typedHostGrowStack(128, int32(value))
-			runtime.GC()
-			if calls == 1 {
-				panic(HostTrap{Err: errors.New("expected expanded typed trap")})
-			}
-			return 7
-		},
-	}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", func(value float64) float64 {
+		calls++
+		_ = typedHostGrowStack(128, int32(value))
+		runtime.GC()
+		if calls == 1 {
+			panic(HostTrap{Err: errors.New("expected expanded typed trap")})
+		}
+		return 7
+	})})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,32 +221,30 @@ func TestTypedI32HostCallbackRestoresAfterOtherInstanceRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer other.Close()
-	otherFn, err := other.PrepareI32ToI32("f")
+	otherFn, err := other.WasmFunc("f")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	compiled := MustCompile(benchReturningImportModule())
 	defer compiled.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": I32ToI32HostFunc(func(value int32) int32 {
-			got, callErr := otherFn.Call(value)
-			if callErr != nil {
-				panic(callErr)
-			}
-			return got
-		}),
-	}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", i32ToI32HostFunc(func(value int32) int32 {
+		got, callErr := invokeWasmI32(otherFn, value)
+		if callErr != nil {
+			panic(callErr)
+		}
+		return got
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareI32ToI32("g")
+	fn, err := in.WasmFunc("g")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := int32(0); i < 100; i++ {
-		got, err := fn.Call(i)
+		got, err := invokeWasmI32(fn, i)
 		if err != nil || got != i+1 {
 			t.Fatalf("call %d after other instance = %d, %v; want %d", i, got, err, i+1)
 		}
@@ -261,25 +257,23 @@ func TestTypedI32HostCallbackRestoresAfterIndependentExecutionRevocation(t *test
 	var in *Instance
 	revoked := false
 	var err error
-	in, err = Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": I32ToI32HostFunc(func(value int32) int32 {
-			if !revoked {
-				revoked = true
-				in.markNativeControlShared()
-			}
-			return value + 1
-		}),
-	}})
+	in, err = Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", i32ToI32HostFunc(func(value int32) int32 {
+		if !revoked {
+			revoked = true
+			in.markNativeControlShared()
+		}
+		return value + 1
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareI32ToI32("g")
+	fn, err := in.WasmFunc("g")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := int32(0); i < 100; i++ {
-		got, err := fn.Call(i)
+		got, err := invokeWasmI32(fn, i)
 		if err != nil || got != i+1 {
 			t.Fatalf("call %d after execution-mode revocation = %d, %v; want %d", i, got, err, i+1)
 		}
@@ -303,7 +297,7 @@ func TestTypedI32HostCallbackMayBlockWhileOtherInstanceRuns(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer other.Close()
-			otherFn, err := other.PrepareI32ToI32("f")
+			otherFn, err := other.WasmFunc("f")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -315,25 +309,23 @@ func TestTypedI32HostCallbackMayBlockWhileOtherInstanceRuns(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer compiled.Close()
-			in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-				"env.f": I32ToI32HostFunc(func(value int32) int32 {
-					close(entered)
-					<-release
-					return value + 1
-				}),
-			}})
+			in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", i32ToI32HostFunc(func(value int32) int32 {
+				close(entered)
+				<-release
+				return value + 1
+			}))})
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			fn, err := in.PrepareI32ToI32("g")
+			fn, err := in.WasmFunc("g")
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			rootDone := make(chan error, 1)
 			go func() {
-				got, callErr := fn.Call(41)
+				got, callErr := invokeWasmI32(fn, 41)
 				if callErr == nil && got != 42 {
 					callErr = fmt.Errorf("root result = %d, want 42", got)
 				}
@@ -342,7 +334,7 @@ func TestTypedI32HostCallbackMayBlockWhileOtherInstanceRuns(t *testing.T) {
 			<-entered
 			otherDone := make(chan error, 1)
 			go func() {
-				got, callErr := otherFn.Call(1)
+				got, callErr := invokeWasmI32(otherFn, 1)
 				if callErr == nil && got != 2 {
 					callErr = fmt.Errorf("other result = %d, want 2", got)
 				}

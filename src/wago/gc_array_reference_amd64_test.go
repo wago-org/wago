@@ -48,7 +48,7 @@ func TestGenericGCArrayNewElemPreservesI31Values(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	got, err := in.Call(context.Background(), "array-new-elem-contents")
+	got, err := in.InvokeValues(context.Background(), "array-new-elem-contents")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestStagedGCArrayReferenceOfficialProduct(t *testing.T) {
 			if err := in.ReleaseGCRef(ValueOf(ValAnyRef, token).GCRef()); err != nil {
 				t.Fatal(err)
 			}
-			values, err := in.Call(context.Background(), "new")
+			values, err := in.InvokeValues(context.Background(), "new")
 			if err != nil || len(values) != 1 || values[0].GCRef().IsNull() {
 				t.Fatalf("Call new = %v, %v", values, err)
 			}

@@ -28,10 +28,10 @@ func starshineSmokeConfig() *RuntimeConfig {
 		WithBoundsChecks(BoundsChecksExplicit)
 }
 
-func starshineSmokeImports(compiled *Compiled) Imports {
-	imports := make(Imports, len(compiled.Imports))
+func starshineSmokeImports(compiled *Compiled) *Imports {
+	imports := make(*Imports, len(compiled.Imports))
 	for _, key := range compiled.Imports {
-		imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
+		imports[key] = slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	}
 	return imports
 }

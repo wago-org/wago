@@ -149,7 +149,7 @@ func wagoSetup(b *testing.B, wasmBytes []byte, export string) (func(n int32) int
 	lin := jm.LinearMemory()
 	call := func(n int32) int32 {
 		binary.LittleEndian.PutUint32(serArgs, uint32(n))
-		if err := eng.Call(entry, serArgs, lin, trap, results); err != nil {
+		if err := eng.Invoke(entry, serArgs, lin, trap, results); err != nil {
 			b.Fatal(err)
 		}
 		return int32(binary.LittleEndian.Uint32(results))
@@ -183,7 +183,7 @@ func BenchmarkExecFibLoop_wazero(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		fn.Call(ctx, 30)
+		fn.Invoke(ctx, 30)
 	}
 }
 
@@ -202,7 +202,7 @@ func BenchmarkExecFibRec_wazero(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		fn.Call(ctx, 25)
+		fn.Invoke(ctx, 25)
 	}
 }
 
@@ -232,13 +232,13 @@ func BenchmarkExecCallOverhead_wazero(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		fn.Call(ctx, 1)
+		fn.Invoke(ctx, 1)
 	}
 }
 
-// BenchmarkExecTypedCall_wago measures the public reservation-held (i32) -> i32
-// entry path. Setup resolves the export and opens the session once, matching
-// wazero's exported-function lookup outside the timed loop.
+// BenchmarkExecTypedCall_wago measures the public resolved (i32) -> i32 entry
+// path. Setup resolves the export once, matching wazero's exported-function
+// lookup outside the timed loop. Every Invoke performs normal admission.
 func BenchmarkExecTypedCall_wago(b *testing.B) {
 	c, err := wago.Compile(nil, callWasm)
 	if err != nil {
@@ -250,23 +250,18 @@ func BenchmarkExecTypedCall_wago(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("call")
+	fn, err := in.WasmFunc("call")
 	if err != nil {
 		b.Fatal(err)
 	}
-	session, err := fn.OpenSession()
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer session.Close()
-	if got, err := session.Invoke1(1); err != nil || len(got) != 1 || got[0] != 1 {
+	if got, err := fn.Invoke(1); err != nil || len(got) != 1 || got[0] != 1 {
 		b.Fatalf("call(1) = %v, %v; want 1", got, err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	var got []uint64
 	for i := 0; i < b.N; i++ {
-		got, err = session.Invoke1(1)
+		got, err = fn.Invoke(1)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -285,9 +280,7 @@ func BenchmarkExecTypedCall_wago(b *testing.B) {
 // boundary crossing. Compare against ExecCallOverhead (a plain guest-only call):
 // the difference is the added cost of the host-boundary round trip.
 func BenchmarkExecHostRoundtrip_wago(b *testing.B) {
-	benchmarkExecHostRoundtripWago(b, wago.HostFunc(func(_ wago.HostModule, p, r []uint64) {
-		r[0] = p[0] + 1
-	}))
+	benchmarkExecHostRoundtripWago(b, func(call wago.HostCall) { call.SetI32(0, call.I32(0)+1) })
 }
 
 // BenchmarkExecHostCallback_wago measures the same callback transaction through
@@ -301,29 +294,24 @@ func BenchmarkExecHostCallback_wago(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer c.Close()
-	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{
-		"env.host": func(x int32) int32 { return x + 1 },
-	}})
+	imports := wago.NewImports()
+	imports.HostFunc("env", "host", func(x int32) int32 { return x + 1 })
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
 	if err != nil {
 		b.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("roundtrip")
+	fn, err := in.WasmFunc("roundtrip")
 	if err != nil {
 		b.Fatal(err)
 	}
-	session, err := fn.OpenSession()
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer session.Close()
-	if got, err := session.Invoke1(1); err != nil || len(got) != 1 || got[0] != 2 {
+	if got, err := fn.Invoke(1); err != nil || len(got) != 1 || got[0] != 2 {
 		b.Fatalf("roundtrip(1) = %v, %v; want 2", got, err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := session.Invoke1(1); err != nil {
+		if _, err := fn.Invoke(1); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -334,9 +322,9 @@ func benchmarkExecHostRoundtripWago(b *testing.B, callback any) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{
-		"env.host": callback,
-	}})
+	imports := wago.NewImports()
+	imports.HostFunc("env", "host", callback).Params(wago.ValI32).Results(wago.ValI32)
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -367,13 +355,13 @@ func BenchmarkExecHostRoundtrip_wazero(b *testing.B) {
 		b.Fatal(err)
 	}
 	fn := mod.ExportedFunction("roundtrip")
-	if _, err := fn.Call(ctx, 1); err != nil { // warm up
+	if _, err := fn.Invoke(ctx, 1); err != nil { // warm up
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := fn.Call(ctx, 1); err != nil {
+		if _, err := fn.Invoke(ctx, 1); err != nil {
 			b.Fatal(err)
 		}
 	}

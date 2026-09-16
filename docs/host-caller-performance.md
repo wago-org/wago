@@ -1,5 +1,10 @@
 # Concrete synchronous caller: invariants and measurements
 
+> **Historical performance record.** API names retained in measurement notes
+> identify the code that produced those results. Current code uses
+> `Imports.HostFunc`, `HostCall`, `Caller`, and `WasmFunc.Invoke`; see
+> [the migration guide](public-api-migration.md).
+
 This follow-up to [the first pass](host-roundtrip-performance.md) keeps the
 native scheduler protocol unchanged.
 
@@ -31,17 +36,16 @@ code itself are not runtime allocation savings.
 ## Concrete API
 
 ```go
-imports := wago.Imports{
-    "env.step": wago.CallerHostFunc(func(caller wago.Caller, p, r []uint64) {
-        r[0] = p[0] + 1
-    }),
-}
+imports := wago.NewImports()
+imports.HostFunc("env", "step", func(caller wago.Caller, call wago.HostCall) {
+    call.SetI32(0, call.I32(0)+1)
+}).Params(wago.ValI32).Results(wago.ValI32)
 ```
 
-`ImportModuleBuilder.Func` accepts both this concrete callback and ordinary Go
-functions. It uses the existing plugin call gate, admission reservation and
-exact GC signature rules. `HostFunc` and owned `HostFuncRef` remain available as
-low-level slot adapters.
+`Imports.HostFunc` accepts both this caller-aware callback and supported ordinary
+Go functions. It uses the existing plugin call gate, admission reservation, and
+exact GC signature rules. Owned `HostFuncRef` handles remain available with the
+same new callback forms.
 `Caller` implements the existing optional host-module interfaces, including
 guest storage, externrefs and GC result construction. Resolver, invoker,
 invocation-context and manager methods accept the concrete value through their
@@ -698,9 +702,8 @@ module.Func("read", func(caller wago.Caller, call wago.HostCall) {
 }).Params(wago.ValI32).Results(wago.ValI32)
 ```
 
-The previous signature-named builder methods were removed. The signature-named
-function types remain accepted as migration aliases, but new code should pass an
-ordinary function or `func(wago.HostCall)` directly.
+The previous signature-named builder methods and callback wrapper types were
+removed. Pass an ordinary supported function or `func(wago.HostCall)` directly.
 
 ## Ordinary-function call-gate checkpoint (2026-09-11)
 
@@ -710,17 +713,17 @@ callback path:
 - Ordinary `func(int32) int32` and `func(int32, int32) int32` values are checked
   against the imported Wasm signature at instantiation. Their bound dispatch calls the function
   directly, without constructing a `Caller` or exposing argument/result slices.
-- The single `ImportModuleBuilder.Func` method preserves plugin shutdown
+- The single `HostFunc(module, name, fn)` method preserves plugin shutdown
   admission and operation reservations without granting callback capabilities.
-- `PrepareI32ToI32` and `PrepareI32I32ToI32` bind local exports once and expose
-  typed scalar calls over the existing compiler-verified prepared integer entry.
-  They retain `PreparedFunction`'s ownership rule: calls must not race instance
+- `WasmFunc` binds a local export once and exposes `Invoke` over the existing
+  compiler-verified prepared integer entry.
+  They retain `WasmFunc`'s ownership rule: calls must not race instance
   closure or another call on the same instance.
 
 The callback remains ordinary Go. It may allocate, block, panic, or run another
 instance through a closure. The typed callback has no callback-scoped authority
 and cannot synchronously re-enter its calling instance; callbacks that require
-re-entry use the managed `CallerHostFunc` and `InvokeFromHost` path.
+re-entry use the caller-aware `func(Caller, HostCall)` and `InvokeFromHost` path.
 
 For a root-instance typed scalar import with no plugin gate or GC domain, the
 runtime now selects a fixed-slot portal. The engine passes at most two raw scalar
@@ -771,7 +774,7 @@ Initial typed-dispatch baseline on Darwin/arm64, Go, Apple M4 Max, five
 
 | Path | ns per 1,024 callbacks | B/op | allocs/op |
 |---|---:|---:|---:|
-| Managed `CallerHostFunc` | 91,436 (90,278-93,604) | 0 | 0 |
+| Managed caller-aware callback | 91,436 (90,278-93,604) | 0 | 0 |
 | Ordinary `func(int32) int32` | 77,015 (76,800-78,252) | 0 | 0 |
 
 The matched 1,024-iteration guest control median was 673.5 ns per public

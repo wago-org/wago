@@ -79,9 +79,7 @@ func TestDarwinARM64PublicCompileOmitsCooperativeInterruptPolls(t *testing.T) {
 
 func TestDarwinARM64DeadlineInterruptsDuringStopTheWorld(t *testing.T) {
 	entered := make(chan struct{})
-	in, err := Instantiate(MustCompile(darwinInterruptSpinModule(true)), InstantiateOptions{Imports: Imports{
-		"env.entered": HostFunc(func(HostModule, []uint64, []uint64) { close(entered) }),
-	}})
+	in, err := Instantiate(MustCompile(darwinInterruptSpinModule(true)), InstantiateOptions{Imports: testImports("env.entered", slotHostFunc(func(HostModule, []uint64, []uint64) { close(entered) }))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,15 +105,13 @@ func TestDarwinARM64DeadlineInterruptsDuringStopTheWorld(t *testing.T) {
 
 func TestDarwinARM64InterruptStressAcrossHostTransitionsAndGC(t *testing.T) {
 	entered := make(chan struct{}, 1)
-	in, err := Instantiate(MustCompile(darwinInterruptHostTransitionLoopModule()), InstantiateOptions{Imports: Imports{
-		"env.entered": HostFunc(func(HostModule, []uint64, []uint64) {
-			select {
-			case entered <- struct{}{}:
-			default:
-			}
-			goruntime.Gosched()
-		}),
-	}})
+	in, err := Instantiate(MustCompile(darwinInterruptHostTransitionLoopModule()), InstantiateOptions{Imports: testImports("env.entered", slotHostFunc(func(HostModule, []uint64, []uint64) {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		goruntime.Gosched()
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}

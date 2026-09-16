@@ -63,9 +63,7 @@ func TestHostCallRejectsV128Signature(t *testing.T) {
 	body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x10, 0x00, 0x0b}
 	compiled := MustCompile(returningImportModule(sig, body))
 	defer compiled.Close()
-	_, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": func(HostCall) {},
-	}})
+	_, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", func(HostCall) {})})
 	if err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") {
 		t.Fatalf("Instantiate error = %v, want unsupported v128 host callback", err)
 	}
@@ -89,7 +87,7 @@ func TestOrdinaryNumericFunctionsRuntime(t *testing.T) {
 			body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}
 			compiled := MustCompile(returningImportModule(sig, body))
 			defer compiled.Close()
-			instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": test.fn}})
+			instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", test.fn)})
 			if err != nil {
 				t.Fatal(err)
 			}

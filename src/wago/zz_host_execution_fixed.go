@@ -47,7 +47,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI32FixedPortal(a0, a1 uint64) ui
 	if a.localNativeMu() == nil {
 		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
 	}
-	resume := a.parkPreparedHostCallback()
+	resume := a.parkIndependentHostCallback(a.ctrl)
 	defer resume.resume()
 	return I32(a.root.syncHosts[0].typedI32(AsI32(a0)))
 }
@@ -56,7 +56,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI32x2FixedPortal(a0, a1 uint64) 
 	if a.localNativeMu() == nil {
 		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
 	}
-	resume := a.parkPreparedHostCallback()
+	resume := a.parkIndependentHostCallback(a.ctrl)
 	defer resume.resume()
 	return I32(a.root.syncHosts[0].typedI32x2(AsI32(a0), AsI32(a1)))
 }

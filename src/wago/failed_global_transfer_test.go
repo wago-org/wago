@@ -98,7 +98,7 @@ func scanGlobalAfterOverwrite(t *testing.T, rt *Runtime, global *Global) {
 	t.Helper()
 	code := MustCompile(funcrefGlobalScannerModule())
 	defer code.Close()
-	in, err := Instantiate(code, InstantiateOptions{Imports: Imports{"env.global": global}, store: rt.refStore})
+	in, err := Instantiate(code, InstantiateOptions{Imports: testImports("env.global", global), store: rt.refStore})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestFailedInstantiationTransfersImportedGlobalRoots(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		values, err := producer.Call(context.Background(), "get")
+		values, err := producer.InvokeValues(context.Background(), "get")
 		if err != nil || len(values) != 1 {
 			t.Fatalf("producer get = %v, %v", values, err)
 		}
@@ -129,7 +129,7 @@ func TestFailedInstantiationTransfersImportedGlobalRoots(t *testing.T) {
 		export, _ := producer.ExportedFunc("target")
 		failedCode := MustCompile(initErrorWithImportedFunctionAndGlobalModule())
 		defer failedCode.Close()
-		if in, err := Instantiate(failedCode, InstantiateOptions{Imports: Imports{"producer.target": export, "env.global": global}, store: rt.refStore}); err == nil || in != nil {
+		if in, err := Instantiate(failedCode, InstantiateOptions{Imports: testImports("producer.target", export, "env.global", global), store: rt.refStore}); err == nil || in != nil {
 			t.Fatalf("initialization error instantiate = %p, %v", in, err)
 		}
 		root := retainedGlobalRoot(t, global)
@@ -138,11 +138,11 @@ func TestFailedInstantiationTransfersImportedGlobalRoots(t *testing.T) {
 		}
 
 		callerMod, _ := rt.Compile(funcrefGlobalCallerModule())
-		caller, err := rt.Instantiate(context.Background(), callerMod, WithImports(Imports{"env.global": global}))
+		caller, err := rt.Instantiate(context.Background(), callerMod, WithImports(testImports("env.global", global)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := caller.Call(context.Background(), "call")
+		got, err := caller.InvokeValues(context.Background(), "call")
 		if err != nil || len(got) != 1 || got[0].I32() != 55 {
 			t.Fatalf("call retained init-error reference = %v, %v; want 55", got, err)
 		}
@@ -172,16 +172,16 @@ func TestFailedInstantiationTransfersImportedGlobalRoots(t *testing.T) {
 		}
 		failedCode := MustCompile(startTrapStoresLocalFuncrefGlobalModule())
 		defer failedCode.Close()
-		if in, err := Instantiate(failedCode, InstantiateOptions{Imports: Imports{"env.global": global}, store: rt.refStore}); err == nil || in != nil {
+		if in, err := Instantiate(failedCode, InstantiateOptions{Imports: testImports("env.global", global), store: rt.refStore}); err == nil || in != nil {
 			t.Fatalf("start-trap instantiate = %p, %v", in, err)
 		}
 		root := retainedGlobalRoot(t, global)
 		callerMod, _ := rt.Compile(funcrefGlobalCallerModule())
-		caller, err := rt.Instantiate(context.Background(), callerMod, WithImports(Imports{"env.global": global}))
+		caller, err := rt.Instantiate(context.Background(), callerMod, WithImports(testImports("env.global", global)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := caller.Call(context.Background(), "call")
+		got, err := caller.InvokeValues(context.Background(), "call")
 		if err != nil || len(got) != 1 || got[0].I32() != 66 {
 			t.Fatalf("call retained start-trap reference = %v, %v; want 66", got, err)
 		}

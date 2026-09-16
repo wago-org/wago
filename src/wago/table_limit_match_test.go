@@ -34,7 +34,7 @@ func TestImportedTableRejectsUnboundedForBoundedImport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile bounded consumer: %v", err)
 	}
-	if _, err := rt.Instantiate(context.Background(), boundedMod, WithImports(Imports{"env.t": table})); err == nil || !strings.Contains(err.Error(), "no declared maximum") {
+	if _, err := rt.Instantiate(context.Background(), boundedMod, WithImports(testImports("env.t", table))); err == nil || !strings.Contains(err.Error(), "no declared maximum") {
 		t.Fatalf("bounded import of unbounded table error = %v, want 'no declared maximum' rejection", err)
 	}
 
@@ -42,7 +42,7 @@ func TestImportedTableRejectsUnboundedForBoundedImport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile unbounded consumer: %v", err)
 	}
-	consumer, err := rt.Instantiate(context.Background(), unboundedMod, WithImports(Imports{"env.t": table}))
+	consumer, err := rt.Instantiate(context.Background(), unboundedMod, WithImports(testImports("env.t", table)))
 	if err != nil {
 		t.Fatalf("unbounded import of unbounded table should succeed: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestImportedTableBoundedMaxMatching(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile widening consumer: %v", err)
 	}
-	consumer, err := rt.Instantiate(context.Background(), okMod, WithImports(Imports{"env.t": table}))
+	consumer, err := rt.Instantiate(context.Background(), okMod, WithImports(testImports("env.t", table)))
 	if err != nil {
 		t.Fatalf("declared max 50 within import max 100 should succeed: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestImportedTableBoundedMaxMatching(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile tightening consumer: %v", err)
 	}
-	if _, err := rt.Instantiate(context.Background(), tightMod, WithImports(Imports{"env.t": table})); err == nil || !strings.Contains(err.Error(), "required maximum") {
+	if _, err := rt.Instantiate(context.Background(), tightMod, WithImports(testImports("env.t", table))); err == nil || !strings.Contains(err.Error(), "required maximum") {
 		t.Fatalf("declared max 50 > import max 20 error = %v, want 'required maximum' rejection", err)
 	}
 }

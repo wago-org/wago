@@ -76,12 +76,12 @@ func runSemanticOracle(mod semanticcorpus.Module) error {
 }
 
 type wagoSemanticExec struct {
-	fn    *wago.PreparedFunction
+	fn    *wago.WasmFunc
 	calls [][]uint64
 }
 
 func prepareWagoSemanticExec(in *wago.Instance, mod semanticcorpus.Module) (*wagoSemanticExec, error) {
-	fn, err := in.PrepareFunction(mod.Invoke.Export)
+	fn, err := in.WasmFunc(mod.Invoke.Export)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +220,7 @@ func prepareWazeroSemanticExec(ctx context.Context, in api.Module, mod semanticc
 
 func (e *wazeroSemanticExec) invoke(ctx context.Context) error {
 	for _, args := range e.calls {
-		if _, err := e.fn.Call(ctx, args...); err != nil {
+		if _, err := e.fn.Invoke(ctx, args...); err != nil {
 			return err
 		}
 	}
@@ -235,7 +235,7 @@ func wazeroPointer(ctx context.Context, in api.Module, fallback uint32, export s
 	if fn == nil {
 		return 0, fmt.Errorf("pointer export %s not found", export)
 	}
-	result, err := fn.Call(ctx)
+	result, err := fn.Invoke(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("resolve pointer export %s: %w", export, err)
 	}

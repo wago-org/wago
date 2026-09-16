@@ -45,7 +45,7 @@ func TestHostGuestStorageRetainsImportedMemory(t *testing.T) {
 			}
 			calls := 0
 			var retained GuestStorage
-			imports := Imports{"host.inspect": HostFunc(func(module HostModule, _, _ []uint64) {
+			imports := testImports("host.inspect", slotHostFunc(func(module HostModule, _, _ []uint64) {
 				calls++
 				err := module.(GuestStorageHostModule).WithGuestStorage(func(storage GuestStorage) error {
 					retained = storage
@@ -82,7 +82,7 @@ func TestHostGuestStorageRetainsImportedMemory(t *testing.T) {
 				if err != nil {
 					panic(HostTrap{Err: err})
 				}
-			})}
+			}))
 			for index := 0; index < memoryCount; index++ {
 				imports[fmt.Sprint("env.memory", index)] = memory
 			}
@@ -127,7 +127,7 @@ func BenchmarkGuestStorageMemoryAccess(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer memory.Close()
-	host := HostFunc(func(module HostModule, _, _ []uint64) {
+	host := slotHostFunc(func(module HostModule, _, _ []uint64) {
 		if err := module.(GuestStorageHostModule).WithGuestStorage(func(storage GuestStorage) error {
 			if _, err := storage.MemoryInfo(0); err != nil {
 				return err
@@ -141,7 +141,7 @@ func BenchmarkGuestStorageMemoryAccess(b *testing.B) {
 			panic(HostTrap{Err: err})
 		}
 	})
-	in, err := Instantiate(compiled, Imports{"env.memory0": memory, "host.inspect": host})
+	in, err := Instantiate(compiled, testImports("env.memory0", memory, "host.inspect", host))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -163,10 +163,7 @@ func BenchmarkGuestStorageBorrowMemoryAccess(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer memory.Close()
-	in, err := Instantiate(compiled, Imports{
-		"env.memory0":  memory,
-		"host.inspect": HostFunc(func(HostModule, []uint64, []uint64) {}),
-	})
+	in, err := Instantiate(compiled, testImports("env.memory0", memory, "host.inspect", slotHostFunc(func(HostModule, []uint64, []uint64) {})))
 	if err != nil {
 		b.Fatal(err)
 	}

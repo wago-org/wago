@@ -47,18 +47,15 @@ func TestSynchronousHostCallsSpillBeyond64Slots(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mod.Close()
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
-		"env.wide_params": HostFunc(func(_ HostModule, args, results []uint64) {
-			for _, value := range args {
-				results[0] += value
-			}
-		}),
-		"env.wide_results": HostFunc(func(_ HostModule, _ []uint64, results []uint64) {
-			for i := range results {
-				results[i] = uint64(i + 1)
-			}
-		}),
-	}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.wide_params", slotHostFunc(func(_ HostModule, args, results []uint64) {
+		for _, value := range args {
+			results[0] += value
+		}
+	}), "env.wide_results", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) {
+		for i := range results {
+			results[i] = uint64(i + 1)
+		}
+	}))))
 	if err != nil {
 		t.Fatal(err)
 	}

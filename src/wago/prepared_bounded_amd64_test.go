@@ -47,7 +47,7 @@ func TestPreparedBoundedAMD64SelectionAndExecution(t *testing.T) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("add")
+	fn, err := in.WasmFunc("add")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
@@ -60,12 +60,12 @@ func TestPreparedBoundedAMD64SelectionAndExecution(t *testing.T) {
 	if fn.directIntMode == preparedIntCallPrebound {
 		t.Fatal("explicit call-block override also selected prebound-context entry")
 	}
-	if got, err := fn.Invoke2(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
+	if got, err := fn.Invoke(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatalf("add(20,22) = %v, %v; want 42", got, err)
 	}
 
 	preparedIntCallBlockEnabled = false
-	prebound, err := in.PrepareFunction("add")
+	prebound, err := in.WasmFunc("add")
 	if err != nil {
 		t.Fatalf("prepare call-block rollback: %v", err)
 	}
@@ -75,12 +75,12 @@ func TestPreparedBoundedAMD64SelectionAndExecution(t *testing.T) {
 	if prebound.directIntMode != preparedIntCallPrebound {
 		t.Fatal("call-block rollback did not select prebound-context entry")
 	}
-	if got, err := prebound.Invoke2(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
+	if got, err := prebound.Invoke(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatalf("call-block rollback add(20,22) = %v, %v; want 42", got, err)
 	}
 
 	preparedIntPreboundContextEnabled = false
-	legacy, err := in.PrepareFunction("add")
+	legacy, err := in.WasmFunc("add")
 	if err != nil {
 		t.Fatalf("prepare prebound-context rollback: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestPreparedBoundedAMD64SelectionAndExecution(t *testing.T) {
 	if legacy.directIntMode == preparedIntCallPrebound {
 		t.Fatal("prebound-context rollback retained prebound entry")
 	}
-	if got, err := legacy.Invoke2(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
+	if got, err := legacy.Invoke(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatalf("prebound-context rollback add(20,22) = %v, %v; want 42", got, err)
 	}
 
@@ -120,7 +120,7 @@ func TestPreparedBoundedAMD64AllowsGCProgress(t *testing.T) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestPreparedBoundedAMD64AllowsGCProgress(t *testing.T) {
 	go func() {
 		close(started)
 		for !stop.Load() {
-			got, err := fn.Invoke1(I32(41))
+			got, err := fn.Invoke(I32(41))
 			if err != nil {
 				done <- err
 				return
@@ -228,7 +228,7 @@ func TestPreparedBoundedAMD64CallIndirectAndTrapRecovery(t *testing.T) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("caller")
+	fn, err := in.WasmFunc("caller")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}

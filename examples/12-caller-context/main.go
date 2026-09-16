@@ -62,21 +62,16 @@ func (callbackPlugin) Register(reg *wago.Registrar) error {
 	if err != nil {
 		return err
 	}
-	env, err := imports.Module("env")
-	if err != nil {
-		return err
-	}
-
-	env.Func("outer", func(caller wago.HostModule, params, results []uint64) {
+	imports.HostFunc("env", "outer", func(caller wago.Caller, call wago.HostCall) {
 		ctx, err := callers.InvocationContext(caller)
 		if err != nil {
 			panic(wago.HostTrap{Err: err})
 		}
-		nested, err := invoker.Invoke(ctx, caller, "callback", params...)
+		nested, err := invoker.Invoke(ctx, caller, "callback", call.ParamSlots()...)
 		if err != nil {
 			panic(wago.HostTrap{Err: err})
 		}
-		copy(results, nested)
+		copy(call.ResultSlots(), nested)
 	}).Params(wago.ValI32).Results(wago.ValI32)
 	return nil
 }

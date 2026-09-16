@@ -1670,31 +1670,31 @@ func TestStagedTable64TwoLocalExternrefReadWriteIdentityAtomicityAndCodecRoundTr
 		}
 		refA := issueExternref(t, in, name+"-a")
 		refB := issueExternref(t, in, name+"-b")
-		if _, err := in.Call(context.Background(), "set-ext", ValueI64(1), ValueExternRef(refA)); err != nil {
+		if _, err := in.InvokeValues(context.Background(), "set-ext", ValueI64(1), ValueExternRef(refA)); err != nil {
 			in.Close()
 			t.Fatalf("%s table64 externref set: %v", name, err)
 		}
-		got, err := in.Call(context.Background(), "get-ext", ValueI64(1))
+		got, err := in.InvokeValues(context.Background(), "get-ext", ValueI64(1))
 		if err != nil || len(got) != 1 || got[0].ExternRef() != refA || resolveExternref(t, in, got[0].ExternRef()) != name+"-a" {
 			in.Close()
 			t.Fatalf("%s table64 externref identity = %v, err=%v", name, got, err)
 		}
 		for _, index := range []uint64{2, 1 << 32, ^uint64(0)} {
-			if _, err := in.Call(context.Background(), "set-ext", ValueI64(int64(index)), ValueExternRef(refB)); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+			if _, err := in.InvokeValues(context.Background(), "set-ext", ValueI64(int64(index)), ValueExternRef(refB)); err == nil || !strings.Contains(err.Error(), "out of bounds") {
 				in.Close()
 				t.Fatalf("%s table64 externref set(%d) error = %v", name, index, err)
 			}
-			got, err = in.Call(context.Background(), "get-ext", ValueI64(1))
+			got, err = in.InvokeValues(context.Background(), "get-ext", ValueI64(1))
 			if err != nil || got[0].ExternRef() != refA {
 				in.Close()
 				t.Fatalf("%s trapping table64 externref set changed entry = %v, err=%v", name, got, err)
 			}
 		}
-		if _, err := in.Call(context.Background(), "set-ext", ValueI64(1), ValueExternRef(NullExternRef())); err != nil {
+		if _, err := in.InvokeValues(context.Background(), "set-ext", ValueI64(1), ValueExternRef(NullExternRef())); err != nil {
 			in.Close()
 			t.Fatalf("%s table64 externref null set: %v", name, err)
 		}
-		got, err = in.Call(context.Background(), "get-ext", ValueI64(1))
+		got, err = in.InvokeValues(context.Background(), "get-ext", ValueI64(1))
 		if err != nil || !got[0].ExternRef().IsNull() {
 			in.Close()
 			t.Fatalf("%s table64 externref null get = %v, err=%v", name, got, err)
@@ -1780,11 +1780,11 @@ func TestStagedTable64MixedExternrefFillWidthsAtomicityAndCodecRoundTrip(t *test
 		}
 		refA := issueExternref(t, in, name+"-fill-a")
 		refB := issueExternref(t, in, name+"-fill-b")
-		if _, err := in.Call(context.Background(), "fill32", ValueI32(2), ValueExternRef(refA), ValueI32(3)); err != nil {
+		if _, err := in.InvokeValues(context.Background(), "fill32", ValueI32(2), ValueExternRef(refA), ValueI32(3)); err != nil {
 			in.Close()
 			t.Fatalf("%s table32 externref fill: %v", name, err)
 		}
-		if _, err := in.Call(context.Background(), "fill64", ValueI64(2), ValueExternRef(refB), ValueI64(3)); err != nil {
+		if _, err := in.InvokeValues(context.Background(), "fill64", ValueI64(2), ValueExternRef(refB), ValueI64(3)); err != nil {
 			in.Close()
 			t.Fatalf("%s table64 externref fill: %v", name, err)
 		}
@@ -1793,7 +1793,7 @@ func TestStagedTable64MixedExternrefFillWidthsAtomicityAndCodecRoundTrip(t *test
 			index Value
 			want  ExternRef
 		}{{"get32", ValueI32(2), refA}, {"get32", ValueI32(4), refA}, {"get64", ValueI64(2), refB}, {"get64", ValueI64(4), refB}} {
-			got, err := in.Call(context.Background(), tc.get, tc.index)
+			got, err := in.InvokeValues(context.Background(), tc.get, tc.index)
 			if err != nil || len(got) != 1 || got[0].ExternRef() != tc.want {
 				in.Close()
 				t.Fatalf("%s %s identity = %v, err=%v, want %v", name, tc.get, got, err, tc.want)
@@ -1804,28 +1804,28 @@ func TestStagedTable64MixedExternrefFillWidthsAtomicityAndCodecRoundTrip(t *test
 			in.Close()
 			t.Fatalf("%s table32 externref fill canonicalization: %v", name, err)
 		}
-		if got, err := in.Call(context.Background(), "get32", ValueI32(5)); err != nil || got[0].ExternRef() != refA {
+		if got, err := in.InvokeValues(context.Background(), "get32", ValueI32(5)); err != nil || got[0].ExternRef() != refA {
 			in.Close()
 			t.Fatalf("%s table32 canonicalized fill entry = %v, err=%v", name, got, err)
 		}
-		if _, err := in.Call(context.Background(), "fill64", ValueI64(9), ValueExternRef(NullExternRef()), ValueI64(1)); err != nil {
+		if _, err := in.InvokeValues(context.Background(), "fill64", ValueI64(9), ValueExternRef(NullExternRef()), ValueI64(1)); err != nil {
 			in.Close()
 			t.Fatalf("%s table64 externref null fill: %v", name, err)
 		}
-		if got, err := in.Call(context.Background(), "get64", ValueI64(9)); err != nil || !got[0].ExternRef().IsNull() {
+		if got, err := in.InvokeValues(context.Background(), "get64", ValueI64(9)); err != nil || !got[0].ExternRef().IsNull() {
 			in.Close()
 			t.Fatalf("%s table64 externref null fill result = %v, err=%v", name, got, err)
 		}
-		if _, err := in.Call(context.Background(), "fill64", ValueI64(10), ValueExternRef(refA), ValueI64(0)); err != nil {
+		if _, err := in.InvokeValues(context.Background(), "fill64", ValueI64(10), ValueExternRef(refA), ValueI64(0)); err != nil {
 			in.Close()
 			t.Fatalf("%s table64 externref zero fill at boundary: %v", name, err)
 		}
 		for _, args := range [][2]uint64{{8, 3}, {11, 0}, {1 << 32, 0}, {^uint64(0), 2}} {
-			if _, err := in.Call(context.Background(), "fill64", ValueI64(int64(args[0])), ValueExternRef(refA), ValueI64(int64(args[1]))); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+			if _, err := in.InvokeValues(context.Background(), "fill64", ValueI64(int64(args[0])), ValueExternRef(refA), ValueI64(int64(args[1]))); err == nil || !strings.Contains(err.Error(), "out of bounds") {
 				in.Close()
 				t.Fatalf("%s table64 externref fill(%d,%d) error = %v", name, args[0], args[1], err)
 			}
-			if got, err := in.Call(context.Background(), "get64", ValueI64(4)); err != nil || got[0].ExternRef() != refB {
+			if got, err := in.InvokeValues(context.Background(), "get64", ValueI64(4)); err != nil || got[0].ExternRef() != refB {
 				in.Close()
 				t.Fatalf("%s trapping table64 externref fill changed entry = %v, err=%v", name, got, err)
 			}
@@ -1920,24 +1920,24 @@ func TestStagedTable64ExternrefGrowAndFourLocalSizeDirectoryCodecRoundTrip(t *te
 		}
 		refA := issueExternref(t, in, name+"-grow-a")
 		refB := issueExternref(t, in, name+"-grow-b")
-		if got, err := in.Call(context.Background(), "grow", ValueI64(1), ValueExternRef(refA)); err != nil || len(got) != 1 || got[0].I64() != 0 {
+		if got, err := in.InvokeValues(context.Background(), "grow", ValueI64(1), ValueExternRef(refA)); err != nil || len(got) != 1 || got[0].I64() != 0 {
 			in.Close()
 			t.Fatalf("%s sole externref table64 grow(1) = %v, err=%v", name, got, err)
 		}
-		if got, err := in.Call(context.Background(), "get", ValueI64(0)); err != nil || got[0].ExternRef() != refA {
+		if got, err := in.InvokeValues(context.Background(), "get", ValueI64(0)); err != nil || got[0].ExternRef() != refA {
 			in.Close()
 			t.Fatalf("%s sole externref table64 grown token = %v, err=%v", name, got, err)
 		}
-		if got, err := in.Call(context.Background(), "grow", ValueI64(4), ValueExternRef(refB)); err != nil || got[0].I64() != 1 {
+		if got, err := in.InvokeValues(context.Background(), "grow", ValueI64(4), ValueExternRef(refB)); err != nil || got[0].I64() != 1 {
 			in.Close()
 			t.Fatalf("%s sole externref table64 grow(4) = %v, err=%v", name, got, err)
 		}
-		if got, err := in.Call(context.Background(), "get", ValueI64(4)); err != nil || got[0].ExternRef() != refB {
+		if got, err := in.InvokeValues(context.Background(), "get", ValueI64(4)); err != nil || got[0].ExternRef() != refB {
 			in.Close()
 			t.Fatalf("%s sole externref table64 grown range token = %v, err=%v", name, got, err)
 		}
 		for _, delta := range []uint64{1 << 32, ^uint64(0)} {
-			if got, err := in.Call(context.Background(), "grow", ValueI64(int64(delta)), ValueExternRef(refA)); err != nil || len(got) != 1 || got[0].Bits() != ^uint64(0) {
+			if got, err := in.InvokeValues(context.Background(), "grow", ValueI64(int64(delta)), ValueExternRef(refA)); err != nil || len(got) != 1 || got[0].Bits() != ^uint64(0) {
 				in.Close()
 				t.Fatalf("%s sole externref table64 grow(%d) = %v, err=%v, want -1", name, delta, got, err)
 			}
@@ -2027,7 +2027,7 @@ func TestCoreFeaturesV3ImportedTable64Copy(t *testing.T) {
 		t.Fatalf("compile imported table64.copy: %v", err)
 	}
 	defer consumerCompiled.Close()
-	consumer, err := Instantiate(consumerCompiled, Imports{"env.table": table})
+	consumer, err := Instantiate(consumerCompiled, testImports("env.table", table))
 	if err != nil {
 		table.Close()
 		t.Fatalf("instantiate imported table64.copy: %v", err)
@@ -2091,7 +2091,7 @@ func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	if len(meta.Tables) != 1 || meta.Tables[0].ImportModule != "env" || meta.Tables[0].ImportName != "table" || !meta.Tables[0].Addr64 || meta.Tables[0].Min != 2 || meta.Tables[0].Max != 4 || !meta.Tables[0].HasMax || !reflect.DeepEqual(meta.Tables[0].Exports, []string{"table"}) {
 		t.Fatalf("table64 import metadata = %#v", meta.Tables)
 	}
-	rt := &Runtime{imports: Imports{}}
+	rt := &Runtime{imports: testImports()}
 	consumerModule, err := rt.buildModule(consumerCompiled)
 	if err != nil {
 		t.Fatal(err)
@@ -2121,7 +2121,7 @@ func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 		t.Fatalf("table64 import codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
 	}
 
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.table": table}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.table", table)})
 	if err != nil {
 		t.Fatalf("instantiate bounded table64 consumer: %v", err)
 	}
@@ -2138,7 +2138,7 @@ func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-export imported table64: %v", err)
 	}
-	loadedIn, err := instantiateCore(&loaded, InstantiateOptions{Imports: Imports{"env.table": reexported}})
+	loadedIn, err := instantiateCore(&loaded, InstantiateOptions{Imports: testImports("env.table", reexported)})
 	if err != nil {
 		t.Fatalf("instantiate codec-reloaded table64 consumer: %v", err)
 	}
@@ -2206,7 +2206,7 @@ func TestStagedTable64ImportLimitCompatibilityAndRollback(t *testing.T) {
 		if err != nil {
 			t.Fatalf("compile %s: %v", name, err)
 		}
-		in, err := instantiateCore(c, InstantiateOptions{Imports: Imports{"env.table": bounded}})
+		in, err := instantiateCore(c, InstantiateOptions{Imports: testImports("env.table", bounded)})
 		if err != nil {
 			c.Close()
 			t.Fatalf("%s: %v", name, err)
@@ -2222,7 +2222,7 @@ func TestStagedTable64ImportLimitCompatibilityAndRollback(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := instantiateCore(c, InstantiateOptions{Imports: Imports{"env.table": bounded}}); err == nil {
+		if _, err := instantiateCore(c, InstantiateOptions{Imports: testImports("env.table", bounded)}); err == nil {
 			c.Close()
 			t.Fatalf("%s mismatch was accepted", name)
 		}
@@ -2243,7 +2243,7 @@ func TestStagedTable64ImportLimitCompatibilityAndRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	noMaxIn, err := instantiateCore(noMaxConsumer, InstantiateOptions{Imports: Imports{"env.table": unbounded}})
+	noMaxIn, err := instantiateCore(noMaxConsumer, InstantiateOptions{Imports: testImports("env.table", unbounded)})
 	if err != nil {
 		noMaxConsumer.Close()
 		t.Fatalf("no-max table64 import: %v", err)
@@ -2261,7 +2261,7 @@ func TestStagedTable64ImportLimitCompatibilityAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, provider := range map[string]*Table{"owner": unbounded, "re-export": reexported} {
-		if _, err := instantiateCore(boundedImport, InstantiateOptions{Imports: Imports{"env.table": provider}}); err == nil || !strings.Contains(err.Error(), "no declared maximum") {
+		if _, err := instantiateCore(boundedImport, InstantiateOptions{Imports: testImports("env.table", provider)}); err == nil || !strings.Contains(err.Error(), "no declared maximum") {
 			boundedImport.Close()
 			noMaxIn.Close()
 			noMaxConsumer.Close()
@@ -2282,7 +2282,7 @@ func TestStagedTable64ImportLimitCompatibilityAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumer.Close()
-	if _, err := instantiateCore(consumer, InstantiateOptions{Imports: Imports{"env.table": host}}); err == nil || !strings.Contains(err.Error(), "provider is table32, import requires table64") {
+	if _, err := instantiateCore(consumer, InstantiateOptions{Imports: testImports("env.table", host)}); err == nil || !strings.Contains(err.Error(), "provider is table32, import requires table64") {
 		t.Fatalf("host table32 into table64 import = %v", err)
 	}
 }
@@ -2381,12 +2381,12 @@ func TestStagedDeclarationOnlyMultiTable64Products(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := instantiateCore(&loaded, InstantiateOptions{Imports: Imports{"spectest.table64": table32}}); err == nil || !strings.Contains(err.Error(), "provider is table32") {
+	if _, err := instantiateCore(&loaded, InstantiateOptions{Imports: testImports("spectest.table64", table32)}); err == nil || !strings.Contains(err.Error(), "provider is table32") {
 		table32.Close()
 		t.Fatal("table32 provider was accepted for table64 import")
 	}
 	table32.Close()
-	consumer, err := instantiateCore(&loaded, InstantiateOptions{Imports: Imports{"spectest.table64": table}})
+	consumer, err := instantiateCore(&loaded, InstantiateOptions{Imports: testImports("spectest.table64", table)})
 	if err != nil {
 		loaded.Close()
 		consumerCompiled.Close()
@@ -2624,7 +2624,7 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	memory32Import = append(memory32Import, byte(wasm.ExternTable), 0x70, 0x01, 0x02, 0x04)
 	memory32Consumer := MustCompile(wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(memory32Import))))
 	defer memory32Consumer.Close()
-	if _, err := instantiateCore(memory32Consumer, InstantiateOptions{Imports: Imports{"env.table": table64}}); err == nil || !strings.Contains(err.Error(), "provider is table64, import requires table32") {
+	if _, err := instantiateCore(memory32Consumer, InstantiateOptions{Imports: testImports("env.table", table64)}); err == nil || !strings.Contains(err.Error(), "provider is table64, import requires table32") {
 		t.Fatalf("table64 provider into table32 import = %v", err)
 	}
 	table := []byte{0x70, 0x05, 0x01, 0x02}
@@ -2922,7 +2922,7 @@ func BenchmarkStagedTable64ImportedSize(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.table": table}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.table", table)})
 	if err != nil {
 		b.Fatal(err)
 	}

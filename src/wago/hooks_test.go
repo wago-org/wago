@@ -78,7 +78,7 @@ func TestInvokeHooksFire(t *testing.T) {
 	}
 	defer in.Close()
 
-	if _, err := in.Call(context.Background(), "g", ValueI32(41)); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "g", ValueI32(41)); err != nil {
 		t.Fatalf("call: %v", err)
 	}
 	if before != 1 || after != 1 {
@@ -111,7 +111,7 @@ func TestBeforeInvokeVetoAbortsCall(t *testing.T) {
 	}
 	defer in.Close()
 
-	_, err = in.Call(context.Background(), "g", ValueI32(1))
+	_, err = in.InvokeValues(context.Background(), "g", ValueI32(1))
 	if err == nil || err.Error() != "denied" {
 		t.Fatalf("Call error = %v, want denied", err)
 	}
@@ -328,16 +328,28 @@ func TestCapabilityAccessorsRegisterHooks(t *testing.T) {
 func TestInstantiateOptionHelpers(t *testing.T) {
 	c := instantiateConfig{}
 	WithPolicy(Policy{MaxTableEntries: 3})(&c)
-	WithImports(Imports{"env.f": 1})(&c)
-	WithImports(Imports{"env.g": 2, "env.f": 3})(&c)
+	WithImports(testImports("env.f", 1))(&c)
+	WithImports(testImports("env.g", 2, "env.f", 3))(&c)
 	WithGC(GCConfig{TinyHeapBytes: 64})(&c)
 	rt := NewRuntime()
 	defer rt.Close()
-	imports, _, err := rt.resolveInstanceImports(nil, nil, c.imports, c.exactImports, c.extraImports...)
+	first, _, err := c.imports.snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.policy.MaxTableEntries != 3 || len(imports) != 2 || imports["env.f"] != 3 || imports["env.g"] != 2 || !c.hasGC || c.gc.TinyHeapBytes != 64 {
+	var rest []resolvedImports
+	for _, collection := range c.extraImports {
+		bindings, _, snapshotErr := collection.snapshot()
+		if snapshotErr != nil {
+			t.Fatal(snapshotErr)
+		}
+		rest = append(rest, bindings)
+	}
+	imports, _, err := rt.resolveInstanceImports(nil, nil, first, c.exactImports, rest...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.policy.MaxTableEntries != 3 || len(imports) != 2 || imports[testImportKey("env.f")] != 3 || imports[testImportKey("env.g")] != 2 || !c.hasGC || c.gc.TinyHeapBytes != 64 {
 		t.Fatalf("instantiate config = %#v", c)
 	}
 }

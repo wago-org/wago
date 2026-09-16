@@ -16,9 +16,9 @@ func TestPublicAPICompatibilityForms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile([]byte): %v", err)
 	}
-	in, err := Instantiate(c, Imports{})
+	in, err := Instantiate(c, testImports())
 	if err != nil {
-		t.Fatalf("Instantiate(compiled, Imports): %v", err)
+		t.Fatalf("Instantiate(compiled, *Imports): %v", err)
 	}
 	in.Close()
 	in, err = Instantiate(c, nil)
@@ -244,11 +244,15 @@ func TestCompiledAPIHelpers(t *testing.T) {
 	if got := c.FuncDebugName(1); got != "a" {
 		t.Fatalf("FuncDebugName export fallback = %q", got)
 	}
-	imports := Imports{"env.g": NewGlobalI32(3, false)}
-	defer imports["env.g"].(*Global).Close()
-	in := &Instance{imports: imports}
-	if got := in.Imports(); got["env.g"] != imports["env.g"] {
-		t.Fatalf("Imports = %v, want supplied map", got)
+	imports := testImports("env.g", NewGlobalI32(3, false))
+	bindings, _, err := imports.snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bindings[testImportKey("env.g")].(*Global).Close()
+	in := &Instance{imports: bindings}
+	if got := in.Imports(); got.bindings[testImportKey("env.g")] != bindings[testImportKey("env.g")] {
+		t.Fatalf("*Imports = %v, want supplied map", got)
 	}
 }
 
@@ -267,8 +271,12 @@ func TestReturningHostImportUsesCompiledDispatch(t *testing.T) {
 		t.Fatalf("Compile deferred host module: %v", err)
 	}
 	defer c.Close()
-	imports := Imports{"env.answer": HostFunc(func(_ HostModule, _, results []uint64) { results[0] = I32(42) })}
-	if err := c.validateImportBindings(imports, nil); err != nil {
+	imports := testImports("env.answer", slotHostFunc(func(_ HostModule, _, results []uint64) { results[0] = I32(42) }))
+	bindings, _, err := imports.snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.validateImportBindings(bindings, nil); err != nil {
 		t.Fatalf("validate returning host bindings: %v", err)
 	}
 	if !c.dynamicImports || len(c.code) == 0 {

@@ -53,40 +53,40 @@ func TestTypedFunctionReferenceHostBoundary(t *testing.T) {
 	store := newReferenceStore(false)
 	var seen uint64
 	var override uint64
-	host := HostFunc(func(_ HostModule, params, results []uint64) {
+	host := slotHostFunc(func(_ HostModule, params, results []uint64) {
 		seen = params[0]
 		results[0] = params[0]
 		if override != 0 {
 			results[0] = override
 		}
 	})
-	in, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{"env.host": host}, store: store})
+	in, err := instantiateCore(compiled, InstantiateOptions{Imports: testImports("env.host", host), store: store})
 	if err != nil {
 		t.Fatalf("instantiate staged typed host module: %v", err)
 	}
 	defer in.Close()
 
-	f, err := in.Call(context.Background(), "getF")
+	f, err := in.InvokeValues(context.Background(), "getF")
 	if err != nil || len(f) != 1 {
 		t.Fatalf("getF = %v, %v", f, err)
 	}
-	g, err := in.Call(context.Background(), "getG")
+	g, err := in.InvokeValues(context.Background(), "getG")
 	if err != nil || len(g) != 1 {
 		t.Fatalf("getG = %v, %v", g, err)
 	}
 
-	got, err := in.Call(context.Background(), "callHost", f[0])
+	got, err := in.InvokeValues(context.Background(), "callHost", f[0])
 	if err != nil || len(got) != 1 || got[0].Bits() != f[0].Bits() || seen != f[0].Bits() {
 		t.Fatalf("callHost(f) = %v, %v seen=%#x; want token %#x", got, err, seen, f[0].Bits())
 	}
 
 	override = g[0].Bits()
-	if _, err := in.Call(context.Background(), "callHost", f[0]); err == nil || !strings.Contains(err.Error(), "result 0 does not match its exact structural type") {
+	if _, err := in.InvokeValues(context.Background(), "callHost", f[0]); err == nil || !strings.Contains(err.Error(), "result 0 does not match its exact structural type") {
 		t.Fatalf("mismatched typed host result error = %v", err)
 	}
 
 	override = 0
-	null, err := in.Call(context.Background(), "callHost", ValueFuncRef(FuncRef{}))
+	null, err := in.InvokeValues(context.Background(), "callHost", ValueFuncRef(FuncRef{}))
 	if err != nil || len(null) != 1 || !null[0].FuncRef().IsNull() {
 		t.Fatalf("callHost(null) = %v, %v", null, err)
 	}

@@ -152,7 +152,7 @@ func TestCompiledModuleInstantiationIsolation(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	for i := 0; i < 100; i++ {
-		in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
+		in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports()})
 		if err != nil {
 			t.Fatalf("instantiate %d: %v", i, err)
 		}
@@ -194,7 +194,7 @@ func TestHostFunctionSeesCallerMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	host := HostFunc(func(m HostModule, params, results []uint64) {
+	host := slotHostFunc(func(m HostModule, params, results []uint64) {
 		offset := uint32(params[0])
 		if uint64(offset)+8 > uint64(len(m.Memory())) {
 			results[0] = 1
@@ -203,7 +203,7 @@ func TestHostFunctionSeesCallerMemory(t *testing.T) {
 		binary.LittleEndian.PutUint64(m.Memory()[offset:], params[1])
 		results[0] = 0
 	})
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"host.store_int": host}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("host.store_int", host)})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -252,14 +252,14 @@ func TestRecursiveHostReentry(t *testing.T) {
 	}
 	var in *Instance
 	hostCalls := 0
-	host := HostFunc(func(mod HostModule, _, _ []uint64) {
+	host := slotHostFunc(func(mod HostModule, _, _ []uint64) {
 		hostCalls++
 		got, callErr := in.InvokeFromHost(context.Background(), mod, "called_by_host_func")
 		if callErr != nil || len(got) != 1 || AsI32(got[0]) != 100 {
 			t.Errorf("recursive host re-entry = %v, err %v", got, callErr)
 		}
 	})
-	in, err = Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.host_func": host}})
+	in, err = Instantiate(compiled, InstantiateOptions{Imports: testImports("env.host_func", host)})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -276,10 +276,10 @@ func TestNilTargetHostReentryFailsClosed(t *testing.T) {
 	c := MustCompile(voidI32ImportCallerModule())
 	defer c.Close()
 	var reentryErr error
-	in, err := Instantiate(c, Imports{"env.log": HostFunc(func(caller HostModule, _, _ []uint64) {
+	in, err := Instantiate(c, testImports("env.log", slotHostFunc(func(caller HostModule, _, _ []uint64) {
 		var target *Instance
 		_, reentryErr = target.InvokeFromHost(context.Background(), caller, "missing")
-	})})
+	})))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,13 +320,13 @@ func TestConcurrentPublicInvokeWaitsForParkedHostCallback(t *testing.T) {
 	}
 	entered := make(chan callback, 2)
 	release := map[int32]chan struct{}{1: make(chan struct{}), 2: make(chan struct{})}
-	host := HostFunc(func(caller HostModule, params, results []uint64) {
+	host := slotHostFunc(func(caller HostModule, params, results []uint64) {
 		id := AsI32(params[0])
 		entered <- callback{id: id, caller: caller}
 		<-release[id]
 		results[0] = I32(id + 10)
 	})
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.host": host}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.host", host)})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -424,9 +424,7 @@ func TestARM64UremRegalloc(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"repro.update_nonce": HostFunc(func(_ HostModule, _, _ []uint64) {}),
-	}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("repro.update_nonce", slotHostFunc(func(_ HostModule, _, _ []uint64) {}))})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -452,7 +450,7 @@ func (crossRuntimeImportExt) Info() ExtensionInfo {
 
 func (crossRuntimeImportExt) Register(reg *Registry) error {
 	reg.ImportModule("env").
-		Func("proxy", HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[1] })).
+		Func("proxy", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[1] })).
 		Params(ValI32, ValI64).Results(ValI64)
 	return nil
 }
@@ -467,7 +465,7 @@ func TestHugeCallStackUnwindsToStartTrap(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	defer compiled.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports()})
 	if in != nil {
 		_ = in.Close()
 		t.Fatal("recursive trapping start function unexpectedly instantiated")
@@ -533,7 +531,7 @@ func TestHugeMixedValueStack(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	defer compiled.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -576,7 +574,7 @@ func instantiateRegressionModule(t *testing.T, mod []byte) *Instance {
 			t.Errorf("close compiled module: %v", err)
 		}
 	})
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
