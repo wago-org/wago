@@ -586,13 +586,12 @@ func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {
 
 func (f *fn) fillTableEntries(dst, count Reg, slot int) {
 	done := f.zeroBranch(count, true, true)
+	// Snapshot the 32-byte descriptor once. Reloading four words from the spill
+	// slot for every table element adds unnecessary stack traffic to large fills.
+	f.a.LdrQ(X16, SP, f.spillOff(slot))
+	f.a.LdrQ(X17, SP, f.spillOff(slot)+16)
 	loop := f.a.Len()
-	tmp := f.allocReg(maskOf(dst).add(count))
-	for i, off := 0, int32(0); off < runtime.TableEntryBytes; i, off = i+1, off+8 {
-		f.ld64(tmp, SP, f.spillOff(slot+i))
-		f.st64(dst, off, tmp)
-	}
-	f.release(tmp)
+	f.a.StpQ(X16, X17, dst, 0)
 	f.leaDisp(dst, dst, runtime.TableEntryBytes, true)
 	f.a.SubsImm64(count, count, 1) // count-- and set flags (was AluRI(5,count,1,true))
 	f.patchBranch19(f.a.Bcond(condNE), loop)
