@@ -799,6 +799,44 @@ func TestNativeImmediateCombinationsFoldRepeatedVectorShiftCounts(t *testing.T) 
 	if !ok1 || producer1 != 0 || !ok2 || producer2 != 0 || !skipped.has(0) || uses[1] != 2 {
 		t.Fatalf("producers=%v skipped=%v uses=%v", producers, skipped, uses)
 	}
+	machine.Target = railmach.TargetAMD64
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
+	producer1, ok1 = producers.get(1)
+	producer2, ok2 = producers.get(2)
+	if !ok1 || producer1 != 0 || !ok2 || producer2 != 0 || !skipped.has(0) {
+		t.Fatalf("AMD64 producers=%v skipped=%v", producers, skipped)
+	}
+	if got := machineAMD64VectorScratchCount(machine, true); got != 0 {
+		t.Fatalf("constant vector-shift scratch count = %d, want 0", got)
+	}
+	machine.Insts[1].Op = wasm.InstrI8x16ShrU
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
+	if producers.has(1) || !producers.has(2) {
+		t.Fatalf("packed-byte shift immediate relation = %v", producers)
+	}
+}
+
+func TestNativeAMD64ShuffleScratchCount(t *testing.T) {
+	machine := &railmach.Func{
+		Target:   railmach.TargetAMD64,
+		Insts:    []railmach.Inst{{Op: wasm.InstrI8x16Shuffle, OperandCount: 2}},
+		Operands: []railmach.Operand{{Reg: 1}, {Reg: 2}},
+		SIMD:     []railssa.SemanticSIMDImmediate{{Instruction: 0}},
+	}
+	for lane := range machine.SIMD[0].Bytes {
+		machine.SIMD[0].Bytes[lane] = byte(lane)
+	}
+	if got := nativeAMD64ShuffleScratchCount(machine, 0); got != 0 {
+		t.Fatalf("single-source shuffle scratch count = %d, want 0", got)
+	}
+	machine.SIMD[0].Bytes[15] = 16
+	if got := nativeAMD64ShuffleScratchCount(machine, 0); got != 2 {
+		t.Fatalf("mixed-source shuffle scratch count = %d, want 2", got)
+	}
+	machine.Operands[1].Reg = machine.Operands[0].Reg
+	if got := nativeAMD64ShuffleScratchCount(machine, 0); got != 0 {
+		t.Fatalf("same-register shuffle scratch count = %d, want 0", got)
+	}
 }
 
 func TestNativeImmediateCombinationsRejectStaleMultiplyAddRelation(t *testing.T) {

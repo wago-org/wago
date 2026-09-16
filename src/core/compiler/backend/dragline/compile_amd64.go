@@ -2592,15 +2592,51 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, fmt.Errorf("RailMach vector shuffle %d has no mask", instructionID)
 				}
 				var lhsMask, rhsMask [16]byte
+				allLHS, allRHS := true, true
 				for index := range lhsMask {
 					lhsMask[index], rhsMask[index] = 0x80, 0x80
 					if lane := immediate.Bytes[index]; lane < 16 {
 						lhsMask[index] = lane
+						allRHS = false
 					} else {
 						rhsMask[index] = lane - 16
+						allLHS = false
 					}
 				}
 				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				if operands[0].Reg == operands[1].Reg {
+					for index, lane := range immediate.Bytes {
+						lhsMask[index] = lane & 15
+					}
+					scratch := amd64.Reg(5)
+					if plan.AMD64WideVectorScratch {
+						scratch = 15
+					}
+					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(scratch), bytes: lhsMask})
+					a.VPshufb(dst, lhs, scratch)
+					continue
+				}
+				if allLHS || allRHS {
+					mask, src := lhsMask, lhs
+					if allRHS {
+						mask, src = rhsMask, rhs
+					}
+					scratch := amd64.Reg(5)
+					if plan.AMD64WideVectorScratch {
+						scratch = 15
+					}
+					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(scratch), bytes: mask})
+					a.VPshufb(dst, src, scratch)
+					continue
+				}
+				if plan.AMD64WideVectorScratch {
+					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(15), bytes: rhsMask})
+					a.VPshufb(14, rhs, 15)
+					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(15), bytes: lhsMask})
+					a.VPshufb(dst, lhs, 15)
+					a.VPor(dst, dst, 14)
+					continue
+				}
 				simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(5), bytes: rhsMask})
 				a.VPshufb(4, rhs, 5)
 				simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(5), bytes: lhsMask})
@@ -3210,6 +3246,28 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						if instruction.Op == railmach.OpAMD64I64x2Shl || instruction.Op == railmach.OpAMD64I64x2ShrU {
 							mask = 63
 						}
+					}
+					if producerID, ok := immediateProducer.get(instructionID); ok {
+						count := byte(uint32(plan.Machine.Insts[producerID].Aux) & uint32(mask))
+						switch instruction.Op {
+						case railmach.OpAMD64I16x8Shl:
+							a.VPsllwImm(dst, lhs, count)
+						case railmach.OpAMD64I16x8ShrS:
+							a.VPsrawImm(dst, lhs, count)
+						case railmach.OpAMD64I16x8ShrU:
+							a.VPsrlwImm(dst, lhs, count)
+						case railmach.OpAMD64I32x4Shl:
+							a.VPslldImm(dst, lhs, count)
+						case railmach.OpAMD64I32x4ShrS:
+							a.VPsradImm(dst, lhs, count)
+						case railmach.OpAMD64I32x4ShrU:
+							a.VPsrldImm(dst, lhs, count)
+						case railmach.OpAMD64I64x2Shl:
+							a.VPsllqImm(dst, lhs, count)
+						default:
+							a.VPsrlqImm(dst, lhs, count)
+						}
+						continue
 					}
 					a.MovReg32(amd64.R11, rhs)
 					a.AluRI(4, amd64.R11, mask, false)

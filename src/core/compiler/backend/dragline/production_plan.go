@@ -104,6 +104,10 @@ type nativeBackendPlan struct {
 	// AMD64DivisionSave is false when the function has no division.
 	AMD64DivisionSaveOffset uint32
 	AMD64DivisionSave       bool
+	// AMD64WideVectorScratch permits non-Windows finalizers to use XMM15 for
+	// single-source shuffle masks and, when no low-XMM semantic scratch remains,
+	// allocate the full XMM0-XMM11 register set.
+	AMD64WideVectorScratch bool
 
 	BlockOffsets        []int
 	BranchPatches       []nativeBranchPatch
@@ -976,10 +980,9 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers *native
 		if len(operands) != 2 || !nativeImmediateShiftUse(consumer.Op) {
 			continue
 		}
-		if plan.Machine.Target == railmach.TargetAMD64 && nativeAMD64VectorShiftUse(consumer.Op) {
-			// AMD64 vector shifts consume the count through an XMM register. Do
-			// not elide its scalar constant producer as though the finalizer had
-			// an immediate vector-shift form.
+		if plan.Machine.Target == railmach.TargetAMD64 && nativeAMD64VectorShiftNeedsRegister(consumer.Op) {
+			// Packed byte shifts have no direct x86 immediate form. Keep their
+			// scalar count live for the widening-and-mask lowering.
 			continue
 		}
 		value := operands[1].Reg
@@ -1042,12 +1045,9 @@ func nativeImmediateShiftUse(op railmach.MOpcode) bool {
 	}
 }
 
-func nativeAMD64VectorShiftUse(op railmach.MOpcode) bool {
+func nativeAMD64VectorShiftNeedsRegister(op railmach.MOpcode) bool {
 	switch railmach.SemanticOpcode(op) {
-	case wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU,
-		wasm.InstrI16x8Shl, wasm.InstrI16x8ShrS, wasm.InstrI16x8ShrU,
-		wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU,
-		wasm.InstrI64x2Shl, wasm.InstrI64x2ShrS, wasm.InstrI64x2ShrU:
+	case wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU:
 		return true
 	default:
 		return false
@@ -1127,18 +1127,25 @@ func nativeARM64ShiftImmediateUse(op railmach.MOpcode, operandIndex, operandCoun
 // definition/result checks keep the decision independently auditable instead
 // of trusting rematerialization flags alone.
 func nativeIntegerConstant(plan *nativeBackendPlan, value railmach.VReg) (uint64, bool) {
-	if plan == nil || plan.Machine == nil || value == 0 || int(value) >= len(plan.Machine.VRegs) {
+	if plan == nil {
 		return 0, false
 	}
-	definition := plan.Machine.VRegs[value].Def
+	return nativeMachineIntegerConstant(plan.Machine, value)
+}
+
+func nativeMachineIntegerConstant(machine *railmach.Func, value railmach.VReg) (uint64, bool) {
+	if machine == nil || value == 0 || int(value) >= len(machine.VRegs) {
+		return 0, false
+	}
+	definition := machine.VRegs[value].Def
 	if definition < 3 || (definition-3)%6 != 0 {
 		return 0, false
 	}
 	instructionID := (definition - 3) / 6
-	if int(instructionID) >= len(plan.Machine.Insts) {
+	if int(instructionID) >= len(machine.Insts) {
 		return 0, false
 	}
-	instruction := plan.Machine.Insts[instructionID]
+	instruction := machine.Insts[instructionID]
 	semanticOp := railmach.SemanticOpcode(instruction.Op)
 	if instruction.Result != value || semanticOp != wasm.InstrI32Const && semanticOp != wasm.InstrI64Const {
 		return 0, false
@@ -1515,12 +1522,19 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		return nil, err
 	}
 	defaultGreedy := railmach.DefaultGreedyConfig(machineTarget)
+	amd64WideVectorScratch := machineTarget == railmach.TargetAMD64 && target.GOOS != "windows"
 	if machineHasV128(machine) {
 		if machineTarget == railmach.TargetAMD64 {
-			// Until callee-save homes become 128-bit, vector values may use only
-			// registers that are volatile on every supported platform ABI.
-			fprs := uint8(6) // XMM0-XMM5 are volatile on Windows and SysV.
-			fprs -= machineAMD64VectorScratchCount(machine)
+			// Windows keeps XMM6-XMM15 nonvolatile, while SysV makes every XMM
+			// register volatile. XMM12-XMM15 remain finalizer/spill scratch on
+			// SysV; scratch-free functions may allocate XMM0-XMM11.
+			scratch := machineAMD64VectorScratchCount(machine, amd64WideVectorScratch)
+			fprs := uint8(6)
+			if amd64WideVectorScratch && scratch == 0 {
+				fprs = 12 // XMM0-XMM11; XMM12-XMM15 are finalizer/spill scratch.
+			} else {
+				fprs -= scratch
+			}
 			defaultGreedy.Linear.FPRs = fprs
 			defaultGreedy.CallerFPRs = fprs
 			defaultGreedy.CallerFPRMask = callerRegisterMask(fprs)
@@ -2075,16 +2089,17 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64StackCachedGlobals: stackCachedGlobals, AMD64StackCachedGlobalOffset: stackCachedGlobalOffset, AMD64StackCachedGlobalCount: uint8(stackCachedGlobalCount),
 		AMD64DivisionSaveOffset: amd64DivisionSaveOffset, AMD64DivisionSave: amd64DivisionSave,
-		AMD64BMI2:           target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
-		PostRAPairWith:      p.postRAPairWith,
-		PostRASkip:          p.postRASkip,
-		PostRAForwardFrom:   p.postRAForwardFrom,
-		PostRAFusionWith:    p.postRAFusionWith,
-		PostRAMemoryFrom:    p.postRAMemoryFrom,
-		PostRARepeatFirst:   p.postRARepeatFirst,
-		PostRAPreIndex:      p.postRAPreIndex,
-		PostRAPostIndexWith: p.postRAPostIndexWith,
-		PostRADirect:        postRADirect,
+		AMD64WideVectorScratch: amd64WideVectorScratch,
+		AMD64BMI2:              target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
+		PostRAPairWith:         p.postRAPairWith,
+		PostRASkip:             p.postRASkip,
+		PostRAForwardFrom:      p.postRAForwardFrom,
+		PostRAFusionWith:       p.postRAFusionWith,
+		PostRAMemoryFrom:       p.postRAMemoryFrom,
+		PostRARepeatFirst:      p.postRARepeatFirst,
+		PostRAPreIndex:         p.postRAPreIndex,
+		PostRAPostIndexWith:    p.postRAPostIndexWith,
+		PostRADirect:           postRADirect,
 	}
 	p.plan.ImmediateProducer = p.immediateProducer
 	p.plan.ImmediateSkip = p.immediateSkip
@@ -2332,13 +2347,34 @@ func machineHasV128(machine *railmach.Func) bool {
 	return false
 }
 
-func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
+func machineAMD64VectorScratchCount(machine *railmach.Func, wideScratch bool) uint8 {
 	if machine == nil || machine.Target != railmach.TargetAMD64 {
 		return 0
 	}
 	count := uint8(0)
-	for _, instruction := range machine.Insts {
+	for instructionID, instruction := range machine.Insts {
 		switch instruction.Op {
+		case wasm.InstrI16x8Shl, wasm.InstrI16x8ShrS, wasm.InstrI16x8ShrU,
+			wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU,
+			wasm.InstrI64x2Shl, wasm.InstrI64x2ShrU,
+			railmach.OpAMD64I16x8Shl, railmach.OpAMD64I16x8ShrS, railmach.OpAMD64I16x8ShrU,
+			railmach.OpAMD64I32x4Shl, railmach.OpAMD64I32x4ShrS, railmach.OpAMD64I32x4ShrU,
+			railmach.OpAMD64I64x2Shl, railmach.OpAMD64I64x2ShrU:
+			operands := machine.InstructionOperands(uint32(instructionID))
+			if len(operands) == 2 {
+				if _, ok := nativeMachineIntegerConstant(machine, operands[1].Reg); ok {
+					continue
+				}
+			}
+			count = 1 // XMM5 carries a dynamic packed-lane shift count.
+		case wasm.InstrI8x16Shuffle, railmach.OpAMD64I8x16Shuffle:
+			if wideScratch || nativeAMD64ShuffleScratchCount(machine, uint32(instructionID)) == 0 {
+				if !wideScratch {
+					count = max(count, 1)
+				}
+				continue
+			}
+			return 2 // XMM4 holds one shuffled half while XMM5 holds each mask.
 		case wasm.InstrI32x4TruncSatF32x4S, wasm.InstrI32x4TruncSatF32x4U,
 			wasm.InstrI32x4TruncSatF64x2SZero, wasm.InstrI32x4TruncSatF64x2UZero,
 			wasm.InstrI32x4RelaxedTruncF32x4S, wasm.InstrI32x4RelaxedTruncF32x4U,
@@ -2372,7 +2408,7 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 			wasm.InstrI32x4ExtmulLowI16x8U, wasm.InstrI32x4ExtmulHighI16x8U,
 			wasm.InstrI64x2ExtmulLowI32x4S, wasm.InstrI64x2ExtmulHighI32x4S,
 			wasm.InstrI64x2ExtmulLowI32x4U, wasm.InstrI64x2ExtmulHighI32x4U,
-			wasm.InstrI8x16Shuffle, wasm.InstrI32x4ExtaddPairwiseI16x8U,
+			wasm.InstrI32x4ExtaddPairwiseI16x8U,
 			wasm.InstrF32x4Min, wasm.InstrF32x4Max, wasm.InstrF64x2Min, wasm.InstrF64x2Max,
 			wasm.InstrI64x2Mul, wasm.InstrF32x4ConvertI32x4U, wasm.InstrF64x2ConvertLowI32x4U,
 			railmach.OpAMD64I64x2Mul, railmach.OpAMD64F32x4ConvertI32x4U, railmach.OpAMD64F64x2ConvertLowI32x4U:
@@ -2383,9 +2419,6 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 			wasm.InstrI8x16LtU, wasm.InstrI8x16GtU, wasm.InstrI8x16LeU, wasm.InstrI8x16GeU,
 			wasm.InstrI16x8LtU, wasm.InstrI16x8GtU, wasm.InstrI16x8LeU, wasm.InstrI16x8GeU,
 			wasm.InstrI32x4LtU, wasm.InstrI32x4GtU, wasm.InstrI32x4LeU, wasm.InstrI32x4GeU,
-			wasm.InstrI16x8Shl, wasm.InstrI16x8ShrS, wasm.InstrI16x8ShrU,
-			wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU,
-			wasm.InstrI64x2Shl, wasm.InstrI64x2ShrU,
 			wasm.InstrI16x8ExtendLowI8x16S, wasm.InstrI16x8ExtendHighI8x16S,
 			wasm.InstrI16x8ExtendLowI8x16U, wasm.InstrI16x8ExtendHighI8x16U,
 			wasm.InstrI32x4ExtendLowI16x8S, wasm.InstrI32x4ExtendHighI16x8S,
@@ -2404,6 +2437,29 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 		}
 	}
 	return count
+}
+
+func nativeAMD64ShuffleScratchCount(machine *railmach.Func, instructionID uint32) uint8 {
+	if machine == nil || int(instructionID) >= len(machine.Insts) {
+		return 2
+	}
+	operands := machine.InstructionOperands(instructionID)
+	immediate, ok := machine.SIMDImmediateAt(instructionID)
+	if len(operands) != 2 || !ok {
+		return 2
+	}
+	if operands[0].Reg == operands[1].Reg {
+		return 0
+	}
+	allLHS, allRHS := true, true
+	for _, lane := range immediate.Bytes {
+		allLHS = allLHS && lane < 16
+		allRHS = allRHS && lane >= 16
+	}
+	if allLHS || allRHS {
+		return 0
+	}
+	return 2
 }
 
 func nativeARM64AllocatableFPRs(machine *railmach.Func) uint8 {
