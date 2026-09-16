@@ -62,7 +62,7 @@ func wagoJSON(tb testing.TB, wasmBytes []byte) (ser, deser func()) {
 	if err != nil {
 		tb.Fatalf("compile: %v", err)
 	}
-	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})}})
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: abortImports()})
 	if err != nil {
 		tb.Fatalf("instantiate: %v", err)
 	}

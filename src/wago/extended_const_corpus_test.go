@@ -48,10 +48,7 @@ func TestExtendedConstFixtureManifest(t *testing.T) {
 
 func TestExtendedConstCodecExecution(t *testing.T) {
 	root := filepath.Clean("../../tests/corpus/regressions/extended-const")
-	imports := wago.Imports{
-		"spectest.global_i32": wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)},
-		"spectest.global_i64": wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)},
-	}
+	imports := testWagoImports("spectest.global_i32", wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)}, "spectest.global_i64", wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)})
 	for _, tc := range []struct {
 		name   string
 		file   string

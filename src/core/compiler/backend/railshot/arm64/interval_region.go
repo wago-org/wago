@@ -15,20 +15,29 @@ type intervalLocalEvent struct {
 }
 
 const (
-	minIntervalRegionBody   = 128
-	minIntervalRegionLocals = 32
-	maxIntervalRegionBody   = 16 << 10
-	maxIntervalRegionLocals = 256
-	maxIntervalRegionRegs   = 19
+	minIntervalRegionBody        = 128
+	minIntervalRegionLocals      = 32
+	maxIntervalRegionBody        = 16 << 10
+	maxIntervalRegionLocals      = 256
+	maxIntervalRegionRegs        = 19
+	intervalRegionTransientFloor = 3
 )
 
-func intervalRegionRegLimit(x27Reserved bool) int {
-	// Caching the explicit-bounds memory size reserves X27, so nineteen active
-	// leases would leave only two registers from the scratch-capable tail.
-	if x27Reserved {
-		return maxIntervalRegionRegs - 1
+func intervalRegionRegLimit(reserved regMask) int {
+	available := 0
+	for _, reg := range intervalRegionOrder {
+		if !reserved.has(reg) {
+			available++
+		}
 	}
-	return maxIntervalRegionRegs
+	limit := available - intervalRegionTransientFloor
+	if limit < 0 {
+		return 0
+	}
+	if limit > maxIntervalRegionRegs {
+		return maxIntervalRegionRegs
+	}
+	return limit
 }
 
 var intervalRegionOrder = [...]Reg{
@@ -66,7 +75,7 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 	if f.intervalNext {
 		f.prepareIntervalEvents(body, hints.localEventCount())
 	}
-	f.intervalRegLimit = intervalRegionRegLimit(f.memSizeReg == X27)
+	f.intervalRegLimit = intervalRegionRegLimit(f.reserved)
 	for i := range f.intervalOwner {
 		f.intervalOwner[i] = -1
 	}

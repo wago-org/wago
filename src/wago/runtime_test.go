@@ -33,7 +33,7 @@ func (e tripleExt) Info() ExtensionInfo {
 
 func (e tripleExt) Register(reg *Registry) error {
 	reg.Capability(CapMetricsWrite, CapabilityDocs("demo capability"))
-	// Bare func literal (no explicit HostFunc conversion) — the portable form.
+	// Bare func literal (no explicit slotHostFunc conversion) — the portable form.
 	reg.ImportModule("env").
 		Func("f", func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) * 3) }).
 		Params(ValI32).Results(ValI32).Capability(CapMetricsWrite)
@@ -81,9 +81,9 @@ func TestRuntimeUseAndInvoke(t *testing.T) {
 func TestRuntimeInstantiateRetainsOnlyEffectiveImports(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
-	rt.imports["env.f"] = HostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) * 3) })
+	rt.imports[testImportKey("env.f")] = slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) * 3) })
 	for i := 0; i < 256; i++ {
-		rt.imports["unused."+strconv.Itoa(i)] = HostFunc(func(HostModule, []uint64, []uint64) {})
+		rt.imports[testImportKey("unused."+strconv.Itoa(i))] = slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	}
 
 	mod := callsEnvF(t, rt)
@@ -94,12 +94,12 @@ func TestRuntimeInstantiateRetainsOnlyEffectiveImports(t *testing.T) {
 	defer in.Close()
 
 	imports := in.Imports()
-	if len(imports) != 1 || imports["env.f"] == nil {
-		t.Fatalf("Imports = %#v, want only env.f", imports)
+	if len(imports.bindings) != 1 || imports.bindings[testImportKey("env.f")] == nil {
+		t.Fatalf("*Imports = %#v, want only env.f", imports)
 	}
-	imports["env.f"] = "caller mutation"
-	if got := in.Imports()["env.f"]; got == "caller mutation" {
-		t.Fatal("Imports exposed the instance's internal binding map")
+	imports.bindings[testImportKey("env.f")] = "caller mutation"
+	if got := in.Imports().bindings[testImportKey("env.f")]; got == "caller mutation" {
+		t.Fatal("*Imports exposed the instance's internal binding map")
 	}
 
 	result, err := in.Invoke("g", I32(7))
@@ -114,26 +114,23 @@ func TestRuntimeInstantiateRetainsOnlyEffectiveImports(t *testing.T) {
 func TestRuntimeInstantiateRetainsExplicitUnusedOverrides(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
-	rt.imports["env.f"] = HostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) * 3) })
-	rt.imports["unused.runtime"] = HostFunc(func(HostModule, []uint64, []uint64) {})
+	rt.imports[testImportKey("env.f")] = slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) * 3) })
+	rt.imports[testImportKey("unused.runtime")] = slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	mod := callsEnvF(t, rt)
 
 	marker := new(int)
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
-		"env.f":           HostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) + 1) }),
-		"unused.explicit": marker,
-	}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.f", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) + 1) }), "unused.explicit", marker)))
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
 	defer in.Close()
 
 	imports := in.Imports()
-	if len(imports) != 2 || imports["unused.explicit"] != marker {
-		t.Fatalf("Imports = %#v, want effective env.f and explicit unused override", imports)
+	if len(imports.bindings) != 2 || imports.bindings[testImportKey("unused.explicit")] != marker {
+		t.Fatalf("*Imports = %#v, want effective env.f and explicit unused override", imports)
 	}
-	if _, ok := imports["unused.runtime"]; ok {
-		t.Fatal("Imports retained an unrelated runtime binding")
+	if _, ok := imports.bindings[testImportKey("unused.runtime")]; ok {
+		t.Fatal("*Imports retained an unrelated runtime binding")
 	}
 	result, err := in.Invoke("g", I32(7))
 	if err != nil {
@@ -146,9 +143,9 @@ func TestRuntimeInstantiateRetainsExplicitUnusedOverrides(t *testing.T) {
 
 func TestResolveInstanceImportsDoesNotAllocateForUnrelatedNamespace(t *testing.T) {
 	rt := NewRuntime()
-	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	fn := slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	for i := 0; i < 10_000; i++ {
-		rt.imports["unused."+strconv.Itoa(i)] = fn
+		rt.imports[testImportKey("unused."+strconv.Itoa(i))] = fn
 	}
 
 	allocs := testing.AllocsPerRun(100, func() {
@@ -164,13 +161,14 @@ func TestResolveInstanceImportsDoesNotAllocateForUnrelatedNamespace(t *testing.T
 
 func TestResolveInstanceImportsOrdinaryImportDoesNotAllocateCollisionMap(t *testing.T) {
 	rt := NewRuntime()
-	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
-	rt.imports["env.f"] = fn
-	rt.importMeta["env.f"] = &registeredImport{module: "env", name: "f", fn: fn}
+	fn := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	key := testImportKey("env.f")
+	rt.imports[key] = fn
+	rt.importMeta[key] = &registeredImport{module: "env", name: "f", fn: fn}
 	specs := []ImportSpec{{Module: "env", Name: "f", Kind: ImportFunc}}
 	allocs := testing.AllocsPerRun(100, func() {
 		imports, pluginGCImports, err := rt.resolveInstanceImports(specs, nil, nil, nil)
-		if err != nil || len(imports) != 1 || imports["env.f"] == nil || pluginGCImports != nil {
+		if err != nil || len(imports) != 1 || imports[key] == nil || pluginGCImports != nil {
 			t.Fatalf("resolveInstanceImports = %#v, %#v, %v", imports, pluginGCImports, err)
 		}
 	})
@@ -181,9 +179,9 @@ func TestResolveInstanceImportsOrdinaryImportDoesNotAllocateCollisionMap(t *test
 
 func TestResolveInstanceImportsDottedFieldsDoNotAllocateCollisionMap(t *testing.T) {
 	rt := NewRuntime()
-	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	fn := slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	for _, name := range []string{"a", "b", "a.b", "c.d"} {
-		key := "env." + name
+		key := importBindingMapKey("env", name)
 		rt.imports[key] = fn
 		rt.importMeta[key] = &registeredImport{module: "env", name: name, fn: fn}
 	}
@@ -204,7 +202,7 @@ func TestResolveInstanceImportsDottedFieldsDoNotAllocateCollisionMap(t *testing.
 
 func TestResolveInstanceImportsMatchingExactIdentityDoesNotAllocateCollisionMap(t *testing.T) {
 	rt := NewRuntime()
-	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	fn := slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	allocations := func(module string) float64 {
 		specs := []ImportSpec{{Module: module, Name: "f", Kind: ImportFunc}}
 		declared, err := indexDeclaredImportIdentities(specs)
@@ -212,7 +210,7 @@ func TestResolveInstanceImportsMatchingExactIdentityDoesNotAllocateCollisionMap(
 			t.Fatal(err)
 		}
 		identity := importBindingKey{module: module, name: "f"}
-		exact := map[string]exactImportOverride{module + ".f": {identity: identity, value: fn}}
+		exact := map[string]exactImportOverride{importBindingMapKey(module, "f"): {identity: identity, value: fn}}
 		return testing.AllocsPerRun(100, func() {
 			imports, pluginGCImports, err := rt.resolveInstanceImports(specs, declared, nil, exact)
 			if err != nil || len(imports) != 1 || pluginGCImports != nil {
@@ -230,16 +228,14 @@ func TestResolveInstanceImportsMatchingExactIdentityDoesNotAllocateCollisionMap(
 func TestRuntimeReservedUnusedOverrideRejected(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
-	rt.imports["wago_timer.now"] = HostFunc(func(HostModule, []uint64, []uint64) {})
+	rt.imports[testImportKey("wago_timer.now")] = slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	mod, err := rt.Compile(wasmtest.Module())
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
 	defer mod.Close()
 
-	if _, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
-		"wago_timer.now": HostFunc(func(HostModule, []uint64, []uint64) {}),
-	})); err == nil {
+	if _, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("wago_timer.now", slotHostFunc(func(HostModule, []uint64, []uint64) {})))); err == nil {
 		t.Fatal("unused reserved-module override was accepted")
 	}
 }
@@ -336,7 +332,7 @@ func (otherEnvExt) Info() ExtensionInfo {
 }
 func (otherEnvExt) Register(reg *Registry) error {
 	reg.ImportModule("env").
-		Func("f", HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })).
+		Func("f", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })).
 		Params(ValI32).Results(ValI32)
 	return nil
 }
@@ -515,7 +511,7 @@ func TestRuntimeFailedRetainedInstanceKeepsAggregateReservation(t *testing.T) {
 	}
 	defer mod.Close()
 	instantiate := func() (*Instance, error) {
-		return rt.Instantiate(context.Background(), mod, WithImports(Imports{"owner.shared": shared}))
+		return rt.Instantiate(context.Background(), mod, WithImports(testImports("owner.shared", shared)))
 	}
 	if in, err := instantiate(); err == nil || in != nil || !strings.Contains(err.Error(), "table 1") {
 		t.Fatalf("failed retained instance = %v, %v; want local-table bounds error", in, err)
@@ -655,7 +651,7 @@ func (timerLikeExt) Info() ExtensionInfo {
 }
 func (timerLikeExt) Register(reg *Registry) error {
 	reg.ImportModule("wago_timer").
-		Func("now", HostFunc(func(_ HostModule, _, r []uint64) { r[0] = 0 })).
+		Func("now", slotHostFunc(func(_ HostModule, _, r []uint64) { r[0] = 0 })).
 		Results(ValI64)
 	return nil
 }
@@ -682,7 +678,7 @@ func TestReservedModuleUserOverrideRejected(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	_, err = rt.Instantiate(context.Background(), c,
-		WithImports(Imports{"wago_timer.now": HostFunc(func(_ HostModule, _, r []uint64) { r[0] = 99 })}))
+		WithImports(testImports("wago_timer.now", slotHostFunc(func(_ HostModule, _, r []uint64) { r[0] = 99 }))))
 	if err == nil {
 		t.Fatal("expected reserved-module override to be rejected")
 	}
@@ -697,7 +693,7 @@ func TestReservedModuleUserOverrideRejected(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	in, err := rt2.Instantiate(context.Background(), c2,
-		WithImports(Imports{"wago_timer.now": HostFunc(func(_ HostModule, _, r []uint64) { r[0] = 99 })}))
+		WithImports(testImports("wago_timer.now", slotHostFunc(func(_ HostModule, _, r []uint64) { r[0] = 99 }))))
 	if err != nil {
 		t.Fatalf("instantiate with override: %v", err)
 	}
@@ -726,7 +722,7 @@ func TestHostFuncRefAttachmentDeduplication(t *testing.T) {
 		t.Fatal("nil host funcref owner accepted")
 	}
 	rt := NewRuntime()
-	owner, err := rt.NewHostFuncRef(func(HostModule, []uint64, []uint64) {}, FuncSig{})
+	owner, err := rt.NewHostFuncRef(func(HostCall) {}, FuncSig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -755,25 +751,24 @@ func TestRuntimeImportOptionsOwnOneResolvedMap(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	mod := callsEnvF(t, rt)
-	first := Imports{"unused.first": 1, "env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(1) })}
-	last := Imports{"unused.last": 2, "env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(9) })}
+	first := testImports("unused.first", 1, "env.f", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(1) }))
+	last := testImports("unused.last", 2, "env.f", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(9) }))
 	in, err := rt.Instantiate(context.Background(), mod, WithImports(first), WithImports(last))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	first["unused.first"] = 99
-	delete(last, "env.f")
-	last["unused.last"] = 99
+	first.Function("unused", "first", 99)
+	last.Function("unused", "last", 99)
 	got, err := in.Invoke("g", I32(7))
 	if err != nil || AsI32(got[0]) != 9 {
 		t.Fatalf("last override did not remain owned: %v, %v", got, err)
 	}
 	imports := in.Imports()
-	if imports["unused.first"] != 1 || imports["unused.last"] != 2 {
+	if imports.bindings[testImportKey("unused.first")] != 1 || imports.bindings[testImportKey("unused.last")] != 2 {
 		t.Fatalf("caller maps changed resolved imports: %v", imports)
 	}
-	if len(first) != 2 || len(last) != 1 {
+	if len(first.bindings) != 2 || len(last.bindings) != 2 {
 		t.Fatal("resolution mutated caller maps")
 	}
 }

@@ -76,12 +76,12 @@ func runSemanticOracle(mod semanticcorpus.Module) error {
 }
 
 type wagoSemanticExec struct {
-	fn    *wago.PreparedFunction
+	fn    *wago.WasmFunc
 	calls [][]uint64
 }
 
 func prepareWagoSemanticExec(in *wago.Instance, mod semanticcorpus.Module) (*wagoSemanticExec, error) {
-	fn, err := in.PrepareFunction(mod.Invoke.Export)
+	fn, err := in.WasmFunc(mod.Invoke.Export)
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,7 @@ import (
 type disposalTestPlugin struct {
 	id          string
 	requires    []PluginCapability
-	hostFn      HostFunc
+	hostFn      slotHostFunc
 	hostName    string
 	hostParams  []ValType
 	hostResults []ValType
@@ -42,7 +42,7 @@ func (p *disposalTestPlugin) Register(reg *Registry) error {
 		if name == "" {
 			name = "f"
 		}
-		host.Module("env").Func(name, p.hostFn).Params(p.hostParams...).Results(p.hostResults...)
+		host.HostFunc("env", name, p.hostFn).Params(p.hostParams...).Results(p.hostResults...)
 	}
 	if len(p.afterInst)+len(p.onInstErr)+len(p.beforeClose)+len(p.afterClose) != 0 {
 		lifecycle, err := reg.InstanceLifecycle()
@@ -645,7 +645,7 @@ func TestCallerResolverAuthorityAndExpiry(t *testing.T) {
 		t.Fatalf("Instantiate: %v", err)
 	}
 	defer in.Close()
-	if _, err := in.Call(context.Background(), "call"); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "call"); err != nil {
 		t.Fatalf("Call: %v", err)
 	}
 	if resolveErr != nil || resolved != in {
@@ -672,7 +672,7 @@ func TestCallerResolverAuthorityAndExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cross Instantiate: %v", err)
 	}
-	if _, err := in2.Call(context.Background(), "call"); err != nil {
+	if _, err := in2.InvokeValues(context.Background(), "call"); err != nil {
 		t.Fatalf("cross Call: %v", err)
 	}
 	_ = in2.Close()
@@ -715,7 +715,7 @@ func TestCallerResolverManagedInstance(t *testing.T) {
 		t.Fatalf("managed Instantiate: %v", err)
 	}
 	in := managed.Instance()
-	if _, err := in.Call(context.Background(), "call"); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "call"); err != nil {
 		t.Fatalf("Call: %v", err)
 	}
 	if resolveErr != nil || resolved != in {
@@ -793,7 +793,7 @@ func TestManagedForkLifecycleAndRuntimeOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parent Instantiate: %v", err)
 	}
-	if _, err := parent.Call(context.Background(), "call"); err != nil {
+	if _, err := parent.InvokeValues(context.Background(), "call"); err != nil {
 		t.Fatalf("parent Call: %v", err)
 	}
 	if childCreateErr != nil || child == nil || child.Instance() == nil {
@@ -848,7 +848,7 @@ func TestTrapReportsAfterInvokeButDoesNotClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
-	if _, err := in.Call(context.Background(), "boom"); err == nil {
+	if _, err := in.InvokeValues(context.Background(), "boom"); err == nil {
 		t.Fatal("trapping Call returned nil error")
 	}
 	if invokeErr == nil {

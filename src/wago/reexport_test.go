@@ -32,7 +32,7 @@ func TestDirectHostReexportSupportsTypedSignatureMatrix(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			compiled := MustCompile(directHostReexportModule(test.params, test.results))
 			defer compiled.Close()
-			instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": test.fn}})
+			instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", test.fn)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -70,7 +70,7 @@ func TestDirectHostReexportEnforcesPluginGate(t *testing.T) {
 			}
 			compiled := MustCompile(directHostReexportModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))
 			defer compiled.Close()
-			instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": gated}})
+			instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", gated)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -98,7 +98,7 @@ func TestDirectHostReexportPluginGateDrainsActiveCallback(t *testing.T) {
 	}
 	compiled := MustCompile(directHostReexportModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))
 	defer compiled.Close()
-	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": gated}})
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", gated)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestDirectHostReexportHonorsPluginOperationReservation(t *testing.T) {
 	}
 	compiled := MustCompile(directHostReexportModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))
 	defer compiled.Close()
-	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": gated}})
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", gated)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestImportedFunctionReexportForwardsInvokeCallTrapAndState(t *testing.T) {
 		t.Fatalf("producer state after forwarding = %v, %v; want 7", state, err)
 	}
 
-	typed, err := relay.Call(context.Background(), "forward", ValueI32(9))
+	typed, err := relay.InvokeValues(context.Background(), "forward", ValueI32(9))
 	if err != nil || len(typed) != 1 || typed[0].Type() != ValI32 || typed[0].I32() != 9 {
 		t.Fatalf("Call forward(9) = %v, %v; want i32(9)", typed, err)
 	}
@@ -218,12 +218,10 @@ func TestImportedFunctionReexportCloseInterruptsDelegatedExecution(t *testing.T)
 	if err != nil {
 		t.Fatalf("Compile producer: %v", err)
 	}
-	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{
-		"env.entered": HostFunc(func(HostModule, []uint64, []uint64) {
-			close(entered)
-			<-release
-		}),
-	}))
+	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(testImports("env.entered", slotHostFunc(func(HostModule, []uint64, []uint64) {
+		close(entered)
+		<-release
+	}))))
 	if err != nil {
 		t.Fatalf("Instantiate producer: %v", err)
 	}
@@ -236,7 +234,7 @@ func TestImportedFunctionReexportCloseInterruptsDelegatedExecution(t *testing.T)
 	if err != nil {
 		t.Fatalf("Compile relay: %v", err)
 	}
-	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(Imports{"env.spin": spin}))
+	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(testImports("env.spin", spin)))
 	if err != nil {
 		t.Fatalf("Instantiate relay: %v", err)
 	}
@@ -283,12 +281,10 @@ func TestImportedFunctionReexportUsesCallerInvocationLease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile producer: %v", err)
 	}
-	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{
-		"env.entered": HostFunc(func(HostModule, []uint64, []uint64) {
-			close(entered)
-			<-release
-		}),
-	}))
+	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(testImports("env.entered", slotHostFunc(func(HostModule, []uint64, []uint64) {
+		close(entered)
+		<-release
+	}))))
 	if err != nil {
 		t.Fatalf("Instantiate producer: %v", err)
 	}
@@ -301,7 +297,7 @@ func TestImportedFunctionReexportUsesCallerInvocationLease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile relay: %v", err)
 	}
-	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(Imports{"env.spin": target}))
+	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(testImports("env.spin", target)))
 	if err != nil {
 		t.Fatalf("Instantiate relay: %v", err)
 	}
@@ -358,7 +354,7 @@ func TestImportedFunctionReexportIssuesFirstFuncrefAfterProducerClose(t *testing
 	if err != nil {
 		t.Fatalf("Compile relay: %v", err)
 	}
-	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(Imports{"env.get": get}))
+	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(testImports("env.get", get)))
 	if err != nil {
 		t.Fatalf("Instantiate relay: %v", err)
 	}
@@ -437,7 +433,7 @@ func TestImportedFunctionReexportCanLinkAgain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile consumer: %v", err)
 	}
-	consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(Imports{"env.step": forward}))
+	consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(testImports("env.step", forward)))
 	if err != nil {
 		t.Fatalf("Instantiate consumer: %v", err)
 	}
@@ -455,9 +451,7 @@ func TestHostImportedFunctionReexportStaysFailClosed(t *testing.T) {
 		t.Fatalf("Compile: %v", err)
 	}
 	defer c.Close()
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-		"env.step": HostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] }),
-	}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.step", slotHostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] }))})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -487,7 +481,7 @@ func instantiateImportedFunctionReexport(t testing.TB) (*Runtime, *Instance, *In
 	if err != nil {
 		t.Fatalf("Compile relay: %v", err)
 	}
-	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(Imports{"env.step": step}))
+	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(testImports("env.step", step)))
 	if err != nil {
 		t.Fatalf("Instantiate relay: %v", err)
 	}
@@ -602,18 +596,17 @@ func reexportProducerModule() []byte {
 func TestInstantiateSnapshotsImports(t *testing.T) {
 	c := MustCompile(importedFunctionReexportModule())
 	defer c.Close()
-	imports := Imports{"env.step": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })}
+	imports := testImports("env.step", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 }))
 	in, err := Instantiate(c, imports)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	imports["env.step"] = HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 9 })
+	imports.HostFunc("env", "step", func(v int32) int32 { return v + 9 })
 	out, err := in.Invoke("forward", 41)
 	if err != nil || len(out) != 1 || out[0] != 42 {
 		t.Fatalf("Invoke after map replacement = %v, %v", out, err)
 	}
-	delete(imports, "env.step")
 	out, err = in.Invoke("forward", 41)
 	if err != nil || len(out) != 1 || out[0] != 42 {
 		t.Fatalf("Invoke after map deletion = %v, %v", out, err)

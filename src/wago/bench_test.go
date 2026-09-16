@@ -768,7 +768,7 @@ func BenchmarkInvokeImportedFuncrefEgress(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile importer: %v", err)
 	}
-	importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": target}))
+	importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(testImports("env.target", target)))
 	if err != nil {
 		b.Fatalf("Instantiate importer: %v", err)
 	}
@@ -803,7 +803,7 @@ func benchOwnedHostFuncrefModule(b testing.TB) []byte {
 
 func BenchmarkInvokeOwnedHostFuncrefEgress(b *testing.B) {
 	rt := NewRuntime()
-	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+	owner, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(42)
 	}), FuncSig{Results: []ValType{ValI32}})
 	if err != nil {
@@ -813,7 +813,7 @@ func BenchmarkInvokeOwnedHostFuncrefEgress(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.target": owner}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.target", owner)))
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -837,7 +837,7 @@ func BenchmarkInvokeOwnedHostFuncrefEgress(b *testing.B) {
 
 func BenchmarkInvokeOwnedHostFuncrefIndirect(b *testing.B) {
 	rt := NewRuntime()
-	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+	owner, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(42)
 	}), FuncSig{Results: []ValType{ValI32}})
 	if err != nil {
@@ -847,7 +847,7 @@ func BenchmarkInvokeOwnedHostFuncrefIndirect(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile producer: %v", err)
 	}
-	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.target": owner}))
+	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(testImports("env.target", owner)))
 	if err != nil {
 		b.Fatalf("Instantiate producer: %v", err)
 	}
@@ -961,7 +961,7 @@ func benchmarkInvokeImportedAndLocalTable(b *testing.B, export string, want int3
 		b.Fatalf("ExportedTable: %v", err)
 	}
 	consumerCompiled := benchMustCompile(b, benchImportedAndLocalTablesModule())
-	consumer, err := Instantiate(consumerCompiled, Imports{"env.table": table})
+	consumer, err := Instantiate(consumerCompiled, testImports("env.table", table))
 	if err != nil {
 		b.Fatalf("Instantiate consumer: %v", err)
 	}
@@ -1010,7 +1010,7 @@ func benchmarkInvokeTwoImportedAndLocalTable(b *testing.B, export string, want i
 		b.Fatalf("Export second table: %v", err)
 	}
 	consumerCompiled := benchMustCompile(b, benchTwoImportedAndLocalTablesModule())
-	consumer, err := Instantiate(consumerCompiled, Imports{"env.first": first, "env.second": second})
+	consumer, err := Instantiate(consumerCompiled, testImports("env.first", first, "env.second", second))
 	if err != nil {
 		b.Fatalf("Instantiate consumer: %v", err)
 	}
@@ -1241,7 +1241,7 @@ func BenchmarkInvokeNonNullFuncrefRoundTrip(b *testing.B) {
 func BenchmarkInvokeLegacyHostFuncVoid(b *testing.B) {
 	c := benchMustCompile(b, voidI32ImportCallerModule())
 	var calls int32
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.log": HostFunc(func(_ HostModule, p, _ []uint64) { calls += AsI32(p[0]) & 1 })}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.log", slotHostFunc(func(_ HostModule, p, _ []uint64) { calls += AsI32(p[0]) & 1 }))})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -1259,7 +1259,7 @@ func BenchmarkInvokeLegacyHostFuncVoid(b *testing.B) {
 
 func BenchmarkInvokeHostFuncDirect(b *testing.B) {
 	c := benchMustCompile(b, benchReturningImportModule())
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 }))})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -1289,7 +1289,7 @@ func BenchmarkInvokeCrossInstanceDirect(b *testing.B) {
 	}
 	consumerCode := benchMustCompile(b, benchReturningImportModule())
 	defer consumerCode.Close()
-	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.f": target}})
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: testImports("env.f", target)})
 	if err != nil {
 		b.Fatalf("Instantiate consumer: %v", err)
 	}
@@ -1322,7 +1322,7 @@ func BenchmarkInvokeCrossInstanceIndirect(b *testing.B) {
 	}
 	consumerCode := benchMustCompile(b, benchTableReturningImportModule())
 	defer consumerCode.Close()
-	consumer, err := Instantiate(consumerCode, Imports{"env.f": target})
+	consumer, err := Instantiate(consumerCode, testImports("env.f", target))
 	if err != nil {
 		b.Fatalf("Instantiate consumer: %v", err)
 	}
@@ -1346,7 +1346,7 @@ func BenchmarkInvokeSharedMemoryPublicEntry(b *testing.B) {
 	defer memory.Close()
 	compiled := benchMustCompile(b, sharedMemoryPrivateGlobalModule(10))
 	defer compiled.Close()
-	in, err := Instantiate(compiled, Imports{"env.memory": memory})
+	in, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1374,7 +1374,7 @@ func BenchmarkInvokeHostFuncExternrefRoundTrip(b *testing.B) {
 		b.Fatalf("NewExternRef: %v", err)
 	}
 	token := ValueExternRef(ref).Bits()
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.echo": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.echo", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] }))))
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -1395,7 +1395,7 @@ func BenchmarkInvokeHostFuncExternrefRoundTrip(b *testing.B) {
 
 func BenchmarkInvokeHostFuncTableIndirect(b *testing.B) {
 	c := benchMustCompile(b, benchTableReturningImportModule())
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 }))})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -1414,7 +1414,7 @@ func BenchmarkInvokeHostFuncTableIndirect(b *testing.B) {
 func BenchmarkInvokeLegacyHostFuncTableIndirect(b *testing.B) {
 	c := benchMustCompile(b, benchTableVoidImportModule())
 	var calls int32
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, _ []uint64) { calls += AsI32(p[0]) & 1 })}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, p, _ []uint64) { calls += AsI32(p[0]) & 1 }))})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -1439,7 +1439,7 @@ func BenchmarkInvokeHostFuncV128TableIndirect(b *testing.B) {
 	c := benchMustCompile(b, benchTableV128ImportModule())
 	inVec := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	lo, hi := hostV128Slots(inVec)
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0], r[1] = p[0]+1, p[1]+1 })}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0], r[1] = p[0]+1, p[1]+1 }))})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -1535,7 +1535,7 @@ func BenchmarkRuntimeInstantiateFuncrefIngressCaller(b *testing.B) {
 
 func BenchmarkRuntimeInstantiateOwnedHostFuncref(b *testing.B) {
 	rt := NewRuntime()
-	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+	owner, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(42)
 	}), FuncSig{Results: []ValType{ValI32}})
 	if err != nil {
@@ -1545,7 +1545,7 @@ func BenchmarkRuntimeInstantiateOwnedHostFuncref(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.target": owner}))
+	warm, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.target", owner)))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1557,7 +1557,7 @@ func BenchmarkRuntimeInstantiateOwnedHostFuncref(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.target": owner}))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.target", owner)))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1636,7 +1636,7 @@ func BenchmarkRuntimeInstantiateNullableFuncrefGlobals(b *testing.B) {
 
 func benchmarkOwnedHostFuncRefGlobal(b testing.TB) (*Runtime, *Global) {
 	rt := NewRuntime()
-	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+	owner, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(42)
 	}), FuncSig{Results: []ValType{ValI32}})
 	if err != nil {
@@ -1646,7 +1646,7 @@ func benchmarkOwnedHostFuncRefGlobal(b testing.TB) (*Runtime, *Global) {
 	if err != nil {
 		b.Fatalf("Compile producer: %v", err)
 	}
-	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.target": owner}))
+	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(testImports("env.target", owner)))
 	if err != nil {
 		b.Fatalf("Instantiate producer: %v", err)
 	}
@@ -1675,7 +1675,7 @@ func BenchmarkRuntimeInstantiateImportedFuncRefGlobal(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	imports := Imports{"env.ref": global}
+	imports := testImports("env.ref", global)
 	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
@@ -1722,7 +1722,7 @@ func BenchmarkRuntimeInstantiateImportedExternrefGlobal(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	imports := Imports{"env.ref": global}
+	imports := testImports("env.ref", global)
 	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
@@ -1750,7 +1750,7 @@ func BenchmarkRuntimeInstantiateImportedNumericGlobal(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	imports := Imports{"env.value": global}
+	imports := testImports("env.value", global)
 	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
@@ -1971,7 +1971,7 @@ func BenchmarkRuntimeInstantiateSharedMemoryImport(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewSharedMemory: %v", err)
 	}
-	imports := Imports{"env.mem": memory}
+	imports := testImports("env.mem", memory)
 	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
@@ -2002,7 +2002,7 @@ func BenchmarkRuntimeInstantiateImportedMemoryReexport(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewSharedMemory: %v", err)
 	}
-	imports := Imports{"env.memory": memory}
+	imports := testImports("env.memory", memory)
 	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
@@ -2044,7 +2044,7 @@ func BenchmarkRuntimeInstantiateImportedTable(b *testing.B) {
 		b.Fatalf("NewTable: %v", err)
 	}
 	defer table.Close()
-	imports := Imports{"env.table": table}
+	imports := testImports("env.table", table)
 	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
@@ -2072,7 +2072,7 @@ func BenchmarkRuntimeInstantiateImportedExternrefTable(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewExternRefTable: %v", err)
 	}
-	imports := Imports{"env.table": table}
+	imports := testImports("env.table", table)
 	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
@@ -2104,7 +2104,7 @@ func BenchmarkRuntimeInstantiateImportedAndLocalTables(b *testing.B) {
 		b.Fatalf("NewTable: %v", err)
 	}
 	defer table.Close()
-	imports := Imports{"env.table": table}
+	imports := testImports("env.table", table)
 	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
@@ -2138,7 +2138,7 @@ func BenchmarkRuntimeInstantiateTwoImportedAndLocalTables(b *testing.B) {
 		b.Fatalf("NewTable second: %v", err)
 	}
 	defer second.Close()
-	imports := Imports{"env.first": first, "env.second": second}
+	imports := testImports("env.first", first, "env.second", second)
 	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
@@ -2158,7 +2158,7 @@ func BenchmarkRuntimeInstantiateTwoImportedAndLocalTables(b *testing.B) {
 
 func BenchmarkInstantiateImportedStartHostFunc(b *testing.B) {
 	c := benchMustCompile(b, importedStartModule())
-	imports := Imports{"env.start": HostFunc(func(HostModule, []uint64, []uint64) {})}
+	imports := testImports("env.start", slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -2173,7 +2173,7 @@ func BenchmarkInstantiateImportedStartHostFunc(b *testing.B) {
 func BenchmarkInstantiateHostFuncDirect(b *testing.B) {
 	c := benchMustCompile(b, benchReturningImportModule())
 	defer c.Close()
-	imports := Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })}
+	imports := testImports("env.f", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] }))
 	warm, err := Instantiate(c, InstantiateOptions{Imports: imports})
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
@@ -2192,7 +2192,7 @@ func BenchmarkInstantiateHostFuncDirect(b *testing.B) {
 
 func BenchmarkInstantiateTableHostFuncThunk(b *testing.B) {
 	c := benchMustCompile(b, benchTableReturningImportModule())
-	imports := Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })}
+	imports := testImports("env.f", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] }))
 	// Warm shared code mapping so the benchmark isolates instance wiring, dispatch
 	// allocation, and per-instance host-thunk mapping.
 	warm, err := Instantiate(c, InstantiateOptions{Imports: imports})

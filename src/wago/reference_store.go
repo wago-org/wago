@@ -1448,14 +1448,14 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	dynamicInvocationDomains := !s.private && in != nil && compiledHasDynamicFuncrefReachability(in.c)
 	importsPrivateInvocationDomain := false
 	if in != nil && in.c != nil {
-		for _, key := range in.c.Imports {
-			export, ok := in.imports[key].(*InstanceExport)
+		for i, displayKey := range in.c.Imports {
+			export, ok := in.imports[in.c.functionImportBindingKey(i)].(*InstanceExport)
 			if !ok || export == nil || export.inst == nil {
 				continue
 			}
 			if export.inst.executionFlags.Load()&executionFlagDynamicGCDomain != 0 {
 				if export.inst.refStore != s {
-					return fmt.Errorf("wago: dynamic funcref import %q requires the same Runtime", key)
+					return fmt.Errorf("wago: dynamic funcref import %q requires the same Runtime", displayKey)
 				}
 				dynamicInvocationDomains = true
 				continue
@@ -2638,7 +2638,7 @@ func (in *Instance) attachedFunctionIndexExactType(index int) (ValueTypeDescript
 	if index >= len(in.c.Imports) {
 		return ValueTypeDescriptor{}, nil, false
 	}
-	if export, ok := in.imports[in.c.Imports[index]].(*InstanceExport); ok && export != nil && export.inst != nil && export.inst.c != nil && export.localIdx >= 0 {
+	if export, ok := in.imports[in.c.functionImportBindingKey(index)].(*InstanceExport); ok && export != nil && export.inst != nil && export.inst.c != nil && export.localIdx >= 0 {
 		providerIndex := export.inst.c.NumImports + export.localIdx
 		exact, err := export.inst.c.functionRefExactType(uint32(providerIndex))
 		return exact, export.inst.c.Types, err == nil
@@ -2880,7 +2880,7 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 		if fidx >= len(source.c.Imports) || fidx >= len(source.c.importFuncSigs) {
 			return nil, 0, false
 		}
-		key := source.c.Imports[fidx]
+		key := source.c.functionImportBindingKey(fidx)
 		off := (fidx + 1) * coreruntime.FuncRefDescBytes
 		refSlot := binary.LittleEndian.Uint64(source.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])
 		if ex, ok := source.imports[key].(*InstanceExport); ok {
@@ -2967,7 +2967,7 @@ func (in *Instance) funcrefFunctionIdentity(descriptor uint64) (funcrefIdentity,
 	if fidx >= len(in.c.Imports) {
 		return funcrefIdentity{}, false
 	}
-	export, ok := in.imports[in.c.Imports[fidx]].(*InstanceExport)
+	export, ok := in.imports[in.c.functionImportBindingKey(fidx)].(*InstanceExport)
 	if !ok || export == nil || export.inst == nil || export.localIdx < 0 {
 		return funcrefIdentity{}, false
 	}
@@ -3005,7 +3005,7 @@ func (in *Instance) hostFuncRefForDescriptor(descriptor uint64) *HostFuncRef {
 	if !ok || funcIndex < 0 || funcIndex >= in.c.NumImports || funcIndex >= len(in.c.Imports) {
 		return nil
 	}
-	owner, _ := in.imports[in.c.Imports[funcIndex]].(*HostFuncRef)
+	owner, _ := in.imports[in.c.functionImportBindingKey(funcIndex)].(*HostFuncRef)
 	return owner
 }
 

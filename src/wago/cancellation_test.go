@@ -78,7 +78,7 @@ func TestCallContextInterruptsNativeLoop(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	started := time.Now()
-	if _, err := in.Call(ctx, "spin"); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := in.InvokeValues(ctx, "spin"); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("spin error = %v, want context deadline", err)
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
@@ -86,7 +86,7 @@ func TestCallContextInterruptsNativeLoop(t *testing.T) {
 	}
 
 	// The watcher must leave the shared trap cell clean for the next invocation.
-	out, err := in.Call(context.Background(), "value")
+	out, err := in.InvokeValues(context.Background(), "value")
 	if err != nil || len(out) != 1 || out[0].I32() != 7 {
 		t.Fatalf("post-cancel value = %v, %v; want 7", out, err)
 	}
@@ -122,14 +122,14 @@ func TestInvokeContextInterruptsHostCallLoop(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	c := MustCompile(mod)
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.tick": HostFunc(func(_ HostModule, _, r []uint64) {
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.tick", slotHostFunc(func(_ HostModule, _, r []uint64) {
 		calls++
 		if calls == 1<<20+1 {
 			cancelRequested = time.Now()
 			cancel()
 		}
 		r[0] = I32(0)
-	})}})
+	}))})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -167,9 +167,9 @@ func TestInvokeContextHostPanicStopsCancellationWatch(t *testing.T) {
 	compiled := MustCompile(mod)
 	defer compiled.Close()
 	panicValue := errors.New("host panic sentinel")
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.panic": HostFunc(func(HostModule, []uint64, []uint64) {
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.panic", slotHostFunc(func(HostModule, []uint64, []uint64) {
 		panic(panicValue)
-	})}})
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -492,8 +492,8 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
 		}
 		return in, exports
 	}
-	positiveImports := func(exports map[string]*InstanceExport) Imports {
-		return Imports{"M.f0": exports["f0"], "M.f1": exports["f1"], "M.f2": exports["f2"]}
+	positiveImports := func(exports map[string]*InstanceExport) *Imports {
+		return testImports("M.f0", exports["f0"], "M.f1", exports["f1"], "M.f2", exports["f2"])
 	}
 	resourceState := func(in *Instance) (refs int, closed bool) {
 		in.lifeMu.Lock()
@@ -567,7 +567,7 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
 
 	provider2, exports2 := instantiateProvider()
 	rollbackImports := positiveImports(exports2)
-	rollbackImports["M.f2"] = exports2["f1"]
+	testSetImport(rollbackImports, "M.f2", exports2["f1"])
 	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: rollbackImports}); err == nil || !strings.Contains(err.Error(), "signature mismatch") {
 		t.Fatalf("later subtype mismatch = %v, want signature mismatch", err)
 	}
@@ -583,7 +583,7 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
 		if i == 2 {
 			name = "f1"
 		}
-		_, linkErr := instantiateCore(c, InstantiateOptions{Imports: Imports{"M." + name: exports2[name]}})
+		_, linkErr := instantiateCore(c, InstantiateOptions{Imports: testImports("M."+name, exports2[name])})
 		_ = c.Close()
 		if linkErr == nil || !strings.Contains(linkErr.Error(), "signature mismatch") {
 			t.Fatalf("%s link = %v, want incompatible signature", pin.Filename, linkErr)
@@ -609,8 +609,8 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
 		t.Fatalf("provider-final refs/resourcesClosed = %d/%v, want 0/true", refs, closed)
 	}
 
-	host := HostFunc(func(HostModule, []uint64, []uint64) {})
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.f0": host, "M.f1": host, "M.f2": host}}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
+	host := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M.f0", host, "M.f1", host, "M.f2", host)}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
 		t.Fatalf("host link = %v, want exact provider rejection", err)
 	}
 	for name, blob := range map[string][]byte{"provider": providerBlob, "consumer": consumerBlob} {
@@ -706,7 +706,7 @@ func TestStagedGCTypeSubtypingStructLinkingClusterLifecycle(t *testing.T) {
 	if invokeErr != nil || allocs != 0 {
 		t.Fatalf("provider g steady state = %v, allocs=%v; want nil, 0", invokeErr, allocs)
 	}
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M3.g": exported}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M3.g", exported)})
 	if err != nil {
 		t.Fatalf("instantiate compatible consumer: %v", err)
 	}
@@ -746,7 +746,7 @@ func TestStagedGCTypeSubtypingStructLinkingClusterLifecycle(t *testing.T) {
 	}
 
 	provider2, exported2 := instantiateProvider()
-	consumer2, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M3.g": exported2}})
+	consumer2, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M3.g", exported2)})
 	if err != nil {
 		t.Fatalf("instantiate consumer-first close pair: %v", err)
 	}
@@ -757,7 +757,7 @@ func TestStagedGCTypeSubtypingStructLinkingClusterLifecycle(t *testing.T) {
 		t.Fatalf("consumer-first provider refs/resourcesClosed = %d/%v, want 0/false", refs, closed)
 	}
 	invalidExport := &InstanceExport{inst: provider2, localIdx: len(provider2.c.Entry)}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M3.g": invalidExport}}); err == nil || !strings.Contains(err.Error(), "unavailable function") {
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M3.g", invalidExport)}); err == nil || !strings.Contains(err.Error(), "unavailable function") {
 		t.Fatalf("invalid provider export link = %v, want unavailable-function rejection", err)
 	}
 	if refs, closed := resourceState(provider2); refs != 0 || closed {
@@ -770,8 +770,8 @@ func TestStagedGCTypeSubtypingStructLinkingClusterLifecycle(t *testing.T) {
 		t.Fatalf("provider-final refs/resourcesClosed = %d/%v, want 0/true", refs, closed)
 	}
 
-	host := HostFunc(func(HostModule, []uint64, []uint64) {})
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M3.g": host}}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
+	host := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M3.g", host)}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
 		t.Fatalf("host link = %v, want exact provider rejection", err)
 	}
 	oldProviderCompiled, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingLinkProviderPin))
@@ -788,7 +788,7 @@ func TestStagedGCTypeSubtypingStructLinkingClusterLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("old provider export: %v", err)
 	}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M3.g": oldExport}}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M3.g", oldExport)}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
 		t.Fatalf("cross-product provider link = %v, want exact pair rejection", err)
 	}
 	if refs, closed := resourceState(oldProvider); refs != 0 || closed {
@@ -896,7 +896,7 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterLifecycle(t *testing
 	if invokeErr != nil || allocs != 0 {
 		t.Fatalf("provider g steady state = %v, allocs=%v; want nil, 0", invokeErr, allocs)
 	}
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M4.g": exported}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M4.g", exported)})
 	if err != nil {
 		t.Fatalf("instantiate compatible consumer: %v", err)
 	}
@@ -936,7 +936,7 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterLifecycle(t *testing
 	}
 
 	provider2, exported2 := instantiateProvider()
-	consumer2, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M4.g": exported2}})
+	consumer2, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M4.g", exported2)})
 	if err != nil {
 		t.Fatalf("instantiate consumer-first close pair: %v", err)
 	}
@@ -947,7 +947,7 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterLifecycle(t *testing
 		t.Fatalf("consumer-first provider refs/resourcesClosed = %d/%v, want 0/false", refs, closed)
 	}
 	invalidExport := &InstanceExport{inst: provider2, localIdx: len(provider2.c.Entry)}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M4.g": invalidExport}}); err == nil || !strings.Contains(err.Error(), "unavailable function") {
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M4.g", invalidExport)}); err == nil || !strings.Contains(err.Error(), "unavailable function") {
 		t.Fatalf("invalid provider export link = %v, want unavailable-function rejection", err)
 	}
 	if refs, closed := resourceState(provider2); refs != 0 || closed {
@@ -960,8 +960,8 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterLifecycle(t *testing
 		t.Fatalf("provider-final refs/resourcesClosed = %d/%v, want 0/true", refs, closed)
 	}
 
-	host := HostFunc(func(HostModule, []uint64, []uint64) {})
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M4.g": host}}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
+	host := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M4.g", host)}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
 		t.Fatalf("host link = %v, want exact provider rejection", err)
 	}
 	oldProviderCompiled, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingStructLinkProviderPin))
@@ -978,7 +978,7 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterLifecycle(t *testing
 	if err != nil {
 		t.Fatalf("old provider export: %v", err)
 	}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M4.g": oldExport}}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M4.g", oldExport)}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
 		t.Fatalf("cross-product provider link = %v, want exact pair rejection", err)
 	}
 	if refs, closed := resourceState(oldProvider); refs != 0 || closed {
@@ -1075,7 +1075,7 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		return in, exports
 	}
 	provider, exports := newM9Provider()
-	consumer, err := instantiateCore(m9ConsumerCompiled, InstantiateOptions{Imports: Imports{"M9.g11": exports["g11"], "M9.g12": exports["g12"]}})
+	consumer, err := instantiateCore(m9ConsumerCompiled, InstantiateOptions{Imports: testImports("M9.g11", exports["g11"], "M9.g12", exports["g12"])})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1107,7 +1107,7 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		t.Fatalf("M9 final state = %d/%v", refs, closed)
 	}
 	provider2, exports2 := newM9Provider()
-	consumer2, err := instantiateCore(m9ConsumerCompiled, InstantiateOptions{Imports: Imports{"M9.g11": exports2["g11"], "M9.g12": exports2["g12"]}})
+	consumer2, err := instantiateCore(m9ConsumerCompiled, InstantiateOptions{Imports: testImports("M9.g11", exports2["g11"], "M9.g12", exports2["g12"])})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1118,8 +1118,8 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		t.Fatalf("M9 consumer-first state = %d/%v", refs, closed)
 	}
 	_ = provider2.Close()
-	host := HostFunc(func(HostModule, []uint64, []uint64) {})
-	if _, err := instantiateCore(m9ConsumerCompiled, InstantiateOptions{Imports: Imports{"M9.g11": host, "M9.g12": host}}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
+	host := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	if _, err := instantiateCore(m9ConsumerCompiled, InstantiateOptions{Imports: testImports("M9.g11", host, "M9.g12", host)}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
 		t.Fatalf("M9 host link = %v", err)
 	}
 
@@ -1150,7 +1150,7 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := instantiateCore(cc, InstantiateOptions{Imports: Imports{tc.key: exported}}); err == nil || (!strings.Contains(err.Error(), "incompatible import") && !strings.Contains(err.Error(), "signature mismatch")) {
+		if _, err := instantiateCore(cc, InstantiateOptions{Imports: testImports(tc.key, exported)}); err == nil || (!strings.Contains(err.Error(), "incompatible import") && !strings.Contains(err.Error(), "signature mismatch")) {
 			t.Fatalf("%s mismatch = %v", tc.key, err)
 		}
 		if refs, closed := state(provider); refs != 0 || closed {
@@ -1233,7 +1233,7 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterLifecycle(t *testi
 	if len(provider.funcRefDescs) != 3*coreruntime.FuncRefDescBytes {
 		t.Fatalf("provider arena = %d", len(provider.funcRefDescs))
 	}
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M8.f11": exports["f11"], "M8.f12": exports["f12"]}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M8.f11", exports["f11"], "M8.f12", exports["f12"])})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1268,7 +1268,7 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterLifecycle(t *testi
 		t.Fatalf("provider-first final state = %d/%v", refs, closed)
 	}
 	provider2, exports2 := newProvider()
-	consumer2, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M8.f11": exports2["f11"], "M8.f12": exports2["f12"]}})
+	consumer2, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M8.f11", exports2["f11"], "M8.f12", exports2["f12"])})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1281,8 +1281,8 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterLifecycle(t *testi
 	if err := provider2.Close(); err != nil {
 		t.Fatal(err)
 	}
-	host := HostFunc(func(HostModule, []uint64, []uint64) {})
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M8.f11": host, "M8.f12": host}}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
+	host := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M8.f11", host, "M8.f12", host)}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
 		t.Fatalf("host link = %v", err)
 	}
 	for name, item := range map[string]struct {
@@ -1381,7 +1381,7 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 	if invokeErr != nil || allocs != 0 {
 		t.Fatalf("provider h steady state = %v, allocs=%v; want nil, 0", invokeErr, allocs)
 	}
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M7.h": exported}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M7.h", exported)})
 	if err != nil {
 		t.Fatalf("instantiate compatible two-import consumer: %v", err)
 	}
@@ -1420,7 +1420,7 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 	}
 
 	provider2, exported2 := instantiateProvider()
-	consumer2, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M7.h": exported2}})
+	consumer2, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M7.h", exported2)})
 	if err != nil {
 		t.Fatalf("instantiate consumer-first close pair: %v", err)
 	}
@@ -1431,7 +1431,7 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 		t.Fatalf("consumer-first provider refs/resourcesClosed = %d/%v, want 0/false", refs, closed)
 	}
 	invalidExport := &InstanceExport{inst: provider2, localIdx: len(provider2.c.Entry)}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M7.h": invalidExport}}); err == nil || !strings.Contains(err.Error(), "unavailable function") {
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M7.h", invalidExport)}); err == nil || !strings.Contains(err.Error(), "unavailable function") {
 		t.Fatalf("invalid provider export link = %v, want unavailable-function rejection", err)
 	}
 	if refs, closed := resourceState(provider2); refs != 0 || closed {
@@ -1444,8 +1444,8 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 		t.Fatalf("provider-final refs/resourcesClosed = %d/%v, want 0/true", refs, closed)
 	}
 
-	host := HostFunc(func(HostModule, []uint64, []uint64) {})
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M7.h": host}}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
+	host := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M7.h", host)}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
 		t.Fatalf("host link = %v, want exact provider rejection", err)
 	}
 	oldProviderCompiled, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingStructProjectionLinkProviderPin))
@@ -1462,7 +1462,7 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 	if err != nil {
 		t.Fatalf("old provider export: %v", err)
 	}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M7.h": oldExport}}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M7.h", oldExport)}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
 		t.Fatalf("cross-product provider link = %v, want exact pair rejection", err)
 	}
 	if refs, closed := resourceState(oldProvider); refs != 0 || closed {
@@ -1570,7 +1570,7 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 	if invokeErr != nil || allocs != 0 {
 		t.Fatalf("provider g steady state = %v, allocs=%v; want nil, 0", invokeErr, allocs)
 	}
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M6.g": exported}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M6.g", exported)})
 	if err != nil {
 		t.Fatalf("instantiate compatible consumer: %v", err)
 	}
@@ -1610,7 +1610,7 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 	}
 
 	provider2, exported2 := instantiateProvider()
-	consumer2, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M6.g": exported2}})
+	consumer2, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M6.g", exported2)})
 	if err != nil {
 		t.Fatalf("instantiate consumer-first close pair: %v", err)
 	}
@@ -1621,7 +1621,7 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 		t.Fatalf("consumer-first provider refs/resourcesClosed = %d/%v, want 0/false", refs, closed)
 	}
 	invalidExport := &InstanceExport{inst: provider2, localIdx: len(provider2.c.Entry)}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M6.g": invalidExport}}); err == nil || !strings.Contains(err.Error(), "unavailable function") {
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M6.g", invalidExport)}); err == nil || !strings.Contains(err.Error(), "unavailable function") {
 		t.Fatalf("invalid provider export link = %v, want unavailable-function rejection", err)
 	}
 	if refs, closed := resourceState(provider2); refs != 0 || closed {
@@ -1634,8 +1634,8 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 		t.Fatalf("provider-final refs/resourcesClosed = %d/%v, want 0/true", refs, closed)
 	}
 
-	host := HostFunc(func(HostModule, []uint64, []uint64) {})
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M6.g": host}}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
+	host := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M6.g", host)}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
 		t.Fatalf("host link = %v, want exact provider rejection", err)
 	}
 	oldProviderCompiled, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingStructMismatchLinkProviderPin))
@@ -1652,7 +1652,7 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 	if err != nil {
 		t.Fatalf("old provider export: %v", err)
 	}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M6.g": oldExport}}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M6.g", oldExport)}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
 		t.Fatalf("cross-product provider link = %v, want exact pair rejection", err)
 	}
 	if refs, closed := resourceState(oldProvider); refs != 0 || closed {
@@ -1766,7 +1766,7 @@ func TestStagedGCTypeSubtypingStructMismatchLinkingClusterLifecycle(t *testing.T
 	if invokeErr != nil || allocs != 0 {
 		t.Fatalf("provider g steady state = %v, allocs=%v; want nil, 0", invokeErr, allocs)
 	}
-	if in, linkErr := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M5.g": exported}}); in != nil || linkErr == nil || !strings.Contains(linkErr.Error(), "signature mismatch") {
+	if in, linkErr := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M5.g", exported)}); in != nil || linkErr == nil || !strings.Contains(linkErr.Error(), "signature mismatch") {
 		t.Fatalf("incompatible consumer link = %v, %v; want nil/signature mismatch", in, linkErr)
 	}
 	if refs, closed := resourceState(provider); refs != 0 || closed {
@@ -1788,14 +1788,14 @@ func TestStagedGCTypeSubtypingStructMismatchLinkingClusterLifecycle(t *testing.T
 	provider2, _ := instantiateProvider()
 	defer provider2.Close()
 	invalidExport := &InstanceExport{inst: provider2, localIdx: len(provider2.c.Entry)}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M5.g": invalidExport}}); err == nil || !strings.Contains(err.Error(), "unavailable function") {
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M5.g", invalidExport)}); err == nil || !strings.Contains(err.Error(), "unavailable function") {
 		t.Fatalf("invalid provider export link = %v, want unavailable-function rejection", err)
 	}
 	if refs, closed := resourceState(provider2); refs != 0 || closed {
 		t.Fatalf("invalid export retained provider refs/resourcesClosed = %d/%v, want 0/false", refs, closed)
 	}
-	host := HostFunc(func(HostModule, []uint64, []uint64) {})
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M5.g": host}}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
+	host := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M5.g", host)}); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
 		t.Fatalf("host link = %v, want exact provider rejection", err)
 	}
 	oldProviderCompiled, err := compileStagedGCTypeSubtypingProductForTest(stagedGCTypeSubtypingProductData(t, stagedGCTypeSubtypingStructProjectionLinkProviderPin))
@@ -1812,7 +1812,7 @@ func TestStagedGCTypeSubtypingStructMismatchLinkingClusterLifecycle(t *testing.T
 	if err != nil {
 		t.Fatalf("old provider export: %v", err)
 	}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M5.g": oldExport}}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M5.g", oldExport)}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
 		t.Fatalf("cross-product provider link = %v, want exact pair rejection", err)
 	}
 	if refs, closed := resourceState(oldProvider); refs != 0 || closed {
@@ -1935,14 +1935,14 @@ func TestStagedGCTypeSubtypingFinalityLinkingClusterLifecycle(t *testing.T) {
 		if i == 1 {
 			name = "f2"
 		}
-		if _, linkErr := instantiateCore(consumerCompiled[i], InstantiateOptions{Imports: Imports{"M2." + name: exports[name]}}); linkErr == nil || !strings.Contains(linkErr.Error(), "signature mismatch") {
+		if _, linkErr := instantiateCore(consumerCompiled[i], InstantiateOptions{Imports: testImports("M2."+name, exports[name])}); linkErr == nil || !strings.Contains(linkErr.Error(), "signature mismatch") {
 			t.Fatalf("%s link = %v, want incompatible finality signature", pin.Filename, linkErr)
 		}
 		if refs, closed := resourceState(provider); refs != 0 || closed {
 			t.Fatalf("%s retained refs/resourcesClosed = %d/%v, want 0/false", pin.Filename, refs, closed)
 		}
-		host := HostFunc(func(HostModule, []uint64, []uint64) {})
-		if _, hostErr := instantiateCore(consumerCompiled[i], InstantiateOptions{Imports: Imports{"M2." + name: host}}); hostErr == nil || !strings.Contains(hostErr.Error(), "exact gc/type-subtyping link provider") {
+		host := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+		if _, hostErr := instantiateCore(consumerCompiled[i], InstantiateOptions{Imports: testImports("M2."+name, host)}); hostErr == nil || !strings.Contains(hostErr.Error(), "exact gc/type-subtyping link provider") {
 			t.Fatalf("%s host link = %v, want exact provider rejection", pin.Filename, hostErr)
 		}
 	}
@@ -1961,7 +1961,7 @@ func TestStagedGCTypeSubtypingFinalityLinkingClusterLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("old provider export: %v", err)
 	}
-	if _, err := instantiateCore(consumerCompiled[0], InstantiateOptions{Imports: Imports{"M2.f1": oldExport}}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
+	if _, err := instantiateCore(consumerCompiled[0], InstantiateOptions{Imports: testImports("M2.f1", oldExport)}); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
 		t.Fatalf("cross-product provider link = %v, want exact pair rejection", err)
 	}
 

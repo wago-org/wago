@@ -167,7 +167,7 @@ func TestMarshalRoundTripsSyncHostDispatch(t *testing.T) {
 	}
 	defer loaded.Close()
 	called := 0
-	in, err := Instantiate(&loaded, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) { called++ })}})
+	in, err := Instantiate(&loaded, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) { called++ }))})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}

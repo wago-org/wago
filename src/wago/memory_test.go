@@ -41,7 +41,7 @@ func TestImportedMemoryRejectsTypedNil(t *testing.T) {
 	}
 	defer c.Close()
 
-	in, err := Instantiate(c, Imports{"env.mem": (*Memory)(nil)})
+	in, err := Instantiate(c, testImports("env.mem", (*Memory)(nil)))
 	if in != nil {
 		_ = in.Close()
 		t.Fatal("typed-nil memory import returned an instance")
@@ -72,7 +72,7 @@ func TestMemoryCloseRacingInstantiationFailsClosed(t *testing.T) {
 		closeResult := make(chan error, 1)
 		go func() {
 			<-start
-			instance, err := Instantiate(c, Imports{"env.mem": memory})
+			instance, err := Instantiate(c, testImports("env.mem", memory))
 			instanceResult <- struct {
 				instance *Instance
 				err      error
@@ -192,7 +192,7 @@ func TestImportedMemoryLinkingValidatesExportNameAndCodecLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if in, err := Instantiate(&loaded, Imports{"env.mem": tooSmall}); err == nil {
+	if in, err := Instantiate(&loaded, testImports("env.mem", tooSmall)); err == nil {
 		_ = in.Close()
 		t.Fatal("memory below the imported minimum linked successfully")
 	}
@@ -204,7 +204,7 @@ func TestImportedMemoryLinkingValidatesExportNameAndCodecLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if in, err := Instantiate(&loaded, Imports{"env.mem": tooWide}); err == nil {
+	if in, err := Instantiate(&loaded, testImports("env.mem", tooWide)); err == nil {
 		_ = in.Close()
 		t.Fatal("memory above the imported maximum linked successfully")
 	}
@@ -216,7 +216,7 @@ func TestImportedMemoryLinkingValidatesExportNameAndCodecLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(&loaded, Imports{"env.mem": compatible})
+	in, err := Instantiate(&loaded, testImports("env.mem", compatible))
 	if err != nil {
 		t.Fatalf("compatible memory import: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestImportedMemoryShared(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mem.Close()
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,12 +306,12 @@ func TestImportedMemorySingleInstance(t *testing.T) {
 	c, _ := Compile(nil, importMemModule())
 	mem, _ := NewMemory(1, 1)
 	defer mem.Close()
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if _, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}}); err == nil {
+	if _, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)}); err == nil {
 		t.Fatal("a second instance importing the same in-use memory should fail")
 	}
 }
@@ -340,11 +340,11 @@ func TestSharedHostMemoryPreservesStateAndCloseOrdering(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	first, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		t.Fatalf("instantiate first importer: %v", err)
 	}
-	second, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	second, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		_ = first.Close()
 		_ = mem.Close()
@@ -409,7 +409,7 @@ func TestImportedMemoryReexportPreservesOriginalOwner(t *testing.T) {
 		wasmtest.Section(2, wasmtest.Vec(append(append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 0x02), 0x00, 0x01))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("memory", 2, 0))),
 	)
-	reexporter, err := Instantiate(MustCompile(reexportModule), Imports{"env.memory": memory})
+	reexporter, err := Instantiate(MustCompile(reexportModule), testImports("env.memory", memory))
 	if err != nil {
 		_ = owner.Close()
 		t.Fatalf("instantiate memory re-exporter: %v", err)
@@ -423,7 +423,7 @@ func TestImportedMemoryReexportPreservesOriginalOwner(t *testing.T) {
 	if reexported != memory {
 		t.Fatal("imported memory re-export did not preserve the original owner identity")
 	}
-	consumer, err := Instantiate(MustCompile(importMemModule()), Imports{"env.mem": reexported})
+	consumer, err := Instantiate(MustCompile(importMemModule()), testImports("env.mem", reexported))
 	if err != nil {
 		_ = reexporter.Close()
 		_ = owner.Close()
@@ -476,7 +476,7 @@ func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mem.Close()
-	in, err := Instantiate(loaded, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	in, err := Instantiate(loaded, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		t.Fatal(err)
 	}

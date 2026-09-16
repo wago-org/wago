@@ -169,7 +169,7 @@ func TestStagedMultiMemoryBulkDataAndAliasLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewMemory: %v", err)
 		}
-		in, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{"env.m0": memory, "env.m1": memory}})
+		in, err := instantiateCore(compiled, InstantiateOptions{Imports: testImports("env.m0", memory, "env.m1", memory)})
 		if err != nil {
 			t.Fatalf("instantiate duplicate memory aliases: %v", err)
 		}

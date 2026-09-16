@@ -198,7 +198,7 @@ func TestGCSharedMultipleHeterogeneousTables(t *testing.T) {
 				provider.Close()
 				t.Fatal(err)
 			}
-			consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.t0": table0, "provider.t1": table1}})
+			consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.t0", table0, "provider.t1", table1)})
 			if err != nil {
 				provider.Close()
 				t.Fatal(err)
@@ -288,7 +288,7 @@ func TestGCSharedMultipleTableAttachmentRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if in, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: storeA, Imports: Imports{"provider.t0": table0, "provider.t1": table1}}); err == nil {
+	if in, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: storeA, Imports: testImports("provider.t0", table0, "provider.t1", table1)}); err == nil {
 		in.Close()
 		t.Fatal("cross-domain second table import unexpectedly succeeded")
 	} else if got := err.Error(); !strings.Contains(got, "same Runtime GC domain") {
@@ -339,7 +339,7 @@ func TestGCSharedTableAliasesGrowthCollectionCodecAndCloseOrder(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.t": table}})
+			consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.t", table)})
 			if err != nil {
 				t.Fatal(err)
 			}

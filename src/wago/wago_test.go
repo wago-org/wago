@@ -73,7 +73,7 @@ func TestInvokeDynamicallySizesArgBuffer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("InstantiateWithImports: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestInvokeV128UsesTwoPublicSlots(t *testing.T) {
 	if !reflect.DeepEqual(params, []ValType{ValI32, ValV128, ValI32}) || !reflect.DeepEqual(results, []ValType{ValV128, ValI32}) {
 		t.Fatalf("Signature = (%v) -> (%v), want (i32 v128 i32) -> (v128 i32)", params, results)
 	}
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestInvokeDynamicallySizesResultBuffer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("InstantiateWithImports: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestInvokeDynamicallySizesResultBuffer(t *testing.T) {
 // runv compiles, instantiates with no imports, and invokes an export.
 func runv(t *testing.T, wasm []byte, export string, args ...uint64) []uint64 {
 	t.Helper()
-	return runImports(t, wasm, Imports{}, export, args...)
+	return runImports(t, wasm, testImports(), export, args...)
 }
 
 // run1 invokes an export taking i32 args and returning one i32.
@@ -191,7 +191,7 @@ func run1(t *testing.T, wasm []byte, export string, args ...int32) int32 {
 
 // runImports compiles, instantiates with imports, and invokes an export — the
 // pipeline for one-shot runs that need host functions or imported globals.
-func runImports(t *testing.T, wasm []byte, imports Imports, export string, args ...uint64) []uint64 {
+func runImports(t *testing.T, wasm []byte, imports *Imports, export string, args ...uint64) []uint64 {
 	t.Helper()
 	c, err := Compile(nil, wasm)
 	if err != nil {
@@ -273,9 +273,7 @@ func TestAssemblyScriptRecursion(t *testing.T) {
 // Host imports: AssemblyScript calls an imported log() which we wire to Go.
 func TestAssemblyScriptHostLog(t *testing.T) {
 	var logged []int32
-	hosts := Imports{
-		"logdemo.log": HostFunc(func(_ HostModule, params, _ []uint64) { logged = append(logged, AsI32(params[0])) }),
-	}
+	hosts := testImports("logdemo.log", slotHostFunc(func(_ HostModule, params, _ []uint64) { logged = append(logged, AsI32(params[0])) }))
 	runImports(t, logdemoWasm, hosts, "countdown", I32(5))
 	want := []int32{5, 4, 3, 2, 1, 0}
 	if fmt.Sprint(logged) != fmt.Sprint(want) {
@@ -321,7 +319,7 @@ func TestMultiParamHostImport(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
 	var captured []int32
-	hosts := Imports{"env.abort": HostFunc(func(_ HostModule, params, _ []uint64) { captured = append(captured, AsI32(params[0])) })}
+	hosts := testImports("env.abort", slotHostFunc(func(_ HostModule, params, _ []uint64) { captured = append(captured, AsI32(params[0])) }))
 	res := runImports(t, mod, hosts, "ping")
 	if AsI32(res[0]) != 7 {
 		t.Fatalf("ping() = %d, want 7", AsI32(res[0]))

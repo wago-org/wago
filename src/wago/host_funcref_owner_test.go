@@ -13,7 +13,7 @@ import (
 
 func TestOwnedHostFuncrefEgressRoundTripAndCloseOrdering(t *testing.T) {
 	rt := NewRuntime()
-	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+	owner, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(42)
 	}), FuncSig{Results: []ValType{ValI32}})
 	if err != nil {
@@ -36,7 +36,7 @@ func TestOwnedHostFuncrefEgressRoundTripAndCloseOrdering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile producer: %v", err)
 	}
-	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.target": owner}))
+	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(testImports("env.target", owner)))
 	if err != nil {
 		t.Fatalf("Instantiate producer: %v", err)
 	}
@@ -44,25 +44,25 @@ func TestOwnedHostFuncrefEgressRoundTripAndCloseOrdering(t *testing.T) {
 		t.Fatalf("Close owner with importer error = %v, want close-order rejection", err)
 	}
 
-	out, err := producer.Call(context.Background(), "get")
+	out, err := producer.InvokeValues(context.Background(), "get")
 	if err != nil || len(out) != 1 || out[0].Type() != ValFuncRef || out[0].FuncRef().IsNull() {
 		t.Fatalf("owned host get = %v, %v; want one non-null funcref", out, err)
 	}
 	token := out[0]
-	if _, err := producer.Call(context.Background(), "hold", token); err != nil {
+	if _, err := producer.InvokeValues(context.Background(), "hold", token); err != nil {
 		t.Fatalf("hold owned host token: %v", err)
 	}
-	if held, err := producer.Call(context.Background(), "held"); err != nil || len(held) != 1 || held[0] != token {
+	if held, err := producer.InvokeValues(context.Background(), "held"); err != nil || len(held) != 1 || held[0] != token {
 		t.Fatalf("held owned host token = %v, %v; want %v", held, err, token)
 	}
-	if got, err := producer.Call(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
+	if got, err := producer.InvokeValues(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("call owned host token = %v, %v; want 42", got, err)
 	}
-	alias, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.target": owner}))
+	alias, err := rt.Instantiate(context.Background(), producerMod, WithImports(testImports("env.target", owner)))
 	if err != nil {
 		t.Fatalf("Instantiate alias producer: %v", err)
 	}
-	aliasOut, err := alias.Call(context.Background(), "get")
+	aliasOut, err := alias.InvokeValues(context.Background(), "get")
 	if err != nil || len(aliasOut) != 1 || aliasOut[0] != token {
 		t.Fatalf("alias owned host identity = %v, %v; want %v", aliasOut, err, token)
 	}
@@ -81,7 +81,7 @@ func TestOwnedHostFuncrefEgressRoundTripAndCloseOrdering(t *testing.T) {
 	if err := producer.Close(); err != nil {
 		t.Fatalf("Close producer: %v", err)
 	}
-	if got, err := consumer.Call(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
+	if got, err := consumer.InvokeValues(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("call retained owned host token = %v, %v; want 42", got, err)
 	}
 	if err := owner.Close(); err == nil || (!strings.Contains(err.Error(), "live funcref token") && !strings.Contains(err.Error(), "live importer")) {
@@ -101,7 +101,7 @@ func TestOwnedHostFuncrefEgressRoundTripAndCloseOrdering(t *testing.T) {
 func TestOwnedHostFuncrefRequiresExactRuntimeSignatureAndMetadata(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
-	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+	owner, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(7)
 	}), FuncSig{Results: []ValType{ValI32}})
 	if err != nil {
@@ -118,7 +118,7 @@ func TestOwnedHostFuncrefRequiresExactRuntimeSignatureAndMetadata(t *testing.T) 
 			if err != nil {
 				t.Fatalf("Compile: %v", err)
 			}
-			if _, err := rt.Instantiate(context.Background(), compiled, WithImports(Imports{"env.target": owner})); err == nil || !strings.Contains(err.Error(), "signature") {
+			if _, err := rt.Instantiate(context.Background(), compiled, WithImports(testImports("env.target", owner))); err == nil || !strings.Contains(err.Error(), "signature") {
 				t.Fatalf("Instantiate mismatch error = %v, want exact-signature rejection", err)
 			}
 		})
@@ -130,7 +130,7 @@ func TestOwnedHostFuncrefRequiresExactRuntimeSignatureAndMetadata(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Compile foreign importer: %v", err)
 	}
-	if _, err := other.Instantiate(context.Background(), foreignMod, WithImports(Imports{"env.target": owner})); err == nil || !strings.Contains(err.Error(), "incompatible reference store") {
+	if _, err := other.Instantiate(context.Background(), foreignMod, WithImports(testImports("env.target", owner))); err == nil || !strings.Contains(err.Error(), "incompatible reference store") {
 		t.Fatalf("cross-runtime owner import error = %v, want store rejection", err)
 	}
 }
@@ -139,7 +139,7 @@ func TestHostFuncrefCallBoundaryUsesOpaqueTokens(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	var callbackBits uint64
-	roundTrip := HostFunc(func(_ HostModule, params, results []uint64) {
+	roundTrip := slotHostFunc(func(_ HostModule, params, results []uint64) {
 		callbackBits = params[0]
 		results[0] = params[0]
 	})
@@ -155,7 +155,7 @@ func TestHostFuncrefCallBoundaryUsesOpaqueTokens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.roundtrip": roundTrip}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.roundtrip", roundTrip)))
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -238,9 +238,9 @@ func TestHostFuncrefResultRejectsForgedAndCrossRuntimeTokensBeforeReentry(t *tes
 			if err != nil {
 				t.Fatalf("Compile: %v", err)
 			}
-			in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.source": HostFunc(func(_ HostModule, _, results []uint64) {
+			in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.source", slotHostFunc(func(_ HostModule, _, results []uint64) {
 				results[0] = token
-			})}))
+			}))))
 			if err != nil {
 				t.Fatalf("Instantiate: %v", err)
 			}
@@ -258,7 +258,7 @@ func TestHostFuncrefResultRejectsForgedAndCrossRuntimeTokensBeforeReentry(t *tes
 func TestOwnedHostFuncrefRejectsCorruptedDescriptorMetadata(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
-	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+	owner, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(1)
 	}), FuncSig{Results: []ValType{ValI32}})
 	if err != nil {
@@ -273,7 +273,7 @@ func TestOwnedHostFuncrefRejectsCorruptedDescriptorMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.target": owner}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.target", owner)))
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}

@@ -39,18 +39,15 @@ func TestNestedHostReentryPreservesConfiguredNativeStack(t *testing.T) {
 	}
 	defer module.Close()
 	var in *Instance
-	in, err = rt.Instantiate(context.Background(), module, WithImports(Imports{
-		"env.reenter": HostFunc(func(mod HostModule, _ []uint64, results []uint64) {
-			got, callErr := in.InvokeFromHost(context.Background(), mod, "inner")
-			if callErr != nil {
-				panic(HostTrap{Err: callErr})
-			}
-			results[0] = got[0]
-		}),
-		"env.observe": HostFunc(func(_ HostModule, _ []uint64, results []uint64) {
-			results[0] = in.eng.StackBytes()
-		}),
-	}), WithSynchronousHostCalls())
+	in, err = rt.Instantiate(context.Background(), module, WithImports(testImports("env.reenter", slotHostFunc(func(mod HostModule, _ []uint64, results []uint64) {
+		got, callErr := in.InvokeFromHost(context.Background(), mod, "inner")
+		if callErr != nil {
+			panic(HostTrap{Err: callErr})
+		}
+		results[0] = got[0]
+	}), "env.observe", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) {
+		results[0] = in.eng.StackBytes()
+	}))), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +153,7 @@ func TestNestedHostReentrySurvivesGCAndTrap(t *testing.T) {
 	var in *Instance
 	hostCalls, nestedTraps := 0, 0
 	var err error
-	in, err = Instantiate(c, InstantiateOptions{Imports: Imports{"env.reenter": HostFunc(func(mod HostModule, p, r []uint64) {
+	in, err = Instantiate(c, InstantiateOptions{Imports: testImports("env.reenter", slotHostFunc(func(mod HostModule, p, r []uint64) {
 		hostCalls++
 		gruntime.GC()
 		out, callErr := in.InvokeFromHost(context.Background(), mod, "inner", p[0])
@@ -166,7 +163,7 @@ func TestNestedHostReentrySurvivesGCAndTrap(t *testing.T) {
 			return
 		}
 		r[0] = out[0]
-	})}})
+	}))})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}

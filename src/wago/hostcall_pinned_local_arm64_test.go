@@ -60,11 +60,9 @@ func TestARM64HostCallPreservesExtendedPinnedLocals(t *testing.T) {
 	}
 	defer compiled.Close()
 
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": HostFunc(func(_ HostModule, _ []uint64, results []uint64) {
-			results[0] = I32(7)
-		}),
-	}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) {
+		results[0] = I32(7)
+	}))})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -110,9 +108,7 @@ func TestARM64AsyncHostCallPreservesScratchPinnedLocals(t *testing.T) {
 	defer compiled.Close()
 
 	calls := 0
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": HostFunc(func(_ HostModule, _, _ []uint64) { calls++ }),
-	}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, _, _ []uint64) { calls++ }))})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -162,9 +158,7 @@ func TestARM64AsyncHostCallPreservesScratchPinnedGlobal(t *testing.T) {
 	}
 	defer compiled.Close()
 
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": HostFunc(func(_ HostModule, _, _ []uint64) {}),
-	}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, _, _ []uint64) {}))})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
