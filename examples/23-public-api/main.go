@@ -1,15 +1,13 @@
 // Example 23: the complete public API path.
 //
-// Rebuild the checked-in guest fixture with:
+// Rebuild the checked-in guest fixture with wabt's wat2wasm:
 //
-//	go generate ./examples/23-public-api
+//	wat2wasm examples/23-public-api/guest.wat -o examples/23-public-api/guest.wasm
 //
 // Run from the repository root with:
 //
 //	go run ./examples/23-public-api
 package main
-
-//go:generate wat2wasm guest.wat -o guest.wasm
 
 import (
 	"context"

@@ -440,7 +440,7 @@ func TestPreparedFuncrefProducerMaintenance(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer table.Close()
-					imports["env.state"] = table
+					testSetImport(imports, "env.state", table)
 					imp = append(append(wasmtest.Name("env"), wasmtest.Name("state")...), 1, 0x70, 1, 1, 1)
 					set = []byte{0x41, 0, 0xd2, 0, 0x26, 0, 0x0b}
 					clear = []byte{0x41, 0, 0xd0, 0x70, 0x26, 0, 0x0b}
@@ -450,7 +450,7 @@ func TestPreparedFuncrefProducerMaintenance(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer global.Close()
-					imports["env.state"] = global
+					testSetImport(imports, "env.state", global)
 					imp = append(append(wasmtest.Name("env"), wasmtest.Name("state")...), 3, 0x70, 1)
 					set = []byte{0xd2, 0, 0x24, 0, 0x0b}
 					clear = []byte{0xd0, 0x70, 0x24, 0, 0x0b}
@@ -566,11 +566,10 @@ func TestGCLifecycleIntegration(t *testing.T) {
 		if releases.Load() != 1 || collecting.hasPhysicalResources() {
 			t.Fatal("collection did not finalize")
 		}
-		if _, err := session.Invoke(42); err != nil {
+		if _, err := fn.Invoke(42); err != nil {
 			t.Fatal(err)
 		}
 	}
-	session.Close()
 	get, err := preparedInstance.WasmFunc("get")
 	if err != nil {
 		t.Fatal(err)

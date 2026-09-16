@@ -280,7 +280,7 @@ func TestLowLevelInvokeSkipsHooks(t *testing.T) {
 func TestCapabilityAccessorsRegisterHooks(t *testing.T) {
 	r := &Registry{hooks: &HookRegistry{}}
 	host, err := r.HostImports()
-	if err != nil || host.Module("env") == nil || host.CallerResolver() == nil {
+	if err != nil || host.HostFunc("env", "f", slotHostFunc(func(HostModule, []uint64, []uint64) {})) == nil || host.CallerResolver() == nil {
 		t.Fatalf("HostImports = %#v, %v", host, err)
 	}
 	runtimeHooks, err := r.RuntimeLifecycle()

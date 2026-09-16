@@ -2091,7 +2091,7 @@ func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	if len(meta.Tables) != 1 || meta.Tables[0].ImportModule != "env" || meta.Tables[0].ImportName != "table" || !meta.Tables[0].Addr64 || meta.Tables[0].Min != 2 || meta.Tables[0].Max != 4 || !meta.Tables[0].HasMax || !reflect.DeepEqual(meta.Tables[0].Exports, []string{"table"}) {
 		t.Fatalf("table64 import metadata = %#v", meta.Tables)
 	}
-	rt := &Runtime{imports: testImports()}
+	rt := &Runtime{imports: testImports().bindings}
 	consumerModule, err := rt.buildModule(consumerCompiled)
 	if err != nil {
 		t.Fatal(err)

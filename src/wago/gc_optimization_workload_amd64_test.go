@@ -46,11 +46,11 @@ func BenchmarkGCOptimizationWorkload(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.Cleanup(func() { _ = compiled.Close() })
-	imports := make(*Imports, len(compiled.Imports))
+	imports := NewImports()
 	for _, key := range compiled.Imports {
-		imports[key] = slotHostFunc(func(HostModule, []uint64, []uint64) {})
+		testSetImport(imports, key, slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 	}
-	if err := compiled.validateImportBindings(imports, nil); err != nil {
+	if err := compiled.validateImportBindings(imports.bindings, nil); err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()

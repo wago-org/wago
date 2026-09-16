@@ -101,14 +101,14 @@ func TestStagedMultiMemoryOfficialImportGrowLinking(t *testing.T) {
 	if len(keys) != 2 || keys[0] != "M.mem1" || keys[1] != "M.mem2" {
 		t.Fatalf("memory imports = %v, want [M.mem1 M.mem2]", keys)
 	}
-	imports := make(*Imports, len(keys))
+	imports := NewImports()
 	for _, key := range keys {
 		field := strings.TrimPrefix(key, "M.")
 		memory, err := producer.ExportedMemory(field)
 		if err != nil {
 			t.Fatalf("resolve registered memory %q: %v", key, err)
 		}
-		imports[key] = memory
+		testSetImport(imports, key, memory)
 	}
 	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: imports})
 	if err != nil {

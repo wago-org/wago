@@ -167,10 +167,7 @@ func stagedSpecMatch(got uint64, want stagedSpecValue) bool {
 }
 
 func stagedSpecImports(c *Compiled, registered map[string]stagedSpecModule, standard *Imports) (*Imports, error) {
-	imports := make(*Imports, len(standard))
-	for key, value := range standard {
-		imports[key] = value
-	}
+	imports := testCloneImports(standard)
 	resolve := func(key string) (stagedSpecModule, string, bool) {
 		for i := 0; i < len(key); i++ {
 			if key[i] == '.' {
@@ -186,7 +183,7 @@ func stagedSpecImports(c *Compiled, registered map[string]stagedSpecModule, stan
 			if err != nil {
 				return nil, err
 			}
-			imports[key] = ex
+			testSetImport(imports, key, ex)
 		}
 	}
 	for _, key := range c.MemoryImports() {
@@ -195,7 +192,7 @@ func stagedSpecImports(c *Compiled, registered map[string]stagedSpecModule, stan
 			if err != nil {
 				return nil, err
 			}
-			imports[key] = memory
+			testSetImport(imports, key, memory)
 		}
 	}
 	for _, key := range c.TableImports() {
@@ -204,7 +201,7 @@ func stagedSpecImports(c *Compiled, registered map[string]stagedSpecModule, stan
 			if err != nil {
 				return nil, err
 			}
-			imports[key] = table
+			testSetImport(imports, key, table)
 		}
 	}
 	for _, imp := range c.GlobalImports {
@@ -214,7 +211,7 @@ func stagedSpecImports(c *Compiled, registered map[string]stagedSpecModule, stan
 			if err != nil {
 				return nil, err
 			}
-			imports[key] = global
+			testSetImport(imports, key, global)
 		}
 	}
 	return imports, nil

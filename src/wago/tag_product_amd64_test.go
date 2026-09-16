@@ -268,7 +268,7 @@ func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
 	}
 	rt := NewRuntime()
 	defer rt.Close()
-	rt.imports = testImports("env.first", primary, "env.second", primary)
+	rt.imports = testImports("env.first", primary, "env.second", primary).bindings
 	consumerModule, err := rt.buildModule(consumerCompiled)
 	if err != nil {
 		t.Fatal(err)

@@ -250,8 +250,9 @@ func (r *Registry) HostImports() (*HostImportAccess, error) {
 	}
 	return &HostImportAccess{reg: r}, nil
 }
-func (a *HostImportAccess) Module(name string) *legacyImportModuleBuilder {
-	return a.reg.ImportModule(name)
+func (a *HostImportAccess) HostFunc(module, name string, fn any) *legacyImportFuncBuilder {
+	callback, _ := fn.(slotHostFunc)
+	return a.reg.ImportModule(module).Func(name, callback)
 }
 func (a *HostImportAccess) CallerResolver() *CallerResolver {
 	resolver := &CallerResolver{}

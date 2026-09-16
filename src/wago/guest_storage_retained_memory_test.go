@@ -84,7 +84,7 @@ func TestHostGuestStorageRetainsImportedMemory(t *testing.T) {
 				}
 			}))
 			for index := 0; index < memoryCount; index++ {
-				imports[fmt.Sprint("env.memory", index)] = memory
+				testSetImport(imports, fmt.Sprint("env.memory", index), memory)
 			}
 			consumerCode := stagedMultiMemoryCompile(t, guestStorageMemoryConsumer(memoryCount))
 			consumer, err := Instantiate(consumerCode, imports)

@@ -42,7 +42,7 @@ func (p *disposalTestPlugin) Register(reg *Registry) error {
 		if name == "" {
 			name = "f"
 		}
-		host.Module("env").Func(name, p.hostFn).Params(p.hostParams...).Results(p.hostResults...)
+		host.HostFunc("env", name, p.hostFn).Params(p.hostParams...).Results(p.hostResults...)
 	}
 	if len(p.afterInst)+len(p.onInstErr)+len(p.beforeClose)+len(p.afterClose) != 0 {
 		lifecycle, err := reg.InstanceLifecycle()

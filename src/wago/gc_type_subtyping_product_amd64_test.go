@@ -567,7 +567,7 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
 
 	provider2, exports2 := instantiateProvider()
 	rollbackImports := positiveImports(exports2)
-	rollbackImports["M.f2"] = exports2["f1"]
+	testSetImport(rollbackImports, "M.f2", exports2["f1"])
 	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: rollbackImports}); err == nil || !strings.Contains(err.Error(), "signature mismatch") {
 		t.Fatalf("later subtype mismatch = %v, want signature mismatch", err)
 	}

@@ -239,7 +239,7 @@ func runSpecFile(t *testing.T, wast2json, dir, base string) (score fileScore) {
 		return
 	}
 
-	st := &specState{tmp: tmp, named: map[string]*Instance{}, registered: map[string]*Instance{}}
+	st := &specState{tmp: tmp, rt: NewRuntime(), named: map[string]*Instance{}, registered: map[string]*Instance{}}
 	defer st.closeAll()
 
 	for _, c := range sf.Commands {
@@ -320,13 +320,14 @@ func tally(s *fileScore, ok, skip bool, why string) {
 
 type specState struct {
 	tmp        string
+	rt         *Runtime
 	cur        *Instance
 	named      map[string]*Instance
 	registered map[string]*Instance // (register "as") name -> instance, for cross-instance imports
 	all        []*Instance
-	mems       []*Memory   // host-provided memories (e.g. spectest.memory), closed with the state
-	tables     []*Table    // host-provided tables (e.g. spectest.table), closed with the state
-	compiled   []*Compiled // retained so funcref code (incl. from uninstantiable modules) stays mapped
+	mems       []*Memory // host-provided memories (e.g. spectest.memory), closed with the state
+	tables     []*Table  // host-provided tables (e.g. spectest.table), closed with the state
+	modules    []*Module // retained so funcref code (incl. from uninstantiable modules) stays mapped
 }
 
 func (st *specState) closeAll() {
@@ -339,6 +340,10 @@ func (st *specState) closeAll() {
 	for _, t := range st.tables {
 		t.Close()
 	}
+	for _, m := range st.modules {
+		m.Close()
+	}
+	st.rt.Close()
 }
 
 func (st *specState) instantiate(filename string) (*Instance, error) {
@@ -346,31 +351,39 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	c, err := Compile(nil, data)
+	module, err := st.rt.Compile(data)
 	if err != nil {
 		return nil, err
 	}
+	c := module.Compiled()
 	// Retain the compiled module so any funcref it writes into a shared table stays
 	// backed by mapped code — even if the module itself fails to instantiate.
-	st.compiled = append(st.compiled, c)
+	st.modules = append(st.modules, module)
 	// Satisfy imports best-effort: a no-op host for every function import and a
 	// spectest-style value for every global import. Cross-module memory/table
 	// imports are unsupported and will surface as an instantiate error.
 	// Function imports come from the standard "spectest" host module (no-op host
 	// funcs) or from a (register ...)'d instance (cross-instance linking). Anything
 	// else is unresolvable, so the module is reported blocked.
-	imports := Imports{}
+	imports := NewImports()
+	functionImports := make(map[string]ImportSpec)
+	for _, imp := range module.Imports() {
+		if imp.Kind == ImportFunc {
+			functionImports[imp.Key()] = imp
+		}
+	}
 	for _, key := range c.Imports {
 		mod, field, _ := strings.Cut(key, ".")
 		switch {
 		case mod == "spectest":
-			imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
+			imp := functionImports[key]
+			imports.HostFunc(mod, field, func(HostCall) {}).Params(imp.Params...).Results(imp.Results...)
 		case st.registered[mod] != nil:
 			ex, err := st.registered[mod].ExportedFunc(field)
 			if err != nil {
 				return nil, fmt.Errorf("cross-instance function import %q: %w", key, err)
 			}
-			imports[key] = ex
+			imports.Function(mod, field, ex)
 		default:
 			return nil, fmt.Errorf("cross-instance linking unsupported: function import %q", key)
 		}
@@ -379,13 +392,13 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 		key := gi.Module + "." + gi.Name
 		switch {
 		case gi.Module == "spectest":
-			imports[key] = GlobalImport{Type: gi.Type, Mutable: gi.Mutable, Bits: spectestGlobalBits(gi.Type)}
+			imports.Global(gi.Module, gi.Name, GlobalImport{Type: gi.Type, Mutable: gi.Mutable, Bits: spectestGlobalBits(gi.Type)})
 		case st.registered[gi.Module] != nil:
 			g, err := st.registered[gi.Module].ExportedGlobalObject(gi.Name)
 			if err != nil {
 				return nil, fmt.Errorf("cross-instance global import %q: %w", key, err)
 			}
-			imports[key] = g
+			imports.Global(gi.Module, gi.Name, g)
 		default:
 			return nil, fmt.Errorf("cross-instance linking unsupported: global import %q", key)
 		}
@@ -400,14 +413,14 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 			if err != nil {
 				return nil, err
 			}
-			imports[key] = mem
+			imports.Memory(mod, field, mem)
 			st.mems = append(st.mems, mem)
 		case st.registered[mod] != nil:
 			mem, err := st.registered[mod].ExportedMemory(field)
 			if err != nil {
 				return nil, fmt.Errorf("cross-instance memory import %q: %w", key, err)
 			}
-			imports[key] = mem // owned by the registered instance; not tracked in st.mems
+			imports.Memory(mod, field, mem) // owned by the registered instance; not tracked in st.mems
 		default:
 			return nil, fmt.Errorf("cross-instance linking unsupported: memory import %q", key)
 		}
@@ -415,29 +428,29 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 	// Table imports come from spectest host tables or (register ...)'d instances.
 	// Duplicate declarations of one key reuse the same shared object.
 	for _, key := range c.TableImports() {
-		if _, exists := imports[key]; exists {
+		mod, field, _ := strings.Cut(key, ".")
+		if _, exists := imports.Lookup(mod, field); exists {
 			continue
 		}
-		mod, field, _ := strings.Cut(key, ".")
 		switch {
 		case mod == "spectest":
 			tbl, err := NewTable(10, 20) // the testsuite's standard spectest.table
 			if err != nil {
 				return nil, err
 			}
-			imports[key] = tbl
+			imports.Table(mod, field, tbl)
 			st.tables = append(st.tables, tbl)
 		case st.registered[mod] != nil:
 			tbl, err := st.registered[mod].ExportedTable(field)
 			if err != nil {
 				return nil, fmt.Errorf("cross-instance table import %q: %w", key, err)
 			}
-			imports[key] = tbl
+			imports.Table(mod, field, tbl)
 		default:
 			return nil, fmt.Errorf("cross-instance linking unsupported: table import %q", key)
 		}
 	}
-	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+	in, err := st.rt.Instantiate(context.Background(), module, WithImports(imports))
 	if err != nil {
 		return nil, err
 	}

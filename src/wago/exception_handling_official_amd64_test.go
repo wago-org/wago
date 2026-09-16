@@ -259,7 +259,7 @@ func replayStagedExceptionTagScript(t *testing.T, tmp string, script stagedSpecS
 					_ = c.Close()
 					return stagedSpecModule{}, fmt.Errorf("link: %w", err)
 				}
-				imports[def.ImportKey] = tag
+				testSetImport(imports, def.ImportKey, tag)
 			}
 		}
 		in, err := instantiateCore(c, InstantiateOptions{Imports: imports})
@@ -550,7 +550,7 @@ func replayStagedExceptionTryTableScript(t *testing.T, tmp string, script staged
 				_ = c.Close()
 				return stagedSpecModule{}, "", "", fmt.Errorf("link: %w", err)
 			}
-			imports[key] = fn
+			testSetImport(imports, key, fn)
 		}
 		if c.memoryDir != nil {
 			for i := 0; i < c.tagImportCount(); i++ {
@@ -566,7 +566,7 @@ func replayStagedExceptionTryTableScript(t *testing.T, tmp string, script staged
 					_ = c.Close()
 					return stagedSpecModule{}, "", "", fmt.Errorf("link: %w", err)
 				}
-				imports[def.ImportKey] = tag
+				testSetImport(imports, def.ImportKey, tag)
 			}
 		}
 		in, err := instantiateCore(c, InstantiateOptions{Imports: imports})

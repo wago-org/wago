@@ -11,7 +11,7 @@ func TestSyncHostPolicyUsesBindingIndependentCode(t *testing.T) {
 	c := MustCompile(voidImportCallModule())
 	defer c.Close()
 	imports := testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) {}))
-	if err := c.validateImportBindings(imports, nil); err != nil {
+	if err := c.validateImportBindings(imports.bindings, nil); err != nil {
 		t.Fatalf("validate synchronous binding: %v", err)
 	}
 	if !c.dynamicImports || len(c.code) == 0 {
@@ -65,9 +65,9 @@ func TestImportedModuleCodeIsBindingIndependent(t *testing.T) {
 	}
 	stubs := testImports()
 	for _, name := range c.Imports {
-		stubs[name] = slotHostFunc(func(HostModule, []uint64, []uint64) {})
+		testSetImport(stubs, name, slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 	}
-	if err := c.validateImportBindings(stubs, nil); err != nil {
+	if err := c.validateImportBindings(stubs.bindings, nil); err != nil {
 		t.Fatalf("validate bindings: %v", err)
 	}
 }
