@@ -684,6 +684,13 @@ func (a *Asm) VPblendw(dst, s1, s2 Reg, imm byte) {
 	a.vex3RRIMap(vexMap0F3A, 0b01, 0x0E, dst, s1, s2, imm)
 }
 
+// VPalignr selects 16 bytes starting at offset imm from the concatenation of
+// lhs followed by rhs. VPALIGNR encodes those inputs in the opposite order:
+// VEX.vvvv is rhs and ModRM.r/m is lhs.
+func (a *Asm) VPalignr(dst, lhs, rhs Reg, imm byte) {
+	a.vex3RRIMap(vexMap0F3A, 0b01, 0x0F, dst, rhs, lhs, imm)
+}
+
 // Round emits ROUNDSS/ROUNDSD (SSE4.1): dst = round(src) using rounding-mode
 // imm8 (bits 0-1 select nearest/floor/ceil/trunc; bit 3 suppresses precision).
 func (a *Asm) Round(dst, src Reg, f64 bool, mode byte) {

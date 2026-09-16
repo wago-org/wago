@@ -6448,10 +6448,14 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 				rhs := loadLocal(sf.Instrs[instrIndex+1].U32(), 1)
 				dst := reserveV128(len(stackTypes))
 				if descriptor.Kind == wasm.InstrI8x16Shuffle {
-					left, right := amd64ShuffleMasks(descriptor.Bytes)
-					shuffleSIMDConstant(2, lhs, left)
-					shuffleSIMDConstant(3, rhs, right)
-					a.VPor(dst, 2, 3)
+					if offset, ok := amd64ShuffleAlignrOffset(descriptor.Bytes); ok {
+						a.VPalignr(dst, lhs, rhs, offset)
+					} else {
+						left, right := amd64ShuffleMasks(descriptor.Bytes)
+						shuffleSIMDConstant(2, lhs, left)
+						shuffleSIMDConstant(3, rhs, right)
+						a.VPor(dst, 2, 3)
+					}
 				} else {
 					emitAMD64DirectSIMDBinary(&a, descriptor.Kind, dst, lhs, rhs)
 				}
@@ -8717,10 +8721,14 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		base := len(types) - 2
 		lhs := vectorOperand(base, 0)
 		rhs := vectorOperand(base+1, 1)
-		left, right := amd64ShuffleMasks(descriptor.Bytes)
-		shuffleConstant(2, lhs, left)
-		shuffleConstant(3, rhs, right)
-		a.VPor(lhs, 2, 3)
+		if offset, ok := amd64ShuffleAlignrOffset(descriptor.Bytes); ok {
+			a.VPalignr(lhs, lhs, rhs, offset)
+		} else {
+			left, right := amd64ShuffleMasks(descriptor.Bytes)
+			shuffleConstant(2, lhs, left)
+			shuffleConstant(3, rhs, right)
+			a.VPor(lhs, 2, 3)
+		}
 		storeV(base, lhs)
 		types = append(types[:base], wasm.V128)
 	case wasm.InstrV128AnyTrue:
@@ -8822,6 +8830,19 @@ func amd64ShuffleMasks(lanes [16]byte) (left, right [16]byte) {
 		}
 	}
 	return left, right
+}
+
+func amd64ShuffleAlignrOffset(lanes [16]byte) (byte, bool) {
+	offset := lanes[0]
+	if offset > 16 {
+		return 0, false
+	}
+	for i, lane := range lanes {
+		if lane != offset+byte(i) {
+			return 0, false
+		}
+	}
+	return offset, true
 }
 
 func amd64CopyDraglineExecutionControl(a *amd64.Asm, targetLinMem amd64.Reg) {

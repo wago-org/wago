@@ -257,6 +257,27 @@ func TestAMD64ShuffleMasksSelectExactlyOneInput(t *testing.T) {
 	}
 }
 
+func TestAMD64ShuffleAlignrOffset(t *testing.T) {
+	for offset := byte(0); offset <= 16; offset++ {
+		var lanes [16]byte
+		for i := range lanes {
+			lanes[i] = offset + byte(i)
+		}
+		got, ok := amd64ShuffleAlignrOffset(lanes)
+		if !ok || got != offset {
+			t.Fatalf("offset %d: got (%d, %v)", offset, got, ok)
+		}
+	}
+	for _, lanes := range [][16]byte{
+		{17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 0},
+		{14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30},
+	} {
+		if offset, ok := amd64ShuffleAlignrOffset(lanes); ok {
+			t.Fatalf("non-contiguous lanes %v selected offset %d", lanes, offset)
+		}
+	}
+}
+
 func TestAMD64StructuredScalarResidencySelectsHotIntegerLocals(t *testing.T) {
 	locals := []wasm.ValType{wasm.I32, wasm.V128, wasm.I64, wasm.F32, wasm.I32, wasm.I64, wasm.I32, wasm.I32}
 	uses := []uint32{2, 100, 9, 50, 7, 6, 5, 4}
@@ -588,6 +609,30 @@ func TestAMD64RailMachShuffleUsesSelectedRegisterForms(t *testing.T) {
 	output := compileAMD64EmissionTest(t, source)
 	if got := countAMD64VPshufbRIP(output.Code); got != 0 || !containsAMD64VEXOpcode(output.Code, 0x00) {
 		t.Fatalf("selected shuffle code has RIP forms=%d or no register vpshufb: %x", got, output.Code)
+	}
+}
+
+func TestAMD64StructuredContiguousShuffleUsesAlignr(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, // local.get 0
+		0x20, 0x01, // local.get 1
+		0xfd, 0x0d, // i8x16.shuffle
+	}
+	for lane := byte(14); lane < 30; lane++ {
+		body = append(body, lane)
+	}
+	body = append(body, 0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00) // memory.copy 0, 0, 0
+	body = append(body, bytes.Repeat([]byte{0x01}, 510)...)                         // force the large-bulk structured path
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	if !containsAMD64VEXOpcode(output.Code, 0x0f) {
+		t.Fatalf("contiguous structured shuffle emitted no vpalignr: %x", output.Code)
 	}
 }
 
