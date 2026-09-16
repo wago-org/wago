@@ -403,7 +403,7 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 		mut  func(*Compiled)
 		want string
 	}{
-		{name: "imports count mismatch", mut: func(c *Compiled) { c.NumImports = 1 }, want: "*Imports length 0 != NumImports 1"},
+		{name: "imports count mismatch", mut: func(c *Compiled) { c.NumImports = 1 }, want: "Imports length 0 != NumImports 1"},
 		{name: "negative table size", mut: func(c *Compiled) { c.TableSize = -1 }, want: "negative TableSize"},
 		{name: "table size without table", mut: func(c *Compiled) { c.TableSize = 1 }, want: "TableSize 1 without table"},
 		{name: "table import without table", mut: func(c *Compiled) { c.tableImport = "env.t" }, want: "table import \"env.t\" without table"},
