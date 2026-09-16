@@ -1025,6 +1025,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	var currentResult railmach.VReg
 	var currentPosition uint32
 	var forwardedSpill railmach.VReg
+	var retainedGlobalDescriptor uint32
+	retainsGlobalDescriptor := false
 	reg := func(value railmach.VReg) amd64.Reg {
 		location := plan.Allocation.LocationAt(value, currentPosition)
 		bank := plan.Machine.VRegs[value].Bank
@@ -1392,6 +1394,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			return false
 		}
 		blockRange := plan.Schedule.BlockRanges[blockID]
+		retainsGlobalDescriptor = false
 		alignBlock := plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockLoopHeader) != 0
 		for edge := range plan.Machine.Edges {
 			if alignBlock || uint32(plan.Machine.Edges[edge].From) != uint32(blockID) {
@@ -1458,12 +1461,33 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			instruction := plan.Machine.Insts[instructionID]
 			semanticOp := railmach.SemanticOpcode(instruction.Op)
 			if nativeControlInstruction(instruction.Op) {
+				retainsGlobalDescriptor = false
 				continue
 			}
 			wasmOffset := railMachWasmOffset(plan, instruction.Source)
 			metadata.recordSource(a.Len(), wasmOffset)
 			operands := plan.Machine.InstructionOperands(instructionID)
 			foldedLoadID, memoryFold := nativeAMD64MemoryFoldSource(plan, instructionID)
+			// R10 is reserved emission scratch, so a descriptor loaded by
+			// global.get survives scalar constants, adds, and immediate subs.
+			// Reuse it for a following set of the same global instead of loading
+			// the descriptor a second time. Memory folds use R10 as their address;
+			// all other emitted instructions conservatively invalidate it.
+			preservesGlobalDescriptor := false
+			if retainsGlobalDescriptor {
+				if semanticOp == wasm.InstrGlobalSet && uint32(instruction.Aux) == retainedGlobalDescriptor {
+					preservesGlobalDescriptor = true
+				} else if semanticOp == wasm.InstrI32Const || semanticOp == wasm.InstrI64Const {
+					preservesGlobalDescriptor = true
+				} else if !memoryFold && (semanticOp == wasm.InstrI32Add || semanticOp == wasm.InstrI64Add) {
+					preservesGlobalDescriptor = true
+				} else if semanticOp == wasm.InstrI32Sub || semanticOp == wasm.InstrI64Sub {
+					_, preservesGlobalDescriptor = immediateProducer.get(instructionID)
+				}
+			}
+			if !preservesGlobalDescriptor {
+				retainsGlobalDescriptor = false
+			}
 			currentOperands, currentResult = operands, instruction.Result
 			currentPosition = plan.Allocation.InstructionPositions[instructionID]*6 + 2
 			for _, fragment := range plan.Allocation.Fragments {
@@ -3585,6 +3609,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				} else {
 					a.Load64(dst, descriptor, 0)
 				}
+				retainedGlobalDescriptor = uint32(instruction.Aux)
+				retainsGlobalDescriptor = true
 				continue
 			}
 			if semanticOp == wasm.InstrRefFunc {
@@ -3650,7 +3676,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				descriptor := amd64.R10
 				if cachesGlobal && uint32(instruction.Aux) == cachedGlobalIndex {
 					descriptor = amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister]
-				} else {
+				} else if !retainsGlobalDescriptor || retainedGlobalDescriptor != uint32(instruction.Aux) {
 					if cachesGlobalDescriptors {
 						a.Load64(amd64.R10, amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister], int32(uint32(instruction.Aux))*8)
 					} else {

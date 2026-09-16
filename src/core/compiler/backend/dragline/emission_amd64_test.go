@@ -13,6 +13,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -54,6 +55,54 @@ func TestAMD64UnsignedVectorComparePreservesAliasedRHS(t *testing.T) {
 	}
 	if len(patches) != 1 || patches[0].bytes != amd64UnsignedVectorSignMask(railmach.OpAMD64I16x8GeU) {
 		t.Fatalf("aliased unsigned comparison patches = %#v", patches)
+	}
+}
+
+func TestAMD64RailMachRetainsGlobalDescriptorAcrossScalarUpdate(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x23, 0x00, 0x41, 0x01, 0x6a, 0x24, 0x00,
+			0x23, 0x01, 0x41, 0x01, 0x6a, 0x24, 0x01,
+			0x23, 0x02, 0x41, 0x01, 0x6a, 0x24, 0x02,
+			0x23, 0x03, 0x41, 0x01, 0x6a, 0x24, 0x03,
+			0x0b,
+		}))),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(module, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := (&nativeBackendPlanner{}).Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	native, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("global update finalization = used %t, err %v", used, err)
+	}
+	var loadGlobals amd64.Asm
+	loadGlobals.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
+	if got := bytes.Count(native, loadGlobals.B); got != 4 {
+		t.Fatalf("globals table loads = %d, want one per update; code = %x", got, native)
 	}
 }
 
