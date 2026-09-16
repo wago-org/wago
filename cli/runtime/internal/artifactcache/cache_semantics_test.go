@@ -115,7 +115,7 @@ func TestLoadOrCompileTransformGenerationsCannotReuseWrongCode(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := in.Call(context.Background(), "answer")
+		got, err := in.InvokeValues(context.Background(), "answer")
 		if err != nil || len(got) != 1 || got[0].I32() != int32(value) {
 			t.Fatalf("transformed answer = %v, %v; want %d", got, err, value)
 		}

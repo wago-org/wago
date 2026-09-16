@@ -34,16 +34,9 @@ func valTypeCode(t wasm.ValType) byte {
 	return b
 }
 
-// Imports supplies a module's imports by "module.name" key, JS-style: one
-// namespace whose function values may be an ordinary supported Go function,
-// HostCallFunc, HostFunc, CallerHostFunc, or I32HostEvent, alongside a GlobalImport, *Global, or
-// *Memory.
-// This mirrors the WebAssembly JS API's single imports object.
-type Imports map[string]any
-
 // global returns the imported global for key, accepting either a GlobalImport
 // value or a *Global object.
-func (im Imports) global(key string) (GlobalImport, bool) {
+func (im resolvedImports) global(key string) (GlobalImport, bool) {
 	switch g := im[key].(type) {
 	case GlobalImport:
 		return g, true
@@ -364,7 +357,7 @@ func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, pro
 // NewFuncRefGlobal creates a host-owned funcref global bound to this Runtime's
 // exact reference store. The initial token must be null or have been issued by
 // the same Runtime. A non-null host-function token can originate only from an
-// explicit HostFuncRef owner; raw HostFunc descriptors remain fail-closed.
+// explicit HostFuncRef owner; raw slotHostFunc descriptors remain fail-closed.
 func (g *Global) pruneRetainedInstances() {
 	if g == nil || g.owner == nil {
 		return
@@ -1318,16 +1311,17 @@ type resolvedGlobalImport struct {
 	mutable     bool
 }
 
-func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, error) {
+func (c *Compiled) importedGlobals(imports resolvedImports) ([]*resolvedGlobalImport, error) {
 	// Global imports use the public API's "module.name" map key. Duplicate
 	// imports of the same key intentionally resolve to the same descriptor so
 	// wasm global object identity is preserved.
 	globals := make([]*resolvedGlobalImport, len(c.GlobalImports))
 	byKey := map[string]*resolvedGlobalImport{}
 	for i, imp := range c.GlobalImports {
-		key := imp.Module + "." + imp.Name
+		displayKey := imp.Module + "." + imp.Name
+		key := c.globalImportBindingKey(i)
 		if g := byKey[key]; g != nil {
-			if err := c.validateResolvedImportedGlobal(key, g, imp); err != nil {
+			if err := c.validateResolvedImportedGlobal(displayKey, g, imp); err != nil {
 				return nil, err
 			}
 			globals[i] = g
@@ -1335,10 +1329,10 @@ func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, er
 		}
 		provided, ok := imports.global(key)
 		if !ok {
-			return nil, fmt.Errorf("missing imported global %q", key)
+			return nil, fmt.Errorf("missing imported global %q", displayKey)
 		}
 		g := &resolvedGlobalImport{global: provided.Global, initialType: provided.Type, initialBits: provided.Bits, initialV128: provided.V128, mutable: provided.Mutable}
-		if err := c.validateResolvedImportedGlobal(key, g, imp); err != nil {
+		if err := c.validateResolvedImportedGlobal(displayKey, g, imp); err != nil {
 			return nil, err
 		}
 		byKey[key] = g

@@ -1045,7 +1045,7 @@ func TestStagedMemory64InstanceExportImportLifecycle(t *testing.T) {
 		t.Fatalf("memory64 import codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Memories, meta.Memories)
 	}
 
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.memory": memory}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.memory", memory)})
 	if err != nil {
 		t.Fatalf("instantiate memory64 consumer: %v", err)
 	}
@@ -1117,7 +1117,7 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 		if err != nil {
 			t.Fatalf("compile %s: %v", name, err)
 		}
-		in, err := instantiateCore(c, InstantiateOptions{Imports: Imports{"env.memory": bounded}})
+		in, err := instantiateCore(c, InstantiateOptions{Imports: testImports("env.memory", bounded)})
 		if err != nil {
 			c.Close()
 			t.Fatalf("%s: %v", name, err)
@@ -1134,7 +1134,7 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := instantiateCore(c, InstantiateOptions{Imports: Imports{"env.memory": bounded}}); err == nil {
+		if _, err := instantiateCore(c, InstantiateOptions{Imports: testImports("env.memory", bounded)}); err == nil {
 			c.Close()
 			t.Fatalf("%s mismatch was accepted", name)
 		}
@@ -1146,7 +1146,7 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := instantiateCore(valid, InstantiateOptions{Imports: Imports{"env.memory": bounded}})
+	in, err := instantiateCore(valid, InstantiateOptions{Imports: testImports("env.memory", bounded)})
 	if err != nil {
 		valid.Close()
 		t.Fatalf("valid memory64 import after failed links: %v", err)
@@ -1161,7 +1161,7 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	noMaxIn, err := instantiateCore(noMaxConsumer, InstantiateOptions{Imports: Imports{"env.memory": unbounded}})
+	noMaxIn, err := instantiateCore(noMaxConsumer, InstantiateOptions{Imports: testImports("env.memory", unbounded)})
 	if err != nil {
 		noMaxConsumer.Close()
 		t.Fatalf("no-max memory64 import: %v", err)
@@ -1179,7 +1179,7 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, provider := range map[string]*Memory{"owner": unbounded, "re-export": reexported} {
-		if _, err := instantiateCore(boundedImport, InstantiateOptions{Imports: Imports{"env.memory": provider}}); err == nil || !strings.Contains(err.Error(), "no declared maximum") {
+		if _, err := instantiateCore(boundedImport, InstantiateOptions{Imports: testImports("env.memory", provider)}); err == nil || !strings.Contains(err.Error(), "no declared maximum") {
 			boundedImport.Close()
 			noMaxIn.Close()
 			noMaxConsumer.Close()
@@ -1207,7 +1207,7 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mixed.Close()
-	if _, err := instantiateCore(mixed, InstantiateOptions{Imports: Imports{"env.memory": memory32}}); err == nil || !strings.Contains(err.Error(), "provider is memory32, import requires memory64") {
+	if _, err := instantiateCore(mixed, InstantiateOptions{Imports: testImports("env.memory", memory32)}); err == nil || !strings.Contains(err.Error(), "provider is memory32, import requires memory64") {
 		t.Fatalf("memory32 provider into memory64 import = %v", err)
 	}
 }
@@ -1396,7 +1396,7 @@ func BenchmarkStagedMemory64ImportedSize(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.memory": memory}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.memory", memory)})
 	if err != nil {
 		b.Fatal(err)
 	}

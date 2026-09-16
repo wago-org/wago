@@ -35,7 +35,7 @@ func BenchmarkHostToWasmSignatureMatrix(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer in.Close()
-			prepared, err := in.PrepareFunction("f")
+			prepared, err := in.WasmFunc("f")
 			if err != nil {
 				b.Fatal(err)
 			}

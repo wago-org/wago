@@ -48,7 +48,7 @@ func TestGenericGCArrayNewElemPreservesI31Values(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	got, err := in.Call(context.Background(), "array-new-elem-contents")
+	got, err := in.InvokeValues(context.Background(), "array-new-elem-contents")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestStagedGCArrayReferenceOfficialProduct(t *testing.T) {
 			if err := in.ReleaseGCRef(ValueOf(ValAnyRef, token).GCRef()); err != nil {
 				t.Fatal(err)
 			}
-			values, err := in.Call(context.Background(), "new")
+			values, err := in.InvokeValues(context.Background(), "new")
 			if err != nil || len(values) != 1 || values[0].GCRef().IsNull() {
 				t.Fatalf("Call new = %v, %v", values, err)
 			}
@@ -373,10 +373,9 @@ func TestStagedGCArrayReferenceFootprint(t *testing.T) {
 		"instancePluginState":     unsafe.Sizeof(instancePluginState{}),
 	} {
 		// The plugin sidecar includes instance-local counted activations and
-		// reservations, plus monotonic callback/context versions (72 bytes).
-		// Cancellable admission and retained-lease publication add 16 bytes each;
-		// close state now lives directly on Instance.
-		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 232}[name]
+		// monotonic callback/context versions. Prepared-session and close state
+		// no longer live in this sidecar.
+		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 224}[name]
 		if got != want {
 			t.Fatalf("%s size = %d, want %d", name, got, want)
 		}

@@ -36,7 +36,7 @@ func TestInstantiateHostImportAllocationBudget(t *testing.T) {
 	}
 	c := MustCompile(voidImportCallModule())
 	defer c.Close()
-	imports := Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}
+	imports := testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 	warm, err := Instantiate(c, InstantiateOptions{Imports: imports})
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +57,10 @@ func TestInstantiateHostImportAllocationBudget(t *testing.T) {
 	if lifecycleErr != nil {
 		t.Fatalf("Instantiate/Close: %v", lifecycleErr)
 	}
-	if allocs > 13 {
-		t.Fatalf("Instantiate/Close host-import allocations = %.0f, want <= 13", allocs)
+	// The public Imports snapshot introduced on main adds four allocations on
+	// Go 1.22 (five on newer Go releases). Keep a small portability margin while
+	// still guarding the reduction from main's 32 allocations on Go 1.22.
+	if allocs > 20 {
+		t.Fatalf("Instantiate/Close host-import allocations = %.0f, want <= 20", allocs)
 	}
 }

@@ -101,14 +101,14 @@ func TestTypedCallCarriesOpaqueExternRefTokensInWideSlots(t *testing.T) {
 		t.Fatalf("NewExternRef: %v", err)
 	}
 	value := ValueExternRef(ref)
-	out, err := in.Call(context.Background(), "id", value)
+	out, err := in.InvokeValues(context.Background(), "id", value)
 	if err != nil {
 		t.Fatalf("Call: %v", err)
 	}
 	if len(out) != 1 || out[0].Type() != ValExternRef || out[0].ExternRef() != ref || out[0].ExternRef().IsNull() {
 		t.Fatalf("Call result = %#v, want stable opaque externref", out)
 	}
-	if _, err := in.Call(context.Background(), "id", ValueFuncRef(FuncRef{token: value.Bits()})); err == nil || !strings.Contains(err.Error(), "got") {
+	if _, err := in.InvokeValues(context.Background(), "id", ValueFuncRef(FuncRef{token: value.Bits()})); err == nil || !strings.Contains(err.Error(), "got") {
 		t.Fatalf("cross-reference type mismatch error = %v", err)
 	}
 }
@@ -167,7 +167,7 @@ func TestFuncrefGlobalProducerRetentionLifecycle(t *testing.T) {
 }
 
 func TestHostFuncRefValidationAndLifecycleHelpers(t *testing.T) {
-	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	fn := slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	sig := FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI64}}
 	if funcSigEqual(sig, FuncSig{}) || !funcSigEqual(sig, sig) {
 		t.Fatal("function signature equality changed")
@@ -233,7 +233,7 @@ func TestHostFuncRefValidationAndLifecycleHelpers(t *testing.T) {
 	if got, err := bindHostImport(fn, sig); err != nil || got == nil {
 		t.Fatalf("direct host function binding = %v, %v", got, err)
 	}
-	for _, value := range []any{nil, HostFunc(nil), (*HostFuncRef)(nil), 3} {
+	for _, value := range []any{nil, slotHostFunc(nil), (*HostFuncRef)(nil), 3} {
 		if _, err := bindHostImport(value, sig); err == nil {
 			t.Fatalf("invalid host import %#v accepted", value)
 		}
@@ -327,7 +327,7 @@ func TestHostFuncRefDescriptorLookup(t *testing.T) {
 			Imports:    []string{key},
 			FuncTypeID: []uint64{1, 1},
 		},
-		imports:      Imports{key: owner},
+		imports:      testImports(key, owner).bindings,
 		funcRefDescs: make([]byte, 3*coreruntime.FuncRefDescBytes),
 	}
 	desc := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.FuncRefDescBytes])))

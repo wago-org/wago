@@ -253,8 +253,8 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 	return m.adopt(child, memoryBytes)
 }
 
-func managedForkImports(parent *Instance) (Imports, error) {
-	imports := make(Imports, len(parent.c.Imports)+len(parent.c.GlobalImports)+2)
+func managedForkImports(parent *Instance) (resolvedImports, error) {
+	imports := make(resolvedImports, len(parent.c.Imports)+len(parent.c.GlobalImports)+2)
 	copyImport := func(key string) error {
 		v, ok := parent.imports[key]
 		if !ok {
@@ -276,23 +276,24 @@ func managedForkImports(parent *Instance) (Imports, error) {
 		}
 		return nil
 	}
-	for _, key := range parent.c.Imports {
+	for i, displayKey := range parent.c.Imports {
+		key := parent.c.functionImportBindingKey(i)
 		if err := copyImport(key); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("managed fork function import %q: %w", displayKey, err)
 		}
 	}
 	for _, imp := range parent.c.GlobalImports {
-		if err := copyImport(imp.Module + "." + imp.Name); err != nil {
+		if err := copyImport(importBindingMapKey(imp.Module, imp.Name)); err != nil {
 			return nil, err
 		}
 	}
 	if parent.c.memoryImport != "" {
-		if err := copyImport(parent.c.memoryImport); err != nil {
+		if err := copyImport(parent.c.memoryImportBindingKey(0)); err != nil {
 			return nil, err
 		}
 	}
 	if parent.c.tableImport != "" {
-		if err := copyImport(parent.c.tableImport); err != nil {
+		if err := copyImport(parent.c.tableImportBindingKey(0)); err != nil {
 			return nil, err
 		}
 	}

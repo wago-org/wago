@@ -13,7 +13,7 @@ Most examples build their tiny WebAssembly modules in process through [`internal
 ## Start with the runtime
 
 - [01 hello](01-hello) compiles, instantiates, and invokes with the low-level API.
-- [02 typed runtime](02-runtime-typed) introduces `Runtime`, `Call`, `Value`, and cancellation.
+- [02 typed runtime](02-runtime-typed) introduces `Runtime`, `InvokeValues`, `Value`, and cancellation.
 - [03 host import](03-host-import) lets Wasm call a Go function.
 - [04 memory](04-memory) reads and writes guest linear memory.
 - [05 globals](05-globals) reads and sets an exported global.
@@ -22,16 +22,23 @@ Most examples build their tiny WebAssembly modules in process through [`internal
 - [14 handles](14-handles) gives guests generation-checked handles to host resources.
 - [15 runtime config](15-config) selects features, bounds checks, and compiler workers.
 - [16 serialize](16-serialize) saves and loads a trusted compiled artifact.
+- [23 complete public API](23-public-api) loads a reproducible guest fixture and demonstrates flat imports, all callback forms, by-name and resolved invocation, wide calls, and borrowed results.
 
 ## Write a host function
 
-Every host import uses the same reflection-free function shape in standard Go and TinyGo:
+Register every host import through `Imports.HostFunc`. Supported ordinary Go
+signatures are inferred without reflection:
 
 ```go
-func(module wago.HostModule, params, results []uint64)
+imports := wago.NewImports()
+imports.HostFunc("env", "increment", func(x int32) int32 { return x + 1 })
 ```
 
-Read arguments from `params`, write results to `results`, and use `module.Memory()` when the call needs memory 0. Start with [03 host import](03-host-import), then [04 memory](04-memory).
+Use `func(wago.HostCall)` for explicit mixed argument/result access and
+`func(wago.Caller, wago.HostCall)` when the callback needs guest memory,
+references, invocation context, or authorized re-entry. `HostCall`, its slot
+slices, and caller memory views are borrowed until the callback returns. Start
+with [03 host import](03-host-import), then [04 memory](04-memory).
 
 ## Write plugins
 
@@ -61,4 +68,6 @@ The plugin examples use `examples/internal/exampleplugin` to build reviewed `Plu
 
 Compiled `.wasm` files are checked in so the Go example has no extra build dependency. Run `./examples/22-language-guests/build.sh` to rebuild all three.
 
-`HostModule.Memory()` remains the shortest path for memory 0. Use `GuestStorageHostModule` when the ABI needs indexed memory, Memory64 metadata, exact GC types, or Wasm GC arrays.
+`Caller.Memory()` remains the shortest path for memory 0. Use
+`GuestStorageHostModule` when the ABI needs indexed memory, Memory64 metadata,
+exact GC types, or Wasm GC arrays.

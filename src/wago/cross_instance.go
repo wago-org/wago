@@ -62,7 +62,7 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 		if gfi >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", name, gfi)
 		}
-		ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport)
+		ex, ok := in.imports[in.c.functionImportBindingKey(gfi)].(*InstanceExport)
 		if !ok || ex == nil || ex.inst == nil {
 			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", name)
 		}
@@ -981,8 +981,8 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	if in.hostEvents != nil && valTypeMayCarryFuncref(elementType) {
 		return nil, deferredHostEventCalleeError()
 	}
-	if importDef, imported := in.c.tableImportAt(tableIndex); imported {
-		table, ok := in.imports.table(importDef.Key)
+	if _, imported := in.c.tableImportAt(tableIndex); imported {
+		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if !ok || len(table.desc) < 8 {
 			return nil, fmt.Errorf("exported table %q imported descriptor is invalid", name)
 		}

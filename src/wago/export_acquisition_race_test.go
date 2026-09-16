@@ -54,7 +54,7 @@ func TestExportAcquisitionCloseLinearization(t *testing.T) {
 			t.Fatal("Instance.Memory acquisition was not usable")
 		}
 		memoryImporter := mustCompileWat(rt, t, `(module (import "env" "memory" (memory 1 1)))`)
-		if _, err := rt.Instantiate(context.Background(), memoryImporter, WithImports(Imports{"env.memory": memory})); err == nil || !strings.Contains(err.Error(), "not been exported") {
+		if _, err := rt.Instantiate(context.Background(), memoryImporter, WithImports(testImports("env.memory", memory))); err == nil || !strings.Contains(err.Error(), "not been exported") {
 			t.Fatalf("unexported Instance.Memory import error = %v, want explicit export requirement", err)
 		}
 
@@ -130,7 +130,7 @@ func TestExportAcquisitionCloseLinearization(t *testing.T) {
 		if got := memory.UnsafeBytes(); got != nil {
 			t.Fatalf("memory Bytes after close gate length = %d, want nil", len(got))
 		}
-		if _, err := rt.Instantiate(context.Background(), consumerCode, WithImports(Imports{"env.f": fn})); err == nil || !strings.Contains(err.Error(), "closed") {
+		if _, err := rt.Instantiate(context.Background(), consumerCode, WithImports(testImports("env.f", fn))); err == nil || !strings.Contains(err.Error(), "closed") {
 			t.Fatalf("function-handle attachment after close gate error = %v, want closed", err)
 		}
 

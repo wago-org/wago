@@ -60,7 +60,7 @@ func TestConcurrentInstantiateSharedCompiled(t *testing.T) {
 func TestConcurrentInstantiateSharesHostThunks(t *testing.T) {
 	compiled := MustCompile(returningImportModule(returningI32Sig(), []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}))
 	defer compiled.Close()
-	imports := Imports{"env.f": I32ToI32HostFunc(func(value int32) int32 { return value + 1 })}
+	imports := testImports("env.f", i32ToI32HostFunc(func(value int32) int32 { return value + 1 }))
 
 	const workers = 16
 	start := make(chan struct{})

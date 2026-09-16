@@ -15,10 +15,10 @@ func TestSyncHostBindingStaysCompact(t *testing.T) {
 	// classification byte.
 	// TinyGo function values are larger than standard Go function values. Keep
 	// the budget exact for this compiler instead of accepting either footprint.
-	want := unsafe.Sizeof(any(nil)) + unsafe.Sizeof(NoArgsHostFunc(nil)) + unsafe.Sizeof(I32HostFunc(nil)) +
-		unsafe.Sizeof(I32ToI32HostFunc(nil)) + unsafe.Sizeof(I32I32HostFunc(nil)) +
-		unsafe.Sizeof(I32I32ToI32HostFunc(nil)) + unsafe.Sizeof(I32ToI32I32HostFunc(nil)) +
-		unsafe.Sizeof(I32I32ToI32I32HostFunc(nil)) + 3*unsafe.Sizeof((*DefinedTypeDescriptor)(nil)) + 5
+	want := unsafe.Sizeof(any(nil)) + unsafe.Sizeof(noArgsHostFunc(nil)) + unsafe.Sizeof(i32HostFunc(nil)) +
+		unsafe.Sizeof(i32ToI32HostFunc(nil)) + unsafe.Sizeof(i32I32HostFunc(nil)) +
+		unsafe.Sizeof(i32I32ToI32HostFunc(nil)) + unsafe.Sizeof(i32ToI32I32HostFunc(nil)) +
+		unsafe.Sizeof(i32I32ToI32I32HostFunc(nil)) + 3*unsafe.Sizeof((*DefinedTypeDescriptor)(nil)) + 5
 	align := unsafe.Alignof(syncHostBinding{})
 	want = (want + align - 1) &^ (align - 1)
 	if got := unsafe.Sizeof(syncHostBinding{}); got != want {
@@ -78,15 +78,15 @@ func TestFunctionImportArenaNeedUsesConcreteBindingShape(t *testing.T) {
 	compiled := MustCompile(voidI32ImportCallerModule())
 	defer compiled.Close()
 	baseline := compiled.instantiateArenaNeed
-	if got := compiled.arenaNeedForImports(Imports{"env.log": HostFunc(func(HostModule, []uint64, []uint64) {})}, false); got != baseline {
+	if got := compiled.arenaNeedForImports(testImports("env.log", slotHostFunc(func(HostModule, []uint64, []uint64) {})).bindings, false); got != baseline {
 		t.Fatalf("async host arena need = %d, want baseline %d", got, baseline)
 	}
 	crossWant := baseline - coreruntime.HostCallLogBytes
-	if got := compiled.arenaNeedForImports(Imports{"env.log": &InstanceExport{}}, false); got != crossWant {
+	if got := compiled.arenaNeedForImports(testImports("env.log", &InstanceExport{}).bindings, false); got != crossWant {
 		t.Fatalf("cross-only arena need = %d, want %d", got, crossWant)
 	}
 	syncWant := crossWant + coreruntime.HostCtrlFrameBytes
-	if got := compiled.arenaNeedForImports(Imports{"env.log": HostFunc(func(HostModule, []uint64, []uint64) {})}, true); got != syncWant {
+	if got := compiled.arenaNeedForImports(testImports("env.log", slotHostFunc(func(HostModule, []uint64, []uint64) {})).bindings, true); got != syncWant {
 		t.Fatalf("sync host arena need = %d, want %d", got, syncWant)
 	}
 }
@@ -115,8 +115,8 @@ func TestHostControlModeDependsOnModuleBoundaryNotArchitecture(t *testing.T) {
 
 	importer := MustCompile(voidI32ImportCallerModule())
 	defer importer.Close()
-	imports := Imports{"env.log": HostFunc(func(HostModule, []uint64, []uint64) {})}
-	if !importer.importsRequireSync(imports, false) {
+	imports := testImports("env.log", slotHostFunc(func(HostModule, []uint64, []uint64) {}))
+	if !importer.importsRequireSync(imports.bindings, false) {
 		t.Fatal("actual host binding did not require synchronous host control")
 	}
 }

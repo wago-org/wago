@@ -43,18 +43,14 @@ func (storagePlugin) Register(reg *wago.Registrar) error {
 	if err != nil {
 		return err
 	}
-	storage, err := imports.Module("storage")
-	if err != nil {
-		return err
-	}
-	storage.Func("fill", fill).
+	imports.HostFunc("storage", "fill", fill).
 		Params(wago.ValI32, wago.ValI32).
 		Results(wago.ValI32)
 	return nil
 }
 
-func fill(caller wago.HostModule, params, results []uint64) {
-	module, ok := caller.(wago.GuestStorageHostModule)
+func fill(caller wago.Caller, call wago.HostCall) {
+	module, ok := any(caller).(wago.GuestStorageHostModule)
 	if !ok {
 		panic(wago.HostTrap{Err: errors.New("guest storage is unavailable")})
 	}
@@ -68,14 +64,14 @@ func fill(caller wago.HostModule, params, results []uint64) {
 		}
 		memory, err := storage.MemoryRange(
 			0,
-			uint64(uint32(params[0])),
-			uint64(uint32(params[1])),
+			uint64(uint32(call.I32(0))),
+			uint64(uint32(call.I32(1))),
 			wago.GuestStorageWrite,
 		)
 		if err != nil {
 			return err
 		}
-		results[0] = uint64(copy(memory, "Wago"))
+		call.SetI32(0, int32(copy(memory, "Wago")))
 		return nil
 	})
 	if err != nil {

@@ -366,7 +366,7 @@ func TestMutableFuncrefCalleesWaitForProducerGCInvocationLease(t *testing.T) {
 			t.Fatal(compileErr)
 		}
 		defer code.Close()
-		relay, instantiateErr := instantiateCore(code, InstantiateOptions{store: store, Imports: Imports{"env.target": global}})
+		relay, instantiateErr := instantiateCore(code, InstantiateOptions{store: store, Imports: testImports("env.target", global)})
 		if instantiateErr != nil {
 			t.Fatal(instantiateErr)
 		}
@@ -393,12 +393,12 @@ func TestMutableFuncrefCalleesWaitForProducerGCInvocationLease(t *testing.T) {
 			t.Fatal(compileErr)
 		}
 		defer relayCode.Close()
-		writer, instantiateErr := instantiateCore(writerCode, InstantiateOptions{store: store, Imports: Imports{"env.target": table}})
+		writer, instantiateErr := instantiateCore(writerCode, InstantiateOptions{store: store, Imports: testImports("env.target", table)})
 		if instantiateErr != nil {
 			t.Fatal(instantiateErr)
 		}
 		defer writer.Close()
-		relay, instantiateErr := instantiateCore(relayCode, InstantiateOptions{store: store, Imports: Imports{"env.target": table}})
+		relay, instantiateErr := instantiateCore(relayCode, InstantiateOptions{store: store, Imports: testImports("env.target", table)})
 		if instantiateErr != nil {
 			t.Fatal(instantiateErr)
 		}
@@ -441,7 +441,7 @@ func TestForeignRuntimeHostFuncrefTableImportRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer producer.Close()
-	writer, err := instantiateCore(writerCode, InstantiateOptions{store: rtA.refStore, Imports: Imports{"env.target": table}})
+	writer, err := instantiateCore(writerCode, InstantiateOptions{store: rtA.refStore, Imports: testImports("env.target", table)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func TestForeignRuntimeHostFuncrefTableImportRejected(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := instantiateCore(relayCode, InstantiateOptions{store: rtB.refStore, Imports: Imports{"env.target": table}}); err == nil || !strings.Contains(err.Error(), "different Runtime GC reference store") {
+	if _, err := instantiateCore(relayCode, InstantiateOptions{store: rtB.refStore, Imports: testImports("env.target", table)}); err == nil || !strings.Contains(err.Error(), "different Runtime GC reference store") {
 		t.Fatalf("foreign Runtime funcref-table import error = %v, want reference-store rejection", err)
 	}
 }
@@ -494,7 +494,7 @@ func TestPrivateGCProducerInHostFuncrefTableRejectedAcrossRuntime(t *testing.T) 
 	if rtA.refStore.ownsGCCollector(producer.gc) {
 		t.Fatal("private funcref producer unexpectedly joined the Runtime topology")
 	}
-	writer, err := instantiateCore(writerCode, InstantiateOptions{store: rtA.refStore, Imports: Imports{"env.target": table}})
+	writer, err := instantiateCore(writerCode, InstantiateOptions{store: rtA.refStore, Imports: testImports("env.target", table)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -508,7 +508,7 @@ func TestPrivateGCProducerInHostFuncrefTableRejectedAcrossRuntime(t *testing.T) 
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := instantiateCore(relayCode, InstantiateOptions{store: rtB.refStore, Imports: Imports{"env.target": table}}); err == nil || (!strings.Contains(err.Error(), "incompatible GC invocation domain") && !strings.Contains(err.Error(), "different Runtime GC reference store")) {
+	if _, err := instantiateCore(relayCode, InstantiateOptions{store: rtB.refStore, Imports: testImports("env.target", table)}); err == nil || (!strings.Contains(err.Error(), "incompatible GC invocation domain") && !strings.Contains(err.Error(), "different Runtime GC reference store")) {
 		t.Fatalf("private GC funcref-table import error = %v, want explicit domain rejection", err)
 	}
 }
@@ -534,12 +534,12 @@ func TestRuntimeGCDomainCreationRejectsSharedForeignFuncrefTable(t *testing.T) {
 	defer rtA.Close()
 	rtB := NewRuntime(WithRuntimeConfig(cfg))
 	defer rtB.Close()
-	first, err := instantiateCore(relayCode, InstantiateOptions{store: rtA.refStore, Imports: Imports{"env.target": table}})
+	first, err := instantiateCore(relayCode, InstantiateOptions{store: rtA.refStore, Imports: testImports("env.target", table)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first.Close()
-	second, err := instantiateCore(relayCode, InstantiateOptions{store: rtB.refStore, Imports: Imports{"env.target": table}})
+	second, err := instantiateCore(relayCode, InstantiateOptions{store: rtB.refStore, Imports: testImports("env.target", table)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -570,12 +570,12 @@ func TestPrivateGCCollectorCreationRejectsSharedForeignFuncrefTable(t *testing.T
 	defer rtA.Close()
 	rtB := NewRuntime(WithRuntimeConfig(cfg))
 	defer rtB.Close()
-	first, err := instantiateCore(relayCode, InstantiateOptions{store: rtA.refStore, Imports: Imports{"env.target": table}})
+	first, err := instantiateCore(relayCode, InstantiateOptions{store: rtA.refStore, Imports: testImports("env.target", table)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first.Close()
-	second, err := instantiateCore(relayCode, InstantiateOptions{store: rtB.refStore, Imports: Imports{"env.target": table}})
+	second, err := instantiateCore(relayCode, InstantiateOptions{store: rtB.refStore, Imports: testImports("env.target", table)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -644,7 +644,7 @@ func TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease(t *testing.T) {
 	}
 	defer memory.Close()
 	in, err := instantiateCore(code, InstantiateOptions{
-		GC: GCConfig{}, store: rt.refStore, Imports: Imports{"env.memory": memory},
+		GC: GCConfig{}, store: rt.refStore, Imports: testImports("env.memory", memory),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -814,31 +814,29 @@ func TestDynamicFuncrefHostResumeLeasesNewGCDomain(t *testing.T) {
 	var producer *Instance
 	relay, err := instantiateCore(relayCode, InstantiateOptions{
 		store: rt.refStore,
-		Imports: Imports{
-			"env.target": global,
-			"env.install": HostFunc(func(HostModule, []uint64, []uint64) {
-				var instantiateErr error
-				producer, instantiateErr = instantiateCore(producerCode, InstantiateOptions{
-					GC:    GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true},
-					store: rt.refStore,
-				})
-				if instantiateErr != nil {
-					panic(HostTrap{Err: instantiateErr})
-				}
-				ref, getErr := producer.Invoke("get")
-				if getErr != nil || len(ref) != 1 {
-					panic(HostTrap{Err: getErr})
-				}
-				if setErr := global.SetValue(ValueFuncRef(FuncRef{token: ref[0]})); setErr != nil {
-					panic(HostTrap{Err: setErr})
-				}
-				domain := producer.gcInvocationDomain()
-				if domain == nil {
-					panic(HostTrap{Err: fmt.Errorf("new funcref producer has no Runtime GC domain")})
-				}
-				domain.invocationMu.Lock()
-				installed <- installedTarget{producer: producer, domain: domain}
-			})},
+		Imports: testImports("env.target", global, "env.install", slotHostFunc(func(HostModule, []uint64, []uint64) {
+			var instantiateErr error
+			producer, instantiateErr = instantiateCore(producerCode, InstantiateOptions{
+				GC:    GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true},
+				store: rt.refStore,
+			})
+			if instantiateErr != nil {
+				panic(HostTrap{Err: instantiateErr})
+			}
+			ref, getErr := producer.Invoke("get")
+			if getErr != nil || len(ref) != 1 {
+				panic(HostTrap{Err: getErr})
+			}
+			if setErr := global.SetValue(ValueFuncRef(FuncRef{token: ref[0]})); setErr != nil {
+				panic(HostTrap{Err: setErr})
+			}
+			domain := producer.gcInvocationDomain()
+			if domain == nil {
+				panic(HostTrap{Err: fmt.Errorf("new funcref producer has no Runtime GC domain")})
+			}
+			domain.invocationMu.Lock()
+			installed <- installedTarget{producer: producer, domain: domain}
+		})),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -947,7 +945,7 @@ func TestScalarCrossInstanceRelayWaitsForProducerGCInvocationLease(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	relay, err := instantiateCore(relayCode, InstantiateOptions{store: store, Imports: Imports{"env.allocate": export}})
+	relay, err := instantiateCore(relayCode, InstantiateOptions{store: store, Imports: testImports("env.allocate", export)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1009,7 +1007,7 @@ func testScalarRelaySuspendsAllDomains(t *testing.T, concrete bool) {
 	first, err := instantiateCore(firstCode, InstantiateOptions{
 		GC:    GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true},
 		store: store,
-		Imports: Imports{"env.host": callerTestCallback(concrete, func(module HostModule, _ []uint64, results []uint64) {
+		Imports: testImports("env.host", callerTestCallback(concrete, func(module HostModule, _ []uint64, results []uint64) {
 			if collectErr := second.CollectGC(); collectErr != nil {
 				panic(HostTrap{Err: collectErr})
 			}
@@ -1018,7 +1016,7 @@ func testScalarRelaySuspendsAllDomains(t *testing.T, concrete bool) {
 				panic(HostTrap{Err: callErr})
 			}
 			results[0] = out[0]
-		})},
+		})),
 	})
 	if err != nil {
 		store.closeRuntime()
@@ -1050,7 +1048,7 @@ func testScalarRelaySuspendsAllDomains(t *testing.T, concrete bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	relay, err := instantiateCore(relayCode, InstantiateOptions{store: store, Imports: Imports{"env.first": firstExport, "env.second": secondExport}})
+	relay, err := instantiateCore(relayCode, InstantiateOptions{store: store, Imports: testImports("env.first", firstExport, "env.second", secondExport)})
 	if err != nil {
 		t.Fatal(err)
 	}

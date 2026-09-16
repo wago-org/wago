@@ -94,7 +94,7 @@ type InstantiateContext struct {
 	Runtime  *Runtime
 	Module   *Module
 	Compiled *Compiled
-	Imports  Imports
+	Imports  *Imports
 	Origin   InstantiateOrigin
 	Metadata map[string]any
 }
@@ -220,7 +220,7 @@ type legacyImportFuncBuilder struct{ imp *registeredImport }
 func (r *Registry) ImportModule(name string) *legacyImportModuleBuilder {
 	return &legacyImportModuleBuilder{reg: r, module: name}
 }
-func (m *legacyImportModuleBuilder) Func(name string, fn HostFunc) *legacyImportFuncBuilder {
+func (m *legacyImportModuleBuilder) Func(name string, fn slotHostFunc) *legacyImportFuncBuilder {
 	imp := &registeredImport{module: m.module, name: name, fn: fn}
 	m.reg.imports = append(m.reg.imports, imp)
 	return &legacyImportFuncBuilder{imp: imp}
@@ -250,8 +250,9 @@ func (r *Registry) HostImports() (*HostImportAccess, error) {
 	}
 	return &HostImportAccess{reg: r}, nil
 }
-func (a *HostImportAccess) Module(name string) *legacyImportModuleBuilder {
-	return a.reg.ImportModule(name)
+func (a *HostImportAccess) HostFunc(module, name string, fn any) *legacyImportFuncBuilder {
+	callback, _ := fn.(slotHostFunc)
+	return a.reg.ImportModule(module).Func(name, callback)
 }
 func (a *HostImportAccess) CallerResolver() *CallerResolver {
 	resolver := &CallerResolver{}
@@ -446,12 +447,16 @@ func (rt *Runtime) Extension(id string) (ExtensionInfo, bool) {
 	}
 	return ExtensionInfo{}, false
 }
-func (rt *Runtime) HostImports() Imports {
+func (rt *Runtime) HostImports() *Imports {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	out := make(Imports, len(rt.imports))
+	out := NewImports()
 	for key, value := range rt.imports {
-		out[key] = value
+		module, name, ok := splitImportBindingMapKey(key)
+		if !ok {
+			module, name = splitImportKey(key)
+		}
+		out.bind(module, name, value)
 	}
 	return out
 }

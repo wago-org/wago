@@ -81,7 +81,7 @@ func BenchmarkExecCommuteSelfUpdate(b *testing.B) {
 				for i, arg := range entry.Args {
 					args[i] = wago.I32(arg)
 				}
-				fn, err := instance.PrepareFunction(entry.Export)
+				fn, err := instance.WasmFunc(entry.Export)
 				if err != nil {
 					b.Fatalf("%s/%s prepare %s: %v", m.name(), mode, entry.Export, err)
 				}

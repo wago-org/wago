@@ -49,7 +49,7 @@ func gcCloneCycleModule() []byte {
 func instantiateForeignCloneFixture(t *testing.T, cfg *RuntimeConfig, gcCfg GCConfig) (*Runtime, *HostFuncRef, *Module, *Instance) {
 	t.Helper()
 	rt := NewRuntime(WithRuntimeConfig(cfg))
-	owner, err := rt.NewGCHostFuncRef(HostFunc(func(_ HostModule, args, results []uint64) {
+	owner, err := rt.NewGCHostFuncRef(slotHostFunc(func(_ HostModule, args, results []uint64) {
 		results[0] = args[0]
 	}), FuncSig{Params: []ValType{ValAnyRef}, Results: []ValType{ValAnyRef}})
 	if err != nil {
@@ -62,7 +62,7 @@ func instantiateForeignCloneFixture(t *testing.T, cfg *RuntimeConfig, gcCfg GCCo
 		rt.Close()
 		t.Fatal(err)
 	}
-	in, err := rt.Instantiate(context.Background(), module, WithImports(Imports{"host.echo": owner}), WithGC(gcCfg))
+	in, err := rt.Instantiate(context.Background(), module, WithImports(testImports("host.echo", owner)), WithGC(gcCfg))
 	if err != nil {
 		module.Close()
 		owner.Close()
@@ -94,19 +94,19 @@ func TestForeignRuntimeGCGraphClone(t *testing.T) {
 			defer targetModule.Close()
 			defer target.Close()
 
-			created, err := source.Call(context.Background(), "new")
+			created, err := source.InvokeValues(context.Background(), "new")
 			if err != nil || len(created) != 1 || created[0].GCRef().IsNull() {
 				t.Fatalf("source new = %v, %v", created, err)
 			}
 			sourceRef := created[0].GCRef()
-			if _, err := target.Call(context.Background(), "read", ValueGCRef(sourceRef)); err == nil || (!strings.Contains(err.Error(), "different collector domain") && !strings.Contains(err.Error(), "invalid or stale")) {
+			if _, err := target.InvokeValues(context.Background(), "read", ValueGCRef(sourceRef)); err == nil || (!strings.Contains(err.Error(), "different collector domain") && !strings.Contains(err.Error(), "invalid or stale")) {
 				t.Fatalf("uncloned foreign ingress = %v", err)
 			}
 			cloned, err := target.CloneGCRefFrom(source, sourceRef)
 			if err != nil || cloned.IsNull() {
 				t.Fatalf("clone = %#v, %v", cloned, err)
 			}
-			if got, err := target.Call(context.Background(), "read", ValueGCRef(cloned)); err != nil || !reflect.DeepEqual(got, []Value{ValueI32(42)}) {
+			if got, err := target.InvokeValues(context.Background(), "read", ValueGCRef(cloned)); err != nil || !reflect.DeepEqual(got, []Value{ValueI32(42)}) {
 				t.Fatalf("target read clone = %v, %v", got, err)
 			}
 			if err := source.ReleaseGCRef(sourceRef); err != nil {
@@ -115,7 +115,7 @@ func TestForeignRuntimeGCGraphClone(t *testing.T) {
 			if err := source.Close(); err != nil {
 				t.Fatal(err)
 			}
-			if got, err := target.Call(context.Background(), "read", ValueGCRef(cloned)); err != nil || !reflect.DeepEqual(got, []Value{ValueI32(42)}) {
+			if got, err := target.InvokeValues(context.Background(), "read", ValueGCRef(cloned)); err != nil || !reflect.DeepEqual(got, []Value{ValueI32(42)}) {
 				t.Fatalf("target clone after source close = %v, %v", got, err)
 			}
 			if err := target.ReleaseGCRef(cloned); err != nil {
@@ -189,12 +189,12 @@ func TestForeignRuntimeGCGraphCloneRejectsWrongOwnerAndSameStore(t *testing.T) {
 	defer host.Close()
 	defer module.Close()
 	defer first.Close()
-	second, err := rt.Instantiate(context.Background(), module, WithImports(Imports{"host.echo": host}))
+	second, err := rt.Instantiate(context.Background(), module, WithImports(testImports("host.echo", host)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer second.Close()
-	created, err := first.Call(context.Background(), "new")
+	created, err := first.InvokeValues(context.Background(), "new")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,5 +1,10 @@
 # Synchronous host-call performance
 
+> **Historical performance record.** Prepared-session results below describe a
+> removed API and must not be used as current `WasmFunc.Invoke` numbers. Public
+> sessions no longer exist; every invocation performs normal admission. See
+> [the migration guide](public-api-migration.md).
+
 ## Invariants
 
 These constraints apply before and after each optimization:
@@ -20,9 +25,9 @@ These constraints apply before and after each optimization:
 8. Every shortcut needs a conservative fallback. State exhaustion must not
    silently remove identity or authorization checks.
 
-## Reservation-held prepared calls
+## Historical reservation-held prepared calls (removed)
 
-`PreparedSession` amortizes public invocation admission across a caller-owned
+`PreparedSession` amortized public invocation admission across a caller-owned
 run of calls. All copies of a session share one close state: closing any copy
 releases the lease once and invalidates every alias. Calls and `Instance` access
 must not run concurrently with the session.
@@ -42,7 +47,7 @@ lease between calls. They keep only instance admission and acquire native state
 through the ordinary per-call path, so an abandoned session cannot stall
 unrelated instances globally.
 
-Session reservations likewise retain only the instance invocation identity,
+Session reservations likewise retained only the instance invocation identity,
 not shared WasmGC domain ownership. GC domains are acquired and released around
 each call, so an idle or abandoned session cannot block collection or invocation
 in another instance that shares a collector domain.
@@ -64,7 +69,7 @@ once. The session's invocation lease keeps those owners alive, and the hot
 ### Matched prepared-session measurements
 
 The following medians use 12 500 ms samples of the computation-free identity
-fixtures in `bench/suite`. Wago uses one caller-owned `PreparedSession`; wazero
+fixtures in `bench/suite`. Wago used one caller-owned `PreparedSession`; wazero
 uses its public function call API. Both Wago paths return the same checked value
 as their wazero control.
 

@@ -27,20 +27,7 @@ func BenchmarkImportIdentityIndex(b *testing.B) {
 	}
 }
 
-func TestSmallImportIdentityComparisonMatchesFlatNamespace(t *testing.T) {
-	names := []string{"", "a", "b", ".", "a.b", "a.", ".."}
-	for _, am := range names {
-		for _, an := range names {
-			for _, bm := range names {
-				for _, bn := range names {
-					a, b := importBindingKey{am, an}, importBindingKey{bm, bn}
-					if got, want := sameFlattenedImport(a, b), am+"."+an == bm+"."+bn; got != want {
-						t.Fatalf("flat comparison %+v %+v: %v != %v", a, b, got, want)
-					}
-				}
-			}
-		}
-	}
+func TestImportIdentityIndexKeepsCollidingDisplayNamesDistinct(t *testing.T) {
 	for _, count := range []int{4, 5} {
 		specs := make([]ImportSpec, count)
 		for i := range specs {
@@ -48,8 +35,12 @@ func TestSmallImportIdentityComparisonMatchesFlatNamespace(t *testing.T) {
 		}
 		specs[0] = ImportSpec{Module: "env.a", Name: "b"}
 		specs[1] = ImportSpec{Module: "env", Name: "a.b"}
-		if _, err := indexDeclaredImportIdentities(specs); err == nil {
-			t.Fatalf("%d-row index accepted an ambiguous identity", count)
+		index, err := indexDeclaredImportIdentities(specs)
+		if err != nil {
+			t.Fatalf("%d-row exact index: %v", count, err)
+		}
+		if len(index) != count || index[importBindingMapKey("env.a", "b")] == index[importBindingMapKey("env", "a.b")] {
+			t.Fatalf("%d-row index did not preserve distinct exact identities: %#v", count, index)
 		}
 	}
 }

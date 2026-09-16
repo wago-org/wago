@@ -40,7 +40,7 @@ func TestRetainedHostTokenCannotGainLaterGeneration(t *testing.T) {
 	defer c.Close()
 	var retained instanceHostModule
 	calls := 0
-	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(mod HostModule, p, r []uint64) {
+	in, err := Instantiate(c, testImports("env.f", slotHostFunc(func(mod HostModule, p, r []uint64) {
 		calls++
 		if calls == 1 {
 			retained = mod.(instanceHostModule)
@@ -48,7 +48,7 @@ func TestRetainedHostTokenCannotGainLaterGeneration(t *testing.T) {
 			assertExpiredHostToken(t, retained)
 		}
 		r[0] = p[0] + 1
-	})})
+	})))
 	if err != nil {
 		t.Fatal(err)
 	}

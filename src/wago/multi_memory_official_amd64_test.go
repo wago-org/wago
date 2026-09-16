@@ -147,7 +147,7 @@ func instantiateOfficialMemoryPair(t *testing.T, modules [][]byte) (*Instance, *
 		producerCompiled.Close()
 		t.Fatal(err)
 	}
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.mem1": m1, "M.mem2": m2}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M.mem1", m1, "M.mem2", m2)})
 	if err != nil {
 		consumerCompiled.Close()
 		producer.Close()

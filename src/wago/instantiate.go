@@ -19,12 +19,13 @@ type InstantiateOptions struct {
 	// uses the source policy or the 256 MiB default; native instance storage
 	// has a separate quota. A stricter limit also applies to an existing snapshot.
 	MaxCompiledMetadataBytes uint64
-	Imports                  Imports
+	Imports                  *Imports
 	GC                       GCConfig
 	store                    *referenceStore
 	startContext             context.Context
 
 	ownedImports             bool // private Runtime resolution has transferred ownership
+	resolvedImports          resolvedImports
 	runtime                  *Runtime
 	origin                   InstantiateOrigin
 	pluginGC                 *GCConfig
@@ -85,10 +86,10 @@ func instantiateArgs(args []any) (InstantiateOptions, error) {
 				return InstantiateOptions{}, nil
 			}
 			return *v, nil
-		case Imports:
+		case *Imports:
 			return InstantiateOptions{Imports: v}, nil
 		default:
-			return InstantiateOptions{}, fmt.Errorf("wago: Instantiate options must be InstantiateOptions, Imports, or nil, got %T", args[0])
+			return InstantiateOptions{}, fmt.Errorf("wago: Instantiate options must be InstantiateOptions, *Imports, or nil, got %T", args[0])
 		}
 	default:
 		return InstantiateOptions{}, fmt.Errorf("wago: Instantiate expects at most one options argument, got %d", len(args))
@@ -101,7 +102,7 @@ func instantiateArgs(args []any) (InstantiateOptions, error) {
 type instanceBuilder struct {
 	c       *Compiled
 	opts    InstantiateOptions
-	imports Imports
+	imports resolvedImports
 
 	collector           *gc.Collector
 	collectorShared     bool
@@ -126,14 +127,15 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, moduleUse *Module) (*Instance, error) {
 	defer goruntime.KeepAlive(c)
 	// Keep validation, native linking, public lookup, and teardown on one binding set.
-	if opts.Imports != nil && !opts.ownedImports {
-		imports := make(Imports, len(opts.Imports))
-		for key, value := range opts.Imports {
-			imports[key] = value
+	imports := opts.resolvedImports
+	if !opts.ownedImports && opts.Imports != nil {
+		var err error
+		imports, err = opts.Imports.snapshot()
+		if err != nil {
+			return nil, fmt.Errorf("wago: finalize imports: %w", err)
 		}
-		opts.Imports = imports
 	}
-	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports, moduleUse: moduleUse}
+	b := instanceBuilder{c: c, opts: opts, imports: imports, moduleUse: moduleUse}
 	defer b.releaseModuleUse()
 	if opts.startContext != nil {
 		if err := opts.startContext.Err(); err != nil {
@@ -162,7 +164,7 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 		return nil, err
 	}
 	b.c = c
-	if err := c.preflightImportBindings(opts.Imports); err != nil {
+	if err := c.preflightImportBindings(imports); err != nil {
 		return nil, err
 	}
 	return b.instantiate()
@@ -183,15 +185,15 @@ func (b *instanceBuilder) validateCompiled() error {
 	return b.c.validateCached()
 }
 
-func (c *Compiled) allowsIndependentInstanceExecution(imports Imports, enabled bool) bool {
+func (c *Compiled) allowsIndependentInstanceExecution(imports resolvedImports, enabled bool) bool {
 	if !enabled {
 		return false
 	}
 	if c.memoryImportCount() != 0 || c.tableImportCount() != 0 || len(c.GlobalImports) != 0 {
 		return false
 	}
-	for _, key := range c.Imports {
-		if _, ok := imports[key].(*InstanceExport); ok {
+	for i := range c.Imports {
+		if _, ok := imports[c.functionImportBindingKey(i)].(*InstanceExport); ok {
 			return false
 		}
 	}
@@ -199,7 +201,7 @@ func (c *Compiled) allowsIndependentInstanceExecution(imports Imports, enabled b
 	return true
 }
 
-func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
+func (c *Compiled) arenaNeedForImports(imports resolvedImports, syncMode bool) int {
 	need := c.instantiateArenaNeed
 	baselineHostBytes := 0
 	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
@@ -214,8 +216,8 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 		// nested runtime entry share the same parked-host context.
 		actualHostBytes = c.hostCtrlFrameBytes()
 	} else {
-		for _, key := range c.Imports {
-			if _, cross := imports[key].(*InstanceExport); !cross {
+		for i := range c.Imports {
+			if _, cross := imports[c.functionImportBindingKey(i)].(*InstanceExport); !cross {
 				actualHostBytes = runtime.HostCallLogBytes
 				break
 			}
@@ -224,7 +226,7 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 	return need - baselineHostBytes + actualHostBytes
 }
 
-func enforceMemoryPageQuota(c *Compiled, imports Imports, limit uint32) error {
+func enforceMemoryPageQuota(c *Compiled, imports resolvedImports, limit uint32) error {
 	if c == nil || limit == 0 {
 		return nil
 	}
@@ -232,7 +234,7 @@ func enforceMemoryPageQuota(c *Compiled, imports Imports, limit uint32) error {
 		def := c.memoryDef(i)
 		pages := def.Min
 		if def.ImportKey != "" {
-			memory, ok := imports.memory(def.ImportKey)
+			memory, ok := imports.memory(c.memoryImportBindingKey(i))
 			if !ok {
 				continue // the normal linker reports the missing import.
 			}
@@ -330,18 +332,19 @@ func (b *instanceBuilder) buildNativeGCInstanceView(localTypes []gc.TypeID) (*gc
 }
 
 func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
-	for i, key := range b.c.Imports {
+	for i, displayKey := range b.c.Imports {
+		key := b.c.functionImportBindingKey(i)
 		switch value := b.imports[key].(type) {
 		case *InstanceExport:
 			if err := b.functionAttachments.attach(value); err != nil {
-				return nil, fmt.Errorf("imported function %q: %w", key, err)
+				return nil, fmt.Errorf("imported function %q: %w", displayKey, err)
 			}
 		case *HostFuncRef:
 			if i >= len(b.c.importFuncSigs) {
-				return nil, fmt.Errorf("imported host funcref %q has no signature", key)
+				return nil, fmt.Errorf("imported host funcref %q has no signature", displayKey)
 			}
 			if err := b.hostAttachments.attach(value, b.opts.store, b.c.importFuncSigs[i], b.collector, b.gcDomainID, b.c, i); err != nil {
-				return nil, fmt.Errorf("imported host funcref %q: %w", key, err)
+				return nil, fmt.Errorf("imported host funcref %q: %w", displayKey, err)
 			}
 		}
 	}
@@ -359,11 +362,11 @@ func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
 		}
 	}
 	if b.c.memoryDir != nil {
-		for _, def := range b.c.memoryDir.ehTags {
+		for i, def := range b.c.memoryDir.ehTags {
 			if def.ImportKey == "" {
 				continue
 			}
-			tag, ok := b.imports.tag(def.ImportKey)
+			tag, ok := b.imports.tag(b.c.tagImportBindingKey(i))
 			if !ok {
 				return nil, fmt.Errorf("imported tag %q must be an instance-exported *wago.Tag", def.ImportKey)
 			}
@@ -489,7 +492,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		return nil
 	}
 	if c.memoryImport != "" {
-		m, ok := imports.memory(c.memoryImport)
+		m, ok := imports.memory(c.memoryImportBindingKey(0))
 		if !ok {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
@@ -571,7 +574,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	for i := 1; i < memoryCount; i++ {
 		def := c.memoryDef(i)
 		if def.ImportKey != "" {
-			memory, ok := imports.memory(def.ImportKey)
+			memory, ok := imports.memory(c.memoryImportBindingKey(i))
 			if !ok {
 				closeMem()
 				runtime.ReleaseEngine(eng)
@@ -647,7 +650,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		for i, def := range c.memoryDir.ehTags {
 			identity := uint64(uintptr(unsafe.Pointer(&nativeTagIDs[i*8])))
 			if def.ImportKey != "" {
-				tag, ok := imports.tag(def.ImportKey)
+				tag, ok := imports.tag(c.tagImportBindingKey(i))
 				if !ok {
 					runtime.ReleaseArena(ar)
 					closeMem()
@@ -705,16 +708,17 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	} else if len(c.Imports) > 0 {
 		hasHostImport := false
-		for i, key := range c.Imports {
+		for i, displayKey := range c.Imports {
+			key := c.functionImportBindingKey(i)
 			if _, cross := imports[key].(*InstanceExport); cross {
 				continue
 			}
 			hasHostImport = true
 			if imports[key] == nil {
-				return nil, fmt.Errorf("import %q: deferred host event is missing", key)
+				return nil, fmt.Errorf("import %q: deferred host event is missing", displayKey)
 			}
 			if i >= len(c.importFuncSigs) {
-				return nil, fmt.Errorf("import %q: missing signature", key)
+				return nil, fmt.Errorf("import %q: missing signature", displayKey)
 			}
 			if _, err := bindI32HostEvent(imports[key], c.importFuncSigs[i]); err != nil {
 				return nil, err
@@ -747,11 +751,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if c.dynamicImports && c.NumImports > 0 {
 		dispatch := ar.Alloc(c.NumImports * runtime.ImportDispatchEntryBytes)
 		selfLinMem := uint64(jm.LinMemBase())
-		for i, key := range c.Imports {
+		for i, displayKey := range c.Imports {
+			key := c.functionImportBindingKey(i)
 			off := i * runtime.ImportDispatchEntryBytes
 			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil && ex.inst != nil {
 				if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
-					return nil, fmt.Errorf("cross-instance import %q references an unavailable function", key)
+					return nil, fmt.Errorf("cross-instance import %q references an unavailable function", displayKey)
 				}
 				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
 				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchHomeLinMemOffset:], uint64(ex.inst.jm.LinMemBase()))
@@ -767,7 +772,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				addr = uint64(sharedThunkBase) + uint64(sharedThunkOffsets[i])
 			}
 			if addr == 0 {
-				return nil, fmt.Errorf("import %q has no host dispatch thunk", key)
+				return nil, fmt.Errorf("import %q has no host dispatch thunk", displayKey)
 			}
 			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], addr)
 			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchHomeLinMemOffset:], selfLinMem)
@@ -921,7 +926,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					kind = abi.FuncRefEntryInternal
 				}
 			} else if fidx < c.NumImports {
-				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
+				if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
 					code = uint64(ex.inst.base) + uint64(ex.inst.c.Entry[ex.localIdx])
 					home = uint64(ex.inst.jm.LinMemBase())
 					targetContext = uint64(ex.inst.nativeContext)
@@ -948,7 +953,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if fidx < c.NumImports {
 				// Cross-instance imports reuse the producer's canonical identity when
 				// that producer already owns a descriptor arena.
-				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.inst.funcRefDescs != nil {
+				if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.inst.funcRefDescs != nil {
 					homeFidx := ex.inst.c.NumImports + ex.localIdx
 					homeOff := (homeFidx + 1) * runtime.FuncRefDescBytes
 					if homeOff+runtime.FuncRefDescBytes <= len(ex.inst.funcRefDescs) {
@@ -1234,7 +1239,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				// Shared cross-instance table: run on the exporting instance's descriptor
 				// only after proving exact type and externref-store compatibility. Aliased
 				// declarations attach one importer root while each declaration validates.
-				t, ok := imports.table(importDef.Key)
+				t, ok := imports.table(c.tableImportBindingKey(tableIndex))
 				if !ok {
 					return nil, fmt.Errorf("missing imported table %q", importDef.Key)
 				}
@@ -1703,17 +1708,18 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if c.StartImportIdx < 0 || c.StartImportIdx >= len(c.Imports) {
 				return nil, fmt.Errorf("start import index %d out of range", c.StartImportIdx)
 			}
-			key := c.Imports[c.StartImportIdx]
+			displayKey := c.Imports[c.StartImportIdx]
+			key := c.functionImportBindingKey(c.StartImportIdx)
 			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil {
-				return nil, fmt.Errorf("start function %q is a cross-instance import; cross-instance imported starts are unsupported", key)
+				return nil, fmt.Errorf("start function %q is a cross-instance import; cross-instance imported starts are unsupported", displayKey)
 			}
 			fn, err := bindSyncHostImport(imports[key], FuncSig{})
 			if err != nil {
-				return nil, fmt.Errorf("start function %q: %w", key, err)
+				return nil, fmt.Errorf("start function %q: %w", displayKey, err)
 			}
 			caller := in.beginHostCallScopeReserved(in.constructionReservationSnapshot())
 			if err := callImportedStart(fn, caller); err != nil {
-				return nil, fmt.Errorf("start function %q: %w", key, err)
+				return nil, fmt.Errorf("start function %q: %w", displayKey, err)
 			}
 		} else {
 			if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
@@ -1872,7 +1878,7 @@ func hostThunkAddr(fidx int, sharedBase uintptr, sharedOffsets []int, ownedAddr 
 	return 0, false
 }
 
-func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64, ownedMem []byte, err error) {
+func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool) (sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64, ownedMem []byte, err error) {
 	sharedBase, sharedOffsets, err = c.sharedHostFuncThunks(syncMode)
 	if err != nil {
 		return 0, nil, nil, nil, err
@@ -1880,20 +1886,24 @@ func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (sharedBas
 	var blob []byte
 	offs := map[uint32]int{}
 	for fidx := 0; fidx < c.NumImports; fidx++ {
-		key := c.Imports[fidx]
+		displayKey := c.Imports[fidx]
+		key := c.functionImportBindingKey(fidx)
 		if _, isCross := imports[key].(*InstanceExport); isCross {
 			continue // cross-instance funcref, not a host function
 		}
 		if syncMode {
 			if owner, ok := imports[key].(*HostFuncRef); ok && owner != nil {
+				if fidx >= len(c.importFuncSigs) {
+					return 0, nil, nil, nil, fmt.Errorf("import %q wrapper signature is missing", displayKey)
+				}
 				sig := c.importFuncSigs[fidx]
 				paramSlots, slotErr := valTypesSlots(sig.Params)
 				if slotErr != nil {
-					return 0, nil, nil, nil, fmt.Errorf("import %q wrapper params: %w", key, slotErr)
+					return 0, nil, nil, nil, fmt.Errorf("import %q wrapper params: %w", displayKey, slotErr)
 				}
 				resultSlots, slotErr := valTypesSlots(sig.Results)
 				if slotErr != nil {
-					return 0, nil, nil, nil, fmt.Errorf("import %q wrapper results: %w", key, slotErr)
+					return 0, nil, nil, nil, fmt.Errorf("import %q wrapper results: %w", displayKey, slotErr)
 				}
 				owner.mu.Lock()
 				dispatchIndex := owner.dispatchIndex
@@ -1908,7 +1918,7 @@ func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (sharedBas
 		}
 		if !isHostCallback(imports[key]) {
 			if imports[key] != nil {
-				return 0, nil, nil, nil, fmt.Errorf("import %q is %T; async host wrappers require wago.I32HostEvent", key, imports[key])
+				return 0, nil, nil, nil, fmt.Errorf("import %q is %T; async host wrappers require wago.I32HostEvent", displayKey, imports[key])
 			}
 		}
 	}

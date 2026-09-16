@@ -28,7 +28,7 @@ type Instance struct {
 	ar                      *runtime.Arena
 	base                    uintptr
 	hostEvents              *hostEventBindings // nil outside deferred event mode
-	imports                 Imports            // the imports as provided to Instantiate
+	imports                 resolvedImports    // immutable bindings captured for this instance
 	hostLog                 []byte
 	ctrl                    []byte                              // sync host-call control frame (nil in async mode)
 	syncHosts               []syncHostBinding                   // immutable per-import sync host bindings

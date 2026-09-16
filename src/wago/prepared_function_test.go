@@ -12,15 +12,15 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func TestPreparedFunctionInvokeAndCacheIndependence(t *testing.T) {
-	if _, err := (*PreparedFunction)(nil).Invoke(); err == nil || !strings.Contains(err.Error(), "closed") {
+func TestWasmFuncInvokeAndCacheIndependence(t *testing.T) {
+	if _, err := (*WasmFunc)(nil).Invoke(); err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("nil prepared invoke error = %v", err)
 	}
 	in, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestPreparedFunctionInvokeAndCacheIndependence(t *testing.T) {
 	}
 }
 
-func TestPreparedFunctionPrivateFastPath(t *testing.T) {
+func TestWasmFuncPrivateFastPath(t *testing.T) {
 	saved := preparedPrivateEntryEnabled
 	savedIsolated := preparedIsolatedEntryEnabled
 	savedDirectInt := preparedDirectIntEnabled
@@ -65,7 +65,7 @@ func TestPreparedFunctionPrivateFastPath(t *testing.T) {
 		if err != nil {
 			t.Fatalf("instantiate enabled=%v: %v", enabled, err)
 		}
-		fn, err := in.PrepareFunction("f")
+		fn, err := in.WasmFunc("f")
 		if err != nil {
 			t.Fatalf("prepare enabled=%v: %v", enabled, err)
 		}
@@ -93,7 +93,7 @@ func TestPreparedFunctionPrivateFastPath(t *testing.T) {
 	}
 }
 
-func TestPreparedFunctionDirectIntArgumentsAndTrap(t *testing.T) {
+func TestWasmFuncDirectIntArgumentsAndTrap(t *testing.T) {
 	if !preparedDirectIntSupported {
 		t.Log("architecture does not support direct prepared integer entry")
 		return
@@ -127,14 +127,14 @@ func TestPreparedFunctionDirectIntArgumentsAndTrap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("instantiate add64: %v", err)
 	}
-	fn, err := in.PrepareFunction("add")
+	fn, err := in.WasmFunc("add")
 	if err != nil {
 		t.Fatalf("prepare add64: %v", err)
 	}
 	if !fn.directIntFast {
 		t.Fatal("i64 add did not select direct integer entry")
 	}
-	got, err := fn.Invoke2(0x1_0000_0000, 7)
+	got, err := fn.Invoke(0x1_0000_0000, 7)
 	if err != nil || len(got) != 1 || got[0] != 0x1_0000_0007 {
 		t.Fatalf("direct i64 add = %v, %v", got, err)
 	}
@@ -157,23 +157,23 @@ func TestPreparedFunctionDirectIntArgumentsAndTrap(t *testing.T) {
 		t.Fatalf("instantiate div: %v", err)
 	}
 	defer in.Close()
-	fn, err = in.PrepareFunction("div")
+	fn, err = in.WasmFunc("div")
 	if err != nil {
 		t.Fatalf("prepare div: %v", err)
 	}
 	if !fn.directIntFast {
 		t.Fatal("i32 div did not select direct integer entry")
 	}
-	if _, err := fn.Invoke2(I32(7), I32(0)); err == nil {
+	if _, err := fn.Invoke(I32(7), I32(0)); err == nil {
 		t.Fatal("direct division by zero did not trap")
 	}
-	got, err = fn.Invoke2(I32(8), I32(2))
+	got, err = fn.Invoke(I32(8), I32(2))
 	if err != nil || len(got) != 1 || AsI32(got[0]) != 4 {
 		t.Fatalf("direct i32 div after trap = %v, %v", got, err)
 	}
 }
 
-func TestPreparedFunctionFixedArityFourArguments(t *testing.T) {
+func TestWasmFuncArityFourArguments(t *testing.T) {
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
 			[]wasm.ValType{wasm.I64, wasm.I64, wasm.I64, wasm.I64},
@@ -193,20 +193,64 @@ func TestPreparedFunctionFixedArityFourArguments(t *testing.T) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("sum")
+	fn, err := in.WasmFunc("sum")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	got, err := fn.Invoke4(1, 2, 4, 8)
+	got, err := fn.Invoke(1, 2, 4, 8)
 	if err != nil || len(got) != 1 || got[0] != 15 {
 		t.Fatalf("fixed four-argument sum = %v, %v; want 15", got, err)
 	}
-	if _, err := fn.Invoke3(1, 2, 4); err == nil || !strings.Contains(err.Error(), "expects 4") {
+	if _, err := fn.Invoke(1, 2, 4); err == nil || !strings.Contains(err.Error(), "expects 4") {
 		t.Fatalf("fixed arity mismatch error = %v", err)
 	}
 }
 
-func TestPreparedFunctionIsolatedEligibility(t *testing.T) {
+func TestWasmFuncWideArityAndSequentialHandles(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("sum5", 0, 0), wasmtest.ExportEntry("zero", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{
+				0x20, 0x00, 0x20, 0x01, 0x6a,
+				0x20, 0x02, 0x6a,
+				0x20, 0x03, 0x6a,
+				0x20, 0x04, 0x6a,
+				0x0b,
+			}),
+			wasmtest.Code([]byte{0x41, 0x00, 0x0b}),
+		)),
+	)
+	in, err := Instantiate(MustCompile(module), InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	sum5, err := in.WasmFunc("sum5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zero, err := in.WasmFunc("zero")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := sum5.Invoke(I32(1), I32(2), I32(3), I32(4), I32(5))
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 15 {
+		t.Fatalf("sum5 = %v, %v; want 15", got, err)
+	}
+	if got, err = zero.Invoke(); err != nil || len(got) != 1 || AsI32(got[0]) != 0 {
+		t.Fatalf("zero after sum5 = %v, %v", got, err)
+	}
+	if got, err = sum5.Invoke(I32(5), I32(4), I32(3), I32(2), I32(1)); err != nil || AsI32(got[0]) != 15 {
+		t.Fatalf("sum5 after zero = %v, %v; handle retained a reservation", got, err)
+	}
+}
+
+func TestWasmFuncIsolatedEligibility(t *testing.T) {
 	in, err := Instantiate(MustCompile(benchAddOneModule()), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
@@ -245,13 +289,13 @@ func TestPreparedFunctionIsolatedEligibility(t *testing.T) {
 	}
 }
 
-func TestPreparedFunctionIsolatedInstancesRunConcurrently(t *testing.T) {
+func TestWasmFuncIsolatedInstancesRunConcurrently(t *testing.T) {
 	c := MustCompile(benchAddOneModule())
 	if c.boundsMode == BoundsChecksSignalsBased {
 		t.Skip("signals-based execution requires the guarded entry")
 	}
 	instances := make([]*Instance, 2)
-	prepared := make([]*PreparedFunction, 2)
+	prepared := make([]*WasmFunc, 2)
 	for i := range instances {
 		var err error
 		instances[i], err = Instantiate(c, InstantiateOptions{})
@@ -259,7 +303,7 @@ func TestPreparedFunctionIsolatedInstancesRunConcurrently(t *testing.T) {
 			t.Fatalf("instantiate %d: %v", i, err)
 		}
 		defer instances[i].Close()
-		prepared[i], err = instances[i].PrepareFunction("f")
+		prepared[i], err = instances[i].WasmFunc("f")
 		if err != nil {
 			t.Fatalf("prepare %d: %v", i, err)
 		}
@@ -389,7 +433,7 @@ func TestNumericMultiResultFastPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	prepared, err := in.PrepareFunction("f")
+	prepared, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +449,7 @@ func TestNumericMultiResultFastPaths(t *testing.T) {
 	values, callErr := in.Invoke("f", I32(7), I32(11))
 	check("Invoke", values, callErr)
 	values, callErr = prepared.Invoke(I32(7), I32(11))
-	check("PreparedFunction.Invoke", values, callErr)
+	check("WasmFunc.Invoke", values, callErr)
 
 	ic := in.findInvokeCache("f")
 	if ic == nil || ic.entryMode == preparedEntryGeneral {
@@ -459,7 +503,7 @@ func TestNumericFastPathsPreserveScalarWidths(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	prepared, err := in.PrepareFunction("f")
+	prepared, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +522,7 @@ func TestNumericFastPathsPreserveScalarWidths(t *testing.T) {
 	values, callErr := in.Invoke("f", args...)
 	check("Invoke", values, callErr)
 	values, callErr = prepared.Invoke(args...)
-	check("PreparedFunction.Invoke", values, callErr)
+	check("WasmFunc.Invoke", values, callErr)
 }
 
 func hostToWasmI32SignatureModule(params, results int) []byte {
@@ -512,14 +556,14 @@ func BenchmarkPreparedInvokeAddOne(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		res, err := fn.Invoke1(I32(int32(i)))
+		res, err := fn.Invoke(I32(int32(i)))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -558,14 +602,14 @@ func BenchmarkPreparedInvokeAddOneCallBlock(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer in.Close()
-			fn, err := in.PrepareFunction("f")
+			fn, err := in.WasmFunc("f")
 			if err != nil {
 				b.Fatal(err)
 			}
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				res, err := fn.Invoke1(I32(int32(i)))
+				res, err := fn.Invoke(I32(int32(i)))
 				if err != nil {
 					b.Fatal(err)
 				}

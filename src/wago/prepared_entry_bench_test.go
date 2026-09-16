@@ -27,7 +27,7 @@ func BenchmarkPreparedEntryModes(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer in.Close()
-			fn, err := in.PrepareFunction("f")
+			fn, err := in.WasmFunc("f")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -45,7 +45,7 @@ func BenchmarkPreparedEntryModes(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				out, err := fn.Invoke1(41)
+				out, err := fn.Invoke(41)
 				if err != nil || len(out) != 1 || out[0] != 42 {
 					b.Fatalf("call = %v, %v", out, err)
 				}

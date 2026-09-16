@@ -57,7 +57,7 @@ func TestGCExecutedHelperStatsTrackBatchedNativeStructAllocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	fn, err := instance.PrepareFunction("new_get")
+	fn, err := instance.WasmFunc("new_get")
 	if err != nil {
 		t.Fatal(err)
 	}

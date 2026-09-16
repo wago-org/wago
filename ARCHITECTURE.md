@@ -589,7 +589,7 @@ At instantiation, each cell receives a wrapper entry, home linear-memory base,
 target instance context, and caller context. Cross-instance cells point directly
 at the producer's wrapper entry; host cells point at small instance-owned thunks.
 
-Legacy void `HostFunc` signatures that fit the batched protocol may append calls
+Explicit deferred `I32HostEvent` imports may append calls
 to the off-heap log at basedata offset 40 and replay them after native return.
 Returning, vector, owned, reflected, or caller-sensitive host functions use the
 synchronous `CallWithHost` control frame: native execution yields to Go at the
@@ -607,11 +607,11 @@ uses full restoration. Native and collector leases, parked roots, and scheduler
 entry/resume protocols are still required. See
 [host-call measurements and proof limits](docs/host-roundtrip-performance.md).
 
-`CallerHostFunc` is an optional concrete-value callback ABI. Its `Caller` wraps
-the same private immutable token as the legacy `HostModule` value. Dispatch
-passes it directly, without an interface box; both representations share the
-same capability resolver. Plugin `CallerFunc` registration retains the normal
-gate and reservation checks. See the
+`func(Caller, HostCall)` is the callback ABI for memory, reference operations,
+invocation context, and authorized synchronous re-entry. `Caller` wraps a
+private immutable token and expires when the callback returns. All host
+functions use flat `(module, name)` registration and retain normal plugin gate
+and reservation checks. See the
 [concrete caller design and measurements](docs/host-caller-performance.md).
 
 ---
