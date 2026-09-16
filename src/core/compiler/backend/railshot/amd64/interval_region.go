@@ -42,6 +42,21 @@ func intervalRegionHintStorageEligible(enabled bool, bodyLen, nLocals int, modul
 		nLocals >= minIntervalRegionLocals && nLocals <= maxIntervalRegionLocals
 }
 
+// intervalScratchLeaseEligible preserves a transient-register floor when
+// module-wide roles reserve registers from the regional pool. Leasing RDX with
+// two or more unavailable base registers can otherwise leave every allocatable
+// GPR occupied by regional locals, fixed operands, or module state.
+func intervalScratchLeaseEligible(reserved regMask, guardMode bool) bool {
+	baseLimit := intervalRegionRegLimit(guardMode)
+	unavailable := 0
+	for _, reg := range intervalRegionOrder[:baseLimit] {
+		if reserved.has(reg) {
+			unavailable++
+		}
+	}
+	return unavailable < 2
+}
+
 // prepareIntervalRegion discovers profitable integer local lifetimes in one
 // call-free straight-line body. Storage is worker scratch and capped by
 // locals/body size; unsupported shapes keep the existing lowering.
@@ -56,7 +71,8 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 	// module: scalar helper functions share its module register/pinning plan, and
 	// the full Blake oracle reaches the high-pressure overlap there.
 	f.intervalScratch = f.opt(optIntervalScratchLease) && !hints.hasFixedScratchLease() &&
-		!f.moduleHasSIMD && !hints.flags.has(hintHasCall|hintHasControlFlow|hintUsesBulkMem) && len(f.ft.Results) <= 1
+		!f.moduleHasSIMD && !hints.flags.has(hintHasCall|hintHasControlFlow|hintUsesBulkMem) && len(f.ft.Results) <= 1 &&
+		intervalScratchLeaseEligible(f.reserved, f.guardMode)
 	if f.intervalScratch {
 		f.intervalRegLimit++
 	}
