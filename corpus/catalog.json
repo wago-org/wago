@@ -1685,7 +1685,7 @@
     },
     {
       "suite": "Wren",
-      "desc": "Wren VM compiling and executing allocation-heavy prime computation",
+      "desc": "Wren VM executing classes, closures, collections, and allocation-heavy loops",
       "source": {
         "repository": "https://github.com/wren-lang/wren.git",
         "revision": "99d2f0b8fc2686134b32b18166e037639f7e9f2c",
@@ -1699,12 +1699,12 @@
         "runtime": "wasi",
         "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "wren_run",
-        "want": [210661955]
+        "want": [400416720]
       },
       "id": "wren",
       "artifact": "workloads/semantic/wren/wren.wasm",
       "tags": ["application", "interpreter", "language", "gc", "c"],
-      "artifact_sha256": "4c5349da94ef84075e644a5b753716b3db28b8eb381a1d071ed8118b3e775bc3"
+      "artifact_sha256": "505f7db23cb3fac18e7ff1257b105d8ea436d08a11cce497c69a5a89919a00fb"
     },
     {
       "suite": "TinyXML-2",
