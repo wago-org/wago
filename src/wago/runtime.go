@@ -940,13 +940,13 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	var overrides resolvedImports
 	var extraOverrides []resolvedImports
 	if cfg.imports != nil {
-		overrides, _, err = cfg.imports.snapshot()
+		overrides, err = cfg.imports.snapshot()
 		if err != nil {
 			return nil, fmt.Errorf("wago: finalize imports: %w", err)
 		}
 	}
 	for _, collection := range cfg.extraImports {
-		bindings, _, snapshotErr := collection.snapshot()
+		bindings, snapshotErr := collection.snapshot()
 		if snapshotErr != nil {
 			return nil, fmt.Errorf("wago: finalize imports: %w", snapshotErr)
 		}

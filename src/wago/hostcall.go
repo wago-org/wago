@@ -1430,46 +1430,71 @@ func isHostCallback(value any) bool {
 	}
 }
 
-func inferredHostFuncSignature(value any) (params, results []ValType, ok bool) {
-	switch value.(type) {
-	case noArgsHostFunc, func():
-		return nil, nil, true
-	case i32HostFunc, func(int32):
-		return []ValType{ValI32}, nil, true
-	case i32ToI32HostFunc, func(int32) int32:
-		return []ValType{ValI32}, []ValType{ValI32}, true
-	case i32I32HostFunc, func(int32, int32):
-		return []ValType{ValI32, ValI32}, nil, true
-	case i32I32ToI32HostFunc, func(int32, int32) int32:
-		return []ValType{ValI32, ValI32}, []ValType{ValI32}, true
-	case i32ToI32I32HostFunc, func(int32) (int32, int32):
-		return []ValType{ValI32}, []ValType{ValI32, ValI32}, true
-	case i32I32ToI32I32HostFunc, func(int32, int32) (int32, int32):
-		return []ValType{ValI32, ValI32}, []ValType{ValI32, ValI32}, true
+// inspectHostFuncSignature classifies only the public callback forms accepted
+// by Imports.HostFunc and HostImportRegistrar.HostFunc. Internal slot-ABI and
+// gated callbacks deliberately remain outside this registration boundary.
+func inspectHostFuncSignature(value any) (params, results []ValType, inferred, supported, nilCallback bool) {
+	switch fn := value.(type) {
+	case HostCallFunc:
+		return nil, nil, false, true, fn == nil
+	case func(HostCall):
+		return nil, nil, false, true, fn == nil
+	case CallerHostCallFunc:
+		return nil, nil, false, true, fn == nil
+	case func(Caller, HostCall):
+		return nil, nil, false, true, fn == nil
+	case noArgsHostFunc:
+		return nil, nil, true, true, fn == nil
+	case func():
+		return nil, nil, true, true, fn == nil
+	case i32HostFunc:
+		return []ValType{ValI32}, nil, true, true, fn == nil
+	case func(int32):
+		return []ValType{ValI32}, nil, true, true, fn == nil
+	case i32ToI32HostFunc:
+		return []ValType{ValI32}, []ValType{ValI32}, true, true, fn == nil
+	case func(int32) int32:
+		return []ValType{ValI32}, []ValType{ValI32}, true, true, fn == nil
+	case i32I32HostFunc:
+		return []ValType{ValI32, ValI32}, nil, true, true, fn == nil
+	case func(int32, int32):
+		return []ValType{ValI32, ValI32}, nil, true, true, fn == nil
+	case i32I32ToI32HostFunc:
+		return []ValType{ValI32, ValI32}, []ValType{ValI32}, true, true, fn == nil
+	case func(int32, int32) int32:
+		return []ValType{ValI32, ValI32}, []ValType{ValI32}, true, true, fn == nil
+	case i32ToI32I32HostFunc:
+		return []ValType{ValI32}, []ValType{ValI32, ValI32}, true, true, fn == nil
+	case func(int32) (int32, int32):
+		return []ValType{ValI32}, []ValType{ValI32, ValI32}, true, true, fn == nil
+	case i32I32ToI32I32HostFunc:
+		return []ValType{ValI32, ValI32}, []ValType{ValI32, ValI32}, true, true, fn == nil
+	case func(int32, int32) (int32, int32):
+		return []ValType{ValI32, ValI32}, []ValType{ValI32, ValI32}, true, true, fn == nil
 	case func(int64) int64:
-		return []ValType{ValI64}, []ValType{ValI64}, true
+		return []ValType{ValI64}, []ValType{ValI64}, true, true, fn == nil
 	case func(int64, int64) int64:
-		return []ValType{ValI64, ValI64}, []ValType{ValI64}, true
+		return []ValType{ValI64, ValI64}, []ValType{ValI64}, true, true, fn == nil
 	case func(float32) float32:
-		return []ValType{ValF32}, []ValType{ValF32}, true
+		return []ValType{ValF32}, []ValType{ValF32}, true, true, fn == nil
 	case func(float32, float32) float32:
-		return []ValType{ValF32, ValF32}, []ValType{ValF32}, true
+		return []ValType{ValF32, ValF32}, []ValType{ValF32}, true, true, fn == nil
 	case func(float64) float64:
-		return []ValType{ValF64}, []ValType{ValF64}, true
+		return []ValType{ValF64}, []ValType{ValF64}, true, true, fn == nil
 	case func(float64, float64) float64:
-		return []ValType{ValF64, ValF64}, []ValType{ValF64}, true
+		return []ValType{ValF64, ValF64}, []ValType{ValF64}, true, true, fn == nil
 	case func(FuncRef) FuncRef:
-		return []ValType{ValFuncRef}, []ValType{ValFuncRef}, true
+		return []ValType{ValFuncRef}, []ValType{ValFuncRef}, true, true, fn == nil
 	case func(ExternRef) ExternRef:
-		return []ValType{ValExternRef}, []ValType{ValExternRef}, true
+		return []ValType{ValExternRef}, []ValType{ValExternRef}, true, true, fn == nil
 	case func(ExnRef) ExnRef:
-		return []ValType{ValExnRef}, []ValType{ValExnRef}, true
+		return []ValType{ValExnRef}, []ValType{ValExnRef}, true, true, fn == nil
 	case func(GCRef) GCRef:
-		return []ValType{ValAnyRef}, []ValType{ValAnyRef}, true
+		return []ValType{ValAnyRef}, []ValType{ValAnyRef}, true, true, fn == nil
 	case func(I31Ref) I31Ref:
-		return []ValType{ValI31Ref}, []ValType{ValI31Ref}, true
+		return []ValType{ValI31Ref}, []ValType{ValI31Ref}, true, true, fn == nil
 	default:
-		return nil, nil, false
+		return nil, nil, false, false, false
 	}
 }
 

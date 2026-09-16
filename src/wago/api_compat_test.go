@@ -245,7 +245,7 @@ func TestCompiledAPIHelpers(t *testing.T) {
 		t.Fatalf("FuncDebugName export fallback = %q", got)
 	}
 	imports := testImports("env.g", NewGlobalI32(3, false))
-	bindings, _, err := imports.snapshot()
+	bindings, err := imports.snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestReturningHostImportUsesCompiledDispatch(t *testing.T) {
 	}
 	defer c.Close()
 	imports := testImports("env.answer", slotHostFunc(func(_ HostModule, _, results []uint64) { results[0] = I32(42) }))
-	bindings, _, err := imports.snapshot()
+	bindings, err := imports.snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

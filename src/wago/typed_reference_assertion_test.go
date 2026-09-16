@@ -712,7 +712,6 @@ func (s *proposalReplayState) importsFor(compiled *Compiled, exact proposalImpor
 	put := func(module, name string, value any) {
 		key := importBindingMapKey(module, name)
 		imports.bindings[key] = value
-		imports.identities[key] = importBindingKey{module: module, name: name}
 	}
 	for key, value := range s.standard.bindings {
 		module, name, ok := splitImportBindingMapKey(key)
@@ -927,7 +926,8 @@ func proposalLimitsCompatible(actual, expected corewasm.Limits) bool {
 }
 
 func proposalImportValueKind(value any) proposalExternKind {
-	if isHostCallback(value) || isHostCallCallback(value) {
+	_, _, _, supported, _ := inspectHostFuncSignature(value)
+	if isHostCallback(value) || supported {
 		return proposalExternFunc
 	}
 	switch value.(type) {

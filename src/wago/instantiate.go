@@ -130,7 +130,7 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	imports := opts.resolvedImports
 	if !opts.ownedImports && opts.Imports != nil {
 		var err error
-		imports, _, err = opts.Imports.snapshot()
+		imports, err = opts.Imports.snapshot()
 		if err != nil {
 			return nil, fmt.Errorf("wago: finalize imports: %w", err)
 		}

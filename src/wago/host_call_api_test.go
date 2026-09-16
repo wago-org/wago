@@ -197,8 +197,8 @@ func TestOrdinaryNumericFunctionsInferAndBind(t *testing.T) {
 		{func(a, b float64) float64 { return a + b }, ValF64, 2},
 	}
 	for _, test := range tests {
-		params, results, ok := inferredHostFuncSignature(test.fn)
-		if !ok || len(params) != test.args || len(results) != 1 || results[0] != test.typ {
+		params, results, ok, supported, nilCallback := inspectHostFuncSignature(test.fn)
+		if !ok || !supported || nilCallback || len(params) != test.args || len(results) != 1 || results[0] != test.typ {
 			t.Fatalf("signature for %T = %v -> %v, %v", test.fn, params, results, ok)
 		}
 		if _, err := bindSyncHostImport(test.fn, FuncSig{Params: params, Results: results}); err != nil {
@@ -212,7 +212,7 @@ func TestOrdinaryV128HostFunctionIsUnsupported(t *testing.T) {
 	if isHostCallback(fn) {
 		t.Fatal("ordinary v128 function was recognized as a host callback")
 	}
-	if _, _, ok := inferredHostFuncSignature(fn); ok {
+	if _, _, inferred, supported, _ := inspectHostFuncSignature(fn); inferred || supported {
 		t.Fatal("ordinary v128 function signature was inferred")
 	}
 	if _, err := bindSyncHostImport(fn, FuncSig{Params: []ValType{ValV128}, Results: []ValType{ValV128}}); err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") {

@@ -333,13 +333,13 @@ func TestInstantiateOptionHelpers(t *testing.T) {
 	WithGC(GCConfig{TinyHeapBytes: 64})(&c)
 	rt := NewRuntime()
 	defer rt.Close()
-	first, _, err := c.imports.snapshot()
+	first, err := c.imports.snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
 	var rest []resolvedImports
 	for _, collection := range c.extraImports {
-		bindings, _, snapshotErr := collection.snapshot()
+		bindings, snapshotErr := collection.snapshot()
 		if snapshotErr != nil {
 			t.Fatal(snapshotErr)
 		}

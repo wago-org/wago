@@ -57,10 +57,16 @@ func (a *HostImportRegistrar) HostFunc(module, name string, fn any) *ImportFuncB
 		return &ImportFuncBuilder{}
 	}
 	imp := &registeredImport{module: module, name: name, fn: fn}
-	imp.inferredParams, imp.inferredResults, imp.inferred = inferredHostFuncSignature(fn)
+	var supported, nilCallback bool
+	imp.inferredParams, imp.inferredResults, imp.inferred, supported, nilCallback = inspectHostFuncSignature(fn)
 	imp.params = append([]ValType(nil), imp.inferredParams...)
 	imp.results = append([]ValType(nil), imp.inferredResults...)
 	a.reg.imports = append(a.reg.imports, imp)
+	if fn == nil || nilCallback {
+		a.reg.recordImportError(module, name, fmt.Errorf("host callback is nil"))
+	} else if !supported {
+		a.reg.recordImportError(module, name, fmt.Errorf("unsupported host callback %T", fn))
+	}
 	return &ImportFuncBuilder{imp: imp, reg: a.reg}
 }
 

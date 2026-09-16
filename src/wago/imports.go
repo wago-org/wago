@@ -13,18 +13,17 @@ import (
 // Configure it before first use. Instantiation seals it and snapshots its
 // bindings, after which concurrent reuse is safe and mutation is rejected.
 type Imports struct {
-	mu         sync.Mutex
-	bindings   resolvedImports
-	identities map[string]importBindingKey
-	decls      []*registeredImport
-	err        error
-	sealed     bool
+	mu       sync.Mutex
+	bindings resolvedImports
+	decls    []*registeredImport
+	err      error
+	sealed   bool
 }
 
 type resolvedImports map[string]any
 
 func NewImports() *Imports {
-	return &Imports{bindings: make(resolvedImports), identities: make(map[string]importBindingKey)}
+	return &Imports{bindings: make(resolvedImports)}
 }
 
 // importBindingMapKey is collision-free for every valid UTF-8 WebAssembly
@@ -55,9 +54,6 @@ func (im *Imports) Lookup(module, name string) (any, bool) {
 	im.mu.Lock()
 	defer im.mu.Unlock()
 	key := importBindingMapKey(module, name)
-	if im.identities[key] != (importBindingKey{module: module, name: name}) {
-		return nil, false
-	}
 	value, ok := im.bindings[key]
 	return value, ok
 }
@@ -70,12 +66,10 @@ func (im *Imports) add(module, name string, value any) bool {
 		return false
 	}
 	key := importBindingMapKey(module, name)
-	identity := importBindingKey{module: module, name: name}
-	if _, ok := im.identities[key]; ok {
+	if _, ok := im.bindings[key]; ok {
 		im.record(fmt.Errorf("wago: duplicate import %q.%q", module, name))
 		return false
 	}
-	im.identities[key] = identity
 	im.bindings[key] = value
 	return true
 }
@@ -87,11 +81,17 @@ func (im *Imports) HostFunc(module, name string, fn any) *ImportFuncBuilder {
 	im.mu.Lock()
 	defer im.mu.Unlock()
 	imp := &registeredImport{module: module, name: name, fn: fn}
-	imp.inferredParams, imp.inferredResults, imp.inferred = inferredHostFuncSignature(fn)
+	var supported, nilCallback bool
+	imp.inferredParams, imp.inferredResults, imp.inferred, supported, nilCallback = inspectHostFuncSignature(fn)
 	imp.params = append([]ValType(nil), imp.inferredParams...)
 	imp.results = append([]ValType(nil), imp.inferredResults...)
 	if im.add(module, name, fn) {
 		im.decls = append(im.decls, imp)
+		if fn == nil || nilCallback {
+			im.record(fmt.Errorf("wago: import %q.%q: host callback is nil", module, name))
+		} else if !supported {
+			im.record(fmt.Errorf("wago: import %q.%q: unsupported host callback %T", module, name, fn))
+		}
 		return &ImportFuncBuilder{imp: imp, imports: im}
 	}
 	return &ImportFuncBuilder{}
@@ -133,9 +133,9 @@ func (im *Imports) bind(module, name string, value any) *Imports {
 	return im
 }
 
-func (im *Imports) snapshot() (resolvedImports, map[string]importBindingKey, error) {
+func (im *Imports) snapshot() (resolvedImports, error) {
 	if im == nil {
-		return nil, nil, nil
+		return nil, nil
 	}
 	im.mu.Lock()
 	defer im.mu.Unlock()
@@ -147,107 +147,12 @@ func (im *Imports) snapshot() (resolvedImports, map[string]importBindingKey, err
 			}
 			continue
 		}
-		if imp.fn == nil || nilHostCallback(imp.fn) {
-			im.record(fmt.Errorf("wago: import %q.%q: host callback is nil", imp.module, imp.name))
-			continue
-		}
-		_, _, inferred := inferredHostFuncSignature(imp.fn)
-		if !inferred && !isHostCallCallback(imp.fn) && !isHostCallback(imp.fn) {
-			im.record(fmt.Errorf("wago: import %q.%q: unsupported host callback %T", imp.module, imp.name, imp.fn))
-			continue
-		}
 		if imp.inferred && (!slices.Equal(imp.params, imp.inferredParams) || !slices.Equal(imp.results, imp.inferredResults)) {
 			im.record(fmt.Errorf("wago: import %q.%q: declared signature %v -> %v does not match callback signature %v -> %v", imp.module, imp.name, imp.params, imp.results, imp.inferredParams, imp.inferredResults))
 		}
 	}
 	if im.err != nil {
-		return nil, nil, im.err
+		return nil, im.err
 	}
-	bindings := make(resolvedImports, len(im.bindings))
-	for key, value := range im.bindings {
-		bindings[key] = value
-	}
-	identities := make(map[string]importBindingKey, len(im.identities))
-	for key, value := range im.identities {
-		identities[key] = value
-	}
-	return bindings, identities, nil
-}
-
-func isHostCallCallback(value any) bool {
-	switch value.(type) {
-	case HostCallFunc, func(HostCall), CallerHostCallFunc, func(Caller, HostCall):
-		return true
-	default:
-		return false
-	}
-}
-
-func nilHostCallback(value any) bool {
-	switch fn := value.(type) {
-	case slotHostFunc:
-		return fn == nil
-	case callerSlotHostFunc:
-		return fn == nil
-	case HostCallFunc:
-		return fn == nil
-	case CallerHostCallFunc:
-		return fn == nil
-	case func(HostCall):
-		return fn == nil
-	case func(Caller, HostCall):
-		return fn == nil
-	case noArgsHostFunc:
-		return fn == nil
-	case func():
-		return fn == nil
-	case i32HostFunc:
-		return fn == nil
-	case func(int32):
-		return fn == nil
-	case i32ToI32HostFunc:
-		return fn == nil
-	case func(int32) int32:
-		return fn == nil
-	case i32I32HostFunc:
-		return fn == nil
-	case func(int32, int32):
-		return fn == nil
-	case i32I32ToI32HostFunc:
-		return fn == nil
-	case func(int32, int32) int32:
-		return fn == nil
-	case i32ToI32I32HostFunc:
-		return fn == nil
-	case func(int32) (int32, int32):
-		return fn == nil
-	case i32I32ToI32I32HostFunc:
-		return fn == nil
-	case func(int32, int32) (int32, int32):
-		return fn == nil
-	case func(int64) int64:
-		return fn == nil
-	case func(int64, int64) int64:
-		return fn == nil
-	case func(float32) float32:
-		return fn == nil
-	case func(float32, float32) float32:
-		return fn == nil
-	case func(float64) float64:
-		return fn == nil
-	case func(float64, float64) float64:
-		return fn == nil
-	case func(FuncRef) FuncRef:
-		return fn == nil
-	case func(ExternRef) ExternRef:
-		return fn == nil
-	case func(ExnRef) ExnRef:
-		return fn == nil
-	case func(GCRef) GCRef:
-		return fn == nil
-	case func(I31Ref) I31Ref:
-		return fn == nil
-	default:
-		return false
-	}
+	return im.bindings, nil
 }

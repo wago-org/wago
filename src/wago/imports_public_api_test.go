@@ -11,14 +11,15 @@ func TestImportsFlatRegistrationPreservesExactIdentity(t *testing.T) {
 	imports.HostFunc("foo", "step", func(x int32) int32 { return x * 2 })
 	imports.HostFunc("a.b", "c", func() {})
 	imports.HostFunc("a", "b.c", func() {})
-	bindings, identities, err := imports.snapshot()
+	bindings, err := imports.snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, identity := range []importBindingKey{{module: "env", name: "step"}, {module: "foo", name: "step"}, {module: "a.b", name: "c"}, {module: "a", name: "b.c"}} {
 		key := importBindingMapKey(identity.module, identity.name)
-		if _, ok := bindings[key]; !ok || identities[key] != identity {
-			t.Fatalf("binding %q = %v, %v; want exact identity %+v", key, bindings[key], identities[key], identity)
+		module, name, split := splitImportBindingMapKey(key)
+		if _, ok := bindings[key]; !ok || !split || module != identity.module || name != identity.name {
+			t.Fatalf("binding %q = %v, split=(%q, %q, %v); want exact identity %+v", key, bindings[key], module, name, split, identity)
 		}
 	}
 }
@@ -36,6 +37,10 @@ func TestImportsDeferredDeclarationValidation(t *testing.T) {
 		{"nil", func(im *Imports) { im.HostFunc("env", "f", nil) }, "host callback is nil"},
 		{"typed nil", func(im *Imports) {
 			var fn func(int32) int32
+			im.HostFunc("env", "f", fn)
+		}, "host callback is nil"},
+		{"typed nil HostCall", func(im *Imports) {
+			var fn HostCallFunc
 			im.HostFunc("env", "f", fn)
 		}, "host callback is nil"},
 		{"nil deferred event", func(im *Imports) {
@@ -57,7 +62,7 @@ func TestImportsDeferredDeclarationValidation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			imports := NewImports()
 			test.add(imports)
-			if _, _, err := imports.snapshot(); err == nil || !strings.Contains(err.Error(), test.want) {
+			if _, err := imports.snapshot(); err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("snapshot error = %v, want substring %q", err, test.want)
 			}
 		})
@@ -67,24 +72,19 @@ func TestImportsDeferredDeclarationValidation(t *testing.T) {
 func TestImportsSealSnapshotsBindings(t *testing.T) {
 	imports := NewImports()
 	imports.HostFunc("env", "f", func() {})
-	first, _, err := imports.snapshot()
+	first, err := imports.snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, _, err := imports.snapshot()
+	second, err := imports.snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(first) != 1 || len(second) != 1 {
 		t.Fatalf("snapshot sizes = %d, %d; want 1, 1", len(first), len(second))
 	}
-	delete(first, importBindingMapKey("env", "f"))
-	if _, ok := second[importBindingMapKey("env", "f")]; !ok {
-		t.Fatal("mutating one resolved snapshot changed another")
-	}
-
 	imports.HostFunc("env", "late", func() {})
-	if _, _, err := imports.snapshot(); err == nil || !strings.Contains(err.Error(), "collection is sealed") {
+	if _, err := imports.snapshot(); err == nil || !strings.Contains(err.Error(), "collection is sealed") {
 		t.Fatalf("mutation after sealing error = %v", err)
 	}
 	if _, ok := second[importBindingMapKey("env", "late")]; ok {

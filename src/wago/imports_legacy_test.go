@@ -15,7 +15,7 @@ func testSetImport(im *Imports, key string, value any) {
 	module, name := splitImportKey(key)
 	mapKey := importBindingMapKey(module, name)
 	im.mu.Lock()
-	_, replacing := im.identities[mapKey]
+	_, replacing := im.bindings[mapKey]
 	if replacing {
 		im.bindings[mapKey] = value
 	}
@@ -48,7 +48,8 @@ func testSetImport(im *Imports, key string, value any) {
 	case *HostFuncRef, *InstanceExport:
 		im.Function(module, name, fn)
 	default:
-		if isHostCallback(value) || isHostCallCallback(value) {
+		_, _, _, supported, _ := inspectHostFuncSignature(value)
+		if supported {
 			im.HostFunc(module, name, value)
 		} else {
 			im.bind(module, name, value)
@@ -63,8 +64,11 @@ func testCloneImports(source *Imports) *Imports {
 	}
 	source.mu.Lock()
 	defer source.mu.Unlock()
-	for mapKey, identity := range source.identities {
-		testSetImport(clone, identity.module+"."+identity.name, source.bindings[mapKey])
+	for mapKey, value := range source.bindings {
+		module, name, ok := splitImportBindingMapKey(mapKey)
+		if ok {
+			testSetImport(clone, module+"."+name, value)
+		}
 	}
 	return clone
 }

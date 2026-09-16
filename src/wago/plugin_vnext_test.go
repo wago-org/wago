@@ -232,6 +232,48 @@ func TestAuthorityExactGrantsAndHostScope(t *testing.T) {
 	}
 }
 
+func TestPluginHostImportDeclarationErrorsFailBeforeActivation(t *testing.T) {
+	tests := []struct {
+		name string
+		fn   any
+		want string
+	}{
+		{"nil", nil, "host callback is nil"},
+		{"unsupported", func(string) {}, "unsupported host callback"},
+		{"legacy raw slots", func(HostModule, []uint64, []uint64) {}, "unsupported host callback"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			def := testDefinition("example.com/invalid-host-" + strings.ReplaceAll(test.name, " ", "-"))
+			def.Authorities = []AuthorityRequest{{Name: AuthorityHostImportDefine, Mode: AuthorityRequired, Reason: "test", Scope: AuthorityScope{Modules: []string{"env"}}}}
+			started := false
+			provider := PluginProvider{Definition: def, New: func() Plugin {
+				return pluginFunc(func(r *Registrar) error {
+					host, err := r.HostImports()
+					if err != nil {
+						return err
+					}
+					host.HostFunc("env", "f", test.fn)
+					if err := r.Lifecycle(PluginLifecycle{Start: func(context.Context) error {
+						started = true
+						return nil
+					}}); err != nil {
+						return err
+					}
+					return nil
+				})
+			}}
+			err := NewRuntime().LoadPlugins(context.Background(), testSet(t, provider))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("LoadPlugins error = %v, want substring %q", err, test.want)
+			}
+			if started {
+				t.Fatal("plugin activated after an invalid host declaration")
+			}
+		})
+	}
+}
+
 func TestInspectIsSideEffectFreeAndCommitAtomic(t *testing.T) {
 	factories := 0
 	def := testDefinition("example.com/inspect")
