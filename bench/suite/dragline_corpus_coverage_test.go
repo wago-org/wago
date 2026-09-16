@@ -208,6 +208,33 @@ func TestDraglineGlobalsClosedSumDifferential(t *testing.T) {
 	}
 }
 
+// TestDragline2mmDifferential locks the application-sized PolyBench workload
+// to Railshot's result. This is a normal correctness gate because ARM64 once
+// admitted the module but miscompiled polybench_run into an out-of-bounds load.
+func TestDragline2mmDifferential(t *testing.T) {
+	var module corpusModule
+	for _, candidate := range readManifest(t, "manifest.json") {
+		if candidate.File == "2mm.wasm" {
+			module = candidate
+			break
+		}
+	}
+	if len(module.bytes) == 0 {
+		t.Fatal("2mm.wasm is missing from the corpus")
+	}
+	dragline, err := wago.NewRuntimeConfig().WithCompiler(wago.CompilerDragline).Compile(module.bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dragline.Close()
+	railshot, err := wago.NewRuntimeConfig().WithCompiler(wago.CompilerRailshot).Compile(module.bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer railshot.Close()
+	runCorpusPair(t, module, railshot, dragline)
+}
+
 // TestDraglineSIMDCorpusDifferential locks the bounded real-world SIMD subset
 // to independent Railshot results on every architecture that can execute the
 // generated native code. Unlike the broad coverage inventory, this is a normal

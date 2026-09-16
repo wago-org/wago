@@ -41,14 +41,28 @@ var arm64FPParamRegisters = [...]arm64.Reg{0, 1, 2, 3, 4, 5, 6, 7}
 const arm64EnableAlgorithmSpecializations = false
 
 func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, _ []railmach.ABIContract) bool {
-	return railMachCandidate(stack, moduleHasV128)
+	if !railMachCandidate(stack, moduleHasV128) {
+		return false
+	}
+	if len(stack.Instrs) > 256 && stack.MaxLoopDepth > 1 && len(stack.Params) == 0 {
+		// Large parameterless nested loops have not proved their backedge value
+		// flow through the ARM64 machine pipeline yet.
+		return false
+	}
+	return true
 }
 
 func arm64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, uniformStructured bool) string {
 	if uniformStructured {
 		return "windows-uniform-structured"
 	}
-	return railMachRejectionReason(stack, moduleHasV128)
+	if reason := railMachRejectionReason(stack, moduleHasV128); reason != "" {
+		return reason
+	}
+	if len(stack.Instrs) > 256 && stack.MaxLoopDepth > 1 && len(stack.Params) == 0 {
+		return "arm64-large-parameterless-nested-loop"
+	}
+	return ""
 }
 
 var arm64StackLocalRegisters = [...]arm64.Reg{arm64.X19, arm64.X20, arm64.X21, arm64.X22, arm64.X23}

@@ -3206,24 +3206,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				case railmach.OpAMD64I8x16LtU, railmach.OpAMD64I8x16GtU, railmach.OpAMD64I8x16LeU, railmach.OpAMD64I8x16GeU,
 					railmach.OpAMD64I16x8LtU, railmach.OpAMD64I16x8GtU, railmach.OpAMD64I16x8LeU, railmach.OpAMD64I16x8GeU,
 					railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GtU, railmach.OpAMD64I32x4LeU, railmach.OpAMD64I32x4GeU:
-					sign := amd64UnsignedVectorSignMask(instruction.Op)
-					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(5), bytes: sign})
-					a.VPxor(dst, lhs, 5)
-					a.VPxor(5, rhs, 5)
-					switch instruction.Op {
-					case railmach.OpAMD64I8x16LtU, railmach.OpAMD64I8x16GeU:
-						a.VPcmpgtb(dst, 5, dst)
-					case railmach.OpAMD64I8x16GtU, railmach.OpAMD64I8x16LeU:
-						a.VPcmpgtb(dst, dst, 5)
-					case railmach.OpAMD64I16x8LtU, railmach.OpAMD64I16x8GeU:
-						a.VPcmpgtw(dst, 5, dst)
-					case railmach.OpAMD64I16x8GtU, railmach.OpAMD64I16x8LeU:
-						a.VPcmpgtw(dst, dst, 5)
-					case railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GeU:
-						a.VPcmpgtd(dst, 5, dst)
-					default:
-						a.VPcmpgtd(dst, dst, 5)
-					}
+					emitAMD64UnsignedVectorCompare(&a, instruction.Op, dst, lhs, rhs, &simdConstantPatches)
 				case railmach.OpAMD64I16x8Shl, railmach.OpAMD64I16x8ShrS, railmach.OpAMD64I16x8ShrU,
 					railmach.OpAMD64I32x4Shl, railmach.OpAMD64I32x4ShrS, railmach.OpAMD64I32x4ShrU,
 					railmach.OpAMD64I64x2Shl, railmach.OpAMD64I64x2ShrU:
@@ -4799,6 +4782,39 @@ func amd64UnsignedVectorSignMask(op railmach.MOpcode) (mask [16]byte) {
 		mask[index] = 0x80
 	}
 	return mask
+}
+
+func emitAMD64UnsignedVectorCompare(a *amd64.Asm, op railmach.MOpcode, dst, lhs, rhs amd64.Reg, patches *[]amd64SIMDConstantPatch) {
+	sign := amd64UnsignedVectorSignMask(op)
+	*patches = append(*patches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(5), bytes: sign})
+	resultAliasesRHS := dst == rhs
+	if resultAliasesRHS {
+		// The comparison sequence is destructive. Preserve rhs by biasing it
+		// into the result before reusing XMM5 for lhs.
+		a.VPxor(dst, rhs, 5)
+		a.VPxor(5, lhs, 5)
+	} else {
+		a.VPxor(dst, lhs, 5)
+		a.VPxor(5, rhs, 5)
+	}
+	left, right := amd64.Reg(5), dst
+	if resultAliasesRHS {
+		left, right = dst, 5
+	}
+	switch op {
+	case railmach.OpAMD64I8x16LtU, railmach.OpAMD64I8x16GeU:
+		a.VPcmpgtb(dst, left, right)
+	case railmach.OpAMD64I8x16GtU, railmach.OpAMD64I8x16LeU:
+		a.VPcmpgtb(dst, right, left)
+	case railmach.OpAMD64I16x8LtU, railmach.OpAMD64I16x8GeU:
+		a.VPcmpgtw(dst, left, right)
+	case railmach.OpAMD64I16x8GtU, railmach.OpAMD64I16x8LeU:
+		a.VPcmpgtw(dst, right, left)
+	case railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GeU:
+		a.VPcmpgtd(dst, left, right)
+	default:
+		a.VPcmpgtd(dst, right, left)
+	}
 }
 
 func amd64RailMachRegisterLiveAfter(plan *nativeBackendPlan, physical uint16, position uint32, excluded railmach.VReg) bool {
@@ -8400,6 +8416,10 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		}
 	case wasm.InstrI32x4Add:
 		if err := binaryOp(a.VPaddd); err != nil {
+			return err
+		}
+	case wasm.InstrI32x4Mul:
+		if err := binaryOp(a.VPmulld); err != nil {
 			return err
 		}
 	case wasm.InstrI8x16NarrowI16x8U:

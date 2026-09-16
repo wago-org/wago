@@ -628,6 +628,31 @@ func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {
 	}
 }
 
+func TestARM64LargeParameterlessNestedLoopRailMachAdmission(t *testing.T) {
+	stack := &railssa.StackFunc{
+		Instrs:       make([]railssa.StackInstr, 257),
+		MaxLoopDepth: 2,
+	}
+	for i := range stack.Instrs {
+		stack.Instrs[i].Kind = wasm.InstrI32Add
+	}
+	if arm64RailMachCandidate(stack, false, nil) {
+		t.Fatal("large parameterless nested loop was admitted")
+	}
+	if got := arm64RailMachRejectionReason(stack, false, false); got != "arm64-large-parameterless-nested-loop" {
+		t.Fatalf("rejection reason = %q", got)
+	}
+	stack.Params = []wasm.ValType{wasm.I32}
+	if !arm64RailMachCandidate(stack, false, nil) {
+		t.Fatal("large nested loop with a parameter was rejected")
+	}
+	stack.Params = nil
+	stack.MaxLoopDepth = 1
+	if !arm64RailMachCandidate(stack, false, nil) {
+		t.Fatal("large parameterless single loop was rejected")
+	}
+}
+
 func TestARM64UnboundedLoopStaysOffGoStack(t *testing.T) {
 	plan := &nativeBackendPlan{
 		Stack:   &railssa.StackFunc{MaxLoopDepth: 1},

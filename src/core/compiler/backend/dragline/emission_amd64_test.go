@@ -39,6 +39,24 @@ func TestAMD64CarriesMemoryChecksAcrossMemoryFreeLayoutSibling(t *testing.T) {
 	}
 }
 
+func TestAMD64UnsignedVectorComparePreservesAliasedRHS(t *testing.T) {
+	var got amd64.Asm
+	var patches []amd64SIMDConstantPatch
+	emitAMD64UnsignedVectorCompare(&got, railmach.OpAMD64I16x8GeU, 2, 1, 2, &patches)
+
+	var want amd64.Asm
+	want.MovdquRipPlaceholder(5)
+	want.VPxor(2, 2, 5)
+	want.VPxor(5, 1, 5)
+	want.VPcmpgtw(2, 2, 5)
+	if !bytes.Equal(got.B, want.B) {
+		t.Fatalf("aliased unsigned comparison = %x, want %x", got.B, want.B)
+	}
+	if len(patches) != 1 || patches[0].bytes != amd64UnsignedVectorSignMask(railmach.OpAMD64I16x8GeU) {
+		t.Fatalf("aliased unsigned comparison patches = %#v", patches)
+	}
+}
+
 func TestAMD64RailMachRotatesCanonicalCountdownLoop(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
@@ -481,6 +499,21 @@ func TestAMD64StructuredSIMDConstantsUseDeduplicatedRIPPool(t *testing.T) {
 	if got := bytes.Count(output.Code, constant[:]); got != 1 {
 		t.Fatalf("SIMD constant pool copies = %d, want 1", got)
 	}
+}
+
+func TestAMD64StructuredSupportsI32x4Mul(t *testing.T) {
+	body := []byte{0x01, 0x01, 0x7b, 0xfd, 0x0c} // one v128 local; v128.const
+	body = append(body, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0)
+	body = append(body, 0xfd, 0x0c)
+	body = append(body, 5, 0, 0, 0, 6, 0, 0, 0, 7, 0, 0, 0, 8, 0, 0, 0)
+	body = append(body, 0xfd, 0xb5, 0x01, 0x0b) // i32x4.mul; end
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	compileAMD64EmissionTest(t, source)
 }
 
 func TestAMD64StructuredFusesIntegerComparisonIntoControl(t *testing.T) {
