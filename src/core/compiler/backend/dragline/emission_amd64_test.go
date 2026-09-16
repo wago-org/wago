@@ -665,6 +665,27 @@ func TestAMD64StructuredContiguousShuffleUsesAlignr(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredFusesAnyTrueIntoControl(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, // local.get 0
+		0xfd, 0x53, // v128.any_true
+		0x04, 0x40, 0x01, 0x0b, // if; nop; end
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
+	}
+	body = append(body, bytes.Repeat([]byte{0x01}, 510)...)
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	if !bytes.Contains(output.Code, []byte{0xc4, 0xe2, 0x79, 0x17}) || bytes.Contains(output.Code, []byte{0x0f, 0x95}) {
+		t.Fatalf("structured any_true did not feed control flags directly: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredCombinesVectorLocalWithConstantWithoutCopy(t *testing.T) {
 	body := []byte{0x20, 0x00, 0xfd, 0x0c} // local.get 0; v128.const
 	body = append(body, bytes.Repeat([]byte{0x7f}, 16)...)

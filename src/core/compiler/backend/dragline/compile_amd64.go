@@ -6382,6 +6382,15 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			}
 		}
 		if reachable && instrIndex+1 < len(sf.Instrs) && (sf.Instrs[instrIndex+1].Kind == wasm.InstrIf || sf.Instrs[instrIndex+1].Kind == wasm.InstrBrIf) {
+			if descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex)); ok && descriptor.Kind == wasm.InstrV128AnyTrue &&
+				len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 {
+				base := len(stackTypes) - 1
+				value := takeV128(base, 0)
+				a.VPtest(value, value)
+				stackTypes[base] = wasm.I32
+				pendingConditionAt, pendingCondition = instrIndex+1, amd64.CondNE
+				continue
+			}
 			if condition, comparison := amd64IntegerComparisonCond(instr.Kind); comparison {
 				rhsType, err := pop(amd64.R10)
 				if err != nil {
