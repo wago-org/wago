@@ -800,6 +800,7 @@ func TestNativeImmediateCombinationsFoldRepeatedVectorShiftCounts(t *testing.T) 
 		t.Fatalf("producers=%v skipped=%v uses=%v", producers, skipped, uses)
 	}
 	machine.Target = railmach.TargetAMD64
+	plan.Allocation = &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{{}, {Kind: railmach.LocationRematerialize}}}}
 	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
 	producer1, ok1 = producers.get(1)
 	producer2, ok2 = producers.get(2)
@@ -809,7 +810,14 @@ func TestNativeImmediateCombinationsFoldRepeatedVectorShiftCounts(t *testing.T) 
 	if got := machineAMD64VectorScratchCount(machine, true); got != 0 {
 		t.Fatalf("constant vector-shift scratch count = %d, want 0", got)
 	}
+	machine.Insts[1].Op = railmach.OpAMD64I32x4ShrU
+	machine.Insts[2].Op = railmach.OpAMD64I32x4Shl
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
+	if !producers.has(1) || !producers.has(2) || !skipped.has(0) {
+		t.Fatalf("selected AMD64 vector-shift immediate relation = %v", producers)
+	}
 	machine.Insts[1].Op = wasm.InstrI8x16ShrU
+	machine.Insts[2].Op = wasm.InstrI32x4Shl
 	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
 	if producers.has(1) || !producers.has(2) {
 		t.Fatalf("packed-byte shift immediate relation = %v", producers)

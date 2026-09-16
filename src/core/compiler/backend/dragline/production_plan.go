@@ -994,11 +994,15 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers *native
 			continue
 		}
 		producerID := (definition - 3) / 6
-		if int(producerID) >= len(plan.Machine.Insts) || skipped.has(producerID) {
+		if int(producerID) >= len(plan.Machine.Insts) {
 			continue
 		}
 		producer := plan.Machine.Insts[producerID]
 		if producer.Result != value || producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const {
+			continue
+		}
+		rematerialized := plan.Allocation != nil && int(value) < len(plan.Allocation.Locations) && plan.Allocation.Locations[value].Kind == railmach.LocationRematerialize
+		if skipped.has(producerID) && !rematerialized {
 			continue
 		}
 		producers.set(uint32(consumerID), producerID)
@@ -1029,7 +1033,7 @@ func countNativeMachineUses(machine *railmach.Func, uses []uint32) {
 }
 
 func nativeImmediateShiftUse(op railmach.MOpcode) bool {
-	switch op {
+	switch railmach.SemanticOpcode(op) {
 	case wasm.InstrI32Shl, wasm.InstrI64Shl,
 		wasm.InstrI32ShrS, wasm.InstrI64ShrS,
 		wasm.InstrI32ShrU, wasm.InstrI64ShrU,
@@ -1040,12 +1044,26 @@ func nativeImmediateShiftUse(op railmach.MOpcode) bool {
 		wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU,
 		wasm.InstrI64x2Shl, wasm.InstrI64x2ShrS, wasm.InstrI64x2ShrU:
 		return true
+	}
+	switch op {
+	case railmach.OpAMD64I16x8Shl, railmach.OpAMD64I16x8ShrS, railmach.OpAMD64I16x8ShrU,
+		railmach.OpAMD64I32x4Shl, railmach.OpAMD64I32x4ShrS, railmach.OpAMD64I32x4ShrU,
+		railmach.OpAMD64I64x2Shl, railmach.OpAMD64I64x2ShrU,
+		railmach.OpARM64I8x16Shl, railmach.OpARM64I8x16ShrS, railmach.OpARM64I8x16ShrU,
+		railmach.OpARM64I16x8Shl, railmach.OpARM64I16x8ShrS, railmach.OpARM64I16x8ShrU,
+		railmach.OpARM64I32x4Shl, railmach.OpARM64I32x4ShrS, railmach.OpARM64I32x4ShrU,
+		railmach.OpARM64I64x2Shl, railmach.OpARM64I64x2ShrS, railmach.OpARM64I64x2ShrU:
+		return true
 	default:
 		return false
 	}
 }
 
 func nativeAMD64VectorShiftNeedsRegister(op railmach.MOpcode) bool {
+	switch op {
+	case railmach.OpAMD64I8x16Shl, railmach.OpAMD64I8x16ShrS, railmach.OpAMD64I8x16ShrU, railmach.OpAMD64I64x2ShrS:
+		return true
+	}
 	switch railmach.SemanticOpcode(op) {
 	case wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU, wasm.InstrI64x2ShrS:
 		return true
