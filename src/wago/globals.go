@@ -1187,6 +1187,9 @@ type validateMemo struct {
 	execution     *Compiled // private deeply owned execution metadata
 	snapshotLimit uint64    // source admission policy; zero selects the default
 	snapshotBytes uint64    // protected by the code-cache lock
+	// hostThunks lazily owns immutable async and sync import wrappers. Instances
+	// retain them through the code cache's refs counter and lock.
+	hostThunks [2]compiledHostThunkCache
 
 	once                     sync.Once
 	err                      error

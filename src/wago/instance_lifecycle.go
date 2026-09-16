@@ -8,6 +8,12 @@ import (
 	"github.com/wago-org/wago/src/core/runtime"
 )
 
+var completedInstanceClose = func() <-chan struct{} {
+	done := make(chan struct{})
+	close(done)
+	return done
+}()
+
 const (
 	instanceInvocationClosed = uint32(1 << 31)
 	instanceInvocationCount  = instanceInvocationClosed - 1
@@ -26,22 +32,19 @@ func (in *Instance) Close() (err error) {
 	}
 	state, owner := in.beginClose()
 	if !owner {
-		select {
-		case <-state.done:
+		if state.completed.Load() {
 			return state.result
-		default:
-			// A callback may reenter Close while the lifecycle owner is still
-			// active. Returning promptly avoids self-deadlock; external callers
-			// that need completion use WaitClosed.
-			return nil
 		}
+		// A callback may reenter Close while the lifecycle owner is still
+		// active. Returning promptly avoids self-deadlock; external callers
+		// that need completion use WaitClosed.
+		return nil
 	}
 	defer func() {
 		if recover() != nil {
 			err = joinPrimary(err, fmt.Errorf("wago: instance close: %w", ErrCallbackPanic))
 		}
-		state.result = err
-		close(state.done)
+		state.complete(err)
 		// Managed terminal work must not detach ownership before the logical
 		// result is available to drain and WaitClosed. Retry after publication.
 		if in.hasManagedOwner() {
@@ -61,12 +64,12 @@ func (in *Instance) WaitClosed(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	state := in.ensurePluginState().close.Load()
+	state := in.closeState.Load()
 	if state == nil {
 		return fmt.Errorf("wago: instance close has not started")
 	}
 	select {
-	case <-state.done:
+	case <-state.doneChannel():
 		return state.result
 	case <-ctx.Done():
 		return ctx.Err()
@@ -74,15 +77,18 @@ func (in *Instance) WaitClosed(ctx context.Context) error {
 }
 
 func (in *Instance) beginClose() (*instanceCloseState, bool) {
-	state := in.ensurePluginState()
-	if active := state.close.Load(); active != nil {
+	if active := in.closeState.Load(); active != nil {
 		return active, false
 	}
-	candidate := &instanceCloseState{done: make(chan struct{}), quiesced: make(chan struct{}), terminalDone: make(chan struct{})}
-	if state.close.CompareAndSwap(nil, candidate) {
+	candidate := &instanceCloseState{}
+	if in.rt != nil || in.hasManagedOwner() {
+		candidate.quiesced = make(chan struct{})
+		candidate.terminalDone = make(chan struct{})
+	}
+	if in.closeState.CompareAndSwap(nil, candidate) {
 		return candidate, true
 	}
-	return state.close.Load(), false
+	return in.closeState.Load(), false
 }
 
 func (in *Instance) closeOnce() error {
@@ -110,7 +116,7 @@ func (in *Instance) closeOnce() error {
 	if activeInvocations != 0 && len(in.trap) >= 4 {
 		// Host re-entry swaps the trap slice under lifeMu, so Close observes one
 		// complete active slice header before requesting interruption.
-		in.ensurePluginState().close.Load().interruptStop = runtime.RequestInterruptAsync(in.trap)
+		in.closeState.Load().interruptStop = runtime.RequestInterruptAsync(in.trap)
 	}
 	in.lifeMu.Unlock()
 
@@ -127,7 +133,7 @@ func (in *Instance) closeOnce() error {
 	if hooks != nil && (len(hooks.beforeClose) != 0 || len(hooks.afterClose) != 0) {
 		event := InstanceCloseEvent{Module: ModuleView{compiled: in.c, identity: in.moduleIdentity}, Instance: InstanceIdentity{value: in}, Origin: in.instantiateOrigin()}
 		closeEvent = &event
-		closeState := in.ensurePluginState().close.Load()
+		closeState := in.closeState.Load()
 		closeState.hooks, closeState.event = hooks, closeEvent
 		for i := len(hooks.beforeClose) - 1; i >= 0; i-- {
 			fn := hooks.beforeClose[i]
@@ -145,7 +151,7 @@ func (in *Instance) closeOnce() error {
 	in.lifeMu.Unlock()
 
 	appendStep("close reference store instance", func() { in.referenceLifetime().notifyStore(store, referenceLifetimeClosed) })
-	in.ensurePluginState().close.Load().prepared.Store(true)
+	in.closeState.Load().prepared.Store(true)
 	appendStep("finalize instance resources", in.tryFinalize)
 	return errors.Join(errs...)
 }
@@ -165,10 +171,12 @@ func (in *Instance) closeAndWait() error {
 // waitTerminalClose joins logical preparation and terminal hooks, but does not
 // wait for resources retained by other instances or public reference tokens.
 func (in *Instance) waitTerminalClose() error {
-	state := in.ensurePluginState().close.Load()
+	state := in.closeState.Load()
 	if state != nil {
-		<-state.done
-		<-state.terminalDone
+		<-state.doneChannel()
+		if state.terminalDone != nil {
+			<-state.terminalDone
+		}
 		return joinPrimary(state.result, state.terminalResult)
 	}
 	return nil
@@ -276,7 +284,7 @@ func (in *Instance) endPrivateInvocation() {
 			continue
 		}
 		if next == instanceInvocationClosed {
-			if closeState := in.ensurePluginState().close.Load(); closeState != nil {
+			if closeState := in.closeState.Load(); closeState != nil {
 				closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
 			}
 			in.tryFinalize()
@@ -299,8 +307,8 @@ func (in *Instance) endInvocation() {
 			continue
 		}
 		if next == instanceInvocationClosed {
-			if closeState := in.ensurePluginState().close.Load(); closeState != nil {
-				closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
+			if closeState := in.closeState.Load(); closeState != nil {
+				closeState.signalQuiesced()
 			}
 			in.tryFinalize()
 		}
@@ -327,19 +335,17 @@ func (in *Instance) tryFinalize() {
 	if in == nil || in.constructionIsActive() || in.invocationState.Load()&instanceInvocationClosed == 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
 		return
 	}
-	if closeState := in.ensurePluginState().close.Load(); closeState != nil {
+	if closeState := in.closeState.Load(); closeState != nil {
 		if !closeState.prepared.Load() {
 			return
 		}
 		managed := in.hasManagedOwner()
 		if managed {
-			select {
-			case <-closeState.done:
-			default:
+			if !closeState.completed.Load() {
 				return
 			}
 		}
-		closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
+		closeState.signalQuiesced()
 		if closeState.terminalStarted.CompareAndSwap(false, true) {
 			if managed && closeState.hooks != nil && len(closeState.hooks.afterClose) != 0 {
 				// Managed Close must return without waiting for terminal hooks.
@@ -353,9 +359,7 @@ func (in *Instance) tryFinalize() {
 		} else {
 			// A hook can release a reference and reenter tryFinalize. Do not
 			// wait for that hook here, or release its resources underneath it.
-			select {
-			case <-closeState.terminalDone:
-			default:
+			if !closeState.terminalComplete.Load() {
 				return
 			}
 		}
@@ -387,10 +391,48 @@ func (in *Instance) finishTerminalClose(state *instanceCloseState) {
 		in.finalizers.managed = nil
 		managed.finishTerminalClose(state)
 	} else {
-		close(state.terminalDone)
+		state.signalTerminalDone()
 	}
 	in.lifeMu.Unlock()
 	in.referenceLifetime().finalize()
+}
+
+func (state *instanceCloseState) signalQuiesced() {
+	if state.quiesced != nil {
+		state.quiescedOnce.Do(func() { close(state.quiesced) })
+	}
+}
+
+func (state *instanceCloseState) complete(result error) {
+	state.result = result
+	state.completed.Store(true)
+	state.doneMu.Lock()
+	if state.done != nil {
+		close(state.done)
+	}
+	state.doneMu.Unlock()
+}
+
+func (state *instanceCloseState) doneChannel() <-chan struct{} {
+	if state.completed.Load() {
+		return completedInstanceClose
+	}
+	state.doneMu.Lock()
+	defer state.doneMu.Unlock()
+	if state.completed.Load() {
+		return completedInstanceClose
+	}
+	if state.done == nil {
+		state.done = make(chan struct{})
+	}
+	return state.done
+}
+
+func (state *instanceCloseState) signalTerminalDone() {
+	state.terminalComplete.Store(true)
+	if state.terminalDone != nil {
+		close(state.terminalDone)
+	}
 }
 
 func (in *Instance) constructionIsActive() bool {
@@ -445,7 +487,7 @@ func (in *Instance) constructionReservationSnapshot() *pluginOperationReservatio
 // releaseResources performs the physical teardown after tryFinalize has claimed
 // it by setting resourcesClosed under lifeMu.
 func (in *Instance) releaseResources() {
-	if state := in.ensurePluginState().close.Load(); state != nil && state.interruptStop != nil {
+	if state := in.closeState.Load(); state != nil && state.interruptStop != nil {
 		state.interruptStop()
 		state.interruptStop = nil
 	}

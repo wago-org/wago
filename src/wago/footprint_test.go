@@ -124,10 +124,10 @@ func TestHostControlModeDependsOnModuleBoundaryNotArchitecture(t *testing.T) {
 func requireBoundedInstanceFootprint(t *testing.T, got uintptr) {
 	t.Helper()
 	// Go 1.22 and Go 1.26 lay out synchronization primitives differently.
-	// Indexed-memory state and canonical Runtime-domain GC type translation each
-	// add one nil sidecar pointer; ordinary single-memory instances retain no
-	// additional slice headers.
-	if got != 808 && got != 832 && got != 840 && got != 856 && got != 872 && got != 880 && got != 888 && got != 896 {
-		t.Fatalf("Instance size = %d, want supported 808-, 832-, 840-, 856-, 872-, 880-, 888-, or 896-byte layout", got)
+	// Indexed-memory state, canonical Runtime-domain GC type translation, and
+	// close state each add one nil sidecar pointer; ordinary single-memory
+	// instances retain no additional slice headers.
+	if got != 808 && got != 832 && got != 840 && got != 856 && got != 872 && got != 880 && got != 888 && got != 896 && got != 904 {
+		t.Fatalf("Instance size = %d, want supported 808-, 832-, 840-, 856-, 872-, 880-, 888-, 896-, or 904-byte layout", got)
 	}
 }

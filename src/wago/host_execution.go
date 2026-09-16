@@ -187,9 +187,6 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 			panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no live instance", ctrl)})
 		}
 	}
-	if active.hostCall == nil {
-		panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no dispatcher", ctrl)})
-	}
 	if importIdx&shared.AtomicWaitDispatchBit != 0 {
 		if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
 			panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
@@ -214,7 +211,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		// Preserve the injected dispatcher path used by hardening tests and by a
 		// partially constructed instance so missing-collector diagnostics remain
 		// centralized in the configured host dispatcher.
-		active.hostCall(ctrl, importIdx, args, results, hostInvocationContext{})
+		active.callHostDispatch(ctrl, importIdx, args, results, hostInvocationContext{})
 		return
 	}
 	// Run arbitrary Go host code without the non-reentrant native execution
@@ -334,7 +331,15 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		restoreInvocationContext := bindHostInvocationContext(ctrl, invocation)
 		defer restoreInvocationContext()
 	}
-	active.hostCall(ctrl, importIdx, args, results, invocation)
+	active.callHostDispatch(ctrl, importIdx, args, results, invocation)
+}
+
+func (in *Instance) callHostDispatch(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
+	if in.hostCall != nil {
+		in.hostCall(ctrl, importIdx, args, results, invocation)
+		return
+	}
+	in.dispatchHostCall(ctrl, importIdx, args, results, invocation)
 }
 
 // parkIndependentHostCallback gives closure-based public host access the same
