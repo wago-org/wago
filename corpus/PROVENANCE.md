@@ -12,7 +12,7 @@ workloads are rebuilt from `sources/` with the scripts in `build/`.
 | semantic | CoreMark, BLAKE3, QOI, LZ4, zlib, zstd | revisions and WASI SDK versions pinned per catalog check |
 | parsers/text | yyjson, TinyXML-2, utf8proc | revisions pinned in `catalog.json`, WASI SDK 34 |
 | numeric/crypto | xxHash, LibTomMath, KissFFT | revisions pinned in `catalog.json`, WASI SDK 34 |
-| graphics | NanoSVG parse plus software rasterization | `239e102ec2c691f2902e20ace2ed36ee4a35cfe6`, WASI SDK 34 |
+| graphics | NanoSVG parse plus shape/path traversal | `239e102ec2c691f2902e20ace2ed36ee4a35cfe6`, WASI SDK 34 |
 | interpreter | Lua 5.4.8 running an embedded deterministic program | `6e22fedb74cf0c9b6656e9fce8b7331db847c605`, WASI SDK 34 |
 | PolyBench/C | all 30 kernels, small dataset | `5474c59fe88f4e36ba968e8f8c4ac913ee83f0d0`, WASI SDK 34 |
 | Embench | crc32, huffbench, matmult-int, nettle-aes, nettle-sha256, qrduino | `09c2ed8c3b7008c95d08b038de4a3f6dc103ed70`, WASI SDK 34 |

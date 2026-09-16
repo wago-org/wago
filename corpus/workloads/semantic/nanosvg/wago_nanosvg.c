@@ -49,17 +49,8 @@ int sscanf(const char *str, const char *format, ...) {
 
 #define NANOSVG_IMPLEMENTATION
 #include "nanosvg.h"
-#define NANOSVGRAST_IMPLEMENTATION
-#include "nanosvgrast.h"
-
-static uint64_t raster_summary(const unsigned char *data, size_t len) {
-    uint64_t channel_sum = 0;
-    uint64_t covered = 0;
-    for (size_t i = 0; i < len; i += 4) {
-        channel_sum += data[i] + data[i + 1] + data[i + 2] + data[i + 3];
-        covered += data[i + 3] != 0;
-    }
-    return (channel_sum << 16) ^ covered;
+static uint64_t mix(uint64_t hash, uint64_t value) {
+    return (hash ^ value) * UINT64_C(1099511628211);
 }
 
 uint64_t nanosvg_run(void) {
@@ -68,12 +59,24 @@ uint64_t nanosvg_run(void) {
         "<rect x='52' y='8' width='36' height='48' fill='#f90'/>"
         "<path fill='#28c' d='M8 36 L44 36 L44 56 L8 56 Z'/></svg>";
     NSVGimage *image = nsvgParse(svg, "px", 96.0f);
-    if (!image) return 0;
-    NSVGrasterizer *rast = nsvgCreateRasterizer();
-    unsigned char *pixels = (unsigned char *)calloc(96u * 64u * 4u, 1);
-    if (!rast || !pixels) { nsvgDeleteRasterizer(rast); nsvgDelete(image); free(pixels); return 0; }
-    nsvgRasterize(rast, image, 0, 0, 1.0f, pixels, 96, 64, 96 * 4);
-    uint64_t hash = raster_summary(pixels, 96u * 64u * 4u);
-    free(pixels); nsvgDeleteRasterizer(rast); nsvgDelete(image);
+    if (!image) return 1;
+    uint64_t hash = UINT64_C(14695981039346656037);
+    hash = mix(hash, (uint64_t)image->width);
+    hash = mix(hash, (uint64_t)image->height);
+    for (NSVGshape *shape = image->shapes; shape; shape = shape->next) {
+        hash = mix(hash, shape->fill.type);
+        hash = mix(hash, shape->fill.color);
+        hash = mix(hash, shape->stroke.type);
+        hash = mix(hash, shape->stroke.color);
+        hash = mix(hash, (uint64_t)shape->bounds[0]);
+        hash = mix(hash, (uint64_t)shape->bounds[1]);
+        hash = mix(hash, (uint64_t)shape->bounds[2]);
+        hash = mix(hash, (uint64_t)shape->bounds[3]);
+        for (NSVGpath *path = shape->paths; path; path = path->next) {
+            hash = mix(hash, (uint64_t)path->npts);
+            hash = mix(hash, (uint64_t)path->closed);
+        }
+    }
+    nsvgDelete(image);
     return hash;
 }

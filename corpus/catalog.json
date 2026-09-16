@@ -938,9 +938,9 @@
       "tags": ["bigint", "modular-arithmetic", "crypto", "c"]
     },
     {
-      "id": "nanosvg/parse-rasterize",
+      "id": "nanosvg/parse-structure",
       "artifact": "workloads/semantic/nanosvg/nanosvg.wasm",
-      "artifact_sha256": "c95c2f06488f35d40c24db86370314fd718f2e6c67e832644f7fd5c473988c20",
+      "artifact_sha256": "dfa21dd2769e93adea36e6343230753cf1f6f8cf86fd3545f0859fa08cee6051",
       "abi": "core",
       "source": {
         "repository": "https://github.com/memononen/nanosvg.git",
@@ -951,9 +951,9 @@
         "toolchain_version": "34.0"
       },
       "invoke": { "export": "nanosvg_run" },
-      "expect": { "return": ["0x2132f00d50"] },
+      "expect": { "return": ["0x42762fb094f18013"] },
       "limits": { "timeout_ms": 15000 },
-      "tags": ["svg", "parser", "rasterization", "graphics", "c"]
+      "tags": ["svg", "parser", "graphics", "c"]
     },
     {
       "id": "kissfft/complex-roundtrip",
@@ -1484,12 +1484,12 @@
       "artifact_sha256": "296e31b7bffcc13e922b97071d6d7d5e197608efa78195bbdd0f8f016032a3f3"
     },
     {
-      "desc": "NanoSVG parse and software rasterization workload",
-      "semantic_exec": ["nanosvg/parse-rasterize"],
+      "desc": "NanoSVG parsing and shape/path traversal workload",
+      "semantic_exec": ["nanosvg/parse-structure"],
       "id": "nanosvg",
       "artifact": "workloads/semantic/nanosvg/nanosvg.wasm",
       "tags": ["semantic", "svg", "graphics"],
-      "artifact_sha256": "c95c2f06488f35d40c24db86370314fd718f2e6c67e832644f7fd5c473988c20"
+      "artifact_sha256": "dfa21dd2769e93adea36e6343230753cf1f6f8cf86fd3545f0859fa08cee6051"
     },
     {
       "desc": "KissFFT 257-point complex forward and inverse transforms",
