@@ -1141,6 +1141,19 @@ func TestNativeScheduleScorePrefersBoundedLoopInvariantMotionForSpeed(t *testing
 	}
 }
 
+func TestNativeScheduleScoreAllowsCycleReducingLICMWithinSpillBound(t *testing.T) {
+	stable := railmach.ScheduleScore{Kind: railmach.ScheduleKindLatencyFusion, EstimatedCycles: 300, WeightedSpillDebt: 600, PhysicalCopies: 3}
+	hoisted := railmach.ScheduleScore{Kind: railmach.ScheduleKindPressure, EstimatedCycles: 250, WeightedSpillDebt: 700, PhysicalCopies: 4, LoopInvariantOps: 1}
+	if !nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 100, true, hoisted, stable) ||
+		nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 100, true, stable, hoisted) {
+		t.Fatal("cycle-reducing loop-invariant motion within the spill bound was not order-stable")
+	}
+	hoisted.WeightedSpillDebt++
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 100, true, hoisted, stable) {
+		t.Fatal("loop-invariant motion beyond the spill bound was preferred")
+	}
+}
+
 func testScheduleScore(debt uint64, copies, cycles, repairs uint32) railmach.ScheduleScore {
 	return railmach.ScheduleScore{WeightedSpillDebt: debt, PhysicalCopies: copies, CopyCycles: cycles, FixedRepairs: repairs}
 }

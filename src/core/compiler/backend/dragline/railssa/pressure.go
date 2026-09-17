@@ -193,7 +193,7 @@ func PressureShape(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *SemanticFu
 		switch flow.Values[value].Type {
 		case wasm.I32, wasm.I64:
 			delta = reuse.gprDelta
-		case wasm.F32, wasm.F64:
+		case wasm.F32, wasm.F64, wasm.V128:
 			delta = reuse.fprDelta
 		default:
 			continue
@@ -348,16 +348,10 @@ func planPressureLICM(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *Semanti
 			continue
 		}
 		for sourceBlock, semanticBlock := range semantic.Blocks {
-			// Nested regions plan their own motion. Restricting this pass to the
-			// loop's direct region also prevents one instruction from receiving
-			// competing moves from nested and outer loops.
-			if cfg.Blocks[sourceBlock].Region != loop.Region {
-				continue
-			}
 			for instructionID := semanticBlock.InstStart; instructionID < semanticBlock.InstStart+semanticBlock.InstCount; instructionID++ {
 				instruction := semantic.Insts[instructionID]
 				meta := metadata.Instructions[instruction.Source]
-				if instruction.Result == 0 || !licmPureOp(instruction.Op) || !licmWorthHoisting(f.Instrs[instruction.Source]) || meta.Reads != 0 || meta.Writes != 0 || meta.Flags != 0 || meta.Traps != 0 || meta.Obligations != 0 {
+				if instruction.Result == 0 || !licmSourceRegionAllowed(cfg.Blocks[sourceBlock].Region, loop.Region, instruction.Op, f) || !licmPureOp(instruction.Op) || !licmWorthHoisting(f.Instrs[instruction.Source]) || meta.Reads != 0 || meta.Writes != 0 || meta.Flags != 0 || meta.Traps != 0 || meta.Obligations != 0 {
 					continue
 				}
 				invariant := true
@@ -372,7 +366,8 @@ func planPressureLICM(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *Semanti
 					continue
 				}
 				bankPeak, sourcePeak := &plan.Blocks[preheader].PeakGPR, plan.Blocks[sourceBlock].PeakGPR
-				if flow.Values[instruction.Result].Type == wasm.F32 || flow.Values[instruction.Result].Type == wasm.F64 {
+				typ := flow.Values[instruction.Result].Type
+				if typ == wasm.F32 || typ == wasm.F64 || typ == wasm.V128 {
 					bankPeak, sourcePeak = &plan.Blocks[preheader].PeakFPR, plan.Blocks[sourceBlock].PeakFPR
 				}
 				if uint32(*bankPeak)+1 > uint32(sourcePeak) {
@@ -416,6 +411,29 @@ func blockInRegion(candidate, region RegionID, f *StackFunc) bool {
 	return false
 }
 
+func regionWithinLoopBody(candidate, loop RegionID, f *StackFunc) bool {
+	if f == nil {
+		return false
+	}
+	for candidate != NoRegion && candidate != loop {
+		if int(candidate) >= len(f.Regions) || f.Regions[candidate].Kind == wasm.InstrLoop {
+			return false
+		}
+		candidate = f.Regions[candidate].Parent
+	}
+	return candidate == loop
+}
+
+func licmSourceRegionAllowed(candidate, loop RegionID, op wasm.InstrKind, f *StackFunc) bool {
+	if candidate == loop {
+		return true
+	}
+	// Speculating arbitrary scalar work from a conditional can increase dynamic
+	// instruction count substantially. Vector constants are literal loads and
+	// repay that speculation when consumed by the loop's SIMD body.
+	return op == wasm.InstrV128Const && regionWithinLoopBody(candidate, loop, f)
+}
+
 func allValueUsesInLoop(f *StackFunc, cfg *CFG, semantic *SemanticFunc, value FlowValueID, region RegionID) bool {
 	used := false
 	for blockID, block := range semantic.Blocks {
@@ -434,7 +452,7 @@ func allValueUsesInLoop(f *StackFunc, cfg *CFG, semantic *SemanticFunc, value Fl
 }
 
 func licmPureOp(kind wasm.InstrKind) bool {
-	return kind == wasm.InstrI32Const || kind == wasm.InstrI64Const ||
+	return kind == wasm.InstrI32Const || kind == wasm.InstrI64Const || kind == wasm.InstrV128Const ||
 		kind == wasm.InstrI32Add || kind == wasm.InstrI32Sub || kind == wasm.InstrI32Mul ||
 		kind == wasm.InstrI64Add || kind == wasm.InstrI64Sub || kind == wasm.InstrI64Mul ||
 		kind == wasm.InstrI32And || kind == wasm.InstrI32Or || kind == wasm.InstrI32Xor ||
@@ -449,6 +467,10 @@ func licmWorthHoisting(instruction StackInstr) bool {
 	case wasm.InstrI64Const:
 		value := int64(instruction.U64())
 		return value < -32768 || value > 65535
+	case wasm.InstrV128Const:
+		// Every target materializes a vector constant from a literal load. Keeping
+		// that load in a loop repeats both the memory uop and address generation.
+		return true
 	default:
 		return true
 	}
@@ -491,7 +513,7 @@ func VerifyPressurePlan(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *Seman
 		meta := metadata.Instructions[instruction.Source]
 		loopRegion := cfg.Blocks[move.Loop].Region
 		expectedPreheader, hasPreheader := loopPreheader(f, cfg, move.Loop, loopRegion)
-		if cfg.Blocks[move.Loop].Flags&BlockLoopHeader == 0 || !hasPreheader || expectedPreheader != move.Preheader || cfg.Blocks[move.From].Region != loopRegion || blockInRegion(cfg.Blocks[move.Preheader].Region, loopRegion, f) ||
+		if cfg.Blocks[move.Loop].Flags&BlockLoopHeader == 0 || !hasPreheader || expectedPreheader != move.Preheader || !licmSourceRegionAllowed(cfg.Blocks[move.From].Region, loopRegion, instruction.Op, f) || blockInRegion(cfg.Blocks[move.Preheader].Region, loopRegion, f) ||
 			!licmPureOp(instruction.Op) || !licmWorthHoisting(f.Instrs[instruction.Source]) || meta.Reads != 0 || meta.Writes != 0 || meta.Flags != 0 || meta.Traps != 0 || meta.Obligations != 0 {
 			return fmt.Errorf("railssa: unsafe LICM move %#v", move)
 		}

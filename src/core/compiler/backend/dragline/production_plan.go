@@ -1223,8 +1223,12 @@ func planInstructionsAdjacent(schedule *railmach.Schedule, first, second uint32)
 func nativeScheduleScoreBetter(objective corecompiler.OptimizationObjective, target railmach.Target, instructions int, usesFPR bool, candidate, retained railmach.ScheduleScore) bool {
 	if objective == corecompiler.ObjectiveSpeed {
 		licmWithinBound := func(hoisted, other railmach.ScheduleScore) bool {
+			spillWithinBound := hoisted.WeightedSpillDebt <= other.WeightedSpillDebt
+			if hoisted.EstimatedCycles < other.EstimatedCycles {
+				spillWithinBound = other.WeightedSpillDebt > ^uint64(0)/7 || hoisted.WeightedSpillDebt <= other.WeightedSpillDebt+other.WeightedSpillDebt/6
+			}
 			return hoisted.LoopInvariantOps > other.LoopInvariantOps &&
-				hoisted.WeightedSpillDebt <= other.WeightedSpillDebt &&
+				spillWithinBound &&
 				hoisted.CopyCycles <= other.CopyCycles &&
 				hoisted.PhysicalCopies <= other.PhysicalCopies+hoisted.LoopInvariantOps-other.LoopInvariantOps &&
 				hoisted.FixedRepairs <= other.FixedRepairs && hoisted.BrokenFusions <= other.BrokenFusions

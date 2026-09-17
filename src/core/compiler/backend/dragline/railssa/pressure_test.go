@@ -121,6 +121,61 @@ func TestPressureShapePlansConstantFromLoopContinuation(t *testing.T) {
 	t.Fatalf("LICM moves = %#v", plan.LICM)
 }
 
+func TestPressureShapePlansV128ConstantAsFPRLoopInvariant(t *testing.T) {
+	body := []byte{
+		0x03, 0x40,
+		0x20, 0x01, // local.get 1
+		0x04, 0x40, // if
+		0x20, 0x00, // local.get 0
+		0xfd, 0x0c,
+	}
+	body = append(body, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+	body = append(body,
+		0xfd, 0x4e, // v128.and
+		0xfd, 0x53, // v128.any_true
+		0x0d, 0x01, // br_if 1
+		0x0b,
+		0x20, 0x01, // local.get 1
+		0x0d, 0x00, // br_if 0
+		0x0b,
+		0x41, 0x00,
+		0x0b,
+	)
+	m := scalarModule([]wasm.ValType{wasm.V128, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	f, cfg, flow, semantic, metadata, simplified := buildSimplifyTest(t, m)
+	plan, err := PressureShape(f, cfg, flow, semantic, metadata, simplified, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, move := range plan.LICM {
+		instruction := semantic.Insts[move.Instruction]
+		if instruction.Op == wasm.InstrV128Const {
+			if plan.Blocks[move.From].PeakFPR == 0 || flow.Values[instruction.Result].Type != wasm.V128 {
+				t.Fatalf("v128 LICM pressure = %#v, type = %v", plan.Blocks[move.From], flow.Values[instruction.Result].Type)
+			}
+			return
+		}
+	}
+	t.Fatalf("LICM moves = %#v", plan.LICM)
+}
+
+func TestLICMNestedRegionAdmissionIsLimitedToVectorConstants(t *testing.T) {
+	f := &StackFunc{Regions: []Region{
+		{Parent: NoRegion, Kind: wasm.InstrLoop},
+		{Parent: 0, Kind: wasm.InstrIf},
+		{Parent: 1, Kind: wasm.InstrLoop},
+	}}
+	if !licmSourceRegionAllowed(1, 0, wasm.InstrV128Const, f) {
+		t.Fatal("vector constant in a nested conditional was rejected")
+	}
+	if licmSourceRegionAllowed(1, 0, wasm.InstrI64Const, f) {
+		t.Fatal("scalar work in a nested conditional was speculated")
+	}
+	if licmSourceRegionAllowed(2, 0, wasm.InstrV128Const, f) {
+		t.Fatal("vector constant escaped its innermost loop")
+	}
+}
+
 func TestPressureShapeDoesNotHoistLoopParameterUse(t *testing.T) {
 	m := scalarModule([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x41, 0x00,
