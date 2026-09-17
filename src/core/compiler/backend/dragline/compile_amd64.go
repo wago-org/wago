@@ -5749,7 +5749,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 	hasGeneralCall := false
 	generalCallCount := uint32(0)
 	hasNonCallHelper := false
-	hasMemoryAccess := false
+	hasCheckedMemoryAccess := false
 	hasMemoryGrow := false
 	observeSIMDConstant := func(value [16]byte) {
 		for i := range simdConstants {
@@ -5787,10 +5787,11 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				observeSIMDConstant(descriptor.Bytes)
 			}
 		}
-		hasMemoryAccess = hasMemoryAccess || amd64MemoryStackKind(instr.Kind) || instr.Kind == wasm.InstrV128Load || instr.Kind == wasm.InstrV128Store || instr.Kind == wasm.InstrV128Store64Lane
+		memoryAccess := amd64MemoryStackKind(instr.Kind) || instr.Kind == wasm.InstrV128Load || instr.Kind == wasm.InstrV128Store || instr.Kind == wasm.InstrV128Store64Lane
+		hasCheckedMemoryAccess = hasCheckedMemoryAccess || memoryAccess && !plan.ElidesBoundsCheck(uint32(instrIndex))
 		hasMemoryGrow = hasMemoryGrow || instr.Kind == wasm.InstrMemoryGrow
 	}
-	cacheMemorySize := hasMemoryAccess && !hasMemoryGrow && !hasGeneralCall
+	cacheMemorySize := hasCheckedMemoryAccess && !hasMemoryGrow && !hasGeneralCall
 	registerLocals := !sf.HasV128 && !hasNonCallHelper && len(sf.Params) <= 4 && gpLocals <= len(amd64StackLocalRegisters) && fpLocals <= 8
 	if registerLocals {
 		for i := range localPinned {

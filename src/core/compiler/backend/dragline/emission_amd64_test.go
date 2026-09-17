@@ -535,6 +535,52 @@ func TestAMD64StructuredLoadsSIMDDirectlyFromPinnedI32Address(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredSignalsDoNotReserveMemorySizeCache(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x28, 0x02, 0x00, // i32.load(local 0)
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner railssa.EmissionPlanner
+	plan, err := planCompilerFunc(fn, &planner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	explicit, _, _, err := emitAMD64Stack(fn, plan, false, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signalsPlan := new(railssa.EmissionPlan)
+	signalsPlan.ElideAllMemoryBounds()
+	signals, _, _, err := emitAMD64Stack(fn, signalsPlan, false, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var boundLoad amd64.Asm
+	boundLoad.Load64(amd64.RBP, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+	if !bytes.Contains(explicit, boundLoad.B) {
+		t.Fatalf("explicit structured code has no memory-size cache load: %x", explicit)
+	}
+	if bytes.Contains(signals, boundLoad.B) {
+		t.Fatalf("signal-bounded structured code reserved the memory-size cache: %x", signals)
+	}
+}
+
 func TestAMD64StructuredSIMDHighRegistersRespectStackPressure(t *testing.T) {
 	if !amd64StructuredSIMDHighRegisterWorthwhile(5, 0, 10) {
 		t.Fatal("the base six resident registers must remain available")
