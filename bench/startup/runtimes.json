@@ -29,7 +29,8 @@
       "versionLine": 2,
       "args": [
         "run",
-        "--dragline",
+        "--backend",
+        "dragline",
         "{wasm}"
       ]
     },
