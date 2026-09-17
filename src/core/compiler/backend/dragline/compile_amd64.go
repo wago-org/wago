@@ -6580,6 +6580,21 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				continue
 			}
 		}
+		if reachable && instr.Kind == wasm.InstrLocalGet && int(instr.U32()) < len(sf.Locals) &&
+			sf.Locals[instr.U32()] == wasm.V128 && localPinned[instr.U32()] && instrIndex+1 < len(sf.Instrs) {
+			descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex + 1))
+			if ok && descriptor.Kind == wasm.InstrI8x16Bitmask {
+				if len(stackTypes) >= int(sf.MaxStack) {
+					return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
+				}
+				a.VPmovmskb(amd64.RAX, localRegisters[instr.U32()])
+				cacheScalar(len(stackTypes), amd64.RAX)
+				stackTypes = append(stackTypes, wasm.I32)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+				instrIndex++
+				continue
+			}
+		}
 		if reachable && instr.Kind == wasm.InstrV128Const && instrIndex+3 < len(sf.Instrs) &&
 			(sf.Instrs[instrIndex+3].Kind == wasm.InstrIf || sf.Instrs[instrIndex+3].Kind == wasm.InstrBrIf) &&
 			len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 {

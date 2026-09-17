@@ -946,6 +946,28 @@ func TestAMD64StructuredSIMDConstantsUseDeduplicatedRIPPool(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredBitmaskReadsPinnedLocalDirectly(t *testing.T) {
+	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body = append(body,
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
+		0x20, 0x00, 0xfd, 0x64, 0x0b, // local.get 0; i8x16.bitmask; end
+	)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var direct, copied amd64.Asm
+	direct.VPmovmskb(amd64.RAX, 8)
+	copied.VMovdqu(4, 8)
+	copied.VPmovmskb(amd64.RAX, 4)
+	if !bytes.Contains(output.Code, direct.B) || bytes.Contains(output.Code, copied.B) {
+		t.Fatalf("structured pinned-local bitmask was not direct: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredSupportsI32x4Mul(t *testing.T) {
 	body := []byte{0x01, 0x01, 0x7b, 0xfd, 0x0c} // one v128 local; v128.const
 	body = append(body, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0)
