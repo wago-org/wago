@@ -4355,6 +4355,53 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			trueMoves := edgeNeedsOutgoingMoves(trueEdge)
 			falseMoves := edgeNeedsOutgoingMoves(falseEdge)
+			iterationBytes := a.Len() - iterationStart
+			unrollCopies := amd64RailMachSelfLoopUnrollCopies(plan.Machine.Blocks[blockID].Weight, len(plan.Machine.Insts), plan.Score.WeightedSpillDebt, iterationBytes)
+			if plan.SignalsBounds && terminator.Kind == wasm.InstrBrIf && uint32(plan.Machine.Edges[trueEdge].To) == uint32(blockID) &&
+				uint32(plan.Machine.Edges[falseEdge].To) != uint32(blockID) && !trueMoves && !falseMoves &&
+				len(a.Rel32Sites) == iterationRel32Start && (relocs == nil || len(*relocs) == iterationRelocStart) {
+				if metadata != nil && (len(metadata.Traps) != iterationTrapStart || len(metadata.Safepoints) != iterationSafepointStart) {
+					unrollCopies = 0
+				}
+				for _, region := range plan.CalleeSaves {
+					if region.RestoreBefore >= blockRange.Start && region.RestoreBefore < blockRange.Start+blockRange.Count {
+						unrollCopies = 0
+						break
+					}
+				}
+			} else {
+				unrollCopies = 0
+			}
+			if unrollCopies != 0 {
+				iteration := append([]byte(nil), a.B[iterationStart:a.Len()]...)
+				floatPatches := append([]amd64FloatConstantPatch(nil), floatConstantPatches[iterationFloatPatchStart:]...)
+				simdPatches := append([]amd64SIMDConstantPatch(nil), simdConstantPatches[iterationSIMDPatchStart:]...)
+				var sources []corecompiler.FunctionSourceMap
+				if metadata != nil {
+					sources = append(sources, metadata.Sources[iterationSourceStart:]...)
+				}
+				for range unrollCopies {
+					patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(falseCondition), Target: uint32(plan.Machine.Edges[falseEdge].To)})
+					copyStart := a.Len()
+					a.B = append(a.B, iteration...)
+					delta := copyStart - iterationStart
+					for _, patch := range floatPatches {
+						patch.at += delta
+						patch.target = 0
+						floatConstantPatches = append(floatConstantPatches, patch)
+					}
+					for _, patch := range simdPatches {
+						patch.at += delta
+						patch.target = 0
+						simdConstantPatches = append(simdConstantPatches, patch)
+					}
+					if metadata != nil {
+						for _, source := range sources {
+							metadata.recordSource(int(source.NativeOffset)+delta, source.WasmOffset)
+						}
+					}
+				}
+			}
 			if !falseMoves {
 				// Branch directly to a move-free false successor. The true edge
 				// either falls through in layout order or retains only its own
@@ -4710,6 +4757,25 @@ func nativeAMD64ComparisonSelectConsumer(plan *nativeBackendPlan, producer uint3
 		}
 	}
 	return consumer, condition, uses == 1
+}
+
+// amd64RailMachSelfLoopUnrollCopies bounds branch-removal growth by both the
+// emitted loop size and the allocator's measured spill pressure. Very hot
+// loops receive a larger spill budget because their backedge executes more
+// often, while large functions and cold or tiny loops keep their original
+// layout to avoid instruction-cache and loop-stream-detector regressions.
+func amd64RailMachSelfLoopUnrollCopies(weight uint32, functionInstructions int, spillDebt uint64, iterationBytes int) int {
+	if weight < 64 || functionInstructions > 256 || iterationBytes < 64 || iterationBytes > 256 {
+		return 0
+	}
+	spillBudget := uint64(1 << 16)
+	if weight >= 512 {
+		spillBudget = 1 << 17
+	}
+	if spillDebt > spillBudget {
+		return 0
+	}
+	return min(3, 512/iterationBytes)
 }
 
 func nativeAMD64ComparisonSelectProducer(plan *nativeBackendPlan, consumer uint32) (producer uint32, condition amd64.Cond, ok bool) {

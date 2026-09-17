@@ -180,6 +180,94 @@ func TestAMD64RailMachRotatesCanonicalCountdownLoop(t *testing.T) {
 	plan.Schedule.BlockRanges[rotatedBlock].Count = oldCount
 }
 
+func TestAMD64RailMachSelfLoopUnrollCostModel(t *testing.T) {
+	tests := []struct {
+		name                              string
+		weight, instructions, bytes, debt uint64
+		want                              int
+	}{
+		{name: "compact", weight: 64, instructions: 200, bytes: 128, debt: 1 << 16, want: 3},
+		{name: "hot-spill-budget", weight: 512, instructions: 200, bytes: 192, debt: 1 << 17, want: 2},
+		{name: "cold", weight: 63, instructions: 200, bytes: 128, debt: 0},
+		{name: "large-function", weight: 64, instructions: 257, bytes: 128, debt: 0},
+		{name: "tiny-loop", weight: 64, instructions: 200, bytes: 63, debt: 0},
+		{name: "large-loop", weight: 64, instructions: 200, bytes: 257, debt: 0},
+		{name: "spill-heavy", weight: 64, instructions: 200, bytes: 128, debt: 1<<16 + 1},
+		{name: "hot-spill-heavy", weight: 512, instructions: 200, bytes: 128, debt: 1<<17 + 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := amd64RailMachSelfLoopUnrollCopies(uint32(test.weight), int(test.instructions), test.debt, int(test.bytes))
+			if got != test.want {
+				t.Fatalf("copies = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+func TestAMD64RailMachUnrollsHotConditionalSelfLoop(t *testing.T) {
+	body := []byte{0x03, 0x40} // loop
+	for index := range 20 {
+		body = append(body, 0x20, 0x00, 0x41, byte(index), 0x36, 0x02)
+		body = append(body, wasmtest.ULEB(uint32(index*4))...) // memory[counter + offset] = index
+	}
+	body = append(body,
+		0x20, 0x00, 0x41, 0x01, 0x6a, 0x21, 0x00, // ++counter
+		0x20, 0x00, 0x41, 0xc0, 0x00, 0x49, 0x0d, 0x00, // continue while counter < 64
+		0x0b, 0x20, 0x00, 0x0b,
+	)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := (&nativeBackendPlanner{}).Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selfLoopBlock := railssa.BlockID(0)
+	foundSelfLoop := false
+	for _, edge := range plan.Machine.Edges {
+		if edge.From == edge.To {
+			selfLoopBlock = edge.From
+			foundSelfLoop = true
+		}
+	}
+	if !foundSelfLoop {
+		t.Fatal("conditional self-loop was not preserved")
+	}
+	plan.SignalsBounds = true
+	plan.Machine.Blocks[selfLoopBlock].Weight = 1
+	rolled, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("rolled self-loop finalization = used %t, err %v", used, err)
+	}
+	plan.Machine.Blocks[selfLoopBlock].Weight = 64
+	unrolled, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("unrolled self-loop finalization = used %t, err %v", used, err)
+	}
+	if len(unrolled) <= len(rolled)+128 {
+		t.Fatalf("unrolled self-loop code = %d bytes, rolled code = %d; loop was not unrolled", len(unrolled), len(rolled))
+	}
+}
+
 func TestAMD64RailMachUsesDependencyBreakingVEXFloatConversionAndSqrt(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.F64}))),
