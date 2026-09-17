@@ -5853,6 +5853,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 	}
 	cacheMemorySize := hasCheckedMemoryAccess && !hasMemoryGrow && !hasGeneralCall
 	registerLocals := !sf.HasV128 && !hasNonCallHelper && len(sf.Params) <= 4 && gpLocals <= len(amd64StackLocalRegisters) && fpLocals <= 8
+	writeThroughPinnedLocals := hasGeneralCall && !registerLocals
 	if registerLocals {
 		for i := range localPinned {
 			localPinned[i] = true
@@ -6015,10 +6016,19 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 		if localPinned[i] {
 			if sf.Locals[i] == wasm.V128 {
 				a.VMovdqu(localRegisters[i], amd64.Reg(i))
+				if writeThroughPinnedLocals {
+					a.VMovdquStoreDisp(amd64.RSP, localOff(i), localRegisters[i])
+				}
 			} else if localFloat[i] {
 				a.MovGprToXmm(localRegisters[i], amd64ParamRegisters[i], sf.Locals[i] == wasm.F64)
+				if writeThroughPinnedLocals {
+					a.FStoreDisp(amd64.RSP, localOff(i), localRegisters[i], sf.Locals[i] == wasm.F64)
+				}
 			} else {
 				a.MovReg64(localRegisters[i], amd64ParamRegisters[i])
+				if writeThroughPinnedLocals {
+					a.StoreRsp64(localOff(i), localRegisters[i])
+				}
 			}
 		} else {
 			if sf.Locals[i] == wasm.V128 {
@@ -6038,11 +6048,20 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 		if localPinned[i] {
 			if sf.Locals[i] == wasm.V128 {
 				a.VPxor(localRegisters[i], localRegisters[i], localRegisters[i])
+				if writeThroughPinnedLocals {
+					a.VMovdquStoreDisp(amd64.RSP, localOff(i), localRegisters[i])
+				}
 			} else if localFloat[i] {
 				a.XorSelf32(amd64.RAX)
 				a.MovGprToXmm(localRegisters[i], amd64.RAX, sf.Locals[i] == wasm.F64)
+				if writeThroughPinnedLocals {
+					a.FStoreDisp(amd64.RSP, localOff(i), localRegisters[i], sf.Locals[i] == wasm.F64)
+				}
 			} else {
 				a.XorSelf32(localRegisters[i])
+				if writeThroughPinnedLocals {
+					a.StoreRsp64(localOff(i), localRegisters[i])
+				}
 			}
 		} else {
 			if sf.Locals[i] == wasm.V128 {
@@ -6938,6 +6957,8 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				}
 				if !localPinned[targetLocal] {
 					a.VMovdquStoreDisp(amd64.RSP, localOff(targetLocal), dst)
+				} else if writeThroughPinnedLocals {
+					a.VMovdquStoreDisp(amd64.RSP, localOff(targetLocal), dst)
 				}
 				if sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee {
 					if instrIndex+5 < len(sf.Instrs) && sf.Instrs[instrIndex+4].Kind == wasm.InstrI32Const {
@@ -7385,6 +7406,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				(sf.Locals[lhs] == wasm.I32 || sf.Locals[lhs] == wasm.I64) && (dst == lhs || dst != rhs) {
 				kind := sf.Instrs[instrIndex+2].Kind
 				emitAMD64DirectIntegerBinary(&a, kind, localRegisters[dst], localRegisters[lhs], localRegisters[rhs])
+				if writeThroughPinnedLocals {
+					a.StoreRsp64(localOff(int(dst)), localRegisters[dst])
+				}
 				if sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee {
 					if err := push(sf.Locals[dst], localRegisters[dst]); err != nil {
 						return nil, 0, nil, err
@@ -7416,6 +7440,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 					digit = 5
 				}
 				a.AluRI(digit, dstReg, int32(value), wide)
+				if writeThroughPinnedLocals {
+					a.StoreRsp64(localOff(int(dst)), dstReg)
+				}
 				if sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee {
 					if err := push(sf.Locals[dst], dstReg); err != nil {
 						return nil, 0, nil, err
@@ -7435,6 +7462,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				(sf.Locals[src] == wasm.I32 || sf.Locals[src] == wasm.I64) && sf.Locals[dst] == sf.Locals[src] {
 				if localRegisters[dst] != localRegisters[src] {
 					a.MovReg64(localRegisters[dst], localRegisters[src])
+				}
+				if writeThroughPinnedLocals {
+					a.StoreRsp64(localOff(int(dst)), localRegisters[dst])
 				}
 				if sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalTee {
 					if err := push(sf.Locals[dst], localRegisters[dst]); err != nil {
@@ -7765,6 +7795,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 					if dst != reg {
 						a.VMovdqu(dst, reg)
 					}
+					if writeThroughPinnedLocals {
+						a.VMovdquStoreDisp(amd64.RSP, localOff(int(instr.U32())), dst)
+					}
 				} else {
 					a.VMovdquStoreDisp(amd64.RSP, localOff(int(instr.U32())), reg)
 				}
@@ -7791,6 +7824,13 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 			if localPinned[instr.U32()] {
 				if localFloat[instr.U32()] {
 					a.MovGprToXmm(localRegisters[instr.U32()], value, sf.Locals[instr.U32()] == wasm.F64)
+				}
+				if writeThroughPinnedLocals {
+					if localFloat[instr.U32()] {
+						a.FStoreDisp(amd64.RSP, localOff(int(instr.U32())), localRegisters[instr.U32()], sf.Locals[instr.U32()] == wasm.F64)
+					} else {
+						a.StoreRsp64(localOff(int(instr.U32())), localRegisters[instr.U32()])
+					}
 				}
 			} else {
 				a.StoreRsp64(localOff(int(instr.U32())), value)
@@ -8267,7 +8307,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				err = emitAMD64StackFloat(&a, instr.Kind, &stackTypes, loadScalar, cacheScalar, discardScalar, fn.Index, instr.Offset, metadata)
 				pruneScalarStackCache()
 			} else if instr.Kind == wasm.InstrCall || instr.Kind == wasm.InstrCallIndirect {
-				if instr.Inline() == wasm.InstrInvalid {
+				if instr.Inline() == wasm.InstrInvalid && !writeThroughPinnedLocals {
 					spillPinnedLocals()
 				}
 				err = emitAMD64StackCall(&a, sf, instr, &stackTypes, stackOff, &callRelocs, fn.Index, metadata)

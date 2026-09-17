@@ -1021,6 +1021,40 @@ func TestAMD64StructuredShuffleLocalTeeFeedsShiftDirectly(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredCallUsesWriteThroughPinnedLocalHomes(t *testing.T) {
+	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body = append(body,
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
+		0x20, 0x00, 0x41, 0x01, 0x6a, 0x21, 0x00, // local.get 0; i32.const 1; i32.add; local.set 0
+		0x10, 0x00, // call imported function 0
+		0x20, 0x01, 0x1a, // local.get 1; drop
+		0x20, 0x00, 0x0b, // local.get 0; end
+	)
+	functionImport := append(wasmtest.Name("env"), wasmtest.Name("f")...)
+	functionImport = append(functionImport, 0x00)
+	functionImport = append(functionImport, wasmtest.ULEB(0)...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.V128}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var scalarHome, vectorHome amd64.Asm
+	scalarHome.StoreRsp64(0, amd64.R12)
+	vectorHome.VMovdquStoreDisp(amd64.RSP, 8, 8)
+	if got := bytes.Count(output.Code, scalarHome.B); got != 2 {
+		t.Fatalf("pinned scalar home stores = %d, want entry plus assignment: %x", got, output.Code)
+	}
+	if got := bytes.Count(output.Code, vectorHome.B); got != 1 {
+		t.Fatalf("pinned vector home stores = %d, want entry only: %x", got, output.Code)
+	}
+}
+
 func TestAMD64StructuredBinaryReadsResidentConstantDirectly(t *testing.T) {
 	constant := [16]byte{0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f}
 	body := bytes.Repeat([]byte{0x01}, 510)                                         // force the large-bulk structured path
