@@ -6411,6 +6411,13 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 		_, ok := residentSIMDConstantRegister(value)
 		return ok
 	}
+	simdConstantTest := func(src amd64.Reg, value [16]byte) {
+		if mask, ok := residentSIMDConstantRegister(value); ok {
+			a.VPtest(src, mask)
+		} else {
+			simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.VPtestRipPlaceholder(src), bytes: value})
+		}
+	}
 
 	for instrIndex := 0; instrIndex < len(sf.Instrs); instrIndex++ {
 		instr := sf.Instrs[instrIndex]
@@ -6502,6 +6509,67 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 					instrIndex += 2
 					continue
 				}
+			}
+		}
+		if reachable && instr.Kind == wasm.InstrLocalGet && int(instr.U32()) < len(sf.Locals) && sf.Locals[instr.U32()] == wasm.V128 &&
+			instrIndex+4 < len(sf.Instrs) && (sf.Instrs[instrIndex+4].Kind == wasm.InstrIf || sf.Instrs[instrIndex+4].Kind == wasm.InstrBrIf) &&
+			sf.Instrs[instrIndex+1].Kind == wasm.InstrV128Const {
+			constant, constantOK := sf.SIMDImmediateAt(uint32(instrIndex + 1))
+			operation, operationOK := sf.SIMDImmediateAt(uint32(instrIndex + 2))
+			consumer, consumerOK := sf.SIMDImmediateAt(uint32(instrIndex + 3))
+			if constantOK && operationOK && operation.Kind == wasm.InstrV128And && consumerOK && consumer.Kind == wasm.InstrV128AnyTrue {
+				if len(stackTypes) >= int(sf.MaxStack) {
+					return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
+				}
+				src := amd64.Reg(0)
+				if localPinned[instr.U32()] {
+					src = localRegisters[instr.U32()]
+				} else {
+					a.VMovdquLoadDisp(src, amd64.RSP, localOff(int(instr.U32())))
+				}
+				simdConstantTest(src, constant.Bytes)
+				stackTypes = append(stackTypes, wasm.I32)
+				pendingConditionAt, pendingCondition = instrIndex+4, amd64.CondNE
+				for skipped := 1; skipped <= 3; skipped++ {
+					metadata.recordSource(a.Len(), sf.Instrs[instrIndex+skipped].Offset)
+				}
+				instrIndex += 3
+				continue
+			}
+		}
+		if reachable && instr.Kind == wasm.InstrV128Const && instrIndex+3 < len(sf.Instrs) &&
+			(sf.Instrs[instrIndex+3].Kind == wasm.InstrIf || sf.Instrs[instrIndex+3].Kind == wasm.InstrBrIf) &&
+			len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 {
+			constant, constantOK := sf.SIMDImmediateAt(uint32(instrIndex))
+			operation, operationOK := sf.SIMDImmediateAt(uint32(instrIndex + 1))
+			consumer, consumerOK := sf.SIMDImmediateAt(uint32(instrIndex + 2))
+			if constantOK && operationOK && operation.Kind == wasm.InstrV128And && consumerOK && consumer.Kind == wasm.InstrV128AnyTrue {
+				base := len(stackTypes) - 1
+				value := takeV128(base, 0)
+				simdConstantTest(value, constant.Bytes)
+				stackTypes[base] = wasm.I32
+				pendingConditionAt, pendingCondition = instrIndex+3, amd64.CondNE
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+2].Offset)
+				instrIndex += 2
+				continue
+			}
+		}
+		if reachable && instrIndex+2 < len(sf.Instrs) && len(stackTypes) >= 2 &&
+			(sf.Instrs[instrIndex+2].Kind == wasm.InstrIf || sf.Instrs[instrIndex+2].Kind == wasm.InstrBrIf) {
+			operation, operationOK := sf.SIMDImmediateAt(uint32(instrIndex))
+			consumer, consumerOK := sf.SIMDImmediateAt(uint32(instrIndex + 1))
+			base := len(stackTypes) - 2
+			if operationOK && operation.Kind == wasm.InstrV128And && consumerOK && consumer.Kind == wasm.InstrV128AnyTrue &&
+				stackTypes[base] == wasm.V128 && stackTypes[base+1] == wasm.V128 {
+				lhs := takeV128(base, 0)
+				rhs := takeV128(base+1, 1)
+				a.VPtest(lhs, rhs)
+				stackTypes = append(stackTypes[:base], wasm.I32)
+				pendingConditionAt, pendingCondition = instrIndex+2, amd64.CondNE
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+				instrIndex++
+				continue
 			}
 		}
 		if reachable && instrIndex+1 < len(sf.Instrs) && (sf.Instrs[instrIndex+1].Kind == wasm.InstrIf || sf.Instrs[instrIndex+1].Kind == wasm.InstrBrIf) {

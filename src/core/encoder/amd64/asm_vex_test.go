@@ -77,6 +77,7 @@ func TestVexEncoding(t *testing.T) {
 		{"vpxor xmm3,xmm3,xmm5", func(a *Asm) { a.VPxor(3, 3, 5) }, []byte{0xC4, 0xE1, 0x61, 0xEF, 0xDD}},
 		{"vpshufb xmm0,xmm1,xmm2", func(a *Asm) { a.VPshufb(0, 1, 2) }, []byte{0xC4, 0xE2, 0x71, 0x00, 0xC2}},
 		{"vptest xmm0,xmm1", func(a *Asm) { a.VPtest(0, 1) }, []byte{0xC4, 0xE2, 0x79, 0x17, 0xC1}},
+		{"vptest xmm4,[rip+disp32]", func(a *Asm) { a.VPtestRipPlaceholder(4) }, []byte{0xC4, 0xE2, 0x79, 0x17, 0x25, 0, 0, 0, 0}},
 		{"vphaddw xmm0,xmm1,xmm2", func(a *Asm) { a.VPhaddw(0, 1, 2) }, []byte{0xC4, 0xE2, 0x71, 0x01, 0xC2}},
 		{"vphaddw xmm8,xmm1,xmm2", func(a *Asm) { a.VPhaddw(8, 1, 2) }, []byte{0xC4, 0x62, 0x71, 0x01, 0xC2}},
 		{"vphaddw xmm0,xmm1,xmm10", func(a *Asm) { a.VPhaddw(0, 1, 10) }, []byte{0xC4, 0xC2, 0x71, 0x01, 0xC2}},

@@ -977,6 +977,29 @@ func TestAMD64StructuredFusesAnyTrueIntoControl(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredFusesMaskedAnyTrueIntoPtest(t *testing.T) {
+	body := []byte{0x20, 0x00, 0xfd, 0x0c} // local.get 0; v128.const
+	body = append(body, bytes.Repeat([]byte{0x80}, 16)...)
+	body = append(body,
+		0xfd, 0x4e, // v128.and
+		0xfd, 0x53, // v128.any_true
+		0x04, 0x40, 0x01, 0x0b, // if; nop; end
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
+	)
+	body = append(body, bytes.Repeat([]byte{0x01}, 510)...)
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	if got := countAMD64VPtestRIP(output.Code); got != 1 {
+		t.Fatalf("structured masked any_true emitted %d RIP-relative vptest instructions, want 1: %x", got, output.Code)
+	}
+}
+
 func TestAMD64StructuredCombinesVectorLocalWithConstantWithoutCopy(t *testing.T) {
 	body := []byte{0x20, 0x00, 0xfd, 0x0c} // local.get 0; v128.const
 	body = append(body, bytes.Repeat([]byte{0x7f}, 16)...)
@@ -1212,6 +1235,16 @@ func countAMD64VPshufbRIP(code []byte) int {
 	count := 0
 	for i := 0; i+4 < len(code); i++ {
 		if code[i] == 0xc4 && code[i+1] == 0xe2 && code[i+3] == 0x00 && code[i+4]&0xc7 == 0x05 {
+			count++
+		}
+	}
+	return count
+}
+
+func countAMD64VPtestRIP(code []byte) int {
+	count := 0
+	for i := 0; i+4 < len(code); i++ {
+		if code[i] == 0xc4 && code[i+1]&0x1f == 0x02 && code[i+3] == 0x17 && code[i+4]&0xc7 == 0x05 {
 			count++
 		}
 	}
