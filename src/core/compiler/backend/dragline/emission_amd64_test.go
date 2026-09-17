@@ -527,11 +527,14 @@ func TestAMD64StructuredLoadsSIMDDirectlyFromPinnedI32Address(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var direct amd64.Asm
-	direct.MovReg32(amd64.R10, amd64.R12)
-	direct.VMovdquLoadIdx(4, amd64.RBX, amd64.R10, 16)
+	var direct, redundant amd64.Asm
+	direct.VMovdquLoadIdx(4, amd64.RBX, amd64.R12, 16)
+	redundant.MovReg32(amd64.R10, amd64.R12)
 	if !bytes.Contains(native, direct.B) {
 		t.Fatalf("structured pinned-address SIMD load was not direct: %x", native)
+	}
+	if bytes.Contains(native, redundant.B) {
+		t.Fatalf("structured pinned-address SIMD load copied through scratch: %x", native)
 	}
 }
 
@@ -566,9 +569,8 @@ func TestAMD64StructuredLoadsSIMDDirectlyFromCachedI32Address(t *testing.T) {
 		t.Fatal(err)
 	}
 	var direct, redundant amd64.Asm
-	direct.MovReg32(amd64.R10, amd64.RDI)
-	redundant.MovReg64(amd64.R10, amd64.RDI)
-	redundant.MovReg32(amd64.R10, amd64.R10)
+	direct.VMovdquLoadIdx(4, amd64.RBX, amd64.RDI, 16)
+	redundant.LeaScaled(amd64.R10, amd64.RBX, amd64.RDI, 0, 16)
 	if !bytes.Contains(native, direct.B) {
 		t.Fatalf("structured cached-address SIMD load was not direct: %x", native)
 	}

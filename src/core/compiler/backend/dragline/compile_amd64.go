@@ -6472,9 +6472,8 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 					amd64EmitTrap(&a, 3, fn.Index, next.Offset)
 					a.PatchRel32(inBounds, a.Len())
 				}
-				a.MovReg32(amd64.R10, localRegisters[instr.U32()])
 				dst := reserveV128(len(stackTypes))
-				a.VMovdquLoadIdx(dst, amd64.RBX, amd64.R10, int32(descriptor.MemArg.Offset))
+				a.VMovdquLoadIdx(dst, amd64.RBX, localRegisters[instr.U32()], int32(descriptor.MemArg.Offset))
 				stackTypes = append(stackTypes, wasm.V128)
 				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
 				instrIndex++
@@ -9004,9 +9003,13 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		if !elideBounds {
 			checkMemory(address, 16)
 		}
-		effectiveAddress(address)
 		dst := reserveV(base)
-		a.VMovdquLoadDisp(dst, amd64.R10, 0)
+		if elideBounds && descriptor.MemArg.Offset <= math.MaxInt32 {
+			a.VMovdquLoadIdx(dst, amd64.RBX, address, int32(descriptor.MemArg.Offset))
+		} else {
+			effectiveAddress(address)
+			a.VMovdquLoadDisp(dst, amd64.R10, 0)
+		}
 		types[base] = wasm.V128
 	case wasm.InstrV128Store:
 		if len(types) < 2 || types[len(types)-2] != wasm.I32 || types[len(types)-1] != wasm.V128 {
@@ -9019,8 +9022,12 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		if !elideBounds {
 			checkMemory(address, 16)
 		}
-		effectiveAddress(address)
-		a.VMovdquStoreDisp(amd64.R10, 0, value)
+		if elideBounds && descriptor.MemArg.Offset <= math.MaxInt32 {
+			a.VMovdquStoreIdx(amd64.RBX, address, value, int32(descriptor.MemArg.Offset))
+		} else {
+			effectiveAddress(address)
+			a.VMovdquStoreDisp(amd64.R10, 0, value)
+		}
 		types = types[:base]
 	case wasm.InstrV128Store64Lane:
 		if len(types) < 2 || types[len(types)-2] != wasm.I32 || types[len(types)-1] != wasm.V128 {
@@ -9033,9 +9040,13 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		if !elideBounds {
 			checkMemory(address, 8)
 		}
-		effectiveAddress(address)
 		a.Pextrq(amd64.R11, value, byte(descriptor.Lane))
-		a.Store64(amd64.R10, 0, amd64.R11)
+		if elideBounds && descriptor.MemArg.Offset <= math.MaxInt32 {
+			a.StoreIdx(amd64.RBX, address, amd64.R11, int32(descriptor.MemArg.Offset), 8)
+		} else {
+			effectiveAddress(address)
+			a.Store64(amd64.R10, 0, amd64.R11)
+		}
 		types = types[:base]
 	case wasm.InstrV128And:
 		if err := binaryOp(a.VPand); err != nil {
