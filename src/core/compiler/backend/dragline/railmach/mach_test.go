@@ -53,6 +53,43 @@ func buildMachineTest(t *testing.T, target Target, m *wasm.Module) *Func {
 	return machine
 }
 
+func buildSimplifiedMachineTest(t *testing.T, target Target, m *wasm.Module) *Func {
+	t.Helper()
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := railssa.BuildCFG(stack, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locals, err := railssa.BuildLocalSSA(stack, cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flow, err := railssa.BuildValueFlow(stack, cfg, locals, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	semantic, err := railssa.BuildSemanticFunc(stack, cfg, flow, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := railssa.BuildMetadata(stack, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	simplified, err := railssa.SparseSimplify(stack, cfg, flow, semantic, metadata, railssa.DefaultSimplifyConfig(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine, err := BuildWithSimplify(target, cfg, flow, semantic, simplified, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return machine
+}
+
 func TestBuildMarksARM64DefaultFloatLocalRematerializable(t *testing.T) {
 	function := []byte{0x01, 0x01, 0x7c, 0x20, 0x00, 0x0b} // one f64 local; local.get 0
 	code := append(wasmtest.ULEB(uint32(len(function))), function...)
@@ -2209,7 +2246,7 @@ func TestAMD64ShiftCountIsFixed(t *testing.T) {
 		0x86,
 		0x0b,
 	})
-	amd := buildMachineTest(t, TargetAMD64, m)
+	amd := buildSimplifiedMachineTest(t, TargetAMD64, m)
 	if len(amd.Insts) != 1 {
 		t.Fatalf("instructions = %#v", amd.Insts)
 	}
@@ -2220,6 +2257,23 @@ func TestAMD64ShiftCountIsFixed(t *testing.T) {
 	arm := buildMachineTest(t, TargetARM64, m)
 	if arm.InstructionOperands(0)[1].Flags&OperandFixed != 0 {
 		t.Fatalf("ARM64 shift count unexpectedly fixed: %#v", arm.InstructionOperands(0)[1])
+	}
+}
+
+func TestAMD64ImmediateShiftCountIsNotFixed(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
+		0x20, 0x00,
+		0x42, 0x7f, // i64.const -1; x86 and Wasm both mask the shift count.
+		0x86,
+		0x0b,
+	})
+	amd := buildSimplifiedMachineTest(t, TargetAMD64, m)
+	if len(amd.Insts) != 2 {
+		t.Fatalf("instructions = %#v", amd.Insts)
+	}
+	operands := amd.InstructionOperands(1)
+	if len(operands) != 2 || operands[1].Flags&OperandFixed != 0 {
+		t.Fatalf("AMD64 immediate shift operands = %#v", operands)
 	}
 }
 

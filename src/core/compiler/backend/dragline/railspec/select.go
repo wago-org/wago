@@ -11,6 +11,9 @@ func SelectRule(target TargetMask, kind wasm.InstrKind, rhsKnown bool, rhs uint6
 	}
 	if target == TargetAMD64 {
 		if shift(kind) {
+			if rhsKnown {
+				return RuleAMD64ShiftImmediate
+			}
 			return RuleAMD64ShiftCL
 		}
 		if divide(kind) {

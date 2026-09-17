@@ -26,6 +26,9 @@ func TestGeneratedRulesVerifyTargetsAndNearMisses(t *testing.T) {
 	if got := SelectRule(TargetAMD64, wasm.InstrI64Add, true, 1<<40, false); got != RuleGenericRegister {
 		t.Fatalf("AMD64 large immediate rule = %d", got)
 	}
+	if got := SelectRule(TargetAMD64, wasm.InstrI64Shl, true, ^uint64(0), false); got != RuleAMD64ShiftImmediate {
+		t.Fatalf("AMD64 wrapping shift immediate rule = %d", got)
+	}
 	if got := SelectRule(TargetARM64, wasm.InstrI64Add, true, 4096, false); got != RuleGenericRegister {
 		t.Fatalf("ARM64 near-miss immediate rule = %d", got)
 	}

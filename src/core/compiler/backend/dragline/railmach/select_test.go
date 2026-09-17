@@ -66,7 +66,7 @@ func TestSelectOrderChoosesTargetImmediates(t *testing.T) {
 func TestSelectOrderChoosesARM64ShiftImmediate(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
 		0x20, 0x00,
-		0x42, 0x4d,
+		0x42, 0x0d,
 		0x88,
 		0x0b,
 	})
@@ -74,6 +74,10 @@ func TestSelectOrderChoosesARM64ShiftImmediate(t *testing.T) {
 	shift := semantic.InstructionMap[2] - 1
 	if plan.Selections[shift].Rule != railspec.RuleARM64ShiftImmediate || plan.OperandForms(shift)[1] != FormImmediate {
 		t.Fatalf("ARM64 shift selection=%#v forms=%#v", plan.Selections[shift], plan.OperandForms(shift))
+	}
+	_, amd := buildSelectionTest(t, TargetAMD64, m)
+	if amd.Selections[shift].Rule != railspec.RuleAMD64ShiftImmediate || amd.OperandForms(shift)[1] != FormImmediate {
+		t.Fatalf("AMD64 shift selection=%#v forms=%#v", amd.Selections[shift], amd.OperandForms(shift))
 	}
 	found := false
 	for _, combination := range plan.Combinations {

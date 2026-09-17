@@ -16,6 +16,7 @@ const (
 	RuleGenericRegister
 	RuleAMD64Imm32
 	RuleAMD64ShiftCL
+	RuleAMD64ShiftImmediate
 	RuleAMD64DivFixed
 	RuleARM64Imm12
 	RuleARM64ShiftImmediate
@@ -33,6 +34,7 @@ const (
 	FormFixedGPR0
 	FormUnsignedImm12
 	FormUnsignedImm6
+	FormShiftImmediate
 	FormAddress
 	FormFlags
 )
@@ -53,6 +55,7 @@ var Rules = [...]Rule{
 	{ID: RuleGenericRegister, Targets: TargetAMD64 | TargetARM64, NativeBytes: 4, Latency: 1, Uops: 1, Forms: [3]OperandForm{FormRegister}, FormCount: 1, Verified: true},
 	{ID: RuleAMD64Imm32, Targets: TargetAMD64, NativeBytes: 6, Latency: 1, Uops: 1, Forms: [3]OperandForm{FormRegister, FormSignedImm32}, FormCount: 2, Verified: true},
 	{ID: RuleAMD64ShiftCL, Targets: TargetAMD64, NativeBytes: 3, Latency: 1, Uops: 1, Forms: [3]OperandForm{FormRegister, FormFixedGPR1}, FormCount: 2, Verified: true},
+	{ID: RuleAMD64ShiftImmediate, Targets: TargetAMD64, NativeBytes: 4, Latency: 1, Uops: 1, Forms: [3]OperandForm{FormRegister, FormShiftImmediate}, FormCount: 2, Verified: true},
 	{ID: RuleAMD64DivFixed, Targets: TargetAMD64, NativeBytes: 4, Latency: 16, Uops: 4, Forms: [3]OperandForm{FormFixedGPR0, FormRegister}, FormCount: 2, Verified: true},
 	{ID: RuleARM64Imm12, Targets: TargetARM64, NativeBytes: 4, Latency: 1, Uops: 1, Forms: [3]OperandForm{FormRegister, FormUnsignedImm12}, FormCount: 2, Verified: true},
 	{ID: RuleARM64ShiftImmediate, Targets: TargetARM64, NativeBytes: 4, Latency: 1, Uops: 1, Forms: [3]OperandForm{FormRegister, FormUnsignedImm6}, FormCount: 2, Verified: true},

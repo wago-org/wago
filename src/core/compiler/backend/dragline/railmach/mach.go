@@ -347,6 +347,14 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 				}
 				constraint := Operand{Reg: VReg(value), Fixed: NoFixedReg, Bank: reuse.VRegs[value].Bank, Flags: OperandUse}
 				applyTargetConstraint(target, &instruction, &constraint, operandIndex, len(args))
+				if target == TargetAMD64 && operandIndex == 1 &&
+					(source.Op >= wasm.InstrI32Shl && source.Op <= wasm.InstrI32Rotr || source.Op >= wasm.InstrI64Shl && source.Op <= wasm.InstrI64Rotr) {
+					fact := simplified.IntegerFactAt(value)
+					if fact.Known {
+						constraint.Fixed = NoFixedReg
+						constraint.Flags &^= OperandFixed
+					}
+				}
 				reuse.Operands = append(reuse.Operands, constraint)
 			}
 			reuse.Insts = append(reuse.Insts, instruction)
