@@ -941,7 +941,8 @@ func amd64RailMachTargetSafetyReason(plan *nativeBackendPlan) string {
 		operands := plan.Machine.InstructionOperands(uint32(instructionID))
 		if amd64DirectSafeDivKind(instruction.Op) {
 			_, constantUnsignedI32Division := amd64RailMachUnsignedI32ConstantDivisor(plan, instruction, operands)
-			if !constantUnsignedI32Division && (!amd64RailMachDivisionInputSafe(plan, uint32(instructionID), operands) || !amd64RailMachDivisionClobberSafe(plan, uint32(instructionID)) && !plan.AMD64DivisionSave) {
+			_, constantSignedI32Division := amd64RailMachSignedI32ConstantDivisor(plan, instruction, operands)
+			if !constantUnsignedI32Division && !constantSignedI32Division && (!amd64RailMachDivisionInputSafe(plan, uint32(instructionID), operands) || !amd64RailMachDivisionClobberSafe(plan, uint32(instructionID)) && !plan.AMD64DivisionSave) {
 				return "amd64-division-safety"
 			}
 		}
@@ -1562,9 +1563,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			shiftRCXSaved := false
 			shiftRCXRestore := false
 			_, constantUnsignedI32Division := amd64RailMachUnsignedI32ConstantDivisor(plan, instruction, operands)
-			constantUnsignedI32InputFree := constantUnsignedI32Division && operands[0].Flags&railmach.OperandFixed == 0
+			_, constantSignedI32Division := amd64RailMachSignedI32ConstantDivisor(plan, instruction, operands)
+			constantI32InputFree := (constantUnsignedI32Division || constantSignedI32Division) && operands[0].Flags&railmach.OperandFixed == 0
 			if amd64DirectSafeDivKind(instruction.Op) && len(operands) == 2 {
-				if !constantUnsignedI32InputFree {
+				if !constantI32InputFree {
 					divisionRAXSaved = railMachPhysicalLiveAcross(plan, instructionID, railmach.BankGPR, 0)
 					if divisionRAXSaved {
 						a.StoreRsp64(int32(plan.AMD64DivisionSaveOffset), amd64.RAX)
@@ -4053,6 +4055,19 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					amd64EmitUnsignedI32ConstantDivision(&a, dst, reg(operands[0].Reg), divisor, semanticOp == wasm.InstrI32RemU)
 					if divisionRAXSaved {
 						a.LoadRsp64(amd64.RAX, int32(plan.AMD64DivisionSaveOffset))
+					}
+					if metrics != nil {
+						metrics.PostRARewrites++
+					}
+					continue
+				}
+				if divisor, ok := amd64RailMachSignedI32ConstantDivisor(plan, instruction, operands); ok {
+					amd64EmitSignedI32ConstantDivision(&a, dst, reg(operands[0].Reg), divisor, semanticOp == wasm.InstrI32RemS)
+					if divisionRAXSaved {
+						a.LoadRsp64(amd64.RAX, int32(plan.AMD64DivisionSaveOffset))
+					}
+					if divisionRDXSaved {
+						a.LoadRsp64(amd64.RDX, int32(plan.AMD64DivisionSaveOffset)+8)
 					}
 					if metrics != nil {
 						metrics.PostRARewrites++
@@ -8398,6 +8413,20 @@ func amd64RailMachUnsignedI32ConstantDivisor(plan *nativeBackendPlan, instructio
 	return divisor, immediate
 }
 
+func amd64RailMachSignedI32ConstantDivisor(plan *nativeBackendPlan, instruction railmach.Inst, operands []railmach.Operand) (int32, bool) {
+	kind := railmach.SemanticOpcode(instruction.Op)
+	if len(operands) != 2 || kind != wasm.InstrI32DivS && kind != wasm.InstrI32RemS {
+		return 0, false
+	}
+	value, constant := nativeIntegerConstant(plan, operands[1].Reg)
+	divisor := int32(value)
+	if !constant || kind == wasm.InstrI32RemS && !plan.AMD64SignedImmediateRemainders {
+		return 0, false
+	}
+	_, _, immediate := amd64SignedI32ImmediateMagic(divisor)
+	return divisor, immediate
+}
+
 // amd64EmitUnsignedI32ConstantDivision strength-reduces an unsigned i32
 // division or remainder without x86's fixed-register DIV instruction. The
 // 64-bit low multiply contains the complete 32x32 product, so shifting it by 32
@@ -8439,6 +8468,34 @@ func amd64EmitUnsignedI32ConstantDivision(a *amd64.Asm, dst, dividend amd64.Reg,
 	}
 	if dst != amd64.R10 {
 		a.MovReg32(dst, amd64.R10)
+	}
+}
+
+// amd64EmitSignedI32ConstantDivision replaces signed DIV by a widened
+// multiply and arithmetic shifts. The final sign subtraction changes floor
+// rounding into WebAssembly's required truncation toward zero.
+func amd64EmitSignedI32ConstantDivision(a *amd64.Asm, dst, dividend amd64.Reg, divisor int32, remainder bool) {
+	multiplier, shift, ok := amd64SignedI32ImmediateMagic(divisor)
+	if !ok {
+		panic("signed constant division without immediate magic")
+	}
+	a.Movsxd(amd64.R10, dividend)
+	a.ImulRRI(amd64.R11, amd64.R10, multiplier, true)
+	a.ShiftImm(7, amd64.R11, 32, true)
+	if multiplier < 0 {
+		a.Add64(amd64.R11, amd64.R10)
+	}
+	a.ShiftImm(7, amd64.R11, shift, true)
+	a.ShiftImm(7, amd64.R10, 31, true)
+	a.AluRR(0x29, amd64.R11, amd64.R10, true)
+	if remainder {
+		a.ImulRRI(amd64.R10, amd64.R11, divisor, false)
+		if dst != dividend {
+			a.MovReg32(dst, dividend)
+		}
+		a.AluRR(0x29, dst, amd64.R10, false)
+	} else if dst != amd64.R11 {
+		a.MovReg32(dst, amd64.R11)
 	}
 }
 

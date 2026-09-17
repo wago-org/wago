@@ -106,7 +106,8 @@ type nativeBackendPlan struct {
 	AMD64DivisionSave       bool
 	// AMD64ImmediateRemainders admits the longer multiply/shift/multiply/sub
 	// lowering only when repeated uses repay its extra instruction footprint.
-	AMD64ImmediateRemainders bool
+	AMD64ImmediateRemainders       bool
+	AMD64SignedImmediateRemainders bool
 	// AMD64WideVectorScratch permits non-Windows finalizers to use XMM15 for
 	// single-source shuffle masks and, when no low-XMM semantic scratch remains,
 	// allocate the full XMM0-XMM11 register set.
@@ -980,7 +981,11 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers *native
 			continue
 		}
 		operands := plan.Machine.InstructionOperands(uint32(consumerID))
-		if len(operands) != 2 || !nativeImmediateShiftUse(consumer.Op) {
+		constantDivision := false
+		if plan.Machine.Target == railmach.TargetAMD64 {
+			constantDivision = nativeAMD64ConstantDivisionUse(plan, consumer, operands)
+		}
+		if len(operands) != 2 || !nativeImmediateShiftUse(consumer.Op) && !constantDivision {
 			continue
 		}
 		if plan.Machine.Target == railmach.TargetAMD64 && nativeAMD64VectorShiftNeedsRegister(consumer.Op) {
@@ -1018,6 +1023,37 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers *native
 	}
 	// Later edge-rematerialization decisions consume the original use counts.
 	countNativeMachineUses(plan.Machine, uses)
+}
+
+func nativeAMD64ConstantDivisionUse(plan *nativeBackendPlan, instruction railmach.Inst, operands []railmach.Operand) bool {
+	if len(operands) != 2 {
+		return false
+	}
+	value, constant := nativeIntegerConstant(plan, operands[1].Reg)
+	if !constant {
+		return false
+	}
+	kind := railmach.SemanticOpcode(instruction.Op)
+	switch kind {
+	case wasm.InstrI32DivS, wasm.InstrI32RemS:
+		if kind == wasm.InstrI32RemS && !plan.AMD64SignedImmediateRemainders {
+			return false
+		}
+		_, _, ok := amd64SignedI32ImmediateMagic(int32(value))
+		return ok
+	case wasm.InstrI32DivU, wasm.InstrI32RemU:
+		divisor := uint32(value)
+		if divisor == 0 || railmach.SemanticOpcode(instruction.Op) == wasm.InstrI32RemU && !plan.AMD64ImmediateRemainders {
+			return false
+		}
+		if divisor&(divisor-1) == 0 {
+			return true
+		}
+		_, _, ok := amd64UnsignedI32ImmediateMagic(divisor)
+		return ok
+	default:
+		return false
+	}
 }
 
 func countNativeMachineUses(machine *railmach.Func, uses []uint32) {
@@ -1509,10 +1545,11 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if err != nil {
 		return nil, err
 	}
-	amd64ImmediateRemainders := false
+	amd64ImmediateRemainders, amd64SignedImmediateRemainders := false, false
 	if machineTarget == railmach.TargetAMD64 {
 		amd64ImmediateRemainders = nativeAMD64ImmediateRemainders(machine)
-		refineAMD64ConstantDivisionConstraints(machine, amd64ImmediateRemainders)
+		amd64SignedImmediateRemainders = nativeAMD64SignedImmediateRemainders(machine)
+		refineAMD64ConstantDivisionConstraints(machine, amd64ImmediateRemainders, amd64SignedImmediateRemainders)
 	}
 	if err := railmach.BindBoundsProofs(machine, emission); err != nil {
 		return nil, err
@@ -1968,7 +2005,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		}
 	}
 	p.immediateUses = resizeNativeSlice(p.immediateUses, len(machine.VRegs))
-	immediatePlan := nativeBackendPlan{Machine: machine, Selection: selection, Allocation: allocation}
+	immediatePlan := nativeBackendPlan{Machine: machine, Selection: selection, Allocation: allocation, AMD64ImmediateRemainders: amd64ImmediateRemainders, AMD64SignedImmediateRemainders: amd64SignedImmediateRemainders}
 	buildNativeImmediateCombinations(&immediatePlan, &p.immediateProducer, &p.immediateSkip, p.immediateUses)
 	if machine.Target == railmach.TargetARM64 {
 		buildNativeARM64LogicalImmediateCombinations(&immediatePlan, &p.immediateProducer, &p.immediateSkip, p.immediateUses)
@@ -2119,7 +2156,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		SegmentedBaselineDebt: segmentedBaselineDebt, SegmentedCandidateDebt: segmentedCandidateDebt, SegmentedBaselineCopies: segmentedBaselineCopies, SegmentedCandidateCopies: segmentedCandidateCopies, SegmentedCandidateRanges: segmentedCandidateRanges, SegmentedAttempted: segmentedAttempted, SegmentedAdmitted: segmentedAdmitted,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64StackCachedGlobals: stackCachedGlobals, AMD64StackCachedGlobalOffset: stackCachedGlobalOffset, AMD64StackCachedGlobalCount: uint8(stackCachedGlobalCount),
-		AMD64DivisionSaveOffset: amd64DivisionSaveOffset, AMD64DivisionSave: amd64DivisionSave, AMD64ImmediateRemainders: amd64ImmediateRemainders,
+		AMD64DivisionSaveOffset: amd64DivisionSaveOffset, AMD64DivisionSave: amd64DivisionSave, AMD64ImmediateRemainders: amd64ImmediateRemainders, AMD64SignedImmediateRemainders: amd64SignedImmediateRemainders,
 		AMD64WideVectorScratch: amd64WideVectorScratch,
 		AMD64BMI2:              target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
 		PostRAPairWith:         p.postRAPairWith,
@@ -2339,14 +2376,16 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 }
 
 // refineAMD64ConstantDivisionConstraints releases the fixed RAX dividend
-// constraint when finalization can replace unsigned i32 division or remainder
-// by exact immediate arithmetic. This lets ordinary allocation
+// constraint when finalization can replace i32 division or remainder by exact
+// immediate arithmetic. This lets ordinary allocation
 // preserve the dividend in its natural register instead of paying repairs
 // inherited from x86 DIV.
-func refineAMD64ConstantDivisionConstraints(machine *railmach.Func, immediateRemainders bool) {
+func refineAMD64ConstantDivisionConstraints(machine *railmach.Func, immediateRemainders, signedImmediateRemainders bool) {
 	for instructionID, instruction := range machine.Insts {
 		kind := railmach.SemanticOpcode(instruction.Op)
-		if kind != wasm.InstrI32DivU && kind != wasm.InstrI32RemU {
+		signed := kind == wasm.InstrI32DivS || kind == wasm.InstrI32RemS
+		unsigned := kind == wasm.InstrI32DivU || kind == wasm.InstrI32RemU
+		if !signed && !unsigned {
 			continue
 		}
 		operands := machine.InstructionOperands(uint32(instructionID))
@@ -2354,21 +2393,58 @@ func refineAMD64ConstantDivisionConstraints(machine *railmach.Func, immediateRem
 			continue
 		}
 		value, constant := nativeMachineIntegerConstant(machine, operands[1].Reg)
-		divisor := uint32(value)
-		if !constant || divisor == 0 {
+		if !constant {
 			continue
 		}
-		if divisor&(divisor-1) == 0 {
-			continue
+		immediate := false
+		if signed {
+			if kind == wasm.InstrI32RemS && !signedImmediateRemainders {
+				continue
+			}
+			_, _, immediate = amd64SignedI32ImmediateMagic(int32(value))
+		} else {
+			divisor := uint32(value)
+			if divisor == 0 || divisor&(divisor-1) == 0 || kind == wasm.InstrI32RemU && !immediateRemainders {
+				continue
+			}
+			_, _, immediate = amd64UnsignedI32ImmediateMagic(divisor)
 		}
-		_, _, immediate := amd64UnsignedI32ImmediateMagic(divisor)
-		if !immediate || kind == wasm.InstrI32RemU && !immediateRemainders {
+		if !immediate {
 			continue
 		}
 		operand := &machine.Operands[instruction.OperandStart]
 		operand.Fixed = railmach.NoFixedReg
 		operand.Flags &^= railmach.OperandFixed
 	}
+}
+
+// nativeAMD64SignedImmediateRemainders admits a signed remainder when the
+// function contains another signed constant-division replacement that shares
+// the fixed-register relief and code-size cost.
+func nativeAMD64SignedImmediateRemainders(machine *railmach.Func) bool {
+	const minimumUses = 2
+	uses := 0
+	for instructionID, instruction := range machine.Insts {
+		kind := railmach.SemanticOpcode(instruction.Op)
+		if kind != wasm.InstrI32DivS && kind != wasm.InstrI32RemS {
+			continue
+		}
+		operands := machine.InstructionOperands(uint32(instructionID))
+		if len(operands) != 2 {
+			continue
+		}
+		value, constant := nativeMachineIntegerConstant(machine, operands[1].Reg)
+		if !constant {
+			continue
+		}
+		if _, _, immediate := amd64SignedI32ImmediateMagic(int32(value)); immediate {
+			uses++
+			if uses == minimumUses {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // nativeAMD64ImmediateRemainders requires enough independent replacements for
