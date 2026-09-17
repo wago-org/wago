@@ -31,7 +31,10 @@ machine code.
 
 ## Why Wago?
 
-* **Fast and lightweight.** Using a few *kilobytes* of ram, we compile _5x faster_ and execute _40% quicker_ than wazero.
+* **Fast and lightweight.** Using a few *kilobytes* of RAM, we compile _5x faster_
+  than wazero, while Dragline takes about half its execution time on ARM64. On
+  our 51-workload AMD64 corpus, Dragline takes about _25% more_ execution time
+  than WAVM/LLVM overall, with 9 workloads within 10%.
 * **Pure Go.** Embed Wago without CGO while keeping straightforward Go builds
   and cross-compilation.
 * **Standards Compliant** We pass the [official WebAssembly test suite](https://github.com/WebAssembly/testsuite), millions of fuzzes, and many real-world corpora.
