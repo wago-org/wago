@@ -450,6 +450,85 @@ func TestAMD64RailMachUnrollsHotConditionalSelfLoop(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachSelfLoopUnrollRetainsFloatConstant(t *testing.T) {
+	body := []byte{0x01, 0x01, 0x7c, 0x03, 0x40} // one f64 local; loop
+	body = append(body, 0x44)
+	bits := math.Float64bits(1.0 / 3.0)
+	for shift := range 8 {
+		body = append(body, byte(bits>>uint(shift*8)))
+	}
+	body = append(body, 0x21, 0x01) // local.set 1
+	for address := byte(0); address < 64; address += 8 {
+		body = append(body,
+			0x41, address, // i32.const address
+			0x20, 0x01, // local.get 1
+			0x39, 0x03, 0x00, // f64.store align=8 offset=0
+		)
+	}
+	body = append(body,
+		0x20, 0x00, 0x41, 0x01, 0x6a, 0x22, 0x00, // ++counter
+		0x41, 0xc0, 0x00, 0x49, 0x0d, 0x00, // continue while counter < 64
+		0x0b, 0x20, 0x00, 0x0b,
+	)
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := (&nativeBackendPlanner{}).Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selfLoopBlock := railssa.BlockID(0)
+	foundSelfLoop := false
+	for _, edge := range plan.Machine.Edges {
+		if edge.From == edge.To {
+			selfLoopBlock = edge.From
+			foundSelfLoop = true
+		}
+	}
+	if !foundSelfLoop {
+		t.Fatal("conditional self-loop was not preserved")
+	}
+	plan.SignalsBounds = true
+	plan.Machine.Blocks[selfLoopBlock].Weight = 1
+	rolled, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("rolled self-loop finalization = used %t, err %v", used, err)
+	}
+	plan.Machine.Blocks[selfLoopBlock].Weight = 64
+	native, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("unrolled self-loop finalization = used %t, err %v", used, err)
+	}
+	if len(native) <= len(rolled)+128 {
+		t.Fatalf("unrolled self-loop code = %d bytes, rolled code = %d; loop was not unrolled", len(native), len(rolled))
+	}
+	if got := countAMD64ScalarFloatRIPLoads(rolled); got != 1 {
+		t.Fatalf("rolled loop scalar constant loads = %d, want 1: %x", got, rolled)
+	}
+	if got := countAMD64ScalarFloatRIPLoads(native); got != 1 {
+		t.Fatalf("unrolled loop scalar constant loads = %d, want 1: %x", got, native)
+	}
+}
+
 func TestAMD64RailMachUsesDependencyBreakingVEXFloatConversionAndSqrt(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.F64}))),
@@ -1730,6 +1809,23 @@ func countAMD64VPshufbRIP(code []byte) int {
 	count := 0
 	for i := 0; i+4 < len(code); i++ {
 		if code[i] == 0xc4 && code[i+1] == 0xe2 && code[i+3] == 0x00 && code[i+4]&0xc7 == 0x05 {
+			count++
+		}
+	}
+	return count
+}
+
+func countAMD64ScalarFloatRIPLoads(code []byte) int {
+	count := 0
+	for i := 0; i+4 < len(code); i++ {
+		if code[i] != 0xf2 && code[i] != 0xf3 {
+			continue
+		}
+		opcode := i + 1
+		if code[opcode]&0xf0 == 0x40 {
+			opcode++
+		}
+		if opcode+2 < len(code) && code[opcode] == 0x0f && code[opcode+1] == 0x10 && code[opcode+2]&0xc7 == 0x05 {
 			count++
 		}
 	}

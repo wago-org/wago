@@ -68,10 +68,14 @@ type amd64SIMDConstant struct {
 }
 
 type amd64FloatConstantPatch struct {
-	at     int
-	target int
-	bits   uint64
-	f64    bool
+	at          int
+	start       int
+	target      int
+	instruction uint32
+	reg         amd64.Reg
+	bits        uint64
+	f64         bool
+	direct      bool
 }
 
 type amd64SIMDConstantPatch struct {
@@ -1121,7 +1125,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			a.VPxor(dst, dst, dst)
 			return
 		}
-		floatConstantPatches = append(floatConstantPatches, amd64FloatConstantPatch{at: a.MovsRipPlaceholder(dst, f64), bits: bits, f64: f64})
+		start := a.Len()
+		floatConstantPatches = append(floatConstantPatches, amd64FloatConstantPatch{at: a.MovsRipPlaceholder(dst, f64), start: start, reg: dst, bits: bits, f64: f64})
 	}
 	readLocation := func(value railmach.VReg, location railmach.Location, scratch amd64.Reg, stackDelta uint32) (amd64.Reg, error) {
 		return amd64RailMachReadLocationWithFloatConstant(&a, plan, value, location, scratch, stackDelta, materializeFloatConstant)
@@ -3622,7 +3627,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				if instruction.Aux == 0 {
 					a.VPxor(dst, dst, dst)
 				} else {
-					floatConstantPatches = append(floatConstantPatches, amd64FloatConstantPatch{at: a.MovsRipPlaceholder(dst, f64), bits: instruction.Aux, f64: f64})
+					start := a.Len()
+					floatConstantPatches = append(floatConstantPatches, amd64FloatConstantPatch{at: a.MovsRipPlaceholder(dst, f64), start: start, instruction: instructionID, reg: dst, bits: instruction.Aux, f64: f64, direct: true})
 				}
 				continue
 			}
@@ -4464,6 +4470,23 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			if unrollCopies != 0 {
 				iteration := append([]byte(nil), a.B[iterationStart:a.Len()]...)
 				floatPatches := append([]amd64FloatConstantPatch(nil), floatConstantPatches[iterationFloatPatchStart:]...)
+				retainedFloatPatches := make([]bool, len(floatPatches))
+				for index, patch := range floatPatches {
+					loadBytes := patch.at + 4 - patch.start
+					retainedFloatPatches[index] = patch.direct && (loadBytes == 8 || loadBytes == 9) && amd64RailMachSelfLoopRetainsFloatRegister(plan, uint32(blockID), patch.instruction, patch.reg)
+				}
+				omissions := make([]amd64ByteOmission, 0, len(floatPatches))
+				for index, patch := range floatPatches {
+					if retainedFloatPatches[index] {
+						omissions = append(omissions, amd64ByteOmission{start: patch.start - iterationStart, end: patch.at + 4 - iterationStart})
+					}
+				}
+				if compacted, ok := amd64OmitByteRanges(iteration, omissions); ok {
+					iteration = compacted
+				} else {
+					omissions = omissions[:0]
+					clear(retainedFloatPatches)
+				}
 				simdPatches := append([]amd64SIMDConstantPatch(nil), simdConstantPatches[iterationSIMDPatchStart:]...)
 				var sources []corecompiler.FunctionSourceMap
 				if metadata != nil {
@@ -4473,20 +4496,23 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(falseCondition), Target: uint32(plan.Machine.Edges[falseEdge].To)})
 					copyStart := a.Len()
 					a.B = append(a.B, iteration...)
-					delta := copyStart - iterationStart
-					for _, patch := range floatPatches {
-						patch.at += delta
+					for index, patch := range floatPatches {
+						if retainedFloatPatches[index] {
+							continue
+						}
+						patch.start = copyStart + amd64OffsetAfterOmissions(patch.start-iterationStart, omissions)
+						patch.at = copyStart + amd64OffsetAfterOmissions(patch.at-iterationStart, omissions)
 						patch.target = 0
 						floatConstantPatches = append(floatConstantPatches, patch)
 					}
 					for _, patch := range simdPatches {
-						patch.at += delta
+						patch.at = copyStart + amd64OffsetAfterOmissions(patch.at-iterationStart, omissions)
 						patch.target = 0
 						simdConstantPatches = append(simdConstantPatches, patch)
 					}
 					if metadata != nil {
 						for _, source := range sources {
-							metadata.recordSource(int(source.NativeOffset)+delta, source.WasmOffset)
+							metadata.recordSource(copyStart+amd64OffsetAfterOmissions(int(source.NativeOffset)-iterationStart, omissions), source.WasmOffset)
 						}
 					}
 				}
@@ -4865,6 +4891,146 @@ func amd64RailMachSelfLoopUnrollCopies(weight uint32, functionInstructions int, 
 		return 0
 	}
 	return min(3, 512/iterationBytes)
+}
+
+// amd64RailMachSelfLoopRetainsFloatRegister proves that a direct scalar float
+// constant is the iteration's only writer of its allocated register. The
+// byte-cloned unroll copies may then reuse the value left by the preceding
+// iteration instead of loading the same constant again. Keep the proof
+// deliberately narrow: scalar arithmetic has explicit destinations, while
+// vector and conversion sequences may use implicit FPR temporaries.
+func amd64RailMachSelfLoopRetainsFloatRegister(plan *nativeBackendPlan, block, constant uint32, physical amd64.Reg) bool {
+	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.Allocation == nil || plan.Exit == nil ||
+		int(block) >= len(plan.Schedule.BlockRanges) || int(constant) >= len(plan.Machine.Insts) || int(constant) >= len(plan.Allocation.InstructionPositions) ||
+		physical >= amd64.Reg(len(amd64FPRRegisters)) {
+		return false
+	}
+	definition := plan.Machine.Insts[constant]
+	if definition.Result == 0 || plan.Machine.VRegs[definition.Result].Bank != railmach.BankFPR {
+		return false
+	}
+	definitionLocation := plan.Allocation.LocationAt(definition.Result, plan.Allocation.InstructionPositions[constant]*6+2)
+	if definitionLocation.Kind != railmach.LocationRegister || amd64RailMachPhysical(definitionLocation) != physical {
+		return false
+	}
+	range_ := plan.Schedule.BlockRanges[block]
+	order := plan.Schedule.Order[range_.Start : range_.Start+range_.Count]
+	for _, instructionID := range order {
+		instruction := plan.Machine.Insts[instructionID]
+		if plan.ImmediateSkip.has(instructionID) || plan.PostRASkip.has(instructionID) || plan.AMD64DeadStoreSkip.has(instructionID) || plan.AMD64GlobalUpdateSkip.has(instructionID) ||
+			instruction.Result != 0 && plan.Machine.VRegs[instruction.Result].Flags&railmach.VRegElided != 0 {
+			continue
+		}
+		position := plan.Allocation.InstructionPositions[instructionID]*6 + 2
+		if instructionID != constant && instruction.Result != 0 {
+			result := plan.Machine.VRegs[instruction.Result]
+			location := plan.Allocation.LocationAt(instruction.Result, position)
+			if result.Bank == railmach.BankFPR && location.Kind == railmach.LocationRegister && amd64RailMachPhysical(location) == physical {
+				return false
+			}
+		}
+		if !amd64RailMachHasOnlyExplicitScalarFPRWrites(plan, instructionID) {
+			return false
+		}
+		if moveRange, ok := nativeFixedMoveRange(plan, instructionID); ok {
+			for _, move := range plan.Exit.Moves[moveRange.Start : moveRange.Start+moveRange.Count] {
+				if move.Dst.Kind == railmach.LocationRegister && move.Dst.Bank == railmach.BankFPR && amd64RailMachPhysical(move.Dst) == physical {
+					return false
+				}
+			}
+		}
+	}
+	for _, fragment := range plan.Allocation.Fragments {
+		if fragment.Location.Kind != railmach.LocationRegister || fragment.Location.Bank != railmach.BankFPR || amd64RailMachPhysical(fragment.Location) != physical {
+			continue
+		}
+		for _, instructionID := range order {
+			position := plan.Allocation.InstructionPositions[instructionID] * 6
+			if fragment.Start <= position+2 && position <= fragment.End {
+				return false
+			}
+		}
+	}
+	for _, region := range plan.CalleeSaves {
+		if region.Bank != railmach.BankFPR || amd64FPRRegisters[region.Physical] != physical {
+			continue
+		}
+		for _, instructionID := range order {
+			if region.RestoreBefore == instructionID {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func amd64RailMachHasOnlyExplicitScalarFPRWrites(plan *nativeBackendPlan, instructionID uint32) bool {
+	instruction := plan.Machine.Insts[instructionID]
+	hasFPR := false
+	if instruction.Result != 0 && plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
+		hasFPR = true
+		if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
+			return false
+		}
+	}
+	for _, operand := range plan.Machine.InstructionOperands(instructionID) {
+		if operand.Bank != railmach.BankFPR {
+			continue
+		}
+		hasFPR = true
+		if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeV128 {
+			return false
+		}
+	}
+	if !hasFPR {
+		return true
+	}
+	switch railmach.SemanticOpcode(instruction.Op) {
+	case wasm.InstrF32Const, wasm.InstrF64Const,
+		wasm.InstrF32Load, wasm.InstrF64Load, wasm.InstrF32Store, wasm.InstrF64Store,
+		wasm.InstrF32Eq, wasm.InstrF32Ne, wasm.InstrF32Lt, wasm.InstrF32Gt, wasm.InstrF32Le, wasm.InstrF32Ge,
+		wasm.InstrF64Eq, wasm.InstrF64Ne, wasm.InstrF64Lt, wasm.InstrF64Gt, wasm.InstrF64Le, wasm.InstrF64Ge,
+		wasm.InstrF32Add, wasm.InstrF32Sub, wasm.InstrF32Mul, wasm.InstrF32Div,
+		wasm.InstrF64Add, wasm.InstrF64Sub, wasm.InstrF64Mul, wasm.InstrF64Div:
+		return true
+	default:
+		return false
+	}
+}
+
+type amd64ByteOmission struct {
+	start int
+	end   int
+}
+
+func amd64OmitByteRanges(code []byte, omissions []amd64ByteOmission) ([]byte, bool) {
+	if len(omissions) == 0 {
+		return code, true
+	}
+	compacted := make([]byte, 0, len(code))
+	cursor := 0
+	for _, omission := range omissions {
+		if omission.start < cursor || omission.end > len(code) || omission.start >= omission.end {
+			return code, false
+		}
+		compacted = append(compacted, code[cursor:omission.start]...)
+		cursor = omission.end
+	}
+	return append(compacted, code[cursor:]...), true
+}
+
+func amd64OffsetAfterOmissions(offset int, omissions []amd64ByteOmission) int {
+	removed := 0
+	for _, omission := range omissions {
+		if offset < omission.start {
+			break
+		}
+		if offset < omission.end {
+			return omission.start - removed
+		}
+		removed += omission.end - omission.start
+	}
+	return offset - removed
 }
 
 type amd64EdgeResultRename struct {
