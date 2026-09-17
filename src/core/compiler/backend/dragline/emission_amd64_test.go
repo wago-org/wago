@@ -135,6 +135,79 @@ func TestAMD64RailMachRetainsGlobalDescriptorAcrossScalarUpdate(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachRenamesReductionResultToBackedgeDestination(t *testing.T) {
+	body := []byte{
+		0x42, 0x00, 0x21, 0x02, // accumulator = i64.const 0
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x20, 0x00, 0x45, 0x0d, 0x01, // break when count == 0
+		0x20, 0x02, 0x20, 0x01, 0x29, 0x03, 0x00, 0x7c, 0x21, 0x02, // accumulator += load64(address)
+		0x20, 0x01, 0x41, 0x08, 0x6a, 0x21, 0x01, // address += 8
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, // count -= 1
+		0x0c, 0x00, 0x0b, 0x0b, // continue; end loop; end block
+		0x20, 0x02, 0x0b,
+	}
+	function := append([]byte{0x02, 0x01, 0x7f, 0x01, 0x7e}, body...)
+	code := append(wasmtest.ULEB(uint32(len(function))), function...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(module, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := (&nativeBackendPlanner{}).Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.SignalsBounds = true
+	rename := amd64EdgeResultRename{}
+	for block := range plan.Machine.Blocks {
+		if candidate := amd64RailMachEdgeResultRename(plan, uint32(block)); candidate.valid {
+			rename = candidate
+			break
+		}
+	}
+	if !rename.valid {
+		t.Fatal("reduction result was not eligible for edge renaming")
+	}
+	move := plan.Exit.Moves[rename.move]
+	instruction := plan.Machine.Insts[rename.instruction]
+	operands := plan.Machine.InstructionOperands(rename.instruction)
+	if len(operands) != 2 || instruction.Result != move.Reg {
+		t.Fatalf("renamed instruction = %#v, operands = %#v, move = %#v", instruction, operands, move)
+	}
+	position := plan.Allocation.InstructionPositions[rename.instruction]*6 + 2
+	lhs := plan.Allocation.LocationAt(operands[0].Reg, position)
+	if lhs.Kind != railmach.LocationRegister || move.Src.Kind != railmach.LocationRegister || move.Dst.Kind != railmach.LocationRegister {
+		t.Fatalf("renamed locations = lhs %#v, move %#v", lhs, move)
+	}
+	native, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("reduction emission = used %t, err %v", used, err)
+	}
+	var inputCopy, edgeCopy amd64.Asm
+	inputCopy.MovReg64(amd64RailMachPhysical(move.Src), amd64RailMachPhysical(lhs))
+	edgeCopy.MovReg64(amd64RailMachPhysical(move.Dst), amd64RailMachPhysical(move.Src))
+	if bytes.Contains(native, inputCopy.B) || bytes.Contains(native, edgeCopy.B) {
+		t.Fatalf("renamed reduction retained register copies: input=%x edge=%x code=%x", inputCopy.B, edgeCopy.B, native)
+	}
+}
+
 func TestAMD64RailMachRetainsGlobalDescriptorsAcrossLocalCall(t *testing.T) {
 	globalUpdates := []byte{
 		0x23, 0x00, 0x41, 0x01, 0x6a, 0x24, 0x00,

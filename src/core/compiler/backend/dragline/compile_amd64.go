@@ -1039,9 +1039,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	var currentResult railmach.VReg
 	var currentPosition uint32
 	var forwardedSpill railmach.VReg
+	var currentResultOverride amd64.Reg
+	currentResultOverrideValid := false
 	var retainedGlobalDescriptor uint32
 	retainsGlobalDescriptor := false
 	reg := func(value railmach.VReg) amd64.Reg {
+		if currentResultOverrideValid && value == currentResult {
+			return currentResultOverride
+		}
 		location := plan.Allocation.LocationAt(value, currentPosition)
 		bank := plan.Machine.VRegs[value].Bank
 		cold := false
@@ -1408,6 +1413,16 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			return false
 		}
 		blockRange := plan.Schedule.BlockRanges[blockID]
+		edgeResultRename := amd64RailMachEdgeResultRename(plan, uint32(blockID))
+		if edgeResultRename.valid && metrics != nil {
+			metrics.PostRARewrites++
+		}
+		emitOutgoingMoves := func(edge uint32) error {
+			if edgeResultRename.valid && edgeResultRename.edge == edge {
+				return emitAMD64RailMachEdgeMoves(&a, plan, edge, edgeResultRename.move)
+			}
+			return emitAMD64RailMachEdgeMoves(&a, plan, edge)
+		}
 		retainsGlobalDescriptor = false
 		alignBlock := plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockLoopHeader) != 0
 		for edge := range plan.Machine.Edges {
@@ -1505,6 +1520,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			currentOperands, currentResult = operands, instruction.Result
 			currentPosition = plan.Allocation.InstructionPositions[instructionID]*6 + 2
+			currentResultOverrideValid = edgeResultRename.valid && edgeResultRename.instruction == instructionID
+			if currentResultOverrideValid {
+				currentResultOverride = amd64RailMachPhysical(edgeResultRename.destination)
+			}
 			for _, fragment := range plan.Allocation.Fragments {
 				if fragment.Start != currentPosition {
 					continue
@@ -4376,13 +4395,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						continue
 					}
 					next := a.JccPlaceholder(amd64.CondNE)
-					if err := emitAMD64RailMachEdgeMoves(&a, plan, edge); err != nil {
+					if err := emitOutgoingMoves(edge); err != nil {
 						return nil, 0, true, err
 					}
 					patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: uint32(plan.Machine.Edges[edge].To)})
 					a.PatchRel32(next, a.Len())
 				} else {
-					if err := emitAMD64RailMachEdgeMoves(&a, plan, edge); err != nil {
+					if err := emitOutgoingMoves(edge); err != nil {
 						return nil, 0, true, err
 					}
 					if !branchesToLayoutSuccessor(edge) {
@@ -4478,7 +4497,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				// necessary edge moves and jump.
 				patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(falseCondition), Target: uint32(plan.Machine.Edges[falseEdge].To)})
 				if trueMoves {
-					if err := emitAMD64RailMachEdgeMoves(&a, plan, trueEdge); err != nil {
+					if err := emitOutgoingMoves(trueEdge); err != nil {
 						return nil, 0, true, err
 					}
 				}
@@ -4491,7 +4510,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				// Invert the test so a move-free true successor can be targeted
 				// directly while the false edge realizes its moves locally.
 				patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(falseCondition ^ 1), Target: uint32(plan.Machine.Edges[trueEdge].To)})
-				if err := emitAMD64RailMachEdgeMoves(&a, plan, falseEdge); err != nil {
+				if err := emitOutgoingMoves(falseEdge); err != nil {
 					return nil, 0, true, err
 				}
 				if !branchesToLayoutSuccessor(falseEdge) {
@@ -4500,12 +4519,12 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			falseSite := a.JccPlaceholder(falseCondition)
-			if err := emitAMD64RailMachEdgeMoves(&a, plan, trueEdge); err != nil {
+			if err := emitOutgoingMoves(trueEdge); err != nil {
 				return nil, 0, true, err
 			}
 			patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: uint32(plan.Machine.Edges[trueEdge].To)})
 			a.PatchRel32(falseSite, a.Len())
-			if err := emitAMD64RailMachEdgeMoves(&a, plan, falseEdge); err != nil {
+			if err := emitOutgoingMoves(falseEdge); err != nil {
 				return nil, 0, true, err
 			}
 			if !branchesToLayoutSuccessor(falseEdge) {
@@ -4515,7 +4534,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		}
 		if edgeCount == 1 {
 			if counter, exit, rotated := amd64RailMachRotatedZeroTestLatch(plan, uint32(blockID), first); rotated {
-				if err := emitAMD64RailMachEdgeMoves(&a, plan, first); err != nil {
+				if err := emitOutgoingMoves(first); err != nil {
 					return nil, 0, true, err
 				}
 				counterLocation := plan.Allocation.Locations[counter]
@@ -4563,7 +4582,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
-			if err := emitAMD64RailMachEdgeMoves(&a, plan, first); err != nil {
+			if err := emitOutgoingMoves(first); err != nil {
 				return nil, 0, true, err
 			}
 			if !branchesToLayoutSuccessor(first) {
@@ -4846,6 +4865,135 @@ func amd64RailMachSelfLoopUnrollCopies(weight uint32, functionInstructions int, 
 		return 0
 	}
 	return min(3, 512/iterationBytes)
+}
+
+type amd64EdgeResultRename struct {
+	instruction uint32
+	edge        uint32
+	move        uint32
+	destination railmach.Location
+	valid       bool
+}
+
+// amd64RailMachEdgeResultRename coalesces final two-address integer additions
+// with its sole outgoing block-argument copy after allocation. Retargeting the
+// result to the edge destination removes both the destructive-input copy and
+// the outgoing copy when that destination carries no other live value. Keep
+// immediate recurrences on the established LEA path: their edge copy is cheap,
+// and changing their compact loop layout has no measured execution benefit.
+func amd64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) amd64EdgeResultRename {
+	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.Allocation == nil || plan.Exit == nil || int(block) >= len(plan.Schedule.BlockRanges) {
+		return amd64EdgeResultRename{}
+	}
+	edge := ^uint32(0)
+	for index, candidate := range plan.Machine.Edges {
+		if uint32(candidate.From) != block {
+			continue
+		}
+		if edge != ^uint32(0) {
+			return amd64EdgeResultRename{}
+		}
+		edge = uint32(index)
+	}
+	if edge == ^uint32(0) {
+		return amd64EdgeResultRename{}
+	}
+	moveRange := plan.Exit.EdgeMoves[edge]
+	candidateMove := ^uint32(0)
+	candidatePosition := uint32(0)
+	var instructionID uint32
+	var result railmach.VReg
+	var destination railmach.Location
+	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
+		move := plan.Exit.Moves[index]
+		if move.Kind != railmach.MoveCopy ||
+			(move.Placement != railmach.PlacePredecessorEnd && move.Placement != railmach.PlaceSplitEdge) ||
+			move.Src.Kind != railmach.LocationRegister || move.Dst.Kind != railmach.LocationRegister ||
+			move.Src.Bank != railmach.BankGPR || move.Dst.Bank != railmach.BankGPR ||
+			move.Reg == 0 || int(move.Reg) >= len(plan.Machine.VRegs) {
+			continue
+		}
+		data := plan.Machine.VRegs[move.Reg]
+		if data.Flags&(railmach.VRegInitial|railmach.VRegBlockParam|railmach.VRegElided) != 0 || data.Def%6 != 3 {
+			continue
+		}
+		definition := data.Def / 6
+		if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Result != move.Reg {
+			continue
+		}
+		semanticOp := railmach.SemanticOpcode(plan.Machine.Insts[definition].Op)
+		if semanticOp != wasm.InstrI32Add && semanticOp != wasm.InstrI64Add {
+			continue
+		}
+		if _, immediate := plan.ImmediateProducer.get(definition); immediate {
+			continue
+		}
+		position := plan.Allocation.InstructionPositions[definition]
+		operands := plan.Machine.InstructionOperands(definition)
+		if len(operands) != 2 || plan.Allocation.LocationAt(operands[0].Reg, position*6+2) != move.Dst ||
+			plan.Allocation.LocationAt(move.Reg, position*6+2) != move.Src || candidateMove != ^uint32(0) && position <= candidatePosition {
+			continue
+		}
+		candidateMove, instructionID, result, destination = index, definition, move.Reg, move.Dst
+		candidatePosition = position
+	}
+	if candidateMove == ^uint32(0) {
+		return amd64EdgeResultRename{}
+	}
+	transferCount := 0
+	for _, transfer := range plan.Machine.Transfers {
+		if transfer.Src == result {
+			transferCount++
+			if transfer.Edge != edge {
+				return amd64EdgeResultRename{}
+			}
+		}
+	}
+	if transferCount != 1 {
+		return amd64EdgeResultRename{}
+	}
+	for candidate := range plan.Machine.Insts {
+		for _, operand := range plan.Machine.InstructionOperands(uint32(candidate)) {
+			if operand.Reg == result {
+				return amd64EdgeResultRename{}
+			}
+		}
+	}
+	for _, value := range plan.Machine.Results {
+		if value == result {
+			return amd64EdgeResultRename{}
+		}
+	}
+	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
+		if index != candidateMove && plan.Exit.Moves[index].Src == destination {
+			return amd64EdgeResultRename{}
+		}
+	}
+	range_ := plan.Schedule.BlockRanges[block]
+	seenDefinition := false
+	for _, candidate := range plan.Schedule.Order[range_.Start : range_.Start+range_.Count] {
+		if candidate == instructionID {
+			seenDefinition = true
+			continue
+		}
+		if !seenDefinition {
+			continue
+		}
+		position := plan.Allocation.InstructionPositions[candidate]*6 + 2
+		for _, operand := range plan.Machine.InstructionOperands(candidate) {
+			if plan.Allocation.LocationAt(operand.Reg, position) == destination {
+				return amd64EdgeResultRename{}
+			}
+		}
+		instruction := plan.Machine.Insts[candidate]
+		if instruction.Result != 0 && plan.Allocation.LocationAt(instruction.Result, position) == destination {
+			return amd64EdgeResultRename{}
+		}
+	}
+	if !seenDefinition {
+		return amd64EdgeResultRename{}
+	}
+	return amd64EdgeResultRename{instruction: instructionID, edge: edge, move: candidateMove, destination: destination, valid: true}
 }
 
 func nativeAMD64ComparisonSelectProducer(plan *nativeBackendPlan, consumer uint32) (producer uint32, condition amd64.Cond, ok bool) {
@@ -5469,12 +5617,12 @@ func amd64MaterializeCallResults(a *amd64.Asm, plan *nativeBackendPlan, instruct
 	return nil
 }
 
-func emitAMD64RailMachEdgeMoves(a *amd64.Asm, plan *nativeBackendPlan, edge uint32) error {
+func emitAMD64RailMachEdgeMoves(a *amd64.Asm, plan *nativeBackendPlan, edge uint32, skipMoves ...uint32) error {
 	moveRange := plan.Exit.EdgeMoves[edge]
-	if err := emitAMD64RailMachMoveRangeAt(a, plan, moveRange, railmach.PlacePredecessorEnd); err != nil {
+	if err := emitAMD64RailMachMoveRangeAt(a, plan, moveRange, railmach.PlacePredecessorEnd, skipMoves...); err != nil {
 		return err
 	}
-	return emitAMD64RailMachMoveRangeAt(a, plan, moveRange, railmach.PlaceSplitEdge)
+	return emitAMD64RailMachMoveRangeAt(a, plan, moveRange, railmach.PlaceSplitEdge, skipMoves...)
 }
 
 func emitAMD64RailMachSuccessorMoves(a *amd64.Asm, plan *nativeBackendPlan, edge uint32) error {
@@ -5485,8 +5633,16 @@ func emitAMD64RailMachMoveRange(a *amd64.Asm, plan *nativeBackendPlan, moveRange
 	return emitAMD64RailMachMoveRangeAt(a, plan, moveRange, railmach.PlaceInvalid)
 }
 
-func emitAMD64RailMachMoveRangeAt(a *amd64.Asm, plan *nativeBackendPlan, moveRange railmach.MoveRange, placement railmach.MovePlacement) error {
-	for _, move := range plan.Exit.Moves[moveRange.Start : moveRange.Start+moveRange.Count] {
+func emitAMD64RailMachMoveRangeAt(a *amd64.Asm, plan *nativeBackendPlan, moveRange railmach.MoveRange, placement railmach.MovePlacement, skipMoves ...uint32) error {
+	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
+		move := plan.Exit.Moves[index]
+		skipped := false
+		for _, skip := range skipMoves {
+			skipped = skipped || index == skip
+		}
+		if skipped {
+			continue
+		}
 		if placement != railmach.PlaceInvalid && move.Placement != placement {
 			continue
 		}
