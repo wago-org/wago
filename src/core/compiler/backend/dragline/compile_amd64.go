@@ -8289,7 +8289,10 @@ func amd64RailMachUnsignedI32ConstantDivisor(plan *nativeBackendPlan, instructio
 		return divisor, true
 	}
 	_, _, immediate := amd64UnsignedI32ImmediateMagic(divisor)
-	return divisor, kind == wasm.InstrI32DivU && immediate
+	if kind == wasm.InstrI32RemU && !plan.AMD64ImmediateRemainders {
+		return divisor, false
+	}
+	return divisor, immediate
 }
 
 // amd64EmitUnsignedI32ConstantDivision strength-reduces an unsigned i32
@@ -8323,6 +8326,14 @@ func amd64EmitUnsignedI32ConstantDivision(a *amd64.Asm, dst, dividend amd64.Reg,
 	}
 	a.ImulRRI(amd64.R10, dividend, int32(multiplier), true)
 	a.ShiftImm(5, amd64.R10, shift, true)
+	if remainder {
+		a.ImulRRI(amd64.R10, amd64.R10, int32(divisor), false)
+		if dst != dividend {
+			a.MovReg32(dst, dividend)
+		}
+		a.AluRR(0x29, dst, amd64.R10, false)
+		return
+	}
 	if dst != amd64.R10 {
 		a.MovReg32(dst, amd64.R10)
 	}

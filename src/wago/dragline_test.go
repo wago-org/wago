@@ -46,6 +46,9 @@ func TestDraglineNativeAMD64UnsignedI32ConstantDivision(t *testing.T) {
 		{name: "divide immediate 9", divisor: 9, opcode: 0x6e, want: func(n uint32) uint32 { return n / 9 }},
 		{name: "divide immediate 100", divisor: 100, opcode: 0x6e, want: func(n uint32) uint32 { return n / 100 }},
 		{name: "divide immediate million", divisor: 1_000_000, opcode: 0x6e, want: func(n uint32) uint32 { return n / 1_000_000 }},
+		{name: "remainder immediate 9", divisor: 9, opcode: 0x70, want: func(n uint32) uint32 { return n % 9 }},
+		{name: "remainder immediate 100", divisor: 100, opcode: 0x70, want: func(n uint32) uint32 { return n % 100 }},
+		{name: "remainder immediate million", divisor: 1_000_000, opcode: 0x70, want: func(n uint32) uint32 { return n % 1_000_000 }},
 		{name: "divide power of two", divisor: 16, opcode: 0x6e, want: func(n uint32) uint32 { return n / 16 }},
 		{name: "remainder power of two", divisor: 16, opcode: 0x70, want: func(n uint32) uint32 { return n % 16 }},
 	} {

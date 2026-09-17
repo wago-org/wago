@@ -104,6 +104,9 @@ type nativeBackendPlan struct {
 	// AMD64DivisionSave is false when the function has no division.
 	AMD64DivisionSaveOffset uint32
 	AMD64DivisionSave       bool
+	// AMD64ImmediateRemainders admits the longer multiply/shift/multiply/sub
+	// lowering only when repeated uses repay its extra instruction footprint.
+	AMD64ImmediateRemainders bool
 	// AMD64WideVectorScratch permits non-Windows finalizers to use XMM15 for
 	// single-source shuffle masks and, when no low-XMM semantic scratch remains,
 	// allocate the full XMM0-XMM11 register set.
@@ -1506,8 +1509,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if err != nil {
 		return nil, err
 	}
+	amd64ImmediateRemainders := false
 	if machineTarget == railmach.TargetAMD64 {
-		refineAMD64ConstantDivisionConstraints(machine)
+		amd64ImmediateRemainders = nativeAMD64ImmediateRemainders(machine)
+		refineAMD64ConstantDivisionConstraints(machine, amd64ImmediateRemainders)
 	}
 	if err := railmach.BindBoundsProofs(machine, emission); err != nil {
 		return nil, err
@@ -2114,7 +2119,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		SegmentedBaselineDebt: segmentedBaselineDebt, SegmentedCandidateDebt: segmentedCandidateDebt, SegmentedBaselineCopies: segmentedBaselineCopies, SegmentedCandidateCopies: segmentedCandidateCopies, SegmentedCandidateRanges: segmentedCandidateRanges, SegmentedAttempted: segmentedAttempted, SegmentedAdmitted: segmentedAdmitted,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64StackCachedGlobals: stackCachedGlobals, AMD64StackCachedGlobalOffset: stackCachedGlobalOffset, AMD64StackCachedGlobalCount: uint8(stackCachedGlobalCount),
-		AMD64DivisionSaveOffset: amd64DivisionSaveOffset, AMD64DivisionSave: amd64DivisionSave,
+		AMD64DivisionSaveOffset: amd64DivisionSaveOffset, AMD64DivisionSave: amd64DivisionSave, AMD64ImmediateRemainders: amd64ImmediateRemainders,
 		AMD64WideVectorScratch: amd64WideVectorScratch,
 		AMD64BMI2:              target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
 		PostRAPairWith:         p.postRAPairWith,
@@ -2334,11 +2339,11 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 }
 
 // refineAMD64ConstantDivisionConstraints releases the fixed RAX dividend
-// constraint when finalization can replace unsigned i32 division by a strictly
-// cheaper exact immediate multiply/shift. This lets ordinary allocation
+// constraint when finalization can replace unsigned i32 division or remainder
+// by exact immediate arithmetic. This lets ordinary allocation
 // preserve the dividend in its natural register instead of paying repairs
 // inherited from x86 DIV.
-func refineAMD64ConstantDivisionConstraints(machine *railmach.Func) {
+func refineAMD64ConstantDivisionConstraints(machine *railmach.Func, immediateRemainders bool) {
 	for instructionID, instruction := range machine.Insts {
 		kind := railmach.SemanticOpcode(instruction.Op)
 		if kind != wasm.InstrI32DivU && kind != wasm.InstrI32RemU {
@@ -2357,13 +2362,42 @@ func refineAMD64ConstantDivisionConstraints(machine *railmach.Func) {
 			continue
 		}
 		_, _, immediate := amd64UnsignedI32ImmediateMagic(divisor)
-		if kind != wasm.InstrI32DivU || !immediate {
+		if !immediate || kind == wasm.InstrI32RemU && !immediateRemainders {
 			continue
 		}
 		operand := &machine.Operands[instruction.OperandStart]
 		operand.Fixed = railmach.NoFixedReg
 		operand.Flags &^= railmach.OperandFixed
 	}
+}
+
+// nativeAMD64ImmediateRemainders requires enough independent replacements for
+// their cumulative DIV fixed-register relief to repay the longer arithmetic
+// sequence and its code-layout cost.
+func nativeAMD64ImmediateRemainders(machine *railmach.Func) bool {
+	const minimumUses = 3
+	uses := 0
+	for instructionID, instruction := range machine.Insts {
+		if railmach.SemanticOpcode(instruction.Op) != wasm.InstrI32RemU {
+			continue
+		}
+		operands := machine.InstructionOperands(uint32(instructionID))
+		if len(operands) != 2 {
+			continue
+		}
+		value, constant := nativeMachineIntegerConstant(machine, operands[1].Reg)
+		divisor := uint32(value)
+		if !constant || divisor == 0 || divisor&(divisor-1) == 0 {
+			continue
+		}
+		if _, _, immediate := amd64UnsignedI32ImmediateMagic(divisor); immediate {
+			uses++
+			if uses == minimumUses {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // preserveNativeARM64RepeatedAddInputs keeps the invariant input of a

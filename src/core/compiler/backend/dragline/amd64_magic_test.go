@@ -45,7 +45,7 @@ func TestRefineAMD64ConstantDivisionConstraints(t *testing.T) {
 		{16, wasm.InstrI32DivU, false},
 		{16, wasm.InstrI32RemU, false},
 		{20, wasm.InstrI32DivU, false},
-		{100, wasm.InstrI32RemU, false},
+		{100, wasm.InstrI32RemU, true},
 	} {
 		machine := railmach.Func{
 			Target: railmach.TargetAMD64,
@@ -60,10 +60,33 @@ func TestRefineAMD64ConstantDivisionConstraints(t *testing.T) {
 			VRegs: make([]railmach.VRegData, 4),
 		}
 		machine.VRegs[2] = railmach.VRegData{Def: 3, Type: railmach.TypeI32, Bank: railmach.BankGPR}
-		refineAMD64ConstantDivisionConstraints(&machine)
+		refineAMD64ConstantDivisionConstraints(&machine, test.kind == wasm.InstrI32RemU && test.want)
 		got := machine.Operands[0].Flags&railmach.OperandFixed == 0 && machine.Operands[0].Fixed == railmach.NoFixedReg
 		if got != test.want {
 			t.Fatalf("%s by %d constraint released = %v, want %v", test.kind, test.divisor, got, test.want)
+		}
+	}
+}
+
+func TestNativeAMD64ImmediateRemaindersRequireRepeatedUses(t *testing.T) {
+	for _, test := range []struct {
+		uses int
+		want bool
+	}{{2, false}, {3, true}} {
+		machine := railmach.Func{
+			Target: railmach.TargetAMD64,
+			Insts:  []railmach.Inst{{Op: wasm.InstrI32Const, Aux: 100, Result: 2}},
+			VRegs:  make([]railmach.VRegData, test.uses+3),
+		}
+		machine.VRegs[2] = railmach.VRegData{Def: 3, Type: railmach.TypeI32, Bank: railmach.BankGPR}
+		for use := range test.uses {
+			machine.Insts = append(machine.Insts, railmach.Inst{
+				Op: wasm.InstrI32RemU, OperandStart: uint32(len(machine.Operands)), OperandCount: 2, Result: railmach.VReg(use + 3),
+			})
+			machine.Operands = append(machine.Operands, railmach.Operand{Reg: 1}, railmach.Operand{Reg: 2})
+		}
+		if got := nativeAMD64ImmediateRemainders(&machine); got != test.want {
+			t.Fatalf("%d uses admitted = %v, want %v", test.uses, got, test.want)
 		}
 	}
 }
