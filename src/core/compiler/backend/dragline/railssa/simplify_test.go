@@ -1,6 +1,7 @@
 package railssa
 
 import (
+	"math"
 	"testing"
 	"unsafe"
 
@@ -109,6 +110,48 @@ func TestSparseSimplifyDischargesConstantDivideObligations(t *testing.T) {
 	}
 	if fact := result.IntegerFactAt(semantic.Insts[divide].Result); !fact.Known || fact.Min != 5 {
 		t.Fatalf("divide fact = %#v", fact)
+	}
+}
+
+func TestSparseSimplifyInfersConstantShiftKnownZeros(t *testing.T) {
+	tests := []struct {
+		name      string
+		parameter wasm.ValType
+		result    wasm.ValType
+		body      []byte
+		wantZero  uint64
+		wantMax   uint64
+	}{
+		{
+			name:      "i64.shr_u masks count and fills high bits",
+			parameter: wasm.I64,
+			result:    wasm.I64,
+			body:      []byte{0x20, 0x00, 0x42, 0xe0, 0x00, 0x88, 0x0b}, // local.get 0; i64.const 96; i64.shr_u
+			wantZero:  0xffffffff00000000,
+			wantMax:   math.MaxUint32,
+		},
+		{
+			name:      "i32.shl masks count and fills low bits",
+			parameter: wasm.I32,
+			result:    wasm.I32,
+			body:      []byte{0x20, 0x00, 0x41, 0x27, 0x74, 0x0b}, // local.get 0; i32.const 39; i32.shl
+			wantZero:  0x7f,
+			wantMax:   0xffffff80,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			m := scalarModule([]wasm.ValType{test.parameter}, []wasm.ValType{test.result}, test.body)
+			f, cfg, flow, semantic, metadata, result := buildSimplifyTest(t, m)
+			instructionID := semantic.InstructionMap[2] - 1
+			fact := result.IntegerFactAt(semantic.Insts[instructionID].Result)
+			if fact.Known || !fact.RangeKnown || fact.KnownZero != test.wantZero || fact.KnownOne != 0 || fact.Min != 0 || fact.Max != test.wantMax {
+				t.Fatalf("shift fact = %#v", fact)
+			}
+			if err := VerifySimplify(f, cfg, flow, semantic, metadata, result); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

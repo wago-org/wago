@@ -950,6 +950,24 @@ func inferIntegerFact(op wasm.InstrKind, args []FlowValueID, facts *SimplifyResu
 	case wasm.InstrI32Xor, wasm.InstrI64Xor:
 		zero = a.KnownZero&b.KnownZero | a.KnownOne&b.KnownOne
 		one = a.KnownOne&b.KnownZero | a.KnownZero&b.KnownOne
+	case wasm.InstrI32Shl, wasm.InstrI64Shl:
+		if !b.Known {
+			return IntegerFact{}, false
+		}
+		shift := uint8(b.Min) & (width - 1)
+		zero, one = a.KnownZero<<shift, a.KnownOne<<shift
+		if shift != 0 {
+			zero |= (uint64(1) << shift) - 1
+		}
+	case wasm.InstrI32ShrU, wasm.InstrI64ShrU:
+		if !b.Known {
+			return IntegerFact{}, false
+		}
+		shift := uint8(b.Min) & (width - 1)
+		zero, one = a.KnownZero>>shift, a.KnownOne>>shift
+		if shift != 0 {
+			zero |= mask &^ ((uint64(1) << (width - shift)) - 1)
+		}
 	default:
 		return IntegerFact{}, false
 	}

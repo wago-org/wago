@@ -3,6 +3,7 @@
 package dragline
 
 import (
+	"math"
 	"testing"
 
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
@@ -11,6 +12,58 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestAMD64ElidesRedundantIntegerMasks(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     []byte
+		complete bool
+	}{
+		{
+			name: "known zeros after shift",
+			body: []byte{0x20, 0x00, 0x42, 0x20, 0x88}, // local.get 0; i64.const 32; i64.shr_u
+		},
+		{
+			name: "low 32 bits",
+			body: []byte{0x20, 0x00}, // local.get 0
+		},
+		{
+			name:     "commuted low 32 bits",
+			body:     append(append([]byte{0x42}, wasmtest.SLEB64(math.MaxUint32)...), 0x20, 0x00, 0x83, 0x0b), // i64.const mask; local.get 0; i64.and; end
+			complete: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := append([]byte(nil), test.body...)
+			if !test.complete {
+				body = append(body, 0x42)
+				body = append(body, wasmtest.SLEB64(math.MaxUint32)...)
+				body = append(body, 0x83, 0x0b) // i64.and; end
+			}
+			source := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var metrics Metrics
+			if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+				t.Fatal(err)
+			}
+			if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].PostRARewrites != 1 {
+				t.Fatalf("redundant mask finalization = %#v", metrics.Functions)
+			}
+		})
+	}
+}
 
 func TestAMD64RealizesEFLAGSPhysicalRename(t *testing.T) {
 	locals := append(wasmtest.ULEB(2), byte(0x7f))

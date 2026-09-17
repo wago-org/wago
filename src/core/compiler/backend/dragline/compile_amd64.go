@@ -4341,6 +4341,42 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
+			if semanticOp == wasm.InstrI32And || semanticOp == wasm.InstrI64And {
+				mask, value := uint64(0), operands[0].Reg
+				mask, constantMask := nativeIntegerConstant(plan, operands[1].Reg)
+				if !constantMask {
+					mask, constantMask = nativeIntegerConstant(plan, operands[0].Reg)
+					value = operands[1].Reg
+				}
+				if constantMask {
+					widthMask := uint64(math.MaxUint32)
+					if wide {
+						widthMask = math.MaxUint64
+					}
+					valueReg := reg(value)
+					fact := plan.Simplified.IntegerFactAt(railssa.FlowValueID(value))
+					if (^mask&widthMask)&^fact.KnownZero == 0 {
+						if dst != valueReg {
+							if wide {
+								a.MovReg64(dst, valueReg)
+							} else {
+								a.MovReg32(dst, valueReg)
+							}
+						}
+						if metrics != nil {
+							metrics.PostRARewrites++
+						}
+						continue
+					}
+					if semanticOp == wasm.InstrI64And && mask == math.MaxUint32 {
+						a.MovReg32(dst, valueReg)
+						if metrics != nil {
+							metrics.PostRARewrites++
+						}
+						continue
+					}
+				}
+			}
 			if producer != ^uint32(0) {
 				if dst != lhs {
 					a.MovReg64(dst, lhs)
