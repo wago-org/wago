@@ -4457,7 +4457,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			iterationBytes := a.Len() - iterationStart
 			unrollCopies := amd64RailMachSelfLoopUnrollCopies(plan.Machine.Blocks[blockID].Weight, len(plan.Machine.Insts), plan.Score.WeightedSpillDebt, iterationBytes)
 			if plan.SignalsBounds && terminator.Kind == wasm.InstrBrIf && uint32(plan.Machine.Edges[trueEdge].To) == uint32(blockID) &&
-				uint32(plan.Machine.Edges[falseEdge].To) != uint32(blockID) && !trueMoves && !falseMoves &&
+				uint32(plan.Machine.Edges[falseEdge].To) != uint32(blockID) && !falseMoves &&
 				len(a.Rel32Sites) == iterationRel32Start && (relocs == nil || len(*relocs) == iterationRelocStart) {
 				if metadata != nil && (len(metadata.Traps) != iterationTrapStart || len(metadata.Safepoints) != iterationSafepointStart) {
 					unrollCopies = 0
@@ -4498,6 +4498,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				for range unrollCopies {
 					patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(falseCondition), Target: uint32(plan.Machine.Edges[falseEdge].To)})
+					if trueMoves {
+						if err := emitOutgoingMoves(trueEdge); err != nil {
+							return nil, 0, true, err
+						}
+					}
 					copyStart := a.Len()
 					a.B = append(a.B, iteration...)
 					for index, patch := range floatPatches {
@@ -4884,7 +4889,7 @@ func nativeAMD64ComparisonSelectConsumer(plan *nativeBackendPlan, producer uint3
 // often, while large functions and cold or tiny loops keep their original
 // layout to avoid instruction-cache and loop-stream-detector regressions.
 func amd64RailMachSelfLoopUnrollCopies(weight uint32, functionInstructions int, spillDebt uint64, iterationBytes int) int {
-	if weight < 64 || functionInstructions > 256 || iterationBytes < 64 || iterationBytes > 256 {
+	if weight < 64 || functionInstructions > 1024 || functionInstructions > 256 && weight < 512 || iterationBytes < 64 || iterationBytes > 256 {
 		return 0
 	}
 	spillBudget := uint64(1 << 16)
@@ -4961,6 +4966,23 @@ func amd64RailMachSelfLoopRetainsFloatRegister(plan *nativeBackendPlan, block, c
 		}
 		for _, instructionID := range order {
 			if region.RestoreBefore == instructionID {
+				return false
+			}
+		}
+	}
+	// Backedge bundles historically prevented this unroll path altogether.
+	// Once they are replayed between clones, include their destinations in the
+	// sole-writer proof before omitting a later constant load.
+	for edgeID, edge := range plan.Machine.Edges {
+		if uint32(edge.From) != block {
+			continue
+		}
+		moveRange := plan.Exit.EdgeMoves[edgeID]
+		for _, move := range plan.Exit.Moves[moveRange.Start : moveRange.Start+moveRange.Count] {
+			if move.Placement != railmach.PlacePredecessorEnd && move.Placement != railmach.PlaceSplitEdge {
+				continue
+			}
+			if move.Dst.Kind == railmach.LocationRegister && move.Dst.Bank == railmach.BankFPR && amd64RailMachPhysical(move.Dst) == physical {
 				return false
 			}
 		}

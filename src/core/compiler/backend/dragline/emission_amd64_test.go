@@ -428,7 +428,9 @@ func TestAMD64RailMachSelfLoopUnrollCostModel(t *testing.T) {
 		{name: "compact", weight: 64, instructions: 200, bytes: 128, debt: 1 << 16, want: 3},
 		{name: "hot-spill-budget", weight: 512, instructions: 200, bytes: 192, debt: 1 << 17, want: 2},
 		{name: "cold", weight: 63, instructions: 200, bytes: 128, debt: 0},
-		{name: "large-function", weight: 64, instructions: 257, bytes: 128, debt: 0},
+		{name: "medium-function", weight: 64, instructions: 800, bytes: 128, debt: 0},
+		{name: "hot-medium-function", weight: 512, instructions: 800, bytes: 128, debt: 0, want: 3},
+		{name: "large-function", weight: 64, instructions: 1025, bytes: 128, debt: 0},
 		{name: "tiny-loop", weight: 64, instructions: 200, bytes: 63, debt: 0},
 		{name: "large-loop", weight: 64, instructions: 200, bytes: 257, debt: 0},
 		{name: "spill-heavy", weight: 64, instructions: 200, bytes: 128, debt: 1<<16 + 1},
@@ -507,6 +509,112 @@ func TestAMD64RailMachUnrollsHotConditionalSelfLoop(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachUnrollsHotSelfLoopWithBackedgeMoves(t *testing.T) {
+	body := []byte{
+		0x02, 0x01, 0x7f, 0x0c, 0x7e, // one i32 and twelve i64 locals
+	}
+	for local := byte(2); local < 14; local++ {
+		body = append(body, 0x42, 0x00, 0x21, local) // accumulator = i64.const 0
+	}
+	body = append(body, 0x03, 0x40) // loop
+	for local := byte(2); local < 14; local++ {
+		body = append(body,
+			0x20, local, // local.get accumulator
+			0x20, 0x01, // local.get address
+			0x29, 0x03, byte((local-2)*8), // i64.load offset
+			0x7c, 0x21, local, // i64.add; local.set accumulator
+		)
+	}
+	body = append(body,
+		0x20, 0x01, 0x41, 0x20, 0x6a, 0x21, 0x01, // address += 32
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x22, 0x00, // --count
+		0x0d, 0x00, 0x0b, // continue while count != 0; end loop
+	)
+	for local := byte(2); local < 14; local++ {
+		body = append(body, 0x20, local)
+	}
+	body = append(body, 0x0b)
+	results := make([]wasm.ValType, 12)
+	for index := range results {
+		results[index] = wasm.I64
+	}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, results))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := (&nativeBackendPlanner{}).Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selfLoopBlock := railssa.BlockID(0)
+	selfLoopEdge := ^uint32(0)
+	for edgeID, edge := range plan.Machine.Edges {
+		if edge.From == edge.To {
+			selfLoopBlock = edge.From
+			selfLoopEdge = uint32(edgeID)
+			break
+		}
+	}
+	if selfLoopEdge == ^uint32(0) {
+		t.Fatal("conditional self-loop was not preserved")
+	}
+	// Force a non-empty predecessor bundle using a planner-produced physical
+	// move. The move emitter is tested separately; this fixture verifies that
+	// the unroller no longer rejects and then replays such bundles.
+	if len(plan.Exit.Moves) == 0 {
+		t.Fatal("fixture has no planner-produced physical move")
+	}
+	move := plan.Exit.Moves[0]
+	move.Edge = selfLoopEdge
+	move.Placement = railmach.PlacePredecessorEnd
+	plan.Exit.EdgeMoves[selfLoopEdge] = railmach.MoveRange{Start: uint32(len(plan.Exit.Moves)), Count: 1}
+	plan.Exit.Moves = append(plan.Exit.Moves, move)
+	var moveAssembly amd64.Asm
+	if err := emitAMD64RailMachEdgeMoves(&moveAssembly, plan, selfLoopEdge); err != nil {
+		t.Fatal(err)
+	}
+	if len(moveAssembly.B) == 0 {
+		t.Fatal("planner-produced backedge move emitted no code")
+	}
+	plan.SignalsBounds = true
+	plan.Machine.Blocks[selfLoopBlock].Weight = 1
+	rolled, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("rolled self-loop finalization = used %t, err %v", used, err)
+	}
+	plan.Machine.Blocks[selfLoopBlock].Weight = 64
+	unrolled, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("unrolled self-loop finalization = used %t, err %v", used, err)
+	}
+	if len(unrolled) <= len(rolled)+128 {
+		t.Fatalf("unrolled self-loop code = %d bytes, rolled code = %d; backedge moves prevented unrolling", len(unrolled), len(rolled))
+	}
+	rolledMoves := bytes.Count(rolled, moveAssembly.B)
+	unrolledMoves := bytes.Count(unrolled, moveAssembly.B)
+	if unrolledMoves <= rolledMoves {
+		t.Fatalf("backedge move %x appears %d times in unrolled code, want more than rolled count %d", moveAssembly.B, unrolledMoves, rolledMoves)
+	}
+}
+
 func TestAMD64RailMachSelfLoopUnrollRetainsFloatConstant(t *testing.T) {
 	body := []byte{0x01, 0x01, 0x7c, 0x03, 0x40} // one f64 local; loop
 	body = append(body, 0x44)
@@ -554,10 +662,12 @@ func TestAMD64RailMachSelfLoopUnrollRetainsFloatConstant(t *testing.T) {
 		t.Fatal(err)
 	}
 	selfLoopBlock := railssa.BlockID(0)
+	selfLoopEdge := ^uint32(0)
 	foundSelfLoop := false
-	for _, edge := range plan.Machine.Edges {
+	for edgeID, edge := range plan.Machine.Edges {
 		if edge.From == edge.To {
 			selfLoopBlock = edge.From
+			selfLoopEdge = uint32(edgeID)
 			foundSelfLoop = true
 		}
 	}
@@ -583,6 +693,32 @@ func TestAMD64RailMachSelfLoopUnrollRetainsFloatConstant(t *testing.T) {
 	}
 	if got := countAMD64ScalarFloatRIPLoads(native); got != 1 {
 		t.Fatalf("unrolled loop scalar constant loads = %d, want 1: %x", got, native)
+	}
+	constant := ^uint32(0)
+	constantLocation := railmach.Location{}
+	for instructionID, instruction := range plan.Machine.Insts {
+		if railmach.SemanticOpcode(instruction.Op) != wasm.InstrF64Const || instruction.Result == 0 {
+			continue
+		}
+		location := plan.Allocation.LocationAt(instruction.Result, plan.Allocation.InstructionPositions[instructionID]*6+2)
+		if location.Kind == railmach.LocationRegister && location.Bank == railmach.BankFPR {
+			constant = uint32(instructionID)
+			constantLocation = location
+			break
+		}
+	}
+	if constant == ^uint32(0) {
+		t.Fatal("float constant has no allocated register")
+	}
+	sourceLocation := constantLocation
+	sourceLocation.Index = (sourceLocation.Index + 1) % uint16(len(amd64FPRRegisters))
+	plan.Exit.EdgeMoves[selfLoopEdge] = railmach.MoveRange{Start: uint32(len(plan.Exit.Moves)), Count: 1}
+	plan.Exit.Moves = append(plan.Exit.Moves, railmach.PhysicalMove{
+		Src: sourceLocation, Dst: constantLocation, Reg: plan.Machine.Insts[constant].Result, Edge: selfLoopEdge,
+		Kind: railmach.MoveCopy, Placement: railmach.PlacePredecessorEnd, Bank: railmach.BankFPR,
+	})
+	if amd64RailMachSelfLoopRetainsFloatRegister(plan, uint32(selfLoopBlock), constant, amd64RailMachPhysical(constantLocation)) {
+		t.Fatal("float constant retained across a backedge move that overwrites its register")
 	}
 }
 
