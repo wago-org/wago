@@ -1008,6 +1008,63 @@ func TestAMD64StructuredSIMDConstantsYieldToFullStackCache(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredV128IfResultStaysInStackCache(t *testing.T) {
+	if !amd64StructuredIfCanMergeVectorResult([]railssa.StackInstr{
+		{Kind: wasm.InstrIf}, {Kind: wasm.InstrInvalid},
+	}, 0) {
+		t.Fatal("branch-free if was not eligible for a cached vector result")
+	}
+	if amd64StructuredIfCanMergeVectorResult([]railssa.StackInstr{
+		{Kind: wasm.InstrIf}, {Kind: wasm.InstrBr}, {Kind: wasm.InstrInvalid},
+	}, 0) {
+		t.Fatal("branching if was eligible for a cached vector result")
+	}
+	zero := make([]byte, 16)
+	one := bytes.Repeat([]byte{1}, 16)
+	two := bytes.Repeat([]byte{2}, 16)
+	body := []byte{0x20, 0x00, 0x04, 0x7b} // local.get 0; if (result v128)
+	body = append(body, append([]byte{0xfd, 0x0c}, zero...)...)
+	body = append(body, 0x05) // else
+	body = append(body, append([]byte{0xfd, 0x0c}, one...)...)
+	body = append(body, 0x0b) // end if
+	body = append(body, append([]byte{0xfd, 0x0c}, two...)...)
+	body = append(body, 0xfd, 0xae, 0x01, 0x0b) // i32x4.add; end function
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(module, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner railssa.EmissionPlanner
+	plan, err := planCompilerFunc(fn, &planner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	native, _, _, err := emitAMD64Stack(fn, plan, false, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stores := 0
+	for reg := amd64.Reg(0); reg < 16; reg++ {
+		var store amd64.Asm
+		store.VMovdquStoreDisp(amd64.RSP, 8, reg)
+		stores += bytes.Count(native, store.B)
+	}
+	if stores != 1 {
+		t.Fatalf("v128 result frame stores = %d, want only the final result store; code = %x", stores, native)
+	}
+}
+
 func TestAMD64RailMachAvoidsUnneededPinnedLocalSaveAcrossExactCall(t *testing.T) {
 	callee := wasmtest.Code([]byte{0x20, 0x00, 0x0b})
 	callerBody := []byte{

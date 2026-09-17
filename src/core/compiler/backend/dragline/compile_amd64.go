@@ -5949,11 +5949,32 @@ type amd64StackControl struct {
 	depth           int
 	result          bool
 	resultType      wasm.ValType
+	mergeVector     bool
+	mergedVector    bool
 	endReached      bool
 	falsePatch      int
 	patches         []int
 	parentReachable bool
 	seenElse        bool
+}
+
+func amd64StructuredIfCanMergeVectorResult(instrs []railssa.StackInstr, ifIndex int) bool {
+	depth := 0
+	for index := ifIndex + 1; index < len(instrs); index++ {
+		instr := instrs[index]
+		switch instr.Kind {
+		case wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf:
+			depth++
+		case wasm.InstrInvalid:
+			if depth == 0 {
+				return true
+			}
+			depth--
+		case wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail:
+			return false
+		}
+	}
+	return false
 }
 
 func planAMD64StructuredLocalMemoryChecks(sf *railssa.StackFunc) ([]uint64, []bool) {
@@ -6886,6 +6907,25 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 	for instrIndex := 0; instrIndex < len(sf.Instrs); instrIndex++ {
 		instr := sf.Instrs[instrIndex]
 		metadata.recordSource(a.Len(), instr.Offset)
+		mergeVectorIfResult := false
+		if reachable && len(controls) != 0 {
+			control := &controls[len(controls)-1]
+			mergeVectorIfResult = control.mergeVector &&
+				(instr.IsElse() || instr.Kind == wasm.InstrInvalid && control.seenElse)
+			if mergeVectorIfResult {
+				if len(stackTypes) != control.depth+1 || stackTypes[control.depth] != wasm.V128 {
+					return nil, 0, nil, fmt.Errorf("if v128 result is unavailable")
+				}
+				loadV128(control.depth, 4)
+				for index := range vectorStackCache[:vectorStackCacheEntries] {
+					vectorStackCache[index] = -1
+					vectorLocalCache[index] = -1
+				}
+				if instr.IsElse() {
+					control.mergedVector = true
+				}
+			}
+		}
 		flushScalar := instr.IsElse() || instr.Kind == wasm.InstrBlock || instr.Kind == wasm.InstrLoop ||
 			instr.Kind == wasm.InstrInvalid || instr.Kind == wasm.InstrReturn || instr.Kind == wasm.InstrBr || instr.Kind == wasm.InstrBrTable ||
 			instr.Kind == wasm.InstrCall || instr.Kind == wasm.InstrCallIndirect || instr.Kind == wasm.InstrMemoryCopy || instr.Kind == wasm.InstrMemoryFill ||
@@ -6899,7 +6939,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 		if flushScalar {
 			flushScalarStackCache()
 		}
-		flushVector := flushScalar || instr.Kind == wasm.InstrMemoryGrow
+		flushVector := (flushScalar || instr.Kind == wasm.InstrMemoryGrow) && !mergeVectorIfResult
 		if flushVector {
 			flushVectorStackCache()
 		}
@@ -7913,6 +7953,8 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 		switch instr.Kind {
 		case wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf:
 			control := amd64StackControl{kind: instr.Kind, depth: len(stackTypes), result: instr.HasResult(), resultType: instr.ValueType(), falsePatch: -1, parentReachable: reachable}
+			control.mergeVector = instr.Kind == wasm.InstrIf && control.result && control.resultType == wasm.V128 &&
+				amd64StructuredIfCanMergeVectorResult(sf.Instrs, instrIndex)
 			if instr.Kind == wasm.InstrIf && reachable {
 				condition := amd64.CondNE
 				if pendingConditionAt == instrIndex {
@@ -7955,6 +7997,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 			stackTypes = stackTypes[:control.depth]
 			if control.result {
 				stackTypes = append(stackTypes, control.resultType)
+				if mergeVectorIfResult || control.mergedVector {
+					cacheV128(control.depth, 4)
+				}
 			}
 			continue
 		}
