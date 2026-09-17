@@ -741,6 +741,102 @@ func TestPlanAMD64DeadStoresOnlyOverwrittenPrivateMemory(t *testing.T) {
 	}
 }
 
+func TestPlanAMD64AdjacentGlobalUpdatesCombinesOnlyUnobservableI32Adds(t *testing.T) {
+	machine := &railmach.Func{
+		Target: railmach.TargetAMD64,
+		VRegs: []railmach.VRegData{
+			{},
+			{Def: 3, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Def: 9, Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegRematerializable},
+			{Def: 15, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Def: 27, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Def: 33, Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegElided},
+			{Def: 39, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Def: 51, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Def: 57, Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegElided},
+			{Def: 63, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+		},
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrGlobalGet, Aux: 7, Result: 1},
+			{Op: wasm.InstrI32Const, Aux: 4, Result: 2},
+			{Op: wasm.InstrI32Add, Result: 3, OperandStart: 0, OperandCount: 2},
+			{Op: wasm.InstrGlobalSet, Aux: 7, OperandStart: 2, OperandCount: 1},
+			{Op: wasm.InstrGlobalGet, Aux: 7, Result: 4},
+			{Op: wasm.InstrI32Const, Aux: 4, Result: 5},
+			{Op: wasm.InstrI32Add, Result: 6, OperandStart: 3, OperandCount: 2},
+			{Op: wasm.InstrGlobalSet, Aux: 7, OperandStart: 5, OperandCount: 1},
+			{Op: wasm.InstrGlobalGet, Aux: 7, Result: 7},
+			{Op: wasm.InstrI32Const, Aux: 4, Result: 8},
+			{Op: wasm.InstrI32Add, Result: 9, OperandStart: 6, OperandCount: 2},
+			{Op: wasm.InstrGlobalSet, Aux: 7, OperandStart: 8, OperandCount: 1},
+		},
+		Operands: []railmach.Operand{
+			{Reg: 1, Bank: railmach.BankGPR, Flags: railmach.OperandUse}, {Reg: 2, Bank: railmach.BankGPR, Flags: railmach.OperandUse}, {Reg: 3, Bank: railmach.BankGPR, Flags: railmach.OperandUse},
+			{Reg: 4, Bank: railmach.BankGPR, Flags: railmach.OperandUse}, {Reg: 2, Bank: railmach.BankGPR, Flags: railmach.OperandUse}, {Reg: 6, Bank: railmach.BankGPR, Flags: railmach.OperandUse},
+			{Reg: 7, Bank: railmach.BankGPR, Flags: railmach.OperandUse}, {Reg: 2, Bank: railmach.BankGPR, Flags: railmach.OperandUse}, {Reg: 9, Bank: railmach.BankGPR, Flags: railmach.OperandUse},
+		},
+		Blocks: []railmach.Block{{InstCount: 12}},
+	}
+	schedule := &railmach.Schedule{Order: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, BlockOf: make([]railssa.BlockID, 12)}
+	var skip, combined nativeBitSet
+	var deltas []uint32
+	if !planAMD64AdjacentGlobalUpdates(machine, schedule, nativeBitSet{}, &skip, &combined, &deltas) {
+		t.Fatal("three adjacent updates were not combined")
+	}
+	for _, instruction := range []uint32{0, 2, 3, 4, 6, 7} {
+		if !skip.has(instruction) {
+			t.Fatalf("earlier update instruction %d was not skipped", instruction)
+		}
+	}
+	if !combined.has(10) || len(deltas) != len(machine.Insts) || deltas[10] != 12 {
+		t.Fatalf("combined update = bits:%#v deltas:%#v, want add 10 delta 12", combined, deltas)
+	}
+
+	tests := []struct {
+		name string
+		edit func(*railmach.Func, *railmach.Schedule, *nativeBitSet)
+	}{
+		{"different global", func(machine *railmach.Func, _ *railmach.Schedule, _ *nativeBitSet) {
+			machine.Insts[4].Aux = 8
+			machine.Insts[7].Aux = 8
+		}},
+		{"intervening emitted instruction", func(machine *railmach.Func, _ *railmach.Schedule, _ *nativeBitSet) { machine.VRegs[5].Flags = 0 }},
+		{"existing rewrite", func(_ *railmach.Func, _ *railmach.Schedule, forbidden *nativeBitSet) {
+			forbidden.prepare(12, true)
+			forbidden.set(4, true)
+		}},
+		{"reversed add operands", func(machine *railmach.Func, _ *railmach.Schedule, _ *nativeBitSet) {
+			machine.Operands = append([]railmach.Operand(nil), machine.Operands...)
+			for _, start := range []int{0, 3, 6} {
+				machine.Operands[start], machine.Operands[start+1] = machine.Operands[start+1], machine.Operands[start]
+			}
+		}},
+		{"different block", func(_ *railmach.Func, schedule *railmach.Schedule, _ *nativeBitSet) {
+			for index := 4; index < 8; index++ {
+				schedule.BlockOf[index] = 1
+			}
+			for index := 8; index < len(schedule.BlockOf); index++ {
+				schedule.BlockOf[index] = 2
+			}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			machineCopy := *machine
+			machineCopy.VRegs = append([]railmach.VRegData(nil), machine.VRegs...)
+			machineCopy.Insts = append([]railmach.Inst(nil), machine.Insts...)
+			scheduleCopy := *schedule
+			scheduleCopy.BlockOf = append([]railssa.BlockID(nil), schedule.BlockOf...)
+			var forbidden, gotSkip, gotCombined nativeBitSet
+			var gotDeltas []uint32
+			test.edit(&machineCopy, &scheduleCopy, &forbidden)
+			if planAMD64AdjacentGlobalUpdates(&machineCopy, &scheduleCopy, forbidden, &gotSkip, &gotCombined, &gotDeltas) {
+				t.Fatalf("unsafe updates were combined: skip=%#v combined=%#v deltas=%#v", gotSkip, gotCombined, gotDeltas)
+			}
+		})
+	}
+}
+
 func TestNativeBitSetCoversWordBoundaryAndClear(t *testing.T) {
 	var set nativeBitSet
 	set.prepare(65, true)

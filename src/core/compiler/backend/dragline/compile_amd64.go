@@ -1453,7 +1453,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		for blockInstructionIndex, instructionID := range blockOrder {
 			nextPosition := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 			forwardedSpill = 0
-			if pendingSpill != 0 && plan.Machine.VRegs[pendingSpill].Bank == railmach.BankFPR && !skipInstruction.has(instructionID) && !plan.PostRASkip.has(instructionID) && !plan.AMD64DeadStoreSkip.has(instructionID) &&
+			if pendingSpill != 0 && plan.Machine.VRegs[pendingSpill].Bank == railmach.BankFPR && !skipInstruction.has(instructionID) && !plan.PostRASkip.has(instructionID) && !plan.AMD64DeadStoreSkip.has(instructionID) && !plan.AMD64GlobalUpdateSkip.has(instructionID) &&
 				!nativeControlInstruction(plan.Machine.Insts[instructionID].Op) {
 				if forward, elideStore := amd64RailMachForwardPendingSpill(plan, instructionID, pendingSpill, nextPosition); forward {
 					forwardedSpill = pendingSpill
@@ -1470,7 +1470,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			emitCalleeRestoreBefore(instructionID)
 			instructionResult := plan.Machine.Insts[instructionID].Result
-			if skipInstruction.has(instructionID) || plan.PostRASkip.has(instructionID) || plan.AMD64DeadStoreSkip.has(instructionID) || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 {
+			if skipInstruction.has(instructionID) || plan.PostRASkip.has(instructionID) || plan.AMD64DeadStoreSkip.has(instructionID) || plan.AMD64GlobalUpdateSkip.has(instructionID) || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 {
 				continue
 			}
 			instruction := plan.Machine.Insts[instructionID]
@@ -4238,6 +4238,16 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				if shiftRCXRestore {
 					a.MovReg64(amd64.RCX, amd64.R11)
+				}
+				continue
+			}
+			if plan.AMD64GlobalUpdateAdd.has(instructionID) {
+				if semanticOp != wasm.InstrI32Add || int(instructionID) >= len(plan.AMD64GlobalUpdateDelta) {
+					return nil, 0, true, fmt.Errorf("RailMach combined global update %d is malformed", instructionID)
+				}
+				a.LeaDispW(dst, lhs, int32(plan.AMD64GlobalUpdateDelta[instructionID]), false)
+				if metrics != nil {
+					metrics.PostRARewrites++
 				}
 				continue
 			}

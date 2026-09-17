@@ -133,6 +133,11 @@ type nativeBackendPlan struct {
 	PostRAPostIndexWith nativeInstructionRelation
 	AMD64DeadStoreSkip  nativeBitSet
 	AMD64DeadStoreFrom  nativeInstructionRelation
+
+	AMD64GlobalUpdateSkip  nativeBitSet
+	AMD64GlobalUpdateAdd   nativeBitSet
+	AMD64GlobalUpdateDelta []uint32
+
 	// PostRADirect enables verifier-gated rewrites whose realization needs no
 	// instruction-indexed side table. The PostRA plan remains the sparse source
 	// of instruction identity.
@@ -251,6 +256,9 @@ func clearPostRAEmissionRewrites(plan *nativeBackendPlan) {
 	plan.PostRAPostIndexWith = nativeInstructionRelation{}
 	plan.AMD64DeadStoreSkip = nativeBitSet{}
 	plan.AMD64DeadStoreFrom = nativeInstructionRelation{}
+	plan.AMD64GlobalUpdateSkip = nativeBitSet{}
+	plan.AMD64GlobalUpdateAdd = nativeBitSet{}
+	plan.AMD64GlobalUpdateDelta = nil
 	plan.PostRADirect = false
 }
 
@@ -300,6 +308,11 @@ type nativeBackendPlanner struct {
 	postRAPostIndexWith nativeInstructionRelation
 	amd64DeadStoreSkip  nativeBitSet
 	amd64DeadStoreFrom  nativeInstructionRelation
+
+	amd64GlobalUpdateSkip  nativeBitSet
+	amd64GlobalUpdateAdd   nativeBitSet
+	amd64GlobalUpdateDelta []uint32
+
 	immediateProducer   nativeInstructionRelation
 	immediateSkip       nativeBitSet
 	immediateUses       []uint32
@@ -524,7 +537,7 @@ func (p *nativeBackendPlanner) nativeCapacityBreakdown() NativePlannerCapacityBr
 	return NativePlannerCapacityBreakdown{
 		ControlFlow: sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches),
 		Bounds:      p.memoryCheckSlots.capacityBytes() + sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.amd64MemoryBounds),
-		PostRA:      p.postRAPairWith.capacityBytes() + p.postRASkip.capacityBytes() + p.postRAForwardFrom.capacityBytes() + p.postRAFusionWith.capacityBytes() + p.postRAMemoryFrom.capacityBytes() + p.postRARepeatFirst.capacityBytes() + p.postRAPreIndex.capacityBytes() + p.postRAPostIndexWith.capacityBytes() + p.amd64DeadStoreSkip.capacityBytes() + p.amd64DeadStoreFrom.capacityBytes(),
+		PostRA:      p.postRAPairWith.capacityBytes() + p.postRASkip.capacityBytes() + p.postRAForwardFrom.capacityBytes() + p.postRAFusionWith.capacityBytes() + p.postRAMemoryFrom.capacityBytes() + p.postRARepeatFirst.capacityBytes() + p.postRAPreIndex.capacityBytes() + p.postRAPostIndexWith.capacityBytes() + p.amd64DeadStoreSkip.capacityBytes() + p.amd64DeadStoreFrom.capacityBytes() + p.amd64GlobalUpdateSkip.capacityBytes() + p.amd64GlobalUpdateAdd.capacityBytes() + sliceBytes(p.amd64GlobalUpdateDelta),
 		Immediates:  p.immediateProducer.capacityBytes() + p.immediateSkip.capacityBytes() + p.amd64AddressRemat.capacityBytes() + sliceBytes(p.immediateUses) + sliceBytes(p.amd64AddressState),
 		GC:          sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.gcValues),
 		CallsRoots:  sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots),
@@ -1664,6 +1677,133 @@ func amd64DeadStoreSource(plan *nativeBackendPlan, instruction uint32) uint32 {
 	return plan.Machine.Insts[instruction].Source
 }
 
+type nativeAMD64GlobalUpdate struct {
+	global                  uint32
+	delta                   uint32
+	get, constant, add, set uint32
+}
+
+func nativeAMD64I32GlobalUpdate(machine *railmach.Func, setID uint32) (nativeAMD64GlobalUpdate, bool) {
+	if machine == nil || int(setID) >= len(machine.Insts) {
+		return nativeAMD64GlobalUpdate{}, false
+	}
+	set := machine.Insts[setID]
+	if railmach.SemanticOpcode(set.Op) != wasm.InstrGlobalSet {
+		return nativeAMD64GlobalUpdate{}, false
+	}
+	setOperands := machine.InstructionOperands(setID)
+	if len(setOperands) != 1 {
+		return nativeAMD64GlobalUpdate{}, false
+	}
+	definition := func(value railmach.VReg) (uint32, bool) {
+		if value == 0 || int(value) >= len(machine.VRegs) {
+			return 0, false
+		}
+		encoded := machine.VRegs[value].Def
+		instruction := encoded / 6
+		return instruction, encoded%6 == 3 && int(instruction) < len(machine.Insts) && machine.Insts[instruction].Result == value
+	}
+	addID, ok := definition(setOperands[0].Reg)
+	if !ok || railmach.SemanticOpcode(machine.Insts[addID].Op) != wasm.InstrI32Add || machine.VRegs[setOperands[0].Reg].Type != railmach.TypeI32 {
+		return nativeAMD64GlobalUpdate{}, false
+	}
+	addOperands := machine.InstructionOperands(addID)
+	if len(addOperands) != 2 {
+		return nativeAMD64GlobalUpdate{}, false
+	}
+	leftID, leftOK := definition(addOperands[0].Reg)
+	rightID, rightOK := definition(addOperands[1].Reg)
+	if !leftOK || !rightOK {
+		return nativeAMD64GlobalUpdate{}, false
+	}
+	getID, constantID := leftID, rightID
+	get, constant := machine.Insts[getID], machine.Insts[constantID]
+	if railmach.SemanticOpcode(get.Op) != wasm.InstrGlobalGet || railmach.SemanticOpcode(constant.Op) != wasm.InstrI32Const || uint32(get.Aux) != uint32(set.Aux) {
+		return nativeAMD64GlobalUpdate{}, false
+	}
+	return nativeAMD64GlobalUpdate{global: uint32(set.Aux), delta: uint32(constant.Aux), get: getID, constant: constantID, add: addID, set: setID}, true
+}
+
+// planAMD64AdjacentGlobalUpdates folds consecutive wrapping i32 additions to
+// one mutable global. With no emitted operation between the sets, intermediate
+// global values are unobservable and the deltas compose modulo 2^32.
+func planAMD64AdjacentGlobalUpdates(machine *railmach.Func, schedule *railmach.Schedule, forbidden nativeBitSet, skip, combined *nativeBitSet, deltas *[]uint32) bool {
+	if skip == nil || combined == nil || deltas == nil {
+		return false
+	}
+	skip.prepare(0, false)
+	combined.prepare(0, false)
+	*deltas = (*deltas)[:0]
+	if machine == nil || machine.Target != railmach.TargetAMD64 || schedule == nil || len(schedule.Order) < 8 || len(schedule.BlockOf) < len(machine.Insts) {
+		return false
+	}
+	invalid := ^uint32(0)
+	previous := [4]uint32{invalid, invalid, invalid, invalid}
+	active := nativeAMD64GlobalUpdate{set: invalid}
+	activeDelta := uint32(0)
+	activeBlock := railssa.BlockID(^uint32(0))
+	found := false
+	reset := func(block railssa.BlockID) {
+		previous = [4]uint32{invalid, invalid, invalid, invalid}
+		active = nativeAMD64GlobalUpdate{set: invalid}
+		activeDelta = 0
+		activeBlock = block
+	}
+	for _, instructionID := range schedule.Order {
+		if int(instructionID) >= len(machine.Insts) {
+			reset(activeBlock)
+			continue
+		}
+		block := schedule.BlockOf[instructionID]
+		if block != activeBlock {
+			reset(block)
+		}
+		instruction := machine.Insts[instructionID]
+		if forbidden.has(instructionID) {
+			reset(block)
+			continue
+		}
+		if instruction.Result != 0 && int(instruction.Result) < len(machine.VRegs) && machine.VRegs[instruction.Result].Flags&railmach.VRegElided != 0 {
+			continue
+		}
+		if update, ok := nativeAMD64I32GlobalUpdate(machine, instructionID); ok && previous[0] == update.add {
+			beforeStart := invalid
+			pattern := false
+			switch {
+			case previous[1] == update.get:
+				beforeStart = previous[2]
+				pattern = true
+			case previous[1] == update.constant && previous[2] == update.get:
+				beforeStart = previous[3]
+				pattern = true
+			}
+			if !pattern {
+				active, activeDelta = nativeAMD64GlobalUpdate{set: invalid}, 0
+			} else if active.set != invalid && active.set == beforeStart && active.global == update.global {
+				if !found {
+					skip.prepare(len(machine.Insts), true)
+					combined.prepare(len(machine.Insts), true)
+					*deltas = resizeNativeSlice(*deltas, len(machine.Insts))
+					clear(*deltas)
+					found = true
+				}
+				skip.set(active.get, true)
+				skip.set(active.add, true)
+				skip.set(active.set, true)
+				combined.set(active.add, false)
+				activeDelta += update.delta
+				combined.set(update.add, true)
+				(*deltas)[update.add] = activeDelta
+				active = update
+			} else {
+				active, activeDelta = update, update.delta
+			}
+		}
+		previous[3], previous[2], previous[1], previous[0] = previous[2], previous[1], previous[0], instructionID
+	}
+	return found
+}
+
 func (p *nativeBackendPlanner) Plan(stack *railssa.StackFunc, target corecompiler.Target) (*nativeBackendPlan, error) {
 	return p.PlanProfile(stack, target, 0, nil)
 }
@@ -2203,6 +2343,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		}
 	}
 	planAMD64DeadStores(stack, machine, schedule, p.postRASkip, &p.amd64DeadStoreSkip, &p.amd64DeadStoreFrom)
+	planAMD64AdjacentGlobalUpdates(machine, schedule, p.postRASkip, &p.amd64GlobalUpdateSkip, &p.amd64GlobalUpdateAdd, &p.amd64GlobalUpdateDelta)
 	p.immediateUses = resizeNativeSlice(p.immediateUses, len(machine.VRegs))
 	immediatePlan := nativeBackendPlan{Machine: machine, Selection: selection, Allocation: allocation, AMD64ImmediateRemainders: amd64ImmediateRemainders, AMD64SignedImmediateRemainders: amd64SignedImmediateRemainders}
 	buildNativeImmediateCombinations(&immediatePlan, &p.immediateProducer, &p.immediateSkip, p.immediateUses)
@@ -2370,6 +2511,9 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		PostRAPostIndexWith:       p.postRAPostIndexWith,
 		AMD64DeadStoreSkip:        p.amd64DeadStoreSkip,
 		AMD64DeadStoreFrom:        p.amd64DeadStoreFrom,
+		AMD64GlobalUpdateSkip:     p.amd64GlobalUpdateSkip,
+		AMD64GlobalUpdateAdd:      p.amd64GlobalUpdateAdd,
+		AMD64GlobalUpdateDelta:    p.amd64GlobalUpdateDelta,
 		PostRADirect:              postRADirect,
 	}
 	p.plan.ImmediateProducer = p.immediateProducer
