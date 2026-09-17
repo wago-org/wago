@@ -1485,6 +1485,70 @@ func TestNativeBackendPlannerCommitsNoWrapAddressFold(t *testing.T) {
 	}
 }
 
+func TestNativeAMD64RematerializesSpilledAddressFromLiveBase(t *testing.T) {
+	machine := &railmach.Func{
+		Target: railmach.TargetAMD64,
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Const, Aux: 16, Result: 2},
+			{Op: wasm.InstrI32Add, OperandStart: 0, OperandCount: 2, Result: 3},
+			{Op: wasm.InstrI32Load, OperandStart: 2, OperandCount: 1, Result: 4},
+			{Op: wasm.InstrI32Load, OperandStart: 3, OperandCount: 1, Result: 5},
+		},
+		Operands: []railmach.Operand{
+			{Reg: 1, Bank: railmach.BankGPR}, {Reg: 2, Bank: railmach.BankGPR},
+			{Reg: 3, Bank: railmach.BankGPR}, {Reg: 3, Bank: railmach.BankGPR},
+		},
+		VRegs: []railmach.VRegData{
+			{},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegInitial},
+			{Def: 3, Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegRematerializable},
+			{Def: 9, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Def: 15, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Def: 21, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+		},
+		Memory: []railmach.MemoryAccess{
+			{Instruction: 2, AddressValue: 3, SemanticWidth: 4, EncodedWidth: 4},
+			{Instruction: 3, AddressValue: 3, SemanticWidth: 4, EncodedWidth: 4},
+		},
+	}
+	allocation := &railmach.GreedyAllocation{Allocation: railmach.Allocation{
+		Locations: []railmach.Location{
+			{},
+			{Kind: railmach.LocationRegister, Bank: railmach.BankGPR},
+			{Kind: railmach.LocationRematerialize, Bank: railmach.BankGPR},
+			{Kind: railmach.LocationSpill, Bank: railmach.BankGPR},
+			{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 1},
+			{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 2},
+		},
+		Intervals: []railmach.LiveInterval{
+			{Reg: 1, Start: 0, End: 20, Bank: railmach.BankGPR},
+			{Reg: 2, Start: 2, End: 8, Bank: railmach.BankGPR},
+			{Reg: 3, Start: 8, End: 20, Bank: railmach.BankGPR},
+			{Reg: 4, Start: 14, End: 22, Bank: railmach.BankGPR},
+			{Reg: 5, Start: 20, End: 24, Bank: railmach.BankGPR},
+		},
+		InstructionPositions: []uint32{0, 1, 2, 3},
+		SpillSlots:           1,
+	}}
+	var values, skipped nativeBitSet
+	skipped.prepare(len(machine.Insts), true)
+	var state []uint32
+	if got := planNativeAMD64SpilledAddressRematerialization(machine, allocation, &values, &skipped, &state); got != 1 || !values.has(3) || !skipped.has(1) {
+		t.Fatalf("address rematerialization = count %d, values %#v, skipped %#v", got, values, skipped)
+	}
+	allocation.Intervals[0].End = 8
+	skipped.prepare(len(machine.Insts), true)
+	if got := planNativeAMD64SpilledAddressRematerialization(machine, allocation, &values, &skipped, &state); got != 0 || values.has(3) || skipped.has(1) {
+		t.Fatalf("dead-base address rematerialization = count %d, values %#v, skipped %#v", got, values, skipped)
+	}
+	allocation.Intervals[0].End = 20
+	allocation.Fragments = []railmach.AllocationFragment{{Reg: 1, Start: 14, End: 20, Location: railmach.Location{Kind: railmach.LocationSpill, Bank: railmach.BankGPR}}}
+	skipped.prepare(len(machine.Insts), true)
+	if got := planNativeAMD64SpilledAddressRematerialization(machine, allocation, &values, &skipped, &state); got != 0 || values.has(3) || skipped.has(1) {
+		t.Fatalf("displaced-base address rematerialization = count %d, values %#v, skipped %#v", got, values, skipped)
+	}
+}
+
 func TestNativeBackendPlannerRejectsWrappingAddressFold(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

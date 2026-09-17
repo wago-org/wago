@@ -5229,6 +5229,10 @@ func amd64RailMachReadLocation(a *amd64.Asm, plan *nativeBackendPlan, value rail
 
 func amd64RailMachReadLocationWithFloatConstant(a *amd64.Asm, plan *nativeBackendPlan, value railmach.VReg, location railmach.Location, scratch amd64.Reg, stackDelta uint32, materializeFloatConstant func(amd64.Reg, uint64, bool)) (amd64.Reg, error) {
 	data := plan.Machine.VRegs[value]
+	addressRematerialization := plan.AMD64AddressRematerialize.has(uint32(value))
+	if addressRematerialization {
+		location = railmach.Location{Kind: railmach.LocationRematerialize, Bank: data.Bank}
+	}
 	switch location.Kind {
 	case railmach.LocationRegister:
 		return amd64RailMachPhysical(location), nil
@@ -5301,6 +5305,14 @@ func amd64RailMachReadLocationWithFloatConstant(a *amd64.Asm, plan *nativeBacken
 				return 0, err
 			}
 			wide := semanticOp == wasm.InstrI64Add || semanticOp == wasm.InstrI64Sub
+			if !wide && addressRematerialization {
+				immediate := int32(plan.Machine.Insts[constant.Def/6].Aux)
+				if semanticOp == wasm.InstrI32Sub {
+					immediate = -immediate
+				}
+				a.LeaDispW(scratch, base, immediate, false)
+				break
+			}
 			if base != scratch {
 				if wide {
 					a.MovReg64(scratch, base)

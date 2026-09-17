@@ -112,6 +112,9 @@ type nativeBackendPlan struct {
 	// single-source shuffle masks and, when no low-XMM semantic scratch remains,
 	// allocate the full XMM0-XMM11 register set.
 	AMD64WideVectorScratch bool
+	// AMD64AddressRematerialize marks spilled wrapping affine addresses whose
+	// every memory use can reconstruct the value from an already-live register.
+	AMD64AddressRematerialize nativeBitSet
 
 	BlockOffsets        []int
 	BranchPatches       []nativeBranchPatch
@@ -294,6 +297,8 @@ type nativeBackendPlanner struct {
 	immediateProducer   nativeInstructionRelation
 	immediateSkip       nativeBitSet
 	immediateUses       []uint32
+	amd64AddressRemat   nativeBitSet
+	amd64AddressState   []uint32
 	deadGCReservations  []bool
 	noBarrierGCStores   []bool
 	amd64MemoryBounds   []nativeAMD64MemoryBoundUse
@@ -484,6 +489,7 @@ func (p *nativeBackendPlanner) releasePlanningScratchAbove(limit uint64) bool {
 	p.blockBytes = nil
 	p.coldBlocks = nil
 	p.immediateUses = nil
+	p.amd64AddressState = nil
 	p.gcValues = nil
 	p.amd64MemoryBounds = nil
 	return true
@@ -513,7 +519,7 @@ func (p *nativeBackendPlanner) nativeCapacityBreakdown() NativePlannerCapacityBr
 		ControlFlow: sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches),
 		Bounds:      p.memoryCheckSlots.capacityBytes() + sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.amd64MemoryBounds),
 		PostRA:      p.postRAPairWith.capacityBytes() + p.postRASkip.capacityBytes() + p.postRAForwardFrom.capacityBytes() + p.postRAFusionWith.capacityBytes() + p.postRAMemoryFrom.capacityBytes() + p.postRARepeatFirst.capacityBytes() + p.postRAPreIndex.capacityBytes() + p.postRAPostIndexWith.capacityBytes(),
-		Immediates:  p.immediateProducer.capacityBytes() + p.immediateSkip.capacityBytes() + sliceBytes(p.immediateUses),
+		Immediates:  p.immediateProducer.capacityBytes() + p.immediateSkip.capacityBytes() + p.amd64AddressRemat.capacityBytes() + sliceBytes(p.immediateUses) + sliceBytes(p.amd64AddressState),
 		GC:          sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.gcValues),
 		CallsRoots:  sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots),
 	}
@@ -1069,6 +1075,119 @@ func countNativeMachineUses(machine *railmach.Func, uses []uint32) {
 	for _, result := range machine.Results {
 		uses[result]++
 	}
+}
+
+// planNativeAMD64SpilledAddressRematerialization replaces a spilled wrapping
+// affine address with use-site LEAs only when its original base is already live
+// in one durable register at every memory consumer. The allocation remains the
+// independent proof source; no live range is extended by this rewrite.
+func planNativeAMD64SpilledAddressRematerialization(machine *railmach.Func, allocation *railmach.GreedyAllocation, values, skipped *nativeBitSet, intervalByReg *[]uint32) uint32 {
+	enabled := machine != nil && machine.Target == railmach.TargetAMD64 && allocation != nil && len(allocation.Locations) == len(machine.VRegs) && len(allocation.InstructionPositions) == len(machine.Insts)
+	values.prepare(len(machine.VRegs), enabled)
+	if !enabled {
+		return 0
+	}
+	if uint64(len(allocation.Intervals)) > uint64(^uint32(0)>>2) {
+		return 0
+	}
+	*intervalByReg = resizeNativeSlice(*intervalByReg, len(machine.VRegs))
+	clear(*intervalByReg)
+	stateByReg := *intervalByReg
+	for index, interval := range allocation.Intervals {
+		// Low bits are free for the repeated-use state collected below.
+		stateByReg[interval.Reg] = (uint32(index) + 1) << 2
+	}
+	for instructionID, instruction := range machine.Insts {
+		result := instruction.Result
+		if result == 0 || int(result) >= len(machine.VRegs) || allocation.Locations[result].Kind != railmach.LocationSpill || machine.VRegs[result].Type != railmach.TypeI32 {
+			continue
+		}
+		switch railmach.SemanticOpcode(instruction.Op) {
+		case wasm.InstrI32Add, wasm.InstrI32Sub:
+		default:
+			continue
+		}
+		operands := machine.InstructionOperands(uint32(instructionID))
+		if len(operands) != 2 || operands[0].Reg == 0 {
+			continue
+		}
+		if _, constant := nativeMachineIntegerConstant(machine, operands[1].Reg); !constant {
+			continue
+		}
+		baseLocation := allocation.Locations[operands[0].Reg]
+		if baseLocation.Kind != railmach.LocationRegister || baseLocation.Bank != railmach.BankGPR {
+			continue
+		}
+		values.set(uint32(result), true)
+	}
+	for instructionID := range machine.Insts {
+		operands := machine.InstructionOperands(uint32(instructionID))
+		for operandIndex, operand := range operands {
+			if !values.has(uint32(operand.Reg)) {
+				continue
+			}
+			state := stateByReg[operand.Reg]
+			if state&1 != 0 {
+				state |= 2
+			} else {
+				state |= 1
+			}
+			stateByReg[operand.Reg] = state
+			access, memory := machine.MemoryAccessAt(uint32(instructionID))
+			definition := machine.VRegs[operand.Reg].Def / 6
+			definitionOperands := machine.InstructionOperands(definition)
+			base := definitionOperands[0].Reg
+			encodedInterval := stateByReg[base] >> 2
+			position := allocation.InstructionPositions[instructionID]*6 + 2
+			baseLocation := allocation.Locations[base]
+			if operandIndex != 0 || operand.Flags&(railmach.OperandFixed|railmach.OperandColdRemat) != 0 || !memory || access.AddressValue != operand.Reg || encodedInterval == 0 ||
+				allocation.LocationAt(base, position) != baseLocation ||
+				!nativeAllocationIntervalContains(allocation, allocation.Intervals[encodedInterval-1], position) {
+				values.set(uint32(operand.Reg), false)
+			}
+		}
+	}
+	for _, transfer := range machine.Transfers {
+		values.set(uint32(transfer.Src), false)
+		values.set(uint32(transfer.Dst), false)
+	}
+	for _, result := range machine.Results {
+		values.set(uint32(result), false)
+	}
+	for _, fragment := range allocation.Fragments {
+		values.set(uint32(fragment.Reg), false)
+		values.set(uint32(fragment.Victim), false)
+	}
+	var committed uint32
+	for instructionID, instruction := range machine.Insts {
+		if instruction.Result != 0 && values.has(uint32(instruction.Result)) && stateByReg[instruction.Result]&2 != 0 {
+			skipped.set(uint32(instructionID), true)
+			committed++
+		}
+	}
+	return committed
+}
+
+func nativeAllocationIntervalContains(allocation *railmach.GreedyAllocation, interval railmach.LiveInterval, position uint32) bool {
+	if position < interval.Start || position > interval.End {
+		return false
+	}
+	for _, range_ := range allocation.LiveSegmentRanges {
+		if range_.Reg != interval.Reg {
+			continue
+		}
+		end := uint32(range_.SegmentStart) + uint32(range_.SegmentCount)
+		if end > uint32(len(allocation.LiveSegments)) {
+			return false
+		}
+		for _, segment := range allocation.LiveSegments[range_.SegmentStart:end] {
+			if segment.Start <= position && position <= segment.End {
+				return true
+			}
+		}
+		return false
+	}
+	return true
 }
 
 func nativeImmediateShiftUse(op railmach.MOpcode) bool {
@@ -2007,6 +2126,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	p.immediateUses = resizeNativeSlice(p.immediateUses, len(machine.VRegs))
 	immediatePlan := nativeBackendPlan{Machine: machine, Selection: selection, Allocation: allocation, AMD64ImmediateRemainders: amd64ImmediateRemainders, AMD64SignedImmediateRemainders: amd64SignedImmediateRemainders}
 	buildNativeImmediateCombinations(&immediatePlan, &p.immediateProducer, &p.immediateSkip, p.immediateUses)
+	planNativeAMD64SpilledAddressRematerialization(machine, allocation, &p.amd64AddressRemat, &p.immediateSkip, &p.amd64AddressState)
 	if machine.Target == railmach.TargetARM64 {
 		buildNativeARM64LogicalImmediateCombinations(&immediatePlan, &p.immediateProducer, &p.immediateSkip, p.immediateUses)
 		preserveNativeARM64RepeatedAddInputs(machine, schedule, p.postRARepeatFirst, &p.immediateSkip)
@@ -2157,17 +2277,18 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64StackCachedGlobals: stackCachedGlobals, AMD64StackCachedGlobalOffset: stackCachedGlobalOffset, AMD64StackCachedGlobalCount: uint8(stackCachedGlobalCount),
 		AMD64DivisionSaveOffset: amd64DivisionSaveOffset, AMD64DivisionSave: amd64DivisionSave, AMD64ImmediateRemainders: amd64ImmediateRemainders, AMD64SignedImmediateRemainders: amd64SignedImmediateRemainders,
-		AMD64WideVectorScratch: amd64WideVectorScratch,
-		AMD64BMI2:              target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
-		PostRAPairWith:         p.postRAPairWith,
-		PostRASkip:             p.postRASkip,
-		PostRAForwardFrom:      p.postRAForwardFrom,
-		PostRAFusionWith:       p.postRAFusionWith,
-		PostRAMemoryFrom:       p.postRAMemoryFrom,
-		PostRARepeatFirst:      p.postRARepeatFirst,
-		PostRAPreIndex:         p.postRAPreIndex,
-		PostRAPostIndexWith:    p.postRAPostIndexWith,
-		PostRADirect:           postRADirect,
+		AMD64WideVectorScratch:    amd64WideVectorScratch,
+		AMD64AddressRematerialize: p.amd64AddressRemat,
+		AMD64BMI2:                 target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
+		PostRAPairWith:            p.postRAPairWith,
+		PostRASkip:                p.postRASkip,
+		PostRAForwardFrom:         p.postRAForwardFrom,
+		PostRAFusionWith:          p.postRAFusionWith,
+		PostRAMemoryFrom:          p.postRAMemoryFrom,
+		PostRARepeatFirst:         p.postRARepeatFirst,
+		PostRAPreIndex:            p.postRAPreIndex,
+		PostRAPostIndexWith:       p.postRAPostIndexWith,
+		PostRADirect:              postRADirect,
 	}
 	p.plan.ImmediateProducer = p.immediateProducer
 	p.plan.ImmediateSkip = p.immediateSkip

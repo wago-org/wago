@@ -928,6 +928,41 @@ func TestAMD64RailMachFloatRematerializationUsesConstantPool(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachRematerializesWrappingAddressWithLEA(t *testing.T) {
+	machine := &railmach.Func{
+		Target: railmach.TargetAMD64,
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Const, Aux: 16, Result: 2},
+			{Op: wasm.InstrI32Add, OperandStart: 0, OperandCount: 2, Result: 3},
+		},
+		Operands: []railmach.Operand{{Reg: 1, Bank: railmach.BankGPR}, {Reg: 2, Bank: railmach.BankGPR}},
+		VRegs: []railmach.VRegData{
+			{},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegInitial},
+			{Def: 3, Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegRematerializable},
+			{Def: 9, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+		},
+	}
+	allocation := &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{
+		{},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR},
+		{Kind: railmach.LocationRematerialize, Bank: railmach.BankGPR},
+		{Kind: railmach.LocationSpill, Bank: railmach.BankGPR},
+	}}}
+	plan := &nativeBackendPlan{Machine: machine, Allocation: allocation}
+	plan.AMD64AddressRematerialize.prepare(len(machine.VRegs), true)
+	plan.AMD64AddressRematerialize.set(3, true)
+	var got, want amd64.Asm
+	reg, err := amd64RailMachReadLocation(&got, plan, 3, allocation.Locations[3], amd64.R10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want.LeaDispW(amd64.R10, amd64.RAX, 16, false)
+	if reg != amd64.R10 || !bytes.Equal(got.B, want.B) {
+		t.Fatalf("wrapping address rematerialization = reg %d code %x, want %x", reg, got.B, want.B)
+	}
+}
+
 func TestAMD64StructuredSIMDConstantsUseDeduplicatedRIPPool(t *testing.T) {
 	constant := [16]byte{1, 3, 5, 7, 9, 11, 13, 15, 2, 4, 6, 8, 10, 12, 14, 16}
 	body := []byte{0xfd, 0x0c}
