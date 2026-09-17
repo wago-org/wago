@@ -1055,6 +1055,36 @@ func TestAMD64StructuredCallUsesWriteThroughPinnedLocalHomes(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredCallReloadsOnlyCalleeClobbers(t *testing.T) {
+	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body = append(body,
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
+		0x20, 0x00, 0x41, 0x01, 0x6a, 0x21, 0x00, // local.get 0; i32.const 1; i32.add; local.set 0
+		0x10, 0x00, // call local function 0
+		0x20, 0x01, 0x1a, // local.get 1; drop
+		0x20, 0x00, 0x0b, // local.get 0; end
+	)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.V128}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code(body),
+		)),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var scalarReload, vectorReload amd64.Asm
+	scalarReload.LoadRsp32(amd64.R12, 0)
+	vectorReload.VMovdquLoadDisp(8, amd64.RSP, 8)
+	if bytes.Contains(output.Code, scalarReload.B) || bytes.Contains(output.Code, vectorReload.B) {
+		t.Fatalf("structured caller reloaded registers preserved by exact callee contract: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredBinaryReadsResidentConstantDirectly(t *testing.T) {
 	constant := [16]byte{0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f}
 	body := bytes.Repeat([]byte{0x01}, 510)                                         // force the large-bulk structured path

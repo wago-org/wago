@@ -351,7 +351,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		plan = applyBoundsMode(input.Bounds, plan, nativePlan)
 		functionRequiresBMI2 := amd64RailMachMayUseBMI2(nativePlan)
 		functionRequiresAVX512VL := false
-		body, internalOffset, relocs, railMachFinalized, err := emitAMD64(fn, plan, nativePlan, input.Target.HasFeature(corecompiler.TargetFeatureAMD64AVX512VL), &functionRequiresAVX512VL, emitMetrics, capture)
+		body, internalOffset, relocs, railMachFinalized, err := emitAMD64(fn, plan, nativePlan, input.Target.HasFeature(corecompiler.TargetFeatureAMD64AVX512VL), &functionRequiresAVX512VL, emitMetrics, capture, moduleContracts)
 		if err != nil {
 			return corecompiler.Output{}, functionError(m, i, "emit", err)
 		}
@@ -723,7 +723,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 			plan = applyBoundsMode(input.Bounds, plan, nativePlan)
 			trimPlanningScratch := nativePlan != nil && worker.native.releasePlanningScratchAbove(nativeBackendPlannerRetentionBytes)
 			functionRequiresAVX512VL := false
-			body, internalOffset, relocs, railMachFinalized, err := emitAMD64(fn, plan, nativePlan, input.Target.HasFeature(corecompiler.TargetFeatureAMD64AVX512VL), &functionRequiresAVX512VL, nil, nil)
+			body, internalOffset, relocs, railMachFinalized, err := emitAMD64(fn, plan, nativePlan, input.Target.HasFeature(corecompiler.TargetFeatureAMD64AVX512VL), &functionRequiresAVX512VL, nil, nil, contracts)
 			if err != nil {
 				return functionError(m, i, "emit", err)
 			}
@@ -789,7 +789,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, ContextFreeLoopPrepared: signalGuardFreePrepared, PreparedIsolatedTables: preparedIsolatedTables, RequiresBMI2: requiresBMI2, RequiresAVX512VL: requiresAVX512VL}, nil
 }
 
-func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, avx512vl bool, usedAVX512VL *bool, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []amd64CallReloc, bool, error) {
+func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, avx512vl bool, usedAVX512VL *bool, metrics *FunctionMetrics, metadata *functionEmissionMetadata, moduleContracts ...[]railmach.ABIContract) ([]byte, int, []amd64CallReloc, bool, error) {
 	if nativePlan != nil {
 		var relocs []amd64CallReloc
 		if code, entry, ok, err := emitAMD64RailMach(fn, nativePlan, &relocs, metrics, metadata); ok || err != nil {
@@ -800,7 +800,7 @@ func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 		}
 	}
 	if fn.Stack != nil {
-		code, entry, relocs, err := emitAMD64Stack(fn, plan, avx512vl, usedAVX512VL, metrics, metadata)
+		code, entry, relocs, err := emitAMD64Stack(fn, plan, avx512vl, usedAVX512VL, metrics, metadata, moduleContracts...)
 		return code, entry, relocs, false, err
 	}
 	if len(fn.Params) > len(amd64ParamRegisters) {
@@ -5778,8 +5778,12 @@ func amd64StructuredLocalsPinned(localPinned []bool, locals ...uint32) bool {
 	return true
 }
 
-func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool, usedAVX512VL *bool, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []amd64CallReloc, error) {
+func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool, usedAVX512VL *bool, metrics *FunctionMetrics, metadata *functionEmissionMetadata, moduleContracts ...[]railmach.ABIContract) ([]byte, int, []amd64CallReloc, error) {
 	sf := fn.Stack
+	var contracts []railmach.ABIContract
+	if len(moduleContracts) != 0 {
+		contracts = moduleContracts[0]
+	}
 	callRelocs := make([]amd64CallReloc, 0, 2)
 	localRegisters := make([]amd64.Reg, len(sf.Locals))
 	localFloat := make([]bool, len(sf.Locals))
@@ -6093,24 +6097,52 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 			}
 		}
 	}
-	restorePinnedLocals := func() {
+	restorePinnedLocals := func(gprClobbers, fprClobbers uint64) {
 		for local, pinned := range localPinned {
 			if !pinned {
 				continue
 			}
 			switch sf.Locals[local] {
 			case wasm.V128:
+				if fprClobbers&(uint64(1)<<localRegisters[local]) == 0 {
+					continue
+				}
 				a.VMovdquLoadDisp(localRegisters[local], amd64.RSP, localOff(local))
 			case wasm.F32, wasm.F64:
+				if fprClobbers&(uint64(1)<<localRegisters[local]) == 0 {
+					continue
+				}
 				a.FLoadDisp(localRegisters[local], amd64.RSP, localOff(local), sf.Locals[local] == wasm.F64)
 			case wasm.I32:
+				physical := -1
+				for index, reg := range amd64RailMachGPRRegisters {
+					if reg == localRegisters[local] {
+						physical = index
+						break
+					}
+				}
+				if physical >= 0 && gprClobbers&(uint64(1)<<physical) == 0 {
+					continue
+				}
 				a.LoadRsp32(localRegisters[local], localOff(local))
 			default:
+				physical := -1
+				for index, reg := range amd64RailMachGPRRegisters {
+					if reg == localRegisters[local] {
+						physical = index
+						break
+					}
+				}
+				if physical >= 0 && gprClobbers&(uint64(1)<<physical) == 0 {
+					continue
+				}
 				a.LoadRsp64(localRegisters[local], localOff(local))
 			}
 		}
 		for _, constant := range simdConstants {
-			materializeSIMDConstant(constant.reg, constant.bytes)
+			if fprClobbers&(uint64(1)<<constant.reg) != 0 {
+				materializeSIMDConstant(constant.reg, constant.bytes)
+			}
 		}
 	}
 	stackTypes := make([]wasm.ValType, 0, sf.MaxStack)
@@ -8310,9 +8342,29 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				if instr.Inline() == wasm.InstrInvalid && !writeThroughPinnedLocals {
 					spillPinnedLocals()
 				}
+				gprClobbers, fprClobbers := ^uint64(0), ^uint64(0)
+				if instr.Kind == wasm.InstrCall && instr.Inline() == wasm.InstrInvalid && instr.U32() >= sf.ImportedFuncs {
+					callee := int(instr.U32() - sf.ImportedFuncs)
+					if callee < len(contracts) && contracts[callee].Class != 0 {
+						gprClobbers, fprClobbers = contracts[callee].GPRClobbers, contracts[callee].FPRClobbers
+						base := len(stackTypes) - int(instr.Params())
+						for argument := 0; argument < min(int(instr.Params()), len(amd64ParamRegisters)); argument++ {
+							if stackTypes[base+argument] == wasm.V128 {
+								fprClobbers |= uint64(1) << argument
+								continue
+							}
+							for physical, reg := range amd64RailMachGPRRegisters {
+								if reg == amd64ParamRegisters[argument] {
+									gprClobbers |= uint64(1) << physical
+									break
+								}
+							}
+						}
+					}
+				}
 				err = emitAMD64StackCall(&a, sf, instr, &stackTypes, stackOff, &callRelocs, fn.Index, metadata)
 				if err == nil && instr.Inline() == wasm.InstrInvalid {
-					restorePinnedLocals()
+					restorePinnedLocals(gprClobbers, fprClobbers)
 				}
 			} else {
 				err = emitAMD64StackInteger(&a, instr.Kind, &stackTypes, scalarOperand, cacheScalar, discardScalar, fn.Index, instr.Offset, metadata)
