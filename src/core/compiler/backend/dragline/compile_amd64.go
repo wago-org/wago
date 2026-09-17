@@ -6294,6 +6294,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	}
 	helperOrdinal := uint32(0)
 	moveStackValue := func(src, dst int, typ wasm.ValType) {
+		if src == dst {
+			return
+		}
 		if typ == wasm.V128 {
 			a.VMovdquLoadDisp(0, amd64.RSP, stackOff(src))
 			a.VMovdquStoreDisp(amd64.RSP, stackOff(dst), 0)

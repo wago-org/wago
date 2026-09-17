@@ -633,6 +633,31 @@ func TestAMD64StructuredSupportsI32x4Mul(t *testing.T) {
 	compileAMD64EmissionTest(t, source)
 }
 
+func TestAMD64StructuredDoesNotMoveBranchResultWithinSameStackSlot(t *testing.T) {
+	body := []byte{
+		0x02, 0x7b, // block (result v128)
+		0x20, 0x00, // local.get 0
+		0x0c, 0x00, // br 0
+		0x0b,                                                       // end block
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
+	}
+	body = append(body, bytes.Repeat([]byte{0x01}, 510)...) // force the large-bulk structured path
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var redundant amd64.Asm
+	redundant.VMovdquLoadDisp(0, amd64.RSP, 16)
+	redundant.VMovdquStoreDisp(amd64.RSP, 16, 0)
+	if bytes.Contains(output.Code, redundant.B) {
+		t.Fatalf("structured branch result moved within one canonical stack slot: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredFusesIntegerComparisonIntoControl(t *testing.T) {
 	body := []byte{
 		0x01, 0x01, 0x7b, // one v128 local forces structured SIMD emission
