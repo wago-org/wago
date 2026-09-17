@@ -640,6 +640,107 @@ func TestNativeBackendPlannerAllocatesOnlyRequiredPostRAScratch(t *testing.T) {
 	}
 }
 
+func TestPlanAMD64DeadStoresOnlyOverwrittenPrivateMemory(t *testing.T) {
+	machine := &railmach.Func{
+		Target: railmach.TargetAMD64,
+		VRegs: []railmach.VRegData{
+			{},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR},
+		},
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Store, Source: 11, OperandStart: 0, OperandCount: 2},
+			{Op: wasm.InstrI32Store, Source: 22, OperandStart: 2, OperandCount: 2},
+		},
+		Operands: []railmach.Operand{
+			{Reg: 1, Bank: railmach.BankGPR, Flags: railmach.OperandUse},
+			{Reg: 2, Bank: railmach.BankGPR, Flags: railmach.OperandUse},
+			{Reg: 1, Bank: railmach.BankGPR, Flags: railmach.OperandUse},
+			{Reg: 3, Bank: railmach.BankGPR, Flags: railmach.OperandUse},
+		},
+		Blocks: []railmach.Block{{InstCount: 2}},
+		Memory: []railmach.MemoryAccess{
+			{Instruction: 0, AddressValue: 1, Offset: 8, MemoryIndex: 0, SemanticWidth: 4, EncodedWidth: 4},
+			{Instruction: 1, AddressValue: 1, Offset: 8, MemoryIndex: 0, SemanticWidth: 4, EncodedWidth: 4},
+		},
+	}
+	schedule := &railmach.Schedule{Order: []uint32{0, 1}, BlockOf: []railssa.BlockID{0, 0}}
+	private := &railssa.StackFunc{Module: &wasm.Module{Memories: []wasm.MemType{{}}}}
+
+	var skip nativeBitSet
+	var source nativeInstructionRelation
+	if !planAMD64DeadStores(private, machine, schedule, nativeBitSet{}, &skip, &source) || !skip.has(0) {
+		t.Fatalf("exact overwritten store was not removed: skip=%#v source=%#v", skip, source)
+	}
+	if first, ok := source.get(1); !ok || first != 0 {
+		t.Fatalf("surviving store source = %d/%t, want 0/true", first, ok)
+	}
+	plan := nativeBackendPlan{Machine: machine, AMD64DeadStoreFrom: source}
+	if got := amd64DeadStoreSource(&plan, 1); got != machine.Insts[0].Source {
+		t.Fatalf("surviving store Wasm source = %d, want first store source %d", got, machine.Insts[0].Source)
+	}
+	if got := amd64DeadStoreSource(&nativeBackendPlan{Machine: machine}, 1); got != machine.Insts[1].Source {
+		t.Fatalf("ordinary store Wasm source = %d, want own source %d", got, machine.Insts[1].Source)
+	}
+
+	elidedMachine := *machine
+	elidedMachine.VRegs = append(append([]railmach.VRegData(nil), machine.VRegs...), railmach.VRegData{Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegElided})
+	elidedMachine.Insts = []railmach.Inst{machine.Insts[0], {Op: wasm.InstrI32Const, Result: 4}, machine.Insts[1]}
+	elidedMachine.Memory = append([]railmach.MemoryAccess(nil), machine.Memory...)
+	elidedMachine.Memory[1].Instruction = 2
+	elidedSchedule := &railmach.Schedule{Order: []uint32{0, 1, 2}, BlockOf: []railssa.BlockID{0, 0, 0}}
+	if !planAMD64DeadStores(private, &elidedMachine, elidedSchedule, nativeBitSet{}, &skip, &source) || !skip.has(0) {
+		t.Fatalf("store separated only by an elided instruction was not removed: skip=%#v source=%#v", skip, source)
+	}
+	if first, ok := source.get(2); !ok || first != 0 {
+		t.Fatalf("elided-pair surviving store source = %d/%t, want 0/true", first, ok)
+	}
+
+	tests := []struct {
+		name string
+		edit func(*railssa.StackFunc, *railmach.Func, *railmach.Schedule, *nativeBitSet)
+	}{
+		{"shared memory", func(stack *railssa.StackFunc, _ *railmach.Func, _ *railmach.Schedule, _ *nativeBitSet) {
+			stack.Module.Memories[0].Shared = true
+		}},
+		{"different address", func(_ *railssa.StackFunc, machine *railmach.Func, _ *railmach.Schedule, _ *nativeBitSet) {
+			machine.Memory[1].AddressValue = 2
+		}},
+		{"different offset", func(_ *railssa.StackFunc, machine *railmach.Func, _ *railmach.Schedule, _ *nativeBitSet) {
+			machine.Memory[1].Offset++
+		}},
+		{"different width", func(_ *railssa.StackFunc, machine *railmach.Func, _ *railmach.Schedule, _ *nativeBitSet) {
+			machine.Memory[1].SemanticWidth = 2
+		}},
+		{"different block", func(_ *railssa.StackFunc, _ *railmach.Func, schedule *railmach.Schedule, _ *nativeBitSet) {
+			schedule.BlockOf[1] = 1
+		}},
+		{"existing rewrite", func(_ *railssa.StackFunc, _ *railmach.Func, _ *railmach.Schedule, forbidden *nativeBitSet) {
+			forbidden.prepare(2, true)
+			forbidden.set(1, true)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stackCopy := *private
+			moduleCopy := *private.Module
+			moduleCopy.Memories = append([]wasm.MemType(nil), private.Module.Memories...)
+			stackCopy.Module = &moduleCopy
+			machineCopy := *machine
+			machineCopy.Memory = append([]railmach.MemoryAccess(nil), machine.Memory...)
+			scheduleCopy := *schedule
+			scheduleCopy.BlockOf = append([]railssa.BlockID(nil), schedule.BlockOf...)
+			var forbidden, gotSkip nativeBitSet
+			var gotSource nativeInstructionRelation
+			test.edit(&stackCopy, &machineCopy, &scheduleCopy, &forbidden)
+			if planAMD64DeadStores(&stackCopy, &machineCopy, &scheduleCopy, forbidden, &gotSkip, &gotSource) {
+				t.Fatalf("unsafe pair was selected: skip=%#v source=%#v", gotSkip, gotSource)
+			}
+		})
+	}
+}
+
 func TestNativeBitSetCoversWordBoundaryAndClear(t *testing.T) {
 	var set nativeBitSet
 	set.prepare(65, true)

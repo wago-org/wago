@@ -131,6 +131,8 @@ type nativeBackendPlan struct {
 	PostRARepeatFirst   nativeInstructionRelation
 	PostRAPreIndex      nativeBitSet
 	PostRAPostIndexWith nativeInstructionRelation
+	AMD64DeadStoreSkip  nativeBitSet
+	AMD64DeadStoreFrom  nativeInstructionRelation
 	// PostRADirect enables verifier-gated rewrites whose realization needs no
 	// instruction-indexed side table. The PostRA plan remains the sparse source
 	// of instruction identity.
@@ -247,6 +249,8 @@ func clearPostRAEmissionRewrites(plan *nativeBackendPlan) {
 	plan.PostRARepeatFirst = nativeInstructionRelation{}
 	plan.PostRAPreIndex = nativeBitSet{}
 	plan.PostRAPostIndexWith = nativeInstructionRelation{}
+	plan.AMD64DeadStoreSkip = nativeBitSet{}
+	plan.AMD64DeadStoreFrom = nativeInstructionRelation{}
 	plan.PostRADirect = false
 }
 
@@ -294,6 +298,8 @@ type nativeBackendPlanner struct {
 	postRARepeatFirst   nativeInstructionRelation
 	postRAPreIndex      nativeBitSet
 	postRAPostIndexWith nativeInstructionRelation
+	amd64DeadStoreSkip  nativeBitSet
+	amd64DeadStoreFrom  nativeInstructionRelation
 	immediateProducer   nativeInstructionRelation
 	immediateSkip       nativeBitSet
 	immediateUses       []uint32
@@ -518,7 +524,7 @@ func (p *nativeBackendPlanner) nativeCapacityBreakdown() NativePlannerCapacityBr
 	return NativePlannerCapacityBreakdown{
 		ControlFlow: sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches),
 		Bounds:      p.memoryCheckSlots.capacityBytes() + sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.amd64MemoryBounds),
-		PostRA:      p.postRAPairWith.capacityBytes() + p.postRASkip.capacityBytes() + p.postRAForwardFrom.capacityBytes() + p.postRAFusionWith.capacityBytes() + p.postRAMemoryFrom.capacityBytes() + p.postRARepeatFirst.capacityBytes() + p.postRAPreIndex.capacityBytes() + p.postRAPostIndexWith.capacityBytes(),
+		PostRA:      p.postRAPairWith.capacityBytes() + p.postRASkip.capacityBytes() + p.postRAForwardFrom.capacityBytes() + p.postRAFusionWith.capacityBytes() + p.postRAMemoryFrom.capacityBytes() + p.postRARepeatFirst.capacityBytes() + p.postRAPreIndex.capacityBytes() + p.postRAPostIndexWith.capacityBytes() + p.amd64DeadStoreSkip.capacityBytes() + p.amd64DeadStoreFrom.capacityBytes(),
 		Immediates:  p.immediateProducer.capacityBytes() + p.immediateSkip.capacityBytes() + p.amd64AddressRemat.capacityBytes() + sliceBytes(p.immediateUses) + sliceBytes(p.amd64AddressState),
 		GC:          sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.gcValues),
 		CallsRoots:  sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots),
@@ -1585,6 +1591,79 @@ func nativeMemoryAccess(kind wasm.InstrKind) (size int, signed, store, ok bool) 
 	return size, signed, store, ok
 }
 
+// planAMD64DeadStores removes the first of adjacent emitted scalar stores when
+// the second store overwrites the exact same bytes. Private linear memory makes
+// the first write unobservable; retaining its source on the surviving store
+// preserves the first trapping operation's Wasm attribution. Machine
+// instructions already proven elided do not separate emitted stores.
+func planAMD64DeadStores(stack *railssa.StackFunc, machine *railmach.Func, schedule *railmach.Schedule, forbidden nativeBitSet, skip *nativeBitSet, source *nativeInstructionRelation) bool {
+	if skip == nil || source == nil {
+		return false
+	}
+	skip.prepare(0, false)
+	source.prepare(0, false)
+	if stack == nil || stack.Module == nil || machine == nil || machine.Target != railmach.TargetAMD64 || schedule == nil || len(schedule.Order) < 2 || len(schedule.BlockOf) < len(machine.Insts) {
+		return false
+	}
+	found := false
+	previous := ^uint32(0)
+	for _, second := range schedule.Order {
+		if int(second) >= len(machine.Insts) {
+			previous = ^uint32(0)
+			continue
+		}
+		instruction := machine.Insts[second]
+		if forbidden.has(second) {
+			previous = ^uint32(0)
+			continue
+		}
+		if instruction.Result != 0 && int(instruction.Result) < len(machine.VRegs) && machine.VRegs[instruction.Result].Flags&railmach.VRegElided != 0 {
+			continue
+		}
+		first := previous
+		previous = second
+		if first == ^uint32(0) || schedule.BlockOf[first] != schedule.BlockOf[second] {
+			continue
+		}
+		_, _, firstStore, firstMemory := nativeMemoryAccess(machine.Insts[first].Op)
+		_, _, secondStore, secondMemory := nativeMemoryAccess(instruction.Op)
+		if !firstMemory || !secondMemory || !firstStore || !secondStore {
+			continue
+		}
+		left, leftOK := machine.MemoryAccessAt(first)
+		right, rightOK := machine.MemoryAccessAt(second)
+		if !leftOK || !rightOK || left.MemoryIndex != right.MemoryIndex || left.AddressValue != right.AddressValue || left.Offset != right.Offset || left.SemanticWidth == 0 || left.SemanticWidth != right.SemanticWidth || left.EncodedWidth != right.EncodedWidth {
+			continue
+		}
+		memoryType, ok := stack.Module.MemoryType(left.MemoryIndex)
+		if !ok || memoryType.Shared {
+			continue
+		}
+		if !found {
+			skip.prepare(len(machine.Insts), true)
+			source.prepare(len(machine.Insts), true)
+			found = true
+		}
+		firstSource := first
+		if prior, ok := source.get(first); ok {
+			firstSource = prior
+		}
+		skip.set(first, true)
+		source.set(second, firstSource)
+	}
+	return found
+}
+
+func amd64DeadStoreSource(plan *nativeBackendPlan, instruction uint32) uint32 {
+	if plan == nil || plan.Machine == nil || int(instruction) >= len(plan.Machine.Insts) {
+		return 0
+	}
+	if first, ok := plan.AMD64DeadStoreFrom.get(instruction); ok && int(first) < len(plan.Machine.Insts) {
+		return plan.Machine.Insts[first].Source
+	}
+	return plan.Machine.Insts[instruction].Source
+}
+
 func (p *nativeBackendPlanner) Plan(stack *railssa.StackFunc, target corecompiler.Target) (*nativeBackendPlan, error) {
 	return p.PlanProfile(stack, target, 0, nil)
 }
@@ -2123,6 +2202,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			}
 		}
 	}
+	planAMD64DeadStores(stack, machine, schedule, p.postRASkip, &p.amd64DeadStoreSkip, &p.amd64DeadStoreFrom)
 	p.immediateUses = resizeNativeSlice(p.immediateUses, len(machine.VRegs))
 	immediatePlan := nativeBackendPlan{Machine: machine, Selection: selection, Allocation: allocation, AMD64ImmediateRemainders: amd64ImmediateRemainders, AMD64SignedImmediateRemainders: amd64SignedImmediateRemainders}
 	buildNativeImmediateCombinations(&immediatePlan, &p.immediateProducer, &p.immediateSkip, p.immediateUses)
@@ -2288,6 +2368,8 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		PostRARepeatFirst:         p.postRARepeatFirst,
 		PostRAPreIndex:            p.postRAPreIndex,
 		PostRAPostIndexWith:       p.postRAPostIndexWith,
+		AMD64DeadStoreSkip:        p.amd64DeadStoreSkip,
+		AMD64DeadStoreFrom:        p.amd64DeadStoreFrom,
 		PostRADirect:              postRADirect,
 	}
 	p.plan.ImmediateProducer = p.immediateProducer

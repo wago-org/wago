@@ -1453,7 +1453,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		for blockInstructionIndex, instructionID := range blockOrder {
 			nextPosition := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 			forwardedSpill = 0
-			if pendingSpill != 0 && plan.Machine.VRegs[pendingSpill].Bank == railmach.BankFPR && !skipInstruction.has(instructionID) && !plan.PostRASkip.has(instructionID) &&
+			if pendingSpill != 0 && plan.Machine.VRegs[pendingSpill].Bank == railmach.BankFPR && !skipInstruction.has(instructionID) && !plan.PostRASkip.has(instructionID) && !plan.AMD64DeadStoreSkip.has(instructionID) &&
 				!nativeControlInstruction(plan.Machine.Insts[instructionID].Op) {
 				if forward, elideStore := amd64RailMachForwardPendingSpill(plan, instructionID, pendingSpill, nextPosition); forward {
 					forwardedSpill = pendingSpill
@@ -1470,7 +1470,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			emitCalleeRestoreBefore(instructionID)
 			instructionResult := plan.Machine.Insts[instructionID].Result
-			if skipInstruction.has(instructionID) || plan.PostRASkip.has(instructionID) || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 {
+			if skipInstruction.has(instructionID) || plan.PostRASkip.has(instructionID) || plan.AMD64DeadStoreSkip.has(instructionID) || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 {
 				continue
 			}
 			instruction := plan.Machine.Insts[instructionID]
@@ -1479,7 +1479,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				retainsGlobalDescriptor = false
 				continue
 			}
-			wasmOffset := railMachWasmOffset(plan, instruction.Source)
+			wasmOffset := railMachWasmOffset(plan, amd64DeadStoreSource(plan, instructionID))
 			metadata.recordSource(a.Len(), wasmOffset)
 			operands := plan.Machine.InstructionOperands(instructionID)
 			foldedLoadID, memoryFold := nativeAMD64MemoryFoldSource(plan, instructionID)
@@ -4981,7 +4981,7 @@ func emitAMD64RailMachBoundsCheck(a *amd64.Asm, plan *nativeBackendPlan, address
 	if railMachElidesMemoryBoundsCheck(plan, instruction) {
 		return
 	}
-	source := plan.Machine.Insts[instruction].Source
+	source := amd64DeadStoreSource(plan, instruction)
 	if plan.AMD64MemoryBoundEnd == endOffset {
 		a.Cmp64(address, amd64RailMachGPRRegisters[nativeAMD64MemoryBoundRegister])
 	} else if endOffset != 0 && endOffset <= math.MaxInt32 && endOffset <= plan.Stack.MemoryMinBytes {
