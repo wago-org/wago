@@ -8199,9 +8199,6 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				stackTypes = append(stackTypes, sf.Locals[instr.U32()])
 				continue
 			}
-			if err := push(sf.Locals[instr.U32()], amd64.R10); err != nil {
-				return nil, 0, nil, err
-			}
 		case wasm.InstrLocalSet, wasm.InstrLocalTee:
 			if sf.Locals[instr.U32()] == wasm.V128 {
 				if len(stackTypes) == 0 || stackTypes[len(stackTypes)-1] != wasm.V128 {
