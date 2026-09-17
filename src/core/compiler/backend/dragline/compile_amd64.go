@@ -1506,8 +1506,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			// R10 is reserved emission scratch, so a descriptor loaded by
 			// global.get survives scalar constants, adds, and immediate subs.
 			// Reuse it for a following set of the same global instead of loading
-			// the descriptor a second time. Memory folds use R10 as their address;
-			// all other emitted instructions conservatively invalidate it.
+			// the descriptor a second time. A bounds-elided scalar store with a
+			// resident direct address does not touch R10; other memory operations
+			// and all remaining instructions conservatively invalidate it.
 			preservesGlobalDescriptor := false
 			if retainsGlobalDescriptor {
 				if semanticOp == wasm.InstrGlobalSet && uint32(instruction.Aux) == retainedGlobalDescriptor {
@@ -1518,6 +1519,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					preservesGlobalDescriptor = true
 				} else if semanticOp == wasm.InstrI32Sub || semanticOp == wasm.InstrI64Sub {
 					_, preservesGlobalDescriptor = immediateProducer.get(instructionID)
+				} else if _, _, store, memory := nativeMemoryAccess(instruction.Op); store && memory && len(operands) == 2 && railMachElidesMemoryBoundsCheck(plan, instructionID) {
+					position := plan.Allocation.InstructionPositions[instructionID]*6 + 2
+					preservesGlobalDescriptor = amd64RailMachCanUseMemoryAddressDirectly(plan, operands[0].Reg, position, uint32(instruction.Aux), false)
 				}
 			}
 			if !preservesGlobalDescriptor {

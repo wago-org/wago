@@ -135,6 +135,63 @@ func TestAMD64RailMachRetainsGlobalDescriptorAcrossScalarUpdate(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachRetainsGlobalDescriptorAcrossDirectScalarStore(t *testing.T) {
+	body := make([]byte, 0, 4*15+1)
+	for global := byte(0); global < 4; global++ {
+		body = append(body,
+			0x23, global, // global.get
+			0x41, 0x00, // i32.const address
+			0x41, global, // i32.const stored value
+			0x3b, 0x01, 0x00, // i32.store16
+			0x41, 0x01, // i32.const delta
+			0x6a,         // i32.add
+			0x24, global, // global.set
+		)
+	}
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(module, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := (&nativeBackendPlanner{}).Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.SignalsBounds = true
+	native, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("global/store update finalization = used %t, err %v", used, err)
+	}
+	var loadGlobals amd64.Asm
+	loadGlobals.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
+	if got := bytes.Count(native, loadGlobals.B); got != 4 {
+		t.Fatalf("globals table loads = %d, want one per update across direct stores; code = %x", got, native)
+	}
+}
+
 func TestAMD64RailMachRenamesReductionResultToBackedgeDestination(t *testing.T) {
 	body := []byte{
 		0x42, 0x00, 0x21, 0x02, // accumulator = i64.const 0
