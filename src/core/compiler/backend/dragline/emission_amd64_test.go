@@ -106,6 +106,86 @@ func TestAMD64RailMachRetainsGlobalDescriptorAcrossScalarUpdate(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachRetainsGlobalDescriptorsAcrossLocalCall(t *testing.T) {
+	globalUpdates := []byte{
+		0x23, 0x00, 0x41, 0x01, 0x6a, 0x24, 0x00,
+		0x23, 0x01, 0x41, 0x01, 0x6a, 0x24, 0x01,
+		0x23, 0x02, 0x41, 0x01, 0x6a, 0x24, 0x02,
+		0x23, 0x03, 0x41, 0x01, 0x6a, 0x24, 0x03,
+	}
+	calleeUpdate := []byte{0x23, 0x00, 0x41, 0x01, 0x6a, 0x24, 0x00}
+	calleeBody := make([]byte, 0, len(calleeUpdate)*16+1)
+	for range 16 {
+		calleeBody = append(calleeBody, calleeUpdate...)
+	}
+	calleeBody = append(calleeBody, 0x0b)
+	callerBody := append([]byte(nil), globalUpdates...)
+	callerBody = append(callerBody, 0x10, 0x00)
+	callerBody = append(callerBody, 0x10, 0x01)
+	callerBody = append(callerBody, globalUpdates...)
+	callerBody = append(callerBody, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(calleeBody), wasmtest.Code([]byte{0x0b}), wasmtest.Code(callerBody))),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callee, err := buildCompilerFunc(module, 0, new(railssa.StackFunc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	calleePlan, err := new(nativeBackendPlanner).Plan(callee.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calleePlan.LocalABI.CalleeGPRs&(uint64(1)<<nativeAMD64GlobalsRegister) == 0 {
+		t.Fatalf("global-descriptor register is not preserved by the local-call ABI: ABI=%#v caches=%t globals=%t instructions=%d", calleePlan.LocalABI, nativeAMD64CachesGlobalDescriptors(calleePlan.Machine), nativeAMD64CachesGlobals(calleePlan.Machine), len(calleePlan.Machine.Insts))
+	}
+	readOnlyCallee, err := buildCompilerFunc(module, 1, new(railssa.StackFunc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	readOnlyPlan, err := new(nativeBackendPlanner).Plan(readOnlyCallee.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contracts := []railmach.ABIContract{calleePlan.ABI, readOnlyPlan.ABI}
+	caller, err := buildCompilerFunc(module, 2, new(railssa.StackFunc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerPlan, err := new(nativeBackendPlanner).PlanProfileIPRA(caller.Structured, target, corecompiler.ObjectiveSpeed, caller.Index, nil, nil, contracts, nil, nil, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var relocs []amd64CallReloc
+	native, _, used, err := emitAMD64RailMach(caller, callerPlan, &relocs, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("local-call finalization = used %t, err %v", used, err)
+	}
+	var loadGlobals amd64.Asm
+	loadGlobals.Load64(amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister], amd64.RBX, -int32(abi.GlobalsPtrOffset))
+	if got := bytes.Count(native, loadGlobals.B); got != 2 {
+		t.Fatalf("globals table loads = %d, want entry and read-only-call loads only; code = %x", got, native)
+	}
+}
+
 func TestAMD64RailMachRotatesCanonicalCountdownLoop(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

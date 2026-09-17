@@ -2273,6 +2273,18 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, err
 				}
 				imported := uint32(instruction.Aux) < plan.Stack.ImportedFuncs
+				// A refined mutating callee makes the caller's descriptor-backed global
+				// path hot enough to remove the redundant refresh. Read-only and missing
+				// contracts retain the load as a conservative context-line prefetch.
+				localWritesGlobal := false
+				if !imported && cachesGlobalDescriptors {
+					for _, call := range plan.Calls {
+						if call.Instruction == instructionID {
+							localWritesGlobal = call.WritesGlobal
+							break
+						}
+					}
+				}
 				callOffset := int32(plan.Frame.CallAreaOffset)
 				privateRegisterCall := amd64RailMachPrivateRegisterCall(plan, instructionID, instruction, operands, currentPosition)
 				if imported {
@@ -2377,7 +2389,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				if err := emitAMD64RailMachRoots(&a, plan, instruction.Source, currentPosition, true); err != nil {
 					return nil, 0, true, err
 				}
-				reloadGlobalDescriptors()
+				if imported || !localWritesGlobal {
+					reloadGlobalDescriptors()
+				} else if cachesGlobalDescriptors {
+					// The private ABI preserves the immutable descriptor-array register.
+					// Keep the former four-byte load's layout so removing it cannot move
+					// downstream loop headers or call targets onto worse fetch boundaries.
+					a.B = append(a.B, 0x0f, 0x1f, 0x40, 0x00)
+				}
 				reloadStackCachedGlobal()
 				continue
 			}
