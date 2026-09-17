@@ -6451,10 +6451,6 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 		}
 		return 0, false
 	}
-	residentSIMDConstant := func(value [16]byte) bool {
-		_, ok := residentSIMDConstantRegister(value)
-		return ok
-	}
 	simdConstantTest := func(src amd64.Reg, value [16]byte) {
 		if mask, ok := residentSIMDConstantRegister(value); ok {
 			a.VPtest(src, mask)
@@ -6849,7 +6845,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 		if reachable && instr.Kind == wasm.InstrV128Const && instrIndex+1 < len(sf.Instrs) && len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 {
 			constant, constantOK := sf.SIMDImmediateAt(uint32(instrIndex))
 			operation, operationOK := sf.SIMDImmediateAt(uint32(instrIndex + 1))
-			if constantOK && operationOK && !residentSIMDConstant(constant.Bytes) &&
+			if constantOK && operationOK &&
 				(operation.Kind == wasm.InstrV128And || operation.Kind == wasm.InstrV128Or || operation.Kind == wasm.InstrV128Xor ||
 					operation.Kind == wasm.InstrI8x16SubSatU || operation.Kind == wasm.InstrI8x16Eq || operation.Kind == wasm.InstrI16x8Eq) {
 				base := len(stackTypes) - 1
@@ -6859,6 +6855,8 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 					if operation.Kind == wasm.InstrV128And {
 						a.VPxor(lhs, lhs, lhs)
 					}
+				} else if rhs, ok := residentSIMDConstantRegister(constant.Bytes); ok {
+					emitAMD64DirectSIMDBinary(&a, operation.Kind, lhs, lhs, rhs)
 				} else {
 					simdConstantOperand(operation.Kind, lhs, lhs, constant.Bytes)
 				}

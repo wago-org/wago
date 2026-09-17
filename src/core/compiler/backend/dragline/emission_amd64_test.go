@@ -968,6 +968,35 @@ func TestAMD64StructuredBitmaskReadsPinnedLocalDirectly(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredBinaryReadsResidentConstantDirectly(t *testing.T) {
+	constant := [16]byte{0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f}
+	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body = append(body, 0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00) // memory.copy 0, 0
+	for occurrence := 0; occurrence < 2; occurrence++ {
+		body = append(body, 0x20, 0x00, 0x41, 0x04, 0xfd, 0x8d, 0x01, 0xfd, 0x0c) // local.get 0; i16x8.shr_u 4; v128.const
+		body = append(body, constant[:]...)
+		body = append(body, 0xfd, 0x4e) // v128.and
+		if occurrence == 0 {
+			body = append(body, 0x1a) // drop
+		}
+	}
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var direct, copied amd64.Asm
+	direct.VPand(4, 4, 9)
+	copied.VMovdqu(5, 9)
+	copied.VPand(4, 4, 5)
+	if !bytes.Contains(output.Code, direct.B) || bytes.Contains(output.Code, copied.B) {
+		t.Fatalf("structured resident-constant binary was not direct: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredSupportsI32x4Mul(t *testing.T) {
 	body := []byte{0x01, 0x01, 0x7b, 0xfd, 0x0c} // one v128 local; v128.const
 	body = append(body, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0)
