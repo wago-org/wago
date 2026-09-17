@@ -67,6 +67,7 @@ type SimplifyResult struct {
 	liveWork         []FlowValueID
 	gvnKeys          []uint64
 	gvnValues        []FlowValueID
+	globalValues     []FlowValueID
 	factIndex        []uint32
 }
 
@@ -166,7 +167,8 @@ func SparseSimplify(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *SemanticF
 	liveWork := reuse.liveWork[:0]
 	gvnKeys := reuse.gvnKeys[:0]
 	gvnValues := reuse.gvnValues[:0]
-	*reuse = SimplifyResult{Aliases: aliases, Facts: facts, Reachable: reachable, LiveInsts: live, Branches: branches, Remaining: remaining, UseOffsets: useOffsets, Uses: uses, Bounds: bounds, liveValues: liveValues, instructionBlock: instructionBlock, liveWork: liveWork, gvnKeys: gvnKeys, gvnValues: gvnValues, factIndex: factIndex}
+	globalValues := resizeClear(reuse.globalValues, len(f.Globals))
+	*reuse = SimplifyResult{Aliases: aliases, Facts: facts, Reachable: reachable, LiveInsts: live, Branches: branches, Remaining: remaining, UseOffsets: useOffsets, Uses: uses, Bounds: bounds, liveValues: liveValues, instructionBlock: instructionBlock, liveWork: liveWork, gvnKeys: gvnKeys, gvnValues: gvnValues, globalValues: globalValues, factIndex: factIndex}
 	for id := range reuse.Aliases {
 		reuse.Aliases[id] = FlowValueID(id)
 	}
@@ -309,6 +311,7 @@ func SparseSimplify(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *SemanticF
 			break
 		}
 	}
+	localGlobalStoreForward(f, flow, semantic, metadata, reuse, consume)
 	if err := localPureGVN(cfg, flow, semantic, metadata, reuse, consume); err != nil {
 		return nil, err
 	}
@@ -509,6 +512,72 @@ func exactIntegerFloatOrigin(flow *ValueFlow, semantic *SemanticFunc, aliases []
 	default:
 		return 0, 0, false
 	}
+}
+
+// localGlobalStoreForward replaces a same-block global.get with the value most
+// recently stored to that global. Any instruction that may write global state
+// kills the local fact. Keeping this deliberately block-local makes the proof
+// independent of joins while still covering the common set-then-read update
+// sequence.
+func localGlobalStoreForward(f *StackFunc, flow *ValueFlow, semantic *SemanticFunc, metadata *Metadata, result *SimplifyResult, consume func() bool) {
+	if f == nil || len(f.Globals) == 0 {
+		return
+	}
+	known := result.globalValues
+	for _, block := range semantic.Blocks {
+		clear(known)
+		for instructionID := block.InstStart; instructionID < block.InstStart+block.InstCount; instructionID++ {
+			instruction := semantic.Insts[instructionID]
+			global := uint32(instruction.Aux)
+			switch instruction.Op {
+			case wasm.InstrGlobalGet:
+				if int(global) < len(known) && instruction.Result != 0 && known[global] != 0 {
+					value := resolveAlias(result.Aliases, known[global])
+					if flow.Values[instruction.Result].Type == flow.Values[value].Type && consume() {
+						result.Aliases[instruction.Result] = value
+						result.Metrics.Aliases++
+					}
+				}
+			case wasm.InstrGlobalSet:
+				args := semantic.Operands(instructionID)
+				if int(global) < len(known) && len(args) == 1 {
+					known[global] = resolveAlias(result.Aliases, args[0])
+					continue
+				}
+			}
+			meta := metadata.Instructions[instruction.Source]
+			if meta.Writes&HeapGlobal != 0 {
+				clear(known)
+			}
+		}
+	}
+}
+
+func globalStoreForwardOrigin(flow *ValueFlow, semantic *SemanticFunc, metadata *Metadata, aliases []FlowValueID, current uint32) (FlowValueID, bool) {
+	if int(current) >= len(semantic.Insts) || semantic.Insts[current].Op != wasm.InstrGlobalGet {
+		return 0, false
+	}
+	block := semanticInstructionBlock(semantic, current)
+	record := semantic.Blocks[block]
+	global := uint32(semantic.Insts[current].Aux)
+	value := FlowValueID(0)
+	for instructionID := record.InstStart; instructionID < current; instructionID++ {
+		instruction := semantic.Insts[instructionID]
+		if instruction.Op == wasm.InstrGlobalSet {
+			if uint32(instruction.Aux) == global {
+				args := semantic.Operands(instructionID)
+				if len(args) == 1 {
+					value = resolveAlias(aliases, args[0])
+				}
+			}
+			continue
+		}
+		meta := metadata.Instructions[instruction.Source]
+		if meta.Writes&HeapGlobal != 0 {
+			value = 0
+		}
+	}
+	return value, value != 0 && int(value) < len(flow.Values)
 }
 
 func localPureGVN(cfg *CFG, flow *ValueFlow, semantic *SemanticFunc, metadata *Metadata, result *SimplifyResult, consume func() bool) error {
@@ -1212,6 +1281,9 @@ func VerifySimplify(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *SemanticF
 					return fmt.Errorf("railssa: alias v%d has no semantic instruction", id)
 				}
 				target := resolveAlias(result.Aliases, FlowValueID(id))
+				if origin, forwarded := globalStoreForwardOrigin(flow, semantic, metadata, result.Aliases, current-1); forwarded && resolveAlias(result.Aliases, origin) == target {
+					break
+				}
 				conversionOrigin, conversionAlias := integerFloatRoundTripAlias(flow, semantic, result, current-1)
 				if conversionAlias && resolveAlias(result.Aliases, conversionOrigin) == target && flow.Values[id].Type == flow.Values[target].Type {
 					break
