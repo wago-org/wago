@@ -1105,6 +1105,40 @@ func TestAMD64StructuredFoldsConstantShiftCount(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredFoldsConstantIntegerBinary(t *testing.T) {
+	body := make([]byte, 0, 600)
+	for _, operation := range []byte{0x7c, 0x7d, 0x7e, 0x83, 0x84, 0x85} { // i64 add/sub/mul/and/or/xor
+		body = append(body,
+			0x20, 0x00, // local.get 0
+			0x42, 0x7f, // i64.const -1
+			operation,
+			0x1a, // drop
+		)
+	}
+	body = append(body, 0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00) // memory.copy 0, 0
+	body = append(body, bytes.Repeat([]byte{0x01}, 510)...)
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	for _, digit := range []byte{0, 5, 4, 1, 6} {
+		var immediate amd64.Asm
+		immediate.AluRI(digit, amd64.RDI, -1, true)
+		if !bytes.Contains(output.Code, immediate.B) {
+			t.Fatalf("structured constant binary digit %d did not use an immediate: %x", digit, output.Code)
+		}
+	}
+	var multiply amd64.Asm
+	multiply.ImulRRI(amd64.RDI, amd64.RDI, -1, true)
+	if !bytes.Contains(output.Code, multiply.B) {
+		t.Fatalf("structured constant multiply did not use an immediate: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredCombinesVectorLocalWithConstantWithoutCopy(t *testing.T) {
 	body := []byte{0x20, 0x00, 0xfd, 0x0c} // local.get 0; v128.const
 	body = append(body, bytes.Repeat([]byte{0x7f}, 16)...)

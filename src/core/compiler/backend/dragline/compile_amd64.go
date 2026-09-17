@@ -6754,6 +6754,58 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				continue
 			}
 		}
+		if reachable && (instr.Kind == wasm.InstrI32Const || instr.Kind == wasm.InstrI64Const) &&
+			instrIndex+1 < len(sf.Instrs) && len(stackTypes) != 0 {
+			operation := sf.Instrs[instrIndex+1]
+			wide := instr.Kind == wasm.InstrI64Const
+			typ := wasm.I32
+			if wide {
+				typ = wasm.I64
+			}
+			digit, binary, operationWide := byte(0), true, false
+			switch operation.Kind {
+			case wasm.InstrI32Add:
+			case wasm.InstrI64Add:
+				operationWide = true
+			case wasm.InstrI32Sub:
+				digit = 5
+			case wasm.InstrI64Sub:
+				digit, operationWide = 5, true
+			case wasm.InstrI32And:
+				digit = 4
+			case wasm.InstrI64And:
+				digit, operationWide = 4, true
+			case wasm.InstrI32Or:
+				digit = 1
+			case wasm.InstrI64Or:
+				digit, operationWide = 1, true
+			case wasm.InstrI32Xor:
+				digit = 6
+			case wasm.InstrI64Xor:
+				digit, operationWide = 6, true
+			case wasm.InstrI32Mul:
+				digit = 8
+			case wasm.InstrI64Mul:
+				digit, operationWide = 8, true
+			default:
+				binary = false
+			}
+			immediate := instr.U64()
+			base := len(stackTypes) - 1
+			encodable := !wide || int64(immediate) == int64(int32(immediate))
+			if binary && operationWide == wide && stackTypes[base] == typ && encodable {
+				value := scalarOperand(base, amd64.RAX)
+				if digit == 8 {
+					a.ImulRRI(value, value, int32(immediate), wide)
+				} else {
+					a.AluRI(digit, value, int32(immediate), wide)
+				}
+				cacheScalar(base, value)
+				metadata.recordSource(a.Len(), operation.Offset)
+				instrIndex++
+				continue
+			}
+		}
 		if reachable && instr.Kind == wasm.InstrV128Const && instrIndex+1 < len(sf.Instrs) && len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 {
 			constant, constantOK := sf.SIMDImmediateAt(uint32(instrIndex))
 			operation, operationOK := sf.SIMDImmediateAt(uint32(instrIndex + 1))
