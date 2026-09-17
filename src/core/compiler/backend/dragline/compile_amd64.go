@@ -6902,7 +6902,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 			(sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalSet || sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee) &&
 			sf.Locals[sf.Instrs[instrIndex+3].U32()] == wasm.V128 {
 			descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex + 2))
-			if ok && amd64DirectSIMDBinaryKind(descriptor.Kind) {
+			if ok && (amd64DirectSIMDBinaryKind(descriptor.Kind) || descriptor.Kind == wasm.InstrI8x16Shuffle) {
 				lhsLocal, rhsLocal := int(instr.U32()), int(sf.Instrs[instrIndex+1].U32())
 				lhs := amd64.Reg(0)
 				if localPinned[lhsLocal] {
@@ -6924,11 +6924,52 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				if localPinned[targetLocal] {
 					dst = localRegisters[targetLocal]
 				}
-				emitAMD64DirectSIMDBinary(&a, descriptor.Kind, dst, lhs, rhs)
+				if descriptor.Kind == wasm.InstrI8x16Shuffle {
+					if offset, ok := amd64ShuffleAlignrOffset(descriptor.Bytes); ok {
+						a.VPalignr(dst, lhs, rhs, offset)
+					} else {
+						left, right := amd64ShuffleMasks(descriptor.Bytes)
+						shuffleSIMDConstant(2, lhs, left)
+						shuffleSIMDConstant(3, rhs, right)
+						a.VPor(dst, 2, 3)
+					}
+				} else {
+					emitAMD64DirectSIMDBinary(&a, descriptor.Kind, dst, lhs, rhs)
+				}
 				if !localPinned[targetLocal] {
 					a.VMovdquStoreDisp(amd64.RSP, localOff(targetLocal), dst)
 				}
 				if sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee {
+					if instrIndex+5 < len(sf.Instrs) && sf.Instrs[instrIndex+4].Kind == wasm.InstrI32Const {
+						shift, shiftOK := sf.SIMDImmediateAt(uint32(instrIndex + 5))
+						if shiftOK && (shift.Kind == wasm.InstrI16x8Shl || shift.Kind == wasm.InstrI16x8ShrU ||
+							shift.Kind == wasm.InstrI32x4Shl || shift.Kind == wasm.InstrI32x4ShrU) {
+							if len(stackTypes) >= int(sf.MaxStack) {
+								return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
+							}
+							result := reserveV128(len(stackTypes))
+							mask := uint32(15)
+							if shift.Kind == wasm.InstrI32x4Shl || shift.Kind == wasm.InstrI32x4ShrU {
+								mask = 31
+							}
+							count := byte(uint32(sf.Instrs[instrIndex+4].U64()) & mask)
+							switch shift.Kind {
+							case wasm.InstrI16x8Shl:
+								a.VPsllwImm(result, dst, count)
+							case wasm.InstrI16x8ShrU:
+								a.VPsrlwImm(result, dst, count)
+							case wasm.InstrI32x4Shl:
+								a.VPslldImm(result, dst, count)
+							case wasm.InstrI32x4ShrU:
+								a.VPsrldImm(result, dst, count)
+							}
+							stackTypes = append(stackTypes, wasm.V128)
+							metadata.recordSource(a.Len(), sf.Instrs[instrIndex+4].Offset)
+							metadata.recordSource(a.Len(), sf.Instrs[instrIndex+5].Offset)
+							instrIndex += 5
+							continue
+						}
+					}
 					if err := pushV128(dst); err != nil {
 						return nil, 0, nil, err
 					}

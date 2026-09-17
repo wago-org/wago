@@ -990,6 +990,37 @@ func TestAMD64StructuredBitmaskComparisonReadsLocalDirectly(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredShuffleLocalTeeFeedsShiftDirectly(t *testing.T) {
+	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body = append(body,
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
+		0x20, 0x00, 0x20, 0x01, 0xfd, 0x0d, // local.get 0; local.get 1; i8x16.shuffle
+	)
+	for lane := byte(1); lane <= 16; lane++ {
+		body = append(body, lane)
+	}
+	body = append(body,
+		0x22, 0x00, 0x41, 0x04, 0xfd, 0x8d, 0x01, // local.tee 0; i32.const 4; i16x8.shr_u
+		0x0b,
+	)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var direct, copied amd64.Asm
+	direct.VPalignr(8, 8, 9, 1)
+	direct.VPsrlwImm(4, 8, 4)
+	copied.VPalignr(4, 8, 9, 1)
+	copied.VMovdqu(8, 4)
+	copied.VPsrlwImm(4, 4, 4)
+	if !bytes.Contains(output.Code, direct.B) || bytes.Contains(output.Code, copied.B) {
+		t.Fatalf("structured shuffle/local.tee/shift was not direct: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredBinaryReadsResidentConstantDirectly(t *testing.T) {
 	constant := [16]byte{0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f}
 	body := bytes.Repeat([]byte{0x01}, 510)                                         // force the large-bulk structured path
