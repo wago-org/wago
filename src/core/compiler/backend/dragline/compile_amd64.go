@@ -6577,6 +6577,37 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 			}
 		}
 		if reachable && instr.Kind == wasm.InstrLocalGet && int(instr.U32()) < len(sf.Locals) &&
+			sf.Locals[instr.U32()] == wasm.V128 && instrIndex+3 < len(sf.Instrs) {
+			descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex + 1))
+			comparison := sf.Instrs[instrIndex+3].Kind
+			if ok && descriptor.Kind == wasm.InstrI8x16Bitmask && sf.Instrs[instrIndex+2].Kind == wasm.InstrI32Const &&
+				sf.Instrs[instrIndex+2].U64() == 0 && (comparison == wasm.InstrI32Eq || comparison == wasm.InstrI32Ne) {
+				if len(stackTypes) >= int(sf.MaxStack) {
+					return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
+				}
+				value := amd64.Reg(4)
+				if localPinned[instr.U32()] {
+					value = localRegisters[instr.U32()]
+				} else {
+					a.VMovdquLoadDisp(value, amd64.RSP, localOff(int(instr.U32())))
+				}
+				a.VPmovmskb(amd64.RAX, value)
+				a.TestSelf(amd64.RAX, false)
+				condition := amd64.CondE
+				if comparison == wasm.InstrI32Ne {
+					condition = amd64.CondNE
+				}
+				a.SetccReg(condition, amd64.RAX)
+				cacheScalar(len(stackTypes), amd64.RAX)
+				stackTypes = append(stackTypes, wasm.I32)
+				for skipped := 1; skipped <= 3; skipped++ {
+					metadata.recordSource(a.Len(), sf.Instrs[instrIndex+skipped].Offset)
+				}
+				instrIndex += 3
+				continue
+			}
+		}
+		if reachable && instr.Kind == wasm.InstrLocalGet && int(instr.U32()) < len(sf.Locals) &&
 			sf.Locals[instr.U32()] == wasm.V128 && localPinned[instr.U32()] && instrIndex+1 < len(sf.Instrs) {
 			descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex + 1))
 			if ok && descriptor.Kind == wasm.InstrI8x16Bitmask {

@@ -968,9 +968,31 @@ func TestAMD64StructuredBitmaskReadsPinnedLocalDirectly(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredBitmaskComparisonReadsLocalDirectly(t *testing.T) {
+	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body = append(body,
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
+		0x20, 0x00, 0xfd, 0x64, 0x41, 0x00, 0x47, 0x0b, // local.get 0; i8x16.bitmask; i32.const 0; i32.ne; end
+	)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var direct amd64.Asm
+	direct.VPmovmskb(amd64.RAX, 8)
+	direct.TestSelf(amd64.RAX, false)
+	direct.SetccReg(amd64.CondNE, amd64.RAX)
+	if !bytes.Contains(output.Code, direct.B) {
+		t.Fatalf("structured bitmask comparison was not direct: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredBinaryReadsResidentConstantDirectly(t *testing.T) {
 	constant := [16]byte{0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f}
-	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body := bytes.Repeat([]byte{0x01}, 510)                                         // force the large-bulk structured path
 	body = append(body, 0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00) // memory.copy 0, 0
 	for occurrence := 0; occurrence < 2; occurrence++ {
 		body = append(body, 0x20, 0x00, 0x41, 0x04, 0xfd, 0x8d, 0x01, 0xfd, 0x0c) // local.get 0; i16x8.shr_u 4; v128.const
