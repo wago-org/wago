@@ -39,6 +39,15 @@ func cachedBMI2HostFeatures() bool {
 
 func hostSupportsBMI2() bool { return bmi2HostFeaturesSupported() }
 
+func hostSupportsAMD64Feature(feature corecompiler.TargetFeature) bool {
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	return err == nil && target.HasFeature(feature)
+}
+
+func hostSupportsAVX512VL() bool {
+	return hostSupportsAMD64Feature(corecompiler.TargetFeatureAMD64AVX512VL)
+}
+
 func hostSupportsARM64MOPS() bool {
 	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
 	return err == nil && target.HasFeature(corecompiler.TargetFeatureARM64MOPS)

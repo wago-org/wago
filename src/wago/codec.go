@@ -21,7 +21,8 @@ const (
 
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
-	// low range; reserving the top fifteen bits avoids growing artifacts.
+	// low range; reserving the top sixteen bits avoids growing artifacts.
+	compiledCPUFeatureAVX512VL            uint64 = 1 << 48
 	compiledCompilerDragline              uint64 = 1 << 49
 	compiledCPUFeatureARM64SHA2           uint64 = 1 << 50
 	compiledCPUFeatureARM64MOPS           uint64 = 1 << 51
@@ -371,6 +372,9 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	}
 	if c.requiresBMI2 {
 		required |= compiledCPUFeatureBMI2
+	}
+	if c.requiresAVX512VL {
+		required |= compiledCPUFeatureAVX512VL
 	}
 	if c.requiresARM64MOPS {
 		required |= compiledCPUFeatureARM64MOPS
@@ -1014,6 +1018,7 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	gcExecution := required & compiledGCExecutionMask
 	c.requiresBMI2 = required&compiledCPUFeatureBMI2 != 0
+	c.requiresAVX512VL = required&compiledCPUFeatureAVX512VL != 0
 	c.requiresARM64MOPS = required&compiledCPUFeatureARM64MOPS != 0
 	c.requiresARM64SHA2 = required&compiledCPUFeatureARM64SHA2 != 0
 	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0
@@ -1025,7 +1030,7 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	if required&compiledCompilerDragline != 0 {
 		c.compiler = CompilerDragline
 	}
-	c.requiredFeatures = CoreFeatures(required &^ (compiledSourceIdentity | compiledTierable | compiledRailshotFunctionCounters | compiledCompilerDragline | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2 | compiledCPUFeatureARM64MOPS | compiledCPUFeatureARM64SHA2))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledSourceIdentity | compiledTierable | compiledRailshotFunctionCounters | compiledCompilerDragline | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2 | compiledCPUFeatureAVX512VL | compiledCPUFeatureARM64MOPS | compiledCPUFeatureARM64SHA2))
 	// Function-counter artifacts from the preceding format always carried this
 	// hash even before the explicit source-identity bit was introduced.
 	if sourceIdentity || functionCounters {

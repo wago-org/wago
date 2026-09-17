@@ -391,7 +391,7 @@ func TestAMD64StructuredScalarResidencyPinsHotSubsetWithoutSIMD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	native, _, _, err := emitAMD64Stack(fn, plan, nil, nil)
+	native, _, _, err := emitAMD64Stack(fn, plan, false, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +435,7 @@ func TestAMD64StructuredLoadsSIMDDirectlyFromPinnedI32Address(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	native, _, _, err := emitAMD64Stack(fn, plan, nil, nil)
+	native, _, _, err := emitAMD64Stack(fn, plan, false, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -799,6 +799,80 @@ func TestAMD64StructuredUsesPinnedVectorLocalAsBinaryOperand(t *testing.T) {
 	}
 }
 
+func TestAMD64TernaryBooleanImmediate(t *testing.T) {
+	tests := []struct {
+		inner wasm.InstrKind
+		outer wasm.InstrKind
+		want  byte
+	}{
+		{wasm.InstrV128And, wasm.InstrV128Xor, 0x78},
+		{wasm.InstrV128Or, wasm.InstrV128Or, 0xfe},
+		{wasm.InstrV128And, wasm.InstrV128And, 0x80},
+		{wasm.InstrV128Xor, wasm.InstrV128Xor, 0x96},
+	}
+	for _, test := range tests {
+		got, ok := amd64TernaryBooleanImmediate(test.inner, test.outer)
+		if !ok || got != test.want {
+			t.Fatalf("inner %s outer %s = (%#x, %v), want (%#x, true)", test.inner, test.outer, got, ok, test.want)
+		}
+	}
+	if _, ok := amd64TernaryBooleanImmediate(wasm.InstrI32x4Add, wasm.InstrV128Or); ok {
+		t.Fatal("non-boolean inner operation selected ternary logic")
+	}
+}
+
+func TestAMD64StructuredTernaryLogicRequiresAVX512VL(t *testing.T) {
+	body := []byte{
+		0x01, 0x01, 0x7b, // one v128 local
+		0x20, 0x00, 0x20, 0x01, 0x20, 0x02,
+		0x02, 0x40, 0x0b, // keep the three operands while ending local/local lookahead
+		0xfd, 0x4e, // v128.and
+		0xfd, 0x51, // v128.xor
+		0x21, 0x03, // local.set 3
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
+	}
+	body = append(body, bytes.Repeat([]byte{0x01}, 510)...)
+	body = append(body, 0x20, 0x03, 0x0b)
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	compile := func(features uint64) corecompiler.Output {
+		target := corecompiler.Target{GOOS: "linux", GOARCH: "amd64", Mode: corecompiler.TargetExplicit, FeatureBits: [4]uint64{features}}
+		output, err := (Compiler{}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return output
+	}
+	containsTernary := func(code []byte) bool {
+		for offset := 0; offset+6 < len(code); offset++ {
+			if code[offset] == 0x62 && code[offset+4] == 0x25 && code[offset+6] == 0x78 {
+				return true
+			}
+		}
+		return false
+	}
+	compat := compile(0)
+	if compat.RequiresAVX512VL || containsTernary(compat.Code) {
+		t.Fatalf("compatibility lowering selected AVX-512VL: requires=%v code=%x", compat.RequiresAVX512VL, compat.Code)
+	}
+	native := compile(uint64(1) << corecompiler.TargetFeatureAMD64AVX512VL)
+	if !native.RequiresAVX512VL || !containsTernary(native.Code) {
+		t.Fatalf("native lowering omitted AVX-512VL requirement or ternary instruction: requires=%v code=%x", native.RequiresAVX512VL, native.Code)
+	}
+}
+
 func TestAMD64StructuredLoadsUnpinnedVectorLocalIntoStackCache(t *testing.T) {
 	body := []byte{0x01, 0x09, 0x7b} // nine v128 locals
 	for local := byte(1); local < 9; local++ {
@@ -1012,11 +1086,11 @@ func TestAMD64RailMachAdmissionAcceptsRecursiveI64Loop(t *testing.T) {
 
 func TestAMD64ProductionConsumesProvedBoundsElision(t *testing.T) {
 	fn, plan := constantMemoryEmissionTestFunc(t)
-	optimized, _, _, _, err := emitAMD64(fn, plan, nil, nil, nil)
+	optimized, _, _, _, err := emitAMD64(fn, plan, nil, false, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	checked, _, _, _, err := emitAMD64(fn, nil, nil, nil, nil)
+	checked, _, _, _, err := emitAMD64(fn, nil, nil, false, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1027,11 +1101,11 @@ func TestAMD64ProductionConsumesProvedBoundsElision(t *testing.T) {
 
 func TestAMD64ProductionConsumesMaskedRangeBoundsElision(t *testing.T) {
 	fn, plan := maskedMemoryEmissionTestFunc(t)
-	optimized, _, _, _, err := emitAMD64(fn, plan, nil, nil, nil)
+	optimized, _, _, _, err := emitAMD64(fn, plan, nil, false, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	checked, _, _, _, err := emitAMD64(fn, nil, nil, nil, nil)
+	checked, _, _, _, err := emitAMD64(fn, nil, nil, false, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1042,11 +1116,11 @@ func TestAMD64ProductionConsumesMaskedRangeBoundsElision(t *testing.T) {
 
 func TestAMD64ProductionConsumesMaskedInductionBoundsElision(t *testing.T) {
 	fn, plan := maskedLoopMemoryEmissionTestFunc(t)
-	optimized, _, _, _, err := emitAMD64(fn, plan, nil, nil, nil)
+	optimized, _, _, _, err := emitAMD64(fn, plan, nil, false, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	checked, _, _, _, err := emitAMD64(fn, nil, nil, nil, nil)
+	checked, _, _, _, err := emitAMD64(fn, nil, nil, false, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

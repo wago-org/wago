@@ -32,14 +32,15 @@ func TestTargetFingerprintCoversCodeGenerationIdentity(t *testing.T) {
 }
 
 func TestTargetFeatureIdentitiesRemainStable(t *testing.T) {
-	if TargetFeatureAMD64BMI2 != 0 || TargetFeatureARM64SVE2 != 9 || TargetFeatureAMD64APX != 10 || TargetFeatureARM64MOPS != 11 || TargetFeatureARM64SHA2 != 12 {
-		t.Fatalf("target feature identities changed: BMI2=%d SVE2=%d APX=%d MOPS=%d SHA2=%d", TargetFeatureAMD64BMI2, TargetFeatureARM64SVE2, TargetFeatureAMD64APX, TargetFeatureARM64MOPS, TargetFeatureARM64SHA2)
+	if TargetFeatureAMD64BMI2 != 0 || TargetFeatureARM64SVE2 != 9 || TargetFeatureAMD64APX != 10 || TargetFeatureARM64MOPS != 11 || TargetFeatureARM64SHA2 != 12 || TargetFeatureAMD64AVX512VL != 13 {
+		t.Fatalf("target feature identities changed: BMI2=%d SVE2=%d APX=%d MOPS=%d SHA2=%d AVX512VL=%d", TargetFeatureAMD64BMI2, TargetFeatureARM64SVE2, TargetFeatureAMD64APX, TargetFeatureARM64MOPS, TargetFeatureARM64SHA2, TargetFeatureAMD64AVX512VL)
 	}
 	var target Target
 	target.setFeature(TargetFeatureAMD64APX, true)
 	target.setFeature(TargetFeatureARM64MOPS, true)
 	target.setFeature(TargetFeatureARM64SHA2, true)
-	if !target.HasFeature(TargetFeatureAMD64APX) || !target.HasFeature(TargetFeatureARM64MOPS) || !target.HasFeature(TargetFeatureARM64SHA2) || target.HasFeature(TargetFeatureARM64SVE2) {
+	target.setFeature(TargetFeatureAMD64AVX512VL, true)
+	if !target.HasFeature(TargetFeatureAMD64APX) || !target.HasFeature(TargetFeatureARM64MOPS) || !target.HasFeature(TargetFeatureARM64SHA2) || !target.HasFeature(TargetFeatureAMD64AVX512VL) || target.HasFeature(TargetFeatureARM64SVE2) {
 		t.Fatalf("target feature bitset = %#x", target.FeatureBits)
 	}
 }

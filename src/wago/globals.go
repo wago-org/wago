@@ -1113,6 +1113,7 @@ type Compiled struct {
 	requiresBMI2       bool
 	requiresAVX2       bool
 	requiresAVX512     bool
+	requiresAVX512VL   bool
 	requiresARM64MOPS  bool
 	requiresARM64SHA2  bool
 	syncHostSlots      uint16
@@ -1174,11 +1175,15 @@ func (c *Compiled) Compiler() CompilerEngine {
 // RequiresBMI2 reports whether compilation selected BMI2 instructions.
 func (c *Compiled) RequiresBMI2() bool { return c != nil && c.requiresBMI2 }
 
-// RequiresAVX2 reports whether compilation selected an AVX2 plugin lowering.
+// RequiresAVX2 reports whether compilation selected an AVX2 lowering.
 func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
 
-// RequiresAVX512 reports whether compilation selected an AVX-512 plugin lowering.
+// RequiresAVX512 reports whether compilation selected an AVX-512 lowering.
 func (c *Compiled) RequiresAVX512() bool { return c != nil && c.requiresAVX512 }
+
+// RequiresAVX512VL reports whether compilation selected a 128-bit or 256-bit
+// EVEX lowering that requires AVX-512VL in addition to AVX-512F.
+func (c *Compiled) RequiresAVX512VL() bool { return c != nil && c.requiresAVX512VL }
 
 func (c *Compiled) RequiresARM64MOPS() bool { return c != nil && c.requiresARM64MOPS }
 func (c *Compiled) RequiresARM64SHA2() bool { return c != nil && c.requiresARM64SHA2 }

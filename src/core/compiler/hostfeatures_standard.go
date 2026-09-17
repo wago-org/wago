@@ -14,6 +14,7 @@ func applyHostTargetFeatures(target *Target) {
 		target.setFeature(TargetFeatureAMD64BMI2, cpu.X86.HasBMI2)
 		target.setFeature(TargetFeatureAMD64AVX2, cpu.X86.HasAVX2)
 		target.setFeature(TargetFeatureAMD64AVX512, cpu.X86.HasAVX512)
+		target.setFeature(TargetFeatureAMD64AVX512VL, cpu.X86.HasAVX512F && cpu.X86.HasAVX512VL)
 		target.setFeature(TargetFeatureAMD64ERMS, cpu.X86.HasERMS)
 		target.setFeature(TargetFeatureAMD64FMA, cpu.X86.HasFMA)
 	case "arm64":

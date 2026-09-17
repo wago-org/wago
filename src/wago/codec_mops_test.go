@@ -35,3 +35,20 @@ func TestCompiledCodecPreservesARM64SHA2Requirement(t *testing.T) {
 		t.Fatalf("SHA2 requirement leaked into WebAssembly feature bits: %#x", decoded.requiredFeatures)
 	}
 }
+
+func TestCompiledCodecPreservesAMD64VectorRequirements(t *testing.T) {
+	encoded, err := marshalCompiled(&Compiled{requiresAVX512VL: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Compiled
+	if err := unmarshalCompiled(&decoded, encoded[5:]); err != nil {
+		t.Fatal(err)
+	}
+	if !decoded.RequiresAVX512VL() {
+		t.Fatal("round trip lost AVX-512VL requirement")
+	}
+	if decoded.requiredFeatures != 0 {
+		t.Fatalf("AMD64 vector requirements leaked into WebAssembly feature bits: %#x", decoded.requiredFeatures)
+	}
+}

@@ -203,6 +203,10 @@ const (
 	TargetFeatureAMD64APX
 	TargetFeatureARM64MOPS
 	TargetFeatureARM64SHA2
+	// AVX512VL is appended so every previously serialized target bit retains
+	// its meaning. It is tracked separately from AVX512F because EVEX.128 and
+	// EVEX.256 encodings require the vector-length extension.
+	TargetFeatureAMD64AVX512VL
 )
 
 // Target identifies the machine-code product requested from an engine.
@@ -385,6 +389,7 @@ type Output struct {
 	RequiresBMI2      bool
 	RequiresAVX2      bool
 	RequiresAVX512    bool
+	RequiresAVX512VL  bool
 	RequiresARM64MOPS bool
 	RequiresARM64SHA2 bool
 }
