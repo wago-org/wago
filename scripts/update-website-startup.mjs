@@ -11,8 +11,10 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 const REQUIRED_RUNTIMES = ["wago", "wazero", "wasmtime", "v8", "wasm3", "wasmi", "wavm"];
+const OPTIONAL_RUNTIMES = ["dragline"];
 const REQUIRED_TAGS = {
   wago: "single-pass",
+  dragline: "multi-pass",
   wazero: "compiler",
   wasmtime: "cranelift",
   v8: "turboshaft",
@@ -58,14 +60,18 @@ function validateDataset(data, architecture, path) {
   if (!Array.isArray(data.workloads) || data.workloads.length === 0) throw new Error(`${path}: no workloads`);
   const ids = data.workloads.map((workload) => workload.id);
   if (new Set(ids).size !== ids.length) throw new Error(`${path}: duplicate workload ids`);
-  assertKeys(data.runtimes ?? {}, REQUIRED_RUNTIMES, `${path}: runtime metadata`);
-  for (const name of REQUIRED_RUNTIMES) {
+	const runtimeNames = Object.keys(data.runtimes ?? {});
+	for (const name of REQUIRED_RUNTIMES) {
+		if (!runtimeNames.includes(name)) throw new Error(`${path}: runtime metadata is missing ${name}`);
+	}
+	for (const name of runtimeNames) {
+		if (![...REQUIRED_RUNTIMES, ...OPTIONAL_RUNTIMES].includes(name)) throw new Error(`${path}: unknown runtime ${name}`);
     if (data.runtimes[name]?.tag !== REQUIRED_TAGS[name]) {
       throw new Error(`${path}: ${name} tag ${data.runtimes[name]?.tag ?? "missing"}, want ${REQUIRED_TAGS[name]}`);
     }
   }
   for (const workload of data.workloads) {
-    assertKeys(workload.results ?? {}, REQUIRED_RUNTIMES, `${path}: ${workload.id} results`);
+		assertKeys(workload.results ?? {}, runtimeNames, `${path}: ${workload.id} results`);
     for (const [name, value] of Object.entries(workload.results)) {
       if (!Number.isFinite(value) || value <= 0) throw new Error(`${path}: ${workload.id}/${name} must be a positive number`);
     }
@@ -79,7 +85,10 @@ function validatePair(arm64, amd64) {
   const armIds = arm64.workloads.map((workload) => workload.id);
   const amdIds = amd64.workloads.map((workload) => workload.id);
   if (JSON.stringify(armIds) !== JSON.stringify(amdIds)) throw new Error("ARM64 and AMD64 workload sets differ");
-  for (const name of REQUIRED_RUNTIMES) {
+	const armRuntimes = Object.keys(arm64.runtimes).sort();
+	const amdRuntimes = Object.keys(amd64.runtimes).sort();
+	if (JSON.stringify(armRuntimes) !== JSON.stringify(amdRuntimes)) throw new Error("ARM64 and AMD64 runtime sets differ");
+	for (const name of armRuntimes) {
     const armMeta = arm64.runtimes[name];
     const amdMeta = amd64.runtimes[name];
     if (armMeta.label !== amdMeta.label || armMeta.tag !== amdMeta.tag) {
@@ -114,13 +123,13 @@ function renderPanel(workload, index, runtimes, architecture) {
     .sort((a, b) => a.ms - b.ms);
   const rowWidths = widths(rows);
   const body = rows.map((row, rowIndex) => {
-    const isWago = row.name === "wago";
+		const isWago = row.name === "wago" || row.name === "dragline";
     const label = isWago
-      ? `wago<span class="rank__mode">single-pass</span>`
+			? `wago<span class="rank__mode">${row.name === "dragline" ? "multi-pass" : "single-pass"}</span>`
       : `${esc(runtimes[row.name].label ?? row.name)}<span class="rank__tag">${esc(runtimes[row.name].tag)}</span>`;
     return `                                <div class="rank__row${isWago ? " rank__row--wago" : ""}">
                                     <span class="rank__name">${label}</span>
-                                    <span class="vs__track"><span class="vs__fill ${isWago ? "vs__fill--railshot" : "vs__fill--wazero"}" data-bar data-value="${row.ms}" data-width="${rowWidths[rowIndex]}"></span></span>
+									<span class="vs__track"><span class="vs__fill ${row.name === "dragline" ? "vs__fill--dragline" : isWago ? "vs__fill--railshot" : "vs__fill--wazero"}" data-bar data-value="${row.ms}" data-width="${rowWidths[rowIndex]}"></span></span>
                                     <span class="rank__val">${fmtMs(row.ms)}</span>
                                 </div>`;
   }).join("\n");

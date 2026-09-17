@@ -25,11 +25,10 @@ func TestCompilerCompiledStateUsesOneFixedOwnerAllocation(t *testing.T) {
 
 	c := newCompilerCompiled(Compiled{})
 	base := uintptr(unsafe.Pointer(c.codeCache))
-	state := compilerCompiledState{}
-	if got, want := uintptr(unsafe.Pointer(c.validateMemo)), base+unsafe.Offsetof(state.validateMemo); got != want {
+	if got, want := uintptr(unsafe.Pointer(c.validateMemo)), base+unsafe.Offsetof(compilerCompiledState{}.validateMemo); got != want {
 		t.Fatalf("validation memo address = %#x, want coallocated address %#x", got, want)
 	}
-	if got, want := uintptr(unsafe.Pointer(c.memoryDir)), base+unsafe.Offsetof(state.memoryDir); got != want {
+	if got, want := uintptr(unsafe.Pointer(c.memoryDir)), base+unsafe.Offsetof(compilerCompiledState{}.memoryDir); got != want {
 		t.Fatalf("memory directory address = %#x, want coallocated address %#x", got, want)
 	}
 }

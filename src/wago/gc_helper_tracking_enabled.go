@@ -47,7 +47,7 @@ func recordSynchronousGCHelper(in *Instance, helper uint32, args []uint64) {
 	counter.calls.Add(1)
 	if gcHelperMayAllocate(helper) {
 		counter.allocCalls.Add(1)
-		if helper < gcArrayAllocDefault {
+		if gcHelperUsesStructDispatcher(helper) {
 			counter.structAllocCalls.Add(1)
 			if helper == gcStructAllocDefault {
 				counter.structDefaultAllocCalls.Add(1)
@@ -65,7 +65,7 @@ func recordSynchronousGCHelper(in *Instance, helper uint32, args []uint64) {
 	}
 	if gcHelperMayMutate(helper) {
 		counter.mutations.Add(1)
-		if helper < gcArrayAllocDefault {
+		if gcHelperUsesStructDispatcher(helper) {
 			counter.structMutations.Add(1)
 		} else {
 			counter.arrayMutations.Add(1)
@@ -81,9 +81,9 @@ func recordSynchronousGCHelper(in *Instance, helper uint32, args []uint64) {
 				if childSpace == gc.DiagnosticSpaceNursery {
 					if remembered {
 						counter.oldYoungRememberedMutations.Add(1)
-						if helper == gcStructSet {
+						if helper == gcStructSet || helper == gcStructSetNoBarrier {
 							counter.structOldYoungRememberedMutations.Add(1)
-						} else if helper == gcArraySet {
+						} else if helper == gcArraySet || helper == gcArraySetNoBarrier {
 							counter.arrayOldYoungRememberedMutations.Add(1)
 						}
 					} else {
@@ -95,7 +95,7 @@ func recordSynchronousGCHelper(in *Instance, helper uint32, args []uint64) {
 			case gc.DiagnosticSpaceTiny:
 				counter.parentTinyMutations.Add(1)
 			}
-			if helper == gcArraySet && len(args) >= 2 {
+			if (helper == gcArraySet || helper == gcArraySetNoBarrier) && len(args) >= 2 {
 				present, covered := in.gc.DiagnosticArrayCard(parent, uint32(args[1]))
 				if present {
 					counter.arrayCardPresentMutations.Add(1)
@@ -113,7 +113,7 @@ func diagnosticReferenceMutation(in *Instance, helper uint32, args []uint64) (pa
 		return 0, 0, false
 	}
 	switch helper {
-	case gcStructSet:
+	case gcStructSet, gcStructSetNoBarrier:
 		if len(args) < 4 {
 			return 0, 0, false
 		}
@@ -126,7 +126,7 @@ func diagnosticReferenceMutation(in *Instance, helper uint32, args []uint64) (pa
 			return 0, 0, false
 		}
 		return gc.Ref(uint32(args[0])), gc.Ref(uint32(args[1])), true
-	case gcArraySet:
+	case gcArraySet, gcArraySetNoBarrier:
 		if len(args) < 4 {
 			return 0, 0, false
 		}

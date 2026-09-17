@@ -1,0 +1,2847 @@
+package railmach
+
+import (
+	"fmt"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+// MOpcode is the machine instruction opcode namespace. Generic operations keep
+// their validated Wasm opcode value; target selection replaces them in place
+// with an opcode from the disjoint selected range. Keeping the same compact
+// representation lets selection refine RailMach instead of creating a third
+// instruction IR.
+type MOpcode = wasm.InstrKind
+
+const selectedOpcodeBase MOpcode = 0x8000
+
+const (
+	OpAMD64V128Move MOpcode = selectedOpcodeBase + iota
+	OpAMD64V128Const
+	OpAMD64V128Load
+	OpAMD64V128Store
+	OpAMD64V128And
+	OpAMD64V128Andnot
+	OpAMD64V128Or
+	OpAMD64V128Xor
+	OpAMD64V128Not
+	OpAMD64V128Bitselect
+	OpAMD64I8x16Add
+	OpAMD64I8x16AddSatS
+	OpAMD64I8x16AddSatU
+	OpAMD64I8x16Sub
+	OpAMD64I8x16SubSatS
+	OpAMD64I8x16SubSatU
+	OpAMD64I16x8Add
+	OpAMD64I16x8AddSatS
+	OpAMD64I16x8AddSatU
+	OpAMD64I16x8Sub
+	OpAMD64I16x8SubSatS
+	OpAMD64I16x8SubSatU
+	OpAMD64I32x4Add
+	OpAMD64I32x4Sub
+	OpAMD64I64x2Add
+	OpAMD64I64x2Sub
+	OpAMD64I8x16MinS
+	OpAMD64I8x16MinU
+	OpAMD64I8x16MaxS
+	OpAMD64I8x16MaxU
+	OpAMD64I8x16AvgrU
+	OpAMD64I16x8Mul
+	OpAMD64I16x8MinS
+	OpAMD64I16x8MinU
+	OpAMD64I16x8MaxS
+	OpAMD64I16x8MaxU
+	OpAMD64I16x8AvgrU
+	OpAMD64I32x4Mul
+	OpAMD64I32x4MinS
+	OpAMD64I32x4MinU
+	OpAMD64I32x4MaxS
+	OpAMD64I32x4MaxU
+	OpAMD64I64x2Mul
+	OpAMD64I8x16Abs
+	OpAMD64I8x16Neg
+	OpAMD64I16x8Abs
+	OpAMD64I16x8Neg
+	OpAMD64I32x4Abs
+	OpAMD64I32x4Neg
+	OpAMD64I64x2Abs
+	OpAMD64I64x2Neg
+	OpAMD64I8x16Eq
+	OpAMD64I8x16Ne
+	OpAMD64I16x8Eq
+	OpAMD64I16x8Ne
+	OpAMD64I32x4Eq
+	OpAMD64I32x4Ne
+	OpAMD64I64x2Eq
+	OpAMD64I64x2Ne
+	OpAMD64I8x16LtS
+	OpAMD64I8x16GtS
+	OpAMD64I8x16LeS
+	OpAMD64I8x16GeS
+	OpAMD64I16x8LtS
+	OpAMD64I16x8GtS
+	OpAMD64I16x8LeS
+	OpAMD64I16x8GeS
+	OpAMD64I32x4LtS
+	OpAMD64I32x4GtS
+	OpAMD64I32x4LeS
+	OpAMD64I32x4GeS
+	OpAMD64I64x2LtS
+	OpAMD64I64x2GtS
+	OpAMD64I64x2LeS
+	OpAMD64I64x2GeS
+	OpAMD64I8x16LtU
+	OpAMD64I8x16GtU
+	OpAMD64I8x16LeU
+	OpAMD64I8x16GeU
+	OpAMD64I16x8LtU
+	OpAMD64I16x8GtU
+	OpAMD64I16x8LeU
+	OpAMD64I16x8GeU
+	OpAMD64I32x4LtU
+	OpAMD64I32x4GtU
+	OpAMD64I32x4LeU
+	OpAMD64I32x4GeU
+	OpAMD64I16x8Shl
+	OpAMD64I16x8ShrS
+	OpAMD64I16x8ShrU
+	OpAMD64I32x4Shl
+	OpAMD64I32x4ShrS
+	OpAMD64I32x4ShrU
+	OpAMD64I64x2Shl
+	OpAMD64I64x2ShrU
+	OpAMD64I8x16Splat
+	OpAMD64I16x8Splat
+	OpAMD64I32x4Splat
+	OpAMD64I64x2Splat
+	OpAMD64F32x4Splat
+	OpAMD64F64x2Splat
+	OpAMD64I8x16ExtractLaneS
+	OpAMD64I8x16ExtractLaneU
+	OpAMD64I8x16ReplaceLane
+	OpAMD64I16x8ExtractLaneS
+	OpAMD64I16x8ExtractLaneU
+	OpAMD64I16x8ReplaceLane
+	OpAMD64I32x4ExtractLane
+	OpAMD64I32x4ReplaceLane
+	OpAMD64I64x2ExtractLane
+	OpAMD64I64x2ReplaceLane
+	OpAMD64F32x4ExtractLane
+	OpAMD64F32x4ReplaceLane
+	OpAMD64F64x2ExtractLane
+	OpAMD64F64x2ReplaceLane
+	OpAMD64I8x16NarrowI16x8S
+	OpAMD64I8x16NarrowI16x8U
+	OpAMD64I16x8NarrowI32x4S
+	OpAMD64I16x8NarrowI32x4U
+	OpAMD64I16x8ExtendLowI8x16S
+	OpAMD64I16x8ExtendHighI8x16S
+	OpAMD64I16x8ExtendLowI8x16U
+	OpAMD64I16x8ExtendHighI8x16U
+	OpAMD64I32x4ExtendLowI16x8S
+	OpAMD64I32x4ExtendHighI16x8S
+	OpAMD64I32x4ExtendLowI16x8U
+	OpAMD64I32x4ExtendHighI16x8U
+	OpAMD64I64x2ExtendLowI32x4S
+	OpAMD64I64x2ExtendHighI32x4S
+	OpAMD64I64x2ExtendLowI32x4U
+	OpAMD64I64x2ExtendHighI32x4U
+	OpAMD64I16x8ExtmulLowI8x16S
+	OpAMD64I16x8ExtmulHighI8x16S
+	OpAMD64I16x8ExtmulLowI8x16U
+	OpAMD64I16x8ExtmulHighI8x16U
+	OpAMD64I32x4ExtmulLowI16x8S
+	OpAMD64I32x4ExtmulHighI16x8S
+	OpAMD64I32x4ExtmulLowI16x8U
+	OpAMD64I32x4ExtmulHighI16x8U
+	OpAMD64I64x2ExtmulLowI32x4S
+	OpAMD64I64x2ExtmulHighI32x4S
+	OpAMD64I64x2ExtmulLowI32x4U
+	OpAMD64I64x2ExtmulHighI32x4U
+	OpAMD64I8x16Shuffle
+	OpAMD64I8x16Swizzle
+	OpAMD64V128AnyTrue
+	OpAMD64I8x16AllTrue
+	OpAMD64I16x8AllTrue
+	OpAMD64I32x4AllTrue
+	OpAMD64I64x2AllTrue
+	OpAMD64I8x16Bitmask
+	OpAMD64I16x8Bitmask
+	OpAMD64I32x4Bitmask
+	OpAMD64I64x2Bitmask
+	OpAMD64I16x8ExtaddPairwiseI8x16S
+	OpAMD64I16x8ExtaddPairwiseI8x16U
+	OpAMD64I32x4ExtaddPairwiseI16x8S
+	OpAMD64I32x4ExtaddPairwiseI16x8U
+	OpAMD64I32x4DotI16x8S
+	OpAMD64F32x4Eq
+	OpAMD64F32x4Ne
+	OpAMD64F32x4Lt
+	OpAMD64F32x4Gt
+	OpAMD64F32x4Le
+	OpAMD64F32x4Ge
+	OpAMD64F64x2Eq
+	OpAMD64F64x2Ne
+	OpAMD64F64x2Lt
+	OpAMD64F64x2Gt
+	OpAMD64F64x2Le
+	OpAMD64F64x2Ge
+	OpAMD64F32x4Abs
+	OpAMD64F32x4Neg
+	OpAMD64F32x4Sqrt
+	OpAMD64F32x4Add
+	OpAMD64F32x4Sub
+	OpAMD64F32x4Mul
+	OpAMD64F32x4Div
+	OpAMD64F64x2Abs
+	OpAMD64F64x2Neg
+	OpAMD64F64x2Sqrt
+	OpAMD64F64x2Add
+	OpAMD64F64x2Sub
+	OpAMD64F64x2Mul
+	OpAMD64F64x2Div
+	OpAMD64F32x4Min
+	OpAMD64F32x4Max
+	OpAMD64F32x4Pmin
+	OpAMD64F32x4Pmax
+	OpAMD64F64x2Min
+	OpAMD64F64x2Max
+	OpAMD64F64x2Pmin
+	OpAMD64F64x2Pmax
+	OpAMD64F32x4Ceil
+	OpAMD64F32x4Floor
+	OpAMD64F32x4Trunc
+	OpAMD64F32x4Nearest
+	OpAMD64F64x2Ceil
+	OpAMD64F64x2Floor
+	OpAMD64F64x2Trunc
+	OpAMD64F64x2Nearest
+	OpAMD64F32x4DemoteF64x2Zero
+	OpAMD64F64x2PromoteLowF32x4
+	OpAMD64F32x4ConvertI32x4S
+	OpAMD64F32x4ConvertI32x4U
+	OpAMD64F64x2ConvertLowI32x4S
+	OpAMD64F64x2ConvertLowI32x4U
+	OpAMD64I32x4TruncSatF32x4S
+	OpAMD64I32x4TruncSatF32x4U
+	OpAMD64I32x4TruncSatF64x2SZero
+	OpAMD64I32x4TruncSatF64x2UZero
+	OpAMD64I8x16Popcnt
+	OpAMD64I16x8Q15mulrSatS
+	OpAMD64I8x16Shl
+	OpAMD64I8x16ShrS
+	OpAMD64I8x16ShrU
+	OpAMD64I64x2ShrS
+	OpAMD64V128Load8x8S
+	OpAMD64V128Load8x8U
+	OpAMD64V128Load16x4S
+	OpAMD64V128Load16x4U
+	OpAMD64V128Load32x2S
+	OpAMD64V128Load32x2U
+	OpAMD64V128Load8Splat
+	OpAMD64V128Load16Splat
+	OpAMD64V128Load32Splat
+	OpAMD64V128Load64Splat
+	OpAMD64V128Load32Zero
+	OpAMD64V128Load64Zero
+	OpAMD64V128Load8Lane
+	OpAMD64V128Load16Lane
+	OpAMD64V128Load32Lane
+	OpAMD64V128Load64Lane
+	OpAMD64V128Store8Lane
+	OpAMD64V128Store16Lane
+	OpAMD64V128Store32Lane
+	OpAMD64V128Store64Lane
+	OpAMD64F32x4RelaxedMadd
+	OpAMD64F32x4RelaxedNmadd
+	OpAMD64F64x2RelaxedMadd
+	OpAMD64F64x2RelaxedNmadd
+	OpAMD64I16x8RelaxedQ15mulrS
+	OpAMD64I16x8RelaxedDotI8x16I7x16S
+	OpAMD64I32x4RelaxedDotI8x16I7x16AddS
+	OpAMD64I32Load
+	OpAMD64I64Load
+	OpAMD64F32Load
+	OpAMD64F64Load
+	OpAMD64I32Load8S
+	OpAMD64I32Load8U
+	OpAMD64I32Load16S
+	OpAMD64I32Load16U
+	OpAMD64I64Load8S
+	OpAMD64I64Load8U
+	OpAMD64I64Load16S
+	OpAMD64I64Load16U
+	OpAMD64I64Load32S
+	OpAMD64I64Load32U
+	OpAMD64I32Store
+	OpAMD64I64Store
+	OpAMD64F32Store
+	OpAMD64F64Store
+	OpAMD64I32Store8
+	OpAMD64I32Store16
+	OpAMD64I64Store8
+	OpAMD64I64Store16
+	OpAMD64I64Store32
+	OpAMD64I32Const
+	OpAMD64I64Const
+	OpAMD64F32Const
+	OpAMD64F64Const
+	OpAMD64GlobalGet
+	OpAMD64GlobalSet
+	OpAMD64Select
+	OpAMD64MemorySize
+	OpAMD64MemoryGrow
+	OpAMD64MemoryCopy
+	OpAMD64MemoryFill
+	OpAMD64If
+	OpAMD64Br
+	OpAMD64BrIf
+	OpAMD64BrTable
+	OpAMD64Return
+	OpAMD64Unreachable
+	OpAMD64Call
+	OpAMD64CallIndirect
+	OpAMD64RefNull
+	OpAMD64RefFunc
+	OpAMD64RefIsNull
+	OpAMD64RefEq
+	OpAMD64RefAsNonNull
+	OpAMD64I32Add
+	OpAMD64I64Add
+	OpAMD64I32Sub
+	OpAMD64I64Sub
+	OpAMD64I32And
+	OpAMD64I64And
+	OpAMD64I32Or
+	OpAMD64I64Or
+	OpAMD64I32Xor
+	OpAMD64I64Xor
+	OpAMD64I32Mul
+	OpAMD64I64Mul
+	OpAMD64I32Shl
+	OpAMD64I64Shl
+	OpAMD64I32ShrS
+	OpAMD64I64ShrS
+	OpAMD64I32ShrU
+	OpAMD64I64ShrU
+	OpAMD64I32Rotl
+	OpAMD64I64Rotl
+	OpAMD64I32Rotr
+	OpAMD64I64Rotr
+	OpAMD64I32Clz
+	OpAMD64I64Clz
+	OpAMD64I32Ctz
+	OpAMD64I64Ctz
+	OpAMD64I32Popcnt
+	OpAMD64I64Popcnt
+	OpAMD64F32AddScalar
+	OpAMD64F64AddScalar
+	OpAMD64F32SubScalar
+	OpAMD64F64SubScalar
+	OpAMD64F32MulScalar
+	OpAMD64F64MulScalar
+	OpAMD64F32DivScalar
+	OpAMD64F64DivScalar
+	OpAMD64F32MinScalar
+	OpAMD64F64MinScalar
+	OpAMD64F32MaxScalar
+	OpAMD64F64MaxScalar
+	OpAMD64F32CopysignScalar
+	OpAMD64F64CopysignScalar
+	OpAMD64F32AbsScalar
+	OpAMD64F64AbsScalar
+	OpAMD64F32NegScalar
+	OpAMD64F64NegScalar
+	OpAMD64F32CeilScalar
+	OpAMD64F64CeilScalar
+	OpAMD64F32FloorScalar
+	OpAMD64F64FloorScalar
+	OpAMD64F32TruncScalar
+	OpAMD64F64TruncScalar
+	OpAMD64F32NearestScalar
+	OpAMD64F64NearestScalar
+	OpAMD64F32SqrtScalar
+	OpAMD64F64SqrtScalar
+	OpAMD64I32WrapI64
+	OpAMD64I64ExtendI32S
+	OpAMD64I64ExtendI32U
+	OpAMD64I32Extend8S
+	OpAMD64I32Extend16S
+	OpAMD64I64Extend8S
+	OpAMD64I64Extend16S
+	OpAMD64I64Extend32S
+	OpAMD64F32EqScalar
+	OpAMD64F64EqScalar
+	OpAMD64F32NeScalar
+	OpAMD64F64NeScalar
+	OpAMD64F32LtScalar
+	OpAMD64F64LtScalar
+	OpAMD64F32GtScalar
+	OpAMD64F64GtScalar
+	OpAMD64F32LeScalar
+	OpAMD64F64LeScalar
+	OpAMD64F32GeScalar
+	OpAMD64F64GeScalar
+	OpAMD64I32DivS
+	OpAMD64I32DivU
+	OpAMD64I32RemS
+	OpAMD64I32RemU
+	OpAMD64I64DivS
+	OpAMD64I64DivU
+	OpAMD64I64RemS
+	OpAMD64I64RemU
+	OpAMD64I32Eqz
+	OpAMD64I64Eqz
+	OpAMD64I32Eq
+	OpAMD64I64Eq
+	OpAMD64I32Ne
+	OpAMD64I64Ne
+	OpAMD64I32LtS
+	OpAMD64I64LtS
+	OpAMD64I32LtU
+	OpAMD64I64LtU
+	OpAMD64I32GtS
+	OpAMD64I64GtS
+	OpAMD64I32GtU
+	OpAMD64I64GtU
+	OpAMD64I32LeS
+	OpAMD64I64LeS
+	OpAMD64I32LeU
+	OpAMD64I64LeU
+	OpAMD64I32GeS
+	OpAMD64I64GeS
+	OpAMD64I32GeU
+	OpAMD64I64GeU
+	OpAMD64F32ConvertI32S
+	OpAMD64F32ConvertI32U
+	OpAMD64F32ConvertI64S
+	OpAMD64F32ConvertI64U
+	OpAMD64F32DemoteF64
+	OpAMD64F64ConvertI32S
+	OpAMD64F64ConvertI32U
+	OpAMD64F64ConvertI64S
+	OpAMD64F64ConvertI64U
+	OpAMD64F64PromoteF32
+	OpAMD64I32ReinterpretF32
+	OpAMD64I64ReinterpretF64
+	OpAMD64F32ReinterpretI32
+	OpAMD64F64ReinterpretI64
+	OpAMD64I32TruncF32S
+	OpAMD64I32TruncF32U
+	OpAMD64I32TruncF64S
+	OpAMD64I32TruncF64U
+	OpAMD64I64TruncF32S
+	OpAMD64I64TruncF32U
+	OpAMD64I64TruncF64S
+	OpAMD64I64TruncF64U
+	OpAMD64I32TruncSatF32S
+	OpAMD64I32TruncSatF32U
+	OpAMD64I32TruncSatF64S
+	OpAMD64I32TruncSatF64U
+	OpAMD64I64TruncSatF32S
+	OpAMD64I64TruncSatF32U
+	OpAMD64I64TruncSatF64S
+	OpAMD64I64TruncSatF64U
+	OpAMD64RefI31
+	OpAMD64I31GetS
+	OpAMD64I31GetU
+	OpAMD64AnyConvertExtern
+	OpAMD64ExternConvertAny
+	OpAMD64RefTest
+	OpAMD64RefCast
+	OpAMD64BrOnCast
+	OpAMD64BrOnCastFail
+	OpAMD64StructGet
+	OpAMD64StructGetS
+	OpAMD64StructGetU
+	OpAMD64StructSet
+	OpAMD64StructNew
+	OpAMD64StructNewDefault
+	OpAMD64ArrayGet
+	OpAMD64ArrayGetS
+	OpAMD64ArrayGetU
+	OpAMD64ArraySet
+	OpAMD64ArrayLen
+	OpAMD64ArrayNew
+	OpAMD64ArrayNewDefault
+	OpAMD64ArrayNewFixed
+	OpAMD64ArrayNewData
+	OpAMD64ArrayNewElem
+	OpAMD64ArrayFill
+	OpAMD64ArrayCopy
+	OpAMD64ArrayInitData
+	OpAMD64ArrayInitElem
+	OpAMD64DataDrop
+	OpAMD64ElemDrop
+	opAMD64SelectedEnd
+)
+
+const (
+	OpARM64V128Move MOpcode = 0x9000 + iota
+	OpARM64V128Const
+	OpARM64V128Load
+	OpARM64V128Store
+	OpARM64V128And
+	OpARM64V128Andnot
+	OpARM64V128Or
+	OpARM64V128Xor
+	OpARM64V128Not
+	OpARM64V128Bitselect
+	OpARM64I32x4RotrImmediate
+	OpARM64I8x16Add
+	OpARM64I8x16AddSatS
+	OpARM64I8x16AddSatU
+	OpARM64I8x16Sub
+	OpARM64I8x16SubSatS
+	OpARM64I8x16SubSatU
+	OpARM64I16x8Add
+	OpARM64I16x8AddSatS
+	OpARM64I16x8AddSatU
+	OpARM64I16x8Sub
+	OpARM64I16x8SubSatS
+	OpARM64I16x8SubSatU
+	OpARM64I32x4Add
+	OpARM64I32x4Sub
+	OpARM64I64x2Add
+	OpARM64I64x2Sub
+	OpARM64I8x16MinS
+	OpARM64I8x16MinU
+	OpARM64I8x16MaxS
+	OpARM64I8x16MaxU
+	OpARM64I8x16AvgrU
+	OpARM64I16x8Mul
+	OpARM64I16x8MinS
+	OpARM64I16x8MinU
+	OpARM64I16x8MaxS
+	OpARM64I16x8MaxU
+	OpARM64I16x8AvgrU
+	OpARM64I32x4Mul
+	OpARM64I32x4MinS
+	OpARM64I32x4MinU
+	OpARM64I32x4MaxS
+	OpARM64I32x4MaxU
+	OpARM64I64x2Mul
+	OpARM64I8x16Abs
+	OpARM64I8x16Neg
+	OpARM64I16x8Abs
+	OpARM64I16x8Neg
+	OpARM64I32x4Abs
+	OpARM64I32x4Neg
+	OpARM64I64x2Abs
+	OpARM64I64x2Neg
+	OpARM64I8x16Eq
+	OpARM64I8x16Ne
+	OpARM64I16x8Eq
+	OpARM64I16x8Ne
+	OpARM64I32x4Eq
+	OpARM64I32x4Ne
+	OpARM64I64x2Eq
+	OpARM64I64x2Ne
+	OpARM64I8x16LtS
+	OpARM64I8x16GtS
+	OpARM64I8x16LeS
+	OpARM64I8x16GeS
+	OpARM64I16x8LtS
+	OpARM64I16x8GtS
+	OpARM64I16x8LeS
+	OpARM64I16x8GeS
+	OpARM64I32x4LtS
+	OpARM64I32x4GtS
+	OpARM64I32x4LeS
+	OpARM64I32x4GeS
+	OpARM64I64x2LtS
+	OpARM64I64x2GtS
+	OpARM64I64x2LeS
+	OpARM64I64x2GeS
+	OpARM64I8x16LtU
+	OpARM64I8x16GtU
+	OpARM64I8x16LeU
+	OpARM64I8x16GeU
+	OpARM64I16x8LtU
+	OpARM64I16x8GtU
+	OpARM64I16x8LeU
+	OpARM64I16x8GeU
+	OpARM64I32x4LtU
+	OpARM64I32x4GtU
+	OpARM64I32x4LeU
+	OpARM64I32x4GeU
+	OpARM64I16x8Shl
+	OpARM64I16x8ShrS
+	OpARM64I16x8ShrU
+	OpARM64I32x4Shl
+	OpARM64I32x4ShrS
+	OpARM64I32x4ShrU
+	OpARM64I64x2Shl
+	OpARM64I64x2ShrU
+	OpARM64I8x16Splat
+	OpARM64I16x8Splat
+	OpARM64I32x4Splat
+	OpARM64I64x2Splat
+	OpARM64F32x4Splat
+	OpARM64F64x2Splat
+	OpARM64I8x16ExtractLaneS
+	OpARM64I8x16ExtractLaneU
+	OpARM64I8x16ReplaceLane
+	OpARM64I16x8ExtractLaneS
+	OpARM64I16x8ExtractLaneU
+	OpARM64I16x8ReplaceLane
+	OpARM64I32x4ExtractLane
+	OpARM64I32x4ReplaceLane
+	OpARM64I64x2ExtractLane
+	OpARM64I64x2ReplaceLane
+	OpARM64F32x4ExtractLane
+	OpARM64F32x4ReplaceLane
+	OpARM64F64x2ExtractLane
+	OpARM64F64x2ReplaceLane
+	OpARM64I8x16NarrowI16x8S
+	OpARM64I8x16NarrowI16x8U
+	OpARM64I16x8NarrowI32x4S
+	OpARM64I16x8NarrowI32x4U
+	OpARM64I16x8ExtendLowI8x16S
+	OpARM64I16x8ExtendHighI8x16S
+	OpARM64I16x8ExtendLowI8x16U
+	OpARM64I16x8ExtendHighI8x16U
+	OpARM64I32x4ExtendLowI16x8S
+	OpARM64I32x4ExtendHighI16x8S
+	OpARM64I32x4ExtendLowI16x8U
+	OpARM64I32x4ExtendHighI16x8U
+	OpARM64I64x2ExtendLowI32x4S
+	OpARM64I64x2ExtendHighI32x4S
+	OpARM64I64x2ExtendLowI32x4U
+	OpARM64I64x2ExtendHighI32x4U
+	OpARM64I16x8ExtmulLowI8x16S
+	OpARM64I16x8ExtmulHighI8x16S
+	OpARM64I16x8ExtmulLowI8x16U
+	OpARM64I16x8ExtmulHighI8x16U
+	OpARM64I32x4ExtmulLowI16x8S
+	OpARM64I32x4ExtmulHighI16x8S
+	OpARM64I32x4ExtmulLowI16x8U
+	OpARM64I32x4ExtmulHighI16x8U
+	OpARM64I64x2ExtmulLowI32x4S
+	OpARM64I64x2ExtmulHighI32x4S
+	OpARM64I64x2ExtmulLowI32x4U
+	OpARM64I64x2ExtmulHighI32x4U
+	OpARM64I8x16Shuffle
+	OpARM64I8x16Swizzle
+	OpARM64V128AnyTrue
+	OpARM64I8x16AllTrue
+	OpARM64I16x8AllTrue
+	OpARM64I32x4AllTrue
+	OpARM64I64x2AllTrue
+	OpARM64I8x16Bitmask
+	OpARM64I16x8Bitmask
+	OpARM64I32x4Bitmask
+	OpARM64I64x2Bitmask
+	OpARM64I16x8ExtaddPairwiseI8x16S
+	OpARM64I16x8ExtaddPairwiseI8x16U
+	OpARM64I32x4ExtaddPairwiseI16x8S
+	OpARM64I32x4ExtaddPairwiseI16x8U
+	OpARM64I32x4DotI16x8S
+	OpARM64F32x4Eq
+	OpARM64F32x4Ne
+	OpARM64F32x4Lt
+	OpARM64F32x4Gt
+	OpARM64F32x4Le
+	OpARM64F32x4Ge
+	OpARM64F64x2Eq
+	OpARM64F64x2Ne
+	OpARM64F64x2Lt
+	OpARM64F64x2Gt
+	OpARM64F64x2Le
+	OpARM64F64x2Ge
+	OpARM64F32x4Abs
+	OpARM64F32x4Neg
+	OpARM64F32x4Sqrt
+	OpARM64F32x4Add
+	OpARM64F32x4Sub
+	OpARM64F32x4Mul
+	OpARM64F32x4Div
+	OpARM64F64x2Abs
+	OpARM64F64x2Neg
+	OpARM64F64x2Sqrt
+	OpARM64F64x2Add
+	OpARM64F64x2Sub
+	OpARM64F64x2Mul
+	OpARM64F64x2Div
+	OpARM64F32x4Min
+	OpARM64F32x4Max
+	OpARM64F32x4Pmin
+	OpARM64F32x4Pmax
+	OpARM64F64x2Min
+	OpARM64F64x2Max
+	OpARM64F64x2Pmin
+	OpARM64F64x2Pmax
+	OpARM64F32x4Ceil
+	OpARM64F32x4Floor
+	OpARM64F32x4Trunc
+	OpARM64F32x4Nearest
+	OpARM64F64x2Ceil
+	OpARM64F64x2Floor
+	OpARM64F64x2Trunc
+	OpARM64F64x2Nearest
+	OpARM64F32x4DemoteF64x2Zero
+	OpARM64F64x2PromoteLowF32x4
+	OpARM64F32x4ConvertI32x4S
+	OpARM64F32x4ConvertI32x4U
+	OpARM64F64x2ConvertLowI32x4S
+	OpARM64F64x2ConvertLowI32x4U
+	OpARM64I32x4TruncSatF32x4S
+	OpARM64I32x4TruncSatF32x4U
+	OpARM64I32x4TruncSatF64x2SZero
+	OpARM64I32x4TruncSatF64x2UZero
+	OpARM64I8x16Popcnt
+	OpARM64I16x8Q15mulrSatS
+	OpARM64I8x16Shl
+	OpARM64I8x16ShrS
+	OpARM64I8x16ShrU
+	OpARM64I64x2ShrS
+	OpARM64I8x16ShlImmediate
+	OpARM64I8x16ShrSImmediate
+	OpARM64I8x16ShrUImmediate
+	OpARM64I16x8ShlImmediate
+	OpARM64I16x8ShrSImmediate
+	OpARM64I16x8ShrUImmediate
+	OpARM64I32x4ShlImmediate
+	OpARM64I32x4ShrSImmediate
+	OpARM64I32x4ShrUImmediate
+	OpARM64I64x2ShlImmediate
+	OpARM64I64x2ShrSImmediate
+	OpARM64I64x2ShrUImmediate
+	OpARM64V128Load8x8S
+	OpARM64V128Load8x8U
+	OpARM64V128Load16x4S
+	OpARM64V128Load16x4U
+	OpARM64V128Load32x2S
+	OpARM64V128Load32x2U
+	OpARM64V128Load8Splat
+	OpARM64V128Load16Splat
+	OpARM64V128Load32Splat
+	OpARM64V128Load64Splat
+	OpARM64V128Load32Zero
+	OpARM64V128Load64Zero
+	OpARM64V128Load8Lane
+	OpARM64V128Load16Lane
+	OpARM64V128Load32Lane
+	OpARM64V128Load64Lane
+	OpARM64V128Store8Lane
+	OpARM64V128Store16Lane
+	OpARM64V128Store32Lane
+	OpARM64V128Store64Lane
+	OpARM64F32x4RelaxedMadd
+	OpARM64F32x4RelaxedNmadd
+	OpARM64F64x2RelaxedMadd
+	OpARM64F64x2RelaxedNmadd
+	OpARM64I16x8RelaxedQ15mulrS
+	OpARM64I16x8RelaxedDotI8x16I7x16S
+	OpARM64I32x4RelaxedDotI8x16I7x16AddS
+	OpARM64I32Load
+	OpARM64I64Load
+	OpARM64F32Load
+	OpARM64F64Load
+	OpARM64I32Load8S
+	OpARM64I32Load8U
+	OpARM64I32Load16S
+	OpARM64I32Load16U
+	OpARM64I64Load8S
+	OpARM64I64Load8U
+	OpARM64I64Load16S
+	OpARM64I64Load16U
+	OpARM64I64Load32S
+	OpARM64I64Load32U
+	OpARM64I32Store
+	OpARM64I64Store
+	OpARM64F32Store
+	OpARM64F64Store
+	OpARM64I32Store8
+	OpARM64I32Store16
+	OpARM64I64Store8
+	OpARM64I64Store16
+	OpARM64I64Store32
+	OpARM64I32Const
+	OpARM64I64Const
+	OpARM64F32Const
+	OpARM64F64Const
+	OpARM64GlobalGet
+	OpARM64GlobalSet
+	OpARM64Select
+	OpARM64MemorySize
+	OpARM64MemoryGrow
+	OpARM64MemoryCopy
+	OpARM64MemoryFill
+	OpARM64If
+	OpARM64Br
+	OpARM64BrIf
+	OpARM64BrTable
+	OpARM64Return
+	OpARM64Unreachable
+	OpARM64Call
+	OpARM64CallIndirect
+	OpARM64RefNull
+	OpARM64RefFunc
+	OpARM64RefIsNull
+	OpARM64RefEq
+	OpARM64RefAsNonNull
+	OpARM64I32Add
+	OpARM64I64Add
+	OpARM64I32Sub
+	OpARM64I64Sub
+	OpARM64I32And
+	OpARM64I64And
+	OpARM64I32Or
+	OpARM64I64Or
+	OpARM64I32Xor
+	OpARM64I64Xor
+	OpARM64I32Mul
+	OpARM64I64Mul
+	OpARM64I32Shl
+	OpARM64I64Shl
+	OpARM64I32ShrS
+	OpARM64I64ShrS
+	OpARM64I32ShrU
+	OpARM64I64ShrU
+	OpARM64I32Rotl
+	OpARM64I64Rotl
+	OpARM64I32Rotr
+	OpARM64I64Rotr
+	OpARM64I32Clz
+	OpARM64I64Clz
+	OpARM64I32Ctz
+	OpARM64I64Ctz
+	OpARM64I32Popcnt
+	OpARM64I64Popcnt
+	OpARM64F32AddScalar
+	OpARM64F64AddScalar
+	OpARM64F32SubScalar
+	OpARM64F64SubScalar
+	OpARM64F32MulScalar
+	OpARM64F64MulScalar
+	OpARM64F32DivScalar
+	OpARM64F64DivScalar
+	OpARM64F32MinScalar
+	OpARM64F64MinScalar
+	OpARM64F32MaxScalar
+	OpARM64F64MaxScalar
+	OpARM64F32CopysignScalar
+	OpARM64F64CopysignScalar
+	OpARM64F32AbsScalar
+	OpARM64F64AbsScalar
+	OpARM64F32NegScalar
+	OpARM64F64NegScalar
+	OpARM64F32CeilScalar
+	OpARM64F64CeilScalar
+	OpARM64F32FloorScalar
+	OpARM64F64FloorScalar
+	OpARM64F32TruncScalar
+	OpARM64F64TruncScalar
+	OpARM64F32NearestScalar
+	OpARM64F64NearestScalar
+	OpARM64F32SqrtScalar
+	OpARM64F64SqrtScalar
+	OpARM64I32WrapI64
+	OpARM64I64ExtendI32S
+	OpARM64I64ExtendI32U
+	OpARM64I32Extend8S
+	OpARM64I32Extend16S
+	OpARM64I64Extend8S
+	OpARM64I64Extend16S
+	OpARM64I64Extend32S
+	OpARM64F32EqScalar
+	OpARM64F64EqScalar
+	OpARM64F32NeScalar
+	OpARM64F64NeScalar
+	OpARM64F32LtScalar
+	OpARM64F64LtScalar
+	OpARM64F32GtScalar
+	OpARM64F64GtScalar
+	OpARM64F32LeScalar
+	OpARM64F64LeScalar
+	OpARM64F32GeScalar
+	OpARM64F64GeScalar
+	OpARM64I32DivS
+	OpARM64I32DivU
+	OpARM64I32RemS
+	OpARM64I32RemU
+	OpARM64I64DivS
+	OpARM64I64DivU
+	OpARM64I64RemS
+	OpARM64I64RemU
+	OpARM64I32Eqz
+	OpARM64I64Eqz
+	OpARM64I32Eq
+	OpARM64I64Eq
+	OpARM64I32Ne
+	OpARM64I64Ne
+	OpARM64I32LtS
+	OpARM64I64LtS
+	OpARM64I32LtU
+	OpARM64I64LtU
+	OpARM64I32GtS
+	OpARM64I64GtS
+	OpARM64I32GtU
+	OpARM64I64GtU
+	OpARM64I32LeS
+	OpARM64I64LeS
+	OpARM64I32LeU
+	OpARM64I64LeU
+	OpARM64I32GeS
+	OpARM64I64GeS
+	OpARM64I32GeU
+	OpARM64I64GeU
+	OpARM64I32AddImmediate
+	OpARM64I64AddImmediate
+	OpARM64I32SubImmediate
+	OpARM64I64SubImmediate
+	OpARM64I32AndImmediate
+	OpARM64I64AndImmediate
+	OpARM64I32OrImmediate
+	OpARM64I64OrImmediate
+	OpARM64I32XorImmediate
+	OpARM64I64XorImmediate
+	OpARM64I32ShlImmediate
+	OpARM64I64ShlImmediate
+	OpARM64I32ShrSImmediate
+	OpARM64I64ShrSImmediate
+	OpARM64I32ShrUImmediate
+	OpARM64I64ShrUImmediate
+	OpARM64I32RotlImmediate
+	OpARM64I64RotlImmediate
+	OpARM64I32RotrImmediate
+	OpARM64I64RotrImmediate
+	OpARM64I32EqImmediate
+	OpARM64I64EqImmediate
+	OpARM64I32NeImmediate
+	OpARM64I64NeImmediate
+	OpARM64I32LtSImmediate
+	OpARM64I64LtSImmediate
+	OpARM64I32LtUImmediate
+	OpARM64I64LtUImmediate
+	OpARM64I32GtSImmediate
+	OpARM64I64GtSImmediate
+	OpARM64I32GtUImmediate
+	OpARM64I64GtUImmediate
+	OpARM64I32LeSImmediate
+	OpARM64I64LeSImmediate
+	OpARM64I32LeUImmediate
+	OpARM64I64LeUImmediate
+	OpARM64I32GeSImmediate
+	OpARM64I64GeSImmediate
+	OpARM64I32GeUImmediate
+	OpARM64I64GeUImmediate
+	OpARM64I32Madd
+	OpARM64I64Madd
+	OpARM64I64MulHighU
+	OpARM64F32ConvertI32S
+	OpARM64F32ConvertI32U
+	OpARM64F32ConvertI64S
+	OpARM64F32ConvertI64U
+	OpARM64F32DemoteF64
+	OpARM64F64ConvertI32S
+	OpARM64F64ConvertI32U
+	OpARM64F64ConvertI64S
+	OpARM64F64ConvertI64U
+	OpARM64F64PromoteF32
+	OpARM64I32ReinterpretF32
+	OpARM64I64ReinterpretF64
+	OpARM64F32ReinterpretI32
+	OpARM64F64ReinterpretI64
+	OpARM64I32TruncF32S
+	OpARM64I32TruncF32U
+	OpARM64I32TruncF64S
+	OpARM64I32TruncF64U
+	OpARM64I64TruncF32S
+	OpARM64I64TruncF32U
+	OpARM64I64TruncF64S
+	OpARM64I64TruncF64U
+	OpARM64I32TruncSatF32S
+	OpARM64I32TruncSatF32U
+	OpARM64I32TruncSatF64S
+	OpARM64I32TruncSatF64U
+	OpARM64I64TruncSatF32S
+	OpARM64I64TruncSatF32U
+	OpARM64I64TruncSatF64S
+	OpARM64I64TruncSatF64U
+	OpARM64RefI31
+	OpARM64I31GetS
+	OpARM64I31GetU
+	OpARM64AnyConvertExtern
+	OpARM64ExternConvertAny
+	OpARM64RefTest
+	OpARM64RefCast
+	OpARM64BrOnCast
+	OpARM64BrOnCastFail
+	OpARM64StructGet
+	OpARM64StructGetS
+	OpARM64StructGetU
+	OpARM64StructSet
+	OpARM64StructNew
+	OpARM64StructNewDefault
+	OpARM64ArrayGet
+	OpARM64ArrayGetS
+	OpARM64ArrayGetU
+	OpARM64ArraySet
+	OpARM64ArrayLen
+	OpARM64ArrayNew
+	OpARM64ArrayNewDefault
+	OpARM64ArrayNewFixed
+	OpARM64ArrayNewData
+	OpARM64ArrayNewElem
+	OpARM64ArrayFill
+	OpARM64ArrayCopy
+	OpARM64ArrayInitData
+	OpARM64ArrayInitElem
+	OpARM64DataDrop
+	OpARM64ElemDrop
+	// Append new selected opcodes immediately before the range sentinel so
+	// existing in-process opcode identities remain stable.
+	OpARM64I32Msub
+	OpARM64I64Msub
+	opARM64SelectedEnd
+)
+
+func IsSelectedOpcode(op MOpcode) bool { return op >= selectedOpcodeBase }
+
+// IsARM64ImmediateOpcode reports whether op consumes its second semantic
+// operand from the immediate carried in Inst.Aux rather than a VReg location.
+func IsARM64ImmediateOpcode(op MOpcode) bool {
+	switch op {
+	case OpARM64I32AddImmediate, OpARM64I64AddImmediate,
+		OpARM64I32SubImmediate, OpARM64I64SubImmediate,
+		OpARM64I32AndImmediate, OpARM64I64AndImmediate,
+		OpARM64I32OrImmediate, OpARM64I64OrImmediate,
+		OpARM64I32XorImmediate, OpARM64I64XorImmediate,
+		OpARM64I32ShlImmediate, OpARM64I64ShlImmediate,
+		OpARM64I32ShrSImmediate, OpARM64I64ShrSImmediate,
+		OpARM64I32ShrUImmediate, OpARM64I64ShrUImmediate,
+		OpARM64I32RotlImmediate, OpARM64I64RotlImmediate,
+		OpARM64I32RotrImmediate, OpARM64I64RotrImmediate,
+		OpARM64I32EqImmediate, OpARM64I64EqImmediate,
+		OpARM64I32NeImmediate, OpARM64I64NeImmediate,
+		OpARM64I32LtSImmediate, OpARM64I64LtSImmediate,
+		OpARM64I32LtUImmediate, OpARM64I64LtUImmediate,
+		OpARM64I32GtSImmediate, OpARM64I64GtSImmediate,
+		OpARM64I32GtUImmediate, OpARM64I64GtUImmediate,
+		OpARM64I32LeSImmediate, OpARM64I64LeSImmediate,
+		OpARM64I32LeUImmediate, OpARM64I64LeUImmediate,
+		OpARM64I32GeSImmediate, OpARM64I64GeSImmediate,
+		OpARM64I32GeUImmediate, OpARM64I64GeUImmediate,
+		OpARM64I8x16ShlImmediate, OpARM64I8x16ShrSImmediate, OpARM64I8x16ShrUImmediate,
+		OpARM64I16x8ShlImmediate, OpARM64I16x8ShrSImmediate, OpARM64I16x8ShrUImmediate,
+		OpARM64I32x4ShlImmediate, OpARM64I32x4ShrSImmediate, OpARM64I32x4ShrUImmediate,
+		OpARM64I64x2ShlImmediate, OpARM64I64x2ShrSImmediate, OpARM64I64x2ShrUImmediate:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsARM64CompareImmediateOpcode reports whether op is a selected integer
+// compare whose literal is carried in Inst.Aux.
+func IsARM64CompareImmediateOpcode(op MOpcode) bool {
+	switch op {
+	case OpARM64I32EqImmediate, OpARM64I64EqImmediate,
+		OpARM64I32NeImmediate, OpARM64I64NeImmediate,
+		OpARM64I32LtSImmediate, OpARM64I64LtSImmediate,
+		OpARM64I32LtUImmediate, OpARM64I64LtUImmediate,
+		OpARM64I32GtSImmediate, OpARM64I64GtSImmediate,
+		OpARM64I32GtUImmediate, OpARM64I64GtUImmediate,
+		OpARM64I32LeSImmediate, OpARM64I64LeSImmediate,
+		OpARM64I32LeUImmediate, OpARM64I64LeUImmediate,
+		OpARM64I32GeSImmediate, OpARM64I64GeSImmediate,
+		OpARM64I32GeUImmediate, OpARM64I64GeUImmediate:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsSelectedOpcodeForTarget reports whether op belongs to the complete selected
+// namespace for target. Final emission uses this range as its admission
+// authority: generic Wasm operations must be selected before an encoder sees
+// them, and an opcode selected for the other architecture is never admissible.
+func IsSelectedOpcodeForTarget(op MOpcode, target Target) bool {
+	switch target {
+	case TargetAMD64:
+		return op >= OpAMD64V128Move && op < opAMD64SelectedEnd
+	case TargetARM64:
+		return op >= OpARM64V128Move && op < opARM64SelectedEnd
+	default:
+		return false
+	}
+}
+
+// SemanticOpcode reports the Wasm operation implemented by an instruction.
+// Generic instructions already carry that operation directly. Selected target
+// instructions use this projection only for target-independent semantic
+// questions; encoding must continue to switch on the selected opcode itself.
+func SemanticOpcode(op MOpcode) MOpcode {
+	switch {
+	case op >= OpAMD64V128Move && op < opAMD64SelectedEnd:
+		return amd64SelectedSemanticOpcodes[op-OpAMD64V128Move]
+	case op >= OpARM64V128Move && op < opARM64SelectedEnd:
+		return arm64SelectedSemanticOpcodes[op-OpARM64V128Move]
+	default:
+		return op
+	}
+}
+
+// These compact per-target tables keep the large audited selected-to-semantic
+// mapping out of compiler hot paths. They add no per-compilation allocation and
+// preserve semanticOpcodeSlow as the single source of mapping truth.
+var amd64SelectedSemanticOpcodes = func() (table [opAMD64SelectedEnd - OpAMD64V128Move]MOpcode) {
+	for op := OpAMD64V128Move; op < opAMD64SelectedEnd; op++ {
+		table[op-OpAMD64V128Move] = semanticOpcodeSlow(op)
+	}
+	return table
+}()
+
+var arm64SelectedSemanticOpcodes = func() (table [opARM64SelectedEnd - OpARM64V128Move]MOpcode) {
+	for op := OpARM64V128Move; op < opARM64SelectedEnd; op++ {
+		table[op-OpARM64V128Move] = semanticOpcodeSlow(op)
+	}
+	return table
+}()
+
+func semanticOpcodeSlow(op MOpcode) MOpcode {
+	switch op {
+	case OpARM64I32x4RotrImmediate:
+		// Wasm has no vector rotate opcode; this selected operation implements
+		// the canonical complementary shift/or expression.
+		return wasm.InstrV128Or
+	case OpAMD64I32Load, OpARM64I32Load:
+		return wasm.InstrI32Load
+	case OpAMD64I64Load, OpARM64I64Load:
+		return wasm.InstrI64Load
+	case OpAMD64F32Load, OpARM64F32Load:
+		return wasm.InstrF32Load
+	case OpAMD64F64Load, OpARM64F64Load:
+		return wasm.InstrF64Load
+	case OpAMD64I32Load8S, OpARM64I32Load8S:
+		return wasm.InstrI32Load8S
+	case OpAMD64I32Load8U, OpARM64I32Load8U:
+		return wasm.InstrI32Load8U
+	case OpAMD64I32Load16S, OpARM64I32Load16S:
+		return wasm.InstrI32Load16S
+	case OpAMD64I32Load16U, OpARM64I32Load16U:
+		return wasm.InstrI32Load16U
+	case OpAMD64I64Load8S, OpARM64I64Load8S:
+		return wasm.InstrI64Load8S
+	case OpAMD64I64Load8U, OpARM64I64Load8U:
+		return wasm.InstrI64Load8U
+	case OpAMD64I64Load16S, OpARM64I64Load16S:
+		return wasm.InstrI64Load16S
+	case OpAMD64I64Load16U, OpARM64I64Load16U:
+		return wasm.InstrI64Load16U
+	case OpAMD64I64Load32S, OpARM64I64Load32S:
+		return wasm.InstrI64Load32S
+	case OpAMD64I64Load32U, OpARM64I64Load32U:
+		return wasm.InstrI64Load32U
+	case OpAMD64I32Store, OpARM64I32Store:
+		return wasm.InstrI32Store
+	case OpAMD64I64Store, OpARM64I64Store:
+		return wasm.InstrI64Store
+	case OpAMD64F32Store, OpARM64F32Store:
+		return wasm.InstrF32Store
+	case OpAMD64F64Store, OpARM64F64Store:
+		return wasm.InstrF64Store
+	case OpAMD64I32Store8, OpARM64I32Store8:
+		return wasm.InstrI32Store8
+	case OpAMD64I32Store16, OpARM64I32Store16:
+		return wasm.InstrI32Store16
+	case OpAMD64I64Store8, OpARM64I64Store8:
+		return wasm.InstrI64Store8
+	case OpAMD64I64Store16, OpARM64I64Store16:
+		return wasm.InstrI64Store16
+	case OpAMD64I64Store32, OpARM64I64Store32:
+		return wasm.InstrI64Store32
+	case OpAMD64I32Const, OpARM64I32Const:
+		return wasm.InstrI32Const
+	case OpAMD64I64Const, OpARM64I64Const:
+		return wasm.InstrI64Const
+	case OpAMD64F32Const, OpARM64F32Const:
+		return wasm.InstrF32Const
+	case OpAMD64F64Const, OpARM64F64Const:
+		return wasm.InstrF64Const
+	case OpAMD64GlobalGet, OpARM64GlobalGet:
+		return wasm.InstrGlobalGet
+	case OpAMD64GlobalSet, OpARM64GlobalSet:
+		return wasm.InstrGlobalSet
+	case OpAMD64Select, OpARM64Select:
+		return wasm.InstrSelect
+	case OpAMD64MemorySize, OpARM64MemorySize:
+		return wasm.InstrMemorySize
+	case OpAMD64MemoryGrow, OpARM64MemoryGrow:
+		return wasm.InstrMemoryGrow
+	case OpAMD64MemoryCopy, OpARM64MemoryCopy:
+		return wasm.InstrMemoryCopy
+	case OpAMD64MemoryFill, OpARM64MemoryFill:
+		return wasm.InstrMemoryFill
+	case OpAMD64If, OpARM64If:
+		return wasm.InstrIf
+	case OpAMD64Br, OpARM64Br:
+		return wasm.InstrBr
+	case OpAMD64BrIf, OpARM64BrIf:
+		return wasm.InstrBrIf
+	case OpAMD64BrTable, OpARM64BrTable:
+		return wasm.InstrBrTable
+	case OpAMD64Return, OpARM64Return:
+		return wasm.InstrReturn
+	case OpAMD64Unreachable, OpARM64Unreachable:
+		return wasm.InstrUnreachable
+	case OpAMD64Call, OpARM64Call:
+		return wasm.InstrCall
+	case OpAMD64CallIndirect, OpARM64CallIndirect:
+		return wasm.InstrCallIndirect
+	case OpAMD64RefNull, OpARM64RefNull:
+		return wasm.InstrRefNull
+	case OpAMD64RefFunc, OpARM64RefFunc:
+		return wasm.InstrRefFunc
+	case OpAMD64RefIsNull, OpARM64RefIsNull:
+		return wasm.InstrRefIsNull
+	case OpAMD64RefEq, OpARM64RefEq:
+		return wasm.InstrRefEq
+	case OpAMD64RefAsNonNull, OpARM64RefAsNonNull:
+		return wasm.InstrRefAsNonNull
+	case OpAMD64I32Add, OpARM64I32Add, OpARM64I32AddImmediate, OpARM64I32Madd:
+		return wasm.InstrI32Add
+	case OpAMD64I64Add, OpARM64I64Add, OpARM64I64AddImmediate, OpARM64I64Madd:
+		return wasm.InstrI64Add
+	case OpAMD64I32Sub, OpARM64I32Sub, OpARM64I32SubImmediate, OpARM64I32Msub:
+		return wasm.InstrI32Sub
+	case OpAMD64I64Sub, OpARM64I64Sub, OpARM64I64SubImmediate, OpARM64I64Msub:
+		return wasm.InstrI64Sub
+	case OpAMD64I32And, OpARM64I32And, OpARM64I32AndImmediate:
+		return wasm.InstrI32And
+	case OpAMD64I64And, OpARM64I64And, OpARM64I64AndImmediate:
+		return wasm.InstrI64And
+	case OpAMD64I32Or, OpARM64I32Or, OpARM64I32OrImmediate:
+		return wasm.InstrI32Or
+	case OpAMD64I64Or, OpARM64I64Or, OpARM64I64OrImmediate:
+		return wasm.InstrI64Or
+	case OpAMD64I32Xor, OpARM64I32Xor, OpARM64I32XorImmediate:
+		return wasm.InstrI32Xor
+	case OpAMD64I64Xor, OpARM64I64Xor, OpARM64I64XorImmediate:
+		return wasm.InstrI64Xor
+	case OpAMD64I32Mul, OpARM64I32Mul:
+		return wasm.InstrI32Mul
+	case OpAMD64I64Mul, OpARM64I64Mul:
+		return wasm.InstrI64Mul
+	case OpAMD64I32Shl, OpARM64I32Shl, OpARM64I32ShlImmediate:
+		return wasm.InstrI32Shl
+	case OpAMD64I64Shl, OpARM64I64Shl, OpARM64I64ShlImmediate:
+		return wasm.InstrI64Shl
+	case OpAMD64I32ShrS, OpARM64I32ShrS, OpARM64I32ShrSImmediate:
+		return wasm.InstrI32ShrS
+	case OpAMD64I64ShrS, OpARM64I64ShrS, OpARM64I64ShrSImmediate:
+		return wasm.InstrI64ShrS
+	case OpAMD64I32ShrU, OpARM64I32ShrU, OpARM64I32ShrUImmediate:
+		return wasm.InstrI32ShrU
+	case OpAMD64I64ShrU, OpARM64I64ShrU, OpARM64I64ShrUImmediate:
+		return wasm.InstrI64ShrU
+	case OpAMD64I32Rotl, OpARM64I32Rotl, OpARM64I32RotlImmediate:
+		return wasm.InstrI32Rotl
+	case OpAMD64I64Rotl, OpARM64I64Rotl, OpARM64I64RotlImmediate:
+		return wasm.InstrI64Rotl
+	case OpAMD64I32Rotr, OpARM64I32Rotr, OpARM64I32RotrImmediate:
+		return wasm.InstrI32Rotr
+	case OpAMD64I64Rotr, OpARM64I64Rotr, OpARM64I64RotrImmediate:
+		return wasm.InstrI64Rotr
+	case OpAMD64I32Clz, OpARM64I32Clz:
+		return wasm.InstrI32Clz
+	case OpAMD64I64Clz, OpARM64I64Clz:
+		return wasm.InstrI64Clz
+	case OpAMD64I32Ctz, OpARM64I32Ctz:
+		return wasm.InstrI32Ctz
+	case OpAMD64I64Ctz, OpARM64I64Ctz:
+		return wasm.InstrI64Ctz
+	case OpAMD64I32Popcnt, OpARM64I32Popcnt:
+		return wasm.InstrI32Popcnt
+	case OpAMD64I64Popcnt, OpARM64I64Popcnt:
+		return wasm.InstrI64Popcnt
+	case OpAMD64F32AddScalar, OpARM64F32AddScalar:
+		return wasm.InstrF32Add
+	case OpAMD64F64AddScalar, OpARM64F64AddScalar:
+		return wasm.InstrF64Add
+	case OpAMD64F32SubScalar, OpARM64F32SubScalar:
+		return wasm.InstrF32Sub
+	case OpAMD64F64SubScalar, OpARM64F64SubScalar:
+		return wasm.InstrF64Sub
+	case OpAMD64F32MulScalar, OpARM64F32MulScalar:
+		return wasm.InstrF32Mul
+	case OpAMD64F64MulScalar, OpARM64F64MulScalar:
+		return wasm.InstrF64Mul
+	case OpAMD64F32DivScalar, OpARM64F32DivScalar:
+		return wasm.InstrF32Div
+	case OpAMD64F64DivScalar, OpARM64F64DivScalar:
+		return wasm.InstrF64Div
+	case OpAMD64F32MinScalar, OpARM64F32MinScalar:
+		return wasm.InstrF32Min
+	case OpAMD64F64MinScalar, OpARM64F64MinScalar:
+		return wasm.InstrF64Min
+	case OpAMD64F32MaxScalar, OpARM64F32MaxScalar:
+		return wasm.InstrF32Max
+	case OpAMD64F64MaxScalar, OpARM64F64MaxScalar:
+		return wasm.InstrF64Max
+	case OpAMD64F32CopysignScalar, OpARM64F32CopysignScalar:
+		return wasm.InstrF32Copysign
+	case OpAMD64F64CopysignScalar, OpARM64F64CopysignScalar:
+		return wasm.InstrF64Copysign
+	case OpAMD64F32AbsScalar, OpARM64F32AbsScalar:
+		return wasm.InstrF32Abs
+	case OpAMD64F64AbsScalar, OpARM64F64AbsScalar:
+		return wasm.InstrF64Abs
+	case OpAMD64F32NegScalar, OpARM64F32NegScalar:
+		return wasm.InstrF32Neg
+	case OpAMD64F64NegScalar, OpARM64F64NegScalar:
+		return wasm.InstrF64Neg
+	case OpAMD64F32CeilScalar, OpARM64F32CeilScalar:
+		return wasm.InstrF32Ceil
+	case OpAMD64F64CeilScalar, OpARM64F64CeilScalar:
+		return wasm.InstrF64Ceil
+	case OpAMD64F32FloorScalar, OpARM64F32FloorScalar:
+		return wasm.InstrF32Floor
+	case OpAMD64F64FloorScalar, OpARM64F64FloorScalar:
+		return wasm.InstrF64Floor
+	case OpAMD64F32TruncScalar, OpARM64F32TruncScalar:
+		return wasm.InstrF32Trunc
+	case OpAMD64F64TruncScalar, OpARM64F64TruncScalar:
+		return wasm.InstrF64Trunc
+	case OpAMD64F32NearestScalar, OpARM64F32NearestScalar:
+		return wasm.InstrF32Nearest
+	case OpAMD64F64NearestScalar, OpARM64F64NearestScalar:
+		return wasm.InstrF64Nearest
+	case OpAMD64F32SqrtScalar, OpARM64F32SqrtScalar:
+		return wasm.InstrF32Sqrt
+	case OpAMD64F64SqrtScalar, OpARM64F64SqrtScalar:
+		return wasm.InstrF64Sqrt
+	case OpAMD64I32WrapI64, OpARM64I32WrapI64:
+		return wasm.InstrI32WrapI64
+	case OpAMD64I64ExtendI32S, OpARM64I64ExtendI32S:
+		return wasm.InstrI64ExtendI32S
+	case OpAMD64I64ExtendI32U, OpARM64I64ExtendI32U:
+		return wasm.InstrI64ExtendI32U
+	case OpAMD64I32Extend8S, OpARM64I32Extend8S:
+		return wasm.InstrI32Extend8S
+	case OpAMD64I32Extend16S, OpARM64I32Extend16S:
+		return wasm.InstrI32Extend16S
+	case OpAMD64I64Extend8S, OpARM64I64Extend8S:
+		return wasm.InstrI64Extend8S
+	case OpAMD64I64Extend16S, OpARM64I64Extend16S:
+		return wasm.InstrI64Extend16S
+	case OpAMD64I64Extend32S, OpARM64I64Extend32S:
+		return wasm.InstrI64Extend32S
+	case OpAMD64F32ConvertI32S, OpARM64F32ConvertI32S:
+		return wasm.InstrF32ConvertI32S
+	case OpAMD64F32ConvertI32U, OpARM64F32ConvertI32U:
+		return wasm.InstrF32ConvertI32U
+	case OpAMD64F32ConvertI64S, OpARM64F32ConvertI64S:
+		return wasm.InstrF32ConvertI64S
+	case OpAMD64F32ConvertI64U, OpARM64F32ConvertI64U:
+		return wasm.InstrF32ConvertI64U
+	case OpAMD64F32DemoteF64, OpARM64F32DemoteF64:
+		return wasm.InstrF32DemoteF64
+	case OpAMD64F64ConvertI32S, OpARM64F64ConvertI32S:
+		return wasm.InstrF64ConvertI32S
+	case OpAMD64F64ConvertI32U, OpARM64F64ConvertI32U:
+		return wasm.InstrF64ConvertI32U
+	case OpAMD64F64ConvertI64S, OpARM64F64ConvertI64S:
+		return wasm.InstrF64ConvertI64S
+	case OpAMD64F64ConvertI64U, OpARM64F64ConvertI64U:
+		return wasm.InstrF64ConvertI64U
+	case OpAMD64F64PromoteF32, OpARM64F64PromoteF32:
+		return wasm.InstrF64PromoteF32
+	case OpAMD64I32ReinterpretF32, OpARM64I32ReinterpretF32:
+		return wasm.InstrI32ReinterpretF32
+	case OpAMD64I64ReinterpretF64, OpARM64I64ReinterpretF64:
+		return wasm.InstrI64ReinterpretF64
+	case OpAMD64F32ReinterpretI32, OpARM64F32ReinterpretI32:
+		return wasm.InstrF32ReinterpretI32
+	case OpAMD64F64ReinterpretI64, OpARM64F64ReinterpretI64:
+		return wasm.InstrF64ReinterpretI64
+	case OpAMD64I32TruncF32S, OpARM64I32TruncF32S:
+		return wasm.InstrI32TruncF32S
+	case OpAMD64I32TruncF32U, OpARM64I32TruncF32U:
+		return wasm.InstrI32TruncF32U
+	case OpAMD64I32TruncF64S, OpARM64I32TruncF64S:
+		return wasm.InstrI32TruncF64S
+	case OpAMD64I32TruncF64U, OpARM64I32TruncF64U:
+		return wasm.InstrI32TruncF64U
+	case OpAMD64I64TruncF32S, OpARM64I64TruncF32S:
+		return wasm.InstrI64TruncF32S
+	case OpAMD64I64TruncF32U, OpARM64I64TruncF32U:
+		return wasm.InstrI64TruncF32U
+	case OpAMD64I64TruncF64S, OpARM64I64TruncF64S:
+		return wasm.InstrI64TruncF64S
+	case OpAMD64I64TruncF64U, OpARM64I64TruncF64U:
+		return wasm.InstrI64TruncF64U
+	case OpAMD64I32TruncSatF32S, OpARM64I32TruncSatF32S:
+		return wasm.InstrI32TruncSatF32S
+	case OpAMD64I32TruncSatF32U, OpARM64I32TruncSatF32U:
+		return wasm.InstrI32TruncSatF32U
+	case OpAMD64I32TruncSatF64S, OpARM64I32TruncSatF64S:
+		return wasm.InstrI32TruncSatF64S
+	case OpAMD64I32TruncSatF64U, OpARM64I32TruncSatF64U:
+		return wasm.InstrI32TruncSatF64U
+	case OpAMD64I64TruncSatF32S, OpARM64I64TruncSatF32S:
+		return wasm.InstrI64TruncSatF32S
+	case OpAMD64I64TruncSatF32U, OpARM64I64TruncSatF32U:
+		return wasm.InstrI64TruncSatF32U
+	case OpAMD64I64TruncSatF64S, OpARM64I64TruncSatF64S:
+		return wasm.InstrI64TruncSatF64S
+	case OpAMD64I64TruncSatF64U, OpARM64I64TruncSatF64U:
+		return wasm.InstrI64TruncSatF64U
+	case OpAMD64RefI31, OpARM64RefI31:
+		return wasm.InstrRefI31
+	case OpAMD64I31GetS, OpARM64I31GetS:
+		return wasm.InstrI31GetS
+	case OpAMD64I31GetU, OpARM64I31GetU:
+		return wasm.InstrI31GetU
+	case OpAMD64AnyConvertExtern, OpARM64AnyConvertExtern:
+		return wasm.InstrAnyConvertExtern
+	case OpAMD64ExternConvertAny, OpARM64ExternConvertAny:
+		return wasm.InstrExternConvertAny
+	case OpAMD64RefTest, OpARM64RefTest:
+		return wasm.InstrRefTest
+	case OpAMD64RefCast, OpARM64RefCast:
+		return wasm.InstrRefCast
+	case OpAMD64BrOnCast, OpARM64BrOnCast:
+		return wasm.InstrBrOnCast
+	case OpAMD64BrOnCastFail, OpARM64BrOnCastFail:
+		return wasm.InstrBrOnCastFail
+	case OpAMD64StructGet, OpARM64StructGet:
+		return wasm.InstrStructGet
+	case OpAMD64StructGetS, OpARM64StructGetS:
+		return wasm.InstrStructGetS
+	case OpAMD64StructGetU, OpARM64StructGetU:
+		return wasm.InstrStructGetU
+	case OpAMD64StructSet, OpARM64StructSet:
+		return wasm.InstrStructSet
+	case OpAMD64StructNew, OpARM64StructNew:
+		return wasm.InstrStructNew
+	case OpAMD64StructNewDefault, OpARM64StructNewDefault:
+		return wasm.InstrStructNewDefault
+	case OpAMD64ArrayGet, OpARM64ArrayGet:
+		return wasm.InstrArrayGet
+	case OpAMD64ArrayGetS, OpARM64ArrayGetS:
+		return wasm.InstrArrayGetS
+	case OpAMD64ArrayGetU, OpARM64ArrayGetU:
+		return wasm.InstrArrayGetU
+	case OpAMD64ArraySet, OpARM64ArraySet:
+		return wasm.InstrArraySet
+	case OpAMD64ArrayLen, OpARM64ArrayLen:
+		return wasm.InstrArrayLen
+	case OpAMD64ArrayNew, OpARM64ArrayNew:
+		return wasm.InstrArrayNew
+	case OpAMD64ArrayNewDefault, OpARM64ArrayNewDefault:
+		return wasm.InstrArrayNewDefault
+	case OpAMD64ArrayNewFixed, OpARM64ArrayNewFixed:
+		return wasm.InstrArrayNewFixed
+	case OpAMD64ArrayNewData, OpARM64ArrayNewData:
+		return wasm.InstrArrayNewData
+	case OpAMD64ArrayNewElem, OpARM64ArrayNewElem:
+		return wasm.InstrArrayNewElem
+	case OpAMD64ArrayFill, OpARM64ArrayFill:
+		return wasm.InstrArrayFill
+	case OpAMD64ArrayCopy, OpARM64ArrayCopy:
+		return wasm.InstrArrayCopy
+	case OpAMD64ArrayInitData, OpARM64ArrayInitData:
+		return wasm.InstrArrayInitData
+	case OpAMD64ArrayInitElem, OpARM64ArrayInitElem:
+		return wasm.InstrArrayInitElem
+	case OpAMD64DataDrop, OpARM64DataDrop:
+		return wasm.InstrDataDrop
+	case OpAMD64ElemDrop, OpARM64ElemDrop:
+		return wasm.InstrElemDrop
+	case OpAMD64F32EqScalar, OpARM64F32EqScalar:
+		return wasm.InstrF32Eq
+	case OpAMD64F64EqScalar, OpARM64F64EqScalar:
+		return wasm.InstrF64Eq
+	case OpAMD64F32NeScalar, OpARM64F32NeScalar:
+		return wasm.InstrF32Ne
+	case OpAMD64F64NeScalar, OpARM64F64NeScalar:
+		return wasm.InstrF64Ne
+	case OpAMD64F32LtScalar, OpARM64F32LtScalar:
+		return wasm.InstrF32Lt
+	case OpAMD64F64LtScalar, OpARM64F64LtScalar:
+		return wasm.InstrF64Lt
+	case OpAMD64F32GtScalar, OpARM64F32GtScalar:
+		return wasm.InstrF32Gt
+	case OpAMD64F64GtScalar, OpARM64F64GtScalar:
+		return wasm.InstrF64Gt
+	case OpAMD64F32LeScalar, OpARM64F32LeScalar:
+		return wasm.InstrF32Le
+	case OpAMD64F64LeScalar, OpARM64F64LeScalar:
+		return wasm.InstrF64Le
+	case OpAMD64F32GeScalar, OpARM64F32GeScalar:
+		return wasm.InstrF32Ge
+	case OpAMD64F64GeScalar, OpARM64F64GeScalar:
+		return wasm.InstrF64Ge
+	case OpAMD64I32DivS, OpARM64I32DivS:
+		return wasm.InstrI32DivS
+	case OpAMD64I32DivU, OpARM64I32DivU:
+		return wasm.InstrI32DivU
+	case OpAMD64I32RemS, OpARM64I32RemS:
+		return wasm.InstrI32RemS
+	case OpAMD64I32RemU, OpARM64I32RemU:
+		return wasm.InstrI32RemU
+	case OpAMD64I64DivS, OpARM64I64DivS:
+		return wasm.InstrI64DivS
+	case OpAMD64I64DivU, OpARM64I64DivU:
+		return wasm.InstrI64DivU
+	case OpAMD64I64RemS, OpARM64I64RemS:
+		return wasm.InstrI64RemS
+	case OpAMD64I64RemU, OpARM64I64RemU:
+		return wasm.InstrI64RemU
+	case OpAMD64I32Eqz, OpARM64I32Eqz:
+		return wasm.InstrI32Eqz
+	case OpAMD64I64Eqz, OpARM64I64Eqz:
+		return wasm.InstrI64Eqz
+	case OpAMD64I32Eq, OpARM64I32Eq, OpARM64I32EqImmediate:
+		return wasm.InstrI32Eq
+	case OpAMD64I64Eq, OpARM64I64Eq, OpARM64I64EqImmediate:
+		return wasm.InstrI64Eq
+	case OpAMD64I32Ne, OpARM64I32Ne, OpARM64I32NeImmediate:
+		return wasm.InstrI32Ne
+	case OpAMD64I64Ne, OpARM64I64Ne, OpARM64I64NeImmediate:
+		return wasm.InstrI64Ne
+	case OpAMD64I32LtS, OpARM64I32LtS, OpARM64I32LtSImmediate:
+		return wasm.InstrI32LtS
+	case OpAMD64I64LtS, OpARM64I64LtS, OpARM64I64LtSImmediate:
+		return wasm.InstrI64LtS
+	case OpAMD64I32LtU, OpARM64I32LtU, OpARM64I32LtUImmediate:
+		return wasm.InstrI32LtU
+	case OpAMD64I64LtU, OpARM64I64LtU, OpARM64I64LtUImmediate:
+		return wasm.InstrI64LtU
+	case OpAMD64I32GtS, OpARM64I32GtS, OpARM64I32GtSImmediate:
+		return wasm.InstrI32GtS
+	case OpAMD64I64GtS, OpARM64I64GtS, OpARM64I64GtSImmediate:
+		return wasm.InstrI64GtS
+	case OpAMD64I32GtU, OpARM64I32GtU, OpARM64I32GtUImmediate:
+		return wasm.InstrI32GtU
+	case OpAMD64I64GtU, OpARM64I64GtU, OpARM64I64GtUImmediate:
+		return wasm.InstrI64GtU
+	case OpAMD64I32LeS, OpARM64I32LeS, OpARM64I32LeSImmediate:
+		return wasm.InstrI32LeS
+	case OpAMD64I64LeS, OpARM64I64LeS, OpARM64I64LeSImmediate:
+		return wasm.InstrI64LeS
+	case OpAMD64I32LeU, OpARM64I32LeU, OpARM64I32LeUImmediate:
+		return wasm.InstrI32LeU
+	case OpAMD64I64LeU, OpARM64I64LeU, OpARM64I64LeUImmediate:
+		return wasm.InstrI64LeU
+	case OpAMD64I32GeS, OpARM64I32GeS, OpARM64I32GeSImmediate:
+		return wasm.InstrI32GeS
+	case OpAMD64I64GeS, OpARM64I64GeS, OpARM64I64GeSImmediate:
+		return wasm.InstrI64GeS
+	case OpAMD64I32GeU, OpARM64I32GeU, OpARM64I32GeUImmediate:
+		return wasm.InstrI32GeU
+	case OpAMD64I64GeU, OpARM64I64GeU, OpARM64I64GeUImmediate:
+		return wasm.InstrI64GeU
+	case OpAMD64I8x16Bitmask, OpARM64I8x16Bitmask:
+		return wasm.InstrI8x16Bitmask
+	case OpAMD64I16x8Bitmask, OpARM64I16x8Bitmask:
+		return wasm.InstrI16x8Bitmask
+	case OpAMD64I32x4Bitmask, OpARM64I32x4Bitmask:
+		return wasm.InstrI32x4Bitmask
+	case OpAMD64I64x2Bitmask, OpARM64I64x2Bitmask:
+		return wasm.InstrI64x2Bitmask
+	default:
+		return op
+	}
+}
+
+// SelectedOpcodeTarget reports the only target on which a selected opcode is
+// legal. Generic operations return TargetInvalid.
+func SelectedOpcodeTarget(op MOpcode) Target {
+	switch {
+	case op >= OpAMD64V128Move && op < opAMD64SelectedEnd:
+		return TargetAMD64
+	case op >= OpARM64V128Move && op < opARM64SelectedEnd:
+		return TargetARM64
+	default:
+		return TargetInvalid
+	}
+}
+
+func selectedMemoryWidth(op MOpcode) uint8 {
+	switch op {
+	case OpAMD64V128Load, OpAMD64V128Store, OpARM64V128Load, OpARM64V128Store:
+		return 16
+	case OpAMD64V128Load8Splat, OpAMD64V128Load8Lane, OpAMD64V128Store8Lane,
+		OpARM64V128Load8Splat, OpARM64V128Load8Lane, OpARM64V128Store8Lane:
+		return 1
+	case OpAMD64V128Load16Splat, OpAMD64V128Load16Lane, OpAMD64V128Store16Lane,
+		OpARM64V128Load16Splat, OpARM64V128Load16Lane, OpARM64V128Store16Lane:
+		return 2
+	case OpAMD64V128Load32Splat, OpAMD64V128Load32Zero, OpAMD64V128Load32Lane, OpAMD64V128Store32Lane,
+		OpARM64V128Load32Splat, OpARM64V128Load32Zero, OpARM64V128Load32Lane, OpARM64V128Store32Lane:
+		return 4
+	case OpAMD64V128Load8x8S, OpAMD64V128Load8x8U, OpAMD64V128Load16x4S, OpAMD64V128Load16x4U,
+		OpAMD64V128Load32x2S, OpAMD64V128Load32x2U, OpAMD64V128Load64Splat, OpAMD64V128Load64Zero,
+		OpARM64V128Load8x8S, OpARM64V128Load8x8U, OpARM64V128Load16x4S, OpARM64V128Load16x4U,
+		OpARM64V128Load32x2S, OpARM64V128Load32x2U, OpARM64V128Load64Splat, OpARM64V128Load64Zero,
+		OpAMD64V128Load64Lane, OpAMD64V128Store64Lane, OpARM64V128Load64Lane, OpARM64V128Store64Lane:
+		return 8
+	default:
+		return scalarMemoryWidth(SemanticOpcode(op))
+	}
+}
+
+func isSelectedSIMDOpcode(op MOpcode) bool {
+	switch op {
+	case OpAMD64V128Move, OpAMD64V128Const, OpAMD64V128Load, OpAMD64V128Store,
+		OpAMD64V128And, OpAMD64V128Andnot, OpAMD64V128Or, OpAMD64V128Xor, OpAMD64V128Not, OpAMD64V128Bitselect,
+		OpAMD64I8x16Add, OpAMD64I8x16AddSatS, OpAMD64I8x16AddSatU, OpAMD64I8x16Sub, OpAMD64I8x16SubSatS, OpAMD64I8x16SubSatU,
+		OpAMD64I16x8Add, OpAMD64I16x8AddSatS, OpAMD64I16x8AddSatU, OpAMD64I16x8Sub, OpAMD64I16x8SubSatS, OpAMD64I16x8SubSatU,
+		OpAMD64I32x4Add, OpAMD64I32x4Sub, OpAMD64I64x2Add, OpAMD64I64x2Sub,
+		OpAMD64I8x16MinS, OpAMD64I8x16MinU, OpAMD64I8x16MaxS, OpAMD64I8x16MaxU, OpAMD64I8x16AvgrU,
+		OpAMD64I16x8Mul, OpAMD64I16x8MinS, OpAMD64I16x8MinU, OpAMD64I16x8MaxS, OpAMD64I16x8MaxU, OpAMD64I16x8AvgrU,
+		OpAMD64I32x4Mul, OpAMD64I32x4MinS, OpAMD64I32x4MinU, OpAMD64I32x4MaxS, OpAMD64I32x4MaxU,
+		OpAMD64I64x2Mul,
+		OpAMD64I8x16Abs, OpAMD64I8x16Neg, OpAMD64I16x8Abs, OpAMD64I16x8Neg,
+		OpAMD64I32x4Abs, OpAMD64I32x4Neg, OpAMD64I64x2Abs, OpAMD64I64x2Neg,
+		OpAMD64I8x16Eq, OpAMD64I8x16Ne, OpAMD64I16x8Eq, OpAMD64I16x8Ne,
+		OpAMD64I32x4Eq, OpAMD64I32x4Ne, OpAMD64I64x2Eq, OpAMD64I64x2Ne,
+		OpAMD64I8x16LtS, OpAMD64I8x16GtS, OpAMD64I8x16LeS, OpAMD64I8x16GeS,
+		OpAMD64I16x8LtS, OpAMD64I16x8GtS, OpAMD64I16x8LeS, OpAMD64I16x8GeS,
+		OpAMD64I32x4LtS, OpAMD64I32x4GtS, OpAMD64I32x4LeS, OpAMD64I32x4GeS,
+		OpAMD64I64x2LtS, OpAMD64I64x2GtS, OpAMD64I64x2LeS, OpAMD64I64x2GeS,
+		OpAMD64I8x16LtU, OpAMD64I8x16GtU, OpAMD64I8x16LeU, OpAMD64I8x16GeU,
+		OpAMD64I16x8LtU, OpAMD64I16x8GtU, OpAMD64I16x8LeU, OpAMD64I16x8GeU,
+		OpAMD64I32x4LtU, OpAMD64I32x4GtU, OpAMD64I32x4LeU, OpAMD64I32x4GeU,
+		OpAMD64I16x8Shl, OpAMD64I16x8ShrS, OpAMD64I16x8ShrU,
+		OpAMD64I32x4Shl, OpAMD64I32x4ShrS, OpAMD64I32x4ShrU, OpAMD64I64x2Shl, OpAMD64I64x2ShrU,
+		OpAMD64I8x16Splat, OpAMD64I16x8Splat, OpAMD64I32x4Splat, OpAMD64I64x2Splat, OpAMD64F32x4Splat, OpAMD64F64x2Splat,
+		OpAMD64I8x16ExtractLaneS, OpAMD64I8x16ExtractLaneU, OpAMD64I8x16ReplaceLane,
+		OpAMD64I16x8ExtractLaneS, OpAMD64I16x8ExtractLaneU, OpAMD64I16x8ReplaceLane,
+		OpAMD64I32x4ExtractLane, OpAMD64I32x4ReplaceLane, OpAMD64I64x2ExtractLane, OpAMD64I64x2ReplaceLane,
+		OpAMD64F32x4ExtractLane, OpAMD64F32x4ReplaceLane, OpAMD64F64x2ExtractLane, OpAMD64F64x2ReplaceLane,
+		OpAMD64I8x16NarrowI16x8S, OpAMD64I8x16NarrowI16x8U, OpAMD64I16x8NarrowI32x4S, OpAMD64I16x8NarrowI32x4U,
+		OpAMD64I16x8ExtendLowI8x16S, OpAMD64I16x8ExtendHighI8x16S, OpAMD64I16x8ExtendLowI8x16U, OpAMD64I16x8ExtendHighI8x16U,
+		OpAMD64I32x4ExtendLowI16x8S, OpAMD64I32x4ExtendHighI16x8S, OpAMD64I32x4ExtendLowI16x8U, OpAMD64I32x4ExtendHighI16x8U,
+		OpAMD64I64x2ExtendLowI32x4S, OpAMD64I64x2ExtendHighI32x4S, OpAMD64I64x2ExtendLowI32x4U, OpAMD64I64x2ExtendHighI32x4U,
+		OpAMD64I16x8ExtmulLowI8x16S, OpAMD64I16x8ExtmulHighI8x16S, OpAMD64I16x8ExtmulLowI8x16U, OpAMD64I16x8ExtmulHighI8x16U,
+		OpAMD64I32x4ExtmulLowI16x8S, OpAMD64I32x4ExtmulHighI16x8S, OpAMD64I32x4ExtmulLowI16x8U, OpAMD64I32x4ExtmulHighI16x8U,
+		OpAMD64I64x2ExtmulLowI32x4S, OpAMD64I64x2ExtmulHighI32x4S, OpAMD64I64x2ExtmulLowI32x4U, OpAMD64I64x2ExtmulHighI32x4U,
+		OpAMD64I8x16Shuffle, OpAMD64I8x16Swizzle,
+		OpAMD64V128AnyTrue, OpAMD64I8x16AllTrue, OpAMD64I16x8AllTrue, OpAMD64I32x4AllTrue, OpAMD64I64x2AllTrue,
+		OpAMD64I8x16Bitmask, OpAMD64I16x8Bitmask, OpAMD64I32x4Bitmask, OpAMD64I64x2Bitmask,
+		OpAMD64I16x8ExtaddPairwiseI8x16S, OpAMD64I16x8ExtaddPairwiseI8x16U,
+		OpAMD64I32x4ExtaddPairwiseI16x8S, OpAMD64I32x4ExtaddPairwiseI16x8U, OpAMD64I32x4DotI16x8S,
+		OpAMD64F32x4Eq, OpAMD64F32x4Ne, OpAMD64F32x4Lt, OpAMD64F32x4Gt, OpAMD64F32x4Le, OpAMD64F32x4Ge,
+		OpAMD64F64x2Eq, OpAMD64F64x2Ne, OpAMD64F64x2Lt, OpAMD64F64x2Gt, OpAMD64F64x2Le, OpAMD64F64x2Ge,
+		OpAMD64F32x4Abs, OpAMD64F32x4Neg, OpAMD64F32x4Sqrt, OpAMD64F32x4Add, OpAMD64F32x4Sub, OpAMD64F32x4Mul, OpAMD64F32x4Div,
+		OpAMD64F64x2Abs, OpAMD64F64x2Neg, OpAMD64F64x2Sqrt, OpAMD64F64x2Add, OpAMD64F64x2Sub, OpAMD64F64x2Mul, OpAMD64F64x2Div,
+		OpAMD64F32x4Min, OpAMD64F32x4Max, OpAMD64F32x4Pmin, OpAMD64F32x4Pmax,
+		OpAMD64F64x2Min, OpAMD64F64x2Max, OpAMD64F64x2Pmin, OpAMD64F64x2Pmax,
+		OpAMD64F32x4Ceil, OpAMD64F32x4Floor, OpAMD64F32x4Trunc, OpAMD64F32x4Nearest,
+		OpAMD64F64x2Ceil, OpAMD64F64x2Floor, OpAMD64F64x2Trunc, OpAMD64F64x2Nearest,
+		OpAMD64F32x4DemoteF64x2Zero, OpAMD64F64x2PromoteLowF32x4,
+		OpAMD64F32x4ConvertI32x4S, OpAMD64F32x4ConvertI32x4U, OpAMD64F64x2ConvertLowI32x4S, OpAMD64F64x2ConvertLowI32x4U,
+		OpAMD64I32x4TruncSatF32x4S, OpAMD64I32x4TruncSatF32x4U, OpAMD64I32x4TruncSatF64x2SZero, OpAMD64I32x4TruncSatF64x2UZero,
+		OpAMD64I8x16Popcnt, OpAMD64I16x8Q15mulrSatS,
+		OpAMD64I8x16Shl, OpAMD64I8x16ShrS, OpAMD64I8x16ShrU, OpAMD64I64x2ShrS,
+		OpAMD64V128Load8x8S, OpAMD64V128Load8x8U, OpAMD64V128Load16x4S, OpAMD64V128Load16x4U,
+		OpAMD64V128Load32x2S, OpAMD64V128Load32x2U, OpAMD64V128Load8Splat, OpAMD64V128Load16Splat,
+		OpAMD64V128Load32Splat, OpAMD64V128Load64Splat, OpAMD64V128Load32Zero, OpAMD64V128Load64Zero,
+		OpAMD64V128Load8Lane, OpAMD64V128Load16Lane, OpAMD64V128Load32Lane, OpAMD64V128Load64Lane,
+		OpAMD64V128Store8Lane, OpAMD64V128Store16Lane, OpAMD64V128Store32Lane, OpAMD64V128Store64Lane,
+		OpAMD64F32x4RelaxedMadd, OpAMD64F32x4RelaxedNmadd, OpAMD64F64x2RelaxedMadd, OpAMD64F64x2RelaxedNmadd,
+		OpAMD64I16x8RelaxedQ15mulrS, OpAMD64I16x8RelaxedDotI8x16I7x16S, OpAMD64I32x4RelaxedDotI8x16I7x16AddS,
+		OpARM64V128Move, OpARM64V128Const, OpARM64V128Load, OpARM64V128Store,
+		OpARM64V128And, OpARM64V128Andnot, OpARM64V128Or, OpARM64V128Xor, OpARM64V128Not, OpARM64V128Bitselect, OpARM64I32x4RotrImmediate,
+		OpARM64I8x16Add, OpARM64I8x16AddSatS, OpARM64I8x16AddSatU, OpARM64I8x16Sub, OpARM64I8x16SubSatS, OpARM64I8x16SubSatU,
+		OpARM64I16x8Add, OpARM64I16x8AddSatS, OpARM64I16x8AddSatU, OpARM64I16x8Sub, OpARM64I16x8SubSatS, OpARM64I16x8SubSatU,
+		OpARM64I32x4Add, OpARM64I32x4Sub, OpARM64I64x2Add, OpARM64I64x2Sub,
+		OpARM64I8x16MinS, OpARM64I8x16MinU, OpARM64I8x16MaxS, OpARM64I8x16MaxU, OpARM64I8x16AvgrU,
+		OpARM64I16x8Mul, OpARM64I16x8MinS, OpARM64I16x8MinU, OpARM64I16x8MaxS, OpARM64I16x8MaxU, OpARM64I16x8AvgrU,
+		OpARM64I32x4Mul, OpARM64I32x4MinS, OpARM64I32x4MinU, OpARM64I32x4MaxS, OpARM64I32x4MaxU,
+		OpARM64I64x2Mul,
+		OpARM64I8x16Abs, OpARM64I8x16Neg, OpARM64I16x8Abs, OpARM64I16x8Neg,
+		OpARM64I32x4Abs, OpARM64I32x4Neg, OpARM64I64x2Abs, OpARM64I64x2Neg,
+		OpARM64I8x16Eq, OpARM64I8x16Ne, OpARM64I16x8Eq, OpARM64I16x8Ne,
+		OpARM64I32x4Eq, OpARM64I32x4Ne, OpARM64I64x2Eq, OpARM64I64x2Ne,
+		OpARM64I8x16LtS, OpARM64I8x16GtS, OpARM64I8x16LeS, OpARM64I8x16GeS,
+		OpARM64I16x8LtS, OpARM64I16x8GtS, OpARM64I16x8LeS, OpARM64I16x8GeS,
+		OpARM64I32x4LtS, OpARM64I32x4GtS, OpARM64I32x4LeS, OpARM64I32x4GeS,
+		OpARM64I64x2LtS, OpARM64I64x2GtS, OpARM64I64x2LeS, OpARM64I64x2GeS,
+		OpARM64I8x16LtU, OpARM64I8x16GtU, OpARM64I8x16LeU, OpARM64I8x16GeU,
+		OpARM64I16x8LtU, OpARM64I16x8GtU, OpARM64I16x8LeU, OpARM64I16x8GeU,
+		OpARM64I32x4LtU, OpARM64I32x4GtU, OpARM64I32x4LeU, OpARM64I32x4GeU,
+		OpARM64I16x8Shl, OpARM64I16x8ShrS, OpARM64I16x8ShrU,
+		OpARM64I32x4Shl, OpARM64I32x4ShrS, OpARM64I32x4ShrU, OpARM64I64x2Shl, OpARM64I64x2ShrU,
+		OpARM64I8x16Splat, OpARM64I16x8Splat, OpARM64I32x4Splat, OpARM64I64x2Splat, OpARM64F32x4Splat, OpARM64F64x2Splat,
+		OpARM64I8x16ExtractLaneS, OpARM64I8x16ExtractLaneU, OpARM64I8x16ReplaceLane,
+		OpARM64I16x8ExtractLaneS, OpARM64I16x8ExtractLaneU, OpARM64I16x8ReplaceLane,
+		OpARM64I32x4ExtractLane, OpARM64I32x4ReplaceLane, OpARM64I64x2ExtractLane, OpARM64I64x2ReplaceLane,
+		OpARM64F32x4ExtractLane, OpARM64F32x4ReplaceLane, OpARM64F64x2ExtractLane, OpARM64F64x2ReplaceLane,
+		OpARM64I8x16NarrowI16x8S, OpARM64I8x16NarrowI16x8U, OpARM64I16x8NarrowI32x4S, OpARM64I16x8NarrowI32x4U,
+		OpARM64I16x8ExtendLowI8x16S, OpARM64I16x8ExtendHighI8x16S, OpARM64I16x8ExtendLowI8x16U, OpARM64I16x8ExtendHighI8x16U,
+		OpARM64I32x4ExtendLowI16x8S, OpARM64I32x4ExtendHighI16x8S, OpARM64I32x4ExtendLowI16x8U, OpARM64I32x4ExtendHighI16x8U,
+		OpARM64I64x2ExtendLowI32x4S, OpARM64I64x2ExtendHighI32x4S, OpARM64I64x2ExtendLowI32x4U, OpARM64I64x2ExtendHighI32x4U,
+		OpARM64I16x8ExtmulLowI8x16S, OpARM64I16x8ExtmulHighI8x16S, OpARM64I16x8ExtmulLowI8x16U, OpARM64I16x8ExtmulHighI8x16U,
+		OpARM64I32x4ExtmulLowI16x8S, OpARM64I32x4ExtmulHighI16x8S, OpARM64I32x4ExtmulLowI16x8U, OpARM64I32x4ExtmulHighI16x8U,
+		OpARM64I64x2ExtmulLowI32x4S, OpARM64I64x2ExtmulHighI32x4S, OpARM64I64x2ExtmulLowI32x4U, OpARM64I64x2ExtmulHighI32x4U,
+		OpARM64I8x16Shuffle, OpARM64I8x16Swizzle,
+		OpARM64V128AnyTrue, OpARM64I8x16AllTrue, OpARM64I16x8AllTrue, OpARM64I32x4AllTrue, OpARM64I64x2AllTrue,
+		OpARM64I8x16Bitmask, OpARM64I16x8Bitmask, OpARM64I32x4Bitmask, OpARM64I64x2Bitmask,
+		OpARM64I16x8ExtaddPairwiseI8x16S, OpARM64I16x8ExtaddPairwiseI8x16U,
+		OpARM64I32x4ExtaddPairwiseI16x8S, OpARM64I32x4ExtaddPairwiseI16x8U, OpARM64I32x4DotI16x8S,
+		OpARM64F32x4Eq, OpARM64F32x4Ne, OpARM64F32x4Lt, OpARM64F32x4Gt, OpARM64F32x4Le, OpARM64F32x4Ge,
+		OpARM64F64x2Eq, OpARM64F64x2Ne, OpARM64F64x2Lt, OpARM64F64x2Gt, OpARM64F64x2Le, OpARM64F64x2Ge,
+		OpARM64F32x4Abs, OpARM64F32x4Neg, OpARM64F32x4Sqrt, OpARM64F32x4Add, OpARM64F32x4Sub, OpARM64F32x4Mul, OpARM64F32x4Div,
+		OpARM64F64x2Abs, OpARM64F64x2Neg, OpARM64F64x2Sqrt, OpARM64F64x2Add, OpARM64F64x2Sub, OpARM64F64x2Mul, OpARM64F64x2Div,
+		OpARM64F32x4Min, OpARM64F32x4Max, OpARM64F32x4Pmin, OpARM64F32x4Pmax,
+		OpARM64F64x2Min, OpARM64F64x2Max, OpARM64F64x2Pmin, OpARM64F64x2Pmax,
+		OpARM64F32x4Ceil, OpARM64F32x4Floor, OpARM64F32x4Trunc, OpARM64F32x4Nearest,
+		OpARM64F64x2Ceil, OpARM64F64x2Floor, OpARM64F64x2Trunc, OpARM64F64x2Nearest,
+		OpARM64F32x4DemoteF64x2Zero, OpARM64F64x2PromoteLowF32x4,
+		OpARM64F32x4ConvertI32x4S, OpARM64F32x4ConvertI32x4U, OpARM64F64x2ConvertLowI32x4S, OpARM64F64x2ConvertLowI32x4U,
+		OpARM64I32x4TruncSatF32x4S, OpARM64I32x4TruncSatF32x4U, OpARM64I32x4TruncSatF64x2SZero, OpARM64I32x4TruncSatF64x2UZero,
+		OpARM64I8x16Popcnt, OpARM64I16x8Q15mulrSatS,
+		OpARM64I8x16Shl, OpARM64I8x16ShrS, OpARM64I8x16ShrU, OpARM64I64x2ShrS,
+		OpARM64I8x16ShlImmediate, OpARM64I8x16ShrSImmediate, OpARM64I8x16ShrUImmediate,
+		OpARM64I16x8ShlImmediate, OpARM64I16x8ShrSImmediate, OpARM64I16x8ShrUImmediate,
+		OpARM64I32x4ShlImmediate, OpARM64I32x4ShrSImmediate, OpARM64I32x4ShrUImmediate,
+		OpARM64I64x2ShlImmediate, OpARM64I64x2ShrSImmediate, OpARM64I64x2ShrUImmediate,
+		OpARM64V128Load8x8S, OpARM64V128Load8x8U, OpARM64V128Load16x4S, OpARM64V128Load16x4U,
+		OpARM64V128Load32x2S, OpARM64V128Load32x2U, OpARM64V128Load8Splat, OpARM64V128Load16Splat,
+		OpARM64V128Load32Splat, OpARM64V128Load64Splat, OpARM64V128Load32Zero, OpARM64V128Load64Zero,
+		OpARM64V128Load8Lane, OpARM64V128Load16Lane, OpARM64V128Load32Lane, OpARM64V128Load64Lane,
+		OpARM64V128Store8Lane, OpARM64V128Store16Lane, OpARM64V128Store32Lane, OpARM64V128Store64Lane,
+		OpARM64F32x4RelaxedMadd, OpARM64F32x4RelaxedNmadd, OpARM64F64x2RelaxedMadd, OpARM64F64x2RelaxedNmadd,
+		OpARM64I16x8RelaxedQ15mulrS, OpARM64I16x8RelaxedDotI8x16I7x16S, OpARM64I32x4RelaxedDotI8x16I7x16AddS:
+		return true
+	default:
+		return false
+	}
+}
+
+// SelectTargetOpcodes refines generic machine operations in place after
+// target-independent scheduling and allocation have completed. The finalizer
+// therefore receives an explicit target operation rather than re-selecting a
+// Wasm opcode.
+func SelectTargetOpcodes(f *Func) (int, error) {
+	if err := Verify(f); err != nil {
+		return 0, err
+	}
+	selected := 0
+	for index := range f.Insts {
+		instruction := &f.Insts[index]
+		var amd64, arm64 MOpcode
+		switch instruction.Op {
+		case wasm.InstrV128Const:
+			amd64, arm64 = OpAMD64V128Const, OpARM64V128Const
+		case wasm.InstrI32Load:
+			amd64, arm64 = OpAMD64I32Load, OpARM64I32Load
+		case wasm.InstrI64Load:
+			amd64, arm64 = OpAMD64I64Load, OpARM64I64Load
+		case wasm.InstrF32Load:
+			amd64, arm64 = OpAMD64F32Load, OpARM64F32Load
+		case wasm.InstrF64Load:
+			amd64, arm64 = OpAMD64F64Load, OpARM64F64Load
+		case wasm.InstrI32Load8S:
+			amd64, arm64 = OpAMD64I32Load8S, OpARM64I32Load8S
+		case wasm.InstrI32Load8U:
+			amd64, arm64 = OpAMD64I32Load8U, OpARM64I32Load8U
+		case wasm.InstrI32Load16S:
+			amd64, arm64 = OpAMD64I32Load16S, OpARM64I32Load16S
+		case wasm.InstrI32Load16U:
+			amd64, arm64 = OpAMD64I32Load16U, OpARM64I32Load16U
+		case wasm.InstrI64Load8S:
+			amd64, arm64 = OpAMD64I64Load8S, OpARM64I64Load8S
+		case wasm.InstrI64Load8U:
+			amd64, arm64 = OpAMD64I64Load8U, OpARM64I64Load8U
+		case wasm.InstrI64Load16S:
+			amd64, arm64 = OpAMD64I64Load16S, OpARM64I64Load16S
+		case wasm.InstrI64Load16U:
+			amd64, arm64 = OpAMD64I64Load16U, OpARM64I64Load16U
+		case wasm.InstrI64Load32S:
+			amd64, arm64 = OpAMD64I64Load32S, OpARM64I64Load32S
+		case wasm.InstrI64Load32U:
+			amd64, arm64 = OpAMD64I64Load32U, OpARM64I64Load32U
+		case wasm.InstrI32Store:
+			amd64, arm64 = OpAMD64I32Store, OpARM64I32Store
+		case wasm.InstrI64Store:
+			amd64, arm64 = OpAMD64I64Store, OpARM64I64Store
+		case wasm.InstrF32Store:
+			amd64, arm64 = OpAMD64F32Store, OpARM64F32Store
+		case wasm.InstrF64Store:
+			amd64, arm64 = OpAMD64F64Store, OpARM64F64Store
+		case wasm.InstrI32Store8:
+			amd64, arm64 = OpAMD64I32Store8, OpARM64I32Store8
+		case wasm.InstrI32Store16:
+			amd64, arm64 = OpAMD64I32Store16, OpARM64I32Store16
+		case wasm.InstrI64Store8:
+			amd64, arm64 = OpAMD64I64Store8, OpARM64I64Store8
+		case wasm.InstrI64Store16:
+			amd64, arm64 = OpAMD64I64Store16, OpARM64I64Store16
+		case wasm.InstrI64Store32:
+			amd64, arm64 = OpAMD64I64Store32, OpARM64I64Store32
+		case wasm.InstrI32Const:
+			amd64, arm64 = OpAMD64I32Const, OpARM64I32Const
+		case wasm.InstrI64Const:
+			amd64, arm64 = OpAMD64I64Const, OpARM64I64Const
+		case wasm.InstrF32Const:
+			amd64, arm64 = OpAMD64F32Const, OpARM64F32Const
+		case wasm.InstrF64Const:
+			amd64, arm64 = OpAMD64F64Const, OpARM64F64Const
+		case wasm.InstrGlobalGet:
+			amd64, arm64 = OpAMD64GlobalGet, OpARM64GlobalGet
+		case wasm.InstrGlobalSet:
+			amd64, arm64 = OpAMD64GlobalSet, OpARM64GlobalSet
+		case wasm.InstrSelect:
+			amd64, arm64 = OpAMD64Select, OpARM64Select
+		case wasm.InstrMemorySize:
+			amd64, arm64 = OpAMD64MemorySize, OpARM64MemorySize
+		case wasm.InstrMemoryGrow:
+			amd64, arm64 = OpAMD64MemoryGrow, OpARM64MemoryGrow
+		case wasm.InstrMemoryCopy:
+			amd64, arm64 = OpAMD64MemoryCopy, OpARM64MemoryCopy
+		case wasm.InstrMemoryFill:
+			amd64, arm64 = OpAMD64MemoryFill, OpARM64MemoryFill
+		case wasm.InstrIf:
+			amd64, arm64 = OpAMD64If, OpARM64If
+		case wasm.InstrBr:
+			amd64, arm64 = OpAMD64Br, OpARM64Br
+		case wasm.InstrBrIf:
+			amd64, arm64 = OpAMD64BrIf, OpARM64BrIf
+		case wasm.InstrBrTable:
+			amd64, arm64 = OpAMD64BrTable, OpARM64BrTable
+		case wasm.InstrReturn:
+			amd64, arm64 = OpAMD64Return, OpARM64Return
+		case wasm.InstrUnreachable:
+			amd64, arm64 = OpAMD64Unreachable, OpARM64Unreachable
+		case wasm.InstrCall:
+			amd64, arm64 = OpAMD64Call, OpARM64Call
+		case wasm.InstrCallIndirect:
+			amd64, arm64 = OpAMD64CallIndirect, OpARM64CallIndirect
+		case wasm.InstrRefNull:
+			amd64, arm64 = OpAMD64RefNull, OpARM64RefNull
+		case wasm.InstrRefFunc:
+			amd64, arm64 = OpAMD64RefFunc, OpARM64RefFunc
+		case wasm.InstrRefIsNull:
+			amd64, arm64 = OpAMD64RefIsNull, OpARM64RefIsNull
+		case wasm.InstrRefEq:
+			amd64, arm64 = OpAMD64RefEq, OpARM64RefEq
+		case wasm.InstrRefAsNonNull:
+			amd64, arm64 = OpAMD64RefAsNonNull, OpARM64RefAsNonNull
+		case wasm.InstrI32Add:
+			amd64, arm64 = OpAMD64I32Add, OpARM64I32Add
+		case wasm.InstrI64Add:
+			amd64, arm64 = OpAMD64I64Add, OpARM64I64Add
+		case wasm.InstrI32Sub:
+			amd64, arm64 = OpAMD64I32Sub, OpARM64I32Sub
+		case wasm.InstrI64Sub:
+			amd64, arm64 = OpAMD64I64Sub, OpARM64I64Sub
+		case wasm.InstrI32And:
+			amd64, arm64 = OpAMD64I32And, OpARM64I32And
+		case wasm.InstrI64And:
+			amd64, arm64 = OpAMD64I64And, OpARM64I64And
+		case wasm.InstrI32Or:
+			amd64, arm64 = OpAMD64I32Or, OpARM64I32Or
+		case wasm.InstrI64Or:
+			amd64, arm64 = OpAMD64I64Or, OpARM64I64Or
+		case wasm.InstrI32Xor:
+			amd64, arm64 = OpAMD64I32Xor, OpARM64I32Xor
+		case wasm.InstrI64Xor:
+			amd64, arm64 = OpAMD64I64Xor, OpARM64I64Xor
+		case wasm.InstrI32Mul:
+			amd64, arm64 = OpAMD64I32Mul, OpARM64I32Mul
+		case wasm.InstrI64Mul:
+			amd64, arm64 = OpAMD64I64Mul, OpARM64I64Mul
+		case wasm.InstrI32Shl:
+			amd64, arm64 = OpAMD64I32Shl, OpARM64I32Shl
+		case wasm.InstrI64Shl:
+			amd64, arm64 = OpAMD64I64Shl, OpARM64I64Shl
+		case wasm.InstrI32ShrS:
+			amd64, arm64 = OpAMD64I32ShrS, OpARM64I32ShrS
+		case wasm.InstrI64ShrS:
+			amd64, arm64 = OpAMD64I64ShrS, OpARM64I64ShrS
+		case wasm.InstrI32ShrU:
+			amd64, arm64 = OpAMD64I32ShrU, OpARM64I32ShrU
+		case wasm.InstrI64ShrU:
+			amd64, arm64 = OpAMD64I64ShrU, OpARM64I64ShrU
+		case wasm.InstrI32Rotl:
+			amd64, arm64 = OpAMD64I32Rotl, OpARM64I32Rotl
+		case wasm.InstrI64Rotl:
+			amd64, arm64 = OpAMD64I64Rotl, OpARM64I64Rotl
+		case wasm.InstrI32Rotr:
+			amd64, arm64 = OpAMD64I32Rotr, OpARM64I32Rotr
+		case wasm.InstrI64Rotr:
+			amd64, arm64 = OpAMD64I64Rotr, OpARM64I64Rotr
+		case wasm.InstrI32Clz:
+			amd64, arm64 = OpAMD64I32Clz, OpARM64I32Clz
+		case wasm.InstrI64Clz:
+			amd64, arm64 = OpAMD64I64Clz, OpARM64I64Clz
+		case wasm.InstrI32Ctz:
+			amd64, arm64 = OpAMD64I32Ctz, OpARM64I32Ctz
+		case wasm.InstrI64Ctz:
+			amd64, arm64 = OpAMD64I64Ctz, OpARM64I64Ctz
+		case wasm.InstrI32Popcnt:
+			amd64, arm64 = OpAMD64I32Popcnt, OpARM64I32Popcnt
+		case wasm.InstrI64Popcnt:
+			amd64, arm64 = OpAMD64I64Popcnt, OpARM64I64Popcnt
+		case wasm.InstrF32Add:
+			amd64, arm64 = OpAMD64F32AddScalar, OpARM64F32AddScalar
+		case wasm.InstrF64Add:
+			amd64, arm64 = OpAMD64F64AddScalar, OpARM64F64AddScalar
+		case wasm.InstrF32Sub:
+			amd64, arm64 = OpAMD64F32SubScalar, OpARM64F32SubScalar
+		case wasm.InstrF64Sub:
+			amd64, arm64 = OpAMD64F64SubScalar, OpARM64F64SubScalar
+		case wasm.InstrF32Mul:
+			amd64, arm64 = OpAMD64F32MulScalar, OpARM64F32MulScalar
+		case wasm.InstrF64Mul:
+			amd64, arm64 = OpAMD64F64MulScalar, OpARM64F64MulScalar
+		case wasm.InstrF32Div:
+			amd64, arm64 = OpAMD64F32DivScalar, OpARM64F32DivScalar
+		case wasm.InstrF64Div:
+			amd64, arm64 = OpAMD64F64DivScalar, OpARM64F64DivScalar
+		case wasm.InstrF32Min:
+			amd64, arm64 = OpAMD64F32MinScalar, OpARM64F32MinScalar
+		case wasm.InstrF64Min:
+			amd64, arm64 = OpAMD64F64MinScalar, OpARM64F64MinScalar
+		case wasm.InstrF32Max:
+			amd64, arm64 = OpAMD64F32MaxScalar, OpARM64F32MaxScalar
+		case wasm.InstrF64Max:
+			amd64, arm64 = OpAMD64F64MaxScalar, OpARM64F64MaxScalar
+		case wasm.InstrF32Copysign:
+			amd64, arm64 = OpAMD64F32CopysignScalar, OpARM64F32CopysignScalar
+		case wasm.InstrF64Copysign:
+			amd64, arm64 = OpAMD64F64CopysignScalar, OpARM64F64CopysignScalar
+		case wasm.InstrF32Abs:
+			amd64, arm64 = OpAMD64F32AbsScalar, OpARM64F32AbsScalar
+		case wasm.InstrF64Abs:
+			amd64, arm64 = OpAMD64F64AbsScalar, OpARM64F64AbsScalar
+		case wasm.InstrF32Neg:
+			amd64, arm64 = OpAMD64F32NegScalar, OpARM64F32NegScalar
+		case wasm.InstrF64Neg:
+			amd64, arm64 = OpAMD64F64NegScalar, OpARM64F64NegScalar
+		case wasm.InstrF32Ceil:
+			amd64, arm64 = OpAMD64F32CeilScalar, OpARM64F32CeilScalar
+		case wasm.InstrF64Ceil:
+			amd64, arm64 = OpAMD64F64CeilScalar, OpARM64F64CeilScalar
+		case wasm.InstrF32Floor:
+			amd64, arm64 = OpAMD64F32FloorScalar, OpARM64F32FloorScalar
+		case wasm.InstrF64Floor:
+			amd64, arm64 = OpAMD64F64FloorScalar, OpARM64F64FloorScalar
+		case wasm.InstrF32Trunc:
+			amd64, arm64 = OpAMD64F32TruncScalar, OpARM64F32TruncScalar
+		case wasm.InstrF64Trunc:
+			amd64, arm64 = OpAMD64F64TruncScalar, OpARM64F64TruncScalar
+		case wasm.InstrF32Nearest:
+			amd64, arm64 = OpAMD64F32NearestScalar, OpARM64F32NearestScalar
+		case wasm.InstrF64Nearest:
+			amd64, arm64 = OpAMD64F64NearestScalar, OpARM64F64NearestScalar
+		case wasm.InstrF32Sqrt:
+			amd64, arm64 = OpAMD64F32SqrtScalar, OpARM64F32SqrtScalar
+		case wasm.InstrF64Sqrt:
+			amd64, arm64 = OpAMD64F64SqrtScalar, OpARM64F64SqrtScalar
+		case wasm.InstrI32WrapI64:
+			amd64, arm64 = OpAMD64I32WrapI64, OpARM64I32WrapI64
+		case wasm.InstrI64ExtendI32S:
+			amd64, arm64 = OpAMD64I64ExtendI32S, OpARM64I64ExtendI32S
+		case wasm.InstrI64ExtendI32U:
+			amd64, arm64 = OpAMD64I64ExtendI32U, OpARM64I64ExtendI32U
+		case wasm.InstrI32Extend8S:
+			amd64, arm64 = OpAMD64I32Extend8S, OpARM64I32Extend8S
+		case wasm.InstrI32Extend16S:
+			amd64, arm64 = OpAMD64I32Extend16S, OpARM64I32Extend16S
+		case wasm.InstrI64Extend8S:
+			amd64, arm64 = OpAMD64I64Extend8S, OpARM64I64Extend8S
+		case wasm.InstrI64Extend16S:
+			amd64, arm64 = OpAMD64I64Extend16S, OpARM64I64Extend16S
+		case wasm.InstrI64Extend32S:
+			amd64, arm64 = OpAMD64I64Extend32S, OpARM64I64Extend32S
+		case wasm.InstrF32ConvertI32S:
+			amd64, arm64 = OpAMD64F32ConvertI32S, OpARM64F32ConvertI32S
+		case wasm.InstrF32ConvertI32U:
+			amd64, arm64 = OpAMD64F32ConvertI32U, OpARM64F32ConvertI32U
+		case wasm.InstrF32ConvertI64S:
+			amd64, arm64 = OpAMD64F32ConvertI64S, OpARM64F32ConvertI64S
+		case wasm.InstrF32ConvertI64U:
+			amd64, arm64 = OpAMD64F32ConvertI64U, OpARM64F32ConvertI64U
+		case wasm.InstrF32DemoteF64:
+			amd64, arm64 = OpAMD64F32DemoteF64, OpARM64F32DemoteF64
+		case wasm.InstrF64ConvertI32S:
+			amd64, arm64 = OpAMD64F64ConvertI32S, OpARM64F64ConvertI32S
+		case wasm.InstrF64ConvertI32U:
+			amd64, arm64 = OpAMD64F64ConvertI32U, OpARM64F64ConvertI32U
+		case wasm.InstrF64ConvertI64S:
+			amd64, arm64 = OpAMD64F64ConvertI64S, OpARM64F64ConvertI64S
+		case wasm.InstrF64ConvertI64U:
+			amd64, arm64 = OpAMD64F64ConvertI64U, OpARM64F64ConvertI64U
+		case wasm.InstrF64PromoteF32:
+			amd64, arm64 = OpAMD64F64PromoteF32, OpARM64F64PromoteF32
+		case wasm.InstrI32ReinterpretF32:
+			amd64, arm64 = OpAMD64I32ReinterpretF32, OpARM64I32ReinterpretF32
+		case wasm.InstrI64ReinterpretF64:
+			amd64, arm64 = OpAMD64I64ReinterpretF64, OpARM64I64ReinterpretF64
+		case wasm.InstrF32ReinterpretI32:
+			amd64, arm64 = OpAMD64F32ReinterpretI32, OpARM64F32ReinterpretI32
+		case wasm.InstrF64ReinterpretI64:
+			amd64, arm64 = OpAMD64F64ReinterpretI64, OpARM64F64ReinterpretI64
+		case wasm.InstrI32TruncF32S:
+			amd64, arm64 = OpAMD64I32TruncF32S, OpARM64I32TruncF32S
+		case wasm.InstrI32TruncF32U:
+			amd64, arm64 = OpAMD64I32TruncF32U, OpARM64I32TruncF32U
+		case wasm.InstrI32TruncF64S:
+			amd64, arm64 = OpAMD64I32TruncF64S, OpARM64I32TruncF64S
+		case wasm.InstrI32TruncF64U:
+			amd64, arm64 = OpAMD64I32TruncF64U, OpARM64I32TruncF64U
+		case wasm.InstrI64TruncF32S:
+			amd64, arm64 = OpAMD64I64TruncF32S, OpARM64I64TruncF32S
+		case wasm.InstrI64TruncF32U:
+			amd64, arm64 = OpAMD64I64TruncF32U, OpARM64I64TruncF32U
+		case wasm.InstrI64TruncF64S:
+			amd64, arm64 = OpAMD64I64TruncF64S, OpARM64I64TruncF64S
+		case wasm.InstrI64TruncF64U:
+			amd64, arm64 = OpAMD64I64TruncF64U, OpARM64I64TruncF64U
+		case wasm.InstrI32TruncSatF32S:
+			amd64, arm64 = OpAMD64I32TruncSatF32S, OpARM64I32TruncSatF32S
+		case wasm.InstrI32TruncSatF32U:
+			amd64, arm64 = OpAMD64I32TruncSatF32U, OpARM64I32TruncSatF32U
+		case wasm.InstrI32TruncSatF64S:
+			amd64, arm64 = OpAMD64I32TruncSatF64S, OpARM64I32TruncSatF64S
+		case wasm.InstrI32TruncSatF64U:
+			amd64, arm64 = OpAMD64I32TruncSatF64U, OpARM64I32TruncSatF64U
+		case wasm.InstrI64TruncSatF32S:
+			amd64, arm64 = OpAMD64I64TruncSatF32S, OpARM64I64TruncSatF32S
+		case wasm.InstrI64TruncSatF32U:
+			amd64, arm64 = OpAMD64I64TruncSatF32U, OpARM64I64TruncSatF32U
+		case wasm.InstrI64TruncSatF64S:
+			amd64, arm64 = OpAMD64I64TruncSatF64S, OpARM64I64TruncSatF64S
+		case wasm.InstrI64TruncSatF64U:
+			amd64, arm64 = OpAMD64I64TruncSatF64U, OpARM64I64TruncSatF64U
+		case wasm.InstrRefI31:
+			amd64, arm64 = OpAMD64RefI31, OpARM64RefI31
+		case wasm.InstrI31GetS:
+			amd64, arm64 = OpAMD64I31GetS, OpARM64I31GetS
+		case wasm.InstrI31GetU:
+			amd64, arm64 = OpAMD64I31GetU, OpARM64I31GetU
+		case wasm.InstrAnyConvertExtern:
+			amd64, arm64 = OpAMD64AnyConvertExtern, OpARM64AnyConvertExtern
+		case wasm.InstrExternConvertAny:
+			amd64, arm64 = OpAMD64ExternConvertAny, OpARM64ExternConvertAny
+		case wasm.InstrRefTest:
+			amd64, arm64 = OpAMD64RefTest, OpARM64RefTest
+		case wasm.InstrRefCast:
+			amd64, arm64 = OpAMD64RefCast, OpARM64RefCast
+		case wasm.InstrBrOnCast:
+			amd64, arm64 = OpAMD64BrOnCast, OpARM64BrOnCast
+		case wasm.InstrBrOnCastFail:
+			amd64, arm64 = OpAMD64BrOnCastFail, OpARM64BrOnCastFail
+		case wasm.InstrStructGet:
+			amd64, arm64 = OpAMD64StructGet, OpARM64StructGet
+		case wasm.InstrStructGetS:
+			amd64, arm64 = OpAMD64StructGetS, OpARM64StructGetS
+		case wasm.InstrStructGetU:
+			amd64, arm64 = OpAMD64StructGetU, OpARM64StructGetU
+		case wasm.InstrStructSet:
+			amd64, arm64 = OpAMD64StructSet, OpARM64StructSet
+		case wasm.InstrStructNew:
+			amd64, arm64 = OpAMD64StructNew, OpARM64StructNew
+		case wasm.InstrStructNewDefault:
+			amd64, arm64 = OpAMD64StructNewDefault, OpARM64StructNewDefault
+		case wasm.InstrArrayGet:
+			amd64, arm64 = OpAMD64ArrayGet, OpARM64ArrayGet
+		case wasm.InstrArrayGetS:
+			amd64, arm64 = OpAMD64ArrayGetS, OpARM64ArrayGetS
+		case wasm.InstrArrayGetU:
+			amd64, arm64 = OpAMD64ArrayGetU, OpARM64ArrayGetU
+		case wasm.InstrArraySet:
+			amd64, arm64 = OpAMD64ArraySet, OpARM64ArraySet
+		case wasm.InstrArrayLen:
+			amd64, arm64 = OpAMD64ArrayLen, OpARM64ArrayLen
+		case wasm.InstrArrayNew:
+			amd64, arm64 = OpAMD64ArrayNew, OpARM64ArrayNew
+		case wasm.InstrArrayNewDefault:
+			amd64, arm64 = OpAMD64ArrayNewDefault, OpARM64ArrayNewDefault
+		case wasm.InstrArrayNewFixed:
+			amd64, arm64 = OpAMD64ArrayNewFixed, OpARM64ArrayNewFixed
+		case wasm.InstrArrayNewData:
+			amd64, arm64 = OpAMD64ArrayNewData, OpARM64ArrayNewData
+		case wasm.InstrArrayNewElem:
+			amd64, arm64 = OpAMD64ArrayNewElem, OpARM64ArrayNewElem
+		case wasm.InstrArrayFill:
+			amd64, arm64 = OpAMD64ArrayFill, OpARM64ArrayFill
+		case wasm.InstrArrayCopy:
+			amd64, arm64 = OpAMD64ArrayCopy, OpARM64ArrayCopy
+		case wasm.InstrArrayInitData:
+			amd64, arm64 = OpAMD64ArrayInitData, OpARM64ArrayInitData
+		case wasm.InstrArrayInitElem:
+			amd64, arm64 = OpAMD64ArrayInitElem, OpARM64ArrayInitElem
+		case wasm.InstrDataDrop:
+			amd64, arm64 = OpAMD64DataDrop, OpARM64DataDrop
+		case wasm.InstrElemDrop:
+			amd64, arm64 = OpAMD64ElemDrop, OpARM64ElemDrop
+		case wasm.InstrF32Eq:
+			amd64, arm64 = OpAMD64F32EqScalar, OpARM64F32EqScalar
+		case wasm.InstrF64Eq:
+			amd64, arm64 = OpAMD64F64EqScalar, OpARM64F64EqScalar
+		case wasm.InstrF32Ne:
+			amd64, arm64 = OpAMD64F32NeScalar, OpARM64F32NeScalar
+		case wasm.InstrF64Ne:
+			amd64, arm64 = OpAMD64F64NeScalar, OpARM64F64NeScalar
+		case wasm.InstrF32Lt:
+			amd64, arm64 = OpAMD64F32LtScalar, OpARM64F32LtScalar
+		case wasm.InstrF64Lt:
+			amd64, arm64 = OpAMD64F64LtScalar, OpARM64F64LtScalar
+		case wasm.InstrF32Gt:
+			amd64, arm64 = OpAMD64F32GtScalar, OpARM64F32GtScalar
+		case wasm.InstrF64Gt:
+			amd64, arm64 = OpAMD64F64GtScalar, OpARM64F64GtScalar
+		case wasm.InstrF32Le:
+			amd64, arm64 = OpAMD64F32LeScalar, OpARM64F32LeScalar
+		case wasm.InstrF64Le:
+			amd64, arm64 = OpAMD64F64LeScalar, OpARM64F64LeScalar
+		case wasm.InstrF32Ge:
+			amd64, arm64 = OpAMD64F32GeScalar, OpARM64F32GeScalar
+		case wasm.InstrF64Ge:
+			amd64, arm64 = OpAMD64F64GeScalar, OpARM64F64GeScalar
+		case wasm.InstrI32DivS:
+			amd64, arm64 = OpAMD64I32DivS, OpARM64I32DivS
+		case wasm.InstrI32DivU:
+			amd64, arm64 = OpAMD64I32DivU, OpARM64I32DivU
+		case wasm.InstrI32RemS:
+			amd64, arm64 = OpAMD64I32RemS, OpARM64I32RemS
+		case wasm.InstrI32RemU:
+			amd64, arm64 = OpAMD64I32RemU, OpARM64I32RemU
+		case wasm.InstrI64DivS:
+			amd64, arm64 = OpAMD64I64DivS, OpARM64I64DivS
+		case wasm.InstrI64DivU:
+			amd64, arm64 = OpAMD64I64DivU, OpARM64I64DivU
+		case wasm.InstrI64RemS:
+			amd64, arm64 = OpAMD64I64RemS, OpARM64I64RemS
+		case wasm.InstrI64RemU:
+			amd64, arm64 = OpAMD64I64RemU, OpARM64I64RemU
+		case wasm.InstrI32Eqz:
+			amd64, arm64 = OpAMD64I32Eqz, OpARM64I32Eqz
+		case wasm.InstrI64Eqz:
+			amd64, arm64 = OpAMD64I64Eqz, OpARM64I64Eqz
+		case wasm.InstrI32Eq:
+			amd64, arm64 = OpAMD64I32Eq, OpARM64I32Eq
+		case wasm.InstrI64Eq:
+			amd64, arm64 = OpAMD64I64Eq, OpARM64I64Eq
+		case wasm.InstrI32Ne:
+			amd64, arm64 = OpAMD64I32Ne, OpARM64I32Ne
+		case wasm.InstrI64Ne:
+			amd64, arm64 = OpAMD64I64Ne, OpARM64I64Ne
+		case wasm.InstrI32LtS:
+			amd64, arm64 = OpAMD64I32LtS, OpARM64I32LtS
+		case wasm.InstrI64LtS:
+			amd64, arm64 = OpAMD64I64LtS, OpARM64I64LtS
+		case wasm.InstrI32LtU:
+			amd64, arm64 = OpAMD64I32LtU, OpARM64I32LtU
+		case wasm.InstrI64LtU:
+			amd64, arm64 = OpAMD64I64LtU, OpARM64I64LtU
+		case wasm.InstrI32GtS:
+			amd64, arm64 = OpAMD64I32GtS, OpARM64I32GtS
+		case wasm.InstrI64GtS:
+			amd64, arm64 = OpAMD64I64GtS, OpARM64I64GtS
+		case wasm.InstrI32GtU:
+			amd64, arm64 = OpAMD64I32GtU, OpARM64I32GtU
+		case wasm.InstrI64GtU:
+			amd64, arm64 = OpAMD64I64GtU, OpARM64I64GtU
+		case wasm.InstrI32LeS:
+			amd64, arm64 = OpAMD64I32LeS, OpARM64I32LeS
+		case wasm.InstrI64LeS:
+			amd64, arm64 = OpAMD64I64LeS, OpARM64I64LeS
+		case wasm.InstrI32LeU:
+			amd64, arm64 = OpAMD64I32LeU, OpARM64I32LeU
+		case wasm.InstrI64LeU:
+			amd64, arm64 = OpAMD64I64LeU, OpARM64I64LeU
+		case wasm.InstrI32GeS:
+			amd64, arm64 = OpAMD64I32GeS, OpARM64I32GeS
+		case wasm.InstrI64GeS:
+			amd64, arm64 = OpAMD64I64GeS, OpARM64I64GeS
+		case wasm.InstrI32GeU:
+			amd64, arm64 = OpAMD64I32GeU, OpARM64I32GeU
+		case wasm.InstrI64GeU:
+			amd64, arm64 = OpAMD64I64GeU, OpARM64I64GeU
+		case wasm.InstrV128Load:
+			amd64, arm64 = OpAMD64V128Load, OpARM64V128Load
+		case wasm.InstrV128Load8x8S:
+			amd64, arm64 = OpAMD64V128Load8x8S, OpARM64V128Load8x8S
+		case wasm.InstrV128Load8x8U:
+			amd64, arm64 = OpAMD64V128Load8x8U, OpARM64V128Load8x8U
+		case wasm.InstrV128Load16x4S:
+			amd64, arm64 = OpAMD64V128Load16x4S, OpARM64V128Load16x4S
+		case wasm.InstrV128Load16x4U:
+			amd64, arm64 = OpAMD64V128Load16x4U, OpARM64V128Load16x4U
+		case wasm.InstrV128Load32x2S:
+			amd64, arm64 = OpAMD64V128Load32x2S, OpARM64V128Load32x2S
+		case wasm.InstrV128Load32x2U:
+			amd64, arm64 = OpAMD64V128Load32x2U, OpARM64V128Load32x2U
+		case wasm.InstrV128Load8Splat:
+			amd64, arm64 = OpAMD64V128Load8Splat, OpARM64V128Load8Splat
+		case wasm.InstrV128Load16Splat:
+			amd64, arm64 = OpAMD64V128Load16Splat, OpARM64V128Load16Splat
+		case wasm.InstrV128Load32Splat:
+			amd64, arm64 = OpAMD64V128Load32Splat, OpARM64V128Load32Splat
+		case wasm.InstrV128Load64Splat:
+			amd64, arm64 = OpAMD64V128Load64Splat, OpARM64V128Load64Splat
+		case wasm.InstrV128Load32Zero:
+			amd64, arm64 = OpAMD64V128Load32Zero, OpARM64V128Load32Zero
+		case wasm.InstrV128Load64Zero:
+			amd64, arm64 = OpAMD64V128Load64Zero, OpARM64V128Load64Zero
+		case wasm.InstrV128Load8Lane:
+			amd64, arm64 = OpAMD64V128Load8Lane, OpARM64V128Load8Lane
+		case wasm.InstrV128Load16Lane:
+			amd64, arm64 = OpAMD64V128Load16Lane, OpARM64V128Load16Lane
+		case wasm.InstrV128Load32Lane:
+			amd64, arm64 = OpAMD64V128Load32Lane, OpARM64V128Load32Lane
+		case wasm.InstrV128Load64Lane:
+			amd64, arm64 = OpAMD64V128Load64Lane, OpARM64V128Load64Lane
+		case wasm.InstrV128Store8Lane:
+			amd64, arm64 = OpAMD64V128Store8Lane, OpARM64V128Store8Lane
+		case wasm.InstrV128Store16Lane:
+			amd64, arm64 = OpAMD64V128Store16Lane, OpARM64V128Store16Lane
+		case wasm.InstrV128Store32Lane:
+			amd64, arm64 = OpAMD64V128Store32Lane, OpARM64V128Store32Lane
+		case wasm.InstrV128Store64Lane:
+			amd64, arm64 = OpAMD64V128Store64Lane, OpARM64V128Store64Lane
+		case wasm.InstrV128Store:
+			amd64, arm64 = OpAMD64V128Store, OpARM64V128Store
+		case wasm.InstrV128And:
+			amd64, arm64 = OpAMD64V128And, OpARM64V128And
+		case wasm.InstrV128Andnot:
+			amd64, arm64 = OpAMD64V128Andnot, OpARM64V128Andnot
+		case wasm.InstrV128Or:
+			amd64, arm64 = OpAMD64V128Or, OpARM64V128Or
+		case wasm.InstrV128Xor:
+			amd64, arm64 = OpAMD64V128Xor, OpARM64V128Xor
+		case wasm.InstrV128Not:
+			amd64, arm64 = OpAMD64V128Not, OpARM64V128Not
+		case wasm.InstrV128Bitselect:
+			amd64, arm64 = OpAMD64V128Bitselect, OpARM64V128Bitselect
+		case wasm.InstrI8x16Add:
+			amd64, arm64 = OpAMD64I8x16Add, OpARM64I8x16Add
+		case wasm.InstrI8x16AddSatS:
+			amd64, arm64 = OpAMD64I8x16AddSatS, OpARM64I8x16AddSatS
+		case wasm.InstrI8x16AddSatU:
+			amd64, arm64 = OpAMD64I8x16AddSatU, OpARM64I8x16AddSatU
+		case wasm.InstrI8x16Sub:
+			amd64, arm64 = OpAMD64I8x16Sub, OpARM64I8x16Sub
+		case wasm.InstrI8x16SubSatS:
+			amd64, arm64 = OpAMD64I8x16SubSatS, OpARM64I8x16SubSatS
+		case wasm.InstrI8x16SubSatU:
+			amd64, arm64 = OpAMD64I8x16SubSatU, OpARM64I8x16SubSatU
+		case wasm.InstrI16x8Add:
+			amd64, arm64 = OpAMD64I16x8Add, OpARM64I16x8Add
+		case wasm.InstrI16x8AddSatS:
+			amd64, arm64 = OpAMD64I16x8AddSatS, OpARM64I16x8AddSatS
+		case wasm.InstrI16x8AddSatU:
+			amd64, arm64 = OpAMD64I16x8AddSatU, OpARM64I16x8AddSatU
+		case wasm.InstrI16x8Sub:
+			amd64, arm64 = OpAMD64I16x8Sub, OpARM64I16x8Sub
+		case wasm.InstrI16x8SubSatS:
+			amd64, arm64 = OpAMD64I16x8SubSatS, OpARM64I16x8SubSatS
+		case wasm.InstrI16x8SubSatU:
+			amd64, arm64 = OpAMD64I16x8SubSatU, OpARM64I16x8SubSatU
+		case wasm.InstrI32x4Add:
+			amd64, arm64 = OpAMD64I32x4Add, OpARM64I32x4Add
+		case wasm.InstrI32x4Sub:
+			amd64, arm64 = OpAMD64I32x4Sub, OpARM64I32x4Sub
+		case wasm.InstrI64x2Add:
+			amd64, arm64 = OpAMD64I64x2Add, OpARM64I64x2Add
+		case wasm.InstrI64x2Sub:
+			amd64, arm64 = OpAMD64I64x2Sub, OpARM64I64x2Sub
+		case wasm.InstrI8x16MinS:
+			amd64, arm64 = OpAMD64I8x16MinS, OpARM64I8x16MinS
+		case wasm.InstrI8x16MinU:
+			amd64, arm64 = OpAMD64I8x16MinU, OpARM64I8x16MinU
+		case wasm.InstrI8x16MaxS:
+			amd64, arm64 = OpAMD64I8x16MaxS, OpARM64I8x16MaxS
+		case wasm.InstrI8x16MaxU:
+			amd64, arm64 = OpAMD64I8x16MaxU, OpARM64I8x16MaxU
+		case wasm.InstrI8x16AvgrU:
+			amd64, arm64 = OpAMD64I8x16AvgrU, OpARM64I8x16AvgrU
+		case wasm.InstrI16x8Mul:
+			amd64, arm64 = OpAMD64I16x8Mul, OpARM64I16x8Mul
+		case wasm.InstrI16x8MinS:
+			amd64, arm64 = OpAMD64I16x8MinS, OpARM64I16x8MinS
+		case wasm.InstrI16x8MinU:
+			amd64, arm64 = OpAMD64I16x8MinU, OpARM64I16x8MinU
+		case wasm.InstrI16x8MaxS:
+			amd64, arm64 = OpAMD64I16x8MaxS, OpARM64I16x8MaxS
+		case wasm.InstrI16x8MaxU:
+			amd64, arm64 = OpAMD64I16x8MaxU, OpARM64I16x8MaxU
+		case wasm.InstrI16x8AvgrU:
+			amd64, arm64 = OpAMD64I16x8AvgrU, OpARM64I16x8AvgrU
+		case wasm.InstrI32x4Mul:
+			amd64, arm64 = OpAMD64I32x4Mul, OpARM64I32x4Mul
+		case wasm.InstrI32x4MinS:
+			amd64, arm64 = OpAMD64I32x4MinS, OpARM64I32x4MinS
+		case wasm.InstrI32x4MinU:
+			amd64, arm64 = OpAMD64I32x4MinU, OpARM64I32x4MinU
+		case wasm.InstrI32x4MaxS:
+			amd64, arm64 = OpAMD64I32x4MaxS, OpARM64I32x4MaxS
+		case wasm.InstrI32x4MaxU:
+			amd64, arm64 = OpAMD64I32x4MaxU, OpARM64I32x4MaxU
+		case wasm.InstrI64x2Mul:
+			amd64, arm64 = OpAMD64I64x2Mul, OpARM64I64x2Mul
+		case wasm.InstrI8x16Abs:
+			amd64, arm64 = OpAMD64I8x16Abs, OpARM64I8x16Abs
+		case wasm.InstrI8x16Neg:
+			amd64, arm64 = OpAMD64I8x16Neg, OpARM64I8x16Neg
+		case wasm.InstrI16x8Abs:
+			amd64, arm64 = OpAMD64I16x8Abs, OpARM64I16x8Abs
+		case wasm.InstrI16x8Neg:
+			amd64, arm64 = OpAMD64I16x8Neg, OpARM64I16x8Neg
+		case wasm.InstrI32x4Abs:
+			amd64, arm64 = OpAMD64I32x4Abs, OpARM64I32x4Abs
+		case wasm.InstrI32x4Neg:
+			amd64, arm64 = OpAMD64I32x4Neg, OpARM64I32x4Neg
+		case wasm.InstrI64x2Abs:
+			amd64, arm64 = OpAMD64I64x2Abs, OpARM64I64x2Abs
+		case wasm.InstrI64x2Neg:
+			amd64, arm64 = OpAMD64I64x2Neg, OpARM64I64x2Neg
+		case wasm.InstrI8x16Eq:
+			amd64, arm64 = OpAMD64I8x16Eq, OpARM64I8x16Eq
+		case wasm.InstrI8x16Ne:
+			amd64, arm64 = OpAMD64I8x16Ne, OpARM64I8x16Ne
+		case wasm.InstrI16x8Eq:
+			amd64, arm64 = OpAMD64I16x8Eq, OpARM64I16x8Eq
+		case wasm.InstrI16x8Ne:
+			amd64, arm64 = OpAMD64I16x8Ne, OpARM64I16x8Ne
+		case wasm.InstrI32x4Eq:
+			amd64, arm64 = OpAMD64I32x4Eq, OpARM64I32x4Eq
+		case wasm.InstrI32x4Ne:
+			amd64, arm64 = OpAMD64I32x4Ne, OpARM64I32x4Ne
+		case wasm.InstrI64x2Eq:
+			amd64, arm64 = OpAMD64I64x2Eq, OpARM64I64x2Eq
+		case wasm.InstrI64x2Ne:
+			amd64, arm64 = OpAMD64I64x2Ne, OpARM64I64x2Ne
+		case wasm.InstrI8x16LtS:
+			amd64, arm64 = OpAMD64I8x16LtS, OpARM64I8x16LtS
+		case wasm.InstrI8x16GtS:
+			amd64, arm64 = OpAMD64I8x16GtS, OpARM64I8x16GtS
+		case wasm.InstrI8x16LeS:
+			amd64, arm64 = OpAMD64I8x16LeS, OpARM64I8x16LeS
+		case wasm.InstrI8x16GeS:
+			amd64, arm64 = OpAMD64I8x16GeS, OpARM64I8x16GeS
+		case wasm.InstrI16x8LtS:
+			amd64, arm64 = OpAMD64I16x8LtS, OpARM64I16x8LtS
+		case wasm.InstrI16x8GtS:
+			amd64, arm64 = OpAMD64I16x8GtS, OpARM64I16x8GtS
+		case wasm.InstrI16x8LeS:
+			amd64, arm64 = OpAMD64I16x8LeS, OpARM64I16x8LeS
+		case wasm.InstrI16x8GeS:
+			amd64, arm64 = OpAMD64I16x8GeS, OpARM64I16x8GeS
+		case wasm.InstrI32x4LtS:
+			amd64, arm64 = OpAMD64I32x4LtS, OpARM64I32x4LtS
+		case wasm.InstrI32x4GtS:
+			amd64, arm64 = OpAMD64I32x4GtS, OpARM64I32x4GtS
+		case wasm.InstrI32x4LeS:
+			amd64, arm64 = OpAMD64I32x4LeS, OpARM64I32x4LeS
+		case wasm.InstrI32x4GeS:
+			amd64, arm64 = OpAMD64I32x4GeS, OpARM64I32x4GeS
+		case wasm.InstrI64x2LtS:
+			amd64, arm64 = OpAMD64I64x2LtS, OpARM64I64x2LtS
+		case wasm.InstrI64x2GtS:
+			amd64, arm64 = OpAMD64I64x2GtS, OpARM64I64x2GtS
+		case wasm.InstrI64x2LeS:
+			amd64, arm64 = OpAMD64I64x2LeS, OpARM64I64x2LeS
+		case wasm.InstrI64x2GeS:
+			amd64, arm64 = OpAMD64I64x2GeS, OpARM64I64x2GeS
+		case wasm.InstrI8x16LtU:
+			amd64, arm64 = OpAMD64I8x16LtU, OpARM64I8x16LtU
+		case wasm.InstrI8x16GtU:
+			amd64, arm64 = OpAMD64I8x16GtU, OpARM64I8x16GtU
+		case wasm.InstrI8x16LeU:
+			amd64, arm64 = OpAMD64I8x16LeU, OpARM64I8x16LeU
+		case wasm.InstrI8x16GeU:
+			amd64, arm64 = OpAMD64I8x16GeU, OpARM64I8x16GeU
+		case wasm.InstrI16x8LtU:
+			amd64, arm64 = OpAMD64I16x8LtU, OpARM64I16x8LtU
+		case wasm.InstrI16x8GtU:
+			amd64, arm64 = OpAMD64I16x8GtU, OpARM64I16x8GtU
+		case wasm.InstrI16x8LeU:
+			amd64, arm64 = OpAMD64I16x8LeU, OpARM64I16x8LeU
+		case wasm.InstrI16x8GeU:
+			amd64, arm64 = OpAMD64I16x8GeU, OpARM64I16x8GeU
+		case wasm.InstrI32x4LtU:
+			amd64, arm64 = OpAMD64I32x4LtU, OpARM64I32x4LtU
+		case wasm.InstrI32x4GtU:
+			amd64, arm64 = OpAMD64I32x4GtU, OpARM64I32x4GtU
+		case wasm.InstrI32x4LeU:
+			amd64, arm64 = OpAMD64I32x4LeU, OpARM64I32x4LeU
+		case wasm.InstrI32x4GeU:
+			amd64, arm64 = OpAMD64I32x4GeU, OpARM64I32x4GeU
+		case wasm.InstrI16x8Shl:
+			amd64, arm64 = OpAMD64I16x8Shl, OpARM64I16x8Shl
+		case wasm.InstrI16x8ShrS:
+			amd64, arm64 = OpAMD64I16x8ShrS, OpARM64I16x8ShrS
+		case wasm.InstrI16x8ShrU:
+			amd64, arm64 = OpAMD64I16x8ShrU, OpARM64I16x8ShrU
+		case wasm.InstrI32x4Shl:
+			amd64, arm64 = OpAMD64I32x4Shl, OpARM64I32x4Shl
+		case wasm.InstrI32x4ShrS:
+			amd64, arm64 = OpAMD64I32x4ShrS, OpARM64I32x4ShrS
+		case wasm.InstrI32x4ShrU:
+			amd64, arm64 = OpAMD64I32x4ShrU, OpARM64I32x4ShrU
+		case wasm.InstrI64x2Shl:
+			amd64, arm64 = OpAMD64I64x2Shl, OpARM64I64x2Shl
+		case wasm.InstrI64x2ShrU:
+			amd64, arm64 = OpAMD64I64x2ShrU, OpARM64I64x2ShrU
+		case wasm.InstrI8x16Splat:
+			amd64, arm64 = OpAMD64I8x16Splat, OpARM64I8x16Splat
+		case wasm.InstrI16x8Splat:
+			amd64, arm64 = OpAMD64I16x8Splat, OpARM64I16x8Splat
+		case wasm.InstrI32x4Splat:
+			amd64, arm64 = OpAMD64I32x4Splat, OpARM64I32x4Splat
+		case wasm.InstrI64x2Splat:
+			amd64, arm64 = OpAMD64I64x2Splat, OpARM64I64x2Splat
+		case wasm.InstrF32x4Splat:
+			amd64, arm64 = OpAMD64F32x4Splat, OpARM64F32x4Splat
+		case wasm.InstrF64x2Splat:
+			amd64, arm64 = OpAMD64F64x2Splat, OpARM64F64x2Splat
+		case wasm.InstrI8x16ExtractLaneS:
+			amd64, arm64 = OpAMD64I8x16ExtractLaneS, OpARM64I8x16ExtractLaneS
+		case wasm.InstrI8x16ExtractLaneU:
+			amd64, arm64 = OpAMD64I8x16ExtractLaneU, OpARM64I8x16ExtractLaneU
+		case wasm.InstrI8x16ReplaceLane:
+			amd64, arm64 = OpAMD64I8x16ReplaceLane, OpARM64I8x16ReplaceLane
+		case wasm.InstrI16x8ExtractLaneS:
+			amd64, arm64 = OpAMD64I16x8ExtractLaneS, OpARM64I16x8ExtractLaneS
+		case wasm.InstrI16x8ExtractLaneU:
+			amd64, arm64 = OpAMD64I16x8ExtractLaneU, OpARM64I16x8ExtractLaneU
+		case wasm.InstrI16x8ReplaceLane:
+			amd64, arm64 = OpAMD64I16x8ReplaceLane, OpARM64I16x8ReplaceLane
+		case wasm.InstrI32x4ExtractLane:
+			amd64, arm64 = OpAMD64I32x4ExtractLane, OpARM64I32x4ExtractLane
+		case wasm.InstrI32x4ReplaceLane:
+			amd64, arm64 = OpAMD64I32x4ReplaceLane, OpARM64I32x4ReplaceLane
+		case wasm.InstrI64x2ExtractLane:
+			amd64, arm64 = OpAMD64I64x2ExtractLane, OpARM64I64x2ExtractLane
+		case wasm.InstrI64x2ReplaceLane:
+			amd64, arm64 = OpAMD64I64x2ReplaceLane, OpARM64I64x2ReplaceLane
+		case wasm.InstrF32x4ExtractLane:
+			amd64, arm64 = OpAMD64F32x4ExtractLane, OpARM64F32x4ExtractLane
+		case wasm.InstrF32x4ReplaceLane:
+			amd64, arm64 = OpAMD64F32x4ReplaceLane, OpARM64F32x4ReplaceLane
+		case wasm.InstrF64x2ExtractLane:
+			amd64, arm64 = OpAMD64F64x2ExtractLane, OpARM64F64x2ExtractLane
+		case wasm.InstrF64x2ReplaceLane:
+			amd64, arm64 = OpAMD64F64x2ReplaceLane, OpARM64F64x2ReplaceLane
+		case wasm.InstrI8x16NarrowI16x8S:
+			amd64, arm64 = OpAMD64I8x16NarrowI16x8S, OpARM64I8x16NarrowI16x8S
+		case wasm.InstrI8x16NarrowI16x8U:
+			amd64, arm64 = OpAMD64I8x16NarrowI16x8U, OpARM64I8x16NarrowI16x8U
+		case wasm.InstrI16x8NarrowI32x4S:
+			amd64, arm64 = OpAMD64I16x8NarrowI32x4S, OpARM64I16x8NarrowI32x4S
+		case wasm.InstrI16x8NarrowI32x4U:
+			amd64, arm64 = OpAMD64I16x8NarrowI32x4U, OpARM64I16x8NarrowI32x4U
+		case wasm.InstrI16x8ExtendLowI8x16S:
+			amd64, arm64 = OpAMD64I16x8ExtendLowI8x16S, OpARM64I16x8ExtendLowI8x16S
+		case wasm.InstrI16x8ExtendHighI8x16S:
+			amd64, arm64 = OpAMD64I16x8ExtendHighI8x16S, OpARM64I16x8ExtendHighI8x16S
+		case wasm.InstrI16x8ExtendLowI8x16U:
+			amd64, arm64 = OpAMD64I16x8ExtendLowI8x16U, OpARM64I16x8ExtendLowI8x16U
+		case wasm.InstrI16x8ExtendHighI8x16U:
+			amd64, arm64 = OpAMD64I16x8ExtendHighI8x16U, OpARM64I16x8ExtendHighI8x16U
+		case wasm.InstrI32x4ExtendLowI16x8S:
+			amd64, arm64 = OpAMD64I32x4ExtendLowI16x8S, OpARM64I32x4ExtendLowI16x8S
+		case wasm.InstrI32x4ExtendHighI16x8S:
+			amd64, arm64 = OpAMD64I32x4ExtendHighI16x8S, OpARM64I32x4ExtendHighI16x8S
+		case wasm.InstrI32x4ExtendLowI16x8U:
+			amd64, arm64 = OpAMD64I32x4ExtendLowI16x8U, OpARM64I32x4ExtendLowI16x8U
+		case wasm.InstrI32x4ExtendHighI16x8U:
+			amd64, arm64 = OpAMD64I32x4ExtendHighI16x8U, OpARM64I32x4ExtendHighI16x8U
+		case wasm.InstrI64x2ExtendLowI32x4S:
+			amd64, arm64 = OpAMD64I64x2ExtendLowI32x4S, OpARM64I64x2ExtendLowI32x4S
+		case wasm.InstrI64x2ExtendHighI32x4S:
+			amd64, arm64 = OpAMD64I64x2ExtendHighI32x4S, OpARM64I64x2ExtendHighI32x4S
+		case wasm.InstrI64x2ExtendLowI32x4U:
+			amd64, arm64 = OpAMD64I64x2ExtendLowI32x4U, OpARM64I64x2ExtendLowI32x4U
+		case wasm.InstrI64x2ExtendHighI32x4U:
+			amd64, arm64 = OpAMD64I64x2ExtendHighI32x4U, OpARM64I64x2ExtendHighI32x4U
+		case wasm.InstrI16x8ExtmulLowI8x16S:
+			amd64, arm64 = OpAMD64I16x8ExtmulLowI8x16S, OpARM64I16x8ExtmulLowI8x16S
+		case wasm.InstrI16x8ExtmulHighI8x16S:
+			amd64, arm64 = OpAMD64I16x8ExtmulHighI8x16S, OpARM64I16x8ExtmulHighI8x16S
+		case wasm.InstrI16x8ExtmulLowI8x16U:
+			amd64, arm64 = OpAMD64I16x8ExtmulLowI8x16U, OpARM64I16x8ExtmulLowI8x16U
+		case wasm.InstrI16x8ExtmulHighI8x16U:
+			amd64, arm64 = OpAMD64I16x8ExtmulHighI8x16U, OpARM64I16x8ExtmulHighI8x16U
+		case wasm.InstrI32x4ExtmulLowI16x8S:
+			amd64, arm64 = OpAMD64I32x4ExtmulLowI16x8S, OpARM64I32x4ExtmulLowI16x8S
+		case wasm.InstrI32x4ExtmulHighI16x8S:
+			amd64, arm64 = OpAMD64I32x4ExtmulHighI16x8S, OpARM64I32x4ExtmulHighI16x8S
+		case wasm.InstrI32x4ExtmulLowI16x8U:
+			amd64, arm64 = OpAMD64I32x4ExtmulLowI16x8U, OpARM64I32x4ExtmulLowI16x8U
+		case wasm.InstrI32x4ExtmulHighI16x8U:
+			amd64, arm64 = OpAMD64I32x4ExtmulHighI16x8U, OpARM64I32x4ExtmulHighI16x8U
+		case wasm.InstrI64x2ExtmulLowI32x4S:
+			amd64, arm64 = OpAMD64I64x2ExtmulLowI32x4S, OpARM64I64x2ExtmulLowI32x4S
+		case wasm.InstrI64x2ExtmulHighI32x4S:
+			amd64, arm64 = OpAMD64I64x2ExtmulHighI32x4S, OpARM64I64x2ExtmulHighI32x4S
+		case wasm.InstrI64x2ExtmulLowI32x4U:
+			amd64, arm64 = OpAMD64I64x2ExtmulLowI32x4U, OpARM64I64x2ExtmulLowI32x4U
+		case wasm.InstrI64x2ExtmulHighI32x4U:
+			amd64, arm64 = OpAMD64I64x2ExtmulHighI32x4U, OpARM64I64x2ExtmulHighI32x4U
+		case wasm.InstrI8x16Shuffle:
+			amd64, arm64 = OpAMD64I8x16Shuffle, OpARM64I8x16Shuffle
+		case wasm.InstrI8x16Swizzle:
+			amd64, arm64 = OpAMD64I8x16Swizzle, OpARM64I8x16Swizzle
+		case wasm.InstrV128AnyTrue:
+			amd64, arm64 = OpAMD64V128AnyTrue, OpARM64V128AnyTrue
+		case wasm.InstrI8x16AllTrue:
+			amd64, arm64 = OpAMD64I8x16AllTrue, OpARM64I8x16AllTrue
+		case wasm.InstrI16x8AllTrue:
+			amd64, arm64 = OpAMD64I16x8AllTrue, OpARM64I16x8AllTrue
+		case wasm.InstrI32x4AllTrue:
+			amd64, arm64 = OpAMD64I32x4AllTrue, OpARM64I32x4AllTrue
+		case wasm.InstrI64x2AllTrue:
+			amd64, arm64 = OpAMD64I64x2AllTrue, OpARM64I64x2AllTrue
+		case wasm.InstrI8x16Bitmask:
+			amd64, arm64 = OpAMD64I8x16Bitmask, OpARM64I8x16Bitmask
+		case wasm.InstrI16x8Bitmask:
+			amd64, arm64 = OpAMD64I16x8Bitmask, OpARM64I16x8Bitmask
+		case wasm.InstrI32x4Bitmask:
+			amd64, arm64 = OpAMD64I32x4Bitmask, OpARM64I32x4Bitmask
+		case wasm.InstrI64x2Bitmask:
+			amd64, arm64 = OpAMD64I64x2Bitmask, OpARM64I64x2Bitmask
+		case wasm.InstrI16x8ExtaddPairwiseI8x16S:
+			amd64, arm64 = OpAMD64I16x8ExtaddPairwiseI8x16S, OpARM64I16x8ExtaddPairwiseI8x16S
+		case wasm.InstrI16x8ExtaddPairwiseI8x16U:
+			amd64, arm64 = OpAMD64I16x8ExtaddPairwiseI8x16U, OpARM64I16x8ExtaddPairwiseI8x16U
+		case wasm.InstrI32x4ExtaddPairwiseI16x8S:
+			amd64, arm64 = OpAMD64I32x4ExtaddPairwiseI16x8S, OpARM64I32x4ExtaddPairwiseI16x8S
+		case wasm.InstrI32x4ExtaddPairwiseI16x8U:
+			amd64, arm64 = OpAMD64I32x4ExtaddPairwiseI16x8U, OpARM64I32x4ExtaddPairwiseI16x8U
+		case wasm.InstrI32x4DotI16x8S:
+			amd64, arm64 = OpAMD64I32x4DotI16x8S, OpARM64I32x4DotI16x8S
+		case wasm.InstrF32x4Eq:
+			amd64, arm64 = OpAMD64F32x4Eq, OpARM64F32x4Eq
+		case wasm.InstrF32x4Ne:
+			amd64, arm64 = OpAMD64F32x4Ne, OpARM64F32x4Ne
+		case wasm.InstrF32x4Lt:
+			amd64, arm64 = OpAMD64F32x4Lt, OpARM64F32x4Lt
+		case wasm.InstrF32x4Gt:
+			amd64, arm64 = OpAMD64F32x4Gt, OpARM64F32x4Gt
+		case wasm.InstrF32x4Le:
+			amd64, arm64 = OpAMD64F32x4Le, OpARM64F32x4Le
+		case wasm.InstrF32x4Ge:
+			amd64, arm64 = OpAMD64F32x4Ge, OpARM64F32x4Ge
+		case wasm.InstrF64x2Eq:
+			amd64, arm64 = OpAMD64F64x2Eq, OpARM64F64x2Eq
+		case wasm.InstrF64x2Ne:
+			amd64, arm64 = OpAMD64F64x2Ne, OpARM64F64x2Ne
+		case wasm.InstrF64x2Lt:
+			amd64, arm64 = OpAMD64F64x2Lt, OpARM64F64x2Lt
+		case wasm.InstrF64x2Gt:
+			amd64, arm64 = OpAMD64F64x2Gt, OpARM64F64x2Gt
+		case wasm.InstrF64x2Le:
+			amd64, arm64 = OpAMD64F64x2Le, OpARM64F64x2Le
+		case wasm.InstrF64x2Ge:
+			amd64, arm64 = OpAMD64F64x2Ge, OpARM64F64x2Ge
+		case wasm.InstrF32x4Abs:
+			amd64, arm64 = OpAMD64F32x4Abs, OpARM64F32x4Abs
+		case wasm.InstrF32x4Neg:
+			amd64, arm64 = OpAMD64F32x4Neg, OpARM64F32x4Neg
+		case wasm.InstrF32x4Sqrt:
+			amd64, arm64 = OpAMD64F32x4Sqrt, OpARM64F32x4Sqrt
+		case wasm.InstrF32x4Add:
+			amd64, arm64 = OpAMD64F32x4Add, OpARM64F32x4Add
+		case wasm.InstrF32x4Sub:
+			amd64, arm64 = OpAMD64F32x4Sub, OpARM64F32x4Sub
+		case wasm.InstrF32x4Mul:
+			amd64, arm64 = OpAMD64F32x4Mul, OpARM64F32x4Mul
+		case wasm.InstrF32x4Div:
+			amd64, arm64 = OpAMD64F32x4Div, OpARM64F32x4Div
+		case wasm.InstrF64x2Abs:
+			amd64, arm64 = OpAMD64F64x2Abs, OpARM64F64x2Abs
+		case wasm.InstrF64x2Neg:
+			amd64, arm64 = OpAMD64F64x2Neg, OpARM64F64x2Neg
+		case wasm.InstrF64x2Sqrt:
+			amd64, arm64 = OpAMD64F64x2Sqrt, OpARM64F64x2Sqrt
+		case wasm.InstrF64x2Add:
+			amd64, arm64 = OpAMD64F64x2Add, OpARM64F64x2Add
+		case wasm.InstrF64x2Sub:
+			amd64, arm64 = OpAMD64F64x2Sub, OpARM64F64x2Sub
+		case wasm.InstrF64x2Mul:
+			amd64, arm64 = OpAMD64F64x2Mul, OpARM64F64x2Mul
+		case wasm.InstrF64x2Div:
+			amd64, arm64 = OpAMD64F64x2Div, OpARM64F64x2Div
+		case wasm.InstrF32x4Min:
+			amd64, arm64 = OpAMD64F32x4Min, OpARM64F32x4Min
+		case wasm.InstrF32x4Max:
+			amd64, arm64 = OpAMD64F32x4Max, OpARM64F32x4Max
+		case wasm.InstrF32x4Pmin:
+			amd64, arm64 = OpAMD64F32x4Pmin, OpARM64F32x4Pmin
+		case wasm.InstrF32x4Pmax:
+			amd64, arm64 = OpAMD64F32x4Pmax, OpARM64F32x4Pmax
+		case wasm.InstrF64x2Min:
+			amd64, arm64 = OpAMD64F64x2Min, OpARM64F64x2Min
+		case wasm.InstrF64x2Max:
+			amd64, arm64 = OpAMD64F64x2Max, OpARM64F64x2Max
+		case wasm.InstrF64x2Pmin:
+			amd64, arm64 = OpAMD64F64x2Pmin, OpARM64F64x2Pmin
+		case wasm.InstrF64x2Pmax:
+			amd64, arm64 = OpAMD64F64x2Pmax, OpARM64F64x2Pmax
+		case wasm.InstrF32x4Ceil:
+			amd64, arm64 = OpAMD64F32x4Ceil, OpARM64F32x4Ceil
+		case wasm.InstrF32x4Floor:
+			amd64, arm64 = OpAMD64F32x4Floor, OpARM64F32x4Floor
+		case wasm.InstrF32x4Trunc:
+			amd64, arm64 = OpAMD64F32x4Trunc, OpARM64F32x4Trunc
+		case wasm.InstrF32x4Nearest:
+			amd64, arm64 = OpAMD64F32x4Nearest, OpARM64F32x4Nearest
+		case wasm.InstrF64x2Ceil:
+			amd64, arm64 = OpAMD64F64x2Ceil, OpARM64F64x2Ceil
+		case wasm.InstrF64x2Floor:
+			amd64, arm64 = OpAMD64F64x2Floor, OpARM64F64x2Floor
+		case wasm.InstrF64x2Trunc:
+			amd64, arm64 = OpAMD64F64x2Trunc, OpARM64F64x2Trunc
+		case wasm.InstrF64x2Nearest:
+			amd64, arm64 = OpAMD64F64x2Nearest, OpARM64F64x2Nearest
+		case wasm.InstrF32x4DemoteF64x2Zero:
+			amd64, arm64 = OpAMD64F32x4DemoteF64x2Zero, OpARM64F32x4DemoteF64x2Zero
+		case wasm.InstrF64x2PromoteLowF32x4:
+			amd64, arm64 = OpAMD64F64x2PromoteLowF32x4, OpARM64F64x2PromoteLowF32x4
+		case wasm.InstrF32x4ConvertI32x4S:
+			amd64, arm64 = OpAMD64F32x4ConvertI32x4S, OpARM64F32x4ConvertI32x4S
+		case wasm.InstrF32x4ConvertI32x4U:
+			amd64, arm64 = OpAMD64F32x4ConvertI32x4U, OpARM64F32x4ConvertI32x4U
+		case wasm.InstrF64x2ConvertLowI32x4S:
+			amd64, arm64 = OpAMD64F64x2ConvertLowI32x4S, OpARM64F64x2ConvertLowI32x4S
+		case wasm.InstrF64x2ConvertLowI32x4U:
+			amd64, arm64 = OpAMD64F64x2ConvertLowI32x4U, OpARM64F64x2ConvertLowI32x4U
+		case wasm.InstrI32x4TruncSatF32x4S:
+			amd64, arm64 = OpAMD64I32x4TruncSatF32x4S, OpARM64I32x4TruncSatF32x4S
+		case wasm.InstrI32x4TruncSatF32x4U:
+			amd64, arm64 = OpAMD64I32x4TruncSatF32x4U, OpARM64I32x4TruncSatF32x4U
+		case wasm.InstrI32x4TruncSatF64x2SZero:
+			amd64, arm64 = OpAMD64I32x4TruncSatF64x2SZero, OpARM64I32x4TruncSatF64x2SZero
+		case wasm.InstrI32x4TruncSatF64x2UZero:
+			amd64, arm64 = OpAMD64I32x4TruncSatF64x2UZero, OpARM64I32x4TruncSatF64x2UZero
+		case wasm.InstrI8x16Popcnt:
+			amd64, arm64 = OpAMD64I8x16Popcnt, OpARM64I8x16Popcnt
+		case wasm.InstrI16x8Q15mulrSatS:
+			amd64, arm64 = OpAMD64I16x8Q15mulrSatS, OpARM64I16x8Q15mulrSatS
+		case wasm.InstrI8x16Shl:
+			amd64, arm64 = OpAMD64I8x16Shl, OpARM64I8x16Shl
+		case wasm.InstrI8x16ShrS:
+			amd64, arm64 = OpAMD64I8x16ShrS, OpARM64I8x16ShrS
+		case wasm.InstrI8x16ShrU:
+			amd64, arm64 = OpAMD64I8x16ShrU, OpARM64I8x16ShrU
+		case wasm.InstrI64x2ShrS:
+			amd64, arm64 = OpAMD64I64x2ShrS, OpARM64I64x2ShrS
+		case wasm.InstrI8x16RelaxedSwizzle:
+			amd64, arm64 = OpAMD64I8x16Swizzle, OpARM64I8x16Swizzle
+		case wasm.InstrI32x4RelaxedTruncF32x4S:
+			amd64, arm64 = OpAMD64I32x4TruncSatF32x4S, OpARM64I32x4TruncSatF32x4S
+		case wasm.InstrI32x4RelaxedTruncF32x4U:
+			amd64, arm64 = OpAMD64I32x4TruncSatF32x4U, OpARM64I32x4TruncSatF32x4U
+		case wasm.InstrI32x4RelaxedTruncZeroF64x2S:
+			amd64, arm64 = OpAMD64I32x4TruncSatF64x2SZero, OpARM64I32x4TruncSatF64x2SZero
+		case wasm.InstrI32x4RelaxedTruncZeroF64x2U:
+			amd64, arm64 = OpAMD64I32x4TruncSatF64x2UZero, OpARM64I32x4TruncSatF64x2UZero
+		case wasm.InstrF32x4RelaxedMadd:
+			amd64, arm64 = OpAMD64F32x4RelaxedMadd, OpARM64F32x4RelaxedMadd
+		case wasm.InstrF32x4RelaxedNmadd:
+			amd64, arm64 = OpAMD64F32x4RelaxedNmadd, OpARM64F32x4RelaxedNmadd
+		case wasm.InstrF64x2RelaxedMadd:
+			amd64, arm64 = OpAMD64F64x2RelaxedMadd, OpARM64F64x2RelaxedMadd
+		case wasm.InstrF64x2RelaxedNmadd:
+			amd64, arm64 = OpAMD64F64x2RelaxedNmadd, OpARM64F64x2RelaxedNmadd
+		case wasm.InstrI8x16RelaxedLaneselect, wasm.InstrI16x8RelaxedLaneselect,
+			wasm.InstrI32x4RelaxedLaneselect, wasm.InstrI64x2RelaxedLaneselect:
+			amd64, arm64 = OpAMD64V128Bitselect, OpARM64V128Bitselect
+		case wasm.InstrF32x4RelaxedMin:
+			amd64, arm64 = OpAMD64F32x4Pmin, OpARM64F32x4Min
+		case wasm.InstrF32x4RelaxedMax:
+			amd64, arm64 = OpAMD64F32x4Pmax, OpARM64F32x4Max
+		case wasm.InstrF64x2RelaxedMin:
+			amd64, arm64 = OpAMD64F64x2Pmin, OpARM64F64x2Min
+		case wasm.InstrF64x2RelaxedMax:
+			amd64, arm64 = OpAMD64F64x2Pmax, OpARM64F64x2Max
+		case wasm.InstrI16x8RelaxedQ15mulrS:
+			amd64, arm64 = OpAMD64I16x8RelaxedQ15mulrS, OpARM64I16x8RelaxedQ15mulrS
+		case wasm.InstrI16x8RelaxedDotI8x16I7x16S:
+			amd64, arm64 = OpAMD64I16x8RelaxedDotI8x16I7x16S, OpARM64I16x8RelaxedDotI8x16I7x16S
+		case wasm.InstrI32x4RelaxedDotI8x16I7x16AddS:
+			amd64, arm64 = OpAMD64I32x4RelaxedDotI8x16I7x16AddS, OpARM64I32x4RelaxedDotI8x16I7x16AddS
+		default:
+			continue
+		}
+		if f.Target == TargetAMD64 {
+			instruction.Op = amd64
+		} else if f.Target == TargetARM64 {
+			instruction.Op = arm64
+		} else {
+			return 0, fmt.Errorf("railmach: cannot select opcodes for target %s", f.Target)
+		}
+		selected++
+	}
+	if err := Verify(f); err != nil {
+		return 0, err
+	}
+	return selected, nil
+}
+
+// SelectARM64ImmediateOpcodes makes already-proven integer immediate forms
+// explicit after target selection. The selected instruction owns the native
+// immediate and the migrated producer relation is discarded so final emission
+// cannot repeat the form decision.
+func SelectARM64ImmediateOpcodes(f *Func, producers16 []uint16, producers32 []uint32) (int, error) {
+	if f == nil || f.Target != TargetARM64 ||
+		(len(producers16) != len(f.Insts) && len(producers32) != len(f.Insts)) ||
+		(len(producers16) != 0 && len(producers32) != 0) {
+		return 0, fmt.Errorf("railmach: invalid ARM64 immediate selection input")
+	}
+	selected := 0
+	for instructionID := range f.Insts {
+		var encoded uint32
+		if len(producers16) != 0 {
+			encoded = uint32(producers16[instructionID])
+		} else {
+			encoded = producers32[instructionID]
+		}
+		if encoded == 0 {
+			continue
+		}
+		producerID := encoded - 1
+		if int(producerID) >= len(f.Insts) {
+			return 0, fmt.Errorf("railmach: instruction %d has invalid immediate producer %d", instructionID, producerID)
+		}
+		instruction := &f.Insts[instructionID]
+		producer := f.Insts[producerID]
+		if SemanticOpcode(producer.Op) != wasm.InstrI32Const && SemanticOpcode(producer.Op) != wasm.InstrI64Const {
+			return 0, fmt.Errorf("railmach: instruction %d has non-constant immediate producer %d", instructionID, producerID)
+		}
+		switch instruction.Op {
+		case OpARM64I32Add:
+			instruction.Op = OpARM64I32AddImmediate
+		case OpARM64I64Add:
+			instruction.Op = OpARM64I64AddImmediate
+		case OpARM64I32Sub:
+			instruction.Op = OpARM64I32SubImmediate
+		case OpARM64I64Sub:
+			instruction.Op = OpARM64I64SubImmediate
+		case OpARM64I32And:
+			instruction.Op = OpARM64I32AndImmediate
+		case OpARM64I64And:
+			instruction.Op = OpARM64I64AndImmediate
+		case OpARM64I32Or:
+			instruction.Op = OpARM64I32OrImmediate
+		case OpARM64I64Or:
+			instruction.Op = OpARM64I64OrImmediate
+		case OpARM64I32Xor:
+			instruction.Op = OpARM64I32XorImmediate
+		case OpARM64I64Xor:
+			instruction.Op = OpARM64I64XorImmediate
+		case OpARM64I32Shl:
+			instruction.Op = OpARM64I32ShlImmediate
+		case OpARM64I64Shl:
+			instruction.Op = OpARM64I64ShlImmediate
+		case OpARM64I32ShrS:
+			instruction.Op = OpARM64I32ShrSImmediate
+		case OpARM64I64ShrS:
+			instruction.Op = OpARM64I64ShrSImmediate
+		case OpARM64I32ShrU:
+			instruction.Op = OpARM64I32ShrUImmediate
+		case OpARM64I64ShrU:
+			instruction.Op = OpARM64I64ShrUImmediate
+		case OpARM64I32Rotl:
+			instruction.Op = OpARM64I32RotlImmediate
+		case OpARM64I64Rotl:
+			instruction.Op = OpARM64I64RotlImmediate
+		case OpARM64I32Rotr:
+			instruction.Op = OpARM64I32RotrImmediate
+		case OpARM64I64Rotr:
+			instruction.Op = OpARM64I64RotrImmediate
+		case OpARM64I32Eq:
+			instruction.Op = OpARM64I32EqImmediate
+		case OpARM64I64Eq:
+			instruction.Op = OpARM64I64EqImmediate
+		case OpARM64I32Ne:
+			instruction.Op = OpARM64I32NeImmediate
+		case OpARM64I64Ne:
+			instruction.Op = OpARM64I64NeImmediate
+		case OpARM64I32LtS:
+			instruction.Op = OpARM64I32LtSImmediate
+		case OpARM64I64LtS:
+			instruction.Op = OpARM64I64LtSImmediate
+		case OpARM64I32LtU:
+			instruction.Op = OpARM64I32LtUImmediate
+		case OpARM64I64LtU:
+			instruction.Op = OpARM64I64LtUImmediate
+		case OpARM64I32GtS:
+			instruction.Op = OpARM64I32GtSImmediate
+		case OpARM64I64GtS:
+			instruction.Op = OpARM64I64GtSImmediate
+		case OpARM64I32GtU:
+			instruction.Op = OpARM64I32GtUImmediate
+		case OpARM64I64GtU:
+			instruction.Op = OpARM64I64GtUImmediate
+		case OpARM64I32LeS:
+			instruction.Op = OpARM64I32LeSImmediate
+		case OpARM64I64LeS:
+			instruction.Op = OpARM64I64LeSImmediate
+		case OpARM64I32LeU:
+			instruction.Op = OpARM64I32LeUImmediate
+		case OpARM64I64LeU:
+			instruction.Op = OpARM64I64LeUImmediate
+		case OpARM64I32GeS:
+			instruction.Op = OpARM64I32GeSImmediate
+		case OpARM64I64GeS:
+			instruction.Op = OpARM64I64GeSImmediate
+		case OpARM64I32GeU:
+			instruction.Op = OpARM64I32GeUImmediate
+		case OpARM64I64GeU:
+			instruction.Op = OpARM64I64GeUImmediate
+		case OpARM64I8x16Shl:
+			instruction.Op = OpARM64I8x16ShlImmediate
+		case OpARM64I8x16ShrS:
+			instruction.Op = OpARM64I8x16ShrSImmediate
+		case OpARM64I8x16ShrU:
+			instruction.Op = OpARM64I8x16ShrUImmediate
+		case OpARM64I16x8Shl:
+			instruction.Op = OpARM64I16x8ShlImmediate
+		case OpARM64I16x8ShrS:
+			instruction.Op = OpARM64I16x8ShrSImmediate
+		case OpARM64I16x8ShrU:
+			instruction.Op = OpARM64I16x8ShrUImmediate
+		case OpARM64I32x4Shl:
+			instruction.Op = OpARM64I32x4ShlImmediate
+		case OpARM64I32x4ShrS:
+			instruction.Op = OpARM64I32x4ShrSImmediate
+		case OpARM64I32x4ShrU:
+			instruction.Op = OpARM64I32x4ShrUImmediate
+		case OpARM64I64x2Shl:
+			instruction.Op = OpARM64I64x2ShlImmediate
+		case OpARM64I64x2ShrS:
+			instruction.Op = OpARM64I64x2ShrSImmediate
+		case OpARM64I64x2ShrU:
+			instruction.Op = OpARM64I64x2ShrUImmediate
+		default:
+			continue
+		}
+		instruction.Aux = producer.Aux
+		if len(producers16) != 0 {
+			producers16[instructionID] = 0
+		} else {
+			producers32[instructionID] = 0
+		}
+		selected++
+	}
+	for instructionID := range f.Insts {
+		var encoded uint32
+		if len(producers16) != 0 {
+			encoded = uint32(producers16[instructionID])
+		} else {
+			encoded = producers32[instructionID]
+		}
+		if encoded != 0 {
+			producerID := encoded - 1
+			return 0, fmt.Errorf("railmach: ARM64 immediate producer %d (%s) for instruction %d (%s) has no selected opcode", producerID, SemanticOpcode(f.Insts[producerID].Op), instructionID, SemanticOpcode(f.Insts[instructionID].Op))
+		}
+	}
+	if err := Verify(f); err != nil {
+		return 0, err
+	}
+	return selected, nil
+}

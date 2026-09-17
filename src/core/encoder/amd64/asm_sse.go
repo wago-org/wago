@@ -82,6 +82,10 @@ func (a *Asm) vex3RRRMap(opcodeMap, pp, op byte, dst, src1, src2 Reg) {
 }
 
 func (a *Asm) vex3RRRMapL(opcodeMap, pp, op byte, dst, src1, src2 Reg, l byte) {
+	a.vex3RRRMapWL(opcodeMap, pp, op, dst, src1, src2, false, l)
+}
+
+func (a *Asm) vex3RRRMapWL(opcodeMap, pp, op byte, dst, src1, src2 Reg, w bool, l byte) {
 	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B
 	if dst >= 8 {
 		rBit = 0
@@ -90,7 +94,10 @@ func (a *Asm) vex3RRRMapL(opcodeMap, pp, op byte, dst, src1, src2 Reg, l byte) {
 		bBit = 0
 	}
 	vvvv := (^byte(src1)) & 0x0F
-	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03)                // W=0
+	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03)
+	if w {
+		byte2 |= 0x80
+	}
 	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
 	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(dst)&7)<<3)|byte(src2&7))
 }
@@ -192,11 +199,28 @@ func (a *Asm) vex3MemRipPlaceholder(opcodeMap, pp, op byte, reg, src1 Reg) int {
 	return off
 }
 
+func (a *Asm) vex3ReservedMemRipPlaceholder(opcodeMap, pp, op byte, reg Reg) int {
+	a.vex3MemPrefixL(opcodeMap, pp, reg, 0, false, RAX, 0, false, 0)
+	a.emit(op, ((byte(reg)&7)<<3)|0x05) // mod=00, r/m=101: RIP + disp32
+	a.recordRipAddress()
+	off := a.Len()
+	a.imm32(0)
+	return off
+}
+
 // Scalar float arithmetic, 3-operand: dst = src1 <op> src2.
 func (a *Asm) VFAdd(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x58, dst, s1, s2) }
 func (a *Asm) VFSub(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5C, dst, s1, s2) }
 func (a *Asm) VFMul(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x59, dst, s1, s2) }
 func (a *Asm) VFDiv(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5E, dst, s1, s2) }
+
+// VCvtsi2f converts a signed 32- or 64-bit integer to scalar float while
+// taking the destination's preserved upper lane from merge. Supplying a
+// zero-idiom merge register avoids the false destination dependency of the
+// legacy two-operand CVTSI2SS/CVTSI2SD forms.
+func (a *Asm) VCvtsi2f(dst, merge, gpr Reg, f64, wide bool) {
+	a.vex3RRRMapWL(vexMap0F, vexPP(f64), 0x2A, dst, merge, gpr, wide, 0)
+}
 
 // VFMemIdx emits scalar AVX arithmetic with a folded indexed memory operand:
 // dst = src1 <op> [base+index+disp].
@@ -493,9 +517,13 @@ func (a *Asm) VPcmpgtw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x65, dst, s1, s2) }
 func (a *Asm) VPcmpgtd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x66, dst, s1, s2) }
 func (a *Asm) VPmovmskb(dst, src Reg)   { a.vex3RRReserved(vexMap0F, 0b01, 0xD7, dst, src) }
 func (a *Asm) VPtest(a1, a2 Reg)        { a.vex3RRReserved(vexMap0F38, 0b01, 0x17, a1, a2) }
-func (a *Asm) VPabsb(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1C, dst, src) }
-func (a *Asm) VPabsw(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1D, dst, src) }
-func (a *Asm) VPabsd(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1E, dst, src) }
+func (a *Asm) VPtestRipPlaceholder(src Reg) int {
+	return a.vex3ReservedMemRipPlaceholder(vexMap0F38, 0b01, 0x17, src)
+}
+func (a *Asm) VPabsb(dst, src Reg)    { a.vex3RRReserved(vexMap0F38, 0b01, 0x1C, dst, src) }
+func (a *Asm) VPabsw(dst, src Reg)    { a.vex3RRReserved(vexMap0F38, 0b01, 0x1D, dst, src) }
+func (a *Asm) VPabsd(dst, src Reg)    { a.vex3RRReserved(vexMap0F38, 0b01, 0x1E, dst, src) }
+func (a *Asm) VPmovzxdq(dst, src Reg) { a.vex3RRReserved(vexMap0F38, 0b01, 0x35, dst, src) }
 
 // VPsllw/VPsrlw/VPsraw emit variable-count packed 16-bit lane shifts. They are
 // x86 helpers only; Wasm count masking stays in the backend.
@@ -601,6 +629,30 @@ func (a *Asm) VPxorMemDisp(dst, s1, base Reg, disp int32) {
 	a.vex3MemDisp(vexMap0F, 0b01, 0xEF, dst, s1, true, base, disp)
 }
 
+func (a *Asm) VPandRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F, 0b01, 0xDB, dst, s1)
+}
+
+func (a *Asm) VPorRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F, 0b01, 0xEB, dst, s1)
+}
+
+func (a *Asm) VPxorRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F, 0b01, 0xEF, dst, s1)
+}
+
+func (a *Asm) VPsubusbRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F, 0b01, 0xD8, dst, s1)
+}
+
+func (a *Asm) VPcmpeqbRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F, 0b01, 0x74, dst, s1)
+}
+
+func (a *Asm) VPcmpeqwRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F, 0b01, 0x75, dst, s1)
+}
+
 func (a *Asm) VPshufb(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x00, dst, s1, s2) }
 func (a *Asm) VPshufbRipPlaceholder(dst, s1 Reg) int {
 	return a.vex3MemRipPlaceholder(vexMap0F38, 0b01, 0x00, dst, s1)
@@ -642,6 +694,13 @@ func (a *Asm) VPmuldq(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x28, d
 func (a *Asm) VPmuludq(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xF4, dst, s1, s2) }
 func (a *Asm) VPblendw(dst, s1, s2 Reg, imm byte) {
 	a.vex3RRIMap(vexMap0F3A, 0b01, 0x0E, dst, s1, s2, imm)
+}
+
+// VPalignr selects 16 bytes starting at offset imm from the concatenation of
+// lhs followed by rhs. VPALIGNR encodes those inputs in the opposite order:
+// VEX.vvvv is rhs and ModRM.r/m is lhs.
+func (a *Asm) VPalignr(dst, lhs, rhs Reg, imm byte) {
+	a.vex3RRIMap(vexMap0F3A, 0b01, 0x0F, dst, rhs, lhs, imm)
 }
 
 // Round emits ROUNDSS/ROUNDSD (SSE4.1): dst = round(src) using rounding-mode

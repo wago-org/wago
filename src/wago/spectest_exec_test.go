@@ -1296,7 +1296,8 @@ func TestSpecSuiteExec(t *testing.T) {
 		version = "1.0"
 	}
 	dir, files := resolveSpecPlan(t, dir, version)
-	if filter := strings.TrimSpace(os.Getenv("WAGO_SPEC_FILES")); filter != "" {
+	filter := strings.TrimSpace(os.Getenv("WAGO_SPEC_FILES"))
+	if filter != "" {
 		wanted := make(map[string]struct{})
 		for _, name := range strings.Split(filter, ",") {
 			if name = strings.TrimSpace(strings.TrimSuffix(name, ".wast")); name != "" {
@@ -1325,10 +1326,63 @@ func TestSpecSuiteExec(t *testing.T) {
 	if version == "3.0" {
 		interpreter, err = resolveSpecInterpreter()
 		if err != nil {
-			t.Fatal(err)
+			if !filteredWABTOnlyAllowed(version, filter) {
+				t.Fatal(err)
+			}
+			t.Logf("filtered Core 3 run uses pinned WABT without interpreter fallback: %v", err)
 		}
 	}
 	runSpecExec(t, wast2json, interpreter, dir, version, files)
+}
+
+func filteredWABTOnlyAllowed(version, filter string) bool {
+	return version == "3.0" && strings.TrimSpace(filter) != "" && os.Getenv("WAGO_SPEC_WABT_ONLY") == "1"
+}
+
+func TestFilteredWABTOnlyRequiresExplicitCore3Files(t *testing.T) {
+	t.Setenv("WAGO_SPEC_WABT_ONLY", "1")
+	if filteredWABTOnlyAllowed("3.0", "") || filteredWABTOnlyAllowed("2.0", "simd/foo") {
+		t.Fatal("WABT-only mode admitted an unfiltered or non-Core-3 run")
+	}
+	if !filteredWABTOnlyAllowed("3.0", "relaxed-simd/relaxed_laneselect") {
+		t.Fatal("WABT-only mode rejected an explicit Core 3 file filter")
+	}
+}
+
+func specRuntimeConfig(version string) (*wago.RuntimeConfig, error) {
+	cfg := wago.NewRuntimeConfig()
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("WAGO_SPEC_COMPILER"))) {
+	case "", "railshot":
+		cfg = cfg.WithCompiler(wago.CompilerRailshot)
+	case "dragline":
+		cfg = cfg.WithCompiler(wago.CompilerDragline)
+	default:
+		return nil, fmt.Errorf("unsupported WAGO_SPEC_COMPILER %q (want railshot or dragline)", os.Getenv("WAGO_SPEC_COMPILER"))
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("WAGO_SPEC_TARGET"))) {
+	case "", "compatibility", "portable":
+		cfg = cfg.WithTarget(wago.TargetCompatibility)
+	case "native":
+		cfg = cfg.WithTarget(wago.TargetNative)
+	default:
+		return nil, fmt.Errorf("unsupported WAGO_SPEC_TARGET %q (want compatibility or native)", os.Getenv("WAGO_SPEC_TARGET"))
+	}
+	if version == "3.0" {
+		cfg = cfg.WithCoreFeatures(wago.CoreFeaturesV3)
+	}
+	return cfg, nil
+}
+
+func TestSpecRuntimeConfigRejectsUnknownSelection(t *testing.T) {
+	t.Setenv("WAGO_SPEC_COMPILER", "unknown")
+	if _, err := specRuntimeConfig("simd"); err == nil || !strings.Contains(err.Error(), "WAGO_SPEC_COMPILER") {
+		t.Fatalf("compiler selection error = %v, want fail-closed diagnostic", err)
+	}
+	t.Setenv("WAGO_SPEC_COMPILER", "dragline")
+	t.Setenv("WAGO_SPEC_TARGET", "unknown")
+	if _, err := specRuntimeConfig("simd"); err == nil || !strings.Contains(err.Error(), "WAGO_SPEC_TARGET") {
+		t.Fatalf("target selection error = %v, want fail-closed diagnostic", err)
+	}
 }
 
 const release3SpecRevision = "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
@@ -1566,6 +1620,10 @@ func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, file
 	if len(files) == 0 {
 		t.Fatalf("no spec files found for WAGO_SPEC_VERSION=%q under %s", version, dir)
 	}
+	cfg, err := specRuntimeConfig(version)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var total specExecStats
 	for _, base := range files {
 		wast := filepath.Join(dir, base+".wast")
@@ -1612,10 +1670,6 @@ func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, file
 			t.Fatal(err)
 		}
 
-		cfg := wago.NewRuntimeConfig()
-		if version == "3.0" {
-			cfg = cfg.WithCoreFeatures(wago.CoreFeaturesV3)
-		}
 		stats := runSpecExecFileWithConfig(t, base, tmp, sf, cfg)
 		total.add(stats)
 		t.Logf("%-40s modules(pass=%d fail=%d skip=%d) assertions(pass=%d fail=%d skip=%d) gaps(%s)",

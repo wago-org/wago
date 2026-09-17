@@ -91,6 +91,7 @@ func (s *contractSlot) revoke() error {
 	return nil
 }
 
+//lint:ignore U1000 retained for immediate non-blocking service deactivation
 func (s *contractSlot) deactivate() {
 	if s == nil {
 		return

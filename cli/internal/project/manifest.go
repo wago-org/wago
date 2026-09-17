@@ -147,6 +147,8 @@ var manifestOptimizationNames = stringSet(
 	"vex-float-mem", "x8-pin", "zero-branch",
 )
 
+var manifestExperimentalNames = stringSet("dragline")
+
 var retiredManifestOptimizationNames = stringSet(
 	"affine-lea", "call-next-use", "deep-fp-pins", "fcmp-fuse", "gc-ref-facts",
 	"immutable-poly-fastpath", "inline-loop-callees", "legacy-fp-pins", "legacy-gp-pins",
@@ -210,13 +212,13 @@ func validateManifestSettings(raw any) error {
 	if err != nil {
 		return err
 	}
-	if err := rejectUnknown(settings, "settings", "features", "optimizations", "runtime"); err != nil {
+	if err := rejectUnknown(settings, "settings", "features", "optimizations", "experimental", "runtime"); err != nil {
 		return err
 	}
 	for _, field := range []struct {
 		name    string
 		allowed map[string]struct{}
-	}{{"features", manifestFeatureNames}, {"optimizations", manifestOptimizationNames}} {
+	}{{"features", manifestFeatureNames}, {"optimizations", manifestOptimizationNames}, {"experimental", manifestExperimentalNames}} {
 		rawValues, ok := settings[field.name]
 		if !ok {
 			continue

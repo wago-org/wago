@@ -84,6 +84,38 @@ func TestAllocationStructArrayAccess(t *testing.T) {
 	}
 }
 
+func TestTypedNoBarrierStoresRejectObjectEdges(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	parent, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	array, err := c.NewArrayDefault(3, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual, matched, err := c.StructSetTypedNoBarrier(parent, 1, true, 0, RefValue(Null())); err != nil || !matched || actual != 1 {
+		t.Fatalf("null struct store = actual %d matched %v err %v", actual, matched, err)
+	}
+	if actual, matched, err := c.ArraySetTypedNoBarrier(array, 3, true, 0, RefValue(I31New(7))); err != nil || !matched || actual != 3 {
+		t.Fatalf("i31 array store = actual %d matched %v err %v", actual, matched, err)
+	}
+	if _, _, err := c.StructSetTypedNoBarrier(parent, 1, true, 0, RefValue(child)); err == nil {
+		t.Fatal("barrier-free struct store accepted an object edge")
+	}
+	if _, _, err := c.ArraySetTypedNoBarrier(array, 3, true, 0, RefValue(child)); err == nil {
+		t.Fatal("barrier-free array store accepted an object edge")
+	}
+	stored, err := c.ArrayGet(array, 0)
+	if err != nil || stored.Ref != I31New(7) {
+		t.Fatalf("array value after rejected edge = %+v, %v", stored, err)
+	}
+}
+
 func TestTypedStructAccessChecksFinalAndOpenTypes(t *testing.T) {
 	base, err := NewStructDesc(0, []StorageKind{StorageI32})
 	if err != nil {

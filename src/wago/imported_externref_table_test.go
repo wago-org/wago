@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -257,6 +258,13 @@ func TestStoreBoundExternrefTableReleasesRootsAtRuntimeClose(t *testing.T) {
 	if err := in.Close(); err != nil {
 		t.Fatalf("Instance Close: %v", err)
 	}
+	// Runtime.Close may already own the instance close on its shutdown worker.
+	// Join that worker before inspecting or closing the released table roots.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := rt.WaitClosed(ctx); err != nil {
+		t.Fatalf("Runtime.WaitClosed: %v", err)
+	}
 	if err := shared.Close(); err != nil {
 		t.Fatalf("Table Close: %v", err)
 	}
@@ -280,8 +288,8 @@ func TestImportedExternrefTablePersistenceAndFootprintBoundaries(t *testing.T) {
 		t.Fatalf("Table size = %d, want 64", got)
 	}
 	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
-	if got := unsafe.Sizeof(Compiled{}); got != 784 {
-		t.Fatalf("Compiled size = %d, want 784", got)
+	if got := unsafe.Sizeof(Compiled{}); got != 792 {
+		t.Fatalf("Compiled size = %d, want 792", got)
 	}
 }
 

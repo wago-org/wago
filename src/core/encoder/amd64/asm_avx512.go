@@ -83,3 +83,18 @@ func (a *Asm) ZPternlogd(dst, src1, src2 Reg, imm byte) {
 	a.evexRRR(vexMap0F3A, 1, 0x25, false, dst, src1, src2)
 	a.emit(imm)
 }
+
+// XPternlogd applies one three-input truth table to four packed 32-bit lanes.
+// The 128-bit EVEX form requires AVX-512F and AVX-512VL. This managed form
+// accepts the lower 16 architectural vector registers used by the compiler.
+func (a *Asm) XPternlogd(dst, src1, src2 Reg, imm byte) {
+	p0 := byte(0xf3)
+	if dst >= 8 {
+		p0 &^= 0x80
+	}
+	if src2 >= 8 {
+		p0 &^= 0x20
+	}
+	p1 := byte(0x05) | ((^byte(src1) & 0x0f) << 3)
+	a.emit(0x62, p0, p1, 0x08, 0x25, 0xc0|byte(dst&7)<<3|byte(src2&7), imm)
+}

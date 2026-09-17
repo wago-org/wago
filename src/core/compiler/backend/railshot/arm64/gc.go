@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
 )
@@ -14,8 +15,8 @@ import (
 // GC helpers share the synchronous parked-host dispatch ABI with amd64. Keep
 // these values stable: src/wago dispatches them before ordinary imports.
 const (
-	gcStructDispatchBit        uint32 = 1 << 30
-	gcStructAllocDefault       uint32 = 1
+	gcStructDispatchBit        uint32 = codegen.GCHelperDispatchBit
+	gcStructAllocDefault       uint32 = codegen.GCHelperStructAllocDefault
 	gcStructGet                uint32 = 2
 	gcStructSet                uint32 = 3
 	gcStructGetS               uint32 = 4

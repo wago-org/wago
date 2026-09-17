@@ -33,6 +33,19 @@ func TestAVX512Encoding(t *testing.T) {
 	}
 }
 
+func TestAVX512VLTernaryEncoding(t *testing.T) {
+	var a Asm
+	a.XPternlogd(10, 8, 9, 0x78)
+	a.XPternlogd(5, 0, 1, 0xfe)
+	want := []byte{
+		0x62, 0x53, 0x3d, 0x08, 0x25, 0xd1, 0x78,
+		0x62, 0xf3, 0x7d, 0x08, 0x25, 0xe9, 0xfe,
+	}
+	if !bytes.Equal(a.B, want) {
+		t.Fatalf("128-bit ternary encoding\n got % x\nwant % x", a.B, want)
+	}
+}
+
 func TestEVEXCompressedDisplacements(t *testing.T) {
 	tests := []struct {
 		name             string

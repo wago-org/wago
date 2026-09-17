@@ -11,7 +11,10 @@ import (
 )
 
 const preparedDirectIntSupported = true
-const preparedDirectIntPrivateSupported = false
+
+// AMD64's direct prepared path retains the established foreign-stack transition;
+// the compiler-proven private entry only removes wrapper marshalling.
+const preparedDirectIntPrivateSupported = true
 const preparedIntCallBlockDefault = false
 
 var preparedIntPreboundContextEnabled = os.Getenv("WAGO_PREPARED_INT_PREBOUND_CONTEXT") != "0"
