@@ -29,7 +29,7 @@ func gcHostImportLifecycleModule() []byte {
 	)
 }
 
-func TestRuntimeGCInstanceCloseReleasesHostThunk(t *testing.T) {
+func TestRuntimeGCInstanceSharesHostThunkUntilCompiledClose(t *testing.T) {
 	requireCompleteCore3Backend(t)
 	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
 	defer rt.Close()
@@ -37,20 +37,38 @@ func TestRuntimeGCInstanceCloseReleasesHostThunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer mod.Close()
 
 	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.mark", slotHostFunc(func(HostModule, []uint64, []uint64) {}))))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(in.thunkMem) == 0 {
-		t.Fatal("instance has no host thunk mapping")
+	cache := in.c.codeCache
+	cache.mu.Lock()
+	sharedThunkBytes := len(in.c.validateMemo.hostThunks[1].mem)
+	cache.mu.Unlock()
+	if sharedThunkBytes == 0 || in.thunkMem != nil {
+		t.Fatalf("host thunk ownership: shared=%d instance=%d", sharedThunkBytes, len(in.thunkMem))
 	}
 	if err := in.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if !in.resourcesClosed || in.thunkMem != nil {
 		t.Fatalf("closed GC instance retained physical resources: released=%v thunk=%d", in.resourcesClosed, len(in.thunkMem))
+	}
+	cache.mu.Lock()
+	sharedThunkBytes = len(in.c.validateMemo.hostThunks[1].mem)
+	cache.mu.Unlock()
+	if sharedThunkBytes == 0 {
+		t.Fatal("instance close released the compiled module's shared host thunks")
+	}
+	if err := mod.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cache.mu.Lock()
+	sharedThunkBytes = len(in.c.validateMemo.hostThunks[1].mem)
+	cache.mu.Unlock()
+	if sharedThunkBytes != 0 {
+		t.Fatalf("compiled close retained %d host thunk bytes", sharedThunkBytes)
 	}
 }
 

@@ -373,9 +373,9 @@ func TestStagedGCArrayReferenceFootprint(t *testing.T) {
 		"instancePluginState":     unsafe.Sizeof(instancePluginState{}),
 	} {
 		// The plugin sidecar includes instance-local counted activations and
-		// monotonic callback/context versions. Cancellable admission and
-		// retained-lease publication remain part of the footprint.
-		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 232}[name]
+		// monotonic callback/context versions. Prepared-session and close state
+		// no longer live in this sidecar.
+		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 224}[name]
 		if got != want {
 			t.Fatalf("%s size = %d, want %d", name, got, want)
 		}

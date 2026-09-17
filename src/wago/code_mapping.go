@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"errors"
 	"fmt"
 	goruntime "runtime"
 	"strings"
@@ -48,6 +49,12 @@ type compiledCodeCache struct {
 	// direct-Instantiation native stack capacity without growing this sidecar.
 	// Neither half is serialized; codec reload restores only generic features.
 	stagedFeatures CoreFeatures
+}
+
+type compiledHostThunkCache struct {
+	mem     []byte
+	base    uintptr
+	offsets []int
 }
 
 // compilerCompiledState groups the fixed private state owned for the complete
@@ -673,11 +680,36 @@ func (c *Compiled) releaseCode() {
 			cc.mem = nil
 			cc.base = 0
 		}
+		c.releaseHostThunksLocked()
 		c.clearCodeViewsLocked()
 		if c.validateMemo != nil {
 			c.validateMemo.structuralCallIdentities.Store(nil)
 		}
 	}
+}
+
+func (c *Compiled) releaseHostThunksLocked() {
+	memo := c.loadValidateMemo()
+	if memo == nil {
+		return
+	}
+	for i := range memo.hostThunks {
+		cache := &memo.hostThunks[i]
+		if cache.mem != nil {
+			_ = coreruntime.Unmap(cache.mem)
+			*cache = compiledHostThunkCache{}
+		}
+	}
+}
+
+func (c *Compiled) takeHostThunksLocked() [2]compiledHostThunkCache {
+	memo := c.loadValidateMemo()
+	if memo == nil {
+		return [2]compiledHostThunkCache{}
+	}
+	hostThunks := memo.hostThunks
+	memo.hostThunks = [2]compiledHostThunkCache{}
+	return hostThunks
 }
 
 // clearCodeViewsLocked drops every slice header that can retain the staged or
@@ -704,14 +736,22 @@ func (c *Compiled) replaceDecoded(decoded Compiled, snapshotLimit uint64) error 
 		mem := cc.mem
 		cc.mem = nil
 		cc.base = 0
+		hostThunks := c.takeHostThunksLocked()
 		cc.closed = true
 		c.code = nil
 		cc.mu.Unlock()
 		goruntime.SetFinalizer(c, nil)
+		var releaseErr error
 		if mem != nil {
-			if err := coreruntime.Unmap(mem); err != nil {
-				return fmt.Errorf("release replaced compiled code: %w", err)
+			releaseErr = errors.Join(releaseErr, coreruntime.Unmap(mem))
+		}
+		for i := range hostThunks {
+			if hostThunks[i].mem != nil {
+				releaseErr = errors.Join(releaseErr, coreruntime.Unmap(hostThunks[i].mem))
 			}
+		}
+		if releaseErr != nil {
+			return fmt.Errorf("release replaced compiled mappings: %w", releaseErr)
 		}
 	}
 	*c = decoded
@@ -753,5 +793,12 @@ func (c *Compiled) Close() error {
 	mem := cc.mem
 	cc.mem = nil
 	cc.base = 0
-	return coreruntime.Unmap(mem)
+	hostThunks := c.takeHostThunksLocked()
+	err := coreruntime.Unmap(mem)
+	for i := range hostThunks {
+		if hostThunks[i].mem != nil {
+			err = errors.Join(err, coreruntime.Unmap(hostThunks[i].mem))
+		}
+	}
+	return err
 }

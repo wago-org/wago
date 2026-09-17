@@ -32,8 +32,9 @@ type Instance struct {
 	hostLog                 []byte
 	ctrl                    []byte                              // sync host-call control frame (nil in async mode)
 	syncHosts               []syncHostBinding                   // immutable per-import sync host bindings
-	hostCall                resolvedHostCall                    // active instance's bound host imports
+	hostCall                resolvedHostCall                    // optional specialized/injected host dispatcher
 	pluginState             atomic.Pointer[instancePluginState] // allocated only after privileged instance services activate
+	closeState              atomic.Pointer[instanceCloseState]  // allocated on first Close; independent of privileged services
 	globals                 []byte                              // pointer table handed to JIT code
 	globalCells             []*Global
 	table                   *Table        // lazily created importer-owned local export-handle chain
@@ -41,7 +42,7 @@ type Instance struct {
 	tableDescLen            int           // descriptor byte length for safe slice reconstruction
 	funcRefDescs            []byte        // canonical funcref descriptor handles for this instance's function index space
 	passiveDataDesc         []byte        // per-instance data-segment descriptors; active slots start dropped
-	thunkMem                []byte        // executable mapping for host-func-in-table log thunks (nil if none)
+	thunkMem                []byte        // instance-specific executable HostFuncRef thunks (nil for ordinary host imports)
 	gc                      *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
 	gcTypeMap               *gcTypeMapping
 	gcNativeView            *gc.NativeInstanceView

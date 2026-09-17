@@ -77,6 +77,57 @@ func TestI32HostEventDefersOrderedDelivery(t *testing.T) {
 	}
 }
 
+func TestHostThunkCachesKeepDeferredAndSyncModesIndependent(t *testing.T) {
+	c := MustCompile(hostEventLoopModule())
+	defer c.Close()
+
+	var deferred []int32
+	async, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.event", I32HostEvent(func(value int32) {
+		deferred = append(deferred, value)
+	}))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if async.syncMode {
+		t.Fatal("I32HostEvent selected synchronous host control")
+	}
+	asyncState := loadHostThunkCacheState(async.c)
+	if asyncState.bytes[0] == 0 || asyncState.bytes[1] != 0 {
+		t.Fatalf("deferred cache state = %v, want async only", asyncState.bytes)
+	}
+	if _, err := async.Invoke("run", I32(2)); err != nil {
+		t.Fatal(err)
+	}
+	if want := []int32{2, 1}; !reflect.DeepEqual(deferred, want) {
+		t.Fatalf("deferred calls = %v, want %v", deferred, want)
+	}
+	if err := async.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var synchronous []int32
+	syncInstance, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.event", i32HostFunc(func(value int32) {
+		synchronous = append(synchronous, value)
+	}))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syncInstance.Close()
+	if !syncInstance.syncMode {
+		t.Fatal("ordinary callback selected deferred host control")
+	}
+	syncState := loadHostThunkCacheState(syncInstance.c)
+	if syncState.bytes[0] == 0 || syncState.bytes[1] == 0 || syncState.bases[0] == syncState.bases[1] {
+		t.Fatalf("combined cache state = bytes %v bases %v, want distinct async and sync mappings", syncState.bytes, syncState.bases)
+	}
+	if _, err := syncInstance.Invoke("run", I32(2)); err != nil {
+		t.Fatal(err)
+	}
+	if want := []int32{2, 1}; !reflect.DeepEqual(synchronous, want) {
+		t.Fatalf("synchronous calls = %v, want %v", synchronous, want)
+	}
+}
+
 func TestI32HostEventRequiresExactSignature(t *testing.T) {
 	c := MustCompile(hostRoundtripLoopModule(t, 0))
 	defer c.Close()
