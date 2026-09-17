@@ -996,6 +996,18 @@ func TestAMD64StructuredSIMDHighRegistersRespectStackPressure(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredSIMDConstantsYieldToFullStackCache(t *testing.T) {
+	if got := amd64StructuredSIMDConstantScore(9, 3); got != 8 {
+		t.Fatalf("low-pressure constant score = %d, want 8", got)
+	}
+	if got := amd64StructuredSIMDConstantScore(9, 4); got != 0 {
+		t.Fatalf("full-cache constant score = %d, want 0", got)
+	}
+	if got := amd64StructuredSIMDConstantScore(1, 0); got != 0 {
+		t.Fatalf("single-use constant score = %d, want 0", got)
+	}
+}
+
 func TestAMD64RailMachAvoidsUnneededPinnedLocalSaveAcrossExactCall(t *testing.T) {
 	callee := wasmtest.Code([]byte{0x20, 0x00, 0x0b})
 	callerBody := []byte{

@@ -6108,6 +6108,16 @@ func amd64StructuredSIMDHighRegisterWorthwhile(slot int, score uint64, maxStack 
 	return score >= uint64(max(maxStack, 1))*8
 }
 
+func amd64StructuredSIMDConstantScore(uses, maxStack uint32) uint64 {
+	// Constants can remain direct RIP operands, while an unpinned local needs
+	// explicit stack traffic. Once the four low vector-cache registers are all
+	// demanded by the operand stack, reserve high registers for locals first.
+	if uses <= 1 || maxStack >= 4 {
+		return 0
+	}
+	return uint64(uses - 1)
+}
+
 func emitAMD64StructuredVectorSelect(a *amd64.Asm, condition, lhs, rhs amd64.Reg) {
 	a.TestSelf(condition, false)
 	keepLHS := a.JccPlaceholder(amd64.CondNE)
@@ -6252,7 +6262,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 			if bestConstant >= 0 {
 				// Both a resident vector local and a resident constant avoid one
 				// memory access now that uncached constants use the RIP pool.
-				constantScore = uint64(simdConstants[bestConstant].uses - 1)
+				constantScore = amd64StructuredSIMDConstantScore(simdConstants[bestConstant].uses, sf.MaxStack)
 			}
 			if localScore == 0 && constantScore == 0 {
 				break
