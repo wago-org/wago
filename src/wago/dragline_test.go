@@ -33,6 +33,51 @@ func draglineBinaryModule(param, result wasm.ValType, body []byte) []byte {
 	)
 }
 
+func TestDraglineNativeAMD64UnsignedI32ConstantDivision(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("AMD64 immediate constant division execution test")
+	}
+	for _, test := range []struct {
+		name    string
+		divisor uint32
+		opcode  byte
+		want    func(uint32) uint32
+	}{
+		{name: "divide immediate 9", divisor: 9, opcode: 0x6e, want: func(n uint32) uint32 { return n / 9 }},
+		{name: "divide immediate 100", divisor: 100, opcode: 0x6e, want: func(n uint32) uint32 { return n / 100 }},
+		{name: "divide immediate million", divisor: 1_000_000, opcode: 0x6e, want: func(n uint32) uint32 { return n / 1_000_000 }},
+		{name: "divide power of two", divisor: 16, opcode: 0x6e, want: func(n uint32) uint32 { return n / 16 }},
+		{name: "remainder power of two", divisor: 16, opcode: 0x70, want: func(n uint32) uint32 { return n % 16 }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x20, 0x00, 0x41}
+			body = append(body, wasmtest.SLEB32(int32(test.divisor))...)
+			body = append(body, test.opcode, 0x0b)
+			compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), draglineUnaryModule(wasm.I32, wasm.I32, body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				compiled.Close()
+				t.Fatal(err)
+			}
+			for _, dividend := range []uint32{0, 1, test.divisor - 1, test.divisor, test.divisor + 1, 0x7fffffff, 0x80000000, ^uint32(0)} {
+				result, err := instance.Invoke("run", uint64(dividend))
+				if err != nil || len(result) != 1 || uint32(result[0]) != test.want(dividend) {
+					t.Fatalf("run(%#x) = %v, %v; want %#x", dividend, result, err, test.want(dividend))
+				}
+			}
+			if err := instance.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := compiled.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestDraglineNativeARM64MultiplyAddExecution(t *testing.T) {
 	if runtime.GOARCH != "arm64" {
 		t.Skip("ARM64 selected multiply-add execution test")

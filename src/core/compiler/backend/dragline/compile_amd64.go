@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"math/bits"
 	"time"
 
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
@@ -939,7 +940,8 @@ func amd64RailMachTargetSafetyReason(plan *nativeBackendPlan) string {
 	for instructionID, instruction := range plan.Machine.Insts {
 		operands := plan.Machine.InstructionOperands(uint32(instructionID))
 		if amd64DirectSafeDivKind(instruction.Op) {
-			if !amd64RailMachDivisionInputSafe(plan, uint32(instructionID), operands) || !amd64RailMachDivisionClobberSafe(plan, uint32(instructionID)) && !plan.AMD64DivisionSave {
+			_, constantUnsignedI32Division := amd64RailMachUnsignedI32ConstantDivisor(plan, instruction, operands)
+			if !constantUnsignedI32Division && (!amd64RailMachDivisionInputSafe(plan, uint32(instructionID), operands) || !amd64RailMachDivisionClobberSafe(plan, uint32(instructionID)) && !plan.AMD64DivisionSave) {
 				return "amd64-division-safety"
 			}
 		}
@@ -1559,15 +1561,19 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			divisionRDXSaved := false
 			shiftRCXSaved := false
 			shiftRCXRestore := false
+			_, constantUnsignedI32Division := amd64RailMachUnsignedI32ConstantDivisor(plan, instruction, operands)
+			constantUnsignedI32InputFree := constantUnsignedI32Division && operands[0].Flags&railmach.OperandFixed == 0
 			if amd64DirectSafeDivKind(instruction.Op) && len(operands) == 2 {
-				a.StoreRsp64(int32(plan.AMD64DivisionSaveOffset)+16, reg(operands[1].Reg))
-				divisionRAXSaved = railMachPhysicalLiveAcross(plan, instructionID, railmach.BankGPR, 0)
-				divisionRDXSaved = railMachPhysicalLiveAcross(plan, instructionID, railmach.BankGPR, 2)
-				if divisionRAXSaved {
-					a.StoreRsp64(int32(plan.AMD64DivisionSaveOffset), amd64.RAX)
-				}
-				if divisionRDXSaved {
-					a.StoreRsp64(int32(plan.AMD64DivisionSaveOffset)+8, amd64.RDX)
+				if !constantUnsignedI32InputFree {
+					divisionRAXSaved = railMachPhysicalLiveAcross(plan, instructionID, railmach.BankGPR, 0)
+					if divisionRAXSaved {
+						a.StoreRsp64(int32(plan.AMD64DivisionSaveOffset), amd64.RAX)
+					}
+					a.StoreRsp64(int32(plan.AMD64DivisionSaveOffset)+16, reg(operands[1].Reg))
+					divisionRDXSaved = railMachPhysicalLiveAcross(plan, instructionID, railmach.BankGPR, 2)
+					if divisionRDXSaved {
+						a.StoreRsp64(int32(plan.AMD64DivisionSaveOffset)+8, amd64.RDX)
+					}
 				}
 			}
 			if (semanticOp >= wasm.InstrI32Shl && semanticOp <= wasm.InstrI32Rotr || semanticOp >= wasm.InstrI64Shl && semanticOp <= wasm.InstrI64Rotr) && len(operands) == 2 {
@@ -4024,6 +4030,16 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if amd64DirectSafeDivKind(semanticOp) {
+				if divisor, ok := amd64RailMachUnsignedI32ConstantDivisor(plan, instruction, operands); ok {
+					amd64EmitUnsignedI32ConstantDivision(&a, dst, reg(operands[0].Reg), divisor, semanticOp == wasm.InstrI32RemU)
+					if divisionRAXSaved {
+						a.LoadRsp64(amd64.RAX, int32(plan.AMD64DivisionSaveOffset))
+					}
+					if metrics != nil {
+						metrics.PostRARewrites++
+					}
+					continue
+				}
 				if !amd64RailMachDivisionInputSafe(plan, instructionID, operands) || !amd64RailMachDivisionClobberSafe(plan, instructionID) && !plan.AMD64DivisionSave {
 					return nil, 0, false, nil
 				}
@@ -8189,6 +8205,59 @@ func amd64DirectSafeDivKind(kind wasm.InstrKind) bool {
 	kind = railmach.SemanticOpcode(kind)
 	return kind == wasm.InstrI32DivS || kind == wasm.InstrI32DivU || kind == wasm.InstrI32RemS || kind == wasm.InstrI32RemU ||
 		kind == wasm.InstrI64DivS || kind == wasm.InstrI64DivU || kind == wasm.InstrI64RemS || kind == wasm.InstrI64RemU
+}
+
+func amd64RailMachUnsignedI32ConstantDivisor(plan *nativeBackendPlan, instruction railmach.Inst, operands []railmach.Operand) (uint32, bool) {
+	kind := railmach.SemanticOpcode(instruction.Op)
+	if len(operands) != 2 || kind != wasm.InstrI32DivU && kind != wasm.InstrI32RemU {
+		return 0, false
+	}
+	value, constant := nativeIntegerConstant(plan, operands[1].Reg)
+	divisor := uint32(value)
+	if !constant || divisor == 0 {
+		return 0, false
+	}
+	if divisor&(divisor-1) == 0 {
+		return divisor, true
+	}
+	_, _, immediate := amd64UnsignedI32ImmediateMagic(divisor)
+	return divisor, kind == wasm.InstrI32DivU && immediate
+}
+
+// amd64EmitUnsignedI32ConstantDivision strength-reduces an unsigned i32
+// division or remainder without x86's fixed-register DIV instruction. The
+// 64-bit low multiply contains the complete 32x32 product, so shifting it by 32
+// produces the high half required by the Granlund-Montgomery quotient.
+func amd64EmitUnsignedI32ConstantDivision(a *amd64.Asm, dst, dividend amd64.Reg, divisor uint32, remainder bool) {
+	if divisor == 1 {
+		if remainder {
+			a.XorSelf32(dst)
+		} else if dst != dividend {
+			a.MovReg32(dst, dividend)
+		}
+		return
+	}
+	if divisor&(divisor-1) == 0 {
+		if dst != dividend {
+			a.MovReg32(dst, dividend)
+		}
+		if remainder {
+			a.AluRI(4, dst, int32(divisor-1), false)
+		} else {
+			a.ShiftImm(5, dst, byte(bits.TrailingZeros32(divisor)), false)
+		}
+		return
+	}
+
+	multiplier, shift, ok := amd64UnsignedI32ImmediateMagic(divisor)
+	if !ok {
+		panic("constant division without immediate magic")
+	}
+	a.ImulRRI(amd64.R10, dividend, int32(multiplier), true)
+	a.ShiftImm(5, amd64.R10, shift, true)
+	if dst != amd64.R10 {
+		a.MovReg32(dst, amd64.R10)
+	}
 }
 
 func amd64DirectIntegerUnaryKind(kind wasm.InstrKind) bool {

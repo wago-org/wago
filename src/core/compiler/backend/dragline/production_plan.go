@@ -1506,6 +1506,9 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if err != nil {
 		return nil, err
 	}
+	if machineTarget == railmach.TargetAMD64 {
+		refineAMD64ConstantDivisionConstraints(machine)
+	}
 	if err := railmach.BindBoundsProofs(machine, emission); err != nil {
 		return nil, err
 	}
@@ -2328,6 +2331,39 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	}
 	p.observeCapacity()
 	return &p.plan, nil
+}
+
+// refineAMD64ConstantDivisionConstraints releases the fixed RAX dividend
+// constraint when finalization can replace unsigned i32 division by a strictly
+// cheaper exact immediate multiply/shift. This lets ordinary allocation
+// preserve the dividend in its natural register instead of paying repairs
+// inherited from x86 DIV.
+func refineAMD64ConstantDivisionConstraints(machine *railmach.Func) {
+	for instructionID, instruction := range machine.Insts {
+		kind := railmach.SemanticOpcode(instruction.Op)
+		if kind != wasm.InstrI32DivU && kind != wasm.InstrI32RemU {
+			continue
+		}
+		operands := machine.InstructionOperands(uint32(instructionID))
+		if len(operands) != 2 {
+			continue
+		}
+		value, constant := nativeMachineIntegerConstant(machine, operands[1].Reg)
+		divisor := uint32(value)
+		if !constant || divisor == 0 {
+			continue
+		}
+		if divisor&(divisor-1) == 0 {
+			continue
+		}
+		_, _, immediate := amd64UnsignedI32ImmediateMagic(divisor)
+		if kind != wasm.InstrI32DivU || !immediate {
+			continue
+		}
+		operand := &machine.Operands[instruction.OperandStart]
+		operand.Fixed = railmach.NoFixedReg
+		operand.Flags &^= railmach.OperandFixed
+	}
 }
 
 // preserveNativeARM64RepeatedAddInputs keeps the invariant input of a
