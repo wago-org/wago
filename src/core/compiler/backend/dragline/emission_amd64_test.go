@@ -535,6 +535,89 @@ func TestAMD64StructuredLoadsSIMDDirectlyFromPinnedI32Address(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredLoadsSIMDDirectlyFromCachedI32Address(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x41, 0x04, // i32.const 4
+			0x6a,                   // i32.add
+			0xfd, 0x00, 0x04, 0x10, // v128.load offset=16
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := new(railssa.EmissionPlan)
+	plan.ElideAllMemoryBounds()
+	native, _, _, err := emitAMD64Stack(fn, plan, false, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var direct, redundant amd64.Asm
+	direct.MovReg32(amd64.R10, amd64.RDI)
+	redundant.MovReg64(amd64.R10, amd64.RDI)
+	redundant.MovReg32(amd64.R10, amd64.R10)
+	if !bytes.Contains(native, direct.B) {
+		t.Fatalf("structured cached-address SIMD load was not direct: %x", native)
+	}
+	if bytes.Contains(native, redundant.B) {
+		t.Fatalf("structured cached-address SIMD load copied through scratch: %x", native)
+	}
+}
+
+func TestAMD64StructuredLoadsScalarDirectlyFromCachedI32Address(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x41, 0x04, // i32.const 4
+			0x6a,             // i32.add
+			0x28, 0x02, 0x10, // i32.load offset=16
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := new(railssa.EmissionPlan)
+	plan.ElideAllMemoryBounds()
+	native, _, _, err := emitAMD64Stack(fn, plan, false, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var direct, redundant amd64.Asm
+	direct.LoadIdx(amd64.R10, amd64.RBX, amd64.RDI, 16, 4, false, false)
+	redundant.MovReg64(amd64.RAX, amd64.RDI)
+	if !bytes.Contains(native, direct.B) {
+		t.Fatalf("structured cached-address scalar load was not direct: %x", native)
+	}
+	if bytes.Contains(native, redundant.B) {
+		t.Fatalf("structured cached-address scalar load copied through scratch: %x", native)
+	}
+}
+
 func TestAMD64StructuredSignalsDoNotReserveMemorySizeCache(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

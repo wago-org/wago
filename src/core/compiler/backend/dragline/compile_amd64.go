@@ -7960,11 +7960,11 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				if !ok {
 					return nil, 0, nil, fmt.Errorf("byte %d: SIMD descriptor is unavailable", instr.Offset)
 				}
-				err = emitAMD64StackSIMD(&a, descriptor, instr, &stackTypes, stackOff, cachedV128, reserveV128, loadV128, cacheV128, loadScalar, cacheScalar, discardScalar, materializeSIMDConstant, shuffleSIMDConstant, simdConstants, cacheMemorySize, fn.Index, localMemoryCheckEnds[instrIndex], plan.ElidesBoundsCheck(uint32(instrIndex)) || localMemoryChecksElided[instrIndex], metadata)
+				err = emitAMD64StackSIMD(&a, descriptor, instr, &stackTypes, stackOff, cachedV128, reserveV128, loadV128, cacheV128, scalarOperand, loadScalar, cacheScalar, discardScalar, materializeSIMDConstant, shuffleSIMDConstant, simdConstants, cacheMemorySize, fn.Index, localMemoryCheckEnds[instrIndex], plan.ElidesBoundsCheck(uint32(instrIndex)) || localMemoryChecksElided[instrIndex], metadata)
 				pruneVectorStackCache()
 				pruneScalarStackCache()
 			} else if amd64MemoryStackKind(instr.Kind) {
-				err = emitAMD64StackMemory(&a, instr, &stackTypes, loadScalar, cacheScalar, discardScalar, cacheMemorySize, fn.Index, localMemoryCheckEnds[instrIndex], plan.ElidesBoundsCheck(uint32(instrIndex)) || localMemoryChecksElided[instrIndex], metadata)
+				err = emitAMD64StackMemory(&a, instr, &stackTypes, scalarOperand, loadScalar, cacheScalar, discardScalar, cacheMemorySize, fn.Index, localMemoryCheckEnds[instrIndex], plan.ElidesBoundsCheck(uint32(instrIndex)) || localMemoryChecksElided[instrIndex], metadata)
 				pruneScalarStackCache()
 			} else if amd64FloatStackKind(instr.Kind) {
 				err = emitAMD64StackFloat(&a, instr.Kind, &stackTypes, loadScalar, cacheScalar, discardScalar, fn.Index, instr.Offset, metadata)
@@ -8740,7 +8740,7 @@ func emitAMD64StackCall(a *amd64.Asm, sf *railssa.StackFunc, instr railssa.Stack
 }
 
 func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor, instr railssa.StackInstr,
-	stack *[]wasm.ValType, stackOff func(int) int32, cachedV func(int) (amd64.Reg, bool), reserveV func(int) amd64.Reg, loadV, storeV, loadScalar, storeScalar func(int, amd64.Reg), discardScalar func(int),
+	stack *[]wasm.ValType, stackOff func(int) int32, cachedV func(int) (amd64.Reg, bool), reserveV func(int) amd64.Reg, loadV, storeV func(int, amd64.Reg), scalarOperand func(int, amd64.Reg) amd64.Reg, loadScalar, storeScalar func(int, amd64.Reg), discardScalar func(int),
 	materializeConstant func(amd64.Reg, [16]byte), shuffleConstant func(amd64.Reg, amd64.Reg, [16]byte), constants []amd64SIMDConstant, cachedMemorySize bool, function uint32, plannedCheckEnd uint64, elideBounds bool, metadata *functionEmissionMetadata,
 ) error {
 	types := *stack
@@ -8851,12 +8851,12 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 			return fmt.Errorf("SIMD load operand mismatch")
 		}
 		base := len(types) - 1
-		loadScalar(base, amd64.R10)
+		address := scalarOperand(base, amd64.R10)
 		discardScalar(base)
 		if !elideBounds {
-			checkMemory(amd64.R10, 16)
+			checkMemory(address, 16)
 		}
-		effectiveAddress(amd64.R10)
+		effectiveAddress(address)
 		dst := reserveV(base)
 		a.VMovdquLoadDisp(dst, amd64.R10, 0)
 		types[base] = wasm.V128
@@ -8865,13 +8865,13 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 			return fmt.Errorf("SIMD store operand mismatch")
 		}
 		base := len(types) - 2
-		loadScalar(base, amd64.R10)
+		address := scalarOperand(base, amd64.R10)
 		discardScalar(base)
 		value := vectorOperand(base+1, 0)
 		if !elideBounds {
-			checkMemory(amd64.R10, 16)
+			checkMemory(address, 16)
 		}
-		effectiveAddress(amd64.R10)
+		effectiveAddress(address)
 		a.VMovdquStoreDisp(amd64.R10, 0, value)
 		types = types[:base]
 	case wasm.InstrV128Store64Lane:
@@ -8879,13 +8879,13 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 			return fmt.Errorf("SIMD lane store operand mismatch")
 		}
 		base := len(types) - 2
-		loadScalar(base, amd64.R10)
+		address := scalarOperand(base, amd64.R10)
 		discardScalar(base)
 		value := vectorOperand(base+1, 0)
 		if !elideBounds {
-			checkMemory(amd64.R10, 8)
+			checkMemory(address, 8)
 		}
-		effectiveAddress(amd64.R10)
+		effectiveAddress(address)
 		a.Pextrq(amd64.R11, value, byte(descriptor.Lane))
 		a.Store64(amd64.R10, 0, amd64.R11)
 		types = types[:base]
@@ -9151,7 +9151,7 @@ func amd64CopyDraglineInstanceContext(a *amd64.Asm, targetLinMem, context amd64.
 }
 
 func emitAMD64StackMemory(a *amd64.Asm, instr railssa.StackInstr, stack *[]wasm.ValType,
-	load, storeValue func(int, amd64.Reg), discard func(int), cachedMemorySize bool, function uint32, plannedCheckEnd uint64, elideBounds bool, metadata *functionEmissionMetadata,
+	operand func(int, amd64.Reg) amd64.Reg, load, storeValue func(int, amd64.Reg), discard func(int), cachedMemorySize bool, function uint32, plannedCheckEnd uint64, elideBounds bool, metadata *functionEmissionMetadata,
 ) error {
 	types := *stack
 	store := instr.Kind >= wasm.InstrI32Store && instr.Kind <= wasm.InstrI64Store32
@@ -9201,9 +9201,9 @@ func emitAMD64StackMemory(a *amd64.Asm, instr railssa.StackInstr, stack *[]wasm.
 	if store {
 		addrIndex--
 	}
-	load(addrIndex, amd64.RAX)
+	address := operand(addrIndex, amd64.RAX)
 	if !elideBounds {
-		a.MovReg64(amd64.R10, amd64.RAX)
+		a.MovReg64(amd64.R10, address)
 		end := uint64(instr.U32()) + uint64(size)
 		if plannedCheckEnd != 0 {
 			end = plannedCheckEnd
@@ -9233,18 +9233,18 @@ func emitAMD64StackMemory(a *amd64.Asm, instr railssa.StackInstr, stack *[]wasm.
 		discard(addrIndex)
 		if typ == wasm.F32 || typ == wasm.F64 {
 			a.MovGprToXmm(0, amd64.R10, typ == wasm.F64)
-			a.FStoreIdx(amd64.RBX, amd64.RAX, 0, disp, typ == wasm.F64)
+			a.FStoreIdx(amd64.RBX, address, 0, disp, typ == wasm.F64)
 		} else {
-			a.StoreIdx(amd64.RBX, amd64.RAX, amd64.R10, disp, size)
+			a.StoreIdx(amd64.RBX, address, amd64.R10, disp, size)
 		}
 		*stack = types[:addrIndex]
 		return nil
 	}
 	if typ == wasm.F32 || typ == wasm.F64 {
-		a.FLoadIdx(0, amd64.RBX, amd64.RAX, disp, typ == wasm.F64)
+		a.FLoadIdx(0, amd64.RBX, address, disp, typ == wasm.F64)
 		a.MovXmmToGpr(amd64.R10, 0, typ == wasm.F64)
 	} else {
-		a.LoadIdx(amd64.R10, amd64.RBX, amd64.RAX, disp, size, signed, typ == wasm.I64)
+		a.LoadIdx(amd64.R10, amd64.RBX, address, disp, size, signed, typ == wasm.I64)
 	}
 	discard(addrIndex)
 	storeValue(addrIndex, amd64.R10)
