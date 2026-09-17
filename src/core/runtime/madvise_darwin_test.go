@@ -20,7 +20,8 @@ func TestReusedMemoryAfterExec(t *testing.T) {
 	if err := exec.Command("/usr/bin/true").Run(); err != nil {
 		t.Fatal(err)
 	}
-	if err := ReleaseJobMemory(m); err != nil {
+	original := m
+	if err := ReleaseJobMemory(original); err != nil {
 		t.Fatal(err)
 	}
 	m, err = AcquireJobMemoryGrowable(size, size)
@@ -28,6 +29,9 @@ func TestReusedMemoryAfterExec(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
+	if m != original {
+		t.Fatal("expected the original JobMemory to be reused")
+	}
 
 	for i, b := range m.CurrentBytes() {
 		if b != 0 {
