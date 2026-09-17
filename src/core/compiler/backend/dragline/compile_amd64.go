@@ -6322,7 +6322,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 			a.MovReg64(reg, operand)
 		}
 	}
-	cacheScalar := func(index int, reg amd64.Reg) {
+	reserveScalar := func(index int) amd64.Reg {
 		cache := findScalarStackCache(index)
 		if cache < 0 {
 			for i, cached := range scalarStackCache[:scalarStackCacheEntries] {
@@ -6343,10 +6343,14 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 		}
 		cachedReg := scalarStackCacheRegisters[cache]
 		scalarLocalCache[cache] = -1
+		scalarStackCache[cache] = index
+		return cachedReg
+	}
+	cacheScalar := func(index int, reg amd64.Reg) {
+		cachedReg := reserveScalar(index)
 		if reg != cachedReg {
 			a.MovReg64(cachedReg, reg)
 		}
-		scalarStackCache[cache] = index
 	}
 	discardScalar := func(index int) {
 		if cache := findScalarStackCache(index); cache >= 0 {
@@ -7796,7 +7800,13 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 			}
 			if localPinned[instr.U32()] {
 				if localFloat[instr.U32()] {
-					a.MovXmmToGpr(amd64.R10, localRegisters[instr.U32()], sf.Locals[instr.U32()] == wasm.F64)
+					if len(stackTypes) >= int(sf.MaxStack) {
+						return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
+					}
+					dst := reserveScalar(len(stackTypes))
+					a.MovXmmToGpr(dst, localRegisters[instr.U32()], sf.Locals[instr.U32()] == wasm.F64)
+					stackTypes = append(stackTypes, sf.Locals[instr.U32()])
+					continue
 				} else {
 					if err := push(sf.Locals[instr.U32()], localRegisters[instr.U32()]); err != nil {
 						return nil, 0, nil, err
@@ -7809,7 +7819,13 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				}
 				continue
 			} else {
-				a.LoadRsp64(amd64.R10, localOff(int(instr.U32())))
+				if len(stackTypes) >= int(sf.MaxStack) {
+					return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
+				}
+				dst := reserveScalar(len(stackTypes))
+				a.LoadRsp64(dst, localOff(int(instr.U32())))
+				stackTypes = append(stackTypes, sf.Locals[instr.U32()])
+				continue
 			}
 			if err := push(sf.Locals[instr.U32()], amd64.R10); err != nil {
 				return nil, 0, nil, err
@@ -7876,12 +7892,14 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				}
 			}
 		case wasm.InstrGlobalGet:
+			if len(stackTypes) >= int(sf.MaxStack) {
+				return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
+			}
+			dst := reserveScalar(len(stackTypes))
 			a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
 			a.Load64(amd64.R10, amd64.R10, int32(instr.U32())*8)
-			a.Load64(amd64.RAX, amd64.R10, 0)
-			if err := push(sf.Globals[instr.U32()], amd64.RAX); err != nil {
-				return nil, 0, nil, err
-			}
+			a.Load64(dst, amd64.R10, 0)
+			stackTypes = append(stackTypes, sf.Globals[instr.U32()])
 		case wasm.InstrGlobalSet:
 			if _, err := pop(amd64.RAX); err != nil {
 				return nil, 0, nil, err
@@ -7890,28 +7908,30 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 			a.Load64(amd64.R10, amd64.R10, int32(instr.U32())*8)
 			a.Store64(amd64.R10, 0, amd64.RAX)
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const:
+			if len(stackTypes) >= int(sf.MaxStack) {
+				return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
+			}
+			dst := reserveScalar(len(stackTypes))
 			if instr.Kind == wasm.InstrI32Const {
-				a.MovImm32(amd64.R10, int32(instr.U64()))
-				if err := push(wasm.I32, amd64.R10); err != nil {
-					return nil, 0, nil, err
-				}
+				a.MovImm32(dst, int32(instr.U64()))
+				stackTypes = append(stackTypes, wasm.I32)
 			} else {
-				a.MovImm64(amd64.R10, instr.U64())
+				a.MovImm64(dst, instr.U64())
 				typ := wasm.I64
 				if instr.Kind == wasm.InstrF32Const {
 					typ = wasm.F32
 				} else if instr.Kind == wasm.InstrF64Const {
 					typ = wasm.F64
 				}
-				if err := push(typ, amd64.R10); err != nil {
-					return nil, 0, nil, err
-				}
+				stackTypes = append(stackTypes, typ)
 			}
 		case wasm.InstrMemorySize:
-			a.Load32(amd64.R10, amd64.RBX, -4)
-			if err := push(wasm.I32, amd64.R10); err != nil {
-				return nil, 0, nil, err
+			if len(stackTypes) >= int(sf.MaxStack) {
+				return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
 			}
+			dst := reserveScalar(len(stackTypes))
+			a.Load32(dst, amd64.RBX, -4)
+			stackTypes = append(stackTypes, wasm.I32)
 		case wasm.InstrMemoryGrow:
 			if _, err := pop(amd64.RAX); err != nil {
 				return nil, 0, nil, err
