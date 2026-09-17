@@ -449,12 +449,53 @@ func TestSparseSimplifyForwardsGlobalStoreToGet(t *testing.T) {
 		}
 	}
 	for _, instruction := range semantic.Insts {
-		if instruction.Op == wasm.InstrGlobalGet {
+		if instruction.Op == wasm.InstrGlobalGet && get == 0 {
 			get = instruction.Result
 		}
 	}
 	if get == 0 || param == 0 || resolveAlias(result.Aliases, get) != param {
 		t.Fatalf("global.get alias v%d -> v%d, want parameter v%d", get, resolveAlias(result.Aliases, get), param)
+	}
+}
+
+func TestSparseSimplifyForwardsGlobalStoreAcrossUniquePredecessor(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x24, 0x00, // global.set 0
+			0x02, 0x40, // block
+			0x23, 0x00, //   global.get 0
+			0x41, 0x0a, //   i32.const 10
+			0x48,       //   i32.lt_s
+			0x0d, 0x00, //   br_if 0
+			0x0b,       // end
+			0x23, 0x00, // global.get 0
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, flow, semantic, _, result := buildSimplifyTest(t, m)
+	var param FlowValueID
+	for value, record := range flow.Values {
+		if record.Kind == FlowValueInitialLocal && record.Local == 0 {
+			param = FlowValueID(value)
+		}
+	}
+	var firstGet FlowValueID
+	for _, instruction := range semantic.Insts {
+		if instruction.Op == wasm.InstrGlobalGet {
+			firstGet = instruction.Result
+			break
+		}
+	}
+	if firstGet == 0 || param == 0 || resolveAlias(result.Aliases, firstGet) != param {
+		t.Fatalf("cross-block global.get alias v%d -> v%d, want parameter v%d", firstGet, resolveAlias(result.Aliases, firstGet), param)
 	}
 }
 
@@ -471,6 +512,12 @@ func TestSparseSimplifyDoesNotForwardGlobalStoreAcrossCall(t *testing.T) {
 				0x20, 0x00, // local.get 0
 				0x24, 0x00, // global.set 0
 				0x10, 0x01, // call 1
+				0x02, 0x40, // block
+				0x23, 0x00, //   global.get 0
+				0x41, 0x0a, //   i32.const 10
+				0x48,       //   i32.lt_s
+				0x0d, 0x00, //   br_if 0
+				0x0b,       // end
 				0x23, 0x00, // global.get 0
 				0x0b,
 			}),
@@ -489,12 +536,48 @@ func TestSparseSimplifyDoesNotForwardGlobalStoreAcrossCall(t *testing.T) {
 		}
 	}
 	for _, instruction := range semantic.Insts {
-		if instruction.Op == wasm.InstrGlobalGet {
+		if instruction.Op == wasm.InstrGlobalGet && get == 0 {
 			get = instruction.Result
 		}
 	}
 	if get == 0 || param == 0 || resolveAlias(result.Aliases, get) == param {
 		t.Fatalf("global.get alias v%d -> v%d, unexpectedly forwarded parameter v%d across call", get, resolveAlias(result.Aliases, get), param)
+	}
+}
+
+func TestSparseSimplifyDoesNotForwardGlobalStoreAcrossJoin(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x01, // local.get 1
+			0x04, 0x40, // if
+			0x20, 0x00, //   local.get 0
+			0x24, 0x00, //   global.set 0
+			0x0b,       // end
+			0x23, 0x00, // global.get 0
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, flow, semantic, _, result := buildSimplifyTest(t, m)
+	var get, param FlowValueID
+	for value, record := range flow.Values {
+		if record.Kind == FlowValueInitialLocal && record.Local == 0 {
+			param = FlowValueID(value)
+		}
+	}
+	for _, instruction := range semantic.Insts {
+		if instruction.Op == wasm.InstrGlobalGet {
+			get = instruction.Result
+		}
+	}
+	if get == 0 || param == 0 || resolveAlias(result.Aliases, get) == param {
+		t.Fatalf("global.get alias v%d -> v%d, unexpectedly forwarded one-arm store v%d across join", get, resolveAlias(result.Aliases, get), param)
 	}
 }
 
