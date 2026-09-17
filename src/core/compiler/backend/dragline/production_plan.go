@@ -1460,6 +1460,27 @@ func nativeScheduleScoreBetter(objective corecompiler.OptimizationObjective, tar
 			return false
 		}
 	}
+	pressureCopyTradeoff := candidate.Kind == railmach.ScheduleKindPressure &&
+		candidate.WeightedSpillDebt < retained.WeightedSpillDebt && candidate.PhysicalCopies > retained.PhysicalCopies ||
+		retained.Kind == railmach.ScheduleKindPressure &&
+			retained.WeightedSpillDebt < candidate.WeightedSpillDebt && retained.PhysicalCopies > candidate.PhysicalCopies
+	if objective == corecompiler.ObjectiveSpeed && target == railmach.TargetAMD64 && pressureCopyTradeoff {
+		// A realized register copy executes on every path that carries it. Charge
+		// marginal pressure schedules enough to reject tiny spill-debt wins bought
+		// with extra copies, without changing source/latency ordering.
+		const physicalCopyCost = uint64(32)
+		executionDebt := func(score railmach.ScheduleScore) uint64 {
+			copies := uint64(score.PhysicalCopies)
+			if copies > (^uint64(0)-score.WeightedSpillDebt)/physicalCopyCost {
+				return ^uint64(0)
+			}
+			return score.WeightedSpillDebt + copies*physicalCopyCost
+		}
+		candidateDebt, retainedDebt := executionDebt(candidate), executionDebt(retained)
+		if candidateDebt != retainedDebt {
+			return candidateDebt < retainedDebt
+		}
+	}
 	return candidate.BetterThan(retained)
 }
 
@@ -3138,7 +3159,7 @@ func nativeAMD64CachesGlobalDescriptors(machine *railmach.Func) bool {
 			uses++
 		}
 	}
-	return nativeAMD64CachesGlobals(machine) || hasCall && uses >= 4
+	return nativeAMD64CachesGlobals(machine) || hasCall && uses >= 8
 }
 
 func nativeAMD64CachedGlobal(machine *railmach.Func) (uint32, bool) {
@@ -3150,7 +3171,7 @@ func nativeAMD64CachedGlobal(machine *railmach.Func) (uint32, bool) {
 			return 0, false
 		}
 	}
-	bestIndex, bestWeight := uint32(0), uint32(0)
+	bestIndex, bestUses, bestWeight := uint32(0), uint32(0), uint32(0)
 	for instructionID, candidate := range machine.Insts {
 		candidateOp := railmach.SemanticOpcode(candidate.Op)
 		if candidateOp != wasm.InstrGlobalGet && candidateOp != wasm.InstrGlobalSet {
@@ -3165,7 +3186,7 @@ func nativeAMD64CachedGlobal(machine *railmach.Func) (uint32, bool) {
 				continue
 			}
 		}
-		index, weightedUses := uint32(candidate.Aux), uint32(0)
+		index, uses, weightedUses := uint32(candidate.Aux), uint32(0), uint32(0)
 		for _, block := range machine.Blocks {
 			for instructionID := block.InstStart; instructionID < block.InstStart+block.InstCount; instructionID++ {
 				instruction := machine.Insts[instructionID]
@@ -3173,6 +3194,7 @@ func nativeAMD64CachedGlobal(machine *railmach.Func) (uint32, bool) {
 				if (semanticOp != wasm.InstrGlobalGet && semanticOp != wasm.InstrGlobalSet) || uint32(instruction.Aux) != index {
 					continue
 				}
+				uses++
 				if weightedUses > ^uint32(0)-block.Weight {
 					weightedUses = ^uint32(0)
 					break
@@ -3181,10 +3203,12 @@ func nativeAMD64CachedGlobal(machine *railmach.Func) (uint32, bool) {
 			}
 		}
 		if weightedUses > bestWeight || weightedUses == bestWeight && index < bestIndex {
-			bestIndex, bestWeight = index, weightedUses
+			bestIndex, bestUses, bestWeight = index, uses, weightedUses
 		}
 	}
-	return bestIndex, bestWeight >= 16
+	// Profile weight scales the entry save/load/restore cost along with the
+	// accesses, so require enough structural reuse within one invocation too.
+	return bestIndex, bestUses >= 4 && bestWeight >= 16
 }
 
 func nativeAMD64StackCachedGlobals(stack *railssa.StackFunc, machine *railmach.Func) ([2]uint32, int) {

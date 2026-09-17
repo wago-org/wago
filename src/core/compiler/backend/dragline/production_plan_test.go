@@ -189,6 +189,13 @@ func TestNativeARM64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
 }
 
 func TestNativeAMD64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
+	hotSparse := &railmach.Func{Target: railmach.TargetAMD64, Insts: []railmach.Inst{
+		{Op: wasm.InstrGlobalGet}, {Op: wasm.InstrGlobalSet},
+	}, Blocks: []railmach.Block{{InstCount: 2, Weight: 100}}}
+	if nativeAMD64CachesGlobals(hotSparse) {
+		t.Fatal("two hot global accesses enabled the AMD64 value cache")
+	}
+
 	machine := &railmach.Func{Target: railmach.TargetAMD64, Insts: []railmach.Inst{
 		{Op: wasm.InstrGlobalGet}, {Op: wasm.InstrGlobalSet}, {Op: wasm.InstrGlobalGet},
 	}, Blocks: []railmach.Block{{InstCount: 3, Weight: 1}}}
@@ -214,8 +221,17 @@ func TestNativeAMD64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
 	if nativeAMD64CachesGlobals(machine) {
 		t.Fatal("call-crossing function enabled the AMD64 descriptor cache")
 	}
+	if nativeAMD64CachesGlobalDescriptors(machine) {
+		t.Fatal("four call-crossing global accesses enabled the AMD64 descriptor-array cache")
+	}
+	machine.Insts = append(machine.Insts,
+		railmach.Inst{Op: wasm.InstrGlobalGet},
+		railmach.Inst{Op: wasm.InstrGlobalSet},
+		railmach.Inst{Op: wasm.InstrGlobalGet},
+		railmach.Inst{Op: wasm.InstrGlobalSet},
+	)
 	if !nativeAMD64CachesGlobalDescriptors(machine) {
-		t.Fatal("call-crossing function disabled the AMD64 descriptor-array cache")
+		t.Fatal("eight call-crossing global accesses did not enable the AMD64 descriptor-array cache")
 	}
 	machine.Target = railmach.TargetARM64
 	if nativeAMD64CachesGlobalDescriptors(machine) {
@@ -234,8 +250,12 @@ func TestNativeAMD64StackCachesProfitableCallCrossingGlobals(t *testing.T) {
 			{Op: wasm.InstrCall},
 			{Op: wasm.InstrGlobalGet, Aux: 0},
 			{Op: wasm.InstrGlobalGet, Aux: 1},
+			{Op: wasm.InstrGlobalGet, Aux: 0},
 			{Op: wasm.InstrGlobalGet, Aux: 2},
 			{Op: wasm.InstrGlobalGet, Aux: 0},
+			{Op: wasm.InstrGlobalGet, Aux: 1},
+			{Op: wasm.InstrGlobalGet, Aux: 0},
+			{Op: wasm.InstrGlobalGet, Aux: 1},
 		},
 		Blocks: []railmach.Block{
 			{InstStart: 0, InstCount: 1, Weight: 1},
@@ -243,6 +263,10 @@ func TestNativeAMD64StackCachesProfitableCallCrossingGlobals(t *testing.T) {
 			{InstStart: 2, InstCount: 1, Weight: 32},
 			{InstStart: 3, InstCount: 1, Weight: 128},
 			{InstStart: 4, InstCount: 1, Weight: 1},
+			{InstStart: 5, InstCount: 1, Weight: 1},
+			{InstStart: 6, InstCount: 1, Weight: 1},
+			{InstStart: 7, InstCount: 1, Weight: 1},
+			{InstStart: 8, InstCount: 1, Weight: 1},
 		},
 	}
 	if globals, count := nativeAMD64StackCachedGlobals(stack, machine); count != 2 || globals != [2]uint32{0, 1} {
@@ -1220,6 +1244,28 @@ func TestNativeScheduleScoreBoundsLargeLatencyPreference(t *testing.T) {
 	latency.WeightedSpillDebt = 400
 	if nativeScheduleScoreBetter(corecompiler.ObjectiveSize, railmach.TargetAMD64, 1024, false, latency, pressure) || nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 1023, false, latency, pressure) {
 		t.Fatal("latency preference escaped the speed/large-function boundary")
+	}
+}
+
+func TestNativeScheduleScoreChargesMarginalAMD64PressureCopies(t *testing.T) {
+	pressure := railmach.ScheduleScore{Kind: railmach.ScheduleKindPressure, WeightedSpillDebt: 1409, PhysicalCopies: 70}
+	latency := railmach.ScheduleScore{Kind: railmach.ScheduleKindLatencyFusion, WeightedSpillDebt: 1433, PhysicalCopies: 67}
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 512, false, pressure, latency) ||
+		!nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 512, false, latency, pressure) {
+		t.Fatal("marginal pressure debt win outweighed three realized copies")
+	}
+	source := railmach.ScheduleScore{Kind: railmach.ScheduleKindSourceStable, WeightedSpillDebt: 1418, PhysicalCopies: 68}
+	if !nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 512, false, source, latency) {
+		t.Fatal("pressure-only copy cost changed source/latency ordering")
+	}
+	if !nativeScheduleScoreBetter(corecompiler.ObjectiveSize, railmach.TargetAMD64, 512, false, pressure, latency) ||
+		!nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetARM64, 512, false, pressure, latency) {
+		t.Fatal("AMD64 speed copy cost escaped its objective or target boundary")
+	}
+	pressure = railmach.ScheduleScore{Kind: railmach.ScheduleKindPressure, WeightedSpillDebt: 466, PhysicalCopies: 68}
+	latency = railmach.ScheduleScore{Kind: railmach.ScheduleKindLatencyFusion, WeightedSpillDebt: 462, PhysicalCopies: 69}
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 512, false, pressure, latency) {
+		t.Fatal("copy cost promoted pressure despite higher spill debt")
 	}
 }
 
