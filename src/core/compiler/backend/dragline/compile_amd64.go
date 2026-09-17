@@ -1449,7 +1449,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			iterationSafepointStart = len(metadata.Safepoints)
 			iterationSourceStart = len(metadata.Sources)
 		}
-		for _, instructionID := range plan.Schedule.Order[blockRange.Start : blockRange.Start+blockRange.Count] {
+		blockOrder := plan.Schedule.Order[blockRange.Start : blockRange.Start+blockRange.Count]
+		for blockInstructionIndex, instructionID := range blockOrder {
 			nextPosition := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 			forwardedSpill = 0
 			if pendingSpill != 0 && plan.Machine.VRegs[pendingSpill].Bank == railmach.BankFPR && !skipInstruction.has(instructionID) && !plan.PostRASkip.has(instructionID) &&
@@ -4062,7 +4063,16 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					continue
 				}
 				if divisor, ok := amd64RailMachSignedI32ConstantDivisor(plan, instruction, operands); ok {
-					amd64EmitSignedI32ConstantDivision(&a, dst, reg(operands[0].Reg), divisor, semanticOp == wasm.InstrI32RemS)
+					pairedRemainder := semanticOp == wasm.InstrI32RemS && amd64RailMachPairedSignedI32Division(plan, blockOrder, blockInstructionIndex)
+					if pairedRemainder {
+						a.LoadRsp64(amd64.R11, int32(plan.AMD64DivisionSaveOffset)+16)
+						amd64EmitSignedI32RemainderFromQuotient(&a, dst, reg(operands[0].Reg), divisor)
+					} else {
+						amd64EmitSignedI32ConstantDivision(&a, dst, reg(operands[0].Reg), divisor, semanticOp == wasm.InstrI32RemS)
+						if semanticOp == wasm.InstrI32DivS && amd64RailMachPairedSignedI32Division(plan, blockOrder, blockInstructionIndex) {
+							a.StoreRsp64(int32(plan.AMD64DivisionSaveOffset)+16, amd64.R11)
+						}
+					}
 					if divisionRAXSaved {
 						a.LoadRsp64(amd64.RAX, int32(plan.AMD64DivisionSaveOffset))
 					}
@@ -8427,6 +8437,45 @@ func amd64RailMachSignedI32ConstantDivisor(plan *nativeBackendPlan, instruction 
 	return divisor, immediate
 }
 
+// amd64RailMachPairedSignedI32Division reports whether the instruction is one
+// half of an adjacent div/rem pair over the same dividend and positive constant
+// divisor. Adjacent means no other integer division intervenes in scheduled
+// order, so the reserved division staging slot can carry the quotient safely.
+func amd64RailMachPairedSignedI32Division(plan *nativeBackendPlan, order []uint32, index int) bool {
+	if index < 0 || index >= len(order) {
+		return false
+	}
+	instructionID := order[index]
+	instruction := plan.Machine.Insts[instructionID]
+	kind := railmach.SemanticOpcode(instruction.Op)
+	direction := 1
+	if kind == wasm.InstrI32RemS {
+		direction = -1
+	} else if kind != wasm.InstrI32DivS {
+		return false
+	}
+	operands := plan.Machine.InstructionOperands(instructionID)
+	divisor, ok := amd64RailMachSignedI32ConstantDivisor(plan, instruction, operands)
+	if !ok {
+		return false
+	}
+	for next := index + direction; next >= 0 && next < len(order); next += direction {
+		candidateID := order[next]
+		candidate := plan.Machine.Insts[candidateID]
+		if !amd64DirectSafeDivKind(candidate.Op) {
+			continue
+		}
+		candidateKind := railmach.SemanticOpcode(candidate.Op)
+		if direction > 0 && candidateKind != wasm.InstrI32RemS || direction < 0 && candidateKind != wasm.InstrI32DivS {
+			return false
+		}
+		candidateOperands := plan.Machine.InstructionOperands(candidateID)
+		candidateDivisor, candidateOK := amd64RailMachSignedI32ConstantDivisor(plan, candidate, candidateOperands)
+		return candidateOK && candidateDivisor == divisor && len(candidateOperands) == 2 && len(operands) == 2 && candidateOperands[0].Reg == operands[0].Reg
+	}
+	return false
+}
+
 // amd64EmitUnsignedI32ConstantDivision strength-reduces an unsigned i32
 // division or remainder without x86's fixed-register DIV instruction. The
 // 64-bit low multiply contains the complete 32x32 product, so shifting it by 32
@@ -8497,6 +8546,14 @@ func amd64EmitSignedI32ConstantDivision(a *amd64.Asm, dst, dividend amd64.Reg, d
 	} else if dst != amd64.R11 {
 		a.MovReg32(dst, amd64.R11)
 	}
+}
+
+func amd64EmitSignedI32RemainderFromQuotient(a *amd64.Asm, dst, dividend amd64.Reg, divisor int32) {
+	a.ImulRRI(amd64.R10, amd64.R11, divisor, false)
+	if dst != dividend {
+		a.MovReg32(dst, dividend)
+	}
+	a.AluRR(0x29, dst, amd64.R10, false)
 }
 
 func amd64DirectIntegerUnaryKind(kind wasm.InstrKind) bool {

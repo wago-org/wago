@@ -40,6 +40,35 @@ func TestAMD64CarriesMemoryChecksAcrossMemoryFreeLayoutSibling(t *testing.T) {
 	}
 }
 
+func TestAMD64PairsAdjacentSignedConstantDivisionAndRemainder(t *testing.T) {
+	machine := &railmach.Func{
+		Target: railmach.TargetAMD64,
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Const, Aux: 10, Result: 2},
+			{Op: wasm.InstrI32DivS, OperandStart: 0, OperandCount: 2, Result: 3},
+			{Op: wasm.InstrI32Add},
+			{Op: wasm.InstrI32RemS, OperandStart: 2, OperandCount: 2, Result: 4},
+			{Op: wasm.InstrI32DivU},
+		},
+		Operands: []railmach.Operand{{Reg: 1}, {Reg: 2}, {Reg: 1}, {Reg: 2}},
+		VRegs:    make([]railmach.VRegData, 5),
+	}
+	machine.VRegs[2] = railmach.VRegData{Def: 3, Type: railmach.TypeI32, Bank: railmach.BankGPR}
+	plan := &nativeBackendPlan{Machine: machine, AMD64SignedImmediateRemainders: true}
+	paired := []uint32{1, 2, 3}
+	if !amd64RailMachPairedSignedI32Division(plan, paired, 0) || !amd64RailMachPairedSignedI32Division(plan, paired, 2) {
+		t.Fatal("matching div/rem pair was not recognized across an ordinary instruction")
+	}
+	interveningDivision := []uint32{1, 2, 4, 3}
+	if amd64RailMachPairedSignedI32Division(plan, interveningDivision, 0) || amd64RailMachPairedSignedI32Division(plan, interveningDivision, 3) {
+		t.Fatal("pair crossed an intervening integer division")
+	}
+	machine.Operands[2].Reg = 3
+	if amd64RailMachPairedSignedI32Division(plan, paired, 0) || amd64RailMachPairedSignedI32Division(plan, paired, 2) {
+		t.Fatal("pair crossed unequal dividends")
+	}
+}
+
 func TestAMD64UnsignedVectorComparePreservesAliasedRHS(t *testing.T) {
 	var got amd64.Asm
 	var patches []amd64SIMDConstantPatch
