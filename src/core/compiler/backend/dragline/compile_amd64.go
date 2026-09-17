@@ -6316,6 +6316,17 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 		a.LoadRsp64(scratch, stackOff(index))
 		return scratch
 	}
+	takeScalar := func(index int, scratch amd64.Reg) amd64.Reg {
+		if cache := findScalarStackCache(index); cache >= 0 {
+			reg := scalarStackCacheRegisters[cache]
+			scalarStackCache[cache] = -1
+			scalarLocalCache[cache] = -1
+			return reg
+		}
+		clearScalarLocalRegister(scratch)
+		a.LoadRsp64(scratch, stackOff(index))
+		return scratch
+	}
 	loadScalar := func(index int, reg amd64.Reg) {
 		operand := scalarOperand(index, reg)
 		if operand != reg {
@@ -6723,29 +6734,37 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				continue
 			}
 			if condition, comparison := amd64IntegerComparisonCond(instr.Kind); comparison {
-				rhsType, err := pop(amd64.R10)
-				if err != nil {
-					return nil, 0, nil, err
+				if len(stackTypes) < 2 {
+					return nil, 0, nil, fmt.Errorf("comparison operand stack underflow")
 				}
-				lhsType, err := pop(amd64.RAX)
-				if err != nil || lhsType != rhsType {
+				rhsIndex := len(stackTypes) - 1
+				rhsType := stackTypes[rhsIndex]
+				rhs := takeScalar(rhsIndex, amd64.R10)
+				lhsIndex := rhsIndex - 1
+				lhsType := stackTypes[lhsIndex]
+				lhs := takeScalar(lhsIndex, amd64.RAX)
+				stackTypes = stackTypes[:lhsIndex]
+				if lhsType != rhsType {
 					return nil, 0, nil, fmt.Errorf("comparison operand mismatch")
 				}
 				if lhsType == wasm.I64 {
-					a.Cmp64(amd64.RAX, amd64.R10)
+					a.Cmp64(lhs, rhs)
 				} else {
-					a.Cmp32(amd64.RAX, amd64.R10)
+					a.Cmp32(lhs, rhs)
 				}
 				stackTypes = append(stackTypes, wasm.I32)
 				pendingConditionAt, pendingCondition = instrIndex+1, condition
 				continue
 			}
 			if instr.Kind == wasm.InstrI32Eqz || instr.Kind == wasm.InstrI64Eqz {
-				typ, err := pop(amd64.RAX)
-				if err != nil {
-					return nil, 0, nil, err
+				if len(stackTypes) == 0 {
+					return nil, 0, nil, fmt.Errorf("comparison operand stack underflow")
 				}
-				a.TestSelf(amd64.RAX, typ == wasm.I64)
+				index := len(stackTypes) - 1
+				typ := stackTypes[index]
+				value := takeScalar(index, amd64.RAX)
+				stackTypes = stackTypes[:index]
+				a.TestSelf(value, typ == wasm.I64)
 				stackTypes = append(stackTypes, wasm.I32)
 				pendingConditionAt, pendingCondition = instrIndex+1, amd64.CondE
 				continue
@@ -7542,10 +7561,13 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 					stackTypes = stackTypes[:len(stackTypes)-1]
 					condition, pendingConditionAt = pendingCondition, -1
 				} else {
-					if _, err := pop(amd64.R10); err != nil {
-						return nil, 0, nil, err
+					if len(stackTypes) == 0 {
+						return nil, 0, nil, fmt.Errorf("if condition is unavailable")
 					}
-					a.TestSelf(amd64.R10, false)
+					index := len(stackTypes) - 1
+					conditionValue := takeScalar(index, amd64.R10)
+					stackTypes = stackTypes[:index]
+					a.TestSelf(conditionValue, false)
 				}
 				flushScalarStackCache()
 				flushVectorStackCache()
@@ -7607,10 +7629,13 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 						stackTypes = stackTypes[:len(stackTypes)-1]
 						condition, pendingConditionAt = pendingCondition, -1
 					} else {
-						if _, err := pop(amd64.R10); err != nil {
-							return nil, 0, nil, err
+						if len(stackTypes) == 0 {
+							return nil, 0, nil, fmt.Errorf("branch condition is unavailable")
 						}
-						a.TestSelf(amd64.R10, false)
+						index := len(stackTypes) - 1
+						conditionValue := takeScalar(index, amd64.R10)
+						stackTypes = stackTypes[:index]
+						a.TestSelf(conditionValue, false)
 					}
 					flushScalarStackCache()
 					flushVectorStackCache()
@@ -7646,10 +7671,13 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 					stackTypes = stackTypes[:len(stackTypes)-1]
 					condition, pendingConditionAt = pendingCondition, -1
 				} else {
-					if _, err := pop(amd64.R10); err != nil {
-						return nil, 0, nil, err
+					if len(stackTypes) == 0 {
+						return nil, 0, nil, fmt.Errorf("branch condition is unavailable")
 					}
-					a.TestSelf(amd64.R10, false)
+					index := len(stackTypes) - 1
+					conditionValue := takeScalar(index, amd64.R10)
+					stackTypes = stackTypes[:index]
+					a.TestSelf(conditionValue, false)
 				}
 				flushScalarStackCache()
 				flushVectorStackCache()

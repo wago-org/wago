@@ -1107,6 +1107,35 @@ func TestAMD64StructuredScalarProducersWriteDirectlyToCache(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredControlConsumesCachedScalarsDirectly(t *testing.T) {
+	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body = append(body,
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
+		0x41, 0x07, 0x41, 0x05, 0x49, // i32.const 7; i32.const 5; i32.lt_u
+		0x04, 0x40, 0x01, 0x0b, // if; nop; end
+		0x0b, // end
+	)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var direct, copied amd64.Asm
+	direct.MovImm32(amd64.RDI, 7)
+	direct.MovImm32(amd64.RSI, 5)
+	direct.Cmp32(amd64.RDI, amd64.RSI)
+	copied.MovImm32(amd64.RDI, 7)
+	copied.MovImm32(amd64.RSI, 5)
+	copied.MovReg64(amd64.R10, amd64.RSI)
+	copied.MovReg64(amd64.RAX, amd64.RDI)
+	copied.Cmp32(amd64.RAX, amd64.R10)
+	if !bytes.Contains(output.Code, direct.B) || bytes.Contains(output.Code, copied.B) {
+		t.Fatalf("structured control did not consume cached scalar operands directly: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredBinaryReadsResidentConstantDirectly(t *testing.T) {
 	constant := [16]byte{0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f}
 	body := bytes.Repeat([]byte{0x01}, 510)                                         // force the large-bulk structured path
