@@ -1082,6 +1082,29 @@ func TestAMD64StructuredFusesMaskedAnyTrueIntoPtest(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredFoldsConstantShiftCount(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, // local.get 0
+		0x42, 0x7f, // i64.const -1
+		0x88,                                                       // i64.shr_u
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
+	}
+	body = append(body, bytes.Repeat([]byte{0x01}, 510)...)
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var immediate amd64.Asm
+	immediate.ShiftImm(5, amd64.RDI, 0xff, true)
+	if !bytes.Contains(output.Code, immediate.B) {
+		t.Fatalf("structured constant shift did not use an immediate: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredCombinesVectorLocalWithConstantWithoutCopy(t *testing.T) {
 	body := []byte{0x20, 0x00, 0xfd, 0x0c} // local.get 0; v128.const
 	body = append(body, bytes.Repeat([]byte{0x7f}, 16)...)

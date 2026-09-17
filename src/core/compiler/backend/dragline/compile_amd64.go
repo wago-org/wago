@@ -6721,6 +6721,39 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				continue
 			}
 		}
+		if reachable && (instr.Kind == wasm.InstrI32Const || instr.Kind == wasm.InstrI64Const) &&
+			instrIndex+1 < len(sf.Instrs) && len(stackTypes) != 0 {
+			operation := sf.Instrs[instrIndex+1]
+			wide := instr.Kind == wasm.InstrI64Const
+			typ := wasm.I32
+			if wide {
+				typ = wasm.I64
+			}
+			digit, shift := byte(4), true
+			switch operation.Kind {
+			case wasm.InstrI32Shl, wasm.InstrI64Shl:
+			case wasm.InstrI32ShrS, wasm.InstrI64ShrS:
+				digit = 7
+			case wasm.InstrI32ShrU, wasm.InstrI64ShrU:
+				digit = 5
+			case wasm.InstrI32Rotl, wasm.InstrI64Rotl:
+				digit = 0
+			case wasm.InstrI32Rotr, wasm.InstrI64Rotr:
+				digit = 1
+			default:
+				shift = false
+			}
+			base := len(stackTypes) - 1
+			operationWide := operation.Kind >= wasm.InstrI64Shl && operation.Kind <= wasm.InstrI64Rotr
+			if shift && operationWide == wide && stackTypes[base] == typ {
+				value := scalarOperand(base, amd64.RAX)
+				a.ShiftImm(digit, value, byte(instr.U64()), wide)
+				cacheScalar(base, value)
+				metadata.recordSource(a.Len(), operation.Offset)
+				instrIndex++
+				continue
+			}
+		}
 		if reachable && instr.Kind == wasm.InstrV128Const && instrIndex+1 < len(sf.Instrs) && len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 {
 			constant, constantOK := sf.SIMDImmediateAt(uint32(instrIndex))
 			operation, operationOK := sf.SIMDImmediateAt(uint32(instrIndex + 1))
