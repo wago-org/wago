@@ -3,9 +3,9 @@ set working-directory := '..'
 mod spec 'spec.just'
 mod regression 'regression.just'
 
-# Run ordinary unit, integration, and quick corpus tests.
+# Run ordinary unit/integration tests and every benchmark corpus workload.
 [default]
-quick corpus=env('CORPUS', 'quick'):
+quick corpus=env('CORPUS', 'all'):
     just test unit
     just test corpus '{{ corpus }}'
 

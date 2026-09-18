@@ -49,12 +49,22 @@ type execEntry struct {
 	Want   []uint64 `json:"want"`
 }
 
+type sourceEntry struct {
+	Repository       string `json:"repository"`
+	Revision         string `json:"revision"`
+	RevisionDate     string `json:"revision_date"`
+	License          string `json:"license"`
+	Toolchain        string `json:"toolchain"`
+	ToolchainVersion string `json:"toolchain_version"`
+}
+
 type corpusModule struct {
 	ID             string        `json:"id"`
 	Artifact       string        `json:"artifact"`
 	ArtifactSHA256 string        `json:"artifact_sha256"`
 	Tags           []string      `json:"tags"`
-	Suite          string        `json:"suite"` // optional upstream corpus name
+	Suite          string        `json:"suite"`  // optional upstream corpus name
+	Source         *sourceEntry  `json:"source"` // optional pinned upstream provenance
 	Desc           string        `json:"desc"`
 	Stages         []string      `json:"stages"` // optional: stages this module supports (default: all)
 	Init           string        `json:"init"`   // optional: export to call once after instantiate, before exec (e.g. AssemblyScript's _initialize; wago has no start section)
@@ -155,6 +165,11 @@ func readCatalog(tb testing.TB) []corpusModule {
 func validateCorpusModule(mod corpusModule) error {
 	if mod.ID == "" || mod.Artifact == "" || mod.ArtifactSHA256 == "" {
 		return fmt.Errorf("id, artifact, and artifact_sha256 are required")
+	}
+	if mod.Source != nil && (mod.Source.Repository == "" || mod.Source.Revision == "" ||
+		mod.Source.RevisionDate == "" || mod.Source.License == "" ||
+		mod.Source.Toolchain == "" || mod.Source.ToolchainVersion == "") {
+		return fmt.Errorf("%s: source provenance is incomplete", mod.ID)
 	}
 	executionContracts := 0
 	if len(mod.Exec) != 0 {
