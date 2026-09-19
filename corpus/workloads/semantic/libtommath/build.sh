@@ -9,7 +9,7 @@ git -C "$upstream" fetch --depth=1 origin "$rev" >/dev/null 2>&1; git -C "$upstr
 stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
 "$sdk/bin/clang" --target=wasm32-wasip1 -O2 -DNDEBUG -nostartfiles -ffunction-sections -fdata-sections -DMP_NO_FILE -I"$upstream" \
 	"$upstream"/mp_*.c "$upstream"/s_mp_*.c "$here/wago_libtommath.c" \
-	-Wl,--no-entry -Wl,--export=libtommath_run -Wl,--export-memory \
+	-Wl,--strip-debug -Wl,--no-entry -Wl,--export=libtommath_run -Wl,--export-memory \
 	-o "$stage/libtommath.wasm"
 got=$(shasum -a 256 "$stage/libtommath.wasm" | awk '{print $1}'); want=$(shasum -a 256 "$here/libtommath.wasm" 2>/dev/null | awk '{print $1}')
 if [ "$got" != "$want" ] && [ "${UPDATE:-0}" != 1 ]; then printf 'libtommath: got %s, want %s (set UPDATE=1 after review)\n' "$got" "$want" >&2; exit 1; fi

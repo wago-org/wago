@@ -13,7 +13,7 @@ git -C "$upstream" checkout --detach "$rev" >/dev/null 2>&1
 stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
 "$sdk/bin/clang" --target=wasm32-wasip1 -O2 -DNDEBUG -nostartfiles -ffunction-sections -fdata-sections -I"$upstream" \
 	"$upstream/utf8proc.c" "$here/wago_utf8proc.c" \
-	-Wl,--no-entry -Wl,--export=utf8proc_run -Wl,--export-memory \
+	-Wl,--strip-debug -Wl,--no-entry -Wl,--export=utf8proc_run -Wl,--export-memory \
 	-o "$stage/utf8proc.wasm"
 got=$(shasum -a 256 "$stage/utf8proc.wasm" | awk '{print $1}')
 want=$(shasum -a 256 "$here/utf8proc.wasm" 2>/dev/null | awk '{print $1}')

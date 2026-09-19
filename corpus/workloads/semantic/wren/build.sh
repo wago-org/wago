@@ -9,7 +9,7 @@ git -C "$upstream" fetch --depth=1 origin "$rev" >/dev/null 2>&1; git -C "$upstr
 stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
 "$sdk/bin/clang" --target=wasm32-wasip1 -O2 -DNDEBUG -Wno-deprecated-declarations -DWREN_OPT_META=0 -DWREN_OPT_RANDOM=0 -Dclock=wago_clock -nostartfiles -ffunction-sections -fdata-sections \
 	-I"$upstream/src/include" -I"$upstream/src/vm" "$upstream"/src/vm/*.c "$here/wago_wren.c" -lm \
-	-Wl,--no-entry -Wl,--export=wren_run -Wl,--export-memory -o "$stage/wren.wasm"
+	-Wl,--strip-debug -Wl,--no-entry -Wl,--export=wren_run -Wl,--export=wren_modulo_run -Wl,--export-memory -o "$stage/wren.wasm"
 got=$(shasum -a 256 "$stage/wren.wasm" | awk '{print $1}'); want=$(shasum -a 256 "$here/wren.wasm" 2>/dev/null | awk '{print $1}')
 if [ "$got" != "$want" ] && [ "${UPDATE:-0}" != 1 ]; then printf 'wren: got %s, want %s (set UPDATE=1 after review)\n' "$got" "$want" >&2; exit 1; fi
 if [ "$got" != "$want" ]; then cp "$stage/wren.wasm" "$here/wren.wasm"; fi

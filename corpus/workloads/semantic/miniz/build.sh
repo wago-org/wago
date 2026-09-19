@@ -9,7 +9,7 @@ git -C "$upstream" fetch --depth=1 origin "$rev" >/dev/null 2>&1; git -C "$upstr
 stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
 "$sdk/bin/clang" --target=wasm32-wasip1 -O2 -DNDEBUG -DMINIZ_NO_ARCHIVE_APIS -nostartfiles -ffunction-sections -fdata-sections -I"$here" -I"$upstream" \
 	"$upstream/miniz.c" "$upstream/miniz_tdef.c" "$upstream/miniz_tinfl.c" "$here/wago_miniz.c" \
-	-Wl,--no-entry -Wl,--export=miniz_run -Wl,--export-memory -Wl,--initial-memory=1048576 -o "$stage/miniz.wasm"
+	-Wl,--strip-debug -Wl,--no-entry -Wl,--export=miniz_run -Wl,--export-memory -Wl,--initial-memory=1048576 -o "$stage/miniz.wasm"
 got=$(shasum -a 256 "$stage/miniz.wasm" | awk '{print $1}'); want=$(shasum -a 256 "$here/miniz.wasm" 2>/dev/null | awk '{print $1}')
 if [ "$got" != "$want" ] && [ "${UPDATE:-0}" != 1 ]; then printf 'miniz: got %s, want %s (set UPDATE=1 after review)\n' "$got" "$want" >&2; exit 1; fi
 if [ "$got" != "$want" ]; then cp "$stage/miniz.wasm" "$here/miniz.wasm"; fi

@@ -22,7 +22,7 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 "$sdk/bin/clang" --target=wasm32-wasip1 -O2 -DNDEBUG -nostartfiles -ffunction-sections -fdata-sections \
 	-I"$upstream/src" "$upstream/src/yyjson.c" "$here/wago_yyjson.c" \
-	-Wl,--no-entry -Wl,--export=yyjson_run -Wl,--export-memory \
+	-Wl,--strip-debug -Wl,--no-entry -Wl,--export=yyjson_run -Wl,--export-memory \
 	-o "$stage/yyjson.wasm"
 
 got=$(shasum -a 256 "$stage/yyjson.wasm" | awk '{print $1}')

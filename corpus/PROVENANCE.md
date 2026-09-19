@@ -46,3 +46,36 @@ therefore fails the corpus rather than being swallowed.
 Rebuild scripts never redefine admission. Review rebuilt bytes, update the
 catalog digest and provenance deliberately, and rerun the individual
 correctness and benchmark-wiring targets before committing.
+
+## Reproducible builds and excluded-path recheck
+
+For the sixteen added workloads, use the WASI SDK 34.0 **x86_64-linux** archive:
+`wasi-sdk-34.0-x86_64-linux.tar.gz`, SHA-256
+`b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4`.
+Clang identifies LLVM revision `895aa2c896ada719451be2e3673c83da8ddf1141`.
+All build scripts retain their pinned source revisions and optimization flags;
+they now pass `--strip-debug` to exclude SDK library debug paths. The previous
+artifacts contained macOS SDK build paths. A Linux SDK rebuild did not reproduce
+nine of those artifacts: seven differed only in debug data, while NanoSVG and
+TinyXML-2 also differed in executable sections. Do not assume that different SDK
+host distributions produce identical bytes. The catalog now pins reviewed Linux
+SDK output. A second build reproduces all sixteen artifacts byte for byte.
+No upstream revision or license changed. Each original expected result was
+rechecked with Wasmtime 48.0.2; none was changed to match Wago.
+
+Wren retains its classes/closures/collections workload and adds `wren-modulo`.
+The recovered pre-`c7eaea13c` prime sieve passes on the combined code, returning
+210661955 in both engines (historical artifact SHA-256
+`4c5349da94ef84075e644a5b753716b3db28b8eb381a1d071ed8118b3e775bc3`).
+The permanent adapter also computes `5.5 % 2` and returns the raw f64 bits with
+`memcpy`, without an integer conversion of the floating result. Its result is
+210661956.5, bits `0x41a91ce489000000` (4731344651406016512), independently checked
+with Wasmtime 48.0.2. The shared Wren artifact is
+`2b1647ba27936995e85892492c7389d114811496e5c276a2c4b2d44e8a455b41`.
+This establishes coverage of those operations with #666 present; it does not
+establish that #666 caused the earlier Wren discrepancy.
+
+NanoSVG rasterization still fails. The original and reduced adapters, artifacts,
+build commands, and independent expected results are retained in the
+[NanoSVG handoff](repro/nanosvg/README.md). The passing catalog continues to check
+its parsing and shape/path traversal only.

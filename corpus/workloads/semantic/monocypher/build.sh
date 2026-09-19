@@ -9,7 +9,7 @@ git -C "$upstream" fetch --depth=1 origin "$rev" >/dev/null 2>&1; git -C "$upstr
 stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
 "$sdk/bin/clang" --target=wasm32-wasip1 -O2 -DNDEBUG -nostartfiles -ffunction-sections -fdata-sections -I"$upstream/src" \
 	"$upstream/src/monocypher.c" "$here/wago_monocypher.c" \
-	-Wl,--no-entry -Wl,--export=monocypher_run -Wl,--export-memory -o "$stage/monocypher.wasm"
+	-Wl,--strip-debug -Wl,--no-entry -Wl,--export=monocypher_run -Wl,--export-memory -o "$stage/monocypher.wasm"
 got=$(shasum -a 256 "$stage/monocypher.wasm" | awk '{print $1}'); want=$(shasum -a 256 "$here/monocypher.wasm" 2>/dev/null | awk '{print $1}')
 if [ "$got" != "$want" ] && [ "${UPDATE:-0}" != 1 ]; then printf 'monocypher: got %s, want %s (set UPDATE=1 after review)\n' "$got" "$want" >&2; exit 1; fi
 if [ "$got" != "$want" ]; then cp "$stage/monocypher.wasm" "$here/monocypher.wasm"; fi

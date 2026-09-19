@@ -37,7 +37,8 @@
       "polybench-correlation",
       "polybench-floyd-warshall",
       "polybench-nussinov",
-      "polybench-jacobi-2d"
+      "polybench-jacobi-2d",
+      "wren-modulo"
     ],
     "algorithms": [
       "fib_rec",
@@ -876,7 +877,7 @@
     {
       "id": "yyjson/parse-edit-write",
       "artifact": "workloads/semantic/yyjson/yyjson.wasm",
-      "artifact_sha256": "437fe28183aa435bb89af1e88e58a70c30d0cfe278d93485c021238ea94d39e0",
+      "artifact_sha256": "56874b0102785568fa02478e4d109ecc328419cc05fcc2654062d02df7a2c48b",
       "abi": "core",
       "source": {
         "repository": "https://github.com/ibireme/yyjson.git",
@@ -894,7 +895,7 @@
     {
       "id": "utf8proc/normalize-casefold",
       "artifact": "workloads/semantic/utf8proc/utf8proc.wasm",
-      "artifact_sha256": "80c8881614613fdac473095ae343f856db5023a231f244bee1711613cd5e3314",
+      "artifact_sha256": "1f1a3e18f5adee7732e3e338e3b455f147757ba35a1e6c49c5d5f6abbcd005e7",
       "abi": "core",
       "source": {
         "repository": "https://github.com/JuliaStrings/utf8proc.git",
@@ -912,7 +913,7 @@
     {
       "id": "xxhash/xxh64-boundaries",
       "artifact": "workloads/semantic/xxhash/xxhash.wasm",
-      "artifact_sha256": "c130d0cacebe7570f6824500ef220a03a7176fc10a049f0197a95bfdeab5ae34",
+      "artifact_sha256": "3c3b114bc7cf36c3888d0a7053e4349598408e8579b64f6e5dd9314dfdd011aa",
       "abi": "core",
       "source": {
         "repository": "https://github.com/Cyan4973/xxHash.git",
@@ -930,7 +931,7 @@
     {
       "id": "libtommath/modular-arithmetic",
       "artifact": "workloads/semantic/libtommath/libtommath.wasm",
-      "artifact_sha256": "296e31b7bffcc13e922b97071d6d7d5e197608efa78195bbdd0f8f016032a3f3",
+      "artifact_sha256": "a59c88869766c6f6fe1e35c9505b3fd9f83d347499e3b674b1c8abae15b59fd1",
       "abi": "core",
       "source": {
         "repository": "https://github.com/libtom/libtommath.git",
@@ -948,7 +949,7 @@
     {
       "id": "nanosvg/parse-structure",
       "artifact": "workloads/semantic/nanosvg/nanosvg.wasm",
-      "artifact_sha256": "dfa21dd2769e93adea36e6343230753cf1f6f8cf86fd3545f0859fa08cee6051",
+      "artifact_sha256": "c80155bad149f7590195fa5f7fd9111d85aa2e8c5e3b283c0caa82826664b4b0",
       "abi": "core",
       "source": {
         "repository": "https://github.com/memononen/nanosvg.git",
@@ -966,7 +967,7 @@
     {
       "id": "kissfft/complex-roundtrip",
       "artifact": "workloads/semantic/kissfft/kissfft.wasm",
-      "artifact_sha256": "3abf784eb0ac0c9b10168db72ad9301b5df6818874451b178f001611e8c77fb6",
+      "artifact_sha256": "95b236874a6a1e8218545ce703abd36195dcad39eecd3e3b318bbc2a53fd3a1d",
       "abi": "core",
       "source": {
         "repository": "https://github.com/mborgerding/kissfft.git",
@@ -984,7 +985,7 @@
     {
       "id": "miniz/deflate-roundtrip",
       "artifact": "workloads/semantic/miniz/miniz.wasm",
-      "artifact_sha256": "1335204dfa6838468017478cc402263b3d15af20556ee47a17c4d784c625ed6b",
+      "artifact_sha256": "eedb53d92c16882c20afd8dbb12e5402cbd61785dbb35cd23395587e1e8f5633",
       "abi": "core",
       "source": {
         "repository": "https://github.com/richgel999/miniz.git",
@@ -1002,7 +1003,7 @@
     {
       "id": "monocypher/aead-blake2b",
       "artifact": "workloads/semantic/monocypher/monocypher.wasm",
-      "artifact_sha256": "4db64df0302b7aabc0d888072995cb79fb4f9e95fb98d98ba31b3a4c9864164a",
+      "artifact_sha256": "fa4356e1222b86387b5566f02c2ccd24404c5f9f044f697a14c164075dacf133",
       "abi": "core",
       "source": {
         "repository": "https://github.com/LoupVaillant/Monocypher.git",
@@ -1020,7 +1021,7 @@
     {
       "id": "drwav/pcm-decode-seek",
       "artifact": "workloads/semantic/drwav/drwav.wasm",
-      "artifact_sha256": "1a67a076c59c2e5f239899af85935c716ad626bdc05d63b987a16e4572068fbd",
+      "artifact_sha256": "7f7625f9073f1f9de709b1682adc9c238989c39825e240570bc9870eb6630c56",
       "abi": "core",
       "source": {
         "repository": "https://github.com/mackron/dr_libs.git",
@@ -1038,7 +1039,7 @@
     {
       "id": "fastfloat/decimal-parse",
       "artifact": "workloads/semantic/fastfloat/fastfloat.wasm",
-      "artifact_sha256": "5614ed6a7654896c918f0bfbbf68707cb500a5eff7d74332e71c867bff97589e",
+      "artifact_sha256": "6eb172b5da57c4d0a0ff194def7179f022847d09345fd975ba6dcdd827bd7265",
       "abi": "core",
       "source": {
         "repository": "https://github.com/fastfloat/fast_float.git",
@@ -1056,7 +1057,7 @@
     {
       "id": "pcre2/compile-match",
       "artifact": "workloads/semantic/pcre2/pcre2.wasm",
-      "artifact_sha256": "a65f6eef61477be35439692bb2a7474793079a8d6d23f17c704164f8eabaed33",
+      "artifact_sha256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda",
       "abi": "core",
       "source": {
         "repository": "https://github.com/PCRE2Project/pcre2.git",
@@ -1555,7 +1556,7 @@
       "id": "yyjson",
       "artifact": "workloads/semantic/yyjson/yyjson.wasm",
       "tags": ["semantic", "json", "parser"],
-      "artifact_sha256": "437fe28183aa435bb89af1e88e58a70c30d0cfe278d93485c021238ea94d39e0"
+      "artifact_sha256": "56874b0102785568fa02478e4d109ecc328419cc05fcc2654062d02df7a2c48b"
     },
     {
       "desc": "utf8proc Unicode compatibility normalization and case folding",
@@ -1563,7 +1564,7 @@
       "id": "utf8proc",
       "artifact": "workloads/semantic/utf8proc/utf8proc.wasm",
       "tags": ["semantic", "unicode", "text"],
-      "artifact_sha256": "80c8881614613fdac473095ae343f856db5023a231f244bee1711613cd5e3314"
+      "artifact_sha256": "1f1a3e18f5adee7732e3e338e3b455f147757ba35a1e6c49c5d5f6abbcd005e7"
     },
     {
       "desc": "XXH64 hashing across short, boundary, and large inputs",
@@ -1571,7 +1572,7 @@
       "id": "xxhash",
       "artifact": "workloads/semantic/xxhash/xxhash.wasm",
       "tags": ["semantic", "hashing", "integer"],
-      "artifact_sha256": "c130d0cacebe7570f6824500ef220a03a7176fc10a049f0197a95bfdeab5ae34"
+      "artifact_sha256": "3c3b114bc7cf36c3888d0a7053e4349598408e8579b64f6e5dd9314dfdd011aa"
     },
     {
       "desc": "LibTomMath modular exponentiation, GCD, and serialization",
@@ -1579,7 +1580,7 @@
       "id": "libtommath",
       "artifact": "workloads/semantic/libtommath/libtommath.wasm",
       "tags": ["semantic", "bigint", "crypto"],
-      "artifact_sha256": "296e31b7bffcc13e922b97071d6d7d5e197608efa78195bbdd0f8f016032a3f3"
+      "artifact_sha256": "a59c88869766c6f6fe1e35c9505b3fd9f83d347499e3b674b1c8abae15b59fd1"
     },
     {
       "desc": "NanoSVG parsing and shape/path traversal workload",
@@ -1587,7 +1588,7 @@
       "id": "nanosvg",
       "artifact": "workloads/semantic/nanosvg/nanosvg.wasm",
       "tags": ["semantic", "svg", "graphics"],
-      "artifact_sha256": "dfa21dd2769e93adea36e6343230753cf1f6f8cf86fd3545f0859fa08cee6051"
+      "artifact_sha256": "c80155bad149f7590195fa5f7fd9111d85aa2e8c5e3b283c0caa82826664b4b0"
     },
     {
       "desc": "KissFFT 257-point complex forward and inverse transforms",
@@ -1595,7 +1596,7 @@
       "id": "kissfft",
       "artifact": "workloads/semantic/kissfft/kissfft.wasm",
       "tags": ["semantic", "fft", "numerical", "floating-point"],
-      "artifact_sha256": "3abf784eb0ac0c9b10168db72ad9301b5df6818874451b178f001611e8c77fb6"
+      "artifact_sha256": "95b236874a6a1e8218545ce703abd36195dcad39eecd3e3b318bbc2a53fd3a1d"
     },
     {
       "desc": "miniz deflate compression and decompression round trip",
@@ -1603,7 +1604,7 @@
       "id": "miniz",
       "artifact": "workloads/semantic/miniz/miniz.wasm",
       "tags": ["semantic", "compression", "deflate"],
-      "artifact_sha256": "1335204dfa6838468017478cc402263b3d15af20556ee47a17c4d784c625ed6b"
+      "artifact_sha256": "eedb53d92c16882c20afd8dbb12e5402cbd61785dbb35cd23395587e1e8f5633"
     },
     {
       "desc": "Monocypher authenticated encryption and streaming BLAKE2b",
@@ -1611,7 +1612,7 @@
       "id": "monocypher",
       "artifact": "workloads/semantic/monocypher/monocypher.wasm",
       "tags": ["semantic", "crypto", "aead", "hashing"],
-      "artifact_sha256": "4db64df0302b7aabc0d888072995cb79fb4f9e95fb98d98ba31b3a4c9864164a"
+      "artifact_sha256": "fa4356e1222b86387b5566f02c2ccd24404c5f9f044f697a14c164075dacf133"
     },
     {
       "desc": "dr_wav in-memory PCM decoding, chunked reads, and seeking",
@@ -1619,7 +1620,7 @@
       "id": "drwav",
       "artifact": "workloads/semantic/drwav/drwav.wasm",
       "tags": ["semantic", "audio", "wav", "decoder"],
-      "artifact_sha256": "1a67a076c59c2e5f239899af85935c716ad626bdc05d63b987a16e4572068fbd"
+      "artifact_sha256": "7f7625f9073f1f9de709b1682adc9c238989c39825e240570bc9870eb6630c56"
     },
     {
       "desc": "fast_float decimal parsing across IEEE-754 boundary values",
@@ -1627,7 +1628,7 @@
       "id": "fastfloat",
       "artifact": "workloads/semantic/fastfloat/fastfloat.wasm",
       "tags": ["semantic", "floating-point", "parser", "cpp"],
-      "artifact_sha256": "5614ed6a7654896c918f0bfbbf68707cb500a5eff7d74332e71c867bff97589e"
+      "artifact_sha256": "6eb172b5da57c4d0a0ff194def7179f022847d09345fd975ba6dcdd827bd7265"
     },
     {
       "desc": "PCRE2 Unicode pattern compilation, matching, and capture extraction",
@@ -1635,7 +1636,7 @@
       "id": "pcre2",
       "artifact": "workloads/semantic/pcre2/pcre2.wasm",
       "tags": ["semantic", "regex", "unicode", "parser"],
-      "artifact_sha256": "a65f6eef61477be35439692bb2a7474793079a8d6d23f17c704164f8eabaed33"
+      "artifact_sha256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda"
     },
     {
       "suite": "cJSON",
@@ -1658,7 +1659,7 @@
       "id": "cjson",
       "artifact": "workloads/semantic/cjson/cjson.wasm",
       "tags": ["application", "json", "parser", "serialization", "c"],
-      "artifact_sha256": "3c28ed68635edc7fd61643716e41517a108a43d353edf456f0b5dfc12c68d690"
+      "artifact_sha256": "47174a6a8e4890bcd078906eed9dd35eac0b80db1dde6c98c3cc8279a6fb6b16"
     },
     {
       "suite": "LodePNG",
@@ -1681,7 +1682,7 @@
       "id": "lodepng",
       "artifact": "workloads/semantic/lodepng/lodepng.wasm",
       "tags": ["application", "png", "image", "codec", "cpp"],
-      "artifact_sha256": "e169be971b1b423936967b24b05b4596e27ec20a219d4e355bffda7629a7bf54"
+      "artifact_sha256": "254cc3dd5d15369282ed3976d3ac6d5291a1fb91d3f19e8b7da65267d8f38190"
     },
     {
       "suite": "Wren",
@@ -1704,7 +1705,7 @@
       "id": "wren",
       "artifact": "workloads/semantic/wren/wren.wasm",
       "tags": ["application", "interpreter", "language", "gc", "c"],
-      "artifact_sha256": "505f7db23cb3fac18e7ff1257b105d8ea436d08a11cce497c69a5a89919a00fb"
+      "artifact_sha256": "2b1647ba27936995e85892492c7389d114811496e5c276a2c4b2d44e8a455b41"
     },
     {
       "suite": "TinyXML-2",
@@ -1727,7 +1728,7 @@
       "id": "tinyxml2",
       "artifact": "workloads/semantic/tinyxml2/tinyxml2.wasm",
       "tags": ["application", "xml", "parser", "cpp"],
-      "artifact_sha256": "d6a43bf55b5eef38eb9306bae12a015c311c57c8d2ed5b2089ab5bf089f1184f"
+      "artifact_sha256": "68bde9e7af3167b5c95d524827f32db02232f428f764e44c0002d56a43429f31"
     },
     {
       "suite": "Lua",
@@ -1750,7 +1751,7 @@
       "id": "lua",
       "artifact": "workloads/semantic/lua/lua.wasm",
       "tags": ["application", "interpreter", "language", "c"],
-      "artifact_sha256": "63ebbb2fc40a6394374659b868bb0b7ed68751cc06e34abd5ef230b6028c4b09"
+      "artifact_sha256": "fc83f0686ab492fbd2cf48cdba9341054f4e493cfd13a0ced43b98804da3934a"
     },
     {
       "suite": "Embench",
@@ -2650,6 +2651,48 @@
           ]
         }
       ]
+    },
+    {
+      "suite": "Wren",
+      "desc": "Wren prime sieve using floating modulo, with an exact f64 bit oracle including a fractional remainder",
+      "source": {
+        "repository": "https://github.com/wren-lang/wren.git",
+        "revision": "99d2f0b8fc2686134b32b18166e037639f7e9f2c",
+        "revision_date": "2025-11-19",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": [
+        "Decode",
+        "Validate",
+        "Compile",
+        "CompileFull",
+        "CommandExec"
+      ],
+      "command": {
+        "runtime": "wasi",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "darwin/amd64",
+          "darwin/arm64"
+        ],
+        "export": "wren_modulo_run",
+        "want": [
+          4731344651406016512
+        ]
+      },
+      "id": "wren-modulo",
+      "artifact": "workloads/semantic/wren/wren.wasm",
+      "tags": [
+        "application",
+        "interpreter",
+        "language",
+        "gc",
+        "c"
+      ],
+      "artifact_sha256": "2b1647ba27936995e85892492c7389d114811496e5c276a2c4b2d44e8a455b41"
     }
   ]
 }

@@ -15,7 +15,7 @@ for file in $core $libs; do sources="$sources $upstream/$file"; done
 "$sdk/bin/clang" --target=wasm32-wasip1 -O2 -DNDEBUG -nostartfiles \
 	-ffunction-sections -fdata-sections -DLUA_USE_C89 -include "$here/wago_lua_port.h" -I"$upstream" \
 	$sources "$here/wago_lua.c" -lm \
-	-Wl,--no-entry -Wl,--export=lua_run -Wl,--export-memory \
+	-Wl,--strip-debug -Wl,--no-entry -Wl,--export=lua_run -Wl,--export-memory \
 	-o "$stage/lua.wasm"
 got=$(shasum -a 256 "$stage/lua.wasm" | awk '{print $1}'); want=$(shasum -a 256 "$here/lua.wasm" 2>/dev/null | awk '{print $1}')
 if [ "$got" != "$want" ] && [ "${UPDATE:-0}" != 1 ]; then printf 'lua: got %s, want %s (set UPDATE=1 after review)\n' "$got" "$want" >&2; exit 1; fi

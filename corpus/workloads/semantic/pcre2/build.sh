@@ -20,7 +20,7 @@ cp "$upstream/src/config.h.generic" "$stage/config.h"; cp "$upstream/src/pcre2.h
 	"$upstream/src/pcre2_script_run.c" "$upstream/src/pcre2_serialize.c" "$upstream/src/pcre2_string_utils.c" \
 	"$upstream/src/pcre2_study.c" "$upstream/src/pcre2_substitute.c" "$upstream/src/pcre2_substring.c" \
 	"$upstream/src/pcre2_tables.c" "$upstream/src/pcre2_ucd.c" "$upstream/src/pcre2_valid_utf.c" "$upstream/src/pcre2_xclass.c" \
-	"$here/wago_pcre2.c" -Wl,--no-entry -Wl,--export=pcre2_run -Wl,--export-memory -o "$stage/pcre2.wasm"
+	"$here/wago_pcre2.c" -Wl,--strip-debug -Wl,--no-entry -Wl,--export=pcre2_run -Wl,--export-memory -o "$stage/pcre2.wasm"
 got=$(shasum -a 256 "$stage/pcre2.wasm" | awk '{print $1}'); want=$(shasum -a 256 "$here/pcre2.wasm" 2>/dev/null | awk '{print $1}')
 if [ "$got" != "$want" ] && [ "${UPDATE:-0}" != 1 ]; then printf 'pcre2: got %s, want %s (set UPDATE=1 after review)\n' "$got" "$want" >&2; exit 1; fi
 if [ "$got" != "$want" ]; then cp "$stage/pcre2.wasm" "$here/pcre2.wasm"; fi
