@@ -17,6 +17,25 @@ func appendF64ConstForCacheTest(code []byte, value float64) []byte {
 	return binary.LittleEndian.AppendUint64(code, math.Float64bits(value))
 }
 
+func TestFloatConstCacheInstallsOnlyDuringPreloadARM64(t *testing.T) {
+	f := fn{a: &a64.Asm{}, s: newStack()}
+	st := storage{kind: stConst, typ: mtF64, cval: int64(math.Float64bits(100))}
+	if r, ok := f.floatConstReg(st); ok || r != regNone || len(f.fconsts) != 0 || f.a.Len() != 0 {
+		t.Fatalf("ordinary lookup = (%v, %v), cache entries = %d, code bytes = %d; want miss without installation", r, ok, len(f.fconsts), f.a.Len())
+	}
+	r, ok := f.preloadFloatConst(st)
+	if !ok || r == regNone || len(f.fconsts) != 1 || f.a.Len() == 0 {
+		t.Fatalf("preload = (%v, %v), cache entries = %d, code bytes = %d; want one initialized constant", r, ok, len(f.fconsts), f.a.Len())
+	}
+	before := f.a.Len()
+	if cached, ok := f.floatConstReg(st); !ok || cached != r || len(f.fconsts) != 1 || f.a.Len() != before {
+		t.Fatalf("cached lookup = (%v, %v), cache entries = %d; want register %v without emitted code", cached, ok, len(f.fconsts), r)
+	}
+	if cached, ok := f.preloadFloatConst(st); !ok || cached != r || len(f.fconsts) != 1 || f.a.Len() != before {
+		t.Fatal("repeated preload changed the installed constant")
+	}
+}
+
 func expandFPImmediateForTest(imm uint8, f64 bool) uint64 {
 	sign := uint64(imm >> 7)
 	b6 := uint64(imm>>6) & 1
