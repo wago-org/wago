@@ -23,6 +23,29 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+type legacyHostFunc func(wago.HostModule, []uint64, []uint64)
+
+func testWagoImports(pairs ...any) *wago.Imports {
+	im := wago.NewImports()
+	for i := 0; i < len(pairs); i += 2 {
+		key, value := pairs[i].(string), pairs[i+1]
+		module, name, _ := strings.Cut(key, ".")
+		switch value := value.(type) {
+		case *wago.Memory:
+			im.Memory(module, name, value)
+		case *wago.InstanceExport, *wago.HostFuncRef:
+			im.Function(module, name, value)
+		case legacyHostFunc:
+			im.HostFunc(module, name, func(caller wago.Caller, call wago.HostCall) {
+				value(caller, call.ParamSlots(), call.ResultSlots())
+			})
+		default:
+			im.HostFunc(module, name, value)
+		}
+	}
+	return im
+}
+
 const (
 	defaultHarnessRounds = 12
 	harnessTimeout       = 15 * time.Second
@@ -65,11 +88,11 @@ func TestRuntimeConcurrencyGCAtomicWaitNotify(t *testing.T) {
 		t.Fatal(err)
 	}
 	gcCfg := wago.GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
-	waiter, err := rt.Instantiate(context.Background(), compiled, wago.WithGC(gcCfg), wago.WithImports(wago.Imports{"env.memory": memory}))
+	waiter, err := rt.Instantiate(context.Background(), compiled, wago.WithGC(gcCfg), wago.WithImports(testWagoImports("env.memory", memory)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	notifier, err := rt.Instantiate(context.Background(), compiled, wago.WithGC(gcCfg), wago.WithImports(wago.Imports{"env.memory": memory}))
+	notifier, err := rt.Instantiate(context.Background(), compiled, wago.WithGC(gcCfg), wago.WithImports(testWagoImports("env.memory", memory)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +175,7 @@ func TestRuntimeConcurrencyCrossInstanceHostCollectGC(t *testing.T) {
 	}
 	gcCfg := wago.GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
 	var producer *wago.Instance
-	host := wago.HostFunc(func(module wago.HostModule, _ []uint64, _ []uint64) {
+	host := legacyHostFunc(func(module wago.HostModule, _ []uint64, _ []uint64) {
 		collector, ok := module.(wago.GCHostModule)
 		if !ok {
 			panic(wago.HostTrap{Err: fmt.Errorf("cross-instance host module has no collector")})
@@ -165,7 +188,7 @@ func TestRuntimeConcurrencyCrossInstanceHostCollectGC(t *testing.T) {
 			panic(wago.HostTrap{Err: fmt.Errorf("cross-instance nested re-entry = %v, %v; want [7], nil", nested, err)})
 		}
 	})
-	producer, err = rt.Instantiate(context.Background(), producerCode, wago.WithGC(gcCfg), wago.WithImports(wago.Imports{"env.collect": host}))
+	producer, err = rt.Instantiate(context.Background(), producerCode, wago.WithGC(gcCfg), wago.WithImports(testWagoImports("env.collect", host)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +196,7 @@ func TestRuntimeConcurrencyCrossInstanceHostCollectGC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer, err := rt.Instantiate(context.Background(), consumerCode, wago.WithGC(gcCfg), wago.WithImports(wago.Imports{"env.call": call}))
+	consumer, err := rt.Instantiate(context.Background(), consumerCode, wago.WithGC(gcCfg), wago.WithImports(testWagoImports("env.call", call)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,25 +252,25 @@ func TestRuntimeConcurrencySameDomainHostReentry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := first.Call(context.Background(), "new")
+	created, err := first.InvokeValues(context.Background(), "new")
 	if err != nil || len(created) != 1 || created[0].GCRef().IsNull() {
 		t.Fatalf("new = %v, %v", created, err)
 	}
 	ref := created[0].GCRef()
-	read, err := target.Call(context.Background(), "read", wago.ValueGCRef(ref))
+	read, err := target.InvokeValues(context.Background(), "read", wago.ValueGCRef(ref))
 	if err != nil || len(read) != 1 || read[0].I32() != 42 {
 		t.Fatalf("cross-instance read = %v, %v; instances did not share one collector domain", read, err)
 	}
 
 	var caller *wago.Instance
-	host := wago.HostFunc(func(callback wago.HostModule, _ []uint64, results []uint64) {
+	host := legacyHostFunc(func(callback wago.HostModule, _ []uint64, results []uint64) {
 		out, callErr := target.InvokeFromHost(context.Background(), callback, "read", wago.ValueGCRef(ref).Bits())
 		if callErr != nil || len(out) != 1 {
 			panic(wago.HostTrap{Err: fmt.Errorf("same-domain re-entry: %v, %w", out, callErr)})
 		}
 		results[0] = out[0]
 	})
-	caller, err = rt.Instantiate(context.Background(), hostCode, wago.WithGC(gcCfg), wago.WithImports(wago.Imports{"env.reenter": host}))
+	caller, err = rt.Instantiate(context.Background(), hostCode, wago.WithGC(gcCfg), wago.WithImports(testWagoImports("env.reenter", host)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +289,7 @@ func TestRuntimeConcurrencySameDomainHostReentry(t *testing.T) {
 		// invocation is deadlocked would hide the bounded replay diagnostic.
 		t.Fatal("same-domain cross-instance host re-entry deadlocked")
 	}
-	prepared, err := caller.PrepareFunction("outer")
+	prepared, err := caller.WasmFunc("outer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,24 +344,24 @@ func TestRuntimeConcurrencySameDomainReexportedHostReentry(t *testing.T) {
 		t.Fatal(err)
 	}
 	var refBits uint64
-	host := wago.HostFunc(func(callback wago.HostModule, _ []uint64, results []uint64) {
+	host := legacyHostFunc(func(callback wago.HostModule, _ []uint64, results []uint64) {
 		out, callErr := target.InvokeFromHost(context.Background(), callback, "read", refBits)
 		if callErr != nil || len(out) != 1 {
 			panic(wago.HostTrap{Err: fmt.Errorf("same-domain re-exported host re-entry: %v, %w", out, callErr)})
 		}
 		results[0] = out[0]
 	})
-	reexport, err := rt.Instantiate(context.Background(), reexportCode, wago.WithGC(gcCfg), wago.WithImports(wago.Imports{"env.reenter": host}))
+	reexport, err := rt.Instantiate(context.Background(), reexportCode, wago.WithGC(gcCfg), wago.WithImports(testWagoImports("env.reenter", host)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := reexport.Call(context.Background(), "new")
+	created, err := reexport.InvokeValues(context.Background(), "new")
 	if err != nil || len(created) != 1 || created[0].GCRef().IsNull() {
 		t.Fatalf("re-exporter new = %v, %v", created, err)
 	}
 	ref := created[0].GCRef()
 	refBits = wago.ValueGCRef(ref).Bits()
-	read, err := target.Call(context.Background(), "read", wago.ValueGCRef(ref))
+	read, err := target.InvokeValues(context.Background(), "read", wago.ValueGCRef(ref))
 	if err != nil || len(read) != 1 || read[0].I32() != 42 {
 		t.Fatalf("cross-instance read = %v, %v; re-exporter did not join target collector domain", read, err)
 	}
@@ -456,7 +479,7 @@ func TestRuntimeConcurrencyPreparedGCResultOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := producer.PrepareFunction("new")
+	prepared, err := producer.WasmFunc("new")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,7 +504,7 @@ func TestRuntimeConcurrencyPreparedGCResultOwnership(t *testing.T) {
 			t.Fatalf("prepared new %d = %v, %v", i, out, callErr)
 		}
 		ref := wago.ValueOf(wago.ValAnyRef, out[0]).GCRef()
-		read, readErr := producer.Call(context.Background(), "read", wago.ValueGCRef(ref))
+		read, readErr := producer.InvokeValues(context.Background(), "read", wago.ValueGCRef(ref))
 		if readErr != nil || len(read) != 1 || read[0].I32() != 42 {
 			t.Fatalf("prepared result %d read = %v, %v", i, read, readErr)
 		}
@@ -525,7 +548,7 @@ func TestRuntimeConcurrencyParkedSameDomainTargetDoesNotDeadlock(t *testing.T) {
 	release := make(chan struct{})
 	secondEntered := make(chan struct{})
 	var first *wago.Instance
-	host := wago.HostFunc(func(callback wago.HostModule, params, results []uint64) {
+	host := legacyHostFunc(func(callback wago.HostModule, params, results []uint64) {
 		switch id := wago.AsI32(params[0]); id {
 		case 1:
 			close(parked)
@@ -542,11 +565,11 @@ func TestRuntimeConcurrencyParkedSameDomainTargetDoesNotDeadlock(t *testing.T) {
 			panic(wago.HostTrap{Err: fmt.Errorf("unexpected host callback id %d", id)})
 		}
 	})
-	first, err = rt.Instantiate(context.Background(), compiled, wago.WithGC(gcCfg), wago.WithImports(wago.Imports{"env.reenter": host}))
+	first, err = rt.Instantiate(context.Background(), compiled, wago.WithGC(gcCfg), wago.WithImports(testWagoImports("env.reenter", host)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := rt.Instantiate(context.Background(), compiled, wago.WithGC(gcCfg), wago.WithImports(wago.Imports{"env.reenter": host}))
+	second, err := rt.Instantiate(context.Background(), compiled, wago.WithGC(gcCfg), wago.WithImports(testWagoImports("env.reenter", host)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -667,7 +690,7 @@ func (h *concurrencyHarness) testThreads(t *testing.T) {
 	workers := 3 + h.rng.Intn(3)
 	instances := make([]*wago.Instance, workers)
 	for i := range instances {
-		instances[i], err = wago.Instantiate(compiled, wago.Imports{"env.memory": memory})
+		instances[i], err = wago.Instantiate(compiled, testWagoImports("env.memory", memory))
 		if err != nil {
 			t.Fatalf("instantiate worker %d: %v", i, err)
 		}
@@ -817,7 +840,7 @@ func (h *concurrencyHarness) testHostReentry(t *testing.T) {
 	var hostCalls atomic.Uint64
 	for worker := range workers {
 		var in *wago.Instance
-		host := wago.HostFunc(func(caller wago.HostModule, params, results []uint64) {
+		host := legacyHostFunc(func(caller wago.HostModule, params, results []uint64) {
 			hostCalls.Add(1)
 			goruntime.GC()
 			out, callErr := in.InvokeFromHost(context.Background(), caller, "inner", params[0])
@@ -826,7 +849,7 @@ func (h *concurrencyHarness) testHostReentry(t *testing.T) {
 			}
 			results[0] = out[0]
 		})
-		in, err = wago.Instantiate(compiled, wago.InstantiateOptions{Imports: wago.Imports{"env.reenter": host}})
+		in, err = wago.Instantiate(compiled, wago.InstantiateOptions{Imports: testWagoImports("env.reenter", host)})
 		if err != nil {
 			t.Fatalf("instantiate reentry worker %d: %v", worker, err)
 		}
@@ -882,7 +905,7 @@ func (h *concurrencyHarness) testHostReentry(t *testing.T) {
 	release := make(chan struct{})
 	nested := make(chan error, 1)
 	var parked *wago.Instance
-	parkedHost := wago.HostFunc(func(caller wago.HostModule, params, results []uint64) {
+	parkedHost := legacyHostFunc(func(caller wago.HostModule, params, results []uint64) {
 		close(entered)
 		<-release
 		out, callErr := parked.InvokeFromHost(context.Background(), caller, "inner", params[0])
@@ -894,8 +917,11 @@ func (h *concurrencyHarness) testHostReentry(t *testing.T) {
 			}
 		}
 		nested <- callErr
+		if callErr != nil {
+			panic(wago.HostTrap{Err: callErr})
+		}
 	})
-	parked, err = wago.Instantiate(compiled, wago.InstantiateOptions{Imports: wago.Imports{"env.reenter": parkedHost}})
+	parked, err = wago.Instantiate(compiled, wago.InstantiateOptions{Imports: testWagoImports("env.reenter", parkedHost)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -989,7 +1015,7 @@ func (h *concurrencyHarness) testGC(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			values, callErr := in.Call(context.Background(), "new")
+			values, callErr := in.InvokeValues(context.Background(), "new")
 			if callErr != nil || len(values) != 1 || values[0].GCRef().IsNull() {
 				errCh <- fmt.Errorf("worker %d create held GC object = %v, %v", worker, values, callErr)
 				return
@@ -1017,7 +1043,7 @@ func (h *concurrencyHarness) testGC(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for iteration := 0; iteration < churn[worker]; iteration++ {
-				values, callErr := in.Call(context.Background(), "new")
+				values, callErr := in.InvokeValues(context.Background(), "new")
 				if callErr != nil || len(values) != 1 || values[0].GCRef().IsNull() {
 					errCh <- fmt.Errorf("worker %d churn %d create = %v, %v", worker, iteration, values, callErr)
 					return
@@ -1044,7 +1070,7 @@ func (h *concurrencyHarness) testGC(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			values, callErr := in.Call(context.Background(), "read", wago.ValueGCRef(held[worker]))
+			values, callErr := in.InvokeValues(context.Background(), "read", wago.ValueGCRef(held[worker]))
 			if callErr != nil || len(values) != 1 || values[0].I32() != 42 {
 				errCh <- fmt.Errorf("worker %d read held GC object = %v, %v", worker, values, callErr)
 			}

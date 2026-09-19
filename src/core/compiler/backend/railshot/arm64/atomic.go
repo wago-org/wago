@@ -85,11 +85,11 @@ func (f *fn) atomicCmpxchg(d railshared.Atomic) error {
 	f.cmpRR(old, compare, d.ResultSize == 8)
 	notEqual := f.a.Bcond(condNE)
 	f.a.Stlxr(status, replacement, addr, int(d.Size))
-	f.a.PatchBranch19(f.a.Cbnz64(status), loop)
+	f.patchBranch19(f.a.Cbnz64(status), loop)
 	done := f.a.Branch()
-	f.a.PatchBranch19(notEqual, f.a.Len())
+	f.patchBranch19(notEqual, f.a.Len())
 	f.a.Clrex()
-	f.a.PatchBranch26(done, f.a.Len())
+	f.patchBranch26(done, f.a.Len())
 
 	f.release(status)
 	f.release(addr)
@@ -210,7 +210,7 @@ func (f *fn) atomicRMW(d railshared.Atomic) error {
 		return fmt.Errorf("arm64: unsupported atomic RMW operation %d", d.Operation)
 	}
 	f.a.Stlxr(status, next, addr, int(d.Size))
-	f.a.PatchBranch19(f.a.Cbnz64(status), loop)
+	f.patchBranch19(f.a.Cbnz64(status), loop)
 
 	f.release(status)
 	f.release(next)

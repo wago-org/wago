@@ -205,14 +205,7 @@ func TestAuthorityExactGrantsAndHostScope(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			if _, err := host.Module("other"); !errors.Is(err, ErrPermissionDenied) {
-				return fmt.Errorf("out-of-scope=%v", err)
-			}
-			module, err := host.Module("env")
-			if err != nil {
-				return err
-			}
-			module.Func("f", func(HostModule, []uint64, []uint64) {})
+			host.HostFunc("env", "f", func() {})
 			return nil
 		})
 	}}
@@ -239,6 +232,48 @@ func TestAuthorityExactGrantsAndHostScope(t *testing.T) {
 	}
 }
 
+func TestPluginHostImportDeclarationErrorsFailBeforeActivation(t *testing.T) {
+	tests := []struct {
+		name string
+		fn   any
+		want string
+	}{
+		{"nil", nil, "host callback is nil"},
+		{"unsupported", func(string) {}, "unsupported host callback"},
+		{"legacy raw slots", func(HostModule, []uint64, []uint64) {}, "unsupported host callback"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			def := testDefinition("example.com/invalid-host-" + strings.ReplaceAll(test.name, " ", "-"))
+			def.Authorities = []AuthorityRequest{{Name: AuthorityHostImportDefine, Mode: AuthorityRequired, Reason: "test", Scope: AuthorityScope{Modules: []string{"env"}}}}
+			started := false
+			provider := PluginProvider{Definition: def, New: func() Plugin {
+				return pluginFunc(func(r *Registrar) error {
+					host, err := r.HostImports()
+					if err != nil {
+						return err
+					}
+					host.HostFunc("env", "f", test.fn)
+					if err := r.Lifecycle(PluginLifecycle{Start: func(context.Context) error {
+						started = true
+						return nil
+					}}); err != nil {
+						return err
+					}
+					return nil
+				})
+			}}
+			err := NewRuntime().LoadPlugins(context.Background(), testSet(t, provider))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("LoadPlugins error = %v, want substring %q", err, test.want)
+			}
+			if started {
+				t.Fatal("plugin activated after an invalid host declaration")
+			}
+		})
+	}
+}
+
 func TestInspectIsSideEffectFreeAndCommitAtomic(t *testing.T) {
 	factories := 0
 	def := testDefinition("example.com/inspect")
@@ -258,8 +293,7 @@ func TestInspectIsSideEffectFreeAndCommitAtomic(t *testing.T) {
 		return PluginProvider{Definition: def, New: func() Plugin {
 			return pluginFunc(func(r *Registrar) error {
 				h, _ := r.HostImports()
-				m, _ := h.Module("env")
-				m.Func(def.ID, func(HostModule, []uint64, []uint64) {})
+				testRegisterHostFunc(h, "env", def.ID, func(HostModule, []uint64, []uint64) {})
 				return nil
 			})
 		}}
@@ -1127,7 +1161,7 @@ func TestObserverViewsAreOpaqueAndCorrelated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := in.Call(context.Background(), "f"); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "f"); err != nil {
 		t.Fatal(err)
 	}
 	if err := in.Close(); err != nil {
@@ -1154,11 +1188,7 @@ func TestPostCreateInterceptorRunsBeforeStartAndAbortsTransactionally(t *testing
 				if err != nil {
 					return err
 				}
-				module, err := imports.Module("env")
-				if err != nil {
-					return err
-				}
-				module.Func("start", func(HostModule, []uint64, []uint64) {
+				testRegisterHostFunc(imports, "env", "start", func(HostModule, []uint64, []uint64) {
 					if attached.IsZero() {
 						t.Error("start ran before post-create attachment")
 					}

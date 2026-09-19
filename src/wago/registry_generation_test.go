@@ -31,19 +31,20 @@ func TestRegistrySnapshotRemainsImmutable(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	oldMeta := &registeredImport{module: "env", name: "f", params: []ValType{ValI32}}
-	rt.importMeta["env.f"] = oldMeta
-	rt.imports["env.f"] = HostFunc(func(HostModule, []uint64, []uint64) {})
+	key := importBindingMapKey("env", "f")
+	rt.importMeta[key] = oldMeta
+	rt.imports[key] = slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	rt.mu.Lock()
 	old := rt.snapshotModuleBindingsLocked(rt.loadHooks())
 	rt.writableImportsLocked()
-	rt.importMeta["env.f"] = &registeredImport{module: "env", name: "f", params: []ValType{ValI64}}
-	delete(rt.imports, "env.f")
+	rt.importMeta[key] = &registeredImport{module: "env", name: "f", params: []ValType{ValI64}}
+	delete(rt.imports, key)
 	next := rt.snapshotModuleBindingsLocked(rt.loadHooks())
 	rt.mu.Unlock()
-	if old.importMeta["env.f"].params[0] != ValI32 || old.imports["env.f"] == nil {
+	if old.importMeta[key].params[0] != ValI32 || old.imports[key] == nil {
 		t.Fatal("published generation changed")
 	}
-	if next.importMeta["env.f"].params[0] != ValI64 || next.imports["env.f"] != nil {
+	if next.importMeta[key].params[0] != ValI64 || next.imports[key] != nil {
 		t.Fatal("new generation lost its paired update")
 	}
 	if n := testing.AllocsPerRun(100, func() {
@@ -87,13 +88,9 @@ func benchmarkRegistrySet(b *testing.B, count int) PluginSet {
 			if err != nil {
 				return err
 			}
-			module, err := imports.Module("unused")
-			if err != nil {
-				return err
-			}
-			fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+			fn := slotHostFunc(func(HostModule, []uint64, []uint64) {})
 			for i := 0; i < count; i++ {
-				module.Func(fmt.Sprintf("f%d", i), fn).Params(ValI32)
+				testRegisterHostFunc(imports, "unused", fmt.Sprintf("f%d", i), fn).Params(ValI32)
 			}
 			return nil
 		})

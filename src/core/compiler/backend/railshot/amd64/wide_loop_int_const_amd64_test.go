@@ -72,13 +72,14 @@ func TestWideLoopIntConstUsesOnlyIdleRegistersAMD64(t *testing.T) {
 		a:               &encoderamd64.Asm{},
 		reserved:        maskOf(R12, R13, R14, R15, R9, R10, R11),
 		pinnedLocalMask: maskOf(RDI),
+		policy:          currentCodegenPolicy(),
 	}
 	f.preloadLoopIntConsts(&h)
 	if f.iconstN != 1 || f.iconsts[0].reg != RSI {
 		t.Fatalf("cached constants = %#v, want one in RSI", f.iconsts[:f.iconstN])
 	}
 
-	called := fn{usesCalls: true}
+	called := fn{usesCalls: true, policy: currentCodegenPolicy()}
 	called.preloadLoopIntConsts(&h)
 	if called.iconstN != 0 {
 		t.Fatalf("call-making function cached %d constants", called.iconstN)

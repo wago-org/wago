@@ -17,6 +17,25 @@ func appendF64ConstForCacheTest(code []byte, value float64) []byte {
 	return binary.LittleEndian.AppendUint64(code, math.Float64bits(value))
 }
 
+func TestFloatConstCacheInstallsOnlyDuringPreloadARM64(t *testing.T) {
+	f := fn{a: &a64.Asm{}, s: newStack()}
+	st := storage{kind: stConst, typ: mtF64, cval: int64(math.Float64bits(100))}
+	if r, ok := f.floatConstReg(st); ok || r != regNone || len(f.fconsts) != 0 || f.a.Len() != 0 {
+		t.Fatalf("ordinary lookup = (%v, %v), cache entries = %d, code bytes = %d; want miss without installation", r, ok, len(f.fconsts), f.a.Len())
+	}
+	r, ok := f.preloadFloatConst(st)
+	if !ok || r == regNone || len(f.fconsts) != 1 || f.a.Len() == 0 {
+		t.Fatalf("preload = (%v, %v), cache entries = %d, code bytes = %d; want one initialized constant", r, ok, len(f.fconsts), f.a.Len())
+	}
+	before := f.a.Len()
+	if cached, ok := f.floatConstReg(st); !ok || cached != r || len(f.fconsts) != 1 || f.a.Len() != before {
+		t.Fatalf("cached lookup = (%v, %v), cache entries = %d; want register %v without emitted code", cached, ok, len(f.fconsts), r)
+	}
+	if cached, ok := f.preloadFloatConst(st); !ok || cached != r || len(f.fconsts) != 1 || f.a.Len() != before {
+		t.Fatal("repeated preload changed the installed constant")
+	}
+}
+
 func expandFPImmediateForTest(imm uint8, f64 bool) uint64 {
 	sign := uint64(imm >> 7)
 	b6 := uint64(imm>>6) & 1
@@ -81,6 +100,42 @@ func TestFPImmediateConstExecArm64(t *testing.T) {
 				t.Fatalf("%s did not fire: %v", key, stats.Funcs[0].Peephole)
 			}
 		})
+	}
+}
+
+func TestFloatLiteralPoolExecArm64(t *testing.T) {
+	beforePool := floatLiteralPoolEnabled
+	beforeValidate := nativeFinalizerValidate
+	floatLiteralPoolEnabled = true
+	nativeFinalizerValidate = true
+	t.Cleanup(func() {
+		floatLiteralPoolEnabled = beforePool
+		nativeFinalizerValidate = beforeValidate
+	})
+
+	values := []float64{1.1, 2.2, 3.3}
+	body := []byte{0x00}
+	for i, value := range values {
+		body = appendF64ConstForCacheTest(body, value)
+		if i+1 < len(values) {
+			body = append(body, 0x1a) // drop
+		}
+	}
+	body = append(body, 0xbd, 0x0b) // i64.reinterpret_f64; end
+	m := mod1(t, nil, []wasm.ValType{wasm.I64}, body)
+	stats := &ModuleStats{}
+	got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Stats: stats, CompactNative: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := math.Float64bits(values[len(values)-1]); got != want {
+		t.Fatalf("result bits = %#x, want %#x", got, want)
+	}
+	if hits := stats.Funcs[0].Peephole["fp-literal-const"]; hits != 1 {
+		t.Fatalf("literal loads = %d, want 1", hits)
+	}
+	if got := stats.Funcs[0].NativeSize.LiteralPoolBytes; got < 8 {
+		t.Fatalf("literal pool bytes = %d, want at least 8", got)
 	}
 }
 

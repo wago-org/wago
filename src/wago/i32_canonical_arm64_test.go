@@ -34,11 +34,9 @@ func TestHostI32ResultCanonicalBeforeMemoryAddressUseARM64(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	defer compiled.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.address": HostFunc(func(_ HostModule, _, results []uint64) {
-			results[0] = 1<<32 | 4 // an i32 host result with adversarial upper bits
-		}),
-	}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.address", slotHostFunc(func(_ HostModule, _, results []uint64) {
+		results[0] = 1<<32 | 4 // an i32 host result with adversarial upper bits
+	}))})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}

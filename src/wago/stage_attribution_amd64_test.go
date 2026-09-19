@@ -274,9 +274,9 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 						if err != nil {
 							b.Fatal(err)
 						}
-						imports := make(Imports, len(compiled.Imports))
+						imports := NewImports()
 						for _, key := range compiled.Imports {
-							imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
+							testSetImport(imports, key, slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 						}
 						b.StartTimer()
 						instance, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
@@ -300,9 +300,9 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 						b.Fatal(err)
 					}
 					defer compiled.Close()
-					imports := make(Imports, len(compiled.Imports))
+					imports := NewImports()
 					for _, key := range compiled.Imports {
-						imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
+						testSetImport(imports, key, slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 					}
 					b.ReportAllocs()
 					b.ResetTimer()
@@ -324,9 +324,9 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 						b.Fatal(err)
 					}
 					defer compiled.Close()
-					imports := make(Imports, len(compiled.Imports))
+					imports := NewImports()
 					for _, key := range compiled.Imports {
-						imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
+						testSetImport(imports, key, slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 					}
 					instance, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
 					if err != nil {
@@ -338,7 +338,7 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 							b.Fatal(err)
 						}
 					}
-					fn, err := instance.PrepareFunction(fixture.execExport)
+					fn, err := instance.WasmFunc(fixture.execExport)
 					if err != nil {
 						b.Fatal(err)
 					}

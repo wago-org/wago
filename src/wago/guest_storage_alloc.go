@@ -64,13 +64,13 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 		return 0, fmt.Errorf("wago: host result type %d has no Runtime-domain identity", localType)
 	}
 
-	endBorrow, err := beginGuestStorageBorrow(h.in)
+	borrowState, err := beginGuestStorageBorrow(h.in)
 	if err != nil {
 		return 0, err
 	}
-	defer endBorrow()
-	unlockNative := h.in.lockInstanceNativeStateForHostAccess()
-	defer unlockNative()
+	defer borrowState.guestStorageBorrow.Store(0)
+	nativeMu := h.in.acquireInstanceNativeStateForHostAccess()
+	defer nativeMu.Unlock()
 	lockedDomain := h.in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
 	state := h.in.publicGCState()

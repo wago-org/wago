@@ -181,13 +181,14 @@ func (in *Instance) beginNativeEntry() (executionLease, error) {
 	if in.usesIndependentExecution() {
 		mu := in.independentNativeExecutionMu()
 		mu.Lock()
-		if err := in.bindAndValidateNativeContext(); err != nil {
-			mu.Unlock()
-
-			return executionLease{}, err
+		if in.usesIndependentExecution() {
+			if err := in.bindAndValidateNativeContext(); err != nil {
+				mu.Unlock()
+				return executionLease{}, err
+			}
+			return executionLease{local: mu}, nil
 		}
-
-		return executionLease{local: mu}, nil
+		mu.Unlock()
 	}
 	if in.c.threadedMemory0() {
 		mu := &in.memoryDir.nativeMu
@@ -288,6 +289,17 @@ func (l executionLease) unlockExecution() {
 	nativeExecutionMu.Unlock()
 }
 
+// unlockNativeEntry releases the mutex held after a host callback returns. A
+// resource published while an independent activation is parked revokes local
+// execution and makes the callback migrate to the process-wide mutex.
+func (in *Instance) unlockNativeEntry(l executionLease) {
+	if l.local != nil && !in.c.threadedMemory0() && !in.usesIndependentExecution() {
+		nativeExecutionMu.Unlock()
+		return
+	}
+	l.unlockExecution()
+}
+
 func (in *Instance) independentNativeExecutionMu() *sync.Mutex {
 	if in.memoryDir != nil {
 		return &in.memoryDir.nativeMu
@@ -306,7 +318,14 @@ func (in *Instance) usesIndependentExecution() bool {
 }
 
 func (in *Instance) markNativeControlShared() {
-	in.ensurePluginState().invokeMu.revokeFast()
+	state := in.ensurePluginState()
+	state.invokeMu.revokeFast()
+	var localMu *sync.Mutex
+	state.nativeShareMu.Lock()
+	if in.usesIndependentExecution() {
+		localMu = in.independentNativeExecutionMu()
+		localMu.Lock()
+	}
 	for {
 		flags := in.executionFlags.Load()
 		if flags&executionFlagNativeControlShared != 0 ||
@@ -314,11 +333,15 @@ func (in *Instance) markNativeControlShared() {
 			break
 		}
 	}
+	if localMu != nil {
+		localMu.Unlock()
+	}
+	state.nativeShareMu.Unlock()
 	// Publishing the shared bit prevents new specialized entries. Do not return
 	// a shareable resource until the previous fast activation has left native
 	// code. The gate notification closes the check/wait race without spinning.
 	if in.executionFlags.Load()&executionFlagPreparedActive != 0 {
-		gate := &in.ensurePluginState().invokeMu
+		gate := &state.invokeMu
 		gate.mu.Lock()
 		for in.executionFlags.Load()&executionFlagPreparedActive != 0 {
 			if gate.changed == nil {
@@ -346,23 +369,21 @@ func (in *Instance) lockThreadedInstanceState() *sync.Mutex {
 }
 
 func (in *Instance) lockInstanceNativeStateForHostAccess() func() {
-	if in.usesIndependentExecution() {
-		mu := in.independentNativeExecutionMu()
-		mu.Lock()
-		in.invalidateNativeContext()
+	return in.acquireInstanceNativeStateForHostAccess().Unlock
+}
 
-		return mu.Unlock
+func (in *Instance) acquireInstanceNativeStateForHostAccess() *sync.Mutex {
+	mu := &nativeExecutionMu
+	if in.usesIndependentExecution() {
+		mu = in.independentNativeExecutionMu()
+	} else if in != nil && in.c != nil && in.c.threadedMemory0() {
+		mu = &in.memoryDir.nativeMu
 	}
-	if in != nil && in.c != nil && in.c.threadedMemory0() {
-		in.memoryDir.nativeMu.Lock()
-		in.invalidateNativeContext()
-		return in.memoryDir.nativeMu.Unlock
-	}
-	unlock := lockNativeExecutionForHostAccess()
+	mu.Lock()
 	if in != nil {
 		in.invalidateNativeContext()
 	}
-	return unlock
+	return mu
 }
 
 // lockNativeExecutionForHostAccess serializes direct host access to native-visible
@@ -448,7 +469,7 @@ func (in *Instance) preparedPrivateEligible() bool {
 
 // preparedIsolatedEligible identifies instances whose native execution has no
 // process-visible state that direct host access or another instance can observe.
-// PreparedFunction already forbids concurrent calls on one Instance; each such
+// WasmFunc already forbids concurrent calls on one Instance; each such
 // instance owns its Engine, stack, trap cell, argument/result buffers, and memory.
 func (in *Instance) preparedIsolatedEligible() bool {
 	return in.preparedEntryMode() == preparedEntryIsolated

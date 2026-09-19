@@ -1445,7 +1445,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			syncHostSlots = gcSlots
 		}
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, DeferCodeMapping: true, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -2372,18 +2372,19 @@ func asyncReplayable(sig FuncSig) bool {
 		(len(sig.Params) == 0 || sig.Params[0] == ValI32)
 }
 
-func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
+func (c *Compiled) importsRequireSync(imports resolvedImports, force bool) bool {
 	if force || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
 		return true
 	}
-	for _, key := range c.Imports {
-		if _, ok := imports[key].(I32HostEvent); ok {
+	for i := range c.Imports {
+		bindingKey := c.functionImportBindingKey(i)
+		if _, ok := imports[bindingKey].(I32HostEvent); ok {
 			continue
 		}
-		if _, ok := imports[key].(gatedI32HostEvent); ok {
+		if _, ok := imports[bindingKey].(gatedI32HostEvent); ok {
 			continue
 		}
-		if export, cross := imports[key].(*InstanceExport); cross {
+		if export, cross := imports[bindingKey].(*InstanceExport); cross {
 			// A cross-instance-only consumer needs the parked-host loop only when
 			// its target can itself park. syncMode is immutable after the producer
 			// is instantiated and already includes its transitive direct imports.
@@ -2410,11 +2411,11 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 // validateImportBindings checks cross-instance signatures and reference-store
 // compatibility. Imported calls are already compiled; instantiation only writes
 // concrete targets into the per-instance dispatch table.
-func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore) error {
+func (c *Compiled) validateImportBindings(imports resolvedImports, store *referenceStore) error {
 	return c.validateImportBindingsWithPluginGC(imports, store, nil)
 }
 
-func (c *Compiled) validateImportBindingsWithPluginGC(imports Imports, store *referenceStore, pluginGCImports map[uint32]struct{}) error {
+func (c *Compiled) validateImportBindingsWithPluginGC(imports resolvedImports, store *referenceStore, pluginGCImports map[uint32]struct{}) error {
 	ehNativeCalls := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) && len(c.Imports) != 0
 	privateWaitGC := store != nil && !store.private && c.needsRuntimeGCCollectorDomain() && c.usesAtomicWaitHelpers()
 	dynamicFuncrefReachability := compiledHasDynamicFuncrefReachability(c)
@@ -2425,28 +2426,29 @@ func (c *Compiled) validateImportBindingsWithPluginGC(imports Imports, store *re
 	gcSubtypeLinkConsumer := gcSubtypeLinkProduct.isLinkConsumer()
 	gcSubtypeLinkProvider := gcSubtypeLinkProduct.linkProviderProduct()
 	for i, key := range c.Imports {
+		bindingKey := c.functionImportBindingKey(i)
 		sigHasGCRefs := i < len(c.importFuncSigs) && funcSigHasGCRefs(c.importFuncSigs[i])
 		sigTransfersCollectorObjects := c.importTransfersCollectorObjects(i)
 		if privateWaitGC && sigHasGCRefs {
 			return fmt.Errorf("collector-reference import %q is unsupported for modules with atomic wait helpers", key)
 		}
-		ex, ok := imports[key].(*InstanceExport)
+		ex, ok := imports[bindingKey].(*InstanceExport)
 		if !ok {
 			_, pluginImport := pluginGCImports[uint32(i)]
 			if sigHasGCRefs {
-				switch owner := imports[key].(type) {
+				switch owner := imports[bindingKey].(type) {
 				case *HostFuncRef:
 					if owner == nil || !owner.gcCapable || store == nil || owner.store != store || c.genericGCFrameRoots() == nil {
 						return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef, a Runtime plugin import, or a same-Runtime InstanceExport", key)
 					}
-				case HostFunc:
+				case slotHostFunc:
 					if owner == nil || !pluginImport || store == nil {
 						return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef, a Runtime plugin import, or a same-Runtime InstanceExport", key)
 					}
 					if sigTransfersCollectorObjects && c.genericGCFrameRoots() == nil {
 						return fmt.Errorf("Runtime plugin host import %q cannot transfer collector references: exact native root maps are unavailable", key)
 					}
-				case CallerHostFunc:
+				case callerSlotHostFunc:
 					if owner == nil || !pluginImport || store == nil {
 						return fmt.Errorf("host import %q cannot transfer collector references; use a Runtime plugin import", key)
 					}
@@ -4497,7 +4499,10 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 		defer in.endInvocation()
 	}
-	gcLease := in.lockGCInvocation(id)
+	gcLease, err := in.lockGCInvocationContext(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	var reconcileAttached *Instance
 	defer func() {
 		gcLease.unlock()
@@ -4538,7 +4543,7 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		if importIdx < 0 || importIdx >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, importIdx)
 		}
-		if ex, ok := in.imports[in.c.Imports[importIdx]].(*InstanceExport); ok && ex != nil && ex.inst != nil {
+		if ex, ok := in.imports[in.c.functionImportBindingKey(importIdx)].(*InstanceExport); ok && ex != nil && ex.inst != nil {
 			reconcileAttached = ex.inst
 			// Native cross-instance calls carry only the caller's invocation lease and
 			// trap cell; the import attachment retains the producer's physical resources.
@@ -4653,7 +4658,10 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, contexts invocatio
 		return nil, fmt.Errorf("invoke function %d: %w", li, err)
 	}
 	defer in.endInvocation()
-	gcLease := in.lockGCInvocation(in.currentInvocationID())
+	gcLease, err := in.lockGCInvocationContext(contexts.admissionContext(), in.currentInvocationID())
+	if err != nil {
+		return nil, err
+	}
 	defer func() {
 		gcLease.unlock()
 		if in.importsFuncrefStorage() || in.table != nil {
@@ -4990,7 +4998,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		if gfi >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, gfi)
 		}
-		if ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport); (!ok || ex == nil || ex.inst == nil) && (gfi >= len(in.syncHosts) || !in.syncHosts[gfi].callable()) {
+		if ex, ok := in.imports[in.c.functionImportBindingKey(gfi)].(*InstanceExport); (!ok || ex == nil || ex.inst == nil) && (gfi >= len(in.syncHosts) || !in.syncHosts[gfi].callable()) {
 			return nil, fmt.Errorf("export %q is an imported function without a callable owner", export)
 		}
 		slot := &in.ic[int(in.icNext)%len(in.ic)]

@@ -98,7 +98,7 @@ func (t *Tag) detachImporter() {
 	owner.releaseResourceRoot()
 }
 
-func (im Imports) tag(key string) (*Tag, bool) {
+func (im resolvedImports) tag(key string) (*Tag, bool) {
 	tag, ok := im[key].(*Tag)
 	return tag, ok && tag != nil
 }
@@ -164,8 +164,7 @@ func detachImportedTags(in *Instance) {
 	}
 	var seen importDedup[*Tag]
 	for i := 0; i < in.c.tagImportCount(); i++ {
-		def := in.c.memoryDir.ehTags[i]
-		tag, ok := in.imports.tag(def.ImportKey)
+		tag, ok := in.imports.tag(in.c.tagImportBindingKey(i))
 		if ok && seen.add(tag) {
 			tag.detachImporter()
 		}
@@ -182,7 +181,7 @@ func (in *Instance) ExportedTag(name string) (*Tag, error) {
 	}
 	def := in.c.memoryDir.ehTags[index]
 	if def.ImportKey != "" {
-		tag, ok := in.imports[def.ImportKey].(*Tag)
+		tag, ok := in.imports[in.c.tagImportBindingKey(index)].(*Tag)
 		if !ok || tag == nil {
 			return nil, fmt.Errorf("exported tag %q imported binding is invalid", name)
 		}

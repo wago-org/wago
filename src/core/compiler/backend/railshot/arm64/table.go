@@ -262,10 +262,10 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	// fixup is emitted here.
 	f.copyBackLoop(X9, X10, X11)
 	done := f.a.Branch() // unconditional (imm26)
-	f.a.PatchBranch19(fwd, f.a.Len())
-	f.a.PatchBranch19(fwdDisjoint, f.a.Len())
+	f.patchBranch19(fwd, f.a.Len())
+	f.patchBranch19(fwdDisjoint, f.a.Len())
 	f.copyFwdLoop(X9, X10, X11) // forward byte copy (was RepMovsb)
-	f.a.PatchBranch26(done, f.a.Len())
+	f.patchBranch26(done, f.a.Len())
 	f.setDepth(d - 3)
 	return nil
 }
@@ -374,14 +374,14 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	f.st32(tbl, 0, nw)
 	f.pinned = f.pinned.remove(nw).remove(old).remove(tbl)
 	done := f.a.Branch()
-	f.a.PatchBranch19(failOverflow, f.a.Len())
-	f.a.PatchBranch19(failMax, f.a.Len())
+	f.patchBranch19(failOverflow, f.a.Len())
+	f.patchBranch19(failMax, f.a.Len())
 	if addr64 {
 		f.a.MovImm64(old, ^uint64(0))
 	} else {
 		f.a.MovImm64(old, 0xFFFFFFFF)
 	}
-	f.a.PatchBranch26(done, f.a.Len())
+	f.patchBranch26(done, f.a.Len())
 	f.pinned = f.pinned.remove(delta)
 	f.pinned = f.pinned.remove(ref)
 	f.release(delta)
@@ -432,14 +432,14 @@ func (f *fn) externrefTableGrow(tableIdx uint32) error {
 	f.st32(tbl, 0, nw)
 	f.pinned = f.pinned.remove(nw).remove(old).remove(tbl)
 	done := f.a.Branch()
-	f.a.PatchBranch19(failOverflow, f.a.Len())
-	f.a.PatchBranch19(failMax, f.a.Len())
+	f.patchBranch19(failOverflow, f.a.Len())
+	f.patchBranch19(failMax, f.a.Len())
 	if addr64 {
 		f.a.MovImm64(old, ^uint64(0))
 	} else {
 		f.a.MovImm64(old, 0xFFFFFFFF)
 	}
-	f.a.PatchBranch26(done, f.a.Len())
+	f.patchBranch26(done, f.a.Len())
 	f.pinned = f.pinned.remove(delta).remove(ref)
 	f.release(delta)
 	f.release(ref)
@@ -576,27 +576,26 @@ func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {
 	}
 	f.release(tmp)
 	ready := f.a.Branch() // imm26
-	f.a.PatchBranch19(null, f.a.Len())
+	f.patchBranch19(null, f.a.Len())
 	f.a.MovImm64(ref, 0) // zero the descriptor register (was XorSelf32)
 	for i := 0; i < runtime.TableEntryBytes/8; i++ {
 		f.st64(SP, f.spillOff(slot+i), ref)
 	}
-	f.a.PatchBranch26(ready, f.a.Len())
+	f.patchBranch26(ready, f.a.Len())
 }
 
 func (f *fn) fillTableEntries(dst, count Reg, slot int) {
 	done := f.zeroBranch(count, true, true)
+	// Snapshot the 32-byte descriptor once. Reloading four words from the spill
+	// slot for every table element adds unnecessary stack traffic to large fills.
+	f.a.LdrQ(X16, SP, f.spillOff(slot))
+	f.a.LdrQ(X17, SP, f.spillOff(slot)+16)
 	loop := f.a.Len()
-	tmp := f.allocReg(maskOf(dst).add(count))
-	for i, off := 0, int32(0); off < runtime.TableEntryBytes; i, off = i+1, off+8 {
-		f.ld64(tmp, SP, f.spillOff(slot+i))
-		f.st64(dst, off, tmp)
-	}
-	f.release(tmp)
+	f.a.StpQ(X16, X17, dst, 0)
 	f.leaDisp(dst, dst, runtime.TableEntryBytes, true)
 	f.a.SubsImm64(count, count, 1) // count-- and set flags (was AluRI(5,count,1,true))
-	f.a.PatchBranch19(f.a.Bcond(condNE), loop)
-	f.a.PatchBranch19(done, f.a.Len())
+	f.patchBranch19(f.a.Bcond(condNE), loop)
+	f.patchBranch19(done, f.a.Len())
 }
 
 func (f *fn) fillExternrefEntries(dst, count, ref Reg) {
@@ -605,8 +604,8 @@ func (f *fn) fillExternrefEntries(dst, count, ref Reg) {
 	f.st64(dst, 0, ref)
 	f.leaDisp(dst, dst, 8, true)
 	f.a.SubsImm64(count, count, 1)
-	f.a.PatchBranch19(f.a.Bcond(condNE), loop)
-	f.a.PatchBranch19(done, f.a.Len())
+	f.patchBranch19(f.a.Bcond(condNE), loop)
+	f.patchBranch19(done, f.a.Len())
 }
 
 func (f *fn) copyFuncrefToEntry(ref, entry Reg) {

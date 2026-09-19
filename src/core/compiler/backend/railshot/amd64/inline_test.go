@@ -104,6 +104,30 @@ func TestAnalyzeInlineCandidatesMixedMemory64Memarg(t *testing.T) {
 	}
 }
 
+func TestInlineExecOneLevelRecursiveAMD64(t *testing.T) {
+	savedInline, savedRecursive := inlineEnabled, recursiveInlineEnabled
+	inlineEnabled, recursiveInlineEnabled = true, true
+	t.Cleanup(func() { inlineEnabled, recursiveInlineEnabled = savedInline, savedRecursive })
+
+	// fib(n) = n < 2 ? n : fib(n-1) + fib(n-2).
+	body := []byte{0x00, 0x20, 0x00, 0x41, 0x02, 0x48, 0x04, 0x7e,
+		0x20, 0x00, 0xac, 0x05,
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x10, 0x00,
+		0x20, 0x00, 0x41, 0x02, 0x6b, 0x10, 0x00, 0x7c, 0x0b, 0x0b}
+	m := modFuncs(t, funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I64}, body: body})
+	if got := runAmd64u(t, m, 10); got != 55 {
+		t.Fatalf("fib(10) = %d, want 55", got)
+	}
+	s := compileWithStats(t, m, false).Funcs[0]
+	if s.Calls["inline"] != 2 || s.Calls["regabi"] != 4 {
+		t.Fatalf("recursive call lowering = %v, want inline=2 regabi=4", s.Calls)
+	}
+	rep, err := AnalyzeInlineCandidates(m)
+	if err != nil || rep.NumCandidates != 1 || !rep.Funcs[0].Candidate {
+		t.Fatalf("recursive inline report = %#v, err=%v", rep, err)
+	}
+}
+
 func TestAnalyzeInlineCandidates(t *testing.T) {
 	// func 0 (caller, ()->i32): calls func 1 twice and func 2 once.
 	//   i32.const 1; i32.const 2; call 1; drop
@@ -272,6 +296,70 @@ func TestInlineExecAdd(t *testing.T) {
 		}
 		if ms.Funcs[0].InlineSiteBytes == 0 {
 			t.Error("inlined add has zero attributed inline-site bytes")
+		}
+	})
+}
+
+func TestInlineI32AddConstAvoidsReservedLocalRoundTrip(t *testing.T) {
+	withInlineEnabled(t, func() {
+		// func 0 ()->i32: add7(5); func 1 (i32)->i32: x+7.
+		caller := []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}
+		leaf := []byte{0x00, 0x20, 0x00, 0x41, 0x07, 0x6a, 0x0b}
+		m := modFuncs(t,
+			funcDef{results: []wasm.ValType{vI32}, body: caller},
+			funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: leaf},
+		)
+		if got := runAmd64(t, m); got != 12 {
+			t.Fatalf("inlined add7(5) = %d, want 12", got)
+		}
+		var ms ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: &ms})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := ms.Funcs[0].Peephole["inline-i32-add-const"]; got != 1 {
+			t.Fatalf("inline-i32-add-const = %d, want 1 (all: %v)", got, ms.Funcs[0].Peephole)
+		}
+		if got := ms.Funcs[0].Encoding.LocalDisp0 + ms.Funcs[0].Encoding.LocalDisp8 + ms.Funcs[0].Encoding.LocalDisp32; got != 0 {
+			t.Fatalf("specialized inline emitted %d local-home references", got)
+		}
+		if !directPreparedMarked(cm.DirectPreparedBounded, 0) {
+			t.Fatal("specialized call-free inline caller was not admitted to the bounded prepared entry")
+		}
+	})
+}
+
+func TestInlineI32AddConstAffineTreeUsesBoundedPreparedEntry(t *testing.T) {
+	withInlineEnabled(t, func() {
+		caller := []byte{
+			0x00,
+			0x20, 0x00, 0x10, 0x01,
+			0x20, 0x00, 0x10, 0x02,
+			0x20, 0x00, 0x10, 0x03,
+			0x6a, 0x6a, 0x0b,
+		}
+		addConst := func(c byte) []byte {
+			return []byte{0x00, 0x20, 0x00, 0x41, c, 0x6a, 0x0b}
+		}
+		m := modFuncs(t,
+			funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: caller},
+			funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: addConst(0)},
+			funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: addConst(7)},
+			funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: addConst(11)},
+		)
+		if got := uint32(runAmd64u(t, m, 5)); got != 33 {
+			t.Fatalf("affine inline result = %d, want 33", got)
+		}
+		var ms ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: &ms})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := ms.Funcs[0].Peephole["assoc-affine-add"]; got != 1 {
+			t.Fatalf("assoc-affine-add = %d, want 1 (all: %v)", got, ms.Funcs[0].Peephole)
+		}
+		if !directPreparedMarked(cm.DirectPreparedBounded, 0) {
+			t.Fatal("affine specialized inline caller was not admitted to the bounded prepared entry")
 		}
 	})
 }

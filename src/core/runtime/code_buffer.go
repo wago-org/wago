@@ -14,9 +14,20 @@ import (
 type CodeBuffer struct {
 	mem        []byte
 	n          int
+	heap       bool
 	sealed     bool
 	registered bool
 	closed     bool
+}
+
+// NewHeapCodeBuffer creates a staging image whose address need not remain
+// stable after compilation. It is used when executable mapping is deferred
+// until first instantiation.
+func NewHeapCodeBuffer(capacity int) (*CodeBuffer, error) {
+	if capacity < 0 {
+		return nil, fmt.Errorf("jit: negative code capacity %d", capacity)
+	}
+	return &CodeBuffer{mem: make([]byte, capacity), heap: true}, nil
 }
 
 // NewCodeBuffer allocates an RW code image with at least capacity bytes.
@@ -160,6 +171,9 @@ func (b *CodeBuffer) Seal() error {
 	if b.sealed {
 		return nil
 	}
+	if b.heap {
+		return fmt.Errorf("jit: heap code buffer cannot be sealed")
+	}
 	if err := SealCode(b.mem); err != nil {
 		_ = munmap(b.mem)
 		b.mem = nil
@@ -184,11 +198,32 @@ func (b *CodeBuffer) Take() ([]byte, uintptr, error) {
 	if b.sealed {
 		return nil, 0, fmt.Errorf("jit: sealed code buffer cannot transfer ownership")
 	}
+	if b.heap {
+		return nil, 0, fmt.Errorf("jit: heap code buffer has no mapping")
+	}
 	mem, base := b.mem, b.Base()
 	b.mem = nil
 	b.n = 0
 	b.closed = true
 	return mem, base, nil
+}
+
+// TakeHeap transfers an unsealed heap staging image to its compiler owner.
+func (b *CodeBuffer) TakeHeap() ([]byte, error) {
+	if b == nil {
+		return nil, fmt.Errorf("jit: nil code buffer")
+	}
+	if b.closed {
+		return nil, fmt.Errorf("jit: code buffer is closed")
+	}
+	if b.sealed || !b.heap {
+		return nil, fmt.Errorf("jit: code buffer is not heap staging")
+	}
+	mem := b.mem[:b.n:b.n]
+	b.mem = nil
+	b.n = 0
+	b.closed = true
+	return mem, nil
 }
 
 // Close releases the mapping. Callers must ensure no instance can still enter
@@ -204,6 +239,9 @@ func (b *CodeBuffer) Close() error {
 	b.mem = nil
 	b.n = 0
 	b.closed = true
+	if b.heap {
+		return nil
+	}
 	return munmap(mem)
 }
 
@@ -228,13 +266,22 @@ func (b *CodeBuffer) grow(extra int) error {
 	if capacity < need {
 		capacity = need
 	}
-	mem, err := mmapCodeRW(capacity)
-	if err != nil {
-		return err
+	var mem []byte
+	if b.heap {
+		mem = make([]byte, capacity)
+	} else {
+		var err error
+		mem, err = mmapCodeRW(capacity)
+		if err != nil {
+			return err
+		}
 	}
 	copy(mem, b.mem[:b.n])
 	old := b.mem
 	b.mem = mem
+	if b.heap {
+		return nil
+	}
 	if err := munmap(old); err != nil {
 		_ = munmap(mem)
 		b.mem = nil

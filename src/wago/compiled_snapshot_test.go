@@ -2,9 +2,15 @@ package wago
 
 import (
 	"bytes"
+	"context"
+	"os"
+	"os/exec"
 	"reflect"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -225,6 +231,19 @@ func TestCompiledSnapshotOwnsNestedPublicMetadata(t *testing.T) {
 }
 
 func TestCompiledSnapshotPacksRepeatedNestedSlices(t *testing.T) {
+	// Windows cleanup from earlier tests can change process-wide allocation counts.
+	const childEnv = "WAGO_COMPILED_SNAPSHOT_ALLOCATION_CHILD"
+	if runtime.GOOS == "windows" && os.Getenv(childEnv) != "1" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCompiledSnapshotPacksRepeatedNestedSlices$", "-test.count=1", "-test.v")
+		cmd.Env = append(os.Environ(), childEnv+"=1")
+		output, err := cmd.CombinedOutput()
+		if err != nil || !strings.Contains(string(output), "--- PASS: TestCompiledSnapshotPacksRepeatedNestedSlices") {
+			t.Fatalf("isolated snapshot allocation check: %v\n%s", err, output)
+		}
+		return
+	}
 	const count = 1024
 	c := &Compiled{
 		Entry:          make([]int, count),

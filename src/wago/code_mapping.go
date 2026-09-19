@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"errors"
 	"fmt"
 	goruntime "runtime"
 	"strings"
@@ -48,6 +49,12 @@ type compiledCodeCache struct {
 	// direct-Instantiation native stack capacity without growing this sidecar.
 	// Neither half is serialized; codec reload restores only generic features.
 	stagedFeatures CoreFeatures
+}
+
+type compiledHostThunkCache struct {
+	mem     []byte
+	base    uintptr
+	offsets []int
 }
 
 // compilerCompiledState groups the fixed private state owned for the complete
@@ -590,7 +597,33 @@ func (c *Compiled) mapCodeLocked() error {
 	cc.mem, cc.base = mem, base
 	// The mapping can be page-rounded; code and artifact sizes must stay exact.
 	c.code = mem[:codeLen:codeLen]
+	// Compiler publication freezes an execution snapshot before code is mapped.
+	// Keep that immutable metadata view on the same exact code backing so the
+	// first mapping releases the compiler's heap image instead of retaining one
+	// copy through each view.
+	if memo := c.loadValidateMemo(); memo != nil {
+		if snapshot := memo.executionView(); snapshot != nil {
+			snapshot.code = c.code
+		}
+	}
 	return nil
+}
+
+// prepareCodeMapping maps the public compiler view before instantiation freezes
+// or consumes its execution snapshot. Runtime-bound modules pass their original
+// public view so both views transition away from the heap backing together.
+func (c *Compiled) prepareCodeMapping() error {
+	if c == nil {
+		return fmt.Errorf("compiled module is nil")
+	}
+	c.ensureCodeCache()
+	cc := c.codeCache
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	if cc.closed {
+		return fmt.Errorf("compiled module is closed")
+	}
+	return c.mapCodeLocked()
 }
 
 // publishCompilerCompiled maps heap-backed parallel output before snapshotting.
@@ -598,15 +631,6 @@ func (c *Compiled) mapCodeLocked() error {
 // Clear the embedded staging value:
 // its allocation remains live through pointers to the grouped private state.
 func publishCompilerCompiled(c *Compiled) (*Compiled, error) {
-	if len(c.code) != 0 {
-		c.codeCache.mu.Lock()
-		err := c.mapCodeLocked()
-		c.codeCache.mu.Unlock()
-		if err != nil {
-			_ = c.Close()
-			return nil, fmt.Errorf("compile: map code image: %w", err)
-		}
-	}
 	goruntime.SetFinalizer(c, nil)
 	published := new(Compiled)
 	*published = *c
@@ -650,15 +674,51 @@ func (c *Compiled) releaseCode() {
 	if cc.refs > 0 {
 		cc.refs--
 	}
-	if cc.refs == 0 && cc.closed && cc.mem != nil {
-		_ = coreruntime.Unmap(cc.mem)
-		cc.mem = nil
-		cc.base = 0
-		c.code = nil
-	}
 	if cc.refs == 0 && cc.closed {
+		if cc.mem != nil {
+			_ = coreruntime.Unmap(cc.mem)
+			cc.mem = nil
+			cc.base = 0
+		}
+		c.releaseHostThunksLocked()
+		c.clearCodeViewsLocked()
 		if c.validateMemo != nil {
 			c.validateMemo.structuralCallIdentities.Store(nil)
+		}
+	}
+}
+
+func (c *Compiled) releaseHostThunksLocked() {
+	memo := c.loadValidateMemo()
+	if memo == nil {
+		return
+	}
+	for i := range memo.hostThunks {
+		cache := &memo.hostThunks[i]
+		if cache.mem != nil {
+			_ = coreruntime.Unmap(cache.mem)
+			*cache = compiledHostThunkCache{}
+		}
+	}
+}
+
+func (c *Compiled) takeHostThunksLocked() [2]compiledHostThunkCache {
+	memo := c.loadValidateMemo()
+	if memo == nil {
+		return [2]compiledHostThunkCache{}
+	}
+	hostThunks := memo.hostThunks
+	memo.hostThunks = [2]compiledHostThunkCache{}
+	return hostThunks
+}
+
+// clearCodeViewsLocked drops every slice header that can retain the staged or
+// mapped code image. Callers hold codeCache.mu and have established refs == 0.
+func (c *Compiled) clearCodeViewsLocked() {
+	c.code = nil
+	if memo := c.loadValidateMemo(); memo != nil {
+		if snapshot := memo.executionView(); snapshot != nil {
+			snapshot.code = nil
 		}
 	}
 }
@@ -676,14 +736,22 @@ func (c *Compiled) replaceDecoded(decoded Compiled, snapshotLimit uint64) error 
 		mem := cc.mem
 		cc.mem = nil
 		cc.base = 0
+		hostThunks := c.takeHostThunksLocked()
 		cc.closed = true
 		c.code = nil
 		cc.mu.Unlock()
 		goruntime.SetFinalizer(c, nil)
+		var releaseErr error
 		if mem != nil {
-			if err := coreruntime.Unmap(mem); err != nil {
-				return fmt.Errorf("release replaced compiled code: %w", err)
+			releaseErr = errors.Join(releaseErr, coreruntime.Unmap(mem))
+		}
+		for i := range hostThunks {
+			if hostThunks[i].mem != nil {
+				releaseErr = errors.Join(releaseErr, coreruntime.Unmap(hostThunks[i].mem))
 			}
+		}
+		if releaseErr != nil {
+			return fmt.Errorf("release replaced compiled mappings: %w", releaseErr)
 		}
 	}
 	*c = decoded
@@ -708,10 +776,12 @@ func (c *Compiled) Close() error {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	cc.closed = true
+	c.code = nil
 	goruntime.SetFinalizer(c, nil)
 	if cc.refs != 0 {
 		return nil
 	}
+	c.clearCodeViewsLocked()
 	if c.validateMemo != nil {
 		c.validateMemo.structuralCallIdentities.Store(nil)
 	}
@@ -723,6 +793,12 @@ func (c *Compiled) Close() error {
 	mem := cc.mem
 	cc.mem = nil
 	cc.base = 0
-	c.code = nil
-	return coreruntime.Unmap(mem)
+	hostThunks := c.takeHostThunksLocked()
+	err := coreruntime.Unmap(mem)
+	for i := range hostThunks {
+		if hostThunks[i].mem != nil {
+			err = errors.Join(err, coreruntime.Unmap(hostThunks[i].mem))
+		}
+	}
+	return err
 }

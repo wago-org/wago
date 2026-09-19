@@ -56,11 +56,20 @@ var (
 	// v128DirectResultEnabled lets NEON's non-destructive destination forms read
 	// pinned locals directly instead of copying a source into an accumulator.
 	v128DirectResultEnabled = os.Getenv("WAGO_ARM64_NO_V128_DIRECT_RESULTS") != "1"
+	v128ConstCacheEnabled   = os.Getenv("WAGO_ARM64_NO_V128_CONST_CACHE") != "1"
 	// intervalRegionPinsEnabled reuses GP registers across integer-local
 	// lifetimes in bounded call-free straight-line functions. The cache is
 	// pressure-spillable and releases a register at the local's final get.
 	intervalRegionPinsEnabled = os.Getenv("WAGO_ARM64_INTERVAL_REGIONS") != "0"
-	memcopyTail4Enabled       = os.Getenv("WAGO_ARM64_NO_MEMCOPY_TAIL4") != "1"
+	// intervalNextUseEnabled chooses regional victims by the exact next local
+	// access and drops dirty values killed before any subsequent read.
+	intervalNextUseEnabled = true
+	// linearSumLoopEnabled hoists the single exact memory bound for a scalar
+	// i64 reduction and executes the remaining iterations through four independent
+	// accumulators. RuntimeConfig optimization selection is the A/B oracle.
+	linearSumLoopEnabled     = true
+	memcopyTail4Enabled      = os.Getenv("WAGO_ARM64_NO_MEMCOPY_TAIL4") != "1"
+	commonBoundsLimitEnabled = os.Getenv("WAGO_ARM64_NO_COMMON_BOUNDS_LIMIT") != "1"
 	// multiBoundsCertEnabled keeps independent straight-line bounds proofs for a
 	// small set of address sources. The kill switch restores the single proof.
 	multiBoundsCertEnabled = os.Getenv("WAGO_ARM64_SINGLE_BOUNDS_CERT") != "1"

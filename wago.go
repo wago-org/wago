@@ -23,7 +23,6 @@ type (
 	BoundsCheckMode                 = impl.BoundsCheckMode
 	Caller                          = impl.Caller
 	CallerHostCallFunc              = impl.CallerHostCallFunc
-	CallerHostFunc                  = impl.CallerHostFunc
 	CallerInvoker                   = impl.CallerInvoker
 	CallerResolver                  = impl.CallerResolver
 	Capability                      = impl.Capability
@@ -97,23 +96,15 @@ type (
 	HostCall                        = impl.HostCall
 	HostCallFunc                    = impl.HostCallFunc
 	HostExit                        = impl.HostExit
-	HostFunc                        = impl.HostFunc
 	HostFuncRef                     = impl.HostFuncRef
 	HostImportRegistrar             = impl.HostImportRegistrar
 	HostModule                      = impl.HostModule
 	HostTrap                        = impl.HostTrap
 	I31Ref                          = impl.I31Ref
 	I32HostEvent                    = impl.I32HostEvent
-	I32HostFunc                     = impl.I32HostFunc
-	I32I32HostFunc                  = impl.I32I32HostFunc
-	I32I32ToI32HostFunc             = impl.I32I32ToI32HostFunc
-	I32I32ToI32I32HostFunc          = impl.I32I32ToI32I32HostFunc
-	I32ToI32HostFunc                = impl.I32ToI32HostFunc
-	I32ToI32I32HostFunc             = impl.I32ToI32I32HostFunc
 	ImplementationLimitError        = impl.ImplementationLimitError
 	ImportFuncBuilder               = impl.ImportFuncBuilder
 	ImportKind                      = impl.ImportKind
-	ImportModuleBuilder             = impl.ImportModuleBuilder
 	ImportOverridePolicy            = impl.ImportOverridePolicy
 	ImportSpec                      = impl.ImportSpec
 	Imports                         = impl.Imports
@@ -158,7 +149,6 @@ type (
 	ModuleSourceTransformer         = impl.ModuleSourceTransformer
 	ModuleView                      = impl.ModuleView
 	NativeMemoryStats               = impl.NativeMemoryStats
-	NoArgsHostFunc                  = impl.NoArgsHostFunc
 	OffsetInit                      = impl.OffsetInit
 	OperationIdentity               = impl.OperationIdentity
 	OptKnobInfo                     = impl.OptKnobInfo
@@ -178,9 +168,6 @@ type (
 	PluginSet                       = impl.PluginSet
 	Policy                          = impl.Policy
 	PreparedCompile                 = impl.PreparedCompile
-	PreparedFunction                = impl.PreparedFunction
-	PreparedI32I32ToI32             = impl.PreparedI32I32ToI32
-	PreparedI32ToI32                = impl.PreparedI32ToI32
 	ProviderCatalogDocument         = impl.ProviderCatalogDocument
 	ProviderCatalogEntry            = impl.ProviderCatalogEntry
 	RefInit                         = impl.RefInit
@@ -209,6 +196,7 @@ type (
 	Value                           = impl.Value
 	ValueTypeDescriptor             = impl.ValueTypeDescriptor
 	ValueTypeKind                   = impl.ValueTypeKind
+	WasmFunc                        = impl.WasmFunc
 	WasmType                        = impl.WasmType
 )
 
@@ -495,6 +483,8 @@ func NewHandleTable() *HandleTable { return impl.NewHandleTable() }
 
 func NewI31Ref(v int32) I31Ref { return impl.NewI31Ref(v) }
 
+func NewImports() *Imports { return impl.NewImports() }
+
 func NewMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 	return impl.NewMemory(minPages, maxPages)
 }
@@ -575,7 +565,7 @@ func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 	return impl.WithImportOverridePolicy(p)
 }
 
-func WithImports(im Imports) InstantiateOption { return impl.WithImports(im) }
+func WithImports(im *Imports) InstantiateOption { return impl.WithImports(im) }
 
 func WithPolicy(p Policy) InstantiateOption { return impl.WithPolicy(p) }
 

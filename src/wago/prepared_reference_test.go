@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestPrepareFunctionRejectsReexportWithoutPanic(t *testing.T) {
+func TestWasmFuncRejectsReexportWithoutPanic(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	producerMod := mustCompileWat(rt, t, `(module (func (export "f") (result i32) (i32.const 7)))`)
@@ -24,22 +24,22 @@ func TestPrepareFunctionRejectsReexportWithoutPanic(t *testing.T) {
 	relayMod := mustCompileWat(rt, t, `(module
 		(import "p" "f" (func $f (result i32)))
 		(export "f" (func $f)))`)
-	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(Imports{"p.f": export}))
+	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(testImports("p.f", export)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer relay.Close()
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			t.Fatalf("PrepareFunction panicked: %v", recovered)
+			t.Fatalf("WasmFunc panicked: %v", recovered)
 		}
 	}()
-	if _, err := relay.PrepareFunction("f"); err == nil || !strings.Contains(err.Error(), "re-exported imports must use Invoke") {
-		t.Fatalf("PrepareFunction re-export error = %v", err)
+	if _, err := relay.WasmFunc("f"); err == nil || !strings.Contains(err.Error(), "re-exported imports must use Invoke") {
+		t.Fatalf("WasmFunc re-export error = %v", err)
 	}
 }
 
-func TestPreparedFunctionReferenceBoundaries(t *testing.T) {
+func TestWasmFuncReferenceBoundaries(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	producerMod, err := rt.Compile(funcrefCallableProducerModule())
@@ -74,7 +74,7 @@ func TestPreparedFunctionReferenceBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumer.Close()
-	call, err := consumer.PrepareFunction("call")
+	call, err := consumer.WasmFunc("call")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestPreparedFunctionReferenceBoundaries(t *testing.T) {
 	_ = foreign.Close()
 	_ = other.Close()
 
-	get, err := producer.PrepareFunction("get")
+	get, err := producer.WasmFunc("get")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestPreparedFunctionReferenceBoundaries(t *testing.T) {
 	}
 }
 
-func TestPreparedFunctionExternrefValidation(t *testing.T) {
+func TestWasmFuncExternrefValidation(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	mod := mustCompileWat(rt, t, `(module
@@ -133,7 +133,7 @@ func TestPreparedFunctionExternrefValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("echo")
+	fn, err := in.WasmFunc("echo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func preparedV128Slots(v V128) []uint64 {
 	}
 }
 
-func TestPreparedFunctionMixedReferenceResultSlots(t *testing.T) {
+func TestWasmFuncMixedReferenceResultSlots(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	producerMod, _ := rt.Compile(funcrefCallableProducerModule())
@@ -198,7 +198,7 @@ func TestPreparedFunctionMixedReferenceResultSlots(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("mixed")
+	fn, err := in.WasmFunc("mixed")
 	if err != nil {
 		t.Fatal(err)
 	}

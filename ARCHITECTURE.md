@@ -589,7 +589,7 @@ At instantiation, each cell receives a wrapper entry, home linear-memory base,
 target instance context, and caller context. Cross-instance cells point directly
 at the producer's wrapper entry; host cells point at small instance-owned thunks.
 
-Legacy void `HostFunc` signatures that fit the batched protocol may append calls
+Explicit deferred `I32HostEvent` imports may append calls
 to the off-heap log at basedata offset 40 and replay them after native return.
 Returning, vector, owned, reflected, or caller-sensitive host functions use the
 synchronous `CallWithHost` control frame: native execution yields to Go at the
@@ -607,11 +607,11 @@ uses full restoration. Native and collector leases, parked roots, and scheduler
 entry/resume protocols are still required. See
 [host-call measurements and proof limits](docs/host-roundtrip-performance.md).
 
-`CallerHostFunc` is an optional concrete-value callback ABI. Its `Caller` wraps
-the same private immutable token as the legacy `HostModule` value. Dispatch
-passes it directly, without an interface box; both representations share the
-same capability resolver. Plugin `CallerFunc` registration retains the normal
-gate and reservation checks. See the
+`func(Caller, HostCall)` is the callback ABI for memory, reference operations,
+invocation context, and authorized synchronous re-entry. `Caller` wraps a
+private immutable token and expires when the callback returns. All host
+functions use flat `(module, name)` registration and retain normal plugin gate
+and reservation checks. See the
 [concrete caller design and measurements](docs/host-caller-performance.md).
 
 ---
@@ -698,12 +698,12 @@ to build and test the Go module.
 - Linux, macOS, and Windows on amd64 and arm64 execute the native JIT and are
   required CI and release targets. Signal-backed guard pages remain specific to
   Linux/amd64, Linux/arm64, and Darwin/arm64; other targets use explicit bounds.
-- WebAssembly 1.0, the documented WebAssembly 2.0 feature set, and the
-  opt-in WebAssembly Core 3.0 feature families (tail calls, typed references,
-  WasmGC, exception handling, multi-memory, memory64, table64, extended
-  constants, and relaxed SIMD) are complete on linux/amd64, linux/arm64, and
-  darwin/arm64. Threads & atomics are available as the bounded experimental
-  explicit-bounds product documented in [FEATURES.md](FEATURES.md), which is the
+- WebAssembly 1.0, the documented WebAssembly 2.0 feature set, and the default
+  WebAssembly Core 3.0 feature families on complete backends (tail calls, typed
+  references, WasmGC, exception handling, multi-memory, memory64, table64,
+  extended constants, and relaxed SIMD) are complete on linux/amd64,
+  linux/arm64, and darwin/arm64. Threads & atomics are available as the bounded
+  experimental explicit-bounds product documented in [FEATURES.md](FEATURES.md), which is the
   source of truth for per-feature status.
 - The off-path `src/core/compiler/ir` package is a research/debug oracle, not an
   execution tier. Railshot is the only production backend.

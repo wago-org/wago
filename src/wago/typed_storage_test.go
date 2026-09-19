@@ -116,7 +116,7 @@ func TestReferenceEncodingFormDoesNotAffectStorageImports(t *testing.T) {
 		if err != nil {
 			t.Fatalf("export shorthand table: %v", err)
 		}
-		consumerInstance, err := instantiateCore(consumer, InstantiateOptions{Imports: Imports{"env.table": table}, store: store})
+		consumerInstance, err := instantiateCore(consumer, InstantiateOptions{Imports: testImports("env.table", table), store: store})
 		if err != nil {
 			t.Fatalf("import shorthand table as explicit reference type: %v", err)
 		}
@@ -136,7 +136,7 @@ func TestReferenceEncodingFormDoesNotAffectStorageImports(t *testing.T) {
 		if err != nil {
 			t.Fatalf("export shorthand global: %v", err)
 		}
-		consumerInstance, err := instantiateCore(consumer, InstantiateOptions{Imports: Imports{"env.global": global}, store: store})
+		consumerInstance, err := instantiateCore(consumer, InstantiateOptions{Imports: testImports("env.global", global), store: store})
 		if err != nil {
 			t.Fatalf("import shorthand global as explicit reference type: %v", err)
 		}
@@ -169,14 +169,14 @@ func TestStagedTypedStorageExactImports(t *testing.T) {
 		if err != nil {
 			t.Fatalf("export typed table: %v", err)
 		}
-		consumerInstance, err := instantiateCore(consumer, InstantiateOptions{Imports: Imports{"env.table": table}, store: store})
+		consumerInstance, err := instantiateCore(consumer, InstantiateOptions{Imports: testImports("env.table", table), store: store})
 		if err != nil {
 			t.Fatalf("instantiate equivalent typed table import: %v", err)
 		}
 		defer consumerInstance.Close()
 
 		bad := stagedTypedStorageCompile(t, typedTableModule([][]byte{dummy, mismatch}, 1, true, false))
-		if _, err := instantiateCore(bad, InstantiateOptions{Imports: Imports{"env.table": table}, store: store}); err == nil || !strings.Contains(err.Error(), "exact element type") {
+		if _, err := instantiateCore(bad, InstantiateOptions{Imports: testImports("env.table", table), store: store}); err == nil || !strings.Contains(err.Error(), "exact element type") {
 			t.Fatalf("mismatched typed table import error = %v", err)
 		}
 	})
@@ -194,14 +194,14 @@ func TestStagedTypedStorageExactImports(t *testing.T) {
 		if err != nil {
 			t.Fatalf("export typed global: %v", err)
 		}
-		consumerInstance, err := instantiateCore(consumer, InstantiateOptions{Imports: Imports{"env.global": global}, store: store})
+		consumerInstance, err := instantiateCore(consumer, InstantiateOptions{Imports: testImports("env.global", global), store: store})
 		if err != nil {
 			t.Fatalf("instantiate equivalent typed global import: %v", err)
 		}
 		defer consumerInstance.Close()
 
 		bad := stagedTypedStorageCompile(t, typedGlobalModule([][]byte{dummy, mismatch}, 1, true, false))
-		if _, err := instantiateCore(bad, InstantiateOptions{Imports: Imports{"env.global": global}, store: store}); err == nil || !strings.Contains(err.Error(), "exact type is incompatible") {
+		if _, err := instantiateCore(bad, InstantiateOptions{Imports: testImports("env.global", global), store: store}); err == nil || !strings.Contains(err.Error(), "exact type is incompatible") {
 			t.Fatalf("mismatched typed global import error = %v", err)
 		}
 	})

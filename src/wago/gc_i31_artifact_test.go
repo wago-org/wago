@@ -74,14 +74,14 @@ func TestI31ExecutionProductPublicArtifactLifecycle(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		module  []byte
-		imports Imports
+		imports *Imports
 		passive bool
 		getArgs []uint64
 		want    uint64
 	}{
 		{name: "exact-active-direct", module: i31ElementArtifactModule(wasm.HeapI31, false, false, direct), getArgs: []uint64{I32(0)}, want: 7},
 		{name: "exact-passive-direct", module: i31ElementArtifactModule(wasm.HeapI31, true, false, direct), passive: true, getArgs: []uint64{I32(0)}, want: 7},
-		{name: "exact-active-imported-global", module: i31ElementArtifactModule(wasm.HeapI31, false, true, globalWrap), imports: Imports{"env.value": GlobalImport{Type: ValI32, Bits: 11}}, getArgs: []uint64{I32(0)}, want: 11},
+		{name: "exact-active-imported-global", module: i31ElementArtifactModule(wasm.HeapI31, false, true, globalWrap), imports: testImports("env.value", GlobalImport{Type: ValI32, Bits: 11}), getArgs: []uint64{I32(0)}, want: 11},
 		{name: "exact-active-deferred", module: i31ElementArtifactModule(wasm.HeapI31, false, false, deferred), getArgs: []uint64{I32(0)}, want: 3},
 		{name: "anyref-active-direct", module: i31ElementArtifactModule(wasm.HeapAny, false, false, direct), getArgs: []uint64{I32(0)}, want: 7},
 		{name: "global-direct", module: i31GlobalArtifactModule(direct), want: 7},

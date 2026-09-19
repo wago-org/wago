@@ -61,6 +61,32 @@ func TestCodeBufferGrowSealClose(t *testing.T) {
 	}
 }
 
+func TestHeapCodeBufferGrowAndTransfer(t *testing.T) {
+	b, err := NewHeapCodeBuffer(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Append([]byte{1, 2, 3, 4}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Seal(); err == nil {
+		t.Fatal("Seal unexpectedly accepted heap staging")
+	}
+	if _, _, err := b.Take(); err == nil {
+		t.Fatal("Take unexpectedly accepted heap staging")
+	}
+	code, err := b.TakeHeap()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := code, []byte{1, 2, 3, 4}; !bytes.Equal(got, want) {
+		t.Fatalf("code = %v, want %v", got, want)
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCodeBufferAppendTail(t *testing.T) {
 	b, err := NewCodeBuffer(1)
 	if err != nil {

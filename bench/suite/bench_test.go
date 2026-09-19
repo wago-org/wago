@@ -13,6 +13,7 @@ import (
 	wago "github.com/wago-org/wago"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func mustRead(p string) []byte {
@@ -27,6 +28,7 @@ var (
 	fibWasm         = mustRead("../../tests/fixtures/wasm/fib.wasm")           // iterative fib (loop)
 	recurWasm       = mustRead("../../tests/fixtures/wasm/recur.wasm")         // recursive fibrec (calls)
 	globalBenchWasm = mustRead("../../tests/fixtures/bench/global_bench.wasm") // globals/local/memory microbench fixture
+	callWasm        = mustRead("../../tests/fixtures/bench/call.wasm")         // boundary-only identity export (i32)->i32
 	hostcallWasm    = mustRead("../../tests/fixtures/bench/hostcall.wasm")     // returning host import env.host(i32)->i32
 )
 
@@ -167,6 +169,176 @@ func wazeroSetup(b *testing.B, wasmBytes []byte, export string) (api.Function, f
 	return mod.ExportedFunction(export), func() { r.Close(ctx) }
 }
 
+func memoryGrowLoopModule(maxPages byte) []byte {
+	body := []byte{
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x20, 0x00, 0x40, 0x00, 0x1a, // local.get delta; memory.grow 0; drop
+		0x20, 0x01, 0x41, 0x01, 0x6b, 0x22, 0x01, // --iterations
+		0x0d, 0x00, // br_if loop
+		0x0b, 0x0b, 0x0b, // end loop, block, function
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
+			[]wasm.ValType{wasm.I32, wasm.I32}, nil,
+		))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, []byte{0x01, 0x01, 0x01, maxPages}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func memoryGrowOnceModule(maxPages byte) []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
+			[]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32},
+		))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, []byte{0x01, 0x01, 0x01, maxPages}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x40, 0x00, 0x0b, // local.get delta; memory.grow 0; end
+		}))),
+	)
+}
+
+// BenchmarkMemoryGrowKernel compares the compiled guest-side memory.grow path.
+// A batch amortizes the host-to-Wasm boundary so the result mostly measures the
+// instruction itself. The max equals the initial size: delta zero succeeds and
+// delta one exercises the specified -1 failure result without changing memory.
+func BenchmarkMemoryGrowKernel(b *testing.B) {
+	const batch = uint64(256)
+	wasmBytes := memoryGrowLoopModule(1)
+	for _, tc := range []struct {
+		name  string
+		delta uint64
+	}{
+		{name: "zero", delta: 0},
+		{name: "failure", delta: 1},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			b.Run("wago", func(b *testing.B) {
+				c, err := wago.Compile(nil, wasmBytes)
+				if err != nil {
+					b.Fatal(err)
+				}
+				defer c.Close()
+				in, err := wago.Instantiate(c, wago.InstantiateOptions{})
+				if err != nil {
+					b.Fatal(err)
+				}
+				defer in.Close()
+				fn, err := in.WasmFunc("run")
+				if err != nil {
+					b.Fatal(err)
+				}
+				b.ReportAllocs()
+				b.ReportMetric(float64(batch), "grows/op")
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					if _, err = fn.Invoke(tc.delta, batch); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+			b.Run("wazero", func(b *testing.B) {
+				fn, cleanup := wazeroSetup(b, wasmBytes, "run")
+				defer cleanup()
+				ctx := context.Background()
+				b.ReportAllocs()
+				b.ReportMetric(float64(batch), "grows/op")
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					if _, err := fn.Call(ctx, tc.delta, batch); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		})
+	}
+}
+
+// BenchmarkMemoryGrowSuccess isolates one 64-KiB growth from a fresh instance.
+// Instance creation and export resolution are deliberately outside the timer.
+// Run with a fixed iteration count (for example, -benchtime=100x) because every
+// timed call needs a new instance to begin from the same one-page state.
+func BenchmarkMemoryGrowSuccess(b *testing.B) {
+	wasmBytes := memoryGrowOnceModule(2)
+	b.Run("wago", func(b *testing.B) {
+		c, err := wago.Compile(nil, wasmBytes)
+		if err != nil {
+			b.Fatal(err)
+		}
+		defer c.Close()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			in, err := wago.Instantiate(c, wago.InstantiateOptions{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			fn, err := in.WasmFunc("grow")
+			if err != nil {
+				in.Close()
+				b.Fatal(err)
+			}
+			if got, err := fn.Invoke(0); err != nil || len(got) != 1 || got[0] != 1 {
+				in.Close()
+				b.Fatalf("warmup grow(0) = %v, %v; want [1]", got, err)
+			}
+			b.StartTimer()
+			got, err := fn.Invoke(1)
+			b.StopTimer()
+			if err != nil || len(got) != 1 || got[0] != 1 {
+				in.Close()
+				b.Fatalf("grow(1) = %v, %v; want [1]", got, err)
+			}
+			in.Close()
+		}
+	})
+	for _, tc := range []struct {
+		name        string
+		capacityMax bool
+	}{
+		{name: "wazero-default"},
+		{name: "wazero-capacity-from-max", capacityMax: true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			ctx := context.Background()
+			cfg := wazero.NewRuntimeConfigCompiler().WithMemoryCapacityFromMax(tc.capacityMax)
+			r := wazero.NewRuntimeWithConfig(ctx, cfg)
+			defer r.Close(ctx)
+			cm, err := r.CompileModule(ctx, wasmBytes)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer cm.Close(ctx)
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				mod, err := r.InstantiateModule(ctx, cm, wazero.NewModuleConfig().WithName(""))
+				if err != nil {
+					b.Fatal(err)
+				}
+				fn := mod.ExportedFunction("grow")
+				if got, err := fn.Call(ctx, 0); err != nil || len(got) != 1 || got[0] != 1 {
+					mod.Close(ctx)
+					b.Fatalf("warmup grow(0) = %v, %v; want [1]", got, err)
+				}
+				b.StartTimer()
+				got, err := fn.Call(ctx, 1)
+				b.StopTimer()
+				if err != nil || len(got) != 1 || got[0] != 1 {
+					mod.Close(ctx)
+					b.Fatalf("grow(1) = %v, %v; want [1]", got, err)
+				}
+				mod.Close(ctx)
+			}
+		})
+	}
+}
+
 func BenchmarkExecFibLoop_wago(b *testing.B) {
 	call, cleanup := wagoSetup(b, fibWasm, "fib")
 	defer cleanup()
@@ -205,12 +377,13 @@ func BenchmarkExecFibRec_wazero(b *testing.B) {
 	}
 }
 
-// BenchmarkExecCallOverhead measures the cross-boundary call cost (fib(1)).
+// BenchmarkExecCallOverhead measures a host -> Wasm boundary crossing through
+// an identity export, with no guest computation mixed into the result.
 func BenchmarkExecCallOverhead_wago(b *testing.B) {
-	call, cleanup := wagoSetup(b, fibWasm, "fib")
+	call, cleanup := wagoSetup(b, callWasm, "call")
 	defer cleanup()
 	if got := call(1); got != 1 {
-		b.Fatalf("fib(1) = %d, want 1", got)
+		b.Fatalf("call(1) = %d, want 1", got)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -220,12 +393,12 @@ func BenchmarkExecCallOverhead_wago(b *testing.B) {
 	}
 	b.StopTimer()
 	if got != 1 {
-		b.Fatalf("fib(1) = %d, want 1", got)
+		b.Fatalf("call(1) = %d, want 1", got)
 	}
 }
 
 func BenchmarkExecCallOverhead_wazero(b *testing.B) {
-	fn, cleanup := wazeroSetup(b, fibWasm, "fib")
+	fn, cleanup := wazeroSetup(b, callWasm, "call")
 	defer cleanup()
 	ctx := context.Background()
 	b.ReportAllocs()
@@ -234,11 +407,11 @@ func BenchmarkExecCallOverhead_wazero(b *testing.B) {
 	}
 }
 
-// BenchmarkExecTypedCall_wago measures the public specialized (i32) -> i32
-// entry path. Setup resolves the export and verifies its signature once; the
-// timed loop uses PreparedI32ToI32 rather than the arbitrary-slot Invoke API.
+// BenchmarkExecTypedCall_wago measures the public resolved (i32) -> i32 entry
+// path. Setup resolves the export once, matching wazero's exported-function
+// lookup outside the timed loop. Every Invoke performs normal admission.
 func BenchmarkExecTypedCall_wago(b *testing.B) {
-	c, err := wago.Compile(nil, fibWasm)
+	c, err := wago.Compile(nil, callWasm)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -248,25 +421,25 @@ func BenchmarkExecTypedCall_wago(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareI32ToI32("fib")
+	fn, err := in.WasmFunc("call")
 	if err != nil {
 		b.Fatal(err)
 	}
-	if got, err := fn.Call(1); err != nil || got != 1 {
-		b.Fatalf("fib(1) = %d, %v; want 1", got, err)
+	if got, err := fn.Invoke(1); err != nil || len(got) != 1 || got[0] != 1 {
+		b.Fatalf("call(1) = %v, %v; want 1", got, err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
-	var got int32
+	var got []uint64
 	for i := 0; i < b.N; i++ {
-		got, err = fn.Call(1)
+		got, err = fn.Invoke(1)
 		if err != nil {
 			b.Fatal(err)
 		}
 	}
 	b.StopTimer()
-	if got != 1 {
-		b.Fatalf("fib(1) = %d, want 1", got)
+	if len(got) != 1 || got[0] != 1 {
+		b.Fatalf("call(1) = %v, want 1", got)
 	}
 }
 
@@ -278,9 +451,7 @@ func BenchmarkExecTypedCall_wago(b *testing.B) {
 // boundary crossing. Compare against ExecCallOverhead (a plain guest-only call):
 // the difference is the added cost of the host-boundary round trip.
 func BenchmarkExecHostRoundtrip_wago(b *testing.B) {
-	benchmarkExecHostRoundtripWago(b, wago.HostFunc(func(_ wago.HostModule, p, r []uint64) {
-		r[0] = p[0] + 1
-	}))
+	benchmarkExecHostRoundtripWago(b, func(call wago.HostCall) { call.SetI32(0, call.I32(0)+1) })
 }
 
 // BenchmarkExecHostCallback_wago measures the same callback transaction through
@@ -294,24 +465,24 @@ func BenchmarkExecHostCallback_wago(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer c.Close()
-	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{
-		"env.host": func(x int32) int32 { return x + 1 },
-	}})
+	imports := wago.NewImports()
+	imports.HostFunc("env", "host", func(x int32) int32 { return x + 1 })
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
 	if err != nil {
 		b.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareI32ToI32("roundtrip")
+	fn, err := in.WasmFunc("roundtrip")
 	if err != nil {
 		b.Fatal(err)
 	}
-	if got, err := fn.Call(1); err != nil || got != 2 {
-		b.Fatalf("roundtrip(1) = %d, %v; want 2", got, err)
+	if got, err := fn.Invoke(1); err != nil || len(got) != 1 || got[0] != 2 {
+		b.Fatalf("roundtrip(1) = %v, %v; want 2", got, err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := fn.Call(1); err != nil {
+		if _, err := fn.Invoke(1); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -322,9 +493,9 @@ func benchmarkExecHostRoundtripWago(b *testing.B, callback any) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{
-		"env.host": callback,
-	}})
+	imports := wago.NewImports()
+	imports.HostFunc("env", "host", callback).Params(wago.ValI32).Results(wago.ValI32)
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
 	if err != nil {
 		b.Fatal(err)
 	}

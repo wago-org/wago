@@ -11,12 +11,12 @@ var preparedCallEnabled = os.Getenv("WAGO_PREPARED_CALL") != "0"
 // WAGO_DIRECT_PREPARED=0 restores routing through callNative for clean A/B.
 var directPreparedCallEnabled = os.Getenv("WAGO_DIRECT_PREPARED") != "0"
 
-// preparedScalarFastEnabled selects the bounded scalar PreparedFunction path.
+// preparedScalarFastEnabled selects the bounded scalar WasmFunc path.
 // WAGO_PREPARED_SCALAR_FAST=0 restores generic slot marshaling for same-binary
 // benchmark comparisons.
 var preparedScalarFastEnabled = os.Getenv("WAGO_PREPARED_SCALAR_FAST") != "0"
 
-// preparedPrivateEntryEnabled lets a PreparedFunction with a private,
+// preparedPrivateEntryEnabled lets a WasmFunc with a private,
 // already-bound native context bypass the process-wide rebinding lease.
 // WAGO_PREPARED_PRIVATE_ENTRY=0 restores the ordinary entry path for A/B.
 var preparedPrivateEntryEnabled = preparedCallEnabled && os.Getenv("WAGO_PREPARED_PRIVATE_ENTRY") != "0"
@@ -28,7 +28,7 @@ var preparedPrivateEntryEnabled = preparedCallEnabled && os.Getenv("WAGO_PREPARE
 var preparedIsolatedEntryEnabled = os.Getenv("WAGO_PREPARED_ISOLATED_ENTRY") != "0"
 
 // invokePrivateEntryEnabled lets the bounded scalar Instance.Invoke path reuse
-// the same already-bound private entry as PreparedFunction. Export resolution
+// the same already-bound private entry as WasmFunc. Export resolution
 // remains in Invoke; WAGO_INVOKE_PRIVATE_ENTRY=0 restores the general entry.
 var invokePrivateEntryEnabled = preparedCallEnabled && os.Getenv("WAGO_INVOKE_PRIVATE_ENTRY") != "0"
 

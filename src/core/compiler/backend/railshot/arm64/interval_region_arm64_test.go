@@ -4,10 +4,74 @@ package arm64
 
 import (
 	"encoding/binary"
+	"path/filepath"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func TestIntervalNextUseCoordinatesArm64(t *testing.T) {
+	body := []byte{
+		0x21, 0x00,
+		0x20, 0x00,
+		0x1a,
+		0x21, 0x00,
+		0x20, 0x00,
+		0x0b,
+	}
+	f := fn{
+		m:             &wasm.Module{},
+		nLocals:       1,
+		localType:     []machineType{mtI32},
+		intervalLast:  []uint32{7},
+		intervalScore: []uint32{8},
+		tracePCBase:   0x1234,
+		wasmPC:        0x1234,
+	}
+	f.classifier = wasm.NewModuleInstructionClassifier(f.m, true)
+	f.prepareIntervalEvents(body, 5)
+	if next, dead := f.nextIntervalLocalAccess(0); next != 2 || dead {
+		t.Fatalf("next read = (%d, %t), want (2, false)", next, dead)
+	}
+	f.wasmPC = f.tracePCBase + 4
+	if next, dead := f.nextIntervalLocalAccess(0); next != 5 || !dead {
+		t.Fatalf("next overwrite = (%d, %t), want (5, true)", next, dead)
+	}
+}
+
+func compileIntervalCorpusArm64(t testing.TB, name string, on bool) (int, *CodegenStats) {
+	t.Helper()
+	root := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads", "assemblyscript", name)
+	m := readParallelTestModuleArm64(t, root)
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Stats: &stats, Optimizations: map[string]bool{"interval-next-use": on}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		_ = cm.CodeImage.Close()
+	}
+	return len(cm.Code), stats.Funcs[0]
+}
+
+func TestIntervalNextUseShrinksScalarBlakeArm64(t *testing.T) {
+	baseBytes, base := compileIntervalCorpusArm64(t, "blake-as.wasm", false)
+	nextBytes, next := compileIntervalCorpusArm64(t, "blake-as.wasm", true)
+	if next.Peephole["interval-dead-store-elide"] == 0 {
+		t.Fatalf("next-use planning found no dead stores: %v", next.Peephole)
+	}
+	if nextBytes >= baseBytes || next.CodeBytes >= base.CodeBytes {
+		t.Fatalf("next-use code module/function = %d/%d, baseline %d/%d", nextBytes, next.CodeBytes, baseBytes, base.CodeBytes)
+	}
+}
+
+func TestIntervalNextUseRejectsSIMDModuleArm64(t *testing.T) {
+	baseBytes, base := compileIntervalCorpusArm64(t, "blake-as-simd.wasm", false)
+	nextBytes, next := compileIntervalCorpusArm64(t, "blake-as-simd.wasm", true)
+	if next.Peephole["interval-dead-store-elide"] != 0 || nextBytes != baseBytes || next.CodeBytes != base.CodeBytes {
+		t.Fatalf("SIMD module changed under next-use: module %d/%d function %d/%d peep=%v", nextBytes, baseBytes, next.CodeBytes, base.CodeBytes, next.Peephole)
+	}
+}
 
 func intervalRegionModuleArm64(t *testing.T) *wasm.Module {
 	body := []byte{0x01, 0x20, 0x7f}            // thirty-two i32 locals
@@ -58,18 +122,23 @@ func TestIntervalRegionDynamicReuseArm64(t *testing.T) {
 func TestIntervalRegionLeavesTransientFloorArm64(t *testing.T) {
 	// BLAKE3 produces incorrect output at 20 leases: only X2/X3 remain from the
 	// ordered scratch-capable tail and ordinary lowering can require one more.
-	const transientFloor = 3
-	if got, want := maxIntervalRegionRegs, len(intervalRegionOrder)-transientFloor; got != want {
-		t.Fatalf("regional leases = %d, want %d to preserve %d transient registers", got, want, transientFloor)
+	if got, want := maxIntervalRegionRegs, len(intervalRegionOrder)-intervalRegionTransientFloor; got != want {
+		t.Fatalf("regional leases = %d, want %d to preserve %d transient registers", got, want, intervalRegionTransientFloor)
 	}
 }
 
 func TestIntervalRegionBoundsModePreservesTransientFloorArm64(t *testing.T) {
-	if got, want := intervalRegionRegLimit(true), maxIntervalRegionRegs-1; got != want {
+	if got, want := intervalRegionRegLimit(maskOf(X27)), maxIntervalRegionRegs-1; got != want {
 		t.Fatalf("explicit-bounds regional leases = %d, want %d", got, want)
 	}
-	if got := intervalRegionRegLimit(false); got != maxIntervalRegionRegs {
+	if got := intervalRegionRegLimit(0); got != maxIntervalRegionRegs {
 		t.Fatalf("signals-based regional leases = %d, want %d", got, maxIntervalRegionRegs)
+	}
+	if got, want := intervalRegionRegLimit(maskOf(X25, X24)), maxIntervalRegionRegs-2; got != want {
+		t.Fatalf("two module globals regional leases = %d, want %d", got, want)
+	}
+	if got, want := intervalRegionRegLimit(maskOf(X27, X25, X24)), maxIntervalRegionRegs-3; got != want {
+		t.Fatalf("memory size plus two module globals regional leases = %d, want %d", got, want)
 	}
 }
 

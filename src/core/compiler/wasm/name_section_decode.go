@@ -1,5 +1,15 @@
 package wasm
 
+// Name metadata is optional; malformed payloads must not invalidate a module.
+// Resource-limit errors still stop decoding.
+func decodeOptionalNameSec(payload []byte, budget *decodeBudget) (*NameSec, error) {
+	ns, err := decodeNameSecWithBudget(payload, budget)
+	if _, malformed := err.(*DecodeError); malformed {
+		return nil, nil
+	}
+	return ns, err
+}
+
 func decodeNameSec(payload []byte) (*NameSec, error) {
 	return decodeNameSecWithBudget(payload, newDecodeBudget(DecodeLimits{}))
 }

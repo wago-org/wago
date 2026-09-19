@@ -38,7 +38,7 @@ func testHostContextResumeMatchesForcedRestore(t *testing.T, concrete bool) {
 				var in *Instance
 				var callbackVersion uint64
 				var caller instanceHostModule
-				in, err := Instantiate(c, Imports{"env.step": callerTestCallback(concrete, func(mod HostModule, _, _ []uint64) {
+				in, err := Instantiate(c, testImports("env.step", callerTestCallback(concrete, func(mod HostModule, _, _ []uint64) {
 					caller, _ = resolveHostCaller(mod)
 					callbackVersion = in.pluginState.Load().nativeContextVersion.Load()
 					nested := func(name string) {
@@ -88,7 +88,7 @@ func testHostContextResumeMatchesForcedRestore(t *testing.T, concrete bool) {
 							runtime.Gosched()
 						}
 					}
-				})})
+				})))
 				if err != nil {
 					t.Fatal(err)
 				}

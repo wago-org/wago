@@ -25,7 +25,7 @@ func TestStagedStructuralMetadataProducts(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
+			if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
 				t.Fatalf("public compile = %v, want closed GC type gate", err)
 			}
 			c, err := compileStagedStructuralTypeProductForTest(data)
@@ -117,7 +117,7 @@ func TestStagedStructuralFunctionLinkLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.f": exported}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M.f", exported)})
 	if err != nil {
 		t.Fatalf("equivalent structural import: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestStagedStructuralFunctionLinkLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mismatchCompiled.Close()
-	if _, err := instantiateCore(mismatchCompiled, InstantiateOptions{Imports: Imports{"M.f": exported}}); err == nil || !strings.Contains(err.Error(), "signature mismatch") {
+	if _, err := instantiateCore(mismatchCompiled, InstantiateOptions{Imports: testImports("M.f", exported)}); err == nil || !strings.Contains(err.Error(), "signature mismatch") {
 		t.Fatalf("mismatched recursive group link = %v, want exact signature rejection", err)
 	}
 	if err := provider.Close(); err != nil {

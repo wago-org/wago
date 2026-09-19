@@ -252,11 +252,11 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	ft, ok := f.m.FuncSignature(idx)
+	ft, ok := f.functionSignature(idx)
 	if !ok {
 		return fmt.Errorf("call: unknown function %d", idx)
 	}
-	imported := f.m.ImportedFuncCount()
+	imported := f.importedFunctionCount()
 	if int(idx) < imported && f.customInstructions != nil {
 		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || len(custom.Nodes) != 0) {
 			return f.emitCustomInstruction(custom, ft)
@@ -269,7 +269,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// so this is a pure operand-stack/local transform.
 	if !f.inlineTargets.empty() {
 		if t := f.inlineTargets.target(int(idx)); t != nil {
-			if _, ok := f.inlineBase[int(idx)]; ok {
+			if _, ok := f.inlineBase[int(idx)]; (t.isI32AddConst() || ok) && (!t.recursive() || f.inlineDepth == 0) {
 				return f.inlineCall(t)
 			}
 		}
@@ -495,14 +495,14 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	ft, ok := f.m.FuncSignature(idx)
+	ft, ok := f.functionSignature(idx)
 	if !ok {
 		return fmt.Errorf("return_call: unknown function %d", idx)
 	}
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call: target %d result shape differs from caller", idx)
 	}
-	imported := f.m.ImportedFuncCount()
+	imported := f.importedFunctionCount()
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) {
 			binding := f.importBindings[idx]

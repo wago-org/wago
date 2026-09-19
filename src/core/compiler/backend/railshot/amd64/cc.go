@@ -96,12 +96,22 @@ var pinnedLocalRegs = []Reg{R12, R13, R14, R15}
 // pinnedFLocalRegs are XMM registers dedicated to hot float locals, in assignment
 // order. XMM registers are all caller-saved, so (like the GP pinned locals)
 // callers spill/reload them around calls. The first baseFPPins (XMM12-15) are the
-// stable base. The extended pool follows WARP's eleven-local policy while
-// leaving XMM0-3 plus XMM11 available for scratch and merge values. Calls use
+// stable base. The extended pool uses the remaining high register after WARP's
+// eleven-local policy while leaving XMM0-3 available for scratch and merge values.
+// Calls use
 // the same lazy spill/reload state machine for every pinned XMM register.
-var pinnedFLocalRegs = []Reg{12, 13, 14, 15, 8, 9, 10, 7, 6, 5, 4}
+var pinnedFLocalRegs = []Reg{12, 13, 14, 15, 8, 9, 10, 7, 6, 5, 4, 11}
 
 const baseFPPins = 4 // compatibility cap (XMM12-15); extended mode uses the full slice
+
+// Dense unrolled rotate functions trade RORX's non-destructive destination for
+// twice the instruction bytes of the legacy immediate rotate. Keep RORX in
+// smaller or sparse functions, where removing copies and flag dependencies
+// measured as a win, and favor front-end density past both crossovers.
+const (
+	denseRorxBodyCrossover = 3200
+	denseRorxOpCrossover   = 128
+)
 
 // isScratchGP reports whether r is one of the reserved scratch GPRs (the trailing
 // numScratchGP of gpAlloc).
