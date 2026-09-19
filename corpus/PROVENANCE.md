@@ -10,6 +10,11 @@ workloads are rebuilt from `sources/` with the scripts in `build/`.
 | Rust compute | linked list, nbody, fannkuch, matmul, SHA-256, ray tracing | reviewed files in `sources/rust` |
 | AssemblyScript | json-as, blake-as, utf-as; scalar and SIMD | local adapters plus the corresponding upstream package checkout |
 | semantic | CoreMark, BLAKE3, QOI, LZ4, zlib, zstd | revisions and WASI SDK versions pinned per catalog check |
+| parsers/text | yyjson, cJSON, TinyXML-2, utf8proc, PCRE2, fast_float | revisions pinned in `catalog.json`, WASI SDK 34 |
+| numeric/crypto | xxHash, LibTomMath, KissFFT, Monocypher | revisions pinned in `catalog.json`, WASI SDK 34 |
+| compression/media | miniz, LodePNG, dr_wav | deterministic generated inputs, revisions pinned in `catalog.json`, WASI SDK 34 |
+| graphics | NanoSVG parse plus shape/path traversal | `239e102ec2c691f2902e20ace2ed36ee4a35cfe6`, WASI SDK 34 |
+| interpreters | Lua 5.4.8 and Wren running embedded deterministic programs | revisions pinned in `catalog.json`, WASI SDK 34 |
 | PolyBench/C | all 30 kernels, small dataset | `5474c59fe88f4e36ba968e8f8c4ac913ee83f0d0`, WASI SDK 34 |
 | Embench | crc32, huffbench, matmult-int, nettle-aes, nettle-sha256, qrduino | `09c2ed8c3b7008c95d08b038de4a3f6dc103ed70`, WASI SDK 34 |
 | Sightglass | shootout base64, libsodium hash | `9ce88522d75b2d155e358f576e7d88ed26d14de8`, Binaryen 130 timing-hook removal |
@@ -27,6 +32,50 @@ programs that only proved they compiled or did not trap. Those artifacts add
 maintenance and CI cost without providing a stable correctness or performance
 signal.
 
+The yyjson, utf8proc, xxHash, LibTomMath, NanoSVG, KissFFT, TinyXML-2, Lua,
+cJSON, miniz, Monocypher, dr_wav, LodePNG, fast_float, PCRE2, and Wren expected
+return values were captured independently with Wasmtime 46.0.1. Node 26/V8
+was also used to inspect every module's import surface. TinyXML-2, Lua, cJSON,
+LodePNG, and Wren retain WASI libc imports and therefore run through the
+command harness; the other eleven are import-free core modules. Wren's unused
+clock primitive is bound to a deterministic guest stub. The Lua adapter
+replaces error recovery with a fail-fast trap because its embedded valid
+program does not test error recovery; any unexpected interpreter error
+therefore fails the corpus rather than being swallowed.
+
 Rebuild scripts never redefine admission. Review rebuilt bytes, update the
 catalog digest and provenance deliberately, and rerun the individual
 correctness and benchmark-wiring targets before committing.
+
+## Reproducible builds and excluded-path recheck
+
+For the sixteen added workloads, use the WASI SDK 34.0 **x86_64-linux** archive:
+`wasi-sdk-34.0-x86_64-linux.tar.gz`, SHA-256
+`b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4`.
+Clang identifies LLVM revision `895aa2c896ada719451be2e3673c83da8ddf1141`.
+All build scripts retain their pinned source revisions and optimization flags;
+they now pass `--strip-debug` to exclude SDK library debug paths. The previous
+artifacts contained macOS SDK build paths. A Linux SDK rebuild did not reproduce
+nine of those artifacts: seven differed only in debug data, while NanoSVG and
+TinyXML-2 also differed in executable sections. Do not assume that different SDK
+host distributions produce identical bytes. The catalog now pins reviewed Linux
+SDK output. A second build reproduces all sixteen artifacts byte for byte.
+No upstream revision or license changed. Each original expected result was
+rechecked with Wasmtime 48.0.2; none was changed to match Wago.
+
+Wren retains its classes/closures/collections workload and adds `wren-modulo`.
+The recovered pre-`c7eaea13c` prime sieve passes on the combined code, returning
+210661955 in both engines (historical artifact SHA-256
+`4c5349da94ef84075e644a5b753716b3db28b8eb381a1d071ed8118b3e775bc3`).
+The permanent adapter also computes `5.5 % 2` and returns the raw f64 bits with
+`memcpy`, without an integer conversion of the floating result. Its result is
+210661956.5, bits `0x41a91ce489000000` (4731344651406016512), independently checked
+with Wasmtime 48.0.2. The shared Wren artifact is
+`2b1647ba27936995e85892492c7389d114811496e5c276a2c4b2d44e8a455b41`.
+This establishes coverage of those operations with #666 present; it does not
+establish that #666 caused the earlier Wren discrepancy.
+
+NanoSVG rasterization still fails. The original and reduced adapters, artifacts,
+build commands, and independent expected results are retained in the
+[NanoSVG handoff](repro/nanosvg/README.md). The passing catalog continues to check
+its parsing and shape/path traversal only.

@@ -3,9 +3,9 @@ set working-directory := '..'
 mod spec 'spec.just'
 mod regression 'regression.just'
 
-# Run ordinary unit, integration, and quick corpus tests.
+# Run ordinary unit/integration tests and every benchmark corpus workload.
 [default]
-quick corpus=env('CORPUS', 'quick'):
+quick corpus=env('CORPUS', 'all'):
     just test unit
     just test corpus '{{ corpus }}'
 
@@ -46,11 +46,12 @@ guard corpus=env('CORPUS', 'quick'):
 native-arm64:
     go test ./src/core/encoder/arm64 ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime ./src/wago -count=1
     go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1 -v
-    WAGO_CORPUS_TIMEOUT=20s just test corpus
+    WAGO_CORPUS_TIMEOUT=20s just test corpus all
 
-# Run the corpus pipeline and exact-oracle execution.
+# Run the corpus pipeline, catalog contracts, provenance, and exact oracles.
 corpus profile=env('CORPUS', 'quick'):
-    cd bench && go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns)$' ./suite -args -wago.corpus='{{ profile }}'
+    cd bench && go test -count=1 ./internal/semanticcorpus
+    cd bench && go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns|TestCatalog.*|TestValidateCorpusModule.*)$' ./suite -args -wago.corpus='{{ profile }}'
 
 # Run the semantic corpus against exact oracles.
 semantic-corpus:

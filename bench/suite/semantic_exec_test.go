@@ -33,26 +33,35 @@ func semanticExecCases(tb testing.TB, corpus corpusModule) []semanticcorpus.Modu
 		tb.Fatalf("load semantic corpus manifest: %v", semanticManifestErr)
 	}
 
-	byID := make(map[string]semanticcorpus.Module, len(semanticManifest.Modules))
-	for _, mod := range semanticManifest.Modules {
-		byID[mod.ID] = mod
-	}
-	wantArtifact := filepath.ToSlash(corpus.Artifact)
-	result := make([]semanticcorpus.Module, 0, len(corpus.SemanticExec))
-	for _, id := range corpus.SemanticExec {
-		mod, ok := byID[id]
-		if !ok {
-			tb.Fatalf("%s: semantic_exec case %q is not in corpus/catalog.json", corpus.name(), id)
-		}
-		if mod.Artifact != wantArtifact {
-			tb.Fatalf("%s: semantic_exec case %q uses %s, want %s", corpus.name(), id, mod.Artifact, wantArtifact)
-		}
-		if mod.KnownIssue != "" {
-			tb.Fatalf("%s: semantic_exec case %q still has known_issue: %s", corpus.name(), id, mod.KnownIssue)
-		}
-		result = append(result, mod)
+	result, err := resolveSemanticCases(corpus, semanticManifest.Modules)
+	if err != nil {
+		tb.Fatal(err)
 	}
 	return result
+}
+
+func resolveSemanticCases(corpus corpusModule, checks []semanticcorpus.Module) ([]semanticcorpus.Module, error) {
+	result := make([]semanticcorpus.Module, 0, len(corpus.SemanticExec))
+	for _, id := range corpus.SemanticExec {
+		var found *semanticcorpus.Module
+		for i := range checks {
+			if checks[i].ID == id {
+				found = &checks[i]
+				break
+			}
+		}
+		if found == nil {
+			return nil, fmt.Errorf("%s: unknown semantic check %q", corpus.ID, id)
+		}
+		if found.Artifact != filepath.ToSlash(corpus.Artifact) || found.ArtifactSHA256 != corpus.ArtifactSHA256 {
+			return nil, fmt.Errorf("%s: semantic check %q artifact or digest differs from benchmark", corpus.ID, id)
+		}
+		if found.KnownIssue != "" {
+			return nil, fmt.Errorf("%s: semantic check %q has known issue: %s", corpus.ID, id, found.KnownIssue)
+		}
+		result = append(result, *found)
+	}
+	return result, nil
 }
 
 func TestCorpusSemanticExec(t *testing.T) {
