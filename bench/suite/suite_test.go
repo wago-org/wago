@@ -21,6 +21,7 @@ import (
 	"time"
 
 	wago "github.com/wago-org/wago"
+	"github.com/wago-org/wago/bench/internal/semanticcorpus"
 	wasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -125,6 +126,13 @@ func readCatalog(tb testing.TB) []corpusModule {
 	if c.Schema != 1 {
 		tb.Fatalf("corpus catalog schema = %d, want 1", c.Schema)
 	}
+	checks, err := semanticcorpus.LoadManifest(file)
+	if err != nil {
+		tb.Fatalf("semantic manifest: %v", err)
+	}
+	if err := validateCatalogLinks(c, checks.Modules); err != nil {
+		tb.Fatal(err)
+	}
 	selected := selectedIDs(tb, c, *corpusSelector)
 	seen := make(map[string]bool, len(c.Benchmarks))
 	var modules []corpusModule
@@ -196,6 +204,15 @@ func validateCorpusModule(mod corpusModule) error {
 		}
 		if mod.Command.Export == "" {
 			return fmt.Errorf("%s: command execution needs an export", mod.ID)
+		}
+		switch mod.Command.Oracle {
+		case "", "self-check":
+		case "return":
+			if mod.Command.Want == nil {
+				return fmt.Errorf("%s: return oracle needs expected results", mod.ID)
+			}
+		default:
+			return fmt.Errorf("%s: unknown command oracle %q", mod.ID, mod.Command.Oracle)
 		}
 		if mod.Command.Oracle == "" && mod.Command.Want == nil &&
 			mod.Command.StdoutSHA256 == "" && mod.Command.StderrSHA256 == "" {
