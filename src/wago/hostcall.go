@@ -152,7 +152,9 @@ type slotHostFunc func(m HostModule, params, results []uint64)
 
 // HostCall is a borrowed, logical view of one synchronous Wasm-to-Go call.
 // Values are indexed by WebAssembly parameter/result position, not raw ABI
-// slot.
+// slot. Production dispatch supplies complete slot slices from the compiled
+// signature and keeps that frozen signature for the callback lifetime. Each
+// value occupies at least one slot, so equal slot/type counts exclude v128.
 // HostCall and values obtained from it are valid only until the callback
 // returns and must not be retained.
 type HostCall struct {
@@ -871,6 +873,9 @@ func (rt *Runtime) newHostFuncRef(callback any, sig FuncSig, gcCapable, allowLoa
 	if _, err := valTypesSlots(sig.Results); err != nil {
 		return nil, fmt.Errorf("wago: host function results: %w", err)
 	}
+	// The owner and callback binding share one private signature copy.
+	sig.Params = append([]ValType(nil), sig.Params...)
+	sig.Results = append([]ValType(nil), sig.Results...)
 	binding, err := bindSyncHostImport(callback, sig)
 	if err != nil {
 		return nil, fmt.Errorf("wago: host function: %w", err)
@@ -885,12 +890,7 @@ func (rt *Runtime) newHostFuncRef(callback any, sig FuncSig, gcCapable, allowLoa
 	owner := &HostFuncRef{
 		fn:    fn,
 		store: rt.refStore,
-		sig: FuncSig{
-			Params:       append([]ValType(nil), sig.Params...),
-			Results:      append([]ValType(nil), sig.Results...),
-			TypeIndex:    sig.TypeIndex,
-			HasTypeIndex: sig.HasTypeIndex,
-		},
+		sig:   sig,
 	}
 	owner.gcCapable = gcCapable
 	dispatchIndex, err := rt.refStore.registerHostFuncRef(owner)
