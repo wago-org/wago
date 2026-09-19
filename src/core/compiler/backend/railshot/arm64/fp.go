@@ -189,6 +189,15 @@ func (f *fn) floatConstReg(st storage) (Reg, bool) {
 			return c.reg, true
 		}
 	}
+	return regNone, false
+}
+
+// Persistent constants must be initialized before control-flow-dependent body
+// execution. Constants missed by preload use ordinary materialization.
+func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
+	if r, ok := f.floatConstReg(st); ok {
+		return r, true
+	}
 	if len(f.fconsts) >= 2 {
 		return regNone, false
 	}
@@ -255,7 +264,7 @@ func (f *fn) preloadFloatConsts(code []byte) {
 		if !found {
 			if nCand == len(cand) {
 				for i := 0; i < 2; i++ {
-					f.floatConstReg(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
+					f.preloadFloatConst(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
 				}
 				return
 			}
@@ -296,7 +305,7 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	f.suppressFloatLiteral = true
 	for _, i := range choice {
 		if i >= 0 {
-			f.floatConstReg(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
+			f.preloadFloatConst(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
 		}
 	}
 	f.suppressFloatLiteral = oldSuppress
