@@ -4688,6 +4688,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 				}
 			}
+			if !trueMoves && !falseMoves && branchesToLayoutSuccessor(falseEdge) {
+				// Invert a move-free branch when its false edge already falls
+				// through in layout order. This turns the common loop latch from
+				// Jcc-to-fallthrough plus JMP-back into one backward Jcc.
+				patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(falseCondition ^ 1), Target: uint32(plan.Machine.Edges[trueEdge].To)})
+				continue
+			}
 			if !falseMoves {
 				// Branch directly to a move-free false successor. The true edge
 				// either falls through in layout order or retains only its own
