@@ -408,20 +408,57 @@ func (a *Asm) StrD(base Reg, disp int32, src Reg) {
 	}
 }
 
+// materializeBaseDisp forms dst = base + signed disp. X17 is needed only
+// when X16 already holds the base. Extended-register ADD/SUB also accepts SP.
+func (a *Asm) materializeBaseDisp(dst, base Reg, disp int32) {
+	magnitude := int64(disp)
+	op := uint32(0x91000000)
+	if magnitude < 0 {
+		magnitude = -magnitude
+		op = 0xD1000000
+	}
+	if magnitude <= 0xfff {
+		a.addSubImm(op, dst, base, uint32(magnitude))
+		return
+	}
+	if magnitude&0xfff == 0 && magnitude>>12 <= 0xfff {
+		a.addSubImmLSL12(op, dst, base, uint32(magnitude))
+		return
+	}
+	scratch := X16
+	if base == X16 {
+		scratch = X17
+	}
+	a.MovImm64(scratch, uint64(magnitude))
+	op = 0x8B206000 // ADD dst, base, scratch, UXTX #0
+	if disp < 0 {
+		op = 0xCB206000
+	}
+	a.word(op | r(scratch)<<16 | r(base)<<5 | r(dst))
+}
+
 // LdrQ / StrQ are 128-bit spill load/store with a signed byte displacement,
 // matching the backend's amd64-legacy call shape (dst,base,disp)/(base,disp,src).
 func (a *Asm) LdrQ(dst, base Reg, disp int32) {
 	if a.ldStrScaled(0x3DC00000, 4, dst, base, uint32(disp)) {
 		return
 	}
-	a.AddImm64(X16, base, uint32(disp))
+	if disp >= -256 && disp <= 255 {
+		a.word(0x3CC00000 | (uint32(disp)&0x1ff)<<12 | r(base)<<5 | r(dst))
+		return
+	}
+	a.materializeBaseDisp(X16, base, disp)
 	a.ldStrScaled(0x3DC00000, 4, dst, X16, 0)
 }
 func (a *Asm) StrQ(base Reg, disp int32, src Reg) {
 	if a.ldStrScaled(0x3D800000, 4, src, base, uint32(disp)) {
 		return
 	}
-	a.AddImm64(X16, base, uint32(disp))
+	if disp >= -256 && disp <= 255 {
+		a.word(0x3C800000 | (uint32(disp)&0x1ff)<<12 | r(base)<<5 | r(src))
+		return
+	}
+	a.materializeBaseDisp(X16, base, disp)
 	a.ldStrScaled(0x3D800000, 4, src, X16, 0)
 }
 
@@ -450,7 +487,7 @@ func (a *Asm) addDispX16(disp int32) {
 	case disp == 0:
 	case disp > 0 && disp <= 0xFFF:
 		a.AddImm64(X16, X16, uint32(disp))
-	case disp < 0 && -disp <= 0xFFF:
+	case disp < 0 && disp >= -0xFFF:
 		a.SubImm64(X16, X16, uint32(-disp))
 	default:
 		a.MovImm64(X17, uint64(int64(disp)))
@@ -754,9 +791,9 @@ func (a *Asm) StrQIdx(rn, rm, rt Reg, disp int32) {
 	a.word(0x3CA06800 | r(XZR)<<16 | r(X16)<<5 | r(rt))
 }
 
-// LeaSP computes rd = SP + off (off <= 4095), the SP-relative address form.
+// LeaSP computes rd = SP + signed off; large offsets can clobber X16.
 func (a *Asm) LeaSP(rd Reg, off int32) {
-	a.word(0x91000000 | (uint32(off)&0xFFF)<<10 | 31<<5 | r(rd))
+	a.materializeBaseDisp(rd, SP, off)
 }
 
 // Grow reserves room for n more bytes without changing the emitted length.

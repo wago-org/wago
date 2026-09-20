@@ -757,7 +757,7 @@ func (f *fn) addDisp(dst, base Reg, disp int32, w bool) {
 		} else {
 			f.a.AddImm32(dst, base, uint32(disp))
 		}
-	case disp < 0 && -disp <= 0xFFF:
+	case disp < 0 && disp >= -0xFFF:
 		if w {
 			f.a.SubImm64(dst, base, uint32(-disp))
 		} else {
