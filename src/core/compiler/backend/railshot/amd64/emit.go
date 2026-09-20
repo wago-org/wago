@@ -653,15 +653,8 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		return dest
 	}
 
-	// Variable count → CL. Compute the shifted value into a scratch register that
-	// no sub-computation hard-targets — not RAX/RDX (a div/rem operand may appear
-	// in `left` or `right`) and not RCX (the count, or a nested variable shift).
-	// A caller-supplied `dest` can itself be such a fixed register (e.g. RAX when a
-	// div consumes this shift), so shift in the neutral scratch and move to dest at
-	// the end. Evaluate left before right (wasm order).
-	val := f.allocReg(maskOf(RAX, RDX, RCX))
-	f.pinned = f.pinned.add(val)
-	f.condenseInto(left, val)
+	// Keep the left operand spillable while evaluating the count.
+	f.materialize(left)
 	cnt := f.materialize(right)
 	if cnt != RCX {
 		f.spillIfUsed(RCX)
@@ -669,10 +662,10 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		f.release(cnt)
 	}
 	f.pinned = f.pinned.add(RCX)
+	val := f.materialize(left)
 	f.a.ShiftCL(digit, val, w)
 	f.pinned = f.pinned.remove(RCX)
 	f.release(RCX)
-	f.pinned = f.pinned.remove(val)
 	result := val
 	if dest != regNone && dest != val {
 		f.moveInt(dest, val, node.valueType())

@@ -37,8 +37,9 @@ type RefTestTarget struct {
 var ErrCastFailure = errors.New("gc: cast failure")
 
 // TypeCanonicalization is a collector-bound, immutable map from declared type
-// IDs to canonical representatives. It is built once at product instantiation
-// and consumed without allocation by dynamic tests.
+// IDs to canonical representatives. Dynamic tests consume it without allocation.
+// AddTypes invalidates existing maps when it grows the collector type set.
+// Callers must build a new map after that growth, before further dynamic tests.
 type TypeCanonicalization struct {
 	collector *Collector
 	types     []TypeID
@@ -95,8 +96,8 @@ func (c *Collector) TypeSubtype(actual, required TypeID) (bool, error) {
 // RefTestCanonical applies the same dynamic test while comparing defined types
 // through a collector-bound canonicalization map.
 func (c *Collector) RefTestCanonical(r Ref, target RefTestTarget, canonical *TypeCanonicalization) (bool, error) {
-	if canonical == nil || canonical.collector != c {
-		return false, fmt.Errorf("gc: ref.test canonicalization does not belong to collector")
+	if canonical == nil || canonical.collector != c || len(canonical.types) != len(c.types) {
+		return false, fmt.Errorf("gc: ref.test canonicalization does not belong to collector or is outdated")
 	}
 	return c.refTest(r, target, canonical)
 }
@@ -110,8 +111,8 @@ func (c *Collector) RefCast(r Ref, target RefTestTarget) (Ref, error) {
 // RefCastCanonical applies the same cast through a collector-bound canonical
 // representative map and still returns the original compact reference.
 func (c *Collector) RefCastCanonical(r Ref, target RefTestTarget, canonical *TypeCanonicalization) (Ref, error) {
-	if canonical == nil || canonical.collector != c {
-		return Null(), fmt.Errorf("gc: ref.cast canonicalization does not belong to collector")
+	if canonical == nil || canonical.collector != c || len(canonical.types) != len(c.types) {
+		return Null(), fmt.Errorf("gc: ref.cast canonicalization does not belong to collector or is outdated")
 	}
 	return c.refCast(r, target, canonical)
 }

@@ -31,6 +31,8 @@ const (
 	OpLocalGet
 	OpLocalSet
 	OpLocalTee
+	OpMemoryInit
+	OpDataDrop
 )
 
 // opNames is the single source of truth for IR opcode names used by printing
@@ -62,6 +64,8 @@ var opNames = [...]string{
 	OpCallIndirect: "call_indirect",
 	OpLocalGet:     "local.get",
 	OpLocalSet:     "local.set",
+	OpMemoryInit:   "memory.init",
+	OpDataDrop:     "data.drop",
 	OpLocalTee:     "local.tee",
 }
 
@@ -90,6 +94,8 @@ const (
 	EffectHost
 	EffectReadLocal
 	EffectWriteLocal
+	EffectReadData
+	EffectWriteData
 )
 
 type IUnaryOp uint8

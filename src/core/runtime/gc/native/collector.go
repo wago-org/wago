@@ -248,9 +248,9 @@ func (c *Collector) Close() {
 
 // AddTypes appends immutable Runtime-domain type descriptors without relocating
 // live objects. Callers serialize this with native readers, allocation, and
-// collection. IDs must
-// be new, and any appended supertype must already exist or appear in the same
-// append batch.
+// collection. IDs must be new, and any appended supertype must already exist
+// or appear in the same append batch. Successful type growth invalidates all
+// existing TypeCanonicalization maps; callers must build new maps before use.
 func (c *Collector) AddTypes(types []TypeDesc) error {
 	if c == nil || c.closed {
 		return errCollectorClosed
