@@ -37,8 +37,9 @@ type RefTestTarget struct {
 var ErrCastFailure = errors.New("gc: cast failure")
 
 // TypeCanonicalization is a collector-bound, immutable map from declared type
-// IDs to canonical representatives. It is built once at product instantiation
-// and consumed without allocation by dynamic tests.
+// IDs to canonical representatives. Dynamic tests consume it without allocation.
+// AddTypes invalidates existing maps when it grows the collector type set.
+// Callers must build a new map after that growth, before further dynamic tests.
 type TypeCanonicalization struct {
 	collector *Collector
 	types     []TypeID

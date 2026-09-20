@@ -260,8 +260,8 @@ func appendValType(out *[]byte, t ValType) error {
 }
 
 func appendU64AsU32(out *[]byte, v uint64) error {
-	// Support pass rejects memory64/multi-memory before codegen; MVP memargs are
-	// u32. A wider offset reaching here is a bug — fail fast instead of truncating.
+	// Explicit memory indices are preserved, but this encoder supports only u32
+	// memarg offsets. Reject wider offsets instead of truncating them.
 	if v > math.MaxUint32 {
 		return fmt.Errorf("wasm encode: memarg offset %d exceeds u32", v)
 	}
