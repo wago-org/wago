@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"fmt"
 	"runtime"
 	"testing"
 
@@ -88,5 +89,31 @@ func TestCoreSelectionDefaultsAndExplicitRelease2(t *testing.T) {
 	}
 	if got := selection.RuntimeConfig().CoreFeatures(); got != wago.CoreFeaturesV2 {
 		t.Fatalf("explicit Core 2 features = %s, want %s", got, wago.CoreFeaturesV2)
+	}
+}
+
+func TestExplicitCoreOverridesStoredFeatures(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		for _, core := range []string{"", "2", "3"} {
+			t.Run(fmt.Sprintf("core=%s/stored=%t", core, enabled), func(t *testing.T) {
+				config := Default()
+				config.Features = map[string]bool{"gc": enabled}
+				selection, err := ResolveCompilationFrom(config, true, CompilationRequest{Arch: runtime.GOARCH, Core: core})
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := enabled
+				if core != "" {
+					want = core == "3"
+				}
+				got := selection.RuntimeConfig().CoreFeatures().IsEnabled(wago.CoreFeatureGC)
+				if got != want {
+					t.Fatalf("GC enabled=%v,want %v", got, want)
+				}
+				if config.Features["gc"] != enabled {
+					t.Fatal("stored setting changed")
+				}
+			})
+		}
 	}
 }
