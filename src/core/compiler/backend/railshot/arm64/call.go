@@ -1991,6 +1991,29 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	f.emitMixedRegisterCallVia(localIdx, regNone, ft)
 }
 
+// stageMixedCallSpills protects sources from the canonical stores in flushBelow.
+func (f *fn) stageMixedCallSpills(belowSlots int) {
+	if belowSlots == 0 {
+		return
+	}
+	nextSlot := f.curSpillSlot() // above spillFloor and every existing source
+	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
+		if e.elemKind() != ekValue || e.st.kind != stSlot || e.st.slotIndex() >= belowSlots {
+			continue
+		}
+		from, width := e.st.slotIndex(), e.st.typ.stackSlots()
+		for i := 0; i < width; i++ {
+			f.ld64(X16, SP, f.spillOff(from+i))
+			f.st64(SP, f.spillOff(nextSlot+i), X16)
+		}
+		e.st.slot = uint32(nextSlot)
+		nextSlot += width
+	}
+	if nextSlot > f.maxSpill {
+		f.maxSpill = nextSlot
+	}
+}
+
 func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompType) uint32 {
 	if indirect != regNone {
 		// GP argument staging owns X0-X7. Preserve a descriptor target selected in
@@ -2004,7 +2027,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	allTypes := f.logicalTypes(allRoots)
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
-	// Argument spills must stay above slots written by flushBelow.
+	// Existing and new spills must stay above slots written by flushBelow.
 	oldSpillFloor := f.spillFloor
 	belowSlots := 0
 	for _, typ := range belowTypes {
@@ -2013,6 +2036,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	if belowSlots > f.spillFloor {
 		f.spillFloor = belowSlots
 	}
+	f.stageMixedCallSpills(belowSlots)
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
