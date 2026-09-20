@@ -1,5 +1,7 @@
 # Correctness review follow-up
 
+The later [importer storage change](memory-importer-storage.md) removes the repeated overflow allocations measured below. These tables retain the earlier results for comparison.
+
 This follow-up to [PR #670](https://github.com/wago-org/wago/pull/670) compares the previous PR head, `f6d7e56ed`, with the fixes through `e67ea054f`. The importer benchmark also compares original main, `4e3345d2d`. The [original report](correctness-review-performance.md) records the earlier fixes and measurements against main.
 
 ## Changes

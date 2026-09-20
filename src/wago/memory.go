@@ -56,7 +56,36 @@ func (s *memoryState) set(flag uint16, enabled bool) {
 	}
 }
 
-var memoryImporterOverflow sync.Map // map[*memoryState]uint32; only counts >= 63
+// Only overflow counts use this table. Updates reuse map storage instead of
+// allocating replacement sync.Map entries; callers hold the memory state lock.
+var memoryImporterOverflow memoryImporterTable
+
+type memoryImporterTable struct {
+	mu     sync.Mutex
+	counts map[*memoryState]uint32
+}
+
+func (t *memoryImporterTable) Load(s *memoryState) (uint32, bool) {
+	t.mu.Lock()
+	count, ok := t.counts[s]
+	t.mu.Unlock()
+	return count, ok
+}
+
+func (t *memoryImporterTable) Store(s *memoryState, count uint32) {
+	t.mu.Lock()
+	if t.counts == nil {
+		t.counts = make(map[*memoryState]uint32)
+	}
+	t.counts[s] = count
+	t.mu.Unlock()
+}
+
+func (t *memoryImporterTable) Delete(s *memoryState) {
+	t.mu.Lock()
+	delete(t.counts, s)
+	t.mu.Unlock()
+}
 
 func (s *memoryState) importerCount() uint32 {
 	inline := uint32(s.meta>>memoryStateImporterShift) & uint32(memoryStateImporterMask)
@@ -64,7 +93,7 @@ func (s *memoryState) importerCount() uint32 {
 		return inline
 	}
 	if count, ok := memoryImporterOverflow.Load(s); ok {
-		return count.(uint32)
+		return count
 	}
 	return inline
 }
@@ -74,7 +103,7 @@ func (s *memoryState) setImporterCount(count uint32) {
 	if inline >= uint32(memoryStateImporterMask) {
 		inline = uint32(memoryStateImporterMask)
 		memoryImporterOverflow.Store(s, count)
-	} else {
+	} else if (s.meta>>memoryStateImporterShift)&memoryStateImporterMask == memoryStateImporterMask {
 		memoryImporterOverflow.Delete(s)
 	}
 	s.meta = s.meta&^(memoryStateImporterMask<<memoryStateImporterShift) |

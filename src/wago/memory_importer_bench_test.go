@@ -47,3 +47,22 @@ func BenchmarkMemoryImporterCount(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkMemoryImporterParallel(b *testing.B) {
+	for _, low := range []uint32{62, 63, 255} {
+		b.Run(fmt.Sprint(low), func(b *testing.B) {
+			b.ReportAllocs()
+			b.RunParallel(func(pb *testing.PB) {
+				s := &memoryState{}
+				s.setImporterCount(low)
+				defer s.setImporterCount(0)
+				for pb.Next() {
+					s.mu.Lock()
+					s.setImporterCount(s.importerCount() + 1)
+					s.setImporterCount(s.importerCount() - 1)
+					s.mu.Unlock()
+				}
+			})
+		})
+	}
+}
