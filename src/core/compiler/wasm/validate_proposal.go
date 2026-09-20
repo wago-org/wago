@@ -350,17 +350,20 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		}
 		v.push(I32)
 		return nil
-	case InstrAnyConvertExtern:
-		if err := v.popExpect(ExternRef); err != nil {
+	case InstrAnyConvertExtern, InstrExternConvertAny:
+		operand, result := ExternRef, AnyRef
+		if in.Kind == InstrExternConvertAny {
+			operand, result = AnyRef, ExternRef
+		}
+		x, err := v.pop()
+		if err != nil {
 			return err
 		}
-		v.push(AnyRef)
-		return nil
-	case InstrExternConvertAny:
-		if err := v.popExpect(AnyRef); err != nil {
-			return err
+		if !x.unknown && !v.subtype(x.t, operand) {
+			return v.verr(ErrTypeMismatch, x.t.String()+" is not "+operand.String())
 		}
-		v.push(ExternRef)
+		// An unreachable stack operand can use the non-null input type.
+		v.push(RefVal(result.Ref().WithNullable(!x.unknown && x.t.Ref().Nullable())))
 		return nil
 	case InstrRefTest, InstrRefTestDesc:
 		x, err := v.pop()
