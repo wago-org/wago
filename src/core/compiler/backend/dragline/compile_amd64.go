@@ -1028,8 +1028,7 @@ func amd64RailMachForwardPendingSpill(plan *nativeBackendPlan, instructionID uin
 func amd64RailMachCanUseMemoryAddressDirectly(plan *nativeBackendPlan, value railmach.VReg, position uint32, offset uint32, aliasesLoadResult bool) bool {
 	location := plan.Allocation.LocationAt(value, position)
 	dies := amd64RailMachValueDiesAt(plan, value, position+6)
-	return (!aliasesLoadResult || dies) && offset <= math.MaxInt32 && location.Kind == railmach.LocationRegister &&
-		(location.Index < 5 || plan.SignalsBounds || dies)
+	return (!aliasesLoadResult || dies) && offset <= math.MaxInt32 && location.Kind == railmach.LocationRegister
 }
 
 func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {

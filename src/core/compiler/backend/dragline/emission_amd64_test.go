@@ -1288,8 +1288,8 @@ func TestAMD64RailMachUsesAllocatedMemoryAddressesDirectly(t *testing.T) {
 		t.Fatal("allocated address with encodable offset required a scratch copy")
 	}
 	allocation.Locations[1].Index = 5
-	if amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, false) {
-		t.Fatal("live callee-saved address bypassed its scratch copy")
+	if !amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, false) {
+		t.Fatal("live callee-saved address required a scratch copy")
 	}
 	plan.SignalsBounds = true
 	if !amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, false) {
