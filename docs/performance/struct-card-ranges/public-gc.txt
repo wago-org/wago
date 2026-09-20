@@ -1,0 +1,45 @@
+Failure excerpts; repeated diagnostics omitted.
+--- FAIL: TestStagedOfficialGCArrayBulkAccounting (0.00s)
+    gc_array_bulk_official_amd64_test.go:387: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCArrayBulkProductBoundary (0.00s)
+        gc_array_bulk_product_amd64_test.go:46: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCArrayBulkCopyMutableRootLifecycle (0.00s)
+    gc_array_bulk_product_amd64_test.go:108: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCArrayInitAccounting (0.00s)
+    gc_array_init_official_amd64_test.go:396: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCArrayInitDataProductBoundary (0.00s)
+        gc_array_init_product_amd64_test.go:47: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCArrayInitElemProductBoundaryAndTinyLifecycle (0.00s)
+    gc_array_init_product_amd64_test.go:133: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCArrayInitDataTinyLifecycle (0.00s)
+    gc_array_init_product_amd64_test.go:274: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCArrayInitDataTransientTinyRootProof (0.00s)
+    gc_array_init_product_amd64_test.go:326: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCArrayAccounting (0.00s)
+    gc_array_official_amd64_test.go:374: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCBrOnCastAccounting (0.00s)
+    gc_br_on_cast_official_amd64_test.go:459: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCBrOnCastProductBoundaryLifecycle (0.00s)
+    gc_br_on_cast_product_amd64_test.go:85: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCExternAccounting (0.00s)
+    gc_extern_official_amd64_test.go:345: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCExternProductBoundaryLifecycle (0.00s)
+    gc_extern_product_amd64_test.go:41: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCI31Accounting (0.00s)
+    gc_i31_official_amd64_test.go:348: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCRefCastAccounting (0.00s)
+    gc_ref_cast_official_amd64_test.go:338: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCRefCastProductBoundaryLifecycle (0.00s)
+    gc_ref_cast_product_amd64_test.go:63: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCRefEqAccounting (0.00s)
+    gc_ref_eq_official_amd64_test.go:304: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCRefEqProductBoundaryLifecycle (0.00s)
+    gc_ref_eq_product_amd64_test.go:50: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCRefTestAbstractMixedTableLifecycle (0.00s)
+    gc_ref_test_abstract_amd64_test.go:41: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCRefTestAccounting (0.00s)
+    gc_ref_test_official_amd64_test.go:409: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCStructAccounting (0.00s)
+    gc_struct_official_amd64_test.go:309: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCTypeSubtypingAccounting (0.00s)
+    gc_type_subtyping_official_amd64_test.go:551: wast2json version = "1.0.42", <nil>; want pinned 1.0.41

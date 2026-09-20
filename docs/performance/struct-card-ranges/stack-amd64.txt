@@ -1,0 +1,23 @@
+Prologue and mark-stack growth excerpts from go tool objdump.
+TEXT github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).scanStructCardRanges(SB) /home/jtenner/Projects/wago-pr642/src/core/runtime/gc/native/cards.go
+  cards.go:174                  0x584560                4c8da42430fdffff                LEAQ 0xfffffd30(SP), R12
+  cards.go:174                  0x584568                4d3b6610                        CMPQ R12, 0x10(R14)
+  cards.go:174                  0x58456c                0f8621090000                    JBE 0x584e93
+  cards.go:174                  0x584572                55                              PUSHQ BP
+  cards.go:174                  0x584573                4889e5                          MOVQ SP, BP
+  cards.go:174                  0x584576                4881ec48030000                  SUBQ $0x348, SP
+  cards.go:176                  0x58457d                4889842458030000                MOVQ AX, 0x358(SP)
+  cards.go:176                  0x584585                899c2460030000                  MOVL BX, 0x360(SP)
+  ref.go:44                     0x58458c                89d9                            MOVL BX, CX
+  ref.go:44                     0x58458e                d1e1                            SHLL $0x1, CX
+  cards.go:175                  0x584590                440f11bc2400030000              MOVUPS X15, 0x300(SP)
+  cards.go:175                  0x584599                440f11bc2410030000              MOVUPS X15, 0x310(SP)
+  cards.go:175                  0x5845a2                440f11bc2420030000              MOVUPS X15, 0x320(SP)
+  cards.go:175                  0x5845ab                440f11bc2430030000              MOVUPS X15, 0x330(SP)
+  cards.go:175                  0x5845b4                89cb                            MOVL CX, BX
+  cards.go:175                  0x5845b6                e8c5beffff                      CALL github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).refDesc(SB)
+  cards.go:175                  0x5845bb                0f100424                        MOVUPS 0(SP), X0
+  cards.go:175                  0x5845bf                0f11842400030000                MOVUPS X0, 0x300(SP)
+  cards.go:175                  0x5845c7                0f10442410                      MOVUPS 0x10(SP), X0
+  mark.go:334                   0x584ce6                e855e6ecff                      CALL runtime.growslice(SB)
+  cards.go:174                  0x584ea0                e87bc2eeff                      CALL runtime.morestack_noctxt.abi0(SB)

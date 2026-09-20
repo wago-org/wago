@@ -1,0 +1,11 @@
+{
+  "baseline": {
+    "BenchmarkGCStructCardScanControls/fields=4097/ranges=33": {"median_ns":132402.5,"min_ns":120783.0,"max_ns":205227.0,"samples":[[205227.0,0,0],[127475.0,0,0],[120783.0,0,0],[137330.0,0,0],[147929.0,0,0],[126264.0,0,0]]}
+  },
+  "previous": {
+    "BenchmarkGCStructCardScanControls/fields=4097/ranges=33": {"median_ns":195706.0,"min_ns":136662.0,"max_ns":210601.0,"samples":[[195437.0,0,0],[210601.0,0,0],[195975.0,0,0],[204981.0,0,0],[136662.0,0,0],[137198.0,0,0]]}
+  },
+  "optimized": {
+    "BenchmarkGCStructCardScanControls/fields=4097/ranges=33": {"median_ns":73021.0,"min_ns":69366.0,"max_ns":76465.0,"samples":[[72968.0,0,0],[76465.0,0,0],[73074.0,0,0],[75166.0,0,0],[70167.0,0,0],[69366.0,0,0]]}
+  }
+}

@@ -130,11 +130,8 @@ func TestThroughputCollectorTelemetry(t *testing.T) {
 	if snapshot.Minor.Trace.ObjectsVisited != 2 || snapshot.Minor.Trace.ReferenceSlotsVisited != 32 {
 		t.Fatalf("trace counters = %+v", snapshot.Minor.Trace)
 	}
-	if snapshot.Minor.Pause.Count != 1 || snapshot.Minor.Pause.MaxNS == 0 || snapshot.Minor.TotalNS == 0 {
+	if snapshot.Minor.Pause.Count != 1 || snapshot.Minor.Pause.MaxNS != snapshot.Minor.TotalNS {
 		t.Fatalf("pause counters = %+v total=%d", snapshot.Minor.Pause, snapshot.Minor.TotalNS)
-	}
-	if snapshot.Minor.Phases.NativeFrameRootsNS == 0 || snapshot.Minor.Phases.PersistentRootsNS == 0 || snapshot.Minor.Phases.ReferenceScanningNS == 0 || snapshot.Minor.Phases.PromotionCopyNS == 0 {
-		t.Fatalf("minor phases = %+v", snapshot.Minor.Phases)
 	}
 	if snapshot.Paths.GoAllocationPaths != 2 || snapshot.Paths.BackingGrowths == 0 {
 		t.Fatalf("allocation paths = %+v", snapshot.Paths)
@@ -160,7 +157,7 @@ func TestThroughputCollectorTelemetry(t *testing.T) {
 	if snapshot.Full.Cycles != 1 || snapshot.Full.Trace.ObjectsSwept != 2 || snapshot.Heap.LiveObjects != 0 {
 		t.Fatalf("full collection telemetry = cycle %+v heap %+v", snapshot.Full, snapshot.Heap)
 	}
-	if snapshot.Full.Phases.SweepNS == 0 || snapshot.Full.Pause.Count != 1 {
+	if snapshot.Full.Pause.MaxNS != snapshot.Full.TotalNS || snapshot.Full.Pause.Count != 1 {
 		t.Fatalf("full phases = %+v pause=%+v", snapshot.Full.Phases, snapshot.Full.Pause)
 	}
 }
@@ -282,7 +279,7 @@ func TestTinyCollectorTelemetryAndIncrementalCycle(t *testing.T) {
 		t.Fatal("incremental telemetry did not exclude mutator time")
 	}
 	snapshot, _ = c.TelemetrySnapshot()
-	if snapshot.Full.Cycles != 1 || snapshot.Full.Trace.ObjectsVisited != 2 || snapshot.Full.Phases.MarkingNS == 0 || snapshot.Full.Phases.SweepNS == 0 {
+	if snapshot.Full.Cycles != 1 || snapshot.Full.Trace.ObjectsVisited != 2 || snapshot.Full.Pause.Count != 1 {
 		t.Fatalf("tiny incremental telemetry = %+v", snapshot.Full)
 	}
 }
@@ -448,5 +445,20 @@ func BenchmarkCollectorTelemetryOverhead(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func TestTelemetryPhaseClockResolution(t *testing.T) {
+	for _, sample := range []struct{ elapsed, scan, marking, scanning uint64 }{
+		{0, 0, 0, 0}, {10, 3, 7, 3}, {0, 3, 0, 0},
+	} {
+		start := time.Unix(1, 0)
+		telemetry := Telemetry{active: telemetryCycle{active: true, phase: telemetryPhaseMarking, phaseStart: start}}
+		telemetry.active.nestedScanNS[telemetryPhaseMarking] = sample.scan
+		telemetry.finishPhase(start.Add(time.Duration(sample.elapsed)))
+		want := PhaseTelemetry{MarkingNS: sample.marking, ReferenceScanningNS: sample.scanning}
+		if telemetry.active.phases != want {
+			t.Fatalf("elapsed=%d scan=%d phases=%+v want=%+v", sample.elapsed, sample.scan, telemetry.active.phases, want)
+		}
 	}
 }

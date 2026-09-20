@@ -1,0 +1,28 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+                                                   │ docs/performance/struct-card-ranges/fallback-improvement/recheck/previous.txt │ docs/performance/struct-card-ranges/fallback-improvement/recheck/optimized.txt │
+                                                   │                                    sec/op                                     │                          sec/op                           vs base              │
+GCStructCardScanSparseReferences/ranges=33                                                                             67.47µ ± 7%                                                67.32µ ± 1%       ~ (p=0.394 n=6)
+GCStructCardScan/fields=8/ranges=1/unordered=false                                                                     48.34n ± 2%                                                50.43n ± 1%  +4.32% (p=0.002 n=6)
+GCStructCardScan/fields=8/ranges=1/unordered=true                                                                      48.42n ± 1%                                                50.32n ± 0%  +3.93% (p=0.002 n=6)
+geomean                                                                                                                540.5n                                                     554.9n       +2.65%
+
+                                                   │ docs/performance/struct-card-ranges/fallback-improvement/recheck/previous.txt │ docs/performance/struct-card-ranges/fallback-improvement/recheck/optimized.txt │
+                                                   │                                     B/op                                      │                          B/op                           vs base                │
+GCStructCardScanSparseReferences/ranges=33                                                                            0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=6) ¹
+GCStructCardScan/fields=8/ranges=1/unordered=false                                                                    0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=6) ¹
+GCStructCardScan/fields=8/ranges=1/unordered=true                                                                     0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                                                          ²                                                           +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                                   │ docs/performance/struct-card-ranges/fallback-improvement/recheck/previous.txt │ docs/performance/struct-card-ranges/fallback-improvement/recheck/optimized.txt │
+                                                   │                                   allocs/op                                   │                       allocs/op                         vs base                │
+GCStructCardScanSparseReferences/ranges=33                                                                            0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=6) ¹
+GCStructCardScan/fields=8/ranges=1/unordered=false                                                                    0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=6) ¹
+GCStructCardScan/fields=8/ranges=1/unordered=true                                                                     0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                                                          ²                                                           +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

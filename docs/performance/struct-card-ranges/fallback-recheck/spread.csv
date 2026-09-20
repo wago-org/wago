@@ -1,0 +1,9 @@
+case,version,n,median_ns,min_ns,max_ns,median_B,median_allocs
+BenchmarkGCStructCardScanControls/fields=4097/ranges=15,baseline,6,51356.0,49245.0,52214.0,0.0,0.0
+BenchmarkGCStructCardScanControls/fields=4097/ranges=15,optimized,6,52064.0,49573.0,52327.0,0.0,0.0
+BenchmarkGCStructCardScanControls/fields=4097/ranges=16,baseline,6,54560.5,52771.0,55783.0,0.0,0.0
+BenchmarkGCStructCardScanControls/fields=4097/ranges=16,optimized,6,15916.5,15738.0,16027.0,0.0,0.0
+BenchmarkGCStructCardScanControls/fields=4097/ranges=32,baseline,6,171365.0,128232.0,175488.0,0.0,0.0
+BenchmarkGCStructCardScanControls/fields=4097/ranges=32,optimized,6,20751.5,20697.0,20857.0,0.0,0.0
+BenchmarkGCStructCardScanControls/fields=4097/ranges=33,baseline,6,192214.0,111087.0,192754.0,0.0,0.0
+BenchmarkGCStructCardScanControls/fields=4097/ranges=33,optimized,6,175912.5,152148.0,181766.0,0.0,0.0

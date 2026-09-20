@@ -1,0 +1,101 @@
+?       github.com/wago-org/wago/cli/internal/parallel  [no test files]
+?       github.com/wago-org/wago/cli/internal/settings/cmd/genschema    [no test files]
+?       github.com/wago-org/wago/cli/internal/ui        [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/auth/logout       [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/auth/whoami       [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/cache     [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/cache/dir [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/cache/options     [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/cache/size        [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/completions        [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/diff       [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/get        [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/list       [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/options    [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/reset      [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/set        [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/plugin/catalog    [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/plugin/deprecate  [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/plugin/outdated   [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/plugin/publish    [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/plugin/rebuild    [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/plugin/tree       [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/plugin/unpublish  [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/self      [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/self/uninstall    [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/status    [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/version/current   [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/version/list      [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/version/uninstall [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/version/which     [no test files]
+?       github.com/wago-org/wago/cli/manager/internal/self/replace      [no test files]
+?       github.com/wago-org/wago/cli/runtime/commands/module    [no test files]
+?       github.com/wago-org/wago/cli/runtime/commands/module/imports    [no test files]
+?       github.com/wago-org/wago/cli/runtime/commands/plugin    [no test files]
+?       github.com/wago-org/wago/cli/runtime/commands/module/capabilities       [no test files]
+ok      github.com/wago-org/wago/cli/installer  1.085s
+ok      github.com/wago-org/wago/cli/internal/automation        0.002s
+ok      github.com/wago-org/wago/cli/internal/command   0.003s
+ok      github.com/wago-org/wago/cli/internal/handoff   0.003s
+ok      github.com/wago-org/wago/cli/internal/pluginmenu        0.002s
+ok      github.com/wago-org/wago/cli/internal/project   0.413s
+ok      github.com/wago-org/wago/cli/internal/settings  0.034s
+ok      github.com/wago-org/wago/cli/internal/tui       0.003s
+ok      github.com/wago-org/wago/cli/internal/wasmcall  0.002s
+?       github.com/wago-org/wago/cli/runtime/internal/profile   [no test files]
+ok      github.com/wago-org/wago/cli/internal/watchsupervisor   1.237s
+ok      github.com/wago-org/wago/cli/manager    0.023s
+ok      github.com/wago-org/wago/cli/manager/commands/auth      0.001s
+ok      github.com/wago-org/wago/cli/manager/commands/auth/login        0.001s
+ok      github.com/wago-org/wago/cli/manager/commands/cache/clean       0.001s
+ok      github.com/wago-org/wago/cli/manager/commands/cache/prune       0.001s
+ok      github.com/wago-org/wago/cli/manager/commands/compile   0.021s
+ok      github.com/wago-org/wago/cli/manager/commands/config    0.002s
+ok      github.com/wago-org/wago/cli/manager/commands/init      0.005s
+ok      github.com/wago-org/wago/cli/manager/commands/plugin    0.002s
+ok      github.com/wago-org/wago/cli/manager/commands/plugin/add        0.003s
+ok      github.com/wago-org/wago/cli/manager/commands/plugin/config     0.002s
+ok      github.com/wago-org/wago/cli/manager/commands/plugin/grant      0.002s
+ok      github.com/wago-org/wago/cli/manager/commands/plugin/remove     0.002s
+ok      github.com/wago-org/wago/cli/manager/commands/plugin/update     0.002s
+ok      github.com/wago-org/wago/cli/manager/commands/self/update       0.002s
+ok      github.com/wago-org/wago/cli/manager/commands/update    0.002s
+ok      github.com/wago-org/wago/cli/manager/commands/version   0.002s
+ok      github.com/wago-org/wago/cli/manager/commands/version/install   0.006s
+ok      github.com/wago-org/wago/cli/manager/commands/version/switch    0.005s
+ok      github.com/wago-org/wago/cli/manager/commands/version/update    0.005s
+ok      github.com/wago-org/wago/cli/manager/internal/cache     0.008s
+ok      github.com/wago-org/wago/cli/manager/internal/config    0.015s
+ok      github.com/wago-org/wago/cli/manager/internal/plugin    0.765s
+ok      github.com/wago-org/wago/cli/manager/internal/plugin/build      2.788s
+ok      github.com/wago-org/wago/cli/manager/internal/progress  0.310s
+ok      github.com/wago-org/wago/cli/manager/internal/registry  2.765s
+ok      github.com/wago-org/wago/cli/manager/internal/self      0.145s
+--- FAIL: TestTinyGoArtifactSupportsCooperativeInterruption (0.46s)
+    build_linux_test.go:47: tinygo build: exit status 1
+        requires go version 1.25 through 1.27, got go1.22
+--- FAIL: TestBuildTinyGoEmbedsArtifactWithoutCompiler (0.31s)
+    build_test.go:147: tinygo build: exit status 1
+        requires go version 1.25 through 1.27, got go1.22
+--- FAIL: TestBuildTinyGoStripsByDefault (0.27s)
+    build_test.go:205: tinygo build: exit status 1
+        requires go version 1.25 through 1.27, got go1.22
+FAIL
+FAIL    github.com/wago-org/wago/cli/manager/internal/standalone        1.728s
+ok      github.com/wago-org/wago/cli/manager/internal/status    0.012s
+ok      github.com/wago-org/wago/cli/manager/internal/version   0.557s
+ok      github.com/wago-org/wago/cli/runtime    0.018s
+ok      github.com/wago-org/wago/cli/runtime/commands   0.002s
+ok      github.com/wago-org/wago/cli/runtime/commands/build     0.066s
+ok      github.com/wago-org/wago/cli/runtime/commands/module/exports    0.005s
+ok      github.com/wago-org/wago/cli/runtime/commands/plugin/inspect    0.002s
+ok      github.com/wago-org/wago/cli/runtime/commands/plugin/list       0.002s
+ok      github.com/wago-org/wago/cli/runtime/commands/run       2.377s
+ok      github.com/wago-org/wago/cli/runtime/commands/validate  0.007s
+ok      github.com/wago-org/wago/cli/runtime/internal/artifactcache     0.014s
+ok      github.com/wago-org/wago/cli/runtime/internal/module    0.006s
+ok      github.com/wago-org/wago/cli/runtime/internal/plugin    0.003s
+ok      github.com/wago-org/wago/cli/runtime/internal/version   0.003s
+ok      github.com/wago-org/wago/cli/standalone 0.005s
+ok      github.com/wago-org/wago/cli/wago       0.012s
+FAIL
