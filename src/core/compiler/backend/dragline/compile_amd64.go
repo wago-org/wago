@@ -2206,6 +2206,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 					reloadGlobalDescriptors()
 					reloadStackCachedGlobal()
+					reloadMemoryBound()
 					continue
 				}
 				a.Load64(amd64.R11, amd64.RBX, -80)
@@ -2435,6 +2436,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.B = append(a.B, 0x0f, 0x1f, 0x40, 0x00)
 				}
 				reloadStackCachedGlobal()
+				reloadMemoryBound()
 				continue
 			}
 			if semanticOp == wasm.InstrMemoryCopy || semanticOp == wasm.InstrMemoryFill {

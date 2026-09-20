@@ -35,6 +35,56 @@ func TestAMD64RailMachDerivesMixedBoundsFromCachedLimit(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachReloadsCachedMemoryBoundAfterDirectCall(t *testing.T) {
+	params := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}
+	caller := []byte{
+		0x41, 0, 0x41, 0, 0x41, 0, 0x41, 0,
+		0x41, 0, 0x41, 0, 0x41, 0, 0x41, 0,
+		0x10, 0, 0x1a,
+	}
+	for range 16 {
+		caller = append(caller, 0x20, 0, 0x28, 2, 0, 0x1a)
+	}
+	caller = append(caller, 0x20, 0, 0x28, 2, 0, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(params, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 7, 0x0b}),
+			wasmtest.Code(caller),
+		)),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := (Compiler{}).Compile(corecompiler.Input{
+		Module: module, Source: source, Runtime: corecompiler.RuntimeContract{ABIRevision: runtimeabi.Revision},
+		Target: target, Objective: corecompiler.ObjectiveSpeed, Bounds: corecompiler.BoundsExplicit,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := output.Code[output.InternalEntry[1]:]
+	var reload amd64.Asm
+	reload.Load64(amd64.R12, amd64.RBX, -int32(runtimeabi.ActualLinMemByteSize64Offset))
+	reload.AluRI(5, amd64.R12, 4, true)
+	if got := bytes.Count(body, reload.B); got < 2 {
+		t.Fatalf("cached memory-bound reloads = %d, want prologue and post-call reload in %x", got, body)
+	}
+}
+
 func TestAMD64ImmutableInlineIndirectAvoidsCallAreaMarshalling(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
