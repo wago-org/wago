@@ -57,7 +57,7 @@ func TestPreparedCallDisabledClearsTrapBeforeNextInvoke(t *testing.T) {
 	if _, err := instance.Invoke("nop"); err != nil {
 		t.Fatalf("successful call after trap reused the stale trap: %v", err)
 	}
-	prepared, err := instance.PrepareFunction("nop")
+	prepared, err := instance.WasmFunc("nop")
 	if err != nil {
 		t.Fatalf("prepare nop: %v", err)
 	}

@@ -73,14 +73,14 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 		t.Fatalf("instantiate direct rollback: %v", err)
 	}
 	defer rollbackInstance.Close()
-	rollbackFunction, err := rollbackInstance.PrepareFunction("add")
+	rollbackFunction, err := rollbackInstance.WasmFunc("add")
 	if err != nil {
 		t.Fatalf("prepare direct rollback: %v", err)
 	}
 	if rollbackFunction.directIntFast || rollbackFunction.directIntLight || rollbackFunction.directIntBounded {
 		t.Fatalf("direct rollback prepared direct/light/bounded path = %v/%v/%v", rollbackFunction.directIntFast, rollbackFunction.directIntLight, rollbackFunction.directIntBounded)
 	}
-	if got, err := rollbackFunction.Invoke2(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
+	if got, err := rollbackFunction.Invoke(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatalf("direct rollback add(20,22) = %v, %v; want 42", got, err)
 	}
 	rollback, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimization("prepared-light-entry", false), module)
@@ -102,7 +102,7 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("add")
+	fn, err := in.WasmFunc("add")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
@@ -118,20 +118,30 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 	if fn.directIntMode != preparedIntCallBlock {
 		t.Fatal("bounded light function did not select the immutable call block")
 	}
-	got, err := fn.Invoke2(20, 22)
+	got, err := fn.Invoke(20, 22)
 	if err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatalf("add(20,22) = %v, %v; want 42", got, err)
 	}
+	size, err := in.WasmFunc("size")
+	if err != nil {
+		t.Fatalf("prepare size: %v", err)
+	}
+	if size.directIntFast {
+		t.Fatal("memory size prepared the ARM64 direct integer entry")
+	}
+	if got, err := size.Invoke(); err != nil || len(got) != 1 || got[0] != 0 {
+		t.Fatalf("WasmFunc memory.size() = %v, %v; want 0", got, err)
+	}
 
 	preparedIntCallBlockEnabled = false
-	fallback, err := in.PrepareFunction("add")
+	fallback, err := in.WasmFunc("add")
 	if err != nil {
 		t.Fatalf("prepare call-block rollback: %v", err)
 	}
 	if fallback.directIntMode == preparedIntCallBlock {
 		t.Fatal("call-block rollback retained the call block")
 	}
-	if got, err := fallback.Invoke2(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
+	if got, err := fallback.Invoke(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatalf("call-block rollback add(20,22) = %v, %v; want 42", got, err)
 	}
 }
@@ -155,7 +165,7 @@ func TestPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("caller")
+	fn, err := in.WasmFunc("caller")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
@@ -229,7 +239,7 @@ func TestPreparedDirectARM64ContinuationTrapRecovery(t *testing.T) {
 				t.Fatalf("instantiate: %v", err)
 			}
 			defer in.Close()
-			fn, err := in.PrepareFunction("div")
+			fn, err := in.WasmFunc("div")
 			if err != nil {
 				t.Fatalf("prepare: %v", err)
 			}
@@ -237,10 +247,10 @@ func TestPreparedDirectARM64ContinuationTrapRecovery(t *testing.T) {
 				t.Fatalf("prepared direct/light/bounded path = %v/%v/%v, want true/%v/false",
 					fn.directIntFast, fn.directIntLight, fn.directIntBounded, tc.wantLight)
 			}
-			if _, err := fn.Invoke2(I32(7), I32(0)); err == nil {
+			if _, err := fn.Invoke(I32(7), I32(0)); err == nil {
 				t.Fatal("division by zero did not unwind through the prepared continuation")
 			}
-			got, err := fn.Invoke2(I32(8), I32(2))
+			got, err := fn.Invoke(I32(8), I32(2))
 			if err != nil || len(got) != 1 || AsI32(got[0]) != 4 {
 				t.Fatalf("post-trap div(8,2) = %v, %v; want [4], nil", got, err)
 			}
@@ -397,14 +407,14 @@ func TestPreparedDirectARM64BoundedEntryAllowsFullRegisterSave(t *testing.T) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
 	if !fn.directIntBounded || fn.directIntLight {
 		t.Fatalf("prepared bounded/light selection = %v/%v, want true/false", fn.directIntBounded, fn.directIntLight)
 	}
-	got, err := fn.Invoke1(I32(42))
+	got, err := fn.Invoke(I32(42))
 	if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
 		t.Fatalf("f(42) = %v, %v; want [42], nil", got, err)
 	}
@@ -420,7 +430,7 @@ func TestPreparedDirectARM64BoundedEntryAllowsGCProgress(t *testing.T) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
@@ -434,7 +444,7 @@ func TestPreparedDirectARM64BoundedEntryAllowsGCProgress(t *testing.T) {
 	go func() {
 		close(started)
 		for !stop.Load() {
-			got, err := fn.Invoke1(I32(41))
+			got, err := fn.Invoke(I32(41))
 			if err != nil {
 				done <- err
 				return

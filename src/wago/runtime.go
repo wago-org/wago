@@ -58,7 +58,7 @@ type Runtime struct {
 	guestArguments           []string
 
 	plugins       []PluginDefinition
-	imports       Imports                      // "module.name" -> host fn (any)
+	imports       resolvedImports              // "module.name" -> host fn (any)
 	importsShared bool                         // rt.mu protects copy-on-write publication of both import maps
 	importMeta    map[string]*registeredImport // "module.name" -> declared signature/cap/docs
 	importOwner   map[string]string            // "module.name" -> owning plugin ID
@@ -189,7 +189,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 		cfg:          NewRuntimeConfig(),
 		hooks:        &hookRegistry{},
 		refStore:     newReferenceStore(false),
-		imports:      Imports{},
+		imports:      resolvedImports{},
 		importMeta:   map[string]*registeredImport{},
 		importOwner:  map[string]string{},
 		moduleOwner:  map[string]string{},
@@ -571,8 +571,7 @@ func (rt *Runtime) prepareCompile(wasmBytes []byte, allowLoading bool) (*Prepare
 		var transformErr error
 		panicErr := callHookSafely("ModuleSourceTransformer", func() { next, transformErr = transform(ctx, source) })
 		if err := joinPrimary(transformErr, panicErr); err != nil {
-			operation.end()
-			return nil, emitCompileError(hooks, compilation, err)
+			return nil, finishPreparedCompileError(&operation, hooks, compilation, err)
 		}
 		if next == nil {
 			next = source
@@ -660,6 +659,9 @@ func (p *PreparedCompile) Adopt(c *Compiled) (*Module, error) {
 	if c == nil {
 		return nil, fmt.Errorf("wago: nil compiled artifact")
 	}
+	if err := checkArtifactAdmissionLimits(c, p.cfg.maxNativeCodeBytes, p.cfg.maxMemoriesPerModule); err != nil {
+		return nil, emitCompileError(p.hooks, p.compilation, joinPrimary(err, c.Close()))
+	}
 	return p.finishCompile(c)
 }
 
@@ -700,6 +702,13 @@ func (p *PreparedCompile) Close() error {
 	p.mu.Unlock()
 	p.finish()
 	return nil
+}
+
+// Keep the terminal observer inside its compile lifetime. This helper keeps the
+// defer outside the transform loop so the compiler can keep it on the stack.
+func finishPreparedCompileError(operation *runtimeOperation, hooks *hookRegistry, compilation CompilationIdentity, original error) error {
+	defer operation.end()
+	return emitCompileError(hooks, compilation, original)
 }
 
 func emitCompileError(hooks *hookRegistry, compilation CompilationIdentity, original error) error {
@@ -758,22 +767,8 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 	if len(hooks.afterCompile) != 0 || len(hooks.onCompileError) != 0 {
 		compilation = CompilationIdentity{value: &compilationIdentityToken{}}
 	}
-	if maxNativeCodeBytes != 0 && uint64(len(c.code)) > maxNativeCodeBytes {
-		return nil, emitCompileError(hooks, compilation, &coreruntime.ResourceLimitError{
-			Resource:  "native code bytes",
-			Scope:     "compile",
-			Requested: uint64(len(c.code)),
-			Limit:     maxNativeCodeBytes,
-		})
-	}
-	if memoryCount := uint64(c.memoryCount()); memoryCount > uint64(maxMemories) {
-		return nil, emitCompileError(hooks, compilation, &coreruntime.ResourceLimitError{
-			Resource:   "memories per module",
-			Scope:      "runtime configuration",
-			Requested:  memoryCount,
-			Limit:      uint64(maxMemories),
-			Suggestion: "use a smaller module or increase WithMaxMemoriesPerModule after you inspect the module metadata",
-		})
+	if err := checkArtifactAdmissionLimits(c, maxNativeCodeBytes, maxMemories); err != nil {
+		return nil, emitCompileError(hooks, compilation, err)
 	}
 	mod, err := buildModule(c, bindings)
 	if err != nil {
@@ -797,12 +792,36 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 	return mod, nil
 }
 
+// checkArtifactAdmissionLimits applies destination limits to an existing image.
+// Prepared compilation supplies its captured configuration, not a later runtime
+// generation. Source compilation checks these limits during compilation.
+func checkArtifactAdmissionLimits(c *Compiled, maxNativeCodeBytes uint64, maxMemories uint32) error {
+	if maxNativeCodeBytes != 0 && uint64(len(c.code)) > maxNativeCodeBytes {
+		return &coreruntime.ResourceLimitError{
+			Resource:  "native code bytes",
+			Scope:     "compile",
+			Requested: uint64(len(c.code)),
+			Limit:     maxNativeCodeBytes,
+		}
+	}
+	if memoryCount := uint64(c.memoryCount()); memoryCount > uint64(maxMemories) {
+		return &coreruntime.ResourceLimitError{
+			Resource:   "memories per module",
+			Scope:      "runtime configuration",
+			Requested:  memoryCount,
+			Limit:      uint64(maxMemories),
+			Suggestion: "use a smaller module or increase WithMaxMemoriesPerModule after you inspect the module metadata",
+		}
+	}
+	return nil
+}
+
 // InstantiateOption configures a single Instantiate call.
 type InstantiateOption func(*instantiateConfig)
 
 type instantiateConfig struct {
-	imports       Imports
-	extraImports  []Imports
+	imports       *Imports
+	extraImports  []*Imports
 	exactImports  map[string]exactImportOverride
 	importErr     error
 	gc            GCConfig
@@ -831,7 +850,7 @@ func WithPolicy(p Policy) InstantiateOption {
 // WithImports adds per-call imports on top of the plugin-provided namespace.
 // A per-call import may not shadow a reserved wago_* module unless the runtime's
 // override policy is AllowTestOverrides.
-func WithImports(im Imports) InstantiateOption {
+func WithImports(im *Imports) InstantiateOption {
 	return func(c *instantiateConfig) {
 		if c.imports == nil {
 			c.imports = im
@@ -842,20 +861,15 @@ func WithImports(im Imports) InstantiateOption {
 
 }
 
-// WithImport adds one per-call import using its exact Wasm module and name.
-// Prefer this form when either component contains a dot, because the legacy
-// Imports map represents bindings as a flattened "module.name" string.
+// WithImport adds one per-call non-callback import override using its exact Wasm
+// module and name. New callback declarations should use Imports.HostFunc.
 func WithImport(module, name string, value any) InstantiateOption {
 	return func(c *instantiateConfig) {
 		if c.exactImports == nil {
 			c.exactImports = make(map[string]exactImportOverride)
 		}
 		identity := importBindingKey{module: module, name: name}
-		key := module + "." + name
-		if previous, ok := c.exactImports[key]; ok && previous.identity != identity {
-			c.importErr = importIdentityCollisionError(previous.identity, identity)
-			return
-		}
+		key := importBindingMapKey(module, name)
 		c.exactImports[key] = exactImportOverride{identity: identity, value: value}
 	}
 }
@@ -923,7 +937,22 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	if err := applyPolicy(mod, cfg.policy); err != nil {
 		return nil, err
 	}
-	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, mod.importIdentities, cfg.imports, cfg.exactImports, cfg.extraImports...)
+	var overrides resolvedImports
+	var extraOverrides []resolvedImports
+	if cfg.imports != nil {
+		overrides, err = cfg.imports.snapshot()
+		if err != nil {
+			return nil, fmt.Errorf("wago: finalize imports: %w", err)
+		}
+	}
+	for _, collection := range cfg.extraImports {
+		bindings, snapshotErr := collection.snapshot()
+		if snapshotErr != nil {
+			return nil, fmt.Errorf("wago: finalize imports: %w", snapshotErr)
+		}
+		extraOverrides = append(extraOverrides, bindings)
+	}
+	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, mod.importIdentities, overrides, cfg.exactImports, extraOverrides...)
 	if err != nil {
 		return nil, err
 	}
@@ -948,7 +977,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 // cloning runtime imports the module cannot use. Explicit per-call imports are
 // retained even when undeclared, preserving the low-level Imports inspection
 // behavior. Runtime imports are only retained for declared module keys.
-func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities map[string]importBindingKey, overrides Imports, exactOverrides map[string]exactImportOverride, extraOverrides ...Imports) (Imports, map[uint32]struct{}, error) {
+func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities map[string]importBindingKey, overrides resolvedImports, exactOverrides map[string]exactImportOverride, extraOverrides ...resolvedImports) (resolvedImports, map[uint32]struct{}, error) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 
@@ -982,11 +1011,7 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities
 			return nil, nil, fmt.Errorf("wago: import %q.%q may not override reserved module %q", identity.module, identity.name, identity.module)
 		}
 	}
-	for key, exact := range exactOverrides {
-		if declared, ok := declaredImportIdentity(specs, declaredIdentities, key); ok && declared != exact.identity {
-			return nil, nil, importIdentityCollisionError(declared, exact.identity)
-		}
-	}
+	_ = declaredIdentities
 
 	overrideCount := len(overrides)
 	for _, source := range extraOverrides {
@@ -996,10 +1021,10 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities
 	if available := overrideCount + len(exactOverrides) + len(rt.imports); available < capacity {
 		capacity = available
 	}
-	var resolved Imports
+	var resolved resolvedImports
 	var pluginGCImports map[uint32]struct{}
 	if overrideCount != 0 {
-		resolved = make(Imports, capacity)
+		resolved = make(resolvedImports, capacity)
 		for key, value := range overrides {
 			resolved[key] = value
 		}
@@ -1010,19 +1035,16 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities
 		}
 	}
 	for _, spec := range specs {
-		key := spec.Key()
+		key := spec.bindingKey()
 		identity := importBindingKey{module: spec.Module, name: spec.Name}
 		if exact, provided := exactOverrides[key]; provided && exact.identity == identity {
 			if resolved == nil {
-				resolved = make(Imports, capacity)
+				resolved = make(resolvedImports, capacity)
 			}
 			resolved[key] = exact.value
 			continue
 		}
 		if _, provided := lookupImportOverride(key, overrides, extraOverrides); provided {
-			if module, name := splitImportKey(key); module != spec.Module || name != spec.Name {
-				return nil, nil, fmt.Errorf("wago: flattened import %q is ambiguous for Wasm import %q.%q; use WithImport with separate module and name", key, spec.Module, spec.Name)
-			}
 			continue
 		}
 		value, provided := rt.imports[key]
@@ -1036,7 +1058,7 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities
 			continue
 		}
 		if resolved == nil {
-			resolved = make(Imports, capacity)
+			resolved = make(resolvedImports, capacity)
 		}
 		resolved[key] = value
 		if spec.Kind == ImportFunc {
@@ -1045,7 +1067,7 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities
 				declared := FuncSig{Params: meta.params, Results: meta.results}
 				actual := FuncSig{Params: spec.Params, Results: spec.Results}
 				if !funcSigEqual(declared, actual) {
-					return nil, nil, fmt.Errorf("Runtime plugin host import %q signature mismatch", key)
+					return nil, nil, fmt.Errorf("Runtime plugin host import %q signature mismatch", spec.Key())
 				}
 				if funcSigHasGCRefs(declared) {
 					if pluginGCImports == nil {
@@ -1058,7 +1080,7 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities
 	}
 	for key, exact := range exactOverrides {
 		if resolved == nil {
-			resolved = make(Imports, capacity)
+			resolved = make(resolvedImports, capacity)
 		}
 		resolved[key] = exact.value
 	}
@@ -1075,7 +1097,7 @@ func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
 
 // instantiateWithHooksOrigin runs the Runtime-aware instantiation path and emits
 // plugin lifecycle callbacks around the low-level instantiator.
-func (rt *Runtime) instantiateWithHooksOrigin(ctx context.Context, mod *Module, imports Imports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
+func (rt *Runtime) instantiateWithHooksOrigin(ctx context.Context, mod *Module, imports resolvedImports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1098,7 +1120,7 @@ func (rt *Runtime) instantiateWithHooksOrigin(ctx context.Context, mod *Module, 
 	iopts := InstantiateOptions{
 		startContext:             ctx,
 		MaxCompiledMetadataBytes: rt.cfg.maxCompiledMetadataBytes,
-		Imports:                  imports, ownedImports: true, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,
+		resolvedImports:          imports, ownedImports: true, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,
 		forceSyncHost:            forceSyncHost || rt.callerResolverActive.Load(),
 		moduleIdentity:           mod.moduleIdentity(),
 		operationReservation:     reservation,
@@ -1225,7 +1247,7 @@ func (rt *Runtime) Capabilities() []Capability {
 
 // ProvidedImports returns immutable metadata for host functions contributed by
 // loaded plugins, sorted by Wasm module and name. It intentionally omits each
-// callable HostFunc binding; this is an inspection surface, not an authority
+// callable slotHostFunc binding; this is an inspection surface, not an authority
 // escape into the low-level instantiator.
 func (rt *Runtime) ProvidedImports() []ImportSpec {
 	rt.mu.Lock()
@@ -1508,7 +1530,7 @@ func (rt *Runtime) rollbackCommittedPluginPlan(ctx context.Context) error {
 	err := state.result
 	rt.mu.Lock()
 	rt.plugins = nil
-	rt.imports = Imports{}
+	rt.imports = resolvedImports{}
 	rt.importMeta = map[string]*registeredImport{}
 	rt.importOwner = map[string]string{}
 	rt.moduleOwner = map[string]string{}
@@ -1569,9 +1591,11 @@ func closePluginRun(ctx context.Context, run registeredPluginRun) (errs []error)
 	return errs
 }
 
-// importModule returns the module part of a "module.name" import key (up to the
-// first dot), matching how Compile builds the key.
+// importModule returns the module part of an internal exact import key.
 func importModule(key string) string {
+	if module, _, ok := splitImportBindingMapKey(key); ok {
+		return module
+	}
 	for i := 0; i < len(key); i++ {
 		if key[i] == '.' {
 			return key[:i]
@@ -1638,7 +1662,7 @@ func (rt *Runtime) writableImportsLocked() {
 
 // Options remain borrowed until resolution constructs the one instance-owned
 // map. Later WithImports options retain their documented overwrite precedence.
-func lookupImportOverride(key string, first Imports, rest []Imports) (any, bool) {
+func lookupImportOverride(key string, first resolvedImports, rest []resolvedImports) (any, bool) {
 	for i := len(rest) - 1; i >= 0; i-- {
 		if value, ok := rest[i][key]; ok {
 			return value, true

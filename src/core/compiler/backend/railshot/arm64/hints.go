@@ -68,6 +68,7 @@ const (
 	hintHasLoopCall
 	hintHasNonDirectCall
 	hintCallsImport
+	hintModuleSIMD
 )
 
 func (f funcHintFlags) has(flag funcHintFlags) bool { return f&flag != 0 }
@@ -84,7 +85,10 @@ func (f *funcHintFlags) assign(flag funcHintFlags, value bool) {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	memOps          uint32 // scalar/vector/bulk linear-memory instructions
+	// memOps packs a saturated memory-op count in the low 20 bits and exact
+	// memory-zero offset+width=four accesses in the high 12 bits. Keeping the
+	// secondary frequency in existing header storage preserves the 28-byte hint.
+	memOps          uint32
 	localStart      uint32
 	globalStart     uint32
 	globalCount     uint32
@@ -598,12 +602,21 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if isExactBounds4Kind(in.Kind) {
+				memarg := in.MemArg()
+				if memarg.Offset == 0 && (memarg.Mem == nil || *memarg.Mem == 0) {
+					h.addBounds4Op()
+				}
+			}
 			if depth != 0 && (in.Kind == wasm.InstrBlock || in.Kind == wasm.InstrIf) && scalarMergeBlockType(in.BlockType()) {
 				h.addScalarMergeWeight(loopWeight(depth))
 			}
 			noteASTPhysicalEvent(&h, in.Kind, depth)
 			if in.Kind == wasm.InstrF32Const || in.Kind == wasm.InstrF64Const {
 				h.flags.set(hintHasFloatConst)
+			}
+			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
+				h.flags.set(hintModuleSIMD)
 			}
 			if gcOrAtomicInstructionMayCall(in.Kind) {
 				sub = true
@@ -694,14 +707,14 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 				h.noteBoundaryEvent(shared.LocalEventEnd, depth)
 			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 				h.flags.set(hintUsesBulkMem | hintTouchesMemory)
-				h.memOps++
+				h.addMemOp()
 			case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
 				wasm.InstrTableGrow, wasm.InstrTableFill:
 				h.flags.set(hintMutatesTable)
 			default:
 				if instrTouchesMemory(in.Kind) {
 					h.flags.set(hintTouchesMemory)
-					h.memOps++
+					h.addMemOp()
 				}
 			}
 		}
@@ -1307,6 +1320,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.entryPrefix = false
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0xfc, 0xfd, 0xfe, 0xfb:
+			if op == 0xfd {
+				s.h.flags.set(hintModuleSIMD)
+			}
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
@@ -1344,7 +1360,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)
-				s.h.memOps++
+				s.h.addMemOp()
+				if isExactBounds4Opcode(op) && imm.MemOffset == 0 && (!imm.HasMemIndex || imm.MemIndex == 0) {
+					s.h.addBounds4Op()
+				}
 				if op >= 0x28 && op <= 0x35 && prevOp == 0x20 {
 					s.h.noteParamAddress(prevIndex)
 				}
@@ -1399,7 +1418,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)
-				s.h.memOps++
+				s.h.addMemOp()
 			}
 			if imm.UsesBulkMemory {
 				s.h.flags.set(hintUsesBulkMem)
@@ -1506,6 +1525,46 @@ func instrTouchesMemory(k wasm.InstrKind) bool {
 		wasm.InstrI32Store8, wasm.InstrI32Store16, wasm.InstrI64Store8, wasm.InstrI64Store16,
 		wasm.InstrI64Store32,
 		wasm.InstrMemorySize, wasm.InstrMemoryGrow, wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
+		return true
+	default:
+		return false
+	}
+}
+
+const (
+	memOpCountBits = 20
+	memOpCountMask = uint32(1<<memOpCountBits - 1)
+	bounds4OpMask  = uint32(1<<(32-memOpCountBits) - 1)
+)
+
+func (h funcHints) memOpCount() uint32     { return h.memOps & memOpCountMask }
+func (h funcHints) bounds4OpCount() uint32 { return h.memOps >> memOpCountBits }
+
+func (h *funcHintView) addMemOp() {
+	if h.memOpCount() != memOpCountMask {
+		h.memOps++
+	}
+}
+
+func (h *funcHintView) addBounds4Op() {
+	if h.bounds4OpCount() != bounds4OpMask {
+		h.memOps += 1 << memOpCountBits
+	}
+}
+
+func isExactBounds4Opcode(op byte) bool {
+	switch op {
+	case 0x28, 0x2a, 0x34, 0x35, 0x36, 0x38, 0x3e:
+		return true
+	default:
+		return false
+	}
+}
+
+func isExactBounds4Kind(k wasm.InstrKind) bool {
+	switch k {
+	case wasm.InstrI32Load, wasm.InstrF32Load, wasm.InstrI64Load32S, wasm.InstrI64Load32U,
+		wasm.InstrI32Store, wasm.InstrF32Store, wasm.InstrI64Store32:
 		return true
 	default:
 		return false

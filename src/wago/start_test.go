@@ -87,7 +87,7 @@ func TestRuntimeStartTrapKeepsImportedMemoryAndTableSideEffects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile consumer: %v", err)
 	}
-	if in, err := rt.Instantiate(context.Background(), consumer, WithImports(Imports{"Ms.memory": memory, "Ms.table": table})); err == nil || in != nil {
+	if in, err := rt.Instantiate(context.Background(), consumer, WithImports(testImports("Ms.memory", memory, "Ms.table", table))); err == nil || in != nil {
 		t.Fatalf("trapping runtime instantiate = %v, %v; want nil instance and trap", in, err)
 	}
 	if got := tableTestCallI32(t, owner, "get memory[0]"); got != 104 {
@@ -124,7 +124,7 @@ func TestStartTrapKeepsImportedActiveSegmentSideEffects(t *testing.T) {
 		(data (i32.const 0) "hello")
 		(func $main unreachable)
 		(start $main))`))
-	if _, err := Instantiate(consumer, Imports{"Ms.memory": memory}); err == nil {
+	if _, err := Instantiate(consumer, testImports("Ms.memory", memory)); err == nil {
 		t.Fatal("trapping start should abort consumer instantiation")
 	}
 	if err := consumer.Close(); err != nil {

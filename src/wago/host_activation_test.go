@@ -76,7 +76,7 @@ func testHostInvocationContextCrossInstanceChain(t *testing.T, concrete bool) {
 	var rootID invocationID
 	var outer instanceHostModule
 	calls := 0
-	host := func(owner **Instance, next **Instance) HostFunc {
+	host := func(owner **Instance, next **Instance) slotHostFunc {
 		return func(mod HostModule, p, r []uint64) {
 			h, _ := resolveHostCaller(mod)
 			calls++
@@ -108,12 +108,12 @@ func testHostInvocationContextCrossInstanceChain(t *testing.T, concrete bool) {
 		}
 	}
 	var err error
-	a, err = Instantiate(c, Imports{"env.f": callerTestCallback(concrete, host(&a, &b))})
+	a, err = Instantiate(c, testImports("env.f", callerTestCallback(concrete, host(&a, &b))))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	b, err = Instantiate(c, Imports{"env.f": callerTestCallback(concrete, host(&b, &a))})
+	b, err = Instantiate(c, testImports("env.f", callerTestCallback(concrete, host(&b, &a))))
 	if err != nil {
 		t.Fatal(err)
 	}

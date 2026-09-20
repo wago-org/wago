@@ -19,7 +19,7 @@ const stagedGCArrayNumericFixedHex = "0061736d0100000001b080808000095e7d005e7d01
 
 func TestStagedGCArrayNumericLocalProfiles(t *testing.T) {
 	data := stagedGCArrayNumericLocalBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
 		t.Fatalf("public compile = %v, want closed GC gate", err)
 	}
 	profiles := []struct {
@@ -101,7 +101,7 @@ func TestStagedGCArrayNumericDefaultGlobalRoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public compile unexpectedly admitted GC array constant expressions")
 	}
 	profiles := []struct {
@@ -192,7 +192,7 @@ func TestStagedGCArrayNumericDefaultGlobalRoots(t *testing.T) {
 			if err := in.ReleaseGCRef(ValueOf(ValAnyRef, token).GCRef()); err != nil {
 				t.Fatal(err)
 			}
-			values, err := in.Call(context.Background(), "new")
+			values, err := in.InvokeValues(context.Background(), "new")
 			if err != nil || len(values) != 1 || values[0].GCRef().IsNull() {
 				t.Fatalf("Call new = %v, %v", values, err)
 			}
@@ -297,7 +297,7 @@ func TestStagedGCArrayNumericFixedOfficialProduct(t *testing.T) {
 			if err := in.ReleaseGCRef(ValueOf(ValAnyRef, raw[0]).GCRef()); err != nil {
 				t.Fatal(err)
 			}
-			values, err := in.Call(context.Background(), "new")
+			values, err := in.InvokeValues(context.Background(), "new")
 			if err != nil || len(values) != 1 || values[0].GCRef().IsNull() {
 				t.Fatalf("Call new = %v, %v", values, err)
 			}

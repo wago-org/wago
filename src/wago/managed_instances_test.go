@@ -139,33 +139,28 @@ func TestManagedCallerAndWatcherDuringHostCall(t *testing.T) {
 }
 
 func TestManagedForkImportCopyValidation(t *testing.T) {
-	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	fn := slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	parent := &Instance{c: &Compiled{
 		Imports:       []string{"env.fn"},
 		GlobalImports: []GlobalImportDef{{Module: "env", Name: "g"}},
 		memoryImport:  "env.mem",
 		tableImport:   "env.table",
-	}, imports: Imports{
-		"env.fn":    fn,
-		"env.g":     GlobalImport{Type: ValI32},
-		"env.mem":   fn,
-		"env.table": fn,
-	}}
+	}, imports: testImports("env.fn", fn, "env.g", GlobalImport{Type: ValI32}, "env.mem", fn, "env.table", fn).bindings}
 	got, err := managedForkImports(parent)
-	if err != nil || len(got) != 4 || got["env.fn"] == nil || got["env.g"] == nil {
+	if err != nil || len(got) != 4 || got[testImportKey("env.fn")] == nil || got[testImportKey("env.g")] == nil {
 		t.Fatalf("managedForkImports = %#v, %v", got, err)
 	}
 	for _, tc := range []struct {
 		name string
 		mut  func(*Instance)
 	}{
-		{"missing", func(in *Instance) { delete(in.imports, "env.fn") }},
-		{"unsafe", func(in *Instance) { in.imports["env.fn"] = 3 }},
-		{"borrowed global", func(in *Instance) { in.imports["env.g"] = GlobalImport{Global: &Global{}} }},
-		{"unsafe memory", func(in *Instance) { in.imports["env.mem"] = &Global{} }},
+		{"missing", func(in *Instance) { delete(in.imports, testImportKey("env.fn")) }},
+		{"unsafe", func(in *Instance) { in.imports[testImportKey("env.fn")] = 3 }},
+		{"borrowed global", func(in *Instance) { in.imports[testImportKey("env.g")] = GlobalImport{Global: &Global{}} }},
+		{"unsafe memory", func(in *Instance) { in.imports[testImportKey("env.mem")] = &Global{} }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			clone := &Instance{c: parent.c, imports: make(Imports, len(parent.imports))}
+			clone := &Instance{c: parent.c, imports: make(resolvedImports, len(parent.imports))}
 			for k, v := range parent.imports {
 				clone.imports[k] = v
 			}

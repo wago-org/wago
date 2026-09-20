@@ -17,7 +17,7 @@ func TestGlobalSynchronizationScalarHostVersusGuest(t *testing.T) {
 		(import "env" "g" (global $g (mut i64)))
 		(func (export "read") (result i64) (global.get $g))
 		(func (export "write") (param i64) (local.get 0) (global.set $g)))`)
-	in, err := rt.Instantiate(context.Background(), module, WithImports(Imports{"env.g": global}))
+	in, err := rt.Instantiate(context.Background(), module, WithImports(testImports("env.g", global)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestGlobalSynchronizationV128HostVersusGuestDoesNotTear(t *testing.T) {
 		(import "env" "g" (global $g (mut v128)))
 		(func (export "read") (result v128) (global.get $g))
 		(func (export "write") (param v128) (local.get 0) (global.set $g)))`)
-	in, err := rt.Instantiate(context.Background(), module, WithImports(Imports{"env.g": global}))
+	in, err := rt.Instantiate(context.Background(), module, WithImports(testImports("env.g", global)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func funcrefValueProducer(t *testing.T, rt *Runtime, value int32) (*Instance, Va
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := in.Call(context.Background(), "get")
+	out, err := in.InvokeValues(context.Background(), "get")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestGlobalSynchronizationFuncrefReplacementVersusGuestCall(t *testing.T) {
 		(func (export "call") (result i32)
 			(i32.const 0) (global.get 0) (table.set 0)
 			(i32.const 0) (call_indirect (type $target))))`)
-	reader, err := rt.Instantiate(context.Background(), readerMod, WithImports(Imports{"env.g": global}))
+	reader, err := rt.Instantiate(context.Background(), readerMod, WithImports(testImports("env.g", global)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestGlobalSynchronizationGuestHostAndClose(t *testing.T) {
 			(func (export "step") (result i64)
 				(global.set $g (i64.add (global.get $g) (i64.const 1)))
 				(global.get $g)))`)
-		in, err := rt.Instantiate(context.Background(), module, WithImports(Imports{"env.g": global}))
+		in, err := rt.Instantiate(context.Background(), module, WithImports(testImports("env.g", global)))
 		if err != nil {
 			t.Fatal(err)
 		}

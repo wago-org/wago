@@ -160,7 +160,7 @@ func TestManagedCloseAutomaticOwnership(t *testing.T) {
 				}
 				// No public wait or second close: the terminal finalizer owns
 				// detachment, and physical release owns budget accounting.
-				awaitCloseSignal(t, in.ensurePluginState().close.Load().terminalDone)
+				awaitCloseSignal(t, in.closeState.Load().terminalDone)
 				assertManagedDetached(t, manager, owned, in)
 				if mode == "retained" {
 					if !in.referenceLifetime().snapshot().PhysicalResources {

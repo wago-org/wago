@@ -27,12 +27,12 @@ func TestStoreBoundExternrefGlobalImportsShareExactState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile imported externref global: %v", err)
 	}
-	first, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.ref": shared}))
+	first, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.ref", shared)))
 	if err != nil {
 		t.Fatalf("Instantiate first importer: %v", err)
 	}
 	defer first.Close()
-	second, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.ref": shared}))
+	second, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.ref", shared)))
 	if err != nil {
 		t.Fatalf("Instantiate second importer: %v", err)
 	}
@@ -43,17 +43,17 @@ func TestStoreBoundExternrefGlobalImportsShareExactState(t *testing.T) {
 	}
 
 	for _, in := range []*Instance{first, second} {
-		out, err := in.Call(context.Background(), "get")
+		out, err := in.InvokeValues(context.Background(), "get")
 		if err != nil || len(out) != 1 || out[0].ExternRef() != initial {
 			t.Fatalf("initial get = %v, %v; want shared externref", out, err)
 		}
 	}
 	next := issueExternref(t, rt, "next")
-	out, err := first.Call(context.Background(), "set_and_get", ValueExternRef(next))
+	out, err := first.InvokeValues(context.Background(), "set_and_get", ValueExternRef(next))
 	if err != nil || len(out) != 1 || out[0].ExternRef() != next {
 		t.Fatalf("set_and_get(next) = %v, %v", out, err)
 	}
-	out, err = second.Call(context.Background(), "get")
+	out, err = second.InvokeValues(context.Background(), "get")
 	if err != nil || len(out) != 1 || out[0].ExternRef() != next {
 		t.Fatalf("second get after first write = %v, %v", out, err)
 	}
@@ -64,7 +64,7 @@ func TestStoreBoundExternrefGlobalImportsShareExactState(t *testing.T) {
 	if err := shared.SetValue(ValueExternRef(initial)); err != nil {
 		t.Fatalf("host SetValue(initial): %v", err)
 	}
-	out, err = first.Call(context.Background(), "get")
+	out, err = first.InvokeValues(context.Background(), "get")
 	if err != nil || len(out) != 1 || out[0].ExternRef() != initial {
 		t.Fatalf("first get after host write = %v, %v", out, err)
 	}
@@ -94,7 +94,7 @@ func TestLocalReferenceGlobalExportsReimportAndRetainProducer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Instantiate global producer: %v", err)
 	}
-	token, err := callable.Call(context.Background(), "get")
+	token, err := callable.InvokeValues(context.Background(), "get")
 	if err != nil || len(token) != 1 || token[0].FuncRef().IsNull() {
 		t.Fatalf("producer get = %v, %v", token, err)
 	}
@@ -105,7 +105,7 @@ func TestLocalReferenceGlobalExportsReimportAndRetainProducer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExportedGlobalObject: %v", err)
 	}
-	consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(Imports{"env.ref": shared}))
+	consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(testImports("env.ref", shared)))
 	if err != nil {
 		t.Fatalf("Instantiate consumer: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestLocalReferenceGlobalExportsReimportAndRetainProducer(t *testing.T) {
 	if globalProducer.resourcesClosed {
 		t.Fatal("global producer resources closed while an importer remained live")
 	}
-	out, err := consumer.Call(context.Background(), "get")
+	out, err := consumer.InvokeValues(context.Background(), "get")
 	if err != nil || len(out) != 1 || out[0].Bits() != token[0].Bits() {
 		t.Fatalf("consumer get after producer close = %v, %v; want token %#x", out, err, token[0].Bits())
 	}
@@ -144,12 +144,12 @@ func TestImportedReferenceGlobalGetInitializersPreserveIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile externref global.get initializer: %v", err)
 	}
-	externIn, err := rt.Instantiate(context.Background(), externMod, WithImports(Imports{"env.ref": hostGlobal}))
+	externIn, err := rt.Instantiate(context.Background(), externMod, WithImports(testImports("env.ref", hostGlobal)))
 	if err != nil {
 		t.Fatalf("Instantiate externref initializer: %v", err)
 	}
 	defer externIn.Close()
-	out, err := externIn.Call(context.Background(), "get")
+	out, err := externIn.InvokeValues(context.Background(), "get")
 	if err != nil || len(out) != 1 || out[0].ExternRef() != extern {
 		t.Fatalf("externref initializer get = %v, %v", out, err)
 	}
@@ -170,19 +170,19 @@ func TestImportedReferenceGlobalGetInitializersPreserveIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile funcref global.get initializer: %v", err)
 	}
-	funcrefIn, err := rt.Instantiate(context.Background(), funcrefMod, WithImports(Imports{"env.ref": funcrefGlobal}))
+	funcrefIn, err := rt.Instantiate(context.Background(), funcrefMod, WithImports(testImports("env.ref", funcrefGlobal)))
 	if err != nil {
 		t.Fatalf("Instantiate funcref initializer: %v", err)
 	}
 	defer funcrefIn.Close()
-	want, err := producer.Call(context.Background(), "get_global")
+	want, err := producer.InvokeValues(context.Background(), "get_global")
 	if err != nil || len(want) != 1 {
 		t.Fatalf("producer get_global = %v, %v", want, err)
 	}
 	if err := producer.Close(); err != nil {
 		t.Fatalf("Close funcref producer: %v", err)
 	}
-	out, err = funcrefIn.Call(context.Background(), "get")
+	out, err = funcrefIn.InvokeValues(context.Background(), "get")
 	if err != nil || len(out) != 1 || out[0].Bits() != want[0].Bits() {
 		t.Fatalf("funcref initializer after producer close = %v, %v; want %#x", out, err, want[0].Bits())
 	}
@@ -203,12 +203,12 @@ func TestReferenceGlobalImportRejectsTypeMutabilityStoreAndForgedValues(t *testi
 	if err != nil {
 		t.Fatalf("Compile externref importer: %v", err)
 	}
-	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(Imports{"env.ref": sharedA})); err == nil || !strings.Contains(err.Error(), "incompatible reference store") {
+	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(testImports("env.ref", sharedA))); err == nil || !strings.Contains(err.Error(), "incompatible reference store") {
 		t.Fatalf("cross-runtime import error = %v", err)
 	}
 	wrongType := NewGlobalI64(0, true)
 	defer wrongType.Close()
-	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(Imports{"env.ref": wrongType})); err == nil || !strings.Contains(err.Error(), "type i64") {
+	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(testImports("env.ref", wrongType))); err == nil || !strings.Contains(err.Error(), "type i64") {
 		t.Fatalf("wrong-type import error = %v", err)
 	}
 	immutable, err := rtB.NewExternRefGlobal(NullExternRef(), false)
@@ -216,7 +216,7 @@ func TestReferenceGlobalImportRejectsTypeMutabilityStoreAndForgedValues(t *testi
 		t.Fatalf("NewExternRefGlobal immutable: %v", err)
 	}
 	defer immutable.Close()
-	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(Imports{"env.ref": immutable})); err == nil || !strings.Contains(err.Error(), "mutability") {
+	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(testImports("env.ref", immutable))); err == nil || !strings.Contains(err.Error(), "mutability") {
 		t.Fatalf("wrong-mutability import error = %v", err)
 	}
 	owned, err := rtB.NewExternRefGlobal(NullExternRef(), true)
@@ -225,7 +225,7 @@ func TestReferenceGlobalImportRejectsTypeMutabilityStoreAndForgedValues(t *testi
 	}
 	defer owned.Close()
 	owned.Type = ValFuncRef
-	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(Imports{"env.ref": owned})); err == nil || !strings.Contains(err.Error(), "public metadata") {
+	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(testImports("env.ref", owned))); err == nil || !strings.Contains(err.Error(), "public metadata") {
 		t.Fatalf("mutated public metadata import error = %v", err)
 	}
 	owned.Type = ValExternRef
@@ -256,7 +256,7 @@ func TestReferenceGlobalImportRejectsTypeMutabilityStoreAndForgedValues(t *testi
 	if err != nil {
 		t.Fatalf("Export private global: %v", err)
 	}
-	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(Imports{"env.ref": privateGlobal})); err == nil || !strings.Contains(err.Error(), "incompatible reference store") {
+	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(testImports("env.ref", privateGlobal))); err == nil || !strings.Contains(err.Error(), "incompatible reference store") {
 		t.Fatalf("private-store import error = %v", err)
 	}
 
@@ -278,7 +278,7 @@ func TestReferenceGlobalImportRejectsTypeMutabilityStoreAndForgedValues(t *testi
 	if err != nil {
 		t.Fatalf("Compile funcref importer: %v", err)
 	}
-	if _, err := rtB.Instantiate(context.Background(), funcrefImporter, WithImports(Imports{"env.ref": corrupted})); err == nil || !strings.Contains(err.Error(), "invalid funcref descriptor") {
+	if _, err := rtB.Instantiate(context.Background(), funcrefImporter, WithImports(testImports("env.ref", corrupted))); err == nil || !strings.Contains(err.Error(), "invalid funcref descriptor") {
 		t.Fatalf("corrupted descriptor import error = %v", err)
 	}
 }
@@ -294,7 +294,7 @@ func TestReferenceGlobalCloseOrderingAliasesAndStoreRoots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile alias importer: %v", err)
 	}
-	in, err := rt.Instantiate(context.Background(), aliasMod, WithImports(Imports{"env.ref": shared}))
+	in, err := rt.Instantiate(context.Background(), aliasMod, WithImports(testImports("env.ref", shared)))
 	if err != nil {
 		t.Fatalf("Instantiate aliases: %v", err)
 	}

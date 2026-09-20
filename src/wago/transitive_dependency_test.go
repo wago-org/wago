@@ -59,14 +59,14 @@ func TestCrossInstanceRetentionKeepsImportedOwnersAttached(t *testing.T) {
 		}
 		producerCode := MustCompile(importedTableUserModule())
 		defer producerCode.Close()
-		producer, err := Instantiate(producerCode, Imports{"env.table": owner})
+		producer, err := Instantiate(producerCode, testImports("env.table", owner))
 		if err != nil {
 			t.Fatal(err)
 		}
 		export, _ := producer.ExportedFunc("use")
 		consumerCode := MustCompile(forwardingConsumerModule())
 		defer consumerCode.Close()
-		consumer, err := Instantiate(consumerCode, Imports{"env.target": export})
+		consumer, err := Instantiate(consumerCode, testImports("env.target", export))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -100,7 +100,7 @@ func TestCrossInstanceRetentionKeepsImportedOwnersAttached(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.global": owner}))
+		producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(testImports("env.global", owner)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -109,7 +109,7 @@ func TestCrossInstanceRetentionKeepsImportedOwnersAttached(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(Imports{"env.target": export}))
+		consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(testImports("env.target", export)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -119,7 +119,7 @@ func TestCrossInstanceRetentionKeepsImportedOwnersAttached(t *testing.T) {
 		if err := owner.Close(); err == nil || !strings.Contains(err.Error(), "live importer") {
 			t.Fatalf("global Close while retained code is callable = %v", err)
 		}
-		if values, err := consumer.Call(context.Background(), "call"); err != nil || len(values) != 1 || values[0].I32() != 1 {
+		if values, err := consumer.InvokeValues(context.Background(), "call"); err != nil || len(values) != 1 || values[0].I32() != 1 {
 			t.Fatalf("retained global call = %v, %v; want 1", values, err)
 		}
 		if err := consumer.Close(); err != nil {
@@ -138,7 +138,7 @@ func TestCrossInstanceRetentionKeepsImportedOwnersAttached(t *testing.T) {
 
 	t.Run("host funcref", func(t *testing.T) {
 		rt := NewRuntime()
-		owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+		owner, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, _, results []uint64) {
 			results[0] = I32(42)
 		}), FuncSig{Results: []ValType{ValI32}})
 		if err != nil {
@@ -148,7 +148,7 @@ func TestCrossInstanceRetentionKeepsImportedOwnersAttached(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.host": owner}))
+		producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(testImports("env.host", owner)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -157,7 +157,7 @@ func TestCrossInstanceRetentionKeepsImportedOwnersAttached(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(Imports{"env.target": export}))
+		consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(testImports("env.target", export)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -167,7 +167,7 @@ func TestCrossInstanceRetentionKeepsImportedOwnersAttached(t *testing.T) {
 		if err := owner.Close(); err == nil || !strings.Contains(err.Error(), "live importer") {
 			t.Fatalf("HostFuncRef.Close while retained code is callable = %v", err)
 		}
-		if values, err := consumer.Call(context.Background(), "call"); err != nil || len(values) != 1 || values[0].I32() != 42 {
+		if values, err := consumer.InvokeValues(context.Background(), "call"); err != nil || len(values) != 1 || values[0].I32() != 42 {
 			t.Fatalf("retained host call = %v, %v; want 42", values, err)
 		}
 		if err := consumer.Close(); err != nil {

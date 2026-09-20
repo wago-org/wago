@@ -210,6 +210,17 @@ func (f *fn) floatConstReg(st storage) (Reg, bool) {
 			return c.reg, true
 		}
 	}
+	return regNone, false
+}
+
+// preloadFloatConst installs a function-persistent constant before body
+// lowering starts. Constants discovered later cannot be cached persistently:
+// their first use may be inside one control-flow arm, while a later use is
+// reachable from another arm that never initialized the register.
+func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
+	if r, ok := f.floatConstReg(st); ok {
+		return r, true
+	}
 	if len(f.fconsts) >= 2 {
 		return regNone, false
 	}
@@ -237,13 +248,13 @@ func (f *fn) preloadFloatConsts(code []byte) {
 			if err != nil {
 				return
 			}
-			f.floatConstReg(storage{kind: stConst, typ: mtF32, cval: int64(bits)})
+			f.preloadFloatConst(storage{kind: stConst, typ: mtF32, cval: int64(bits)})
 		case 0x44: // f64.const
 			bits, err := r.LEU64()
 			if err != nil {
 				return
 			}
-			f.floatConstReg(storage{kind: stConst, typ: mtF64, cval: int64(bits)})
+			f.preloadFloatConst(storage{kind: stConst, typ: mtF64, cval: int64(bits)})
 		default:
 			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
 				return

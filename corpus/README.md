@@ -16,7 +16,8 @@ corpus/
 Selection is consistent across tests and benchmarks:
 
 ```sh
-just test corpus                         # quick profile
+just test corpus                         # quick profile when selected directly
+just test                                # all benchmark corpus workloads + unit/integration tests
 just test corpus algorithms              # representative raw algorithms
 just test corpus tag:polybench           # all 30 PolyBench/C kernels
 just test corpus tag:application
@@ -34,3 +35,19 @@ exit status or exact output hashes. Command workloads may declare an explicit
 `platforms` allowlist when their host adapter is not portable. Missing
 artifacts, unknown selectors, duplicate IDs, digest mismatches, compile-only
 entries, and execution without an oracle fail closed.
+
+The public `just test` gate selects `all`, so every workload admitted to the
+benchmark inventory is also compiled and executed by correctness testing. Set
+`CORPUS=quick` only when a shorter local iteration is intentional.
+
+The corpus recipe also runs catalog contract and semantic provenance tests from
+the separate `bench` Go module. Ordinary Windows CI selects `all`; unsupported
+WASI command adapters are explicit skips with the platform allowlist as the
+reason. Linux and supported macOS runtime jobs use the same all-corpus default.
+
+Bounds modes are separate gates. `just test guard all` checks guard-page traps
+and direct corpus execution with signals-based bounds checks. It does not run
+semantic or command workloads in guard mode; ordinary corpus success does not
+establish complete guard-mode coverage. NanoSVG rendering remains excluded;
+see the [reproducer](repro/nanosvg/README.md). Wren floating modulo is covered by
+an exact floating-point bit oracle in addition to its existing VM workload.

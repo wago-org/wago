@@ -15,8 +15,8 @@ type invocationContextTestState struct {
 	concrete bool
 	resolver *CallerResolver
 	manager  *InstanceManager
-	outer    HostFunc
-	inner    HostFunc
+	outer    slotHostFunc
+	inner    slotHostFunc
 }
 
 type invocationContextTestPlugin struct{ state *invocationContextTestState }
@@ -49,13 +49,9 @@ func (p invocationContextTestPlugin) Register(reg *Registrar) error {
 	if err != nil {
 		return err
 	}
-	module, err := imports.Module("env")
-	if err != nil {
-		return err
-	}
 	p.state.resolver = resolver
 	p.state.manager = manager
-	define := callerTestDeclare(module, p.state.concrete)
+	define := callerTestDeclare(imports, "env", p.state.concrete)
 	define("outer", func(m HostModule, params, results []uint64) {
 		if p.state.outer != nil {
 			p.state.outer(m, params, results)
@@ -195,7 +191,7 @@ func testCallerResolverInvocationContextContract(t *testing.T, concrete bool) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if _, err := in.Call(parent, "call"); err != nil {
+	if _, err := in.InvokeValues(parent, "call"); err != nil {
 		t.Fatalf("Call: %v", err)
 	}
 	if callbackErr != nil || retained == nil || !same || !hidValue || !deadlineMatches {
@@ -290,7 +286,7 @@ func TestCallerResolverInvocationContextParentCancellationAndTrap(t *testing.T) 
 		parent, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		if !nativeCancellationSupported() {
-			_, err := in.Call(parent, "call")
+			_, err := in.InvokeValues(parent, "call")
 			if err == nil || !strings.Contains(err.Error(), "requires a concurrent scheduler") {
 				t.Errorf("Call error = %v, want explicit scheduler rejection", err)
 			}
@@ -303,7 +299,7 @@ func TestCallerResolverInvocationContextParentCancellationAndTrap(t *testing.T) 
 		}
 		callDone := make(chan error, 1)
 		go func() {
-			_, err := in.Call(parent, "call")
+			_, err := in.InvokeValues(parent, "call")
 			callDone <- err
 		}()
 		select {
@@ -438,11 +434,11 @@ func TestCallerResolverInvocationContextBackgroundEntries(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			prepared, err := in.PrepareFunction("call")
+			prepared, err := in.WasmFunc("call")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := prepared.Invoke0(); err != nil {
+			if _, err := prepared.Invoke(); err != nil {
 				t.Fatal(err)
 			}
 		}},
@@ -532,7 +528,7 @@ func TestCallerResolverInvocationContextReentryLifetimes(t *testing.T) {
 		outerLiveAfterNested = outerContext.Err() == nil
 		nestedExpired = nestedContext != nil && nestedContext.Err() == context.Canceled
 	}
-	if _, err := in.Call(outerParent, "call"); err != nil {
+	if _, err := in.InvokeValues(outerParent, "call"); err != nil {
 		t.Fatalf("Call: %v", err)
 	}
 	if nestedCallErr != nil || !outerLiveAfterNested || !nestedExpired || !outerDeadlineOK || !nestedDeadlineOK {
@@ -580,12 +576,12 @@ func TestCallerResolverInvocationContextEntryPaths(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			consumer, err := rt.Instantiate(context.Background(), consumerModule, WithImports(Imports{"env.next": target}))
+			consumer, err := rt.Instantiate(context.Background(), consumerModule, WithImports(testImports("env.next", target)))
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer consumer.Close()
-			if _, err := consumer.Call(parent, "call"); err != nil {
+			if _, err := consumer.InvokeValues(parent, "call"); err != nil {
 				t.Fatal(err)
 			}
 		}},

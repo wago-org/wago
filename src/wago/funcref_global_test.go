@@ -38,15 +38,15 @@ func TestRelease2RefFuncGlobalInitializersWithoutTable(t *testing.T) {
 	}
 	defer consumer.Close()
 
-	fromGlobal, err := producer.Call(context.Background(), "get_global")
+	fromGlobal, err := producer.InvokeValues(context.Background(), "get_global")
 	if err != nil || len(fromGlobal) != 1 || fromGlobal[0].FuncRef().IsNull() {
 		t.Fatalf("get_global = %v, %v; want one non-null funcref", fromGlobal, err)
 	}
-	fromBody, err := producer.Call(context.Background(), "get_direct")
+	fromBody, err := producer.InvokeValues(context.Background(), "get_direct")
 	if err != nil || len(fromBody) != 1 || fromBody[0].Bits() != fromGlobal[0].Bits() {
 		t.Fatalf("get_direct = %v, %v; want global token %#x", fromBody, err, fromGlobal[0].Bits())
 	}
-	if got, err := consumer.Call(context.Background(), "call", fromGlobal[0]); err != nil || len(got) != 1 || got[0].I32() != 42 {
+	if got, err := consumer.InvokeValues(context.Background(), "call", fromGlobal[0]); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("call(global ref.func) = %v, %v; want 42", got, err)
 	}
 	global, err := producer.GlobalValue("target_ref")
@@ -91,9 +91,9 @@ func TestRefFuncGlobalHostImportEgressFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile host-imported ref.func global: %v", err)
 	}
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.target": HostFunc(func(_ HostModule, _, results []uint64) {
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.target", slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(42)
-	})}))
+	}))))
 	if err != nil {
 		t.Fatalf("Instantiate host-imported ref.func global: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestRelease2NullableLocalFuncrefGlobals(t *testing.T) {
 	defer in.Close()
 
 	for _, name := range []string{"get_immutable", "get_mutable"} {
-		out, err := in.Call(context.Background(), name)
+		out, err := in.InvokeValues(context.Background(), name)
 		if err != nil {
 			t.Fatalf("Call %s: %v", name, err)
 		}
@@ -138,7 +138,7 @@ func TestRelease2NullableLocalFuncrefGlobals(t *testing.T) {
 		}
 	}
 
-	out, err := in.Call(context.Background(), "set_and_get", ValueFuncRef(NullFuncRef()))
+	out, err := in.InvokeValues(context.Background(), "set_and_get", ValueFuncRef(NullFuncRef()))
 	if err != nil {
 		t.Fatalf("Call set_and_get(null): %v", err)
 	}
@@ -186,13 +186,13 @@ func TestLocalFuncrefGlobalRoundTripRetainsProducer(t *testing.T) {
 	}
 	defer global.Close()
 
-	out, err := producer.Call(context.Background(), "get")
+	out, err := producer.InvokeValues(context.Background(), "get")
 	if err != nil || len(out) != 1 || out[0].FuncRef().IsNull() {
 		t.Fatalf("producer get = %v, %v; want non-null funcref", out, err)
 	}
 	token := out[0]
 
-	roundTrip, err := global.Call(context.Background(), "set_and_get", token)
+	roundTrip, err := global.InvokeValues(context.Background(), "set_and_get", token)
 	if err != nil || len(roundTrip) != 1 || roundTrip[0].Bits() != token.Bits() {
 		t.Fatalf("set_and_get(token) = %v, %v; want token %#x", roundTrip, err, token.Bits())
 	}
@@ -235,7 +235,7 @@ func TestNullableLocalFuncrefGlobalsRespectFeatureAndOwnershipBoundaries(t *test
 		t.Fatalf("Compile imported funcref global: %v", err)
 	}
 	defer compiled.Close()
-	if _, err := Instantiate(compiled, Imports{"env.ref": GlobalImport{Type: ValFuncRef}}); err == nil || !strings.Contains(err.Error(), "explicit store-bound *Global") {
+	if _, err := Instantiate(compiled, testImports("env.ref", GlobalImport{Type: ValFuncRef})); err == nil || !strings.Contains(err.Error(), "explicit store-bound *Global") {
 		t.Fatalf("Instantiate unowned imported funcref global error = %v", err)
 	}
 }

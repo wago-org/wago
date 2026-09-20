@@ -120,8 +120,8 @@ Current tracks:
 - [x] Complete mandatory extended constants, relaxed SIMD, tails, typed function
   references, GC, exception handling, multi-memory, memory64, and table64 on the
   primary product. Tail calls, typed function references, multi-memory, memory64,
-  and table64 now default on for complete backends; GC and exceptions remain
-  opt-in through the full Core 3 selection.
+  and table64 now default on for complete backends. WasmGC and exception handling
+  joined them when the complete Core 3 release became the default.
 - [x] Add exact linux/amd64 and Linux/Darwin arm64 WasmGC roots across local
   direct/indirect/reference calls, recursion, bounded host re-entry,
   mutable/shared GC globals, local/shared collector-reference tables, EH payload
@@ -398,7 +398,9 @@ initializers, generic `array.new_data`/`array.new_elem`, imported/exported tags,
 `spectest.table64`, shared-memory co-tenant serialization, and reference
 argument/result ownership. A later default-policy pass promoted the lower-risk
 tail, typed-reference, and indexed/wide memory/table families on complete
-backends while retaining GC and exceptions as explicit Core 3 opt-ins.
+backends while retaining GC and exceptions as explicit Core 3 opt-ins. That
+staged policy was later superseded when the complete Core 3 release became the
+default on complete backends.
 
 ## Iteration 75 generated WasmGC smoke hardening
 

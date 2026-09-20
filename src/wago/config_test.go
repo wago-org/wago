@@ -356,13 +356,16 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 func TestDefaultCoreFeaturePolicy(t *testing.T) {
 	want := coreFeaturesWithoutSidecar
 	if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
-		want |= defaultCore3Features
+		want |= CoreFeaturesV3
 	}
 	if got := NewRuntimeConfig().CoreFeatures(); got != want {
 		t.Fatalf("default features = %s, want %s", got, want)
 	}
-	if want.IsEnabled(CoreFeatureGC | CoreFeatureExceptionHandling | CoreFeatureThreads) {
-		t.Fatalf("default unexpectedly includes ownership-sensitive opt-in features: %s", want)
+	if want.IsEnabled(CoreFeatureThreads) {
+		t.Fatalf("default unexpectedly includes the opt-in threads proposal: %s", want)
+	}
+	if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) && !want.IsEnabled(CoreFeaturesV3) {
+		t.Fatalf("complete backend default = %s, want full Core 3 set %s", want, CoreFeaturesV3)
 	}
 	for _, info := range FeatureInfos() {
 		expected := want.IsEnabled(info.Feature)
@@ -384,7 +387,7 @@ func TestDefaultCoreFeaturePolicy(t *testing.T) {
 	)
 	compiled, err := Compile(nil, module)
 	if err != nil {
-		t.Fatalf("default compile of selected Core 3 tail call: %v", err)
+		t.Fatalf("default compile of Core 3 tail call: %v", err)
 	}
 	_ = compiled.Close()
 }
@@ -760,7 +763,7 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 	}
 
 	mod := benchImportedModule(64, 16)
-	imports := Imports{"env.f": f}
+	imports := testImports("env.f", f)
 	compile := func(workers int) *Compiled {
 		t.Helper()
 		c, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(workers).Compile(mod)
@@ -770,7 +773,7 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 		if !c.dynamicImports || len(c.code) == 0 {
 			t.Fatalf("workers=%d dynamic=%v code=%d", workers, c.dynamicImports, len(c.code))
 		}
-		if err := c.validateImportBindings(imports, nil); err != nil {
+		if err := c.validateImportBindings(imports.bindings, nil); err != nil {
 			_ = c.Close()
 			t.Fatalf("workers=%d bindings: %v", workers, err)
 		}

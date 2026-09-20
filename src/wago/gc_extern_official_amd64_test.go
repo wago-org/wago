@@ -98,7 +98,7 @@ func stagedGCExternLeaderDeltaFor(data []byte, line int) (stagedGCExternLeaderDe
 }
 
 func compileStagedGCExternAccounting(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCStructProducts = true

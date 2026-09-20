@@ -36,13 +36,13 @@ func TestPreferredGCCollectorIgnoresReferenceFreeFunctionImports(t *testing.T) {
 	foreignStore := &referenceStore{}
 	scalarCollector := new(gc.Collector)
 	scalarProvider := &Instance{gc: scalarCollector, refStore: foreignStore}
-	imports := Imports{"env.call": &InstanceExport{inst: scalarProvider}}
+	imports := testImports("env.call", &InstanceExport{inst: scalarProvider})
 
 	scalar := &Compiled{
 		Imports:        []string{"env.call"},
 		importFuncSigs: []FuncSig{{Results: []ValType{ValI64, ValI64, ValF32, ValF32, ValV128, ValI32}}},
 	}
-	got, err := preferredGCCollectorFromImports(scalar, imports, store)
+	got, err := preferredGCCollectorFromImports(scalar, imports.bindings, store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestPreferredGCCollectorIgnoresReferenceFreeFunctionImports(t *testing.T) {
 
 	referenceCollector := new(gc.Collector)
 	referenceProvider := &Instance{gc: referenceCollector, refStore: store}
-	imports["env.reference"] = &InstanceExport{inst: referenceProvider}
+	imports.Function("env", "reference", &InstanceExport{inst: referenceProvider})
 	reference := &Compiled{
 		Imports: []string{"env.call", "env.reference"},
 		importFuncSigs: []FuncSig{
@@ -60,7 +60,7 @@ func TestPreferredGCCollectorIgnoresReferenceFreeFunctionImports(t *testing.T) {
 			{Results: []ValType{ValAnyRef}},
 		},
 	}
-	got, err = preferredGCCollectorFromImports(reference, imports, store)
+	got, err = preferredGCCollectorFromImports(reference, imports.bindings, store)
 	if err != nil {
 		t.Fatal(err)
 	}

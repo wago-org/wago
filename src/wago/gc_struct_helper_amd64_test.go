@@ -15,7 +15,7 @@ import (
 
 func TestStagedGCStructGetDefaultCollectorProfiles(t *testing.T) {
 	data := stagedGCStructGetOnlyBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
 		t.Fatalf("public compile = %v, want closed GC gate", err)
 	}
 
@@ -248,7 +248,7 @@ func TestStagedGCStructBasicNumericActionsAndPublicResultToken(t *testing.T) {
 			if err := in.ReleaseGCRef(ref); err != nil {
 				t.Fatalf("release new public result: %v", err)
 			}
-			values, err := in.Call(context.Background(), "new")
+			values, err := in.InvokeValues(context.Background(), "new")
 			if err != nil || len(values) != 1 || values[0].Type() != ValAnyRef || values[0].GCRef().IsNull() || values[0].Bits()>>32 == 0 {
 				t.Fatalf("Call new public result = %v, %v; want typed opaque GCRef", values, err)
 			}

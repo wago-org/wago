@@ -110,8 +110,8 @@ func detachImportedFunctions(in *Instance) {
 		return
 	}
 	var seen importDedup[*Instance]
-	for _, key := range in.c.Imports {
-		export, ok := in.imports[key].(*InstanceExport)
+	for i := range in.c.Imports {
+		export, ok := in.imports[in.c.functionImportBindingKey(i)].(*InstanceExport)
 		if !ok || export == nil || export.inst == nil {
 			continue
 		}
@@ -166,8 +166,8 @@ func detachImportedHostFuncRefs(in *Instance) {
 		return
 	}
 	var seen importDedup[*HostFuncRef]
-	for i, key := range in.c.Imports {
-		owner, ok := in.imports[key].(*HostFuncRef)
+	for i := range in.c.Imports {
+		owner, ok := in.imports[in.c.functionImportBindingKey(i)].(*HostFuncRef)
 		if !ok || owner == nil {
 			continue
 		}
@@ -212,8 +212,8 @@ func detachImportedGlobals(in *Instance) {
 		return
 	}
 	var seen importDedup[*Global]
-	for _, imp := range in.c.GlobalImports {
-		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
+	for i, imp := range in.c.GlobalImports {
+		provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
 		if !ok || provided.Global == nil || (!isReferenceValType(imp.Type) && provided.Global.owner == nil) {
 			continue
 		}
@@ -237,11 +237,11 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) b
 	}
 	retained := false
 	var seen importDedup[*Global]
-	for _, imp := range in.c.GlobalImports {
+	for i, imp := range in.c.GlobalImports {
 		if imp.Type != ValFuncRef {
 			continue
 		}
-		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
+		provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
 		if !ok || provided.Global == nil {
 			continue
 		}
@@ -307,26 +307,26 @@ func (a *tableImportAttachments) detachAll() {
 	a.store = nil
 }
 
-func (c *Compiled) preflightImportBindings(imports Imports) error {
+func (c *Compiled) preflightImportBindings(imports resolvedImports) error {
 	// Function bindings keep their signature-specific validation in
 	// validateImportBindings. Storage imports are otherwise resolved in separate
 	// setup phases, so verify their presence before attaching or mutating owners.
 	for i := range c.GlobalImports {
 		imp := c.GlobalImports[i]
-		key := imp.Module + "." + imp.Name
+		key := importBindingMapKey(imp.Module, imp.Name)
 		if _, ok := imports[key]; !ok {
-			return fmt.Errorf("missing imported global %q", key)
+			return fmt.Errorf("missing imported global %q", imp.Module+"."+imp.Name)
 		}
 	}
 	for i := 0; i < c.memoryImportCount(); i++ {
 		def, _ := c.memoryImportAt(i)
-		if _, ok := imports[def.ImportKey]; !ok {
+		if _, ok := imports[c.memoryImportBindingKey(i)]; !ok {
 			return fmt.Errorf("missing imported memory %q", def.ImportKey)
 		}
 	}
 	for i := 0; i < c.tableImportCount(); i++ {
 		def, _ := c.tableImportAt(i)
-		if _, ok := imports[def.Key]; !ok {
+		if _, ok := imports[c.tableImportBindingKey(i)]; !ok {
 			return fmt.Errorf("missing imported table %q", def.Key)
 		}
 	}
@@ -339,8 +339,7 @@ func detachImportedTables(in *Instance) {
 	}
 	var seen importDedup[*Table]
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
-		def, _ := in.c.tableImportAt(tableIndex)
-		table, ok := in.imports.table(def.Key)
+		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if !ok || table == nil {
 			continue
 		}
@@ -364,8 +363,7 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 	}
 	retained := false
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
-		def, _ := in.c.tableImportAt(tableIndex)
-		table, ok := in.imports.table(def.Key)
+		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if !ok || table == nil {
 			continue
 		}
@@ -430,8 +428,8 @@ func (in *Instance) transferImportedAttachmentsFromOwner(owner *Instance) {
 	}
 
 	var globals importDedup[*Global]
-	for _, imp := range in.c.GlobalImports {
-		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
+	for i := range in.c.GlobalImports {
+		provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
 		if ok && provided.Global != nil && globals.add(provided.Global) && provided.Global.instanceOwner() == owner {
 			in.transferImportedGlobalAttachment(provided.Global)
 		}
@@ -439,8 +437,7 @@ func (in *Instance) transferImportedAttachmentsFromOwner(owner *Instance) {
 
 	var tables importDedup[*Table]
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
-		def, _ := in.c.tableImportAt(tableIndex)
-		table, ok := in.imports.table(def.Key)
+		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if ok && table != nil && tables.add(table) && table.instanceOwner() == owner {
 			in.transferImportedTableAttachment(table)
 		}
@@ -471,8 +468,7 @@ func importedFuncrefProducerRoots(in *Instance) []*Instance {
 	}
 	var tables importDedup[*Table]
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
-		def, _ := in.c.tableImportAt(tableIndex)
-		table, ok := in.imports.table(def.Key)
+		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if ok && table != nil && tables.add(table) {
 			add(table.funcrefProducerRoots())
 		}
@@ -518,19 +514,18 @@ func (in *Instance) reconcileFuncrefRoots() {
 		return
 	}
 	var globals importDedup[*Global]
-	for _, imp := range in.c.GlobalImports {
+	for i, imp := range in.c.GlobalImports {
 		if imp.Type != ValFuncRef {
 			continue
 		}
-		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
+		provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
 		if ok && provided.Global != nil && globals.add(provided.Global) {
 			provided.Global.pruneRetainedInstances()
 		}
 	}
 	var tables importDedup[*Table]
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
-		def, _ := in.c.tableImportAt(tableIndex)
-		table, ok := in.imports.table(def.Key)
+		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if ok && table != nil && tables.add(table) {
 			table.pruneRetainedInstances()
 		}
@@ -559,8 +554,8 @@ func (in *Instance) tableDescriptor(index int) []byte {
 	if in == nil || in.c == nil || index < 0 || index >= in.c.tableCount() {
 		return nil
 	}
-	if importDef, imported := in.c.tableImportAt(index); imported {
-		table, ok := in.imports.table(importDef.Key)
+	if _, imported := in.c.tableImportAt(index); imported {
+		table, ok := in.imports.table(in.c.tableImportBindingKey(index))
 		if !ok || len(table.desc) < 8 {
 			return nil
 		}
@@ -585,16 +580,21 @@ func (in *Instance) tableDescriptor(index int) []byte {
 	return unsafe.Slice((*byte)(offHeapPtr(descPtr)), 8+capacity*in.c.tableEntryBytes(index))
 }
 
-// Imports returns a caller-owned snapshot of the imports this instance was
-// created with, for retrieving imported objects (e.g. a *Memory or *Global) by
-// "module.name" key. Mutating the map does not affect the instance.
-func (in *Instance) Imports() Imports {
+// Imports returns a sealed caller-owned snapshot of the imports this instance
+// was created with. Lookup retrieves imported objects by exact module and name.
+func (in *Instance) Imports() *Imports {
 	if in.imports == nil {
 		return nil
 	}
-	imports := make(Imports, len(in.imports))
+	imports := NewImports()
 	for key, value := range in.imports {
-		imports[key] = value
+		module, name, ok := splitImportBindingMapKey(key)
+		if !ok {
+			// Preserve legacy hand-built Compiled values used by low-level callers.
+			module, name = splitImportKey(key)
+		}
+		imports.add(module, name, value)
 	}
+	imports.sealed = true
 	return imports
 }

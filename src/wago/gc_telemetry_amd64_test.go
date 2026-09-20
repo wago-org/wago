@@ -112,7 +112,7 @@ func TestGCCollectorTelemetryInfersNativeFastAllocations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	fn, err := instance.PrepareFunction("new_get")
+	fn, err := instance.WasmFunc("new_get")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,9 +153,9 @@ func BenchmarkGCStaticSiteExecution(b *testing.B) {
 				b.Fatal(err)
 			}
 			b.Cleanup(func() { _ = instance.Close() })
-			functions := make([]*PreparedFunction, sites)
+			functions := make([]*WasmFunc, sites)
 			for i := range functions {
-				functions[i], err = instance.PrepareFunction(fmt.Sprintf("site%d", i))
+				functions[i], err = instance.WasmFunc(fmt.Sprintf("site%d", i))
 				if err != nil {
 					b.Fatal(err)
 				}

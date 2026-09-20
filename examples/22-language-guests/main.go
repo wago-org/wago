@@ -48,12 +48,8 @@ func (answerPlugin) Register(reg *wago.Registrar) error {
 	if err != nil {
 		return err
 	}
-	tutorial, err := imports.Module("tutorial")
-	if err != nil {
-		return err
-	}
-	tutorial.Func("answer", func(_ wago.HostModule, _, results []uint64) {
-		results[0] = wago.I32(42)
+	imports.HostFunc("tutorial", "answer", func(call wago.HostCall) {
+		call.SetI32(0, 42)
 	}).Results(wago.ValI32)
 	return nil
 }

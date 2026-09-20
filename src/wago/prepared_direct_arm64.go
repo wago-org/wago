@@ -13,14 +13,14 @@ const preparedDirectIntSupported = true
 const preparedDirectIntPrivateSupported = true
 const preparedIntCallBlockDefault = true
 
-func (fn *PreparedFunction) initDirectIntCall() {
+func (fn *WasmFunc) initDirectIntCall() {
 	if preparedIntCallBlockEnabled && fn.directIntBounded && fn.directIntLight {
 		fn.in.eng.PrepareIntCall(&fn.directIntCall, fn.directEntry, fn.directLinMem)
 		fn.directIntMode = preparedIntCallBlock
 	}
 }
 
-func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
 	var a0, a1, a2, a3 uint64
 	switch len(args) {
 	case 4:
@@ -38,10 +38,10 @@ func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
 	return fn.invokeDirectIntFixed(a0, a1, a2, a3)
 }
 
-func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
 	if err := in.beginInvocation(); err != nil {
-		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}
 	defer in.endInvocation()
 	narrow := fn.directIsolated && in.tryPreparedDirect()
@@ -91,7 +91,7 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 	var err error
 	wruntime.PreparePreparedIntTrap(in.trap)
 	if fn.directIntMode == preparedIntCallBlock {
-		result = in.eng.EnterPreparedIntCallBounded(&fn.directIntCall, a0, a1, a2, a3)
+		result = in.eng.EnterPreparedIntPreboundContextBounded(&fn.directIntCall, a0, a1, a2, a3)
 	} else if fn.directIntBounded {
 		if fn.directIntLight {
 			result, err = in.eng.EnterPreparedIntLightBounded(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
@@ -135,7 +135,7 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 
 func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, resultSlots int, scalarWideMask uint8, scalarResultWide, isolatedFast, light, bounded bool, a0, a1, a2, a3 uint64) ([]uint64, error) {
 	if in.isLogicallyClosed() {
-		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
+		return nil, fmt.Errorf("wago: invoke Wasm function: instance is closed")
 	}
 	switch paramSlots {
 	case 4:

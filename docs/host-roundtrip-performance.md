@@ -1,5 +1,10 @@
 # Synchronous host-call performance
 
+> **Historical performance record.** Prepared-session results below describe a
+> removed API and must not be used as current `WasmFunc.Invoke` numbers. Public
+> sessions no longer exist; every invocation performs normal admission. See
+> [the migration guide](public-api-migration.md).
+
 ## Invariants
 
 These constraints apply before and after each optimization:
@@ -19,6 +24,68 @@ These constraints apply before and after each optimization:
 7. Panic, trap, exit, cancellation, and nested calls must run the same cleanup.
 8. Every shortcut needs a conservative fallback. State exhaustion must not
    silently remove identity or authorization checks.
+
+## Historical reservation-held prepared calls (removed)
+
+`PreparedSession` amortized public invocation admission across a caller-owned
+run of calls. All copies of a session share one close state: closing any copy
+releases the lease once and invalidates every alias. Calls and `Instance` access
+must not run concurrently with the session.
+
+The lock-free direct path remains limited to the compiler-proved isolated
+integer shape. A cached host-capable entry additionally requires one direct,
+capability-free typed scalar import, independent execution, and no local,
+imported, dynamic, or store-owned WasmGC collector domain. If captured host code
+publishes memory, a table, a global, or a function during a callback, the current
+parked activation restores through the existing version check and the session
+drops its cached local lease before any later call. Later calls use the ordinary
+shared-context path. Capability-bearing `HostFunc` callbacks never enter the
+cached session path.
+
+Non-direct import-free sessions do not retain the process-wide native execution
+lease between calls. They keep only instance admission and acquire native state
+through the ordinary per-call path, so an abandoned session cannot stall
+unrelated instances globally.
+
+Session reservations likewise retained only the instance invocation identity,
+not shared WasmGC domain ownership. GC domains are acquired and released around
+each call, so an idle or abandoned session cannot block collection or invocation
+in another instance that shares a collector domain.
+
+Host callbacks, including deferred `I32HostEvent` replay, cannot re-enter the
+same session while its outer call is active; that attempt returns an explicit
+already-active error before touching native buffers. A callback may close its
+session, but lease release is deferred until the outer activation has restored
+and returned.
+
+The core runtime represents cached host entry state as an opaque
+`PreparedHostScalarCall`. Its constructor requires a module-internal capability,
+so external consumers cannot supply arbitrary code or memory addresses.
+Preparation checks the engine state, rejects zero code or missing memory,
+validates the trap buffer and control frame, and binds their stable addresses
+once. The session's invocation lease keeps those owners alive, and the hot
+`Call` method accepts no caller-supplied native pointers or buffers.
+
+### Matched prepared-session measurements
+
+The following medians use 12 500 ms samples of the computation-free identity
+fixtures in `bench/suite`. Wago used one caller-owned `PreparedSession`; wazero
+uses its public function call API. Both Wago paths return the same checked value
+as their wazero control.
+
+| Host | Boundary | Wago | wazero | Speedup | Wago allocations | wazero allocations |
+|---|---|---:|---:|---:|---:|---:|
+| Linux/amd64, Ryzen 7 7800X3D, Go 1.22.2 | host to Wasm | 10.53 ns | 37.39 ns | 3.55x | 0 B, 0 allocs | 16 B, 2 allocs |
+| Linux/amd64, Ryzen 7 7800X3D, Go 1.22.2 | Wasm to host to Wasm | 214.9 ns | 461.9 ns | 2.15x | 0 B, 0 allocs | 112 B, 7 allocs |
+| Darwin/arm64, Apple M4 Max, Go 1.26.5 | host to Wasm | 5.522 ns | 22.18 ns | 4.02x | 0 B, 0 allocs | 16 B, 2 allocs |
+| Darwin/arm64, Apple M4 Max, Go 1.26.5 | Wasm to host to Wasm | 158.8 ns | 295.2 ns | 1.86x | 0 B, 0 allocs | 112 B, 7 allocs |
+
+The cached host session rechecks all revocable execution and GC-domain flags
+before every call. While those flags still prove that no collector domain is
+reachable, it skips the otherwise empty per-call GC-domain lookup. Resource
+sharing or GC-domain publication drops the cached native lease and executes the
+same call through the ordinary admitted path. The scheduler park/restore around
+arbitrary Go callbacks is unchanged.
 
 ## Measurement method
 

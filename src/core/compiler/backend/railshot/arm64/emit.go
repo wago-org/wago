@@ -1119,19 +1119,19 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 		noOvf := f.a.Bcond(condNE)
 		f.cmpIntMin(dividend, w) // cmp dividend, INT_MIN
 		f.trapIf(condE, trapDivOverflow)
-		f.a.PatchBranch19(noOvf, f.a.Len())
+		f.patchBranch19(noOvf, f.a.Len())
 		f.sdiv(result, dividend, divisor, w)
 	case signed: // rem_s: x % -1 == 0, computed directly to avoid the INT_MIN/-1 fault
 		f.cmpImmS(divisor, -1, w) // cmp divisor, -1
 		notM1 := f.a.Bcond(condNE)
 		f.a.MovImm64(result, 0) // remainder is 0
 		done := f.a.Branch()
-		f.a.PatchBranch19(notM1, f.a.Len())
+		f.patchBranch19(notM1, f.a.Len())
 		q := f.allocReg(maskOf(divisor, dividend, result))
 		f.sdiv(q, dividend, divisor, w)
 		f.msub(result, q, divisor, dividend, w) // rem = dividend - q*divisor
 		f.release(q)
-		f.a.PatchBranch26(done, f.a.Len())
+		f.patchBranch26(done, f.a.Len())
 	case !wantRem: // div_u
 		f.udiv(result, dividend, divisor, w)
 	default: // rem_u
