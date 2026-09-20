@@ -309,6 +309,9 @@ func (m *Memory) share(owner *Instance, def memoryDef) error {
 	if s.has(memoryStateAddrKnown) && s.has(memoryStateAddr64) != def.Addr64 {
 		return fmt.Errorf("memory address form does not match prior export")
 	}
+	if s.has(memoryStateWasmTypeKnown) && s.has(memoryStateDeclaredShared) != def.Shared {
+		return fmt.Errorf("memory shared type does not match prior export")
+	}
 	s.set(memoryStateAddr64, def.Addr64)
 	s.set(memoryStateAddrKnown, true)
 	// The original local owner defines the provider's exact external type. A

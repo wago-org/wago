@@ -80,3 +80,72 @@ func TestMemoryTypeFlagsSurviveImporterOverflow(t *testing.T) {
 		}
 	}
 }
+
+func TestConflictingMemoryReexports(t *testing.T) {
+	if !SupportedFeatures().IsEnabled(CoreFeatureThreads) {
+		t.Skip("threads backend is unavailable")
+	}
+	for _, sharedFirst := range []bool{false, true} {
+		name := "unshared_first"
+		if sharedFirst {
+			name = "shared_first"
+		}
+		t.Run(name, func(t *testing.T) {
+			memory, err := NewSharedMemory(1, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer memory.Close()
+			var instances [2]*Instance
+			for i, shared := range []bool{sharedFirst, !sharedFirst} {
+				flags := byte(1)
+				if shared {
+					flags = 3
+				}
+				entry := append(wasmtest.Name("env"), wasmtest.Name("mem")...)
+				entry = append(entry, 2, flags, 1, 1)
+				data := wasmtest.Module(
+					wasmtest.Section(2, wasmtest.Vec(entry)),
+					wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("mem", 2, 0))),
+				)
+				code, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit), data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer code.Close()
+				instances[i], err = Instantiate(code, NewImports().Memory("env", "mem", memory))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer instances[i].Close()
+			}
+			first, err := instances[0].ExportedMemory("mem")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if first != memory {
+				t.Fatal("export changed memory identity")
+			}
+			state := memory.state.Load()
+			state.mu.Lock()
+			meta, owner := state.meta, state.owner
+			state.mu.Unlock()
+			backing := memory.jm
+			if exported, err := instances[1].ExportedMemory("mem"); err == nil || exported != nil {
+				t.Fatalf("conflicting export = %p, %v; want nil and an error", exported, err)
+			}
+			if memory.state.Load() != state || memory.jm != backing {
+				t.Fatal("rejected export changed backing or state identity")
+			}
+			state.mu.Lock()
+			unchanged := state.meta == meta && state.owner == owner
+			state.mu.Unlock()
+			if !unchanged {
+				t.Fatal("rejected export changed memory state")
+			}
+			if again, err := instances[0].ExportedMemory("mem"); err != nil || again != first {
+				t.Fatalf("original export after rejection = %p, %v", again, err)
+			}
+		})
+	}
+}
