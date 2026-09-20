@@ -73,7 +73,15 @@ func appendInstr(out *[]byte, in Instruction) error {
 	}
 	if op, ok := lookupMemOpcode(in.Kind); ok {
 		*out = append(*out, op)
-		appendU32(out, in.MemArg().Align)
+		arg := in.MemArg()
+		align := arg.Align
+		if arg.Mem != nil {
+			align |= 0x40
+		}
+		appendU32(out, align)
+		if arg.Mem != nil {
+			appendU32(out, uint32(*arg.Mem))
+		}
 		if err := appendU64AsU32(out, in.MemArg().Offset); err != nil {
 			return err
 		}
