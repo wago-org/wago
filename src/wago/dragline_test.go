@@ -6645,6 +6645,57 @@ func TestDraglineRailMachVectorLogicalExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineNativeRailMachPreservesV128SelectLanes(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("AMD64 vector select regression")
+	}
+	var lhs, rhs [16]byte
+	binary.LittleEndian.PutUint64(lhs[:8], 0x1111111111111111)
+	binary.LittleEndian.PutUint64(lhs[8:], 0xaaaaaaaaaaaaaaaa)
+	binary.LittleEndian.PutUint64(rhs[:8], 0x2222222222222222)
+	binary.LittleEndian.PutUint64(rhs[8:], 0xbbbbbbbbbbbbbbbb)
+	body := []byte{0x41, 0x00, 0xfd, 0x0c}
+	body = append(body, lhs[:]...)
+	body = append(body, 0xfd, 0x0c)
+	body = append(body, rhs[:]...)
+	body = append(body,
+		0x20, 0x00, // local.get condition
+		0x1b,                   // select
+		0xfd, 0x0b, 0x04, 0x00, // v128.store align=16 offset=0
+		0x0b,
+	)
+	read8 := []byte{0x41, 0x08, 0x29, 0x03, 0x00, 0x0b}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read8", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(read8))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for condition, want := range map[int32]uint64{0: 0xbbbbbbbbbbbbbbbb, 1: 0xaaaaaaaaaaaaaaaa} {
+		if _, err := instance.Invoke("run", I32(condition)); err != nil {
+			t.Fatal(err)
+		}
+		result, err := instance.Invoke("read8")
+		if err != nil || len(result) != 1 || result[0] != want {
+			t.Fatalf("condition %d upper lane = %#x, %v; want %#x", condition, result, err, want)
+		}
+	}
+}
+
 func TestDraglineRailMachVectorConversionExecution(t *testing.T) {
 	f32x4 := func(values ...float32) (out [16]byte) {
 		for lane, value := range values {

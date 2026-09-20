@@ -31,12 +31,8 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, _ bool) boo
 	if !railMachCandidate(stack, moduleHasV128) {
 		return false
 	}
-	if len(stack.Instrs) > 512 {
-		for _, instruction := range stack.Instrs {
-			if instruction.Kind == wasm.InstrMemoryCopy {
-				return false
-			}
-		}
+	if amd64LargeSIMDBulkMemory(stack) {
+		return false
 	}
 	return true
 }
@@ -45,14 +41,22 @@ func amd64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, _ boo
 	if reason := railMachRejectionReason(stack, moduleHasV128); reason != "" {
 		return reason
 	}
-	if len(stack.Instrs) > 512 {
-		for _, instruction := range stack.Instrs {
-			if instruction.Kind == wasm.InstrMemoryCopy {
-				return "amd64-large-memory.copy"
-			}
-		}
+	if amd64LargeSIMDBulkMemory(stack) {
+		return "amd64-large-simd-memory.copy"
 	}
 	return ""
+}
+
+func amd64LargeSIMDBulkMemory(stack *railssa.StackFunc) bool {
+	if stack == nil || len(stack.Instrs) <= 512 {
+		return false
+	}
+	memoryCopy, simd := false, false
+	for _, instruction := range stack.Instrs {
+		memoryCopy = memoryCopy || instruction.Kind == wasm.InstrMemoryCopy
+		simd = simd || wasm.IsSIMDValidationInstructionKind(instruction.Kind)
+	}
+	return memoryCopy && simd
 }
 
 var amd64StackLocalRegisters = [...]amd64.Reg{amd64.R12, amd64.R13, amd64.R14, amd64.R15, amd64.R8, amd64.R9}
@@ -3855,10 +3859,18 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 					chooseRHS := a.JccPlaceholder(falseCondition)
-					a.FMov(dst, lhs, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
+					if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
+						a.VMovdqu(dst, lhs)
+					} else {
+						a.FMov(dst, lhs, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
+					}
 					done := a.JmpPlaceholder()
 					a.PatchRel32(chooseRHS, a.Len())
-					a.FMov(dst, rhs, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
+					if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
+						a.VMovdqu(dst, rhs)
+					} else {
+						a.FMov(dst, rhs, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
+					}
 					a.PatchRel32(done, a.Len())
 				} else {
 					out := dst

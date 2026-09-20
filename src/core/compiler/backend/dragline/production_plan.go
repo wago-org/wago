@@ -2960,7 +2960,7 @@ func machineAMD64VectorScratchCount(machine *railmach.Func, wideScratch bool) ui
 			wasm.InstrI32x4ExtendLowI16x8U, wasm.InstrI32x4ExtendHighI16x8U,
 			wasm.InstrI64x2ExtendLowI32x4S, wasm.InstrI64x2ExtendHighI32x4S,
 			wasm.InstrI64x2ExtendLowI32x4U, wasm.InstrI64x2ExtendHighI32x4U,
-			wasm.InstrI8x16Swizzle,
+			wasm.InstrI8x16Swizzle, railmach.OpAMD64I8x16Swizzle,
 			wasm.InstrI8x16AllTrue, wasm.InstrI16x8AllTrue, wasm.InstrI32x4AllTrue, wasm.InstrI64x2AllTrue,
 			wasm.InstrI16x8Bitmask,
 			wasm.InstrI16x8ExtaddPairwiseI8x16S, wasm.InstrI16x8ExtaddPairwiseI8x16U,

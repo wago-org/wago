@@ -1075,6 +1075,16 @@ func TestNativeAMD64ShuffleScratchCount(t *testing.T) {
 	}
 }
 
+func TestNativeAMD64SelectedSwizzleReservesScratch(t *testing.T) {
+	machine := &railmach.Func{
+		Target: railmach.TargetAMD64,
+		Insts:  []railmach.Inst{{Op: railmach.OpAMD64I8x16Swizzle}},
+	}
+	if got := machineAMD64VectorScratchCount(machine, true); got != 1 {
+		t.Fatalf("selected swizzle scratch count = %d, want 1", got)
+	}
+}
+
 func TestNativeImmediateCombinationsRejectStaleMultiplyAddRelation(t *testing.T) {
 	machine := &railmach.Func{
 		Target: railmach.TargetARM64,
