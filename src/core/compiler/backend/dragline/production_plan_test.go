@@ -1390,16 +1390,16 @@ func TestNativeSegmentedLoopCandidatesRequireMeasuredPayoff(t *testing.T) {
 	if got := nativeSegmentedMinimumDebtReduction(acyclic); got != 1 {
 		t.Fatalf("acyclic minimum debt reduction = %d", got)
 	}
-	if got := nativeSegmentedMinimumDebtReduction(loop); got != 64 {
+	if got := nativeSegmentedMinimumDebtReduction(loop); got != 8 {
 		t.Fatalf("loop minimum debt reduction = %d", got)
 	}
 	if !nativeShouldTrySegmentedLiveness(acyclic, railmach.ScheduleScore{WeightedSpillDebt: 1}) {
 		t.Fatal("acyclic segmented opportunity was rejected")
 	}
-	if nativeShouldTrySegmentedLiveness(loop, railmach.ScheduleScore{WeightedSpillDebt: 1023}) {
+	if nativeShouldTrySegmentedLiveness(loop, railmach.ScheduleScore{WeightedSpillDebt: 63}) {
 		t.Fatal("low-payoff loop segmented opportunity was admitted")
 	}
-	if !nativeShouldTrySegmentedLiveness(loop, railmach.ScheduleScore{WeightedSpillDebt: 1024}) {
+	if !nativeShouldTrySegmentedLiveness(loop, railmach.ScheduleScore{WeightedSpillDebt: 64}) {
 		t.Fatal("measured loop segmented opportunity was rejected")
 	}
 }

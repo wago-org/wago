@@ -1526,7 +1526,7 @@ func nativeSegmentedMinimumDebtReduction(machine *railmach.Func) uint64 {
 			if block.Flags&railssa.BlockLoopHeader != 0 {
 				// Loop assignments perturb repeated hot code. Require a material
 				// measured debt reduction before changing their physical mapping.
-				return 64
+				return 8
 			}
 		}
 	}
@@ -1539,7 +1539,7 @@ func nativeShouldTrySegmentedLiveness(machine *railmach.Func, score railmach.Sch
 	}
 	for _, block := range machine.Blocks {
 		if block.Flags&railssa.BlockLoopHeader != 0 {
-			return score.WeightedSpillDebt >= 1024
+			return score.WeightedSpillDebt >= 64
 		}
 	}
 	return true
