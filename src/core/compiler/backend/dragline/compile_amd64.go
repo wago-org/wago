@@ -4928,11 +4928,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		a.AddRsp(int32(plan.Frame.TotalBytes))
 	}
 	a.Ret()
-	for _, trap := range coldTrapPatches {
-		a.PatchRel32(trap.At, a.Len())
-		metadata.recordTrap(a.Len(), trap.Target, uint32(trap.Code))
-		amd64EmitTrap(&a, uint32(trap.Code), fn.Index, trap.Target)
-	}
+	amd64EmitSharedColdTraps(&a, coldTrapPatches, fn.Index, metadata)
 	for index := range floatConstantPatches {
 		constant := &floatConstantPatches[index]
 		target := -1
@@ -11530,6 +11526,63 @@ func amd64EmitTrap(a *amd64.Asm, code, function, wasmOffset uint32) {
 	a.Load64(amd64.RSI, amd64.RBX, -int32(abi.TrapCellPtrOffset))
 	a.StoreImm32Mem(amd64.RSI, 16, int32(function+1))
 	a.StoreImm32Mem(amd64.RSI, 20, int32(wasmOffset))
+	a.StoreImm32Mem(amd64.RSI, 0, int32(code))
+	a.Load64(amd64.RSP, amd64.RBX, -24)
+	a.Ret()
+}
+
+func amd64EmitSharedColdTraps(a *amd64.Asm, traps []nativeBranchPatch, function uint32, metadata *functionEmissionMetadata) {
+	for index := range traps {
+		trap := &traps[index]
+		matching := 0
+		for _, candidate := range traps {
+			if candidate.Code == trap.Code {
+				matching++
+			}
+		}
+		a.PatchRel32(trap.At, a.Len())
+		metadata.recordTrap(a.Len(), trap.Target, uint32(trap.Code))
+		if matching < 2 {
+			amd64EmitTrap(a, uint32(trap.Code), function, trap.Target)
+			continue
+		}
+		a.MovImm32(amd64.RAX, int32(trap.Target))
+		trap.At = a.JmpPlaceholder()
+	}
+	for index, trap := range traps {
+		matching := 0
+		for _, candidate := range traps {
+			if candidate.Code == trap.Code {
+				matching++
+			}
+		}
+		if matching < 2 {
+			continue
+		}
+		duplicate := false
+		for _, previous := range traps[:index] {
+			duplicate = duplicate || previous.Code == trap.Code
+		}
+		if duplicate {
+			continue
+		}
+		target := a.Len()
+		for _, candidate := range traps {
+			if candidate.Code == trap.Code {
+				a.PatchRel32(candidate.At, target)
+			}
+		}
+		amd64EmitSharedTrap(a, uint32(trap.Code), function)
+	}
+}
+
+// amd64EmitSharedTrap is the common tail for cold trap sites carrying their
+// exact Wasm offset in EAX. Trap paths discard the current native frame, so EAX
+// has no live-value obligation and is available without preservation.
+func amd64EmitSharedTrap(a *amd64.Asm, code, function uint32) {
+	a.Load64(amd64.RSI, amd64.RBX, -int32(abi.TrapCellPtrOffset))
+	a.StoreImm32Mem(amd64.RSI, 16, int32(function+1))
+	a.Store32(amd64.RSI, 20, amd64.RAX)
 	a.StoreImm32Mem(amd64.RSI, 0, int32(code))
 	a.Load64(amd64.RSP, amd64.RBX, -24)
 	a.Ret()

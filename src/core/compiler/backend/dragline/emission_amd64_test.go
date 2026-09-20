@@ -40,6 +40,51 @@ func TestAMD64CarriesMemoryChecksAcrossMemoryFreeLayoutSibling(t *testing.T) {
 	}
 }
 
+func TestAMD64SharedColdTrapsReuseBodyAndPreserveMetadata(t *testing.T) {
+	var a amd64.Asm
+	traps := make([]nativeBranchPatch, 3)
+	origins := make([]int, len(traps))
+	for index := range traps {
+		code := uint8(3)
+		if index == len(traps)-1 {
+			code = 5
+		}
+		origins[index] = a.JccPlaceholder(amd64.CondA)
+		traps[index] = nativeBranchPatch{At: origins[index], Target: uint32(index + 10), Code: code}
+	}
+	var metadata functionEmissionMetadata
+	amd64EmitSharedColdTraps(&a, traps, 7, &metadata)
+
+	if len(metadata.Traps) != len(traps) {
+		t.Fatalf("trap metadata = %#v, want %d sites", metadata.Traps, len(traps))
+	}
+	for index, trap := range metadata.Traps {
+		if trap.WasmOffset != uint32(index+10) || trap.Code != uint16(traps[index].Code) {
+			t.Fatalf("trap metadata[%d] = %#v", index, trap)
+		}
+		displacement := int(int32(binary.LittleEndian.Uint32(a.B[origins[index]:])))
+		if target := origins[index] + 4 + displacement; target != int(trap.Offset) {
+			t.Fatalf("trap branch[%d] target = %d, metadata offset = %d", index, target, trap.Offset)
+		}
+	}
+	var repeatedCodeStore amd64.Asm
+	repeatedCodeStore.StoreImm32Mem(amd64.RSI, 0, 3)
+	if copies := bytes.Count(a.B, repeatedCodeStore.B); copies != 1 {
+		t.Fatalf("repeated trap code body emitted %d times, want 1", copies)
+	}
+
+	var inline amd64.Asm
+	for range traps {
+		inline.JccPlaceholder(amd64.CondA)
+	}
+	for _, trap := range traps {
+		amd64EmitTrap(&inline, uint32(trap.Code), 7, trap.Target)
+	}
+	if len(a.B) >= len(inline.B) {
+		t.Fatalf("shared traps use %d bytes, inline traps use %d", len(a.B), len(inline.B))
+	}
+}
+
 func TestAMD64PairsAdjacentSignedConstantDivisionAndRemainder(t *testing.T) {
 	machine := &railmach.Func{
 		Target: railmach.TargetAMD64,
