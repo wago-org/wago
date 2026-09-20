@@ -159,6 +159,18 @@ func TestPressureShapePlansV128ConstantAsFPRLoopInvariant(t *testing.T) {
 	t.Fatalf("LICM moves = %#v", plan.LICM)
 }
 
+func TestLICMPressureWithinBudgetReservesVectorRegisters(t *testing.T) {
+	if !licmPressureWithinBudget(wasm.V128, 3, 3, 0) {
+		t.Fatal("bounded vector pressure increase was rejected")
+	}
+	if licmPressureWithinBudget(wasm.F64, 3, 3, 0) {
+		t.Fatal("scalar pressure increase was admitted")
+	}
+	if !licmPressureWithinBudget(wasm.V128, 3, 3, 4) || licmPressureWithinBudget(wasm.V128, 3, 3, 5) {
+		t.Fatal("vector pressure budget boundary is not eight registers")
+	}
+}
+
 func TestLICMNestedRegionAdmissionIsLimitedToVectorConstants(t *testing.T) {
 	f := &StackFunc{Regions: []Region{
 		{Parent: NoRegion, Kind: wasm.InstrLoop},

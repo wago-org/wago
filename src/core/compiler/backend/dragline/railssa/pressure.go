@@ -79,6 +79,7 @@ type PressurePlan struct {
 	positionBlock        []BlockID
 	rematerializable     []bool
 	maxUseWeight         []uint32
+	licmPreheaderFPR     []uint32
 }
 
 // Pressure shaping only distinguishes unused, single-use, and multi-use
@@ -131,11 +132,12 @@ func PressureShape(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *SemanticFu
 	positionBlock := resizeClear(reuse.positionBlock, len(semantic.Insts))
 	rematerializable := resizeClear(reuse.rematerializable, len(flow.Values))
 	maxUseWeight := resizeClear(reuse.maxUseWeight, len(flow.Values))
+	licmPreheaderFPR := resizeClear(reuse.licmPreheaderFPR, len(cfg.Blocks))
 	*reuse = PressurePlan{
 		Blocks: blocks, Sinks: sinks, Remats: remats, Inductions: inductions, LICM: licm, ColdUses: coldUses, ReducedArgs: simplified.Metrics.TrivialArguments,
 		definition: definition, lastUse: lastUse, useCount: useCount,
 		directUseCount: directUseCount, directUseBlock: directUseBlock, directUseInstruction: directUseInstruction, valueBlock: valueBlock, gprDelta: gprDelta,
-		fprDelta: fprDelta, positionBlock: positionBlock, rematerializable: rematerializable, maxUseWeight: maxUseWeight,
+		fprDelta: fprDelta, positionBlock: positionBlock, rematerializable: rematerializable, maxUseWeight: maxUseWeight, licmPreheaderFPR: licmPreheaderFPR,
 	}
 	for value, record := range flow.Values {
 		if record.Kind == FlowValueBlockParam {
@@ -370,13 +372,30 @@ func planPressureLICM(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *Semanti
 				if typ == wasm.F32 || typ == wasm.F64 || typ == wasm.V128 {
 					bankPeak, sourcePeak = &plan.Blocks[preheader].PeakFPR, plan.Blocks[sourceBlock].PeakFPR
 				}
-				if uint32(*bankPeak)+1 > uint32(sourcePeak) {
+				if !licmPressureWithinBudget(typ, *bankPeak, sourcePeak, plan.licmPreheaderFPR[preheader]) {
 					continue
 				}
 				plan.LICM = append(plan.LICM, LICMMove{Instruction: instructionID, From: BlockID(sourceBlock), Preheader: preheader, Loop: BlockID(loopID)})
+				if typ == wasm.V128 {
+					plan.licmPreheaderFPR[preheader]++
+				}
 			}
 		}
 	}
+}
+
+func licmPressureWithinBudget(typ wasm.ValType, preheaderPeak, sourcePeak uint16, alreadyHoisted uint32) bool {
+	projectedPeak := uint32(preheaderPeak) + 1
+	if typ == wasm.V128 {
+		projectedPeak += alreadyHoisted
+	}
+	if projectedPeak <= uint32(sourcePeak) {
+		return true
+	}
+	// Both native targets have at least eight allocatable vector registers.
+	// Spending that bounded reserve keeps literal loads out of repeated SIMD
+	// loops even when the source block's local peak is unusually low.
+	return typ == wasm.V128 && projectedPeak <= 8
 }
 
 func loopPreheader(f *StackFunc, cfg *CFG, loop BlockID, region RegionID) (BlockID, bool) {

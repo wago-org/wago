@@ -1464,14 +1464,22 @@ func TestNativeScheduleScorePrefersBoundedLoopInvariantMotionForSpeed(t *testing
 
 func TestNativeScheduleScoreAllowsCycleReducingLICMWithinSpillBound(t *testing.T) {
 	stable := railmach.ScheduleScore{Kind: railmach.ScheduleKindLatencyFusion, EstimatedCycles: 300, WeightedSpillDebt: 600, PhysicalCopies: 3}
-	hoisted := railmach.ScheduleScore{Kind: railmach.ScheduleKindPressure, EstimatedCycles: 250, WeightedSpillDebt: 700, PhysicalCopies: 4, LoopInvariantOps: 1}
+	hoisted := railmach.ScheduleScore{Kind: railmach.ScheduleKindPressure, EstimatedCycles: 250, WeightedSpillDebt: 900, PhysicalCopies: 4, LoopInvariantOps: 1}
 	if !nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 100, true, hoisted, stable) ||
 		nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 100, true, stable, hoisted) {
-		t.Fatal("cycle-reducing loop-invariant motion within the spill bound was not order-stable")
+		t.Fatal("cycle-reducing FPR loop-invariant motion within the spill bound was not order-stable")
 	}
 	hoisted.WeightedSpillDebt++
 	if nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 100, true, hoisted, stable) {
 		t.Fatal("loop-invariant motion beyond the spill bound was preferred")
+	}
+	hoisted.WeightedSpillDebt = 700
+	if !nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 100, false, hoisted, stable) {
+		t.Fatal("non-FPR loop-invariant motion within the conservative spill bound was rejected")
+	}
+	hoisted.WeightedSpillDebt++
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 100, false, hoisted, stable) {
+		t.Fatal("FPR spill relaxation escaped FPR functions")
 	}
 }
 

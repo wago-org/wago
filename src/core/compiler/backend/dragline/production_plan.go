@@ -1426,7 +1426,14 @@ func nativeScheduleScoreBetter(objective corecompiler.OptimizationObjective, tar
 		licmWithinBound := func(hoisted, other railmach.ScheduleScore) bool {
 			spillWithinBound := hoisted.WeightedSpillDebt <= other.WeightedSpillDebt
 			if hoisted.EstimatedCycles < other.EstimatedCycles {
-				spillWithinBound = other.WeightedSpillDebt > ^uint64(0)/7 || hoisted.WeightedSpillDebt <= other.WeightedSpillDebt+other.WeightedSpillDebt/6
+				divisor := uint64(6)
+				if target == railmach.TargetAMD64 && usesFPR {
+					// Repeated SIMD literal loads are costlier than the range-area
+					// spill model reflects. Permit a bounded debt increase when LICM
+					// also lowers the scheduled cycle estimate.
+					divisor = 2
+				}
+				spillWithinBound = other.WeightedSpillDebt > ^uint64(0)/(divisor+1) || hoisted.WeightedSpillDebt <= other.WeightedSpillDebt+other.WeightedSpillDebt/divisor
 			}
 			return hoisted.LoopInvariantOps > other.LoopInvariantOps &&
 				spillWithinBound &&
