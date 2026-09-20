@@ -128,6 +128,9 @@ func (c *Collector) refCast(r Ref, target RefTestTarget, canonical *TypeCanonica
 }
 
 func (c *Collector) refTest(r Ref, target RefTestTarget, canonical *TypeCanonicalization) (bool, error) {
+	if canonical != nil && len(canonical.types) != len(c.types) {
+		return false, fmt.Errorf("gc: canonicalization type count is outdated")
+	}
 	if err := c.errIfClosed(); err != nil {
 		return false, err
 	}
