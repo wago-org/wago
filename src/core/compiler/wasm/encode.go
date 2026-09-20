@@ -82,7 +82,7 @@ func appendInstr(out *[]byte, in Instruction) error {
 		if arg.Mem != nil {
 			appendU32(out, uint32(*arg.Mem))
 		}
-		if err := appendU64AsU32(out, in.MemArg().Offset); err != nil {
+		if err := appendU64AsU32(out, arg.Offset); err != nil {
 			return err
 		}
 		return nil
