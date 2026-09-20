@@ -63,3 +63,20 @@ func TestSharedHostMemoryExportKeepsWaitCapability(t *testing.T) {
 		t.Fatal("unshared export satisfied a shared import")
 	}
 }
+
+func TestMemoryTypeFlagsSurviveImporterOverflow(t *testing.T) {
+	state := &memoryState{}
+	defer memoryImporterOverflow.Delete(state)
+	flags := memoryStateShared | memoryStateWasmShared | memoryStateAddr64 | memoryStateAddrKnown | memoryStateLimitsKnown | memoryStateDeclaredHasMax | memoryStateClosed | memoryStateWasmTypeKnown | memoryStateDeclaredShared
+	state.set(flags, true)
+	state.setDeclaredMaximum(1 << 48)
+	for _, count := range []uint32{0, 62, 63, 64, 254, 255, 256, 63, 62, 0} {
+		state.setImporterCount(count)
+		if got := state.importerCount(); got != count {
+			t.Fatalf("importer count = %d, want %d", got, count)
+		}
+		if uint16(state.meta>>memoryStateFlagsShift) != flags || state.declaredMaximum() != 1<<48 {
+			t.Fatal("importer count changed memory type or maximum")
+		}
+	}
+}
