@@ -1268,6 +1268,62 @@ func TestAMD64StructuredSignalsDoNotReserveMemorySizeCache(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredCachesMemorySizeAcrossNonGrowingCalls(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{
+				0x10, 0x00, // call 0
+				0x20, 0x00, 0x28, 0x02, 0x00, // i32.load(local 0)
+				0x0b,
+			}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 1, new(railssa.StackFunc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner railssa.EmissionPlanner
+	plan, err := planCompilerFunc(fn, &planner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var boundLoad amd64.Asm
+	boundLoad.Load64(amd64.RBP, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+	for _, test := range []struct {
+		name      string
+		mayGrow   bool
+		wantLoads int
+	}{
+		{name: "non-growing", wantLoads: 2},
+		{name: "may-grow", mayGrow: true, wantLoads: 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			contracts := []railmach.ABIContract{{Class: railmach.ABIGeneral, MayGrow: test.mayGrow}}
+			native, _, _, err := emitAMD64Stack(fn, plan, false, nil, nil, nil, contracts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := bytes.Count(native, boundLoad.B); got != test.wantLoads {
+				t.Fatalf("memory-size cache loads = %d, want %d; code = %x", got, test.wantLoads, native)
+			}
+		})
+	}
+}
+
 func TestAMD64StructuredSIMDHighRegistersRespectStackPressure(t *testing.T) {
 	if !amd64StructuredSIMDHighRegisterWorthwhile(5, 0, 10) {
 		t.Fatal("the base six resident registers must remain available")
