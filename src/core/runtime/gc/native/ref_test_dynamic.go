@@ -95,8 +95,8 @@ func (c *Collector) TypeSubtype(actual, required TypeID) (bool, error) {
 // RefTestCanonical applies the same dynamic test while comparing defined types
 // through a collector-bound canonicalization map.
 func (c *Collector) RefTestCanonical(r Ref, target RefTestTarget, canonical *TypeCanonicalization) (bool, error) {
-	if canonical == nil || canonical.collector != c {
-		return false, fmt.Errorf("gc: ref.test canonicalization does not belong to collector")
+	if canonical == nil || canonical.collector != c || len(canonical.types) != len(c.types) {
+		return false, fmt.Errorf("gc: ref.test canonicalization does not belong to collector or is outdated")
 	}
 	return c.refTest(r, target, canonical)
 }
@@ -110,8 +110,8 @@ func (c *Collector) RefCast(r Ref, target RefTestTarget) (Ref, error) {
 // RefCastCanonical applies the same cast through a collector-bound canonical
 // representative map and still returns the original compact reference.
 func (c *Collector) RefCastCanonical(r Ref, target RefTestTarget, canonical *TypeCanonicalization) (Ref, error) {
-	if canonical == nil || canonical.collector != c {
-		return Null(), fmt.Errorf("gc: ref.cast canonicalization does not belong to collector")
+	if canonical == nil || canonical.collector != c || len(canonical.types) != len(c.types) {
+		return Null(), fmt.Errorf("gc: ref.cast canonicalization does not belong to collector or is outdated")
 	}
 	return c.refCast(r, target, canonical)
 }
@@ -128,9 +128,6 @@ func (c *Collector) refCast(r Ref, target RefTestTarget, canonical *TypeCanonica
 }
 
 func (c *Collector) refTest(r Ref, target RefTestTarget, canonical *TypeCanonicalization) (bool, error) {
-	if canonical != nil && len(canonical.types) != len(c.types) {
-		return false, fmt.Errorf("gc: canonicalization type count is outdated")
-	}
 	if err := c.errIfClosed(); err != nil {
 		return false, err
 	}
