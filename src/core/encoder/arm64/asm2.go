@@ -450,24 +450,35 @@ func (a *Asm) materializeBaseDisp(dst, base Reg, disp int32) {
 // LdrQ / StrQ are 128-bit spill load/store with a signed byte displacement,
 // matching the backend's amd64-legacy call shape (dst,base,disp)/(base,disp,src).
 func (a *Asm) LdrQ(dst, base Reg, disp int32) {
-	a.ldStrQ(0x3DC00000, 0x3CC00000, 0x3CE06800, dst, base, disp)
-}
-func (a *Asm) StrQ(base Reg, disp int32, src Reg) {
-	a.ldStrQ(0x3D800000, 0x3C800000, 0x3CA06800, src, base, disp)
-}
-
-func (a *Asm) ldStrQ(scaled, unscaled, indexed uint32, rt, base Reg, disp int32) {
-	if a.ldStrScaled(scaled, 4, rt, base, uint32(disp)) {
+	if a.ldStrScaled(0x3DC00000, 4, dst, base, uint32(disp)) {
 		return
 	}
 	if disp >= -256 && disp <= 255 {
-		a.word(unscaled | (uint32(disp)&0x1ff)<<12 | r(base)<<5 | r(rt))
+		a.word(0x3CC00000 | (uint32(disp)&0x1ff)<<12 | r(base)<<5 | r(dst))
 		return
 	}
 	if a.baseDispImmediate(X16, base, disp) {
-		a.ldStrScaled(scaled, 4, rt, X16, 0)
+		a.ldStrScaled(0x3DC00000, 4, dst, X16, 0)
 		return
 	}
+	a.ldStrQIndexed(0x3CE06800, dst, base, disp)
+}
+func (a *Asm) StrQ(base Reg, disp int32, src Reg) {
+	if a.ldStrScaled(0x3D800000, 4, src, base, uint32(disp)) {
+		return
+	}
+	if disp >= -256 && disp <= 255 {
+		a.word(0x3C800000 | (uint32(disp)&0x1ff)<<12 | r(base)<<5 | r(src))
+		return
+	}
+	if a.baseDispImmediate(X16, base, disp) {
+		a.ldStrScaled(0x3D800000, 4, src, X16, 0)
+		return
+	}
+	a.ldStrQIndexed(0x3CA06800, src, base, disp)
+}
+
+func (a *Asm) ldStrQIndexed(indexed uint32, rt, base Reg, disp int32) {
 	scratch := X16
 	if base == X16 {
 		scratch = X17
