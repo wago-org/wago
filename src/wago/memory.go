@@ -23,7 +23,7 @@ type Memory struct {
 type memoryState struct {
 	mu    sync.Mutex
 	owner *Instance // non-nil for an instance-owned exported memory
-	meta  uint64    // declared max u49 | inline importer count u8 | flags u7
+	meta  uint64    // declared max u49 | inline importer count u7 | flags u8
 }
 
 const (
@@ -34,11 +34,12 @@ const (
 	memoryStateLimitsKnown
 	memoryStateDeclaredHasMax
 	memoryStateClosed
+	memoryStateWasmTypeKnown
 
 	memoryStateDeclaredMaxMask = uint64(1<<49 - 1)
 	memoryStateImporterShift   = 49
-	memoryStateImporterMask    = uint64(1<<8 - 1)
-	memoryStateFlagsShift      = 57
+	memoryStateImporterMask    = uint64(1<<7 - 1)
+	memoryStateFlagsShift      = 56
 )
 
 func (s *memoryState) has(flag uint8) bool {
@@ -54,7 +55,7 @@ func (s *memoryState) set(flag uint8, enabled bool) {
 	}
 }
 
-var memoryImporterOverflow sync.Map // map[*memoryState]uint32; only counts >= 255
+var memoryImporterOverflow sync.Map // map[*memoryState]uint32; only counts >= 127
 
 func (s *memoryState) importerCount() uint32 {
 	inline := uint32(s.meta>>memoryStateImporterShift) & uint32(memoryStateImporterMask)
@@ -324,8 +325,9 @@ func (m *Memory) share(owner *Instance, def memoryDef) error {
 		s.owner = owner
 	}
 	s.set(memoryStateShared, true)
-	if def.Shared {
-		s.set(memoryStateWasmShared, true)
+	if !s.has(memoryStateWasmTypeKnown) {
+		s.set(memoryStateWasmShared, def.Shared)
+		s.set(memoryStateWasmTypeKnown, true)
 	}
 	return nil
 }
@@ -359,9 +361,13 @@ func (m *Memory) validateLimits(min, max uint64, hasMax, addr64, shared bool) er
 	}
 	providerAddr64, addrKnown := s.has(memoryStateAddr64), s.has(memoryStateAddrKnown)
 	providerShared := s.has(memoryStateWasmShared)
+	sharedKnown := s.has(memoryStateWasmTypeKnown)
 	limitsKnown, providerHasMax, providerMax := s.has(memoryStateLimitsKnown), s.has(memoryStateDeclaredHasMax), s.declaredMaximum()
 	actualMin, actualMax := uint64(m.jm.CurrentPages()), uint64(m.jm.MaxPages())
 	s.mu.Unlock()
+	if sharedKnown && shared != providerShared {
+		return fmt.Errorf("memory shared type mismatch: provider shared=%t, import shared=%t", providerShared, shared)
+	}
 	if shared && !providerShared {
 		return fmt.Errorf("import requires shared memory, but provider is not shared")
 	}
