@@ -604,18 +604,6 @@ func (v *funcValidator) matchValTypes(actual, expected []ValType) bool {
 	return true
 }
 
-func (v *funcValidator) sameValTypes(a, b []ValType) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if !v.subtype(a[i], b[i]) || !v.subtype(b[i], a[i]) {
-			return false
-		}
-	}
-	return true
-}
-
 func sameValTypes(a, b []ValType) bool {
 	if len(a) != len(b) {
 		return false

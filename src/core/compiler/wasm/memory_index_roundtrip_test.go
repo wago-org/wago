@@ -22,3 +22,24 @@ func TestReviewMemoryIndexRoundTrip(t *testing.T) {
 		t.Fatalf("encoded memory-1 load = % x, want % x", got, want)
 	}
 }
+
+func TestMemoryIndexEncodingBoundaries(t *testing.T) {
+	for _, op := range []byte{0x28, 0x29, 0x36, 0x37} {
+		for _, index := range []MemIdx{0, 1, 127, 128, 16384} {
+			want := []byte{op, 0x42}
+			appendU32(&want, uint32(index))
+			want = append(want, 0, 0x0b)
+			expr, err := decodeExpr(newReader(want), 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := EncodeExpr(expr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Fatalf("got %x, want %x", got, want)
+			}
+		}
+	}
+}

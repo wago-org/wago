@@ -40,3 +40,21 @@ func TestReviewRejectOtherCurrentModule(t *testing.T) {
 		t.Fatalf("unrelated current module accepted as Wago source: %s", got)
 	}
 }
+
+func TestWagoModuleDirective(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		want bool
+	}{
+		{"module github.com/wago-org/wago\n", true},
+		{"module\t\"github.com/wago-org/wago\" // engine\n", true},
+		{"// module github.com/wago-org/wago\nmodule example.com/plugin\n", false},
+		{"module github.com/wago-org/wago-plugin-example\n", false},
+		{"module github.com/wago-org/wago/v2\n", false},
+		{"require github.com/wago-org/wago v1.0.0\n", false},
+	} {
+		if got := isWagoModule([]byte(tc.text)); got != tc.want {
+			t.Errorf("%q: got %v, want %v", tc.text, got, tc.want)
+		}
+	}
+}
