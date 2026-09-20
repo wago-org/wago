@@ -11,9 +11,9 @@ func (a *Asm) evexPrefix(opcodeMap, pp byte, w bool, dst, src1 Reg, base, index 
 		if index >= 8 {
 			p0 &^= 0x40
 		}
-		if base >= 8 {
-			p0 &^= 0x20
-		}
+	}
+	if base >= 8 {
+		p0 &^= 0x20
 	}
 	p1 := byte(0x04) | pp | ((^byte(src1) & 0x0f) << 3)
 	if w {
@@ -24,12 +24,12 @@ func (a *Asm) evexPrefix(opcodeMap, pp byte, w bool, dst, src1 Reg, base, index 
 }
 
 func (a *Asm) evexRRR(opcodeMap, pp, op byte, w bool, dst, src1, src2 Reg) {
-	a.evexPrefix(opcodeMap, pp, w, dst, src1, 0, 0, false)
+	a.evexPrefix(opcodeMap, pp, w, dst, src1, src2, 0, false)
 	a.emit(op, 0xc0|byte(dst&7)<<3|byte(src2&7))
 }
 
 func (a *Asm) evexRR(opcodeMap, pp, op byte, w bool, dst, src Reg) {
-	a.evexPrefix(opcodeMap, pp, w, dst, 0, 0, 0, false)
+	a.evexPrefix(opcodeMap, pp, w, dst, 0, src, 0, false)
 	a.emit(op, 0xc0|byte(dst&7)<<3|byte(src&7))
 }
 
