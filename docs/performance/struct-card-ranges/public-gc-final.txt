@@ -1,0 +1,2 @@
+ok      github.com/wago-org/wago/src/wago       2.669s
+ok      github.com/wago-org/wago/src/core/runtime/gc    0.001s [no tests to run]

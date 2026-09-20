@@ -15,20 +15,20 @@ func structCardMixedParentFixture(tb testing.TB, fields, ranges int) (*Collector
 	if err = c.AddTypes([]TypeDesc{array}); err != nil {
 		tb.Fatal(err)
 	}
-	other, err := c.NewArrayDefault(2, 2049)
+	other, err := c.NewArrayDefault(2, 32769)
 	if err != nil {
 		tb.Fatal(err)
 	}
 	if err = c.ForcePromote(other); err != nil {
 		tb.Fatal(err)
 	}
-	for i := 0; i < 16; i++ {
+	for i := 0; i < 256; i++ {
 		if err = c.ArraySet(other, uint32(i*128), RefValue(child)); err != nil {
 			tb.Fatal(err)
 		}
 	}
-	if len(c.objectCards) != ranges+16 {
-		tb.Fatalf("got%d global ranges, want%d", len(c.objectCards), ranges+16)
+	if len(c.objectCards) != ranges+256 {
+		tb.Fatalf("got%d global ranges, want%d", len(c.objectCards), ranges+256)
 	}
 	count := 0
 	for slot := c.handles[handleOf(parent)].cardSlot; slot != 0; slot = c.objectCards[slot-1].next {

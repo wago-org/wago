@@ -318,6 +318,10 @@ jobs:
         if: matrix.runtime && runner.os != 'Windows'
         run: just test
 
+      - name: Native GC telemetry tests
+        if: matrix.runtime
+        run: go test -tags wago_gcstats ./src/core/runtime/gc/... -count=1
+
       - name: Build & test (Windows)
         if: matrix.runtime && runner.os == 'Windows'
         shell: pwsh

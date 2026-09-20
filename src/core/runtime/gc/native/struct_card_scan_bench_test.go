@@ -73,7 +73,7 @@ func structCardScanFixtureOrder(tb testing.TB, fields, cards int, mode string) (
 
 func BenchmarkGCStructCardScan(b *testing.B) {
 	for _, fields := range []int{8, 256, 8192} {
-		for _, cards := range []int{1, 2, 4, 8, 15, 16, 32} {
+		for _, cards := range []int{1, 2, 4, 8, 15, 16, 32, 33} {
 			if cards > 1 && fields/cards < 128 {
 				continue
 			}
@@ -94,7 +94,7 @@ func BenchmarkGCStructCardScan(b *testing.B) {
 
 func TestGCStructCardScanFixtures(t *testing.T) {
 	for _, unordered := range []bool{false, true} {
-		for _, cards := range []int{1, 2, 4, 8, 15, 16, 32} {
+		for _, cards := range []int{1, 2, 4, 8, 15, 16, 32, 33} {
 			c, parent, child := structCardScanFixture(t, 8192, cards, unordered)
 			root := Root(parent)
 			if err := c.CollectMinor(Slots{&root}); err != nil {
@@ -109,7 +109,7 @@ func TestGCStructCardScanFixtures(t *testing.T) {
 
 func BenchmarkGCStructCardScanNearOrdered(b *testing.B) {
 	for _, fields := range []int{256, 8192} {
-		for _, cards := range []int{1, 2, 4, 8, 15, 16, 32} {
+		for _, cards := range []int{1, 2, 4, 8, 15, 16, 32, 33} {
 			if fields/cards < 128 {
 				continue
 			}
@@ -126,7 +126,7 @@ func BenchmarkGCStructCardScanNearOrdered(b *testing.B) {
 	}
 }
 func TestGCStructCardScanNearOrdered(t *testing.T) {
-	for _, cards := range []int{1, 2, 4, 8, 15, 16, 32} {
+	for _, cards := range []int{1, 2, 4, 8, 15, 16, 32, 33} {
 		c, parent, child := structCardScanFixtureOrder(t, 8192, cards, "near")
 		root := Root(parent)
 		if err := c.CollectMinor(Slots{&root}); err != nil {

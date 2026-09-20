@@ -1,0 +1,79 @@
+src/core/runtime/gc/native/cards.go:154:6: can inline (*Collector).hasSixteenObjectCardRanges with cost 62 as: method(*Collector) func(uint32) bool { for loop; return slot != uint32(0) && slotIndexOK(slot - uint32(1), len(c.objectCards)) }
+src/core/runtime/gc/native/cards.go:156:31: inlining call to slotIndexOK
+src/core/runtime/gc/native/cards.go:161:33: inlining call to slotIndexOK
+src/core/runtime/gc/native/cards.go:174:6: cannot inline (*Collector).scanStructCardRanges: function too complex: cost 808 exceeds budget 80
+src/core/runtime/gc/native/cards.go:175:32: inlining call to makeObjRef
+src/core/runtime/gc/native/cards.go:180:23: inlining call to (*Collector).telemetryEnabled
+src/core/runtime/gc/native/cards.go:181:40: inlining call to (*Telemetry).scanStart
+src/core/runtime/gc/native/cards.go:192:42: inlining call to slotIndexOK
+src/core/runtime/gc/native/cards.go:223:25: inlining call to makeObjRef
+src/core/runtime/gc/native/cards.go:223:14: inlining call to (*Collector).bytes
+src/core/runtime/gc/native/cards.go:226:25: inlining call to isCollectorRefKind
+src/core/runtime/gc/native/cards.go:250:42: inlining call to binary.littleEndian.Uint32
+src/core/runtime/gc/native/cards.go:254:19: inlining call to (*Collector).markNurseryRef
+src/core/runtime/gc/native/cards.go:261:23: inlining call to (*Collector).telemetryEnabled
+src/core/runtime/gc/native/cards.go:262:31: inlining call to (*Telemetry).noteCardScan
+src/core/runtime/gc/native/cards.go:223:14: inlining call to (*Collector).entry
+src/core/runtime/gc/native/cards.go:223:14: inlining call to (*throughputHeap).bytes
+src/core/runtime/gc/native/cards.go:223:14: inlining call to (*tinyHeap).bytes
+src/core/runtime/gc/native/cards.go:254:19: inlining call to Ref.IsObj
+src/core/runtime/gc/native/cards.go:254:19: inlining call to handleOf
+src/core/runtime/gc/native/cards.go:254:19: inlining call to handleEntry.young
+src/core/runtime/gc/native/cards.go:223:14: inlining call to handleOf
+src/core/runtime/gc/native/cards.go:79:6: cannot inline (*Collector).scanObjectPayloadRange: function too complex: cost 783 exceeds budget 80
+src/core/runtime/gc/native/cards.go:80:17: inlining call to makeObjRef
+src/core/runtime/gc/native/cards.go:85:14: inlining call to (*Collector).bytes
+src/core/runtime/gc/native/cards.go:90:26: inlining call to isCollectorRefKind
+src/core/runtime/gc/native/cards.go:101:43: inlining call to binary.littleEndian.Uint32
+src/core/runtime/gc/native/cards.go:105:20: inlining call to (*Collector).markNurseryRef
+src/core/runtime/gc/native/cards.go:112:28: inlining call to TypeDesc.ArrayElementsAreRefs
+src/core/runtime/gc/native/cards.go:139:42: inlining call to binary.littleEndian.Uint32
+src/core/runtime/gc/native/cards.go:143:19: inlining call to (*Collector).markNurseryRef
+src/core/runtime/gc/native/cards.go:85:14: inlining call to (*Collector).entry
+src/core/runtime/gc/native/cards.go:85:14: inlining call to (*throughputHeap).bytes
+src/core/runtime/gc/native/cards.go:85:14: inlining call to (*tinyHeap).bytes
+src/core/runtime/gc/native/cards.go:105:20: inlining call to Ref.IsObj
+src/core/runtime/gc/native/cards.go:105:20: inlining call to handleOf
+src/core/runtime/gc/native/cards.go:105:20: inlining call to handleEntry.young
+src/core/runtime/gc/native/cards.go:112:28: inlining call to isCollectorRefKind
+src/core/runtime/gc/native/cards.go:143:19: inlining call to Ref.IsObj
+src/core/runtime/gc/native/cards.go:143:19: inlining call to handleOf
+src/core/runtime/gc/native/cards.go:143:19: inlining call to handleEntry.young
+src/core/runtime/gc/native/cards.go:85:14: inlining call to handleOf
+src/core/runtime/gc/native/cards.go:14:6: cannot inline (*Collector).scanRememberedCards: function too complex: cost 654 exceeds budget 80
+src/core/runtime/gc/native/cards.go:19:12: inlining call to handleEntry.young
+src/core/runtime/gc/native/cards.go:29:61: inlining call to (*Collector).hasSixteenObjectCardRanges
+src/core/runtime/gc/native/cards.go:33:23: inlining call to (*Collector).telemetryEnabled
+src/core/runtime/gc/native/cards.go:34:40: inlining call to (*Telemetry).scanStart
+src/core/runtime/gc/native/cards.go:43:49: inlining call to slotIndexOK
+src/core/runtime/gc/native/cards.go:70:23: inlining call to (*Collector).telemetryEnabled
+src/core/runtime/gc/native/cards.go:72:31: inlining call to (*Telemetry).noteCardScan
+src/core/runtime/gc/native/cards.go:29:61: inlining call to slotIndexOK
+src/core/runtime/gc/native/cards.go:29:61: inlining call to slotIndexOK
+src/core/runtime/gc/native/cards.go:213:14: (*Collector).scanStructCardRanges ignoring self-assignment in ranges[j] = ranges[j - 1]
+src/core/runtime/gc/native/cards.go:174:7: parameter c leaks to {heap} with derefs=1:
+src/core/runtime/gc/native/cards.go:174:7:   flow: c = c:
+src/core/runtime/gc/native/cards.go:174:7:     from c, r := c, child (assign-pair) at src/core/runtime/gc/native/cards.go:254:19
+src/core/runtime/gc/native/cards.go:174:7:   flow: {temp} = *c:
+src/core/runtime/gc/native/cards.go:174:7:     from c.markStack (dot of pointer) at src/core/runtime/gc/native/cards.go:254:19
+src/core/runtime/gc/native/cards.go:174:7:     from append(c.markStack, h) (call parameter) at src/core/runtime/gc/native/cards.go:254:19
+src/core/runtime/gc/native/cards.go:174:7:   flow: {heap} = {temp}:
+src/core/runtime/gc/native/cards.go:174:7:     from c.markStack = append(c.markStack, h) (assign) at src/core/runtime/gc/native/cards.go:254:19
+src/core/runtime/gc/native/cards.go:174:7: leaking param content: c
+src/core/runtime/gc/native/cards.go:79:7: parameter c leaks to {heap} with derefs=1:
+src/core/runtime/gc/native/cards.go:79:7:   flow: c = c:
+src/core/runtime/gc/native/cards.go:79:7:     from c, r := c, child (assign-pair) at src/core/runtime/gc/native/cards.go:143:19
+src/core/runtime/gc/native/cards.go:79:7:   flow: {temp} = *c:
+src/core/runtime/gc/native/cards.go:79:7:     from c.markStack (dot of pointer) at src/core/runtime/gc/native/cards.go:143:19
+src/core/runtime/gc/native/cards.go:79:7:     from append(c.markStack, h) (call parameter) at src/core/runtime/gc/native/cards.go:143:19
+src/core/runtime/gc/native/cards.go:79:7:   flow: {heap} = {temp}:
+src/core/runtime/gc/native/cards.go:79:7:     from c.markStack = append(c.markStack, h) (assign) at src/core/runtime/gc/native/cards.go:143:19
+src/core/runtime/gc/native/cards.go:79:7: leaking param content: c
+src/core/runtime/gc/native/cards.go:14:7: parameter c leaks to {heap} with derefs=1:
+src/core/runtime/gc/native/cards.go:14:7:   flow: {temp} = c:
+src/core/runtime/gc/native/cards.go:14:7:   flow: {temp} = {temp}:
+src/core/runtime/gc/native/cards.go:14:7:   flow: {heap} = *{temp}:
+src/core/runtime/gc/native/cards.go:14:7: leaking param content: c
+src/core/runtime/gc/native/cards.go:26:24: c.markNurseryRef does not escape
+src/core/runtime/gc/native/cards.go:67:24: c.markNurseryRef does not escape
+src/core/runtime/gc/native/cards.go:154:7: c does not escape
