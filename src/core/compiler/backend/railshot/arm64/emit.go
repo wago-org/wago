@@ -718,7 +718,7 @@ func (f *fn) leaScaled(dst, base, idx Reg, scale uint8, disp int32, w bool) {
 // leaDisp lowers `lea dst,[base + disp]` to add/sub-immediate (or a copy when disp
 // is zero).
 func (f *fn) leaDisp(dst, base Reg, disp int32, w bool) {
-	if disp == 0 {
+	if disp == 0 && !(w && base == SP) {
 		if dst != base {
 			f.a.MovReg64(dst, base)
 		}
@@ -731,6 +731,10 @@ func (f *fn) leaDisp(dst, base Reg, disp int32, w bool) {
 // the magnitude fits, else materializing the displacement in the backend scratch
 // X16 and using the register form.
 func (f *fn) addDisp(dst, base Reg, disp int32, w bool) {
+	if w && base == SP {
+		f.a.LeaSP(dst, disp)
+		return
+	}
 	if f.shiftedAddSubImmediate(int64(disp)) {
 		magnitude := int64(disp)
 		if magnitude < 0 {
@@ -757,7 +761,7 @@ func (f *fn) addDisp(dst, base Reg, disp int32, w bool) {
 		} else {
 			f.a.AddImm32(dst, base, uint32(disp))
 		}
-	case disp < 0 && -disp <= 0xFFF:
+	case disp < 0 && disp >= -0xFFF:
 		if w {
 			f.a.SubImm64(dst, base, uint32(-disp))
 		} else {
