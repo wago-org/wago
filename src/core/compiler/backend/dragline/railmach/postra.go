@@ -167,7 +167,7 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 			reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: combination.Producer, Second: combination.Consumer, Kind: RewriteAMD64FusionRepair})
 		} else if target == TargetARM64 && adjacent && compareBranchFusionRepairable(target, f, combination.Producer, combination.Consumer, uses) {
 			reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: combination.Producer, Second: combination.Consumer, Kind: RewriteARM64CompareBranch})
-		} else if !adjacent && physicalFlagsRenameable(target, f, schedule, combination.Producer, combination.Consumer, position, uses) {
+		} else if !adjacent && physicalFlagsRenameable(target, f, schedule, combination.Producer, combination.Consumer, position, uses, reuse.Rewrites) {
 			reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: combination.Producer, Second: combination.Consumer, Kind: RewritePhysicalRename})
 		}
 	}
@@ -377,11 +377,10 @@ func arm64PostIndexChainable(first, second Inst) bool {
 
 // physicalFlagsRenameable proves that a one-use comparison boolean can be kept
 // in AMD64 EFLAGS or ARM64 NZCV until its nonadjacent branch consumer. The
-// initial policy deliberately admits only integer constants between the pair:
-// their MOV materialization cannot alter either flags register, while every
-// more complex opcode remains a near miss until its exact emitted sequence is
-// independently listed.
-func physicalFlagsRenameable(target Target, f *Func, schedule *Schedule, producer, consumer uint32, position, uses []uint32) bool {
+// The policy admits integer constants and AMD64 arithmetic already selected
+// for LEA lowering. Both sequences preserve flags; every other operation
+// remains a near miss until its emitted sequence is independently proven.
+func physicalFlagsRenameable(target Target, f *Func, schedule *Schedule, producer, consumer uint32, position, uses []uint32, rewrites []Rewrite) bool {
 	if target != TargetAMD64 && target != TargetARM64 || schedule == nil || int(producer) >= len(position) || int(consumer) >= len(position) ||
 		schedule.BlockOf[producer] != schedule.BlockOf[consumer] || position[producer]+1 >= position[consumer] ||
 		!compareBranchFusionRepairable(target, f, producer, consumer, uses) {
@@ -393,11 +392,21 @@ func physicalFlagsRenameable(target Target, f *Func, schedule *Schedule, produce
 			continue
 		}
 		semanticOp := SemanticOpcode(instruction.Op)
-		if semanticOp != wasm.InstrI32Const && semanticOp != wasm.InstrI64Const {
+		if semanticOp != wasm.InstrI32Const && semanticOp != wasm.InstrI64Const &&
+			!(target == TargetAMD64 && postRAHasRewrite(rewrites, schedule.Order[scheduled], RewriteAMD64LEA)) {
 			return false
 		}
 	}
 	return true
+}
+
+func postRAHasRewrite(rewrites []Rewrite, instruction uint32, kind RewriteKind) bool {
+	for _, rewrite := range rewrites {
+		if rewrite.First == instruction && rewrite.Kind == kind {
+			return true
+		}
+	}
+	return false
 }
 
 func arm64RepeatedAddChainFrom(f *Func, schedule *Schedule, start int, uses []uint32) (last uint32, count uint8, initial, invariant VReg, ok bool) {
@@ -1094,7 +1103,7 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 			}
 		}
 		if rewrite.Kind == RewritePhysicalRename {
-			if !physicalFlagsRenameable(target, f, schedule, rewrite.First, rewrite.Second, position, uses) {
+			if !physicalFlagsRenameable(target, f, schedule, rewrite.First, rewrite.Second, position, uses, plan.Rewrites) {
 				return fmt.Errorf("railmach: illegal %s flags physical rename %d: %#v", target, id, rewrite)
 			}
 			matched := false
@@ -1104,6 +1113,9 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 			if !matched {
 				return fmt.Errorf("railmach: %s flags physical rename %d has no selected pair", target, id)
 			}
+		}
+		if rewrite.Kind == RewriteAMD64LEA && !amd64LEARepairable(f, selection, rewrite.First) {
+			return fmt.Errorf("railmach: illegal AMD64 LEA rewrite %d: %#v", id, rewrite)
 		}
 		if rewrite.Kind == RewriteARM64Pair {
 			if position[rewrite.Second] != position[rewrite.First]+1 || schedule.BlockOf[rewrite.First] != schedule.BlockOf[rewrite.Second] ||

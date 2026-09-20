@@ -468,6 +468,50 @@ func TestVerifyPostRAAllowsARM64NZCVRenameAcrossConstant(t *testing.T) {
 	}
 }
 
+func TestVerifyPostRAAllowsAMD64FlagsRenameAcrossLEA(t *testing.T) {
+	f := &Func{
+		Target: TargetAMD64,
+		Insts: []Inst{
+			{Op: wasm.InstrI32LtS, Result: 1, OperandStart: 0, OperandCount: 2},
+			{Op: wasm.InstrI32Add, Result: 4, OperandStart: 2, OperandCount: 2},
+			{Op: wasm.InstrBrIf, OperandStart: 4, OperandCount: 1},
+		},
+		Operands: []Operand{
+			{Reg: 2, Bank: BankGPR, Flags: OperandUse},
+			{Reg: 3, Bank: BankGPR, Flags: OperandUse},
+			{Reg: 5, Bank: BankGPR, Flags: OperandUse},
+			{Reg: 6, Bank: BankGPR, Flags: OperandUse},
+			{Reg: 1, Bank: BankGPR, Flags: OperandUse},
+		},
+		VRegs: []VRegData{
+			{},
+			{Type: TypeI32, Bank: BankGPR},
+			{Type: TypeI32, Bank: BankGPR},
+			{Type: TypeI32, Bank: BankGPR},
+			{Type: TypeI32, Bank: BankGPR},
+			{Type: TypeI32, Bank: BankGPR},
+			{Type: TypeI32, Bank: BankGPR},
+		},
+		Blocks: []Block{{InstCount: 3}},
+	}
+	schedule := &Schedule{Order: []uint32{0, 1, 2}, BlockOf: make([]railssa.BlockID, 3)}
+	selection := &SelectionPlan{
+		Selections:   make([]Selection, 3),
+		Combinations: []Combination{{Producer: 0, Consumer: 2, Kind: CombineCompareBranch}},
+	}
+	plan := &PostRAPlan{Rewrites: []Rewrite{
+		{First: 1, Second: ^uint32(0), Kind: RewriteAMD64LEA},
+		{First: 0, Second: 2, Kind: RewritePhysicalRename},
+	}, ScanLimit: PostRAScanLimit}
+	if err := VerifyPostRAPlan(TargetAMD64, f, selection, schedule, plan); err != nil {
+		t.Fatal(err)
+	}
+	plan.Rewrites = plan.Rewrites[1:]
+	if err := VerifyPostRAPlan(TargetAMD64, f, selection, schedule, plan); err == nil {
+		t.Fatal("accepted EFLAGS rename across add without LEA lowering")
+	}
+}
+
 func TestVerifyARM64ByteSwapChain(t *testing.T) {
 	f := &Func{
 		Target: TargetARM64,
