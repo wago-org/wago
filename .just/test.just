@@ -59,6 +59,7 @@ semantic-corpus:
 
 # Run bounded fuzzing gates.
 fuzz duration=env('FUZZTIME', '5s'):
+    go test ./src/core/runtime/gc/native -run '^$' -fuzz '^FuzzStructCardDifferential$' -fuzztime='{{ duration }}' -parallel=2
     go test ./tests/support/regressioncorpus -run '^$' -fuzz '^FuzzValidateRelativePathAndRustScannerDoNotPanic$' -fuzztime='{{ duration }}'
     go test ./tests/tools/regression-corpus -run '^$' -fuzz '^FuzzNormalizeWABTJSONDoesNotPanic$' -fuzztime='{{ duration }}'
     go test ./src/wago -run '^$' -fuzz '^FuzzSpecTrapMatchingDoesNotPanic$' -fuzztime='{{ duration }}'

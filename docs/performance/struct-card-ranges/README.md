@@ -164,7 +164,8 @@ were silently excluded or production code changed to fix these tool issues.
 ARM64: Linux test binary cross-build and disassembly only. No local ARM64 host
 or emulator was available. This is not native ARM64 execution. CI now explicitly
 runs tagged GC tests in the six-platform native runtime matrix; normal tests are
-selected by the existing complete package tests. Exact pushed-head CI status is
+selected by the existing complete package tests. The bounded fuzz recipe also
+runs the new differential target with two workers. Exact pushed-head CI status is
 in the PR description. Pending or failed CI is not full validation.
 
 ## Reproduce
