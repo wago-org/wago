@@ -31,7 +31,7 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, _ bool) boo
 	if !railMachCandidate(stack, moduleHasV128) {
 		return false
 	}
-	if amd64LargeSIMDBulkMemory(stack) {
+	if amd64LargeMemoryCopy(stack) {
 		return false
 	}
 	return true
@@ -41,22 +41,22 @@ func amd64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, _ boo
 	if reason := railMachRejectionReason(stack, moduleHasV128); reason != "" {
 		return reason
 	}
-	if amd64LargeSIMDBulkMemory(stack) {
-		return "amd64-large-simd-memory.copy"
+	if amd64LargeMemoryCopy(stack) {
+		return "amd64-large-memory.copy"
 	}
 	return ""
 }
 
-func amd64LargeSIMDBulkMemory(stack *railssa.StackFunc) bool {
+func amd64LargeMemoryCopy(stack *railssa.StackFunc) bool {
 	if stack == nil || len(stack.Instrs) <= 512 {
 		return false
 	}
-	memoryCopy, simd := false, false
 	for _, instruction := range stack.Instrs {
-		memoryCopy = memoryCopy || instruction.Kind == wasm.InstrMemoryCopy
-		simd = simd || wasm.IsSIMDValidationInstructionKind(instruction.Kind)
+		if instruction.Kind == wasm.InstrMemoryCopy {
+			return true
+		}
 	}
-	return memoryCopy && simd
+	return false
 }
 
 var amd64StackLocalRegisters = [...]amd64.Reg{amd64.R12, amd64.R13, amd64.R14, amd64.R15, amd64.R8, amd64.R9}

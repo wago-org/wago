@@ -2379,15 +2379,15 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 		t.Fatal("large parameterized scalar candidate was rejected")
 	}
 	stack.Instrs[0].Kind = wasm.InstrMemoryCopy
+	if amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("large memory.copy function was admitted")
+	}
+	if got := amd64RailMachRejectionReason(stack, false, false); got != "amd64-large-memory.copy" {
+		t.Fatalf("large memory.copy rejection = %q", got)
+	}
+	stack.Instrs = []railssa.StackInstr{{Kind: wasm.InstrMemoryCopy}}
 	if !amd64RailMachCandidate(stack, false, false) {
-		t.Fatal("large memory.copy function was rejected")
-	}
-	stack.Instrs[1].Kind = wasm.InstrV128Or
-	if amd64RailMachCandidate(stack, true, false) {
-		t.Fatal("large SIMD memory.copy function was admitted")
-	}
-	if got := amd64RailMachRejectionReason(stack, true, false); got != "amd64-large-simd-memory.copy" {
-		t.Fatalf("large SIMD memory.copy rejection = %q", got)
+		t.Fatal("small memory.copy function was rejected")
 	}
 }
 
