@@ -21,12 +21,13 @@ const (
 
 const (
 	// GCHelperIDBits reserves the low dispatch bits for the stable helper ID.
-	// Remaining low-30-bit payload bits identify an allocating safepoint; bits
-	// 30-31 remain the existing GC and host-funcref dispatch tags.
-	GCHelperIDBits     = 8
-	GCHelperIDMask     = uint32(1<<GCHelperIDBits) - 1
-	GCSafepointIDShift = GCHelperIDBits
-	GCSafepointIDMax   = uint32(1<<(30-GCSafepointIDShift)) - 1
+	// Safepoints occupy the bits below the first dispatch tag (atomic wait).
+	// Bits 29-31 select atomic, GC, and host-funcref dispatch.
+	GCHelperIDBits        = 8
+	GCHelperIDMask        = uint32(1<<GCHelperIDBits) - 1
+	GCSafepointIDShift    = GCHelperIDBits
+	GCDispatchPayloadMask = AtomicWaitDispatchBit - 1
+	GCSafepointIDMax      = GCDispatchPayloadMask >> GCSafepointIDShift
 
 	// GCFrameTrackedLocalLimit is the maximum configured parameter-plus-local
 	// population whose liveness may be tracked. Final exact root vectors are
