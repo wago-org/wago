@@ -102,6 +102,10 @@ jobs:
       - name: Lint
         run: just lint
 
+      - name: Validation statistics command tests
+        working-directory: bench
+        run: go test ./cmd/validatestats -count=1
+
   regression-corpus:
     name: Regression corpus provenance
     needs: changes
