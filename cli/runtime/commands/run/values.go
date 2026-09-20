@@ -23,8 +23,5 @@ func fmtVal(bits uint64, valueType wago.ValType) string {
 }
 
 func format(results []uint64, resultTypes []wago.ValType) string {
-	if len(results) == 0 {
-		return ""
-	}
 	return wasmcall.FormatResults(results, resultTypes)
 }

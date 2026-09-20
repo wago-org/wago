@@ -126,13 +126,12 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	invocations := make([]invocation, 0, len(exports))
 	arguments := positionals[1:]
 	for _, export := range exports {
-		if export == "_start" {
-			invocations = append(invocations, invocation{export: export})
-			continue
-		}
 		params, results, err := compiled.Signature(export)
 		if err != nil {
 			ui.Fatal("run: %v", err)
+		}
+		if export == "_start" && (len(params) != 0 || len(results) != 0) {
+			ui.Fatal("run: _start must have signature () -> ()")
 		}
 		if err := wasmcall.ValidateSignature(params, results); err != nil {
 			ui.Fatal("run: %s: %v", export, err)
