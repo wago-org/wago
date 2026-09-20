@@ -2,11 +2,15 @@ package wago
 
 import (
 	"context"
-	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
+
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestReviewSharedProviderUnsharedImport(t *testing.T) {
+	if !SupportedFeatures().IsEnabled(CoreFeatureThreads) {
+		t.Skip("threads backend is unavailable")
+	}
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	memImport := append(wasmtest.Name("env"), wasmtest.Name("mem")...)
 	memImport = append(memImport, 2, 3, 1, 1)
