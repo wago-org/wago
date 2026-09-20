@@ -617,7 +617,7 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := want(3, 0); err != nil {
 			return err
 		}
-		if uint64(uint32(in.Aux>>32)) >= uint64(len(m.Data)) {
+		if m != nil && uint64(uint32(in.Aux>>32)) >= uint64(len(m.Data)) {
 			return fmt.Errorf("inst %d unknown data segment", id)
 		}
 		addr, err := verifyMemoryAddrType(m, id, uint32(in.Aux))
@@ -634,7 +634,7 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := want(0, 0); err != nil {
 			return err
 		}
-		if in.Aux >= uint64(len(m.Data)) {
+		if in.Aux > uint64(^uint32(0)) || (m != nil && in.Aux >= uint64(len(m.Data))) {
 			return fmt.Errorf("inst %d unknown data segment", id)
 		}
 		if err := verifyEffects(id, in, EffectWriteData); err != nil {

@@ -26,3 +26,18 @@ func TestBuildPreservesDataOperations(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifyStandaloneDataOperations(t *testing.T) {
+	for _, op := range []Op{OpMemoryInit, OpDataDrop} {
+		args := []wasm.ValType(nil)
+		effects := EffectWriteData
+		if op == OpMemoryInit {
+			args = []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}
+			effects = EffectCanTrap | EffectReadData | EffectWriteMem
+		}
+		f := instFunc(op, args, nil, effects)
+		if err := VerifyFunc(f); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
