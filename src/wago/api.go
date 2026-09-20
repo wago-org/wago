@@ -1655,6 +1655,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 	if importNameCount := importedFuncs + importedTables + importedMemories + importedTags; importNameCount != 0 {
 		c.validateMemo.importModuleEnds = make([]uint64, importNameCount)
 	}
+	var valueTypes valueTypeInterner
 	var additionalTableImports []tableImportDef
 	if importedTables > 1 {
 		additionalTableImports = make([]tableImportDef, 0, importedTables-1)
@@ -1675,7 +1676,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 			if err != nil {
 				return nil, fmt.Errorf("global import %q.%q type: %w", im.Module, im.Name, err)
 			}
-			typeIndex := internValueType(&c.ValueTypes, exact)
+			typeIndex := valueTypes.intern(&c.ValueTypes, exact)
 			abiType, err := typeConverter.abiType(im.Type.GlobalType().Type, c.Types)
 			if err != nil {
 				return nil, fmt.Errorf("global import %q.%q ABI type: %w", im.Module, im.Name, err)
@@ -1701,7 +1702,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 			if err != nil {
 				return nil, fmt.Errorf("table import %q.%q ABI type: %w", im.Module, im.Name, err)
 			}
-			def := tableImportDef{Key: im.Module + "." + im.Name, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, Addr64: im.Type.TableType().Limits.Addr64}
+			def := tableImportDef{Key: im.Module + "." + im.Name, Type: abiType, ValueTypeIndex: valueTypes.intern(&c.ValueTypes, exact), HasValueType: true, Addr64: im.Type.TableType().Limits.Addr64}
 			c.validateMemo.importModuleEnds[importedFuncs+tableImportIndex] = exactImportModuleEnd(im.Module)
 			min := im.Type.TableType().Limits.Min
 			if min > uint64(maxInt()) {
@@ -1787,7 +1788,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 		if err != nil {
 			return nil, fmt.Errorf("global %d ABI type: %w", i, err)
 		}
-		g := GlobalDef{Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, Mutable: m.Globals[i].Type.Mutable}
+		g := GlobalDef{Type: abiType, ValueTypeIndex: valueTypes.intern(&c.ValueTypes, exact), HasValueType: true, Mutable: m.Globals[i].Type.Mutable}
 		applyGlobalInit(&g, v.Init())
 		c.Globals = append(c.Globals, g)
 	}
@@ -1834,7 +1835,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 		if err != nil {
 			return nil, fmt.Errorf("table 0 type: %w", err)
 		}
-		c.TableValueTypeIndex = internValueType(&c.ValueTypes, exact)
+		c.TableValueTypeIndex = valueTypes.intern(&c.ValueTypes, exact)
 		c.TableHasValueType = true
 		c.TableAddr64 = tt.Limits.Addr64
 		if c.tableImport == "" {
@@ -1864,7 +1865,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 			if tt.Limits.HasMax {
 				persistedMax = tt.Limits.Max
 			}
-			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: persistedMax, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, HasMax: tt.Limits.HasMax, Addr64: tt.Limits.Addr64}
+			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: persistedMax, Type: abiType, ValueTypeIndex: valueTypes.intern(&c.ValueTypes, exact), HasValueType: true, HasMax: tt.Limits.HasMax, Addr64: tt.Limits.Addr64}
 		}
 		for i, def := range additionalTableImports {
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: int(def.Min), Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
@@ -2016,7 +2017,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 		hasValueType := e.Kind.Kind != wasm.ElemFuncs
 		var valueTypeIndex uint32
 		if hasValueType {
-			valueTypeIndex = internValueType(&c.ValueTypes, exactType)
+			valueTypeIndex = valueTypes.intern(&c.ValueTypes, exactType)
 		}
 		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, ValueTypeIndex: valueTypeIndex, HasValueType: hasValueType, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
 		if i < len(c.passiveElems) {

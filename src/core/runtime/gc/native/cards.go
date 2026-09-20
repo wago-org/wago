@@ -26,6 +26,9 @@ func (c *Collector) scanRememberedCards(h uint32) {
 		c.scanObjectRefs(h, c.markNurseryRef)
 		return
 	}
+	if len(c.objectCards) >= 16 && c.hasSixteenObjectCardRanges(e.cardSlot) && c.scanStructCardRanges(h) {
+		return
+	}
 	startTime := time.Time{}
 	if c.telemetryEnabled() {
 		startTime = c.cfg.Telemetry.scanStart()
@@ -81,10 +84,12 @@ func (c *Collector) scanObjectPayloadRange(h, start, end uint32) (slots, usefulC
 	}
 	b := c.bytes(r)
 	if d.Kind == KindStruct {
+		span := end - start
 		lastCard := ^uint32(0)
 		cardUseful := false
 		for _, field := range d.Fields {
-			if !isCollectorRefKind(field.Kind) || field.Offset < start || field.Offset > end {
+			// Unsigned subtraction also excludes offsets below start.
+			if field.Offset-start > span || !isCollectorRefKind(field.Kind) {
 				continue
 			}
 			card := field.Offset / c.cardBytes
@@ -143,4 +148,120 @@ func (c *Collector) scanObjectPayloadRange(h, start, end uint32) (slots, usefulC
 		usefulCards++
 	}
 	return slots, usefulCards
+}
+
+// hasSixteenObjectCardRanges checks only the bounded admission count. Full
+// ownership, range and chain validation remains in the scanners. A short or
+// invalid prefix uses the original scanner without entering the large frame.
+func (c *Collector) hasSixteenObjectCardRanges(slot uint32) bool {
+	for i := 0; i < 15; i++ {
+		if slot == 0 || !slotIndexOK(slot-1, len(c.objectCards)) {
+			return false
+		}
+		slot = c.objectCards[slot-1].next
+	}
+	return slot != 0 && slotIndexOK(slot-1, len(c.objectCards))
+}
+
+// structCardRange keeps the original per-range descriptor-order telemetry state.
+// The fixed bound limits stack use and sorting work; no descriptor is copied.
+type structCardRange struct {
+	start, end, lastCard uint32
+	useful               bool
+}
+
+// scanStructCardRanges handles wide structs with16 to32 disjoint ranges.
+// It supports any descriptor field order. Failed admission has no marking or
+// metadata side effects, so the general scanner retains all fallback behavior.
+func (c *Collector) scanStructCardRanges(h uint32) bool {
+	d, err := c.refDesc(makeObjRef(h))
+	if err != nil || d.Kind != KindStruct || !d.HasRefs || len(d.Fields) < 256 {
+		return false
+	}
+	startTime := time.Time{}
+	if c.telemetryEnabled() {
+		startTime = c.cfg.Telemetry.scanStart()
+	}
+	e := &c.handles[h]
+	if e.size <= PayloadOffset || c.cardBytes == 0 {
+		return false
+	}
+	payloadSize := e.size - PayloadOffset
+	var ranges [32]structCardRange
+	count := 0
+	var payloadBytes, dirtyCards uint64
+	for slot := e.cardSlot; slot != 0; {
+		if count == len(ranges) || !slotIndexOK(slot-1, len(c.objectCards)) {
+			return false
+		}
+		card := c.objectCards[slot-1]
+		if card.handle != h || card.end < card.index || card.end >= payloadSize || card.index%c.cardBytes != 0 || (card.end != payloadSize-1 && (card.end+1)%c.cardBytes != 0) {
+			return false
+		}
+		ranges[count] = structCardRange{start: card.index, end: card.end, lastCard: ^uint32(0)}
+		count++
+		payloadBytes += uint64(card.end-card.index) + 1
+		dirtyCards += uint64(card.end/c.cardBytes-card.index/c.cardBytes) + 1
+		slot = card.next
+	}
+	if count < 16 {
+		return false
+	}
+	// Insertion sort is bounded to32 ranges and uses no closure or allocation.
+	for i := 1; i < count; i++ {
+		value := ranges[i]
+		j := i
+		for j > 0 && ranges[j-1].start > value.start {
+			ranges[j] = ranges[j-1]
+			j--
+		}
+		ranges[j] = value
+	}
+	for i := 1; i < count; i++ {
+		if ranges[i-1].end >= ranges[i].start {
+			return false
+		}
+	}
+	b := c.bytes(makeObjRef(h))
+	var slots, usefulCards uint64
+	for _, field := range d.Fields {
+		if !isCollectorRefKind(field.Kind) {
+			continue
+		}
+		lo, hi := 0, count
+		for lo < hi {
+			mid := lo + (hi-lo)/2
+			if ranges[mid].end < field.Offset {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if lo == count || field.Offset < ranges[lo].start {
+			continue
+		}
+		state := &ranges[lo]
+		card := field.Offset / c.cardBytes
+		if card != state.lastCard {
+			if state.useful {
+				usefulCards++
+			}
+			state.lastCard, state.useful = card, false
+		}
+		slots++
+		child := Ref(binary.LittleEndian.Uint32(b[PayloadOffset+field.Offset:]))
+		if c.isNurseryRef(child) {
+			state.useful = true
+		}
+		c.markNurseryRef(child)
+	}
+	for i := 0; i < count; i++ {
+		if ranges[i].useful {
+			usefulCards++
+		}
+	}
+	if c.telemetryEnabled() {
+		c.cfg.Telemetry.noteCardScan(startTime, payloadBytes, slots, dirtyCards, usefulCards, payloadBytes >= uint64(payloadSize))
+	}
+	return true
 }

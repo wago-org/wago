@@ -145,7 +145,7 @@ var pinnedFLocalRegs = []Reg{
 	// initialized at entry and the existing STACK_REG call path already spills
 	// every dirty pin. Call-free functions cap this list at 17 pins (leaving 15
 	// expression registers); eligible call-making functions may use all 27
-	// (leaving five), while signatures with 5+ FP args stop before V4-V7.
+	// (leaving five); call argument staging spills excess values to frame slots.
 	16, 17, 18, 19, 20, 21, 22, 23,
 	24, 25, 26, 27, 28, 29, 30, 31,
 	4, 5, 6, 7,

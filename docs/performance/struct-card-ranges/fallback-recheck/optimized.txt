@@ -1,0 +1,54 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardScanControls/fields=4097/ranges=15                    23656             49573 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=16                    75114             15961 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=32                    57960             20792 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=33                     5851            172759 ns/op               0 B/op          0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardScanControls/fields=4097/ranges=15                    23048             52208 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=16                    75130             15872 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=32                    57712             20857 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=33                     7934            152148 ns/op               0 B/op          0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardScanControls/fields=4097/ranges=15                    22911             52327 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=16                    75007             16018 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=32                    57535             20742 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=33                     5876            181766 ns/op               0 B/op          0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardScanControls/fields=4097/ranges=15                    23142             52158 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=16                    76321             15738 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=32                    57745             20761 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=33                     5869            176163 ns/op               0 B/op          0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardScanControls/fields=4097/ranges=15                    23148             49915 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=16                    74608             15866 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=32                    58323             20726 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=33                     5878            175662 ns/op               0 B/op          0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardScanControls/fields=4097/ranges=15                    22920             51970 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=16                    76448             16027 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=32                    56671             20697 ns/op               0 B/op          0 allocs/op
+BenchmarkGCStructCardScanControls/fields=4097/ranges=33                     5892            180708 ns/op               0 B/op          0 allocs/op
+PASS

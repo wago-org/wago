@@ -312,11 +312,11 @@ func TestPortLoadStoreEncodings(t *testing.T) {
 	}
 }
 
-func TestQLoadStoreFallbackPreservesX16Base(t *testing.T) {
+func TestQLoadStoreDirectDisplacementPreservesX16Base(t *testing.T) {
 	var a Asm
 	a.LdrQ(X0, X16, 8)
 	a.StrQ(X16, 8, X0)
-	want := []uint32{0x91002211, 0x3dc00220, 0x91002211, 0x3d800220}
+	want := []uint32{0x3cc08200, 0x3c808200}
 	if len(a.B) != len(want)*4 {
 		t.Fatalf("emitted %d bytes; want %d", len(a.B), len(want)*4)
 	}

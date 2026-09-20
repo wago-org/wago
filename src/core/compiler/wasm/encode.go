@@ -73,8 +73,16 @@ func appendInstr(out *[]byte, in Instruction) error {
 	}
 	if op, ok := lookupMemOpcode(in.Kind); ok {
 		*out = append(*out, op)
-		appendU32(out, in.MemArg().Align)
-		if err := appendU64AsU32(out, in.MemArg().Offset); err != nil {
+		arg := in.MemArg()
+		align := arg.Align
+		if arg.Mem != nil {
+			align |= 0x40
+		}
+		appendU32(out, align)
+		if arg.Mem != nil {
+			appendU32(out, uint32(*arg.Mem))
+		}
+		if err := appendU64AsU32(out, arg.Offset); err != nil {
 			return err
 		}
 		return nil
@@ -252,8 +260,8 @@ func appendValType(out *[]byte, t ValType) error {
 }
 
 func appendU64AsU32(out *[]byte, v uint64) error {
-	// Support pass rejects memory64/multi-memory before codegen; MVP memargs are
-	// u32. A wider offset reaching here is a bug — fail fast instead of truncating.
+	// Explicit memory indices are preserved, but this encoder supports only u32
+	// memarg offsets. Reject wider offsets instead of truncating them.
 	if v > math.MaxUint32 {
 		return fmt.Errorf("wasm encode: memarg offset %d exceeds u32", v)
 	}

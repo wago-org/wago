@@ -1,0 +1,4 @@
+cd bench && go test -count=1 ./internal/semanticcorpus
+ok      github.com/wago-org/wago/bench/internal/semanticcorpus  0.327s
+cd bench && go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns|TestCatalog.*|TestValidateCorpusModule.*)$' ./suite -args -wago.corpus='all'
+ok      github.com/wago-org/wago/bench/suite    7.102s

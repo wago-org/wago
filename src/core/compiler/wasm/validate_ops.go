@@ -117,15 +117,15 @@ func (v *funcValidator) step(in *Instruction) error {
 			if err != nil {
 				return err
 			}
-		} else if !v.sameValTypes(ins, outs) {
+		} else if !v.matchValTypes(ins, outs) {
 			// With no else arm, the false path preserves the block inputs as the
-			// expression results. Accept only the shape the IR builder can model
-			// directly: identical input/output types.
+			// expression results, including reference type widening.
 			return v.verr(ErrTypeMismatch, "if without else")
 		}
 		if len(in.Else()) > 0 && len(v.vals) != len(thenVals) {
 			return v.verr(ErrTypeMismatch, "if branch heights")
 		}
+		v.vals = thenVals
 	case InstrBr:
 		lt, err := v.label(in.Index)
 		if err != nil {
@@ -599,18 +599,6 @@ func (v *funcValidator) matchValTypes(actual, expected []ValType) bool {
 	}
 	for i := range actual {
 		if !v.subtype(actual[i], expected[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-func (v *funcValidator) sameValTypes(a, b []ValType) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if !v.subtype(a[i], b[i]) || !v.subtype(b[i], a[i]) {
 			return false
 		}
 	}

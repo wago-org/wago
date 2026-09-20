@@ -1349,8 +1349,12 @@ func (b *Builder) lowerFC() error {
 		}
 		return nil
 	case 8:
-		if _, err := b.r.U32(); err != nil { // dataidx
+		data, err := b.r.U32()
+		if err != nil {
 			return err
+		}
+		if int(data) >= len(b.m.Data) {
+			return fmt.Errorf("unknown data segment %d", data)
 		}
 		mem, err := b.readZeroMemoryImmediate()
 		if err != nil {
@@ -1360,20 +1364,34 @@ func (b *Builder) lowerFC() error {
 		if err != nil {
 			return err
 		}
-		addr := memoryAddrType(mt)
-		if _, err := b.popTyped(wasm.I32); err != nil { // length in passive segment bytes
+		n, err := b.popTyped(wasm.I32)
+		if err != nil {
 			return err
 		}
-		if _, err := b.popTyped(wasm.I32); err != nil { // source offset in passive segment
+		src, err := b.popTyped(wasm.I32)
+		if err != nil {
 			return err
 		}
-		if _, err := b.popTyped(addr); err != nil { // destination offset in memory
+		dst, err := b.popTyped(memoryAddrType(mt))
+		if err != nil {
 			return err
+		}
+		if b.reachable {
+			b.addInst(OpMemoryInit, uint64(mem)|uint64(data)<<32, 0, []ValueID{dst, src, n}, nil, EffectCanTrap|EffectReadData|EffectWriteMem)
 		}
 		return nil
 	case 9:
-		_, err := b.r.U32()
-		return err
+		data, err := b.r.U32()
+		if err != nil {
+			return err
+		}
+		if int(data) >= len(b.m.Data) {
+			return fmt.Errorf("unknown data segment %d", data)
+		}
+		if b.reachable {
+			b.addInst(OpDataDrop, uint64(data), 0, nil, nil, EffectWriteData)
+		}
+		return nil
 	case 10:
 		dst, err := b.readZeroMemoryImmediate()
 		if err != nil {
@@ -1538,7 +1556,7 @@ func (b *Builder) popMaybe(t wasm.ValType) (ValueID, error) {
 	// unreachable region closes.
 	if len(b.stack) <= b.ctrlH[len(b.ctrlH)-1] {
 		if !b.reachable {
-			return b.newValue(wasm.I32, ValueDefPoison, 0), nil
+			return b.newValue(wasm.ValType{}, ValueDefPoison, 0), nil
 		}
 		return InvalidValue, fmt.Errorf("stack underflow")
 	}

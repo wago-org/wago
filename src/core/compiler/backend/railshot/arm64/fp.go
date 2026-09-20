@@ -71,10 +71,14 @@ func (f *fn) fconstMask() regMask {
 	return m
 }
 
+func (f *fn) blockedFRegs(avoid regMask) regMask {
+	return avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
+}
+
 // allocFReg returns a free V register, spilling the deepest float-resident stack
 // value if none is free.
 func (f *fn) allocFReg(avoid regMask) Reg {
-	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
+	block := f.blockedFRegs(avoid)
 	for _, r := range fpAllocRegs {
 		if f.fregUser[r] == nil && !block.has(r) {
 			return r
@@ -189,6 +193,15 @@ func (f *fn) floatConstReg(st storage) (Reg, bool) {
 			return c.reg, true
 		}
 	}
+	return regNone, false
+}
+
+// Persistent constants must be initialized before control-flow-dependent body
+// execution. Constants missed by preload use ordinary materialization.
+func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
+	if r, ok := f.floatConstReg(st); ok {
+		return r, true
+	}
 	if len(f.fconsts) >= 2 {
 		return regNone, false
 	}
@@ -255,7 +268,7 @@ func (f *fn) preloadFloatConsts(code []byte) {
 		if !found {
 			if nCand == len(cand) {
 				for i := 0; i < 2; i++ {
-					f.floatConstReg(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
+					f.preloadFloatConst(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
 				}
 				return
 			}
@@ -296,7 +309,7 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	f.suppressFloatLiteral = true
 	for _, i := range choice {
 		if i >= 0 {
-			f.floatConstReg(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
+			f.preloadFloatConst(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
 		}
 	}
 	f.suppressFloatLiteral = oldSuppress

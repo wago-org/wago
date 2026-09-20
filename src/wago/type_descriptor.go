@@ -372,6 +372,23 @@ func exactValueType(legacy ValType, has bool, index uint32, pool []ValueTypeDesc
 	return v, nil
 }
 
+// valueTypeInterner remembers one recent pool index during compilation. Large
+// pools with repeated adjacent descriptors avoid another linear scan. Misses
+// retain the original search and insertion order; no state survives compilation.
+type valueTypeInterner uint32
+
+func (index *valueTypeInterner) intern(pool *[]ValueTypeDescriptor, t ValueTypeDescriptor) uint32 {
+	large := len(*pool) >= 32
+	if large && uint64(*index) < uint64(len(*pool)) && (*pool)[*index] == t {
+		return uint32(*index)
+	}
+	i := internValueType(pool, t)
+	if large {
+		*index = valueTypeInterner(i)
+	}
+	return i
+}
+
 func internValueType(pool *[]ValueTypeDescriptor, t ValueTypeDescriptor) uint32 {
 	for i := range *pool {
 		if (*pool)[i] == t {

@@ -217,9 +217,16 @@ func runWazeroCommand(ctx context.Context, r wazero.Runtime, compiled wazero.Com
 }
 
 func TestApplicationCorpusRuns(t *testing.T) {
-	for _, m := range commandCorpus(t) {
+	for _, m := range loadCorpus(t) {
+		if m.Command == nil || !m.supports("CommandExec") {
+			continue
+		}
 		m := m
 		t.Run(m.name(), func(t *testing.T) {
+			if !commandSupportsPlatform(m, runtime.GOOS, runtime.GOARCH) {
+				t.Skipf("command adapter is not admitted on %s/%s; supported platforms: %v", runtime.GOOS, runtime.GOARCH, m.Command.Platforms)
+			}
+			validateCommandInputs(t, m)
 			stdin := commandInput(t, m)
 			t.Run("wago", func(t *testing.T) {
 				compiled, err := wago.Compile(nil, m.bytes)

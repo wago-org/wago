@@ -21,6 +21,7 @@ import (
 	"time"
 
 	wago "github.com/wago-org/wago"
+	"github.com/wago-org/wago/bench/internal/semanticcorpus"
 	wasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -50,6 +51,15 @@ type execEntry struct {
 	Want   []uint64 `json:"want"`
 }
 
+type sourceEntry struct {
+	Repository       string `json:"repository"`
+	Revision         string `json:"revision"`
+	RevisionDate     string `json:"revision_date"`
+	License          string `json:"license"`
+	Toolchain        string `json:"toolchain"`
+	ToolchainVersion string `json:"toolchain_version"`
+}
+
 type corpusModule struct {
 	ID             string        `json:"id"`
 	File           string        `json:"file,omitempty"`
@@ -58,7 +68,8 @@ type corpusModule struct {
 	Artifact       string        `json:"artifact"`
 	ArtifactSHA256 string        `json:"artifact_sha256"`
 	Tags           []string      `json:"tags"`
-	Suite          string        `json:"suite"` // optional upstream corpus name
+	Suite          string        `json:"suite"`  // optional upstream corpus name
+	Source         *sourceEntry  `json:"source"` // optional pinned upstream provenance
 	Desc           string        `json:"desc"`
 	Stages         []string      `json:"stages"` // optional: stages this module supports (default: all)
 	Init           string        `json:"init"`   // optional: export to call once after instantiate, before exec (e.g. AssemblyScript's _initialize; wago has no start section)
@@ -124,6 +135,13 @@ func readCatalogSelected(tb testing.TB, selector string) []corpusModule {
 	if c.Schema != 1 {
 		tb.Fatalf("corpus catalog schema = %d, want 1", c.Schema)
 	}
+	checks, err := semanticcorpus.LoadManifest(file)
+	if err != nil {
+		tb.Fatalf("semantic manifest: %v", err)
+	}
+	if err := validateCatalogLinks(c, checks.Modules); err != nil {
+		tb.Fatal(err)
+	}
 	selected := selectedIDs(tb, c, selector)
 	seen := make(map[string]bool, len(c.Benchmarks))
 	var modules []corpusModule
@@ -168,6 +186,11 @@ func validateCorpusModule(mod corpusModule) error {
 	if mod.ID == "" || mod.Artifact == "" || mod.ArtifactSHA256 == "" {
 		return fmt.Errorf("id, artifact, and artifact_sha256 are required")
 	}
+	if mod.Source != nil && (mod.Source.Repository == "" || mod.Source.Revision == "" ||
+		mod.Source.RevisionDate == "" || mod.Source.License == "" ||
+		mod.Source.Toolchain == "" || mod.Source.ToolchainVersion == "") {
+		return fmt.Errorf("%s: source provenance is incomplete", mod.ID)
+	}
 	executionContracts := 0
 	if len(mod.Exec) != 0 {
 		executionContracts++
@@ -193,6 +216,15 @@ func validateCorpusModule(mod corpusModule) error {
 		}
 		if mod.Command.Export == "" {
 			return fmt.Errorf("%s: command execution needs an export", mod.ID)
+		}
+		switch mod.Command.Oracle {
+		case "", "self-check":
+		case "return":
+			if mod.Command.Want == nil {
+				return fmt.Errorf("%s: return oracle needs expected results", mod.ID)
+			}
+		default:
+			return fmt.Errorf("%s: unknown command oracle %q", mod.ID, mod.Command.Oracle)
 		}
 		if mod.Command.Oracle == "" && mod.Command.Want == nil &&
 			mod.Command.StdoutSHA256 == "" && mod.Command.StderrSHA256 == "" {

@@ -152,7 +152,9 @@ type slotHostFunc func(m HostModule, params, results []uint64)
 
 // HostCall is a borrowed, logical view of one synchronous Wasm-to-Go call.
 // Values are indexed by WebAssembly parameter/result position, not raw ABI
-// slot.
+// slot. Production dispatch supplies complete slot slices from the compiled
+// signature and keeps that frozen signature for the callback lifetime. Each
+// value occupies at least one slot, so equal slot/type counts exclude v128.
 // HostCall and values obtained from it are valid only until the callback
 // returns and must not be retained.
 type HostCall struct {
@@ -240,7 +242,10 @@ func (c HostCall) SetI31Ref(i int, v I31Ref) { c.setResultSlot(i, ValI31Ref, uin
 // value types added after this release.
 func (c HostCall) RawParam(i int) (lo, hi uint64) {
 	typ := c.paramType(i)
-	slot := hostCallSlot(c.sig.Params, i)
+	slot := i
+	if len(c.params) != len(c.sig.Params) {
+		slot = hostCallSlot(c.sig.Params, i)
+	}
 	lo = c.params[slot]
 	if typ == ValV128 {
 		hi = c.params[slot+1]
@@ -250,7 +255,10 @@ func (c HostCall) RawParam(i int) (lo, hi uint64) {
 
 func (c HostCall) SetRawResult(i int, lo, hi uint64) {
 	typ := c.resultType(i)
-	slot := hostCallSlot(c.sig.Results, i)
+	slot := i
+	if len(c.results) != len(c.sig.Results) {
+		slot = hostCallSlot(c.sig.Results, i)
+	}
 	c.results[slot] = lo
 	if typ == ValV128 {
 		c.results[slot+1] = hi
@@ -296,6 +304,11 @@ func (c HostCall) paramSlotIndex(i int, want ValType) int {
 	if got != want {
 		panic(fmt.Sprintf("wago: host parameter %d is %s, not %s", i, got, want))
 	}
+	// Equal logical and physical counts mean every value occupies one slot.
+	// Read the current view instead of caching offsets in public signatures.
+	if len(c.params) == len(c.sig.Params) {
+		return i
+	}
 	return hostCallSlot(c.sig.Params, i)
 }
 
@@ -310,6 +323,9 @@ func (c HostCall) resultSlotIndex(i int, want ValType) int {
 	got := c.resultType(i)
 	if got != want {
 		panic(fmt.Sprintf("wago: host result %d is %s, not %s", i, got, want))
+	}
+	if len(c.results) == len(c.sig.Results) {
+		return i
 	}
 	return hostCallSlot(c.sig.Results, i)
 }
@@ -857,6 +873,9 @@ func (rt *Runtime) newHostFuncRef(callback any, sig FuncSig, gcCapable, allowLoa
 	if _, err := valTypesSlots(sig.Results); err != nil {
 		return nil, fmt.Errorf("wago: host function results: %w", err)
 	}
+	// The owner and callback binding share one private signature copy.
+	sig.Params = append([]ValType(nil), sig.Params...)
+	sig.Results = append([]ValType(nil), sig.Results...)
 	binding, err := bindSyncHostImport(callback, sig)
 	if err != nil {
 		return nil, fmt.Errorf("wago: host function: %w", err)
@@ -871,12 +890,7 @@ func (rt *Runtime) newHostFuncRef(callback any, sig FuncSig, gcCapable, allowLoa
 	owner := &HostFuncRef{
 		fn:    fn,
 		store: rt.refStore,
-		sig: FuncSig{
-			Params:       append([]ValType(nil), sig.Params...),
-			Results:      append([]ValType(nil), sig.Results...),
-			TypeIndex:    sig.TypeIndex,
-			HasTypeIndex: sig.HasTypeIndex,
-		},
+		sig:   sig,
 	}
 	owner.gcCapable = gcCapable
 	dispatchIndex, err := rt.refStore.registerHostFuncRef(owner)

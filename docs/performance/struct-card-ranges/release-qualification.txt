@@ -1,0 +1,2 @@
+smoke-tested qualified release assets for linux-amd64 at v1.2.3-beta.1
+release qualification tests passed

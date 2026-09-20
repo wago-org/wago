@@ -143,13 +143,13 @@ func (j *JobMemory) reset(initialBytes, maxBytes, reserveBytes int, clearMem boo
 
 // AcquireJobMemoryGrowable returns a non-guarded JobMemory, reusing one parked by
 // ReleaseJobMemory when the parked reservation is at least as large as this
-// module needs. ReleaseJobMemory zero-reclaims (madvise MADV_DONTNEED) everything
-// the previous instance could have dirtied, and every access is confined to
-// [0,curBytes) by bounds checks, so the whole reservation already reads back as
-// zero — reset only reinstalls the size caches, with no clear() proportional to
-// the (possibly multi-GiB) reservation. This lets even growable/exported-memory
-// modules, whose reservation is the full ~4 GiB logical max, reuse the mapping
-// instead of paying a fresh mmap+munmap of that range on every instantiate.
+// module needs. ReleaseJobMemory zero-reclaims everything the previous instance
+// could have dirtied, using page reclamation where supported and an explicit
+// clear fallback where necessary. Every access is confined to [0,curBytes) by
+// bounds checks, so reset only needs to reinstall the size caches. This lets even
+// growable/exported-memory modules, whose reservation is the full ~4 GiB logical
+// max, reuse the mapping instead of paying a fresh mmap+munmap of that range on
+// every instantiate.
 func AcquireJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 	if err := validateJobMemorySizes(initialBytes, maxBytes); err != nil {
 		return nil, err
@@ -179,9 +179,10 @@ func AcquireJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 // jobMemoryReclaimThreshold splits reclaimForReuse's two zeroing strategies. At
 // or below it, an in-place clear() is cheaper and keeps the pages committed, so
 // the next reuse skips minor page faults — this keeps small, frequently-cycled
-// modules (tiny/fib) near their ~0.7µs best. Above it, clearing a large (up to
-// ~4 GiB) region dominates, so MADV_DONTNEED wins by dropping the pages instead.
-// The crossover (clear cost ≈ madvise+refault cost) measures near ~384 KiB.
+// modules (tiny/fib) near their ~0.7µs best. Above it, madviseDontNeed asks the
+// platform to zero-reclaim the pages. Platforms that cannot guarantee zeroed
+// pages may explicitly clear instead, retaining their backing memory. The
+// crossover (clear cost ≈ madvise+refault cost) measures near ~384 KiB.
 const jobMemoryReclaimThreshold = 384 << 10
 
 // reclaimForReuse returns this non-guarded reservation to a zeroed state so it
@@ -189,8 +190,9 @@ const jobMemoryReclaimThreshold = 384 << 10
 // needs to reclaim what the instance could have dirtied — basedata plus linear
 // memory up to its current logical size — because memory.grow just raises the
 // size cache and bounds checks confine every access to [0,curBytes). Small
-// regions are cleared in place (pages stay committed); large regions are dropped
-// with MADV_DONTNEED (mirrors the guard-page path's decommitGuarded, minus the
+// regions are cleared in place (pages stay committed); large regions use the
+// platform's zero-reclamation operation or its correctness-preserving explicit
+// clear fallback (mirrors the guard-page path's decommitGuarded, minus the
 // PROT_NONE re-arm — explicit bounds never fault, so the mapping stays RW).
 func (j *JobMemory) reclaimForReuse() error {
 	used := roundUpPage(basedataSize + j.curBytes())
@@ -545,10 +547,11 @@ func ReleaseJobMemory(j *JobMemory) error {
 		}
 		return j.Close()
 	}
-	// Zero-reclaim the region this instance could have dirtied so the reservation
-	// can be reused without a full clear(), then park it in the one-slot cache.
-	// Any size fits the slot now (the reservation costs address space, not RAM,
-	// once decommitted), so growable modules stop churning fresh mmaps.
+	// Restore the zero-on-reuse contract for the region this instance could have
+	// dirtied, then park the reservation in the one-slot cache.
+	// Any size fits the slot now. A successfully decommitted reservation costs
+	// address space rather than RAM; platform clear fallbacks can retain resident
+	// pages, but still preserve correctness while avoiding fresh mmap churn.
 	if err := j.reclaimForReuse(); err != nil {
 		return j.Close()
 	}

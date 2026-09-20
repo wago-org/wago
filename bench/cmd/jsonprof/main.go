@@ -26,7 +26,7 @@ func modulePath() string {
 	if p := os.Getenv("WAGO_JSON_MODULE"); p != "" {
 		return p
 	}
-	return "corpus/json-as.wasm"
+	return "../corpus/workloads/assemblyscript/json-as.wasm"
 }
 
 func main() {
