@@ -844,7 +844,7 @@ func hoistARM64AdjacentLoadAddresses(f *Func, dag *DependencyDAG, schedule *Sche
 			firstID, addressID, secondID := order[index], order[addressIndex], order[secondIndex]
 			first, address, second := f.Insts[firstID], f.Insts[addressID], f.Insts[secondID]
 			if reserved(firstID) || reserved(addressID) || reserved(secondID) ||
-				first.Op != second.Op || uint32(first.Aux) != uint32(second.Aux) || !arm64FullWidthLoad(first.Op) ||
+				first.Op != second.Op || !arm64FullWidthLoad(first.Op) ||
 				address.Result == 0 || schedule.uses[address.Result] != 1 || address.Op != wasm.InstrI32Add && address.Op != wasm.InstrI64Add {
 				continue
 			}

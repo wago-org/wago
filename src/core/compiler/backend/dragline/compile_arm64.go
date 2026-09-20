@@ -5053,12 +5053,22 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				if combinedBounds {
 					combinedBoundsSecond = ^uint32(0)
 				}
-				// Two adjacent loads have no intervening Wasm side effect. With the
-				// common adjusted memory limit cached in X8, CCMP preserves the first
-				// failure and evaluates the second address only after the first is in
-				// bounds. One cold branch therefore covers both loads without moving a
-				// check across a store, call, or trapping instruction.
-				if !combinedBounds && cacheMemoryLimit && end == commonMemoryEnd && !store && !chainFirst && !chainSecond && !preIndex &&
+				// Two adjacent loads have no intervening Wasm side effect. With an
+				// adjusted memory limit cached in X8, CCMP preserves the first failure
+				// while checking the second address. Distinct static offsets derive
+				// their limits in scratch registers without changing flags, so one cold
+				// branch covers both loads without moving a check across a store, call,
+				// or trapping instruction.
+				boundsLimitEncodable := func(accessEnd uint64) bool {
+					if accessEnd == commonMemoryEnd {
+						return true
+					}
+					if accessEnd > commonMemoryEnd {
+						return arm64I64AddSubImmediateEncodable(accessEnd-commonMemoryEnd, true)
+					}
+					return arm64I64AddSubImmediateEncodable(commonMemoryEnd-accessEnd, false)
+				}
+				if !combinedBounds && cacheMemoryLimit && boundsLimitEncodable(end) && !store && !chainFirst && !chainSecond && !preIndex &&
 					!railMachElidesMemoryBoundsCheck(plan, instructionID) && scheduleIndex+1 < len(blockOrder) &&
 					memoryCheckEnd(operands[0].Reg) < end && !arm64RailMachHasSpecialMemoryEmission(plan, instructionID) {
 					nextID := blockOrder[scheduleIndex+1]
@@ -5070,14 +5080,31 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					nextSwarSkipped := swarRunN && (nextID >= 5 && nextID < 21 || nextID >= 27 && nextID < 37) || swarParse4 && nextID >= 2 && nextID < 12
 					nextSkipped := nextSwarSkipped || idempotentFloatTail && nextID >= idempotentFloatStart && nextID < idempotentFloatEnd || skipInstruction.has(nextID) ||
 						nextResult != 0 && plan.Machine.VRegs[nextResult].Flags&railmach.VRegElided != 0 || plan.PostRASkip.has(nextID)
-					if nextMemory && !nextStore && !nextSkipped && len(nextOperands) != 0 && nextOperands[0].Reg != operands[0].Reg && nextEnd == end &&
+					if nextMemory && !nextStore && !nextSkipped && len(nextOperands) != 0 && nextOperands[0].Reg != operands[0].Reg && boundsLimitEncodable(nextEnd) &&
 						!railMachElidesMemoryBoundsCheck(plan, nextID) && memoryCheckEnd(nextOperands[0].Reg) < nextEnd &&
 						!arm64RailMachHasSpecialMemoryEmission(plan, nextID) &&
 						plan.Allocation.LocationAt(operands[0].Reg, currentPosition).Kind == railmach.LocationRegister &&
 						plan.Allocation.LocationAt(nextOperands[0].Reg, currentPosition).Kind == railmach.LocationRegister {
 						nextAddress := arm64RailMachPhysical(plan.Allocation.LocationAt(nextOperands[0].Reg, currentPosition))
-						a.CmpReg32(lhs, arm64.X8)
-						a.CcmpReg32(nextAddress, arm64.X8, 2, arm64.CondLS)
+						firstLimit, secondLimit := arm64.X8, arm64.X8
+						if end != commonMemoryEnd {
+							firstLimit = arm64.X17
+							if end > commonMemoryEnd {
+								emitARM64I64AddSubImmediate(&a, firstLimit, arm64.X8, end-commonMemoryEnd, true)
+							} else {
+								emitARM64I64AddSubImmediate(&a, firstLimit, arm64.X8, commonMemoryEnd-end, false)
+							}
+						}
+						a.CmpReg32(lhs, firstLimit)
+						if nextEnd != commonMemoryEnd {
+							secondLimit = arm64.X16
+							if nextEnd > commonMemoryEnd {
+								emitARM64I64AddSubImmediate(&a, secondLimit, arm64.X8, nextEnd-commonMemoryEnd, true)
+							} else {
+								emitARM64I64AddSubImmediate(&a, secondLimit, arm64.X8, commonMemoryEnd-nextEnd, false)
+							}
+						}
+						a.CcmpReg32(nextAddress, secondLimit, 2, arm64.CondLS)
 						if err := emitMemoryTrapBranch(wasmOffset); err != nil {
 							return nil, 0, true, err
 						}

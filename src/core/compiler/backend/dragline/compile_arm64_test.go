@@ -2496,13 +2496,13 @@ func TestARM64RailMachReusesDominatingMemoryCheckInBlock(t *testing.T) {
 
 func TestARM64RailMachCombinesAdjacentLoadBoundsChecks(t *testing.T) {
 	source := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.F64}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
-			0x20, 0x00, 0x28, 0x02, 0x00, // i32.load address 0
-			0x20, 0x01, 0x28, 0x02, 0x00, // i32.load address 1
-			0x6a, 0x0b, // i32.add; end
+			0x20, 0x00, 0x2b, 0x03, 0x08, // f64.load offset=8 address 0
+			0x20, 0x01, 0x2b, 0x03, 0x18, // f64.load offset=24 address 1
+			0xa2, 0x0b, // f64.mul; end
 		}))),
 	)
 	m, err := wasm.DecodeModule(source)

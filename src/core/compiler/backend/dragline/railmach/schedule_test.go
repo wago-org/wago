@@ -449,9 +449,9 @@ func TestHoistARM64AdjacentLoadAddresses(t *testing.T) {
 	f := &Func{
 		Target: TargetARM64,
 		Insts: []Inst{
-			{Op: wasm.InstrI32Load, Result: 3, OperandStart: 0, OperandCount: 1},
+			{Op: wasm.InstrI32Load, Aux: 8, Result: 3, OperandStart: 0, OperandCount: 1},
 			{Op: wasm.InstrI32Add, Result: 4, OperandStart: 1, OperandCount: 2},
-			{Op: wasm.InstrI32Load, Result: 5, OperandStart: 3, OperandCount: 1},
+			{Op: wasm.InstrI32Load, Aux: 24, Result: 5, OperandStart: 3, OperandCount: 1},
 		},
 		Operands: []Operand{{Reg: 1}, {Reg: 2}, {Reg: 6}, {Reg: 4}},
 		VRegs:    make([]VRegData, 7),
