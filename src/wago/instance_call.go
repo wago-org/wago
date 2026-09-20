@@ -284,7 +284,7 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 		return nil
 	}
 	bits := v.bits
-	if isReferenceValType(g.Type) && bits == 0 {
+	if bits == 0 && g.HasValueType && isReferenceValType(g.Type) {
 		exact, err := in.c.globalExactType(idx)
 		if err != nil {
 			return fmt.Errorf("global %q exact type: %w", name, err)
