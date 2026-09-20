@@ -35,6 +35,14 @@ chain detachment and full-scan correctness rules remain intact.
 - Tagged telemetry parity includes shuffled, mixed, repeated/null-reference,
   and coalesced layouts. Original per-range descriptor-order accounting remains.
 
+The new Windows telemetry CI step exposed tests that required positive elapsed
+nanoseconds for short collections. Both Windows architectures reported valid
+zero-duration cycles. The tests now check pause/count consistency and use fixed
+timestamps to test phase accounting at zero and nonzero durations. No collector
+clock or production behavior changed. The first failing run is
+[35478611873](https://github.com/wago-org/wago/actions/runs/35478611873); final-head
+CI results are recorded in the PR.
+
 ## Allocation and stack use
 
 Go 1.22.12 warmed direct helper scans with 16 and 32 distinct children allocate
