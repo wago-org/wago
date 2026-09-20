@@ -2186,7 +2186,8 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 					f.a.FmovFromGpr(da.target, X16, false)
 				}
 			case stSlot:
-				f.fld(da.target, SP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
+				// Scalar FP operand spill slots are eight bytes, including f32.
+				f.fld(da.target, SP, f.spillOff(da.root.st.slotIndex()), true)
 			case stLocalRef, stLocalReg:
 				f.fld(da.target, SP, f.localOff(da.root.st.index()), da.root.st.typ == mtF64)
 			}
@@ -2202,6 +2203,12 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		}
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
+	// Eager local reloads do not use the prologue's FP/LR frame record.
+	lrSlot := -1
+	if !f.usesCalls {
+		lrSlot = f.allocSpillSlot()
+		f.st64(SP, f.spillOff(lrSlot), LR)
+	}
 	f.spillFloor = oldSpillFloor
 
 	var returnOffset uint32
@@ -2212,6 +2219,9 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	} else {
 		f.a.Blr(indirect)
 		returnOffset = uint32(f.a.Len())
+	}
+	if lrSlot >= 0 {
+		f.ld64(LR, SP, f.spillOff(lrSlot))
 	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell

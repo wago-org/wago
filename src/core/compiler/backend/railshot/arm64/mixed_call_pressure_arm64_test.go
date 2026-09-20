@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func mixedCallPressureModule(t testing.TB, f64 bool, nargs int) (*wasm.Module, uint64) {
@@ -45,16 +46,28 @@ func mixedCallVariantModule(t testing.TB, f64 bool, nargs int, computed, wide bo
 		body = constant(body, float64(i+1))
 		body = append(body, 0x21, i)
 	}
-	body = constant(body, 0.5)
-	body = append(body, 0xfd, 0x0c) // v128.const, live below the arguments
-	if wide {
-		for _, lane := range []uint32{17, 29, 43, 61} {
-			body = binary.LittleEndian.AppendUint32(body, ^lane)
+	// 2,050 eight-byte operand slots alone exceed LDR S's 16,380-byte
+	// scaled-offset limit, without depending on the local-frame layout.
+	deepSlots := 0
+	if variant == "deep" {
+		deepSlots = 2050
+		for i := 0; i < deepSlots; i++ {
+			body = append(body, 0x42)
+			body = append(body, wasmtest.SLEB64(int64(i+1))...)
 		}
-		body = append(body, 0xfd, 0x4d) // v128.not owns a register before argument evaluation
-	} else {
-		body = binary.LittleEndian.AppendUint64(body, 17)
-		body = binary.LittleEndian.AppendUint64(body, 0)
+	}
+	body = constant(body, 0.5)
+	if variant != "deep" {
+		body = append(body, 0xfd, 0x0c) // v128.const, live below the arguments
+		if wide {
+			for _, lane := range []uint32{17, 29, 43, 61} {
+				body = binary.LittleEndian.AppendUint32(body, ^lane)
+			}
+			body = append(body, 0xfd, 0x4d) // v128.not owns a register before argument evaluation
+		} else {
+			body = binary.LittleEndian.AppendUint64(body, 17)
+			body = binary.LittleEndian.AppendUint64(body, 0)
+		}
 	}
 	if variant == "canonical" {
 		body = append(body, 0x02, 0x40, 0x0b) // home both lower values before evaluating arguments
@@ -62,6 +75,9 @@ func mixedCallVariantModule(t testing.TB, f64 bool, nargs int, computed, wide bo
 	params := make([]wasm.ValType, nargs)
 	callee := []byte{0}
 	want := 378.0 + 17 + 0.5
+	if variant == "deep" {
+		want -= 17
+	}
 	for i := 0; i < nargs; i++ {
 		params[i] = typ
 		body = append(body, 0x20, byte(nargs-i-1))
@@ -80,12 +96,16 @@ func mixedCallVariantModule(t testing.TB, f64 bool, nargs int, computed, wide bo
 		}
 		want += factor * float64((nargs-i)*(i+1))
 	}
-	if computed {
+	if computed || variant == "canonical" || variant == "snapshot" {
 		// Check each argument separately as well as the weighted result.
 		checks := []byte{0}
 		for i := 0; i < nargs; i++ {
 			checks = append(checks, 0x20, byte(i))
-			checks = constant(checks, 2*float64(nargs-i))
+			factor := 1.0
+			if computed {
+				factor = 2
+			}
+			checks = constant(checks, factor*float64(nargs-i))
 			ne := byte(0x5c)
 			if f64 {
 				ne = 0x62
@@ -111,10 +131,21 @@ func mixedCallVariantModule(t testing.TB, f64 bool, nargs int, computed, wide bo
 		}
 		body = append(body, 0x20, 28)
 	}
-	body = append(body, 0xfd, 0x1b, 0, convert, add) // extract lane; convert; add
+	if variant != "deep" {
+		body = append(body, 0xfd, 0x1b, 0, convert, add) // extract lane; convert; add
+	}
 	body = append(body, 0x20, 27, add)
 	for i := byte(0); i < 27; i++ {
 		body = append(body, 0x20, i, add)
+	}
+	if deepSlots > 0 {
+		body = append(body, 0x21, 27)
+		for i := deepSlots; i > 0; i-- {
+			body = append(body, 0x42)
+			body = append(body, wasmtest.SLEB64(int64(i))...)
+			body = append(body, 0x52, 0xb3, 0x20, 27, 0x92, 0x21, 27) // add one for each changed lower value
+		}
+		body = append(body, 0x20, 27)
 	}
 	body = append(body, 0x0b)
 	callee = append(callee, 0x0b)
@@ -152,14 +183,45 @@ func TestMixedCallFloatRegisterPressureARM64(t *testing.T) {
 	}
 }
 
-func TestMixedCallFloatRegisterPressureEagerCompileARM64(t *testing.T) {
+func TestMixedCallEagerReloadARM64(t *testing.T) {
 	for _, f64 := range []bool{false, true} {
-		m, _ := mixedCallPressureModule(t, f64, 8)
-		if _, err := CompileModuleWith(m, CompileOptions{
-			Optimizations: map[string]bool{"inline": false, "stack-reg": false, "ext-fp-pins": true},
-		}); err != nil {
-			t.Fatal(err)
+		for _, variant := range []string{"computed", "canonical", "snapshot"} {
+			t.Run(fmt.Sprintf("f64=%t/%s", f64, variant), func(t *testing.T) {
+				m, want := mixedCallVariantModule(t, f64, 8, variant == "computed", false, variant)
+				var stats ModuleStats
+				got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Stats: &stats,
+					Optimizations: map[string]bool{"inline": false, "stack-reg": false, "ext-fp-pins": true},
+				})
+				if err != nil || got != want {
+					t.Fatalf("result = %#x, %v; want %#x", got, err, want)
+				}
+				if stats.Funcs[0].PinnedLocals != 27 || stats.Funcs[0].Calls["mixed"] != 1 {
+					t.Fatal("test did not retain 27 local pins and a mixed call")
+				}
+				if variant != "computed" && stats.Funcs[0].Peephole["mixed-call-local-home"] == 0 {
+					t.Fatal("test did not load borrowed arguments from local homes")
+				}
+			})
 		}
+	}
+}
+
+func TestMixedCallDeepF32SpillARM64(t *testing.T) {
+	for _, stackReg := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stack-reg=%t", stackReg), func(t *testing.T) {
+			m, want := mixedCallVariantModule(t, false, 8, true, false, "deep")
+			var stats ModuleStats
+			got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Stats: &stats,
+				Optimizations: map[string]bool{"inline": false, "stack-reg": stackReg, "ext-fp-pins": true},
+			})
+			if err != nil || got != want {
+				t.Fatalf("result = %#x, %v; want %#x", got, err, want)
+			}
+			if stats.Funcs[0].PinnedLocals != 27 || stats.Funcs[0].Calls["mixed"] != 1 || stats.Funcs[0].MaxSpillSlots <= 2050 ||
+				stats.Funcs[0].Peephole["mixed-call-reg-arg"] >= 8 || stats.Funcs[0].GCCodeBytes.SpillReload == 0 {
+				t.Fatalf("test did not retain deep-stack mixed-call pressure: %+v", stats.Funcs[0])
+			}
+		})
 	}
 }
 
@@ -273,6 +335,27 @@ func TestMixedCallLocalHomesAndCanonicalSlotsARM64(t *testing.T) {
 func BenchmarkCompileMixedCallCanonicalARM64(b *testing.B) {
 	m, _ := mixedCallVariantModule(b, true, 8, false, false, "canonical")
 	opts := CompileOptions{Workers: 1, Optimizations: map[string]bool{"inline": false}}
+	var stats ModuleStats
+	diagnostic := opts
+	diagnostic.Stats = &stats
+	if _, err := CompileModuleWith(m, diagnostic); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := CompileModuleWith(m, opts); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportMetric(float64(stats.Funcs[0].MaxSpillSlots), "spill-slots")
+	b.ReportMetric(float64(stats.Funcs[0].FrameBytes), "frame-B")
+	b.ReportMetric(float64(stats.Funcs[0].CodeBytes), "code-B")
+}
+
+func BenchmarkCompileMixedCallDeepF32ARM64(b *testing.B) {
+	m, _ := mixedCallVariantModule(b, false, 8, true, false, "deep")
+	opts := CompileOptions{Workers: 1, Optimizations: map[string]bool{"inline": false, "stack-reg": true, "ext-fp-pins": true}}
 	var stats ModuleStats
 	diagnostic := opts
 	diagnostic.Stats = &stats
