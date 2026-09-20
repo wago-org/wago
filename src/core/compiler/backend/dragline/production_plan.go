@@ -1071,11 +1071,7 @@ func nativeAMD64ConstantDivisionUse(plan *nativeBackendPlan, instruction railmac
 		if divisor == 0 || railmach.SemanticOpcode(instruction.Op) == wasm.InstrI32RemU && !plan.AMD64ImmediateRemainders {
 			return false
 		}
-		if divisor&(divisor-1) == 0 {
-			return true
-		}
-		_, _, ok := amd64UnsignedI32ImmediateMagic(divisor)
-		return ok
+		return true
 	default:
 		return false
 	}
@@ -2777,10 +2773,10 @@ func refineAMD64ConstantDivisionConstraints(machine *railmach.Func, immediateRem
 			_, _, immediate = amd64SignedI32ImmediateMagic(int32(value))
 		} else {
 			divisor := uint32(value)
-			if divisor == 0 || divisor&(divisor-1) == 0 || kind == wasm.InstrI32RemU && !immediateRemainders {
+			if divisor == 0 || kind == wasm.InstrI32RemU && !immediateRemainders {
 				continue
 			}
-			_, _, immediate = amd64UnsignedI32ImmediateMagic(divisor)
+			immediate = true
 		}
 		if !immediate {
 			continue
@@ -2820,12 +2816,11 @@ func nativeAMD64SignedImmediateRemainders(machine *railmach.Func) bool {
 	return false
 }
 
-// nativeAMD64ImmediateRemainders requires enough independent replacements for
-// their cumulative DIV fixed-register relief to repay the longer arithmetic
-// sequence and its code-layout cost.
+// nativeAMD64ImmediateRemainders admits exact constant unsigned remainders.
+// Even one multiply-high sequence is materially cheaper than x86 DIV; keeping
+// the decision function-scoped also lets allocation release RAX/RDX before
+// finalization.
 func nativeAMD64ImmediateRemainders(machine *railmach.Func) bool {
-	const minimumUses = 3
-	uses := 0
 	for instructionID, instruction := range machine.Insts {
 		if railmach.SemanticOpcode(instruction.Op) != wasm.InstrI32RemU {
 			continue
@@ -2836,15 +2831,10 @@ func nativeAMD64ImmediateRemainders(machine *railmach.Func) bool {
 		}
 		value, constant := nativeMachineIntegerConstant(machine, operands[1].Reg)
 		divisor := uint32(value)
-		if !constant || divisor == 0 || divisor&(divisor-1) == 0 {
+		if !constant || divisor == 0 {
 			continue
 		}
-		if _, _, immediate := amd64UnsignedI32ImmediateMagic(divisor); immediate {
-			uses++
-			if uses == minimumUses {
-				return true
-			}
-		}
+		return true
 	}
 	return false
 }

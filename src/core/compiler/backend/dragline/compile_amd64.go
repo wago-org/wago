@@ -12,6 +12,7 @@ import (
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railmach"
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
+	railshotcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
@@ -9134,11 +9135,10 @@ func amd64RailMachUnsignedI32ConstantDivisor(plan *nativeBackendPlan, instructio
 	if divisor&(divisor-1) == 0 {
 		return divisor, true
 	}
-	_, _, immediate := amd64UnsignedI32ImmediateMagic(divisor)
 	if kind == wasm.InstrI32RemU && !plan.AMD64ImmediateRemainders {
 		return divisor, false
 	}
-	return divisor, immediate
+	return divisor, true
 }
 
 func amd64RailMachSignedI32ConstantDivisor(plan *nativeBackendPlan, instruction railmach.Inst, operands []railmach.Operand) (int32, bool) {
@@ -9219,22 +9219,38 @@ func amd64EmitUnsignedI32ConstantDivision(a *amd64.Asm, dst, dividend amd64.Reg,
 		return
 	}
 
-	multiplier, shift, ok := amd64UnsignedI32ImmediateMagic(divisor)
-	if !ok {
-		panic("constant division without immediate magic")
+	multiplier, immediateShift, immediate := amd64UnsignedI32ImmediateMagic(divisor)
+	quotient := amd64.R10
+	if immediate {
+		a.ImulRRI(quotient, dividend, int32(multiplier), true)
+		a.ShiftImm(5, quotient, immediateShift, true)
+	} else {
+		magic, shift, add := railshotcore.MagicU(uint64(divisor), 32)
+		a.MovReg32(amd64.R10, dividend)
+		a.MovImm32(amd64.R11, int32(uint32(magic)))
+		a.IMul(amd64.R10, amd64.R11, true)
+		a.ShiftImm(5, amd64.R10, 32, true)
+		if add {
+			a.MovReg32(amd64.R11, dividend)
+			a.AluRR(0x29, amd64.R11, amd64.R10, false)
+			a.ShiftImm(5, amd64.R11, 1, false)
+			a.AluRR(0x01, amd64.R11, amd64.R10, false)
+			quotient = amd64.R11
+		}
+		if shift != 0 {
+			a.ShiftImm(5, quotient, byte(shift), false)
+		}
 	}
-	a.ImulRRI(amd64.R10, dividend, int32(multiplier), true)
-	a.ShiftImm(5, amd64.R10, shift, true)
 	if remainder {
-		a.ImulRRI(amd64.R10, amd64.R10, int32(divisor), false)
+		a.ImulRRI(amd64.R10, quotient, int32(divisor), false)
 		if dst != dividend {
 			a.MovReg32(dst, dividend)
 		}
 		a.AluRR(0x29, dst, amd64.R10, false)
 		return
 	}
-	if dst != amd64.R10 {
-		a.MovReg32(dst, amd64.R10)
+	if dst != quotient {
+		a.MovReg32(dst, quotient)
 	}
 }
 

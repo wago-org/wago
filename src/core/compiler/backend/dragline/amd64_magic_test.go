@@ -76,9 +76,10 @@ func TestRefineAMD64ConstantDivisionConstraints(t *testing.T) {
 		want    bool
 	}{
 		{100, wasm.InstrI32DivU, true},
-		{16, wasm.InstrI32DivU, false},
-		{16, wasm.InstrI32RemU, false},
-		{20, wasm.InstrI32DivU, false},
+		{16, wasm.InstrI32DivU, true},
+		{16, wasm.InstrI32RemU, true},
+		{20, wasm.InstrI32DivU, true},
+		{30, wasm.InstrI32RemU, true},
 		{100, wasm.InstrI32RemU, true},
 		{10, wasm.InstrI32DivS, true},
 		{10, wasm.InstrI32RemS, true},
@@ -106,11 +107,11 @@ func TestRefineAMD64ConstantDivisionConstraints(t *testing.T) {
 	}
 }
 
-func TestNativeAMD64ImmediateRemaindersRequireRepeatedUses(t *testing.T) {
+func TestNativeAMD64ImmediateRemainders(t *testing.T) {
 	for _, test := range []struct {
 		uses int
 		want bool
-	}{{2, false}, {3, true}} {
+	}{{0, false}, {1, true}, {3, true}} {
 		machine := railmach.Func{
 			Target: railmach.TargetAMD64,
 			Insts:  []railmach.Inst{{Op: wasm.InstrI32Const, Aux: 100, Result: 2}},

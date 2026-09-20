@@ -45,9 +45,17 @@ func TestDraglineNativeAMD64UnsignedI32ConstantDivision(t *testing.T) {
 	}{
 		{name: "divide immediate 9", divisor: 9, opcode: 0x6e, want: func(n uint32) uint32 { return n / 9 }},
 		{name: "divide immediate 100", divisor: 100, opcode: 0x6e, want: func(n uint32) uint32 { return n / 100 }},
+		{name: "divide full magic 30", divisor: 30, opcode: 0x6e, want: func(n uint32) uint32 { return n / 30 }},
+		{name: "divide full magic 7", divisor: 7, opcode: 0x6e, want: func(n uint32) uint32 { return n / 7 }},
+		{name: "divide full magic high bit", divisor: 0x80000001, opcode: 0x6e, want: func(n uint32) uint32 { return n / 0x80000001 }},
+		{name: "divide full magic maximum", divisor: ^uint32(0), opcode: 0x6e, want: func(n uint32) uint32 { return n / ^uint32(0) }},
 		{name: "divide immediate million", divisor: 1_000_000, opcode: 0x6e, want: func(n uint32) uint32 { return n / 1_000_000 }},
 		{name: "remainder immediate 9", divisor: 9, opcode: 0x70, want: func(n uint32) uint32 { return n % 9 }},
 		{name: "remainder immediate 100", divisor: 100, opcode: 0x70, want: func(n uint32) uint32 { return n % 100 }},
+		{name: "remainder full magic 30", divisor: 30, opcode: 0x70, want: func(n uint32) uint32 { return n % 30 }},
+		{name: "remainder full magic 7", divisor: 7, opcode: 0x70, want: func(n uint32) uint32 { return n % 7 }},
+		{name: "remainder full magic high bit", divisor: 0x80000001, opcode: 0x70, want: func(n uint32) uint32 { return n % 0x80000001 }},
+		{name: "remainder full magic maximum", divisor: ^uint32(0), opcode: 0x70, want: func(n uint32) uint32 { return n % ^uint32(0) }},
 		{name: "remainder immediate million", divisor: 1_000_000, opcode: 0x70, want: func(n uint32) uint32 { return n % 1_000_000 }},
 		{name: "divide power of two", divisor: 16, opcode: 0x6e, want: func(n uint32) uint32 { return n / 16 }},
 		{name: "remainder power of two", divisor: 16, opcode: 0x70, want: func(n uint32) uint32 { return n % 16 }},
@@ -69,6 +77,16 @@ func TestDraglineNativeAMD64UnsignedI32ConstantDivision(t *testing.T) {
 				result, err := instance.Invoke("run", uint64(dividend))
 				if err != nil || len(result) != 1 || uint32(result[0]) != test.want(dividend) {
 					t.Fatalf("run(%#x) = %v, %v; want %#x", dividend, result, err, test.want(dividend))
+				}
+			}
+			state := uint32(0x9e3779b9)
+			for range 1024 {
+				state ^= state << 13
+				state ^= state >> 17
+				state ^= state << 5
+				result, err := instance.Invoke("run", uint64(state))
+				if err != nil || len(result) != 1 || uint32(result[0]) != test.want(state) {
+					t.Fatalf("run(%#x) = %v, %v; want %#x", state, result, err, test.want(state))
 				}
 			}
 			if err := instance.Close(); err != nil {
