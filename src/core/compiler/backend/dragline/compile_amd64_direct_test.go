@@ -35,6 +35,65 @@ func TestAMD64RailMachDerivesMixedBoundsFromCachedLimit(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachUsesRelativeJumpTableForDenseBrTable(t *testing.T) {
+	body := make([]byte, 0, 64)
+	for range 9 {
+		body = append(body, 0x02, 0x40) // block
+	}
+	body = append(body, 0x20, 0x00, 0x0e, 0x08)
+	for label := byte(0); label < 8; label++ {
+		body = append(body, label)
+	}
+	body = append(body, 0x08) // default
+	for result := byte(0); result < 9; result++ {
+		body = append(body, 0x0b, 0x41, result, 0x0f) // end; i32.const; return
+	}
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(module, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _, ok, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("RailMach finalization = ok %t, err %v", ok, err)
+	}
+	entries := 0
+	for _, patch := range plan.BranchPatches {
+		if patch.Base != 0 {
+			entries++
+		}
+	}
+	if entries != 8 {
+		t.Fatalf("relative jump-table entries = %d, want 8", entries)
+	}
+	var indirect amd64.Asm
+	indirect.JmpReg(amd64.R10)
+	if !bytes.Contains(code, indirect.B) {
+		t.Fatalf("dense br_table has no indirect dispatch: %x", code)
+	}
+}
+
 func TestAMD64RailMachReloadsCachedMemoryBoundOnlyAfterGrowingDirectCall(t *testing.T) {
 	params := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}
 	caller := []byte{

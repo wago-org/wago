@@ -151,7 +151,10 @@ type nativeBackendPlan struct {
 type nativeBranchPatch struct {
 	At     int
 	Target uint32
-	Code   uint8
+	// Base is nonzero for a raw relative jump-table entry. Ordinary near
+	// branches retain zero and use the architectural end-of-displacement base.
+	Base int
+	Code uint8
 }
 
 // nativeDenseRelation stores one optional uint32 identity per dense key.

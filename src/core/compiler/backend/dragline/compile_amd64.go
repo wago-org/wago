@@ -2474,11 +2474,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					reloadMemoryBound()
 				} else if plan.AMD64MemoryBoundEnd != 0 {
 					// Preserve downstream loop and call alignment while replacing the
-					// seven-byte load plus seven-byte subtract with two architectural
+					// seven-byte load plus four-byte subtract with two architectural
 					// NOPs. Hot callers execute fewer data-dependent operations without
 					// moving unrelated code across fetch boundaries.
 					a.B = append(a.B,
-						0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00,
+						0x0f, 0x1f, 0x80, 0x00, 0x00, 0x00, 0x00,
 						0x0f, 0x1f, 0x40, 0x00,
 					)
 				}
@@ -4508,6 +4508,41 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				return nil, 0, true, err
 			}
 			labels := terminator.Labels(plan.Stack)
+			jumpTable := len(labels) >= 9 && len(labels)-1 <= math.MaxInt32
+			if jumpTable {
+				for _, label := range labels {
+					edge, ok := nativeBranchTableEdge(plan, uint32(blockID), label)
+					if !ok {
+						return nil, 0, true, fmt.Errorf("RailMach br_table block %d label %d has no edge", blockID, label)
+					}
+					if edgeNeedsOutgoingMoves(edge) {
+						jumpTable = false
+						break
+					}
+				}
+			}
+			if jumpTable {
+				caseCount := len(labels) - 1
+				defaultEdge, _ := nativeBranchTableEdge(plan, uint32(blockID), labels[caseCount])
+				a.MovImm32(amd64.R11, int32(caseCount))
+				a.Cmp32(selector, amd64.R11)
+				patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(amd64.CondAE), Target: uint32(plan.Machine.Edges[defaultEdge].To)})
+				tableAddress := a.LeaRipPlaceholder(amd64.R10)
+				a.LeaScaled(amd64.R11, amd64.R10, selector, 2, 0)
+				a.Load32(amd64.R11, amd64.R11, 0)
+				a.Movsxd(amd64.R11, amd64.R11)
+				a.Add64(amd64.R10, amd64.R11)
+				a.JmpReg(amd64.R10)
+				tableBase := a.Len()
+				a.PatchRel32(tableAddress, tableBase)
+				for _, label := range labels[:caseCount] {
+					edge, _ := nativeBranchTableEdge(plan, uint32(blockID), label)
+					at := a.Len()
+					a.B = append(a.B, 0, 0, 0, 0)
+					patches = append(patches, nativeBranchPatch{At: at, Target: uint32(plan.Machine.Edges[edge].To), Base: tableBase})
+				}
+				continue
+			}
 			for caseIndex, label := range labels {
 				edge, ok := nativeBranchTableEdge(plan, uint32(blockID), label)
 				if !ok {
@@ -4751,7 +4786,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		if int(patch.Target) >= len(blockOffsets) {
 			return nil, 0, true, fmt.Errorf("RailMach branch target %d is unavailable", patch.Target)
 		}
-		a.PatchRel32(patch.At, blockOffsets[patch.Target])
+		if patch.Base != 0 {
+			a.PatchU32(patch.At, uint32(int32(blockOffsets[patch.Target]-patch.Base)))
+		} else {
+			a.PatchRel32(patch.At, blockOffsets[patch.Target])
+		}
 	}
 	if len(plan.Machine.Results) == 1 {
 		value := plan.Machine.Results[0]
