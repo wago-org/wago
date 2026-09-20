@@ -70,7 +70,7 @@ func BenchmarkCompileValueTypeInterning(b *testing.B) {
 	if !SupportedFeatures().IsEnabled(CoreFeaturesV3) {
 		b.Skip("requires Core 3 features")
 	}
-	for _, n := range []int{1, 4, 16, 128, 1024} {
+	for _, n := range []int{1, 4, 16, 32, 128, 1024} {
 		b.Run(fmt.Sprintf("distinct%d", n), func(b *testing.B) {
 			source := indexedGlobalModule(n)
 			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
@@ -93,7 +93,7 @@ func BenchmarkCompileValueTypeClusters(b *testing.B) {
 	if !SupportedFeatures().IsEnabled(CoreFeaturesV3) {
 		b.Skip("requires Core 3 features")
 	}
-	for _, n := range []int{4, 128, 1024} {
+	for _, n := range []int{4, 32, 128, 1024} {
 		b.Run(fmt.Sprintf("distinct%d", n), func(b *testing.B) {
 			source := indexedGlobalClusterModule(n, 16)
 			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
@@ -114,9 +114,10 @@ func BenchmarkCompileValueTypeClusters(b *testing.B) {
 
 var internMetadataSink uint32
 
+// BenchmarkValueTypeMetadata is an isolated metadata microbenchmark.
 func BenchmarkValueTypeMetadata(b *testing.B) {
-	for _, n := range []int{4, 128, 1024} {
-		for _, cluster := range []int{1, 16} {
+	for _, n := range []int{4, 32, 128, 1024} {
+		for _, cluster := range []int{1, 2, 4, 16, 64} {
 			b.Run(fmt.Sprintf("distinct%d/cluster%d", n, cluster), func(b *testing.B) {
 				descriptors := make([]ValueTypeDescriptor, n)
 				for i := range descriptors {
@@ -188,5 +189,35 @@ func TestInternedGlobalClusters(t *testing.T) {
 				t.Fatalf("global %d index = %d", i, global.ValueTypeIndex)
 			}
 		}
+	}
+}
+
+func BenchmarkValueTypeMetadataPatterns(b *testing.B) {
+	for _, pattern := range []string{"unique", "alternating", "adjacent"} {
+		b.Run(pattern, func(b *testing.B) {
+			descriptors := make([]ValueTypeDescriptor, 1024)
+			for i := range descriptors {
+				descriptors[i] = internerDescriptor(uint32(i))
+			}
+			pool := make([]ValueTypeDescriptor, 0, 1024)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				pool = pool[:0]
+				var cache valueTypeInterner
+				for _, d := range descriptors {
+					cache.intern(&pool, d)
+				}
+				if pattern != "unique" {
+					for j := 0; j < 1024; j++ {
+						k := 1023
+						if pattern == "alternating" {
+							k -= j % 2
+						}
+						internMetadataSink = cache.intern(&pool, descriptors[k])
+					}
+				}
+			}
+		})
 	}
 }
