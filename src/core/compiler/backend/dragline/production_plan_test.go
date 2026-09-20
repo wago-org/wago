@@ -1972,6 +1972,56 @@ func TestNativeBackendPlannerConsumesProfileEdgeLayout(t *testing.T) {
 	}
 }
 
+func TestNativeBackendPlannerPlacesNoReturnSuccessorOutOfLine(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x04, 0x7f, // if (result i32)
+			0x00,       //   unreachable
+			0x05,       // else
+			0x41, 0x07, //   i32.const 7
+			0x0b, // end
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := new(nativeBackendPlanner).Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var returning railssa.BlockID
+	found := false
+	for _, edge := range plan.Machine.Edges {
+		if edge.Kind == railssa.EdgeFalse {
+			returning, found = edge.To, true
+			break
+		}
+	}
+	if !found || plan.Layout == nil || len(plan.Layout.Order) < 2 || plan.Layout.Order[1] != returning {
+		t.Fatalf("static no-return layout = %#v, returning block %d found=%t", plan.Layout, returning, found)
+	}
+	exit := railssa.BlockID(len(plan.Machine.Blocks) - 1)
+	if plan.Layout.Order[len(plan.Layout.Order)-1] != exit {
+		t.Fatalf("static no-return layout = %v, exit %d is not last", plan.Layout.Order, exit)
+	}
+}
+
 func TestNativeBackendPlannerShrinkWrapsProfileColdCalleeSave(t *testing.T) {
 	body := []byte{0x01, 0x0a, 0x7e, 0x20, 0x00, 0x04, 0x7e} // ten i64 locals; if (result i64)
 	for local := byte(1); local <= 10; local++ {

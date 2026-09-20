@@ -1,6 +1,7 @@
 package railmach
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
@@ -43,5 +44,26 @@ func TestBlockLayoutRejectsMismatchedInputsAndCorruption(t *testing.T) {
 	}
 	if err := VerifyBlockLayout(f, &BlockLayout{Order: []railssa.BlockID{0}, Position: []uint32{1}, ColdStart: 1}); err == nil {
 		t.Fatal("corrupt inverse layout accepted")
+	}
+}
+
+func TestBlockLayoutDoesNotChainThroughSyntheticExit(t *testing.T) {
+	f := &Func{
+		Target: TargetAMD64,
+		VRegs:  []VRegData{{}},
+		Blocks: []Block{{Weight: 8}, {Weight: 1}, {Weight: 8}, {Flags: uint16(railssa.BlockExit), Weight: 1}},
+		Edges: []Edge{
+			{From: 0, To: 1, Kind: railssa.EdgeTrue},
+			{From: 0, To: 2, Kind: railssa.EdgeFalse},
+			{From: 2, To: 3, Kind: railssa.EdgeReturn},
+		},
+	}
+	layout, err := BuildBlockLayout(f, []uint64{0, 8, 8}, []uint32{4, 64, 16, 4}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []railssa.BlockID{0, 2, 1, 3}
+	if !slices.Equal(layout.Order, want) {
+		t.Fatalf("order = %v, want %v", layout.Order, want)
 	}
 }

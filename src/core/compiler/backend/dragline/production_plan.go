@@ -2535,6 +2535,45 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		}
 	} else {
 		p.edgeObserved = p.edgeObserved[:0]
+		p.edgeWeights = resizeNativeSlice(p.edgeWeights, len(machine.Edges))
+		clear(p.edgeWeights)
+		p.coldBlocks = resizeNativeSlice(p.coldBlocks, len(machine.Blocks))
+		clear(p.coldBlocks)
+		work := p.layout.Order[:0]
+		if len(machine.Blocks) != 0 {
+			exit := railssa.BlockID(len(machine.Blocks) - 1)
+			p.coldBlocks[exit] = true
+			work = append(work, exit)
+		}
+		for len(work) != 0 {
+			block := work[len(work)-1]
+			work = work[:len(work)-1]
+			cfgBlock := cfg.Blocks[block]
+			for _, predecessor := range cfg.Preds[cfgBlock.PredStart : cfgBlock.PredStart+uint32(cfgBlock.PredCount)] {
+				if !p.coldBlocks[predecessor] {
+					p.coldBlocks[predecessor] = true
+					work = append(work, predecessor)
+				}
+			}
+		}
+		hasNoReturnEdge := false
+		for edgeID, edge := range machine.Edges {
+			if p.coldBlocks[edge.To] {
+				p.edgeWeights[edgeID] = uint64(max(machine.Blocks[edge.From].Weight, 1))
+			} else {
+				hasNoReturnEdge = true
+			}
+		}
+		if hasNoReturnEdge {
+			p.blockBytes = resizeNativeSlice(p.blockBytes, len(machine.Blocks))
+			for blockID, blockRange := range schedule.BlockRanges {
+				p.blockBytes[blockID] = max(uint32(blockRange.Count)*4, 4)
+			}
+			layout, err = railmach.BuildBlockLayout(machine, p.edgeWeights, p.blockBytes, &p.layout)
+			if err != nil {
+				return nil, err
+			}
+		}
 		p.coldBlocks = p.coldBlocks[:0]
 		p.calleeSaveRegions = p.calleeSaveRegions[:0]
 	}
