@@ -2318,7 +2318,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 					p.postRAPreIndex.set(rewrite.Second, false)
 				}
 			case railmach.RewriteAMD64MemoryFold:
-				if machineTarget == railmach.TargetAMD64 && planInstructionsAdjacent(schedule, rewrite.First, rewrite.Second) && !p.postRASkip.has(rewrite.First) && !p.postRASkip.has(rewrite.Second) {
+				if machineTarget == railmach.TargetAMD64 && planInstructionsAdjacent(schedule, rewrite.First, rewrite.Second) && !p.postRAForwardFrom.has(rewrite.First) && !p.postRASkip.has(rewrite.First) && !p.postRASkip.has(rewrite.Second) {
 					p.postRAMemoryFrom.set(rewrite.Second, rewrite.First)
 					p.postRASkip.set(rewrite.First, true)
 				}

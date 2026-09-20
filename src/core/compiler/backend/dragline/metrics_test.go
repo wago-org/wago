@@ -1032,6 +1032,37 @@ func TestCompilerNativeAMD64ReportsMemoryFold(t *testing.T) {
 	}
 }
 
+func TestCompilerNativeAMD64PrefersStoreLoadForwardingToMemoryFold(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("AMD64 post-RA realization")
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x20, 0x01, 0x36, 0x02, 0x00,
+			0x20, 0x00, 0x28, 0x02, 0x00,
+			0x41, 0x01, 0x6a, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || metrics.Functions[0].MemoryFolds != 0 || metrics.Functions[0].PostRARewrites == 0 {
+		t.Fatalf("AMD64 store-forward priority metrics = %#v", metrics.Functions)
+	}
+}
+
 func TestCompilerNativeRailMachSpillFinalization(t *testing.T) {
 	params := make([]wasm.ValType, 21)
 	for index := range params {
