@@ -5,7 +5,7 @@ package amd64
 func (a *Asm) evexPrefix(opcodeMap, pp byte, w bool, dst, src1 Reg, base, index Reg, memory bool) {
 	p0 := byte(0xf0) | opcodeMap
 	if dst >= 8 {
-		p0 &^= 0x10
+		p0 &^= 0x80
 	}
 	if memory {
 		if index >= 8 {
