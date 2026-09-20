@@ -23,7 +23,9 @@ type Memory struct {
 type memoryState struct {
 	mu    sync.Mutex
 	owner *Instance // non-nil for an instance-owned exported memory
-	meta  uint64    // declared max u49 | inline importer count u6 | flags u9
+	// memory32: max u17 | count u32 | unused u6 | flags u9.
+	// memory64: max u49 | inline count u6 | flags u9.
+	meta uint64
 }
 
 const (
@@ -38,6 +40,9 @@ const (
 	memoryStateDeclaredShared
 
 	memoryStateDeclaredMaxMask = uint64(1<<49 - 1)
+	memory32DeclaredMaxMask    = uint64(1<<17 - 1)
+	memory32ImporterShift      = 17
+	memory32ImporterMask       = uint64(1<<32-1) << memory32ImporterShift
 	memoryStateImporterShift   = 49
 	memoryStateImporterMask    = uint64(1<<6 - 1)
 	memoryStateFlagsShift      = 55
@@ -56,7 +61,7 @@ func (s *memoryState) set(flag uint16, enabled bool) {
 	}
 }
 
-// Only overflow counts use this table. Updates reuse map storage instead of
+// Only memory64 overflow counts use this table. Updates reuse map storage instead of
 // allocating replacement sync.Map entries; callers hold the memory state lock.
 var memoryImporterOverflow memoryImporterTable
 
@@ -88,6 +93,9 @@ func (t *memoryImporterTable) Delete(s *memoryState) {
 }
 
 func (s *memoryState) importerCount() uint32 {
+	if !s.has(memoryStateAddr64) {
+		return uint32(s.meta >> memory32ImporterShift)
+	}
 	inline := uint32(s.meta>>memoryStateImporterShift) & uint32(memoryStateImporterMask)
 	if inline != uint32(memoryStateImporterMask) {
 		return inline
@@ -99,6 +107,10 @@ func (s *memoryState) importerCount() uint32 {
 }
 
 func (s *memoryState) setImporterCount(count uint32) {
+	if !s.has(memoryStateAddr64) {
+		s.meta = s.meta&^memory32ImporterMask | uint64(count)<<memory32ImporterShift
+		return
+	}
 	inline := count
 	if inline >= uint32(memoryStateImporterMask) {
 		inline = uint32(memoryStateImporterMask)
@@ -111,11 +123,18 @@ func (s *memoryState) setImporterCount(count uint32) {
 }
 
 func (s *memoryState) declaredMaximum() uint64 {
+	if !s.has(memoryStateAddr64) {
+		return s.meta & memory32DeclaredMaxMask
+	}
 	return s.meta & memoryStateDeclaredMaxMask
 }
 
 func (s *memoryState) setDeclaredMaximum(max uint64) {
-	s.meta = s.meta&^memoryStateDeclaredMaxMask | max&memoryStateDeclaredMaxMask
+	mask := memoryStateDeclaredMaxMask
+	if !s.has(memoryStateAddr64) {
+		mask = memory32DeclaredMaxMask
+	}
+	s.meta = s.meta&^mask | max&mask
 }
 
 // NewMemory creates a host-owned linear memory. minPages/maxPages are in 64 KiB
@@ -341,7 +360,13 @@ func (m *Memory) share(owner *Instance, def memoryDef) error {
 	if s.has(memoryStateWasmTypeKnown) && s.has(memoryStateDeclaredShared) != def.Shared {
 		return fmt.Errorf("memory shared type does not match prior export")
 	}
-	s.set(memoryStateAddr64, def.Addr64)
+	if s.has(memoryStateAddr64) != def.Addr64 {
+		// The first export can establish memory64 after owner observation.
+		count := s.importerCount()
+		s.setImporterCount(0)
+		s.set(memoryStateAddr64, def.Addr64)
+		s.setImporterCount(count)
+	}
 	s.set(memoryStateAddrKnown, true)
 	// The original local owner defines the provider's exact external type. A
 	// re-exported import forwards that type rather than replacing it with the

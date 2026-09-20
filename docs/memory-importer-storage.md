@@ -1,5 +1,7 @@
 # Reusable memory importer storage
 
+Later update: [inline memory32 importer counts](memory32-importer-storage.md) remove the overflow table from memory32. The measurements below describe the earlier layout.
+
 This follows the [correctness review measurements](correctness-review-followup.md), using `5afc2090f` as the production-code baseline. The earlier overflow threshold remains 63, and the packed memory representation is unchanged.
 
 The overflow table now stores `uint32` counts directly in a typed map protected by one mutex. Updating a count reuses its map slot. This removes replacement `sync.Map` entries and integer boxing. Counts below 63 do not take the table lock; only a transition out of overflow deletes a table entry. `Memory` remains 16 bytes and `memoryState` remains 24 bytes on the tested 64-bit host. No guest load/store, compiler, global-write, or GC-reference-test path changed.
