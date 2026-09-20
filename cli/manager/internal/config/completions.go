@@ -89,7 +89,7 @@ func InstallCompletion(shell, path, rc string) (string, error) {
 
 func completionPath(shell string) (string, error) {
 	if shell == "fish" {
-		return wagopaths.FishCompletionPath(), nil
+		return wagopaths.FishCompletionPath()
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {

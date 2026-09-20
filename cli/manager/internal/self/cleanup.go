@@ -273,7 +273,11 @@ func isCompletionCommand(line string) bool {
 }
 
 func fishCompletionPath() string {
-	return wagopaths.FishCompletionPath()
+	path, err := wagopaths.FishCompletionPath()
+	if err != nil {
+		return ""
+	}
+	return path
 }
 
 func isInstallerPathCommand(line string) bool {
