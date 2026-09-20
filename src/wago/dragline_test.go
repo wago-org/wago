@@ -7182,6 +7182,30 @@ func TestDraglineBulkMemoryCopyFill(t *testing.T) {
 			if got, err := instance.Invoke("load8", I32(100)); err != nil || len(got) != 1 || got[0] != 0x55 {
 				t.Fatalf("trapping copy mutated destination: %v, %v", got, err)
 			}
+			const base = 1024
+			for _, length := range []int{0, 1, 2, 3, 4, 7, 8, 9, 15, 16, 17, 31, 32, 63, 127, 255, 256, 257, 511} {
+				for _, offsets := range [][2]int{{1, 0}, {0, 1}, {600, 0}} {
+					const regionSize = 1200
+					want := make([]byte, regionSize)
+					for index := range want {
+						want[index] = byte(index*37 + 11)
+						if _, err := instance.Invoke("store8", I32(int32(base+index)), I32(int32(want[index]))); err != nil {
+							t.Fatalf("initialize byte %d: %v", index, err)
+						}
+					}
+					dst, src := offsets[0], offsets[1]
+					copy(want[dst:dst+length], want[src:src+length])
+					if _, err := instance.Invoke("copy", I32(int32(base+dst)), I32(int32(base+src)), I32(int32(length))); err != nil {
+						t.Fatalf("copy(dst=%d, src=%d, len=%d): %v", dst, src, length, err)
+					}
+					for index, expected := range want {
+						got, err := instance.Invoke("load8", I32(int32(base+index)))
+						if err != nil || len(got) != 1 || byte(got[0]) != expected {
+							t.Fatalf("copy(dst=%d, src=%d, len=%d) byte %d = %v, %v; want %d", dst, src, length, index, got, err, expected)
+						}
+					}
+				}
+			}
 			if _, err := instance.Invoke("fill", I32(65535), I32(0xaa), I32(2)); err == nil {
 				t.Fatal("out-of-bounds fill did not trap")
 			}

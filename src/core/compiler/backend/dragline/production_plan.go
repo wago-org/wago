@@ -2930,6 +2930,7 @@ func machineAMD64VectorScratchCount(machine *railmach.Func, wideScratch bool) ui
 			railmach.OpAMD64V128Load8x8U, railmach.OpAMD64V128Load16x4U, railmach.OpAMD64V128Load32x2S, railmach.OpAMD64V128Load32x2U:
 			count = 1 // XMM5 supplies zero or sign-extension lanes.
 		case wasm.InstrI8x16RelaxedSwizzle,
+			wasm.InstrMemoryCopy, railmach.OpAMD64MemoryCopy,
 			wasm.InstrF32x4RelaxedMadd, wasm.InstrF32x4RelaxedNmadd, wasm.InstrF64x2RelaxedMadd, wasm.InstrF64x2RelaxedNmadd,
 			wasm.InstrI8x16RelaxedLaneselect, wasm.InstrI16x8RelaxedLaneselect,
 			wasm.InstrI32x4RelaxedLaneselect, wasm.InstrI64x2RelaxedLaneselect,

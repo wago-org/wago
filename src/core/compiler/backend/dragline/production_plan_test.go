@@ -1085,6 +1085,16 @@ func TestNativeAMD64SelectedSwizzleReservesScratch(t *testing.T) {
 	}
 }
 
+func TestNativeAMD64MemoryCopyReservesVectorScratch(t *testing.T) {
+	machine := &railmach.Func{
+		Target: railmach.TargetAMD64,
+		Insts:  []railmach.Inst{{Op: railmach.OpAMD64MemoryCopy}},
+	}
+	if got := machineAMD64VectorScratchCount(machine, true); got != 1 {
+		t.Fatalf("memory.copy scratch count = %d, want 1", got)
+	}
+}
+
 func TestNativeImmediateCombinationsRejectStaleMultiplyAddRelation(t *testing.T) {
 	machine := &railmach.Func{
 		Target: railmach.TargetARM64,
