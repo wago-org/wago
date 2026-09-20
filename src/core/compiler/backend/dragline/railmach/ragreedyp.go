@@ -34,7 +34,7 @@ type CallClobber struct {
 }
 
 const (
-	greedyDensityMinInstructions         = 256
+	greedyDensityMinInstructions         = 240
 	greedyRegionalDensityMinInstructions = 480
 	greedyRegionalMaxInstructions        = 8192
 )
