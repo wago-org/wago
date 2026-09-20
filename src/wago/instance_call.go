@@ -296,32 +296,26 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 	if (g.Type == ValAnyRef || g.Type == ValExnRef) && bits != 0 {
 		return fmt.Errorf("global %q: non-null %s ingress is unsupported", name, g.Type)
 	}
-	if g.Type == ValFuncRef {
+	if g.Type == ValFuncRef && bits != 0 {
 		exact, err := in.c.globalExactType(idx)
 		if err != nil {
 			return fmt.Errorf("global %q exact type: %w", name, err)
 		}
-		if bits == 0 {
-			if exact.Kind == ValueTypeReference && !exact.Ref.Nullable {
-				return fmt.Errorf("global %q requires a non-null reference value", name)
-			}
-		} else {
-			if in.refStore == nil {
-				return fmt.Errorf("global %q: invalid funcref token", name)
-			}
-			actual, actualTypes, ok := in.refStore.tokenFuncrefExactType(bits)
-			if !ok {
-				return fmt.Errorf("global %q: invalid funcref token", name)
-			}
-			if !valueTypeSubtype(actual, actualTypes, exact, in.c.Types) {
-				return fmt.Errorf("global %q: funcref token does not match its exact structural type", name)
-			}
-			descriptor, ok := in.refStore.resolve(bits)
-			if !ok {
-				return fmt.Errorf("global %q: invalid funcref token", name)
-			}
-			bits = descriptor
+		if in.refStore == nil {
+			return fmt.Errorf("global %q: invalid funcref token", name)
 		}
+		actual, actualTypes, ok := in.refStore.tokenFuncrefExactType(bits)
+		if !ok {
+			return fmt.Errorf("global %q: invalid funcref token", name)
+		}
+		if !valueTypeSubtype(actual, actualTypes, exact, in.c.Types) {
+			return fmt.Errorf("global %q: funcref token does not match its exact structural type", name)
+		}
+		descriptor, ok := in.refStore.resolve(bits)
+		if !ok {
+			return fmt.Errorf("global %q: invalid funcref token", name)
+		}
+		bits = descriptor
 	}
 	if g.Type == ValExternRef && bits != 0 && !in.validExternrefToken(bits) {
 		return fmt.Errorf("global %q: invalid externref token", name)
