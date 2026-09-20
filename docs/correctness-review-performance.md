@@ -1,5 +1,7 @@
 # Correctness review: performance and validation
 
+The [follow-up report](correctness-review-followup.md) adds conflict-export and EVEX destination fixes, stronger tests, the importer overflow allocation benchmark, and updated validation.
+
 Baseline: `4e3345d2d` (`origin/main` when work began). Linux AMD64, AMD Ryzen 7 8845HS, Go 1.27.1. Each timing has eight samples, a 200 ms benchmark duration, `GOMAXPROCS=1`, and CPU affinity to CPU 2. Baseline and candidate binaries ran sequentially, with their order reversed on alternate repetitions. Tables show medians and the `benchstat` comparison; `~` means no statistically significant difference.
 
 The native compilation and corpus measurements preceded the final API and parser tuning. Native code generation did not change after that capture. The GC, encoder, semver, and direct API measurements were repeated after their respective changes.
