@@ -297,16 +297,21 @@ func parsePartial(s string) (partial, error) {
 		main = rest
 	}
 	var out partial
+	wildcard := false
 	for idx, part := range parts[:nparts] {
 		if part == "" {
 			return partial{}, fmt.Errorf("semver: empty component in %q", s)
 		}
 		if part == "*" || part == "x" || part == "X" {
-			break // wildcard truncates; n stays at idx
+			wildcard = true
+			continue
 		}
 		n, err := parseNumeric(part)
 		if err != nil {
 			return partial{}, err
+		}
+		if wildcard {
+			continue
 		}
 		switch idx {
 		case 0:
