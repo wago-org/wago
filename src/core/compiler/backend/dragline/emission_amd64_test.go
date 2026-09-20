@@ -894,6 +894,60 @@ func TestAMD64RailMachTracksBMI2OnlyForFoldedRotates(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachImmediateRotateSkipsVariableCountRepair(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x41, 0x10, // i32.const 16
+			0x78,       // i32.rotr
+			0x20, 0x01, // local.get 1
+			0x6a, // i32.add
+			0x0b,
+		}))),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	function, err := buildCompilerFunc(module, 0, new(railssa.StackFunc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := new(nativeBackendPlanner).Plan(function.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !amd64RailMachMayUseBMI2(plan) {
+		t.Fatal("fixture did not select a folded BMI2 rotate")
+	}
+	native, _, used, err := emitAMD64RailMach(function, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("immediate rotate emission = used %t, err %v", used, err)
+	}
+	var save, restore amd64.Asm
+	save.MovReg64(amd64.R11, amd64.RCX)
+	restore.MovReg64(amd64.RCX, amd64.R11)
+	if bytes.Contains(native, save.B) || bytes.Contains(native, restore.B) {
+		t.Fatalf("immediate rotate retained variable-count RCX repair: %x", native)
+	}
+	for _, register := range [...]amd64.Reg{amd64.RAX, amd64.RCX, amd64.RDX, amd64.R8, amd64.R9, amd64.R10, amd64.R11, amd64.R12, amd64.R13, amd64.R14, amd64.R15, amd64.RBP, amd64.RSI, amd64.RDI} {
+		var materialize amd64.Asm
+		materialize.MovImm32(register, 16)
+		if bytes.Contains(native, materialize.B) {
+			t.Fatalf("folded rotate count was still materialized in register %d: %x", register, native)
+		}
+	}
+}
+
 func TestAMD64RailMachCallArgumentsBreakRegisterCycle(t *testing.T) {
 	var got amd64.Asm
 	amd64EmitRailMachCallArguments(&got, []amd64RailMachCallArgument{

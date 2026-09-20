@@ -1618,9 +1618,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, err
 				}
 			}
+			foldedImmediateID, hasFoldedImmediate := immediateProducer.get(instructionID)
 			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect {
 				for operandIndex, operand := range operands {
-					if operand.Reg == forwardedSpill || memoryFold && plan.Machine.Insts[foldedLoadID].Result == operand.Reg {
+					if operand.Reg == forwardedSpill || memoryFold && plan.Machine.Insts[foldedLoadID].Result == operand.Reg || hasFoldedImmediate && plan.Machine.Insts[foldedImmediateID].Result == operand.Reg {
 						continue
 					}
 					duplicate := false
@@ -1661,6 +1662,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			divisionRDXSaved := false
 			shiftRCXSaved := false
 			shiftRCXRestore := false
+			_, hasImmediateOperand := immediateProducer.get(instructionID)
+			immediateShift := hasImmediateOperand && (semanticOp >= wasm.InstrI32Shl && semanticOp <= wasm.InstrI32Rotr || semanticOp >= wasm.InstrI64Shl && semanticOp <= wasm.InstrI64Rotr)
 			_, constantUnsignedI32Division := amd64RailMachUnsignedI32ConstantDivisor(plan, instruction, operands)
 			_, constantSignedI32Division := amd64RailMachSignedI32ConstantDivisor(plan, instruction, operands)
 			constantI32InputFree := (constantUnsignedI32Division || constantSignedI32Division) && operands[0].Flags&railmach.OperandFixed == 0
@@ -1677,7 +1680,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 				}
 			}
-			if (semanticOp >= wasm.InstrI32Shl && semanticOp <= wasm.InstrI32Rotr || semanticOp >= wasm.InstrI64Shl && semanticOp <= wasm.InstrI64Rotr) && len(operands) == 2 {
+			if !immediateShift && (semanticOp >= wasm.InstrI32Shl && semanticOp <= wasm.InstrI32Rotr || semanticOp >= wasm.InstrI64Shl && semanticOp <= wasm.InstrI64Rotr) && len(operands) == 2 {
 				lhs := plan.Allocation.LocationAt(operands[0].Reg, currentPosition)
 				result := plan.Allocation.LocationAt(instruction.Result, currentPosition)
 				lhsInRCX := operands[0].Reg != operands[1].Reg && lhs.Kind == railmach.LocationRegister && amd64RailMachPhysical(lhs) == amd64.RCX
@@ -1691,7 +1694,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					shiftRCXRestore = liveAcrossRCX && !resultInRCX
 				}
 			}
-			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect {
+			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect && !immediateShift {
 				if moveRange, ok := nativeFixedMoveRange(plan, instructionID); ok {
 					if err := emitAMD64RailMachMoveRange(&a, plan, moveRange); err != nil {
 						return nil, 0, true, err
@@ -4361,7 +4364,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					continue
 				}
 				out := dst
-				if out == amd64.RCX {
+				if out == amd64.RCX && producer == ^uint32(0) {
 					out = amd64.R10
 				}
 				if out != lhs {
