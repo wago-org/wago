@@ -1058,7 +1058,11 @@ func amd64RailMachCanForwardPendingSpill(plan *nativeBackendPlan, instructionID 
 func amd64RailMachCanUseMemoryAddressDirectly(plan *nativeBackendPlan, value railmach.VReg, position uint32, offset uint32, aliasesLoadResult bool) bool {
 	location := plan.Allocation.LocationAt(value, position)
 	dies := amd64RailMachValueDiesAt(plan, value, position+6)
-	return (!aliasesLoadResult || dies) && offset <= math.MaxInt32 && location.Kind == railmach.LocationRegister
+	// Spill and rematerialization operands have already been loaded into their
+	// width-correct emission register before the memory instruction. Reusing that
+	// register avoids a redundant 32-bit copy into R10.
+	materialized := location.Kind == railmach.LocationRegister || location.Kind == railmach.LocationSpill || location.Kind == railmach.LocationRematerialize
+	return (!aliasesLoadResult || dies) && offset <= math.MaxInt32 && materialized
 }
 
 func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
@@ -3959,7 +3963,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				endOffset := uint64(uint32(instruction.Aux)) + uint64(size)
 				if !railMachElidesMemoryBoundsCheck(plan, instructionID) && !memoryChecked(operands[0].Reg, endOffset) {
-					emitAMD64RailMachBoundsCheck(&a, plan, address, endOffset, instructionID, &coldTrapPatches, !store)
+					emitAMD64RailMachBoundsCheck(&a, plan, address, endOffset, instructionID, &coldTrapPatches, !store || address == amd64.RSI)
 				}
 				disp := int32(uint32(instruction.Aux))
 				if uint32(instruction.Aux) > math.MaxInt32 {

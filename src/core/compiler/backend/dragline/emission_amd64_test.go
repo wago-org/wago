@@ -1376,6 +1376,14 @@ func TestAMD64RailMachUsesAllocatedMemoryAddressesDirectly(t *testing.T) {
 	if !amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, math.MaxInt32, false) {
 		t.Fatal("allocated address with encodable offset required a scratch copy")
 	}
+	if !amd64RailMachCanUseMemoryAddressDirectly(&plan, 2, 0, 0, false) {
+		t.Fatal("materialized spill address required a second scratch copy")
+	}
+	allocation.Locations[2].Kind = railmach.LocationRematerialize
+	if !amd64RailMachCanUseMemoryAddressDirectly(&plan, 2, 0, 0, false) {
+		t.Fatal("rematerialized address required a second scratch copy")
+	}
+	allocation.Locations[2].Kind = railmach.LocationInvalid
 	allocation.Locations[1].Index = 5
 	if !amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, false) {
 		t.Fatal("live callee-saved address required a scratch copy")
