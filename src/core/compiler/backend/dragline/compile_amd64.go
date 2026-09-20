@@ -4135,6 +4135,19 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 					continue
 				}
+				if divisor, ok := amd64RailMachUnsignedI64ConstantDivisor(plan, instruction, operands); ok {
+					amd64EmitUnsignedI64ConstantDivision(&a, dst, reg(operands[0].Reg), divisor, semanticOp == wasm.InstrI64RemU)
+					if divisionRAXSaved && dst != amd64.RAX {
+						a.LoadRsp64(amd64.RAX, int32(plan.AMD64DivisionSaveOffset))
+					}
+					if divisionRDXSaved && dst != amd64.RDX {
+						a.LoadRsp64(amd64.RDX, int32(plan.AMD64DivisionSaveOffset)+8)
+					}
+					if metrics != nil {
+						metrics.PostRARewrites++
+					}
+					continue
+				}
 				if !amd64RailMachDivisionInputSafe(plan, instructionID, operands) || !amd64RailMachDivisionClobberSafe(plan, instructionID) && !plan.AMD64DivisionSave {
 					return nil, 0, false, nil
 				}
@@ -9155,6 +9168,15 @@ func amd64RailMachSignedI32ConstantDivisor(plan *nativeBackendPlan, instruction 
 	return divisor, immediate
 }
 
+func amd64RailMachUnsignedI64ConstantDivisor(plan *nativeBackendPlan, instruction railmach.Inst, operands []railmach.Operand) (uint64, bool) {
+	kind := railmach.SemanticOpcode(instruction.Op)
+	if kind != wasm.InstrI64DivU && kind != wasm.InstrI64RemU || len(operands) != 2 {
+		return 0, false
+	}
+	divisor, constant := nativeMachineIntegerConstant(plan.Machine, operands[1].Reg)
+	return divisor, constant && divisor != 0
+}
+
 // amd64RailMachPairedSignedI32Division reports whether the instruction is one
 // half of an adjacent div/rem pair over the same dividend and positive constant
 // divisor. Adjacent means no other integer division intervenes in scheduled
@@ -9251,6 +9273,68 @@ func amd64EmitUnsignedI32ConstantDivision(a *amd64.Asm, dst, dividend amd64.Reg,
 	}
 	if dst != quotient {
 		a.MovReg32(dst, quotient)
+	}
+}
+
+func amd64EmitUnsignedI64ConstantDivision(a *amd64.Asm, dst, dividend amd64.Reg, divisor uint64, remainder bool) {
+	if divisor&(divisor-1) == 0 {
+		if remainder {
+			if dst != dividend {
+				a.MovReg64(dst, dividend)
+			}
+			if divisor == 1 {
+				a.XorSelf32(dst)
+			} else if divisor-1 <= math.MaxInt32 {
+				a.AluRI(4, dst, int32(divisor-1), true)
+			} else {
+				a.MovImm64(amd64.R10, divisor-1)
+				a.AluRR(0x21, dst, amd64.R10, true)
+			}
+			return
+		}
+		if dst != dividend {
+			a.MovReg64(dst, dividend)
+		}
+		a.ShiftImm(5, dst, byte(bits.TrailingZeros64(divisor)), true)
+		return
+	}
+
+	magic, shift, add := railshotcore.MagicU(divisor, 64)
+	a.MovReg64(amd64.R11, dividend)
+	a.MovImm64(amd64.R10, magic)
+	if dividend != amd64.RAX {
+		a.MovReg64(amd64.RAX, dividend)
+	}
+	a.Mul(amd64.R10, true)
+	quotient := amd64.RDX
+	if add {
+		a.MovReg64(amd64.R10, amd64.R11)
+		a.AluRR(0x29, amd64.R10, amd64.RDX, true)
+		a.ShiftImm(5, amd64.R10, 1, true)
+		a.AluRR(0x01, amd64.R10, amd64.RDX, true)
+		quotient = amd64.R10
+	}
+	if shift != 0 {
+		a.ShiftImm(5, quotient, byte(shift), true)
+	}
+	if remainder {
+		product := amd64.R10
+		if quotient == amd64.R10 {
+			product = amd64.RAX
+			if dst == amd64.RAX {
+				product = amd64.RDX
+			}
+		}
+		a.MovImm64(product, divisor)
+		a.IMul(product, quotient, true)
+		if dst != amd64.R11 {
+			a.MovReg64(dst, amd64.R11)
+		}
+		a.AluRR(0x29, dst, product, true)
+		return
+	}
+	if dst != quotient {
+		a.MovReg64(dst, quotient)
 	}
 }
 
