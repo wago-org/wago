@@ -25,7 +25,7 @@ func modulePath() string {
 	if p := os.Getenv("WAGO_JSON_MODULE"); p != "" {
 		return p
 	}
-	return "corpus/json-as.wasm"
+	return "../corpus/workloads/assemblyscript/json-as.wasm"
 }
 
 func main() {
@@ -49,7 +49,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "compile:", err)
 		os.Exit(1)
 	}
-	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})}})
+	imports := wago.NewImports()
+	imports.HostFunc("env", "abort", func(wago.HostCall) {})
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "instantiate:", err)
 		os.Exit(1)

@@ -228,7 +228,7 @@ func TestPolicyTableLimitChecksResolvedImportCapacity(t *testing.T) {
 		t.Fatalf("compile consumer: %v", err)
 	}
 	_, err = rt.Instantiate(context.Background(), consumerMod,
-		WithImports(Imports{"env.table": table}),
+		WithImports(testImports("env.table", table)),
 		WithPolicy(Policy{MaxTableEntries: 2}),
 	)
 	if !errors.Is(err, ErrPermissionDenied) {

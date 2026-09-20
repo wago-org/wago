@@ -270,14 +270,12 @@ func TestRuntimeCloseFromImportedStartIsReentrant(t *testing.T) {
 	callbackReturned := make(chan struct{})
 	instantiateDone := make(chan error, 1)
 	go func() {
-		in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
-			"env.start": HostFunc(func(HostModule, []uint64, []uint64) {
-				if err := rt.Close(); err != nil {
-					t.Errorf("reentrant Close: %v", err)
-				}
-				close(callbackReturned)
-			}),
-		}))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.start", slotHostFunc(func(HostModule, []uint64, []uint64) {
+			if err := rt.Close(); err != nil {
+				t.Errorf("reentrant Close: %v", err)
+			}
+			close(callbackReturned)
+		}))))
 		if in != nil {
 			_ = in.Close()
 		}
@@ -526,11 +524,7 @@ func TestRuntimeRegisteredImportMetadataIsOwned(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			module, err := hosts.Module("env")
-			if err != nil {
-				return err
-			}
-			builder = module.Func("f", func(HostModule, []uint64, []uint64) {}).Params(ValI32).Results(ValI64).Docs("original")
+			builder = testRegisterHostFunc(hosts, "env", "f", func(HostModule, []uint64, []uint64) {}).Params(ValI32).Results(ValI64).Docs("original")
 			return nil
 		})
 	}}

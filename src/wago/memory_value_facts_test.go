@@ -60,7 +60,7 @@ func TestMemoryValueFactsAcrossTransfers(t *testing.T) {
 						defer compiled.Close()
 						global := NewGlobalI32(0, true)
 						defer global.Close()
-						in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.addr": GlobalImport{Global: global}}})
+						in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.addr", GlobalImport{Global: global})})
 						if err != nil {
 							t.Fatal(err)
 						}

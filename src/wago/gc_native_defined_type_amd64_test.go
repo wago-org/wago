@@ -160,7 +160,7 @@ func TestGCNativeSubtypeIntervalAppendWaitsForInvocationLease(t *testing.T) {
 		}
 	}()
 	go func() {
-		instance, err := rt.Instantiate(context.Background(), consumer, WithImports(Imports{"env.g": sharedGlobal}))
+		instance, err := rt.Instantiate(context.Background(), consumer, WithImports(testImports("env.g", sharedGlobal)))
 		done <- result{instance: instance, err: err}
 	}()
 	select {
@@ -312,7 +312,7 @@ func TestGCNativeDefinedTypeDeepSubtypeAndCanonicalMap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer module.Close()
-	instance, err := rt.Instantiate(context.Background(), module, WithImports(Imports{"env.g": sharedGlobal}))
+	instance, err := rt.Instantiate(context.Background(), module, WithImports(testImports("env.g", sharedGlobal)))
 	if err != nil {
 		t.Fatal(err)
 	}

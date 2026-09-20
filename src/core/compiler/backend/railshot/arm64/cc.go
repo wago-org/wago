@@ -137,13 +137,13 @@ var pinnedLocalRegs = []Reg{X19, X20, X21, X22, X23}
 // V8-V14 form the conservative base pool, V16+ may be promoted adaptively, and
 // V15 remains mergeFReg for single-result float control-flow joins.
 const basePinnedFLocalRegs = 7
-const callFreePinnedFLocalRegs = 15
+const callFreePinnedFLocalRegs = 17
 
 var pinnedFLocalRegs = []Reg{
 	8, 9, 10, 11, 12, 13, 14,
 	// V16-V23 are caller-saved and have no fixed backend role. Pinned locals are
 	// initialized at entry and the existing STACK_REG call path already spills
-	// every dirty pin. Call-free functions cap this list at 15 pins (leaving 17
+	// every dirty pin. Call-free functions cap this list at 17 pins (leaving 15
 	// expression registers); eligible call-making functions may use all 27
 	// (leaving five), while signatures with 5+ FP args stop before V4-V7.
 	16, 17, 18, 19, 20, 21, 22, 23,

@@ -1,0 +1,12 @@
+pair=1 version=baseline time=2026-09-20T00:59:36Z
+pair=1 version=optimized time=2026-09-20T00:59:57Z
+pair=2 version=optimized time=2026-09-20T01:00:26Z
+pair=2 version=baseline time=2026-09-20T01:00:54Z
+pair=3 version=baseline time=2026-09-20T01:01:16Z
+pair=3 version=optimized time=2026-09-20T01:01:38Z
+pair=4 version=optimized time=2026-09-20T01:02:05Z
+pair=4 version=baseline time=2026-09-20T01:02:33Z
+pair=5 version=baseline time=2026-09-20T01:02:55Z
+pair=5 version=optimized time=2026-09-20T01:03:17Z
+pair=6 version=optimized time=2026-09-20T01:03:45Z
+pair=6 version=baseline time=2026-09-20T01:04:13Z

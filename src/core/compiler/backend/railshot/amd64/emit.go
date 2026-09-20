@@ -599,7 +599,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	right := node.arg1
 
 	if right.isValue() && right.st.kind == stConst {
-		if f.opt(optBMI2Rorx) && (node.deferredOp() == opRotr || node.deferredOp() == opRotl) {
+		if f.bmi2Rorx && (node.deferredOp() == opRotr || node.deferredOp() == opRotl) {
 			mask := int64(31)
 			if w {
 				mask = 63

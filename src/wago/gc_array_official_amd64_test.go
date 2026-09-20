@@ -156,7 +156,7 @@ func stagedGCArrayLeaderDeltaFor(data []byte, line int) (stagedGCArrayLeaderDelt
 }
 
 func compileStagedGCArray(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.ReferenceTypes = true
 	features.TypedFunctionReferences = true

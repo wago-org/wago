@@ -1,0 +1,48 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardScanSparseReferences/ranges=33         	   17835	     67344 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=false 	23564149	        50.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=true  	23864931	        50.21 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardScanSparseReferences/ranges=33         	   17814	     67288 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=false 	24051091	        50.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=true  	23724667	        50.46 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardScanSparseReferences/ranges=33         	   17787	     67179 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=false 	24046598	        50.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=true  	23961488	        50.30 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardScanSparseReferences/ranges=33         	   17809	     67242 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=false 	23731725	        50.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=true  	23843202	        50.39 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardScanSparseReferences/ranges=33         	   17917	     67480 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=false 	23998555	        50.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=true  	23852190	        50.15 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardScanSparseReferences/ranges=33         	   17689	     67975 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=false 	23585412	        50.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=true  	23915688	        50.35 ns/op	       0 B/op	       0 allocs/op
+PASS

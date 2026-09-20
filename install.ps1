@@ -77,7 +77,13 @@ function Get-WagoDownloadTags([string]$version) {
         } catch {
             # A beta release can carry the installer when no stable release exists.
         }
-        $beta = Get-WagoBetaTag
+        $beta = $null
+        try {
+            $beta = Get-WagoBetaTag
+        } catch {
+            # Beta discovery is optional when a stable installer is available.
+            if ($tags.Count -eq 0) { throw }
+        }
         if ($beta -and $tags -notcontains $beta) {
             $tags += $beta
         }

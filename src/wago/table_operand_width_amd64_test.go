@@ -86,9 +86,9 @@ func TestTable32OperationsCanonicalizeDirtySynchronousHostResult(t *testing.T) {
 		{name: "local", want: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.index": HostFunc(func(_ HostModule, _, results []uint64) {
+			in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.index", slotHostFunc(func(_ HostModule, _, results []uint64) {
 				results[0] = 0xdead_beef_0000_0001
-			})}})
+			}))})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -100,9 +100,9 @@ func TestTable32OperationsCanonicalizeDirtySynchronousHostResult(t *testing.T) {
 		})
 	}
 
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.index": HostFunc(func(_ HostModule, _, results []uint64) {
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.index", slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = 0xdead_beef_0000_0005
-	})}})
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,9 +136,9 @@ func TestReturnCallIndirectCanonicalizesDirtySynchronousHostResult(t *testing.T)
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.index": HostFunc(func(_ HostModule, _, results []uint64) {
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.index", slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = 0xdead_beef_0000_0001
-	})}})
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,9 +216,9 @@ func TestTable32GrowCanonicalizesDirtySynchronousHostResult(t *testing.T) {
 		{name: "low-bits-out-of-capacity", dirty: 0xdead_beef_ffff_ffff, want: -1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.index": HostFunc(func(_ HostModule, _, results []uint64) {
+			in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.index", slotHostFunc(func(_ HostModule, _, results []uint64) {
 				results[0] = tc.dirty
-			})}})
+			}))})
 			if err != nil {
 				t.Fatal(err)
 			}

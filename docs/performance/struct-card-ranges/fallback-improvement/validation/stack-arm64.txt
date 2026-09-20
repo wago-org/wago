@@ -1,0 +1,18 @@
+TEXT github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).scanStructCardRanges(SB) /home/jtenner/Projects/wago-pr642/src/core/runtime/gc/native/cards.go
+  cards.go:176			0x1830a0		f9400b90		MOVD 16(R28), R16
+  cards.go:176			0x1830a4		d10b43f1		SUB $720, RSP, R17
+  cards.go:176			0x1830a8		eb10023f		CMP R16, R17
+  cards.go:176			0x1830ac		54004069		BLS 515(PC)
+  cards.go:176			0x1830b0		d10d43f4		SUB $848, RSP, R20
+  cards.go:176			0x1830b4		a93ffa9d		STP (R29, R30), -8(R20)
+  cards.go:176			0x1830b8		9100029f		MOVD R20, RSP
+  cards.go:176			0x1830bc		d10023fd		SUB $8, RSP, R29
+  cards.go:178			0x1830c0		f901afe0		MOVD R0, 856(RSP)
+  cards.go:178			0x1830c4		b90363e1		MOVW R1, 864(RSP)
+  ref.go:44			0x1830c8		d37ff822		LSL $1, R1, R2
+  cards.go:177			0x1830cc		aa0203e1		MOVD R2, R1
+  cards.go:177			0x1830d0		97fff100		CALL github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).refDesc(SB)
+  cards.go:177			0x1830d4		b902fbe0		MOVW R0, 760(RSP)
+  cards.go:177			0x1830d8		390bf3e1		MOVB R1, 764(RSP)
+  cards.go:177			0x1830dc		f90183e2		MOVD R2, 768(RSP)
+  cards.go:177			0x1830e0		f90187e3		MOVD R3, 776(RSP)

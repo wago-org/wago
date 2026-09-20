@@ -37,12 +37,12 @@ func BenchmarkCallerArity(b *testing.B) {
 				name string
 				fn   any
 			}{
-				{name: "legacy", fn: HostFunc(func(_ HostModule, _, r []uint64) {
+				{name: "legacy", fn: slotHostFunc(func(_ HostModule, _, r []uint64) {
 					for i := range r {
 						r[i] = uint64(i + 1)
 					}
 				})},
-				{name: "caller", fn: CallerHostFunc(func(_ Caller, _, r []uint64) {
+				{name: "caller", fn: callerSlotHostFunc(func(_ Caller, _, r []uint64) {
 					for i := range r {
 						r[i] = uint64(i + 1)
 					}
@@ -57,7 +57,7 @@ func BenchmarkCallerArity(b *testing.B) {
 			for _, path := range paths {
 				b.Run(path.name, func(b *testing.B) {
 					fn := path.fn
-					in, err := Instantiate(c, Imports{"env.f": fn})
+					in, err := Instantiate(c, testImports("env.f", fn))
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -88,9 +88,9 @@ func BenchmarkCallerGCLoop(b *testing.B) {
 	}
 	for _, concrete := range []bool{false, true} {
 		b.Run(fmt.Sprintf("concrete%t", concrete), func(b *testing.B) {
-			var fn any = HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })
+			var fn any = slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })
 			if concrete {
-				fn = CallerHostFunc(func(_ Caller, p, r []uint64) { r[0] = p[0] + 1 })
+				fn = callerSlotHostFunc(func(_ Caller, p, r []uint64) { r[0] = p[0] + 1 })
 			}
 			rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
 			defer rt.Close()
@@ -99,7 +99,7 @@ func BenchmarkCallerGCLoop(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer mod.Close()
-			in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.step": fn}))
+			in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.step", fn)))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -131,13 +131,13 @@ func BenchmarkCallerDomainLoop(b *testing.B) {
 		b.Run(fmt.Sprintf("dynamic%t", dynamic), func(b *testing.B) {
 			rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
 			defer rt.Close()
-			fn := CallerHostFunc(func(_ Caller, p, r []uint64) { r[0] = p[0] + 1 })
+			fn := callerSlotHostFunc(func(_ Caller, p, r []uint64) { r[0] = p[0] + 1 })
 			mod, err := rt.Compile(hostRoundtripLoopGCModule(b, 0, true))
 			if err != nil {
 				b.Fatal(err)
 			}
 			defer mod.Close()
-			producer, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.step": fn}))
+			producer, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.step", fn)))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -146,14 +146,14 @@ func BenchmarkCallerDomainLoop(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			imports := Imports{"env.step": fn, "env.producer": export}
+			imports := testImports("env.step", fn, "env.producer", export)
 			if dynamic {
 				global, err := rt.NewFuncRefGlobal(NullFuncRef(), true)
 				if err != nil {
 					b.Fatal(err)
 				}
 				defer global.Close()
-				imports["env.target"] = global
+				imports.Global("env", "target", global)
 			}
 			rootMod, err := rt.Compile(hostRoundtripLoopFixture(b, 0, false, true, dynamic))
 			if err != nil {

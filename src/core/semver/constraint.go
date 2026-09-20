@@ -32,13 +32,14 @@ func Satisfies(version, constraint string) (bool, error) {
 	return c.Check(v), nil
 }
 
-// ParseConstraint parses a range string. Supported forms (composable with spaces
-// for AND and "||" for OR):
+// ParseConstraint parses a range string. It rejects generated bounds whose
+// successor exceeds the supported uint64 version components. Supported forms
+// can be composed with spaces for AND and "||" for OR:
 //
 //	exact/x-range   1.2.3 · 1.2 · 1.x · 1 · * · "" (any)
 //	comparators     >=1.2.3 · >1.2 · <=2 · <2.0.0 · =1.2.3
-//	caret           ^1.2.3  (>=1.2.3 <2.0.0; 0.x-aware)
-//	tilde           ~1.2.3  (>=1.2.3 <1.3.0)
+//	caret           ^1.2.3  (>=1.2.3 <2.0.0-0; 0.x-aware)
+//	tilde           ~1.2.3  (>=1.2.3 <1.3.0-0)
 //	hyphen          1.2.3 - 2.3.4  (>=1.2.3 <=2.3.4)
 func ParseConstraint(s string) (Constraint, error) {
 	c := Constraint{raw: strings.TrimSpace(s)}
@@ -151,7 +152,7 @@ func tokenizeRange(s string) []string {
 		for i < len(s) && strings.IndexByte("<>=~^", s[i]) >= 0 {
 			i++
 		}
-		op := s[opStart:i]
+		opEnd := i
 		for i < len(s) && s[i] == ' ' {
 			i++
 		}
@@ -159,7 +160,11 @@ func tokenizeRange(s string) []string {
 		for i < len(s) && s[i] != ' ' {
 			i++
 		}
-		toks = append(toks, op+s[vStart:i])
+		token := s[opStart:i]
+		if opEnd != vStart {
+			token = s[opStart:opEnd] + s[vStart:i]
+		}
+		toks = append(toks, token)
 	}
 	return toks
 }
@@ -190,6 +195,9 @@ func expandToken(t string) ([]comparator, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateRangeSuccessor(op, p); err != nil {
+		return nil, err
+	}
 	switch op {
 	case "^":
 		return caretRange(p), nil
@@ -200,6 +208,46 @@ func expandToken(t string) ([]comparator, error) {
 	default: // "" or "="
 		return eqRange(p), nil
 	}
+}
+
+// validateRangeSuccessor checks only the component that expansion increments.
+// Exact comparators remain valid at the largest supported component values.
+func validateRangeSuccessor(op string, p partial) error {
+	if p.n == 0 {
+		return nil
+	}
+	var component uint64
+	switch op {
+	case "^":
+		switch {
+		case p.major != 0 || p.n == 1:
+			component = p.major
+		case p.minor != 0 || p.n == 2:
+			component = p.minor
+		default:
+			component = p.patch
+		}
+	case "~":
+		component = p.major
+		if p.n >= 2 {
+			component = p.minor
+		}
+	case "", "=", ">", "<=":
+		switch p.n {
+		case 1:
+			component = p.major
+		case 2:
+			component = p.minor
+		default:
+			return nil
+		}
+	default:
+		return nil
+	}
+	if component == ^uint64(0) {
+		return fmt.Errorf("semver: range successor exceeds uint64 version component limit")
+	}
+	return nil
 }
 
 // partial is a possibly-incomplete version: n is how many of major.minor.patch
@@ -234,12 +282,22 @@ func parsePartial(s string) (partial, error) {
 		}
 		main = main[:d]
 	}
-	parts := strings.Split(main, ".")
-	if len(parts) > 3 {
-		return partial{}, fmt.Errorf("semver: too many components in %q", s)
+	var parts [3]string
+	nparts := 0
+	for {
+		if nparts == len(parts) {
+			return partial{}, fmt.Errorf("semver: too many components in %q", s)
+		}
+		part, rest, more := strings.Cut(main, ".")
+		parts[nparts] = part
+		nparts++
+		if !more {
+			break
+		}
+		main = rest
 	}
 	var out partial
-	for idx, part := range parts {
+	for idx, part := range parts[:nparts] {
 		if part == "" {
 			return partial{}, fmt.Errorf("semver: empty component in %q", s)
 		}
@@ -273,15 +331,25 @@ func anyRange() []comparator { return []comparator{{">=", Version{}}} }
 
 func ver(maj, min, pat uint64) Version { return Version{Major: maj, Minor: min, Patch: pat} }
 
+// minimumRangePrerelease is immutable. Constraints do not expose comparator
+// versions, so generated bounds can share this storage without an allocation.
+var minimumRangePrerelease = [...]string{"0"}
+
+// exclusiveUpper excludes the given release and all of its prereleases.
+func exclusiveUpper(v Version) comparator {
+	v.Pre = minimumRangePrerelease[:]
+	return comparator{"<", v}
+}
+
 // eqRange handles a bare version or "=": full is exact; a partial is an x-range.
 func eqRange(p partial) []comparator {
 	switch p.n {
 	case 0:
 		return anyRange()
 	case 1:
-		return []comparator{{">=", ver(p.major, 0, 0)}, {"<", ver(p.major+1, 0, 0)}}
+		return []comparator{{">=", ver(p.major, 0, 0)}, exclusiveUpper(ver(p.major+1, 0, 0))}
 	case 2:
-		return []comparator{{">=", ver(p.major, p.minor, 0)}, {"<", ver(p.major, p.minor+1, 0)}}
+		return []comparator{{">=", ver(p.major, p.minor, 0)}, exclusiveUpper(ver(p.major, p.minor+1, 0))}
 	default:
 		return []comparator{{"=", p.version()}}
 	}
@@ -305,7 +373,7 @@ func caretRange(p partial) []comparator {
 	default: // ^0.0.x
 		upper = ver(0, 0, p.patch+1)
 	}
-	return []comparator{{">=", p.version()}, {"<", upper}}
+	return []comparator{{">=", p.version()}, exclusiveUpper(upper)}
 }
 
 // tildeRange: patch-level changes if minor is given, else minor-level.
@@ -319,21 +387,24 @@ func tildeRange(p partial) []comparator {
 	} else {
 		upper = ver(p.major+1, 0, 0)
 	}
-	return []comparator{{">=", p.version()}, {"<", upper}}
+	return []comparator{{">=", p.version()}, exclusiveUpper(upper)}
 }
 
 // compRange completes a partial version for an explicit comparator per
-// node-semver's rules (e.g. ">1.2" -> ">=1.3.0", "<=1.2" -> "<1.3.0").
+// node-semver's rules (e.g. ">1.2" -> ">=1.3.0", "<=1.2" -> "<1.3.0-0").
 func compRange(op string, p partial) []comparator {
 	switch op {
 	case ">=":
 		return []comparator{{">=", p.version()}}
 	case "<":
+		if p.n < 3 {
+			return []comparator{exclusiveUpper(p.version())}
+		}
 		return []comparator{{"<", p.version()}}
 	case ">":
 		switch p.n {
 		case 0:
-			return []comparator{{"<", ver(0, 0, 0)}} // >* : matches nothing
+			return []comparator{exclusiveUpper(ver(0, 0, 0))} // >* : matches nothing
 		case 3:
 			return []comparator{{">", p.version()}}
 		case 2:
@@ -348,9 +419,9 @@ func compRange(op string, p partial) []comparator {
 		case 3:
 			return []comparator{{"<=", p.version()}}
 		case 2:
-			return []comparator{{"<", ver(p.major, p.minor+1, 0)}}
+			return []comparator{exclusiveUpper(ver(p.major, p.minor+1, 0))}
 		default:
-			return []comparator{{"<", ver(p.major+1, 0, 0)}}
+			return []comparator{exclusiveUpper(ver(p.major+1, 0, 0))}
 		}
 	}
 	return nil
@@ -366,6 +437,9 @@ func hyphenRange(aTok, bTok string) ([]comparator, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateRangeSuccessor("", b); err != nil {
+		return nil, err
+	}
 	var out []comparator
 	if a.n == 0 {
 		out = append(out, comparator{">=", Version{}})
@@ -377,9 +451,9 @@ func hyphenRange(aTok, bTok string) ([]comparator, error) {
 	case 3:
 		out = append(out, comparator{"<=", b.version()})
 	case 2:
-		out = append(out, comparator{"<", ver(b.major, b.minor+1, 0)})
+		out = append(out, exclusiveUpper(ver(b.major, b.minor+1, 0)))
 	default: // n == 1
-		out = append(out, comparator{"<", ver(b.major+1, 0, 0)})
+		out = append(out, exclusiveUpper(ver(b.major+1, 0, 0)))
 	}
 	return out, nil
 }

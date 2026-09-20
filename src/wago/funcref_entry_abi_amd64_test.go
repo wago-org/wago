@@ -139,7 +139,7 @@ func TestFuncrefDescriptorEntryKindDrivesCallABI(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			got, err := in.Call(context.Background(), "run")
+			got, err := in.InvokeValues(context.Background(), "run")
 			if err != nil || len(got) != 1 {
 				t.Fatalf("run = %v, %v", got, err)
 			}
@@ -164,7 +164,7 @@ func TestFuncrefDescriptorRejectsConflictingEntryKindTags(t *testing.T) {
 	off := runtime.FuncRefDescBytes
 	home := binary.LittleEndian.Uint64(in.funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:])
 	binary.LittleEndian.PutUint64(in.funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], home|abi.FuncRefLocalWrapperHomeTag)
-	if _, err := in.Call(context.Background(), "run"); err == nil || !strings.Contains(err.Error(), "unsupported context") {
+	if _, err := in.InvokeValues(context.Background(), "run"); err == nil || !strings.Contains(err.Error(), "unsupported context") {
 		t.Fatalf("conflicting descriptor tags = %v", err)
 	}
 }

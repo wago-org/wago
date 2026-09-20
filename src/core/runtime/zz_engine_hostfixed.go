@@ -72,7 +72,7 @@ func (e *Engine) callWithHostLoopFixed(code uintptr, serArgs []byte, linMemBase 
 			if ctrlPtr == 0 {
 				return fmt.Errorf("jit: host call did not publish an active control frame")
 			}
-			if ctrlPtr == rootCtrlPtr {
+			if ctrlPtr == rootCtrlPtr && binary.LittleEndian.Uint32(rootCtrl[hcImportIdx:]) == 0 && binary.LittleEndian.Uint32(rootCtrl[hcNArgs:]) == rawSlots {
 				ctrl = rootCtrl
 				var a0, a1 uint64
 				if n != 0 {

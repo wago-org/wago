@@ -21,6 +21,7 @@ import (
 	"time"
 
 	wago "github.com/wago-org/wago"
+	"github.com/wago-org/wago/bench/internal/semanticcorpus"
 	wasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -49,12 +50,22 @@ type execEntry struct {
 	Want   []uint64 `json:"want"`
 }
 
+type sourceEntry struct {
+	Repository       string `json:"repository"`
+	Revision         string `json:"revision"`
+	RevisionDate     string `json:"revision_date"`
+	License          string `json:"license"`
+	Toolchain        string `json:"toolchain"`
+	ToolchainVersion string `json:"toolchain_version"`
+}
+
 type corpusModule struct {
 	ID             string        `json:"id"`
 	Artifact       string        `json:"artifact"`
 	ArtifactSHA256 string        `json:"artifact_sha256"`
 	Tags           []string      `json:"tags"`
-	Suite          string        `json:"suite"` // optional upstream corpus name
+	Suite          string        `json:"suite"`  // optional upstream corpus name
+	Source         *sourceEntry  `json:"source"` // optional pinned upstream provenance
 	Desc           string        `json:"desc"`
 	Stages         []string      `json:"stages"` // optional: stages this module supports (default: all)
 	Init           string        `json:"init"`   // optional: export to call once after instantiate, before exec (e.g. AssemblyScript's _initialize; wago has no start section)
@@ -115,6 +126,13 @@ func readCatalog(tb testing.TB) []corpusModule {
 	if c.Schema != 1 {
 		tb.Fatalf("corpus catalog schema = %d, want 1", c.Schema)
 	}
+	checks, err := semanticcorpus.LoadManifest(file)
+	if err != nil {
+		tb.Fatalf("semantic manifest: %v", err)
+	}
+	if err := validateCatalogLinks(c, checks.Modules); err != nil {
+		tb.Fatal(err)
+	}
 	selected := selectedIDs(tb, c, *corpusSelector)
 	seen := make(map[string]bool, len(c.Benchmarks))
 	var modules []corpusModule
@@ -156,6 +174,11 @@ func validateCorpusModule(mod corpusModule) error {
 	if mod.ID == "" || mod.Artifact == "" || mod.ArtifactSHA256 == "" {
 		return fmt.Errorf("id, artifact, and artifact_sha256 are required")
 	}
+	if mod.Source != nil && (mod.Source.Repository == "" || mod.Source.Revision == "" ||
+		mod.Source.RevisionDate == "" || mod.Source.License == "" ||
+		mod.Source.Toolchain == "" || mod.Source.ToolchainVersion == "") {
+		return fmt.Errorf("%s: source provenance is incomplete", mod.ID)
+	}
 	executionContracts := 0
 	if len(mod.Exec) != 0 {
 		executionContracts++
@@ -181,6 +204,15 @@ func validateCorpusModule(mod corpusModule) error {
 		}
 		if mod.Command.Export == "" {
 			return fmt.Errorf("%s: command execution needs an export", mod.ID)
+		}
+		switch mod.Command.Oracle {
+		case "", "self-check":
+		case "return":
+			if mod.Command.Want == nil {
+				return fmt.Errorf("%s: return oracle needs expected results", mod.ID)
+			}
+		default:
+			return fmt.Errorf("%s: unknown command oracle %q", mod.ID, mod.Command.Oracle)
 		}
 		if mod.Command.Oracle == "" && mod.Command.Want == nil &&
 			mod.Command.StdoutSHA256 == "" && mod.Command.StderrSHA256 == "" {
@@ -227,14 +259,21 @@ func (m corpusModule) name() string { return m.ID }
 // hostStubs supplies a no-op sync host function for every function import the
 // module declares (e.g. AssemblyScript's multi-parameter env.abort, which never
 // fires on valid input). Returns nil for import-free modules (the synthetic corpus).
-func hostStubs(c *wago.Compiled) wago.Imports {
+func hostStubs(c *wago.Compiled) *wago.Imports {
 	if len(c.Imports) == 0 {
 		return nil
 	}
-	im := make(wago.Imports, len(c.Imports))
-	for _, name := range c.Imports {
-		im[name] = wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})
+	im := wago.NewImports()
+	for _, key := range c.Imports {
+		module, name, _ := strings.Cut(key, ".")
+		im.HostFunc(module, name, func(wago.HostCall) {})
 	}
+	return im
+}
+
+func abortImports() *wago.Imports {
+	im := wago.NewImports()
+	im.HostFunc("env", "abort", func(wago.HostCall) {})
 	return im
 }
 
@@ -587,6 +626,27 @@ func benchmarkExecCalls(b *testing.B, invoke func() error) {
 	b.ReportMetric(float64(batch), "calls/batch")
 }
 
+func wasmFuncInvoker(fn *wago.WasmFunc, args []uint64) func() error {
+	switch len(args) {
+	case 0:
+		return func() error { _, err := fn.Invoke(); return err }
+	case 1:
+		a0 := args[0]
+		return func() error { _, err := fn.Invoke(a0); return err }
+	case 2:
+		a0, a1 := args[0], args[1]
+		return func() error { _, err := fn.Invoke(a0, a1); return err }
+	case 3:
+		a0, a1, a2 := args[0], args[1], args[2]
+		return func() error { _, err := fn.Invoke(a0, a1, a2); return err }
+	case 4:
+		a0, a1, a2, a3 := args[0], args[1], args[2], args[3]
+		return func() error { _, err := fn.Invoke(a0, a1, a2, a3); return err }
+	default:
+		return func() error { _, err := fn.Invoke(args...); return err }
+	}
+}
+
 func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 	for _, m := range loadCorpus(b) {
 		if (len(m.Exec) == 0 && len(m.SemanticExec) == 0) || !m.supports("Exec") {
@@ -615,7 +675,7 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 			for i, a := range e.Args {
 				args[i] = wago.I32(a)
 			}
-			fn, err := in.PrepareFunction(e.Export)
+			fn, err := in.WasmFunc(e.Export)
 			if err != nil {
 				b.Fatalf("%s prepare %s: %v", m.name(), e.Export, err)
 			}
@@ -624,11 +684,9 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 			} else if !slices.Equal(got, e.Want) {
 				b.Fatalf("%s.%s results = %v, want %v", m.name(), e.Export, got, e.Want)
 			}
+			invoke := wasmFuncInvoker(fn, args)
 			b.Run(m.name()+"."+e.Export, func(b *testing.B) {
-				benchmarkExecCalls(b, func() error {
-					_, err := fn.Invoke(args...)
-					return err
-				})
+				benchmarkExecCalls(b, invoke)
 			})
 		}
 		for _, semantic := range semanticExecCases(b, m) {
@@ -689,9 +747,9 @@ func BenchmarkExecParallel(b *testing.B) {
 				for i, a := range e.Args {
 					args[i] = wago.I32(a)
 				}
-				functions := make([]*wago.PreparedFunction, len(instances))
+				functions := make([]*wago.WasmFunc, len(instances))
 				for i := range functions {
-					functions[i], err = instances[i].PrepareFunction(e.Export)
+					functions[i], err = instances[i].WasmFunc(e.Export)
 					if err != nil {
 						b.Fatalf("%s prepare %s: %v", m.name(), e.Export, err)
 					}

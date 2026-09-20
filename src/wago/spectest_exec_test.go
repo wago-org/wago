@@ -538,16 +538,16 @@ func TestSpectestPrintImportsAreExactNoOps(t *testing.T) {
 		"spectest.print_f64_f64": {Params: []wago.ValType{wago.ValF64, wago.ValF64}},
 	}
 	for key, sig := range want {
-		fn, ok := imports[key].(wago.HostFunc)
+		fn, ok := imports[key].(func(wago.HostCall))
 		if !ok || fn == nil {
-			t.Errorf("%s = %T, want reflection-free wago.HostFunc", key, imports[key])
+			t.Errorf("%s = %T, want func(wago.HostCall)", key, imports[key])
 			continue
 		}
 		params, err := specPrintSlots(sig.Params)
 		if err != nil {
 			t.Fatalf("%s signature: %v", key, err)
 		}
-		fn(nil, make([]uint64, params), nil)
+		_ = params // Signature coverage is asserted by instantiation tests.
 	}
 }
 
@@ -1641,24 +1641,9 @@ func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, file
 // module: exact no-op print functions, four immutable globals, shared memory 1/2,
 // and the shared 10/20 funcref table. Extra entries are ignored by modules that do
 // not import them, so the same map is safe for every instantiate in one file.
-func spectestImports(table, table64 *wago.Table, memory *wago.Memory) wago.Imports {
-	noop := wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})
-	return wago.Imports{
-		"spectest.print":         noop,
-		"spectest.print_i32":     noop,
-		"spectest.print_i64":     noop,
-		"spectest.print_f32":     noop,
-		"spectest.print_f64":     noop,
-		"spectest.print_i32_f32": noop,
-		"spectest.print_f64_f64": noop,
-		"spectest.global_i32":    wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)},
-		"spectest.global_i64":    wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)},
-		"spectest.global_f32":    wago.GlobalImport{Type: wago.ValF32, Bits: wago.F32(float32(666.6))},
-		"spectest.global_f64":    wago.GlobalImport{Type: wago.ValF64, Bits: wago.F64(666.6)},
-		"spectest.memory":        memory,
-		"spectest.table":         table,
-		"spectest.table64":       table64,
-	}
+func spectestImports(table, table64 *wago.Table, memory *wago.Memory) map[string]any {
+	noop := func(wago.HostCall) {}
+	return testWagoImportMap("spectest.print", noop, "spectest.print_i32", noop, "spectest.print_i64", noop, "spectest.print_f32", noop, "spectest.print_f64", noop, "spectest.print_i32_f32", noop, "spectest.print_f64_f64", noop, "spectest.global_i32", wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)}, "spectest.global_i64", wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)}, "spectest.global_f32", wago.GlobalImport{Type: wago.ValF32, Bits: wago.F32(float32(666.6))}, "spectest.global_f64", wago.GlobalImport{Type: wago.ValF64, Bits: wago.F64(666.6)}, "spectest.memory", memory, "spectest.table", table, "spectest.table64", table64)
 }
 
 // runSpecExecFile replays one .wast's commands with the default Release 2
@@ -1674,7 +1659,7 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 	return runSpecExecFileWithConfigAndImports(t, base, tmp, sf, cfg, nil)
 }
 
-func runSpecExecFileWithConfigAndImports(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig, extraImports wago.Imports) (stats specExecStats) {
+func runSpecExecFileWithConfigAndImports(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig, extraImports map[string]any) (stats specExecStats) {
 	var cur specModule
 	var curRetained bool
 	var live []specModule
@@ -1959,10 +1944,10 @@ func runSpecExecFileWithConfigAndImports(t *testing.T, base, tmp string, sf spec
 	return stats
 }
 
-func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, standard wago.Imports) (wago.Imports, error) {
-	imports := make(wago.Imports, len(standard))
+func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, standard map[string]any) (*wago.Imports, error) {
+	values := make(map[string]any, len(standard))
 	for key, value := range standard {
-		imports[key] = value
+		values[key] = value
 	}
 	resolve := func(key string) (specModule, string, bool) {
 		for i := 0; i < len(key); i++ {
@@ -1982,7 +1967,7 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 		if err != nil {
 			return nil, err
 		}
-		imports[key] = ex
+		values[key] = ex
 	}
 	for _, key := range compiled.MemoryImports() {
 		if m, field, found := resolve(key); found {
@@ -1990,7 +1975,7 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 			if err != nil {
 				return nil, err
 			}
-			imports[key] = memory
+			values[key] = memory
 		}
 	}
 	for _, key := range compiled.TableImports() {
@@ -1999,7 +1984,7 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 			if err != nil {
 				return nil, err
 			}
-			imports[key] = table
+			values[key] = table
 		}
 	}
 	for _, imp := range compiled.GlobalImports {
@@ -2012,7 +1997,7 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 		if err != nil {
 			return nil, err
 		}
-		imports[key] = global
+		values[key] = global
 	}
 	for _, key := range compiled.TagImports() {
 		m, field, ok := resolve(key)
@@ -2023,7 +2008,11 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 		if err != nil {
 			return nil, err
 		}
-		imports[key] = tag
+		values[key] = tag
+	}
+	imports := wago.NewImports()
+	for key, value := range values {
+		addWagoImport(imports, key, value)
 	}
 	return imports, nil
 }

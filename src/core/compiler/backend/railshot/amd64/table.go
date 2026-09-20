@@ -525,7 +525,11 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 	f.pinned = f.pinned.remove(entry)
 	f.release(entry)
 	f.release(tbl)
-	f.pushReg(slot, mtI64)
+	value := f.pushReg(slot, mtI64)
+	// A table read can remain live after the table stops retaining its object.
+	if table, ok := f.m.TableType(tableIdx); ok {
+		value.st.setGCRoot(gcFrameRefType(f.m, wasm.RefVal(table.Ref)))
+	}
 	return nil
 }
 
@@ -665,7 +669,20 @@ func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {
 func (f *fn) fillTableEntries(dst, count Reg, slot int) {
 	f.a.TestSelf(count, true)
 	done := f.a.JccPlaceholder(condE)
-	loop := f.a.Len()
+	f.a.AluRI(cmpDigit, count, 8, false)
+	scalar := f.a.JccPlaceholder(condB)
+	// Snapshot the 32-byte descriptor once. Reloading four words from the spill
+	// slot for every table element adds unnecessary stack traffic to large fills.
+	f.a.YMovdquLoadDisp(Reg(0), RSP, f.spillOff(slot))
+	vectorLoop := f.a.Len()
+	f.a.YMovdquStoreDisp(dst, 0, Reg(0))
+	f.a.LeaDisp(dst, dst, runtime.TableEntryBytes)
+	f.unitAdjust(count, true, false)
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), vectorLoop)
+	f.a.VZeroUpper()
+	finished := f.a.JmpPlaceholder()
+	f.a.PatchRel32(scalar, f.a.Len())
+	scalarLoop := f.a.Len()
 	tmp := f.allocReg(maskOf(dst).add(count))
 	for i, off := 0, int32(0); off < runtime.TableEntryBytes; i, off = i+1, off+8 {
 		f.a.Load64(tmp, RSP, f.spillOff(slot+i))
@@ -674,7 +691,8 @@ func (f *fn) fillTableEntries(dst, count Reg, slot int) {
 	f.release(tmp)
 	f.a.LeaDisp(dst, dst, runtime.TableEntryBytes)
 	f.unitAdjust(count, true, false)
-	f.a.PatchRel32(f.a.JccPlaceholder(condNE), loop)
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), scalarLoop)
+	f.a.PatchRel32(finished, f.a.Len())
 	f.a.PatchRel32(done, f.a.Len())
 }
 

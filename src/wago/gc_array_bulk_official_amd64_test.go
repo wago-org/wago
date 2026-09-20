@@ -209,7 +209,7 @@ func stagedGCArrayBulkActionKey(cmd stagedSpecCommand) string {
 }
 
 func compileStagedGCArrayBulk(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCArrayProducts = true

@@ -1,0 +1,7 @@
+Retained baseline and optimized binaries: Go 1.22.12 linux/amd64.
+Baseline main: 27c1f066a3e04bc31ca82d6b55ce4977b19c35ee
+Optimized production matches PR head: 2e44bd850825cf0268020698f64feaa7b71194bd
+Matching benchmark and fixture source hashes verified.
+Ryzen 7 8845HS; CPU 2; GOMAXPROCS=1; governor=performance; boost=1.
+Six serial AB/BA pairs; five seconds per sample; no concurrent builds/tests/profiles.
+BENCH_TIME=5s BENCH_PATTERN='^BenchmarkGCStructCardScanControls$/^fields=4097$/^ranges=33$' docs/performance/struct-card-ranges/measure.sh /absolute/path/base.test /absolute/path/fix.test /absolute/path/results

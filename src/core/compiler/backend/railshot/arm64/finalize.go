@@ -223,6 +223,11 @@ func loopCompactionLimitArm64(policy CodegenPolicy) int {
 }
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
+	// Mandatory branch patches also occur after body lowering, in return, trap,
+	// and adapter code. Reject failures before any optional finalization path.
+	if f.representationLimit != functionRepresentationOK {
+		return 0, f.representationError()
+	}
 	if !nativeFinalizerEnabled {
 		return internalOff, nil
 	}
@@ -513,7 +518,8 @@ func (f *fn) compactionNeedsReencode() bool {
 func isPCRelativeWord(word uint32) bool {
 	return word&0xFC000000 == 0x14000000 || word&0xFC000000 == 0x94000000 ||
 		word&0xFF000010 == 0x54000000 || word&0x7E000000 == 0x34000000 ||
-		word&0x7E000000 == 0x36000000 || word&0x9F000000 == 0x10000000
+		word&0x7E000000 == 0x36000000 || word&0x9F000000 == 0x10000000 ||
+		word&0x3B000000 == 0x18000000
 }
 
 func remapJumpTableWord(word uint32, oldBase int, offsets *shared.OffsetMap) (uint32, error) {
@@ -531,6 +537,21 @@ func remapJumpTableWord(word uint32, oldBase int, offsets *shared.OffsetMap) (ui
 }
 
 func remapPCRelativeWord(word uint32, oldPC, newPC int, offsets *shared.OffsetMap) (uint32, error) {
+	if oldTarget, literal := literalTarget(oldPC, word); literal {
+		newTarget, ok := offsets.Map(oldTarget)
+		if !ok {
+			return 0, fmt.Errorf("arm64 finalizer: literal load at %d targets deleted offset %d", oldPC, oldTarget)
+		}
+		delta := newTarget - newPC
+		if delta&3 != 0 {
+			return 0, fmt.Errorf("arm64 finalizer: unaligned literal delta %d at %d", delta, oldPC)
+		}
+		d := delta / 4
+		if d < -(1<<18) || d >= 1<<18 {
+			return 0, fmt.Errorf("arm64 finalizer: literal load at %d exceeds range", oldPC)
+		}
+		return word&^(0x7FFFF<<5) | (uint32(d)&0x7FFFF)<<5, nil
+	}
 	oldTarget, branch := branchTarget(oldPC, word)
 	if branch {
 		newTarget, ok := offsets.Map(oldTarget)
@@ -574,6 +595,13 @@ func remapPCRelativeWord(word uint32, oldPC, newPC int, offsets *shared.OffsetMa
 		return word | (imm&3)<<29 | ((imm>>2)&0x7FFFF)<<5, nil
 	}
 	return word, nil
+}
+
+func literalTarget(pc int, word uint32) (int, bool) {
+	if word&0x3B000000 != 0x18000000 {
+		return 0, false
+	}
+	return pc + imm19(word)*4, true
 }
 
 func (f *fn) remapNativeSizeStats(offsets *shared.OffsetMap, newInternalOff, frameDeleted int) {
@@ -681,10 +709,16 @@ func (f *fn) validatePCRelativeInventory() error {
 		if !ok {
 			target, ok = adrTarget(pc, word)
 		}
+		if !ok {
+			target, ok = literalTarget(pc, word)
+		}
 		if ok && (target < 0 || target > len(f.a.B) || target&3 != 0) {
 			return fmt.Errorf("arm64 identity finalizer: PC-relative reference at %d targets %d outside %d-byte function", pc, target, len(f.a.B))
 		}
 	}
+	// A trailing opaque data fragment ends at len(code), which is a valid marker
+	// position but not an instruction offset visited by the loop above.
+	finalizerOpaqueAt(markers, len(f.a.B), &opaque)
 	if opaque {
 		return fmt.Errorf("arm64 identity finalizer: unterminated opaque fragment")
 	}

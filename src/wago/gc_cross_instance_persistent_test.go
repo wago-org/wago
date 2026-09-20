@@ -120,7 +120,7 @@ func TestGCCrossInstanceCallsWithSharedPersistentRoots(t *testing.T) {
 						provider.Close()
 						t.Fatal(err)
 					}
-					consumer, err := instantiateCore(consumerCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.retain": retain, "provider.t": table, "provider.g": global}})
+					consumer, err := instantiateCore(consumerCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.retain", retain, "provider.t", table, "provider.g", global)})
 					if err != nil {
 						provider.Close()
 						t.Fatal(err)

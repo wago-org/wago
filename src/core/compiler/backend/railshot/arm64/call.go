@@ -270,11 +270,11 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	ft, ok := f.m.FuncSignature(idx)
+	ft, ok := f.functionSignature(idx)
 	if !ok {
 		return fmt.Errorf("call: unknown function %d", idx)
 	}
-	imported := f.m.ImportedFuncCount()
+	imported := f.importedFunctionCount()
 	if int(idx) < imported && f.customInstructions != nil {
 		if custom, ok := f.customInstructions[idx]; ok && pluginARM64Lowering(custom) != nil {
 			return f.emitCustomInstruction(custom, ft)
@@ -287,7 +287,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// so this is a pure operand-stack/local transform.
 	if !f.inlineTargets.empty() {
 		if t := f.inlineTargets.target(int(idx)); t != nil {
-			if _, ok := f.inlineBase[int(idx)]; ok && !(t.inlineInLoopIsRegressive() && f.inCallSiteLoop()) {
+			if _, ok := f.inlineBase[int(idx)]; ok && (!t.recursive() || f.inlineDepth == 0) && !(t.inlineInLoopIsRegressive() && f.inCallSiteLoop()) {
 				f.consumeGCFrameCallsite()
 				return f.inlineCall(t)
 			}
@@ -338,14 +338,14 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	ft, ok := f.m.FuncSignature(idx)
+	ft, ok := f.functionSignature(idx)
 	if !ok {
 		return fmt.Errorf("return_call: unknown function %d", idx)
 	}
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call: target %d result shape differs from caller", idx)
 	}
-	imported := f.m.ImportedFuncCount()
+	imported := f.importedFunctionCount()
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) {
 			binding := f.importBindings[idx]
@@ -542,7 +542,7 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, emitJump func()) {
 	f.a.LdpPost(LR, X3, SP, 16)
 	emitJump()
 
-	f.a.PatchBranch19(nested, f.a.Len())
+	f.patchBranch19(nested, f.a.Len())
 	f.a.SubSP64(32)
 	f.st64(SP, 0, LR)
 	f.a.LeaSP(X3, 16)
@@ -655,7 +655,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	f.a.LdpPost(LR, X3, SP, 16)
 	transfer()
 
-	f.a.PatchBranch19(nested, f.a.Len())
+	f.patchBranch19(nested, f.a.Len())
 	// [LR, caller linMem, caller context, pad, result0, result1, pad, pad].
 	f.a.SubSP64(64)
 	f.st64(SP, 0, LR)
@@ -732,7 +732,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 		return fmt.Errorf("return_call_ref: type %d exceeds bounded native identity", typeIdx)
 	}
 	refValue := f.popValue()
-	if refValue.elemKind() == ekValue && refValue.st.kind == stFuncRef && refValue.st.idx < uint32(f.m.ImportedFuncCount()) {
+	if refValue.elemKind() == ekValue && refValue.st.kind == stFuncRef && refValue.st.idx < uint32(f.importedFunctionCount()) {
 		importIndex := refValue.st.index()
 		if f.importBindings != nil && importIndex < len(f.importBindings) {
 			binding := f.importBindings[importIndex]
@@ -820,7 +820,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 			f.emitTailWrapperToRegisterJump(ft, func() { f.a.Br(X17) })
 		}
 
-		f.a.PatchBranch19(wrapper, f.a.Len())
+		f.patchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals
 		f.setDepthTypesWithGCRoots(types, gcRoots)
 	}
@@ -833,7 +833,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 		notHost := f.a.Bcond(condNE)
 		f.emitTailWrapperJump(ft, func() { f.a.Br(X17) })
 
-		f.a.PatchBranch19(notHost, f.a.Len())
+		f.patchBranch19(notHost, f.a.Len())
 		f.locals = savedLocals
 		f.setDepthTypesWithGCRoots(types, gcRoots)
 	}
@@ -913,7 +913,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	f.a.LdpPost(LR, X3, SP, 16)
 	transfer()
 
-	f.a.PatchBranch19(nested, f.a.Len())
+	f.patchBranch19(nested, f.a.Len())
 	f.a.SubSP64(64)
 	f.st64(SP, 0, LR)
 	f.st64(SP, 8, linMemReg)
@@ -979,7 +979,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 		f.cmpRR(idx, ln, f.tableAddr64(tableIdx))
 		f.release(ln)
 		f.trapIf(condAE, trapIndirectOOB)
-		f.a.LslImm(idx, idx, 5, true)
+		f.a.LslImm64(idx, idx, 5)
 		f.a.Add64(idx, idx, tbl)
 		f.ld64(idx, idx, 8+runtime.TableEntryRefSlotOffset)
 		f.release(tbl)
@@ -1001,7 +1001,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.cmpRR(idx, ln, f.tableAddr64(tableIdx))
 	f.release(ln)
 	f.trapIf(condAE, trapIndirectOOB)
-	f.a.LslImm(idx, idx, 5, true)
+	f.a.LslImm64(idx, idx, 5)
 	f.a.Add64(idx, idx, tbl)
 	f.release(tbl)
 	code := f.allocReg(maskOf(idx))
@@ -1409,7 +1409,9 @@ func HostIndirectThunk(importIdx uint32) []byte {
 	a.AddImm32(X11, X11, 1) // count++
 	a.Store32(X11, X10, 0)
 	a.Ret()
-	a.PatchBranch19(full, a.Len())
+	if !a.PatchBranch19(full, a.Len()) {
+		panic("arm64: fixed host thunk branch exceeds instruction range")
+	}
 	a.SubImm64(X10, X1, offTrapCellPtr)
 	a.Load64(X10, X10, 0)
 	a.MovImm64(X16, uint64(runtime.TrapHostEventOverflow))
@@ -2269,7 +2271,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.release(code)
 		done := f.a.Branch()
 
-		f.a.PatchBranch19(wrapper, f.a.Len())
+		f.patchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals
 		f.setDepthTypesWithGCRoots(types, gcRoots)
 		f.stripDescriptorHomeTags(home)
@@ -2279,7 +2281,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		f.emitIndirectCallHomeAware(ft, home, targetContext, rootOffsets, recordRoots)
-		f.a.PatchBranch26(done, f.a.Len())
+		f.patchBranch26(done, f.a.Len())
 		return nil
 	}
 
@@ -2332,8 +2334,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.trapIf(condAE, trapIndirectOOB) // idx >= length → cold stub
 
 	// 64-bit pointer arithmetic: entry address = tbl + idx*32 (TableEntryBytes).
-	f.a.LslImm(idxReg, idxReg, 5, true) // idx *= 32
-	f.a.Add64(idxReg, idxReg, tbl)      // idx += tbl
+	f.a.LslImm64(idxReg, idxReg, 5) // idx *= 32
+	f.a.Add64(idxReg, idxReg, tbl)  // idx += tbl
 	f.pinned = f.pinned.remove(tbl)
 	f.release(tbl)
 
@@ -2431,7 +2433,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		done := f.a.Branch()
-		f.a.PatchBranch19(wrapper, f.a.Len())
+		f.patchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals
 		f.setDepthTypesWithGCRoots(types, gcRoots)
 		f.st64(linMemReg, -int32(offSpillRegion), code)
@@ -2441,7 +2443,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.validateWrapperDescriptor(kind, home)
 		f.release(kind)
 		f.emitIndirectCallHomeAware(ft, home, targetContext, rootOffsets, recordRoots)
-		f.a.PatchBranch26(done, f.a.Len())
+		f.patchBranch26(done, f.a.Len())
 		return nil
 	}
 
@@ -2547,7 +2549,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	jdone := f.a.Branch()
 	// Cross-instance: preserve the caller's invariants (+ one alignment pad), copy
 	// the control words caller→callee, enter with X1 = callee linMem, then restore.
-	f.a.PatchBranch19(jne, f.a.Len()) // the false edge is a B.cond (imm19)
+	f.patchBranch19(jne, f.a.Len()) // the false edge is a B.cond (imm19)
 	f.a.StpPre(linMemReg, X24, SP, -16)
 	f.a.StpPre(X25, X23, SP, -16)
 	f.a.StpPre(X27, ehReg, SP, -16)
@@ -2576,8 +2578,8 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.a.LdpPost(X25, X23, SP, 16)
 	f.a.LdpPost(linMemReg, X24, SP, 16)
 	f.copyInstanceContext(linMemReg, X13)
-	f.deriveModuleGlobals()             // cross-instance callee may have written shared global cells
-	f.a.PatchBranch26(jdone, f.a.Len()) // fr.jdone is an unconditional B (imm26)
+	f.deriveModuleGlobals()           // cross-instance callee may have written shared global cells
+	f.patchBranch26(jdone, f.a.Len()) // fr.jdone is an unconditional B (imm26)
 
 	f.reloadLocalsForCall()
 	f.derivePinnedGlobals()

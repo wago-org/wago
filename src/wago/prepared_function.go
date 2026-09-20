@@ -8,12 +8,12 @@ import (
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-// PreparedFunction is a resolved local Wasm export ready for repeated calls.
+// WasmFunc is a resolved local Wasm export ready for repeated calls.
 // It caches export lookup, signature layout, and the native entry address. Like
 // Instance, it is not safe for concurrent calls: calls reuse the instance's
 // argument and result buffers, and returned results remain valid only until the
 // next call on that instance. Invoke must not race Instance.Close.
-type PreparedFunction struct {
+type WasmFunc struct {
 	in                  *Instance
 	export              string
 	entry               uintptr
@@ -28,6 +28,7 @@ type PreparedFunction struct {
 	paramWide           []bool
 	hasReferenceParams  bool
 	hasReferenceResults bool
+	gcMaintenance       bool
 	scalarWideMask      uint8
 	scalarFast          bool
 	scalarResultWide    bool
@@ -79,13 +80,13 @@ func preparedDirectIntSignature(sig FuncSig) bool {
 	return true
 }
 
-// PrepareFunction resolves a locally-defined function export once. The returned
+// WasmFunc resolves a locally-defined function export once. The returned
 // handle is the like-for-like counterpart of runtimes whose exported-function
 // lookup occurs outside the timed invocation loop. Re-exported imports continue
 // to use Invoke because their target instance may differ.
-func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
+func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 	if err := in.beginInvocation(); err != nil {
-		return nil, fmt.Errorf("wago: prepare function: %w", err)
+		return nil, fmt.Errorf("wago: resolve Wasm function: %w", err)
 	}
 	defer in.endInvocation()
 	ic := in.findInvokeCache(export)
@@ -97,15 +98,15 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		}
 	}
 	if ic.li < 0 {
-		return nil, fmt.Errorf("wago: prepare function %q: re-exported imports must use Invoke", export)
+		return nil, fmt.Errorf("wago: resolve Wasm function %q: re-exported imports must use Invoke", export)
 	}
 	if in.c == nil || ic.li >= len(in.c.Entry) || ic.li >= len(in.c.Funcs) {
-		return nil, fmt.Errorf("wago: prepare function %q: local function index %d is out of range", export, ic.li)
+		return nil, fmt.Errorf("wago: resolve Wasm function %q: local function index %d is out of range", export, ic.li)
 	}
 	sig := in.c.Funcs[ic.li]
 	params, results, err := exactFuncSignatureView(sig, in.c.Types)
 	if err != nil {
-		return nil, fmt.Errorf("wago: prepare function %q exact signature: %w", export, err)
+		return nil, fmt.Errorf("wago: resolve Wasm function %q exact signature: %w", export, err)
 	}
 	paramWide := append([]bool(nil), ic.slotWide[:ic.paramSlots]...)
 	resultWide := append([]bool(nil), ic.slotWide[ic.paramSlots:]...)
@@ -127,7 +128,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 			}
 		}
 	}
-	fn := &PreparedFunction{
+	fn := &WasmFunc{
 		in:                  in,
 		export:              export,
 		entry:               in.base + uintptr(in.c.Entry[ic.li]),
@@ -143,6 +144,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		paramWide:           paramWide,
 		hasReferenceParams:  hasReferenceValType(sig.Params),
 		hasReferenceResults: hasReferenceValType(sig.Results),
+		gcMaintenance:       in.gc != nil && (in.c.genericGCBoundaryCollectionSafe() || in.c.hasGCRefGlobals()),
 		resultWide:          resultWide,
 	}
 	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
@@ -173,9 +175,9 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 	return fn, nil
 }
 
-// Invoke calls the prepared export. Arguments and results use the same raw slot
+// Invoke calls the resolved export. Arguments and results use the same raw slot
 // representation and lifetime rules as Instance.Invoke.
-func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
+func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 	if fn != nil && fn.in != nil && len(args) == fn.paramSlots {
 		if fn.directIntFast {
 			switch len(args) {
@@ -199,6 +201,7 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 }
 
 type preparedInvocationLease struct {
+	in    *Instance
 	state *instancePluginState
 	gc    gcInvocationLease
 }
@@ -208,65 +211,25 @@ func (in *Instance) lockPreparedInvocation() preparedInvocationLease {
 	state.invokeMu.Lock()
 	id := newInvocationID()
 	state.invocationID = id
-	return preparedInvocationLease{state: state, gc: in.lockGCInvocation(id)}
+	return preparedInvocationLease{in: in, state: state, gc: in.lockGCInvocation(id)}
 }
 
 func (l preparedInvocationLease) unlock() {
 	l.gc.unlock()
+	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
+		l.in.reconcileFuncrefRoots()
+	}
 	l.state.invocationID = 0
 	l.state.invokeMu.Unlock()
 }
 
-// Invoke0 calls a prepared export with no argument slots. Unlike the variadic
-// Invoke, fixed-arity calls do not require TinyGo to allocate an argument slice.
-func (fn *PreparedFunction) Invoke0() ([]uint64, error) {
-	return fn.invokeFixed(0, 0, 0, 0, 0)
-}
-
-// Invoke1 calls a prepared export with one argument slot.
-func (fn *PreparedFunction) Invoke1(a0 uint64) ([]uint64, error) {
-	return fn.invokeFixed(1, a0, 0, 0, 0)
-}
-
-// Invoke2 calls a prepared export with two argument slots.
-func (fn *PreparedFunction) Invoke2(a0, a1 uint64) ([]uint64, error) {
-	return fn.invokeFixed(2, a0, a1, 0, 0)
-}
-
-// Invoke3 calls a prepared export with three argument slots.
-func (fn *PreparedFunction) Invoke3(a0, a1, a2 uint64) ([]uint64, error) {
-	return fn.invokeFixed(3, a0, a1, a2, 0)
-}
-
-// Invoke4 calls a prepared export with four argument slots.
-func (fn *PreparedFunction) Invoke4(a0, a1, a2, a3 uint64) ([]uint64, error) {
-	return fn.invokeFixed(4, a0, a1, a2, a3)
-}
-
-func (fn *PreparedFunction) invokeFixed(count int, a0, a1, a2, a3 uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeGeneral(args []uint64) ([]uint64, error) {
 	if fn == nil || fn.in == nil {
-		return nil, fmt.Errorf("wago: invoke closed prepared function")
-	}
-	if count != fn.paramSlots {
-		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, count)
-	}
-	if fn.directIntFast {
-		return fn.invokeDirectIntFixed(a0, a1, a2, a3)
-	}
-	args := [4]uint64{a0, a1, a2, a3}
-	if fn.scalarFast {
-		return fn.invokeScalar(args[:count])
-	}
-	return fn.invokeGeneral(args[:count])
-}
-
-func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
-	if fn == nil || fn.in == nil {
-		return nil, fmt.Errorf("wago: invoke closed prepared function")
+		return nil, fmt.Errorf("wago: invoke closed Wasm function")
 	}
 	in := fn.in
 	if err := in.beginInvocation(); err != nil {
-		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}
 	defer in.endInvocation()
 	// Prepared calls share the same instance buffers and Runtime GC domain as
@@ -278,10 +241,13 @@ func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
 	return fn.invokeGeneralAdmitted(args)
 }
 
-func (fn *PreparedFunction) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
 	in := fn.in
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
+	}
+	if err := in.collectGenericGCAtBoundary(); err != nil {
+		return nil, err
 	}
 	if fn.hasReferenceParams {
 		defer in.clearGCRefArgumentRoots()
@@ -309,6 +275,9 @@ func (fn *PreparedFunction) invokeGeneralAdmitted(args []uint64) ([]uint64, erro
 				return nil, err
 			}
 		}
+	}
+	if err := in.reconcileGCGlobalRoots(); err != nil {
+		return nil, err
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
@@ -342,15 +311,20 @@ func (fn *PreparedFunction) invokeGeneralAdmitted(args []uint64) ([]uint64, erro
 	return out, nil
 }
 
-func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
 	in := fn.in
 	if err := in.beginInvocation(); err != nil {
-		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}
 	defer in.endInvocation()
 	preparedLease := in.lockPreparedInvocation()
 	defer preparedLease.unlock()
-	if !in.preparedFastStateValid() {
+	return fn.invokeScalarAdmitted(args)
+}
+
+func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
+	in := fn.in
+	if fn.gcMaintenance || !in.preparedFastStateValid() {
 		return fn.invokeGeneralAdmitted(args)
 	}
 	if len(args) <= 4 {

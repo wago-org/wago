@@ -1,0 +1,8 @@
+Baseline: 27c1f066a3e04bc31ca82d6b55ce4977b19c35ee
+Original PR: 774e03621bca05e1cc3b492658ec092bf5477fc6
+Merge: b7ab5eeb7 (production optimization unchanged)
+Toolchain: go1.22.12 linux/amd64
+CPU: AMD Ryzen 7 8845HS; affinity CPU 2; GOMAXPROCS=1
+Governor: performance; boost enabled
+Duration: 200ms per case; six serial pairs, AB/BA alternating
+No concurrent builds, tests, fuzzing, or profiles during measurement.

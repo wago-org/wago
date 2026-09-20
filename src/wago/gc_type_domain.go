@@ -176,7 +176,7 @@ func gcModuleFitsDomain(c *Compiled, domain *gcStoreDomain) bool {
 	return true
 }
 
-func preferredGCCollectorFromImports(c *Compiled, imports Imports, store *referenceStore) (*gc.Collector, error) {
+func preferredGCCollectorFromImports(c *Compiled, imports resolvedImports, store *referenceStore) (*gc.Collector, error) {
 	var collector *gc.Collector
 	consider := func(candidate *Instance) error {
 		if candidate == nil || candidate.gc == nil {
@@ -195,14 +195,14 @@ func preferredGCCollectorFromImports(c *Compiled, imports Imports, store *refere
 	// so large import sets remain linear instead of rescanning the complete key
 	// list for every InstanceExport in the imports map.
 	if c != nil {
-		for i, key := range c.Imports {
+		for i, displayKey := range c.Imports {
 			if i >= len(c.importFuncSigs) || !funcSigHasGCRefs(c.importFuncSigs[i]) {
 				continue
 			}
-			v, ok := imports[key].(*InstanceExport)
+			v, ok := imports[c.functionImportBindingKey(i)].(*InstanceExport)
 			if ok && v != nil {
 				if err := consider(v.inst); err != nil {
-					return nil, err
+					return nil, fmt.Errorf("import %q: %w", displayKey, err)
 				}
 			}
 		}

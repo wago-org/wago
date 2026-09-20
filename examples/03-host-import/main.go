@@ -20,9 +20,9 @@ func main() {
 		panic(err)
 	}
 
-	inst, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: wago.Imports{
-		"host.mul": func(a, b int32) int32 { return a * b },
-	}})
+	imports := wago.NewImports()
+	imports.HostFunc("host", "mul", func(a, b int32) int32 { return a * b })
+	inst, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: imports})
 	if err != nil {
 		panic(err)
 	}

@@ -13,7 +13,7 @@ import (
 
 func TestHostCreatedFuncRefGlobalSharesOwnedTokenAndCallableIdentity(t *testing.T) {
 	rt := NewRuntime()
-	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+	owner, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(42)
 	}), FuncSig{Results: []ValType{ValI32}})
 	if err != nil {
@@ -23,11 +23,11 @@ func TestHostCreatedFuncRefGlobalSharesOwnedTokenAndCallableIdentity(t *testing.
 	if err != nil {
 		t.Fatalf("Compile producer: %v", err)
 	}
-	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.target": owner}))
+	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(testImports("env.target", owner)))
 	if err != nil {
 		t.Fatalf("Instantiate producer: %v", err)
 	}
-	out, err := producer.Call(context.Background(), "get")
+	out, err := producer.InvokeValues(context.Background(), "get")
 	if err != nil || len(out) != 1 || out[0].FuncRef().IsNull() {
 		t.Fatalf("owned host token = %v, %v; want one non-null funcref", out, err)
 	}
@@ -48,11 +48,11 @@ func TestHostCreatedFuncRefGlobalSharesOwnedTokenAndCallableIdentity(t *testing.
 	if err != nil {
 		t.Fatalf("Compile importer: %v", err)
 	}
-	importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.ref": shared}))
+	importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(testImports("env.ref", shared)))
 	if err != nil {
 		t.Fatalf("Instantiate importer: %v", err)
 	}
-	got, err := importer.Call(context.Background(), "get")
+	got, err := importer.InvokeValues(context.Background(), "get")
 	if err != nil || len(got) != 1 || got[0] != token {
 		t.Fatalf("imported get = %v, %v; want %v", got, err, token)
 	}
@@ -60,7 +60,7 @@ func TestHostCreatedFuncRefGlobalSharesOwnedTokenAndCallableIdentity(t *testing.
 	if err != nil {
 		t.Fatalf("Compile duplicate aliases: %v", err)
 	}
-	alias, err := rt.Instantiate(context.Background(), aliasMod, WithImports(Imports{"env.ref": shared}))
+	alias, err := rt.Instantiate(context.Background(), aliasMod, WithImports(testImports("env.ref", shared)))
 	if err != nil {
 		t.Fatalf("Instantiate duplicate aliases: %v", err)
 	}
@@ -76,11 +76,11 @@ func TestHostCreatedFuncRefGlobalSharesOwnedTokenAndCallableIdentity(t *testing.
 	if err := shared.SetValue(ValueFuncRef(NullFuncRef())); err != nil {
 		t.Fatalf("SetValue(null): %v", err)
 	}
-	got, err = importer.Call(context.Background(), "get")
+	got, err = importer.InvokeValues(context.Background(), "get")
 	if err != nil || len(got) != 1 || !got[0].FuncRef().IsNull() {
 		t.Fatalf("imported get after null = %v, %v; want null", got, err)
 	}
-	got, err = importer.Call(context.Background(), "set_and_get", token)
+	got, err = importer.InvokeValues(context.Background(), "set_and_get", token)
 	if err != nil || len(got) != 1 || got[0] != token {
 		t.Fatalf("shared set_and_get = %v, %v; want %v", got, err, token)
 	}
@@ -93,7 +93,7 @@ func TestHostCreatedFuncRefGlobalSharesOwnedTokenAndCallableIdentity(t *testing.
 	if err != nil {
 		t.Fatalf("Instantiate caller: %v", err)
 	}
-	if got, err := caller.Call(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
+	if got, err := caller.InvokeValues(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("call host funcref from global token = %v, %v; want 42", got, err)
 	}
 	if err := producer.Close(); err != nil {
@@ -102,7 +102,7 @@ func TestHostCreatedFuncRefGlobalSharesOwnedTokenAndCallableIdentity(t *testing.
 	if got, err := shared.GetValue(); err != nil || got != token {
 		t.Fatalf("GetValue after producer close = %v, %v; want retained %v", got, err, token)
 	}
-	if got, err := caller.Call(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
+	if got, err := caller.InvokeValues(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("call retained host funcref = %v, %v; want 42", got, err)
 	}
 	if err := shared.Close(); err == nil || !strings.Contains(err.Error(), "live importer") {
@@ -157,7 +157,7 @@ func TestHostCreatedFuncRefGlobalNullAndOwnerBoundaries(t *testing.T) {
 		t.Fatalf("immutable SetValue error = %v", err)
 	}
 
-	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+	owner, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(7)
 	}), FuncSig{Results: []ValType{ValI32}})
 	if err != nil {
@@ -168,12 +168,12 @@ func TestHostCreatedFuncRefGlobalNullAndOwnerBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile producer: %v", err)
 	}
-	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.target": owner}))
+	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(testImports("env.target", owner)))
 	if err != nil {
 		t.Fatalf("Instantiate producer: %v", err)
 	}
 	defer producer.Close()
-	out, err := producer.Call(context.Background(), "get")
+	out, err := producer.InvokeValues(context.Background(), "get")
 	if err != nil || len(out) != 1 {
 		t.Fatalf("owned get = %v, %v", out, err)
 	}
@@ -189,15 +189,15 @@ func TestHostCreatedFuncRefGlobalNullAndOwnerBoundaries(t *testing.T) {
 		t.Fatalf("forged constructor error = %v", err)
 	}
 
-	raw, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.target": HostFunc(func(_ HostModule, _, results []uint64) {
+	raw, err := rt.Instantiate(context.Background(), producerMod, WithImports(testImports("env.target", slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(7)
-	})}))
+	}))))
 	if err != nil {
 		t.Fatalf("Instantiate raw host producer: %v", err)
 	}
 	defer raw.Close()
-	if got, err := raw.Call(context.Background(), "get"); err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
-		t.Fatalf("raw HostFunc egress = %v, %v; want fail-closed owner rejection", got, err)
+	if got, err := raw.InvokeValues(context.Background(), "get"); err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
+		t.Fatalf("raw slotHostFunc egress = %v, %v; want fail-closed owner rejection", got, err)
 	}
 
 	closed := NewRuntime()

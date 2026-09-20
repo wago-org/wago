@@ -1,0 +1,17 @@
+{
+  "baseline": {
+    "BenchmarkGCStructCardScanSparseReferences/ranges=33": {"median_ns":67454.5,"min_ns":67036.0,"max_ns":67946.0,"samples":[[67553.0,0,0],[67744.0,0,0],[67036.0,0,0],[67356.0,0,0],[67329.0,0,0],[67946.0,0,0]]},
+    "BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=false": {"median_ns":48.144999999999996,"min_ns":47.87,"max_ns":48.39,"samples":[[48.21,0,0],[47.87,0,0],[48.07,0,0],[48.08,0,0],[48.36,0,0],[48.39,0,0]]},
+    "BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=true": {"median_ns":48.075,"min_ns":47.83,"max_ns":49.61,"samples":[[49.61,0,0],[47.9,0,0],[48.14,0,0],[48.01,0,0],[47.83,0,0],[48.25,0,0]]}
+  },
+  "previous": {
+    "BenchmarkGCStructCardScanSparseReferences/ranges=33": {"median_ns":67474.5,"min_ns":66873.0,"max_ns":72533.0,"samples":[[67397.0,0,0],[72533.0,0,0],[67407.0,0,0],[67542.0,0,0],[66873.0,0,0],[67576.0,0,0]]},
+    "BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=false": {"median_ns":48.34,"min_ns":47.93,"max_ns":49.36,"samples":[[48.4,0,0],[49.36,0,0],[48.28,0,0],[48.28,0,0],[47.93,0,0],[48.56,0,0]]},
+    "BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=true": {"median_ns":48.42,"min_ns":48.29,"max_ns":48.8,"samples":[[48.57,0,0],[48.8,0,0],[48.31,0,0],[48.31,0,0],[48.29,0,0],[48.53,0,0]]}
+  },
+  "optimized": {
+    "BenchmarkGCStructCardScanSparseReferences/ranges=33": {"median_ns":67316.0,"min_ns":67179.0,"max_ns":67975.0,"samples":[[67344.0,0,0],[67288.0,0,0],[67179.0,0,0],[67242.0,0,0],[67480.0,0,0],[67975.0,0,0]]},
+    "BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=false": {"median_ns":50.43,"min_ns":50.36,"max_ns":50.74,"samples":[[50.49,0,0],[50.44,0,0],[50.36,0,0],[50.42,0,0],[50.38,0,0],[50.74,0,0]]},
+    "BenchmarkGCStructCardScan/fields=8/ranges=1/unordered=true": {"median_ns":50.325,"min_ns":50.15,"max_ns":50.46,"samples":[[50.21,0,0],[50.46,0,0],[50.3,0,0],[50.39,0,0],[50.15,0,0],[50.35,0,0]]}
+  }
+}

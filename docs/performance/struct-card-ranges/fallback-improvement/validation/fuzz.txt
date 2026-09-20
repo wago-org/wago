@@ -1,0 +1,8 @@
+fuzz: elapsed: 0s, gathering baseline coverage: 0/48 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 48/48 completed, now fuzzing with 2 workers
+fuzz: elapsed: 3s, execs: 3769 (1256/sec), new interesting: 6 (total: 54)
+fuzz: elapsed: 6s, execs: 7686 (1306/sec), new interesting: 6 (total: 54)
+fuzz: elapsed: 9s, execs: 11528 (1280/sec), new interesting: 6 (total: 54)
+fuzz: elapsed: 10s, execs: 12880 (1288/sec), new interesting: 7 (total: 55)
+PASS
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	10.053s

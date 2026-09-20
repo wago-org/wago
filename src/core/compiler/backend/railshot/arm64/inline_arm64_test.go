@@ -256,6 +256,30 @@ func TestInlineRejectsRecursiveArm64(t *testing.T) {
 	}
 }
 
+func TestInlineExecOneLevelRecursiveArm64(t *testing.T) {
+	savedInline, savedRecursive := inlineEnabled, recursiveInlineEnabled
+	inlineEnabled, recursiveInlineEnabled = true, true
+	t.Cleanup(func() { inlineEnabled, recursiveInlineEnabled = savedInline, savedRecursive })
+
+	// fib(n) = n < 2 ? n : fib(n-1) + fib(n-2).
+	body := []byte{0x00, 0x20, 0x00, 0x41, 0x02, 0x48, 0x04, 0x7e,
+		0x20, 0x00, 0xac, 0x05,
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x10, 0x00,
+		0x20, 0x00, 0x41, 0x02, 0x6b, 0x10, 0x00, 0x7c, 0x0b, 0x0b}
+	m := modFuncs(t, funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I64}, body: body})
+	if got := runArm64Internal2(t, m, 10, 0); got != 55 {
+		t.Fatalf("fib(10) = %d, want 55", got)
+	}
+	s := compileWithStats(t, m, false).Funcs[0]
+	if s.Calls["inline"] != 2 || s.Calls["regabi"] != 4 {
+		t.Fatalf("recursive call lowering = %v, want inline=2 regabi=4", s.Calls)
+	}
+	rep, err := AnalyzeInlineCandidates(m)
+	if err != nil || rep.NumCandidates != 1 || !rep.Funcs[0].Candidate {
+		t.Fatalf("recursive inline report = %#v, err=%v", rep, err)
+	}
+}
+
 func TestInlineBodyLimitArm64(t *testing.T) {
 	saved := inlineMaxBytes
 	inlineMaxBytes = inlineMaxBodyBytes

@@ -98,7 +98,7 @@ func TestCleanMemory32AddressProof(t *testing.T) {
 		t.Fatal("addr-zext-elim is not registered")
 	}
 
-	f := new(fn)
+	f := &fn{policy: currentCodegenPolicy()}
 	tests := []struct {
 		name string
 		e    *elem
@@ -137,6 +137,7 @@ func TestCleanMemory32AddressProof(t *testing.T) {
 	if !SetOptKnob("addr-zext-elim", false) {
 		t.Fatal("addr-zext-elim is not registered")
 	}
+	f.policy = currentCodegenPolicy()
 	if f.cleanMemory32Address(testValueElem(storage{kind: stConst, typ: mtI32})) {
 		t.Fatal("disabled optimization accepted a clean address")
 	}

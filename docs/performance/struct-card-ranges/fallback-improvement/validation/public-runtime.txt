@@ -1,0 +1,1 @@
+ok  	github.com/wago-org/wago/src/wago	2.964s

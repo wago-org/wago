@@ -17,7 +17,10 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("wide-loop-int-const", &wideLoopIntConstEnabled),
 	optimization.Bind("compact-loop-align32", &compactLoopAlign32Enabled),
 	optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
+	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
+	optimization.Bind("callfree-loop-cold-exit", &callFreeLoopColdExitEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
+	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
 	optimization.Bind("interval-scratch-lease", &intervalScratchLeaseEnabled),
 	optimization.Bind("interval-r8-lease", &intervalR8LeaseEnabled),
 	optimization.Bind("interval-i64-weight", &intervalI64WeightEnabled),
@@ -71,7 +74,10 @@ var (
 	optWideLoopIntConst        = optimizationBindings.Option("wide-loop-int-const")
 	optCompactLoopAlign32      = optimizationBindings.Option("compact-loop-align32")
 	optCountedLoopLatch        = optimizationBindings.Option("counted-loop-latch")
+	optLinearSumLoop           = optimizationBindings.Option("linear-sum-loop")
+	optCallFreeLoopColdExit    = optimizationBindings.Option("callfree-loop-cold-exit")
 	optIntervalRegionPins      = optimizationBindings.Option("interval-region-pins")
+	optIntervalNextUse         = optimizationBindings.Option("interval-next-use")
 	optIntervalScratchLease    = optimizationBindings.Option("interval-scratch-lease")
 	optIntervalR8Lease         = optimizationBindings.Option("interval-r8-lease")
 	optIntervalI64Weight       = optimizationBindings.Option("interval-i64-weight")

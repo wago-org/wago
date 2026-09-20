@@ -141,22 +141,15 @@ func runRegressionEmbenchen(t *testing.T, name string) (int32, []byte) {
 	}
 	binary.LittleEndian.PutUint32(memory.UnsafeBytes()[dynamicTopPtr:], stackMax)
 
-	imports := wago.Imports{
-		"env.DYNAMICTOP_PTR": wago.GlobalImport{Type: wago.ValI32, Bits: uint64(dynamicTopPtr)},
-		"env.STACKTOP":       wago.GlobalImport{Type: wago.ValI32, Bits: uint64(stackTop)},
-		"env.STACK_MAX":      wago.GlobalImport{Type: wago.ValI32, Bits: uint64(stackMax)},
-		"env.memoryBase":     wago.GlobalImport{Type: wago.ValI32},
-		"env.tableBase":      wago.GlobalImport{Type: wago.ValI32},
-		"env.memory":         memory,
-		"env.table":          table,
-	}
+	imports := testWagoImports("env.DYNAMICTOP_PTR", wago.GlobalImport{Type: wago.ValI32, Bits: uint64(dynamicTopPtr)}, "env.STACKTOP", wago.GlobalImport{Type: wago.ValI32, Bits: uint64(stackTop)}, "env.STACK_MAX", wago.GlobalImport{Type: wago.ValI32, Bits: uint64(stackMax)}, "env.memoryBase", wago.GlobalImport{Type: wago.ValI32}, "env.tableBase", wago.GlobalImport{Type: wago.ValI32}, "env.memory", memory, "env.table", table)
 	var output []byte
 	for _, spec := range mod.Imports() {
 		if spec.Kind != wago.ImportFunc {
 			continue
 		}
 		importName := spec.Name
-		imports[spec.Key()] = wago.HostFunc(func(m wago.HostModule, params, results []uint64) {
+		imports.HostFunc(spec.Module, spec.Name, func(caller wago.Caller, call wago.HostCall) {
+			m, params, results := caller, call.ParamSlots(), call.ResultSlots()
 			switch importName {
 			case "abort", "_abort", "_pthread_cleanup_pop", "_pthread_cleanup_push", "___setErrNo":
 				// The upstream WAST env provider defines these as no-op functions.
@@ -217,7 +210,7 @@ func runRegressionEmbenchen(t *testing.T, name string) (int32, []byte) {
 			default:
 				panic(fmt.Errorf("unsupported Emscripten host import %q", importName))
 			}
-		})
+		}).Params(spec.Params...).Results(spec.Results...)
 	}
 
 	in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
