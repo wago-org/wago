@@ -41,15 +41,7 @@ var arm64FPParamRegisters = [...]arm64.Reg{0, 1, 2, 3, 4, 5, 6, 7}
 const arm64EnableAlgorithmSpecializations = false
 
 func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, _ []railmach.ABIContract) bool {
-	if !railMachCandidate(stack, moduleHasV128) {
-		return false
-	}
-	if len(stack.Instrs) > 256 && stack.MaxLoopDepth > 1 && len(stack.Params) == 0 {
-		// Large parameterless nested loops have not proved their backedge value
-		// flow through the ARM64 machine pipeline yet.
-		return false
-	}
-	return true
+	return railMachCandidate(stack, moduleHasV128)
 }
 
 func arm64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, uniformStructured bool) string {
@@ -58,9 +50,6 @@ func arm64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, unifo
 	}
 	if reason := railMachRejectionReason(stack, moduleHasV128); reason != "" {
 		return reason
-	}
-	if len(stack.Instrs) > 256 && stack.MaxLoopDepth > 1 && len(stack.Params) == 0 {
-		return "arm64-large-parameterless-nested-loop"
 	}
 	return ""
 }
@@ -877,6 +866,7 @@ func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 	// displacement form instead of materializing the displacement in a second
 	// integer add.
 	a.DenseIdxDisp = true
+	a.ReuseIndexedBase = true
 	defer func() {
 		metrics.observe(fn.CapacityBytes() + allocation.peakBytes + sliceBytes(allocation.values) + sliceBytes(a.B))
 	}()
@@ -1189,6 +1179,11 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 		scratch = make([]byte, 0, 128)
 	}
 	a := arm64.Asm{B: scratch[:0]}
+	// RailMach proves the complete Wasm effective address before emission, so
+	// base+index accesses may carry their displacement in ARM64's scaled memory
+	// immediate instead of materializing it with a second integer add.
+	a.DenseIdxDisp = true
+	a.ReuseIndexedBase = true
 	defer func() { metrics.observe(sliceBytes(a.B)) }()
 	var simdLiteralRefs []arm64SIMDLiteralRef
 	materializeSIMDConstant := func(reg arm64.Reg, bytes [16]byte) {
@@ -2455,10 +2450,16 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					return nil, 0, true, err
 				}
 			}
+			fusionProducer, consumesFusedComparison := nativeARM64FusionProducer(plan, instructionID)
 			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect {
 				for operandIndex, operand := range operands {
 					if operandIndex == 1 && railmach.IsARM64ImmediateOpcode(instruction.Op) {
 						// The selected ARM64 immediate form owns the literal.
+						continue
+					}
+					if semanticOp == wasm.InstrSelect && consumesFusedComparison && operandIndex == 2 {
+						// The adjacent comparison leaves its result in NZCV instead of
+						// materializing the select condition as an i32.
 						continue
 					}
 					duplicate := false
@@ -3146,7 +3147,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					if data.Bank == railmach.BankFPR {
 						scratch = 29
 					}
-					src, err := arm64RailMachReadValueAt(&a, plan, operand.Reg, scratch, 16)
+					src, err := arm64RailMachReadLocation(&a, plan, operand.Reg, plan.Allocation.LocationAt(operand.Reg, currentPosition), scratch, 16)
 					if err != nil {
 						return nil, 0, true, err
 					}
@@ -3166,7 +3167,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				selectorOffset := argumentSlot * 8
 				selector := operands[len(operands)-1].Reg
-				selectorReg, err := arm64RailMachReadValueAt(&a, plan, selector, arm64.X14, 16)
+				selectorReg, err := arm64RailMachReadLocation(&a, plan, selector, plan.Allocation.LocationAt(selector, currentPosition), arm64.X14, 16)
 				if err != nil {
 					return nil, 0, true, err
 				}
@@ -3437,7 +3438,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR {
 						scratch = 29
 					}
-					src, err := arm64RailMachReadValueAt(&a, plan, operand.Reg, scratch, 16)
+					src, err := arm64RailMachReadLocation(&a, plan, operand.Reg, plan.Allocation.LocationAt(operand.Reg, currentPosition), scratch, stackAdjust)
 					if err != nil {
 						return nil, 0, true, err
 					}
@@ -4781,20 +4782,20 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				a.Ldur32(arm64.X16, arm64.X26, -4)
 				a.Adds32(arm64.X17, arm64.X16, lhs)
 				failOverflow := a.Bcond(arm64.CondCS)
-				a.SubImm64(arm64.X9, arm64.X26, 12)
-				if !a.Load32(arm64.X9, arm64.X9, 0) {
+				a.SubImm64(dst, arm64.X26, 12)
+				if !a.Load32(dst, dst, 0) {
 					return nil, 0, true, fmt.Errorf("RailMach memory maximum load is not encodable")
 				}
-				a.CmpReg32(arm64.X17, arm64.X9)
+				a.CmpReg32(arm64.X17, dst)
 				failMax := a.Bcond(arm64.CondHI)
 				a.Stur32(arm64.X17, arm64.X26, -4)
-				a.LslImm(arm64.X9, arm64.X17, 16, false)
+				a.LslImm(dst, arm64.X17, 16, false)
 				a.SubImm64(arm64.X17, arm64.X26, abi.ActualLinMemByteSize64Offset)
-				if !a.Store64(arm64.X9, arm64.X17, 0) {
+				if !a.Store64(dst, arm64.X17, 0) {
 					return nil, 0, true, fmt.Errorf("RailMach memory byte-size store is not encodable")
 				}
 				a.SubImm64(arm64.X17, arm64.X26, 8)
-				if !a.Store32(arm64.X9, arm64.X17, 0) {
+				if !a.Store32(dst, arm64.X17, 0) {
 					return nil, 0, true, fmt.Errorf("RailMach legacy memory byte-size store is not encodable")
 				}
 				a.MovReg32(dst, arm64.X16)
@@ -4810,6 +4811,22 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			}
 			if semanticOp == wasm.InstrSelect {
 				rhs := reg(operands[1].Reg)
+				if consumesFusedComparison {
+					producer := plan.Machine.Insts[fusionProducer]
+					condition, ok := arm64ComparisonResultCond(producer.Op)
+					if !ok {
+						return nil, 0, true, fmt.Errorf("RailMach select %d has invalid fused comparison %d", instructionID, fusionProducer)
+					}
+					if plan.Machine.VRegs[instruction.Result].Type.IsWideGPR() {
+						a.Csel64(dst, lhs, rhs, condition)
+					} else {
+						a.Csel32(dst, lhs, rhs, condition)
+					}
+					if metrics != nil {
+						metrics.PostRARewrites++
+					}
+					continue
+				}
 				condition := reg(operands[2].Reg)
 				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 					if !emitARM64FloatSelect(&a, dst, lhs, rhs, condition, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64) {
@@ -5254,7 +5271,9 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			}
 			if semanticOp == wasm.InstrI32Eqz || semanticOp == wasm.InstrI64Eqz || semanticOp == wasm.InstrRefIsNull {
 				operandWide := plan.Machine.VRegs[operands[0].Reg].Type.IsWideGPR()
-				if fusedComparison {
+				consumerID, fused := nativeARM64FusionConsumer(plan, instructionID)
+				fusedSelect := fused && railmach.SemanticOpcode(plan.Machine.Insts[consumerID].Op) == wasm.InstrSelect
+				if fusedComparison && !fusedSelect {
 					// The consumer emits CB(N)Z directly from this operand, avoiding
 					// both materialization and a separate flag-setting compare.
 					if metrics != nil {
@@ -5266,6 +5285,12 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					a.CmpImm64(lhs, 0)
 				} else {
 					a.CmpImm32(lhs, 0)
+				}
+				if fusedSelect {
+					if metrics != nil {
+						metrics.PostRARewrites++
+					}
+					continue
 				}
 				if nativeHasPostRARewrite(plan, instructionID, railmach.RewriteARM64CondIncrement) {
 					continue
@@ -5434,6 +5459,15 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				if nativeObligationRequired(plan, instructionID, railssa.ObligationNonzeroDivisor) {
 					if err := arm64TrapDivZero(&a, rhs, wide, fn.Index, wasmOffset, metadata); err != nil {
 						return nil, 0, true, err
+					}
+				}
+				if !wide && (semanticOp == wasm.InstrI32DivU || semanticOp == wasm.InstrI32RemU) {
+					if divisor, ok := arm64RailMachUnsignedI32ConstantDivisor(plan, instruction, operands); ok {
+						arm64EmitUnsignedI32ConstantDivision(&a, dst, lhs, rhs, divisor, semanticOp == wasm.InstrI32RemU)
+						if metrics != nil {
+							metrics.PostRARewrites++
+						}
+						continue
 					}
 				}
 				signed := semanticOp == wasm.InstrI32DivS || semanticOp == wasm.InstrI64DivS || semanticOp == wasm.InstrI32RemS || semanticOp == wasm.InstrI64RemS
@@ -7176,6 +7210,22 @@ func arm64RailMachSoleConsumer(plan *nativeBackendPlan, value railmach.VReg, con
 	found := false
 	for instructionID := range plan.Machine.Insts {
 		for _, operand := range plan.Machine.InstructionOperands(uint32(instructionID)) {
+			if operand.Flags&railmach.OperandColdRemat != 0 {
+				rematerialized := operand.Reg
+				for {
+					base, ok := railmach.ColdRematerializationBase(plan.Machine, rematerialized)
+					if !ok {
+						return false
+					}
+					if base == value {
+						return false
+					}
+					if base == 0 || plan.Machine.VRegs[base].Flags&railmach.VRegRematerializable == 0 {
+						break
+					}
+					rematerialized = base
+				}
+			}
 			if operand.Reg != value {
 				continue
 			}
@@ -13866,6 +13916,56 @@ func arm64ComparisonResultCond(kind wasm.InstrKind) (arm64.Cond, bool) {
 		return arm64.CondGE, true
 	default:
 		return 0, false
+	}
+}
+
+func arm64RailMachUnsignedI32ConstantDivisor(plan *nativeBackendPlan, instruction railmach.Inst, operands []railmach.Operand) (uint32, bool) {
+	kind := railmach.SemanticOpcode(instruction.Op)
+	if len(operands) != 2 || kind != wasm.InstrI32DivU && kind != wasm.InstrI32RemU {
+		return 0, false
+	}
+	value, constant := nativeIntegerConstant(plan, operands[1].Reg)
+	divisor := uint32(value)
+	if !constant || divisor == 0 {
+		return 0, false
+	}
+	if divisor == 1 || divisor&(divisor-1) == 0 {
+		return divisor, true
+	}
+	_, _, ok := arm64UnsignedI32ImmediateMagic(divisor)
+	return divisor, ok
+}
+
+func arm64EmitUnsignedI32ConstantDivision(a *arm64.Asm, dst, dividend, divisorReg arm64.Reg, divisor uint32, remainder bool) {
+	if divisor == 1 {
+		if remainder {
+			a.MovImm32(dst, 0)
+		} else if dst != dividend {
+			a.MovReg32(dst, dividend)
+		}
+		return
+	}
+	if divisor&(divisor-1) == 0 {
+		if remainder {
+			if !a.AndImm32(dst, dividend, divisor-1) {
+				panic("power-of-two remainder mask is not encodable")
+			}
+		} else {
+			a.LsrImm(dst, dividend, uint8(bits.TrailingZeros32(divisor)), true)
+		}
+		return
+	}
+	multiplier, shift, ok := arm64UnsignedI32ImmediateMagic(divisor)
+	if !ok {
+		panic("constant division without ARM64 magic")
+	}
+	a.MovImm32(arm64.X17, int32(multiplier))
+	a.Umull(arm64.X17, dividend, arm64.X17)
+	a.LsrImm(arm64.X17, arm64.X17, shift, false)
+	if remainder {
+		a.Msub32(dst, arm64.X17, divisorReg, dividend)
+	} else if dst != arm64.X17 {
+		a.MovReg32(dst, arm64.X17)
 	}
 }
 

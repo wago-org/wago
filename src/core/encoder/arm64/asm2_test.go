@@ -169,6 +169,43 @@ func TestCanonicalIndexedBaseReuseAcrossAccumulator(t *testing.T) {
 	}
 }
 
+func TestIndexedBaseReuseAcrossScalarFPPhase(t *testing.T) {
+	var a Asm
+	a.DenseIdxDisp = true
+	a.ReuseIndexedBase = true
+	a.LdrFIdx(X0, X26, X22, 8, true)
+	a.LdrFIdx(X1, X26, X21, 0, true)
+	a.Fmul(X2, X0, X1, true)
+	a.Fadd(X3, X3, X2, true)
+	a.StrFIdx(X26, X12, X3, 0, true)
+	a.LdrFIdx(X4, X26, X22, 16, true)
+	if got := len(a.B); got != 28 || a.IndexedBaseReuses != 1 {
+		t.Fatalf("scalar-FP stable reuse = %d bytes/%d hits, want 28/1", got, a.IndexedBaseReuses)
+	}
+
+	var clobbered Asm
+	clobbered.DenseIdxDisp = true
+	clobbered.ReuseIndexedBase = true
+	clobbered.LdrFIdx(X0, X26, X22, 8, true)
+	clobbered.FmovToGpr(X16, X1, true)
+	clobbered.LdrFIdx(X2, X26, X22, 16, true)
+	if got := len(clobbered.B); got != 20 || clobbered.IndexedBaseReuses != 0 {
+		t.Fatalf("GPR-clobbered reuse = %d bytes/%d hits, want 20/0", got, clobbered.IndexedBaseReuses)
+	}
+
+	var beyondWindow Asm
+	beyondWindow.DenseIdxDisp = true
+	beyondWindow.ReuseIndexedBase = true
+	beyondWindow.LdrFIdx(X0, X26, X22, 8, true)
+	for range 8 {
+		beyondWindow.Fadd(X1, X1, X2, true)
+	}
+	beyondWindow.LdrFIdx(X3, X26, X22, 16, true)
+	if got := len(beyondWindow.B); got != 48 || beyondWindow.IndexedBaseReuses != 0 {
+		t.Fatalf("reuse beyond bounded window = %d bytes/%d hits, want 48/0", got, beyondWindow.IndexedBaseReuses)
+	}
+}
+
 // Goldens for the scalar-FP + SP + branch batch.
 func TestPortFPEncodings(t *testing.T) {
 	cases := []struct {

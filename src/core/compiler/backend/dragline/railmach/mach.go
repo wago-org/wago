@@ -542,11 +542,11 @@ func affineColdRematEncodable(f *Func, value VReg) bool {
 	return int64(immediate) == int64(int32(immediate)) || instruction.Op == wasm.InstrI32Add || instruction.Op == wasm.InstrI32Sub
 }
 
-// coldRematerializationBase returns the non-immediate input that the finalizer
+// ColdRematerializationBase returns the non-immediate input that the finalizer
 // reads when reconstructing value at a cold use. The allocator must retain this
 // implicit use even though the rematerialized value's ordinary operand is
 // deliberately omitted from liveness.
-func coldRematerializationBase(f *Func, value VReg) (VReg, bool) {
+func ColdRematerializationBase(f *Func, value VReg) (VReg, bool) {
 	if value == 0 || int(value) >= len(f.VRegs) {
 		return 0, false
 	}

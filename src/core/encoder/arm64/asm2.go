@@ -782,7 +782,7 @@ func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
 	wantAdd := uint32(0x8B000000) | uint32(index&31)<<16 | uint32(base&31)<<5 | uint32(X16)
 	wantCanonical := uint32(0x2A000000) | uint32(index&31)<<16 | uint32(XZR)<<5 | uint32(index&31)
 	sawCanonical := false
-	for words := 1; words <= 4 && words*4 <= len(a.B); words++ {
+	for words := 1; words <= 8 && words*4 <= len(a.B); words++ {
 		instruction := a.wordAt(len(a.B) - words*4)
 		if instruction == wantAdd {
 			if sawCanonical {
@@ -822,6 +822,18 @@ func preservesIndexedBase(instruction uint32, base, index Reg) bool {
 	// Operand width and NZCV changes do not affect the cached 64-bit address.
 	if instruction&0x1F000000 == 0x0B000000 {
 		return !writesAddress(Reg(instruction & 31))
+	}
+	// Scalar FP binary arithmetic only writes a vector register and optionally
+	// NZCV; it cannot change X16 or either GPR address input. Match the exact
+	// arithmetic encodings so conversions and FP-to-GPR moves remain barriers.
+	switch instruction & 0xFFA0FC00 {
+	case 0x1E200800, // FMUL
+		0x1E201800, // FDIV
+		0x1E202800, // FADD
+		0x1E203800, // FSUB
+		0x1E204800, // FMAX
+		0x1E205800: // FMIN
+		return true
 	}
 	return false
 }
@@ -863,7 +875,10 @@ func (a *Asm) LdrFIdx(dst, base, index Reg, disp int32, f64 bool) {
 		a.word(fbase(f64, 0xBC606800, 0xFC606800) | r(index)<<16 | r(base)<<5 | r(dst))
 		return
 	}
-	a.AddShifted(X16, base, index, 0, false)
+	reused := foldIdxDispEnabled && (a.reuseIndexedBase(base, index) || a.reuseIndexedBaseStablePhase(base, index))
+	if !reused {
+		a.AddShifted(X16, base, index, 0, false)
+	}
 	if foldIdxDispEnabled && a.DenseIdxDisp {
 		shift := uint(2)
 		if f64 {
@@ -881,7 +896,9 @@ func (a *Asm) StrFIdx(base, index, src Reg, disp int32, f64 bool) {
 		a.word(fbase(f64, 0xBC206800, 0xFC206800) | r(index)<<16 | r(base)<<5 | r(src))
 		return
 	}
-	a.AddShifted(X16, base, index, 0, false)
+	if !foldIdxDispEnabled || !a.reuseIndexedBase(base, index) && !a.reuseIndexedBaseStablePhase(base, index) {
+		a.AddShifted(X16, base, index, 0, false)
+	}
 	if foldIdxDispEnabled && a.DenseIdxDisp {
 		shift := uint(2)
 		if f64 {

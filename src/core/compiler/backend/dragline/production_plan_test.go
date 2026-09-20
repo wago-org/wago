@@ -157,9 +157,11 @@ func TestNativeARM64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
 	if nativeARM64CachesGlobals(machine) {
 		t.Fatal("three global accesses enabled the ARM64 descriptor cache")
 	}
-	machine.Insts = append(machine.Insts, railmach.Inst{Op: wasm.InstrGlobalGet})
+	for range 5 {
+		machine.Insts = append(machine.Insts, railmach.Inst{Op: wasm.InstrGlobalGet})
+	}
 	if !nativeARM64CachesGlobals(machine) {
-		t.Fatal("four global accesses did not enable the ARM64 descriptor cache")
+		t.Fatal("eight global accesses did not enable the ARM64 descriptor cache")
 	}
 	stack := &railssa.StackFunc{Globals: []wasm.ValType{wasm.I32}}
 	if _, ok := nativeARM64CachedGlobal(stack, machine); ok {
@@ -179,8 +181,8 @@ func TestNativeARM64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
 			railmach.Inst{Op: wasm.InstrGlobalSet, Aux: 1},
 			railmach.Inst{Op: wasm.InstrGlobalGet, Aux: 1})
 	}
-	if globals, count := nativeARM64CachedGlobals(stack, machine); count != 2 || globals != [2]uint32{1, 0} {
-		t.Fatalf("write-through cached globals = %v, %d; want [1 0], 2", globals, count)
+	if globals, count := nativeARM64CachedGlobals(stack, machine); count != 2 || globals != [2]uint32{0, 1} {
+		t.Fatalf("write-through cached globals = %v, %d; want [0 1], 2", globals, count)
 	}
 	machine.Target = railmach.TargetAMD64
 	if nativeARM64CachesGlobals(machine) {

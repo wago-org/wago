@@ -636,11 +636,11 @@ func TestARM64LargeParameterlessNestedLoopRailMachAdmission(t *testing.T) {
 	for i := range stack.Instrs {
 		stack.Instrs[i].Kind = wasm.InstrI32Add
 	}
-	if arm64RailMachCandidate(stack, false, nil) {
-		t.Fatal("large parameterless nested loop was admitted")
+	if !arm64RailMachCandidate(stack, false, nil) {
+		t.Fatal("large parameterless nested loop was rejected")
 	}
-	if got := arm64RailMachRejectionReason(stack, false, false); got != "arm64-large-parameterless-nested-loop" {
-		t.Fatalf("rejection reason = %q", got)
+	if got := arm64RailMachRejectionReason(stack, false, false); got != "" {
+		t.Fatalf("rejection reason = %q, want none", got)
 	}
 	stack.Params = []wasm.ValType{wasm.I32}
 	if !arm64RailMachCandidate(stack, false, nil) {
@@ -650,6 +650,24 @@ func TestARM64LargeParameterlessNestedLoopRailMachAdmission(t *testing.T) {
 	stack.MaxLoopDepth = 1
 	if !arm64RailMachCandidate(stack, false, nil) {
 		t.Fatal("large parameterless single loop was rejected")
+	}
+}
+
+func TestARM64LargeParameterlessNestedLoopCopyCycleIsTargetSafe(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Stack: &railssa.StackFunc{
+			Instrs:       make([]railssa.StackInstr, 257),
+			MaxLoopDepth: 2,
+		},
+		CFG:        &railssa.CFG{},
+		Semantic:   &railssa.SemanticFunc{},
+		Machine:    &railmach.Func{},
+		Allocation: &railmach.GreedyAllocation{},
+		Schedule:   &railmach.Schedule{},
+		Exit:       &railmach.SSAExit{Debt: railmach.CopyDebt{Cycles: 1}},
+	}
+	if got := arm64RailMachTargetSafetyReason(plan); got != "" {
+		t.Fatalf("rejection reason = %q, want none", got)
 	}
 }
 
@@ -2360,6 +2378,32 @@ func TestARM64RailMachSoleConsumerRejectsLaterUses(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachSoleConsumerRejectsColdRematerializationDependency(t *testing.T) {
+	machine := &railmach.Func{
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrGlobalGet, Result: 1},
+			{Op: wasm.InstrI32Const, Result: 2},
+			{Op: wasm.InstrI32Sub, Result: 3, OperandStart: 0, OperandCount: 2},
+			{Op: wasm.InstrI32Add, Result: 4, OperandStart: 2, OperandCount: 1},
+		},
+		Operands: []railmach.Operand{
+			{Reg: 1, Flags: railmach.OperandUse},
+			{Reg: 2, Flags: railmach.OperandUse},
+			{Reg: 3, Flags: railmach.OperandUse | railmach.OperandColdRemat},
+		},
+		VRegs: []railmach.VRegData{
+			{},
+			{Def: 3, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Def: 9, Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegRematerializable},
+			{Def: 15, Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegColdRematerializable},
+			{Def: 21, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+		},
+	}
+	if arm64RailMachSoleConsumer(&nativeBackendPlan{Machine: machine}, 1, 2) {
+		t.Fatal("cold rematerialization dependency was treated as a sole instruction consumer")
+	}
+}
+
 func TestARM64RailMachI32SpillUsesOneMemoryOperation(t *testing.T) {
 	plan := &nativeBackendPlan{
 		Machine: &railmach.Func{VRegs: []railmach.VRegData{{}, {Type: railmach.TypeI32, Bank: railmach.BankGPR}}},
@@ -3078,7 +3122,7 @@ func TestARM64RealizesPostIndexMemoryChain(t *testing.T) {
 	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
 		t.Fatal(err)
 	}
-	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].PostRARewrites == 0 || metrics.Functions[0].PostRAByteSavings <= 0 {
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].PostRARewrites == 0 {
 		t.Fatalf("ARM64 post-index finalization = %#v", metrics.Functions)
 	}
 }

@@ -262,7 +262,7 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 			if operand.Flags&OperandColdRemat != 0 {
 				value := operand.Reg
 				for {
-					base, ok := coldRematerializationBase(f, value)
+					base, ok := ColdRematerializationBase(f, value)
 					if !ok {
 						return nil, fmt.Errorf("railmach: cold rematerialization vreg %d has no encodable recipe", value)
 					}

@@ -146,6 +146,43 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 	}
 }
 
+func TestDraglineARM64MemoryGrowPreservesLiveRegisters(t *testing.T) {
+	module := watToWasmCA(t, `(module
+		(memory 1 4)
+		(func (export "run")
+			(param i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32)
+			(result i32)
+			(local.get 0)
+			(memory.grow)
+			(drop)
+			(local.get 0)
+			(local.get 1) (i32.add)
+			(local.get 2) (i32.add)
+			(local.get 3) (i32.add)
+			(local.get 4) (i32.add)
+			(local.get 5) (i32.add)
+			(local.get 6) (i32.add)
+			(local.get 7) (i32.add)
+			(local.get 8) (i32.add)
+			(local.get 9) (i32.add)
+			(local.get 10) (i32.add)
+			(local.get 11) (i32.add)))`)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	got, err := instance.Invoke("run", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+	if err != nil || len(got) != 1 || got[0] != 78 {
+		t.Fatalf("run = %v, %v; want 78", got, err)
+	}
+}
+
 func TestPreparedDirectARM64I64HashLoop(t *testing.T) {
 	body := []byte{
 		0x42, 0x00, 0x21, 0x01, 0x02, 0x40, 0x03, 0x40, 0x20, 0x00, 0x45, 0x0d, 0x01,

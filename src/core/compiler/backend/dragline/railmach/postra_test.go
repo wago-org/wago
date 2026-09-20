@@ -75,6 +75,41 @@ func TestPlanPostRAFindsARM64ConditionalIncrement(t *testing.T) {
 	t.Fatalf("rewrites = %#v", plan.Rewrites)
 }
 
+func TestPlanPostRAFindsARM64CompareSelect(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x20, 0x00, // selected when true
+		0x20, 0x01, // selected when false
+		0x20, 0x02,
+		0x20, 0x03,
+		0x48, // i32.lt_s
+		0x1b, // select
+		0x0b,
+	})
+	f, selection, _, dag := buildScheduleTest(t, TargetARM64, m)
+	schedule, err := BuildSchedule(f, selection, dag, ScheduleKindSourceStable, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocation, err := AllocateGreedyPForSchedule(f, schedule, DefaultGreedyConfig(TargetARM64), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exit, err := LateSSAExit(f, &allocation.Allocation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := PlanPostRA(TargetARM64, f, selection, schedule, allocation, exit, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rewrite := range plan.Rewrites {
+		if rewrite.Kind == RewriteARM64CompareSelect {
+			return
+		}
+	}
+	t.Fatalf("rewrites = %#v", plan.Rewrites)
+}
+
 func TestPlanPostRAFindsARM64I8x16BitmaskPopcnt(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.I32}, []byte{
 		0x20, 0x00,

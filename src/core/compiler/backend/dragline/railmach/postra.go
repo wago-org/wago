@@ -32,6 +32,7 @@ const (
 	RewriteARM64Narrow16To8
 	RewriteARM64LogicalShift
 	RewriteARM64BitmaskPopcnt
+	RewriteARM64CompareSelect
 )
 
 type Rewrite struct {
@@ -178,6 +179,12 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 		}
 	}
 	if target == TargetARM64 {
+		for index := 0; index+1 < len(schedule.Order); index++ {
+			producer, consumer := schedule.Order[index], schedule.Order[index+1]
+			if schedule.BlockOf[producer] == schedule.BlockOf[consumer] && arm64CompareSelectable(f, producer, consumer, uses) {
+				reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: producer, Second: consumer, Kind: RewriteARM64CompareSelect})
+			}
+		}
 		for index := 0; index+1 < len(schedule.Order); index++ {
 			producer, consumer := schedule.Order[index], schedule.Order[index+1]
 			if schedule.BlockOf[producer] == schedule.BlockOf[consumer] && arm64BitmaskPopcntable(f, producer, consumer, uses) {
@@ -907,6 +914,27 @@ func compareBranchFusionRepairable(target Target, f *Func, producerID, consumerI
 		target == TargetARM64 && producerOp >= wasm.InstrF32Eq && producerOp <= wasm.InstrF64Ge
 }
 
+// arm64CompareSelectable reports whether an adjacent, single-use comparison
+// can feed a scalar select through NZCV directly. This replaces CMP+CSET and a
+// second CMP with the original CMP and one CSEL.
+func arm64CompareSelectable(f *Func, producerID, consumerID uint32, uses []uint32) bool {
+	if int(producerID) >= len(f.Insts) || int(consumerID) >= len(f.Insts) {
+		return false
+	}
+	producer, consumer := f.Insts[producerID], f.Insts[consumerID]
+	if producer.Result == 0 || int(producer.Result) >= len(uses) || uses[producer.Result] != 1 ||
+		SemanticOpcode(consumer.Op) != wasm.InstrSelect || consumer.Result == 0 || f.VRegs[consumer.Result].Bank != BankGPR {
+		return false
+	}
+	operands := f.InstructionOperands(consumerID)
+	if len(operands) != 3 || operands[2].Reg != producer.Result {
+		return false
+	}
+	producerOp := SemanticOpcode(producer.Op)
+	return producerOp == wasm.InstrI32Eqz || producerOp == wasm.InstrI64Eqz ||
+		producerOp >= wasm.InstrI32Eq && producerOp <= wasm.InstrI64GeU
+}
+
 // amd64LEARepairable admits register addition and immediate subtraction. A
 // general register subtraction has no LEA form. MinInt32 is excluded because
 // negating it cannot be represented by LEA's signed displacement for i64.
@@ -1030,10 +1058,10 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 		uses[result]++
 	}
 	for id, rewrite := range plan.Rewrites {
-		if rewrite.Kind == RewriteInvalid || int(rewrite.First) >= len(f.Insts) || rewrite.Second != ^uint32(0) && (int(rewrite.Second) >= len(f.Insts) || rewrite.Second <= rewrite.First || rewrite.Second-rewrite.First > PostRAScanLimit && rewrite.Kind != RewriteAMD64FusionRepair && rewrite.Kind != RewriteAMD64ByteSwap && rewrite.Kind != RewritePhysicalRename && rewrite.Kind != RewriteARM64CompareBranch && rewrite.Kind != RewriteARM64RepeatedAdd && rewrite.Kind != RewriteARM64ByteWiden && rewrite.Kind != RewriteARM64ByteSwap && rewrite.Kind != RewriteARM64Narrow16To8) {
+		if rewrite.Kind == RewriteInvalid || int(rewrite.First) >= len(f.Insts) || rewrite.Second != ^uint32(0) && (int(rewrite.Second) >= len(f.Insts) || rewrite.Second <= rewrite.First || rewrite.Second-rewrite.First > PostRAScanLimit && rewrite.Kind != RewriteAMD64FusionRepair && rewrite.Kind != RewriteAMD64ByteSwap && rewrite.Kind != RewritePhysicalRename && rewrite.Kind != RewriteARM64CompareBranch && rewrite.Kind != RewriteARM64CompareSelect && rewrite.Kind != RewriteARM64RepeatedAdd && rewrite.Kind != RewriteARM64ByteWiden && rewrite.Kind != RewriteARM64ByteSwap && rewrite.Kind != RewriteARM64Narrow16To8) {
 			return fmt.Errorf("railmach: invalid post-RA rewrite %d: %#v", id, rewrite)
 		}
-		if target == TargetAMD64 && (rewrite.Kind == RewriteARM64Pair || rewrite.Kind == RewriteARM64PrePostIndex || rewrite.Kind == RewriteARM64CompareBranch || rewrite.Kind == RewriteARM64CondIncrement || rewrite.Kind == RewriteARM64RepeatedAdd || rewrite.Kind == RewriteARM64ByteWiden || rewrite.Kind == RewriteARM64ByteSwap || rewrite.Kind == RewriteARM64Narrow16To8 || rewrite.Kind == RewriteARM64LogicalShift || rewrite.Kind == RewriteARM64BitmaskPopcnt) || target == TargetARM64 && (rewrite.Kind == RewriteAMD64LEA || rewrite.Kind == RewriteAMD64FusionRepair || rewrite.Kind == RewriteAMD64FixedRepair || rewrite.Kind == RewriteAMD64MemoryFold || rewrite.Kind == RewriteAMD64ByteSwap) {
+		if target == TargetAMD64 && (rewrite.Kind == RewriteARM64Pair || rewrite.Kind == RewriteARM64PrePostIndex || rewrite.Kind == RewriteARM64CompareBranch || rewrite.Kind == RewriteARM64CondIncrement || rewrite.Kind == RewriteARM64RepeatedAdd || rewrite.Kind == RewriteARM64ByteWiden || rewrite.Kind == RewriteARM64ByteSwap || rewrite.Kind == RewriteARM64Narrow16To8 || rewrite.Kind == RewriteARM64LogicalShift || rewrite.Kind == RewriteARM64BitmaskPopcnt || rewrite.Kind == RewriteARM64CompareSelect) || target == TargetARM64 && (rewrite.Kind == RewriteAMD64LEA || rewrite.Kind == RewriteAMD64FusionRepair || rewrite.Kind == RewriteAMD64FixedRepair || rewrite.Kind == RewriteAMD64MemoryFold || rewrite.Kind == RewriteAMD64ByteSwap) {
 			return fmt.Errorf("railmach: cross-target post-RA rewrite %d: %#v", id, rewrite)
 		}
 		if rewrite.Kind == RewriteAMD64FusionRepair && position[rewrite.Second] == position[rewrite.First]+1 {
@@ -1058,6 +1086,11 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 			}
 			if !matched {
 				return fmt.Errorf("railmach: ARM64 compare/branch fusion %d has no selected pair", id)
+			}
+		}
+		if rewrite.Kind == RewriteARM64CompareSelect {
+			if position[rewrite.Second] != position[rewrite.First]+1 || schedule.BlockOf[rewrite.First] != schedule.BlockOf[rewrite.Second] || !arm64CompareSelectable(f, rewrite.First, rewrite.Second, uses) {
+				return fmt.Errorf("railmach: illegal ARM64 compare/select fusion %d: %#v", id, rewrite)
 			}
 		}
 		if rewrite.Kind == RewritePhysicalRename {

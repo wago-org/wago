@@ -2293,6 +2293,11 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 					p.postRAFusionWith.set(rewrite.First, rewrite.Second)
 					p.postRAFusionWith.set(rewrite.Second, rewrite.First)
 				}
+			case railmach.RewriteARM64CompareSelect:
+				if machineTarget == railmach.TargetARM64 && planInstructionsAdjacent(schedule, rewrite.First, rewrite.Second) {
+					p.postRAFusionWith.set(rewrite.First, rewrite.Second)
+					p.postRAFusionWith.set(rewrite.Second, rewrite.First)
+				}
 			case railmach.RewritePhysicalRename:
 				if machineTarget == railmach.TargetAMD64 || machineTarget == railmach.TargetARM64 {
 					p.postRAFusionWith.set(rewrite.First, rewrite.Second)
@@ -3297,7 +3302,7 @@ func nativeARM64CachesGlobals(machine *railmach.Func) bool {
 			uses++
 		}
 	}
-	return uses >= 4
+	return uses >= 8
 }
 
 func nativeARM64CachedGlobal(stack *railssa.StackFunc, machine *railmach.Func) (uint32, bool) {
@@ -3562,6 +3567,8 @@ func (p *nativeBackendPlanner) preparePostRAScratch(target railmach.Target, inst
 		case railmach.RewriteAMD64FusionRepair:
 			needsFusion = target == railmach.TargetAMD64 || needsFusion
 		case railmach.RewriteARM64CompareBranch:
+			needsFusion = target == railmach.TargetARM64 || needsFusion
+		case railmach.RewriteARM64CompareSelect:
 			needsFusion = target == railmach.TargetARM64 || needsFusion
 		case railmach.RewritePhysicalRename:
 			needsFusion = target == railmach.TargetAMD64 || target == railmach.TargetARM64 || needsFusion
