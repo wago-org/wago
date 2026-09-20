@@ -1556,7 +1556,7 @@ func (b *Builder) popMaybe(t wasm.ValType) (ValueID, error) {
 	// unreachable region closes.
 	if len(b.stack) <= b.ctrlH[len(b.ctrlH)-1] {
 		if !b.reachable {
-			return b.newValue(wasm.I32, ValueDefPoison, 0), nil
+			return b.newValue(wasm.ValType{}, ValueDefPoison, 0), nil
 		}
 		return InvalidValue, fmt.Errorf("stack underflow")
 	}

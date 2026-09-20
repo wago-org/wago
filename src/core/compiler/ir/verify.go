@@ -155,7 +155,7 @@ func verifyFunc(f *Func, m *Module) error {
 	}
 	for i := range f.Values {
 		v := f.Values[i]
-		if !validValType(v.Type) {
+		if !validValType(v.Type) && !(v.DefKind == ValueDefPoison && v.Type == (wasm.ValType{})) {
 			return fmt.Errorf("value %d has invalid type %s", i, v.Type)
 		}
 		switch v.DefKind {
