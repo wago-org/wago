@@ -269,7 +269,7 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 	if err != nil {
 		return err
 	}
-	g := in.c.Globals[idx]
+	g := &in.c.Globals[idx]
 	if v.typ != g.Type {
 		return fmt.Errorf("global %q is %s, got %s", name, g.Type, v.typ)
 	}
