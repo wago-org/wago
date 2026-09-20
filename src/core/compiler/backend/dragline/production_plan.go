@@ -991,7 +991,7 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers *native
 			continue
 		}
 		producer := plan.Machine.Insts[combination.Producer]
-		if producer.Result == 0 || uses[producer.Result] != 1 || producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const {
+		if producer.Result == 0 || uses[producer.Result] == 0 || producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const {
 			continue
 		}
 		consumerOperands := plan.Machine.InstructionOperands(combination.Consumer)
@@ -1002,7 +1002,10 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers *native
 			continue
 		}
 		producers.set(combination.Consumer, combination.Producer)
-		skipped.set(combination.Producer, true)
+		uses[producer.Result]--
+		if uses[producer.Result] == 0 {
+			skipped.set(combination.Producer, true)
+		}
 	}
 	for consumerID, consumer := range plan.Machine.Insts {
 		if producers.has(uint32(consumerID)) {
@@ -1010,10 +1013,12 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers *native
 		}
 		operands := plan.Machine.InstructionOperands(uint32(consumerID))
 		constantDivision := false
+		arithmeticImmediate := false
 		if plan.Machine.Target == railmach.TargetAMD64 {
 			constantDivision = nativeAMD64ConstantDivisionUse(plan, consumer, operands)
+			arithmeticImmediate = nativeAMD64ArithmeticImmediateUse(plan, consumer, operands)
 		}
-		if len(operands) != 2 || !nativeImmediateShiftUse(consumer.Op) && !constantDivision {
+		if len(operands) != 2 || !nativeImmediateShiftUse(consumer.Op) && !constantDivision && !arithmeticImmediate {
 			continue
 		}
 		if plan.Machine.Target == railmach.TargetAMD64 && nativeAMD64VectorShiftNeedsRegister(consumer.Op) {
@@ -1051,6 +1056,26 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers *native
 	}
 	// Later edge-rematerialization decisions consume the original use counts.
 	countNativeMachineUses(plan.Machine, uses)
+}
+
+func nativeAMD64ArithmeticImmediateUse(plan *nativeBackendPlan, instruction railmach.Inst, operands []railmach.Operand) bool {
+	if len(operands) != 2 {
+		return false
+	}
+	value, constant := nativeIntegerConstant(plan, operands[1].Reg)
+	if !constant {
+		return false
+	}
+	switch instruction.Op {
+	case railmach.OpAMD64I32Add, railmach.OpAMD64I32Sub, railmach.OpAMD64I32Mul,
+		railmach.OpAMD64I32And, railmach.OpAMD64I32Or, railmach.OpAMD64I32Xor:
+		return true
+	case railmach.OpAMD64I64Add, railmach.OpAMD64I64Sub, railmach.OpAMD64I64Mul,
+		railmach.OpAMD64I64And, railmach.OpAMD64I64Or, railmach.OpAMD64I64Xor:
+		return uint64(int64(int32(value))) == value
+	default:
+		return false
+	}
 }
 
 func nativeAMD64ConstantDivisionUse(plan *nativeBackendPlan, instruction railmach.Inst, operands []railmach.Operand) bool {

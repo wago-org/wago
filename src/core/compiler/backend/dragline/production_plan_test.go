@@ -1000,6 +1000,62 @@ func TestNativeImmediateCombinationsFoldRepeatedRotateCounts(t *testing.T) {
 	}
 }
 
+func TestNativeImmediateCombinationsFoldSharedArithmeticConstant(t *testing.T) {
+	machine := &railmach.Func{
+		Target: railmach.TargetAMD64,
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Const, Aux: 8, Result: 1},
+			{Op: railmach.OpAMD64I32Add, Result: 3, OperandStart: 0, OperandCount: 2},
+			{Op: railmach.OpAMD64I32Add, Result: 4, OperandStart: 2, OperandCount: 2},
+		},
+		Operands: []railmach.Operand{{Reg: 2}, {Reg: 1}, {Reg: 3}, {Reg: 1}},
+		VRegs:    make([]railmach.VRegData, 5),
+	}
+	machine.VRegs[1] = railmach.VRegData{Def: 3, Flags: railmach.VRegRematerializable}
+	// Selection recorded one consumer before a later machine contraction reused
+	// the same constant. The target immediate pass must recover the other legal
+	// arithmetic use and elide the producer only after both have folded.
+	selection := &railmach.SelectionPlan{Combinations: []railmach.Combination{{Kind: railmach.CombineImmediate, Producer: 0, Consumer: 1}}}
+	plan := &nativeBackendPlan{Machine: machine, Selection: selection}
+	var producers nativeInstructionRelation
+	var skipped nativeBitSet
+	uses := make([]uint32, len(machine.VRegs))
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
+	producer1, ok1 := producers.get(1)
+	producer2, ok2 := producers.get(2)
+	if !ok1 || producer1 != 0 || !ok2 || producer2 != 0 || !skipped.has(0) || uses[1] != 2 {
+		t.Fatalf("producers=%v skipped=%v uses=%v", producers, skipped, uses)
+	}
+}
+
+func TestNativeAMD64ArithmeticImmediateRequiresEncodableI64(t *testing.T) {
+	machine := &railmach.Func{
+		Target:   railmach.TargetAMD64,
+		Insts:    []railmach.Inst{{Op: wasm.InstrI64Const, Result: 1}, {Op: railmach.OpAMD64I64Add, OperandCount: 2}},
+		Operands: []railmach.Operand{{Reg: 2}, {Reg: 1}},
+		VRegs:    make([]railmach.VRegData, 3),
+	}
+	machine.VRegs[1] = railmach.VRegData{Def: 3}
+	plan := &nativeBackendPlan{Machine: machine}
+	for _, test := range []struct {
+		name  string
+		value uint64
+		want  bool
+	}{
+		{name: "positive", value: 0x7fffffff, want: true},
+		{name: "negative", value: ^uint64(0), want: true},
+		{name: "unsigned-32", value: 0xffffffff},
+		{name: "wide", value: 0x100000000},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			machine.Insts[0].Aux = test.value
+			if got := nativeAMD64ArithmeticImmediateUse(plan, machine.Insts[1], machine.Operands); got != test.want {
+				t.Fatalf("eligible = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
 func TestNativeImmediateCombinationsFoldRepeatedVectorShiftCounts(t *testing.T) {
 	machine := &railmach.Func{
 		Target: railmach.TargetARM64,
