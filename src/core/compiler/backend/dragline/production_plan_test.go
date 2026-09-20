@@ -1861,19 +1861,29 @@ func TestNativeAMD64RematerializesSpilledAddressFromLiveBase(t *testing.T) {
 	}}
 	var values, skipped nativeBitSet
 	skipped.prepare(len(machine.Insts), true)
-	var state []uint32
-	if got := planNativeAMD64SpilledAddressRematerialization(machine, allocation, &values, &skipped, &state); got != 1 || !values.has(3) || !skipped.has(1) {
+	var intervalByReg []uint32
+	if got := planNativeAMD64SpilledAddressRematerialization(machine, allocation, &values, &skipped, &intervalByReg); got != 1 || !values.has(3) || !skipped.has(1) {
 		t.Fatalf("address rematerialization = count %d, values %#v, skipped %#v", got, values, skipped)
 	}
+	insts, operands, memory := machine.Insts, machine.Operands, machine.Memory
+	positions := allocation.InstructionPositions
+	machine.Insts, machine.Operands, machine.Memory = insts[:3], operands[:3], memory[:1]
+	allocation.InstructionPositions = positions[:3]
+	skipped.prepare(len(machine.Insts), true)
+	if got := planNativeAMD64SpilledAddressRematerialization(machine, allocation, &values, &skipped, &intervalByReg); got != 1 || !values.has(3) || !skipped.has(1) {
+		t.Fatalf("single-use address rematerialization = count %d, values %#v, skipped %#v", got, values, skipped)
+	}
+	machine.Insts, machine.Operands, machine.Memory = insts, operands, memory
+	allocation.InstructionPositions = positions
 	allocation.Intervals[0].End = 8
 	skipped.prepare(len(machine.Insts), true)
-	if got := planNativeAMD64SpilledAddressRematerialization(machine, allocation, &values, &skipped, &state); got != 0 || values.has(3) || skipped.has(1) {
+	if got := planNativeAMD64SpilledAddressRematerialization(machine, allocation, &values, &skipped, &intervalByReg); got != 0 || values.has(3) || skipped.has(1) {
 		t.Fatalf("dead-base address rematerialization = count %d, values %#v, skipped %#v", got, values, skipped)
 	}
 	allocation.Intervals[0].End = 20
 	allocation.Fragments = []railmach.AllocationFragment{{Reg: 1, Start: 14, End: 20, Location: railmach.Location{Kind: railmach.LocationSpill, Bank: railmach.BankGPR}}}
 	skipped.prepare(len(machine.Insts), true)
-	if got := planNativeAMD64SpilledAddressRematerialization(machine, allocation, &values, &skipped, &state); got != 0 || values.has(3) || skipped.has(1) {
+	if got := planNativeAMD64SpilledAddressRematerialization(machine, allocation, &values, &skipped, &intervalByReg); got != 0 || values.has(3) || skipped.has(1) {
 		t.Fatalf("displaced-base address rematerialization = count %d, values %#v, skipped %#v", got, values, skipped)
 	}
 }

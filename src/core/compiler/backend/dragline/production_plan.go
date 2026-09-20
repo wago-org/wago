@@ -1135,10 +1135,9 @@ func planNativeAMD64SpilledAddressRematerialization(machine *railmach.Func, allo
 	}
 	*intervalByReg = resizeNativeSlice(*intervalByReg, len(machine.VRegs))
 	clear(*intervalByReg)
-	stateByReg := *intervalByReg
+	intervalForReg := *intervalByReg
 	for index, interval := range allocation.Intervals {
-		// Low bits are free for the repeated-use state collected below.
-		stateByReg[interval.Reg] = (uint32(index) + 1) << 2
+		intervalForReg[interval.Reg] = uint32(index) + 1
 	}
 	for instructionID, instruction := range machine.Insts {
 		result := instruction.Result
@@ -1169,18 +1168,11 @@ func planNativeAMD64SpilledAddressRematerialization(machine *railmach.Func, allo
 			if !values.has(uint32(operand.Reg)) {
 				continue
 			}
-			state := stateByReg[operand.Reg]
-			if state&1 != 0 {
-				state |= 2
-			} else {
-				state |= 1
-			}
-			stateByReg[operand.Reg] = state
 			access, memory := machine.MemoryAccessAt(uint32(instructionID))
 			definition := machine.VRegs[operand.Reg].Def / 6
 			definitionOperands := machine.InstructionOperands(definition)
 			base := definitionOperands[0].Reg
-			encodedInterval := stateByReg[base] >> 2
+			encodedInterval := intervalForReg[base]
 			position := allocation.InstructionPositions[instructionID]*6 + 2
 			baseLocation := allocation.Locations[base]
 			if operandIndex != 0 || operand.Flags&(railmach.OperandFixed|railmach.OperandColdRemat) != 0 || !memory || access.AddressValue != operand.Reg || encodedInterval == 0 ||
@@ -1203,7 +1195,7 @@ func planNativeAMD64SpilledAddressRematerialization(machine *railmach.Func, allo
 	}
 	var committed uint32
 	for instructionID, instruction := range machine.Insts {
-		if instruction.Result != 0 && values.has(uint32(instruction.Result)) && stateByReg[instruction.Result]&2 != 0 {
+		if instruction.Result != 0 && values.has(uint32(instruction.Result)) {
 			skipped.set(uint32(instructionID), true)
 			committed++
 		}
