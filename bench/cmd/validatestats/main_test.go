@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 var validModule = []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00}
@@ -26,10 +28,21 @@ func TestValidationStatsCommand(t *testing.T) {
 		return
 	}
 	for _, tc := range []struct {
-		name  string
-		file  bool
-		count int
-	}{{"file", true, 1}, {"one-catalog-module", false, 1}, {"two-catalog-modules", false, 2}} {
+		name    string
+		file    bool
+		count   int
+		skipped int
+		runs    int
+		warmup  int
+	}{
+		{name: "file", file: true, count: 1, runs: 2},
+		{name: "one-catalog-module", count: 1, runs: 2},
+		{name: "two-catalog-modules", count: 2, runs: 2},
+		{name: "filtered-catalog-module", count: 1, skipped: 2, runs: 2},
+		{name: "file-one-run-with-warmup", file: true, count: 1, runs: 1, warmup: 2},
+		{name: "two-catalog-modules-one-run-with-warmup", count: 2, runs: 1, warmup: 2},
+		{name: "no-validation-modules", skipped: 2, runs: 2},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
 			work := filepath.Join(root, "bench")
@@ -47,6 +60,11 @@ func TestValidationStatsCommand(t *testing.T) {
 				}
 				catalog.Modules = append(catalog.Modules, corpusModule{ID: fmt.Sprintf("module%d", i), Artifact: name})
 			}
+			for i := 0; i < tc.skipped; i++ {
+				catalog.Modules = append(catalog.Modules, corpusModule{
+					ID: fmt.Sprintf("skipped%d", i), Artifact: "not-read.wasm", Stages: []string{"Compile"},
+				})
+			}
 			encoded, err := json.Marshal(catalog)
 			if err != nil {
 				t.Fatal(err)
@@ -54,22 +72,46 @@ func TestValidationStatsCommand(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(corpus, "catalog.json"), encoded, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			args := []string{"-test.run=^TestValidationStatsCommand$", "--", "-runs=2", "-warmup=0"}
+			args := []string{"-test.run=^TestValidationStatsCommand$", "--", fmt.Sprintf("-runs=%d", tc.runs), fmt.Sprintf("-warmup=%d", tc.warmup)}
 			if tc.file {
 				args = append(args, "-file="+filepath.Join(corpus, "module0.wasm"))
 			}
-			cmd := exec.Command(os.Args[0], args...)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, os.Args[0], args...)
 			cmd.Dir = work
 			cmd.Env = append(os.Environ(), "WAGO_VALIDATESTATS_TEST_CHILD=1")
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("command: %v\n%s", err, output)
 			}
-			if !strings.Contains(string(output), fmt.Sprintf("modules=%d", tc.count)) || !strings.Contains(string(output), "module0") {
-				t.Fatalf("missing measurement: %s", output)
+			text := string(output)
+			header := fmt.Sprintf("runs=%d warmup=%d modules=%d\n", tc.runs, tc.warmup, tc.count)
+			if !strings.Contains(text, header) {
+				t.Fatalf("missing run configuration: %s", output)
 			}
-			if strings.Contains(string(output), "CORPUS(sum/run)") != (tc.count > 1) {
-				t.Fatalf("unexpected corpus summary: %s", output)
+			rows := make(map[string]int)
+			for _, line := range strings.Split(text, "\n") {
+				fields := strings.Fields(line)
+				if len(fields) == 5 && strings.HasPrefix(fields[0], "module") && fields[0] != "module" {
+					if fields[1] != fmt.Sprint(tc.runs) {
+						t.Fatalf("unexpected measured run count: %s", line)
+					}
+					rows[fields[0]]++
+				}
+			}
+			if len(rows) != tc.count || strings.Contains(text, "skipped") {
+				t.Fatalf("unexpected module rows: %s", output)
+			}
+			for i := 0; i < tc.count; i++ {
+				if rows[fmt.Sprintf("module%d", i)] != 1 {
+					t.Fatalf("missing or duplicate measurement: %s", output)
+				}
+			}
+			for _, summary := range []string{"MEAN(module avg)", "CORPUS(sum/run)"} {
+				if strings.Contains(text, summary) != (tc.count > 1) {
+					t.Fatalf("unexpected %s summary: %s", summary, output)
+				}
 			}
 		})
 	}
