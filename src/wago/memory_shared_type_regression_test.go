@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
 )
@@ -43,5 +44,22 @@ func TestReviewSharedProviderUnsharedImport(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("shared Wasm memory was accepted for an unshared import")
+	}
+}
+
+func TestSharedHostMemoryExportKeepsWaitCapability(t *testing.T) {
+	m, err := NewSharedMemory(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	if err := m.share(nil, memoryDef{Min: 1, Max: 1, HasMax: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := m.wait32(context.Background(), 0, 1, 0); err != nil || got != memoryWaitNotEqual {
+		t.Fatalf("wait after unshared export = %d, %v", got, err)
+	}
+	if err := m.validateLimits(1, 1, true, false, true); err == nil {
+		t.Fatal("unshared export satisfied a shared import")
 	}
 }

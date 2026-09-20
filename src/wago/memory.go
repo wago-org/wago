@@ -23,11 +23,11 @@ type Memory struct {
 type memoryState struct {
 	mu    sync.Mutex
 	owner *Instance // non-nil for an instance-owned exported memory
-	meta  uint64    // declared max u49 | inline importer count u7 | flags u8
+	meta  uint64    // declared max u49 | inline importer count u6 | flags u9
 }
 
 const (
-	memoryStateShared uint8 = 1 << iota
+	memoryStateShared uint16 = 1 << iota
 	memoryStateWasmShared
 	memoryStateAddr64
 	memoryStateAddrKnown
@@ -35,18 +35,19 @@ const (
 	memoryStateDeclaredHasMax
 	memoryStateClosed
 	memoryStateWasmTypeKnown
+	memoryStateDeclaredShared
 
 	memoryStateDeclaredMaxMask = uint64(1<<49 - 1)
 	memoryStateImporterShift   = 49
-	memoryStateImporterMask    = uint64(1<<7 - 1)
-	memoryStateFlagsShift      = 56
+	memoryStateImporterMask    = uint64(1<<6 - 1)
+	memoryStateFlagsShift      = 55
 )
 
-func (s *memoryState) has(flag uint8) bool {
-	return uint8(s.meta>>memoryStateFlagsShift)&flag != 0
+func (s *memoryState) has(flag uint16) bool {
+	return uint16(s.meta>>memoryStateFlagsShift)&flag != 0
 }
 
-func (s *memoryState) set(flag uint8, enabled bool) {
+func (s *memoryState) set(flag uint16, enabled bool) {
 	bits := uint64(flag) << memoryStateFlagsShift
 	if enabled {
 		s.meta |= bits
@@ -55,7 +56,7 @@ func (s *memoryState) set(flag uint8, enabled bool) {
 	}
 }
 
-var memoryImporterOverflow sync.Map // map[*memoryState]uint32; only counts >= 127
+var memoryImporterOverflow sync.Map // map[*memoryState]uint32; only counts >= 63
 
 func (s *memoryState) importerCount() uint32 {
 	inline := uint32(s.meta>>memoryStateImporterShift) & uint32(memoryStateImporterMask)
@@ -326,7 +327,10 @@ func (m *Memory) share(owner *Instance, def memoryDef) error {
 	}
 	s.set(memoryStateShared, true)
 	if !s.has(memoryStateWasmTypeKnown) {
-		s.set(memoryStateWasmShared, def.Shared)
+		s.set(memoryStateDeclaredShared, def.Shared)
+		if def.Shared {
+			s.set(memoryStateWasmShared, true)
+		}
 		s.set(memoryStateWasmTypeKnown, true)
 	}
 	return nil
@@ -362,6 +366,9 @@ func (m *Memory) validateLimits(min, max uint64, hasMax, addr64, shared bool) er
 	providerAddr64, addrKnown := s.has(memoryStateAddr64), s.has(memoryStateAddrKnown)
 	providerShared := s.has(memoryStateWasmShared)
 	sharedKnown := s.has(memoryStateWasmTypeKnown)
+	if sharedKnown {
+		providerShared = s.has(memoryStateDeclaredShared)
+	}
 	limitsKnown, providerHasMax, providerMax := s.has(memoryStateLimitsKnown), s.has(memoryStateDeclaredHasMax), s.declaredMaximum()
 	actualMin, actualMax := uint64(m.jm.CurrentPages()), uint64(m.jm.MaxPages())
 	s.mu.Unlock()
