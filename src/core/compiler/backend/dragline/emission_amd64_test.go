@@ -2389,6 +2389,54 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 	if !amd64RailMachCandidate(stack, false, false) {
 		t.Fatal("small memory.copy function was rejected")
 	}
+	stack.Instrs[0].Kind = wasm.InstrMemoryFill
+	if !amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("memory.fill function was rejected")
+	}
+}
+
+func TestAMD64RailMachPropagatesStructuredDirectCallee(t *testing.T) {
+	callee := make([]byte, 0, 530)
+	for range 513 {
+		callee = append(callee, 0x01) // nop
+	}
+	callee = append(callee,
+		0x41, 0, // i32.const 0: destination
+		0x41, 0, // i32.const 0: source
+		0x41, 0, // i32.const 0: length
+		0xfc, 0x0a, 0, 0, // memory.copy 0 0
+		0x0b,
+	)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(callee),
+			wasmtest.Code([]byte{0x10, 0, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 2 || metrics.Functions[0].RailMachFinalized || metrics.Functions[1].RailMachFinalized {
+		t.Fatalf("mixed-backend direct-call closure = %#v", metrics.Functions)
+	}
+	if got := metrics.Functions[0].StructuredReason; got != "amd64-large-memory.copy" {
+		t.Fatalf("callee reason = %q", got)
+	}
+	if got := metrics.Functions[1].StructuredReason; got != "amd64-structured-callee" {
+		t.Fatalf("caller reason = %q", got)
+	}
 }
 
 func TestAMD64RailMachAdmitsDenseGlobalNestedLoops(t *testing.T) {

@@ -59,6 +59,28 @@ func amd64LargeMemoryCopy(stack *railssa.StackFunc) bool {
 	return false
 }
 
+func amd64RailMachDirectCalleesCompatible(stack *railssa.StackFunc, contracts []railmach.ABIContract, components []int, caller int) bool {
+	if stack == nil {
+		return true
+	}
+	for _, instruction := range stack.Instrs {
+		if instruction.Kind != wasm.InstrCall || instruction.Inline() != wasm.InstrInvalid || instruction.U32() < stack.ImportedFuncs {
+			continue
+		}
+		callee := int(instruction.U32() - stack.ImportedFuncs)
+		if callee < 0 || callee >= len(contracts) || callee == caller {
+			continue
+		}
+		if caller >= 0 && caller < len(components) && callee < len(components) && components[caller] == components[callee] {
+			continue
+		}
+		if contracts[callee].Class == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 var amd64StackLocalRegisters = [...]amd64.Reg{amd64.R12, amd64.R13, amd64.R14, amd64.R15, amd64.R8, amd64.R9}
 
 type amd64CallReloc struct {
@@ -268,8 +290,16 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		var nativePlan *nativeBackendPlan
 		denseGlobals := len(m.Globals) >= amd64RailMachDenseGlobalThreshold
 		railMach := amd64RailMachCandidate(fn.Structured, compilationPlan.HasV128, denseGlobals)
+		if railMach && !amd64RailMachDirectCalleesCompatible(fn.Structured, moduleContracts, compilationPlan.Component, i) {
+			railMach = false
+			if row != nil {
+				row.StructuredReason = "amd64-structured-callee"
+			}
+		}
 		if row != nil && !railMach {
-			row.StructuredReason = amd64RailMachRejectionReason(fn.Structured, compilationPlan.HasV128, denseGlobals)
+			if row.StructuredReason == "" {
+				row.StructuredReason = amd64RailMachRejectionReason(fn.Structured, compilationPlan.HasV128, denseGlobals)
+			}
 		}
 		if railMach {
 			if nativePlanner == nil {
@@ -1721,6 +1751,12 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 			}
 			foldedImmediateID, hasFoldedImmediate := immediateProducer.get(instructionID)
+			if semanticOp == wasm.InstrMemoryCopy || semanticOp == wasm.InstrMemoryFill {
+				// Bulk-memory lowering consumes all three values from registers. Do
+				// not elide a constant producer as though this emitter encoded an
+				// immediate operand.
+				hasFoldedImmediate = false
+			}
 			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect {
 				for operandIndex, operand := range operands {
 					if operand.Reg == forwardedSpill || memoryFold && plan.Machine.Insts[foldedLoadID].Result == operand.Reg || hasFoldedImmediate && plan.Machine.Insts[foldedImmediateID].Result == operand.Reg {
