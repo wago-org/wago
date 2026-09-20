@@ -326,18 +326,18 @@ func TestNativeAMD64CachedMemoryBoundSelectsHotAccessEnd(t *testing.T) {
 	}
 	p.signalsBounds = false
 	machine.VRegs = []railmach.VRegData{{Bank: railmach.BankFPR}}
-	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, pressure); ok || end != 0 {
-		t.Fatalf("mixed floating access cached memory bound = (%d, %t), want disabled", end, ok)
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, pressure); !ok || end != 8 {
+		t.Fatalf("mixed floating access cached memory bound = (%d, %t), want (8, true)", end, ok)
 	}
 	machine.VRegs = nil
 	pressure.Blocks[0].PeakGPR = 32
-	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, pressure); ok || end != 0 {
-		t.Fatalf("high-pressure cached memory bound = (%d, %t), want disabled", end, ok)
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, pressure); !ok || end != 8 {
+		t.Fatalf("high-pressure cached memory bound = (%d, %t), want (8, true)", end, ok)
 	}
 	pressure.Blocks[0].PeakGPR = 0
 	machine.Insts = append(machine.Insts, railmach.Inst{Op: wasm.InstrMemoryGrow})
-	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, pressure); ok || end != 0 {
-		t.Fatalf("growing function cached memory bound = (%d, %t), want disabled", end, ok)
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, pressure); !ok || end != 8 {
+		t.Fatalf("growing function cached memory bound = (%d, %t), want (8, true)", end, ok)
 	}
 }
 

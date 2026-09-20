@@ -3082,15 +3082,8 @@ const (
 )
 
 func (p *nativeBackendPlanner) nativeAMD64CachedMemoryBound(stack *railssa.StackFunc, machine *railmach.Func, pressure *railssa.PressurePlan) (uint64, bool) {
-	// Large functions use regional allocation, whose bounded reload fragments
-	// are deliberately more valuable than one globally reserved bound register.
-	if stack == nil || machine == nil || pressure == nil || p.signalsBounds || machine.Target != railmach.TargetAMD64 || nativeAMD64CachesGlobalDescriptors(machine) || stack.MemoryMinBytes == 0 || len(machine.Insts) >= 512 {
+	if stack == nil || machine == nil || pressure == nil || p.signalsBounds || machine.Target != railmach.TargetAMD64 || nativeAMD64CachesGlobalDescriptors(machine) || stack.MemoryMinBytes == 0 {
 		return 0, false
-	}
-	for _, instruction := range machine.Insts {
-		if railmach.IsCall(instruction.Op) || instruction.Op == wasm.InstrMemoryGrow {
-			return 0, false
-		}
 	}
 	p.amd64MemoryBounds = p.amd64MemoryBounds[:0]
 	for blockID, block := range machine.Blocks {
@@ -3124,24 +3117,16 @@ func (p *nativeBackendPlanner) nativeAMD64CachedMemoryBound(stack *railssa.Stack
 			best = candidate
 		}
 	}
-	peakGPR, usesFPR := uint16(0), false
-	for _, block := range pressure.Blocks {
-		peakGPR = max(peakGPR, block.PeakGPR)
-	}
-	for _, value := range machine.VRegs {
-		usesFPR = usesFPR || value.Bank == railmach.BankFPR
-	}
-	// Avoid taking a tenth GPR from exceptionally dense integer flow. The usual
-	// weight threshold amortizes the extra saved register and prologue load. Tiny
-	// functions have bounded allocation competition and need the lower threshold
-	// to cover a single hot loop access. Floating functions additionally need one
-	// common access end: mixed displacements create enough address pressure that
-	// a partial cache loses to allocation.
+	// The weight threshold amortizes the extra saved register and prologue load.
+	// Tiny functions have bounded allocation competition and need the lower
+	// threshold to cover a single hot loop access. Non-matching access ends derive their
+	// adjusted limit from the cached bound with one LEA, so mixed displacements
+	// no longer require an instance-memory reload.
 	minimumWeight := uint64(16)
 	if len(machine.Insts) <= 32 {
 		minimumWeight = 8
 	}
-	if best.weight < minimumWeight || peakGPR >= 32 || usesFPR && len(p.amd64MemoryBounds) != 1 {
+	if best.weight < minimumWeight {
 		return 0, false
 	}
 	return best.end, true

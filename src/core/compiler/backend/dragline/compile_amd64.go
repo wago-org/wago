@@ -1284,11 +1284,15 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			break
 		}
 	}
-	if plan.AMD64MemoryBoundEnd != 0 {
+	reloadMemoryBound := func() {
+		if plan.AMD64MemoryBoundEnd == 0 {
+			return
+		}
 		bound := amd64RailMachGPRRegisters[nativeAMD64MemoryBoundRegister]
 		a.Load64(bound, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
 		a.AluRI(5, bound, int32(plan.AMD64MemoryBoundEnd), true)
 	}
+	reloadMemoryBound()
 	blockOffsets := plan.BlockOffsets
 	patches := plan.BranchPatches[:0]
 	coldTrapPatches := plan.ColdTrapPatches[:0]
@@ -1783,6 +1787,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				reloadGlobalDescriptors()
 				reloadStackCachedGlobal()
+				reloadMemoryBound()
 				continue
 			}
 			if semanticOp == wasm.InstrStructGet || semanticOp == wasm.InstrStructGetS || semanticOp == wasm.InstrStructGetU {
@@ -2297,6 +2302,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				reloadGlobalDescriptors()
 				reloadStackCachedGlobal()
+				reloadMemoryBound()
 				continue
 			}
 			if semanticOp == wasm.InstrCall {
@@ -3789,6 +3795,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.PatchRel32(failMax, a.Len())
 				a.MovImm32(dst, -1)
 				a.PatchRel32(done, a.Len())
+				reloadMemoryBound()
 				continue
 			}
 			if semanticOp == wasm.InstrSelect {
@@ -5370,6 +5377,20 @@ func emitAMD64RailMachBoundsCheck(a *amd64.Asm, plan *nativeBackendPlan, address
 	source := amd64DeadStoreSource(plan, instruction)
 	if plan.AMD64MemoryBoundEnd == endOffset {
 		a.Cmp64(address, amd64RailMachGPRRegisters[nativeAMD64MemoryBoundRegister])
+	} else if plan.AMD64MemoryBoundEnd != 0 && endOffset != 0 && endOffset <= math.MaxInt32 && endOffset <= plan.Stack.MemoryMinBytes {
+		bound := amd64.RSI
+		if preserveRSI {
+			bound = amd64.R11
+		}
+		delta := int64(plan.AMD64MemoryBoundEnd) - int64(endOffset)
+		if delta >= math.MinInt32 && delta <= math.MaxInt32 {
+			a.LeaDisp(bound, amd64RailMachGPRRegisters[nativeAMD64MemoryBoundRegister], int32(delta))
+			a.Cmp64(address, bound)
+		} else {
+			a.Load64(bound, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+			a.AluRI(5, bound, int32(endOffset), true)
+			a.Cmp64(address, bound)
+		}
 	} else if endOffset != 0 && endOffset <= math.MaxInt32 && endOffset <= plan.Stack.MemoryMinBytes {
 		bound := amd64.RSI
 		if preserveRSI {

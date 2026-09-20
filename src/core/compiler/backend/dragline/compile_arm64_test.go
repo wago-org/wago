@@ -928,6 +928,28 @@ func TestARM64RailMachSIMDConstantsUseDeduplicatedLiteralPool(t *testing.T) {
 	}
 }
 
+func TestARM64FloatLiteralsUseDeduplicatedPool(t *testing.T) {
+	const bits = uint64(0x3ff3333333333333)
+	var a arm64.Asm
+	refs := []arm64FloatLiteralRef{
+		{bits: bits, f64: true, at: a.LdrLiteralF(0, true)},
+		{bits: bits, f64: true, at: a.LdrLiteralF(1, true)},
+	}
+	if err := arm64PatchFloatLiterals(&a, refs); err != nil {
+		t.Fatal(err)
+	}
+	var raw [8]byte
+	binary.LittleEndian.PutUint64(raw[:], bits)
+	if got := bytes.Count(a.B, raw[:]); got != 1 {
+		t.Fatalf("float literal pool copies = %d, want 1", got)
+	}
+	for offset := 0; offset < 8; offset += 4 {
+		if word := binary.LittleEndian.Uint32(a.B[offset:]); word&0xff000000 != 0x5c000000 {
+			t.Fatalf("instruction at %d = %#08x, want LDR D literal", offset, word)
+		}
+	}
+}
+
 func TestARM64RailMachVectorPressureUsesFullWidthCalleeSaves(t *testing.T) {
 	const locals = byte(20)
 	body := make([]byte, 0, 512)

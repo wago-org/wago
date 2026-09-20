@@ -8,10 +8,32 @@ import (
 
 	"github.com/wago-org/wago/codegen/amd64"
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railmach"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	runtimeabi "github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestAMD64RailMachDerivesMixedBoundsFromCachedLimit(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Stack:               &railssa.StackFunc{MemoryMinBytes: 1 << 16, Instrs: []railssa.StackInstr{{Offset: 7}}},
+		Machine:             &railmach.Func{Insts: []railmach.Inst{{Source: 0}}},
+		AMD64MemoryBoundEnd: 8,
+	}
+	var got amd64.Asm
+	var patches []nativeBranchPatch
+	emitAMD64RailMachBoundsCheck(&got, plan, amd64.R10, 64, 0, &patches, false)
+	var want amd64.Asm
+	want.LeaDisp(amd64.RSI, amd64.R12, -56)
+	want.Cmp64(amd64.R10, amd64.RSI)
+	if !bytes.HasPrefix(got.B, want.B) {
+		t.Fatalf("mixed cached bound = %x, want prefix %x", got.B, want.B)
+	}
+	if len(patches) != 1 || patches[0].Target != 7 || patches[0].Code != 3 {
+		t.Fatalf("bounds trap patches = %#v", patches)
+	}
+}
 
 func TestAMD64ImmutableInlineIndirectAvoidsCallAreaMarshalling(t *testing.T) {
 	source := wasmtest.Module(
