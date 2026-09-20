@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -655,7 +656,7 @@ func ModuleDir() (string, error) {
 	if out, err := command.Output(); err == nil {
 		gomod := strings.TrimSpace(string(out))
 		if gomod != "" && gomod != os.DevNull {
-			if b, err := os.ReadFile(gomod); err == nil && strings.Contains(string(b), "module github.com/wago-org/wago") {
+			if b, err := os.ReadFile(gomod); err == nil && isWagoModule(b) {
 				return filepath.Dir(gomod), nil
 			}
 		}
@@ -680,7 +681,7 @@ func InstalledSource() string {
 		return ""
 	}
 	dir := filepath.Join(home, ".wago", "src")
-	if b, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && strings.Contains(string(b), "module github.com/wago-org/wago") {
+	if b, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && isWagoModule(b) {
 		return dir
 	}
 	return ""
@@ -691,4 +692,27 @@ func exeSuffix() string {
 		return ".exe"
 	}
 	return ""
+}
+
+func isWagoModule(data []byte) bool {
+	for len(data) != 0 {
+		line, rest, _ := bytes.Cut(data, []byte{'\n'})
+		data = rest
+		line, _, _ = bytes.Cut(line, []byte("//"))
+		line = bytes.TrimSpace(line)
+		split := bytes.IndexAny(line, " \t")
+		if split < 0 || !bytes.Equal(line[:split], []byte("module")) {
+			continue
+		}
+		path := string(bytes.TrimSpace(line[split:]))
+		if len(path) > 0 && (path[0] == '"' || path[0] == '`') {
+			unquoted, err := strconv.Unquote(path)
+			if err != nil {
+				return false
+			}
+			path = unquoted
+		}
+		return path == wagoModuleName
+	}
+	return false
 }
