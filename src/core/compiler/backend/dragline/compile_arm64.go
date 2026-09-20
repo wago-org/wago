@@ -152,6 +152,8 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	if err != nil {
 		return corecompiler.Output{}, err
 	}
+	_, preparedIsolatedTables := nativeDenseLocalTableTargets(m)
+	preparedIsolatedTables = preparedIsolatedTables && selected == nil
 	if input.FunctionWorkers > 1 && metrics == nil && functionCache == nil && !captureGC && selected == nil {
 		return compileNativeParallelARM64(input, m)
 	}
@@ -163,6 +165,8 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	entries := make([]int, len(m.Code))
 	internal := make([]int, len(m.Code))
 	var directPrepared []uint64
+	var directPreparedLight []uint64
+	var directPreparedBounded []uint64
 	var directLeafPrepared []uint64
 	var directTrapPrepared []uint64
 	var contextFreeLoopPrepared []uint64
@@ -257,6 +261,12 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				}
 				if !captureGC && arm64DirectPreparedClass(moduleContracts[i].Class) {
 					directPrepared = markARM64DirectPrepared(directPrepared, len(m.Code), i)
+					if i < len(compilationPlan.BoundedContextFree) && compilationPlan.BoundedContextFree[i] {
+						directPreparedBounded = markARM64DirectPrepared(directPreparedBounded, len(m.Code), i)
+						if arm64DirectPreparedLightContract(moduleContracts[i]) {
+							directPreparedLight = markARM64DirectPrepared(directPreparedLight, len(m.Code), i)
+						}
+					}
 					if arm64DirectPreparedTrapClass(moduleContracts[i].Class) {
 						directTrapPrepared = markARM64DirectPrepared(directTrapPrepared, len(m.Code), i)
 					}
@@ -432,6 +442,12 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		}
 		if !captureGC && railMachFinalized && arm64DirectPreparedClass(publishedContract.Class) {
 			directPrepared = markARM64DirectPrepared(directPrepared, len(m.Code), i)
+			if i < len(compilationPlan.BoundedContextFree) && compilationPlan.BoundedContextFree[i] {
+				directPreparedBounded = markARM64DirectPrepared(directPreparedBounded, len(m.Code), i)
+				if arm64DirectPreparedLightContract(publishedContract) {
+					directPreparedLight = markARM64DirectPrepared(directPreparedLight, len(m.Code), i)
+				}
+			}
 			if arm64DirectPreparedLeafPlan(nativePlan) {
 				directLeafPrepared = markARM64DirectPrepared(directLeafPrepared, len(m.Code), i)
 			} else if arm64DirectPreparedTrapClass(publishedContract.Class) {
@@ -550,7 +566,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		metrics.observe(sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(moduleContracts))
 		metrics.summarizeEmitters()
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, ContextFreeLoopPrepared: contextFreeLoopPrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresARM64MOPS: requiresMOPS, RequiresARM64SHA2: requiresSHA2}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, ContextFreeLoopPrepared: contextFreeLoopPrepared, PreparedIsolatedTables: preparedIsolatedTables, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresARM64MOPS: requiresMOPS, RequiresARM64SHA2: requiresSHA2}, nil
 }
 
 func markARM64DirectPrepared(bits []uint64, functions, index int) []uint64 {
@@ -563,6 +579,10 @@ func markARM64DirectPrepared(bits []uint64, functions, index int) []uint64 {
 
 func arm64DirectPreparedClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedIndirect || class == railmach.ABIPreparedCall || class == railmach.ABIPreparedLeaf
+}
+
+func arm64DirectPreparedLightContract(contract railmach.ABIContract) bool {
+	return arm64DirectPreparedClass(contract.Class) && contract.CalleeGPRs == 0 && contract.CalleeFPRs == 0
 }
 
 // Windows ARM64 has a qualified structured finalizer and a qualified RailMach
@@ -674,6 +694,8 @@ type parallelARM64Result struct {
 	requiresMOPS    bool
 	requiresSHA2    bool
 	directPrepared  bool
+	directLight     bool
+	directBounded   bool
 	directLeaf      bool
 	directTrap      bool
 	contextFreeLoop bool
@@ -765,7 +787,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 			if !railMachFinalized {
 				contracts[i] = railmach.ABIContract{}
 			}
-			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), requiresSHA2: functionRequiresSHA2, directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class), directLeaf: railMachFinalized && arm64DirectPreparedLeafPlan(nativePlan), directTrap: railMachFinalized && arm64DirectPreparedTrapClass(published.Class), contextFreeLoop: arm64ContextFreePreparedLoop(fn.Stack)}
+			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), requiresSHA2: functionRequiresSHA2, directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class), directLight: railMachFinalized && compilation.BoundedContextFree[i] && arm64DirectPreparedLightContract(published), directBounded: railMachFinalized && arm64DirectPreparedClass(published.Class) && compilation.BoundedContextFree[i], directLeaf: railMachFinalized && arm64DirectPreparedLeafPlan(nativePlan), directTrap: railMachFinalized && arm64DirectPreparedTrapClass(published.Class), contextFreeLoop: arm64ContextFreePreparedLoop(fn.Stack)}
 			worker.body = nil
 			if trimPlanningScratch {
 				worker.native = nil
@@ -783,6 +805,8 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 	internal := make([]int, len(m.Code))
 	var callRelocs []arm64CallReloc
 	var directPrepared []uint64
+	var directPreparedLight []uint64
+	var directPreparedBounded []uint64
 	var directLeafPrepared []uint64
 	var directTrapPrepared []uint64
 	var contextFreeLoopPrepared []uint64
@@ -796,6 +820,12 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 		result := &results[i]
 		if result.directPrepared {
 			directPrepared = markARM64DirectPrepared(directPrepared, len(m.Code), i)
+		}
+		if result.directLight {
+			directPreparedLight = markARM64DirectPrepared(directPreparedLight, len(m.Code), i)
+		}
+		if result.directBounded {
+			directPreparedBounded = markARM64DirectPrepared(directPreparedBounded, len(m.Code), i)
 		}
 		if result.directLeaf {
 			directLeafPrepared = markARM64DirectPrepared(directLeafPrepared, len(m.Code), i)
@@ -833,7 +863,8 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 	if len(code) == 0 {
 		code = []byte{0xc0, 0x03, 0x5f, 0xd6}
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, ContextFreeLoopPrepared: contextFreeLoopPrepared, RequiresARM64MOPS: requiresMOPS, RequiresARM64SHA2: requiresSHA2}, nil
+	_, preparedIsolatedTables := nativeDenseLocalTableTargets(m)
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, ContextFreeLoopPrepared: contextFreeLoopPrepared, PreparedIsolatedTables: preparedIsolatedTables, RequiresARM64MOPS: requiresMOPS, RequiresARM64SHA2: requiresSHA2}, nil
 }
 
 func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, target corecompiler.Target, observations *compilerprofile.Module, contracts []railmach.ABIContract, scratch []byte, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []arm64CallReloc, bool, error) {

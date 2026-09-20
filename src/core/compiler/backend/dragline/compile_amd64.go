@@ -112,6 +112,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	internal := make([]int, len(m.Code))
 	var directPrepared []uint64
 	var directLeafPrepared []uint64
+	var directPreparedBounded []uint64
 	var signalGuardFreePrepared []uint64
 	var callRelocs []amd64CallReloc
 	var gcCallsites []corecompiler.GCFrameCallsite
@@ -194,6 +195,9 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR, DirectWritesGlobal: true, WritesGlobal: true}
 				if !captureGC && amd64DirectPreparedClass(moduleContracts[i].Class) {
 					directPrepared = markAMD64DirectPrepared(directPrepared, len(m.Code), i)
+					if i < len(compilationPlan.BoundedContextFree) && compilationPlan.BoundedContextFree[i] {
+						directPreparedBounded = markAMD64DirectPrepared(directPreparedBounded, len(m.Code), i)
+					}
 				}
 				if !captureGC && amd64DirectPreparedLeafClass(moduleContracts[i].Class) {
 					directLeafPrepared = markAMD64DirectPrepared(directLeafPrepared, len(m.Code), i)
@@ -372,6 +376,9 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		if !captureGC && railMachFinalized && amd64DirectPreparedLeafClass(publishedContract.Class) {
 			directLeafPrepared = markAMD64DirectPrepared(directLeafPrepared, len(m.Code), i)
 		}
+		if !captureGC && railMachFinalized && amd64DirectPreparedClass(publishedContract.Class) && i < len(compilationPlan.BoundedContextFree) && compilationPlan.BoundedContextFree[i] {
+			directPreparedBounded = markAMD64DirectPrepared(directPreparedBounded, len(m.Code), i)
+		}
 		if captureGC {
 			appendGCFrameCallsites(&gcCallsites, &gcRoots, uint32(entries[i]), emitMetrics.FrameBytes, emissionMetadata.Safepoints, emissionMetadata.Roots)
 			appendGCFrameSafepoints(&gcSafepoints, &gcSafepointRoots, emitMetrics.FrameBytes, emissionMetadata.Safepoints, emissionMetadata.Roots)
@@ -477,7 +484,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		metrics.observe(sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(signalGuardFreePrepared) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(moduleContracts))
 		metrics.summarizeEmitters()
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, ContextFreeLoopPrepared: signalGuardFreePrepared, PreparedIsolatedTables: preparedIsolatedTables, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresBMI2: requiresBMI2, RequiresAVX512VL: requiresAVX512VL}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, DirectLeafPrepared: directLeafPrepared, ContextFreeLoopPrepared: signalGuardFreePrepared, PreparedIsolatedTables: preparedIsolatedTables, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresBMI2: requiresBMI2, RequiresAVX512VL: requiresAVX512VL}, nil
 }
 
 func amd64RailMachMayUseBMI2(plan *nativeBackendPlan) bool {
@@ -651,6 +658,7 @@ type parallelAMD64Result struct {
 	relocs           []amd64CallReloc
 	directPrepared   bool
 	directLeaf       bool
+	directBounded    bool
 	requiresBMI2     bool
 	requiresAVX512VL bool
 }
@@ -734,7 +742,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 			if !railMachFinalized {
 				contracts[i] = railmach.ABIContract{}
 			}
-			results[i] = parallelAMD64Result{body: body, internalOffset: internalOffset, relocs: relocs, directPrepared: railMachFinalized && amd64DirectPreparedClass(contracts[i].Class), directLeaf: railMachFinalized && amd64DirectPreparedLeafClass(contracts[i].Class), requiresBMI2: railMachFinalized && amd64RailMachMayUseBMI2(nativePlan), requiresAVX512VL: functionRequiresAVX512VL}
+			results[i] = parallelAMD64Result{body: body, internalOffset: internalOffset, relocs: relocs, directPrepared: railMachFinalized && amd64DirectPreparedClass(contracts[i].Class), directLeaf: railMachFinalized && amd64DirectPreparedLeafClass(contracts[i].Class), directBounded: railMachFinalized && amd64DirectPreparedClass(contracts[i].Class) && compilation.BoundedContextFree[i], requiresBMI2: railMachFinalized && amd64RailMachMayUseBMI2(nativePlan), requiresAVX512VL: functionRequiresAVX512VL}
 			if trimPlanningScratch {
 				worker.native = nil
 			} else {
@@ -752,6 +760,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 	var callRelocs []amd64CallReloc
 	var directPrepared []uint64
 	var directLeafPrepared []uint64
+	var directPreparedBounded []uint64
 	requiresBMI2 := false
 	requiresAVX512VL := false
 	signalGuardFreePrepared := amd64SignalGuardFreePrepared(compilation.SignalGuardFree, compilation.LocalCalls, nil)
@@ -768,6 +777,9 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 		}
 		if result.directLeaf {
 			directLeafPrepared = markAMD64DirectPrepared(directLeafPrepared, len(m.Code), i)
+		}
+		if result.directBounded {
+			directPreparedBounded = markAMD64DirectPrepared(directPreparedBounded, len(m.Code), i)
 		}
 		internal[i] = len(code) + result.internalOffset
 		for _, reloc := range result.relocs {
@@ -790,7 +802,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 		code = []byte{0xc3}
 	}
 	_, preparedIsolatedTables := nativeDenseLocalTableTargets(m)
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, ContextFreeLoopPrepared: signalGuardFreePrepared, PreparedIsolatedTables: preparedIsolatedTables, RequiresBMI2: requiresBMI2, RequiresAVX512VL: requiresAVX512VL}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, DirectLeafPrepared: directLeafPrepared, ContextFreeLoopPrepared: signalGuardFreePrepared, PreparedIsolatedTables: preparedIsolatedTables, RequiresBMI2: requiresBMI2, RequiresAVX512VL: requiresAVX512VL}, nil
 }
 
 func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, avx512vl bool, usedAVX512VL *bool, metrics *FunctionMetrics, metadata *functionEmissionMetadata, moduleContracts ...[]railmach.ABIContract) ([]byte, int, []amd64CallReloc, bool, error) {

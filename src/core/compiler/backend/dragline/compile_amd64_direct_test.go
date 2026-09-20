@@ -185,6 +185,9 @@ func TestAMD64PublishesDirectPreparedLeafAcrossCompilerPaths(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertDirect(t, output)
+			if len(output.DirectPreparedBounded) == 0 || output.DirectPreparedBounded[0]&1 == 0 {
+				t.Fatal("AMD64 output omitted bounded prepared-entry metadata")
+			}
 		})
 	}
 

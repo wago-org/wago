@@ -17,14 +17,15 @@ import (
 // If an immediate is malformed, compilation falls back to source order. The
 // normal lowering pass then reports the precise staged error.
 type compilationPlan struct {
-	Order           []int
-	Component       []int
-	Recursive       []bool
-	Level           []uint32
-	SignalGuardFree []bool
-	LocalCalls      []bool
-	HasV128         bool
-	PeakBytes       uint64
+	Order              []int
+	Component          []int
+	Recursive          []bool
+	Level              []uint32
+	SignalGuardFree    []bool
+	BoundedContextFree []bool
+	LocalCalls         []bool
+	HasV128            bool
+	PeakBytes          uint64
 }
 
 func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
@@ -40,8 +41,10 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 		hasV128 := false
 		signalGuardFree := make([]bool, count)
 		localCalls := make([]bool, count)
+		boundedContextFree := make([]bool, count)
 		if count == 1 {
 			signalGuardFree[0] = true
+			hasLoop := false
 			reader := wasm.NewReader(m.Code[0].BodyBytes)
 			classifier := wasm.NewModuleInstructionClassifier(m, false)
 			denseTargets, denseTargetsOK := nativeDenseLocalTableTargets(m)
@@ -75,14 +78,17 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 				} else if opcode == 0xfd || !railssa.ContextFreeTrapFreeKind(immediate.Kind) {
 					signalGuardFree[0] = false
 				}
+				hasLoop = hasLoop || immediate.Kind == wasm.InstrLoop
 			}
+			boundedContextFree[0] = signalGuardFree[0] && !recursive[0] && !hasLoop && boundedContextFreeShape(m, 0)
 		}
-		return compilationPlan{Order: order, Component: components, Recursive: recursive, Level: levels, SignalGuardFree: signalGuardFree, LocalCalls: localCalls, HasV128: hasV128, PeakBytes: sliceBytes(order) + sliceBytes(components) + sliceBytes(recursive) + sliceBytes(levels) + sliceBytes(signalGuardFree) + sliceBytes(localCalls)}
+		return compilationPlan{Order: order, Component: components, Recursive: recursive, Level: levels, SignalGuardFree: signalGuardFree, BoundedContextFree: boundedContextFree, LocalCalls: localCalls, HasV128: hasV128, PeakBytes: sliceBytes(order) + sliceBytes(components) + sliceBytes(recursive) + sliceBytes(levels) + sliceBytes(signalGuardFree) + sliceBytes(boundedContextFree) + sliceBytes(localCalls)}
 	}
 
 	edges := make([][]int, count)
 	localCalls := make([]bool, count)
 	localSignalGuardFree := make([]bool, count)
+	hasLoop := make([]bool, count)
 	for i := range localSignalGuardFree {
 		localSignalGuardFree[i] = true
 	}
@@ -126,9 +132,9 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 			} else if opcode == 0xfd || !railssa.ContextFreeTrapFreeKind(immediate.Kind) {
 				localSignalGuardFree[caller] = false
 			}
+			hasLoop[caller] = hasLoop[caller] || immediate.Kind == wasm.InstrLoop
 		}
 		slices.Sort(edges[caller])
-		edges[caller] = slices.Compact(edges[caller])
 	}
 
 	// Tarjan emits sink SCCs first for caller-to-callee edges, which is exactly
@@ -204,9 +210,57 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 		levels[caller] = componentLevels[callerComponent]
 	}
 	signalGuardFree := signalGuardFreeCallClosures(result, components, edges, localSignalGuardFree)
+	boundedContextFree := boundedContextFreeCallClosures(m, result, edges, localSignalGuardFree, recursive, hasLoop)
 	peakBytes := sliceBytes(order) + sliceBytes(components) + sliceBytes(recursive) + sliceBytes(levels) + callGraphEdgeBytes(edges) +
-		sliceBytes(signalGuardFree) + sliceBytes(localSignalGuardFree) + sliceBytes(localCalls) + sliceBytes(indices) + sliceBytes(lowlink) + sliceBytes(onStack) + sliceBytes(stack)
-	return compilationPlan{Order: result, Component: components, Recursive: recursive, Level: levels, SignalGuardFree: signalGuardFree, LocalCalls: localCalls, HasV128: hasV128, PeakBytes: peakBytes}
+		sliceBytes(signalGuardFree) + sliceBytes(boundedContextFree) + sliceBytes(localSignalGuardFree) + sliceBytes(localCalls) + sliceBytes(hasLoop) + sliceBytes(indices) + sliceBytes(lowlink) + sliceBytes(onStack) + sliceBytes(stack)
+	return compilationPlan{Order: result, Component: components, Recursive: recursive, Level: levels, SignalGuardFree: signalGuardFree, BoundedContextFree: boundedContextFree, LocalCalls: localCalls, HasV128: hasV128, PeakBytes: peakBytes}
+}
+
+const (
+	maxBoundedContextFreeCallDepth = 32
+	maxBoundedContextFreeWorkBytes = 4 << 10
+)
+
+func boundedContextFreeShape(m *wasm.Module, local int) bool {
+	if m == nil || local < 0 || local >= len(m.Code) || len(m.Code[local].BodyBytes) == 0 || len(m.Code[local].BodyBytes) > 96 {
+		return false
+	}
+	sig, ok := m.LocalFuncType(local)
+	if !ok {
+		return false
+	}
+	locals := uint64(len(sig.Params))
+	for _, run := range m.Code[local].Locals.Runs {
+		locals += uint64(run.Count)
+	}
+	return locals <= 8
+}
+
+// boundedContextFreeCallClosures proves a finite scheduler-safe local call
+// closure. Repeated direct call sites are retained in edges, so the work bound
+// accounts for each invocation rather than only each distinct callee.
+func boundedContextFreeCallClosures(m *wasm.Module, order []int, edges [][]int, localSafe, recursive, hasLoop []bool) []bool {
+	bounded := make([]bool, len(localSafe))
+	work := make([]int, len(localSafe))
+	depth := make([]int, len(localSafe))
+	for _, caller := range order {
+		if caller < 0 || caller >= len(localSafe) || recursive[caller] || hasLoop[caller] || !localSafe[caller] || !boundedContextFreeShape(m, caller) {
+			continue
+		}
+		candidateWork, candidateDepth, safe := len(m.Code[caller].BodyBytes), 1, true
+		for _, callee := range edges[caller] {
+			if callee < 0 || callee >= len(bounded) || !bounded[callee] {
+				safe = false
+				break
+			}
+			candidateWork += work[callee]
+			candidateDepth = max(candidateDepth, depth[callee]+1)
+		}
+		if safe && candidateWork <= maxBoundedContextFreeWorkBytes && candidateDepth <= maxBoundedContextFreeCallDepth {
+			bounded[caller], work[caller], depth[caller] = true, candidateWork, candidateDepth
+		}
+	}
+	return bounded
 }
 
 // signalGuardFreeCallClosures proves that a local function and every function

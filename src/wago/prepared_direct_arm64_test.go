@@ -329,6 +329,9 @@ func testPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T, module []b
 	if !compiled.directPreparedAt(0) {
 		t.Fatal("call_indirect caller did not select the ARM64 direct prepared entry")
 	}
+	if !compiled.directPreparedLightAt(0) || !compiled.directPreparedBoundedAt(0) {
+		t.Fatalf("call_indirect caller light/bounded = %t/%t, want true/true", compiled.directPreparedLightAt(0), compiled.directPreparedBoundedAt(0))
+	}
 	in, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
@@ -338,8 +341,11 @@ func testPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T, module []b
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	if !fn.directIntFast || fn.isolatedFast {
-		t.Fatalf("direct/private selection = %v/%v, want true/false", fn.directIntFast, fn.isolatedFast)
+	if fn.directIntMode != preparedIntCallBlock {
+		t.Fatalf("call_indirect direct mode = %d, want prebound call block", fn.directIntMode)
+	}
+	if !fn.directIntFast || !fn.isolatedFast {
+		t.Fatalf("direct/isolated selection = %v/%v, want true/true", fn.directIntFast, fn.isolatedFast)
 	}
 	if fn.directLeafIntFast {
 		t.Fatal("call_indirect caller selected the call-free direct leaf entry")

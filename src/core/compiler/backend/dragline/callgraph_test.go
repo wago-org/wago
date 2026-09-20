@@ -40,6 +40,9 @@ func TestCalleeFirstCompilationOrder(t *testing.T) {
 	if !slices.Equal(plan.SignalGuardFree, []bool{true, true, true, true, true}) {
 		t.Fatalf("signal-guard-free closures = %v", plan.SignalGuardFree)
 	}
+	if !slices.Equal(plan.BoundedContextFree, []bool{false, true, false, false, false}) {
+		t.Fatalf("bounded context-free closures = %v", plan.BoundedContextFree)
+	}
 }
 
 func TestCalleeFirstCompilationPlanMarksSelfRecursion(t *testing.T) {
@@ -97,6 +100,9 @@ func TestCalleeFirstCompilationPlanRejectsTransitiveMemoryAccess(t *testing.T) {
 	if !slices.Equal(plan.SignalGuardFree, []bool{false, false, true}) {
 		t.Fatalf("signal-guard-free closures = %v, want [false false true]", plan.SignalGuardFree)
 	}
+	if !slices.Equal(plan.BoundedContextFree, []bool{false, false, true}) {
+		t.Fatalf("bounded context-free closures = %v, want [false false true]", plan.BoundedContextFree)
+	}
 }
 
 func TestCalleeFirstCompilationPlanProvesClosedIndirectCallTable(t *testing.T) {
@@ -124,6 +130,9 @@ func TestCalleeFirstCompilationPlanProvesClosedIndirectCallTable(t *testing.T) {
 	plan := calleeFirstCompilationPlan(m)
 	if !slices.Equal(plan.SignalGuardFree, []bool{true, true, true}) {
 		t.Fatalf("signal-guard-free closures = %v", plan.SignalGuardFree)
+	}
+	if !slices.Equal(plan.BoundedContextFree, []bool{true, true, true}) {
+		t.Fatalf("bounded context-free closures = %v", plan.BoundedContextFree)
 	}
 	m.Exports = append(m.Exports, wasm.Export{Index: wasm.ExternIdx{Kind: wasm.ExternTable}})
 	plan = calleeFirstCompilationPlan(m)

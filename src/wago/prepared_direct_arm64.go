@@ -92,10 +92,10 @@ func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error
 	wruntime.PreparePreparedIntTrap(in.trap)
 	if fn.directLeafIntFast {
 		result, err = in.eng.EnterPreparedLeafInt(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
-	} else if fn.directTrapIntFast {
-		result, err = in.eng.EnterPreparedTrapInt(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
 	} else if fn.directIntMode == preparedIntCallBlock {
 		result = in.eng.EnterPreparedIntPreboundContextBounded(&fn.directIntCall, a0, a1, a2, a3)
+	} else if fn.directTrapIntFast {
+		result, err = in.eng.EnterPreparedTrapInt(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
 	} else if fn.directIntBounded {
 		if fn.directIntLight {
 			result, err = in.eng.EnterPreparedIntLightBounded(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
