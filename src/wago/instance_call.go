@@ -284,6 +284,15 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 		return nil
 	}
 	bits := v.bits
+	if isReferenceValType(g.Type) && bits == 0 {
+		exact, err := in.c.globalExactType(idx)
+		if err != nil {
+			return fmt.Errorf("global %q exact type: %w", name, err)
+		}
+		if exact.Kind == ValueTypeReference && !exact.Ref.Nullable {
+			return fmt.Errorf("global %q requires a non-null reference value", name)
+		}
+	}
 	if (g.Type == ValAnyRef || g.Type == ValExnRef) && bits != 0 {
 		return fmt.Errorf("global %q: non-null %s ingress is unsupported", name, g.Type)
 	}
