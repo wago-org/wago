@@ -16,6 +16,10 @@ func mixedCallPressureModule(t testing.TB, f64 bool, nargs int) (*wasm.Module, u
 }
 
 func mixedCallSpillModule(t testing.TB, f64 bool, nargs int, computed, wide bool) (*wasm.Module, uint64) {
+	return mixedCallVariantModule(t, f64, nargs, computed, wide, "")
+}
+
+func mixedCallVariantModule(t testing.TB, f64 bool, nargs int, computed, wide bool, variant string) (*wasm.Module, uint64) {
 	t.Helper()
 	typ, add, mul, convert := wasm.F32, byte(0x92), byte(0x94), byte(0xb2)
 	if f64 {
@@ -52,6 +56,9 @@ func mixedCallSpillModule(t testing.TB, f64 bool, nargs int, computed, wide bool
 		body = binary.LittleEndian.AppendUint64(body, 17)
 		body = binary.LittleEndian.AppendUint64(body, 0)
 	}
+	if variant == "canonical" {
+		body = append(body, 0x02, 0x40, 0x0b) // home both lower values before evaluating arguments
+	}
 	params := make([]wasm.ValType, nargs)
 	callee := []byte{0}
 	want := 378.0 + 17 + 0.5
@@ -86,6 +93,11 @@ func mixedCallSpillModule(t testing.TB, f64 bool, nargs int, computed, wide bool
 			checks = append(checks, ne, 0x04, 0x40, 0x00, 0x0b)
 		}
 		callee = append(checks, callee[1:]...)
+	}
+	if variant == "snapshot" {
+		body = constant(body, 100)
+		body = append(body, 0x21, 0) // arg 7 must retain local 0's old value of 1
+		want += 99                   // the post-call sum reads the new local value
 	}
 	params = append(params, wasm.I32)
 	callee = append(callee, 0x20, byte(nargs), convert, add)
@@ -232,4 +244,49 @@ func BenchmarkCompileMixedCallExistingSpillsARM64(b *testing.B) {
 			b.ReportMetric(float64(stats.Funcs[0].CodeBytes), "code-B")
 		})
 	}
+}
+
+func TestMixedCallLocalHomesAndCanonicalSlotsARM64(t *testing.T) {
+	for _, f64 := range []bool{false, true} {
+		for _, variant := range []string{"canonical", "snapshot"} {
+			t.Run(fmt.Sprintf("f64=%t/%s", f64, variant), func(t *testing.T) {
+				m, want := mixedCallVariantModule(t, f64, 8, false, false, variant)
+				var stats ModuleStats
+				got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Stats: &stats,
+					Optimizations: map[string]bool{"inline": false, "stack-reg": true, "ext-fp-pins": true},
+				})
+				if err != nil || got != want {
+					t.Fatalf("result = %#x, %v; want %#x", got, err, want)
+				}
+				wantHomes := 4
+				if variant == "snapshot" {
+					wantHomes = 3
+				}
+				if got := stats.Funcs[0].Peephole["mixed-call-local-home"]; got != wantHomes {
+					t.Fatalf("local-home loads = %d, want %d", got, wantHomes)
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkCompileMixedCallCanonicalARM64(b *testing.B) {
+	m, _ := mixedCallVariantModule(b, true, 8, false, false, "canonical")
+	opts := CompileOptions{Workers: 1, Optimizations: map[string]bool{"inline": false}}
+	var stats ModuleStats
+	diagnostic := opts
+	diagnostic.Stats = &stats
+	if _, err := CompileModuleWith(m, diagnostic); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := CompileModuleWith(m, opts); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportMetric(float64(stats.Funcs[0].MaxSpillSlots), "spill-slots")
+	b.ReportMetric(float64(stats.Funcs[0].FrameBytes), "frame-B")
+	b.ReportMetric(float64(stats.Funcs[0].CodeBytes), "code-B")
 }
