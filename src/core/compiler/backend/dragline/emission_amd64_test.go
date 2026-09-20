@@ -1592,7 +1592,7 @@ func TestAMD64StructuredSIMDConstantsUseDeduplicatedRIPPool(t *testing.T) {
 }
 
 func TestAMD64StructuredBitmaskReadsPinnedLocalDirectly(t *testing.T) {
-	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body := bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit) // force the oversized bulk structured path
 	body = append(body,
 		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
 		0x20, 0x00, 0xfd, 0x64, 0x0b, // local.get 0; i8x16.bitmask; end
@@ -1614,7 +1614,7 @@ func TestAMD64StructuredBitmaskReadsPinnedLocalDirectly(t *testing.T) {
 }
 
 func TestAMD64StructuredBitmaskComparisonReadsLocalDirectly(t *testing.T) {
-	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body := bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit) // force the oversized bulk structured path
 	body = append(body,
 		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
 		0x20, 0x00, 0xfd, 0x64, 0x41, 0x00, 0x47, 0x0b, // local.get 0; i8x16.bitmask; i32.const 0; i32.ne; end
@@ -1636,7 +1636,7 @@ func TestAMD64StructuredBitmaskComparisonReadsLocalDirectly(t *testing.T) {
 }
 
 func TestAMD64StructuredShuffleLocalTeeFeedsShiftDirectly(t *testing.T) {
-	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body := bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit) // force the oversized bulk structured path
 	body = append(body,
 		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
 		0x20, 0x00, 0x20, 0x01, 0xfd, 0x0d, // local.get 0; local.get 1; i8x16.shuffle
@@ -1667,7 +1667,7 @@ func TestAMD64StructuredShuffleLocalTeeFeedsShiftDirectly(t *testing.T) {
 }
 
 func TestAMD64StructuredCallUsesWriteThroughPinnedLocalHomes(t *testing.T) {
-	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body := bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit) // force the oversized bulk structured path
 	body = append(body,
 		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
 		0x20, 0x00, 0x41, 0x01, 0x6a, 0x21, 0x00, // local.get 0; i32.const 1; i32.add; local.set 0
@@ -1701,7 +1701,7 @@ func TestAMD64StructuredCallUsesWriteThroughPinnedLocalHomes(t *testing.T) {
 }
 
 func TestAMD64StructuredCallReloadsOnlyCalleeClobbers(t *testing.T) {
-	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body := bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit) // force the oversized bulk structured path
 	body = append(body,
 		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
 		0x20, 0x00, 0x41, 0x01, 0x6a, 0x21, 0x00, // local.get 0; i32.const 1; i32.add; local.set 0
@@ -1731,7 +1731,7 @@ func TestAMD64StructuredCallReloadsOnlyCalleeClobbers(t *testing.T) {
 }
 
 func TestAMD64StructuredScalarProducersWriteDirectlyToCache(t *testing.T) {
-	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body := bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit) // force the oversized bulk structured path
 	body = append(body,
 		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
 		0x41, 0x07, 0x41, 0x05, 0x6a, 0x0b, // i32.const 7; i32.const 5; i32.add; end
@@ -1753,7 +1753,7 @@ func TestAMD64StructuredScalarProducersWriteDirectlyToCache(t *testing.T) {
 }
 
 func TestAMD64StructuredControlConsumesCachedScalarsDirectly(t *testing.T) {
-	body := bytes.Repeat([]byte{0x01}, 510) // force the large-bulk structured path
+	body := bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit) // force the oversized bulk structured path
 	body = append(body,
 		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
 		0x41, 0x07, 0x41, 0x05, 0x49, // i32.const 7; i32.const 5; i32.lt_u
@@ -1783,7 +1783,7 @@ func TestAMD64StructuredControlConsumesCachedScalarsDirectly(t *testing.T) {
 
 func TestAMD64StructuredBinaryReadsResidentConstantDirectly(t *testing.T) {
 	constant := [16]byte{0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f}
-	body := bytes.Repeat([]byte{0x01}, 510)                                         // force the large-bulk structured path
+	body := bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit)     // force the oversized bulk structured path
 	body = append(body, 0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00) // memory.copy 0, 0
 	for occurrence := 0; occurrence < 2; occurrence++ {
 		body = append(body, 0x20, 0x00, 0x41, 0x04, 0xfd, 0x8d, 0x01, 0xfd, 0x0c) // local.get 0; i16x8.shr_u 4; v128.const
@@ -1833,7 +1833,7 @@ func TestAMD64StructuredDoesNotMoveBranchResultWithinSameStackSlot(t *testing.T)
 		0x0b,                                                       // end block
 		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
 	}
-	body = append(body, bytes.Repeat([]byte{0x01}, 510)...) // force the large-bulk structured path
+	body = append(body, bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit)...) // force the oversized bulk structured path
 	body = append(body, 0x0b)
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),
@@ -1916,8 +1916,8 @@ func TestAMD64StructuredContiguousShuffleUsesAlignr(t *testing.T) {
 	for lane := byte(14); lane < 30; lane++ {
 		body = append(body, lane)
 	}
-	body = append(body, 0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00) // memory.copy 0, 0, 0
-	body = append(body, bytes.Repeat([]byte{0x01}, 510)...)                         // force the large-bulk structured path
+	body = append(body, 0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00)             // memory.copy 0, 0, 0
+	body = append(body, bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit)...) // force the oversized bulk structured path
 	body = append(body, 0x0b)
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}))),
@@ -1938,7 +1938,7 @@ func TestAMD64StructuredFusesAnyTrueIntoControl(t *testing.T) {
 		0x04, 0x40, 0x01, 0x0b, // if; nop; end
 		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
 	}
-	body = append(body, bytes.Repeat([]byte{0x01}, 510)...)
+	body = append(body, bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit)...)
 	body = append(body, 0x0b)
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil))),
@@ -1961,7 +1961,7 @@ func TestAMD64StructuredFusesMaskedAnyTrueIntoPtest(t *testing.T) {
 		0x04, 0x40, 0x01, 0x0b, // if; nop; end
 		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
 	)
-	body = append(body, bytes.Repeat([]byte{0x01}, 510)...)
+	body = append(body, bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit)...)
 	body = append(body, 0x0b)
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil))),
@@ -1982,7 +1982,7 @@ func TestAMD64StructuredFoldsConstantShiftCount(t *testing.T) {
 		0x88,                                                       // i64.shr_u
 		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
 	}
-	body = append(body, bytes.Repeat([]byte{0x01}, 510)...)
+	body = append(body, bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit)...)
 	body = append(body, 0x0b)
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
@@ -2052,7 +2052,7 @@ func TestAMD64StructuredFoldsConstantIntegerBinary(t *testing.T) {
 		)
 	}
 	body = append(body, 0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00) // memory.copy 0, 0
-	body = append(body, bytes.Repeat([]byte{0x01}, 510)...)
+	body = append(body, bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit)...)
 	body = append(body, 0x0b)
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, nil))),
@@ -2146,7 +2146,7 @@ func TestAMD64StructuredTernaryLogicRequiresAVX512VL(t *testing.T) {
 		0x21, 0x03, // local.set 3
 		0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0
 	}
-	body = append(body, bytes.Repeat([]byte{0x01}, 510)...)
+	body = append(body, bytes.Repeat([]byte{0x01}, amd64RailMachBulkMemoryInstructionLimit)...)
 	body = append(body, 0x20, 0x03, 0x0b)
 	code := append(wasmtest.ULEB(uint32(len(body))), body...)
 	source := wasmtest.Module(
@@ -2365,7 +2365,7 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 	}
 	stack.MaxLoopDepth = 0
 	stack.HasReferences = false
-	stack.Instrs = make([]railssa.StackInstr, 1025)
+	stack.Instrs = make([]railssa.StackInstr, amd64RailMachBulkMemoryInstructionLimit)
 	if !amd64RailMachCandidate(stack, false, false) {
 		t.Fatal("large acyclic parameterless function was rejected")
 	}
@@ -2396,8 +2396,8 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 }
 
 func TestAMD64RailMachPropagatesStructuredDirectCallee(t *testing.T) {
-	callee := make([]byte, 0, 530)
-	for range 513 {
+	callee := make([]byte, 0, amd64RailMachBulkMemoryInstructionLimit+18)
+	for range amd64RailMachBulkMemoryInstructionLimit {
 		callee = append(callee, 0x01) // nop
 	}
 	callee = append(callee,

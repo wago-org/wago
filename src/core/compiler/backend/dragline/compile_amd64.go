@@ -25,7 +25,10 @@ var amd64RailMachGPRRegisters = [...]amd64.Reg{amd64.RAX, amd64.RCX, amd64.RDX, 
 var amd64FPRRegisters = [...]amd64.Reg{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
 var amd64ParamRegisters = [...]amd64.Reg{amd64.RAX, amd64.RCX, amd64.RDX, amd64.R8, amd64.R9, amd64.R10, amd64.R11, amd64.R12}
 
-const amd64RailMachDenseGlobalThreshold = 20
+const (
+	amd64RailMachDenseGlobalThreshold       = 20
+	amd64RailMachBulkMemoryInstructionLimit = 40 << 10
+)
 
 func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, _ bool) bool {
 	if !railMachCandidate(stack, moduleHasV128) {
@@ -48,7 +51,9 @@ func amd64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, _ boo
 }
 
 func amd64LargeMemoryCopy(stack *railssa.StackFunc) bool {
-	if stack == nil || len(stack.Instrs) <= 512 {
+	// Keep exceptionally large memory.copy functions on the structured emitter.
+	// Their compilation pressure can exceed RailMach's current allocator limits.
+	if stack == nil || len(stack.Instrs) < amd64RailMachBulkMemoryInstructionLimit {
 		return false
 	}
 	for _, instruction := range stack.Instrs {
