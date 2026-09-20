@@ -1802,6 +1802,49 @@ func TestAMD64StructuredFoldsConstantShiftCount(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredStrengthReducesUnsignedI32ConstantDivision(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		opcode byte
+	}{
+		{name: "division", opcode: 0x6e},
+		{name: "remainder", opcode: 0x70},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+					0x20, 0x00, // local.get 0
+					0x41, 0x07, // i32.const 7
+					tc.opcode,
+					0x0b,
+				}))),
+			)
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := wasm.ValidateModule(m); err != nil {
+				t.Fatal(err)
+			}
+			fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			native, _, _, err := emitAMD64Stack(fn, new(railssa.EmissionPlan), false, nil, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var hardware amd64.Asm
+			hardware.Div(amd64.R10, false)
+			if bytes.Contains(native, hardware.B) {
+				t.Fatalf("structured constant %s retained hardware DIV: %x", tc.name, native)
+			}
+		})
+	}
+}
+
 func TestAMD64StructuredFoldsConstantIntegerBinary(t *testing.T) {
 	body := make([]byte, 0, 600)
 	for _, operation := range []byte{0x7c, 0x7d, 0x7e, 0x83, 0x84, 0x85} { // i64 add/sub/mul/and/or/xor

@@ -8321,6 +8321,18 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 		if !reachable {
 			continue
 		}
+		if instr.Kind == wasm.InstrI32Const && instrIndex+1 < len(sf.Instrs) && len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.I32 {
+			next := sf.Instrs[instrIndex+1]
+			if divisor := uint32(instr.U64()); divisor != 0 && (next.Kind == wasm.InstrI32DivU || next.Kind == wasm.InstrI32RemU) {
+				index := len(stackTypes) - 1
+				dividend := takeScalar(index, amd64.RAX)
+				metadata.recordSource(a.Len(), next.Offset)
+				amd64EmitUnsignedI32ConstantDivision(&a, dividend, dividend, divisor, next.Kind == wasm.InstrI32RemU)
+				cacheScalar(index, dividend)
+				instrIndex++
+				continue
+			}
+		}
 		switch instr.Kind {
 		case wasm.InstrUnreachable:
 			metadata.recordTrap(a.Len(), instr.Offset, 1)
