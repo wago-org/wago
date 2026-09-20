@@ -25,7 +25,7 @@ func PipelineCapacityBytes(f *Func, selection *SelectionPlan, dag *DependencyDAG
 				bytes += capacityBytes(scratch.registerOccupants[bank][physical])
 			}
 		}
-		bytes += capacityBytes(allocation.SpillSets) + capacityBytes(allocation.SpillMembers) + capacityBytes(allocation.Fragments) + capacityBytes(allocation.priorityIntervals) + capacityBytes(allocation.callPositions) + capacityBytes(allocation.candidateVictims) + capacityBytes(allocation.bestVictims) + capacityBytes(allocation.verifySpillSeen) + capacityBytes(allocation.occupantNext) + capacityBytes(allocation.intervalByReg) + capacityBytes(allocation.regionalStates) + capacityBytes(allocation.regionalSegments)
+		bytes += capacityBytes(allocation.SpillSets) + capacityBytes(allocation.SpillMembers) + capacityBytes(allocation.Fragments) + capacityBytes(allocation.priorityIntervals) + capacityBytes(allocation.callPositions) + capacityBytes(allocation.candidateVictims) + capacityBytes(allocation.bestVictims) + capacityBytes(allocation.verifySpillSeen) + capacityBytes(allocation.occupantNext) + capacityBytes(allocation.intervalByReg) + capacityBytes(allocation.affinityPeer) + capacityBytes(allocation.affinityWeight) + capacityBytes(allocation.regionalStates) + capacityBytes(allocation.regionalSegments)
 	}
 	if exit != nil {
 		bytes += capacityBytes(exit.Moves) + capacityBytes(exit.EdgeMoves) + capacityBytes(exit.FixedMoves) + capacityBytes(exit.FixedPoints) + capacityBytes(exit.fixedScratch) + capacityBytes(exit.pending) + capacityBytes(exit.predSuccs) + capacityBytes(exit.succPreds)

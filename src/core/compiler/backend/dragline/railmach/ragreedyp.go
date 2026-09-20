@@ -126,6 +126,10 @@ type priorityInterval struct {
 	cost     uint64
 }
 
+func greedyRegisterCandidateBetter(physical, preferred int, cost uint64, best int, bestCost uint64) bool {
+	return best < 0 || cost < bestCost || cost == bestCost && physical == preferred
+}
+
 type GreedyAllocation struct {
 	Allocation
 	Stage        uint8
@@ -142,6 +146,8 @@ type GreedyAllocation struct {
 	occupantHead      [2][64]uint32
 	occupantNext      []uint32
 	intervalByReg     []uint32
+	affinityPeer      []VReg
+	affinityWeight    []uint32
 	regionalStates    []regionalState
 	regionalSegments  []regionalSegment
 }
@@ -385,6 +391,22 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		return int(a.interval.Reg) - int(b.interval.Reg)
 	})
 	reuse.priorityIntervals = intervals
+	affinityPeer := resize(reuse.affinityPeer, len(reuse.Locations))
+	affinityWeight := resize(reuse.affinityWeight, len(reuse.Locations))
+	clear(affinityPeer)
+	clear(affinityWeight)
+	for _, transfer := range f.Transfers {
+		if transfer.Src == 0 || transfer.Dst == 0 || int(transfer.Src) >= len(affinityPeer) || int(transfer.Dst) >= len(affinityPeer) {
+			continue
+		}
+		if transfer.Weight >= affinityWeight[transfer.Src] {
+			affinityPeer[transfer.Src], affinityWeight[transfer.Src] = transfer.Dst, transfer.Weight
+		}
+		if transfer.Weight >= affinityWeight[transfer.Dst] {
+			affinityPeer[transfer.Dst], affinityWeight[transfer.Dst] = transfer.Src, transfer.Weight
+		}
+	}
+	reuse.affinityPeer, reuse.affinityWeight = affinityPeer, affinityWeight
 	for _, priority := range intervals {
 		interval, valueCost := priority.interval, priority.cost
 		current := reuse.Locations[interval.Reg]
@@ -400,6 +422,16 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 			limit = int(config.Linear.FPRs)
 		}
 		best, bestCost := -1, ^uint64(0)
+		preferred := -1
+		if int(interval.Reg) < len(affinityPeer) {
+			source := affinityPeer[interval.Reg]
+			if int(source) < len(reuse.Locations) {
+				location := reuse.Locations[source]
+				if location.Kind == LocationRegister && location.Bank == interval.Bank && int(location.Index) < limit {
+					preferred = int(location.Index)
+				}
+			}
+		}
 		bestVictims := reuse.bestVictims[:0]
 		survivors := ^uint64(0)
 		if callLive {
@@ -428,12 +460,15 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 				victims = append(victims, other.Reg)
 				cost += spillCost(other)
 			}
-			if len(victims) == 0 {
+			if len(victims) == 0 && greedyRegisterCandidateBetter(physical, preferred, cost, best, bestCost) {
 				best, bestCost = physical, cost
 				bestVictims = bestVictims[:0]
-				break
+				if physical == preferred {
+					break
+				}
+				continue
 			}
-			if config.MaxStage >= 2 && cost < bestCost {
+			if config.MaxStage >= 2 && greedyRegisterCandidateBetter(physical, preferred, cost, best, bestCost) {
 				best, bestCost = physical, cost
 				bestVictims = append(bestVictims[:0], victims...)
 			}

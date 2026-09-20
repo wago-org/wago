@@ -41,6 +41,18 @@ func TestGreedySpillDensityPrioritizesFrequentlyUsedShortRange(t *testing.T) {
 	}
 }
 
+func TestGreedyRegisterCandidateUsesTransferAffinityOnlyToBreakCostTie(t *testing.T) {
+	if !greedyRegisterCandidateBetter(3, 3, 4, 1, 4) {
+		t.Fatal("equal-cost transfer-affine register was not preferred")
+	}
+	if greedyRegisterCandidateBetter(3, 3, 5, 1, 4) {
+		t.Fatal("transfer affinity overrode a cheaper register")
+	}
+	if !greedyRegisterCandidateBetter(2, 3, 3, 1, 4) {
+		t.Fatal("cheaper non-affine register was not preferred")
+	}
+}
+
 func TestGreedyDensitySupportsAMD64ScalarFPRs(t *testing.T) {
 	for _, test := range []struct {
 		name   string
