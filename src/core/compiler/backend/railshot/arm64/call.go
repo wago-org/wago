@@ -1991,6 +1991,55 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	f.emitMixedRegisterCallVia(localIdx, regNone, ft)
 }
 
+// stageMixedCallSpills protects sources from the canonical stores in flushBelow.
+func (f *fn) stageMixedCallSpills(belowSlots int, belowRoots []*elem) {
+	if belowSlots == 0 {
+		return
+	}
+	nextSlot := f.spillFloor
+	for pass := 0; pass < 2; pass++ {
+		rootIndex := 0
+		canonicalSlot := 0
+		overlaps := false
+		for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
+			canonical := false
+			if rootIndex < len(belowRoots) && e == belowRoots[rootIndex] {
+				canonical = e.elemKind() == ekValue && e.st.kind == stSlot && e.st.slotIndex() == canonicalSlot
+				canonicalSlot += rootMachineType(e).stackSlots()
+				rootIndex++
+			}
+			if e.elemKind() != ekValue || e.st.kind != stSlot {
+				continue
+			}
+			from, width := e.st.slotIndex(), e.st.typ.stackSlots()
+			if pass == 0 && from+width > nextSlot {
+				nextSlot = from + width
+			}
+			// A complete root already at its destination is skipped by the flush.
+			// Deferred children and arguments never qualify for this exception.
+			if from >= belowSlots || canonical {
+				continue
+			}
+			overlaps = true
+			if pass == 0 {
+				continue
+			}
+			for i := 0; i < width; i++ {
+				f.ld64(X16, SP, f.spillOff(from+i))
+				f.st64(SP, f.spillOff(nextSlot+i), X16)
+			}
+			e.st.slot = uint32(nextSlot)
+			nextSlot += width
+		}
+		if !overlaps {
+			return
+		}
+	}
+	if nextSlot > f.maxSpill {
+		f.maxSpill = nextSlot
+	}
+}
+
 func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompType) uint32 {
 	if indirect != regNone {
 		// GP argument staging owns X0-X7. Preserve a descriptor target selected in
@@ -2004,23 +2053,20 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	allTypes := f.logicalTypes(allRoots)
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
+	// Existing and new spills must stay above slots written by flushBelow.
+	oldSpillFloor := f.spillFloor
+	belowSlots := 0
+	for _, typ := range belowTypes {
+		belowSlots += typ.stackSlots()
+	}
+	if belowSlots > f.spillFloor {
+		f.spillFloor = belowSlots
+	}
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
-	argRoots := f.tmpRoots[:0]
-	if cap(argRoots) < p {
-		argRoots = make([]*elem, p)
-	} else {
-		argRoots = argRoots[:p]
-	}
-	f.tmpRoots = argRoots
-	cur := f.s.back()
-	for i := p - 1; i >= 0; i-- {
-		argRoots[i] = cur
-		if i > 0 {
-			cur = f.s.prev(f.s.baseOfValentBlock(cur))
-		}
-	}
+	// Materializing arguments preserves these roots and does not reuse tmpRoots.
+	belowRoots, argRoots := allRoots[:d-p], allRoots[d-p:]
 	type deferredMixedArg struct {
 		target Reg
 		root   *elem
@@ -2036,11 +2082,28 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		root := argRoots[i]
 		if mt.isFloat() {
 			target := fpArgRegs[fp]
+			if root.elemKind() == ekValue && root.st.kind == stLocalReg {
+				available := ^uint32(f.blockedFRegs(0))
+				if available&(available-1) == 0 {
+					// spillLocalsForCall makes this borrowed local's home current.
+					deferred = append(deferred, deferredMixedArg{target: target, root: root, float: true})
+					f.stats.peep("mixed-call-local-home")
+					fp++
+					continue
+				}
+			}
 			if root.isDeferred() || (root.elemKind() == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
 				reg := f.materializeF(root)
-				f.fpinned = f.fpinned.add(reg)
-				fpMoves = append(fpMoves, regMove{dst: target, src: reg})
-				f.stats.peep("mixed-call-reg-arg")
+				// Keep one V register for later arguments and the below-call flush.
+				// Reload overflow arguments after the parallel register moves.
+				if uint32(f.blockedFRegs(maskOf(reg))) == ^uint32(0) {
+					f.spillF(root)
+					deferred = append(deferred, deferredMixedArg{target: target, root: root, float: true})
+				} else {
+					f.fpinned = f.fpinned.add(reg)
+					fpMoves = append(fpMoves, regMove{dst: target, src: reg})
+					f.stats.peep("mixed-call-reg-arg")
+				}
 			} else {
 				deferred = append(deferred, deferredMixedArg{target: target, root: root, float: true})
 			}
@@ -2058,6 +2121,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 			gp++
 		}
 	}
+	f.stageMixedCallSpills(belowSlots, belowRoots)
 	if p > 0 {
 		f.stats.addCallFlush()
 		f.flushBelow(argRoots[0])
@@ -2065,8 +2129,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		f.stats.addCallFlush()
 		f.flush()
 	}
-	// Dirty locals are saved after argument values have been copied into owned
-	// registers; the mixed callee may clobber every caller pin.
+	// Save dirty locals before register moves or deferred local-home loads.
 	f.spillLocalsForCall()
 	for _, m := range gpMoves {
 		f.pinned = f.pinned.remove(m.src)
@@ -2123,8 +2186,9 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 					f.a.FmovFromGpr(da.target, X16, false)
 				}
 			case stSlot:
-				f.fld(da.target, SP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
-			case stLocalRef:
+				// Scalar FP operand spill slots are eight bytes, including f32.
+				f.fld(da.target, SP, f.spillOff(da.root.st.slotIndex()), true)
+			case stLocalRef, stLocalReg:
 				f.fld(da.target, SP, f.localOff(da.root.st.index()), da.root.st.typ == mtF64)
 			}
 			continue
@@ -2139,6 +2203,13 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		}
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
+	// Eager local reloads do not use the prologue's FP/LR frame record.
+	lrSlot := -1
+	if !f.usesCalls {
+		lrSlot = f.allocSpillSlot()
+		f.st64(SP, f.spillOff(lrSlot), LR)
+	}
+	f.spillFloor = oldSpillFloor
 
 	var returnOffset uint32
 	if localIdx >= 0 {
@@ -2148,6 +2219,9 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	} else {
 		f.a.Blr(indirect)
 		returnOffset = uint32(f.a.Len())
+	}
+	if lrSlot >= 0 {
+		f.ld64(LR, SP, f.spillOff(lrSlot))
 	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
