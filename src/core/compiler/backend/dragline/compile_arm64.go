@@ -255,7 +255,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			if cacheErr == nil && hit {
 				requiresMOPS = requiresMOPS || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64MOPS)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64MOPS)%64)) != 0
 				requiresSHA2 = requiresSHA2 || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64SHA2)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64SHA2)%64)) != 0
-				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR, DirectWritesGlobal: true, WritesGlobal: true}
+				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR, DirectWritesGlobal: true, WritesGlobal: true, DirectMayGrow: true, MayGrow: true}
 				if !captureGC && artifact.ContextFreeLoop {
 					contextFreeLoopPrepared = markARM64DirectPrepared(contextFreeLoopPrepared, len(m.Code), i)
 				}

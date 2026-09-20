@@ -50,6 +50,11 @@ type ABIContract struct {
 	// transitive effects of every call and is safe for caller-side cache reuse.
 	DirectWritesGlobal bool
 	WritesGlobal       bool
+	// DirectMayGrow excludes calls. MayGrow includes the refined transitive
+	// effect of every call and permits callers to retain cached memory bounds
+	// across proven non-growing private calls.
+	DirectMayGrow bool
+	MayGrow       bool
 }
 
 // PrivateResultRegisters is the source-ordered GPR result prefix shared by
@@ -64,7 +69,7 @@ type CallContract struct {
 	Class        ABIClass
 	Conservative bool
 	WritesGlobal bool
-	_            byte
+	MayGrow      bool
 }
 
 func AnalyzeABI(f *Func, allocation *GreedyAllocation, metadata *railssa.Metadata, importedFunctions uint32) (ABIContract, []CallContract, error) {
@@ -168,11 +173,12 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		meta := metadata.Instructions[instruction.Source]
 		if !IsCall(instruction.Op) {
 			contract.DirectWritesGlobal = contract.DirectWritesGlobal || meta.Writes&railssa.HeapGlobal != 0
+			contract.DirectMayGrow = contract.DirectMayGrow || meta.Flags&railssa.EffectMayGrow != 0
 			continue
 		}
 		contract.HasCall = true
 		contract.MayCollect = contract.MayCollect || meta.Flags&railssa.EffectMayCollect != 0
-		call := CallContract{Instruction: uint32(instructionID), Callee: uint32(instruction.Aux), Class: ABIGeneral, Conservative: true, WritesGlobal: meta.Writes&railssa.HeapGlobal != 0, GPRClobbers: callerGPRs, FPRClobbers: callerFPRs}
+		call := CallContract{Instruction: uint32(instructionID), Callee: uint32(instruction.Aux), Class: ABIGeneral, Conservative: true, WritesGlobal: meta.Writes&railssa.HeapGlobal != 0, MayGrow: true, GPRClobbers: callerGPRs, FPRClobbers: callerFPRs}
 		if SemanticOpcode(instruction.Op) == wasm.InstrCall && call.Callee >= importedFunctions {
 			call.Conservative = false
 		}
@@ -439,8 +445,10 @@ func PropagateCallEffects(contract *ABIContract, calls []CallContract) {
 		return
 	}
 	contract.WritesGlobal = contract.DirectWritesGlobal
+	contract.MayGrow = contract.DirectMayGrow
 	for _, call := range calls {
 		contract.WritesGlobal = contract.WritesGlobal || call.WritesGlobal
+		contract.MayGrow = contract.MayGrow || call.MayGrow
 	}
 }
 
@@ -458,6 +466,7 @@ func RefineCallContracts(calls []CallContract, module []ABIContract, importedFun
 		callee := module[local]
 		call.GPRClobbers, call.FPRClobbers, call.Class, call.Conservative = callee.GPRClobbers, callee.FPRClobbers, callee.Class, false
 		call.WritesGlobal = callee.WritesGlobal
+		call.MayGrow = callee.MayGrow
 		refined++
 	}
 	return refined

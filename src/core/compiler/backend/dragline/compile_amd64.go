@@ -193,7 +193,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			if cacheErr == nil && hit {
 				requiresBMI2 = requiresBMI2 || artifact.RequiredISA[uint16(corecompiler.TargetFeatureAMD64BMI2)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureAMD64BMI2)%64)) != 0
 				requiresAVX512VL = requiresAVX512VL || artifact.RequiredISA[uint16(corecompiler.TargetFeatureAMD64AVX512VL)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureAMD64AVX512VL)%64)) != 0
-				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR, DirectWritesGlobal: true, WritesGlobal: true}
+				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR, DirectWritesGlobal: true, WritesGlobal: true, DirectMayGrow: true, MayGrow: true}
 				if !captureGC && amd64DirectPreparedClass(moduleContracts[i].Class) {
 					directPrepared = markAMD64DirectPrepared(directPrepared, len(m.Code), i)
 					if i < len(compilationPlan.BoundedContextFree) && compilationPlan.BoundedContextFree[i] {
@@ -574,6 +574,18 @@ func amd64RailMachDirectCallClass(plan *nativeBackendPlan, instructionID uint32,
 		}
 	}
 	return 0
+}
+
+func amd64RailMachDirectCallMayGrow(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) bool {
+	if plan == nil || plan.Stack == nil || railmach.SemanticOpcode(instruction.Op) != wasm.InstrCall || uint32(instruction.Aux) < plan.Stack.ImportedFuncs {
+		return true
+	}
+	for _, call := range plan.Calls {
+		if call.Instruction == instructionID && call.Callee == uint32(instruction.Aux) && !call.Conservative {
+			return call.MayGrow
+		}
+	}
+	return true
 }
 
 func amd64RailMachFastSingleArgumentCall(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) bool {
@@ -2332,6 +2344,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, err
 				}
 				imported := uint32(instruction.Aux) < plan.Stack.ImportedFuncs
+				callMayGrow := imported || amd64RailMachDirectCallMayGrow(plan, instructionID, instruction)
 				// A refined mutating callee makes the caller's descriptor-backed global
 				// path hot enough to remove the redundant refresh. Read-only and missing
 				// contracts retain the load as a conservative context-line prefetch.
@@ -2457,7 +2470,18 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.B = append(a.B, 0x0f, 0x1f, 0x40, 0x00)
 				}
 				reloadStackCachedGlobal()
-				reloadMemoryBound()
+				if callMayGrow {
+					reloadMemoryBound()
+				} else if plan.AMD64MemoryBoundEnd != 0 {
+					// Preserve downstream loop and call alignment while replacing the
+					// seven-byte load plus seven-byte subtract with two architectural
+					// NOPs. Hot callers execute fewer data-dependent operations without
+					// moving unrelated code across fetch boundaries.
+					a.B = append(a.B,
+						0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00,
+						0x0f, 0x1f, 0x40, 0x00,
+					)
+				}
 				continue
 			}
 			if semanticOp == wasm.InstrMemoryCopy || semanticOp == wasm.InstrMemoryFill {

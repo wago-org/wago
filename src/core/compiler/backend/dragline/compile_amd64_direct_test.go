@@ -35,7 +35,7 @@ func TestAMD64RailMachDerivesMixedBoundsFromCachedLimit(t *testing.T) {
 	}
 }
 
-func TestAMD64RailMachReloadsCachedMemoryBoundAfterDirectCall(t *testing.T) {
+func TestAMD64RailMachReloadsCachedMemoryBoundOnlyAfterGrowingDirectCall(t *testing.T) {
 	params := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}
 	caller := []byte{
 		0x41, 0, 0x41, 0, 0x41, 0, 0x41, 0,
@@ -46,42 +46,59 @@ func TestAMD64RailMachReloadsCachedMemoryBoundAfterDirectCall(t *testing.T) {
 		caller = append(caller, 0x20, 0, 0x28, 2, 0, 0x1a)
 	}
 	caller = append(caller, 0x20, 0, 0x28, 2, 0, 0x0b)
-	source := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType(params, []wasm.ValType{wasm.I32}),
-			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
-		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
-		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
-		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x20, 7, 0x0b}),
-			wasmtest.Code(caller),
-		)),
-	)
-	module, err := wasm.DecodeModule(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := wasm.ValidateModule(module); err != nil {
-		t.Fatal(err)
-	}
-	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
-	if err != nil {
-		t.Fatal(err)
-	}
-	output, err := (Compiler{}).Compile(corecompiler.Input{
-		Module: module, Source: source, Runtime: corecompiler.RuntimeContract{ABIRevision: runtimeabi.Revision},
-		Target: target, Objective: corecompiler.ObjectiveSpeed, Bounds: corecompiler.BoundsExplicit,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := output.Code[output.InternalEntry[1]:]
-	var reload amd64.Asm
-	reload.Load64(amd64.R12, amd64.RBX, -int32(runtimeabi.ActualLinMemByteSize64Offset))
-	reload.AluRI(5, amd64.R12, 4, true)
-	if got := bytes.Count(body, reload.B); got < 2 {
-		t.Fatalf("cached memory-bound reloads = %d, want prologue and post-call reload in %x", got, body)
+	callerBytes := 0
+	for _, tc := range []struct {
+		name       string
+		callee     []byte
+		wantReload int
+	}{
+		{name: "non-growing", callee: []byte{0x20, 7, 0x0b}, wantReload: 1},
+		{name: "growing", callee: []byte{0x20, 7, 0x40, 0x00, 0x0b}, wantReload: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(
+					wasmtest.FuncType(params, []wasm.ValType{wasm.I32}),
+					wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+				)),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+				wasmtest.Section(10, wasmtest.Vec(
+					wasmtest.Code(tc.callee),
+					wasmtest.Code(caller),
+				)),
+			)
+			module, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := wasm.ValidateModule(module); err != nil {
+				t.Fatal(err)
+			}
+			target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+			if err != nil {
+				t.Fatal(err)
+			}
+			output, err := (Compiler{}).Compile(corecompiler.Input{
+				Module: module, Source: source, Runtime: corecompiler.RuntimeContract{ABIRevision: runtimeabi.Revision},
+				Target: target, Objective: corecompiler.ObjectiveSpeed, Bounds: corecompiler.BoundsExplicit,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := output.Code[output.InternalEntry[1]:]
+			var reload amd64.Asm
+			reload.Load64(amd64.R12, amd64.RBX, -int32(runtimeabi.ActualLinMemByteSize64Offset))
+			reload.AluRI(5, amd64.R12, 4, true)
+			if got := bytes.Count(body, reload.B); got != tc.wantReload {
+				t.Fatalf("cached memory-bound reloads = %d, want %d in %x", got, tc.wantReload, body)
+			}
+			if callerBytes == 0 {
+				callerBytes = len(body)
+			} else if len(body) != callerBytes {
+				t.Fatalf("caller bytes = %d, want layout-preserving %d", len(body), callerBytes)
+			}
+		})
 	}
 }
 

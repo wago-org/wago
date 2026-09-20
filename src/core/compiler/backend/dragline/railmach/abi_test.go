@@ -46,11 +46,11 @@ func TestAnalyzeABIAndRefineDirectCall(t *testing.T) {
 	if contract.Params != 1 || contract.Results != 1 || contract.RegisterResults != 1 || !contract.HasCall || len(calls) != 1 {
 		t.Fatalf("contract=%#v calls=%#v", contract, calls)
 	}
-	callee := ABIContract{Class: ABITinyDirect, GPRClobbers: 3, FPRClobbers: 4, WritesGlobal: true}
+	callee := ABIContract{Class: ABITinyDirect, GPRClobbers: 3, FPRClobbers: 4, WritesGlobal: true, MayGrow: true}
 	if refined := RefineCallContracts(calls, []ABIContract{callee}, 0); refined != 1 {
 		t.Fatalf("refined = %d calls=%#v", refined, calls)
 	}
-	if calls[0].GPRClobbers != 3 || calls[0].FPRClobbers != 4 || calls[0].Class != ABITinyDirect || calls[0].Conservative || !calls[0].WritesGlobal {
+	if calls[0].GPRClobbers != 3 || calls[0].FPRClobbers != 4 || calls[0].Class != ABITinyDirect || calls[0].Conservative || !calls[0].WritesGlobal || !calls[0].MayGrow {
 		t.Fatalf("refined call = %#v", calls[0])
 	}
 }
@@ -212,21 +212,23 @@ func TestPropagateCallClobbersUsesOnlyVolatileRegisters(t *testing.T) {
 }
 
 func TestPropagateCallEffectsUsesRefinedCallee(t *testing.T) {
-	contract := ABIContract{DirectWritesGlobal: false, WritesGlobal: true}
-	calls := []CallContract{{WritesGlobal: true}}
+	contract := ABIContract{DirectWritesGlobal: false, WritesGlobal: true, MayGrow: true}
+	calls := []CallContract{{WritesGlobal: true, MayGrow: true}}
 	PropagateCallEffects(&contract, calls)
-	if !contract.WritesGlobal {
-		t.Fatal("global-writing call lost its transitive effect")
+	if !contract.WritesGlobal || !contract.MayGrow {
+		t.Fatal("call lost its transitive effects")
 	}
 	calls[0].WritesGlobal = false
+	calls[0].MayGrow = false
 	PropagateCallEffects(&contract, calls)
-	if contract.WritesGlobal {
-		t.Fatal("read-only call retained a stale conservative global-write effect")
+	if contract.WritesGlobal || contract.MayGrow {
+		t.Fatal("effect-free call retained stale conservative effects")
 	}
 	contract.DirectWritesGlobal = true
+	contract.DirectMayGrow = true
 	PropagateCallEffects(&contract, calls)
-	if !contract.WritesGlobal {
-		t.Fatal("direct global write was omitted from the function contract")
+	if !contract.WritesGlobal || !contract.MayGrow {
+		t.Fatal("direct effects were omitted from the function contract")
 	}
 }
 

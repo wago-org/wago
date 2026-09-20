@@ -3682,6 +3682,7 @@ func refineNativeCallContracts(calls []railmach.CallContract, imported uint32, c
 		contract := contracts[callee]
 		call.GPRClobbers, call.FPRClobbers, call.Class, call.Conservative = contract.GPRClobbers, contract.FPRClobbers, contract.Class, false
 		call.WritesGlobal = contract.WritesGlobal
+		call.MayGrow = contract.MayGrow
 		refined++
 	}
 	return refined
