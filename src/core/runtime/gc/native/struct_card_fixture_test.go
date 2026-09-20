@@ -18,7 +18,7 @@ func newStructRangeFixture(tb testing.TB, fields, count int, order string, movin
 	kinds := make([]StorageKind, fields)
 	for i := range kinds {
 		kinds[i] = StorageRefNull
-		if i%7 == 6 {
+		if order == "shuffled-sparse" && i%32 != 0 || order != "shuffled-sparse" && i%7 == 6 {
 			kinds[i] = StorageI32
 		}
 	}
@@ -41,7 +41,7 @@ func newStructRangeFixture(tb testing.TB, fields, count int, order string, movin
 		for i, j := 0, len(desc.Fields)-1; i < j; i, j = i+1, j-1 {
 			desc.Fields[i], desc.Fields[j] = desc.Fields[j], desc.Fields[i]
 		}
-	case "shuffled":
+	case "shuffled", "shuffled-sparse":
 		rand.New(rand.NewSource(seed)).Shuffle(len(desc.Fields), func(i, j int) { desc.Fields[i], desc.Fields[j] = desc.Fields[j], desc.Fields[i] })
 	}
 	limit := uint32(1 << 20)

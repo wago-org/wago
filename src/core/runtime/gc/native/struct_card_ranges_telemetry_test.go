@@ -40,7 +40,7 @@ func TestStructCardRangesTelemetryParity(t *testing.T) {
 }
 
 func TestStructCardMixedRangesTelemetryParity(t *testing.T) {
-	for _, order := range []string{"ordered", "reversed", "shuffled"} {
+	for _, order := range []string{"ordered", "reversed", "shuffled", "shuffled-sparse"} {
 		for _, count := range []int{16, 32} {
 			f := newStructRangeFixture(t, 4097, count, order, true, false, false, 31)
 			c := f.c

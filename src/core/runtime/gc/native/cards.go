@@ -84,10 +84,12 @@ func (c *Collector) scanObjectPayloadRange(h, start, end uint32) (slots, usefulC
 	}
 	b := c.bytes(r)
 	if d.Kind == KindStruct {
+		span := end - start
 		lastCard := ^uint32(0)
 		cardUseful := false
 		for _, field := range d.Fields {
-			if !isCollectorRefKind(field.Kind) || field.Offset < start || field.Offset > end {
+			// Unsigned subtraction also excludes offsets below start.
+			if field.Offset-start > span || !isCollectorRefKind(field.Kind) {
 				continue
 			}
 			card := field.Offset / c.cardBytes

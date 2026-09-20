@@ -1,0 +1,1 @@
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	0.099s

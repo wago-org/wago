@@ -4,9 +4,11 @@ Baseline: `27c1f066a3e04bc31ca82d6b55ce4977b19c35ee` (fetched current main).
 Reviewed PR head: `774e03621bca05e1cc3b492658ec092bf5477fc6`.
 Main was merged without conflicts in `b7ab5eeb7`. The final PR description
 records the pushed head that contains this report. No other open optimization
-branch was included. The production diff against main remains the original
-119-line local change in `src/core/runtime/gc/native/cards.go`; main's newer
-chain detachment and full-scan correctness rules remain intact.
+branch was included. The production change stays local to `src/core/runtime/gc/native/cards.go`;
+main's newer chain detachment and full-scan correctness rules remain intact.
+The [fallback follow-up](fallback-improvement/README.md) adds a small range-filter
+change and records newer measurements, including all slower benchmark medians.
+Measurements below describe the implementation before that follow-up.
 
 ## Correctness
 

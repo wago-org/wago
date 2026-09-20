@@ -1,0 +1,18 @@
+TEXT github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).scanStructCardRanges(SB) /home/jtenner/Projects/wago-pr642/src/core/runtime/gc/native/cards.go
+  cards.go:176			0x584580		4c8da42430fdffff		LEAQ 0xfffffd30(SP), R12
+  cards.go:176			0x584588		4d3b6610			CMPQ R12, 0x10(R14)
+  cards.go:176			0x58458c		0f8621090000			JBE 0x584eb3
+  cards.go:176			0x584592		55				PUSHQ BP
+  cards.go:176			0x584593		4889e5				MOVQ SP, BP
+  cards.go:176			0x584596		4881ec48030000			SUBQ $0x348, SP
+  cards.go:178			0x58459d		4889842458030000		MOVQ AX, 0x358(SP)
+  cards.go:178			0x5845a5		899c2460030000			MOVL BX, 0x360(SP)
+  ref.go:44			0x5845ac		89d9				MOVL BX, CX
+  ref.go:44			0x5845ae		d1e1				SHLL $0x1, CX
+  cards.go:177			0x5845b0		440f11bc2400030000		MOVUPS X15, 0x300(SP)
+  cards.go:177			0x5845b9		440f11bc2410030000		MOVUPS X15, 0x310(SP)
+  cards.go:177			0x5845c2		440f11bc2420030000		MOVUPS X15, 0x320(SP)
+  cards.go:177			0x5845cb		440f11bc2430030000		MOVUPS X15, 0x330(SP)
+  cards.go:177			0x5845d4		89cb				MOVL CX, BX
+  cards.go:177			0x5845d6		e8a5beffff			CALL github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).refDesc(SB)
+  cards.go:177			0x5845db		0f100424			MOVUPS 0(SP), X0

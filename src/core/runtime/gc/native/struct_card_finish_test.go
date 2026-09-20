@@ -9,7 +9,7 @@ import (
 func TestStructCardLifecycle(t *testing.T) {
 	for _, moving := range []bool{false, true} {
 		for _, large := range []bool{false, true} {
-			for _, order := range []string{"ordered", "reversed", "shuffled"} {
+			for _, order := range []string{"ordered", "reversed", "shuffled", "shuffled-sparse"} {
 				for _, count := range []int{15, 16, 32, 33} {
 					t.Run(fmt.Sprintf("moving=%t/large=%t/%s/ranges=%d", moving, large, order, count), func(t *testing.T) {
 						f := newStructRangeFixture(t, 4097, count, order, moving, large, false, 17)
@@ -182,7 +182,11 @@ func TestStructCardRejectedPrefix(t *testing.T) {
 }
 func structCardDifferential(t *testing.T, seed uint64) {
 	count := 15 + int(seed%19)
-	f := newStructRangeFixture(t, 4097, count, "shuffled", seed&1 != 0, seed&2 != 0, false, int64(seed))
+	order := "shuffled"
+	if seed&4 != 0 {
+		order = "shuffled-sparse"
+	}
+	f := newStructRangeFixture(t, 4097, count, order, seed&1 != 0, seed&2 != 0, false, int64(seed))
 	c := f.c
 	h := handleOf(f.parent)
 	c.clearNurseryMarks()
@@ -201,12 +205,12 @@ func structCardDifferential(t *testing.T, seed uint64) {
 	}
 }
 func TestStructCardDifferential(t *testing.T) {
-	for seed := uint64(0); seed < 38; seed++ {
+	for seed := uint64(0); seed < 57; seed++ {
 		structCardDifferential(t, seed)
 	}
 }
 func FuzzStructCardDifferential(f *testing.F) {
-	for _, seed := range []uint64{0, 1, 16, 17, 18, 37} {
+	for _, seed := range []uint64{0, 1, 16, 17, 18, 37, 38} {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, seed uint64) { structCardDifferential(t, seed) })

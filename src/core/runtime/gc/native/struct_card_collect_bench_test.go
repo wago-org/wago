@@ -164,3 +164,21 @@ func BenchmarkGCStructCardCollectMinor(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkGCStructCardScanSparseReferences(b *testing.B) {
+	for _, count := range []int{15, 16, 32, 33} {
+		b.Run(fmt.Sprintf("ranges=%d", count), func(b *testing.B) {
+			f := newStructRangeFixture(b, 4097, count, "shuffled-sparse", true, false, false, 11)
+			c := f.c
+			h := handleOf(f.parent)
+			c.clearNurseryMarks()
+			c.scanRememberedCards(h)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				c.clearNurseryMarks()
+				c.scanRememberedCards(h)
+			}
+		})
+	}
+}
