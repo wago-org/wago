@@ -25,3 +25,26 @@ func TestIfWithoutElseReferenceWidening(t *testing.T) {
 		}
 	})
 }
+
+func TestIfWithoutElseRetainsDeclaredResultType(t *testing.T) {
+	data := module(
+		section(secType, 3, 0x60, 1, 0x64, 0x70, 1, 0x70, 0x60, 0, 0, 0x60, 0, 1, 0x64, 0x70),
+		section(secFunction, 2, 1, 2),
+		section(secElement, 1, 3, 0, 1, 0),
+		section(secCode, 2, 2, 0, 0x0b, 9, 0, 0xd2, 0, 0x41, 0, 0x04, 0, 0x0b, 0x0b),
+	)
+	t.Run("bytebacked", func(t *testing.T) {
+		if err := ValidateByteBackedModule(data); err == nil {
+			t.Fatal("nullable if result accepted as non-null function result")
+		}
+	})
+	t.Run("ast", func(t *testing.T) {
+		m, err := decodeModuleASTForTest(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ValidateModule(m); err == nil {
+			t.Fatal("nullable if result accepted as non-null function result")
+		}
+	})
+}

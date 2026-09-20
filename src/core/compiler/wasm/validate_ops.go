@@ -125,6 +125,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		if len(in.Else()) > 0 && len(v.vals) != len(thenVals) {
 			return v.verr(ErrTypeMismatch, "if branch heights")
 		}
+		v.vals = thenVals
 	case InstrBr:
 		lt, err := v.label(in.Index)
 		if err != nil {
