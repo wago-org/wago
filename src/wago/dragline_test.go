@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -210,6 +211,42 @@ func TestDraglineNativeAMD64SignedI64ConstantDivision(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestDraglineNativeAMD64LinearI64Sum(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("AMD64 linear i64 reduction execution test")
+	}
+	source, err := os.ReadFile("../../corpus/workloads/synthetic/memory.wasm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	memory := instance.Memory().UnsafeBytes()
+	for index := 0; index < len(memory)/8; index++ {
+		binary.LittleEndian.PutUint64(memory[index*8:], uint64(index+1))
+	}
+	for _, count := range []uint32{0, 1, 2, 3, 4, 5, 7, 8, 9, 31, 512, 8192} {
+		result, err := instance.Invoke("sum", uint64(count))
+		want := uint64(count) * uint64(count+1) / 2
+		if err != nil || len(result) != 1 || result[0] != want {
+			t.Fatalf("sum(%d) = %v, %v; want %d", count, result, err, want)
+		}
+	}
+	for _, count := range []uint32{8193, ^uint32(0)} {
+		if _, err := instance.Invoke("sum", uint64(count)); err == nil {
+			t.Fatalf("sum(%d) did not trap", count)
+		}
 	}
 }
 

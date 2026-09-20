@@ -1042,6 +1042,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		return nil, 0, false, nil
 	}
 	recordNativePlanMetrics(metrics, plan)
+	if loadWasmOffset, ok := amd64LinearI64SumKernel(plan); ok {
+		code, internal := emitAMD64LinearI64SumKernel(plan.Stack.FunctionIndex, plan.Stack.Instrs[0].Offset, loadWasmOffset, metadata)
+		if metrics != nil {
+			metrics.PostRARewrites++
+			metrics.observe(sliceBytes(code))
+		}
+		return code, internal, true, nil
+	}
 	var shrinkGPRs, shrinkFPRs uint64
 	for _, region := range plan.CalleeSaves {
 		if region.Bank == railmach.BankFPR {
@@ -4859,6 +4867,130 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	}
 	plan.ColdTrapPatches = coldTrapPatches
 	return a.B, internalOffset, true, nil
+}
+
+// amd64LinearI64SumKernel recognizes a whole-function scalar reduction over
+// consecutive i64 elements. This semantic-IR matcher deliberately excludes
+// shared and memory64 memories: hoisting one bounds proof across the loop is
+// valid only while memory0 cannot change concurrently and addresses are i32.
+func amd64LinearI64SumKernel(plan *nativeBackendPlan) (loadWasmOffset uint32, ok bool) {
+	if plan == nil || plan.SignalsBounds || plan.Stack == nil || plan.Stack.Module == nil ||
+		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 ||
+		len(plan.Stack.Results) != 1 || plan.Stack.Results[0] != wasm.I64 ||
+		len(plan.Stack.Locals) != 3 || plan.Stack.Locals[0] != wasm.I32 || plan.Stack.Locals[1] != wasm.I32 || plan.Stack.Locals[2] != wasm.I64 {
+		return 0, false
+	}
+	memory, present := plan.Stack.Module.MemoryType(0)
+	if !present || memory.Shared || memory.Limits.Addr64 {
+		return 0, false
+	}
+	if _, extra := plan.Stack.Module.MemoryType(1); extra {
+		return 0, false
+	}
+	instructions := plan.Stack.Instrs
+	if len(instructions) != 25 {
+		return 0, false
+	}
+	kinds := [...]wasm.InstrKind{
+		wasm.InstrI64Const, wasm.InstrLocalSet, wasm.InstrBlock, wasm.InstrLoop,
+		wasm.InstrLocalGet, wasm.InstrI32Eqz, wasm.InstrBrIf,
+		wasm.InstrLocalGet, wasm.InstrLocalGet, wasm.InstrI64Load, wasm.InstrI64Add, wasm.InstrLocalSet,
+		wasm.InstrLocalGet, wasm.InstrI32Const, wasm.InstrI32Add, wasm.InstrLocalSet,
+		wasm.InstrLocalGet, wasm.InstrI32Const, wasm.InstrI32Sub, wasm.InstrLocalSet, wasm.InstrBr,
+		wasm.InstrInvalid, wasm.InstrInvalid, wasm.InstrLocalGet, wasm.InstrInvalid,
+	}
+	for index, kind := range kinds {
+		if instructions[index].Kind != kind {
+			return 0, false
+		}
+	}
+	for _, local := range []struct {
+		instruction int
+		index       uint32
+	}{{1, 2}, {4, 0}, {7, 2}, {8, 1}, {11, 2}, {12, 1}, {15, 1}, {16, 0}, {19, 0}, {23, 2}} {
+		if instructions[local.instruction].U32() != local.index {
+			return 0, false
+		}
+	}
+	if instructions[0].U64() != 0 || instructions[6].U32() != 1 || instructions[13].U32() != 8 ||
+		instructions[17].U32() != 1 || instructions[20].U32() != 0 || instructions[9].U32() != 0 {
+		return 0, false
+	}
+	return instructions[9].Offset, true
+}
+
+func emitAMD64LinearI64SumKernel(function, sourceOffset, loadWasmOffset uint32, metadata *functionEmissionMetadata) ([]byte, int) {
+	var a amd64.Asm
+	a.Push(amd64.RCX)
+	a.MovReg64(amd64.RBX, amd64.RSI)
+	a.Load32(amd64.RAX, amd64.RDI, 0)
+	call := a.CallRel32()
+	if metadata != nil {
+		metadata.AdapterReturnOffset = uint32(a.Len())
+	}
+	a.Pop(amd64.RDI)
+	a.Store64(amd64.RDI, 0, amd64.RAX)
+	a.Ret()
+	a.Align16()
+	internal := a.Len()
+	a.PatchRel32(call, internal)
+	if metadata != nil {
+		metadata.recordSource(internal, sourceOffset)
+	}
+
+	// Prove count*8 bytes once. A full 4 GiB memory32 is the sole overflow
+	// exception: every aligned i64 access remains in bounds as the i32 address
+	// wraps, matching the scalar Wasm loop.
+	a.MovReg32(amd64.RCX, amd64.RAX)
+	a.MovReg32(amd64.R11, amd64.RCX)
+	a.ShiftImm(4, amd64.R11, 3, true)
+	a.Load64(amd64.R10, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+	a.Cmp64(amd64.R11, amd64.R10)
+	inBounds := a.JccPlaceholder(amd64.CondBE)
+	a.MovImm64(amd64.RAX, 1<<32)
+	a.Cmp64(amd64.R10, amd64.RAX)
+	outOfBounds := a.JccPlaceholder(amd64.CondNE)
+	a.PatchRel32(inBounds, a.Len())
+
+	// Four independent accumulators remove the load-to-add dependency chain.
+	a.XorSelf32(amd64.RAX)
+	a.XorSelf32(amd64.RDX)
+	a.XorSelf32(amd64.R8)
+	a.XorSelf32(amd64.R9)
+	a.XorSelf32(amd64.R11)
+	a.AluRI(7, amd64.RCX, 4, false)
+	remainder := a.JccPlaceholder(amd64.CondB)
+	group := a.Len()
+	a.AluIdx(0x03, amd64.RAX, amd64.RBX, amd64.R11, 0, true)
+	a.AluIdx(0x03, amd64.RDX, amd64.RBX, amd64.R11, 8, true)
+	a.AluIdx(0x03, amd64.R8, amd64.RBX, amd64.R11, 16, true)
+	a.AluIdx(0x03, amd64.R9, amd64.RBX, amd64.R11, 24, true)
+	a.AluRI(0, amd64.R11, 32, false)
+	a.AluRI(5, amd64.RCX, 4, false)
+	a.AluRI(7, amd64.RCX, 4, false)
+	moreGroups := a.JccPlaceholder(amd64.CondAE)
+	a.PatchRel32(moreGroups, group)
+	a.PatchRel32(remainder, a.Len())
+	a.TestSelf(amd64.RCX, false)
+	done := a.JccPlaceholder(amd64.CondE)
+	tail := a.Len()
+	a.AluIdx(0x03, amd64.RAX, amd64.RBX, amd64.R11, 0, true)
+	a.AluRI(0, amd64.R11, 8, false)
+	a.AluRI(5, amd64.RCX, 1, false)
+	moreTail := a.JccPlaceholder(amd64.CondNE)
+	a.PatchRel32(moreTail, tail)
+	a.PatchRel32(done, a.Len())
+	a.AluRR(0x01, amd64.RAX, amd64.RDX, true)
+	a.AluRR(0x01, amd64.RAX, amd64.R8, true)
+	a.AluRR(0x01, amd64.RAX, amd64.R9, true)
+	a.Ret()
+
+	a.PatchRel32(outOfBounds, a.Len())
+	if metadata != nil {
+		metadata.recordTrap(a.Len(), loadWasmOffset, 3)
+	}
+	amd64EmitTrap(&a, 3, function, loadWasmOffset)
+	return a.B, internal
 }
 
 // amd64RailMachCarriesMemoryChecks applies the shared conservative CFG policy.
