@@ -1314,7 +1314,7 @@ func (v *funcValidator) directEnd() error {
 			if len(v.vals) != f.ifThenHeight {
 				return v.verr(ErrTypeMismatch, "if branch heights")
 			}
-		} else if !v.sameValTypes(f.in, f.out) {
+		} else if !v.matchValTypes(f.in, f.out) {
 			return v.verr(ErrTypeMismatch, "if without else")
 		}
 	}

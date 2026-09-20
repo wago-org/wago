@@ -117,10 +117,9 @@ func (v *funcValidator) step(in *Instruction) error {
 			if err != nil {
 				return err
 			}
-		} else if !v.sameValTypes(ins, outs) {
+		} else if !v.matchValTypes(ins, outs) {
 			// With no else arm, the false path preserves the block inputs as the
-			// expression results. Accept only the shape the IR builder can model
-			// directly: identical input/output types.
+			// expression results, including reference type widening.
 			return v.verr(ErrTypeMismatch, "if without else")
 		}
 		if len(in.Else()) > 0 && len(v.vals) != len(thenVals) {
