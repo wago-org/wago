@@ -47,7 +47,7 @@ func TestBlockLayoutRejectsMismatchedInputsAndCorruption(t *testing.T) {
 	}
 }
 
-func TestBlockLayoutDoesNotChainThroughSyntheticExit(t *testing.T) {
+func TestBlockLayoutChainsReturningPathThroughSyntheticExit(t *testing.T) {
 	f := &Func{
 		Target: TargetAMD64,
 		VRegs:  []VRegData{{}},
@@ -62,7 +62,7 @@ func TestBlockLayoutDoesNotChainThroughSyntheticExit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []railssa.BlockID{0, 2, 1, 3}
+	want := []railssa.BlockID{0, 2, 3, 1}
 	if !slices.Equal(layout.Order, want) {
 		t.Fatalf("order = %v, want %v", layout.Order, want)
 	}

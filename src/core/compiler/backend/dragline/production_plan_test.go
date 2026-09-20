@@ -2005,20 +2005,21 @@ func TestNativeBackendPlannerPlacesNoReturnSuccessorOutOfLine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var returning railssa.BlockID
-	found := false
+	var returning, noReturn railssa.BlockID
+	found, foundNoReturn := false, false
 	for _, edge := range plan.Machine.Edges {
 		if edge.Kind == railssa.EdgeFalse {
 			returning, found = edge.To, true
-			break
+		} else if edge.Kind == railssa.EdgeTrue {
+			noReturn, foundNoReturn = edge.To, true
 		}
 	}
 	if !found || plan.Layout == nil || len(plan.Layout.Order) < 2 || plan.Layout.Order[1] != returning {
 		t.Fatalf("static no-return layout = %#v, returning block %d found=%t", plan.Layout, returning, found)
 	}
 	exit := railssa.BlockID(len(plan.Machine.Blocks) - 1)
-	if plan.Layout.Order[len(plan.Layout.Order)-1] != exit {
-		t.Fatalf("static no-return layout = %v, exit %d is not last", plan.Layout.Order, exit)
+	if !foundNoReturn || plan.Layout.Position[exit] >= plan.Layout.Position[noReturn] {
+		t.Fatalf("static no-return layout = %v, exit %d no-return %d found=%t", plan.Layout.Order, exit, noReturn, foundNoReturn)
 	}
 }
 

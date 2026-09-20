@@ -76,12 +76,6 @@ func BuildBlockLayout(f *Func, edgeWeights []uint64, blockBytes []uint32, reuse 
 			break
 		}
 		edge := f.Edges[candidate.index]
-		// The synthetic exit block has no emitted bytes. Keeping it out of a
-		// fallthrough chain prevents a later laid-out block from becoming the
-		// physical successor of a block that semantically exits the function.
-		if f.Blocks[edge.To].Flags&uint16(railssa.BlockExit) != 0 {
-			continue
-		}
 		fromOwner, toOwner := owner[edge.From], owner[edge.To]
 		if fromOwner == toOwner || len(chains[fromOwner].blocks) == 0 || len(chains[toOwner].blocks) == 0 {
 			continue

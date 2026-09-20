@@ -1454,6 +1454,102 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			a.Pop(amd64.RAX)
 		}
 	}
+	epilogueEmitted := false
+	emitEpilogue := func() error {
+		if epilogueEmitted {
+			return fmt.Errorf("RailMach emitted duplicate synthetic exit")
+		}
+		epilogueEmitted = true
+		if len(plan.Machine.Results) == 1 {
+			value := plan.Machine.Results[0]
+			scratch := amd64.RDI
+			if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+				scratch = 12
+			}
+			result, err := amd64RailMachReadValue(&a, plan, value, scratch)
+			if err != nil {
+				return err
+			}
+			if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
+				if result != amd64FPRRegisters[0] {
+					a.VMovdqu(amd64FPRRegisters[0], result)
+				}
+			} else if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+				a.MovXmmToGpr(amd64.RAX, result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
+			} else if result != amd64.RAX {
+				a.MovReg64(amd64.RAX, result)
+			}
+		} else if len(plan.Machine.Results) > 1 {
+			for index, value := range plan.Machine.Results {
+				scratch := amd64.R11
+				if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+					scratch = 13
+				}
+				result, err := amd64RailMachReadValue(&a, plan, value, scratch)
+				if err != nil {
+					return err
+				}
+				offset := int32(plan.Frame.ResultAreaOffset) + int32(railssa.TypeSlotOffset(plan.Stack.Results, index)*8)
+				if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
+					a.VMovdquStoreDisp(amd64.RSP, offset, result)
+					continue
+				}
+				if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+					a.MovXmmToGpr(amd64.R11, result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
+					result = amd64.R11
+				}
+				a.StoreRsp64(offset, result)
+			}
+		}
+		calleeSaveOffset = plan.Frame.SpillBytes + plan.Frame.RootBytes
+		for index := range amd64RailMachGPRRegisters {
+			if plan.ABI.CalleeGPRs&^shrinkGPRs&(uint64(1)<<index) != 0 {
+				a.LoadRsp64(amd64RailMachGPRRegisters[index], int32(calleeSaveOffset))
+				calleeSaveOffset += 8
+			}
+		}
+		for index := range amd64FPRRegisters {
+			if plan.ABI.CalleeFPRs&^shrinkFPRs&(uint64(1)<<index) != 0 {
+				if plan.ABI.VectorFPRs&(uint64(1)<<index) != 0 {
+					a.VMovdquLoadDisp(amd64FPRRegisters[index], amd64.RSP, int32(calleeSaveOffset))
+					calleeSaveOffset += 16
+				} else {
+					a.FLoadDisp(amd64FPRRegisters[index], amd64.RSP, int32(calleeSaveOffset), true)
+					calleeSaveOffset += 8
+				}
+			}
+		}
+		if len(plan.Machine.Results) > railmach.PrivateResultRegisters {
+			a.LoadRsp64(amd64.R10, int32(plan.Frame.RuntimeOffset))
+			for index := railmach.PrivateResultRegisters; index < len(plan.Machine.Results); index++ {
+				offset := int32(railssa.TypeSlotOffset(plan.Stack.Results, index) * 8)
+				if plan.Machine.VRegs[plan.Machine.Results[index]].Type == railmach.TypeV128 {
+					a.VMovdquLoadDisp(13, amd64.RSP, int32(plan.Frame.ResultAreaOffset)+offset)
+					a.VMovdquStoreDisp(amd64.R10, offset, 13)
+				} else {
+					a.LoadRsp64(amd64.R11, int32(plan.Frame.ResultAreaOffset)+offset)
+					a.Store64(amd64.R10, offset, amd64.R11)
+				}
+			}
+		}
+		if len(plan.Machine.Results) > 1 {
+			for index, value := range plan.Machine.Results[:min(len(plan.Machine.Results), railmach.PrivateResultRegisters)] {
+				offset := int32(plan.Frame.ResultAreaOffset) + int32(railssa.TypeSlotOffset(plan.Stack.Results, index)*8)
+				if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
+					a.VMovdquLoadDisp(amd64FPRRegisters[index], amd64.RSP, offset)
+				} else if plan.Machine.VRegs[value].Type == railmach.TypeI32 {
+					a.LoadRsp32(amd64RailMachGPRRegisters[index], offset)
+				} else {
+					a.LoadRsp64(amd64RailMachGPRRegisters[index], offset)
+				}
+			}
+		}
+		if plan.Frame.TotalBytes != 0 {
+			a.AddRsp(int32(plan.Frame.TotalBytes))
+		}
+		a.Ret()
+		return nil
+	}
 	previousLayoutBlock := -1
 	for layoutIndex := range plan.Schedule.BlockRanges {
 		blockID := layoutIndex
@@ -1461,7 +1557,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			blockID = int(plan.Layout.Order[layoutIndex])
 		}
 		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockExit) != 0 {
+			// Materialize the shared epilogue at the synthetic exit's layout
+			// position. Returning chains can then fall through to RET while proven
+			// no-return/error chains remain physically out of line after it.
 			blockOffsets[blockID] = a.Len()
+			if err := emitEpilogue(); err != nil {
+				return nil, 0, true, err
+			}
 			continue
 		}
 		if !amd64RailMachCarriesMemoryChecks(plan, previousLayoutBlock, blockID) {
@@ -4843,94 +4945,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			a.PatchRel32(patch.At, blockOffsets[patch.Target])
 		}
 	}
-	if len(plan.Machine.Results) == 1 {
-		value := plan.Machine.Results[0]
-		scratch := amd64.RDI
-		if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-			scratch = 12
-		}
-		result, err := amd64RailMachReadValue(&a, plan, value, scratch)
-		if err != nil {
-			return nil, 0, true, err
-		}
-		if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
-			if result != amd64FPRRegisters[0] {
-				a.VMovdqu(amd64FPRRegisters[0], result)
-			}
-		} else if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-			a.MovXmmToGpr(amd64.RAX, result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
-		} else if result != amd64.RAX {
-			a.MovReg64(amd64.RAX, result)
-		}
-	} else if len(plan.Machine.Results) > 1 {
-		for index, value := range plan.Machine.Results {
-			scratch := amd64.R11
-			if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-				scratch = 13
-			}
-			result, err := amd64RailMachReadValue(&a, plan, value, scratch)
-			if err != nil {
-				return nil, 0, true, err
-			}
-			offset := int32(plan.Frame.ResultAreaOffset) + int32(railssa.TypeSlotOffset(plan.Stack.Results, index)*8)
-			if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
-				a.VMovdquStoreDisp(amd64.RSP, offset, result)
-				continue
-			}
-			if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-				a.MovXmmToGpr(amd64.R11, result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
-				result = amd64.R11
-			}
-			a.StoreRsp64(offset, result)
-		}
+	if !epilogueEmitted {
+		return nil, 0, true, fmt.Errorf("RailMach synthetic exit was not emitted")
 	}
-	calleeSaveOffset = plan.Frame.SpillBytes + plan.Frame.RootBytes
-	for index := range amd64RailMachGPRRegisters {
-		if plan.ABI.CalleeGPRs&^shrinkGPRs&(uint64(1)<<index) != 0 {
-			a.LoadRsp64(amd64RailMachGPRRegisters[index], int32(calleeSaveOffset))
-			calleeSaveOffset += 8
-		}
-	}
-	for index := range amd64FPRRegisters {
-		if plan.ABI.CalleeFPRs&^shrinkFPRs&(uint64(1)<<index) != 0 {
-			if plan.ABI.VectorFPRs&(uint64(1)<<index) != 0 {
-				a.VMovdquLoadDisp(amd64FPRRegisters[index], amd64.RSP, int32(calleeSaveOffset))
-				calleeSaveOffset += 16
-			} else {
-				a.FLoadDisp(amd64FPRRegisters[index], amd64.RSP, int32(calleeSaveOffset), true)
-				calleeSaveOffset += 8
-			}
-		}
-	}
-	if len(plan.Machine.Results) > railmach.PrivateResultRegisters {
-		a.LoadRsp64(amd64.R10, int32(plan.Frame.RuntimeOffset))
-		for index := railmach.PrivateResultRegisters; index < len(plan.Machine.Results); index++ {
-			offset := int32(railssa.TypeSlotOffset(plan.Stack.Results, index) * 8)
-			if plan.Machine.VRegs[plan.Machine.Results[index]].Type == railmach.TypeV128 {
-				a.VMovdquLoadDisp(13, amd64.RSP, int32(plan.Frame.ResultAreaOffset)+offset)
-				a.VMovdquStoreDisp(amd64.R10, offset, 13)
-			} else {
-				a.LoadRsp64(amd64.R11, int32(plan.Frame.ResultAreaOffset)+offset)
-				a.Store64(amd64.R10, offset, amd64.R11)
-			}
-		}
-	}
-	if len(plan.Machine.Results) > 1 {
-		for index, value := range plan.Machine.Results[:min(len(plan.Machine.Results), railmach.PrivateResultRegisters)] {
-			offset := int32(plan.Frame.ResultAreaOffset) + int32(railssa.TypeSlotOffset(plan.Stack.Results, index)*8)
-			if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
-				a.VMovdquLoadDisp(amd64FPRRegisters[index], amd64.RSP, offset)
-			} else if plan.Machine.VRegs[value].Type == railmach.TypeI32 {
-				a.LoadRsp32(amd64RailMachGPRRegisters[index], offset)
-			} else {
-				a.LoadRsp64(amd64RailMachGPRRegisters[index], offset)
-			}
-		}
-	}
-	if plan.Frame.TotalBytes != 0 {
-		a.AddRsp(int32(plan.Frame.TotalBytes))
-	}
-	a.Ret()
 	amd64EmitSharedColdTraps(&a, coldTrapPatches, fn.Index, metadata)
 	for index := range floatConstantPatches {
 		constant := &floatConstantPatches[index]
