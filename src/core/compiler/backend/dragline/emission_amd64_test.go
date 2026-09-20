@@ -1326,6 +1326,46 @@ func TestAMD64RailMachSpillForwardingRetainsLiveHomes(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachOnlyForwardsIntegerSpillsIntoRegisterResidentInstructions(t *testing.T) {
+	machine := railmach.Func{
+		VRegs: []railmach.VRegData{
+			{},
+			{Bank: railmach.BankGPR},
+			{Bank: railmach.BankGPR},
+			{Bank: railmach.BankGPR},
+		},
+		Insts: []railmach.Inst{{Op: wasm.InstrI32Add, Result: 3, OperandCount: 2}},
+		Operands: []railmach.Operand{
+			{Reg: 1, Bank: railmach.BankGPR},
+			{Reg: 2, Bank: railmach.BankGPR},
+		},
+	}
+	allocation := railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{
+		{},
+		{Kind: railmach.LocationSpill, Bank: railmach.BankGPR},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 1},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 2},
+	}}}
+	plan := nativeBackendPlan{Machine: &machine, Allocation: &allocation}
+	if !amd64RailMachCanForwardPendingSpill(&plan, 0, 1, 2) {
+		t.Fatal("integer spill was not forwarded into a register-resident instruction")
+	}
+	allocation.Locations[2].Kind = railmach.LocationSpill
+	if amd64RailMachCanForwardPendingSpill(&plan, 0, 1, 2) {
+		t.Fatal("integer spill was forwarded while another integer operand needed the scratch register")
+	}
+	allocation.Locations[2].Kind = railmach.LocationRegister
+	allocation.Locations[3].Kind = railmach.LocationSpill
+	if amd64RailMachCanForwardPendingSpill(&plan, 0, 1, 2) {
+		t.Fatal("integer spill was forwarded while the result needed the scratch register")
+	}
+	machine.Insts[0].Op = wasm.InstrCall
+	allocation.Locations[3].Kind = railmach.LocationRegister
+	if amd64RailMachCanForwardPendingSpill(&plan, 0, 1, 2) {
+		t.Fatal("integer spill was forwarded across a call")
+	}
+}
+
 func TestAMD64RailMachUsesAllocatedMemoryAddressesDirectly(t *testing.T) {
 	allocation := railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{
 		{},

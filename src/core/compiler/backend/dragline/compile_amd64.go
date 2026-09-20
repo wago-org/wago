@@ -1029,6 +1029,32 @@ func amd64RailMachForwardPendingSpill(plan *nativeBackendPlan, instructionID uin
 	return false, false
 }
 
+func amd64RailMachCanForwardPendingSpill(plan *nativeBackendPlan, instructionID uint32, value railmach.VReg, position uint32) bool {
+	if plan == nil || plan.Machine == nil || plan.Allocation == nil || value == 0 || int(value) >= len(plan.Machine.VRegs) || int(instructionID) >= len(plan.Machine.Insts) {
+		return false
+	}
+	if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+		return true
+	}
+	instruction := plan.Machine.Insts[instructionID]
+	semanticOp := railmach.SemanticOpcode(instruction.Op)
+	if semanticOp == wasm.InstrCall || semanticOp == wasm.InstrCallIndirect || semanticOp == wasm.InstrMemoryCopy || semanticOp == wasm.InstrMemoryFill || nativeControlInstruction(instruction.Op) {
+		return false
+	}
+	if instruction.Result != 0 && plan.Allocation.LocationAt(instruction.Result, position).Kind != railmach.LocationRegister {
+		return false
+	}
+	for _, operand := range plan.Machine.InstructionOperands(instructionID) {
+		if operand.Reg == value || operand.Bank != railmach.BankGPR {
+			continue
+		}
+		if operand.Flags&railmach.OperandColdRemat != 0 || plan.Allocation.LocationAt(operand.Reg, position).Kind != railmach.LocationRegister {
+			return false
+		}
+	}
+	return true
+}
+
 func amd64RailMachCanUseMemoryAddressDirectly(plan *nativeBackendPlan, value railmach.VReg, position uint32, offset uint32, aliasesLoadResult bool) bool {
 	location := plan.Allocation.LocationAt(value, position)
 	dies := amd64RailMachValueDiesAt(plan, value, position+6)
@@ -1513,7 +1539,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		for blockInstructionIndex, instructionID := range blockOrder {
 			nextPosition := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 			forwardedSpill = 0
-			if pendingSpill != 0 && plan.Machine.VRegs[pendingSpill].Bank == railmach.BankFPR && !skipInstruction.has(instructionID) && !plan.PostRASkip.has(instructionID) && !plan.AMD64DeadStoreSkip.has(instructionID) && !plan.AMD64GlobalUpdateSkip.has(instructionID) &&
+			if pendingSpill != 0 && amd64RailMachCanForwardPendingSpill(plan, instructionID, pendingSpill, nextPosition) && !skipInstruction.has(instructionID) && !plan.PostRASkip.has(instructionID) && !plan.AMD64DeadStoreSkip.has(instructionID) && !plan.AMD64GlobalUpdateSkip.has(instructionID) &&
 				!nativeControlInstruction(plan.Machine.Insts[instructionID].Op) {
 				if forward, elideStore := amd64RailMachForwardPendingSpill(plan, instructionID, pendingSpill, nextPosition); forward {
 					forwardedSpill = pendingSpill
