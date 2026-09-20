@@ -157,6 +157,62 @@ func TestDraglineNativeAMD64UnsignedI64ConstantDivision(t *testing.T) {
 	}
 }
 
+func TestDraglineNativeAMD64SignedI64ConstantDivision(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("AMD64 constant division execution test")
+	}
+	for _, test := range []struct {
+		name    string
+		divisor int64
+		opcode  byte
+		want    func(int64) int64
+	}{
+		{name: "divide 7", divisor: 7, opcode: 0x7f, want: func(n int64) int64 { return n / 7 }},
+		{name: "divide negative 7", divisor: -7, opcode: 0x7f, want: func(n int64) int64 { return n / -7 }},
+		{name: "divide power of two", divisor: 1 << 40, opcode: 0x7f, want: func(n int64) int64 { return n / (1 << 40) }},
+		{name: "divide negative power of two", divisor: -(1 << 40), opcode: 0x7f, want: func(n int64) int64 { return n / -(1 << 40) }},
+		{name: "remainder 7", divisor: 7, opcode: 0x81, want: func(n int64) int64 { return n % 7 }},
+		{name: "remainder negative 7", divisor: -7, opcode: 0x81, want: func(n int64) int64 { return n % -7 }},
+		{name: "remainder power of two", divisor: 1 << 40, opcode: 0x81, want: func(n int64) int64 { return n % (1 << 40) }},
+		{name: "remainder negative one", divisor: -1, opcode: 0x81, want: func(n int64) int64 { return n % -1 }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x20, 0x00, 0x42}
+			body = append(body, wasmtest.SLEB64(test.divisor)...)
+			body = append(body, test.opcode, 0x0b)
+			compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), draglineUnaryModule(wasm.I64, wasm.I64, body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				compiled.Close()
+				t.Fatal(err)
+			}
+			values := []int64{math.MinInt64, math.MinInt64 + 1, -1 << 40, -100, -1, 0, 1, 100, 1 << 40, math.MaxInt64}
+			state := uint64(0x9e3779b97f4a7c15)
+			for range 1024 {
+				state ^= state << 13
+				state ^= state >> 7
+				state ^= state << 17
+				values = append(values, int64(state))
+			}
+			for _, dividend := range values {
+				result, err := instance.Invoke("run", uint64(dividend))
+				if err != nil || len(result) != 1 || int64(result[0]) != test.want(dividend) {
+					t.Fatalf("run(%d) = %v, %v; want %d", dividend, result, err, test.want(dividend))
+				}
+			}
+			if err := instance.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := compiled.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestDraglineNativeARM64MultiplyAddExecution(t *testing.T) {
 	if runtime.GOARCH != "arm64" {
 		t.Skip("ARM64 selected multiply-add execution test")
