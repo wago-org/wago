@@ -125,3 +125,12 @@ func TestLinuxKeepsXDGLayout(t *testing.T) {
 		t.Fatalf("Linux dirs = %#v", d)
 	}
 }
+
+func TestFishCompletionPathRejectsRelativeHome(t *testing.T) {
+	t.Setenv("HOME", ".")
+	t.Setenv("USERPROFILE", ".")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	if path, err := FishCompletionPath(); err == nil || path != "" {
+		t.Fatalf("relative home resolved to %q, %v", path, err)
+	}
+}

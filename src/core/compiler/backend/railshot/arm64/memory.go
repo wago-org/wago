@@ -495,6 +495,8 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) 
 		disp = int32(off32)
 		leaDisp = int32(off32) + int32(size)
 	} else if off32 != 0 {
+		// The adjusted address has no certificate for the original base.
+		bcKind, rangeExtent = 0, 0
 		t := f.allocReg(maskOf(ea))
 		f.a.MovImm64(t, uint64(off32))
 		f.a.Add64(ea, ea, t)

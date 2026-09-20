@@ -236,11 +236,10 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		return 0, fmt.Errorf("funcref type-ID count %d overflows arena allocation", fp.FuncRefTypeIDCount)
 	}
 	need += funcRefTypeIDBytes
-	passiveElemBytes := fp.PassiveElemCount * PassiveElemDescBytes
-	if need > maxInt()-passiveElemBytes {
+	if fp.PassiveElemCount > (maxInt()-need)/PassiveElemDescBytes {
 		return 0, fmt.Errorf("passive element count %d overflows arena allocation", fp.PassiveElemCount)
 	}
-	need += passiveElemBytes
+	need += fp.PassiveElemCount * PassiveElemDescBytes
 	if need > maxInt()-fp.PassiveElemBytes {
 		return 0, fmt.Errorf("passive element payload bytes %d overflow arena allocation", fp.PassiveElemBytes)
 	}

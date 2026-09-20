@@ -102,6 +102,9 @@ func FormatValue(bits uint64, valueType wago.ValType) string {
 
 // FormatResults renders raw function results without a call-expression prefix.
 func FormatResults(results []uint64, resultTypes []wago.ValType) string {
+	if len(results) != len(resultTypes) {
+		return fmt.Sprintf("invalid result count: got %d values for %d types", len(results), len(resultTypes))
+	}
 	formatted := make([]string, len(results))
 	for index, value := range results {
 		formatted[index] = FormatValue(value, resultTypes[index])
