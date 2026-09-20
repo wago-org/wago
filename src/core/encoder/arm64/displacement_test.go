@@ -43,6 +43,12 @@ func displacementAddress(t *testing.T, a *Asm, base Reg) int64 {
 		case w&0x7f800000 == 0x72800000:
 			sh := ((w >> 21) & 3) * 16
 			regs[rd] = regs[rd]&^(0xffff<<sh) | int64((w>>5)&0xffff)<<sh
+		case w&0x3f20fc00 == 0x3c206800:
+			index := regs[rm]
+			if rm == 31 {
+				index = 0
+			}
+			return regs[rn] + index - 0x100000000
 		case w&0x3f000000 == 0x3d000000:
 			return regs[rn] + int64((w>>10)&0xfff)*16 - 0x100000000
 		case w&0x3f200c00 == 0x3c000000:
@@ -92,8 +98,8 @@ func TestQLargeDisplacementBoundary(t *testing.T) {
 func TestQLargeDisplacementSequence(t *testing.T) {
 	var a Asm
 	a.StrQ(SP, 0x40f8, X17)
-	// MOVZ X16,#0x40f8; ADD X16,SP,X16,UXTX; STR Q17,[X16].
-	want := [...]uint32{0xd2881f10, 0x8b3063f0, 0x3d800211}
+	// MOVZ X16,#0x40f8; STR Q17,[SP,X16].
+	want := [...]uint32{0xd2881f10, 0x3cb06bf1}
 	if a.Len() != len(want)*4 {
 		t.Fatalf("code length = %d", a.Len())
 	}
@@ -130,7 +136,7 @@ func TestQDisplacementCodeSize(t *testing.T) {
 		disp  int32
 		bytes int
 	}{
-		{16, 4}, {0x40f0, 4}, {0x40f8, 12}, {0x10000, 8}, {0xff8, 8}, {-1, 4}, {-0x1000, 8},
+		{16, 4}, {0x40f0, 4}, {0x40f8, 8}, {0x10000, 8}, {0xff8, 8}, {-1, 4}, {-0x1000, 8},
 	} {
 		for _, store := range []bool{false, true} {
 			var a Asm

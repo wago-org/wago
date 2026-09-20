@@ -48,3 +48,23 @@ func TestAddDispMinimumSigned(t *testing.T) {
 		}
 	}
 }
+
+func TestSPDisplacementUsesSPEncoding(t *testing.T) {
+	for _, disp := range []int32{0, 16, 0x1000, 0x40f8, -0x40f8, -0x80000000} {
+		for _, dst := range []Reg{X0, X16, X17} {
+			for _, lea := range []bool{false, true} {
+				f := &fn{a: &a64.Asm{}}
+				if lea {
+					f.leaDisp(dst, SP, disp, true)
+				} else {
+					f.addDisp(dst, SP, disp, true)
+				}
+				var want a64.Asm
+				want.LeaSP(dst, disp)
+				if !bytes.Equal(f.a.B, want.B) {
+					t.Errorf("dst=%d disp=%#x lea=%t: code %x, want SP address %x", dst, disp, lea, f.a.B, want.B)
+				}
+			}
+		}
+	}
+}
