@@ -58,10 +58,10 @@ func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
 		covered := false
 		for i := 0; i < len(targets); {
 			switch {
-			case pathContains(targets[i], candidate):
+			case removalCovers(targets[i], candidate):
 				covered = true
 				i = len(targets)
-			case pathContains(candidate, targets[i]):
+			case removalCovers(candidate, targets[i]):
 				targets = append(targets[:i], targets[i+1:]...)
 			default:
 				i++
@@ -281,6 +281,19 @@ func isInstallerPathCommand(line string) bool {
 	return strings.HasPrefix(line, "export PATH=") ||
 		strings.HasPrefix(line, "fish_add_path --path ") ||
 		strings.HasPrefix(line, "$env.PATH = ($env.PATH | prepend ")
+}
+
+func removalCovers(parent, child string) bool {
+	if filepath.Clean(parent) == filepath.Clean(child) {
+		return true
+	}
+	// RemoveAll removes a symlink entry, not its resolved destination.
+	for _, path := range [...]string{parent, child} {
+		if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return false
+		}
+	}
+	return pathContains(parent, child)
 }
 
 func pathContains(parent, child string) bool {

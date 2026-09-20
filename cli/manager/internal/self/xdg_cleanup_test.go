@@ -108,3 +108,44 @@ func TestFishCompletionInstallCleanupPath(t *testing.T) {
 		})
 	}
 }
+
+func TestFullUninstallRemovesLegacySymlinkAndXDGData(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	t.Setenv("WAGO_HOME", "")
+	t.Setenv("WAGO_SRC_DIR", "")
+	for _, key := range []string{"XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"} {
+		t.Setenv(key, filepath.Join(home, key))
+	}
+	dirs := wagopaths.DirsFor("test")
+	if err := os.MkdirAll(dirs.Data, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dirs.Data, "managed-data"), []byte("data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(home, ".wago")
+	if err := os.Symlink(dirs.Data, legacy); err != nil {
+		t.Fatal(err)
+	}
+	targets := Targets(dirs, filepath.Join(home, "bin", "wago"), Full)
+	if err := RemoveManagedPath(legacy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dirs.Data); err != nil {
+		t.Fatalf("removing the symlink changed its destination: %v", err)
+	}
+	for _, target := range targets {
+		if !pathContains(home, target) {
+			t.Fatalf("test target is outside the temporary home: %s", target)
+		}
+		if err := removeManagedPathKeepingLock(target, filepath.Join(home, "uninstall.lock")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{legacy, dirs.Data} {
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			t.Errorf("cleanup left %s: %v; targets=%q", path, err, targets)
+		}
+	}
+}
