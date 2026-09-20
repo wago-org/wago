@@ -102,7 +102,18 @@ func TestExplicitCoreOverridesStoredFeatures(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				want := enabled
+				if core == "" {
+					if selected, ok := selection.Features["gc"]; !ok || selected != enabled {
+						t.Fatalf("stored GC setting was not retained: %v", selection.Features)
+					}
+				} else if len(selection.Features) != 0 {
+					t.Fatalf("explicit Core profile retained stored overrides: %v", selection.Features)
+				}
+				feature, ok := wago.FeatureInfoByName("gc")
+				if !ok {
+					t.Fatal("GC feature is missing from the catalog")
+				}
+				want := enabled && feature.Available
 				if core != "" {
 					want = core == "3"
 				}
