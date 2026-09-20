@@ -2004,6 +2004,15 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	allTypes := f.logicalTypes(allRoots)
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
+	// Argument spills must stay above slots written by flushBelow.
+	oldSpillFloor := f.spillFloor
+	belowSlots := 0
+	for _, typ := range belowTypes {
+		belowSlots += typ.stackSlots()
+	}
+	if belowSlots > f.spillFloor {
+		f.spillFloor = belowSlots
+	}
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
@@ -2038,9 +2047,16 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 			target := fpArgRegs[fp]
 			if root.isDeferred() || (root.elemKind() == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
 				reg := f.materializeF(root)
-				f.fpinned = f.fpinned.add(reg)
-				fpMoves = append(fpMoves, regMove{dst: target, src: reg})
-				f.stats.peep("mixed-call-reg-arg")
+				// Keep one V register for later arguments and the below-call flush.
+				// Reload overflow arguments after the parallel register moves.
+				if uint32(f.blockedFRegs(maskOf(reg))) == ^uint32(0) {
+					f.spillF(root)
+					deferred = append(deferred, deferredMixedArg{target: target, root: root, float: true})
+				} else {
+					f.fpinned = f.fpinned.add(reg)
+					fpMoves = append(fpMoves, regMove{dst: target, src: reg})
+					f.stats.peep("mixed-call-reg-arg")
+				}
 			} else {
 				deferred = append(deferred, deferredMixedArg{target: target, root: root, float: true})
 			}
@@ -2139,6 +2155,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		}
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
+	f.spillFloor = oldSpillFloor
 
 	var returnOffset uint32
 	if localIdx >= 0 {

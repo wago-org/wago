@@ -71,10 +71,14 @@ func (f *fn) fconstMask() regMask {
 	return m
 }
 
+func (f *fn) blockedFRegs(avoid regMask) regMask {
+	return avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
+}
+
 // allocFReg returns a free V register, spilling the deepest float-resident stack
 // value if none is free.
 func (f *fn) allocFReg(avoid regMask) Reg {
-	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
+	block := f.blockedFRegs(avoid)
 	for _, r := range fpAllocRegs {
 		if f.fregUser[r] == nil && !block.has(r) {
 			return r
