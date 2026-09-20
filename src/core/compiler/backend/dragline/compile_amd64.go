@@ -6570,7 +6570,6 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 	}
 	hasGeneralCall := false
 	generalCallCount := uint32(0)
-	callsMayGrow := false
 	hasNonCallHelper := false
 	hasCheckedMemoryAccess := false
 	hasMemoryGrow := false
@@ -6592,12 +6591,6 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 			hasGeneralCall = true
 			if instr.Kind == wasm.InstrCall || instr.Kind == wasm.InstrCallIndirect {
 				generalCallCount++
-				if instr.Kind == wasm.InstrCallIndirect || instr.U32() < sf.ImportedFuncs {
-					callsMayGrow = true
-				} else {
-					callee := int(instr.U32() - sf.ImportedFuncs)
-					callsMayGrow = callsMayGrow || callee >= len(contracts) || contracts[callee].MayGrow
-				}
 			}
 			if instr.Kind != wasm.InstrCall && instr.Kind != wasm.InstrCallIndirect {
 				hasNonCallHelper = true
@@ -6620,7 +6613,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 		hasCheckedMemoryAccess = hasCheckedMemoryAccess || memoryAccess && !plan.ElidesBoundsCheck(uint32(instrIndex))
 		hasMemoryGrow = hasMemoryGrow || instr.Kind == wasm.InstrMemoryGrow
 	}
-	cacheMemorySize := hasCheckedMemoryAccess && !hasMemoryGrow && !callsMayGrow
+	cacheMemorySize := hasCheckedMemoryAccess && !hasMemoryGrow && !hasGeneralCall
 	registerLocals := !sf.HasV128 && !hasNonCallHelper && len(sf.Params) <= 4 && gpLocals <= len(amd64StackLocalRegisters) && fpLocals <= 8
 	writeThroughPinnedLocals := hasGeneralCall && !registerLocals
 	if registerLocals {
@@ -9211,9 +9204,6 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, avx512vl bool,
 				err = emitAMD64StackCall(&a, sf, instr, &stackTypes, stackOff, &callRelocs, fn.Index, metadata)
 				if err == nil && instr.Inline() == wasm.InstrInvalid {
 					restorePinnedLocals(gprClobbers, fprClobbers)
-					if cacheMemorySize {
-						a.Load64(amd64.RBP, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
-					}
 				}
 			} else {
 				err = emitAMD64StackInteger(&a, instr.Kind, &stackTypes, scalarOperand, cacheScalar, discardScalar, fn.Index, instr.Offset, metadata)
