@@ -67,7 +67,7 @@ func instantiateDynamicFuncrefImportPair(t testing.TB, consumerFilename string) 
 	if err != nil {
 		t.Fatalf("export dynamic funcref provider: %v", err)
 	}
-	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		t.Fatalf("instantiate %s: %v", consumerFilename, err)
 	}
@@ -172,7 +172,7 @@ func TestGCStructConstructorAcceptsImportedFuncrefFromTable(t *testing.T) {
 	}
 	consumer, err := instantiateCore(consumerCode, InstantiateOptions{
 		store:   store,
-		Imports: Imports{"env.f": f},
+		Imports: testImports("env.f", f),
 		GC:      GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true},
 	})
 	if err != nil {
@@ -203,7 +203,7 @@ func TestDynamicIndexedFunctionRefTestUsesBareProviderActualType(t *testing.T) {
 	}
 	consumerCompiled := compileDynamicFuncrefFixture(t, "dynamic_funcref_import_proxy_consumer.wasm")
 	defer consumerCompiled.Close()
-	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestDynamicIndexedFunctionRefTestClosureDispatch(t *testing.T) {
 				in.Close()
 				t.Fatalf("%s closure dispatch = %v, %v; want [%d]", tc.name, got, callErr, tc.want)
 			}
-			prepared, prepareErr := in.PrepareFunction(tc.name)
+			prepared, prepareErr := in.WasmFunc(tc.name)
 			if prepareErr != nil {
 				in.Close()
 				t.Fatal(prepareErr)
@@ -307,14 +307,14 @@ func TestDynamicIndexedFunctionRefTestClosureDispatch(t *testing.T) {
 			get  string
 			want uint64
 		}{{get: "get_child", want: 1}, {get: "get_unrelated", want: 0}} {
-			foreign, callErr := producer.Call(context.Background(), tc.get)
+			foreign, callErr := producer.InvokeValues(context.Background(), tc.get)
 			if callErr != nil || len(foreign) != 1 || foreign[0].Type() != ValFuncRef {
 				consumer.Close()
 				producer.Close()
 				rt.Close()
 				t.Fatalf("producer %s = %v, %v; want one funcref", tc.get, foreign, callErr)
 			}
-			got, callErr := consumer.Call(context.Background(), "foreign_is_root", foreign[0])
+			got, callErr := consumer.InvokeValues(context.Background(), "foreign_is_root", foreign[0])
 			if callErr != nil || len(got) != 1 || got[0].Bits() != tc.want {
 				consumer.Close()
 				producer.Close()

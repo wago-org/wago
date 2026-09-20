@@ -221,7 +221,7 @@ func compileStagedExceptionHandling(t testing.TB, data []byte) *Compiled {
 
 func compileStagedExceptionHandlingFeatures(t testing.TB, data []byte, exceptionReferences bool) *Compiled {
 	t.Helper()
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.ExceptionHandling = true
 	features.ExceptionReferences = exceptionReferences
@@ -235,10 +235,13 @@ func compileStagedExceptionHandlingFeatures(t testing.TB, data []byte, exception
 
 func TestStagedExceptionHandlingLocalScalarExecution(t *testing.T) {
 	data := stagedExceptionHandlingModule()
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "exception-handling") {
-		t.Fatalf("public compile = %v, want closed exception-handling gate", err)
+	if _, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2), data); err == nil || !strings.Contains(err.Error(), "exception-handling") {
+		t.Fatalf("Core 2 compile = %v, want closed exception-handling gate", err)
 	}
-	c := compileStagedExceptionHandling(t, data)
+	c, err := Compile(NewRuntimeConfig(), data)
+	if err != nil {
+		t.Fatalf("default Core 3 compile: %v", err)
+	}
 	defer c.Close()
 	if !c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) {
 		t.Fatal("compiled module lost exception-handling required feature")
@@ -377,7 +380,7 @@ func TestStagedExceptionHandlingRootedReferenceNestedCallAndNullTrap(t *testing.
 }
 
 func compileStagedExceptionHandlingFeaturesForTest(data []byte, exceptionReferences bool) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.ExceptionHandling = true
 	features.ExceptionReferences = exceptionReferences

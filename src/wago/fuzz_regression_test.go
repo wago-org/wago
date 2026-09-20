@@ -171,7 +171,7 @@ func TestFuzzRegressionCorpus(t *testing.T) {
 			if err != nil {
 				t.Fatalf("compile %d: %v", i, err)
 			}
-			in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
+			in, err := Instantiate(c, InstantiateOptions{Imports: testImports()})
 			if err != nil {
 				_ = c.Close()
 				t.Fatalf("instantiate %d: %v", i, err)
@@ -453,7 +453,7 @@ func instantiateFuzzFixture(t *testing.T, id string) *Instance {
 		t.Fatalf("compile fuzz fixture %s: %v", id, err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("instantiate fuzz fixture %s: %v", id, err)
 	}
@@ -468,7 +468,7 @@ func assertFuzzInstantiateError(t *testing.T, id, contains string) {
 		t.Fatalf("compile fuzz fixture %s: %v", id, err)
 	}
 	defer c.Close()
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports()})
 	if in != nil {
 		_ = in.Close()
 	}
@@ -594,7 +594,7 @@ func testFuzzRegression888(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile 888: %v", err)
 	}
-	consumer, err := rt.Instantiate(context.Background(), consumerModule, WithImports(Imports{"host.": global, "host.s": memory}))
+	consumer, err := rt.Instantiate(context.Background(), consumerModule, WithImports(testImports("host.", global, "host.s", memory)))
 	if err != nil {
 		t.Fatalf("instantiate 888 with imported funcref global: %v", err)
 	}
@@ -631,7 +631,7 @@ func testExtendedConstElementFixture(t *testing.T, id string) {
 		t.Fatalf("codec lost global.get element initializer for %s", id)
 	}
 
-	imports := Imports{}
+	imports := testImports()
 	for _, imp := range mod.Imports() {
 		if imp.Kind != ImportGlobal {
 			continue
@@ -649,7 +649,8 @@ func testExtendedConstElementFixture(t *testing.T, id string) {
 			t.Fatalf("create %s global for %s: %v", imp.Type, id, err)
 		}
 		defer global.Close()
-		imports[imp.Key()] = global
+		module, name := splitImportKey(imp.Key())
+		imports.Global(module, name, global)
 	}
 	in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {

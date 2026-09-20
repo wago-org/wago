@@ -81,7 +81,7 @@ func TestWideCrossInstanceIndirectCallScratch(t *testing.T) {
 				(global $ctx (export "ctx") (mut i64) (i64.const %d))
 				(func $target (type $targetType) %s %s)
 				(elem (i32.const 0) func $target))`, tc.typeParams, tc.typeResults, targetCtx, tc.typeParams+" "+tc.typeResults, tc.targetBody))
-			producer, err := rt.Instantiate(context.Background(), producerCode, WithImports(Imports{"env.table": table}))
+			producer, err := rt.Instantiate(context.Background(), producerCode, WithImports(testImports("env.table", table)))
 			if err != nil {
 				t.Fatalf("instantiate producer: %v", err)
 			}
@@ -97,7 +97,7 @@ func TestWideCrossInstanceIndirectCallScratch(t *testing.T) {
 					(i32.const 0)
 					(call_indirect (type $targetType))
 					%s))`, tc.typeParams, tc.typeResults, callerCtx, tc.callerResult, wideIndirectConstants(), tc.callArgs, tc.callerAfter))
-			caller, err := rt.Instantiate(context.Background(), callerCode, WithImports(Imports{"env.table": table}))
+			caller, err := rt.Instantiate(context.Background(), callerCode, WithImports(testImports("env.table", table)))
 			if err != nil {
 				t.Fatalf("instantiate caller: %v", err)
 			}

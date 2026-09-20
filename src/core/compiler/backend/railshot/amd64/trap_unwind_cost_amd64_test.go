@@ -102,11 +102,13 @@ func TestSizeSharesCompleteTrapBodyAMD64(t *testing.T) {
 		a := &amd64.Asm{}
 		sc := &scratch{}
 		stats := &CodegenStats{}
+		policy := currentCodegenPolicy()
+		policy.CompactNative = true
 		f := fn{
 			a:      a,
 			sc:     sc,
 			stats:  stats,
-			policy: CodegenPolicy{CompactNative: true},
+			policy: policy,
 		}
 		for code := uint32(1); code <= 3; code++ {
 			branch := a.JccPlaceholder(condNE)

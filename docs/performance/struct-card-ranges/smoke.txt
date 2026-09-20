@@ -1,0 +1,22 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCStructCardCollectMinor/moving=false/ranges=15/mixed=false-16                        1            212803 ns/op             920 B/op         11 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=false/ranges=15/mixed=true-16                         1            157889 ns/op          141104 B/op         14 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=false/ranges=16/mixed=false-16                        1             62067 ns/op             920 B/op         11 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=false/ranges=16/mixed=true-16                         1            100290 ns/op          141104 B/op         14 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=false/ranges=32/mixed=false-16                        1            122862 ns/op            1840 B/op         13 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=false/ranges=32/mixed=true-16                         1             86363 ns/op          142912 B/op         16 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=false/ranges=33/mixed=false-16                        1            371884 ns/op            3632 B/op         15 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=false/ranges=33/mixed=true-16                         1            390550 ns/op          142912 B/op         16 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=true/ranges=15/mixed=false-16                         1            131319 ns/op             920 B/op         11 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=true/ranges=15/mixed=true-16                          1            200961 ns/op            1840 B/op         13 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=true/ranges=16/mixed=false-16                         1             93396 ns/op             920 B/op         11 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=true/ranges=16/mixed=true-16                          1             95681 ns/op            1840 B/op         13 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=true/ranges=32/mixed=false-16                         1             81174 ns/op            1840 B/op         13 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=true/ranges=32/mixed=true-16                          1             67469 ns/op            3648 B/op         15 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=true/ranges=33/mixed=false-16                         1            378246 ns/op            3632 B/op         15 allocs/op
+BenchmarkGCStructCardCollectMinor/moving=true/ranges=33/mixed=true-16                          1            378477 ns/op            3648 B/op         15 allocs/op
+PASS
+ok      github.com/wago-org/wago/src/core/runtime/gc/native     0.014s

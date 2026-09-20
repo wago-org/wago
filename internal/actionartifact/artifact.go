@@ -84,7 +84,7 @@ func DownloadExecutable(ctx context.Context, config Config, tag, commit, target,
 		return err
 	}
 	if strings.TrimSpace(config.CatalogURL) == "" {
-		return errors.New("Actions artifact catalog URL is empty")
+		return errors.New("actions artifact catalog URL is empty")
 	}
 	short, err := canaryShortSHA(tag)
 	if err != nil {
@@ -160,7 +160,7 @@ func downloadSelected(ctx context.Context, config Config, selected artifact, ass
 
 func githubCLIDownload(ctx context.Context, repository string, runID int64, name, directory string) error {
 	if runID <= 0 {
-		return errors.New("Actions artifact does not identify its workflow run")
+		return errors.New("actions artifact does not identify its workflow run")
 	}
 	gh, err := exec.LookPath("gh")
 	if err != nil {
@@ -207,7 +207,7 @@ func list(ctx context.Context, config Config, name string) ([]artifact, error) {
 		return nil, err
 	}
 	if strings.TrimSpace(config.CatalogURL) == "" {
-		return nil, errors.New("Actions artifact catalog URL is empty")
+		return nil, errors.New("actions artifact catalog URL is empty")
 	}
 	address, err := url.Parse(config.CatalogURL)
 	if err != nil {
@@ -236,7 +236,7 @@ func list(ctx context.Context, config Config, name string) ([]artifact, error) {
 		return nil, fmt.Errorf("decode Actions artifact catalog: %w", err)
 	}
 	if len(items.Artifacts) > 100 {
-		return nil, errors.New("Actions artifact catalog returned too many artifacts")
+		return nil, errors.New("actions artifact catalog returned too many artifacts")
 	}
 	sort.SliceStable(items.Artifacts, func(i, j int) bool {
 		if items.Artifacts[i].CreatedAt.Equal(items.Artifacts[j].CreatedAt) {
@@ -302,18 +302,18 @@ func extractExecutable(archivePath, asset, destination string) error {
 		switch file.Name {
 		case asset:
 			if payload != nil {
-				return fmt.Errorf("Actions artifact contains duplicate %s", asset)
+				return fmt.Errorf("actions artifact contains duplicate %s", asset)
 			}
 			payload = file
 		case asset + ".sha256":
 			if checksum != nil {
-				return fmt.Errorf("Actions artifact contains duplicate %s.sha256", asset)
+				return fmt.Errorf("actions artifact contains duplicate %s.sha256", asset)
 			}
 			checksum = file
 		}
 	}
 	if payload == nil || checksum == nil {
-		return fmt.Errorf("Actions artifact does not contain %s and its checksum", asset)
+		return fmt.Errorf("actions artifact does not contain %s and its checksum", asset)
 	}
 	if payload.UncompressedSize64 > uint64(archiveLimit) {
 		return &httpclient.BodyTooLargeError{URL: filepath.Base(archivePath) + ":" + asset, Limit: archiveLimit, ContentLength: int64(payload.UncompressedSize64)}
@@ -403,7 +403,7 @@ func installDirectoryExecutable(directory, asset, destination string) error {
 func readChecksum(file *zip.File, asset string) ([sha256.Size]byte, error) {
 	var digest [sha256.Size]byte
 	if file.UncompressedSize64 > uint64(checksumLimit) {
-		return digest, errors.New("Actions artifact checksum exceeds size limit")
+		return digest, errors.New("actions artifact checksum exceeds size limit")
 	}
 	reader, err := file.Open()
 	if err != nil {
@@ -421,20 +421,20 @@ func parseChecksum(data []byte, asset string) ([sha256.Size]byte, error) {
 	var digest [sha256.Size]byte
 	line := strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r")
 	if line == "" || strings.ContainsAny(line, "\r\n") {
-		return digest, errors.New("Actions artifact checksum is malformed")
+		return digest, errors.New("actions artifact checksum is malformed")
 	}
 	separator := strings.IndexAny(line, " \t")
 	if separator != 64 {
-		return digest, errors.New("Actions artifact checksum is malformed")
+		return digest, errors.New("actions artifact checksum is malformed")
 	}
 	name := strings.TrimLeft(line[separator:], " \t")
 	name = strings.TrimPrefix(name, "*")
 	if name != asset && name != "./"+asset {
-		return digest, errors.New("Actions artifact checksum names the wrong file")
+		return digest, errors.New("actions artifact checksum names the wrong file")
 	}
 	decoded, err := hex.DecodeString(line[:separator])
 	if err != nil || len(decoded) != sha256.Size {
-		return digest, errors.New("Actions artifact checksum is malformed")
+		return digest, errors.New("actions artifact checksum is malformed")
 	}
 	copy(digest[:], decoded)
 	return digest, nil

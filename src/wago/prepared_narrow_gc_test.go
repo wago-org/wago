@@ -23,7 +23,7 @@ func TestPreparedNumericGCEntryKeepsDomainLease(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			fn, err := in.PrepareFunction("allocate")
+			fn, err := in.WasmFunc("allocate")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -36,7 +36,7 @@ func TestPreparedNumericGCEntryKeepsDomainLease(t *testing.T) {
 			lease := in.lockGCInvocation(newInvocationID())
 			done := make(chan error, 1)
 			go func() {
-				out, err := fn.Invoke0()
+				out, err := fn.Invoke()
 				if err == nil && (len(out) != 1 || out[0] != 7) {
 					err = fmt.Errorf("result = %v", out)
 				}

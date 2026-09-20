@@ -5,6 +5,8 @@ package arm64
 import (
 	"fmt"
 	"math/bits"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // Compare→branch fusion: when a relational compare (or eqz) feeds directly into
@@ -299,7 +301,7 @@ func (f *fn) condenseSimpleEqzOperand(node *elem) (reg Reg, owned, wide, ok bool
 // brIfSimpleEqz selects CBZ directly for an empty branch edge. The branch has
 // exactly the same integer-width test and target as `<integer>.eqz; br_if`, and
 // convergence/flush work remains before the test just as in brIfFused.
-func (f *fn) brIfSimpleEqz(top *elem, labelIdx uint32) (bool, error) {
+func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, error) {
 	if !f.opt(optZeroBranch) || top == nil || top.deferredOp() != opEqz {
 		return false, nil
 	}
@@ -311,7 +313,27 @@ func (f *fn) brIfSimpleEqz(top *elem, labelIdx uint32) (bool, error) {
 	if fr.branchArity() != 0 || (fr.kind != cfLoop && fr.kind != cfBlock && fr.kind != cfIf) {
 		return false, nil
 	}
+	loopHeader := false
+	counter := -1
+	if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && labelIdx == 1 && len(f.ctrl) >= 2 && fi == len(f.ctrl)-2 {
+		loop := &f.ctrl[len(f.ctrl)-1]
+		counter, loopHeader = localAddressKey(f.s.arg0(top))
+		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&
+			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == loop.controlSite
+	}
+	mark := f.a.Len()
+	canDefer := f.callFreeLoopExit(fi)
+	var saved localStateSnapshot
+	if canDefer {
+		saved, canDefer = f.snapshotLocalStates()
+	}
 	f.convergeBranchLocals(fr)
+	var coldEdgeCode []byte
+	if canDefer && f.a.Len() != mark {
+		coldEdgeCode = append(coldEdgeCode, f.a.B[mark:]...)
+		f.a.B = f.a.B[:mark]
+		f.restoreLocalStates(saved)
+	}
 	f.flushBelow(top)
 	reg, owned, wide, ok := f.condenseSimpleEqzOperand(top)
 	if !ok {
@@ -326,7 +348,11 @@ func (f *fn) brIfSimpleEqz(top *elem, labelIdx uint32) (bool, error) {
 	if owned {
 		f.release(reg)
 	}
-	if fr.kind == cfLoop {
+	if len(coldEdgeCode) != 0 {
+		f.appendFrameColdEdge(fr, coldEdge{site: site, code: coldEdgeCode})
+		fr.set(ctrlEndReachable, true)
+		f.stats.peep("callfree-loop-exit-cold")
+	} else if fr.kind == cfLoop {
 		if !f.a.PatchBranch19(site, fr.controlSite) {
 			return false, fmt.Errorf("arm64: direct eqz loop branch out of range")
 		}
@@ -335,6 +361,14 @@ func (f *fn) brIfSimpleEqz(top *elem, labelIdx uint32) (bool, error) {
 		fr.set(ctrlEndReachable, true)
 	}
 	f.stats.peep("zero-branch")
+	if loopHeader {
+		loop := &f.ctrl[len(f.ctrl)-1]
+		_, isFloat, pinned := f.pinReg(counter)
+		if pinned && !isFloat {
+			f.tryHoistLinearSumBounds(r, counter)
+			f.ensureCtrlMerge(loop).setCountedLoop(counter)
+		}
+	}
 	// Keep the next function's entry address unchanged. The removed CMP was hot;
 	// this replacement word is emitted after every reachable return and trap tail.
 	f.phasePadWords++
@@ -355,7 +389,19 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
+	reconcileMark := f.a.Len()
+	canDefer := f.callFreeLoopExit(fi)
+	var saved localStateSnapshot
+	if canDefer {
+		saved, canDefer = f.snapshotLocalStates()
+	}
 	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
+	var coldEdgeCode []byte
+	if canDefer && f.a.Len() != reconcileMark {
+		coldEdgeCode = append(coldEdgeCode, f.a.B[reconcileMark:]...)
+		f.a.B = f.a.B[:reconcileMark]
+		f.restoreLocalStates(saved)
+	}
 	k := f.flushBelow(top)
 	cc := f.condenseToFlags(top)
 	if setDst != regNone {
@@ -371,6 +417,15 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	} else {
 		f.moveBranchValues(fr, k, a)
 	}
+	if len(coldEdgeCode) != 0 {
+		coldEdgeCode = append(coldEdgeCode, f.a.B[mark:]...)
+		f.a.B = f.a.B[:mark]
+		site := f.a.Bcond(cc)
+		f.appendFrameColdEdge(fr, coldEdge{site: site, code: coldEdgeCode})
+		fr.set(ctrlEndReachable, true)
+		f.stats.peep("callfree-loop-exit-cold")
+		return nil
+	}
 	if f.a.Len() == mark {
 		// Empty edge: branch straight to the target when the compare holds — one
 		// instruction, no skip branch, no padding NOP in the loop body.
@@ -379,7 +434,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 		}
 		over := f.a.Bcond(invertCond(cc))
 		f.branchJump(fr)
-		f.a.PatchBranch19(over, f.a.Len())
+		f.patchBranch19(over, f.a.Len())
 		return nil
 	}
 	if f.branchHintUnlikely && fr.kind != cfLoop {
@@ -399,6 +454,6 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	over := f.a.Bcond(invertCond(cc)) // fall through when the compare is false
 	f.a.B = append(f.a.B, f.edgeScratch...)
 	f.branchJump(fr)
-	f.a.PatchBranch19(over, f.a.Len())
+	f.patchBranch19(over, f.a.Len())
 	return nil
 }

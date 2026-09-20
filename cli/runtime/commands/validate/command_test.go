@@ -104,3 +104,33 @@ func TestParallelFlagForms(t *testing.T) {
 		t.Fatalf("terminator did not preserve -p8: parallel=%q args=%v", ctx.Str("parallel"), ctx.Args)
 	}
 }
+
+func TestModuleBytesCore3(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		sections []byte
+		invalid  bool
+	}{
+		{name: "i31 global", sections: []byte{6, 8, 1, 0x6c, 0, 0x41, 0, 0xfb, 0x1c, 0x0b}},
+		{name: "prior immutable global", sections: []byte{6, 11, 2, 0x7f, 0, 0x41, 1, 0x0b, 0x7f, 0, 0x23, 0, 0x0b}},
+		{name: "multiple memories", sections: []byte{5, 5, 2, 0, 1, 0, 1}},
+		{name: "compact mixed imports", sections: []byte{2, 13, 1, 3, 'e', 'n', 'v', 0, 0x7f, 1, 1, 'm', 2, 0, 1}},
+		{name: "compact same-kind imports", sections: []byte{2, 13, 1, 3, 'e', 'n', 'v', 0, 0x7e, 2, 1, 1, 'm', 0, 1}},
+		{name: "i31 wrong operand", sections: []byte{6, 8, 1, 0x6c, 0, 0x42, 0, 0xfb, 0x1c, 0x0b}, invalid: true},
+		{name: "prior mutable global", sections: []byte{6, 11, 2, 0x7f, 1, 0x41, 1, 0x0b, 0x7f, 0, 0x23, 0, 0x0b}, invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := append([]byte{0, 'a', 's', 'm', 1, 0, 0, 0}, tc.sections...)
+			for _, workers := range []int{1, 4, 0} {
+				err := ModuleBytesWithPolicy(data, workers)
+				if tc.invalid {
+					if err == nil || !strings.Contains(err.Error(), "validate:") {
+						t.Fatalf("workers %d: expected validation error, got %v", workers, err)
+					}
+				} else if err != nil {
+					t.Fatalf("workers %d: %v", workers, err)
+				}
+			}
+		})
+	}
+}

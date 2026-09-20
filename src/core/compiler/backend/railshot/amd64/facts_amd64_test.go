@@ -154,7 +154,7 @@ func TestSignedI32LoadCarriesUpperZeroFactAMD64(t *testing.T) {
 }
 
 func TestCompareCarriesBooleanFactAMD64(t *testing.T) {
-	f := fn{s: newStack()}
+	f := fn{s: newStack(), policy: currentCodegenPolicy()}
 	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
 	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
 	f.pushBinOp(opLtU, mtI32)

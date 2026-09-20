@@ -281,6 +281,11 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 	return nil
 }
 
+// CollectsOnAllocation reports whether allocation may trigger collection.
+func (c *Collector) CollectsOnAllocation() bool {
+	return c != nil && !c.cfg.DisableCollection
+}
+
 // Profile reports the collector's immutable barrier/allocation profile.
 func (c *Collector) Profile() Profile {
 	if c == nil {

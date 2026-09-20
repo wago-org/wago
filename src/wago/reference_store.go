@@ -2,6 +2,7 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
@@ -47,7 +48,7 @@ type referenceStore struct {
 // lease together with collector leases, allowing instantiation and teardown to
 // update the list before native resume.
 type gcDomainTopology struct {
-	sync.RWMutex
+	gcTopologyGate
 	first *gcStoreDomain
 	last  *gcStoreDomain
 	n     int
@@ -67,7 +68,7 @@ type gcStoreDomain struct {
 	// and helper locks alone leave a window where another tenant can collect an
 	// as-yet-unrooted result from this shared collector. Arbitrary host callbacks
 	// suspend this lease while exact parked roots remain published.
-	invocationMu    sync.Mutex
+	invocationMu    invocationGate
 	invocationState sync.Mutex
 	invocationOwner invocationID
 	id              uint64
@@ -1024,6 +1025,19 @@ func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
 }
 
 func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
+	lease, _ := in.lockGCInvocationContext(context.Background(), owner)
+	return lease
+}
+
+func (in *Instance) lockGCInvocationContext(ctx context.Context, owner invocationID) (gcInvocationLease, error) {
+	if ctx != nil && ctx.Done() == nil {
+		ctx = nil
+	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return gcInvocationLease{}, err
+		}
+	}
 	if owner == 0 {
 		owner = newInvocationID()
 	}
@@ -1036,14 +1050,16 @@ func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 		if topology == nil {
 			panic("wago: dynamic Runtime GC invocation has no topology")
 		}
-		topology.RLock()
+		if err := topology.lockContext(ctx, false); err != nil {
+			return gcInvocationLease{}, err
+		}
 	}
 	domains := in.gcInvocationDomains()
 	if domains.len() == 0 {
 		if dynamic {
-			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}
+			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}, nil
 		}
-		return gcInvocationLease{}
+		return gcInvocationLease{}, nil
 	}
 	// A native cross-instance call reuses the public root's invocation identity.
 	// The root pre-acquires the transitive, globally ordered domain set, so a
@@ -1060,11 +1076,18 @@ func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 		if dynamic {
 			topology.RUnlock()
 		}
-		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner}
+		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner}, nil
 	}
-	domains.lock()
+	if ctx == nil {
+		domains.lock()
+	} else if err := domains.lockContext(ctx); err != nil {
+		if dynamic {
+			topology.RUnlock()
+		}
+		return gcInvocationLease{}, err
+	}
 	domains.claim(owner)
-	return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, dynamic: dynamic}
+	return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, dynamic: dynamic}, nil
 }
 
 func (l gcInvocationLease) unlock() {
@@ -1246,18 +1269,30 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 	}
 	s.mu.Lock()
 	topology := s.gcDomains
-	s.mu.Unlock()
 	if topology == nil {
+		s.mu.Unlock()
 		return
 	}
+	// A failed construction can drop its claim without waiting for live readers.
+	for domain := topology.first; domain != nil; domain = domain.next {
+		if domain.collector != collector {
+			continue
+		}
+		if domain.claims > 0 {
+			domain.claims--
+		}
+		if domain.refs != 0 || domain.claims != 0 {
+			s.mu.Unlock()
+			return
+		}
+		break
+	}
+	s.mu.Unlock()
 	topology.Lock()
 	defer topology.Unlock()
 	s.mu.Lock()
 	for domain := topology.first; domain != nil; domain = domain.next {
 		if domain.collector == collector {
-			if domain.claims > 0 {
-				domain.claims--
-			}
 			if domain.refs != 0 || domain.claims != 0 {
 				s.mu.Unlock()
 				return
@@ -1291,7 +1326,7 @@ func equalGCConfigs(a, b gc.Config) bool {
 	return a == b
 }
 
-func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, preferred *gc.Collector) (*gc.Collector, *gcTypeMapping, error) {
+func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Config, c *Compiled, preferred *gc.Collector) (*gc.Collector, *gcTypeMapping, error) {
 	if !gc.TelemetryAvailable() {
 		config.Telemetry = nil
 	}
@@ -1299,7 +1334,9 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 		return nil, nil, fmt.Errorf("wago: shared WasmGC ownership requires an explicit Runtime")
 	}
 	topology := s.ensureGCTopology()
-	topology.Lock()
+	if err := topology.lockContext(ctx, true); err != nil {
+		return nil, nil, err
+	}
 	topologyLocked := true
 	defer func() {
 		if topologyLocked {
@@ -1385,7 +1422,10 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 	// Native subtype readers hold invocationMu but do not enter Go or selected.mu.
 	// Quiesce the whole domain before replacing and republishing the interval
 	// backing, then follow the ordinary invocationMu -> mu lock order.
-	selected.invocationMu.Lock()
+	if err := selected.invocationMu.lockContext(ctx); err != nil {
+		s.releaseUnclaimedGCCollector(selected.collector)
+		return nil, nil, err
+	}
 	selected.mu.Lock()
 	mapping, types, reps, err := gcCanonicalTypePlan(c, selected.typeReps, selected.types, preferred != nil)
 	if err == nil && len(types) > len(selected.types) {
@@ -1408,14 +1448,14 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	dynamicInvocationDomains := !s.private && in != nil && compiledHasDynamicFuncrefReachability(in.c)
 	importsPrivateInvocationDomain := false
 	if in != nil && in.c != nil {
-		for _, key := range in.c.Imports {
-			export, ok := in.imports[key].(*InstanceExport)
+		for i, displayKey := range in.c.Imports {
+			export, ok := in.imports[in.c.functionImportBindingKey(i)].(*InstanceExport)
 			if !ok || export == nil || export.inst == nil {
 				continue
 			}
 			if export.inst.executionFlags.Load()&executionFlagDynamicGCDomain != 0 {
 				if export.inst.refStore != s {
-					return fmt.Errorf("wago: dynamic funcref import %q requires the same Runtime", key)
+					return fmt.Errorf("wago: dynamic funcref import %q requires the same Runtime", displayKey)
 				}
 				dynamicInvocationDomains = true
 				continue
@@ -2598,7 +2638,7 @@ func (in *Instance) attachedFunctionIndexExactType(index int) (ValueTypeDescript
 	if index >= len(in.c.Imports) {
 		return ValueTypeDescriptor{}, nil, false
 	}
-	if export, ok := in.imports[in.c.Imports[index]].(*InstanceExport); ok && export != nil && export.inst != nil && export.inst.c != nil && export.localIdx >= 0 {
+	if export, ok := in.imports[in.c.functionImportBindingKey(index)].(*InstanceExport); ok && export != nil && export.inst != nil && export.inst.c != nil && export.localIdx >= 0 {
 		providerIndex := export.inst.c.NumImports + export.localIdx
 		exact, err := export.inst.c.functionRefExactType(uint32(providerIndex))
 		return exact, export.inst.c.Types, err == nil
@@ -2840,7 +2880,7 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 		if fidx >= len(source.c.Imports) || fidx >= len(source.c.importFuncSigs) {
 			return nil, 0, false
 		}
-		key := source.c.Imports[fidx]
+		key := source.c.functionImportBindingKey(fidx)
 		off := (fidx + 1) * coreruntime.FuncRefDescBytes
 		refSlot := binary.LittleEndian.Uint64(source.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])
 		if ex, ok := source.imports[key].(*InstanceExport); ok {
@@ -2927,7 +2967,7 @@ func (in *Instance) funcrefFunctionIdentity(descriptor uint64) (funcrefIdentity,
 	if fidx >= len(in.c.Imports) {
 		return funcrefIdentity{}, false
 	}
-	export, ok := in.imports[in.c.Imports[fidx]].(*InstanceExport)
+	export, ok := in.imports[in.c.functionImportBindingKey(fidx)].(*InstanceExport)
 	if !ok || export == nil || export.inst == nil || export.localIdx < 0 {
 		return funcrefIdentity{}, false
 	}
@@ -2965,7 +3005,7 @@ func (in *Instance) hostFuncRefForDescriptor(descriptor uint64) *HostFuncRef {
 	if !ok || funcIndex < 0 || funcIndex >= in.c.NumImports || funcIndex >= len(in.c.Imports) {
 		return nil
 	}
-	owner, _ := in.imports[in.c.Imports[funcIndex]].(*HostFuncRef)
+	owner, _ := in.imports[in.c.functionImportBindingKey(funcIndex)].(*HostFuncRef)
 	return owner
 }
 

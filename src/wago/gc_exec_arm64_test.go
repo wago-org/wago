@@ -899,7 +899,7 @@ func TestGCArm64InlinedCallKeepsLaterHostRootMapExact(t *testing.T) {
 	if roots := compiled.genericGCFrameRoots(); roots == nil || len(roots.callsites) == 0 {
 		t.Fatalf("inlined-call host root map = %+v", roots)
 	}
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.gc": HostFunc(func(module HostModule, _, _ []uint64) {
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.gc", slotHostFunc(func(module HostModule, _, _ []uint64) {
 		collector, ok := module.(GCHostModule)
 		if !ok {
 			panic("host module has no collector")
@@ -907,7 +907,7 @@ func TestGCArm64InlinedCallKeepsLaterHostRootMapExact(t *testing.T) {
 		if err := collector.CollectGC(); err != nil {
 			panic(err)
 		}
-	})}})
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -938,14 +938,14 @@ func TestGCArm64HostReentryRoots(t *testing.T) {
 		} {
 			var in *Instance
 			calls := 0
-			in, err = Instantiate(candidate, InstantiateOptions{GC: profile, Imports: Imports{"env.reenter": HostFunc(func(caller HostModule, _, results []uint64) {
+			in, err = Instantiate(candidate, InstantiateOptions{GC: profile, Imports: testImports("env.reenter", slotHostFunc(func(caller HostModule, _, results []uint64) {
 				calls++
 				got, callErr := in.InvokeFromHost(context.Background(), caller, "inner")
 				if callErr != nil || !reflect.DeepEqual(got, []uint64{0}) {
 					panic(fmt.Sprintf("inner = %v, %v", got, callErr))
 				}
 				results[0] = 0
-			})}})
+			}))})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -988,7 +988,7 @@ func TestGCArm64CrossInstanceRoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: Imports{"provider.retain": export}})
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: testImports("provider.retain", export)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1052,7 +1052,7 @@ func TestGCArm64ForeignCallRefRoots(t *testing.T) {
 			store.closeRuntime()
 			t.Fatal(err)
 		}
-		consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: Imports{"provider.retain": export}})
+		consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: testImports("provider.retain", export)})
 		if err != nil {
 			provider.Close()
 			store.closeRuntime()
@@ -1119,7 +1119,7 @@ func TestGCArm64ForeignReturnCallRef(t *testing.T) {
 			store.closeRuntime()
 			t.Fatal(err)
 		}
-		consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: Imports{"provider.read": export}})
+		consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: testImports("provider.read", export)})
 		if err != nil {
 			provider.Close()
 			store.closeRuntime()

@@ -1,0 +1,31 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+                                               │ docs/performance/struct-card-ranges/fallback-recheck/baseline.txt │ docs/performance/struct-card-ranges/fallback-recheck/optimized.txt │
+                                               │                              sec/op                               │                   sec/op                     vs base               │
+GCStructCardScanControls/fields=4097/ranges=15                                                        51.36µ ±  4%                                  52.06µ ±  5%        ~ (p=0.485 n=6)
+GCStructCardScanControls/fields=4097/ranges=16                                                        54.56µ ±  3%                                  15.92µ ±  1%  -70.83% (p=0.002 n=6)
+GCStructCardScanControls/fields=4097/ranges=32                                                       171.37µ ± 25%                                  20.75µ ±  1%  -87.89% (p=0.002 n=6)
+GCStructCardScanControls/fields=4097/ranges=33                                                        192.2µ ± 42%                                  175.9µ ± 14%        ~ (p=0.394 n=6)
+geomean                                                                                               98.02µ                                        41.70µ        -57.45%
+
+                                               │ docs/performance/struct-card-ranges/fallback-recheck/baseline.txt │ docs/performance/struct-card-ranges/fallback-recheck/optimized.txt │
+                                               │                               B/op                                │                    B/op                     vs base                │
+GCStructCardScanControls/fields=4097/ranges=15                                                        0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+GCStructCardScanControls/fields=4097/ranges=16                                                        0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+GCStructCardScanControls/fields=4097/ranges=32                                                        0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+GCStructCardScanControls/fields=4097/ranges=33                                                        0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                                          ²                                               +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                               │ docs/performance/struct-card-ranges/fallback-recheck/baseline.txt │ docs/performance/struct-card-ranges/fallback-recheck/optimized.txt │
+                                               │                             allocs/op                             │                 allocs/op                   vs base                │
+GCStructCardScanControls/fields=4097/ranges=15                                                        0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+GCStructCardScanControls/fields=4097/ranges=16                                                        0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+GCStructCardScanControls/fields=4097/ranges=32                                                        0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+GCStructCardScanControls/fields=4097/ranges=33                                                        0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                                          ²                                               +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

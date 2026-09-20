@@ -31,7 +31,7 @@ func TestNullableFuncrefParamsResultsLocalsAndInstructions(t *testing.T) {
 	}
 	defer in.Close()
 
-	out, err := in.Call(context.Background(), "id", ValueFuncRef(NullFuncRef()))
+	out, err := in.InvokeValues(context.Background(), "id", ValueFuncRef(NullFuncRef()))
 	if err != nil {
 		t.Fatalf("Call id(null): %v", err)
 	}
@@ -41,7 +41,7 @@ func TestNullableFuncrefParamsResultsLocalsAndInstructions(t *testing.T) {
 
 	for _, name := range []string{"local_zero", "call_id", "block_ref"} {
 		t.Run(name, func(t *testing.T) {
-			out, err := in.Call(context.Background(), name)
+			out, err := in.InvokeValues(context.Background(), name)
 			if err != nil {
 				t.Fatalf("Call %s: %v", name, err)
 			}

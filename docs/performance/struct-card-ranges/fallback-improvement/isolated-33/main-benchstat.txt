@@ -1,0 +1,17 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+                                               │ docs/performance/struct-card-ranges/fallback-improvement/isolated-33/baseline.txt │ docs/performance/struct-card-ranges/fallback-improvement/isolated-33/optimized.txt │
+                                               │                                      sec/op                                       │                           sec/op                             vs base               │
+GCStructCardScanControls/fields=4097/ranges=33                                                                       132.40µ ± 55%                                                   73.02µ ± 5%  -44.85% (p=0.002 n=6)
+
+                                               │ docs/performance/struct-card-ranges/fallback-improvement/isolated-33/baseline.txt │ docs/performance/struct-card-ranges/fallback-improvement/isolated-33/optimized.txt │
+                                               │                                       B/op                                        │                              B/op                                vs base           │
+GCStructCardScanControls/fields=4097/ranges=33                                                                          0.000 ± 0%                                                        0.000 ± 0%  ~ (p=1.000 n=6) ¹
+¹ all samples are equal
+
+                                               │ docs/performance/struct-card-ranges/fallback-improvement/isolated-33/baseline.txt │ docs/performance/struct-card-ranges/fallback-improvement/isolated-33/optimized.txt │
+                                               │                                     allocs/op                                     │                            allocs/op                             vs base           │
+GCStructCardScanControls/fields=4097/ranges=33                                                                          0.000 ± 0%                                                        0.000 ± 0%  ~ (p=1.000 n=6) ¹
+¹ all samples are equal

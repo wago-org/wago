@@ -26,11 +26,18 @@ func sum5FloatModule(t *testing.T) *wasm.Module {
 }
 
 func sum8FloatAcrossCallModule(t *testing.T) *wasm.Module {
+	return sumFloatAcrossCallModule(t, 8)
+}
+
+func sumFloatAcrossCallModule(t *testing.T, n int) *wasm.Module {
 	f64 := wasm.F64
-	params := []wasm.ValType{f64, f64, f64, f64, f64, f64, f64, f64}
+	params := make([]wasm.ValType, n)
+	for i := range params {
+		params[i] = f64
+	}
 	body := []byte{0x00, 0x10, 0x01} // no locals; call the empty function
 	body = append(body, 0x20, 0x00, 0x20, 0x01, 0xa0)
-	for i := byte(2); i < 8; i++ {
+	for i := byte(2); i < byte(n); i++ {
 		body = append(body, 0x20, i, 0xa0)
 	}
 	body = append(body, 0x0b)
@@ -38,6 +45,24 @@ func sum8FloatAcrossCallModule(t *testing.T) *wasm.Module {
 		funcDef{params: params, results: []wasm.ValType{f64}, body: body},
 		funcDef{body: []byte{0x00, 0x0b}},
 	)
+}
+
+func TestTwelfthFPPinAcrossCall(t *testing.T) {
+	savedInline := inlineEnabled
+	inlineEnabled = false
+	defer func() { inlineEnabled = savedInline }()
+	m := sumFloatAcrossCallModule(t, 12)
+	s := compileWithStats(t, m, false).Funcs[0]
+	if s.PinnedLocals != 12 || s.Peephole["deep-fp-local-pin"] != 8 {
+		t.Fatalf("call-making FP pins = %d deep=%d, want 12/8 (all: %v)", s.PinnedLocals, s.Peephole["deep-fp-local-pin"], s.Peephole)
+	}
+	args := make([]uint64, 12)
+	for i := range args {
+		args[i] = math.Float64bits(float64(i + 1))
+	}
+	if got := math.Float64frombits(runAmd64u(t, m, args...)); got != 78 {
+		t.Fatalf("sum across call = %g, want 78", got)
+	}
 }
 
 func TestDeepFPPinFires(t *testing.T) {

@@ -118,11 +118,11 @@ func TestValidateByteBackedModuleNestedBlock(t *testing.T) {
 	}
 }
 
-func TestValidateByteBackedModuleStrictNameSection(t *testing.T) {
+func TestValidateByteBackedModuleDuplicateNameSection(t *testing.T) {
 	b := module(custom("name"), custom("name"))
 	err := ValidateByteBackedModule(b)
-	if err == nil {
-		t.Fatal("ValidateByteBackedModule(duplicate name): nil, want error")
+	if err != nil {
+		t.Fatalf("ValidateByteBackedModule(duplicate name): %v", err)
 	}
 }
 

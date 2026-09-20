@@ -1,0 +1,10 @@
+=== RUN   TestStructCardWarmAllocations
+--- PASS: TestStructCardWarmAllocations (0.04s)
+=== RUN   TestStructCardFallbackWarmAllocations
+--- PASS: TestStructCardFallbackWarmAllocations (0.00s)
+=== RUN   TestStructCardColdMarkStackAllocations
+    struct_card_finish_test.go:260: ranges=16 cold mark-stack allocations=4 warmed allocations=0
+    struct_card_finish_test.go:260: ranges=32 cold mark-stack allocations=5 warmed allocations=0
+--- PASS: TestStructCardColdMarkStackAllocations (0.01s)
+PASS
+ok      github.com/wago-org/wago/src/core/runtime/gc/native     0.057s

@@ -25,9 +25,9 @@ func madviseDontNeed(b []byte) error {
 		uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), madvZero); errno == 0 {
 		return nil
 	}
-	if _, _, errno := syscall.Syscall(syscall.SYS_MADVISE,
-		uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), syscall.MADV_DONTNEED); errno != 0 {
-		return errno
-	}
+	// Darwin may reject MADV_ZERO after the process has forked. MADV_DONTNEED
+	// does not guarantee that a private anonymous mapping reads back as zero, so
+	// clear explicitly to preserve the allocator's zero-on-reuse contract.
+	clear(b)
 	return nil
 }

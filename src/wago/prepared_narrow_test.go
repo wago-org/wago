@@ -16,7 +16,7 @@ func TestPreparedDirectDoesNotAllocateInvocationIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestPreparedDirectDoesNotAllocateInvocationIdentity(t *testing.T) {
 		t.Fatal("fixture must select isolated direct entry")
 	}
 	before := nextInvocationID.Load()
-	out, err := fn.Invoke1(41)
+	out, err := fn.Invoke(41)
 	if err != nil || len(out) != 1 || out[0] != 42 {
 		t.Fatalf("call = %v, %v", out, err)
 	}
@@ -38,7 +38,7 @@ func TestPreparedDirectDoesNotAllocateInvocationIdentity(t *testing.T) {
 	}
 }
 
-func narrowPreparedFixture(t *testing.T) (*Instance, *PreparedFunction) {
+func narrowPreparedFixture(t *testing.T) (*Instance, *WasmFunc) {
 	t.Helper()
 	c := MustCompile(benchAddOneModule())
 	t.Cleanup(func() { c.Close() })
@@ -47,7 +47,7 @@ func narrowPreparedFixture(t *testing.T) (*Instance, *PreparedFunction) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { in.Close() })
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestPreparedDirectSharesInvocationGate(t *testing.T) {
 		t.Fatal("direct entry bypassed general owner")
 	}
 	gate.Unlock()
-	out, err := fn.Invoke1(41)
+	out, err := fn.Invoke(41)
 	if err != nil || len(out) != 1 || out[0] != 42 {
 		t.Fatalf("call after conflict = %v, %v", out, err)
 	}
@@ -109,7 +109,7 @@ func TestPreparedDirectRevocation(t *testing.T) {
 		t.Fatal("revoked instance admitted direct entry")
 	}
 	before := nextInvocationID.Load()
-	out, err := fn.Invoke1(41)
+	out, err := fn.Invoke(41)
 	if err != nil || len(out) != 1 || out[0] != 42 {
 		t.Fatalf("fallback = %v, %v", out, err)
 	}
@@ -156,7 +156,7 @@ func TestPreparedDirectLifetimeDuringClose(t *testing.T) {
 			} else {
 				in, _ = narrowPreparedFixture(t)
 			}
-			fn, err := in.PrepareFunction("f")
+			fn, err := in.WasmFunc("f")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -200,7 +200,7 @@ func TestPreparedDirectLifetimeDuringClose(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Fatal("close did not finish")
 			}
-			if _, err := fn.Invoke1(41); err == nil {
+			if _, err := fn.Invoke(41); err == nil {
 				t.Fatal("closed instance accepted prepared call")
 			}
 		})

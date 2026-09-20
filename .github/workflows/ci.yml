@@ -102,6 +102,10 @@ jobs:
       - name: Lint
         run: just lint
 
+      - name: Validation statistics command tests
+        working-directory: bench
+        run: go test ./cmd/validatestats -count=1
+
   regression-corpus:
     name: Regression corpus provenance
     needs: changes
@@ -318,6 +322,10 @@ jobs:
         if: matrix.runtime && runner.os != 'Windows'
         run: just test
 
+      - name: Native GC telemetry tests
+        if: matrix.runtime
+        run: go test -tags wago_gcstats ./src/core/runtime/gc/... -count=1
+
       - name: Build & test (Windows)
         if: matrix.runtime && runner.os == 'Windows'
         shell: pwsh
@@ -330,9 +338,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test -count=1 -tags wago_runtime ./cli/...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -count=20 -run '^TestCompiledSnapshotPacksRepeatedNestedSlices$' ./src/wago
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -count=20 -run '^TestCredentialTemporaryFileIsPrivateAndReadersSeeCompleteJSON$' ./cli/manager/internal/registry
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location bench
           try {
-            go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns)$' ./suite -args '-wago.corpus=quick'
+            go test -count=1 ./internal/semanticcorpus
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns|TestCatalog.*|TestValidateCorpusModule.*)$' ./suite -args '-wago.corpus=all'
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Pop-Location

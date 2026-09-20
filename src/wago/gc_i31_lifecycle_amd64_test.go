@@ -59,7 +59,7 @@ func TestStagedGCI31RemainingProductsLifecycle(t *testing.T) {
 	} {
 		t.Run(product.String(), func(t *testing.T) {
 			data := stagedGCI31ProductBytes(t, product)
-			if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+			if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 				t.Fatal("public Compile admitted staged i31 product")
 			}
 			c, err := compileStagedGCI31(data)

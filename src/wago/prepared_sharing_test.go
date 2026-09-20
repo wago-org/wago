@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestPreparedFunctionRechecksSharedControl(t *testing.T) {
+func TestWasmFuncRechecksSharedControl(t *testing.T) {
 	for _, family := range []string{"variadic", "fixed", "scalar", "general"} {
 		t.Run(family, func(t *testing.T) {
 			c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchAddOneModule())
@@ -21,14 +21,14 @@ func TestPreparedFunctionRechecksSharedControl(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			fn, err := in.PrepareFunction("f")
+			fn, err := in.WasmFunc("f")
 			if err != nil {
 				t.Fatal(err)
 			}
 			call := func() ([]uint64, error) {
 				switch family {
 				case "fixed":
-					return fn.Invoke1(41)
+					return fn.Invoke(41)
 				case "scalar":
 					return fn.invokeScalar([]uint64{41})
 				case "general":
@@ -108,7 +108,7 @@ func TestPreparedEntryAddsNoCallAllocations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestPreparedEntryAddsNoCallAllocations(t *testing.T) {
 			}
 		}
 		allocations := testing.AllocsPerRun(100, func() {
-			out, err := fn.Invoke1(41)
+			out, err := fn.Invoke(41)
 			if err != nil || len(out) != 1 || out[0] != 42 {
 				panic("invalid prepared result")
 			}
@@ -148,21 +148,21 @@ func TestPreparedPrivateGlobalRebindsAfterExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if preparedPrivateEntryEnabled && preparedScalarFastEnabled && (!fn.privateFast || fn.isolatedFast) {
 		t.Fatal("fixture did not select private scalar entry")
 	}
-	if out, err := fn.Invoke1(41); err != nil || len(out) != 1 || out[0] != 42 {
+	if out, err := fn.Invoke(41); err != nil || len(out) != 1 || out[0] != 42 {
 		t.Fatalf("private call = %v, %v", out, err)
 	}
 	if _, err := in.ExportedFunc("f"); err != nil {
 		t.Fatal(err)
 	}
 	version := in.ensurePluginState().nativeContextVersion.Load()
-	out, err := fn.Invoke1(41)
+	out, err := fn.Invoke(41)
 	if err != nil || len(out) != 1 || out[0] != 42 {
 		t.Fatalf("shared call = %v, %v", out, err)
 	}
@@ -179,7 +179,7 @@ func TestPreparedConcurrentExportTransition(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestPreparedConcurrentExportTransition(t *testing.T) {
 	go func() { <-start; _, err := in.ExportedFunc("f"); done <- err }()
 	close(start)
 	for i := 0; i < 100; i++ {
-		out, err := fn.Invoke1(41)
+		out, err := fn.Invoke(41)
 		if err != nil || len(out) != 1 || out[0] != 42 {
 			t.Fatalf("call during export = %v, %v", out, err)
 		}

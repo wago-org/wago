@@ -16,7 +16,7 @@ const preparedIntCallBlockDefault = false
 
 var preparedIntPreboundContextEnabled = os.Getenv("WAGO_PREPARED_INT_PREBOUND_CONTEXT") != "0"
 
-func (fn *PreparedFunction) initDirectIntCall() {
+func (fn *WasmFunc) initDirectIntCall() {
 	if preparedIntPreboundContextEnabled && !preparedIntCallBlockEnabled && fn.directIntBounded {
 		fn.in.eng.PrepareBoundedIntContext(fn.directLinMem)
 	}
@@ -30,7 +30,7 @@ func (fn *PreparedFunction) initDirectIntCall() {
 	}
 }
 
-func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
 	var a0, a1, a2, a3 uint64
 	switch len(args) {
 	case 4:
@@ -48,10 +48,10 @@ func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
 	return fn.invokeDirectIntFixed(a0, a1, a2, a3)
 }
 
-func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
 	if err := in.beginInvocation(); err != nil {
-		return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}
 	defer in.endInvocation()
 	if !fn.directIsolated || !in.tryPreparedDirect() {
@@ -116,7 +116,7 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 
 func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, resultSlots int, scalarWideMask uint8, scalarResultWide, _, _, bounded bool, a0, a1, a2, a3 uint64) ([]uint64, error) {
 	if in.isLogicallyClosed() {
-		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
+		return nil, fmt.Errorf("wago: invoke Wasm function: instance is closed")
 	}
 	switch paramSlots {
 	case 4:

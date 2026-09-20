@@ -286,10 +286,10 @@ func watchedStopError(result watchedProcessResult, interrupt os.Signal, forced b
 		(value == syscall.SIGHUP || value == syscall.SIGINT || value == syscall.SIGQUIT || value == syscall.SIGTERM) {
 		expected = value
 	}
-	if !forced && result.exitCode == 128+int(expected) {
+	if result.exitCode == 128+int(expected) {
 		return nil
 	}
-	if !forced && result.exitSignal == expected {
+	if result.exitSignal == expected {
 		return nil
 	}
 	if forced && result.exitSignal == syscall.SIGKILL {

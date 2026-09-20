@@ -361,7 +361,7 @@ func TestStagedMultiMemoryScalarWidthsAndGrow(t *testing.T) {
 		}
 		defer m1.Close()
 		compiled := stagedMultiMemoryCompile(t, indexedGrowModule(true))
-		in, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{"env.m0": m0, "env.m1": m1}})
+		in, err := instantiateCore(compiled, InstantiateOptions{Imports: testImports("env.m0", m0, "env.m1", m1)})
 		if err != nil {
 			t.Fatalf("instantiate: %v", err)
 		}
@@ -433,7 +433,7 @@ func TestStagedMultiMemoryLocalAndImportedExecution(t *testing.T) {
 		}
 		defer m1.Close()
 		compiled := stagedMultiMemoryCompile(t, importedMultiMemoryExecModule())
-		in, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{"env.m0": m0, "env.m1": m1}})
+		in, err := instantiateCore(compiled, InstantiateOptions{Imports: testImports("env.m0", m0, "env.m1", m1)})
 		if err != nil {
 			t.Fatalf("instantiate imported memories: %v", err)
 		}

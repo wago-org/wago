@@ -109,15 +109,6 @@ const (
 		CoreFeatureSIMD |
 		CoreFeatureExtendedConst |
 		CoreFeatureExtendedConstExpressions
-
-	// defaultCore3Features contains the finalized Core 3 families that extend
-	// validation and execution without making managed-object lifetime or native
-	// exception unwinding part of every runtime's default contract.
-	defaultCore3Features = CoreFeatureTailCall |
-		CoreFeatureTypedFunctionReferences |
-		CoreFeatureMultiMemory |
-		CoreFeatureMemory64 |
-		CoreFeatureTable64
 )
 
 // IsEnabled returns true if all bits in feature are set.
@@ -169,8 +160,8 @@ var featureRegistry = []FeatureInfo{
 	{Feature: CoreFeatureExtendedConstExpressions, Name: "extended-const-expressions", Label: "Extended constant expressions", Description: "imported globals in constant expressions"},
 	{Feature: CoreFeatureTailCall, Name: "tail-call", Label: "Tail calls", Description: "return_call, return_call_indirect, and return_call_ref"},
 	{Feature: CoreFeatureTypedFunctionReferences, Name: "typed-function-references", Label: "Typed function references", Description: "typed references, call_ref, and related casts"},
-	{Feature: CoreFeatureGC, Name: "gc", Label: "Garbage collection", Description: "struct, array, i31, and managed reference instructions", Experimental: true},
-	{Feature: CoreFeatureExceptionHandling, Name: "exception-handling", Label: "Exception handling", Description: "tags, throw, and try_table", Experimental: true},
+	{Feature: CoreFeatureGC, Name: "gc", Label: "Garbage collection", Description: "struct, array, i31, and managed reference instructions"},
+	{Feature: CoreFeatureExceptionHandling, Name: "exception-handling", Label: "Exception handling", Description: "tags, throw, and try_table"},
 	{Feature: CoreFeatureMultiMemory, Name: "multi-memory", Label: "Multiple memories", Description: "multiple memories and indexed memory instructions"},
 	{Feature: CoreFeatureMemory64, Name: "memory64", Label: "64-bit memory", Description: "64-bit linear-memory limits and addresses"},
 	{Feature: CoreFeatureTable64, Name: "table64", Label: "64-bit tables", Description: "64-bit table limits and indexes"},
@@ -736,12 +727,12 @@ func platformCoreFeatures() CoreFeatures {
 	return supported
 }
 
-// defaultCoreFeatures admits selected finalized Core 3 families on backends that
-// implement the complete product. Other targets retain the portable Release 2
-// plus extended-constant surface instead of silently accepting partial support.
-// GC, exception handling, and the separate threads proposal remain opt-in.
+// defaultCoreFeatures admits the complete Core 3 release on backends that
+// implement it. Other targets retain the portable Release 2 plus
+// extended-constant surface instead of silently accepting partial support.
+// The separate threads proposal remains opt-in.
 func defaultCoreFeatures() CoreFeatures {
-	return coreFeaturesWithoutSidecar | (defaultCore3Features & platformCoreFeatures())
+	return coreFeaturesWithoutSidecar | (CoreFeaturesV3 & platformCoreFeatures())
 }
 
 func SupportedFeatures() CoreFeatures {

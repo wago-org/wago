@@ -240,7 +240,7 @@ func TestConsumerStopCanInvokeProviderManagedInstance(t *testing.T) {
 				if in == nil {
 					return 0, errors.New("provider worker closed before consumer Stop")
 				}
-				values, err := in.Call(ctx, "value")
+				values, err := in.InvokeValues(ctx, "value")
 				if err != nil {
 					return 0, err
 				}
@@ -491,8 +491,7 @@ func TestRuntimeCloseStopsAdmissionBeforeReleasingBlockingHostCall(t *testing.T)
 	provider := PluginProvider{Definition: def, New: func() Plugin {
 		return pluginFunc(func(r *Registrar) error {
 			hosts, _ := r.HostImports()
-			mod, _ := hosts.Module("env")
-			mod.Func("f", func(HostModule, []uint64, []uint64) { close(entered); <-release })
+			testRegisterHostFunc(hosts, "env", "f", func(HostModule, []uint64, []uint64) { close(entered); <-release })
 			return r.Lifecycle(PluginLifecycle{Stop: func(context.Context) error { close(stopped); return nil }})
 		})
 	}}
@@ -538,11 +537,7 @@ func TestRuntimeStopCanReleaseBlockedPublicInvoke(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			module, err := hosts.Module("env")
-			if err != nil {
-				return err
-			}
-			module.Func("f", func(HostModule, []uint64, []uint64) { close(entered); <-release })
+			testRegisterHostFunc(hosts, "env", "f", func(HostModule, []uint64, []uint64) { close(entered); <-release })
 			return r.Lifecycle(PluginLifecycle{Stop: func(context.Context) error {
 				close(release)
 				return nil
@@ -593,11 +588,7 @@ func TestRuntimeStopCanReleaseBlockedImportedStart(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			module, err := hosts.Module("env")
-			if err != nil {
-				return err
-			}
-			module.Func("f", func(HostModule, []uint64, []uint64) { close(entered); <-release })
+			testRegisterHostFunc(hosts, "env", "f", func(HostModule, []uint64, []uint64) { close(entered); <-release })
 			observer, err := r.InstanceInstantiateObserver()
 			if err != nil {
 				return err
@@ -667,11 +658,7 @@ func TestRuntimeCloseDrainsManagedForkBeforeManagerTeardown(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			module, err := hosts.Module("env")
-			if err != nil {
-				return err
-			}
-			module.Func("f", func(caller HostModule, _, _ []uint64) {
+			testRegisterHostFunc(hosts, "env", "f", func(caller HostModule, _, _ []uint64) {
 				child, err := manager.Fork(context.Background(), caller)
 				if child != nil {
 					err = errors.Join(err, child.Close())
@@ -704,7 +691,7 @@ func TestRuntimeCloseDrainsManagedForkBeforeManagerTeardown(t *testing.T) {
 		t.Fatal(err)
 	}
 	callDone := make(chan error, 1)
-	go func() { _, err := parent.Call(context.Background(), "call"); callDone <- err }()
+	go func() { _, err := parent.InvokeValues(context.Background(), "call"); callDone <- err }()
 	<-entered
 	if err := rt.Close(); err != nil {
 		t.Fatal(err)
@@ -738,8 +725,7 @@ func TestAdmittedImportedStartKeepsPluginGenerationUntilTerminalObserver(t *test
 	provider := PluginProvider{Definition: def, New: func() Plugin {
 		return pluginFunc(func(r *Registrar) error {
 			hosts, _ := r.HostImports()
-			module, _ := hosts.Module("env")
-			module.Func("f", func(HostModule, []uint64, []uint64) { close(entered); <-release })
+			testRegisterHostFunc(hosts, "env", "f", func(HostModule, []uint64, []uint64) { close(entered); <-release })
 			observer, _ := r.InstanceInstantiateObserver()
 			if err := observer.After(func(InstantiationEvent) { close(afterReturned) }); err != nil {
 				return err
@@ -800,11 +786,7 @@ func TestRetainedCrossInstanceCallCannotEnterPluginAfterStop(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			mod, err := hosts.Module("env")
-			if err != nil {
-				return err
-			}
-			mod.Func("f", func(HostModule, []uint64, []uint64) {
+			testRegisterHostFunc(hosts, "env", "f", func(HostModule, []uint64, []uint64) {
 				if stopped.Load() {
 					calledAfterStop.Store(true)
 				}
@@ -836,7 +818,7 @@ func TestRetainedCrossInstanceCallCannotEnterPluginAfterStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	consumerCompiled := MustCompile(voidImportCallModule())
-	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": exported}})
+	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", exported)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -918,8 +900,7 @@ func TestValidatePluginSetPreflightsCommitConflicts(t *testing.T) {
 		return PluginProvider{Definition: def, New: func() Plugin {
 			return pluginFunc(func(r *Registrar) error {
 				hosts, _ := r.HostImports()
-				mod, _ := hosts.Module("env")
-				mod.Func(id, func(HostModule, []uint64, []uint64) {})
+				testRegisterHostFunc(hosts, "env", id, func(HostModule, []uint64, []uint64) {})
 				return nil
 			})
 		}}
@@ -992,7 +973,7 @@ func TestManagedReservationHeldUntilPhysicalRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	consumerCompiled := MustCompile(voidImportCallModule())
-	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": exported}})
+	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", exported)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1046,7 +1027,7 @@ func TestClosedInstanceTrackingDoesNotGrow(t *testing.T) {
 }
 
 func BenchmarkPluginCallGate(b *testing.B) {
-	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	fn := slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	b.Run("plain", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {

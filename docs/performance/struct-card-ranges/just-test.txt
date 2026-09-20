@@ -1,0 +1,68 @@
+Failure excerpts; repeated diagnostics omitted.
+--- FAIL: TestTinyGoArtifactSupportsCooperativeInterruption (6.80s)
+        requires go version 1.25 through 1.27, got go1.22
+--- FAIL: TestBuildTinyGoEmbedsArtifactWithoutCompiler (0.27s)
+--- FAIL: TestBuildTinyGoStripsByDefault (0.28s)
+--- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting (0.00s)
+        exception_handling_official_amd64_test.go:917: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialGCArrayBulkAccounting (0.00s)
+    gc_array_bulk_official_amd64_test.go:387: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedGCArrayBulkProductBoundary (0.00s)
+        gc_array_bulk_product_amd64_test.go:46: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedGCArrayBulkCopyMutableRootLifecycle (0.00s)
+    gc_array_bulk_product_amd64_test.go:108: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialGCArrayInitAccounting (0.00s)
+    gc_array_init_official_amd64_test.go:396: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedGCArrayInitDataProductBoundary (0.00s)
+        gc_array_init_product_amd64_test.go:47: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedGCArrayInitElemProductBoundaryAndTinyLifecycle (0.00s)
+    gc_array_init_product_amd64_test.go:133: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedGCArrayInitDataTinyLifecycle (0.00s)
+    gc_array_init_product_amd64_test.go:274: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedGCArrayInitDataTransientTinyRootProof (0.00s)
+    gc_array_init_product_amd64_test.go:326: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialGCArrayAccounting (0.00s)
+    gc_array_official_amd64_test.go:374: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialGCBrOnCastAccounting (0.00s)
+    gc_br_on_cast_official_amd64_test.go:459: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedGCBrOnCastProductBoundaryLifecycle (0.00s)
+    gc_br_on_cast_product_amd64_test.go:85: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialGCExternAccounting (0.00s)
+    gc_extern_official_amd64_test.go:345: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedGCExternProductBoundaryLifecycle (0.00s)
+    gc_extern_product_amd64_test.go:41: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialGCI31Accounting (0.00s)
+    gc_i31_official_amd64_test.go:348: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialGCRefCastAccounting (0.00s)
+    gc_ref_cast_official_amd64_test.go:338: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedGCRefCastProductBoundaryLifecycle (0.00s)
+    gc_ref_cast_product_amd64_test.go:63: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialGCRefEqAccounting (0.00s)
+    gc_ref_eq_official_amd64_test.go:304: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedGCRefEqProductBoundaryLifecycle (0.00s)
+    gc_ref_eq_product_amd64_test.go:50: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedGCRefTestAbstractMixedTableLifecycle (0.00s)
+    gc_ref_test_abstract_amd64_test.go:41: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialGCRefTestAccounting (0.00s)
+    gc_ref_test_official_amd64_test.go:409: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialGCStructAccounting (0.00s)
+    gc_struct_official_amd64_test.go:309: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialGCTypeSubtypingAccounting (0.00s)
+    gc_type_subtyping_official_amd64_test.go:551: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialMemory64FamilyAccounting (0.00s)
+        memory64_official_amd64_test.go:327: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialMultiMemoryLinkingStoreSemantics (0.00s)
+        multi_memory_official_amd64_test.go:26: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialMultiMemoryCompactImportsExecute (0.00s)
+--- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialTable64FamilyAccounting (0.00s)
+        table64_official_amd64_test.go:497: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialReturnCallIndirect (0.00s)
+    tail_call_indirect_official_amd64_test.go:22: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialReturnCall (0.00s)
+    tail_call_official_amd64_test.go:35: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting (0.00s)
+        typed_reference_official_amd64_test.go:461: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+--- FAIL: TestStagedOfficialReturnCallRef (0.00s)
+    typed_tail_official_amd64_test.go:28: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
