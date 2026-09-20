@@ -16,7 +16,7 @@ func BenchmarkMemory64ImporterCount(b *testing.B) {
 }
 
 func benchmarkMemoryImporterCount(b *testing.B, addr64 bool) {
-	for _, count := range []uint32{62, 63, 64, 254, 255, 256} {
+	for _, count := range []uint32{62, 63, 64, 126, 127, 128, 254, 255, 256, 1024} {
 		b.Run(fmt.Sprintf("steady/%d", count), func(b *testing.B) {
 			s := &memoryState{}
 			s.set(memoryStateAddr64, addr64)
@@ -35,7 +35,7 @@ func benchmarkMemoryImporterCount(b *testing.B, addr64 bool) {
 			}
 		})
 	}
-	for _, low := range []uint32{62, 63, 254, 255} {
+	for _, low := range []uint32{62, 63, 126, 127, 254, 255, 1023} {
 		b.Run(fmt.Sprintf("transition/%d-%d-%d", low, low+1, low), func(b *testing.B) {
 			s := &memoryState{}
 			s.set(memoryStateAddr64, addr64)
@@ -67,7 +67,7 @@ func BenchmarkMemory64ImporterParallel(b *testing.B) {
 }
 
 func benchmarkMemoryImporterParallel(b *testing.B, addr64 bool) {
-	for _, low := range []uint32{62, 63, 255} {
+	for _, low := range []uint32{62, 63, 64, 126, 127, 128, 254, 255, 256, 1024} {
 		b.Run(fmt.Sprint(low), func(b *testing.B) {
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {

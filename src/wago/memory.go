@@ -23,8 +23,9 @@ type Memory struct {
 type memoryState struct {
 	mu    sync.Mutex
 	owner *Instance // non-nil for an instance-owned exported memory
-	// memory32: max u17 | count u32 | unused u6 | flags u9.
-	// memory64: max u49 | inline count u6 | flags u9.
+	// A maximum uses value+1; zero means absent.
+	// memory32: max u17 | count u32 | unused u8 | flags u7.
+	// memory64: max u49 | inline count u8 | flags u7.
 	meta uint64
 }
 
@@ -32,9 +33,7 @@ const (
 	memoryStateShared uint16 = 1 << iota
 	memoryStateWasmShared
 	memoryStateAddr64
-	memoryStateAddrKnown
-	memoryStateLimitsKnown
-	memoryStateDeclaredHasMax
+	memoryStateLimitsKnown // address form and declared limits are fixed together
 	memoryStateClosed
 	memoryStateWasmTypeKnown
 	memoryStateDeclaredShared
@@ -44,8 +43,8 @@ const (
 	memory32ImporterShift      = 17
 	memory32ImporterMask       = uint64(1<<32-1) << memory32ImporterShift
 	memoryStateImporterShift   = 49
-	memoryStateImporterMask    = uint64(1<<6 - 1)
-	memoryStateFlagsShift      = 55
+	memoryStateImporterMask    = uint64(1<<8 - 1)
+	memoryStateFlagsShift      = 57
 )
 
 func (s *memoryState) has(flag uint16) bool {
@@ -122,19 +121,33 @@ func (s *memoryState) setImporterCount(count uint32) {
 		uint64(inline)<<memoryStateImporterShift
 }
 
-func (s *memoryState) declaredMaximum() uint64 {
-	if !s.has(memoryStateAddr64) {
-		return s.meta & memory32DeclaredMaxMask
-	}
-	return s.meta & memoryStateDeclaredMaxMask
-}
-
-func (s *memoryState) setDeclaredMaximum(max uint64) {
+func (s *memoryState) declaredLimits() (maximum uint64, hasMaximum bool) {
 	mask := memoryStateDeclaredMaxMask
 	if !s.has(memoryStateAddr64) {
 		mask = memory32DeclaredMaxMask
 	}
-	s.meta = s.meta&^mask | max&mask
+	encoded := s.meta & mask
+	if encoded == 0 {
+		return 0, false
+	}
+	return encoded - 1, true
+}
+
+func (s *memoryState) declaredMaximum() uint64 {
+	maximum, _ := s.declaredLimits()
+	return maximum
+}
+
+func (s *memoryState) setDeclaredLimits(maximum uint64, hasMaximum bool) {
+	encoded := uint64(0)
+	if hasMaximum {
+		encoded = maximum + 1
+	}
+	mask := memoryStateDeclaredMaxMask
+	if !s.has(memoryStateAddr64) {
+		mask = memory32DeclaredMaxMask
+	}
+	s.meta = s.meta&^mask | encoded&mask
 }
 
 // NewMemory creates a host-owned linear memory. minPages/maxPages are in 64 KiB
@@ -191,8 +204,8 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 		declaredMax = minPages
 	}
 	state := &memoryState{}
-	state.setDeclaredMaximum(uint64(declaredMax))
-	state.set(memoryStateAddrKnown|memoryStateLimitsKnown|memoryStateDeclaredHasMax, true)
+	state.setDeclaredLimits(uint64(declaredMax), true)
+	state.set(memoryStateLimitsKnown, true)
 	state.set(memoryStateShared, shared)
 	state.set(memoryStateWasmShared, shared)
 	m.state.Store(state)
@@ -354,7 +367,7 @@ func (m *Memory) share(owner *Instance, def memoryDef) error {
 	if s.has(memoryStateClosed) || m.jm == nil {
 		return fmt.Errorf("memory owner is closed")
 	}
-	if s.has(memoryStateAddrKnown) && s.has(memoryStateAddr64) != def.Addr64 {
+	if s.has(memoryStateLimitsKnown) && s.has(memoryStateAddr64) != def.Addr64 {
 		return fmt.Errorf("memory address form does not match prior export")
 	}
 	if s.has(memoryStateWasmTypeKnown) && s.has(memoryStateDeclaredShared) != def.Shared {
@@ -367,14 +380,12 @@ func (m *Memory) share(owner *Instance, def memoryDef) error {
 		s.set(memoryStateAddr64, def.Addr64)
 		s.setImporterCount(count)
 	}
-	s.set(memoryStateAddrKnown, true)
 	// The original local owner defines the provider's exact external type. A
 	// re-exported import forwards that type rather than replacing it with the
 	// consumer's possibly weaker import declaration.
 	if !s.has(memoryStateLimitsKnown) {
 		s.set(memoryStateLimitsKnown, true)
-		s.set(memoryStateDeclaredHasMax, def.HasMax)
-		s.setDeclaredMaximum(def.Max)
+		s.setDeclaredLimits(def.Max, def.HasMax)
 	}
 	if owner != nil {
 		if s.owner != nil && s.owner != owner {
@@ -420,13 +431,13 @@ func (m *Memory) validateLimits(min, max uint64, hasMax, addr64, shared bool) er
 		s.mu.Unlock()
 		return fmt.Errorf("memory owner is closed")
 	}
-	providerAddr64, addrKnown := s.has(memoryStateAddr64), s.has(memoryStateAddrKnown)
+	providerAddr64, limitsKnown := s.has(memoryStateAddr64), s.has(memoryStateLimitsKnown)
 	providerShared := s.has(memoryStateWasmShared)
 	sharedKnown := s.has(memoryStateWasmTypeKnown)
 	if sharedKnown {
 		providerShared = s.has(memoryStateDeclaredShared)
 	}
-	limitsKnown, providerHasMax, providerMax := s.has(memoryStateLimitsKnown), s.has(memoryStateDeclaredHasMax), s.declaredMaximum()
+	providerMax, providerHasMax := s.declaredLimits()
 	actualMin, actualMax := uint64(m.jm.CurrentPages()), uint64(m.jm.MaxPages())
 	s.mu.Unlock()
 	if sharedKnown && shared != providerShared {
@@ -435,7 +446,7 @@ func (m *Memory) validateLimits(min, max uint64, hasMax, addr64, shared bool) er
 	if shared && !providerShared {
 		return fmt.Errorf("import requires shared memory, but provider is not shared")
 	}
-	if addrKnown && providerAddr64 != addr64 {
+	if limitsKnown && providerAddr64 != addr64 {
 		providerBits, importBits := 32, 32
 		if providerAddr64 {
 			providerBits = 64

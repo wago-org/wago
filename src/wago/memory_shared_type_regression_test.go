@@ -71,9 +71,9 @@ func TestSharedHostMemoryExportKeepsWaitCapability(t *testing.T) {
 func TestMemoryTypeFlagsSurviveImporterOverflow(t *testing.T) {
 	state := &memoryState{}
 	defer memoryImporterOverflow.Delete(state)
-	flags := memoryStateShared | memoryStateWasmShared | memoryStateAddr64 | memoryStateAddrKnown | memoryStateLimitsKnown | memoryStateDeclaredHasMax | memoryStateClosed | memoryStateWasmTypeKnown | memoryStateDeclaredShared
+	flags := memoryStateShared | memoryStateWasmShared | memoryStateAddr64 | memoryStateLimitsKnown | memoryStateClosed | memoryStateWasmTypeKnown | memoryStateDeclaredShared
 	state.set(flags, true)
-	state.setDeclaredMaximum(1 << 48)
+	state.setDeclaredLimits(1<<48, true)
 	for _, count := range []uint32{0, 62, 63, 64, 254, 255, 256, 63, 62, 0} {
 		state.setImporterCount(count)
 		if got := state.importerCount(); got != count {

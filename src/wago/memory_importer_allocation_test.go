@@ -72,11 +72,11 @@ func TestMemoryImporterConcurrentStates(t *testing.T) {
 }
 
 func TestMemory32ImporterCountNeedsNoOverflowStorage(t *testing.T) {
-	flags := memoryStateShared | memoryStateWasmShared | memoryStateAddrKnown | memoryStateLimitsKnown | memoryStateDeclaredHasMax | memoryStateClosed | memoryStateWasmTypeKnown | memoryStateDeclaredShared
+	flags := memoryStateShared | memoryStateWasmShared | memoryStateLimitsKnown | memoryStateClosed | memoryStateWasmTypeKnown | memoryStateDeclaredShared
 	for _, maximum := range []uint64{0, 1, 65535, 65536} {
 		s := &memoryState{}
 		s.set(flags, true)
-		s.setDeclaredMaximum(maximum)
+		s.setDeclaredLimits(maximum, true)
 		for _, count := range []uint32{0, 62, 63, 64, 254, 255, 256, 1 << 31, ^uint32(0), 63, 0} {
 			s.setImporterCount(count)
 			if got := s.importerCount(); got != count {
@@ -89,7 +89,7 @@ func TestMemory32ImporterCountNeedsNoOverflowStorage(t *testing.T) {
 				t.Errorf("count %d changed maximum or flags: maximum = %d, meta = %#x", count, got, s.meta)
 			}
 			// A limits update must preserve every bit of the importer count.
-			s.setDeclaredMaximum(maximum)
+			s.setDeclaredLimits(maximum, true)
 			if got := s.importerCount(); got != count {
 				t.Errorf("limits update changed count: got %d, want %d", got, count)
 			}
