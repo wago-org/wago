@@ -613,6 +613,33 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := verifyEffects(id, in, EffectReadMem|EffectWriteMem); err != nil {
 			return err
 		}
+	case OpMemoryInit:
+		if err := want(3, 0); err != nil {
+			return err
+		}
+		if uint64(uint32(in.Aux>>32)) >= uint64(len(m.Data)) {
+			return fmt.Errorf("inst %d unknown data segment", id)
+		}
+		addr, err := verifyMemoryAddrType(m, id, uint32(in.Aux))
+		if err != nil {
+			return err
+		}
+		if argt(0) != addr || argt(1) != wasm.I32 || argt(2) != wasm.I32 {
+			return fmt.Errorf("inst %d memory.init type mismatch", id)
+		}
+		if err := verifyEffects(id, in, EffectCanTrap|EffectReadData|EffectWriteMem); err != nil {
+			return err
+		}
+	case OpDataDrop:
+		if err := want(0, 0); err != nil {
+			return err
+		}
+		if in.Aux >= uint64(len(m.Data)) {
+			return fmt.Errorf("inst %d unknown data segment", id)
+		}
+		if err := verifyEffects(id, in, EffectWriteData); err != nil {
+			return err
+		}
 	case OpMemoryCopy, OpMemoryFill:
 		if err := want(3, 0); err != nil {
 			return err
