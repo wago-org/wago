@@ -1,5 +1,7 @@
 # Correctness review: performance and validation
 
+Latest results: [commit bisection and performance investigation](correctness-review-performance-investigation.md), including the restored memory64 importer range and remaining measured costs.
+
 Later update: [inline memory32 importer counts](memory32-importer-storage.md) remove the overflow table from memory32. The measurements below describe the earlier layout.
 
 The [follow-up report](correctness-review-followup.md) adds conflict-export and EVEX destination fixes, stronger tests, the importer overflow allocation benchmark, and updated validation.
