@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/wago-org/wago/internal/wagopaths"
 )
 
 func Completion(shell string) (string, error) {
@@ -86,6 +88,9 @@ func InstallCompletion(shell, path, rc string) (string, error) {
 }
 
 func completionPath(shell string) (string, error) {
+	if shell == "fish" {
+		return wagopaths.FishCompletionPath(), nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -95,8 +100,6 @@ func completionPath(shell string) (string, error) {
 		return filepath.Join(home, ".wago", "completions", "wago.zsh"), nil
 	case "bash":
 		return filepath.Join(home, ".wago", "completions", "wago.bash"), nil
-	case "fish":
-		return filepath.Join(home, ".config", "fish", "completions", "wago.fish"), nil
 	default:
 		return "", fmt.Errorf("unsupported shell %q", shell)
 	}

@@ -35,10 +35,9 @@ func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
 	case Full:
 		if root := selectedWagoRoot(dirs, executable); root != "" {
 			candidates = append(candidates, root)
-		} else {
-			// Linux's default XDG layout has no single Wago root.
-			candidates = append(candidates, dirs.Data, dirs.Config, filepath.Dir(dirs.Cache))
 		}
+		// Active XDG directories can coexist with a legacy Wago root.
+		candidates = append(candidates, dirs.Data, dirs.Config, filepath.Dir(dirs.Cache))
 		candidates = append(candidates, InstalledSourcePath())
 	case Partial:
 		candidates = append(candidates, dirs.Versions, dirs.Config, filepath.Dir(dirs.Cache), InstalledSourcePath())
@@ -274,15 +273,7 @@ func isCompletionCommand(line string) bool {
 }
 
 func fishCompletionPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return ""
-	}
-	root := os.Getenv("XDG_CONFIG_HOME")
-	if root == "" {
-		root = filepath.Join(home, ".config")
-	}
-	return filepath.Join(root, "fish", "completions", "wago.fish")
+	return wagopaths.FishCompletionPath()
 }
 
 func isInstallerPathCommand(line string) bool {

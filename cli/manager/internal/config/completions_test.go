@@ -135,3 +135,32 @@ func TestCompletionRejectsUnknownShell(t *testing.T) {
 		t.Fatal("Completion accepted an unsupported shell")
 	}
 }
+
+func TestFishCompletionXDGConfigHome(t *testing.T) {
+	for _, custom := range []bool{false, true} {
+		for _, explicit := range []bool{false, true} {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
+			t.Setenv("XDG_CONFIG_HOME", "")
+			root := filepath.Join(home, ".config")
+			if custom {
+				root = filepath.Join(home, "xdg")
+				t.Setenv("XDG_CONFIG_HOME", root)
+			}
+			path := ""
+			want := filepath.Join(root, "fish", "completions", "wago.fish")
+			if explicit {
+				path = filepath.Join(home, "explicit.fish")
+				want = path
+			}
+			got, err := InstallCompletion("fish", path, "")
+			if err != nil || got != want {
+				t.Fatalf("custom=%v explicit=%v: path=%q err=%v, want %q", custom, explicit, got, err, want)
+			}
+			if data, err := os.ReadFile(want); err != nil || !strings.Contains(string(data), "wago __complete") {
+				t.Fatalf("completion=%q err=%v", data, err)
+			}
+		}
+	}
+}

@@ -171,3 +171,8 @@ func homeDir() string {
 	}
 	return home
 }
+
+// FishCompletionPath is the shared installation and removal path for Fish.
+func FishCompletionPath() string {
+	return filepath.Join(xdgDir("XDG_CONFIG_HOME", ".config"), "fish", "completions", "wago.fish")
+}
