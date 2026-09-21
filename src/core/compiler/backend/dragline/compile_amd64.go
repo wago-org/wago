@@ -5498,8 +5498,9 @@ type amd64EdgeResultRename struct {
 	valid       bool
 }
 
-// amd64RailMachEdgeResultRename coalesces final two-address integer additions
-// with its sole outgoing block-argument copy after allocation. Retargeting the
+// amd64RailMachEdgeResultRename coalesces a final two-address commutative
+// integer reduction with its sole outgoing block-argument copy after
+// allocation. Retargeting the
 // result to the edge destination removes both the destructive-input copy and
 // the outgoing copy when that destination carries no other live value. Keep
 // immediate recurrences on the established LEA path: their edge copy is cheap,
@@ -5545,7 +5546,14 @@ func amd64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) amd64E
 			continue
 		}
 		semanticOp := railmach.SemanticOpcode(plan.Machine.Insts[definition].Op)
-		if semanticOp != wasm.InstrI32Add && semanticOp != wasm.InstrI64Add {
+		switch semanticOp {
+		case wasm.InstrI32Add, wasm.InstrI64Add,
+			wasm.InstrI32Sub, wasm.InstrI64Sub,
+			wasm.InstrI32Mul, wasm.InstrI64Mul,
+			wasm.InstrI32And, wasm.InstrI64And,
+			wasm.InstrI32Or, wasm.InstrI64Or,
+			wasm.InstrI32Xor, wasm.InstrI64Xor:
+		default:
 			continue
 		}
 		if _, immediate := plan.ImmediateProducer.get(definition); immediate {

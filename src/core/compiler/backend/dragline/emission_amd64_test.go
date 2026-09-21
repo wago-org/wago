@@ -270,12 +270,30 @@ func TestAMD64RailMachRetainsGlobalDescriptorAcrossDirectScalarStore(t *testing.
 }
 
 func TestAMD64RailMachRenamesReductionResultToBackedgeDestination(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		opcode byte
+	}{
+		{name: "add", opcode: 0x7c},
+		{name: "sub", opcode: 0x7d},
+		{name: "mul", opcode: 0x7e},
+		{name: "and", opcode: 0x83},
+		{name: "or", opcode: 0x84},
+		{name: "xor", opcode: 0x85},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testAMD64RailMachRenamesReductionResultToBackedgeDestination(t, tc.opcode)
+		})
+	}
+}
+
+func testAMD64RailMachRenamesReductionResultToBackedgeDestination(t *testing.T, opcode byte) {
 	body := []byte{
 		0x42, 0x00, 0x21, 0x02, // accumulator = i64.const 0
 		0x02, 0x40, // block
 		0x03, 0x40, // loop
 		0x20, 0x00, 0x45, 0x0d, 0x01, // break when count == 0
-		0x20, 0x02, 0x20, 0x01, 0x29, 0x03, 0x00, 0x7c, 0x21, 0x02, // accumulator += load64(address)
+		0x20, 0x02, 0x20, 0x01, 0x29, 0x03, 0x00, opcode, 0x21, 0x02, // accumulator = accumulator op load64(address)
 		0x20, 0x01, 0x41, 0x08, 0x6a, 0x21, 0x01, // address += 8
 		0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, // count -= 1
 		0x0c, 0x00, 0x0b, 0x0b, // continue; end loop; end block
