@@ -16,7 +16,7 @@ func benchCompileModuleWorkers(m *wasm.Module, workers int) (*benchCompiledModul
 	if err != nil {
 		return nil, err
 	}
-	return &benchCompiledModule{Code: cm.Code, Entry: cm.Entry}, nil
+	return &benchCompiledModule{Code: cm.Code, Entry: cm.Entry, image: cm.CodeImage}, nil
 }
 
 func benchCompileModuleCompact(m *wasm.Module) (*benchCompiledModule, error) {
@@ -24,5 +24,5 @@ func benchCompileModuleCompact(m *wasm.Module) (*benchCompiledModule, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &benchCompiledModule{Code: cm.Code, Entry: cm.Entry}, nil
+	return &benchCompiledModule{Code: cm.Code, Entry: cm.Entry, image: cm.CodeImage}, nil
 }
