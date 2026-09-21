@@ -523,3 +523,50 @@ func TestHoistARM64AdjacentLoadAddresses(t *testing.T) {
 		t.Fatalf("constant committed=%d order=%v", committed, schedule.Order)
 	}
 }
+
+func TestRepairAMD64CompareSelectAdjacency(t *testing.T) {
+	const none = ^uint32(0)
+	f := &Func{
+		Target: TargetAMD64,
+		Insts: []Inst{
+			{Op: wasm.InstrI32LtU, Result: 1, OperandStart: 0, OperandCount: 2},
+			{Op: wasm.InstrI32Add, Result: 2, OperandStart: 2, OperandCount: 2},
+			{Op: wasm.InstrSelect, Result: 3, OperandStart: 4, OperandCount: 3},
+		},
+		Operands: []Operand{{Reg: 4}, {Reg: 5}, {Reg: 6}, {Reg: 7}, {Reg: 8}, {Reg: 9}, {Reg: 1}},
+		VRegs: []VRegData{
+			{},
+			{Def: 3, Type: TypeI32, Bank: BankGPR},
+			{Def: 9, Type: TypeI32, Bank: BankGPR},
+			{Def: 15, Type: TypeI32, Bank: BankGPR},
+			{Bank: BankGPR}, {Bank: BankGPR}, {Bank: BankGPR}, {Bank: BankGPR}, {Bank: BankGPR}, {Bank: BankGPR},
+		},
+	}
+	dag := &DependencyDAG{
+		Offsets:      []uint32{0, 0, 0, 1},
+		Dependencies: []Dependency{{Instruction: 0, Kind: DependencyData}},
+	}
+	schedule := &Schedule{
+		Order:          []uint32{0, 1, 2},
+		BlockOf:        []railssa.BlockID{0, 0, 0},
+		uses:           make([]uint32, len(f.VRegs)),
+		fusionBefore:   []uint32{none, none, none},
+		fusionSource:   []uint32{none, none, none},
+		sinkBefore:     []uint32{none, none, none},
+		sinkProducer:   []uint32{none, none, none},
+		lateBefore:     []uint32{none, none, none},
+		lateProducer:   []uint32{none, none, none},
+		verifyPosition: make([]uint32, 3),
+	}
+	schedule.uses[1] = 1
+	if repaired := repairAMD64CompareSelectAdjacency(f, dag, schedule); repaired != 1 || !slices.Equal(schedule.Order, []uint32{1, 0, 2}) {
+		t.Fatalf("repaired=%d order=%v", repaired, schedule.Order)
+	}
+
+	schedule.Order = []uint32{0, 1, 2}
+	dag.Offsets = []uint32{0, 0, 1, 2}
+	dag.Dependencies = []Dependency{{Instruction: 0, Kind: DependencyData}, {Instruction: 0, Kind: DependencyData}}
+	if repaired := repairAMD64CompareSelectAdjacency(f, dag, schedule); repaired != 0 || !slices.Equal(schedule.Order, []uint32{0, 1, 2}) {
+		t.Fatalf("dependent repaired=%d order=%v", repaired, schedule.Order)
+	}
+}

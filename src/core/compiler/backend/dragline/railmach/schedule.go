@@ -794,6 +794,9 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 		reuse.BlockRanges[blockID] = MoveRange{Start: start, Count: uint32(len(reuse.Order)) - start}
 		reuse.remaining = remaining[:0]
 	}
+	if f.Target == TargetAMD64 {
+		repairAMD64CompareSelectAdjacency(f, dag, reuse)
+	}
 	if f.Target == TargetARM64 {
 		hoistARM64AdjacentLoadAddresses(f, dag, reuse)
 	}
@@ -810,6 +813,69 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 		return nil, err
 	}
 	return reuse, nil
+}
+
+// repairAMD64CompareSelectAdjacency moves a comparison across a short run of
+// independent instructions when its sole consumer is a scalar select. The
+// already-selected schedule otherwise remains unchanged. Keeping the pair
+// adjacent lets the emitter consume flags directly instead of materializing
+// and then retesting a boolean value.
+func repairAMD64CompareSelectAdjacency(f *Func, dag *DependencyDAG, schedule *Schedule) uint32 {
+	if f == nil || f.Target != TargetAMD64 || dag == nil || schedule == nil || len(dag.Offsets) != len(f.Insts)+1 || len(schedule.Order) != len(f.Insts) || len(schedule.uses) != len(f.VRegs) {
+		return 0
+	}
+	position := resize(schedule.verifyPosition, len(f.Insts))
+	schedule.verifyPosition = position
+	for index, instruction := range schedule.Order {
+		position[instruction] = uint32(index)
+	}
+	reserved := func(instruction uint32) bool {
+		return schedule.fusionBefore[instruction] != ^uint32(0) || schedule.fusionSource[instruction] != ^uint32(0) ||
+			schedule.sinkBefore[instruction] != ^uint32(0) || schedule.sinkProducer[instruction] != ^uint32(0) ||
+			schedule.lateBefore[instruction] != ^uint32(0) || schedule.lateProducer[instruction] != ^uint32(0)
+	}
+	var repaired uint32
+	for consumerPosition := 1; consumerPosition < len(schedule.Order); consumerPosition++ {
+		consumer := schedule.Order[consumerPosition]
+		operands := f.InstructionOperands(consumer)
+		if SemanticOpcode(f.Insts[consumer].Op) != wasm.InstrSelect || len(operands) != 3 {
+			continue
+		}
+		condition := operands[2].Reg
+		if condition == 0 || int(condition) >= len(f.VRegs) || f.VRegs[condition].Def%6 != 3 {
+			continue
+		}
+		producer := f.VRegs[condition].Def / 6
+		if int(producer) >= len(f.Insts) || schedule.BlockOf[producer] != schedule.BlockOf[consumer] || reserved(producer) || reserved(consumer) || !arm64CompareSelectable(f, producer, consumer, schedule.uses) {
+			continue
+		}
+		producerPosition := int(position[producer])
+		if producerPosition+1 >= consumerPosition || consumerPosition-producerPosition > PostRAScanLimit {
+			continue
+		}
+		movable := true
+		for _, instruction := range schedule.Order[producerPosition+1 : consumerPosition] {
+			for _, dependency := range dag.Dependencies[dag.Offsets[instruction]:dag.Offsets[instruction+1]] {
+				if dependency.Instruction == producer {
+					movable = false
+					break
+				}
+			}
+			if !movable {
+				break
+			}
+		}
+		if !movable {
+			continue
+		}
+		copy(schedule.Order[producerPosition:consumerPosition-1], schedule.Order[producerPosition+1:consumerPosition])
+		schedule.Order[consumerPosition-1] = producer
+		for index := producerPosition; index < consumerPosition; index++ {
+			position[schedule.Order[index]] = uint32(index)
+		}
+		repaired++
+	}
+	return repaired
 }
 
 // hoistARM64AdjacentLoadAddresses moves a pure, single-use address addition
