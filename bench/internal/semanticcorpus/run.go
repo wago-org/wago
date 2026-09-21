@@ -18,13 +18,19 @@ import (
 // second instance from the same compiled module; both must reproduce the exact
 // result (lifecycle/determinism check).
 func Run(root string, mod Module) error {
+	return RunWithConfig(root, mod, nil)
+}
+
+// RunWithConfig checks the exact oracle and instance isolation using the
+// requested compiler configuration.
+func RunWithConfig(root string, mod Module, config *wago.RuntimeConfig) error {
 	timeout := time.Duration(mod.Limits.TimeoutMS) * time.Millisecond
 
 	wasm, err := readArtifact(root, mod)
 	if err != nil {
 		return err
 	}
-	compiled, err := wago.Compile(nil, wasm)
+	compiled, err := wago.Compile(config, wasm)
 	if err != nil {
 		return fmt.Errorf("compile: %w", err)
 	}
@@ -52,6 +58,11 @@ func Run(root string, mod Module) error {
 // instance. It catches porting layers that pass once but retain or exhaust
 // guest state when used as a steady-state workload.
 func RunRepeated(root string, mod Module, repetitions int) error {
+	return RunRepeatedWithConfig(root, mod, repetitions, nil)
+}
+
+// RunRepeatedWithConfig checks steady-state reuse with the requested compiler.
+func RunRepeatedWithConfig(root string, mod Module, repetitions int, config *wago.RuntimeConfig) error {
 	if repetitions <= 0 {
 		return fmt.Errorf("repetitions must be positive")
 	}
@@ -60,7 +71,7 @@ func RunRepeated(root string, mod Module, repetitions int) error {
 	if err != nil {
 		return err
 	}
-	compiled, err := wago.Compile(nil, wasm)
+	compiled, err := wago.Compile(config, wasm)
 	if err != nil {
 		return fmt.Errorf("compile: %w", err)
 	}
@@ -109,6 +120,18 @@ func runInstance(compiled *wago.Compiled, mod Module, timeout time.Duration) (*o
 	}
 	defer inst.Close()
 	return runOnInstance(inst, mod, timeout)
+}
+
+// CheckOnInstance applies the exact semantic oracle to an already-instantiated
+// module. Benchmark setup uses a separate instance so its timed state remains
+// untouched.
+func CheckOnInstance(inst *wago.Instance, mod Module) error {
+	if mod.Invoke.Vectors != nil {
+		_, err := runVectorCasesOnInstance(inst, mod, mod.Invoke.Vectors, time.Duration(mod.Limits.TimeoutMS)*time.Millisecond)
+		return err
+	}
+	_, err := runOnInstance(inst, mod, time.Duration(mod.Limits.TimeoutMS)*time.Millisecond)
+	return err
 }
 
 func runOnInstance(inst *wago.Instance, mod Module, timeout time.Duration) (*outcome, error) {

@@ -817,6 +817,17 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 			if err := runSemanticOracle(semantic); err != nil {
 				b.Fatalf("%s oracle: %v", semantic.ID, err)
 			}
+			if experimental {
+				oracleInstance, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: hostStubs(c)})
+				if err != nil {
+					b.Fatalf("%s Dragline oracle instantiate: %v", semantic.ID, err)
+				}
+				oracleErr := semanticcorpus.CheckOnInstance(oracleInstance, semantic)
+				oracleInstance.Close()
+				if oracleErr != nil {
+					b.Fatalf("%s Dragline oracle: %v", semantic.ID, oracleErr)
+				}
+			}
 			prepared, err := prepareWagoSemanticExec(in, semantic)
 			if err != nil {
 				b.Fatalf("%s prepare: %v", semantic.ID, err)

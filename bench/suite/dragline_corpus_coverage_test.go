@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/bench/internal/semanticcorpus"
 )
 
 func TestDraglineRaytraceDifferential(t *testing.T) {
@@ -206,6 +207,28 @@ func TestDraglineCorpusCoverage(t *testing.T) {
 		t.Logf("RUNNABLE %s", module.File)
 	}
 	t.Logf("Dragline curated corpus: runnable=%d compile-only=%d available=%d", runnable, compileOnly, len(modules))
+}
+
+// TestDraglineSemanticCorpusCoverage applies the exact semantic oracles to
+// Dragline itself. The execution benchmarks validate the oracle with the
+// default compiler, but do not check Dragline's result on each timed call.
+func TestDraglineSemanticCorpusCoverage(t *testing.T) {
+	if os.Getenv("WAGO_DRAGLINE_CORPUS_COVERAGE") != "1" {
+		t.Skip("set WAGO_DRAGLINE_CORPUS_COVERAGE=1 to run curated corpus coverage")
+	}
+	config := wago.NewRuntimeConfig().WithCompiler(wago.CompilerDragline).WithTarget(wago.TargetNative)
+	for _, corpus := range loadCorpus(t) {
+		for _, semantic := range semanticExecCases(t, corpus) {
+			t.Run(semantic.ID, func(t *testing.T) {
+				if err := semanticcorpus.RunWithConfig(semanticCorpusRoot, semantic, config); err != nil {
+					t.Fatal(err)
+				}
+				if err := semanticcorpus.RunRepeatedWithConfig(semanticCorpusRoot, semantic, 2, config); err != nil {
+					t.Fatalf("same-instance repetition: %v", err)
+				}
+			})
+		}
+	}
 }
 
 func TestDraglineGlobalsClosedSumDifferential(t *testing.T) {
