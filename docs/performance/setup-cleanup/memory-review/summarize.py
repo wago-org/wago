@@ -12,6 +12,23 @@ from measurement import digest
 PRIMARY=['HeapAlloc','HeapInuse','HeapReleased','RSS_KiB','PSS_KiB']
 
 
+def validate_record(r, meta):
+    cfg = meta['configuration']
+    expected_env = dict(meta['environment'])
+    if cfg['profile']:
+        expected_env['GODEBUG'] = 'memprofilerate=1,gctrace=1,inittrace=1'
+    if r['environment'] != expected_env:
+        raise ValueError('mixed runtime configuration')
+    if cfg['legacy']:
+        if [p['phase'] for p in r['result']['legacy']] != ['warm-normal', 'closed-normal', 'released-normal', 'released-gc']:
+            raise ValueError('missing or duplicate historical checkpoints')
+        return
+    expected = ['startup', 'ready', 'setup', 'warm'] + [f'epoch{i+1}' for i in range(cfg['epochs'])] + ['released', 'post']
+    points = r['result']['Points']
+    if [p['Phase'] for p in points] != expected or [p['external']['index'] for p in points] != list(range(len(expected))):
+        raise ValueError('missing or duplicate checkpoints')
+
+
 def interval(values):
     rng=random.Random(67221)
     n=len(values)
@@ -31,7 +48,7 @@ def main():
         r=json.loads(path.read_text());key=tuple(r[k] for k in ['pair','label','module','api','intervention'])
         if key not in expected or key in seen or r['run_id']!=meta['run_id']:raise ValueError('duplicate or mixed process')
         seen.add(key)
-        if r['environment']['GOMAXPROCS']!=meta['environment']['GOMAXPROCS'] or r['environment']['GOGC']!='100':raise ValueError('mixed runtime configuration')
+        validate_record(r, meta)
         if cfg['legacy']:
             for point in r['result']['legacy']:
                 import re

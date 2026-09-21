@@ -135,6 +135,17 @@ func reviewWork(t *testing.T) string {
 		}
 		t.Fatal(err)
 	}
+	defer func() {
+		if c != nil {
+			_ = c.Close()
+		}
+		if module != nil {
+			_ = module.Close()
+		}
+		if rt != nil {
+			_ = rt.CloseContext(ctx)
+		}
+	}()
 	run := func() {
 		if rt == nil {
 			if _, err := runWagoCommand(m, c, stdin, false); err != nil {
@@ -168,16 +179,19 @@ func reviewWork(t *testing.T) string {
 		if err := c.Close(); err != nil {
 			t.Fatal(err)
 		}
+		c = nil
 	}
 	if module != nil {
 		if err := module.Close(); err != nil {
 			t.Fatal(err)
 		}
+		module = nil
 	}
 	if rt != nil {
 		if err := rt.CloseContext(ctx); err != nil {
 			t.Fatal(err)
 		}
+		rt = nil
 	}
 	return hash
 }

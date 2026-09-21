@@ -36,16 +36,16 @@ def proc(pid, detailed=False):
     return result
 
 
-def one(binary, path, env, prefix, module, api, intervention, commands, epochs, profile=False, legacy=False):
+def one(binary, path, env, prefix, module, api, intervention, commands, epochs, profile=False, legacy=False, mapping_snapshot=False):
     notify_r,notify_w=os.pipe();ack_r,ack_w=os.pipe()
     child_env=dict(env)
     if not legacy: child_env.update(WAGO_MEMORY_REVIEW='1',WAGO_REVIEW_NOTIFY_FD=str(notify_w),WAGO_REVIEW_ACK_FD=str(ack_r))
-    command=prefix+[str(binary),'-test.run',f'^TestWASIResources$/^{module}$' if legacy else '^TestWASIMemoryReview$','-test.count','1','-test.v','-wago.corpus',module if module!='minimal-wasi' else 'cjson','-wago.bench.lifecycle']
+    command=prefix+[str(binary),'-test.run',f'^TestWASIResources$/^{module}$' if legacy else '^TestWASIMemoryReview$','-test.count','1','-test.v','-wago.corpus','cjson,tinyxml2' if legacy else module if module!='minimal-wasi' else 'cjson','-wago.bench.lifecycle']
     if not legacy: command+=['-wago.review.module',module,'-wago.review.api',api,'-wago.review.intervention',intervention,'-wago.review.commands',str(commands),'-wago.review.epochs',str(epochs)]
     if profile:
         child_env['GODEBUG']='memprofilerate=1,gctrace=1,inittrace=1'
         command+=['-wago.review.profile',str(path.with_suffix('.heap'))]
-    start=time.monotonic();before=host();points=[];interval_peak=0;peak=0
+    start=time.monotonic();before=host();points=[];interval_peak=0;peak=0;p=None
     try:
         with path.open('x') as log:
             p=subprocess.Popen(command,cwd=ROOT/'bench/suite',env=child_env,stdout=log,stderr=subprocess.STDOUT,pass_fds=(notify_w,ack_r))
@@ -69,11 +69,14 @@ def one(binary, path, env, prefix, module, api, intervention, commands, epochs, 
                         sample=proc(p.pid,True)
                         sample.update(index=message[0],elapsed_seconds=observation-start,observation_seconds=time.monotonic()-observation,preceding_interval_sampled_peak_rss_kib=max(interval_peak,sample.get('VmRSS',0)))
                         points.append(sample);interval_peak=0
-                        if profile:
+                        if profile or mapping_snapshot:
                             path.with_suffix(f'.phase{message[0]}.smaps').write_text(Path(f'/proc/{p.pid}/smaps').read_text())
                         os.write(ack_w,message)
                     else: time.sleep(.005)
     finally:
+        if p is not None and p.returncode is None:
+            p.kill()
+            p.wait()
         for fd in [notify_r,notify_w,ack_r,ack_w]:
             if fd>=0:os.close(fd)
     text=path.read_text()
@@ -104,11 +107,13 @@ def main():
     p.add_argument('--epochs',type=int,default=1)
     p.add_argument('--profile',action='store_true')
     p.add_argument('--legacy',action='store_true')
+    p.add_argument('--mapping-snapshot',action='store_true',help='separate detailed smaps diagnostic; no Go profiling')
     p.add_argument('--gomaxprocs',type=int,default=16)
     p.add_argument('--cpus',default='0-15')
     a=p.parse_args()
+    if any(len(v)!=len(set(v)) for v in [a.modules,a.apis,a.interventions]):p.error('duplicate experiment cases')
     if not 1<=a.commands<=1000 or not 1<=a.epochs<=4 or a.samples<1:p.error('invalid bounded work or sample count')
-    if a.legacy and (a.apis!=['raw'] or a.interventions!=['scavenge'] or a.profile):p.error('legacy requires --apis raw --interventions scavenge, no profiling')
+    if a.legacy and (a.apis!=['raw'] or a.interventions!=['scavenge'] or a.profile or a.commands!=1000 or a.epochs!=1):p.error('legacy requires --apis raw --interventions scavenge, no profiling')
     binaries={k:executable(a.binaries/f'wasi-{k}.test') for k in ['baseline','candidate']}
     build=json.loads((a.binaries/'build.json').read_text())
     for k,v in binaries.items():
@@ -122,7 +127,7 @@ def main():
                 for api in a.apis:
                     for intervention in a.interventions:
                         name=f'{pair:03d}-{label}-{module}-{api}-{intervention}'
-                        record=one(binaries[label],out/f'{name}.txt',env,prefix,module,api,intervention,a.commands,a.epochs,a.profile,a.legacy)
+                        record=one(binaries[label],out/f'{name}.txt',env,prefix,module,api,intervention,a.commands,a.epochs,a.profile,a.legacy,a.mapping_snapshot)
                         record.update(pair=pair,label=label,module=module,api=api,intervention=intervention,run_id=meta['run_id'])
                         result=out/f'{name}.json';result.write_text(json.dumps(record,indent=2)+'\n')
                         meta['records'].append({'file':result.name,'sha256':digest(result)})

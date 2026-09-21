@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 
@@ -110,6 +111,37 @@ print('PASS')
     def test_profile_empty_is_failure(self):
         r=subprocess.run(['bash',str(self.scripts/'diagnose-memory-workers.sh'),'--binary',str(self.bins/'wasi-candidate.test'),'--output',str(self.out),'--workers-only','--cpus',''],env=dict(os.environ,FIXTURE_EMPTY='1'),capture_output=True,text=True)
         self.assertNotEqual(r.returncode,0)
+
+    def test_memory_configuration_and_checkpoints(self):
+        summary = module('memory_summary', HERE/'memory-review/summarize.py')
+        env = dict(GOMAXPROCS='16', GOGC='100', GOMEMLIMIT='off', GODEBUG='', WAGO_BOUNDS='signals')
+        meta = dict(configuration=dict(profile=False, legacy=False, epochs=1), environment=env)
+        phases = ['startup', 'ready', 'setup', 'warm', 'epoch1', 'released', 'post']
+        record = dict(environment=dict(env), result=dict(Points=[dict(Phase=p, external=dict(index=i)) for i,p in enumerate(phases)]))
+        summary.validate_record(record, meta)
+
+        for key in env:
+            bad = json.loads(json.dumps(record)); bad['environment'][key] = 'changed'
+            with self.assertRaisesRegex(ValueError, 'configuration'):
+                summary.validate_record(bad, meta)
+        for mode in ['missing', 'duplicate']:
+            bad = json.loads(json.dumps(record))
+            if mode == 'missing': bad['result']['Points'].pop()
+            else: bad['result']['Points'].append(bad['result']['Points'][0])
+            with self.assertRaisesRegex(ValueError, 'checkpoints'):
+                summary.validate_record(bad, meta)
+        meta['configuration']['profile'] = True
+        record['environment']['GODEBUG'] = 'memprofilerate=1,gctrace=1,inittrace=1'
+        summary.validate_record(record, meta)
+
+    def test_historical_memory_corpus_context(self):
+        runner = module('memory_runner', HERE/'memory-review/run-memory.py')
+        with mock.patch.object(runner.subprocess, 'Popen', side_effect=OSError('fixture stop')) as start:
+            with self.assertRaises(OSError):
+                runner.one(self.bins/'wasi-baseline.test', Path(self.tmp.name)/'legacy.txt', {}, [], 'tinyxml2', 'raw', 'scavenge', 1000, 1, legacy=True)
+        command = start.call_args.args[0]
+        self.assertEqual(command[command.index('-wago.corpus')+1], 'cjson,tinyxml2')
+        self.assertEqual(command[command.index('-test.run')+1], '^TestWASIResources$/^tinyxml2$')
 
 
 if __name__ == '__main__':

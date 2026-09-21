@@ -29,6 +29,7 @@ def main():
     source = work/'wago'
     run('git', '-C', str(ROOT), 'worktree', 'add', '--detach', str(source), 'HEAD')
     delta = subprocess.check_output(['git', 'diff', '--binary', 'HEAD'], cwd=ROOT)
+    (work/'wago-source.patch').write_bytes(delta)
     if delta:
         run('git', '-C', str(source), 'apply', '-', input=delta)
     run('git', 'clone', '--bare', a.provider_repository, str(work/'wasi.git'))
@@ -61,6 +62,9 @@ def main():
         cmd += ['./bench/suite']
         env = dict(os.environ, GOWORK=str(workspace), GOMAXPROCS=str(a.gomaxprocs))
         manifest['commands'].append(cmd)
+        manifest.setdefault('build_invocations', []).append(dict(command=cmd, cwd=str(source),
+            environment=json.loads(subprocess.check_output(['go', 'env', '-json'], cwd=source, env=env, text=True)),
+            runtime_environment={k:env.get(k) for k in ['GOMAXPROCS', 'GOGC', 'GOMEMLIMIT', 'GODEBUG', 'WAGO_BOUNDS']}))
         run(*cmd, cwd=source, env=env)
         manifest['binaries'][label] = dict(path=str(work/f'wasi-{label}.test'), sha256=digest(work/f'wasi-{label}.test'))
         manifest['source_hashes'][label] = {'provider_core': digest(provider/'internal/core/core.go'), 'provider_go_mod': digest(provider/'go.mod'), 'wago_imports': digest(work/'original-imports.go') if a.comparison == 'snapshot' and label == 'baseline' else digest(source/'src/wago/imports.go')}
