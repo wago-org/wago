@@ -139,16 +139,18 @@ func (im *Imports) snapshot() (resolvedImports, error) {
 	}
 	im.mu.Lock()
 	defer im.mu.Unlock()
-	im.sealed = true
-	for _, imp := range im.decls {
-		if event, ok := imp.fn.(I32HostEvent); ok {
-			if event == nil {
-				im.record(fmt.Errorf("wago: import %q.%q: deferred host callback is nil", imp.module, imp.name))
+	if !im.sealed {
+		im.sealed = true
+		for _, imp := range im.decls {
+			if event, ok := imp.fn.(I32HostEvent); ok {
+				if event == nil {
+					im.record(fmt.Errorf("wago: import %q.%q: deferred host callback is nil", imp.module, imp.name))
+				}
+				continue
 			}
-			continue
-		}
-		if imp.inferred && (!slices.Equal(imp.params, imp.inferredParams) || !slices.Equal(imp.results, imp.inferredResults)) {
-			im.record(fmt.Errorf("wago: import %q.%q: declared signature %v -> %v does not match callback signature %v -> %v", imp.module, imp.name, imp.params, imp.results, imp.inferredParams, imp.inferredResults))
+			if imp.inferred && (!slices.Equal(imp.params, imp.inferredParams) || !slices.Equal(imp.results, imp.inferredResults)) {
+				im.record(fmt.Errorf("wago: import %q.%q: declared signature %v -> %v does not match callback signature %v -> %v", imp.module, imp.name, imp.params, imp.results, imp.inferredParams, imp.inferredResults))
+			}
 		}
 	}
 	if im.err != nil {
