@@ -1,57 +1,74 @@
 #!/usr/bin/env python3
-"""Twenty preselected paired rounds; no profiling, with fixed process settings."""
+"""Fixed paired processes. Each invocation owns a new output directory."""
+import argparse
 import json
-import os
 from pathlib import Path
-import subprocess
-import time
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from measurement import ROOT, digest, executable, fresh_directory, identity, rows, run_process, settings
 
-ROOT = Path(__file__).resolve().parents[4]
-OUT = ROOT / 'docs/performance/setup-cleanup/continuation'
-ENV = dict(os.environ, GOMAXPROCS='16', GOGC='100', GOMEMLIMIT='off', GODEBUG='', WAGO_BOUNDS='signals')
-CASES = [
- ('wasi-focused', 'suite', ['-test.bench', '^Benchmark(CommandExec|Instantiate|Exec|ExecCallOverhead_wago)$/^(cjson|tinyxml2|utf8proc|pcre2|tiny)(\\.|$)', '-test.benchtime', '200ms', '-wago.corpus', 'cjson,tinyxml2,utf8proc,pcre2,tiny']),
- ('wasi-phases', 'suite', ['-test.bench', '^BenchmarkCommandLifecycleDiagnostic$', '-test.benchtime', '1000x', '-wago.corpus', 'cjson,tinyxml2', '-wago.bench.lifecycle']),
- ('wasi-host-owned', 'suite', ['-test.bench', '^BenchmarkWASI(HostCall|OwnedLifecycle)Diagnostic$', '-test.benchtime', '200ms', '-wago.corpus', 'cjson,tinyxml2', '-wago.bench.lifecycle']),
- *[(f'wasi-resources-{m}', 'suite', ['-test.run', f'^TestWASIResources$/^{m}$', '-test.v', '-wago.corpus', 'cjson,tinyxml2', '-wago.bench.lifecycle']) for m in ['minimal-wasi','cjson','tinyxml2']],
-]
-
-def environment():
- result = {}
- for p in ['/proc/loadavg','/proc/pressure/memory','/proc/pressure/cpu','/proc/meminfo']:
-  result[p] = Path(p).read_text()
- result['temperature'] = {str(p): p.read_text() for p in Path('/sys/class/thermal').glob('thermal_zone*/temp')}
- return result
+CASES = {
+    'focused': (['-test.bench', '^Benchmark(CommandExec|Instantiate|Exec|ExecCallOverhead_wago)$/^(cjson|tinyxml2|utf8proc|pcre2|tiny)(\\.|$)', '-test.benchtime', '200ms', '-wago.corpus', 'cjson,tinyxml2,utf8proc,pcre2,tiny'], ['BenchmarkCommandExec/cjson', 'BenchmarkCommandExec/tinyxml2']),
+    'phases': (['-test.bench', '^BenchmarkCommandLifecycleDiagnostic$', '-test.benchtime', '1000x', '-wago.corpus', 'cjson,tinyxml2', '-wago.bench.lifecycle'], ['BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports', 'BenchmarkCommandLifecycleDiagnostic/cjson/Imports', 'BenchmarkCommandLifecycleDiagnostic/tinyxml2/Imports']),
+    'host-owned': (['-test.bench', '^BenchmarkWASI(HostCall|OwnedLifecycle)Diagnostic$', '-test.benchtime', '200ms', '-wago.corpus', 'cjson,tinyxml2', '-wago.bench.lifecycle'], ['BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false', 'BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false', 'BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose']),
+    'smoke': (['-test.bench', '^BenchmarkCommandLifecycleDiagnostic$/^minimal-wasi$/^Imports$', '-test.benchtime', '2x', '-wago.corpus', 'cjson', '-wago.bench.lifecycle'], ['BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports']),
+}
 
 
-def run(label, kind, binary, args, sample):
- cmd = ['taskset', '-c', '0-15', str(ROOT / '.tmp/setup-cleanup-next' / f'wasi-{label}.test'), '-test.run', '^$', '-test.count', '1', '-test.benchmem', *args]
- before = environment()
- started = time.monotonic()
- rss_peak = virtual_peak = mappings_peak = 0
- with (OUT / f'{kind}-{label}.txt').open('a') as f:
-  f.write(f'# round {sample}\n'); f.flush()
-  p = subprocess.Popen(cmd, cwd=ROOT/'bench/suite', env=ENV, stdout=f, stderr=subprocess.STDOUT)
-  while True:
-   pid, status, usage = os.wait4(p.pid, os.WNOHANG)
-   if pid:
-    p.returncode = os.waitstatus_to_exitcode(status)
-    break
-   try:
-    status_text = Path(f'/proc/{p.pid}/status').read_text()
-    fields = {l.split(':')[0]:l.split(':')[1].strip() for l in status_text.splitlines() if ':' in l}
-    rss_peak = max(rss_peak, int(fields.get('VmRSS', '0 kB').split()[0]))
-    virtual_peak = max(virtual_peak, int(fields.get('VmSize', '0 kB').split()[0]))
-    mappings_peak = max(mappings_peak, len(Path(f'/proc/{p.pid}/maps').read_text().splitlines()))
-   except (OSError, ValueError):
-    pass
-   time.sleep(.02)
- record = dict(environment_before=before,environment_after=environment(),label=label,kind=kind,sample=sample,command=cmd,seconds=time.monotonic()-started,exit=p.returncode,peak_rss_kib=usage.ru_maxrss,sampled_peak_rss_kib=rss_peak,peak_virtual_kib=virtual_peak,peak_mapping_count=mappings_peak,minor_faults=usage.ru_minflt,major_faults=usage.ru_majflt,user_seconds=usage.ru_utime,system_seconds=usage.ru_stime)
- with (OUT/'wasi-resources.jsonl').open('a') as f: f.write(json.dumps(record)+'\n')
- if p.returncode: raise SystemExit(f'failed: {cmd}')
- print(f'round {sample} {label} {kind}: {record["seconds"]:.1f}s',flush=True)
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--output', required=True, type=Path)
+    p.add_argument('--binaries', type=Path, help='directory from reproduce-provider.sh')
+    p.add_argument('--baseline', type=Path)
+    p.add_argument('--candidate', type=Path)
+    p.add_argument('--build-metadata', type=Path)
+    p.add_argument('--samples', type=int, default=20)
+    p.add_argument('--cases', nargs='+', choices=CASES, default=['focused', 'phases', 'host-owned'])
+    p.add_argument('--gomaxprocs', type=int, default=16)
+    p.add_argument('--cpus', default='0-15')
+    a = p.parse_args()
+    if a.samples < 1 or len(a.cases) != len(set(a.cases)):
+        p.error('positive sample count and unique cases required')
+    if a.binaries:
+        if a.baseline or a.candidate:
+            p.error('use --binaries or explicit binary paths, not both')
+        a.baseline, a.candidate = [a.binaries/f'wasi-{label}.test' for label in ['baseline', 'candidate']]
+        a.build_metadata = a.build_metadata or a.binaries/'build.json'
+    if not a.baseline or not a.candidate or not a.build_metadata:
+        p.error('binary paths and build metadata are required')
+    binaries = {k: executable(v) for k, v in [('baseline', a.baseline), ('candidate', a.candidate)]}
+    build = json.loads(a.build_metadata.read_text())
+    for label, binary in binaries.items():
+        if build['binaries'][label]['sha256'] != digest(binary):
+            raise ValueError(f'{label} binary does not match build metadata')
+    env, prefix = settings(a.gomaxprocs, a.cpus)
+    out = fresh_directory(a.output)
+    meta = identity(env, binaries)
+    meta.update(build=build, samples=a.samples, cases=a.cases, cpus=a.cpus, order='AB, BA alternating', status='running', records=[])
+    metadata = out/'run.json'
+    metadata.write_text(json.dumps(meta, indent=2)+'\n')
+    leaves = {}
+    for sample in range(1, a.samples+1):
+        for label in (['baseline', 'candidate'] if sample % 2 else ['candidate', 'baseline']):
+            for case in a.cases:
+                args, required = CASES[case]
+                command = prefix+[str(binaries[label]), '-test.run', '^$', '-test.count', '1', '-test.benchmem', *args]
+                path = out/f'{sample:03d}-{label}-{case}.txt'
+                record = run_process(command, path, env)
+                parsed = rows(path.read_text())
+                if not set(required) <= parsed.keys():
+                    raise ValueError(f'missing required leaves for {case}: {required}')
+                names = sorted(parsed)
+                if case in leaves and leaves[case] != names:
+                    raise ValueError(f'mixed benchmark leaves for {case}')
+                leaves[case] = names
+                record.update(sample=sample, label=label, case=case, run_id=meta['run_id'], environment=meta['environment'], leaves=names)
+                meta['records'].append(record)
+                metadata.write_text(json.dumps(meta, indent=2)+'\n')
+                print(f'{sample}/{a.samples} {label} {case}', flush=True)
+    meta['status'] = 'complete'
+    metadata.write_text(json.dumps(meta, indent=2)+'\n')
+
 
 if __name__ == '__main__':
- for sample in range(1,21):
-  for label in (['baseline','candidate'] if sample%2 else ['candidate','baseline']):
-   for kind,binary,args in CASES: run(label,kind,binary,args,sample)
+    main()

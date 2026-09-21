@@ -1,5 +1,7 @@
 # Setup and cleanup investigation
 
+For new runs, use the [corrected reproduction commands](REPRODUCING.md). Historical command blocks below describe the saved runs; they are not safe append/resume instructions.
+
 Publication note (2026-09-21): the provider change is now submitted as [wasi#21](https://github.com/wago-org/wasi/pull/21). It is still not a released dependency or enabled by Wago's dependency pin. The historical measurement records below retain their original source identities and unpublished status. See [publication checks and branch identities](PUBLICATION.md).
 
 A two-line import setup fix removes 46 allocations per command. Ten interleaved samples show lower cjson and tinyxml2 command latency. Both compatible full suites passed all 984 measurements; all 72 execution cases retained zero B/op and zero allocs/op. Ten fixed follow-up samples did not establish a Wago regression in the full run’s timing flags. The affected correctness checks passed; unrelated TinyGo linker failures remain documented below.
