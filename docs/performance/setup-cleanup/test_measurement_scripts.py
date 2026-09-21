@@ -143,6 +143,20 @@ print('PASS')
         self.assertEqual(command[command.index('-wago.corpus')+1], 'cjson,tinyxml2')
         self.assertEqual(command[command.index('-test.run')+1], '^TestWASIResources$/^tinyxml2$')
 
+    def test_provider_patch_argument_validation(self):
+        script = HERE/'continuation/reproduce-provider.py'
+        missing = Path(self.tmp.name)/'missing patch'
+        command = ['python3', str(script), str(self.out), '--production-patch', str(missing)]
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('missing provider patch', result.stderr)
+        self.assertFalse(self.out.exists())
+        missing.write_text('fixture')
+        result = subprocess.run(command+['--comparison', 'snapshot'], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('requires --comparison provider', result.stderr)
+        self.assertFalse(self.out.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

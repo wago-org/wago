@@ -17,8 +17,15 @@ def main():
     p.add_argument('--provider-base', default='6a6684d2ecd2be2d17e5792733d1d0e03b2f2c0e')
     p.add_argument('--provider-repository', default='https://github.com/wago-org/wasi')
     p.add_argument('--comparison', choices=['provider', 'snapshot'], default='provider')
+    p.add_argument('--production-patch', type=Path, help='provider patch to compare; defaults to the historical construction patch')
     p.add_argument('--gomaxprocs', type=int, default=16)
     a = p.parse_args()
+    patches = Path(__file__).resolve().parent/'patches'
+    production_patch = a.production_patch.resolve() if a.production_patch else patches/'wasi-construction.patch'
+    if not production_patch.is_file():
+        p.error(f'missing provider patch: {production_patch}')
+    if a.production_patch and a.comparison != 'provider':
+        p.error('--production-patch requires --comparison provider')
     work = a.work.resolve()
     cache = Path(capture(['go', 'env', 'GOMODCACHE'])).resolve()
     if work == cache or cache in work.parents:
@@ -34,13 +41,13 @@ def main():
         run('git', '-C', str(source), 'apply', '-', input=delta)
     run('git', 'clone', '--bare', a.provider_repository, str(work/'wasi.git'))
     base = capture(['git', '--git-dir', str(work/'wasi.git'), 'rev-parse', a.provider_base], cwd=work)
-    patches = Path(__file__).resolve().parent/'patches'
     patch_names = ['wasi-construction-tests.patch', 'wasi-construction-go122-tests.patch']
     manifest = dict(comparison=a.comparison, wago_commit=capture(['git', 'rev-parse', 'HEAD']), wago_delta_sha256=hashlib.sha256(delta).hexdigest(), provider_base=base,
                     toolchain=capture(['go', 'version']), build_environment=json.loads(capture(['go', 'env', '-json'])),
                     build_tags='wago_guardpage', source_hashes={}, patches={}, commands=[], binaries={})
-    for name in patch_names+['wasi-construction.patch']:
+    for name in patch_names:
         manifest['patches'][name] = digest(patches/name)
+    manifest['production_patch'] = dict(path=str(production_patch), sha256=digest(production_patch))
     for label in ['baseline', 'candidate']:
         provider = work/f'wasi-{label}'
         run('git', '--git-dir', str(work/'wasi.git'), 'worktree', 'add', '--detach', str(provider), base)
@@ -49,7 +56,7 @@ def main():
             for name in patch_names:
                 run('git', '-C', str(provider), 'apply', str(patches/name))
         if a.comparison == 'provider' and label == 'candidate':
-            run('git', '-C', str(provider), 'apply', str(patches/'wasi-construction.patch'))
+            run('git', '-C', str(provider), 'apply', str(production_patch))
         workspace = work/f'{label}.work'
         workspace.write_text('go 1.22.0\nuse (\n'+''.join(' '+json.dumps(str(v))+'\n' for v in [source, source/'bench', source/'cli/wago-installer', provider])+')\nreplace github.com/wago-org/wago v0.1.0-beta.9 => '+json.dumps(str(source))+'\n')
         cmd = ['go', 'test', '-c', '-tags', 'wago_guardpage', '-o', str(work/f'wasi-{label}.test')]
