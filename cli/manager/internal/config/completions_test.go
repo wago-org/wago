@@ -139,3 +139,99 @@ func TestCompletionRejectsUnknownShell(t *testing.T) {
 		t.Fatal("Completion accepted an unsupported shell")
 	}
 }
+
+func TestFishCompletionXDGConfigHome(t *testing.T) {
+	for _, custom := range []bool{false, true} {
+		for _, explicit := range []bool{false, true} {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
+			t.Setenv("XDG_CONFIG_HOME", "")
+			root := filepath.Join(home, ".config")
+			if custom {
+				root = filepath.Join(home, "xdg")
+				t.Setenv("XDG_CONFIG_HOME", root)
+			}
+			path := ""
+			want := filepath.Join(root, "fish", "completions", "wago.fish")
+			if explicit {
+				path = filepath.Join(home, "explicit.fish")
+				want = path
+			}
+			got, err := InstallCompletion("fish", path, "")
+			if err != nil || got != want {
+				t.Fatalf("custom=%v explicit=%v: path=%q err=%v, want %q", custom, explicit, got, err, want)
+			}
+			if data, err := os.ReadFile(want); err != nil || !strings.Contains(string(data), "wago __complete") {
+				t.Fatalf("completion=%q err=%v", data, err)
+			}
+		}
+	}
+}
+
+func TestFishCompletionRequiresHomeOrXDG(t *testing.T) {
+	for _, tc := range []struct {
+		name                string
+		home, xdg, explicit bool
+		wantError           bool
+	}{
+		{name: "home", home: true},
+		{name: "xdg", home: true, xdg: true},
+		{name: "xdg_without_home", xdg: true},
+		{name: "neither_home_nor_xdg", wantError: true},
+		{name: "explicit_without_home", explicit: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			previous, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chdir(root); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := os.Chdir(previous); err != nil {
+					t.Error(err)
+				}
+			})
+			home, xdg, output := "", "", ""
+			if tc.home {
+				home = filepath.Join(root, "home")
+			}
+			if tc.xdg {
+				xdg = filepath.Join(root, "xdg")
+			}
+			if tc.explicit {
+				output = filepath.Join(root, "explicit.fish")
+			}
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
+			t.Setenv("XDG_CONFIG_HOME", xdg)
+			got, err := InstallCompletion("fish", output, "")
+			if tc.wantError {
+				if err == nil || got != "" {
+					t.Errorf("install = %q, %v; want an error and no path", got, err)
+				}
+				if _, err := os.Stat(filepath.Join(root, ".config")); !os.IsNotExist(err) {
+					t.Errorf("installation created a relative config directory: %v", err)
+				}
+				return
+			}
+			configRoot := filepath.Join(home, ".config")
+			if tc.xdg {
+				configRoot = xdg
+			}
+			want := filepath.Join(configRoot, "fish", "completions", "wago.fish")
+			if tc.explicit {
+				want = output
+			}
+			if err != nil || got != want {
+				t.Fatalf("install = %q, %v; want %q", got, err, want)
+			}
+			if data, err := os.ReadFile(want); err != nil || !strings.Contains(string(data), "wago __complete") {
+				t.Fatalf("completion = %q, %v", data, err)
+			}
+		})
+	}
+}

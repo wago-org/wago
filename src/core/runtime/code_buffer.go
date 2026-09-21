@@ -45,8 +45,25 @@ func NewCodeBuffer(capacity int) (*CodeBuffer, error) {
 // Append adds p to the image. A capacity underestimate grows the mapping
 // geometrically instead of turning a valid Wasm module into a compile failure.
 func (b *CodeBuffer) Append(p []byte) error {
-	if err := b.grow(len(p)); err != nil {
+	aliasOffset, preserveEnd := -1, 0
+	if b != nil && len(p) > len(b.mem)-b.n && len(b.mem) != 0 {
+		base := uintptr(unsafe.Pointer(unsafe.SliceData(b.mem)))
+		source := uintptr(unsafe.Pointer(unsafe.SliceData(p)))
+		if source >= base && source-base < uintptr(len(b.mem)) {
+			aliasOffset = int(source - base)
+			if len(p) > len(b.mem)-aliasOffset {
+				return fmt.Errorf("jit: append source exceeds code mapping")
+			}
+			preserveEnd = aliasOffset + len(p)
+		} else if source < base && uintptr(len(p)) > base-source {
+			return fmt.Errorf("jit: append source overlaps code mapping boundary")
+		}
+	}
+	if err := b.growPreserving(len(p), preserveEnd); err != nil {
 		return err
+	}
+	if aliasOffset >= 0 {
+		p = b.mem[aliasOffset:preserveEnd]
 	}
 	copy(b.mem[b.n:], p)
 	b.n += len(p)
@@ -246,6 +263,10 @@ func (b *CodeBuffer) Close() error {
 }
 
 func (b *CodeBuffer) grow(extra int) error {
+	return b.growPreserving(extra, 0)
+}
+
+func (b *CodeBuffer) growPreserving(extra, preserveEnd int) error {
 	if b == nil {
 		return fmt.Errorf("jit: nil code buffer")
 	}
@@ -276,7 +297,8 @@ func (b *CodeBuffer) grow(extra int) error {
 			return err
 		}
 	}
-	copy(mem, b.mem[:b.n])
+	// An append source can include writable mapping bytes beyond the image.
+	copy(mem, b.mem[:max(b.n, preserveEnd)])
 	old := b.mem
 	b.mem = mem
 	if b.heap {

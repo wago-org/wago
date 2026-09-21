@@ -22,10 +22,24 @@ import (
 )
 
 func TestWithoutWatchFlagsPreservesGuestArguments(t *testing.T) {
-	input := []string{"--invoke", "helper.wasm", "--watch", "--watch-interval", "1s", "module.wasm", "--watch", "guest"}
-	want := []string{"run", "--invoke", "helper.wasm", "module.wasm", "--watch", "guest"}
-	if got := watchedChildArguments(input, Command(testEnvironment{}).AllFlags()); !reflect.DeepEqual(got, want) {
-		t.Fatalf("watchedChildArguments = %#v, want %#v", got, want)
+	for _, tc := range []struct {
+		name        string
+		input, want []string
+	}{
+		{"before", []string{"--watch", "module.wasm"}, []string{"module.wasm"}},
+		{"after", []string{"module.wasm", "--watch"}, []string{"module.wasm"}},
+		{"interval", []string{"module.wasm", "--watch-interval", "250"}, []string{"module.wasm"}},
+		{"inline_interval", []string{"module.wasm", "--watch-interval=250"}, []string{"module.wasm"}},
+		{"guest", []string{"--watch", "module.wasm", "--", "guest", "--watch"}, []string{"module.wasm", "--", "guest", "--watch"}},
+		{"guest_only", []string{"module.wasm", "--", "--watch"}, []string{"module.wasm", "--", "--watch"}},
+		{"flag_values", []string{"--invoke", "helper.wasm", "--watch", "module.wasm", "--invoke", "--watch", "--core=2", "--", "--watch-interval", "250"}, []string{"--invoke", "helper.wasm", "module.wasm", "--invoke", "--watch", "--core=2", "--", "--watch-interval", "250"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want := append([]string{"run"}, tc.want...)
+			if got := watchedChildArguments(tc.input, Command(testEnvironment{}).AllFlags()); !reflect.DeepEqual(got, want) {
+				t.Fatalf("child=%q, want %q", got, want)
+			}
+		})
 	}
 }
 

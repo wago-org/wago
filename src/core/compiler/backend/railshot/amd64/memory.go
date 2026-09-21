@@ -411,6 +411,9 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 		disp = int32(off)
 		leaDisp = int32(off) + int32(size)
 	} else if off != 0 {
+		// The adjusted address has no certificate for the original base.
+		bcKind, rangeExtent = 0, 0
+		hoistedLoopBounds = false
 		t := f.allocReg(maskOf(ea))
 		f.a.MovImm32(t, int32(off))
 		f.a.Add64(ea, t)

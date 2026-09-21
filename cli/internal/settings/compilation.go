@@ -122,8 +122,9 @@ func ResolveCompilationFrom(config Config, configured bool, request CompilationR
 		}
 		optimizations[name] = enabled
 	}
+	// An explicit release profile replaces stored feature defaults.
 	features := map[string]bool{}
-	if configured {
+	if configured && core == 0 {
 		for name, enabled := range config.Features {
 			features[name] = enabled
 		}

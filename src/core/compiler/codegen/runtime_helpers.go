@@ -41,7 +41,10 @@ const (
 	GCHelperIDBits                          = 8
 	GCHelperIDMask                   uint32 = 1<<GCHelperIDBits - 1
 	GCSafepointIDShift                      = GCHelperIDBits
-	GCSafepointIDMax                 uint32 = 1<<(30-GCSafepointIDShift) - 1
+	// Bit 29 is the first synchronous dispatch tag (atomic wait), so helper
+	// payloads must remain entirely below it.
+	GCDispatchPayloadMask uint32 = 1<<29 - 1
+	GCSafepointIDMax             = GCDispatchPayloadMask >> GCSafepointIDShift
 )
 
 const gcRefTargetHeapMask uint64 = 1<<33 - 1
@@ -71,7 +74,7 @@ func DecodeGCRefTarget(value uint64) (heap int64, nullable, exact bool) {
 }
 
 // EncodeGCHelperDispatch packs one stable helper operation and allocation
-// safepoint into the low 30 bits of a synchronous host dispatch word.
+// safepoint below the synchronous host dispatch tag bits.
 func EncodeGCHelperDispatch(helper, safepoint uint32) (uint32, bool) {
 	if helper > GCHelperIDMask || safepoint > GCSafepointIDMax {
 		return 0, false

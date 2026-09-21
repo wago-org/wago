@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"fmt"
 	"runtime"
 	"strings"
 	"testing"
@@ -134,5 +135,42 @@ func TestCompilerTargetSelectionIsOrthogonal(t *testing.T) {
 	}
 	if _, err := ResolveCompilationFrom(Default(), false, CompilationRequest{Arch: runtime.GOARCH, Objective: "fastish"}); err == nil {
 		t.Fatal("unknown optimization objective was accepted")
+	}
+}
+
+func TestExplicitCoreOverridesStoredFeatures(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		for _, core := range []string{"", "2", "3"} {
+			t.Run(fmt.Sprintf("core=%s/stored=%t", core, enabled), func(t *testing.T) {
+				config := Default()
+				config.Features = map[string]bool{"gc": enabled}
+				selection, err := ResolveCompilationFrom(config, true, CompilationRequest{Arch: runtime.GOARCH, Core: core})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if core == "" {
+					if selected, ok := selection.Features["gc"]; !ok || selected != enabled {
+						t.Fatalf("stored GC setting was not retained: %v", selection.Features)
+					}
+				} else if len(selection.Features) != 0 {
+					t.Fatalf("explicit Core profile retained stored overrides: %v", selection.Features)
+				}
+				feature, ok := wago.FeatureInfoByName("gc")
+				if !ok {
+					t.Fatal("GC feature is missing from the catalog")
+				}
+				want := enabled && feature.Available
+				if core != "" {
+					want = core == "3"
+				}
+				got := selection.RuntimeConfig().CoreFeatures().IsEnabled(wago.CoreFeatureGC)
+				if got != want {
+					t.Fatalf("GC enabled=%v,want %v", got, want)
+				}
+				if config.Features["gc"] != enabled {
+					t.Fatal("stored setting changed")
+				}
+			})
+		}
 	}
 }

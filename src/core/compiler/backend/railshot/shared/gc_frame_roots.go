@@ -23,12 +23,13 @@ const (
 
 const (
 	// GCHelperIDBits reserves the low dispatch bits for the stable helper ID.
-	// Remaining low-30-bit payload bits identify an allocating safepoint; bits
-	// 30-31 remain the existing GC and host-funcref dispatch tags.
-	GCHelperIDBits     = codegen.GCHelperIDBits
-	GCHelperIDMask     = codegen.GCHelperIDMask
-	GCSafepointIDShift = codegen.GCSafepointIDShift
-	GCSafepointIDMax   = codegen.GCSafepointIDMax
+	// Safepoints occupy the bits below the first dispatch tag (atomic wait).
+	// Bits 29-31 select atomic, GC, and host-funcref dispatch.
+	GCHelperIDBits        = codegen.GCHelperIDBits
+	GCHelperIDMask        = codegen.GCHelperIDMask
+	GCSafepointIDShift    = codegen.GCSafepointIDShift
+	GCDispatchPayloadMask = codegen.GCDispatchPayloadMask
+	GCSafepointIDMax      = codegen.GCSafepointIDMax
 
 	// GCFrameRootLimit bounds simultaneously live exact roots in one Dragline
 	// native frame. The compiler keeps

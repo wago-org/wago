@@ -250,3 +250,23 @@ func TestInstantiateArenaNeedRejectsImpossibleTableShape(t *testing.T) {
 		})
 	}
 }
+
+func TestInstantiateArenaNeedPassiveElementOverflow(t *testing.T) {
+	base, err := InstantiateArenaNeed(InstantiateFootprint{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	limit := (maxInt() - base) / PassiveElemDescBytes
+	need, err := InstantiateArenaNeed(InstantiateFootprint{PassiveElemCount: limit})
+	if err != nil || need != base+limit*PassiveElemDescBytes {
+		t.Fatalf("boundary need=%d, err=%v", need, err)
+	}
+	for _, count := range []int{-1, limit + 1, maxInt()/PassiveElemDescBytes + 1, maxInt()/PassiveElemDescBytes*2 + 2, maxInt()} {
+		if need, err := InstantiateArenaNeed(InstantiateFootprint{PassiveElemCount: count}); err == nil {
+			t.Errorf("count %d accepted: need %d", count, need)
+		}
+	}
+	if _, err := InstantiateArenaNeed(InstantiateFootprint{HostCallBytes: maxInt() - 7, PassiveElemCount: 1}); err == nil {
+		t.Fatal("descriptor addition overflow accepted")
+	}
+}
