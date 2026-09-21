@@ -1776,8 +1776,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			if block := plan.CFG.Blocks[blockID]; block.InstCount != 0 {
 				offset = plan.Stack.Instrs[block.InstStart].Offset
 			}
-			metadata.recordTrap(a.Len(), offset, 1)
-			amd64EmitTrap(&a, 1, fn.Index, offset)
+			coldTrapPatches = append(coldTrapPatches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: offset, Code: 1})
 			continue
 		}
 		emitCalleeSaveEntry(railssa.BlockID(blockID))
@@ -4868,8 +4867,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		terminator := plan.Stack.Instrs[cfgBlock.InstStart+cfgBlock.InstCount-1]
 		first, second, edgeCount := nativeBlockEdgePair(plan, uint32(blockID))
 		if terminator.Kind == wasm.InstrUnreachable {
-			metadata.recordTrap(a.Len(), terminator.Offset, 1)
-			amd64EmitTrap(&a, 1, fn.Index, terminator.Offset)
+			coldTrapPatches = append(coldTrapPatches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: terminator.Offset, Code: 1})
 			continue
 		}
 		if terminator.Kind == wasm.InstrBrTable {

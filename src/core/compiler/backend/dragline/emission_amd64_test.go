@@ -2086,6 +2086,24 @@ func TestAMD64RailMachReusesAndFlagsForEqz(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachSharesUnreachableTrapTail(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, 0x04, 0x40, 0x00, 0x0b, // if param: unreachable
+		0x20, 0x00, 0x04, 0x40, 0x00, 0x0b, // if param: unreachable
+		0x0b,
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	functionCellStore := []byte{0xc7, 0x46, 0x10, 0x01, 0x00, 0x00, 0x00}
+	if count := bytes.Count(output.Code, functionCellStore); count != 1 {
+		t.Fatalf("unreachable sites emitted %d trap tails, want one shared tail: %x", count, output.Code)
+	}
+}
+
 func TestAMD64RailMachFusesIntegerComparisonIntoSelect(t *testing.T) {
 	body := []byte{
 		0x20, 0x02, // local.get 2: true value
