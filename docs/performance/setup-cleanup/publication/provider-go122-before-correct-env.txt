@@ -1,0 +1,21 @@
+?   	github.com/wago-org/wasi/cmd/wit-surface	[no test files]
+ok  	github.com/wago-org/wasi	1.008s [no tests to run]
+--- FAIL: TestConstructionOwnedLifecycle (0.01s)
+    --- FAIL: TestConstructionOwnedLifecycle/normal-exit (0.00s)
+        construction_lifecycle_linux_test.go:206: owned file remained open: stat /tmp/TestConstructionOwnedLifecycle1305397025/001: use of closed file
+    --- FAIL: TestConstructionOwnedLifecycle/guest-trap (0.00s)
+        construction_lifecycle_linux_test.go:206: owned file remained open: stat /tmp/TestConstructionOwnedLifecycle1305397025/001: use of closed file
+    --- FAIL: TestConstructionOwnedLifecycle/start-trap (0.00s)
+        construction_lifecycle_linux_test.go:159: owned file remained open: stat /tmp/TestConstructionOwnedLifecycle1305397025/001: use of closed file
+    --- FAIL: TestConstructionOwnedLifecycle/denied-instantiation (0.00s)
+        construction_lifecycle_linux_test.go:214: owned file remained open: stat /tmp/TestConstructionOwnedLifecycle1305397025/001: use of closed file
+    --- FAIL: TestConstructionOwnedLifecycle/cancellation (0.00s)
+        construction_lifecycle_linux_test.go:206: owned file remained open: stat input: use of closed file
+--- FAIL: TestConstructionCleanupIsolation (0.00s)
+    construction_lifecycle_linux_test.go:260: owned file remained open: stat /tmp/TestConstructionCleanupIsolation1578109731/001: use of closed file
+FAIL
+FAIL	github.com/wago-org/wasi/internal/core	0.027s
+ok  	github.com/wago-org/wasi/p1	1.008s [no tests to run]
+ok  	github.com/wago-org/wasi/p2	1.008s [no tests to run]
+ok  	github.com/wago-org/wasi/register	1.007s [no tests to run]
+FAIL

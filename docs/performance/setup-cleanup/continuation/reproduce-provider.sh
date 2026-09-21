@@ -10,6 +10,7 @@ for name in baseline candidate; do
   mkdir "$work/wasi-$name"
   git --git-dir="$work/wasi.git" archive "$base" | tar -x -C "$work/wasi-$name"
   patch -d "$work/wasi-$name" -p1 < "$root/docs/performance/setup-cleanup/continuation/patches/wasi-construction-tests.patch"
+  patch -d "$work/wasi-$name" -p1 < "$root/docs/performance/setup-cleanup/continuation/patches/wasi-construction-go122-tests.patch"
   cat > "$work/$name.work" <<EOF
 go 1.22.0
 use (

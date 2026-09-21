@@ -17,3 +17,11 @@ Publication checks passed:
 - `go run ./tests/tools/docs-check` and the staged source whitespace check.
 
 [Publication check logs](publication) supplement the unchanged investigation records. No additional full benchmark or broad TinyGo run was needed to package the identical measured source. The two known TinyGo linker failures and all measurement limits in the main report remain explicit. GitHub CI status is separate from these local checks. No merge or release was requested or performed.
+
+## Go 1.22 lifecycle-test correction
+
+The provider PR's first CI run failed its Linux Go 1.22 jobs because the new test required `errors.Is(file.Stat(), os.ErrClosed)` after cleanup. Go 1.22 returned a closed-file error that did not match that sentinel. The descriptors were closed. The test now checks the invalid descriptor from `File.Fd()` directly. No cleanup or production code changed.
+
+The original failure was reproduced locally with Go 1.22.12 and the original test through an overlay. The corrected complete provider `go test -race -count=1 ./...` passed on Go 1.22.12 and Go 1.27.1 with the provider's pinned dependency. The first attempted Go 1.22 command inherited a Go 1.27 GOROOT and failed before testing; the reproduction and passing comparison explicitly set GOROOT to the Go 1.22.12 installation.
+
+The original test patch and performance files remain unchanged. A separate [Go 1.22 test patch](continuation/patches/wasi-construction-go122-tests.patch) records this assertion correction, and reproduce-provider.sh applies it to both source copies. It changes no benchmark loop. The provider PR has a separate test-fix commit. CI checks on the updated PR are separate from the local checks above.

@@ -1,0 +1,15 @@
+diff --git a/internal/core/construction_lifecycle_linux_test.go b/internal/core/construction_lifecycle_linux_test.go
+index f59bdfa..2df8597 100644
+--- a/internal/core/construction_lifecycle_linux_test.go
++++ b/internal/core/construction_lifecycle_linux_test.go
+@@ -109,8 +109,8 @@ func openOwnedFiles(p *lifecycleTestProvider) []*os.File {
+ func requireFilesClosed(t *testing.T, files []*os.File) {
+ 	t.Helper()
+ 	for _, f := range files {
+-		if _, err := f.Stat(); !errors.Is(err, os.ErrClosed) {
+-			t.Fatalf("owned file remained open: %v", err)
++		if fd := f.Fd(); fd != ^uintptr(0) {
++			t.Fatalf("owned file remained open: descriptor %d", fd)
+ 		}
+ 	}
+ }
