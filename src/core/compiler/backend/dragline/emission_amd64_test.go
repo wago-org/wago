@@ -2069,6 +2069,23 @@ func TestAMD64RailMachContiguousShuffleUsesAlignr(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachReusesAndFlagsForEqz(t *testing.T) {
+	body := []byte{0x20, 0x00, 0x42}
+	body = append(body, wasmtest.SLEB64(-9187201950435737472)...)
+	body = append(body, 0x83, 0x50, 0x0b) // i64.and; i64.eqz
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	for offset := 0; offset+2 <= len(output.Code); offset++ {
+		if output.Code[offset] == 0x85 && output.Code[offset+1]&0xc0 == 0xc0 {
+			t.Fatalf("and/eqz retained redundant register TEST: %x", output.Code)
+		}
+	}
+}
+
 func TestAMD64RailMachFusesIntegerComparisonIntoSelect(t *testing.T) {
 	body := []byte{
 		0x20, 0x02, // local.get 2: true value

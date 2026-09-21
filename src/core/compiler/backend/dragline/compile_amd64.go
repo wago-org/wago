@@ -1519,6 +1519,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		skipMove uint32
 	}
 	var edgeMoveThunks []edgeMoveThunk
+	andFlagsResult, andFlagsBlock, andFlagsAt := railmach.VReg(0), -1, -1
 	coldTrapPatches := plan.ColdTrapPatches[:0]
 	memoryCheckEnds := plan.MemoryCheckEnds
 	memoryCheckTouched := plan.MemoryCheckTouched[:0]
@@ -4616,7 +4617,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			if semanticOp == wasm.InstrI32Eqz || semanticOp == wasm.InstrI64Eqz || semanticOp == wasm.InstrRefIsNull {
 				operandWide := plan.Machine.VRegs[operands[0].Reg].Type.IsWideGPR()
-				a.TestSelf(lhs, operandWide)
+				if semanticOp == wasm.InstrRefIsNull || andFlagsResult != operands[0].Reg || andFlagsBlock != blockID || andFlagsAt != a.Len() {
+					a.TestSelf(lhs, operandWide)
+				}
 				if fusedComparison {
 					if metrics != nil {
 						metrics.PostRARewrites++
@@ -4846,6 +4849,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 					a.AluRR(opcode, dst, rhs, wide)
 				}
+			}
+			if semanticOp == wasm.InstrI32And || semanticOp == wasm.InstrI64And {
+				// AND already computes the zero flag consumed by an adjacent eqz.
+				// Keep it only while no intervening emission can clobber flags.
+				andFlagsResult, andFlagsBlock, andFlagsAt = instruction.Result, blockID, a.Len()
 			}
 		}
 		if blockRange.Count != 0 {
