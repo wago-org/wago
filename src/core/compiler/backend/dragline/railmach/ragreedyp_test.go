@@ -53,6 +53,55 @@ func TestGreedyRegisterCandidateUsesTransferAffinityOnlyToBreakCostTie(t *testin
 	}
 }
 
+func TestRecolorGreedyTransferAffinitiesRequiresMultipleCoalescedEdges(t *testing.T) {
+	config := GreedyConfig{Linear: LinearQConfig{GPRs: 3, FPRs: 1}}
+	base := GreedyAllocation{Allocation: Allocation{
+		Locations: []Location{{}, {Kind: LocationRegister, Bank: BankGPR, Index: 0}, {Kind: LocationRegister, Bank: BankGPR, Index: 0}, {Kind: LocationRegister, Bank: BankGPR, Index: 2}, {Kind: LocationRegister, Bank: BankGPR, Index: 0}},
+		Intervals: []LiveInterval{
+			{Reg: 1, Start: 0, End: 1, Bank: BankGPR},
+			{Reg: 2, Start: 2, End: 3, Bank: BankGPR},
+			{Reg: 3, Start: 4, End: 8, Bank: BankGPR},
+		},
+	}}
+	f := &Func{Target: TargetAMD64, VRegs: make([]VRegData, 5), Transfers: []EdgeTransfer{{Src: 1, Dst: 3, Weight: 8}, {Src: 2, Dst: 3, Weight: 8}}}
+	recolorGreedyTransferAffinities(f, &base, config, nil)
+	if got := base.Locations[3].Index; got != 0 {
+		t.Fatalf("two-edge affine register = %d, want 0", got)
+	}
+	arm := GreedyAllocation{Allocation: Allocation{
+		Locations: append([]Location(nil), base.Locations...),
+		Intervals: append([]LiveInterval(nil), base.Intervals...),
+	}}
+	arm.Locations[3].Index = 2
+	f.Target = TargetARM64
+	recolorGreedyTransferAffinities(f, &arm, config, nil)
+	if got := arm.Locations[3].Index; got != 2 {
+		t.Fatalf("ARM64 affine register = %d, want unchanged 2", got)
+	}
+	f.Target = TargetAMD64
+
+	single := GreedyAllocation{Allocation: Allocation{
+		Locations: []Location{{}, {Kind: LocationRegister, Bank: BankGPR, Index: 0}, {}, {Kind: LocationRegister, Bank: BankGPR, Index: 2}},
+		Intervals: []LiveInterval{{Reg: 1, Start: 0, End: 1, Bank: BankGPR}, {Reg: 3, Start: 4, End: 8, Bank: BankGPR}},
+	}}
+	f.Transfers = f.Transfers[:1]
+	recolorGreedyTransferAffinities(f, &single, config, nil)
+	if got := single.Locations[3].Index; got != 2 {
+		t.Fatalf("single-edge affine register = %d, want unchanged 2", got)
+	}
+
+	blocked := GreedyAllocation{Allocation: Allocation{
+		Locations: append([]Location(nil), base.Locations...),
+		Intervals: append(append([]LiveInterval(nil), base.Intervals...), LiveInterval{Reg: 4, Start: 6, End: 7, Bank: BankGPR}),
+	}}
+	blocked.Locations[3].Index = 2
+	f.Transfers = append(f.Transfers, EdgeTransfer{Src: 2, Dst: 3, Weight: 8})
+	recolorGreedyTransferAffinities(f, &blocked, config, nil)
+	if got := blocked.Locations[3].Index; got != 2 {
+		t.Fatalf("occupied affine register = %d, want unchanged 2", got)
+	}
+}
+
 func TestGreedyDensitySupportsAMD64ScalarFPRs(t *testing.T) {
 	for _, test := range []struct {
 		name   string

@@ -274,6 +274,7 @@ func AllocateFastMachineForSchedule(f *Func, schedule *Schedule, config GreedyCo
 		}
 	}
 	recolorGreedySpills(f, reuse)
+	recolorGreedyTransferAffinities(f, reuse, config, callPositions)
 	rebuildFixedMoves(f, &reuse.Allocation)
 	reuse.Metrics.SpillSlots = uint32(reuse.SpillSlots)
 	for _, interval := range reuse.Intervals {
@@ -533,6 +534,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		}
 	}
 	recolorGreedySpills(f, reuse)
+	recolorGreedyTransferAffinities(f, reuse, config, callPositions)
 	if config.MaxStage >= 4 {
 		// Rebuild exact physical occupants in increasing live-range order. Greedy
 		// promotion mutates locations and links in priority order; regional
@@ -586,6 +588,79 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		}
 	}
 	return reuse, nil
+}
+
+// recolorGreedyTransferAffinities improves AMD64 joins after promotion and
+// eviction have settled the final register occupants. Linear allocation cannot
+// see registers freed by those later stages. Recoloring is limited to call-free,
+// unconstrained ranges and requires two additional coalesced transfers, so a
+// single cold edge cannot perturb the surrounding allocation. ARM64 retains its
+// measured baseline until this profitability gate is calibrated for its larger
+// register bank.
+func recolorGreedyTransferAffinities(f *Func, allocation *GreedyAllocation, config GreedyConfig, calls []callPosition) {
+	if f.Target != TargetAMD64 {
+		return
+	}
+	fixed := resize(allocation.verifySpillSeen, len(allocation.Locations))
+	clear(fixed)
+	allocation.verifySpillSeen = fixed
+	for instructionID := range f.Insts {
+		for _, operand := range f.InstructionOperands(uint32(instructionID)) {
+			if operand.Flags&OperandFixed != 0 && int(operand.Reg) < len(fixed) {
+				fixed[operand.Reg] = true
+			}
+		}
+	}
+	for _, interval := range allocation.Intervals {
+		current := allocation.Locations[interval.Reg]
+		if current.Kind != LocationRegister || fixed[interval.Reg] || allocationLiveRangeCrossesCalls(&allocation.Allocation, interval, calls) {
+			continue
+		}
+		limit := int(config.Linear.GPRs)
+		if interval.Bank == BankFPR {
+			limit = int(config.Linear.FPRs)
+		}
+		var weights [64]uint64
+		var counts [64]uint32
+		for _, transfer := range f.Transfers {
+			peer := VReg(0)
+			if transfer.Src == interval.Reg {
+				peer = transfer.Dst
+			} else if transfer.Dst == interval.Reg {
+				peer = transfer.Src
+			} else {
+				continue
+			}
+			location := allocation.Locations[peer]
+			if location.Kind == LocationRegister && location.Bank == interval.Bank && int(location.Index) < limit {
+				weights[location.Index] += uint64(transfer.Weight)
+				counts[location.Index]++
+			}
+		}
+		best, bestWeight := int(current.Index), weights[current.Index]
+		for physical := 0; physical < limit; physical++ {
+			if counts[physical] < counts[current.Index]+2 || weights[physical] <= bestWeight {
+				continue
+			}
+			available := true
+			for _, other := range allocation.Intervals {
+				if other.Reg == interval.Reg {
+					continue
+				}
+				location := allocation.Locations[other.Reg]
+				if location.Kind == LocationRegister && location.Bank == interval.Bank && int(location.Index) == physical && allocationLiveRangesOverlap(&allocation.Allocation, interval, other) {
+					available = false
+					break
+				}
+			}
+			if available {
+				best, bestWeight = physical, weights[physical]
+			}
+		}
+		if best != int(current.Index) {
+			allocation.Locations[interval.Reg].Index = uint16(best)
+		}
+	}
 }
 
 func greedyUsesDensityCost(f *Func, recursiveCalls bool) bool {
