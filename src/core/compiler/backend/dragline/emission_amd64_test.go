@@ -327,6 +327,7 @@ func testAMD64RailMachRenamesReductionResultToBackedgeDestination(t *testing.T, 
 		t.Fatal(err)
 	}
 	plan.SignalsBounds = true
+	plan.AMD64ModuleHasV128 = true
 	rename := amd64EdgeResultRename{}
 	for block := range plan.Machine.Blocks {
 		if candidate := amd64RailMachEdgeResultRename(plan, uint32(block)); candidate.valid {
@@ -348,9 +349,12 @@ func testAMD64RailMachRenamesReductionResultToBackedgeDestination(t *testing.T, 
 	if lhs.Kind != railmach.LocationRegister || move.Src.Kind != railmach.LocationRegister || move.Dst.Kind != railmach.LocationRegister {
 		t.Fatalf("renamed locations = lhs %#v, move %#v", lhs, move)
 	}
-	native, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	native, internal, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
 	if err != nil || !used {
 		t.Fatalf("reduction emission = used %t, err %v", used, err)
+	}
+	if internal%32 != 16 {
+		t.Fatalf("SIMD-module internal entry = %d, want 16 mod 32", internal)
 	}
 	var inputCopy, edgeCopy amd64.Asm
 	inputCopy.MovReg64(amd64RailMachPhysical(plan, move.Src), amd64RailMachPhysical(plan, lhs))

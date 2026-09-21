@@ -362,6 +362,12 @@ func TestAssemblerPatchingAndAlignment(t *testing.T) {
 	if exact.Len() != 32 {
 		t.Fatalf("32-byte loop-aligned length = %d, want 32", exact.Len())
 	}
+	var secondHalf Asm
+	secondHalf.B = make([]byte, 17)
+	secondHalf.Align32Offset16()
+	if secondHalf.Len()%32 != 16 {
+		t.Fatalf("second-half aligned length = %d, want 16 mod 32", secondHalf.Len())
+	}
 }
 
 func TestRel32SiteCounting(t *testing.T) {

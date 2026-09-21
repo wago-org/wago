@@ -1358,6 +1358,13 @@ func (a *Asm) AlignLoop32() {
 	a.nop(pad)
 }
 
+// Align32Offset16 places the next instruction in the second half of a 32-byte
+// fetch block.
+func (a *Asm) Align32Offset16() {
+	pad := (16 - len(a.B)%32 + 32) % 32
+	a.nop(pad)
+}
+
 func (a *Asm) nop(pad int) {
 	for pad > 0 {
 		n := pad

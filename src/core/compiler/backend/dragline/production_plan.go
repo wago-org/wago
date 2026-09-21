@@ -115,6 +115,9 @@ type nativeBackendPlan struct {
 	// AMD64ShuffledFPRs selects the SysV vector register order that keeps the
 	// fixed XMM3-XMM5 SIMD scratch bank outside the allocatable prefix.
 	AMD64ShuffledFPRs bool
+	// AMD64ModuleHasV128 selects fetch-block placement consistently across every
+	// native function in a module containing SIMD code.
+	AMD64ModuleHasV128 bool
 	// AMD64AddressRematerialize marks spilled wrapping affine addresses whose
 	// every memory use can reconstruct the value from an already-live register.
 	AMD64AddressRematerialize nativeBitSet

@@ -214,7 +214,11 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			row = &metrics.Functions[i]
 			lowerStart = time.Now()
 		}
-		for len(code)&15 != 0 {
+		alignmentMask := 15
+		if compilationPlan.HasV128 {
+			alignmentMask = 31
+		}
+		for len(code)&alignmentMask != 0 {
 			code = append(code, 0x90)
 		}
 		entries[i] = len(code)
@@ -337,6 +341,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		}
 		publishedContract := railmach.ABIContract{}
 		if nativePlan != nil {
+			nativePlan.AMD64ModuleHasV128 = compilationPlan.HasV128
 			publishedContract = nativePlan.ABI
 			if i < len(seedCandidates) && seedCandidates[i] {
 				publishedContract = seedContracts[i]
@@ -781,6 +786,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 				}
 			}
 			if nativePlan != nil {
+				nativePlan.AMD64ModuleHasV128 = compilation.HasV128
 				published := nativePlan.ABI
 				if i < len(candidates) && candidates[i] {
 					published = seeds[i]
@@ -829,7 +835,11 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 	requiresAVX512VL := false
 	signalGuardFreePrepared := amd64SignalGuardFreePrepared(compilation.SignalGuardFree, compilation.LocalCalls, nil)
 	for _, i := range compilation.Order {
-		for len(code)&15 != 0 {
+		alignmentMask := 15
+		if compilation.HasV128 {
+			alignmentMask = 31
+		}
+		for len(code)&alignmentMask != 0 {
 			code = append(code, 0x90)
 		}
 		entries[i] = len(code)
@@ -1275,7 +1285,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		}
 	}
 	a.Ret()
-	a.Align16()
+	if plan.AMD64ModuleHasV128 {
+		a.Align32Offset16()
+	} else {
+		a.Align16()
+	}
 	internalOffset := a.Len()
 	directPrepared := amd64DirectPreparedClass(plan.ABI.Class)
 	if len(plan.Stack.Instrs) != 0 {
