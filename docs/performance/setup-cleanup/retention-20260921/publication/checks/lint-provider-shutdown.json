@@ -1,9 +1,0 @@
-{
-  "name": "lint-provider-shutdown",
-  "command": [
-    "just",
-    "lint"
-  ],
-  "exit": 0,
-  "max_celsius": 70.5
-}

@@ -1,6 +1,0 @@
-goos: linux
-goarch: amd64
-pkg: github.com/wago-org/wago/bench/suite
-cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
-BenchmarkCommandExec/cjson-16         	   10000	    777082 ns/op	   38473 B/op	     467 allocs/op
-PASS

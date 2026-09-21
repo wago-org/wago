@@ -1,1 +1,0 @@
-ok  	github.com/wago-org/wago/bench/internal/semanticcorpus	0.253s

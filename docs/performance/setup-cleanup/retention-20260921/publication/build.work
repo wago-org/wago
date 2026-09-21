@@ -1,8 +1,0 @@
-go 1.22.0
-use (
- "/tmp/wago-setup-cleanup-pr-uvyppyeh/wago"
- "/tmp/wago-setup-cleanup-pr-uvyppyeh/wago/bench"
- "/tmp/wago-setup-cleanup-pr-uvyppyeh/wago/cli/wago-installer"
- "/tmp/wago-setup-cleanup-pr-uvyppyeh/wasi-publish"
-)
-replace github.com/wago-org/wago v0.1.0-beta.9 => /tmp/wago-setup-cleanup-pr-uvyppyeh/wago

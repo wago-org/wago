@@ -1,7 +1,0 @@
-['taskset', '-c', '0-15', '/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/worker-owned.test', '-test.run', '^$', '-test.bench', '^BenchmarkWorkerLifecycleDiagnostic$/^json-as$/^callers=1$/^validate$/^raw$/^requested=4$', '-test.benchtime', '100x', '-test.memprofile', '/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/worker-json-as-validate-4.alloc', '-test.memprofilerate', '1', '-wago.bench.lifecycle', '-wago.corpus', 'json-as']
-goos: linux
-goarch: amd64
-pkg: github.com/wago-org/wago/bench/suite
-cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
-BenchmarkWorkerLifecycleDiagnostic/json-as/callers=1/validate/raw/requested=4-16         	     100	    198626 ns/op	     16651 body-bytes	         1.000 callers	        43.00 functions	        16.00 gomaxprocs	      2445 largest-body-bytes	         4.000 phase-input-workers	         4.000 requested-workers	         4.000 validation-worker-limit	   16026 B/op	      74 allocs/op
-PASS

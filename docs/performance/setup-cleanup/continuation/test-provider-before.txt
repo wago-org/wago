@@ -1,6 +1,0 @@
---- FAIL: TestConstructionOwnedLifecycle (0.00s)
-    --- FAIL: TestConstructionOwnedLifecycle/denied-instantiation (0.00s)
-        construction_lifecycle_linux_test.go:154: expected setup failure
-FAIL
-FAIL	github.com/wago-org/wasi/internal/core	0.008s
-FAIL

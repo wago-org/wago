@@ -1,7 +1,0 @@
-go: downloading github.com/wago-org/component-model v0.1.6-0.20260916030441-18c75cfe27f6
-ok  	github.com/wago-org/wasi	0.004s
-?   	github.com/wago-org/wasi/cmd/wit-surface	[no test files]
-ok  	github.com/wago-org/wasi/internal/core	0.730s
-ok  	github.com/wago-org/wasi/p1	0.196s
-ok  	github.com/wago-org/wasi/p2	0.522s
-ok  	github.com/wago-org/wasi/register	0.004s

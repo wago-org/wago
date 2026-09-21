@@ -1,2 +1,0 @@
-round 1 baseline full: 1795.6s
-round 1 candidate full: 1798.1s

@@ -1,9 +1,0 @@
-{
-  "name": "lint-wago-snapshot",
-  "command": [
-    "just",
-    "lint"
-  ],
-  "exit": 1,
-  "max_celsius": 70.0
-}

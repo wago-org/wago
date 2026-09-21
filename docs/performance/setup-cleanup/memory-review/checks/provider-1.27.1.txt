@@ -1,6 +1,0 @@
-ok  	github.com/wago-org/wasi	1.015s
-?   	github.com/wago-org/wasi/cmd/wit-surface	[no test files]
-ok  	github.com/wago-org/wasi/internal/core	2.487s
-ok  	github.com/wago-org/wasi/p1	1.452s
-ok  	github.com/wago-org/wasi/p2	6.326s
-ok  	github.com/wago-org/wasi/register	1.028s

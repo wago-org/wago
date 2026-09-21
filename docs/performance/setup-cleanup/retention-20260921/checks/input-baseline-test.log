@@ -1,5 +1,0 @@
---- FAIL: TestCompiledActiveDataOwnsPublicBytes (0.00s)
-    input_retention_test.go:35: public data retains caller input storage
-FAIL
-FAIL	github.com/wago-org/wago/src/wago	0.004s
-FAIL

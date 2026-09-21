@@ -1,1 +1,0 @@
-ok  	github.com/wago-org/wago/bench/suite	0.006s

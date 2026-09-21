@@ -1,9 +1,0 @@
-Before shutdown:
-Plugin -> guard -> states[identity] -> fsState -> owned fd map
-Plugin -> fs ----------------------> initial fsState
-                                      ^ alias of at most one states value
-active callback -------------------> borrowed fsState under state.mu
-
-resetFS creates the guard map. makeFS creates each state and owns file/dirIter handles. stateFor is the sole state-map insertion site, under guard.mu. It claims Plugin.fs once; later identities receive independent makeFS states. closeInstance is the sole removal site, under guard.mu; it closes resources under state.mu after removal. Initial state remains the live provider marker even after its instance closes. Raw stdio reader/writer interfaces are borrowed and never closed.
-
-Proposed terminal shutdown: under guard.mu, detach states and initial, set guard.states and Plugin.fs to nil, and set closed. No caller can add states after closed is visible. No old map writer survives the same lock. Release the provider lock before waiting on individual state locks or closing files. Close initial once, then close other detached states, skipping its one alias. closeFS is idempotent under state.mu. All borrowed users finish before that state's close. No new map or cached state is needed. Registration resets a new guard before Start; terminal shutdown does not enable a new instance.

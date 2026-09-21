@@ -1,4 +1,0 @@
-{
-  "status": "interrupted before completion",
-  "reason": "Restart publication check with one CPU, 70 C pause and 75 C stop instead of the initial 65 C pause. No performance samples taken."
-}

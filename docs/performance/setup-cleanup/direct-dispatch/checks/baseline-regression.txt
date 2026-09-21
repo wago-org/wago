@@ -1,5 +1,0 @@
---- FAIL: TestHostCallDoesNotAllocatePluginCopy (0.00s)
-    dispatch_test.go:72: host call allocates 2 objects, want at most the one Caller interface value
-FAIL
-FAIL	github.com/wago-org/wasi/internal/core	0.013s
-FAIL

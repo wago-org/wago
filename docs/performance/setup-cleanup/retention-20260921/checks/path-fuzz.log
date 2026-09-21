@@ -1,6 +1,0 @@
-fuzz: elapsed: 0s, gathering baseline coverage: 0/8 completed
-fuzz: elapsed: 0s, gathering baseline coverage: 8/8 completed, now fuzzing with 1 workers
-fuzz: elapsed: 3s, execs: 6131 (1988/sec), new interesting: 3 (total: 11)
-fuzz: elapsed: 3s, execs: 6131 (0/sec), new interesting: 3 (total: 11)
-PASS
-ok  	github.com/wago-org/wasi/internal/core	3.087s

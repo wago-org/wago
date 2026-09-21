@@ -1,6 +1,0 @@
-{
-  "status": "thermal stop",
-  "stop_celsius": 75,
-  "exact_peak": "not captured because the wrapper exited through its exception path",
-  "performance_samples": false
-}

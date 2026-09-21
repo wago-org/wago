@@ -1,8 +1,0 @@
---- FAIL: TestShutdownDropsStateMap (0.00s)
-    --- FAIL: TestShutdownDropsStateMap/false (0.00s)
-        fs_shutdown_linux_test.go:36: shutdown retained terminal owner storage
-    --- FAIL: TestShutdownDropsStateMap/true (0.00s)
-        fs_shutdown_linux_test.go:36: shutdown retained terminal owner storage
-FAIL
-FAIL	github.com/wago-org/wasi/internal/core	0.002s
-FAIL

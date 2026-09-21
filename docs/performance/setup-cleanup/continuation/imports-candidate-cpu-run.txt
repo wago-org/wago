@@ -1,6 +1,0 @@
-goos: linux
-goarch: amd64
-pkg: github.com/wago-org/wago/bench/suite
-cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
-BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports-16 	  250201	     14102 ns/op	   21256 B/op	     304 allocs/op
-PASS

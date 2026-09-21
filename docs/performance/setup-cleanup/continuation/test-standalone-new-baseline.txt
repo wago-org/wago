@@ -1,7 +1,0 @@
---- FAIL: TestBuildTinyGoEmbedsArtifactWithoutCompiler (0.04s)
-    build_test.go:147: precompile standalone artifact: go run: exit status 1
-        current directory is contained in a module that is not one of the workspace modules listed in go.work. You can add the module to the workspace using:
-        	go work use .
-FAIL
-FAIL	github.com/wago-org/wago/cli/manager/internal/standalone	0.047s
-FAIL

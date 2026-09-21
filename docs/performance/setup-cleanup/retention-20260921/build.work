@@ -1,8 +1,0 @@
-go 1.22.0
-use (
- "/tmp/wago-retention-roobe8pc/wago"
- "/tmp/wago-retention-roobe8pc/wago/bench"
- "/tmp/wago-retention-roobe8pc/wago/cli/wago-installer"
- "/tmp/wago-retention-roobe8pc/provider"
-)
-replace github.com/wago-org/wago v0.1.0-beta.9 => /tmp/wago-retention-roobe8pc/wago

@@ -1,9 +1,0 @@
-goos: linux
-goarch: amd64
-pkg: github.com/wago-org/wago/src/wago
-cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
-BenchmarkInvokeArity/i32x1/resolved/direct         	   10000	        18.57 ns/op	       0 B/op	       0 allocs/op
-BenchmarkInvokeArity/i32x1/resolved/reused         	   10000	        18.54 ns/op	       0 B/op	       0 allocs/op
-BenchmarkInvokeArity/i32x1/by-name/direct          	   10000	        39.01 ns/op	       0 B/op	       0 allocs/op
-BenchmarkInvokeArity/i32x1/by-name/reused          	   10000	        39.13 ns/op	       0 B/op	       0 allocs/op
-PASS
