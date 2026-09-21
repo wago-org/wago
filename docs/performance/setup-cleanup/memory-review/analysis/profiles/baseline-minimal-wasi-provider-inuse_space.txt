@@ -1,0 +1,108 @@
+File: wasi-baseline.test
+Build ID: 8b12a75ed5bdbf4567b7d2c59cde06728f660add
+Type: inuse_space
+Time: 2026-09-21 06:08:31 EDT
+Showing nodes accounting for 504072B, 90.77% of 555352B total
+Dropped 306 nodes (cum <= 2776B)
+Showing top 100 nodes out of 140
+      flat  flat%   sum%        cum   cum%
+   357504B 64.37% 64.37%    360648B 64.94%  runtime.mallocgc
+    41296B  7.44% 71.81%     41296B  7.44%  reflect.compiledTypelinks
+    13984B  2.52% 74.33%     13984B  2.52%  runtime/metrics.init.0
+    13656B  2.46% 76.79%     13656B  2.46%  github.com/tetratelabs/wazero/internal/wasm.map.init.0
+     9352B  1.68% 78.47%      9352B  1.68%  runtime/metrics.runtime_readMetrics
+     8192B  1.48% 79.95%      8192B  1.48%  hash/crc32.archInitCastagnoli
+     6616B  1.19% 81.14%      8032B  1.45%  debug/dwarf.init
+     6616B  1.19% 82.33%      6616B  1.19%  unicode.map.init.2
+     6000B  1.08% 83.41%      7360B  1.33%  github.com/wago-org/wago/src/core/compiler/optimization.NewBindings
+     5472B  0.99% 84.39%     13288B  2.39%  encoding/json/v2.makeStructFields.func3
+     5232B  0.94% 85.34%     19064B  3.43%  encoding/json/v2.makeStructFields
+     4960B  0.89% 86.23%      4960B  0.89%  internal/sync.newIndirectNode[go.shape.interface {},go.shape.interface {}] (inline)
+     4632B  0.83% 87.06%      4648B  0.84%  flag.(*FlagSet).Var
+     4016B  0.72% 87.79%      4016B  0.72%  github.com/wago-org/wago/src/wago.defaultOptimizationSnapshot
+     3544B  0.64% 88.43%      3544B  0.64%  github.com/tetratelabs/wazero/internal/wasm.map.init.1
+     3544B  0.64% 89.06%      3544B  0.64%  syscall.init.func1
+     3312B   0.6% 89.66%      3312B   0.6%  internal/sync.newEntryNode[go.shape.interface {},go.shape.interface {}] (inline)
+     1856B  0.33% 89.99%      5328B  0.96%  internal/godebug.lookup
+      832B  0.15% 90.14%      5456B  0.98%  github.com/wago-org/wago/src/wago.compileWithFrontendFeaturesAndInstructions
+      816B  0.15% 90.29%      6632B  1.19%  testing.runTests
+      640B  0.12% 90.41%     43888B  7.90%  reflect.(*rtype).ptrTo
+      624B  0.11% 90.52%      5136B  0.92%  internal/godebug.parse
+      512B 0.092% 90.61%     11400B  2.05%  unicode.init
+      352B 0.063% 90.67%      3592B  0.65%  flag.(*FlagSet).String
+      184B 0.033% 90.71%      3672B  0.66%  regexp.compile
+      160B 0.029% 90.74%      4528B  0.82%  testing.MainStart
+      136B 0.024% 90.76%      3872B   0.7%  testing.newMatcher
+       24B 0.0043% 90.76%      7160B  1.29%  testing.(*M).Run
+        8B 0.0014% 90.77%      5304B  0.96%  internal/godebug.setUpdate
+         0     0% 90.77%     47504B  8.55%  encoding/json.(*Decoder).Decode
+         0     0% 90.77%     15720B  2.83%  encoding/json.Marshal (inline)
+         0     0% 90.77%     15720B  2.83%  encoding/json/v2.Marshal
+         0     0% 90.77%     47944B  8.63%  encoding/json/v2.Unmarshal
+         0     0% 90.77%      8512B  1.53%  encoding/json/v2.lookupArshaler
+         0     0% 90.77%      5520B  0.99%  encoding/json/v2.makeDefaultArshaler
+         0     0% 90.77%     42288B  7.61%  encoding/json/v2.makeInterfaceArshaler.func2
+         0     0% 90.77%     42552B  7.66%  encoding/json/v2.makeMapArshaler.func3
+         0     0% 90.77%      4040B  0.73%  encoding/json/v2.makeSliceArshaler.func2
+         0     0% 90.77%     19064B  3.43%  encoding/json/v2.makeStructArshaler.func1
+         0     0% 90.77%     15224B  2.74%  encoding/json/v2.makeStructArshaler.func2
+         0     0% 90.77%      4176B  0.75%  encoding/json/v2.makeStructArshaler.func3
+         0     0% 90.77%     15720B  2.83%  encoding/json/v2.marshalEncode
+         0     0% 90.77%     41704B  7.51%  encoding/json/v2.newAddressableValue
+         0     0% 90.77%     47944B  8.63%  encoding/json/v2.unmarshalDecode
+         0     0% 90.77%      3240B  0.58%  flag.(*FlagSet).StringVar (inline)
+         0     0% 90.77%      3592B  0.65%  flag.String (inline)
+         0     0% 90.77%      9216B  1.66%  github.com/tetratelabs/wazero/internal/engine/wazevo.init
+         0     0% 90.77%     17200B  3.10%  github.com/tetratelabs/wazero/internal/wasm.init
+         0     0% 90.77%     58712B 10.57%  github.com/wago-org/wago.DefinitionDigest (inline)
+         0     0% 90.77%      4016B  0.72%  github.com/wago-org/wago.NewRuntime (inline)
+         0     0% 90.77%     77080B 13.88%  github.com/wago-org/wago/bench/suite.TestWASIMemoryReview
+         0     0% 90.77%      3304B  0.59%  github.com/wago-org/wago/bench/suite.init
+         0     0% 90.77%      9352B  1.68%  github.com/wago-org/wago/bench/suite.init.0
+         0     0% 90.77%     58712B 10.57%  github.com/wago-org/wago/bench/suite.ownedWASISet
+         0     0% 90.77%      9352B  1.68%  github.com/wago-org/wago/bench/suite.reviewCheckpoint
+         0     0% 90.77%     77080B 13.88%  github.com/wago-org/wago/bench/suite.reviewWork
+         0     0% 90.77%      7376B  1.33%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.init
+         0     0% 90.77%      3544B  0.64%  github.com/wago-org/wago/src/core/runtime/gc/native.init
+         0     0% 90.77%      5456B  0.98%  github.com/wago-org/wago/src/wago.(*PreparedCompile).Compile
+         0     0% 90.77%      5456B  0.98%  github.com/wago-org/wago/src/wago.(*Runtime).Compile (inline)
+         0     0% 90.77%      6144B  1.11%  github.com/wago-org/wago/src/wago.(*Runtime).LoadPlugins
+         0     0% 90.77%      5456B  0.98%  github.com/wago-org/wago/src/wago.(*Runtime).compile
+         0     0% 90.77%     58712B 10.57%  github.com/wago-org/wago/src/wago.DefinitionDigest
+         0     0% 90.77%      4016B  0.72%  github.com/wago-org/wago/src/wago.NewRuntime
+         0     0% 90.77%      4016B  0.72%  github.com/wago-org/wago/src/wago.NewRuntimeConfig
+         0     0% 90.77%      6144B  1.11%  github.com/wago-org/wago/src/wago.callSafely
+         0     0% 90.77%     43008B  7.74%  github.com/wago-org/wago/src/wago.canonicalPluginDefinition
+         0     0% 90.77%      5456B  0.98%  github.com/wago-org/wago/src/wago.compileWithConfigAndInstructions
+         0     0% 90.77%     15704B  2.83%  github.com/wago-org/wago/src/wago.definitionDigestCanonical
+         0     0% 90.77%      6144B  1.11%  github.com/wago-org/wago/src/wago.registerPlan
+         0     0% 90.77%      4952B  0.89%  github.com/wago-org/wago/src/wago.registerPlan.func1
+         0     0% 90.77%     42992B  7.74%  github.com/wago-org/wago/src/wago.validateConfigSchema
+         0     0% 90.77%     42992B  7.74%  github.com/wago-org/wago/src/wago.validatePluginDefinition
+         0     0% 90.77%      4952B  0.89%  github.com/wago-org/wasi/internal/core.decodePluginConfig
+         0     0% 90.77%      4952B  0.89%  github.com/wago-org/wasi/internal/core.validatePluginConfig
+         0     0% 90.77%      9216B  1.66%  hash/crc32.MakeTable
+         0     0% 90.77%      9216B  1.66%  hash/crc32.init.func1
+         0     0% 90.77%      5312B  0.96%  internal/godebug.init.0
+         0     0% 90.77%      5296B  0.95%  internal/godebug.update
+         0     0% 90.77%      7104B  1.28%  internal/sync.(*HashTrieMap[go.shape.interface {},go.shape.interface {}]).LoadOrStore
+         0     0% 90.77%      3680B  0.66%  internal/sync.(*HashTrieMap[go.shape.interface {},go.shape.interface {}]).expand
+         0     0% 90.77%     11688B  2.10%  main.main
+         0     0% 90.77%      3544B  0.64%  os.Getenv
+         0     0% 90.77%     41704B  7.51%  reflect.New
+         0     0% 90.77%     41688B  7.51%  reflect.ptrTo (inline)
+         0     0% 90.77%     41296B  7.44%  reflect.typesByString
+         0     0% 90.77%      3672B  0.66%  regexp.Compile (inline)
+         0     0% 90.77%     61336B 11.04%  runtime.allocm
+         0     0% 90.77%    105936B 19.08%  runtime.doInit (inline)
+         0     0% 90.77%    105936B 19.08%  runtime.doInit1
+         0     0% 90.77%      8192B  1.48%  runtime.gcBgMarkWorker
+         0     0% 90.77%     16728B  3.01%  runtime.gcStart.func4
+         0     0% 90.77%      5296B  0.95%  runtime.godebugNotify
+         0     0% 90.77%     13512B  2.43%  runtime.goenvs
+         0     0% 90.77%     13512B  2.43%  runtime.goenvs_unix
+         0     0% 90.77%     12104B  2.18%  runtime.gostring
+         0     0% 90.77%      5576B  1.00%  runtime.handoffp
+         0     0% 90.77%     27648B  4.98%  runtime.mProfStackInit (inline)
+         0     0% 90.77%    123424B 22.22%  runtime.main
+         0     0% 90.77%      5576B  1.00%  runtime.main.func1

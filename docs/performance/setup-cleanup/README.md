@@ -1,5 +1,7 @@
 # Setup and cleanup investigation
 
+The [2026-09-21 PR memory review](memory-review/README.md) corrects reproduction scripts, separates GC from scavenging, and reports new controlled memory and host-call results. It supersedes any inference below that allocation reductions establish unchanged memory use.
+
 For new runs, use the [corrected reproduction commands](REPRODUCING.md). Historical command blocks below describe the saved runs; they are not safe append/resume instructions.
 
 Publication note (2026-09-21): the provider change is now submitted as [wasi#21](https://github.com/wago-org/wasi/pull/21). It is still not a released dependency or enabled by Wago's dependency pin. The historical measurement records below retain their original source identities and unpublished status. See [publication checks and branch identities](PUBLICATION.md).

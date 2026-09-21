@@ -1,0 +1,143 @@
+TEXT github.com/wago-org/wasi/internal/core.(*Plugin).bindings.func1(SB) /tmp/wago memory review/current/wasi-baseline/internal/core/core.go
+  core.go:339		0xa1bac0		4c8d6424f0		LEAQ -0x10(SP), R12
+  core.go:339		0xa1bac5		4d3b6610		CMPQ R12, 0x10(R14)
+  core.go:339		0xa1bac9		0f86f6010000		JBE 0xa1bcc5
+  core.go:339		0xa1bacf		55			PUSHQ BP
+  core.go:339		0xa1bad0		4889e5			MOVQ SP, BP
+  core.go:339		0xa1bad3		4881ec88000000		SUBQ $0x88, SP
+  core.go:339		0xa1bada		66440fd6bc2480000000	MOVQ X15, 0x80(SP)
+  core.go:341		0xa1bae4		48898c24a8000000	MOVQ CX, 0xa8(SP)
+  core.go:341		0xa1baec		48899c24a0000000	MOVQ BX, 0xa0(SP)
+  core.go:341		0xa1baf4		4889842498000000	MOVQ AX, 0x98(SP)
+  core.go:341		0xa1bafc		4c899424d0000000	MOVQ R10, 0xd0(SP)
+  core.go:341		0xa1bb04		4c898c24c8000000	MOVQ R9, 0xc8(SP)
+  core.go:341		0xa1bb0c		4c898424c0000000	MOVQ R8, 0xc0(SP)
+  core.go:341		0xa1bb14		4889b424b8000000	MOVQ SI, 0xb8(SP)
+  core.go:341		0xa1bb1c		4889bc24b0000000	MOVQ DI, 0xb0(SP)
+  core.go:339		0xa1bb24		c644244f00		MOVB $0x0, 0x4f(SP)
+  core.go:339		0xa1bb29		488b7208		MOVQ 0x8(DX), SI
+  core.go:339		0xa1bb2d		4889742460		MOVQ SI, 0x60(SP)
+  core.go:339		0xa1bb32		488b5210		MOVQ 0x10(DX), DX
+  core.go:339		0xa1bb36		4889542458		MOVQ DX, 0x58(SP)
+  core.go:340		0xa1bb3b		4889d9			MOVQ BX, CX
+  core.go:340		0xa1bb3e		4889c3			MOVQ AX, BX
+  core.go:340		0xa1bb41		4889f0			MOVQ SI, AX
+  core.go:340		0xa1bb44		e83769ffff		CALL github.com/wago-org/wasi/internal/core.(*Plugin).stateFor(SB)
+  core.go:341		0xa1bb49		4885db			TESTQ BX, BX
+  core.go:341		0xa1bb4c		7422			JE 0xa1bb70
+  core.go:342		0xa1bb4e		90			NOPL
+  fs.go:204		0xa1bb4f		488b8424c8000000	MOVQ 0xc8(SP), AX
+  fs.go:204		0xa1bb57		4885c0			TESTQ AX, AX
+  fs.go:204		0xa1bb5a		740b			JE 0xa1bb67
+  fs.go:205		0xa1bb5c		488b8424c0000000	MOVQ 0xc0(SP), AX
+  fs.go:205		0xa1bb64		488918			MOVQ BX, 0(AX)
+  core.go:343		0xa1bb67		4881c488000000		ADDQ $0x88, SP
+  core.go:343		0xa1bb6e		5d			POPQ BP
+  core.go:343		0xa1bb6f		c3			RET
+  core.go:340		0xa1bb70		4889442450		MOVQ AX, 0x50(SP)
+  core.go:345		0xa1bb75		8400			TESTB AL, 0(AX)
+  core.go:345		0xa1bb77		488d0da2010000		LEAQ github.com/wago-org/wasi/internal/core.(*Plugin).bindings.func1.deferwrap1(SB), CX
+  core.go:345		0xa1bb7e		48894c2468		MOVQ CX, 0x68(SP)
+  core.go:345		0xa1bb83		4889442470		MOVQ AX, 0x70(SP)
+  core.go:345		0xa1bb88		488d4c2468		LEAQ 0x68(SP), CX
+  core.go:345		0xa1bb8d		48898c2480000000	MOVQ CX, 0x80(SP)
+  core.go:345		0xa1bb95		c644244f01		MOVB $0x1, 0x4f(SP)
+  core.go:346		0xa1bb9a		488d05771f6900		LEAQ 0x691f77(IP), AX
+  core.go:346		0xa1bba1		e8fa6ca0ff		CALL runtime.newobject(SB)
+  core.go:346		0xa1bba6		488b4c2460		MOVQ 0x60(SP), CX
+  core.go:346		0xa1bbab		8401			TESTB AL, 0(CX)
+  core.go:346		0xa1bbad		833d1c9d710000		CMPL runtime.writeBarrier(SB), $0x0
+  core.go:346		0xa1bbb4		7439			JE 0xa1bbef
+  core.go:346		0xa1bbb6		4889442478		MOVQ AX, 0x78(SP)
+  core.go:347		0xa1bbbb		488b90d0000000		MOVQ 0xd0(AX), DX
+  core.go:346		0xa1bbc2		e8b99da7ff		CALL runtime.gcWriteBarrier2(SB)
+  core.go:347		0xa1bbc7		488b742450		MOVQ 0x50(SP), SI
+  core.go:347		0xa1bbcc		498933			MOVQ SI, 0(R11)
+  core.go:347		0xa1bbcf		49895308		MOVQ DX, 0x8(R11)
+  core.go:346		0xa1bbd3		4889c3			MOVQ AX, BX
+  core.go:346		0xa1bbd6		488d053b1f6900		LEAQ 0x691f3b(IP), AX
+  core.go:346		0xa1bbdd		0f1f00			NOPL 0(AX)
+  core.go:346		0xa1bbe0		e8fbaba0ff		CALL runtime.wbMove(SB)
+  core.go:346		0xa1bbe5		488b442478		MOVQ 0x78(SP), AX
+  core.go:346		0xa1bbea		488b4c2460		MOVQ 0x60(SP), CX
+  core.go:346		0xa1bbef		4889c2			MOVQ AX, DX
+  core.go:346		0xa1bbf2		41bc03000000		MOVL $0x3, R12
+  core.go:346		0xa1bbf8		440f1031		MOVUPS 0(CX), X14
+  core.go:346		0xa1bbfc		440f1130		MOVUPS X14, 0(AX)
+  core.go:346		0xa1bc00		440f107110		MOVUPS 0x10(CX), X14
+  core.go:346		0xa1bc05		440f117010		MOVUPS X14, 0x10(AX)
+  core.go:346		0xa1bc0a		440f107120		MOVUPS 0x20(CX), X14
+  core.go:346		0xa1bc0f		440f117020		MOVUPS X14, 0x20(AX)
+  core.go:346		0xa1bc14		440f107130		MOVUPS 0x30(CX), X14
+  core.go:346		0xa1bc19		440f117030		MOVUPS X14, 0x30(AX)
+  core.go:346		0xa1bc1e		4883c140		ADDQ $0x40, CX
+  core.go:346		0xa1bc22		4883c040		ADDQ $0x40, AX
+  core.go:346		0xa1bc26		41ffcc			DECL R12
+  core.go:346		0xa1bc29		75cd			JNE 0xa1bbf8
+  core.go:346		0xa1bc2b		440f1031		MOVUPS 0(CX), X14
+  core.go:346		0xa1bc2f		440f1130		MOVUPS X14, 0(AX)
+  core.go:346		0xa1bc33		440f107110		MOVUPS 0x10(CX), X14
+  core.go:346		0xa1bc38		440f117010		MOVUPS X14, 0x10(AX)
+  core.go:347		0xa1bc3d		4c8b642450		MOVQ 0x50(SP), R12
+  core.go:347		0xa1bc42		4c89a2d0000000		MOVQ R12, 0xd0(DX)
+  core.go:348		0xa1bc49		4c8b642458		MOVQ 0x58(SP), R12
+  core.go:348		0xa1bc4e		4d8b2c24		MOVQ 0(R12), R13
+  core.go:348		0xa1bc52		4889d0			MOVQ DX, AX
+  core.go:348		0xa1bc55		488b9c2498000000	MOVQ 0x98(SP), BX
+  core.go:348		0xa1bc5d		488b8c24a0000000	MOVQ 0xa0(SP), CX
+  core.go:348		0xa1bc65		488bbc24a8000000	MOVQ 0xa8(SP), DI
+  core.go:348		0xa1bc6d		488bb424b0000000	MOVQ 0xb0(SP), SI
+  core.go:348		0xa1bc75		4c8b8424b8000000	MOVQ 0xb8(SP), R8
+  core.go:348		0xa1bc7d		4c8b8c24c0000000	MOVQ 0xc0(SP), R9
+  core.go:348		0xa1bc85		4c8b9424c8000000	MOVQ 0xc8(SP), R10
+  core.go:348		0xa1bc8d		4c8b9c24d0000000	MOVQ 0xd0(SP), R11
+  core.go:348		0xa1bc95		4c89e2			MOVQ R12, DX
+  core.go:348		0xa1bc98		41ffd5			CALL R13
+  core.go:349		0xa1bc9b		c644244f00		MOVB $0x0, 0x4f(SP)
+  core.go:349		0xa1bca0		488b942480000000	MOVQ 0x80(SP), DX
+  core.go:349		0xa1bca8		4c8b22			MOVQ 0(DX), R12
+  core.go:349		0xa1bcab		41ffd4			CALL R12
+  core.go:349		0xa1bcae		4881c488000000		ADDQ $0x88, SP
+  core.go:349		0xa1bcb5		5d			POPQ BP
+  core.go:349		0xa1bcb6		c3			RET
+  core.go:349		0xa1bcb7		e8e444a3ff		CALL runtime.deferreturn(SB)
+  core.go:349		0xa1bcbc		4881c488000000		ADDQ $0x88, SP
+  core.go:349		0xa1bcc3		5d			POPQ BP
+  core.go:349		0xa1bcc4		c3			RET
+  core.go:339		0xa1bcc5		4889442408		MOVQ AX, 0x8(SP)
+  core.go:339		0xa1bcca		48895c2410		MOVQ BX, 0x10(SP)
+  core.go:339		0xa1bccf		48894c2418		MOVQ CX, 0x18(SP)
+  core.go:339		0xa1bcd4		48897c2420		MOVQ DI, 0x20(SP)
+  core.go:339		0xa1bcd9		4889742428		MOVQ SI, 0x28(SP)
+  core.go:339		0xa1bcde		4c89442430		MOVQ R8, 0x30(SP)
+  core.go:339		0xa1bce3		4c894c2438		MOVQ R9, 0x38(SP)
+  core.go:339		0xa1bce8		4c89542440		MOVQ R10, 0x40(SP)
+  core.go:339		0xa1bced		e8ee81a7ff		CALL runtime.morestack.abi0(SB)
+  core.go:339		0xa1bcf2		488b442408		MOVQ 0x8(SP), AX
+  core.go:339		0xa1bcf7		488b5c2410		MOVQ 0x10(SP), BX
+  core.go:339		0xa1bcfc		488b4c2418		MOVQ 0x18(SP), CX
+  core.go:339		0xa1bd01		488b7c2420		MOVQ 0x20(SP), DI
+  core.go:339		0xa1bd06		488b742428		MOVQ 0x28(SP), SI
+  core.go:339		0xa1bd0b		4c8b442430		MOVQ 0x30(SP), R8
+  core.go:339		0xa1bd10		4c8b4c2438		MOVQ 0x38(SP), R9
+  core.go:339		0xa1bd15		4c8b542440		MOVQ 0x40(SP), R10
+  core.go:339		0xa1bd1a		e9a1fdffff		JMP github.com/wago-org/wasi/internal/core.(*Plugin).bindings.func1(SB)
+
+TEXT github.com/wago-org/wasi/internal/core.(*Plugin).bindings.func1.deferwrap1(SB) /tmp/wago memory review/current/wasi-baseline/internal/core/core.go
+  core.go:345		0xa1bd20		493b6610		CMPQ SP, 0x10(R14)
+  core.go:345		0xa1bd24		7625			JBE 0xa1bd4b
+  core.go:345		0xa1bd26		55			PUSHQ BP
+  core.go:345		0xa1bd27		4889e5			MOVQ SP, BP
+  core.go:345		0xa1bd2a		4883ec10		SUBQ $0x10, SP
+  core.go:345		0xa1bd2e		488b4208		MOVQ 0x8(DX), AX
+  mutex.go:65		0xa1bd32		bbffffffff		MOVL $-0x1, BX
+  mutex.go:65		0xa1bd37		f00fc118		LOCK XADDL BX, 0(AX)
+  mutex.go:194		0xa1bd3b		ffcb			DECL BX
+  mutex.go:195		0xa1bd3d		7406			JE 0xa1bd45
+  mutex.go:198		0xa1bd3f		90			NOPL
+  mutex.go:198		0xa1bd40		e8db12a8ff		CALL internal/sync.(*Mutex).unlockSlow(SB)
+  core.go:345		0xa1bd45		4883c410		ADDQ $0x10, SP
+  core.go:345		0xa1bd49		5d			POPQ BP
+  core.go:345		0xa1bd4a		c3			RET
+  core.go:345		0xa1bd4b		e89081a7ff		CALL runtime.morestack.abi0(SB)
+  core.go:345		0xa1bd50		ebce			JMP github.com/wago-org/wasi/internal/core.(*Plugin).bindings.func1.deferwrap1(SB)

@@ -1,0 +1,50 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+                                                     │ /tmp/wago memory review/caller-timing-summary/host-owned-baseline.txt │ /tmp/wago memory review/caller-timing-summary/host-owned-candidate.txt │
+                                                     │                                sec/op                                 │                     sec/op                       vs base               │
+WASIHostCallDiagnostic/calls=1/lifecycle=false-16                                                                594.8n ± 0%                                       599.0n ± 1%  +0.71% (p=0.016 n=20)
+WASIHostCallDiagnostic/calls=1/lifecycle=true-16                                                                 22.00µ ± 1%                                       21.87µ ± 1%       ~ (p=0.286 n=20)
+WASIHostCallDiagnostic/calls=1024/lifecycle=false-16                                                             287.7µ ± 1%                                       282.1µ ± 1%  -1.95% (p=0.000 n=20)
+WASIHostCallDiagnostic/calls=1024/lifecycle=true-16                                                              311.8µ ± 1%                                       306.1µ ± 1%  -1.83% (p=0.000 n=20)
+WASIOwnedLifecycleDiagnostic/ProviderSetupClose-16                                                               122.2µ ± 1%                                       122.1µ ± 1%       ~ (p=0.862 n=20)
+WASIOwnedLifecycleDiagnostic/minimal-wasi-16                                                                     10.82µ ± 1%                                       10.80µ ± 1%       ~ (p=0.973 n=20)
+WASIOwnedLifecycleDiagnostic/cjson-16                                                                            23.38µ ± 0%                                       23.10µ ± 1%       ~ (p=0.151 n=20)
+WASIOwnedLifecycleDiagnostic/tinyxml2-16                                                                         32.56µ ± 2%                                       32.49µ ± 1%       ~ (p=0.925 n=20)
+geomean                                                                                                          32.29µ                                            32.07µ       -0.69%
+
+                                                     │ /tmp/wago memory review/caller-timing-summary/host-owned-baseline.txt │ /tmp/wago memory review/caller-timing-summary/host-owned-candidate.txt │
+                                                     │                             host-calls/op                             │                 host-calls/op                  vs base                 │
+WASIHostCallDiagnostic/calls=1/lifecycle=false-16                                                                 1.000 ± 0%                                      1.000 ± 0%       ~ (p=1.000 n=20) ¹
+WASIHostCallDiagnostic/calls=1/lifecycle=true-16                                                                  1.000 ± 0%                                      1.000 ± 0%       ~ (p=1.000 n=20) ¹
+WASIHostCallDiagnostic/calls=1024/lifecycle=false-16                                                             1.024k ± 0%                                     1.024k ± 0%       ~ (p=1.000 n=20) ¹
+WASIHostCallDiagnostic/calls=1024/lifecycle=true-16                                                              1.024k ± 0%                                     1.024k ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                           32.00                                           32.00       +0.00%
+¹ all samples are equal
+
+                                                     │ /tmp/wago memory review/caller-timing-summary/host-owned-baseline.txt │ /tmp/wago memory review/caller-timing-summary/host-owned-candidate.txt │
+                                                     │                                 B/op                                  │                     B/op                       vs base                 │
+WASIHostCallDiagnostic/calls=1/lifecycle=false-16                                                                 288.0 ± 0%                                      288.0 ± 0%       ~ (p=1.000 n=20) ¹
+WASIHostCallDiagnostic/calls=1/lifecycle=true-16                                                                23.30Ki ± 0%                                    23.30Ki ± 0%       ~ (p=1.000 n=20)
+WASIHostCallDiagnostic/calls=1024/lifecycle=false-16                                                            288.0Ki ± 0%                                    288.0Ki ± 0%       ~ (p=0.470 n=20)
+WASIHostCallDiagnostic/calls=1024/lifecycle=true-16                                                             311.0Ki ± 0%                                    311.0Ki ± 0%       ~ (p=0.573 n=20)
+WASIOwnedLifecycleDiagnostic/ProviderSetupClose-16                                                              117.0Ki ± 0%                                    117.0Ki ± 0%       ~ (p=0.213 n=20)
+WASIOwnedLifecycleDiagnostic/minimal-wasi-16                                                                    3.844Ki ± 0%                                    3.844Ki ± 0%       ~ (p=1.000 n=20) ¹
+WASIOwnedLifecycleDiagnostic/cjson-16                                                                           6.719Ki ± 0%                                    6.719Ki ± 0%       ~ (p=1.000 n=20) ¹
+WASIOwnedLifecycleDiagnostic/tinyxml2-16                                                                        7.500Ki ± 0%                                    7.500Ki ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                         18.43Ki                                         18.43Ki       +0.00%
+¹ all samples are equal
+
+                                                     │ /tmp/wago memory review/caller-timing-summary/host-owned-baseline.txt │ /tmp/wago memory review/caller-timing-summary/host-owned-candidate.txt │
+                                                     │                               allocs/op                               │                   allocs/op                    vs base                 │
+WASIHostCallDiagnostic/calls=1/lifecycle=false-16                                                                 2.000 ± 0%                                      2.000 ± 0%       ~ (p=1.000 n=20) ¹
+WASIHostCallDiagnostic/calls=1/lifecycle=true-16                                                                  325.0 ± 0%                                      325.0 ± 0%       ~ (p=1.000 n=20) ¹
+WASIHostCallDiagnostic/calls=1024/lifecycle=false-16                                                             2.048k ± 0%                                     2.048k ± 0%       ~ (p=1.000 n=20) ¹
+WASIHostCallDiagnostic/calls=1024/lifecycle=true-16                                                              2.371k ± 0%                                     2.371k ± 0%       ~ (p=1.000 n=20) ¹
+WASIOwnedLifecycleDiagnostic/ProviderSetupClose-16                                                               1.698k ± 0%                                     1.698k ± 0%       ~ (p=1.000 n=20)
+WASIOwnedLifecycleDiagnostic/minimal-wasi-16                                                                      39.00 ± 0%                                      39.00 ± 0%       ~ (p=1.000 n=20) ¹
+WASIOwnedLifecycleDiagnostic/cjson-16                                                                             67.00 ± 0%                                      67.00 ± 0%       ~ (p=1.000 n=20) ¹
+WASIOwnedLifecycleDiagnostic/tinyxml2-16                                                                          81.00 ± 0%                                      81.00 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                           180.7                                           180.7       +0.00%
+¹ all samples are equal

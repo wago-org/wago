@@ -1,0 +1,108 @@
+File: wasi-candidate.test
+Build ID: 9916204981ffdb4d656d65265e5c6e462cbf661d
+Type: inuse_objects
+Time: 2026-09-21 06:08:34 EDT
+Showing nodes accounting for 1117, 85.73% of 1303 total
+Dropped 249 nodes (cum <= 6)
+Showing top 100 nodes out of 209
+      flat  flat%   sum%        cum   cum%
+       144 11.05% 11.05%        227 17.42%  runtime.mallocgc
+        85  6.52% 17.57%        299 22.95%  encoding/json/v2.makeStructFields
+        83  6.37% 23.94%         83  6.37%  runtime/metrics.init.0
+        69  5.30% 29.24%         69  5.30%  internal/sync.newEntryNode[go.shape.interface {},go.shape.interface {}] (inline)
+        58  4.45% 33.69%         97  7.44%  internal/godebug.lookup
+        54  4.14% 37.84%         54  4.14%  github.com/wago-org/wago/src/core/compiler/optimization.clone (inline)
+        47  3.61% 41.44%         48  3.68%  flag.(*FlagSet).Var
+        47  3.61% 45.05%         47  3.61%  runtime/metrics.runtime_readMetrics
+        42  3.22% 48.27%         49  3.76%  encoding/json/v2.makeSliceArshaler
+        41  3.15% 51.42%         41  3.15%  encoding/json/v2.makeStructArshaler (inline)
+        30  2.30% 53.72%         30  2.30%  internal/sync.newIndirectNode[go.shape.interface {},go.shape.interface {}] (inline)
+        27  2.07% 55.79%         33  2.53%  encoding/json/v2.parseFieldOptions
+        26  2.00% 57.79%        114  8.75%  internal/godebug.parse
+        24  1.84% 59.63%         24  1.84%  encoding/json/v2.makePointerArshaler (inline)
+        22  1.69% 61.32%         47  3.61%  flag.(*FlagSet).String
+        21  1.61% 62.93%         21  1.61%  encoding/json/v2.makeMapArshaler
+        19  1.46% 64.39%         19  1.46%  runtime.mallocgcTinySC2
+        15  1.15% 65.54%         15  1.15%  encoding/json/v2.makeStringArshaler (inline)
+        13     1% 66.54%         15  1.15%  encoding/json/v2.init
+        13     1% 67.54%         13     1%  runtime.mallocgcSmallNoScanSC3
+        13     1% 68.53%         13     1%  runtime.mallocgcSmallNoScanSC6
+        13     1% 69.53%         13     1%  runtime.mallocgcSmallNoScanSC7
+        12  0.92% 70.45%         32  2.46%  github.com/wago-org/wago/src/wago.compileWithFrontendFeaturesAndInstructions
+        10  0.77% 71.22%         10  0.77%  github.com/wago-org/wago/src/wago.defaultOptimizationSnapshot
+        10  0.77% 71.99%         10  0.77%  internal/abi.NewName
+        10  0.77% 72.76%         44  3.38%  reflect.(*rtype).ptrTo
+        10  0.77% 73.52%         10  0.77%  runtime.mallocgcSmallScanNoHeaderSC1
+         9  0.69% 74.21%          9  0.69%  github.com/wago-org/wasi/internal/core.init.func1
+         8  0.61% 74.83%          8  0.61%  net.map.init.0
+         8  0.61% 75.44%          8  0.61%  reflect.addReflectOff
+         8  0.61% 76.06%          8  0.61%  runtime.mallocgcSmallNoScanSC5
+         8  0.61% 76.67%          8  0.61%  sync.OnceFunc (inline)
+         7  0.54% 77.21%          7  0.54%  internal/bytealg.MakeNoZero
+         7  0.54% 77.74%          7  0.54%  reflect.MakeSlice
+         6  0.46% 78.20%        181 13.89%  encoding/json/v2.makeStructFields.func3
+         6  0.46% 78.66%          6  0.46%  encoding/json/v2.makeUintArshaler
+         6  0.46% 79.13%         21  1.61%  net.init
+         6  0.46% 79.59%          6  0.46%  os.newFile
+         6  0.46% 80.05%          6  0.46%  slices.Grow[go.shape.[]uint8,go.shape.uint8] (inline)
+         6  0.46% 80.51%          6  0.46%  sync.OnceValue[go.shape.*uint8] (inline)
+         6  0.46% 80.97%         11  0.84%  testing.(*T).Run
+         6  0.46% 81.43%         12  0.92%  unique.(*canonMap[go.shape.struct { net/netip.isV6 bool; net/netip.zoneV6 string }]).LoadOrStore
+         6  0.46% 81.89%          6  0.46%  vendor/golang.org/x/net/dns/dnsmessage.init
+         5  0.38% 82.27%         11  0.84%  flag.(*FlagSet).Int
+         5  0.38% 82.66%         12  0.92%  github.com/wago-org/wago/internal/jsonstrict.buildDescriptor
+         5  0.38% 83.04%          9  0.69%  go/parser.init
+         4  0.31% 83.35%         16  1.23%  debug/dwarf.init
+         4  0.31% 83.65%         58  4.45%  github.com/wago-org/wago/src/core/compiler/optimization.NewBindings
+         4  0.31% 83.96%         16  1.23%  unicode.init
+         4  0.31% 84.27%          6  0.46%  unique.newEntryNode[go.shape.struct { net/netip.isV6 bool; net/netip.zoneV6 string }]
+         3  0.23% 84.50%         11  0.84%  github.com/wago-org/wago/src/wago.cloneCompiledMetadata
+         3  0.23% 84.73%         16  1.23%  testing.newMatcher
+         3  0.23% 84.96%         35  2.69%  testing.runTests
+         2  0.15% 85.11%         14  1.07%  github.com/wago-org/wago/internal/jsonstrict.descriptorFor
+         2  0.15% 85.26%         10  0.77%  regexp.compile
+         1 0.077% 85.34%         11  0.84%  flag.(*FlagSet).Bool
+         1 0.077% 85.42%         12  0.92%  github.com/wago-org/wago/src/wago.publishCompilerCompiled
+         1 0.077% 85.50%        116  8.90%  internal/godebug.setUpdate
+         1 0.077% 85.57%         40  3.07%  testing.(*M).Run
+         1 0.077% 85.65%         60  4.60%  testing.MainStart
+         1 0.077% 85.73%         17  1.30%  unique.Make[go.shape.struct { net/netip.isV6 bool; net/netip.zoneV6 string }]
+         0     0% 85.73%          6  0.46%  compress/flate.init
+         0     0% 85.73%          6  0.46%  crypto/internal/fips140deps/godebug.Value
+         0     0% 85.73%        129  9.90%  encoding/json.(*Decoder).Decode
+         0     0% 85.73%        240 18.42%  encoding/json.Marshal (inline)
+         0     0% 85.73%          8  0.61%  encoding/json.Unmarshal (inline)
+         0     0% 85.73%          6  0.46%  encoding/json/internal/jsonwire.AppendQuote
+         0     0% 85.73%        240 18.42%  encoding/json/v2.Marshal
+         0     0% 85.73%        137 10.51%  encoding/json/v2.Unmarshal
+         0     0% 85.73%        208 15.96%  encoding/json/v2.lookupArshaler
+         0     0% 85.73%        164 12.59%  encoding/json/v2.makeDefaultArshaler
+         0     0% 85.73%         27  2.07%  encoding/json/v2.makeInterfaceArshaler.func2
+         0     0% 85.73%          9  0.69%  encoding/json/v2.makeMapArshaler.func1
+         0     0% 85.73%         36  2.76%  encoding/json/v2.makeMapArshaler.func3
+         0     0% 85.73%          9  0.69%  encoding/json/v2.makeSliceArshaler.func1
+         0     0% 85.73%         62  4.76%  encoding/json/v2.makeSliceArshaler.func2
+         0     0% 85.73%        299 22.95%  encoding/json/v2.makeStructArshaler.func1
+         0     0% 85.73%        232 17.81%  encoding/json/v2.makeStructArshaler.func2
+         0     0% 85.73%         76  5.83%  encoding/json/v2.makeStructArshaler.func3
+         0     0% 85.73%        240 18.42%  encoding/json/v2.marshalEncode
+         0     0% 85.73%         10  0.77%  encoding/json/v2.newAddressableValue
+         0     0% 85.73%        137 10.51%  encoding/json/v2.unmarshalDecode
+         0     0% 85.73%         10  0.77%  flag.(*FlagSet).BoolVar (inline)
+         0     0% 85.73%          6  0.46%  flag.(*FlagSet).IntVar (inline)
+         0     0% 85.73%         25  1.92%  flag.(*FlagSet).StringVar (inline)
+         0     0% 85.73%         11  0.84%  flag.Bool (inline)
+         0     0% 85.73%         11  0.84%  flag.Int (inline)
+         0     0% 85.73%         47  3.61%  flag.String (inline)
+         0     0% 85.73%          8  0.61%  github.com/tetratelabs/wazero/internal/wasm.init
+         0     0% 85.73%        285 21.87%  github.com/wago-org/wago.DefinitionDigest (inline)
+         0     0% 85.73%         10  0.77%  github.com/wago-org/wago.NewRuntime (inline)
+         0     0% 85.73%        449 34.46%  github.com/wago-org/wago/bench/suite.TestWASIMemoryReview
+         0     0% 85.73%         23  1.77%  github.com/wago-org/wago/bench/suite.init
+         0     0% 85.73%         47  3.61%  github.com/wago-org/wago/bench/suite.init.0
+         0     0% 85.73%        285 21.87%  github.com/wago-org/wago/bench/suite.ownedWASISet
+         0     0% 85.73%         47  3.61%  github.com/wago-org/wago/bench/suite.reviewCheckpoint
+         0     0% 85.73%        449 34.46%  github.com/wago-org/wago/bench/suite.reviewWork
+         0     0% 85.73%         11  0.84%  github.com/wago-org/wago/bench/suite.reviewWork.func1
+         0     0% 85.73%         15  1.15%  github.com/wago-org/wago/internal/jsonstrict.ValidateTypedJSON
+         0     0% 85.73%          7  0.54%  github.com/wago-org/wago/internal/jsonstrict.foldJSONName (inline)

@@ -1,0 +1,9 @@
+Preparing worktree (detached HEAD 81066a043)
+HEAD is now at 81066a043 bench: add bounded memory lifecycle checkpoints and paired analysis
+Cloning into bare repository '/tmp/wago memory review/final smoke build/wasi.git'...
+done.
+Preparing worktree (detached HEAD aef440c)
+HEAD is now at aef440c release: prepare v0.3.1
+Preparing worktree (detached HEAD aef440c)
+HEAD is now at aef440c release: prepare v0.3.1
+Build manifest: /tmp/wago memory review/final smoke build/build.json

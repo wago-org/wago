@@ -1,0 +1,146 @@
+{
+  "historical-memory-session1": {
+    "archive": "runs/historical-memory-session1.tar.gz",
+    "sha256": "2d74279cecb1982545943442a7e92d375d23c3472d1c534937c93a860abf1e32",
+    "run_id": "affb49fe-6469-454d-9905-fe2ec28830f0",
+    "status": "complete",
+    "records": 720
+  },
+  "historical-memory-session2": {
+    "archive": "runs/historical-memory-session2.tar.gz",
+    "sha256": "059b8cc99a2362d28965a89bc8a59808cffcddffd4c94606f55d3d881ef4d00c",
+    "run_id": "0004e5cf-196a-440f-9329-6839d3a3775f",
+    "status": "complete",
+    "records": 720
+  },
+  "historical-exact": {
+    "archive": "runs/historical-exact.tar.gz",
+    "sha256": "3ca8cf2a1f7f168c84d3e2ae05b70b4c0cdcfa308a57c3d922a5cac87ea7e9c2",
+    "run_id": "f82af1d8-d29f-403d-b5fb-06a86f1f604f",
+    "status": "complete",
+    "records": 120
+  },
+  "historical-full-context": {
+    "archive": "runs/historical-full-context.tar.gz",
+    "sha256": "c699d16c8040c9c16a56265b3184934ca98c93ec13730234ae0dfce52805b358",
+    "run_id": "87cba8d6-f8c9-4895-a0b8-5b9a387fd5a7",
+    "status": "complete",
+    "records": 120
+  },
+  "current-memory": {
+    "archive": "runs/current-memory.tar.gz",
+    "sha256": "332354f02247f8763d5485baf45b1a435a93564e1ae1f7cd364c77936df5a45a",
+    "run_id": "b201751d-eb16-4bdd-b486-f50d4ce88229",
+    "status": "complete",
+    "records": 720
+  },
+  "snapshot-memory": {
+    "archive": "runs/snapshot-memory.tar.gz",
+    "sha256": "22503f19e351d6cf5472f901b9a77885ac0bc198bc8ec325b90e7c1a7ef4e7d4",
+    "run_id": "a3424098-65ae-4906-9957-1de956f812e5",
+    "status": "complete",
+    "records": 720
+  },
+  "current-epochs": {
+    "archive": "runs/current-epochs.tar.gz",
+    "sha256": "03e1e6e1df0733dd7156c5a758a3d4e6b4f59bd525d2c76cc37c3663ef77a991",
+    "run_id": "9c863ddf-9dec-4902-9274-fb4176e7e7ea",
+    "status": "complete",
+    "records": 240
+  },
+  "current-100commands": {
+    "archive": "runs/current-100commands.tar.gz",
+    "sha256": "ded0eb72750ff525414a3096c5387f64a6d8414cc8de3e88c8b2329023d35321",
+    "run_id": "a038d32f-3fb8-45c2-9931-b705ed62c7c6",
+    "status": "complete",
+    "records": 240
+  },
+  "current-tinyxml2-confirmation": {
+    "archive": "runs/current-tinyxml2-confirmation.tar.gz",
+    "sha256": "565de5ee6659d3d4237b1d4396320e4c31fc8341bce710b324cb7612e3015d44",
+    "run_id": "d3593f8c-c443-4a85-a25f-d9e1c9a0f93f",
+    "status": "complete",
+    "records": 120
+  },
+  "current-profiles": {
+    "archive": "runs/current-profiles.tar.gz",
+    "sha256": "d65968bfe536844a8e05e4c207ba151ddf060ba4f6dd36b2664c389f73d409a4",
+    "run_id": "8ee5ad9a-0c2b-4733-a359-029f188fffc9",
+    "status": "complete",
+    "records": 12
+  },
+  "current-mapping-diagnostic": {
+    "archive": "runs/current-mapping-diagnostic.tar.gz",
+    "sha256": "355c9633e68934509019fbb4d4ce3cf3b930f20a9595eb7f706fc7c501eb2580",
+    "run_id": "76eaf54b-ae9f-4d3c-946c-ad8f23e7450f",
+    "status": "complete",
+    "records": 2
+  },
+  "current-timing": {
+    "archive": "runs/current-timing.tar.gz",
+    "sha256": "0aeef2442fa2fca24f045fa918fca58d5f28a15befa1f2f5fb93333414f50b45",
+    "run_id": "ed76851c-0d5a-4c1b-8569-5686400bd1b6",
+    "status": "complete",
+    "records": 120
+  },
+  "snapshot-timing": {
+    "archive": "runs/snapshot-timing.tar.gz",
+    "sha256": "248d57c78db05343c2d9a6973a8386aadfc1b600217f55448a6f349f0bd9fa6a",
+    "run_id": "7c69fde4-27cd-4d91-bcc9-63d2f7a87285",
+    "status": "complete",
+    "records": 80
+  },
+  "host-confirmation": {
+    "archive": "runs/host-confirmation.tar.gz",
+    "sha256": "8a67a9a7705d39f9c6afcea7d7cbc786dbe3b4ffe5dcb56e575168853011cd0f",
+    "run_id": "65250c71-d2c4-4167-a1f5-ce1b8d5ffcea",
+    "status": "complete",
+    "records": 40
+  },
+  "caller-timing": {
+    "archive": "runs/caller-timing.tar.gz",
+    "sha256": "3065f2d38400435da5d6de08419b84a74610cca8eb01aa4e4f6e49e2516e394f",
+    "run_id": "0cfc259f-1aea-44d1-958d-27472292bec0",
+    "status": "complete",
+    "records": 40
+  },
+  "caller-verification": {
+    "archive": "runs/caller-verification.tar.gz",
+    "sha256": "d24f3341e702bb2548c4420347b1f7857d9e0cbe2e9c7b996765bfb558f65d79",
+    "run_id": "0870a718-d216-4b99-ba6f-f66afdfdce0d",
+    "status": "complete",
+    "records": 120
+  },
+  "worker profiles": {
+    "archive": "runs/worker-profiles.tar.gz",
+    "sha256": "7cc47c0ffc5782bafd8fe6115c4bded47871b858514eac5f92cc5007b61c5bed",
+    "run_id": "ff205a57-be80-4090-bc6c-cb5b9a9d5ddf",
+    "status": "complete",
+    "records": 2
+  },
+  "paired smoke": {
+    "archive": "runs/paired-smoke.tar.gz",
+    "sha256": "b0261165d44ace0194a47db50bb726c0c2d626d7d9348a0ed56dfa4d57e27edd",
+    "run_id": "c46c4700-c49a-4b94-a2ff-31c6fc4174b6",
+    "status": "complete",
+    "records": 4
+  },
+  "final timing smoke": {
+    "archive": "runs/final-timing-smoke.tar.gz",
+    "sha256": "52a73b6a36d918f33ee7c31ddab6003c88aaf2338b3c200f6084427ae377ade1",
+    "run_id": "c3b10864-978a-4eb2-aaf5-b92cc60d9ca2",
+    "status": "complete",
+    "records": 4
+  },
+  "final memory smoke": {
+    "archive": "runs/final-memory-smoke.tar.gz",
+    "sha256": "3c9d3540184524fead497d2cb8c81850d540e7cb697f7daa8f70e6131db7dc68",
+    "run_id": "324fab41-a099-4e43-a1d5-364cb07ebdd5",
+    "status": "complete",
+    "records": 36
+  },
+  "summaries": {
+    "archive": "runs/summaries.tar.gz",
+    "sha256": "dd1da0c3faa6e8620188d855229ae51eeee3735ccd5d9aaf72a703b78b2b9535"
+  }
+}

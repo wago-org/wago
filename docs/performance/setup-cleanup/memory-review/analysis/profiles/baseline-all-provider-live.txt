@@ -1,0 +1,8 @@
+File: wasi-baseline.test
+Build ID: 8b12a75ed5bdbf4567b7d2c59cde06728f660add
+Type: inuse_space
+Time: 2026-09-21 06:08:33 EDT
+Active filters:
+   focus=github.com/wago-org/wasi
+Showing nodes accounting for 0, 0% of 604.32kB total
+      flat  flat%   sum%        cum   cum%

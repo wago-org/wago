@@ -1,0 +1,3 @@
+ok  	github.com/wago-org/wago/internal/functionworkers	1.006s [no tests to run]
+ok  	github.com/wago-org/wago/src/core/compiler/wasm	1.121s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	1.688s
