@@ -27,18 +27,24 @@ func TestAMD64RailMachV128OrSpillFold(t *testing.T) {
 			{Kind: railmach.LocationSpill, Bank: railmach.BankFPR, Index: 2},
 		}}},
 	}
-	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128Or, operands, 2); got != 1 {
+	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128Or, operands, 2, 0); got != 1 {
 		t.Fatalf("v128.or fold operand = %d, want right operand 1", got)
 	}
+	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128Or, operands, 2, 2); got != 0 {
+		t.Fatalf("forwarded right operand fold = %d, want left operand 0", got)
+	}
 	plan.Allocation.Locations[2] = railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankFPR}
-	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128Or, operands, 2); got != 0 {
+	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128Or, operands, 2, 0); got != 0 {
 		t.Fatalf("left spill fold operand = %d, want 0", got)
 	}
-	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128And, operands, 2); got != -1 {
+	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128Or, operands, 2, 1); got != -1 {
+		t.Fatalf("forwarded left operand fold = %d, want -1", got)
+	}
+	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128And, operands, 2, 0); got != -1 {
 		t.Fatalf("unsupported fold operand = %d, want -1", got)
 	}
 	operands[0].Flags = railmach.OperandColdRemat
-	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128Or, operands, 2); got != -1 {
+	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128Or, operands, 2, 0); got != -1 {
 		t.Fatalf("rematerialized fold operand = %d, want -1", got)
 	}
 }

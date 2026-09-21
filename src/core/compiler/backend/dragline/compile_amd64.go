@@ -1748,7 +1748,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			currentOperands, currentResult = operands, instruction.Result
 			currentPosition = plan.Allocation.InstructionPositions[instructionID]*6 + 2
-			vectorSpillFold := amd64RailMachV128OrSpillFold(plan, instruction.Op, operands, currentPosition)
+			vectorSpillFold := amd64RailMachV128OrSpillFold(plan, instruction.Op, operands, currentPosition, forwardedSpill)
 			currentResultOverrideValid = edgeResultRename.valid && edgeResultRename.instruction == instructionID
 			if currentResultOverrideValid {
 				currentResultOverride = amd64RailMachPhysical(edgeResultRename.destination)
@@ -5947,7 +5947,7 @@ func amd64RailMachPhysical(location railmach.Location) amd64.Reg {
 	return amd64RailMachGPRRegisters[location.Index]
 }
 
-func amd64RailMachV128OrSpillFold(plan *nativeBackendPlan, op railmach.MOpcode, operands []railmach.Operand, position uint32) int {
+func amd64RailMachV128OrSpillFold(plan *nativeBackendPlan, op railmach.MOpcode, operands []railmach.Operand, position uint32, forwarded railmach.VReg) int {
 	if plan == nil || plan.Allocation == nil || len(operands) != 2 {
 		return -1
 	}
@@ -5958,7 +5958,7 @@ func amd64RailMachV128OrSpillFold(plan *nativeBackendPlan, op railmach.MOpcode, 
 	// v128.or is commutative, so exchanging its sources is exact.
 	for _, index := range [...]int{1, 0} {
 		operand := operands[index]
-		if int(operand.Reg) >= len(plan.Machine.VRegs) || plan.Machine.VRegs[operand.Reg].Type != railmach.TypeV128 || operand.Flags&railmach.OperandColdRemat != 0 {
+		if operand.Reg == forwarded || int(operand.Reg) >= len(plan.Machine.VRegs) || plan.Machine.VRegs[operand.Reg].Type != railmach.TypeV128 || operand.Flags&railmach.OperandColdRemat != 0 {
 			continue
 		}
 		location := plan.Allocation.LocationAt(operand.Reg, position)
