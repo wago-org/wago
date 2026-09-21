@@ -1,0 +1,13 @@
+{
+  "name": "fs-map-negative",
+  "command": [
+    "go",
+    "test",
+    "-count=1",
+    "./internal/core",
+    "-run",
+    "^(TestCloseFSDropsDescriptorMap|TestTerminalMapProviderReuse)$"
+  ],
+  "exit": 1,
+  "max_celsius": 64.75
+}

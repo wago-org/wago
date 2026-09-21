@@ -1,0 +1,16 @@
+{
+  "name": "input-baseline-heap",
+  "command": [
+    "go",
+    "test",
+    "./src/wago",
+    "-run",
+    "^$",
+    "-bench",
+    "^BenchmarkInputRetentionHeap$",
+    "-benchtime=1x",
+    "-count=1"
+  ],
+  "exit": 0,
+  "max_celsius": 60.875
+}

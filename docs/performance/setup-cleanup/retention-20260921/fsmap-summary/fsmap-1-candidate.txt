@@ -1,0 +1,139 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1124	     54612 ns/op	  184477 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1222	     54795 ns/op	  184477 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1168	     55727 ns/op	  184477 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1112	     53478 ns/op	  184477 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1224	     54372 ns/op	  184481 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1131	     52858 ns/op	  184477 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1136	     56249 ns/op	  184482 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1216	     54243 ns/op	  184481 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1203	     53390 ns/op	  184476 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1176	     54245 ns/op	  184477 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1053	     54622 ns/op	  184477 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	     931	     55992 ns/op	  184478 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	     936	     53921 ns/op	  184484 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1088	     53882 ns/op	  184482 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1208	     52842 ns/op	  184481 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1113	     54047 ns/op	  184482 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1230	     56058 ns/op	  184481 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1064	     52238 ns/op	  184477 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1257	     55507 ns/op	  184477 B/op	    1031 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalLifecycle/1024-16         	    1100	     54665 ns/op	  184472 B/op	    1031 allocs/op
+PASS

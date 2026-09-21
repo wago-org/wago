@@ -1,0 +1,17 @@
+{
+  "name": "input-baseline-build",
+  "command": [
+    "go",
+    "test",
+    "-c",
+    "-tags",
+    "wago_guardpage",
+    "-overlay",
+    "/tmp/wago-retention-roobe8pc/input-overlay.json",
+    "-o",
+    "/tmp/wago-retention-roobe8pc/input-baseline.test",
+    "./src/wago"
+  ],
+  "exit": 0,
+  "max_celsius": 63.5
+}

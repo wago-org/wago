@@ -1,0 +1,139 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1938868	        32.56 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1891546	        32.95 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1835407	        32.45 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1882053	        33.39 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1769394	        33.43 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1685496	        34.05 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1851490	        33.43 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1866793	        32.40 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1888351	        33.16 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1893702	        31.73 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1853077	        33.40 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1900216	        32.19 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1848692	        32.64 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1862359	        32.58 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1924683	        32.75 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1856103	        32.07 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1930222	        32.80 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1894215	        32.98 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1891280	        32.73 ns/op	      48 B/op	       1 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPathComponents/short-16         	 1882989	        32.62 ns/op	      48 B/op	       1 allocs/op
+PASS

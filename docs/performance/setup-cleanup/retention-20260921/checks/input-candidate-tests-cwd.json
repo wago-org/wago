@@ -1,0 +1,11 @@
+{
+  "name": "input-candidate-tests-cwd",
+  "command": [
+    "/tmp/wago-retention-roobe8pc/input-candidate.test",
+    "-test.run",
+    "TestCompiledActiveDataOwnsPublicBytes|TestCompiledExecutionSnapshot|TestCompiledArtifactUsesExecutionSnapshot|TestImportSnapshot|TestTypedScalarSyncHostCallAllocatesNothing|TestScalarSyncHostCallUsesOneScopedHandleAllocation",
+    "-test.count=1"
+  ],
+  "exit": 0,
+  "max_celsius": 48.375
+}

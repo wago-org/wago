@@ -1,0 +1,8 @@
+--- FAIL: TestStagedOfficialMultiMemoryCompactImportsExecute (0.00s)
+    --- FAIL: TestStagedOfficialMultiMemoryCompactImportsExecute/memory_size_import (0.00s)
+        multi_memory_official_amd64_test.go:26: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+    --- FAIL: TestStagedOfficialMultiMemoryCompactImportsExecute/memory_grow (0.00s)
+        multi_memory_official_amd64_test.go:26: discover pinned Release 3 suite: WebAssembly 3.0 corpus "../../tests/conformance/spec-v3" is missing test/core: stat ../../tests/conformance/spec-v3/test/core: no such file or directory
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	41.589s
+FAIL

@@ -1,0 +1,28 @@
+Bounded fuzzing / Linux amd64	pass	1m59s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070013	
+Build size	pass	3m27s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070035	
+CI	pass	5s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106406602987	
+Core v2 conformance / Linux amd64	pass	1m53s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070063	
+Core v2 conformance / Linux arm64	pass	1m11s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402069906	
+Core v3 conformance / Darwin arm64 / explicit	pass	3m45s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070190	
+Core v3 conformance / Darwin arm64 / signals	pass	4m24s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070103	
+Core v3 conformance / Linux amd64 / explicit	pass	2m0s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070127	
+Core v3 conformance / Linux amd64 / signals	pass	1m54s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070256	
+Core v3 conformance / Linux arm64 / explicit	pass	1m27s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070109	
+Core v3 conformance / Linux arm64 / signals	pass	1m16s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070417	
+Darwin / amd64	pass	8m42s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070271	
+Darwin / arm64	pass	3m16s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070157	
+Detect changes	pass	9s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106401990678	
+Documentation	pass	20s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070154	
+Lint & format	pass	2m2s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402069780	
+Linux / amd64	pass	3m22s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070336	
+Linux / arm64	pass	2m13s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070251	
+Race detector / Linux amd64	pass	5m48s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070206	
+Regression corpus provenance	pass	1m14s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402069789	
+Runtime concurrency / Linux amd64	pass	31s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402069912	
+Runtime concurrency / Linux arm64	pass	26s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402069919	
+TinyGo / Darwin / amd64	pass	3m17s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070538	
+TinyGo / Darwin / arm64	pass	3m13s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070302	
+TinyGo / Linux / amd64	pass	9m4s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070288	
+TinyGo / Linux / arm64	pass	7m35s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070458	
+Windows / amd64	pass	5m53s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070198	
+Windows / arm64	pass	6m22s	https://github.com/wago-org/wago/actions/runs/35620477269/job/106402070298	

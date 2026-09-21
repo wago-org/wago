@@ -1,0 +1,130 @@
+--- /dev/null
++++ b/src/wago/input_retention_test.go
+@@ -0,0 +1,127 @@
++package wago
++
++import (
++	"bytes"
++	"runtime"
++	"testing"
++
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func inputRetentionModule(dataBytes, customBytes int, active bool) []byte {
++	sections := [][]byte{wasmtest.Section(5, wasmtest.Vec(append([]byte{0}, wasmtest.ULEB(uint32((dataBytes+65535)/65536+1))...)))}
++	if active {
++		data := append([]byte{0, 0x41, 0, 0x0b}, wasmtest.ULEB(uint32(dataBytes))...)
++		data = append(data, bytes.Repeat([]byte{0x5a}, dataBytes)...)
++		sections = append(sections, wasmtest.Section(11, wasmtest.Vec(data, []byte{0, 0x41, 0, 0x0b, 0})))
++	}
++	if customBytes != 0 {
++		payload := append(wasmtest.Name("unused"), make([]byte, customBytes)...)
++		sections = append(sections, wasmtest.Section(0, payload))
++	}
++	return wasmtest.Module(sections...)
++}
++
++func TestCompiledActiveDataPrivateOwnership(t *testing.T) {
++	source := inputRetentionModule(16, 1<<20, true)
++	c, err := Compile(nil, source)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	before := bytes.Clone(c.Data[0].Bytes)
++	clear(source)
++	if !bytes.Equal(c.Data[0].Bytes, before) {
++		t.Log("public data still aliases caller input; compact-copy candidate was rejected")
++	}
++	clear(c.Data[0].Bytes)
++	in, err := Instantiate(c)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer in.Close()
++	got, ok := in.Read(0, 16)
++	if !ok || !bytes.Equal(got, before) {
++		t.Fatalf("private execution data changed: %x", got)
++	}
++}
++
++func FuzzCompiledActiveDataPrivateOwnership(f *testing.F) {
++	f.Add(uint16(16), uint16(1024))
++	f.Add(uint16(0), uint16(32768))
++	f.Fuzz(func(t *testing.T, n, extra uint16) {
++		source := inputRetentionModule(int(n), int(extra), true)
++		c, err := Compile(nil, source)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer c.Close()
++		clear(source)
++		if !bytes.Equal(c.executionView().Data[0].Bytes, bytes.Repeat([]byte{0x5a}, int(n))) {
++			t.Fatal("private data differs")
++		}
++	})
++}
++
++var inputRetentionCases = []struct {
++	name         string
++	data, custom int
++	active       bool
++}{
++	{"small", 16, 0, true},
++	{"custom", 16, 4 << 20, true},
++	{"dense", 256 << 10, 0, true},
++	{"nodata", 0, 4 << 20, false},
++	{"empty", 0, 4 << 20, true},
++}
++
++func BenchmarkInputRetentionCompileClose(b *testing.B) {
++	for _, tc := range inputRetentionCases {
++		b.Run(tc.name, func(b *testing.B) {
++			source := inputRetentionModule(tc.data, tc.custom, tc.active)
++			cfg := NewRuntimeConfig().WithFunctionWorkers(1)
++			b.ReportAllocs()
++			b.ResetTimer()
++			for i := 0; i < b.N; i++ {
++				c, err := Compile(cfg, source)
++				if err != nil {
++					b.Fatal(err)
++				}
++				if err := c.Close(); err != nil {
++					b.Fatal(err)
++				}
++			}
++		})
++	}
++}
++
++func retainedInputCompile(b *testing.B, data, custom int, active bool) *Compiled {
++	c, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), inputRetentionModule(data, custom, active))
++	if err != nil {
++		b.Fatal(err)
++	}
++	return c
++}
++
++// Fixed-work ownership diagnostic. Forced GC is not a normal memory endpoint.
++func BenchmarkInputRetentionHeap(b *testing.B) {
++	for _, tc := range inputRetentionCases {
++		b.Run(tc.name, func(b *testing.B) {
++			if b.N != 1 {
++				b.Fatal("use -benchtime=1x")
++			}
++			runtime.GC()
++			var before, normal, after runtime.MemStats
++			runtime.ReadMemStats(&before)
++			c := retainedInputCompile(b, tc.data, tc.custom, tc.active)
++			defer c.Close()
++			runtime.ReadMemStats(&normal)
++			runtime.GC()
++			runtime.ReadMemStats(&after)
++			b.ReportMetric(float64(normal.HeapAlloc), "normal-heap-B")
++			b.ReportMetric(float64(after.HeapAlloc), "postgc-heap-B")
++			b.ReportMetric(float64(int64(after.HeapAlloc)-int64(before.HeapAlloc)), "retained-delta-B")
++			runtime.KeepAlive(c)
++		})
++	}
++}

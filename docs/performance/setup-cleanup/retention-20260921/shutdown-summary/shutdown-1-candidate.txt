@@ -1,0 +1,139 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   13801	      4340 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14685	      4402 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14094	      4291 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14388	      4151 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   13947	      4180 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14670	      4197 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14278	      4283 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14482	      4240 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   13994	      4219 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14269	      4233 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14720	      4184 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14127	      4445 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14340	      4377 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14126	      4334 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14144	      4253 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14132	      4352 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   13599	      4133 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   15039	      4343 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14398	      4097 ns/op	   11064 B/op	     101 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSShutdownStateLifecycle/16-16 	   14319	      4306 ns/op	   11064 B/op	     101 allocs/op
+PASS

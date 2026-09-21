@@ -1,0 +1,8 @@
+Input alias audit before candidate:
+api.go:1999 assigns public active DataInit.Bytes from d.Init. wasm/validate_bytebacked.go:436 decodeDirectData uses reader.bytes, which is a view into caller input, including zero-length slices.
+Private execution clone: compiled_snapshot.go:118 copies each active byte range into a private packed buffer.
+Passive data: api.go:1986 already copies.
+Element and table expressions: api.go:1796,1952,2273,2295,2308 copy byte bodies. constexpr.go:65,74 copies public global/offset expressions.
+Name strings: wasm/reader.go:132 converts validated bytes to an owned string. Custom payloads are copied by decode.go:89 / validate_bytebacked.go:337; the public Compiled retains parsed names, not Module.Customs or raw custom payloads.
+Code bodies are temporary compiler input; backend output owns emitted code.
+Expected issue: even a tiny or empty active segment can retain an otherwise unused large source buffer through public metadata. Private execution already owns separate immutable initialization bytes.

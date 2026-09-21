@@ -1,0 +1,15 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                     │ /tmp/wago-retention-roobe8pc/path-summary/path-3-baseline.txt │ /tmp/wago-retention-roobe8pc/path-summary/path-3-candidate.txt │
+                     │                            sec/op                             │                 sec/op                   vs base               │
+PathResolve/short-16                                                     468.8n ± 1%                               440.3n ± 2%  -6.07% (p=0.000 n=20)
+
+                     │ /tmp/wago-retention-roobe8pc/path-summary/path-3-baseline.txt │ /tmp/wago-retention-roobe8pc/path-summary/path-3-candidate.txt │
+                     │                             B/op                              │                  B/op                   vs base                │
+PathResolve/short-16                                                      256.0 ± 0%                               208.0 ± 0%  -18.75% (p=0.000 n=20)
+
+                     │ /tmp/wago-retention-roobe8pc/path-summary/path-3-baseline.txt │ /tmp/wago-retention-roobe8pc/path-summary/path-3-candidate.txt │
+                     │                           allocs/op                           │               allocs/op                 vs base                │
+PathResolve/short-16                                                      2.000 ± 0%                               1.000 ± 0%  -50.00% (p=0.000 n=20)

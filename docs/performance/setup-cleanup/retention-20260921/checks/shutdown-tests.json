@@ -1,0 +1,16 @@
+{
+  "name": "shutdown-tests",
+  "command": [
+    "go",
+    "test",
+    "-race",
+    "-count=10",
+    "-tags",
+    "wago_guardpage",
+    "./internal/core",
+    "-run",
+    "TestShutdown|TestTerminalMap|TestConstructionOwnedLifecycle|TestConstructionPartialProviderSetup"
+  ],
+  "exit": 0,
+  "max_celsius": 61.5
+}

@@ -1,0 +1,15 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                                     │ /tmp/wago-retention-roobe8pc/input-summary/input-3-baseline.txt │ /tmp/wago-retention-roobe8pc/input-summary/input-3-candidate.txt │
+                                     │                             sec/op                              │                     sec/op                      vs base          │
+InputRetentionCompileClose/nodata-16                                                       5.787m ± 1%                                      5.772m ± 2%  ~ (p=1.000 n=20)
+
+                                     │ /tmp/wago-retention-roobe8pc/input-summary/input-3-baseline.txt │ /tmp/wago-retention-roobe8pc/input-summary/input-3-candidate.txt │
+                                     │                              B/op                               │                      B/op                       vs base          │
+InputRetentionCompileClose/nodata-16                                                      4.015Mi ± 0%                                     4.015Mi ± 0%  ~ (p=0.888 n=20)
+
+                                     │ /tmp/wago-retention-roobe8pc/input-summary/input-3-baseline.txt │ /tmp/wago-retention-roobe8pc/input-summary/input-3-candidate.txt │
+                                     │                            allocs/op                            │                   allocs/op                     vs base          │
+InputRetentionCompileClose/nodata-16                                                        54.00 ± 2%                                       54.00 ± 2%  ~ (p=0.893 n=20)

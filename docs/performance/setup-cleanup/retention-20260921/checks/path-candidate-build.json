@@ -1,0 +1,15 @@
+{
+  "name": "path-candidate-build",
+  "command": [
+    "go",
+    "test",
+    "-c",
+    "-tags",
+    "wago_guardpage",
+    "-o",
+    "/tmp/wago-retention-roobe8pc/path-candidate.test",
+    "./internal/core"
+  ],
+  "exit": 0,
+  "max_celsius": 64.875
+}

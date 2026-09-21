@@ -1,0 +1,29 @@
+--- a/src/wago/api.go
++++ b/src/wago/api.go
+@@ -1973,12 +1973,14 @@
+ 	// Active data dominates metadata in Go-produced modules (esbuild has tens of
+ 	// thousands of segments). Reserve once instead of geometrically copying the
+ 	// growing descriptor slice.
+-	activeData := 0
++	activeData, activeDataBytes := 0, 0
+ 	for i := range m.Data {
+ 		if m.Data[i].Mode.Kind != wasm.DataPassive {
+ 			activeData++
+-		}
+-	}
++			activeDataBytes += len(m.Data[i].Init)
++		}
++	}
++	publicData := packedCloneStorage[byte]{values: make([]byte, activeDataBytes)}
+ 	c.Data = make([]DataInit, 0, activeData)
+ 	for i := range m.Data {
+ 		d := &m.Data[i]
+@@ -1996,7 +1998,7 @@
+ 		if err != nil {
+ 			return nil, fmt.Errorf("data %d offset: %w", i, err)
+ 		}
+-		init := DataInit{MemoryIndex: uint32(d.Mode.Mem), Bytes: d.Init}
++		init := DataInit{MemoryIndex: uint32(d.Mode.Mem), Bytes: publicData.clone(d.Init)}
+ 		if memory64 {
+ 			// OffsetInit's compact Base/HasGlobal forms are intentionally i32-only.
+ 			// Preserve the already validated i64 program in the existing Expr field so

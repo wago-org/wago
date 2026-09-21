@@ -1,0 +1,27 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                             │ /tmp/wago-retention-roobe8pc/input-summary/input-6-baseline.txt │ /tmp/wago-retention-roobe8pc/input-summary/input-6-candidate.txt │
+                             │                             sec/op                              │                     sec/op                      vs base          │
+InputRetentionHeap/nodata-16                                                       7.749m ± 7%                                      7.711m ± 7%  ~ (p=0.640 n=20)
+
+                             │ /tmp/wago-retention-roobe8pc/input-summary/input-6-baseline.txt │ /tmp/wago-retention-roobe8pc/input-summary/input-6-candidate.txt │
+                             │                          normal-heap-B                          │                 normal-heap-B                   vs base          │
+InputRetentionHeap/nodata-16                                                      8.420Mi ± 0%                                     8.420Mi ± 0%  ~ (p=0.292 n=20)
+
+                             │ /tmp/wago-retention-roobe8pc/input-summary/input-6-baseline.txt │ /tmp/wago-retention-roobe8pc/input-summary/input-6-candidate.txt │
+                             │                          postgc-heap-B                          │                 postgc-heap-B                   vs base          │
+InputRetentionHeap/nodata-16                                                      410.8Ki ± 0%                                     410.6Ki ± 0%  ~ (p=0.100 n=20)
+
+                             │ /tmp/wago-retention-roobe8pc/input-summary/input-6-baseline.txt │ /tmp/wago-retention-roobe8pc/input-summary/input-6-candidate.txt │
+                             │                        retained-delta-B                         │                retained-delta-B                 vs base          │
+InputRetentionHeap/nodata-16                                                      15.55Ki ± 0%                                    15.50Ki ± 33%  ~ (p=0.505 n=20)
+
+                             │ /tmp/wago-retention-roobe8pc/input-summary/input-6-baseline.txt │ /tmp/wago-retention-roobe8pc/input-summary/input-6-candidate.txt │
+                             │                              B/op                               │                      B/op                       vs base          │
+InputRetentionHeap/nodata-16                                                      16.05Mi ± 0%                                     16.05Mi ± 0%  ~ (p=0.920 n=20)
+
+                             │ /tmp/wago-retention-roobe8pc/input-summary/input-6-baseline.txt │ /tmp/wago-retention-roobe8pc/input-summary/input-6-candidate.txt │
+                             │                            allocs/op                            │                   allocs/op                     vs base          │
+InputRetentionHeap/nodata-16                                                        92.00 ± 4%                                       91.50 ± 6%  ~ (p=0.962 n=20)

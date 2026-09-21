@@ -1,0 +1,11 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/small         	       1	    448172 ns/op	    152096 normal-heap-B	    136512 postgc-heap-B	      8712 retained-delta-B
+BenchmarkInputRetentionHeap/custom        	       1	   6765481 ns/op	   8545608 normal-heap-B	   4339056 postgc-heap-B	   4206552 retained-delta-B
+BenchmarkInputRetentionHeap/dense         	       1	   1242943 ns/op	   1754664 normal-heap-B	    669072 postgc-heap-B	    536520 retained-delta-B
+BenchmarkInputRetentionHeap/nodata        	       1	   7898049 ns/op	   8544488 normal-heap-B	    136352 postgc-heap-B	      3752 retained-delta-B
+BenchmarkInputRetentionHeap/empty         	       1	   8085629 ns/op	   8545736 normal-heap-B	   4339184 postgc-heap-B	   4206536 retained-delta-B
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.028s

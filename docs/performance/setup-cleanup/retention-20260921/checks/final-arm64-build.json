@@ -1,0 +1,17 @@
+{
+  "name": "final-arm64-build",
+  "command": [
+    "env",
+    "GOARCH=arm64",
+    "go",
+    "test",
+    "-c",
+    "-tags",
+    "wago_guardpage",
+    "-o",
+    "/tmp/wago-retention-roobe8pc/provider-arm64.test",
+    "./internal/core"
+  ],
+  "exit": 0,
+  "max_celsius": 65.0
+}

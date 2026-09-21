@@ -1,0 +1,22 @@
+[
+  {
+    "repo": "wago",
+    "patch": "02-snapshot-validation-with-tests.patch",
+    "result": "applies to isolated index"
+  },
+  {
+    "repo": "provider",
+    "patch": "01-path-scan-with-tests.patch",
+    "result": "applies to isolated index"
+  },
+  {
+    "repo": "provider",
+    "patch": "03-terminal-descriptor-map-with-tests.patch",
+    "result": "applies to isolated index"
+  },
+  {
+    "repo": "provider",
+    "patch": "04-provider-shutdown-with-tests.patch",
+    "result": "applies to isolated index"
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "name": "shutdown-baseline-build",
+  "command": [
+    "go",
+    "test",
+    "-c",
+    "-tags",
+    "wago_guardpage",
+    "-overlay",
+    "/tmp/wago-retention-roobe8pc/shutdown-overlay.json",
+    "-o",
+    "/tmp/wago-retention-roobe8pc/shutdown-baseline.test",
+    "./internal/core"
+  ],
+  "exit": 0,
+  "max_celsius": 64.5
+}

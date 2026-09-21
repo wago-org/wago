@@ -1,0 +1,10 @@
+{
+  "name": "snapshot-guard",
+  "command": [
+    "/tmp/wago-retention-roobe8pc/snapshot-candidate.test",
+    "-test.run",
+    "^TestImportSnapshot"
+  ],
+  "exit": 0,
+  "max_celsius": 48.375
+}

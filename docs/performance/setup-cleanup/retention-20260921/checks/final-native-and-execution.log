@@ -1,0 +1,76 @@
+=== RUN   TestImportSnapshotFailureStable
+=== RUN   TestImportSnapshotFailureStable/nil
+=== RUN   TestImportSnapshotFailureStable/signature
+--- PASS: TestImportSnapshotFailureStable (0.00s)
+    --- PASS: TestImportSnapshotFailureStable/nil (0.00s)
+    --- PASS: TestImportSnapshotFailureStable/signature (0.00s)
+=== RUN   TestImportSnapshotSealedMutation
+=== RUN   TestImportSnapshotSealedMutation/valid
+=== RUN   TestImportSnapshotSealedMutation/nil
+=== RUN   TestImportSnapshotSealedMutation/signature
+--- PASS: TestImportSnapshotSealedMutation (0.00s)
+    --- PASS: TestImportSnapshotSealedMutation/valid (0.00s)
+    --- PASS: TestImportSnapshotSealedMutation/nil (0.00s)
+    --- PASS: TestImportSnapshotSealedMutation/signature (0.00s)
+=== RUN   TestImportSnapshotConcurrentStable
+=== RUN   TestImportSnapshotConcurrentStable/valid
+=== RUN   TestImportSnapshotConcurrentStable/nil
+=== RUN   TestImportSnapshotConcurrentStable/signature
+--- PASS: TestImportSnapshotConcurrentStable (0.00s)
+    --- PASS: TestImportSnapshotConcurrentStable/valid (0.00s)
+    --- PASS: TestImportSnapshotConcurrentStable/nil (0.00s)
+    --- PASS: TestImportSnapshotConcurrentStable/signature (0.00s)
+=== RUN   TestImportSnapshotFirstValidationComplete
+--- PASS: TestImportSnapshotFirstValidationComplete (0.00s)
+=== RUN   TestImportSnapshotDeclarationCallbacks
+=== RUN   TestImportSnapshotDeclarationCallbacks/false
+=== RUN   TestImportSnapshotDeclarationCallbacks/true
+--- PASS: TestImportSnapshotDeclarationCallbacks (0.00s)
+    --- PASS: TestImportSnapshotDeclarationCallbacks/false (0.00s)
+    --- PASS: TestImportSnapshotDeclarationCallbacks/true (0.00s)
+=== RUN   TestImportSnapshotConcurrentAndAllocationBudget
+--- PASS: TestImportSnapshotConcurrentAndAllocationBudget (0.00s)
+=== RUN   TestCompiledActiveDataPrivateOwnership
+    input_retention_test.go:35: public data still aliases caller input; compact-copy candidate was rejected
+--- PASS: TestCompiledActiveDataPrivateOwnership (0.00s)
+=== RUN   TestNativeIdleCacheResidencyDiagnostic
+=== RUN   TestNativeIdleCacheResidencyDiagnostic/stack-4194304
+    native_cache_residency_linux_amd64_test.go:94: stage=created owner-address=7fc3f51fffff VMA="7fc3f4e00000-7fc3f5200000 rw-p 00000000 00:00 0 " rss-KiB=0 pss-KiB=0 anon-huge-KiB=0 whole-process-maxrss-KiB=41188 minor=813 major=0 HeapAlloc=1754288 HeapInuse=2547712 HeapReleased=4456448 StackInuse=327680 NumGC=6
+    native_cache_residency_linux_amd64_test.go:102: stage=touched owner-address=7fc3f51fffff VMA="7fc3f4e00000-7fc3f5200000 rw-p 00000000 00:00 0 " rss-KiB=2048 pss-KiB=2048 anon-huge-KiB=2048 whole-process-maxrss-KiB=41188 minor=817 major=0 HeapAlloc=1847600 HeapInuse=2646016 HeapReleased=4456448 StackInuse=327680 NumGC=6
+    native_cache_residency_linux_amd64_test.go:107: stage=closed-idle owner-address=7fc3f51fffff VMA="7fc3f4e00000-7fc3f5200000 rw-p 00000000 00:00 0 " rss-KiB=2048 pss-KiB=2048 anon-huge-KiB=2048 whole-process-maxrss-KiB=41188 minor=828 major=0 HeapAlloc=1721664 HeapInuse=2523136 HeapReleased=7405568 StackInuse=327680 NumGC=6
+    native_cache_residency_linux_amd64_test.go:118: same-engine-owner=true
+    native_cache_residency_linux_amd64_test.go:125: stage=small-closed-old-address owner-address=7fc3f51fffff VMA="7fc3f4e00000-7fc3f5200000 rw-p 00000000 00:00 0 " rss-KiB=2048 pss-KiB=2048 anon-huge-KiB=2048 whole-process-maxrss-KiB=41188 minor=835 major=0 HeapAlloc=1834672 HeapInuse=2646016 HeapReleased=7405568 StackInuse=327680 NumGC=6
+=== RUN   TestNativeIdleCacheResidencyDiagnostic/stack-8388608
+    native_cache_residency_linux_amd64_test.go:94: stage=created owner-address=7fc1f4bfffff VMA="7fc1f4400000-7fc1f4c00000 rw-p 00000000 00:00 0 " rss-KiB=0 pss-KiB=0 anon-huge-KiB=0 whole-process-maxrss-KiB=41188 minor=851 major=0 HeapAlloc=2195744 HeapInuse=2883584 HeapReleased=7405568 StackInuse=327680 NumGC=6
+    native_cache_residency_linux_amd64_test.go:102: stage=touched owner-address=7fc1f4bfffff VMA="7fc1f4400000-7fc1f4c00000 rw-p 00000000 00:00 0 " rss-KiB=4096 pss-KiB=4096 anon-huge-KiB=4096 whole-process-maxrss-KiB=41188 minor=857 major=0 HeapAlloc=2288288 HeapInuse=2973696 HeapReleased=7405568 StackInuse=327680 NumGC=6
+    native_cache_residency_linux_amd64_test.go:107: stage=closed-idle owner-address=7fc1f4bfffff VMA="7fc1f4400000-7fc1f4c00000 rw-p 00000000 00:00 0 " rss-KiB=4096 pss-KiB=4096 anon-huge-KiB=4096 whole-process-maxrss-KiB=41188 minor=857 major=0 HeapAlloc=2380400 HeapInuse=3072000 HeapReleased=7471104 StackInuse=327680 NumGC=6
+    native_cache_residency_linux_amd64_test.go:118: same-engine-owner=false
+    native_cache_residency_linux_amd64_test.go:125: stage=small-closed-old-address owner-address=7fc1f4bfffff VMA="7fc1f4800000-7fc1f4c00000 rw-p 00000000 00:00 0 " rss-KiB=2048 pss-KiB=2048 anon-huge-KiB=2048 whole-process-maxrss-KiB=41188 minor=864 major=0 HeapAlloc=2494560 HeapInuse=3186688 HeapReleased=7471104 StackInuse=327680 NumGC=6
+=== RUN   TestNativeIdleCacheResidencyDiagnostic/arena-table-10000
+    native_cache_residency_linux_amd64_test.go:151: arena-required-bytes=320304
+    native_cache_residency_linux_amd64_test.go:152: stage=initialized owner-address=7fc3f51d1000 VMA="7fc3f51d1000-7fc3f5500000 rw-p 00000000 00:00 0 " rss-KiB=1760 pss-KiB=1760 anon-huge-KiB=0 whole-process-maxrss-KiB=41188 minor=1015 major=0 HeapAlloc=1060688 HeapInuse=1695744 HeapReleased=7528448 StackInuse=327680 NumGC=7
+    native_cache_residency_linux_amd64_test.go:157: stage=closed-idle owner-address=7fc3f51d1000 VMA="7fc3f51d1000-7fc3f5500000 rw-p 00000000 00:00 0 " rss-KiB=1760 pss-KiB=1760 anon-huge-KiB=0 whole-process-maxrss-KiB=41188 minor=1015 major=0 HeapAlloc=1150704 HeapInuse=1769472 HeapReleased=7528448 StackInuse=327680 NumGC=7
+    native_cache_residency_linux_amd64_test.go:168: same-arena-owner=true
+    native_cache_residency_linux_amd64_test.go:175: stage=small-closed-old-address owner-address=7fc3f51d1000 VMA="7fc3f51d1000-7fc3f5500000 rw-p 00000000 00:00 0 " rss-KiB=1760 pss-KiB=1760 anon-huge-KiB=0 whole-process-maxrss-KiB=41188 minor=1017 major=0 HeapAlloc=1258528 HeapInuse=1892352 HeapReleased=7528448 StackInuse=327680 NumGC=7
+=== RUN   TestNativeIdleCacheResidencyDiagnostic/arena-table-100000
+    native_cache_residency_linux_amd64_test.go:151: arena-required-bytes=3200304
+    native_cache_residency_linux_amd64_test.go:152: stage=initialized owner-address=7fc3f4f12000 VMA="7fc3f4f12000-7fc3f5500000 rw-p 00000000 00:00 0 " rss-KiB=4604 pss-KiB=4604 anon-huge-KiB=2048 whole-process-maxrss-KiB=41188 minor=2409 major=0 HeapAlloc=8232784 HeapInuse=8814592 HeapReleased=3571712 StackInuse=327680 NumGC=10
+    native_cache_residency_linux_amd64_test.go:157: stage=closed-idle owner-address=7fc3f4f12000 VMA="unmapped" rss-KiB=0 pss-KiB=0 anon-huge-KiB=0 whole-process-maxrss-KiB=41188 minor=2409 major=0 HeapAlloc=8323024 HeapInuse=8888320 HeapReleased=3571712 StackInuse=327680 NumGC=10
+    native_cache_residency_linux_amd64_test.go:168: same-arena-owner=false
+    native_cache_residency_linux_amd64_test.go:175: stage=small-closed-old-address owner-address=7fc3f4f12000 VMA="unmapped" rss-KiB=0 pss-KiB=0 anon-huge-KiB=0 whole-process-maxrss-KiB=41188 minor=2413 major=0 HeapAlloc=8430608 HeapInuse=9035776 HeapReleased=3571712 StackInuse=327680 NumGC=10
+--- PASS: TestNativeIdleCacheResidencyDiagnostic (0.79s)
+    --- PASS: TestNativeIdleCacheResidencyDiagnostic/stack-4194304 (0.19s)
+    --- PASS: TestNativeIdleCacheResidencyDiagnostic/stack-8388608 (0.20s)
+    --- PASS: TestNativeIdleCacheResidencyDiagnostic/arena-table-10000 (0.20s)
+    --- PASS: TestNativeIdleCacheResidencyDiagnostic/arena-table-100000 (0.20s)
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInvokeAddOne
+BenchmarkInvokeAddOne         	     100	        77.35 ns/op	       1 B/op	       0 allocs/op
+BenchmarkInvokeBranchHintLoop
+    bench_test.go:416: branch-hint code generation is ARM64-only
+--- SKIP: BenchmarkInvokeBranchHintLoop
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.963s

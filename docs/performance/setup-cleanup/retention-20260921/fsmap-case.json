@@ -1,0 +1,24 @@
+{
+  "pattern": "^BenchmarkFSTerminal",
+  "leaves": [
+    "BenchmarkFSTerminalLifecycle/3",
+    "BenchmarkFSTerminalLifecycle/1024",
+    "BenchmarkFSTerminalRetainedHeap"
+  ],
+  "separate": true,
+  "benchtime": "50ms",
+  "benchtimes": {
+    "BenchmarkFSTerminalRetainedHeap": "1x"
+  },
+  "production": {
+    "baseline": [
+      "/tmp/wago-retention-roobe8pc/fs-map-baseline.go"
+    ],
+    "candidate": [
+      "/tmp/wago-retention-roobe8pc/provider/internal/core/fs.go"
+    ]
+  },
+  "benchmarks_source": [
+    "/tmp/wago-retention-roobe8pc/provider/internal/core/fs_retention_test.go"
+  ]
+}

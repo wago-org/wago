@@ -1,0 +1,12 @@
+{
+  "name": "provider-pinned-vet",
+  "command": [
+    "env",
+    "GOWORK=off",
+    "go",
+    "vet",
+    "./..."
+  ],
+  "exit": 0,
+  "max_celsius": 70.0
+}

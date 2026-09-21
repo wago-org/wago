@@ -1,0 +1,13 @@
+{
+  "name": "provider-pinned-race",
+  "command": [
+    "env",
+    "GOWORK=off",
+    "go",
+    "test",
+    "-race",
+    "./..."
+  ],
+  "exit": 0,
+  "max_celsius": 70.0
+}

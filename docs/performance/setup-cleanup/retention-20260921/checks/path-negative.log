@@ -1,0 +1,3 @@
+--- FAIL: TestPathComponentScanAllocations (0.00s)
+    path_scan_test.go:38: depth scan allocates 1
+FAIL

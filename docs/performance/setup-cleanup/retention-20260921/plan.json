@@ -1,0 +1,32 @@
+{
+  "samples": 20,
+  "order": "AB/BA alternating fresh processes",
+  "benchtime": "100ms",
+  "path_leaves": [
+    "BenchmarkPathComponents/short",
+    "BenchmarkPathComponents/many",
+    "BenchmarkPathComponents/clean",
+    "BenchmarkPathResolve/short",
+    "BenchmarkPathResolve/many",
+    "BenchmarkPathResolve/clean"
+  ],
+  "gomaxprocs": 16,
+  "cpus": "0-15",
+  "GOGC": "100",
+  "GOMEMLIMIT": "off",
+  "GOAMD64": "v1",
+  "tags": "wago_guardpage",
+  "bounds": "signals",
+  "thermal_start_celsius": 60,
+  "thermal_stop_celsius": 75,
+  "timing_regression_margin_percent": 2,
+  "scope": "Per-patch allocation/storage claims; RSS changes require independent confirmation, no full suite.",
+  "thermal_revision": {
+    "reason": "75 C sampled stop in multi-leaf process; preserve failed run, no statistical selection",
+    "samples": 20,
+    "process_scope": "one leaf",
+    "benchtime": "50ms",
+    "start_celsius": 55,
+    "stop_celsius": 75
+  }
+}

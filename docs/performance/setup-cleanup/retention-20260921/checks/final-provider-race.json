@@ -1,0 +1,14 @@
+{
+  "name": "final-provider-race",
+  "command": [
+    "go",
+    "test",
+    "-race",
+    "-tags",
+    "wago_guardpage",
+    "./internal/core",
+    "./p1"
+  ],
+  "exit": 0,
+  "max_celsius": 63.0
+}

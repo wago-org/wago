@@ -1,0 +1,58 @@
+{
+	"Path": "github.com/wago-org/wago",
+	"Main": true,
+	"Dir": "/tmp/wago-retention-roobe8pc/wago",
+	"GoMod": "/tmp/wago-retention-roobe8pc/wago/go.mod",
+	"GoVersion": "1.22"
+}
+{
+	"Path": "github.com/wago-org/wago/bench",
+	"Main": true,
+	"Dir": "/tmp/wago-retention-roobe8pc/wago/bench",
+	"GoMod": "/tmp/wago-retention-roobe8pc/wago/bench/go.mod",
+	"GoVersion": "1.22.0"
+}
+{
+	"Path": "github.com/wago-org/wago/cli/wago-installer",
+	"Main": true,
+	"Dir": "/tmp/wago-retention-roobe8pc/wago/cli/wago-installer",
+	"GoMod": "/tmp/wago-retention-roobe8pc/wago/cli/wago-installer/go.mod",
+	"GoVersion": "1.22"
+}
+{
+	"Path": "github.com/wago-org/wasi",
+	"Main": true,
+	"Dir": "/tmp/wago-retention-roobe8pc/provider",
+	"GoMod": "/tmp/wago-retention-roobe8pc/provider/go.mod",
+	"GoVersion": "1.22.0"
+}
+{
+	"Path": "github.com/tetratelabs/wazero",
+	"Version": "v1.9.0",
+	"Time": "2025-02-18T15:24:27Z",
+	"Dir": "/home/jtenner/go/pkg/mod/github.com/tetratelabs/wazero@v1.9.0",
+	"GoMod": "/home/jtenner/go/pkg/mod/cache/download/github.com/tetratelabs/wazero/@v/v1.9.0.mod",
+	"GoVersion": "1.22.0",
+	"Sum": "h1:IcZ56OuxrtaEz8UYNRHBrUa9bYeX9oVY93KspZZBf/I=",
+	"GoModSum": "h1:TSbcXCfFP0L2FGkRPxHphadXPjo1T6W+CseNNY7EkjM="
+}
+{
+	"Path": "github.com/wago-org/component-model",
+	"Version": "v0.1.6-0.20260916030441-18c75cfe27f6",
+	"Time": "2026-09-16T03:04:41Z",
+	"Dir": "/home/jtenner/go/pkg/mod/github.com/wago-org/component-model@v0.1.6-0.20260916030441-18c75cfe27f6",
+	"GoMod": "/home/jtenner/go/pkg/mod/cache/download/github.com/wago-org/component-model/@v/v0.1.6-0.20260916030441-18c75cfe27f6.mod",
+	"GoVersion": "1.22.0",
+	"Sum": "h1:bDXXbtT/QD+A2hE2cTP1jljChJUISS3hMuIYgJv3hJc=",
+	"GoModSum": "h1:d6btr3HkWP/dVV63+TG5TBQ4GePPolumMaazInwDk9M="
+}
+{
+	"Path": "golang.org/x/sys",
+	"Version": "v0.30.0",
+	"Time": "2025-01-31T15:57:49Z",
+	"Dir": "/home/jtenner/go/pkg/mod/golang.org/x/sys@v0.30.0",
+	"GoMod": "/home/jtenner/go/pkg/mod/cache/download/golang.org/x/sys/@v/v0.30.0.mod",
+	"GoVersion": "1.18",
+	"Sum": "h1:QjkSwP/36a20jFYWkSue1YwXzLmsV5Gfq7Eiy72C1uc=",
+	"GoModSum": "h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA="
+}

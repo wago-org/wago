@@ -1,0 +1,16 @@
+{
+  "name": "final-wago-go122",
+  "command": [
+    "env",
+    "WAGO_NATIVE_RESIDENCY_DIAGNOSTIC=1",
+    "/home/jtenner/.local/share/mise/installs/go/1.22.12/bin/go",
+    "test",
+    "./src/wago",
+    "-run",
+    "TestNativeIdleCacheResidencyDiagnostic|TestCompiledActiveDataPrivateOwnership|TestImportSnapshot|TestCompiledExecutionSnapshot|TestCompiledArtifactUsesExecutionSnapshot|TestTypedScalarSyncHostCallAllocatesNothing|TestScalarSyncHostCallUsesOneScopedHandleAllocation",
+    "-count=1",
+    "-v"
+  ],
+  "exit": 0,
+  "max_celsius": 65.0
+}

@@ -1,0 +1,14 @@
+P1 Wago / Wazero / Wasmtime	pass	26s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401405081	
+P1 official testsuite	pass	39s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401404680	
+P2 fixture reproducibility	pass	31s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401405046	
+P2 pinned WIT surface	pass	29s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401404991	
+Race coverage	pass	37s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401405195	
+Windows arm64	pass	2m24s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401405057	
+macos-14 / Go 1.22.x	pass	1m2s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401405292	
+macos-14 / Go stable	pass	1m2s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401405331	
+ubuntu-24.04-arm / Go 1.22.x	pass	47s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401405264	
+ubuntu-24.04-arm / Go stable	pass	47s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401405023	
+ubuntu-latest / Go 1.22.x	pass	59s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401405212	
+ubuntu-latest / Go stable	pass	1m17s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401405215	
+windows-latest / Go 1.22.x	pass	1m46s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401405309	
+windows-latest / Go stable	pass	1m31s	https://github.com/wago-org/wasi/actions/runs/35620306835/job/106401405496	

@@ -1,0 +1,11 @@
+{
+  "name": "final-provider-go122",
+  "command": [
+    "/home/jtenner/.local/share/mise/installs/go/1.22.12/bin/go",
+    "test",
+    "./internal/core",
+    "./p1"
+  ],
+  "exit": 0,
+  "max_celsius": 64.75
+}

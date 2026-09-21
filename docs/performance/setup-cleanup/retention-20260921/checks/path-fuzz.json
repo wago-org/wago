@@ -1,0 +1,18 @@
+{
+  "name": "path-fuzz",
+  "command": [
+    "go",
+    "test",
+    "./internal/core",
+    "-run",
+    "^$",
+    "-fuzz",
+    "^FuzzPathComponentScan$",
+    "-fuzztime",
+    "3s",
+    "-parallel",
+    "1"
+  ],
+  "exit": 0,
+  "max_celsius": 65.0
+}

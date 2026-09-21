@@ -1,0 +1,8 @@
+--- FAIL: TestImportSnapshotFailureStable (0.00s)
+    --- FAIL: TestImportSnapshotFailureStable/nil (0.00s)
+        import_snapshot_retention_test.go:28: snapshot 0 changed the retained error
+    --- FAIL: TestImportSnapshotFailureStable/signature (0.00s)
+        import_snapshot_retention_test.go:28: snapshot 0 changed the retained error
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.002s
+FAIL

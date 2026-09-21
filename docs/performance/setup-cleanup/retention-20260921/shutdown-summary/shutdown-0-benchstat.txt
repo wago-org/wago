@@ -1,0 +1,17 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                              │ /tmp/wago-retention-roobe8pc/shutdown-summary/shutdown-0-baseline.txt │ /tmp/wago-retention-roobe8pc/shutdown-summary/shutdown-0-candidate.txt │
+                              │                                sec/op                                 │                     sec/op                      vs base                │
+FSShutdownStateLifecycle/1-16                                                             446.5n ± 1%                                      367.2n ± 2%  -17.78% (p=0.000 n=20)
+
+                              │ /tmp/wago-retention-roobe8pc/shutdown-summary/shutdown-0-baseline.txt │ /tmp/wago-retention-roobe8pc/shutdown-summary/shutdown-0-candidate.txt │
+                              │                                 B/op                                  │                        B/op                         vs base            │
+FSShutdownStateLifecycle/1-16                                                              872.0 ± 0%                                           872.0 ± 0%  ~ (p=1.000 n=20) ¹
+¹ all samples are equal
+
+                              │ /tmp/wago-retention-roobe8pc/shutdown-summary/shutdown-0-baseline.txt │ /tmp/wago-retention-roobe8pc/shutdown-summary/shutdown-0-candidate.txt │
+                              │                               allocs/op                               │                     allocs/op                       vs base            │
+FSShutdownStateLifecycle/1-16                                                              9.000 ± 0%                                           9.000 ± 0%  ~ (p=1.000 n=20) ¹
+¹ all samples are equal

@@ -1,0 +1,139 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   7192486 ns/op	   8829056 normal-heap-B	    420920 postgc-heap-B	     15872 retained-delta-B	16832328 B/op	      91 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   7321139 ns/op	   8829104 normal-heap-B	    420968 postgc-heap-B	     15968 retained-delta-B	16832424 B/op	      91 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   7131721 ns/op	   8828976 normal-heap-B	    420840 postgc-heap-B	     16000 retained-delta-B	16832456 B/op	      93 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   7115771 ns/op	   8828576 normal-heap-B	    420440 postgc-heap-B	     15872 retained-delta-B	16832328 B/op	      91 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   9081465 ns/op	   8828880 normal-heap-B	    420744 postgc-heap-B	     15856 retained-delta-B	16832312 B/op	      90 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   7788587 ns/op	   8828608 normal-heap-B	    420472 postgc-heap-B	     15872 retained-delta-B	16837648 B/op	      97 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   7685383 ns/op	   8828688 normal-heap-B	    420536 postgc-heap-B	     21288 retained-delta-B	16843096 B/op	     104 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   9173117 ns/op	   8828720 normal-heap-B	    420584 postgc-heap-B	     15856 retained-delta-B	16832312 B/op	      90 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   7985878 ns/op	   8829008 normal-heap-B	    420872 postgc-heap-B	     15984 retained-delta-B	16832440 B/op	      92 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   7488433 ns/op	  17234080 normal-heap-B	    420856 postgc-heap-B	     21176 retained-delta-B	16837632 B/op	      96 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   8284517 ns/op	   8828960 normal-heap-B	    420936 postgc-heap-B	     10888 retained-delta-B	16832664 B/op	      94 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   9313290 ns/op	   8828720 normal-heap-B	    420696 postgc-heap-B	     15968 retained-delta-B	16837744 B/op	      97 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   7245428 ns/op	   8823240 normal-heap-B	    420536 postgc-heap-B	     15968 retained-delta-B	16832424 B/op	      91 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   9242999 ns/op	   8828544 normal-heap-B	    420408 postgc-heap-B	     15856 retained-delta-B	16832312 B/op	      90 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   8126723 ns/op	   8828528 normal-heap-B	    420376 postgc-heap-B	     15968 retained-delta-B	16832440 B/op	      91 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   7596967 ns/op	   8828880 normal-heap-B	    420744 postgc-heap-B	     15856 retained-delta-B	16837632 B/op	      96 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   7387204 ns/op	   8828800 normal-heap-B	    420648 postgc-heap-B	     10760 retained-delta-B	16832552 B/op	      92 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   8006987 ns/op	   8828864 normal-heap-B	    420712 postgc-heap-B	     16192 retained-delta-B	16832664 B/op	      93 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   8388423 ns/op	   8823688 normal-heap-B	    420968 postgc-heap-B	     21416 retained-delta-B	16837888 B/op	      99 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkInputRetentionHeap/nodata-16         	       1	   7709929 ns/op	   8828400 normal-heap-B	    420376 postgc-heap-B	     10648 retained-delta-B	16832424 B/op	      91 allocs/op
+PASS

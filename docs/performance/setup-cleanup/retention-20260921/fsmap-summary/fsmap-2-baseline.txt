@@ -1,0 +1,139 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1076032 ns/op	   1580032 normal-heap-B	   1584200 postgc-heap-B	 1189336 B/op	     168 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1400893 ns/op	   1579472 normal-heap-B	   1583752 postgc-heap-B	 1189448 B/op	     169 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1076123 ns/op	   1585176 normal-heap-B	   1584024 postgc-heap-B	 1184000 B/op	     161 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1468890 ns/op	   1584760 normal-heap-B	   1588928 postgc-heap-B	 1194656 B/op	     174 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1286167 ns/op	   1579600 normal-heap-B	   1583768 postgc-heap-B	 1189336 B/op	     168 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1378701 ns/op	   1579424 normal-heap-B	   1589024 postgc-heap-B	 1194768 B/op	     175 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1368081 ns/op	   1584760 normal-heap-B	   1588928 postgc-heap-B	 1194656 B/op	     174 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1233277 ns/op	   1580176 normal-heap-B	   1579024 postgc-heap-B	 1184000 B/op	     161 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1243337 ns/op	   1579440 normal-heap-B	   1583608 postgc-heap-B	 1194656 B/op	     174 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1095409 ns/op	   1584904 normal-heap-B	   1583752 postgc-heap-B	 1189336 B/op	     168 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1286767 ns/op	   1585080 normal-heap-B	   1583928 postgc-heap-B	 1189336 B/op	     168 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1023313 ns/op	   1584712 normal-heap-B	   1583560 postgc-heap-B	 1189336 B/op	     168 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1813077 ns/op	   1585384 normal-heap-B	   1589664 postgc-heap-B	 1194768 B/op	     175 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1076854 ns/op	   1579072 normal-heap-B	   1577920 postgc-heap-B	 1184016 B/op	     162 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1205827 ns/op	   1590432 normal-heap-B	   1589280 postgc-heap-B	 1189336 B/op	     168 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1521088 ns/op	   1585080 normal-heap-B	   1589248 postgc-heap-B	 1194656 B/op	     174 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1431540 ns/op	   1579312 normal-heap-B	   1583480 postgc-heap-B	 1189336 B/op	     168 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1418696 ns/op	   1579552 normal-heap-B	   1583720 postgc-heap-B	 1189336 B/op	     168 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1162166 ns/op	   1585544 normal-heap-B	   1584392 postgc-heap-B	 1189336 B/op	     168 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkFSTerminalRetainedHeap-16    	       1	   1735289 ns/op	   1578960 normal-heap-B	   1577808 postgc-heap-B	 1184016 B/op	     162 allocs/op
+PASS

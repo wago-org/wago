@@ -1,0 +1,17 @@
+{
+  "wago": {
+    "src/wago/imports.go": "6042d0661c12b86a58e0f45be0f36313c70b329b38f8c2480a16ce4efb5af948",
+    "src/wago/import_snapshot_retention_test.go": "9c428925a6886d0f7113a31e7dcbec3c6cde5681e5e7e81becb88d2afd43b65c",
+    "src/wago/input_retention_test.go": "480e3624511cfba3b5f0abba09db69184f41b4fbf47ca3af14b30d02afd6f843",
+    "src/wago/native_cache_residency_linux_amd64_test.go": "e663e8a099774058584f347e46f6d1ae85201118361574a014cb44a377132a73"
+  },
+  "provider": {
+    "internal/core/construction_lifecycle_linux_test.go": "f715ea33c70881c4e6d51b8885f43e0f4c9488f40c75ce8a4b44b7f4fd77646f",
+    "internal/core/fs.go": "72f0fe2e7e7e9e04220268c48bac6817845e101eb985a91544e355cbc48a72c4",
+    "internal/core/fs_retention_linux_test.go": "a930e27a6eed1db13d58bb8be722f949cf52ae3dfe8a91f36b6a7220ef5f1d6e",
+    "internal/core/fs_retention_test.go": "c7d3326d2352d57b2b53744b9b948f79acb65f89208fa8221e52b907baf51de9",
+    "internal/core/fs_shutdown_linux_test.go": "11becb82fbd8cdd4ab6602968c6a1097b796a05b28828d69de9a7ef940f1b26a",
+    "internal/core/lazy_fs_ownership_linux_test.go": "de47c61603b22e6ced006b0f970dff2cfdf09616ec1c12437cd3321a4f946acd",
+    "internal/core/path_scan_test.go": "bea77db654090511f65e7a8328c7c87974110f2b4799c93ebf65ec0b542b3a4f"
+  }
+}

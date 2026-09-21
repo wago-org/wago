@@ -1,0 +1,90 @@
+{
+  "scope": "Equal-duration benchmarks, not fixed-work retained-memory tests",
+  "peak_cpu_celsius": 56.75,
+  "cases": {
+    "path-0": {
+      "baseline": {
+        "postexec_hwm_kib": 17602.0,
+        "sampled_peak_rss_kib": 17236.0,
+        "minor_faults": 2182.0,
+        "major_faults": 0.0
+      },
+      "candidate": {
+        "postexec_hwm_kib": 14222.0,
+        "sampled_peak_rss_kib": 14222.0,
+        "minor_faults": 656.5,
+        "major_faults": 0.0
+      }
+    },
+    "path-1": {
+      "baseline": {
+        "postexec_hwm_kib": 17594.0,
+        "sampled_peak_rss_kib": 17594.0,
+        "minor_faults": 734.5,
+        "major_faults": 0.0
+      },
+      "candidate": {
+        "postexec_hwm_kib": 13400.0,
+        "sampled_peak_rss_kib": 13400.0,
+        "minor_faults": 645.0,
+        "major_faults": 0.0
+      }
+    },
+    "path-2": {
+      "baseline": {
+        "postexec_hwm_kib": 16634.0,
+        "sampled_peak_rss_kib": 16634.0,
+        "minor_faults": 762.5,
+        "major_faults": 0.0
+      },
+      "candidate": {
+        "postexec_hwm_kib": 13280.0,
+        "sampled_peak_rss_kib": 13280.0,
+        "minor_faults": 648.5,
+        "major_faults": 0.0
+      }
+    },
+    "path-3": {
+      "baseline": {
+        "postexec_hwm_kib": 17528.0,
+        "sampled_peak_rss_kib": 17528.0,
+        "minor_faults": 824.0,
+        "major_faults": 0.0
+      },
+      "candidate": {
+        "postexec_hwm_kib": 17454.0,
+        "sampled_peak_rss_kib": 17454.0,
+        "minor_faults": 771.0,
+        "major_faults": 0.0
+      }
+    },
+    "path-4": {
+      "baseline": {
+        "postexec_hwm_kib": 17488.0,
+        "sampled_peak_rss_kib": 17478.0,
+        "minor_faults": 895.5,
+        "major_faults": 0.0
+      },
+      "candidate": {
+        "postexec_hwm_kib": 13568.0,
+        "sampled_peak_rss_kib": 13568.0,
+        "minor_faults": 698.5,
+        "major_faults": 0.0
+      }
+    },
+    "path-5": {
+      "baseline": {
+        "postexec_hwm_kib": 17406.0,
+        "sampled_peak_rss_kib": 17200.0,
+        "minor_faults": 1348.0,
+        "major_faults": 0.0
+      },
+      "candidate": {
+        "postexec_hwm_kib": 17566.0,
+        "sampled_peak_rss_kib": 17422.0,
+        "minor_faults": 892.5,
+        "major_faults": 0.0
+      }
+    }
+  }
+}

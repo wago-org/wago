@@ -1,0 +1,75 @@
+{
+  "binaries": {
+    "baseline": {
+      "sha256": "d679ffb8937d0eece78cef4376e2ac135d36da200486ff16c5e713499e3b8038",
+      "go_version_m": "/tmp/wago-retention-roobe8pc/input-baseline.test: go1.27.1\n\tpath\tgithub.com/wago-org/wago/src/wago.test\n\tmod\tgithub.com/wago-org/wago\t(devel)\t\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-tags=wago_guardpage\n\tbuild\tDefaultGODEBUG=containermaxprocs=0,cryptocustomrand=1,decoratemappings=0,gotestjsonbuildtext=1,httpcookiemaxnum=0,httpservecontentkeepheaders=1,multipathtcp=0,randseednop=0,rsa1024min=0,tlsmlkem=0,tlssecpmlkem=0,tlssha1=1,tracebacklabels=0,updatemaxprocs=0,urlmaxqueryparams=0,urlstrictcolons=0,winreadlinkvolume=0,winsymlink=0,x509negativeserial=1,x509rsacrt=0,x509sha256skid=0,x509sslcertoverrideplatform=0,x509usepolicies=0\n\tbuild\tCGO_ENABLED=1\n\tbuild\tCGO_CFLAGS=\n\tbuild\tCGO_CPPFLAGS=\n\tbuild\tCGO_CXXFLAGS=\n\tbuild\tCGO_LDFLAGS=\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n"
+    },
+    "candidate": {
+      "sha256": "6528512aeae696cf6659f0a5fd1e10ca5038a6184fdc0dff20bfbda8568c44f7",
+      "go_version_m": "/tmp/wago-retention-roobe8pc/input-candidate.test: go1.27.1\n\tpath\tgithub.com/wago-org/wago/src/wago.test\n\tmod\tgithub.com/wago-org/wago\t(devel)\t\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-tags=wago_guardpage\n\tbuild\tDefaultGODEBUG=containermaxprocs=0,cryptocustomrand=1,decoratemappings=0,gotestjsonbuildtext=1,httpcookiemaxnum=0,httpservecontentkeepheaders=1,multipathtcp=0,randseednop=0,rsa1024min=0,tlsmlkem=0,tlssecpmlkem=0,tlssha1=1,tracebacklabels=0,updatemaxprocs=0,urlmaxqueryparams=0,urlstrictcolons=0,winreadlinkvolume=0,winsymlink=0,x509negativeserial=1,x509rsacrt=0,x509sha256skid=0,x509sslcertoverrideplatform=0,x509usepolicies=0\n\tbuild\tCGO_ENABLED=1\n\tbuild\tCGO_CFLAGS=\n\tbuild\tCGO_CPPFLAGS=\n\tbuild\tCGO_CXXFLAGS=\n\tbuild\tCGO_LDFLAGS=\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n"
+    }
+  },
+  "source": {
+    "wago": {
+      "source": "/tmp/wago-setup-cleanup-pr-uvyppyeh/wago",
+      "head": "cd26089d7d52ff6a8bd00712d3eb8c4734762b18",
+      "status": "?? docs/performance/setup-cleanup/__pycache__/\n?? docs/performance/setup-cleanup/continuation/__pycache__/summarize-wasi.cpython-314.pyc\n?? docs/performance/setup-cleanup/memory-review/__pycache__/\n",
+      "branch": "perf/setup-cleanup-measured"
+    },
+    "provider": {
+      "source": "/tmp/wago-setup-cleanup-pr-uvyppyeh/wasi-publish",
+      "head": "aea44da450ec1e558a799a1b4f124bbbe355c250",
+      "status": "",
+      "branch": "perf/wasi-construction"
+    },
+    "original": {
+      "head": "95be283fa511db7b01d86ef72b6c58fbe1ab607a",
+      "status": " M .gitignore\n M src/wago/imports.go\n?? AGENTS.md\n?? BUG_REVIEW.md\n?? bench/.bench-full-20260920.comparisons.csv\n?? bench/.bench-full-20260920.log\n?? bench/.bench-full-20260920.review.md\n?? bench/.bench-full-20260920.txt\n?? bench/suite/import_lifecycle_test.go\n?? bench/suite/lifecycle_diagnostic_test.go\n?? bench/suite/memory_lifecycle_diagnostic_test.go\n?? bench/suite/memory_policy_diagnostic_linux_test.go\n?? bench/suite/wasi_construction_diagnostic_test.go\n?? bench/suite/wasi_owned_diagnostic_test.go\n?? bench/suite/wasi_resources_linux_test.go\n?? bench/suite/worker_backend_diagnostic_amd64_test.go\n?? bench/suite/worker_backend_diagnostic_arm64_test.go\n?? bench/suite/worker_lifecycle_diagnostic_test.go\n?? bench/suite/worker_resources_linux_test.go\n?? docs/correctness-dispatch-cli-followup.md\n?? docs/performance/setup-cleanup/\n?? go.work.sum\n?? \"main (1).wasm\"\n?? main.wasm\n?? src/wago/import_snapshot_bench_test.go\n?? src/wago/import_snapshot_test.go\n",
+      "tracked_diff_sha256": "5abd6b5f92ec9f9f1b31586674cdff082b64400e6932115f89f536f2cb47856a"
+    },
+    "missing_provider_path": "/home/jtenner/Projects/wasi"
+  },
+  "plan": {
+    "samples": 20,
+    "order": "AB/BA alternating fresh processes",
+    "benchtime": "100ms",
+    "path_leaves": [
+      "BenchmarkPathComponents/short",
+      "BenchmarkPathComponents/many",
+      "BenchmarkPathComponents/clean",
+      "BenchmarkPathResolve/short",
+      "BenchmarkPathResolve/many",
+      "BenchmarkPathResolve/clean"
+    ],
+    "gomaxprocs": 16,
+    "cpus": "0-15",
+    "GOGC": "100",
+    "GOMEMLIMIT": "off",
+    "GOAMD64": "v1",
+    "tags": "wago_guardpage",
+    "bounds": "signals",
+    "thermal_start_celsius": 60,
+    "thermal_stop_celsius": 75,
+    "timing_regression_margin_percent": 2,
+    "scope": "Per-patch allocation/storage claims; RSS changes require independent confirmation, no full suite.",
+    "thermal_revision": {
+      "reason": "75 C sampled stop in multi-leaf process; preserve failed run, no statistical selection",
+      "samples": 20,
+      "process_scope": "one leaf",
+      "benchtime": "50ms",
+      "start_celsius": 55,
+      "stop_celsius": 75
+    }
+  },
+  "production": {
+    "baseline": {
+      "/tmp/wago-retention-roobe8pc/input-baseline.go": "9f06df8c3c47b2e6b3fd5d61323aa2f52233e4e9951884e0cde9ed35431a3025"
+    },
+    "candidate": {
+      "/tmp/wago-retention-roobe8pc/wago/src/wago/api.go": "5657c97899fb3e68b029ca261003ed294e6bc5539fe206a30fd73e1423ad28d5"
+    }
+  },
+  "benchmark": {
+    "/tmp/wago-retention-roobe8pc/wago/src/wago/input_retention_test.go": "f1cb11a6157a17c759c9b98cd0993d6fdb8b4184f2cec36d4edaa03cdfb80564"
+  }
+}

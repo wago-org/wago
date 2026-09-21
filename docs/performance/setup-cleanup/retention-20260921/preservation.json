@@ -1,0 +1,7 @@
+{
+  "original_tracked_diff_sha256_before": "5abd6b5f92ec9f9f1b31586674cdff082b64400e6932115f89f536f2cb47856a",
+  "original_tracked_diff_sha256_after": "5abd6b5f92ec9f9f1b31586674cdff082b64400e6932115f89f536f2cb47856a",
+  "unchanged": true,
+  "new_evidence_directory": "/home/jtenner/Projects/wago/docs/performance/setup-cleanup/retention-20260921",
+  "original_head": "95be283fa511db7b01d86ef72b6c58fbe1ab607a"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "lint-provider-path",
+  "command": [
+    "just",
+    "lint"
+  ],
+  "exit": 0,
+  "max_celsius": 74.75
+}

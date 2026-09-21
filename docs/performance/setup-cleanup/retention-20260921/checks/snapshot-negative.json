@@ -1,0 +1,13 @@
+{
+  "name": "snapshot-negative",
+  "command": [
+    "go",
+    "test",
+    "-count=1",
+    "./src/wago",
+    "-run",
+    "^TestImportSnapshotFailureStable$"
+  ],
+  "exit": 1,
+  "max_celsius": 65.0
+}

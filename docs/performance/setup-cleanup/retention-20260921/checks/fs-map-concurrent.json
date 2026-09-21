@@ -1,0 +1,16 @@
+{
+  "name": "fs-map-concurrent",
+  "command": [
+    "go",
+    "test",
+    "-race",
+    "-count=10",
+    "-tags",
+    "wago_guardpage",
+    "./internal/core",
+    "-run",
+    "TestTerminalMap|TestConstructionCleanupIsolation|TestConstructionPartialProviderSetup"
+  ],
+  "exit": 0,
+  "max_celsius": 62.875
+}

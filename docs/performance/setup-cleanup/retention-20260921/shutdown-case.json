@@ -1,0 +1,21 @@
+{
+  "pattern": "^BenchmarkFSShutdownStateLifecycle$",
+  "leaves": [
+    "BenchmarkFSShutdownStateLifecycle/1",
+    "BenchmarkFSShutdownStateLifecycle/16"
+  ],
+  "separate": true,
+  "benchtime": "50ms",
+  "production": {
+    "baseline": [
+      "/tmp/wago-retention-roobe8pc/fs-shutdown-baseline.go"
+    ],
+    "candidate": [
+      "/tmp/wago-retention-roobe8pc/provider/internal/core/fs.go"
+    ]
+  },
+  "benchmarks_source": [
+    "/tmp/wago-retention-roobe8pc/provider/internal/core/fs_shutdown_linux_test.go",
+    "/tmp/wago-retention-roobe8pc/provider/internal/core/construction_lifecycle_linux_test.go"
+  ]
+}

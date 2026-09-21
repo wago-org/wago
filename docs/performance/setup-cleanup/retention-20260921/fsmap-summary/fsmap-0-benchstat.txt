@@ -1,0 +1,17 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wasi/internal/core
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                         │ /tmp/wago-retention-roobe8pc/fsmap-summary/fsmap-0-baseline.txt │ /tmp/wago-retention-roobe8pc/fsmap-summary/fsmap-0-candidate.txt │
+                         │                             sec/op                              │                  sec/op                    vs base               │
+FSTerminalLifecycle/3-16                                                       237.7n ± 2%                                 226.7n ± 1%  -4.63% (p=0.000 n=20)
+
+                         │ /tmp/wago-retention-roobe8pc/fsmap-summary/fsmap-0-baseline.txt │ /tmp/wago-retention-roobe8pc/fsmap-summary/fsmap-0-candidate.txt │
+                         │                              B/op                               │                     B/op                      vs base            │
+FSTerminalLifecycle/3-16                                                        648.0 ± 0%                                     648.0 ± 0%  ~ (p=1.000 n=20) ¹
+¹ all samples are equal
+
+                         │ /tmp/wago-retention-roobe8pc/fsmap-summary/fsmap-0-baseline.txt │ /tmp/wago-retention-roobe8pc/fsmap-summary/fsmap-0-candidate.txt │
+                         │                            allocs/op                            │                  allocs/op                    vs base            │
+FSTerminalLifecycle/3-16                                                        6.000 ± 0%                                     6.000 ± 0%  ~ (p=1.000 n=20) ¹
+¹ all samples are equal
