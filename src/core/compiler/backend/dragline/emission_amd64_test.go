@@ -2385,6 +2385,17 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 	if got := amd64RailMachRejectionReason(stack, false, false); got != "amd64-large-memory.copy" {
 		t.Fatalf("large memory.copy rejection = %q", got)
 	}
+	stack.Instrs = make([]railssa.StackInstr, amd64RailMachSerialBulkMemoryInstructionLimit)
+	stack.Instrs[0].Kind = wasm.InstrMemoryCopy
+	if !amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("parallel-safe medium memory.copy function was rejected")
+	}
+	if amd64RailMachSerialCandidate(stack, false, false, false) {
+		t.Fatal("medium memory.copy function was admitted by the serial planner")
+	}
+	if !amd64RailMachSerialCandidate(stack, false, false, true) {
+		t.Fatal("cacheless signals-based medium memory.copy function was rejected by the serial planner")
+	}
 	stack.Instrs = []railssa.StackInstr{{Kind: wasm.InstrMemoryCopy}}
 	if !amd64RailMachCandidate(stack, false, false) {
 		t.Fatal("small memory.copy function was rejected")

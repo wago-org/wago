@@ -94,6 +94,85 @@ func TestAMD64RailMachUsesRelativeJumpTableForDenseBrTable(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachUsesJumpTableThunksForBrTableEdgeMoves(t *testing.T) {
+	body := make([]byte, 0, 96)
+	for range 9 {
+		body = append(body, 0x02, 0x7f) // block (result i32)
+	}
+	body = append(body, 0x20, 0x01, 0x20, 0x00, 0x0e, 0x08)
+	for label := byte(0); label < 8; label++ {
+		body = append(body, label)
+	}
+	body = append(body, 0x08) // default
+	for range 9 {
+		body = append(body, 0x0b, 0x0f) // end; return carried result
+	}
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(module, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tableEdge := ^uint32(0)
+	for blockID, block := range plan.CFG.Blocks {
+		terminator := plan.Stack.Instrs[block.InstStart+block.InstCount-1]
+		if terminator.Kind != wasm.InstrBrTable {
+			continue
+		}
+		var ok bool
+		tableEdge, ok = nativeBranchTableEdge(plan, uint32(blockID), terminator.Labels(plan.Stack)[0])
+		if !ok {
+			t.Fatal("br_table edge is unavailable")
+		}
+		break
+	}
+	if tableEdge == ^uint32(0) {
+		t.Fatal("br_table block is unavailable")
+	}
+	reg := railmach.VReg(1)
+	for int(reg) < len(plan.Machine.VRegs) && plan.Machine.VRegs[reg].Bank != railmach.BankGPR {
+		reg++
+	}
+	if int(reg) == len(plan.Machine.VRegs) {
+		t.Fatal("br_table plan has no GPR value")
+	}
+	plan.Exit.EdgeMoves[tableEdge] = railmach.MoveRange{Start: uint32(len(plan.Exit.Moves)), Count: 1}
+	plan.Exit.Moves = append(plan.Exit.Moves, railmach.PhysicalMove{
+		Src: railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 0},
+		Dst: railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 1},
+		Reg: reg, Edge: tableEdge, Kind: railmach.MoveCopy, Placement: railmach.PlacePredecessorEnd, Bank: railmach.BankGPR,
+	})
+	code, _, ok, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("RailMach finalization = ok %t, err %v", ok, err)
+	}
+	var indirect amd64.Asm
+	indirect.JmpReg(amd64.R10)
+	if !bytes.Contains(code, indirect.B) {
+		t.Fatalf("dense moving br_table has no indirect dispatch: %x", code)
+	}
+}
+
 func TestAMD64RailMachReloadsCachedMemoryBoundOnlyAfterGrowingDirectCall(t *testing.T) {
 	params := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}
 	caller := []byte{

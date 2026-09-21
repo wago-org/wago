@@ -3198,6 +3198,13 @@ func nativeAMD64CachesGlobalDescriptors(machine *railmach.Func) bool {
 	if machine == nil || machine.Target != railmach.TargetAMD64 {
 		return false
 	}
+	// Exceptionally large functions can cross backend ABI seams
+	// compiled without a complete local contract. Keep the descriptor address
+	// as an ordinary reloadable value instead of extending R12 across the entire
+	// function in that mode.
+	if len(machine.Insts) >= 16<<10 {
+		return false
+	}
 	uses, hasCall := 0, false
 	for _, instruction := range machine.Insts {
 		hasCall = hasCall || railmach.IsCall(instruction.Op)

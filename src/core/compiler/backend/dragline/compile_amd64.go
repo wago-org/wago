@@ -26,8 +26,9 @@ var amd64FPRRegisters = [...]amd64.Reg{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
 var amd64ParamRegisters = [...]amd64.Reg{amd64.RAX, amd64.RCX, amd64.RDX, amd64.R8, amd64.R9, amd64.R10, amd64.R11, amd64.R12}
 
 const (
-	amd64RailMachDenseGlobalThreshold       = 20
-	amd64RailMachBulkMemoryInstructionLimit = 40 << 10
+	amd64RailMachDenseGlobalThreshold             = 20
+	amd64RailMachSerialBulkMemoryInstructionLimit = 40 << 10
+	amd64RailMachBulkMemoryInstructionLimit       = 64 << 10
 )
 
 func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, _ bool) bool {
@@ -38,6 +39,11 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, _ bool) boo
 		return false
 	}
 	return true
+}
+
+func amd64RailMachSerialCandidate(stack *railssa.StackFunc, moduleHasV128, denseGlobals, cachelessSignals bool) bool {
+	return amd64RailMachCandidate(stack, moduleHasV128, denseGlobals) &&
+		(cachelessSignals || !amd64LargeMemoryCopyAtLimit(stack, amd64RailMachSerialBulkMemoryInstructionLimit))
 }
 
 func amd64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, _ bool) string {
@@ -51,9 +57,13 @@ func amd64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, _ boo
 }
 
 func amd64LargeMemoryCopy(stack *railssa.StackFunc) bool {
+	return amd64LargeMemoryCopyAtLimit(stack, amd64RailMachBulkMemoryInstructionLimit)
+}
+
+func amd64LargeMemoryCopyAtLimit(stack *railssa.StackFunc, instructionLimit int) bool {
 	// Keep exceptionally large memory.copy functions on the structured emitter.
 	// Their compilation pressure can exceed RailMach's current allocator limits.
-	if stack == nil || len(stack.Instrs) < amd64RailMachBulkMemoryInstructionLimit {
+	if stack == nil || len(stack.Instrs) < instructionLimit {
 		return false
 	}
 	for _, instruction := range stack.Instrs {
@@ -294,7 +304,10 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		}
 		var nativePlan *nativeBackendPlan
 		denseGlobals := len(m.Globals) >= amd64RailMachDenseGlobalThreshold
-		railMach := amd64RailMachCandidate(fn.Structured, compilationPlan.HasV128, denseGlobals)
+		railMach := amd64RailMachSerialCandidate(fn.Structured, compilationPlan.HasV128, denseGlobals, input.Bounds == corecompiler.BoundsSignals && functionCache == nil)
+		if row != nil && !railMach && amd64RailMachCandidate(fn.Structured, compilationPlan.HasV128, denseGlobals) {
+			row.StructuredReason = "amd64-serial-large-memory.copy"
+		}
 		if railMach && !amd64RailMachDirectCalleesCompatible(fn.Structured, moduleContracts, compilationPlan.Component, i) {
 			railMach = false
 			if row != nil {
@@ -4697,23 +4710,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			labels := terminator.Labels(plan.Stack)
 			jumpTable := len(labels) >= 9 && len(labels)-1 <= math.MaxInt32
 			if jumpTable {
-				for _, label := range labels {
-					edge, ok := nativeBranchTableEdge(plan, uint32(blockID), label)
-					if !ok {
-						return nil, 0, true, fmt.Errorf("RailMach br_table block %d label %d has no edge", blockID, label)
-					}
-					if edgeNeedsOutgoingMoves(edge) {
-						jumpTable = false
-						break
-					}
-				}
-			}
-			if jumpTable {
 				caseCount := len(labels) - 1
 				defaultEdge, _ := nativeBranchTableEdge(plan, uint32(blockID), labels[caseCount])
 				a.MovImm32(amd64.R11, int32(caseCount))
 				a.Cmp32(selector, amd64.R11)
-				patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(amd64.CondAE), Target: uint32(plan.Machine.Edges[defaultEdge].To)})
+				defaultSite := a.JccPlaceholder(amd64.CondAE)
 				tableAddress := a.LeaRipPlaceholder(amd64.R10)
 				a.LeaScaled(amd64.R11, amd64.R10, selector, 2, 0)
 				a.Load32(amd64.R11, amd64.R11, 0)
@@ -4722,11 +4723,49 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.JmpReg(amd64.R10)
 				tableBase := a.Len()
 				a.PatchRel32(tableAddress, tableBase)
+				type thunkTableEntry struct {
+					at   int
+					edge uint32
+				}
+				thunkEntries := make([]thunkTableEntry, 0, caseCount)
 				for _, label := range labels[:caseCount] {
 					edge, _ := nativeBranchTableEdge(plan, uint32(blockID), label)
 					at := a.Len()
 					a.B = append(a.B, 0, 0, 0, 0)
-					patches = append(patches, nativeBranchPatch{At: at, Target: uint32(plan.Machine.Edges[edge].To), Base: tableBase})
+					if edgeNeedsOutgoingMoves(edge) {
+						thunkEntries = append(thunkEntries, thunkTableEntry{at: at, edge: edge})
+					} else {
+						patches = append(patches, nativeBranchPatch{At: at, Target: uint32(plan.Machine.Edges[edge].To), Base: tableBase})
+					}
+				}
+				thunkOffsets := make(map[uint32]int, len(thunkEntries)+1)
+				emitThunk := func(edge uint32) (int, error) {
+					if offset, ok := thunkOffsets[edge]; ok {
+						return offset, nil
+					}
+					offset := a.Len()
+					thunkOffsets[edge] = offset
+					if err := emitOutgoingMoves(edge); err != nil {
+						return 0, err
+					}
+					patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: uint32(plan.Machine.Edges[edge].To)})
+					return offset, nil
+				}
+				for _, entry := range thunkEntries {
+					offset, err := emitThunk(entry.edge)
+					if err != nil {
+						return nil, 0, true, err
+					}
+					a.PatchU32(entry.at, uint32(int32(offset-tableBase)))
+				}
+				if edgeNeedsOutgoingMoves(defaultEdge) {
+					offset, err := emitThunk(defaultEdge)
+					if err != nil {
+						return nil, 0, true, err
+					}
+					a.PatchRel32(defaultSite, offset)
+				} else {
+					patches = append(patches, nativeBranchPatch{At: defaultSite, Target: uint32(plan.Machine.Edges[defaultEdge].To)})
 				}
 				continue
 			}
