@@ -3760,7 +3760,20 @@ func nativeCallClobberOverrides(machine *railmach.Func, imported uint32, contrac
 			continue
 		}
 		callee := int(uint32(instruction.Aux) - imported)
-		if callee < 0 || callee >= len(contracts) || sameUnrefinedRecursiveComponent(components, refinedRecursive, caller, callee) {
+		if callee < 0 || callee >= len(contracts) {
+			continue
+		}
+		if sameUnrefinedRecursiveComponent(components, refinedRecursive, caller, callee) {
+			if machine.Target == railmach.TargetAMD64 {
+				// The SCC has no settled transitive FP preservation contract.
+				// Keeping a live value in a high XMM register across its calls
+				// can lose that value when another SCC member reuses it.
+				overrides = append(overrides, railmach.CallClobber{
+					Instruction: uint32(instructionID),
+					GPR:         config.CallerMask(railmach.BankGPR),
+					FPR:         callerRegisterMask(config.Linear.FPRs),
+				})
+			}
 			continue
 		}
 		if contracts[callee].Class == 0 {

@@ -1750,6 +1750,24 @@ func TestNativeCallClobbersTreatStructuredCalleeAsFullyClobbering(t *testing.T) 
 	}
 }
 
+func TestNativeCallClobbersTreatUnrefinedAMD64RecursiveFPRAsClobbered(t *testing.T) {
+	machine := &railmach.Func{
+		Target: railmach.TargetAMD64,
+		Insts:  []railmach.Inst{{Op: wasm.InstrCall, Aux: 1}},
+	}
+	config := railmach.DefaultGreedyConfig(railmach.TargetAMD64)
+	contracts := []railmach.ABIContract{{Class: railmach.ABIGeneral}, {Class: railmach.ABIGeneral}}
+	overrides := nativeCallClobberOverrides(machine, 0, contracts, []int{0, 0}, []bool{false, false}, 0, config)
+	if len(overrides) != 1 || overrides[0].Instruction != 0 || overrides[0].FPR != callerRegisterMask(config.Linear.FPRs) {
+		t.Fatalf("unrefined recursive FPR clobbers = %#v, want all %d allocatable FPRs", overrides, config.Linear.FPRs)
+	}
+	contracts[1].FPRClobbers = 0x3
+	overrides = nativeCallClobberOverrides(machine, 0, contracts, []int{0, 0}, []bool{true, true}, 0, config)
+	if len(overrides) != 1 || overrides[0].FPR != 0x3 {
+		t.Fatalf("refined recursive FPR clobbers = %#v, want callee mask 0x3", overrides)
+	}
+}
+
 func TestNativeFunctionHasRecursiveCallUsesCallGraphComponents(t *testing.T) {
 	machine := &railmach.Func{Insts: []railmach.Inst{{Op: wasm.InstrCall, Aux: 3}}}
 	components := []int{0, 1, 0}
