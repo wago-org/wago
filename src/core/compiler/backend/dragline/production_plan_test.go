@@ -1151,6 +1151,33 @@ func TestNativeAMD64MemoryCopyReservesVectorScratch(t *testing.T) {
 	}
 }
 
+func TestNativeAMD64VectorAllocatableFPRs(t *testing.T) {
+	tests := []struct {
+		name string
+		op   railmach.MOpcode
+		wide bool
+		want uint8
+	}{
+		{name: "sysv scratch free", wide: true, want: 13},
+		{name: "sysv one scratch", op: railmach.OpAMD64I8x16Swizzle, wide: true, want: 12},
+		{name: "sysv three scratch", op: wasm.InstrI8x16Popcnt, wide: true, want: 10},
+		{name: "windows scratch free", want: 6},
+		{name: "windows one scratch", op: railmach.OpAMD64I8x16Swizzle, want: 5},
+		{name: "windows three scratch", op: wasm.InstrI8x16Popcnt, want: 3},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			machine := &railmach.Func{Target: railmach.TargetAMD64}
+			if test.op != 0 {
+				machine.Insts = []railmach.Inst{{Op: test.op}}
+			}
+			if got := nativeAMD64VectorAllocatableFPRs(machine, test.wide); got != test.want {
+				t.Fatalf("allocatable FPRs = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
 func TestNativeImmediateCombinationsRejectStaleMultiplyAddRelation(t *testing.T) {
 	machine := &railmach.Func{
 		Target: railmach.TargetARM64,

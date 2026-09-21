@@ -1972,18 +1972,15 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	}
 	defaultGreedy := railmach.DefaultGreedyConfig(machineTarget)
 	amd64WideVectorScratch := machineTarget == railmach.TargetAMD64 && target.GOOS != "windows"
+	if machineTarget == railmach.TargetAMD64 && target.GOOS != "windows" {
+		defaultGreedy.Linear.FPRs = 13
+	}
 	if machineHasV128(machine) {
 		if machineTarget == railmach.TargetAMD64 {
 			// Windows keeps XMM6-XMM15 nonvolatile, while SysV makes every XMM
-			// register volatile. XMM12-XMM15 remain finalizer/spill scratch on
-			// SysV; scratch-free functions may allocate XMM0-XMM11.
-			scratch := machineAMD64VectorScratchCount(machine, amd64WideVectorScratch)
-			fprs := uint8(6)
-			if amd64WideVectorScratch && scratch == 0 {
-				fprs = 12 // XMM0-XMM11; XMM12-XMM15 are finalizer/spill scratch.
-			} else {
-				fprs -= scratch
-			}
+			// register volatile. XMM13-XMM15 remain finalizer/spill scratch on
+			// SysV; scratch-free functions may also allocate XMM12.
+			fprs := nativeAMD64VectorAllocatableFPRs(machine, amd64WideVectorScratch)
 			defaultGreedy.Linear.FPRs = fprs
 			defaultGreedy.CallerFPRs = fprs
 			defaultGreedy.CallerFPRMask = callerRegisterMask(fprs)
@@ -3036,6 +3033,17 @@ func machineAMD64VectorScratchCount(machine *railmach.Func, wideScratch bool) ui
 		}
 	}
 	return count
+}
+
+func nativeAMD64VectorAllocatableFPRs(machine *railmach.Func, wideScratch bool) uint8 {
+	scratch := machineAMD64VectorScratchCount(machine, wideScratch)
+	if !wideScratch {
+		return 6 - scratch
+	}
+	// The SysV physical register order places XMM3-XMM5 last, so trimming this
+	// prefix reserves exactly the fixed scratch registers while retaining
+	// XMM6-XMM12 for ordinary values.
+	return 13 - scratch
 }
 
 func nativeAMD64ShuffleScratchCount(machine *railmach.Func, instructionID uint32) uint8 {

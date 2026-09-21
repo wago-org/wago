@@ -22,7 +22,6 @@ import (
 
 var amd64ValueRegisters = [...]amd64.Reg{amd64.RAX, amd64.RCX, amd64.RDX, amd64.R8, amd64.R9}
 var amd64RailMachGPRRegisters = [...]amd64.Reg{amd64.RAX, amd64.RCX, amd64.RDX, amd64.R8, amd64.R9, amd64.R13, amd64.R14, amd64.R15, amd64.RBP, amd64.R12}
-var amd64FPRRegisters = [...]amd64.Reg{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
 var amd64ParamRegisters = [...]amd64.Reg{amd64.RAX, amd64.RCX, amd64.RDX, amd64.R8, amd64.R9, amd64.R10, amd64.R11, amd64.R12}
 
 const (
@@ -1179,13 +1178,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		}
 		if value == forwardedSpill {
 			if bank == railmach.BankFPR {
-				return 12
+				return 13
 			}
 			return amd64.RDI
 		}
 		if value == currentResult {
 			if bank == railmach.BankFPR {
-				return 12
+				return 13
 			}
 			return amd64.RDI
 		}
@@ -1199,7 +1198,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 		}
 		if bank == railmach.BankFPR {
-			return [...]amd64.Reg{13, 14, 12}[min(ordinal, 2)]
+			return [...]amd64.Reg{13, 14, 15}[min(ordinal, 2)]
 		}
 		return [...]amd64.Reg{amd64.RSI, amd64.RDI, amd64.R11}[min(ordinal, 2)]
 	}
@@ -1365,7 +1364,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			dst := amd64.RDI
 			if data.Bank == railmach.BankFPR {
-				dst = 12
+				dst = 13
 			}
 			if location.Kind == railmach.LocationRegister {
 				dst = reg(value)
@@ -1512,7 +1511,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			value := plan.Machine.Results[0]
 			scratch := amd64.RDI
 			if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-				scratch = 12
+				scratch = 13
 			}
 			result, err := amd64RailMachReadValue(&a, plan, value, scratch)
 			if err != nil {
@@ -1936,7 +1935,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						data := plan.Machine.VRegs[operand.Reg]
 						scratch := amd64.R10
 						if data.Bank == railmach.BankFPR {
-							scratch = 12
+							scratch = 13
 						}
 						value, err := readLocation(operand.Reg, plan.Allocation.LocationAt(operand.Reg, currentPosition), scratch, 0)
 						if err != nil {
