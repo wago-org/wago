@@ -32,3 +32,5 @@ The worker API is public full compile. The selector anchors every path component
 Defaults preserve Linux guarded memory, signal bounds checks, GOMAXPROCS=16, GOGC=100, GOMEMLIMIT=off, empty GODEBUG and CPUs 0-15. Use `--gomaxprocs` and `--cpus` explicitly when hardware differs, and do not combine those samples with the published environment. An empty `--cpus ''` disables taskset. The build can select another provider base with `--provider-base COMMIT`, or a local source repository with `--provider-repository PATH`. `--comparison snapshot` holds that provider revision fixed and restores only the original Wago imports.go for the baseline.
 
 Tests: `python3 docs/performance/setup-cleanup/test_measurement_scripts.py`. Published data remain historical records. The old append-based runner and invalid worker-profile filters must not be used to generate new evidence.
+
+For a later provider experiment, `--production-patch PATH` selects an explicit patch against `--provider-base`. The default still uses the saved historical construction patch. See the [direct-dispatch reproduction](direct-dispatch/README.md).

@@ -1,5 +1,7 @@
 # PR memory review, 2026-09-21
 
+The [direct-dispatch follow-up](../direct-dispatch/README.md) removes a measured WASI host-call heap allocation and reverses the host-call slowdown. It also records the remaining RSS and GC-phase limits; earlier data below remain historical evidence.
+
 The construction allocation reductions are real. They do **not** imply unchanged heap or RSS. The fixed provider table owns 4,992 bytes allocated once at process initialization. The large ordinary HeapAlloc increases primarily reflect a different GC phase: less allocation means fewer collections, so more dead objects can remain at a fixed command endpoint. The reported post-scavenge RSS increase appeared in one new session but did not repeat with a narrow confidence interval in the selected confirmation. No provider memory leak or safe production memory fix was demonstrated. Both existing optimizations remain in place.
 
 ## Source identities and controls

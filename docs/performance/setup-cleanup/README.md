@@ -1,5 +1,7 @@
 # Setup and cleanup investigation
 
+The [direct-dispatch follow-up](direct-dispatch/README.md) removes a measured WASI host-call heap allocation and reverses the host-call slowdown. It also records the remaining RSS and GC-phase limits; earlier data below remain historical evidence.
+
 The [2026-09-21 PR memory review](memory-review/README.md) corrects reproduction scripts, separates GC from scavenging, and reports new controlled memory and host-call results. It supersedes any inference below that allocation reductions establish unchanged memory use.
 
 For new runs, use the [corrected reproduction commands](REPRODUCING.md). Historical command blocks below describe the saved runs; they are not safe append/resume instructions.

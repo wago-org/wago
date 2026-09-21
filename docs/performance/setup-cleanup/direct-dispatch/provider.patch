@@ -1,0 +1,273 @@
+diff --git a/internal/core/core.go b/internal/core/core.go
+index 1a5da1f..33c4e29 100644
+--- a/internal/core/core.go
++++ b/internal/core/core.go
+@@ -240,7 +240,7 @@ func (e *Plugin) Imports() *wago.Imports {
+ // Imports both use the private definition table, so their declarations agree.
+ type binding struct {
+ 	name            string
+-	handler         func(*Plugin, wago.HostModule, []uint64, []uint64)
++	handler         handlerID
+ 	params, results []wago.ValType
+ 	cap             wago.Capability
+ 	docs            string
+@@ -257,7 +257,157 @@ func (b binding) callback(e *Plugin) wago.CallerHostCallFunc {
+ 		defer state.mu.Unlock()
+ 		current := *e
+ 		current.fs = state
+-		handler(&current, caller, call.ParamSlots(), call.ResultSlots())
++		handler.call(&current, caller, call.ParamSlots(), call.ResultSlots())
++	}
++}
++
++type handlerID uint8
++
++const (
++	dispatchfdWrite handlerID = iota
++	dispatchfdRead
++	dispatchfdClose
++	dispatchfdSeek
++	dispatchfdFdstatGet
++	dispatchfdPrestatGet
++	dispatchfdPrestatDirName
++	dispatchprocExit
++	dispatchargsSizesGet
++	dispatchargsGet
++	dispatchenvironSizesGet
++	dispatchenvironGet
++	dispatchclockTimeGet
++	dispatchclockResGet
++	dispatchrandomGet
++	dispatchschedYield
++	dispatchfdAdvise
++	dispatchfdAllocate
++	dispatchfdDatasync
++	dispatchfdSync
++	dispatchfdFdstatSetFlags
++	dispatchfdFdstatSetRights
++	dispatchfdFilestatGet
++	dispatchfdFilestatSetSize
++	dispatchfdFilestatSetTimes
++	dispatchfdPread
++	dispatchfdPwrite
++	dispatchfdReaddir
++	dispatchfdRenumber
++	dispatchfdTell
++	dispatchpathCreateDirectory
++	dispatchpathFilestatGet
++	dispatchpathFilestatSetTimes
++	dispatchpathLink
++	dispatchpathOpen
++	dispatchpathReadlink
++	dispatchpathRemoveDirectory
++	dispatchpathRename
++	dispatchpathSymlink
++	dispatchpathUnlinkFile
++	dispatchpollOneoff
++	dispatchprocRaise
++	dispatchsockAccept
++	dispatchsockRecv
++	dispatchsockSend
++	dispatchsockShutdown
++)
++
++func (h handlerID) call(e *Plugin, m wago.HostModule, p, r []uint64) {
++	switch h {
++	case dispatchfdWrite:
++		e.fdWrite(m, p, r)
++	case dispatchfdRead:
++		e.fdRead(m, p, r)
++	case dispatchfdClose:
++		e.fdClose(m, p, r)
++	case dispatchfdSeek:
++		e.fdSeek(m, p, r)
++	case dispatchfdFdstatGet:
++		e.fdFdstatGet(m, p, r)
++	case dispatchfdPrestatGet:
++		e.fdPrestatGet(m, p, r)
++	case dispatchfdPrestatDirName:
++		e.fdPrestatDirName(m, p, r)
++	case dispatchprocExit:
++		e.procExit(m, p, r)
++	case dispatchargsSizesGet:
++		e.argsSizesGet(m, p, r)
++	case dispatchargsGet:
++		e.argsGet(m, p, r)
++	case dispatchenvironSizesGet:
++		e.environSizesGet(m, p, r)
++	case dispatchenvironGet:
++		e.environGet(m, p, r)
++	case dispatchclockTimeGet:
++		e.clockTimeGet(m, p, r)
++	case dispatchclockResGet:
++		e.clockResGet(m, p, r)
++	case dispatchrandomGet:
++		e.randomGet(m, p, r)
++	case dispatchschedYield:
++		e.schedYield(m, p, r)
++	case dispatchfdAdvise:
++		e.fdAdvise(m, p, r)
++	case dispatchfdAllocate:
++		e.fdAllocate(m, p, r)
++	case dispatchfdDatasync:
++		e.fdDatasync(m, p, r)
++	case dispatchfdSync:
++		e.fdSync(m, p, r)
++	case dispatchfdFdstatSetFlags:
++		e.fdFdstatSetFlags(m, p, r)
++	case dispatchfdFdstatSetRights:
++		e.fdFdstatSetRights(m, p, r)
++	case dispatchfdFilestatGet:
++		e.fdFilestatGet(m, p, r)
++	case dispatchfdFilestatSetSize:
++		e.fdFilestatSetSize(m, p, r)
++	case dispatchfdFilestatSetTimes:
++		e.fdFilestatSetTimes(m, p, r)
++	case dispatchfdPread:
++		e.fdPread(m, p, r)
++	case dispatchfdPwrite:
++		e.fdPwrite(m, p, r)
++	case dispatchfdReaddir:
++		e.fdReaddir(m, p, r)
++	case dispatchfdRenumber:
++		e.fdRenumber(m, p, r)
++	case dispatchfdTell:
++		e.fdTell(m, p, r)
++	case dispatchpathCreateDirectory:
++		e.pathCreateDirectory(m, p, r)
++	case dispatchpathFilestatGet:
++		e.pathFilestatGet(m, p, r)
++	case dispatchpathFilestatSetTimes:
++		e.pathFilestatSetTimes(m, p, r)
++	case dispatchpathLink:
++		e.pathLink(m, p, r)
++	case dispatchpathOpen:
++		e.pathOpen(m, p, r)
++	case dispatchpathReadlink:
++		e.pathReadlink(m, p, r)
++	case dispatchpathRemoveDirectory:
++		e.pathRemoveDirectory(m, p, r)
++	case dispatchpathRename:
++		e.pathRename(m, p, r)
++	case dispatchpathSymlink:
++		e.pathSymlink(m, p, r)
++	case dispatchpathUnlinkFile:
++		e.pathUnlinkFile(m, p, r)
++	case dispatchpollOneoff:
++		e.pollOneoff(m, p, r)
++	case dispatchprocRaise:
++		e.procRaise(m, p, r)
++	case dispatchsockAccept:
++		e.sockAccept(m, p, r)
++	case dispatchsockRecv:
++		e.sockRecv(m, p, r)
++	case dispatchsockSend:
++		e.sockSend(m, p, r)
++	case dispatchsockShutdown:
++		e.sockShutdown(m, p, r)
++	default:
++		panic("invalid WASI handler")
+ 	}
+ }
+ 
+@@ -292,53 +442,53 @@ var importBindings = func() []binding {
+ 	i32v := wago.ValI32
+ 
+ 	return []binding{
+-		{"fd_write", (*Plugin).fdWrite, i32x4, i32, CapFDWrite, "write iovecs to a file descriptor (stdout/stderr)"},
+-		{"fd_read", (*Plugin).fdRead, i32x4, i32, CapFDRead, "read into iovecs from a file descriptor (stdin)"},
+-		{"fd_close", (*Plugin).fdClose, i32, i32, CapFDManage, "close a file descriptor (streams: no-op)"},
+-		{"fd_seek", (*Plugin).fdSeek, []wago.ValType{i32v, i64, i32v, i32v}, i32, CapFDManage, "seek a file descriptor (streams: ESPIPE)"},
+-		{"fd_fdstat_get", (*Plugin).fdFdstatGet, i32x2, i32, CapFDManage, "report fd stat (streams: character device)"},
+-		{"fd_prestat_get", (*Plugin).fdPrestatGet, i32x2, i32, CapFDManage, "report a preopen (none: EBADF)"},
+-		{"fd_prestat_dir_name", (*Plugin).fdPrestatDirName, i32x3, i32, CapFDManage, "report a preopen dir name (none: EBADF)"},
+-		{"proc_exit", (*Plugin).procExit, i32, nil, CapProcessExit, "terminate the program with an exit code"},
+-		{"args_sizes_get", (*Plugin).argsSizesGet, i32x2, i32, CapArgumentsRead, "report argc and argv byte size"},
+-		{"args_get", (*Plugin).argsGet, i32x2, i32, CapArgumentsRead, "write argv pointers and bytes"},
+-		{"environ_sizes_get", (*Plugin).environSizesGet, i32x2, i32, CapEnvironmentRead, "report environ count and byte size"},
+-		{"environ_get", (*Plugin).environGet, i32x2, i32, CapEnvironmentRead, "write environ pointers and bytes"},
+-		{"clock_time_get", (*Plugin).clockTimeGet, []wago.ValType{i32v, i64, i32v}, i32, CapClockRead, "read a clock's current time"},
+-		{"clock_res_get", (*Plugin).clockResGet, i32x2, i32, CapClockRead, "read a clock's resolution"},
+-		{"random_get", (*Plugin).randomGet, i32x2, i32, CapRandomRead, "fill a buffer with random bytes"},
+-
+-		{"sched_yield", (*Plugin).schedYield, nil, i32, CapSchedulerYield, "yield execution"},
+-		{"fd_advise", (*Plugin).fdAdvise, []wago.ValType{i32v, i64, i64, i32v}, i32, CapFDManage, "provide file access advice"},
+-		{"fd_allocate", (*Plugin).fdAllocate, []wago.ValType{i32v, i64, i64}, i32, CapFDWrite, "allocate file space"},
+-		{"fd_datasync", (*Plugin).fdDatasync, i32, i32, CapFDWrite, "synchronize file data"},
+-		{"fd_sync", (*Plugin).fdSync, i32, i32, CapFDWrite, "synchronize a file"},
+-		{"fd_fdstat_set_flags", (*Plugin).fdFdstatSetFlags, i32x2, i32, CapFDManage, "set descriptor flags"},
+-		{"fd_fdstat_set_rights", (*Plugin).fdFdstatSetRights, []wago.ValType{i32v, i64, i64}, i32, CapFDManage, "reduce descriptor rights"},
+-		{"fd_filestat_get", (*Plugin).fdFilestatGet, i32x2, i32, CapFDRead, "get file metadata"},
+-		{"fd_filestat_set_size", (*Plugin).fdFilestatSetSize, []wago.ValType{i32v, i64}, i32, CapFDWrite, "set file size"},
+-		{"fd_filestat_set_times", (*Plugin).fdFilestatSetTimes, []wago.ValType{i32v, i64, i64, i32v}, i32, CapFDWrite, "set file timestamps"},
+-		{"fd_pread", (*Plugin).fdPread, []wago.ValType{i32v, i32v, i32v, i64, i32v}, i32, CapFDRead, "read at an offset"},
+-		{"fd_pwrite", (*Plugin).fdPwrite, []wago.ValType{i32v, i32v, i32v, i64, i32v}, i32, CapFDWrite, "write at an offset"},
+-		{"fd_readdir", (*Plugin).fdReaddir, []wago.ValType{i32v, i32v, i32v, i64, i32v}, i32, CapFDRead, "read directory entries"},
+-		{"fd_renumber", (*Plugin).fdRenumber, i32x2, i32, CapFDManage, "renumber a descriptor"},
+-		{"fd_tell", (*Plugin).fdTell, i32x2, i32, CapFDManage, "get a descriptor offset"},
+-		{"path_create_directory", (*Plugin).pathCreateDirectory, i32x3, i32, CapPathWrite, "create a directory"},
+-		{"path_filestat_get", (*Plugin).pathFilestatGet, []wago.ValType{i32v, i32v, i32v, i32v, i32v}, i32, CapPathRead, "get path metadata"},
+-		{"path_filestat_set_times", (*Plugin).pathFilestatSetTimes, []wago.ValType{i32v, i32v, i32v, i32v, i64, i64, i32v}, i32, CapPathWrite, "set path timestamps"},
+-		{"path_link", (*Plugin).pathLink, []wago.ValType{i32v, i32v, i32v, i32v, i32v, i32v, i32v}, i32, CapPathWrite, "create a hard link"},
+-		{"path_open", (*Plugin).pathOpen, []wago.ValType{i32v, i32v, i32v, i32v, i32v, i64, i64, i32v, i32v}, i32, CapPathOpen, "open a path with rights limited by its preopen"},
+-		{"path_readlink", (*Plugin).pathReadlink, []wago.ValType{i32v, i32v, i32v, i32v, i32v, i32v}, i32, CapPathRead, "read a symbolic link"},
+-		{"path_remove_directory", (*Plugin).pathRemoveDirectory, i32x3, i32, CapPathWrite, "remove a directory"},
+-		{"path_rename", (*Plugin).pathRename, []wago.ValType{i32v, i32v, i32v, i32v, i32v, i32v}, i32, CapPathWrite, "rename a path"},
+-		{"path_symlink", (*Plugin).pathSymlink, []wago.ValType{i32v, i32v, i32v, i32v, i32v}, i32, CapPathWrite, "create a symbolic link"},
+-		{"path_unlink_file", (*Plugin).pathUnlinkFile, i32x3, i32, CapPathWrite, "unlink a file"},
+-		{"poll_oneoff", (*Plugin).pollOneoff, i32x4, i32, CapPoll, "wait for events"},
+-		{"proc_raise", (*Plugin).procRaise, i32, i32, CapUnsupported, "raise a signal (unsupported)"},
+-		{"sock_accept", (*Plugin).sockAccept, i32x3, i32, CapUnsupported, "accept a socket (unsupported)"},
+-		{"sock_recv", (*Plugin).sockRecv, []wago.ValType{i32v, i32v, i32v, i32v, i32v, i32v}, i32, CapUnsupported, "receive from a socket (unsupported)"},
+-		{"sock_send", (*Plugin).sockSend, []wago.ValType{i32v, i32v, i32v, i32v, i32v}, i32, CapUnsupported, "send to a socket (unsupported)"},
+-		{"sock_shutdown", (*Plugin).sockShutdown, i32x2, i32, CapUnsupported, "shut down a socket (unsupported)"},
++		{"fd_write", dispatchfdWrite, i32x4, i32, CapFDWrite, "write iovecs to a file descriptor (stdout/stderr)"},
++		{"fd_read", dispatchfdRead, i32x4, i32, CapFDRead, "read into iovecs from a file descriptor (stdin)"},
++		{"fd_close", dispatchfdClose, i32, i32, CapFDManage, "close a file descriptor (streams: no-op)"},
++		{"fd_seek", dispatchfdSeek, []wago.ValType{i32v, i64, i32v, i32v}, i32, CapFDManage, "seek a file descriptor (streams: ESPIPE)"},
++		{"fd_fdstat_get", dispatchfdFdstatGet, i32x2, i32, CapFDManage, "report fd stat (streams: character device)"},
++		{"fd_prestat_get", dispatchfdPrestatGet, i32x2, i32, CapFDManage, "report a preopen (none: EBADF)"},
++		{"fd_prestat_dir_name", dispatchfdPrestatDirName, i32x3, i32, CapFDManage, "report a preopen dir name (none: EBADF)"},
++		{"proc_exit", dispatchprocExit, i32, nil, CapProcessExit, "terminate the program with an exit code"},
++		{"args_sizes_get", dispatchargsSizesGet, i32x2, i32, CapArgumentsRead, "report argc and argv byte size"},
++		{"args_get", dispatchargsGet, i32x2, i32, CapArgumentsRead, "write argv pointers and bytes"},
++		{"environ_sizes_get", dispatchenvironSizesGet, i32x2, i32, CapEnvironmentRead, "report environ count and byte size"},
++		{"environ_get", dispatchenvironGet, i32x2, i32, CapEnvironmentRead, "write environ pointers and bytes"},
++		{"clock_time_get", dispatchclockTimeGet, []wago.ValType{i32v, i64, i32v}, i32, CapClockRead, "read a clock's current time"},
++		{"clock_res_get", dispatchclockResGet, i32x2, i32, CapClockRead, "read a clock's resolution"},
++		{"random_get", dispatchrandomGet, i32x2, i32, CapRandomRead, "fill a buffer with random bytes"},
++
++		{"sched_yield", dispatchschedYield, nil, i32, CapSchedulerYield, "yield execution"},
++		{"fd_advise", dispatchfdAdvise, []wago.ValType{i32v, i64, i64, i32v}, i32, CapFDManage, "provide file access advice"},
++		{"fd_allocate", dispatchfdAllocate, []wago.ValType{i32v, i64, i64}, i32, CapFDWrite, "allocate file space"},
++		{"fd_datasync", dispatchfdDatasync, i32, i32, CapFDWrite, "synchronize file data"},
++		{"fd_sync", dispatchfdSync, i32, i32, CapFDWrite, "synchronize a file"},
++		{"fd_fdstat_set_flags", dispatchfdFdstatSetFlags, i32x2, i32, CapFDManage, "set descriptor flags"},
++		{"fd_fdstat_set_rights", dispatchfdFdstatSetRights, []wago.ValType{i32v, i64, i64}, i32, CapFDManage, "reduce descriptor rights"},
++		{"fd_filestat_get", dispatchfdFilestatGet, i32x2, i32, CapFDRead, "get file metadata"},
++		{"fd_filestat_set_size", dispatchfdFilestatSetSize, []wago.ValType{i32v, i64}, i32, CapFDWrite, "set file size"},
++		{"fd_filestat_set_times", dispatchfdFilestatSetTimes, []wago.ValType{i32v, i64, i64, i32v}, i32, CapFDWrite, "set file timestamps"},
++		{"fd_pread", dispatchfdPread, []wago.ValType{i32v, i32v, i32v, i64, i32v}, i32, CapFDRead, "read at an offset"},
++		{"fd_pwrite", dispatchfdPwrite, []wago.ValType{i32v, i32v, i32v, i64, i32v}, i32, CapFDWrite, "write at an offset"},
++		{"fd_readdir", dispatchfdReaddir, []wago.ValType{i32v, i32v, i32v, i64, i32v}, i32, CapFDRead, "read directory entries"},
++		{"fd_renumber", dispatchfdRenumber, i32x2, i32, CapFDManage, "renumber a descriptor"},
++		{"fd_tell", dispatchfdTell, i32x2, i32, CapFDManage, "get a descriptor offset"},
++		{"path_create_directory", dispatchpathCreateDirectory, i32x3, i32, CapPathWrite, "create a directory"},
++		{"path_filestat_get", dispatchpathFilestatGet, []wago.ValType{i32v, i32v, i32v, i32v, i32v}, i32, CapPathRead, "get path metadata"},
++		{"path_filestat_set_times", dispatchpathFilestatSetTimes, []wago.ValType{i32v, i32v, i32v, i32v, i64, i64, i32v}, i32, CapPathWrite, "set path timestamps"},
++		{"path_link", dispatchpathLink, []wago.ValType{i32v, i32v, i32v, i32v, i32v, i32v, i32v}, i32, CapPathWrite, "create a hard link"},
++		{"path_open", dispatchpathOpen, []wago.ValType{i32v, i32v, i32v, i32v, i32v, i64, i64, i32v, i32v}, i32, CapPathOpen, "open a path with rights limited by its preopen"},
++		{"path_readlink", dispatchpathReadlink, []wago.ValType{i32v, i32v, i32v, i32v, i32v, i32v}, i32, CapPathRead, "read a symbolic link"},
++		{"path_remove_directory", dispatchpathRemoveDirectory, i32x3, i32, CapPathWrite, "remove a directory"},
++		{"path_rename", dispatchpathRename, []wago.ValType{i32v, i32v, i32v, i32v, i32v, i32v}, i32, CapPathWrite, "rename a path"},
++		{"path_symlink", dispatchpathSymlink, []wago.ValType{i32v, i32v, i32v, i32v, i32v}, i32, CapPathWrite, "create a symbolic link"},
++		{"path_unlink_file", dispatchpathUnlinkFile, i32x3, i32, CapPathWrite, "unlink a file"},
++		{"poll_oneoff", dispatchpollOneoff, i32x4, i32, CapPoll, "wait for events"},
++		{"proc_raise", dispatchprocRaise, i32, i32, CapUnsupported, "raise a signal (unsupported)"},
++		{"sock_accept", dispatchsockAccept, i32x3, i32, CapUnsupported, "accept a socket (unsupported)"},
++		{"sock_recv", dispatchsockRecv, []wago.ValType{i32v, i32v, i32v, i32v, i32v, i32v}, i32, CapUnsupported, "receive from a socket (unsupported)"},
++		{"sock_send", dispatchsockSend, []wago.ValType{i32v, i32v, i32v, i32v, i32v}, i32, CapUnsupported, "send to a socket (unsupported)"},
++		{"sock_shutdown", dispatchsockShutdown, i32x2, i32, CapUnsupported, "shut down a socket (unsupported)"},
+ 	}
+ }()
+ 

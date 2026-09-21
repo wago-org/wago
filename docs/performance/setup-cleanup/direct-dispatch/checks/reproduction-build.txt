@@ -1,0 +1,9 @@
+Preparing worktree (detached HEAD 3c5623359)
+HEAD is now at 3c5623359 docs(perf): separate construction allocation savings from memory costs
+Cloning into bare repository '/tmp/wago-direct-dispatch-osuyzuzw/reproduction smoke/wasi.git'...
+done.
+Preparing worktree (detached HEAD 08cbb55)
+HEAD is now at 08cbb55 docs: report construction memory and host-call tradeoffs
+Preparing worktree (detached HEAD 08cbb55)
+HEAD is now at 08cbb55 docs: report construction memory and host-call tradeoffs
+Build manifest: /tmp/wago-direct-dispatch-osuyzuzw/reproduction smoke/build.json
