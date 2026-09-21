@@ -1748,6 +1748,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			currentOperands, currentResult = operands, instruction.Result
 			currentPosition = plan.Allocation.InstructionPositions[instructionID]*6 + 2
+			vectorSpillFold := amd64RailMachV128OrSpillFold(plan, instruction.Op, operands, currentPosition)
 			currentResultOverrideValid = edgeResultRename.valid && edgeResultRename.instruction == instructionID
 			if currentResultOverrideValid {
 				currentResultOverride = amd64RailMachPhysical(edgeResultRename.destination)
@@ -1776,7 +1777,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect {
 				for operandIndex, operand := range operands {
-					if operand.Reg == forwardedSpill || memoryFold && plan.Machine.Insts[foldedLoadID].Result == operand.Reg || hasFoldedImmediate && plan.Machine.Insts[foldedImmediateID].Result == operand.Reg {
+					if operandIndex == vectorSpillFold || operand.Reg == forwardedSpill || memoryFold && plan.Machine.Insts[foldedLoadID].Result == operand.Reg || hasFoldedImmediate && plan.Machine.Insts[foldedImmediateID].Result == operand.Reg {
 						continue
 					}
 					duplicate := false
@@ -3528,6 +3529,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, fmt.Errorf("RailMach selected vector binary operand count is %d", len(operands))
 				}
 				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				if vectorSpillFold >= 0 {
+					registerOperand := 1 - vectorSpillFold
+					src := reg(operands[registerOperand].Reg)
+					location := plan.Allocation.LocationAt(operands[vectorSpillFold].Reg, currentPosition)
+					disp := int32(location.Index) * 8
+					a.VPorMemDisp(dst, src, amd64.RSP, disp)
+					continue
+				}
 				switch instruction.Op {
 				case railmach.OpAMD64V128And:
 					a.VPand(dst, lhs, rhs)
@@ -5936,6 +5945,28 @@ func amd64RailMachPhysical(location railmach.Location) amd64.Reg {
 		return amd64FPRRegisters[location.Index]
 	}
 	return amd64RailMachGPRRegisters[location.Index]
+}
+
+func amd64RailMachV128OrSpillFold(plan *nativeBackendPlan, op railmach.MOpcode, operands []railmach.Operand, position uint32) int {
+	if plan == nil || plan.Allocation == nil || len(operands) != 2 {
+		return -1
+	}
+	if op != railmach.OpAMD64V128Or {
+		return -1
+	}
+	// Prefer the encoded r/m operand. If only the left side is frame-backed,
+	// v128.or is commutative, so exchanging its sources is exact.
+	for _, index := range [...]int{1, 0} {
+		operand := operands[index]
+		if int(operand.Reg) >= len(plan.Machine.VRegs) || plan.Machine.VRegs[operand.Reg].Type != railmach.TypeV128 || operand.Flags&railmach.OperandColdRemat != 0 {
+			continue
+		}
+		location := plan.Allocation.LocationAt(operand.Reg, position)
+		if location.Kind == railmach.LocationSpill && uint64(location.Index)*8 <= math.MaxInt32 {
+			return index
+		}
+	}
+	return -1
 }
 
 func amd64UnsignedVectorSignMask(op railmach.MOpcode) (mask [16]byte) {

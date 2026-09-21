@@ -17,6 +17,32 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func TestAMD64RailMachV128OrSpillFold(t *testing.T) {
+	operands := []railmach.Operand{{Reg: 1}, {Reg: 2}}
+	plan := &nativeBackendPlan{
+		Machine: &railmach.Func{VRegs: []railmach.VRegData{{}, {Type: railmach.TypeV128, Bank: railmach.BankFPR}, {Type: railmach.TypeV128, Bank: railmach.BankFPR}}},
+		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{
+			{},
+			{Kind: railmach.LocationSpill, Bank: railmach.BankFPR},
+			{Kind: railmach.LocationSpill, Bank: railmach.BankFPR, Index: 2},
+		}}},
+	}
+	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128Or, operands, 2); got != 1 {
+		t.Fatalf("v128.or fold operand = %d, want right operand 1", got)
+	}
+	plan.Allocation.Locations[2] = railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankFPR}
+	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128Or, operands, 2); got != 0 {
+		t.Fatalf("left spill fold operand = %d, want 0", got)
+	}
+	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128And, operands, 2); got != -1 {
+		t.Fatalf("unsupported fold operand = %d, want -1", got)
+	}
+	operands[0].Flags = railmach.OperandColdRemat
+	if got := amd64RailMachV128OrSpillFold(plan, railmach.OpAMD64V128Or, operands, 2); got != -1 {
+		t.Fatalf("rematerialized fold operand = %d, want -1", got)
+	}
+}
+
 func TestAMD64CarriesMemoryChecksAcrossMemoryFreeLayoutSibling(t *testing.T) {
 	plan := &nativeBackendPlan{Machine: &railmach.Func{Blocks: make([]railmach.Block, 4)}, CFG: &railssa.CFG{
 		Blocks: []railssa.Block{
