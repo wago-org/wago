@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from measurement import digest
 
-PRIMARY=['HeapAlloc','HeapInuse','HeapReleased','RSS_KiB','PSS_KiB']
+PRIMARY=['HeapAlloc','HeapInuse','HeapReleased','RSS_KiB','PSS_KiB','ExecutablePeakRSS_KiB','SampledPeakRSS_KiB','SustainedRSS_KiB','SustainedRSSAfterEpoch1_KiB']
 
 
 def validate_record(r, meta):
@@ -57,15 +57,27 @@ def main():
             continue
         result=r['result']
         if result['Commands']!=cfg['commands'] or result['Epochs']!=cfg['epochs'] or result['API']!=r['api'] or result['Module']!=r['module'] or result['Intervention']!=r['intervention']:raise ValueError('mixed workload')
+        if r['api']=='compile' and (result['Callers']!=cfg['callers'] or result['Workers']!=cfg['workers']): raise ValueError('mixed compiler configuration')
+        if result.get('Warm',1)!=cfg.get('warm',1): raise ValueError('mixed warmup')
         if r['module'] in hashes and hashes[r['module']]!=result['SHA256']:raise ValueError('mixed module bytes')
         hashes[r['module']]=result['SHA256']
+        work=[p['external'] for p in result['Points'] if p['Phase'].startswith('epoch')]
+        seconds=sum(p.get('sampled_seconds',0) for p in work)
+        process=dict(WholePeakRSS_KiB=r['whole_process_max_rss_kib'],SampledPeakRSS_KiB=r['sampled_peak_rss_kib'])
+        if 'postexec_hwm_kib' in r: process['ExecutablePeakRSS_KiB']=r['postexec_hwm_kib']
+        if seconds: process['SustainedRSS_KiB']=sum(p['sampled_rss_area_kib_seconds'] for p in work)/seconds
+        later_seconds=sum(p.get('sampled_seconds',0) for p in work[1:])
+        if later_seconds: process['SustainedRSSAfterEpoch1_KiB']=sum(p['sampled_rss_area_kib_seconds'] for p in work[1:])/later_seconds
+        groups.setdefault((r['module'],r['api'],r['intervention'],'process'),{}).setdefault(r['label'],{})[r['pair']]=process
         for point in result['Points']:
             v={k:value for k,value in point.items() if isinstance(value,(int,float))}
             v.update(RSS_KiB=point['external']['VmRSS'],PSS_KiB=point['external']['Pss'],Descriptors=point['external']['descriptors'],NativeActive=point['Native']['Active'],NativeCached=point['Native']['Cached'])
-            for i,name in enumerate(['LiveHeap','GCGoal','MetricObjects','MetricReleased']):
-                if point['MetricAvailable'][i]:v[name]=point['Metrics'][i]
+            for i,name in enumerate(['LiveHeap','GCGoal','MetricObjects','MetricReleased','MetadataOther','MetadataMcache','MetadataMspan','UnusedHeap','FreeHeap','OSStacks','GCCPUSeconds','ScanGlobals','ScanHeap']):
+                if i<len(point['MetricAvailable']) and point['MetricAvailable'][i]:v[name]=point.get('MetricFloat',[])[i] if name=='GCCPUSeconds' else point['Metrics'][i]
             for kind,values in point['external']['mappings'].items():
                 for metric in ['count','Size','Rss','Pss','Private_Dirty','Swap']:v[f'map_{kind}_{metric}']=values[metric]
+            v['Threads']=point['external']['Threads']
+            v['Swap_KiB']=point['external'].get('VmSwap',0)
             v['IntervalPeakRSS_KiB']=point['external']['preceding_interval_sampled_peak_rss_kib']
             groups.setdefault((r['module'],r['api'],r['intervention'],point['Phase']),{}).setdefault(r['label'],{})[r['pair']]=v
         points={v['Phase']:v for v in result['Points']}
@@ -79,7 +91,7 @@ def main():
         for metric in sorted(names):
             b=[base[i][metric] for i in range(1,cfg['samples']+1)];c=[candidate[i][metric] for i in range(1,cfg['samples']+1)];d=[y-x for x,y in zip(b,c)]
             target[metric]={'baseline_median':st.median(b),'candidate_median':st.median(c),'baseline_mean':st.fmean(b),'candidate_mean':st.fmean(c),'paired_mean_delta':st.fmean(d),'relative_mean_percent':100*st.fmean(d)/st.fmean(b) if st.fmean(b) else None}
-            if metric in PRIMARY and (key[-1] in ['released','post','released-normal','released-gc','closed-normal']):target[metric]['paired_mean_delta_95ci']=interval(d)
+            if metric in PRIMARY and (key[-1] in ['startup','released','post','process','released-normal','released-gc','closed-normal']):target[metric]['paired_mean_delta_95ci']=interval(d)
         output['groups']['/'.join(key)]=target
     with a.output.open('x') as f:json.dump(output,f,indent=2);f.write('\n')
     if invariants:raise ValueError(f'ownership invariant failures: {invariants}')

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 import importlib.util
+import io
+import sys
+import threading
+import time
 import json
 import os
 from pathlib import Path
@@ -142,6 +146,61 @@ print('PASS')
         command = start.call_args.args[0]
         self.assertEqual(command[command.index('-wago.corpus')+1], 'cjson,tinyxml2')
         self.assertEqual(command[command.index('-test.run')+1], '^TestWASIResources$/^tinyxml2$')
+
+    def test_memory_zero_warmup_and_host_corpus(self):
+        runner = module('memory_runner_shapes', HERE/'memory-review/run-memory.py')
+        for workload in ['startup', 'host1024']:
+            with mock.patch.object(runner.subprocess, 'Popen', side_effect=OSError('fixture stop')) as start:
+                with self.assertRaises(OSError):
+                    runner.one(self.bins/'wasi-baseline.test', Path(self.tmp.name)/(workload+'.txt'), {}, [], workload, 'raw', 'normal', 1, 1, warm=0)
+            command = start.call_args.args[0]
+            self.assertEqual(command[command.index('-wago.review.warm')+1], '0')
+            self.assertEqual(command[command.index('-wago.corpus')+1], 'cjson')
+
+    def test_full_screen_rejects_missing_leaves(self):
+        result = self.paired(extra=['--cases', 'full'])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotEqual(json.loads((self.out/'run.json').read_text())['status'], 'complete')
+
+    def test_exact_selection(self):
+        selection = Path(self.tmp.name)/'selection.json'
+        name = 'BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports'
+        selection.write_text(json.dumps({'benchmarks': [name]}))
+        result = self.paired(extra=['--selection', str(selection)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        meta = json.loads((self.out/'run.json').read_text())
+        self.assertEqual(len(meta['records']), 4)
+        self.assertTrue(all(r['leaves'] == [name] for r in meta['records']))
+        runner = module('selected_runner', HERE/'continuation/run-wasi-pairs.py')
+        selection.write_text(json.dumps({'benchmarks': [name, name]}))
+        with self.assertRaisesRegex(ValueError, 'duplicate'):
+            runner.selected_cases(selection)
+        selection.write_text(json.dumps({'benchmarks': ['BenchmarkBad//leaf']}))
+        with self.assertRaisesRegex(ValueError, 'valid benchmark'):
+            runner.selected_cases(selection)
+
+    def test_temperature_guard_and_process_stop(self):
+        measurement = module('thermal_measurement', HERE/'measurement.py')
+        sensor = Path(self.tmp.name)/'temperature'
+        sensor.write_text('50000')
+        guard = measurement.TemperatureGuard(sensor, 80, 65, 0, 2, io.StringIO())
+        self.assertLess(guard.wait(), .1)
+        self.assertEqual(guard.check(), 50)
+        sensor.write_text('80000')
+        with self.assertRaisesRegex(ValueError, 'temperature stop'):
+            guard.check()
+        sensor.write_text('50000')
+        pidfile = Path(self.tmp.name)/'fixture.pid'
+        command = [sys.executable, '-c', 'import os,time,pathlib; pathlib.Path('+repr(str(pidfile))+').write_text(str(os.getpid())); time.sleep(30)']
+        timer = threading.Timer(.2, lambda: sensor.write_text('81000'))
+        timer.start()
+        try:
+            with self.assertRaisesRegex(ValueError, 'temperature stop'):
+                measurement.run_process(command, Path(self.tmp.name)/'thermal.txt', dict(os.environ), thermal=guard)
+        finally:
+            timer.join()
+        with self.assertRaises(ProcessLookupError):
+            os.kill(int(pidfile.read_text()), 0)
 
     def test_provider_patch_argument_validation(self):
         script = HERE/'continuation/reproduce-provider.py'
