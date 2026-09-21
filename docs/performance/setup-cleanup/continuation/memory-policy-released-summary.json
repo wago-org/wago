@@ -1,0 +1,770 @@
+{
+  "6/0/wago-guarded": {
+    "compiled-normal": {
+      "rss_kib": 15646.0,
+      "heap_alloc": 525040.0,
+      "minor_faults": 436.5,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 16536.0,
+      "heap_alloc": 555560.0,
+      "minor_faults": 609.0,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 16596.0,
+      "heap_alloc": 716256.0,
+      "minor_faults": 628.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 16660.0,
+      "heap_alloc": 727448.0,
+      "minor_faults": 629.0,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 17082.0,
+      "heap_alloc": 485136.0,
+      "minor_faults": 829.0,
+      "major_faults": 0.0
+    }
+  },
+  "6/4096/wago-guarded": {
+    "compiled-normal": {
+      "rss_kib": 15782.0,
+      "heap_alloc": 615808.0,
+      "minor_faults": 449.0,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 16684.0,
+      "heap_alloc": 646344.0,
+      "minor_faults": 627.5,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 16818.0,
+      "heap_alloc": 807040.0,
+      "minor_faults": 768.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 16882.0,
+      "heap_alloc": 818232.0,
+      "minor_faults": 769.5,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 18074.0,
+      "heap_alloc": 485272.0,
+      "minor_faults": 970.0,
+      "major_faults": 0.0
+    }
+  },
+  "6/65536/wago-guarded": {
+    "compiled-normal": {
+      "rss_kib": 15944.0,
+      "heap_alloc": 1076816.0,
+      "minor_faults": 470.5,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 16836.0,
+      "heap_alloc": 1107184.0,
+      "minor_faults": 662.0,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 17036.0,
+      "heap_alloc": 1267880.0,
+      "minor_faults": 2720.5,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 17100.0,
+      "heap_alloc": 1279072.0,
+      "minor_faults": 2721.5,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 18638.0,
+      "heap_alloc": 485592.0,
+      "minor_faults": 2917.5,
+      "major_faults": 0.0
+    }
+  },
+  "6/393216/wago-guarded": {
+    "compiled-normal": {
+      "rss_kib": 17976.0,
+      "heap_alloc": 3105544.0,
+      "minor_faults": 484.0,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 18860.0,
+      "heap_alloc": 3136064.0,
+      "minor_faults": 751.0,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 18888.0,
+      "heap_alloc": 3296760.0,
+      "minor_faults": 13049.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 18952.0,
+      "heap_alloc": 3307952.0,
+      "minor_faults": 13050.0,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 18724.0,
+      "heap_alloc": 486088.0,
+      "minor_faults": 13246.0,
+      "major_faults": 0.0
+    }
+  },
+  "16/0/wago-guarded": {
+    "compiled-normal": {
+      "rss_kib": 15830.0,
+      "heap_alloc": 723424.0,
+      "minor_faults": 459.0,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 16722.0,
+      "heap_alloc": 754096.0,
+      "minor_faults": 635.5,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 16810.0,
+      "heap_alloc": 914792.0,
+      "minor_faults": 652.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 16874.0,
+      "heap_alloc": 925984.0,
+      "minor_faults": 653.0,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 17028.0,
+      "heap_alloc": 486432.0,
+      "minor_faults": 851.5,
+      "major_faults": 0.0
+    }
+  },
+  "16/4096/wago-guarded": {
+    "compiled-normal": {
+      "rss_kib": 15876.0,
+      "heap_alloc": 815568.0,
+      "minor_faults": 465.0,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 16772.0,
+      "heap_alloc": 846080.0,
+      "minor_faults": 641.5,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 16810.0,
+      "heap_alloc": 1006776.0,
+      "minor_faults": 779.5,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 16874.0,
+      "heap_alloc": 1017968.0,
+      "minor_faults": 780.5,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 18850.0,
+      "heap_alloc": 486936.0,
+      "minor_faults": 985.0,
+      "major_faults": 0.0
+    }
+  },
+  "16/65536/wago-guarded": {
+    "compiled-normal": {
+      "rss_kib": 15912.0,
+      "heap_alloc": 1277024.0,
+      "minor_faults": 476.5,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 16808.0,
+      "heap_alloc": 1307472.0,
+      "minor_faults": 664.0,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 16898.0,
+      "heap_alloc": 1468168.0,
+      "minor_faults": 2722.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 16966.0,
+      "heap_alloc": 1479360.0,
+      "minor_faults": 2724.0,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 18402.0,
+      "heap_alloc": 487552.0,
+      "minor_faults": 2925.5,
+      "major_faults": 0.0
+    }
+  },
+  "16/1048576/wago-guarded": {
+    "compiled-normal": {
+      "rss_kib": 22744.0,
+      "heap_alloc": 2577300.0,
+      "minor_faults": 699.0,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 23426.0,
+      "heap_alloc": 2603472.0,
+      "minor_faults": 1077.0,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 23512.0,
+      "heap_alloc": 2764168.0,
+      "minor_faults": 33868.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 23576.0,
+      "heap_alloc": 2775360.0,
+      "minor_faults": 33869.0,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 19004.0,
+      "heap_alloc": 480568.0,
+      "minor_faults": 33903.0,
+      "major_faults": 0.0
+    }
+  },
+  "6/0/wazero-default": {
+    "compiled-normal": {
+      "rss_kib": 14756.0,
+      "heap_alloc": 563216.0,
+      "minor_faults": 434.5,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 15576.0,
+      "heap_alloc": 990880.0,
+      "minor_faults": 606.5,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 20036.0,
+      "heap_alloc": 2102352.0,
+      "minor_faults": 1123.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 20036.0,
+      "heap_alloc": 1528260.0,
+      "minor_faults": 1125.0,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16366.0,
+      "heap_alloc": 486872.0,
+      "minor_faults": 1125.0,
+      "major_faults": 0.0
+    }
+  },
+  "6/4096/wazero-default": {
+    "compiled-normal": {
+      "rss_kib": 14794.0,
+      "heap_alloc": 653520.0,
+      "minor_faults": 451.5,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 15718.0,
+      "heap_alloc": 1081048.0,
+      "minor_faults": 619.5,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 20318.0,
+      "heap_alloc": 1706088.0,
+      "minor_faults": 1130.5,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 20206.0,
+      "heap_alloc": 1729760.0,
+      "minor_faults": 1132.5,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16396.0,
+      "heap_alloc": 485264.0,
+      "minor_faults": 1136.0,
+      "major_faults": 0.0
+    }
+  },
+  "6/65536/wazero-default": {
+    "compiled-normal": {
+      "rss_kib": 14812.0,
+      "heap_alloc": 1114864.0,
+      "minor_faults": 460.5,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 17556.0,
+      "heap_alloc": 1542392.0,
+      "minor_faults": 632.0,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 20012.0,
+      "heap_alloc": 972960.0,
+      "minor_faults": 1318.5,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 20010.0,
+      "heap_alloc": 996632.0,
+      "minor_faults": 1322.0,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16338.0,
+      "heap_alloc": 487924.0,
+      "minor_faults": 1324.0,
+      "major_faults": 0.0
+    }
+  },
+  "6/393216/wazero-default": {
+    "compiled-normal": {
+      "rss_kib": 16896.0,
+      "heap_alloc": 3143544.0,
+      "minor_faults": 478.5,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 18788.0,
+      "heap_alloc": 3571072.0,
+      "minor_faults": 644.5,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 20106.0,
+      "heap_alloc": 1300864.0,
+      "minor_faults": 1293.5,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 20016.0,
+      "heap_alloc": 1324048.0,
+      "minor_faults": 1297.0,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16488.0,
+      "heap_alloc": 488836.0,
+      "minor_faults": 1298.5,
+      "major_faults": 0.0
+    }
+  },
+  "16/0/wazero-default": {
+    "compiled-normal": {
+      "rss_kib": 14842.0,
+      "heap_alloc": 761736.0,
+      "minor_faults": 459.5,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 15730.0,
+      "heap_alloc": 1844520.0,
+      "minor_faults": 630.0,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 19722.0,
+      "heap_alloc": 2618776.0,
+      "minor_faults": 3187.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 19724.0,
+      "heap_alloc": 2642448.0,
+      "minor_faults": 3189.5,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16218.0,
+      "heap_alloc": 491888.0,
+      "minor_faults": 3191.0,
+      "major_faults": 0.0
+    }
+  },
+  "16/4096/wazero-default": {
+    "compiled-normal": {
+      "rss_kib": 14796.0,
+      "heap_alloc": 853800.0,
+      "minor_faults": 449.5,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 15714.0,
+      "heap_alloc": 1936696.0,
+      "minor_faults": 630.0,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 20246.0,
+      "heap_alloc": 2623200.0,
+      "minor_faults": 3087.5,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 19740.0,
+      "heap_alloc": 2646872.0,
+      "minor_faults": 3089.5,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16362.0,
+      "heap_alloc": 493184.0,
+      "minor_faults": 3091.0,
+      "major_faults": 0.0
+    }
+  },
+  "16/65536/wazero-default": {
+    "compiled-normal": {
+      "rss_kib": 15776.0,
+      "heap_alloc": 1315368.0,
+      "minor_faults": 461.0,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 17660.0,
+      "heap_alloc": 2398184.0,
+      "minor_faults": 634.0,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 21346.0,
+      "heap_alloc": 3741488.0,
+      "minor_faults": 2789.5,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 21358.0,
+      "heap_alloc": 3765160.0,
+      "minor_faults": 2790.5,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16632.0,
+      "heap_alloc": 493248.0,
+      "minor_faults": 2792.0,
+      "major_faults": 0.0
+    }
+  },
+  "16/1048576/wazero-default": {
+    "compiled-normal": {
+      "rss_kib": 21256.0,
+      "heap_alloc": 2587352.0,
+      "minor_faults": 803.0,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 21624.0,
+      "heap_alloc": 3672792.0,
+      "minor_faults": 827.0,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 22462.0,
+      "heap_alloc": 3669128.0,
+      "minor_faults": 4756.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 22464.0,
+      "heap_alloc": 3692800.0,
+      "minor_faults": 4756.0,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16750.0,
+      "heap_alloc": 493416.0,
+      "minor_faults": 4760.5,
+      "major_faults": 0.0
+    }
+  },
+  "6/0/wazero-max-capacity": {
+    "compiled-normal": {
+      "rss_kib": 14710.0,
+      "heap_alloc": 592256.0,
+      "minor_faults": 431.0,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 15616.0,
+      "heap_alloc": 2723616.0,
+      "minor_faults": 614.0,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 22432.0,
+      "heap_alloc": 2616336.0,
+      "minor_faults": 9364.5,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 21450.0,
+      "heap_alloc": 2640008.0,
+      "minor_faults": 9371.5,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16352.0,
+      "heap_alloc": 491464.0,
+      "minor_faults": 9385.5,
+      "major_faults": 0.0
+    }
+  },
+  "6/4096/wazero-max-capacity": {
+    "compiled-normal": {
+      "rss_kib": 14774.0,
+      "heap_alloc": 683184.0,
+      "minor_faults": 448.5,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 15708.0,
+      "heap_alloc": 2814560.0,
+      "minor_faults": 627.5,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 22466.0,
+      "heap_alloc": 3671088.0,
+      "minor_faults": 11424.5,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 22218.0,
+      "heap_alloc": 3694760.0,
+      "minor_faults": 11426.5,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16432.0,
+      "heap_alloc": 492080.0,
+      "minor_faults": 11427.5,
+      "major_faults": 0.0
+    }
+  },
+  "6/65536/wazero-max-capacity": {
+    "compiled-normal": {
+      "rss_kib": 14826.0,
+      "heap_alloc": 1144856.0,
+      "minor_faults": 461.5,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 16718.0,
+      "heap_alloc": 3276320.0,
+      "minor_faults": 631.0,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 23128.0,
+      "heap_alloc": 2677944.0,
+      "minor_faults": 10005.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 22566.0,
+      "heap_alloc": 2701616.0,
+      "minor_faults": 10008.5,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 17664.0,
+      "heap_alloc": 492464.0,
+      "minor_faults": 10030.0,
+      "major_faults": 0.0
+    }
+  },
+  "6/393216/wazero-max-capacity": {
+    "compiled-normal": {
+      "rss_kib": 16922.0,
+      "heap_alloc": 3173136.0,
+      "minor_faults": 474.0,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 22046.0,
+      "heap_alloc": 3242600.0,
+      "minor_faults": 679.5,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 23086.0,
+      "heap_alloc": 3011000.0,
+      "minor_faults": 5895.5,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 22430.0,
+      "heap_alloc": 3029472.0,
+      "minor_faults": 5898.5,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16286.0,
+      "heap_alloc": 495412.0,
+      "minor_faults": 5920.5,
+      "major_faults": 0.0
+    }
+  },
+  "16/0/wazero-max-capacity": {
+    "compiled-normal": {
+      "rss_kib": 14788.0,
+      "heap_alloc": 791688.0,
+      "minor_faults": 447.0,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 15682.0,
+      "heap_alloc": 2923208.0,
+      "minor_faults": 621.5,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 20428.0,
+      "heap_alloc": 2615756.0,
+      "minor_faults": 10638.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 20428.0,
+      "heap_alloc": 2639428.0,
+      "minor_faults": 10645.0,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 15944.0,
+      "heap_alloc": 493584.0,
+      "minor_faults": 10660.5,
+      "major_faults": 0.0
+    }
+  },
+  "16/4096/wazero-max-capacity": {
+    "compiled-normal": {
+      "rss_kib": 14816.0,
+      "heap_alloc": 883152.0,
+      "minor_faults": 457.0,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 16770.0,
+      "heap_alloc": 3014616.0,
+      "minor_faults": 629.5,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 22756.0,
+      "heap_alloc": 2623344.0,
+      "minor_faults": 9831.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 22766.0,
+      "heap_alloc": 2647016.0,
+      "minor_faults": 9835.5,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16358.0,
+      "heap_alloc": 493880.0,
+      "minor_faults": 9843.0,
+      "major_faults": 0.0
+    }
+  },
+  "16/65536/wazero-max-capacity": {
+    "compiled-normal": {
+      "rss_kib": 14842.0,
+      "heap_alloc": 1344888.0,
+      "minor_faults": 468.5,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 17738.0,
+      "heap_alloc": 3476432.0,
+      "minor_faults": 644.5,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 22652.0,
+      "heap_alloc": 4786020.0,
+      "minor_faults": 10999.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 22660.0,
+      "heap_alloc": 4809692.0,
+      "minor_faults": 11005.0,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 16092.0,
+      "heap_alloc": 498560.0,
+      "minor_faults": 11035.5,
+      "major_faults": 0.0
+    }
+  },
+  "16/1048576/wazero-max-capacity": {
+    "compiled-normal": {
+      "rss_kib": 21988.0,
+      "heap_alloc": 2587592.0,
+      "minor_faults": 799.0,
+      "major_faults": 0.0
+    },
+    "first-closed-normal": {
+      "rss_kib": 22320.0,
+      "heap_alloc": 4721480.0,
+      "minor_faults": 820.5,
+      "major_faults": 0.0
+    },
+    "warm-closed-normal": {
+      "rss_kib": 24198.0,
+      "heap_alloc": 5766176.0,
+      "minor_faults": 2509.0,
+      "major_faults": 0.0
+    },
+    "released-normal": {
+      "rss_kib": 24206.0,
+      "heap_alloc": 5789848.0,
+      "minor_faults": 2509.0,
+      "major_faults": 0.0
+    },
+    "released-gc": {
+      "rss_kib": 17088.0,
+      "heap_alloc": 493328.0,
+      "minor_faults": 2510.0,
+      "major_faults": 0.0
+    }
+  }
+}

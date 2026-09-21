@@ -1,0 +1,9 @@
+{
+  "src/wago/imports.go": "75d9abbb8956bb77593388cf2fce77b12e6eee5af0fab2d6bf1654e15f3c6aea",
+  "bench/suite/worker_lifecycle_diagnostic_test.go": "46f4d447a4ae0c0ae02bec2a49669279a4cf8272045a3173eca420e2dc622c28",
+  "bench/suite/import_lifecycle_test.go": "70f4fa9c3060bc7a74364ab9daa131b6c0ba6c9b3cdf0b0841bdb0c7a2ca5a7e",
+  "bench/suite/wasi_construction_diagnostic_test.go": "e3ecc87c99af98033c1c77d5f36b6b35567d26eb1cced958ba2bf9ee95711009",
+  "bench/suite/wasi_owned_diagnostic_test.go": "8c600edb61c6809a1e4bf1ae425b39e2387b83dd7cfb6a1d921e095b0b99b476",
+  "provider-base-core": "6241a3bfcd34dbae9226ba8f199cdf28134fb6f2488d155d65805395c7a07bd6",
+  "provider-candidate-core": "8f580b186e2a3013e6919faa549feda07b78325b1d70714e4fedead0c6a2e17d"
+}

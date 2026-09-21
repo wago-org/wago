@@ -1,0 +1,88 @@
+Total: 11.09MB
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).push in /home/jtenner/Projects/wago/src/core/compiler/wasm/validate.go
+  210.19kB   210.19kB (flat, cum)  1.85% of Total
+         .          .   1115:func (v *funcValidator) push(t ValType) {
+  210.19kB   210.19kB   1116:	v.vals = append(v.vals, val{t: t})
+         .          .   1117:}
+         .          .   1118:func (v *funcValidator) pushAll(ts []ValType) {
+         .          .   1119:	for _, t := range ts {
+         .          .   1120:		v.push(t)
+         .          .   1121:	}
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).pushCtrl in /home/jtenner/Projects/wago/src/core/compiler/wasm/validate.go
+    4.60MB     4.60MB (flat, cum) 41.43% of Total
+         .          .   1153:func (v *funcValidator) pushCtrl(k ctrlKind, in, out []ValType) error {
+         .          .   1154:	if err := v.popAll(in); err != nil {
+         .          .   1155:		return err
+         .          .   1156:	}
+    4.60MB     4.60MB   1157:	v.ctrls = append(v.ctrls, ctrlFrame{kind: k, in: in, out: out, height: len(v.vals), initHeight: len(v.localInitLog)})
+         .          .   1158:	v.pushAll(in)
+         .          .   1159:	return nil
+         .          .   1160:}
+         .          .   1161:func (v *funcValidator) popCtrl() (ctrlFrame, error) {
+         .          .   1162:	if len(v.ctrls) == 0 {
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunctionsParallel in /home/jtenner/Projects/wago/src/core/compiler/wasm/validate.go
+   59.17kB    59.28kB (flat, cum)  0.52% of Total
+         .          .    220:func (v *moduleValidator) validateFunctionsParallel(workers int) error {
+         .          .    221:	importedFuncs := len(v.importsOfKind(ExternFunc))
+         .          .    222:	widths := moduleMemargWidths(v.m)
+         .          .    223:	type result struct {
+         .          .    224:		index          int
+         .          .    225:		err            error
+         .          .    226:		elemStateCount uint32
+         .          .    227:		dataStateCount uint32
+         .          .    228:	}
+   12.62kB    12.62kB    229:	results := make([]result, workers)
+      800B       800B    230:	var next atomic.Int64
+    1.58kB     1.58kB    231:	var wg sync.WaitGroup
+         .          .    232:	wg.Add(workers)
+         .          .    233:	for worker := 0; worker < workers; worker++ {
+         .          .    234:		worker := worker
+   44.19kB    44.19kB    235:		go func() {
+         .          .    236:			defer wg.Done()
+         .          .    237:			fv := funcValidator{moduleValidator: v}
+         .          .    238:			var summary validationSegmentCounts
+         .          .    239:			defer func() {
+         .          .    240:				results[worker].elemStateCount = summary.elem
+         .          .    241:				results[worker].dataStateCount = summary.data
+         .          .    242:			}()
+         .          .    243:			for {
+         .          .    244:				i := int(next.Add(1) - 1)
+         .          .    245:				if i >= len(v.m.Code) {
+         .          .    246:					return
+         .          .    247:				}
+         .          .    248:				counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+         .          .    249:				if err != nil {
+         .          .    250:					results[worker] = result{index: i, err: err}
+         .          .    251:					return
+         .          .    252:				}
+         .          .    253:				summary.merge(counts)
+         .          .    254:			}
+         .          .    255:		}()
+         .          .    256:	}
+         .       112B    257:	wg.Wait()
+         .          .    258:	lowest := len(v.m.Code)
+         .          .    259:	var first error
+         .          .    260:	for i := range results {
+         .          .    261:		if results[i].err != nil && results[i].index < lowest {
+         .          .    262:			lowest = results[i].index
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunctionsParallel.func1 in /home/jtenner/Projects/wago/src/core/compiler/wasm/validate.go
+  277.75kB     6.19MB (flat, cum) 55.81% of Total
+         .          .    235:		go func() {
+         .          .    236:			defer wg.Done()
+  277.75kB   277.75kB    237:			fv := funcValidator{moduleValidator: v}
+         .          .    238:			var summary validationSegmentCounts
+         .          .    239:			defer func() {
+         .          .    240:				results[worker].elemStateCount = summary.elem
+         .          .    241:				results[worker].dataStateCount = summary.data
+         .          .    242:			}()
+         .          .    243:			for {
+         .          .    244:				i := int(next.Add(1) - 1)
+         .          .    245:				if i >= len(v.m.Code) {
+         .          .    246:					return
+         .          .    247:				}
+         .     5.92MB    248:				counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+         .          .    249:				if err != nil {
+         .          .    250:					results[worker] = result{index: i, err: err}
+         .          .    251:					return
+         .          .    252:				}
+         .          .    253:				summary.merge(counts)

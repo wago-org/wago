@@ -1,0 +1,35 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkAcquisitionLifecycleDiagnostic/engine-16         	33078942	         7.147 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/engine-16         	31451947	         7.082 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/engine-16         	30923467	         7.161 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/engine-16         	32162523	         7.073 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/engine-16         	32544561	         7.183 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/engine-16         	33996645	         7.119 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/engine-16         	32696522	         7.103 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/engine-16         	34215400	         7.135 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/engine-16         	32576826	         7.132 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/engine-16         	31665105	         7.128 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=4096-16     	31062218	         7.385 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=4096-16     	32909440	         7.359 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=4096-16     	33447854	         7.489 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=4096-16     	30931497	         7.371 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=4096-16     	32406795	         7.346 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=4096-16     	33130738	         7.399 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=4096-16     	32157045	         7.332 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=4096-16     	32376798	         7.346 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=4096-16     	33296290	         7.394 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=4096-16     	31390123	         7.366 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=65536-16    	32611105	         7.344 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=65536-16    	31904995	         7.407 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=65536-16    	31536501	         7.395 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=65536-16    	31491685	         7.352 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=65536-16    	30915093	         7.411 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=65536-16    	32508519	         7.354 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=65536-16    	32853835	         7.422 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=65536-16    	32647597	         7.408 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=65536-16    	31353109	         7.344 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAcquisitionLifecycleDiagnostic/arena=65536-16    	30243867	         7.437 ns/op	       0 B/op	       0 allocs/op
+PASS

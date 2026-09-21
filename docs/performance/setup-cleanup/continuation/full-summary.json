@@ -1,0 +1,2002 @@
+{
+  "measurements_per_version": 984,
+  "execution_cases": 72,
+  "execution_allocation_failures": [],
+  "allocation_changes": [
+    {
+      "name": "BenchmarkCompile_wago",
+      "unit": "B/op",
+      "before": 11678.0,
+      "after": 11680.0
+    },
+    {
+      "name": "BenchmarkCommandExec/cjson",
+      "unit": "B/op",
+      "before": 36328.0,
+      "after": 24944.0
+    },
+    {
+      "name": "BenchmarkCommandExec/cjson",
+      "unit": "allocs/op",
+      "before": 421.0,
+      "after": 351.0
+    },
+    {
+      "name": "BenchmarkCommandExec/lodepng",
+      "unit": "B/op",
+      "before": 35656.0,
+      "after": 24272.0
+    },
+    {
+      "name": "BenchmarkCommandExec/lodepng",
+      "unit": "allocs/op",
+      "before": 410.0,
+      "after": 340.0
+    },
+    {
+      "name": "BenchmarkCommandExec/wren",
+      "unit": "B/op",
+      "before": 36328.0,
+      "after": 24944.0
+    },
+    {
+      "name": "BenchmarkCommandExec/wren",
+      "unit": "allocs/op",
+      "before": 421.0,
+      "after": 351.0
+    },
+    {
+      "name": "BenchmarkCommandExec/tinyxml2",
+      "unit": "B/op",
+      "before": 36968.0,
+      "after": 25584.0
+    },
+    {
+      "name": "BenchmarkCommandExec/tinyxml2",
+      "unit": "allocs/op",
+      "before": 432.0,
+      "after": 362.0
+    },
+    {
+      "name": "BenchmarkCommandExec/lua",
+      "unit": "B/op",
+      "before": 39752.0,
+      "after": 28368.0
+    },
+    {
+      "name": "BenchmarkCommandExec/lua",
+      "unit": "allocs/op",
+      "before": 478.0,
+      "after": 408.0
+    },
+    {
+      "name": "BenchmarkCommandExec/embench-crc32",
+      "unit": "B/op",
+      "before": 35040.0,
+      "after": 23648.0
+    },
+    {
+      "name": "BenchmarkCommandExec/embench-crc32",
+      "unit": "allocs/op",
+      "before": 394.0,
+      "after": 324.0
+    },
+    {
+      "name": "BenchmarkCommandExec/embench-huffbench",
+      "unit": "B/op",
+      "before": 35096.0,
+      "after": 23704.0
+    },
+    {
+      "name": "BenchmarkCommandExec/embench-huffbench",
+      "unit": "allocs/op",
+      "before": 396.0,
+      "after": 326.0
+    },
+    {
+      "name": "BenchmarkCommandExec/embench-matmult-int",
+      "unit": "B/op",
+      "before": 35040.0,
+      "after": 23648.0
+    },
+    {
+      "name": "BenchmarkCommandExec/embench-matmult-int",
+      "unit": "allocs/op",
+      "before": 394.0,
+      "after": 324.0
+    },
+    {
+      "name": "BenchmarkCommandExec/embench-nettle-aes",
+      "unit": "B/op",
+      "before": 35040.0,
+      "after": 23648.0
+    },
+    {
+      "name": "BenchmarkCommandExec/embench-nettle-aes",
+      "unit": "allocs/op",
+      "before": 394.0,
+      "after": 324.0
+    },
+    {
+      "name": "BenchmarkCommandExec/embench-nettle-sha256",
+      "unit": "B/op",
+      "before": 35096.0,
+      "after": 23704.0
+    },
+    {
+      "name": "BenchmarkCommandExec/embench-nettle-sha256",
+      "unit": "allocs/op",
+      "before": 396.0,
+      "after": 326.0
+    },
+    {
+      "name": "BenchmarkCommandExec/embench-qrduino",
+      "unit": "B/op",
+      "before": 35040.0,
+      "after": 23648.0
+    },
+    {
+      "name": "BenchmarkCommandExec/embench-qrduino",
+      "unit": "allocs/op",
+      "before": 394.0,
+      "after": 324.0
+    },
+    {
+      "name": "BenchmarkCommandExec/sightglass-shootout-base64",
+      "unit": "B/op",
+      "before": 44840.0,
+      "after": 33455.0
+    },
+    {
+      "name": "BenchmarkCommandExec/sightglass-shootout-base64",
+      "unit": "allocs/op",
+      "before": 529.0,
+      "after": 459.0
+    },
+    {
+      "name": "BenchmarkCommandExec/sightglass-libsodium-hash",
+      "unit": "B/op",
+      "before": 46512.0,
+      "after": 35128.0
+    },
+    {
+      "name": "BenchmarkCommandExec/sightglass-libsodium-hash",
+      "unit": "allocs/op",
+      "before": 560.0,
+      "after": 490.0
+    },
+    {
+      "name": "BenchmarkCommandExec/wren-modulo",
+      "unit": "B/op",
+      "before": 36328.0,
+      "after": 24944.0
+    },
+    {
+      "name": "BenchmarkCommandExec/wren-modulo",
+      "unit": "allocs/op",
+      "before": 421.0,
+      "after": 351.0
+    },
+    {
+      "name": "BenchmarkWazeroCommandExec/lodepng",
+      "unit": "B/op",
+      "before": 1306457.0,
+      "after": 1306456.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/dispatch",
+      "unit": "B/op",
+      "before": 280760.0,
+      "after": 280761.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/linked_list",
+      "unit": "B/op",
+      "before": 318000.0,
+      "after": 318001.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/sha256",
+      "unit": "B/op",
+      "before": 826840.0,
+      "after": 826841.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/json-as-simd",
+      "unit": "B/op",
+      "before": 2313845.0,
+      "after": 2313785.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/blake-as-simd",
+      "unit": "B/op",
+      "before": 2035616.0,
+      "after": 2035617.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/utf-as-simd",
+      "unit": "B/op",
+      "before": 1356400.0,
+      "after": 1356401.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/zlib",
+      "unit": "B/op",
+      "before": 7697007.0,
+      "after": 7697006.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/zstd",
+      "unit": "B/op",
+      "before": 24699790.0,
+      "after": 24699791.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/yyjson",
+      "unit": "B/op",
+      "before": 53264136.0,
+      "after": 53264132.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/utf8proc",
+      "unit": "B/op",
+      "before": 4272050.0,
+      "after": 4272049.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/libtommath",
+      "unit": "B/op",
+      "before": 4352736.0,
+      "after": 4352737.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/nanosvg",
+      "unit": "B/op",
+      "before": 5383720.0,
+      "after": 5383717.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/kissfft",
+      "unit": "B/op",
+      "before": 4185225.0,
+      "after": 4185224.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/miniz",
+      "unit": "B/op",
+      "before": 7643132.0,
+      "after": 7643136.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/drwav",
+      "unit": "B/op",
+      "before": 7348544.0,
+      "after": 7348545.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/fastfloat",
+      "unit": "B/op",
+      "before": 11030084.0,
+      "after": 11030083.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/lodepng",
+      "unit": "B/op",
+      "before": 20094083.0,
+      "after": 20094085.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/wren",
+      "unit": "B/op",
+      "before": 10437777.0,
+      "after": 10437776.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/tinyxml2",
+      "unit": "B/op",
+      "before": 9679365.0,
+      "after": 9679363.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/lua",
+      "unit": "B/op",
+      "before": 18817384.0,
+      "after": 18817376.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/embench-matmult-int",
+      "unit": "B/op",
+      "before": 1204195.0,
+      "after": 1204193.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/sightglass-shootout-base64",
+      "unit": "B/op",
+      "before": 8925387.0,
+      "after": 8925385.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/sightglass-libsodium-hash",
+      "unit": "B/op",
+      "before": 9582811.0,
+      "after": 9582809.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/polybench-covariance",
+      "unit": "B/op",
+      "before": 899329.0,
+      "after": 899328.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/polybench-doitgen",
+      "unit": "B/op",
+      "before": 1304970.0,
+      "after": 1304969.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/polybench-fdtd-2d",
+      "unit": "B/op",
+      "before": 1114921.0,
+      "after": 1114920.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/polybench-trisolv",
+      "unit": "B/op",
+      "before": 757520.0,
+      "after": 757521.0
+    },
+    {
+      "name": "BenchmarkWazeroCompile/wren-modulo",
+      "unit": "B/op",
+      "before": 10437777.0,
+      "after": 10437788.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/memory_tree",
+      "unit": "B/op",
+      "before": 72887.0,
+      "after": 72886.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/linked_list",
+      "unit": "B/op",
+      "before": 269528.0,
+      "after": 269526.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/nbody",
+      "unit": "B/op",
+      "before": 1056309.0,
+      "after": 1056305.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/fannkuch",
+      "unit": "B/op",
+      "before": 1056312.0,
+      "after": 1056307.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/matmul",
+      "unit": "B/op",
+      "before": 1056298.0,
+      "after": 1056308.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/sha256",
+      "unit": "B/op",
+      "before": 1121879.0,
+      "after": 1121882.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/raytrace",
+      "unit": "B/op",
+      "before": 1056303.0,
+      "after": 1056302.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/json-as",
+      "unit": "B/op",
+      "before": 77559.0,
+      "after": 77560.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/coremark",
+      "unit": "B/op",
+      "before": 138553.0,
+      "after": 138554.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/blake3",
+      "unit": "B/op",
+      "before": 1056190.0,
+      "after": 1056182.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/qoi",
+      "unit": "B/op",
+      "before": 2104851.0,
+      "after": 2104870.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/lz4",
+      "unit": "B/op",
+      "before": 2104906.0,
+      "after": 2104924.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/zlib",
+      "unit": "B/op",
+      "before": 2105164.0,
+      "after": 2105190.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/zstd",
+      "unit": "B/op",
+      "before": 2105384.0,
+      "after": 2105386.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/yyjson",
+      "unit": "B/op",
+      "before": 140347.0,
+      "after": 140348.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/xxhash",
+      "unit": "B/op",
+      "before": 269552.0,
+      "after": 269550.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/libtommath",
+      "unit": "B/op",
+      "before": 139026.0,
+      "after": 139027.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/kissfft",
+      "unit": "B/op",
+      "before": 138553.0,
+      "after": 138554.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/miniz",
+      "unit": "B/op",
+      "before": 1056489.0,
+      "after": 1056478.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/monocypher",
+      "unit": "B/op",
+      "before": 138529.0,
+      "after": 138530.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/drwav",
+      "unit": "B/op",
+      "before": 139058.0,
+      "after": 139059.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/fastfloat",
+      "unit": "B/op",
+      "before": 139274.0,
+      "after": 139275.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/pcre2",
+      "unit": "B/op",
+      "before": 273045.0,
+      "after": 273044.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-2mm",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-3mm",
+      "unit": "B/op",
+      "before": 138529.0,
+      "after": 138530.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-atax",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-bicg",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-correlation",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-deriche",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-durbin",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-fdtd-2d",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-floyd-warshall",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-gemm",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-gesummv",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-gramschmidt",
+      "unit": "B/op",
+      "before": 138529.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-heat-3d",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-jacobi-1d",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-jacobi-2d",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-lu",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-ludcmp",
+      "unit": "B/op",
+      "before": 138529.0,
+      "after": 138530.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-mvt",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-seidel-2d",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-symm",
+      "unit": "B/op",
+      "before": 138529.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-syr2k",
+      "unit": "B/op",
+      "before": 138529.0,
+      "after": 138530.0
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/polybench-trmm",
+      "unit": "B/op",
+      "before": 138530.0,
+      "after": 138531.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/tiny.add",
+      "unit": "B/op",
+      "before": 1406688.0,
+      "after": 1173040.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/tiny.add",
+      "unit": "allocs/op",
+      "before": 87918.0,
+      "after": 73315.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/memory.sum",
+      "unit": "B/op",
+      "before": 53744.0,
+      "after": 48608.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/memory.sum",
+      "unit": "allocs/op",
+      "before": 6718.0,
+      "after": 6076.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/memory_tree.run",
+      "unit": "B/op",
+      "before": 1584.0,
+      "after": 1600.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/memory_tree.run",
+      "unit": "allocs/op",
+      "before": 99.0,
+      "after": 100.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/dispatch.apply",
+      "unit": "B/op",
+      "before": 1918344.0,
+      "after": 1751976.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/dispatch.apply",
+      "unit": "allocs/op",
+      "before": 79931.0,
+      "after": 72999.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/many_funcs.run",
+      "unit": "B/op",
+      "before": 677576.0,
+      "after": 592128.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/many_funcs.run",
+      "unit": "allocs/op",
+      "before": 84697.0,
+      "after": 74016.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/linked_list.sum",
+      "unit": "B/op",
+      "before": 1544.0,
+      "after": 1560.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/linked_list.sum",
+      "unit": "allocs/op",
+      "before": 193.0,
+      "after": 195.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/sha256.hashN",
+      "unit": "B/op",
+      "before": 296.0,
+      "after": 320.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/sha256.hashN",
+      "unit": "allocs/op",
+      "before": 37.0,
+      "after": 40.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/raytrace.render",
+      "unit": "B/op",
+      "before": 56.0,
+      "after": 48.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/raytrace.render",
+      "unit": "allocs/op",
+      "before": 7.0,
+      "after": 6.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/json-as.serializeN",
+      "unit": "B/op",
+      "before": 504.0,
+      "after": 536.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/json-as.serializeN",
+      "unit": "allocs/op",
+      "before": 63.0,
+      "after": 67.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/utf-as.convertN",
+      "unit": "B/op",
+      "before": 88.0,
+      "after": 80.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/utf-as.convertN",
+      "unit": "allocs/op",
+      "before": 11.0,
+      "after": 10.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/json-as-simd.serializeN",
+      "unit": "B/op",
+      "before": 448.0,
+      "after": 432.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/json-as-simd.serializeN",
+      "unit": "allocs/op",
+      "before": 56.0,
+      "after": 54.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/json-as-simd.deserializeN",
+      "unit": "B/op",
+      "before": 240.0,
+      "after": 224.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/json-as-simd.deserializeN",
+      "unit": "allocs/op",
+      "before": 30.0,
+      "after": 28.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/blake-as-simd.hashN",
+      "unit": "B/op",
+      "before": 40.0,
+      "after": 32.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/blake-as-simd.hashN",
+      "unit": "allocs/op",
+      "before": 5.0,
+      "after": 4.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/utf-as-simd.convertN",
+      "unit": "B/op",
+      "before": 224.0,
+      "after": 232.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/utf-as-simd.convertN",
+      "unit": "allocs/op",
+      "before": 28.0,
+      "after": 29.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/blake3.blake3_hash",
+      "unit": "B/op",
+      "before": 5040.0,
+      "after": 6720.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/blake3.blake3_hash",
+      "unit": "allocs/op",
+      "before": 210.0,
+      "after": 280.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/blake3.blake3_keyed_hash",
+      "unit": "B/op",
+      "before": 6720.0,
+      "after": 5880.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/blake3.blake3_keyed_hash",
+      "unit": "allocs/op",
+      "before": 280.0,
+      "after": 245.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/blake3.blake3_derive_key",
+      "unit": "B/op",
+      "before": 6720.0,
+      "after": 5880.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/blake3.blake3_derive_key",
+      "unit": "allocs/op",
+      "before": 280.0,
+      "after": 245.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/qoi.qoi_encode_run",
+      "unit": "B/op",
+      "before": 1304.0,
+      "after": 1328.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/qoi.qoi_encode_run",
+      "unit": "allocs/op",
+      "before": 163.0,
+      "after": 166.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/qoi.qoi_decode_run",
+      "unit": "B/op",
+      "before": 1232.0,
+      "after": 1216.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/qoi.qoi_decode_run",
+      "unit": "allocs/op",
+      "before": 154.0,
+      "after": 152.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/lz4.lz4_compress_run",
+      "unit": "B/op",
+      "before": 320.0,
+      "after": 272.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/lz4.lz4_compress_run",
+      "unit": "allocs/op",
+      "before": 40.0,
+      "after": 34.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/lz4.lz4_decompress_run",
+      "unit": "B/op",
+      "before": 2656.0,
+      "after": 3128.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/lz4.lz4_decompress_run",
+      "unit": "allocs/op",
+      "before": 332.0,
+      "after": 391.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/zstd.zstd_decompress_run",
+      "unit": "B/op",
+      "before": 2072.0,
+      "after": 2096.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/zstd.zstd_decompress_run",
+      "unit": "allocs/op",
+      "before": 259.0,
+      "after": 262.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/yyjson.yyjson_run",
+      "unit": "B/op",
+      "before": 11576.0,
+      "after": 12872.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/yyjson.yyjson_run",
+      "unit": "allocs/op",
+      "before": 1447.0,
+      "after": 1609.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/utf8proc.utf8proc_run",
+      "unit": "B/op",
+      "before": 13544.0,
+      "after": 13968.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/utf8proc.utf8proc_run",
+      "unit": "allocs/op",
+      "before": 1693.0,
+      "after": 1746.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/libtommath.libtommath_run",
+      "unit": "B/op",
+      "before": 640.0,
+      "after": 656.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/libtommath.libtommath_run",
+      "unit": "allocs/op",
+      "before": 80.0,
+      "after": 82.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/nanosvg.nanosvg_run",
+      "unit": "B/op",
+      "before": 3472.0,
+      "after": 3328.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/nanosvg.nanosvg_run",
+      "unit": "allocs/op",
+      "before": 434.0,
+      "after": 416.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/kissfft.kissfft_run",
+      "unit": "B/op",
+      "before": 48.0,
+      "after": 40.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/kissfft.kissfft_run",
+      "unit": "allocs/op",
+      "before": 6.0,
+      "after": 5.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/monocypher.monocypher_run",
+      "unit": "B/op",
+      "before": 488.0,
+      "after": 496.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/monocypher.monocypher_run",
+      "unit": "allocs/op",
+      "before": 61.0,
+      "after": 62.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/drwav.drwav_run",
+      "unit": "B/op",
+      "before": 1584.0,
+      "after": 1576.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/drwav.drwav_run",
+      "unit": "allocs/op",
+      "before": 198.0,
+      "after": 197.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/fastfloat.fastfloat_run",
+      "unit": "B/op",
+      "before": 34208.0,
+      "after": 34512.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/fastfloat.fastfloat_run",
+      "unit": "allocs/op",
+      "before": 4276.0,
+      "after": 4314.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/pcre2.pcre2_run",
+      "unit": "B/op",
+      "before": 952.0,
+      "after": 896.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/pcre2.pcre2_run",
+      "unit": "allocs/op",
+      "before": 119.0,
+      "after": 112.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-atax.polybench_run",
+      "unit": "B/op",
+      "before": 280.0,
+      "after": 296.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-atax.polybench_run",
+      "unit": "allocs/op",
+      "before": 35.0,
+      "after": 37.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-bicg.polybench_run",
+      "unit": "B/op",
+      "before": 200.0,
+      "after": 176.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-bicg.polybench_run",
+      "unit": "allocs/op",
+      "before": 25.0,
+      "after": 22.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-durbin.polybench_run",
+      "unit": "B/op",
+      "before": 824.0,
+      "after": 792.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-durbin.polybench_run",
+      "unit": "allocs/op",
+      "before": 103.0,
+      "after": 99.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-gesummv.polybench_run",
+      "unit": "B/op",
+      "before": 200.0,
+      "after": 216.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-gesummv.polybench_run",
+      "unit": "allocs/op",
+      "before": 25.0,
+      "after": 27.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-mvt.polybench_run",
+      "unit": "B/op",
+      "before": 192.0,
+      "after": 184.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-mvt.polybench_run",
+      "unit": "allocs/op",
+      "before": 24.0,
+      "after": 23.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-trisolv.polybench_run",
+      "unit": "B/op",
+      "before": 520.0,
+      "after": 464.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-trisolv.polybench_run",
+      "unit": "allocs/op",
+      "before": 65.0,
+      "after": 58.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-trmm.polybench_run",
+      "unit": "B/op",
+      "before": 64.0,
+      "after": 56.0
+    },
+    {
+      "name": "BenchmarkWazeroExec/polybench-trmm.polybench_run",
+      "unit": "allocs/op",
+      "before": 8.0,
+      "after": 7.0
+    },
+    {
+      "name": "BenchmarkCompileCommuteSelfUpdate/blake-as/on",
+      "unit": "B/op",
+      "before": 217754.0,
+      "after": 217755.0
+    },
+    {
+      "name": "BenchmarkCompileCommuteSelfUpdate/blake-as-simd/off",
+      "unit": "B/op",
+      "before": 538256.0,
+      "after": 538258.0
+    },
+    {
+      "name": "BenchmarkValidateWorkers/json-as/p2",
+      "unit": "B/op",
+      "before": 10791.0,
+      "after": 10779.0
+    },
+    {
+      "name": "BenchmarkValidateWorkers/json-as/p4",
+      "unit": "B/op",
+      "before": 15700.0,
+      "after": 15707.0
+    },
+    {
+      "name": "BenchmarkValidateWorkers/json-as/p8",
+      "unit": "B/op",
+      "before": 24199.0,
+      "after": 24191.0
+    },
+    {
+      "name": "BenchmarkCompile/tiny",
+      "unit": "B/op",
+      "before": 8064.0,
+      "after": 8067.0
+    },
+    {
+      "name": "BenchmarkCompile/memory",
+      "unit": "B/op",
+      "before": 10513.0,
+      "after": 10521.0
+    },
+    {
+      "name": "BenchmarkCompile/linked_list",
+      "unit": "B/op",
+      "before": 12331.0,
+      "after": 12329.0
+    },
+    {
+      "name": "BenchmarkCompile/nbody",
+      "unit": "B/op",
+      "before": 66467.0,
+      "after": 66301.0
+    },
+    {
+      "name": "BenchmarkCompile/fannkuch",
+      "unit": "B/op",
+      "before": 67510.0,
+      "after": 67211.0
+    },
+    {
+      "name": "BenchmarkCompile/matmul",
+      "unit": "B/op",
+      "before": 62605.0,
+      "after": 62651.0
+    },
+    {
+      "name": "BenchmarkCompile/sha256",
+      "unit": "B/op",
+      "before": 63712.0,
+      "after": 63925.0
+    },
+    {
+      "name": "BenchmarkCompile/raytrace",
+      "unit": "B/op",
+      "before": 130692.0,
+      "after": 130865.0
+    },
+    {
+      "name": "BenchmarkCompile/json-as",
+      "unit": "B/op",
+      "before": 134056.0,
+      "after": 134108.0
+    },
+    {
+      "name": "BenchmarkCompile/blake-as",
+      "unit": "B/op",
+      "before": 142305.0,
+      "after": 142485.0
+    },
+    {
+      "name": "BenchmarkCompile/utf-as",
+      "unit": "B/op",
+      "before": 119484.0,
+      "after": 119536.0
+    },
+    {
+      "name": "BenchmarkCompile/utf-as-simd",
+      "unit": "B/op",
+      "before": 125608.0,
+      "after": 125629.0
+    },
+    {
+      "name": "BenchmarkCompile/blake3",
+      "unit": "B/op",
+      "before": 158472.0,
+      "after": 158522.0
+    },
+    {
+      "name": "BenchmarkCompile/qoi",
+      "unit": "B/op",
+      "before": 66296.0,
+      "after": 66304.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-covariance",
+      "unit": "B/op",
+      "before": 62608.0,
+      "after": 62607.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-fdtd-2d",
+      "unit": "B/op",
+      "before": 125223.0,
+      "after": 125224.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-gesummv",
+      "unit": "B/op",
+      "before": 61544.0,
+      "after": 61543.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-gramschmidt",
+      "unit": "B/op",
+      "before": 66117.0,
+      "after": 66093.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-heat-3d",
+      "unit": "B/op",
+      "before": 70160.0,
+      "after": 70140.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-jacobi-1d",
+      "unit": "B/op",
+      "before": 61577.0,
+      "after": 61557.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-jacobi-2d",
+      "unit": "B/op",
+      "before": 61909.0,
+      "after": 61781.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-lu",
+      "unit": "B/op",
+      "before": 66766.0,
+      "after": 66688.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-ludcmp",
+      "unit": "B/op",
+      "before": 128123.0,
+      "after": 127851.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-mvt",
+      "unit": "B/op",
+      "before": 66589.0,
+      "after": 66446.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-nussinov",
+      "unit": "B/op",
+      "before": 66120.0,
+      "after": 65977.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-seidel-2d",
+      "unit": "B/op",
+      "before": 64518.0,
+      "after": 64475.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-symm",
+      "unit": "B/op",
+      "before": 67369.0,
+      "after": 67570.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-syr2k",
+      "unit": "B/op",
+      "before": 65636.0,
+      "after": 65736.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-syrk",
+      "unit": "B/op",
+      "before": 65338.0,
+      "after": 65460.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-trisolv",
+      "unit": "B/op",
+      "before": 63959.0,
+      "after": 64040.0
+    },
+    {
+      "name": "BenchmarkCompile/polybench-trmm",
+      "unit": "B/op",
+      "before": 66018.0,
+      "after": 66073.0
+    },
+    {
+      "name": "BenchmarkCompile/wren-modulo",
+      "unit": "B/op",
+      "before": 426536.0,
+      "after": 426991.0
+    },
+    {
+      "name": "BenchmarkCompileCompact/tiny",
+      "unit": "B/op",
+      "before": 10570.0,
+      "after": 10587.0
+    },
+    {
+      "name": "BenchmarkCompileCompact/sha256",
+      "unit": "B/op",
+      "before": 65992.0,
+      "after": 65991.0
+    },
+    {
+      "name": "BenchmarkCompileCompact/polybench-2mm",
+      "unit": "B/op",
+      "before": 71855.0,
+      "after": 71856.0
+    },
+    {
+      "name": "BenchmarkCompileCompact/polybench-durbin",
+      "unit": "B/op",
+      "before": 68967.0,
+      "after": 68968.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/tiny/p1",
+      "unit": "B/op",
+      "before": 7944.0,
+      "after": 7975.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/tiny/p2",
+      "unit": "B/op",
+      "before": 17243.0,
+      "after": 17244.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/tiny/p4",
+      "unit": "B/op",
+      "before": 17240.0,
+      "after": 17244.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/tiny/p8",
+      "unit": "B/op",
+      "before": 17242.0,
+      "after": 17243.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/fib_rec/p1",
+      "unit": "B/op",
+      "before": 26094.0,
+      "after": 26383.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/fib_rec/p2",
+      "unit": "B/op",
+      "before": 26167.0,
+      "after": 26818.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/fib_rec/p4",
+      "unit": "B/op",
+      "before": 26485.0,
+      "after": 27191.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/fib_rec/p8",
+      "unit": "B/op",
+      "before": 26988.0,
+      "after": 26977.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/many_funcs/p1",
+      "unit": "B/op",
+      "before": 70053.0,
+      "after": 69497.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/many_funcs/p2",
+      "unit": "B/op",
+      "before": 144465.0,
+      "after": 144525.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/many_funcs/p4",
+      "unit": "B/op",
+      "before": 190806.0,
+      "after": 190761.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/many_funcs/p8",
+      "unit": "B/op",
+      "before": 283628.0,
+      "after": 283471.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/json-as/p1",
+      "unit": "B/op",
+      "before": 134885.0,
+      "after": 134549.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/json-as/p2",
+      "unit": "B/op",
+      "before": 407981.0,
+      "after": 408128.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/json-as/p4",
+      "unit": "B/op",
+      "before": 526491.0,
+      "after": 526953.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/json-as/p8",
+      "unit": "B/op",
+      "before": 723246.0,
+      "after": 723503.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/blake-as/p1",
+      "unit": "B/op",
+      "before": 143509.0,
+      "after": 142881.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/blake-as/p2",
+      "unit": "B/op",
+      "before": 235013.0,
+      "after": 235022.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/blake-as/p2",
+      "unit": "allocs/op",
+      "before": 123.0,
+      "after": 124.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/blake-as/p4",
+      "unit": "B/op",
+      "before": 286958.0,
+      "after": 287084.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/blake-as/p4",
+      "unit": "allocs/op",
+      "before": 177.0,
+      "after": 178.0
+    },
+    {
+      "name": "BenchmarkCompileWorkers/blake-as/p8",
+      "unit": "B/op",
+      "before": 344618.0,
+      "after": 344458.0
+    },
+    {
+      "name": "BenchmarkCompileFull/many_funcs",
+      "unit": "B/op",
+      "before": 179329.0,
+      "after": 179330.0
+    },
+    {
+      "name": "BenchmarkCompileFull/matmul",
+      "unit": "B/op",
+      "before": 77553.0,
+      "after": 77552.0
+    },
+    {
+      "name": "BenchmarkCompileFull/raytrace",
+      "unit": "B/op",
+      "before": 207883.0,
+      "after": 207882.0
+    },
+    {
+      "name": "BenchmarkCompileFull/json-as",
+      "unit": "B/op",
+      "before": 306374.0,
+      "after": 306371.0
+    },
+    {
+      "name": "BenchmarkCompileFull/json-as-simd",
+      "unit": "B/op",
+      "before": 327136.0,
+      "after": 327131.0
+    },
+    {
+      "name": "BenchmarkCompileFull/blake-as-simd",
+      "unit": "B/op",
+      "before": 538313.0,
+      "after": 538310.0
+    },
+    {
+      "name": "BenchmarkCompileFull/utf-as-simd",
+      "unit": "B/op",
+      "before": 349493.0,
+      "after": 349491.0
+    },
+    {
+      "name": "BenchmarkCompileFull/coremark",
+      "unit": "B/op",
+      "before": 338189.0,
+      "after": 338187.0
+    },
+    {
+      "name": "BenchmarkCompileFull/zlib",
+      "unit": "B/op",
+      "before": 505216.0,
+      "after": 505213.0
+    },
+    {
+      "name": "BenchmarkCompileFull/zstd",
+      "unit": "B/op",
+      "before": 1629836.0,
+      "after": 1629834.0
+    },
+    {
+      "name": "BenchmarkCompileFull/yyjson",
+      "unit": "B/op",
+      "before": 4024250.0,
+      "after": 4024233.0
+    },
+    {
+      "name": "BenchmarkCompileFull/miniz",
+      "unit": "B/op",
+      "before": 661163.0,
+      "after": 661157.0
+    },
+    {
+      "name": "BenchmarkCompileFull/monocypher",
+      "unit": "B/op",
+      "before": 443720.0,
+      "after": 443717.0
+    },
+    {
+      "name": "BenchmarkCompileFull/fastfloat",
+      "unit": "B/op",
+      "before": 819779.0,
+      "after": 819775.0
+    },
+    {
+      "name": "BenchmarkCompileFull/pcre2",
+      "unit": "B/op",
+      "before": 5567643.0,
+      "after": 5567639.0
+    },
+    {
+      "name": "BenchmarkCompileFull/lodepng",
+      "unit": "B/op",
+      "before": 1505240.0,
+      "after": 1505238.0
+    },
+    {
+      "name": "BenchmarkCompileFull/tinyxml2",
+      "unit": "B/op",
+      "before": 837209.0,
+      "after": 837199.0
+    },
+    {
+      "name": "BenchmarkCompileFull/lua",
+      "unit": "B/op",
+      "before": 2269563.0,
+      "after": 2269560.0
+    },
+    {
+      "name": "BenchmarkCompileFull/embench-huffbench",
+      "unit": "B/op",
+      "before": 196427.0,
+      "after": 196426.0
+    },
+    {
+      "name": "BenchmarkCompileFull/embench-nettle-aes",
+      "unit": "B/op",
+      "before": 208379.0,
+      "after": 208378.0
+    },
+    {
+      "name": "BenchmarkCompileFull/embench-qrduino",
+      "unit": "B/op",
+      "before": 757130.0,
+      "after": 757131.0
+    },
+    {
+      "name": "BenchmarkCompileFull/sightglass-shootout-base64",
+      "unit": "B/op",
+      "before": 692556.0,
+      "after": 692555.0
+    },
+    {
+      "name": "BenchmarkCompileFull/polybench-2mm",
+      "unit": "B/op",
+      "before": 112290.0,
+      "after": 112289.0
+    },
+    {
+      "name": "BenchmarkCompileFull/polybench-adi",
+      "unit": "B/op",
+      "before": 177539.0,
+      "after": 177538.0
+    },
+    {
+      "name": "BenchmarkCompileFull/polybench-correlation",
+      "unit": "B/op",
+      "before": 110354.0,
+      "after": 110353.0
+    },
+    {
+      "name": "BenchmarkCompileFull/polybench-covariance",
+      "unit": "B/op",
+      "before": 103002.0,
+      "after": 103001.0
+    },
+    {
+      "name": "BenchmarkCompileFull/polybench-doitgen",
+      "unit": "B/op",
+      "before": 175787.0,
+      "after": 175786.0
+    },
+    {
+      "name": "BenchmarkCompileFull/polybench-durbin",
+      "unit": "B/op",
+      "before": 102466.0,
+      "after": 102465.0
+    },
+    {
+      "name": "BenchmarkCompileFull/polybench-gemm",
+      "unit": "B/op",
+      "before": 105178.0,
+      "after": 105177.0
+    },
+    {
+      "name": "BenchmarkCompileFull/polybench-gemver",
+      "unit": "B/op",
+      "before": 176315.0,
+      "after": 176314.0
+    },
+    {
+      "name": "BenchmarkCompileFull/polybench-heat-3d",
+      "unit": "B/op",
+      "before": 118474.0,
+      "after": 118473.0
+    },
+    {
+      "name": "BenchmarkCompileFull/polybench-symm",
+      "unit": "B/op",
+      "before": 112498.0,
+      "after": 112497.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/tiny/p2",
+      "unit": "B/op",
+      "before": 27037.0,
+      "after": 27039.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/tiny/p4",
+      "unit": "B/op",
+      "before": 27038.0,
+      "after": 27039.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/tiny/p8",
+      "unit": "B/op",
+      "before": 27038.0,
+      "after": 27039.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/many_funcs/p2",
+      "unit": "B/op",
+      "before": 239447.0,
+      "after": 239422.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/many_funcs/p4",
+      "unit": "B/op",
+      "before": 287424.0,
+      "after": 287427.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/many_funcs/p8",
+      "unit": "B/op",
+      "before": 383590.0,
+      "after": 383487.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/many_funcs/p8",
+      "unit": "allocs/op",
+      "before": 213.0,
+      "after": 214.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/many_funcs/auto",
+      "unit": "B/op",
+      "before": 287414.0,
+      "after": 287442.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/json-as/p1",
+      "unit": "B/op",
+      "before": 306231.0,
+      "after": 306227.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/json-as/p2",
+      "unit": "B/op",
+      "before": 491347.0,
+      "after": 491470.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/json-as/p4",
+      "unit": "B/op",
+      "before": 611863.0,
+      "after": 610906.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/json-as/p8",
+      "unit": "B/op",
+      "before": 815165.0,
+      "after": 813615.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/json-as/p8",
+      "unit": "allocs/op",
+      "before": 874.0,
+      "after": 873.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/json-as/auto",
+      "unit": "B/op",
+      "before": 610908.0,
+      "after": 611337.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/blake-as/p2",
+      "unit": "B/op",
+      "before": 254749.0,
+      "after": 254748.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/blake-as/p4",
+      "unit": "B/op",
+      "before": 309111.0,
+      "after": 309001.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/blake-as/p4",
+      "unit": "allocs/op",
+      "before": 320.0,
+      "after": 319.0
+    },
+    {
+      "name": "BenchmarkCompileFullWorkers/blake-as/p8",
+      "unit": "B/op",
+      "before": 366571.0,
+      "after": 366529.0
+    },
+    {
+      "name": "BenchmarkCompileMultiModuleThroughput/many_funcs/p1",
+      "unit": "B/op",
+      "before": 179185.0,
+      "after": 179184.0
+    },
+    {
+      "name": "BenchmarkCompileMultiModuleThroughput/many_funcs/auto",
+      "unit": "B/op",
+      "before": 305741.0,
+      "after": 305696.0
+    },
+    {
+      "name": "BenchmarkCompileMultiModuleThroughput/json-as/p1",
+      "unit": "B/op",
+      "before": 306226.0,
+      "after": 306225.0
+    },
+    {
+      "name": "BenchmarkCompileMultiModuleThroughput/json-as/auto",
+      "unit": "B/op",
+      "before": 612600.0,
+      "after": 612575.0
+    },
+    {
+      "name": "BenchmarkCompileMultiModuleThroughput/json-as/auto",
+      "unit": "allocs/op",
+      "before": 499.0,
+      "after": 498.0
+    },
+    {
+      "name": "BenchmarkExecParallel/independent/fib_rec.fib",
+      "unit": "B/op",
+      "before": 5.0,
+      "after": 0.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/fib_rec.fib",
+      "unit": "B/op",
+      "before": 6.0,
+      "after": 8.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/nbody.step",
+      "unit": "B/op",
+      "before": 4.0,
+      "after": 1.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/fannkuch.run",
+      "unit": "B/op",
+      "before": 6.0,
+      "after": 2.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/raytrace.render",
+      "unit": "B/op",
+      "before": 5.0,
+      "after": 3.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/blake-as.hashN",
+      "unit": "B/op",
+      "before": 3.0,
+      "after": 4.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/utf-as.convertN",
+      "unit": "B/op",
+      "before": 1.0,
+      "after": 0.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/blake-as-simd.hashN",
+      "unit": "B/op",
+      "before": 5.0,
+      "after": 1.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-2mm.polybench_run",
+      "unit": "B/op",
+      "before": 0.0,
+      "after": 1.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-3mm.polybench_run",
+      "unit": "B/op",
+      "before": 3.0,
+      "after": 2.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-adi.polybench_run",
+      "unit": "B/op",
+      "before": 12.0,
+      "after": 9.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-cholesky.polybench_run",
+      "unit": "B/op",
+      "before": 7.0,
+      "after": 2.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-correlation.polybench_run",
+      "unit": "B/op",
+      "before": 3.0,
+      "after": 1.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-covariance.polybench_run",
+      "unit": "B/op",
+      "before": 2.0,
+      "after": 0.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-deriche.polybench_run",
+      "unit": "B/op",
+      "before": 2.0,
+      "after": 3.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-doitgen.polybench_run",
+      "unit": "B/op",
+      "before": 3.0,
+      "after": 4.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-fdtd-2d.polybench_run",
+      "unit": "B/op",
+      "before": 8.0,
+      "after": 4.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-floyd-warshall.polybench_run",
+      "unit": "B/op",
+      "before": 8.0,
+      "after": 6.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-gemm.polybench_run",
+      "unit": "B/op",
+      "before": 3.0,
+      "after": 2.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-gramschmidt.polybench_run",
+      "unit": "B/op",
+      "before": 5.0,
+      "after": 3.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-heat-3d.polybench_run",
+      "unit": "B/op",
+      "before": 3.0,
+      "after": 1.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-jacobi-2d.polybench_run",
+      "unit": "B/op",
+      "before": 1.0,
+      "after": 2.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-lu.polybench_run",
+      "unit": "B/op",
+      "before": 15.0,
+      "after": 5.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-ludcmp.polybench_run",
+      "unit": "B/op",
+      "before": 11.0,
+      "after": 13.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-nussinov.polybench_run",
+      "unit": "B/op",
+      "before": 1.0,
+      "after": 7.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-seidel-2d.polybench_run",
+      "unit": "B/op",
+      "before": 17.0,
+      "after": 4.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-syr2k.polybench_run",
+      "unit": "B/op",
+      "before": 2.0,
+      "after": 4.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-syrk.polybench_run",
+      "unit": "B/op",
+      "before": 1.0,
+      "after": 0.0
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-trmm.polybench_run",
+      "unit": "B/op",
+      "before": 2.0,
+      "after": 0.0
+    }
+  ],
+  "timing_outliers_10_percent": [
+    {
+      "name": "BenchmarkWazeroInstantiate/qoi",
+      "before_ns": 140252.0,
+      "after_ns": 175302.0,
+      "percent": 24.990730969968332
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/zlib",
+      "before_ns": 146497.0,
+      "after_ns": 178476.0,
+      "percent": 21.829115954592936
+    },
+    {
+      "name": "BenchmarkWazeroInstantiate/lz4",
+      "before_ns": 148374.0,
+      "after_ns": 176960.0,
+      "percent": 19.26617871055576
+    },
+    {
+      "name": "BenchmarkExecParallel/process/polybench-jacobi-2d.polybench_run",
+      "before_ns": 715388.0,
+      "after_ns": 798064.0,
+      "percent": 11.556805537694226
+    },
+    {
+      "name": "BenchmarkExecCommuteSelfUpdate/blake-as.hashN/on",
+      "before_ns": 480468.0,
+      "after_ns": 428095.0,
+      "percent": -10.900413763247496
+    },
+    {
+      "name": "BenchmarkExecCallOverhead_wago",
+      "before_ns": 24.26,
+      "after_ns": 21.01,
+      "percent": -13.396537510305029
+    }
+  ],
+  "caveat": "One sample per full case; timing differences are flags, not statistical regression findings."
+}

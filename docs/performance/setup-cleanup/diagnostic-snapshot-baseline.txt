@@ -1,0 +1,25 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkImportSnapshot/1-16  	 5547963	        43.20 ns/op	      48 B/op	       1 allocs/op
+BenchmarkImportSnapshot/1-16  	 5545633	        43.48 ns/op	      48 B/op	       1 allocs/op
+BenchmarkImportSnapshot/1-16  	 5207287	        43.91 ns/op	      48 B/op	       1 allocs/op
+BenchmarkImportSnapshot/1-16  	 5084620	        43.02 ns/op	      48 B/op	       1 allocs/op
+BenchmarkImportSnapshot/1-16  	 5244822	        43.45 ns/op	      48 B/op	       1 allocs/op
+BenchmarkImportSnapshot/1-16  	 5641214	        43.04 ns/op	      48 B/op	       1 allocs/op
+BenchmarkImportSnapshot/1-16  	 5675097	        43.45 ns/op	      48 B/op	       1 allocs/op
+BenchmarkImportSnapshot/1-16  	 5530801	        43.59 ns/op	      48 B/op	       1 allocs/op
+BenchmarkImportSnapshot/1-16  	 5393893	        43.29 ns/op	      48 B/op	       1 allocs/op
+BenchmarkImportSnapshot/1-16  	 5259842	        42.39 ns/op	      48 B/op	       1 allocs/op
+BenchmarkImportSnapshot/46-16 	  128013	      1926 ns/op	    2208 B/op	      46 allocs/op
+BenchmarkImportSnapshot/46-16 	  112735	      1959 ns/op	    2208 B/op	      46 allocs/op
+BenchmarkImportSnapshot/46-16 	  125041	      1972 ns/op	    2208 B/op	      46 allocs/op
+BenchmarkImportSnapshot/46-16 	  119614	      1941 ns/op	    2208 B/op	      46 allocs/op
+BenchmarkImportSnapshot/46-16 	  109996	      1954 ns/op	    2208 B/op	      46 allocs/op
+BenchmarkImportSnapshot/46-16 	  123457	      1917 ns/op	    2208 B/op	      46 allocs/op
+BenchmarkImportSnapshot/46-16 	  110524	      1945 ns/op	    2208 B/op	      46 allocs/op
+BenchmarkImportSnapshot/46-16 	  117162	      1962 ns/op	    2208 B/op	      46 allocs/op
+BenchmarkImportSnapshot/46-16 	  110836	      1935 ns/op	    2208 B/op	      46 allocs/op
+BenchmarkImportSnapshot/46-16 	  104841	      1933 ns/op	    2208 B/op	      46 allocs/op
+PASS

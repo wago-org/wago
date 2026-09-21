@@ -1,0 +1,210 @@
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports-16 	    1000	     15532 ns/op	   32659 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Instantiate-16         	    1000	      6648 ns/op	    4000 B/op	      60 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16       	    1000	      3046 ns/op	     528 B/op	       4 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Close-16               	    1000	      6645 ns/op	     224 B/op	       3 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16           	    1000	     29893 ns/op	   37472 B/op	     443 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Imports-16                    	    1000	     16346 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Instantiate-16                	    1000	     11519 ns/op	    5128 B/op	      82 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/LookupExecute-16              	    1000	      7672 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Close-16                      	    1000	      8259 ns/op	     384 B/op	       7 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Lifecycle-16                  	    1000	     39233 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Imports-16                 	    1000	     16931 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Instantiate-16             	    1000	     14799 ns/op	    5672 B/op	      91 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/LookupExecute-16           	    1000	     12880 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Close-16                   	    1000	      9566 ns/op	     480 B/op	       9 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Lifecycle-16               	    1000	     46635 ns/op	   39112 B/op	     478 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports-16 	    1000	     17828 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Instantiate-16         	    1000	      6981 ns/op	    4000 B/op	      60 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16       	    1000	      3201 ns/op	     528 B/op	       4 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Close-16               	    1000	      6891 ns/op	     224 B/op	       3 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16           	    1000	     28795 ns/op	   37472 B/op	     443 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Imports-16                    	    1000	     15939 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Instantiate-16                	    1000	     11060 ns/op	    5128 B/op	      82 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/LookupExecute-16              	    1000	      7471 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Close-16                      	    1000	      8593 ns/op	     384 B/op	       7 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Lifecycle-16                  	    1000	     39671 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Imports-16                 	    1000	     15633 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Instantiate-16             	    1000	     14814 ns/op	    5672 B/op	      91 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/LookupExecute-16           	    1000	     12417 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Close-16                   	    1000	      9931 ns/op	     480 B/op	       9 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Lifecycle-16               	    1000	     47619 ns/op	   39112 B/op	     478 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports-16 	    1000	     15239 ns/op	   32654 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Instantiate-16         	    1000	      6375 ns/op	    4000 B/op	      60 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16       	    1000	      3164 ns/op	     528 B/op	       4 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Close-16               	    1000	      6259 ns/op	     224 B/op	       3 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16           	    1000	     30227 ns/op	   37472 B/op	     443 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Imports-16                    	    1000	     16943 ns/op	   32653 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Instantiate-16                	    1000	     11792 ns/op	    5128 B/op	      82 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/LookupExecute-16              	    1000	      7435 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Close-16                      	    1000	      8550 ns/op	     384 B/op	       7 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Lifecycle-16                  	    1000	     40405 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Imports-16                 	    1000	     15678 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Instantiate-16             	    1000	     14784 ns/op	    5672 B/op	      91 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/LookupExecute-16           	    1000	     12501 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Close-16                   	    1000	      9596 ns/op	     480 B/op	       9 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Lifecycle-16               	    1000	     47877 ns/op	   39112 B/op	     478 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports-16 	    1000	     16302 ns/op	   32659 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Instantiate-16         	    1000	      6981 ns/op	    4000 B/op	      60 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16       	    1000	      3545 ns/op	     528 B/op	       4 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Close-16               	    1000	      6979 ns/op	     224 B/op	       3 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16           	    1000	     29688 ns/op	   37472 B/op	     443 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Imports-16                    	    1000	     17017 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Instantiate-16                	    1000	     13255 ns/op	    5128 B/op	      82 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/LookupExecute-16              	    1000	      8373 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Close-16                      	    1000	      8550 ns/op	     384 B/op	       7 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Lifecycle-16                  	    1000	     45393 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Imports-16                 	    1000	     15907 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Instantiate-16             	    1000	     16889 ns/op	    5672 B/op	      91 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/LookupExecute-16           	    1000	     14685 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Close-16                   	    1000	      9991 ns/op	     480 B/op	       9 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Lifecycle-16               	    1000	     55616 ns/op	   39112 B/op	     478 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports-16 	    1000	     17170 ns/op	   32659 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Instantiate-16         	    1000	      7124 ns/op	    4000 B/op	      60 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16       	    1000	      3104 ns/op	     528 B/op	       4 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Close-16               	    1000	      6406 ns/op	     224 B/op	       3 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16           	    1000	     28666 ns/op	   37472 B/op	     443 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Imports-16                    	    1000	     16818 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Instantiate-16                	    1000	     11142 ns/op	    5128 B/op	      82 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/LookupExecute-16              	    1000	      7108 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Close-16                      	    1000	      8628 ns/op	     384 B/op	       7 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Lifecycle-16                  	    1000	     42956 ns/op	   38477 B/op	     467 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Imports-16                 	    1000	     17702 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Instantiate-16             	    1000	     15507 ns/op	    5672 B/op	      91 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/LookupExecute-16           	    1000	     12620 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Close-16                   	    1000	      9486 ns/op	     480 B/op	       9 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Lifecycle-16               	    1000	     50008 ns/op	   39112 B/op	     478 allocs/op
+PASS
+# round 6
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports-16 	    1000	     15145 ns/op	   32653 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Instantiate-16         	    1000	      6321 ns/op	    4000 B/op	      60 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16       	    1000	      3290 ns/op	     528 B/op	       4 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Close-16               	    1000	      5980 ns/op	     224 B/op	       3 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16           	    1000	     29721 ns/op	   37472 B/op	     443 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Imports-16                    	    1000	     17978 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Instantiate-16                	    1000	     11273 ns/op	    5128 B/op	      82 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/LookupExecute-16              	    1000	      7392 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Close-16                      	    1000	      8251 ns/op	     384 B/op	       7 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Lifecycle-16                  	    1000	     41157 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Imports-16                 	    1000	     15728 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Instantiate-16             	    1000	     14899 ns/op	    5672 B/op	      91 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/LookupExecute-16           	    1000	     12442 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Close-16                   	    1000	      9542 ns/op	     480 B/op	       9 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Lifecycle-16               	    1000	     48260 ns/op	   39112 B/op	     478 allocs/op
+PASS
+# round 7
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports-16 	    1000	     16817 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Instantiate-16         	    1000	      7155 ns/op	    4000 B/op	      60 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16       	    1000	      3186 ns/op	     528 B/op	       4 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Close-16               	    1000	      6276 ns/op	     224 B/op	       3 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16           	    1000	     29619 ns/op	   37472 B/op	     443 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Imports-16                    	    1000	     17058 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Instantiate-16                	    1000	     11307 ns/op	    5128 B/op	      82 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/LookupExecute-16              	    1000	      7323 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Close-16                      	    1000	      8799 ns/op	     384 B/op	       7 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Lifecycle-16                  	    1000	     43240 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Imports-16                 	    1000	     16290 ns/op	   32653 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Instantiate-16             	    1000	     14804 ns/op	    5672 B/op	      91 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/LookupExecute-16           	    1000	     12810 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Close-16                   	    1000	      9568 ns/op	     480 B/op	       9 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Lifecycle-16               	    1000	     49876 ns/op	   39112 B/op	     478 allocs/op
+PASS
+# round 8
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports-16 	    1000	     15606 ns/op	   32659 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Instantiate-16         	    1000	      7549 ns/op	    4000 B/op	      60 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16       	    1000	      3254 ns/op	     529 B/op	       4 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Close-16               	    1000	      6203 ns/op	     224 B/op	       3 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16           	    1000	     30013 ns/op	   37472 B/op	     443 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Imports-16                    	    1000	     18206 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Instantiate-16                	    1000	     11798 ns/op	    5128 B/op	      82 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/LookupExecute-16              	    1000	      7153 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Close-16                      	    1000	      8760 ns/op	     384 B/op	       7 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Lifecycle-16                  	    1000	     39760 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Imports-16                 	    1000	     15404 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Instantiate-16             	    1000	     15082 ns/op	    5672 B/op	      91 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/LookupExecute-16           	    1000	     12962 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Close-16                   	    1000	      9840 ns/op	     480 B/op	       9 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Lifecycle-16               	    1000	     49253 ns/op	   39112 B/op	     478 allocs/op
+PASS
+# round 9
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports-16 	    1000	     18036 ns/op	   32659 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Instantiate-16         	    1000	      6234 ns/op	    4000 B/op	      60 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16       	    1000	      3063 ns/op	     528 B/op	       4 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Close-16               	    1000	      6231 ns/op	     224 B/op	       3 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16           	    1000	     30055 ns/op	   37472 B/op	     443 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Imports-16                    	    1000	     16809 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Instantiate-16                	    1000	     11511 ns/op	    5128 B/op	      82 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/LookupExecute-16              	    1000	      7577 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Close-16                      	    1000	      8559 ns/op	     384 B/op	       7 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Lifecycle-16                  	    1000	     37764 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Imports-16                 	    1000	     17093 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Instantiate-16             	    1000	     15779 ns/op	    5672 B/op	      91 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/LookupExecute-16           	    1000	     12775 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Close-16                   	    1000	      9906 ns/op	     480 B/op	       9 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Lifecycle-16               	    1000	     49106 ns/op	   39112 B/op	     478 allocs/op
+PASS
+# round 10
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports-16 	    1000	     16558 ns/op	   32659 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Instantiate-16         	    1000	      6835 ns/op	    4000 B/op	      60 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16       	    1000	      3249 ns/op	     528 B/op	       4 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Close-16               	    1000	      6170 ns/op	     224 B/op	       3 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16           	    1000	     28906 ns/op	   37472 B/op	     443 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Imports-16                    	    1000	     16793 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Instantiate-16                	    1000	     11645 ns/op	    5128 B/op	      82 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/LookupExecute-16              	    1000	      7529 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Close-16                      	    1000	      8418 ns/op	     384 B/op	       7 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Lifecycle-16                  	    1000	     41042 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Imports-16                 	    1000	     16440 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Instantiate-16             	    1000	     14624 ns/op	    5672 B/op	      91 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/LookupExecute-16           	    1000	     12645 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Close-16                   	    1000	      9949 ns/op	     480 B/op	       9 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Lifecycle-16               	    1000	     46094 ns/op	   39112 B/op	     478 allocs/op
+PASS

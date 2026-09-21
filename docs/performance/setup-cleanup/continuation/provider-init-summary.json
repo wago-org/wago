@@ -1,0 +1,562 @@
+[
+  {
+    "sample": 1,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 1,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @1.1 ms, 0.095 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 2,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.68 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 2,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 3,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 3,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.84 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 4,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.62 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 4,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 5,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 5,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.87 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 6,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.76 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 6,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 7,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 7,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.82 ms, 0.002 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 8,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.64 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 8,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 9,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 9,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.94 ms, 0.002 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 10,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.90 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 10,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 11,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 11,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.81 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 12,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.61 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 12,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 13,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 13,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @1.0 ms, 0.002 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 14,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.85 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 14,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 15,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 15,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.66 ms, 0.002 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 16,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.61 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 16,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 17,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 17,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.73 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 18,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.63 ms, 0.002 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 18,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 19,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  },
+  {
+    "sample": 19,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.69 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 20,
+    "label": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-candidate.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": [
+      "init github.com/wago-org/wasi/internal/core @0.74 ms, 0.001 ms clock, 4992 bytes, 24 allocs"
+    ]
+  },
+  {
+    "sample": 20,
+    "label": "baseline",
+    "command": [
+      "taskset",
+      "-c",
+      "0-15",
+      "/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/wasi-baseline.test",
+      "-test.run",
+      "^$"
+    ],
+    "core_init": []
+  }
+]

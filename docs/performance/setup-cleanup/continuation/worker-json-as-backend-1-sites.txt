@@ -1,0 +1,46 @@
+Total: 16.46MB
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*stack).alloc in /home/jtenner/Projects/wago/src/core/compiler/backend/railshot/amd64/stack.go
+    8.69MB     8.69MB (flat, cum) 52.83% of Total
+         .          .    407:func (s *stack) alloc() *elem {
+         .          .    408:	chunk := &s.chunks[s.cur]
+         .          .    409:	if len(*chunk) == cap(*chunk) {
+         .          .    410:		s.cur++
+         .          .    411:		if s.cur == len(s.chunks) {
+    8.69MB     8.69MB    412:			s.chunks = append(s.chunks, make([]elem, 0, int(s.nextChunkCap)))
+         .          .    413:			s.nextChunkCap = s.nextGeometricCap
+         .          .    414:			if s.nextGeometricCap < maxStackChunkCap {
+         .          .    415:				s.nextGeometricCap *= 2
+         .          .    416:				if s.nextGeometricCap > maxStackChunkCap {
+         .          .    417:					s.nextGeometricCap = maxStackChunkCap
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.newScratchWithStackCap in /home/jtenner/Projects/wago/src/core/compiler/backend/railshot/amd64/compile.go
+  615.47kB     2.19MB (flat, cum) 13.30% of Total
+         .          .    804:func newScratchWithStackCap(stackCap int) *scratch {
+         .     1.59MB    805:	stack := newStackWithCap(stackCap)
+         .          .    806:	_, reserved := stack.nodeMemory()
+  615.47kB   615.47kB    807:	return &scratch{stack: stack, asm: &amd64.Asm{}, nodeScratchReserved: reserved, nodeScratchPeak: reserved}
+         .          .    808:}
+         .          .    809:
+         .          .    810:func (sc *scratch) reserveControlFrames(capacity int) {
+         .          .    811:	if capacity <= 0 {
+         .          .    812:		return
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).push in /home/jtenner/Projects/wago/src/core/compiler/wasm/validate.go
+      576B       576B (flat, cum) 0.0033% of Total
+         .          .   1115:func (v *funcValidator) push(t ValType) {
+      576B       576B   1116:	v.vals = append(v.vals, val{t: t})
+         .          .   1117:}
+         .          .   1118:func (v *funcValidator) pushAll(ts []ValType) {
+         .          .   1119:	for _, t := range ts {
+         .          .   1120:		v.push(t)
+         .          .   1121:	}
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).pushCtrl in /home/jtenner/Projects/wago/src/core/compiler/wasm/validate.go
+    5.06kB     5.06kB (flat, cum)  0.03% of Total
+         .          .   1153:func (v *funcValidator) pushCtrl(k ctrlKind, in, out []ValType) error {
+         .          .   1154:	if err := v.popAll(in); err != nil {
+         .          .   1155:		return err
+         .          .   1156:	}
+    5.06kB     5.06kB   1157:	v.ctrls = append(v.ctrls, ctrlFrame{kind: k, in: in, out: out, height: len(v.vals), initHeight: len(v.localInitLog)})
+         .          .   1158:	v.pushAll(in)
+         .          .   1159:	return nil
+         .          .   1160:}
+         .          .   1161:func (v *funcValidator) popCtrl() (ctrlFrame, error) {
+         .          .   1162:	if len(v.ctrls) == 0 {

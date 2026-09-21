@@ -1,0 +1,366 @@
+--- /dev/null
++++ b/internal/core/construction_lifecycle_linux_test.go
+@@ -0,0 +1,363 @@
++package core
++
++import (
++	"context"
++	"encoding/binary"
++	"encoding/json"
++	"errors"
++	"io"
++	"os"
++	"path/filepath"
++	"sync/atomic"
++	"testing"
++
++	"github.com/wago-org/wago"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++type countedBorrowedStream struct{ closes atomic.Int32 }
++
++func (*countedBorrowedStream) Read([]byte) (int, error)    { return 0, io.EOF }
++func (*countedBorrowedStream) Write(p []byte) (int, error) { return len(p), nil }
++func (s *countedBorrowedStream) Close() error              { s.closes.Add(1); return nil }
++
++type lifecycleTestProvider struct {
++	Plugin
++	stream *countedBorrowedStream
++	ctx    context.Context
++}
++
++func (p *lifecycleTestProvider) Register(reg *wago.Registrar) error {
++	if err := p.Plugin.Register(reg); err != nil {
++		return err
++	}
++	p.cfg.Stdin = p.stream
++	p.cfg.Stdout = p.stream
++	p.cfg.Stderr = p.stream
++	p.cfg.Rand = p.stream
++	p.cfg.Context = p.ctx
++	return nil
++}
++
++func ownedCommandBytes(startTrap bool) []byte {
++	signatures := [][]byte{{0x60, 9, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7e, 0x7e, 0x7f, 0x7f, 1, 0x7f}, {0x60, 1, 0x7f, 0}, {0x60, 4, 0x7f, 0x7f, 0x7f, 0x7f, 1, 0x7f}, {0x60, 0, 0}}
++	var imports [][]byte
++	for i, name := range []string{"path_open", "proc_exit", "poll_oneoff"} {
++		entry := append(wasmtest.Name("wasi_snapshot_preview1"), wasmtest.Name(name)...)
++		imports = append(imports, append(entry, 0, byte(i)))
++	}
++	body := []byte{0x41, 3, 0x41, 0, 0x41, 32, 0x41, 5, 0x41, 0, 0x42, 2, 0x42, 0, 0x41, 0, 0x41, 16, 0x10, 0, 0x04, 0x40, 0, 0x0b}
++	if startTrap {
++		body = append(body, 0)
++	}
++	body = append(body, 0x0b)
++	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(signatures...)), wasmtest.Section(2, wasmtest.Vec(imports...)), wasmtest.Section(3, []byte{3, 3, 1, 2}), wasmtest.Section(5, []byte{1, 1, 1, 2}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 3), wasmtest.ExportEntry("exit", 0, 4), wasmtest.ExportEntry("poll", 0, 5), wasmtest.ExportEntry("memory", 2, 0)))}
++	if startTrap {
++		sections = append(sections, wasmtest.Section(8, []byte{3}))
++	}
++	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code([]byte{0x20, 0, 0x10, 1, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x10, 2, 0x0b}))), wasmtest.Section(11, []byte{1, 0, 0x41, 32, 0x0b, 5, 'i', 'n', 'p', 'u', 't'}))
++	return wasmtest.Module(sections...)
++}
++
++func newOwnedRuntime(t *testing.T, mounts []Preopen, ctx context.Context) (*wago.Runtime, *lifecycleTestProvider, error) {
++	t.Helper()
++	p := &lifecycleTestProvider{Plugin: Plugin{module: "wasi_snapshot_preview1"}, stream: &countedBorrowedStream{}, ctx: ctx}
++	definition := Definition("test.example/owned-wasi", "Owned test", "lifecycle test", wago.Experimental, p.module)
++	provider := Provider(definition, p.module)
++	provider.New = func() wago.Plugin { return p }
++	digest, err := wago.DefinitionDigest(definition)
++	if err != nil {
++		t.Fatal(err)
++	}
++	grants := make([]wago.AuthorityGrant, len(definition.Authorities))
++	for i, r := range definition.Authorities {
++		grants[i] = wago.AuthorityGrant{Name: r.Name, Scope: r.Scope}
++	}
++	if mounts == nil {
++		mounts = []Preopen{}
++	}
++	config, err := json.Marshal(map[string]any{"mounts": mounts})
++	if err != nil {
++		t.Fatal(err)
++	}
++	rt := wago.NewRuntime(wago.WithGuestArguments([]string{"owned-command"}))
++	err = rt.LoadPlugins(context.Background(), wago.PluginSet{Providers: []wago.PluginProvider{provider}, Selections: []wago.PluginSelection{{ID: definition.ID, DefinitionDigest: digest, Direct: true, Grants: grants, Config: config}}})
++	return rt, p, err
++}
++func ownedPolicy() wago.InstantiateOption {
++	caps := make([]wago.Capability, len(guestCapabilities))
++	for i, c := range guestCapabilities {
++		caps[i] = c.cap
++	}
++	return wago.WithPolicy(wago.Policy{AllowedCapabilities: caps})
++}
++func openOwnedFiles(p *lifecycleTestProvider) []*os.File {
++	p.guard.mu.Lock()
++	defer p.guard.mu.Unlock()
++	var files []*os.File
++	for _, state := range p.guard.states {
++		state.mu.Lock()
++		for _, entry := range state.fds {
++			if entry.file != nil {
++				files = append(files, entry.file)
++			}
++		}
++		state.mu.Unlock()
++	}
++	return files
++}
++func requireFilesClosed(t *testing.T, files []*os.File) {
++	t.Helper()
++	for _, f := range files {
++		if _, err := f.Stat(); !errors.Is(err, os.ErrClosed) {
++			t.Fatalf("owned file remained open: %v", err)
++		}
++	}
++}
++func descriptorCount(t *testing.T) int {
++	t.Helper()
++	entries, err := os.ReadDir("/proc/self/fd")
++	if err != nil {
++		t.Fatal(err)
++	}
++	return len(entries)
++}
++
++func TestConstructionOwnedLifecycle(t *testing.T) {
++	root := t.TempDir()
++	if err := os.WriteFile(filepath.Join(root, "input"), []byte("private"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	mounts := []Preopen{{GuestPath: "/", HostPath: root, Read: true}}
++	for _, mode := range []string{"normal-exit", "guest-trap", "start-trap", "denied-instantiation", "cancellation"} {
++		t.Run(mode, func(t *testing.T) {
++			ctx, cancel := context.WithCancel(context.Background())
++			defer cancel()
++			rt, p, err := newOwnedRuntime(t, mounts, ctx)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer rt.CloseContext(context.Background())
++			initial := p.fs.fds[3].file
++			data := ownedCommandBytes(mode == "start-trap")
++			module, err := rt.Compile(data)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer module.Close()
++			option := ownedPolicy()
++			if mode == "denied-instantiation" {
++				option = wago.WithPolicy(wago.Policy{AllowedCapabilities: []wago.Capability{CapFDWrite}})
++			}
++			in, err := rt.Instantiate(context.Background(), module, option)
++			if mode == "start-trap" || mode == "denied-instantiation" {
++				if err == nil {
++					in.Close()
++					t.Fatal("expected setup failure")
++				}
++				if mode == "start-trap" {
++					requireFilesClosed(t, []*os.File{initial})
++				}
++			} else {
++				if err != nil {
++					t.Fatal(err)
++				}
++				if _, err := in.Invoke("run"); err != nil {
++					t.Fatal(err)
++				}
++				files := openOwnedFiles(p)
++				if len(files) != 2 {
++					t.Fatalf("guest did not leave preopen and file open: %d", len(files))
++				}
++				switch mode {
++				case "normal-exit":
++					_, err = in.Invoke("exit", 0)
++					var exit *wago.ExitError
++					if err != nil && (!errors.As(err, &exit) || exit.Code != 0) {
++						t.Fatal(err)
++					}
++				case "guest-trap":
++					_, err = in.Invoke("run") // A valid call first preserves state.
++					if err != nil {
++						t.Fatal(err)
++					}
++					copy(in.Memory().UnsafeBytes()[32:], "other")
++					if _, err = in.Invoke("run"); err == nil {
++						t.Fatal("missing trap after failed open")
++					}
++				case "cancellation":
++					mem := in.Memory().UnsafeBytes()
++					binary.LittleEndian.PutUint64(mem[128:], 1)
++					mem[136] = 0
++					binary.LittleEndian.PutUint32(mem[144:], 1)
++					binary.LittleEndian.PutUint64(mem[152:], 10000000000)
++					cancel()
++					result, err := in.Invoke("poll", 128, 256, 1, 240)
++					if err != nil || len(result) != 1 || result[0] != wasiEIntr {
++						t.Fatalf("cancellation: %v %v", result, err)
++					}
++				}
++				if err := in.Close(); err != nil {
++					t.Fatal(err)
++				}
++				if err := in.Close(); err != nil {
++					t.Fatal(err)
++				}
++				requireFilesClosed(t, files)
++			}
++			if err := rt.CloseContext(context.Background()); err != nil {
++				t.Fatal(err)
++			}
++			if err := rt.CloseContext(context.Background()); err != nil {
++				t.Fatal(err)
++			}
++			requireFilesClosed(t, []*os.File{initial})
++			if p.stream.closes.Load() != 0 {
++				t.Fatal("provider closed borrowed stream")
++			}
++		})
++	}
++}
++
++func TestConstructionCleanupIsolation(t *testing.T) {
++	root := t.TempDir()
++	if err := os.WriteFile(filepath.Join(root, "input"), []byte("private"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	rt, p, err := newOwnedRuntime(t, []Preopen{{GuestPath: "/", HostPath: root, Read: true}}, context.Background())
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer rt.CloseContext(context.Background())
++	module, err := rt.Compile(ownedCommandBytes(false))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer module.Close()
++	a, err := rt.Instantiate(context.Background(), module, ownedPolicy())
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	b, err := rt.Instantiate(context.Background(), module, ownedPolicy())
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer b.Close()
++	if _, err := a.Invoke("run"); err != nil {
++		t.Fatal(err)
++	}
++	first := openOwnedFiles(p)
++	if _, err := b.Invoke("run"); err != nil {
++		t.Fatal(err)
++	}
++	if len(openOwnedFiles(p)) != 4 {
++		t.Fatal("instances did not get independent descriptors")
++	}
++	if err := a.Close(); err != nil {
++		t.Fatal(err)
++	}
++	requireFilesClosed(t, first)
++	if _, err := b.Invoke("run"); err != nil {
++		t.Fatalf("closing first instance affected second: %v", err)
++	}
++	if len(openOwnedFiles(p)) != 3 {
++		t.Fatal("second instance state was not preserved")
++	}
++}
++
++func TestConstructionPartialProviderSetup(t *testing.T) {
++	root := t.TempDir()
++	before := descriptorCount(t)
++	rt, p, err := newOwnedRuntime(t, []Preopen{{GuestPath: "/a", HostPath: root, Read: true}, {GuestPath: "/z", HostPath: root + "/missing", Read: true}}, context.Background())
++	if err == nil {
++		rt.CloseContext(context.Background())
++		t.Fatal("expected partial mount setup failure")
++	}
++	if err := rt.CloseContext(context.Background()); err != nil {
++		t.Fatal(err)
++	}
++	if p.stream.closes.Load() != 0 {
++		t.Fatal("failure closed borrowed streams")
++	}
++	if after := descriptorCount(t); after != before {
++		t.Fatalf("partial setup descriptors: %d -> %d", before, after)
++	}
++}
++
++func TestConstructionBoundedDescriptorReuse(t *testing.T) {
++	root := t.TempDir()
++	if err := os.WriteFile(filepath.Join(root, "input"), []byte("private"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	rt, _, err := newOwnedRuntime(t, []Preopen{{GuestPath: "/", HostPath: root, Read: true}}, context.Background())
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer rt.CloseContext(context.Background())
++	module, err := rt.Compile(ownedCommandBytes(false))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer module.Close()
++	cycle := func() {
++		in, err := rt.Instantiate(context.Background(), module, ownedPolicy())
++		if err != nil {
++			t.Fatal(err)
++		}
++		if _, err := in.Invoke("run"); err != nil {
++			t.Fatal(err)
++		}
++		if err := in.Close(); err != nil {
++			t.Fatal(err)
++		}
++	}
++	cycle()
++	before := descriptorCount(t)
++	for i := 0; i < 100; i++ {
++		cycle()
++	}
++	after := descriptorCount(t)
++	if after != before {
++		t.Fatalf("descriptor growth without forced GC: %d -> %d", before, after)
++	}
++}
++
++func TestConstructionCloneConfig(t *testing.T) {
++	cfg := Config{Args: []string{"original"}, Env: []string{"KEY=original"}, Mounts: []Preopen{{GuestPath: "/original", Read: true}}}
++	got := cloneConfig(cfg)
++	cfg.Args[0] = "changed"
++	cfg.Env[0] = "KEY=changed"
++	cfg.Mounts[0].Read = false
++	if got.Args[0] != "original" || got.Env[0] != "KEY=original" || !got.Mounts[0].Read {
++		t.Fatal("caller configuration was not copied")
++	}
++}
++
++func TestConstructionPublicMetadataCopies(t *testing.T) {
++	rt, _, err := newOwnedRuntime(t, nil, context.Background())
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer rt.CloseContext(context.Background())
++	first := rt.ProvidedImports()
++	for i := range first {
++		for j := range first[i].Params {
++			first[i].Params[j] = wago.ValF64
++		}
++		for j := range first[i].Results {
++			first[i].Results[j] = wago.ValF64
++		}
++		first[i].Name = "mutated"
++	}
++	second := rt.ProvidedImports()
++	for _, s := range second {
++		if s.Name == "path_open" {
++			if len(s.Params) != 9 || s.Params[0] != wago.ValI32 || s.Params[5] != wago.ValI64 || len(s.Results) != 1 || s.Results[0] != wago.ValI32 {
++				t.Fatal("public metadata mutation reached provider definitions")
++			}
++			return
++		}
++	}
++	t.Fatal("path_open definition missing")
++}

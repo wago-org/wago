@@ -1,0 +1,22 @@
+{
+  "revision": "95be283fa511db7b01d86ef72b6c58fbe1ab607a",
+  "baseline": "revision plus completed import snapshot fix; pinned WASI source",
+  "candidate": "same Wago production source plus local WASI construction patch",
+  "root_production_changes_since_new_baseline": [],
+  "wasi_base_revision": "6a6684d2ecd2be2d17e5792733d1d0e03b2f2c0e",
+  "published_dependency": false,
+  "source_sha256": {
+    "src/wago/imports.go": "75d9abbb8956bb77593388cf2fce77b12e6eee5af0fab2d6bf1654e15f3c6aea",
+    "go.mod": "776eda315a3cb5cc7c17f1dddde05350f52e8df50e2645c8d2e8d3b16ac93200",
+    "go.work": "62c7ee4da29dd8e6da11eba724e51c8aa82bb385d1a6e0ce3949cdfb58a2fa17",
+    "bench/go.mod": "62797f3cb37bf1478cae1271b389f80d2416bb6b57d3dae60fa623bac46c5b4a",
+    ".tmp/setup-cleanup-next/wasi-base/internal/core/core.go": "6241a3bfcd34dbae9226ba8f199cdf28134fb6f2488d155d65805395c7a07bd6",
+    ".tmp/setup-cleanup-next/wasi/internal/core/core.go": "8f580b186e2a3013e6919faa549feda07b78325b1d70714e4fedead0c6a2e17d",
+    "docs/performance/setup-cleanup/continuation/patches/wasi-construction.patch": "da811923060206d776f54ba9483b32cceef8007389e5c9552589d0e9e1d3ee12",
+    "docs/performance/setup-cleanup/continuation/patches/wasi-construction-tests.patch": "7a7e753bdac51ddb0d08b6273a603406f38110e44158cc5d1edbbb5619fcd3e3"
+  },
+  "verified_status": "local provider patch verified by focused checks and both 984-measurement full screens",
+  "full_measurements_per_version": 984,
+  "zero_allocation_execution_cases": 72,
+  "paired_compile_cases_wago_faster": 80
+}

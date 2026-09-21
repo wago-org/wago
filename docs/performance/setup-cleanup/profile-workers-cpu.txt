@@ -1,0 +1,6 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWorkerLifecycleDiagnostic/json-as/concurrent/full/requested=0-16         	   16036	    360379 ns/op	     16651 body-bytes	         4.000 effective-workers	        43.00 functions	      2445 largest-body-bytes	  624011 B/op	     637 allocs/op
+PASS

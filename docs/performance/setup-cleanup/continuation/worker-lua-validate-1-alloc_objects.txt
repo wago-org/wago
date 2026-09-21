@@ -1,0 +1,106 @@
+File: worker-owned.test
+Build ID: e2a7faf1e661983eeac2921d83c7be2dd19c1b7d
+Type: alloc_objects
+Time: 2026-09-20 23:33:07 EDT
+Showing nodes accounting for 36729, 94.64% of 38811 total
+Dropped 245 nodes (cum <= 194)
+      flat  flat%   sum%        cum   cum%
+     15295 39.41% 39.41%      15398 39.67%  github.com/wago-org/wago/src/core/compiler/wasm.readVec[go.shape.uint32]
+      5047 13.00% 52.41%       5047 13.00%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).resolveCompTypeRecIndexes
+      3914 10.08% 62.50%       8961 23.09%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).resolvedCompType
+      2945  7.59% 70.09%       2945  7.59%  regexp.makeOnePass.func1
+       994  2.56% 72.65%        994  2.56%  regexp/syntax.(*compiler).inst (inline)
+       762  1.96% 74.61%        762  1.96%  encoding/json/v2.makeString
+       759  1.96% 76.57%        759  1.96%  regexp/syntax.(*parser).newRegexp (inline)
+       721  1.86% 78.42%        721  1.86%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).pushCtrl
+       574  1.48% 79.90%        574  1.48%  github.com/wago-org/wago/src/core/compiler/wasm.readVec[go.shape.struct { Count uint32; Type github.com/wago-org/wago/src/core/compiler/wasm.ValType }]
+       569  1.47% 81.37%       1104  2.84%  regexp/syntax.(*parser).push
+       565  1.46% 82.82%        565  1.46%  reflect.growslice
+       535  1.38% 84.20%        535  1.38%  regexp/syntax.(*parser).maybeConcat
+       516  1.33% 85.53%        516  1.33%  regexp.newQueue (inline)
+       380  0.98% 86.51%        380  0.98%  regexp.onePassCopy
+       379  0.98% 87.49%        380  0.98%  regexp/syntax.(*parser).collapse
+       341  0.88% 88.37%       8541 22.01%  regexp.compile
+       310   0.8% 89.17%        310   0.8%  unicode/utf8.AppendRune (inline)
+       309   0.8% 89.96%        309   0.8%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).push (inline)
+       246  0.63% 90.60%        246  0.63%  testing.rewrite
+       243  0.63% 91.22%       3704  9.54%  regexp.makeOnePass
+       227  0.58% 91.81%        593  1.53%  encoding/json/v2.makeStructFields
+       206  0.53% 92.34%        206  0.53%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).ensureTypeIndex
+       190  0.49% 92.83%        380  0.98%  regexp/syntax.(*compiler).init (inline)
+       190  0.49% 93.32%       2432  6.27%  regexp/syntax.parse
+       179  0.46% 93.78%       8808 22.69%  github.com/wago-org/wago/bench/suite.BenchmarkWorkerLifecycleDiagnostic.func1
+       103  0.27% 94.04%      16531 42.59%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunctionsSerial
+       103  0.27% 94.31%      26110 67.27%  github.com/wago-org/wago/src/core/compiler/wasm.validateModuleWithWorkersFeaturesAndLimitsAnalysis
+        56  0.14% 94.45%        254  0.65%  encoding/json/v2.makeStructFields.func3
+        17 0.044% 94.50%      38231 98.51%  testing.(*B).runN
+        12 0.031% 94.53%        304  0.78%  testing.newMatcher
+         9 0.023% 94.55%       8622 22.22%  testing.(*B).Run
+         7 0.018% 94.57%       2429  6.26%  github.com/wago-org/wago/bench/suite.readCatalog
+         4  0.01% 94.58%      26899 69.31%  github.com/wago-org/wago/bench/suite.BenchmarkWorkerLifecycleDiagnostic.func1.1
+         4  0.01% 94.59%        590  1.52%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectCodeSectionWithWidths
+         4  0.01% 94.60%        768  1.98%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectModuleInnerLimits
+         4  0.01% 94.61%        438  1.13%  testing.runBenchmarks
+         3 0.0077% 94.62%        530  1.37%  testing.(*M).Run
+         2 0.0052% 94.62%       1037  2.67%  github.com/wago-org/wago/bench/internal/semanticcorpus.LoadManifest
+         2 0.0052% 94.63%       2471  6.37%  github.com/wago-org/wago/bench/suite.BenchmarkWorkerLifecycleDiagnostic
+         2 0.0052% 94.63%        770  1.98%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModuleByteBackedWithLimits
+         1 0.0026% 94.64%        763  1.97%  encoding/json/v2.makeStringArshaler.func2
+         0     0% 94.64%       2218  5.71%  encoding/json.(*Decoder).Decode
+         0     0% 94.64%       2190  5.64%  encoding/json/v2.Unmarshal
+         0     0% 94.64%        266  0.69%  encoding/json/v2.lookupArshaler
+         0     0% 94.64%        217  0.56%  encoding/json/v2.makeDefaultArshaler
+         0     0% 94.64%        440  1.13%  encoding/json/v2.makePointerArshaler.func3
+         0     0% 94.64%       2042  5.26%  encoding/json/v2.makeSliceArshaler.func3
+         0     0% 94.64%        593  1.53%  encoding/json/v2.makeStructArshaler.func1
+         0     0% 94.64%       2170  5.59%  encoding/json/v2.makeStructArshaler.func3
+         0     0% 94.64%       2187  5.64%  encoding/json/v2.unmarshalDecode
+         0     0% 94.64%        770  1.98%  github.com/wago-org/wago/bench/suite.corpusModule.decoded
+         0     0% 94.64%       2429  6.26%  github.com/wago-org/wago/bench/suite.loadCorpus
+         0     0% 94.64%       2429  6.26%  github.com/wago-org/wago/bench/suite.loadCorpus.func1
+         0     0% 94.64%      25604 65.97%  github.com/wago-org/wago/bench/suite.workerDiagnosticConfig.run
+         0     0% 94.64%      15398 39.67%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).decodeDirectOp
+         0     0% 94.64%        721  1.86%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).directPushCtrl (inline)
+         0     0% 94.64%        309   0.8%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).step
+         0     0% 94.64%       1030  2.65%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).stepDirectOp
+         0     0% 94.64%      16428 42.33%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).validateFuncDirect
+         0     0% 94.64%        206  0.53%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).collectDeclaredFuncs
+         0     0% 94.64%        206  0.53%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).flattenedSubTypeRefs (inline)
+         0     0% 94.64%       8961 23.09%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).funcTypeFromTypeIdx (inline)
+         0     0% 94.64%       2266  5.84%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateExternType
+         0     0% 94.64%      16428 42.33%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunction
+         0     0% 94.64%      16531 42.59%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunctions
+         0     0% 94.64%       9373 24.15%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateModule
+         0     0% 94.64%        206  0.53%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateSubtypeMetadata
+         0     0% 94.64%        770  1.98%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModule (inline)
+         0     0% 94.64%        770  1.98%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModuleByteBacked
+         0     0% 94.64%        770  1.98%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModuleByteBackedWithFeatures (inline)
+         0     0% 94.64%        506  1.30%  github.com/wago-org/wago/src/core/compiler/wasm.ValidateModule (inline)
+         0     0% 94.64%      25604 65.97%  github.com/wago-org/wago/src/core/compiler/wasm.ValidateModuleWithWorkers (inline)
+         0     0% 94.64%        590  1.52%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectCodeSectionWithModule
+         0     0% 94.64%        768  1.98%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectModuleLimited (inline)
+         0     0% 94.64%        574  1.48%  github.com/wago-org/wago/src/core/compiler/wasm.decodeLocals
+         0     0% 94.64%      26110 67.27%  github.com/wago-org/wago/src/core/compiler/wasm.validateModuleWithWorkersFeaturesAndLimits (inline)
+         0     0% 94.64%        530  1.37%  main.main
+         0     0% 94.64%        565  1.46%  reflect.Value.Grow
+         0     0% 94.64%        565  1.46%  reflect.Value.grow
+         0     0% 94.64%       8541 22.01%  regexp.Compile (inline)
+         0     0% 94.64%       4084 10.52%  regexp.compileOnePass
+         0     0% 94.64%        310   0.8%  regexp.onePassPrefix
+         0     0% 94.64%        804  2.07%  regexp/syntax.(*compiler).compile
+         0     0% 94.64%        613  1.58%  regexp/syntax.(*compiler).rune
+         0     0% 94.64%        380  0.98%  regexp/syntax.(*parser).concat
+         0     0% 94.64%       1368  3.52%  regexp/syntax.(*parser).literal
+         0     0% 94.64%        494  1.27%  regexp/syntax.(*parser).op
+         0     0% 94.64%       1184  3.05%  regexp/syntax.Compile
+         0     0% 94.64%       2432  6.27%  regexp/syntax.Parse (inline)
+         0     0% 94.64%        531  1.37%  runtime.main
+         0     0% 94.64%        310   0.8%  strings.(*Builder).WriteRune
+         0     0% 94.64%       2437  6.28%  sync.(*Once).Do (partial-inline)
+         0     0% 94.64%       2437  6.28%  sync.(*Once).doSlow
+         0     0% 94.64%      25994 66.98%  testing.(*B).launch
+         0     0% 94.64%      12204 31.44%  testing.(*B).run1.func1
+         0     0% 94.64%       8720 22.47%  testing.(*matcher).fullName
+         0     0% 94.64%       8290 21.36%  testing.simpleMatch.matches
+         0     0% 94.64%        283  0.73%  testing.simpleMatch.verify
+         0     0% 94.64%       8556 22.05%  testing/internal/testdeps.TestDeps.MatchString

@@ -1,0 +1,280 @@
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    5970	     38006 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    5160	     45773 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   71169	      3225 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2312	    106754 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4651	     45844 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     156	        20.34 ns/op	     93360 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       867.6 ns/op	      2450 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9101 ns/op	       220.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    5500	     36658 ns/op	   36330 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    4474	     45290 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   71593	      3264 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2335	    107514 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4798	     46227 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.39 ns/op	    105094 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       859.4 ns/op	      2476 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9216 ns/op	       233.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    5523	     36636 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    5252	     45178 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   71779	      3388 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2227	    105454 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4748	     46095 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.42 ns/op	    105005 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       875.2 ns/op	      2456 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9116 ns/op	       234.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    5775	     37279 ns/op	   36330 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    5601	     45676 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   70034	      3293 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2312	    105864 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    5151	     45945 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.46 ns/op	    104790 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	      99	       863.0 ns/op	      2435 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9053 ns/op	       226.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    6410	     36822 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    5302	     45125 ns/op	   36969 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   71900	      3245 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2305	    107324 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4584	     47322 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.48 ns/op	    100975 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       861.5 ns/op	      2464 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9187 ns/op	       232.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 6
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    5762	     37673 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    4562	     45928 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   70507	      3266 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2289	    104887 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4386	     47676 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.90 ns/op	    101966 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       868.5 ns/op	      2310 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9016 ns/op	       234.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 7
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    5725	     37071 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    4755	     46089 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   72122	      3229 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2318	    105925 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    5040	     46919 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.81 ns/op	    103523 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       867.2 ns/op	      2403 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9100 ns/op	       231.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 8
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    6140	     36770 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    5302	     46811 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   72018	      3403 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2314	    105235 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4657	     46406 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.53 ns/op	    105330 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     120	       868.7 ns/op	      2035 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     145	      9142 ns/op	       227.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 9
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    6348	     37184 ns/op	   36328 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    4737	     45303 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   69333	      3384 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2172	    106122 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4858	     46257 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.73 ns/op	     96658 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       861.4 ns/op	      2465 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9364 ns/op	       218.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 10
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    6009	     36947 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    4594	     46441 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   72606	      3225 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2259	    105535 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4896	     47408 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	      96	        20.67 ns/op	    102357 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       863.4 ns/op	      2466 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9123 ns/op	       224.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 11
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    5505	     37173 ns/op	   36330 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    5041	     45626 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   74155	      3273 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2282	    105216 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4532	     47273 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.48 ns/op	    104457 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       870.4 ns/op	      2392 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9175 ns/op	       234.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 12
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    5949	     37256 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    4503	     46609 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   71403	      3349 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2337	    105870 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    5192	     46403 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.85 ns/op	    103515 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       860.9 ns/op	      2415 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9142 ns/op	       219.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 13
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    5554	     36680 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    5252	     45957 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   69536	      3224 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2242	    105476 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4327	     46540 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.45 ns/op	    105697 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       865.5 ns/op	      2423 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     178	      9181 ns/op	       230.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 14
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    6823	     36514 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    5082	     45228 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   68731	      3358 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2274	    107424 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4629	     47607 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.61 ns/op	    104342 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       865.1 ns/op	      2439 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9053 ns/op	       222.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 15
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    5862	     37144 ns/op	   36330 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    4478	     46055 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   70110	      3264 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2323	    104959 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4424	     46263 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.51 ns/op	    102983 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       873.2 ns/op	      2298 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9195 ns/op	       218.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 16
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    5494	     36686 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    5295	     46095 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   67903	      3264 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2336	    104327 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4928	     46488 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.77 ns/op	    103513 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       861.4 ns/op	      2352 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     121	      9085 ns/op	       222.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 17
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    6028	     36933 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    4539	     46536 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   70166	      3256 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2335	    105814 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4341	     46241 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.64 ns/op	    101158 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       854.5 ns/op	      2420 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9122 ns/op	       231.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 18
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    6298	     36910 ns/op	   36328 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    4573	     45976 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   70063	      3284 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2257	    107418 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    5198	     46690 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     121	        20.65 ns/op	    105901 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       858.0 ns/op	      2392 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     126	      9134 ns/op	       221.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 19
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    6612	     37310 ns/op	   36329 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    5245	     45205 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   72290	      3241 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2322	    104839 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4466	     46242 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.38 ns/op	    103082 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     100	       865.6 ns/op	      2408 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9072 ns/op	       233.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 20
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16        	    6580	     37130 ns/op	   36328 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16     	    4713	     44788 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkInstantiate/tiny-16         	   71425	      3268 ns/op	    1408 B/op	       4 allocs/op
+BenchmarkInstantiate/utf8proc-16     	    2323	    105504 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkInstantiate/pcre2-16        	    4552	     47367 ns/op	    1464 B/op	       6 allocs/op
+BenchmarkExec/tiny.add-16            	     100	        20.71 ns/op	    100459 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf8proc.utf8proc_run-16         	     139	       857.1 ns/op	      1848 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run-16               	     100	      9106 ns/op	       230.0 calls/batch	       0 B/op	       0 allocs/op
+PASS

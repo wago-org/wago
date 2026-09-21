@@ -1,0 +1,400 @@
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sightglass-shootout-base64-16         	      84	   3416421 ns/op	   47051 B/op	     575 allocs/op
+BenchmarkCommandExec/wren-modulo-16                        	     252	    913748 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkWazeroCommandExec/sightglass-shootout-base64-16   	      81	   3004526 ns/op	  153696 B/op	      81 allocs/op
+BenchmarkWazeroCommandExec/wren-modulo-16                  	     151	   1563128 ns/op	  994016 B/op	     247 allocs/op
+PASS
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/kissfft.kissfft_run-16         	     100	    295459 ns/op	         8.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-doitgen.polybench_run-16         	     100	    321407 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-symm.polybench_run-16            	     100	    204761 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkDecode/utf-as-16         	   11452	     21199 ns/op	   30568 B/op	      28 allocs/op
+PASS
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/embench-matmult-int-16         	    2800	     85539 ns/op	   66645 B/op	      57 allocs/op
+PASS
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecFibLoop_wago-16    	 8715068	        27.70 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sightglass-shootout-base64-16         	      79	   3505879 ns/op	   46985 B/op	     575 allocs/op
+BenchmarkCommandExec/wren-modulo-16                        	     258	    921762 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkWazeroCommandExec/sightglass-shootout-base64-16   	      76	   2963155 ns/op	  153696 B/op	      81 allocs/op
+BenchmarkWazeroCommandExec/wren-modulo-16                  	     153	   1579039 ns/op	  994015 B/op	     247 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/kissfft.kissfft_run-16         	     121	    280850 ns/op	         8.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-doitgen.polybench_run-16         	     100	    323601 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-symm.polybench_run-16            	     100	    207157 ns/op	        10.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkDecode/utf-as-16         	   11408	     20765 ns/op	   30568 B/op	      28 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/embench-matmult-int-16         	    2620	     85434 ns/op	   66650 B/op	      57 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecFibLoop_wago-16    	 8696350	        27.80 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sightglass-shootout-base64-16         	      82	   3409942 ns/op	   46985 B/op	     575 allocs/op
+BenchmarkCommandExec/wren-modulo-16                        	     261	    906303 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkWazeroCommandExec/sightglass-shootout-base64-16   	      80	   3050254 ns/op	  153696 B/op	      81 allocs/op
+BenchmarkWazeroCommandExec/wren-modulo-16                  	     157	   1538882 ns/op	  994013 B/op	     247 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/kissfft.kissfft_run-16         	     100	    295511 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-doitgen.polybench_run-16         	     100	    326323 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-symm.polybench_run-16            	     100	    207589 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkDecode/utf-as-16         	   10000	     21030 ns/op	   30570 B/op	      28 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/embench-matmult-int-16         	    2898	     85913 ns/op	   66643 B/op	      57 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecFibLoop_wago-16    	 8898897	        27.07 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sightglass-shootout-base64-16         	      82	   3328892 ns/op	   46985 B/op	     575 allocs/op
+BenchmarkCommandExec/wren-modulo-16                        	     254	    924314 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkWazeroCommandExec/sightglass-shootout-base64-16   	      81	   3023855 ns/op	  153696 B/op	      81 allocs/op
+BenchmarkWazeroCommandExec/wren-modulo-16                  	     154	   1564395 ns/op	  994014 B/op	     247 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/kissfft.kissfft_run-16         	     100	    298744 ns/op	         8.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-doitgen.polybench_run-16         	     100	    338616 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-symm.polybench_run-16            	     100	    222783 ns/op	        10.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkDecode/utf-as-16         	    9835	     21294 ns/op	   30570 B/op	      28 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/embench-matmult-int-16         	    2559	     85056 ns/op	   66653 B/op	      57 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecFibLoop_wago-16    	 8637973	        28.02 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sightglass-shootout-base64-16         	      84	   3330561 ns/op	   46987 B/op	     575 allocs/op
+BenchmarkCommandExec/wren-modulo-16                        	     262	    902076 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkWazeroCommandExec/sightglass-shootout-base64-16   	      81	   3007016 ns/op	  153697 B/op	      81 allocs/op
+BenchmarkWazeroCommandExec/wren-modulo-16                  	     153	   1567961 ns/op	  994014 B/op	     247 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/kissfft.kissfft_run-16         	     132	    303375 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-doitgen.polybench_run-16         	     100	    330245 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-symm.polybench_run-16            	     100	    228386 ns/op	        10.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkDecode/utf-as-16         	   11353	     21225 ns/op	   30568 B/op	      28 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/embench-matmult-int-16         	    2638	     84946 ns/op	   66649 B/op	      57 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecFibLoop_wago-16    	 8605184	        27.50 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 6
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sightglass-shootout-base64-16         	      82	   3335625 ns/op	   47053 B/op	     575 allocs/op
+BenchmarkCommandExec/wren-modulo-16                        	     260	    913330 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkWazeroCommandExec/sightglass-shootout-base64-16   	      79	   2965263 ns/op	  153699 B/op	      81 allocs/op
+BenchmarkWazeroCommandExec/wren-modulo-16                  	     152	   1526535 ns/op	  994015 B/op	     247 allocs/op
+PASS
+# round 6
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/kissfft.kissfft_run-16         	     100	    298641 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-doitgen.polybench_run-16         	      94	    321305 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-symm.polybench_run-16            	     144	    206011 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 6
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkDecode/utf-as-16         	   10822	     22331 ns/op	   30568 B/op	      28 allocs/op
+PASS
+# round 6
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/embench-matmult-int-16         	    2433	     83711 ns/op	   66660 B/op	      57 allocs/op
+PASS
+# round 6
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecFibLoop_wago-16    	 8934877	        27.41 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 7
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sightglass-shootout-base64-16         	      84	   3395662 ns/op	   46984 B/op	     575 allocs/op
+BenchmarkCommandExec/wren-modulo-16                        	     264	    900405 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkWazeroCommandExec/sightglass-shootout-base64-16   	      75	   2980779 ns/op	  153697 B/op	      81 allocs/op
+BenchmarkWazeroCommandExec/wren-modulo-16                  	     157	   1538237 ns/op	  994013 B/op	     247 allocs/op
+PASS
+# round 7
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/kissfft.kissfft_run-16         	     100	    301870 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-doitgen.polybench_run-16         	     100	    319905 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-symm.polybench_run-16            	     144	    209845 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 7
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkDecode/utf-as-16         	   11571	     21175 ns/op	   30568 B/op	      28 allocs/op
+PASS
+# round 7
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/embench-matmult-int-16         	    2640	     83859 ns/op	   66649 B/op	      57 allocs/op
+PASS
+# round 7
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecFibLoop_wago-16    	 8843452	        27.73 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 8
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sightglass-shootout-base64-16         	      80	   3387174 ns/op	   46985 B/op	     575 allocs/op
+BenchmarkCommandExec/wren-modulo-16                        	     260	    919508 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkWazeroCommandExec/sightglass-shootout-base64-16   	      80	   3002062 ns/op	  153696 B/op	      81 allocs/op
+BenchmarkWazeroCommandExec/wren-modulo-16                  	     151	   1581364 ns/op	  994015 B/op	     247 allocs/op
+PASS
+# round 8
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/kissfft.kissfft_run-16         	     100	    305123 ns/op	         8.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-doitgen.polybench_run-16         	     122	    331107 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-symm.polybench_run-16            	     100	    205046 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 8
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkDecode/utf-as-16         	   10000	     21043 ns/op	   30568 B/op	      28 allocs/op
+PASS
+# round 8
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/embench-matmult-int-16         	    2706	     86124 ns/op	   66648 B/op	      57 allocs/op
+PASS
+# round 8
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecFibLoop_wago-16    	 8912188	        27.46 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 9
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sightglass-shootout-base64-16         	      82	   3532353 ns/op	   46984 B/op	     575 allocs/op
+BenchmarkCommandExec/wren-modulo-16                        	     259	    938304 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkWazeroCommandExec/sightglass-shootout-base64-16   	      68	   2956619 ns/op	  153696 B/op	      81 allocs/op
+BenchmarkWazeroCommandExec/wren-modulo-16                  	     154	   1527590 ns/op	  994014 B/op	     247 allocs/op
+PASS
+# round 9
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/kissfft.kissfft_run-16         	     100	    300646 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-doitgen.polybench_run-16         	     100	    322148 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-symm.polybench_run-16            	     100	    209138 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 9
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkDecode/utf-as-16         	   10000	     20703 ns/op	   30569 B/op	      28 allocs/op
+PASS
+# round 9
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/embench-matmult-int-16         	    2584	     88764 ns/op	   66652 B/op	      57 allocs/op
+PASS
+# round 9
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecFibLoop_wago-16    	 8778542	        27.58 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 10
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sightglass-shootout-base64-16         	      72	   3487414 ns/op	   47063 B/op	     575 allocs/op
+BenchmarkCommandExec/wren-modulo-16                        	     246	    927314 ns/op	   38472 B/op	     467 allocs/op
+BenchmarkWazeroCommandExec/sightglass-shootout-base64-16   	      82	   2966254 ns/op	  153698 B/op	      81 allocs/op
+BenchmarkWazeroCommandExec/wren-modulo-16                  	     158	   1541201 ns/op	  994011 B/op	     247 allocs/op
+PASS
+# round 10
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/kissfft.kissfft_run-16         	     100	    296842 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-doitgen.polybench_run-16         	     100	    320452 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-symm.polybench_run-16            	     100	    216725 ns/op	        10.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+# round 10
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkDecode/utf-as-16         	   11295	     20963 ns/op	   30568 B/op	      28 allocs/op
+PASS
+# round 10
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/embench-matmult-int-16         	    2685	     85402 ns/op	   66649 B/op	      57 allocs/op
+PASS
+# round 10
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecFibLoop_wago-16    	 8894637	        27.88 ns/op	       0 B/op	       0 allocs/op
+PASS

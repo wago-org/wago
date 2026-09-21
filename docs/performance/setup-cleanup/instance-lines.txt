@@ -1,0 +1,1370 @@
+Total: 7.11s
+ROUTINE ======================== github.com/wago-org/wago/src/wago.(*instanceBuilder).instantiate in /home/jtenner/Projects/wago/src/wago/instantiate.go
+     110ms      5.37s (flat, cum) 75.53% of Total
+         .          .    399:func (b *instanceBuilder) instantiate() (result *Instance, err error) {
+         .       10ms    400:	if err := b.validateCompiled(); err != nil {
+         .          .    401:		return nil, err
+         .          .    402:	}
+         .          .    403:	c, opts, imports := b.c, b.opts, b.imports
+         .          .    404:	if !opts.hasExecutionPolicy && c.validateMemo != nil {
+         .          .    405:		if opts.memoryLimitPages == 0 {
+         .          .    406:			opts.memoryLimitPages = c.validateMemo.memoryLimitPages
+         .          .    407:		}
+         .          .    408:		if opts.maxInstanceMetadataBytes == 0 {
+         .          .    409:			opts.maxInstanceMetadataBytes = c.validateMemo.maxInstanceMetadataBytes
+         .          .    410:		}
+         .          .    411:	}
+         .          .    412:	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
+         .          .    413:	arenaNeed := c.arenaNeedForImports(imports, syncMode)
+         .          .    414:	if c.memoryCount() == 1 && (opts.memoryLimitPages != 0 || c.memoryImport != "" && c.threadedMemory0()) {
+         .          .    415:		if arenaNeed > maxInt()-abi.MemoryDirEntryBytes {
+         .          .    416:			return nil, fmt.Errorf("instance metadata footprint overflows memory policy directory")
+         .          .    417:		}
+         .          .    418:		arenaNeed += abi.MemoryDirEntryBytes
+         .          .    419:	}
+         .          .    420:	if opts.maxInstanceMetadataBytes != 0 && uint64(arenaNeed) > opts.maxInstanceMetadataBytes {
+         .          .    421:		return nil, &runtime.ResourceLimitError{
+         .          .    422:			Resource:  "instance metadata bytes",
+         .          .    423:			Scope:     "instance",
+         .          .    424:			Requested: uint64(arenaNeed),
+         .          .    425:			Limit:     opts.maxInstanceMetadataBytes,
+         .          .    426:		}
+         .          .    427:	}
+         .          .    428:	if err := enforceMemoryPageQuota(c, imports, opts.memoryLimitPages); err != nil {
+         .          .    429:		return nil, err
+         .          .    430:	}
+         .       20ms    431:	if err := b.prepareCollector(); err != nil {
+         .          .    432:		return nil, err
+         .          .    433:	}
+         .          .    434:	needsExternConversion := c.stagedGCStructProduct().requiresExternConversion()
+         .          .    435:	var conversionStore *referenceStore
+         .          .    436:	var gcExternConversion *gcExternConversionState
+         .          .    437:	if needsExternConversion {
+         .          .    438:		conversionStore = opts.store
+         .          .    439:		if conversionStore == nil {
+         .          .    440:			conversionStore = newReferenceStore(true)
+         .          .    441:		}
+         .          .    442:		gcExternConversion, err = newGCExternConversionState(conversionStore, b.collector)
+         .          .    443:		if err != nil {
+         .          .    444:			return nil, err
+         .          .    445:		}
+         .          .    446:	}
+         .          .    447:	defer func() {
+         .          .    448:		if !b.success && gcExternConversion != nil {
+         .          .    449:			_ = gcExternConversion.close()
+         .          .    450:		}
+         .          .    451:	}()
+         .          .    452:	defer func() {
+         .          .    453:		if !b.success {
+         .          .    454:			b.rollbackPreparedState()
+         .          .    455:		}
+         .          .    456:	}()
+         .          .    457:	importGlobals, err := b.attachImports()
+         .          .    458:	if err != nil {
+         .          .    459:		return nil, err
+         .          .    460:	}
+         .          .    461:	stackBytes := opts.nativeStackBytes
+         .          .    462:	if stackBytes == 0 {
+         .          .    463:		stackBytes = c.nativeStackBytes()
+         .          .    464:	}
+         .          .    465:	if stackBytes == 0 {
+         .          .    466:		stackBytes = runtime.DefaultNativeStackBytes
+         .          .    467:	}
+         .          .    468:	eng, err := runtime.AcquireEngineWithStackBytes(stackBytes)
+         .          .    469:	if err != nil {
+         .          .    470:		return nil, err
+         .          .    471:	}
+         .          .    472:	// Memory: a host-imported *Memory if the module imports one, otherwise an
+         .          .    473:	// instance-owned mapping (guard-page-backed for signals-based modules, so the
+         .          .    474:	// fault handler catches OOB accesses through the normal Invoke path).
+         .          .    475:	var (
+         .          .    476:		jm              *runtime.JobMemory
+         .          .    477:		memObj          *Memory
+         .          .    478:		ownsMem         bool
+         .          .    479:		threadedControl bool
+         .          .    480:		memoryObjs      []*Memory
+         .          .    481:		memoryOwns      []bool
+         .          .    482:	)
+         .          .    483:	var memoryAttachments importDedup[*Memory]
+         .          .    484:	attachMemory := func(memory *Memory) error {
+         .          .    485:		if memoryAttachments.contains(memory) {
+         .          .    486:			return nil
+         .          .    487:		}
+         .          .    488:		if err := memory.attachImporter(); err != nil {
+         .          .    489:			return err
+         .          .    490:		}
+         .          .    491:		memoryAttachments.push(memory)
+         .          .    492:		return nil
+         .          .    493:	}
+         .          .    494:	if c.memoryImport != "" {
+         .          .    495:		m, ok := imports.memory(c.memoryImportBindingKey(0))
+         .          .    496:		if !ok {
+         .          .    497:			runtime.ReleaseEngine(eng)
+         .          .    498:			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
+         .          .    499:		}
+         .          .    500:		if def, ok := c.memoryImportAt(0); ok {
+         .          .    501:			if err := m.validateLimits(def.Min, def.Max, def.HasMax, def.Addr64, def.Shared); err != nil {
+         .          .    502:				runtime.ReleaseEngine(eng)
+         .          .    503:				return nil, fmt.Errorf("imported memory %q limits: %w", c.memoryImport, err)
+         .          .    504:			}
+         .          .    505:		}
+         .          .    506:		// A signals-based module may elide memory-0 memory32 bounds checks and rely
+         .          .    507:		// on the guard-page fault, so its primary imported memory must be
+         .          .    508:		// guard-page backed. Host
+         .          .    509:		// NewMemory and guard-page instance owners provide one only in a
+         .          .    510:		// wago_guardpage build; reject a plain mapping (e.g. an explicit-bounds
+         .          .    511:		// owner's memory, or a deserialized signals-based module in a default binary).
+         .          .    512:		guarded, _ := m.importShape()
+         .          .    513:		if c.boundsMode == BoundsChecksSignalsBased && !guarded {
+         .          .    514:			runtime.ReleaseEngine(eng)
+         .          .    515:			return nil, fmt.Errorf("imported memory %q is not guard-page backed; signals-based bounds checks require a guard-page memory (build with -tags wago_guardpage)", c.memoryImport)
+         .          .    516:		}
+         .          .    517:		if err := attachMemory(m); err != nil {
+         .          .    518:			runtime.ReleaseEngine(eng)
+         .          .    519:			return nil, fmt.Errorf("imported memory %q: %w", c.memoryImport, err)
+         .          .    520:		}
+         .          .    521:		memObj = m
+         .          .    522:		if c.threadedMemory0() {
+         .          .    523:			jm, err = runtime.AcquireJobMemoryGrowable(0, 0)
+         .          .    524:			if err != nil {
+         .          .    525:				m.detachImporter()
+         .          .    526:				runtime.ReleaseEngine(eng)
+         .          .    527:				return nil, fmt.Errorf("allocate threaded instance control: %w", err)
+         .          .    528:			}
+         .          .    529:			threadedControl = true
+         .          .    530:		} else {
+         .          .    531:			jm = m.jobMemory()
+         .          .    532:		}
+         .          .    533:	} else {
+         .          .    534:		initialBytes, maxBytes := c.memorySizeBytes()
+         .          .    535:		if c.boundsMode == BoundsChecksSignalsBased || c.prefersGuardMemory() {
+         .       50ms    536:			jm, err = newGuardedJobMemory(initialBytes, maxBytes)
+         .          .    537:		} else {
+         .          .    538:			jm, err = runtime.AcquireJobMemoryGrowable(initialBytes, maxBytes)
+         .          .    539:		}
+         .          .    540:		if err != nil {
+         .          .    541:			runtime.ReleaseEngine(eng)
+         .          .    542:			return nil, err
+         .          .    543:		}
+         .          .    544:		memObj, ownsMem = &Memory{jm: jm}, true
+         .          .    545:	}
+         .          .    546:	memoryCount := c.memoryCount()
+         .          .    547:	needsMemoryDir := memoryCount > 1 || threadedControl || memoryCount != 0 && opts.memoryLimitPages != 0
+         .          .    548:	if needsMemoryDir {
+         .          .    549:		memoryObjs = make([]*Memory, memoryCount)
+         .          .    550:		memoryOwns = make([]bool, memoryCount)
+         .          .    551:		memoryObjs[0], memoryOwns[0] = memObj, ownsMem
+         .          .    552:	}
+         .          .    553:	// Release every owned mapping once and detach every distinct imported memory
+         .          .    554:	// once. Multiple import declarations may deliberately alias one host Memory.
+         .          .    555:	closeMem := func() {
+         .          .    556:		if memoryCount <= 1 {
+         .          .    557:			if threadedControl {
+         .          .    558:				runtime.ReleaseJobMemory(jm)
+         .          .    559:			}
+         .          .    560:			if ownsMem {
+         .          .    561:				runtime.ReleaseJobMemory(jm)
+         .          .    562:			}
+         .          .    563:			memoryAttachments.each((*Memory).detachImporter)
+         .          .    564:			return
+         .          .    565:		}
+         .          .    566:		for i := memoryCount - 1; i >= 0; i-- {
+         .          .    567:			memory := memoryObjs[i]
+         .          .    568:			if memory != nil && memoryOwns[i] {
+         .          .    569:				runtime.ReleaseJobMemory(memory.jobMemory())
+         .          .    570:			}
+         .          .    571:		}
+         .          .    572:		memoryAttachments.each((*Memory).detachImporter)
+         .          .    573:	}
+         .          .    574:	for i := 1; i < memoryCount; i++ {
+         .          .    575:		def := c.memoryDef(i)
+         .          .    576:		if def.ImportKey != "" {
+         .          .    577:			memory, ok := imports.memory(c.memoryImportBindingKey(i))
+         .          .    578:			if !ok {
+         .          .    579:				closeMem()
+         .          .    580:				runtime.ReleaseEngine(eng)
+         .          .    581:				return nil, fmt.Errorf("missing imported memory %q", def.ImportKey)
+         .          .    582:			}
+         .          .    583:			if err := memory.validateLimits(def.Min, def.Max, def.HasMax, def.Addr64, def.Shared); err != nil {
+         .          .    584:				closeMem()
+         .          .    585:				runtime.ReleaseEngine(eng)
+         .          .    586:				return nil, fmt.Errorf("imported memory %q limits: %w", def.ImportKey, err)
+         .          .    587:			}
+         .          .    588:			if err := attachMemory(memory); err != nil {
+         .          .    589:				closeMem()
+         .          .    590:				runtime.ReleaseEngine(eng)
+         .          .    591:				return nil, fmt.Errorf("imported memory %q: %w", def.ImportKey, err)
+         .          .    592:			}
+         .          .    593:			memoryObjs[i] = memory
+         .          .    594:			continue
+         .          .    595:		}
+         .          .    596:		maxPages := uint64(65536)
+         .          .    597:		if def.HasMax {
+         .          .    598:			maxPages = def.Max
+         .          .    599:		}
+         .          .    600:		initialPages := def.Min
+         .          .    601:		var secondaryJM *runtime.JobMemory
+         .          .    602:		var allocErr error
+         .          .    603:		if c.boundsMode == BoundsChecksSignalsBased || c.prefersGuardMemory() {
+         .          .    604:			// Every owned memory requested by a signals-based configuration uses the guarded
+         .          .    605:			// representation, even though indexed-memory accesses retain explicit
+         .          .    606:			// checks. An exported nonzero memory may become memory 0 of another
+         .          .    607:			// signals-based instance, where guard-backed ownership is mandatory.
+         .          .    608:			secondaryJM, allocErr = newGuardedJobMemory(int(initialPages)*65536, int(maxPages)*65536)
+         .          .    609:		} else {
+         .          .    610:			secondaryJM, allocErr = runtime.AcquireJobMemoryGrowable(int(initialPages)*65536, int(maxPages)*65536)
+         .          .    611:		}
+         .          .    612:		if allocErr != nil {
+         .          .    613:			closeMem()
+         .          .    614:			runtime.ReleaseEngine(eng)
+         .          .    615:			return nil, fmt.Errorf("memory %d: %w", i, allocErr)
+         .          .    616:		}
+         .          .    617:		memoryObjs[i] = &Memory{jm: secondaryJM}
+         .          .    618:		memoryOwns[i] = true
+         .          .    619:	}
+         .          .    620:	var nativeMemoryDir []byte
+         .          .    621:	var nativeTagIDs []byte
+         .          .    622:	ar, err := runtime.AcquireArena(arenaNeed)
+         .          .    623:	if err != nil {
+         .          .    624:		closeMem()
+         .          .    625:		runtime.ReleaseEngine(eng)
+         .          .    626:		return nil, err
+         .          .    627:	}
+         .          .    628:	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
+         .          .    629:	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
+         .          .    630:	if needsMemoryDir {
+         .          .    631:		nativeMemoryDir = ar.Alloc(memoryCount * abi.MemoryDirEntryBytes)
+         .          .    632:		for i, memory := range memoryObjs {
+         .          .    633:			memoryJM := memory.jobMemory()
+         .          .    634:			if memoryJM == nil {
+         .          .    635:				runtime.ReleaseArena(ar)
+         .          .    636:				closeMem()
+         .          .    637:				runtime.ReleaseEngine(eng)
+         .          .    638:				return nil, fmt.Errorf("memory %d owner closed during instantiation", i)
+         .          .    639:			}
+         .          .    640:			entry := nativeMemoryDir[i*abi.MemoryDirEntryBytes:]
+         .          .    641:			binary.LittleEndian.PutUint64(entry[abi.MemoryDirBaseOffset:], uint64(memoryJM.LinMemBase()))
+         .          .    642:			binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(len(memoryJM.HostBytes())))
+         .          .    643:			binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], memoryJM.CurrentPages())
+         .          .    644:			binary.LittleEndian.PutUint32(entry[abi.MemoryDirPolicyMaxPagesOffset:], opts.memoryLimitPages)
+         .          .    645:		}
+         .          .    646:		jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&nativeMemoryDir[0])))
+         .          .    647:	}
+         .          .    648:	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+         .          .    649:		nativeTagIDs = ar.Alloc(len(c.memoryDir.ehTags) * 8)
+         .          .    650:		for i, def := range c.memoryDir.ehTags {
+         .          .    651:			identity := uint64(uintptr(unsafe.Pointer(&nativeTagIDs[i*8])))
+         .          .    652:			if def.ImportKey != "" {
+         .          .    653:				tag, ok := imports.tag(c.tagImportBindingKey(i))
+         .          .    654:				if !ok {
+         .          .    655:					runtime.ReleaseArena(ar)
+         .          .    656:					closeMem()
+         .          .    657:					runtime.ReleaseEngine(eng)
+         .          .    658:					return nil, fmt.Errorf("imported tag %q is unavailable during native identity setup", def.ImportKey)
+         .          .    659:				}
+         .          .    660:				identity = tag.identityValue()
+         .          .    661:			}
+         .          .    662:			binary.LittleEndian.PutUint64(nativeTagIDs[i*8:], identity)
+         .          .    663:		}
+         .          .    664:		jm.SetEHTagDirPtr(uintptr(unsafe.Pointer(&nativeTagIDs[0])))
+         .          .    665:	}
+         .          .    666:	base, err := c.acquireCode()
+         .          .    667:	if err != nil {
+         .          .    668:		runtime.ReleaseArena(ar)
+         .          .    669:		closeMem()
+         .          .    670:		runtime.ReleaseEngine(eng)
+         .          .    671:		return nil, err
+         .          .    672:	}
+         .          .    673:	var thunkMem []byte // instance-specific HostFuncRef thunks; unmapped on failure/close
+         .          .    674:	defer func() {
+         .          .    675:		if b.success {
+         .          .    676:			return
+         .          .    677:		}
+         .          .    678:		if thunkMem != nil {
+         .          .    679:			runtime.Unmap(thunkMem)
+         .          .    680:		}
+         .          .    681:		c.releaseCode()
+         .          .    682:		runtime.ReleaseArena(ar)
+         .          .    683:		closeMem()
+         .          .    684:		runtime.ReleaseEngine(eng)
+         .          .    685:	}()
+         .          .    686:	// The builder now owns a compiled-code reference. Release the Module lease
+         .          .    687:	// before lifecycle and start callbacks; Module.Close may close the Compiled
+         .          .    688:	// while this reference keeps its native mapping live.
+         .          .    689:	b.releaseModuleUse()
+         .          .    690:	var hostLog, ctrl []byte
+         .          .    691:	var hostEvents *hostEventBindings
+         .          .    692:	var syncHosts []syncHostBinding
+         .          .    693:	if syncMode {
+         .          .    694:		// Synchronous host-call path: install the control frame (not the async
+         .          .    695:		// log) as the import ctx. Modules that accept public funcrefs and can call
+         .          .    696:		// them indirectly also need this frame so an owned host descriptor remains
+         .          .    697:		// callable after crossing from another instance.
+         .          .    698:		ctrl = ar.AllocNoZero(c.hostCtrlFrameBytes())
+         .          .    699:		if err := runtime.InitHostCtrlFrame(ctrl); err != nil {
+         .          .    700:			return nil, fmt.Errorf("instantiate: initialize host control frame: %w", err)
+         .          .    701:		}
+         .          .    702:		jm.SetCustomCtx(uintptr(unsafe.Pointer(&ctrl[0])))
+         .          .    703:		if len(c.Imports) > 0 {
+         .          .    704:			syncHosts, err = c.buildSyncHosts(imports)
+         .          .    705:			if err != nil {
+         .          .    706:				return nil, fmt.Errorf("instantiate: %w", err)
+         .          .    707:			}
+         .          .    708:		}
+         .          .    709:	} else if len(c.Imports) > 0 {
+         .          .    710:		hasHostImport := false
+         .          .    711:		for i, displayKey := range c.Imports {
+         .          .    712:			key := c.functionImportBindingKey(i)
+         .          .    713:			if _, cross := imports[key].(*InstanceExport); cross {
+         .          .    714:				continue
+         .          .    715:			}
+         .          .    716:			hasHostImport = true
+         .          .    717:			if imports[key] == nil {
+         .          .    718:				return nil, fmt.Errorf("import %q: deferred host event is missing", displayKey)
+         .          .    719:			}
+         .          .    720:			if i >= len(c.importFuncSigs) {
+         .          .    721:				return nil, fmt.Errorf("import %q: missing signature", displayKey)
+         .          .    722:			}
+         .          .    723:			if _, err := bindI32HostEvent(imports[key], c.importFuncSigs[i]); err != nil {
+         .          .    724:				return nil, err
+         .          .    725:			}
+         .          .    726:		}
+         .          .    727:		if hasHostImport {
+         .          .    728:			hostEvents, err = c.buildHostEvents(imports)
+         .          .    729:			if err != nil {
+         .          .    730:				return nil, fmt.Errorf("instantiate: %w", err)
+         .          .    731:			}
+         .          .    732:			// The log's count header is reset at the start of every Invoke and its
+         .          .    733:			// body is written by native code before deferred callbacks read it, so
+         .          .    734:			// the ~64 KiB buffer needs no instantiate-time zero-fill.
+         .          .    735:			hostLog = ar.AllocNoZero(runtime.HostCallLogBytes)
+         .          .    736:			jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
+         .          .    737:			for _, global := range c.GlobalImports {
+         .          .    738:				if valTypeMayCarryFuncref(global.Type) {
+         .          .    739:					return nil, fmt.Errorf("deferred host-event instance cannot import a funcref global: %w", ErrPermissionDenied)
+         .          .    740:				}
+         .          .    741:			}
+         .          .    742:		}
+         .          .    743:	}
+         .          .    744:	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
+         .          .    745:
+         .          .    746:	sharedThunkBase, sharedThunkOffsets, ownedThunkAddr, generatedThunks, err := buildHostFuncThunks(c, imports, syncMode)
+         .          .    747:	if err != nil {
+         .          .    748:		return nil, err
+         .          .    749:	}
+         .          .    750:	thunkMem = generatedThunks
+         .          .    751:	if c.dynamicImports && c.NumImports > 0 {
+         .          .    752:		dispatch := ar.Alloc(c.NumImports * runtime.ImportDispatchEntryBytes)
+         .          .    753:		selfLinMem := uint64(jm.LinMemBase())
+         .          .    754:		for i, displayKey := range c.Imports {
+         .          .    755:			key := c.functionImportBindingKey(i)
+         .          .    756:			off := i * runtime.ImportDispatchEntryBytes
+         .          .    757:			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil && ex.inst != nil {
+         .          .    758:				if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
+         .          .    759:					return nil, fmt.Errorf("cross-instance import %q references an unavailable function", displayKey)
+         .          .    760:				}
+         .          .    761:				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
+         .          .    762:				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchHomeLinMemOffset:], uint64(ex.inst.jm.LinMemBase()))
+         .          .    763:				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchTargetContextOffset:], uint64(ex.inst.nativeContext))
+         .          .    764:				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCallerContextOffset:], uint64(nativeContextPtr))
+         .          .    765:				continue
+         .          .    766:			}
+         .          .    767:			addr := uint64(0)
+         .          .    768:			if ownedThunkAddr != nil {
+         .          .    769:				addr = ownedThunkAddr[uint32(i)]
+         .          .    770:			}
+         .          .    771:			if addr == 0 && i < len(sharedThunkOffsets) && sharedThunkOffsets[i] != noHostThunkOffset {
+         .          .    772:				addr = uint64(sharedThunkBase) + uint64(sharedThunkOffsets[i])
+         .          .    773:			}
+         .          .    774:			if addr == 0 {
+         .          .    775:				return nil, fmt.Errorf("import %q has no host dispatch thunk", displayKey)
+         .          .    776:			}
+         .          .    777:			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], addr)
+         .          .    778:			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchHomeLinMemOffset:], selfLinMem)
+         .          .    779:			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchTargetContextOffset:], uint64(nativeContextPtr))
+         .          .    780:			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCallerContextOffset:], uint64(nativeContextPtr))
+         .          .    781:		}
+         .          .    782:		jm.SetImportDispatchPtr(uintptr(unsafe.Pointer(&dispatch[0])))
+         .          .    783:	}
+         .          .    784:
+         .          .    785:	var initErr error
+         .          .    786:	var tableDesc []byte
+         .          .    787:	var funcRefDescs []byte
+         .          .    788:	var writeTableEntry func([]byte, uint32)
+         .          .    789:	if c.needsFuncRefDescs() {
+         .          .    790:		selfLinMem := uint64(jm.LinMemBase())
+         .          .    791:		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes * (len(c.FuncTypeID) + 1))
+         .          .    792:		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
+         .          .    793:		if c.usesDynamicFuncRefTest() {
+         .          .    794:			typeIDBytes := (4*len(c.FuncTypeID) + 7) &^ 7
+         .          .    795:			funcRefTypeIDs := ar.Alloc(typeIDBytes)
+         .          .    796:			binary.LittleEndian.PutUint64(funcRefDescs[runtime.TableEntryCodePtrOffset:], uint64(uintptr(unsafe.Pointer(&funcRefTypeIDs[0]))))
+         .          .    797:			for fidx := range c.FuncTypeID {
+         .          .    798:				typeID := ^uint32(0)
+         .          .    799:				// Imported descriptors are local proxies. Their declared consumer type
+         .          .    800:				// can be a strict supertype of the attached function's actual provider
+         .          .    801:				// type, so force the cold attachment-aware classifier for proxy values.
+         .          .    802:				if local := fidx - c.NumImports; local >= 0 && local < len(c.Funcs) && c.Funcs[local].HasTypeIndex {
+         .          .    803:					typeID = c.Funcs[local].TypeIndex
+         .          .    804:				}
+         .          .    805:				binary.LittleEndian.PutUint32(funcRefTypeIDs[4*fidx:], typeID)
+         .          .    806:			}
+         .          .    807:		}
+         .          .    808:		mayCarryFuncref := func(t ValType) bool { return t == ValFuncRef || t == ValAnyRef }
+         .          .    809:		localFuncrefsMayEscape := c.tableImport != ""
+         .          .    810:		if !localFuncrefsMayEscape {
+         .          .    811:			for i := range c.extraTables {
+         .          .    812:				if c.extraTables[i].ImportKey != "" {
+         .          .    813:					localFuncrefsMayEscape = true
+         .          .    814:					break
+         .          .    815:				}
+         .          .    816:			}
+         .          .    817:		}
+         .          .    818:		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+         .          .    819:			localFuncrefsMayEscape = len(c.tableExports) != 0
+         .          .    820:		}
+         .          .    821:		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+         .          .    822:			for i := range c.memoryDir.ehTags {
+         .          .    823:				typeIdx := c.memoryDir.ehTags[i].TypeIndex
+         .          .    824:				if uint64(typeIdx) >= uint64(len(c.Types)) || c.Types[typeIdx].Kind != CompositeTypeFunction {
+         .          .    825:					continue
+         .          .    826:				}
+         .          .    827:				for _, param := range c.Types[typeIdx].Params {
+         .          .    828:					if abiType, ok := param.ABIType(c.Types); ok && mayCarryFuncref(abiType) {
+         .          .    829:						localFuncrefsMayEscape = true
+         .          .    830:						break
+         .          .    831:					}
+         .          .    832:				}
+         .          .    833:				if localFuncrefsMayEscape {
+         .          .    834:					break
+         .          .    835:				}
+         .          .    836:			}
+         .          .    837:		}
+         .          .    838:		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+         .          .    839:			localFuncrefsMayEscape = c.dynamicFuncrefEscape
+         .          .    840:		}
+         .          .    841:		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+         .          .    842:			for i := range c.importFuncSigs {
+         .          .    843:				for _, param := range c.importFuncSigs[i].Params {
+         .          .    844:					if mayCarryFuncref(param) {
+         .          .    845:						localFuncrefsMayEscape = true
+         .          .    846:						break
+         .          .    847:					}
+         .          .    848:				}
+         .          .    849:				for _, result := range c.importFuncSigs[i].Results {
+         .          .    850:					if result == ValAnyRef {
+         .          .    851:						localFuncrefsMayEscape = true
+         .          .    852:						break
+         .          .    853:					}
+         .          .    854:				}
+         .          .    855:				if localFuncrefsMayEscape {
+         .          .    856:					break
+         .          .    857:				}
+         .          .    858:			}
+         .          .    859:		}
+         .          .    860:		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+         .          .    861:			for i := range c.GlobalImports {
+         .          .    862:				if mayCarryFuncref(c.GlobalImports[i].Type) {
+         .          .    863:					localFuncrefsMayEscape = true
+         .          .    864:					break
+         .          .    865:				}
+         .          .    866:			}
+         .          .    867:		}
+         .          .    868:		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+         .          .    869:			for _, globalIdx := range c.GlobalExports {
+         .          .    870:				if globalIdx >= 0 && globalIdx < len(c.Globals) && mayCarryFuncref(c.Globals[globalIdx].Type) {
+         .          .    871:					localFuncrefsMayEscape = true
+         .          .    872:					break
+         .          .    873:				}
+         .          .    874:			}
+         .          .    875:		}
+         .          .    876:		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+         .          .    877:			for _, fidx := range c.Exports {
+         .          .    878:				local := fidx - c.NumImports
+         .          .    879:				if local < 0 || local >= len(c.Funcs) {
+         .          .    880:					continue
+         .          .    881:				}
+         .          .    882:				for _, param := range c.Funcs[local].Params {
+         .          .    883:					if param == ValAnyRef {
+         .          .    884:						localFuncrefsMayEscape = true
+         .          .    885:						break
+         .          .    886:					}
+         .          .    887:				}
+         .          .    888:				for _, result := range c.Funcs[local].Results {
+         .          .    889:					if mayCarryFuncref(result) {
+         .          .    890:						localFuncrefsMayEscape = true
+         .          .    891:						break
+         .          .    892:					}
+         .          .    893:				}
+         .          .    894:				if localFuncrefsMayEscape {
+         .          .    895:					break
+         .          .    896:				}
+         .          .    897:			}
+         .          .    898:		}
+         .          .    899:		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
+         .          .    900:			off := (fidx + 1) * runtime.FuncRefDescBytes
+         .          .    901:			var code, home uint64
+         .          .    902:			targetContext := uint64(nativeContextPtr)
+         .          .    903:			kind := abi.FuncRefEntryInvalid
+         .          .    904:			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
+         .          .    905:				internal := c.Entry[li]
+         .          .    906:				if li < len(c.InternalEntry) {
+         .          .    907:					internal = internalEntryOffset(c.InternalEntry[li])
+         .          .    908:				}
+         .          .    909:				regABIEnabled := !c.registerABIDisabled
+         .          .    910:				localRegABI := regABIEnabled && funcSigLocalRegABI(c.Funcs[li])
+         .          .    911:				stagedTailRegABI := regABIEnabled && c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (localRegABI || funcSigReferenceResultRegABI(c.Funcs[li]))
+         .          .    912:				// Equal wrapper/internal offsets on a register-ABI function encode an
+         .          .    913:				// intentionally wrapperless direct-only function. It cannot be a valid
+         .          .    914:				// ref.func target; leave its unused descriptor entry invalid instead of
+         .          .    915:				// publishing the internal ABI under a wrapper tag.
+         .          .    916:				if internal == c.Entry[li] && (localRegABI || stagedTailRegABI) {
+         .          .    917:					continue
+         .          .    918:				}
+         .          .    919:				code, home = uint64(base)+uint64(c.Entry[li]), selfLinMem
+         .          .    920:				kind = abi.FuncRefEntryLocalWrapper
+         .          .    921:				if goruntime.GOARCH == "arm64" && localFuncrefsMayEscape {
+         .          .    922:					kind = abi.FuncRefEntryCrossInstanceWrapper
+         .          .    923:				}
+         .          .    924:				if !localFuncrefsMayEscape && internal != c.Entry[li] && (regABIEnabled && funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
+         .          .    925:					code = uint64(base) + uint64(internal)
+         .          .    926:					kind = abi.FuncRefEntryInternal
+         .          .    927:				}
+         .          .    928:			} else if fidx < c.NumImports {
+         .          .    929:				if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
+         .          .    930:					code = uint64(ex.inst.base) + uint64(ex.inst.c.Entry[ex.localIdx])
+         .          .    931:					home = uint64(ex.inst.jm.LinMemBase())
+         .          .    932:					targetContext = uint64(ex.inst.nativeContext)
+         .          .    933:					kind = abi.FuncRefEntryCrossInstanceWrapper
+         .          .    934:				} else if addr, ok := hostThunkAddr(fidx, sharedThunkBase, sharedThunkOffsets, ownedThunkAddr); ok {
+         .          .    935:					code, home = addr, selfLinMem
+         .          .    936:					kind = abi.FuncRefEntryHostThunk
+         .          .    937:				}
+         .          .    938:			}
+         .          .    939:			if kind != abi.FuncRefEntryInvalid {
+         .          .    940:				if code == 0 {
+         .          .    941:					return nil, fmt.Errorf("instantiate: function %d has a zero %v entry", fidx, kind)
+         .          .    942:				}
+         .          .    943:				taggedHome, ok := abi.TagFuncRefHome(home, kind)
+         .          .    944:				if !ok {
+         .          .    945:					return nil, fmt.Errorf("instantiate: function %d home pointer collides with descriptor entry tags", fidx)
+         .          .    946:				}
+         .          .    947:				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], code)
+         .          .    948:				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], taggedHome)
+         .          .    949:			}
+         .          .    950:			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntrySigKeyOffset:], c.funcTypeKey(fidx))
+         .          .    951:			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))))
+         .          .    952:			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.FuncRefContextOffset:], targetContext)
+         .          .    953:			if fidx < c.NumImports {
+         .          .    954:				// Cross-instance imports reuse the producer's canonical identity when
+         .          .    955:				// that producer already owns a descriptor arena.
+         .          .    956:				if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.inst.funcRefDescs != nil {
+         .          .    957:					homeFidx := ex.inst.c.NumImports + ex.localIdx
+         .          .    958:					homeOff := (homeFidx + 1) * runtime.FuncRefDescBytes
+         .          .    959:					if homeOff+runtime.FuncRefDescBytes <= len(ex.inst.funcRefDescs) {
+         .          .    960:						copy(funcRefDescs[off+runtime.TableEntryRefSlotOffset:off+runtime.TableEntryRefSlotOffset+8], ex.inst.funcRefDescs[homeOff+runtime.TableEntryRefSlotOffset:homeOff+runtime.TableEntryRefSlotOffset+8])
+         .          .    961:					}
+         .          .    962:				}
+         .          .    963:			}
+         .          .    964:		}
+         .          .    965:		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])))
+         .          .    966:		writeTableEntry = func(entry []byte, fidx uint32) {
+         .          .    967:			if fidx == nullFuncRefIndex {
+         .          .    968:				clear(entry)
+         .          .    969:				return
+         .          .    970:			}
+         .          .    971:			payload := int(fidx) + 1
+         .          .    972:			if payload <= 0 || payload >= len(c.FuncTypeID)+1 {
+         .          .    973:				clear(entry)
+         .          .    974:				return
+         .          .    975:			}
+         .          .    976:			off := payload * runtime.FuncRefDescBytes
+         .          .    977:			copy(entry, funcRefDescs[off:off+runtime.TableEntryBytes])
+         .          .    978:		}
+         .          .    979:	} else if c.needsFuncRefContextHeader {
+         .          .    980:		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes)
+         .          .    981:		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
+         .          .    982:		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])))
+         .          .    983:	}
+         .          .    984:	var globalCells []*Global
+         .          .    985:	var instantiationRoots gc.Slots
+         .          .    986:	writeElemEntry := func(entry []byte, refType ValType, value RefInit) (err error) {
+         .          .    987:		rootCompactEntry := normalizedElemRefType(refType) == ValAnyRef || normalizedElemRefType(refType) == ValI31Ref
+         .          .    988:		defer func() {
+         .          .    989:			if err == nil && rootCompactEntry && len(entry) >= 4 {
+         .          .    990:				instantiationRoots = append(instantiationRoots, compactRefRootSlot(entry[:4]))
+         .          .    991:			}
+         .          .    992:		}()
+         .          .    993:		if len(value.Expr) != 0 {
+         .          .    994:			if normalizedElemRefType(refType) != ValAnyRef && normalizedElemRefType(refType) != ValI31Ref && !(normalizedElemRefType(refType) == ValExternRef && needsExternConversion) {
+         .          .    995:				return fmt.Errorf("GC element expression has incompatible destination %s", refType)
+         .          .    996:			}
+         .          .    997:			if len(entry) < 8 {
+         .          .    998:				return fmt.Errorf("GC element expression entry is truncated")
+         .          .    999:			}
+         .          .   1000:			bits, err := evalCompiledGCConstExpr(value.Expr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, len(globalCells), funcRefDescs, instantiationRoots)
+         .          .   1001:			if err != nil {
+         .          .   1002:				return err
+         .          .   1003:			}
+         .          .   1004:			binary.LittleEndian.PutUint64(entry, bits)
+         .          .   1005:			return nil
+         .          .   1006:		}
+         .          .   1007:		if value.HasGlobal {
+         .          .   1008:			if int(value.GlobalIndex) >= len(globalCells) || globalCells[value.GlobalIndex] == nil {
+         .          .   1009:				return fmt.Errorf("element global %d is unavailable", value.GlobalIndex)
+         .          .   1010:			}
+         .          .   1011:			if value.I31Wrap {
+         .          .   1012:				if normalizedElemRefType(refType) != ValI31Ref || len(entry) < 8 {
+         .          .   1013:					return fmt.Errorf("element global %d i31 wrapper has incompatible destination %s", value.GlobalIndex, refType)
+         .          .   1014:				}
+         .          .   1015:				bits := uint32(readGlobalObject(globalCells[value.GlobalIndex], ValI32))
+         .          .   1016:				binary.LittleEndian.PutUint64(entry, uint64(bits<<1|1))
+         .          .   1017:				return nil
+         .          .   1018:			}
+         .          .   1019:			bits := readGlobalObject(globalCells[value.GlobalIndex], normalizedElemRefType(refType))
+         .          .   1020:			switch normalizedElemRefType(refType) {
+         .          .   1021:			case ValFuncRef:
+         .          .   1022:				if bits == 0 {
+         .          .   1023:					clear(entry)
+         .          .   1024:					return nil
+         .          .   1025:				}
+         .          .   1026:				if len(entry) < runtime.TableEntryBytes {
+         .          .   1027:					return fmt.Errorf("funcref element global descriptor is truncated")
+         .          .   1028:				}
+         .          .   1029:				descriptor := unsafe.Slice((*byte)(offHeapPtr(uintptr(bits))), runtime.FuncRefDescBytes)
+         .          .   1030:				// Keep this explicit: Go 1.26.5 can ICE while lowering copy from
+         .          .   1031:				// this unsafe slice during Darwin/arm64 to AMD64 cross-builds.
+         .          .   1032:				for index := 0; index < runtime.TableEntryBytes; index++ {
+         .          .   1033:					entry[index] = descriptor[index]
+         .          .   1034:				}
+         .          .   1035:				// A canonical descriptor may select its producer's internal register-ABI
+         .          .   1036:				// entry. Once copied through an imported global into another instance's
+         .          .   1037:				// table, use the producer's offset-0 wrapper and explicit cross-instance
+         .          .   1038:				// home tag so ordinary call_indirect performs the required context switch.
+         .          .   1039:				global := globalCells[value.GlobalIndex]
+         .          .   1040:				if global.owner != nil && global.owner.instance != nil && global.owner.instance.nativeContext != nativeContextPtr {
+         .          .   1041:					producer := global.owner.instance
+         .          .   1042:					if fidx, ok := producer.funcrefDescriptorIndex(bits); ok {
+         .          .   1043:						li := fidx - producer.c.NumImports
+         .          .   1044:						if li >= 0 && li < len(producer.c.Entry) {
+         .          .   1045:							taggedHome, ok := abi.TagFuncRefHome(uint64(producer.jm.LinMemBase()), abi.FuncRefEntryCrossInstanceWrapper)
+         .          .   1046:							if !ok {
+         .          .   1047:								return fmt.Errorf("funcref element global producer home collides with descriptor tags")
+         .          .   1048:							}
+         .          .   1049:							binary.LittleEndian.PutUint64(entry[runtime.TableEntryCodePtrOffset:], uint64(producer.base)+uint64(producer.c.Entry[li]))
+         .          .   1050:							binary.LittleEndian.PutUint64(entry[runtime.TableEntryHomeLinMemOffset:], taggedHome)
+         .          .   1051:						}
+         .          .   1052:					}
+         .          .   1053:				}
+         .          .   1054:				return nil
+         .          .   1055:			case ValExternRef, ValAnyRef, ValI31Ref:
+         .          .   1056:				if len(entry) < 8 {
+         .          .   1057:					return fmt.Errorf("reference element global entry is truncated")
+         .          .   1058:				}
+         .          .   1059:				binary.LittleEndian.PutUint64(entry, bits)
+         .          .   1060:				return nil
+         .          .   1061:			case ValExnRef:
+         .          .   1062:				if bits != 0 {
+         .          .   1063:					return fmt.Errorf("non-null exception element globals require active handler ownership")
+         .          .   1064:				}
+         .          .   1065:				clear(entry)
+         .          .   1066:				return nil
+         .          .   1067:			default:
+         .          .   1068:				return fmt.Errorf("unsupported element global reference type %s", refType)
+         .          .   1069:			}
+         .          .   1070:		}
+         .          .   1071:		switch normalizedElemRefType(refType) {
+         .          .   1072:		case ValExternRef, ValExnRef, ValAnyRef:
+         .          .   1073:			if !value.Null {
+         .          .   1074:				return fmt.Errorf("externref element contains a non-null initializer")
+         .          .   1075:			}
+         .          .   1076:			clear(entry)
+         .          .   1077:			return nil
+         .          .   1078:		case ValI31Ref:
+         .          .   1079:			if value.Null {
+         .          .   1080:				clear(entry)
+         .          .   1081:				return nil
+         .          .   1082:			}
+         .          .   1083:			if value.FuncIndex&1 == 0 || len(entry) < 8 {
+         .          .   1084:				return fmt.Errorf("i31 element contains an invalid immediate")
+         .          .   1085:			}
+         .          .   1086:			binary.LittleEndian.PutUint64(entry, uint64(value.FuncIndex))
+         .          .   1087:			return nil
+         .          .   1088:		case ValFuncRef:
+         .          .   1089:			if value.Null {
+         .          .   1090:				clear(entry)
+         .          .   1091:				return nil
+         .          .   1092:			}
+         .          .   1093:			if writeTableEntry == nil {
+         .          .   1094:				return fmt.Errorf("non-null funcref element has no descriptor arena")
+         .          .   1095:			}
+         .          .   1096:			writeTableEntry(entry, value.FuncIndex)
+         .          .   1097:			return nil
+         .          .   1098:		default:
+         .          .   1099:			return fmt.Errorf("unsupported element reference type %s", refType)
+         .          .   1100:		}
+         .          .   1101:	}
+         .          .   1102:
+         .          .   1103:	var globals []byte
+         .          .   1104:	var gcGlobalRoots []gcGlobalRootMapping
+         .          .   1105:	var gcGlobalRootCount uint32
+         .          .   1106:	var genericGCGlobalRoots []gcGlobalRootMapping
+         .          .   1107:	runtimeGCExecution := c.needsRuntimeGCCollectorDomain()
+         .          .   1108:	globalCells = make([]*Global, len(c.Globals))
+         .          .   1109:	if len(c.Globals) > 0 {
+         .          .   1110:		globals = ar.Alloc(8 * len(c.Globals))
+         .          .   1111:		// One heap allocation backs every module-local global cell (a *Global into
+         .          .   1112:		// this slab) instead of one allocation per global; imported globals keep
+         .          .   1113:		// their own cached *Global.
+         .          .   1114:		localCells := make([]Global, len(c.Globals))
+         .          .   1115:		// Wasm global indexes are stored in order in a pointer table: imported
+         .          .   1116:		// global objects first, followed by module-local cells initialized from
+         .          .   1117:		// literal bits, earlier immutable globals, or extended const expressions.
+         .          .   1118:		for i, g := range c.Globals {
+         .          .   1119:			var cell *Global
+         .          .   1120:			if i < len(importGlobals) {
+         .          .   1121:				imp := importGlobals[i]
+         .          .   1122:				if imp.global == nil {
+         .          .   1123:					imp.global = newGlobalInCell(imp.initialType, imp.initialBits, imp.initialV128, imp.mutable, ar.Alloc(globalCellSize(imp.initialType)), nil)
+         .          .   1124:				}
+         .          .   1125:				cell = imp.global
+         .          .   1126:			} else {
+         .          .   1127:				bits, vec := g.Bits, g.V128
+         .          .   1128:				if gcInit, ok := c.gcStructGlobalInit(i); ok {
+         .          .   1129:					ref, slot, err := instantiateGCStructGlobal(b.collector, b.gcTypeMap, c.GCTypeDescs, gcInit)
+         .          .   1130:					if err != nil {
+         .          .   1131:						return nil, fmt.Errorf("global %d GC struct initializer: %w", i, err)
+         .          .   1132:					}
+         .          .   1133:					bits = uint64(ref)
+         .          .   1134:					mapping := gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
+         .          .   1135:					if runtimeGCExecution {
+         .          .   1136:						genericGCGlobalRoots = append(genericGCGlobalRoots, mapping)
+         .          .   1137:					} else {
+         .          .   1138:						gcGlobalRoots = append(gcGlobalRoots, mapping)
+         .          .   1139:						gcGlobalRootCount++
+         .          .   1140:					}
+         .          .   1141:				} else if gcInit, ok := c.gcArrayGlobalInit(i); ok {
+         .          .   1142:					ref, slot, err := instantiateGCArrayGlobal(b.collector, b.gcTypeMap, c.GCTypeDescs, gcInit, funcRefDescs)
+         .          .   1143:					if err != nil {
+         .          .   1144:						return nil, fmt.Errorf("global %d GC array initializer: %w", i, err)
+         .          .   1145:					}
+         .          .   1146:					bits = uint64(ref)
+         .          .   1147:					mapping := gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
+         .          .   1148:					if runtimeGCExecution {
+         .          .   1149:						genericGCGlobalRoots = append(genericGCGlobalRoots, mapping)
+         .          .   1150:					} else {
+         .          .   1151:						gcGlobalRoots = append(gcGlobalRoots, mapping)
+         .          .   1152:						gcGlobalRootCount++
+         .          .   1153:					}
+         .          .   1154:				}
+         .          .   1155:				if g.HasInitFunc {
+         .          .   1156:					off := (int(g.InitFunc) + 1) * runtime.FuncRefDescBytes
+         .          .   1157:					if off < runtime.FuncRefDescBytes || off+runtime.FuncRefDescBytes > len(funcRefDescs) {
+         .          .   1158:						return nil, fmt.Errorf("global %d ref.func initializer index %d has no descriptor", i, g.InitFunc)
+         .          .   1159:					}
+         .          .   1160:					bits = uint64(uintptr(unsafe.Pointer(&funcRefDescs[off])))
+         .          .   1161:				}
+         .          .   1162:				if g.HasInitGlobal {
+         .          .   1163:					if g.InitGlobal < 0 || g.InitGlobal >= i || globalCells[g.InitGlobal] == nil {
+         .          .   1164:						return nil, fmt.Errorf("global %d initializer references unavailable global %d", i, g.InitGlobal)
+         .          .   1165:					}
+         .          .   1166:					bits = readGlobalObject(globalCells[g.InitGlobal], c.Globals[g.InitGlobal].Type)
+         .          .   1167:					vec = readGlobalObjectV128(globalCells[g.InitGlobal])
+         .          .   1168:				}
+         .          .   1169:				if len(g.InitExpr) != 0 {
+         .          .   1170:					var value uint64
+         .          .   1171:					var err error
+         .          .   1172:					if g.Type == ValAnyRef || g.Type == ValI31Ref || (g.Type == ValExternRef && needsExternConversion) {
+         .          .   1173:						value, err = evalCompiledGCConstExpr(g.InitExpr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, i, funcRefDescs, instantiationRoots)
+         .          .   1174:					} else {
+         .          .   1175:						value, err = evalCompiledScalarConstExpr(g.InitExpr, g.Type, globalCells, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: i})
+         .          .   1176:					}
+         .          .   1177:					if err != nil {
+         .          .   1178:						return nil, fmt.Errorf("global %d extended initializer: %w", i, err)
+         .          .   1179:					}
+         .          .   1180:					bits = value
+         .          .   1181:				}
+         .          .   1182:				cell = &localCells[i]
+         .          .   1183:				cell.Type, cell.Mutable, cell.cell = g.Type, g.Mutable, ar.Alloc(globalCellSize(g.Type))
+         .          .   1184:				writeGlobalObject(cell, g.Type, bits)
+         .          .   1185:				if g.Type == ValV128 {
+         .          .   1186:					writeGlobalObjectV128(cell, vec)
+         .          .   1187:				}
+         .          .   1188:			}
+         .          .   1189:			globalCells[i] = cell
+         .          .   1190:			binary.LittleEndian.PutUint64(globals[i*8:], uint64(uintptr(unsafe.Pointer(&cell.cell[0]))))
+         .          .   1191:			if b.collector != nil && isGCRefValType(g.Type) && len(cell.cell) >= 4 {
+         .          .   1192:				// Keep the actual native cell mutable during the remainder of
+         .          .   1193:				// instantiation, before the completed Instance publishes its permanent
+         .          .   1194:				// global/table root views.
+         .          .   1195:				instantiationRoots = append(instantiationRoots, compactRefRootSlot(cell.cell[:4]))
+         .          .   1196:			}
+         .          .   1197:			if b.collector != nil && runtimeGCExecution && i >= len(importGlobals) && isGCRefValType(g.Type) {
+         .          .   1198:				mapped := false
+         .          .   1199:				for _, mapping := range genericGCGlobalRoots {
+         .          .   1200:					if mapping.GlobalIndex == uint32(i) {
+         .          .   1201:						mapped = true
+         .          .   1202:						break
+         .          .   1203:					}
+         .          .   1204:				}
+         .          .   1205:				if !mapped {
+         .          .   1206:					ref := gc.Ref(uint32(readGlobalObject(cell, g.Type)))
+         .          .   1207:					slot, err := b.collector.NewCheckedGlobalSlot(ref)
+         .          .   1208:					if err != nil {
+         .          .   1209:						return nil, fmt.Errorf("global %d generic GC root: %w", i, err)
+         .          .   1210:					}
+         .          .   1211:					genericGCGlobalRoots = append(genericGCGlobalRoots, gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot})
+         .          .   1212:				}
+         .          .   1213:			}
+         .          .   1214:		}
+         .          .   1215:		if len(c.Entry) > 0 {
+         .          .   1216:			jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
+         .          .   1217:		}
+         .          .   1218:	}
+         .          .   1219:
+         .          .   1220:	var gcRefTestTable *gcRefTestTableState
+         .          .   1221:	var gcRefTestDescriptors [maxGCRefTestTables][]byte
+         .          .   1222:	// Table descriptors are [len u32][max u32][entry...]. Funcref entries retain
+         .          .   1223:	// their direct 32-byte call descriptor; externref entries are opaque 8-byte
+         .          .   1224:	// handles. Table 0 remains in the direct basedata slot. Multiple local tables
+         .          .   1225:	// also get a compact descriptor-pointer directory; native table-0 code never
+         .          .   1226:	// reads it.
+         .          .   1227:	if c.HasTable {
+         .          .   1228:		tableCount := c.tableCount()
+         .          .   1229:		var tableDir []byte
+         .          .   1230:		if tableCount > 1 {
+         .          .   1231:			tableDir = ar.Alloc(8 * tableCount)
+         .          .   1232:		}
+         .          .   1233:		for tableIndex := 0; tableIndex < tableCount; tableIndex++ {
+         .          .   1234:			var desc []byte
+         .          .   1235:			var size int
+         .          .   1236:			def := c.tableDef(tableIndex)
+         .          .   1237:			entryBytes := c.tableEntryBytes(tableIndex)
+         .          .   1238:			if importDef, imported := c.tableImportAt(tableIndex); imported {
+         .          .   1239:				// Shared cross-instance table: run on the exporting instance's descriptor
+         .          .   1240:				// only after proving exact type and externref-store compatibility. Aliased
+         .          .   1241:				// declarations attach one importer root while each declaration validates.
+         .          .   1242:				t, ok := imports.table(c.tableImportBindingKey(tableIndex))
+         .          .   1243:				if !ok {
+         .          .   1244:					return nil, fmt.Errorf("missing imported table %q", importDef.Key)
+         .          .   1245:				}
+         .          .   1246:				exact, err := c.tableExactType(tableIndex)
+         .          .   1247:				if err != nil {
+         .          .   1248:					return nil, fmt.Errorf("imported table %q exact type: %w", importDef.Key, err)
+         .          .   1249:				}
+         .          .   1250:				if err := b.tableAttachments.attach(t, c.tableElementType(tableIndex), exact, c.Types, opts.store, b.collector, def.Addr64); err != nil {
+         .          .   1251:					return nil, fmt.Errorf("imported table %q: %w", importDef.Key, err)
+         .          .   1252:				}
+         .          .   1253:				desc = t.desc
+         .          .   1254:				if len(desc) < 8 {
+         .          .   1255:					return nil, fmt.Errorf("imported table %q descriptor is invalid", importDef.Key)
+         .          .   1256:				}
+         .          .   1257:				size = int(binary.LittleEndian.Uint32(desc))
+         .          .   1258:				capacity := int(binary.LittleEndian.Uint32(desc[4:]))
+         .          .   1259:				if capacity < size || 8+capacity*entryBytes > len(desc) {
+         .          .   1260:					return nil, fmt.Errorf("imported table %q descriptor maximum %d < size %d or exceeds storage", importDef.Key, capacity, size)
+         .          .   1261:				}
+         .          .   1262:				if uint64(size) < importDef.Min {
+         .          .   1263:					return nil, fmt.Errorf("imported table %q size %d < required minimum %d", importDef.Key, size, importDef.Min)
+         .          .   1264:				}
+         .          .   1265:				if importDef.HasMax {
+         .          .   1266:					// The descriptor capacity is only an allocation reservation; a table
+         .          .   1267:					// with no declared maximum still carries a finite reserve. Spec limit
+         .          .   1268:					// matching requires the provided type to actually declare a maximum
+         .          .   1269:					// when the import expects one, so consult the owner's declared bit
+         .          .   1270:					// rather than treating the reservation as the maximum.
+         .          .   1271:					if t.owner == nil || !t.owner.declaredHasMax {
+         .          .   1272:						return nil, fmt.Errorf("imported table %q has no declared maximum but a maximum of %d is required", importDef.Key, importDef.Max)
+         .          .   1273:					}
+         .          .   1274:					if uint64(capacity) > importDef.Max {
+         .          .   1275:						return nil, fmt.Errorf("imported table %q maximum %d > required maximum %d", importDef.Key, capacity, importDef.Max)
+         .          .   1276:					}
+         .          .   1277:				}
+         .          .   1278:			} else {
+         .          .   1279:				size = def.Size
+         .          .   1280:				capacity := c.tableRuntimeCapacity(tableIndex)
+         .          .   1281:				desc = ar.Alloc(8 + capacity*entryBytes)
+         .          .   1282:				binary.LittleEndian.PutUint32(desc, uint32(size))
+         .          .   1283:				binary.LittleEndian.PutUint32(desc[4:], uint32(capacity))
+         .          .   1284:			}
+         .          .   1285:			if def.HasInitFunc {
+         .          .   1286:				if entryBytes != runtime.TableEntryBytes || writeTableEntry == nil {
+         .          .   1287:					return nil, fmt.Errorf("table %d has a funcref initializer with compact-reference storage", tableIndex)
+         .          .   1288:				}
+         .          .   1289:				for slot := 0; slot < size; slot++ {
+         .          .   1290:					off := 8 + slot*entryBytes
+         .          .   1291:					writeTableEntry(desc[off:off+entryBytes], def.InitFunc)
+         .          .   1292:				}
+         .          .   1293:			}
+         .          .   1294:			if init := c.memoryDir.gcI31TableInit; init != nil && int(init.TableIndex) == tableIndex {
+         .          .   1295:				if entryBytes != 8 || int(init.GlobalIndex) >= len(globalCells) || int(init.GlobalIndex) >= len(c.Globals) || globalCells[init.GlobalIndex] == nil || c.Globals[init.GlobalIndex].Type != ValI32 {
+         .          .   1296:					return nil, fmt.Errorf("table %d has an invalid staged i31 initializer", tableIndex)
+         .          .   1297:				}
+         .          .   1298:				bits := uint64(uint32(readGlobalObject(globalCells[init.GlobalIndex], ValI32))<<1 | 1)
+         .          .   1299:				for slot := 0; slot < size; slot++ {
+         .          .   1300:					off := 8 + slot*entryBytes
+         .          .   1301:					binary.LittleEndian.PutUint64(desc[off:off+entryBytes], bits)
+         .          .   1302:				}
+         .          .   1303:			}
+         .          .   1304:			if tableIndex == 0 {
+         .          .   1305:				tableDesc = desc
+         .          .   1306:			}
+         .          .   1307:			if product := c.stagedGCStructProduct(); product.requiresRefTableState() && tableIndex < len(gcRefTestDescriptors) {
+         .          .   1308:				gcRefTestDescriptors[tableIndex] = desc
+         .          .   1309:			}
+         .          .   1310:			if tableCount > 1 {
+         .          .   1311:				binary.LittleEndian.PutUint64(tableDir[tableIndex*8:], uint64(uintptr(unsafe.Pointer(&desc[0]))))
+         .          .   1312:			}
+         .          .   1313:		}
+         .          .   1314:		for seg, el := range c.Elems {
+         .          .   1315:			desc := tableDesc
+         .          .   1316:			if el.TableIndex != 0 {
+         .          .   1317:				ptr := uintptr(binary.LittleEndian.Uint64(tableDir[int(el.TableIndex)*8:]))
+         .          .   1318:				header := unsafe.Slice((*byte)(offHeapPtr(ptr)), 8)
+         .          .   1319:				size := int(binary.LittleEndian.Uint32(header))
+         .          .   1320:				entryBytes := c.tableEntryBytes(int(el.TableIndex))
+         .          .   1321:				desc = unsafe.Slice((*byte)(offHeapPtr(ptr)), 8+size*entryBytes)
+         .          .   1322:			}
+         .          .   1323:			size := int(binary.LittleEndian.Uint32(desc))
+         .          .   1324:			table64 := c.tableDef(int(el.TableIndex)).Addr64
+         .          .   1325:			elemBase := uint64(el.Offset.Base)
+         .          .   1326:			if el.Offset.HasGlobal {
+         .          .   1327:				if el.Offset.Global < 0 || el.Offset.Global >= len(c.Globals) || el.Offset.Global >= len(globalCells) || globalCells[el.Offset.Global] == nil {
+         .          .   1328:					initErr = fmt.Errorf("element offset global %d out of range", el.Offset.Global)
+         .          .   1329:					break
+         .          .   1330:				}
+         .          .   1331:				value := readGlobalObject(globalCells[el.Offset.Global], c.Globals[el.Offset.Global].Type)
+         .          .   1332:				if table64 {
+         .          .   1333:					elemBase = value
+         .          .   1334:				} else {
+         .          .   1335:					elemBase = uint64(uint32(value))
+         .          .   1336:				}
+         .          .   1337:			}
+         .          .   1338:			if len(el.Offset.Expr) != 0 {
+         .          .   1339:				offsetType := ValI32
+         .          .   1340:				if table64 {
+         .          .   1341:					offsetType = ValI64
+         .          .   1342:				}
+         .          .   1343:				value, err := evalCompiledScalarConstExpr(el.Offset.Expr, offsetType, globalCells, c.Globals, constExprGlobalScope{context: constExprElementOffset, limit: len(c.Globals)})
+         .          .   1344:				if err != nil {
+         .          .   1345:					initErr = fmt.Errorf("element offset extended expression: %w", err)
+         .          .   1346:					break
+         .          .   1347:				}
+         .          .   1348:				if table64 {
+         .          .   1349:					elemBase = value
+         .          .   1350:				} else {
+         .          .   1351:					elemBase = uint64(uint32(value))
+         .          .   1352:				}
+         .          .   1353:			}
+         .          .   1354:			end := elemBase + uint64(len(el.Values))
+         .          .   1355:			if end < elemBase || end > uint64(size) {
+         .          .   1356:				initErr = fmt.Errorf("active element segment %d out of bounds on table %d: offset %d + length %d > table size %d", seg, el.TableIndex, elemBase, len(el.Values), size)
+         .          .   1357:				break
+         .          .   1358:			}
+         .          .   1359:			entryBytes := c.tableEntryBytes(int(el.TableIndex))
+         .          .   1360:			for k, value := range el.Values {
+         .          .   1361:				slot := int(elemBase) + k
+         .          .   1362:				off := 8 + slot*entryBytes
+         .          .   1363:				if err := writeElemEntry(desc[off:off+entryBytes], el.RefType, value); err != nil {
+         .          .   1364:					initErr = fmt.Errorf("active element segment %d value %d: %w", seg, k, err)
+         .          .   1365:					break
+         .          .   1366:				}
+         .          .   1367:			}
+         .          .   1368:			if initErr != nil {
+         .          .   1369:				break
+         .          .   1370:			}
+         .          .   1371:		}
+         .          .   1372:		if product := c.stagedGCStructProduct(); initErr == nil && product.requiresRefTableState() {
+         .          .   1373:			tableCount := c.tableCount()
+         .          .   1374:			valid := tableCount == 1 && c.tableEntryBytes(0) == 8
+         .          .   1375:			if product == stagedGCStructRefTestAbstract {
+         .          .   1376:				valid = tableCount == 3 && c.tableEntryBytes(0) == 8 && c.tableEntryBytes(1) == runtime.TableEntryBytes && c.tableEntryBytes(2) == 8
+         .          .   1377:			}
+         .          .   1378:			if !valid {
+         .          .   1379:				initErr = fmt.Errorf("GC ref.test product has an invalid mixed-table layout")
+         .          .   1380:			} else {
+         .          .   1381:				canonicalTypes, err := b.gcTypeMap.canonicalTypes(product.refTestCanonicalTypes())
+         .          .   1382:				if err != nil {
+         .          .   1383:					initErr = err
+         .          .   1384:				} else {
+         .          .   1385:					gcRefTestTable, initErr = newGCRefTestTableState(b.collector, gcRefTestDescriptors[:tableCount], 0, canonicalTypes)
+         .          .   1386:				}
+         .          .   1387:			}
+         .          .   1388:		}
+         .          .   1389:		jm.SetTablePtr(uintptr(unsafe.Pointer(&tableDesc[0])))
+         .          .   1390:		if len(tableDir) != 0 {
+         .          .   1391:			jm.SetTableDirPtr(uintptr(unsafe.Pointer(&tableDir[0])))
+         .          .   1392:		}
+         .          .   1393:	}
+         .          .   1394:
+         .          .   1395:	var gcArrayElements *gcArrayElementState
+         .          .   1396:	if initErr == nil && len(c.passiveElems) > 0 {
+         .          .   1397:		edesc := ar.Alloc(runtime.PassiveElemDescBytes * len(c.passiveElems))
+         .          .   1398:		for i, el := range c.passiveElems {
+         .          .   1399:			if len(el.Values) == 0 {
+         .          .   1400:				continue
+         .          .   1401:			}
+         .          .   1402:			entryBytes := elemEntryBytes(el.RefType)
+         .          .   1403:			entries := ar.Alloc(entryBytes * len(el.Values))
+         .          .   1404:			for k, value := range el.Values {
+         .          .   1405:				if err := writeElemEntry(entries[k*entryBytes:(k+1)*entryBytes], el.RefType, value); err != nil {
+         .          .   1406:					initErr = fmt.Errorf("passive element segment %d value %d: %w", i, k, err)
+         .          .   1407:					break
+         .          .   1408:				}
+         .          .   1409:			}
+         .          .   1410:			if initErr != nil {
+         .          .   1411:				break
+         .          .   1412:			}
+         .          .   1413:			off := i * runtime.PassiveElemDescBytes
+         .          .   1414:			binary.LittleEndian.PutUint64(edesc[off:], uint64(uintptr(unsafe.Pointer(&entries[0]))))
+         .          .   1415:			binary.LittleEndian.PutUint32(edesc[off+8:], uint32(len(el.Values)))
+         .          .   1416:		}
+         .          .   1417:		if initErr == nil && c.memoryDir != nil && c.memoryDir.gcArrayElement != nil {
+         .          .   1418:			seg := int(c.memoryDir.gcArrayElement.SegmentIndex)
+         .          .   1419:			if seg < 0 || seg >= len(c.passiveElems) {
+         .          .   1420:				initErr = fmt.Errorf("GC array element segment %d has no descriptor", seg)
+         .          .   1421:			} else {
+         .          .   1422:				desc := edesc[seg*runtime.PassiveElemDescBytes : (seg+1)*runtime.PassiveElemDescBytes]
+         .          .   1423:				gcArrayElements, initErr = instantiateGCArrayElementSegment(b.collector, b.gcTypeMap, c.GCTypeDescs, c.memoryDir.gcArrayElement, desc)
+         .          .   1424:			}
+         .          .   1425:		}
+         .          .   1426:		jm.SetPassiveElemPtr(uintptr(unsafe.Pointer(&edesc[0])))
+         .          .   1427:	}
+         .          .   1428:
+         .          .   1429:	var passiveDataDesc []byte
+         .          .   1430:	if len(c.PassiveData) > 0 {
+         .          .   1431:		// Descriptor layout is shared with the JIT: {ptr u64, len u32, pad u32}.
+         .          .   1432:		// Descriptors are per-instance because data.drop mutates len. Passive bytes
+         .          .   1433:		// are retained by c; active slots have nil bytes and start at length zero.
+         .          .   1434:		desc := ar.Alloc(runtime.PassiveDataDescBytes * len(c.PassiveData))
+         .          .   1435:		for i, d := range c.PassiveData {
+         .          .   1436:			off := i * runtime.PassiveDataDescBytes
+         .          .   1437:			if len(d.Bytes) != 0 {
+         .          .   1438:				binary.LittleEndian.PutUint64(desc[off:], uint64(uintptr(unsafe.Pointer(&d.Bytes[0]))))
+         .          .   1439:			}
+         .          .   1440:			binary.LittleEndian.PutUint32(desc[off+8:], uint32(len(d.Bytes)))
+         .          .   1441:		}
+         .          .   1442:		jm.SetPassiveDataPtr(uintptr(unsafe.Pointer(&desc[0])))
+         .          .   1443:		passiveDataDesc = desc
+         .          .   1444:	}
+         .          .   1445:
+         .          .   1446:	if initErr == nil && len(c.Data) > 0 {
+      40ms       40ms   1447:		for seg, d := range c.Data {
+         .          .   1448:			dataJM := jm
+         .          .   1449:			if d.MemoryIndex != 0 {
+         .          .   1450:				if int(d.MemoryIndex) >= len(memoryObjs) || memoryObjs[d.MemoryIndex] == nil {
+         .          .   1451:					initErr = fmt.Errorf("active data segment %d memory index %d is unavailable", seg, d.MemoryIndex)
+         .          .   1452:					break
+         .          .   1453:				}
+         .          .   1454:				dataJM = memoryObjs[d.MemoryIndex].jobMemory()
+         .          .   1455:			}
+         .          .   1456:			// Imported guarded memory may have grown beyond its initial committed Go
+         .          .   1457:			// slice. Re-slice the stable reservation to the current logical size.
+      20ms       90ms   1458:			lin, hostErr := dataJM.HostBytesChecked()
+         .          .   1459:			if hostErr != nil {
+         .          .   1460:				initErr = fmt.Errorf("active data segment %d memory %d host access: %w", seg, d.MemoryIndex, hostErr)
+         .          .   1461:				break
+         .          .   1462:			}
+         .       50ms   1463:			memory64 := c.memoryDef(int(d.MemoryIndex)).Addr64
+      10ms       10ms   1464:			off := uint64(d.Offset.Base)
+         .          .   1465:			if d.Offset.HasGlobal {
+         .          .   1466:				if d.Offset.Global < 0 || d.Offset.Global >= len(c.Globals) || d.Offset.Global >= len(globalCells) || globalCells[d.Offset.Global] == nil {
+      10ms       10ms   1467:					initErr = fmt.Errorf("data offset global %d out of range", d.Offset.Global)
+         .          .   1468:					break
+         .          .   1469:				}
+         .          .   1470:				off = uint64(uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type)))
+         .          .   1471:			}
+         .          .   1472:			if len(d.Offset.Expr) != 0 {
+         .          .   1473:				want := ValI32
+         .          .   1474:				if memory64 {
+         .          .   1475:					want = ValI64
+         .          .   1476:				}
+         .          .   1477:				value, err := evalCompiledScalarConstExpr(d.Offset.Expr, want, globalCells, c.Globals, constExprGlobalScope{context: constExprDataOffset, limit: len(c.Globals)})
+         .          .   1478:				if err != nil {
+         .          .   1479:					initErr = fmt.Errorf("data offset extended expression: %w", err)
+         .          .   1480:					break
+         .          .   1481:				}
+         .          .   1482:				off = value
+         .          .   1483:			}
+         .          .   1484:			length := uint64(len(d.Bytes))
+         .          .   1485:			if off > ^uint64(0)-length {
+         .          .   1486:				initErr = fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d overflows u64", seg, d.MemoryIndex, off, len(d.Bytes))
+         .          .   1487:				break
+         .          .   1488:			}
+         .          .   1489:			end := off + length
+         .          .   1490:			if end > uint64(len(lin)) {
+         .          .   1491:				initErr = fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d > memory size %d", seg, d.MemoryIndex, off, len(d.Bytes), len(lin))
+         .          .   1492:				break
+         .          .   1493:			}
+      10ms      5.06s   1494:			copy(lin[int(off):int(end)], d.Bytes)
+         .          .   1495:		}
+         .          .   1496:	}
+         .          .   1497:
+         .          .   1498:	argsBytes, err := runtime.SlotBytes(c.maxParamSlots)
+         .          .   1499:	if err != nil {
+         .          .   1500:		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
+         .          .   1501:	}
+         .          .   1502:	resultsBytes, err := runtime.SlotBytes(c.maxResultSlots)
+         .          .   1503:	if err != nil {
+         .          .   1504:		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
+         .          .   1505:	}
+         .          .   1506:	serArgs := ar.Alloc(argsBytes)
+         .          .   1507:	results := ar.Alloc(resultsBytes)
+         .          .   1508:	trap := ar.Alloc(runtime.TrapBufferBytes)
+         .          .   1509:	if err := jm.BindTrapCell(trap); err != nil {
+         .          .   1510:		return nil, fmt.Errorf("bind trap cell: %w", err)
+         .          .   1511:	}
+         .          .   1512:
+         .          .   1513:	var tableDescPtr uintptr
+         .          .   1514:	if len(tableDesc) != 0 {
+         .          .   1515:		tableDescPtr = uintptr(unsafe.Pointer(&tableDesc[0]))
+         .          .   1516:	}
+         .          .   1517:	var gcNativeTypes []gc.TypeID
+         .          .   1518:	var gcNativeView *gc.NativeInstanceView
+         .          .   1519:	if b.collector != nil && c.needsNativeGCABI() {
+         .          .   1520:		gcNativeTypes = make([]gc.TypeID, len(c.Types))
+         .          .   1521:		for local := range gcNativeTypes {
+         .          .   1522:			domain, ok := b.gcTypeMap.domain(uint32(local))
+         .          .   1523:			if !ok {
+         .          .   1524:				return nil, fmt.Errorf("instantiate: native GC type %d has no canonical domain mapping", local)
+         .          .   1525:			}
+         .          .   1526:			gcNativeTypes[local] = domain
+         .          .   1527:		}
+         .          .   1528:		gcNativeView, err = b.buildNativeGCInstanceView(gcNativeTypes)
+         .          .   1529:		if err != nil {
+         .          .   1530:			return nil, fmt.Errorf("instantiate: native GC metadata view: %w", err)
+         .          .   1531:		}
+         .          .   1532:		jm.SetGCNativeViewPtr(uintptr(unsafe.Pointer(gcNativeView)))
+         .          .   1533:	}
+         .          .   1534:	jm.CaptureInstanceContextBytes(nativeContext)
+         .          .   1535:	binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCDomainOffset:], b.gcDomainID)
+         .          .   1536:	if gcNativeView != nil {
+         .          .   1537:		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcNativeView))))
+         .          .   1538:	}
+         .          .   1539:	in := &Instance{
+      10ms       10ms   1540:		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hostEvents: hostEvents, imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
+         .          .   1541:		serArgs: serArgs, results: results, trap: trap, rt: opts.runtime,
+         .          .   1542:		nativeContext:   nativeContextPtr,
+         .          .   1543:		moduleIdentity:  opts.moduleIdentity,
+         .          .   1544:		pluginGCImports: opts.pluginGCImports,
+         .          .   1545:	}
+         .          .   1546:	if c.maxResultSlots <= len(in.resultInline) {
+         .          .   1547:		in.resultVals = in.resultInline[:c.maxResultSlots:c.maxResultSlots]
+         .          .   1548:	} else {
+         .          .   1549:		in.resultVals = make([]uint64, c.maxResultSlots)
+         .          .   1550:	}
+         .          .   1551:	independentInstances := c.independentInstances
+         .          .   1552:	if opts.hasExecutionPolicy {
+         .          .   1553:		independentInstances = opts.independentInstances
+         .          .   1554:	}
+         .          .   1555:	// Instances in one Runtime GC domain share a mutable collector. Keep their
+         .          .   1556:	// complete native activations under the process-wide execution lease: helper
+         .          .   1557:	// calls take the domain lock, but native allocation fast paths also mutate the
+         .          .   1558:	// collector and cannot safely overlap another tenant. Private collectors may
+         .          .   1559:	// retain instance-local execution.
+         .          .   1560:	if !b.collectorShared && c.allowsIndependentInstanceExecution(imports, independentInstances) {
+         .          .   1561:		in.executionFlags.Store(executionFlagIndependent)
+         .          .   1562:	}
+         .          .   1563:	b.registeredInstance = in
+         .          .   1564:	if in.syncMode {
+         .          .   1565:		if err := registerHostControl(in); err != nil {
+         .          .   1566:			return nil, fmt.Errorf("instantiate: register host control frame: %w", err)
+         .          .   1567:		}
+         .          .   1568:		defer func() {
+         .          .   1569:			if !b.success {
+         .          .   1570:				unregisterHostControl(in)
+         .          .   1571:			}
+         .          .   1572:		}()
+         .          .   1573:	}
+         .          .   1574:	if memoryCount > 1 || threadedControl {
+         .          .   1575:		in.memoryDir = &instanceMemoryDirectory{memories: memoryObjs, owns: memoryOwns, native: nativeMemoryDir}
+         .          .   1576:	}
+         .          .   1577:	if gcGlobalRootCount != 0 {
+         .          .   1578:		state := in.ensurePluginState()
+         .          .   1579:		state.gcGlobalRoots = gcGlobalRoots
+         .          .   1580:		state.gcGlobalRootCount = gcGlobalRootCount
+         .          .   1581:	}
+         .          .   1582:	if b.collector != nil && runtimeGCExecution {
+         .          .   1583:		public := in.publicGCState()
+      10ms       10ms   1584:		public.globalRoots = genericGCGlobalRoots
+         .          .   1585:		for i, g := range c.Globals {
+         .          .   1586:			if !isGCRefValType(g.Type) || i >= len(globalCells) || globalCells[i] == nil {
+         .          .   1587:				continue
+         .          .   1588:			}
+         .          .   1589:			mapped := false
+         .          .   1590:			for _, mapping := range public.globalRoots {
+         .          .   1591:				if mapping.GlobalIndex == uint32(i) {
+         .          .   1592:					mapped = true
+         .          .   1593:					break
+         .          .   1594:				}
+         .          .   1595:			}
+         .          .   1596:			if mapped {
+         .          .   1597:				continue
+         .          .   1598:			}
+         .          .   1599:			bits := readGlobalObject(globalCells[i], g.Type)
+         .          .   1600:			ref := gc.Ref(uint32(bits))
+         .          .   1601:			if bits != uint64(ref) {
+         .          .   1602:				return nil, fmt.Errorf("global %d contains non-compact generic GC reference %#x", i, bits)
+         .          .   1603:			}
+         .          .   1604:			slot, err := b.collector.NewCheckedGlobalSlot(ref)
+         .          .   1605:			if err != nil {
+         .          .   1606:				return nil, fmt.Errorf("global %d generic GC root: %w", i, err)
+         .          .   1607:			}
+         .          .   1608:			public.globalRoots = append(public.globalRoots, gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot})
+         .          .   1609:		}
+         .          .   1610:	}
+         .          .   1611:	if gcArrayElements != nil {
+         .          .   1612:		in.ensurePluginState().gcArrayElements.Store(gcArrayElements)
+         .          .   1613:	}
+         .          .   1614:	if gcRefTestTable == nil && needsExternConversion {
+         .          .   1615:		// Conversion-only modules need the same bounded identity owner without
+         .          .   1616:		// manufacturing a guest table. Table-bearing products populate descriptors
+         .          .   1617:		// above; the zero-table state owns only the conversion bridge.
+         .          .   1618:		gcRefTestTable = &gcRefTestTableState{}
+         .          .   1619:	}
+         .          .   1620:	if gcRefTestTable != nil {
+         .          .   1621:		in.ensurePluginState().gcRefTestTable.Store(gcRefTestTable)
+         .          .   1622:	}
+         .          .   1623:	if len(nativeTagIDs) != 0 {
+         .          .   1624:		in.ensurePluginState().tagIdentityBase = uintptr(unsafe.Pointer(&nativeTagIDs[0]))
+         .          .   1625:	}
+         .          .   1626:	if opts.origin != InstantiateDirect || opts.pluginGC != nil {
+         .          .   1627:		state := in.ensurePluginState()
+         .          .   1628:		state.origin = opts.origin
+         .          .   1629:		if opts.pluginGC != nil {
+         .          .   1630:			cfg := *opts.pluginGC
+         .          .   1631:			state.gcConfig = &cfg
+         .          .   1632:		}
+         .          .   1633:	}
+         .          .   1634:	if opts.runtime != nil {
+         .          .   1635:		in.beginConstruction(opts.operationReservation)
+         .          .   1636:		if err := opts.runtime.registerInstance(in, opts.runtimeReservation); err != nil {
+         .          .   1637:			in.endConstruction()
+         .          .   1638:			return nil, err
+         .          .   1639:		}
+         .          .   1640:		// Once a Runtime-owned Instance exists, every later failure must dispose it
+         .          .   1641:		// through the normal lifecycle before the instantiation error escapes. The
+         .          .   1642:		// construction lifetime remains active through rollback and is released only
+         .          .   1643:		// after all terminal instantiation observers return.
+         .          .   1644:		defer func() {
+         .          .   1645:			if recovered := recover(); recovered != nil {
+         .          .   1646:				result = nil
+         .          .   1647:				if panicErr, ok := recovered.(error); ok {
+         .          .   1648:					err = fmt.Errorf("wago: instantiation panicked after instance creation: %w", panicErr)
+         .          .   1649:				} else {
+         .          .   1650:					err = fmt.Errorf("wago: instantiation panicked after instance creation: %v", recovered)
+         .          .   1651:				}
+         .          .   1652:			}
+         .          .   1653:			if !b.success {
+         .          .   1654:				b.success = true // the normal Close path now owns all instance resources
+         .          .   1655:				err = joinPrimary(err, in.Close())
+         .          .   1656:			}
+         .          .   1657:			in.endConstruction()
+         .          .   1658:		}()
+         .          .   1659:	}
+         .          .   1660:	if opts.store != nil {
+         .          .   1661:		if err := opts.store.registerInstance(in); err != nil {
+         .          .   1662:			return nil, err
+         .          .   1663:		}
+         .          .   1664:		in.refStore = opts.store
+         .          .   1665:	} else if conversionStore != nil {
+         .          .   1666:		if err := conversionStore.registerInstance(in); err != nil {
+         .          .   1667:			return nil, err
+         .          .   1668:		}
+         .          .   1669:		in.refStore = conversionStore
+         .          .   1670:	}
+         .          .   1671:	if needsExternConversion {
+         .          .   1672:		if in.refStore == nil || gcExternConversion == nil || gcRefTestTable == nil {
+         .          .   1673:			return nil, fmt.Errorf("GC extern conversion ownership is unavailable")
+         .          .   1674:		}
+         .          .   1675:		if err := gcRefTestTable.attachConversion(gcExternConversion); err != nil {
+         .          .   1676:			return nil, err
+         .          .   1677:		}
+         .          .   1678:	}
+         .          .   1679:	if initErr != nil {
+         .          .   1680:		if opts.runtime == nil {
+         .          .   1681:			tableRetained := retainProducerRootsInImportedTables(in)
+         .          .   1682:			globalRetained := retainProducerRootsInImportedGlobals(in)
+         .          .   1683:			if tableRetained || globalRetained {
+         .          .   1684:				b.success = true
+         .          .   1685:				_ = in.Close()
+         .          .   1686:			}
+         .          .   1687:		}
+         .          .   1688:		return nil, initErr
+         .          .   1689:	}
+         .          .   1690:	if opts.afterCreate != nil {
+         .          .   1691:		if err := opts.afterCreate(in); err != nil {
+         .          .   1692:			return nil, err
+         .          .   1693:		}
+         .          .   1694:	}
+         .          .   1695:
+         .          .   1696:	// Run the start function (() -> ()) now that memory, globals, table, and data
+         .          .   1697:	// are initialized. A trap here aborts instantiation.
+         .          .   1698:	if opts.startContext != nil {
+         .          .   1699:		if err := opts.startContext.Err(); err != nil {
+         .          .   1700:			return nil, err
+         .          .   1701:		}
+         .          .   1702:	}
+         .          .   1703:	if c.HasStart {
+         .          .   1704:		if c.StartIsImport {
+         .          .   1705:			// Imported start: run the imported function through the same normalized
+         .          .   1706:			// binding machinery used by ordinary host imports. Validation guarantees
+         .          .   1707:			// start is () -> (). Cross-instance imported starts remain unsupported.
+         .          .   1708:			if c.StartImportIdx < 0 || c.StartImportIdx >= len(c.Imports) {
+         .          .   1709:				return nil, fmt.Errorf("start import index %d out of range", c.StartImportIdx)
+         .          .   1710:			}
+         .          .   1711:			displayKey := c.Imports[c.StartImportIdx]
+         .          .   1712:			key := c.functionImportBindingKey(c.StartImportIdx)
+         .          .   1713:			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil {
+         .          .   1714:				return nil, fmt.Errorf("start function %q is a cross-instance import; cross-instance imported starts are unsupported", displayKey)
+         .          .   1715:			}
+         .          .   1716:			fn, err := bindSyncHostImport(imports[key], FuncSig{})
+         .          .   1717:			if err != nil {
+         .          .   1718:				return nil, fmt.Errorf("start function %q: %w", displayKey, err)
+         .          .   1719:			}
+         .          .   1720:			caller := in.beginHostCallScopeReserved(in.constructionReservationSnapshot())
+         .          .   1721:			if err := callImportedStart(fn, caller); err != nil {
+         .          .   1722:				return nil, fmt.Errorf("start function %q: %w", displayKey, err)
+         .          .   1723:			}
+         .          .   1724:		} else {
+         .          .   1725:			if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
+         .          .   1726:				return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
+         .          .   1727:			}
+         .          .   1728:			startEntry := base + uintptr(c.Entry[c.StartLocalFunc])
+         .          .   1729:			// A Runtime-owned local start executes after the instance joins its shared
+         .          .   1730:			// collector domain. Publish a normal invocation identity and hold the
+         .          .   1731:			// complete-call lease so start-time allocation cannot collect another
+         .          .   1732:			// tenant's native result before public tokenization. The instance gate is
+         .          .   1733:			// acquired first, matching Invoke and prepared-call lock ordering.
+         .          .   1734:			startErr := func() error {
+         .          .   1735:				state := in.lockInvocation(0)
+         .          .   1736:				defer state.unlockInvocation()
+         .          .   1737:				return in.invokeVoidEntry(opts.startContext, startEntry, in.constructionReservationSnapshot())
+         .          .   1738:			}()
+         .          .   1739:			if startErr != nil {
+         .          .   1740:				// Instantiation writes to imported tables are store side effects. If a
+         .          .   1741:				// local funcref remains installed when start traps, the shared table
+         .          .   1742:				// becomes the failed instance's lifetime owner. The table prunes roots
+         .          .   1743:				// no longer present in any slot, so retention stays bounded by its
+         .          .   1744:				// descriptor capacity rather than by failed-instantiation count.
+         .          .   1745:				if opts.runtime == nil {
+         .          .   1746:					tableRetained := retainProducerRootsInImportedTables(in)
+         .          .   1747:					globalRetained := retainProducerRootsInImportedGlobals(in)
+         .          .   1748:					if tableRetained || globalRetained {
+         .          .   1749:						b.success = true
+         .          .   1750:						_ = in.Close()
+         .          .   1751:					}
+         .          .   1752:				}
+         .          .   1753:				return nil, fmt.Errorf("start function trapped: %w", startErr)
+         .          .   1754:			}
+         .          .   1755:		}
+         .          .   1756:	}
+         .          .   1757:
+         .          .   1758:	b.success = true
+         .          .   1759:	return in, nil
+         .       10ms   1760:}
+         .          .   1761:
+         .          .   1762:func callImportedStart(fn syncHostBinding, caller instanceHostModule) (err error) {
+         .          .   1763:	defer caller.scope.end(caller.generation, caller.parentGeneration)
+         .          .   1764:	defer func() {
+         .          .   1765:		if recovered := recover(); recovered != nil {

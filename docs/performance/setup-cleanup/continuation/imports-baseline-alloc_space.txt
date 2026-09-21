@@ -1,0 +1,32 @@
+File: wasi-baseline.test
+Build ID: 130a03ba86b6c789918d59b29745cae056481e06
+Type: alloc_space
+Time: 2026-09-20 23:31:51 EDT
+Showing nodes accounting for 316441.95kB, 98.42% of 321524.40kB total
+Dropped 474 nodes (cum <= 1607.62kB)
+      flat  flat%   sum%        cum   cum%
+114163.45kB 35.51% 35.51% 178316.91kB 55.46%  github.com/wago-org/wago/src/wago.(*Imports).HostFunc
+64544.22kB 20.07% 55.58% 64544.22kB 20.07%  github.com/wago-org/wasi/internal/core.(*Plugin).bindings
+57511.50kB 17.89% 73.47% 57511.50kB 17.89%  github.com/wago-org/wasi/internal/core.binding.callback (inline)
+43211.77kB 13.44% 86.91% 64153.45kB 19.95%  github.com/wago-org/wago/src/wago.(*Imports).add
+20942.11kB  6.51% 93.42% 20942.11kB  6.51%  github.com/wago-org/wago/src/wago.importBindingMapKey (inline)
+ 6563.81kB  2.04% 95.46%  6563.81kB  2.04%  github.com/wago-org/wasi/internal/core.(*Plugin).makeFS
+ 3599.25kB  1.12% 96.58%  3599.25kB  1.12%  github.com/wago-org/wago/src/wago.(*ImportFuncBuilder).Params
+ 3512.59kB  1.09% 97.67%  3512.59kB  1.09%  github.com/wago-org/wago/src/wago.(*ImportFuncBuilder).Results
+ 2187.94kB  0.68% 98.36% 318267.88kB 98.99%  github.com/wago-org/wasi/internal/core.Imports
+  203.74kB 0.063% 98.42%  2339.32kB  0.73%  github.com/wago-org/wago/bench/suite.readCatalog
+    0.97kB 0.0003% 98.42%  2366.30kB  0.74%  github.com/wago-org/wago/bench/suite.BenchmarkCommandLifecycleDiagnostic
+    0.36kB 0.00011% 98.42% 321414.28kB   100%  testing.(*B).runN
+    0.23kB 7.3e-05% 98.42%  2339.74kB  0.73%  github.com/wago-org/wago/bench/suite.commandCorpus
+         0     0% 98.42%  1609.23kB   0.5%  encoding/json.(*Decoder).Decode
+         0     0% 98.42% 318861.12kB 99.17%  github.com/wago-org/wago/bench/suite.BenchmarkCommandLifecycleDiagnostic.func1.1
+         0     0% 98.42%   318893kB 99.18%  github.com/wago-org/wago/bench/suite.commandRuntimeImports
+         0     0% 98.42%  2339.32kB  0.73%  github.com/wago-org/wago/bench/suite.loadCorpus
+         0     0% 98.42%  2339.32kB  0.73%  github.com/wago-org/wago/bench/suite.loadCorpus.func1
+         0     0% 98.42% 308578.44kB 95.97%  github.com/wago-org/wasi/internal/core.(*Plugin).Imports
+         0     0% 98.42%  6563.81kB  2.04%  github.com/wago-org/wasi/internal/core.(*Plugin).initFS
+         0     0% 98.42% 318267.88kB 98.99%  github.com/wago-org/wasi/p1.Imports (inline)
+         0     0% 98.42%  2342.24kB  0.73%  sync.(*Once).Do (inline)
+         0     0% 98.42%  2342.24kB  0.73%  sync.(*Once).doSlow
+         0     0% 98.42% 318829.33kB 99.16%  testing.(*B).launch
+         0     0% 98.42%  2579.75kB   0.8%  testing.(*B).run1.func1

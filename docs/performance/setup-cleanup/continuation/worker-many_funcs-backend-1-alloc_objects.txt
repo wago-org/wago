@@ -1,0 +1,102 @@
+File: worker-owned.test
+Build ID: e2a7faf1e661983eeac2921d83c7be2dd19c1b7d
+Type: alloc_objects
+Time: 2026-09-20 23:33:05 EDT
+Showing nodes accounting for 14718, 94.59% of 15559 total
+Dropped 250 nodes (cum <= 77)
+      flat  flat%   sum%        cum   cum%
+      3275 21.05% 21.05%       3275 21.05%  regexp.makeOnePass.func1
+      1047  6.73% 27.78%       1047  6.73%  regexp/syntax.(*compiler).inst (inline)
+       762  4.90% 32.68%        762  4.90%  encoding/json/v2.makeString
+       759  4.88% 37.55%        759  4.88%  regexp/syntax.(*parser).newRegexp (inline)
+       728  4.68% 42.23%        728  4.68%  regexp.newQueue (inline)
+       641  4.12% 46.35%        641  4.12%  regexp/syntax.(*parser).maybeConcat
+       569  3.66% 50.01%       1210  7.78%  regexp/syntax.(*parser).push
+       565  3.63% 53.64%        565  3.63%  reflect.growslice
+       404  2.60% 56.24%        404  2.60%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.buildInlineTargets
+       387  2.49% 58.72%        387  2.49%  unicode/utf8.AppendRune (inline)
+       380  2.44% 61.17%        380  2.44%  regexp.onePassCopy
+       379  2.44% 63.60%        380  2.44%  regexp/syntax.(*parser).collapse
+       361  2.32% 65.92%       9339 60.02%  regexp.compile
+       303  1.95% 67.87%        303  1.95%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.buildInlineCallerPlan
+       303  1.95% 69.82%        303  1.95%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.newStackWithCap
+       303  1.95% 71.77%        303  1.95%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.resolveBoundedPreparedEntries
+       256  1.65% 73.41%        256  1.65%  testing.rewrite
+       243  1.56% 74.97%       4246 27.29%  regexp.makeOnePass
+       227  1.46% 76.43%        591  3.80%  encoding/json/v2.makeStructFields
+       202  1.30% 77.73%       2780 17.87%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleWith
+       202  1.30% 79.03%        202  1.30%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.computeModuleHintsWithWorkersResidencyPolicy
+       202  1.30% 80.33%        202  1.30%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.markDirectPrepared (inline)
+       202  1.30% 81.62%        505  3.25%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.newScratchWithStackCap
+       190  1.22% 82.85%        190  1.22%  regexp/syntax.(*Regexp).CapNames
+       190  1.22% 84.07%        380  2.44%  regexp/syntax.(*compiler).init (inline)
+       190  1.22% 85.29%       2538 16.31%  regexp/syntax.parse
+       180  1.16% 86.45%       9584 61.60%  github.com/wago-org/wago/bench/suite.BenchmarkWorkerLifecycleDiagnostic.func1
+       144  0.93% 87.37%        144  0.93%  encoding/hex.DecodeString
+       142  0.91% 88.28%        142  0.91%  strings.genSplit
+       101  0.65% 88.93%        101  0.65%  encoding/json/jsontext.(*Value).UnmarshalJSON
+       101  0.65% 89.58%        101  0.65%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).reserveInlineLocals
+       101  0.65% 90.23%        101  0.65%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).runBody
+       101  0.65% 90.88%        101  0.65%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*scratch).reserveLocalScratch (inline)
+       101  0.65% 91.53%        101  0.65%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.HostAdapterSet
+       101  0.65% 92.18%        101  0.65%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.ModuleEntries (inline)
+       101  0.65% 92.83%        102  0.66%  github.com/wago-org/wago/src/core/runtime.NewCodeBuffer
+        98  0.63% 93.46%         98  0.63%  encoding/json/v2.makeStructArshaler (inline)
+        57  0.37% 93.82%        112  0.72%  encoding/json/v2.parseFieldOptions
+        56  0.36% 94.18%        252  1.62%  encoding/json/v2.makeStructFields.func3
+        17  0.11% 94.29%      14970 96.21%  testing.(*B).runN
+        12 0.077% 94.37%        322  2.07%  testing.newMatcher
+         9 0.058% 94.43%       9412 60.49%  testing.(*B).Run
+         7 0.045% 94.47%       2429 15.61%  github.com/wago-org/wago/bench/suite.readCatalog
+         4 0.026% 94.50%       2847 18.30%  github.com/wago-org/wago/bench/suite.BenchmarkWorkerLifecycleDiagnostic.func1.1
+         4 0.026% 94.52%        453  2.91%  testing.runBenchmarks
+         3 0.019% 94.54%        147  0.94%  github.com/wago-org/wago/bench/internal/semanticcorpus.validate
+         3 0.019% 94.56%        545  3.50%  testing.(*M).Run
+         2 0.013% 94.58%       1034  6.65%  github.com/wago-org/wago/bench/internal/semanticcorpus.LoadManifest
+         2 0.013% 94.59%       2488 15.99%  github.com/wago-org/wago/bench/suite.BenchmarkWorkerLifecycleDiagnostic
+         1 0.0064% 94.59%        763  4.90%  encoding/json/v2.makeStringArshaler.func2
+         0     0% 94.59%       2218 14.26%  encoding/json.(*Decoder).Decode
+         0     0% 94.59%       2190 14.08%  encoding/json/v2.Unmarshal
+         0     0% 94.59%        267  1.72%  encoding/json/v2.lookupArshaler
+         0     0% 94.59%        217  1.39%  encoding/json/v2.makeDefaultArshaler
+         0     0% 94.59%        107  0.69%  encoding/json/v2.makeMapArshaler.func3
+         0     0% 94.59%        101  0.65%  encoding/json/v2.makeMethodArshaler.func6
+         0     0% 94.59%        440  2.83%  encoding/json/v2.makePointerArshaler.func3
+         0     0% 94.59%       2043 13.13%  encoding/json/v2.makeSliceArshaler.func3
+         0     0% 94.59%        591  3.80%  encoding/json/v2.makeStructArshaler.func1
+         0     0% 94.59%       2170 13.95%  encoding/json/v2.makeStructArshaler.func3
+         0     0% 94.59%       2187 14.06%  encoding/json/v2.unmarshalDecode
+         0     0% 94.59%        105  0.67%  github.com/wago-org/wago/bench/internal/semanticcorpus.validateVectors
+         0     0% 94.59%       2780 17.87%  github.com/wago-org/wago/bench/suite.compileWorkerDiagnosticBackend
+         0     0% 94.59%       2429 15.61%  github.com/wago-org/wago/bench/suite.loadCorpus
+         0     0% 94.59%       2429 15.61%  github.com/wago-org/wago/bench/suite.loadCorpus.func1
+         0     0% 94.59%       2780 17.87%  github.com/wago-org/wago/bench/suite.workerDiagnosticConfig.run
+         0     0% 94.59%        101  0.65%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitRegABI
+         0     0% 94.59%       2780 17.87%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.CompileModuleWith (inline)
+         0     0% 94.59%        557  3.58%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileFunc
+         0     0% 94.59%        557  3.58%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileFuncAttempt
+         0     0% 94.59%        545  3.50%  main.main
+         0     0% 94.59%        565  3.63%  reflect.Value.Grow
+         0     0% 94.59%        565  3.63%  reflect.Value.grow
+         0     0% 94.59%       9339 60.02%  regexp.Compile (inline)
+         0     0% 94.59%       4626 29.73%  regexp.compileOnePass
+         0     0% 94.59%        387  2.49%  regexp.onePassPrefix
+         0     0% 94.59%        857  5.51%  regexp/syntax.(*compiler).compile
+         0     0% 94.59%        191  1.23%  regexp/syntax.(*compiler).empty (inline)
+         0     0% 94.59%        666  4.28%  regexp/syntax.(*compiler).rune
+         0     0% 94.59%        380  2.44%  regexp/syntax.(*parser).concat
+         0     0% 94.59%       1527  9.81%  regexp/syntax.(*parser).literal
+         0     0% 94.59%        441  2.83%  regexp/syntax.(*parser).op
+         0     0% 94.59%       1237  7.95%  regexp/syntax.Compile
+         0     0% 94.59%       2538 16.31%  regexp/syntax.Parse (inline)
+         0     0% 94.59%        545  3.50%  runtime.main
+         0     0% 94.59%        387  2.49%  strings.(*Builder).WriteRune
+         0     0% 94.59%        142  0.91%  strings.Split (inline)
+         0     0% 94.59%       2442 15.70%  sync.(*Once).Do (partial-inline)
+         0     0% 94.59%       2442 15.70%  sync.(*Once).doSlow
+         0     0% 94.59%       2781 17.87%  testing.(*B).launch
+         0     0% 94.59%      12158 78.14%  testing.(*B).run1.func1
+         0     0% 94.59%       9509 61.12%  testing.(*matcher).fullName
+         0     0% 94.59%       9071 58.30%  testing.simpleMatch.matches
+         0     0% 94.59%        301  1.93%  testing.simpleMatch.verify
+         0     0% 94.59%       9353 60.11%  testing/internal/testdeps.TestDeps.MatchString

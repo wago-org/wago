@@ -1,0 +1,176 @@
+File: wasi-candidate.test
+Build ID: df3d4d79b463139219f1aa58d3ec520f68353a8b
+Type: cpu
+Time: 2026-09-20 23:32:00 EDT
+Duration: 3.68s, Total samples = 5.14s (139.71%)
+Showing nodes accounting for 4.30s, 83.66% of 5.14s total
+Dropped 146 nodes (cum <= 0.03s)
+      flat  flat%   sum%        cum   cum%
+     0.28s  5.45%  5.45%      0.28s  5.45%  runtime.memclrNoHeapPointers
+     0.26s  5.06% 10.51%      0.26s  5.06%  runtime.memmove
+     0.23s  4.47% 14.98%      0.37s  7.20%  runtime.tryDeferToSpanScan
+     0.18s  3.50% 18.48%      2.28s 44.36%  github.com/wago-org/wago/src/wago.(*Imports).HostFunc
+     0.18s  3.50% 21.98%      0.18s  3.50%  runtime.futex
+     0.17s  3.31% 25.29%      0.21s  4.09%  runtime.typePointers.next
+     0.16s  3.11% 28.40%      0.16s  3.11%  internal/runtime/maps.memHashAES
+     0.16s  3.11% 31.52%      0.26s  5.06%  runtime.mallocgcSmallScanNoHeaderSC3
+     0.13s  2.53% 34.05%      0.48s  9.34%  runtime.growslice
+     0.11s  2.14% 36.19%      0.47s  9.14%  runtime.concatstrings
+     0.10s  1.95% 38.13%      0.15s  2.92%  runtime.mallocgcTinySC2
+     0.10s  1.95% 40.08%      0.19s  3.70%  runtime.scanblock
+     0.09s  1.75% 41.83%      0.33s  6.42%  github.com/wago-org/wago/src/wago.(*ImportFuncBuilder).Results
+     0.09s  1.75% 43.58%      0.11s  2.14%  runtime.heapArenaOf (inline)
+     0.09s  1.75% 45.33%      1.03s 20.04%  runtime.mallocgc
+     0.08s  1.56% 46.89%      0.08s  1.56%  internal/sync.(*Mutex).Lock (inline)
+     0.08s  1.56% 48.44%      0.08s  1.56%  internal/sync.(*Mutex).Unlock (inline)
+     0.07s  1.36% 49.81%      0.29s  5.64%  github.com/wago-org/wago/src/wago.(*ImportFuncBuilder).Params
+     0.07s  1.36% 51.17%      0.07s  1.36%  runtime.madvise
+     0.06s  1.17% 52.33%      0.16s  3.11%  runtime.mallocgcSmallNoScanSC5
+     0.06s  1.17% 53.50%      0.24s  4.67%  runtime.mapaccess2_faststr
+     0.06s  1.17% 54.67%      0.49s  9.53%  runtime.scanObject
+     0.05s  0.97% 55.64%      0.08s  1.56%  github.com/wago-org/wago/src/wago.(*ImportFuncBuilder).Capability
+     0.05s  0.97% 56.61%      0.09s  1.75%  github.com/wago-org/wago/src/wago.(*ImportFuncBuilder).Docs
+     0.05s  0.97% 57.59%      3.27s 63.62%  github.com/wago-org/wasi/internal/core.(*Plugin).Imports
+     0.05s  0.97% 58.56%      0.20s  3.89%  internal/runtime/maps.(*table).uncheckedPutSlot
+     0.05s  0.97% 59.53%      0.05s  0.97%  internal/runtime/maps.ctrlGroup.matchEmptyOrDeleted (inline)
+     0.05s  0.97% 60.51%      0.44s  8.56%  runtime.mallocgcSmallScanNoHeader
+     0.05s  0.97% 61.48%      0.05s  0.97%  runtime.nextFreeFast (inline)
+     0.05s  0.97% 62.45%      0.05s  0.97%  runtime.tgkill
+     0.04s  0.78% 63.23%      1.34s 26.07%  github.com/wago-org/wago/src/wago.(*Imports).add
+     0.04s  0.78% 64.01%      0.04s  0.78%  internal/runtime/maps.(*ctrlGroup).get (inline)
+     0.04s  0.78% 64.79%      0.04s  0.78%  internal/runtime/maps.(*groupReference).key (inline)
+     0.04s  0.78% 65.56%      0.04s  0.78%  runtime.(*mspan).writeHeapBitsSmall
+     0.04s  0.78% 66.34%      0.16s  3.11%  runtime.(*sweepLocked).sweep
+     0.04s  0.78% 67.12%      0.04s  0.78%  runtime.getempty
+     0.04s  0.78% 67.90%      0.04s  0.78%  runtime.procyieldAsm
+     0.04s  0.78% 68.68%      0.05s  0.97%  runtime.spanOf (inline)
+     0.04s  0.78% 69.46%      0.06s  1.17%  runtime.stealWork
+     0.04s  0.78% 70.23%      0.04s  0.78%  runtime.typePointers.nextFast (inline)
+     0.03s  0.58% 70.82%      0.03s  0.58%  internal/runtime/maps.makeProbeSeq (inline)
+     0.03s  0.58% 71.40%      0.03s  0.58%  runtime.arenaIndex (inline)
+     0.03s  0.58% 71.98%      1.05s 20.43%  runtime.gcDrain
+     0.03s  0.58% 72.57%      0.04s  0.78%  runtime.gcmarknewobject
+     0.03s  0.58% 73.15%      0.03s  0.58%  runtime.getMCache (inline)
+     0.03s  0.58% 73.74%      0.57s 11.09%  runtime.mapassign_faststr
+     0.03s  0.58% 74.32%      0.03s  0.58%  runtime.roundupsize (inline)
+     0.03s  0.58% 74.90%      0.13s  2.53%  runtime.scanSpan
+     0.02s  0.39% 75.29%      0.14s  2.72%  github.com/wago-org/wasi/internal/core.binding.callback (inline)
+     0.02s  0.39% 75.68%      0.49s  9.53%  runtime.concatstring4
+     0.02s  0.39% 76.07%      0.07s  1.36%  runtime.mallocgcSmallScanSlowPath
+     0.02s  0.39% 76.46%      0.47s  9.14%  runtime.newobject
+     0.02s  0.39% 76.85%      0.05s  0.97%  runtime.scanObjectsSmall
+     0.02s  0.39% 77.24%      0.07s  1.36%  runtime.strhash
+     0.02s  0.39% 77.63%      1.52s 29.57%  runtime.systemstack
+     0.01s  0.19% 77.82%      0.05s  0.97%  gcWriteBarrier
+     0.01s  0.19% 78.02%      3.44s 66.93%  github.com/wago-org/wago/bench/suite.commandRuntimeImports
+     0.01s  0.19% 78.21%      0.09s  1.75%  github.com/wago-org/wasi/internal/core.(*Plugin).makeFS
+     0.01s  0.19% 78.40%      3.42s 66.54%  github.com/wago-org/wasi/internal/core.Imports
+     0.01s  0.19% 78.60%      0.03s  0.58%  internal/runtime/maps.(*Map).growToSmall
+     0.01s  0.19% 78.79%      0.08s  1.56%  internal/runtime/maps.(*Map).growToTable
+     0.01s  0.19% 78.99%      0.37s  7.20%  internal/runtime/maps.(*table).grow
+     0.01s  0.19% 79.18%      0.12s  2.33%  internal/runtime/maps.(*table).reset
+     0.01s  0.19% 79.38%      0.05s  0.97%  internal/runtime/maps.MemHash
+     0.01s  0.19% 79.57%      0.28s  5.45%  runtime.(*mcache).nextFree
+     0.01s  0.19% 79.77%      0.27s  5.25%  runtime.(*mcache).refill
+     0.01s  0.19% 79.96%      0.07s  1.36%  runtime.(*mheap).alloc
+     0.01s  0.19% 80.16%      0.03s  0.58%  runtime.(*mheap).allocMSpanLocked
+     0.01s  0.19% 80.35%      0.04s  0.78%  runtime.(*mheap).freeSpanLocked
+     0.01s  0.19% 80.54%      0.03s  0.58%  runtime.(*pallocBits).summarize
+     0.01s  0.19% 80.74%      0.03s  0.58%  runtime.(*spanSet).pop
+     0.01s  0.19% 80.93%      0.05s  0.97%  runtime.(*spanSet).push
+     0.01s  0.19% 81.13%      0.03s  0.58%  runtime.bulkBarrierPreWrite
+     0.01s  0.19% 81.32%      0.06s  1.17%  runtime.findObject
+     0.01s  0.19% 81.52%      0.18s  3.50%  runtime.findRunnable
+     0.01s  0.19% 81.71%      0.11s  2.14%  runtime.futexsleep
+     0.01s  0.19% 81.91%      1.06s 20.62%  runtime.gcBgMarkWorker.func2
+     0.01s  0.19% 82.10%      0.04s  0.78%  runtime.gcDrainN
+     0.01s  0.19% 82.30%      0.03s  0.58%  runtime.mallocgcSmallNoScanSC4
+     0.01s  0.19% 82.49%      0.06s  1.17%  runtime.mallocgcSmallNoScanSlowPath
+     0.01s  0.19% 82.68%      0.04s  0.78%  runtime.pcvalue
+     0.01s  0.19% 82.88%      0.23s  4.47%  runtime.rawstring (inline)
+     0.01s  0.19% 83.07%      0.24s  4.67%  runtime.rawstringtmp
+     0.01s  0.19% 83.27%      0.20s  3.89%  runtime.sweepone
+     0.01s  0.19% 83.46%      0.08s  1.56%  runtime.sysUnused (inline)
+     0.01s  0.19% 83.66%      0.03s  0.58%  runtime.unlock (inline)
+         0     0% 83.66%      3.44s 66.93%  github.com/wago-org/wago/bench/suite.BenchmarkCommandLifecycleDiagnostic.func1.1
+         0     0% 83.66%      0.49s  9.53%  github.com/wago-org/wago/src/wago.importBindingMapKey (inline)
+         0     0% 83.66%      0.09s  1.75%  github.com/wago-org/wasi/internal/core.(*Plugin).initFS
+         0     0% 83.66%      3.42s 66.54%  github.com/wago-org/wasi/p1.Imports (inline)
+         0     0% 83.66%      0.37s  7.20%  internal/runtime/maps.(*table).rehash
+         0     0% 83.66%      0.03s  0.58%  internal/runtime/maps.NewEmptyMap (inline)
+         0     0% 83.66%      0.05s  0.97%  internal/runtime/maps.StrHash (inline)
+         0     0% 83.66%      0.11s  2.14%  internal/runtime/maps.newGroups (inline)
+         0     0% 83.66%      0.13s  2.53%  internal/runtime/maps.newTable
+         0     0% 83.66%      0.11s  2.14%  internal/runtime/maps.newarray
+         0     0% 83.66%      0.05s  0.97%  internal/runtime/maps.typedmemmove
+         0     0% 83.66%      0.07s  1.36%  runtime.(*gcControllerState).enlistWorker
+         0     0% 83.66%      0.04s  0.78%  runtime.(*gcWork).balance
+         0     0% 83.66%      0.25s  4.86%  runtime.(*mcentral).cacheSpan
+         0     0% 83.66%      0.25s  4.86%  runtime.(*mcentral).grow
+         0     0% 83.66%      0.06s  1.17%  runtime.(*mheap).alloc.func1
+         0     0% 83.66%      0.06s  1.17%  runtime.(*mheap).allocSpan
+         0     0% 83.66%      0.05s  0.97%  runtime.(*mheap).freeSpan (inline)
+         0     0% 83.66%      0.04s  0.78%  runtime.(*mheap).freeSpan.func1
+         0     0% 83.66%      0.03s  0.58%  runtime.(*mheap).nextSpanForSweep
+         0     0% 83.66%      0.18s  3.50%  runtime.(*mspan).initHeapBits
+         0     0% 83.66%      0.08s  1.56%  runtime.(*pageAlloc).scavenge
+         0     0% 83.66%      0.08s  1.56%  runtime.(*pageAlloc).scavenge.func1
+         0     0% 83.66%      0.08s  1.56%  runtime.(*pageAlloc).scavengeOne
+         0     0% 83.66%      0.03s  0.58%  runtime.(*pageAlloc).update
+         0     0% 83.66%      0.09s  1.75%  runtime.(*scavengerState).init.func2
+         0     0% 83.66%      0.09s  1.75%  runtime.(*scavengerState).run
+         0     0% 83.66%      0.09s  1.75%  runtime.bgscavenge
+         0     0% 83.66%      0.22s  4.28%  runtime.bgsweep
+         0     0% 83.66%      0.07s  1.36%  runtime.forEachP (inline)
+         0     0% 83.66%      0.07s  1.36%  runtime.forEachP.func1
+         0     0% 83.66%      0.07s  1.36%  runtime.forEachPInternal
+         0     0% 83.66%      0.08s  1.56%  runtime.futexwakeup
+         0     0% 83.66%      0.04s  0.78%  runtime.gcAssistAlloc
+         0     0% 83.66%      0.04s  0.78%  runtime.gcAssistAlloc.func2
+         0     0% 83.66%      0.04s  0.78%  runtime.gcAssistAlloc1
+         0     0% 83.66%      1.17s 22.76%  runtime.gcBgMarkWorker
+         0     0% 83.66%      0.92s 17.90%  runtime.gcDrainMarkWorkerDedicated (inline)
+         0     0% 83.66%      0.13s  2.53%  runtime.gcDrainMarkWorkerIdle (inline)
+         0     0% 83.66%      0.09s  1.75%  runtime.gcMarkDone
+         0     0% 83.66%      0.06s  1.17%  runtime.gcMarkTermination
+         0     0% 83.66%      0.04s  0.78%  runtime.gcStart
+         0     0% 83.66%      0.07s  1.36%  runtime.gopreempt_m (inline)
+         0     0% 83.66%      0.07s  1.36%  runtime.goschedImpl
+         0     0% 83.66%      0.04s  0.78%  runtime.handoff
+         0     0% 83.66%      0.04s  0.78%  runtime.heapSetTypeNoHeader (inline)
+         0     0% 83.66%      0.06s  1.17%  runtime.mPark (inline)
+         0     0% 83.66%      0.03s  0.58%  runtime.makemap_small
+         0     0% 83.66%      0.09s  1.75%  runtime.mallocgcSmallScanHeader
+         0     0% 83.66%      0.25s  4.86%  runtime.markroot
+         0     0% 83.66%      0.07s  1.36%  runtime.markroot.func1
+         0     0% 83.66%      0.17s  3.31%  runtime.markrootBlock
+         0     0% 83.66%      0.13s  2.53%  runtime.mcall
+         0     0% 83.66%      0.08s  1.56%  runtime.morestack
+         0     0% 83.66%      0.11s  2.14%  runtime.newarray
+         0     0% 83.66%      0.09s  1.75%  runtime.newstack
+         0     0% 83.66%      0.06s  1.17%  runtime.notesleep
+         0     0% 83.66%      0.04s  0.78%  runtime.notetsleep
+         0     0% 83.66%      0.04s  0.78%  runtime.notetsleep_internal
+         0     0% 83.66%      0.07s  1.36%  runtime.notewakeup
+         0     0% 83.66%      0.13s  2.53%  runtime.park_m
+         0     0% 83.66%      0.05s  0.97%  runtime.preemptM (inline)
+         0     0% 83.66%      0.05s  0.97%  runtime.preemptone
+         0     0% 83.66%      0.04s  0.78%  runtime.procyield (inline)
+         0     0% 83.66%      0.03s  0.58%  runtime.scanframeworker
+         0     0% 83.66%      0.04s  0.78%  runtime.scanstack
+         0     0% 83.66%      0.20s  3.89%  runtime.schedule
+         0     0% 83.66%      0.05s  0.97%  runtime.signalM
+         0     0% 83.66%      0.04s  0.78%  runtime.startTheWorldWithSema
+         0     0% 83.66%      0.05s  0.97%  runtime.startm
+         0     0% 83.66%      0.07s  1.36%  runtime.stopm
+         0     0% 83.66%      0.03s  0.58%  runtime.suspendG
+         0     0% 83.66%      0.07s  1.36%  runtime.sysUnusedOS
+         0     0% 83.66%      0.05s  0.97%  runtime.typedmemmove
+         0     0% 83.66%      0.06s  1.17%  runtime.wakep
+         0     0% 83.66%      0.11s  2.14%  runtime.wbBufFlush
+         0     0% 83.66%      0.11s  2.14%  runtime.wbBufFlush.func1
+         0     0% 83.66%      0.11s  2.14%  runtime.wbBufFlush1
+         0     0% 83.66%      0.08s  1.56%  sync.(*Mutex).Lock (inline)
+         0     0% 83.66%      0.08s  1.56%  sync.(*Mutex).Unlock
+         0     0% 83.66%      3.44s 66.93%  testing.(*B).launch
+         0     0% 83.66%      3.44s 66.93%  testing.(*B).runN

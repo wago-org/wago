@@ -1,0 +1,1202 @@
+{
+  "tiny-1-1": {
+    "peak_rss_kib": {
+      "median": 19854.0,
+      "max": 21876
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 15
+    },
+    "minor_faults": {
+      "median": 752.5,
+      "max": 759
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 21260.0,
+    "individual_max_ns": 50565.0,
+    "aggregate_ns_per_call": 25768.0
+  },
+  "tiny-1-2": {
+    "peak_rss_kib": {
+      "median": 21770.0,
+      "max": 22064
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 14
+    },
+    "minor_faults": {
+      "median": 760.5,
+      "max": 804
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 57854.0,
+    "individual_max_ns": 140134.0,
+    "aggregate_ns_per_call": 65114.5
+  },
+  "tiny-1-4": {
+    "peak_rss_kib": {
+      "median": 21886.0,
+      "max": 22044
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 468
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 20
+    },
+    "minor_faults": {
+      "median": 755.0,
+      "max": 782
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 50345.0,
+    "individual_max_ns": 136927.5,
+    "aggregate_ns_per_call": 59487.5
+  },
+  "tiny-1-0": {
+    "peak_rss_kib": {
+      "median": 19924.0,
+      "max": 21976
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 17
+    },
+    "minor_faults": {
+      "median": 754.5,
+      "max": 766
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 22262.5,
+    "individual_max_ns": 49213.0,
+    "aggregate_ns_per_call": 24533.5
+  },
+  "tiny-4-1": {
+    "peak_rss_kib": {
+      "median": 24130.0,
+      "max": 24516
+    },
+    "peak_virtual_kib": {
+      "median": 448.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 12.5,
+      "max": 15
+    },
+    "minor_faults": {
+      "median": 1013.5,
+      "max": 1129
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 49342.5,
+    "individual_max_ns": 495368.0,
+    "aggregate_ns_per_call": 36216.5
+  },
+  "tiny-4-2": {
+    "peak_rss_kib": {
+      "median": 24242.0,
+      "max": 24492
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 17
+    },
+    "minor_faults": {
+      "median": 1032.0,
+      "max": 1159
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 64721.5,
+    "individual_max_ns": 532037.0,
+    "aggregate_ns_per_call": 35460.5
+  },
+  "tiny-4-4": {
+    "peak_rss_kib": {
+      "median": 24172.0,
+      "max": 24672
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.5,
+      "max": 17
+    },
+    "minor_faults": {
+      "median": 1039.5,
+      "max": 1115
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 60614.5,
+    "individual_max_ns": 518882.5,
+    "aggregate_ns_per_call": 35222.5
+  },
+  "tiny-4-0": {
+    "peak_rss_kib": {
+      "median": 24130.0,
+      "max": 24660
+    },
+    "peak_virtual_kib": {
+      "median": 448.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 12.5,
+      "max": 17
+    },
+    "minor_faults": {
+      "median": 1034.0,
+      "max": 1129
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 47124.0,
+    "individual_max_ns": 689472.0,
+    "aggregate_ns_per_call": 33735.0
+  },
+  "tiny-16-1": {
+    "peak_rss_kib": {
+      "median": 24182.0,
+      "max": 25076
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 14
+    },
+    "minor_faults": {
+      "median": 1282.0,
+      "max": 1549
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 57318.5,
+    "individual_max_ns": 1280135.5,
+    "aggregate_ns_per_call": 18480.5
+  },
+  "tiny-16-2": {
+    "peak_rss_kib": {
+      "median": 24620.0,
+      "max": 28664
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 19
+    },
+    "minor_faults": {
+      "median": 1171.0,
+      "max": 1568
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 118513.5,
+    "individual_max_ns": 1372225.0,
+    "aggregate_ns_per_call": 18108.0
+  },
+  "tiny-16-4": {
+    "peak_rss_kib": {
+      "median": 25060.0,
+      "max": 26776
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 17
+    },
+    "minor_faults": {
+      "median": 1294.5,
+      "max": 1409
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 124855.0,
+    "individual_max_ns": 1342312.5,
+    "aggregate_ns_per_call": 19678.5
+  },
+  "tiny-16-0": {
+    "peak_rss_kib": {
+      "median": 24830.0,
+      "max": 26084
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 468
+    },
+    "peak_mapping_count": {
+      "median": 13.5,
+      "max": 20
+    },
+    "minor_faults": {
+      "median": 1306.5,
+      "max": 1578
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 81908.5,
+    "individual_max_ns": 1429915.0,
+    "aggregate_ns_per_call": 19565.5
+  },
+  "many_funcs-1-1": {
+    "peak_rss_kib": {
+      "median": 22212.0,
+      "max": 22520
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 14
+    },
+    "minor_faults": {
+      "median": 1019.5,
+      "max": 1041
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 416083.5,
+    "individual_max_ns": 919224.0,
+    "aggregate_ns_per_call": 509162.5
+  },
+  "many_funcs-1-2": {
+    "peak_rss_kib": {
+      "median": 22262.0,
+      "max": 24064
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 15
+    },
+    "minor_faults": {
+      "median": 842.5,
+      "max": 1046
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 347363.0,
+    "individual_max_ns": 406569.5,
+    "aggregate_ns_per_call": 344933.5
+  },
+  "many_funcs-1-4": {
+    "peak_rss_kib": {
+      "median": 21964.0,
+      "max": 24340
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.5,
+      "max": 15
+    },
+    "minor_faults": {
+      "median": 997.0,
+      "max": 1062
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 335502.0,
+    "individual_max_ns": 642084.0,
+    "aggregate_ns_per_call": 359819.5
+  },
+  "many_funcs-1-0": {
+    "peak_rss_kib": {
+      "median": 22042.0,
+      "max": 24240
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 14
+    },
+    "minor_faults": {
+      "median": 1008.0,
+      "max": 1267
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 333508.0,
+    "individual_max_ns": 577712.0,
+    "aggregate_ns_per_call": 356822.5
+  },
+  "many_funcs-4-1": {
+    "peak_rss_kib": {
+      "median": 22190.0,
+      "max": 22528
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 14.0,
+      "max": 17
+    },
+    "minor_faults": {
+      "median": 1190.0,
+      "max": 1391
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 536183.5,
+    "individual_max_ns": 1154341.5,
+    "aggregate_ns_per_call": 159822.5
+  },
+  "many_funcs-4-2": {
+    "peak_rss_kib": {
+      "median": 24232.0,
+      "max": 24760
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.5,
+      "max": 17
+    },
+    "minor_faults": {
+      "median": 1385.5,
+      "max": 1675
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 642940.5,
+    "individual_max_ns": 948275.0,
+    "aggregate_ns_per_call": 164024.5
+  },
+  "many_funcs-4-4": {
+    "peak_rss_kib": {
+      "median": 23818.0,
+      "max": 26420
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 15
+    },
+    "minor_faults": {
+      "median": 2019.0,
+      "max": 2518
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 727475.0,
+    "individual_max_ns": 1186381.5,
+    "aggregate_ns_per_call": 194402.0
+  },
+  "many_funcs-4-0": {
+    "peak_rss_kib": {
+      "median": 24930.0,
+      "max": 28308
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.5,
+      "max": 17
+    },
+    "minor_faults": {
+      "median": 1712.0,
+      "max": 2017
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 677840.5,
+    "individual_max_ns": 1157216.5,
+    "aggregate_ns_per_call": 189310.0
+  },
+  "many_funcs-16-1": {
+    "peak_rss_kib": {
+      "median": 25680.0,
+      "max": 28620
+    },
+    "peak_virtual_kib": {
+      "median": 2679416.0,
+      "max": 2680184
+    },
+    "peak_mapping_count": {
+      "median": 118.0,
+      "max": 125
+    },
+    "minor_faults": {
+      "median": 2440.5,
+      "max": 2854
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 1606185.0,
+    "individual_max_ns": 3459256.5,
+    "aggregate_ns_per_call": 118352.5
+  },
+  "many_funcs-16-2": {
+    "peak_rss_kib": {
+      "median": 26762.0,
+      "max": 30296
+    },
+    "peak_virtual_kib": {
+      "median": 2605940.0,
+      "max": 2679160
+    },
+    "peak_mapping_count": {
+      "median": 116.0,
+      "max": 121
+    },
+    "minor_faults": {
+      "median": 3151.5,
+      "max": 3850
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 1862867.5,
+    "individual_max_ns": 4236843.5,
+    "aggregate_ns_per_call": 137280.5
+  },
+  "many_funcs-16-4": {
+    "peak_rss_kib": {
+      "median": 27902.0,
+      "max": 31472
+    },
+    "peak_virtual_kib": {
+      "median": 2606192.0,
+      "max": 2679928
+    },
+    "peak_mapping_count": {
+      "median": 115.5,
+      "max": 119
+    },
+    "minor_faults": {
+      "median": 3561.5,
+      "max": 4657
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 2006828.5,
+    "individual_max_ns": 5104622.0,
+    "aggregate_ns_per_call": 146771.0
+  },
+  "many_funcs-16-0": {
+    "peak_rss_kib": {
+      "median": 27328.0,
+      "max": 30364
+    },
+    "peak_virtual_kib": {
+      "median": 2638868.0,
+      "max": 2745536
+    },
+    "peak_mapping_count": {
+      "median": 117.5,
+      "max": 120
+    },
+    "minor_faults": {
+      "median": 3767.5,
+      "max": 4360
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 1932564.5,
+    "individual_max_ns": 5404887.0,
+    "aggregate_ns_per_call": 150170.0
+  },
+  "json-as-1-1": {
+    "peak_rss_kib": {
+      "median": 22698.0,
+      "max": 24828
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 1866380
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 72
+    },
+    "minor_faults": {
+      "median": 1083.0,
+      "max": 1097
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 1457611.5,
+    "individual_max_ns": 2339987.0,
+    "aggregate_ns_per_call": 1565813.5
+  },
+  "json-as-1-2": {
+    "peak_rss_kib": {
+      "median": 22260.0,
+      "max": 22880
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 17
+    },
+    "minor_faults": {
+      "median": 1177.5,
+      "max": 1280
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 1136743.5,
+    "individual_max_ns": 1591682.0,
+    "aggregate_ns_per_call": 1223255.5
+  },
+  "json-as-1-4": {
+    "peak_rss_kib": {
+      "median": 22298.0,
+      "max": 24556
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 460
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 15
+    },
+    "minor_faults": {
+      "median": 1134.5,
+      "max": 1829
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 1143819.0,
+    "individual_max_ns": 1394901.5,
+    "aggregate_ns_per_call": 1126823.5
+  },
+  "json-as-1-0": {
+    "peak_rss_kib": {
+      "median": 22276.0,
+      "max": 24440
+    },
+    "peak_virtual_kib": {
+      "median": 460.0,
+      "max": 644
+    },
+    "peak_mapping_count": {
+      "median": 13.0,
+      "max": 20
+    },
+    "minor_faults": {
+      "median": 1192.0,
+      "max": 1476
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 1061258.0,
+    "individual_max_ns": 1370282.5,
+    "aggregate_ns_per_call": 1086421.5
+  },
+  "json-as-4-1": {
+    "peak_rss_kib": {
+      "median": 22210.0,
+      "max": 24456
+    },
+    "peak_virtual_kib": {
+      "median": 2309756.0,
+      "max": 2375500
+    },
+    "peak_mapping_count": {
+      "median": 99.0,
+      "max": 103
+    },
+    "minor_faults": {
+      "median": 1456.5,
+      "max": 1701
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 1871201.5,
+    "individual_max_ns": 2567099.5,
+    "aggregate_ns_per_call": 498046.5
+  },
+  "json-as-4-2": {
+    "peak_rss_kib": {
+      "median": 24058.0,
+      "max": 26716
+    },
+    "peak_virtual_kib": {
+      "median": 2458568.0,
+      "max": 2532416
+    },
+    "peak_mapping_count": {
+      "median": 108.0,
+      "max": 113
+    },
+    "minor_faults": {
+      "median": 2463.0,
+      "max": 3426
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 1922104.5,
+    "individual_max_ns": 2524529.0,
+    "aggregate_ns_per_call": 493296.0
+  },
+  "json-as-4-4": {
+    "peak_rss_kib": {
+      "median": 26418.0,
+      "max": 27452
+    },
+    "peak_virtual_kib": {
+      "median": 2606188.0,
+      "max": 2679920
+    },
+    "peak_mapping_count": {
+      "median": 118.5,
+      "max": 121
+    },
+    "minor_faults": {
+      "median": 3421.0,
+      "max": 4350
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 2116677.0,
+    "individual_max_ns": 2719850.5,
+    "aggregate_ns_per_call": 545065.0
+  },
+  "json-as-4-0": {
+    "peak_rss_kib": {
+      "median": 26568.0,
+      "max": 28928
+    },
+    "peak_virtual_kib": {
+      "median": 2606192.0,
+      "max": 2745264
+    },
+    "peak_mapping_count": {
+      "median": 118.0,
+      "max": 125
+    },
+    "minor_faults": {
+      "median": 3140.5,
+      "max": 3713
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 2091363.5,
+    "individual_max_ns": 2662609.0,
+    "aggregate_ns_per_call": 534573.0
+  },
+  "json-as-16-1": {
+    "peak_rss_kib": {
+      "median": 28286.0,
+      "max": 29728
+    },
+    "peak_virtual_kib": {
+      "median": 2606196.0,
+      "max": 2745280
+    },
+    "peak_mapping_count": {
+      "median": 117.0,
+      "max": 120
+    },
+    "minor_faults": {
+      "median": 4888.0,
+      "max": 5636
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 5084631.5,
+    "individual_max_ns": 8327241.0,
+    "aggregate_ns_per_call": 348654.5
+  },
+  "json-as-16-2": {
+    "peak_rss_kib": {
+      "median": 29674.0,
+      "max": 32984
+    },
+    "peak_virtual_kib": {
+      "median": 2606196.0,
+      "max": 2745536
+    },
+    "peak_mapping_count": {
+      "median": 116.5,
+      "max": 119
+    },
+    "minor_faults": {
+      "median": 6864.5,
+      "max": 7349
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 5616109.0,
+    "individual_max_ns": 10902806.0,
+    "aggregate_ns_per_call": 396719.5
+  },
+  "json-as-16-4": {
+    "peak_rss_kib": {
+      "median": 31028.0,
+      "max": 34296
+    },
+    "peak_virtual_kib": {
+      "median": 2606196.0,
+      "max": 2679928
+    },
+    "peak_mapping_count": {
+      "median": 116.0,
+      "max": 119
+    },
+    "minor_faults": {
+      "median": 7500.5,
+      "max": 9560
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 6127383.5,
+    "individual_max_ns": 13541744.5,
+    "aggregate_ns_per_call": 426710.5
+  },
+  "json-as-16-0": {
+    "peak_rss_kib": {
+      "median": 31370.0,
+      "max": 43832
+    },
+    "peak_virtual_kib": {
+      "median": 2606228.0,
+      "max": 2745792
+    },
+    "peak_mapping_count": {
+      "median": 116.0,
+      "max": 123
+    },
+    "minor_faults": {
+      "median": 7548.0,
+      "max": 9225
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 5986917.5,
+    "individual_max_ns": 14059200.5,
+    "aggregate_ns_per_call": 426852.0
+  },
+  "lua-1-1": {
+    "peak_rss_kib": {
+      "median": 22942.0,
+      "max": 24228
+    },
+    "peak_virtual_kib": {
+      "median": 2051178.0,
+      "max": 2153000
+    },
+    "peak_mapping_count": {
+      "median": 84.0,
+      "max": 89
+    },
+    "minor_faults": {
+      "median": 2094.5,
+      "max": 2577
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 14981223.0,
+    "individual_max_ns": 15434227.0,
+    "aggregate_ns_per_call": 14973297.0
+  },
+  "lua-1-2": {
+    "peak_rss_kib": {
+      "median": 24278.0,
+      "max": 26748
+    },
+    "peak_virtual_kib": {
+      "median": 2162448.0,
+      "max": 2236688
+    },
+    "peak_mapping_count": {
+      "median": 91.5,
+      "max": 95
+    },
+    "minor_faults": {
+      "median": 3219.0,
+      "max": 3673
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 11409111.5,
+    "individual_max_ns": 12239044.5,
+    "aggregate_ns_per_call": 11373400.5
+  },
+  "lua-1-4": {
+    "peak_rss_kib": {
+      "median": 25160.0,
+      "max": 26752
+    },
+    "peak_virtual_kib": {
+      "median": 2310816.0,
+      "max": 2449856
+    },
+    "peak_mapping_count": {
+      "median": 100.0,
+      "max": 105
+    },
+    "minor_faults": {
+      "median": 4138.0,
+      "max": 4737
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 9385821.0,
+    "individual_max_ns": 9992271.0,
+    "aggregate_ns_per_call": 9354469.5
+  },
+  "lua-1-0": {
+    "peak_rss_kib": {
+      "median": 25368.0,
+      "max": 27036
+    },
+    "peak_virtual_kib": {
+      "median": 2343300.0,
+      "max": 2384944
+    },
+    "peak_mapping_count": {
+      "median": 99.5,
+      "max": 103
+    },
+    "minor_faults": {
+      "median": 4088.5,
+      "max": 4790
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 9254142.0,
+    "individual_max_ns": 9807182.0,
+    "aggregate_ns_per_call": 9278900.0
+  },
+  "lua-4-1": {
+    "peak_rss_kib": {
+      "median": 32802.0,
+      "max": 34116
+    },
+    "peak_virtual_kib": {
+      "median": 2384732.0,
+      "max": 2458676
+    },
+    "peak_mapping_count": {
+      "median": 101.5,
+      "max": 108
+    },
+    "minor_faults": {
+      "median": 5134.5,
+      "max": 7256
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 16946113.5,
+    "individual_max_ns": 21086428.5,
+    "aggregate_ns_per_call": 4415188.5
+  },
+  "lua-4-2": {
+    "peak_rss_kib": {
+      "median": 34262.0,
+      "max": 38924
+    },
+    "peak_virtual_kib": {
+      "median": 2606324.0,
+      "max": 2672060
+    },
+    "peak_mapping_count": {
+      "median": 117.0,
+      "max": 120
+    },
+    "minor_faults": {
+      "median": 13285.0,
+      "max": 14332
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 14424626.5,
+    "individual_max_ns": 17123911.5,
+    "aggregate_ns_per_call": 3711047.5
+  },
+  "lua-4-4": {
+    "peak_rss_kib": {
+      "median": 39022.0,
+      "max": 48740
+    },
+    "peak_virtual_kib": {
+      "median": 2679928.0,
+      "max": 2745280
+    },
+    "peak_mapping_count": {
+      "median": 117.0,
+      "max": 124
+    },
+    "minor_faults": {
+      "median": 17536.0,
+      "max": 19531
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 14480921.0,
+    "individual_max_ns": 17262600.5,
+    "aggregate_ns_per_call": 3681343.0
+  },
+  "lua-4-0": {
+    "peak_rss_kib": {
+      "median": 37740.0,
+      "max": 43128
+    },
+    "peak_virtual_kib": {
+      "median": 2679800.0,
+      "max": 2745536
+    },
+    "peak_mapping_count": {
+      "median": 118.5,
+      "max": 127
+    },
+    "minor_faults": {
+      "median": 17971.5,
+      "max": 21849
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 13915915.0,
+    "individual_max_ns": 17509974.0,
+    "aggregate_ns_per_call": 3619402.0
+  },
+  "lua-16-1": {
+    "peak_rss_kib": {
+      "median": 80682.0,
+      "max": 85424
+    },
+    "peak_virtual_kib": {
+      "median": 2704608.0,
+      "max": 2745792
+    },
+    "peak_mapping_count": {
+      "median": 117.0,
+      "max": 121
+    },
+    "minor_faults": {
+      "median": 13881.5,
+      "max": 18722
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 34720624.0,
+    "individual_max_ns": 43825469.0,
+    "aggregate_ns_per_call": 2220903.0
+  },
+  "lua-16-2": {
+    "peak_rss_kib": {
+      "median": 73132.0,
+      "max": 92484
+    },
+    "peak_virtual_kib": {
+      "median": 2745664.0,
+      "max": 2745792
+    },
+    "peak_mapping_count": {
+      "median": 117.5,
+      "max": 124
+    },
+    "minor_faults": {
+      "median": 24439.0,
+      "max": 28053
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 35573140.5,
+    "individual_max_ns": 69411218.5,
+    "aggregate_ns_per_call": 2438242.0
+  },
+  "lua-16-4": {
+    "peak_rss_kib": {
+      "median": 73934.0,
+      "max": 87240
+    },
+    "peak_virtual_kib": {
+      "median": 2745536.0,
+      "max": 2811144
+    },
+    "peak_mapping_count": {
+      "median": 119.5,
+      "max": 128
+    },
+    "minor_faults": {
+      "median": 29327.0,
+      "max": 35925
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 36220389.5,
+    "individual_max_ns": 75529061.0,
+    "aggregate_ns_per_call": 2514433.0
+  },
+  "lua-16-0": {
+    "peak_rss_kib": {
+      "median": 73518.0,
+      "max": 90392
+    },
+    "peak_virtual_kib": {
+      "median": 2745536.0,
+      "max": 2745792
+    },
+    "peak_mapping_count": {
+      "median": 118.5,
+      "max": 122
+    },
+    "minor_faults": {
+      "median": 27650.0,
+      "max": 35233
+    },
+    "major_faults": {
+      "median": 0.0,
+      "max": 0
+    },
+    "individual_p50_ns": 37609439.0,
+    "individual_max_ns": 78547660.5,
+    "aggregate_ns_per_call": 2588798.5
+  }
+}

@@ -1,0 +1,38 @@
+File: baseline-suite.test
+Build ID: e690105cfef12beeb7b3f5a62a5c6c1a837344db
+Type: alloc_objects
+Time: 2026-09-20 21:12:38 EDT
+Showing nodes accounting for 3951287, 97.21% of 4064854 total
+Dropped 565 nodes (cum <= 20324)
+Showing top 30 nodes out of 42
+      flat  flat%   sum%        cum   cum%
+   1230369 30.27% 30.27%    1230369 30.27%  github.com/wago-org/wago/src/wago.importBindingMapKey (inline)
+    990297 24.36% 54.63%    1530459 37.65%  github.com/wago-org/wago/src/wago.(*Imports).HostFunc
+    544307 13.39% 68.02%     544307 13.39%  github.com/wago-org/wasi/internal/core.(*Plugin).bindings
+    460138 11.32% 79.34%     460138 11.32%  github.com/wago-org/wasi/internal/core.binding.callback (inline)
+    237413  5.84% 85.18%     237413  5.84%  github.com/wago-org/wago/src/wago.(*ImportFuncBuilder).Params
+    218665  5.38% 90.56%     218665  5.38%  github.com/wago-org/wago/src/wago.(*ImportFuncBuilder).Results
+     80024  1.97% 92.53%     540162 13.29%  github.com/wago-org/wago/src/wago.(*Imports).add
+     70021  1.72% 94.25%      70021  1.72%  github.com/wago-org/wasi/internal/core.(*Plugin).makeFS
+     40012  0.98% 95.24%     344316  8.47%  github.com/wago-org/wago/src/wago.(*instanceBuilder).instantiate
+     30009  0.74% 95.98%    4061401 99.92%  github.com/wago-org/wago/bench/suite.runWagoCommand
+     30009  0.74% 96.71%      30009  0.74%  github.com/wago-org/wago/src/wago.bindSyncHostImport
+     10003  0.25% 96.96%      70021  1.72%  github.com/wago-org/wago/src/wago.(*Compiled).buildSyncHosts
+     10003  0.25% 97.21%    3121021 76.78%  github.com/wago-org/wasi/internal/core.Imports
+        17 0.00042% 97.21%    4064479   100%  testing.(*B).runN
+         0     0% 97.21%     804456 19.79%  github.com/wago-org/wago.Instantiate (inline)
+         0     0% 97.21%    4061401 99.92%  github.com/wago-org/wago/bench/suite.BenchmarkCommandExec.func1
+         0     0% 97.21%    3141027 77.27%  github.com/wago-org/wago/bench/suite.commandRuntimeImports
+         0     0% 97.21%      30009  0.74%  github.com/wago-org/wago/src/wago.(*Compiled).allowsIndependentInstanceExecution
+         0     0% 97.21%     310093  7.63%  github.com/wago-org/wago/src/wago.(*Compiled).functionImportBindingKey
+         0     0% 97.21%      30009  0.74%  github.com/wago-org/wago/src/wago.(*Compiled).validateImportBindingsWithPluginGC
+         0     0% 97.21%     460138 11.32%  github.com/wago-org/wago/src/wago.(*Imports).snapshot
+         0     0% 97.21%      70023  1.72%  github.com/wago-org/wago/src/wago.(*Instance).Close
+         0     0% 97.21%      60020  1.48%  github.com/wago-org/wago/src/wago.(*Instance).closeOnce
+         0     0% 97.21%      60019  1.48%  github.com/wago-org/wago/src/wago.(*Instance).closeOnce.func1 (inline)
+         0     0% 97.21%      60019  1.48%  github.com/wago-org/wago/src/wago.(*Instance).finishTerminalClose
+         0     0% 97.21%      60019  1.48%  github.com/wago-org/wago/src/wago.(*Instance).releaseResources
+         0     0% 97.21%      60019  1.48%  github.com/wago-org/wago/src/wago.(*Instance).tryFinalize
+         0     0% 97.21%      30009  0.74%  github.com/wago-org/wago/src/wago.(*instanceBuilder).attachImports
+         0     0% 97.21%      30072  0.74%  github.com/wago-org/wago/src/wago.(*instanceBuilder).validateCompiled
+         0     0% 97.21%     460138 11.32%  github.com/wago-org/wago/src/wago.(*registeredImport).key

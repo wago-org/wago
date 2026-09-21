@@ -1,0 +1,140 @@
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=0/wago-guarded-16         	   55762	      4345 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=4096/wago-guarded-16      	   36452	      6399 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=65536/wago-guarded-16     	    9554	     24939 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=393216/wago-guarded-16    	    2007	    114307 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=0/wago-guarded-16        	   48638	      4901 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=4096/wago-guarded-16     	   34450	      7113 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=65536/wago-guarded-16    	    8760	     25386 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=1048576/wago-guarded-16  	     592	    390347 ns/op	    1168 B/op	       3 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=0/wago-guarded-16         	   59556	      4145 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=4096/wago-guarded-16      	   36709	      6353 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=65536/wago-guarded-16     	    9081	     25157 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=393216/wago-guarded-16    	    2047	    114412 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=0/wago-guarded-16        	   49665	      4911 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=4096/wago-guarded-16     	   33520	      7025 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=65536/wago-guarded-16    	    8197	     25708 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=1048576/wago-guarded-16  	     598	    398086 ns/op	    1168 B/op	       3 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=0/wago-guarded-16         	   59509	      4335 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=4096/wago-guarded-16      	   29083	      8657 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=65536/wago-guarded-16     	    9012	     26871 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=393216/wago-guarded-16    	    2100	    117661 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=0/wago-guarded-16        	   35228	      7096 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=4096/wago-guarded-16     	   26667	      9041 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=65536/wago-guarded-16    	    8694	     27347 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=1048576/wago-guarded-16  	     608	    392319 ns/op	    1168 B/op	       3 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=0/wago-guarded-16         	   57170	      4230 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=4096/wago-guarded-16      	   36376	      6557 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=65536/wago-guarded-16     	    9435	     24857 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=393216/wago-guarded-16    	    2077	    115404 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=0/wago-guarded-16        	   49328	      4838 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=4096/wago-guarded-16     	   32497	      7169 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=65536/wago-guarded-16    	    9554	     25450 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=1048576/wago-guarded-16  	     604	    397550 ns/op	    1168 B/op	       3 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=0/wago-guarded-16         	   59937	      4331 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=4096/wago-guarded-16      	   37834	      6538 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=65536/wago-guarded-16     	    9697	     24725 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=393216/wago-guarded-16    	    1978	    115587 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=0/wago-guarded-16        	   49542	      4936 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=4096/wago-guarded-16     	   34150	      7271 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=65536/wago-guarded-16    	    8762	     25580 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=1048576/wago-guarded-16  	     598	    392559 ns/op	    1168 B/op	       3 allocs/op
+PASS
+# round 6
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=0/wago-guarded-16         	   56344	      4394 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=4096/wago-guarded-16      	   36668	      6897 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=65536/wago-guarded-16     	    9580	     26326 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=393216/wago-guarded-16    	    1921	    116913 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=0/wago-guarded-16        	   49016	      5003 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=4096/wago-guarded-16     	   33615	      7152 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=65536/wago-guarded-16    	    9762	     25681 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=1048576/wago-guarded-16  	     609	    393562 ns/op	    1168 B/op	       3 allocs/op
+PASS
+# round 7
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=0/wago-guarded-16         	   58791	      4243 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=4096/wago-guarded-16      	   37900	      6432 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=65536/wago-guarded-16     	    8488	     25187 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=393216/wago-guarded-16    	    2008	    116393 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=0/wago-guarded-16        	   48766	      4791 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=4096/wago-guarded-16     	   33360	      7107 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=65536/wago-guarded-16    	    9758	     25985 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=1048576/wago-guarded-16  	     604	    395843 ns/op	    1168 B/op	       3 allocs/op
+PASS
+# round 8
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=0/wago-guarded-16         	   56839	      4256 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=4096/wago-guarded-16      	   38131	      6500 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=65536/wago-guarded-16     	    8410	     24803 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=393216/wago-guarded-16    	    2126	    117107 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=0/wago-guarded-16        	   48992	      4787 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=4096/wago-guarded-16     	   35048	      6988 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=65536/wago-guarded-16    	    9032	     25150 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=1048576/wago-guarded-16  	     612	    401151 ns/op	    1168 B/op	       3 allocs/op
+PASS
+# round 9
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=0/wago-guarded-16         	   55587	      4201 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=4096/wago-guarded-16      	   37075	      6473 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=65536/wago-guarded-16     	    9898	     24976 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=393216/wago-guarded-16    	    2134	    117876 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=0/wago-guarded-16        	   50226	      4858 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=4096/wago-guarded-16     	   34465	      6911 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=65536/wago-guarded-16    	    9247	     25091 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=1048576/wago-guarded-16  	     559	    397191 ns/op	    1168 B/op	       3 allocs/op
+PASS
+# round 10
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=0/wago-guarded-16         	   57874	      4404 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=4096/wago-guarded-16      	   36645	      6699 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=65536/wago-guarded-16     	    8588	     25187 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=6/data=393216/wago-guarded-16    	    2078	    114752 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=0/wago-guarded-16        	   49776	      4991 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=4096/wago-guarded-16     	   34252	      7154 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=65536/wago-guarded-16    	    9825	     25421 ns/op	    1168 B/op	       3 allocs/op
+BenchmarkMemoryPolicyLifecycleDiagnostic/pages=16/data=1048576/wago-guarded-16  	     602	    390157 ns/op	    1168 B/op	       3 allocs/op
+PASS

@@ -1,0 +1,62 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                                                         │ docs/performance/setup-cleanup/phases-baseline.txt │ docs/performance/setup-cleanup/phases-candidate.txt │
+                                                         │                       sec/op                       │           sec/op             vs base                │
+CommandLifecycleDiagnostic/minimal-wasi/Imports-16                                               16.43µ ±  9%                   16.45µ ± 5%        ~ (p=0.755 n=10)
+CommandLifecycleDiagnostic/minimal-wasi/Instantiate-16                                           6.908µ ±  8%                   4.505µ ± 7%  -34.79% (p=0.000 n=10)
+CommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16                                         3.194µ ±  4%                   3.105µ ± 4%   -2.77% (p=0.037 n=10)
+CommandLifecycleDiagnostic/minimal-wasi/Close-16                                                 6.268µ ± 10%                   6.160µ ± 5%        ~ (p=0.143 n=10)
+CommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16                                             29.70µ ±  3%                   27.93µ ± 6%   -5.99% (p=0.002 n=10)
+CommandLifecycleDiagnostic/cjson/Imports-16                                                      16.88µ ±  7%                   17.20µ ± 7%        ~ (p=0.739 n=10)
+CommandLifecycleDiagnostic/cjson/Instantiate-16                                                 11.515µ ±  3%                   9.212µ ± 5%  -20.00% (p=0.000 n=10)
+CommandLifecycleDiagnostic/cjson/LookupExecute-16                                                7.453µ ±  4%                   7.060µ ± 4%   -5.28% (p=0.005 n=10)
+CommandLifecycleDiagnostic/cjson/Close-16                                                        8.555µ ±  3%                   8.639µ ± 4%        ~ (p=0.684 n=10)
+CommandLifecycleDiagnostic/cjson/Lifecycle-16                                                    40.72µ ±  6%                   37.00µ ± 6%   -9.15% (p=0.000 n=10)
+CommandLifecycleDiagnostic/tinyxml2/Imports-16                                                   16.10µ ±  6%                   16.63µ ± 7%        ~ (p=0.436 n=10)
+CommandLifecycleDiagnostic/tinyxml2/Instantiate-16                                               14.86µ ±  6%                   12.87µ ± 5%  -13.36% (p=0.000 n=10)
+CommandLifecycleDiagnostic/tinyxml2/LookupExecute-16                                             12.71µ ±  2%                   12.54µ ± 2%        ~ (p=0.105 n=10)
+CommandLifecycleDiagnostic/tinyxml2/Close-16                                                     9.718µ ±  2%                   9.555µ ± 5%        ~ (p=0.247 n=10)
+CommandLifecycleDiagnostic/tinyxml2/Lifecycle-16                                                 48.68µ ±  4%                   46.50µ ± 3%   -4.48% (p=0.023 n=10)
+geomean                                                                                          12.96µ                         12.07µ        -6.86%
+
+                                                         │ docs/performance/setup-cleanup/phases-baseline.txt │ docs/performance/setup-cleanup/phases-candidate.txt │
+                                                         │                        B/op                        │           B/op             vs base                  │
+CommandLifecycleDiagnostic/minimal-wasi/Imports-16                                               31.89Ki ± 0%                31.89Ki ± 0%        ~ (p=0.839 n=10)
+CommandLifecycleDiagnostic/minimal-wasi/Instantiate-16                                           3.906Ki ± 0%                1.812Ki ± 0%  -53.60% (p=0.000 n=10)
+CommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16                                           528.0 ± 0%                  528.0 ± 0%        ~ (p=1.000 n=10)
+CommandLifecycleDiagnostic/minimal-wasi/Close-16                                                   224.0 ± 0%                  224.0 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16                                             36.59Ki ± 0%                34.50Ki ± 0%   -5.72% (p=0.000 n=10)
+CommandLifecycleDiagnostic/cjson/Imports-16                                                      31.88Ki ± 0%                31.88Ki ± 0%        ~ (p=0.737 n=10)
+CommandLifecycleDiagnostic/cjson/Instantiate-16                                                  5.008Ki ± 0%                2.914Ki ± 0%  -41.81% (p=0.000 n=10)
+CommandLifecycleDiagnostic/cjson/LookupExecute-16                                                  240.0 ± 0%                  240.0 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/cjson/Close-16                                                          384.0 ± 0%                  384.0 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/cjson/Lifecycle-16                                                    37.57Ki ± 0%                35.48Ki ± 0%   -5.57% (p=0.000 n=10)
+CommandLifecycleDiagnostic/tinyxml2/Imports-16                                                   31.88Ki ± 0%                31.88Ki ± 0%        ~ (p=1.000 n=10)
+CommandLifecycleDiagnostic/tinyxml2/Instantiate-16                                               5.539Ki ± 0%                3.445Ki ± 0%  -37.80% (p=0.000 n=10)
+CommandLifecycleDiagnostic/tinyxml2/LookupExecute-16                                               240.0 ± 0%                  240.0 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/tinyxml2/Close-16                                                       480.0 ± 0%                  480.0 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/tinyxml2/Lifecycle-16                                                 38.20Ki ± 0%                36.10Ki ± 0%   -5.48% (p=0.000 n=10)
+geomean                                                                                          3.577Ki                     3.140Ki       -12.23%
+¹ all samples are equal
+
+                                                         │ docs/performance/setup-cleanup/phases-baseline.txt │ docs/performance/setup-cleanup/phases-candidate.txt │
+                                                         │                     allocs/op                      │         allocs/op          vs base                  │
+CommandLifecycleDiagnostic/minimal-wasi/Imports-16                                                 374.0 ± 0%                  374.0 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/minimal-wasi/Instantiate-16                                             60.00 ± 0%                  14.00 ± 0%  -76.67% (p=0.000 n=10)
+CommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16                                           4.000 ± 0%                  4.000 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/minimal-wasi/Close-16                                                   3.000 ± 0%                  3.000 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16                                               443.0 ± 0%                  397.0 ± 0%  -10.38% (p=0.000 n=10)
+CommandLifecycleDiagnostic/cjson/Imports-16                                                        374.0 ± 0%                  374.0 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/cjson/Instantiate-16                                                    82.00 ± 0%                  36.00 ± 0%  -56.10% (p=0.000 n=10)
+CommandLifecycleDiagnostic/cjson/LookupExecute-16                                                  2.000 ± 0%                  2.000 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/cjson/Close-16                                                          7.000 ± 0%                  7.000 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/cjson/Lifecycle-16                                                      467.0 ± 0%                  421.0 ± 0%   -9.85% (p=0.000 n=10)
+CommandLifecycleDiagnostic/tinyxml2/Imports-16                                                     374.0 ± 0%                  374.0 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/tinyxml2/Instantiate-16                                                 91.00 ± 0%                  45.00 ± 0%  -50.55% (p=0.000 n=10)
+CommandLifecycleDiagnostic/tinyxml2/LookupExecute-16                                               2.000 ± 0%                  2.000 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/tinyxml2/Close-16                                                       9.000 ± 0%                  9.000 ± 0%        ~ (p=1.000 n=10) ¹
+CommandLifecycleDiagnostic/tinyxml2/Lifecycle-16                                                   478.0 ± 0%                  432.0 ± 0%   -9.62% (p=0.000 n=10)
+geomean                                                                                            45.33                       36.38       -19.73%
+¹ all samples are equal

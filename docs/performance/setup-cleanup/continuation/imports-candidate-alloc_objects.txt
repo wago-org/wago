@@ -1,0 +1,25 @@
+File: wasi-candidate.test
+Build ID: df3d4d79b463139219f1aa58d3ec520f68353a8b
+Type: alloc_objects
+Time: 2026-09-20 23:32:00 EDT
+Showing nodes accounting for 2565577, 98.69% of 2599721 total
+Dropped 471 nodes (cum <= 12998)
+      flat  flat%   sum%        cum   cum%
+    990198 38.09% 38.09%    1530306 58.86%  github.com/wago-org/wago/src/wago.(*Imports).HostFunc
+    460101 17.70% 55.79%     460101 17.70%  github.com/wago-org/wago/src/wago.importBindingMapKey (inline)
+    460092 17.70% 73.48%     460092 17.70%  github.com/wago-org/wasi/internal/core.binding.callback (inline)
+    229907  8.84% 82.33%     229907  8.84%  github.com/wago-org/wago/src/wago.(*ImportFuncBuilder).Params
+    225222  8.66% 90.99%     225222  8.66%  github.com/wago-org/wago/src/wago.(*ImportFuncBuilder).Results
+     80016  3.08% 94.07%     540108 20.78%  github.com/wago-org/wago/src/wago.(*Imports).add
+     70014  2.69% 96.76%      70014  2.69%  github.com/wago-org/wasi/internal/core.(*Plugin).makeFS
+     20004  0.77% 97.53%      20004  0.77%  github.com/wago-org/wago/src/wago.NewImports (inline)
+     20004  0.77% 98.30%      20004  0.77%  github.com/wago-org/wasi/internal/core.(*Plugin).resetFS (inline)
+     10002  0.38% 98.69%    2575553 99.07%  github.com/wago-org/wasi/internal/core.Imports
+        17 0.00065% 98.69%    2599233   100%  testing.(*B).runN
+         0     0% 98.69%      20004  0.77%  github.com/wago-org/wago.NewImports (inline)
+         0     0% 98.69%    2595298 99.83%  github.com/wago-org/wago/bench/suite.BenchmarkCommandLifecycleDiagnostic.func1.1
+         0     0% 98.69%    2595557 99.84%  github.com/wago-org/wago/bench/suite.commandRuntimeImports
+         0     0% 98.69%    2465531 94.84%  github.com/wago-org/wasi/internal/core.(*Plugin).Imports
+         0     0% 98.69%      70014  2.69%  github.com/wago-org/wasi/internal/core.(*Plugin).initFS
+         0     0% 98.69%    2575553 99.07%  github.com/wago-org/wasi/p1.Imports (inline)
+         0     0% 98.69%    2595040 99.82%  testing.(*B).launch

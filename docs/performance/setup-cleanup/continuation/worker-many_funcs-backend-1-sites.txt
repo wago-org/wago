@@ -1,0 +1,21 @@
+Total: 10.21MB
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.newScratchWithStackCap in /home/jtenner/Projects/wago/src/core/compiler/backend/railshot/amd64/compile.go
+  615.47kB     2.19MB (flat, cum) 21.45% of Total
+         .          .    804:func newScratchWithStackCap(stackCap int) *scratch {
+         .     1.59MB    805:	stack := newStackWithCap(stackCap)
+         .          .    806:	_, reserved := stack.nodeMemory()
+  615.47kB   615.47kB    807:	return &scratch{stack: stack, asm: &amd64.Asm{}, nodeScratchReserved: reserved, nodeScratchPeak: reserved}
+         .          .    808:}
+         .          .    809:
+         .          .    810:func (sc *scratch) reserveControlFrames(capacity int) {
+         .          .    811:	if capacity <= 0 {
+         .          .    812:		return
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).push in /home/jtenner/Projects/wago/src/core/compiler/wasm/validate.go
+      192B       192B (flat, cum) 0.0018% of Total
+         .          .   1115:func (v *funcValidator) push(t ValType) {
+      192B       192B   1116:	v.vals = append(v.vals, val{t: t})
+         .          .   1117:}
+         .          .   1118:func (v *funcValidator) pushAll(ts []ValType) {
+         .          .   1119:	for _, t := range ts {
+         .          .   1120:		v.push(t)
+         .          .   1121:	}

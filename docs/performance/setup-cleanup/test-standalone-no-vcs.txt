@@ -1,0 +1,13 @@
+--- FAIL: TestBuildTinyGoEmbedsArtifactWithoutCompiler (17.27s)
+    build_test.go:147: tinygo build: exit status 1
+        ld.lld: error: duplicate symbol: tinygo_task_exit
+        >>> defined in /tmp/tinygo461452937/main.o
+        >>> defined in /home/jtenner/.cache/tinygo/obj-0832d60e077e91bf720011dc64b990dc1374ec6148bc3c02d5f14d66.bc
+--- FAIL: TestBuildTinyGoStripsByDefault (15.81s)
+    build_test.go:205: tinygo build: exit status 1
+        ld.lld: error: duplicate symbol: tinygo_task_exit
+        >>> defined in /tmp/tinygo1433909294/main.o
+        >>> defined in /home/jtenner/.cache/tinygo/obj-0832d60e077e91bf720011dc64b990dc1374ec6148bc3c02d5f14d66.bc
+FAIL
+FAIL	github.com/wago-org/wago/cli/manager/internal/standalone	59.744s
+FAIL

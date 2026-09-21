@@ -1,0 +1,7 @@
+go: downloading github.com/wago-org/wago v0.1.0-beta.8.0.20260916050830-c9ed2455acd9
+ok  	github.com/wago-org/wasi	1.015s
+?   	github.com/wago-org/wasi/cmd/wit-surface	[no test files]
+ok  	github.com/wago-org/wasi/internal/core	2.476s
+ok  	github.com/wago-org/wasi/p1	1.521s
+ok  	github.com/wago-org/wasi/p2	6.320s
+ok  	github.com/wago-org/wasi/register	1.028s

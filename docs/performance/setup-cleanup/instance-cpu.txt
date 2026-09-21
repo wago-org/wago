@@ -1,0 +1,39 @@
+File: candidate-diagnostic.test
+Build ID: e89d591c55a63bbc3d720e74b98a825920fd265d
+Type: cpu
+Time: 2026-09-20 21:28:16 EDT
+Duration: 7.11s, Total samples = 7.11s (  100%)
+Showing nodes accounting for 6.94s, 97.61% of 7.11s total
+Dropped 56 nodes (cum <= 0.04s)
+Showing top 30 nodes out of 31
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%      7.08s 99.58%  github.com/wago-org/wago/bench/suite.BenchmarkInstantiate.func1
+         0     0%     0%      7.08s 99.58%  github.com/wago-org/wago/bench/suite.eachModule.func1
+         0     0%     0%      7.08s 99.58%  testing.(*B).runN
+         0     0%     0%      7.07s 99.44%  testing.(*B).launch
+         0     0%     0%      5.43s 76.37%  github.com/wago-org/wago.Instantiate (inline)
+     0.01s  0.14%  0.14%      5.43s 76.37%  github.com/wago-org/wago/src/wago.Instantiate
+         0     0%  0.14%      5.41s 76.09%  github.com/wago-org/wago/src/wago.instantiateCore (inline)
+     0.01s  0.14%  0.28%      5.41s 76.09%  github.com/wago-org/wago/src/wago.instantiateCoreWithModuleLease
+     0.11s  1.55%  1.83%      5.37s 75.53%  github.com/wago-org/wago/src/wago.(*instanceBuilder).instantiate
+     5.06s 71.17% 73.00%      5.06s 71.17%  runtime.memmove
+         0     0% 73.00%      1.62s 22.78%  github.com/wago-org/wago/src/wago.(*Instance).Close
+     0.01s  0.14% 73.14%      1.59s 22.36%  github.com/wago-org/wago/src/wago.(*Instance).closeOnce
+     1.59s 22.36% 95.50%      1.59s 22.36%  internal/runtime/syscall/linux.Syscall6
+         0     0% 95.50%      1.59s 22.36%  syscall.RawSyscall6
+         0     0% 95.50%      1.59s 22.36%  syscall.Syscall
+         0     0% 95.50%      1.58s 22.22%  github.com/wago-org/wago/src/wago.(*Instance).closeOnce.func1 (inline)
+         0     0% 95.50%      1.58s 22.22%  github.com/wago-org/wago/src/wago.callShutdownSafely
+         0     0% 95.50%      1.57s 22.08%  github.com/wago-org/wago/src/wago.(*Instance).finishTerminalClose
+         0     0% 95.50%      1.57s 22.08%  github.com/wago-org/wago/src/wago.(*Instance).releaseResources
+         0     0% 95.50%      1.57s 22.08%  github.com/wago-org/wago/src/wago.(*Instance).tryFinalize
+         0     0% 95.50%      1.57s 22.08%  github.com/wago-org/wago/src/wago.referenceLifetime.finalize
+         0     0% 95.50%      1.54s 21.66%  github.com/wago-org/wago/src/core/runtime.(*JobMemory).decommitGuarded
+         0     0% 95.50%      1.54s 21.66%  github.com/wago-org/wago/src/core/runtime.ReleaseJobMemory
+         0     0% 95.50%      1.54s 21.66%  github.com/wago-org/wago/src/core/runtime.releaseGuardedJobMemory
+     0.07s  0.98% 96.48%      0.07s  0.98%  github.com/wago-org/wago/src/core/runtime.(*JobMemory).HostBytesChecked
+         0     0% 96.48%      0.05s   0.7%  github.com/wago-org/wago/src/core/runtime.(*JobMemory).rearmGuarded
+         0     0% 96.48%      0.05s   0.7%  github.com/wago-org/wago/src/core/runtime.AcquireJobMemoryGuarded
+     0.05s   0.7% 97.19%      0.05s   0.7%  github.com/wago-org/wago/src/wago.(*Compiled).memoryDef
+         0     0% 97.19%      0.05s   0.7%  github.com/wago-org/wago/src/wago.newGuardedJobMemory
+     0.03s  0.42% 97.61%      0.04s  0.56%  github.com/wago-org/wago/src/wago.(*Compiled).freezeExecution

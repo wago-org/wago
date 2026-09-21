@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/cjson-16               	    1000	     38406 ns/op	   36333 B/op	     421 allocs/op
+BenchmarkCommandExec/tinyxml2-16            	    1000	     45748 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Imports-16 	    1000	     17399 ns/op	   32653 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Instantiate-16         	    1000	      3728 ns/op	    1856 B/op	      14 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/LookupExecute-16       	    1000	      2676 ns/op	     528 B/op	       4 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Close-16               	    1000	      5849 ns/op	     224 B/op	       3 allocs/op
+BenchmarkCommandLifecycleDiagnostic/minimal-wasi/Lifecycle-16           	    1000	     26522 ns/op	   35328 B/op	     397 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Imports-16                    	    1000	     16257 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Instantiate-16                	    1000	      8529 ns/op	    2984 B/op	      36 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/LookupExecute-16              	    1000	      6597 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Close-16                      	    1000	      8118 ns/op	     384 B/op	       7 allocs/op
+BenchmarkCommandLifecycleDiagnostic/cjson/Lifecycle-16                  	    1000	     37874 ns/op	   36328 B/op	     421 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Imports-16                 	    1000	     15979 ns/op	   32648 B/op	     374 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Instantiate-16             	    1000	     12630 ns/op	    3528 B/op	      45 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/LookupExecute-16           	    1000	     12067 ns/op	     240 B/op	       2 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Close-16                   	    1000	      8966 ns/op	     480 B/op	       9 allocs/op
+BenchmarkCommandLifecycleDiagnostic/tinyxml2/Lifecycle-16               	    1000	     42491 ns/op	   36968 B/op	     432 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16              	    1000	       519.9 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16               	    1000	     26209 ns/op	         1.000 host-calls/op	   35249 B/op	     395 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16           	    1000	    277514 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16            	    1000	    297933 ns/op	      1024 host-calls/op	  329875 B/op	    2441 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16             	    1000	    125924 ns/op	  131369 B/op	    1769 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16                   	    1000	     11043 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                          	    1000	     23078 ns/op	    6882 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                       	    1000	     31182 ns/op	    7682 B/op	      81 allocs/op
+PASS

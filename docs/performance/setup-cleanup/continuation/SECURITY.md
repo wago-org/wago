@@ -1,0 +1,14 @@
+# WASI construction patch review
+
+This is a local provider patch at 6a6684d2ecd2be2d17e5792733d1d0e03b2f2c0e, not a published dependency upgrade. The root workspace and module cache remain unchanged. Use reproduce-provider.sh with a new temporary directory; it builds both versions with the same current diagnostic tests. Source and binary hashes identify the tested files. The import-snapshot fix is in both versions.
+
+- Ownership: the private importBindings table owns fixed names, signatures, capabilities, documentation and static dispatch pointers. No caller receives its backing storage. Public Params/Results and metadata access still copy. Each callback captures its own Plugin pointer and one handler pointer. Args, Env and Mounts are still cloned.
+- Isolation: stateFor uses the existing instance identity and locks. No current-instance global, borrowed guest slice, shared descriptor table or shared exit state is introduced. Sequential and concurrent tests use distinct inputs, environments, mounts and permissions.
+- Lifetime: provider observers and Stop keep their existing resource ownership. Instance.Close with a registered Provider closes that instance's owned descriptors. Completed runtime shutdown requires CloseContext or WaitClosed. Raw Imports has no automatic provider cleanup contract. Borrowed streams are never closed.
+- Initialization: filesystem construction, guest memory initialization and configuration defaults are unchanged. Static definitions are initialized once before callers can use them.
+- Bounds: guest memory access and signature validation remain in the existing checked paths. No unsafe aliasing is used. The new tests reject path traversal outside temporary mounts.
+- Failure: callback state errors follow the same errno path. The state lock is still released with defer during traps. Tests cover normal exit, guest trap, start trap, denied instantiation, partial mount setup and cancellation. Repeated close and descriptor counts exercise completed cleanup.
+- Concurrency: the private definition table is read-only after package initialization. Mutable state retains its existing synchronization. No worker or callback synchronization is removed. Race tests cover the affected provider and benchmark tests.
+- Resources: the table has exactly 46 definitions, independent of guest-controlled sizes. It replaces repeated definition construction with a bounded one-time allocation of about 5 KiB. No command state is retained by a new cache. Direct host-call allocation counts must stay unchanged in the final comparison.
+
+Tests also mutate caller-owned configuration and signature slices after registration. The public metadata-copy test mutates returned signatures and checks the provider declaration remains intact. FuzzWASIConstructionIsolation tests argument construction and isolation with bounded input sizes.

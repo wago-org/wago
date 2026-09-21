@@ -1,0 +1,31 @@
+                                      │ docs/performance/setup-cleanup/continuation/wasi-retained-baseline.txt │ docs/performance/setup-cleanup/continuation/wasi-retained-candidate.txt │
+                                      │                                RSS-KiB                                 │                     RSS-KiB                       vs base               │
+Retained/minimal-wasi/warm-normal                                                                  21.29k ± 1%                                        21.23k ± 1%       ~ (p=0.380 n=20)
+Retained/minimal-wasi/closed-normal                                                                24.77k ± 6%                                        24.61k ± 2%       ~ (p=0.292 n=20)
+Retained/minimal-wasi/released-normal                                                              24.83k ± 6%                                        24.67k ± 2%       ~ (p=0.311 n=20)
+Retained/minimal-wasi/released-gc                                                                  21.60k ± 5%                                        21.12k ± 4%       ~ (p=0.091 n=20)
+Retained/cjson/warm-normal                                                                         24.26k ± 1%                                        24.11k ± 1%       ~ (p=0.253 n=20)
+Retained/cjson/closed-normal                                                                       24.78k ± 2%                                        25.28k ± 5%       ~ (p=0.211 n=20)
+Retained/cjson/released-normal                                                                     24.65k ± 2%                                        25.15k ± 5%       ~ (p=0.211 n=20)
+Retained/cjson/released-gc                                                                         21.21k ± 2%                                        21.66k ± 5%       ~ (p=0.289 n=20)
+Retained/tinyxml2/warm-normal                                                                      24.29k ± 1%                                        24.10k ± 7%       ~ (p=0.324 n=20)
+Retained/tinyxml2/closed-normal                                                                    25.03k ± 1%                                        25.64k ± 3%       ~ (p=0.085 n=20)
+Retained/tinyxml2/released-normal                                                                  24.90k ± 1%                                        25.50k ± 3%       ~ (p=0.072 n=20)
+Retained/tinyxml2/released-gc                                                                      21.21k ± 2%                                        21.97k ± 6%  +3.56% (p=0.004 n=20)
+geomean                                                                                            23.51k                                             23.69k       +0.76%
+
+                                      │ docs/performance/setup-cleanup/continuation/wasi-retained-baseline.txt │ docs/performance/setup-cleanup/continuation/wasi-retained-candidate.txt │
+                                      │                                 heap-B                                 │                     heap-B                       vs base                │
+Retained/minimal-wasi/warm-normal                                                               2.844Mi ±   0%                                      2.838Mi ± 0%   -0.22% (p=0.000 n=20)
+Retained/minimal-wasi/closed-normal                                                             1.492Mi ±  19%                                      2.110Mi ± 6%  +41.44% (p=0.000 n=20)
+Retained/minimal-wasi/released-normal                                                           1.448Mi ±  15%                                      2.133Mi ± 6%  +47.27% (p=0.000 n=20)
+Retained/minimal-wasi/released-gc                                                               664.9Ki ±   1%                                      669.3Ki ± 0%        ~ (p=0.140 n=20)
+Retained/cjson/warm-normal                                                                      1.186Mi ±   0%                                      1.190Mi ± 1%        ~ (p=0.525 n=20)
+Retained/cjson/closed-normal                                                                    1.503Mi ± 105%                                      1.535Mi ± 6%        ~ (p=0.984 n=20)
+Retained/cjson/released-normal                                                                  1.525Mi ± 103%                                      1.557Mi ± 6%        ~ (p=0.984 n=20)
+Retained/cjson/released-gc                                                                      667.4Ki ±   0%                                      669.1Ki ± 1%        ~ (p=0.856 n=20)
+Retained/tinyxml2/warm-normal                                                                   1.439Mi ±   1%                                      1.453Mi ± 2%        ~ (p=0.490 n=20)
+Retained/tinyxml2/closed-normal                                                                 1.690Mi ±  11%                                      2.197Mi ± 5%  +29.96% (p=0.000 n=20)
+Retained/tinyxml2/released-normal                                                               1.713Mi ±  11%                                      2.219Mi ± 5%  +29.56% (p=0.000 n=20)
+Retained/tinyxml2/released-gc                                                                   664.4Ki ±   0%                                      669.4Ki ± 1%   +0.75% (p=0.040 n=20)
+geomean                                                                                         1.279Mi                                             1.428Mi       +11.67%

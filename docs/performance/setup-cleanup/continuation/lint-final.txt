@@ -1,0 +1,104 @@
+go generate ./...
+genfacade: wrote wago.go
+git diff --exit-code -- wago.go schema.json || { echo "::error::Generated files are stale. Run 'go generate ./...' and commit the result."; exit 1; }
+go vet ./...
+go vet -tags wago_runtime ./cli/...
+src/core/compiler/backend/railshot/amd64/control.go:716:6: func typesOfVals is unused (U1000)
+src/core/compiler/backend/railshot/amd64/control.go:842:14: func (*fn).frameDepthTypes is unused (U1000)
+src/core/compiler/backend/railshot/amd64/gc_direct.go:2226:14: func (*fn).emitDirectGCArrayLen is unused (U1000)
+src/core/compiler/backend/railshot/amd64/inline.go:821:6: func allCallsWillInline is unused (U1000)
+src/core/compiler/backend/railshot/amd64/interval_region.go:431:14: func (*fn).intervalLocalHasMemBorrow is unused (U1000)
+src/core/compiler/backend/railshot/amd64/magicdiv.go:71:6: func strengthReducible is unused (U1000)
+src/core/compiler/wasm/bytecode_skip.go:35:6: func classifyExprOpAfterOpcodeWithModuleFeatures is unused (U1000)
+src/core/compiler/wasm/instruction_decode.go:37:6: func decodeExprWithMemarg64 is unused (U1000)
+src/core/compiler/wasm/instruction_decode.go:67:6: func decodeInstructionWithMemarg64 is unused (U1000)
+src/core/compiler/wasm/instruction_decode.go:336:6: func decodeMemArgWithWidth is unused (U1000)
+src/core/runtime/gc/native/telemetry.go:14:7: const telemetryPauseSubBuckets is unused (U1000)
+src/core/runtime/gc/native/telemetry.go:15:7: const telemetryPauseBuckets is unused (U1000)
+src/core/runtime/gc/native/telemetry_state_disabled.go:17:2: field allocationBaseline is unused (U1000)
+src/core/runtime/gc/native/tiny_pacing_test.go:40:2: this value of roots is never used (SA4006)
+src/core/runtime/limits_test.go:11:2: field stack is unused (U1000)
+src/core/runtime/limits_test.go:12:2: field stackTop is unused (U1000)
+src/core/runtime/limits_test.go:13:2: field preparedInt is unused (U1000)
+src/core/runtime/limits_test.go:14:2: field inUse is unused (U1000)
+src/core/runtime/limits_test.go:15:2: field args is unused (U1000)
+src/core/runtime/limits_test.go:16:2: field results is unused (U1000)
+src/wago/api.go:3825:20: func (*Compiled).tableMinimum is unused (U1000)
+src/wago/gc_frame_liveness.go:534:6: func gcFrameBodyMayCollect is unused (U1000)
+src/wago/host_execution.go:547:30: func (*hostLoopActivation).dispatchSingleTypedScalarExpandedPortal is unused (U1000)
+src/wago/import_identity_test.go:288:8: const flatKey is unused (U1000)
+src/wago/imports_external_test.go:19:9: assigning the result of this type assertion to a variable (switch value := value.(type)) could eliminate type assertions in switch cases (S1034)
+	src/wago/imports_external_test.go:21:27: could eliminate this type assertion
+	src/wago/imports_external_test.go:23:26: could eliminate this type assertion
+	src/wago/imports_external_test.go:25:24: could eliminate this type assertion
+src/wago/instance_close_completion_test.go:134:8: identical expressions on the left and right side of the '||' operator (SA4000)
+src/wago/instance_entry.go:26:53: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/invocation_admission_test.go:91:3: empty critical section (SA2001)
+src/wago/invocation_admission_test.go:110:3: empty critical section (SA2001)
+src/wago/managed_close_test.go:84:38: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_close_test.go:148:39: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_close_test.go:193:35: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_close_test.go:241:36: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_close_test.go:258:36: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_entry_context_test.go:245:38: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_entry_context_test.go:349:33: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_entry_context_test.go:352:33: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_entry_context_test.go:375:36: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_entry_context_test.go:382:35: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_entry_context_test.go:387:33: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_entry_context_test.go:406:35: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_entry_context_test.go:411:34: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_entry_context_test.go:428:34: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_entry_context_test.go:447:30: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/managed_entry_context_test.go:452:34: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (SA1012)
+src/wago/module.go:742:6: func declaredImportIdentity is unused (U1000)
+src/wago/prepared_direct_amd64.go:33:21: func (*WasmFunc).invokeDirectInt is unused (U1000)
+src/wago/prepared_host_fixed_other.go:5:7: const preparedHostFixedEnabled is unused (U1000)
+src/wago/reference_store.go:752:25: func (*gcPublicState).resultCapacity is unused (U1000)
+src/wago/reference_store.go:2693:38: field reserved is unused (U1000)
+src/wago/services.go:94:24: func (*contractSlot).deactivate is unused (U1000)
+src/wago/zz_host_execution_fixed.go:46:30: func (*hostLoopActivation).dispatchSingleTypedI32FixedPortal is unused (U1000)
+src/wago/zz_host_execution_fixed.go:55:30: func (*hostLoopActivation).dispatchSingleTypedI32x2FixedPortal is unused (U1000)
+just: standard staticcheck reported existing findings; runtime-tagged checks passed
+node --test scripts/update-website-bench.test.mjs
+✔ benchmark regeneration only replaces the benchmark widget (107.320465ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 149.904812
+node --test scripts/update-website-startup.test.mjs
+✔ renders matched end-to-end architecture panels with standardized engines (29.273057ms)
+✔ rejects architecture captures from different source commits (21.678586ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 97.454643
+node --test scripts/engine-state-oracle.test.mjs
+✔ canonical engine-state bytes and hash match the Go golden (0.710908ms)
+✔ input mixer matches the Go golden (0.13262ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 47.965011
+node --test scripts/fuzz-engine-state.test.mjs
+✔ WorkerClient kills a worker that exceeds the case timeout (57.784811ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 100.290257

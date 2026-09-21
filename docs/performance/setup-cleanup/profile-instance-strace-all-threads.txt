@@ -1,0 +1,16 @@
+strace: Process 3431679 attached
+strace: Process 3431680 attached
+strace: Process 3431681 attached
+strace: Process 3431682 attached
+strace: Process 3431683 attached
+strace: Process 3431684 attached
+strace: Process 3431685 attached
+strace: Process 3431686 attached
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 65.97    0.015777          15      1040           madvise
+ 32.51    0.007776           3      2025           mprotect
+  1.36    0.000326           3        86           mmap
+  0.16    0.000038           4         9           munmap
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.023917           7      3160           total

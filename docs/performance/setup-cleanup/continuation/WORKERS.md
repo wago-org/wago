@@ -1,0 +1,26 @@
+# Worker storage diagnosis
+
+The default remains one worker. Production Resolve uses body bytes plus 64 bytes per local function, a 16 KiB automatic threshold, and a limit of four; it then applies GOMAXPROCS and function-count limits. No policy or scheduling change is proposed.
+
+The diagnostic measures raw low-level requests, automatic requests resolved by the production policy, and the public full pipeline separately. The backend diagnostic now releases an owned CodeImage. Its timing includes that release. Public full compilation already closes its compiled result. Original suite measurements are preserved unchanged.
+
+The first corrected-label backend capture dropped CodeImage through benchCompileModuleWorkers. It is superseded. CodeBuffer.Close releases native mappings; CodeBuffer has no automatic finalizer. Serial direct backend output uses native storage while parallel backend output uses Go heap staging. Therefore their B/op figures alone do not compare total memory. Public full compilation defers code mapping and is the better like-for-like pipeline control.
+
+The allocation profiles use 100 measured compiles plus benchmark calibration and untimed fixture setup. Profile totals are process totals, not B/op; per-site attribution must follow the compile call paths. The ordinary timing and resource runs have no profiler enabled.
+
+| Storage | Source | Ownership and current behavior | Evidence and decision |
+| --- | --- | --- | --- |
+| Validation body scratch | wasm/validate.go:validateFunctionsParallel; funcValidator.pushCtrl/push | One private validator per worker, reused across its assigned functions; module metadata shared read-only | Lua four-worker profile has about 4.6 MiB of control-stack allocations across 101 compiles. Growth follows functions actually assigned. No whole-module reservation per validator was found. |
+| Validation coordinator | validateFunctionsParallel | One result per worker, atomic work index, WaitGroup; joins before error selection | Already bounded by effective worker count. No full unused worker validator allocated for coordination. |
+| Backend operand nodes | amd64/stack.go:alloc | Private chunk arena per worker; bounded initial capacity and established growth/reset | Largest serial allocation site, also large in parallel. Lua totals about 86 MiB serial and 145 MiB at four workers over 101 compiles. Increasing retained chunks would trade lower allocation counts for memory retention; not accepted without a separate proof. |
+| Backend initial scratch | amd64/compile.go:workerStackArenaCap, workerControlFrameCap, parallelLocalScratchCapacity | Initial stack capped at default capacity, controls at 8, locals at 64; outliers grow only the receiving worker | The suggested whole-module outlier multiplication is already prevented. No extra arbitrary cap is added. |
+| Immutable module hints/types | computeModuleHintsWithWorkersResidencyPolicy, buildModuleTypeCache | Prepared before worker launch, shared read-only | Lua hints allocate about 5.7 MiB in both profiles over 101 compiles. They are not multiplied by four. |
+| Worker code arenas | compileModuleParallel states initialization | Initial capacity divides module output estimate by workers; append-only completed function output | Lua four-worker initial arenas total about 88 MiB across 101 compiles. This is output staging, not four full-module buffers. A lower guess may cause repeated copying and growth. |
+| Per-function results | compileModuleParallel results | One compact record per function; references worker arenas until ordered merge | Lua four-worker results total about 2 MiB across 101 compiles. Cannot recycle arena storage while records still reference it. |
+| Merge and relocation | compileModuleParallel ordered join | A final output buffer coexists with worker arenas; relocations point into per-worker relocation slices until patching completes | Final capacity already uses JoinedModuleCodeCapacity. Serial fast path does not allocate an unused coordinator scratch. Removing this copy requires an ownership/layout design beyond a small justified fix. |
+
+All started workers join before shared state is consumed or returned. Error selection uses the existing lowest-index selection. The current patch does not change error selection, emitted code, relocations, labels, arena reuse, state synchronization, or cleanup. No persistent worker pool, global scratch, queue, semaphore or retained cache is added.
+
+The fixed new diagnostic run uses ten samples of requested 0, 1, 2 and 4 at 1, 4 and 16 callers, GOMAXPROCS=16 and CPUs 0–15, across tiny, many_funcs, json-as and Lua. Raw zero is serial. Policy zero resolves through production Resolve. Full pipeline zero uses the public configured compile API. Aggregate ns/op is elapsed time divided by completed calls; individual latency is reported separately by TestWorkerResources. Each memory test uses eight calls per caller, records normal heap/RSS before forced reclamation, joins callers and closes all results. Process peaks are per configuration and include fixture/runtime setup, not just compiler scratch.
+
+Status: Diagnosed, with no accepted production change. The storage increase is real, but the proposed simple duplicate-storage causes are absent or already bounded. No speculative scratch reservation change is retained.

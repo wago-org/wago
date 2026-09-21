@@ -1,0 +1,93 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                                                        │ docs/performance/setup-cleanup/workers-serial.txt │ docs/performance/setup-cleanup/workers-auto.txt │
+                                                        │                      sec/op                       │         sec/op           vs base                │
+WorkerLifecycleDiagnostic/tiny/single/full-16                                                   19.52µ ± 5%               19.62µ ± 3%        ~ (p=0.579 n=10)
+WorkerLifecycleDiagnostic/tiny/concurrent/full-16                                               5.077µ ± 2%               5.092µ ± 4%        ~ (p=0.754 n=10)
+WorkerLifecycleDiagnostic/many_funcs/single/full-16                                             444.8µ ± 2%               344.6µ ± 3%  -22.53% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/many_funcs/concurrent/full-16                                         69.47µ ± 3%               79.45µ ± 1%  +14.37% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/json-as/single/full-16                                                1.543m ± 1%               1.022m ± 2%  -33.77% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/json-as/concurrent/full-16                                            200.0µ ± 2%               233.7µ ± 1%  +16.84% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/lua/single/full-16                                                   14.908m ± 1%               8.742m ± 3%  -41.36% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/lua/concurrent/full-16                                                2.036m ± 6%               2.076m ± 7%        ~ (p=0.123 n=10)
+geomean                                                                                         270.5µ                    242.2µ       -10.46%
+
+                                                        │ docs/performance/setup-cleanup/workers-serial.txt │ docs/performance/setup-cleanup/workers-auto.txt │
+                                                        │                    body-bytes                     │       body-bytes        vs base                 │
+WorkerLifecycleDiagnostic/tiny/single/full-16                                                    9.000 ± 0%               9.000 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/tiny/concurrent/full-16                                                9.000 ± 0%               9.000 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/many_funcs/single/full-16                                            2.005Ki ± 0%             2.005Ki ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/many_funcs/concurrent/full-16                                        2.005Ki ± 0%             2.005Ki ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/json-as/single/full-16                                               16.26Ki ± 0%             16.26Ki ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/json-as/concurrent/full-16                                           16.26Ki ± 0%             16.26Ki ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/lua/single/full-16                                                   171.9Ki ± 0%             171.9Ki ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/lua/concurrent/full-16                                               171.9Ki ± 0%             171.9Ki ± 0%       ~ (p=1.000 n=10) ¹
+geomean                                                                                        2.649Ki                  2.649Ki       +0.00%
+¹ all samples are equal
+
+                                                        │ docs/performance/setup-cleanup/workers-serial.txt │ docs/performance/setup-cleanup/workers-auto.txt │
+                                                        │                 effective-workers                 │  effective-workers    vs base                   │
+WorkerLifecycleDiagnostic/tiny/single/full-16                                                    1.000 ± 0%             1.000 ± 0%         ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/tiny/concurrent/full-16                                                1.000 ± 0%             1.000 ± 0%         ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/many_funcs/single/full-16                                              1.000 ± 0%             4.000 ± 0%  +300.00% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/many_funcs/concurrent/full-16                                          1.000 ± 0%             4.000 ± 0%  +300.00% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/json-as/single/full-16                                                 1.000 ± 0%             4.000 ± 0%  +300.00% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/json-as/concurrent/full-16                                             1.000 ± 0%             4.000 ± 0%  +300.00% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/lua/single/full-16                                                     1.000 ± 0%             4.000 ± 0%  +300.00% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/lua/concurrent/full-16                                                 1.000 ± 0%             4.000 ± 0%  +300.00% (p=0.000 n=10)
+geomean                                                                                          1.000                  2.828       +182.84%
+¹ all samples are equal
+
+                                                        │ docs/performance/setup-cleanup/workers-serial.txt │ docs/performance/setup-cleanup/workers-auto.txt │
+                                                        │                     functions                     │       functions         vs base                 │
+WorkerLifecycleDiagnostic/tiny/single/full-16                                                    2.000 ± 0%               2.000 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/tiny/concurrent/full-16                                                2.000 ± 0%               2.000 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/many_funcs/single/full-16                                              301.0 ± 0%               301.0 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/many_funcs/concurrent/full-16                                          301.0 ± 0%               301.0 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/json-as/single/full-16                                                 43.00 ± 0%               43.00 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/json-as/concurrent/full-16                                             43.00 ± 0%               43.00 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/lua/single/full-16                                                     359.0 ± 0%               359.0 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/lua/concurrent/full-16                                                 359.0 ± 0%               359.0 ± 0%       ~ (p=1.000 n=10) ¹
+geomean                                                                                          55.21                    55.21       +0.00%
+¹ all samples are equal
+
+                                                        │ docs/performance/setup-cleanup/workers-serial.txt │ docs/performance/setup-cleanup/workers-auto.txt │
+                                                        │                largest-body-bytes                 │   largest-body-bytes    vs base                 │
+WorkerLifecycleDiagnostic/tiny/single/full-16                                                    6.000 ± 0%               6.000 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/tiny/concurrent/full-16                                                6.000 ± 0%               6.000 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/many_funcs/single/full-16                                              17.00 ± 0%               17.00 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/many_funcs/concurrent/full-16                                          17.00 ± 0%               17.00 ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/json-as/single/full-16                                               2.388Ki ± 0%             2.388Ki ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/json-as/concurrent/full-16                                           2.388Ki ± 0%             2.388Ki ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/lua/single/full-16                                                   20.44Ki ± 0%             20.44Ki ± 0%       ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/lua/concurrent/full-16                                               20.44Ki ± 0%             20.44Ki ± 0%       ~ (p=1.000 n=10) ¹
+geomean                                                                                          268.8                    268.8       +0.00%
+¹ all samples are equal
+
+                                                        │ docs/performance/setup-cleanup/workers-serial.txt │ docs/performance/setup-cleanup/workers-auto.txt │
+                                                        │                       B/op                        │         B/op          vs base                   │
+WorkerLifecycleDiagnostic/tiny/single/full-16                                                  17.81Ki ± 0%           17.81Ki ± 0%         ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/tiny/concurrent/full-16                                              17.81Ki ± 0%           17.81Ki ± 0%         ~ (p=1.000 n=10)
+WorkerLifecycleDiagnostic/many_funcs/single/full-16                                            175.0Ki ± 0%           280.7Ki ± 0%   +60.39% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/many_funcs/concurrent/full-16                                        175.0Ki ± 0%           297.9Ki ± 0%   +70.23% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/json-as/single/full-16                                               299.1Ki ± 0%           597.1Ki ± 0%   +99.64% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/json-as/concurrent/full-16                                           299.1Ki ± 0%           600.6Ki ± 0%  +100.83% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/lua/single/full-16                                                   2.165Mi ± 0%           3.739Mi ± 0%   +72.75% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/lua/concurrent/full-16                                               2.164Mi ± 0%           3.897Mi ± 2%   +80.06% (p=0.000 n=10)
+geomean                                                                                        213.2Ki                331.4Ki        +55.42%
+¹ all samples are equal
+
+                                                        │ docs/performance/setup-cleanup/workers-serial.txt │ docs/performance/setup-cleanup/workers-auto.txt │
+                                                        │                     allocs/op                     │       allocs/op        vs base                  │
+WorkerLifecycleDiagnostic/tiny/single/full-16                                                    99.00 ± 0%              99.00 ± 0%        ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/tiny/concurrent/full-16                                                99.00 ± 0%              99.00 ± 0%        ~ (p=1.000 n=10) ¹
+WorkerLifecycleDiagnostic/many_funcs/single/full-16                                              93.00 ± 0%             154.00 ± 0%  +65.59% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/many_funcs/concurrent/full-16                                          93.00 ± 0%             148.00 ± 0%  +59.14% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/json-as/single/full-16                                                 407.0 ± 0%              653.0 ± 0%  +60.44% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/json-as/concurrent/full-16                                             407.0 ± 0%              506.5 ± 1%  +24.45% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/lua/single/full-16                                                    1.530k ± 0%             2.160k ± 0%  +41.21% (p=0.000 n=10)
+WorkerLifecycleDiagnostic/lua/concurrent/full-16                                                1.529k ± 0%             1.883k ± 2%  +23.12% (p=0.000 n=10)
+geomean                                                                                          275.1                   362.9       +31.88%
+¹ all samples are equal

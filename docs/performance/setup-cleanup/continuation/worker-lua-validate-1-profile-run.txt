@@ -1,0 +1,7 @@
+['taskset', '-c', '0-15', '/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/worker-owned.test', '-test.run', '^$', '-test.bench', '^BenchmarkWorkerLifecycleDiagnostic$/^lua$/^callers=1$/^validate$/^raw$/^requested=1$', '-test.benchtime', '100x', '-test.memprofile', '/home/jtenner/Projects/wago/.tmp/setup-cleanup-next/worker-lua-validate-1.alloc', '-test.memprofilerate', '1', '-wago.bench.lifecycle', '-wago.corpus', 'lua']
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWorkerLifecycleDiagnostic/lua/callers=1/validate/raw/requested=1-16         	     100	   2795099 ns/op	    176047 body-bytes	         1.000 callers	       359.0 functions	        16.00 gomaxprocs	     20934 largest-body-bytes	         1.000 phase-input-workers	         1.000 requested-workers	         1.000 validation-worker-limit	   47351 B/op	     264 allocs/op
+PASS

@@ -1,0 +1,2 @@
+ok  	github.com/wago-org/wasi/internal/core	1.076s
+ok  	github.com/wago-org/wago/bench/suite	1.025s

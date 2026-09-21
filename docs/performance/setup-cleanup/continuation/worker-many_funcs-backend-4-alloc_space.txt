@@ -1,0 +1,66 @@
+File: worker-owned.test
+Build ID: e2a7faf1e661983eeac2921d83c7be2dd19c1b7d
+Type: alloc_space
+Time: 2026-09-20 23:33:05 EDT
+Showing nodes accounting for 21573.84kB, 95.73% of 22536.61kB total
+Dropped 291 nodes (cum <= 112.68kB)
+      flat  flat%   sum%        cum   cum%
+ 6505.03kB 28.86% 28.86%  6505.03kB 28.86%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.newStackWithCap
+ 5222.80kB 23.17% 52.04% 14304.22kB 63.47%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleParallel
+ 2461.88kB 10.92% 62.96%  8966.91kB 39.79%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.newScratchWithStackCap
+ 2015.27kB  8.94% 71.91%  2015.27kB  8.94%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.buildInlineTargets
+ 1060.50kB  4.71% 76.61%  1060.50kB  4.71%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.computeModuleHintsWithWorkersResidencyPolicy
+ 1023.88kB  4.54% 81.15%  1023.88kB  4.54%  encoding/json/jsontext.(*decoderState).fetch
+     808kB  3.59% 84.74% 18699.30kB 82.97%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleWith
+  479.75kB  2.13% 86.87%   479.75kB  2.13%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.ModuleEntries (inline)
+  469.50kB  2.08% 88.95%   469.50kB  2.08%  regexp/syntax.(*compiler).inst (inline)
+     403kB  1.79% 90.74%      403kB  1.79%  os.readFileContents
+  269.34kB  1.20% 91.93%   269.34kB  1.20%  regexp.onePassCopy
+  203.74kB   0.9% 92.84%  2293.90kB 10.18%  github.com/wago-org/wago/bench/suite.readCatalog
+  200.19kB  0.89% 93.73%   200.19kB  0.89%  encoding/json/jsontext.(*Value).UnmarshalJSON
+  150.46kB  0.67% 94.39%   150.46kB  0.67%  encoding/json/v2.makeString
+  125.14kB  0.56% 94.95%   125.14kB  0.56%  reflect.growslice
+   98.56kB  0.44% 95.39%   214.42kB  0.95%  regexp.makeOnePass
+   34.11kB  0.15% 95.54%  1172.92kB  5.20%  regexp.compile
+   23.75kB  0.11% 95.64%   164.77kB  0.73%  regexp/syntax.parse
+    5.25kB 0.023% 95.67%   115.10kB  0.51%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleParallel.func1
+    4.75kB 0.021% 95.69%   155.21kB  0.69%  encoding/json/v2.makeStringArshaler.func2
+    4.41kB  0.02% 95.71%  1168.04kB  5.18%  github.com/wago-org/wago/bench/suite.BenchmarkWorkerLifecycleDiagnostic.func1
+    3.80kB 0.017% 95.72%  1170.83kB  5.20%  testing.(*B).Run
+    0.36kB 0.0016% 95.73% 22259.95kB 98.77%  testing.(*B).runN
+    0.25kB 0.0011% 95.73%  2302.20kB 10.22%  github.com/wago-org/wago/bench/suite.BenchmarkWorkerLifecycleDiagnostic
+    0.08kB 0.00035% 95.73%  1027.24kB  4.56%  github.com/wago-org/wago/bench/internal/semanticcorpus.LoadManifest
+    0.06kB 0.00028% 95.73% 18781.25kB 83.34%  github.com/wago-org/wago/bench/suite.BenchmarkWorkerLifecycleDiagnostic.func1.1
+         0     0% 95.73%  1608.62kB  7.14%  encoding/json.(*Decoder).Decode
+         0     0% 95.73%  1023.91kB  4.54%  encoding/json/jsontext.(*Decoder).ReadValue (inline)
+         0     0% 95.73%  1023.91kB  4.54%  encoding/json/jsontext.(*decoderState).ReadValue
+         0     0% 95.73%  1023.75kB  4.54%  encoding/json/jsontext.(*decoderState).consumeArray
+         0     0% 95.73%  1023.75kB  4.54%  encoding/json/jsontext.(*decoderState).consumeObject
+         0     0% 95.73%   902.50kB  4.00%  encoding/json/jsontext.(*decoderState).consumeString
+         0     0% 95.73%  1023.75kB  4.54%  encoding/json/jsontext.(*decoderState).consumeValue
+         0     0% 95.73%   584.72kB  2.59%  encoding/json/v2.Unmarshal
+         0     0% 95.73%   200.19kB  0.89%  encoding/json/v2.makeMethodArshaler.func6
+         0     0% 95.73%   528.85kB  2.35%  encoding/json/v2.makeSliceArshaler.func3
+         0     0% 95.73%   581.34kB  2.58%  encoding/json/v2.makeStructArshaler.func3
+         0     0% 95.73%   582.15kB  2.58%  encoding/json/v2.unmarshalDecode
+         0     0% 95.73% 18699.30kB 82.97%  github.com/wago-org/wago/bench/suite.compileWorkerDiagnosticBackend
+         0     0% 95.73%  2293.90kB 10.18%  github.com/wago-org/wago/bench/suite.loadCorpus
+         0     0% 95.73%  2293.90kB 10.18%  github.com/wago-org/wago/bench/suite.loadCorpus.func1
+         0     0% 95.73% 18699.30kB 82.97%  github.com/wago-org/wago/bench/suite.workerDiagnosticConfig.run
+         0     0% 95.73% 18699.30kB 82.97%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.CompileModuleWith (inline)
+         0     0% 95.73%   404.04kB  1.79%  os.ReadFile
+         0     0% 95.73%   125.14kB  0.56%  reflect.Value.Grow
+         0     0% 95.73%   125.14kB  0.56%  reflect.Value.grow
+         0     0% 95.73%  1172.92kB  5.20%  regexp.Compile (inline)
+         0     0% 95.73%   483.77kB  2.15%  regexp.compileOnePass
+         0     0% 95.73%   460.59kB  2.04%  regexp/syntax.(*compiler).compile
+         0     0% 95.73%   445.59kB  1.98%  regexp/syntax.(*compiler).rune
+         0     0% 95.73%   478.41kB  2.12%  regexp/syntax.Compile
+         0     0% 95.73%   164.77kB  0.73%  regexp/syntax.Parse (inline)
+         0     0% 95.73%  2296.77kB 10.19%  sync.(*Once).Do (partial-inline)
+         0     0% 95.73%  2296.77kB 10.19%  sync.(*Once).doSlow
+         0     0% 95.73% 18551.66kB 82.32%  testing.(*B).launch
+         0     0% 95.73%  3703.09kB 16.43%  testing.(*B).run1.func1
+         0     0% 95.73%  1172.71kB  5.20%  testing.(*matcher).fullName
+         0     0% 95.73%  1150.58kB  5.11%  testing.simpleMatch.matches
+         0     0% 95.73%  1184.54kB  5.26%  testing/internal/testdeps.TestDeps.MatchString

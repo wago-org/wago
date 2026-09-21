@@ -1,0 +1,280 @@
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  456921	       549.2 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11324	     20771 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     866	    267514 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     813	    281533 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1851	    120210 ns/op	  119791 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   22905	     10349 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	    9314	     22943 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7438	     31685 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  470316	       552.6 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   10917	     21062 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     854	    269534 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     820	    292414 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1848	    122086 ns/op	  119806 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   22321	     10492 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10000	     22319 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7674	     31795 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  454011	       561.5 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   10000	     21082 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     860	    270005 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     804	    291753 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1780	    120042 ns/op	  119801 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   23155	     10239 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10723	     21925 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7623	     31407 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  362116	       560.9 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   10000	     21066 ns/op	         1.000 host-calls/op	   23865 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     890	    272259 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     813	    289713 ns/op	      1024 host-calls/op	  318489 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1761	    119195 ns/op	  119758 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   23560	     10527 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10000	     22917 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    6428	     31264 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  416365	       570.0 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11085	     21410 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     883	    268848 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     762	    289975 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1832	    122459 ns/op	  119821 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   23520	     10236 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10000	     22976 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    6817	     31173 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 6
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  432132	       558.0 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   10000	     21333 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     852	    269030 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     784	    282088 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1980	    118799 ns/op	  119830 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   22676	     10377 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	    9850	     22879 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7750	     31276 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 7
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  441709	       565.6 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11311	     21485 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     894	    264249 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     826	    289416 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1912	    120084 ns/op	  119785 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   22512	     10165 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10453	     22452 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7807	     31716 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 8
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  387783	       596.4 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11096	     21518 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     889	    274633 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     799	    292091 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    2038	    121175 ns/op	  119811 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   23164	     10119 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	    9316	     22760 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7645	     31465 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 9
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  465738	       580.8 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	    9411	     21288 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     858	    267355 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     772	    293586 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1831	    119974 ns/op	  119778 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   22940	     10228 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	    9892	     22009 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7970	     31492 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 10
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  370153	       549.0 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11025	     20675 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     861	    269678 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     807	    290582 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1778	    120755 ns/op	  119809 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   23373	     10275 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10428	     22579 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7935	     31620 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 11
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  460730	       557.5 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11547	     20837 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     868	    268599 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     823	    290685 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1863	    120710 ns/op	  119796 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   23180	     10195 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10000	     23207 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    8181	     31515 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 12
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  421626	       548.5 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   10000	     21390 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     926	    266504 ns/op	      1024 host-calls/op	  294918 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     832	    291831 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1947	    120265 ns/op	  119804 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   23162	     10236 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10000	     22595 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7266	     31352 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 13
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  460329	       580.2 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11000	     21402 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     876	    268280 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     834	    283346 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1770	    119602 ns/op	  119865 B/op	    1699 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   23089	     10434 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10000	     22443 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7932	     32130 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 14
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  464380	       558.8 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11083	     21183 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     920	    268149 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     804	    285589 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1990	    120416 ns/op	  119792 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   23158	     10530 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	    9268	     22539 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7738	     31104 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 15
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  450325	       583.0 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11358	     21233 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     930	    263959 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     826	    286450 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1671	    122545 ns/op	  119844 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   22942	     10239 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10000	     22435 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    6613	     32661 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 16
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  457585	       553.8 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11406	     21177 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     892	    266238 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     825	    290709 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1826	    121691 ns/op	  119835 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   23124	     10208 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10000	     23201 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    6396	     31618 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 17
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  473820	       556.7 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11325	     21436 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     902	    270124 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     856	    293260 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1999	    119129 ns/op	  119730 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   22719	     10427 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10000	     22312 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    8008	     30982 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 18
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  430651	       563.2 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11340	     21454 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     860	    268147 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     823	    286426 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1836	    119442 ns/op	  119789 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   22363	     10184 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10000	     22529 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7423	     31921 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 19
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  458170	       555.6 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11476	     21386 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     908	    270091 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     794	    286519 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1717	    117235 ns/op	  119775 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   23168	     10101 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10000	     22509 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7708	     30924 ns/op	    7680 B/op	      81 allocs/op
+PASS
+# round 20
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=false-16         	  427459	       558.4 ns/op	         1.000 host-calls/op	     288 B/op	       2 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1/lifecycle=true-16          	   11410	     21150 ns/op	         1.000 host-calls/op	   23864 B/op	     325 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=false-16      	     895	    274690 ns/op	      1024 host-calls/op	  294912 B/op	    2048 allocs/op
+BenchmarkWASIHostCallDiagnostic/calls=1024/lifecycle=true-16       	     806	    287573 ns/op	      1024 host-calls/op	  318490 B/op	    2371 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/ProviderSetupClose-16        	    1824	    118961 ns/op	  119768 B/op	    1698 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/minimal-wasi-16              	   22603	     10140 ns/op	    3936 B/op	      39 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/cjson-16                     	   10000	     23635 ns/op	    6880 B/op	      67 allocs/op
+BenchmarkWASIOwnedLifecycleDiagnostic/tinyxml2-16                  	    7491	     31741 ns/op	    7680 B/op	      81 allocs/op
+PASS

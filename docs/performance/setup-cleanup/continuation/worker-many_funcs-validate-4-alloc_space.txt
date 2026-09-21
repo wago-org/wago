@@ -1,0 +1,115 @@
+File: worker-owned.test
+Build ID: e2a7faf1e661983eeac2921d83c7be2dd19c1b7d
+Type: alloc_space
+Time: 2026-09-20 23:33:04 EDT
+Showing nodes accounting for 3979.42kB, 96.60% of 4119.68kB total
+Dropped 222 nodes (cum <= 20.60kB)
+      flat  flat%   sum%        cum   cum%
+ 1023.88kB 24.85% 24.85%  1023.88kB 24.85%  encoding/json/jsontext.(*decoderState).fetch
+  469.50kB 11.40% 36.25%   469.50kB 11.40%  regexp/syntax.(*compiler).inst (inline)
+     403kB  9.78% 46.03%      403kB  9.78%  os.readFileContents
+  277.75kB  6.74% 52.77%   287.22kB  6.97%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunctionsParallel.func1
+  271.59kB  6.59% 59.37%   271.59kB  6.59%  regexp.onePassCopy
+  203.74kB  4.95% 64.31%  2294.52kB 55.70%  github.com/wago-org/wago/bench/suite.readCatalog
+  200.19kB  4.86% 69.17%   200.19kB  4.86%  encoding/json/jsontext.(*Value).UnmarshalJSON
+  150.46kB  3.65% 72.82%   150.46kB  3.65%  encoding/json/v2.makeString
+  125.14kB  3.04% 75.86%   125.14kB  3.04%  reflect.growslice
+   98.56kB  2.39% 78.25%   214.33kB  5.20%  regexp.makeOnePass
+   83.02kB  2.02% 80.27%    83.02kB  2.02%  regexp/syntax.(*parser).newRegexp (inline)
+      74kB  1.80% 82.07%    74.05kB  1.80%  runtime.mallocgc
+   64.88kB  1.57% 83.64%    64.88kB  1.57%  encoding/hex.DecodeString
+   64.25kB  1.56% 85.20%    64.25kB  1.56%  regexp.newQueue (inline)
+   64.09kB  1.56% 86.76%    64.09kB  1.56%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectCodeSectionWithWidths
+   59.20kB  1.44% 88.19%    59.31kB  1.44%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunctionsParallel
+   51.52kB  1.25% 89.44%    51.52kB  1.25%  regexp.makeOnePass.func1
+   40.33kB  0.98% 90.42%    40.33kB  0.98%  reflect.compiledTypelinks
+   38.77kB  0.94% 91.36%    38.77kB  0.94%  regexp/syntax.(*parser).maybeConcat
+   35.41kB  0.86% 92.22%    38.62kB  0.94%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).resolvedCompType
+   34.02kB  0.83% 93.05%  1175.36kB 28.53%  regexp.compile
+   28.97kB   0.7% 93.75%   136.52kB  3.31%  github.com/wago-org/wago/src/core/compiler/wasm.validateModuleWithWorkersFeaturesAndLimitsAnalysis
+   27.21kB  0.66% 94.41%    76.59kB  1.86%  encoding/json/v2.makeStructFields.func3
+   24.91kB   0.6% 95.02%    24.91kB   0.6%  sync.(*Pool).pinSlow
+   23.75kB  0.58% 95.59%   164.77kB  4.00%  regexp/syntax.parse
+   12.73kB  0.31% 95.90%    91.20kB  2.21%  encoding/json/v2.makeStructFields
+   10.36kB  0.25% 96.15%    49.12kB  1.19%  regexp/syntax.(*parser).push
+    4.75kB  0.12% 96.27%   155.21kB  3.77%  encoding/json/v2.makeStringArshaler.func2
+    4.41kB  0.11% 96.38%  1170.48kB 28.41%  github.com/wago-org/wago/bench/suite.BenchmarkWorkerLifecycleDiagnostic.func1
+    3.80kB 0.092% 96.47%  1173.36kB 28.48%  testing.(*B).Run
+    1.22kB  0.03% 96.50%    71.12kB  1.73%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectModuleInnerLimits
+    0.91kB 0.022% 96.52%    65.79kB  1.60%  github.com/wago-org/wago/bench/internal/semanticcorpus.validate
+    0.83kB  0.02% 96.54%    52.62kB  1.28%  testing.runBenchmarks
+    0.69kB 0.017% 96.56%    43.33kB  1.05%  reflect.(*rtype).ptrTo
+    0.53kB 0.013% 96.57%    35.38kB  0.86%  testing.newMatcher
+    0.36kB 0.0087% 96.58%  3697.30kB 89.75%  testing.(*B).runN
+    0.25kB 0.0061% 96.58%  2302.92kB 55.90%  github.com/wago-org/wago/bench/suite.BenchmarkWorkerLifecycleDiagnostic
+    0.25kB 0.0061% 96.59%    71.38kB  1.73%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModuleByteBackedWithLimits
+    0.08kB 0.0019% 96.59%  1027.24kB 24.94%  github.com/wago-org/wago/bench/internal/semanticcorpus.LoadManifest
+    0.07kB 0.0017% 96.59%    59.94kB  1.45%  testing.(*M).Run
+    0.06kB 0.0015% 96.60%   215.44kB  5.23%  github.com/wago-org/wago/bench/suite.BenchmarkWorkerLifecycleDiagnostic.func1.1
+         0     0% 96.60%  1609.25kB 39.06%  encoding/json.(*Decoder).Decode
+         0     0% 96.60%  1023.91kB 24.85%  encoding/json/jsontext.(*Decoder).ReadValue (inline)
+         0     0% 96.60%  1023.91kB 24.85%  encoding/json/jsontext.(*decoderState).ReadValue
+         0     0% 96.60%  1023.75kB 24.85%  encoding/json/jsontext.(*decoderState).consumeArray
+         0     0% 96.60%       32kB  0.78%  encoding/json/jsontext.(*decoderState).consumeNumber
+         0     0% 96.60%  1023.75kB 24.85%  encoding/json/jsontext.(*decoderState).consumeObject
+         0     0% 96.60%   902.50kB 21.91%  encoding/json/jsontext.(*decoderState).consumeString
+         0     0% 96.60%  1023.75kB 24.85%  encoding/json/jsontext.(*decoderState).consumeValue
+         0     0% 96.60%    89.38kB  2.17%  encoding/json/jsontext.(*decoderState).consumeWhitespace
+         0     0% 96.60%   585.34kB 14.21%  encoding/json/v2.Unmarshal
+         0     0% 96.60%   200.19kB  4.86%  encoding/json/v2.makeMethodArshaler.func6
+         0     0% 96.60%    58.64kB  1.42%  encoding/json/v2.makePointerArshaler.func3
+         0     0% 96.60%   529.16kB 12.84%  encoding/json/v2.makeSliceArshaler.func3
+         0     0% 96.60%    91.20kB  2.21%  encoding/json/v2.makeStructArshaler.func1
+         0     0% 96.60%   581.96kB 14.13%  encoding/json/v2.makeStructArshaler.func3
+         0     0% 96.60%   582.77kB 14.15%  encoding/json/v2.unmarshalDecode
+         0     0% 96.60%    71.38kB  1.73%  github.com/wago-org/wago/bench/suite.corpusModule.decoded
+         0     0% 96.60%  2294.52kB 55.70%  github.com/wago-org/wago/bench/suite.loadCorpus
+         0     0% 96.60%  2294.52kB 55.70%  github.com/wago-org/wago/bench/suite.loadCorpus.func1
+         0     0% 96.60%   133.48kB  3.24%  github.com/wago-org/wago/bench/suite.workerDiagnosticConfig.run
+         0     0% 96.60%    38.62kB  0.94%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).funcTypeFromTypeIdx (inline)
+         0     0% 96.60%    60.88kB  1.48%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunctions
+         0     0% 96.60%    46.67kB  1.13%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateModule
+         0     0% 96.60%    71.38kB  1.73%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModule (inline)
+         0     0% 96.60%    71.38kB  1.73%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModuleByteBacked
+         0     0% 96.60%    71.38kB  1.73%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModuleByteBackedWithFeatures (inline)
+         0     0% 96.60%   133.48kB  3.24%  github.com/wago-org/wago/src/core/compiler/wasm.ValidateModuleWithWorkers (inline)
+         0     0% 96.60%    64.09kB  1.56%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectCodeSectionWithModule
+         0     0% 96.60%    71.12kB  1.73%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectModuleLimited (inline)
+         0     0% 96.60%   136.52kB  3.31%  github.com/wago-org/wago/src/core/compiler/wasm.validateModuleWithWorkersFeaturesAndLimits (inline)
+         0     0% 96.60%    59.94kB  1.45%  main.main
+         0     0% 96.60%   404.04kB  9.81%  os.ReadFile
+         0     0% 96.60%    43.33kB  1.05%  reflect.PointerTo (inline)
+         0     0% 96.60%   125.14kB  3.04%  reflect.Value.Grow
+         0     0% 96.60%   125.14kB  3.04%  reflect.Value.grow
+         0     0% 96.60%    40.33kB  0.98%  reflect.typesByString
+         0     0% 96.60%  1175.36kB 28.53%  regexp.Compile (inline)
+         0     0% 96.60%   485.92kB 11.80%  regexp.compileOnePass
+         0     0% 96.60%   460.59kB 11.18%  regexp/syntax.(*compiler).compile
+         0     0% 96.60%   445.59kB 10.82%  regexp/syntax.(*compiler).rune
+         0     0% 96.60%   106.28kB  2.58%  regexp/syntax.(*parser).literal
+         0     0% 96.60%    25.75kB  0.63%  regexp/syntax.(*parser).op
+         0     0% 96.60%   478.41kB 11.61%  regexp/syntax.Compile
+         0     0% 96.60%   164.77kB  4.00%  regexp/syntax.Parse (inline)
+         0     0% 96.60%    29.23kB  0.71%  runtime.allocm
+         0     0% 96.60%    66.31kB  1.61%  runtime.main
+         0     0% 96.60%    39.38kB  0.96%  runtime.malg
+         0     0% 96.60%    21.78kB  0.53%  runtime.mcall
+         0     0% 96.60%    29.23kB  0.71%  runtime.newm
+         0     0% 96.60%    60.77kB  1.48%  runtime.newobject
+         0     0% 96.60%    36.69kB  0.89%  runtime.newproc.func1
+         0     0% 96.60%    36.69kB  0.89%  runtime.newproc1
+         0     0% 96.60%    21.78kB  0.53%  runtime.park_m
+         0     0% 96.60%    23.78kB  0.58%  runtime.schedule
+         0     0% 96.60%    23.78kB  0.58%  runtime.startm
+         0     0% 96.60%    42.13kB  1.02%  runtime.systemstack
+         0     0% 96.60%    23.78kB  0.58%  runtime.wakep
+         0     0% 96.60%  2297.40kB 55.77%  sync.(*Once).Do (partial-inline)
+         0     0% 96.60%  2297.40kB 55.77%  sync.(*Once).doSlow
+         0     0% 96.60%    25.91kB  0.63%  sync.(*Pool).Get
+         0     0% 96.60%    24.91kB   0.6%  sync.(*Pool).pin
+         0     0% 96.60%   169.66kB  4.12%  testing.(*B).launch
+         0     0% 96.60%  3522.44kB 85.50%  testing.(*B).run1.func1
+         0     0% 96.60%  1175.20kB 28.53%  testing.(*matcher).fullName
+         0     0% 96.60%  1152.97kB 27.99%  testing.simpleMatch.matches
+         0     0% 96.60%    34.48kB  0.84%  testing.simpleMatch.verify
+         0     0% 96.60%  1187.07kB 28.81%  testing/internal/testdeps.TestDeps.MatchString

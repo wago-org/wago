@@ -1,0 +1,53 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                                                          │ docs/performance/setup-cleanup/continuation/full-followup-baseline.txt │ docs/performance/setup-cleanup/continuation/full-followup-candidate.txt │
+                                                          │                                 sec/op                                 │                      sec/op                       vs base               │
+WazeroInstantiate/qoi-16                                                                                              108.2µ ± 13%                                       135.4µ ± 24%       ~ (p=0.108 n=20)
+WazeroInstantiate/zlib-16                                                                                             113.2µ ± 33%                                       108.5µ ± 13%       ~ (p=0.301 n=20)
+WazeroInstantiate/lz4-16                                                                                              124.7µ ± 31%                                       127.8µ ±  9%       ~ (p=0.738 n=20)
+ExecParallel/process/polybench-jacobi-2d.polybench_run-16                                                             719.9µ ±  0%                                       719.5µ ±  0%       ~ (p=0.607 n=20)
+ExecCommuteSelfUpdate/blake-as.hashN/on-16                                                                            428.2µ ±  0%                                       428.2µ ±  1%       ~ (p=0.779 n=20)
+ExecCallOverhead_wago-16                                                                                              20.62n ±  1%                                       20.63n ±  1%       ~ (p=0.815 n=20)
+CommandExec/cjson-16                                                                                                  35.37µ ±  1%                                       31.93µ ±  1%  -9.74% (p=0.000 n=20)
+CommandExec/tinyxml2-16                                                                                               43.74µ ±  1%                                       39.94µ ±  1%  -8.68% (p=0.000 n=20)
+Instantiate/tiny-16                                                                                                   4.275µ ±  1%                                       4.281µ ±  1%       ~ (p=0.941 n=20)
+Exec/utf8proc.utf8proc_run-16                                                                                         859.5n ±  1%                                       865.2n ±  1%       ~ (p=0.512 n=20)
+geomean                                                                                                               23.67µ                                             23.72µ        +0.21%
+
+                                                          │ docs/performance/setup-cleanup/continuation/full-followup-baseline.txt │ docs/performance/setup-cleanup/continuation/full-followup-candidate.txt │
+                                                          │                                  B/op                                  │                     B/op                       vs base                  │
+WazeroInstantiate/qoi-16                                                                                           2.008Mi ±  0%                                     2.008Mi ±  0%        ~ (p=0.066 n=20)
+WazeroInstantiate/zlib-16                                                                                          2.008Mi ±  0%                                     2.008Mi ±  0%        ~ (p=0.952 n=20)
+WazeroInstantiate/lz4-16                                                                                           2.008Mi ±  0%                                     2.008Mi ±  0%        ~ (p=0.941 n=20)
+ExecParallel/process/polybench-jacobi-2d.polybench_run-16                                                            58.50 ± 30%                                       57.00 ± 14%        ~ (p=0.857 n=20)
+ExecCommuteSelfUpdate/blake-as.hashN/on-16                                                                           0.000 ±  0%                                       0.000 ±  0%        ~ (p=1.000 n=20) ¹
+ExecCallOverhead_wago-16                                                                                             0.000 ±  0%                                       0.000 ±  0%        ~ (p=1.000 n=20) ¹
+CommandExec/cjson-16                                                                                               35.48Ki ±  0%                                     24.36Ki ±  0%  -31.34% (p=0.000 n=20)
+CommandExec/tinyxml2-16                                                                                            36.10Ki ±  0%                                     24.99Ki ±  0%  -30.80% (p=0.000 n=20)
+Instantiate/tiny-16                                                                                                1.375Ki ±  0%                                     1.375Ki ±  0%        ~ (p=1.000 n=20) ¹
+Exec/utf8proc.utf8proc_run-16                                                                                        0.000 ±  0%                                       0.000 ±  0%        ~ (p=1.000 n=20) ¹
+geomean                                                                                                                          ²                                                   -7.41%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                                          │ docs/performance/setup-cleanup/continuation/full-followup-baseline.txt │ docs/performance/setup-cleanup/continuation/full-followup-candidate.txt │
+                                                          │                               allocs/op                                │                   allocs/op                    vs base                  │
+WazeroInstantiate/qoi-16                                                                                              26.00 ± 0%                                        26.00 ± 0%        ~ (p=1.000 n=20) ¹
+WazeroInstantiate/zlib-16                                                                                             35.00 ± 0%                                        35.00 ± 0%        ~ (p=1.000 n=20) ¹
+WazeroInstantiate/lz4-16                                                                                              27.00 ± 0%                                        27.00 ± 0%        ~ (p=1.000 n=20) ¹
+ExecParallel/process/polybench-jacobi-2d.polybench_run-16                                                             0.000 ± 0%                                        0.000 ± 0%        ~ (p=1.000 n=20) ¹
+ExecCommuteSelfUpdate/blake-as.hashN/on-16                                                                            0.000 ± 0%                                        0.000 ± 0%        ~ (p=1.000 n=20) ¹
+ExecCallOverhead_wago-16                                                                                              0.000 ± 0%                                        0.000 ± 0%        ~ (p=1.000 n=20) ¹
+CommandExec/cjson-16                                                                                                  421.0 ± 0%                                        351.0 ± 0%  -16.63% (p=0.000 n=20)
+CommandExec/tinyxml2-16                                                                                               432.0 ± 0%                                        362.0 ± 0%  -16.20% (p=0.000 n=20)
+Instantiate/tiny-16                                                                                                   4.000 ± 0%                                        4.000 ± 0%        ~ (p=1.000 n=20) ¹
+Exec/utf8proc.utf8proc_run-16                                                                                         0.000 ± 0%                                        0.000 ± 0%        ~ (p=1.000 n=20) ¹
+geomean                                                                                                                          ²                                                   -3.52%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                              │ docs/performance/setup-cleanup/continuation/full-followup-baseline.txt │ docs/performance/setup-cleanup/continuation/full-followup-candidate.txt │
+                              │                              calls/batch                               │                      calls/batch                       vs base          │
+Exec/utf8proc.utf8proc_run-16                                                              2.451k ± 2%                                             2.447k ± 2%  ~ (p=0.644 n=20)

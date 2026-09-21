@@ -1,0 +1,17 @@
+{
+  "samples": 20,
+  "benchtime": "200ms",
+  "names": [
+    "BenchmarkWazeroInstantiate/qoi",
+    "BenchmarkWazeroInstantiate/zlib",
+    "BenchmarkWazeroInstantiate/lz4",
+    "BenchmarkExecParallel/process/polybench-jacobi-2d.polybench_run",
+    "BenchmarkExecCommuteSelfUpdate/blake-as.hashN/on",
+    "BenchmarkExecCallOverhead_wago",
+    "BenchmarkCommandExec/cjson",
+    "BenchmarkCommandExec/tinyxml2",
+    "BenchmarkInstantiate/tiny",
+    "BenchmarkExec/utf8proc.utf8proc_run"
+  ],
+  "cold_control": "TestMinimalWASICommand in a fresh process, including process/package startup and compile"
+}

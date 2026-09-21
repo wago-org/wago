@@ -1,0 +1,38 @@
+File: baseline-suite.test
+Build ID: e690105cfef12beeb7b3f5a62a5c6c1a837344db
+Type: alloc_space
+Time: 2026-09-20 21:12:38 EDT
+Showing nodes accounting for 369613.63kB, 97.55% of 378906.83kB total
+Dropped 560 nodes (cum <= 1894.53kB)
+Showing top 30 nodes out of 47
+      flat  flat%   sum%        cum   cum%
+114174.87kB 30.13% 30.13% 178334.73kB 47.07%  github.com/wago-org/wago/src/wago.(*Imports).HostFunc
+64459.08kB 17.01% 47.14% 64459.08kB 17.01%  github.com/wago-org/wasi/internal/core.(*Plugin).bindings
+57517.25kB 15.18% 62.32% 57517.25kB 15.18%  github.com/wago-org/wasi/internal/core.binding.callback (inline)
+54860.20kB 14.48% 76.80% 54860.20kB 14.48%  github.com/wago-org/wago/src/wago.importBindingMapKey (inline)
+43216.09kB 11.41% 88.21% 64159.87kB 16.93%  github.com/wago-org/wago/src/wago.(*Imports).add
+10706.34kB  2.83% 91.03% 26719.48kB  7.05%  github.com/wago-org/wago/src/wago.(*instanceBuilder).instantiate
+ 6564.47kB  1.73% 92.77%  6564.47kB  1.73%  github.com/wago-org/wasi/internal/core.(*Plugin).makeFS
+ 3709.58kB  0.98% 93.75%  3709.58kB  0.98%  github.com/wago-org/wago/src/wago.(*ImportFuncBuilder).Params
+ 3416.64kB   0.9% 94.65%  3416.64kB   0.9%  github.com/wago-org/wago/src/wago.(*ImportFuncBuilder).Results
+ 3282.23kB  0.87% 95.51% 375824.44kB 99.19%  github.com/wago-org/wago/bench/suite.runWagoCommand
+ 3125.94kB  0.82% 96.34%  6251.88kB  1.65%  github.com/wago-org/wago/src/wago.(*Compiled).buildSyncHosts
+ 2188.16kB  0.58% 96.92%  2188.16kB  0.58%  github.com/wago-org/wago/src/wago.(*Instance).ensurePluginState
+ 2188.16kB  0.58% 97.49% 318221.77kB 83.98%  github.com/wago-org/wasi/internal/core.Imports
+  203.74kB 0.054% 97.55%  2330.99kB  0.62%  github.com/wago-org/wago/bench/suite.readCatalog
+    0.36kB 9.5e-05% 97.55% 378777.88kB   100%  testing.(*B).runN
+    0.30kB 8e-05% 97.55%  2946.03kB  0.78%  github.com/wago-org/wago/bench/suite.BenchmarkCommandExec
+    0.23kB 6.2e-05% 97.55%  2331.41kB  0.62%  github.com/wago-org/wago/bench/suite.commandCorpus
+         0     0% 97.55% 47663.59kB 12.58%  github.com/wago-org/wago.Instantiate (inline)
+         0     0% 97.55% 375824.44kB 99.19%  github.com/wago-org/wago/bench/suite.BenchmarkCommandExec.func1
+         0     0% 97.55% 318846.95kB 84.15%  github.com/wago-org/wago/bench/suite.commandRuntimeImports
+         0     0% 97.55%  2330.99kB  0.62%  github.com/wago-org/wago/bench/suite.loadCorpus
+         0     0% 97.55%  2330.99kB  0.62%  github.com/wago-org/wago/bench/suite.loadCorpus.func1
+         0     0% 97.55% 12972.64kB  3.42%  github.com/wago-org/wago/src/wago.(*Compiled).functionImportBindingKey
+         0     0% 97.55% 20943.78kB  5.53%  github.com/wago-org/wago/src/wago.(*Imports).snapshot
+         0     0% 97.55%  3751.44kB  0.99%  github.com/wago-org/wago/src/wago.(*Instance).Close
+         0     0% 97.55%  2280.22kB   0.6%  github.com/wago-org/wago/src/wago.(*Instance).Invoke
+         0     0% 97.55%  2501.06kB  0.66%  github.com/wago-org/wago/src/wago.(*Instance).closeOnce
+         0     0% 97.55%  2500.91kB  0.66%  github.com/wago-org/wago/src/wago.(*Instance).closeOnce.func1 (inline)
+         0     0% 97.55%  2500.91kB  0.66%  github.com/wago-org/wago/src/wago.(*Instance).finishTerminalClose
+         0     0% 97.55%  2280.22kB   0.6%  github.com/wago-org/wago/src/wago.(*Instance).invoke (inline)
