@@ -7,14 +7,25 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func compileExplain(m *wasm.Module, guard, compact bool) (string, error) {
+func compileExplain(m *wasm.Module, guard, compact, includeCode bool) ([]byte, []int, string, error) {
 	var ms railshot.ModuleStats
-	if _, err := railshot.CompileModuleWith(m, railshot.CompileOptions{
+	compiled, err := railshot.CompileModuleWith(m, railshot.CompileOptions{
 		ElideBoundsChecks: guard,
 		Stats:             &ms,
 		CompactNative:     compact,
-	}); err != nil {
-		return "", err
+	})
+	if err != nil {
+		return nil, nil, "", err
 	}
-	return ms.String(), nil
+	var code []byte
+	if includeCode {
+		code = append(code, compiled.Code...)
+	}
+	entry := append([]int(nil), compiled.Entry...)
+	if compiled.CodeImage != nil {
+		if err := compiled.CodeImage.Close(); err != nil {
+			return nil, nil, "", err
+		}
+	}
+	return code, entry, ms.String(), nil
 }

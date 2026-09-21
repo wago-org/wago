@@ -47,7 +47,7 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 			hasLoop := false
 			reader := wasm.NewReader(m.Code[0].BodyBytes)
 			classifier := wasm.NewModuleInstructionClassifier(m, false)
-			denseTargets, denseTargetsOK := nativeDenseLocalTableTargets(m)
+			immutableTargets, immutableTargetsOK := nativeImmutableLocalTableTargets(m)
 			var immediate wasm.InstructionImmediate
 			for reader.HasNext() {
 				opcode, err := reader.Byte()
@@ -66,9 +66,13 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 					} else {
 						signalGuardFree[0] = false
 					}
-				} else if immediate.Kind == wasm.InstrCallIndirect && denseTargetsOK {
+				} else if immediate.Kind == wasm.InstrCallIndirect && immutableTargetsOK {
 					localCalls[0] = true
-					for _, target := range denseTargets {
+					for _, target := range immutableTargets {
+						if target == nativeNullTableTarget {
+							signalGuardFree[0] = false
+							continue
+						}
 						if int(target) != m.ImportedFuncCount() {
 							signalGuardFree[0] = false
 							break
@@ -94,7 +98,7 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 	}
 	imported := m.ImportedFuncCount()
 	classifier := wasm.NewModuleInstructionClassifier(m, false)
-	denseTargets, denseTargetsOK := nativeDenseLocalTableTargets(m)
+	immutableTargets, immutableTargetsOK := nativeImmutableLocalTableTargets(m)
 	hasV128 := false
 	for caller := range m.Code {
 		reader := wasm.NewReader(m.Code[caller].BodyBytes)
@@ -119,9 +123,13 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 				} else {
 					localSignalGuardFree[caller] = false
 				}
-			} else if immediate.Kind == wasm.InstrCallIndirect && denseTargetsOK {
+			} else if immediate.Kind == wasm.InstrCallIndirect && immutableTargetsOK {
 				localCalls[caller] = true
-				for _, target := range denseTargets {
+				for _, target := range immutableTargets {
+					if target == nativeNullTableTarget {
+						localSignalGuardFree[caller] = false
+						continue
+					}
 					callee := int(target) - imported
 					if callee >= 0 && callee < count {
 						edges[caller] = append(edges[caller], callee)

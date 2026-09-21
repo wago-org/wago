@@ -44,6 +44,36 @@ func TestNativeDenseLocalTableTargets(t *testing.T) {
 	}
 }
 
+func TestNativeImmutableLocalTableTargetsWithNullPrefix(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x03, 0x03})),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x01, 0x0b, 0x02, 0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0x41, 0x02, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	if targets, ok := nativeDenseLocalTableTargets(m); ok {
+		t.Fatalf("sparse table reported dense: %v", targets)
+	}
+	if targets, ok := nativeImmutableLocalTableTargets(m); !ok || !slices.Equal(targets, []uint32{nativeNullTableTarget, 0, 1}) {
+		t.Fatalf("sparse immutable targets = %v, %v", targets, ok)
+	}
+	m.Exports = append(m.Exports, wasm.Export{Index: wasm.ExternIdx{Kind: wasm.ExternTable}})
+	if targets, ok := nativeImmutableLocalTableTargets(m); ok {
+		t.Fatalf("exported table reported immutable: %v", targets)
+	}
+}
+
 func TestNativeARM64VectorAllocatableFPRs(t *testing.T) {
 	vector := railmach.VRegData{Type: railmach.TypeV128, Bank: railmach.BankFPR}
 	integer := railmach.VRegData{Type: railmach.TypeI32, Bank: railmach.BankGPR}
@@ -1124,6 +1154,12 @@ func TestNativeAMD64ShuffleScratchCount(t *testing.T) {
 	machine.SIMD[0].Bytes[15] = 16
 	if got := nativeAMD64ShuffleScratchCount(machine, 0); got != 2 {
 		t.Fatalf("mixed-source shuffle scratch count = %d, want 2", got)
+	}
+	for lane := range machine.SIMD[0].Bytes {
+		machine.SIMD[0].Bytes[lane] = byte(lane + 14)
+	}
+	if got := nativeAMD64ShuffleScratchCount(machine, 0); got != 0 {
+		t.Fatalf("contiguous mixed-source shuffle scratch count = %d, want 0", got)
 	}
 	machine.Operands[1].Reg = machine.Operands[0].Reg
 	if got := nativeAMD64ShuffleScratchCount(machine, 0); got != 0 {

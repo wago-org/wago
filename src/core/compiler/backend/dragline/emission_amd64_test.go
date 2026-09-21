@@ -444,6 +444,80 @@ func TestAMD64RailMachRetainsGlobalDescriptorsAcrossLocalCall(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachRefreshesGlobalDescriptorsAfterEightArgumentCall(t *testing.T) {
+	globalUpdates := []byte{
+		0x23, 0x00, 0x41, 0x01, 0x6a, 0x24, 0x00,
+		0x23, 0x01, 0x41, 0x01, 0x6a, 0x24, 0x01,
+		0x23, 0x02, 0x41, 0x01, 0x6a, 0x24, 0x02,
+		0x23, 0x03, 0x41, 0x01, 0x6a, 0x24, 0x03,
+	}
+	callerBody := append([]byte(nil), globalUpdates...)
+	for local := byte(0); local < 8; local++ {
+		callerBody = append(callerBody, 0x20, local)
+	}
+	callerBody = append(callerBody, 0x10, 0x00)
+	callerBody = append(callerBody, globalUpdates...)
+	callerBody = append(callerBody, 0x0b)
+	params := make([]wasm.ValType, 8)
+	for i := range params {
+		params[i] = wasm.I32
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(append(append([]byte(nil), globalUpdates...), 0x0b)),
+			wasmtest.Code(callerBody),
+		)),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callee, err := buildCompilerFunc(module, 0, new(railssa.StackFunc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	calleePlan, err := new(nativeBackendPlanner).Plan(callee.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller, err := buildCompilerFunc(module, 1, new(railssa.StackFunc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerPlan, err := new(nativeBackendPlanner).PlanProfileIPRA(caller.Structured, target, corecompiler.ObjectiveSpeed, caller.Index, nil, nil, []railmach.ABIContract{calleePlan.ABI}, nil, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !nativeAMD64CachesGlobalDescriptors(callerPlan.Machine) {
+		t.Fatal("caller did not cache the global descriptor array")
+	}
+	var relocs []amd64CallReloc
+	native, _, used, err := emitAMD64RailMach(caller, callerPlan, &relocs, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("call emission = used %t, err %v", used, err)
+	}
+	var loadGlobals amd64.Asm
+	loadGlobals.Load64(amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister], amd64.RBX, -int32(abi.GlobalsPtrOffset))
+	if got := bytes.Count(native, loadGlobals.B); got != 2 {
+		t.Fatalf("globals table loads = %d, want entry and post-call refresh", got)
+	}
+}
+
 func TestAMD64RailMachRotatesCanonicalCountdownLoop(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
@@ -564,6 +638,44 @@ func TestAMD64RailMachBranchesDirectlyOverFalseFallthrough(t *testing.T) {
 	}
 	if !backwardConditional || backwardUnconditional {
 		t.Fatalf("loop branches: conditional=%t unconditional=%t; code=%x", backwardConditional, backwardUnconditional, native)
+	}
+	trueEdge := ^uint32(0)
+	for edgeID, edge := range plan.Machine.Edges {
+		if edge.From == 1 && edge.Kind == railssa.EdgeTrue {
+			trueEdge = uint32(edgeID)
+			break
+		}
+	}
+	if trueEdge == ^uint32(0) || plan.Exit.EdgeMoves[trueEdge].Count != 0 || len(plan.Exit.Moves) == 0 {
+		t.Fatal("fixture does not have a move-free true loop edge and a reusable physical move")
+	}
+	move := plan.Exit.Moves[0]
+	move.Edge = trueEdge
+	move.Placement = railmach.PlacePredecessorEnd
+	plan.Exit.EdgeMoves[trueEdge] = railmach.MoveRange{Start: uint32(len(plan.Exit.Moves)), Count: 1}
+	plan.Exit.Moves = append(plan.Exit.Moves, move)
+	var moveAssembly amd64.Asm
+	if err := emitAMD64RailMachEdgeMoves(&moveAssembly, plan, trueEdge); err != nil || len(moveAssembly.B) == 0 {
+		t.Fatalf("true-edge move emission: bytes=%x err=%v", moveAssembly.B, err)
+	}
+	withMove, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("true-edge thunk finalization = used %t, err %v", used, err)
+	}
+	branchStart, branchEnd := plan.BlockOffsets[1], plan.BlockOffsets[2]
+	thunkFound := false
+	for offset := branchStart; offset+6 <= branchEnd; offset++ {
+		if withMove[offset] != 0x0f || withMove[offset+1]&0xf0 != 0x80 {
+			continue
+		}
+		target := offset + 6 + int(int32(binary.LittleEndian.Uint32(withMove[offset+2:])))
+		if target >= int(plan.BlockOffsets[4]) && target+len(moveAssembly.B) <= len(withMove) && bytes.Equal(withMove[target:target+len(moveAssembly.B)], moveAssembly.B) {
+			thunkFound = true
+			break
+		}
+	}
+	if !thunkFound {
+		t.Fatalf("true-edge branch did not target an out-of-line move thunk; code=%x", withMove)
 	}
 }
 
@@ -1926,7 +2038,7 @@ func TestAMD64StructuredFusesIntegerComparisonIntoControl(t *testing.T) {
 func TestAMD64RailMachShuffleUsesSelectedRegisterForms(t *testing.T) {
 	body := []byte{0x20, 0x00, 0x20, 0x01, 0xfd, 0x0d}
 	for lane := byte(0); lane < 16; lane++ {
-		body = append(body, lane)
+		body = append(body, 15-lane)
 	}
 	body = append(body, 0x0b)
 	source := wasmtest.Module(
@@ -1937,6 +2049,23 @@ func TestAMD64RailMachShuffleUsesSelectedRegisterForms(t *testing.T) {
 	output := compileAMD64EmissionTest(t, source)
 	if got := countAMD64VPshufbRIP(output.Code); got != 0 || !containsAMD64VEXOpcode(output.Code, 0x00) {
 		t.Fatalf("selected shuffle code has RIP forms=%d or no register vpshufb: %x", got, output.Code)
+	}
+}
+
+func TestAMD64RailMachContiguousShuffleUsesAlignr(t *testing.T) {
+	body := []byte{0x20, 0x00, 0x20, 0x01, 0xfd, 0x0d}
+	for lane := byte(14); lane < 30; lane++ {
+		body = append(body, lane)
+	}
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	if !containsAMD64VEXOpcode(output.Code, 0x0f) {
+		t.Fatalf("contiguous RailMach shuffle emitted no vpalignr: %x", output.Code)
 	}
 }
 

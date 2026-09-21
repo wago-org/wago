@@ -14,6 +14,14 @@ import (
 	"github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
+// amd64ModuleGlobalPin is a value shared by every private function in one
+// module. Its cell remains write-through so traps and foreign calls observe
+// the same state even when they cannot carry the private register contract.
+type amd64ModuleGlobalPin struct {
+	global uint32
+	typ    wasm.ValType
+}
+
 // nativeBackendPlan is the complete verifier-gated RailMach product consumed
 // by target finalizers. Every pointer remains valid until the planner's next
 // call, keeping all candidate storage function-local and reusable.
@@ -98,6 +106,9 @@ type nativeBackendPlan struct {
 	AMD64StackCachedGlobals      [2]uint32
 	AMD64StackCachedGlobalOffset uint32
 	AMD64StackCachedGlobalCount  uint8
+	// AMD64ModuleGlobalPin carries one write-through value in RBP across
+	// private calls. Public adapters and foreign calls synchronize the cell.
+	AMD64ModuleGlobalPin *amd64ModuleGlobalPin
 	// AMD64DivisionSaveOffset names three frame homes used to preserve unrelated
 	// values allocated in RAX and RDX across x86's implicit integer-division
 	// clobbers and to stage the divisor across fixed-register repair.
@@ -275,48 +286,49 @@ func clearPostRAEmissionRewrites(plan *nativeBackendPlan) {
 // RailSSA-to-RailMach compilation. Candidate schedules are allocated and
 // scored sequentially; only the winning candidate is rebuilt.
 type nativeBackendPlanner struct {
-	cfg                 railssa.CFG
-	locals              railssa.LocalSSA
-	flow                railssa.ValueFlow
-	semantic            railssa.SemanticFunc
-	metadata            railssa.Metadata
-	simplified          railssa.SimplifyResult
-	machine             railmach.Func
-	selection           railmach.SelectionPlan
-	dag                 railmach.DependencyDAG
-	schedule            railmach.Schedule
-	allocation          railmach.GreedyAllocation
-	exit                railmach.SSAExit
-	postRA              railmach.PostRAPlan
-	specialize          railssa.SpecializationPlan
-	rootPlan            railssa.RootPlan
-	gcValues            []railssa.GCValueFact
-	emission            railssa.EmissionPlan
-	pressure            railssa.PressurePlan
-	remat               railmach.RematPlan
-	layout              railmach.BlockLayout
-	edgeWeights         []uint64
-	edgeObserved        []bool
-	blockBytes          []uint32
-	coldBlocks          []bool
-	calleeSaveRegions   []railmach.CalleeSaveRegion
-	blockOffsets        []int
-	branchPatches       []nativeBranchPatch
-	conditionalPatches  []nativeBranchPatch
-	coldTrapPatches     []nativeBranchPatch
-	memoryCheckSlots    nativeDenseRelation
-	memoryCheckEnds     []uint64
-	memoryCheckTouched  []uint32
-	postRAPairWith      nativeInstructionRelation
-	postRASkip          nativeBitSet
-	postRAForwardFrom   nativeInstructionRelation
-	postRAFusionWith    nativeInstructionRelation
-	postRAMemoryFrom    nativeInstructionRelation
-	postRARepeatFirst   nativeInstructionRelation
-	postRAPreIndex      nativeBitSet
-	postRAPostIndexWith nativeInstructionRelation
-	amd64DeadStoreSkip  nativeBitSet
-	amd64DeadStoreFrom  nativeInstructionRelation
+	amd64ModuleGlobalPin *amd64ModuleGlobalPin
+	cfg                  railssa.CFG
+	locals               railssa.LocalSSA
+	flow                 railssa.ValueFlow
+	semantic             railssa.SemanticFunc
+	metadata             railssa.Metadata
+	simplified           railssa.SimplifyResult
+	machine              railmach.Func
+	selection            railmach.SelectionPlan
+	dag                  railmach.DependencyDAG
+	schedule             railmach.Schedule
+	allocation           railmach.GreedyAllocation
+	exit                 railmach.SSAExit
+	postRA               railmach.PostRAPlan
+	specialize           railssa.SpecializationPlan
+	rootPlan             railssa.RootPlan
+	gcValues             []railssa.GCValueFact
+	emission             railssa.EmissionPlan
+	pressure             railssa.PressurePlan
+	remat                railmach.RematPlan
+	layout               railmach.BlockLayout
+	edgeWeights          []uint64
+	edgeObserved         []bool
+	blockBytes           []uint32
+	coldBlocks           []bool
+	calleeSaveRegions    []railmach.CalleeSaveRegion
+	blockOffsets         []int
+	branchPatches        []nativeBranchPatch
+	conditionalPatches   []nativeBranchPatch
+	coldTrapPatches      []nativeBranchPatch
+	memoryCheckSlots     nativeDenseRelation
+	memoryCheckEnds      []uint64
+	memoryCheckTouched   []uint32
+	postRAPairWith       nativeInstructionRelation
+	postRASkip           nativeBitSet
+	postRAForwardFrom    nativeInstructionRelation
+	postRAFusionWith     nativeInstructionRelation
+	postRAMemoryFrom     nativeInstructionRelation
+	postRARepeatFirst    nativeInstructionRelation
+	postRAPreIndex       nativeBitSet
+	postRAPostIndexWith  nativeInstructionRelation
+	amd64DeadStoreSkip   nativeBitSet
+	amd64DeadStoreFrom   nativeInstructionRelation
 
 	amd64GlobalUpdateSkip  nativeBitSet
 	amd64GlobalUpdateAdd   nativeBitSet
@@ -2010,7 +2022,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		}
 	}
 	amd64MemoryBoundEnd, cachesAMD64MemoryBound := p.nativeAMD64CachedMemoryBound(stack, machine, pressure)
-	if nativeAMD64CachesGlobals(machine) {
+	if p.amd64ModuleGlobalPin != nil || nativeAMD64CachesGlobals(machine) {
 		// The final two allocatable GPRs map to RBP/R12. Reserve them for one
 		// hot global's write-through value and immutable descriptor.
 		defaultGreedy.Linear.GPRs = nativeAMD64CachedGlobalValueRegister
@@ -2419,6 +2431,12 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		contract.GPRClobbers |= uint64(1) << nativeAMD64CachedGlobalValueRegister
 		contract.CalleeGPRs |= uint64(1) << nativeAMD64CachedGlobalValueRegister
 	}
+	if p.amd64ModuleGlobalPin != nil {
+		// A private callee propagates the module value instead of restoring its
+		// entry value. The public adapter owns the save/restore boundary.
+		contract.GPRClobbers |= uint64(1) << nativeAMD64CachedGlobalValueRegister
+		contract.CalleeGPRs &^= uint64(1) << nativeAMD64CachedGlobalValueRegister
+	}
 	if cachesAMD64MemoryBound {
 		contract.GPRClobbers |= uint64(1) << nativeAMD64MemoryBoundRegister
 		contract.CalleeGPRs |= uint64(1) << nativeAMD64MemoryBoundRegister
@@ -2439,6 +2457,9 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	refinedCalls := refineNativeCallContracts(calls, stack.ImportedFuncs, moduleContracts, components, refinedRecursive, localIndex)
 	railmach.PropagateCallClobbers(&contract, calls, defaultGreedy)
 	railmach.PropagateCallEffects(&contract, calls)
+	if p.amd64ModuleGlobalPin != nil {
+		contract.CalleeGPRs &^= uint64(1) << nativeAMD64CachedGlobalValueRegister
+	}
 	callArgumentBytes := nativeCallArgumentBytes(machine)
 	requirements, frame, err := railmach.FrameForAllocation(contract, allocation, callArgumentBytes/8)
 	if err != nil {
@@ -2450,6 +2471,15 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		requirements.RuntimeBytes += 24
 	}
 	stackCachedGlobals, stackCachedGlobalCount := nativeAMD64StackCachedGlobals(stack, machine)
+	if p.amd64ModuleGlobalPin != nil {
+		for slot := 0; slot < stackCachedGlobalCount; slot++ {
+			if stackCachedGlobals[slot] == p.amd64ModuleGlobalPin.global {
+				copy(stackCachedGlobals[slot:], stackCachedGlobals[slot+1:stackCachedGlobalCount])
+				stackCachedGlobalCount--
+				break
+			}
+		}
+	}
 	stackCachedGlobalOffset := uint32(0)
 	stackCachedGlobalRuntimeOffset := requirements.RuntimeBytes
 	if stackCachedGlobalCount != 0 {
@@ -2585,6 +2615,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		SegmentedBaselineDebt: segmentedBaselineDebt, SegmentedCandidateDebt: segmentedCandidateDebt, SegmentedBaselineCopies: segmentedBaselineCopies, SegmentedCandidateCopies: segmentedCandidateCopies, SegmentedCandidateRanges: segmentedCandidateRanges, SegmentedAttempted: segmentedAttempted, SegmentedAdmitted: segmentedAdmitted,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64StackCachedGlobals: stackCachedGlobals, AMD64StackCachedGlobalOffset: stackCachedGlobalOffset, AMD64StackCachedGlobalCount: uint8(stackCachedGlobalCount),
+		AMD64ModuleGlobalPin:    p.amd64ModuleGlobalPin,
 		AMD64DivisionSaveOffset: amd64DivisionSaveOffset, AMD64DivisionSave: amd64DivisionSave, AMD64ImmediateRemainders: amd64ImmediateRemainders, AMD64SignedImmediateRemainders: amd64SignedImmediateRemainders,
 		AMD64WideVectorScratch:    amd64WideVectorScratch,
 		AMD64ShuffledFPRs:         amd64WideVectorScratch && machineHasV128(machine),
@@ -3062,6 +3093,9 @@ func nativeAMD64ShuffleScratchCount(machine *railmach.Func, instructionID uint32
 	if operands[0].Reg == operands[1].Reg {
 		return 0
 	}
+	if _, ok := amd64ShuffleAlignrOffset(immediate.Bytes); ok {
+		return 0
+	}
 	allLHS, allRHS := true, true
 	for _, lane := range immediate.Bytes {
 		allLHS = allLHS && lane < 16
@@ -3071,6 +3105,19 @@ func nativeAMD64ShuffleScratchCount(machine *railmach.Func, instructionID uint32
 		return 0
 	}
 	return 2
+}
+
+func amd64ShuffleAlignrOffset(lanes [16]byte) (byte, bool) {
+	offset := lanes[0]
+	if offset > 16 {
+		return 0, false
+	}
+	for i, lane := range lanes {
+		if lane != offset+byte(i) {
+			return 0, false
+		}
+	}
+	return offset, true
 }
 
 func nativeARM64AllocatableFPRs(machine *railmach.Func) uint8 {
@@ -3813,11 +3860,27 @@ func nativeIndirectTarget(plan *nativeBackendPlan, instructionID uint32) (uint32
 	return 0, false
 }
 
-// nativeDenseLocalTableTargets proves a small table is a fixed, dense vector of
-// local functions. It deliberately accepts only the simple active-element form:
-// the bounded proof is then sufficient for a dynamic selector to branch to the
-// private Dragline ABI without publishing that ABI through a funcref descriptor.
+const nativeNullTableTarget = ^uint32(0)
+
+// nativeDenseLocalTableTargets retains the no-null contract needed by the
+// existing call-graph and prepared-entry users.
 func nativeDenseLocalTableTargets(m *wasm.Module) ([]uint32, bool) {
+	targets, ok := nativeImmutableLocalTableTargets(m)
+	if !ok {
+		return nil, false
+	}
+	for _, target := range targets {
+		if target == nativeNullTableTarget {
+			return nil, false
+		}
+	}
+	return targets, true
+}
+
+// nativeImmutableLocalTableTargets proves a small private table has one active
+// local-function segment and no mutations. Uninitialized slots retain their
+// null trap instead of being mistaken for a callable local function.
+func nativeImmutableLocalTableTargets(m *wasm.Module) ([]uint32, bool) {
 	if m == nil || m.ImportedTableCount() != 0 || len(m.Tables) != 1 || m.Tables[0].Init != nil ||
 		m.Tables[0].Type.Limits.Min == 0 || m.Tables[0].Type.Limits.Min > 32 {
 		return nil, false
@@ -3843,18 +3906,22 @@ func nativeDenseLocalTableTargets(m *wasm.Module) ([]uint32, bool) {
 		return nil, false
 	}
 	element := m.Elements[0]
-	if element.Mode.Kind != wasm.ElemActive || element.Mode.Table != 0 || !nativeZeroI32ConstExpr(element.Mode.Offset) ||
-		element.Kind.Kind != wasm.ElemFuncs || uint64(len(element.Kind.Funcs)) != m.Tables[0].Type.Limits.Min {
+	offset, constantOffset := nativeI32ConstExprValue(element.Mode.Offset)
+	if element.Mode.Kind != wasm.ElemActive || element.Mode.Table != 0 || !constantOffset ||
+		element.Kind.Kind != wasm.ElemFuncs || uint64(offset)+uint64(len(element.Kind.Funcs)) > m.Tables[0].Type.Limits.Min {
 		return nil, false
 	}
-	targets := make([]uint32, len(element.Kind.Funcs))
+	targets := make([]uint32, m.Tables[0].Type.Limits.Min)
+	for index := range targets {
+		targets[index] = nativeNullTableTarget
+	}
 	imports := uint32(m.ImportedFuncCount())
 	for index, target := range element.Kind.Funcs {
 		global := uint32(target)
 		if global < imports || global-imports >= uint32(len(m.Code)) {
 			return nil, false
 		}
-		targets[index] = global
+		targets[int(offset)+index] = global
 	}
 	return targets, true
 }
@@ -3901,10 +3968,28 @@ func nativeARM64PreparedIndirect(stack *railssa.StackFunc, machine *railmach.Fun
 }
 
 func nativeZeroI32ConstExpr(expr wasm.Expr) bool {
+	value, ok := nativeI32ConstExprValue(expr)
+	return ok && value == 0
+}
+
+func nativeI32ConstExprValue(expr wasm.Expr) (uint32, bool) {
 	if len(expr.Instrs) != 0 {
-		return len(expr.Instrs) == 1 && expr.Instrs[0].Kind == wasm.InstrI32Const && expr.Instrs[0].I32 == 0
+		if len(expr.Instrs) != 1 || expr.Instrs[0].Kind != wasm.InstrI32Const || expr.Instrs[0].I32 < 0 {
+			return 0, false
+		}
+		return uint32(expr.Instrs[0].I32), true
 	}
-	return len(expr.BodyBytes) == 3 && expr.BodyBytes[0] == 0x41 && expr.BodyBytes[1] == 0 && expr.BodyBytes[2] == 0x0b
+	r := wasm.NewReader(expr.BodyBytes)
+	opcode, err := r.Byte()
+	if err != nil || opcode != 0x41 {
+		return 0, false
+	}
+	value, err := r.I32()
+	if err != nil || value < 0 {
+		return 0, false
+	}
+	end, err := r.Byte()
+	return uint32(value), err == nil && end == 0x0b && !r.HasNext()
 }
 
 func nativeInlineI32BinaryTarget(m *wasm.Module, target uint32) (wasm.InstrKind, bool) {
