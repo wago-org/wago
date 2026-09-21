@@ -335,8 +335,8 @@ func TestAMD64RailMachRenamesReductionResultToBackedgeDestination(t *testing.T) 
 		t.Fatalf("reduction emission = used %t, err %v", used, err)
 	}
 	var inputCopy, edgeCopy amd64.Asm
-	inputCopy.MovReg64(amd64RailMachPhysical(move.Src), amd64RailMachPhysical(lhs))
-	edgeCopy.MovReg64(amd64RailMachPhysical(move.Dst), amd64RailMachPhysical(move.Src))
+	inputCopy.MovReg64(amd64RailMachPhysical(plan, move.Src), amd64RailMachPhysical(plan, lhs))
+	edgeCopy.MovReg64(amd64RailMachPhysical(plan, move.Dst), amd64RailMachPhysical(plan, move.Src))
 	if bytes.Contains(native, inputCopy.B) || bytes.Contains(native, edgeCopy.B) {
 		t.Fatalf("renamed reduction retained register copies: input=%x edge=%x code=%x", inputCopy.B, edgeCopy.B, native)
 	}
@@ -843,7 +843,7 @@ func TestAMD64RailMachSelfLoopUnrollRetainsFloatConstant(t *testing.T) {
 		Src: sourceLocation, Dst: constantLocation, Reg: plan.Machine.Insts[constant].Result, Edge: selfLoopEdge,
 		Kind: railmach.MoveCopy, Placement: railmach.PlacePredecessorEnd, Bank: railmach.BankFPR,
 	})
-	if amd64RailMachSelfLoopRetainsFloatRegister(plan, uint32(selfLoopBlock), constant, amd64RailMachPhysical(constantLocation)) {
+	if amd64RailMachSelfLoopRetainsFloatRegister(plan, uint32(selfLoopBlock), constant, amd64RailMachPhysical(plan, constantLocation)) {
 		t.Fatal("float constant retained across a backedge move that overwrites its register")
 	}
 }

@@ -603,7 +603,7 @@ func amd64RailMachByteSwapSource(plan *nativeBackendPlan, first uint32) (railmac
 		if location.Kind != railmach.LocationRegister || location.Bank != railmach.BankGPR {
 			return 0, 0, false
 		}
-		return source, amd64RailMachPhysical(location), true
+		return source, amd64RailMachPhysical(plan, location), true
 	}
 	return 0, 0, false
 }
@@ -1172,19 +1172,19 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		}
 		if location.Kind == railmach.LocationRegister && !cold {
 			if bank == railmach.BankFPR {
-				return amd64FPRRegisters[location.Index]
+				return amd64RailMachFPR(plan, int(location.Index))
 			}
 			return amd64RailMachGPRRegisters[location.Index]
 		}
 		if value == forwardedSpill {
 			if bank == railmach.BankFPR {
-				return 13
+				return amd64RailMachFPRResultScratch(plan)
 			}
 			return amd64.RDI
 		}
 		if value == currentResult {
 			if bank == railmach.BankFPR {
-				return 13
+				return amd64RailMachFPRResultScratch(plan)
 			}
 			return amd64.RDI
 		}
@@ -1198,7 +1198,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 		}
 		if bank == railmach.BankFPR {
-			return [...]amd64.Reg{13, 14, 15}[min(ordinal, 2)]
+			return amd64RailMachFPROperandScratch(plan, ordinal)
 		}
 		return [...]amd64.Reg{amd64.RSI, amd64.RDI, amd64.R11}[min(ordinal, 2)]
 	}
@@ -1267,7 +1267,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	a.Pop(amd64.RDI)
 	for index, result := range plan.Machine.Results[:min(len(plan.Machine.Results), railmach.PrivateResultRegisters)] {
 		if plan.Machine.VRegs[result].Type == railmach.TypeV128 {
-			a.VMovdquStoreDisp(amd64.RDI, int32(railssa.TypeSlotOffset(plan.Stack.Results, index)*8), amd64FPRRegisters[index])
+			a.VMovdquStoreDisp(amd64.RDI, int32(railssa.TypeSlotOffset(plan.Stack.Results, index)*8), amd64RailMachFPR(plan, index))
 		} else if plan.Machine.VRegs[result].Type == railmach.TypeI32 {
 			a.Store32(amd64.RDI, int32(railssa.TypeSlotOffset(plan.Stack.Results, index)*8), amd64RailMachGPRRegisters[index])
 		} else {
@@ -1306,10 +1306,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	for index := range amd64FPRRegisters {
 		if plan.ABI.CalleeFPRs&^shrinkFPRs&(uint64(1)<<index) != 0 {
 			if plan.ABI.VectorFPRs&(uint64(1)<<index) != 0 {
-				a.VMovdquStoreDisp(amd64.RSP, int32(calleeSaveOffset), amd64FPRRegisters[index])
+				a.VMovdquStoreDisp(amd64.RSP, int32(calleeSaveOffset), amd64RailMachFPR(plan, index))
 				calleeSaveOffset += 16
 			} else {
-				a.FStoreDisp(amd64.RSP, int32(calleeSaveOffset), amd64FPRRegisters[index], true)
+				a.FStoreDisp(amd64.RSP, int32(calleeSaveOffset), amd64RailMachFPR(plan, index), true)
 				calleeSaveOffset += 8
 			}
 		}
@@ -1364,7 +1364,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			dst := amd64.RDI
 			if data.Bank == railmach.BankFPR {
-				dst = 13
+				dst = amd64RailMachFPRResultScratch(plan)
 			}
 			if location.Kind == railmach.LocationRegister {
 				dst = reg(value)
@@ -1450,7 +1450,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			slot := railmach.Location{Kind: railmach.LocationSpill, Bank: fragment.Location.Bank, Index: fragment.VictimSlot}
-			if _, err := readLocation(fragment.Victim, slot, amd64RailMachPhysical(fragment.Location), 0); err != nil {
+			if _, err := readLocation(fragment.Victim, slot, amd64RailMachPhysical(plan, fragment.Location), 0); err != nil {
 				return err
 			}
 		}
@@ -1462,7 +1462,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if region.Bank == railmach.BankFPR {
-				a.FStoreDisp(amd64.RSP, int32(region.SlotOffset), amd64FPRRegisters[region.Physical], true)
+				a.FStoreDisp(amd64.RSP, int32(region.SlotOffset), amd64RailMachFPR(plan, int(region.Physical)), true)
 			} else {
 				a.StoreRsp64(int32(region.SlotOffset), amd64RailMachGPRRegisters[region.Physical])
 			}
@@ -1474,7 +1474,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if region.Bank == railmach.BankFPR {
-				a.FLoadDisp(amd64FPRRegisters[region.Physical], amd64.RSP, int32(region.SlotOffset), true)
+				a.FLoadDisp(amd64RailMachFPR(plan, int(region.Physical)), amd64.RSP, int32(region.SlotOffset), true)
 			} else {
 				a.LoadRsp64(amd64RailMachGPRRegisters[region.Physical], int32(region.SlotOffset))
 			}
@@ -1511,15 +1511,15 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			value := plan.Machine.Results[0]
 			scratch := amd64.RDI
 			if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-				scratch = 13
+				scratch = amd64RailMachFPRResultScratch(plan)
 			}
 			result, err := amd64RailMachReadValue(&a, plan, value, scratch)
 			if err != nil {
 				return err
 			}
 			if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
-				if result != amd64FPRRegisters[0] {
-					a.VMovdqu(amd64FPRRegisters[0], result)
+				if result != amd64RailMachFPR(plan, 0) {
+					a.VMovdqu(amd64RailMachFPR(plan, 0), result)
 				}
 			} else if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
 				a.MovXmmToGpr(amd64.RAX, result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
@@ -1558,10 +1558,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		for index := range amd64FPRRegisters {
 			if plan.ABI.CalleeFPRs&^shrinkFPRs&(uint64(1)<<index) != 0 {
 				if plan.ABI.VectorFPRs&(uint64(1)<<index) != 0 {
-					a.VMovdquLoadDisp(amd64FPRRegisters[index], amd64.RSP, int32(calleeSaveOffset))
+					a.VMovdquLoadDisp(amd64RailMachFPR(plan, index), amd64.RSP, int32(calleeSaveOffset))
 					calleeSaveOffset += 16
 				} else {
-					a.FLoadDisp(amd64FPRRegisters[index], amd64.RSP, int32(calleeSaveOffset), true)
+					a.FLoadDisp(amd64RailMachFPR(plan, index), amd64.RSP, int32(calleeSaveOffset), true)
 					calleeSaveOffset += 8
 				}
 			}
@@ -1583,7 +1583,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			for index, value := range plan.Machine.Results[:min(len(plan.Machine.Results), railmach.PrivateResultRegisters)] {
 				offset := int32(plan.Frame.ResultAreaOffset) + int32(railssa.TypeSlotOffset(plan.Stack.Results, index)*8)
 				if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
-					a.VMovdquLoadDisp(amd64FPRRegisters[index], amd64.RSP, offset)
+					a.VMovdquLoadDisp(amd64RailMachFPR(plan, index), amd64.RSP, offset)
 				} else if plan.Machine.VRegs[value].Type == railmach.TypeI32 {
 					a.LoadRsp32(amd64RailMachGPRRegisters[index], offset)
 				} else {
@@ -1751,13 +1751,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			vectorSpillFold := amd64RailMachV128OrSpillFold(plan, instruction.Op, operands, currentPosition, forwardedSpill)
 			currentResultOverrideValid = edgeResultRename.valid && edgeResultRename.instruction == instructionID
 			if currentResultOverrideValid {
-				currentResultOverride = amd64RailMachPhysical(edgeResultRename.destination)
+				currentResultOverride = amd64RailMachPhysical(plan, edgeResultRename.destination)
 			}
 			for _, fragment := range plan.Allocation.Fragments {
 				if fragment.Start != currentPosition {
 					continue
 				}
-				dst := amd64RailMachPhysical(fragment.Location)
+				dst := amd64RailMachPhysical(plan, fragment.Location)
 				if fragment.Victim != 0 {
 					slot := railmach.Location{Kind: railmach.LocationSpill, Bank: fragment.Location.Bank, Index: fragment.VictimSlot}
 					if err := amd64RailMachWriteLocation(&a, plan, fragment.Victim, slot, dst); err != nil {
@@ -1839,8 +1839,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			if !immediateShift && (semanticOp >= wasm.InstrI32Shl && semanticOp <= wasm.InstrI32Rotr || semanticOp >= wasm.InstrI64Shl && semanticOp <= wasm.InstrI64Rotr) && len(operands) == 2 {
 				lhs := plan.Allocation.LocationAt(operands[0].Reg, currentPosition)
 				result := plan.Allocation.LocationAt(instruction.Result, currentPosition)
-				lhsInRCX := operands[0].Reg != operands[1].Reg && lhs.Kind == railmach.LocationRegister && amd64RailMachPhysical(lhs) == amd64.RCX
-				resultInRCX := result.Kind == railmach.LocationRegister && amd64RailMachPhysical(result) == amd64.RCX
+				lhsInRCX := operands[0].Reg != operands[1].Reg && lhs.Kind == railmach.LocationRegister && amd64RailMachPhysical(plan, lhs) == amd64.RCX
+				resultInRCX := result.Kind == railmach.LocationRegister && amd64RailMachPhysical(plan, result) == amd64.RCX
 				liveAcrossRCX := amd64RailMachRegisterLiveAfter(plan, 1, currentPosition, instruction.Result)
 				if lhsInRCX || liveAcrossRCX {
 					// The variable-count repair writes RCX before the instruction.
@@ -2335,7 +2335,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					data := plan.Machine.VRegs[operand.Reg]
 					scratch := amd64.RSI
 					if data.Bank == railmach.BankFPR {
-						scratch = 13
+						scratch = amd64RailMachFPRResultScratch(plan)
 					}
 					src, err := amd64RailMachReadValueAt(&a, plan, operand.Reg, scratch, 0)
 					if err != nil {
@@ -2637,7 +2637,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					if location.Kind != railmach.LocationInvalid {
 						src := amd64.RAX
 						if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
-							src = amd64FPRRegisters[0]
+							src = amd64RailMachFPR(plan, 0)
 						} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 							a.MovGprToXmm(13, amd64.RAX, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
 							src = 13
@@ -3986,7 +3986,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.ShiftImm(shift, dst, 1, false)
 				continue
 			}
-			if shiftRCXSaved && plan.Allocation.LocationAt(operands[0].Reg, currentPosition).Kind == railmach.LocationRegister && amd64RailMachPhysical(plan.Allocation.LocationAt(operands[0].Reg, currentPosition)) == amd64.RCX {
+			if shiftRCXSaved && plan.Allocation.LocationAt(operands[0].Reg, currentPosition).Kind == railmach.LocationRegister && amd64RailMachPhysical(plan, plan.Allocation.LocationAt(operands[0].Reg, currentPosition)) == amd64.RCX {
 				lhs = amd64.R11
 			}
 			producer, hasImmediateProducer := immediateProducer.get(instructionID)
@@ -4986,7 +4986,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						sources = append(sources, metadata.Sources[iterationSourceStart:]...)
 					}
 					for range 3 {
-						a.TestSelf(amd64RailMachPhysical(counterLocation), false)
+						a.TestSelf(amd64RailMachPhysical(plan, counterLocation), false)
 						exitSites = append(exitSites, a.JccPlaceholder(amd64.CondE))
 						copyStart := a.Len()
 						a.B = append(a.B, iteration...)
@@ -4998,7 +4998,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						}
 					}
 				}
-				a.TestSelf(amd64RailMachPhysical(counterLocation), false)
+				a.TestSelf(amd64RailMachPhysical(plan, counterLocation), false)
 				patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(amd64.CondNE), Target: uint32(blockID)})
 				exitSite := a.Len()
 				if exit != layoutSuccessor {
@@ -5350,7 +5350,7 @@ func amd64RailMachSelfLoopRetainsFloatRegister(plan *nativeBackendPlan, block, c
 		return false
 	}
 	definitionLocation := plan.Allocation.LocationAt(definition.Result, plan.Allocation.InstructionPositions[constant]*6+2)
-	if definitionLocation.Kind != railmach.LocationRegister || amd64RailMachPhysical(definitionLocation) != physical {
+	if definitionLocation.Kind != railmach.LocationRegister || amd64RailMachPhysical(plan, definitionLocation) != physical {
 		return false
 	}
 	range_ := plan.Schedule.BlockRanges[block]
@@ -5365,7 +5365,7 @@ func amd64RailMachSelfLoopRetainsFloatRegister(plan *nativeBackendPlan, block, c
 		if instructionID != constant && instruction.Result != 0 {
 			result := plan.Machine.VRegs[instruction.Result]
 			location := plan.Allocation.LocationAt(instruction.Result, position)
-			if result.Bank == railmach.BankFPR && location.Kind == railmach.LocationRegister && amd64RailMachPhysical(location) == physical {
+			if result.Bank == railmach.BankFPR && location.Kind == railmach.LocationRegister && amd64RailMachPhysical(plan, location) == physical {
 				return false
 			}
 		}
@@ -5374,14 +5374,14 @@ func amd64RailMachSelfLoopRetainsFloatRegister(plan *nativeBackendPlan, block, c
 		}
 		if moveRange, ok := nativeFixedMoveRange(plan, instructionID); ok {
 			for _, move := range plan.Exit.Moves[moveRange.Start : moveRange.Start+moveRange.Count] {
-				if move.Dst.Kind == railmach.LocationRegister && move.Dst.Bank == railmach.BankFPR && amd64RailMachPhysical(move.Dst) == physical {
+				if move.Dst.Kind == railmach.LocationRegister && move.Dst.Bank == railmach.BankFPR && amd64RailMachPhysical(plan, move.Dst) == physical {
 					return false
 				}
 			}
 		}
 	}
 	for _, fragment := range plan.Allocation.Fragments {
-		if fragment.Location.Kind != railmach.LocationRegister || fragment.Location.Bank != railmach.BankFPR || amd64RailMachPhysical(fragment.Location) != physical {
+		if fragment.Location.Kind != railmach.LocationRegister || fragment.Location.Bank != railmach.BankFPR || amd64RailMachPhysical(plan, fragment.Location) != physical {
 			continue
 		}
 		for _, instructionID := range order {
@@ -5392,7 +5392,7 @@ func amd64RailMachSelfLoopRetainsFloatRegister(plan *nativeBackendPlan, block, c
 		}
 	}
 	for _, region := range plan.CalleeSaves {
-		if region.Bank != railmach.BankFPR || amd64FPRRegisters[region.Physical] != physical {
+		if region.Bank != railmach.BankFPR || amd64RailMachFPR(plan, int(region.Physical)) != physical {
 			continue
 		}
 		for _, instructionID := range order {
@@ -5413,7 +5413,7 @@ func amd64RailMachSelfLoopRetainsFloatRegister(plan *nativeBackendPlan, block, c
 			if move.Placement != railmach.PlacePredecessorEnd && move.Placement != railmach.PlaceSplitEdge {
 				continue
 			}
-			if move.Dst.Kind == railmach.LocationRegister && move.Dst.Bank == railmach.BankFPR && amd64RailMachPhysical(move.Dst) == physical {
+			if move.Dst.Kind == railmach.LocationRegister && move.Dst.Bank == railmach.BankFPR && amd64RailMachPhysical(plan, move.Dst) == physical {
 				return false
 			}
 		}
@@ -5918,10 +5918,11 @@ func emitAMD64ExternalCallFPRSave(a *amd64.Asm, plan *nativeBackendPlan, restore
 		return
 	}
 	offset := plan.Frame.CallAreaOffset + plan.CallArgumentBytes
-	for index, register := range amd64FPRRegisters {
+	for index := range amd64FPRRegisters {
 		if plan.ExternalCallFPRs&(uint64(1)<<index) == 0 {
 			continue
 		}
+		register := amd64RailMachFPR(plan, index)
 		vector := plan.ExternalCallVectorFPRs&(uint64(1)<<index) != 0
 		if restore && vector {
 			a.VMovdquLoadDisp(register, amd64.RSP, int32(offset))
@@ -5940,9 +5941,30 @@ func emitAMD64ExternalCallFPRSave(a *amd64.Asm, plan *nativeBackendPlan, restore
 	}
 }
 
-func amd64RailMachPhysical(location railmach.Location) amd64.Reg {
+func amd64RailMachFPR(plan *nativeBackendPlan, index int) amd64.Reg {
+	if plan != nil && !plan.AMD64ShuffledFPRs {
+		return amd64ScalarFPRRegisters[index]
+	}
+	return amd64FPRRegisters[index]
+}
+
+func amd64RailMachFPRResultScratch(plan *nativeBackendPlan) amd64.Reg {
+	if plan != nil && !plan.AMD64ShuffledFPRs {
+		return 12
+	}
+	return 13
+}
+
+func amd64RailMachFPROperandScratch(plan *nativeBackendPlan, ordinal int) amd64.Reg {
+	if plan != nil && !plan.AMD64ShuffledFPRs {
+		return [...]amd64.Reg{13, 14, 12}[min(ordinal, 2)]
+	}
+	return [...]amd64.Reg{13, 14, 15}[min(ordinal, 2)]
+}
+
+func amd64RailMachPhysical(plan *nativeBackendPlan, location railmach.Location) amd64.Reg {
 	if location.Bank == railmach.BankFPR {
-		return amd64FPRRegisters[location.Index]
+		return amd64RailMachFPR(plan, int(location.Index))
 	}
 	return amd64RailMachGPRRegisters[location.Index]
 }
@@ -6052,7 +6074,7 @@ func amd64RailMachReadLocationWithFloatConstant(a *amd64.Asm, plan *nativeBacken
 	}
 	switch location.Kind {
 	case railmach.LocationRegister:
-		return amd64RailMachPhysical(location), nil
+		return amd64RailMachPhysical(plan, location), nil
 	case railmach.LocationSpill:
 		offset := uint64(location.Index)*8 + uint64(stackDelta)
 		if offset > math.MaxInt32 {
@@ -6179,7 +6201,7 @@ func emitAMD64RailMachRoots(a *amd64.Asm, plan *nativeBackendPlan, source, posit
 		a.LoadRsp64(amd64.R11, int32(rootOffset))
 		switch location.Kind {
 		case railmach.LocationRegister:
-			dst := amd64RailMachPhysical(location)
+			dst := amd64RailMachPhysical(plan, location)
 			if dst != amd64.R11 {
 				a.MovReg64(dst, amd64.R11)
 			}
@@ -6196,7 +6218,7 @@ func amd64RailMachWriteLocation(a *amd64.Asm, plan *nativeBackendPlan, value rai
 	data := plan.Machine.VRegs[value]
 	switch location.Kind {
 	case railmach.LocationRegister:
-		dst := amd64RailMachPhysical(location)
+		dst := amd64RailMachPhysical(plan, location)
 		if dst == src {
 			return nil
 		}
@@ -6239,7 +6261,7 @@ func amd64StagePrivateCallResults(a *amd64.Asm, plan *nativeBackendPlan, instruc
 	for index := 0; index < min(int(instruction.ResultCount()), railmach.PrivateResultRegisters); index++ {
 		data := plan.Machine.VRegs[instruction.Result+railmach.VReg(index)]
 		if data.Type == railmach.TypeV128 {
-			a.VMovdquStoreDisp(amd64.RSP, callOffset+int32(slot*8), amd64FPRRegisters[index])
+			a.VMovdquStoreDisp(amd64.RSP, callOffset+int32(slot*8), amd64RailMachFPR(plan, index))
 		} else {
 			a.StoreRsp64(callOffset+int32(slot*8), amd64RailMachGPRRegisters[index])
 		}
@@ -6338,7 +6360,7 @@ func emitAMD64RailMachMoveRangeAt(a *amd64.Asm, plan *nativeBackendPlan, moveRan
 		case railmach.MoveCopy, railmach.MoveRematerialize:
 			scratch := temporary
 			if move.Dst.Kind == railmach.LocationRegister {
-				scratch = amd64RailMachPhysical(move.Dst)
+				scratch = amd64RailMachPhysical(plan, move.Dst)
 			}
 			source := move.Src
 			if move.Kind == railmach.MoveCopy && int(move.Reg) < len(plan.Machine.VRegs) {

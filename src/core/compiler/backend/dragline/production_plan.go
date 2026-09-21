@@ -112,6 +112,9 @@ type nativeBackendPlan struct {
 	// single-source shuffle masks and, when no low-XMM semantic scratch remains,
 	// allocate the full XMM0-XMM11 register set.
 	AMD64WideVectorScratch bool
+	// AMD64ShuffledFPRs selects the SysV vector register order that keeps the
+	// fixed XMM3-XMM5 SIMD scratch bank outside the allocatable prefix.
+	AMD64ShuffledFPRs bool
 	// AMD64AddressRematerialize marks spilled wrapping affine addresses whose
 	// every memory use can reconstruct the value from an already-live register.
 	AMD64AddressRematerialize nativeBitSet
@@ -1972,9 +1975,6 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	}
 	defaultGreedy := railmach.DefaultGreedyConfig(machineTarget)
 	amd64WideVectorScratch := machineTarget == railmach.TargetAMD64 && target.GOOS != "windows"
-	if machineTarget == railmach.TargetAMD64 && target.GOOS != "windows" {
-		defaultGreedy.Linear.FPRs = 13
-	}
 	if machineHasV128(machine) {
 		if machineTarget == railmach.TargetAMD64 {
 			// Windows keeps XMM6-XMM15 nonvolatile, while SysV makes every XMM
@@ -2584,6 +2584,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		AMD64StackCachedGlobals: stackCachedGlobals, AMD64StackCachedGlobalOffset: stackCachedGlobalOffset, AMD64StackCachedGlobalCount: uint8(stackCachedGlobalCount),
 		AMD64DivisionSaveOffset: amd64DivisionSaveOffset, AMD64DivisionSave: amd64DivisionSave, AMD64ImmediateRemainders: amd64ImmediateRemainders, AMD64SignedImmediateRemainders: amd64SignedImmediateRemainders,
 		AMD64WideVectorScratch:    amd64WideVectorScratch,
+		AMD64ShuffledFPRs:         amd64WideVectorScratch && machineHasV128(machine),
 		AMD64AddressRematerialize: p.amd64AddressRemat,
 		AMD64BMI2:                 target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
 		PostRAPairWith:            p.postRAPairWith,
