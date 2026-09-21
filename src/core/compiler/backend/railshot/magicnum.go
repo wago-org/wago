@@ -8,9 +8,7 @@
 // See the arm64-port plan for the extraction in progress.
 package railshot
 
-import (
-	"math/bits"
-)
+import "github.com/wago-org/wago/src/core/compiler/optimization"
 
 // Magic-number derivation for constant division. This is the libdivide /
 // Granlund–Montgomery construction; it runs once per div-by-const at compile
@@ -25,20 +23,7 @@ import (
 //	if add: q = ((n - q) >> 1) + q
 //	q >>= shift
 func MagicU(d uint64, W uint) (magic uint64, shift uint, add bool) {
-	fl := uint(bits.Len64(d)) - 1 // floor(log2 d)
-	// proposed = floor(2^(W+fl) / d), rem = 2^(W+fl) mod d.
-	pm, rem := divPow2By64(W+fl, d)
-	e := d - rem
-	if e < uint64(1)<<fl {
-		pm++ // magic fits in W bits, no add correction
-		return truncW(pm, W), fl, false
-	}
-	pm *= 2 // low W bits of 2*proposed
-	if rem >= d-rem {
-		pm++
-	}
-	pm++
-	return truncW(pm, W), fl, true
+	return optimization.MagicU(d, W)
 }
 
 // MagicS returns (magic, shift, addN) for signed W-bit division by the positive
@@ -51,40 +36,12 @@ func MagicU(d uint64, W uint) (magic uint64, shift uint, add bool) {
 //
 // magic is returned as its signed W-bit reinterpretation (may be negative).
 func MagicS(ad uint64, W uint) (magic int64, shift uint, addN bool) {
-	fl := uint(bits.Len64(ad)) - 1 // floor(log2 ad)
-	// proposed = floor(2^(W-1+fl) / ad), rem = 2^(W-1+fl) mod ad.
-	pm, rem := divPow2By64(W-1+fl, ad)
-	e := ad - rem
-	if e < uint64(1)<<fl {
-		pm++
-		return signW(truncW(pm, W), W), fl - 1, false
-	}
-	pm *= 2
-	if rem >= ad-rem {
-		pm++
-	}
-	pm++
-	return signW(truncW(pm, W), W), fl, true
+	return optimization.MagicS(ad, W)
 }
 
-// divPow2By64 returns the quotient and remainder of 2^exp / d. MagicU and
-// MagicS guarantee exp <= 127 and that the quotient fits in 64 bits.
-func divPow2By64(exp uint, d uint64) (q, rem uint64) {
-	if exp < 64 {
-		return bits.Div64(0, uint64(1)<<exp, d)
-	}
-	return bits.Div64(uint64(1)<<(exp-64), 0, d)
-}
-
-// truncW returns the low W bits of v as a uint64.
-func truncW(v uint64, W uint) uint64 {
-	if W >= 64 {
-		return v
-	}
-	return v & ((uint64(1) << W) - 1)
-}
-
-// signW reinterprets the low W bits of m as a signed W-bit value.
+// signW reinterprets the low W bits of m as a signed W-bit value. The
+// reference tests retain this local helper while production derivation lives
+// in the compiler-neutral optimization package.
 func signW(m uint64, W uint) int64 {
 	if W >= 64 {
 		return int64(m)

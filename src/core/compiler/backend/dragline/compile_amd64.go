@@ -12,8 +12,8 @@ import (
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railmach"
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
-	railshotcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
+	compileropt "github.com/wago-org/wago/src/core/compiler/optimization"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -9698,7 +9698,7 @@ func amd64EmitUnsignedI32ConstantDivision(a *amd64.Asm, dst, dividend amd64.Reg,
 		a.ImulRRI(quotient, dividend, int32(multiplier), true)
 		a.ShiftImm(5, quotient, immediateShift, true)
 	} else {
-		magic, shift, add := railshotcore.MagicU(uint64(divisor), 32)
+		magic, shift, add := compileropt.MagicU(uint64(divisor), 32)
 		a.MovReg32(amd64.R10, dividend)
 		a.MovImm32(amd64.R11, int32(uint32(magic)))
 		a.IMul(amd64.R10, amd64.R11, true)
@@ -9750,7 +9750,7 @@ func amd64EmitUnsignedI64ConstantDivision(a *amd64.Asm, dst, dividend amd64.Reg,
 		return
 	}
 
-	magic, shift, add := railshotcore.MagicU(divisor, 64)
+	magic, shift, add := compileropt.MagicU(divisor, 64)
 	a.MovReg64(amd64.R11, dividend)
 	a.MovImm64(amd64.R10, magic)
 	if dividend != amd64.RAX {
@@ -9829,7 +9829,7 @@ func amd64EmitSignedI64ConstantDivision(a *amd64.Asm, dst, dividend amd64.Reg, d
 		return
 	}
 
-	magic, shift, addDividend := railshotcore.MagicS(magnitude, 64)
+	magic, shift, addDividend := compileropt.MagicS(magnitude, 64)
 	a.MovReg64(amd64.R11, dividend)
 	a.MovImm64(amd64.R10, uint64(magic))
 	if dividend != amd64.RAX {
