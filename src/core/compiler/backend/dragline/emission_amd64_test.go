@@ -49,6 +49,32 @@ func TestAMD64RailMachV128OrSpillFold(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachOperandScratchOrdinalCountsColdRematerialization(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Machine: &railmach.Func{VRegs: []railmach.VRegData{{},
+			{Bank: railmach.BankGPR}, {Bank: railmach.BankGPR}, {Bank: railmach.BankGPR},
+		}},
+		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{{},
+			{Kind: railmach.LocationRegister, Bank: railmach.BankGPR},
+			{Kind: railmach.LocationRegister, Bank: railmach.BankGPR},
+			{Kind: railmach.LocationSpill, Bank: railmach.BankGPR},
+		}}},
+	}
+	operands := []railmach.Operand{
+		{Reg: 1, Flags: railmach.OperandUse | railmach.OperandColdRemat},
+		{Reg: 2, Flags: railmach.OperandUse | railmach.OperandColdRemat},
+		{Reg: 3, Flags: railmach.OperandUse},
+	}
+	for _, tc := range []struct {
+		value railmach.VReg
+		want  int
+	}{{1, 0}, {2, 1}, {3, 2}} {
+		if got := amd64RailMachOperandScratchOrdinal(plan, operands, tc.value, railmach.BankGPR, 2); got != tc.want {
+			t.Errorf("operand %d scratch ordinal = %d, want %d", tc.value, got, tc.want)
+		}
+	}
+}
+
 func TestAMD64CarriesMemoryChecksAcrossMemoryFreeLayoutSibling(t *testing.T) {
 	plan := &nativeBackendPlan{Machine: &railmach.Func{Blocks: make([]railmach.Block, 4)}, CFG: &railssa.CFG{
 		Blocks: []railssa.Block{

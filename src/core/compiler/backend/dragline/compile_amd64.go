@@ -1184,6 +1184,20 @@ func amd64RailMachCanUseMemoryAddressDirectly(plan *nativeBackendPlan, value rai
 	return (!aliasesLoadResult || dies) && offset <= math.MaxInt32 && materialized
 }
 
+func amd64RailMachOperandScratchOrdinal(plan *nativeBackendPlan, operands []railmach.Operand, value railmach.VReg, bank railmach.Bank, position uint32) int {
+	ordinal := 0
+	for _, operand := range operands {
+		if operand.Reg == value {
+			break
+		}
+		// A cold use occupies scratch even when its ordinary allocation is a register.
+		if plan.Machine.VRegs[operand.Reg].Bank == bank && (operand.Flags&railmach.OperandColdRemat != 0 || plan.Allocation.LocationAt(operand.Reg, position).Kind != railmach.LocationRegister) {
+			ordinal++
+		}
+	}
+	return ordinal
+}
+
 func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
 	if plan == nil || plan.Stack == nil || plan.CFG == nil || plan.Semantic == nil || plan.Machine == nil || plan.Allocation == nil || plan.Schedule == nil || plan.Exit == nil {
 		return nil, 0, false, nil
@@ -1261,15 +1275,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			return amd64.RDI
 		}
-		ordinal := 0
-		for _, operand := range currentOperands {
-			if operand.Reg == value {
-				break
-			}
-			if plan.Machine.VRegs[operand.Reg].Bank == bank && plan.Allocation.LocationAt(operand.Reg, currentPosition).Kind != railmach.LocationRegister {
-				ordinal++
-			}
-		}
+		ordinal := amd64RailMachOperandScratchOrdinal(plan, currentOperands, value, bank, currentPosition)
 		if bank == railmach.BankFPR {
 			return amd64RailMachFPROperandScratch(plan, ordinal)
 		}
