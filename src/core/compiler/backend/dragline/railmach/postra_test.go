@@ -468,7 +468,7 @@ func TestVerifyPostRAAllowsARM64NZCVRenameAcrossConstant(t *testing.T) {
 	}
 }
 
-func TestVerifyPostRAAllowsAMD64FlagsRenameAcrossLEA(t *testing.T) {
+func TestVerifyPostRARejectsAMD64FlagsRenameAcrossPlannedLEA(t *testing.T) {
 	f := &Func{
 		Target: TargetAMD64,
 		Insts: []Inst{
@@ -503,12 +503,8 @@ func TestVerifyPostRAAllowsAMD64FlagsRenameAcrossLEA(t *testing.T) {
 		{First: 1, Second: ^uint32(0), Kind: RewriteAMD64LEA},
 		{First: 0, Second: 2, Kind: RewritePhysicalRename},
 	}, ScanLimit: PostRAScanLimit}
-	if err := VerifyPostRAPlan(TargetAMD64, f, selection, schedule, plan); err != nil {
-		t.Fatal(err)
-	}
-	plan.Rewrites = plan.Rewrites[1:]
 	if err := VerifyPostRAPlan(TargetAMD64, f, selection, schedule, plan); err == nil {
-		t.Fatal("accepted EFLAGS rename across add without LEA lowering")
+		t.Fatal("accepted EFLAGS rename based on a planned LEA")
 	}
 }
 
