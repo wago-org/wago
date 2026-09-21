@@ -23,6 +23,7 @@ type Config struct {
 	Version       int             `json:"version"`
 	Features      map[string]bool `json:"features"`
 	Optimizations map[string]bool `json:"optimizations"`
+	Experimental  map[string]bool `json:"experimental"`
 	Runtime       RuntimeDefaults `json:"runtime"`
 }
 
@@ -35,6 +36,7 @@ type storedConfig struct {
 	Version       int             `json:"version"`
 	Features      map[string]bool `json:"features"`
 	Optimizations map[string]bool `json:"optimizations"`
+	Experimental  map[string]bool `json:"experimental"`
 	Runtime       struct {
 		Parallel               string `json:"parallel"`
 		DeferredBoundsChecking *bool  `json:"deferredBoundsChecking"`
@@ -43,7 +45,7 @@ type storedConfig struct {
 
 func Default() Config {
 	config := Config{
-		Version: Version, Features: map[string]bool{}, Optimizations: map[string]bool{},
+		Version: Version, Features: map[string]bool{}, Optimizations: map[string]bool{}, Experimental: map[string]bool{},
 		Runtime: RuntimeDefaults{Parallel: "1", DeferredBoundsChecking: true},
 	}
 	for _, setting := range Features() {
@@ -51,6 +53,11 @@ func Default() Config {
 	}
 	for _, setting := range Optimizations() {
 		setting.SetValue(&config, setting.Default)
+	}
+	for _, setting := range Experimental() {
+		if setting.kind == experimentalSettingKind {
+			setting.SetValue(&config, setting.Default)
+		}
 	}
 	return config
 }
@@ -137,6 +144,16 @@ func LoadFile(path string) (Config, error) {
 			setting.SetValue(&config, value)
 		}
 	}
+	for name, value := range stored.Experimental {
+		setting, ok := Lookup("experimental." + name)
+		if !ok || setting.kind != experimentalSettingKind {
+			return Config{}, fmt.Errorf("unknown experimental setting %q", name)
+		}
+		if value && !setting.Available {
+			return Config{}, fmt.Errorf("experimental setting %q is unavailable", name)
+		}
+		setting.SetValue(&config, value)
+	}
 	if stored.Runtime.Parallel != "" {
 		if err := ValidateParallel(stored.Runtime.Parallel); err != nil {
 			return Config{}, err
@@ -179,6 +196,9 @@ func Validate(config Config) error {
 		return err
 	}
 	if err := ValidateOptimizationValues(config.Optimizations); err != nil {
+		return err
+	}
+	if err := ValidateExperimentalValues(config.Experimental); err != nil {
 		return err
 	}
 	return nil

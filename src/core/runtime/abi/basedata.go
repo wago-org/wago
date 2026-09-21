@@ -120,9 +120,19 @@ const (
 	// 65,536-page memory32 is representable.
 	ActualLinMemByteSize64Offset = 288
 
+	// ProfileCountersPtrOffset points at an instance-owned dense uint64 slab
+	// indexed by original Wasm function index. Only explicitly instrumented code
+	// reads it; ordinary Railshot and Dragline products retain zero overhead.
+	ProfileCountersPtrOffset = 296
+
+	// TierEntriesPtrOffset points at an instance-owned array of atomic wrapper
+	// entry addresses. Only explicitly tierable modules publish or read it.
+	TierEntriesPtrOffset = 304
+
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
-	// extension fields, bounded wrapper-tail argument bank, and native GC view.
-	BasedataSize = 288
+	// extension fields, bounded wrapper-tail argument bank, native GC view, and
+	// opt-in profile and tier-entry pointers.
+	BasedataSize = 320
 )
 
 // TagFuncRefHome combines a canonical home pointer with one authoritative entry

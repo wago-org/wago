@@ -53,6 +53,14 @@ func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint6
 	return uint64(call(linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3))), nil
 }
 
+func (e *Engine) EnterPreparedLeafInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
+}
+
+func (e *Engine) EnterPreparedTrapInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
+}
+
 func (e *Engine) EnterPreparedIntLight(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
 	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
 }

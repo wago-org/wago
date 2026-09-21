@@ -16,6 +16,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/optimization"
+	"github.com/wago-org/wago/src/core/compiler/profile"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -284,6 +285,7 @@ type fn struct {
 	guardMode               bool  // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	boundsFacts             bool  // P6.1 straight-line bounds-check elision enabled (explicit mode)
 	interruptible           bool  // emit context-cancellation polls at entries and loop headers
+	functionCounters        bool  // atomically count internal function entries
 	hasLoop                 bool  // finalizer preserves emission-time loop layout until alignment fragments are relaxable
 	opaqueFragments         bool  // jump-table or plugin bytes require explicit fragment-aware scans
 	lazyZero                bool  // defer declared-local zeroing for small call+memory functions
@@ -1402,6 +1404,10 @@ type CompileOptions struct {
 	// callers may leave it off for the smallest standalone code.
 	Interruptible bool
 
+	// FunctionCounters emits one atomic increment at each local function's
+	// internal entry. The instance installs the bounded uint64 counter slab.
+	FunctionCounters bool
+
 	// MemoryPressure is called once after retained native output reaches
 	// MemoryPressureAt bytes. With a zero threshold it runs at seven-eighths of
 	// the reserved output capacity. Public compilation uses that late checkpoint
@@ -1487,6 +1493,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	}
 	if opts.SyncHostSlots < coreruntime.MaxHostArity || opts.SyncHostSlots > coreruntime.MaxSyncHostSlots {
 		return nil, fmt.Errorf("arm64: synchronous host slot capacity %d is outside %d..%d", opts.SyncHostSlots, coreruntime.MaxHostArity, coreruntime.MaxSyncHostSlots)
+	}
+	if opts.FunctionCounters && m.ImportedFuncCount()+len(m.Code) > profile.MaxRailshotFunctionCounters {
+		return nil, fmt.Errorf("arm64: %d function counters exceed limit %d", m.ImportedFuncCount()+len(m.Code), profile.MaxRailshotFunctionCounters)
 	}
 	// This is a module invariant. Resolve it once rather than rescanning imports
 	// for every function.
@@ -1593,6 +1602,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	// Auto-inlining (WAGO_INLINE): the straight-line leaf callees to splice at their
 	// call sites, keyed by global func index. Empty when inlining is disabled.
 	inlineTargets := buildInlineTargets(m, allHints, policy)
+	if opts.FunctionCounters {
+		inlineTargets = inlineTargetTable{}
+	}
 	for i := range allHints {
 		ft, ok := m.LocalFuncType(i)
 		if ok {
@@ -1685,7 +1697,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 			sc.asm.B = tail
 			hints := hintSidecar.viewAt(allHints[i], i)
-			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTable, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, allHints, policy, sc)
+			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, opts.FunctionCounters, modGlobals, &hints, immutableTable, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, allHints, policy, sc)
 			if err != nil {
 				return nil, fmt.Errorf("arm64: function %d: %w", i, err)
 			}
@@ -1855,7 +1867,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			}
 			layoutFlags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(allHints[i].flags.has(hintHasLoop), layoutHasLoop) | boolFlag(allHints[i].flags.has(hintHasCall), layoutHasCall) | boolFlag(allHints[i].flags.has(hintCallsSelf), layoutCallsSelf)
 			hints := hintSidecar.viewAt(allHints[i], i)
-			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTable, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, allHints, policy, ws.scratch)
+			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, opts.FunctionCounters, modGlobals, &hints, immutableTable, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, allHints, policy, ws.scratch)
 			if err != nil {
 				work.failures.Record(i, err)
 				continue
@@ -2819,7 +2831,7 @@ const minPreallocatedCallRelocs = 8
 
 // compileFunc compiles one function exactly once. Its target-derived transient
 // register floor prevents optional whole-function pins from forcing a retry.
-func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, inlineTargets inlineTargetTable, calleeHints []funcHints, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, functionCounters bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, inlineTargets inlineTargetTable, calleeHints []funcHints, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	var compileStart time.Time
 	if stats != nil {
 		stats.FunctionAttempts++
@@ -2833,7 +2845,7 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		gcFrameRoots.FrameBytes = 0
 		gcFrameRoots.AdapterReturnOffset = 0
 	}
-	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTable, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleeHints, policy, sc)
+	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, functionCounters, modGlobals, hints, immutableTable, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleeHints, policy, sc)
 	if len(sc.stack.chunks) > 1 {
 		sc.finishStackFunction()
 	}
@@ -2843,7 +2855,7 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, calleeHints []funcHints, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, functionCounters bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, calleeHints []funcHints, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if exhausted, ok := r.(regExhausted); ok {
@@ -2879,7 +2891,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
 	boundedMemcopy := len(c.BodyBytes) <= 4096 && hints.memOpCount() <= 128
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, memLimitReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, functionCounters: functionCounters, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, memLimitReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
 	if f.nParams >= 64 {
 		f.localWritten = ^uint64(0)
 	} else if f.nParams != 0 {
@@ -4071,6 +4083,19 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		}
 	}
 	internalOff := a.Len()
+	if f.functionCounters {
+		f.ld64(X16, linMemReg, -int32(abi.ProfileCountersPtrOffset))
+		a.MovImm64(X17, uint64(f.traceFuncIdx)*8)
+		a.Add64(X16, X16, X17)
+		retry := a.Len()
+		a.Ldaxr(X17, X16, 8)
+		a.AddImm64(X17, X17, 1)
+		a.Stlxr(X15, X17, X16, 8)
+		branch := a.Cbnz32(X15)
+		if !a.PatchBranch19(branch, retry) {
+			panic("arm64: profile counter retry branch out of range")
+		}
+	}
 	if f.usesCalls {
 		a.StpPre(FP, LR, SP, -16) // save FP/LR frame record (BL clobbers LR)
 		a.AddImm64(FP, SP, 0)     // MOV X29, SP

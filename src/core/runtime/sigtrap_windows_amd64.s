@@ -48,6 +48,11 @@ scan:
 	MOVQ	152(R15), R11           // saved RSP
 	SUBQ	$40, R11                // page + padding + retry PC
 	MOVQ	AX, 0(R11)
+	// Windows uses R8 while transferring control to the continuation thunk.
+	// Carry the faulting value explicitly so the thunk can restore the exact
+	// register file before retrying the memory instruction.
+	MOVQ	184(R15), AX            // CONTEXT.R8
+	MOVQ	AX, 8(R11)
 	MOVQ	248(R15), AX            // faulting RIP
 	MOVQ	AX, 32(R11)             // RET target after the commit
 	MOVQ	R11, 152(R15)
@@ -108,6 +113,8 @@ TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
 	MOVQ	AX, 88(SP)
 	LEAQ	16(R11), R11           // original synthetic frame
 	MOVQ	R11, 192(SP)
+	MOVQ	8(R11), AX             // faulting R8 carried by the VEH frame
+	MOVQ	AX, 56(SP)             // replace Windows' continuation-time R8
 	MOVOU	X0, 96(SP)
 	MOVOU	X1, 112(SP)
 	MOVOU	X2, 128(SP)

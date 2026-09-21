@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -68,6 +69,9 @@ func TestInstalledZshCompletionCanBeSourced(t *testing.T) {
 }
 
 func TestBashCompletionPassesNestedCommandWords(t *testing.T) {
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		t.Skip("Git Bash is an AMD64 binary and is not reliable under Windows ARM64 emulation")
+	}
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("bash is not installed")

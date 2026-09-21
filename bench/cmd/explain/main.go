@@ -5,7 +5,7 @@
 //
 // Usage:
 //
-//	go run ./cmd/explain [-guard] [-compact] [module.wasm]
+//	go run ./cmd/explain [-guard] [-compact] [-code image.bin] [-layout entries.json] [module.wasm]
 //
 // With no path it defaults to corpus/json-as.wasm. -guard selects guard-page
 // (bounds-elided) mode instead of explicit bounds. Equivalent to setting
@@ -14,6 +14,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -25,6 +26,8 @@ import (
 func main() {
 	guard := flag.Bool("guard", false, "guard-page (bounds-elided) mode instead of explicit bounds")
 	compact := flag.Bool("compact", false, "enable bounded native compaction")
+	codePath := flag.String("code", "", "write the generated native code image to this path")
+	layoutPath := flag.String("layout", "", "write generated function entry offsets to this path")
 	flag.Parse()
 
 	path := filepath.Join("corpus", "json-as.wasm")
@@ -43,10 +46,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	stats, err := compileExplain(m, *guard, *compact)
+	code, entry, stats, err := compileExplain(m, *guard, *compact, *codePath != "")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "compile:", err)
 		os.Exit(1)
+	}
+	if *codePath != "" {
+		if err := os.WriteFile(*codePath, code, 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, "write code:", err)
+			os.Exit(1)
+		}
+	}
+	if *layoutPath != "" {
+		layout, err := json.MarshalIndent(struct {
+			Entry []int `json:"entry"`
+		}{Entry: entry}, "", "  ")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "marshal layout:", err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(*layoutPath, append(layout, '\n'), 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, "write layout:", err)
+			os.Exit(1)
+		}
 	}
 
 	mode := "explicit-bounds"

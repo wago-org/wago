@@ -3,6 +3,8 @@ package shared
 import (
 	"math/bits"
 	"sort"
+
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 )
 
 // AMD64FrameHeaderBytes and ARM64FrameHeaderBytes are the stable local-slot
@@ -23,11 +25,17 @@ const (
 	// GCHelperIDBits reserves the low dispatch bits for the stable helper ID.
 	// Safepoints occupy the bits below the first dispatch tag (atomic wait).
 	// Bits 29-31 select atomic, GC, and host-funcref dispatch.
-	GCHelperIDBits        = 8
-	GCHelperIDMask        = uint32(1<<GCHelperIDBits) - 1
-	GCSafepointIDShift    = GCHelperIDBits
-	GCDispatchPayloadMask = AtomicWaitDispatchBit - 1
-	GCSafepointIDMax      = GCDispatchPayloadMask >> GCSafepointIDShift
+	GCHelperIDBits        = codegen.GCHelperIDBits
+	GCHelperIDMask        = codegen.GCHelperIDMask
+	GCSafepointIDShift    = codegen.GCSafepointIDShift
+	GCDispatchPayloadMask = codegen.GCDispatchPayloadMask
+	GCSafepointIDMax      = codegen.GCSafepointIDMax
+
+	// GCFrameRootLimit bounds simultaneously live exact roots in one Dragline
+	// native frame. The compiler keeps
+	// a one-word fast path through 64 roots, a two-word path through 128 roots,
+	// and uses one flat word arena for larger masks up to this limit.
+	GCFrameRootLimit = codegen.GCFrameRootLimit
 
 	// GCFrameTrackedLocalLimit is the maximum configured parameter-plus-local
 	// population whose liveness may be tracked. Final exact root vectors are
@@ -37,14 +45,11 @@ const (
 )
 
 func EncodeGCDispatch(helper, safepoint uint32) (uint32, bool) {
-	if helper > GCHelperIDMask || safepoint > GCSafepointIDMax {
-		return 0, false
-	}
-	return helper | safepoint<<GCSafepointIDShift, true
+	return codegen.EncodeGCHelperDispatch(helper, safepoint)
 }
 
 func DecodeGCDispatch(payload uint32) (helper, safepoint uint32) {
-	return payload & GCHelperIDMask, payload >> GCSafepointIDShift
+	return codegen.DecodeGCHelperDispatch(payload)
 }
 
 // GCFrameRootPlan is an optional compile-time handshake for exact-typed native

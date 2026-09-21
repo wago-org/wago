@@ -115,6 +115,18 @@ func (c *Collector) StructSet(ref Ref, field uint32, value Value) error {
 	}
 	return c.heap.StructSet(r, field, v)
 }
+
+func (c *Collector) StructSetTypedNoBarrier(ref Ref, required TypeID, exact bool, field uint32, value Value) (TypeID, bool, error) {
+	r, err := c.unwrap(ref)
+	if err != nil {
+		return 0, false, err
+	}
+	v, err := c.input(value)
+	if err != nil {
+		return 0, false, err
+	}
+	return c.heap.StructSetTypedNoBarrier(r, required, exact, field, v)
+}
 func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 	r, err := c.unwrap(ref)
 	if err != nil {
@@ -125,6 +137,18 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 		return err
 	}
 	return c.heap.ArraySet(r, index, v)
+}
+
+func (c *Collector) ArraySetTypedNoBarrier(ref Ref, required TypeID, exact bool, index uint32, value Value) (TypeID, bool, error) {
+	r, err := c.unwrap(ref)
+	if err != nil {
+		return 0, false, err
+	}
+	v, err := c.input(value)
+	if err != nil {
+		return 0, false, err
+	}
+	return c.heap.ArraySetTypedNoBarrier(r, required, exact, index, v)
 }
 func (c *Collector) ArrayFill(ref Ref, start uint32, value Value, length uint32) error {
 	r, err := c.unwrap(ref)

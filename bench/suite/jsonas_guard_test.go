@@ -14,7 +14,7 @@ import (
 
 // wagoJSONGuard sets up signals-based (guard-page) bounds — the inline
 // bounds check is elided and out-of-bounds accesses fault into a trap handler.
-func wagoJSONGuard(t *testing.T, wasmBytes []byte) (ser, deser func()) {
+func wagoJSONGuard(t testing.TB, wasmBytes []byte) (ser, deser func()) {
 	cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksSignalsBased)
 	c, err := wago.Compile(cfg, wasmBytes)
 	if err != nil {
@@ -38,6 +38,16 @@ func wagoJSONGuard(t *testing.T, wasmBytes []byte) (ser, deser func()) {
 		}
 	}
 	return
+}
+
+func BenchmarkJsonAsSerializeGuard_wago(b *testing.B) {
+	ser, _ := wagoJSONGuard(b, loadJSON(b))
+	benchJSONUnit(b, ser)
+}
+
+func BenchmarkJsonAsDeserializeGuard_wago(b *testing.B) {
+	_, deser := wagoJSONGuard(b, loadJSON(b))
+	benchJSONUnit(b, deser)
 }
 
 // TestJsonAsGuardCorrect verifies guard-page mode produces the SAME results as

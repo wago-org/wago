@@ -35,8 +35,11 @@ type WasmFunc struct {
 	resultWide          []bool
 	privateFast         bool
 	isolatedFast        bool
+	privateLifetime     bool
 	directIsolated      bool
 	directIntFast       bool
+	directLeafIntFast   bool
+	directTrapIntFast   bool
 	directIntLight      bool
 	directIntBounded    bool
 	directIntMode       preparedIntCallMode
@@ -131,7 +134,7 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 	fn := &WasmFunc{
 		in:                  in,
 		export:              export,
-		entry:               in.base + uintptr(in.c.Entry[ic.li]),
+		entry:               in.wrapperEntry(ic.li),
 		paramSlots:          ic.paramSlots,
 		resultSlots:         ic.resultSlots,
 		scalarWideMask:      scalarWideMask,
@@ -149,6 +152,10 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 	}
 	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
 		entryMode := in.preparedEntryMode()
+		if entryMode == preparedEntryGeneral && contextFreeLoopPreparedEntry(in.c.InternalEntry[ic.li]) {
+			entryMode = in.preparedMemoryFreeEntryMode()
+			fn.privateLifetime = entryMode != preparedEntryGeneral
+		}
 		if entryMode != preparedEntryGeneral {
 			fn.privateFast = true
 			fn.isolatedFast = preparedIsolatedEntryEnabled && entryMode == preparedEntryIsolated
@@ -164,6 +171,8 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 			fn.directIsolated = preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated
 			if fn.directIsolated || (preparedDirectIntPrivateSupported && directMode == preparedEntryPrivate) {
 				fn.directIntFast = true
+				fn.directLeafIntFast = directLeafPreparedEntry(in.c.InternalEntry[ic.li])
+				fn.directTrapIntFast = directTrapPreparedEntry(in.c.InternalEntry[ic.li])
 				fn.directIntLight = in.c.directPreparedLightAt(ic.li)
 				fn.directIntBounded = in.c.directPreparedBoundedAt(ic.li)
 				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
@@ -313,10 +322,17 @@ func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
 
 func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
 	in := fn.in
-	if err := in.beginInvocation(); err != nil {
-		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+	if fn.privateLifetime {
+		if err := in.beginPrivateInvocation(); err != nil {
+			return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+		}
+		defer in.endPrivateInvocation()
+	} else {
+		if err := in.beginInvocation(); err != nil {
+			return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+		}
+		defer in.endInvocation()
 	}
-	defer in.endInvocation()
 	preparedLease := in.lockPreparedInvocation()
 	defer preparedLease.unlock()
 	return fn.invokeScalarAdmitted(args)

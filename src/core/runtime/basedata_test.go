@@ -35,14 +35,16 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 		{"globalsPtr", offGlobalsPtr, abi.GlobalsPtrOffset},
 		{"passiveDataPtr", offPassiveDataPtr, abi.PassiveDataPtrOffset},
 		{"importDispatchPtr", offImportDispatchPtr, abi.ImportDispatchPtrOffset},
+		{"profileCountersPtr", offProfileCountersPtr, abi.ProfileCountersPtrOffset},
+		{"tierEntriesPtr", offTierEntriesPtr, abi.TierEntriesPtrOffset},
 	}
 	for _, c := range cases {
 		if c.got != c.want {
 			t.Errorf("%s offset = %d, want %d", c.name, c.got, c.want)
 		}
 	}
-	if basedataSize != 288 {
-		t.Errorf("basedataSize = %d, want hot-path layout size 288", basedataSize)
+	if basedataSize != 320 {
+		t.Errorf("basedataSize = %d, want layout size 320 with opt-in profiling and tiering pointers", basedataSize)
 	}
 	if basedataSize%16 != 0 {
 		t.Errorf("basedataSize %d is not 16-byte aligned (would misalign linMem)", basedataSize)
@@ -73,6 +75,14 @@ func TestJobMemoryMetadataPointers(t *testing.T) {
 	got = binary.LittleEndian.Uint64(jm.mem[jm.linOff-offPassiveDataPtr:])
 	if got != 0x0fedcba987654321 {
 		t.Fatalf("passive data ptr = %#x, want %#x", got, uint64(0x0fedcba987654321))
+	}
+	jm.SetProfileCountersPtr(0x1020304050607080)
+	if got := jm.ProfileCountersPtr(); got != 0x1020304050607080 {
+		t.Fatalf("profile counters ptr = %#x", got)
+	}
+	jm.SetTierEntriesPtr(0x8877665544332211)
+	if got := jm.TierEntriesPtr(); got != 0x8877665544332211 {
+		t.Fatalf("tier entries ptr = %#x", got)
 	}
 }
 

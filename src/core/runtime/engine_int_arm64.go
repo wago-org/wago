@@ -3,6 +3,8 @@
 package runtime
 
 func enterNativeIntRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
+func enterNativeLeafInt(code, a0, a1, a2, a3 uintptr) uintptr
+func enterNativeTrapInt(code, linMem, a0, a1, a2, a3 uintptr) uintptr
 func enterNativeIntLightRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
 func enterNativeIntPreboundContextRaw(call *PreparedIntCall, a0, a1, a2, a3 uintptr) uintptr
 func enterNativeIntCallRaw(call *PreparedIntCall) uintptr
@@ -24,6 +26,14 @@ func (*Engine) EnterPreparedIntPreboundContextBounded(call *PreparedIntCall, a0,
 
 func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
 	return uint64(enterNativeInt(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)), nil
+}
+
+func (e *Engine) EnterPreparedLeafInt(code, _ uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return uint64(enterNativeLeafInt(code, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3))), nil
+}
+
+func (e *Engine) EnterPreparedTrapInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return uint64(enterNativeTrapInt(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3))), nil
 }
 
 // EnterPreparedIntLight uses the compiler's caller-clobber-only proof to avoid

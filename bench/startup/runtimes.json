@@ -2,6 +2,7 @@
   "_comment": "Cross-runtime end-to-end latency sweep config. Every listed runtime is required. Override a binary with its named environment variable (for example, WAGO_BIN=/path/to/wago).",
   "order": [
     "wago",
+    "dragline",
     "wazero",
     "wasmtime",
     "v8",
@@ -17,6 +18,19 @@
       "versionLine": 2,
       "args": [
         "run",
+        "{wasm}"
+      ]
+    },
+    "dragline": {
+      "label": "wago",
+      "tag": "multi-pass",
+      "bin": "wago",
+      "env": "WAGO_BIN",
+      "versionLine": 2,
+      "args": [
+        "run",
+        "--backend",
+        "dragline",
         "{wasm}"
       ]
     },

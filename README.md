@@ -31,7 +31,11 @@ machine code.
 
 ## Why Wago?
 
-* **Fast and lightweight.** Using a few *kilobytes* of ram, we compile _5x quicker_ and execute _80% faster_ than wazero.
+* **Fast and lightweight.** Using a few *kilobytes* of RAM, Railshot compiles
+  about _5x faster_ than wazero. On the full AMD64 direct-execution corpus,
+  Dragline is about _41% faster_ than wazero. Against WAVM/LLVM on 51 AMD64
+  targets, Dragline takes about _25% more_ execution time overall, with 9
+  targets within 10%. ARM64 Dragline currently has two failing corpus modules.
 * **Pure Go.** Embed Wago without CGO while keeping straightforward Go builds
   and cross-compilation.
 * **Standards Compliant** We pass the [official WebAssembly test suite](https://github.com/WebAssembly/testsuite), millions of fuzzes, and many real-world corpora.

@@ -119,6 +119,8 @@ func (a *Asm) Rorv64(rd, rn, rm Reg) { a.word(0x9AC02C00 | r(rm)<<16 | r(rn)<<5 
 // Clz / Rbit (ctz is RBIT then CLZ).
 func (a *Asm) Clz(rd, rn Reg, w bool)  { a.word(wbase(w, 0x5AC01000, 0xDAC01000) | r(rn)<<5 | r(rd)) }
 func (a *Asm) Rbit(rd, rn Reg, w bool) { a.word(wbase(w, 0x5AC00000, 0xDAC00000) | r(rn)<<5 | r(rd)) }
+func (a *Asm) Rev32(rd, rn Reg)        { a.word(0x5AC00800 | r(rn)<<5 | r(rd)) }
+func (a *Asm) Rev64(rd, rn Reg)        { a.word(0xDAC00C00 | r(rn)<<5 | r(rd)) }
 
 // Divide + multiply-subtract (remainder = Rn - (Rn/Rm)*Rm via div then Msub).
 func (a *Asm) Sdiv32(rd, rn, rm Reg) { a.word(0x1AC00C00 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
@@ -145,6 +147,12 @@ func (a *Asm) Umull(rd, rn, rm Reg) { a.word(0x9BA07C00 | r(rm)<<16 | r(rn)<<5 |
 // Csel32 is the 32-bit conditional select (Csel64 is in asm.go).
 func (a *Asm) Csel32(rd, rn, rm Reg, c Cond) {
 	a.word(0x1A800000 | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | r(rd))
+}
+
+// CcmpReg32 conditionally compares Wn with Wm. When c is false, the low four
+// bits of nzcv become the architectural NZCV flags instead.
+func (a *Asm) CcmpReg32(rn, rm Reg, nzcv uint8, c Cond) {
+	a.word(0x7A400000 | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | uint32(nzcv&0xf))
 }
 
 // 32-bit logical immediates (return false when val is not an encodable bitmask).
@@ -199,6 +207,9 @@ func (a *Asm) Fdiv(rd, rn, rm Reg, f64 bool) {
 func (a *Asm) Fsqrt(rd, rn Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E21C000, 0x1E61C000) | r(rn)<<5 | r(rd))
 }
+func (a *Asm) Fabs(rd, rn Reg, f64 bool) {
+	a.word(fbase(f64, 0x1E20C000, 0x1E60C000) | r(rn)<<5 | r(rd))
+}
 func (a *Asm) Fmin(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E205800, 0x1E605800) | r(rm)<<16 | r(rn)<<5 | r(rd))
 }
@@ -220,6 +231,54 @@ func (a *Asm) FmovFromGpr(rd, rn Reg, f64 bool) {
 // values representable by VFPExpandImm.
 func (a *Asm) FmovImm(rd Reg, imm8 uint8, f64 bool) {
 	a.word(fbase(f64, 0x1E201000, 0x1E601000) | uint32(imm8)<<13 | r(rd))
+}
+
+// FmovBits materializes an exactly encodable ARM scalar floating-point
+// immediate from its IEEE-754 representation.
+func (a *Asm) FmovBits(rd Reg, bits uint64, f64 bool) bool {
+	var sign, exponent, fraction, repeated uint64
+	if f64 {
+		sign = bits >> 63
+		exponent = bits >> 52 & 0x7ff
+		fraction = bits & (uint64(1)<<52 - 1)
+		if fraction&(uint64(1)<<48-1) != 0 {
+			return false
+		}
+		repeated = exponent >> 2 & 0xff
+		fraction >>= 48
+	} else {
+		if bits>>32 != 0 {
+			return false
+		}
+		sign = bits >> 31
+		exponent = bits >> 23 & 0xff
+		fraction = bits & (uint64(1)<<23 - 1)
+		if fraction&(uint64(1)<<19-1) != 0 {
+			return false
+		}
+		repeated = exponent >> 2 & 0x1f
+		fraction >>= 19
+	}
+	bShift, topShift := uint(6), uint(7)
+	if f64 {
+		bShift, topShift = 9, 10
+	}
+	b := exponent >> bShift & 1
+	top := exponent >> topShift & 1
+	wantRepeated := uint64(0)
+	if b != 0 {
+		if f64 {
+			wantRepeated = 0xff
+		} else {
+			wantRepeated = 0x1f
+		}
+	}
+	if top == b || repeated != wantRepeated {
+		return false
+	}
+	imm8 := sign<<7 | b<<6 | (exponent&3)<<4 | fraction
+	a.FmovImm(rd, uint8(imm8), f64)
+	return true
 }
 func (a *Asm) FmovToGpr(rd, rn Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E260000, 0x9E660000) | r(rn)<<5 | r(rd))
@@ -252,6 +311,18 @@ func (a *Asm) Frint(rd, rn Reg, f64 bool, mode byte) {
 // precision, dstWide selects an X (64-bit) vs W (32-bit) destination.
 func (a *Asm) Fcvtzs(rd, rn Reg, f64src, dstWide bool) {
 	base := uint32(0x1E380000)
+	if dstWide {
+		base |= 0x80000000
+	}
+	if f64src {
+		base |= 0x00400000
+	}
+	a.word(base | r(rn)<<5 | r(rd))
+}
+
+// Fcvtzu converts float to unsigned integer with round-toward-zero semantics.
+func (a *Asm) Fcvtzu(rd, rn Reg, f64src, dstWide bool) {
+	base := uint32(0x1E390000)
 	if dstWide {
 		base |= 0x80000000
 	}
@@ -374,6 +445,60 @@ func (a *Asm) LdrIdx(rt, rn, rm Reg, size int, signed, wideDest bool) {
 // StrIdx stores the low `size` bytes of rt to [rn + rm] (unscaled byte offset).
 func (a *Asm) StrIdx(rt, rn, rm Reg, size int) {
 	a.word(0x38206800 | sizeField(size) | r(rm)<<16 | r(rn)<<5 | r(rt))
+}
+
+// LoadPreIndex loads from base+disp and writes that effective address back to
+// base. The signed unscaled immediate is useful when a reserved scratch base
+// makes writeback semantically invisible and a scaled displacement cannot
+// represent the byte offset.
+func (a *Asm) LoadPreIndex(dst, base Reg, disp int32, size int, signed, wideDest bool) bool {
+	if disp < -256 || disp > 255 || size != 1 && size != 2 && size != 4 && size != 8 {
+		return false
+	}
+	opc := uint32(1)
+	if signed {
+		opc = 3
+		if wideDest {
+			opc = 2
+		}
+	}
+	a.word(0x38000c00 | sizeField(size) | opc<<22 | uint32(disp&0x1ff)<<12 | r(base)<<5 | r(dst))
+	return true
+}
+
+// StorePreIndex stores to base+disp and writes that effective address back to
+// the reserved scratch base.
+func (a *Asm) StorePreIndex(base, src Reg, disp int32, size int) bool {
+	if disp < -256 || disp > 255 || size != 1 && size != 2 && size != 4 && size != 8 {
+		return false
+	}
+	a.word(0x38000c00 | sizeField(size) | uint32(disp&0x1ff)<<12 | r(base)<<5 | r(src))
+	return true
+}
+
+// LoadPostIndex loads from base, then adds disp to the reserved scratch base.
+func (a *Asm) LoadPostIndex(dst, base Reg, disp int32, size int, signed, wideDest bool) bool {
+	if disp < -256 || disp > 255 || size != 1 && size != 2 && size != 4 && size != 8 {
+		return false
+	}
+	opc := uint32(1)
+	if signed {
+		opc = 3
+		if wideDest {
+			opc = 2
+		}
+	}
+	a.word(0x38000400 | sizeField(size) | opc<<22 | uint32(disp&0x1ff)<<12 | r(base)<<5 | r(dst))
+	return true
+}
+
+// StorePostIndex stores to base, then adds disp to the reserved scratch base.
+func (a *Asm) StorePostIndex(base, src Reg, disp int32, size int) bool {
+	if disp < -256 || disp > 255 || size != 1 && size != 2 && size != 4 && size != 8 {
+		return false
+	}
+	a.word(0x38000400 | sizeField(size) | uint32(disp&0x1ff)<<12 | r(base)<<5 | r(src))
+	return true
 }
 
 // --- Loads / stores: scalar-FP + vector scaled-immediate offset ---
@@ -619,6 +744,38 @@ func (a *Asm) LoadPairIdx(dst, dst2, base, index Reg, disp int32, size int) bool
 	}
 	return true
 }
+
+// StorePairIdx stores two adjacent full-width integer values to
+// base+index+disp. It returns false when disp cannot be represented by the
+// scaled pair immediate.
+func (a *Asm) StorePairIdx(base, index, src, src2 Reg, disp int32, size int) bool {
+	if size != 4 && size != 8 || disp < 0 || disp%int32(size) != 0 || disp/int32(size) > 63 {
+		return false
+	}
+	a.AddShifted(X16, base, index, 0, false)
+	if size == 4 {
+		a.StpOffset32(src, src2, X16, disp)
+	} else {
+		a.StpOffset(src, src2, X16, disp)
+	}
+	return true
+}
+
+// LoadPairFPIdx loads two adjacent scalar floating-point values from
+// base+index+disp. size is 4 for S registers or 8 for D registers.
+func (a *Asm) LoadPairFPIdx(dst, dst2, base, index Reg, disp int32, size int) bool {
+	if size != 4 && size != 8 || disp < 0 || disp%int32(size) != 0 || disp/int32(size) > 63 {
+		return false
+	}
+	a.AddShifted(X16, base, index, 0, false)
+	if size == 4 {
+		a.LdpOffsetF32(dst, dst2, X16, disp)
+	} else {
+		a.LdpOffsetF64(dst, dst2, X16, disp)
+	}
+	return true
+}
+
 func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 	if disp == 0 {
 		a.StrIdx(src, base, index, size)
@@ -679,7 +836,7 @@ func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
 	wantAdd := uint32(0x8B000000) | uint32(index&31)<<16 | uint32(base&31)<<5 | uint32(X16)
 	wantCanonical := uint32(0x2A000000) | uint32(index&31)<<16 | uint32(XZR)<<5 | uint32(index&31)
 	sawCanonical := false
-	for words := 1; words <= 4 && words*4 <= len(a.B); words++ {
+	for words := 1; words <= 8 && words*4 <= len(a.B); words++ {
 		instruction := a.wordAt(len(a.B) - words*4)
 		if instruction == wantAdd {
 			if sawCanonical {
@@ -719,6 +876,18 @@ func preservesIndexedBase(instruction uint32, base, index Reg) bool {
 	// Operand width and NZCV changes do not affect the cached 64-bit address.
 	if instruction&0x1F000000 == 0x0B000000 {
 		return !writesAddress(Reg(instruction & 31))
+	}
+	// Scalar FP binary arithmetic only writes a vector register and optionally
+	// NZCV; it cannot change X16 or either GPR address input. Match the exact
+	// arithmetic encodings so conversions and FP-to-GPR moves remain barriers.
+	switch instruction & 0xFFA0FC00 {
+	case 0x1E200800, // FMUL
+		0x1E201800, // FDIV
+		0x1E202800, // FADD
+		0x1E203800, // FSUB
+		0x1E204800, // FMAX
+		0x1E205800: // FMIN
+		return true
 	}
 	return false
 }
@@ -760,7 +929,10 @@ func (a *Asm) LdrFIdx(dst, base, index Reg, disp int32, f64 bool) {
 		a.word(fbase(f64, 0xBC606800, 0xFC606800) | r(index)<<16 | r(base)<<5 | r(dst))
 		return
 	}
-	a.AddShifted(X16, base, index, 0, false)
+	reused := foldIdxDispEnabled && (a.reuseIndexedBase(base, index) || a.reuseIndexedBaseStablePhase(base, index))
+	if !reused {
+		a.AddShifted(X16, base, index, 0, false)
+	}
 	if foldIdxDispEnabled && a.DenseIdxDisp {
 		shift := uint(2)
 		if f64 {
@@ -778,7 +950,9 @@ func (a *Asm) StrFIdx(base, index, src Reg, disp int32, f64 bool) {
 		a.word(fbase(f64, 0xBC206800, 0xFC206800) | r(index)<<16 | r(base)<<5 | r(src))
 		return
 	}
-	a.AddShifted(X16, base, index, 0, false)
+	if !foldIdxDispEnabled || !a.reuseIndexedBase(base, index) && !a.reuseIndexedBaseStablePhase(base, index) {
+		a.AddShifted(X16, base, index, 0, false)
+	}
 	if foldIdxDispEnabled && a.DenseIdxDisp {
 		shift := uint(2)
 		if f64 {
@@ -907,6 +1081,16 @@ func (a *Asm) NeonMov16b(dst, src Reg) {
 	a.word(0x4EA01C00 | r(src)<<16 | r(src)<<5 | r(dst))
 }
 
+// NeonUxtl8h zero-extends the low eight byte lanes into eight halfword lanes.
+func (a *Asm) NeonUxtl8h(dst, src Reg) {
+	a.word(0x2F08A400 | r(src)<<5 | r(dst))
+}
+
+// NeonMoviB broadcasts one immediate byte to all sixteen vector lanes.
+func (a *Asm) NeonMoviB(dst Reg, immediate byte) {
+	a.word(0x4F00E400 | uint32(immediate>>5)<<16 | uint32(immediate&0x1f)<<5 | r(dst))
+}
+
 // Cnt8b / Addv8b are the scalar popcnt reduction pieces. The same CNT encoding
 // is also the full-vector i8x16.popcnt lowering.
 func (a *Asm) Cnt8b(dst, src Reg)      { a.word(0x4E205800 | r(src)<<5 | r(dst)) }
@@ -925,6 +1109,9 @@ func (a *Asm) NeonUminvS(dst, src Reg)  { a.word(0x6EB1A800 | r(src)<<5 | r(dst)
 func (a *Asm) NeonAddvH(dst, src Reg)   { a.word(0x4E71B800 | r(src)<<5 | r(dst)) } // ADDV h, Vn.8h
 func (a *Asm) NeonAddvS(dst, src Reg)   { a.word(0x4EB1B800 | r(src)<<5 | r(dst)) } // ADDV s, Vn.4s
 func (a *Asm) NeonBsl16b(dst, n, m Reg) { a.word(0x6E601C00 | r(m)<<16 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonBit16b(dst, n, mask Reg) {
+	a.word(0x6EA01C00 | r(mask)<<16 | r(n)<<5 | r(dst))
+}
 
 // --- NEON 16-byte logical ops (float sign-bit manipulation) + float spill aliases ---
 
@@ -1139,6 +1326,21 @@ func (a *Asm) NeonUshrH(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 
 func (a *Asm) NeonUshrS(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 4, dst, n, shift) }
 func (a *Asm) NeonUshrD(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 8, dst, n, shift) }
 func (a *Asm) NeonRev32H(dst, n Reg)             { a.word(0x6E600800 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonRev32B(dst, n Reg)             { a.word(0x6E200800 | r(n)<<5 | r(dst)) }
+
+// ARMv8 SHA-256 instructions. Callers must gate these on FEAT_SHA256.
+func (a *Asm) SHA256H(dst, n, m Reg) {
+	a.word(0x5E004000 | r(m)<<16 | r(n)<<5 | r(dst))
+}
+func (a *Asm) SHA256H2(dst, n, m Reg) {
+	a.word(0x5E005000 | r(m)<<16 | r(n)<<5 | r(dst))
+}
+func (a *Asm) SHA256SU0(dst, n Reg) {
+	a.word(0x5E282800 | r(n)<<5 | r(dst))
+}
+func (a *Asm) SHA256SU1(dst, n, m Reg) {
+	a.word(0x5E006000 | r(m)<<16 | r(n)<<5 | r(dst))
+}
 
 func (a *Asm) NeonZip1B(dst, n, m Reg) { a.neon3(0x4E003800, 1, dst, n, m) }
 func (a *Asm) NeonZip1H(dst, n, m Reg) { a.neon3(0x4E003800, 2, dst, n, m) }

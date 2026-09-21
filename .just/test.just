@@ -66,5 +66,5 @@ fuzz duration=env('FUZZTIME', '5s'):
     go test ./src/core/compiler/wasm -run '^$' -fuzz '^FuzzDecodeValidateByteBackedDifferentialGenerated$' -fuzztime='{{ duration }}'
 
 # Run the runtime and public API suites under TinyGo.
-tinygo compiler=env('TINYGO', 'tinygo') scheduler=env('TINYGO_SCHEDULER', 'tasks'):
-    {{ compiler }} test -v -scheduler='{{ scheduler }}' ./src/core/runtime/ ./src/wago/
+tinygo compiler=env('TINYGO', 'tinygo') scheduler=env('TINYGO_SCHEDULER', 'tasks') stack_size=env('TINYGO_TEST_STACK_SIZE', '64kb'):
+    {{ compiler }} test -v -scheduler='{{ scheduler }}' -stack-size='{{ stack_size }}' ./src/core/runtime/ ./src/wago/

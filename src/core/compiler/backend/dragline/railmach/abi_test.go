@@ -1,0 +1,305 @@
+package railmach
+
+import (
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+func buildABITest(t *testing.T, target Target, m *wasm.Module) (*Func, *GreedyAllocation, *railssa.Metadata) {
+	t.Helper()
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ := railssa.BuildCFG(stack, nil)
+	locals, _ := railssa.BuildLocalSSA(stack, cfg, nil)
+	flow, _ := railssa.BuildValueFlow(stack, cfg, locals, nil)
+	semantic, _ := railssa.BuildSemanticFunc(stack, cfg, flow, nil)
+	machine, err := Build(target, cfg, flow, semantic, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocation, err := AllocateGreedyP(machine, DefaultGreedyConfig(target), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := railssa.BuildMetadata(stack, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return machine, allocation, metadata
+}
+
+func TestAnalyzeABIAndRefineDirectCall(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
+		0x20, 0x00,
+		0x10, 0x00,
+		0x0b,
+	})
+	f, allocation, metadata := buildABITest(t, TargetAMD64, m)
+	contract, calls, err := AnalyzeABI(f, allocation, metadata, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contract.Params != 1 || contract.Results != 1 || contract.RegisterResults != 1 || !contract.HasCall || len(calls) != 1 {
+		t.Fatalf("contract=%#v calls=%#v", contract, calls)
+	}
+	callee := ABIContract{Class: ABITinyDirect, GPRClobbers: 3, FPRClobbers: 4, WritesGlobal: true, MayGrow: true}
+	if refined := RefineCallContracts(calls, []ABIContract{callee}, 0); refined != 1 {
+		t.Fatalf("refined = %d calls=%#v", refined, calls)
+	}
+	if calls[0].GPRClobbers != 3 || calls[0].FPRClobbers != 4 || calls[0].Class != ABITinyDirect || calls[0].Conservative || !calls[0].WritesGlobal || !calls[0].MayGrow {
+		t.Fatalf("refined call = %#v", calls[0])
+	}
+}
+
+func TestAnalyzeABIRetainsDirectGlobalWrite(t *testing.T) {
+	f := &Func{Target: TargetARM64, Insts: []Inst{{Op: wasm.InstrGlobalSet}}, VRegs: []VRegData{{}}, Blocks: []Block{{InstCount: 1}}}
+	allocation := &GreedyAllocation{Allocation: Allocation{Locations: []Location{{}}}}
+	metadata := &railssa.Metadata{Instructions: []railssa.InstructionMetadata{{Writes: railssa.HeapGlobal}}}
+	contract, calls, err := analyzeVerifiedABI(f, allocation, metadata, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contract.DirectWritesGlobal || !contract.WritesGlobal || len(calls) != 0 {
+		t.Fatalf("global-write contract = %#v calls=%#v", contract, calls)
+	}
+}
+
+func TestAnalyzeABIUsesPreparedSingleArgumentContractForBoundedRecursion(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
+		0x20, 0x00, 0x41, 0x02, 0x48, 0x04, 0x7e,
+		0x20, 0x00, 0xac, 0x05,
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x10, 0x00,
+		0x20, 0x00, 0x41, 0x02, 0x6b, 0x10, 0x00, 0x7c, 0x0b,
+		0x0b,
+	})
+	for _, tc := range []struct {
+		target Target
+		want   ABIClass
+	}{{TargetARM64, ABIPreparedCall}, {TargetAMD64, ABIPreparedCall}} {
+		f, allocation, metadata := buildABITest(t, tc.target, m)
+		contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if contract.Class != tc.want {
+			t.Fatalf("%v recursive contract = %v, want %v", tc.target, contract.Class, tc.want)
+		}
+	}
+}
+
+func TestAnalyzeABIUsesPreparedAMD64MultiArgumentContract(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x20, 0x00, 0x20, 0x01, 0x6a, 0x20, 0x02, 0x6a,
+		0x41, 0x00, 0x6a, 0x41, 0x00, 0x6a, 0x0b,
+	})
+	f, allocation, metadata := buildABITest(t, TargetAMD64, m)
+	contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contract.Class != ABIPreparedInt {
+		t.Fatalf("AMD64 multi-argument contract = %v, want %v", contract.Class, ABIPreparedInt)
+	}
+}
+
+func TestAnalyzeABIUsesEveryPreparedAMD64ArgumentRegister(t *testing.T) {
+	params := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}
+	m := machineModule(params, []wasm.ValType{wasm.I32}, []byte{
+		0x20, 0x00, 0x20, 0x01, 0x6a, 0x20, 0x02, 0x6a, 0x20, 0x03, 0x6a,
+		0x20, 0x04, 0x6a, 0x20, 0x05, 0x6a, 0x20, 0x06, 0x6a, 0x20, 0x07, 0x6a,
+		0x0b,
+	})
+	f, allocation, metadata := buildABITest(t, TargetAMD64, m)
+	contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contract.Class != ABIPreparedInt {
+		t.Fatalf("eight-argument AMD64 contract = %v, want %v", contract.Class, ABIPreparedInt)
+	}
+}
+
+func TestAnalyzeABIUsesTypedARM64FPResultRegister(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}, []byte{
+		0x20, 0x00,
+		0x0b,
+	})
+	f, allocation, metadata := buildABITest(t, TargetARM64, m)
+	contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contract.Class != ABIPreparedLeaf || contract.FPRClobbers&1 == 0 || contract.GPRClobbers&1 != 0 {
+		t.Fatalf("typed FP contract = %#v", contract)
+	}
+}
+
+func TestAnalyzeABIKeepsV128ResultInVectorBank(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}, []byte{
+		0x20, 0x00, 0x20, 0x01, 0xfd, 0x51, 0x0b,
+	})
+	for _, target := range []Target{TargetAMD64, TargetARM64} {
+		f, allocation, metadata := buildABITest(t, target, m)
+		contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if contract.RegisterResults != 1 || contract.ResultSlots != 2 || contract.VectorResultMask != 1 || contract.FPRClobbers&1 == 0 || contract.VectorFPRs&1 == 0 || contract.GPRClobbers&1 != 0 {
+			t.Fatalf("%s vector result contract = %#v", target, contract)
+		}
+	}
+}
+
+func TestFrameForAllocationUsesRegisterPrefixForMultipleResults(t *testing.T) {
+	allocation := new(GreedyAllocation)
+	requirements, layout, err := FrameForAllocation(ABIContract{Results: 6, RegisterResults: 4}, allocation, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requirements.ResultAreaBytes != 48 || requirements.RuntimeBytes != 8 || layout.ResultAreaOffset != 0 || layout.RuntimeOffset != 48 || layout.TotalBytes != 64 {
+		t.Fatalf("requirements=%#v layout=%#v", requirements, layout)
+	}
+	vectorRequirements, _, err := FrameForAllocation(ABIContract{Results: 3, ResultSlots: 4, RegisterResults: 3, VectorResultMask: 2}, allocation, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vectorRequirements.ResultAreaBytes != 32 {
+		t.Fatalf("vector result area = %d bytes; want 32", vectorRequirements.ResultAreaBytes)
+	}
+	if _, _, err := FrameForAllocation(ABIContract{Results: 2, RegisterResults: 3}, allocation, 8); err == nil {
+		t.Fatal("invalid multi-result register prefix was accepted")
+	}
+	if _, _, err := FrameForAllocation(ABIContract{Results: 1, RegisterResults: 1, VectorResultMask: 2}, allocation, 0); err == nil {
+		t.Fatal("out-of-prefix vector result mask was accepted")
+	}
+}
+
+func TestFrameForAllocationReservesCanonicalOutgoingCallVector(t *testing.T) {
+	requirements, layout, err := FrameForAllocation(ABIContract{}, new(GreedyAllocation), 11)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requirements.CallAreaBytes != 88 || layout.CallAreaOffset != 0 || layout.TotalBytes != 96 {
+		t.Fatalf("requirements=%#v layout=%#v", requirements, layout)
+	}
+}
+
+func TestAnalyzeABIAssignsBoundedMultiResultRegisterPrefix(t *testing.T) {
+	m := machineModule(nil, []wasm.ValType{wasm.I64}, []byte{0x42, 0x01, 0x0b})
+	f, allocation, metadata := buildABITest(t, TargetARM64, m)
+	result := f.Results[0]
+	f.Results = []VReg{result, result, result, result, result, result}
+	contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contract.Results != 6 || contract.RegisterResults != 4 || contract.GPRClobbers&0xf != 0xf {
+		t.Fatalf("multi-result contract = %#v", contract)
+	}
+}
+
+func TestPropagateCallClobbersUsesOnlyVolatileRegisters(t *testing.T) {
+	contract := ABIContract{}
+	config := GreedyConfig{CallerGPRs: 2, CallerFPRs: 1}
+	PropagateCallClobbers(&contract, []CallContract{{GPRClobbers: 0b1101, FPRClobbers: 0b11}}, config)
+	if contract.GPRClobbers != 0b01 || contract.FPRClobbers != 0b1 || contract.CalleeGPRs != 0 || contract.CalleeFPRs != 0 {
+		t.Fatalf("propagated contract = %#v", contract)
+	}
+}
+
+func TestPropagateCallEffectsUsesRefinedCallee(t *testing.T) {
+	contract := ABIContract{DirectWritesGlobal: false, WritesGlobal: true, MayGrow: true}
+	calls := []CallContract{{WritesGlobal: true, MayGrow: true}}
+	PropagateCallEffects(&contract, calls)
+	if !contract.WritesGlobal || !contract.MayGrow {
+		t.Fatal("call lost its transitive effects")
+	}
+	calls[0].WritesGlobal = false
+	calls[0].MayGrow = false
+	PropagateCallEffects(&contract, calls)
+	if contract.WritesGlobal || contract.MayGrow {
+		t.Fatal("effect-free call retained stale conservative effects")
+	}
+	contract.DirectWritesGlobal = true
+	contract.DirectMayGrow = true
+	PropagateCallEffects(&contract, calls)
+	if !contract.WritesGlobal || !contract.MayGrow {
+		t.Fatal("direct effects were omitted from the function contract")
+	}
+}
+
+func TestAnalyzeABIAccountsForRegionalFragmentRegisters(t *testing.T) {
+	m := machineModule(nil, []wasm.ValType{wasm.I64}, []byte{0x42, 0x01, 0x0b})
+	f, allocation, metadata := buildABITest(t, TargetAMD64, m)
+	allocation.Fragments = append(allocation.Fragments, AllocationFragment{
+		Reg: 1, Location: Location{Kind: LocationRegister, Bank: BankGPR, Index: 7},
+	})
+	contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contract.GPRClobbers&(uint64(1)<<7) == 0 || contract.CalleeGPRs&(uint64(1)<<7) == 0 {
+		t.Fatalf("fragment register missing from contract: %#v", contract)
+	}
+}
+
+func TestPruneSkippedDefinitionClobbersRetainsOnlyPhysicalWrites(t *testing.T) {
+	f := &Func{
+		Target: TargetARM64,
+		Insts: []Inst{
+			{Result: 1, Op: wasm.InstrI64Const},
+			{Result: 2, Op: wasm.InstrI64Const},
+			{Result: 3, Op: wasm.InstrI64Const},
+		},
+		VRegs: []VRegData{
+			{},
+			{Def: 3, Bank: BankGPR},
+			{Def: 9, Bank: BankGPR},
+			{Def: 15, Bank: BankGPR},
+		},
+	}
+	allocation := &GreedyAllocation{Allocation: Allocation{Locations: []Location{
+		{},
+		{Kind: LocationRegister, Bank: BankGPR, Index: 13},
+		{Kind: LocationRegister, Bank: BankGPR, Index: 12},
+		{Kind: LocationRegister, Bank: BankGPR, Index: 13},
+	}}}
+	contract := ABIContract{GPRClobbers: uint64(1)<<12 | uint64(1)<<13, CalleeGPRs: uint64(1)<<12 | uint64(1)<<13}
+
+	pruned := PruneSkippedDefinitionClobbers(f, allocation, contract, []uint64{0b101})
+	if pruned.GPRClobbers != uint64(1)<<12 || pruned.CalleeGPRs != uint64(1)<<12 {
+		t.Fatalf("pruned shared definitions = %#v", pruned)
+	}
+
+	allocation.Fragments = []AllocationFragment{{Location: Location{Kind: LocationRegister, Bank: BankGPR, Index: 13}}}
+	retained := PruneSkippedDefinitionClobbers(f, allocation, contract, []uint64{0b101})
+	if retained.GPRClobbers != contract.GPRClobbers || retained.CalleeGPRs != contract.CalleeGPRs {
+		t.Fatalf("fragment write was pruned: %#v", retained)
+	}
+}
+
+func TestComposeFrameIsAlignedAndIncludesCalleeSaves(t *testing.T) {
+	requirements := FrameRequirements{SpillSlots: 3, RootSlots: 1, CalleeGPRs: 0b101, CalleeFPRs: 0b10, CallAreaBytes: 24, RuntimeBytes: 8}
+	layout, err := ComposeFrame(requirements)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout.SpillBytes != 24 || layout.RootBytes != 8 || layout.CalleeSaveBytes != 24 || layout.TotalBytes&15 != 0 || layout.TotalBytes < 88 {
+		t.Fatalf("layout = %#v", layout)
+	}
+}
+
+func TestComposeFrameReservesFullWidthVectorCalleeSave(t *testing.T) {
+	requirements := FrameRequirements{CalleeFPRs: 0b11, VectorFPRs: 0b10}
+	layout, err := ComposeFrame(requirements)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout.CalleeSaveBytes != 24 || layout.TotalBytes != 32 {
+		t.Fatalf("vector callee-save layout = %#v", layout)
+	}
+}

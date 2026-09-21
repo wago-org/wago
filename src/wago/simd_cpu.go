@@ -1,6 +1,10 @@
 package wago
 
-import "sync"
+import (
+	"sync"
+
+	corecompiler "github.com/wago-org/wago/src/core/compiler"
+)
 
 // simdHostFeaturesSupported reports whether generated SIMD code can execute on
 // this host. On amd64, the railshot SIMD backend emits VEX.128 instructions and
@@ -34,6 +38,25 @@ func cachedBMI2HostFeatures() bool {
 }
 
 func hostSupportsBMI2() bool { return bmi2HostFeaturesSupported() }
+
+func hostSupportsAMD64Feature(feature corecompiler.TargetFeature) bool {
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	return err == nil && target.HasFeature(feature)
+}
+
+func hostSupportsAVX512VL() bool {
+	return hostSupportsAMD64Feature(corecompiler.TargetFeatureAMD64AVX512VL)
+}
+
+func hostSupportsARM64MOPS() bool {
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	return err == nil && target.HasFeature(corecompiler.TargetFeatureARM64MOPS)
+}
+
+func hostSupportsARM64SHA2() bool {
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	return err == nil && target.HasFeature(corecompiler.TargetFeatureARM64SHA2)
+}
 
 func detectSIMDHostFeatures() bool { return architectureSupportsSIMD() }
 

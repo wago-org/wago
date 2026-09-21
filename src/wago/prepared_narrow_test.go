@@ -20,7 +20,7 @@ func TestPreparedDirectDoesNotAllocateInvocationIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preparedDirectIntEnabled && (!fn.directIntFast || !fn.directIsolated) {
+	if preparedDirectIntSupported && preparedDirectIntEnabled && (!fn.directIntFast || !fn.directIsolated) {
 		t.Fatal("fixture must select isolated direct entry")
 	}
 	before := nextInvocationID.Load()

@@ -29,6 +29,7 @@ const corpusDir = "../../corpus"
 
 var corpusSelector = flag.String("wago.corpus", "quick", "corpus profile, tag:<tag>, all, or comma-separated benchmark IDs")
 var includeOptimizationAblations = flag.Bool("wago.bench.optimization-ablation", false, "benchmark large modules with each enabled optimization disabled in turn")
+var includeISABenchmarks = flag.Bool("wago.bench.isa", false, "include generated ISA micro-suite benchmarks")
 
 type commandEntry struct {
 	Runtime      string            `json:"runtime"` // core or wasi; command runs in a fresh instance
@@ -61,6 +62,9 @@ type sourceEntry struct {
 
 type corpusModule struct {
 	ID             string        `json:"id"`
+	File           string        `json:"file,omitempty"`
+	Path           string        `json:"path,omitempty"`
+	Category       string        `json:"category,omitempty"`
 	Artifact       string        `json:"artifact"`
 	ArtifactSHA256 string        `json:"artifact_sha256"`
 	Tags           []string      `json:"tags"`
@@ -74,6 +78,7 @@ type corpusModule struct {
 	Command        *commandEntry `json:"command"`       // optional one-shot command/replay workload
 
 	bytes []byte
+	avail bool
 }
 
 // supports reports whether the module should be benchmarked at the given stage.
@@ -111,6 +116,10 @@ func loadCorpus(tb testing.TB) []corpusModule {
 
 // readCatalog loads, validates, selects, and resolves benchmark artifacts.
 func readCatalog(tb testing.TB) []corpusModule {
+	return readCatalogSelected(tb, *corpusSelector)
+}
+
+func readCatalogSelected(tb testing.TB, selector string) []corpusModule {
 	tb.Helper()
 	file := filepath.Join(corpusDir, "catalog.json")
 	raw, err := os.ReadFile(file)
@@ -133,7 +142,7 @@ func readCatalog(tb testing.TB) []corpusModule {
 	if err := validateCatalogLinks(c, checks.Modules); err != nil {
 		tb.Fatal(err)
 	}
-	selected := selectedIDs(tb, c, *corpusSelector)
+	selected := selectedIDs(tb, c, selector)
 	seen := make(map[string]bool, len(c.Benchmarks))
 	var modules []corpusModule
 	for i := range c.Benchmarks {
@@ -145,7 +154,7 @@ func readCatalog(tb testing.TB) []corpusModule {
 			tb.Fatalf("duplicate corpus benchmark id %q", mod.ID)
 		}
 		seen[mod.ID] = true
-		if !selected[mod.ID] && !selectedByTag(*corpusSelector, mod.Tags) {
+		if !selected[mod.ID] && !selectedByTag(selector, mod.Tags) {
 			continue
 		}
 		path := filepath.Join(corpusDir, filepath.FromSlash(mod.Artifact))
@@ -157,6 +166,9 @@ func readCatalog(tb testing.TB) []corpusModule {
 			tb.Fatalf("corpus artifact %s sha256 = %s, want %s", mod.Artifact, got, mod.ArtifactSHA256)
 		}
 		mod.bytes = b
+		mod.File = filepath.Base(mod.Artifact)
+		mod.Path = path
+		mod.avail = true
 		modules = append(modules, *mod)
 	}
 	for id := range selected {
@@ -165,7 +177,7 @@ func readCatalog(tb testing.TB) []corpusModule {
 		}
 	}
 	if len(modules) == 0 {
-		tb.Fatalf("corpus selector %q selected no benchmarks", *corpusSelector)
+		tb.Fatalf("corpus selector %q selected no benchmarks", selector)
 	}
 	return modules
 }
@@ -254,7 +266,67 @@ func selectedByTag(selector string, tags []string) bool {
 	return selector == "all" || strings.HasPrefix(selector, "tag:") && slices.Contains(tags, strings.TrimPrefix(selector, "tag:"))
 }
 
-func (m corpusModule) name() string { return m.ID }
+func (m corpusModule) name() string {
+	if m.ID != "" {
+		return m.ID
+	}
+	return strings.TrimSuffix(filepath.Base(m.File), ".wasm")
+}
+
+type legacyManifest struct {
+	Modules []corpusModule `json:"modules"`
+}
+
+// readManifest keeps the Dragline ISA and differential coverage on the legacy
+// generated micro-suite while the general corpus follows catalog.json.
+func readManifest(tb testing.TB, file string) []corpusModule {
+	tb.Helper()
+	if file == "manifest.json" {
+		modules := readCatalogSelected(tb, "all")
+		path := filepath.Join("..", "corpus", "globals.wasm")
+		if b, err := os.ReadFile(path); err == nil {
+			modules = append(modules, corpusModule{ID: "globals", File: "globals.wasm", Path: path, Category: "globals", Exec: []execEntry{{Export: "accumulate", Args: []int32{2000}}}, bytes: b, avail: true})
+		}
+		return modules
+	}
+	path := filepath.Join("..", "corpus", file)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		tb.Fatalf("read %s: %v", file, err)
+	}
+	var manifest legacyManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		tb.Fatalf("parse %s: %v", file, err)
+	}
+	for i := range manifest.Modules {
+		module := &manifest.Modules[i]
+		module.ID = strings.TrimSuffix(filepath.Base(module.File), ".wasm")
+		module.Path = filepath.Join("..", "corpus", module.File)
+		module.bytes, err = os.ReadFile(module.Path)
+		if err != nil {
+			tb.Fatalf("read %s: %v", module.File, err)
+		}
+		module.avail = true
+	}
+	return manifest.Modules
+}
+
+func invokePrepared(fn *wago.WasmFunc, args []uint64) ([]uint64, error) {
+	switch len(args) {
+	case 0:
+		return fn.Invoke()
+	case 1:
+		return fn.Invoke(args[0])
+	case 2:
+		return fn.Invoke(args[0], args[1])
+	case 3:
+		return fn.Invoke(args[0], args[1], args[2])
+	case 4:
+		return fn.Invoke(args[0], args[1], args[2], args[3])
+	default:
+		return fn.Invoke(args...)
+	}
+}
 
 // hostStubs supplies a no-op sync host function for every function import the
 // module declares (e.g. AssemblyScript's multi-parameter env.abort, which never
@@ -427,9 +499,26 @@ func BenchmarkCompileWorkers(b *testing.B) {
 
 // BenchmarkCompileFull times the end-to-end decode+validate+compile entry point.
 func BenchmarkCompileFull(b *testing.B) {
+	benchmarkCompileFull(b, wago.NewRuntimeConfig())
+}
+
+// BenchmarkDraglineCompileFull measures the same end-to-end compilation corpus
+// with Dragline selected explicitly.
+func BenchmarkDraglineCompileFull(b *testing.B) {
+	benchmarkCompileFull(b, wago.NewRuntimeConfig().WithCompiler(wago.CompilerDragline).WithTarget(wago.TargetNative))
+}
+
+func benchmarkCompileFull(b *testing.B, cfg *wago.RuntimeConfig) {
 	eachModule(b, "CompileFull", func(b *testing.B, m corpusModule) {
+		if _, err := cfg.Compile(append([]byte(nil), m.bytes...)); err != nil {
+			if cfg.Compiler() == wago.CompilerDragline {
+				b.Skipf("%s compiler does not admit %s: %v", cfg.Compiler(), m.name(), err)
+			}
+			b.Fatal(err)
+		}
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := wago.Compile(nil, m.bytes); err != nil {
+			if _, err := cfg.Compile(append([]byte(nil), m.bytes...)); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -561,9 +650,22 @@ func BenchmarkCompileMultiModuleThroughput(b *testing.B) {
 
 // BenchmarkInstantiate times instance setup for an already-compiled module.
 func BenchmarkInstantiate(b *testing.B) {
+	benchmarkInstantiate(b, wago.NewRuntimeConfig())
+}
+
+// BenchmarkDraglineInstantiate measures fresh instances of modules compiled by
+// Dragline, omitting corpus entries the strict experimental backend rejects.
+func BenchmarkDraglineInstantiate(b *testing.B) {
+	benchmarkInstantiate(b, wago.NewRuntimeConfig().WithCompiler(wago.CompilerDragline).WithTarget(wago.TargetNative))
+}
+
+func benchmarkInstantiate(b *testing.B, cfg *wago.RuntimeConfig) {
 	eachModule(b, "Instantiate", func(b *testing.B, m corpusModule) {
-		c, err := wago.Compile(nil, m.bytes)
+		c, err := cfg.Compile(append([]byte(nil), m.bytes...))
 		if err != nil {
+			if cfg.Compiler() == wago.CompilerDragline {
+				b.Skipf("%s compiler does not admit %s: %v", cfg.Compiler(), m.name(), err)
+			}
 			b.Fatal(err)
 		}
 		imports := hostStubs(c)
@@ -582,6 +684,12 @@ func BenchmarkInstantiate(b *testing.B) {
 // entries, naming results Exec/<module>.<export>.
 func BenchmarkExec(b *testing.B) {
 	benchmarkExec(b, wago.NewRuntimeConfig())
+}
+
+// BenchmarkDraglineExec runs the same prepared-function execution corpus with
+// Dragline's native target.
+func BenchmarkDraglineExec(b *testing.B) {
+	benchmarkExec(b, wago.NewRuntimeConfig().WithCompiler(wago.CompilerDragline).WithTarget(wago.TargetNative))
 }
 
 // benchmarkExecCalls batches fast calls so every timed outer operation carries
@@ -648,22 +756,38 @@ func wasmFuncInvoker(fn *wago.WasmFunc, args []uint64) func() error {
 }
 
 func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
+	experimental := cfg.Compiler() == wago.CompilerDragline
 	for _, m := range loadCorpus(b) {
 		if (len(m.Exec) == 0 && len(m.SemanticExec) == 0) || !m.supports("Exec") {
 			continue
 		}
-		c, err := cfg.Compile(m.bytes)
+		c, err := cfg.Compile(append([]byte(nil), m.bytes...))
 		if err != nil {
+			if experimental {
+				b.Logf("%s compiler does not admit %s: %v", cfg.Compiler(), m.name(), err)
+				continue
+			}
 			b.Fatalf("%s compile: %v", m.name(), err)
 		}
 		in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: hostStubs(c)})
 		if err != nil {
+			c.Close()
+			if experimental {
+				b.Logf("%s cannot instantiate %s: %v", cfg.Compiler(), m.name(), err)
+				continue
+			}
 			b.Fatalf("%s instantiate: %v", m.name(), err)
 		}
 		// wago has no start section, so AssemblyScript modules expose their
 		// init (global setup) as an export the host calls once before exec.
 		if m.Init != "" {
 			if _, err := in.Invoke(m.Init); err != nil {
+				in.Close()
+				c.Close()
+				if experimental {
+					b.Logf("%s cannot initialize %s through %s: %v", cfg.Compiler(), m.name(), m.Init, err)
+					continue
+				}
 				b.Fatalf("%s init %s: %v", m.name(), m.Init, err)
 			}
 		}
@@ -693,6 +817,17 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 			if err := runSemanticOracle(semantic); err != nil {
 				b.Fatalf("%s oracle: %v", semantic.ID, err)
 			}
+			if experimental {
+				oracleInstance, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: hostStubs(c)})
+				if err != nil {
+					b.Fatalf("%s Dragline oracle instantiate: %v", semantic.ID, err)
+				}
+				oracleErr := semanticcorpus.CheckOnInstance(oracleInstance, semantic)
+				oracleInstance.Close()
+				if oracleErr != nil {
+					b.Fatalf("%s Dragline oracle: %v", semantic.ID, oracleErr)
+				}
+			}
 			prepared, err := prepareWagoSemanticExec(in, semantic)
 			if err != nil {
 				b.Fatalf("%s prepare: %v", semantic.ID, err)
@@ -702,6 +837,7 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 			})
 		}
 		in.Close()
+		c.Close()
 	}
 }
 

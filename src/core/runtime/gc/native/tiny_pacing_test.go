@@ -1,6 +1,7 @@
 package gc
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -41,6 +42,7 @@ func TestTinyAllocationDebtStartsIncrementalWork(t *testing.T) {
 	if c.tinyGC.state == tinyIdle {
 		t.Fatal("allocation debt did not purchase an incremental Step")
 	}
+	runtime.KeepAlive(roots)
 }
 
 func TestTinyAllocationDebtCountsCompletedCycle(t *testing.T) {
