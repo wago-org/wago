@@ -1388,9 +1388,12 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
-	f.ld64(X10, SP, f.spillOff(d-2)) // src offset in passive segment
-	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	countArg := f.s.back()
+	valueArg := f.s.prev(countArg)
+	dstArg := f.s.prev(valueArg)
+	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))    // dst offset
+	f.ld64(X10, SP, f.spillOff(valueArg.st.slotIndex())) // src offset in passive segment
+	f.ld64(X11, SP, f.spillOff(countArg.st.slotIndex())) // n
 	if !f.memoryAddr64(memoryIndex) {
 		f.a.MovReg32(X9, X9)
 	}
@@ -1452,10 +1455,13 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
+	countArg := f.s.back()
+	valueArg := f.s.prev(countArg)
+	dstArg := f.s.prev(valueArg)
 	const dst, src, count, scratch = X9, X10, X11, X12
-	f.ld64(dst, SP, f.spillOff(d-3))   // dst offset
-	f.ld64(src, SP, f.spillOff(d-2))   // src offset
-	f.ld64(count, SP, f.spillOff(d-1)) // n
+	f.ld64(dst, SP, f.spillOff(dstArg.st.slotIndex()))     // dst offset
+	f.ld64(src, SP, f.spillOff(valueArg.st.slotIndex()))   // src offset
+	f.ld64(count, SP, f.spillOff(countArg.st.slotIndex())) // n
 	if !f.memoryAddr64(dstMemory) {
 		f.a.MovReg32(dst, dst)
 	}
@@ -1607,9 +1613,12 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
-	f.ld64(X14, SP, f.spillOff(d-2)) // fill byte (low 8 bits)
-	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	countArg := f.s.back()
+	valueArg := f.s.prev(countArg)
+	dstArg := f.s.prev(valueArg)
+	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))    // dst offset
+	f.ld64(X14, SP, f.spillOff(valueArg.st.slotIndex())) // fill byte (low 8 bits)
+	f.ld64(X11, SP, f.spillOff(countArg.st.slotIndex())) // n
 	if !f.memoryAddr64(memoryIndex) {
 		f.a.MovReg32(X9, X9)
 		f.a.MovReg32(X11, X11)
