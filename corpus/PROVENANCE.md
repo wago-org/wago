@@ -30,6 +30,7 @@ workloads are rebuilt from `sources/` with the scripts in `build/`.
 | age and age-keygen | Go/WASI commands decrypting a fixed test ciphertext and deriving its public recipient; exact outputs captured with Wasmtime | `b74dce4cdbe35b5e5f66c06d9612b72f89028758`, Go 1.27.0, `-trimpath`; the identity is deliberately public test data |
 | jq CLI | standalone JSON processor built with bundled Oniguruma and WASI SDK 34; exact output captured with Wasmtime | `34f7186b86743a083a589741b6cea95293524108`, source archive SHA-256 `71b8d6e8f5fe81f6c6d0d110e3892251f6ce76ed095abd315e26e6e1193af3af` |
 | Brotli CLI | upstream 1.2.0 command built with WASI SDK 34; fixed stream compression and decompression with exact outputs captured with Wasmtime | `028fb5a23661f123017c060daa546b55cf4bde29`, rebuild instructions and WASI compatibility header in `workloads/applications/brotli/` |
+| tree CLI | upstream 2.2.1 command built with WASI SDK 34; exact recursive listing captured with Wasmtime | `d501b58ff9cbfd64272c8cbcad0bda36a3fada06`, numeric UID/GID fallback headers and rebuild instructions in `workloads/applications/tree/` |
 
 The PolyBench adapter includes each upstream kernel unchanged, replaces its
 dump stream with a deterministic checksum at the suite's two-decimal output

@@ -1075,6 +1075,37 @@
   ],
   "benchmarks": [
     {
+      "suite": "tree",
+      "desc": "tree WASI CLI recursively lists a pinned source directory with an exact output oracle",
+      "id": "tree-list",
+      "artifact": "workloads/applications/tree/tree.wasm",
+      "artifact_sha256": "fbf2605dc5d03fcdce804b5e871d959951f7bc1e8c5ff3d0e74bfdb1ddbbd435",
+      "tags": ["application", "filesystem", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/Old-Man-Programmer/tree.git",
+        "revision": "d501b58ff9cbfd64272c8cbcad0bda36a3fada06",
+        "revision_date": "2024-11-25",
+        "license": "GPL-2.0-or-later",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-a", "-n", "."],
+        "preopen": "workloads/applications/tree/inputs",
+        "inputs": {
+          "README.md": "3915e09920ad9ecd655f08d8f82115e0f47119e5fd12cc66e01a8ccda688befc",
+          "src/main.c": "2ad75d95660563887d8d3f1d0ae1dcf18c2379cbd83a5c72f5ab276351ee6949",
+          "src/util.c": "c900429992cb5e0aec6c5afb07278bc21c1480178c97f7496fcec1622401e0d0",
+          "test/main.c": "0de8b249a5ea6d580f90393b5b774d25f102a54653202057f313b337a3392751"
+        },
+        "stdout_sha256": "c5971133e94a69f88969b73cdaf35d23a298d81124248c18f694672c3d175f40"
+      }
+    },
+    {
       "suite": "brotli",
       "desc": "Brotli WASI CLI compresses JavaScript source at quality 5 with an exact output oracle",
       "id": "brotli-compress",

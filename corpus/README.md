@@ -24,6 +24,7 @@ stored in the corpus.
 The `jq` CLI is also admitted with an exact thousand-object JSON transformation.
 The Brotli CLI is admitted for both compression and decompression of a pinned
 JavaScript fixture.
+The upstream `tree` CLI is admitted for a recursive preopened-directory listing.
 These are execution-tested fixtures, not a claim that the rest of the acquisition
 queue runs. The Swift formatter uses a preopened source file because its stdin
 path currently fails in Wago's WASI host with a bad descriptor. a-Shell
