@@ -168,7 +168,7 @@ func commandCorpus(tb testing.TB) []corpusModule {
 
 func validateCommandInputs(tb testing.TB, m corpusModule) {
 	tb.Helper()
-	if m.Command.ReferenceRuntime != "" && m.Command.ReferenceRuntime != "wasmtime" {
+	if m.Command.ReferenceRuntime != "" && m.Command.ReferenceRuntime != "wasmtime" && m.Command.ReferenceRuntime != "v8" {
 		tb.Fatalf("%s unknown reference runtime %q", m.ID, m.Command.ReferenceRuntime)
 	}
 	if m.Command.ReadOnlyPreopen != "" {
@@ -441,7 +441,12 @@ func runWagoCommand(m corpusModule, compiled *wago.Compiled, stdin []byte, captu
 		return commandOutput{}, err
 	}
 	defer in.Close()
-	results, err := in.Invoke(m.Command.Export)
+	var results []uint64
+	if m.Command.Runtime == "emscripten" {
+		results, err = invokeWagoEmscriptenMain(in, m.Command.Export, commandArgs(m))
+	} else {
+		results, err = in.Invoke(m.Command.Export)
+	}
 	if !commandExitOK(err) {
 		return commandOutput{results: results, stdout: stdout.Bytes(), stderr: stderr.Bytes()}, err
 	}
@@ -489,7 +494,12 @@ func runWazeroCommand(ctx context.Context, r wazero.Runtime, compiled wazero.Com
 	if fn == nil {
 		return commandOutput{}, fmt.Errorf("export %q not found", m.Command.Export)
 	}
-	results, err := fn.Call(ctx)
+	var results []uint64
+	if m.Command.Runtime == "emscripten" {
+		results, err = invokeWazeroEmscriptenMain(ctx, in, fn, commandArgs(m))
+	} else {
+		results, err = fn.Call(ctx)
+	}
 	if !commandExitOK(err) {
 		return commandOutput{results: results, stdout: stdout.Bytes(), stderr: stderr.Bytes()}, err
 	}
@@ -510,6 +520,11 @@ func instantiateWazeroCommandHost(ctx context.Context, r wazero.Runtime, runtime
 	case "wasi":
 		_, err := wazerowasi.Instantiate(ctx, r)
 		return err
+	case "emscripten":
+		if _, err := wazerowasi.Instantiate(ctx, r); err != nil {
+			return err
+		}
+		return instantiateWazeroEmscriptenHost(ctx, r)
 	case "micropython":
 		if _, err := wazerowasi.Instantiate(ctx, r); err != nil {
 			return err
@@ -591,8 +606,8 @@ func TestApplicationCorpusRuns(t *testing.T) {
 				}
 			})
 			t.Run("wazero", func(t *testing.T) {
-				if m.Command.ReferenceRuntime == "wasmtime" {
-					t.Skip("in-process wazero comparison unavailable; independently captured Wasmtime oracle is pinned")
+				if m.Command.ReferenceRuntime != "" {
+					t.Skipf("in-process wazero comparison unavailable; independently captured %s oracle is pinned", m.Command.ReferenceRuntime)
 				}
 				ctx := context.Background()
 				r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
@@ -647,8 +662,8 @@ func BenchmarkWazeroCommandExec(b *testing.B) {
 	for _, m := range commandCorpus(b) {
 		m := m
 		b.Run(m.name(), func(b *testing.B) {
-			if m.Command.ReferenceRuntime == "wasmtime" {
-				b.Skip("in-process wazero comparison unavailable; independently captured Wasmtime oracle is pinned")
+			if m.Command.ReferenceRuntime != "" {
+				b.Skipf("in-process wazero comparison unavailable; independently captured %s oracle is pinned", m.Command.ReferenceRuntime)
 			}
 			r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
 			defer r.Close(ctx)

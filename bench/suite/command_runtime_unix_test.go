@@ -23,7 +23,7 @@ func commandRuntimeImports(m corpusModule, preopenDir string, stdin []byte, stdo
 	switch m.Command.Runtime {
 	case "core":
 		return nil, nil
-	case "wasi", "ashell", "micropython", "php-wasmedge":
+	case "wasi", "emscripten", "ashell", "micropython", "php-wasmedge":
 		cfg := p1.Config{
 			Args: commandArgs(m), Stdin: bytes.NewReader(stdin),
 			Stdout: stdout, Stderr: stderr,
@@ -36,6 +36,9 @@ func commandRuntimeImports(m corpusModule, preopenDir string, stdin []byte, stdo
 			cfg.Mounts = append(cfg.Mounts, p1.Preopen{GuestPath: "/db", HostPath: filepath.Join(corpusDir, m.Command.ReadOnlyPreopen), Read: true})
 		}
 		imports := p1.Imports(cfg)
+		if m.Command.Runtime == "emscripten" {
+			addWagoEmscriptenImports(imports)
+		}
 		if m.Command.Runtime == "ashell" {
 			imports.HostFunc(p1.Module, "ashell_getcwd", func(caller wago.Caller, call wago.HostCall) {
 				call.SetI32(0, int32(ashellGetcwd(caller.Memory(), uint32(call.I32(0)), uint32(call.I32(1)), uint32(call.I32(2)))))

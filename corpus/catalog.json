@@ -1075,6 +1075,94 @@
   ],
   "benchmarks": [
     {
+      "suite": "Biowasm",
+      "desc": "GNU sed 4.8 performs two substitutions over a pinned record stream",
+      "id": "sed-records",
+      "artifact": "workloads/applications/sed/sed.wasm",
+      "artifact_sha256": "f219fd9bb74d730d1df83242109ed3e17b05f52dec4fa06a1ed88d2ac0cd06be",
+      "tags": ["application", "text", "sed", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/sed", "revision": "v4.8", "revision_date": "2020-01-14", "license": "GPL-3.0-or-later AND MIT", "toolchain": "Biowasm Emscripten release", "toolchain_version": "GNU sed 4.8"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["-e", "s/error/ERROR/g; s/warning/WARN/g"], "stdin": "records.txt", "preopen": "workloads/applications/sed/inputs", "inputs": {"records.txt": "f667a5b07e86bb4c5d09def1d5331b363f7f4ccd9a4d52255aadb08a93aaafd7"}, "stdout_sha256": "a2c763a7c5947ca809df136a89a212ca0de22198c8285501fe711cea3156ef2e"}
+    },
+    {
+      "suite": "Biowasm",
+      "desc": "seqtk 1.4 converts a pinned FASTQ stream to FASTA",
+      "id": "seqtk-fastq-to-fasta",
+      "artifact": "workloads/applications/seqtk/seqtk.wasm",
+      "artifact_sha256": "d0a899c3a17ad8245c6cc99cdad7c4bb30f189dab82609d233dad225384f9678",
+      "tags": ["application", "bioinformatics", "sequence", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/seqtk", "revision": "v1.4", "revision_date": "2024-09-15", "license": "MIT", "toolchain": "Biowasm Emscripten release", "toolchain_version": "seqtk 1.4"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["seq", "-A", "-"], "stdin": "reads.fastq", "preopen": "workloads/applications/seqtk/inputs", "inputs": {"reads.fastq": "4bf02f6bc7419e83d8367244ae7e3a460c372d72b6b465a483d4e6ae9bef524d"}, "stdout_sha256": "7e6e8898889ea9ea26296ab7b39e0d2c10c6de19de8c4b6c88dbb6947b6223ac"}
+    },
+    {
+      "suite": "Biowasm seq-align",
+      "desc": "lcs enumerates repeated substrings of a pinned sequence",
+      "id": "lcs-substrings",
+      "artifact": "workloads/applications/seq-align/lcs.wasm",
+      "artifact_sha256": "11cb9d2ba8b02d2465988f44c2ae221f1bf43e6d4e745b71927d2263f7b10f6b",
+      "tags": ["application", "bioinformatics", "sequence", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/seq-align", "revision": "dc41988", "revision_date": "2017-10-18", "license": "Public Domain", "toolchain": "Biowasm Emscripten release", "toolchain_version": "seq-align dc41988"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["ACGTTGCA"], "stdout_sha256": "de84eeff25bc787e35ddf73c9de4f48301ef0071c2cbf38922be70c22d8682d8"}
+    },
+    {
+      "suite": "Biowasm seq-align",
+      "desc": "needleman_wunsch globally aligns two pinned DNA sequences",
+      "id": "needleman-wunsch-dna",
+      "artifact": "workloads/applications/seq-align/needleman_wunsch.wasm",
+      "artifact_sha256": "0145e57676d9e2514c5683de4eee351590d57071b68ff6cb7a2ffee4c9d2ab02",
+      "tags": ["application", "bioinformatics", "sequence", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/seq-align", "revision": "dc41988", "revision_date": "2017-10-18", "license": "Public Domain", "toolchain": "Biowasm Emscripten release", "toolchain_version": "seq-align dc41988"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["ACGTTGCA", "ACGTCGCA"], "stdout_sha256": "1e3fdaf624fe5dbc63c13ea6df1f1df5ceb13258925b5ae7b5e876d9e78f7f4d"}
+    },
+    {
+      "suite": "Biowasm seq-align",
+      "desc": "smith_waterman locally aligns two pinned DNA sequences and reports suboptimal hits",
+      "id": "smith-waterman-dna",
+      "artifact": "workloads/applications/seq-align/smith_waterman.wasm",
+      "artifact_sha256": "f033fe248a561e06f5cafebbe9cab86b1d31928a96f144730d10f74b073f11d7",
+      "tags": ["application", "bioinformatics", "sequence", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/seq-align", "revision": "dc41988", "revision_date": "2017-10-18", "license": "Public Domain", "toolchain": "Biowasm Emscripten release", "toolchain_version": "seq-align dc41988"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["ACGTTGCA", "ACGTCGCA"], "stdout_sha256": "1f3b6d8f053160f6232ce784988485d84c5c4cacafd87ae8680e713b3bcb75f6"}
+    },
+    {
+      "suite": "Biowasm",
+      "desc": "FastTree 2.1.11 infers a nucleotide phylogeny from a pinned multiple-sequence alignment",
+      "id": "fasttree-phylogeny",
+      "artifact": "workloads/applications/fasttree/fasttree.wasm",
+      "artifact_sha256": "780ce84c3a0ce8442fe259a5de0fe5db07f663430f2a8d1bc23187161de23387",
+      "tags": ["application", "bioinformatics", "phylogeny", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/fasttree", "revision": "2.1.11", "revision_date": "2021-03-03", "license": "GPL-3.0 AND MIT", "toolchain": "Biowasm Emscripten release", "toolchain_version": "FastTree 2.1.11"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["-nt"], "stdin": "alignment.fasta", "preopen": "workloads/applications/fasttree/inputs", "inputs": {"alignment.fasta": "9e639db88af2ca312270c8869472d09b8b51c3f94eef1fe93d5dbc176828e83f"}, "stdout_sha256": "ff79d3415c1bd8bbf930305f08289a324057d3505d209ee2ab1b85cb190cf98c"}
+    },
+    {
+      "suite": "Biowasm GNU coreutils",
+      "desc": "GNU seq 8.32 prints a pinned integer range",
+      "id": "gnu-seq-range",
+      "artifact": "workloads/applications/gnu-coreutils/seq.wasm",
+      "artifact_sha256": "bdbd39485bb579411c626deab515d5fde792cae1050d9481f0ecb95be713059a",
+      "tags": ["application", "text", "coreutils", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/coreutils", "revision": "v8.32", "revision_date": "2020-03-05", "license": "GPL-3.0-or-later AND MIT", "toolchain": "Biowasm Emscripten release", "toolchain_version": "GNU coreutils 8.32"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["1", "10"], "stdout_sha256": "bf794518e35d7f1ce3a50b3058c4191bb9401e568fc645d77e10b0f404cf1f22"}
+    },
+    {
+      "suite": "Biowasm GNU coreutils",
+      "desc": "GNU tr 8.32 uppercases a pinned record stream",
+      "id": "gnu-tr-uppercase",
+      "artifact": "workloads/applications/gnu-coreutils/tr.wasm",
+      "artifact_sha256": "47e7ad6a441d4de920e876abb9559d5936dbd6c280e79bbdb1274814e1b46384",
+      "tags": ["application", "text", "coreutils", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/coreutils", "revision": "v8.32", "revision_date": "2020-03-05", "license": "GPL-3.0-or-later AND MIT", "toolchain": "Biowasm Emscripten release", "toolchain_version": "GNU coreutils 8.32"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["a-z", "A-Z"], "stdin": "records.txt", "preopen": "workloads/applications/gnu-coreutils/inputs", "inputs": {"records.txt": "7e13e7bebc021c762a4c26d2983a88987c9bcd7573e180c62b50fe3c676594de"}, "stdout_sha256": "7fb2bedccbb849fe9c8bcc513aa0441be6c8db7aac9db38cd6230449d7904075"}
+    },
+    {
       "suite": "php",
       "desc": "PHP 8.2.6 groups five thousand integers into seventeen weighted buckets",
       "id": "php-buckets",

@@ -31,7 +31,7 @@ var corpusSelector = flag.String("wago.corpus", "quick", "corpus profile, tag:<t
 var includeOptimizationAblations = flag.Bool("wago.bench.optimization-ablation", false, "benchmark large modules with each enabled optimization disabled in turn")
 
 type commandEntry struct {
-	Runtime            string            `json:"runtime"` // core, wasi, ashell, micropython, or php-wasmedge; fresh instance
+	Runtime            string            `json:"runtime"` // core, wasi, emscripten, ashell, micropython, or php-wasmedge; fresh instance
 	Export             string            `json:"export"`
 	Argv0              string            `json:"argv0"`     // optional multicall executable name
 	Platforms          []string          `json:"platforms"` // optional GOOS/GOARCH allowlist
@@ -45,7 +45,7 @@ type commandEntry struct {
 	Want               []uint64          `json:"want"`                  // optional exact function results
 	StdoutSHA256       string            `json:"stdout_sha256"`
 	StdoutNormalize    string            `json:"stdout_normalize"`  // optional narrowly scoped output canonicalization
-	ReferenceRuntime   string            `json:"reference_runtime"` // "wasmtime" skips the in-process wazero comparison
+	ReferenceRuntime   string            `json:"reference_runtime"` // "wasmtime" or "v8" skips the in-process wazero comparison
 	StderrSHA256       string            `json:"stderr_sha256"`
 	Oracle             string            `json:"oracle"` // self-check or return; hashes are exact stream oracles
 }
