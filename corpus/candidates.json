@@ -12,6 +12,7 @@
     { "program": "age", "benchmark": "age-decrypt" },
     { "program": "age-keygen", "benchmark": "age-keygen-public" },
     { "program": "jq", "benchmark": "jq-json-transform" },
+    { "program": "Brotli CLI", "benchmark": "brotli-compress" },
     { "program": "swift-format", "benchmark": "swift-format-source" }
   ],
   "groups": [
@@ -60,7 +61,7 @@
     },
     {
       "route": "Additional WASI or host audit",
-      "programs": ["Brotli CLI", "openFPGALoader"]
+      "programs": ["openFPGALoader"]
     },
     {
       "route": "WASIX or browser host; substantial host work",

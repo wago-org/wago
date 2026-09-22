@@ -29,6 +29,7 @@ workloads are rebuilt from `sources/` with the scripts in `build/`.
 | lzmainfo CLI | same upstream XZ Utils 5.8.4 source, configured for legacy LZMA header inspection; exact output captured with Wasmtime | `d3e650e63c110e830fd5391e7f8b45df0b91d3da`, WASI SDK 34 |
 | age and age-keygen | Go/WASI commands decrypting a fixed test ciphertext and deriving its public recipient; exact outputs captured with Wasmtime | `b74dce4cdbe35b5e5f66c06d9612b72f89028758`, Go 1.27.0, `-trimpath`; the identity is deliberately public test data |
 | jq CLI | standalone JSON processor built with bundled Oniguruma and WASI SDK 34; exact output captured with Wasmtime | `34f7186b86743a083a589741b6cea95293524108`, source archive SHA-256 `71b8d6e8f5fe81f6c6d0d110e3892251f6ce76ed095abd315e26e6e1193af3af` |
+| Brotli CLI | upstream 1.2.0 command built with WASI SDK 34; fixed stream compression and decompression with exact outputs captured with Wasmtime | `028fb5a23661f123017c060daa546b55cf4bde29`, rebuild instructions and WASI compatibility header in `workloads/applications/brotli/` |
 
 The PolyBench adapter includes each upstream kernel unchanged, replaces its
 dump stream with a deterministic checksum at the suite's two-decimal output

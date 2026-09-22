@@ -1075,6 +1075,64 @@
   ],
   "benchmarks": [
     {
+      "suite": "brotli",
+      "desc": "Brotli WASI CLI compresses JavaScript source at quality 5 with an exact output oracle",
+      "id": "brotli-compress",
+      "artifact": "workloads/applications/brotli/brotli.wasm",
+      "artifact_sha256": "9452cb53ecb2092847effd78a5a991cd8009cea6139b52a8561fe5889634f35c",
+      "tags": ["application", "compression", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/google/brotli.git",
+        "revision": "028fb5a23661f123017c060daa546b55cf4bde29",
+        "revision_date": "2025-10-27",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-q", "5", "-c", "-n", "-f"],
+        "stdin": "source.js",
+        "preopen": "workloads/applications/brotli/encode-inputs",
+        "inputs": {
+          "source.js": "15f4817d6bb6e105ef12c8b6d2383c32d1646a16824365d96935445f436afc89"
+        },
+        "stdout_sha256": "eeedce27753bdc24a2f3be4651794373a45db0c5dd7c15b6e0cf5d11eeb7549c"
+      }
+    },
+    {
+      "suite": "brotli",
+      "desc": "Brotli WASI CLI decompresses a pinned stream with an exact plaintext oracle",
+      "id": "brotli-decompress",
+      "artifact": "workloads/applications/brotli/brotli.wasm",
+      "artifact_sha256": "9452cb53ecb2092847effd78a5a991cd8009cea6139b52a8561fe5889634f35c",
+      "tags": ["application", "compression", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/google/brotli.git",
+        "revision": "028fb5a23661f123017c060daa546b55cf4bde29",
+        "revision_date": "2025-10-27",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-d", "-c", "-n", "-f"],
+        "stdin": "source.js.br",
+        "preopen": "workloads/applications/brotli/decode-inputs",
+        "inputs": {
+          "source.js.br": "eeedce27753bdc24a2f3be4651794373a45db0c5dd7c15b6e0cf5d11eeb7549c"
+        },
+        "stdout_sha256": "15f4817d6bb6e105ef12c8b6d2383c32d1646a16824365d96935445f436afc89"
+      }
+    },
+    {
       "suite": "jq",
       "desc": "jq WASI CLI generates, groups, and aggregates a thousand JSON objects with an exact output oracle",
       "id": "jq-json-transform",
