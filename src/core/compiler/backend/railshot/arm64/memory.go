@@ -1857,6 +1857,7 @@ func (f *fn) bulkDynamicBoundsCheck(base, n Reg, memoryIndex uint32) {
 }
 
 func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
+	alreadyPinned := f.pinned.has(base)
 	f.pinned = f.pinned.add(base)
 	t := f.allocReg(0)
 	if f.memoryAddr64(memoryIndex) {
@@ -1882,7 +1883,9 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	}
 	f.trapIf(condA, trapMemOOB)
 	f.release(t)
-	f.pinned = f.pinned.remove(base)
+	if !alreadyPinned {
+		f.pinned = f.pinned.remove(base)
+	}
 }
 
 func (f *fn) indexedMemoryBase(memoryIndex uint32, avoid regMask) (Reg, bool) {

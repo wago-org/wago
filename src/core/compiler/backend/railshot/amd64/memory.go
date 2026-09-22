@@ -1711,6 +1711,7 @@ func bulkChunks16(n int, buf *[4][2]int) [][2]int {
 // op. Constant paths always check, including signals-based mode: a zero-length
 // operation has no later load/store to fault and must still reject base > size.
 func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
+	alreadyPinned := f.pinned.has(base)
 	f.pinned = f.pinned.add(base)
 	t := f.allocReg(0)
 	if f.memoryAddr64(memoryIndex) {
@@ -1738,7 +1739,9 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	}
 	f.trapIf(condA, trapMemOOB)
 	f.release(t)
-	f.pinned = f.pinned.remove(base)
+	if !alreadyPinned {
+		f.pinned = f.pinned.remove(base)
+	}
 }
 
 // memoryFillConst lowers memory.fill with a small constant length as unrolled
