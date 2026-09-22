@@ -77,9 +77,11 @@ func munmap(b []byte) error {
 
 // Arena is a bump allocator over stable off-heap memory.
 type Arena struct {
-	mem         []byte
-	off         int
-	zeroOnAlloc bool
+	mem           []byte
+	off           int
+	zeroOnAlloc   bool
+	idleReclaim   bool
+	zeroReclaimed bool // entire idle mapping successfully reset with MADV_DONTNEED
 }
 
 func NewArena(n int) (*Arena, error) {
@@ -107,7 +109,9 @@ func AcquireArena(n int) (*Arena, error) {
 		arenaCache.a = nil
 		arenaCache.Unlock()
 		a.off = 0
-		a.zeroOnAlloc = true
+		a.zeroOnAlloc = !a.zeroReclaimed
+		a.zeroReclaimed = false
+		a.idleReclaim = false
 		return a, nil
 	}
 	if a != nil && len(a.mem) < need {
@@ -146,8 +150,9 @@ func (a *Arena) AllocNoZero(n int) []byte {
 func (a *Arena) Close() error { return munmap(a.mem) }
 
 // ReleaseArena returns a to the bounded cache or unmaps it if the cache is
-// occupied. Reused arenas zero each allocation before it is handed out, matching
-// the fresh-anonymous-mmap behavior callers depend on for sparse table entries.
+// occupied. All allocations and borrowed views must be released first. A
+// successful private-anonymous MADV_DONTNEED guarantees zero-fill on reuse;
+// failure retains clear-on-allocation.
 func ReleaseArena(a *Arena) error {
 	if a == nil {
 		return nil
@@ -157,8 +162,9 @@ func ReleaseArena(a *Arena) error {
 	}
 	arenaCache.Lock()
 	if arenaCache.a == nil {
+		a.zeroReclaimed = a.idleReclaim && madviseDontNeed(a.mem) == nil
 		a.off = 0
-		a.zeroOnAlloc = true
+		a.zeroOnAlloc = !a.zeroReclaimed
 		arenaCache.a = a
 		arenaCache.Unlock()
 		return nil
@@ -166,3 +172,7 @@ func ReleaseArena(a *Arena) error {
 	arenaCache.Unlock()
 	return a.Close()
 }
+
+// SetIdleMemoryReclamation selects the next release policy while the caller
+// exclusively owns the Arena and its allocations.
+func (a *Arena) SetIdleMemoryReclamation(enabled bool) { a.idleReclaim = enabled }

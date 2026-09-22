@@ -801,6 +801,9 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 		in.lifeMu.Unlock()
 		return nil, fmt.Errorf("acquire host re-entry engine: %w", err)
 	}
+	if in.eng != nil {
+		eng.SetIdleMemoryReclamation(in.eng.IdleMemoryReclamation())
+	}
 	ctrl := make([]byte, len(in.ctrl))
 	if err := coreruntime.InitHostCtrlFrame(ctrl); err != nil {
 		_ = coreruntime.ReleaseEngine(eng)
