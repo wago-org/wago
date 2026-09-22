@@ -901,7 +901,7 @@ func TestTableEntrySnapshotAndFillEmitters(t *testing.T) {
 		emit func(*fn)
 	}{
 		{"snapshot-funcref", func(f *fn) { f.snapshotFuncrefDescriptor(X0, 0) }},
-		{"fill-funcref", func(f *fn) { f.fillTableEntries(X0, X1, 0) }},
+		{"fill-funcref", func(f *fn) { f.fillTableEntries(X0, X1, 0, 0, 1) }},
 		{"fill-externref", func(f *fn) { f.fillExternrefEntries(X0, X1, X2) }},
 		{"copy-funcref", func(f *fn) { f.copyFuncrefToEntry(X0, X1) }},
 	} {
