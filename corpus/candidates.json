@@ -25,7 +25,9 @@
     { "program": "swift-format", "benchmark": "swift-format-source" },
     { "program": "Yosys", "benchmark": "yosys-counter" },
     { "program": "ripgrep", "benchmark": "ripgrep-source" },
-    { "program": "uutils/coreutils", "benchmark": "coreutils-sort" }
+    { "program": "uutils/coreutils", "benchmark": "coreutils-sort" },
+    { "program": "ecppack", "benchmark": "ecppack-bitstream" },
+    { "program": "ecpunpack", "benchmark": "ecpunpack-config" }
   ],
   "groups": [
     {
@@ -34,7 +36,7 @@
         "Lua CLI", "CPython", "MicroPython", "Ruby", "PHP",
         "Clang", "clang++", "LLD", "wasm-ld", "vasm6502_oldstyle",
         "Pandoc", "nextpnr", "Boolector",
-        "ecppack", "ecpunpack", "ecpmulti", "prjoxide"
+        "ecpmulti", "prjoxide"
       ]
     },
     {

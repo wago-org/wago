@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wasi/p1"
@@ -30,6 +31,9 @@ func commandRuntimeImports(m corpusModule, preopenDir string, stdin []byte, stdo
 		}
 		if preopenDir != "" {
 			cfg.Mounts = []p1.Preopen{{GuestPath: "/", HostPath: preopenDir, Read: true, Write: true, MutateDirectory: true}}
+		}
+		if m.Command.ReadOnlyPreopen != "" {
+			cfg.Mounts = append(cfg.Mounts, p1.Preopen{GuestPath: "/db", HostPath: filepath.Join(corpusDir, m.Command.ReadOnlyPreopen), Read: true})
 		}
 		imports := p1.Imports(cfg)
 		if m.Command.Runtime == "ashell" {

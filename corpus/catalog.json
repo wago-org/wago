@@ -1075,6 +1075,44 @@
   ],
   "benchmarks": [
     {
+      "suite": "trellis",
+      "desc": "ecpunpack decodes a pinned ECP5 bitstream into its text configuration",
+      "id": "ecpunpack-config",
+      "artifact": "workloads/applications/ecpunpack/ecpunpack.wasm",
+      "artifact_sha256": "d50205335eadfbe406599306251f3c9ea9016e1885dbc6578309b861410f83f8",
+      "tags": ["application", "fpga", "bitstream", "c++", "wasi"],
+      "source": {"repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/", "revision": "0.5.0.0.post399", "revision_date": "2023-02-07", "license": "ISC", "toolchain": "YoWASP wheel", "toolchain_version": "0.5.0.0.post399"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start",
+        "args": ["--db", "/db", "/input.bit", "/decoded.config"],
+        "preopen": "workloads/applications/ecpunpack/inputs",
+        "inputs": {"input.bit": "560a5dfd11bc0ea54c42943019833c20e8dff7e4e4bd63e06aead7ebf52c2675"},
+        "read_only_preopen": "workloads/applications/ecp5db/db",
+        "read_only_tree_sha256": "688d3f0b7f408f18bfd98423fdee9403ae8366efd8618ae09fc681b3ea93f280",
+        "outputs": {"decoded.config": "459bc4c0e894f7087751ae4f5938edba2a13fc0da507458c3569438a796a11e2"}
+      }
+    },
+    {
+      "suite": "trellis",
+      "desc": "ecppack converts a pinned ECP5 text configuration and device database into a bitstream",
+      "id": "ecppack-bitstream",
+      "artifact": "workloads/applications/ecppack/ecppack.wasm",
+      "artifact_sha256": "2a2ea3a2c706ccfe0ab26f28d5a4d9ae724fb80441ab3bf422ae5aa54d602709",
+      "tags": ["application", "fpga", "bitstream", "c++", "wasi"],
+      "source": {"repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/", "revision": "0.5.0.0.post399", "revision_date": "2023-02-07", "license": "ISC", "toolchain": "YoWASP wheel", "toolchain_version": "0.5.0.0.post399"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start",
+        "args": ["--db", "/db", "/input.config", "/output.bit"],
+        "preopen": "workloads/applications/ecppack/inputs",
+        "inputs": {"input.config": "0c95727998cce534df0b981bb2af4db9bcade22366483a13f6c81f409f0a7791"},
+        "read_only_preopen": "workloads/applications/ecp5db/db",
+        "read_only_tree_sha256": "688d3f0b7f408f18bfd98423fdee9403ae8366efd8618ae09fc681b3ea93f280",
+        "outputs": {"output.bit": "560a5dfd11bc0ea54c42943019833c20e8dff7e4e4bd63e06aead7ebf52c2675"}
+      }
+    },
+    {
       "suite": "uutils/coreutils",
       "desc": "Rust coreutils sorts a pinned twenty-four-record text file",
       "id": "coreutils-sort",

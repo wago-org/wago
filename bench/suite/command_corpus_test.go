@@ -37,6 +37,40 @@ func TestCommandArgsMulticall(t *testing.T) {
 	}
 }
 
+func TestCommandTreeSHA256(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "data.json")
+	if err := os.WriteFile(path, []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	first, err := commandTreeSHA256(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("second"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, err := commandTreeSHA256(root)
+	if err != nil || first == second {
+		t.Fatalf("tree digest did not change with file bytes: %s, %s, %v", first, second, err)
+	}
+	if err := os.Rename(path, filepath.Join(root, "renamed.json")); err != nil {
+		t.Fatal(err)
+	}
+	third, err := commandTreeSHA256(root)
+	if err != nil || second == third {
+		t.Fatalf("tree digest did not change with file name: %s, %s, %v", second, third, err)
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.Symlink(filepath.Join(root, "renamed.json"), path); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := commandTreeSHA256(root); err == nil {
+			t.Fatal("tree digest accepted a symlink")
+		}
+	}
+}
+
 func TestCommandSupportsPlatform(t *testing.T) {
 	all := corpusModule{Command: &commandEntry{}}
 	if !commandSupportsPlatform(all, "linux", "amd64") {
@@ -112,6 +146,18 @@ func commandCorpus(tb testing.TB) []corpusModule {
 
 func validateCommandInputs(tb testing.TB, m corpusModule) {
 	tb.Helper()
+	if m.Command.ReadOnlyPreopen != "" {
+		if !validCommandPath(m.Command.ReadOnlyPreopen) {
+			tb.Fatalf("%s invalid read-only preopen %q", m.ID, m.Command.ReadOnlyPreopen)
+		}
+		root := filepath.Join(corpusDir, m.Command.ReadOnlyPreopen)
+		got, err := commandTreeSHA256(root)
+		if err != nil || got != m.Command.ReadOnlyTreeSHA256 {
+			tb.Fatalf("%s read-only tree sha256 = %s, want %s (error=%v)", m.ID, got, m.Command.ReadOnlyTreeSHA256, err)
+		}
+	} else if m.Command.ReadOnlyTreeSHA256 != "" {
+		tb.Fatalf("%s declares a tree digest without a read-only preopen", m.ID)
+	}
 	if m.Command.Preopen == "" {
 		if len(m.Command.Inputs) != 0 || len(m.Command.Outputs) != 0 {
 			tb.Fatalf("%s declares files without a preopen directory", m.ID)
@@ -159,6 +205,42 @@ func validateCommandInputs(tb testing.TB, m corpusModule) {
 			tb.Fatalf("%s declared input %s is missing", m.ID, rel)
 		}
 	}
+}
+
+// commandTreeSHA256 covers both file names and bytes, rejecting symlinks and
+// other special files so an immutable device database can be pinned compactly.
+func commandTreeSHA256(root string) (string, error) {
+	var entries []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("non-regular command input %s", path)
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, fmt.Sprintf("%s\x00%x\n", filepath.ToSlash(rel), sha256.Sum256(data)))
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	slices.Sort(entries)
+	h := sha256.New()
+	for _, entry := range entries {
+		_, _ = io.WriteString(h, entry)
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 func commandSupportsPlatform(m corpusModule, goos, goarch string) bool {
@@ -359,8 +441,15 @@ func runWazeroCommand(ctx context.Context, r wazero.Runtime, compiled wazero.Com
 		WithStdin(bytes.NewReader(stdin)).WithStdout(stdoutWriter).WithStderr(stderrWriter).
 		WithWalltime(func() (int64, int32) { return 0, 1 }, 1).
 		WithNanotime(func() int64 { return 1 }, 1)
+	fsCfg := wazero.NewFSConfig()
 	if preopenDir != "" {
-		cfg = cfg.WithFSConfig(wazero.NewFSConfig().WithDirMount(preopenDir, "/"))
+		fsCfg = fsCfg.WithDirMount(preopenDir, "/")
+	}
+	if m.Command.ReadOnlyPreopen != "" {
+		fsCfg = fsCfg.WithReadOnlyDirMount(filepath.Join(corpusDir, m.Command.ReadOnlyPreopen), "/db")
+	}
+	if preopenDir != "" || m.Command.ReadOnlyPreopen != "" {
+		cfg = cfg.WithFSConfig(fsCfg)
 	}
 	in, err := r.InstantiateModule(ctx, compiled, cfg)
 	if err != nil {
