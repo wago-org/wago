@@ -27,13 +27,15 @@
     { "program": "ripgrep", "benchmark": "ripgrep-source" },
     { "program": "uutils/coreutils", "benchmark": "coreutils-sort" },
     { "program": "ecppack", "benchmark": "ecppack-bitstream" },
-    { "program": "ecpunpack", "benchmark": "ecpunpack-config" }
+    { "program": "ecpunpack", "benchmark": "ecpunpack-config" },
+    { "program": "MicroPython", "benchmark": "micropython-squares" },
+    { "program": "Lua CLI", "benchmark": "lua-cli-buckets" }
   ],
   "groups": [
     {
       "route": "WASI CLI",
       "programs": [
-        "Lua CLI", "CPython", "MicroPython", "Ruby", "PHP",
+        "CPython", "Ruby", "PHP",
         "Clang", "clang++", "LLD", "wasm-ld", "vasm6502_oldstyle",
         "Pandoc", "nextpnr", "Boolector",
         "ecpmulti", "prjoxide"

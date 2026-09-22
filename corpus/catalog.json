@@ -1075,6 +1075,28 @@
   ],
   "benchmarks": [
     {
+      "suite": "lua",
+      "desc": "standalone Lua 5.4.6 interpreter aggregates five thousand records into seventeen buckets",
+      "id": "lua-cli-buckets",
+      "artifact": "workloads/applications/lua/lua.wasm",
+      "artifact_sha256": "51e8072539c5ba5f4e97e7e776ef852f9879cb5b97b4e5d0f9f1e9c3956ffbe2",
+      "tags": ["application", "interpreter", "lua", "c", "wasi"],
+      "source": {"repository": "https://github.com/nalgeon/lua-wasi", "revision": "@antonz/lua-wasi 5.4.6", "revision_date": "2024-01-03", "license": "MIT", "toolchain": "wasienv plus WABT import rename", "toolchain_version": "Lua 5.4.6"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["/program.lua"], "preopen": "workloads/applications/lua/inputs", "inputs": {"program.lua": "faaaa3a1fff19eefb6fce2a70e5a1c8cab85e417b8bd9391e147fce9aed6810e"}, "stdout_sha256": "a9cfd18aeeb61f448d9314c2687d0bf22b1a287a4a3b165a5aa676ff4b0de869"}
+    },
+    {
+      "suite": "micropython",
+      "desc": "MicroPython executes a generator-based thousand-square checksum",
+      "id": "micropython-squares",
+      "artifact": "workloads/applications/micropython/micropython.wasm",
+      "artifact_sha256": "1c054a4d21d4a6589bc568821ebf562889988ddaaf8a17a2e2985a56cf228051",
+      "tags": ["application", "interpreter", "python", "c", "wasi"],
+      "source": {"repository": "https://pypi.org/project/micropython-wasm/0.1a2/", "revision": "0.1a2", "revision_date": "2026-06-06", "license": "Apache-2.0 AND MIT", "toolchain": "micropython-wasm wheel", "toolchain_version": "0.1a2"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "micropython", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["-c", "print(sum(i*i for i in range(1000)))"], "stdout_sha256": "bc7a21413c10db3efd335755501233165eb46a6cfcba0cc3ba5a01ad967dcae5"}
+    },
+    {
       "suite": "trellis",
       "desc": "ecpunpack decodes a pinned ECP5 bitstream into its text configuration",
       "id": "ecpunpack-config",

@@ -23,7 +23,7 @@ func commandRuntimeImports(m corpusModule, preopenDir string, stdin []byte, stdo
 	switch m.Command.Runtime {
 	case "core":
 		return nil, nil
-	case "wasi", "ashell":
+	case "wasi", "ashell", "micropython":
 		cfg := p1.Config{
 			Args: commandArgs(m), Stdin: bytes.NewReader(stdin),
 			Stdout: stdout, Stderr: stderr,
@@ -46,6 +46,15 @@ func commandRuntimeImports(m corpusModule, preopenDir string, stdin []byte, stdo
 			// Guest processes and shell state are outside this isolated command host.
 			imports.HostFunc(p1.Module, "ashell_chdir", func(int32, int32) int32 { return ashellErrnoNosys })
 			imports.HostFunc(p1.Module, "ashell_system", func(int32, int32) int32 { return ashellErrnoNosys })
+		}
+		if m.Command.Runtime == "micropython" {
+			imports.HostFunc("micropython_wasm", "host_result_cap", func(_ wago.Caller, call wago.HostCall) {
+				call.SetI32(0, 1024)
+			}).Results(wago.ValI32)
+			// The corpus does not grant Python code any host functions.
+			imports.HostFunc("micropython_wasm", "host_call", func(_ wago.Caller, call wago.HostCall) {
+				call.SetI32(0, -1)
+			}).Params(wago.ValI32, wago.ValI32, wago.ValI32, wago.ValI32, wago.ValI32, wago.ValI32).Results(wago.ValI32)
 		}
 		return imports, nil
 	default:

@@ -48,6 +48,14 @@ Project Trellis `ecppack` and `ecpunpack` are admitted with exact generated
 bitstream and decoded-configuration hashes. Their ECP5 device database is
 pinned as a read-only tree, separate from a fresh writable output preopen.
 `ecpmulti` still [traps in Wago](repro/ecpmulti/README.md) and remains pending.
+MicroPython is admitted as a WASI command. Its two custom host imports are
+bounded: result capacity is fixed, and arbitrary host calls are denied. Wago
+matches the output captured through the package's Wasmtime host; wazero skips
+this module because it does not accept its exception-handling section.
+The full Lua 5.4.6 CLI is admitted with a five-thousand-record table workload.
+Its upstream `wasi_unstable` import namespace is reproducibly changed to
+Preview 1 without changing the CLI code; the exact transformed artifact and
+reference output are pinned.
 The newer YoWASP 0.11.1 binaries for several tools exceed Wago's current
 bounded-exception-handling limit, so the compatible 0.5.0 release is pinned
 for those workloads.
