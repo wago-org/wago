@@ -26,6 +26,17 @@ type commandOutput struct {
 	files          map[string][]byte
 }
 
+func TestCommandArgsMulticall(t *testing.T) {
+	m := corpusModule{ID: "coreutils-sort", Command: &commandEntry{Argv0: "coreutils", Args: []string{"sort", "/records.txt"}}}
+	if got := commandArgs(m); !slices.Equal(got, []string{"coreutils", "sort", "/records.txt"}) {
+		t.Fatalf("multicall arguments = %q", got)
+	}
+	m.Command.Argv0 = ""
+	if got := commandArgs(m); !slices.Equal(got, []string{"coreutils-sort", "sort", "/records.txt"}) {
+		t.Fatalf("default arguments = %q", got)
+	}
+}
+
 func TestCommandSupportsPlatform(t *testing.T) {
 	all := corpusModule{Command: &commandEntry{}}
 	if !commandSupportsPlatform(all, "linux", "amd64") {
@@ -242,7 +253,11 @@ func commandOutputFiles(m corpusModule, dir string) (map[string][]byte, error) {
 }
 
 func commandArgs(m corpusModule) []string {
-	return append([]string{m.ID}, m.Command.Args...)
+	argv0 := m.ID
+	if m.Command.Argv0 != "" {
+		argv0 = m.Command.Argv0
+	}
+	return append([]string{argv0}, m.Command.Args...)
 }
 
 func commandExitOK(err error) bool {

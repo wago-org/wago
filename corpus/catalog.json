@@ -1075,6 +1075,50 @@
   ],
   "benchmarks": [
     {
+      "suite": "uutils/coreutils",
+      "desc": "Rust coreutils sorts a pinned twenty-four-record text file",
+      "id": "coreutils-sort",
+      "artifact": "workloads/applications/coreutils/coreutils.wasm",
+      "artifact_sha256": "393da2c407ef0498be397f48d8b030cd4106bd30e0ddec504bfc75718486d034",
+      "tags": ["application", "coreutils", "sort", "rust", "wasi"],
+      "source": {"repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0", "revision": "0.10.0", "revision_date": "2026-08-05", "license": "MIT", "toolchain": "upstream wasm32-wasip1 release", "toolchain_version": "0.10.0"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "argv0": "coreutils", "args": ["sort", "/records.txt"], "preopen": "workloads/applications/coreutils/inputs", "inputs": {"records.txt": "2d43a426486e8da09652655f188806ece6ce45006af911a36d000d4720770fa9"}, "stdout_sha256": "1fb05380888fbabe25a2193ad242ddca2dfe4c8f44d67c7f688f2f4f98df2f0a"}
+    },
+    {
+      "suite": "uutils/coreutils",
+      "desc": "Rust coreutils hashes a pinned text file with SHA-256",
+      "id": "coreutils-sha256sum",
+      "artifact": "workloads/applications/coreutils/coreutils.wasm",
+      "artifact_sha256": "393da2c407ef0498be397f48d8b030cd4106bd30e0ddec504bfc75718486d034",
+      "tags": ["application", "coreutils", "sha256", "rust", "wasi"],
+      "source": {"repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0", "revision": "0.10.0", "revision_date": "2026-08-05", "license": "MIT", "toolchain": "upstream wasm32-wasip1 release", "toolchain_version": "0.10.0"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "argv0": "coreutils", "args": ["sha256sum", "/records.txt"], "preopen": "workloads/applications/coreutils/inputs", "inputs": {"records.txt": "2d43a426486e8da09652655f188806ece6ce45006af911a36d000d4720770fa9"}, "stdout_sha256": "d6c6688bd52492607edae117b22cfe0b095517978bb01462fcc6d71980b7b9fa"}
+    },
+    {
+      "suite": "uutils/coreutils",
+      "desc": "Rust coreutils base64-encodes a pinned text file",
+      "id": "coreutils-base64",
+      "artifact": "workloads/applications/coreutils/coreutils.wasm",
+      "artifact_sha256": "393da2c407ef0498be397f48d8b030cd4106bd30e0ddec504bfc75718486d034",
+      "tags": ["application", "coreutils", "base64", "rust", "wasi"],
+      "source": {"repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0", "revision": "0.10.0", "revision_date": "2026-08-05", "license": "MIT", "toolchain": "upstream wasm32-wasip1 release", "toolchain_version": "0.10.0"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "argv0": "coreutils", "args": ["base64", "/records.txt"], "preopen": "workloads/applications/coreutils/inputs", "inputs": {"records.txt": "2d43a426486e8da09652655f188806ece6ce45006af911a36d000d4720770fa9"}, "stdout_sha256": "47e8fddc84646b6746eac8090d823f54cb37ed702cfc3d5902db88d2b618a59e"}
+    },
+    {
+      "suite": "uutils/coreutils",
+      "desc": "Rust coreutils counts lines, words, and bytes in a pinned text file",
+      "id": "coreutils-wc",
+      "artifact": "workloads/applications/coreutils/coreutils.wasm",
+      "artifact_sha256": "393da2c407ef0498be397f48d8b030cd4106bd30e0ddec504bfc75718486d034",
+      "tags": ["application", "coreutils", "text", "rust", "wasi"],
+      "source": {"repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0", "revision": "0.10.0", "revision_date": "2026-08-05", "license": "MIT", "toolchain": "upstream wasm32-wasip1 release", "toolchain_version": "0.10.0"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "argv0": "coreutils", "args": ["wc", "/records.txt"], "preopen": "workloads/applications/coreutils/inputs", "inputs": {"records.txt": "2d43a426486e8da09652655f188806ece6ce45006af911a36d000d4720770fa9"}, "stdout_sha256": "ca05ae34ead81ae715eb22e7081718ba5adb98146c6a7045c774bb9cce420377"}
+    },
+    {
       "suite": "ripgrep",
       "desc": "ripgrep searches a JavaScript program and returns exact matching source lines",
       "id": "ripgrep-source",

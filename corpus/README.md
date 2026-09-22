@@ -40,6 +40,10 @@ oracle. The subsequent `opt` pass still traps in Wago; see the
 The a-Shell ripgrep command is admitted with exact matching source lines;
 `-N` explicitly disables line numbers, which otherwise differ between Wago's
 and reference runtimes' stdout device reporting.
+The upstream uutils/coreutils WASI multicall application is admitted with
+`sort`, `sha256sum`, `base64`, and `wc` workloads. The command harness has an
+explicit `argv0` field for dispatch; the four commands count as one suite,
+not four unrelated applications.
 The newer YoWASP 0.11.1 binaries for several tools exceed Wago's current
 bounded-exception-handling limit, so the compatible 0.5.0 release is pinned
 for those workloads.

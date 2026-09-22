@@ -33,6 +33,7 @@ var includeOptimizationAblations = flag.Bool("wago.bench.optimization-ablation",
 type commandEntry struct {
 	Runtime      string            `json:"runtime"` // core, wasi, or ashell; command runs in a fresh instance
 	Export       string            `json:"export"`
+	Argv0        string            `json:"argv0"`     // optional multicall executable name
 	Platforms    []string          `json:"platforms"` // optional GOOS/GOARCH allowlist
 	Args         []string          `json:"args"`
 	Stdin        string            `json:"stdin"`   // optional path relative to corpus/
