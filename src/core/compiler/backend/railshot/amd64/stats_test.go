@@ -15,8 +15,12 @@ import (
 func compileWithStats(t *testing.T, m *wasm.Module, guard bool) *ModuleStats {
 	t.Helper()
 	var ms ModuleStats
-	if _, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, Stats: &ms}); err != nil {
+	compiled, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, Stats: &ms})
+	if err != nil {
 		t.Fatalf("compile: %v", err)
+	}
+	if compiled.CodeImage != nil {
+		defer compiled.CodeImage.Close()
 	}
 	if len(ms.Funcs) != len(m.Code) {
 		t.Fatalf("stats funcs = %d, want %d", len(ms.Funcs), len(m.Code))

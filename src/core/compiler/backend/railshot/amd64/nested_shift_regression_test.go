@@ -36,7 +36,11 @@ func TestReviewNestedShiftCompile(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
-	if _, err := CompileModule(m); err != nil {
+	cm, err := CompileModule(m)
+	if err != nil {
 		t.Fatalf("valid i32 expression rejected: %v", err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
 	}
 }
