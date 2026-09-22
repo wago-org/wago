@@ -18,6 +18,9 @@ The admitted full commands are esbuild, QuickJS, Duktape, SQLite,
 swift-format, and xzdec.
 The legacy LZMA decoder `lzmadec` and header inspector `lzmainfo` are
 admitted alongside `xzdec`.
+The `age` and `age-keygen` commands use a public, disposable test identity and
+check deterministic decryption and recipient derivation; no real secret is
+stored in the corpus.
 These are execution-tested fixtures, not a claim that the rest of the acquisition
 queue runs. The Swift formatter uses a preopened source file because its stdin
 path currently fails in Wago's WASI host with a bad descriptor. a-Shell

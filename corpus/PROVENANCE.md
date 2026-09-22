@@ -27,6 +27,7 @@ workloads are rebuilt from `sources/` with the scripts in `build/`.
 | xzdec CLI | upstream XZ Utils 5.8.4 decoder built with WASI SDK 34; exact decompressed bytes captured with Wasmtime | `d3e650e63c110e830fd5391e7f8b45df0b91d3da`, release archive SHA-256 `4ce24038fd4221e0d13bc1a2de7a4db56e90b92b3bf75321f6c14be73f65de4b` |
 | lzmadec CLI | same upstream XZ Utils 5.8.4 source, configured for the legacy LZMA decoder; exact decompressed bytes captured with Wasmtime | `d3e650e63c110e830fd5391e7f8b45df0b91d3da`, WASI SDK 34 |
 | lzmainfo CLI | same upstream XZ Utils 5.8.4 source, configured for legacy LZMA header inspection; exact output captured with Wasmtime | `d3e650e63c110e830fd5391e7f8b45df0b91d3da`, WASI SDK 34 |
+| age and age-keygen | Go/WASI commands decrypting a fixed test ciphertext and deriving its public recipient; exact outputs captured with Wasmtime | `b74dce4cdbe35b5e5f66c06d9612b72f89028758`, Go 1.27.0, `-trimpath`; the identity is deliberately public test data |
 
 The PolyBench adapter includes each upstream kernel unchanged, replaces its
 dump stream with a deterministic checksum at the suite's two-decimal output

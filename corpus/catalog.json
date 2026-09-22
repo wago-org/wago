@@ -1075,6 +1075,63 @@
   ],
   "benchmarks": [
     {
+      "suite": "age",
+      "desc": "age WASI CLI decrypts a pinned test ciphertext with an exact plaintext oracle",
+      "id": "age-decrypt",
+      "artifact": "workloads/applications/age/age.wasm",
+      "artifact_sha256": "6e3249c90b12d821f993b8270176eb4624449b11796e0f29fb5b2bd80c15f6c8",
+      "tags": ["application", "encryption", "go", "wasi"],
+      "source": {
+        "repository": "https://github.com/FiloSottile/age.git",
+        "revision": "b74dce4cdbe35b5e5f66c06d9612b72f89028758",
+        "revision_date": "2026-08-29",
+        "license": "BSD-3-Clause",
+        "toolchain": "go",
+        "toolchain_version": "1.27.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["--decrypt", "-i", "test-identity.txt", "source.js.age"],
+        "preopen": "workloads/applications/age/inputs",
+        "inputs": {
+          "test-identity.txt": "f3ceb70e4a35c314f8db06030660aecdb75b65cba4f144ac46b63eb43fe4abd5",
+          "source.js.age": "563394d1942bf60c2c53621c49d2cd44daa8a95b41404be387ebc7e0a5442040"
+        },
+        "stdout_sha256": "15f4817d6bb6e105ef12c8b6d2383c32d1646a16824365d96935445f436afc89"
+      }
+    },
+    {
+      "suite": "age-keygen",
+      "desc": "age-keygen WASI CLI derives the public recipient from a pinned test identity",
+      "id": "age-keygen-public",
+      "artifact": "workloads/applications/age/age-keygen.wasm",
+      "artifact_sha256": "b99e027e56ebd36dabf89ea0d1607682f957cbae3b5ba253fa86c228f2b9a035",
+      "tags": ["application", "encryption", "go", "wasi"],
+      "source": {
+        "repository": "https://github.com/FiloSottile/age.git",
+        "revision": "b74dce4cdbe35b5e5f66c06d9612b72f89028758",
+        "revision_date": "2026-08-29",
+        "license": "BSD-3-Clause",
+        "toolchain": "go",
+        "toolchain_version": "1.27.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-y", "test-identity.txt"],
+        "preopen": "workloads/applications/age/keygen-inputs",
+        "inputs": {
+          "test-identity.txt": "f3ceb70e4a35c314f8db06030660aecdb75b65cba4f144ac46b63eb43fe4abd5"
+        },
+        "stdout_sha256": "3e88d7da0a7a6dce4879845f68b246802c0e6bec13452cec30bd2c27e8b3a470"
+      }
+    },
+    {
       "suite": "lzmainfo",
       "desc": "XZ Utils lzmainfo CLI parses a pinned LZMA header with an exact output oracle",
       "id": "lzmainfo-header",

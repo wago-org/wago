@@ -9,6 +9,8 @@
     { "program": "xzdec", "benchmark": "xzdec-decompress" },
     { "program": "lzmadec", "benchmark": "lzmadec-decompress" },
     { "program": "lzmainfo", "benchmark": "lzmainfo-header" },
+    { "program": "age", "benchmark": "age-decrypt" },
+    { "program": "age-keygen", "benchmark": "age-keygen-public" },
     { "program": "swift-format", "benchmark": "swift-format-source" }
   ],
   "groups": [
@@ -27,8 +29,7 @@
       "programs": [
         "f2c", "ctags", "readtags", "ripgrep", "Graphviz", "FFmpeg", "ffprobe",
         "json2csv", "file", "tree", "XZ",
-        "zip", "unzip", "zipcloak", "zipnote", "zipsplit", "funzip", "unzipsfx",
-        "age", "age-keygen"
+        "zip", "unzip", "zipcloak", "zipnote", "zipsplit", "funzip", "unzipsfx"
       ]
     },
     {
