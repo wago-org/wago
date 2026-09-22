@@ -27,6 +27,16 @@ JavaScript fixture.
 The upstream `tree` CLI is admitted for a recursive preopened-directory listing.
 The a-Shell tree 1.8.0 artifact has a separate workload using its bounded host
 imports; a-Shell Ctags still has a [filesystem blocker](repro/ctags/README.md).
+The a-Shell `json2csv` artifact converts pinned newline-delimited JSON into
+an exact CSV stream.
+YoWASP `icepll`, `icebram`, `icepack`, `iceunpack`, `icemulti`, `ecppll`, and
+`ecpbram` are admitted with seeded calculations, exact bitstream round trips,
+and exact generated-file checks. File-producing commands run against a fresh
+temporary copy of their preopen; tests and benchmarks never write generated
+files into the committed corpus.
+The newer YoWASP 0.11.1 binaries for several tools exceed Wago's current
+bounded-exception-handling limit, so the compatible 0.5.0 release is pinned
+for those workloads.
 The `ashell` corpus adapter is deliberately narrow: `ashell_getcwd` returns
 the guest root `/`, `ashell_getenv` reports no environment value, and
 `ashell_chdir`/`ashell_system` return `ENOSYS`. It never exposes the host

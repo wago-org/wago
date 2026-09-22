@@ -18,7 +18,7 @@ func (fixedCommandClock) Monotonic() (uint64, uint64, error)  { return 1, 1, nil
 func (fixedCommandClock) ProcessCPU() (uint64, uint64, error) { return 0, 1, nil }
 func (fixedCommandClock) ThreadCPU() (uint64, uint64, error)  { return 0, 1, nil }
 
-func commandRuntimeImports(m corpusModule, stdin []byte, stdout, stderr io.Writer) (*wago.Imports, error) {
+func commandRuntimeImports(m corpusModule, preopenDir string, stdin []byte, stdout, stderr io.Writer) (*wago.Imports, error) {
 	switch m.Command.Runtime {
 	case "core":
 		return nil, nil
@@ -28,8 +28,8 @@ func commandRuntimeImports(m corpusModule, stdin []byte, stdout, stderr io.Write
 			Stdout: stdout, Stderr: stderr,
 			Clocks: fixedCommandClock{},
 		}
-		if dir := commandPreopen(m); dir != "" {
-			cfg.Mounts = []p1.Preopen{{GuestPath: "/", HostPath: dir, Read: true, Write: true, MutateDirectory: true}}
+		if preopenDir != "" {
+			cfg.Mounts = []p1.Preopen{{GuestPath: "/", HostPath: preopenDir, Read: true, Write: true, MutateDirectory: true}}
 		}
 		imports := p1.Imports(cfg)
 		if m.Command.Runtime == "ashell" {

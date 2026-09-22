@@ -1075,6 +1075,222 @@
   ],
   "benchmarks": [
     {
+      "suite": "icestorm",
+      "desc": "icemulti packages a 1K FPGA bitstream as a multiboot image",
+      "id": "icemulti-image",
+      "artifact": "workloads/applications/icemulti/icemulti.wasm",
+      "artifact_sha256": "ac648e95ba42b44fc50fc6f3d6bb023e03063b6cace4dc6f4ffdefbe3a3820c2",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["/example.bin"],
+        "preopen": "workloads/applications/icepack/unpack-inputs",
+        "inputs": {
+          "example.bin": "d7d042ed25fffa14ebc0fca55ec393817bfee94ad817940310babb6560a777e3"
+        },
+        "stdout_sha256": "35c4d03a64a98671342f69a6af1207996878cdebcfac4f79a2099e01b432c087"
+      }
+    },
+    {
+      "suite": "icestorm",
+      "desc": "icepack reconstructs a 1K FPGA bitstream from an ASCII configuration",
+      "id": "icepack-pack",
+      "artifact": "workloads/applications/icepack/icepack.wasm",
+      "artifact_sha256": "079f96f2e21954af470ed085e2bc86f7c7fd4f95fb13324fcb9098e222934e3e",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "stdin": "example.asc",
+        "preopen": "workloads/applications/icepack/pack-inputs",
+        "inputs": {
+          "example.asc": "52c9fda937ce54c49915ad8b0fcb9093c659e97ae1b24f0239fcf6de7f77c0d3"
+        },
+        "stdout_sha256": "d7d042ed25fffa14ebc0fca55ec393817bfee94ad817940310babb6560a777e3"
+      }
+    },
+    {
+      "suite": "icestorm",
+      "desc": "iceunpack decodes a 1K FPGA bitstream into its ASCII configuration",
+      "id": "iceunpack-unpack",
+      "artifact": "workloads/applications/icepack/icepack.wasm",
+      "artifact_sha256": "079f96f2e21954af470ed085e2bc86f7c7fd4f95fb13324fcb9098e222934e3e",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-u"],
+        "stdin": "example.bin",
+        "preopen": "workloads/applications/icepack/unpack-inputs",
+        "inputs": {
+          "example.bin": "d7d042ed25fffa14ebc0fca55ec393817bfee94ad817940310babb6560a777e3"
+        },
+        "stdout_sha256": "52c9fda937ce54c49915ad8b0fcb9093c659e97ae1b24f0239fcf6de7f77c0d3"
+      }
+    },
+    {
+      "suite": "trellis",
+      "desc": "ecpbram generates a seeded 512-word ECP5 BRAM hex file",
+      "id": "ecpbram-generate",
+      "artifact": "workloads/applications/ecpbram/ecpbram.wasm",
+      "artifact_sha256": "2d5fcf6b054eddf2d034fea174f6c158e35ae2ade81794bfa50bf86d6079c00a",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-g", "/bram.hex", "-s", "123", "-w", "8", "-d", "512"],
+        "preopen": "workloads/applications/ecpbram/inputs",
+        "inputs": {
+          "README.txt": "ea6f178748399f25f5890284b55d4ea6e6ba8872e277b6c1e5e6b4849f4b9a98"
+        },
+        "outputs": {
+          "bram.hex": "4aadb5fc188ef99b4202fb5a64b593e094aacf69197fe92cb7da6e8677e94dad"
+        }
+      }
+    },
+    {
+      "suite": "icestorm",
+      "desc": "icebram generates seeded 8-bit BRAM initialization words",
+      "id": "icebram-generate",
+      "artifact": "workloads/applications/icebram/icebram.wasm",
+      "artifact_sha256": "2eb590a9e8e8a5dce32ab0b01b57558b290e7e4cd0f001036e054f3ff9b99deb",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-g", "-s", "123", "8", "256"],
+        "stdout_sha256": "080113e233f067451a169be6371068249ebb4e94266415538bf00b5b6b3c86f4"
+      }
+    },
+    {
+      "suite": "trellis",
+      "desc": "ecppll calculates ECP5 PLL divisors for a fixed 12 to 24 MHz clock request",
+      "id": "ecppll-clock",
+      "artifact": "workloads/applications/ecppll/ecppll.wasm",
+      "artifact_sha256": "a86ef23e6f447021fa26b9481d14c2d00fb097b58e8aa3cb246dbc53aa5c2900",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-i", "12", "-o", "24"],
+        "stdout_sha256": "63bdf4e757b2c3f08017ee17709385590645ec6515620e5ad727e59ae0a89160"
+      }
+    },
+    {
+      "suite": "icestorm",
+      "desc": "icepll computes iCE40 PLL divisors for a fixed 12 to 24 MHz clock request",
+      "id": "icepll-clock",
+      "artifact": "workloads/applications/icepll/icepll.wasm",
+      "artifact_sha256": "47dfc30f14b4b748d89b7370190abf840e2d20f07ee36463305df667e913ecfd",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.11.1.0.post826/",
+        "revision": "0.11.1.0.post826",
+        "revision_date": "2026-08-13",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.11.1.0.post826"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-i", "12", "-o", "24"],
+        "stdout_sha256": "8e73f9be2fb5c05697259475732a35bf8bec19160f03f87e9ad0f620ea251c9f"
+      }
+    },
+    {
+      "suite": "json2csv",
+      "desc": "json2csv CLI extracts nested fields from newline-delimited JSON into CSV",
+      "id": "json2csv-people",
+      "artifact": "workloads/applications/json2csv/json2csv.wasm",
+      "artifact_sha256": "f1aacfb105c7d69b19b4c7dfcec0ebd2ed14a29588cfecbb0ce35a7b99a6f6cc",
+      "tags": ["application", "json", "csv", "go", "wasi"],
+      "source": {
+        "repository": "https://github.com/holzschu/a-Shell-commands/releases/tag/0.1",
+        "revision": "asset-68082085",
+        "revision_date": "2022-06-10",
+        "license": "MIT",
+        "toolchain": "upstream a-Shell release artifact",
+        "toolchain_version": "0.1"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-k", "user.name,score,note", "-p"],
+        "stdin": "people.ndjson",
+        "preopen": "workloads/applications/json2csv/inputs",
+        "inputs": {
+          "people.ndjson": "f30fab50db5af1c8403d093243cba9a96cfe080663d113485b0a1e80c428763a"
+        },
+        "stdout_sha256": "30cded600aa1a8739c9656c8bb271b7a760c764e090bba1345df61b77a8bfacc"
+      }
+    },
+    {
       "suite": "tree",
       "desc": "a-Shell tree command traverses a pinned directory with a-Shell host imports",
       "id": "tree-ashell-list",

@@ -38,6 +38,7 @@ type commandEntry struct {
 	Stdin        string            `json:"stdin"`   // optional path relative to corpus/
 	Preopen      string            `json:"preopen"` // optional host directory relative to corpus/, mounted at /
 	Inputs       map[string]string `json:"inputs"`  // relative path -> SHA-256 for every preopened input file
+	Outputs      map[string]string `json:"outputs"` // relative path -> SHA-256 for generated files
 	Want         []uint64          `json:"want"`    // optional exact function results
 	StdoutSHA256 string            `json:"stdout_sha256"`
 	StderrSHA256 string            `json:"stderr_sha256"`
@@ -215,7 +216,7 @@ func validateCorpusModule(mod corpusModule) error {
 			return fmt.Errorf("%s: unknown command oracle %q", mod.ID, mod.Command.Oracle)
 		}
 		if mod.Command.Oracle == "" && mod.Command.Want == nil &&
-			mod.Command.StdoutSHA256 == "" && mod.Command.StderrSHA256 == "" {
+			mod.Command.StdoutSHA256 == "" && mod.Command.StderrSHA256 == "" && len(mod.Command.Outputs) == 0 {
 			return fmt.Errorf("%s: command execution needs an exact oracle", mod.ID)
 		}
 	}

@@ -14,6 +14,14 @@
     { "program": "jq", "benchmark": "jq-json-transform" },
     { "program": "Brotli CLI", "benchmark": "brotli-compress" },
     { "program": "tree", "benchmark": "tree-list" },
+    { "program": "json2csv", "benchmark": "json2csv-people" },
+    { "program": "icepll", "benchmark": "icepll-clock" },
+    { "program": "icebram", "benchmark": "icebram-generate" },
+    { "program": "icepack", "benchmark": "icepack-pack" },
+    { "program": "iceunpack", "benchmark": "iceunpack-unpack" },
+    { "program": "icemulti", "benchmark": "icemulti-image" },
+    { "program": "ecppll", "benchmark": "ecppll-clock" },
+    { "program": "ecpbram", "benchmark": "ecpbram-generate" },
     { "program": "swift-format", "benchmark": "swift-format-source" }
   ],
   "groups": [
@@ -23,15 +31,14 @@
         "Lua CLI", "CPython", "MicroPython", "Ruby", "PHP",
         "Clang", "clang++", "LLD", "wasm-ld", "vasm6502_oldstyle",
         "Pandoc", "uutils/coreutils", "Yosys", "nextpnr", "Boolector",
-        "icepack", "iceunpack", "icebram", "icemulti", "icepll",
-        "ecppack", "ecpunpack", "ecpbram", "ecpmulti", "ecppll", "prjoxide"
+        "ecppack", "ecpunpack", "ecpmulti", "prjoxide"
       ]
     },
     {
       "route": "a-Shell command; imports and host behavior require per-artifact audit",
       "programs": [
         "f2c", "ctags", "readtags", "ripgrep", "Graphviz", "FFmpeg", "ffprobe",
-        "json2csv", "file", "XZ",
+        "file", "XZ",
         "zip", "unzip", "zipcloak", "zipnote", "zipsplit", "funzip", "unzipsfx"
       ]
     },
