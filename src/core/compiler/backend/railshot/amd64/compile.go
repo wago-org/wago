@@ -2497,6 +2497,7 @@ func computeModuleHintsWithWorkersPolicy(m *wasm.Module, nGlobals, importedFuncs
 }
 
 func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, importedFuncs, workers int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy, detailedResidency bool) ([]funcHints, funcHintSidecar, []int64, error) {
+	types := wasm.NewFunctionTypeLookup(m)
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
 	totalScores := 0
@@ -2507,7 +2508,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 	moduleEH := m.TagCount() != 0
 	storageModuleEH := moduleEH
 	for i := range m.Code {
-		ft, ok := m.LocalFuncType(i)
+		ft, ok := types.LocalFuncType(m, i)
 		if !ok {
 			return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: unknown function type", i)
 		}
@@ -3176,7 +3177,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}()
 
-	ft, ok := m.LocalFuncType(funcIdx)
+	ft, ok := sc.moduleTypes.functionTypes.LocalFuncType(m, funcIdx)
 	if !ok {
 		return nil, nil, 0, fmt.Errorf("unknown function type")
 	}

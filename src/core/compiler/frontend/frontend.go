@@ -1049,8 +1049,9 @@ func needsPublicFuncrefHostReentry(m *wasm.Module, tables []TableRuntimeShape) b
 	if !hasFuncrefTable {
 		return false
 	}
+	types := wasm.NewFunctionTypeLookup(m)
 	for li := range m.FuncTypes {
-		ft, ok := m.LocalFuncType(li)
+		ft, ok := types.LocalFuncType(m, li)
 		if !ok {
 			continue
 		}
@@ -1086,8 +1087,9 @@ func wrapperABISlots(types []wasm.ValType) int {
 }
 
 func (p supportPass) maxLocalFuncSlots() (params, results int) {
+	types := wasm.NewFunctionTypeLookup(p.m)
 	for li := range p.m.FuncTypes {
-		ft, ok := p.m.LocalFuncType(li)
+		ft, ok := types.LocalFuncType(p.m, li)
 		if !ok {
 			continue
 		}
