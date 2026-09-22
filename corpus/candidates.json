@@ -11,6 +11,7 @@
     { "program": "lzmainfo", "benchmark": "lzmainfo-header" },
     { "program": "age", "benchmark": "age-decrypt" },
     { "program": "age-keygen", "benchmark": "age-keygen-public" },
+    { "program": "jq", "benchmark": "jq-json-transform" },
     { "program": "swift-format", "benchmark": "swift-format-source" }
   ],
   "groups": [
@@ -19,7 +20,7 @@
       "programs": [
         "Lua CLI", "CPython", "MicroPython", "Ruby", "PHP",
         "Clang", "clang++", "LLD", "wasm-ld", "vasm6502_oldstyle",
-        "Pandoc", "jq", "uutils/coreutils", "Yosys", "nextpnr", "Boolector",
+        "Pandoc", "uutils/coreutils", "Yosys", "nextpnr", "Boolector",
         "icepack", "iceunpack", "icebram", "icemulti", "icepll",
         "ecppack", "ecpunpack", "ecpbram", "ecpmulti", "ecppll", "prjoxide"
       ]

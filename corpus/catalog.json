@@ -1075,6 +1075,30 @@
   ],
   "benchmarks": [
     {
+      "suite": "jq",
+      "desc": "jq WASI CLI generates, groups, and aggregates a thousand JSON objects with an exact output oracle",
+      "id": "jq-json-transform",
+      "artifact": "workloads/applications/jq/jq.wasm",
+      "artifact_sha256": "e99e12da7947aa782137d61367fbe78264af6a6aa6fed6c5d73e327b81571d0e",
+      "tags": ["application", "json", "query", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/jqlang/jq.git",
+        "revision": "34f7186b86743a083a589741b6cea95293524108",
+        "revision_date": "2026-06-20",
+        "license": "MIT AND BSD-2-Clause",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-n", "-c", "-M", "[range(0;1000) | {category:(. % 3), score: ((. * .) % 97)}] | group_by(.category) | map({category: .[0].category, count: length, total: (map(.score) | add)})"],
+        "stdout_sha256": "ec98405bdcc701a967f562f058ce71d214baf14e18328a66eab38bbdfdfef00f"
+      }
+    },
+    {
       "suite": "age",
       "desc": "age WASI CLI decrypts a pinned test ciphertext with an exact plaintext oracle",
       "id": "age-decrypt",
