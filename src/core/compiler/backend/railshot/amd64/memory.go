@@ -1299,7 +1299,6 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.LoadIdx(RDX, RSI, RCX, -8, 8, false, true)
 	f.a.StoreIdx(RDI, RCX, RDX, -8, 8)
 	f.a.AluRI(5, RCX, 8, false) // rcx -= 8
-	f.a.JmpBack(back8)
 	f.a.PatchRel32(b8done, f.a.Len())
 	f.a.AluRI(cmpDigit, RCX, 4, false)
 	b4done := f.a.JccPlaceholder(condB)
@@ -1339,7 +1338,6 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.LoadIdx(RDX, RSI, RCX, 0, 8, false, true)
 	f.a.StoreIdx(RDI, RCX, RDX, 0, 8)
 	f.a.AluRI(0, RCX, 8, true) // rcx += 8
-	f.a.JmpBack(fwd8)
 	f.a.PatchRel32(f8done, f.a.Len())
 	f.a.AluRI(cmpDigit, RCX, -4, true)
 	f4done := f.a.JccPlaceholder(condG)
