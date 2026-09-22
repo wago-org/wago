@@ -1075,6 +1075,90 @@
   ],
   "benchmarks": [
     {
+      "suite": "lzmainfo",
+      "desc": "XZ Utils lzmainfo CLI parses a pinned LZMA header with an exact output oracle",
+      "id": "lzmainfo-header",
+      "artifact": "workloads/applications/lzmainfo/lzmainfo.wasm",
+      "artifact_sha256": "fa290176f4449c7e0ce581d988d026b7d2849a430310d9d2028a4840acacd3d8",
+      "tags": ["application", "compression", "parser", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/tukaani-project/xz.git",
+        "revision": "d3e650e63c110e830fd5391e7f8b45df0b91d3da",
+        "revision_date": "2026-09-09",
+        "license": "0BSD",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "stdin": "source.js.lzma",
+        "preopen": "workloads/applications/lzmainfo/inputs",
+        "inputs": {
+          "source.js.lzma": "89ed532e5c8d0f26ba804591f9a31f0e35a409c5351cbef1c15751137c13b470"
+        },
+        "stdout_sha256": "11f5dcfd9ce557757832c59c3cf2a682b9f57127ef26b10de8e337c51f15719e"
+      }
+    },
+    {
+      "suite": "lzmadec",
+      "desc": "XZ Utils LZMA decoder CLI decompresses a pinned LZMA stream with an exact output oracle",
+      "id": "lzmadec-decompress",
+      "artifact": "workloads/applications/lzmadec/lzmadec.wasm",
+      "artifact_sha256": "0383ef35939b458adbacbb64144d2f12a13e282488efe3387dff017880c6c245",
+      "tags": ["application", "compression", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/tukaani-project/xz.git",
+        "revision": "d3e650e63c110e830fd5391e7f8b45df0b91d3da",
+        "revision_date": "2026-09-09",
+        "license": "0BSD",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "stdin": "source.js.lzma",
+        "preopen": "workloads/applications/lzmadec/inputs",
+        "inputs": {
+          "source.js.lzma": "89ed532e5c8d0f26ba804591f9a31f0e35a409c5351cbef1c15751137c13b470"
+        },
+        "stdout_sha256": "15f4817d6bb6e105ef12c8b6d2383c32d1646a16824365d96935445f436afc89"
+      }
+    },
+    {
+      "suite": "xzdec",
+      "desc": "XZ Utils decoder CLI decompresses a pinned XZ stream with an exact output oracle",
+      "id": "xzdec-decompress",
+      "artifact": "workloads/applications/xzdec/xzdec.wasm",
+      "artifact_sha256": "83248ab482a8aa2e05b9be965f775af7c8218058d2501d93b18d967f04eea572",
+      "tags": ["application", "compression", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/tukaani-project/xz.git",
+        "revision": "d3e650e63c110e830fd5391e7f8b45df0b91d3da",
+        "revision_date": "2026-09-09",
+        "license": "0BSD",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "stdin": "source.js.xz",
+        "preopen": "workloads/applications/xzdec/inputs",
+        "inputs": {
+          "source.js.xz": "64f999ed9f0448036cd2d4842f87f5cee4edf3800e50ba085c4bb76ae711bcf1"
+        },
+        "stdout_sha256": "15f4817d6bb6e105ef12c8b6d2383c32d1646a16824365d96935445f436afc89"
+      }
+    },
+    {
       "suite": "sqlite3",
       "desc": "SQLite WASI shell executes JSON table scans, a thousand-row join, and aggregates with an exact output oracle",
       "id": "sqlite3-query",

@@ -24,6 +24,9 @@ workloads are rebuilt from `sources/` with the scripts in `build/`.
 | Duktape CLI | pinned WASI SDK 34 build of the standalone `duk` interpreter; exact JavaScript output captured with Wasmtime | same `saghul/wasi-lab` revision; embedded Duktape source reports `44ca54f726bfa651a7ab59286dd5c371dba2ddfc` |
 | swift-format CLI | pinned upstream WASI release formatting a real Swift source file; exact output captured with Wasmtime | `kkebo/swift-format` `92097d54ac3be47738fe77e38c918e9aabce0302`, release `603.0.0-wasm32-wasi` |
 | SQLite CLI | upstream public-domain 3.53.4 amalgamation, built with WASI SDK 34 and an unsupported-subprocess stub; exact SQL result captured with Wasmtime | `sqlite-amalgamation-3530400.zip`, archive SHA-256 `1e71ddf93849c6a6ecf58b827c0692073d2dd7ee40196158068f7b29f422e87d` |
+| xzdec CLI | upstream XZ Utils 5.8.4 decoder built with WASI SDK 34; exact decompressed bytes captured with Wasmtime | `d3e650e63c110e830fd5391e7f8b45df0b91d3da`, release archive SHA-256 `4ce24038fd4221e0d13bc1a2de7a4db56e90b92b3bf75321f6c14be73f65de4b` |
+| lzmadec CLI | same upstream XZ Utils 5.8.4 source, configured for the legacy LZMA decoder; exact decompressed bytes captured with Wasmtime | `d3e650e63c110e830fd5391e7f8b45df0b91d3da`, WASI SDK 34 |
+| lzmainfo CLI | same upstream XZ Utils 5.8.4 source, configured for legacy LZMA header inspection; exact output captured with Wasmtime | `d3e650e63c110e830fd5391e7f8b45df0b91d3da`, WASI SDK 34 |
 
 The PolyBench adapter includes each upstream kernel unchanged, replaces its
 dump stream with a deterministic checksum at the suite's two-decimal output

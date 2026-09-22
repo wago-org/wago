@@ -14,12 +14,17 @@ oracle, and passing both Wago and reference-runtime execution. The a-Shell
 [XZ reproducer](repro/xz/README.md) records a second, distinct a-Shell host
 incompatibility.
 
-The admitted full commands are esbuild, QuickJS, Duktape, SQLite, and swift-format.
+The admitted full commands are esbuild, QuickJS, Duktape, SQLite,
+swift-format, and xzdec.
+The legacy LZMA decoder `lzmadec` and header inspector `lzmainfo` are
+admitted alongside `xzdec`.
 These are execution-tested fixtures, not a claim that the rest of the acquisition
 queue runs. The Swift formatter uses a preopened source file because its stdin
 path currently fails in Wago's WASI host with a bad descriptor. a-Shell
 `funzip` similarly rejects Wago's character-device stdin; a filename does not
 work with that artifact's host contract either.
+The rebuilt upstream xzdec CLI does execute its decoder through Wago; the
+full XZ CLI remains pending, as does the incompatible a-Shell xz binary.
 The [SQLite reproducer](repro/sqlite3/README.md) records a file-backed query
 that still traps in Wago despite passing Wasmtime and wazero; the admitted SQL
 fixture uses a separate in-memory workload.
