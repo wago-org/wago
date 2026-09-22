@@ -1174,16 +1174,17 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset (i64 for memory64)
+	topSlot := f.s.back().st.slotIndex()
+	f.a.Load64(RDI, RSP, f.spillOff(topSlot-2)) // dst offset (i64 for memory64)
 	if f.memoryAddr64(memoryIndex) {
 		// Core 3 keeps passive-segment source and length operands i32. Loading
 		// them explicitly as u32 prevents stale high spill bits from widening
 		// the source range while leaving the memory32 instruction stream intact.
-		f.a.Load32(RSI, RSP, f.spillOff(d-2))
-		f.a.Load32(RCX, RSP, f.spillOff(d-1))
+		f.a.Load32(RSI, RSP, f.spillOff(topSlot-1))
+		f.a.Load32(RCX, RSP, f.spillOff(topSlot))
 	} else {
-		f.a.Load64(RSI, RSP, f.spillOff(d-2))
-		f.a.Load64(RCX, RSP, f.spillOff(d-1))
+		f.a.Load64(RSI, RSP, f.spillOff(topSlot-1))
+		f.a.Load64(RCX, RSP, f.spillOff(topSlot))
 		f.a.MovRegReg32(RDI, RDI)
 		f.a.MovRegReg32(RSI, RSI)
 		f.a.MovRegReg32(RCX, RCX)
@@ -1245,9 +1246,10 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
-	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src offset
-	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
+	topSlot := f.s.back().st.slotIndex()
+	f.a.Load64(RDI, RSP, f.spillOff(topSlot-2)) // dst offset
+	f.a.Load64(RSI, RSP, f.spillOff(topSlot-1)) // src offset
+	f.a.Load64(RCX, RSP, f.spillOff(topSlot))   // n
 	if !f.memoryAddr64(dstMemory) {
 		f.a.MovRegReg32(RDI, RDI)
 	}
@@ -1261,10 +1263,13 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
 	f.absoluteBulkAddr(dstMemory, RDI, RCX)
 	f.absoluteBulkAddr(srcMemory, RSI, RCX)
-	// A bulk operation can have a SIMD value live below its three operands.
-	// Reserve the vector scratch through the allocator so the copy loop cannot
-	// clobber that value (utf-as SIMD keeps one live across a 32-byte copy).
-	copyVec := f.allocFReg(0)
+	var copyVecs [4]Reg
+	var copyAvoid regMask
+	for i := range copyVecs {
+		copyVecs[i] = f.allocFReg(copyAvoid)
+		copyAvoid = copyAvoid.add(copyVecs[i])
+	}
+	copyVec := copyVecs[0]
 
 	// Hybrid dispatch: small dynamic copies take inline XMM/8-byte memmove loops.
 	// `rep movsb` startup and its medium-size cliffs dominate the string-append
@@ -1359,8 +1364,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	// accelerate DF=1 and commonly fall to roughly one byte per cycle. Load the
 	// complete chunk before storing it so even a one-byte overlap retains memmove
 	// semantics. Medium copies stay on the lower-startup XMM path; copies of at
-	// least 1 KiB use 128-byte YMM chunks before the XMM/scalar tail. XMM0..3 are
-	// scratch after flush; pinned float/vector locals use the high register bank.
+	// least 1 KiB use 128-byte YMM chunks before the XMM/scalar tail.
 	f.a.PatchRel32(big, f.a.Len())
 	f.a.Cmp64(RDI, RSI)
 	fwd := f.a.JccPlaceholder(condBE)  // dst <= src → forward
@@ -1373,10 +1377,10 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.AluRI(cmpDigit, RCX, 128, false)
 	ymmDone := f.a.JccPlaceholder(condB)
 	for i, disp := range [...]int32{-128, -96, -64, -32} {
-		f.a.YMovdquLoadIdx(Reg(i), RSI, RCX, disp)
+		f.a.YMovdquLoadIdx(copyVecs[i], RSI, RCX, disp)
 	}
 	for i, disp := range [...]int32{-128, -96, -64, -32} {
-		f.a.YMovdquStoreIdx(RDI, RCX, Reg(i), disp)
+		f.a.YMovdquStoreIdx(RDI, RCX, copyVecs[i], disp)
 	}
 	f.a.AluRI(5, RCX, 128, false)
 	f.a.JmpBack(back128)
@@ -1387,10 +1391,10 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.AluRI(cmpDigit, RCX, 64, false)
 	backTail := f.a.JccPlaceholder(condB)
 	for i, disp := range [...]int32{-64, -48, -32, -16} {
-		f.a.VMovdquLoadIdx(Reg(i), RSI, RCX, disp)
+		f.a.VMovdquLoadIdx(copyVecs[i], RSI, RCX, disp)
 	}
 	for i, disp := range [...]int32{-64, -48, -32, -16} {
-		f.a.VMovdquStoreIdx(RDI, RCX, Reg(i), disp)
+		f.a.VMovdquStoreIdx(RDI, RCX, copyVecs[i], disp)
 	}
 	f.a.AluRI(5, RCX, 64, false)
 	f.a.JmpBack(back64)
@@ -1418,7 +1422,9 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	for _, j := range joins {
 		f.a.PatchRel32(j, f.a.Len())
 	}
-	f.releaseF(copyVec)
+	for _, r := range copyVecs {
+		f.releaseF(r)
+	}
 
 	f.setDepth(d - 3)
 	return nil
@@ -1441,9 +1447,10 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
-	f.a.Load64(RAX, RSP, f.spillOff(d-2)) // AL = fill byte
-	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
+	topSlot := f.s.back().st.slotIndex()
+	f.a.Load64(RDI, RSP, f.spillOff(topSlot-2)) // dst offset
+	f.a.Load64(RAX, RSP, f.spillOff(topSlot-1)) // AL = fill byte
+	f.a.Load64(RCX, RSP, f.spillOff(topSlot))   // n
 	if !f.memoryAddr64(memoryIndex) {
 		f.a.MovRegReg32(RDI, RDI)
 		f.a.MovRegReg32(RCX, RCX)
