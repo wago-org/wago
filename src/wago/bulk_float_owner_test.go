@@ -163,3 +163,82 @@ func FuzzMemoryCopyCachedValueAndRanges(f *testing.F) {
 		}
 	})
 }
+
+func TestMemoryFillPreservesFloatPins(t *testing.T) {
+	params := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}
+	body := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0b, 0}
+	args := []uint64{0, 0xab, 0}
+	for i := 0; i < 12; i++ {
+		params = append(params, wasm.F64)
+		args = append(args, F64(float64(i+1)))
+		body = append(body, 0x20, byte(3+i), 0x20, byte(3+i), 0xa0)
+		if i > 0 {
+			body = append(body, 0xa0)
+		}
+	}
+	body = append(body, 0x0b)
+	module := bulkCopyOwnerModule(params, wasm.F64, body)
+	modes := []BoundsCheckMode{BoundsChecksExplicit}
+	if GuardPageSupported() {
+		modes = append(modes, BoundsChecksSignalsBased)
+	}
+	for _, mode := range modes {
+		t.Run(fmt.Sprintf("bounds=%d", mode), func(t *testing.T) {
+			compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(mode), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			for _, n := range []int{0, 1, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 1024} {
+				args[2] = uint64(n)
+				got, err := instance.Invoke("run", args...)
+				if err != nil || len(got) != 1 || got[0] != F64(156) {
+					t.Fatalf("n=%d: result = %x, %v; want %x", n, got, err, F64(156))
+				}
+				mem := instance.Memory().UnsafeBytes()
+				if !bytes.Equal(mem[:n], bytes.Repeat([]byte{0xab}, n)) {
+					t.Fatalf("n=%d: incorrect filled bytes", n)
+				}
+			}
+		})
+	}
+}
+
+func TestMemoryCopyPreservesVectorPins(t *testing.T) {
+	params := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}
+	var args []uint64
+	var body []byte
+	// Keep both float-cache entries and a vector-cache entry live with wide pins.
+	for _, v := range []float64{1.5, 2.5} {
+		for j := 0; j < 2; j++ {
+			body = append(body, 0x44)
+			body = binary.LittleEndian.AppendUint64(body, math.Float64bits(v))
+			body = append(body, 0x1a)
+		}
+	}
+	for j := 0; j < 2; j++ {
+		body = append(body, 0xfd, 0x0c)
+		body = binary.LittleEndian.AppendUint64(body, 0x123456789abcdef0)
+		body = binary.LittleEndian.AppendUint64(body, 0xfedcba9876543210)
+		body = append(body, 0x1a)
+	}
+	body = append(body, 0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0a, 0, 0)
+	for i := 0; i < 27; i++ {
+		params = append(params, wasm.V128)
+		args = append(args, uint64(i+1), uint64(100+i))
+		for j := 0; j < 2; j++ {
+			body = append(body, 0x20, byte(3+i), 0xfd, 0x1d, 0)
+		}
+		body = append(body, 0x7c)
+		if i > 0 {
+			body = append(body, 0x7c)
+		}
+	}
+	body = append(body, 0x0b)
+	runBulkCopyOwnerCases(t, bulkCopyOwnerModule(params, wasm.I64, body), args, 756)
+}

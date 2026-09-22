@@ -1175,29 +1175,74 @@ func (f *fn) trapUnlessLE(t, mb Reg) {
 	f.trapIf(condA, trapMemOOB)
 }
 
+// Bulk callers flush operands before these loops. Preserve local pins and
+// constant caches; very wide vector functions can leave only two scratch regs.
+func (f *fn) bulkCopyRegs() [4]Reg {
+	var regs [4]Reg
+	avoid := f.blockedFRegs(0)
+	free := 0
+	for _, r := range fpAllocRegs {
+		if !avoid.has(r) {
+			free++
+		}
+	}
+	n := 4
+	if free < n {
+		n = 2
+	}
+	for i := 0; i < n; i++ {
+		regs[i] = f.allocFReg(avoid)
+		avoid = avoid.add(regs[i])
+	}
+	if n == 2 {
+		regs[2], regs[3] = regNone, regNone
+	}
+	return regs
+}
+
 // copyFwdLoop emits a forward block-copy loop (AArch64 has no `rep movsb`, §4f):
 // copy 64-byte NEON groups while possible, then 32-, 16-, and 8-byte chunks and
 // a byte tail. dst/src are absolute byte pointers and n the count; all three are
-// clobbered, and V16/X16 holds each chunk.
+// clobbered. Vector scratch is allocator-owned; scalar tails use X16.
 func (f *fn) copyFwdLoop(dst, src, n Reg) {
+	vecs := f.bulkCopyRegs()
 	skip := f.a.Cbz64(n) // nothing to copy
 	f.cmpImm(n, 64, true)
 	wideTail := f.a.Bcond(condB)
 	wideLoop := f.a.Len()
-	if f.memcopyQPairs {
-		f.a.LdpQ(X16, X17, src, 0)
-		f.a.LdpQ(X18, X19, src, 32)
-		f.a.StpQ(X16, X17, dst, 0)
-		f.a.StpQ(X18, X19, dst, 32)
+	if vecs[2] == regNone {
+		if f.memcopyQPairs {
+			f.a.LdpQ(vecs[0], vecs[1], src, 0)
+			f.a.StpQ(vecs[0], vecs[1], dst, 0)
+		} else {
+			f.a.LdrQ(vecs[0], src, 0)
+			f.a.LdrQ(vecs[1], src, 16)
+			f.a.StrQ(dst, 0, vecs[0])
+			f.a.StrQ(dst, 16, vecs[1])
+		}
+		if f.memcopyQPairs {
+			f.a.LdpQ(vecs[0], vecs[1], src, 32)
+			f.a.StpQ(vecs[0], vecs[1], dst, 32)
+		} else {
+			f.a.LdrQ(vecs[0], src, 32)
+			f.a.LdrQ(vecs[1], src, 48)
+			f.a.StrQ(dst, 32, vecs[0])
+			f.a.StrQ(dst, 48, vecs[1])
+		}
+	} else if f.memcopyQPairs {
+		f.a.LdpQ(vecs[0], vecs[1], src, 0)
+		f.a.LdpQ(vecs[2], vecs[3], src, 32)
+		f.a.StpQ(vecs[0], vecs[1], dst, 0)
+		f.a.StpQ(vecs[2], vecs[3], dst, 32)
 	} else {
-		f.a.LdrQ(X16, src, 0)
-		f.a.LdrQ(X17, src, 16)
-		f.a.LdrQ(X18, src, 32)
-		f.a.LdrQ(X19, src, 48)
-		f.a.StrQ(dst, 0, X16)
-		f.a.StrQ(dst, 16, X17)
-		f.a.StrQ(dst, 32, X18)
-		f.a.StrQ(dst, 48, X19)
+		f.a.LdrQ(vecs[0], src, 0)
+		f.a.LdrQ(vecs[1], src, 16)
+		f.a.LdrQ(vecs[2], src, 32)
+		f.a.LdrQ(vecs[3], src, 48)
+		f.a.StrQ(dst, 0, vecs[0])
+		f.a.StrQ(dst, 16, vecs[1])
+		f.a.StrQ(dst, 32, vecs[2])
+		f.a.StrQ(dst, 48, vecs[3])
 	}
 	f.a.AddImm64(src, src, 64)
 	f.a.AddImm64(dst, dst, 64)
@@ -1208,13 +1253,13 @@ func (f *fn) copyFwdLoop(dst, src, n Reg) {
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
 	if f.memcopyQPairs {
-		f.a.LdpQ(X16, X17, src, 0)
-		f.a.StpQ(X16, X17, dst, 0)
+		f.a.LdpQ(vecs[0], vecs[1], src, 0)
+		f.a.StpQ(vecs[0], vecs[1], dst, 0)
 	} else {
-		f.a.LdrQ(X16, src, 0)
-		f.a.LdrQ(X17, src, 16)
-		f.a.StrQ(dst, 0, X16)
-		f.a.StrQ(dst, 16, X17)
+		f.a.LdrQ(vecs[0], src, 0)
+		f.a.LdrQ(vecs[1], src, 16)
+		f.a.StrQ(dst, 0, vecs[0])
+		f.a.StrQ(dst, 16, vecs[1])
 	}
 	f.a.AddImm64(src, src, 32)
 	f.a.AddImm64(dst, dst, 32)
@@ -1222,8 +1267,8 @@ func (f *fn) copyFwdLoop(dst, src, n Reg) {
 	f.patchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
-	f.a.LdrQ(X16, src, 0)
-	f.a.StrQ(dst, 0, X16)
+	f.a.LdrQ(vecs[0], src, 0)
+	f.a.StrQ(dst, 0, vecs[0])
 	f.a.AddImm64(src, src, 16)
 	f.a.AddImm64(dst, dst, 16)
 	f.a.SubImm64(n, n, 16)
@@ -1252,9 +1297,9 @@ func (f *fn) copyFwdLoop(dst, src, n Reg) {
 // is ahead of src (the arm64 analog of amd64's `std; rep movsb; cld`): it walks
 // from the end down, copying 64-byte NEON groups, then 32-, 16-, and 8-byte
 // chunks and the byte tail. dst/src are absolute base pointers, n the count;
-// all clobbered, and
-// V16/X16 holds each chunk.
+// all clobbered. Vector scratch is allocator-owned; scalar tails use X16.
 func (f *fn) copyBackLoop(dst, src, n Reg) {
+	vecs := f.bulkCopyRegs()
 	skip := f.a.Cbz64(n)
 	f.a.Add64(dst, dst, n)
 	f.a.Add64(src, src, n)
@@ -1263,20 +1308,39 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 	wideLoop := f.a.Len()
 	f.a.SubImm64(src, src, 64)
 	f.a.SubImm64(dst, dst, 64)
-	if f.memcopyQPairs {
-		f.a.LdpQ(X16, X17, src, 0)
-		f.a.LdpQ(X18, X19, src, 32)
-		f.a.StpQ(X16, X17, dst, 0)
-		f.a.StpQ(X18, X19, dst, 32)
+	if vecs[2] == regNone {
+		if f.memcopyQPairs {
+			f.a.LdpQ(vecs[0], vecs[1], src, 32)
+			f.a.StpQ(vecs[0], vecs[1], dst, 32)
+		} else {
+			f.a.LdrQ(vecs[0], src, 32)
+			f.a.LdrQ(vecs[1], src, 48)
+			f.a.StrQ(dst, 32, vecs[0])
+			f.a.StrQ(dst, 48, vecs[1])
+		}
+		if f.memcopyQPairs {
+			f.a.LdpQ(vecs[0], vecs[1], src, 0)
+			f.a.StpQ(vecs[0], vecs[1], dst, 0)
+		} else {
+			f.a.LdrQ(vecs[0], src, 0)
+			f.a.LdrQ(vecs[1], src, 16)
+			f.a.StrQ(dst, 0, vecs[0])
+			f.a.StrQ(dst, 16, vecs[1])
+		}
+	} else if f.memcopyQPairs {
+		f.a.LdpQ(vecs[0], vecs[1], src, 0)
+		f.a.LdpQ(vecs[2], vecs[3], src, 32)
+		f.a.StpQ(vecs[0], vecs[1], dst, 0)
+		f.a.StpQ(vecs[2], vecs[3], dst, 32)
 	} else {
-		f.a.LdrQ(X16, src, 0)
-		f.a.LdrQ(X17, src, 16)
-		f.a.LdrQ(X18, src, 32)
-		f.a.LdrQ(X19, src, 48)
-		f.a.StrQ(dst, 0, X16)
-		f.a.StrQ(dst, 16, X17)
-		f.a.StrQ(dst, 32, X18)
-		f.a.StrQ(dst, 48, X19)
+		f.a.LdrQ(vecs[0], src, 0)
+		f.a.LdrQ(vecs[1], src, 16)
+		f.a.LdrQ(vecs[2], src, 32)
+		f.a.LdrQ(vecs[3], src, 48)
+		f.a.StrQ(dst, 0, vecs[0])
+		f.a.StrQ(dst, 16, vecs[1])
+		f.a.StrQ(dst, 32, vecs[2])
+		f.a.StrQ(dst, 48, vecs[3])
 	}
 	f.a.SubImm64(n, n, 64)
 	f.cmpImm(n, 64, true)
@@ -1287,13 +1351,13 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 	f.a.SubImm64(src, src, 32)
 	f.a.SubImm64(dst, dst, 32)
 	if f.memcopyQPairs {
-		f.a.LdpQ(X16, X17, src, 0)
-		f.a.StpQ(X16, X17, dst, 0)
+		f.a.LdpQ(vecs[0], vecs[1], src, 0)
+		f.a.StpQ(vecs[0], vecs[1], dst, 0)
 	} else {
-		f.a.LdrQ(X16, src, 0)
-		f.a.LdrQ(X17, src, 16)
-		f.a.StrQ(dst, 0, X16)
-		f.a.StrQ(dst, 16, X17)
+		f.a.LdrQ(vecs[0], src, 0)
+		f.a.LdrQ(vecs[1], src, 16)
+		f.a.StrQ(dst, 0, vecs[0])
+		f.a.StrQ(dst, 16, vecs[1])
 	}
 	f.a.SubImm64(n, n, 32)
 	f.patchBranch19(vecTail, f.a.Len())
@@ -1301,8 +1365,8 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 	wordTail := f.a.Bcond(condB)
 	f.a.SubImm64(src, src, 16)
 	f.a.SubImm64(dst, dst, 16)
-	f.a.LdrQ(X16, src, 0)
-	f.a.StrQ(dst, 0, X16)
+	f.a.LdrQ(vecs[0], src, 0)
+	f.a.StrQ(dst, 0, vecs[0])
 	f.a.SubImm64(n, n, 16)
 	f.patchBranch19(wordTail, f.a.Len())
 	f.cmpImm(n, 8, true)
@@ -1329,16 +1393,17 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 // write 64-byte NEON groups while possible, then 32-, 16-, and 8-byte chunks
 // and a byte tail.
 func (f *fn) fillLoop(dst, pat, n Reg) {
+	vec := f.allocFReg(0)
 	skip := f.a.Cbz64(n)
-	f.a.FmovFromGpr(X16, pat, true)
-	f.a.NeonInsD(X16, pat, 1)
+	f.a.FmovFromGpr(vec, pat, true)
+	f.a.NeonInsD(vec, pat, 1)
 	f.cmpImm(n, 64, true)
 	wideTail := f.a.Bcond(condB)
 	wideLoop := f.a.Len()
-	f.a.StrQ(dst, 0, X16)
-	f.a.StrQ(dst, 16, X16)
-	f.a.StrQ(dst, 32, X16)
-	f.a.StrQ(dst, 48, X16)
+	f.a.StrQ(dst, 0, vec)
+	f.a.StrQ(dst, 16, vec)
+	f.a.StrQ(dst, 32, vec)
+	f.a.StrQ(dst, 48, vec)
 	f.a.AddImm64(dst, dst, 64)
 	f.a.SubImm64(n, n, 64)
 	f.cmpImm(n, 64, true)
@@ -1346,14 +1411,14 @@ func (f *fn) fillLoop(dst, pat, n Reg) {
 	f.patchBranch19(wideTail, f.a.Len())
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
-	f.a.StrQ(dst, 0, X16)
-	f.a.StrQ(dst, 16, X16)
+	f.a.StrQ(dst, 0, vec)
+	f.a.StrQ(dst, 16, vec)
 	f.a.AddImm64(dst, dst, 32)
 	f.a.SubImm64(n, n, 32)
 	f.patchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
-	f.a.StrQ(dst, 0, X16)
+	f.a.StrQ(dst, 0, vec)
 	f.a.AddImm64(dst, dst, 16)
 	f.a.SubImm64(n, n, 16)
 	f.patchBranch19(wordTail, f.a.Len())
