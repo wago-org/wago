@@ -1076,6 +1076,37 @@
   "benchmarks": [
     {
       "suite": "tree",
+      "desc": "a-Shell tree command traverses a pinned directory with a-Shell host imports",
+      "id": "tree-ashell-list",
+      "artifact": "workloads/applications/tree/ashell-tree.wasm",
+      "artifact_sha256": "72ac9f09f35757a5714611f1922c325a8c33e8230e1a37ab7fc4104dbfbd2a64",
+      "tags": ["application", "filesystem", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/holzschu/a-Shell-commands/releases/tag/0.1",
+        "revision": "asset-20591324",
+        "revision_date": "2020-05-10",
+        "license": "GPL-2.0-or-later",
+        "toolchain": "upstream a-Shell release artifact",
+        "toolchain_version": "0.1"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "ashell",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-a", "-n", "/"],
+        "preopen": "workloads/applications/tree/inputs",
+        "inputs": {
+          "README.md": "3915e09920ad9ecd655f08d8f82115e0f47119e5fd12cc66e01a8ccda688befc",
+          "src/main.c": "2ad75d95660563887d8d3f1d0ae1dcf18c2379cbd83a5c72f5ab276351ee6949",
+          "src/util.c": "c900429992cb5e0aec6c5afb07278bc21c1480178c97f7496fcec1622401e0d0",
+          "test/main.c": "0de8b249a5ea6d580f90393b5b774d25f102a54653202057f313b337a3392751"
+        },
+        "stdout_sha256": "0c60bd916cbdc48ac7c7cc60ddf3f10d9415fa166379fe47c12aa996defffad3"
+      }
+    },
+    {
+      "suite": "tree",
       "desc": "tree WASI CLI recursively lists a pinned source directory with an exact output oracle",
       "id": "tree-list",
       "artifact": "workloads/applications/tree/tree.wasm",

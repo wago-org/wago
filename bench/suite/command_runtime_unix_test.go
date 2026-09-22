@@ -22,7 +22,7 @@ func commandRuntimeImports(m corpusModule, stdin []byte, stdout, stderr io.Write
 	switch m.Command.Runtime {
 	case "core":
 		return nil, nil
-	case "wasi":
+	case "wasi", "ashell":
 		cfg := p1.Config{
 			Args: commandArgs(m), Stdin: bytes.NewReader(stdin),
 			Stdout: stdout, Stderr: stderr,
@@ -31,7 +31,19 @@ func commandRuntimeImports(m corpusModule, stdin []byte, stdout, stderr io.Write
 		if dir := commandPreopen(m); dir != "" {
 			cfg.Mounts = []p1.Preopen{{GuestPath: "/", HostPath: dir, Read: true, Write: true, MutateDirectory: true}}
 		}
-		return p1.Imports(cfg), nil
+		imports := p1.Imports(cfg)
+		if m.Command.Runtime == "ashell" {
+			imports.HostFunc(p1.Module, "ashell_getcwd", func(caller wago.Caller, call wago.HostCall) {
+				call.SetI32(0, int32(ashellGetcwd(caller.Memory(), uint32(call.I32(0)), uint32(call.I32(1)), uint32(call.I32(2)))))
+			}).Params(wago.ValI32, wago.ValI32, wago.ValI32).Results(wago.ValI32)
+			imports.HostFunc(p1.Module, "ashell_getenv", func(caller wago.Caller, call wago.HostCall) {
+				call.SetI32(0, int32(ashellGetenv(caller.Memory(), uint32(call.I32(0)), uint32(call.I32(1)), uint32(call.I32(2)), uint32(call.I32(3)), uint32(call.I32(4)))))
+			}).Params(wago.ValI32, wago.ValI32, wago.ValI32, wago.ValI32, wago.ValI32).Results(wago.ValI32)
+			// Guest processes and shell state are outside this isolated command host.
+			imports.HostFunc(p1.Module, "ashell_chdir", func(int32, int32) int32 { return ashellErrnoNosys })
+			imports.HostFunc(p1.Module, "ashell_system", func(int32, int32) int32 { return ashellErrnoNosys })
+		}
+		return imports, nil
 	default:
 		return nil, fmt.Errorf("unsupported command runtime %q", m.Command.Runtime)
 	}

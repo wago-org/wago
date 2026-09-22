@@ -31,7 +31,7 @@ var corpusSelector = flag.String("wago.corpus", "quick", "corpus profile, tag:<t
 var includeOptimizationAblations = flag.Bool("wago.bench.optimization-ablation", false, "benchmark large modules with each enabled optimization disabled in turn")
 
 type commandEntry struct {
-	Runtime      string            `json:"runtime"` // core or wasi; command runs in a fresh instance
+	Runtime      string            `json:"runtime"` // core, wasi, or ashell; command runs in a fresh instance
 	Export       string            `json:"export"`
 	Platforms    []string          `json:"platforms"` // optional GOOS/GOARCH allowlist
 	Args         []string          `json:"args"`

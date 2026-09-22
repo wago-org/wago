@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/api"
 	wazerowasi "github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	wazerosys "github.com/tetratelabs/wazero/sys"
 	"github.com/wago-org/wago"
@@ -216,6 +217,47 @@ func runWazeroCommand(ctx context.Context, r wazero.Runtime, compiled wazero.Com
 	return commandOutput{results: results, stdout: stdout.Bytes(), stderr: stderr.Bytes()}, nil
 }
 
+func instantiateWazeroCommandHost(ctx context.Context, r wazero.Runtime, runtimeName string) error {
+	switch runtimeName {
+	case "core":
+		return nil
+	case "wasi":
+		_, err := wazerowasi.Instantiate(ctx, r)
+		return err
+	case "ashell":
+		builder := r.NewHostModuleBuilder(wazerowasi.ModuleName)
+		wazerowasi.NewFunctionExporter().ExportFunctions(builder)
+		builder.NewFunctionBuilder().WithFunc(func(_ context.Context, module api.Module, buf, bufLen, used uint32) uint32 {
+			bytes, ok := ashellWazeroMemory(module)
+			if !ok {
+				return ashellErrnoFault
+			}
+			return ashellGetcwd(bytes, buf, bufLen, used)
+		}).Export("ashell_getcwd")
+		builder.NewFunctionBuilder().WithFunc(func(_ context.Context, module api.Module, name, nameLen, buf, bufLen, used uint32) uint32 {
+			bytes, ok := ashellWazeroMemory(module)
+			if !ok {
+				return ashellErrnoFault
+			}
+			return ashellGetenv(bytes, name, nameLen, buf, bufLen, used)
+		}).Export("ashell_getenv")
+		builder.NewFunctionBuilder().WithFunc(func(uint32, uint32) uint32 { return ashellErrnoNosys }).Export("ashell_chdir")
+		builder.NewFunctionBuilder().WithFunc(func(uint32, uint32) uint32 { return ashellErrnoNosys }).Export("ashell_system")
+		_, err := builder.Instantiate(ctx)
+		return err
+	default:
+		return fmt.Errorf("unsupported command runtime %q", runtimeName)
+	}
+}
+
+func ashellWazeroMemory(module api.Module) ([]byte, bool) {
+	memory := module.Memory()
+	if memory == nil {
+		return nil, false
+	}
+	return memory.Read(0, memory.Size())
+}
+
 func TestApplicationCorpusRuns(t *testing.T) {
 	for _, m := range loadCorpus(t) {
 		if m.Command == nil || !m.supports("CommandExec") {
@@ -245,10 +287,8 @@ func TestApplicationCorpusRuns(t *testing.T) {
 				ctx := context.Background()
 				r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
 				defer r.Close(ctx)
-				if m.Command.Runtime == "wasi" {
-					if _, err := wazerowasi.Instantiate(ctx, r); err != nil {
-						t.Fatal(err)
-					}
+				if err := instantiateWazeroCommandHost(ctx, r, m.Command.Runtime); err != nil {
+					t.Fatal(err)
 				}
 				compiled, err := r.CompileModule(ctx, m.bytes)
 				if err != nil {
@@ -299,10 +339,8 @@ func BenchmarkWazeroCommandExec(b *testing.B) {
 		b.Run(m.name(), func(b *testing.B) {
 			r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
 			defer r.Close(ctx)
-			if m.Command.Runtime == "wasi" {
-				if _, err := wazerowasi.Instantiate(ctx, r); err != nil {
-					b.Fatal(err)
-				}
+			if err := instantiateWazeroCommandHost(ctx, r, m.Command.Runtime); err != nil {
+				b.Fatal(err)
 			}
 			compiled, err := r.CompileModule(ctx, m.bytes)
 			if err != nil {

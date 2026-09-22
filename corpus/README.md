@@ -25,6 +25,13 @@ The `jq` CLI is also admitted with an exact thousand-object JSON transformation.
 The Brotli CLI is admitted for both compression and decompression of a pinned
 JavaScript fixture.
 The upstream `tree` CLI is admitted for a recursive preopened-directory listing.
+The a-Shell tree 1.8.0 artifact has a separate workload using its bounded host
+imports; a-Shell Ctags still has a [filesystem blocker](repro/ctags/README.md).
+The `ashell` corpus adapter is deliberately narrow: `ashell_getcwd` returns
+the guest root `/`, `ashell_getenv` reports no environment value, and
+`ashell_chdir`/`ashell_system` return `ENOSYS`. It never exposes the host
+working directory or launches a host command. Other a-Shell binaries still
+need their own import and filesystem audit before admission.
 These are execution-tested fixtures, not a claim that the rest of the acquisition
 queue runs. The Swift formatter uses a preopened source file because its stdin
 path currently fails in Wago's WASI host with a bad descriptor. a-Shell
