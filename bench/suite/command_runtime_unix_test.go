@@ -23,7 +23,7 @@ func commandRuntimeImports(m corpusModule, preopenDir string, stdin []byte, stdo
 	switch m.Command.Runtime {
 	case "core":
 		return nil, nil
-	case "wasi", "ashell", "micropython":
+	case "wasi", "ashell", "micropython", "php-wasmedge":
 		cfg := p1.Config{
 			Args: commandArgs(m), Stdin: bytes.NewReader(stdin),
 			Stdout: stdout, Stderr: stderr,
@@ -55,6 +55,21 @@ func commandRuntimeImports(m corpusModule, preopenDir string, stdin []byte, stdo
 			imports.HostFunc("micropython_wasm", "host_call", func(_ wago.Caller, call wago.HostCall) {
 				call.SetI32(0, -1)
 			}).Params(wago.ValI32, wago.ValI32, wago.ValI32, wago.ValI32, wago.ValI32, wago.ValI32).Results(wago.ValI32)
+		}
+		if m.Command.Runtime == "php-wasmedge" {
+			for _, name := range []string{"sock_open", "sock_bind", "sock_connect"} {
+				imports.HostFunc(p1.Module, name, func(_ wago.Caller, call wago.HostCall) {
+					call.SetI32(0, int32(ashellErrnoNosys))
+				}).Params(wago.ValI32, wago.ValI32, wago.ValI32).Results(wago.ValI32)
+			}
+			for _, name := range []string{"sock_listen"} {
+				imports.HostFunc(p1.Module, name, func(_ wago.Caller, call wago.HostCall) {
+					call.SetI32(0, int32(ashellErrnoNosys))
+				}).Params(wago.ValI32, wago.ValI32).Results(wago.ValI32)
+			}
+			imports.HostFunc(p1.Module, "sock_setsockopt", func(_ wago.Caller, call wago.HostCall) {
+				call.SetI32(0, int32(ashellErrnoNosys))
+			}).Params(wago.ValI32, wago.ValI32, wago.ValI32, wago.ValI32, wago.ValI32).Results(wago.ValI32)
 		}
 		return imports, nil
 	default:

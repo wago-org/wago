@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"testing"
@@ -24,6 +25,27 @@ type commandOutput struct {
 	results        []uint64
 	stdout, stderr []byte
 	files          map[string][]byte
+}
+
+var llvmIRPredPadding = regexp.MustCompile(` +; preds =`)
+
+func commandOracleStdout(m corpusModule, data []byte) ([]byte, error) {
+	switch m.Command.StdoutNormalize {
+	case "":
+		return data, nil
+	case "llvm-ir-preds":
+		return llvmIRPredPadding.ReplaceAll(data, []byte(" ; preds =")), nil
+	default:
+		return nil, fmt.Errorf("unknown stdout normalization %q", m.Command.StdoutNormalize)
+	}
+}
+
+func TestCommandOracleStdout(t *testing.T) {
+	m := corpusModule{Command: &commandEntry{StdoutNormalize: "llvm-ir-preds"}}
+	got, err := commandOracleStdout(m, []byte("block:       ; preds = %entry\n"))
+	if err != nil || string(got) != "block: ; preds = %entry\n" {
+		t.Fatalf("normalized stdout = %q, %v", got, err)
+	}
 }
 
 func TestCommandArgsMulticall(t *testing.T) {
@@ -146,6 +168,9 @@ func commandCorpus(tb testing.TB) []corpusModule {
 
 func validateCommandInputs(tb testing.TB, m corpusModule) {
 	tb.Helper()
+	if m.Command.ReferenceRuntime != "" && m.Command.ReferenceRuntime != "wasmtime" {
+		tb.Fatalf("%s unknown reference runtime %q", m.ID, m.Command.ReferenceRuntime)
+	}
 	if m.Command.ReadOnlyPreopen != "" {
 		if !validCommandPath(m.Command.ReadOnlyPreopen) {
 			tb.Fatalf("%s invalid read-only preopen %q", m.ID, m.Command.ReadOnlyPreopen)
@@ -355,6 +380,10 @@ func commandExitOK(err error) bool {
 }
 
 func validateCommandOutput(m corpusModule, got commandOutput) error {
+	stdout, err := commandOracleStdout(m, got.stdout)
+	if err != nil {
+		return err
+	}
 	hasStreamOracle := m.Command.StdoutSHA256 != "" || m.Command.StderrSHA256 != "" || len(m.Command.Outputs) != 0
 	if m.Command.Oracle == "" && m.Command.Want == nil && !hasStreamOracle {
 		return fmt.Errorf("command has no correctness oracle")
@@ -366,7 +395,7 @@ func validateCommandOutput(m corpusModule, got commandOutput) error {
 		name, want string
 		got        []byte
 	}{
-		{name: "stdout", want: m.Command.StdoutSHA256, got: got.stdout},
+		{name: "stdout", want: m.Command.StdoutSHA256, got: stdout},
 		{name: "stderr", want: m.Command.StderrSHA256, got: got.stderr},
 	} {
 		if stream.want == "" {
@@ -490,6 +519,18 @@ func instantiateWazeroCommandHost(ctx context.Context, r wazero.Runtime, runtime
 		builder.NewFunctionBuilder().WithFunc(func(int32, int32, int32, int32, int32, int32) int32 { return -1 }).Export("host_call")
 		_, err := builder.Instantiate(ctx)
 		return err
+	case "php-wasmedge":
+		builder := r.NewHostModuleBuilder(wazerowasi.ModuleName)
+		wazerowasi.NewFunctionExporter().ExportFunctions(builder)
+		for _, name := range []string{"sock_open", "sock_bind", "sock_connect"} {
+			builder.NewFunctionBuilder().WithFunc(func(uint32, uint32, uint32) uint32 { return ashellErrnoNosys }).Export(name)
+		}
+		for _, name := range []string{"sock_listen", "sock_accept"} {
+			builder.NewFunctionBuilder().WithFunc(func(uint32, uint32) uint32 { return ashellErrnoNosys }).Export(name)
+		}
+		builder.NewFunctionBuilder().WithFunc(func(uint32, uint32, uint32, uint32, uint32) uint32 { return ashellErrnoNosys }).Export("sock_setsockopt")
+		_, err := builder.Instantiate(ctx)
+		return err
 	case "ashell":
 		builder := r.NewHostModuleBuilder(wazerowasi.ModuleName)
 		wazerowasi.NewFunctionExporter().ExportFunctions(builder)
@@ -550,8 +591,8 @@ func TestApplicationCorpusRuns(t *testing.T) {
 				}
 			})
 			t.Run("wazero", func(t *testing.T) {
-				if m.Command.Runtime == "micropython" {
-					t.Skip("wazero does not accept this MicroPython module's exception-handling section; Wasmtime reference output is pinned")
+				if m.Command.ReferenceRuntime == "wasmtime" {
+					t.Skip("in-process wazero comparison unavailable; independently captured Wasmtime oracle is pinned")
 				}
 				ctx := context.Background()
 				r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
@@ -606,8 +647,8 @@ func BenchmarkWazeroCommandExec(b *testing.B) {
 	for _, m := range commandCorpus(b) {
 		m := m
 		b.Run(m.name(), func(b *testing.B) {
-			if m.Command.Runtime == "micropython" {
-				b.Skip("wazero does not accept this MicroPython module's exception-handling section")
+			if m.Command.ReferenceRuntime == "wasmtime" {
+				b.Skip("in-process wazero comparison unavailable; independently captured Wasmtime oracle is pinned")
 			}
 			r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
 			defer r.Close(ctx)

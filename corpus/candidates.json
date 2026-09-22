@@ -29,14 +29,18 @@
     { "program": "ecppack", "benchmark": "ecppack-bitstream" },
     { "program": "ecpunpack", "benchmark": "ecpunpack-config" },
     { "program": "MicroPython", "benchmark": "micropython-squares" },
-    { "program": "Lua CLI", "benchmark": "lua-cli-buckets" }
+    { "program": "Lua CLI", "benchmark": "lua-cli-buckets" },
+    { "program": "Clang", "benchmark": "clang-c-kernels" },
+    { "program": "clang++", "benchmark": "clang-cpp-kernels" },
+    { "program": "Ruby", "benchmark": "ruby-buckets" },
+    { "program": "PHP", "benchmark": "php-buckets" }
   ],
   "groups": [
     {
       "route": "WASI CLI",
       "programs": [
-        "CPython", "Ruby", "PHP",
-        "Clang", "clang++", "LLD", "wasm-ld", "vasm6502_oldstyle",
+        "CPython",
+        "LLD", "wasm-ld", "vasm6502_oldstyle",
         "Pandoc", "nextpnr", "Boolector",
         "ecpmulti", "prjoxide"
       ]

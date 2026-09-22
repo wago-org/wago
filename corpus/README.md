@@ -56,6 +56,17 @@ The full Lua 5.4.6 CLI is admitted with a five-thousand-record table workload.
 Its upstream `wasi_unstable` import namespace is reproducibly changed to
 Preview 1 without changing the CLI code; the exact transformed artifact and
 reference output are pinned.
+Clang 8's C and C++17 frontends are admitted for parsing source from stdin and
+emitting LLVM IR. They share one compiler artifact. Only block-comment padding
+is canonicalized for their exact oracles; the artifact's object/assembly
+output is not admitted. The related
+[LLD probe](repro/lld/README.md) documents a file-input host mismatch.
+The slim Ruby 3.2.2 CLI is admitted for the same seventeen-bucket language
+workload as Lua. CPython 3.12 passes Wasmtime and wazero but
+[traps in Wago](repro/cpython/README.md), so it remains pending.
+PHP 8.2.6 is admitted with the same bucket workload. Its WasmEdge-specific
+socket imports return `ENOSYS` in the corpus host, so this proves CLI script
+execution without granting network access.
 The newer YoWASP 0.11.1 binaries for several tools exceed Wago's current
 bounded-exception-handling limit, so the compatible 0.5.0 release is pinned
 for those workloads.

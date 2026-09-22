@@ -1075,6 +1075,50 @@
   ],
   "benchmarks": [
     {
+      "suite": "php",
+      "desc": "PHP 8.2.6 groups five thousand integers into seventeen weighted buckets",
+      "id": "php-buckets",
+      "artifact": "workloads/applications/php/php.wasm",
+      "artifact_sha256": "5461eea8426378e2257f46c7eb1c734f607a89de9a921b72f8fc14c20ac3a33a",
+      "tags": ["application", "interpreter", "php", "c", "wasi"],
+      "source": {"repository": "https://github.com/vmware-labs/webassembly-language-runtimes/releases/tag/php%2F8.2.6%2B20230714-11be424", "revision": "php/8.2.6+20230714-11be424", "revision_date": "2023-07-14", "license": "Apache-2.0 AND PHP-3.01", "toolchain": "WLR WasmEdge WASI release", "toolchain_version": "8.2.6"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "php-wasmedge", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "stdin": "program.php", "preopen": "workloads/applications/php/inputs", "inputs": {"program.php": "fca25d8a184b2ea651532e012e7c162066429232fc262b20697bf4c5ab2520ba"}, "stdout_sha256": "a9cfd18aeeb61f448d9314c2687d0bf22b1a287a4a3b165a5aa676ff4b0de869"}
+    },
+    {
+      "suite": "ruby",
+      "desc": "Ruby 3.2.2 groups five thousand integers into seventeen weighted buckets",
+      "id": "ruby-buckets",
+      "artifact": "workloads/applications/ruby/ruby.wasm",
+      "artifact_sha256": "de598f394e398763d2b147e3e51a6eeadf048128598ac4a3f992a97204c192b0",
+      "tags": ["application", "interpreter", "ruby", "c", "wasi"],
+      "source": {"repository": "https://github.com/vmware-labs/webassembly-language-runtimes/releases/tag/ruby%2F3.2.2%2B20230714-11be424", "revision": "ruby/3.2.2+20230714-11be424", "revision_date": "2023-07-14", "license": "Apache-2.0 AND (BSD-2-Clause OR Ruby)", "toolchain": "WLR slim WASI release", "toolchain_version": "3.2.2"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["--disable-gems", "-"], "stdin": "program.rb", "preopen": "workloads/applications/ruby/inputs", "inputs": {"program.rb": "3a3ae9520f56cab00ed012b018a330d8a6f53f08c556a7baf9ea2da401e79fd9"}, "stdout_sha256": "a9cfd18aeeb61f448d9314c2687d0bf22b1a287a4a3b165a5aa676ff4b0de869"}
+    },
+    {
+      "suite": "clang",
+      "desc": "Clang 8 parses a C++17 function template and emits LLVM IR",
+      "id": "clang-cpp-kernels",
+      "artifact": "workloads/applications/clang/clang.wasm",
+      "artifact_sha256": "d817b7af8c2cc851527d5872256f27079d6905750a755668683293ec8e36b584",
+      "tags": ["application", "compiler", "clang", "c++", "wasi"],
+      "source": {"repository": "https://github.com/binji/wasm-clang", "revision": "648c4a89997a351eef75cdaec3ef5b89d4937dec", "revision_date": "2023-12-07", "license": "Apache-2.0 WITH LLVM-exception", "toolchain": "WABT import rename", "toolchain_version": "Clang 8.0.1"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "reference_runtime": "wasmtime", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["-cc1", "-triple", "wasm32-unknown-wasi", "-x", "c++", "-std=c++17", "-S", "-emit-llvm", "-O0", "-o", "-", "-"], "stdin": "kernels.cpp", "preopen": "workloads/applications/clang/inputs", "inputs": {"kernels.c": "825111006a2458ae38cc23cb3083b67071ef9b78bcf824a7b7f0d204d1282d6d", "kernels.cpp": "fbe6a92a4ec0928dcbcd3db5474b597f35a9a4714e83a8005aff9b4ec4169c97"}, "stdout_normalize": "llvm-ir-preds", "stdout_sha256": "9794c0c31f087bef054004adfc82595f4d00e2680ad0440c01f188d44c09a506"}
+    },
+    {
+      "suite": "clang",
+      "desc": "Clang 8 parses two C kernels and emits LLVM IR",
+      "id": "clang-c-kernels",
+      "artifact": "workloads/applications/clang/clang.wasm",
+      "artifact_sha256": "d817b7af8c2cc851527d5872256f27079d6905750a755668683293ec8e36b584",
+      "tags": ["application", "compiler", "clang", "c++", "wasi"],
+      "source": {"repository": "https://github.com/binji/wasm-clang", "revision": "648c4a89997a351eef75cdaec3ef5b89d4937dec", "revision_date": "2023-12-07", "license": "Apache-2.0 WITH LLVM-exception", "toolchain": "WABT import rename", "toolchain_version": "Clang 8.0.1"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "reference_runtime": "wasmtime", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["-cc1", "-triple", "wasm32-unknown-wasi", "-x", "c", "-S", "-emit-llvm", "-O0", "-o", "-", "-"], "stdin": "kernels.c", "preopen": "workloads/applications/clang/inputs", "inputs": {"kernels.c": "825111006a2458ae38cc23cb3083b67071ef9b78bcf824a7b7f0d204d1282d6d", "kernels.cpp": "fbe6a92a4ec0928dcbcd3db5474b597f35a9a4714e83a8005aff9b4ec4169c97"}, "stdout_normalize": "llvm-ir-preds", "stdout_sha256": "0392232c45f1e8ef78e8841526df11cf9da57d682a5763556dc2401e4aed1806"}
+    },
+    {
       "suite": "lua",
       "desc": "standalone Lua 5.4.6 interpreter aggregates five thousand records into seventeen buckets",
       "id": "lua-cli-buckets",
@@ -1094,7 +1138,7 @@
       "tags": ["application", "interpreter", "python", "c", "wasi"],
       "source": {"repository": "https://pypi.org/project/micropython-wasm/0.1a2/", "revision": "0.1a2", "revision_date": "2026-06-06", "license": "Apache-2.0 AND MIT", "toolchain": "micropython-wasm wheel", "toolchain_version": "0.1a2"},
       "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
-      "command": {"runtime": "micropython", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["-c", "print(sum(i*i for i in range(1000)))"], "stdout_sha256": "bc7a21413c10db3efd335755501233165eb46a6cfcba0cc3ba5a01ad967dcae5"}
+      "command": {"runtime": "micropython", "reference_runtime": "wasmtime", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["-c", "print(sum(i*i for i in range(1000)))"], "stdout_sha256": "bc7a21413c10db3efd335755501233165eb46a6cfcba0cc3ba5a01ad967dcae5"}
     },
     {
       "suite": "trellis",
