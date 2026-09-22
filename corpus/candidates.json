@@ -22,7 +22,9 @@
     { "program": "icemulti", "benchmark": "icemulti-image" },
     { "program": "ecppll", "benchmark": "ecppll-clock" },
     { "program": "ecpbram", "benchmark": "ecpbram-generate" },
-    { "program": "swift-format", "benchmark": "swift-format-source" }
+    { "program": "swift-format", "benchmark": "swift-format-source" },
+    { "program": "Yosys", "benchmark": "yosys-counter" },
+    { "program": "ripgrep", "benchmark": "ripgrep-source" }
   ],
   "groups": [
     {
@@ -30,14 +32,14 @@
       "programs": [
         "Lua CLI", "CPython", "MicroPython", "Ruby", "PHP",
         "Clang", "clang++", "LLD", "wasm-ld", "vasm6502_oldstyle",
-        "Pandoc", "uutils/coreutils", "Yosys", "nextpnr", "Boolector",
+        "Pandoc", "uutils/coreutils", "nextpnr", "Boolector",
         "ecppack", "ecpunpack", "ecpmulti", "prjoxide"
       ]
     },
     {
       "route": "a-Shell command; imports and host behavior require per-artifact audit",
       "programs": [
-        "f2c", "ctags", "readtags", "ripgrep", "Graphviz", "FFmpeg", "ffprobe",
+        "f2c", "ctags", "readtags", "Graphviz", "FFmpeg", "ffprobe",
         "file", "XZ",
         "zip", "unzip", "zipcloak", "zipnote", "zipsplit", "funzip", "unzipsfx"
       ]

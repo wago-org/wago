@@ -1075,6 +1075,60 @@
   ],
   "benchmarks": [
     {
+      "suite": "ripgrep",
+      "desc": "ripgrep searches a JavaScript program and returns exact matching source lines",
+      "id": "ripgrep-source",
+      "artifact": "workloads/applications/ripgrep/rg.wasm",
+      "artifact_sha256": "bd3d27817f2f34d625a3d24029eb2d5b16746ee4bb097d01eed8c99be9b83263",
+      "tags": ["application", "search", "rust", "wasi"],
+      "source": {
+        "repository": "https://github.com/holzschu/a-Shell-commands/releases/tag/0.1",
+        "revision": "rg asset 2025-03-15",
+        "revision_date": "2025-03-15",
+        "license": "MIT OR Unlicense",
+        "toolchain": "a-Shell release binary",
+        "toolchain_version": "ripgrep 14.1.1"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-N", "const", "/program.js"],
+        "preopen": "workloads/applications/quickjs/inputs",
+        "inputs": {"program.js": "cbf10aad91aced62c70121301fdcb3562929b08a6d9f2d3e0bfc28d90dea810f"},
+        "stdout_sha256": "87e4b83d5cfbb0a94c499853477377489fd9e16bee3ac4a848381cd4a0d67ab0"
+      }
+    },
+    {
+      "suite": "yosys",
+      "desc": "Yosys parses a synchronous Verilog counter, converts processes, and reports exact cell statistics",
+      "id": "yosys-counter",
+      "artifact": "workloads/applications/yosys/yosys.wasm",
+      "artifact_sha256": "7668d2963f8cc276ccd32980126dfddac961db1cd002cb93073506a694059493",
+      "tags": ["application", "fpga", "compiler", "c++", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-yosys/0.32.0.0.post560/",
+        "revision": "0.32.0.0.post560",
+        "revision_date": "2023-08-08",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.32.0.0.post560"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-Q", "-T", "-p", "read_verilog /top.v; proc; stat"],
+        "preopen": "workloads/applications/yosys/inputs",
+        "inputs": {
+          "top.v": "4a7476fb4229eb0d0e11940614597bb3ba25b96f9d44b28c835e060d3603af16"
+        },
+        "stdout_sha256": "f1f4df21f2a2ac6cef0901105824509beda35568271b07dbe6153df45b76b579"
+      }
+    },
+    {
       "suite": "icestorm",
       "desc": "icemulti packages a 1K FPGA bitstream as a multiboot image",
       "id": "icemulti-image",

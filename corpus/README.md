@@ -34,6 +34,12 @@ YoWASP `icepll`, `icebram`, `icepack`, `iceunpack`, `icemulti`, `ecppll`, and
 and exact generated-file checks. File-producing commands run against a fresh
 temporary copy of their preopen; tests and benchmarks never write generated
 files into the committed corpus.
+Yosys is admitted with Verilog parsing, process lowering, and a design-statistics
+oracle. The subsequent `opt` pass still traps in Wago; see the
+[reproducer](repro/yosys/README.md).
+The a-Shell ripgrep command is admitted with exact matching source lines;
+`-N` explicitly disables line numbers, which otherwise differ between Wago's
+and reference runtimes' stdout device reporting.
 The newer YoWASP 0.11.1 binaries for several tools exceed Wago's current
 bounded-exception-handling limit, so the compatible 0.5.0 release is pinned
 for those workloads.
