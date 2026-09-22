@@ -1075,6 +1075,114 @@
   ],
   "benchmarks": [
     {
+      "suite": "sqlite3",
+      "desc": "SQLite WASI shell executes JSON table scans, a thousand-row join, and aggregates with an exact output oracle",
+      "id": "sqlite3-query",
+      "artifact": "workloads/applications/sqlite3/sqlite3.wasm",
+      "artifact_sha256": "bbfa28f00fea33bd95bd3bd573c92fd821173d03b280180b7e40dac0af91a669",
+      "tags": ["application", "database", "sql", "c", "wasi"],
+      "source": {
+        "repository": "https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip",
+        "revision": "3.53.4",
+        "revision_date": "2026-07-24",
+        "license": "Public-Domain",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-batch", ":memory:", "WITH digits AS (SELECT CAST(value AS INTEGER) AS d FROM json_each('[0,1,2,3,4,5,6,7,8,9]')) SELECT count(*),sum((a.d*100+b.d*10+c.d)*(a.d*100+b.d*10+c.d)%97) FROM digits a,digits b,digits c;"],
+        "stdout_sha256": "e19be4ce2f3b52166e93130c269b9f1d3e79a0f29a202883d15756e7806e9cd5"
+      }
+    },
+    {
+      "suite": "duktape",
+      "desc": "Duktape WASI CLI executes a JavaScript prime-classification workload with an exact output oracle",
+      "id": "duktape-script",
+      "artifact": "workloads/applications/duktape/duk.wasm",
+      "artifact_sha256": "ecf2293773686dd1bcbcb5bb8f7c7647d4726c4bdec8d1e2e04bfb6cf5fd3612",
+      "tags": ["application", "interpreter", "javascript", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/saghul/wasi-lab.git",
+        "revision": "05d2c175afeed626187f792c9dd1a8142e11f95a",
+        "revision_date": "2019-10-25",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["program.js"],
+        "preopen": "workloads/applications/duktape/inputs",
+        "inputs": {
+          "program.js": "f0e2ab2c60bf41509f9ce89df5fdf3676de0ba0a514650ad8023ce2a0c032c27"
+        },
+        "stdout_sha256": "b376f0a59f636927c2ff1ae346530107c2bc080a5899c90ec95396ba66b18b19"
+      }
+    },
+    {
+      "suite": "quickjs",
+      "desc": "QuickJS WASI CLI executes JavaScript collections and regexp processing with an exact output oracle",
+      "id": "quickjs-script",
+      "artifact": "workloads/applications/quickjs/qjs.wasm",
+      "artifact_sha256": "e384f80f3dd492dab373d9eda08fb124cc4484945bbc2c9d03cbc7598e711a40",
+      "tags": ["application", "interpreter", "javascript", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/saghul/wasi-lab.git",
+        "revision": "05d2c175afeed626187f792c9dd1a8142e11f95a",
+        "revision_date": "2019-10-25",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["program.js"],
+        "preopen": "workloads/applications/quickjs/inputs",
+        "inputs": {
+          "program.js": "cbf10aad91aced62c70121301fdcb3562929b08a6d9f2d3e0bfc28d90dea810f"
+        },
+        "stdout_sha256": "9995b28f3b5cd435d0b0982a7eaa8b363e6b925f83a7ad0ce43dfcc6e1de87b1"
+      }
+    },
+    {
+      "suite": "swift-format",
+      "desc": "Swift formatter CLI reformats source from stdin with an exact output oracle",
+      "id": "swift-format-source",
+      "artifact": "workloads/applications/swift-format/swift-format.wasm",
+      "artifact_sha256": "4f9c01a9569407766947c6fa6e9369dd9703f461f31dc9c79b49a6a6bcc5bc76",
+      "tags": ["application", "formatter", "swift", "wasi"],
+      "source": {
+        "repository": "https://github.com/kkebo/swift-format.git",
+        "revision": "92097d54ac3be47738fe77e38c918e9aabce0302",
+        "revision_date": "2026-07-01",
+        "license": "Apache-2.0 WITH Swift-exception",
+        "toolchain": "upstream WASI release artifact",
+        "toolchain_version": "603.0.0-wasm32-wasi"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["format", "source.swift"],
+        "preopen": "workloads/applications/swift-format/inputs",
+        "inputs": {
+          "source.swift": "aa42bbc4d55e53cc38902fbcaf6b8da46d1e9ca52202d487bbd6c0e17c461d74"
+        },
+        "stdout_sha256": "1248b3fde251be78256a4e080ead7992ab502c8715f4ba5162a914c91a48137a"
+      }
+    },
+    {
       "suite": "esbuild",
       "desc": "esbuild WASI CLI minifies a JavaScript program from stdin with an exact output oracle",
       "id": "esbuild-minify",

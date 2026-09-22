@@ -20,6 +20,10 @@ workloads are rebuilt from `sources/` with the scripts in `build/`.
 | Sightglass | shootout base64, libsodium hash | `9ce88522d75b2d155e358f576e7d88ed26d14de8`, Binaryen 130 timing-hook removal |
 | TACLeBench | self-checking bubble sort | `c6a0d73e47bbd2bc86e34637156fb26dd4d5cf08`, WASI SDK 34 |
 | esbuild CLI | pinned Go/WASI minifier reading JavaScript on stdin | `f6058f8364fe7ab91ca57a83e02577ed74c9cae4`, Go 1.26.5; exact output independently captured with Wasmtime |
+| QuickJS CLI | pinned WASI SDK 34 build of the standalone `qjs` interpreter; exact JavaScript output captured with Wasmtime | `saghul/wasi-lab` `05d2c175afeed626187f792c9dd1a8142e11f95a`; deterministic stripped rebuild |
+| Duktape CLI | pinned WASI SDK 34 build of the standalone `duk` interpreter; exact JavaScript output captured with Wasmtime | same `saghul/wasi-lab` revision; embedded Duktape source reports `44ca54f726bfa651a7ab59286dd5c371dba2ddfc` |
+| swift-format CLI | pinned upstream WASI release formatting a real Swift source file; exact output captured with Wasmtime | `kkebo/swift-format` `92097d54ac3be47738fe77e38c918e9aabce0302`, release `603.0.0-wasm32-wasi` |
+| SQLite CLI | upstream public-domain 3.53.4 amalgamation, built with WASI SDK 34 and an unsupported-subprocess stub; exact SQL result captured with Wasmtime | `sqlite-amalgamation-3530400.zip`, archive SHA-256 `1e71ddf93849c6a6ecf58b827c0692073d2dd7ee40196158068f7b29f422e87d` |
 
 The PolyBench adapter includes each upstream kernel unchanged, replaces its
 dump stream with a deterministic checksum at the suite's two-decimal output

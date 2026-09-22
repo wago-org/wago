@@ -2,14 +2,18 @@
   "schema": 1,
   "purpose": "Acquisition queue only. Entries here are not benchmark or correctness passes; only catalog.json admits executable workloads.",
   "admitted": [
-    { "program": "esbuild", "benchmark": "esbuild-minify" }
+    { "program": "esbuild", "benchmark": "esbuild-minify" },
+    { "program": "QuickJS", "benchmark": "quickjs-script" },
+    { "program": "Duktape", "benchmark": "duktape-script" },
+    { "program": "sqlite3", "benchmark": "sqlite3-query" },
+    { "program": "swift-format", "benchmark": "swift-format-source" }
   ],
   "groups": [
     {
       "route": "WASI CLI",
       "programs": [
-        "QuickJS", "Duktape", "Lua CLI", "CPython", "MicroPython", "Ruby", "PHP",
-        "Clang", "clang++", "LLD", "wasm-ld", "swift-format", "vasm6502_oldstyle",
+        "Lua CLI", "CPython", "MicroPython", "Ruby", "PHP",
+        "Clang", "clang++", "LLD", "wasm-ld", "vasm6502_oldstyle",
         "Pandoc", "jq", "uutils/coreutils", "Yosys", "nextpnr", "Boolector",
         "icepack", "iceunpack", "icebram", "icemulti", "icepll",
         "ecppack", "ecpunpack", "ecpbram", "ecpmulti", "ecppll", "prjoxide"
@@ -19,7 +23,7 @@
       "route": "a-Shell command; imports and host behavior require per-artifact audit",
       "programs": [
         "f2c", "ctags", "readtags", "ripgrep", "Graphviz", "FFmpeg", "ffprobe",
-        "sqlite3", "json2csv", "file", "tree", "XZ", "xzdec", "lzmadec", "lzmainfo",
+        "json2csv", "file", "tree", "XZ", "xzdec", "lzmadec", "lzmainfo",
         "zip", "unzip", "zipcloak", "zipnote", "zipsplit", "funzip", "unzipsfx",
         "age", "age-keygen"
       ]
