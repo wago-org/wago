@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "purpose": "Acquisition queue only. Entries here are not benchmark or correctness passes; only catalog.json admits executable workloads.",
+  "admitted": [
+    { "program": "esbuild", "benchmark": "esbuild-minify" }
+  ],
+  "groups": [
+    {
+      "route": "WASI CLI",
+      "programs": [
+        "QuickJS", "Duktape", "Lua CLI", "CPython", "MicroPython", "Ruby", "PHP",
+        "Clang", "clang++", "LLD", "wasm-ld", "swift-format", "vasm6502_oldstyle",
+        "Pandoc", "jq", "uutils/coreutils", "Yosys", "nextpnr", "Boolector",
+        "icepack", "iceunpack", "icebram", "icemulti", "icepll",
+        "ecppack", "ecpunpack", "ecpbram", "ecpmulti", "ecppll", "prjoxide"
+      ]
+    },
+    {
+      "route": "a-Shell command; imports and host behavior require per-artifact audit",
+      "programs": [
+        "f2c", "ctags", "readtags", "ripgrep", "Graphviz", "FFmpeg", "ffprobe",
+        "sqlite3", "json2csv", "file", "tree", "XZ", "xzdec", "lzmadec", "lzmainfo",
+        "zip", "unzip", "zipcloak", "zipnote", "zipsplit", "funzip", "unzipsfx",
+        "age", "age-keygen"
+      ]
+    },
+    {
+      "route": "Emscripten application; JS imports or standalone rebuild need audit",
+      "programs": [
+        "Janet", "SWI-Prolog", "ImageMagick", "QPDF", "Ghostscript", "OpenSCAD",
+        "pdfTeX", "XeTeX", "gawk", "GNU grep", "GNU sed", "GNU findutils",
+        "GNU coreutils", "7-Zip", "Z3", "cvc5"
+      ]
+    },
+    {
+      "route": "Biowasm application; Emscripten host contract needs audit",
+      "programs": [
+        "ASTER", "bcftools", "bedtools", "bhtsne", "Bowtie 2", "cawlign", "fastp",
+        "FastTree", "gfatools", "gffread", "tabix", "htsfile", "bgzip", "HyPhy",
+        "iVar", "Kalign", "Kent utilities", "LASTZ", "LSD2", "MAFFT", "minimap2",
+        "modbam2bed", "MUMmer4", "MUSCLE", "samtools", "seq-align", "seqtk",
+        "SSW", "TN93", "vidjil-algo", "ViralConsensus", "wgsim"
+      ]
+    },
+    {
+      "route": "Engine or API; needs a command driver and host integration",
+      "programs": [
+        "QuickJS-NG", "DuckDB", "PGlite", "MuPDF", "Tesseract", "Typst",
+        "Binaryen", "Wren", "webR"
+      ]
+    },
+    {
+      "route": "Additional WASI or host audit",
+      "programs": ["Brotli CLI", "openFPGALoader"]
+    },
+    {
+      "route": "WASIX or browser host; substantial host work",
+      "programs": ["Bash", "curl", "Git", "Stockfish", "Fairy-Stockfish"]
+    }
+  ]
+}

@@ -39,6 +39,63 @@ func TestCatalogContainsOnlyExecutableWorkloads(t *testing.T) {
 	}
 }
 
+func TestCorpusCandidatesStaySeparateFromExecutableCatalog(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(corpusDir, "candidates.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var queue struct {
+		Schema   int `json:"schema"`
+		Admitted []struct {
+			Program   string `json:"program"`
+			Benchmark string `json:"benchmark"`
+		} `json:"admitted"`
+		Groups []struct {
+			Route    string   `json:"route"`
+			Programs []string `json:"programs"`
+		} `json:"groups"`
+	}
+	if err := json.Unmarshal(data, &queue); err != nil {
+		t.Fatal(err)
+	}
+	if queue.Schema != 1 {
+		t.Fatalf("candidate schema = %d, want 1", queue.Schema)
+	}
+	seen := map[string]bool{}
+	for _, group := range queue.Groups {
+		if group.Route == "" || len(group.Programs) == 0 {
+			t.Fatalf("invalid candidate group: %+v", group)
+		}
+		for _, program := range group.Programs {
+			key := strings.ToLower(strings.TrimSpace(program))
+			if key == "" || seen[key] {
+				t.Fatalf("empty or duplicate candidate %q", program)
+			}
+			seen[key] = true
+		}
+	}
+	var catalog catalog
+	data, err = os.ReadFile(filepath.Join(corpusDir, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &catalog); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range queue.Admitted {
+		if entry.Program == "" || entry.Benchmark == "" {
+			t.Fatalf("incomplete admission: %+v", entry)
+		}
+		found := false
+		for _, benchmark := range catalog.Benchmarks {
+			found = found || benchmark.ID == entry.Benchmark
+		}
+		if !found {
+			t.Errorf("%s claims admission to missing benchmark %s", entry.Program, entry.Benchmark)
+		}
+	}
+}
+
 func TestValidateCorpusModuleRequiresEndToEndOracle(t *testing.T) {
 	base := corpusModule{ID: "example", Artifact: "example.wasm", ArtifactSHA256: "digest"}
 	cases := []struct {

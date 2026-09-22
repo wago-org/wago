@@ -19,6 +19,7 @@ workloads are rebuilt from `sources/` with the scripts in `build/`.
 | Embench | crc32, huffbench, matmult-int, nettle-aes, nettle-sha256, qrduino | `09c2ed8c3b7008c95d08b038de4a3f6dc103ed70`, WASI SDK 34 |
 | Sightglass | shootout base64, libsodium hash | `9ce88522d75b2d155e358f576e7d88ed26d14de8`, Binaryen 130 timing-hook removal |
 | TACLeBench | self-checking bubble sort | `c6a0d73e47bbd2bc86e34637156fb26dd4d5cf08`, WASI SDK 34 |
+| esbuild CLI | pinned Go/WASI minifier reading JavaScript on stdin | `f6058f8364fe7ab91ca57a83e02577ed74c9cae4`, Go 1.26.5; exact output independently captured with Wasmtime |
 
 The PolyBench adapter includes each upstream kernel unchanged, replaces its
 dump stream with a deterministic checksum at the suite's two-decimal output

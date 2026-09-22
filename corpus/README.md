@@ -4,9 +4,20 @@
 benchmarks. Each entry pins the artifact SHA-256. Executable entries also carry
 an exact oracle; file-backed commands pin every input file and hash their output.
 
+`candidates.json` tracks requested full applications that are **not yet
+admitted**. It is an acquisition queue, not a claim that the listed programs
+run in Wago. Promote a candidate to `catalog.json` only after pinning its
+artifact, imports, host contract, input files, limits, and independent output
+oracle, and passing both Wago and reference-runtime execution. The a-Shell
+`sqlite3.wasm` probe, for example, imports `ashell_system`, `ashell_chdir`, and
+`ashell_getcwd`; the current WASI command harness does not provide these. The
+[XZ reproducer](repro/xz/README.md) records a second, distinct a-Shell host
+incompatibility.
+
 ```text
 corpus/
   catalog.json   profiles, checks, benchmark metadata, hashes, and oracles
+  candidates.json  full-application acquisition queue (not executable)
   workloads/     committed Wasm and application inputs
   sources/       reviewed local WAT, Rust, AssemblyScript, and adapter sources
   build/         rebuild and refresh commands

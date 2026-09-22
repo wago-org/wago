@@ -1075,6 +1075,35 @@
   ],
   "benchmarks": [
     {
+      "suite": "esbuild",
+      "desc": "esbuild WASI CLI minifies a JavaScript program from stdin with an exact output oracle",
+      "id": "esbuild-minify",
+      "artifact": "workloads/applications/esbuild/esbuild.wasm",
+      "artifact_sha256": "a593128fc5b588cfc19d974ef8896ab9ad3bd3d8ccaaf392c981a26380617e8f",
+      "tags": ["application", "compiler", "javascript", "go", "wasi"],
+      "source": {
+        "repository": "https://github.com/evanw/esbuild.git",
+        "revision": "f6058f8364fe7ab91ca57a83e02577ed74c9cae4",
+        "revision_date": "2026-08-09",
+        "license": "MIT",
+        "toolchain": "go",
+        "toolchain_version": "1.26.5"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["--minify", "--loader=js"],
+        "stdin": "source.js",
+        "preopen": "workloads/applications/esbuild/inputs",
+        "inputs": {
+          "source.js": "15f4817d6bb6e105ef12c8b6d2383c32d1646a16824365d96935445f436afc89"
+        },
+        "stdout_sha256": "487fd155ae0741ebde892d3d003b481a2ab707a7f316a0fe8d71aeec3a8a4a23"
+      }
+    },
+    {
       "desc": "minimal module; fixed pipeline overhead",
       "exec": [
         {

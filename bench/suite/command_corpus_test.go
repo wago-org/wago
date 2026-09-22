@@ -195,8 +195,8 @@ func runWazeroCommand(ctx context.Context, r wazero.Runtime, compiled wazero.Com
 	}
 	cfg := wazero.NewModuleConfig().WithName("").WithStartFunctions().WithArgs(commandArgs(m)...).
 		WithStdin(bytes.NewReader(stdin)).WithStdout(stdoutWriter).WithStderr(stderrWriter).
-		WithWalltime(func() (int64, int32) { return 0, 0 }, 1).
-		WithNanotime(func() int64 { return 0 }, 1)
+		WithWalltime(func() (int64, int32) { return 0, 1 }, 1).
+		WithNanotime(func() int64 { return 1 }, 1)
 	if dir := commandPreopen(m); dir != "" {
 		cfg = cfg.WithFSConfig(wazero.NewFSConfig().WithDirMount(dir, "/"))
 	}

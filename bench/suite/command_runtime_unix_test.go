@@ -13,8 +13,8 @@ import (
 
 type fixedCommandClock struct{}
 
-func (fixedCommandClock) Realtime() (uint64, uint64, error)   { return 0, 1, nil }
-func (fixedCommandClock) Monotonic() (uint64, uint64, error)  { return 0, 1, nil }
+func (fixedCommandClock) Realtime() (uint64, uint64, error)   { return 1, 1, nil }
+func (fixedCommandClock) Monotonic() (uint64, uint64, error)  { return 1, 1, nil }
 func (fixedCommandClock) ProcessCPU() (uint64, uint64, error) { return 0, 1, nil }
 func (fixedCommandClock) ThreadCPU() (uint64, uint64, error)  { return 0, 1, nil }
 
