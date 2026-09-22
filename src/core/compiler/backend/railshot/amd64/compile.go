@@ -1776,7 +1776,11 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		var codeBuffer *coreruntime.CodeBuffer
 		var err error
 		if opts.DeferCodeMapping {
-			codeBuffer, err = coreruntime.NewHeapCodeBuffer(codeCap)
+			capacity := codeCap
+			if capacity >= 256<<10 {
+				capacity -= capacity / 4
+			}
+			codeBuffer, err = coreruntime.NewHeapCodeBuffer(capacity)
 		} else {
 			codeBuffer, err = coreruntime.NewCodeBuffer(codeCap)
 		}
