@@ -103,7 +103,7 @@ func (im *Imports) I32Event(module, name string, fn I32HostEvent) *ImportFuncBui
 	}
 	im.mu.Lock()
 	defer im.mu.Unlock()
-	imp := &registeredImport{module: module, name: name, eventI32: fn, params: []ValType{ValI32}}
+	imp := &registeredImport{module: module, name: name, fn: fn, eventI32: fn, params: []ValType{ValI32}}
 	if im.add(module, name, fn) {
 		im.decls = append(im.decls, imp)
 		return &ImportFuncBuilder{imp: imp, imports: im}
@@ -141,7 +141,7 @@ func (im *Imports) snapshot() (resolvedImports, error) {
 	defer im.mu.Unlock()
 	im.sealed = true
 	for _, imp := range im.decls {
-		if event, ok := im.bindings[imp.key()].(I32HostEvent); ok {
+		if event, ok := imp.fn.(I32HostEvent); ok {
 			if event == nil {
 				im.record(fmt.Errorf("wago: import %q.%q: deferred host callback is nil", imp.module, imp.name))
 			}
