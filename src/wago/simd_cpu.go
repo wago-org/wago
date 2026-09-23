@@ -1,6 +1,11 @@
 package wago
 
-import "sync"
+import (
+	"runtime"
+	"sync"
+
+	"golang.org/x/sys/cpu"
+)
 
 // simdHostFeaturesSupported reports whether generated SIMD code can execute on
 // this host. On amd64, the railshot SIMD backend emits VEX.128 instructions and
@@ -34,6 +39,23 @@ func cachedBMI2HostFeatures() bool {
 }
 
 func hostSupportsBMI2() bool { return bmi2HostFeaturesSupported() }
+
+var lzcntHostFeaturesSupported = cachedLZCNTHostFeatures
+
+var (
+	lzcntHostFeaturesOnce sync.Once
+	lzcntHostFeaturesOK   bool
+)
+
+func cachedLZCNTHostFeatures() bool {
+	lzcntHostFeaturesOnce.Do(func() { lzcntHostFeaturesOK = architectureSupportsLZCNT() })
+	return lzcntHostFeaturesOK
+}
+
+func hostSupportsAMD64BitCount() bool {
+	return runtime.GOARCH != "amd64" ||
+		(cpu.X86.HasBMI1 && cpu.X86.HasPOPCNT && lzcntHostFeaturesSupported())
+}
 
 func detectSIMDHostFeatures() bool { return architectureSupportsSIMD() }
 
@@ -91,6 +113,26 @@ func bmi2CPUFlagsSupported(data []byte) bool {
 		}
 		token := data[start:i]
 		if len(token) == 4 && token[0] == 'b' && token[1] == 'm' && token[2] == 'i' && token[3] == '2' {
+			return true
+		}
+	}
+	return false
+}
+
+func lzcntCPUFlagsSupported(data []byte) bool {
+	for i := 0; i < len(data); {
+		for i < len(data) && data[i] <= ' ' {
+			i++
+		}
+		start := i
+		for i < len(data) && data[i] > ' ' {
+			i++
+		}
+		token := data[start:i]
+		if len(token) == 3 && token[0] == 'a' && token[1] == 'b' && token[2] == 'm' {
+			return true
+		}
+		if len(token) == 5 && token[0] == 'l' && token[1] == 'z' && token[2] == 'c' && token[3] == 'n' && token[4] == 't' {
 			return true
 		}
 	}

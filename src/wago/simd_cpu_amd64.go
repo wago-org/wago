@@ -27,3 +27,12 @@ func architectureSupportsBMI2() bool {
 	_, ebx, _, _ := cpuid(7, 0)
 	return ebx&(uint32(1)<<8) != 0
 }
+
+func architectureSupportsLZCNT() bool {
+	maxID, _, _, _ := cpuid(0x80000000, 0)
+	if maxID < 0x80000001 {
+		return false
+	}
+	_, _, ecx, _ := cpuid(0x80000001, 0)
+	return ecx&(uint32(1)<<5) != 0
+}

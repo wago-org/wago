@@ -4238,6 +4238,9 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 }
 
 func finishDecodedCompiled(decoded *Compiled) error {
+	if !hostSupportsAMD64BitCount() {
+		return fmt.Errorf("wago: amd64 bit-count instructions require BMI1, LZCNT, and POPCNT CPU support")
+	}
 	if len(decoded.tableExports) == 0 {
 		decoded.tableExports = nil
 	}

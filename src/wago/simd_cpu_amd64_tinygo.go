@@ -22,3 +22,11 @@ func architectureSupportsBMI2() bool {
 	}
 	return bmi2CPUFlagsSupported(data)
 }
+
+func architectureSupportsLZCNT() bool {
+	data, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return false
+	}
+	return lzcntCPUFlagsSupported(data)
+}

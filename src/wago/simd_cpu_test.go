@@ -69,6 +69,22 @@ func TestBMI2CPUFlagsSupported(t *testing.T) {
 	}
 }
 
+func TestLZCNTCPUFlagsSupported(t *testing.T) {
+	for _, tc := range []struct {
+		data string
+		want bool
+	}{
+		{data: "flags : fpu abm bmi1\n", want: true},
+		{data: "flags : fpu lzcnt bmi1\n", want: true},
+		{data: "flags : fpu xabm lzcnt2", want: false},
+		{data: "", want: false},
+	} {
+		if got := lzcntCPUFlagsSupported([]byte(tc.data)); got != tc.want {
+			t.Fatalf("lzcntCPUFlagsSupported(%q) = %v, want %v", tc.data, got, tc.want)
+		}
+	}
+}
+
 var simdCPUFlagsSink bool
 
 func BenchmarkSIMDCPUFlags(b *testing.B) {
