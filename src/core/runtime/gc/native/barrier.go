@@ -670,11 +670,17 @@ func (c *Collector) ForcePromote(r Ref) error {
 	}
 	h := handleOf(r)
 	if err := c.promoteHandle(h); err != nil {
+		if c.nativeView.Spaces[NativeSpaceOld].Bytes != uint32(len(c.throughput.mem)) {
+			c.refreshNativeView()
+		}
 		return err
 	}
 	if c.handleContainsNurseryRef(h) {
 		c.remember(h)
 		c.markWholeObjectCard(h)
+	}
+	if c.nativeView.Spaces[NativeSpaceOld].Bytes != uint32(len(c.throughput.mem)) {
+		c.refreshNativeView()
 	}
 	return nil
 }
