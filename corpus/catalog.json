@@ -1,6 +1,15 @@
 {
   "schema": 1,
   "profiles": {
+    "website": [
+      "tiny", "fib_rec", "dispatch", "memory_tree", "memory", "many_funcs",
+      "linked_list", "fannkuch", "nbody", "matmul", "sha256", "raytrace",
+      "json-as", "blake-as", "utf-as", "json-as-simd", "blake-as-simd", "utf-as-simd",
+      "coremark", "blake3", "qoi", "lz4", "zstd", "yyjson", "utf8proc",
+      "libtommath", "kissfft", "pcre2", "polybench-gemm", "polybench-cholesky",
+      "polybench-correlation", "polybench-floyd-warshall", "polybench-nussinov",
+      "polybench-jacobi-2d", "embench-huffbench", "sightglass-libsodium-hash"
+    ],
     "quick": [
       "tiny",
       "fib_rec",
