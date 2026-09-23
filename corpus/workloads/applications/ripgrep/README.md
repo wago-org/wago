@@ -9,3 +9,7 @@ The workload searches QuickJS's pinned JavaScript source. `-N` suppresses
 automatic line numbering so output has the same byte-exact interpretation in
 Wago, wazero, and Wasmtime. This artifact imports only WASI preview1; no
 a-Shell-specific mocks are needed.
+
+The command is admitted on ARM64 hosts. Its explicit-bounds amd64 execution
+currently reaches a Rust comparator-invariant panic, so amd64 remains excluded
+instead of accepting output that differs from the independent oracle.

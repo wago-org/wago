@@ -1328,7 +1328,7 @@
       "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
       "command": {
         "runtime": "wasi",
-        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "platforms": ["linux/arm64", "darwin/arm64"],
         "export": "_start",
         "args": ["-N", "const", "/program.js"],
         "preopen": "workloads/applications/quickjs/inputs",
@@ -1935,7 +1935,7 @@
       "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
       "command": {
         "runtime": "wasi",
-        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "platforms": ["linux/arm64", "darwin/arm64"],
         "export": "_start",
         "args": ["program.js"],
         "preopen": "workloads/applications/js-runtime/inputs",
