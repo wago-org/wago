@@ -2868,7 +2868,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	sc.reset()
 	sc.asm.DenseIdxDisp = hints.memOpCount() >= 8
-	sc.asm.ReuseIndexedBase = policy.EnabledOption(optIndexedBaseReuse)
+	// The encoder's local instruction proof does not track branch targets.
+	// Guard mode removes the intervening bounds checks, so nearby accesses can
+	// straddle a control-flow join without executing the ADD that seeds X16.
+	sc.asm.ReuseIndexedBase = !guardMode && policy.EnabledOption(optIndexedBaseReuse)
 	sc.asm.DisableLogicalMoveImmediate = !logicalMoveImmediateEnabled ||
 		!policy.CompactNative
 	sc.asm.DisableCompactMoveImmediate32 = !compactMoveImmediate32Enabled ||
