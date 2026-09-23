@@ -962,11 +962,18 @@ func (b *Builder) lowerMem(op byte) error {
 	if err != nil {
 		return err
 	}
-	off, err := b.r.U32()
+	mt, err := b.memoryType(0)
 	if err != nil {
 		return err
 	}
-	mt, err := b.memoryType(0)
+	var off uint64
+	if mt.Limits.Addr64 {
+		off, err = b.r.U64()
+	} else {
+		var off32 uint32
+		off32, err = b.r.U32()
+		off = uint64(off32)
+	}
 	if err != nil {
 		return err
 	}
@@ -985,7 +992,7 @@ func (b *Builder) lowerMem(op byte) error {
 			return err
 		}
 		if b.reachable {
-			b.addInst(OpStore, packMem(kind, align, 0, off), 0, []ValueID{addr, val}, nil, EffectCanTrap|EffectWriteMem)
+			b.addInst(OpStore, packMem(kind, align, 0, uint32(off)), off>>32, []ValueID{addr, val}, nil, EffectCanTrap|EffectWriteMem)
 		}
 	} else {
 		addr, err := b.popTyped(addrType)
@@ -993,7 +1000,7 @@ func (b *Builder) lowerMem(op byte) error {
 			return err
 		}
 		if b.reachable {
-			b.pushValues(b.addInst(OpLoad, packMem(kind, align, 0, off), 0, []ValueID{addr}, []wasm.ValType{res}, EffectCanTrap|EffectReadMem))
+			b.pushValues(b.addInst(OpLoad, packMem(kind, align, 0, uint32(off)), off>>32, []ValueID{addr}, []wasm.ValType{res}, EffectCanTrap|EffectReadMem))
 		} else {
 			b.pushPoisons([]wasm.ValType{res})
 		}
