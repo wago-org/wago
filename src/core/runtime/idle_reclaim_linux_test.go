@@ -13,7 +13,6 @@ func TestIdleEngineColdPagesAndHotContents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.SetIdleMemoryReclamation(true)
 	top, limit, size := e.StackTop(), e.StackLimit(), e.StackBytes()
 	for i := range e.stack {
 		e.stack[i] = 0x5a
@@ -46,7 +45,6 @@ func TestIdleEngineFailedReclaimCloses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.SetIdleMemoryReclamation(true)
 	if err := syscall.Mlock(e.stack[:syscall.Getpagesize()]); err != nil {
 		e.Close()
 		t.Skipf("mlock unavailable: %v", err)
@@ -71,12 +69,16 @@ func TestIdleEngineFailedReclaimCloses(t *testing.T) {
 }
 
 func TestIdleArenaZeroReclaimedReuse(t *testing.T) {
+	var previous *Arena
 	for cycle := 0; cycle < 20; cycle++ {
 		a, err := AcquireArena(64 << 10)
 		if err != nil {
 			t.Fatal(err)
 		}
-		a.SetIdleMemoryReclamation(true)
+		if previous != nil && a != previous {
+			t.Fatal("zero-reclaimed arena was not reused")
+		}
+		previous = a
 		b := a.Alloc(len(a.mem))
 		for i, v := range b {
 			if v != 0 {
@@ -87,26 +89,22 @@ func TestIdleArenaZeroReclaimedReuse(t *testing.T) {
 		if err := ReleaseArena(a); err != nil {
 			t.Fatal(err)
 		}
-		if !a.zeroReclaimed {
-			t.Fatal("private anonymous mapping was not zero-reclaimed")
-		}
 	}
 	a, err := AcquireArena(64 << 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	if a.zeroReclaimed || a.zeroOnAlloc {
-		t.Fatal("reclaimed mapping did not transfer its zero state")
+	if a != previous || a.Alloc(1)[0] != 0 {
+		t.Fatal("reclaimed mapping did not return zeroed bytes")
 	}
 }
 
-func TestIdleArenaFailedReclaimStillZeros(t *testing.T) {
+func TestIdleArenaFailedReclaimCloses(t *testing.T) {
 	a, err := AcquireArena(64 << 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.SetIdleMemoryReclamation(true)
 	b := a.Alloc(len(a.mem))
 	for i := range b {
 		b[i] = 0xa5
@@ -118,16 +116,18 @@ func TestIdleArenaFailedReclaimStillZeros(t *testing.T) {
 	if err := ReleaseArena(a); err != nil {
 		t.Fatal(err)
 	}
+	var resident [1]byte
+	_, _, errno := syscall.Syscall(syscall.SYS_MINCORE, uintptr(unsafe.Pointer(&a.mem[0])), uintptr(syscall.Getpagesize()), uintptr(unsafe.Pointer(&resident[0])))
+	if errno != syscall.ENOMEM {
+		t.Fatalf("failed reclaim did not unmap Arena: %v", errno)
+	}
 	next, err := AcquireArena(64 << 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer next.Close()
-	if next != a || next.zeroReclaimed || !next.zeroOnAlloc {
-		t.Fatal("failed reclaim lost clear-on-allocation")
-	}
-	if err := syscall.Munlock(next.mem[:syscall.Getpagesize()]); err != nil {
-		t.Fatal(err)
+	if next == a {
+		t.Fatal("reused closed Arena")
 	}
 	for i, b := range next.Alloc(len(next.mem)) {
 		if b != 0 {
@@ -136,56 +136,11 @@ func TestIdleArenaFailedReclaimStillZeros(t *testing.T) {
 	}
 }
 
-func TestOrdinaryIdleCacheKeepsContentsAndResetsPolicy(t *testing.T) {
-	e, err := AcquireEngine()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if e.IdleMemoryReclamation() {
-		t.Fatal("new owner inherited idle policy")
-	}
-	e.stack[0] = 0x5a
-	if err = ReleaseEngine(e); err != nil {
-		t.Fatal(err)
-	}
-	e, err = AcquireEngine()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if e.stack[0] != 0x5a {
-		t.Fatal("ordinary stack was reclaimed")
-	}
-	e.Close()
-	a, err := AcquireArena(64 << 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if a.idleReclaim {
-		t.Fatal("new Arena owner inherited idle policy")
-	}
-	a.AllocNoZero(1)[0] = 0x5a
-	if err = ReleaseArena(a); err != nil {
-		t.Fatal(err)
-	}
-	a, err = AcquireArena(64 << 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer a.Close()
-	if a.mem[0] != 0x5a || a.zeroReclaimed || !a.zeroOnAlloc {
-		t.Fatal("ordinary Arena cache policy changed")
-	}
-	if a.Alloc(1)[0] != 0 {
-		t.Fatal("ordinary Arena exposed stale data")
-	}
-}
-
 func TestIdleOversizedEngineBypassesCache(t *testing.T) {
 	e, err := AcquireEngineWithStackBytes(8 << 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.SetIdleMemoryReclamation(true)
 	if err = ReleaseEngine(e); err != nil {
 		t.Fatal(err)
 	}

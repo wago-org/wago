@@ -1487,9 +1487,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, preparedIsolatedTables: cm.PreparedIsolatedTables, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscapeWithValidation(m, &validationAnalysis), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
 	c.codeCache.setNativeStackBytes(cfg.nativeStackBytes)
-	if cfg.idleMemoryReclamation {
-		c.codeCache.stagedFeatures |= compiledIdleReclaimFlag
-	}
 	if c.validateMemo != nil {
 		c.validateMemo.memoryLimitPages = cfg.maxMemoryPages
 		c.validateMemo.maxInstanceMetadataBytes = cfg.maxInstanceMetadataBytes

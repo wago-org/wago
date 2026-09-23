@@ -46,8 +46,7 @@ type compiledCodeCache struct {
 	gcI31Product           stagedGCI31Product           // exact non-allocating i31 boundary; persisted as a semantic execution bit
 	flags                  compiledCodeCacheFlags       // compact compile-only native dispatch and memory preferences
 	// The low 32 bits are compile-only CoreFeatures. The high 32 bits retain the
-	// direct-Instantiation native stack capacity and idle-reclaim flag without
-	// growing this sidecar.
+	// direct-Instantiation native stack capacity without growing this sidecar.
 	// Neither half is serialized; codec reload restores only generic features.
 	stagedFeatures CoreFeatures
 }
@@ -201,9 +200,6 @@ func (c *Compiled) prefersGuardMemory() bool {
 
 const compiledStagedFeatureMask CoreFeatures = 1<<32 - 1
 
-// Native stacks are 16-byte aligned; their low bit stores only the idle policy.
-const compiledIdleReclaimFlag CoreFeatures = 1 << 32
-
 func (c *Compiled) stagedFeatures() CoreFeatures {
 	cc := c.loadCodeCache()
 	if cc == nil {
@@ -216,7 +212,7 @@ func (c *compiledCodeCache) setNativeStackBytes(stackBytes uint64) {
 	if c == nil || stackBytes > uint64(^uint32(0)) {
 		panic("wago: native stack capacity exceeds compact compile policy")
 	}
-	c.stagedFeatures = c.stagedFeatures&(compiledStagedFeatureMask|compiledIdleReclaimFlag) | CoreFeatures(stackBytes)<<32
+	c.stagedFeatures = c.stagedFeatures&compiledStagedFeatureMask | CoreFeatures(stackBytes)<<32
 }
 
 func (c *Compiled) nativeStackBytes() uint64 {
@@ -224,7 +220,7 @@ func (c *Compiled) nativeStackBytes() uint64 {
 	if cc == nil {
 		return 0
 	}
-	return uint64((cc.stagedFeatures &^ compiledIdleReclaimFlag) >> 32)
+	return uint64(cc.stagedFeatures >> 32)
 }
 
 func (c *Compiled) collectorFreeStructuralMetadata() bool {
@@ -805,9 +801,4 @@ func (c *Compiled) Close() error {
 		}
 	}
 	return err
-}
-
-func (c *Compiled) idleMemoryReclamation() bool {
-	cc := c.loadCodeCache()
-	return cc != nil && cc.stagedFeatures&compiledIdleReclaimFlag != 0
 }

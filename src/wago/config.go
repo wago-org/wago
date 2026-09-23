@@ -240,7 +240,6 @@ type RuntimeConfig struct {
 	noDeferBounds            bool   // disable skipping of provably-redundant bounds checks (default: enabled)
 	functionWorkers          int    // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
 	nativeStackBytes         uint64 // per-Engine foreign execution stack capacity
-	idleMemoryReclamation    bool   // aggressively reclaim physical pages from idle resources
 	gcCodeTelemetry          bool   // collect code-neutral per-family WasmGC native byte attribution
 	independentInstances     bool   // allow unrelated instances to execute native code concurrently
 	instanceLimits           *runtimeInstanceLimits
@@ -420,18 +419,6 @@ func (c *RuntimeConfig) WithFeature(feature CoreFeatures, enabled bool) *Runtime
 		n.features &^= CoreFeatureExtendedConstExpressions
 	}
 	return &n
-}
-
-// WithIdleMemoryReclamation selects aggressive idle-memory reclamation on Linux.
-// It retains the top 512 KiB of cached native stacks and zero-reclaims cached
-// arenas; stacks larger than the default capacity bypass the cache. Reuse can
-// incur page faults and increase instantiation latency.
-// Stack capacity, stack fences, guest limits, and bounds checks are unchanged.
-// The default is false. This compile-time preference is not serialized by codecs.
-func (c *RuntimeConfig) WithIdleMemoryReclamation(enabled bool) *RuntimeConfig {
-	n := c.clone()
-	n.idleMemoryReclamation = enabled
-	return n
 }
 
 // WithGCCodeTelemetry enables code-neutral WasmGC native-byte attribution on
@@ -673,9 +660,6 @@ func (c *RuntimeConfig) FunctionWorkers() int { return c.functionWorkers }
 
 // NativeStackBytes reports the configured foreign execution stack capacity.
 func (c *RuntimeConfig) NativeStackBytes() uint64 { return c.nativeStackBytes }
-
-// IdleMemoryReclamation reports whether aggressive idle reclamation is enabled.
-func (c *RuntimeConfig) IdleMemoryReclamation() bool { return c.idleMemoryReclamation }
 
 // IndependentInstanceExecution reports whether native calls use instance-local
 // execution leases instead of the process-wide cross-instance lease.

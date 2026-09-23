@@ -77,11 +77,8 @@ func munmap(b []byte) error {
 
 // Arena is a bump allocator over stable off-heap memory.
 type Arena struct {
-	mem           []byte
-	off           int
-	zeroOnAlloc   bool
-	idleReclaim   bool
-	zeroReclaimed bool // entire idle mapping successfully reset with MADV_DONTNEED
+	mem []byte
+	off int
 }
 
 func NewArena(n int) (*Arena, error) {
@@ -109,9 +106,6 @@ func AcquireArena(n int) (*Arena, error) {
 		arenaCache.a = nil
 		arenaCache.Unlock()
 		a.off = 0
-		a.zeroOnAlloc = !a.zeroReclaimed
-		a.zeroReclaimed = false
-		a.idleReclaim = false
 		return a, nil
 	}
 	if a != nil && len(a.mem) < need {
@@ -125,18 +119,11 @@ func AcquireArena(n int) (*Arena, error) {
 }
 
 func (a *Arena) Alloc(n int) []byte {
-	b := a.AllocNoZero(n)
-	if a.zeroOnAlloc {
-		clear(b)
-	}
-	return b
+	return a.AllocNoZero(n)
 }
 
-// AllocNoZero is Alloc without the reused-arena zero-fill. The returned bytes may
-// contain stale data from a prior instance, so the caller MUST fully initialize
-// them (or otherwise not read them) before use. Intended for large buffers that
-// native/host code writes before it reads — e.g. the host-call log, whose count
-// header is reset at the start of every Invoke.
+// AllocNoZero skips explicit zeroing. Callers must fully initialize the bytes
+// before use. This is for buffers that native or host code writes before reading.
 func (a *Arena) AllocNoZero(n int) []byte {
 	a.off = (a.off + 7) &^ 7
 	if a.off+n > len(a.mem) {
@@ -152,7 +139,7 @@ func (a *Arena) Close() error { return munmap(a.mem) }
 // ReleaseArena returns a to the bounded cache or unmaps it if the cache is
 // occupied. All allocations and borrowed views must be released first. A
 // successful private-anonymous MADV_DONTNEED guarantees zero-fill on reuse;
-// failure retains clear-on-allocation.
+// failure closes the mapping so stale bytes cannot be reused.
 func ReleaseArena(a *Arena) error {
 	if a == nil {
 		return nil
@@ -162,9 +149,10 @@ func ReleaseArena(a *Arena) error {
 	}
 	arenaCache.Lock()
 	if arenaCache.a == nil {
-		a.zeroReclaimed = a.idleReclaim && madviseDontNeed(a.mem) == nil
-		a.off = 0
-		a.zeroOnAlloc = !a.zeroReclaimed
+		if err := madviseDontNeed(a.mem); err != nil {
+			arenaCache.Unlock()
+			return a.Close()
+		}
 		arenaCache.a = a
 		arenaCache.Unlock()
 		return nil
@@ -172,7 +160,3 @@ func ReleaseArena(a *Arena) error {
 	arenaCache.Unlock()
 	return a.Close()
 }
-
-// SetIdleMemoryReclamation selects the next release policy while the caller
-// exclusively owns the Arena and its allocations.
-func (a *Arena) SetIdleMemoryReclamation(enabled bool) { a.idleReclaim = enabled }

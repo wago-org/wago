@@ -31,7 +31,6 @@ type Engine struct {
 	// on the Engine avoids two tiny heap allocations per host re-entry while still
 	// falling back to per-call scratch if CallWithHost is re-entered before the
 	// previous call returns.
-	idleReclaim      bool
 	hostScratchInUse bool
 	hostArgs         [maxHostArity]uint64
 	hostResults      [maxHostArity]uint64
@@ -102,7 +101,6 @@ func AcquireEngineWithStackBytes(stackBytes uint64) (*Engine, error) {
 	engineCache.Unlock()
 	if e != nil {
 		if e.StackBytes() == stackBytes {
-			e.idleReclaim = false
 			return e, nil
 		}
 		if err := e.Close(); err != nil {
@@ -121,7 +119,7 @@ func ReleaseEngine(e *Engine) error {
 	}
 	engineCache.Lock()
 	if engineCache.e == nil {
-		if e.idleReclaim && !e.prepareIdleStackForCache() {
+		if !e.prepareIdleStackForCache() {
 			engineCache.Unlock()
 			return e.Close()
 		}
@@ -745,10 +743,3 @@ func offHeapPointer(addr uintptr) unsafe.Pointer {
 func storeOffHeapU64(addr uintptr, value uint64) {
 	*(*uint64)(offHeapPointer(addr)) = value
 }
-
-// SetIdleMemoryReclamation selects the next release policy for this exclusively
-// owned Engine. It must not be called during a native invocation.
-func (e *Engine) SetIdleMemoryReclamation(enabled bool) { e.idleReclaim = enabled }
-
-// IdleMemoryReclamation reports the current owner's release policy.
-func (e *Engine) IdleMemoryReclamation() bool { return e.idleReclaim }

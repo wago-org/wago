@@ -156,6 +156,3 @@ func ReleaseArena(a *Arena) error {
 	arenaCache.Unlock()
 	return a.Close()
 }
-
-// SetIdleMemoryReclamation has no effect on this platform.
-func (a *Arena) SetIdleMemoryReclamation(bool) {}

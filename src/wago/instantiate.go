@@ -37,7 +37,6 @@ type InstantiateOptions struct {
 	runtimeReservation       *runtimeInstanceReservation
 	independentInstances     bool
 	hasExecutionPolicy       bool
-	idleMemoryReclamation    bool
 	nativeStackBytes         uint64
 	memoryLimitPages         uint32
 	maxInstanceMetadataBytes uint64
@@ -466,15 +465,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if stackBytes == 0 {
 		stackBytes = runtime.DefaultNativeStackBytes
 	}
-	idleReclaim := c.idleMemoryReclamation()
-	if opts.hasExecutionPolicy {
-		idleReclaim = opts.idleMemoryReclamation
-	}
 	eng, err := runtime.AcquireEngineWithStackBytes(stackBytes)
 	if err != nil {
 		return nil, err
 	}
-	eng.SetIdleMemoryReclamation(idleReclaim)
 	// Memory: a host-imported *Memory if the module imports one, otherwise an
 	// instance-owned mapping (guard-page-backed for signals-based modules, so the
 	// fault handler catches OOB accesses through the normal Invoke path).
@@ -631,7 +625,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		runtime.ReleaseEngine(eng)
 		return nil, err
 	}
-	ar.SetIdleMemoryReclamation(idleReclaim)
 	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
 	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
 	if needsMemoryDir {

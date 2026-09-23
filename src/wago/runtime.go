@@ -1128,7 +1128,6 @@ func (rt *Runtime) instantiateWithHooksOrigin(ctx context.Context, mod *Module, 
 		independentInstances:     mod.independentInstances,
 		hasExecutionPolicy:       true,
 		nativeStackBytes:         rt.cfg.nativeStackBytes,
-		idleMemoryReclamation:    rt.cfg.idleMemoryReclamation,
 		memoryLimitPages:         rt.cfg.maxMemoryPages,
 		maxInstanceMetadataBytes: rt.cfg.maxInstanceMetadataBytes,
 	}
