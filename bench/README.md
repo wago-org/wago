@@ -20,7 +20,7 @@ just bench check                        # one iteration, wiring only
 
 `CORPUS` accepts `quick`, `website`, `algorithms`, `all`, `tag:<tag>`, or comma-separated benchmark IDs.
 The `website` profile moves from tiny mechanisms through numeric, AssemblyScript,
-semantic-library, and PolyBench workloads to Embench and Sightglass applications.
+semantic-library, and PolyBench workloads to Embench, Sightglass, and full command applications.
 It includes only workloads that completed repeated runs on both published architectures.
 `BENCH` accepts `all`, `pipeline`, `compile`, `exec`, or a Go benchmark regex.
 The remaining positional arguments set count, duration, and output; environment

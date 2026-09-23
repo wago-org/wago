@@ -7,8 +7,8 @@
       "json-as", "blake-as", "utf-as", "json-as-simd", "blake-as-simd", "utf-as-simd",
       "coremark", "blake3", "qoi", "lz4", "zstd", "yyjson", "utf8proc",
       "libtommath", "kissfft", "pcre2", "polybench-gemm", "polybench-cholesky",
-      "polybench-correlation", "polybench-floyd-warshall", "polybench-nussinov",
-      "polybench-jacobi-2d", "embench-huffbench", "sightglass-libsodium-hash"
+      "polybench-floyd-warshall", "embench-huffbench", "sightglass-libsodium-hash",
+      "json2csv-people", "brotli-compress", "lodepng"
     ],
     "quick": [
       "tiny",
