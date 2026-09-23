@@ -195,6 +195,18 @@ func BenchmarkSignedLoadIndexedBase(b *testing.B) {
 	b.SetBytes(int64(len(a.B)))
 }
 
+func BenchmarkStableSignedLoadIndexedBase(b *testing.B) {
+	a := Asm{B: make([]byte, 0, 16), DenseIdxDisp: true, ReuseIndexedBase: true}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		a.B = a.B[:0]
+		a.IndexedBaseReuses = 0
+		a.LoadIdx(X0, X26, X22, 4, 1, true, true)
+		a.StoreIdx(X26, X22, X1, 8, 4)
+	}
+	b.SetBytes(int64(len(a.B)))
+}
+
 func TestCanonicalIndexedBaseReuseAcrossAccumulator(t *testing.T) {
 	var a Asm
 	a.DenseIdxDisp = true
