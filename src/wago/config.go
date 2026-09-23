@@ -171,10 +171,8 @@ var featureRegistry = []FeatureInfo{
 // FeatureInfos returns every registered feature in stable display order. Its
 // default and availability fields describe the current build.
 func FeatureInfos() []FeatureInfo {
-	// Configuration describes the build's compiler surface, not the current
-	// machine's optional CPU instructions. SIMD remains configurable on a host
-	// without SIMD just as RuntimeConfig.Validate permits it; compilation still
-	// fails closed when a module actually requires unavailable instructions.
+	// Configuration describes the compiler's feature set. Validate checks the
+	// AMD64 host CPU before it compiles any module.
 	supported := platformCoreFeatures()
 	result := make([]FeatureInfo, len(featureRegistry))
 	for index, feature := range featureRegistry {
@@ -738,6 +736,9 @@ func defaultCoreFeatures() CoreFeatures {
 func SupportedFeatures() CoreFeatures {
 	supported := platformCoreFeatures()
 	if !hostSupportsSIMD() {
+		if runtime.GOARCH == "amd64" {
+			return 0
+		}
 		supported &^= CoreFeatureSIMD
 	}
 	return supported
@@ -784,11 +785,7 @@ func (e *UnsupportedFeatureError) Error() string {
 func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 	simd := c.features.IsEnabled(CoreFeatureSIMD)
 	if simd && !hostSupportsSIMD() {
-		// Do not admit SIMD modules on hosts that cannot execute the backend's AVX
-		// and SSSE3/SSE4.1/SSE4.2 instruction sequences: reject at compile time
-		// instead of risking SIGILL at runtime. Non-SIMD modules still compile with
-		// the default
-		// feature set on such hosts.
+		// Do not admit SIMD modules on hosts that lack the required CPU features.
 		simd = false
 	}
 	return frontend.Features{
@@ -851,10 +848,9 @@ func (c *RuntimeConfig) Validate() error {
 	if c.optimizations["bmi2-rorx"] && !hostSupportsBMI2() {
 		return fmt.Errorf("wago: bmi2-rorx optimization requires BMI2 CPU support")
 	}
-	// SIMD remains configurable on builds whose host CPU cannot execute it so
-	// scalar modules still compile under the default config; the frontend clears
-	// SIMD admission for those modules. Architecture-incomplete Core 3 families,
-	// in contrast, fail here before decoding or lowering.
+	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
+		return fmt.Errorf("wago: AMD64 backend requires AVX, SSSE3, SSE4.1, and SSE4.2 CPU features with OS AVX support")
+	}
 	supported := platformCoreFeatures()
 	if unsupported := c.features &^ supported; unsupported != 0 {
 		return &UnsupportedFeatureError{

@@ -886,14 +886,25 @@ func TestConfigRejectsSIMDWhenHostUnsupported(t *testing.T) {
 	old := simdHostFeaturesSupported
 	simdHostFeaturesSupported = func() bool { return false }
 	defer func() { simdHostFeaturesSupported = old }()
-	if _, err := Compile(nil, signExtModule()); err != nil {
-		t.Fatalf("non-SIMD module should still compile when host SIMD is unavailable: %v", err)
+	_, scalarErr := Compile(nil, signExtModule())
+	if runtime.GOARCH == "amd64" && (scalarErr == nil || !strings.Contains(scalarErr.Error(), "CPU features")) {
+		t.Fatalf("non-SIMD module should require AMD64 backend CPU features, got %v", scalarErr)
+	}
+	if runtime.GOARCH != "amd64" && scalarErr != nil {
+		t.Fatalf("non-SIMD module should compile on this backend: %v", scalarErr)
 	}
 	_, err := Compile(nil, simdModule())
-	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
+	want := "simd disabled"
+	if runtime.GOARCH == "amd64" {
+		want = "CPU features"
+	}
+	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("SIMD module should be rejected when host SIMD is unavailable, got %v", err)
 	}
-	if SupportedFeatures().IsEnabled(CoreFeatureSIMD) {
+	if runtime.GOARCH == "amd64" && SupportedFeatures() != 0 {
+		t.Fatal("SupportedFeatures should clear all features when the AMD64 backend is unavailable")
+	}
+	if runtime.GOARCH != "amd64" && SupportedFeatures().IsEnabled(CoreFeatureSIMD) {
 		t.Fatal("SupportedFeatures should clear SIMD when host SIMD is unavailable")
 	}
 }
@@ -957,7 +968,11 @@ func TestConfigRejectsV128TypesWhenHostUnsupported(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Compile(nil, tc.mod)
-			if err == nil || !strings.Contains(err.Error(), "v128") {
+			want := "v128"
+			if runtime.GOARCH == "amd64" {
+				want = "CPU features"
+			}
+			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatalf("v128 module should be rejected when host SIMD is unavailable, got %v", err)
 			}
 		})
