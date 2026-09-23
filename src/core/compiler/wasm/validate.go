@@ -183,9 +183,6 @@ func (v *moduleValidator) validateFunctionsSerial() error {
 func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) (counts validationSegmentCounts, err error) {
 	fn := &v.m.Code[localIndex]
 	abs := importedFuncs + localIndex
-	if localIndex >= len(v.m.FuncTypes) {
-		return counts, v.err(ErrUnknownFunc, "code without function type")
-	}
 	ft, ok := v.funcType(uint32(abs))
 	if !ok {
 		return counts, v.err(ErrUnknownType, "function type")
