@@ -109,6 +109,11 @@ just bench run all                       # complete benchmark inventory
 just test regression build-polybench /opt/wasi-sdk
 ```
 
+The default `quick` profile balances low-level compiler/runtime coverage with
+eight end-to-end applications: QuickJS, Duktape, esbuild, SQLite, jq, Brotli,
+Lua, and MicroPython. Narrower adapter workloads displaced by those programs
+remain available through `all`, tags, and explicit benchmark IDs.
+
 To admit a workload, add its artifact, provenance, digest, and execution oracle
 to `catalog.json`, then run `just test corpus <id>` and
 `just bench check <id>`. Every benchmark entry must declare exactly one
