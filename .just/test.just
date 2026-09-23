@@ -51,7 +51,9 @@ native-arm64:
 # Run the corpus pipeline, catalog contracts, provenance, and exact oracles.
 corpus profile=env('CORPUS', 'quick'):
     cd bench && go test -count=1 ./internal/semanticcorpus
-    cd bench && go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns|TestCatalog.*|TestValidateCorpusModule.*)$' ./suite -args -wago.corpus='{{ profile }}'
+    # The full application corpus exceeds Go's default 10-minute test timeout
+    # on slower native runners such as Windows/arm64.
+    cd bench && go test -count=1 -timeout 20m -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns|TestCatalog.*|TestValidateCorpusModule.*)$' ./suite -args -wago.corpus='{{ profile }}'
 
 # Run the semantic corpus against exact oracles.
 semantic-corpus:
