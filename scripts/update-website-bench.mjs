@@ -282,16 +282,11 @@ function buildGeneralSummary(metrics, raw, modules) {
     includedModules,
     "codeBytes",
   );
-  const compileTime = {
-    railshot: metricGeomean(metrics, "CompileFull/", false, "ns", includedModules),
-    wazero: metricGeomean(metrics, "WazeroCompile/", false, "ns", includedModules),
-  };
+  const compileTime = pairedMetricGeomeans(metrics, "CompileFull/", "WazeroCompile/", false, includedModules);
   const summary = [
     ["Compile", "fresh process", "ns", compileTime],
-    ["Compile heap", "per compile", "bytes", {
-      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes", includedModules),
-      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes", includedModules),
-    }],
+    ["Compile heap", "per compile", "bytes",
+      pairedMetricGeomeans(metrics, "CompileFull/", "WazeroCompile/", false, includedModules, "bytes")],
     ["Machine code", "compiled corpus", "code", machineCode],
     ["Instantiate", "runnable corpus", "ns", instantiate],
     ["Execution", "runnable corpus", "ns", execution],
@@ -311,21 +306,6 @@ function generalPairedMetric(metrics, label, sub, railshotKey, wazeroKey) {
   const wazero = Number(metrics.get(wazeroKey)?.ns ?? 0);
   if (!(railshot > 0) || !(wazero > 0)) return null;
   return { label, sub, kind: "ns", values: { railshot, wazero } };
-}
-
-function metricGeomean(metrics, prefix, groupExports = false, field = "ns", includedModules = null) {
-  const groups = new Map();
-  for (const [key, metric] of metrics) {
-    if (!key.startsWith(prefix) || !(Number(metric[field]) > 0)) continue;
-    const tail = key.slice(prefix.length);
-    const module = tail.split(".", 1)[0];
-    if (includedModules && !includedModules.has(module)) continue;
-    const group = groupExports ? module : tail;
-    const values = groups.get(group) ?? [];
-    values.push(Number(metric[field]));
-    groups.set(group, values);
-  }
-  return geomean([...groups.values()].map(geomean));
 }
 
 function pairedMetricGeomeans(metrics, wagoPrefix, wazeroPrefix, groupExports, includedModules, field = "ns") {
