@@ -1,10 +1,9 @@
 package wago
 
 import (
+	"errors"
 	"runtime"
 	"sync"
-
-	"golang.org/x/sys/cpu"
 )
 
 // simdHostFeaturesSupported reports whether generated SIMD code can execute on
@@ -40,21 +39,34 @@ func cachedBMI2HostFeatures() bool {
 
 func hostSupportsBMI2() bool { return bmi2HostFeaturesSupported() }
 
-var lzcntHostFeaturesSupported = cachedLZCNTHostFeatures
+var bitCountHostFeaturesSupported = cachedBitCountHostFeatures
 
 var (
-	lzcntHostFeaturesOnce sync.Once
-	lzcntHostFeaturesOK   bool
+	bitCountHostFeaturesOnce sync.Once
+	bitCountHostFeaturesOK   bool
 )
 
-func cachedLZCNTHostFeatures() bool {
-	lzcntHostFeaturesOnce.Do(func() { lzcntHostFeaturesOK = architectureSupportsLZCNT() })
-	return lzcntHostFeaturesOK
+func cachedBitCountHostFeatures() bool {
+	bitCountHostFeaturesOnce.Do(func() { bitCountHostFeaturesOK = architectureSupportsAMD64BitCount() })
+	return bitCountHostFeaturesOK
 }
 
 func hostSupportsAMD64BitCount() bool {
-	return runtime.GOARCH != "amd64" ||
-		(cpu.X86.HasBMI1 && cpu.X86.HasPOPCNT && lzcntHostFeaturesSupported())
+	return runtime.GOARCH != "amd64" || bitCountHostFeaturesSupported()
+}
+
+//go:noinline
+func requireAMD64BitCount() error {
+	if runtime.GOARCH != "amd64" || bitCountHostFeaturesSupported() {
+		return nil
+	}
+	return errors.New("wago: CPU lacks bit-count")
+}
+
+func amd64BitCountFeaturesSupported(ecx1, ebx7, extECX uint32) bool {
+	return ecx1&(uint32(1)<<23) != 0 && // POPCNT
+		ebx7&(uint32(1)<<3) != 0 && // BMI1/TZCNT
+		extECX&(uint32(1)<<5) != 0 // ABM/LZCNT
 }
 
 func detectSIMDHostFeatures() bool { return architectureSupportsSIMD() }
@@ -71,70 +83,43 @@ func amd64SIMDFeaturesSupported(ecx, xcr0 uint32) bool {
 	return ecx&required == required && xcr0&0x6 == 0x6
 }
 
-// simdCPUFlagsSupported recognizes the four exact whitespace-delimited Linux
-// cpuinfo flags without converting the complete file to a string, lowercasing it,
-// splitting every token, or building a hash map. It normally returns from the
-// first processor's flags line and performs no allocation.
-func simdCPUFlagsSupported(data []byte) bool {
-	var avx, ssse3, sse41, sse42 bool
+//go:noinline
+func cpuFlagPresent(data []byte, flag string) bool {
 	for i := 0; i < len(data); {
-		for i < len(data) && data[i] <= ' ' {
+		if data[i] <= ' ' {
 			i++
+			continue
 		}
 		start := i
 		for i < len(data) && data[i] > ' ' {
 			i++
 		}
-		token := data[start:i]
-		switch len(token) {
-		case 3:
-			avx = avx || token[0] == 'a' && token[1] == 'v' && token[2] == 'x'
-		case 5:
-			ssse3 = ssse3 || token[0] == 's' && token[1] == 's' && token[2] == 's' && token[3] == 'e' && token[4] == '3'
-		case 6:
-			sse41 = sse41 || token[0] == 's' && token[1] == 's' && token[2] == 'e' && token[3] == '4' && token[4] == '_' && token[5] == '1'
-			sse42 = sse42 || token[0] == 's' && token[1] == 's' && token[2] == 'e' && token[3] == '4' && token[4] == '_' && token[5] == '2'
+		if i-start != len(flag) {
+			continue
 		}
-		if avx && ssse3 && sse41 && sse42 {
+		j := 0
+		for j < len(flag) && data[start+j] == flag[j] {
+			j++
+		}
+		if j == len(flag) {
 			return true
 		}
 	}
 	return false
+}
+
+// simdCPUFlagsSupported checks exact Linux cpuinfo tokens without allocation.
+func simdCPUFlagsSupported(data []byte) bool {
+	return cpuFlagPresent(data, "avx") && cpuFlagPresent(data, "ssse3") &&
+		cpuFlagPresent(data, "sse4_1") && cpuFlagPresent(data, "sse4_2")
 }
 
 func bmi2CPUFlagsSupported(data []byte) bool {
-	for i := 0; i < len(data); {
-		for i < len(data) && data[i] <= ' ' {
-			i++
-		}
-		start := i
-		for i < len(data) && data[i] > ' ' {
-			i++
-		}
-		token := data[start:i]
-		if len(token) == 4 && token[0] == 'b' && token[1] == 'm' && token[2] == 'i' && token[3] == '2' {
-			return true
-		}
-	}
-	return false
+	return cpuFlagPresent(data, "bmi2")
 }
 
-func lzcntCPUFlagsSupported(data []byte) bool {
-	for i := 0; i < len(data); {
-		for i < len(data) && data[i] <= ' ' {
-			i++
-		}
-		start := i
-		for i < len(data) && data[i] > ' ' {
-			i++
-		}
-		token := data[start:i]
-		if len(token) == 3 && token[0] == 'a' && token[1] == 'b' && token[2] == 'm' {
-			return true
-		}
-		if len(token) == 5 && token[0] == 'l' && token[1] == 'z' && token[2] == 'c' && token[3] == 'n' && token[4] == 't' {
-			return true
-		}
-	}
-	return false
+// Linux reports LZCNT as "abm" in /proc/cpuinfo.
+func bitCountCPUFlagsSupported(data []byte) bool {
+	return cpuFlagPresent(data, "bmi1") && cpuFlagPresent(data, "popcnt") &&
+		cpuFlagPresent(data, "abm")
 }

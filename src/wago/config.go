@@ -823,8 +823,8 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 // surfacing a bad config early (e.g. at startup). A feature flag is never a
 // silent no-op.
 func (c *RuntimeConfig) Validate() error {
-	if !hostSupportsAMD64BitCount() {
-		return fmt.Errorf("wago: amd64 bit-count instructions require BMI1, LZCNT, and POPCNT CPU support")
+	if err := requireAMD64BitCount(); err != nil {
+		return err
 	}
 	if c.maxFunctionLocals == 0 || c.maxFunctionLocals > MaxFunctionLocalsLimit {
 		return fmt.Errorf("wago: max function locals must be between 1 and %d, got %d", MaxFunctionLocalsLimit, c.maxFunctionLocals)

@@ -69,18 +69,45 @@ func TestBMI2CPUFlagsSupported(t *testing.T) {
 	}
 }
 
-func TestLZCNTCPUFlagsSupported(t *testing.T) {
+func TestAMD64BitCountFeaturesSupported(t *testing.T) {
+	const popcnt = uint32(1) << 23
+	const bmi1 = uint32(1) << 3
+	const lzcnt = uint32(1) << 5
+	for _, tc := range []struct {
+		name   string
+		ecx1   uint32
+		ebx7   uint32
+		extECX uint32
+		want   bool
+	}{
+		{name: "all", ecx1: popcnt, ebx7: bmi1, extECX: lzcnt, want: true},
+		{name: "missing POPCNT", ebx7: bmi1, extECX: lzcnt},
+		{name: "missing BMI1", ecx1: popcnt, extECX: lzcnt},
+		{name: "missing LZCNT", ecx1: popcnt, ebx7: bmi1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := amd64BitCountFeaturesSupported(tc.ecx1, tc.ebx7, tc.extECX); got != tc.want {
+				t.Fatalf("amd64BitCountFeaturesSupported(%#x, %#x, %#x) = %v, want %v", tc.ecx1, tc.ebx7, tc.extECX, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBitCountCPUFlagsSupported(t *testing.T) {
 	for _, tc := range []struct {
 		data string
 		want bool
 	}{
-		{data: "flags : fpu abm bmi1\n", want: true},
-		{data: "flags : fpu lzcnt bmi1\n", want: true},
-		{data: "flags : fpu xabm lzcnt2", want: false},
+		{data: "flags : fpu abm bmi1 popcnt\n", want: true},
+		{data: "flags : fpu lzcnt bmi1 popcnt\n", want: false},
+		{data: "flags : fpu abm bmi1", want: false},
+		{data: "flags : fpu abm popcnt", want: false},
+		{data: "flags : fpu bmi1 popcnt", want: false},
+		{data: "flags : fpu xabm lzcnt2 xbmi1 popcnt2", want: false},
 		{data: "", want: false},
 	} {
-		if got := lzcntCPUFlagsSupported([]byte(tc.data)); got != tc.want {
-			t.Fatalf("lzcntCPUFlagsSupported(%q) = %v, want %v", tc.data, got, tc.want)
+		if got := bitCountCPUFlagsSupported([]byte(tc.data)); got != tc.want {
+			t.Fatalf("bitCountCPUFlagsSupported(%q) = %v, want %v", tc.data, got, tc.want)
 		}
 	}
 }

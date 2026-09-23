@@ -23,10 +23,10 @@ func architectureSupportsBMI2() bool {
 	return bmi2CPUFlagsSupported(data)
 }
 
-func architectureSupportsLZCNT() bool {
+func architectureSupportsAMD64BitCount() bool {
 	data, err := os.ReadFile("/proc/cpuinfo")
 	if err != nil {
 		return false
 	}
-	return lzcntCPUFlagsSupported(data)
+	return bitCountCPUFlagsSupported(data)
 }

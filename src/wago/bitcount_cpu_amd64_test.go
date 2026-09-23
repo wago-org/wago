@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/sys/cpu"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -22,43 +20,27 @@ func bitCountModule(op byte, width wasm.ValType) []byte {
 }
 
 func TestAMD64BitCountHostGate(t *testing.T) {
-	oldBMI1, oldPOPCNT := cpu.X86.HasBMI1, cpu.X86.HasPOPCNT
-	oldLZCNT := lzcntHostFeaturesSupported
-	defer func() {
-		cpu.X86.HasBMI1, cpu.X86.HasPOPCNT = oldBMI1, oldPOPCNT
-		lzcntHostFeaturesSupported = oldLZCNT
-	}()
+	old := bitCountHostFeaturesSupported
+	bitCountHostFeaturesSupported = func() bool { return false }
+	defer func() { bitCountHostFeaturesSupported = old }()
 
 	for _, tc := range []struct {
 		name string
 		op   byte
-		flag *bool
 	}{
-		{name: "missing BMI1 for ctz", op: 0x68, flag: &cpu.X86.HasBMI1},
-		{name: "missing POPCNT", op: 0x69, flag: &cpu.X86.HasPOPCNT},
+		{name: "clz", op: 0x67},
+		{name: "ctz", op: 0x68},
+		{name: "popcnt", op: 0x69},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			old := *tc.flag
-			*tc.flag = false
-			defer func() { *tc.flag = old }()
 			compiled, err := Compile(nil, bitCountModule(tc.op, wasm.I32))
 			if compiled != nil {
 				defer compiled.Close()
 			}
 			if err == nil || !strings.Contains(err.Error(), "bit-count") {
-				t.Fatalf("compile without %s = %v, want bit-count CPU error", tc.name, err)
+				t.Fatalf("compile %s without bit-count CPU features = %v, want error", tc.name, err)
 			}
 		})
-	}
-
-	cpu.X86.HasBMI1, cpu.X86.HasPOPCNT = true, true
-	lzcntHostFeaturesSupported = func() bool { return false }
-	compiled, err := Compile(nil, bitCountModule(0x67, wasm.I32))
-	if compiled != nil {
-		defer compiled.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "bit-count") {
-		t.Fatalf("compile without LZCNT = %v, want bit-count CPU error", err)
 	}
 }
 
@@ -66,7 +48,7 @@ func TestAMD64BitCountArtifactHostGate(t *testing.T) {
 	if !hostSupportsAMD64BitCount() {
 		t.Skip("host lacks bit-count CPU features")
 	}
-	compiled, err := Compile(nil, bitCountModule(0x68, wasm.I32))
+	compiled, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).Compile(bitCountModule(0x68, wasm.I32))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,12 +58,12 @@ func TestAMD64BitCountArtifactHostGate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	oldBMI1 := cpu.X86.HasBMI1
-	cpu.X86.HasBMI1 = false
-	defer func() { cpu.X86.HasBMI1 = oldBMI1 }()
+	old := bitCountHostFeaturesSupported
+	bitCountHostFeaturesSupported = func() bool { return false }
+	defer func() { bitCountHostFeaturesSupported = old }()
 	var loaded Compiled
 	if err := loaded.UnmarshalBinary(data); err == nil || !strings.Contains(err.Error(), "bit-count") {
-		t.Fatalf("load without BMI1 = %v, want bit-count CPU error", err)
+		t.Fatalf("load without bit-count CPU features = %v, want error", err)
 	}
 }
 
