@@ -1,6 +1,7 @@
 package wagobench
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/wago-org/wago/bench/internal/semanticcorpus"
@@ -53,6 +54,45 @@ func TestCommandCorpusRunsOnLinuxAMD64(t *testing.T) {
 			t.Errorf("command benchmark %q silently skips linux/amd64", benchmark.ID)
 		}
 	}
+}
+
+func TestSightglassLibsodiumTuningInput(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(corpusDir, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest catalog
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range manifest.Benchmarks {
+		if m.ID != "sightglass-libsodium-hash" {
+			continue
+		}
+		const input = "libsodium-hash.input"
+		module, err := os.ReadFile(filepath.Join(corpusDir, m.Artifact))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(module, []byte("./"+input)) {
+			t.Fatalf("module does not read %q", input)
+		}
+		if m.Command == nil || m.Command.Stdin != "" {
+			t.Fatal("Sightglass iterations must come from a mounted file, not stdin")
+		}
+		if _, ok := m.Command.Inputs[input]; !ok {
+			t.Fatalf("%q is not mounted", input)
+		}
+		contents, err := os.ReadFile(filepath.Join(corpusDir, m.Command.Preopen, input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(contents) != "1061\n" {
+			t.Fatalf("Sightglass iteration count = %q, want 1061", contents)
+		}
+		return
+	}
+	t.Fatal("sightglass-libsodium-hash is missing from the catalog")
 }
 
 func TestCorpusCandidatesStaySeparateFromExecutableCatalog(t *testing.T) {

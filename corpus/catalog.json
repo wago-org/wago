@@ -1,6 +1,15 @@
 {
   "schema": 1,
   "profiles": {
+    "website": [
+      "tiny", "fib_rec", "dispatch", "memory_tree", "memory", "many_funcs",
+      "linked_list", "fannkuch", "nbody", "matmul", "sha256", "raytrace",
+      "json-as", "blake-as", "utf-as", "json-as-simd", "blake-as-simd", "utf-as-simd",
+      "coremark", "blake3", "qoi", "lz4", "zstd", "yyjson", "utf8proc",
+      "libtommath", "kissfft", "pcre2", "polybench-gemm", "polybench-cholesky",
+      "polybench-floyd-warshall", "embench-huffbench", "sightglass-libsodium-hash",
+      "json2csv-people", "brotli-compress", "lodepng"
+    ],
     "quick": [
       "tiny",
       "fib_rec",
@@ -2891,7 +2900,7 @@
     },
     {
       "suite": "Sightglass",
-      "desc": "libsodium hash test",
+      "desc": "libsodium hash self-test, 1,061 iterations",
       "stages": [
         "Decode",
         "Validate",
@@ -2911,9 +2920,8 @@
         "preopen": "workloads/applications/sightglass/libsodium-hash/inputs",
         "stdout_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
         "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "stdin": "message",
         "inputs": {
-          "message": "fb887b8d5b66570222c68e53b1e66ff80799ea9bc6c521259ab4c3979f1d5a36"
+          "libsodium-hash.input": "fb887b8d5b66570222c68e53b1e66ff80799ea9bc6c521259ab4c3979f1d5a36"
         }
       },
       "id": "sightglass-libsodium-hash",

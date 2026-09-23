@@ -98,6 +98,18 @@ function buildCorpusTabs(sets) {
     ["image-processing", "Image processing"],
     ["regression-only", "Regression corpus"], ["other", "Other"],
   ]);
+  const categoryOrder = [
+    "micro", "calls", "calls+memory", "memory", "globals", "control", "loop",
+    "alu", "fp", "scale", "compute", "real", "real-simd", "semantic",
+    "statistics", "blas", "linear-algebra", "solver", "stencil", "graph",
+    "dynamic-programming", "image-processing", "application", "real-large",
+    "regression-only", "other",
+  ];
+  const rank = new Map(categoryOrder.map((category, index) => [category, index]));
+  modules.sort((a, b) =>
+    (rank.get(a.category) ?? categoryOrder.length) - (rank.get(b.category) ?? categoryOrder.length) ||
+    a.suite.localeCompare(b.suite) || a.name.localeCompare(b.name),
+  );
   const grouped = (makeItems) => {
     const groups = new Map();
     for (const module of modules) {

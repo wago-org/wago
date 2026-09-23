@@ -12,12 +12,16 @@ just bench                              # quick profile, all benchmark groups
 just bench run algorithms exec          # representative raw algorithms
 just bench run tag:polybench exec
 just bench run tag:compute exec
+cd bench && go run ./cmd/benchpub -corpus website -count 3 -benchtime 200ms -out out
 just bench run tiny,fib_rec compile
 just bench run all                      # every admitted workload
 just bench check                        # one iteration, wiring only
 ```
 
-`CORPUS` accepts `quick`, `algorithms`, `all`, `tag:<tag>`, or comma-separated benchmark IDs.
+`CORPUS` accepts `quick`, `website`, `algorithms`, `all`, `tag:<tag>`, or comma-separated benchmark IDs.
+The `website` profile moves from tiny mechanisms through numeric, AssemblyScript,
+semantic-library, and PolyBench workloads to Embench, Sightglass, and full command applications.
+It includes only workloads that completed repeated runs on both published architectures.
 `BENCH` accepts `all`, `pipeline`, `compile`, `exec`, or a Go benchmark regex.
 The remaining positional arguments set count, duration, and output; environment
 variables remain available for automation. `just bench check` is a
