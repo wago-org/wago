@@ -3025,12 +3025,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.reserved = f.reserved.add(ehReg)
 	}
 	if policy.EnabledOption(optLeafScratchPins) && !hasCall {
-		// X12/X13 are fixed only by loop-region promotion, and X14 only by
-		// bulk/table helpers. A straight-line scalar leaf can spend them on three
-		// additional hot locals while the normal allocator still retains seven
-		// ordinary transient GPRs plus its two scratch-floor registers in the
-		// largest current scalar leaf.
-		if !hints.flags.has(hintHasLoop) {
+		// Loop and bulk-memory helpers use X12 and X13 as scratch registers.
+		// Bulk-memory and table helpers also use X14.
+		if !hints.flags.has(hintHasLoop | hintUsesBulkMem) {
 			gpPool = append(gpPool, X12, X13)
 		}
 		if !hints.flags.has(hintUsesBulkMem) && len(m.Tables) == 0 {
