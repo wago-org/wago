@@ -26,6 +26,14 @@ func signExtModule() []byte {
 	)
 }
 
+func scalarFloatAddModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64, wasm.F64}, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0xa0, 0x0b}))),
+	)
+}
+
 // simdModule exports f() and uses v128.const/drop, enough to exercise 0xfd
 // feature gating without requiring the public API to marshal a v128 result.
 func simdModule() []byte {
@@ -887,6 +895,45 @@ func TestConfigRejectsSIMDWhenHostUnsupported(t *testing.T) {
 	}
 	if SupportedFeatures().IsEnabled(CoreFeatureSIMD) {
 		t.Fatal("SupportedFeatures should clear SIMD when host SIMD is unavailable")
+	}
+}
+
+func TestScalarAMD64RequiresBackendCPU(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("AMD64 backend only")
+	}
+	old := simdHostFeaturesSupported
+	simdHostFeaturesSupported = func() bool { return false }
+	defer func() { simdHostFeaturesSupported = old }()
+
+	_, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV1), scalarFloatAddModule())
+	if err == nil || !strings.Contains(err.Error(), "CPU features") {
+		t.Fatalf("scalar float module should require backend CPU features, got %v", err)
+	}
+}
+
+func TestScalarAMD64ArtifactRequiresBackendCPU(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("AMD64 backend only")
+	}
+	old := simdHostFeaturesSupported
+	simdHostFeaturesSupported = func() bool { return true }
+	defer func() { simdHostFeaturesSupported = old }()
+
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV1), scalarFloatAddModule())
+	if err != nil {
+		t.Fatalf("compile scalar float module: %v", err)
+	}
+	defer c.Close()
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal scalar float module: %v", err)
+	}
+	simdHostFeaturesSupported = func() bool { return false }
+
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "CPU features") {
+		t.Fatalf("scalar float artifact should require backend CPU features, got %v", err)
 	}
 }
 
