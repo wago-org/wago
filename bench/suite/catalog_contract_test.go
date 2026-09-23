@@ -56,7 +56,7 @@ func TestCommandCorpusRunsOnLinuxAMD64(t *testing.T) {
 	}
 }
 
-func TestWebsiteIncludesEveryCommandProgram(t *testing.T) {
+func TestWebsiteProfileUsesCuratedPairedWorkloads(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(corpusDir, "catalog.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -65,14 +65,35 @@ func TestWebsiteIncludesEveryCommandProgram(t *testing.T) {
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	website := make(map[string]bool, len(manifest.Profiles["website"]))
-	for _, id := range manifest.Profiles["website"] {
-		website[id] = true
+	if got := len(manifest.Profiles["website"]); got != 40 {
+		t.Fatalf("website profile has %d workloads, want 40", got)
 	}
+	modules := make(map[string]corpusModule, len(manifest.Benchmarks))
 	for _, benchmark := range manifest.Benchmarks {
-		if benchmark.Command != nil && !website[benchmark.ID] {
-			t.Errorf("command program %q is missing from the website profile", benchmark.ID)
+		modules[benchmark.ID] = benchmark
+	}
+	website := make(map[string]bool, len(manifest.Profiles["website"]))
+	commandCount := 0
+	for _, id := range manifest.Profiles["website"] {
+		benchmark, ok := modules[id]
+		if !ok || website[id] {
+			t.Errorf("website workload %q is missing or duplicated", id)
 		}
+		website[id] = true
+		if benchmark.Command != nil {
+			commandCount++
+			if benchmark.Command.ReferenceRuntime != "" ||
+				!commandSupportsPlatform(benchmark, "darwin", "arm64") ||
+				!commandSupportsPlatform(benchmark, "linux", "amd64") {
+				t.Errorf("website command %q lacks a paired comparison on both hosts", id)
+			}
+		}
+	}
+	if commandCount < 20 {
+		t.Errorf("website has %d command programs, want at least 20", commandCount)
+	}
+	if !website["json-as-simd"] || website["json-as"] {
+		t.Error("website must show only the SIMD json-as workload")
 	}
 }
 

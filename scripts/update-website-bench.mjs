@@ -42,7 +42,7 @@ const mergedExecution = (name, label) => ({
   wagoKeys: [`Exec/${name}.serializeN`, `Exec/${name}.deserializeN`],
   wazeroKeys: [`WazeroExec/${name}.serializeN`, `WazeroExec/${name}.deserializeN`],
 });
-const displayName = (name) => name === "json-as-simd" ? "json-as (SIMD)" : name;
+const displayName = (name) => name === "json-as-simd" ? "json-as" : name;
 // dv is a wago-only "front-end at scale" row: the combined Decode+Validate time
 // for one real-world binary, with its parse throughput. The bar is sized by the
 // binary's byte length, so the visual shows wago's front-end absorbing ever-
@@ -133,7 +133,7 @@ function buildCorpusTabs(sets) {
       kind === "ns" ? "faster" : "smaller", kind),
   ]);
   const execRows = grouped(({ name, category, suite, desc }) => {
-    if (name === "json-as" || name === "json-as-simd") {
+    if (name === "json-as-simd") {
       return [mergedExecution(name, displayName(name))];
     }
     const keys = new Set();
@@ -716,7 +716,9 @@ function buildEngineRow(spec, set, tabID) {
     }
     if (value > 0) values.push({ engine, value });
   }
-  return values.length ? { label: spec.label, sub: spec.sub, kind, values } : null;
+  const paired = values.some(({ engine }) => engine.id === "railshot") &&
+    values.some(({ engine }) => engine.id === "wazero");
+  return paired ? { label: spec.label, sub: spec.sub, kind, values } : null;
 }
 
 function externalRowMetric(raw, engine, tabID, key) {

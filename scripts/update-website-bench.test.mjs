@@ -37,19 +37,16 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       "Instantiate/tiny": { ns: 10, bytes: 512, allocs: 2 }, "DraglineInstantiate/tiny": { ns: 9, bytes: 768, allocs: 3 }, "WazeroInstantiate/tiny": { ns: 12, bytes: 1024, allocs: 5 },
       "Instantiate/fib_rec": { ns: 4 }, "WazeroInstantiate/fib_rec": { ns: 8 },
       "Instantiate/many_funcs": { ns: 6 }, "WazeroInstantiate/many_funcs": { ns: 9 },
-      "Instantiate/json-as": { ns: 7 }, "WazeroInstantiate/json-as": { ns: 14 },
       "Exec/tiny.add": { ns: 3 }, "DraglineExec/tiny.add": { ns: 2 }, "WazeroExec/tiny.add": { ns: 4 },
       "ExecCallOverhead_wago": { ns: 100 }, "ExecCallOverhead_wazero": { ns: 104 },
 	  "ExecTypedCall_wago": { ns: 104 },
       "ExecHostCallback_wago": { ns: 33 }, "ExecHostRoundtrip_wago": { ns: 99 }, "ExecHostRoundtrip_wazero": { ns: 66 },
       "Exec/nbody.step": { ns: 20 }, "WazeroExec/nbody.step": { ns: 30 },
-      "Exec/json-as.deserializeN": { ns: 25 }, "WazeroExec/json-as.deserializeN": { ns: 50 },
-      "Exec/json-as.serializeN": { ns: 100 }, "WazeroExec/json-as.serializeN": { ns: 200 },
       "Exec/json-as-simd.deserializeN": { ns: 18 }, "WazeroExec/json-as-simd.deserializeN": { ns: 36 },
       "Exec/json-as-simd.serializeN": { ns: 72 }, "WazeroExec/json-as-simd.serializeN": { ns: 144 },
 	  "Exec/lua.plugin-workload": { ns: 1e30 }, "WazeroExec/lua.plugin-workload": { ns: 0 },
     };
-    for (const name of ["json-as", "json-as-simd", "coremark", "blake3", "qoi", "lz4", "zlib", "zstd"]) {
+    for (const name of ["json-as-simd", "coremark", "blake3", "qoi", "lz4", "zlib", "zstd"]) {
       metrics[`CompileFull/${name}`] = { ns: 100, bytes: 10, allocs: 1 };
       metrics[`WazeroCompile/${name}`] = { ns: 200, bytes: 20, allocs: 2 };
       metrics[`Instantiate/${name}`] = { ns: 30, bytes: 3, allocs: 1 };
@@ -147,9 +144,9 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
     assert.ok(compilePanel.indexOf("Semantic corpus") < compilePanel.indexOf("Application corpora"));
     const executionPanel = firstRender.split('id="perf-amd64-panel-execution"')[1].split('id="perf-arm64-', 1)[0];
     assert.equal(matches(executionPanel, /<span class="vs__label">json-as<\/span>/g), 1);
-    assert.equal(matches(executionPanel, /<span class="vs__label">json-as \(SIMD\)<\/span>/g), 1);
+    assert.equal(matches(executionPanel, /<span class="vs__label">json-as \(SIMD\)<\/span>/g), 0);
     assert.match(executionPanel, /serialize \+ deserialize · geometric mean/);
-    assert.match(executionPanel, /<span class="vs__label">json-as<\/span>[\s\S]*?>50ns<\/span>/);
+    assert.match(executionPanel, /<span class="vs__label">json-as<\/span>[\s\S]*?>36ns<\/span>/);
 
     runUpdater(work, { ...benchmarkEnv, WAGO_BENCH_UPDATE_ARCH: "amd64" });
     assertDOMContract(await readFile(index, "utf8"));
@@ -228,8 +225,8 @@ function assertDOMContract(html) {
 	const executionStart = general.indexOf('<span class="vs__label">Execution</span>');
 	const executionEnd = general.indexOf('<div class="vs__row" data-engine-row>', executionStart);
 	const execution = general.slice(executionStart, executionEnd);
-	assert.match(execution, />30\.4ns<\/span>/);
-	assert.match(execution, />58\.1ns<\/span>/);
+	assert.match(execution, />28\.6ns<\/span>/);
+	assert.match(execution, />54\.3ns<\/span>/);
     assert.doesNotMatch(general, /Micro compile mean|Micro startup mean|AS startup mean|Compute execution mean|Tiny compile|Ruby compile|fib_rec startup|Many-function startup|>N-body<|>JSON deserialize</);
   }
   assert.match(html, />[0-9.]+× faster<\/span>/);
@@ -249,12 +246,7 @@ function assertDOMContract(html) {
   assert.match(html, /<span class="vs__engine">wago<\/span>/);
   assert.doesNotMatch(html, /data-engine="(?:wasmtime|v8|wavm)"|data-engine-toggle="(?:wasmtime|v8|wavm)"/);
 	assert.doesNotMatch(html, />0(?:\.0)?ns</);
-	const unavailableStart = html.indexOf('<span class="vs__label">lua</span>');
-	assert.ok(unavailableStart >= 0);
-	const unavailableEnd = html.indexOf('<div class="vs__row" data-engine-row>', unavailableStart);
-	const unavailableRow = html.slice(unavailableStart, unavailableEnd);
-	assert.match(unavailableRow, /data-engine="railshot"/);
-	assert.doesNotMatch(unavailableRow, /data-engine="wazero"/);
+  assert.doesNotMatch(html, /<span class="vs__label">lua<\/span>/);
   assert.match(html, /Summary metrics · lower is better/);
   assert.match(html, /<span class="vs__sub">fresh process<\/span>/);
   assert.match(html, /<span class="vs__sub">runnable corpus<\/span>/);
