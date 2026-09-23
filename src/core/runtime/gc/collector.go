@@ -34,7 +34,9 @@ func (c *Collector) available() error {
 }
 func (c *Collector) Close() {
 	if c != nil && !c.closed {
-		c.heap.Close()
+		if c.heap != nil {
+			c.heap.Close()
+		}
 		c.closed = true
 		c.scratch = nil
 	}
