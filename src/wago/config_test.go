@@ -911,7 +911,6 @@ func TestConfigRejectsSIMDWhenHostUnsupported(t *testing.T) {
 
 func TestScalarAMD64RequiresBackendCPU(t *testing.T) {
 	if runtime.GOARCH != "amd64" {
-		t.Skip("AMD64 backend only")
 		return
 	}
 	old := simdHostFeaturesSupported
@@ -926,7 +925,6 @@ func TestScalarAMD64RequiresBackendCPU(t *testing.T) {
 
 func TestScalarAMD64ArtifactRequiresBackendCPU(t *testing.T) {
 	if runtime.GOARCH != "amd64" {
-		t.Skip("AMD64 backend only")
 		return
 	}
 	t.Setenv("WAGO_BOUNDS", "explicit")
