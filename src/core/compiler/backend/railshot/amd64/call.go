@@ -1751,6 +1751,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	allTypes := f.logicalTypes(allRoots)
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
+	belowSlots := 0
+	for _, typ := range belowTypes {
+		belowSlots += typ.stackSlots()
+	}
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 
@@ -1776,7 +1780,19 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	deferred := f.tmpDeferred[:0]
 	for i := 0; i < p; i++ {
 		root := argRoots[i]
-		if root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
+		capture := root.isDeferred()
+		if root.isValue() {
+			switch root.st.kind {
+			case stReg, stLocalReg, stGlobReg, stMemRef:
+				capture = true
+			case stSlot:
+				capture = root.st.slotIndex() < belowSlots
+			}
+		}
+		if capture {
+			// A slot-backed argument can overlap the canonical range that flushBelow
+			// rewrites for values beneath the arguments. Capture only those overlapping
+			// slots before the flush instead of reloading overwritten data afterward.
 			reg := f.materialize(root) // stMemRef → emits the deferred load into its addr reg
 			f.pinned = f.pinned.add(reg)
 			moves = append(moves, regMove{dst: intArgRegs[i], src: reg})

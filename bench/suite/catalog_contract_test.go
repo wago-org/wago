@@ -39,6 +39,22 @@ func TestCatalogContainsOnlyExecutableWorkloads(t *testing.T) {
 	}
 }
 
+func TestCommandCorpusRunsOnLinuxAMD64(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(corpusDir, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest catalog
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	for _, benchmark := range manifest.Benchmarks {
+		if benchmark.Command != nil && !commandSupportsPlatform(benchmark, "linux", "amd64") {
+			t.Errorf("command benchmark %q silently skips linux/amd64", benchmark.ID)
+		}
+	}
+}
+
 func TestCorpusCandidatesStaySeparateFromExecutableCatalog(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(corpusDir, "candidates.json"))
 	if err != nil {

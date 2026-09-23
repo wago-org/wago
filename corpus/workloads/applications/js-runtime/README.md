@@ -10,6 +10,6 @@ keeps the checked-in input small while exercising allocation, string handling,
 regular expressions, arrays, objects, numeric operations, sorting, and garbage
 collection in both interpreters.
 
-The QuickJS artifact is admitted on ARM64 hosts. Its explicit-bounds amd64
-execution remains a separate compiler-compatibility repro rather than weakening
-the Wasmtime-derived output oracle.
+The QuickJS artifact is admitted on Linux and macOS hosts for both AMD64 and
+ARM64. Its output remains byte-for-byte checked against the Wasmtime-derived
+oracle on every admitted platform.

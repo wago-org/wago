@@ -10,6 +10,6 @@ automatic line numbering so output has the same byte-exact interpretation in
 Wago, wazero, and Wasmtime. This artifact imports only WASI preview1; no
 a-Shell-specific mocks are needed.
 
-The command is admitted on ARM64 hosts. Its explicit-bounds amd64 execution
-currently reaches a Rust comparator-invariant panic, so amd64 remains excluded
-instead of accepting output that differs from the independent oracle.
+The command is admitted on Linux and macOS hosts for both AMD64 and ARM64. Its
+output remains byte-for-byte checked against the independent oracle on every
+admitted platform.
