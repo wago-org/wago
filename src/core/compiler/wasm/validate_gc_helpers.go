@@ -38,7 +38,7 @@ func (v *moduleValidator) subtypeByTypeIdxInRecGroup(idx TypeIdx, recGroup int) 
 			// out of scope even though they exist in the flattened type section.
 			v.ensureTypeIndex()
 			base := v.typeGroupBases[recGroup]
-			if int(idx.Index) >= base {
+			if uint(idx.Index) >= uint(base) {
 				return nil, false
 			}
 		}

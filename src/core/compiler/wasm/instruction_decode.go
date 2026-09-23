@@ -327,7 +327,7 @@ func moduleMemargWidths(m *Module) memargWidths {
 
 func (w memargWidths) offset64(memoryIndex uint32) bool {
 	word := memoryIndex >> 6
-	if int(word) < len(w.indexed64) {
+	if uint(word) < uint(len(w.indexed64)) {
 		return w.indexed64[word]&(uint64(1)<<(memoryIndex&63)) != 0
 	}
 	return w.fixed64
