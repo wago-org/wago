@@ -5,6 +5,100 @@ import (
 	"testing"
 )
 
+type tinySecondWalkFailure struct {
+	root  Root
+	walks int
+}
+
+func (r *tinySecondWalkFailure) RangeRoots(fn func(RootSlot) bool) {
+	fn(&r.root)
+}
+
+func (r *tinySecondWalkFailure) RangeRootRefs(sink RootRefSink) bool {
+	r.walks++
+	if r.walks == 2 {
+		return false
+	}
+	return sink.VisitRootRef(Ref(r.root))
+}
+
+func TestTinyFailedRestartsDoNotAliasWrappedEpoch(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentType, err := NewStructDesc(1, []StorageKind{StorageRefNull})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf, parentType})
+	parent, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.tinyGC.markEpoch != 0 {
+		t.Fatalf("initial mark epoch = %d, want 0", c.tinyGC.markEpoch)
+	}
+	failSecondWalk := func() {
+		t.Helper()
+		roots := &tinySecondWalkFailure{root: Root(parent)}
+		if err := c.CollectFull(roots); err == nil || roots.walks != 2 {
+			t.Fatalf("second root walk: err = %v, walks = %d", err, roots.walks)
+		}
+	}
+	failSecondWalk()
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	garbage, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := uint8(1); i < tinyMarkEpochMask; i++ {
+		failSecondWalk()
+	}
+	if c.tinyGC.markEpoch != tinyMarkEpochMask {
+		t.Fatalf("mark epoch = %d, want %d", c.tinyGC.markEpoch, tinyMarkEpochMask)
+	}
+	root := Root(parent)
+	roots := Slots{&root}
+	if err := c.CollectFull(roots); err != nil {
+		t.Fatal(err)
+	}
+	if c.tinyGC.markEpoch != 0 {
+		t.Fatalf("wrapped mark epoch = %d, want 0", c.tinyGC.markEpoch)
+	}
+	if !c.validObjectRef(parent) || !c.validObjectRef(child) {
+		t.Fatal("wrapped cycle lost a live parent or child")
+	}
+	if c.validObjectRef(garbage) {
+		t.Fatal("wrapped cycle retained an unrooted object")
+	}
+	if err := c.Verify(roots); err != nil {
+		t.Fatal(err)
+	}
+	reused, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if handleOf(reused) != handleOf(garbage) {
+		t.Fatalf("new handle = %d, want reused handle %d", handleOf(reused), handleOf(garbage))
+	}
+	if err := c.CollectFull(roots); err != nil {
+		t.Fatal(err)
+	}
+	if c.validObjectRef(reused) || !c.validObjectRef(child) {
+		t.Fatal("next cycle lost the child or retained the reused handle")
+	}
+	if err := c.Verify(roots); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestTinyMarkStateDecodingExhaustive(t *testing.T) {
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
