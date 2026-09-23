@@ -136,6 +136,65 @@ func TestAdjacentIndexedBaseReuse(t *testing.T) {
 	}
 }
 
+func TestSignedLoadDoesNotReuseOverwrittenIndexedBase(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		size int
+		dst  Reg
+	}{
+		{"byte-base", 1, X26},
+		{"half-index", 2, X22},
+		{"word-index", 4, X22},
+		{"byte-scratch", 1, X16},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var a Asm
+			a.DenseIdxDisp = true
+			a.ReuseIndexedBase = true
+			a.LoadIdx(tc.dst, X26, X22, 4, tc.size, true, true)
+			a.StoreIdx(X26, X22, X1, 8, 4)
+			if got := len(a.B); got != 16 || a.IndexedBaseReuses != 0 {
+				t.Fatalf("overwritten address = %d bytes/%d reuses, want 16/0", got, a.IndexedBaseReuses)
+			}
+		})
+	}
+	var safe Asm
+	safe.DenseIdxDisp = true
+	safe.ReuseIndexedBase = true
+	safe.LoadIdx(X0, X26, X22, 4, 1, true, true)
+	safe.StoreIdx(X26, X22, X1, 8, 4)
+	if got := len(safe.B); got != 12 || safe.IndexedBaseReuses != 1 {
+		t.Fatalf("stable address = %d bytes/%d reuses, want 12/1", got, safe.IndexedBaseReuses)
+	}
+}
+
+func TestSignedLoadStopsStableIndexedBaseReuse(t *testing.T) {
+	var a Asm
+	a.DenseIdxDisp = true
+	a.ReuseIndexedBase = true
+	a.AddShifted(X16, X26, X22, 0, false)
+	if !a.loadDisp(X22, X16, 4, 1, true, true) {
+		t.Fatal("signed load did not use a scaled offset")
+	}
+	a.Add32(X3, X3, X4)
+	a.LoadIdx(X2, X26, X22, 8, 4, false, false)
+	if got := len(a.B); got != 20 || a.IndexedBaseReuses != 0 {
+		t.Fatalf("stable-phase address = %d bytes/%d reuses, want 20/0", got, a.IndexedBaseReuses)
+	}
+}
+
+func BenchmarkSignedLoadIndexedBase(b *testing.B) {
+	a := Asm{B: make([]byte, 0, 16), DenseIdxDisp: true, ReuseIndexedBase: true}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		a.B = a.B[:0]
+		a.IndexedBaseReuses = 0
+		a.LoadIdx(X22, X26, X22, 4, 1, true, true)
+		a.StoreIdx(X26, X22, X1, 8, 4)
+	}
+	b.SetBytes(int64(len(a.B)))
+}
+
 func TestCanonicalIndexedBaseReuseAcrossAccumulator(t *testing.T) {
 	var a Asm
 	a.DenseIdxDisp = true
