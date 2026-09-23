@@ -398,14 +398,7 @@ func (c *Collector) tinyPayAllocationDebt(roots RootSet) error {
 }
 
 func (c *Collector) tinyPacingStep(roots RootSet) error {
-	wasActive := tinyIncrementalBuild && c.tinyGC.state != tinyIdle
-	if err := c.Step(roots); err != nil {
-		return err
-	}
-	if wasActive && c.tinyGC.state == tinyIdle {
-		c.stats.FullCollections++
-	}
-	return nil
+	return c.Step(roots)
 }
 
 func (c *Collector) tinyAddAllocationDebt(bytes uint32) {
