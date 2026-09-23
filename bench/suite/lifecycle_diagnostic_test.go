@@ -88,7 +88,7 @@ func BenchmarkCommandLifecycleDiagnostic(b *testing.B) {
 						if phase != "Imports" {
 							b.StopTimer()
 						}
-						imports, err := commandRuntimeImports(m, stdin, io.Discard, io.Discard)
+						imports, err := commandRuntimeImports(m, "", stdin, io.Discard, io.Discard)
 						if err != nil {
 							b.Fatal(err)
 						}

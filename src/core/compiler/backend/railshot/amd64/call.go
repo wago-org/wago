@@ -811,6 +811,10 @@ func (f *fn) discardEHHandlersForTail() {
 	}
 }
 
+func registerCallArgNeedsCapture(root *elem) bool {
+	return root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef || root.st.kind == stSlot))
+}
+
 // emitTailRegisterJump stages a register-ABI callee's arguments without
 // preserving any caller locals or operand values: a tail call has no continuation.
 // It then releases the current frame and emits the supplied direct/indirect jump.
@@ -835,7 +839,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	for i, typ := range ft.Params {
 		mt := mtOf(typ)
 		root := roots[i]
-		resident := root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef))
+		resident := registerCallArgNeedsCapture(root)
 		if mt.isFloat() {
 			target := fpArgRegs[fp]
 			if resident {
@@ -1776,7 +1780,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	deferred := f.tmpDeferred[:0]
 	for i := 0; i < p; i++ {
 		root := argRoots[i]
-		if root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
+		if registerCallArgNeedsCapture(root) {
+			// A slot-backed argument may occupy a slot that flushBelow reuses for
+			// a value beneath the arguments. Capture it before that flush instead of
+			// reloading overwritten data afterward.
 			reg := f.materialize(root) // stMemRef → emits the deferred load into its addr reg
 			f.pinned = f.pinned.add(reg)
 			moves = append(moves, regMove{dst: intArgRegs[i], src: reg})
@@ -1942,7 +1949,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	for i, t := range ft.Params {
 		mt := mtOf(t)
 		root := argRoots[i]
-		regResident := root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef))
+		regResident := registerCallArgNeedsCapture(root)
 		if mt.isFloat() {
 			target := fpArgRegs[fp]
 			if regResident {

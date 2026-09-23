@@ -17,18 +17,19 @@
       "utf8proc",
       "xxhash",
       "libtommath",
-      "tinyxml2",
-      "nanosvg",
       "kissfft",
-      "lua",
-      "cjson",
-      "miniz",
       "monocypher",
       "drwav",
       "lodepng",
-      "fastfloat",
       "pcre2",
-      "wren",
+      "quickjs-script",
+      "duktape-script",
+      "esbuild-minify",
+      "sqlite3-query",
+      "jq-json-transform",
+      "brotli-compress",
+      "lua-cli-buckets",
+      "micropython-squares",
       "embench-crc32",
       "sightglass-shootout-base64",
       "tacle-bsort",
@@ -37,8 +38,7 @@
       "polybench-correlation",
       "polybench-floyd-warshall",
       "polybench-nussinov",
-      "polybench-jacobi-2d",
-      "wren-modulo"
+      "polybench-jacobi-2d"
     ],
     "algorithms": [
       "fib_rec",
@@ -1074,6 +1074,934 @@
     }
   ],
   "benchmarks": [
+    {
+      "suite": "Biowasm",
+      "desc": "GNU sed 4.8 performs two substitutions over a pinned record stream",
+      "id": "sed-records",
+      "artifact": "workloads/applications/sed/sed.wasm",
+      "artifact_sha256": "f219fd9bb74d730d1df83242109ed3e17b05f52dec4fa06a1ed88d2ac0cd06be",
+      "tags": ["application", "text", "sed", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/sed", "revision": "v4.8", "revision_date": "2020-01-14", "license": "GPL-3.0-or-later AND MIT", "toolchain": "Biowasm Emscripten release", "toolchain_version": "GNU sed 4.8"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["-e", "s/error/ERROR/g; s/warning/WARN/g"], "stdin": "records.txt", "preopen": "workloads/applications/sed/inputs", "inputs": {"records.txt": "f667a5b07e86bb4c5d09def1d5331b363f7f4ccd9a4d52255aadb08a93aaafd7"}, "stdout_sha256": "a2c763a7c5947ca809df136a89a212ca0de22198c8285501fe711cea3156ef2e"}
+    },
+    {
+      "suite": "Biowasm",
+      "desc": "seqtk 1.4 converts a pinned FASTQ stream to FASTA",
+      "id": "seqtk-fastq-to-fasta",
+      "artifact": "workloads/applications/seqtk/seqtk.wasm",
+      "artifact_sha256": "d0a899c3a17ad8245c6cc99cdad7c4bb30f189dab82609d233dad225384f9678",
+      "tags": ["application", "bioinformatics", "sequence", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/seqtk", "revision": "v1.4", "revision_date": "2024-09-15", "license": "MIT", "toolchain": "Biowasm Emscripten release", "toolchain_version": "seqtk 1.4"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["seq", "-A", "-"], "stdin": "reads.fastq", "preopen": "workloads/applications/seqtk/inputs", "inputs": {"reads.fastq": "4bf02f6bc7419e83d8367244ae7e3a460c372d72b6b465a483d4e6ae9bef524d"}, "stdout_sha256": "7e6e8898889ea9ea26296ab7b39e0d2c10c6de19de8c4b6c88dbb6947b6223ac"}
+    },
+    {
+      "suite": "Biowasm seq-align",
+      "desc": "lcs enumerates repeated substrings of a pinned sequence",
+      "id": "lcs-substrings",
+      "artifact": "workloads/applications/seq-align/lcs.wasm",
+      "artifact_sha256": "11cb9d2ba8b02d2465988f44c2ae221f1bf43e6d4e745b71927d2263f7b10f6b",
+      "tags": ["application", "bioinformatics", "sequence", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/seq-align", "revision": "dc41988", "revision_date": "2017-10-18", "license": "Public Domain", "toolchain": "Biowasm Emscripten release", "toolchain_version": "seq-align dc41988"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["ACGTTGCA"], "stdout_sha256": "de84eeff25bc787e35ddf73c9de4f48301ef0071c2cbf38922be70c22d8682d8"}
+    },
+    {
+      "suite": "Biowasm seq-align",
+      "desc": "needleman_wunsch globally aligns two pinned DNA sequences",
+      "id": "needleman-wunsch-dna",
+      "artifact": "workloads/applications/seq-align/needleman_wunsch.wasm",
+      "artifact_sha256": "0145e57676d9e2514c5683de4eee351590d57071b68ff6cb7a2ffee4c9d2ab02",
+      "tags": ["application", "bioinformatics", "sequence", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/seq-align", "revision": "dc41988", "revision_date": "2017-10-18", "license": "Public Domain", "toolchain": "Biowasm Emscripten release", "toolchain_version": "seq-align dc41988"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["ACGTTGCA", "ACGTCGCA"], "stdout_sha256": "1e3fdaf624fe5dbc63c13ea6df1f1df5ceb13258925b5ae7b5e876d9e78f7f4d"}
+    },
+    {
+      "suite": "Biowasm seq-align",
+      "desc": "smith_waterman locally aligns two pinned DNA sequences and reports suboptimal hits",
+      "id": "smith-waterman-dna",
+      "artifact": "workloads/applications/seq-align/smith_waterman.wasm",
+      "artifact_sha256": "f033fe248a561e06f5cafebbe9cab86b1d31928a96f144730d10f74b073f11d7",
+      "tags": ["application", "bioinformatics", "sequence", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/seq-align", "revision": "dc41988", "revision_date": "2017-10-18", "license": "Public Domain", "toolchain": "Biowasm Emscripten release", "toolchain_version": "seq-align dc41988"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["ACGTTGCA", "ACGTCGCA"], "stdout_sha256": "1f3b6d8f053160f6232ce784988485d84c5c4cacafd87ae8680e713b3bcb75f6"}
+    },
+    {
+      "suite": "Biowasm",
+      "desc": "FastTree 2.1.11 infers a nucleotide phylogeny from a pinned multiple-sequence alignment",
+      "id": "fasttree-phylogeny",
+      "artifact": "workloads/applications/fasttree/fasttree.wasm",
+      "artifact_sha256": "780ce84c3a0ce8442fe259a5de0fe5db07f663430f2a8d1bc23187161de23387",
+      "tags": ["application", "bioinformatics", "phylogeny", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/fasttree", "revision": "2.1.11", "revision_date": "2021-03-03", "license": "GPL-3.0 AND MIT", "toolchain": "Biowasm Emscripten release", "toolchain_version": "FastTree 2.1.11"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["-nt"], "stdin": "alignment.fasta", "preopen": "workloads/applications/fasttree/inputs", "inputs": {"alignment.fasta": "9e639db88af2ca312270c8869472d09b8b51c3f94eef1fe93d5dbc176828e83f"}, "stdout_sha256": "ff79d3415c1bd8bbf930305f08289a324057d3505d209ee2ab1b85cb190cf98c"}
+    },
+    {
+      "suite": "Biowasm GNU coreutils",
+      "desc": "GNU seq 8.32 prints a pinned integer range",
+      "id": "gnu-seq-range",
+      "artifact": "workloads/applications/gnu-coreutils/seq.wasm",
+      "artifact_sha256": "bdbd39485bb579411c626deab515d5fde792cae1050d9481f0ecb95be713059a",
+      "tags": ["application", "text", "coreutils", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/coreutils", "revision": "v8.32", "revision_date": "2020-03-05", "license": "GPL-3.0-or-later AND MIT", "toolchain": "Biowasm Emscripten release", "toolchain_version": "GNU coreutils 8.32"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["1", "10"], "stdout_sha256": "bf794518e35d7f1ce3a50b3058c4191bb9401e568fc645d77e10b0f404cf1f22"}
+    },
+    {
+      "suite": "Biowasm GNU coreutils",
+      "desc": "GNU tr 8.32 uppercases a pinned record stream",
+      "id": "gnu-tr-uppercase",
+      "artifact": "workloads/applications/gnu-coreutils/tr.wasm",
+      "artifact_sha256": "47e7ad6a441d4de920e876abb9559d5936dbd6c280e79bbdb1274814e1b46384",
+      "tags": ["application", "text", "coreutils", "c", "emscripten"],
+      "source": {"repository": "https://github.com/biowasm/biowasm/tree/main/tools/coreutils", "revision": "v8.32", "revision_date": "2020-03-05", "license": "GPL-3.0-or-later AND MIT", "toolchain": "Biowasm Emscripten release", "toolchain_version": "GNU coreutils 8.32"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "emscripten", "reference_runtime": "v8", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "main", "args": ["a-z", "A-Z"], "stdin": "records.txt", "preopen": "workloads/applications/gnu-coreutils/inputs", "inputs": {"records.txt": "7e13e7bebc021c762a4c26d2983a88987c9bcd7573e180c62b50fe3c676594de"}, "stdout_sha256": "7fb2bedccbb849fe9c8bcc513aa0441be6c8db7aac9db38cd6230449d7904075"}
+    },
+    {
+      "suite": "php",
+      "desc": "PHP 8.2.6 groups five thousand integers into seventeen weighted buckets",
+      "id": "php-buckets",
+      "artifact": "workloads/applications/php/php.wasm",
+      "artifact_sha256": "5461eea8426378e2257f46c7eb1c734f607a89de9a921b72f8fc14c20ac3a33a",
+      "tags": ["application", "interpreter", "php", "c", "wasi"],
+      "source": {"repository": "https://github.com/vmware-labs/webassembly-language-runtimes/releases/tag/php%2F8.2.6%2B20230714-11be424", "revision": "php/8.2.6+20230714-11be424", "revision_date": "2023-07-14", "license": "Apache-2.0 AND PHP-3.01", "toolchain": "WLR WasmEdge WASI release", "toolchain_version": "8.2.6"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "php-wasmedge", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "stdin": "program.php", "preopen": "workloads/applications/php/inputs", "inputs": {"program.php": "fca25d8a184b2ea651532e012e7c162066429232fc262b20697bf4c5ab2520ba"}, "stdout_sha256": "a9cfd18aeeb61f448d9314c2687d0bf22b1a287a4a3b165a5aa676ff4b0de869"}
+    },
+    {
+      "suite": "ruby",
+      "desc": "Ruby 3.2.2 groups five thousand integers into seventeen weighted buckets",
+      "id": "ruby-buckets",
+      "artifact": "workloads/applications/ruby/ruby.wasm",
+      "artifact_sha256": "de598f394e398763d2b147e3e51a6eeadf048128598ac4a3f992a97204c192b0",
+      "tags": ["application", "interpreter", "ruby", "c", "wasi"],
+      "source": {"repository": "https://github.com/vmware-labs/webassembly-language-runtimes/releases/tag/ruby%2F3.2.2%2B20230714-11be424", "revision": "ruby/3.2.2+20230714-11be424", "revision_date": "2023-07-14", "license": "Apache-2.0 AND (BSD-2-Clause OR Ruby)", "toolchain": "WLR slim WASI release", "toolchain_version": "3.2.2"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["--disable-gems", "-"], "stdin": "program.rb", "preopen": "workloads/applications/ruby/inputs", "inputs": {"program.rb": "3a3ae9520f56cab00ed012b018a330d8a6f53f08c556a7baf9ea2da401e79fd9"}, "stdout_sha256": "a9cfd18aeeb61f448d9314c2687d0bf22b1a287a4a3b165a5aa676ff4b0de869"}
+    },
+    {
+      "suite": "clang",
+      "desc": "Clang 8 parses a C++17 function template and emits LLVM IR",
+      "id": "clang-cpp-kernels",
+      "artifact": "workloads/applications/clang/clang.wasm",
+      "artifact_sha256": "d817b7af8c2cc851527d5872256f27079d6905750a755668683293ec8e36b584",
+      "tags": ["application", "compiler", "clang", "c++", "wasi"],
+      "source": {"repository": "https://github.com/binji/wasm-clang", "revision": "648c4a89997a351eef75cdaec3ef5b89d4937dec", "revision_date": "2023-12-07", "license": "Apache-2.0 WITH LLVM-exception", "toolchain": "WABT import rename", "toolchain_version": "Clang 8.0.1"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "reference_runtime": "wasmtime", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["-cc1", "-triple", "wasm32-unknown-wasi", "-x", "c++", "-std=c++17", "-S", "-emit-llvm", "-O0", "-o", "-", "-"], "stdin": "kernels.cpp", "preopen": "workloads/applications/clang/inputs", "inputs": {"kernels.c": "825111006a2458ae38cc23cb3083b67071ef9b78bcf824a7b7f0d204d1282d6d", "kernels.cpp": "fbe6a92a4ec0928dcbcd3db5474b597f35a9a4714e83a8005aff9b4ec4169c97"}, "stdout_normalize": "llvm-ir-preds", "stdout_sha256": "9794c0c31f087bef054004adfc82595f4d00e2680ad0440c01f188d44c09a506"}
+    },
+    {
+      "suite": "clang",
+      "desc": "Clang 8 parses two C kernels and emits LLVM IR",
+      "id": "clang-c-kernels",
+      "artifact": "workloads/applications/clang/clang.wasm",
+      "artifact_sha256": "d817b7af8c2cc851527d5872256f27079d6905750a755668683293ec8e36b584",
+      "tags": ["application", "compiler", "clang", "c++", "wasi"],
+      "source": {"repository": "https://github.com/binji/wasm-clang", "revision": "648c4a89997a351eef75cdaec3ef5b89d4937dec", "revision_date": "2023-12-07", "license": "Apache-2.0 WITH LLVM-exception", "toolchain": "WABT import rename", "toolchain_version": "Clang 8.0.1"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "reference_runtime": "wasmtime", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["-cc1", "-triple", "wasm32-unknown-wasi", "-x", "c", "-S", "-emit-llvm", "-O0", "-o", "-", "-"], "stdin": "kernels.c", "preopen": "workloads/applications/clang/inputs", "inputs": {"kernels.c": "825111006a2458ae38cc23cb3083b67071ef9b78bcf824a7b7f0d204d1282d6d", "kernels.cpp": "fbe6a92a4ec0928dcbcd3db5474b597f35a9a4714e83a8005aff9b4ec4169c97"}, "stdout_normalize": "llvm-ir-preds", "stdout_sha256": "0392232c45f1e8ef78e8841526df11cf9da57d682a5763556dc2401e4aed1806"}
+    },
+    {
+      "suite": "lua",
+      "desc": "standalone Lua 5.4.6 interpreter aggregates one million generated events into 257 ranked buckets",
+      "id": "lua-cli-buckets",
+      "artifact": "workloads/applications/lua/lua.wasm",
+      "artifact_sha256": "51e8072539c5ba5f4e97e7e776ef852f9879cb5b97b4e5d0f9f1e9c3956ffbe2",
+      "tags": ["application", "interpreter", "lua", "c", "wasi"],
+      "source": {"repository": "https://github.com/nalgeon/lua-wasi", "revision": "@antonz/lua-wasi 5.4.6", "revision_date": "2024-01-03", "license": "MIT", "toolchain": "wasienv plus WABT import rename", "toolchain_version": "Lua 5.4.6"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "reference_runtime": "wasmtime", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["/program.lua"], "preopen": "workloads/applications/lua/inputs", "inputs": {"program.lua": "3807a5f816795e9be766394e54b9f07e35717a19d9af91e10611c69e5e8e3c28"}, "stdout_sha256": "0596a0eadbe52c645aa00bb7fca2ed57f1620d4041ce78dc40080b2b934468fb"}
+    },
+    {
+      "suite": "micropython",
+      "desc": "MicroPython runs two million state, aggregate, modulo, and branch iterations",
+      "id": "micropython-squares",
+      "artifact": "workloads/applications/micropython/micropython.wasm",
+      "artifact_sha256": "1c054a4d21d4a6589bc568821ebf562889988ddaaf8a17a2e2985a56cf228051",
+      "tags": ["application", "interpreter", "python", "c", "wasi"],
+      "source": {"repository": "https://pypi.org/project/micropython-wasm/0.1a2/", "revision": "0.1a2", "revision_date": "2026-06-06", "license": "Apache-2.0 AND MIT", "toolchain": "micropython-wasm wheel", "toolchain_version": "0.1a2"},
+      "stages": ["Decode", "Validate", "Compile", "CommandExec"],
+      "command": {"runtime": "micropython", "reference_runtime": "wasmtime", "platforms": ["linux/amd64", "linux/arm64", "darwin/arm64"], "export": "_start", "args": ["/program.py"], "preopen": "workloads/applications/micropython/inputs", "inputs": {"program.py": "27d2048538d2c6d782907ecbead78277fa48049906f64e415b90e3da2122c628"}, "stdout_sha256": "f6d55657e93a308383869175bd299ef355d0e1b95fe32475027f060fb9aef8cd"}
+    },
+    {
+      "suite": "trellis",
+      "desc": "ecpunpack decodes a pinned ECP5 bitstream into its text configuration",
+      "id": "ecpunpack-config",
+      "artifact": "workloads/applications/ecpunpack/ecpunpack.wasm",
+      "artifact_sha256": "d50205335eadfbe406599306251f3c9ea9016e1885dbc6578309b861410f83f8",
+      "tags": ["application", "fpga", "bitstream", "c++", "wasi"],
+      "source": {"repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/", "revision": "0.5.0.0.post399", "revision_date": "2023-02-07", "license": "ISC", "toolchain": "YoWASP wheel", "toolchain_version": "0.5.0.0.post399"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start",
+        "args": ["--db", "/db", "/input.bit", "/decoded.config"],
+        "preopen": "workloads/applications/ecpunpack/inputs",
+        "inputs": {"input.bit": "560a5dfd11bc0ea54c42943019833c20e8dff7e4e4bd63e06aead7ebf52c2675"},
+        "read_only_preopen": "workloads/applications/ecp5db/db",
+        "read_only_tree_sha256": "688d3f0b7f408f18bfd98423fdee9403ae8366efd8618ae09fc681b3ea93f280",
+        "outputs": {"decoded.config": "459bc4c0e894f7087751ae4f5938edba2a13fc0da507458c3569438a796a11e2"}
+      }
+    },
+    {
+      "suite": "trellis",
+      "desc": "ecppack converts a pinned ECP5 text configuration and device database into a bitstream",
+      "id": "ecppack-bitstream",
+      "artifact": "workloads/applications/ecppack/ecppack.wasm",
+      "artifact_sha256": "2a2ea3a2c706ccfe0ab26f28d5a4d9ae724fb80441ab3bf422ae5aa54d602709",
+      "tags": ["application", "fpga", "bitstream", "c++", "wasi"],
+      "source": {"repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/", "revision": "0.5.0.0.post399", "revision_date": "2023-02-07", "license": "ISC", "toolchain": "YoWASP wheel", "toolchain_version": "0.5.0.0.post399"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start",
+        "args": ["--db", "/db", "/input.config", "/output.bit"],
+        "preopen": "workloads/applications/ecppack/inputs",
+        "inputs": {"input.config": "0c95727998cce534df0b981bb2af4db9bcade22366483a13f6c81f409f0a7791"},
+        "read_only_preopen": "workloads/applications/ecp5db/db",
+        "read_only_tree_sha256": "688d3f0b7f408f18bfd98423fdee9403ae8366efd8618ae09fc681b3ea93f280",
+        "outputs": {"output.bit": "560a5dfd11bc0ea54c42943019833c20e8dff7e4e4bd63e06aead7ebf52c2675"}
+      }
+    },
+    {
+      "suite": "uutils/coreutils",
+      "desc": "Rust coreutils sorts a pinned twenty-four-record text file",
+      "id": "coreutils-sort",
+      "artifact": "workloads/applications/coreutils/coreutils.wasm",
+      "artifact_sha256": "393da2c407ef0498be397f48d8b030cd4106bd30e0ddec504bfc75718486d034",
+      "tags": ["application", "coreutils", "sort", "rust", "wasi"],
+      "source": {"repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0", "revision": "0.10.0", "revision_date": "2026-08-05", "license": "MIT", "toolchain": "upstream wasm32-wasip1 release", "toolchain_version": "0.10.0"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "argv0": "coreutils", "args": ["sort", "/records.txt"], "preopen": "workloads/applications/coreutils/inputs", "inputs": {"records.txt": "2d43a426486e8da09652655f188806ece6ce45006af911a36d000d4720770fa9"}, "stdout_sha256": "1fb05380888fbabe25a2193ad242ddca2dfe4c8f44d67c7f688f2f4f98df2f0a"}
+    },
+    {
+      "suite": "uutils/coreutils",
+      "desc": "Rust coreutils hashes a pinned text file with SHA-256",
+      "id": "coreutils-sha256sum",
+      "artifact": "workloads/applications/coreutils/coreutils.wasm",
+      "artifact_sha256": "393da2c407ef0498be397f48d8b030cd4106bd30e0ddec504bfc75718486d034",
+      "tags": ["application", "coreutils", "sha256", "rust", "wasi"],
+      "source": {"repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0", "revision": "0.10.0", "revision_date": "2026-08-05", "license": "MIT", "toolchain": "upstream wasm32-wasip1 release", "toolchain_version": "0.10.0"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "argv0": "coreutils", "args": ["sha256sum", "/records.txt"], "preopen": "workloads/applications/coreutils/inputs", "inputs": {"records.txt": "2d43a426486e8da09652655f188806ece6ce45006af911a36d000d4720770fa9"}, "stdout_sha256": "d6c6688bd52492607edae117b22cfe0b095517978bb01462fcc6d71980b7b9fa"}
+    },
+    {
+      "suite": "uutils/coreutils",
+      "desc": "Rust coreutils base64-encodes a pinned text file",
+      "id": "coreutils-base64",
+      "artifact": "workloads/applications/coreutils/coreutils.wasm",
+      "artifact_sha256": "393da2c407ef0498be397f48d8b030cd4106bd30e0ddec504bfc75718486d034",
+      "tags": ["application", "coreutils", "base64", "rust", "wasi"],
+      "source": {"repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0", "revision": "0.10.0", "revision_date": "2026-08-05", "license": "MIT", "toolchain": "upstream wasm32-wasip1 release", "toolchain_version": "0.10.0"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "argv0": "coreutils", "args": ["base64", "/records.txt"], "preopen": "workloads/applications/coreutils/inputs", "inputs": {"records.txt": "2d43a426486e8da09652655f188806ece6ce45006af911a36d000d4720770fa9"}, "stdout_sha256": "47e8fddc84646b6746eac8090d823f54cb37ed702cfc3d5902db88d2b618a59e"}
+    },
+    {
+      "suite": "uutils/coreutils",
+      "desc": "Rust coreutils counts lines, words, and bytes in a pinned text file",
+      "id": "coreutils-wc",
+      "artifact": "workloads/applications/coreutils/coreutils.wasm",
+      "artifact_sha256": "393da2c407ef0498be397f48d8b030cd4106bd30e0ddec504bfc75718486d034",
+      "tags": ["application", "coreutils", "text", "rust", "wasi"],
+      "source": {"repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0", "revision": "0.10.0", "revision_date": "2026-08-05", "license": "MIT", "toolchain": "upstream wasm32-wasip1 release", "toolchain_version": "0.10.0"},
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {"runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "argv0": "coreutils", "args": ["wc", "/records.txt"], "preopen": "workloads/applications/coreutils/inputs", "inputs": {"records.txt": "2d43a426486e8da09652655f188806ece6ce45006af911a36d000d4720770fa9"}, "stdout_sha256": "ca05ae34ead81ae715eb22e7081718ba5adb98146c6a7045c774bb9cce420377"}
+    },
+    {
+      "suite": "ripgrep",
+      "desc": "ripgrep searches a JavaScript program and returns exact matching source lines",
+      "id": "ripgrep-source",
+      "artifact": "workloads/applications/ripgrep/rg.wasm",
+      "artifact_sha256": "bd3d27817f2f34d625a3d24029eb2d5b16746ee4bb097d01eed8c99be9b83263",
+      "tags": ["application", "search", "rust", "wasi"],
+      "source": {
+        "repository": "https://github.com/holzschu/a-Shell-commands/releases/tag/0.1",
+        "revision": "rg asset 2025-03-15",
+        "revision_date": "2025-03-15",
+        "license": "MIT OR Unlicense",
+        "toolchain": "a-Shell release binary",
+        "toolchain_version": "ripgrep 14.1.1"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-N", "const", "/program.js"],
+        "preopen": "workloads/applications/quickjs/inputs",
+        "inputs": {"program.js": "cbf10aad91aced62c70121301fdcb3562929b08a6d9f2d3e0bfc28d90dea810f"},
+        "stdout_sha256": "87e4b83d5cfbb0a94c499853477377489fd9e16bee3ac4a848381cd4a0d67ab0"
+      }
+    },
+    {
+      "suite": "yosys",
+      "desc": "Yosys parses a synchronous Verilog counter, converts processes, and reports exact cell statistics",
+      "id": "yosys-counter",
+      "artifact": "workloads/applications/yosys/yosys.wasm",
+      "artifact_sha256": "7668d2963f8cc276ccd32980126dfddac961db1cd002cb93073506a694059493",
+      "tags": ["application", "fpga", "compiler", "c++", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-yosys/0.32.0.0.post560/",
+        "revision": "0.32.0.0.post560",
+        "revision_date": "2023-08-08",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.32.0.0.post560"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-Q", "-T", "-p", "read_verilog /top.v; proc; stat"],
+        "preopen": "workloads/applications/yosys/inputs",
+        "inputs": {
+          "top.v": "4a7476fb4229eb0d0e11940614597bb3ba25b96f9d44b28c835e060d3603af16"
+        },
+        "stdout_sha256": "f1f4df21f2a2ac6cef0901105824509beda35568271b07dbe6153df45b76b579"
+      }
+    },
+    {
+      "suite": "icestorm",
+      "desc": "icemulti packages a 1K FPGA bitstream as a multiboot image",
+      "id": "icemulti-image",
+      "artifact": "workloads/applications/icemulti/icemulti.wasm",
+      "artifact_sha256": "ac648e95ba42b44fc50fc6f3d6bb023e03063b6cace4dc6f4ffdefbe3a3820c2",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["/example.bin"],
+        "preopen": "workloads/applications/icepack/unpack-inputs",
+        "inputs": {
+          "example.bin": "d7d042ed25fffa14ebc0fca55ec393817bfee94ad817940310babb6560a777e3"
+        },
+        "stdout_sha256": "35c4d03a64a98671342f69a6af1207996878cdebcfac4f79a2099e01b432c087"
+      }
+    },
+    {
+      "suite": "icestorm",
+      "desc": "icepack reconstructs a 1K FPGA bitstream from an ASCII configuration",
+      "id": "icepack-pack",
+      "artifact": "workloads/applications/icepack/icepack.wasm",
+      "artifact_sha256": "079f96f2e21954af470ed085e2bc86f7c7fd4f95fb13324fcb9098e222934e3e",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "stdin": "example.asc",
+        "preopen": "workloads/applications/icepack/pack-inputs",
+        "inputs": {
+          "example.asc": "52c9fda937ce54c49915ad8b0fcb9093c659e97ae1b24f0239fcf6de7f77c0d3"
+        },
+        "stdout_sha256": "d7d042ed25fffa14ebc0fca55ec393817bfee94ad817940310babb6560a777e3"
+      }
+    },
+    {
+      "suite": "icestorm",
+      "desc": "iceunpack decodes a 1K FPGA bitstream into its ASCII configuration",
+      "id": "iceunpack-unpack",
+      "artifact": "workloads/applications/icepack/icepack.wasm",
+      "artifact_sha256": "079f96f2e21954af470ed085e2bc86f7c7fd4f95fb13324fcb9098e222934e3e",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-u"],
+        "stdin": "example.bin",
+        "preopen": "workloads/applications/icepack/unpack-inputs",
+        "inputs": {
+          "example.bin": "d7d042ed25fffa14ebc0fca55ec393817bfee94ad817940310babb6560a777e3"
+        },
+        "stdout_sha256": "52c9fda937ce54c49915ad8b0fcb9093c659e97ae1b24f0239fcf6de7f77c0d3"
+      }
+    },
+    {
+      "suite": "trellis",
+      "desc": "ecpbram generates a seeded 512-word ECP5 BRAM hex file",
+      "id": "ecpbram-generate",
+      "artifact": "workloads/applications/ecpbram/ecpbram.wasm",
+      "artifact_sha256": "2d5fcf6b054eddf2d034fea174f6c158e35ae2ade81794bfa50bf86d6079c00a",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-g", "/bram.hex", "-s", "123", "-w", "8", "-d", "512"],
+        "preopen": "workloads/applications/ecpbram/inputs",
+        "inputs": {
+          "README.txt": "ea6f178748399f25f5890284b55d4ea6e6ba8872e277b6c1e5e6b4849f4b9a98"
+        },
+        "outputs": {
+          "bram.hex": "4aadb5fc188ef99b4202fb5a64b593e094aacf69197fe92cb7da6e8677e94dad"
+        }
+      }
+    },
+    {
+      "suite": "icestorm",
+      "desc": "icebram generates seeded 8-bit BRAM initialization words",
+      "id": "icebram-generate",
+      "artifact": "workloads/applications/icebram/icebram.wasm",
+      "artifact_sha256": "2eb590a9e8e8a5dce32ab0b01b57558b290e7e4cd0f001036e054f3ff9b99deb",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-g", "-s", "123", "8", "256"],
+        "stdout_sha256": "080113e233f067451a169be6371068249ebb4e94266415538bf00b5b6b3c86f4"
+      }
+    },
+    {
+      "suite": "trellis",
+      "desc": "ecppll calculates ECP5 PLL divisors for a fixed 12 to 24 MHz clock request",
+      "id": "ecppll-clock",
+      "artifact": "workloads/applications/ecppll/ecppll.wasm",
+      "artifact_sha256": "a86ef23e6f447021fa26b9481d14c2d00fb097b58e8aa3cb246dbc53aa5c2900",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-i", "12", "-o", "24"],
+        "stdout_sha256": "63bdf4e757b2c3f08017ee17709385590645ec6515620e5ad727e59ae0a89160"
+      }
+    },
+    {
+      "suite": "icestorm",
+      "desc": "icepll computes iCE40 PLL divisors for a fixed 12 to 24 MHz clock request",
+      "id": "icepll-clock",
+      "artifact": "workloads/applications/icepll/icepll.wasm",
+      "artifact_sha256": "47dfc30f14b4b748d89b7370190abf840e2d20f07ee36463305df667e913ecfd",
+      "tags": ["application", "fpga", "c", "wasi"],
+      "source": {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.11.1.0.post826/",
+        "revision": "0.11.1.0.post826",
+        "revision_date": "2026-08-13",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.11.1.0.post826"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-i", "12", "-o", "24"],
+        "stdout_sha256": "8e73f9be2fb5c05697259475732a35bf8bec19160f03f87e9ad0f620ea251c9f"
+      }
+    },
+    {
+      "suite": "json2csv",
+      "desc": "json2csv CLI extracts nested fields from newline-delimited JSON into CSV",
+      "id": "json2csv-people",
+      "artifact": "workloads/applications/json2csv/json2csv.wasm",
+      "artifact_sha256": "f1aacfb105c7d69b19b4c7dfcec0ebd2ed14a29588cfecbb0ce35a7b99a6f6cc",
+      "tags": ["application", "json", "csv", "go", "wasi"],
+      "source": {
+        "repository": "https://github.com/holzschu/a-Shell-commands/releases/tag/0.1",
+        "revision": "asset-68082085",
+        "revision_date": "2022-06-10",
+        "license": "MIT",
+        "toolchain": "upstream a-Shell release artifact",
+        "toolchain_version": "0.1"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-k", "user.name,score,note", "-p"],
+        "stdin": "people.ndjson",
+        "preopen": "workloads/applications/json2csv/inputs",
+        "inputs": {
+          "people.ndjson": "f30fab50db5af1c8403d093243cba9a96cfe080663d113485b0a1e80c428763a"
+        },
+        "stdout_sha256": "30cded600aa1a8739c9656c8bb271b7a760c764e090bba1345df61b77a8bfacc"
+      }
+    },
+    {
+      "suite": "tree",
+      "desc": "a-Shell tree command traverses a pinned directory with a-Shell host imports",
+      "id": "tree-ashell-list",
+      "artifact": "workloads/applications/tree/ashell-tree.wasm",
+      "artifact_sha256": "72ac9f09f35757a5714611f1922c325a8c33e8230e1a37ab7fc4104dbfbd2a64",
+      "tags": ["application", "filesystem", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/holzschu/a-Shell-commands/releases/tag/0.1",
+        "revision": "asset-20591324",
+        "revision_date": "2020-05-10",
+        "license": "GPL-2.0-or-later",
+        "toolchain": "upstream a-Shell release artifact",
+        "toolchain_version": "0.1"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "ashell",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-a", "-n", "/"],
+        "preopen": "workloads/applications/tree/inputs",
+        "inputs": {
+          "README.md": "3915e09920ad9ecd655f08d8f82115e0f47119e5fd12cc66e01a8ccda688befc",
+          "src/main.c": "2ad75d95660563887d8d3f1d0ae1dcf18c2379cbd83a5c72f5ab276351ee6949",
+          "src/util.c": "c900429992cb5e0aec6c5afb07278bc21c1480178c97f7496fcec1622401e0d0",
+          "test/main.c": "0de8b249a5ea6d580f90393b5b774d25f102a54653202057f313b337a3392751"
+        },
+        "stdout_sha256": "0c60bd916cbdc48ac7c7cc60ddf3f10d9415fa166379fe47c12aa996defffad3"
+      }
+    },
+    {
+      "suite": "tree",
+      "desc": "tree WASI CLI recursively lists a pinned source directory with an exact output oracle",
+      "id": "tree-list",
+      "artifact": "workloads/applications/tree/tree.wasm",
+      "artifact_sha256": "fbf2605dc5d03fcdce804b5e871d959951f7bc1e8c5ff3d0e74bfdb1ddbbd435",
+      "tags": ["application", "filesystem", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/Old-Man-Programmer/tree.git",
+        "revision": "d501b58ff9cbfd64272c8cbcad0bda36a3fada06",
+        "revision_date": "2024-11-25",
+        "license": "GPL-2.0-or-later",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-a", "-n", "."],
+        "preopen": "workloads/applications/tree/inputs",
+        "inputs": {
+          "README.md": "3915e09920ad9ecd655f08d8f82115e0f47119e5fd12cc66e01a8ccda688befc",
+          "src/main.c": "2ad75d95660563887d8d3f1d0ae1dcf18c2379cbd83a5c72f5ab276351ee6949",
+          "src/util.c": "c900429992cb5e0aec6c5afb07278bc21c1480178c97f7496fcec1622401e0d0",
+          "test/main.c": "0de8b249a5ea6d580f90393b5b774d25f102a54653202057f313b337a3392751"
+        },
+        "stdout_sha256": "c5971133e94a69f88969b73cdaf35d23a298d81124248c18f694672c3d175f40"
+      }
+    },
+    {
+      "suite": "brotli",
+      "desc": "Brotli WASI CLI compresses 2.16 MB of generated JavaScript at quality 10 with an exact output oracle",
+      "id": "brotli-compress",
+      "artifact": "workloads/applications/brotli/brotli.wasm",
+      "artifact_sha256": "9452cb53ecb2092847effd78a5a991cd8009cea6139b52a8561fe5889634f35c",
+      "tags": ["application", "compression", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/google/brotli.git",
+        "revision": "028fb5a23661f123017c060daa546b55cf4bde29",
+        "revision_date": "2025-10-27",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-q", "10", "-c", "-n", "-f"],
+        "stdin": "source.js",
+        "preopen": "workloads/applications/javascript-source/inputs",
+        "inputs": {
+          "source.js": "ebc5d1b1cf40ddf6fcc2cee0d8bcb01090a1e935c79ac27c8a6f4aeabf78c0ce"
+        },
+        "stdout_sha256": "8407ca5c3b664e4244c2a6673307678420e9b261510056d6072cbc6b9eb240b1"
+      }
+    },
+    {
+      "suite": "brotli",
+      "desc": "Brotli WASI CLI decompresses a pinned stream with an exact plaintext oracle",
+      "id": "brotli-decompress",
+      "artifact": "workloads/applications/brotli/brotli.wasm",
+      "artifact_sha256": "9452cb53ecb2092847effd78a5a991cd8009cea6139b52a8561fe5889634f35c",
+      "tags": ["application", "compression", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/google/brotli.git",
+        "revision": "028fb5a23661f123017c060daa546b55cf4bde29",
+        "revision_date": "2025-10-27",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-d", "-c", "-n", "-f"],
+        "stdin": "source.js.br",
+        "preopen": "workloads/applications/brotli/decode-inputs",
+        "inputs": {
+          "source.js.br": "eeedce27753bdc24a2f3be4651794373a45db0c5dd7c15b6e0cf5d11eeb7549c"
+        },
+        "stdout_sha256": "15f4817d6bb6e105ef12c8b6d2383c32d1646a16824365d96935445f436afc89"
+      }
+    },
+    {
+      "suite": "jq",
+      "desc": "jq WASI CLI sorts, groups, and aggregates 50,000 generated JSON objects with an exact output oracle",
+      "id": "jq-json-transform",
+      "artifact": "workloads/applications/jq/jq.wasm",
+      "artifact_sha256": "e99e12da7947aa782137d61367fbe78264af6a6aa6fed6c5d73e327b81571d0e",
+      "tags": ["application", "json", "query", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/jqlang/jq.git",
+        "revision": "34f7186b86743a083a589741b6cea95293524108",
+        "revision_date": "2026-06-20",
+        "license": "MIT AND BSD-2-Clause",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-n", "-c", "-M", "[range(0;50000) | {category:(. % 97), score:(((. * 48271) % 2147483647) % 100003), label:(\"event-\" + tostring)}] | sort_by(.category, .score) | group_by(.category) | map({category: .[0].category, count: length, total: (map(.score) | add), maximum: (map(.score) | max)}) | {groups:length, count:(map(.count)|add), total:(map(.total)|add), checksum:(map((.category + 1) * .maximum)|add)}"],
+        "stdout_sha256": "4f33b717f7ae401dc56e8b19b87ea14c04f718a38860ac970696c52d5abba25a"
+      }
+    },
+    {
+      "suite": "age",
+      "desc": "age WASI CLI decrypts a pinned test ciphertext with an exact plaintext oracle",
+      "id": "age-decrypt",
+      "artifact": "workloads/applications/age/age.wasm",
+      "artifact_sha256": "6e3249c90b12d821f993b8270176eb4624449b11796e0f29fb5b2bd80c15f6c8",
+      "tags": ["application", "encryption", "go", "wasi"],
+      "source": {
+        "repository": "https://github.com/FiloSottile/age.git",
+        "revision": "b74dce4cdbe35b5e5f66c06d9612b72f89028758",
+        "revision_date": "2026-08-29",
+        "license": "BSD-3-Clause",
+        "toolchain": "go",
+        "toolchain_version": "1.27.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["--decrypt", "-i", "test-identity.txt", "source.js.age"],
+        "preopen": "workloads/applications/age/inputs",
+        "inputs": {
+          "test-identity.txt": "f3ceb70e4a35c314f8db06030660aecdb75b65cba4f144ac46b63eb43fe4abd5",
+          "source.js.age": "563394d1942bf60c2c53621c49d2cd44daa8a95b41404be387ebc7e0a5442040"
+        },
+        "stdout_sha256": "15f4817d6bb6e105ef12c8b6d2383c32d1646a16824365d96935445f436afc89"
+      }
+    },
+    {
+      "suite": "age-keygen",
+      "desc": "age-keygen WASI CLI derives the public recipient from a pinned test identity",
+      "id": "age-keygen-public",
+      "artifact": "workloads/applications/age/age-keygen.wasm",
+      "artifact_sha256": "b99e027e56ebd36dabf89ea0d1607682f957cbae3b5ba253fa86c228f2b9a035",
+      "tags": ["application", "encryption", "go", "wasi"],
+      "source": {
+        "repository": "https://github.com/FiloSottile/age.git",
+        "revision": "b74dce4cdbe35b5e5f66c06d9612b72f89028758",
+        "revision_date": "2026-08-29",
+        "license": "BSD-3-Clause",
+        "toolchain": "go",
+        "toolchain_version": "1.27.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-y", "test-identity.txt"],
+        "preopen": "workloads/applications/age/keygen-inputs",
+        "inputs": {
+          "test-identity.txt": "f3ceb70e4a35c314f8db06030660aecdb75b65cba4f144ac46b63eb43fe4abd5"
+        },
+        "stdout_sha256": "3e88d7da0a7a6dce4879845f68b246802c0e6bec13452cec30bd2c27e8b3a470"
+      }
+    },
+    {
+      "suite": "lzmainfo",
+      "desc": "XZ Utils lzmainfo CLI parses a pinned LZMA header with an exact output oracle",
+      "id": "lzmainfo-header",
+      "artifact": "workloads/applications/lzmainfo/lzmainfo.wasm",
+      "artifact_sha256": "fa290176f4449c7e0ce581d988d026b7d2849a430310d9d2028a4840acacd3d8",
+      "tags": ["application", "compression", "parser", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/tukaani-project/xz.git",
+        "revision": "d3e650e63c110e830fd5391e7f8b45df0b91d3da",
+        "revision_date": "2026-09-09",
+        "license": "0BSD",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "stdin": "source.js.lzma",
+        "preopen": "workloads/applications/lzmainfo/inputs",
+        "inputs": {
+          "source.js.lzma": "89ed532e5c8d0f26ba804591f9a31f0e35a409c5351cbef1c15751137c13b470"
+        },
+        "stdout_sha256": "11f5dcfd9ce557757832c59c3cf2a682b9f57127ef26b10de8e337c51f15719e"
+      }
+    },
+    {
+      "suite": "lzmadec",
+      "desc": "XZ Utils LZMA decoder CLI decompresses a pinned LZMA stream with an exact output oracle",
+      "id": "lzmadec-decompress",
+      "artifact": "workloads/applications/lzmadec/lzmadec.wasm",
+      "artifact_sha256": "0383ef35939b458adbacbb64144d2f12a13e282488efe3387dff017880c6c245",
+      "tags": ["application", "compression", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/tukaani-project/xz.git",
+        "revision": "d3e650e63c110e830fd5391e7f8b45df0b91d3da",
+        "revision_date": "2026-09-09",
+        "license": "0BSD",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "stdin": "source.js.lzma",
+        "preopen": "workloads/applications/lzmadec/inputs",
+        "inputs": {
+          "source.js.lzma": "89ed532e5c8d0f26ba804591f9a31f0e35a409c5351cbef1c15751137c13b470"
+        },
+        "stdout_sha256": "15f4817d6bb6e105ef12c8b6d2383c32d1646a16824365d96935445f436afc89"
+      }
+    },
+    {
+      "suite": "xzdec",
+      "desc": "XZ Utils decoder CLI decompresses a pinned XZ stream with an exact output oracle",
+      "id": "xzdec-decompress",
+      "artifact": "workloads/applications/xzdec/xzdec.wasm",
+      "artifact_sha256": "83248ab482a8aa2e05b9be965f775af7c8218058d2501d93b18d967f04eea572",
+      "tags": ["application", "compression", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/tukaani-project/xz.git",
+        "revision": "d3e650e63c110e830fd5391e7f8b45df0b91d3da",
+        "revision_date": "2026-09-09",
+        "license": "0BSD",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "stdin": "source.js.xz",
+        "preopen": "workloads/applications/xzdec/inputs",
+        "inputs": {
+          "source.js.xz": "64f999ed9f0448036cd2d4842f87f5cee4edf3800e50ba085c4bb76ae711bcf1"
+        },
+        "stdout_sha256": "15f4817d6bb6e105ef12c8b6d2383c32d1646a16824365d96935445f436afc89"
+      }
+    },
+    {
+      "suite": "sqlite3",
+      "desc": "SQLite WASI shell recursively generates one million rows and computes four exact aggregates",
+      "id": "sqlite3-query",
+      "artifact": "workloads/applications/sqlite3/sqlite3.wasm",
+      "artifact_sha256": "bbfa28f00fea33bd95bd3bd573c92fd821173d03b280180b7e40dac0af91a669",
+      "tags": ["application", "database", "sql", "c", "wasi"],
+      "source": {
+        "repository": "https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip",
+        "revision": "3.53.4",
+        "revision_date": "2026-07-24",
+        "license": "Public-Domain",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["-batch", ":memory:", "WITH RECURSIVE events(n,value) AS (VALUES(1,12345) UNION ALL SELECT n+1,(value+48271)%1000003 FROM events WHERE n<1000000) SELECT count(*),sum(value),sum(CASE WHEN value%257=0 THEN value ELSE 0 END),sum(value&4095) FROM events;"],
+        "stdout_sha256": "5531212e58a571b40d57b960e0d0e2dfa46d183496f18fb0389a7927ad48a897"
+      }
+    },
+    {
+      "suite": "duktape",
+      "desc": "Duktape WASI CLI parses and aggregates 50,000 generated service events",
+      "id": "duktape-script",
+      "artifact": "workloads/applications/duktape/duk.wasm",
+      "artifact_sha256": "ecf2293773686dd1bcbcb5bb8f7c7647d4726c4bdec8d1e2e04bfb6cf5fd3612",
+      "tags": ["application", "interpreter", "javascript", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/saghul/wasi-lab.git",
+        "revision": "05d2c175afeed626187f792c9dd1a8142e11f95a",
+        "revision_date": "2019-10-25",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["program.js"],
+        "preopen": "workloads/applications/js-runtime/inputs",
+        "inputs": {
+          "program.js": "5f2ea9684e195fc3f7bcbc8be4ad8b4c2540e6b10a560365176d3ce07c2ac92d"
+        },
+        "stdout_sha256": "485ded1ee5ff38dee328f324894460d61da6914badb6cf5359a36a3e14ca865b"
+      }
+    },
+    {
+      "suite": "quickjs",
+      "desc": "QuickJS WASI CLI parses and aggregates 50,000 generated service events",
+      "id": "quickjs-script",
+      "artifact": "workloads/applications/quickjs/qjs.wasm",
+      "artifact_sha256": "e384f80f3dd492dab373d9eda08fb124cc4484945bbc2c9d03cbc7598e711a40",
+      "tags": ["application", "interpreter", "javascript", "c", "wasi"],
+      "source": {
+        "repository": "https://github.com/saghul/wasi-lab.git",
+        "revision": "05d2c175afeed626187f792c9dd1a8142e11f95a",
+        "revision_date": "2019-10-25",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["program.js"],
+        "preopen": "workloads/applications/js-runtime/inputs",
+        "inputs": {
+          "program.js": "5f2ea9684e195fc3f7bcbc8be4ad8b4c2540e6b10a560365176d3ce07c2ac92d"
+        },
+        "stdout_sha256": "485ded1ee5ff38dee328f324894460d61da6914badb6cf5359a36a3e14ca865b"
+      }
+    },
+    {
+      "suite": "swift-format",
+      "desc": "Swift formatter CLI reformats source from stdin with an exact output oracle",
+      "id": "swift-format-source",
+      "artifact": "workloads/applications/swift-format/swift-format.wasm",
+      "artifact_sha256": "4f9c01a9569407766947c6fa6e9369dd9703f461f31dc9c79b49a6a6bcc5bc76",
+      "tags": ["application", "formatter", "swift", "wasi"],
+      "source": {
+        "repository": "https://github.com/kkebo/swift-format.git",
+        "revision": "92097d54ac3be47738fe77e38c918e9aabce0302",
+        "revision_date": "2026-07-01",
+        "license": "Apache-2.0 WITH Swift-exception",
+        "toolchain": "upstream WASI release artifact",
+        "toolchain_version": "603.0.0-wasm32-wasi"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["format", "source.swift"],
+        "preopen": "workloads/applications/swift-format/inputs",
+        "inputs": {
+          "source.swift": "aa42bbc4d55e53cc38902fbcaf6b8da46d1e9ca52202d487bbd6c0e17c461d74"
+        },
+        "stdout_sha256": "1248b3fde251be78256a4e080ead7992ab502c8715f4ba5162a914c91a48137a"
+      }
+    },
+    {
+      "suite": "esbuild",
+      "desc": "esbuild WASI CLI minifies 2.16 MB of generated production-shaped JavaScript",
+      "id": "esbuild-minify",
+      "artifact": "workloads/applications/esbuild/esbuild.wasm",
+      "artifact_sha256": "a593128fc5b588cfc19d974ef8896ab9ad3bd3d8ccaaf392c981a26380617e8f",
+      "tags": ["application", "compiler", "javascript", "go", "wasi"],
+      "source": {
+        "repository": "https://github.com/evanw/esbuild.git",
+        "revision": "f6058f8364fe7ab91ca57a83e02577ed74c9cae4",
+        "revision_date": "2026-08-09",
+        "license": "MIT",
+        "toolchain": "go",
+        "toolchain_version": "1.26.5"
+      },
+      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "command": {
+        "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "export": "_start",
+        "args": ["--minify", "--loader=js"],
+        "stdin": "source.js",
+        "preopen": "workloads/applications/javascript-source/inputs",
+        "inputs": {
+          "source.js": "ebc5d1b1cf40ddf6fcc2cee0d8bcb01090a1e935c79ac27c8a6f4aeabf78c0ce"
+        },
+        "stdout_sha256": "070f4effcdccfa95e41cca57494d11ddf329c48e9af6d535638a3b3d7a306203"
+      }
+    },
     {
       "desc": "minimal module; fixed pipeline overhead",
       "exec": [

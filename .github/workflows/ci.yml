@@ -346,7 +346,7 @@ jobs:
           try {
             go test -count=1 ./internal/semanticcorpus
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns|TestCatalog.*|TestValidateCorpusModule.*)$' ./suite -args '-wago.corpus=all'
+            go test -count=1 -timeout 20m -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns|TestCatalog.*|TestValidateCorpusModule.*)$' ./suite -args '-wago.corpus=all'
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Pop-Location

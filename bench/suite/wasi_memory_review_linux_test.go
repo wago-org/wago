@@ -174,7 +174,7 @@ func reviewWork(t *testing.T) string {
 	}()
 	run := func() {
 		if rt == nil && *reviewModule == "host1024" {
-			imports, err := commandRuntimeImports(m, stdin, nil, nil)
+			imports, err := commandRuntimeImports(m, "", stdin, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
