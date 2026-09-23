@@ -109,8 +109,37 @@ func validateSuperRelations(descs []TypeDesc) error {
 		if s.Final {
 			return fmt.Errorf("gc: descriptor %d cannot extend final super %d", i, d.Super)
 		}
+		if d.Kind == KindStruct {
+			if len(d.Fields) < len(s.Fields) {
+				return fmt.Errorf("gc: descriptor %d omits inherited fields from super %d", i, d.Super)
+			}
+			for field, inherited := range s.Fields {
+				actual := d.Fields[field]
+				if actual.Offset != inherited.Offset || !inheritedStorageCompatible(actual.Kind, inherited.Kind) {
+					return fmt.Errorf("gc: descriptor %d field %d is incompatible with super %d", i, field, d.Super)
+				}
+			}
+		} else if d.Kind == KindArray && !inheritedStorageCompatible(d.Elem, s.Elem) {
+			return fmt.Errorf("gc: descriptor %d element is incompatible with super %d", i, d.Super)
+		}
 	}
 	return validateSuperAcyclic(descs)
+}
+
+func inheritedStorageCompatible(actual, inherited StorageKind) bool {
+	if actual == inherited {
+		return true
+	}
+	switch inherited {
+	case StorageRefNull:
+		return actual == StorageRef
+	case StorageFuncRefNull:
+		return actual == StorageFuncRef
+	case StorageExternRefNull:
+		return actual == StorageExternRef
+	default:
+		return false
+	}
 }
 
 func validateSuperAcyclic(descs []TypeDesc) error {
