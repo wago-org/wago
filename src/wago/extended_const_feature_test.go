@@ -62,10 +62,10 @@ func TestExtendedConstRequiredFeatureSurvivesCodecAndFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := CoreFeatures(binary.LittleEndian.Uint64(blob[len(blob)-9 : len(blob)-1])); got != CoreFeatureExtendedConst || blob[len(blob)-1] != 0 {
+	if got := binary.LittleEndian.Uint64(blob[len(blob)-9 : len(blob)-1]); got != uint64(CoreFeatureExtendedConst)|compiledCPURequirementsV1 || blob[len(blob)-1] != 0 {
 		t.Fatalf("codec feature tail = %x, want u64 extended-constant mask then zero GC count", blob[len(blob)-9:])
 	}
-	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], 0)
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledCPURequirementsV1)
 	var missing Compiled
 	if err := missing.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unrecorded features") {
 		t.Fatalf("missing extended-constant bit error = %v", err)

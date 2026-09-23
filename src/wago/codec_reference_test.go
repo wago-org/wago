@@ -131,7 +131,7 @@ func TestCompiledCodecRequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 	}
 	// The fixture has an empty GC descriptor list and no frame-root map, so the
 	// required-feature uint64 immediately precedes the zero GC count.
-	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], 0)
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledCPURequirementsV1)
 	var decoded Compiled
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unrecorded features") {
 		t.Fatalf("missing feature bits error = %v, want fail-closed rejection", err)
@@ -141,7 +141,7 @@ func TestCompiledCodecRequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal unknown-feature fixture: %v", err)
 	}
-	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], uint64(CoreFeatureTailCall))
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledCPURequirementsV1|uint64(CoreFeatureTailCall))
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 		t.Fatalf("unknown feature bits error = %v, want fail-closed rejection", err)
 	}
@@ -150,7 +150,7 @@ func TestCompiledCodecRequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal forged dynamic-ref.test fixture: %v", err)
 	}
-	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionDynamicFuncRefTest)
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledCPURequirementsV1|compiledGCExecutionDynamicFuncRefTest)
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires typed function descriptor metadata") {
 		t.Fatalf("forged dynamic ref.test execution error = %v, want fail-closed rejection", err)
 	}
@@ -159,7 +159,7 @@ func TestCompiledCodecRequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal forged i31-product fixture: %v", err)
 	}
-	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionI31Product)
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledCPURequirementsV1|compiledGCExecutionI31Product)
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires the recorded GC feature") {
 		t.Fatalf("forged i31 execution product error = %v, want fail-closed GC rejection", err)
 	}
@@ -168,7 +168,7 @@ func TestCompiledCodecRequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal forged generic-GC fixture: %v", err)
 	}
-	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionGenericArray)
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledCPURequirementsV1|compiledGCExecutionGenericArray)
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "generic GC native ABI version") {
 		t.Fatalf("forged generic GC execution error = %v, want fail-closed ABI rejection", err)
 	}

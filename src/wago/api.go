@@ -1455,6 +1455,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			_ = cm.CodeImage.Close()
 		}
 	}()
+	if err := checkCompiledAVXRequirements(cm.RequiresAVX2, cm.RequiresAVX512); err != nil {
+		return nil, fmt.Errorf("compile: %w", err)
+	}
 	if cfg.maxNativeCodeBytes != 0 && uint64(len(cm.Code)) > cfg.maxNativeCodeBytes {
 		return nil, &wruntime.ResourceLimitError{
 			Resource:  "native code bytes",
@@ -2884,6 +2887,9 @@ func (c *Compiled) FuncDebugName(funcIdx uint32) string {
 func (c *Compiled) validate() error {
 	if c == nil {
 		return fmt.Errorf("compiled module is nil")
+	}
+	if err := checkCompiledAVXRequirements(c.requiresAVX2, c.requiresAVX512); err != nil {
+		return err
 	}
 	if c.NumImports < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative NumImports %d", c.NumImports)

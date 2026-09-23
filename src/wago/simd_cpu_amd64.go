@@ -27,3 +27,17 @@ func architectureSupportsBMI2() bool {
 	_, ebx, _, _ := cpuid(7, 0)
 	return ebx&(uint32(1)<<8) != 0
 }
+
+func architectureSupportsAVX() (avx2, avx512 bool) {
+	maxID, _, _, _ := cpuid(0, 0)
+	if maxID < 7 {
+		return false, false
+	}
+	_, _, ecx, _ := cpuid(1, 0)
+	if ecx&(uint32(1)<<27) == 0 {
+		return false, false
+	}
+	xcr0, _ := xgetbv()
+	_, ebx, _, _ := cpuid(7, 0)
+	return amd64AVX2FeaturesSupported(ecx, xcr0, ebx), amd64AVX512FeaturesSupported(ecx, xcr0, ebx)
+}
