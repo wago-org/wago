@@ -138,6 +138,12 @@ func TestValidateTypeDescsRejectsOverlappingFields(t *testing.T) {
 				{Kind: StorageFuncRef, Offset: 0}, {Kind: StorageRefNull, Offset: 4},
 			}, Size: 8, Align: 8, HasRefs: true},
 		},
+		{
+			name: "nonadjacent overlap",
+			desc: TypeDesc{ID: 0, Kind: KindStruct, Fields: []FieldDesc{
+				{Kind: StorageRefNull, Offset: 0}, {Kind: StorageI32, Offset: 16}, {Kind: StorageI64, Offset: 0},
+			}, Size: 24, Align: 8, HasRefs: true},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -165,6 +171,25 @@ func TestValidateTypeDescsAcceptsReorderedDisjointFields(t *testing.T) {
 	desc.Fields[0], desc.Fields[2] = desc.Fields[2], desc.Fields[0]
 	if err := ValidateTypeDescs([]TypeDesc{desc}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestValidateTypeDescsBoundsReorderedFieldScratch(t *testing.T) {
+	fields := make([]StorageKind, maxUnorderedStructFields+1)
+	for i := range fields {
+		fields[i] = StorageI32
+	}
+	desc, err := NewStructDesc(0, fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateTypeDescs([]TypeDesc{desc}); err != nil {
+		t.Fatalf("ordered descriptor rejected: %v", err)
+	}
+	last := len(desc.Fields) - 1
+	desc.Fields[0], desc.Fields[last] = desc.Fields[last], desc.Fields[0]
+	if err := ValidateTypeDescs([]TypeDesc{desc}); err == nil || !strings.Contains(err.Error(), "too many unordered fields") {
+		t.Fatalf("ValidateTypeDescs = %v, want bounded unordered-field error", err)
 	}
 }
 

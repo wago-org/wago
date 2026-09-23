@@ -617,6 +617,7 @@ func TestCompiledValidateGCTypeDescFailures(t *testing.T) {
 		{"invalid super", []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc, HasSuper: true, Super: 9}}},
 		{"invalid kind", []gc.TypeDesc{{ID: 0, Kind: 99}}},
 		{"invalid ref offset", []gc.TypeDesc{{ID: 0, Kind: gc.KindStruct, Fields: []gc.FieldDesc{{Kind: gc.StorageRef, Offset: 8}}, Size: 4, Align: 4, HasRefs: true}}},
+		{"overlapping ref field", []gc.TypeDesc{{ID: 0, Kind: gc.KindStruct, Fields: []gc.FieldDesc{{Kind: gc.StorageRefNull}, {Kind: gc.StorageI32}}, Size: 4, Align: 4, HasRefs: true}}},
 		{"malformed func", []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc, Size: 4}}},
 	}
 	for _, tc := range cases {
