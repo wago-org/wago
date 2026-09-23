@@ -3067,7 +3067,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	safeColdLocalCalls := f.opt(optColdCallLocalPins) && !hints.flags.has(hintHasLoopCall) && !hints.flags.has(hintHasNonDirectCall) && !hints.flags.has(hintCallsImport)
 	safeMemoryCallPins := ((hints.flags.has(hintCallsSelf) && m.ImportedFuncCount() == 0) || safeColdLocalCalls) && len(m.Tables) == 0
 	if touchesMemory && hasCall && !safeMemoryCallPins {
-		gpPool = gpPool[:min(len(gpPool), len(pinnedLocalRegs)+2)]
+		gpPool = callSafePinPool(gpPool)
 	}
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // X27 is the module-wide memBytes cache
@@ -3374,6 +3374,16 @@ func gpPinPoolWithPolicy(pool []Reg, regABI bool, nParams int, callFree bool, po
 		pool = append(pool, X27)
 	}
 	return pool
+}
+
+func callSafePinPool(pool []Reg) []Reg {
+	safe := pool[:0]
+	for _, reg := range pool {
+		if reg >= X19 && reg <= X25 {
+			safe = append(safe, reg)
+		}
+	}
+	return safe
 }
 
 // gpPinLimit leaves enough of the target's unreserved allocatable file for the
