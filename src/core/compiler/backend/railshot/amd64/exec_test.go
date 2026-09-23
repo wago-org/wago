@@ -100,6 +100,9 @@ func runAmd64(t *testing.T, m *wasm.Module, args ...int32) int32 {
 	if err != nil {
 		t.Fatalf("amd64 compile: %v", err)
 	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
 	eng, err := runtime.NewEngine()
 	if err != nil {
 		t.Fatal(err)
@@ -166,6 +169,9 @@ func runMemAmd64WithOptions(t *testing.T, m *wasm.Module, opts CompileOptions, s
 	if err != nil {
 		t.Fatalf("amd64 compile: %v", err)
 	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
 	eng, err := runtime.NewEngine()
 	if err != nil {
 		t.Fatal(err)
@@ -207,6 +213,9 @@ func runAmd64u(t *testing.T, m *wasm.Module, args ...uint64) uint64 {
 	cm, err := CompileModule(m)
 	if err != nil {
 		t.Fatalf("amd64 compile: %v", err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
 	}
 	return runCompiledAmd64u(t, cm, args...)
 }

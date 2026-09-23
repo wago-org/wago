@@ -597,6 +597,7 @@ func TestApplicationCorpusRuns(t *testing.T) {
 				if err != nil {
 					t.Fatalf("compile: %v", err)
 				}
+				defer compiled.Close()
 				got, err := runWagoCommand(m, compiled, stdin, true)
 				if err != nil {
 					t.Fatalf("run: %v (stdout=%q stderr=%q)", err, got.stdout, got.stderr)
@@ -637,6 +638,7 @@ func BenchmarkCommandExec(b *testing.B) {
 		if err != nil {
 			b.Fatalf("%s compile: %v", m.name(), err)
 		}
+		b.Cleanup(func() { _ = compiled.Close() })
 		stdin := commandInput(b, m)
 		b.Run(m.name(), func(b *testing.B) {
 			got, err := runWagoCommand(m, compiled, stdin, true)
@@ -654,6 +656,10 @@ func BenchmarkCommandExec(b *testing.B) {
 				}
 			}
 		})
+		if err := compiled.Close(); err != nil {
+			b.Fatal(err)
+		}
+		compiled = nil
 	}
 }
 

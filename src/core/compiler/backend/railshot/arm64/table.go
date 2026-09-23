@@ -183,9 +183,12 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))  // dst table offset
-	f.ld64(X10, SP, f.spillOff(d-2)) // src element offset
-	f.ld64(X11, SP, f.spillOff(d-1)) // n entries
+	countArg := f.s.back()
+	valueArg := f.s.prev(countArg)
+	dstArg := f.s.prev(valueArg)
+	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))    // dst table offset
+	f.ld64(X10, SP, f.spillOff(valueArg.st.slotIndex())) // src element offset
+	f.ld64(X11, SP, f.spillOff(countArg.st.slotIndex())) // n entries
 	f.canonicalizeTableOperand(X9, tableIdx)
 	// Element segment source indexes and lengths are always i32.
 	f.a.MovReg32(X10, X10)
@@ -232,9 +235,12 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))
-	f.ld64(X10, SP, f.spillOff(d-2))
-	f.ld64(X11, SP, f.spillOff(d-1))
+	countArg := f.s.back()
+	valueArg := f.s.prev(countArg)
+	dstArg := f.s.prev(valueArg)
+	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))
+	f.ld64(X10, SP, f.spillOff(valueArg.st.slotIndex()))
+	f.ld64(X11, SP, f.spillOff(countArg.st.slotIndex()))
 	f.canonicalizeTableOperand(X9, dstTableIdx)
 	f.canonicalizeTableOperand(X10, srcTableIdx)
 	if !f.tableAddr64(dstTableIdx) || !f.tableAddr64(srcTableIdx) {
@@ -280,18 +286,23 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	}
 	f.materializePendingLoads()
 	f.flush()
+	vec0 := f.allocFReg(0)
+	vec1 := f.allocFReg(maskOf(vec0))
 	d := f.depth()
+	countArg := f.s.back()
+	valueArg := f.s.prev(countArg)
+	dstArg := f.s.prev(valueArg)
 	valSlot := f.allocSpillSlots(runtime.TableEntryBytes / 8)
-	f.ld64(X9, SP, f.spillOff(d-3))
-	f.ld64(X12, SP, f.spillOff(d-2))
-	f.ld64(X11, SP, f.spillOff(d-1))
+	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))
+	f.ld64(X12, SP, f.spillOff(valueArg.st.slotIndex()))
+	f.ld64(X11, SP, f.spillOff(countArg.st.slotIndex()))
 	f.canonicalizeTableOperand(X9, tableIdx)
 	f.canonicalizeTableOperand(X11, tableIdx)
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
 	f.leaScaled(X9, X9, X11, 0, 0, true)
 	f.trapTableUnlessLE(X9, X13)
-	f.ld64(X9, SP, f.spillOff(d-3))
+	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))
 	f.canonicalizeTableOperand(X9, tableIdx)
 	f.tableEntryAddr(X9, X14)
 	// snapshotFuncrefDescriptor uses the register allocator internally. Keep the
@@ -299,7 +310,7 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	// cannot clobber the table.fill loop operands.
 	f.pinned = f.pinned.add(X9).add(X11)
 	f.snapshotFuncrefDescriptor(X12, valSlot)
-	f.fillTableEntries(X9, X11, valSlot)
+	f.fillTableEntries(X9, X11, valSlot, vec0, vec1)
 	f.pinned = f.pinned.remove(X11).remove(X9)
 	f.setDepth(d - 3)
 	return nil
@@ -309,16 +320,19 @@ func (f *fn) externrefTableFill(tableIdx uint32) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))
-	f.ld64(X12, SP, f.spillOff(d-2))
-	f.ld64(X11, SP, f.spillOff(d-1))
+	countArg := f.s.back()
+	valueArg := f.s.prev(countArg)
+	dstArg := f.s.prev(valueArg)
+	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))
+	f.ld64(X12, SP, f.spillOff(valueArg.st.slotIndex()))
+	f.ld64(X11, SP, f.spillOff(countArg.st.slotIndex()))
 	f.canonicalizeTableOperand(X9, tableIdx)
 	f.canonicalizeTableOperand(X11, tableIdx)
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
 	f.leaScaled(X9, X9, X11, 0, 0, true)
 	f.trapTableUnlessLE(X9, X13)
-	f.ld64(X9, SP, f.spillOff(d-3))
+	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))
 	f.typedTableEntryAddr(X9, X14, tableIdx)
 	f.fillExternrefEntries(X9, X11, X12)
 	f.setDepth(d - 3)
@@ -335,6 +349,8 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	}
 	f.materializePendingLoads()
 	f.flush()
+	vec0 := f.allocFReg(0)
+	vec1 := f.allocFReg(maskOf(vec0))
 	delta := f.materialize(f.popValue())
 	f.canonicalizeTableOperand(delta, tableIdx)
 	f.pinned = f.pinned.add(delta)
@@ -370,7 +386,7 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	dst := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old).add(nw))
 	f.a.MovReg32(dst, old)
 	f.tableEntryAddr(dst, tbl)
-	f.fillTableEntries(dst, delta, valSlot)
+	f.fillTableEntries(dst, delta, valSlot, vec0, vec1)
 	f.st32(tbl, 0, nw)
 	f.pinned = f.pinned.remove(nw).remove(old).remove(tbl)
 	done := f.a.Branch()
@@ -584,14 +600,14 @@ func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {
 	f.patchBranch26(ready, f.a.Len())
 }
 
-func (f *fn) fillTableEntries(dst, count Reg, slot int) {
+func (f *fn) fillTableEntries(dst, count Reg, slot int, vec0, vec1 Reg) {
 	done := f.zeroBranch(count, true, true)
 	// Snapshot the 32-byte descriptor once. Reloading four words from the spill
 	// slot for every table element adds unnecessary stack traffic to large fills.
-	f.a.LdrQ(X16, SP, f.spillOff(slot))
-	f.a.LdrQ(X17, SP, f.spillOff(slot)+16)
+	f.a.LdrQ(vec0, SP, f.spillOff(slot))
+	f.a.LdrQ(vec1, SP, f.spillOff(slot)+16)
 	loop := f.a.Len()
-	f.a.StpQ(X16, X17, dst, 0)
+	f.a.StpQ(vec0, vec1, dst, 0)
 	f.leaDisp(dst, dst, runtime.TableEntryBytes, true)
 	f.a.SubsImm64(count, count, 1) // count-- and set flags (was AluRI(5,count,1,true))
 	f.patchBranch19(f.a.Bcond(condNE), loop)

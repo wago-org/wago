@@ -32,6 +32,7 @@ var (
 	hostcallWasm    = mustRead("../../tests/fixtures/bench/hostcall.wasm")     // returning host import env.host(i32)->i32
 )
 
+// BenchmarkCompile_wago includes decoding, validation, code generation, and release.
 func BenchmarkCompile_wago(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -42,7 +43,11 @@ func BenchmarkCompile_wago(b *testing.B) {
 		if err := wasm.ValidateModule(m); err != nil {
 			b.Fatal(err)
 		}
-		if _, err := benchCompileModule(m); err != nil {
+		cm, err := benchCompileModule(m)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := cm.Close(); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -74,6 +79,7 @@ func BenchmarkInstantiate_wago(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	b.Cleanup(func() { _ = c.Close() })
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		in, err := wago.Instantiate(c, wago.InstantiateOptions{})
@@ -88,7 +94,11 @@ func BenchmarkInstantiate_wazero(b *testing.B) {
 	ctx := context.Background()
 	r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
 	defer r.Close(ctx)
-	cm, _ := r.CompileModule(ctx, fibWasm)
+	cm, err := r.CompileModule(ctx, fibWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer cm.Close(ctx)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		mod, err := r.InstantiateModule(ctx, cm, wazero.NewModuleConfig().WithName(""))
@@ -112,6 +122,7 @@ func wagoSetup(b *testing.B, wasmBytes []byte, export string) (func(n int32) int
 	if err != nil {
 		b.Fatal(err)
 	}
+	b.Cleanup(func() { _ = cm.Close() })
 	localIdx := -1
 	for i := range m.Exports {
 		if m.Exports[i].Index.Kind == wasm.ExternFunc && m.Exports[i].Name == export {
@@ -144,6 +155,13 @@ func wagoSetup(b *testing.B, wasmBytes []byte, export string) (func(n int32) int
 		b.Fatal(err)
 	}
 	entry := base + uintptr(cm.Entry[localIdx])
+	if err := cm.Close(); err != nil {
+		runtime.Unmap(mem)
+		ar.Close()
+		jm.Close()
+		eng.Close()
+		b.Fatal(err)
+	}
 	serArgs := ar.Alloc(16)
 	results := ar.Alloc(16)
 	trap := ar.Alloc(runtime.TrapBufferBytes)
@@ -164,6 +182,7 @@ func wazeroSetup(b *testing.B, wasmBytes []byte, export string) (api.Function, f
 	r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
 	mod, err := r.Instantiate(ctx, wasmBytes)
 	if err != nil {
+		r.Close(ctx)
 		b.Fatal(err)
 	}
 	return mod.ExportedFunction(export), func() { r.Close(ctx) }
@@ -493,6 +512,7 @@ func benchmarkExecHostRoundtripWago(b *testing.B, callback any) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	defer c.Close()
 	imports := wago.NewImports()
 	imports.HostFunc("env", "host", callback).Params(wago.ValI32).Results(wago.ValI32)
 	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
@@ -544,11 +564,12 @@ func globalBenchInstance(b *testing.B) (*wago.Instance, func()) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	b.Cleanup(func() { _ = c.Close() })
 	in, err := wago.Instantiate(c, wago.InstantiateOptions{})
 	if err != nil {
 		b.Fatal(err)
 	}
-	return in, func() { in.Close() }
+	return in, func() { in.Close(); c.Close() }
 }
 
 func BenchmarkExecGlobalGet_wago(b *testing.B) {

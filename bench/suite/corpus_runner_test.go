@@ -131,8 +131,12 @@ func runCorpusStage(t *testing.T, m corpusModule, stage, export, bounds string) 
 		return
 	}
 	if stage == "Compile" {
-		if _, err := benchCompileModule(decoded); err != nil {
+		cm, err := benchCompileModule(decoded)
+		if err != nil {
 			t.Fatalf("compile: %v", err)
+		}
+		if err := cm.Close(); err != nil {
+			t.Fatal(err)
 		}
 		return
 	}
@@ -144,6 +148,7 @@ func runCorpusStage(t *testing.T, m corpusModule, stage, export, bounds string) 
 	if err != nil {
 		t.Fatalf("compile full: %v", err)
 	}
+	defer compiled.Close()
 	if stage == "CompileFull" {
 		return
 	}

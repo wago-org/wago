@@ -110,14 +110,19 @@ func AcquireEngineWithStackBytes(stackBytes uint64) (*Engine, error) {
 	return NewEngineWithStackBytes(stackBytes)
 }
 
-// ReleaseEngine returns e to the bounded cache or unmaps its stack if the cache
-// is already occupied.
+// ReleaseEngine transfers an idle Engine to the bounded cache, or closes it.
+// All native calls, parked continuations, and borrowed stack addresses must
+// have been released before this ownership transfer.
 func ReleaseEngine(e *Engine) error {
 	if e == nil {
 		return nil
 	}
 	engineCache.Lock()
 	if engineCache.e == nil {
+		if !e.prepareIdleStackForCache() {
+			engineCache.Unlock()
+			return e.Close()
+		}
 		engineCache.e = e
 		engineCache.Unlock()
 		return nil
