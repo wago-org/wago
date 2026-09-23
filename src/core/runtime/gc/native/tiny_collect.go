@@ -369,9 +369,6 @@ func (c *Collector) tinyCollectFull(roots RootSet) error {
 }
 
 func (c *Collector) tinyCollectNonIncremental(roots RootSet) error {
-	if err := c.tinyCountTransientRoots(roots); err != nil {
-		return err
-	}
 	if c.tinyGC.state != tinyIdle {
 		// An unfinished cycle can leave marks from any earlier epoch. A
 		// restart must invalidate all of them before reusing an epoch.
@@ -426,9 +423,6 @@ func (c *Collector) tinyCollectNonIncremental(roots RootSet) error {
 func (c *Collector) tinyStartMark(roots RootSet) error {
 	if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle != 0 {
 		return errors.New("gc: Tiny bounded poison sweep must complete before collection restart")
-	}
-	if err := c.tinyCountTransientRoots(roots); err != nil {
-		return c.failTinyTelemetryCycle(err)
 	}
 	if c.tinyGC.state != tinyIdle {
 		// An unfinished cycle can leave marks from any earlier epoch. A
@@ -573,8 +567,8 @@ func (c *Collector) tinyVisitTransientRoot(class RootClass, r Ref) bool {
 	return c.VisitRootRef(r)
 }
 
-func (c *Collector) tinyCountTransientRoots(roots RootSet) error {
-	c.rootMarkMode = rootMarkTinyCount
+func (c *Collector) tinyMarkTransientRoots(roots RootSet) error {
+	c.rootMarkMode = rootMarkTinyBounded
 	c.tinyGC.lastStepWork.refSlots = 0
 	complete, err := c.tinyWalkTransientRoots(roots)
 	c.finishDirectRootMark()
@@ -588,25 +582,8 @@ func (c *Collector) tinyCountTransientRoots(roots RootSet) error {
 	return nil
 }
 
-func (c *Collector) tinyMarkTransientRoots(roots RootSet) error {
-	c.rootMarkMode = rootMarkTinyBounded
-	complete, err := c.tinyWalkTransientRoots(roots)
-	c.finishDirectRootMark()
-	c.tinyGC.lastStepWork.refSlots = 0
-	if err != nil {
-		return err
-	}
-	if !complete {
-		return errors.New("gc: Tiny transient root set changed during bounded enumeration")
-	}
-	return nil
-}
-
 func (c *Collector) tinyDrainRootBudget(roots RootSet) (bool, error) {
 	if c.tinyGC.rootPhase == tinyRootsTransient {
-		if err := c.tinyCountTransientRoots(roots); err != nil {
-			return false, c.failTinyTelemetryCycle(err)
-		}
 		if err := c.tinyMarkTransientRoots(roots); err != nil {
 			return false, c.failTinyTelemetryCycle(err)
 		}
