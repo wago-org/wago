@@ -339,6 +339,9 @@ func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
 }
 
 func (v *moduleValidator) validateModule() error {
+	if len(v.m.FuncTypes) != len(v.m.Code) {
+		return v.err(ErrUnknownFunc, "function and code section counts differ")
+	}
 	if v.m.UsesCompactImports && !v.features.CompactImports {
 		return v.err(ErrUnsupportedFeature, "compact imports")
 	}
