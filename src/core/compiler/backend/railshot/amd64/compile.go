@@ -3413,6 +3413,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if f.memSizeReg != regNone {
 		maxPins--
 	}
+	if hasCall && touchesMemory && !guardMode && maxPins > 4 {
+		// Explicit bounds checks need two transient registers around memory-heavy
+		// call staging in addition to x86's fixed scratch floor. With five or more
+		// local pins, ripgrep's stable small-sort silently corrupted a pinned value
+		// before a memcmp call and eventually cycled dlmalloc's free tree.
+		maxPins = 4
+	}
 	if hints.hasDeepVariableShift() {
 		maxPins = gpPinLimit(f.reserved, 9)
 	}

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math/rand"
 	"path/filepath"
 
 	"github.com/wago-org/wago"
@@ -28,6 +29,9 @@ func commandRuntimeImports(m corpusModule, preopenDir string, stdin []byte, stdo
 			Args: commandArgs(m), Stdin: bytes.NewReader(stdin),
 			Stdout: stdout, Stderr: stderr,
 			Clocks: fixedCommandClock{},
+			// Keep guest hash seeds reproducible. Seed 5 also exercises AMD64's
+			// explicit-bounds register pressure in ripgrep's stable small-sort.
+			Rand: rand.New(rand.NewSource(5)),
 		}
 		if preopenDir != "" {
 			cfg.Mounts = []p1.Preopen{{GuestPath: "/", HostPath: preopenDir, Read: true, Write: true, MutateDirectory: true}}
