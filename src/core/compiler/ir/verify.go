@@ -751,6 +751,9 @@ func verifyGlobalAccess(m *Module, id InstID, in *Inst, got wasm.ValType) error 
 	if want != got {
 		return fmt.Errorf("inst %d global type %s, want %s", id, got, want)
 	}
+	if in.Op == OpGlobalSet && !m.Globals[idx].Mutable {
+		return fmt.Errorf("inst %d writes immutable global %d", id, idx)
+	}
 	return nil
 }
 
