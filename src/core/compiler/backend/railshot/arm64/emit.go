@@ -284,6 +284,12 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		// explicit-mode miscompile: the i64 bit-buffer OR). The on-stack node tracks
 		// the spill; consumeBlockBelow erases it and applyALU releases its register.
 		// Mirrors the spill-fallback in the relocate branch above.
+	} else if right.st.kind == stMemRef && dest != regNone && right.st.reg == dest {
+		// The LHS will overwrite the register that still carries this deferred
+		// load's address. Read the RHS first and keep its ordinary tracked storage
+		// so pressure while condensing the LHS can still spill it safely.
+		f.materialize(right)
+		f.stats.peep("memref-dest-alias")
 	} else if (right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) && dest != regNone && right.st.reg == dest {
 		// In-place self-update (e.g. `x = (a<<b) | x`): the old RHS lives in dest,
 		// which computing the LHS will overwrite. Spill it to a slot so applyALU
