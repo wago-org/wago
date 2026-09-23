@@ -38,21 +38,19 @@ func (c *Collector) Verify(roots RootSet) error {
 			return err
 		}
 		if hdr.Size != e.size {
-			return fmt.Errorf("gc: handle %d size mismatch", h)
+			return errors.New("gc: object size mismatch")
 		}
+		var sz uint32
 		if d.Kind == KindStruct {
-			sz, _ := StructSize(d)
-			if sz != hdr.Size {
-				return fmt.Errorf("gc: struct %d size mismatch", h)
-			}
+			sz, err = StructSize(d)
 		} else {
-			sz, err := ArraySize(d, hdr.Aux)
-			if err != nil || sz != hdr.Size {
-				return fmt.Errorf("gc: array %d size mismatch", h)
-			}
+			sz, err = ArraySize(d, hdr.Aux)
 		}
-		if hdr.Flags&FlagPointerFree != 0 != d.PointerFree() {
-			return fmt.Errorf("gc: pointer-free header mismatch for handle %d", h)
+		if err != nil || sz != hdr.Size {
+			return errors.New("gc: object size mismatch")
+		}
+		if (hdr.Flags&FlagPointerFree == 0) != d.HasRefs {
+			return errors.New("gc: pointer-free header mismatch")
 		}
 		if err := c.verifyEdges(r, d); err != nil {
 			return err
@@ -309,11 +307,11 @@ func (c *Collector) verifyCardMetadata() error {
 			seenObjectCards[pos] = true
 			card := c.objectCards[pos]
 			if card.handle != h || (c.handles[h].space != spaceOld && c.handles[h].space != spaceLarge) {
-				return fmt.Errorf("gc: object card slot %d owner=%d, want live old/large handle %d", slot, card.handle, h)
+				return errors.New("gc: object card owner=mismatch")
 			}
 			payloadBytes := c.handles[h].size - PayloadOffset
 			if card.end < card.index || card.index >= payloadBytes || card.end >= payloadBytes || card.index%c.cardBytes != 0 {
-				return fmt.Errorf("gc: invalid object card range %d..%d for handle %d payload %d", card.index, card.end, h, payloadBytes)
+				return errors.New("gc: invalid object card range")
 			}
 			if card.end != payloadBytes-1 && (card.end+1)%c.cardBytes != 0 {
 				return fmt.Errorf("gc: unaligned object card end %d for handle %d", card.end, h)
