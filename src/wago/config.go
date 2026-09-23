@@ -849,7 +849,7 @@ func (c *RuntimeConfig) Validate() error {
 		return fmt.Errorf("wago: bmi2-rorx optimization requires BMI2 CPU support")
 	}
 	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
-		return fmt.Errorf("wago: AMD64 backend requires AVX, SSSE3, SSE4.1, and SSE4.2 CPU features with OS AVX support")
+		return fmt.Errorf("wago: native code requires SIMD CPU features")
 	}
 	supported := platformCoreFeatures()
 	if unsupported := c.features &^ supported; unsupported != 0 {
