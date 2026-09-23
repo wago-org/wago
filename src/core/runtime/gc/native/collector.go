@@ -159,6 +159,8 @@ type Collector struct {
 	telemetryRootClass  RootClass
 	closed              bool
 	checkedHandles      *[]uint64
+	// Keep optional proof state last so existing collector field offsets stay fixed.
+	lastCardBounds objectCardBounds
 }
 
 const defaultNursery = 64 << 10
@@ -234,6 +236,7 @@ func (c *Collector) Close() {
 	c.subtypeIntervals = nil
 	c.promotionScratch = nil
 	c.remembered = nil
+	c.lastCardBounds = objectCardBounds{}
 	c.objectCards = nil
 	c.freeObjectCardSlot = 0
 	c.slotCards = nil

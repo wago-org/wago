@@ -62,6 +62,7 @@ func (c *Collector) scanRememberedCards(h uint32) {
 		// back. The backing records remain intact for strict Verify diagnostics,
 		// but later writes and complete metadata clearing cannot follow a stale or
 		// wrong-owner link.
+		c.lastCardBounds = objectCardBounds{}
 		e.cardSlot = 0
 		c.cardFallback = true
 		c.scanObjectRefs(h, c.markNurseryRef)
