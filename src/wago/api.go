@@ -1455,8 +1455,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			_ = cm.CodeImage.Close()
 		}
 	}()
-	if err := checkCompiledAVXRequirements(cm.RequiresAVX2, cm.RequiresAVX512); err != nil {
-		return nil, fmt.Errorf("compile: %w", err)
+	if compiledAVXFeatureMask != 0 {
+		if err := checkCompiledAVXRequirements(cm.RequiresAVX2, cm.RequiresAVX512); err != nil {
+			return nil, fmt.Errorf("compile: %w", err)
+		}
 	}
 	if cfg.maxNativeCodeBytes != 0 && uint64(len(cm.Code)) > cfg.maxNativeCodeBytes {
 		return nil, &wruntime.ResourceLimitError{
@@ -1950,7 +1952,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			}
 			if table64 {
 				// OffsetInit's compact Base/HasGlobal forms are i32-only. Preserve the
-				// validated i64 expression so codec version 2 and instantiation retain every bit.
+				// validated i64 expression so codec version 3 and instantiation retain every bit.
 				if len(e.Mode.Offset.BodyBytes) != 0 {
 					init.Offset.Expr = append([]byte(nil), e.Mode.Offset.BodyBytes...)
 				} else {
@@ -2003,7 +2005,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if memory64 {
 			// OffsetInit's compact Base/HasGlobal forms are intentionally i32-only.
 			// Preserve the already validated i64 program in the existing Expr field so
-			// codec version 2 retains the existing expression field while instantiation preserves all 64 address bits.
+			// codec version 3 retains the existing expression field while instantiation preserves all 64 address bits.
 			if len(d.Mode.Offset.BodyBytes) != 0 {
 				init.Offset.Expr = append([]byte(nil), d.Mode.Offset.BodyBytes...)
 			} else {
@@ -2887,9 +2889,6 @@ func (c *Compiled) FuncDebugName(funcIdx uint32) string {
 func (c *Compiled) validate() error {
 	if c == nil {
 		return fmt.Errorf("compiled module is nil")
-	}
-	if err := checkCompiledAVXRequirements(c.requiresAVX2, c.requiresAVX512); err != nil {
-		return err
 	}
 	if c.NumImports < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative NumImports %d", c.NumImports)
@@ -4021,7 +4020,7 @@ const wagoMagic = "WAGO"
 // so incompatible development layouts were consolidated instead of consuming
 // public version numbers. The codec never serializes live owners, collector
 // handles, mappings, tokens, active handlers, thunk addresses, or store identity.
-const wagoVersion = 2
+const wagoVersion = 3
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 // Published modules serialize their frozen execution metadata; edits to the
@@ -4258,6 +4257,11 @@ func finishDecodedCompiled(decoded *Compiled) error {
 	}
 	if decoded.requiresBMI2 && !hostSupportsBMI2() {
 		return fmt.Errorf("wago: compiled module requires BMI2 CPU features unavailable on this host")
+	}
+	if compiledAVXFeatureMask != 0 {
+		if err := checkCompiledAVXRequirements(decoded.requiresAVX2, decoded.requiresAVX512); err != nil {
+			return err
+		}
 	}
 	return nil
 }

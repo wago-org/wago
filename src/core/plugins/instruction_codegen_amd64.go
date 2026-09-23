@@ -32,6 +32,9 @@ func prepareMachineCode(spec InstructionSpec) (codegen.Lowering, error) {
 	if lowering.Features & ^(amd64codegen.FeatureAVX2|amd64codegen.FeatureAVX512) != 0 {
 		return nil, fmt.Errorf("wago: instruction %q.%q declares unsupported amd64 features %#x", spec.Module, spec.Name, lowering.Features)
 	}
+	if !allowAVXPluginLowerings && lowering.Features != 0 {
+		return nil, fmt.Errorf("wago: instruction %q.%q declares AVX features unavailable in minimal TinyGo", spec.Module, spec.Name)
+	}
 	if err := validateMachineCodeWidths(spec, "amd64"); err != nil {
 		return nil, err
 	}

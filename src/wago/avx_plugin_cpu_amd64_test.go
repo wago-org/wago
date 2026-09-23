@@ -3,8 +3,6 @@
 package wago
 
 import (
-	"bytes"
-	"encoding/binary"
 	"strings"
 	"testing"
 
@@ -58,15 +56,10 @@ func TestPluginAVXLegacyArtifactRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var marker [8]byte
-	binary.LittleEndian.PutUint64(marker[:], compiledCPURequirementsV1)
-	if count := bytes.Count(blob, marker[:]); count != 1 {
-		t.Fatalf("CPU requirements marker count = %d, want 1", count)
-	}
 	legacy := append([]byte(nil), blob...)
-	legacy[bytes.Index(legacy, marker[:])+6] &^= 0x10
+	legacy[4] = 2
 	var loaded Compiled
-	if err := loaded.UnmarshalBinary(legacy); err == nil || !strings.Contains(err.Error(), "lacks CPU requirements metadata") {
+	if err := loaded.UnmarshalBinary(legacy); err == nil || !strings.Contains(err.Error(), "version 2 unsupported") {
 		t.Fatalf("legacy artifact error = %v", err)
 	}
 }

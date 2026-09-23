@@ -22,7 +22,6 @@ const (
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
 	// low range; these bits avoid growing artifacts.
-	compiledCPURequirementsV1             uint64 = 1 << 52
 	compiledCPUFeatureAVX2                uint64 = 1 << 53
 	compiledCPUFeatureAVX512              uint64 = 1 << 54
 	compiledGCExecutionI31Product         uint64 = 1 << 55
@@ -369,12 +368,13 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	if c.requiresBMI2 {
 		required |= compiledCPUFeatureBMI2
 	}
-	required |= compiledCPURequirementsV1
-	if c.requiresAVX2 {
-		required |= compiledCPUFeatureAVX2
-	}
-	if c.requiresAVX512 {
-		required |= compiledCPUFeatureAVX512
+	if compiledAVXFeatureMask != 0 {
+		if c.requiresAVX2 {
+			required |= compiledCPUFeatureAVX2
+		}
+		if c.requiresAVX512 {
+			required |= compiledCPUFeatureAVX512
+		}
 	}
 	if c.needsFuncRefContextHeader {
 		required |= compiledFuncRefContextHeader
@@ -994,17 +994,16 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	if err != nil {
 		return err
 	}
-	if required&compiledCPURequirementsV1 == 0 {
-		return fmt.Errorf("compiled artifact lacks CPU requirements metadata")
-	}
 	gcExecution := required & compiledGCExecutionMask
 	c.requiresBMI2 = required&compiledCPUFeatureBMI2 != 0
-	c.requiresAVX2 = required&compiledCPUFeatureAVX2 != 0
-	c.requiresAVX512 = required&compiledCPUFeatureAVX512 != 0
+	if compiledAVXFeatureMask != 0 {
+		c.requiresAVX2 = required&compiledCPUFeatureAVX2 != 0
+		c.requiresAVX512 = required&compiledCPUFeatureAVX512 != 0
+	}
 	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2 | compiledCPURequirementsV1 | compiledCPUFeatureAVX2 | compiledCPUFeatureAVX512))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2 | compiledAVXFeatureMask))
 	genericNativeGC := gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0
 	if genericNativeGC || c.hasCollectorReferenceCallBoundary() {
 		label := "native GC call-boundary"

@@ -1,9 +1,6 @@
 package wago
 
-import (
-	"fmt"
-	"sync"
-)
+import "sync"
 
 // simdHostFeaturesSupported reports whether generated SIMD code can execute on
 // this host. On amd64, the railshot SIMD backend emits VEX.128 instructions and
@@ -58,16 +55,6 @@ func cachedAVX2HostFeatures() bool {
 func cachedAVX512HostFeatures() bool {
 	avxHostFeaturesOnce.Do(detectAVXHostFeatures)
 	return avx512HostFeaturesOK
-}
-
-func checkCompiledAVXRequirements(avx2, avx512 bool) error {
-	if avx2 && !avx2HostFeaturesSupported() {
-		return fmt.Errorf("wago: compiled module requires AVX2 CPU features unavailable on this host")
-	}
-	if avx512 && !avx512HostFeaturesSupported() {
-		return fmt.Errorf("wago: compiled module requires AVX-512 CPU features unavailable on this host")
-	}
-	return nil
 }
 
 func amd64AVX2FeaturesSupported(ecx, xcr0, ebx uint32) bool {
