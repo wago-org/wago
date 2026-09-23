@@ -6,6 +6,36 @@ import (
 	"unsafe"
 )
 
+func TestValidatorRejectsWrappedU32Indexes(t *testing.T) {
+	const invalid = ^uint32(0)
+	v := moduleValidator{m: &Module{
+		FuncTypes: []TypeIdx{{}}, Tables: []Table{{}}, Memories: []MemType{{}},
+		Globals: []Global{{}}, Tags: []TagType{{}},
+	}}
+	for _, kind := range []ExternKind{ExternFunc, ExternTable, ExternMem, ExternGlobal, ExternTag} {
+		if v.validExternIdx(ExternIdx{Kind: kind, Index: invalid}) {
+			t.Errorf("external kind %d accepted index %d", kind, invalid)
+		}
+	}
+	if _, err := v.validateElemPayload(Elem{Kind: ElemKind{Kind: ElemFuncs, Funcs: []FuncIdx{FuncIdx(invalid)}}}); err == nil {
+		t.Error("element payload accepted an unknown function")
+	}
+	if _, err := v.validateDirectElemPayload(directElem{kind: ElemFuncs, hasFuncs: true, maxFunc: FuncIdx(invalid)}); err == nil {
+		t.Error("byte-backed element payload accepted an unknown function")
+	}
+}
+
+func BenchmarkValidatorExternIndexBounds(b *testing.B) {
+	v := moduleValidator{m: &Module{Memories: []MemType{{}}}}
+	idx := ExternIdx{Kind: ExternMem, Index: 0}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if !v.validExternIdx(idx) {
+			b.Fatal("valid memory index was rejected")
+		}
+	}
+}
+
 func constFor(t ValType) Instruction {
 	switch {
 	case equalValType(t, I64):

@@ -2,6 +2,30 @@ package shared
 
 import "testing"
 
+func TestGlobalHintAccumulatorRejectsWrappedU32Index(t *testing.T) {
+	var a GlobalHintAccumulator
+	a.Reset(1)
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("global hint accumulator panicked: %v", r)
+		}
+	}()
+	a.Add(^uint32(0), 1)
+	a.MarkEligible(^uint32(0))
+	if got := a.AppendTo(nil); len(got) != 0 {
+		t.Fatalf("invalid index added %d hints", len(got))
+	}
+}
+
+func BenchmarkGlobalHintAccumulatorTouch(b *testing.B) {
+	var a GlobalHintAccumulator
+	a.Reset(4)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		a.Add(uint32(i&3), 1)
+	}
+}
+
 func TestGlobalHintAccumulatorExclusiveScratchAndFallback(t *testing.T) {
 	var words [32]uint32
 	for i := range words {

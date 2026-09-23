@@ -8,6 +8,39 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func TestModuleFactsRejectsWrappedU32Indexes(t *testing.T) {
+	const invalid = ^uint32(0)
+	for _, tc := range []struct {
+		name string
+		kind wasm.InstrKind
+	}{
+		{"table.grow", wasm.InstrTableGrow},
+		{"memory.grow", wasm.InstrMemoryGrow},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("fact collection panicked: %v", r)
+				}
+			}()
+			if err := recordModuleFact(tc.kind, invalid, NewModuleFacts(1, 1)); err == nil {
+				t.Fatal("fact collection accepted an unknown index")
+			}
+		})
+	}
+	t.Run("export", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("export analysis panicked: %v", r)
+			}
+		}()
+		m := &wasm.Module{Tables: []wasm.Table{{}}, Exports: []wasm.Export{{Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: invalid}}}}
+		if _, err := AnalyzeModuleFacts(m); err == nil {
+			t.Fatal("export analysis accepted an unknown table")
+		}
+	})
+}
+
 func TestNewModuleFactsVectorsAreDisjoint(t *testing.T) {
 	facts := NewModuleFacts(2, 3)
 	facts.TableGrowUsed[0] = true
