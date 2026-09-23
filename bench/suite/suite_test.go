@@ -352,7 +352,7 @@ func BenchmarkValidateWorkers(b *testing.B) {
 	}
 }
 
-// BenchmarkCompile times native codegen for an already decoded+validated module.
+// BenchmarkCompile includes native codegen and result release; decode and validation are excluded.
 func BenchmarkCompile(b *testing.B) {
 	eachModule(b, "Compile", func(b *testing.B, m corpusModule) {
 		mod := m.decoded(b)
@@ -361,7 +361,11 @@ func BenchmarkCompile(b *testing.B) {
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := benchCompileModule(mod); err != nil {
+			cm, err := benchCompileModule(mod)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if err := cm.Close(); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -378,7 +382,11 @@ func BenchmarkCompileCompact(b *testing.B) {
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := benchCompileModuleCompact(mod); err != nil {
+			cm, err := benchCompileModuleCompact(mod)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if err := cm.Close(); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -386,7 +394,7 @@ func BenchmarkCompileCompact(b *testing.B) {
 }
 
 // BenchmarkCompileWorkers measures the latency of one backend module compile at
-// forced worker counts. Decode and validation happen outside the timed loop.
+// forced worker counts, including result release. Decode and validation are excluded.
 // This intentionally does not use b.RunParallel: that would measure independent
 // multi-module throughput rather than intra-module compile latency.
 func BenchmarkCompileWorkers(b *testing.B) {
@@ -406,30 +414,35 @@ func BenchmarkCompileWorkers(b *testing.B) {
 			for _, workers := range []int{1, 2, 4, 8} {
 				b.Run(fmt.Sprintf("p%d", workers), func(b *testing.B) {
 					b.ReportAllocs()
-					var cm *benchCompiledModule
+					var codeBytes int
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
-						var err error
-						cm, err = benchCompileModuleWorkers(mod, workers)
+						cm, err := benchCompileModuleWorkers(mod, workers)
 						if err != nil {
+							b.Fatal(err)
+						}
+						codeBytes = len(cm.Code)
+						if err := cm.Close(); err != nil {
 							b.Fatal(err)
 						}
 					}
 					b.StopTimer()
-					if cm != nil {
-						b.ReportMetric(float64(len(cm.Code)), "code-B")
-					}
+					b.ReportMetric(float64(codeBytes), "code-B")
 				})
 			}
 		})
 	}
 }
 
-// BenchmarkCompileFull times the end-to-end decode+validate+compile entry point.
+// BenchmarkCompileFull times decode, validation, compilation, and result release.
 func BenchmarkCompileFull(b *testing.B) {
 	eachModule(b, "CompileFull", func(b *testing.B, m corpusModule) {
 		for i := 0; i < b.N; i++ {
-			if _, err := wago.Compile(nil, m.bytes); err != nil {
+			cm, err := wago.Compile(nil, m.bytes)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if err := cm.Close(); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -439,6 +452,9 @@ func BenchmarkCompileFull(b *testing.B) {
 			b.Fatal(err)
 		}
 		b.ReportMetric(float64(compiled.CodeSize()), "code-B")
+		if err := compiled.Close(); err != nil {
+			b.Fatal(err)
+		}
 	})
 }
 
@@ -462,17 +478,18 @@ func BenchmarkCompileFullOptimizationAblation(b *testing.B) {
 		b.Run(m.name(), func(b *testing.B) {
 			run := func(b *testing.B, cfg *wago.RuntimeConfig) {
 				b.ReportAllocs()
-				var cm *wago.Compiled
+				var codeBytes int
 				for i := 0; i < b.N; i++ {
-					var err error
-					cm, err = wago.Compile(cfg, m.bytes)
+					cm, err := wago.Compile(cfg, m.bytes)
 					if err != nil {
 						b.Fatal(err)
 					}
+					codeBytes = cm.CodeSize()
+					if err := cm.Close(); err != nil {
+						b.Fatal(err)
+					}
 				}
-				if cm != nil {
-					b.ReportMetric(float64(cm.CodeSize()), "code-B")
-				}
+				b.ReportMetric(float64(codeBytes), "code-B")
 			}
 
 			b.Run("default", func(b *testing.B) { run(b, base) })
@@ -512,17 +529,18 @@ func BenchmarkCompileFullWorkers(b *testing.B) {
 				b.Run(mode.name, func(b *testing.B) {
 					b.ReportAllocs()
 					cfg := wago.NewRuntimeConfig().WithFunctionWorkers(mode.workers)
-					var cm *wago.Compiled
+					var codeBytes int
 					for i := 0; i < b.N; i++ {
-						var err error
-						cm, err = wago.Compile(cfg, m.bytes)
+						cm, err := wago.Compile(cfg, m.bytes)
 						if err != nil {
 							b.Fatal(err)
 						}
+						codeBytes = cm.CodeSize()
+						if err := cm.Close(); err != nil {
+							b.Fatal(err)
+						}
 					}
-					if cm != nil {
-						b.ReportMetric(float64(cm.CodeSize()), "code-B")
-					}
+					b.ReportMetric(float64(codeBytes), "code-B")
 				})
 			}
 		})
@@ -548,7 +566,11 @@ func BenchmarkCompileMultiModuleThroughput(b *testing.B) {
 					cfg := wago.NewRuntimeConfig().WithFunctionWorkers(mode.workers)
 					b.RunParallel(func(pb *testing.PB) {
 						for pb.Next() {
-							if _, err := wago.Compile(cfg, m.bytes); err != nil {
+							cm, err := wago.Compile(cfg, m.bytes)
+							if err != nil {
+								b.Fatal(err)
+							}
+							if err := cm.Close(); err != nil {
 								b.Fatal(err)
 							}
 						}
@@ -566,6 +588,7 @@ func BenchmarkInstantiate(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
+		b.Cleanup(func() { _ = c.Close() })
 		imports := hostStubs(c)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -656,10 +679,16 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 		if err != nil {
 			b.Fatalf("%s compile: %v", m.name(), err)
 		}
+		b.Cleanup(func() { _ = c.Close() })
 		in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: hostStubs(c)})
 		if err != nil {
 			b.Fatalf("%s instantiate: %v", m.name(), err)
 		}
+		b.Cleanup(func() {
+			if in != nil {
+				_ = in.Close()
+			}
+		})
 		// wago has no start section, so AssemblyScript modules expose their
 		// init (global setup) as an export the host calls once before exec.
 		if m.Init != "" {
@@ -702,6 +731,11 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 			})
 		}
 		in.Close()
+		in = nil
+		if err := c.Close(); err != nil {
+			b.Fatal(err)
+		}
+		c = nil
 	}
 }
 
@@ -726,8 +760,17 @@ func BenchmarkExecParallel(b *testing.B) {
 			if err != nil {
 				b.Fatalf("%s compile: %v", m.name(), err)
 			}
+			b.Cleanup(func() { _ = c.Close() })
 			workers := runtime.GOMAXPROCS(0)
 			instances := make([]*wago.Instance, workers)
+			b.Cleanup(func() {
+				for _, in := range instances {
+					if in != nil {
+						_ = in.Close()
+					}
+				}
+				_ = c.Close()
+			})
 			for i := range instances {
 				instances[i], err = wago.Instantiate(c, wago.InstantiateOptions{Imports: hostStubs(c)})
 				if err != nil {
@@ -775,11 +818,16 @@ func BenchmarkExecParallel(b *testing.B) {
 					})
 				})
 			}
-			for _, in := range instances {
+			for i, in := range instances {
 				if err := in.Close(); err != nil {
 					b.Fatalf("%s close: %v", m.name(), err)
 				}
+				instances[i] = nil
 			}
+			if err := c.Close(); err != nil {
+				b.Fatal(err)
+			}
+			c = nil
 		}
 	}
 }

@@ -77,6 +77,9 @@ func TestI64ShiftCountBoundaries(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if cm.CodeImage != nil {
+				defer cm.CodeImage.Close()
+			}
 			for _, count := range shiftBoundaryCounts {
 				for _, x := range []uint64{0x8123456789abcdef, 0x7123456789abcdef} {
 					if got, want := runCompiledAmd64u(t, cm, x, count), shiftResult(64, op, x, count); got != want {
@@ -114,6 +117,9 @@ func TestNestedShiftDivisionPressure(t *testing.T) {
 					cm, err := CompileModuleWith(m, CompileOptions{Stats: stats})
 					if err != nil {
 						t.Fatal(err)
+					}
+					if cm.CodeImage != nil {
+						defer cm.CodeImage.Close()
 					}
 					s := stats.Funcs[0]
 					if s.Spills == 0 || s.Reloads == 0 {

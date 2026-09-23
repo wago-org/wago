@@ -924,7 +924,11 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.flush()
 	d := f.depth()
 	if p > 0 {
-		f.a.Load32(RAX, RSP, f.spillOff(d-p)) // first param
+		first := f.s.back()
+		for i := 1; i < p; i++ {
+			first = first.prev
+		}
+		f.a.Load32(RAX, RSP, f.spillOff(first.st.slotIndex()))
 	} else {
 		f.a.XorSelf32(RAX)
 	}
