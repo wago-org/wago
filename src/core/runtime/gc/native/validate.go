@@ -1,6 +1,9 @@
 package gc
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // HasHeapObjectTypes reports whether the descriptor table contains any GC heap
 // object layouts. Function sentinels preserve TypeIdx indexes but do not need an
@@ -98,48 +101,41 @@ func ValidateTypeDescs(descs []TypeDesc) error {
 }
 
 func validateSuperRelations(descs []TypeDesc) error {
-	for i, d := range descs {
+	for _, d := range descs {
 		if !d.HasSuper {
 			continue
 		}
 		s := descs[d.Super]
 		if d.Kind != s.Kind {
-			return fmt.Errorf("gc: descriptor %d kind %d cannot extend super %d kind %d", i, d.Kind, d.Super, s.Kind)
+			return errors.New("gc: super kind mismatch")
 		}
 		if s.Final {
-			return fmt.Errorf("gc: descriptor %d cannot extend final super %d", i, d.Super)
+			return errors.New("gc: cannot extend final super")
 		}
+		badLayout := false
 		if d.Kind == KindStruct {
-			if len(d.Fields) < len(s.Fields) {
-				return fmt.Errorf("gc: descriptor %d omits inherited fields from super %d", i, d.Super)
-			}
-			for field, inherited := range s.Fields {
-				actual := d.Fields[field]
-				if actual.Offset != inherited.Offset || !inheritedStorageCompatible(actual.Kind, inherited.Kind) {
-					return fmt.Errorf("gc: descriptor %d field %d is incompatible with super %d", i, field, d.Super)
+			badLayout = len(d.Fields) < len(s.Fields)
+			if !badLayout {
+				for field, inherited := range s.Fields {
+					actual := d.Fields[field]
+					if actual.Offset != inherited.Offset || !inheritedStorageCompatible(actual.Kind, inherited.Kind) {
+						badLayout = true
+						break
+					}
 				}
 			}
-		} else if d.Kind == KindArray && !inheritedStorageCompatible(d.Elem, s.Elem) {
-			return fmt.Errorf("gc: descriptor %d element is incompatible with super %d", i, d.Super)
+		} else if d.Kind == KindArray {
+			badLayout = !inheritedStorageCompatible(d.Elem, s.Elem)
+		}
+		if badLayout {
+			return errors.New("gc: incompatible subtype layout")
 		}
 	}
 	return validateSuperAcyclic(descs)
 }
 
 func inheritedStorageCompatible(actual, inherited StorageKind) bool {
-	if actual == inherited {
-		return true
-	}
-	switch inherited {
-	case StorageRefNull:
-		return actual == StorageRef
-	case StorageFuncRefNull:
-		return actual == StorageFuncRef
-	case StorageExternRefNull:
-		return actual == StorageExternRef
-	default:
-		return false
-	}
+	return actual == inherited || referenceStorageCompatible(inherited, actual)
 }
 
 func validateSuperAcyclic(descs []TypeDesc) error {
@@ -163,7 +159,7 @@ func validateSuperAcyclic(descs []TypeDesc) error {
 				}
 				goto next
 			case gray:
-				return fmt.Errorf("gc: descriptor %d has cyclic super chain through %d", i, cur)
+				return errors.New("gc: cyclic super chain")
 			}
 			state[cur] = gray
 			path = append(path, cur)
