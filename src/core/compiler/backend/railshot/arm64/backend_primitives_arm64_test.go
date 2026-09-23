@@ -380,6 +380,29 @@ func TestSpillIfUsedRegisterValue(t *testing.T) {
 	f.spillIfUsed(X0)
 }
 
+func TestOwnedMemRefDestinationAliasUsesThreeRegisters(t *testing.T) {
+	stats := &CodegenStats{}
+	f := &fn{a: &a64.Asm{}, s: newStack(), stats: stats}
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
+	right := f.pushValue(memRefStorage(X0, 0, 4, false, false, -1, -1))
+	f.regUser[X0] = right
+	f.pushBinOp(opSub, mtI32)
+
+	if got := f.condense(f.s.back(), X0); got != X0 {
+		t.Fatalf("result register = %v, want X0", got)
+	}
+	want := &a64.Asm{}
+	want.LoadIdx(X0, linMemReg, X0, 0, 4, false, false)
+	want.MovImm32(X9, 7)
+	want.Sub32(X0, X9, X0)
+	if !bytes.Equal(f.a.B, want.B) {
+		t.Fatalf("code = %x, want %x", f.a.B, want.B)
+	}
+	if f.maxSpill != 0 || stats.Spills != 0 || stats.Reloads != 0 {
+		t.Fatalf("spill slots/spills/reloads = %d/%d/%d, want 0/0/0", f.maxSpill, stats.Spills, stats.Reloads)
+	}
+}
+
 func TestSpillFRegisterValues(t *testing.T) {
 	for _, typ := range []machineType{mtF32, mtV128} {
 		f := &fn{a: &a64.Asm{}, s: newStack()}

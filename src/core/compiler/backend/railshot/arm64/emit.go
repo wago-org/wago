@@ -285,9 +285,24 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		// the spill; consumeBlockBelow erases it and applyALU releases its register.
 		// Mirrors the spill-fallback in the relocate branch above.
 	} else if right.st.kind == stMemRef && dest != regNone && right.st.reg == dest {
-		// The LHS will overwrite the register that still carries this deferred
-		// load's address. Read the RHS first and keep its ordinary tracked storage
-		// so pressure while condensing the LHS can still spill it safely.
+		if right.st.memBorrow() < 0 {
+			// Keep the loaded RHS in dest and use the three-register form so the
+			// LHS cannot overwrite it. This needs no relocation register or spill.
+			f.materialize(right)
+			f.pinned = f.pinned.add(dest)
+			lr, owned := f.materializeRead(left)
+			f.pinned = f.pinned.remove(dest)
+			f.aluRR3(node.deferredOp(), dest, lr, dest, w)
+			if owned && lr != dest {
+				f.release(lr)
+			}
+			f.stats.peep("memref-dest-alias")
+			f.consumeBlockBelow(node)
+			f.occupy(node, dest)
+			return dest
+		}
+
+		// A borrowed address loads into a different, allocator-tracked register.
 		f.materialize(right)
 		f.stats.peep("memref-dest-alias")
 	} else if (right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) && dest != regNone && right.st.reg == dest {
