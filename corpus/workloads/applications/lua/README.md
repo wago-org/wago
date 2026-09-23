@@ -10,7 +10,7 @@ changes only the import namespace to `wasi_snapshot_preview1`; the resulting
 artifact SHA-256 is
 `51e8072539c5ba5f4e97e7e776ef852f9879cb5b97b4e5d0f9f1e9c3956ffbe2`.
 
-The corpus executes a Lua script that accumulates five thousand records into
-seventeen table buckets and checks its exact Wasmtime output. Wago and wazero
-also produce that output. The port and Lua are MIT licensed; their notices are
-retained here.
+The corpus executes a Lua script that generates one million deterministic
+events, aggregates them into 257 table buckets, ranks the buckets, and computes
+an exact checksum. The expected output was captured independently with
+Wasmtime. The port and Lua are MIT licensed; their notices are retained here.

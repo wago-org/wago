@@ -7,9 +7,9 @@ The module SHA-256 is
 `1c054a4d21d4a6589bc568821ebf562889988ddaaf8a17a2e2985a56cf228051`.
 The wrapper's Apache-2.0 and MicroPython's MIT license texts are retained.
 
-The workload evaluates a generator expression for 1,000 squared integers and
-checks the exact output `332833500` plus newline. This was independently
-captured using the wheel's Wasmtime Python host. Its two custom imports are
+The workload runs two million interpreted state updates, modular aggregates,
+and branches, then checks the final state and counts. Its exact output was
+independently captured using the wheel's Wasmtime Python host. Its two custom imports are
 provided by the Wago corpus harness: `host_result_cap` returns 1024 and
 `host_call` denies arbitrary calls. The workload does not invoke `host_call`.
 

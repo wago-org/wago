@@ -10,7 +10,8 @@ metadata ownership copy. The corpus uses `-n` and streams, so that path is not
 executed. Process-clock emulation satisfies the CLI's timing dependency.
 `LICENSE` is copied from upstream.
 
-The two workloads compress and decompress the same JavaScript fixture. The
-compressed stream is pinned and was also reproduced by a native Brotli 1.2.0
-CLI from stdin. `-f` is required because Wago's WASI host reports piped
-stdin/stdout as terminal-like; the output hashes independently match Wasmtime.
+The compression workload processes a deterministic 2.16 MB, production-shaped
+JavaScript fixture at quality 10. The decompression workload retains its smaller
+pinned stream and plaintext fixture. `-f` is required because Wago's WASI host
+reports piped stdin/stdout as terminal-like; the exact output hashes were
+captured independently with Wasmtime.

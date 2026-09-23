@@ -1208,25 +1208,25 @@
     },
     {
       "suite": "lua",
-      "desc": "standalone Lua 5.4.6 interpreter aggregates five thousand records into seventeen buckets",
+      "desc": "standalone Lua 5.4.6 interpreter aggregates one million generated events into 257 ranked buckets",
       "id": "lua-cli-buckets",
       "artifact": "workloads/applications/lua/lua.wasm",
       "artifact_sha256": "51e8072539c5ba5f4e97e7e776ef852f9879cb5b97b4e5d0f9f1e9c3956ffbe2",
       "tags": ["application", "interpreter", "lua", "c", "wasi"],
       "source": {"repository": "https://github.com/nalgeon/lua-wasi", "revision": "@antonz/lua-wasi 5.4.6", "revision_date": "2024-01-03", "license": "MIT", "toolchain": "wasienv plus WABT import rename", "toolchain_version": "Lua 5.4.6"},
       "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
-      "command": {"runtime": "wasi", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["/program.lua"], "preopen": "workloads/applications/lua/inputs", "inputs": {"program.lua": "faaaa3a1fff19eefb6fce2a70e5a1c8cab85e417b8bd9391e147fce9aed6810e"}, "stdout_sha256": "a9cfd18aeeb61f448d9314c2687d0bf22b1a287a4a3b165a5aa676ff4b0de869"}
+      "command": {"runtime": "wasi", "reference_runtime": "wasmtime", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["/program.lua"], "preopen": "workloads/applications/lua/inputs", "inputs": {"program.lua": "3807a5f816795e9be766394e54b9f07e35717a19d9af91e10611c69e5e8e3c28"}, "stdout_sha256": "0596a0eadbe52c645aa00bb7fca2ed57f1620d4041ce78dc40080b2b934468fb"}
     },
     {
       "suite": "micropython",
-      "desc": "MicroPython executes a generator-based thousand-square checksum",
+      "desc": "MicroPython runs two million state, aggregate, modulo, and branch iterations",
       "id": "micropython-squares",
       "artifact": "workloads/applications/micropython/micropython.wasm",
       "artifact_sha256": "1c054a4d21d4a6589bc568821ebf562889988ddaaf8a17a2e2985a56cf228051",
       "tags": ["application", "interpreter", "python", "c", "wasi"],
       "source": {"repository": "https://pypi.org/project/micropython-wasm/0.1a2/", "revision": "0.1a2", "revision_date": "2026-06-06", "license": "Apache-2.0 AND MIT", "toolchain": "micropython-wasm wheel", "toolchain_version": "0.1a2"},
       "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
-      "command": {"runtime": "micropython", "reference_runtime": "wasmtime", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["-c", "print(sum(i*i for i in range(1000)))"], "stdout_sha256": "bc7a21413c10db3efd335755501233165eb46a6cfcba0cc3ba5a01ad967dcae5"}
+      "command": {"runtime": "micropython", "reference_runtime": "wasmtime", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["/program.py"], "preopen": "workloads/applications/micropython/inputs", "inputs": {"program.py": "27d2048538d2c6d782907ecbead78277fa48049906f64e415b90e3da2122c628"}, "stdout_sha256": "f6d55657e93a308383869175bd299ef355d0e1b95fe32475027f060fb9aef8cd"}
     },
     {
       "suite": "trellis",
@@ -1644,7 +1644,7 @@
     },
     {
       "suite": "brotli",
-      "desc": "Brotli WASI CLI compresses JavaScript source at quality 5 with an exact output oracle",
+      "desc": "Brotli WASI CLI compresses 2.16 MB of generated JavaScript at quality 10 with an exact output oracle",
       "id": "brotli-compress",
       "artifact": "workloads/applications/brotli/brotli.wasm",
       "artifact_sha256": "9452cb53ecb2092847effd78a5a991cd8009cea6139b52a8561fe5889634f35c",
@@ -1662,13 +1662,13 @@
         "runtime": "wasi",
         "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
-        "args": ["-q", "5", "-c", "-n", "-f"],
+        "args": ["-q", "10", "-c", "-n", "-f"],
         "stdin": "source.js",
-        "preopen": "workloads/applications/brotli/encode-inputs",
+        "preopen": "workloads/applications/javascript-source/inputs",
         "inputs": {
-          "source.js": "15f4817d6bb6e105ef12c8b6d2383c32d1646a16824365d96935445f436afc89"
+          "source.js": "ebc5d1b1cf40ddf6fcc2cee0d8bcb01090a1e935c79ac27c8a6f4aeabf78c0ce"
         },
-        "stdout_sha256": "eeedce27753bdc24a2f3be4651794373a45db0c5dd7c15b6e0cf5d11eeb7549c"
+        "stdout_sha256": "8407ca5c3b664e4244c2a6673307678420e9b261510056d6072cbc6b9eb240b1"
       }
     },
     {
@@ -1702,7 +1702,7 @@
     },
     {
       "suite": "jq",
-      "desc": "jq WASI CLI generates, groups, and aggregates a thousand JSON objects with an exact output oracle",
+      "desc": "jq WASI CLI sorts, groups, and aggregates 50,000 generated JSON objects with an exact output oracle",
       "id": "jq-json-transform",
       "artifact": "workloads/applications/jq/jq.wasm",
       "artifact_sha256": "e99e12da7947aa782137d61367fbe78264af6a6aa6fed6c5d73e327b81571d0e",
@@ -1720,8 +1720,8 @@
         "runtime": "wasi",
         "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
-        "args": ["-n", "-c", "-M", "[range(0;1000) | {category:(. % 3), score: ((. * .) % 97)}] | group_by(.category) | map({category: .[0].category, count: length, total: (map(.score) | add)})"],
-        "stdout_sha256": "ec98405bdcc701a967f562f058ce71d214baf14e18328a66eab38bbdfdfef00f"
+        "args": ["-n", "-c", "-M", "[range(0;50000) | {category:(. % 97), score:(((. * 48271) % 2147483647) % 100003), label:(\"event-\" + tostring)}] | sort_by(.category, .score) | group_by(.category) | map({category: .[0].category, count: length, total: (map(.score) | add), maximum: (map(.score) | max)}) | {groups:length, count:(map(.count)|add), total:(map(.total)|add), checksum:(map((.category + 1) * .maximum)|add)}"],
+        "stdout_sha256": "4f33b717f7ae401dc56e8b19b87ea14c04f718a38860ac970696c52d5abba25a"
       }
     },
     {
@@ -1867,7 +1867,7 @@
     },
     {
       "suite": "sqlite3",
-      "desc": "SQLite WASI shell executes JSON table scans, a thousand-row join, and aggregates with an exact output oracle",
+      "desc": "SQLite WASI shell recursively generates one million rows and computes four exact aggregates",
       "id": "sqlite3-query",
       "artifact": "workloads/applications/sqlite3/sqlite3.wasm",
       "artifact_sha256": "bbfa28f00fea33bd95bd3bd573c92fd821173d03b280180b7e40dac0af91a669",
@@ -1885,13 +1885,13 @@
         "runtime": "wasi",
         "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
-        "args": ["-batch", ":memory:", "WITH digits AS (SELECT CAST(value AS INTEGER) AS d FROM json_each('[0,1,2,3,4,5,6,7,8,9]')) SELECT count(*),sum((a.d*100+b.d*10+c.d)*(a.d*100+b.d*10+c.d)%97) FROM digits a,digits b,digits c;"],
-        "stdout_sha256": "e19be4ce2f3b52166e93130c269b9f1d3e79a0f29a202883d15756e7806e9cd5"
+        "args": ["-batch", ":memory:", "WITH RECURSIVE events(n,value) AS (VALUES(1,12345) UNION ALL SELECT n+1,(value+48271)%1000003 FROM events WHERE n<1000000) SELECT count(*),sum(value),sum(CASE WHEN value%257=0 THEN value ELSE 0 END),sum(value&4095) FROM events;"],
+        "stdout_sha256": "5531212e58a571b40d57b960e0d0e2dfa46d183496f18fb0389a7927ad48a897"
       }
     },
     {
       "suite": "duktape",
-      "desc": "Duktape WASI CLI executes a JavaScript prime-classification workload with an exact output oracle",
+      "desc": "Duktape WASI CLI parses and aggregates 50,000 generated service events",
       "id": "duktape-script",
       "artifact": "workloads/applications/duktape/duk.wasm",
       "artifact_sha256": "ecf2293773686dd1bcbcb5bb8f7c7647d4726c4bdec8d1e2e04bfb6cf5fd3612",
@@ -1910,16 +1910,16 @@
         "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
         "args": ["program.js"],
-        "preopen": "workloads/applications/duktape/inputs",
+        "preopen": "workloads/applications/js-runtime/inputs",
         "inputs": {
-          "program.js": "f0e2ab2c60bf41509f9ce89df5fdf3676de0ba0a514650ad8023ce2a0c032c27"
+          "program.js": "5f2ea9684e195fc3f7bcbc8be4ad8b4c2540e6b10a560365176d3ce07c2ac92d"
         },
-        "stdout_sha256": "b376f0a59f636927c2ff1ae346530107c2bc080a5899c90ec95396ba66b18b19"
+        "stdout_sha256": "485ded1ee5ff38dee328f324894460d61da6914badb6cf5359a36a3e14ca865b"
       }
     },
     {
       "suite": "quickjs",
-      "desc": "QuickJS WASI CLI executes JavaScript collections and regexp processing with an exact output oracle",
+      "desc": "QuickJS WASI CLI parses and aggregates 50,000 generated service events",
       "id": "quickjs-script",
       "artifact": "workloads/applications/quickjs/qjs.wasm",
       "artifact_sha256": "e384f80f3dd492dab373d9eda08fb124cc4484945bbc2c9d03cbc7598e711a40",
@@ -1938,11 +1938,11 @@
         "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
         "args": ["program.js"],
-        "preopen": "workloads/applications/quickjs/inputs",
+        "preopen": "workloads/applications/js-runtime/inputs",
         "inputs": {
-          "program.js": "cbf10aad91aced62c70121301fdcb3562929b08a6d9f2d3e0bfc28d90dea810f"
+          "program.js": "5f2ea9684e195fc3f7bcbc8be4ad8b4c2540e6b10a560365176d3ce07c2ac92d"
         },
-        "stdout_sha256": "9995b28f3b5cd435d0b0982a7eaa8b363e6b925f83a7ad0ce43dfcc6e1de87b1"
+        "stdout_sha256": "485ded1ee5ff38dee328f324894460d61da6914badb6cf5359a36a3e14ca865b"
       }
     },
     {
@@ -1975,7 +1975,7 @@
     },
     {
       "suite": "esbuild",
-      "desc": "esbuild WASI CLI minifies a JavaScript program from stdin with an exact output oracle",
+      "desc": "esbuild WASI CLI minifies 2.16 MB of generated production-shaped JavaScript",
       "id": "esbuild-minify",
       "artifact": "workloads/applications/esbuild/esbuild.wasm",
       "artifact_sha256": "a593128fc5b588cfc19d974ef8896ab9ad3bd3d8ccaaf392c981a26380617e8f",
@@ -1995,11 +1995,11 @@
         "export": "_start",
         "args": ["--minify", "--loader=js"],
         "stdin": "source.js",
-        "preopen": "workloads/applications/esbuild/inputs",
+        "preopen": "workloads/applications/javascript-source/inputs",
         "inputs": {
-          "source.js": "15f4817d6bb6e105ef12c8b6d2383c32d1646a16824365d96935445f436afc89"
+          "source.js": "ebc5d1b1cf40ddf6fcc2cee0d8bcb01090a1e935c79ac27c8a6f4aeabf78c0ce"
         },
-        "stdout_sha256": "487fd155ae0741ebde892d3d003b481a2ab707a7f316a0fe8d71aeec3a8a4a23"
+        "stdout_sha256": "070f4effcdccfa95e41cca57494d11ddf329c48e9af6d535638a3b3d7a306203"
       }
     },
     {

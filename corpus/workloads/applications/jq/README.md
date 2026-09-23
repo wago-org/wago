@@ -9,7 +9,7 @@ The script verifies source bytes and prints the artifact digest to compare with
 `corpus/catalog.json`. `COPYING` is jq's MIT licence; `ONIGURUMA-COPYING`
 covers the bundled regex engine.
 
-The corpus workload generates a thousand JSON objects, groups them, and
-aggregates each group. `-M` forces monochrome output because WASI hosts differ
-in whether stdout is reported as a terminal. Wasmtime supplied the independent
-exact-output oracle.
+The corpus workload generates 50,000 JSON objects, sorts them, groups them into
+97 categories, and computes exact aggregate and checksum results. `-M` forces
+monochrome output because WASI hosts differ in whether stdout is reported as a
+terminal. Wasmtime supplied the independent exact-output oracle.
