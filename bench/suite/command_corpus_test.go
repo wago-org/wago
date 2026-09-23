@@ -588,6 +588,9 @@ func TestApplicationCorpusRuns(t *testing.T) {
 		m := m
 		t.Run(m.name(), func(t *testing.T) {
 			if !commandSupportsPlatform(m, runtime.GOOS, runtime.GOARCH) {
+				if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
+					t.Fatalf("command adapter must run on linux/amd64; supported platforms: %v", m.Command.Platforms)
+				}
 				t.Skipf("command adapter is not admitted on %s/%s; supported platforms: %v", runtime.GOOS, runtime.GOARCH, m.Command.Platforms)
 			}
 			validateCommandInputs(t, m)
