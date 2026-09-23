@@ -1225,7 +1225,7 @@
       "artifact_sha256": "1c054a4d21d4a6589bc568821ebf562889988ddaaf8a17a2e2985a56cf228051",
       "tags": ["application", "interpreter", "python", "c", "wasi"],
       "source": {"repository": "https://pypi.org/project/micropython-wasm/0.1a2/", "revision": "0.1a2", "revision_date": "2026-06-06", "license": "Apache-2.0 AND MIT", "toolchain": "micropython-wasm wheel", "toolchain_version": "0.1a2"},
-      "stages": ["Decode", "Validate", "Compile", "CompileFull", "CommandExec"],
+      "stages": ["Decode", "Validate", "Compile", "CommandExec"],
       "command": {"runtime": "micropython", "reference_runtime": "wasmtime", "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"], "export": "_start", "args": ["/program.py"], "preopen": "workloads/applications/micropython/inputs", "inputs": {"program.py": "27d2048538d2c6d782907ecbead78277fa48049906f64e415b90e3da2122c628"}, "stdout_sha256": "f6d55657e93a308383869175bd299ef355d0e1b95fe32475027f060fb9aef8cd"}
     },
     {

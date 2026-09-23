@@ -16,3 +16,8 @@ provided by the Wago corpus harness: `host_result_cap` returns 1024 and
 Wazero currently rejects this artifact's exception-handling section at
 compile time, so only the Wago run is performed in the local test gate. The
 captured Wasmtime output supplies the independent oracle.
+
+The artifact requires Wago's Core 3 exception-handling backend, which is not
+available on Windows. Its catalog entry therefore uses the platform-scoped
+`CommandExec` benchmark as the public compile-and-run gate and omits the
+unscoped `CompileFull` stage.
