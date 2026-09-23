@@ -220,7 +220,7 @@ func TestLowerMutuallyRecursiveTypesDoNotExpandLayout(t *testing.T) {
 }
 
 func TestLowerRecTypeIdxResolvesWithinCurrentGroup(t *testing.T) {
-	base := st(field(val(wasm.I32)))
+	base := st(field(concreteRec(true, 0)))
 	base.Final = false
 	child := st(field(concreteRec(true, 0)))
 	child.Supers = []wasm.TypeIdx{{Index: 0, Rec: true}}
@@ -247,7 +247,7 @@ func TestLowerRecSuperIndexAcrossMultiTypeGroup(t *testing.T) {
 	base.Final = false
 	mid := st(field(val(wasm.I64)))
 	mid.Final = false
-	child := st(field(val(wasm.I32)))
+	child := st(field(val(wasm.I64)))
 	child.Supers = []wasm.TypeIdx{{Index: 1, Rec: true}}
 
 	descs, err := LowerGCTypeDescs([]wasm.RecType{
