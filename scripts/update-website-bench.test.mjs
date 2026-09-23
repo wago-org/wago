@@ -136,7 +136,11 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
     };
 
     runUpdater(work, benchmarkEnv);
-    assertDOMContract(await readFile(index, "utf8"));
+    const firstRender = await readFile(index, "utf8");
+    assertDOMContract(firstRender);
+    const compilePanel = firstRender.split('id="perf-amd64-panel-compile"')[1].split('id="perf-amd64-panel-compile-memory"')[0];
+    assert.ok(compilePanel.indexOf("Micro modules") < compilePanel.indexOf("Semantic corpus"));
+    assert.ok(compilePanel.indexOf("Semantic corpus") < compilePanel.indexOf("Application corpora"));
 
     runUpdater(work, { ...benchmarkEnv, WAGO_BENCH_UPDATE_ARCH: "amd64" });
     assertDOMContract(await readFile(index, "utf8"));
