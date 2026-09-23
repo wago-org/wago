@@ -51,8 +51,8 @@ func (c *Collector) Verify(roots RootSet) error {
 				return fmt.Errorf("gc: array %d size mismatch", h)
 			}
 		}
-		if d.PointerFree() && d.HasRefs {
-			return fmt.Errorf("gc: pointer-free contradiction")
+		if hdr.Flags&FlagPointerFree != 0 != d.PointerFree() {
+			return fmt.Errorf("gc: pointer-free header mismatch for handle %d", h)
 		}
 		if err := c.verifyEdges(r, d); err != nil {
 			return err
