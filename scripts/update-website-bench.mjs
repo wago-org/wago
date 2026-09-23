@@ -36,6 +36,13 @@ const benchmarkSets = await loadBenchmarkSets();
 const grp = (title) => ({ group: title });
 const rs = (label, sub, wagoKey, wazeroKey, winWord = "faster", kind = "ns", forcedDelta = "") =>
   ({ label, sub, wagoKey, wazeroKey, winWord, kind, forcedDelta });
+const mergedExecution = (name, label) => ({
+  label,
+  sub: "serialize + deserialize · geometric mean",
+  wagoKeys: [`Exec/${name}.serializeN`, `Exec/${name}.deserializeN`],
+  wazeroKeys: [`WazeroExec/${name}.serializeN`, `WazeroExec/${name}.deserializeN`],
+});
+const displayName = (name) => name === "json-as-simd" ? "json-as (SIMD)" : name;
 // dv is a wago-only "front-end at scale" row: the combined Decode+Validate time
 // for one real-world binary, with its parse throughput. The bar is sized by the
 // binary's byte length, so the visual shows wago's front-end absorbing ever-
@@ -122,10 +129,13 @@ function buildCorpusTabs(sets) {
     return [...groups].flatMap(([category, items]) => [grp(categoryLabels.get(category) ?? category), ...items]);
   };
   const moduleRows = (wagoPrefix, wazeroPrefix, kind = "ns") => grouped(({ name, category, suite, desc }) => [
-    rs(suite ? `${suite} · ${name.replace(/^[^-]+-/, "")}` : name, desc || `${category} corpus`, `${wagoPrefix}${name}`, `${wazeroPrefix}${name}`,
+    rs(suite ? `${suite} · ${name.replace(/^[^-]+-/, "")}` : displayName(name), desc || `${category} corpus`, `${wagoPrefix}${name}`, `${wazeroPrefix}${name}`,
       kind === "ns" ? "faster" : "smaller", kind),
   ]);
   const execRows = grouped(({ name, category, suite, desc }) => {
+    if (name === "json-as" || name === "json-as-simd") {
+      return [mergedExecution(name, displayName(name))];
+    }
     const keys = new Set();
     let hasCommand = false;
     for (const set of sets) {
@@ -709,15 +719,20 @@ ${rows}
 function buildEngineRow(spec, set, tabID) {
   const kind = spec.kind ?? "ns";
   const pick = (metric) => kind === "bytes" ? metric.bytes : kind === "count" ? metric.allocs : kind === "code" ? metric.codeBytes : metric.ns;
+  const metricValue = (keys) => {
+    const values = keys.map((key) => pick(set.metrics.get(key) ?? {}));
+    return values.every((value) => value > 0) ? geomean(values) : 0;
+  };
   const values = [];
   for (const engine of ENGINES) {
     let value = 0;
     if (engine.id === "railshot" || engine.id === "wazero") {
-      const key = engine.id === "wazero" ? spec.wazeroKey : backendMetricKey(spec.wagoKey, engine.id);
-      const metric = key ? set.metrics.get(key) : null;
-      value = metric ? pick(metric) : 0;
+      const keys = engine.id === "wazero" ? spec.wazeroKeys ?? [spec.wazeroKey] : spec.wagoKeys ?? [spec.wagoKey];
+      value = metricValue(keys.filter(Boolean));
     } else if (kind === "ns") {
-      value = externalRowMetric(set.external, engine.id, tabID, spec.wagoKey);
+      const keys = spec.wagoKeys ?? [spec.wagoKey];
+      const samples = keys.map((key) => externalRowMetric(set.external, engine.id, tabID, key));
+      value = samples.every((sample) => sample > 0) ? geomean(samples) : 0;
     }
     if (value > 0) values.push({ engine, value });
   }

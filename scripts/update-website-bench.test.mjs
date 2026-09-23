@@ -44,10 +44,12 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       "ExecHostCallback_wago": { ns: 33 }, "ExecHostRoundtrip_wago": { ns: 99 }, "ExecHostRoundtrip_wazero": { ns: 66 },
       "Exec/nbody.step": { ns: 20 }, "WazeroExec/nbody.step": { ns: 30 },
       "Exec/json-as.deserializeN": { ns: 25 }, "WazeroExec/json-as.deserializeN": { ns: 50 },
+      "Exec/json-as.serializeN": { ns: 100 }, "WazeroExec/json-as.serializeN": { ns: 200 },
       "Exec/json-as-simd.deserializeN": { ns: 18 }, "WazeroExec/json-as-simd.deserializeN": { ns: 36 },
+      "Exec/json-as-simd.serializeN": { ns: 72 }, "WazeroExec/json-as-simd.serializeN": { ns: 144 },
 	  "Exec/lua.plugin-workload": { ns: 1e30 }, "WazeroExec/lua.plugin-workload": { ns: 0 },
     };
-    for (const name of ["coremark", "blake3", "qoi", "lz4", "zlib", "zstd"]) {
+    for (const name of ["json-as", "json-as-simd", "coremark", "blake3", "qoi", "lz4", "zlib", "zstd"]) {
       metrics[`CompileFull/${name}`] = { ns: 100, bytes: 10, allocs: 1 };
       metrics[`WazeroCompile/${name}`] = { ns: 200, bytes: 20, allocs: 2 };
       metrics[`Instantiate/${name}`] = { ns: 30, bytes: 3, allocs: 1 };
@@ -90,7 +92,9 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       [...new Set(Object.keys(metrics)
         .filter((key) => key.startsWith("CompileFull/"))
         .map((key) => key.slice("CompileFull/".length)))]
-        .map((name) => [name, name.includes("-")
+        .map((name) => [name, name.startsWith("json-as")
+          ? { category: name.endsWith("-simd") ? "real-simd" : "real", bytes: 100 }
+          : name.includes("-")
           ? { category: "application", suite: name.split("-")[0], desc: "application workload", bytes: 100 }
           : { category: name === "tiny" ? "micro" : "semantic", bytes: 100 }]),
     );
@@ -141,6 +145,11 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
     const compilePanel = firstRender.split('id="perf-amd64-panel-compile"')[1].split('id="perf-amd64-panel-compile-memory"')[0];
     assert.ok(compilePanel.indexOf("Micro modules") < compilePanel.indexOf("Semantic corpus"));
     assert.ok(compilePanel.indexOf("Semantic corpus") < compilePanel.indexOf("Application corpora"));
+    const executionPanel = firstRender.split('id="perf-amd64-panel-execution"')[1].split('id="perf-arm64-', 1)[0];
+    assert.equal(matches(executionPanel, /<span class="vs__label">json-as<\/span>/g), 1);
+    assert.equal(matches(executionPanel, /<span class="vs__label">json-as \(SIMD\)<\/span>/g), 1);
+    assert.match(executionPanel, /serialize \+ deserialize · geometric mean/);
+    assert.match(executionPanel, /<span class="vs__label">json-as<\/span>[\s\S]*?>50ns<\/span>/);
 
     runUpdater(work, { ...benchmarkEnv, WAGO_BENCH_UPDATE_ARCH: "amd64" });
     assertDOMContract(await readFile(index, "utf8"));
@@ -219,8 +228,8 @@ function assertDOMContract(html) {
 	const executionStart = general.indexOf('<span class="vs__label">Execution</span>');
 	const executionEnd = general.indexOf('<div class="vs__row" data-engine-row>', executionStart);
 	const execution = general.slice(executionStart, executionEnd);
-	assert.match(execution, />27\.6ns<\/span>/);
-	assert.match(execution, />52\.1ns<\/span>/);
+	assert.match(execution, />30\.4ns<\/span>/);
+	assert.match(execution, />58\.1ns<\/span>/);
     assert.doesNotMatch(general, /Micro compile mean|Micro startup mean|AS startup mean|Compute execution mean|Tiny compile|Ruby compile|fib_rec startup|Many-function startup|>N-body<|>JSON deserialize</);
   }
   assert.match(html, />[0-9.]+× faster<\/span>/);

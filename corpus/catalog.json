@@ -8,7 +8,21 @@
       "coremark", "blake3", "qoi", "lz4", "zstd", "yyjson", "utf8proc",
       "libtommath", "kissfft", "pcre2", "polybench-gemm", "polybench-cholesky",
       "polybench-floyd-warshall", "embench-huffbench", "sightglass-libsodium-hash",
-      "json2csv-people", "brotli-compress", "lodepng"
+      "json2csv-people", "brotli-compress", "lodepng",
+      "sed-records", "seqtk-fastq-to-fasta", "lcs-substrings", "needleman-wunsch-dna",
+      "smith-waterman-dna", "fasttree-phylogeny", "gnu-seq-range", "gnu-tr-uppercase",
+      "php-buckets", "ruby-buckets", "clang-cpp-kernels", "clang-c-kernels",
+      "lua-cli-buckets", "micropython-squares", "ecpunpack-config", "ecppack-bitstream",
+      "coreutils-sort", "coreutils-sha256sum", "coreutils-base64", "coreutils-wc",
+      "ripgrep-source", "yosys-counter", "icemulti-image", "icepack-pack",
+      "iceunpack-unpack", "ecpbram-generate", "icebram-generate", "ecppll-clock",
+      "icepll-clock", "tree-ashell-list", "tree-list", "brotli-decompress",
+      "jq-json-transform", "age-decrypt", "age-keygen-public", "lzmainfo-header",
+      "lzmadec-decompress", "xzdec-decompress", "sqlite3-query", "duktape-script",
+      "quickjs-script", "swift-format-source", "esbuild-minify", "cjson", "wren",
+      "tinyxml2", "lua", "embench-crc32", "embench-matmult-int",
+      "embench-nettle-aes", "embench-nettle-sha256", "embench-qrduino",
+      "sightglass-shootout-base64", "tacle-bsort", "wren-modulo"
     ],
     "quick": [
       "tiny",

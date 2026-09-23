@@ -56,6 +56,26 @@ func TestCommandCorpusRunsOnLinuxAMD64(t *testing.T) {
 	}
 }
 
+func TestWebsiteIncludesEveryCommandProgram(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(corpusDir, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest catalog
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	website := make(map[string]bool, len(manifest.Profiles["website"]))
+	for _, id := range manifest.Profiles["website"] {
+		website[id] = true
+	}
+	for _, benchmark := range manifest.Benchmarks {
+		if benchmark.Command != nil && !website[benchmark.ID] {
+			t.Errorf("command program %q is missing from the website profile", benchmark.ID)
+		}
+	}
+}
+
 func TestSightglassLibsodiumTuningInput(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(corpusDir, "catalog.json"))
 	if err != nil {
