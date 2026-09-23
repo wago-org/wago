@@ -123,7 +123,6 @@ type tinyGC struct {
 	telemetryOwned bool
 	markEpoch      uint8
 	rootPhase      tinyRootPhase
-	markEpochDirty bool
 	// sweep indexes persistent roots during mark/remark and handles during sweep.
 	sweep uint32
 	// sweepLimit reuses the former cycle counter to preserve tinyGC's footprint.
@@ -347,7 +346,6 @@ func (c *Collector) tinySweepBudget() error {
 }
 
 func (c *Collector) failTinyTelemetryCycle(err error) error {
-	c.tinyGC.markEpochDirty = true
 	if c.tinyGC.telemetryOwned {
 		c.endCollectionTelemetry(false)
 		c.tinyGC.telemetryOwned = false
@@ -374,10 +372,14 @@ func (c *Collector) tinyCollectNonIncremental(roots RootSet) error {
 	if err := c.tinyCountTransientRoots(roots); err != nil {
 		return err
 	}
-	if c.tinyGC.state != tinyIdle {
-		c.tinyGC.markEpochDirty = true
+	if c.tinyGC.markEpoch == tinyMarkEpochMask && c.tinyGC.state != tinyIdle {
+		// An unfinished cycle can leave black marks from a prior epoch.
+		clear(c.tinyGC.color)
+		// Zero is white in epoch 1.
+		c.tinyGC.markEpoch = 1
+	} else {
+		c.tinyGC.markEpoch = (c.tinyGC.markEpoch + 1) & tinyMarkEpochMask
 	}
-	c.tinyAdvanceMarkEpoch()
 	c.tinyGC.sweepLimit = 0
 	c.tinyGC.grayStack = c.tinyGC.grayStack[:0]
 	c.tinyGC.scan = tinyScanCursor{}
@@ -427,14 +429,17 @@ func (c *Collector) tinyStartMark(roots RootSet) error {
 	if err := c.tinyCountTransientRoots(roots); err != nil {
 		return c.failTinyTelemetryCycle(err)
 	}
-	if c.tinyGC.state != tinyIdle {
-		c.tinyGC.markEpochDirty = true
+	if c.tinyGC.markEpoch == tinyMarkEpochMask && c.tinyGC.state != tinyIdle {
+		// An unfinished cycle can leave black marks from a prior epoch.
+		clear(c.tinyGC.color)
+		// Zero is white in epoch 1.
+		c.tinyGC.markEpoch = 1
+	} else {
+		c.tinyGC.markEpoch = (c.tinyGC.markEpoch + 1) & tinyMarkEpochMask
 	}
-	c.tinyAdvanceMarkEpoch()
 	c.tinyGC.sweepLimit = 0
 	c.tinyGC.grayStack = c.tinyGC.grayStack[:0]
 	c.tinyGC.scan = tinyScanCursor{}
-	c.tinyGC.lastStepWork = tinyStepWork{}
 	c.tinyGC.state = tinyMark
 	c.tinyGC.rootPhase = tinyRootsTransient
 	c.tinyGC.sweep = 0
@@ -444,18 +449,6 @@ func (c *Collector) tinyStartMark(roots RootSet) error {
 	c.tinyGC.rootPhase = tinyRootsGlobals
 	_, err := c.tinyDrainRootBudget(nil)
 	return err
-}
-
-func (c *Collector) tinyAdvanceMarkEpoch() {
-	next := (c.tinyGC.markEpoch + 1) & tinyMarkEpochMask
-	if next == 0 && c.tinyGC.markEpochDirty {
-		// Failed starts can leave old black marks. Clear them before epoch reuse.
-		for i := range c.tinyGC.color {
-			c.tinyGC.color[i] = tinyMarkState(tinyMarkEpochMask)
-		}
-		c.tinyGC.markEpochDirty = false
-	}
-	c.tinyGC.markEpoch = next
 }
 
 func (c *Collector) tinyWalkTransientRoots(roots RootSet) (bool, error) {
@@ -595,7 +588,6 @@ func (c *Collector) tinyCountTransientRoots(roots RootSet) error {
 
 func (c *Collector) tinyMarkTransientRoots(roots RootSet) error {
 	c.rootMarkMode = rootMarkTinyBounded
-	c.tinyGC.lastStepWork.refSlots = 0
 	complete, err := c.tinyWalkTransientRoots(roots)
 	c.finishDirectRootMark()
 	c.tinyGC.lastStepWork.refSlots = 0
@@ -672,7 +664,6 @@ func (c *Collector) tinyFinishCycle() {
 	c.tinyGC.rootPhase = tinyRootsNone
 	c.tinyGC.sweep = 1
 	c.tinyGC.sweepLimit = 0
-	c.tinyGC.markEpochDirty = false
 	if c.tinyGC.telemetryOwned {
 		c.cfg.Telemetry.setPhase(telemetryPhaseMetadataCleanup)
 		c.endCollectionTelemetry(true)

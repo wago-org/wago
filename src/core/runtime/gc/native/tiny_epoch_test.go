@@ -32,12 +32,15 @@ func TestTinyFailedRestartsDoNotAliasWrappedEpoch(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf, parentType})
+	if err := c.CollectFull(nil); err != nil {
+		t.Fatal(err)
+	}
 	parent, err := c.NewStructDefault(1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.tinyGC.markEpoch != 0 {
-		t.Fatalf("initial mark epoch = %d, want 0", c.tinyGC.markEpoch)
+	if c.tinyGC.markEpoch != 1 {
+		t.Fatalf("initial mark epoch = %d, want 1", c.tinyGC.markEpoch)
 	}
 	failSecondWalk := func() {
 		t.Helper()
@@ -58,7 +61,7 @@ func TestTinyFailedRestartsDoNotAliasWrappedEpoch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := uint8(1); i < tinyMarkEpochMask; i++ {
+	for i := uint8(2); i < tinyMarkEpochMask; i++ {
 		failSecondWalk()
 	}
 	if c.tinyGC.markEpoch != tinyMarkEpochMask {
@@ -69,8 +72,8 @@ func TestTinyFailedRestartsDoNotAliasWrappedEpoch(t *testing.T) {
 	if err := c.CollectFull(roots); err != nil {
 		t.Fatal(err)
 	}
-	if c.tinyGC.markEpoch != 0 {
-		t.Fatalf("wrapped mark epoch = %d, want 0", c.tinyGC.markEpoch)
+	if c.tinyGC.markEpoch != 1 {
+		t.Fatalf("wrapped mark epoch = %d, want 1", c.tinyGC.markEpoch)
 	}
 	if !c.validObjectRef(parent) || !c.validObjectRef(child) {
 		t.Fatal("wrapped cycle lost a live parent or child")
@@ -212,7 +215,6 @@ func TestTinyEpochWrapAndHandleReuse(t *testing.T) {
 	}
 	root := Root(rooted)
 	roots := Slots{&root}
-	initialEpoch := c.tinyGC.markEpoch
 	var reusedHandle uint32
 	for cycle := uint32(1); cycle <= 3*uint32(tinyMarkEpochMask+1); cycle++ {
 		garbage, err := c.NewStructDefault(0)
@@ -232,7 +234,7 @@ func TestTinyEpochWrapAndHandleReuse(t *testing.T) {
 		if c.validObjectRef(garbage) {
 			t.Fatalf("cycle %d retained unrooted handle %d", cycle, reusedHandle)
 		}
-		wantEpoch := (initialEpoch + uint8(cycle)) & tinyMarkEpochMask
+		wantEpoch := uint8(cycle) & tinyMarkEpochMask
 		if c.tinyGC.markEpoch != wantEpoch {
 			t.Fatalf("cycle %d epoch = %d, want %d", cycle, c.tinyGC.markEpoch, wantEpoch)
 		}
@@ -254,7 +256,7 @@ func TestTinyCollectFullRestartsPartialScanWithFreshEpoch(t *testing.T) {
 	}
 	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 1 << 20, TinyBlockBytes: 16, VerifyAfterCollect: true}, []TypeDesc{leaf, refs})
 	// Start one epoch before wrap so the incremental cycle uses 127 and the
-	// synchronous restart must select 0 without aliasing either old population.
+	// synchronous restart must select 1 without aliasing either old population.
 	c.tinyGC.markEpoch = tinyMarkEpochMask - 1
 	c.tinyGC.color[0] = tinyEncodeMarkState(c.tinyGC.markEpoch, tinyWhite)
 	partial, err := c.NewArrayDefault(1, tinyStepScanEntries*2)
@@ -287,7 +289,7 @@ func TestTinyCollectFullRestartsPartialScanWithFreshEpoch(t *testing.T) {
 	if err := c.CollectFull(Slots{&keepRoot}); err != nil {
 		t.Fatal(err)
 	}
-	if want := (activeEpoch + 1) & tinyMarkEpochMask; c.tinyGC.markEpoch != want {
+	if want := activeEpoch%tinyMarkEpochMask + 1; c.tinyGC.markEpoch != want {
 		t.Fatalf("restart epoch = %d, want %d", c.tinyGC.markEpoch, want)
 	}
 	if !c.validObjectRef(keep) || c.tinyColorOf(handleOf(keep)) != tinyBlack {
@@ -344,8 +346,8 @@ func TestTinyCollectFullRestartsSweepWithFreshEpoch(t *testing.T) {
 	if err := c.CollectFull(Slots{&keepRoot}); err != nil {
 		t.Fatal(err)
 	}
-	if c.tinyGC.markEpoch != 0 {
-		t.Fatalf("restart epoch = %d, want wrapped epoch 0", c.tinyGC.markEpoch)
+	if c.tinyGC.markEpoch != 1 {
+		t.Fatalf("restart epoch = %d, want wrapped epoch 1", c.tinyGC.markEpoch)
 	}
 	if !c.validObjectRef(keep) || c.validObjectRef(oldRoot) || c.validObjectRef(drop) {
 		t.Fatal("sweep restart retained the wrong epoch population")
