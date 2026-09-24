@@ -80,6 +80,12 @@ func TestInvokeCacheSelectsIsolatedDirectIntegerEntry(t *testing.T) {
 	if ic == nil || ic.directIntFast != wantDirect {
 		t.Fatalf("direct integer cache selection = %+v; want %v", ic, wantDirect)
 	}
+	if wantDirect && ic.directEntry == 0 {
+		t.Fatal("direct integer cache did not retain the native entry")
+	}
+	if got, err := in.Invoke("f", ^uint64(0)); err != nil || len(got) != 1 || got[0] != 0 {
+		t.Fatalf("cached i32 truncation = %v, %v; want [0], nil", got, err)
+	}
 	if _, err := in.Invoke("f"); err == nil {
 		t.Fatal("wrong-arity cached direct invocation succeeded")
 	}
@@ -89,6 +95,32 @@ func TestInvokeCacheSelectsIsolatedDirectIntegerEntry(t *testing.T) {
 	got, err = in.Invoke("f", I32(9))
 	if err != nil || len(got) != 1 || AsI32(got[0]) != 10 {
 		t.Fatalf("invoke after direct error = %v, %v; want [10], nil", got, err)
+	}
+}
+
+func TestInvokeCachedDirectI32TrapRecovery(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x01, 0x20, 0x00, 0x6d, 0x0b}))),
+	)
+	in, err := Instantiate(MustCompile(module))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("f", 1); err != nil || len(got) != 1 || got[0] != 1 {
+		t.Fatalf("first invoke = %v, %v; want [1], nil", got, err)
+	}
+	if ic := in.findInvokeCache("f"); ic == nil || !ic.directIntFast || !ic.directIntBounded {
+		t.Fatalf("trap fixture did not select bounded direct entry: %+v", ic)
+	}
+	if _, err := in.Invoke("f", 0); err == nil {
+		t.Fatal("divide by zero did not trap")
+	}
+	if got, err := in.Invoke("f", 1); err != nil || len(got) != 1 || got[0] != 1 {
+		t.Fatalf("invoke after trap = %v, %v; want [1], nil", got, err)
 	}
 }
 

@@ -4302,10 +4302,38 @@ func LoadTrustedArtifact(b []byte) (*Compiled, error) {
 // fails with ErrPermissionDenied while callback-scoped guest storage is borrowed.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if in != nil && !in.syncMode {
-		// Keep the resolved numeric path at the public entry. On a miss, the
-		// fallback must not repeat a possibly contended fast admission.
-		if out, err, ok := in.tryInvokeCachedIsolatedNumeric(export, args); ok {
-			return out, err
+		if in.rt == nil {
+			state := in.pluginState.Load()
+			if state != nil && in.invocationState.CompareAndSwap(0, 1) {
+				if state.invokeMu.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
+					ic := in.findInvokeCache(export)
+					privateRefStore := in.refStore == nil || in.refStore.private
+					isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
+					if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) && len(args) == int(ic.paramSlots) && privateRefStore && !in.guestStorageBorrowed() && in.preparedFastStateValid() {
+						var out []uint64
+						var err error
+						if ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast {
+							entry := ic.directEntry
+							if ic.directIntFast && len(args) == 1 && ic.resultSlots <= 1 {
+								if goruntime.GOARCH == "amd64" && ic.directIntBounded && ic.scalarWideMask == 0 && ic.resultSlots == 1 && !ic.scalarResultWide {
+									out, err = in.invokeCachedDirectI32ToI32(ic, args[0])
+								} else {
+									out, err = in.invokeCachedDirectInt1(ic, entry, args[0])
+								}
+							} else {
+								out, err = in.invokeCachedDirectNumeric(ic, entry, args)
+							}
+						} else {
+							out, err = in.invokeCachedNumericEntry(export, ic, args, true)
+						}
+						state.invokeMu.Unlock()
+						in.endDirectInvocation()
+						return out, err
+					}
+					state.invokeMu.Unlock()
+				}
+				in.endDirectInvocation()
+			}
 		}
 	}
 	return in.invokeEntry(export, args, invocationContextSet{}, false, true)
@@ -4436,7 +4464,7 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		const directBlocked = preparedFastBlocked
 		if (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast) && executionFlags&directBlocked == 0 && in.lockPreparedFastState() {
 			defer in.unlockPreparedFastState()
-			if len(args) != ic.paramSlots {
+			if len(args) != int(ic.paramSlots) {
 				return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 			}
 			directEntry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
@@ -4476,7 +4504,7 @@ func (in *Instance) tryInvokeCachedIsolatedNumeric(export string, args []uint64)
 	ic := in.findInvokeCache(export)
 	privateRefStore := in.refStore == nil || in.refStore.private
 	isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
-	if ic == nil || !(ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) || len(args) != ic.paramSlots || !privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() {
+	if ic == nil || !(ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) || len(args) != int(ic.paramSlots) || !privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() {
 		state.invokeMu.Unlock()
 		in.endDirectInvocation()
 		return nil, nil, false
@@ -4497,7 +4525,7 @@ func (in *Instance) tryInvokeCachedIsolatedNumeric(export string, args []uint64)
 }
 
 // invokeCachedDirectNumeric requires an invocation lifetime lease, the
-// serialized invocation gate, and the prepared-fast revocation bit to be held.
+// serialized invocation gate, and a valid isolated-entry proof.
 func (in *Instance) invokeCachedDirectNumeric(ic *invokeCache, entry uintptr, args []uint64) ([]uint64, error) {
 	if preparedDirectFloatSupported && ic.directFloatFast {
 		if ic.scalarWideMask&directMixedEnabled != 0 {
@@ -4513,29 +4541,29 @@ func (in *Instance) invokeCachedDirectNumeric(ic *invokeCache, entry uintptr, ar
 	}
 	switch len(args) {
 	case 0:
-		return in.invokeDirectIntEntry(entry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, 0, 0, 0, 0)
+		return in.invokeDirectIntEntry(entry, int(ic.paramSlots), int(ic.resultSlots), ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, 0, 0, 0, 0)
 	case 1:
-		return in.invokeDirectIntEntry(entry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], 0, 0, 0)
+		return in.invokeDirectIntEntry(entry, int(ic.paramSlots), int(ic.resultSlots), ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], 0, 0, 0)
 	case 2:
-		return in.invokeDirectIntEntry(entry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], 0, 0)
+		return in.invokeDirectIntEntry(entry, int(ic.paramSlots), int(ic.resultSlots), ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], 0, 0)
 	case 3:
-		return in.invokeDirectIntEntry(entry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], 0)
+		return in.invokeDirectIntEntry(entry, int(ic.paramSlots), int(ic.resultSlots), ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], 0)
 	case 4:
-		return in.invokeDirectIntEntry(entry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], args[3])
+		return in.invokeDirectIntEntry(entry, int(ic.paramSlots), int(ic.resultSlots), ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], args[3])
 	default:
 		return nil, fmt.Errorf("wago: direct integer entry has %d argument slots", len(args))
 	}
 }
 
-// reserved means the isolated gate and prepared-fast ownership are both held.
+// reserved means the isolated gate and invocation lease are both held.
 func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, args []uint64, reserved bool) ([]uint64, error) {
-	if len(args) != ic.paramSlots {
+	if len(args) != int(ic.paramSlots) {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 	}
 	if len(args) > len(in.serArgs)/8 {
 		return nil, fmt.Errorf("%s requires %d arg slot(s), instance buffer has %d", export, len(args), len(in.serArgs)/8)
 	}
-	if ic.resultSlots > len(in.results)/8 {
+	if int(ic.resultSlots) > len(in.results)/8 {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
 	copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, ic.slotWide[:ic.paramSlots], ic.paramWidthClass)
@@ -4656,13 +4684,13 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 		return in.invokeReexportedHost(export, importIdx, args, id, contexts.callback)
 	}
-	if len(args) != ic.paramSlots {
+	if len(args) != int(ic.paramSlots) {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 	}
 	if len(args) > len(in.serArgs)/8 {
 		return nil, fmt.Errorf("%s requires %d arg slot(s), instance buffer has %d", export, len(args), len(in.serArgs)/8)
 	}
-	if ic.resultSlots > len(in.results)/8 {
+	if int(ic.resultSlots) > len(in.results)/8 {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
 	if err := in.collectGenericGCAtBoundary(); err != nil {
@@ -5132,6 +5160,10 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s result slots: %w", export, err)
 	}
+	const maxCachedSlots = int(^uint32(0) >> 1)
+	if paramSlots > maxCachedSlots || resultSlots > maxCachedSlots {
+		return nil, fmt.Errorf("%s signature has too many value slots to cache", export)
+	}
 	slot := &in.ic[int(in.icNext)%len(in.ic)]
 	in.icNext++
 	widths := slot.slotWide[:0]
@@ -5188,12 +5220,15 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		paramWidthClass:   classifyScalarSlotWidths(widths[:paramSlots]),
 		resultWidthClass:  classifyScalarSlotWidths(widths[paramSlots:]),
 		li:                li,
-		paramSlots:        paramSlots,
-		resultSlots:       resultSlots,
+		paramSlots:        int32(paramSlots),
+		resultSlots:       int32(resultSlots),
 		hasFuncRefParams:  hasReferenceValType(sig.Params),
 		hasFuncRefResults: hasReferenceValType(sig.Results),
 		slotWide:          widths,
 		entryMode:         entryMode,
+	}
+	if slot.directIntFast || slot.directFloatFast {
+		slot.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[slot.li]))
 	}
 	return slot, nil
 }

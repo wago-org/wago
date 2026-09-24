@@ -20,6 +20,47 @@ func (fn *WasmFunc) initDirectIntCall() {
 	}
 }
 
+func (in *Instance) invokeCachedDirectInt1(ic *invokeCache, entry uintptr, arg uint64) ([]uint64, error) {
+	if ic.scalarWideMask&1 == 0 {
+		arg = uint64(uint32(arg))
+	}
+	wruntime.PreparePreparedIntTrap(in.trap)
+	var result uint64
+	var err error
+	if ic.directIntBounded {
+		if ic.directIntLight {
+			result, err = in.eng.EnterPreparedIntLightBounded(entry, in.jm.LinMemBase(), arg, 0, 0, 0)
+		} else {
+			result, err = in.eng.EnterPreparedIntBounded(entry, in.jm.LinMemBase(), arg, 0, 0, 0)
+		}
+	} else if ic.directIntLight {
+		result, err = in.eng.EnterPreparedIntLight(entry, in.jm.LinMemBase(), arg, 0, 0, 0)
+	} else {
+		result, err = in.eng.EnterPreparedInt(entry, in.jm.LinMemBase(), arg, 0, 0, 0)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
+	}
+	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:ic.resultSlots]
+	if ic.resultSlots == 1 {
+		if ic.scalarResultWide {
+			out[0] = result
+		} else {
+			out[0] = uint64(uint32(result))
+		}
+	}
+	return out, nil
+}
+
+func (in *Instance) invokeCachedDirectI32ToI32(ic *invokeCache, arg uint64) ([]uint64, error) {
+	return in.invokeCachedDirectInt1(ic, ic.directEntry, arg)
+}
+
 func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
 	var a0, a1, a2, a3 uint64
 	switch len(args) {

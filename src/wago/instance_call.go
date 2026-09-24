@@ -155,7 +155,7 @@ func (in *Instance) callInnerAdmitted(export string, slots []uint64, results []V
 	var err error
 	if reservation == nil && contexts.interrupt == nil && contexts.callback == nil && (in.refStore == nil || in.refStore.private) {
 		ic := in.findInvokeCache(export)
-		if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast) && len(slots) == ic.paramSlots && in.lockPreparedFastState() {
+		if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast) && len(slots) == int(ic.paramSlots) && in.lockPreparedFastState() {
 			defer in.unlockPreparedFastState()
 			entry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 			raw, err = in.invokeCachedDirectNumeric(ic, entry, slots)

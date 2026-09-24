@@ -106,6 +106,11 @@ type instanceMemoryDirectory struct {
 // with __collect, __pin, or paired request/response exports.
 type invokeCache struct {
 	export            string
+	directEntry       uintptr
+	li                int // local index, or -1-import index for an InstanceExport re-export
+	paramSlots        int32
+	resultSlots       int32
+	slotWide          []bool // parameter slots followed by result slots; false means a 32-bit scalar
 	valid             bool
 	entryMode         preparedEntryMode
 	directIntFast     bool
@@ -114,13 +119,9 @@ type invokeCache struct {
 	directIntBounded  bool
 	scalarWideMask    uint8 // low bits are scalar widths; mixed direct entries use the tagged FP-bank encoding
 	scalarResultWide  bool
-	li                int // local index, or -1-import index for an InstanceExport re-export
-	paramSlots        int
-	resultSlots       int
 	hasFuncRefParams  bool
 	hasFuncRefResults bool
 	boundedWrapper    bool
 	paramWidthClass   scalarSlotWidthClass
 	resultWidthClass  scalarSlotWidthClass
-	slotWide          []bool // parameter slots followed by result slots; false means a 32-bit scalar
 }
