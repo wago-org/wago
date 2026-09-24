@@ -44,6 +44,8 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       "Exec/nbody.step": { ns: 20 }, "WazeroExec/nbody.step": { ns: 30 },
       "Exec/json-as-simd.deserializeN": { ns: 18 }, "WazeroExec/json-as-simd.deserializeN": { ns: 36 },
       "Exec/json-as-simd.serializeN": { ns: 72 }, "WazeroExec/json-as-simd.serializeN": { ns: 144 },
+      "Exec/blake-as-simd.hashN": { ns: 24 }, "WazeroExec/blake-as-simd.hashN": { ns: 48 },
+      "Exec/utf-as-simd.convertN": { ns: 16 }, "WazeroExec/utf-as-simd.convertN": { ns: 32 },
 	  "Exec/lua.plugin-workload": { ns: 1e30 }, "WazeroExec/lua.plugin-workload": { ns: 0 },
     };
     for (const name of ["json-as-simd", "blake-as-simd", "utf-as-simd", "coremark", "blake3", "qoi", "lz4", "zlib", "zstd"]) {
@@ -148,6 +150,10 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
     const executionPanel = firstRender.split('id="perf-amd64-panel-execution"')[1].split('id="perf-arm64-', 1)[0];
     assert.equal(matches(executionPanel, /<span class="vs__label">json-as \(simd\)<\/span>/g), 1);
     assert.equal(matches(executionPanel, /<span class="vs__label">json-as<\/span>/g), 0);
+    for (const label of ["blake-as (simd)", "utf-as (simd)"]) {
+      assert.match(executionPanel, new RegExp(`<span class="vs__label">${label.replace(/[()]/g, "\\$&")}<\\/span>`));
+    }
+    assert.doesNotMatch(executionPanel, /<span class="vs__label">(?:blake-as-simd|utf-as-simd)<\/span>/);
     assert.match(executionPanel, /serialize \+ deserialize · geometric mean/);
     assert.match(executionPanel, /<span class="vs__label">json-as \(simd\)<\/span>[\s\S]*?>36ns<\/span>/);
 
@@ -228,8 +234,8 @@ function assertDOMContract(html) {
 	const executionStart = general.indexOf('<span class="vs__label">Execution</span>');
 	const executionEnd = general.indexOf('<div class="vs__row" data-engine-row>', executionStart);
 	const execution = general.slice(executionStart, executionEnd);
-	assert.match(execution, />28\.6ns<\/span>/);
-	assert.match(execution, />54\.3ns<\/span>/);
+	assert.match(execution, />26\.5ns<\/span>/);
+	assert.match(execution, />50\.9ns<\/span>/);
     assert.doesNotMatch(general, /Micro compile mean|Micro startup mean|AS startup mean|Compute execution mean|Tiny compile|Ruby compile|fib_rec startup|Many-function startup|>N-body<|>JSON deserialize</);
   }
   assert.match(html, />[0-9.]+× faster<\/span>/);

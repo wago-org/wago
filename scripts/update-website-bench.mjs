@@ -148,7 +148,7 @@ function buildCorpusTabs(sets) {
     }
     const rows = [...keys].sort().map((tail) => {
       const exportName = tail.slice(name.length + 1);
-      return rs(name, `${exportName} · ${category} corpus`, `Exec/${tail}`, `WazeroExec/${tail}`);
+      return rs(displayName(name), `${exportName} · ${category} corpus`, `Exec/${tail}`, `WazeroExec/${tail}`);
     });
     if (hasCommand) {
       rows.push(rs(suite ? `${suite} · ${name.replace(/^[^-]+-/, "")}` : name,
