@@ -665,6 +665,7 @@ type instancePluginState struct {
 	invokeMu             invocationGate // serializes unrelated public calls across parked host callbacks
 	nativeExecutionMu    sync.Mutex     // serializes native entry for an independent instance
 	nativeShareMu        sync.Mutex     // coordinates retained local leases with resource publication
+	preparedHostGate     *preparedHostLeaseGate
 	invocationID         invocationID
 	gcConfig             *GCConfig
 	origin               InstantiateOrigin
@@ -2540,12 +2541,12 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 		return err
 	}
 	defer in.unlockNativeEntry(locked)
-	return in.callNativeSyncAdmitted(entry, activeTrap, waitParent, locked.local)
+	return in.callNativeSyncAdmitted(entry, activeTrap, waitParent, nil, nil, nil, locked.local)
 }
 
-// callNativeSyncAdmitted drives one synchronous host-call activation after the
-// caller has acquired the native execution lease.
-func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, heldNativeMu *sync.Mutex) (err error) {
+// callNativeSyncAdmitted drives a synchronous host-call activation after native
+// admission. A reserved session supplies its prebound call and activation.
+func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, prepared *runtime.PreparedHostScalarCall, preparedFixed runtime.FixedScalarHostCall, preparedActivation *hostLoopActivation, heldNativeMu *sync.Mutex) (err error) {
 	defer func() { err = in.decorateTrap(err) }()
 	defer func() {
 		if r := recover(); r != nil {
@@ -2604,7 +2605,26 @@ func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, wai
 			panic(r)
 		}
 	}()
+	if prepared != nil {
+		if preparedActivation == nil {
+			return fmt.Errorf("wago: prepared host call has no activation")
+		}
+		err = in.callPreparedHostSync(prepared, preparedFixed, preparedActivation)
+		goruntime.KeepAlive(in)
+		goruntime.KeepAlive(in.c)
+		return err
+	}
 	return in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, heldNativeMu)
+}
+
+func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCall, fixed runtime.FixedScalarHostCall, activation *hostLoopActivation) error {
+	if preparedHostFixedEnabled {
+		if fixed == nil {
+			fixed = activation.dispatchSingleTypedScalarFixedPortal
+		}
+		return prepared.CallFixed(activation.dispatch, activation.dispatchSingleTypedScalarPortal, fixed)
+	}
+	return prepared.Call(activation.dispatch, activation.dispatchSingleTypedScalarPortal)
 }
 
 func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, heldNativeMu *sync.Mutex) (err error) {

@@ -39,8 +39,8 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       "Instantiate/many_funcs": { ns: 6 }, "WazeroInstantiate/many_funcs": { ns: 9 },
       "Exec/tiny.add": { ns: 3 }, "DraglineExec/tiny.add": { ns: 2 }, "WazeroExec/tiny.add": { ns: 4 },
       "ExecCallOverhead_wago": { ns: 100 }, "ExecCallOverhead_wazero": { ns: 104 },
-	  "ExecTypedCall_wago": { ns: 104 },
-      "ExecHostCallback_wago": { ns: 33 }, "ExecHostRoundtrip_wago": { ns: 99 }, "ExecHostRoundtrip_wazero": { ns: 66 },
+	  "ExecTypedCall_wago": { ns: 104 }, "ExecSessionCall_wago": { ns: 22 },
+      "ExecHostCallback_wago": { ns: 33 }, "ExecSessionHostCallback_wago": { ns: 25 }, "ExecHostRoundtrip_wago": { ns: 99 }, "ExecHostRoundtrip_wazero": { ns: 66 },
       "Exec/nbody.step": { ns: 20 }, "WazeroExec/nbody.step": { ns: 30 },
       "Exec/json-as-simd.deserializeN": { ns: 18 }, "WazeroExec/json-as-simd.deserializeN": { ns: 36 },
       "Exec/json-as-simd.serializeN": { ns: 72 }, "WazeroExec/json-as-simd.serializeN": { ns: 144 },
@@ -216,15 +216,15 @@ function assertDOMContract(html) {
       assert.equal(matches(general, new RegExp(`<span class="vs__label">${label}</span>`, "g")), 1);
     }
     assert.doesNotMatch(general, /Application commands|SIMD execution/);
-    assert.ok(general.includes('<span class="vs__sub">prepared (i32) → i32</span>'));
-    assert.ok(general.includes('<span class="vs__sub">typed import callback</span>'));
+    assert.ok(general.includes('<span class="vs__sub">reserved session (i32) → i32</span>'));
+    assert.ok(general.includes('<span class="vs__sub">reserved typed import callback</span>'));
 	const callStart = general.indexOf('<span class="vs__label">Host → Wasm</span>');
 	const callEnd = general.indexOf('<div class="vs__row" data-engine-row>', callStart);
-	assert.match(general.slice(callStart, callEnd), /vs__delta--tie">parity<\/span>/);
+	assert.match(general.slice(callStart, callEnd), />22ns<\/span>/);
 	const callbackStart = general.indexOf('<span class="vs__label">Wasm → host</span>');
 	const callbackEnd = general.indexOf('<div class="vs__row" data-engine-row>', callbackStart);
 	const callback = general.slice(callbackStart, callbackEnd);
-	assert.match(callback, />33ns<\/span>/);
+	assert.match(callback, />25ns<\/span>/);
 	assert.doesNotMatch(callback, />99ns<\/span>/);
 	const machineCodeStart = general.indexOf('<span class="vs__label">Machine code</span>');
 	const machineCodeEnd = general.indexOf('<div class="vs__row" data-engine-row>', machineCodeStart);

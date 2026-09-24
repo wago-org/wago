@@ -214,6 +214,13 @@ func (in *Instance) lockPreparedInvocation() preparedInvocationLease {
 	return preparedInvocationLease{in: in, state: state, gc: in.lockGCInvocation(id)}
 }
 
+func (in *Instance) lockPreparedSessionInvocation() preparedInvocationLease {
+	state := in.ensurePluginState()
+	state.invokeMu.Lock()
+	state.invocationID = newInvocationID()
+	return preparedInvocationLease{state: state}
+}
+
 func (l preparedInvocationLease) unlock() {
 	l.gc.unlock()
 	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
@@ -376,6 +383,46 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 				return nil, err
 			}
 		}
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:fn.resultSlots]
+	decodePublicScalarSlots(out, nativeUint64Slots(in.results), fn.resultWide)
+	return out, nil
+}
+
+// invokeScalarHostReserved is the host-capable counterpart to
+// the ordinary scalar entry. PreparedSession already owns and has bound the
+// native execution context, while callNativeSyncAdmitted retains the complete
+// host park/resume and panic/trap protocol.
+func (fn *WasmFunc) invokeScalarHostReserved(args []uint64, prepared *wruntime.PreparedHostScalarCall, fixed wruntime.FixedScalarHostCall, activation *hostLoopActivation) ([]uint64, error) {
+	in := fn.in
+	if len(args) <= 4 {
+		put := func(slot int) {
+			bits := args[slot]
+			if fn.scalarWideMask&(1<<slot) == 0 {
+				bits = uint64(uint32(bits))
+			}
+			binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
+		}
+		switch len(args) {
+		case 4:
+			put(3)
+			fallthrough
+		case 3:
+			put(2)
+			fallthrough
+		case 2:
+			put(1)
+			fallthrough
+		case 1:
+			put(0)
+		}
+	} else {
+		marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, fn.paramWide)
+	}
+	if err := in.callNativeSyncAdmitted(fn.entry, in.trap, nil, prepared, fixed, activation, nil); err != nil {
+		return nil, err
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)

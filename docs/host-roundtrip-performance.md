@@ -1,8 +1,8 @@
 # Synchronous host-call performance
 
-> **Historical performance record.** Prepared-session results below describe a
-> removed API and must not be used as current `WasmFunc.Invoke` numbers. Public
-> sessions no longer exist; every invocation performs normal admission. See
+> **Historical performance record.** The results below used the former
+> `PreparedFunction.OpenSession` API. The reservation-held path is now
+> `WasmFunc.OpenSession`; these are not ordinary `WasmFunc.Invoke` numbers. See
 > [the migration guide](public-api-migration.md).
 
 ## Invariants
@@ -25,7 +25,7 @@ These constraints apply before and after each optimization:
 8. Every shortcut needs a conservative fallback. State exhaustion must not
    silently remove identity or authorization checks.
 
-## Historical reservation-held prepared calls (removed)
+## Reservation-held prepared calls
 
 `PreparedSession` amortized public invocation admission across a caller-owned
 run of calls. All copies of a session share one close state: closing any copy

@@ -13,7 +13,7 @@ no deprecated aliases for the removed names.
 | `Instance.PrepareFunction` / `PreparedFunction` | `Instance.WasmFunc` / `WasmFunc` |
 | `PrepareI32...` / `PreparedI32...` families | `WasmFunc(...).Invoke(...)` |
 | `Invoke0` through `Invoke4` | `Invoke(args ...uint64)` |
-| `PreparedSession`, `OpenSession`, and session invocation | resolve one `WasmFunc` and call `Invoke` normally |
+| `PreparedSession`, `OpenSession`, and session invocation | resolve one `WasmFunc`; use `Invoke` normally or `OpenSession` for a caller-owned batch |
 | `Instance.Call(ctx, export, values...)` | `Instance.InvokeValues(ctx, export, values...)` |
 
 ## Imports
@@ -80,8 +80,22 @@ invocation on that instance; copy results that must survive another call.
 
 Use `Instance.Invoke` for by-name calls, `Instance.InvokeContext` for an explicit
 per-call cancellation/deadline context, and `Instance.InvokeValues` for tagged
-`Value` arguments and results. Resolved handles deliberately have no context or
-session variant.
+`Value` arguments and results. Resolved handles deliberately have no context
+variant. For repeated calls on one instance, `WasmFunc.OpenSession` holds
+invocation admission until `Close`; the session and instance must not be used
+concurrently. Always close the session before closing the instance:
+
+```go
+session, err := step.OpenSession()
+if err != nil {
+	return err
+}
+defer session.Close()
+out, err := session.Invoke(wago.I32(41))
+```
+
+An idle session reserves its instance and can block unrelated operations on
+that instance. It does not retain a shared GC-domain lease between calls.
 
 See [`examples/23-public-api`](../examples/23-public-api) for the complete,
 executable migration target and reproducible guest fixture.
