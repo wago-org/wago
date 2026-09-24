@@ -462,6 +462,37 @@ func BenchmarkExecTypedCall_wago(b *testing.B) {
 	}
 }
 
+// BenchmarkExecInstanceCall_wago measures name-based Instance.Invoke on the
+// same identity export used by the resolved-function and session benchmarks.
+func BenchmarkExecInstanceCall_wago(b *testing.B) {
+	c, err := wago.Compile(nil, callWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("call", 1); err != nil || len(got) != 1 || got[0] != 1 {
+		b.Fatalf("call(1) = %v, %v; want 1", got, err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	var got []uint64
+	for i := 0; i < b.N; i++ {
+		got, err = in.Invoke("call", 1)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	if len(got) != 1 || got[0] != 1 {
+		b.Fatalf("call(1) = %v, want 1", got)
+	}
+}
+
 // BenchmarkExecSessionCall_wago measures a caller-owned reservation held across
 // repeated calls. The reservation is acquired before timing and released after.
 func BenchmarkExecSessionCall_wago(b *testing.B) {
