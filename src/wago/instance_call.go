@@ -36,7 +36,7 @@ func (in *Instance) InvokeValues(ctx context.Context, export string, args ...Val
 			return nil, err
 		}
 	}
-	params, results, err := in.c.Signature(export)
+	params, results, err := in.c.signatureView(export)
 	if err != nil {
 		return nil, err
 	}

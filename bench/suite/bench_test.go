@@ -462,6 +462,39 @@ func BenchmarkExecTypedCall_wago(b *testing.B) {
 	}
 }
 
+// BenchmarkExecInvokeValues_wago measures the typed, context-aware entry on
+// the same identity export as the raw-slot call benchmarks.
+func BenchmarkExecInvokeValues_wago(b *testing.B) {
+	c, err := wago.Compile(nil, callWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	ctx := context.Background()
+	arg := wago.ValueI32(1)
+	if got, err := in.InvokeValues(ctx, "call", arg); err != nil || len(got) != 1 || got[0].I32() != 1 {
+		b.Fatalf("call(1) = %v, %v; want 1", got, err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	var got []wago.Value
+	for i := 0; i < b.N; i++ {
+		got, err = in.InvokeValues(ctx, "call", arg)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	if len(got) != 1 || got[0].I32() != 1 {
+		b.Fatalf("call(1) = %v; want 1", got)
+	}
+}
+
 // BenchmarkExecInstanceCall_wago measures name-based Instance.Invoke on the
 // same identity export used by the resolved-function and session benchmarks.
 func BenchmarkExecInstanceCall_wago(b *testing.B) {

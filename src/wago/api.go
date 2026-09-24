@@ -2771,6 +2771,14 @@ func sortedKeys(m map[string]int) []string {
 
 // Signature returns the parameter and result types of an exported function.
 func (c *Compiled) Signature(export string) (params, results []ValType, err error) {
+	params, results, err = c.signatureView(export)
+	if err != nil {
+		return nil, nil, err
+	}
+	return append([]ValType(nil), params...), append([]ValType(nil), results...), nil
+}
+
+func (c *Compiled) signatureView(export string) (params, results []ValType, err error) {
 	c = c.executionView()
 	if c == nil {
 		return nil, nil, fmt.Errorf("compiled module is nil")
@@ -2787,13 +2795,13 @@ func (c *Compiled) Signature(export string) (params, results []ValType, err erro
 			return nil, nil, fmt.Errorf("export %q imported function index %d has no signature", export, gfi)
 		}
 		sig := c.importFuncSigs[gfi]
-		return append([]ValType(nil), sig.Params...), append([]ValType(nil), sig.Results...), nil
+		return sig.Params, sig.Results, nil
 	}
 	li := gfi - c.NumImports
 	if li < 0 || li >= len(c.Funcs) {
 		return nil, nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
 	}
-	return append([]ValType(nil), c.Funcs[li].Params...), append([]ValType(nil), c.Funcs[li].Results...), nil
+	return c.Funcs[li].Params, c.Funcs[li].Results, nil
 }
 
 // SignatureDescriptor returns the exact structural parameter and result types
