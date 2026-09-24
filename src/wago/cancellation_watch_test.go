@@ -30,7 +30,7 @@ func TestCancellationWatchInertContexts(t *testing.T) {
 
 func TestCancellationWatchStopIdempotent(t *testing.T) {
 	if !nativeCancellationSupported() {
-		t.Skip("native cancellation unavailable")
+		return // TinyGo's task scheduler cannot run context cancellation or t.Skip.
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
