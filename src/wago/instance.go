@@ -124,4 +124,5 @@ type invokeCache struct {
 	boundedWrapper    bool
 	paramWidthClass   scalarSlotWidthClass
 	resultWidthClass  scalarSlotWidthClass
+	slotIndex         uint8
 }

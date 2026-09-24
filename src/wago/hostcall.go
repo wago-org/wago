@@ -666,6 +666,7 @@ type instancePluginState struct {
 	nativeExecutionMu    sync.Mutex     // serializes native entry for an independent instance
 	nativeShareMu        sync.Mutex     // coordinates retained local leases with resource publication
 	preparedHostGate     *preparedHostLeaseGate
+	hostInvokeCache      *[4]*WasmFunc // allocated only after an ordinary prepared host call
 	invocationID         invocationID
 	gcConfig             *GCConfig
 	origin               InstantiateOrigin

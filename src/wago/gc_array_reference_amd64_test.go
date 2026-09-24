@@ -373,9 +373,9 @@ func TestStagedGCArrayReferenceFootprint(t *testing.T) {
 		"instancePluginState":     unsafe.Sizeof(instancePluginState{}),
 	} {
 		// The plugin sidecar includes instance-local counted activations and
-		// monotonic callback/context versions. The retained host-session gate
-		// occupies one pointer; close state does not live in this sidecar.
-		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 232}[name]
+		// monotonic callback/context versions. Retained host-session and
+		// ordinary-call cache pointers live here, not on every Instance.
+		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 240}[name]
 		if got != want {
 			t.Fatalf("%s size = %d, want %d", name, got, want)
 		}

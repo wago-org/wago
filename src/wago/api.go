@@ -4301,6 +4301,11 @@ func LoadTrustedArtifact(b []byte) (*Compiled, error) {
 // use InvokeFromHost with the HostModule value it received. Direct invocation
 // fails with ErrPermissionDenied while callback-scoped guest storage is borrowed.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
+	if in != nil && in.syncMode && goruntime.GOARCH == "amd64" && in.rt == nil {
+		if out, err, ok := in.tryInvokeCachedHostScalar1(export, args); ok {
+			return out, err
+		}
+	}
 	if in != nil && !in.syncMode {
 		if in.rt == nil {
 			state := in.pluginState.Load()
@@ -4324,7 +4329,7 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 								out, err = in.invokeCachedDirectNumeric(ic, entry, args)
 							}
 						} else {
-							out, err = in.invokeCachedNumericEntry(export, ic, args, true)
+							out, err = in.invokeCachedNumericEntry(export, ic, args, true, false)
 						}
 						state.invokeMu.Unlock()
 						in.endDirectInvocation()
@@ -4337,6 +4342,48 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		}
 	}
 	return in.invokeEntry(export, args, invocationContextSet{}, false, true)
+}
+
+// tryInvokeCachedHostScalar1 reuses the prepared typed-host portal for a warm
+// name-based call. Callbacks can publish resources while parked, so this holds
+// the ordinary invocation gate rather than a revocation-blocking fast gate.
+func (in *Instance) tryInvokeCachedHostScalar1(export string, args []uint64) ([]uint64, error, bool) {
+	if len(args) != 1 {
+		return nil, nil, false
+	}
+	state := in.pluginState.Load()
+	if state == nil || !in.invocationState.CompareAndSwap(0, 1) {
+		return nil, nil, false
+	}
+	if !state.invokeMu.state.CompareAndSwap(0, invocationGateHeld) {
+		in.endDirectInvocation()
+		return nil, nil, false
+	}
+	ic := in.findInvokeCache(export)
+	hostCache := state.hostInvokeCache
+	privateRefStore := in.refStore == nil || in.refStore.private
+	if ic == nil || hostCache == nil || hostCache[ic.slotIndex] == nil || ic.paramSlots != 1 || ic.resultSlots != 1 || ic.scalarWideMask != 0 || ic.scalarResultWide ||
+		!privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() || !in.usesIndependentExecution() ||
+		in.gc != nil || in.threadedMemoryZero || in.table != nil || in.importsFuncrefStorage() || len(in.hostLog) != 0 ||
+		!(in.hasSingleDirectTypedScalarHost() || in.hasSingleExpandedTypedScalarHost()) {
+		state.invokeMu.Unlock()
+		in.endDirectInvocation()
+		return nil, nil, false
+	}
+	state.invocationID = newInvocationID()
+	defer func() {
+		state.invocationID = 0
+		state.invokeMu.Unlock()
+		in.endDirectInvocation()
+	}()
+	binary.LittleEndian.PutUint64(in.serArgs, uint64(uint32(args[0])))
+	err := hostCache[ic.slotIndex].callScalarHostPrepared()
+	var out []uint64
+	if err == nil {
+		out = in.resultVals[:1]
+		out[0] = uint64(binary.LittleEndian.Uint32(in.results))
+	}
+	return out, err, true
 }
 
 // invocationContextSet keeps callback-visible cancellation independent from
@@ -4471,11 +4518,11 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 			return in.invokeCachedDirectNumeric(ic, directEntry, args)
 		}
 		privateScalar := invokePrivateEntryEnabled && ic.entryMode != preparedEntryGeneral && executionFlags&directBlocked == 0
-		hostScalar := goruntime.GOARCH == "arm64" && !privateScalar && ic.li >= 0 && in.syncMode && !in.threadedMemoryZero && in.usesIndependentExecution() &&
+		hostScalar := !privateScalar && ic.li >= 0 && in.syncMode && !in.threadedMemoryZero && in.usesIndependentExecution() &&
 			(in.hasSingleDirectTypedScalarHost() || in.hasSingleExpandedTypedScalarHost()) && !ic.hasFuncRefParams && !ic.hasFuncRefResults &&
 			in.table == nil && !in.importsFuncrefStorage() && len(in.hostLog) == 0
 		if privateScalar || hostScalar {
-			out, err := in.invokeCachedNumericEntry(export, ic, args, false)
+			out, err := in.invokeCachedNumericEntry(export, ic, args, false, hostScalar)
 			if hostScalar && in.table != nil {
 				in.reconcileFuncrefRoots()
 			}
@@ -4519,7 +4566,7 @@ func (in *Instance) tryInvokeCachedIsolatedNumeric(export string, args []uint64)
 		entry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 		out, err = in.invokeCachedDirectNumeric(ic, entry, args)
 	} else {
-		out, err = in.invokeCachedNumericEntry(export, ic, args, true)
+		out, err = in.invokeCachedNumericEntry(export, ic, args, true, false)
 	}
 	return out, err, true
 }
@@ -4556,7 +4603,7 @@ func (in *Instance) invokeCachedDirectNumeric(ic *invokeCache, entry uintptr, ar
 }
 
 // reserved means the isolated gate and invocation lease are both held.
-func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, args []uint64, reserved bool) ([]uint64, error) {
+func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, args []uint64, reserved, hostScalar bool) ([]uint64, error) {
 	if len(args) != int(ic.paramSlots) {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 	}
@@ -4572,7 +4619,18 @@ func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, arg
 	}
 	entry := in.base + uintptr(in.c.Entry[ic.li])
 	var err error
-	if goruntime.GOARCH == "arm64" && in.syncMode {
+	if hostScalar && goruntime.GOARCH == "amd64" {
+		state := in.ensurePluginState()
+		if state.hostInvokeCache == nil {
+			state.hostInvokeCache = new([4]*WasmFunc)
+		}
+		fn := state.hostInvokeCache[ic.slotIndex]
+		if fn == nil {
+			fn = &WasmFunc{in: in, export: export, entry: entry}
+			state.hostInvokeCache[ic.slotIndex] = fn
+		}
+		err = fn.callScalarHostPrepared()
+	} else if in.syncMode {
 		err = in.callNativeSyncWithTrapContext(entry, in.trap, nil)
 	} else if reserved || ic.entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
 		err = in.callPreparedIsolated(entry, in.trap, reserved, ic.boundedWrapper)
@@ -5142,9 +5200,8 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		if ex, ok := in.imports[in.c.functionImportBindingKey(gfi)].(*InstanceExport); (!ok || ex == nil || ex.inst == nil) && (gfi >= len(in.syncHosts) || !in.syncHosts[gfi].callable()) {
 			return nil, fmt.Errorf("export %q is an imported function without a callable owner", export)
 		}
-		slot := &in.ic[int(in.icNext)%len(in.ic)]
-		in.icNext++
-		*slot = invokeCache{export: export, valid: true, li: -1 - gfi, slotWide: slot.slotWide[:0]}
+		slot, index := in.nextInvokeCacheSlot()
+		*slot = invokeCache{export: export, valid: true, li: -1 - gfi, slotWide: slot.slotWide[:0], slotIndex: index}
 		return slot, nil
 	}
 	li := gfi - in.c.NumImports
@@ -5164,8 +5221,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	if paramSlots > maxCachedSlots || resultSlots > maxCachedSlots {
 		return nil, fmt.Errorf("%s signature has too many value slots to cache", export)
 	}
-	slot := &in.ic[int(in.icNext)%len(in.ic)]
-	in.icNext++
+	slot, index := in.nextInvokeCacheSlot()
 	widths := slot.slotWide[:0]
 	if cap(widths) < paramSlots+resultSlots {
 		widths = make([]bool, 0, paramSlots+resultSlots)
@@ -5219,6 +5275,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		scalarResultWide:  resultSlots == 1 && widths[paramSlots],
 		paramWidthClass:   classifyScalarSlotWidths(widths[:paramSlots]),
 		resultWidthClass:  classifyScalarSlotWidths(widths[paramSlots:]),
+		slotIndex:         index,
 		li:                li,
 		paramSlots:        int32(paramSlots),
 		resultSlots:       int32(resultSlots),
@@ -5231,6 +5288,16 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		slot.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[slot.li]))
 	}
 	return slot, nil
+}
+
+// nextInvokeCacheSlot evicts the matching prepared host handle with its export.
+func (in *Instance) nextInvokeCacheSlot() (*invokeCache, uint8) {
+	index := in.icNext % uint8(len(in.ic))
+	in.icNext++
+	if state := in.pluginState.Load(); state != nil && state.hostInvokeCache != nil {
+		state.hostInvokeCache[index] = nil
+	}
+	return &in.ic[index], index
 }
 
 func marshalPublicScalarArgs(dst []byte, values []uint64, types []ValType) {
