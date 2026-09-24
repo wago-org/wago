@@ -38,6 +38,11 @@ func (c hostInvocationContext) empty() bool {
 
 var hostInvocationContexts sync.Map // map[uintptr]hostInvocationContext
 
+// An empty count proves the map has no active bindings. Increment before
+// publishing and decrement after restoring so readers may conservatively take
+// the map path during transitions but never miss a published context.
+var activeHostInvocationBindings atomic.Int64
+
 // hostLoopActivation belongs to one Go native-entry/host-resume loop. The
 // invocation gate keeps the root identity/reservation stable, and the parent
 // binding spans this loop. Nested entries get distinct values and control
@@ -106,6 +111,7 @@ func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() 
 		return func() {}
 	}
 	previous, loaded := hostInvocationContexts.Load(ctrl)
+	activeHostInvocationBindings.Add(1)
 	hostInvocationContexts.Store(ctrl, next)
 	return func() {
 		if loaded {
@@ -113,6 +119,7 @@ func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() 
 		} else {
 			hostInvocationContexts.Delete(ctrl)
 		}
+		activeHostInvocationBindings.Add(-1)
 	}
 }
 
@@ -121,7 +128,10 @@ func bindHostInvocationParent(in *Instance, parent context.Context) func() {
 		return func() {}
 	}
 	ctrl := offHeapSlicePtr(in.ctrl)
-	_, inherited := hostInvocationContexts.Load(ctrl)
+	inherited := false
+	if activeHostInvocationBindings.Load() != 0 {
+		_, inherited = hostInvocationContexts.Load(ctrl)
+	}
 	if parent == nil && !inherited {
 		return func() {}
 	}

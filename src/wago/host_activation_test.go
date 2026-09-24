@@ -12,6 +12,30 @@ func TestHostInvocationContextCrossInstanceChain(t *testing.T) {
 	t.Run("concrete", func(t *testing.T) { testHostInvocationContextCrossInstanceChain(t, true) })
 }
 
+func TestHostInvocationBindingCountTracksNestedScopes(t *testing.T) {
+	frame := make([]byte, 8)
+	ctrl := offHeapSlicePtr(frame)
+	base := activeHostInvocationBindings.Load()
+	first := hostInvocationContext{id: 91, parent: context.Background()}
+	restoreFirst := bindHostInvocationContext(ctrl, first)
+	if got := activeHostInvocationBindings.Load(); got != base+1 {
+		t.Fatalf("outer binding count = %d, want %d", got, base+1)
+	}
+	second := hostInvocationContext{id: 92}
+	restoreSecond := bindHostInvocationContext(ctrl, second)
+	if got := activeHostInvocationBindings.Load(); got != base+2 {
+		t.Fatalf("nested binding count = %d, want %d", got, base+2)
+	}
+	restoreSecond()
+	if got := currentHostInvocationContext(ctrl, nil); got != first {
+		t.Fatalf("restored context = %+v, want %+v", got, first)
+	}
+	restoreFirst()
+	if got := activeHostInvocationBindings.Load(); got != base {
+		t.Fatalf("binding count after restore = %d, want %d", got, base)
+	}
+}
+
 func TestHostLoopActivationContextNesting(t *testing.T) {
 	// Model distinct parked control frames without entering native code. Real
 	// re-entry, including A -> B -> A, is covered by the chain test above.
