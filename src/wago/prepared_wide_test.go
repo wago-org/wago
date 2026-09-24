@@ -247,7 +247,7 @@ func TestPreparedDirectIntegerMultiWidths(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
 		maxParams = 8
 	}
-	for _, tc := range []struct{ params, results int }{{4, 3}, {maxParams, 4}} {
+	for _, tc := range []struct{ params, results int }{{4, 3}, {maxParams, 4}, {5, 5}} {
 		t.Run(fmt.Sprintf("%d-%d", tc.params, tc.results), func(t *testing.T) {
 			compiled := MustCompile(preparedIntegerMultiModule(tc.params, tc.results))
 			defer compiled.Close()
@@ -329,6 +329,83 @@ func TestIntegerQuadRegisterCallBetweenWasmFunctions(t *testing.T) {
 	got, err := in.Invoke("f", 1, 2, 3, 4)
 	if err != nil || len(got) != 4 || got[0] != 1 || got[1] != 2 || got[2] != 3 || got[3] != 4 {
 		t.Fatalf("Wasm register call = %v, %v", got, err)
+	}
+}
+
+func TestIntegerQuintRegisterCallBetweenWasmFunctions(t *testing.T) {
+	types := []wasm.ValType{wasm.I32, wasm.I64, wasm.I32, wasm.I64, wasm.I32}
+	identity := []byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x20, 0x03, 0x20, 0x04}
+	caller := append(append([]byte{}, identity...), 0x10, 0x00, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(append(identity, 0x0b)),
+			wasmtest.Code(caller),
+		)),
+	)
+	compiled := MustCompile(module)
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	args := []uint64{1, 0x1122334455667788, 3, 0x8877665544332211, 5}
+	got, err := in.Invoke("f", args...)
+	if err != nil || len(got) != len(args) {
+		t.Fatalf("Wasm register call = %v, %v; want %v", got, err, args)
+	}
+	for i := range args {
+		if got[i] != args[i] {
+			t.Fatalf("Wasm register call[%d] = %x; want %x", i, got[i], args[i])
+		}
+	}
+}
+
+func TestPreparedDirectIntegerQuintTrapReset(t *testing.T) {
+	types := []wasm.ValType{wasm.I32, wasm.I64, wasm.I32, wasm.I64, wasm.I32}
+	body := []byte{0x20, 0x00, 0x45, 0x04, 0x40, 0x00, 0x0b}
+	for i := range types {
+		body = append(body, 0x20, byte(i))
+	}
+	body = append(body, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	compiled := MustCompile(module)
+	defer compiled.Close()
+	if !compiled.directPreparedBoundedAt(0) {
+		t.Fatal("integer quint trap entry is not bounded")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.directIntFast || !fn.directIsolated {
+		t.Fatal("integer quint trap entry did not select direct path")
+	}
+	if _, err := fn.Invoke(0, 2, 3, 4, 5); err == nil {
+		t.Fatal("expected trap")
+	}
+	args := []uint64{1, 0x1122334455667788, 3, 0x8877665544332211, 5}
+	got, err := fn.Invoke(args...)
+	if err != nil || len(got) != len(args) {
+		t.Fatalf("post-trap call = %v, %v; want %v", got, err, args)
+	}
+	for i := range args {
+		if got[i] != args[i] {
+			t.Fatalf("post-trap call[%d] = %x; want %x", i, got[i], args[i])
+		}
 	}
 }
 

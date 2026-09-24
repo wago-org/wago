@@ -4245,7 +4245,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		} else if registerQuadResultsSupported && rN > 2 {
 			// RCX is result 2. Recover the result pointer in RDI instead.
 			a.Pop(RDI)
-			for i, reg := range []Reg{RAX, RDX, RCX, R8}[:rN] {
+			for i, reg := range []Reg{RAX, RDX, RCX, R8, R9}[:rN] {
 				a.Store64(RDI, int32(i*8), reg)
 			}
 		} else {
@@ -4385,7 +4385,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 			a.FLoadDisp(Reg(i), RSP, f.spillOff(i), mtOf(typ) == mtF64)
 		}
 	} else if registerQuadResultsSupported && rN > 2 {
-		for i, reg := range []Reg{RAX, RDX, RCX, R8}[:rN] {
+		for i, reg := range []Reg{RAX, RDX, RCX, R8, R9}[:rN] {
 			a.Load64(reg, RSP, f.spillOff(i))
 		}
 	}

@@ -139,9 +139,12 @@ func sigFitsDirectCrossTailABI(ft *wasm.CompType) bool {
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/XMM banks; one result returns in
 // RAX or XMM0; two results use independent GP/FP banks, and integer-only
-// signatures can return up to four values in RAX/RDX/RCX/R8.
+// signatures can return up to five values in RAX/RDX/RCX/R8/R9.
 func sigFitsRegABI(ft *wasm.CompType) bool {
-	if len(ft.Results) > 4 || len(ft.Results) > 2 && !registerQuadResultsSupported {
+	if len(ft.Results) > 5 || len(ft.Results) > 2 && !registerQuadResultsSupported {
+		return false
+	}
+	if len(ft.Results) > 4 && !sigIsIntOnly(ft) {
 		return false
 	}
 	if len(ft.Results) > 2 && !sigIsIntOnly(ft) && !(preparedDirectFloatSupported && sigIsFloatOnly(ft)) {
@@ -176,7 +179,7 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 }
 
 func preparedDirectIntSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > len(intArgRegs) || len(ft.Results) > 4 || len(ft.Results) > 2 && !registerQuadResultsSupported {
+	if len(ft.Params) > len(intArgRegs) || len(ft.Results) > 5 || len(ft.Results) > 2 && !registerQuadResultsSupported {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -1913,10 +1916,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		f.a.MovReg64(pairRes[1], RDX)
 		f.pinned = f.pinned.add(pairRes[1])
 	}
-	var quadRes [4]Reg
+	var quadRes [5]Reg
 	if registerQuadResultsSupported && rN > 2 {
-		for i, src := range []Reg{RAX, RDX, RCX, R8}[:rN] {
-			quadRes[i] = f.allocReg(maskOf(RAX, RDX, RCX, R8))
+		for i, src := range []Reg{RAX, RDX, RCX, R8, R9}[:rN] {
+			quadRes[i] = f.allocReg(maskOf(RAX, RDX, RCX, R8, R9))
 			f.a.MovReg64(quadRes[i], src)
 			f.pinned = f.pinned.add(quadRes[i])
 		}
