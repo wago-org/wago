@@ -183,9 +183,6 @@ func (v *moduleValidator) validateFunctionsSerial() error {
 func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) (counts validationSegmentCounts, err error) {
 	fn := &v.m.Code[localIndex]
 	abs := importedFuncs + localIndex
-	if localIndex >= len(v.m.FuncTypes) {
-		return counts, v.err(ErrUnknownFunc, "code without function type")
-	}
 	ft, ok := v.funcType(uint32(abs))
 	if !ok {
 		return counts, v.err(ErrUnknownType, "function type")
@@ -339,6 +336,9 @@ func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
 }
 
 func (v *moduleValidator) validateModule() error {
+	if len(v.m.FuncTypes) != len(v.m.Code) {
+		return v.err(ErrUnknownFunc, "function and code section counts differ")
+	}
 	if v.m.UsesCompactImports && !v.features.CompactImports {
 		return v.err(ErrUnsupportedFeature, "compact imports")
 	}
