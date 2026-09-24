@@ -50,20 +50,20 @@ func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
 
 func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
-	if err := in.beginInvocation(); err != nil {
+	if err := in.beginDirectInvocation(); err != nil {
 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}
 	if fn.directIsolated && fn.tryDirectGate() {
 		out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
 		fn.directGate.Unlock()
-		in.endInvocation()
+		in.endDirectInvocation()
 		return out, err
 	}
 	lease := in.lockPreparedInvocation()
 	args := [4]uint64{a0, a1, a2, a3}
 	out, err := fn.invokeGeneralAdmitted(args[:fn.paramSlots])
 	lease.unlock()
-	in.endInvocation()
+	in.endDirectInvocation()
 	return out, err
 }
 

@@ -51,10 +51,15 @@ func TestWasmFuncPreparedHostCallRevokedByCallbackSharing(t *testing.T) {
 	c := MustCompile(sessionImportMemoryModule())
 	defer c.Close()
 	var in *Instance
+	var fn *WasmFunc
 	calls := 0
+	var identities []invocationID
 	imports := NewImports()
 	imports.HostFunc("env", "f", func(v int32) int32 {
 		calls++
+		if calls <= 2 {
+			identities = append(identities, fn.hostActivation.context(in).id)
+		}
 		if calls == 2 {
 			if _, err := in.ExportedMemory("memory"); err != nil {
 				panic(HostTrap{Err: err})
@@ -68,7 +73,7 @@ func TestWasmFuncPreparedHostCallRevokedByCallbackSharing(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.WasmFunc("g")
+	fn, err = in.WasmFunc("g")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,6 +88,9 @@ func TestWasmFuncPreparedHostCallRevokedByCallbackSharing(t *testing.T) {
 	}
 	if in.usesIndependentExecution() {
 		t.Fatal("callback publication failed to revoke independent execution")
+	}
+	if len(identities) != 2 || identities[0] == 0 || identities[0] == identities[1] {
+		t.Fatalf("cached callback identities = %v, want distinct nonzero IDs", identities)
 	}
 }
 

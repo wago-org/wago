@@ -160,14 +160,14 @@ func TestPreparedDirectLifetimeDuringClose(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := in.beginInvocation(); err != nil {
+			if err := in.beginDirectInvocation(); err != nil {
 				t.Fatal(err)
 			}
 			if !in.tryPreparedDirect() {
 				t.Fatal("private reservation rejected")
 			}
 			var once sync.Once
-			release := func() { once.Do(func() { in.ensurePluginState().invokeMu.Unlock(); in.endInvocation() }) }
+			release := func() { once.Do(func() { in.ensurePluginState().invokeMu.Unlock(); in.endDirectInvocation() }) }
 			defer release()
 			done := make(chan error, 1)
 			go func() {
