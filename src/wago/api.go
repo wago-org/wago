@@ -4436,7 +4436,7 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		}
 		privateScalar := invokePrivateEntryEnabled && ic.entryMode != preparedEntryGeneral && executionFlags&directBlocked == 0
 		hostScalar := goruntime.GOARCH == "arm64" && !privateScalar && ic.li >= 0 && in.syncMode && !in.threadedMemoryZero && in.usesIndependentExecution() &&
-			in.hasSingleDirectTypedScalarHost() && !ic.hasFuncRefParams && !ic.hasFuncRefResults &&
+			(in.hasSingleDirectTypedScalarHost() || in.hasSingleExpandedTypedScalarHost()) && !ic.hasFuncRefParams && !ic.hasFuncRefResults &&
 			in.table == nil && !in.importsFuncrefStorage() && len(in.hostLog) == 0
 		if privateScalar || hostScalar {
 			out, err := in.invokeCachedNumericEntry(export, ic, args, false)
