@@ -230,6 +230,29 @@ type preparedInvocationLease struct {
 	gc    gcInvocationLease
 }
 
+// When a scalar call has no collector or imported GC domain, keep its
+// invocation ownership in a small lease instead of copying the full GC-domain
+// view on entry and release.
+type preparedScalarNoGCLease struct {
+	in    *Instance
+	state *instancePluginState
+}
+
+func (in *Instance) lockPreparedScalarNoGC() preparedScalarNoGCLease {
+	state := in.ensurePluginState()
+	state.invokeMu.Lock()
+	state.invocationID = newInvocationID()
+	return preparedScalarNoGCLease{in: in, state: state}
+}
+
+func (l preparedScalarNoGCLease) unlock() {
+	if l.in.importsFuncrefStorage() || l.in.table != nil {
+		l.in.reconcileFuncrefRoots()
+	}
+	l.state.invocationID = 0
+	l.state.invokeMu.Unlock()
+}
+
 func (in *Instance) lockPreparedInvocation() preparedInvocationLease {
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
@@ -423,6 +446,11 @@ func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}
 	defer in.endInvocation()
+	if in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) == 0 {
+		preparedLease := in.lockPreparedScalarNoGC()
+		defer preparedLease.unlock()
+		return fn.invokeScalarAdmitted(args)
+	}
 	if preparedScalarInPlaceLease {
 		var preparedLease preparedInvocationLease
 		in.lockPreparedScalarInvocationInto(&preparedLease)
