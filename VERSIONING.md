@@ -7,8 +7,10 @@ number.
 Most Wago-owned persisted formats, machine-readable schemas, snapshot formats,
 and metadata ABIs use **version 1**.
 
-The compiled `.wago` executable codec uses **version 2**. Wago introduced version
-2 on August 30, 2026. Generated `memory.grow` code and the native instance
+The compiled `.wago` executable codec uses **version 3**. Version 3 records
+AVX2 and AVX-512 CPU requirements. Wago rejects version-2 artifacts because
+they do not record these requirements. Rebuild them from Wasm. Wago introduced
+version 2 on August 30, 2026. Generated `memory.grow` code and the native instance
 context gained a runtime memory-page quota. Wago must reject version-1 executable
 code so that an older artifact cannot bypass a stricter runtime configuration.
 

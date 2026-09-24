@@ -17,6 +17,9 @@ var (
 	simdHostFeaturesOK   bool
 	bmi2HostFeaturesOnce sync.Once
 	bmi2HostFeaturesOK   bool
+	avxHostFeaturesOnce  sync.Once
+	avx2HostFeaturesOK   bool
+	avx512HostFeaturesOK bool
 )
 
 func cachedSIMDHostFeatures() bool {
@@ -34,6 +37,58 @@ func cachedBMI2HostFeatures() bool {
 }
 
 func hostSupportsBMI2() bool { return bmi2HostFeaturesSupported() }
+
+var (
+	avx2HostFeaturesSupported   = cachedAVX2HostFeatures
+	avx512HostFeaturesSupported = cachedAVX512HostFeatures
+)
+
+func detectAVXHostFeatures() {
+	avx2HostFeaturesOK, avx512HostFeaturesOK = architectureSupportsAVX()
+}
+
+func cachedAVX2HostFeatures() bool {
+	avxHostFeaturesOnce.Do(detectAVXHostFeatures)
+	return avx2HostFeaturesOK
+}
+
+func cachedAVX512HostFeatures() bool {
+	avxHostFeaturesOnce.Do(detectAVXHostFeatures)
+	return avx512HostFeaturesOK
+}
+
+func amd64AVX2FeaturesSupported(ecx, xcr0, ebx uint32) bool {
+	const avxOS = uint32(1)<<27 | uint32(1)<<28
+	return ecx&avxOS == avxOS && xcr0&0x6 == 0x6 && ebx&(uint32(1)<<5) != 0
+}
+
+func amd64AVX512FeaturesSupported(ecx, xcr0, ebx uint32) bool {
+	const avxOS = uint32(1)<<27 | uint32(1)<<28
+	return ecx&avxOS == avxOS && xcr0&0xe6 == 0xe6 && ebx&(uint32(1)<<16) != 0
+}
+
+func avxCPUFlagsSupported(data []byte) (avx2, avx512 bool) {
+	var avx, avx512f bool
+	for i := 0; i < len(data); {
+		for i < len(data) && data[i] <= ' ' {
+			i++
+		}
+		start := i
+		for i < len(data) && data[i] > ' ' {
+			i++
+		}
+		token := data[start:i]
+		switch len(token) {
+		case 3:
+			avx = avx || token[0] == 'a' && token[1] == 'v' && token[2] == 'x'
+		case 4:
+			avx2 = avx2 || token[0] == 'a' && token[1] == 'v' && token[2] == 'x' && token[3] == '2'
+		case 7:
+			avx512f = avx512f || token[0] == 'a' && token[1] == 'v' && token[2] == 'x' && token[3] == '5' && token[4] == '1' && token[5] == '2' && token[6] == 'f'
+		}
+	}
+	return avx && avx2, avx && avx512f
+}
 
 func detectSIMDHostFeatures() bool { return architectureSupportsSIMD() }
 
