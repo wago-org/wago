@@ -4434,8 +4434,16 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 			directEntry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 			return in.invokeCachedDirectNumeric(ic, directEntry, args)
 		}
-		if invokePrivateEntryEnabled && ic.entryMode != preparedEntryGeneral && executionFlags&directBlocked == 0 {
-			return in.invokeCachedNumericEntry(export, ic, args, false)
+		privateScalar := invokePrivateEntryEnabled && ic.entryMode != preparedEntryGeneral && executionFlags&directBlocked == 0
+		hostScalar := goruntime.GOARCH == "arm64" && !privateScalar && ic.li >= 0 && in.syncMode && !in.threadedMemoryZero && in.usesIndependentExecution() &&
+			in.hasSingleDirectTypedScalarHost() && !ic.hasFuncRefParams && !ic.hasFuncRefResults &&
+			in.table == nil && !in.importsFuncrefStorage() && len(in.hostLog) == 0
+		if privateScalar || hostScalar {
+			out, err := in.invokeCachedNumericEntry(export, ic, args, false)
+			if hostScalar && in.table != nil {
+				in.reconcileFuncrefRoots()
+			}
+			return out, err
 		}
 	}
 	return in.invokeWithToken(export, args, contexts, state.invocationID, true, alreadyAdmitted, nil)
@@ -4529,7 +4537,9 @@ func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, arg
 	}
 	entry := in.base + uintptr(in.c.Entry[ic.li])
 	var err error
-	if reserved || ic.entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
+	if goruntime.GOARCH == "arm64" && in.syncMode {
+		err = in.callNativeSyncWithTrapContext(entry, in.trap, nil)
+	} else if reserved || ic.entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
 		err = in.callPreparedIsolated(entry, in.trap, reserved, ic.boundedWrapper)
 	} else {
 		err = in.callPreparedPrivate(entry, in.trap)

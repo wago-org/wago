@@ -70,6 +70,54 @@ func TestIndependentInstanceExecutionBypassesProcessLease(t *testing.T) {
 	}
 }
 
+func TestInstanceInvokeTypedHostPublishesTable(t *testing.T) {
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(2, wasmtest.Vec(portableFuncImportEntry("env", "f", 0))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("g", 0, 1),
+			wasmtest.ExportEntry("state", 1, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b}))),
+	)
+	c := MustCompile(module)
+	defer c.Close()
+	var in *Instance
+	var table *Table
+	imports := NewImports()
+	imports.HostFunc("env", "f", func(v int32) int32 {
+		if table == nil {
+			var err error
+			table, err = in.ExportedTable("state")
+			if err != nil {
+				panic(HostTrap{Err: err})
+			}
+		}
+		return v + 1
+	})
+	var err error
+	in, err = Instantiate(c, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if !in.usesIndependentExecution() {
+		t.Fatal("fixture must start with independent native execution")
+	}
+	for range 2 {
+		got, err := in.Invoke("g", I32(41))
+		if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+			t.Fatalf("invoke = %v, %v; want [42]", got, err)
+		}
+	}
+	if table == nil || in.usesIndependentExecution() {
+		t.Fatalf("table publication = %p, independent=%v", table, in.usesIndependentExecution())
+	}
+}
+
 func TestIndependentHostDispatchDoesNotRaceProcessEpoch(t *testing.T) {
 	sig := wasmtest.FuncType(nil, nil)
 	body := []byte{0x00, 0x10, 0x00, 0x0b} // call 0; end
