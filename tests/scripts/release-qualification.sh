@@ -9,8 +9,8 @@ source_sha=0123456789abcdef0123456789abcdef01234567
 run_id=123456
 version=v1.2.3-beta.1
 repository=wago-org/wago
-success_needs='{"changes":{"result":"success"},"smoke":{"result":"skipped"},"docs":{"result":"success"},"lint":{"result":"success"},"regression-integrity":{"result":"success"},"regression-rebuild":{"result":"skipped"},"gc-hardening":{"result":"success"},"race":{"result":"success"},"current-go":{"result":"success"},"platform-test":{"result":"success"},"app-corpus":{"result":"success"},"app-corpus-verify":{"result":"success"},"core-v2":{"result":"success"},"core-v3":{"result":"success"},"fuzz":{"result":"success"},"tinygo":{"result":"success"},"size":{"result":"success"}}'
-expected_jobs='changes,docs,lint,regression-integrity,gc-hardening,race,current-go,platform-test,app-corpus,app-corpus-verify,core-v2,core-v3,fuzz,tinygo,size'
+success_needs='{"changes":{"result":"success"},"smoke":{"result":"skipped"},"docs":{"result":"success"},"lint":{"result":"success"},"regression-integrity":{"result":"success"},"regression-rebuild":{"result":"skipped"},"gc-hardening":{"result":"success"},"race":{"result":"success"},"current-go":{"result":"success"},"platform-test":{"result":"success"},"corpus-correctness":{"result":"success"},"app-corpus":{"result":"success"},"app-corpus-verify":{"result":"success"},"core-v2":{"result":"success"},"core-v3":{"result":"success"},"fuzz":{"result":"success"},"tinygo":{"result":"success"},"size":{"result":"success"}}'
+expected_jobs='changes,docs,lint,regression-integrity,gc-hardening,race,current-go,platform-test,corpus-correctness,app-corpus,app-corpus-verify,core-v2,core-v3,fuzz,tinygo,size'
 
 CI_NEEDS="$success_needs" \
 CI_EXPECTED_JOBS="$expected_jobs" \
