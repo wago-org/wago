@@ -45,6 +45,149 @@ func preparedMixedPairModule() []byte {
 	)
 }
 
+func preparedMixedNumericPairModule(params []wasm.ValType, first, second int) []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, []wasm.ValType{params[first], params[second]}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, byte(first), 0x20, byte(second), 0x0b}))),
+	)
+}
+
+func TestPreparedDirectMixedNumericPair(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		params        []wasm.ValType
+		first, second int
+		args          []uint64
+		want          []uint64
+	}{
+		{"int-float", []wasm.ValType{wasm.I32, wasm.F64}, 0, 1,
+			[]uint64{0xffffffff00000007, F64(-2.5)}, []uint64{7, F64(-2.5)}},
+		{"float-int", []wasm.ValType{wasm.F32, wasm.I64}, 0, 1,
+			[]uint64{0xffffffff7fc12345, 0x1122334455667788}, []uint64{0x7fc12345, 0x1122334455667788}},
+		{"mixed-params-float-float", []wasm.ValType{wasm.I32, wasm.F32, wasm.F64}, 1, 2,
+			[]uint64{7, 0xffffffff7fc12345, 0x7ff8000000001234}, []uint64{0x7fc12345, 0x7ff8000000001234}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled := MustCompile(preparedMixedNumericPairModule(tc.params, tc.first, tc.second))
+			defer compiled.Close()
+			if !compiled.directPreparedBoundedAt(0) {
+				t.Fatal("mixed numeric pair register entry is not bounded")
+			}
+			in, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.WasmFunc("f")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fn.directMixedInfo == 0 || !fn.directIsolated {
+				t.Fatal("mixed numeric pair did not select isolated direct entry")
+			}
+			check := func(label string, got []uint64, err error) {
+				t.Helper()
+				if err != nil || len(got) != 2 || got[0] != tc.want[0] || got[1] != tc.want[1] {
+					t.Fatalf("%s = %v, %v; want %v", label, got, err, tc.want)
+				}
+			}
+			got, err := fn.Invoke(tc.args...)
+			check("prepared", got, err)
+			got, err = in.Invoke("f", tc.args...)
+			check("instance", got, err)
+			session, err := fn.OpenSession()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err = session.Invoke(tc.args...)
+			check("session", got, err)
+			session.Close()
+			if _, err := in.ExportedFunc("f"); err != nil {
+				t.Fatal(err)
+			}
+			got, err = fn.Invoke(tc.args...)
+			check("shared fallback", got, err)
+			got, err = in.Invoke("f", tc.args...)
+			check("instance shared fallback", got, err)
+		})
+	}
+}
+
+func TestMixedNumericPairRegisterCallBetweenWasmFunctions(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		types []wasm.ValType
+		args  []uint64
+	}{
+		{"int-float", []wasm.ValType{wasm.I32, wasm.F64}, []uint64{I32(7), F64(-2.5)}},
+		{"float-int", []wasm.ValType{wasm.F64, wasm.I32}, []uint64{F64(-2.5), I32(7)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(tc.types, tc.types))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 1))),
+				wasmtest.Section(10, wasmtest.Vec(
+					wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x0b}),
+					wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x10, 0x00, 0x0b}),
+				)),
+			)
+			compiled := MustCompile(module)
+			defer compiled.Close()
+			in, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			got, err := in.Invoke("f", tc.args...)
+			if err != nil || len(got) != 2 || got[0] != tc.args[0] || got[1] != tc.args[1] {
+				t.Fatalf("Wasm register call = %v, %v; want %v", got, err, tc.args)
+			}
+		})
+	}
+}
+
+func TestPreparedDirectMixedNumericPairTrapReset(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
+			[]wasm.ValType{wasm.I32, wasm.F64}, []wasm.ValType{wasm.I32, wasm.F64},
+		))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x45,       // i32.eqz
+			0x04, 0x40, // if
+			0x00, // unreachable
+			0x0b, // end if
+			0x20, 0x00, 0x20, 0x01, 0x0b,
+		}))),
+	)
+	compiled := MustCompile(module)
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.directIsolated || fn.directMixedInfo == 0 {
+		t.Fatal("trapping mixed pair did not select bounded direct entry")
+	}
+	if _, err := fn.Invoke(0, F64(2.5)); err == nil {
+		t.Fatal("expected mixed pair trap")
+	}
+	got, err := fn.Invoke(7, F64(2.5))
+	if err != nil || len(got) != 2 || got[0] != 7 || got[1] != F64(2.5) {
+		t.Fatalf("after trap = %v, %v", got, err)
+	}
+}
+
 func TestPreparedDirectMixedPair(t *testing.T) {
 	compiled := MustCompile(preparedMixedPairModule())
 	defer compiled.Close()

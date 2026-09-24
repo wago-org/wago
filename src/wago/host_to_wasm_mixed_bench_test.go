@@ -103,3 +103,32 @@ func BenchmarkHostToWasmMixedPair(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkHostToWasmMixedNumericPair(b *testing.B) {
+	compiled := benchMustCompile(b, preparedMixedNumericPairModule([]wasm.ValType{wasm.I32, wasm.F64}, 0, 1))
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		b.Fatal(err)
+	}
+	args := []uint64{7, F64(-2.5)}
+	for name, invoke := range map[string]func() ([]uint64, error){
+		"invoke":   func() ([]uint64, error) { return in.Invoke("f", args...) },
+		"prepared": func() ([]uint64, error) { return fn.Invoke(args...) },
+	} {
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				benchResultSink, err = invoke()
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}

@@ -124,10 +124,6 @@ func preparedDirectMixedSignature(sig FuncSig) bool {
 	if len(sig.Params) > 4 || len(sig.Results) > 2 {
 		return false
 	}
-	if len(sig.Results) == 2 &&
-		(sig.Results[0] != ValI32 && sig.Results[0] != ValI64 || sig.Results[1] != ValI32 && sig.Results[1] != ValI64) {
-		return false
-	}
 	for _, typ := range sig.Params {
 		if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
 			return false
@@ -156,13 +152,17 @@ const (
 	// Instance. Mixed entries never consume its ordinary integer-width mask.
 	directMixedParamMask = uint8(0x0f)
 	directMixedResultFP  = uint8(1 << 4)
+	directMixedResult1FP = uint8(1 << 5)
 	directMixedEnabled   = uint8(1 << 7)
 )
 
 func encodeDirectMixedInfo(sig FuncSig) uint8 {
 	info := directMixedEnabled | directMixedFloatMask(sig.Params)
-	if len(sig.Results) == 1 && (sig.Results[0] == ValF32 || sig.Results[0] == ValF64) {
+	if len(sig.Results) > 0 && (sig.Results[0] == ValF32 || sig.Results[0] == ValF64) {
 		info |= directMixedResultFP
+	}
+	if len(sig.Results) > 1 && (sig.Results[1] == ValF32 || sig.Results[1] == ValF64) {
+		info |= directMixedResult1FP
 	}
 	return info
 }

@@ -4204,7 +4204,7 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
 // the internal entry takes args in GP/XMM registers and returns numeric results
-// in RAX/RDX or XMM0/XMM1.
+// in independent RAX/RDX and XMM0/XMM1 banks.
 // Returns the internal entry's offset within the function's code.
 func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, localScores []uint32, hints *funcHintView) (int, error) {
 	a := f.a
@@ -4238,7 +4238,13 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		adapterCall = a.CallRel32()
 		f.adapterReturnOff = adapterCall + 4
 		a.Pop(RCX) // results
-		if preparedDirectFloatSupported && rN == 2 && mtOf(f.ft.Results[0]).isFloat() {
+		if preparedDirectFloatSupported && rN == 2 && mtOf(f.ft.Results[0]).isFloat() && !mtOf(f.ft.Results[1]).isFloat() {
+			a.FStoreDisp(RCX, 0, 0, mtOf(f.ft.Results[0]) == mtF64)
+			a.Store64(RCX, 8, RAX)
+		} else if preparedDirectFloatSupported && rN == 2 && !mtOf(f.ft.Results[0]).isFloat() && mtOf(f.ft.Results[1]).isFloat() {
+			a.Store64(RCX, 0, RAX)
+			a.FStoreDisp(RCX, 8, 0, mtOf(f.ft.Results[1]) == mtF64)
+		} else if preparedDirectFloatSupported && rN == 2 && mtOf(f.ft.Results[0]).isFloat() {
 			for i, typ := range f.ft.Results {
 				a.FStoreDisp(RCX, int32(i*8), Reg(i), mtOf(typ) == mtF64)
 			}
@@ -4346,7 +4352,13 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	if rN == 2 {
 		// Both results converged to slots 0,1. singleRegResult is
 		// reserved for one-result functions.
-		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() {
+		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() && !mtOf(f.ft.Results[1]).isFloat() {
+			a.FLoadDisp(0, RSP, f.spillOff(0), mtOf(f.ft.Results[0]) == mtF64)
+			a.Load64(RAX, RSP, f.spillOff(1))
+		} else if preparedDirectFloatSupported && !mtOf(f.ft.Results[0]).isFloat() && mtOf(f.ft.Results[1]).isFloat() {
+			a.Load64(RAX, RSP, f.spillOff(0))
+			a.FLoadDisp(0, RSP, f.spillOff(1), mtOf(f.ft.Results[1]) == mtF64)
+		} else if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() {
 			for i, typ := range f.ft.Results {
 				a.FLoadDisp(Reg(i), RSP, f.spillOff(i), mtOf(typ) == mtF64)
 			}

@@ -50,7 +50,7 @@ func (in *Instance) invokeDirectMixedEntry(entry uintptr, info uint8, paramWide 
 		}
 	}
 	wruntime.PreparePreparedIntTrap(in.trap)
-	gpResult, gpResult1, fpResult := in.eng.EnterPreparedMixedBounded(entry, in.jm.LinMemBase(), &raw)
+	gpResult, gpResult1, fpResult, fpResult1 := in.eng.EnterPreparedMixedBounded(entry, in.jm.LinMemBase(), &raw)
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
 		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
 	}
@@ -67,8 +67,17 @@ func (in *Instance) invokeDirectMixedEntry(entry uintptr, info uint8, paramWide 
 		}
 		out[0] = result
 	} else if len(resultWide) == 2 {
-		out[0], out[1] = gpResult, gpResult1
+		gpResults := [2]uint64{gpResult, gpResult1}
+		fpResults := [2]uint64{fpResult, fpResult1}
+		gp, fp := 0, 0
 		for i := range out {
+			if info&(directMixedResultFP<<i) != 0 {
+				out[i] = fpResults[fp]
+				fp++
+			} else {
+				out[i] = gpResults[gp]
+				gp++
+			}
 			if !resultWide[i] {
 				out[i] = uint64(uint32(out[i]))
 			}

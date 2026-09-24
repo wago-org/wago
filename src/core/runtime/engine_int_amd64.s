@@ -126,9 +126,9 @@ TEXT ·enterNativeFloatRaw(SB), NOSPLIT, $0-48
 	MOVQ DX, ret1+40(FP)
 	RET
 
-// func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr)
+// func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
 // GP args occupy RAX/RCX/RDX/R8; FP args independently occupy XMM0..XMM3.
-TEXT ·enterNativeMixedRaw(SB), NOSPLIT, $0-56
+TEXT ·enterNativeMixedRaw(SB), NOSPLIT, $0-64
 	MOVQ code+0(FP), SI
 	MOVQ foreignStackTop+24(FP), R10
 	SUBQ $32, R10
@@ -152,6 +152,7 @@ TEXT ·enterNativeMixedRaw(SB), NOSPLIT, $0-56
 	XORL BP, BP
 	CALL SI
 	MOVQ X0, R9
+	MOVQ X1, R10
 
 	MOVQ 16(SP), BP
 	MOVQ  8(SP), BX
@@ -160,6 +161,7 @@ TEXT ·enterNativeMixedRaw(SB), NOSPLIT, $0-56
 	MOVQ AX, ret+32(FP)
 	MOVQ DX, ret1+40(FP)
 	MOVQ R9, ret2+48(FP)
+	MOVQ R10, ret3+56(FP)
 	RET
 
 // func enterNativeIntPreboundContextRaw(call *PreparedIntCall, a0, a1, a2, a3 uintptr) uintptr

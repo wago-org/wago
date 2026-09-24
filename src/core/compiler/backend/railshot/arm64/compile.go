@@ -4024,7 +4024,13 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 			f.st64(X3, 0, X0)
 		}
 	} else if rN == 2 {
-		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() {
+		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() && !mtOf(f.ft.Results[1]).isFloat() {
+			a.FStoreDisp(X3, 0, 0, mtOf(f.ft.Results[0]) == mtF64)
+			f.st64(X3, 8, X0)
+		} else if preparedDirectFloatSupported && !mtOf(f.ft.Results[0]).isFloat() && mtOf(f.ft.Results[1]).isFloat() {
+			f.st64(X3, 0, X0)
+			a.FStoreDisp(X3, 8, 0, mtOf(f.ft.Results[1]) == mtF64)
+		} else if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() {
 			for i, typ := range f.ft.Results {
 				a.FStoreDisp(X3, int32(i*8), Reg(i), mtOf(typ) == mtF64)
 			}
@@ -4044,7 +4050,7 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
 // the internal entry takes args in GP/V registers and returns numeric results
-// in X0/X1 or V0/V1.
+// in independent X0/X1 and V0/V1 banks.
 // Returns the internal entry's offset within the function's code.
 func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, hasFloatConst bool, intConstHints *funcHintView) (int, error) {
 	a := f.a
@@ -4183,7 +4189,13 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 			f.ld64(X0, SP, f.spillOff(0)) // result -> X0
 		}
 	} else if rN == 2 {
-		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() {
+		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() && !mtOf(f.ft.Results[1]).isFloat() {
+			a.FLoadDisp(0, SP, f.spillOff(0), mtOf(f.ft.Results[0]) == mtF64)
+			f.ld64(X0, SP, f.spillOff(1))
+		} else if preparedDirectFloatSupported && !mtOf(f.ft.Results[0]).isFloat() && mtOf(f.ft.Results[1]).isFloat() {
+			f.ld64(X0, SP, f.spillOff(0))
+			a.FLoadDisp(0, SP, f.spillOff(1), mtOf(f.ft.Results[1]) == mtF64)
+		} else if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() {
 			for i, typ := range f.ft.Results {
 				a.FLoadDisp(Reg(i), SP, f.spillOff(i), mtOf(typ) == mtF64)
 			}

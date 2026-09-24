@@ -124,14 +124,15 @@ func sigFitsDirectCrossTailABI(ft *wasm.CompType) bool {
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/XMM banks; one result returns in
-// RAX or XMM0, and the two-result form uses RAX/RDX for integers or XMM0/XMM1
-// for floats (mirroring arm64's X0/X1 or V0/V1 pair return).
+// RAX or XMM0; two results use independent RAX/RDX and XMM0/XMM1 banks.
 func sigFitsRegABI(ft *wasm.CompType) bool {
 	if len(ft.Results) > 2 {
 		return false
 	}
 	if len(ft.Results) == 2 && !((isIntValType(ft.Results[0]) && isIntValType(ft.Results[1])) ||
-		(preparedDirectFloatSupported && isFloatValType(ft.Results[0]) && isFloatValType(ft.Results[1]))) {
+		(preparedDirectFloatSupported &&
+			(isIntValType(ft.Results[0]) || isFloatValType(ft.Results[0])) &&
+			(isIntValType(ft.Results[1]) || isFloatValType(ft.Results[1])))) {
 		return false
 	}
 	gp, fp := 0, 0
@@ -192,9 +193,6 @@ func preparedDirectFloatSig(ft *wasm.CompType) bool {
 
 func preparedDirectMixedSig(ft *wasm.CompType) bool {
 	if len(ft.Params) > 4 || len(ft.Results) > 2 {
-		return false
-	}
-	if len(ft.Results) == 2 && (!isIntValType(ft.Results[0]) || !isIntValType(ft.Results[1])) {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -2082,7 +2080,12 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		f.pinned = f.pinned.add(resReg)
 	}
 	var pairRes [2]Reg
-	if rN == 2 && isIntValType(ft.Results[0]) {
+	mixedPair := preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) != isFloatValType(ft.Results[1])
+	if mixedPair {
+		pairRes[0] = f.allocReg(maskOf(RAX))
+		f.a.MovReg64(pairRes[0], RAX)
+		f.pinned = f.pinned.add(pairRes[0])
+	} else if rN == 2 && isIntValType(ft.Results[0]) {
 		pairRes[0] = f.allocReg(maskOf(RAX, RDX))
 		f.pinned = f.pinned.add(pairRes[0])
 		f.a.MovReg64(pairRes[0], RAX)
@@ -2104,7 +2107,18 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		}
 		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[0]))
 	}
-	if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
+	if mixedPair {
+		for _, typ := range ft.Results {
+			var value *elem
+			if isFloatValType(typ) {
+				value = f.pushFReg(0, mtOf(typ))
+			} else {
+				f.pinned = f.pinned.remove(pairRes[0])
+				value = f.pushReg(pairRes[0], mtOf(typ))
+			}
+			value.st.setGCRoot(gcFrameRefType(f.m, typ))
+		}
+	} else if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
 		for i := range 2 {
 			value := f.pushFReg(Reg(i), mtOf(ft.Results[i]))
 			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))

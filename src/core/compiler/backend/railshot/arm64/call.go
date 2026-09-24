@@ -184,9 +184,6 @@ func preparedDirectMixedSig(ft *wasm.CompType) bool {
 	if len(ft.Params) > 4 || len(ft.Results) > 2 {
 		return false
 	}
-	if len(ft.Results) == 2 && (!isIntValType(ft.Results[0]) || !isIntValType(ft.Results[1])) {
-		return false
-	}
 	for _, typ := range ft.Params {
 		if !isIntValType(typ) && !isFloatValType(typ) {
 			return false
@@ -220,13 +217,15 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/V banks; one result returns in
-// X0/V0, and the two-result form uses X0/X1 for integers or V0/V1 for floats.
+// X0/V0; two results use independent X0/X1 and V0/V1 banks.
 func sigFitsRegABI(ft *wasm.CompType) bool {
 	if len(ft.Results) > 2 {
 		return false
 	}
 	if len(ft.Results) == 2 && !((isIntValType(ft.Results[0]) && isIntValType(ft.Results[1])) ||
-		(preparedDirectFloatSupported && isFloatValType(ft.Results[0]) && isFloatValType(ft.Results[1]))) {
+		(preparedDirectFloatSupported &&
+			(isIntValType(ft.Results[0]) || isFloatValType(ft.Results[0])) &&
+			(isIntValType(ft.Results[1]) || isFloatValType(ft.Results[1])))) {
 		return false
 	}
 	gp, fp := 0, 0
@@ -2262,6 +2261,13 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		f.a.Blr(indirect)
 		returnOffset = uint32(f.a.Len())
 	}
+	mixedPair := preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) != isFloatValType(ft.Results[1])
+	mixedIntReg := regNone
+	if mixedPair {
+		mixedIntReg = f.allocReg(maskOf(X0))
+		f.a.MovReg64(mixedIntReg, X0)
+		f.pinned = f.pinned.add(mixedIntReg)
+	}
 	if lrSlot >= 0 {
 		f.ld64(LR, SP, f.spillOff(lrSlot))
 	}
@@ -2278,7 +2284,16 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 			f.pushReg(resReg, rt)
 		}
 	}
-	if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
+	if mixedPair {
+		for _, typ := range ft.Results {
+			if isFloatValType(typ) {
+				f.pushFReg(0, mtOf(typ))
+			} else {
+				f.pinned = f.pinned.remove(mixedIntReg)
+				f.pushReg(mixedIntReg, mtOf(typ))
+			}
+		}
+	} else if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
 		f.pushFReg(0, mtOf(ft.Results[0]))
 		f.pushFReg(1, mtOf(ft.Results[1]))
 	} else if rN == 2 {
