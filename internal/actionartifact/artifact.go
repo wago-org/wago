@@ -220,7 +220,7 @@ func repositoryAPIBase(catalogURL string) (string, error) {
 	}
 	const suffix = "/actions/artifacts"
 	if address.Scheme == "" || address.Host == "" || !strings.HasSuffix(address.Path, suffix) {
-		return "", errors.New("Actions artifact catalog URL must end with /actions/artifacts")
+		return "", errors.New("actions artifact catalog URL must end with /actions/artifacts")
 	}
 	address.Path = strings.TrimSuffix(address.Path, suffix)
 	address.RawPath = ""
