@@ -13,7 +13,7 @@ func TestInstallRootUsesTinyGoActionArchitecture(t *testing.T) {
 		goos, goarch, want string
 	}{
 		{"linux", "amd64", "amd64"},
-		{"linux", "arm64", "aarch64"},
+		{"linux", "arm64", "arm64"},
 		{"darwin", "amd64", "x86_64"},
 		{"darwin", "arm64", "arm64"},
 		{"windows", "amd64", "amd64"},

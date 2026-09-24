@@ -56,7 +56,7 @@ func installRoot(toolCache, version, goos, goarch string) (string, error) {
 	var actionArch string
 	switch {
 	case goos == "linux" && goarch == "arm64":
-		actionArch = "aarch64"
+		actionArch = "arm64"
 	case goos == "darwin" && goarch == "amd64":
 		actionArch = "x86_64"
 	case (goos == "linux" || goos == "windows") && goarch == "amd64":
