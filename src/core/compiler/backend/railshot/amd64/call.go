@@ -139,12 +139,11 @@ func sigFitsDirectCrossTailABI(ft *wasm.CompType) bool {
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/XMM banks; one result returns in
 // RAX or XMM0; two results use independent GP/FP banks, and integer-only
-// signatures can return up to seven values in RAX/RDX/RCX/R8/R9/R10/R11.
+// signatures can return up to seven values in RAX/RDX/RCX/R8/R9/R10/R11;
+// float-only signatures can use all eight XMM result registers.
 func sigFitsRegABI(ft *wasm.CompType) bool {
-	if len(ft.Results) > len(intArgRegs) || len(ft.Results) > 2 && !registerQuadResultsSupported {
-		return false
-	}
-	if len(ft.Results) > 4 && !sigIsIntOnly(ft) {
+	if len(ft.Results) > len(intArgRegs) && !(preparedDirectFloatSupported && len(ft.Results) <= len(fpArgRegs) && sigIsFloatOnly(ft)) ||
+		len(ft.Results) > 2 && !registerQuadResultsSupported {
 		return false
 	}
 	if len(ft.Results) > 2 && !sigIsIntOnly(ft) && !(preparedDirectFloatSupported && sigIsFloatOnly(ft)) {
@@ -196,7 +195,7 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 }
 
 func preparedDirectFloatSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 4 {
+	if len(ft.Params) > len(fpArgRegs) || len(ft.Results) > len(fpArgRegs) {
 		return false
 	}
 	for _, typ := range ft.Params {

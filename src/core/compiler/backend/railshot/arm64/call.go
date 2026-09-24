@@ -164,7 +164,7 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 }
 
 func preparedDirectFloatSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 4 {
+	if len(ft.Params) > len(fpArgRegs) || len(ft.Results) > len(fpArgRegs) {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -232,12 +232,11 @@ func sigIsFloatOnly(ft *wasm.CompType) bool {
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/V banks; one result returns in
 // X0/V0; two results use independent GP/FP banks, and integer-only signatures
-// can return up to eight values in X0..X7.
+// can return up to eight values in X0..X7; float-only signatures can likewise
+// return in V0..V7.
 func sigFitsRegABI(ft *wasm.CompType) bool {
-	if len(ft.Results) > len(intArgRegs) || len(ft.Results) > 2 && !registerQuadResultsSupported {
-		return false
-	}
-	if len(ft.Results) > 4 && !sigIsIntOnly(ft) {
+	if len(ft.Results) > len(intArgRegs) && !(preparedDirectFloatSupported && len(ft.Results) <= len(fpArgRegs) && sigIsFloatOnly(ft)) ||
+		len(ft.Results) > 2 && !registerQuadResultsSupported {
 		return false
 	}
 	if len(ft.Results) > 2 && !sigIsIntOnly(ft) && !(preparedDirectFloatSupported && sigIsFloatOnly(ft)) {

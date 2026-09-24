@@ -104,7 +104,7 @@ func preparedDirectIntSignature(sig FuncSig) bool {
 }
 
 func preparedDirectFloatSignature(sig FuncSig) bool {
-	if len(sig.Params) > 4 || len(sig.Results) > 4 {
+	if len(sig.Params) > 8 || len(sig.Results) > 8 {
 		return false
 	}
 	for _, typ := range sig.Params {

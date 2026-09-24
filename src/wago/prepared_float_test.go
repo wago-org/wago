@@ -4,6 +4,7 @@ package wago
 
 import (
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -228,6 +229,141 @@ func TestPreparedDirectFloatQuad(t *testing.T) {
 	check("shared fallback", got, err)
 	got, err = in.Invoke("f", args...)
 	check("instance shared fallback", got, err)
+}
+
+func TestPreparedDirectFloatPenta(t *testing.T) {
+	for _, n := range []int{5, 8} {
+		t.Run(fmt.Sprintf("f64x%d", n), func(t *testing.T) {
+			testPreparedDirectFloatWide(t, n)
+		})
+	}
+}
+
+func testPreparedDirectFloatWide(t *testing.T, n int) {
+	compiled := MustCompile(hostToWasmF64SignatureModule(n, n))
+	defer compiled.Close()
+	if !compiled.directPreparedBoundedAt(0) {
+		t.Fatal("wide float register entry is not bounded")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.directFloatFast || !fn.directIsolated {
+		t.Fatal("wide float did not select bounded direct entry")
+	}
+	args := make([]uint64, n)
+	for i := range args {
+		args[i] = F64(float64(i) + 1.5)
+	}
+	check := func(label string, got []uint64, err error) {
+		t.Helper()
+		if err != nil || len(got) != len(args) {
+			t.Fatalf("%s = %v, %v; want %v", label, got, err, args)
+		}
+		for i := range args {
+			if got[i] != args[i] {
+				t.Fatalf("%s[%d] = %x; want %x", label, i, got[i], args[i])
+			}
+		}
+	}
+	got, err := fn.Invoke(args...)
+	check("prepared", got, err)
+	got, err = in.Invoke("f", args...)
+	check("instance", got, err)
+}
+
+func TestFloatOctInternalCall(t *testing.T) {
+	const n = 8
+	types := make([]wasm.ValType, n)
+	leaf, caller := make([]byte, 0, 2*n+1), make([]byte, 0, 2*n+3)
+	for i := range types {
+		types[i] = wasm.F64
+		leaf = append(leaf, 0x20, byte(i))
+		caller = append(caller, 0x20, byte(i))
+	}
+	leaf = append(leaf, 0x0b)
+	caller = append(caller, 0x10, 0x00, 0x0b)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(leaf), wasmtest.Code(caller))),
+	)
+	compiled := MustCompile(mod)
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	args := make([]uint64, n)
+	for i := range args {
+		args[i] = F64(float64(i) + 1.5)
+	}
+	got, err := in.Invoke("f", args...)
+	if err != nil || len(got) != n {
+		t.Fatalf("internal float-oct call = %v, %v", got, err)
+	}
+	for i := range got {
+		if got[i] != args[i] {
+			t.Fatalf("result[%d] = %x, want %x", i, got[i], args[i])
+		}
+	}
+}
+
+func TestPreparedDirectFloatOctWidths(t *testing.T) {
+	const n = 8
+	types := make([]wasm.ValType, n)
+	body := make([]byte, 0, 2*n+1)
+	args, want := make([]uint64, n), make([]uint64, n)
+	for i := range types {
+		body = append(body, 0x20, byte(i))
+		if i%2 == 0 {
+			types[i] = wasm.F32
+			args[i], want[i] = 0xffffffff7fc12345, 0x7fc12345
+		} else {
+			types[i] = wasm.F64
+			args[i], want[i] = F64(float64(i)+0.5), F64(float64(i)+0.5)
+		}
+	}
+	body = append(body, 0x0b)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	compiled := MustCompile(mod)
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil || !fn.directFloatFast {
+		t.Fatalf("wide mixed-width float entry = %v, %v", fn, err)
+	}
+	for label, invoke := range map[string]func() ([]uint64, error){
+		"prepared": func() ([]uint64, error) { return fn.Invoke(args...) },
+		"instance": func() ([]uint64, error) { return in.Invoke("f", args...) },
+	} {
+		got, err := invoke()
+		if err != nil || len(got) != n {
+			t.Fatalf("%s = %v, %v", label, got, err)
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Fatalf("%s[%d] = %x, want %x", label, i, got[i], want[i])
+			}
+		}
+	}
 }
 
 func preparedFloatQuadWidthsModule(call bool) []byte {

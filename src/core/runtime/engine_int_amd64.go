@@ -18,6 +18,9 @@ func enterNativeIntOctRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop
 func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
 
 //go:noescape
+func enterNativeFloatOctRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr)
+
+//go:noescape
 func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
 func enterNativeIntPreboundContextRaw(call *PreparedIntCall, a0, a1, a2, a3 uintptr) uintptr
 func enterNativeIntCallRaw(call *PreparedIntCall) uintptr
@@ -80,6 +83,12 @@ func (e *Engine) EnterPreparedIntOctBounded(code, linMemBase uintptr, args *[8]u
 func (e *Engine) EnterPreparedFloatBounded(code, linMemBase uintptr, args *[4]uint64) (uint64, uint64, uint64, uint64) {
 	r0, r1, r2, r3 := enterNativeFloatRaw(code, linMemBase, args, e.stackTop)
 	return uint64(r0), uint64(r1), uint64(r2), uint64(r3)
+}
+
+// EnterPreparedFloatOctBounded enters a bounded FP leaf using all eight FP registers.
+func (e *Engine) EnterPreparedFloatOctBounded(code, linMemBase uintptr, args *[8]uint64) (uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64) {
+	r0, r1, r2, r3, r4, r5, r6, r7 := enterNativeFloatOctRaw(code, linMemBase, args, e.stackTop)
+	return uint64(r0), uint64(r1), uint64(r2), uint64(r3), uint64(r4), uint64(r5), uint64(r6), uint64(r7)
 }
 
 // EnterPreparedMixedBounded stages up to four GP and four FP arguments in

@@ -171,6 +171,43 @@ TEXT ·enterNativeFloatRaw(SB), NOSPLIT, $0-64
 	MOVQ R10, ret3+56(FP)
 	RET
 
+// func enterNativeFloatOctRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr)
+TEXT ·enterNativeFloatOctRaw(SB), NOSPLIT, $0-96
+	MOVQ code+0(FP), SI
+	MOVQ foreignStackTop+24(FP), R10
+	SUBQ $32, R10
+	MOVQ SP,  0(R10)
+	MOVQ BX,  8(R10)
+	MOVQ BP, 16(R10)
+	MOVQ linMem+8(FP), BX
+	LEAQ -8(R10), R9
+	MOVQ R9, -24(BX)
+	MOVQ args+16(FP), DI
+	MOVQ R10, SP
+	MOVQ  0(DI), X0
+	MOVQ  8(DI), X1
+	MOVQ 16(DI), X2
+	MOVQ 24(DI), X3
+	MOVQ 32(DI), X4
+	MOVQ 40(DI), X5
+	MOVQ 48(DI), X6
+	MOVQ 56(DI), X7
+	XORL BP, BP
+	CALL SI
+	MOVQ 16(SP), BP
+	MOVQ  8(SP), BX
+	MOVQ  0(SP), SP
+	MOVQ X0, ret+32(FP)
+	MOVQ X1, ret1+40(FP)
+	MOVQ X2, ret2+48(FP)
+	MOVQ X3, ret3+56(FP)
+	MOVQ X4, ret4+64(FP)
+	MOVQ X5, ret5+72(FP)
+	MOVQ X6, ret6+80(FP)
+	MOVQ X7, ret7+88(FP)
+	PXOR X15, X15
+	RET
+
 // func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
 // GP args occupy RAX/RCX/RDX/R8; FP args independently occupy XMM0..XMM3.
 TEXT ·enterNativeMixedRaw(SB), NOSPLIT, $0-64

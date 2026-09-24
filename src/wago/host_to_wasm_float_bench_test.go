@@ -33,7 +33,7 @@ func hostToWasmF64SignatureModule(params, results int) []byte {
 }
 
 func BenchmarkHostToWasmFloatSignatureMatrix(b *testing.B) {
-	for _, shape := range [][2]int{{1, 1}, {2, 1}, {2, 2}, {4, 1}, {4, 4}} {
+	for _, shape := range [][2]int{{1, 1}, {2, 1}, {2, 2}, {4, 1}, {4, 4}, {5, 5}, {8, 8}} {
 		params, results := shape[0], shape[1]
 		b.Run(fmt.Sprintf("f64x%d-f64x%d", params, results), func(b *testing.B) {
 			compiled := benchMustCompile(b, hostToWasmF64SignatureModule(params, results))
