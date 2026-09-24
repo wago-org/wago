@@ -659,7 +659,7 @@ func (a *Asm) reuseIndexedBase(base, index Reg) bool {
 	if mem&0x3B000000 != 0x39000000 || Reg(mem>>5&31) != X16 {
 		return false
 	}
-	if mem&(1<<22) != 0 { // load: Rt is a destination
+	if mem&(3<<22) != 0 { // load: Rt is a destination
 		dst := Reg(mem & 31)
 		if dst == X16 || dst == base || dst == index {
 			return false
@@ -707,7 +707,7 @@ func preservesIndexedBase(instruction uint32, base, index Reg) bool {
 		return dst == X16 || dst == base || dst == index
 	}
 	if instruction&0x3B000000 == 0x39000000 {
-		return instruction&(1<<22) == 0 || !writesAddress(Reg(instruction&31))
+		return instruction&(3<<22) == 0 || !writesAddress(Reg(instruction&31))
 	}
 	if instruction&0x3B20FC00 == 0x38206800 {
 		return instruction&(3<<22) == 0 || !writesAddress(Reg(instruction&31))
