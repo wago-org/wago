@@ -4441,7 +4441,7 @@ func (in *Instance) tryInvokeCachedIsolatedNumeric(export string, args []uint64)
 		return nil, nil, false
 	}
 	if !state.invokeMu.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
-		in.endInvocation()
+		in.endDirectInvocation()
 		return nil, nil, false
 	}
 	ic := in.findInvokeCache(export)
@@ -4449,12 +4449,14 @@ func (in *Instance) tryInvokeCachedIsolatedNumeric(export string, args []uint64)
 	isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
 	if ic == nil || !(ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) || len(args) != ic.paramSlots || !privateRefStore || in.guestStorageBorrowed() || !in.lockPreparedFastState() {
 		state.invokeMu.Unlock()
-		in.endInvocation()
+		in.endDirectInvocation()
 		return nil, nil, false
 	}
-	defer in.endInvocation()
-	defer state.invokeMu.Unlock()
-	defer in.unlockPreparedFastState()
+	defer func() {
+		in.unlockPreparedFastState()
+		state.invokeMu.Unlock()
+		in.endDirectInvocation()
+	}()
 	var out []uint64
 	var err error
 	if ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast {
