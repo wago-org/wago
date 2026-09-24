@@ -27,6 +27,8 @@ type WasmFunc struct {
 	paramExact          []ValueTypeDescriptor
 	resultExact         []ValueTypeDescriptor
 	paramWide           []bool
+	paramWidthClass     scalarSlotWidthClass
+	resultWidthClass    scalarSlotWidthClass
 	hasReferenceParams  bool
 	hasReferenceResults bool
 	gcMaintenance       bool
@@ -242,6 +244,8 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		paramExact:          append([]ValueTypeDescriptor(nil), params...),
 		resultExact:         append([]ValueTypeDescriptor(nil), results...),
 		paramWide:           paramWide,
+		paramWidthClass:     ic.paramWidthClass,
+		resultWidthClass:    ic.resultWidthClass,
 		hasReferenceParams:  hasReferenceValType(sig.Params),
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		gcMaintenance:       in.gc != nil && (in.c.genericGCBoundaryCollectionSafe() || in.c.hasGCRefGlobals()),
@@ -620,7 +624,7 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 			put(0)
 		}
 	} else {
-		marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, fn.paramWide)
+		copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, fn.paramWide, fn.paramWidthClass)
 	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
@@ -657,7 +661,7 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:fn.resultSlots]
-	decodePublicScalarSlots(out, nativeUint64Slots(in.results), fn.resultWide)
+	copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), fn.resultWide, fn.resultWidthClass)
 	return out, nil
 }
 
@@ -689,7 +693,7 @@ func (fn *WasmFunc) invokeScalarHostReserved(args []uint64, prepared *wruntime.P
 			put(0)
 		}
 	} else {
-		marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, fn.paramWide)
+		copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, fn.paramWide, fn.paramWidthClass)
 	}
 	if err := in.callNativeSyncAdmitted(fn.entry, in.trap, nil, prepared, fixed, activation, nil); err != nil {
 		return nil, err
@@ -697,6 +701,6 @@ func (fn *WasmFunc) invokeScalarHostReserved(args []uint64, prepared *wruntime.P
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:fn.resultSlots]
-	decodePublicScalarSlots(out, nativeUint64Slots(in.results), fn.resultWide)
+	copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), fn.resultWide, fn.resultWidthClass)
 	return out, nil
 }

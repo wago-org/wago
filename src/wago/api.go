@@ -4508,7 +4508,7 @@ func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, arg
 	if ic.resultSlots > len(in.results)/8 {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
-	marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, ic.slotWide[:ic.paramSlots])
+	copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, ic.slotWide[:ic.paramSlots], ic.paramWidthClass)
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
@@ -4530,7 +4530,7 @@ func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, arg
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:ic.resultSlots]
-	decodePublicScalarSlots(out, nativeUint64Slots(in.results), ic.slotWide[ic.paramSlots:])
+	copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), ic.slotWide[ic.paramSlots:], ic.resultWidthClass)
 	return out, nil
 }
 
@@ -5136,6 +5136,8 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		directIntBounded:  directIntFast && in.c.directPreparedBoundedAt(li),
 		scalarWideMask:    scalarWideMask,
 		scalarResultWide:  resultSlots == 1 && widths[paramSlots],
+		paramWidthClass:   classifyScalarSlotWidths(widths[:paramSlots]),
+		resultWidthClass:  classifyScalarSlotWidths(widths[paramSlots:]),
 		li:                li,
 		paramSlots:        paramSlots,
 		resultSlots:       resultSlots,
@@ -5165,22 +5167,46 @@ func marshalPublicScalarArgs(dst []byte, values []uint64, types []ValType) {
 	}
 }
 
-func marshalPublicScalarSlotsByWidth(dst, values []uint64, wide []bool) {
-	for i, bits := range values {
-		if !wide[i] {
-			bits = uint64(uint32(bits))
-		}
-		dst[i] = bits
+type scalarSlotWidthClass uint8
+
+const (
+	scalarSlotMixed scalarSlotWidthClass = iota
+	scalarSlotNarrow
+	scalarSlotWide
+)
+
+func classifyScalarSlotWidths(wide []bool) scalarSlotWidthClass {
+	if len(wide) == 0 {
+		return scalarSlotWide
 	}
+	first := wide[0]
+	for _, w := range wide[1:] {
+		if w != first {
+			return scalarSlotMixed
+		}
+	}
+	if first {
+		return scalarSlotWide
+	}
+	return scalarSlotNarrow
 }
 
-func decodePublicScalarSlots(dst, values []uint64, wide []bool) {
-	for i := range dst {
-		bits := values[i]
-		if !wide[i] {
-			bits = uint64(uint32(bits))
+func copyPublicScalarSlotsByClass(dst, values []uint64, wide []bool, class scalarSlotWidthClass) {
+	switch class {
+	case scalarSlotWide:
+		copy(dst[:len(wide)], values[:len(wide)])
+	case scalarSlotNarrow:
+		for i := range wide {
+			dst[i] = uint64(uint32(values[i]))
 		}
-		dst[i] = bits
+	default:
+		for i, w := range wide {
+			bits := values[i]
+			if !w {
+				bits = uint64(uint32(bits))
+			}
+			dst[i] = bits
+		}
 	}
 }
 
