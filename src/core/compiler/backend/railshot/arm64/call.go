@@ -181,7 +181,7 @@ func preparedDirectFloatSig(ft *wasm.CompType) bool {
 }
 
 func preparedDirectMixedSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 2 {
+	if len(ft.Params) > 4 || len(ft.Results) > 4 || len(ft.Results) > 2 && !sigHasMixedWideResults(ft) {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -229,17 +229,37 @@ func sigIsFloatOnly(ft *wasm.CompType) bool {
 	return true
 }
 
+// sigHasMixedWideResults is the two-GP/two-FP register result shape also used
+// by the bounded mixed prepared bridge. Results may interleave in Wasm order.
+func sigHasMixedWideResults(ft *wasm.CompType) bool {
+	if !preparedDirectFloatSupported || len(ft.Results) < 3 || len(ft.Results) > 4 {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, typ := range ft.Results {
+		switch {
+		case isIntValType(typ):
+			gp++
+		case isFloatValType(typ):
+			fp++
+		default:
+			return false
+		}
+	}
+	return gp > 0 && fp > 0 && gp <= 2 && fp <= 2
+}
+
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/V banks; one result returns in
 // X0/V0; two results use independent GP/FP banks, and integer-only signatures
 // can return up to eight values in X0..X7; float-only signatures can likewise
-// return in V0..V7.
+// return in V0..V7. Mixed results use up to two registers in each bank.
 func sigFitsRegABI(ft *wasm.CompType) bool {
 	if len(ft.Results) > len(intArgRegs) && !(preparedDirectFloatSupported && len(ft.Results) <= len(fpArgRegs) && sigIsFloatOnly(ft)) ||
 		len(ft.Results) > 2 && !registerQuadResultsSupported {
 		return false
 	}
-	if len(ft.Results) > 2 && !sigIsIntOnly(ft) && !(preparedDirectFloatSupported && sigIsFloatOnly(ft)) {
+	if len(ft.Results) > 2 && !sigIsIntOnly(ft) && !(preparedDirectFloatSupported && sigIsFloatOnly(ft)) && !sigHasMixedWideResults(ft) {
 		return false
 	}
 	if len(ft.Results) == 2 && !((isIntValType(ft.Results[0]) && isIntValType(ft.Results[1])) ||
@@ -2302,6 +2322,20 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		f.a.MovReg64(mixedIntReg, X0)
 		f.pinned = f.pinned.add(mixedIntReg)
 	}
+	mixedWideInts := [2]Reg{regNone, regNone}
+	if sigHasMixedWideResults(ft) {
+		gp := 0
+		for _, typ := range ft.Results {
+			if isFloatValType(typ) {
+				continue
+			}
+			reg := f.allocReg(maskOf(X0, X1))
+			f.a.MovReg64(reg, []Reg{X0, X1}[gp])
+			f.pinned = f.pinned.add(reg)
+			mixedWideInts[gp] = reg
+			gp++
+		}
+	}
 	if lrSlot >= 0 {
 		f.ld64(LR, SP, f.spillOff(lrSlot))
 	}
@@ -2345,7 +2379,20 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 			f.pushReg(reg, mtOf(ft.Results[i]))
 		}
 	}
-	if preparedDirectFloatSupported && rN > 2 {
+	if sigHasMixedWideResults(ft) {
+		gp, fp := 0, 0
+		for _, typ := range ft.Results {
+			if isFloatValType(typ) {
+				f.pushFReg(Reg(fp), mtOf(typ))
+				fp++
+			} else {
+				reg := mixedWideInts[gp]
+				f.pinned = f.pinned.remove(reg)
+				f.pushReg(reg, mtOf(typ))
+				gp++
+			}
+		}
+	} else if preparedDirectFloatSupported && rN > 2 {
 		for i, typ := range ft.Results {
 			f.pushFReg(Reg(i), mtOf(typ))
 		}

@@ -14,7 +14,9 @@ func TestFuncSigLocalRegABIResultBanks(t *testing.T) {
 		{"float pair", FuncSig{Params: []ValType{ValF32, ValF64}, Results: []ValType{ValF32, ValF64}}, preparedDirectFloatSupported},
 		{"int quad", FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32, ValI64, ValI32, ValI64}}, preparedDirectWideSupported},
 		{"float quad", FuncSig{Params: []ValType{ValF32}, Results: []ValType{ValF32, ValF64, ValF32, ValF64}}, preparedDirectWideSupported && preparedDirectFloatSupported},
-		{"mixed quad", FuncSig{Params: []ValType{ValI32, ValF32}, Results: []ValType{ValI32, ValF32, ValI64, ValF64}}, false},
+		{"mixed quad", FuncSig{Params: []ValType{ValI32, ValF32}, Results: []ValType{ValI32, ValF32, ValI64, ValF64}}, preparedDirectWideSupported && preparedDirectFloatSupported},
+		{"mixed three GP", FuncSig{Params: []ValType{ValI32, ValF32}, Results: []ValType{ValI32, ValI64, ValI32, ValF64}}, false},
+		{"mixed five results", FuncSig{Params: []ValType{ValI32, ValF32}, Results: []ValType{ValI32, ValF32, ValI64, ValF64, ValI32}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := funcSigLocalRegABI(tc.sig); got != tc.want {

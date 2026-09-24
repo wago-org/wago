@@ -1826,11 +1826,18 @@ func funcSigLocalRegABI(sig FuncSig) bool {
 	}
 	if len(sig.Results) > 2 {
 		allInt, allFloat := fp == 0, preparedDirectFloatSupported && gp == 0 && len(sig.Results) <= 8
+		resGP, resFP := 0, 0
 		for _, t := range sig.Results {
 			allInt = allInt && (t == ValI32 || t == ValI64)
 			allFloat = allFloat && (t == ValF32 || t == ValF64)
+			if t == ValF32 || t == ValF64 {
+				resFP++
+			} else {
+				resGP++
+			}
 		}
-		return allInt || allFloat
+		mixed := preparedDirectFloatSupported && len(sig.Results) <= 4 && resGP > 0 && resFP > 0 && resGP <= 2 && resFP <= 2
+		return allInt || allFloat || mixed
 	}
 	return true
 }

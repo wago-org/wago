@@ -54,6 +54,153 @@ func preparedMixedNumericPairModule(params []wasm.ValType, first, second int) []
 	)
 }
 
+func preparedMixedWideResultsModule(call bool) []byte {
+	return preparedMixedReorderedResultsModule([]int{0, 1, 2, 3}, call)
+}
+
+func preparedMixedReorderedResultsModule(order []int, call bool) []byte {
+	types := []wasm.ValType{wasm.I32, wasm.F64, wasm.I64, wasm.F32}
+	results := make([]wasm.ValType, len(order))
+	body := make([]byte, 0, len(order)*2+1)
+	for i, index := range order {
+		results[i] = types[index]
+		body = append(body, 0x20, byte(index))
+	}
+	leaf := wasmtest.Code(append(body, 0x0b))
+	if call {
+		// A conditional in the callee prevents straight-line inlining, so this
+		// exercises the native mixed-result call/return bank transfer.
+		guarded := append([]byte{0x20, 0x00, 0x45, 0x04, 0x40, 0x00, 0x0b}, body...)
+		leaf = wasmtest.Code(append(guarded, 0x0b))
+		caller := []byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x20, 0x03, 0x10, 0x00, 0x0b}
+		return wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, results))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 1))),
+			wasmtest.Section(10, wasmtest.Vec(leaf, wasmtest.Code(caller))),
+		)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, results))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(leaf)),
+	)
+}
+
+func TestPreparedMixedWideResultOrders(t *testing.T) {
+	args := []uint64{7, F64(-2.5), 0x1122334455667788, F32(1.5)}
+	for _, order := range [][]int{
+		{0, 1, 2}, {1, 0, 3}, {0, 2, 1},
+		{0, 1, 2, 3}, {1, 0, 3, 2}, {0, 2, 1, 3}, {3, 2, 1, 0},
+	} {
+		compiled := MustCompile(preparedMixedReorderedResultsModule(order, false))
+		in, err := Instantiate(compiled, InstantiateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		fn, err := in.WasmFunc("f")
+		if err != nil || !fn.directIsolated || fn.directMixedInfo == 0 {
+			t.Fatalf("order %v did not select direct mixed entry: %v", order, err)
+		}
+		got, err := fn.Invoke(args...)
+		if err != nil || len(got) != len(order) {
+			t.Fatalf("order %v: got %v, %v", order, got, err)
+		}
+		for i, index := range order {
+			if got[i] != args[index] {
+				t.Fatalf("order %v result[%d] = %x, want %x", order, i, got[i], args[index])
+			}
+		}
+		in.Close()
+		compiled.Close()
+	}
+}
+
+func TestPreparedDirectMixedWideResults(t *testing.T) {
+	compiled := MustCompile(preparedMixedWideResultsModule(false))
+	defer compiled.Close()
+	if !compiled.directPreparedBoundedAt(0) {
+		t.Fatal("mixed four-result register entry is not bounded")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.directIsolated || fn.directMixedInfo == 0 {
+		t.Fatal("mixed four-result call did not select the direct entry")
+	}
+	args := []uint64{0xffffffff00000007, F64(-2.5), 0x1122334455667788, 0xffffffff7fc12345}
+	want := []uint64{7, F64(-2.5), 0x1122334455667788, 0x7fc12345}
+	for label, invoke := range map[string]func() ([]uint64, error){
+		"prepared": func() ([]uint64, error) { return fn.Invoke(args...) },
+		"instance": func() ([]uint64, error) { return in.Invoke("f", args...) },
+	} {
+		got, err := invoke()
+		if err != nil || len(got) != len(want) {
+			t.Fatalf("%s = %v, %v", label, got, err)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%s[%d] = %x, want %x", label, i, got[i], want[i])
+			}
+		}
+	}
+	session, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := session.Invoke(args...)
+	if err != nil || len(got) != len(want) {
+		t.Fatalf("session = %v, %v", got, err)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("session[%d] = %x, want %x", i, got[i], want[i])
+		}
+	}
+	session.Close()
+	if _, err := in.ExportedFunc("f"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = fn.Invoke(args...)
+	if err != nil || len(got) != len(want) {
+		t.Fatalf("shared fallback = %v, %v", got, err)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("shared fallback[%d] = %x, want %x", i, got[i], want[i])
+		}
+	}
+}
+
+func TestMixedWideResultsInternalCall(t *testing.T) {
+	args := []uint64{7, F64(-2.5), 0x1122334455667788, F32(1.5)}
+	for _, order := range [][]int{{0, 1, 2}, {3, 2, 1, 0}} {
+		compiled := MustCompile(preparedMixedReorderedResultsModule(order, true))
+		in, err := Instantiate(compiled, InstantiateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := in.Invoke("f", args...)
+		if err != nil || len(got) != len(order) {
+			t.Fatalf("mixed wide internal call %v = %v, %v", order, got, err)
+		}
+		for i, index := range order {
+			if got[i] != args[index] {
+				t.Fatalf("order %v result[%d] = %x, want %x", order, i, got[i], args[index])
+			}
+		}
+		in.Close()
+		compiled.Close()
+	}
+}
+
 func TestPreparedDirectMixedNumericPair(t *testing.T) {
 	for _, tc := range []struct {
 		name          string

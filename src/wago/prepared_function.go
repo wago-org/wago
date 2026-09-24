@@ -121,7 +121,7 @@ func preparedDirectFloatSignature(sig FuncSig) bool {
 }
 
 func preparedDirectMixedSignature(sig FuncSig) bool {
-	if len(sig.Params) > 4 || len(sig.Results) > 2 {
+	if len(sig.Params) > 4 || len(sig.Results) > 4 {
 		return false
 	}
 	for _, typ := range sig.Params {
@@ -129,10 +129,19 @@ func preparedDirectMixedSignature(sig FuncSig) bool {
 			return false
 		}
 	}
+	gp, fp := 0, 0
 	for _, typ := range sig.Results {
 		if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
 			return false
 		}
+		if typ == ValF32 || typ == ValF64 {
+			fp++
+		} else {
+			gp++
+		}
+	}
+	if len(sig.Results) > 2 && (gp == 0 || fp == 0 || gp > 2 || fp > 2) {
+		return false
 	}
 	return !preparedDirectIntSignature(sig) && !preparedDirectFloatSignature(sig)
 }
@@ -153,6 +162,7 @@ const (
 	directMixedParamMask = uint8(0x0f)
 	directMixedResultFP  = uint8(1 << 4)
 	directMixedResult1FP = uint8(1 << 5)
+	directMixedResult2FP = uint8(1 << 6)
 	directMixedEnabled   = uint8(1 << 7)
 )
 
@@ -163,6 +173,9 @@ func encodeDirectMixedInfo(sig FuncSig) uint8 {
 	}
 	if len(sig.Results) > 1 && (sig.Results[1] == ValF32 || sig.Results[1] == ValF64) {
 		info |= directMixedResult1FP
+	}
+	if len(sig.Results) > 2 && (sig.Results[2] == ValF32 || sig.Results[2] == ValF64) {
+		info |= directMixedResult2FP
 	}
 	return info
 }

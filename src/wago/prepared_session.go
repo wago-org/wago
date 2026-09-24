@@ -247,6 +247,9 @@ func (s *PreparedSession) invokeArgs(args []uint64) ([]uint64, error) {
 	if preparedDirectWideSupported && state.fast && fn.directIntFast && (len(args) > 4 || fn.resultSlots > 2) {
 		return fn.invokeDirectIntWideSession(args)
 	}
+	if preparedDirectFloatSupported && state.fast && fn.directFloatFast {
+		return fn.invokeDirectFloatSession(args)
+	}
 	gcLease, err := state.beginCall()
 	if err != nil {
 		return nil, err

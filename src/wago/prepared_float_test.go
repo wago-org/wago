@@ -276,6 +276,13 @@ func testPreparedDirectFloatWide(t *testing.T, n int) {
 	check("prepared", got, err)
 	got, err = in.Invoke("f", args...)
 	check("instance", got, err)
+	session, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	got, err = session.Invoke(args...)
+	check("session", got, err)
 }
 
 func TestFloatOctInternalCall(t *testing.T) {

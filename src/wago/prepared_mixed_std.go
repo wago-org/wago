@@ -66,12 +66,15 @@ func (in *Instance) invokeDirectMixedEntry(entry uintptr, info uint8, paramWide 
 			result = uint64(uint32(result))
 		}
 		out[0] = result
-	} else if len(resultWide) == 2 {
+	} else if len(resultWide) >= 2 {
 		gpResults := [2]uint64{gpResult, gpResult1}
 		fpResults := [2]uint64{fpResult, fpResult1}
 		gp, fp := 0, 0
 		for i := range out {
-			if info&(directMixedResultFP<<i) != 0 {
+			// Bit 7 tags the encoding, so result 3's bank is implied by the
+			// two-GP/two-FP four-result contract.
+			floatResult := i < 3 && info&(directMixedResultFP<<i) != 0 || i == 3 && fp < 2
+			if floatResult {
 				out[i] = fpResults[fp]
 				fp++
 			} else {

@@ -4017,8 +4017,15 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 	if registerQuadResultsSupported && rN > 2 && !sigIsFloatOnly(f.ft) {
 		// X3 may be result 3; restore the results pointer into X8 instead.
 		a.LdpPost(LR, X8, SP, 16)
-		for i, reg := range []Reg{X0, X1, X2, X3, X4, X5, X6, X7}[:rN] {
-			f.st64(X8, int32(i*8), reg)
+		gp, fp := 0, 0
+		for i, typ := range f.ft.Results {
+			if mtOf(typ).isFloat() {
+				a.FStoreDisp(X8, int32(i*8), Reg(fp), mtOf(typ) == mtF64)
+				fp++
+			} else {
+				f.st64(X8, int32(i*8), []Reg{X0, X1, X2, X3, X4, X5, X6, X7}[gp])
+				gp++
+			}
 		}
 	} else {
 		a.LdpPost(LR, X3, SP, 16) // restore LR + results ptr
@@ -4063,7 +4070,7 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
 // the internal entry takes args in GP/V registers and returns numeric results
-// in independent GP/FP banks (up to four integer results).
+// in independent GP/FP banks.
 // Returns the internal entry's offset within the function's code.
 func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, hasFloatConst bool, intConstHints *funcHintView) (int, error) {
 	a := f.a
@@ -4222,8 +4229,15 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 			a.FLoadDisp(Reg(i), SP, f.spillOff(i), mtOf(typ) == mtF64)
 		}
 	} else if registerQuadResultsSupported && rN > 2 {
-		for i, reg := range []Reg{X0, X1, X2, X3, X4, X5, X6, X7}[:rN] {
-			f.ld64(reg, SP, f.spillOff(i))
+		gp, fp := 0, 0
+		for i, typ := range f.ft.Results {
+			if mtOf(typ).isFloat() {
+				a.FLoadDisp(Reg(fp), SP, f.spillOff(i), mtOf(typ) == mtF64)
+				fp++
+			} else {
+				f.ld64([]Reg{X0, X1, X2, X3, X4, X5, X6, X7}[gp], SP, f.spillOff(i))
+				gp++
+			}
 		}
 	}
 	// singleRegResult: every exit already produced the result in X0/V0.

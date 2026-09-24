@@ -116,6 +116,26 @@ func sigIsFloatOnly(ft *wasm.CompType) bool {
 	return true
 }
 
+// sigHasMixedWideResults is the two-GP/two-FP register result shape also used
+// by the bounded mixed prepared bridge. Results may interleave in Wasm order.
+func sigHasMixedWideResults(ft *wasm.CompType) bool {
+	if !preparedDirectFloatSupported || len(ft.Results) < 3 || len(ft.Results) > 4 {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, typ := range ft.Results {
+		switch {
+		case isIntValType(typ):
+			gp++
+		case isFloatValType(typ):
+			fp++
+		default:
+			return false
+		}
+	}
+	return gp > 0 && fp > 0 && gp <= 2 && fp <= 2
+}
+
 // sigFitsDirectCrossTailABI is the bounded direct InstanceExport tail surface.
 // The original shape is integer-only with up to two integer results. The first
 // mixed-bank extension admits exactly (i32, f64) -> f64; a second exact shape
@@ -140,13 +160,14 @@ func sigFitsDirectCrossTailABI(ft *wasm.CompType) bool {
 // and float params are assigned to separate GP/XMM banks; one result returns in
 // RAX or XMM0; two results use independent GP/FP banks, and integer-only
 // signatures can return up to seven values in RAX/RDX/RCX/R8/R9/R10/R11;
-// float-only signatures can use all eight XMM result registers.
+// float-only signatures can use all eight XMM result registers. Mixed results
+// use up to two registers in each bank.
 func sigFitsRegABI(ft *wasm.CompType) bool {
 	if len(ft.Results) > len(intArgRegs) && !(preparedDirectFloatSupported && len(ft.Results) <= len(fpArgRegs) && sigIsFloatOnly(ft)) ||
 		len(ft.Results) > 2 && !registerQuadResultsSupported {
 		return false
 	}
-	if len(ft.Results) > 2 && !sigIsIntOnly(ft) && !(preparedDirectFloatSupported && sigIsFloatOnly(ft)) {
+	if len(ft.Results) > 2 && !sigIsIntOnly(ft) && !(preparedDirectFloatSupported && sigIsFloatOnly(ft)) && !sigHasMixedWideResults(ft) {
 		return false
 	}
 	if len(ft.Results) == 2 && !((isIntValType(ft.Results[0]) && isIntValType(ft.Results[1])) ||
@@ -212,7 +233,7 @@ func preparedDirectFloatSig(ft *wasm.CompType) bool {
 }
 
 func preparedDirectMixedSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 2 {
+	if len(ft.Params) > 4 || len(ft.Results) > 4 || len(ft.Results) > 2 && !sigHasMixedWideResults(ft) {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -2128,6 +2149,20 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		f.a.MovReg64(pairRes[1], RDX)
 		f.pinned = f.pinned.add(pairRes[1])
 	}
+	var mixedWideInts [2]Reg
+	if sigHasMixedWideResults(ft) {
+		gp := 0
+		for _, typ := range ft.Results {
+			if isFloatValType(typ) {
+				continue
+			}
+			reg := f.allocReg(maskOf(RAX, RDX))
+			f.a.MovReg64(reg, []Reg{RAX, RDX}[gp])
+			f.pinned = f.pinned.add(reg)
+			mixedWideInts[gp] = reg
+			gp++
+		}
+	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 
@@ -2165,7 +2200,22 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
 		}
 	}
-	if preparedDirectFloatSupported && rN > 2 {
+	if sigHasMixedWideResults(ft) {
+		gp, fp := 0, 0
+		for _, typ := range ft.Results {
+			var value *elem
+			if isFloatValType(typ) {
+				value = f.pushFReg(Reg(fp), mtOf(typ))
+				fp++
+			} else {
+				reg := mixedWideInts[gp]
+				f.pinned = f.pinned.remove(reg)
+				value = f.pushReg(reg, mtOf(typ))
+				gp++
+			}
+			value.st.setGCRoot(gcFrameRefType(f.m, typ))
+		}
+	} else if preparedDirectFloatSupported && rN > 2 {
 		for i, typ := range ft.Results {
 			value := f.pushFReg(Reg(i), mtOf(typ))
 			value.st.setGCRoot(gcFrameRefType(f.m, typ))
