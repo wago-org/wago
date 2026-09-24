@@ -1,14 +1,23 @@
 package main
 
 import (
+	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestParseFindingsNormalizesPathsAndLines(t *testing.T) {
-	const root = "/checkout"
-	input := `{"code":"U1000","location":{"file":"/checkout/src/example.go","line":19,"column":4},"message":"func f is unused"}` + "\n"
-	got, err := parseFindings(strings.NewReader(input), root, "standard")
+	root := t.TempDir()
+	input, err := json.Marshal(diagnostic{
+		Code:     "U1000",
+		Location: position{File: filepath.Join(root, "src", "example.go"), Line: 19},
+		Message:  "func f is unused",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := parseFindings(strings.NewReader(string(input)), root, "standard")
 	if err != nil {
 		t.Fatal(err)
 	}
