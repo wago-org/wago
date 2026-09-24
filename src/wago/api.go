@@ -4879,8 +4879,11 @@ func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []
 	if !nativeCancellationSupported() {
 		return nil, fmt.Errorf("wago: native context cancellation requires a concurrent scheduler (TinyGo: -scheduler=threads)")
 	}
-	done := make(chan struct{})
-	stopped := make(chan struct{})
+	const (
+		watchStopped  = uint32(1)
+		watchFinished = uint32(2)
+	)
+	var watchState atomic.Uint32
 	trap := (*uint32)(unsafe.Pointer(&activeTrap[0]))
 	clearDeadline := noOpCancellationWatch
 	if deadline, ok := cancel.Deadline(); ok {
@@ -4891,7 +4894,7 @@ func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []
 		}
 	}
 	stopCallback := context.AfterFunc(cancel, func() {
-		defer close(stopped)
+		defer watchState.Add(watchFinished)
 		// The trap cell remains armed until invocation cleanup, so retries only
 		// need to bridge native entry/exit races. Bound the process-wide signal
 		// broadcasts: a guest parked indefinitely in a host call will observe the
@@ -4900,22 +4903,29 @@ func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []
 		defer retry.Stop()
 		for attempt := 0; attempt < 256; attempt++ {
 			wruntime.RequestInterrupt(activeTrap)
-			select {
-			case <-done:
+			if watchState.Load()&watchStopped != 0 {
 				return
-			case <-retry.C:
 			}
+			<-retry.C
 		}
 	})
-	var stopOnce atomic.Bool
 	return func() {
-		if !stopOnce.CompareAndSwap(false, true) {
-			return
+		for {
+			state := watchState.Load()
+			if state&watchStopped != 0 {
+				return
+			}
+			if watchState.CompareAndSwap(state, state|watchStopped) {
+				break
+			}
 		}
 		clearDeadline()
-		close(done)
 		if !stopCallback() {
-			<-stopped
+			// Cancellation already started its callback. It observes the stop bit
+			// no later than the next retry tick; wait for it before clearing the trap.
+			for watchState.Load()&watchFinished == 0 {
+				goruntime.Gosched()
+			}
 		}
 		atomic.CompareAndSwapUint32(trap, uint32(wruntime.TrapInterrupted), 0)
 	}, nil

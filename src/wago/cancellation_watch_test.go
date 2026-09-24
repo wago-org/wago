@@ -28,6 +28,23 @@ func TestCancellationWatchInertContexts(t *testing.T) {
 	}
 }
 
+func TestCancellationWatchStopIdempotent(t *testing.T) {
+	if !nativeCancellationSupported() {
+		t.Skip("native cancellation unavailable")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var in Instance
+	trap := make([]byte, 4)
+	stop, err := in.startCancellationWatch(ctx, trap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop()
+	stop()
+	cancel()
+}
+
 func BenchmarkCancellationWatch(b *testing.B) {
 	for _, tc := range []struct {
 		name string
