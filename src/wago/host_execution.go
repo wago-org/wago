@@ -392,7 +392,7 @@ func (l parkedIndependentHostLease) resume() {
 // can resume. The outer entry observes the revoked mode when it releases.
 func reacquireRootNative(root *Instance, localMu *sync.Mutex) bool {
 	localMu.Lock()
-	if root.c.threadedMemory0() || root.usesIndependentExecution() {
+	if root.threadedMemoryZero || root.usesIndependentExecution() {
 		return false
 	}
 	localMu.Unlock()
@@ -412,7 +412,7 @@ func (a *hostLoopActivation) localNativeMu() *sync.Mutex {
 		}
 		return a.entryNativeMu
 	}
-	if a.root.c.threadedMemory0() || a.root.usesIndependentExecution() {
+	if a.root.threadedMemoryZero || a.root.usesIndependentExecution() {
 		return a.entryNativeMu
 	}
 	return nil

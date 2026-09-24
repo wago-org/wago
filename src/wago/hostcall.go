@@ -662,25 +662,21 @@ type instancePluginState struct {
 	hostScope            hostCallScope
 	activations          instanceActivations
 	nativeContextVersion atomic.Uint64
-	// Guarded by the independent native execution mutex. A version match lets
-	// ordinary entries reuse the context image left by the previous entry.
-	nativeContextBoundVersion uint64
-	nativeContextBoundBase    uintptr
-	invokeMu                  invocationGate // serializes unrelated public calls across parked host callbacks
-	nativeExecutionMu         sync.Mutex     // serializes native entry for an independent instance
-	nativeShareMu             sync.Mutex     // coordinates retained local leases with resource publication
-	preparedHostGate          *preparedHostLeaseGate
-	invocationID              invocationID
-	gcConfig                  *GCConfig
-	origin                    InstantiateOrigin
-	gcGlobalRootCount         uint32
-	guestStorageBorrow        atomic.Uint32
-	gcPublic                  atomic.Pointer[gcPublicState]
-	gcArrayElements           atomic.Pointer[gcArrayElementState]
-	gcRefTestTable            atomic.Pointer[gcRefTestTableState]
-	gcGlobalRoots             []gcGlobalRootMapping
-	tagIdentityBase           uintptr      // arena-owned bounded native u64 directory for staged EH
-	tagExports                map[int]*Tag // lazy stable identity handles for exported local tags
+	invokeMu             invocationGate // serializes unrelated public calls across parked host callbacks
+	nativeExecutionMu    sync.Mutex     // serializes native entry for an independent instance
+	nativeShareMu        sync.Mutex     // coordinates retained local leases with resource publication
+	preparedHostGate     *preparedHostLeaseGate
+	invocationID         invocationID
+	gcConfig             *GCConfig
+	origin               InstantiateOrigin
+	gcGlobalRootCount    uint32
+	guestStorageBorrow   atomic.Uint32
+	gcPublic             atomic.Pointer[gcPublicState]
+	gcArrayElements      atomic.Pointer[gcArrayElementState]
+	gcRefTestTable       atomic.Pointer[gcRefTestTableState]
+	gcGlobalRoots        []gcGlobalRootMapping
+	tagIdentityBase      uintptr      // arena-owned bounded native u64 directory for staged EH
+	tagExports           map[int]*Tag // lazy stable identity handles for exported local tags
 }
 
 type instanceCloseState struct {

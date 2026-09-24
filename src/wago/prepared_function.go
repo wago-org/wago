@@ -45,6 +45,7 @@ type WasmFunc struct {
 	directGate          *invocationGate
 	hostPrepared        *wruntime.PreparedHostScalarCall
 	hostMemBase         uintptr
+	hostContextVersion  uint64 // last independent native context bound for this handle
 	hostActivation      hostLoopActivation
 	hostFixed           wruntime.FixedScalarHostCall
 }
@@ -347,7 +348,7 @@ func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
 // have changed the instance context while this function was idle.
 func (fn *WasmFunc) callScalarHostPrepared() error {
 	in := fn.in
-	entry, err := in.beginNativeEntry()
+	entry, err := fn.beginNativeEntry()
 	if err != nil {
 		return err
 	}

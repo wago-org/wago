@@ -125,6 +125,18 @@ func TestWasmFuncOrdinaryHostEntryReusesUnchangedNativeContext(t *testing.T) {
 	if got := state.nativeContextVersion.Load(); got != first {
 		t.Fatalf("unchanged native context rebound: version %d -> %d", first, got)
 	}
+	other, err := in.WasmFunc("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := other.Invoke(I32(41)); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("other handle call = %v, %v; want [42]", got, err)
+	}
+	intervening := state.nativeContextVersion.Load()
+	call()
+	if got := state.nativeContextVersion.Load(); got <= intervening {
+		t.Fatalf("intervening handle did not force rebind: version %d -> %d", intervening, got)
+	}
 	in.acquireInstanceNativeStateForHostAccess().Unlock()
 	invalidated := state.nativeContextVersion.Load()
 	call()
@@ -132,10 +144,7 @@ func TestWasmFuncOrdinaryHostEntryReusesUnchangedNativeContext(t *testing.T) {
 		t.Fatalf("invalidated native context was not rebound: version %d -> %d", invalidated, got)
 	}
 	bound := state.nativeContextVersion.Load()
-	mu := in.independentNativeExecutionMu()
-	mu.Lock()
-	state.nativeContextBoundBase ^= 1
-	mu.Unlock()
+	fn.hostMemBase ^= 1
 	call()
 	if got := state.nativeContextVersion.Load(); got <= bound {
 		t.Fatalf("cached memory-base mismatch did not force rebind: version %d -> %d", bound, got)

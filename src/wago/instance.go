@@ -63,6 +63,7 @@ type Instance struct {
 	ownsMem                 bool                     // false when memory 0 is host-imported (don't close it)
 	memoryDir               *instanceMemoryDirectory // allocated only for indexed memory execution
 	syncMode                bool                     // true when host imports use the synchronous re-entry protocol
+	threadedMemoryZero      bool                     // immutable compiled memory-zero shape, cached for native entry
 	constructionActive      bool                     // registration through terminal instantiation observation
 	constructionReservation *pluginOperationReservation
 	executionFlags          atomic.Uint32 // independent eligibility and cross-instance native-control sharing
