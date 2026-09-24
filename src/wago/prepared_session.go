@@ -51,7 +51,7 @@ func (fn *WasmFunc) OpenSession() (*PreparedSession, error) {
 	}
 	state := &preparedSessionState{fn: fn}
 	s := &PreparedSession{state: state}
-	if fn.directIntFast && fn.directIsolated && in.tryPreparedDirect() {
+	if (fn.directIntFast || preparedDirectFloatSupported && fn.directFloatFast) && fn.directIsolated && in.tryPreparedDirect() {
 		state.fast = true
 		return s, nil
 	}
@@ -206,6 +206,10 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) ([]uint6
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, count)
 	}
 	if state.fast {
+		if preparedDirectFloatSupported && fn.directFloatFast {
+			args := [4]uint64{a0, a1, a2, a3}
+			return fn.invokeDirectFloatSession(args[:count])
+		}
 		return fn.invokeDirectIntSession(a0, a1, a2, a3)
 	}
 	gcLease, err := state.beginCall()

@@ -38,6 +38,7 @@ type WasmFunc struct {
 	isolatedFast        bool
 	directIsolated      bool
 	directIntFast       bool
+	directFloatFast     bool
 	directIntLight      bool
 	directIntBounded    bool
 	directIntMode       preparedIntCallMode
@@ -95,6 +96,23 @@ func preparedDirectIntSignature(sig FuncSig) bool {
 	}
 	for _, typ := range sig.Results {
 		if typ != ValI32 && typ != ValI64 {
+			return false
+		}
+	}
+	return true
+}
+
+func preparedDirectFloatSignature(sig FuncSig) bool {
+	if len(sig.Params) > 4 || len(sig.Results) > 1 {
+		return false
+	}
+	for _, typ := range sig.Params {
+		if typ != ValF32 && typ != ValF64 {
+			return false
+		}
+	}
+	for _, typ := range sig.Results {
+		if typ != ValF32 && typ != ValF64 {
 			return false
 		}
 	}
@@ -197,6 +215,20 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 				fn.initDirectIntCall()
 			}
 		}
+		if preparedDirectFloatSupported && preparedDirectIntEnabled && preparedDirectFloatSignature(sig) &&
+			in.c.directPreparedAt(ic.li) && in.c.directPreparedBoundedAt(ic.li) {
+			directMode := entryMode
+			if directMode == preparedEntryGeneral && in.c.boundsMode == BoundsChecksSignalsBased {
+				directMode = in.preparedMemoryFreeEntryMode()
+			}
+			if preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated {
+				fn.directIsolated = true
+				fn.directFloatFast = true
+				fn.directGate = &in.ensurePluginState().invokeMu
+				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+				fn.directLinMem = in.jm.LinMemBase()
+			}
+		}
 	}
 	return fn, nil
 }
@@ -221,6 +253,9 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 			case 4:
 				return fn.invokeDirectIntFixed(args[0], args[1], args[2], args[3])
 			}
+		}
+		if preparedDirectFloatSupported && fn.directFloatFast {
+			return fn.invokeDirectFloat(args)
 		}
 		if fn.scalarFast {
 			return fn.invokeScalar(args)

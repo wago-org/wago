@@ -10,6 +10,9 @@ func enterNativeIntPairRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr
 
 //go:noescape
 func enterNativeIntWideRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr)
+
+//go:noescape
+func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) uintptr
 func enterNativeIntPreboundContextRaw(call *PreparedIntCall, a0, a1, a2, a3 uintptr) uintptr
 func enterNativeIntCallRaw(call *PreparedIntCall) uintptr
 
@@ -57,6 +60,12 @@ func (e *Engine) EnterPreparedIntPairBounded(code, linMemBase uintptr, a0, a1, a
 func (e *Engine) EnterPreparedIntWideBounded(code, linMemBase uintptr, args *[8]uint64) (uint64, uint64) {
 	r0, r1 := enterNativeIntWideRaw(code, linMemBase, args, e.stackTop)
 	return uint64(r0), uint64(r1)
+}
+
+// EnterPreparedFloatBounded enters a compiler-proven bounded FP leaf with up
+// to four FP register arguments and one FP register result.
+func (e *Engine) EnterPreparedFloatBounded(code, linMemBase uintptr, args *[4]uint64) uint64 {
+	return uint64(enterNativeFloatRaw(code, linMemBase, args, e.stackTop))
 }
 
 // EnterPreparedIntPreboundContextBounded reads immutable entry state from call

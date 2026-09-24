@@ -109,6 +109,7 @@ type invokeCache struct {
 	valid             bool
 	entryMode         preparedEntryMode
 	directIntFast     bool
+	directFloatFast   bool
 	directIntLight    bool
 	directIntBounded  bool
 	scalarWideMask    uint8

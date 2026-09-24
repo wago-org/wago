@@ -163,6 +163,23 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 	return true
 }
 
+func preparedDirectFloatSig(ft *wasm.CompType) bool {
+	if len(ft.Params) > 4 || len(ft.Results) > 1 {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	return true
+}
+
 func isFloatValType(t wasm.ValType) bool {
 	return wasm.EqualValType(t, wasm.F32) || wasm.EqualValType(t, wasm.F64)
 }

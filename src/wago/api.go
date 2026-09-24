@@ -4363,7 +4363,7 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		return nil, nilInstanceInvokeError()
 	}
 	if !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil {
-		if out, err, ok := in.tryInvokeCachedDirectInt(export, args); ok {
+		if out, err, ok := in.tryInvokeCachedDirectNumeric(export, args); ok {
 			return out, err
 		}
 	}
@@ -4413,13 +4413,13 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		// the audited rebinding and topology-lease route.
 		executionFlags := in.executionFlags.Load()
 		const directBlocked = preparedFastBlocked
-		if ic.directIntFast && executionFlags&directBlocked == 0 && in.lockPreparedFastState() {
+		if (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast) && executionFlags&directBlocked == 0 && in.lockPreparedFastState() {
 			defer in.unlockPreparedFastState()
 			if len(args) != ic.paramSlots {
 				return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 			}
 			directEntry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
-			return in.invokeCachedDirectInt(ic, directEntry, args)
+			return in.invokeCachedDirectNumeric(ic, directEntry, args)
 		}
 		if invokePrivateEntryEnabled && ic.entryMode != preparedEntryGeneral && executionFlags&directBlocked == 0 {
 			return in.invokeCachedNumericEntry(export, ic, args)
@@ -4428,11 +4428,11 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 	return in.invokeWithToken(export, args, contexts, state.invocationID, true, alreadyAdmitted, nil)
 }
 
-// tryInvokeCachedDirectInt admits only an already-cached, isolated, bounded
-// integer leaf. It has no host callback, GC domain, or interrupt context to
+// tryInvokeCachedDirectNumeric admits only an already-cached, isolated, bounded
+// numeric leaf. It has no host callback, GC domain, or interrupt context to
 // carry, so a fresh invocation identity and the general parked-call gate are
 // unnecessary. A failed proof falls back to invokeEntry's full admission path.
-func (in *Instance) tryInvokeCachedDirectInt(export string, args []uint64) ([]uint64, error, bool) {
+func (in *Instance) tryInvokeCachedDirectNumeric(export string, args []uint64) ([]uint64, error, bool) {
 	if in.rt != nil {
 		return nil, nil, false
 	}
@@ -4446,7 +4446,7 @@ func (in *Instance) tryInvokeCachedDirectInt(export string, args []uint64) ([]ui
 	}
 	ic := in.findInvokeCache(export)
 	privateRefStore := in.refStore == nil || in.refStore.private
-	if ic == nil || !ic.directIntFast || len(args) != ic.paramSlots || !privateRefStore || in.guestStorageBorrowed() || !in.lockPreparedFastState() {
+	if ic == nil || !(ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast) || len(args) != ic.paramSlots || !privateRefStore || in.guestStorageBorrowed() || !in.lockPreparedFastState() {
 		state.invokeMu.Unlock()
 		in.endInvocation()
 		return nil, nil, false
@@ -4455,13 +4455,16 @@ func (in *Instance) tryInvokeCachedDirectInt(export string, args []uint64) ([]ui
 	defer state.invokeMu.Unlock()
 	defer in.unlockPreparedFastState()
 	entry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
-	out, err := in.invokeCachedDirectInt(ic, entry, args)
+	out, err := in.invokeCachedDirectNumeric(ic, entry, args)
 	return out, err, true
 }
 
-// invokeCachedDirectInt requires an invocation lifetime lease, the isolated
+// invokeCachedDirectNumeric requires an invocation lifetime lease, the isolated
 // invocation gate, and the prepared-fast revocation bit to be held.
-func (in *Instance) invokeCachedDirectInt(ic *invokeCache, entry uintptr, args []uint64) ([]uint64, error) {
+func (in *Instance) invokeCachedDirectNumeric(ic *invokeCache, entry uintptr, args []uint64) ([]uint64, error) {
+	if preparedDirectFloatSupported && ic.directFloatFast {
+		return in.invokeDirectFloatEntry(entry, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
+	}
 	if preparedDirectWideSupported && len(args) > 4 {
 		return in.invokeDirectIntWideEntry(entry, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
 	}
@@ -5102,10 +5105,14 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		preparedDirectIntSignature(sig) && in.c.directPreparedAt(li) &&
 		(!preparedDirectWideSupported || paramSlots <= 4 || in.c.directPreparedBoundedAt(li)) &&
 		(resultSlots != 2 || preparedDirectPairSupported && in.c.directPreparedBoundedAt(li))
+	directFloatFast := preparedDirectFloatSupported && preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
+		preparedDirectIntEnabled && directEntryMode == preparedEntryIsolated &&
+		preparedDirectFloatSignature(sig) && in.c.directPreparedAt(li) && in.c.directPreparedBoundedAt(li)
 	*slot = invokeCache{
 		export:            export,
 		valid:             true,
 		directIntFast:     directIntFast,
+		directFloatFast:   directFloatFast,
 		directIntLight:    directIntFast && in.c.directPreparedLightAt(li),
 		directIntBounded:  directIntFast && in.c.directPreparedBoundedAt(li),
 		scalarWideMask:    scalarWideMask,
