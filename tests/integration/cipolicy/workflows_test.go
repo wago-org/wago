@@ -103,6 +103,24 @@ func TestCanaryPublishesCommitAddressedArtifactsWithoutTags(t *testing.T) {
 	}
 }
 
+func TestRegressionStressUsesReusableWorkflowProfiles(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/regression-stress.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := workflowJobBlocks(string(workflow))
+	for job, required := range map[string]string{
+		"gc-hardening":       "if: inputs.profile == 'full' || inputs.profile == 'release' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+		"stress":             "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || inputs.profile == 'release'",
+		"regression-rebuild": "if: inputs.profile == 'release'",
+	} {
+		block, ok := jobs[job]
+		if !ok || !strings.Contains(block, required) {
+			t.Errorf("reusable stress workflow job %s does not honor its caller profile", job)
+		}
+	}
+}
+
 func TestInstallerPublishStagesRemovedBootstraps(t *testing.T) {
 	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/sync-install.yml"))
 	if err != nil {

@@ -69,7 +69,7 @@ jobs:
 
   gc-hardening:
     name: GC hardening / ${{ matrix.arch }} / ${{ matrix.bounds }}
-    if: github.event_name == 'workflow_call' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: inputs.profile == 'full' || inputs.profile == 'release' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
@@ -115,7 +115,7 @@ jobs:
 
   stress:
     name: Extended runtime stress
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_call' && inputs.profile == 'release')
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || inputs.profile == 'release'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -139,7 +139,7 @@ jobs:
 
   regression-rebuild:
     name: Regenerate regression corpus from pinned source
-    if: github.event_name == 'workflow_call' && inputs.profile == 'release'
+    if: inputs.profile == 'release'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
