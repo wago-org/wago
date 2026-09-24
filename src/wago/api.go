@@ -4362,6 +4362,11 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 	if in == nil {
 		return nil, nilInstanceInvokeError()
 	}
+	if !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil {
+		if out, err, ok := in.tryInvokeCachedDirectInt(export, args); ok {
+			return out, err
+		}
+	}
 	// Close hooks run after the invocation gate is published and may probe that
 	// later calls fail closed. Check the gate before waiting for the per-instance
 	// serialization lock so such a probe cannot deadlock behind the activation
@@ -4414,33 +4419,69 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 				return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 			}
 			directEntry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
-			if ic.resultSlots == 2 {
-				if len(args) > 4 {
-					return in.invokeDirectIntWideEntry(directEntry, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
-				}
-				return in.invokeDirectIntPairEntry(directEntry, ic.scalarWideMask, ic.slotWide[ic.paramSlots:], args)
-			}
-			if len(args) > 4 {
-				return in.invokeDirectIntWideEntry(directEntry, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
-			}
-			switch len(args) {
-			case 0:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, 0, 0, 0, 0)
-			case 1:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], 0, 0, 0)
-			case 2:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], 0, 0)
-			case 3:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], 0)
-			case 4:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], args[3])
-			}
+			return in.invokeCachedDirectInt(ic, directEntry, args)
 		}
 		if invokePrivateEntryEnabled && ic.entryMode != preparedEntryGeneral && executionFlags&directBlocked == 0 {
 			return in.invokeCachedNumericEntry(export, ic, args)
 		}
 	}
 	return in.invokeWithToken(export, args, contexts, state.invocationID, true, alreadyAdmitted, nil)
+}
+
+// tryInvokeCachedDirectInt admits only an already-cached, isolated, bounded
+// integer leaf. It has no host callback, GC domain, or interrupt context to
+// carry, so a fresh invocation identity and the general parked-call gate are
+// unnecessary. A failed proof falls back to invokeEntry's full admission path.
+func (in *Instance) tryInvokeCachedDirectInt(export string, args []uint64) ([]uint64, error, bool) {
+	if in.rt != nil {
+		return nil, nil, false
+	}
+	state := in.pluginState.Load()
+	if state == nil || !in.invocationState.CompareAndSwap(0, 1) {
+		return nil, nil, false
+	}
+	if !state.invokeMu.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
+		in.endInvocation()
+		return nil, nil, false
+	}
+	ic := in.findInvokeCache(export)
+	privateRefStore := in.refStore == nil || in.refStore.private
+	if ic == nil || !ic.directIntFast || len(args) != ic.paramSlots || !privateRefStore || in.guestStorageBorrowed() || !in.lockPreparedFastState() {
+		state.invokeMu.Unlock()
+		in.endInvocation()
+		return nil, nil, false
+	}
+	defer in.endInvocation()
+	defer state.invokeMu.Unlock()
+	defer in.unlockPreparedFastState()
+	entry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+	out, err := in.invokeCachedDirectInt(ic, entry, args)
+	return out, err, true
+}
+
+// invokeCachedDirectInt requires an invocation lifetime lease, the isolated
+// invocation gate, and the prepared-fast revocation bit to be held.
+func (in *Instance) invokeCachedDirectInt(ic *invokeCache, entry uintptr, args []uint64) ([]uint64, error) {
+	if preparedDirectWideSupported && len(args) > 4 {
+		return in.invokeDirectIntWideEntry(entry, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
+	}
+	if ic.resultSlots == 2 {
+		return in.invokeDirectIntPairEntry(entry, ic.scalarWideMask, ic.slotWide[ic.paramSlots:], args)
+	}
+	switch len(args) {
+	case 0:
+		return in.invokeDirectIntEntry(entry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, 0, 0, 0, 0)
+	case 1:
+		return in.invokeDirectIntEntry(entry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], 0, 0, 0)
+	case 2:
+		return in.invokeDirectIntEntry(entry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], 0, 0)
+	case 3:
+		return in.invokeDirectIntEntry(entry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], 0)
+	case 4:
+		return in.invokeDirectIntEntry(entry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], args[3])
+	default:
+		return nil, fmt.Errorf("wago: direct integer entry has %d argument slots", len(args))
+	}
 }
 
 func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, args []uint64) ([]uint64, error) {
@@ -5059,7 +5100,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	directIntFast := preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
 		preparedDirectIntSupported && preparedDirectIntEnabled && directEntryMode == preparedEntryIsolated &&
 		preparedDirectIntSignature(sig) && in.c.directPreparedAt(li) &&
-		(paramSlots <= 4 || in.c.directPreparedBoundedAt(li)) &&
+		(!preparedDirectWideSupported || paramSlots <= 4 || in.c.directPreparedBoundedAt(li)) &&
 		(resultSlots != 2 || preparedDirectPairSupported && in.c.directPreparedBoundedAt(li))
 	*slot = invokeCache{
 		export:            export,

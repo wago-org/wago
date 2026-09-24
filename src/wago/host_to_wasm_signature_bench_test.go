@@ -76,6 +76,22 @@ func BenchmarkHostToWasmSignatureMatrix(b *testing.B) {
 					}
 				}
 			})
+			if params == 7 || params == 8 {
+				session, err := prepared.OpenSession()
+				if err != nil {
+					b.Fatal(err)
+				}
+				defer session.Close()
+				b.Run("session", func(b *testing.B) {
+					b.ReportAllocs()
+					for i := 0; i < b.N; i++ {
+						benchResultSink, err = session.Invoke(args...)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
 		})
 	}
 }

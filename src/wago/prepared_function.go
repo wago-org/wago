@@ -85,7 +85,7 @@ func (c *Compiled) directPreparedBoundedAt(local int) bool {
 }
 
 func preparedDirectIntSignature(sig FuncSig) bool {
-	if len(sig.Params) > 8 || len(sig.Results) > 2 || len(sig.Params) > 4 && (!preparedDirectWideSupported || len(sig.Params) > preparedDirectWideMaxArgs) {
+	if len(sig.Params) > preparedDirectWideMaxArgs || len(sig.Results) > 2 {
 		return false
 	}
 	for _, typ := range sig.Params {
@@ -176,7 +176,7 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		}
 		if preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) &&
 			(ic.resultSlots != 2 || preparedDirectPairSupported && in.c.directPreparedBoundedAt(ic.li)) &&
-			(ic.paramSlots <= 4 || in.c.directPreparedBoundedAt(ic.li)) {
+			(!preparedDirectWideSupported || ic.paramSlots <= 4 || in.c.directPreparedBoundedAt(ic.li)) {
 			// directPreparedAt is the compiler proof that this internal entry is
 			// memory-free. Re-evaluate only the bounds-mode exclusion; every other
 			// ownership and lifecycle exclusion remains in force.
@@ -206,7 +206,7 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 	if fn != nil && fn.in != nil && len(args) == fn.paramSlots {
 		if fn.directIntFast {
-			if len(args) > 4 {
+			if preparedDirectWideSupported && len(args) > 4 {
 				return fn.invokeDirectIntWide(args)
 			}
 			switch len(args) {
