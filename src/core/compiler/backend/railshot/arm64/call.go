@@ -164,7 +164,7 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 }
 
 func preparedDirectFloatSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 1 {
+	if len(ft.Params) > 4 || len(ft.Results) > 2 {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -220,12 +220,13 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/V banks; one result returns in
-// X0/V0, and the deliberately limited two-result form uses X0/X1 for integers.
+// X0/V0, and the two-result form uses X0/X1 for integers or V0/V1 for floats.
 func sigFitsRegABI(ft *wasm.CompType) bool {
 	if len(ft.Results) > 2 {
 		return false
 	}
-	if len(ft.Results) == 2 && (!isIntValType(ft.Results[0]) || !isIntValType(ft.Results[1])) {
+	if len(ft.Results) == 2 && !((isIntValType(ft.Results[0]) && isIntValType(ft.Results[1])) ||
+		(preparedDirectFloatSupported && isFloatValType(ft.Results[0]) && isFloatValType(ft.Results[1]))) {
 		return false
 	}
 	gp, fp := 0, 0
@@ -1966,7 +1967,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.pinned = f.pinned.add(resReg)
 	}
 	var pairRes [2]Reg
-	if rN == 2 {
+	if rN == 2 && isIntValType(ft.Results[0]) {
 		if preservesPins {
 			pairRes = [2]Reg{X0, X1}
 		} else {
@@ -2003,7 +2004,11 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.pinned = f.pinned.remove(resReg)
 		f.pushReg(resReg, mtOf(ft.Results[0]))
 	}
-	if rN == 2 {
+	if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
+		for i := range 2 {
+			f.pushFReg(Reg(i), mtOf(ft.Results[i]))
+		}
+	} else if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
 			f.pushReg(reg, mtOf(ft.Results[i]))
@@ -2273,7 +2278,10 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 			f.pushReg(resReg, rt)
 		}
 	}
-	if rN == 2 {
+	if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
+		f.pushFReg(0, mtOf(ft.Results[0]))
+		f.pushFReg(1, mtOf(ft.Results[1]))
+	} else if rN == 2 {
 		// Two-int register return (X0/X1): a mixed sig has float params but may
 		// still return two integers, e.g. (f64,i64,i64)->(i64,i64).
 		var pairRes [2]Reg

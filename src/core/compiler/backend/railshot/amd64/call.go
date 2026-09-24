@@ -124,13 +124,14 @@ func sigFitsDirectCrossTailABI(ft *wasm.CompType) bool {
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/XMM banks; one result returns in
-// RAX or XMM0, and the deliberately limited two-result form uses RAX/RDX for
-// integers (mirrors arm64's X0/X1 pair return).
+// RAX or XMM0, and the two-result form uses RAX/RDX for integers or XMM0/XMM1
+// for floats (mirroring arm64's X0/X1 or V0/V1 pair return).
 func sigFitsRegABI(ft *wasm.CompType) bool {
 	if len(ft.Results) > 2 {
 		return false
 	}
-	if len(ft.Results) == 2 && (!isIntValType(ft.Results[0]) || !isIntValType(ft.Results[1])) {
+	if len(ft.Results) == 2 && !((isIntValType(ft.Results[0]) && isIntValType(ft.Results[1])) ||
+		(preparedDirectFloatSupported && isFloatValType(ft.Results[0]) && isFloatValType(ft.Results[1]))) {
 		return false
 	}
 	gp, fp := 0, 0
@@ -173,7 +174,7 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 }
 
 func preparedDirectFloatSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 1 {
+	if len(ft.Params) > 4 || len(ft.Results) > 2 {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -1888,7 +1889,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		f.pinned = f.pinned.add(resReg)
 	}
 	var pairRes [2]Reg
-	if rN == 2 {
+	if rN == 2 && isIntValType(ft.Results[0]) {
 		pairRes[0] = f.allocReg(maskOf(RAX, RDX))
 		f.pinned = f.pinned.add(pairRes[0])
 		f.a.MovReg64(pairRes[0], RAX)
@@ -1915,7 +1916,12 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		value := f.pushReg(resReg, mtOf(ft.Results[0]))
 		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[0]))
 	}
-	if rN == 2 {
+	if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
+		for i := range 2 {
+			value := f.pushFReg(Reg(i), mtOf(ft.Results[i]))
+			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+		}
+	} else if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
 			value := f.pushReg(reg, mtOf(ft.Results[i]))
@@ -2076,7 +2082,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		f.pinned = f.pinned.add(resReg)
 	}
 	var pairRes [2]Reg
-	if rN == 2 {
+	if rN == 2 && isIntValType(ft.Results[0]) {
 		pairRes[0] = f.allocReg(maskOf(RAX, RDX))
 		f.pinned = f.pinned.add(pairRes[0])
 		f.a.MovReg64(pairRes[0], RAX)
@@ -2098,7 +2104,12 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		}
 		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[0]))
 	}
-	if rN == 2 {
+	if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
+		for i := range 2 {
+			value := f.pushFReg(Reg(i), mtOf(ft.Results[i]))
+			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+		}
+	} else if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
 			value := f.pushReg(reg, mtOf(ft.Results[i]))

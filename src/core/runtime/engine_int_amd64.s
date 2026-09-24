@@ -94,9 +94,9 @@ TEXT ·enterNativeIntWideRaw(SB), NOSPLIT, $0-48
 	MOVQ DX, ret1+40(FP)
 	RET
 
-// func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) uintptr
-// Float-only parameters use XMM0..XMM3; the result returns in XMM0.
-TEXT ·enterNativeFloatRaw(SB), NOSPLIT, $0-40
+// func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) (uintptr, uintptr)
+// Float-only parameters use XMM0..XMM3; results return in XMM0/XMM1.
+TEXT ·enterNativeFloatRaw(SB), NOSPLIT, $0-48
 	MOVQ code+0(FP), SI
 	MOVQ foreignStackTop+24(FP), R10
 	SUBQ $32, R10
@@ -116,12 +116,14 @@ TEXT ·enterNativeFloatRaw(SB), NOSPLIT, $0-40
 	XORL BP, BP
 	CALL SI
 	MOVQ X0, AX
+	MOVQ X1, DX
 
 	MOVQ 16(SP), BP
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
 	PXOR X15, X15
 	MOVQ AX, ret+32(FP)
+	MOVQ DX, ret1+40(FP)
 	RET
 
 // func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr)

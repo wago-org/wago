@@ -4203,8 +4203,8 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
-// the internal entry takes args in GP/XMM registers and returns its single result
-// in RAX or XMM0.
+// the internal entry takes args in GP/XMM registers and returns numeric results
+// in RAX/RDX or XMM0/XMM1.
 // Returns the internal entry's offset within the function's code.
 func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, localScores []uint32, hints *funcHintView) (int, error) {
 	a := f.a
@@ -4238,7 +4238,11 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		adapterCall = a.CallRel32()
 		f.adapterReturnOff = adapterCall + 4
 		a.Pop(RCX) // results
-		if rN == 2 {
+		if preparedDirectFloatSupported && rN == 2 && mtOf(f.ft.Results[0]).isFloat() {
+			for i, typ := range f.ft.Results {
+				a.FStoreDisp(RCX, int32(i*8), Reg(i), mtOf(typ) == mtF64)
+			}
+		} else if rN == 2 {
 			// Two-int register return in RAX/RDX. Store both to the results buffer
 			// BEFORE storeModuleGlobals, which uses RDX as scratch.
 			a.Store64(RCX, 0, RAX)
@@ -4340,10 +4344,16 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		}
 	}
 	if rN == 2 {
-		// Two-int register return: both results converged to slots 0,1. (Never
-		// singleRegResult, which is one-result only.)
-		a.Load64(RAX, RSP, f.spillOff(0)) // result 0 -> RAX
-		a.Load64(RDX, RSP, f.spillOff(1)) // result 1 -> RDX
+		// Both results converged to slots 0,1. singleRegResult is
+		// reserved for one-result functions.
+		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() {
+			for i, typ := range f.ft.Results {
+				a.FLoadDisp(Reg(i), RSP, f.spillOff(i), mtOf(typ) == mtF64)
+			}
+		} else {
+			a.Load64(RAX, RSP, f.spillOff(0))
+			a.Load64(RDX, RSP, f.spillOff(1))
+		}
 	}
 	// singleRegResult: every exit already produced the result in RAX/XMM0.
 	// No trap-slot protocol on return: the runtime zeroes the trap cell before

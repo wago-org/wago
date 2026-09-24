@@ -132,6 +132,166 @@ func TestPreparedDirectFloatRegisterEntry(t *testing.T) {
 	}
 }
 
+func TestPreparedDirectFloatPair(t *testing.T) {
+	compiled := MustCompile(hostToWasmF64SignatureModule(2, 2))
+	defer compiled.Close()
+	if !compiled.directPreparedBoundedAt(0) {
+		t.Fatal("float pair register entry is not bounded")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.directFloatFast || !fn.directIsolated {
+		t.Fatal("float pair did not select bounded direct entry")
+	}
+	args := []uint64{F64(1.5), F64(-2.5)}
+	check := func(label string, got []uint64, err error) {
+		t.Helper()
+		if err != nil || len(got) != 2 || got[0] != args[0] || got[1] != args[1] {
+			t.Fatalf("%s = %v, %v; want %v", label, got, err, args)
+		}
+	}
+	got, err := fn.Invoke(args...)
+	check("prepared", got, err)
+	got, err = in.Invoke("f", args...)
+	check("instance", got, err)
+	session, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !session.state.fast {
+		t.Fatal("float pair session did not reserve direct entry")
+	}
+	got, err = session.Invoke(args...)
+	check("session", got, err)
+	session.Close()
+	if _, err := in.ExportedFunc("f"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = fn.Invoke(args...)
+	check("shared fallback", got, err)
+	got, err = in.Invoke("f", args...)
+	check("instance shared fallback", got, err)
+}
+
+func TestFloatPairRegisterCallBetweenWasmFunctions(t *testing.T) {
+	types := []wasm.ValType{wasm.F32, wasm.F64}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("leaf", 0, 0), wasmtest.ExportEntry("f", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x10, 0x00, 0x0b}),
+		)),
+	)
+	compiled := MustCompile(module)
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	args := []uint64{0xffffffff7fc12345, 0x7ff8000000001234}
+	leaf, err := in.Invoke("leaf", args...)
+	if err != nil || len(leaf) != 2 || leaf[0] != uint64(uint32(args[0])) || leaf[1] != args[1] {
+		t.Fatalf("leaf = %v, %v", leaf, err)
+	}
+	got, err := in.Invoke("f", args...)
+	if err != nil || len(got) != 2 || got[0] != uint64(uint32(args[0])) || got[1] != args[1] {
+		t.Fatalf("Wasm register call = %v, %v; want [%x %x]", got, err, uint32(args[0]), args[1])
+	}
+}
+
+func TestPreparedDirectFloatPairWidths(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		types []wasm.ValType
+		args  []uint64
+		want  []uint64
+	}{
+		{"f32-f64", []wasm.ValType{wasm.F32, wasm.F64}, []uint64{0xffffffff7fc12345, 0x7ff8000000001234}, []uint64{0x7fc12345, 0x7ff8000000001234}},
+		{"f64-f32", []wasm.ValType{wasm.F64, wasm.F32}, []uint64{0x7ff8000000001234, 0xffffffff7fc12345}, []uint64{0x7ff8000000001234, 0x7fc12345}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(tc.types, tc.types))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x0b}))),
+			)
+			compiled := MustCompile(module)
+			defer compiled.Close()
+			in, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.WasmFunc("f")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !fn.directFloatFast || !fn.directIsolated {
+				t.Fatal("mixed-width pair did not select bounded direct entry")
+			}
+			for label, invoke := range map[string]func() ([]uint64, error){
+				"prepared": func() ([]uint64, error) { return fn.Invoke(tc.args...) },
+				"instance": func() ([]uint64, error) { return in.Invoke("f", tc.args...) },
+			} {
+				got, err := invoke()
+				if err != nil || len(got) != 2 || got[0] != tc.want[0] || got[1] != tc.want[1] {
+					t.Fatalf("%s = %v, %v; want %v", label, got, err, tc.want)
+				}
+			}
+		})
+	}
+}
+
+func TestPreparedDirectFloatPairTrapReset(t *testing.T) {
+	body := []byte{0x20, 0x00, 0x44} // local.get 0; f64.const 0
+	body = append(body, make([]byte, 8)...)
+	body = append(body,
+		0x61,       // f64.eq
+		0x04, 0x40, // if
+		0x00, // unreachable
+		0x0b, // end if
+		0x20, 0x00, 0x20, 0x01, 0x0b,
+	)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64, wasm.F64}, []wasm.ValType{wasm.F64, wasm.F64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	compiled := MustCompile(module)
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.directFloatFast || !fn.directIsolated {
+		t.Fatal("trapping float pair did not select bounded direct entry")
+	}
+	if _, err := fn.Invoke(F64(0), F64(2.5)); err == nil {
+		t.Fatal("expected float pair trap")
+	}
+	got, err := fn.Invoke(F64(1.5), F64(2.5))
+	if err != nil || len(got) != 2 || got[0] != F64(1.5) || got[1] != F64(2.5) {
+		t.Fatalf("after trap = %v, %v", got, err)
+	}
+}
+
 func TestPreparedDirectFloatMixedWidths(t *testing.T) {
 	compiled := MustCompile(preparedFloatMixedModule())
 	defer compiled.Close()

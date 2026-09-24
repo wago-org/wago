@@ -45,17 +45,22 @@ func (in *Instance) invokeDirectFloatEntry(entry uintptr, paramWide, resultWide 
 		raw[i] = bits
 	}
 	wruntime.PreparePreparedIntTrap(in.trap)
-	result := in.eng.EnterPreparedFloatBounded(entry, in.jm.LinMemBase(), &raw)
+	r0, r1 := in.eng.EnterPreparedFloatBounded(entry, in.jm.LinMemBase(), &raw)
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
 		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:len(resultWide)]
-	if len(resultWide) == 1 {
-		out[0] = result
-		if !resultWide[0] {
-			out[0] = uint64(uint32(result))
+	if len(resultWide) > 0 {
+		out[0] = r0
+	}
+	if len(resultWide) > 1 {
+		out[1] = r1
+	}
+	for i := range out {
+		if !resultWide[i] {
+			out[i] = uint64(uint32(out[i]))
 		}
 	}
 	return out, nil

@@ -4024,8 +4024,14 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 			f.st64(X3, 0, X0)
 		}
 	} else if rN == 2 {
-		f.st64(X3, 0, X0)
-		f.st64(X3, 8, X1)
+		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() {
+			for i, typ := range f.ft.Results {
+				a.FStoreDisp(X3, int32(i*8), Reg(i), mtOf(typ) == mtF64)
+			}
+		} else {
+			f.st64(X3, 0, X0)
+			f.st64(X3, 8, X1)
+		}
 	}
 	a.Ret()
 	f.adapterEndOff = a.Len()
@@ -4037,8 +4043,8 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
-// the internal entry takes args in GP/V registers and returns its single result
-// in X0/V0, or two integer results in X0/X1.
+// the internal entry takes args in GP/V registers and returns numeric results
+// in X0/X1 or V0/V1.
 // Returns the internal entry's offset within the function's code.
 func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, hasFloatConst bool, intConstHints *funcHintView) (int, error) {
 	a := f.a
@@ -4177,8 +4183,14 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 			f.ld64(X0, SP, f.spillOff(0)) // result -> X0
 		}
 	} else if rN == 2 {
-		f.ld64(X0, SP, f.spillOff(0))
-		f.ld64(X1, SP, f.spillOff(1))
+		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() {
+			for i, typ := range f.ft.Results {
+				a.FLoadDisp(Reg(i), SP, f.spillOff(i), mtOf(typ) == mtF64)
+			}
+		} else {
+			f.ld64(X0, SP, f.spillOff(0))
+			f.ld64(X1, SP, f.spillOff(1))
+		}
 	}
 	// singleRegResult: every exit already produced the result in X0/V0.
 	// No trap-slot protocol on return: the runtime zeroes the trap cell before
