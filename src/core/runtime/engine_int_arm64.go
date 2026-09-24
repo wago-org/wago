@@ -3,6 +3,7 @@
 package runtime
 
 func enterNativeIntRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
+func enterNativeIntPairRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) (uintptr, uintptr)
 func enterNativeIntLightRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
 func enterNativeIntPreboundContextRaw(call *PreparedIntCall, a0, a1, a2, a3 uintptr) uintptr
 func enterNativeIntCallRaw(call *PreparedIntCall) uintptr
@@ -39,6 +40,13 @@ func (e *Engine) EnterPreparedIntLight(code, linMemBase uintptr, a0, a1, a2, a3 
 // the full native transition need not enter syscall state.
 func (e *Engine) EnterPreparedIntBounded(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
 	return uint64(enterNativeIntRaw(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)), nil
+}
+
+// EnterPreparedIntPairBounded enters a compiler-proven bounded integer function
+// whose two results return in X0/X1. Callers inspect the trap cell afterward.
+func (e *Engine) EnterPreparedIntPairBounded(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, uint64) {
+	r0, r1 := enterNativeIntPairRaw(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)
+	return uint64(r0), uint64(r1)
 }
 
 // EnterPreparedIntLightBounded combines the bounded-duration proof with the

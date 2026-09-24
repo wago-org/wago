@@ -119,6 +119,9 @@ func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, result
 	return out, nil
 }
 func (fn *WasmFunc) invokeDirectIntSession(a0, a1, a2, a3 uint64) ([]uint64, error) {
+	if fn.resultSlots == 2 {
+		return fn.invokeDirectIntPairSession(a0, a1, a2, a3)
+	}
 	in := fn.in
 	switch fn.paramSlots {
 	case 4:

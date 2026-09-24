@@ -41,6 +41,47 @@ afterNativeIntCall:
 	MOVD R0, ret+56(FP)
 	RET
 
+// func enterNativeIntPairRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) (uintptr, uintptr)
+// The internal integer ABI returns two values in X0/X1.
+TEXT ·enterNativeIntPairRaw(SB), NOSPLIT, $0-72
+	MOVD code+0(FP), R9
+	MOVD foreignStackTop+48(FP), R10
+	SUB  $112, R10, R10
+	MOVD RSP, R11
+	MOVD R11, 0(R10)
+	STP  (R19, R20), 8(R10)
+	STP  (R21, R22), 24(R10)
+	STP  (R23, R24), 40(R10)
+	STP  (R25, R26), 56(R10)
+	STP  (R27, g), 72(R10)
+	STP  (R29, R30), 88(R10)
+
+	MOVD linMem+8(FP), R26
+	MOVD a0+16(FP), R0
+	MOVD a1+24(FP), R1
+	MOVD a2+32(FP), R2
+	MOVD a3+40(FP), R3
+	MOVD R10, RSP
+	MOVD ZR, R22
+	MOVD ZR, R29
+	MOVD R10, -24(R26)
+	ADR  afterNativeIntPairCall, R11
+	MOVD R11, -32(R26)
+	BL   (R9)
+
+afterNativeIntPairCall:
+	LDP  8(RSP), (R19, R20)
+	LDP  24(RSP), (R21, R22)
+	LDP  40(RSP), (R23, R24)
+	LDP  56(RSP), (R25, R26)
+	LDP  72(RSP), (R27, g)
+	LDP  88(RSP), (R29, R30)
+	MOVD 0(RSP), R11
+	MOVD R11, RSP
+	MOVD R0, ret+56(FP)
+	MOVD R1, ret1+64(FP)
+	RET
+
 // func enterNativeIntLightRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
 // Compiler proof: generated code touches no callee-saved register except X26,
 // which this thunk establishes as the linear-memory base. Preserve the Go stack,

@@ -6,6 +6,7 @@ package runtime
 // RBX carries linMem, RAX/RCX/RDX/R8 carry up to four arguments, and RAX returns
 // the optional scalar result.
 func enterNativeIntRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
+func enterNativeIntPairRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) (uintptr, uintptr)
 func enterNativeIntPreboundContextRaw(call *PreparedIntCall, a0, a1, a2, a3 uintptr) uintptr
 func enterNativeIntCallRaw(call *PreparedIntCall) uintptr
 
@@ -39,6 +40,13 @@ func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint6
 // state.
 func (e *Engine) EnterPreparedIntBounded(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
 	return uint64(enterNativeIntRaw(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)), nil
+}
+
+// EnterPreparedIntPairBounded enters a compiler-proven bounded integer function
+// whose two results return in RAX/RDX. Callers inspect the trap cell afterward.
+func (e *Engine) EnterPreparedIntPairBounded(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, uint64) {
+	r0, r1 := enterNativeIntPairRaw(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)
+	return uint64(r0), uint64(r1)
 }
 
 // EnterPreparedIntPreboundContextBounded reads immutable entry state from call
