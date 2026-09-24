@@ -4415,7 +4415,13 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 			}
 			directEntry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 			if ic.resultSlots == 2 {
+				if len(args) > 4 {
+					return in.invokeDirectIntWideEntry(directEntry, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
+				}
 				return in.invokeDirectIntPairEntry(directEntry, ic.scalarWideMask, ic.slotWide[ic.paramSlots:], args)
+			}
+			if len(args) > 4 {
+				return in.invokeDirectIntWideEntry(directEntry, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
 			}
 			switch len(args) {
 			case 0:
@@ -5053,6 +5059,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	directIntFast := preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
 		preparedDirectIntSupported && preparedDirectIntEnabled && directEntryMode == preparedEntryIsolated &&
 		preparedDirectIntSignature(sig) && in.c.directPreparedAt(li) &&
+		(paramSlots <= 4 || in.c.directPreparedBoundedAt(li)) &&
 		(resultSlots != 2 || preparedDirectPairSupported && in.c.directPreparedBoundedAt(li))
 	*slot = invokeCache{
 		export:            export,

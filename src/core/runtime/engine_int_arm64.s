@@ -82,6 +82,52 @@ afterNativeIntPairCall:
 	MOVD R1, ret1+64(FP)
 	RET
 
+// func enterNativeIntWideRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr)
+// The compiler's integer register ABI admits eight parameters on arm64.
+TEXT ·enterNativeIntWideRaw(SB), NOSPLIT, $0-48
+	MOVD code+0(FP), R9
+	MOVD foreignStackTop+24(FP), R10
+	MOVD args+16(FP), R11
+	SUB  $112, R10, R10
+	MOVD RSP, R12
+	MOVD R12, 0(R10)
+	STP  (R19, R20), 8(R10)
+	STP  (R21, R22), 24(R10)
+	STP  (R23, R24), 40(R10)
+	STP  (R25, R26), 56(R10)
+	STP  (R27, g), 72(R10)
+	STP  (R29, R30), 88(R10)
+
+	MOVD linMem+8(FP), R26
+	MOVD R10, RSP
+	MOVD  0(R11), R0
+	MOVD  8(R11), R1
+	MOVD 16(R11), R2
+	MOVD 24(R11), R3
+	MOVD 32(R11), R4
+	MOVD 40(R11), R5
+	MOVD 48(R11), R6
+	MOVD 56(R11), R7
+	MOVD ZR, R22
+	MOVD ZR, R29
+	MOVD R10, -24(R26)
+	ADR  afterNativeIntWideCall, R12
+	MOVD R12, -32(R26)
+	BL   (R9)
+
+afterNativeIntWideCall:
+	LDP  8(RSP), (R19, R20)
+	LDP  24(RSP), (R21, R22)
+	LDP  40(RSP), (R23, R24)
+	LDP  56(RSP), (R25, R26)
+	LDP  72(RSP), (R27, g)
+	LDP  88(RSP), (R29, R30)
+	MOVD 0(RSP), R12
+	MOVD R12, RSP
+	MOVD R0, ret+32(FP)
+	MOVD R1, ret1+40(FP)
+	RET
+
 // func enterNativeIntLightRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
 // Compiler proof: generated code touches no callee-saved register except X26,
 // which this thunk establishes as the linear-memory base. Preserve the Go stack,

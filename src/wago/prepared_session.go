@@ -232,6 +232,9 @@ func (s *PreparedSession) invokeArgs(args []uint64) ([]uint64, error) {
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}
+	if state.fast && len(args) > 4 {
+		return fn.invokeDirectIntWideSession(args)
+	}
 	gcLease, err := state.beginCall()
 	if err != nil {
 		return nil, err

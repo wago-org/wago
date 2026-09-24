@@ -1,0 +1,68 @@
+//go:build (amd64 || arm64) && (linux || darwin || windows) && !tinygo
+
+package wago
+
+import (
+	"fmt"
+	goruntime "runtime"
+
+	wruntime "github.com/wago-org/wago/src/core/runtime"
+)
+
+const preparedDirectWideSupported = true
+
+func (fn *WasmFunc) invokeDirectIntWide(args []uint64) ([]uint64, error) {
+	in := fn.in
+	if err := in.beginDirectInvocation(); err != nil {
+		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+	}
+	if fn.directIsolated && fn.tryDirectGate() {
+		out, err := fn.invokeDirectIntWideSession(args)
+		fn.directGate.Unlock()
+		in.endDirectInvocation()
+		return out, err
+	}
+	lease := in.lockPreparedInvocation()
+	out, err := fn.invokeGeneralAdmitted(args)
+	lease.unlock()
+	in.endDirectInvocation()
+	return out, err
+}
+
+func (fn *WasmFunc) invokeDirectIntWideSession(args []uint64) ([]uint64, error) {
+	return fn.in.invokeDirectIntWideEntry(fn.directEntry, fn.paramWide, fn.resultWide, args)
+}
+
+func (in *Instance) invokeDirectIntWideEntry(entry uintptr, paramWide, resultWide []bool, args []uint64) ([]uint64, error) {
+	if in.isLogicallyClosed() {
+		return nil, fmt.Errorf("wago: invoke Wasm function: instance is closed")
+	}
+	var raw [8]uint64
+	for i, bits := range args {
+		if !paramWide[i] {
+			bits = uint64(uint32(bits))
+		}
+		raw[i] = bits
+	}
+	wruntime.PreparePreparedIntTrap(in.trap)
+	r0, r1 := in.eng.EnterPreparedIntWideBounded(entry, in.jm.LinMemBase(), &raw)
+	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:len(resultWide)]
+	if len(resultWide) >= 1 {
+		out[0] = r0
+		if !resultWide[0] {
+			out[0] = uint64(uint32(r0))
+		}
+	}
+	if len(resultWide) == 2 {
+		out[1] = r1
+		if !resultWide[1] {
+			out[1] = uint64(uint32(r1))
+		}
+	}
+	return out, nil
+}

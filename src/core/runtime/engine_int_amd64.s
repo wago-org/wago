@@ -61,6 +61,39 @@ TEXT ·enterNativeIntPairRaw(SB), NOSPLIT, $0-72
 	MOVQ DX, ret1+64(FP)
 	RET
 
+// func enterNativeIntWideRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr)
+// The compiler's integer register ABI admits seven parameters on amd64.
+TEXT ·enterNativeIntWideRaw(SB), NOSPLIT, $0-48
+	MOVQ code+0(FP), SI
+	MOVQ foreignStackTop+24(FP), R10
+	SUBQ $32, R10
+	MOVQ SP,  0(R10)
+	MOVQ BX,  8(R10)
+	MOVQ BP, 16(R10)
+
+	MOVQ linMem+8(FP), BX
+	LEAQ -8(R10), R9
+	MOVQ R9, -24(BX)
+	MOVQ args+16(FP), DI
+	MOVQ R10, SP
+	MOVQ  0(DI), AX
+	MOVQ  8(DI), CX
+	MOVQ 16(DI), DX
+	MOVQ 24(DI), R8
+	MOVQ 32(DI), R9
+	MOVQ 40(DI), R10
+	MOVQ 48(DI), R11
+	XORL BP, BP
+	CALL SI
+
+	MOVQ 16(SP), BP
+	MOVQ  8(SP), BX
+	MOVQ  0(SP), SP
+	PXOR X15, X15
+	MOVQ AX, ret+32(FP)
+	MOVQ DX, ret1+40(FP)
+	RET
+
 // func enterNativeIntPreboundContextRaw(call *PreparedIntCall, a0, a1, a2, a3 uintptr) uintptr
 TEXT ·enterNativeIntPreboundContextRaw(SB), NOSPLIT, $0-48
 	MOVQ call+0(FP), R9
