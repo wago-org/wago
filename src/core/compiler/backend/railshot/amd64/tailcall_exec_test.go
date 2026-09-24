@@ -66,6 +66,24 @@ func TestDirectCrossTailABIAcceptsMixedBankVoidSignature(t *testing.T) {
 	}
 }
 
+func TestEightGPReferenceAndCrossTailRemainGated(t *testing.T) {
+	params := []wasm.ValType{wasm.I64, wasm.I64, wasm.I64, wasm.I64, wasm.I64, wasm.I64, wasm.I64, wasm.I64}
+	ft := &wasm.CompType{Params: params, Results: []wasm.ValType{wasm.I64}}
+	if !sigFitsRegABI(ft) {
+		t.Fatal("eight-GP local call must use the register ABI")
+	}
+	if sigFitsDirectCrossTailABI(ft) {
+		t.Fatal("eight-GP cross-instance tail must remain on the wrapper ABI")
+	}
+	if sigFitsTypedReferenceRegABI(ft) {
+		t.Fatal("eight-GP typed-reference tail must remain gated")
+	}
+	ft.Results = []wasm.ValType{wasm.FuncRef}
+	if sigFitsReferenceResultRegABI(ft) {
+		t.Fatal("eight-GP reference-result tail must remain gated")
+	}
+}
+
 func TestReturnCallDirectReusesFrameForDeepRecursion(t *testing.T) {
 	// (func (param i32) (result i32)
 	//   local.get 0; i32.eqz

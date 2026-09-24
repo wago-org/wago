@@ -3755,7 +3755,7 @@ func (f *fn) patchReturnSites() {
 // register RBP, all spill-managed around calls by the STACK_REG model.
 //
 // RDI/RSI are deliberately NOT pinned. A call's linMem/trap setup clobbers them
-// (they are not arg registers here — intArgRegs is RAX/RCX/RDX/R8/R9/R10/R11), and
+// (RDI is an eighth argument register, but is not safe for a pinned local), and
 // in a register-heavy function that both touches memory (which reserves R15,
 // pushing pins onto RDI/RSI) and makes multi-arg calls, having a pinned local live
 // in RDI/RSI on top of the arg-register pins over-subscribed the file: the call's
@@ -4225,15 +4225,22 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
 		a.Push(RCX)             // results ptr (also keeps RSP 16-aligned at the internal call)
 		gp, fp = 0, 0
+		rdiArgOff := int32(-1)
 		for i := 0; i < np; i++ {
 			mt := f.localType[i]
 			if mt.isFloat() {
 				a.FLoadDisp(fpArgRegs[fp], RDI, int32(8*i), mt == mtF64)
 				fp++
+			} else if intArgRegs[gp] == RDI {
+				rdiArgOff = int32(8 * i)
+				gp++
 			} else {
 				a.Load64(intArgRegs[gp], RDI, int32(8*i))
 				gp++
 			}
+		}
+		if rdiArgOff >= 0 {
+			a.Load64(RDI, RDI, rdiArgOff)
 		}
 		adapterCall = a.CallRel32()
 		f.adapterReturnOff = adapterCall + 4
@@ -4243,15 +4250,19 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 				a.FStoreDisp(RCX, int32(i*8), Reg(i), mtOf(typ) == mtF64)
 			}
 		} else if registerQuadResultsSupported && rN > 2 {
-			// RCX is result 2. Recover the result pointer in RDI instead.
-			a.Pop(RDI)
+			// RCX is result 2; for eight results RDI is result 7 too.
+			resultPtr := RDI
+			if rN == 8 {
+				resultPtr = RSI
+			}
+			a.Pop(resultPtr)
 			gp, fp := 0, 0
 			for i, typ := range f.ft.Results {
 				if mtOf(typ).isFloat() {
-					a.FStoreDisp(RDI, int32(i*8), Reg(fp), mtOf(typ) == mtF64)
+					a.FStoreDisp(resultPtr, int32(i*8), Reg(fp), mtOf(typ) == mtF64)
 					fp++
 				} else {
-					a.Store64(RDI, int32(i*8), []Reg{RAX, RDX, RCX, R8, R9, R10, R11}[gp])
+					a.Store64(resultPtr, int32(i*8), []Reg{RAX, RDX, RCX, R8, R9, R10, R11, RDI}[gp])
 					gp++
 				}
 			}
@@ -4398,7 +4409,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 				a.FLoadDisp(Reg(fp), RSP, f.spillOff(i), mtOf(typ) == mtF64)
 				fp++
 			} else {
-				a.Load64([]Reg{RAX, RDX, RCX, R8, R9, R10, R11}[gp], RSP, f.spillOff(i))
+				a.Load64([]Reg{RAX, RDX, RCX, R8, R9, R10, R11, RDI}[gp], RSP, f.spillOff(i))
 				gp++
 			}
 		}

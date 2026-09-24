@@ -62,7 +62,7 @@ TEXT ·enterNativeIntPairRaw(SB), NOSPLIT, $0-72
 	RET
 
 // func enterNativeIntWideRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr, uintptr)
-// The compiler's integer register ABI admits seven parameters on amd64.
+// The compiler's integer register ABI admits eight parameters on amd64.
 TEXT ·enterNativeIntWideRaw(SB), NOSPLIT, $0-72
 	MOVQ code+0(FP), SI
 	MOVQ foreignStackTop+24(FP), R10
@@ -83,6 +83,7 @@ TEXT ·enterNativeIntWideRaw(SB), NOSPLIT, $0-72
 	MOVQ 32(DI), R9
 	MOVQ 40(DI), R10
 	MOVQ 48(DI), R11
+	MOVQ 56(DI), DI
 	XORL BP, BP
 	CALL SI
 
@@ -118,6 +119,7 @@ TEXT ·enterNativeIntOctRaw(SB), NOSPLIT, $0-96
 	MOVQ 32(DI), R9
 	MOVQ 40(DI), R10
 	MOVQ 48(DI), R11
+	MOVQ 56(DI), DI
 	XORL BP, BP
 	CALL SI
 
@@ -132,7 +134,7 @@ TEXT ·enterNativeIntOctRaw(SB), NOSPLIT, $0-96
 	MOVQ R9, ret4+64(FP)
 	MOVQ R10, ret5+72(FP)
 	MOVQ R11, ret6+80(FP)
-	MOVQ $0, ret7+88(FP)
+	MOVQ DI, ret7+88(FP)
 	RET
 
 // func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)

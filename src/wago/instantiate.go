@@ -1812,7 +1812,7 @@ func funcSigLocalRegABI(sig FuncSig) bool {
 			return false
 		}
 	}
-	if gp > 7 || fp > 8 {
+	if gp > preparedDirectWideMaxArgs || fp > 8 {
 		return false
 	}
 	for _, t := range sig.Results {

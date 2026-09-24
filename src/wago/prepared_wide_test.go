@@ -79,10 +79,7 @@ func preparedWideVoidModule(n int) []byte {
 }
 
 func TestPreparedDirectWideIntegerArguments(t *testing.T) {
-	max := 7
-	if runtime.GOARCH == "arm64" {
-		max = 8
-	}
+	max := 8
 	for n := 5; n <= max; n++ {
 		t.Run(fmt.Sprint(n), func(t *testing.T) {
 			compiled := MustCompile(preparedWideModule(n))
@@ -137,10 +134,7 @@ func TestPreparedDirectWideIntegerArguments(t *testing.T) {
 }
 
 func TestPreparedDirectWidePair(t *testing.T) {
-	n := 7
-	if runtime.GOARCH == "arm64" {
-		n = 8
-	}
+	n := 8
 	compiled := MustCompile(preparedWidePairModule(n))
 	defer compiled.Close()
 	in, err := Instantiate(compiled, InstantiateOptions{})
@@ -243,10 +237,7 @@ func preparedIntegerMultiModule(params, results int) []byte {
 }
 
 func TestPreparedDirectIntegerMultiWidths(t *testing.T) {
-	maxParams := 7
-	if runtime.GOARCH == "arm64" {
-		maxParams = 8
-	}
+	maxParams := 8
 	for _, tc := range []struct{ params, results int }{{4, 3}, {maxParams, 4}, {5, 5}, {maxParams, maxParams}} {
 		t.Run(fmt.Sprintf("%d-%d", tc.params, tc.results), func(t *testing.T) {
 			compiled := MustCompile(preparedIntegerMultiModule(tc.params, tc.results))
@@ -365,10 +356,7 @@ func TestIntegerQuintRegisterCallBetweenWasmFunctions(t *testing.T) {
 }
 
 func TestIntegerMaxRegisterResultsBetweenWasmFunctions(t *testing.T) {
-	n := 7
-	if runtime.GOARCH == "arm64" {
-		n = 8
-	}
+	n := 8
 	types := make([]wasm.ValType, n)
 	identity := make([]byte, 0, 2*n)
 	args := make([]uint64, n)
@@ -455,10 +443,7 @@ func TestPreparedDirectIntegerQuintTrapReset(t *testing.T) {
 }
 
 func TestPreparedDirectIntegerMaxTrapReset(t *testing.T) {
-	n := 7
-	if runtime.GOARCH == "arm64" {
-		n = 8
-	}
+	n := 8
 	types := make([]wasm.ValType, n)
 	args := make([]uint64, n)
 	trapArgs := make([]uint64, n)
@@ -551,10 +536,7 @@ func TestPreparedDirectIntegerQuadTrapReset(t *testing.T) {
 }
 
 func TestPreparedDirectWideTrapReset(t *testing.T) {
-	n := 7
-	if runtime.GOARCH == "arm64" {
-		n = 8
-	}
+	n := 8
 	compiled := MustCompile(preparedWideTrapModule(n))
 	defer compiled.Close()
 	if !compiled.directPreparedBoundedAt(0) {
@@ -615,9 +597,9 @@ func TestPreparedDirectWideVoid(t *testing.T) {
 	}
 }
 
-func TestPreparedDirectWideAmd64StackArgumentFallback(t *testing.T) {
+func TestPreparedDirectWideAmd64EightArguments(t *testing.T) {
 	if runtime.GOARCH != "amd64" {
-		t.Skip("amd64 uses a stack argument beyond seven integer parameters")
+		t.Skip("amd64 register-bank extension")
 	}
 	compiled := MustCompile(preparedWideModule(8))
 	defer compiled.Close()
@@ -630,15 +612,94 @@ func TestPreparedDirectWideAmd64StackArgumentFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fn.directIntFast {
-		t.Fatal("eight-argument amd64 entry must retain stack-argument fallback")
+	if !compiled.directPreparedBoundedAt(0) || !fn.directIntFast {
+		t.Fatal("eight-argument amd64 entry did not select bounded register path")
 	}
 	args := make([]uint64, 8)
 	args[7] = 0x1122334455667788
 	if out, err := fn.Invoke(args...); err != nil || len(out) != 1 || out[0] != args[7] {
-		t.Fatalf("prepared fallback = %v, %v", out, err)
+		t.Fatalf("prepared = %v, %v", out, err)
 	}
 	if out, err := in.Invoke("f", args...); err != nil || len(out) != 1 || out[0] != args[7] {
-		t.Fatalf("instance fallback = %v, %v", out, err)
+		t.Fatalf("instance = %v, %v", out, err)
+	}
+}
+
+func TestPreparedDirectAmd64EightIntegerResults(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("amd64 register-bank extension")
+	}
+	compiled := MustCompile(hostToWasmI32SignatureModule(8, 8))
+	defer compiled.Close()
+	if !compiled.directPreparedBoundedAt(0) {
+		t.Fatal("eight-result amd64 register entry is not bounded")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil || !fn.directIntFast || !fn.directIsolated {
+		t.Fatalf("eight-result amd64 entry = %v, %v", fn, err)
+	}
+	args := []uint64{1, 2, 3, 4, 5, 6, 7, 8}
+	for label, invoke := range map[string]func() ([]uint64, error){
+		"prepared": func() ([]uint64, error) { return fn.Invoke(args...) },
+		"instance": func() ([]uint64, error) { return in.Invoke("f", args...) },
+	} {
+		got, err := invoke()
+		if err != nil || len(got) != len(args) {
+			t.Fatalf("%s = %v, %v", label, got, err)
+		}
+		for i := range args {
+			if got[i] != args[i] {
+				t.Fatalf("%s[%d] = %x, want %x", label, i, got[i], args[i])
+			}
+		}
+	}
+}
+
+func TestAmd64EightIntegerResultsInternalCall(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("amd64 register-bank extension")
+	}
+	types := make([]wasm.ValType, 8)
+	args := make([]uint64, 8)
+	leaf := []byte{0x20, 0x00, 0x45, 0x04, 0x40, 0x00, 0x0b}
+	caller := make([]byte, 0, 20)
+	for i := range types {
+		types[i] = wasm.I32
+		args[i] = uint64(i + 1)
+		if i%2 != 0 {
+			types[i] = wasm.I64
+			args[i] |= 0x1122334400000000
+		}
+		leaf = append(leaf, 0x20, byte(i))
+		caller = append(caller, 0x20, byte(i))
+	}
+	leaf = append(leaf, 0x0b)
+	caller = append(caller, 0x10, 0x00, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(leaf), wasmtest.Code(caller))),
+	)
+	compiled := MustCompile(module)
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	got, err := in.Invoke("f", args...)
+	if err != nil || len(got) != len(args) {
+		t.Fatalf("eight-result internal call = %v, %v", got, err)
+	}
+	for i := range args {
+		if got[i] != args[i] {
+			t.Fatalf("result[%d] = %x, want %x", i, got[i], args[i])
+		}
 	}
 }

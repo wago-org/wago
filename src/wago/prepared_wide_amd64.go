@@ -2,4 +2,4 @@
 
 package wago
 
-const preparedDirectWideMaxArgs = 7
+const preparedDirectWideMaxArgs = 8
