@@ -5,6 +5,7 @@ import (
 	"fmt"
 	goruntime "runtime"
 
+	"github.com/wago-org/wago/internal/runtimebridge"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -41,6 +42,9 @@ type WasmFunc struct {
 	directIntBounded    bool
 	directIntMode       preparedIntCallMode
 	directIntCall       wruntime.PreparedIntCall
+	hostPrepared        *wruntime.PreparedHostScalarCall
+	hostActivation      hostLoopActivation
+	hostFixed           wruntime.FixedScalarHostCall
 }
 
 type preparedIntCallMode uint8
@@ -318,6 +322,55 @@ func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
 	return out, nil
 }
 
+// callScalarHostPrepared keeps validation and the immutable host-call layout on
+// the resolved function, but acquires native ownership anew for every Invoke.
+// The per-call binding is still required: another entry or a host callback may
+// have changed the instance context while this function was idle.
+func (fn *WasmFunc) callScalarHostPrepared() error {
+	in := fn.in
+	entry, err := in.beginNativeEntry()
+	if err != nil {
+		return err
+	}
+	defer in.unlockNativeEntry(entry)
+	if fn.hostPrepared == nil {
+		rawSlots, ok := in.syncHosts[0].typedScalarSlots()
+		if !ok {
+			return fmt.Errorf("wago: invalid fixed scalar host signature")
+		}
+		fn.hostPrepared, err = in.eng.PrepareHostScalarFixedCall(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm, in.trap, in.results, in.ctrl, rawSlots)
+		if err != nil {
+			return err
+		}
+		fn.hostActivation = hostLoopActivation{
+			root:                        in,
+			ctrl:                        offHeapSlicePtr(in.ctrl),
+			state:                       in.ensurePluginState(),
+			entryNativeMu:               entry.local,
+			parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
+		}
+		if preparedHostFixedEnabled {
+			switch in.syncHosts[0].scalarKind {
+			case syncHostTypedI32:
+				fn.hostFixed = fn.hostActivation.dispatchSingleTypedI32FixedPortal
+			case syncHostTypedI32x2:
+				fn.hostFixed = fn.hostActivation.dispatchSingleTypedI32x2FixedPortal
+			}
+		}
+	} else {
+		if err := in.jm.RebindTrapCell(in.trap); err != nil {
+			return err
+		}
+		in.jm.SetStackFence(in.eng.StackLimit())
+		in.jm.SetCustomCtx(offHeapSlicePtr(in.ctrl))
+	}
+	restoreInvocationContext := bindHostInvocationParent(in, nil)
+	defer restoreInvocationContext()
+	stopWaitContext := in.publishAtomicWaitContext(nil)
+	defer stopWaitContext()
+	return in.callNativeSyncAdmitted(fn.entry, in.trap, nil, fn.hostPrepared, fn.hostFixed, &fn.hostActivation, entry.local)
+}
+
 func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
 	in := fn.in
 	if err := in.beginInvocation(); err != nil {
@@ -362,7 +415,13 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
 	if in.syncMode {
-		if err := in.callNativeSync(fn.entry); err != nil {
+		var err error
+		if in.gc == nil && in.usesIndependentExecution() && in.hasSingleDirectTypedScalarHost() {
+			err = fn.callScalarHostPrepared()
+		} else {
+			err = in.callNativeSync(fn.entry)
+		}
+		if err != nil {
 			return nil, err
 		}
 	} else {

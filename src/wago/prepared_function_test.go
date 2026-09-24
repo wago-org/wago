@@ -47,6 +47,45 @@ func TestWasmFuncInvokeAndCacheIndependence(t *testing.T) {
 	}
 }
 
+func TestWasmFuncPreparedHostCallRevokedByCallbackSharing(t *testing.T) {
+	c := MustCompile(sessionImportMemoryModule())
+	defer c.Close()
+	var in *Instance
+	calls := 0
+	imports := NewImports()
+	imports.HostFunc("env", "f", func(v int32) int32 {
+		calls++
+		if calls == 2 {
+			if _, err := in.ExportedMemory("memory"); err != nil {
+				panic(HostTrap{Err: err})
+			}
+		}
+		return v + 1
+	})
+	var err error
+	in, err = Instantiate(c, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		got, err := fn.Invoke(I32(41))
+		if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+			t.Fatalf("invoke after sharing = %v, %v", got, err)
+		}
+		if i == 0 && fn.hostPrepared == nil {
+			t.Fatal("normal typed callback did not cache its prepared entry")
+		}
+	}
+	if in.usesIndependentExecution() {
+		t.Fatal("callback publication failed to revoke independent execution")
+	}
+}
+
 func TestWasmFuncPrivateFastPath(t *testing.T) {
 	saved := preparedPrivateEntryEnabled
 	savedIsolated := preparedIsolatedEntryEnabled

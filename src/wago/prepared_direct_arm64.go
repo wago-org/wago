@@ -43,14 +43,21 @@ func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}
-	defer in.endInvocation()
-	narrow := fn.directIsolated && in.tryPreparedDirect()
-	if narrow {
-		defer in.ensurePluginState().invokeMu.Unlock()
-	} else {
-		preparedLease := in.lockPreparedInvocation()
-		defer preparedLease.unlock()
+	if fn.directIsolated && in.tryPreparedDirect() {
+		out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
+		in.ensurePluginState().invokeMu.Unlock()
+		in.endInvocation()
+		return out, err
 	}
+	out, err := fn.invokeDirectIntFixedShared(a0, a1, a2, a3)
+	in.endInvocation()
+	return out, err
+}
+
+func (fn *WasmFunc) invokeDirectIntFixedShared(a0, a1, a2, a3 uint64) ([]uint64, error) {
+	in := fn.in
+	preparedLease := in.lockPreparedInvocation()
+	defer preparedLease.unlock()
 	switch fn.paramSlots {
 	case 4:
 		if fn.scalarWideMask&8 == 0 {
@@ -77,16 +84,14 @@ func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error
 		nativeExecutionMu.Lock()
 		nativeExecutionEpoch++
 	}
-	if !narrow && !in.lockPreparedFastState() {
+	if !in.lockPreparedFastState() {
 		if locked {
 			nativeExecutionMu.Unlock()
 		}
 		args := [4]uint64{a0, a1, a2, a3}
 		return fn.invokeGeneralAdmitted(args[:fn.paramSlots])
 	}
-	if !narrow {
-		defer in.unlockPreparedFastState()
-	}
+	defer in.unlockPreparedFastState()
 	var result uint64
 	var err error
 	wruntime.PreparePreparedIntTrap(in.trap)
