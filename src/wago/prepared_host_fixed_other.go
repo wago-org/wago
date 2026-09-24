@@ -1,4 +1,4 @@
-//go:build !arm64 || (!linux && !darwin && !windows)
+//go:build (!amd64 && !arm64) || (!linux && !darwin && !windows)
 
 package wago
 
