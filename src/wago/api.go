@@ -4459,8 +4459,8 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 
 // tryInvokeCachedIsolatedNumeric admits an already-cached isolated numeric
 // export, either through its bounded register entry or its prepared wrapper.
-// The gate and prepared-state reservation exclude resource publication while
-// the call runs; a failed proof falls back to full invocation admission.
+// The fast gate excludes resource publication while the call runs; a failed
+// isolation proof falls back to full invocation admission.
 func (in *Instance) tryInvokeCachedIsolatedNumeric(export string, args []uint64) ([]uint64, error, bool) {
 	if in.rt != nil {
 		return nil, nil, false
@@ -4476,13 +4476,12 @@ func (in *Instance) tryInvokeCachedIsolatedNumeric(export string, args []uint64)
 	ic := in.findInvokeCache(export)
 	privateRefStore := in.refStore == nil || in.refStore.private
 	isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
-	if ic == nil || !(ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) || len(args) != ic.paramSlots || !privateRefStore || in.guestStorageBorrowed() || !in.lockPreparedFastState() {
+	if ic == nil || !(ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) || len(args) != ic.paramSlots || !privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() {
 		state.invokeMu.Unlock()
 		in.endDirectInvocation()
 		return nil, nil, false
 	}
 	defer func() {
-		in.unlockPreparedFastState()
 		state.invokeMu.Unlock()
 		in.endDirectInvocation()
 	}()
