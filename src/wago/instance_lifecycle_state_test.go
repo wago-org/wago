@@ -184,4 +184,7 @@ func TestNilInstanceInvokeFailsClosed(t *testing.T) {
 	if got, err := in.InvokeContext(context.Background(), "missing"); got != nil || err == nil || !strings.Contains(err.Error(), "instance is nil") {
 		t.Fatalf("InvokeContext on nil instance = %v, %v; want nil result and instance-is-nil error", got, err)
 	}
+	if got, err := in.InvokeContext(nil, "missing"); got != nil || err == nil || !strings.Contains(err.Error(), "instance is nil") {
+		t.Fatalf("InvokeContext with nil context on nil instance = %v, %v; want nil result and instance-is-nil error", got, err)
+	}
 }

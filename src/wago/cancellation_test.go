@@ -237,6 +237,10 @@ func TestInvokeContextInterruptsNativeLoop(t *testing.T) {
 	if err != nil || len(out) != 1 || out[0] != 7 {
 		t.Fatalf("post-cancel value = %v, %v; want 7", out, err)
 	}
+	out, err = in.InvokeContext(nil, "value")
+	if err != nil || len(out) != 1 || out[0] != 7 {
+		t.Fatalf("post-cancel value with nil context = %v, %v; want 7", out, err)
+	}
 }
 
 func TestInvokeContextInterruptsCachedMemoryLoop(t *testing.T) {

@@ -4348,6 +4348,12 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		// A context without Done cannot interrupt native execution.
+		if ctx.Done() == nil {
+			return in.Invoke(export, args...)
+		}
+	} else {
+		return in.Invoke(export, args...)
 	}
 
 	contexts := invocationContextSetFor(ctx)

@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"fmt"
 	"testing"
 )
@@ -70,6 +71,29 @@ func BenchmarkHostToWasmSignatureMatrix(b *testing.B) {
 					}
 				}
 			})
+			if params == 1 && results == 1 {
+				b.Run("invoke-context-background", func(b *testing.B) {
+					ctx := context.Background()
+					b.ReportAllocs()
+					for i := 0; i < b.N; i++ {
+						benchResultSink, err = in.InvokeContext(ctx, "f", args...)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				b.Run("invoke-context-cancelable", func(b *testing.B) {
+					b.ReportAllocs()
+					for i := 0; i < b.N; i++ {
+						benchResultSink, err = in.InvokeContext(ctx, "f", args...)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
 			b.Run("prepared", func(b *testing.B) {
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {
