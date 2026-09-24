@@ -427,15 +427,7 @@ func (p *PreparedHostScalarCall) CallFixed(host HostCall, scalar ScalarHostCall,
 	}
 	clearTrapUnlessInterrupted(p.trap)
 	ctrlPtr := slicePtr(p.ctrl)
-	var callErr error
-	if p.engine.hostScratchInUse {
-		var argBuf, resBuf [maxHostArity]uint64
-		callErr = p.engine.callWithHostLoopFixed(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, p.fixedSlots, host, scalar, fixed, argBuf[:], resBuf[:])
-	} else {
-		p.engine.hostScratchInUse = true
-		defer func() { p.engine.hostScratchInUse = false }()
-		callErr = p.engine.callWithHostLoopFixed(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, p.fixedSlots, host, scalar, fixed, p.engine.hostArgs[:], p.engine.hostResults[:])
-	}
+	callErr := p.engine.callWithHostLoopFixed(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, p.fixedSlots, host, scalar, fixed, nil, nil)
 	goruntime.KeepAlive(p)
 	return callErr
 }

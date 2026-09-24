@@ -125,6 +125,10 @@ func (e *Engine) callWithHostLoopFixed(code uintptr, serArgs []byte, linMemBase 
 					continue
 				}
 			}
+			if argBuf == nil {
+				e.callWithHostFixedFallback(ctrl, imp, foreignN, foreignNres, host)
+				continue
+			}
 			for k := 0; k < foreignN; k++ {
 				argBuf[k] = binary.LittleEndian.Uint64(ctrl[hcArgs+k*8:])
 			}
@@ -140,5 +144,27 @@ func (e *Engine) callWithHostLoopFixed(code uintptr, serArgs []byte, linMemBase 
 		default:
 			return nil
 		}
+	}
+}
+
+func (e *Engine) callWithHostFixedFallback(ctrl []byte, imp uint32, n, nres int, host HostCall) {
+	if e.hostScratchInUse {
+		var args, results [maxHostArity]uint64
+		callWithHostFixedScratch(ctrl, imp, n, nres, host, args[:], results[:])
+		return
+	}
+	e.hostScratchInUse = true
+	defer func() { e.hostScratchInUse = false }()
+	callWithHostFixedScratch(ctrl, imp, n, nres, host, e.hostArgs[:], e.hostResults[:])
+}
+
+func callWithHostFixedScratch(ctrl []byte, imp uint32, n, nres int, host HostCall, args, results []uint64) {
+	for k := 0; k < n; k++ {
+		args[k] = binary.LittleEndian.Uint64(ctrl[hcArgs+k*8:])
+	}
+	clear(results[:nres])
+	host(slicePtr(ctrl), imp, args[:n], results[:nres])
+	for k := 0; k < nres; k++ {
+		binary.LittleEndian.PutUint64(ctrl[hcResults+k*8:], results[k])
 	}
 }
