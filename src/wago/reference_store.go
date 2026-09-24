@@ -1025,6 +1025,11 @@ func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
 }
 
 func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
+	// Ordinary scalar calls still acquire the invocation gate, but modules with
+	// no collector or imported/dynamic GC domain have nothing to lock here.
+	if in == nil || in.refStore == nil || in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) == 0 {
+		return gcInvocationLease{}
+	}
 	lease, _ := in.lockGCInvocationContext(context.Background(), owner)
 	return lease
 }
