@@ -94,6 +94,8 @@ func TestChangedPathsUseUpdatedPullRequestBase(t *testing.T) {
 func TestChangeDetectionFailuresDoNotSelectEmptyWork(t *testing.T) {
 	root := t.TempDir()
 	runGit(t, root, "init", "-b", "main")
+	runGit(t, root, "config", "user.name", "CI Test")
+	runGit(t, root, "config", "user.email", "ci@example.invalid")
 	writeCommit(t, root, "src/a.go", "package a\n", "initial")
 	sha := strings.TrimSpace(runGit(t, root, "rev-parse", "HEAD"))
 	if _, err := gitDiffNamesAt(root, "missing..."+sha); err == nil {
