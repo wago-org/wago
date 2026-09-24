@@ -42,7 +42,9 @@ type WasmFunc struct {
 	directIntBounded    bool
 	directIntMode       preparedIntCallMode
 	directIntCall       wruntime.PreparedIntCall
+	directGate          *invocationGate
 	hostPrepared        *wruntime.PreparedHostScalarCall
+	hostMemBase         uintptr
 	hostActivation      hostLoopActivation
 	hostFixed           wruntime.FixedScalarHostCall
 }
@@ -54,6 +56,20 @@ const (
 	preparedIntCallBlock
 	preparedIntCallPrebound
 )
+
+// tryDirectGate uses the gate resolved with the function. Resource publication
+// revokes this exact atomic word before sharing native state.
+func (fn *WasmFunc) tryDirectGate() bool {
+	gate := fn.directGate
+	if gate == nil || !gate.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
+		return false
+	}
+	if !fn.in.preparedFastStateValid() {
+		gate.Unlock()
+		return false
+	}
+	return true
+}
 
 func (c *Compiled) directPreparedAt(local int) bool {
 	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedEntry(c.InternalEntry[local])
@@ -168,6 +184,9 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 			fn.directIsolated = preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated
 			if fn.directIsolated || (preparedDirectIntPrivateSupported && directMode == preparedEntryPrivate) {
 				fn.directIntFast = true
+				if fn.directIsolated {
+					fn.directGate = &in.ensurePluginState().invokeMu
+				}
 				fn.directIntLight = in.c.directPreparedLightAt(ic.li)
 				fn.directIntBounded = in.c.directPreparedBoundedAt(ic.li)
 				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
@@ -333,7 +352,8 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 		return err
 	}
 	defer in.unlockNativeEntry(entry)
-	if fn.hostPrepared == nil {
+	base := in.jm.LinMemBase()
+	if fn.hostPrepared == nil || fn.hostMemBase != base {
 		rawSlots, ok := in.syncHosts[0].typedScalarSlots()
 		if !ok {
 			return fmt.Errorf("wago: invalid fixed scalar host signature")
@@ -342,6 +362,7 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 		if err != nil {
 			return err
 		}
+		fn.hostMemBase = base
 		fn.hostActivation = hostLoopActivation{
 			root:                        in,
 			ctrl:                        offHeapSlicePtr(in.ctrl),

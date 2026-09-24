@@ -43,9 +43,9 @@ func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}
-	if fn.directIsolated && in.tryPreparedDirect() {
+	if fn.directIsolated && fn.tryDirectGate() {
 		out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
-		in.ensurePluginState().invokeMu.Unlock()
+		fn.directGate.Unlock()
 		in.endInvocation()
 		return out, err
 	}
