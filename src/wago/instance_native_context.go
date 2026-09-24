@@ -182,9 +182,22 @@ func (in *Instance) beginNativeEntry() (executionLease, error) {
 		mu := in.independentNativeExecutionMu()
 		mu.Lock()
 		if in.usesIndependentExecution() {
-			if err := in.bindAndValidateNativeContext(); err != nil {
-				mu.Unlock()
-				return executionLease{}, err
+			state := in.ensurePluginState()
+			version := state.nativeContextVersion.Load()
+			// Indexed-memory metadata must be refreshed on every entry. For a
+			// private ordinary memory, a changed base also forces a full bind.
+			reuse := version != 0 && in.memoryDir == nil &&
+				in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0 &&
+				in.canReuseParkedNativeContextWithState(version, state) &&
+				state.nativeContextBoundVersion == version &&
+				state.nativeContextBoundBase == in.jm.LinMemBase()
+			if !reuse {
+				if err := in.bindAndValidateNativeContext(); err != nil {
+					mu.Unlock()
+					return executionLease{}, err
+				}
+				state.nativeContextBoundVersion = state.nativeContextVersion.Load()
+				state.nativeContextBoundBase = in.jm.LinMemBase()
 			}
 			return executionLease{local: mu}, nil
 		}

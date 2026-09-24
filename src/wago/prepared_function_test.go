@@ -94,6 +94,54 @@ func TestWasmFuncPreparedHostCallRevokedByCallbackSharing(t *testing.T) {
 	}
 }
 
+func TestWasmFuncOrdinaryHostEntryReusesUnchangedNativeContext(t *testing.T) {
+	c := MustCompile(sessionImportMemoryModule())
+	defer c.Close()
+	imports := NewImports()
+	imports.HostFunc("env", "f", func(v int32) int32 { return v + 1 })
+	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if !in.usesIndependentExecution() {
+		t.Fatal("fixture must use independent native execution")
+	}
+	fn, err := in.WasmFunc("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func() {
+		t.Helper()
+		got, err := fn.Invoke(I32(41))
+		if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+			t.Fatalf("call = %v, %v; want [42]", got, err)
+		}
+	}
+	call()
+	state := in.ensurePluginState()
+	first := state.nativeContextVersion.Load()
+	call()
+	if got := state.nativeContextVersion.Load(); got != first {
+		t.Fatalf("unchanged native context rebound: version %d -> %d", first, got)
+	}
+	in.acquireInstanceNativeStateForHostAccess().Unlock()
+	invalidated := state.nativeContextVersion.Load()
+	call()
+	if got := state.nativeContextVersion.Load(); got <= invalidated {
+		t.Fatalf("invalidated native context was not rebound: version %d -> %d", invalidated, got)
+	}
+	bound := state.nativeContextVersion.Load()
+	mu := in.independentNativeExecutionMu()
+	mu.Lock()
+	state.nativeContextBoundBase ^= 1
+	mu.Unlock()
+	call()
+	if got := state.nativeContextVersion.Load(); got <= bound {
+		t.Fatalf("cached memory-base mismatch did not force rebind: version %d -> %d", bound, got)
+	}
+}
+
 func TestWasmFuncPrivateFastPath(t *testing.T) {
 	saved := preparedPrivateEntryEnabled
 	savedIsolated := preparedIsolatedEntryEnabled
