@@ -2548,63 +2548,7 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 // admission. A reserved session supplies its prebound call and activation.
 func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, prepared *runtime.PreparedHostScalarCall, preparedFixed runtime.FixedScalarHostCall, preparedActivation *hostLoopActivation, heldNativeMu *sync.Mutex) (err error) {
 	defer func() { err = in.decorateTrap(err) }()
-	defer func() {
-		if r := recover(); r != nil {
-			switch trap := r.(type) {
-			case HostTrap:
-				if trap.Err == nil {
-					err = fmt.Errorf("wago: host trapped without an error")
-				} else {
-					err = trap.Err
-				}
-				return
-			case *HostTrap:
-				if trap == nil || trap.Err == nil {
-					err = fmt.Errorf("wago: host trapped without an error")
-				} else {
-					err = trap.Err
-				}
-				return
-			}
-			if ex, ok := r.(HostExit); ok {
-				err = &ExitError{Code: ex.Code}
-				return
-			}
-			if ex, ok := r.(*HostExit); ok && ex != nil {
-				err = &ExitError{Code: ex.Code}
-				return
-			}
-			if missing, ok := r.(missingHostFunc); ok {
-				err = fmt.Errorf("missing host function for import index %d", missing.importIdx)
-				return
-			}
-			if invalid, ok := r.(invalidHostReference); ok {
-				err = invalid.err
-				return
-			}
-			if instruction, ok := r.(instructionTrap); ok {
-				err = instruction.err
-				return
-			}
-			if trap, ok := r.(gcStructHelperTrap); ok {
-				err = &runtime.TrapError{Code: trap.code}
-				return
-			}
-			if helper, ok := r.(gcStructHelperError); ok {
-				err = fmt.Errorf("wago: WasmGC struct helper: %w", helper.err)
-				return
-			}
-			if helper, ok := r.(atomicWaitHelperError); ok {
-				if errors.Is(helper.err, errAtomicWaitInstanceClosed) {
-					err = &runtime.TrapError{Code: runtime.TrapInterrupted}
-				} else {
-					err = helper.err
-				}
-				return
-			}
-			panic(r)
-		}
-	}()
+	defer recoverNativeSyncPanic(&err)
 	if prepared != nil {
 		if preparedActivation == nil {
 			return fmt.Errorf("wago: prepared host call has no activation")
@@ -2615,6 +2559,77 @@ func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, wai
 		return err
 	}
 	return in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, heldNativeMu)
+}
+
+// recoverNativeSyncPanic must be deferred directly by the native-call entry so
+// recover observes host panics on that goroutine's active stack.
+func recoverNativeSyncPanic(err *error) {
+	if r := recover(); r != nil {
+		switch trap := r.(type) {
+		case HostTrap:
+			if trap.Err == nil {
+				*err = fmt.Errorf("wago: host trapped without an error")
+			} else {
+				*err = trap.Err
+			}
+			return
+		case *HostTrap:
+			if trap == nil || trap.Err == nil {
+				*err = fmt.Errorf("wago: host trapped without an error")
+			} else {
+				*err = trap.Err
+			}
+			return
+		}
+		if ex, ok := r.(HostExit); ok {
+			*err = &ExitError{Code: ex.Code}
+			return
+		}
+		if ex, ok := r.(*HostExit); ok && ex != nil {
+			*err = &ExitError{Code: ex.Code}
+			return
+		}
+		if missing, ok := r.(missingHostFunc); ok {
+			*err = fmt.Errorf("missing host function for import index %d", missing.importIdx)
+			return
+		}
+		if invalid, ok := r.(invalidHostReference); ok {
+			*err = invalid.err
+			return
+		}
+		if instruction, ok := r.(instructionTrap); ok {
+			*err = instruction.err
+			return
+		}
+		if trap, ok := r.(gcStructHelperTrap); ok {
+			*err = &runtime.TrapError{Code: trap.code}
+			return
+		}
+		if helper, ok := r.(gcStructHelperError); ok {
+			*err = fmt.Errorf("wago: WasmGC struct helper: %w", helper.err)
+			return
+		}
+		if helper, ok := r.(atomicWaitHelperError); ok {
+			if errors.Is(helper.err, errAtomicWaitInstanceClosed) {
+				*err = &runtime.TrapError{Code: runtime.TrapInterrupted}
+			} else {
+				*err = helper.err
+			}
+			return
+		}
+		panic(r)
+	}
+}
+
+// callPreparedHostSyncAdmitted keeps the ordinary resolved-host path out of the
+// generic sync entry's unused unprepared-call dispatch and argument setup.
+func (in *Instance) callPreparedHostSyncAdmitted(prepared *runtime.PreparedHostScalarCall, fixed runtime.FixedScalarHostCall, activation *hostLoopActivation) (err error) {
+	defer func() { err = in.decorateTrap(err) }()
+	defer recoverNativeSyncPanic(&err)
+	err = in.callPreparedHostSync(prepared, fixed, activation)
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	return err
 }
 
 func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCall, fixed runtime.FixedScalarHostCall, activation *hostLoopActivation) error {

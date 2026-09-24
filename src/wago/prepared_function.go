@@ -395,7 +395,7 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 	if fn.hostActivation.invocation.id != 0 {
 		fn.hostActivation.invocation = hostInvocationContext{}
 	}
-	return in.callNativeSyncAdmitted(fn.entry, in.trap, nil, fn.hostPrepared, fn.hostFixed, &fn.hostActivation, entry.local)
+	return in.callPreparedHostSyncAdmitted(fn.hostPrepared, fn.hostFixed, &fn.hostActivation)
 }
 
 func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {

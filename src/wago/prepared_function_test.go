@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,6 +12,61 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestWasmFuncPreparedHostPanicTranslation(t *testing.T) {
+	c := MustCompile(benchReturningImportModule())
+	defer c.Close()
+	sentinel := errors.New("prepared host trap")
+	for _, outcome := range []string{"host-trap", "exit", "panic"} {
+		t.Run(outcome, func(t *testing.T) {
+			imports := NewImports()
+			imports.HostFunc("env", "f", func(v int32) int32 {
+				switch outcome {
+				case "host-trap":
+					panic(HostTrap{Err: sentinel})
+				case "exit":
+					panic(HostExit{Code: 7})
+				default:
+					panic(sentinel)
+				}
+			})
+			in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.WasmFunc("g")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < 2; i++ {
+				var recovered any
+				func() {
+					defer func() { recovered = recover() }()
+					_, err = fn.Invoke(I32(41))
+				}()
+				if fn.hostPrepared == nil {
+					t.Fatal("ordinary call did not use prepared host entry")
+				}
+				switch outcome {
+				case "host-trap":
+					if recovered != nil || !errors.Is(err, sentinel) {
+						t.Fatalf("host trap = %v, panic %v", err, recovered)
+					}
+				case "exit":
+					var exit *ExitError
+					if recovered != nil || !errors.As(err, &exit) || exit.Code != 7 {
+						t.Fatalf("host exit = %v, panic %v", err, recovered)
+					}
+				case "panic":
+					if recovered != sentinel {
+						t.Fatalf("host panic = %v, err %v", recovered, err)
+					}
+				}
+			}
+		})
+	}
+}
 
 func TestWasmFuncInvokeAndCacheIndependence(t *testing.T) {
 	if _, err := (*WasmFunc)(nil).Invoke(); err == nil || !strings.Contains(err.Error(), "closed") {
