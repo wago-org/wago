@@ -1032,6 +1032,7 @@ jobs:
             cli/wago-installer/go.mod
       - name: Identify Go toolchain for TinyGo cache
         id: tinygo-go
+        shell: bash
         run: echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
       - name: Restore TinyGo toolchain
         id: tinygo-cache
@@ -1131,6 +1132,7 @@ jobs:
       # TinyGo (+ lld) builds the size-minimized run-only release profile.
       - name: Identify Go toolchain for TinyGo cache
         id: tinygo-go
+        shell: bash
         run: echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
       - name: Restore TinyGo toolchain
         id: tinygo-cache

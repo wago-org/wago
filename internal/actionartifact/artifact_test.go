@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -97,23 +98,70 @@ func TestDownloadCanaryExecutableByCommit(t *testing.T) {
 	}
 }
 
-func TestLatestCanaryCommitUsesNewestUsableTargetArtifact(t *testing.T) {
+func TestLatestCanaryCommitFindsNewestUsableTargetArtifact(t *testing.T) {
+	const target = "darwin-arm64"
 	newest := "cafef00123456789012345678901234567890123"
+	newerWithoutTarget := "bada550123456789012345678901234567890123"
+	failedCanary := "deadc00123456789012345678901234567890123"
+	globalCatalogRequested := false
+	var artifactRuns []int64
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if got := request.URL.Query().Get("name"); got != "" {
-			t.Errorf("artifact name filter = %q", got)
+		switch request.URL.Path {
+		case "/actions/artifacts":
+			globalCatalogRequested = true
+			items := make([]artifact, 100)
+			for index := range items {
+				items[index] = artifact{
+					ID: int64(index + 1), Name: fmt.Sprintf("unrelated-%d", index),
+					ArchiveDownloadURL: "archive",
+				}
+				items[index].WorkflowRun.HeadSHA = testCommit
+			}
+			if err := json.NewEncoder(writer).Encode(catalog{Artifacts: items}); err != nil {
+				t.Error(err)
+			}
+		case "/actions/workflows/.github/workflows/canary.yml/runs":
+			if request.URL.Query().Get("branch") != "main" || request.URL.Query().Get("status") != "completed" {
+				t.Errorf("workflow query = %v", request.URL.Query())
+			}
+			fmt.Fprintf(writer, `{"total_count":4,"workflow_runs":[
+				{"id":5,"head_sha":%q,"head_branch":"main","conclusion":"failure","created_at":"2026-09-10T05:00:00Z"},
+				{"id":4,"head_sha":%q,"head_branch":"main","conclusion":"skipped","created_at":"2026-09-10T04:00:00Z"},
+				{"id":3,"head_sha":%q,"head_branch":"main","conclusion":"success","created_at":"2026-09-10T03:00:00Z"},
+				{"id":2,"head_sha":%q,"head_branch":"main","conclusion":"success","created_at":"2026-09-10T02:00:00Z"}
+			]}`, failedCanary, testCommit, newerWithoutTarget, newest)
+		case "/actions/runs/5/artifacts":
+			artifactRuns = append(artifactRuns, 5)
+			fmt.Fprintf(writer, `{"total_count":1,"artifacts":[{"id":9,"name":%q,"expired":false,"archive_download_url":"archive","workflow_run":{"id":5,"head_sha":%q}}]}`,
+				canaryArtifactName(failedCanary, target), failedCanary)
+		case "/actions/runs/3/artifacts":
+			artifactRuns = append(artifactRuns, 3)
+			if request.URL.Query().Get("name") != canaryArtifactName(newerWithoutTarget, target) {
+				t.Errorf("artifact name = %q", request.URL.Query().Get("name"))
+			}
+			_, _ = writer.Write([]byte(`{"total_count":0,"artifacts":[]}`))
+		case "/actions/runs/2/artifacts":
+			artifactRuns = append(artifactRuns, 2)
+			if request.URL.Query().Get("name") != canaryArtifactName(newest, target) {
+				t.Errorf("artifact name = %q", request.URL.Query().Get("name"))
+			}
+			fmt.Fprintf(writer, `{"total_count":1,"artifacts":[{"id":8,"name":%q,"expired":false,"archive_download_url":"archive","workflow_run":{"id":2,"head_sha":%q}}]}`,
+				canaryArtifactName(newest, target), newest)
+		default:
+			http.NotFound(writer, request)
 		}
-		fmt.Fprintf(writer, `{"artifacts":[
-			{"id":3,"name":%q,"expired":false,"created_at":"2026-09-10T03:00:00Z","archive_download_url":"archive","workflow_run":{"head_sha":%q}},
-			{"id":2,"name":%q,"expired":false,"created_at":"2026-09-10T02:00:00Z","archive_download_url":"archive","workflow_run":{"head_sha":%q}},
-			{"id":1,"name":%q,"expired":false,"created_at":"2026-09-10T01:00:00Z","archive_download_url":"archive","workflow_run":{"head_sha":%q}}
-		]}`, canaryArtifactName(newest, "darwin-arm64"), newest, canaryArtifactName(newest, "linux-amd64"), newest, canaryArtifactName(testCommit, "linux-amd64"), testCommit)
 	}))
 	defer server.Close()
 
-	got, err := LatestCanaryCommit(context.Background(), Config{CatalogURL: server.URL, HTTPClient: server.Client()}, "linux-amd64")
+	got, err := LatestCanaryCommit(context.Background(), Config{CatalogURL: server.URL + "/actions/artifacts", HTTPClient: server.Client()}, target)
 	if err != nil || got != newest {
 		t.Fatalf("LatestCanaryCommit = %q, %v", got, err)
+	}
+	if globalCatalogRequested {
+		t.Fatal("canary lookup scanned the global artifact catalog")
+	}
+	if len(artifactRuns) != 2 || artifactRuns[0] != 3 || artifactRuns[1] != 2 {
+		t.Fatalf("artifact workflow runs = %v, want [3 2]", artifactRuns)
 	}
 }
 
