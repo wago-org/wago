@@ -42,7 +42,7 @@ const mergedExecution = (name, label) => ({
   wagoKeys: [`Exec/${name}.serializeN`, `Exec/${name}.deserializeN`],
   wazeroKeys: [`WazeroExec/${name}.serializeN`, `WazeroExec/${name}.deserializeN`],
 });
-const displayName = (name) => name === "json-as-simd" ? "json-as" : name;
+const displayName = (name) => name.endsWith("-simd") ? `${name.slice(0, -5)} (simd)` : name;
 // dv is a wago-only "front-end at scale" row: the combined Decode+Validate time
 // for one real-world binary, with its parse throughput. The bar is sized by the
 // binary's byte length, so the visual shows wago's front-end absorbing ever-

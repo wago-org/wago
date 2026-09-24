@@ -46,7 +46,7 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       "Exec/json-as-simd.serializeN": { ns: 72 }, "WazeroExec/json-as-simd.serializeN": { ns: 144 },
 	  "Exec/lua.plugin-workload": { ns: 1e30 }, "WazeroExec/lua.plugin-workload": { ns: 0 },
     };
-    for (const name of ["json-as-simd", "coremark", "blake3", "qoi", "lz4", "zlib", "zstd"]) {
+    for (const name of ["json-as-simd", "blake-as-simd", "utf-as-simd", "coremark", "blake3", "qoi", "lz4", "zlib", "zstd"]) {
       metrics[`CompileFull/${name}`] = { ns: 100, bytes: 10, allocs: 1 };
       metrics[`WazeroCompile/${name}`] = { ns: 200, bytes: 20, allocs: 2 };
       metrics[`Instantiate/${name}`] = { ns: 30, bytes: 3, allocs: 1 };
@@ -89,8 +89,8 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       [...new Set(Object.keys(metrics)
         .filter((key) => key.startsWith("CompileFull/"))
         .map((key) => key.slice("CompileFull/".length)))]
-        .map((name) => [name, name.startsWith("json-as")
-          ? { category: name.endsWith("-simd") ? "real-simd" : "real", bytes: 100 }
+        .map((name) => [name, name.endsWith("-simd")
+          ? { category: "real-simd", bytes: 100 }
           : name.includes("-")
           ? { category: "application", suite: name.split("-")[0], desc: "application workload", bytes: 100 }
           : { category: name === "tiny" ? "micro" : "semantic", bytes: 100 }]),
@@ -142,11 +142,14 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
     const compilePanel = firstRender.split('id="perf-amd64-panel-compile"')[1].split('id="perf-amd64-panel-compile-memory"')[0];
     assert.ok(compilePanel.indexOf("Micro modules") < compilePanel.indexOf("Semantic corpus"));
     assert.ok(compilePanel.indexOf("Semantic corpus") < compilePanel.indexOf("Application corpora"));
+    for (const label of ["json-as (simd)", "blake-as (simd)", "utf-as (simd)"]) {
+      assert.match(compilePanel, new RegExp(`<span class="vs__label">${label.replace(/[()]/g, "\\$&")}<\\/span>`));
+    }
     const executionPanel = firstRender.split('id="perf-amd64-panel-execution"')[1].split('id="perf-arm64-', 1)[0];
-    assert.equal(matches(executionPanel, /<span class="vs__label">json-as<\/span>/g), 1);
-    assert.equal(matches(executionPanel, /<span class="vs__label">json-as \(SIMD\)<\/span>/g), 0);
+    assert.equal(matches(executionPanel, /<span class="vs__label">json-as \(simd\)<\/span>/g), 1);
+    assert.equal(matches(executionPanel, /<span class="vs__label">json-as<\/span>/g), 0);
     assert.match(executionPanel, /serialize \+ deserialize · geometric mean/);
-    assert.match(executionPanel, /<span class="vs__label">json-as<\/span>[\s\S]*?>36ns<\/span>/);
+    assert.match(executionPanel, /<span class="vs__label">json-as \(simd\)<\/span>[\s\S]*?>36ns<\/span>/);
 
     runUpdater(work, { ...benchmarkEnv, WAGO_BENCH_UPDATE_ARCH: "amd64" });
     assertDOMContract(await readFile(index, "utf8"));
