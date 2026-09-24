@@ -6,6 +6,45 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+## [v0.1.0-beta.10] - 2026-09-23
+
+### Added
+
+- The shared correctness and benchmark corpus now runs 40 full application
+  executables end to end, with pinned provenance and exact independent output
+  oracles for application-scale JavaScript, SQL, compression, CLI, compiler,
+  language-runtime, cryptography, and FPGA-tool workloads.
+
+### Changed
+
+- Host imports instantiate faster and allocate less by sharing immutable
+  dispatch thunks across instances and deferring instance-specific state until
+  it is needed.
+- Dynamic `memory.copy` and `memory.fill`, `memory.grow(0)`, and large funcref
+  `table.fill` operations are faster across AMD64 and ARM64.
+- Compiler value-type reuse, scalar host-call handling, wide GC dirty-range
+  scanning, and Linux idle-memory reclamation reduce runtime and compilation
+  overhead.
+
+### Fixed
+
+- Correct ARM64 miscompiles involving mixed float-call arguments, large `v128`
+  stack displacements, pinned and deferred loads, `memory.fill` scratch
+  registers, and guard-mode indexed-base reuse. These fixes address PDFium
+  rendering failures and bulk-memory corruption under register pressure.
+- Ensure reused linear memory is zeroed on Darwin when `MADV_ZERO` is
+  unavailable.
+- Initialize cached float constants only at function entry so branch-specific
+  lowering cannot reuse an uninitialized register on AMD64 or ARM64.
+- Correct nested shifts and rotates, non-null global writes, shared-memory
+  imports, reference widening and nullability, multi-memory encoding, AVX-512
+  high-register forms, large-offset bounds checks, GC maps and safepoints,
+  passive-element overflow, and aliased code-buffer growth.
+- Correct explicit Core-profile precedence, `_start` signature validation,
+  watch-flag parsing, result formatting with mismatched metadata, plugin source
+  selection, semantic-version wildcard validation, and full uninstall cleanup
+  for active XDG directories and Fish completions.
+
 ## [v0.1.0-beta.9] - 2026-09-16
 
 ### Added
@@ -81,6 +120,7 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   incomplete typed-select immediate decoding.
 - Fixed Beta discovery and retracted legacy tagged Canary module versions.
 
-[Unreleased]: https://github.com/wago-org/wago/compare/v0.1.0-beta.9...HEAD
+[Unreleased]: https://github.com/wago-org/wago/compare/v0.1.0-beta.10...HEAD
+[v0.1.0-beta.10]: https://github.com/wago-org/wago/compare/v0.1.0-beta.9...v0.1.0-beta.10
 [v0.1.0-beta.9]: https://github.com/wago-org/wago/compare/v0.1.0-beta.8...v0.1.0-beta.9
 [v0.1.0-beta.8]: https://github.com/wago-org/wago/releases/tag/v0.1.0-beta.8
