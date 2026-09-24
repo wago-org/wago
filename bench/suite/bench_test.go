@@ -462,6 +462,46 @@ func BenchmarkExecTypedCall_wago(b *testing.B) {
 	}
 }
 
+// BenchmarkExecSessionCall_wago measures a caller-owned reservation held across
+// repeated calls. The reservation is acquired before timing and released after.
+func BenchmarkExecSessionCall_wago(b *testing.B) {
+	c, err := wago.Compile(nil, callWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("call")
+	if err != nil {
+		b.Fatal(err)
+	}
+	s, err := fn.OpenSession()
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer s.Close()
+	if got, err := s.Invoke1(1); err != nil || len(got) != 1 || got[0] != 1 {
+		b.Fatalf("call(1) = %v, %v", got, err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	var got []uint64
+	for i := 0; i < b.N; i++ {
+		got, err = s.Invoke1(1)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	if len(got) != 1 || got[0] != 1 {
+		b.Fatalf("call(1) = %v", got)
+	}
+}
+
 // BenchmarkExecHostRoundtrip measures one full wasm -> host -> wasm roundtrip:
 // the guest calls a value-returning host import (env.host) once and returns its
 // result. wago routes this through its synchronous host-call trampoline (the
@@ -504,6 +544,48 @@ func BenchmarkExecHostCallback_wago(b *testing.B) {
 		if _, err := fn.Invoke(1); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// BenchmarkExecSessionHostCallback_wago measures the same typed callback with
+// one instance reservation and prebound host entry held across timed calls.
+func BenchmarkExecSessionHostCallback_wago(b *testing.B) {
+	c, err := wago.Compile(nil, hostcallWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	imports := wago.NewImports()
+	imports.HostFunc("env", "host", func(x int32) int32 { return x + 1 })
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("roundtrip")
+	if err != nil {
+		b.Fatal(err)
+	}
+	s, err := fn.OpenSession()
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer s.Close()
+	if got, err := s.Invoke1(1); err != nil || len(got) != 1 || got[0] != 2 {
+		b.Fatalf("roundtrip(1) = %v, %v", got, err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	var got []uint64
+	for i := 0; i < b.N; i++ {
+		got, err = s.Invoke1(1)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	if len(got) != 1 || got[0] != 2 {
+		b.Fatalf("roundtrip(1) = %v", got)
 	}
 }
 

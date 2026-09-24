@@ -36,6 +36,13 @@ const benchmarkSets = await loadBenchmarkSets();
 const grp = (title) => ({ group: title });
 const rs = (label, sub, wagoKey, wazeroKey, winWord = "faster", kind = "ns", forcedDelta = "") =>
   ({ label, sub, wagoKey, wazeroKey, winWord, kind, forcedDelta });
+const mergedExecution = (name, label) => ({
+  label,
+  sub: "serialize + deserialize · geometric mean",
+  wagoKeys: [`Exec/${name}.serializeN`, `Exec/${name}.deserializeN`],
+  wazeroKeys: [`WazeroExec/${name}.serializeN`, `WazeroExec/${name}.deserializeN`],
+});
+const displayName = (name) => name.endsWith("-simd") ? `${name.slice(0, -5)} (simd)` : name;
 // dv is a wago-only "front-end at scale" row: the combined Decode+Validate time
 // for one real-world binary, with its parse throughput. The bar is sized by the
 // binary's byte length, so the visual shows wago's front-end absorbing ever-
@@ -122,10 +129,13 @@ function buildCorpusTabs(sets) {
     return [...groups].flatMap(([category, items]) => [grp(categoryLabels.get(category) ?? category), ...items]);
   };
   const moduleRows = (wagoPrefix, wazeroPrefix, kind = "ns") => grouped(({ name, category, suite, desc }) => [
-    rs(suite ? `${suite} · ${name.replace(/^[^-]+-/, "")}` : name, desc || `${category} corpus`, `${wagoPrefix}${name}`, `${wazeroPrefix}${name}`,
+    rs(suite ? `${suite} · ${name.replace(/^[^-]+-/, "")}` : displayName(name), desc || `${category} corpus`, `${wagoPrefix}${name}`, `${wazeroPrefix}${name}`,
       kind === "ns" ? "faster" : "smaller", kind),
   ]);
   const execRows = grouped(({ name, category, suite, desc }) => {
+    if (name === "json-as-simd") {
+      return [mergedExecution(name, displayName(name))];
+    }
     const keys = new Set();
     let hasCommand = false;
     for (const set of sets) {
@@ -138,7 +148,7 @@ function buildCorpusTabs(sets) {
     }
     const rows = [...keys].sort().map((tail) => {
       const exportName = tail.slice(name.length + 1);
-      return rs(name, `${exportName} · ${category} corpus`, `Exec/${tail}`, `WazeroExec/${tail}`);
+      return rs(displayName(name), `${exportName} · ${category} corpus`, `Exec/${tail}`, `WazeroExec/${tail}`);
     });
     if (hasCommand) {
       rows.push(rs(suite ? `${suite} · ${name.replace(/^[^-]+-/, "")}` : name,
@@ -272,16 +282,11 @@ function buildGeneralSummary(metrics, raw, modules) {
     includedModules,
     "codeBytes",
   );
-  const compileTime = {
-    railshot: metricGeomean(metrics, "CompileFull/", false, "ns", includedModules),
-    wazero: metricGeomean(metrics, "WazeroCompile/", false, "ns", includedModules),
-  };
+  const compileTime = pairedMetricGeomeans(metrics, "CompileFull/", "WazeroCompile/", false, includedModules);
   const summary = [
     ["Compile", "fresh process", "ns", compileTime],
-    ["Compile heap", "per compile", "bytes", {
-      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes", includedModules),
-      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes", includedModules),
-    }],
+    ["Compile heap", "per compile", "bytes",
+      pairedMetricGeomeans(metrics, "CompileFull/", "WazeroCompile/", false, includedModules, "bytes")],
     ["Machine code", "compiled corpus", "code", machineCode],
     ["Instantiate", "runnable corpus", "ns", instantiate],
     ["Execution", "runnable corpus", "ns", execution],
@@ -290,8 +295,8 @@ function buildGeneralSummary(metrics, raw, modules) {
     )],
   ].map(([label, sub, kind, values]) => ({ label, sub, kind, values }));
   const boundary = [
-    generalPairedMetric(metrics, "Host → Wasm", "prepared (i32) → i32", "ExecTypedCall_wago", "ExecCallOverhead_wazero"),
-    generalPairedMetric(metrics, "Wasm → host", "typed import callback", "ExecHostCallback_wago", "ExecHostRoundtrip_wazero"),
+    generalPairedMetric(metrics, "Host → Wasm", "reserved session (i32) → i32", "ExecSessionCall_wago", "ExecCallOverhead_wazero"),
+    generalPairedMetric(metrics, "Wasm → host", "reserved typed import callback", "ExecSessionHostCallback_wago", "ExecHostRoundtrip_wazero"),
   ].filter(Boolean);
   return [...summary, ...boundary];
 }
@@ -301,21 +306,6 @@ function generalPairedMetric(metrics, label, sub, railshotKey, wazeroKey) {
   const wazero = Number(metrics.get(wazeroKey)?.ns ?? 0);
   if (!(railshot > 0) || !(wazero > 0)) return null;
   return { label, sub, kind: "ns", values: { railshot, wazero } };
-}
-
-function metricGeomean(metrics, prefix, groupExports = false, field = "ns", includedModules = null) {
-  const groups = new Map();
-  for (const [key, metric] of metrics) {
-    if (!key.startsWith(prefix) || !(Number(metric[field]) > 0)) continue;
-    const tail = key.slice(prefix.length);
-    const module = tail.split(".", 1)[0];
-    if (includedModules && !includedModules.has(module)) continue;
-    const group = groupExports ? module : tail;
-    const values = groups.get(group) ?? [];
-    values.push(Number(metric[field]));
-    groups.set(group, values);
-  }
-  return geomean([...groups.values()].map(geomean));
 }
 
 function pairedMetricGeomeans(metrics, wagoPrefix, wazeroPrefix, groupExports, includedModules, field = "ns") {
@@ -709,19 +699,26 @@ ${rows}
 function buildEngineRow(spec, set, tabID) {
   const kind = spec.kind ?? "ns";
   const pick = (metric) => kind === "bytes" ? metric.bytes : kind === "count" ? metric.allocs : kind === "code" ? metric.codeBytes : metric.ns;
+  const metricValue = (keys) => {
+    const values = keys.map((key) => pick(set.metrics.get(key) ?? {}));
+    return values.every((value) => value > 0) ? geomean(values) : 0;
+  };
   const values = [];
   for (const engine of ENGINES) {
     let value = 0;
     if (engine.id === "railshot" || engine.id === "wazero") {
-      const key = engine.id === "wazero" ? spec.wazeroKey : backendMetricKey(spec.wagoKey, engine.id);
-      const metric = key ? set.metrics.get(key) : null;
-      value = metric ? pick(metric) : 0;
+      const keys = engine.id === "wazero" ? spec.wazeroKeys ?? [spec.wazeroKey] : spec.wagoKeys ?? [spec.wagoKey];
+      value = metricValue(keys.filter(Boolean));
     } else if (kind === "ns") {
-      value = externalRowMetric(set.external, engine.id, tabID, spec.wagoKey);
+      const keys = spec.wagoKeys ?? [spec.wagoKey];
+      const samples = keys.map((key) => externalRowMetric(set.external, engine.id, tabID, key));
+      value = samples.every((sample) => sample > 0) ? geomean(samples) : 0;
     }
     if (value > 0) values.push({ engine, value });
   }
-  return values.length ? { label: spec.label, sub: spec.sub, kind, values } : null;
+  const paired = values.some(({ engine }) => engine.id === "railshot") &&
+    values.some(({ engine }) => engine.id === "wazero");
+  return paired ? { label: spec.label, sub: spec.sub, kind, values } : null;
 }
 
 function externalRowMetric(raw, engine, tabID, key) {

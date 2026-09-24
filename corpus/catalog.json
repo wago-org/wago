@@ -2,13 +2,15 @@
   "schema": 1,
   "profiles": {
     "website": [
-      "tiny", "fib_rec", "dispatch", "memory_tree", "memory", "many_funcs",
-      "linked_list", "fannkuch", "nbody", "matmul", "sha256", "raytrace",
-      "json-as", "blake-as", "utf-as", "json-as-simd", "blake-as-simd", "utf-as-simd",
-      "coremark", "blake3", "qoi", "lz4", "zstd", "yyjson", "utf8proc",
-      "libtommath", "kissfft", "pcre2", "polybench-gemm", "polybench-cholesky",
-      "polybench-floyd-warshall", "embench-huffbench", "sightglass-libsodium-hash",
-      "json2csv-people", "brotli-compress", "lodepng"
+      "tiny", "fib_rec", "dispatch", "memory_tree", "fannkuch", "nbody",
+      "matmul", "raytrace", "sha256", "json-as-simd", "blake-as-simd",
+      "utf-as-simd", "coremark", "blake3", "qoi", "lz4", "zstd", "yyjson",
+      "pcre2", "sightglass-libsodium-hash",
+      "php-buckets", "ruby-buckets", "coreutils-sort", "ripgrep-source",
+      "yosys-counter", "icebram-generate", "json2csv-people",
+      "brotli-compress", "jq-json-transform", "age-decrypt", "sqlite3-query",
+      "quickjs-script", "esbuild-minify", "swift-format-source", "cjson",
+      "lodepng", "wren", "tinyxml2", "lua", "sightglass-shootout-base64"
     ],
     "quick": [
       "tiny",

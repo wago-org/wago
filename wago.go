@@ -168,6 +168,7 @@ type (
 	PluginSet                       = impl.PluginSet
 	Policy                          = impl.Policy
 	PreparedCompile                 = impl.PreparedCompile
+	PreparedSession                 = impl.PreparedSession
 	ProviderCatalogDocument         = impl.ProviderCatalogDocument
 	ProviderCatalogEntry            = impl.ProviderCatalogEntry
 	RefInit                         = impl.RefInit

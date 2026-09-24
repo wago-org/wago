@@ -321,10 +321,15 @@ func (in *Instance) markNativeControlShared() {
 	state := in.ensurePluginState()
 	state.invokeMu.revokeFast()
 	var localMu *sync.Mutex
+	var retainedGate *preparedHostLeaseGate
 	state.nativeShareMu.Lock()
 	if in.usesIndependentExecution() {
-		localMu = in.independentNativeExecutionMu()
-		localMu.Lock()
+		if gate := state.preparedHostGate; gate != nil {
+			retainedGate = gate
+		} else {
+			localMu = in.independentNativeExecutionMu()
+			localMu.Lock()
+		}
 	}
 	for {
 		flags := in.executionFlags.Load()
@@ -333,7 +338,11 @@ func (in *Instance) markNativeControlShared() {
 			break
 		}
 	}
-	if localMu != nil {
+	if retainedGate != nil && retainedGate.active.Load() {
+		mu := in.independentNativeExecutionMu()
+		mu.Lock()
+		mu.Unlock()
+	} else if localMu != nil {
 		localMu.Unlock()
 	}
 	state.nativeShareMu.Unlock()
