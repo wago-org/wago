@@ -4293,7 +4293,7 @@ func LoadTrustedArtifact(b []byte) (*Compiled, error) {
 // use InvokeFromHost with the HostModule value it received. Direct invocation
 // fails with ErrPermissionDenied while callback-scoped guest storage is borrowed.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
-	if in != nil {
+	if in != nil && !in.syncMode {
 		// Keep the resolved numeric path at the public entry. On a miss, the
 		// fallback must not repeat a possibly contended fast admission.
 		if out, err, ok := in.tryInvokeCachedIsolatedNumeric(export, args); ok {
