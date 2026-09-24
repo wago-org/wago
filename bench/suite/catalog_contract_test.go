@@ -7,7 +7,6 @@ import (
 	"github.com/wago-org/wago/bench/internal/semanticcorpus"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -372,31 +371,15 @@ func TestCatalogCIGates(t *testing.T) {
 			if file == ".just/test.just" && !strings.Contains(text, "quick corpus=env('CORPUS', 'all'):") {
 				t.Fatal("ordinary test gate must default to all")
 			}
-			found := false
-			for _, line := range strings.Split(text, "\n") {
-				if !strings.Contains(line, "TestApplicationCorpusRuns") {
-					continue
+			if file == ".just/test.just" {
+				if !strings.Contains(text, "application-corpus shard=") || !strings.Contains(text, "-run '^TestApplicationCorpusRuns$'") {
+					t.Fatal("application corpus must have a separate explicit CI entry point")
 				}
-				found = true
-				fields := strings.Split(line, "'")
-				if len(fields) < 3 {
-					t.Fatalf("missing quoted run expression: %s", line)
+				if strings.Contains(text, "TestApplicationCorpusRuns)$'") {
+					t.Fatal("ordinary corpus command must not repeat the application corpus")
 				}
-				pattern, err := regexp.Compile(fields[1])
-				if err != nil {
-					t.Fatal(err)
-				}
-				for _, name := range []string{"TestCorpus", "TestCorpusSemanticExec", "TestApplicationCorpusRuns", "TestCatalogContainsOnlyExecutableWorkloads", "TestCatalogSemanticLinks", "TestCatalogSelection", "TestCatalogCIGates", "TestValidateCorpusModuleRequiresEndToEndOracle", "TestValidateCorpusModuleStagesAndSource"} {
-					if !pattern.MatchString(name) {
-						t.Errorf("CI expression excludes %s", name)
-					}
-				}
-				if file == ".github/workflows/ci.yml" && !strings.Contains(line, "-wago.corpus=all") {
-					t.Fatal("Windows ordinary corpus gate must select all")
-				}
-			}
-			if !found {
-				t.Fatal("missing corpus execution gate")
+			} else if !strings.Contains(text, "-run '^TestApplicationCorpusRuns$'") || !strings.Contains(text, "WAGO_APP_CORPUS_SHARD:") || !strings.Contains(text, "TestVerifyApplicationCorpusShardReports|TestVerifyCorpusCorrectnessShardReports") {
+				t.Fatal("CI must run explicit application shards and verify full-corpus coverage")
 			}
 		})
 	}

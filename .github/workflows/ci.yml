@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - converted_to_draft
+      - edited
   workflow_dispatch:
 
 permissions:
@@ -17,53 +24,51 @@ concurrency:
 
 env:
   GO_VERSION: "1.22"
+  CURRENT_GO_VERSION: "1.27.1"
+  TINYGO_VERSION: "0.41.1"
   JUST_VERSION: "1.58.0"
 
 jobs:
-  # Decide whether the change can affect executable code. Docs-only changes skip
-  # the expensive jobs; every code change runs the complete native platform
-  # matrix so architecture and OS interactions cannot hide behind path filters.
+  # The planner owns lifecycle, path, and expected-job policy. A diff failure is
+  # a failed preflight, so it cannot turn an empty selection into a green check.
   changes:
-    name: Detect changes
+    name: Plan CI profile
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     outputs:
-      code: ${{ steps.derive.outputs.code }}
-      docs: ${{ steps.derive.outputs.docs }}
+      profile: ${{ steps.plan.outputs.profile }}
+      code: ${{ steps.plan.outputs.code }}
+      docs: ${{ steps.plan.outputs.docs }}
+      corpus_sources: ${{ steps.plan.outputs.corpus_sources }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      expected_jobs: ${{ steps.plan.outputs.expected_jobs }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - uses: dorny/paths-filter@6852f92c20ea7fd3b0c25de3b5112db3a98da050
-        id: filter
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          # Avoid a separate PR-files API call; compare the checked-out merge
-          # ref with the base SHA from the pull_request event instead.
-          token: ''
-          # Every change validates documentation. Code additionally requires
-          # every exclusion below to match, so documentation-only changes do
-          # not schedule the native matrix.
-          predicate-quantifier: 'every'
-          filters: |
-            docs:
-              - '**'
-            code:
-              - '**'
-              - '!**/*.md'
-              - '!docs/**'
-              - '!LICENSE'
-      - name: Derive job gates
-        id: derive
-        run: |
-          code='${{ steps.filter.outputs.code }}'
-          docs='${{ steps.filter.outputs.docs }}'
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "docs=$docs" >> "$GITHUB_OUTPUT"
-          echo "gate: code=$code docs=$docs"
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Select profile and expected jobs
+        id: plan
+        run: go run ./tests/tools/ci-plan plan
+      - name: Test CI planner
+        run: go test ./tests/tools/ci-plan -count=1
 
   docs:
     name: Documentation
     needs: changes
     # Code changes can delete or rename a path referenced by unchanged
     # documentation, so every change validates documentation.
-    if: needs.changes.outputs.docs == 'true'
+    if: needs.changes.outputs.profile == 'docs' || needs.changes.outputs.profile == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -73,14 +78,21 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
       - name: Validate documentation
         run: just docs
 
   lint:
     name: Lint & format
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.profile == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -90,26 +102,73 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
 
       # `just lint` runs staticcheck when it is on PATH; install it first so CI
       # enforces it (locally it is an optional skip). Other checks (gofmt, go
       # generate sync, go vet) use the toolchain directly.
+      - name: Identify Go toolchain for Staticcheck cache
+        id: staticcheck-go
+        run: echo "version=$(go version | awk '{ print $3 }')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore verified Staticcheck
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .tools/staticcheck
+          key: staticcheck-${{ runner.os }}-${{ runner.arch }}-${{ steps.staticcheck-go.outputs.version }}-2024.1.1-${{ hashFiles('scripts/bootstrap-staticcheck.sh') }}
+
       - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@2024.1.1
+        run: |
+          scripts/bootstrap-staticcheck.sh --verify
+          echo "$PWD/.tools/staticcheck" >> "$GITHUB_PATH"
 
       - name: Lint
         run: just lint
+
+      - name: Validate workflow syntax and expressions
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/*.yml
+
+      - name: Release script contract tests
+        run: |
+          tests/scripts/build-release-assets.sh
+          tests/scripts/release-qualification.sh
 
       - name: Validation statistics command tests
         working-directory: bench
         run: go test ./cmd/validatestats -count=1
 
-  regression-corpus:
-    name: Regression corpus provenance
+  regression-integrity:
+    name: Regression corpus integrity
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.profile == 'full'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Verify committed corpus manifests, hashes, and provenance
+        run: go test ./tests/support/regressioncorpus ./tests/tools/regression-corpus -count=1
+
+  regression-rebuild:
+    name: Regenerate regression corpus from pinned source
+    needs: changes
+    if: needs.changes.outputs.profile == 'full' && needs.changes.outputs.corpus_sources == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -117,7 +176,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
       - name: Install corpus build tools
         run: |
           sudo apt-get update
@@ -154,39 +220,59 @@ jobs:
             -wast2json "$PWD/.tmp/wabt/build/wast2json" \
             -fetch
 
-  runtime-concurrency:
-    name: Runtime concurrency / ${{ matrix.name }}
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux amd64
-            runner: ubuntu-24.04
-          - name: Linux arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 10
+  smoke:
+    name: Draft smoke / Linux amd64
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft
+    outputs:
+      profile: ${{ steps.plan.outputs.profile }}
+      code: ${{ steps.plan.outputs.code }}
+      docs: ${{ steps.plan.outputs.docs }}
+      corpus_sources: ${{ steps.plan.outputs.corpus_sources }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      expected_jobs: ${{ steps.plan.outputs.expected_jobs }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
         with:
           just-version: ${{ env.JUST_VERSION }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
-      - name: Run bounded seeded runtime concurrency harness
-        env:
-          WAGO_CONCURRENCY_SEED: 439000001,439000019,439000043,439000081
-          WAGO_CONCURRENCY_ROUNDS: 24
-        run: just test concurrency
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Plan draft smoke and report its profile
+        id: plan
+        run: go run ./tests/tools/ci-plan plan
+      - name: Run bounded code smoke
+        if: steps.plan.outputs.code == 'true'
+        run: just test ci-smoke
+      - name: Run documentation preflight
+        if: steps.plan.outputs.code != 'true'
+        run: just docs
+
+  gc-hardening:
+    name: GC hardening / bounded
+    needs: changes
+    if: needs.changes.outputs.profile == 'full'
+    uses: ./.github/workflows/regression-stress.yml
+    with:
+      profile: full
+      source_sha: ${{ needs.changes.outputs.source_sha }}
 
   race:
     name: Race detector / Linux amd64
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.profile == 'full'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -194,7 +280,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
       # Several amd64 runtime tests discover the pinned Core 3 checkout before
       # deciding whether an unavailable conversion tool makes the case skippable.
       # Fetch the corpus so the race lane reports races rather than checkout noise.
@@ -203,10 +296,37 @@ jobs:
       - name: Run focused runtime race suites
         run: go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency
 
+  current-go:
+    name: Current Go / Linux amd64
+    needs: changes
+    if: needs.changes.outputs.profile == 'full'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.CURRENT_GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Build the workspace and runtime-tagged CLI
+        run: |
+          go build ./...
+          go build -tags wago_runtime ./cli/...
+      - name: Run focused public API and runtime checks
+        run: |
+          go test -count=1 -run '^(TestHostExitValueAndPointerThroughWasm|TestInvokeTrapError|TestCompiledExecutionSnapshot|TestCompiledSnapshotPacksRepeatedNestedSlices)$' ./src/wago
+          go test -count=1 ./src/core/runtime
+
   platform-test:
     name: ${{ matrix.name }}
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.profile == 'full'
     strategy:
       fail-fast: false
       matrix:
@@ -231,7 +351,7 @@ jobs:
             goarch: amd64
             runtime: true
             guard: true
-            corpus: true
+            corpus: false
           - name: Darwin / arm64
             runner: macos-15
             goos: darwin
@@ -252,7 +372,7 @@ jobs:
             goarch: arm64
             runtime: true
             guard: true
-            corpus: true
+            corpus: false
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -263,8 +383,21 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
-          # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+
+      - name: Restore pinned WABT tool
+        if: matrix.runtime && runner.os != 'Windows'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .tools/wabt-*
+          key: wabt-${{ runner.os }}-${{ runner.arch }}-1.0.41-${{ hashFiles('scripts/bootstrap-wabt.sh') }}
 
       # Runtime codegen uses syntax unavailable in distro WABT releases. Publish
       # the checksum-pinned tool directory on every supported Unix runtime host.
@@ -272,7 +405,7 @@ jobs:
         if: matrix.runtime && runner.os != 'Windows'
         run: |
           scripts/bootstrap-wabt.sh --verify
-          echo "$(dirname "$(scripts/bootstrap-wabt.sh --print-path)")" >> "$GITHUB_PATH"
+          dirname "$(scripts/bootstrap-wabt.sh --print-path)" >> "$GITHUB_PATH"
 
       # Only linux/amd64 builds the supplementary official Core 3 tests during
       # ordinary package testing. Initialize and build their authoritative
@@ -285,6 +418,23 @@ jobs:
       - name: Install Release 3 interpreter toolchain
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: sudo apt-get update && sudo apt-get install -y ocaml-nox ocaml-dune menhir
+
+      - name: Identify Release 3 interpreter toolchain
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        id: spec-toolchain
+        run: |
+          {
+            echo "ocaml=$(ocamlc -version)"
+            echo "dune=$(dune --version)"
+            echo "menhir=$(menhir --version 2>&1 | tr -cd '[:alnum:]._-' | head -n 1)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore pinned Release 3 interpreter
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .tools/spec-interpreter-*
+          key: spec-interpreter-${{ runner.os }}-${{ runner.arch }}-${{ steps.spec-toolchain.outputs.ocaml }}-${{ steps.spec-toolchain.outputs.dune }}-${{ steps.spec-toolchain.outputs.menhir }}-9d360199-${{ hashFiles('scripts/bootstrap-spec-interpreter.sh') }}
 
       - name: Bootstrap pinned Release 3 interpreter
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
@@ -320,7 +470,7 @@ jobs:
 
       - name: Build & test
         if: matrix.runtime && runner.os != 'Windows'
-        run: just test
+        run: just test unit
 
       - name: Native GC telemetry tests
         if: matrix.runtime
@@ -342,11 +492,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test -count=20 -run '^TestCredentialTemporaryFileIsPrivateAndReadersSeeCompleteJSON$' ./cli/manager/internal/registry
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location cli/wago-installer
+          try {
+            go test -count=1 ./...
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
           Push-Location bench
           try {
-            go test -count=1 ./internal/semanticcorpus
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            go test -count=1 -timeout 20m -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns|TestCatalog.*|TestValidateCorpusModule.*)$' ./suite -args '-wago.corpus=all'
+            go test -count=1 -skip '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns)$' ./...
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Pop-Location
@@ -374,11 +529,34 @@ jobs:
             Pop-Location
           }
 
-      - name: Corpus correctness matrix
-        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+      - name: Run bounded seeded runtime concurrency harness
+        if: matrix.goos == 'linux'
+        env:
+          WAGO_CONCURRENCY_SEED: 439000001,439000019,439000043,439000081
+          WAGO_CONCURRENCY_ROUNDS: 24
+        run: just test concurrency
+
+      - name: Corpus correctness
+        if: matrix.runtime && matrix.corpus && runner.os != 'Windows'
         env:
           WAGO_CORPUS_TIMEOUT: 20s
         run: just test corpus all
+
+      - name: Corpus correctness (Windows)
+        if: matrix.runtime && matrix.corpus && runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WAGO_CORPUS_TIMEOUT: 20s
+        run: |
+          Push-Location bench
+          try {
+            go test -count=1 ./internal/semanticcorpus
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            go test -count=1 -timeout 20m -run '^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*)$' ./suite -args '-wago.corpus=all'
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
 
       - name: Benchmark wiring smoke test
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
@@ -401,10 +579,296 @@ jobs:
           $env:WAGO_SPEC_VERSION = 'simd'
           go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
 
+  corpus-correctness:
+    name: Corpus correctness / ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.profile == 'full'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Darwin amd64 / shard 1 of 4
+            runner: macos-15-intel
+            platform: darwin/amd64
+            target: darwin-amd64
+            shard: 0
+            shards: 4
+          - name: Darwin amd64 / shard 2 of 4
+            runner: macos-15-intel
+            platform: darwin/amd64
+            target: darwin-amd64
+            shard: 1
+            shards: 4
+          - name: Darwin amd64 / shard 3 of 4
+            runner: macos-15-intel
+            platform: darwin/amd64
+            target: darwin-amd64
+            shard: 2
+            shards: 4
+          - name: Darwin amd64 / shard 4 of 4
+            runner: macos-15-intel
+            platform: darwin/amd64
+            target: darwin-amd64
+            shard: 3
+            shards: 4
+          - name: Windows arm64 / shard 1 of 4
+            runner: windows-11-arm
+            platform: windows/arm64
+            target: windows-arm64
+            shard: 0
+            shards: 4
+          - name: Windows arm64 / shard 2 of 4
+            runner: windows-11-arm
+            platform: windows/arm64
+            target: windows-arm64
+            shard: 1
+            shards: 4
+          - name: Windows arm64 / shard 3 of 4
+            runner: windows-11-arm
+            platform: windows/arm64
+            target: windows-arm64
+            shard: 2
+            shards: 4
+          - name: Windows arm64 / shard 4 of 4
+            runner: windows-11-arm
+            platform: windows/arm64
+            target: windows-arm64
+            shard: 3
+            shards: 4
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Plan correctness shard
+        id: plan
+        shell: bash
+        env:
+          CI_SOURCE_SHA: ${{ needs.changes.outputs.source_sha }}
+          CORPUS_PLATFORM: ${{ matrix.platform }}
+          CORPUS_SHARD: ${{ matrix.shard }}
+          CORPUS_SHARDS: ${{ matrix.shards }}
+          CORPUS_REPORT: ${{ github.workspace }}/ci-corpus-correctness/${{ matrix.target }}-${{ matrix.shard }}.json
+        run: |
+          cd bench
+          go run ./cmd/corpus-shard plan \
+            --root .. \
+            --platform "$CORPUS_PLATFORM" \
+            --shard "$CORPUS_SHARD/$CORPUS_SHARDS" \
+            --report "$CORPUS_REPORT" \
+            --output "$GITHUB_OUTPUT"
+      - name: Run selected correctness workloads
+        shell: bash
+        env:
+          CORPUS_SELECTOR: ${{ steps.plan.outputs.selector }}
+          WAGO_CORPUS_TIMEOUT: 20s
+        run: |
+          cd bench
+          go test -count=1 -timeout 20m -run '^(TestCorpus|TestCorpusSemanticExec)$' ./suite -args "-wago.corpus=$CORPUS_SELECTOR"
+      - name: Mark correctness shard complete
+        if: success()
+        shell: bash
+        env:
+          CORPUS_REPORT: ${{ github.workspace }}/ci-corpus-correctness/${{ matrix.target }}-${{ matrix.shard }}.json
+        run: cd bench && go run ./cmd/corpus-shard complete --report "$CORPUS_REPORT"
+      - name: Upload correctness shard report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: corpus-correctness-${{ matrix.target }}-${{ matrix.shard }}
+          path: ci-corpus-correctness/${{ matrix.target }}-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  app-corpus:
+    name: Application corpus / ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.profile == 'full'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux amd64 / shard 1 of 2
+            runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            target: linux-amd64
+            shard: 0
+            shards: 2
+            reference: all
+          - name: Linux amd64 / shard 2 of 2
+            runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            target: linux-amd64
+            shard: 1
+            shards: 2
+            reference: all
+          - name: Linux arm64 / shard 1 of 2
+            runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            target: linux-arm64
+            shard: 0
+            shards: 2
+            reference: wago-only
+          - name: Linux arm64 / shard 2 of 2
+            runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            target: linux-arm64
+            shard: 1
+            shards: 2
+            reference: wago-only
+          - name: Darwin amd64 / shard 1 of 4
+            runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            target: darwin-amd64
+            shard: 0
+            shards: 4
+            reference: wago-only
+          - name: Darwin amd64 / shard 2 of 4
+            runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            target: darwin-amd64
+            shard: 1
+            shards: 4
+            reference: wago-only
+          - name: Darwin amd64 / shard 3 of 4
+            runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            target: darwin-amd64
+            shard: 2
+            shards: 4
+            reference: wago-only
+          - name: Darwin amd64 / shard 4 of 4
+            runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            target: darwin-amd64
+            shard: 3
+            shards: 4
+            reference: wago-only
+          - name: Darwin arm64 / shard 1 of 2
+            runner: macos-15
+            goos: darwin
+            goarch: arm64
+            target: darwin-arm64
+            shard: 0
+            shards: 2
+            reference: wago-only
+          - name: Darwin arm64 / shard 2 of 2
+            runner: macos-15
+            goos: darwin
+            goarch: arm64
+            target: darwin-arm64
+            shard: 1
+            shards: 2
+            reference: wago-only
+          - name: Windows amd64
+            runner: windows-2025
+            goos: windows
+            goarch: amd64
+            target: windows-amd64
+            shard: 0
+            shards: 1
+            reference: wago-only
+          - name: Windows arm64
+            runner: windows-11-arm
+            goos: windows
+            goarch: arm64
+            target: windows-arm64
+            shard: 0
+            shards: 1
+            reference: wago-only
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Run this target's application shard
+        shell: bash
+        env:
+          CI_SOURCE_SHA: ${{ needs.changes.outputs.source_sha }}
+          WAGO_APP_CORPUS_SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
+          WAGO_APP_CORPUS_REFERENCE: ${{ matrix.reference }}
+          WAGO_APP_CORPUS_REPORT: ${{ github.workspace }}/ci-app-corpus/${{ matrix.target }}-${{ matrix.shard }}.json
+        run: |
+          cd bench
+          go test -count=1 -timeout 20m -run '^TestApplicationCorpusRuns$' ./suite -args '-wago.corpus=all'
+      - name: Upload application shard report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: application-corpus-${{ matrix.target }}-${{ matrix.shard }}
+          path: ci-app-corpus/${{ matrix.target }}-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  app-corpus-verify:
+    name: Verify corpus shard coverage
+    needs: [changes, app-corpus, corpus-correctness]
+    if: always() && needs.changes.outputs.profile == 'full' && needs.app-corpus.result == 'success' && needs.corpus-correctness.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Download all target reports
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: application-corpus-*
+          path: ci-app-corpus
+          merge-multiple: true
+      - name: Download correctness shard reports
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: corpus-correctness-*
+          path: ci-corpus-correctness
+          merge-multiple: true
+      - name: Verify every planned workload ran once
+        env:
+          CI_SOURCE_SHA: ${{ needs.changes.outputs.source_sha }}
+          WAGO_APP_CORPUS_REPORT_DIR: ${{ github.workspace }}/ci-app-corpus
+          WAGO_CORPUS_CORRECTNESS_REPORT_DIR: ${{ github.workspace }}/ci-corpus-correctness
+        run: cd bench && go test -count=1 -run '^(TestVerifyApplicationCorpusShardReports|TestVerifyCorpusCorrectnessShardReports)$' ./suite -args '-wago.corpus=all'
+
   core-v2:
     name: Core v2 conformance / ${{ matrix.name }}
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.profile == 'full'
     strategy:
       fail-fast: false
       matrix:
@@ -422,7 +886,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
 
       # This is the mandatory exact Release 2 gate, not the informational CI
       # card summary. Provision the parser explicitly and fetch only the pinned
@@ -437,29 +908,17 @@ jobs:
   core-v3:
     name: Core v3 conformance / ${{ matrix.name }}
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.profile == 'full'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Linux amd64 / explicit
+          - name: Linux amd64
             runner: ubuntu-24.04
-            target: v3
-          - name: Linux amd64 / signals
-            runner: ubuntu-24.04
-            target: v3-signals
-          - name: Linux arm64 / explicit
+          - name: Linux arm64
             runner: ubuntu-24.04-arm
-            target: v3
-          - name: Linux arm64 / signals
-            runner: ubuntu-24.04-arm
-            target: v3-signals
-          - name: Darwin arm64 / explicit
+          - name: Darwin arm64
             runner: macos-15
-            target: v3
-          - name: Darwin arm64 / signals
-            runner: macos-15
-            target: v3-signals
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -469,7 +928,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
       - name: Install Release 3 interpreter toolchain
         run: |
           if [ "${{ runner.os }}" = Linux ]; then
@@ -478,15 +944,30 @@ jobs:
           else
             brew install ocaml dune menhir
           fi
+      - name: Identify Release 3 interpreter toolchain
+        id: spec-toolchain
+        run: |
+          {
+            echo "ocaml=$(ocamlc -version)"
+            echo "dune=$(dune --version)"
+            echo "menhir=$(menhir --version 2>&1 | tr -cd '[:alnum:]._-' | head -n 1)"
+          } >> "$GITHUB_OUTPUT"
       - name: Fetch pinned Core v3 corpus
         run: git submodule update --init tests/conformance/spec-v3
-      - name: Run exact Core v3 validation and execution
-        run: just test spec ${{ matrix.target }}
+      - name: Restore pinned Release 3 interpreter
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .tools/spec-interpreter-*
+          key: spec-interpreter-${{ runner.os }}-${{ runner.arch }}-${{ steps.spec-toolchain.outputs.ocaml }}-${{ steps.spec-toolchain.outputs.dune }}-${{ steps.spec-toolchain.outputs.menhir }}-9d360199-${{ hashFiles('scripts/bootstrap-spec-interpreter.sh') }}
+      - name: Run explicit and signals Core v3 suites
+        run: |
+          just test spec v3
+          just test spec v3-signals
 
   fuzz:
     name: Bounded fuzzing / Linux amd64
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.profile == 'full'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -497,14 +978,21 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
       - name: Run bounded fuzzing gates
         run: just test fuzz
 
   tinygo:
     name: TinyGo / ${{ matrix.name }}
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.profile == 'full'
     strategy:
       fail-fast: false
       matrix:
@@ -534,13 +1022,38 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Identify Go toolchain for TinyGo cache
+        id: tinygo-go
+        run: echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+      - name: Restore TinyGo toolchain
+        id: tinygo-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.tool_cache }}/tinygo/${{ env.TINYGO_VERSION }}
+          key: tinygo-${{ runner.os }}-${{ runner.arch }}-${{ env.TINYGO_VERSION }}-${{ steps.tinygo-go.outputs.version }}-${{ hashFiles('tests/tools/tinygo-cache/main.go') }}
+      - name: Verify restored TinyGo tree
+        env:
+          TINYGO_GO_VERSION: ${{ steps.tinygo-go.outputs.version }}
+          TINYGO_CACHE_HIT: ${{ steps.tinygo-cache.outputs.cache-hit }}
+        run: go run ./tests/tools/tinygo-cache verify
       - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
         with:
-          tinygo-version: "0.41.1"
+          tinygo-version: ${{ env.TINYGO_VERSION }}
           # Native builds do not use Binaryen, whose pinned release has no
           # Linux/arm64 artifact and otherwise makes setup fail with a 404.
           install-binaryen: false
+      - name: Record TinyGo tree provenance
+        env:
+          TINYGO_GO_VERSION: ${{ steps.tinygo-go.outputs.version }}
+        run: go run ./tests/tools/tinygo-cache record
 
       # TinyGo links native linux/amd64 binaries with LLVM lld; the runner needs
       # ld.lld on PATH (otherwise: "ROM segments are non-contiguous").
@@ -590,7 +1103,7 @@ jobs:
         run: |
           tinygo build -scheduler=tasks -no-debug -opt=z -gc=conservative \
             -tags wago_runtime,wago_lean,wago_minimal -o wago-tinygo-release ./cli/wago
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
             ./wago-tinygo-release --version
             out="$(./wago-tinygo-release run --invoke fib tests/fixtures/wasm/fib.wasm 20)"
             echo "$out"
@@ -600,28 +1113,71 @@ jobs:
   size:
     name: Build size
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.profile == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
       # TinyGo (+ lld) builds the size-minimized run-only release profile.
+      - name: Identify Go toolchain for TinyGo cache
+        id: tinygo-go
+        run: echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+      - name: Restore TinyGo toolchain
+        id: tinygo-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.tool_cache }}/tinygo/${{ env.TINYGO_VERSION }}
+          key: tinygo-${{ runner.os }}-${{ runner.arch }}-${{ env.TINYGO_VERSION }}-${{ steps.tinygo-go.outputs.version }}-${{ hashFiles('tests/tools/tinygo-cache/main.go') }}
+      - name: Verify restored TinyGo tree
+        env:
+          TINYGO_GO_VERSION: ${{ steps.tinygo-go.outputs.version }}
+          TINYGO_CACHE_HIT: ${{ steps.tinygo-cache.outputs.cache-hit }}
+        run: go run ./tests/tools/tinygo-cache verify
       - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3
         with:
-          tinygo-version: "0.41.1"
+          tinygo-version: ${{ env.TINYGO_VERSION }}
+          install-binaryen: false
+      - name: Record TinyGo tree provenance
+        env:
+          TINYGO_GO_VERSION: ${{ steps.tinygo-go.outputs.version }}
+        run: go run ./tests/tools/tinygo-cache record
       - name: Install lld
         run: sudo apt-get update && sudo apt-get install -y lld
 
-      - name: Measure release binary size
+      - name: Resolve exact size baseline
+        id: size-baseline
         env:
           CARD_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'origin/main' || '' }}
         run: |
           if [ -n "$CARD_BASELINE_REF" ]; then
             git fetch --no-tags --depth=1 origin main
+            echo "sha=$(git rev-parse "$CARD_BASELINE_REF^{commit}")" >> "$GITHUB_OUTPUT"
           fi
+          toolchain_hash=$(printf '%s\n' "$(go version)" "$(tinygo version)" | sha256sum | cut -d' ' -f1)
+          echo "toolchain_hash=$toolchain_hash" >> "$GITHUB_OUTPUT"
+
+      - name: Restore exact baseline profile binaries
+        if: steps.size-baseline.outputs.sha != ''
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .cache/wago-size-baseline
+          key: size-baseline-${{ steps.size-baseline.outputs.sha }}-linux-amd64-${{ steps.size-baseline.outputs.toolchain_hash }}-${{ hashFiles('scripts/size-card.sh', 'scripts/release-size-budgets.tsv', 'go.work', 'go.mod', 'go.sum', 'cli/wago-installer/go.mod') }}
+
+      - name: Measure release binary size
+        env:
+          CARD_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'origin/main' || '' }}
+          SIZE_BASELINE_CACHE_DIR: ${{ github.workspace }}/.cache/wago-size-baseline
+        run: |
           mkdir -p ci-card
           SIZE_REPORT=ci-card/size.md scripts/size-card.sh
 
@@ -635,37 +1191,44 @@ jobs:
             ci-card/size-symbols.tsv
           if-no-files-found: error
 
-  # Single aggregation gate. Because the path-gated jobs above can be "skipped",
-  # make THIS the sole required status check in branch protection: it always runs
-  # and passes only if no needed job actually failed (skipped/success both pass).
+  # This is the sole required status check. It validates the selected plan, so
+  # skipped jobs are accepted only when the profile did not expect them.
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, docs, lint, regression-corpus, runtime-concurrency, race, platform-test, core-v2, core-v3, fuzz, tinygo, size]
+    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, core-v2, core-v3, fuzz, tinygo, size]
     runs-on: ubuntu-latest
     steps:
-      - name: Verify no required job failed
+      - name: Identify qualification profile
+        env:
+          CI_PROFILE: ${{ needs.changes.outputs.profile || needs.smoke.outputs.profile }}
+          CI_EXPECTED_JOBS: ${{ needs.changes.outputs.expected_jobs || needs.smoke.outputs.expected_jobs }}
         run: |
-          results='${{ join(needs.*.result, ' ') }}'
-          echo "job results: $results"
-          for r in $results; do
-            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
-              echo "::error::a required job did not pass ($r)"
-              exit 1
-            fi
-          done
-          echo "all required jobs passed or were skipped"
+          echo "::notice title=CI profile::$CI_PROFILE"
+          echo "Expected jobs: $CI_EXPECTED_JOBS"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.code == 'true'
         with:
           ref: ${{ github.sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.code == 'true'
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Verify every expected CI result
+        env:
+          CI_PROFILE: ${{ needs.changes.outputs.profile || needs.smoke.outputs.profile }}
+          CI_CODE: ${{ needs.changes.outputs.code || needs.smoke.outputs.code }}
+          CI_CORPUS_SOURCES: ${{ needs.changes.outputs.corpus_sources || needs.smoke.outputs.corpus_sources }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: go run ./tests/tools/ci-plan verify
       - name: Record exact main-branch qualification
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.code == 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.profile == 'full'
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
           CI_REPOSITORY: ${{ github.repository }}
@@ -673,9 +1236,11 @@ jobs:
           CI_RUN_ID: ${{ github.run_id }}
           CI_RUN_ATTEMPT: ${{ github.run_attempt }}
           CI_WORKFLOW_REF: ${{ github.workflow_ref }}
+          CI_PROFILE: ${{ needs.changes.outputs.profile }}
+          CI_EXPECTED_JOBS: ${{ needs.changes.outputs.expected_jobs }}
         run: scripts/release-qualification.sh record-ci stable-qualification/ci-qualification.json
       - name: Upload exact main-branch qualification
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.code == 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.profile == 'full'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: stable-source-qualification-${{ github.sha }}-${{ github.run_attempt }}

@@ -18,7 +18,7 @@ on:
 
 permissions:
   actions: read
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ inputs.version }}
@@ -68,10 +68,12 @@ jobs:
             echo "::error::source_sha must be one full commit SHA"
             exit 1
           }
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "channel=$channel" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
-          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$version"
+            echo "channel=$channel"
+            echo "prerelease=$prerelease"
+            echo "source_sha=$source_sha"
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ steps.inputs.outputs.source_sha }}
@@ -79,7 +81,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
       - name: Verify source is the requested main commit
         env:
           SOURCE_SHA: ${{ steps.inputs.outputs.source_sha }}
@@ -163,9 +172,17 @@ jobs:
           retention-days: 90
           overwrite: true
 
+  release-stress:
+    name: Exhaustive source qualification
+    needs: prepare
+    uses: ./.github/workflows/regression-stress.yml
+    with:
+      profile: release
+      source_sha: ${{ needs.prepare.outputs.source_sha }}
+
   build:
     name: Build and smoke release (${{ matrix.goos }}/${{ matrix.goarch }})
-    needs: prepare
+    needs: [prepare, release-stress]
     strategy:
       fail-fast: false
       matrix:
@@ -202,12 +219,41 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Identify Go toolchain for TinyGo cache
+        id: tinygo-go
+        if: matrix.target != 'windows-arm64'
+        run: echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+      - name: Restore TinyGo toolchain
+        if: matrix.target != 'windows-arm64'
+        id: tinygo-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.tool_cache }}/tinygo/${{ env.TINYGO_VERSION }}
+          key: tinygo-${{ runner.os }}-${{ runner.arch }}-${{ env.TINYGO_VERSION }}-${{ steps.tinygo-go.outputs.version }}-${{ hashFiles('tests/tools/tinygo-cache/main.go') }}
+      - name: Verify restored TinyGo tree
+        if: matrix.target != 'windows-arm64'
+        env:
+          TINYGO_GO_VERSION: ${{ steps.tinygo-go.outputs.version }}
+          TINYGO_CACHE_HIT: ${{ steps.tinygo-cache.outputs.cache-hit }}
+        run: go run ./tests/tools/tinygo-cache verify
       - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
         if: matrix.target != 'windows-arm64'
         with:
           tinygo-version: ${{ env.TINYGO_VERSION }}
           install-binaryen: false
+      - name: Record TinyGo tree provenance
+        if: matrix.target != 'windows-arm64'
+        env:
+          TINYGO_GO_VERSION: ${{ steps.tinygo-go.outputs.version }}
+        run: go run ./tests/tools/tinygo-cache record
       - name: Install lld
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y lld
@@ -250,7 +296,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
       - name: Download qualified release files
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -294,6 +347,9 @@ jobs:
     name: Publish exactly qualified release files
     needs: [prepare, build, manifest]
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -301,7 +357,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
       - name: Download qualified release files
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
