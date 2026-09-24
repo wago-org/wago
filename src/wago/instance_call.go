@@ -21,6 +21,10 @@ import (
 // its producer Instance. Accepting a reference-typed module remains controlled
 // by compiler feature support. v128
 // parameters/results are not expressible as a Value; use Invoke for those.
+//
+// Deprecated: Use Invoke for raw-slot calls or InvokeContext when cancellation
+// is required. InvokeValues remains available for typed checks, independently
+// owned result slices, and Runtime invoke hooks, which Invoke does not provide.
 func (in *Instance) InvokeValues(ctx context.Context, export string, args ...Value) ([]Value, error) {
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("call %q: %w", export, err)
