@@ -378,8 +378,8 @@ func TestCatalogCIGates(t *testing.T) {
 				if strings.Contains(text, "TestApplicationCorpusRuns)$'") {
 					t.Fatal("ordinary corpus command must not repeat the application corpus")
 				}
-			} else if !strings.Contains(text, "-run '^TestApplicationCorpusRuns$'") || !strings.Contains(text, "WAGO_APP_CORPUS_SHARD:") {
-				t.Fatal("CI must run admitted applications in explicit reported shards")
+			} else if !strings.Contains(text, "-run '^TestApplicationCorpusRuns$'") || !strings.Contains(text, "WAGO_APP_CORPUS_SHARD:") || !strings.Contains(text, "-run '^TestVerifyApplicationCorpusShardReports$' ./suite -args '-wago.corpus=all'") {
+				t.Fatal("CI must run explicit application shards and verify full-corpus coverage")
 			}
 		})
 	}

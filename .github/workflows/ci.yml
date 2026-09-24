@@ -745,7 +745,7 @@ jobs:
         env:
           CI_SOURCE_SHA: ${{ needs.changes.outputs.source_sha }}
           WAGO_APP_CORPUS_REPORT_DIR: ${{ github.workspace }}/ci-app-corpus
-        run: cd bench && go test -count=1 -run '^TestVerifyApplicationCorpusShardReports$' ./suite
+        run: cd bench && go test -count=1 -run '^TestVerifyApplicationCorpusShardReports$' ./suite -args '-wago.corpus=all'
 
   core-v2:
     name: Core v2 conformance / ${{ matrix.name }}
