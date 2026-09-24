@@ -4496,9 +4496,6 @@ func (in *Instance) invokeCachedDirectNumeric(ic *invokeCache, entry uintptr, ar
 	if ic.resultSlots == 2 {
 		return in.invokeDirectIntPairEntry(entry, ic.scalarWideMask, ic.slotWide[ic.paramSlots:], args)
 	}
-	if invokeCachedPreboundIntSupported && ic.directIntBounded {
-		return in.invokeCachedPreboundInt(ic, args)
-	}
 	switch len(args) {
 	case 0:
 		return in.invokeDirectIntEntry(entry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, 0, 0, 0, 0)
@@ -5174,10 +5171,6 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		hasFuncRefResults: hasReferenceValType(sig.Results),
 		slotWide:          widths,
 		entryMode:         entryMode,
-	}
-	if invokeCachedPreboundIntSupported && slot.directIntFast && slot.directIntBounded && paramSlots <= 4 && resultSlots <= 1 {
-		entry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[li]))
-		in.prepareCachedInvokeIntCall(&slot.directIntCall, entry, in.jm.LinMemBase())
 	}
 	return slot, nil
 }
