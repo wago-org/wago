@@ -45,23 +45,18 @@ func (in *Instance) invokeDirectIntWideEntry(entry uintptr, paramWide, resultWid
 		raw[i] = bits
 	}
 	wruntime.PreparePreparedIntTrap(in.trap)
-	r0, r1 := in.eng.EnterPreparedIntWideBounded(entry, in.jm.LinMemBase(), &raw)
+	r0, r1, r2, r3 := in.eng.EnterPreparedIntWideBounded(entry, in.jm.LinMemBase(), &raw)
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
 		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:len(resultWide)]
-	if len(resultWide) >= 1 {
-		out[0] = r0
-		if !resultWide[0] {
-			out[0] = uint64(uint32(r0))
-		}
-	}
-	if len(resultWide) == 2 {
-		out[1] = r1
-		if !resultWide[1] {
-			out[1] = uint64(uint32(r1))
+	results := [4]uint64{r0, r1, r2, r3}
+	for i := range out {
+		out[i] = results[i]
+		if !resultWide[i] {
+			out[i] = uint64(uint32(out[i]))
 		}
 	}
 	return out, nil

@@ -181,6 +181,195 @@ func TestPreparedDirectWidePair(t *testing.T) {
 	session.Close()
 }
 
+func TestPreparedDirectIntegerQuad(t *testing.T) {
+	compiled := MustCompile(hostToWasmI32SignatureModule(4, 4))
+	defer compiled.Close()
+	if !compiled.directPreparedBoundedAt(0) {
+		t.Fatal("integer quad register entry is not bounded")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.directIntFast || !fn.directIntBounded {
+		t.Fatal("integer quad did not select bounded direct entry")
+	}
+	args := []uint64{1, 2, 3, 4}
+	check := func(label string, got []uint64, err error) {
+		t.Helper()
+		if err != nil || len(got) != 4 || got[0] != 1 || got[1] != 2 || got[2] != 3 || got[3] != 4 {
+			t.Fatalf("%s = %v, %v; want %v", label, got, err, args)
+		}
+	}
+	got, err := fn.Invoke(args...)
+	check("prepared", got, err)
+	got, err = in.Invoke("f", args...)
+	check("instance", got, err)
+	session, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = session.Invoke(args...)
+	check("session", got, err)
+	session.Close()
+}
+
+func preparedIntegerMultiModule(params, results int) []byte {
+	paramTypes := make([]wasm.ValType, params)
+	resultTypes := make([]wasm.ValType, results)
+	body := make([]byte, 0, results*2+1)
+	for i := range paramTypes {
+		paramTypes[i] = wasm.I32
+		if i%2 != 0 {
+			paramTypes[i] = wasm.I64
+		}
+	}
+	for i := range resultTypes {
+		resultTypes[i] = paramTypes[i]
+		body = append(body, 0x20, byte(i))
+	}
+	body = append(body, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(paramTypes, resultTypes))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func TestPreparedDirectIntegerMultiWidths(t *testing.T) {
+	maxParams := 7
+	if runtime.GOARCH == "arm64" {
+		maxParams = 8
+	}
+	for _, tc := range []struct{ params, results int }{{4, 3}, {maxParams, 4}} {
+		t.Run(fmt.Sprintf("%d-%d", tc.params, tc.results), func(t *testing.T) {
+			compiled := MustCompile(preparedIntegerMultiModule(tc.params, tc.results))
+			defer compiled.Close()
+			if !compiled.directPreparedBoundedAt(0) {
+				t.Fatal("multi-result entry is not bounded")
+			}
+			in, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.WasmFunc("f")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !fn.directIntFast || !fn.directIntBounded {
+				t.Fatal("multi-result call did not select bounded direct entry")
+			}
+			args := make([]uint64, tc.params)
+			want := make([]uint64, tc.results)
+			for i := range args {
+				args[i] = 0xffffffff00000000 | uint64(i+1)
+				if i < tc.results {
+					want[i] = args[i]
+					if i%2 == 0 {
+						want[i] = uint64(uint32(args[i]))
+					}
+				}
+			}
+			check := func(label string, got []uint64, err error) {
+				t.Helper()
+				if err != nil || len(got) != len(want) {
+					t.Fatalf("%s = %v, %v; want %v", label, got, err, want)
+				}
+				for i := range want {
+					if got[i] != want[i] {
+						t.Fatalf("%s[%d] = %x; want %x", label, i, got[i], want[i])
+					}
+				}
+			}
+			got, err := fn.Invoke(args...)
+			check("prepared", got, err)
+			got, err = in.Invoke("f", args...)
+			check("instance", got, err)
+			session, err := fn.OpenSession()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err = session.Invoke(args...)
+			check("session", got, err)
+			session.Close()
+			if _, err := in.ExportedFunc("f"); err != nil {
+				t.Fatal(err)
+			}
+			got, err = fn.Invoke(args...)
+			check("shared fallback", got, err)
+		})
+	}
+}
+
+func TestIntegerQuadRegisterCallBetweenWasmFunctions(t *testing.T) {
+	quad := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(quad, quad))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x20, 0x03, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x20, 0x03, 0x10, 0x00, 0x0b}),
+		)),
+	)
+	compiled := MustCompile(module)
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	got, err := in.Invoke("f", 1, 2, 3, 4)
+	if err != nil || len(got) != 4 || got[0] != 1 || got[1] != 2 || got[2] != 3 || got[3] != 4 {
+		t.Fatalf("Wasm register call = %v, %v", got, err)
+	}
+}
+
+func TestPreparedDirectIntegerQuadTrapReset(t *testing.T) {
+	quad := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(quad, quad))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x45,       // i32.eqz
+			0x04, 0x40, // if
+			0x00, // unreachable
+			0x0b, // end if
+			0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x20, 0x03, 0x0b,
+		}))),
+	)
+	compiled := MustCompile(module)
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.directIntFast || !fn.directIntBounded {
+		t.Fatal("trapping quad did not select bounded direct entry")
+	}
+	if _, err := fn.Invoke(0, 2, 3, 4); err == nil {
+		t.Fatal("expected quad trap")
+	}
+	got, err := fn.Invoke(1, 2, 3, 4)
+	if err != nil || len(got) != 4 || got[0] != 1 || got[1] != 2 || got[2] != 3 || got[3] != 4 {
+		t.Fatalf("after trap = %v, %v", got, err)
+	}
+}
+
 func TestPreparedDirectWideTrapReset(t *testing.T) {
 	n := 7
 	if runtime.GOARCH == "arm64" {

@@ -4468,7 +4468,7 @@ func (in *Instance) invokeCachedDirectNumeric(ic *invokeCache, entry uintptr, ar
 		}
 		return in.invokeDirectFloatEntry(entry, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
 	}
-	if preparedDirectWideSupported && len(args) > 4 {
+	if preparedDirectWideSupported && (len(args) > 4 || ic.resultSlots > 2) {
 		return in.invokeDirectIntWideEntry(entry, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
 	}
 	if ic.resultSlots == 2 {
@@ -5106,8 +5106,8 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	directIntFast := preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
 		preparedDirectIntSupported && preparedDirectIntEnabled && directEntryMode == preparedEntryIsolated &&
 		preparedDirectIntSignature(sig) && in.c.directPreparedAt(li) &&
-		(!preparedDirectWideSupported || paramSlots <= 4 || in.c.directPreparedBoundedAt(li)) &&
-		(resultSlots != 2 || preparedDirectPairSupported && in.c.directPreparedBoundedAt(li))
+		(!preparedDirectWideSupported || paramSlots <= 4 && resultSlots <= 2 || in.c.directPreparedBoundedAt(li)) &&
+		(resultSlots <= 1 || preparedDirectPairSupported && in.c.directPreparedBoundedAt(li))
 	directFloatFast := preparedDirectFloatSupported && preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
 		preparedDirectIntEnabled && directEntryMode == preparedEntryIsolated &&
 		preparedDirectFloatSignature(sig) && in.c.directPreparedAt(li) && in.c.directPreparedBoundedAt(li)

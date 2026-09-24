@@ -4204,7 +4204,7 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
 // the internal entry takes args in GP/XMM registers and returns numeric results
-// in independent RAX/RDX and XMM0/XMM1 banks.
+// in independent GP/FP banks (up to four integer results).
 // Returns the internal entry's offset within the function's code.
 func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, localScores []uint32, hints *funcHintView) (int, error) {
 	a := f.a
@@ -4237,7 +4237,15 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		}
 		adapterCall = a.CallRel32()
 		f.adapterReturnOff = adapterCall + 4
-		a.Pop(RCX) // results
+		if registerQuadResultsSupported && rN > 2 {
+			// RCX is result 2. Recover the result pointer in RDI instead.
+			a.Pop(RDI)
+			for i, reg := range []Reg{RAX, RDX, RCX, R8}[:rN] {
+				a.Store64(RDI, int32(i*8), reg)
+			}
+		} else {
+			a.Pop(RCX) // results
+		}
 		if preparedDirectFloatSupported && rN == 2 && mtOf(f.ft.Results[0]).isFloat() && !mtOf(f.ft.Results[1]).isFloat() {
 			a.FStoreDisp(RCX, 0, 0, mtOf(f.ft.Results[0]) == mtF64)
 			a.Store64(RCX, 8, RAX)
@@ -4365,6 +4373,11 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		} else {
 			a.Load64(RAX, RSP, f.spillOff(0))
 			a.Load64(RDX, RSP, f.spillOff(1))
+		}
+	}
+	if registerQuadResultsSupported && rN > 2 {
+		for i, reg := range []Reg{RAX, RDX, RCX, R8}[:rN] {
+			a.Load64(reg, RSP, f.spillOff(i))
 		}
 	}
 	// singleRegResult: every exit already produced the result in RAX/XMM0.

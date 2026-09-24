@@ -147,7 +147,7 @@ func isIntValType(t wasm.ValType) bool {
 }
 
 func preparedDirectIntSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > len(intArgRegs) || len(ft.Results) > 2 {
+	if len(ft.Params) > len(intArgRegs) || len(ft.Results) > 4 || len(ft.Results) > 2 && !registerQuadResultsSupported {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -217,9 +217,13 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/V banks; one result returns in
-// X0/V0; two results use independent X0/X1 and V0/V1 banks.
+// X0/V0; two results use independent GP/FP banks, and integer-only signatures
+// can return up to four values in X0..X3.
 func sigFitsRegABI(ft *wasm.CompType) bool {
-	if len(ft.Results) > 2 {
+	if len(ft.Results) > 4 || len(ft.Results) > 2 && !registerQuadResultsSupported {
+		return false
+	}
+	if len(ft.Results) > 2 && !sigIsIntOnly(ft) {
 		return false
 	}
 	if len(ft.Results) == 2 && !((isIntValType(ft.Results[0]) && isIntValType(ft.Results[1])) ||
@@ -1978,6 +1982,14 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		}
 		f.pinned = f.pinned.add(pairRes[0]).add(pairRes[1])
 	}
+	var quadRes [4]Reg
+	if registerQuadResultsSupported && rN > 2 {
+		for i, src := range []Reg{X0, X1, X2, X3}[:rN] {
+			quadRes[i] = f.allocReg(maskOf(X0, X1, X2, X3))
+			f.a.MovReg64(quadRes[i], src)
+			f.pinned = f.pinned.add(quadRes[i])
+		}
+	}
 	if !preservesPins {
 		f.reloadLocalsForCall() // non-STACK_REG model only
 		f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
@@ -2009,6 +2021,12 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		}
 	} else if rN == 2 {
 		for i, reg := range pairRes {
+			f.pinned = f.pinned.remove(reg)
+			f.pushReg(reg, mtOf(ft.Results[i]))
+		}
+	}
+	if registerQuadResultsSupported && rN > 2 {
+		for i, reg := range quadRes[:rN] {
 			f.pinned = f.pinned.remove(reg)
 			f.pushReg(reg, mtOf(ft.Results[i]))
 		}

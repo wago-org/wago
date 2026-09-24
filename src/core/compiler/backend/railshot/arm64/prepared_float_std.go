@@ -3,3 +3,4 @@
 package arm64
 
 const preparedDirectFloatSupported = true
+const registerQuadResultsSupported = true

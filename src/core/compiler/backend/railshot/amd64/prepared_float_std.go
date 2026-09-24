@@ -3,3 +3,4 @@
 package amd64
 
 const preparedDirectFloatSupported = true
+const registerQuadResultsSupported = true

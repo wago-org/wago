@@ -206,6 +206,10 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) ([]uint6
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, count)
 	}
 	if state.fast {
+		if preparedDirectWideSupported && fn.directIntFast && fn.resultSlots > 2 {
+			args := [4]uint64{a0, a1, a2, a3}
+			return fn.invokeDirectIntWideSession(args[:count])
+		}
 		if preparedDirectFloatSupported && fn.directFloatFast {
 			args := [4]uint64{a0, a1, a2, a3}
 			return fn.invokeDirectFloatSession(args[:count])
@@ -240,7 +244,7 @@ func (s *PreparedSession) invokeArgs(args []uint64) ([]uint64, error) {
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}
-	if preparedDirectWideSupported && state.fast && len(args) > 4 {
+	if preparedDirectWideSupported && state.fast && fn.directIntFast && (len(args) > 4 || fn.resultSlots > 2) {
 		return fn.invokeDirectIntWideSession(args)
 	}
 	gcLease, err := state.beginCall()

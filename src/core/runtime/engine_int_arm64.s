@@ -82,9 +82,9 @@ afterNativeIntPairCall:
 	MOVD R1, ret1+64(FP)
 	RET
 
-// func enterNativeIntWideRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr)
+// func enterNativeIntWideRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
 // The compiler's integer register ABI admits eight parameters on arm64.
-TEXT ·enterNativeIntWideRaw(SB), NOSPLIT, $0-48
+TEXT ·enterNativeIntWideRaw(SB), NOSPLIT, $0-64
 	MOVD code+0(FP), R9
 	MOVD foreignStackTop+24(FP), R10
 	MOVD args+16(FP), R11
@@ -126,6 +126,8 @@ afterNativeIntWideCall:
 	MOVD R12, RSP
 	MOVD R0, ret+32(FP)
 	MOVD R1, ret1+40(FP)
+	MOVD R2, ret2+48(FP)
+	MOVD R3, ret3+56(FP)
 	RET
 
 // func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) (uintptr, uintptr)
