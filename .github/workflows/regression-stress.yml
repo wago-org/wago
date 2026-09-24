@@ -1,11 +1,35 @@
 name: Regression stress
 
 on:
+  workflow_call:
+    inputs:
+      profile:
+        description: "full runs bounded hardening; release also runs extended stress and source regeneration"
+        required: false
+        type: string
+        default: full
+      source_sha:
+        description: "Exact source commit to qualify"
+        required: false
+        type: string
+        default: ""
   schedule:
     - cron: "23 4 * * 1"
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Optional exact main commit to stress"
+        required: false
+        type: string
   pull_request:
     branches: [main]
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - converted_to_draft
+      - edited
     paths:
       - '.github/workflows/regression-stress.yml'
       - 'docs/gc.md'
@@ -16,15 +40,36 @@ permissions:
   contents: read
 
 concurrency:
-  group: regression-stress-${{ github.ref }}
+  group: regression-stress-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   GO_VERSION: "1.22"
 
 jobs:
+  draft-smoke:
+    name: Draft GC smoke / Linux amd64
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Run one seeded GC smoke case
+        run: go test -count=1 -run '^TestDefaultAllocationZerosReusedTinyPayload$' ./src/core/runtime/gc/native
+
   gc-hardening:
     name: GC hardening / ${{ matrix.arch }} / ${{ matrix.bounds }}
+    if: github.event_name == 'workflow_call' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
@@ -49,24 +94,102 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          fetch-depth: 1
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
       - name: Run collector oracle, injection, fuzz seeds, and stress suites
         run: go test -count=3 -tags '${{ matrix.tags }}' ./src/core/runtime/gc/...
       - name: Run native GC root and host-transition stress
         run: go test -count=3 -tags '${{ matrix.tags }}' -run 'Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$' ./src/wago
 
   stress:
-    if: github.event_name != 'pull_request'
+    name: Extended runtime stress
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_call' && inputs.profile == 'release')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          fetch-depth: 1
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
       - name: Run repeated, optimizer, guard-page, and fuzz matrices
         run: tests/scripts/regression-stress.sh
+
+  regression-rebuild:
+    name: Regenerate regression corpus from pinned source
+    if: github.event_name == 'workflow_call' && inputs.profile == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Install corpus build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake jq ninja-build
+      - name: Read pinned WABT provenance
+        id: wabt
+        run: |
+          go test ./tests/support/regressioncorpus
+          repo="$(jq -er '.wabt_repo | select(test("^https://[^[:space:]]+$"))' tests/corpus/regressions/runtime/PROVENANCE.json)"
+          revision="$(jq -er '.wabt_revision | select(test("^[0-9a-f]{40}$"))' tests/corpus/regressions/runtime/PROVENANCE.json)"
+          printf 'repo=%s\n' "$repo" >> "$GITHUB_OUTPUT"
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+      - name: Build pinned WABT from verified source
+        run: |
+          git clone --filter=blob:none --no-checkout "${{ steps.wabt.outputs.repo }}" .tmp/wabt
+          git -C .tmp/wabt fetch --depth=1 origin "${{ steps.wabt.outputs.revision }}"
+          git -C .tmp/wabt checkout --detach "${{ steps.wabt.outputs.revision }}"
+          git -C .tmp/wabt submodule update --init --recursive
+          test "$(git -C .tmp/wabt remote get-url origin)" = "${{ steps.wabt.outputs.repo }}"
+          test "$(git -C .tmp/wabt rev-parse HEAD)" = "${{ steps.wabt.outputs.revision }}"
+          test -z "$(git -C .tmp/wabt status --porcelain --untracked-files=no)"
+          test -z "$(git -C .tmp/wabt submodule status --recursive | grep -E '^[+-U]' || true)"
+          cmake -S .tmp/wabt -B .tmp/wabt/build -G Ninja -DBUILD_TESTS=OFF
+          cmake --build .tmp/wabt/build --target wast2json
+      - name: Verify pinned upstream sources and generated artifacts
+        run: |
+          test "$(git -C .tmp/wabt remote get-url origin)" = "${{ steps.wabt.outputs.repo }}"
+          test "$(git -C .tmp/wabt rev-parse HEAD)" = "${{ steps.wabt.outputs.revision }}"
+          test -z "$(git -C .tmp/wabt status --porcelain --untracked-files=no)"
+          test -z "$(git -C .tmp/wabt submodule status --recursive | grep -E '^[+-U]' || true)"
+          go run ./tests/tools/regression-corpus \
+            -repo "$PWD" \
+            -upstream "$PWD/.tmp/regression-corpus-upstream" \
+            -wast2json "$PWD/.tmp/wabt/build/wast2json" \
+            -fetch

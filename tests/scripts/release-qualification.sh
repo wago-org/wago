@@ -9,9 +9,12 @@ source_sha=0123456789abcdef0123456789abcdef01234567
 run_id=123456
 version=v1.2.3-beta.1
 repository=wago-org/wago
-success_needs='{"changes":{"result":"success"},"docs":{"result":"success"},"lint":{"result":"success"},"regression-corpus":{"result":"success"},"runtime-concurrency":{"result":"success"},"race":{"result":"success"},"platform-test":{"result":"success"},"core-v2":{"result":"success"},"core-v3":{"result":"success"},"fuzz":{"result":"success"},"tinygo":{"result":"success"},"size":{"result":"success"}}'
+success_needs='{"changes":{"result":"success"},"smoke":{"result":"skipped"},"docs":{"result":"success"},"lint":{"result":"success"},"regression-integrity":{"result":"success"},"regression-rebuild":{"result":"skipped"},"gc-hardening":{"result":"success"},"race":{"result":"success"},"current-go":{"result":"success"},"platform-test":{"result":"success"},"app-corpus":{"result":"success"},"app-corpus-verify":{"result":"success"},"core-v2":{"result":"success"},"core-v3":{"result":"success"},"fuzz":{"result":"success"},"tinygo":{"result":"success"},"size":{"result":"success"}}'
+expected_jobs='changes,docs,lint,regression-integrity,gc-hardening,race,current-go,platform-test,app-corpus,app-corpus-verify,core-v2,core-v3,fuzz,tinygo,size'
 
 CI_NEEDS="$success_needs" \
+CI_EXPECTED_JOBS="$expected_jobs" \
+CI_PROFILE=full \
 CI_REPOSITORY="$repository" \
 CI_SOURCE_SHA="$source_sha" \
 CI_RUN_ID="$run_id" \
@@ -29,6 +32,8 @@ fi
 
 missing_fuzz_needs=${success_needs/,\"fuzz\":{\"result\":\"success\"}/}
 CI_NEEDS="$missing_fuzz_needs" \
+CI_EXPECTED_JOBS="$expected_jobs" \
+CI_PROFILE=full \
 CI_REPOSITORY="$repository" \
 CI_SOURCE_SHA="$source_sha" \
 CI_RUN_ID="$run_id" \
@@ -41,6 +46,8 @@ CI_WORKFLOW_REF="$repository/.github/workflows/ci.yml@refs/heads/main" \
 
 skipped_needs=${success_needs/\"core-v3\":{\"result\":\"success\"}/\"core-v3\":{\"result\":\"skipped\"}}
 CI_NEEDS="$skipped_needs" \
+CI_EXPECTED_JOBS="$expected_jobs" \
+CI_PROFILE=full \
 CI_REPOSITORY="$repository" \
 CI_SOURCE_SHA="$source_sha" \
 CI_RUN_ID="$run_id" \
@@ -50,6 +57,19 @@ CI_WORKFLOW_REF="$repository/.github/workflows/ci.yml@refs/heads/main" \
     echo "skipped required CI job unexpectedly produced a qualification record" >&2
     exit 1
   }
+
+if CI_NEEDS='{"smoke":{"result":"success"}}' \
+CI_EXPECTED_JOBS=smoke \
+CI_PROFILE=smoke \
+CI_REPOSITORY="$repository" \
+CI_SOURCE_SHA="$source_sha" \
+CI_RUN_ID="$run_id" \
+CI_RUN_ATTEMPT=1 \
+CI_WORKFLOW_REF="$repository/.github/workflows/ci.yml@refs/heads/main" \
+  go run "$repository_root/tests/tools/release-qualification" record-ci "$test_root/ci-smoke.json" 2>/dev/null; then
+  echo "smoke-profile CI unexpectedly produced a release qualification record" >&2
+  exit 1
+fi
 
 mkdir -p "$test_root/release" "$test_root/manifest"
 for name in \

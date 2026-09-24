@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"runtime"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -581,18 +583,45 @@ func ashellWazeroMemory(module api.Module) ([]byte, bool) {
 }
 
 func TestApplicationCorpusRuns(t *testing.T) {
-	for _, m := range loadCorpus(t) {
-		if m.Command == nil || !m.supports("CommandExec") {
-			continue
-		}
-		m := m
-		t.Run(m.name(), func(t *testing.T) {
-			if !commandSupportsPlatform(m, runtime.GOOS, runtime.GOARCH) {
-				if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
-					t.Fatalf("command adapter must run on linux/amd64; supported platforms: %v", m.Command.Platforms)
-				}
-				t.Skipf("command adapter is not admitted on %s/%s; supported platforms: %v", runtime.GOOS, runtime.GOARCH, m.Command.Platforms)
+	modules := applicationCorpusModules(t, runtime.GOOS, runtime.GOARCH)
+	shard, shardCount, selected, err := currentApplicationCorpusShard(modules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference := os.Getenv("WAGO_APP_CORPUS_REFERENCE")
+	if reference == "" {
+		reference = "all"
+	}
+	if reference != "all" && reference != "wago-only" {
+		t.Fatalf("invalid WAGO_APP_CORPUS_REFERENCE %q", reference)
+	}
+	report := applicationCorpusShardReport{
+		SourceSHA:  os.Getenv("CI_SOURCE_SHA"),
+		Platform:   runtime.GOOS + "/" + runtime.GOARCH,
+		Shard:      shard,
+		ShardCount: shardCount,
+		Reference:  reference,
+	}
+	if path := os.Getenv("WAGO_APP_CORPUS_REPORT"); path != "" {
+		defer func() {
+			data, err := json.Marshal(report)
+			if err != nil {
+				t.Errorf("encode application corpus report: %v", err)
+				return
 			}
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Errorf("create application corpus report directory: %v", err)
+				return
+			}
+			if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+				t.Errorf("write application corpus report: %v", err)
+			}
+		}()
+	}
+	for _, m := range selected {
+		m := m
+		started := time.Now()
+		passed := t.Run(m.name(), func(t *testing.T) {
 			validateCommandInputs(t, m)
 			stdin := commandInput(t, m)
 			t.Run("wago", func(t *testing.T) {
@@ -609,28 +638,37 @@ func TestApplicationCorpusRuns(t *testing.T) {
 					t.Fatal(err)
 				}
 			})
-			t.Run("wazero", func(t *testing.T) {
-				if m.Command.ReferenceRuntime != "" {
-					t.Skipf("in-process wazero comparison unavailable; independently captured %s oracle is pinned", m.Command.ReferenceRuntime)
-				}
-				ctx := context.Background()
-				r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
-				defer r.Close(ctx)
-				if err := instantiateWazeroCommandHost(ctx, r, m.Command.Runtime); err != nil {
-					t.Fatal(err)
-				}
-				compiled, err := r.CompileModule(ctx, m.bytes)
-				if err != nil {
-					t.Fatalf("compile: %v", err)
-				}
-				got, err := runWazeroCommand(ctx, r, compiled, m, stdin, true)
-				if err != nil {
-					t.Fatalf("run: %v (stdout=%q stderr=%q)", err, got.stdout, got.stderr)
-				}
-				if err := validateCommandOutput(m, got); err != nil {
-					t.Fatal(err)
-				}
-			})
+			if reference == "all" {
+				t.Run("wazero", func(t *testing.T) {
+					if m.Command.ReferenceRuntime != "" {
+						t.Skipf("in-process wazero comparison unavailable; independently captured %s oracle is pinned", m.Command.ReferenceRuntime)
+					}
+					ctx := context.Background()
+					r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
+					defer r.Close(ctx)
+					if err := instantiateWazeroCommandHost(ctx, r, m.Command.Runtime); err != nil {
+						t.Fatal(err)
+					}
+					compiled, err := r.CompileModule(ctx, m.bytes)
+					if err != nil {
+						t.Fatalf("compile: %v", err)
+					}
+					got, err := runWazeroCommand(ctx, r, compiled, m, stdin, true)
+					if err != nil {
+						t.Fatalf("run: %v (stdout=%q stderr=%q)", err, got.stdout, got.stderr)
+					}
+					if err := validateCommandOutput(m, got); err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+		})
+		status := "passed"
+		if !passed {
+			status = "failed"
+		}
+		report.Workloads = append(report.Workloads, applicationCorpusWorkloadResult{
+			ID: m.ID, Status: status, DurationNS: time.Since(started).Nanoseconds(),
 		})
 	}
 }

@@ -18,6 +18,7 @@ mkdir -p "$(dirname "$report")"
 profile_tsv="${SIZE_PROFILE_REPORT:-$(dirname "$report")/size-profiles.tsv}"
 symbol_tsv="${SIZE_SYMBOL_REPORT:-$(dirname "$report")/size-symbols.tsv}"
 budgets="$root/scripts/release-size-budgets.tsv"
+baseline_cache="${SIZE_BASELINE_CACHE_DIR:-}"
 build_tmp=$(mktemp -d)
 baseline_tmp=""
 cleanup() {
@@ -30,6 +31,14 @@ trap cleanup EXIT
 
 human() {
   awk -v b="$1" 'BEGIN { if (b>=1048576) printf "%.2f MiB", b/1048576; else printf "%.0f KiB", b/1024 }'
+}
+
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{ print $1 }'
+  else
+    shasum -a 256 "$1" | awk '{ print $1 }'
+  fi
 }
 
 budget_for() {
@@ -81,7 +90,31 @@ printf 'profile\ttarget\tbytes\tbudget_bytes\tdelta_bytes\n' >"$profile_tsv"
 printf 'profile\trank\tbytes\ttype\tsymbol\n' >"$symbol_tsv"
 
 have_baseline=false
+baseline_sha=""
+baseline_identity=""
+baseline_cache_valid=false
 if [[ -n "$baseline_ref" ]] && git rev-parse --verify -q "$baseline_ref^{commit}" >/dev/null; then
+  baseline_sha=$(git rev-parse "$baseline_ref^{commit}")
+  go_toolchain=$(go version)
+  tinygo_toolchain=$(tinygo version 2>/dev/null || printf 'unavailable')
+  strip_toolchain=$(strip --version 2>/dev/null | sed -n '1p' || llvm-strip --version 2>/dev/null | sed -n '1p' || printf 'unavailable')
+  baseline_identity=$(printf '%s\n' \
+    "source=$baseline_sha" \
+    "target=$target_os/$target_arch" \
+    "go=$go_toolchain" \
+    "tinygo=$tinygo_toolchain" \
+    "strip=$strip_toolchain" \
+    "build_script=$(sha256_file "$0")" \
+    "budgets=$(sha256_file "$budgets")")
+  if [[ -n "$baseline_cache" ]]; then
+    mkdir -p "$baseline_cache"
+    if [[ -f "$baseline_cache/identity" ]] && cmp -s "$baseline_cache/identity" <(printf '%s\n' "$baseline_identity"); then
+      baseline_cache_valid=true
+    else
+      printf '%s\n' "$baseline_identity" >"$baseline_cache/.identity.tmp"
+      mv "$baseline_cache/.identity.tmp" "$baseline_cache/identity"
+    fi
+  fi
   baseline_tmp=$(mktemp -d)
   if git worktree add --detach -q "$baseline_tmp" "$baseline_ref"; then
     have_baseline=true
@@ -91,6 +124,7 @@ fi
 rows=""
 failures=0
 profiles=0
+symbol_profiles=()
 while IFS='|' read -r name tags package toolchain; do
   current="$build_tmp/$name"
   if ! build_profile "$root" "$name" "$tags" "$package" "$toolchain" "$current"; then
@@ -107,7 +141,24 @@ while IFS='|' read -r name tags package toolchain; do
   delta=""
   if [[ "$have_baseline" == true ]]; then
     baseline="$build_tmp/base-$name"
-    if build_profile "$baseline_tmp" "$name" "$tags" "$package" "$toolchain" "$baseline"; then
+    cached_baseline=""
+    if [[ -n "$baseline_cache" && "$baseline_cache_valid" == true ]]; then
+      cached_baseline="$baseline_cache/$name"
+      if [[ -s "$cached_baseline" && -s "$cached_baseline.sha256" ]] && \
+        [[ "$(sha256_file "$cached_baseline")" == "$(cat "$cached_baseline.sha256")" ]]; then
+        cp "$cached_baseline" "$baseline"
+      else
+        cached_baseline=""
+      fi
+    fi
+    if [[ -z "$cached_baseline" ]] && build_profile "$baseline_tmp" "$name" "$tags" "$package" "$toolchain" "$baseline"; then
+      if [[ -n "$baseline_cache" ]]; then
+        cp "$baseline" "$baseline_cache/$name"
+        sha256_file "$baseline_cache/$name" >"$baseline_cache/$name.sha256.tmp"
+        mv "$baseline_cache/$name.sha256.tmp" "$baseline_cache/$name.sha256"
+      fi
+    fi
+    if [[ -s "$baseline" ]]; then
       base_bytes=$(wc -c <"$baseline" | tr -d ' ')
       delta=$((bytes - base_bytes))
     fi
@@ -123,9 +174,19 @@ while IFS='|' read -r name tags package toolchain; do
   profiles=$((profiles + 1))
   if (( bytes > budget )); then
     failures=$((failures + 1))
+    if [[ "$toolchain" == go ]]; then
+      symbol_profiles+=("$name")
+    fi
   fi
 
-  if [[ "$toolchain" == go ]]; then
+  if [[ "$toolchain" == go && "${SIZE_SYMBOLS:-}" == "1" ]] && (( bytes <= budget )); then
+    symbol_profiles+=("$name")
+  fi
+done < <(profile_specs)
+
+for name in "${symbol_profiles[@]}"; do
+  while IFS='|' read -r profile tags package toolchain; do
+    [[ "$profile" == "$name" ]] || continue
     attributed="$build_tmp/$name-symbols"
     build_profile "$root" "$name" "$tags" "$package" "$toolchain" "$attributed" true
     rank=0
@@ -133,8 +194,8 @@ while IFS='|' read -r name tags package toolchain; do
       rank=$((rank + 1))
       printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$rank" "$symbol_bytes" "$symbol_type" "$symbol_name" >>"$symbol_tsv"
     done < <(go tool nm -size -sort size "$attributed" | awk 'NR <= 25')
-  fi
-done < <(profile_specs)
+  done < <(profile_specs)
+done
 
 summary="Build sizes: $profiles profiles within budget"
 if (( failures != 0 )); then
@@ -147,7 +208,7 @@ fi
   printf '%b' "$rows"
   # Backticks are Markdown literals; target substitution is through printf's %s.
   # shellcheck disable=SC2016
-  printf '\nTarget: `%s/%s`; stripped, `-trimpath`, `-buildvcs=false`. Top-symbol data: `size-symbols.tsv`.\n' "$target_os" "$target_arch"
+  printf '\nTarget: `%s/%s`; stripped, `-trimpath`, `-buildvcs=false`. Detailed symbol attribution is generated for over-budget profiles or when `SIZE_SYMBOLS=1`.\n' "$target_os" "$target_arch"
 } >"$report"
 printf '%s\n' "$summary"
 

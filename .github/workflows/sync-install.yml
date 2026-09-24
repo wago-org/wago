@@ -1,28 +1,125 @@
 name: Publish installers
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths:
-      - install.sh
-      - install.ps1
-      - .github/workflows/sync-install.yml
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Full main commit SHA with successful CI qualification"
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
-  group: publish-installers
+  group: publish-installers-${{ github.event.workflow_run.head_sha || inputs.source_sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
+  prepare:
+    name: Verify installer source qualification
+    if: >-
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      ci_run_id: ${{ steps.ci.outputs.run_id }}
+      ci_run_attempt: ${{ steps.ci.outputs.run_attempt }}
+    steps:
+      - name: Select exact source SHA
+        id: source
+        env:
+          EVENT_SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          sha="$EVENT_SOURCE_SHA"
+          if [ -z "$sha" ]; then sha="$REQUESTED_SOURCE_SHA"; fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::source SHA must be a full lowercase commit SHA"
+            exit 1
+          }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          fetch-depth: 0
+      - name: Resolve successful CI run for the exact source
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main || {
+            echo "::error::$SOURCE_SHA is not reachable from main"
+            exit 1
+          }
+          run_id=$(gh api --method GET \
+            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs" \
+            -f head_sha="$SOURCE_SHA" -f branch=main -f event=push \
+            -f status=completed -f per_page=100 \
+            --jq "[.workflow_runs[] |
+              select(.head_sha == \"$SOURCE_SHA\" and .head_branch == \"main\" and
+                     .event == \"push\" and .conclusion == \"success\")] |
+              sort_by(.run_attempt, .id) | last | .id")
+          [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::no successful full CI run exists for $SOURCE_SHA"
+            exit 1
+          }
+          run_attempt=$(gh api "repos/${{ github.repository }}/actions/runs/$run_id" \
+            --jq "select(.head_sha == \"$SOURCE_SHA\" and .head_branch == \"main\" and
+                         .event == \"push\" and .status == \"completed\" and
+                         .conclusion == \"success\") | .run_attempt")
+          [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::CI run $run_id is not an exact successful source qualification"
+            exit 1
+          }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.ci.outputs.run_id }}
+          github-token: ${{ github.token }}
+          name: stable-source-qualification-${{ steps.source.outputs.sha }}-${{ steps.ci.outputs.run_attempt }}
+          path: qualification
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.22"
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Verify full profile and exact job results
+        run: |
+          scripts/release-qualification.sh verify-ci \
+            qualification/ci-qualification.json "${{ github.repository }}" \
+            "${{ steps.source.outputs.sha }}" "${{ steps.ci.outputs.run_id }}" \
+            "${{ steps.ci.outputs.run_attempt }}"
+
   publish:
     name: Sync install.wago.sh
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - name: Check out Wago
+      - name: Check out qualified Wago source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - name: Check out installer site
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

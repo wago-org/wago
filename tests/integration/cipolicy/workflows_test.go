@@ -63,7 +63,8 @@ func TestCIUsesPinnedJustTaskRunner(t *testing.T) {
 		`JUST_VERSION: "1.58.0"`,
 		`extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3`,
 		`run: just lint`,
-		`run: just test`,
+		`run: just test unit`,
+		`run: just test corpus all`,
 		`run: just test spec v2`,
 		`run: just build tinygo`,
 	} {
@@ -86,8 +87,10 @@ func TestCanaryPublishesCommitAddressedArtifactsWithoutTags(t *testing.T) {
 		`name: Publish canary artifacts`,
 		`name: canary-${{ needs.prepare.outputs.sha }}-${{ matrix.target }}`,
 		`WAGO_VERSION: canary@${{ needs.prepare.outputs.sha }}`,
+		`scripts/smoke-release-assets.sh . "${{ matrix.target }}" "canary@${{ needs.prepare.outputs.sha }}"`,
+		`scripts/release-qualification.sh verify-ci`,
 		`retention-days: 90`,
-		`group: publish-canary-${{ github.event.workflow_run.head_sha || github.sha }}`,
+		`group: publish-canary-${{ github.event.workflow_run.head_sha || inputs.source_sha || github.sha }}`,
 	} {
 		if !strings.Contains(contents, required) {
 			t.Errorf("canary workflow is missing commit-addressed artifact policy %q", required)
@@ -111,6 +114,11 @@ func TestInstallerPublishStagesRemovedBootstraps(t *testing.T) {
 	}
 	if strings.Contains(contents, "git add --all -- install.sh install.cmd install.ps1") {
 		t.Error("installer publish workflow names the removed install.cmd path")
+	}
+	for _, required := range []string{"stable-source-qualification-", `scripts/release-qualification.sh verify-ci`, "github.event.workflow_run.conclusion == 'success'", "REQUESTED_SOURCE_SHA"} {
+		if !strings.Contains(contents, required) {
+			t.Errorf("installer publication is missing exact-source CI qualification %q", required)
+		}
 	}
 }
 
@@ -140,9 +148,8 @@ func TestAggregateCIRequiresEveryWorkflowJob(t *testing.T) {
 	}
 	for _, required := range []string{
 		"if: always()",
-		"join(needs.*.result",
-		`[ "$r" = "failure" ]`,
-		`[ "$r" = "cancelled" ]`,
+		"CI_NEEDS: ${{ toJSON(needs) }}",
+		"go run ./tests/tools/ci-plan verify",
 	} {
 		if !strings.Contains(aggregate, required) {
 			t.Errorf("ci-ok aggregate is missing fail-closed result handling %q", required)
@@ -358,20 +365,24 @@ func TestRuntimeConcurrencyHarnessRunsOnLinuxAMD64AndARM64(t *testing.T) {
 	}
 	contents := string(workflow)
 	for _, required := range []string{
-		`runtime-concurrency:`,
-		`name: Runtime concurrency / ${{ matrix.name }}`,
-		`runner: ubuntu-24.04`,
-		`runner: ubuntu-24.04-arm`,
+		`name: Run bounded seeded runtime concurrency harness`,
 		`WAGO_CONCURRENCY_SEED: 439000001,439000019,439000043,439000081`,
 		`run: just test concurrency`,
 		`name: Race detector / Linux amd64`,
 		`timeout-minutes: 15`,
 		`go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency`,
-		`needs: [changes, docs, lint, regression-corpus, runtime-concurrency, race`,
+		`if: matrix.goos == 'linux'`,
 	} {
-		if !strings.Contains(contents, required) {
+		if strings.HasPrefix(required, "if:") {
+			if !strings.Contains(contents, required) {
+				t.Errorf("CI workflow is missing runtime-concurrency policy %q", required)
+			}
+		} else if !strings.Contains(contents, required) {
 			t.Errorf("CI workflow is missing runtime-concurrency policy %q", required)
 		}
+	}
+	if strings.Contains(contents, "runtime-concurrency:") {
+		t.Error("seeded concurrency must be folded into the native test lane")
 	}
 }
 
@@ -382,10 +393,17 @@ func TestDocsChangesRunDocumentationValidation(t *testing.T) {
 	}
 	contents := string(workflow)
 	for _, required := range []string{
-		`docs: ${{ steps.derive.outputs.docs }}`,
-		`if: needs.changes.outputs.docs == 'true'`,
+		`ready_for_review`,
+		`converted_to_draft`,
+		`name: Plan CI profile`,
+		`go run ./tests/tools/ci-plan plan`,
+		`if: needs.changes.outputs.profile == 'docs' || needs.changes.outputs.profile == 'full'`,
 		`run: just docs`,
-		`needs: [changes, docs, lint, regression-corpus`,
+		`name: Draft smoke / Linux amd64`,
+		`CURRENT_GO_VERSION: "1.27.1"`,
+		`name: Current Go / Linux amd64`,
+		`run: just test ci-smoke`,
+		`name: Verify every expected CI result`,
 	} {
 		if !strings.Contains(contents, required) {
 			t.Errorf("CI workflow is missing docs-validation policy %q", required)
@@ -399,13 +417,16 @@ func TestDocsOnlyChangesSkipCodeMatrix(t *testing.T) {
 		t.Fatal(err)
 	}
 	contents := string(workflow)
-	for _, required := range []string{
-		`predicate-quantifier: 'every'`,
-		"docs:\n              - '**'",
-		"code:\n              - '**'\n              - '!**/*.md'\n              - '!docs/**'\n              - '!LICENSE'",
-	} {
-		if !strings.Contains(contents, required) {
-			t.Errorf("CI workflow is missing docs-only gating policy %q", required)
+	if strings.Contains(contents, "dorny/paths-filter") {
+		t.Fatal("CI change selection must use the tested Go planner")
+	}
+	planner, err := os.ReadFile(filepath.Clean("../../tools/ci-plan/main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"documentationPath", "return planFor(\"docs\"", "unexpected pull request base", "change detection returned an empty selection"} {
+		if !strings.Contains(string(planner), required) {
+			t.Errorf("CI planner is missing fail-closed path policy %q", required)
 		}
 	}
 }
