@@ -122,5 +122,6 @@ type invokeCache struct {
 	boundedWrapper    bool
 	paramWidthClass   scalarSlotWidthClass
 	resultWidthClass  scalarSlotWidthClass
+	directIntCall     cachedInvokeIntCall
 	slotWide          []bool // parameter slots followed by result slots; false means a 32-bit scalar
 }
