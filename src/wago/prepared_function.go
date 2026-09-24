@@ -39,6 +39,7 @@ type WasmFunc struct {
 	directIsolated      bool
 	directIntFast       bool
 	directFloatFast     bool
+	directMixedInfo     uint8
 	directIntLight      bool
 	directIntBounded    bool
 	directIntMode       preparedIntCallMode
@@ -117,6 +118,49 @@ func preparedDirectFloatSignature(sig FuncSig) bool {
 		}
 	}
 	return true
+}
+
+func preparedDirectMixedSignature(sig FuncSig) bool {
+	if len(sig.Params) > 4 || len(sig.Results) > 1 {
+		return false
+	}
+	for _, typ := range sig.Params {
+		if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
+			return false
+		}
+	}
+	for _, typ := range sig.Results {
+		if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
+			return false
+		}
+	}
+	return !preparedDirectIntSignature(sig) && !preparedDirectFloatSignature(sig)
+}
+
+func directMixedFloatMask(params []ValType) uint8 {
+	var mask uint8
+	for i, typ := range params {
+		if typ == ValF32 || typ == ValF64 {
+			mask |= 1 << i
+		}
+	}
+	return mask
+}
+
+const (
+	// The tagged encoding fits in invokeCache.scalarWideMask without enlarging
+	// Instance. Mixed entries never consume its ordinary integer-width mask.
+	directMixedParamMask = uint8(0x0f)
+	directMixedResultFP  = uint8(1 << 4)
+	directMixedEnabled   = uint8(1 << 7)
+)
+
+func encodeDirectMixedInfo(sig FuncSig) uint8 {
+	info := directMixedEnabled | directMixedFloatMask(sig.Params)
+	if len(sig.Results) == 1 && (sig.Results[0] == ValF32 || sig.Results[0] == ValF64) {
+		info |= directMixedResultFP
+	}
+	return info
 }
 
 // WasmFunc resolves a locally-defined function export once. The returned
@@ -229,6 +273,20 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 				fn.directLinMem = in.jm.LinMemBase()
 			}
 		}
+		if preparedDirectFloatSupported && preparedDirectIntEnabled && preparedDirectMixedSignature(sig) &&
+			in.c.directPreparedAt(ic.li) && in.c.directPreparedBoundedAt(ic.li) {
+			directMode := entryMode
+			if directMode == preparedEntryGeneral && in.c.boundsMode == BoundsChecksSignalsBased {
+				directMode = in.preparedMemoryFreeEntryMode()
+			}
+			if preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated {
+				fn.directIsolated = true
+				fn.directMixedInfo = encodeDirectMixedInfo(sig)
+				fn.directGate = &in.ensurePluginState().invokeMu
+				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+				fn.directLinMem = in.jm.LinMemBase()
+			}
+		}
 	}
 	return fn, nil
 }
@@ -256,6 +314,9 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 		}
 		if preparedDirectFloatSupported && fn.directFloatFast {
 			return fn.invokeDirectFloat(args)
+		}
+		if preparedDirectFloatSupported && fn.directMixedInfo != 0 {
+			return fn.invokeDirectMixed(args)
 		}
 		if fn.scalarFast {
 			return fn.invokeScalar(args)

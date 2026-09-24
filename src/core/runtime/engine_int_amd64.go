@@ -13,6 +13,9 @@ func enterNativeIntWideRaw(code, linMem uintptr, args *[8]uint64, foreignStackTo
 
 //go:noescape
 func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) uintptr
+
+//go:noescape
+func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr)
 func enterNativeIntPreboundContextRaw(call *PreparedIntCall, a0, a1, a2, a3 uintptr) uintptr
 func enterNativeIntCallRaw(call *PreparedIntCall) uintptr
 
@@ -66,6 +69,13 @@ func (e *Engine) EnterPreparedIntWideBounded(code, linMemBase uintptr, args *[8]
 // to four FP register arguments and one FP register result.
 func (e *Engine) EnterPreparedFloatBounded(code, linMemBase uintptr, args *[4]uint64) uint64 {
 	return uint64(enterNativeFloatRaw(code, linMemBase, args, e.stackTop))
+}
+
+// EnterPreparedMixedBounded stages up to four GP and four FP arguments in
+// independent register banks. The caller selects the result bank by signature.
+func (e *Engine) EnterPreparedMixedBounded(code, linMemBase uintptr, args *[8]uint64) (uint64, uint64) {
+	gp, fp := enterNativeMixedRaw(code, linMemBase, args, e.stackTop)
+	return uint64(gp), uint64(fp)
 }
 
 // EnterPreparedIntPreboundContextBounded reads immutable entry state from call

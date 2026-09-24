@@ -112,7 +112,7 @@ type invokeCache struct {
 	directFloatFast   bool
 	directIntLight    bool
 	directIntBounded  bool
-	scalarWideMask    uint8
+	scalarWideMask    uint8 // low bits are scalar widths; mixed direct entries use the tagged FP-bank encoding
 	scalarResultWide  bool
 	li                int // local index, or -1-import index for an InstanceExport re-export
 	paramSlots        int

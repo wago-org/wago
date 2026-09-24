@@ -4463,6 +4463,9 @@ func (in *Instance) tryInvokeCachedDirectNumeric(export string, args []uint64) (
 // invocation gate, and the prepared-fast revocation bit to be held.
 func (in *Instance) invokeCachedDirectNumeric(ic *invokeCache, entry uintptr, args []uint64) ([]uint64, error) {
 	if preparedDirectFloatSupported && ic.directFloatFast {
+		if ic.scalarWideMask&directMixedEnabled != 0 {
+			return in.invokeDirectMixedEntry(entry, ic.scalarWideMask, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
+		}
 		return in.invokeDirectFloatEntry(entry, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
 	}
 	if preparedDirectWideSupported && len(args) > 4 {
@@ -5108,11 +5111,19 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	directFloatFast := preparedDirectFloatSupported && preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
 		preparedDirectIntEnabled && directEntryMode == preparedEntryIsolated &&
 		preparedDirectFloatSignature(sig) && in.c.directPreparedAt(li) && in.c.directPreparedBoundedAt(li)
+	directMixedFast := preparedDirectFloatSupported && preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
+		preparedDirectIntEnabled && directEntryMode == preparedEntryIsolated &&
+		preparedDirectMixedSignature(sig) && in.c.directPreparedAt(li) && in.c.directPreparedBoundedAt(li)
+	var directMixedInfo uint8
+	if directMixedFast {
+		directMixedInfo = encodeDirectMixedInfo(sig)
+		scalarWideMask = directMixedInfo
+	}
 	*slot = invokeCache{
 		export:            export,
 		valid:             true,
 		directIntFast:     directIntFast,
-		directFloatFast:   directFloatFast,
+		directFloatFast:   directFloatFast || directMixedFast,
 		directIntLight:    directIntFast && in.c.directPreparedLightAt(li),
 		directIntBounded:  directIntFast && in.c.directPreparedBoundedAt(li),
 		scalarWideMask:    scalarWideMask,

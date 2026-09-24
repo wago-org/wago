@@ -180,6 +180,23 @@ func preparedDirectFloatSig(ft *wasm.CompType) bool {
 	return true
 }
 
+func preparedDirectMixedSig(ft *wasm.CompType) bool {
+	if len(ft.Params) > 4 || len(ft.Results) > 1 {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if !isIntValType(typ) && !isFloatValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isIntValType(typ) && !isFloatValType(typ) {
+			return false
+		}
+	}
+	return !preparedDirectIntSig(ft) && !preparedDirectFloatSig(ft)
+}
+
 func isFloatValType(t wasm.ValType) bool {
 	return wasm.EqualValType(t, wasm.F32) || wasm.EqualValType(t, wasm.F64)
 }
