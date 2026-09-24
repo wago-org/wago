@@ -547,6 +547,33 @@ func BenchmarkExecHostCallback_wago(b *testing.B) {
 	}
 }
 
+// BenchmarkExecHostCallbackInstance_wago measures the same typed host call
+// through the ordinary name-based Instance.Invoke entry.
+func BenchmarkExecHostCallbackInstance_wago(b *testing.B) {
+	c, err := wago.Compile(nil, hostcallWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	imports := wago.NewImports()
+	imports.HostFunc("env", "host", func(x int32) int32 { return x + 1 })
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("roundtrip", 1); err != nil || len(got) != 1 || got[0] != 2 {
+		b.Fatalf("roundtrip(1) = %v, %v; want 2", got, err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("roundtrip", 1); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 // BenchmarkExecSessionHostCallback_wago measures the same typed callback with
 // one instance reservation and prebound host entry held across timed calls.
 func BenchmarkExecSessionHostCallback_wago(b *testing.B) {
