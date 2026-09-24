@@ -60,7 +60,7 @@ const TABS = [
     items: [
       rs("Compile latency", "fib_rec module", "CompileFull/fib_rec", "WazeroCompile/fib_rec"),
       rs("Instantiate latency", "fib_rec startup + mapping", "Instantiate/fib_rec", "WazeroInstantiate/fib_rec"),
-      rs("Call overhead", "tiny host → wasm call", "Exec/tiny.add", "WazeroExec/tiny.add"),
+      rs("Call overhead", "raw Instance.Invoke (i32) → i32", "ExecInstanceCall_wago", "ExecCallOverhead_wazero"),
       rs("Exec latency", "fib_rec recursion", "Exec/fib_rec.fib", "WazeroExec/fib_rec.fib"),
       rs("N-body", "leapfrog solar-system integrator", "Exec/nbody.step", "WazeroExec/nbody.step"),
       rs("Ray tracer", "recursive Whitted, depth-4 mirrors", "Exec/raytrace.render", "WazeroExec/raytrace.render"),
@@ -295,7 +295,7 @@ function buildGeneralSummary(metrics, raw, modules) {
     )],
   ].map(([label, sub, kind, values]) => ({ label, sub, kind, values }));
   const boundary = [
-    generalPairedMetric(metrics, "Host → Wasm", "reserved session (i32) → i32", "ExecSessionCall_wago", "ExecCallOverhead_wazero"),
+    generalPairedMetric(metrics, "Host → Wasm", "raw Instance.Invoke (i32) → i32", "ExecInstanceCall_wago", "ExecCallOverhead_wazero"),
     generalPairedMetric(metrics, "Wasm → host", "reserved typed import callback", "ExecSessionHostCallback_wago", "ExecHostRoundtrip_wazero"),
   ].filter(Boolean);
   return [...summary, ...boundary];
