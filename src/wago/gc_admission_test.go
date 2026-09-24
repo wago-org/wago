@@ -159,6 +159,22 @@ func TestGCAdmissionUncontendedAllocations(t *testing.T) {
 	}
 }
 
+func TestGCInvocationNoDomainFastPathPreservesDynamicTopology(t *testing.T) {
+	plain := &Instance{refStore: &referenceStore{}}
+	if lease := plain.lockGCInvocation(newInvocationID()); lease.acquired || lease.topology != nil {
+		t.Fatalf("plain no-domain admission acquired a lease: %+v", lease)
+	}
+
+	dynamic := &Instance{refStore: &referenceStore{gcDomains: &gcDomainTopology{}}}
+	dynamic.executionFlags.Store(executionFlagDynamicGCDomain)
+	lease := dynamic.lockGCInvocation(newInvocationID())
+	if !lease.acquired || !lease.dynamic || lease.topology != dynamic.refStore.gcDomains {
+		lease.unlock()
+		t.Fatalf("dynamic empty-domain admission lost topology lease: %+v", lease)
+	}
+	lease.unlock()
+}
+
 func BenchmarkGCInvocationAdmission(b *testing.B) {
 	for _, dynamic := range []bool{false, true} {
 		name := "static"

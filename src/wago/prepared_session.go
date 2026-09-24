@@ -51,7 +51,7 @@ func (fn *WasmFunc) OpenSession() (*PreparedSession, error) {
 	}
 	state := &preparedSessionState{fn: fn}
 	s := &PreparedSession{state: state}
-	if fn.directIntFast && fn.directIsolated && in.tryPreparedDirect() {
+	if (fn.isolatedFast || fn.directIsolated && (fn.directIntFast || preparedDirectFloatSupported && (fn.directFloatFast || fn.directMixedInfo != 0))) && in.tryPreparedDirect() {
 		state.fast = true
 		return s, nil
 	}
@@ -206,6 +206,22 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) ([]uint6
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, count)
 	}
 	if state.fast {
+		if preparedDirectWideSupported && fn.directIntFast && fn.resultSlots > 2 {
+			args := [4]uint64{a0, a1, a2, a3}
+			return fn.invokeDirectIntWideSession(args[:count])
+		}
+		if preparedDirectFloatSupported && fn.directFloatFast {
+			args := [4]uint64{a0, a1, a2, a3}
+			return fn.invokeDirectFloatSession(args[:count])
+		}
+		if preparedDirectFloatSupported && fn.directMixedInfo != 0 {
+			args := [4]uint64{a0, a1, a2, a3}
+			return fn.invokeDirectMixedSession(args[:count])
+		}
+		if !fn.directIntFast {
+			args := [4]uint64{a0, a1, a2, a3}
+			return fn.invokeScalarAdmitted(args[:count])
+		}
 		return fn.invokeDirectIntSession(a0, a1, a2, a3)
 	}
 	gcLease, err := state.beginCall()
@@ -231,6 +247,15 @@ func (s *PreparedSession) invokeArgs(args []uint64) ([]uint64, error) {
 	fn := state.fn
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
+	}
+	if preparedDirectWideSupported && state.fast && fn.directIntFast && (len(args) > 4 || fn.resultSlots > 2) {
+		return fn.invokeDirectIntWideSession(args)
+	}
+	if preparedDirectFloatSupported && state.fast && fn.directFloatFast {
+		return fn.invokeDirectFloatSession(args)
+	}
+	if state.fast {
+		return fn.invokeScalarAdmitted(args)
 	}
 	gcLease, err := state.beginCall()
 	if err != nil {

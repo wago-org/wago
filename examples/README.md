@@ -13,7 +13,7 @@ Most examples build their tiny WebAssembly modules in process through [`internal
 ## Start with the runtime
 
 - [01 hello](01-hello) compiles, instantiates, and invokes with the low-level API.
-- [02 typed runtime](02-runtime-typed) introduces `Runtime`, `InvokeValues`, `Value`, and cancellation.
+- [02 runtime invocation](02-runtime-typed) introduces `Runtime`, raw value slots, `InvokeContext`, and cancellation.
 - [03 host import](03-host-import) lets Wasm call a Go function.
 - [04 memory](04-memory) reads and writes guest linear memory.
 - [05 globals](05-globals) reads and sets an exported global.

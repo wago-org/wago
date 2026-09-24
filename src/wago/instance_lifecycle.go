@@ -247,6 +247,13 @@ func (in *Instance) beginInstanceInvocation() error {
 	}
 }
 
+func (in *Instance) beginDirectInvocation() error {
+	if in.rt == nil && !in.guestStorageBorrowed() && in.invocationState.CompareAndSwap(0, 1) {
+		return nil
+	}
+	return in.beginInvocation()
+}
+
 func (in *Instance) endInvocation() {
 	if in == nil {
 		return
@@ -281,6 +288,16 @@ func (in *Instance) endInvocation() {
 		}
 		return
 	}
+}
+
+// endDirectInvocation releases the uncontended direct-instance lease with one
+// atomic operation. A concurrent Close changes the state and takes the full
+// endInvocation finalization path; Runtime-owned instances retain operation accounting.
+func (in *Instance) endDirectInvocation() {
+	if in.rt == nil && in.invocationState.CompareAndSwap(1, 0) {
+		return
+	}
+	in.endInvocation()
 }
 
 // tryFinalize delegates the reference-lifetime transition. Keeping this small

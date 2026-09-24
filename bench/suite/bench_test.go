@@ -462,6 +462,37 @@ func BenchmarkExecTypedCall_wago(b *testing.B) {
 	}
 }
 
+// BenchmarkExecInstanceCall_wago measures name-based Instance.Invoke on the
+// same identity export used by the resolved-function and session benchmarks.
+func BenchmarkExecInstanceCall_wago(b *testing.B) {
+	c, err := wago.Compile(nil, callWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("call", 1); err != nil || len(got) != 1 || got[0] != 1 {
+		b.Fatalf("call(1) = %v, %v; want 1", got, err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	var got []uint64
+	for i := 0; i < b.N; i++ {
+		got, err = in.Invoke("call", 1)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	if len(got) != 1 || got[0] != 1 {
+		b.Fatalf("call(1) = %v, want 1", got)
+	}
+}
+
 // BenchmarkExecSessionCall_wago measures a caller-owned reservation held across
 // repeated calls. The reservation is acquired before timing and released after.
 func BenchmarkExecSessionCall_wago(b *testing.B) {
@@ -542,6 +573,143 @@ func BenchmarkExecHostCallback_wago(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if _, err := fn.Invoke(1); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkExecHostCallbackInstance_wago measures the same typed host call
+// through the ordinary name-based Instance.Invoke entry.
+func BenchmarkExecHostCallbackInstance_wago(b *testing.B) {
+	c, err := wago.Compile(nil, hostcallWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	imports := wago.NewImports()
+	imports.HostFunc("env", "host", func(x int32) int32 { return x + 1 })
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("roundtrip", 1); err != nil || len(got) != 1 || got[0] != 2 {
+		b.Fatalf("roundtrip(1) = %v, %v; want 2", got, err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("roundtrip", 1); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func hostcallF64Wasm() []byte {
+	importEntry := append(wasmtest.Name("env"), wasmtest.Name("host")...)
+	importEntry = append(importEntry, 0, 0)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("roundtrip", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b}))),
+	)
+}
+
+func hostcallAlternatingF64Wasm() []byte {
+	importEntry := append(wasmtest.Name("env"), wasmtest.Name("host")...)
+	importEntry = append(importEntry, 0, 0)
+	body := wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b})
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("first", 0, 1), wasmtest.ExportEntry("second", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(body, body)),
+	)
+}
+
+// Each operation invokes both exports to expose cache assumptions about one entry.
+func BenchmarkExecHostCallbackInstanceAlternatingF64_wago(b *testing.B) {
+	c, err := wago.Compile(nil, hostcallAlternatingF64Wasm())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	imports := wago.NewImports()
+	imports.HostFunc("env", "host", func(x float64) float64 { return x + 1 })
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	for _, name := range []string{"first", "second"} {
+		if got, err := in.Invoke(name, wago.F64(1.5)); err != nil || len(got) != 1 || got[0] != wago.F64(2.5) {
+			b.Fatalf("%s(1.5) = %v, %v; want 2.5", name, got, err)
+		}
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("first", wago.F64(1.5)); err != nil {
+			b.Fatal(err)
+		}
+		if _, err := in.Invoke("second", wago.F64(1.5)); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkExecHostCallbackInstanceF64_wago(b *testing.B) {
+	c, err := wago.Compile(nil, hostcallF64Wasm())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	imports := wago.NewImports()
+	imports.HostFunc("env", "host", func(x float64) float64 { return x + 1 })
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("roundtrip", wago.F64(1.5)); err != nil || len(got) != 1 || got[0] != wago.F64(2.5) {
+		b.Fatalf("roundtrip(1.5) = %v, %v; want 2.5", got, err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("roundtrip", wago.F64(1.5)); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkExecHostCallbackResolvedF64_wago(b *testing.B) {
+	c, err := wago.Compile(nil, hostcallF64Wasm())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	imports := wago.NewImports()
+	imports.HostFunc("env", "host", func(x float64) float64 { return x + 1 })
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("roundtrip")
+	if err != nil {
+		b.Fatal(err)
+	}
+	if got, err := fn.Invoke(wago.F64(1.5)); err != nil || len(got) != 1 || got[0] != wago.F64(2.5) {
+		b.Fatalf("roundtrip(1.5) = %v, %v; want 2.5", got, err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := fn.Invoke(wago.F64(1.5)); err != nil {
 			b.Fatal(err)
 		}
 	}

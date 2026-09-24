@@ -27,7 +27,7 @@ func TestQueuedInvocationChecksCancellationAfterGate(t *testing.T) {
 			go func() {
 				var err error
 				if entry == "invoke" {
-					_, err = in.invokeEntry("unused", nil, contexts, false)
+					_, err = in.invokeEntry("unused", nil, contexts, false, false)
 				} else {
 					_, err = in.invokeWithToken("unused", nil, contexts, newInvocationID(), false, false, nil)
 				}
@@ -236,6 +236,11 @@ func TestInvokeContextInterruptsNativeLoop(t *testing.T) {
 	out, err := in.InvokeContext(context.Background(), "value")
 	if err != nil || len(out) != 1 || out[0] != 7 {
 		t.Fatalf("post-cancel value = %v, %v; want 7", out, err)
+	}
+	//lint:ignore SA1012 explicitly test InvokeContext's supported nil-context path.
+	out, err = in.InvokeContext(nil, "value")
+	if err != nil || len(out) != 1 || out[0] != 7 {
+		t.Fatalf("post-cancel value with nil context = %v, %v; want 7", out, err)
 	}
 }
 

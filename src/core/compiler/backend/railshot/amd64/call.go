@@ -74,10 +74,10 @@ func (f *fn) newGCStubCallReloc(at int, stub gcSharedStubKind) callReloc {
 }
 
 // intArgRegs is the integer argument/result register order for the internal
-// register-call ABI (our own convention, not the C ABI). RDI/RSI carry linMem/
-// trap; R12-R15 hold pinned locals; RBX holds linMem. The single result returns
-// in RAX.
-var intArgRegs = []Reg{RAX, RCX, RDX, R8, R9, R10, R11}
+// register-call ABI (our own convention, not the C ABI). RDI is the eighth
+// integer argument/result after the wrapper has consumed its args pointer;
+// R12-R15 hold pinned locals and RBX holds linMem.
+var intArgRegs = []Reg{RAX, RCX, RDX, R8, R9, R10, R11, RDI}
 var fpArgRegs = []Reg{0, 1, 2, 3, 4, 5, 6, 7} // XMM0..XMM7; single float result returns in XMM0.
 
 func isIntValType(t wasm.ValType) bool {
@@ -102,6 +102,40 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 	return true
 }
 
+func sigIsFloatOnly(ft *wasm.CompType) bool {
+	for _, typ := range ft.Params {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	return true
+}
+
+// sigHasMixedWideResults is the two-GP/two-FP register result shape also used
+// by the bounded mixed prepared bridge. Results may interleave in Wasm order.
+func sigHasMixedWideResults(ft *wasm.CompType) bool {
+	if !preparedDirectFloatSupported || len(ft.Results) < 3 || len(ft.Results) > 4 {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, typ := range ft.Results {
+		switch {
+		case isIntValType(typ):
+			gp++
+		case isFloatValType(typ):
+			fp++
+		default:
+			return false
+		}
+	}
+	return gp > 0 && fp > 0 && gp <= 2 && fp <= 2
+}
+
 // sigFitsDirectCrossTailABI is the bounded direct InstanceExport tail surface.
 // The original shape is integer-only with up to two integer results. The first
 // mixed-bank extension admits exactly (i32, f64) -> f64; a second exact shape
@@ -109,6 +143,16 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 // XMM0 or RAX according to the result type. Other float shapes remain gated until
 // they receive their own exact ABI proof.
 func sigFitsDirectCrossTailABI(ft *wasm.CompType) bool {
+	// The cross-instance wrapper still stages at most seven GP parameters.
+	gp := 0
+	for _, t := range ft.Params {
+		if isIntValType(t) {
+			gp++
+		}
+	}
+	if gp > 7 {
+		return false
+	}
 	if sigIsIntOnly(ft) || len(ft.Results) == 0 {
 		// Parameter banks are staged into the target wrapper's basedata before
 		// transfer. Mixed-bank void calls therefore need no result-record shape.
@@ -124,13 +168,22 @@ func sigFitsDirectCrossTailABI(ft *wasm.CompType) bool {
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/XMM banks; one result returns in
-// RAX or XMM0, and the deliberately limited two-result form uses RAX/RDX for
-// integers (mirrors arm64's X0/X1 pair return).
+// RAX or XMM0; two results use independent GP/FP banks, and integer-only
+// signatures can return up to eight values in RAX/RDX/RCX/R8/R9/R10/R11/RDI;
+// float-only signatures can use all eight XMM result registers. Mixed results
+// use up to two registers in each bank.
 func sigFitsRegABI(ft *wasm.CompType) bool {
-	if len(ft.Results) > 2 {
+	if len(ft.Results) > len(intArgRegs) && !(preparedDirectFloatSupported && len(ft.Results) <= len(fpArgRegs) && sigIsFloatOnly(ft)) ||
+		len(ft.Results) > 2 && !registerQuadResultsSupported {
 		return false
 	}
-	if len(ft.Results) == 2 && (!isIntValType(ft.Results[0]) || !isIntValType(ft.Results[1])) {
+	if len(ft.Results) > 2 && !sigIsIntOnly(ft) && !(preparedDirectFloatSupported && sigIsFloatOnly(ft)) && !sigHasMixedWideResults(ft) {
+		return false
+	}
+	if len(ft.Results) == 2 && !((isIntValType(ft.Results[0]) && isIntValType(ft.Results[1])) ||
+		(preparedDirectFloatSupported &&
+			(isIntValType(ft.Results[0]) || isFloatValType(ft.Results[0])) &&
+			(isIntValType(ft.Results[1]) || isFloatValType(ft.Results[1])))) {
 		return false
 	}
 	gp, fp := 0, 0
@@ -156,7 +209,7 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 }
 
 func preparedDirectIntSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 1 {
+	if len(ft.Params) > len(intArgRegs) || len(ft.Results) > len(intArgRegs) || len(ft.Results) > 2 && !registerQuadResultsSupported {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -170,6 +223,40 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 		}
 	}
 	return true
+}
+
+func preparedDirectFloatSig(ft *wasm.CompType) bool {
+	if len(ft.Params) > len(fpArgRegs) || len(ft.Results) > len(fpArgRegs) {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	return true
+}
+
+func preparedDirectMixedSig(ft *wasm.CompType) bool {
+	if len(ft.Params) > 4 || len(ft.Results) > 4 || len(ft.Results) > 2 && !sigHasMixedWideResults(ft) {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if !isIntValType(typ) && !isFloatValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isIntValType(typ) && !isFloatValType(typ) {
+			return false
+		}
+	}
+	return !preparedDirectIntSig(ft) && !preparedDirectFloatSig(ft)
 }
 
 // sigFitsReferenceResultRegABI is the staged typed-tail extension of the native
@@ -191,7 +278,7 @@ func sigFitsReferenceResultRegABI(ft *wasm.CompType) bool {
 			return false
 		}
 	}
-	return gp <= len(intArgRegs) && fp <= len(fpArgRegs)
+	return gp <= 7 && fp <= len(fpArgRegs)
 }
 
 // sigFitsTypedReferenceRegABI extends the physical register classification used
@@ -212,7 +299,7 @@ func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
 			return false
 		}
 	}
-	if gp > len(intArgRegs) || fp > len(fpArgRegs) {
+	if gp > 7 || fp > len(fpArgRegs) {
 		return false
 	}
 	for _, typ := range ft.Results {
@@ -822,7 +909,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	p := len(ft.Params)
 	f.storePinnedGlobals(false)
 
-	var roots [15]*elem // sigFitsRegABI caps params at 7 GP + 8 FP
+	var roots [16]*elem // sigFitsRegABI caps params at 8 GP + 8 FP
 	cur := f.s.back()
 	for i := p - 1; i >= 0; i-- {
 		roots[i] = cur
@@ -831,9 +918,9 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 		}
 	}
 
-	var gpMoves [7]regMove
+	var gpMoves [8]regMove
 	var fpMoves [8]regMove
-	var deferred [15]tailDeferredArg
+	var deferred [16]tailDeferredArg
 	gpN, fpN, deferredN := 0, 0, 0
 	gp, fp := 0, 0
 	for i, typ := range ft.Params {
@@ -1851,13 +1938,30 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		f.pinned = f.pinned.add(resReg)
 	}
 	var pairRes [2]Reg
-	if rN == 2 {
+	if rN == 2 && isIntValType(ft.Results[0]) {
 		pairRes[0] = f.allocReg(maskOf(RAX, RDX))
 		f.pinned = f.pinned.add(pairRes[0])
 		f.a.MovReg64(pairRes[0], RAX)
 		pairRes[1] = f.allocReg(maskOf(RAX, RDX))
 		f.a.MovReg64(pairRes[1], RDX)
 		f.pinned = f.pinned.add(pairRes[1])
+	}
+	var quadRes [8]Reg
+	if registerQuadResultsSupported && rN == 8 {
+		// Eight return registers leave too few free GPRs to capture every value
+		// across pinned-local reloads. Reserve canonical operand slots instead.
+		base := f.allocSpillSlots(rN)
+		for i, src := range []Reg{RAX, RDX, RCX, R8, R9, R10, R11, RDI} {
+			f.a.Store64(RSP, f.spillOff(base+i), src)
+			value := f.pushValue(storage{kind: stSlot, typ: mtOf(ft.Results[i]), slot: uint32(base + i)})
+			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+		}
+	} else if registerQuadResultsSupported && rN > 2 {
+		for i, src := range []Reg{RAX, RDX, RCX, R8, R9, R10, R11}[:rN] {
+			quadRes[i] = f.allocReg(maskOf(RAX, RDX, RCX, R8, R9, R10, R11))
+			f.a.MovReg64(quadRes[i], src)
+			f.pinned = f.pinned.add(quadRes[i])
+		}
 	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
@@ -1878,8 +1982,20 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		value := f.pushReg(resReg, mtOf(ft.Results[0]))
 		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[0]))
 	}
-	if rN == 2 {
+	if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
+		for i := range 2 {
+			value := f.pushFReg(Reg(i), mtOf(ft.Results[i]))
+			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+		}
+	} else if rN == 2 {
 		for i, reg := range pairRes {
+			f.pinned = f.pinned.remove(reg)
+			value := f.pushReg(reg, mtOf(ft.Results[i]))
+			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+		}
+	}
+	if registerQuadResultsSupported && rN > 2 && rN < 8 {
+		for i, reg := range quadRes[:rN] {
 			f.pinned = f.pinned.remove(reg)
 			value := f.pushReg(reg, mtOf(ft.Results[i]))
 			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
@@ -1940,9 +2056,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	// Register-resident args are materialized into owned, pinned registers now
 	// (per bank), so the flush below cannot spill them; const/slot/local-ref args
 	// are deferred and loaded straight into their target register afterward.
-	var gpMoveBuf [7]regMove
+	var gpMoveBuf [8]regMove
 	var fpMoveBuf [8]regMove
-	var deferredBuf [15]deferredMixedArg
+	var deferredBuf [16]deferredMixedArg
 	gpMoves, fpMoves := gpMoveBuf[:0], fpMoveBuf[:0]
 	deferred := deferredBuf[:0]
 	gp, fp := 0, 0
@@ -2039,13 +2155,32 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		f.pinned = f.pinned.add(resReg)
 	}
 	var pairRes [2]Reg
-	if rN == 2 {
+	mixedPair := preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) != isFloatValType(ft.Results[1])
+	if mixedPair {
+		pairRes[0] = f.allocReg(maskOf(RAX))
+		f.a.MovReg64(pairRes[0], RAX)
+		f.pinned = f.pinned.add(pairRes[0])
+	} else if rN == 2 && isIntValType(ft.Results[0]) {
 		pairRes[0] = f.allocReg(maskOf(RAX, RDX))
 		f.pinned = f.pinned.add(pairRes[0])
 		f.a.MovReg64(pairRes[0], RAX)
 		pairRes[1] = f.allocReg(maskOf(RAX, RDX))
 		f.a.MovReg64(pairRes[1], RDX)
 		f.pinned = f.pinned.add(pairRes[1])
+	}
+	var mixedWideInts [2]Reg
+	if sigHasMixedWideResults(ft) {
+		gp := 0
+		for _, typ := range ft.Results {
+			if isFloatValType(typ) {
+				continue
+			}
+			reg := f.allocReg(maskOf(RAX, RDX))
+			f.a.MovReg64(reg, []Reg{RAX, RDX}[gp])
+			f.pinned = f.pinned.add(reg)
+			mixedWideInts[gp] = reg
+			gp++
+		}
 	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
@@ -2061,11 +2196,48 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		}
 		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[0]))
 	}
-	if rN == 2 {
+	if mixedPair {
+		for _, typ := range ft.Results {
+			var value *elem
+			if isFloatValType(typ) {
+				value = f.pushFReg(0, mtOf(typ))
+			} else {
+				f.pinned = f.pinned.remove(pairRes[0])
+				value = f.pushReg(pairRes[0], mtOf(typ))
+			}
+			value.st.setGCRoot(gcFrameRefType(f.m, typ))
+		}
+	} else if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
+		for i := range 2 {
+			value := f.pushFReg(Reg(i), mtOf(ft.Results[i]))
+			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+		}
+	} else if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
 			value := f.pushReg(reg, mtOf(ft.Results[i]))
 			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+		}
+	}
+	if sigHasMixedWideResults(ft) {
+		gp, fp := 0, 0
+		for _, typ := range ft.Results {
+			var value *elem
+			if isFloatValType(typ) {
+				value = f.pushFReg(Reg(fp), mtOf(typ))
+				fp++
+			} else {
+				reg := mixedWideInts[gp]
+				f.pinned = f.pinned.remove(reg)
+				value = f.pushReg(reg, mtOf(typ))
+				gp++
+			}
+			value.st.setGCRoot(gcFrameRefType(f.m, typ))
+		}
+	} else if preparedDirectFloatSupported && rN > 2 {
+		for i, typ := range ft.Results {
+			value := f.pushFReg(Reg(i), mtOf(typ))
+			value.st.setGCRoot(gcFrameRefType(f.m, typ))
 		}
 	}
 }

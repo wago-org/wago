@@ -1016,6 +1016,8 @@ func directPreparedMarked(bits []uint64, bit int) bool {
 const (
 	maxBoundedPreparedCallDepth = 32
 	maxBoundedPreparedWorkBytes = 4 << 10
+	// Register-entry candidates retain the tighter 96-byte compile-time cap.
+	maxBoundedPreparedBodyBytes = 384
 )
 
 // resolveBoundedPreparedEntries is a bounded module-finalization step over the
@@ -1050,7 +1052,7 @@ func resolveBoundedPreparedEntries(m *wasm.Module, candidates []uint64, hints []
 				continue
 			}
 			bodyBytes := len(m.Code[i].BodyBytes)
-			if bodyBytes == 0 || bodyBytes > 96 {
+			if bodyBytes == 0 || bodyBytes > maxBoundedPreparedBodyBytes {
 				continue
 			}
 			candidateWork, candidateDepth := bodyBytes, 1
@@ -2948,7 +2950,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// imports, memory-touching functions, module-pinned globals, and EH state on
 	// the adapter. A module-level memory alone is harmless when this function's
 	// bounded scan proves that its body never reads, writes, or grows memory.
-	directPrepared := policy.EnabledOption(optPreparedDirectEntry) && policy.EnabledOption(optRegABI) && preparedDirectIntSig(ft) && !touchesMemory && len(modGlobals) == 0 && !hints.flags.has(hintModuleEH) &&
+	directPrepared := policy.EnabledOption(optPreparedDirectEntry) && policy.EnabledOption(optRegABI) && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && !touchesMemory && len(modGlobals) == 0 && !hints.flags.has(hintModuleEH) &&
 		m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall) && len(c.BodyBytes) <= 96 && nLocals <= 8
 	// Auto-inlining: collect the callees this caller will splice (before the pin
 	// setup below, which the plan can influence). A spliced memory-touching callee
@@ -3116,6 +3118,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// out-of-loop calls, not per iteration. Non-eligible globals use the per-run
 	// cell-pointer cache (globalCellPtr).
 	var globalHints []shared.GlobalHint
+	// A small scalar wrapper is bounded even when its signature exceeds the
+	// register ABI. The ordinary adapter only copies a capped number of slots;
+	// the finalizer checks the body-work proof before publishing this bit.
+	sc.directPreparedBounded = !regABI && f.opt(optPreparedBoundedEntry) && sigIsIntOnly(ft) &&
+		len(ft.Params) <= 128 && len(ft.Results) <= 128 && nLocals <= 128 &&
+		len(c.BodyBytes) != 0 && len(c.BodyBytes) <= maxBoundedPreparedBodyBytes && !f.hasLoop &&
+		!hints.flags.has(hintHasCall|hintUsesBulkMem|hintMutatesTable) &&
+		!touchesMemory && len(modGlobals) == 0 && !hints.flags.has(hintModuleEH) &&
+		len(customInstructions) == 0 && len(gcTypeLayouts) == 0 && gcFrameRoots == nil &&
+		len(inlinedCallees) == 0
 	if regABI {
 		sc.directPrepared = directPrepared
 		sc.directPreparedLight = directPrepared && f.preserveCallerPins && f.opt(optPreparedLightEntry)
@@ -4014,8 +4026,28 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 	if f.gcFrameRoots != nil {
 		f.gcFrameRoots.AdapterReturnOffset = uint32(adapterCall + 4)
 	}
-	a.LdpPost(LR, X3, SP, 16) // restore LR + results ptr
-	f.storeModuleGlobals(X2)  // Go exit: module-pinned registers → cells (X0 holds the result)
+	if registerQuadResultsSupported && rN > 2 && !sigIsFloatOnly(f.ft) {
+		// X3 may be result 3; restore the results pointer into X8 instead.
+		a.LdpPost(LR, X8, SP, 16)
+		gp, fp := 0, 0
+		for i, typ := range f.ft.Results {
+			if mtOf(typ).isFloat() {
+				a.FStoreDisp(X8, int32(i*8), Reg(fp), mtOf(typ) == mtF64)
+				fp++
+			} else {
+				f.st64(X8, int32(i*8), []Reg{X0, X1, X2, X3, X4, X5, X6, X7}[gp])
+				gp++
+			}
+		}
+	} else {
+		a.LdpPost(LR, X3, SP, 16) // restore LR + results ptr
+	}
+	f.storeModuleGlobals(X2) // Go exit: module-pinned registers → cells
+	if preparedDirectFloatSupported && rN > 2 && sigIsFloatOnly(f.ft) {
+		for i, typ := range f.ft.Results {
+			a.FStoreDisp(X3, int32(i*8), Reg(i), mtOf(typ) == mtF64)
+		}
+	}
 	if rN == 1 {
 		rt := mtOf(f.ft.Results[0])
 		if rt.isFloat() {
@@ -4024,8 +4056,20 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 			f.st64(X3, 0, X0)
 		}
 	} else if rN == 2 {
-		f.st64(X3, 0, X0)
-		f.st64(X3, 8, X1)
+		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() && !mtOf(f.ft.Results[1]).isFloat() {
+			a.FStoreDisp(X3, 0, 0, mtOf(f.ft.Results[0]) == mtF64)
+			f.st64(X3, 8, X0)
+		} else if preparedDirectFloatSupported && !mtOf(f.ft.Results[0]).isFloat() && mtOf(f.ft.Results[1]).isFloat() {
+			f.st64(X3, 0, X0)
+			a.FStoreDisp(X3, 8, 0, mtOf(f.ft.Results[1]) == mtF64)
+		} else if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() {
+			for i, typ := range f.ft.Results {
+				a.FStoreDisp(X3, int32(i*8), Reg(i), mtOf(typ) == mtF64)
+			}
+		} else {
+			f.st64(X3, 0, X0)
+			f.st64(X3, 8, X1)
+		}
 	}
 	a.Ret()
 	f.adapterEndOff = a.Len()
@@ -4037,8 +4081,8 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
-// the internal entry takes args in GP/V registers and returns its single result
-// in X0/V0, or two integer results in X0/X1.
+// the internal entry takes args in GP/V registers and returns numeric results
+// in independent GP/FP banks.
 // Returns the internal entry's offset within the function's code.
 func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, hasFloatConst bool, intConstHints *funcHintView) (int, error) {
 	a := f.a
@@ -4177,8 +4221,36 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 			f.ld64(X0, SP, f.spillOff(0)) // result -> X0
 		}
 	} else if rN == 2 {
-		f.ld64(X0, SP, f.spillOff(0))
-		f.ld64(X1, SP, f.spillOff(1))
+		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() && !mtOf(f.ft.Results[1]).isFloat() {
+			a.FLoadDisp(0, SP, f.spillOff(0), mtOf(f.ft.Results[0]) == mtF64)
+			f.ld64(X0, SP, f.spillOff(1))
+		} else if preparedDirectFloatSupported && !mtOf(f.ft.Results[0]).isFloat() && mtOf(f.ft.Results[1]).isFloat() {
+			f.ld64(X0, SP, f.spillOff(0))
+			a.FLoadDisp(0, SP, f.spillOff(1), mtOf(f.ft.Results[1]) == mtF64)
+		} else if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() {
+			for i, typ := range f.ft.Results {
+				a.FLoadDisp(Reg(i), SP, f.spillOff(i), mtOf(typ) == mtF64)
+			}
+		} else {
+			f.ld64(X0, SP, f.spillOff(0))
+			f.ld64(X1, SP, f.spillOff(1))
+		}
+	}
+	if preparedDirectFloatSupported && rN > 2 && sigIsFloatOnly(f.ft) {
+		for i, typ := range f.ft.Results {
+			a.FLoadDisp(Reg(i), SP, f.spillOff(i), mtOf(typ) == mtF64)
+		}
+	} else if registerQuadResultsSupported && rN > 2 {
+		gp, fp := 0, 0
+		for i, typ := range f.ft.Results {
+			if mtOf(typ).isFloat() {
+				a.FLoadDisp(Reg(fp), SP, f.spillOff(i), mtOf(typ) == mtF64)
+				fp++
+			} else {
+				f.ld64([]Reg{X0, X1, X2, X3, X4, X5, X6, X7}[gp], SP, f.spillOff(i))
+				gp++
+			}
+		}
 	}
 	// singleRegResult: every exit already produced the result in X0/V0.
 	// No trap-slot protocol on return: the runtime zeroes the trap cell before

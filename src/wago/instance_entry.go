@@ -81,6 +81,11 @@ func (g *invocationGate) lockContext(ctx context.Context) error {
 // Unlock preserves revocation and releases either kind of owner with one CAS.
 // Sharing and waiter registration can force a retry and notification.
 func (g *invocationGate) Unlock() {
+	// The resolved direct-call path holds exactly this state in the
+	// uncontended case. If a waiter or revoker changed it, use the loop below.
+	if g.state.CompareAndSwap(invocationGateHeld|invocationGateFast, 0) {
+		return
+	}
 	for {
 		previous := g.state.Load()
 		if previous&invocationGateHeld == 0 {
