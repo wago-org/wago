@@ -127,7 +127,20 @@ func contextInterruptError(ctx context.Context, err error) error {
 // callInnerAdmitted performs the actual invocation and result decoding under
 // the invocation lease already held by InvokeValues.
 func (in *Instance) callInnerAdmitted(export string, slots []uint64, results []ValType, contexts invocationContextSet, reservation *pluginOperationReservation) ([]Value, error) {
-	raw, err := in.invokeAdmitted(export, slots, contexts, reservation)
+	var raw []uint64
+	var err error
+	if reservation == nil && contexts.interrupt == nil && contexts.callback == nil && (in.refStore == nil || in.refStore.private) {
+		ic := in.findInvokeCache(export)
+		if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast) && len(slots) == ic.paramSlots && in.lockPreparedFastState() {
+			defer in.unlockPreparedFastState()
+			entry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+			raw, err = in.invokeCachedDirectNumeric(ic, entry, slots)
+		} else {
+			raw, err = in.invokeAdmitted(export, slots, contexts, reservation)
+		}
+	} else {
+		raw, err = in.invokeAdmitted(export, slots, contexts, reservation)
+	}
 	if err != nil {
 		return nil, err
 	}

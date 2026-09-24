@@ -1,12 +1,57 @@
 package wago
 
 import (
+	"context"
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
 	"time"
 )
+
+func TestInvokeValuesRechecksSharedControl(t *testing.T) {
+	c := MustCompile(benchAddOneModule())
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	call := func() error {
+		out, err := in.InvokeValues(context.Background(), "f", ValueI32(41))
+		if err == nil && (len(out) != 1 || out[0].I32() != 42) {
+			err = fmt.Errorf("result = %v", out)
+		}
+		return err
+	}
+	if err := call(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.ExportedFunc("f"); err != nil {
+		t.Fatal(err)
+	}
+	if !in.nativeControlIsShared() {
+		t.Fatal("export did not revoke private execution")
+	}
+	done := make(chan error, 1)
+	nativeExecutionMu.Lock()
+	go func() { done <- call() }()
+	select {
+	case err := <-done:
+		nativeExecutionMu.Unlock()
+		t.Fatalf("shared typed call bypassed native lease: %v", err)
+	case <-time.After(20 * time.Millisecond):
+		nativeExecutionMu.Unlock()
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("shared typed call did not finish")
+	}
+}
 
 func TestWasmFuncRechecksSharedControl(t *testing.T) {
 	for _, family := range []string{"variadic", "fixed", "scalar", "general"} {

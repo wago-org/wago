@@ -4497,8 +4497,8 @@ func (in *Instance) tryInvokeCachedIsolatedNumeric(export string, args []uint64)
 	return out, err, true
 }
 
-// invokeCachedDirectNumeric requires an invocation lifetime lease, the isolated
-// invocation gate, and the prepared-fast revocation bit to be held.
+// invokeCachedDirectNumeric requires an invocation lifetime lease, the
+// serialized invocation gate, and the prepared-fast revocation bit to be held.
 func (in *Instance) invokeCachedDirectNumeric(ic *invokeCache, entry uintptr, args []uint64) ([]uint64, error) {
 	if preparedDirectFloatSupported && ic.directFloatFast {
 		if ic.scalarWideMask&directMixedEnabled != 0 {
