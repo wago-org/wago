@@ -254,6 +254,25 @@ func (l preparedInvocationLease) unlock() {
 	l.state.invokeMu.Unlock()
 }
 
+// ARM64 avoids copying the complete GC-domain lease through the scalar call
+// boundary. Keep the existing by-value admission for other call shapes.
+func (in *Instance) lockPreparedScalarInvocationInto(l *preparedInvocationLease) {
+	state := in.ensurePluginState()
+	state.invokeMu.Lock()
+	id := newInvocationID()
+	state.invocationID = id
+	l.in, l.state, l.gc = in, state, in.lockGCInvocation(id)
+}
+
+func (l *preparedInvocationLease) unlockScalarInvocation() {
+	l.gc.unlock()
+	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
+		l.in.reconcileFuncrefRoots()
+	}
+	l.state.invocationID = 0
+	l.state.invokeMu.Unlock()
+}
+
 func (fn *WasmFunc) invokeGeneral(args []uint64) ([]uint64, error) {
 	if fn == nil || fn.in == nil {
 		return nil, fmt.Errorf("wago: invoke closed Wasm function")
@@ -404,6 +423,12 @@ func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}
 	defer in.endInvocation()
+	if preparedScalarInPlaceLease {
+		var preparedLease preparedInvocationLease
+		in.lockPreparedScalarInvocationInto(&preparedLease)
+		defer preparedLease.unlockScalarInvocation()
+		return fn.invokeScalarAdmitted(args)
+	}
 	preparedLease := in.lockPreparedInvocation()
 	defer preparedLease.unlock()
 	return fn.invokeScalarAdmitted(args)
