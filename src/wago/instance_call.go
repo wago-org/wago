@@ -36,7 +36,7 @@ func (in *Instance) InvokeValues(ctx context.Context, export string, args ...Val
 			return nil, err
 		}
 	}
-	params, results, err := in.c.signatureView(export)
+	params, results, err := in.signatureViewCached(export)
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +112,20 @@ func (in *Instance) InvokeValues(ctx context.Context, export string, args ...Val
 	err = contextInterruptError(ctx, err)
 	err = joinPrimary(err, emitAfter(InvocationEvent{Operation: request.Operation, Instance: request.Instance, Export: export, Results: out, Err: err, Start: request.Start, reservation: reservation}))
 	return out, err
+}
+
+func (in *Instance) signatureViewCached(export string) (params, results []ValType, err error) {
+	if ic := in.findInvokeCache(export); ic != nil {
+		if ic.li >= 0 && ic.li < len(in.c.Funcs) {
+			sig := in.c.Funcs[ic.li]
+			return sig.Params, sig.Results, nil
+		}
+		if gfi := -1 - ic.li; gfi >= 0 && gfi < len(in.c.importFuncSigs) {
+			sig := in.c.importFuncSigs[gfi]
+			return sig.Params, sig.Results, nil
+		}
+	}
+	return in.c.signatureView(export)
 }
 
 func contextInterruptError(ctx context.Context, err error) error {
