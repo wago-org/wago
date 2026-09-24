@@ -43,7 +43,13 @@ func (in *Instance) InvokeValues(ctx context.Context, export string, args ...Val
 	if len(args) != len(params) {
 		return nil, fmt.Errorf("%s expects %d arg(s), got %d", export, len(params), len(args))
 	}
-	slots := make([]uint64, len(args))
+	var inlineSlots [4]uint64
+	slots := inlineSlots[:]
+	if len(args) > len(inlineSlots) {
+		slots = make([]uint64, len(args))
+	} else {
+		slots = slots[:len(args)]
+	}
 	for i, a := range args {
 		if params[i] == ValV128 {
 			return nil, fmt.Errorf("%s param %d is v128; use Invoke for v128 values", export, i)
