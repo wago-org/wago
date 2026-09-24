@@ -118,6 +118,41 @@ func TestPreparedDirectRevocation(t *testing.T) {
 	}
 }
 
+func TestInvocationGateFastUnlockPreservesRevocationAndNotifiesWaiters(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		initial uint32
+		want    uint32
+		waiter  bool
+	}{
+		{"uncontended", invocationGateHeld | invocationGateFast, 0, false},
+		{"revoked", invocationGateHeld | invocationGateFast | invocationGateRevoked, invocationGateRevoked, false},
+		{"waiting", invocationGateHeld | invocationGateFast | invocationGateWaiters, 0, true},
+		{"waiting revoked", invocationGateHeld | invocationGateFast | invocationGateWaiters | invocationGateRevoked, invocationGateRevoked, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var gate invocationGate
+			gate.state.Store(tc.initial)
+			var changed chan struct{}
+			if tc.waiter {
+				changed = make(chan struct{})
+				gate.changed = changed
+			}
+			gate.Unlock()
+			if got := gate.state.Load(); got != tc.want {
+				t.Fatalf("gate state = %d, want %d", got, tc.want)
+			}
+			if tc.waiter {
+				select {
+				case <-changed:
+				default:
+					t.Fatal("waiter was not notified")
+				}
+			}
+		})
+	}
+}
+
 func TestPreparedDirectRejectsGCModes(t *testing.T) {
 	for _, flag := range []uint32{executionFlagImportedGCDomain, executionFlagDynamicGCDomain, executionFlagStoreOwnedGCCollector} {
 		t.Run(fmt.Sprint(flag), func(t *testing.T) {
