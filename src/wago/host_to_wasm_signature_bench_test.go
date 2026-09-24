@@ -78,7 +78,7 @@ func BenchmarkHostToWasmSignatureMatrix(b *testing.B) {
 					}
 				}
 			})
-			if params == 7 || params == 8 {
+			if params == 7 || params == 8 || params == 16 || params == 32 || params == 64 {
 				session, err := prepared.OpenSession()
 				if err != nil {
 					b.Fatal(err)

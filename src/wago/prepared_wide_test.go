@@ -28,6 +28,167 @@ func preparedWideModule(n int) []byte {
 	)
 }
 
+func TestPreparedIsolatedWideWrapperUsesDirectGate(t *testing.T) {
+	compiled := MustCompile(hostToWasmI32SignatureModule(16, 16))
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.isolatedFast || fn.directIntFast || fn.directGate == nil {
+		t.Fatal("wide wrapper must select isolated direct-gate admission")
+	}
+	args := make([]uint64, 16)
+	for i := range args {
+		args[i] = uint64(i + 1)
+	}
+	before := nextInvocationID.Load()
+	got, err := fn.Invoke(args...)
+	if err != nil || len(got) != 16 || got[15] != 16 {
+		t.Fatalf("direct-gate result = %v, %v", got, err)
+	}
+	if nextInvocationID.Load() != before {
+		t.Fatal("isolated wide wrapper allocated an invocation identity")
+	}
+	if _, err := in.ExportedFunc("f"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = fn.Invoke(args...)
+	if err != nil || len(got) != 16 || got[15] != 16 {
+		t.Fatalf("shared fallback result = %v, %v", got, err)
+	}
+	if nextInvocationID.Load() == before {
+		t.Fatal("shared fallback omitted invocation identity")
+	}
+}
+
+func TestInstanceIsolatedWideWrapperUsesDirectGate(t *testing.T) {
+	compiled := MustCompile(hostToWasmI32SignatureModule(16, 16))
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	args := make([]uint64, 16)
+	for i := range args {
+		args[i] = uint64(i + 1)
+	}
+	// Warm the cache; its fill is an ordinary admitted operation.
+	if _, err := in.Invoke("f", args...); err != nil {
+		t.Fatal(err)
+	}
+	before := nextInvocationID.Load()
+	got, err := in.Invoke("f", args...)
+	if err != nil || len(got) != 16 || got[15] != 16 {
+		t.Fatalf("direct-gate result = %v, %v", got, err)
+	}
+	if nextInvocationID.Load() != before {
+		t.Fatal("isolated wide Invoke allocated an invocation identity")
+	}
+	if _, err := in.ExportedFunc("f"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = in.Invoke("f", args...)
+	if err != nil || len(got) != 16 || got[15] != 16 {
+		t.Fatalf("shared fallback result = %v, %v", got, err)
+	}
+	if nextInvocationID.Load() == before {
+		t.Fatal("shared fallback omitted invocation identity")
+	}
+}
+
+func TestIsolatedWideWrapperTrapReset(t *testing.T) {
+	compiled := MustCompile(preparedWideTrapModule(16))
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := make([]uint64, 16)
+	args[15] = 99
+	for _, call := range []struct {
+		name string
+		fn   func([]uint64) ([]uint64, error)
+	}{
+		{"prepared", func(a []uint64) ([]uint64, error) { return fn.Invoke(a...) }},
+		{"instance", func(a []uint64) ([]uint64, error) { return in.Invoke("f", a...) }},
+	} {
+		t.Run(call.name, func(t *testing.T) {
+			if _, err := call.fn(args); err == nil {
+				t.Fatal("expected unreachable trap")
+			}
+			args[0] = 1
+			got, err := call.fn(args)
+			if err != nil || len(got) != 1 || got[0] != 99 {
+				t.Fatalf("after trap = %v, %v", got, err)
+			}
+			args[0] = 0
+		})
+	}
+	s, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Invoke(args...); err == nil {
+		s.Close()
+		t.Fatal("session expected unreachable trap")
+	}
+	args[0] = 1
+	got, err := s.Invoke(args...)
+	s.Close()
+	if err != nil || len(got) != 1 || got[0] != 99 {
+		t.Fatalf("session after trap = %v, %v", got, err)
+	}
+}
+
+func TestIsolatedWideWrapperSessionUsesFastReservation(t *testing.T) {
+	compiled := MustCompile(hostToWasmI32SignatureModule(16, 16))
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if !s.state.fast {
+		t.Fatal("isolated wide wrapper did not reserve the fast gate")
+	}
+	args := make([]uint64, 16)
+	for i := range args {
+		args[i] = uint64(i + 1)
+	}
+	for i := 0; i < 2; i++ {
+		got, err := s.Invoke(args...)
+		if err != nil || len(got) != 16 {
+			t.Fatalf("session result = %v, %v", got, err)
+		}
+		for j, value := range got {
+			if value != uint64(j+1) {
+				t.Fatalf("session result[%d] = %d, want %d", j, value, j+1)
+			}
+		}
+	}
+}
+
 func preparedWidePairModule(n int) []byte {
 	params := make([]wasm.ValType, n)
 	for i := range params {

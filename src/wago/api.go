@@ -4363,7 +4363,7 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		return nil, nilInstanceInvokeError()
 	}
 	if !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil {
-		if out, err, ok := in.tryInvokeCachedDirectNumeric(export, args); ok {
+		if out, err, ok := in.tryInvokeCachedIsolatedNumeric(export, args); ok {
 			return out, err
 		}
 	}
@@ -4422,17 +4422,17 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 			return in.invokeCachedDirectNumeric(ic, directEntry, args)
 		}
 		if invokePrivateEntryEnabled && ic.entryMode != preparedEntryGeneral && executionFlags&directBlocked == 0 {
-			return in.invokeCachedNumericEntry(export, ic, args)
+			return in.invokeCachedNumericEntry(export, ic, args, false)
 		}
 	}
 	return in.invokeWithToken(export, args, contexts, state.invocationID, true, alreadyAdmitted, nil)
 }
 
-// tryInvokeCachedDirectNumeric admits only an already-cached, isolated, bounded
-// numeric leaf. It has no host callback, GC domain, or interrupt context to
-// carry, so a fresh invocation identity and the general parked-call gate are
-// unnecessary. A failed proof falls back to invokeEntry's full admission path.
-func (in *Instance) tryInvokeCachedDirectNumeric(export string, args []uint64) ([]uint64, error, bool) {
+// tryInvokeCachedIsolatedNumeric admits an already-cached isolated numeric
+// export, either through its bounded register entry or its prepared wrapper.
+// The gate and prepared-state reservation exclude resource publication while
+// the call runs; a failed proof falls back to full invocation admission.
+func (in *Instance) tryInvokeCachedIsolatedNumeric(export string, args []uint64) ([]uint64, error, bool) {
 	if in.rt != nil {
 		return nil, nil, false
 	}
@@ -4446,7 +4446,8 @@ func (in *Instance) tryInvokeCachedDirectNumeric(export string, args []uint64) (
 	}
 	ic := in.findInvokeCache(export)
 	privateRefStore := in.refStore == nil || in.refStore.private
-	if ic == nil || !(ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast) || len(args) != ic.paramSlots || !privateRefStore || in.guestStorageBorrowed() || !in.lockPreparedFastState() {
+	isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
+	if ic == nil || !(ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) || len(args) != ic.paramSlots || !privateRefStore || in.guestStorageBorrowed() || !in.lockPreparedFastState() {
 		state.invokeMu.Unlock()
 		in.endInvocation()
 		return nil, nil, false
@@ -4454,8 +4455,14 @@ func (in *Instance) tryInvokeCachedDirectNumeric(export string, args []uint64) (
 	defer in.endInvocation()
 	defer state.invokeMu.Unlock()
 	defer in.unlockPreparedFastState()
-	entry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
-	out, err := in.invokeCachedDirectNumeric(ic, entry, args)
+	var out []uint64
+	var err error
+	if ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast {
+		entry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+		out, err = in.invokeCachedDirectNumeric(ic, entry, args)
+	} else {
+		out, err = in.invokeCachedNumericEntry(export, ic, args, true)
+	}
 	return out, err, true
 }
 
@@ -4490,7 +4497,8 @@ func (in *Instance) invokeCachedDirectNumeric(ic *invokeCache, entry uintptr, ar
 	}
 }
 
-func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, args []uint64) ([]uint64, error) {
+// reserved means the isolated gate and prepared-fast ownership are both held.
+func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, args []uint64, reserved bool) ([]uint64, error) {
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 	}
@@ -4506,8 +4514,8 @@ func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, arg
 	}
 	entry := in.base + uintptr(in.c.Entry[ic.li])
 	var err error
-	if ic.entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
-		err = in.callPreparedIsolated(entry, in.trap)
+	if reserved || ic.entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
+		err = in.callPreparedIsolated(entry, in.trap, reserved)
 	} else {
 		err = in.callPreparedPrivate(entry, in.trap)
 	}
@@ -4658,7 +4666,7 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 		var err error
 		if entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
-			err = in.callPreparedIsolated(entry, in.trap)
+			err = in.callPreparedIsolated(entry, in.trap, false)
 		} else if entryMode != preparedEntryGeneral {
 			err = in.callPreparedPrivate(entry, in.trap)
 		} else {

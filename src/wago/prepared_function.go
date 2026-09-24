@@ -266,9 +266,6 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 			fn.directIsolated = preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated
 			if fn.directIsolated || (preparedDirectIntPrivateSupported && directMode == preparedEntryPrivate) {
 				fn.directIntFast = true
-				if fn.directIsolated {
-					fn.directGate = &in.ensurePluginState().invokeMu
-				}
 				fn.directIntLight = in.c.directPreparedLightAt(ic.li)
 				fn.directIntBounded = in.c.directPreparedBoundedAt(ic.li)
 				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
@@ -285,7 +282,6 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 			if preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated {
 				fn.directIsolated = true
 				fn.directFloatFast = true
-				fn.directGate = &in.ensurePluginState().invokeMu
 				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 				fn.directLinMem = in.jm.LinMemBase()
 			}
@@ -299,10 +295,12 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 			if preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated {
 				fn.directIsolated = true
 				fn.directMixedInfo = encodeDirectMixedInfo(sig)
-				fn.directGate = &in.ensurePluginState().invokeMu
 				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 				fn.directLinMem = in.jm.LinMemBase()
 			}
+		}
+		if fn.isolatedFast || fn.directIsolated {
+			fn.directGate = &in.ensurePluginState().invokeMu
 		}
 	}
 	return fn, nil
@@ -561,8 +559,22 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 
 func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
 	in := fn.in
-	if err := in.beginInvocation(); err != nil {
-		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+	var admissionErr error
+	if fn.isolatedFast {
+		admissionErr = in.beginDirectInvocation()
+	} else {
+		admissionErr = in.beginInvocation()
+	}
+	if admissionErr != nil {
+		return nil, fmt.Errorf("wago: invoke Wasm function: %w", admissionErr)
+	}
+	if fn.isolatedFast {
+		if fn.tryDirectGate() {
+			out, err := fn.invokeScalarAdmitted(args)
+			fn.directGate.Unlock()
+			in.endDirectInvocation()
+			return out, err
+		}
 	}
 	defer in.endInvocation()
 	if in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) == 0 {
@@ -626,7 +638,7 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	} else {
 		var err error
 		if fn.isolatedFast {
-			err = in.callPreparedIsolated(fn.entry, in.trap)
+			err = in.callPreparedIsolated(fn.entry, in.trap, false)
 		} else if fn.privateFast {
 			err = in.callPreparedPrivate(fn.entry, in.trap)
 		} else {

@@ -582,14 +582,15 @@ func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error 
 	return in.decorateTrap(in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results))
 }
 
-func (in *Instance) callPreparedIsolated(entry uintptr, activeTrap []byte) error {
-	if !in.lockPreparedFastState() {
-		return in.callNativeAsyncWithTrap(entry, true, activeTrap)
+func (in *Instance) callPreparedIsolated(entry uintptr, activeTrap []byte, reserved bool) error {
+	if !reserved {
+		if !in.lockPreparedFastState() {
+			return in.callNativeAsyncWithTrap(entry, true, activeTrap)
+		}
+		defer in.unlockPreparedFastState()
 	}
-	defer in.unlockPreparedFastState()
-	if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
-		return err
-	}
+	// Isolated ownership keeps the instantiation-time trap binding intact.
+	// A publisher must first revoke this reservation before sharing control.
 	return in.decorateTrap(in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results))
 }
 
