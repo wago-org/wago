@@ -212,7 +212,7 @@ func (in *Instance) beginNativeEntry() (executionLease, error) {
 // and revocation protocol as other entries. Only this resolved handle retains
 // a context version: generic entries continue to rebind, and any intervening
 // bind or guarded host access invalidates this handle's cached observation.
-func (fn *WasmFunc) beginNativeEntry() (executionLease, error) {
+func (fn *WasmFunc) beginNativeEntry() (executionLease, bool, error) {
 	in := fn.in
 	if in.usesIndependentExecution() {
 		mu := in.independentNativeExecutionMu()
@@ -230,15 +230,16 @@ func (fn *WasmFunc) beginNativeEntry() (executionLease, error) {
 			if !reuse {
 				if err := in.bindAndValidateNativeContext(); err != nil {
 					mu.Unlock()
-					return executionLease{}, err
+					return executionLease{}, false, err
 				}
 			}
 			fn.hostContextVersion = state.nativeContextVersion.Load()
-			return executionLease{local: mu}, nil
+			return executionLease{local: mu}, reuse, nil
 		}
 		mu.Unlock()
 	}
-	return in.beginNativeEntry()
+	entry, err := in.beginNativeEntry()
+	return entry, false, err
 }
 
 func (in *Instance) bindAndValidateNativeContext() error {

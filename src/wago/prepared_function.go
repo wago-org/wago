@@ -342,10 +342,45 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 			return fn.invokeDirectMixed(args)
 		}
 		if fn.scalarFast {
+			if len(args) == 1 && fn.resultSlots == 1 && fn.scalarWideMask == 0 && !fn.scalarResultWide && fn.hostPrepared != nil && fn.hostFixed != nil {
+				if out, err, ok := fn.tryInvokeScalarHost1(args); ok {
+					return out, err
+				}
+			}
 			return fn.invokeScalar(args)
 		}
 	}
 	return fn.invokeGeneral(args)
+}
+
+func (fn *WasmFunc) tryInvokeScalarHost1(args []uint64) ([]uint64, error, bool) {
+	in := fn.in
+	if in.gc != nil || fn.gcMaintenance || !in.usesIndependentExecution() || !in.preparedFastStateValid() {
+		return nil, nil, false
+	}
+	if err := in.beginDirectInvocation(); err != nil {
+		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err), true
+	}
+	lease := in.lockPreparedScalarNoGC()
+	if !in.usesIndependentExecution() || !in.preparedFastStateValid() {
+		lease.unlock()
+		in.endDirectInvocation()
+		return nil, nil, false
+	}
+	defer in.endDirectInvocation()
+	defer lease.unlock()
+	binary.LittleEndian.PutUint64(in.serArgs, uint64(uint32(args[0])))
+	if len(in.hostLog) > 0 {
+		binary.LittleEndian.PutUint32(in.hostLog, 0)
+	}
+	if err := fn.callScalarHostPrepared(); err != nil {
+		return nil, err, true
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:1]
+	out[0] = uint64(binary.LittleEndian.Uint32(in.results))
+	return out, nil, true
 }
 
 type preparedInvocationLease struct {
@@ -514,7 +549,7 @@ func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
 // have changed the instance context while this function was idle.
 func (fn *WasmFunc) callScalarHostPrepared() error {
 	in := fn.in
-	entry, err := fn.beginNativeEntry()
+	entry, reuse, err := fn.beginNativeEntry()
 	if err != nil {
 		return err
 	}
@@ -545,7 +580,7 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 				fn.hostFixed = fn.hostActivation.dispatchSingleTypedI32x2FixedPortal
 			}
 		}
-	} else {
+	} else if !reuse {
 		if err := in.jm.RebindTrapCell(in.trap); err != nil {
 			return err
 		}
