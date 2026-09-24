@@ -36,7 +36,7 @@ func TestScalarSlotWidthClass(t *testing.T) {
 }
 
 func TestNarrowScalarSlotCopyUnrolledBoundaries(t *testing.T) {
-	for _, n := range []int{0, 1, 3, 4, 5, 7, 8, 9, 16, 64, 128} {
+	for _, n := range []int{0, 1, 2, 3, 4, 5, 7, 8, 9, 16, 63, 64, 65, 127, 128, 129} {
 		src := make([]uint64, n)
 		wide := make([]bool, n)
 		for i := range src {
@@ -54,6 +54,28 @@ func TestNarrowScalarSlotCopyUnrolledBoundaries(t *testing.T) {
 				if want := uint64(uint32(src[i])); got != want {
 					t.Fatalf("n=%d inPlace=%v slot=%d: got %x, want %x", n, inPlace, i, got, want)
 				}
+			}
+		}
+	}
+}
+
+func TestNarrowScalarSlotCopyCanaries(t *testing.T) {
+	const canary = uint64(0xdeadbeefcafebabe)
+	for n := 0; n <= 129; n++ {
+		src := make([]uint64, n+2)
+		dst := make([]uint64, n+2)
+		src[0], src[n+1] = canary, canary
+		dst[0], dst[n+1] = canary, canary
+		for i := 0; i < n; i++ {
+			src[i+1] = 0xffffffff00000000 | uint64(i+1)
+		}
+		copyNarrowScalarSlots(dst[1:n+1], src[1:n+1], n)
+		if dst[0] != canary || dst[n+1] != canary || src[0] != canary || src[n+1] != canary {
+			t.Fatalf("n=%d: copy touched a canary", n)
+		}
+		for i := 0; i < n; i++ {
+			if got, want := dst[i+1], uint64(i+1); got != want {
+				t.Fatalf("n=%d slot=%d: got %x, want %x", n, i, got, want)
 			}
 		}
 	}
