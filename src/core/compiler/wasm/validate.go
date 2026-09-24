@@ -693,13 +693,18 @@ func (v *moduleValidator) validateValType(t ValType) error {
 
 func (v *moduleValidator) validateValTypeInRecGroup(t ValType, recGroup int) error {
 	switch t.Kind() {
-	case ValNum, ValVec:
-		return nil
+	case ValNum:
+		if t == I32 || t == I64 || t == F32 || t == F64 {
+			return nil
+		}
+	case ValVec:
+		if t == V128 {
+			return nil
+		}
 	case ValRef:
 		return v.validateRefTypeInRecGroup(t.Ref(), recGroup)
-	default:
-		return v.err(ErrUnknownType, "value type")
 	}
+	return v.err(ErrUnknownType, "value type")
 }
 
 func (v *moduleValidator) validateRefType(rt RefType) error {
@@ -717,7 +722,12 @@ func (v *moduleValidator) validateHeapType(ht HeapType) error {
 func (v *moduleValidator) validateHeapTypeInRecGroup(ht HeapType, recGroup int) error {
 	switch ht.Kind() {
 	case HeapAbs:
-		return nil
+		switch ht.Abs() {
+		case HeapString, HeapExn, HeapArray, HeapStruct, HeapI31, HeapEq, HeapAny,
+			HeapExtern, HeapFunc, HeapNone, HeapNoExtern, HeapNoFunc, HeapNoExn:
+			return nil
+		}
+		return v.err(ErrUnknownType, "heap type")
 	case HeapTypeIndex:
 		if !v.validTypeIdxInRecGroup(ht.Type(), recGroup) {
 			return v.err(ErrUnknownType, "heap type")
