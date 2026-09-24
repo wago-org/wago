@@ -14,7 +14,7 @@ func TestInstallRootUsesTinyGoActionArchitecture(t *testing.T) {
 	}{
 		{"linux", "amd64", "amd64"},
 		{"linux", "arm64", "arm64"},
-		{"darwin", "amd64", "x86_64"},
+		{"darwin", "amd64", "amd64"},
 		{"darwin", "arm64", "arm64"},
 		{"windows", "amd64", "amd64"},
 	} {

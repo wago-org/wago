@@ -55,14 +55,10 @@ func installRoot(toolCache, version, goos, goarch string) (string, error) {
 	}
 	var actionArch string
 	switch {
-	case goos == "linux" && goarch == "arm64":
-		actionArch = "arm64"
-	case goos == "darwin" && goarch == "amd64":
-		actionArch = "x86_64"
-	case (goos == "linux" || goos == "windows") && goarch == "amd64":
-		actionArch = "amd64"
-	case goos == "darwin" && goarch == "arm64":
-		actionArch = "arm64"
+	case (goos == "linux" || goos == "darwin") && (goarch == "amd64" || goarch == "arm64"):
+		actionArch = goarch
+	case goos == "windows" && goarch == "amd64":
+		actionArch = goarch
 	default:
 		return "", fmt.Errorf("unsupported TinyGo runner %s/%s", goos, goarch)
 	}
