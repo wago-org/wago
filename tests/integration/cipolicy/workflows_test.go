@@ -77,6 +77,42 @@ func TestCIUsesPinnedJustTaskRunner(t *testing.T) {
 	}
 }
 
+func TestLongNativeCorpusRunsAreShardedAndVerified(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := workflowJobBlocks(string(workflow))
+	shards, ok := jobs["corpus-correctness"]
+	if !ok {
+		t.Fatal("CI has no sharded native correctness-corpus job")
+	}
+	for _, required := range []string{
+		"go run ./cmd/corpus-shard plan",
+		"go run ./cmd/corpus-shard complete",
+		"TestCorpus|TestCorpusSemanticExec",
+		"corpus-correctness-${{ matrix.target }}-${{ matrix.shard }}",
+		"darwin/amd64",
+		"windows/arm64",
+	} {
+		if !strings.Contains(shards, required) {
+			t.Errorf("native corpus shard job is missing %q", required)
+		}
+	}
+	platform, ok := jobs["platform-test"]
+	if !ok || !strings.Contains(platform, "matrix.runtime && matrix.corpus") {
+		t.Fatal("fast native corpus lanes must remain in their platform jobs")
+	}
+	verify, ok := jobs["app-corpus-verify"]
+	if !ok || !strings.Contains(verify, "needs: [changes, app-corpus, corpus-correctness]") || !strings.Contains(verify, "TestVerifyCorpusCorrectnessShardReports") {
+		t.Fatal("corpus shard reports are not part of the coverage gate")
+	}
+	aggregate, ok := jobs["ci-ok"]
+	if !ok || !strings.Contains(aggregate, "corpus-correctness") {
+		t.Fatal("the CI aggregate does not require native corpus shards")
+	}
+}
+
 func TestCanaryPublishesCommitAddressedArtifactsWithoutTags(t *testing.T) {
 	canary, err := os.ReadFile(filepath.Clean("../../../.github/workflows/canary.yml"))
 	if err != nil {

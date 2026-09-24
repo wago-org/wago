@@ -10,6 +10,7 @@ import (
 
 	"github.com/tetratelabs/wazero/api"
 	wago "github.com/wago-org/wago"
+	"github.com/wago-org/wago/bench/internal/corpusplan"
 	"github.com/wago-org/wago/bench/internal/semanticcorpus"
 )
 
@@ -72,7 +73,7 @@ func TestCorpusSemanticExec(t *testing.T) {
 				if err := runSemanticOracle(semantic); err != nil {
 					t.Fatal(err)
 				}
-				if err := semanticcorpus.RunRepeated(semanticCorpusRoot, semantic, 40); err != nil {
+				if err := semanticcorpus.RunRepeated(semanticCorpusRoot, semantic, corpusplan.SemanticOracleRepetitions); err != nil {
 					t.Fatalf("same-instance repetition: %v", err)
 				}
 			})
