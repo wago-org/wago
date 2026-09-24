@@ -29,7 +29,7 @@ func preparedWideModule(n int) []byte {
 }
 
 func TestPreparedIsolatedWideWrapperUsesDirectGate(t *testing.T) {
-	compiled := MustCompile(hostToWasmI32SignatureModule(16, 16))
+	compiled := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).MustCompile(hostToWasmI32SignatureModule(16, 16))
 	defer compiled.Close()
 	in, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
@@ -68,7 +68,7 @@ func TestPreparedIsolatedWideWrapperUsesDirectGate(t *testing.T) {
 }
 
 func TestInstanceIsolatedWideWrapperUsesDirectGate(t *testing.T) {
-	compiled := MustCompile(hostToWasmI32SignatureModule(16, 16))
+	compiled := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).MustCompile(hostToWasmI32SignatureModule(16, 16))
 	defer compiled.Close()
 	in, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
@@ -153,7 +153,7 @@ func TestIsolatedWideWrapperTrapReset(t *testing.T) {
 }
 
 func TestIsolatedWideWrapperSessionUsesFastReservation(t *testing.T) {
-	compiled := MustCompile(hostToWasmI32SignatureModule(16, 16))
+	compiled := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).MustCompile(hostToWasmI32SignatureModule(16, 16))
 	defer compiled.Close()
 	in, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
