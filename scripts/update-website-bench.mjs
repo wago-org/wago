@@ -296,7 +296,7 @@ function buildGeneralSummary(metrics, raw, modules) {
   ].map(([label, sub, kind, values]) => ({ label, sub, kind, values }));
   const boundary = [
     generalPairedMetric(metrics, "Host → Wasm", "raw Instance.Invoke (i32) → i32", "ExecInstanceCall_wago", "ExecCallOverhead_wazero"),
-    generalPairedMetric(metrics, "Wasm → host", "reserved typed import callback", "ExecSessionHostCallback_wago", "ExecHostRoundtrip_wazero"),
+    generalPairedMetric(metrics, "Wasm → host", "Instance.Invoke typed import callback", "ExecHostCallbackInstance_wago", "ExecHostRoundtrip_wazero"),
   ].filter(Boolean);
   return [...summary, ...boundary];
 }
