@@ -164,7 +164,7 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 }
 
 func preparedDirectFloatSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 2 {
+	if len(ft.Params) > 4 || len(ft.Results) > 4 {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -215,6 +215,20 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 	return true
 }
 
+func sigIsFloatOnly(ft *wasm.CompType) bool {
+	for _, typ := range ft.Params {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	return true
+}
+
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
 // and float params are assigned to separate GP/V banks; one result returns in
 // X0/V0; two results use independent GP/FP banks, and integer-only signatures
@@ -223,7 +237,7 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 	if len(ft.Results) > 4 || len(ft.Results) > 2 && !registerQuadResultsSupported {
 		return false
 	}
-	if len(ft.Results) > 2 && !sigIsIntOnly(ft) {
+	if len(ft.Results) > 2 && !sigIsIntOnly(ft) && !(preparedDirectFloatSupported && sigIsFloatOnly(ft)) {
 		return false
 	}
 	if len(ft.Results) == 2 && !((isIntValType(ft.Results[0]) && isIntValType(ft.Results[1])) ||
@@ -2327,6 +2341,11 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
 			f.pushReg(reg, mtOf(ft.Results[i]))
+		}
+	}
+	if preparedDirectFloatSupported && rN > 2 {
+		for i, typ := range ft.Results {
+			f.pushFReg(Reg(i), mtOf(typ))
 		}
 	}
 	return returnOffset

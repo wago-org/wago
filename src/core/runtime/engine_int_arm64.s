@@ -130,9 +130,9 @@ afterNativeIntWideCall:
 	MOVD R3, ret3+56(FP)
 	RET
 
-// func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) (uintptr, uintptr)
-// Float-only parameters use V0..V3; results return in V0/V1.
-TEXT ·enterNativeFloatRaw(SB), NOSPLIT, $0-48
+// func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
+// Float-only parameters use V0..V3; results return in V0..V3.
+TEXT ·enterNativeFloatRaw(SB), NOSPLIT, $0-64
 	MOVD code+0(FP), R9
 	MOVD foreignStackTop+24(FP), R10
 	MOVD args+16(FP), R11
@@ -166,6 +166,8 @@ TEXT ·enterNativeFloatRaw(SB), NOSPLIT, $0-48
 afterNativeFloatCall:
 	FMOVD F0, R0
 	FMOVD F1, R1
+	FMOVD F2, R2
+	FMOVD F3, R3
 	LDP  8(RSP), (R19, R20)
 	LDP  24(RSP), (R21, R22)
 	LDP  40(RSP), (R23, R24)
@@ -176,6 +178,8 @@ afterNativeFloatCall:
 	MOVD R12, RSP
 	MOVD R0, ret+32(FP)
 	MOVD R1, ret1+40(FP)
+	MOVD R2, ret2+48(FP)
+	MOVD R3, ret3+56(FP)
 	RET
 
 // func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)

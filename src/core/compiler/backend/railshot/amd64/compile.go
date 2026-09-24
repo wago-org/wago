@@ -4237,7 +4237,12 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		}
 		adapterCall = a.CallRel32()
 		f.adapterReturnOff = adapterCall + 4
-		if registerQuadResultsSupported && rN > 2 {
+		if preparedDirectFloatSupported && rN > 2 && sigIsFloatOnly(f.ft) {
+			a.Pop(RCX)
+			for i, typ := range f.ft.Results {
+				a.FStoreDisp(RCX, int32(i*8), Reg(i), mtOf(typ) == mtF64)
+			}
+		} else if registerQuadResultsSupported && rN > 2 {
 			// RCX is result 2. Recover the result pointer in RDI instead.
 			a.Pop(RDI)
 			for i, reg := range []Reg{RAX, RDX, RCX, R8}[:rN] {
@@ -4375,7 +4380,11 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 			a.Load64(RDX, RSP, f.spillOff(1))
 		}
 	}
-	if registerQuadResultsSupported && rN > 2 {
+	if preparedDirectFloatSupported && rN > 2 && sigIsFloatOnly(f.ft) {
+		for i, typ := range f.ft.Results {
+			a.FLoadDisp(Reg(i), RSP, f.spillOff(i), mtOf(typ) == mtF64)
+		}
+	} else if registerQuadResultsSupported && rN > 2 {
 		for i, reg := range []Reg{RAX, RDX, RCX, R8}[:rN] {
 			a.Load64(reg, RSP, f.spillOff(i))
 		}

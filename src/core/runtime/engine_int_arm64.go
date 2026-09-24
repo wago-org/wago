@@ -9,7 +9,7 @@ func enterNativeIntPairRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr
 func enterNativeIntWideRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
 
 //go:noescape
-func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) (uintptr, uintptr)
+func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
 
 //go:noescape
 func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
@@ -66,10 +66,10 @@ func (e *Engine) EnterPreparedIntWideBounded(code, linMemBase uintptr, args *[8]
 }
 
 // EnterPreparedFloatBounded enters a compiler-proven bounded FP leaf with up
-// to four FP register arguments and two FP register results.
-func (e *Engine) EnterPreparedFloatBounded(code, linMemBase uintptr, args *[4]uint64) (uint64, uint64) {
-	r0, r1 := enterNativeFloatRaw(code, linMemBase, args, e.stackTop)
-	return uint64(r0), uint64(r1)
+// to four FP register arguments and four FP register results.
+func (e *Engine) EnterPreparedFloatBounded(code, linMemBase uintptr, args *[4]uint64) (uint64, uint64, uint64, uint64) {
+	r0, r1, r2, r3 := enterNativeFloatRaw(code, linMemBase, args, e.stackTop)
+	return uint64(r0), uint64(r1), uint64(r2), uint64(r3)
 }
 
 // EnterPreparedMixedBounded stages up to four GP and four FP arguments in

@@ -1797,10 +1797,7 @@ func (c *Compiled) needsPublicFuncrefHostReentry() bool {
 }
 
 func funcSigLocalRegABI(sig FuncSig) bool {
-	if len(sig.Results) > 2 {
-		return false
-	}
-	if len(sig.Results) == 2 && ((sig.Results[0] != ValI32 && sig.Results[0] != ValI64) || (sig.Results[1] != ValI32 && sig.Results[1] != ValI64)) {
+	if len(sig.Results) > 4 || len(sig.Results) > 2 && !preparedDirectWideSupported {
 		return false
 	}
 	gp, fp := 0, 0
@@ -1821,6 +1818,18 @@ func funcSigLocalRegABI(sig FuncSig) bool {
 		if t != ValI32 && t != ValI64 && t != ValF32 && t != ValF64 {
 			return false
 		}
+	}
+	if len(sig.Results) == 2 && !preparedDirectFloatSupported {
+		return (sig.Results[0] == ValI32 || sig.Results[0] == ValI64) &&
+			(sig.Results[1] == ValI32 || sig.Results[1] == ValI64)
+	}
+	if len(sig.Results) > 2 {
+		allInt, allFloat := fp == 0, preparedDirectFloatSupported && gp == 0
+		for _, t := range sig.Results {
+			allInt = allInt && (t == ValI32 || t == ValI64)
+			allFloat = allFloat && (t == ValF32 || t == ValF64)
+		}
+		return allInt || allFloat
 	}
 	return true
 }

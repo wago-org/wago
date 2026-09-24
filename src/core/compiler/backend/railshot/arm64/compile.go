@@ -4014,7 +4014,7 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 	if f.gcFrameRoots != nil {
 		f.gcFrameRoots.AdapterReturnOffset = uint32(adapterCall + 4)
 	}
-	if registerQuadResultsSupported && rN > 2 {
+	if registerQuadResultsSupported && rN > 2 && !sigIsFloatOnly(f.ft) {
 		// X3 may be result 3; restore the results pointer into X8 instead.
 		a.LdpPost(LR, X8, SP, 16)
 		for i, reg := range []Reg{X0, X1, X2, X3}[:rN] {
@@ -4024,6 +4024,11 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 		a.LdpPost(LR, X3, SP, 16) // restore LR + results ptr
 	}
 	f.storeModuleGlobals(X2) // Go exit: module-pinned registers → cells
+	if preparedDirectFloatSupported && rN > 2 && sigIsFloatOnly(f.ft) {
+		for i, typ := range f.ft.Results {
+			a.FStoreDisp(X3, int32(i*8), Reg(i), mtOf(typ) == mtF64)
+		}
+	}
 	if rN == 1 {
 		rt := mtOf(f.ft.Results[0])
 		if rt.isFloat() {
@@ -4212,7 +4217,11 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 			f.ld64(X1, SP, f.spillOff(1))
 		}
 	}
-	if registerQuadResultsSupported && rN > 2 {
+	if preparedDirectFloatSupported && rN > 2 && sigIsFloatOnly(f.ft) {
+		for i, typ := range f.ft.Results {
+			a.FLoadDisp(Reg(i), SP, f.spillOff(i), mtOf(typ) == mtF64)
+		}
+	} else if registerQuadResultsSupported && rN > 2 {
 		for i, reg := range []Reg{X0, X1, X2, X3}[:rN] {
 			f.ld64(reg, SP, f.spillOff(i))
 		}

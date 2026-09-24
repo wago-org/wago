@@ -102,6 +102,20 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 	return true
 }
 
+func sigIsFloatOnly(ft *wasm.CompType) bool {
+	for _, typ := range ft.Params {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	return true
+}
+
 // sigFitsDirectCrossTailABI is the bounded direct InstanceExport tail surface.
 // The original shape is integer-only with up to two integer results. The first
 // mixed-bank extension admits exactly (i32, f64) -> f64; a second exact shape
@@ -130,7 +144,7 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 	if len(ft.Results) > 4 || len(ft.Results) > 2 && !registerQuadResultsSupported {
 		return false
 	}
-	if len(ft.Results) > 2 && !sigIsIntOnly(ft) {
+	if len(ft.Results) > 2 && !sigIsIntOnly(ft) && !(preparedDirectFloatSupported && sigIsFloatOnly(ft)) {
 		return false
 	}
 	if len(ft.Results) == 2 && !((isIntValType(ft.Results[0]) && isIntValType(ft.Results[1])) ||
@@ -179,7 +193,7 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 }
 
 func preparedDirectFloatSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 2 {
+	if len(ft.Params) > 4 || len(ft.Results) > 4 {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -2147,6 +2161,12 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.pinned = f.pinned.remove(reg)
 			value := f.pushReg(reg, mtOf(ft.Results[i]))
 			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+		}
+	}
+	if preparedDirectFloatSupported && rN > 2 {
+		for i, typ := range ft.Results {
+			value := f.pushFReg(Reg(i), mtOf(typ))
+			value.st.setGCRoot(gcFrameRefType(f.m, typ))
 		}
 	}
 }

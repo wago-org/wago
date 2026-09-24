@@ -180,6 +180,131 @@ func TestPreparedDirectFloatPair(t *testing.T) {
 	check("instance shared fallback", got, err)
 }
 
+func TestPreparedDirectFloatQuad(t *testing.T) {
+	compiled := MustCompile(hostToWasmF64SignatureModule(4, 4))
+	defer compiled.Close()
+	if !compiled.directPreparedBoundedAt(0) {
+		t.Fatal("float quad register entry is not bounded")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.directFloatFast || !fn.directIsolated {
+		t.Fatal("float quad did not select bounded direct entry")
+	}
+	args := []uint64{F64(1.5), F64(-2.5), F64(3.5), F64(-4.5)}
+	check := func(label string, got []uint64, err error) {
+		t.Helper()
+		if err != nil || len(got) != 4 {
+			t.Fatalf("%s = %v, %v; want %v", label, got, err, args)
+		}
+		for i := range args {
+			if got[i] != args[i] {
+				t.Fatalf("%s[%d] = %x; want %x", label, i, got[i], args[i])
+			}
+		}
+	}
+	got, err := fn.Invoke(args...)
+	check("prepared", got, err)
+	got, err = in.Invoke("f", args...)
+	check("instance", got, err)
+	session, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = session.Invoke(args...)
+	check("session", got, err)
+	session.Close()
+	if _, err := in.ExportedFunc("f"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = fn.Invoke(args...)
+	check("shared fallback", got, err)
+	got, err = in.Invoke("f", args...)
+	check("instance shared fallback", got, err)
+}
+
+func preparedFloatQuadWidthsModule(call bool) []byte {
+	types := []wasm.ValType{wasm.F32, wasm.F64, wasm.F32, wasm.F64}
+	leaf := wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x20, 0x03, 0x0b})
+	if !call {
+		return wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(leaf)),
+		)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			leaf,
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x20, 0x03, 0x10, 0x00, 0x0b}),
+		)),
+	)
+}
+
+func TestPreparedDirectFloatQuadWidths(t *testing.T) {
+	compiled := MustCompile(preparedFloatQuadWidthsModule(false))
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.directFloatFast || !fn.directIsolated {
+		t.Fatal("mixed-width float quad did not select bounded direct entry")
+	}
+	args := []uint64{0xffffffff7fc12345, 0x7ff8000000001234, 0xffffffff3f800000, F64(-2.5)}
+	want := []uint64{0x7fc12345, 0x7ff8000000001234, 0x3f800000, F64(-2.5)}
+	for label, invoke := range map[string]func() ([]uint64, error){
+		"prepared": func() ([]uint64, error) { return fn.Invoke(args...) },
+		"instance": func() ([]uint64, error) { return in.Invoke("f", args...) },
+	} {
+		got, err := invoke()
+		if err != nil || len(got) != 4 {
+			t.Fatalf("%s = %v, %v; want %v", label, got, err, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%s[%d] = %x; want %x", label, i, got[i], want[i])
+			}
+		}
+	}
+}
+
+func TestFloatQuadRegisterCallBetweenWasmFunctions(t *testing.T) {
+	compiled := MustCompile(preparedFloatQuadWidthsModule(true))
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	args := []uint64{0x7fc12345, 0x7ff8000000001234, 0x3f800000, F64(-2.5)}
+	got, err := in.Invoke("f", args...)
+	if err != nil || len(got) != 4 {
+		t.Fatalf("Wasm register call = %v, %v; want %v", got, err, args)
+	}
+	for i := range args {
+		if got[i] != args[i] {
+			t.Fatalf("Wasm register call[%d] = %x; want %x", i, got[i], args[i])
+		}
+	}
+}
+
 func TestFloatPairRegisterCallBetweenWasmFunctions(t *testing.T) {
 	types := []wasm.ValType{wasm.F32, wasm.F64}
 	module := wasmtest.Module(
