@@ -635,7 +635,7 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	}
 	if in.syncMode {
 		var err error
-		if in.gc == nil && in.usesIndependentExecution() && in.hasSingleDirectTypedScalarHost() {
+		if in.gc == nil && in.usesIndependentExecution() && (in.hasSingleDirectTypedScalarHost() || in.hasSingleExpandedTypedScalarHost()) {
 			err = fn.callScalarHostPrepared()
 		} else {
 			err = in.callNativeSync(fn.entry)
