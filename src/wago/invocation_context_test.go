@@ -383,7 +383,7 @@ func TestCallerResolverInvocationContextWithoutNativeInterruption(t *testing.T) 
 	}
 	callDone := make(chan error, 1)
 	go func() {
-		_, err := in.invokeEntry("call", nil, invocationContextSet{callback: parent}, false)
+		_, err := in.invokeEntry("call", nil, invocationContextSet{callback: parent}, false, false)
 		callDone <- err
 	}()
 	select {

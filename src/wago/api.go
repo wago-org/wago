@@ -4293,7 +4293,14 @@ func LoadTrustedArtifact(b []byte) (*Compiled, error) {
 // use InvokeFromHost with the HostModule value it received. Direct invocation
 // fails with ErrPermissionDenied while callback-scoped guest storage is borrowed.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
-	return in.invoke(export, args, invocationContextSet{})
+	if in != nil {
+		// Keep the resolved numeric path at the public entry. On a miss, the
+		// fallback must not repeat a possibly contended fast admission.
+		if out, err, ok := in.tryInvokeCachedIsolatedNumeric(export, args); ok {
+			return out, err
+		}
+	}
+	return in.invokeEntry(export, args, invocationContextSet{}, false, true)
 }
 
 // invocationContextSet keeps callback-visible cancellation independent from
@@ -4350,7 +4357,7 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 }
 
 func (in *Instance) invoke(export string, args []uint64, contexts invocationContextSet) ([]uint64, error) {
-	return in.invokeEntry(export, args, contexts, false)
+	return in.invokeEntry(export, args, contexts, false, false)
 }
 
 func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invocationContextSet, reservation *pluginOperationReservation) ([]uint64, error) {
@@ -4358,11 +4365,11 @@ func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invoca
 	return in.invokeWithToken(export, args, contexts, state.invocationID, true, true, reservation)
 }
 
-func (in *Instance) invokeEntry(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted bool) ([]uint64, error) {
+func (in *Instance) invokeEntry(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted, fastProbed bool) ([]uint64, error) {
 	if in == nil {
 		return nil, nilInstanceInvokeError()
 	}
-	if !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil {
+	if !fastProbed && !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil {
 		if out, err, ok := in.tryInvokeCachedIsolatedNumeric(export, args); ok {
 			return out, err
 		}

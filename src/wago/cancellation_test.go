@@ -27,7 +27,7 @@ func TestQueuedInvocationChecksCancellationAfterGate(t *testing.T) {
 			go func() {
 				var err error
 				if entry == "invoke" {
-					_, err = in.invokeEntry("unused", nil, contexts, false)
+					_, err = in.invokeEntry("unused", nil, contexts, false, false)
 				} else {
 					_, err = in.invokeWithToken("unused", nil, contexts, newInvocationID(), false, false, nil)
 				}
