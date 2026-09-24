@@ -1,0 +1,12 @@
+The following authors have all licensed their contributions to AssemblyScript
+under the licensing terms detailed in LICENSE:
+
+* Jairus Tanaka <me@jairus.dev>
+
+Portions of this software are derived from third-party works licensed under
+the following terms:
+
+* WARP WebAssembly Compiler
+
+    Copyright (c) Bavarian Motor Works Corporation
+    Apache License, Version 2.0 (https://opensource.org/licenses/Apache-2.0)
