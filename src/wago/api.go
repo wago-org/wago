@@ -5199,9 +5199,7 @@ func copyPublicScalarSlotsByClass(dst, values []uint64, wide []bool, class scala
 	case scalarSlotWide:
 		copy(dst[:len(wide)], values[:len(wide)])
 	case scalarSlotNarrow:
-		for i := range wide {
-			dst[i] = uint64(uint32(values[i]))
-		}
+		copyNarrowScalarSlots(dst, values, len(wide))
 	default:
 		for i, w := range wide {
 			bits := values[i]

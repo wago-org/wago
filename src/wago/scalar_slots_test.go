@@ -34,3 +34,27 @@ func TestScalarSlotWidthClass(t *testing.T) {
 		})
 	}
 }
+
+func TestNarrowScalarSlotCopyUnrolledBoundaries(t *testing.T) {
+	for _, n := range []int{0, 1, 3, 4, 5, 7, 8, 9, 16, 64, 128} {
+		src := make([]uint64, n)
+		wide := make([]bool, n)
+		for i := range src {
+			src[i] = 0xabcdefff00000000 | uint64(i+1)
+		}
+		for _, inPlace := range []bool{false, true} {
+			dst := make([]uint64, n)
+			if inPlace {
+				copy(dst, src)
+				copyPublicScalarSlotsByClass(dst, dst, wide, scalarSlotNarrow)
+			} else {
+				copyPublicScalarSlotsByClass(dst, src, wide, scalarSlotNarrow)
+			}
+			for i, got := range dst {
+				if want := uint64(uint32(src[i])); got != want {
+					t.Fatalf("n=%d inPlace=%v slot=%d: got %x, want %x", n, inPlace, i, got, want)
+				}
+			}
+		}
+	}
+}

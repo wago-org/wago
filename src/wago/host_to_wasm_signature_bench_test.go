@@ -28,6 +28,7 @@ func BenchmarkHostToWasmSignatureMatrix(b *testing.B) {
 		{32, 32},
 		{48, 48},
 		{64, 64},
+		{128, 128},
 	} {
 		params, results := shape[0], shape[1]
 		b.Run(fmt.Sprintf("i32x%d-i32x%d", params, results), func(b *testing.B) {
