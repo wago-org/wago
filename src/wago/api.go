@@ -4579,9 +4579,15 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 		defer in.endInvocation()
 	}
-	gcLease, err := in.lockGCInvocationContext(ctx, id)
-	if err != nil {
-		return nil, err
+	var gcLease gcInvocationLease
+	if ctx == nil {
+		gcLease = in.lockGCInvocation(id)
+	} else {
+		var err error
+		gcLease, err = in.lockGCInvocationContext(ctx, id)
+		if err != nil {
+			return nil, err
+		}
 	}
 	var reconcileAttached *Instance
 	defer func() {
