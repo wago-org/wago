@@ -83,6 +83,7 @@ func BenchmarkHostToWasmSignatureMatrix(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer session.Close()
+			check(session.Invoke(args...))
 			b.Run("session", func(b *testing.B) {
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {

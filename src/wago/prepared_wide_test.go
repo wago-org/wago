@@ -4,6 +4,7 @@ package wago
 
 import (
 	"fmt"
+	"reflect"
 	"runtime"
 	"testing"
 
@@ -26,6 +27,81 @@ func preparedWideModule(n int) []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, byte(n - 1), 0x0b}))),
 	)
+}
+
+func TestBoundedScalarWrapperAdmission(t *testing.T) {
+	compiled := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).MustCompile(hostToWasmI32SignatureModule(16, 16))
+	defer compiled.Close()
+	if compiled.directPreparedAt(0) {
+		t.Fatal("16-slot wrapper unexpectedly selected register entry")
+	}
+	if !compiled.directPreparedBoundedAt(0) {
+		t.Fatal("call-free 16-slot wrapper did not receive bounded entry proof")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil || !fn.boundedWrapper {
+		t.Fatalf("bounded wrapper = %v, %v", fn, err)
+	}
+	args := make([]uint64, 16)
+	for i := range args {
+		args[i] = uint64(i + 1)
+	}
+	for name, call := range map[string]func() ([]uint64, error){
+		"by-name":  func() ([]uint64, error) { return in.Invoke("f", args...) },
+		"resolved": func() ([]uint64, error) { return fn.Invoke(args...) },
+	} {
+		got, err := call()
+		if err != nil || !reflect.DeepEqual(got, args) {
+			t.Fatalf("%s = %v, %v", name, got, err)
+		}
+	}
+	s, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Invoke(args...)
+	s.Close()
+	if err != nil || !reflect.DeepEqual(got, args) {
+		t.Fatalf("session = %v, %v", got, err)
+	}
+}
+
+func TestBoundedScalarWrapperRejectsLoopAndOversize(t *testing.T) {
+	params := make([]wasm.ValType, 16)
+	for i := range params {
+		params[i] = wasm.I32
+	}
+	body := []byte{0x03, 0x40, 0x0b} // loop; end
+	for i := range params {
+		body = append(body, 0x20, byte(i)) // local.get i
+	}
+	body = append(body, 0x0b)
+	loop := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, params))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	for _, tc := range []struct {
+		name string
+		wasm []byte
+	}{
+		{"loop", loop},
+		{"oversize", hostToWasmI32SignatureModule(64, 64)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).MustCompile(tc.wasm)
+			defer compiled.Close()
+			if compiled.directPreparedBoundedAt(0) {
+				t.Fatal("unbounded wrapper received scheduler bypass proof")
+			}
+		})
+	}
 }
 
 func TestPreparedIsolatedWideWrapperUsesDirectGate(t *testing.T) {

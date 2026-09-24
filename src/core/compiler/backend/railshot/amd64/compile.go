@@ -3543,6 +3543,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		return f.a.B, f.relocs, internalOff, nil
 	}
 
+	// The ordinary wrapper can also stay on the Go P for a small, call-free
+	// scalar leaf. Its adapter has bounded argument/result copies; the module
+	// finalizer applies the same body-work proof used by register entries.
+	sc.directPreparedBounded = !regABI && f.opt(optPreparedBoundedEntry) && sigIsIntOnly(ft) &&
+		len(ft.Params) <= 32 && len(ft.Results) <= 32 && nLocals <= 32 &&
+		len(c.BodyBytes) != 0 && len(c.BodyBytes) <= 96 && !f.hasLoop &&
+		!hints.flags.has(hintHasCall|hintUsesBulkMem|hintMutatesTable|hintHasTailCall) &&
+		!touchesMemory && len(modGlobals) == 0 && !moduleEH && len(custom) == 0 &&
+		len(gcTypeLayouts) == 0 && gcFrameRoots == nil && len(inlinedCallees) == 0
 	f.prologue(hints.localScore)
 	if hints.flags.has(hintHasFloatConst) {
 		f.preloadFloatConsts(c.BodyBytes)

@@ -119,6 +119,7 @@ type invokeCache struct {
 	resultSlots       int
 	hasFuncRefParams  bool
 	hasFuncRefResults bool
+	boundedWrapper    bool
 	paramWidthClass   scalarSlotWidthClass
 	resultWidthClass  scalarSlotWidthClass
 	slotWide          []bool // parameter slots followed by result slots; false means a 32-bit scalar

@@ -4517,7 +4517,7 @@ func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, arg
 	entry := in.base + uintptr(in.c.Entry[ic.li])
 	var err error
 	if reserved || ic.entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
-		err = in.callPreparedIsolated(entry, in.trap, reserved)
+		err = in.callPreparedIsolated(entry, in.trap, reserved, ic.boundedWrapper)
 	} else {
 		err = in.callPreparedPrivate(entry, in.trap)
 	}
@@ -4668,7 +4668,7 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 		var err error
 		if entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
-			err = in.callPreparedIsolated(entry, in.trap, false)
+			err = in.callPreparedIsolated(entry, in.trap, false, ic.boundedWrapper)
 		} else if entryMode != preparedEntryGeneral {
 			err = in.callPreparedPrivate(entry, in.trap)
 		} else {
@@ -5136,6 +5136,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		directFloatFast:   directFloatFast || directMixedFast,
 		directIntLight:    directIntFast && in.c.directPreparedLightAt(li),
 		directIntBounded:  directIntFast && in.c.directPreparedBoundedAt(li),
+		boundedWrapper:    in.c.directPreparedBoundedAt(li),
 		scalarWideMask:    scalarWideMask,
 		scalarResultWide:  resultSlots == 1 && widths[paramSlots],
 		paramWidthClass:   classifyScalarSlotWidths(widths[:paramSlots]),

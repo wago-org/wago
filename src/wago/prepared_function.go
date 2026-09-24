@@ -36,6 +36,7 @@ type WasmFunc struct {
 	scalarFast          bool
 	scalarResultWide    bool
 	resultWide          []bool
+	boundedWrapper      bool
 	privateFast         bool
 	isolatedFast        bool
 	directIsolated      bool
@@ -84,6 +85,8 @@ func (c *Compiled) directPreparedLightAt(local int) bool {
 	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedLightEntry(c.InternalEntry[local])
 }
 
+// The bounded-work bit also covers a small scalar wrapper that cannot use the
+// register entry; callers must check directPreparedAt separately when needed.
 func (c *Compiled) directPreparedBoundedAt(local int) bool {
 	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedBoundedEntry(c.InternalEntry[local])
 }
@@ -250,6 +253,7 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		gcMaintenance:       in.gc != nil && (in.c.genericGCBoundaryCollectionSafe() || in.c.hasGCRefGlobals()),
 		resultWide:          resultWide,
+		boundedWrapper:      in.c.directPreparedBoundedAt(ic.li),
 	}
 	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
 		entryMode := in.preparedEntryMode()
@@ -642,7 +646,7 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	} else {
 		var err error
 		if fn.isolatedFast {
-			err = in.callPreparedIsolated(fn.entry, in.trap, false)
+			err = in.callPreparedIsolated(fn.entry, in.trap, false, fn.boundedWrapper)
 		} else if fn.privateFast {
 			err = in.callPreparedPrivate(fn.entry, in.trap)
 		} else {

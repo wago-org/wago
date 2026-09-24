@@ -3116,6 +3116,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// out-of-loop calls, not per iteration. Non-eligible globals use the per-run
 	// cell-pointer cache (globalCellPtr).
 	var globalHints []shared.GlobalHint
+	// A small scalar wrapper is bounded even when its signature exceeds the
+	// register ABI. The ordinary adapter only copies a capped number of slots;
+	// the finalizer checks the body-work proof before publishing this bit.
+	sc.directPreparedBounded = !regABI && f.opt(optPreparedBoundedEntry) && sigIsIntOnly(ft) &&
+		len(ft.Params) <= 32 && len(ft.Results) <= 32 && nLocals <= 32 &&
+		len(c.BodyBytes) != 0 && len(c.BodyBytes) <= 96 && !f.hasLoop &&
+		!hints.flags.has(hintHasCall|hintUsesBulkMem|hintMutatesTable) &&
+		!touchesMemory && len(modGlobals) == 0 && !hints.flags.has(hintModuleEH) &&
+		len(customInstructions) == 0 && len(gcTypeLayouts) == 0 && gcFrameRoots == nil &&
+		len(inlinedCallees) == 0
 	if regABI {
 		sc.directPrepared = directPrepared
 		sc.directPreparedLight = directPrepared && f.preserveCallerPins && f.opt(optPreparedLightEntry)
