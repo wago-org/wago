@@ -8,14 +8,20 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Full main commit SHA with successful CI qualification"
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
   # A workflow_run that fails the job-level guard still enters concurrency.
   # Scope by source SHA so it cannot cancel a valid build for another commit.
-  group: publish-canary-${{ github.event.workflow_run.head_sha || github.sha }}
+  group: publish-canary-${{ github.event.workflow_run.head_sha || inputs.source_sha || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -26,28 +32,110 @@ jobs:
   prepare:
     name: Resolve canary source
     if: >-
-      github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.head_repository.full_name == github.repository)
+      github.event.workflow_run.head_repository.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.version.outputs.sha }}
+      native: ${{ steps.paths.outputs.native }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || 'main' }}
-          fetch-depth: 1
-      - name: Resolve canary commit
+          ref: ${{ github.event.workflow_run.head_sha || inputs.source_sha }}
+          fetch-depth: 0
+      - name: Select exact canary commit
         id: version
+        env:
+          EVENT_SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
-          sha=$(git rev-parse HEAD)
+          sha="$EVENT_SOURCE_SHA"
+          if [ -z "$sha" ]; then sha="$REQUESTED_SOURCE_SHA"; fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::source SHA must be a full lowercase commit SHA"
+            exit 1
+          }
+          test "$(git rev-parse HEAD)" = "$sha"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Verify successful full CI qualification for this SHA
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.version.outputs.sha }}
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main || {
+            echo "::error::$SOURCE_SHA is not reachable from main"
+            exit 1
+          }
+          run_id=$(gh api --method GET \
+            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs" \
+            -f head_sha="$SOURCE_SHA" -f branch=main -f event=push \
+            -f status=completed -f per_page=100 \
+            --jq "[.workflow_runs[] |
+              select(.head_sha == \"$SOURCE_SHA\" and .head_branch == \"main\" and
+                     .event == \"push\" and .conclusion == \"success\")] |
+              sort_by(.run_attempt, .id) | last | .id")
+          [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::no successful full CI run exists for $SOURCE_SHA"
+            exit 1
+          }
+          run_attempt=$(gh api "repos/${{ github.repository }}/actions/runs/$run_id" \
+            --jq "select(.head_sha == \"$SOURCE_SHA\" and .head_branch == \"main\" and
+                         .event == \"push\" and .status == \"completed\" and
+                         .conclusion == \"success\") | .run_attempt")
+          [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]] || exit 1
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.ci.outputs.run_id }}
+          github-token: ${{ github.token }}
+          name: stable-source-qualification-${{ steps.version.outputs.sha }}-${{ steps.ci.outputs.run_attempt }}
+          path: qualification
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Verify full profile and exact job results
+        run: |
+          scripts/release-qualification.sh verify-ci \
+            qualification/ci-qualification.json "${{ github.repository }}" \
+            "${{ steps.version.outputs.sha }}" "${{ steps.ci.outputs.run_id }}" \
+            "${{ steps.ci.outputs.run_attempt }}"
+      - name: Check whether the commit needs native artifacts
+        id: paths
+        env:
+          SOURCE_SHA: ${{ steps.version.outputs.sha }}
+        run: |
+          parent=$(git rev-parse "$SOURCE_SHA^1" 2>/dev/null || true)
+          native=true
+          if [ -n "$parent" ]; then
+            native=false
+            while IFS= read -r path; do
+              case "$path" in
+                *.md|docs/*|LICENSE) ;;
+                *) native=true; break ;;
+              esac
+            done < <(git diff --name-only "$parent" "$SOURCE_SHA")
+          fi
+          echo "native=$native" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build canary (${{ matrix.goos }}/${{ matrix.goarch }})
     needs: prepare
+    if: needs.prepare.outputs.native == 'true'
     continue-on-error: ${{ matrix.best_effort }}
     strategy:
       fail-fast: false
@@ -91,12 +179,41 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Identify Go toolchain for TinyGo cache
+        id: tinygo-go
+        if: matrix.target != 'windows-arm64'
+        run: echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+      - name: Restore TinyGo toolchain
+        if: matrix.target != 'windows-arm64'
+        id: tinygo-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.tool_cache }}/tinygo/${{ env.TINYGO_VERSION }}
+          key: tinygo-${{ runner.os }}-${{ runner.arch }}-${{ env.TINYGO_VERSION }}-${{ steps.tinygo-go.outputs.version }}-${{ hashFiles('tests/tools/tinygo-cache/main.go') }}
+      - name: Verify restored TinyGo tree
+        if: matrix.target != 'windows-arm64'
+        env:
+          TINYGO_GO_VERSION: ${{ steps.tinygo-go.outputs.version }}
+          TINYGO_CACHE_HIT: ${{ steps.tinygo-cache.outputs.cache-hit }}
+        run: go run ./tests/tools/tinygo-cache verify
       - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
         if: matrix.target != 'windows-arm64'
         with:
           tinygo-version: ${{ env.TINYGO_VERSION }}
           install-binaryen: false
+      - name: Record TinyGo tree provenance
+        if: matrix.target != 'windows-arm64'
+        env:
+          TINYGO_GO_VERSION: ${{ steps.tinygo-go.outputs.version }}
+        run: go run ./tests/tools/tinygo-cache record
       - name: Install lld
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y lld
@@ -109,6 +226,7 @@ jobs:
         run: |
           scripts/build-release-assets.sh
           scripts/verify-channel-assets.sh . "${{ matrix.target }}"
+          scripts/smoke-release-assets.sh . "${{ matrix.target }}" "canary@${{ needs.prepare.outputs.sha }}"
       - name: Upload canary workflow artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -126,6 +244,7 @@ jobs:
   synchronize-docs:
     name: Synchronize canary documentation
     needs: [prepare, build]
+    if: always() && needs.prepare.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262

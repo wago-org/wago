@@ -181,13 +181,13 @@ func requestDarwinInterrupt(trapPtr uintptr) bool {
 		return false
 	}
 	defer machPortDeallocate(task, self)
-	var list uintptr
+	var list unsafe.Pointer
 	var count uint32
-	if machTaskThreads(task, &list, &count) != 0 || list == 0 {
+	if machTaskThreads(task, &list, &count) != 0 || list == nil {
 		return false
 	}
-	defer machVMDeallocate(task, list, uintptr(count)*4)
-	threads := unsafe.Slice((*uint32)(unsafe.Pointer(list)), int(count))
+	defer machVMDeallocate(task, uintptr(list), uintptr(count)*4)
+	threads := unsafe.Slice((*uint32)(list), int(count))
 	for i, thread := range threads {
 		if thread == 0 {
 			continue
@@ -245,7 +245,7 @@ func machThreadSelf() uint32 {
 	return uint32(r)
 }
 
-func machTaskThreads(task uint32, list *uintptr, count *uint32) int32 {
+func machTaskThreads(task uint32, list *unsafe.Pointer, count *uint32) int32 {
 	r, _, _ := syscall6(addrMachTaskThreads(), uintptr(task), uintptr(unsafe.Pointer(list)), uintptr(unsafe.Pointer(count)), 0, 0, 0)
 	return int32(r)
 }
