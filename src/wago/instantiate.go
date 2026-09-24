@@ -1797,7 +1797,7 @@ func (c *Compiled) needsPublicFuncrefHostReentry() bool {
 }
 
 func funcSigLocalRegABI(sig FuncSig) bool {
-	if len(sig.Results) > 5 || len(sig.Results) > 2 && !preparedDirectWideSupported {
+	if len(sig.Results) > preparedDirectWideMaxArgs || len(sig.Results) > 2 && !preparedDirectWideSupported {
 		return false
 	}
 	gp, fp := 0, 0

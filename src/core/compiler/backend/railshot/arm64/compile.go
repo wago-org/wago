@@ -4017,7 +4017,7 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 	if registerQuadResultsSupported && rN > 2 && !sigIsFloatOnly(f.ft) {
 		// X3 may be result 3; restore the results pointer into X8 instead.
 		a.LdpPost(LR, X8, SP, 16)
-		for i, reg := range []Reg{X0, X1, X2, X3, X4}[:rN] {
+		for i, reg := range []Reg{X0, X1, X2, X3, X4, X5, X6, X7}[:rN] {
 			f.st64(X8, int32(i*8), reg)
 		}
 	} else {
@@ -4222,7 +4222,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 			a.FLoadDisp(Reg(i), SP, f.spillOff(i), mtOf(typ) == mtF64)
 		}
 	} else if registerQuadResultsSupported && rN > 2 {
-		for i, reg := range []Reg{X0, X1, X2, X3, X4}[:rN] {
+		for i, reg := range []Reg{X0, X1, X2, X3, X4, X5, X6, X7}[:rN] {
 			f.ld64(reg, SP, f.spillOff(i))
 		}
 	}

@@ -87,7 +87,7 @@ func (c *Compiled) directPreparedBoundedAt(local int) bool {
 }
 
 func preparedDirectIntSignature(sig FuncSig) bool {
-	if len(sig.Params) > preparedDirectWideMaxArgs || len(sig.Results) > 5 || len(sig.Results) > 2 && !preparedDirectWideSupported {
+	if len(sig.Params) > preparedDirectWideMaxArgs || len(sig.Results) > preparedDirectWideMaxArgs || len(sig.Results) > 2 && !preparedDirectWideSupported {
 		return false
 	}
 	for _, typ := range sig.Params {

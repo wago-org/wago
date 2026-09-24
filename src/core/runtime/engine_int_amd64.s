@@ -97,6 +97,44 @@ TEXT ·enterNativeIntWideRaw(SB), NOSPLIT, $0-72
 	MOVQ R9, ret4+64(FP)
 	RET
 
+// func enterNativeIntOctRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr)
+TEXT ·enterNativeIntOctRaw(SB), NOSPLIT, $0-96
+	MOVQ code+0(FP), SI
+	MOVQ foreignStackTop+24(FP), R10
+	SUBQ $32, R10
+	MOVQ SP,  0(R10)
+	MOVQ BX,  8(R10)
+	MOVQ BP, 16(R10)
+
+	MOVQ linMem+8(FP), BX
+	LEAQ -8(R10), R9
+	MOVQ R9, -24(BX)
+	MOVQ args+16(FP), DI
+	MOVQ R10, SP
+	MOVQ  0(DI), AX
+	MOVQ  8(DI), CX
+	MOVQ 16(DI), DX
+	MOVQ 24(DI), R8
+	MOVQ 32(DI), R9
+	MOVQ 40(DI), R10
+	MOVQ 48(DI), R11
+	XORL BP, BP
+	CALL SI
+
+	MOVQ 16(SP), BP
+	MOVQ  8(SP), BX
+	MOVQ  0(SP), SP
+	PXOR X15, X15
+	MOVQ AX, ret+32(FP)
+	MOVQ DX, ret1+40(FP)
+	MOVQ CX, ret2+48(FP)
+	MOVQ R8, ret3+56(FP)
+	MOVQ R9, ret4+64(FP)
+	MOVQ R10, ret5+72(FP)
+	MOVQ R11, ret6+80(FP)
+	MOVQ $0, ret7+88(FP)
+	RET
+
 // func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
 // Float-only parameters use XMM0..XMM3; results return in XMM0..XMM3.
 TEXT ·enterNativeFloatRaw(SB), NOSPLIT, $0-64

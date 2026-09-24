@@ -9,6 +9,9 @@ func enterNativeIntPairRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr
 func enterNativeIntWideRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr, uintptr)
 
 //go:noescape
+func enterNativeIntOctRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr)
+
+//go:noescape
 func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
 
 //go:noescape
@@ -59,10 +62,17 @@ func (e *Engine) EnterPreparedIntPairBounded(code, linMemBase uintptr, a0, a1, a
 }
 
 // EnterPreparedIntWideBounded enters a compiler-proven bounded integer leaf
-// with up to eight register arguments and up to five register results.
+// with up to eight register arguments and five register results.
 func (e *Engine) EnterPreparedIntWideBounded(code, linMemBase uintptr, args *[8]uint64) (uint64, uint64, uint64, uint64, uint64) {
 	r0, r1, r2, r3, r4 := enterNativeIntWideRaw(code, linMemBase, args, e.stackTop)
 	return uint64(r0), uint64(r1), uint64(r2), uint64(r3), uint64(r4)
+}
+
+// EnterPreparedIntOctBounded enters a compiler-proven bounded integer leaf
+// returning six to eight values through the register bank.
+func (e *Engine) EnterPreparedIntOctBounded(code, linMemBase uintptr, args *[8]uint64) (uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64) {
+	r0, r1, r2, r3, r4, r5, r6, r7 := enterNativeIntOctRaw(code, linMemBase, args, e.stackTop)
+	return uint64(r0), uint64(r1), uint64(r2), uint64(r3), uint64(r4), uint64(r5), uint64(r6), uint64(r7)
 }
 
 // EnterPreparedFloatBounded enters a compiler-proven bounded FP leaf with up

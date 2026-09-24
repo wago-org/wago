@@ -19,6 +19,7 @@ func BenchmarkHostToWasmSignatureMatrix(b *testing.B) {
 		{4, 1},
 		{4, 4},
 		{5, 5},
+		{7, 7},
 		{7, 1},
 		{8, 1},
 		{8, 8},

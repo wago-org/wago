@@ -247,7 +247,7 @@ func TestPreparedDirectIntegerMultiWidths(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
 		maxParams = 8
 	}
-	for _, tc := range []struct{ params, results int }{{4, 3}, {maxParams, 4}, {5, 5}} {
+	for _, tc := range []struct{ params, results int }{{4, 3}, {maxParams, 4}, {5, 5}, {maxParams, maxParams}} {
 		t.Run(fmt.Sprintf("%d-%d", tc.params, tc.results), func(t *testing.T) {
 			compiled := MustCompile(preparedIntegerMultiModule(tc.params, tc.results))
 			defer compiled.Close()
@@ -364,6 +364,51 @@ func TestIntegerQuintRegisterCallBetweenWasmFunctions(t *testing.T) {
 	}
 }
 
+func TestIntegerMaxRegisterResultsBetweenWasmFunctions(t *testing.T) {
+	n := 7
+	if runtime.GOARCH == "arm64" {
+		n = 8
+	}
+	types := make([]wasm.ValType, n)
+	identity := make([]byte, 0, 2*n)
+	args := make([]uint64, n)
+	for i := range types {
+		types[i] = wasm.I32
+		args[i] = uint64(i + 1)
+		if i%2 != 0 {
+			types[i] = wasm.I64
+			args[i] |= 0x1122334400000000
+		}
+		identity = append(identity, 0x20, byte(i))
+	}
+	caller := append(append([]byte{}, identity...), 0x10, 0x00, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(append(identity, 0x0b)),
+			wasmtest.Code(caller),
+		)),
+	)
+	compiled := MustCompile(module)
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	got, err := in.Invoke("f", args...)
+	if err != nil || len(got) != len(args) {
+		t.Fatalf("Wasm register call = %v, %v; want %v", got, err, args)
+	}
+	for i := range args {
+		if got[i] != args[i] {
+			t.Fatalf("Wasm register call[%d] = %x; want %x", i, got[i], args[i])
+		}
+	}
+}
+
 func TestPreparedDirectIntegerQuintTrapReset(t *testing.T) {
 	types := []wasm.ValType{wasm.I32, wasm.I64, wasm.I32, wasm.I64, wasm.I32}
 	body := []byte{0x20, 0x00, 0x45, 0x04, 0x40, 0x00, 0x0b}
@@ -398,6 +443,64 @@ func TestPreparedDirectIntegerQuintTrapReset(t *testing.T) {
 		t.Fatal("expected trap")
 	}
 	args := []uint64{1, 0x1122334455667788, 3, 0x8877665544332211, 5}
+	got, err := fn.Invoke(args...)
+	if err != nil || len(got) != len(args) {
+		t.Fatalf("post-trap call = %v, %v; want %v", got, err, args)
+	}
+	for i := range args {
+		if got[i] != args[i] {
+			t.Fatalf("post-trap call[%d] = %x; want %x", i, got[i], args[i])
+		}
+	}
+}
+
+func TestPreparedDirectIntegerMaxTrapReset(t *testing.T) {
+	n := 7
+	if runtime.GOARCH == "arm64" {
+		n = 8
+	}
+	types := make([]wasm.ValType, n)
+	args := make([]uint64, n)
+	trapArgs := make([]uint64, n)
+	body := []byte{0x20, 0x00, 0x45, 0x04, 0x40, 0x00, 0x0b}
+	for i := range types {
+		types[i] = wasm.I32
+		args[i] = uint64(i + 1)
+		if i%2 != 0 {
+			types[i] = wasm.I64
+			args[i] |= 0x1122334400000000
+		}
+		trapArgs[i] = args[i]
+		body = append(body, 0x20, byte(i))
+	}
+	trapArgs[0] = 0
+	body = append(body, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	compiled := MustCompile(module)
+	defer compiled.Close()
+	if !compiled.directPreparedBoundedAt(0) {
+		t.Fatal("max-result trap entry is not bounded")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.directIntFast || !fn.directIsolated {
+		t.Fatal("max-result trap entry did not select direct path")
+	}
+	if _, err := fn.Invoke(trapArgs...); err == nil {
+		t.Fatal("expected trap")
+	}
 	got, err := fn.Invoke(args...)
 	if err != nil || len(got) != len(args) {
 		t.Fatalf("post-trap call = %v, %v; want %v", got, err, args)
