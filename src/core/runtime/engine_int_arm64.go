@@ -12,7 +12,7 @@ func enterNativeIntWideRaw(code, linMem uintptr, args *[8]uint64, foreignStackTo
 func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) uintptr
 
 //go:noescape
-func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr)
+func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr)
 func enterNativeIntLightRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
 func enterNativeIntPreboundContextRaw(call *PreparedIntCall, a0, a1, a2, a3 uintptr) uintptr
 func enterNativeIntCallRaw(call *PreparedIntCall) uintptr
@@ -73,9 +73,9 @@ func (e *Engine) EnterPreparedFloatBounded(code, linMemBase uintptr, args *[4]ui
 
 // EnterPreparedMixedBounded stages up to four GP and four FP arguments in
 // independent register banks. The caller selects the result bank by signature.
-func (e *Engine) EnterPreparedMixedBounded(code, linMemBase uintptr, args *[8]uint64) (uint64, uint64) {
-	gp, fp := enterNativeMixedRaw(code, linMemBase, args, e.stackTop)
-	return uint64(gp), uint64(fp)
+func (e *Engine) EnterPreparedMixedBounded(code, linMemBase uintptr, args *[8]uint64) (uint64, uint64, uint64) {
+	gp0, gp1, fp := enterNativeMixedRaw(code, linMemBase, args, e.stackTop)
+	return uint64(gp0), uint64(gp1), uint64(fp)
 }
 
 // EnterPreparedIntLightBounded combines the bounded-duration proof with the

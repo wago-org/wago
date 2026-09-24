@@ -174,9 +174,9 @@ afterNativeFloatCall:
 	MOVD R0, ret+32(FP)
 	RET
 
-// func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr)
+// func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr)
 // GP args occupy X0..X3; FP args independently occupy V0..V3.
-TEXT ·enterNativeMixedRaw(SB), NOSPLIT, $0-48
+TEXT ·enterNativeMixedRaw(SB), NOSPLIT, $0-56
 	MOVD code+0(FP), R9
 	MOVD foreignStackTop+24(FP), R10
 	MOVD args+16(FP), R11
@@ -222,7 +222,8 @@ afterNativeMixedCall:
 	MOVD 0(RSP), R12
 	MOVD R12, RSP
 	MOVD R0, ret+32(FP)
-	MOVD R4, ret1+40(FP)
+	MOVD R1, ret1+40(FP)
+	MOVD R4, ret2+48(FP)
 	RET
 
 // func enterNativeIntLightRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr

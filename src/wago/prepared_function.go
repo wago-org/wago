@@ -121,7 +121,11 @@ func preparedDirectFloatSignature(sig FuncSig) bool {
 }
 
 func preparedDirectMixedSignature(sig FuncSig) bool {
-	if len(sig.Params) > 4 || len(sig.Results) > 1 {
+	if len(sig.Params) > 4 || len(sig.Results) > 2 {
+		return false
+	}
+	if len(sig.Results) == 2 &&
+		(sig.Results[0] != ValI32 && sig.Results[0] != ValI64 || sig.Results[1] != ValI32 && sig.Results[1] != ValI64) {
 		return false
 	}
 	for _, typ := range sig.Params {

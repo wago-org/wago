@@ -36,6 +36,57 @@ func preparedMixedVoidModule() []byte {
 	)
 }
 
+func preparedMixedPairModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.F64, wasm.I64}, []wasm.ValType{wasm.I32, wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x02, 0x0b}))),
+	)
+}
+
+func TestPreparedDirectMixedPair(t *testing.T) {
+	compiled := MustCompile(preparedMixedPairModule())
+	defer compiled.Close()
+	if !compiled.directPreparedBoundedAt(0) {
+		t.Fatal("mixed pair register entry is not bounded")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fn.directMixedInfo == 0 || !fn.directIsolated {
+		t.Fatal("mixed pair did not select isolated direct entry")
+	}
+	args := []uint64{0xffffffff00000007, F64(2.5), 0x1122334455667788}
+	want := []uint64{7, 0x1122334455667788}
+	check := func(label string, got []uint64, err error) {
+		t.Helper()
+		if err != nil || len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+			t.Fatalf("%s = %v, %v; want %v", label, got, err, want)
+		}
+	}
+	got, err := fn.Invoke(args...)
+	check("prepared", got, err)
+	got, err = in.Invoke("f", args...)
+	check("instance", got, err)
+	session, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if !session.state.fast {
+		t.Fatal("mixed pair session did not reserve direct entry")
+	}
+	got, err = session.Invoke(args...)
+	check("session", got, err)
+}
+
 func TestPreparedDirectMixedRegisterEntry(t *testing.T) {
 	for _, tc := range []struct {
 		name        string

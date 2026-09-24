@@ -190,7 +190,10 @@ func preparedDirectFloatSig(ft *wasm.CompType) bool {
 }
 
 func preparedDirectMixedSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 1 {
+	if len(ft.Params) > 4 || len(ft.Results) > 2 {
+		return false
+	}
+	if len(ft.Results) == 2 && (!isIntValType(ft.Results[0]) || !isIntValType(ft.Results[1])) {
 		return false
 	}
 	for _, typ := range ft.Params {
