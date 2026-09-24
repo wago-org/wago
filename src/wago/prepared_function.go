@@ -391,7 +391,9 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 	defer stopWaitContext()
 	// Unlike a caller-owned session, each ordinary Invoke has a new invocation
 	// identity. Foreign host dispatch must not reuse the previous call's cache.
-	fn.hostActivation.invocation = hostInvocationContext{}
+	if fn.hostActivation.invocation.id != 0 {
+		fn.hostActivation.invocation = hostInvocationContext{}
+	}
 	return in.callNativeSyncAdmitted(fn.entry, in.trap, nil, fn.hostPrepared, fn.hostFixed, &fn.hostActivation, entry.local)
 }
 
