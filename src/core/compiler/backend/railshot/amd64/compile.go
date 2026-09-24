@@ -1121,7 +1121,7 @@ const (
 	maxBoundedPreparedCallDepth = 32
 	maxBoundedPreparedWorkBytes = 4 << 10
 	// Register-entry candidates retain the tighter 96-byte compile-time cap.
-	maxBoundedPreparedBodyBytes = 192
+	maxBoundedPreparedBodyBytes = 384
 )
 
 // resolveBoundedPreparedEntries admits only acyclic, statically bounded local
@@ -3549,7 +3549,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// scalar leaf. Its adapter has bounded argument/result copies; the module
 	// finalizer applies the same body-work proof used by register entries.
 	sc.directPreparedBounded = !regABI && f.opt(optPreparedBoundedEntry) && sigIsIntOnly(ft) &&
-		len(ft.Params) <= 64 && len(ft.Results) <= 64 && nLocals <= 64 &&
+		len(ft.Params) <= 128 && len(ft.Results) <= 128 && nLocals <= 128 &&
 		len(c.BodyBytes) != 0 && len(c.BodyBytes) <= maxBoundedPreparedBodyBytes && !f.hasLoop &&
 		!hints.flags.has(hintHasCall|hintUsesBulkMem|hintMutatesTable|hintHasTailCall) &&
 		!touchesMemory && len(modGlobals) == 0 && !moduleEH && len(custom) == 0 &&

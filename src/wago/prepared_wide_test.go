@@ -87,12 +87,26 @@ func TestBoundedScalarWrapperRejectsLoopAndOversize(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
+	oversizeBody := make([]byte, 0, 400+len(params)*2+1)
+	for i := 0; i < 400; i++ {
+		oversizeBody = append(oversizeBody, 0x01) // nop
+	}
+	for i := range params {
+		oversizeBody = append(oversizeBody, 0x20, byte(i))
+	}
+	oversizeBody = append(oversizeBody, 0x0b)
+	oversize := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, params))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(oversizeBody))),
+	)
 	for _, tc := range []struct {
 		name string
 		wasm []byte
 	}{
 		{"loop", loop},
-		{"oversize", hostToWasmI32SignatureModule(128, 128)},
+		{"oversize", oversize},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compiled := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).MustCompile(tc.wasm)
@@ -143,6 +157,36 @@ func TestBoundedScalarWrapperSixtyFour(t *testing.T) {
 	s.Close()
 	if err != nil || !reflect.DeepEqual(got, args) {
 		t.Fatalf("session = %v, %v", got, err)
+	}
+}
+
+func TestBoundedScalarWrapperOneTwentyEight(t *testing.T) {
+	compiled := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).MustCompile(hostToWasmI32SignatureModule(128, 128))
+	defer compiled.Close()
+	if compiled.directPreparedAt(0) || !compiled.directPreparedBoundedAt(0) {
+		t.Fatal("128-slot wrapper did not receive bounded non-register entry proof")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("f")
+	if err != nil || !fn.boundedWrapper {
+		t.Fatalf("bounded wrapper = %v, %v", fn, err)
+	}
+	args := make([]uint64, 128)
+	for i := range args {
+		args[i] = uint64(i + 1)
+	}
+	for name, call := range map[string]func() ([]uint64, error){
+		"by-name":  func() ([]uint64, error) { return in.Invoke("f", args...) },
+		"resolved": func() ([]uint64, error) { return fn.Invoke(args...) },
+	} {
+		got, err := call()
+		if err != nil || !reflect.DeepEqual(got, args) {
+			t.Fatalf("%s = %v, %v", name, got, err)
+		}
 	}
 }
 
