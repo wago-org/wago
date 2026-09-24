@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	goruntime "runtime"
@@ -431,7 +432,7 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 	}
 	restoreInvocationContext := bindHostInvocationParent(in, nil)
 	defer restoreInvocationContext()
-	stopWaitContext := in.publishAtomicWaitContext(nil)
+	stopWaitContext := in.publishAtomicWaitContext(context.Background())
 	defer stopWaitContext()
 	// Unlike a caller-owned session, each ordinary Invoke has a new invocation
 	// identity. Foreign host dispatch must not reuse the previous call's cache.
