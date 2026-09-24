@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,34 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestWasmFuncPreparedHostRestoresInheritedContext(t *testing.T) {
+	c := MustCompile(benchReturningImportModule())
+	defer c.Close()
+	imports := NewImports()
+	imports.HostFunc("env", "f", func(v int32) int32 { return v + 1 })
+	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctrl := offHeapSlicePtr(in.ctrl)
+	outer := hostInvocationContext{id: newInvocationID(), parent: context.Background()}
+	restore := bindHostInvocationContext(ctrl, outer)
+	defer restore()
+	got, err := fn.Invoke(I32(41))
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("host invoke = %v, %v", got, err)
+	}
+	value, ok := hostInvocationContexts.Load(ctrl)
+	if !ok || value.(hostInvocationContext).id != outer.id || value.(hostInvocationContext).parent != outer.parent {
+		t.Fatalf("outer host invocation context changed: %v, %v", value, ok)
+	}
+}
 
 func TestWasmFuncPreparedHostPanicTranslation(t *testing.T) {
 	c := MustCompile(benchReturningImportModule())

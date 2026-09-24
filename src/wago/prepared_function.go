@@ -587,11 +587,15 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 		in.jm.SetStackFence(in.eng.StackLimit())
 		in.jm.SetCustomCtx(offHeapSlicePtr(in.ctrl))
 	}
-	restoreInvocationContext := bindHostInvocationParent(in, nil)
-	defer restoreInvocationContext()
-	//lint:ignore SA1012 nil selects the helper's background context only when atomic waits are present.
-	stopWaitContext := in.publishAtomicWaitContext(nil)
-	defer stopWaitContext()
+	if activeHostInvocationBindings.Load() != 0 {
+		restoreInvocationContext := bindHostInvocationParent(in, nil)
+		defer restoreInvocationContext()
+	}
+	if in.c.usesAtomicWaitHelpers() {
+		//lint:ignore SA1012 nil selects the helper's background context only when atomic waits are present.
+		stopWaitContext := in.publishAtomicWaitContext(nil)
+		defer stopWaitContext()
+	}
 	// Unlike a caller-owned session, each ordinary Invoke has a new invocation
 	// identity. Foreign host dispatch must not reuse the previous call's cache.
 	if fn.hostActivation.invocation.id != 0 {
