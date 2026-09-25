@@ -820,14 +820,15 @@ func checkArtifactAdmissionLimits(c *Compiled, maxNativeCodeBytes uint64, maxMem
 type InstantiateOption func(*instantiateConfig)
 
 type instantiateConfig struct {
-	imports       *Imports
-	extraImports  []*Imports
-	exactImports  map[string]exactImportOverride
-	importErr     error
-	gc            GCConfig
-	hasGC         bool
-	policy        Policy
-	forceSyncHost bool
+	imports          *Imports
+	extraImports     []*Imports
+	exactImports     map[string]exactImportOverride
+	importErr        error
+	gc               GCConfig
+	hasGC            bool
+	policy           Policy
+	forceSyncHost    bool
+	invokeCacheSlots int
 }
 
 type importBindingKey struct {
@@ -884,6 +885,12 @@ func WithGC(gc GCConfig) InstantiateOption {
 // this when host functions can arrive indirectly through an imported table.
 func WithSynchronousHostCalls() InstantiateOption {
 	return func(c *instantiateConfig) { c.forceSyncHost = true }
+}
+
+// WithInvokeCacheSlots sets the per-instance export-resolution cache capacity.
+// Zero keeps the four-slot default; explicit values from 1 through 255 are valid.
+func WithInvokeCacheSlots(slots int) InstantiateOption {
+	return func(c *instantiateConfig) { c.invokeCacheSlots = slots }
 }
 
 // Instantiate instantiates a module, wiring the runtime's plugin imports plus
@@ -965,7 +972,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	// retained code ownership before start-time host callbacks.
 	mod.endUse()
 	usingModule = false
-	in, err := rt.instantiateWithHooksOrigin(ctx, mod, imports, pluginGCImports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin, hooks, operation.reservation)
+	in, err := rt.instantiateWithHooksOrigin(ctx, mod, imports, pluginGCImports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, cfg.invokeCacheSlots, origin, hooks, operation.reservation)
 	if err == nil && rt.isClosed() {
 		err = joinPrimary(fmt.Errorf("wago: runtime closed during instantiation"), in.Close())
 		in = nil
@@ -1097,7 +1104,7 @@ func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
 
 // instantiateWithHooksOrigin runs the Runtime-aware instantiation path and emits
 // plugin lifecycle callbacks around the low-level instantiator.
-func (rt *Runtime) instantiateWithHooksOrigin(ctx context.Context, mod *Module, imports resolvedImports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
+func (rt *Runtime) instantiateWithHooksOrigin(ctx context.Context, mod *Module, imports resolvedImports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, invokeCacheSlots int, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1118,6 +1125,7 @@ func (rt *Runtime) instantiateWithHooksOrigin(ctx context.Context, mod *Module, 
 		}
 	}()
 	iopts := InstantiateOptions{
+		InvokeCacheSlots:         invokeCacheSlots,
 		startContext:             ctx,
 		MaxCompiledMetadataBytes: rt.cfg.maxCompiledMetadataBytes,
 		resolvedImports:          imports, ownedImports: true, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,

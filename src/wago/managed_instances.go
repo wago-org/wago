@@ -241,7 +241,7 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 	mod, err := buildModule(parent.c, bindings)
 	var child *Instance
 	if err == nil {
-		child, err = rt.instantiateWithHooksOrigin(ctx, mod, imports, pluginGCImports, gc, hasGC, parent.syncMode, InstantiateManaged, hooks, operation.reservation)
+		child, err = rt.instantiateWithHooksOrigin(ctx, mod, imports, pluginGCImports, gc, hasGC, parent.syncMode, int(parent.invokeCacheSlotCount()), InstantiateManaged, hooks, operation.reservation)
 	}
 	if err != nil {
 		m.mu.Lock()

@@ -78,6 +78,33 @@ func TestRuntimeUseAndInvoke(t *testing.T) {
 	}
 }
 
+func TestRuntimeInvokeCacheSlotsOption(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	if err := rt.Use(tripleExt{}); err != nil {
+		t.Fatal(err)
+	}
+	mod := callsEnvF(t, rt)
+	defer mod.Close()
+	in, err := rt.Instantiate(context.Background(), mod, WithInvokeCacheSlots(6))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if in.invokeCacheSlotCount() != 6 || in.pluginState.Load() == nil || len(in.pluginState.Load().invokeCacheExtra.entries) != 2 {
+		t.Fatalf("configured cache capacity = %d, want six with two overflow slots", in.invokeCacheSlotCount())
+	}
+	if got, err := in.Invoke("g", I32(7)); err != nil || len(got) != 1 || AsI32(got[0]) != 21 {
+		t.Fatalf("configured instance Invoke = %v, %v", got, err)
+	}
+	for _, slots := range []int{-1, 256} {
+		if bad, err := rt.Instantiate(context.Background(), mod, WithInvokeCacheSlots(slots)); err == nil {
+			bad.Close()
+			t.Fatalf("accepted %d cache slots", slots)
+		}
+	}
+}
+
 func TestRuntimeInstantiateRetainsOnlyEffectiveImports(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()

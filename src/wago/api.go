@@ -4622,7 +4622,7 @@ func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, arg
 	if hostScalar && goruntime.GOARCH == "amd64" {
 		state := in.ensurePluginState()
 		if state.hostInvokeCache == nil {
-			state.hostInvokeCache = new([4]*WasmFunc)
+			state.hostInvokeCache = make([]*WasmFunc, in.invokeCacheSlotCount())
 		}
 		fn := state.hostInvokeCache[ic.slotIndex]
 		if fn == nil {
@@ -5292,12 +5292,25 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 
 // nextInvokeCacheSlot evicts the matching prepared host handle with its export.
 func (in *Instance) nextInvokeCacheSlot() (*invokeCache, uint8) {
-	index := in.icNext % uint8(len(in.ic))
+	index := in.icNext
 	in.icNext++
+	if in.icNext == in.invokeCacheSlotCount() {
+		in.icNext = 0
+	}
 	if state := in.pluginState.Load(); state != nil && state.hostInvokeCache != nil {
 		state.hostInvokeCache[index] = nil
 	}
-	return &in.ic[index], index
+	if index < uint8(len(in.ic)) {
+		return &in.ic[index], index
+	}
+	return &in.pluginState.Load().invokeCacheExtra.entries[index-uint8(len(in.ic))], index
+}
+
+func (in *Instance) invokeCacheSlotCount() uint8 {
+	if state := in.pluginState.Load(); state != nil && state.invokeCacheSlots != 0 {
+		return state.invokeCacheSlots
+	}
+	return uint8(len(in.ic))
 }
 
 func marshalPublicScalarArgs(dst []byte, values []uint64, types []ValType) {
@@ -5685,6 +5698,15 @@ func (in *Instance) findInvokeCache(export string) *invokeCache {
 	for i := range in.ic {
 		if in.ic[i].valid && sameExportName(in.ic[i].export, export) {
 			return &in.ic[i]
+		}
+	}
+	if state := in.pluginState.Load(); state != nil && state.invokeCacheExtra != nil {
+		extra := state.invokeCacheExtra
+		for i := range extra.entries {
+			entry := &extra.entries[i]
+			if entry.valid && sameExportName(entry.export, export) {
+				return entry
+			}
 		}
 	}
 	return nil
