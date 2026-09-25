@@ -537,7 +537,7 @@ func markMutatedTable(kind wasm.InstrKind, index, index2 uint32, mutated map[uin
 
 func immutableLocalTableTargets(m *wasm.Module, table uint32, classifier *wasm.ModuleInstructionClassifier) ([]uint32, bool) {
 	imports := uint32(m.ImportedTableCount())
-	if table < imports || int(table) >= m.TableCount() {
+	if table < imports || uint(table) >= uint(m.TableCount()) {
 		return nil, false
 	}
 	for _, ex := range m.Exports {

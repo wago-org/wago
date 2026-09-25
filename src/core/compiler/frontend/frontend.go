@@ -361,12 +361,12 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 		ex := m.Exports[i].Index
 		switch ex.Kind {
 		case wasm.ExternTable:
-			if int(ex.Index) >= len(facts.TableExported) {
+			if uint(ex.Index) >= uint(len(facts.TableExported)) {
 				return nil, fmt.Errorf("table export index %d out of range", ex.Index)
 			}
 			facts.TableExported[ex.Index] = true
 		case wasm.ExternMem:
-			if int(ex.Index) >= len(facts.MemoryExported) {
+			if uint(ex.Index) >= uint(len(facts.MemoryExported)) {
 				return nil, fmt.Errorf("memory export index %d out of range", ex.Index)
 			}
 			facts.MemoryExported[ex.Index] = true
@@ -469,12 +469,12 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 func recordModuleFact(kind wasm.InstrKind, index uint32, facts *ModuleFacts) error {
 	switch kind {
 	case wasm.InstrTableGrow:
-		if int(index) >= len(facts.TableGrowUsed) {
+		if uint(index) >= uint(len(facts.TableGrowUsed)) {
 			return fmt.Errorf("table.grow index %d out of range", index)
 		}
 		facts.TableGrowUsed[index] = true
 	case wasm.InstrMemoryGrow:
-		if int(index) >= len(facts.MemoryGrowUsed) {
+		if uint(index) >= uint(len(facts.MemoryGrowUsed)) {
 			return fmt.Errorf("memory.grow index %d out of range", index)
 		}
 		facts.MemoryGrowUsed[index] = true
@@ -1745,7 +1745,7 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 		switch in.Kind {
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const:
 		case wasm.InstrGlobalGet:
-			if !p.feat.ExtendedConstGlobals && (p.m == nil || int(in.Index) >= p.m.ImportedGlobalCount()) {
+			if !p.feat.ExtendedConstGlobals && (p.m == nil || uint(in.Index) >= uint(p.m.ImportedGlobalCount())) {
 				return p.unsupported("const expression", "prior global.get (extended-const-expressions disabled)", instructionContext(context, i))
 			}
 		case wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul,
@@ -1810,7 +1810,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			if err != nil {
 				return err
 			}
-			if !p.feat.ExtendedConstGlobals && (p.m == nil || int(idx) >= p.m.ImportedGlobalCount()) {
+			if !p.feat.ExtendedConstGlobals && (p.m == nil || uint(idx) >= uint(p.m.ImportedGlobalCount())) {
 				return p.unsupported("const expression", "prior global.get (extended-const-expressions disabled)", ctx())
 			}
 		case 0x41:

@@ -314,8 +314,8 @@ func (v *funcValidator) step(in *Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownGlobal, "")
 		}
-		if v.constOnly && (mutable || int(in.Index) >= v.constGlobalLimit ||
-			(int(in.Index) >= len(v.importsOfKind(ExternGlobal)) && !v.features.ExtendedConstGlobals)) {
+		if v.constOnly && (mutable || uint(in.Index) >= uint(v.constGlobalLimit) ||
+			(uint(in.Index) >= uint(len(v.importsOfKind(ExternGlobal))) && !v.features.ExtendedConstGlobals)) {
 			return v.verr(ErrConstExprRequired, "global.get")
 		}
 		v.push(typ)
@@ -389,7 +389,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		}
 		v.push(I32)
 	case InstrStringConst:
-		if int(in.Index) >= len(v.m.StringRefs) {
+		if uint(in.Index) >= uint(len(v.m.StringRefs)) {
 			return v.verr(ErrTypeMismatch, "string.const index")
 		}
 		v.push(StringRef)
@@ -535,10 +535,10 @@ func (v *funcValidator) step(in *Instruction) error {
 		return v.popExpect(addrDst)
 	case InstrElemDrop:
 		if v.direct != nil {
-			if int(in.Index) >= len(v.direct.elements) {
+			if uint(in.Index) >= uint(len(v.direct.elements)) {
 				return v.verr(ErrUnknownTable, "elem.drop")
 			}
-		} else if int(in.Index) >= len(v.m.Elements) {
+		} else if uint(in.Index) >= uint(len(v.m.Elements)) {
 			return v.verr(ErrUnknownTable, "elem.drop")
 		}
 	case InstrTableSize:
@@ -728,7 +728,7 @@ func (v *funcValidator) checkMem(align uint32) error {
 func (v *funcValidator) checkDataIndex(idx uint32, op string) error {
 	// Bulk-memory data instructions are guarded by the data count section. The
 	// segment may have any mode; active segments are already dropped at runtime.
-	if v.m.DataCount == nil || idx >= *v.m.DataCount || int(idx) >= len(v.m.Data) {
+	if v.m.DataCount == nil || idx >= *v.m.DataCount || uint(idx) >= uint(len(v.m.Data)) {
 		return v.verr(ErrInvalidDataCount, op+" data index")
 	}
 	return nil
