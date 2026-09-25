@@ -822,6 +822,9 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 	outerArgs, outerResults, outerTrap := in.serArgs, in.results, in.trap
 	outerResultVals := in.resultVals
 	outerInvokeCache, outerInvokeCacheNext := in.ic, in.icNext
+	pluginState := in.ensurePluginState()
+	outerHostInvokeCache := pluginState.hostInvokeCache
+	outerInvokeCacheExtra := pluginState.invokeCacheExtra
 	outerInstructionState := in.instructionState
 	in.eng = eng
 	in.ctrl = ctrl
@@ -831,12 +834,20 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 	in.resultVals = make([]uint64, len(outerResultVals), cap(outerResultVals))
 	in.ic = [4]invokeCache{}
 	in.icNext = 0
+	pluginState.hostInvokeCache = nil
+	if outerInvokeCacheExtra != nil {
+		pluginState.invokeCacheExtra = &invokeCacheOverflow{
+			entries: make([]invokeCache, len(outerInvokeCacheExtra.entries)),
+		}
+	}
 	in.instructionState = instructionState{}
 	if err := registerHostControl(in); err != nil {
 		in.eng, in.ctrl = outerEngine, outerCtrl
 		in.serArgs, in.results, in.trap = outerArgs, outerResults, outerTrap
 		in.resultVals = outerResultVals
 		in.ic, in.icNext = outerInvokeCache, outerInvokeCacheNext
+		pluginState.hostInvokeCache = outerHostInvokeCache
+		pluginState.invokeCacheExtra = outerInvokeCacheExtra
 		in.instructionState = outerInstructionState
 		_ = coreruntime.ReleaseEngine(eng)
 		in.lifeMu.Unlock()
@@ -865,6 +876,8 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 		in.serArgs, in.results, in.trap = outerArgs, outerResults, outerTrap
 		in.resultVals = outerResultVals
 		in.ic, in.icNext = outerInvokeCache, outerInvokeCacheNext
+		pluginState.hostInvokeCache = outerHostInvokeCache
+		pluginState.invokeCacheExtra = outerInvokeCacheExtra
 		in.instructionState = outerInstructionState
 		if err := coreruntime.ReleaseEngine(eng); err != nil {
 			in.lifeMu.Unlock()

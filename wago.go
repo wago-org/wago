@@ -568,6 +568,8 @@ func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 
 func WithImports(im *Imports) InstantiateOption { return impl.WithImports(im) }
 
+func WithInvokeCacheSlots(slots int) InstantiateOption { return impl.WithInvokeCacheSlots(slots) }
+
 func WithPolicy(p Policy) InstantiateOption { return impl.WithPolicy(p) }
 
 func WithRuntimeConfig(cfg *RuntimeConfig) RuntimeOption { return impl.WithRuntimeConfig(cfg) }
