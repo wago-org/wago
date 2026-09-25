@@ -44,7 +44,7 @@ type jobState struct {
 
 var fullJobs = []string{
 	"changes", "docs", "lint", "regression-integrity", "gc-hardening", "race",
-	"platform-test", "corpus-correctness", "app-corpus", "app-corpus-verify", "core-v2", "core-v3", "current-go",
+	"platform-test", "corpus-correctness", "app-corpus", "app-corpus-verify", "spec-v1", "core-v2", "core-v3", "current-go",
 	"fuzz", "tinygo", "size",
 }
 
