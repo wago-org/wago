@@ -123,8 +123,7 @@ func DownloadCanaryExecutable(ctx context.Context, config Config, commit, target
 	if !fullCommitSHA(commit) {
 		return fmt.Errorf("%q is not a full commit SHA", commit)
 	}
-	name := canaryArtifactName(commit, target)
-	selected, err := find(ctx, config, name, commit, "")
+	selected, _, err := latestCanaryArtifact(ctx, config, commit, target)
 	if err != nil {
 		return err
 	}
@@ -136,38 +135,43 @@ func DownloadCanaryExecutable(ctx context.Context, config Config, commit, target
 // workflow run so unrelated Actions artifacts cannot hide canaries from the
 // first page of the repository-wide artifact catalog.
 func LatestCanaryCommit(ctx context.Context, config Config, target string) (string, error) {
+	_, head, err := latestCanaryArtifact(ctx, config, "", target)
+	return head, err
+}
+
+// latestCanaryArtifact keeps discovery and downloads tied to the same
+// successful workflow run, even if a failed rerun uploaded the same name.
+func latestCanaryArtifact(ctx context.Context, config Config, commit, target string) (artifact, string, error) {
 	if ctx == nil {
-		return "", errors.New("nil Actions artifact context")
+		return artifact{}, "", errors.New("nil Actions artifact context")
 	}
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return artifact{}, "", err
 	}
 	baseURL, err := repositoryAPIBase(config.CatalogURL)
 	if err != nil {
-		return "", err
+		return artifact{}, "", err
 	}
 	workflowPath := url.PathEscape(".github/workflows/canary.yml")
 	workflowURL := strings.TrimRight(baseURL, "/") + "/actions/workflows/" + workflowPath + "/runs"
 	for page := 1; page <= maxWorkflowPages; page++ {
 		address, err := url.Parse(workflowURL)
 		if err != nil {
-			return "", fmt.Errorf("parse canary workflow URL: %w", err)
+			return artifact{}, "", fmt.Errorf("parse canary workflow URL: %w", err)
 		}
 		query := address.Query()
 		query.Set("branch", "main")
-		query.Set("status", "completed")
+		query.Set("status", "success")
 		query.Set("per_page", strconv.Itoa(workflowPageSize))
 		query.Set("page", strconv.Itoa(page))
-		query.Set("sort", "created")
-		query.Set("direction", "desc")
 		address.RawQuery = query.Encode()
 
 		var workflows workflowRunCatalog
 		if err := fetchJSON(ctx, config, address.String(), "list canary workflow runs", &workflows); err != nil {
-			return "", err
+			return artifact{}, "", err
 		}
 		if len(workflows.WorkflowRuns) > workflowPageSize {
-			return "", errors.New("canary workflow API returned too many runs")
+			return artifact{}, "", errors.New("canary workflow API returned too many runs")
 		}
 		sort.SliceStable(workflows.WorkflowRuns, func(i, j int) bool {
 			return workflows.WorkflowRuns[i].CreatedAt.After(workflows.WorkflowRuns[j].CreatedAt)
@@ -179,38 +183,46 @@ func LatestCanaryCommit(ctx context.Context, config Config, target string) (stri
 				continue
 			}
 
-			artifactName := canaryArtifactName(head, target)
 			artifactURL := fmt.Sprintf("%s/actions/runs/%d/artifacts", strings.TrimRight(baseURL, "/"), run.ID)
 			artifactAddress, err := url.Parse(artifactURL)
 			if err != nil {
-				return "", fmt.Errorf("parse artifact URL for canary workflow run %d: %w", run.ID, err)
+				return artifact{}, "", fmt.Errorf("parse artifact URL for canary workflow run %d: %w", run.ID, err)
 			}
 			artifactQuery := artifactAddress.Query()
-			artifactQuery.Set("name", artifactName)
+			if commit != "" {
+				artifactQuery.Set("name", canaryArtifactName(commit, target))
+			}
 			artifactQuery.Set("per_page", strconv.Itoa(workflowPageSize))
 			artifactAddress.RawQuery = artifactQuery.Encode()
 
 			var artifacts catalog
 			if err := fetchJSON(ctx, config, artifactAddress.String(), fmt.Sprintf("list artifacts for canary workflow run %d", run.ID), &artifacts); err != nil {
-				return "", err
+				return artifact{}, "", err
 			}
 			if len(artifacts.Artifacts) > workflowPageSize {
-				return "", fmt.Errorf("canary workflow run %d returned too many artifacts", run.ID)
+				return artifact{}, "", fmt.Errorf("canary workflow run %d returned too many artifacts", run.ID)
 			}
 			for _, item := range artifacts.Artifacts {
 				artifactSHA := strings.ToLower(strings.TrimSpace(item.WorkflowRun.HeadSHA))
-				if item.ID <= 0 || item.Name != artifactName || item.Expired || item.ArchiveDownloadURL == "" ||
+				sourceSHA := canaryCommitFromArtifactName(item.Name, target)
+				if item.ID <= 0 || sourceSHA == "" || (commit != "" && sourceSHA != commit) || item.Expired || item.ArchiveDownloadURL == "" ||
 					artifactSHA != head || (item.WorkflowRun.ID != 0 && item.WorkflowRun.ID != run.ID) {
 					continue
 				}
-				return head, nil
+				if item.WorkflowRun.ID == 0 {
+					item.WorkflowRun.ID = run.ID
+				}
+				return item, sourceSHA, nil
 			}
 		}
 		if len(workflows.WorkflowRuns) < workflowPageSize {
 			break
 		}
 	}
-	return "", fmt.Errorf("no usable canary Actions artifact for %s", target)
+	if commit != "" {
+		return artifact{}, "", fmt.Errorf("no usable canary Actions artifact for %s at %s", target, commit)
+	}
+	return artifact{}, "", fmt.Errorf("no usable canary Actions artifact for %s", target)
 }
 
 func repositoryAPIBase(catalogURL string) (string, error) {
@@ -250,6 +262,18 @@ func fetchJSON(ctx context.Context, config Config, address, operation string, de
 
 func canaryArtifactName(commit, target string) string {
 	return "canary-" + commit + "-" + target
+}
+
+func canaryCommitFromArtifactName(name, target string) string {
+	commit, ok := strings.CutPrefix(name, "canary-")
+	if !ok {
+		return ""
+	}
+	commit, ok = strings.CutSuffix(commit, "-"+target)
+	if !ok || !fullCommitSHA(commit) {
+		return ""
+	}
+	return commit
 }
 
 func downloadSelected(ctx context.Context, config Config, selected artifact, asset, destination string) error {

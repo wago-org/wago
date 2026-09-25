@@ -70,19 +70,32 @@ func TestDownloadExecutable(t *testing.T) {
 func TestDownloadCanaryExecutableByCommit(t *testing.T) {
 	const target = "linux-amd64"
 	const asset = "wago-linux-amd64"
+	const runHead = "1111111111111111111111111111111111111111"
 	payload := []byte("tagless canary")
 	archive := artifactZip(t, asset, payload, "")
+	failedArchive := artifactZip(t, asset, []byte("failed canary rerun"), "")
 	name := canaryArtifactName(testCommit, target)
+	globalCatalogRequested := false
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
-		case "/artifacts":
+		case "/actions/workflows/.github/workflows/canary.yml/runs":
+			fmt.Fprintf(writer, `{"workflow_runs":[
+				{"id":43,"head_sha":%q,"head_branch":"main","conclusion":"failure","created_at":"2026-09-10T02:00:00Z"},
+				{"id":42,"head_sha":%q,"head_branch":"main","conclusion":"success","created_at":"2026-09-10T01:00:00Z"}
+			]}`, runHead, runHead)
+		case "/actions/runs/42/artifacts":
 			if got := request.URL.Query().Get("name"); got != name {
 				t.Errorf("artifact name = %q", got)
 			}
-			fmt.Fprintf(writer, `{"artifacts":[{"id":8,"name":%q,"expired":false,"created_at":"2026-09-10T00:00:00Z","archive_download_url":%q,"workflow_run":{"head_sha":%q}}]}`, name, server.URL+"/archive", testCommit)
+			fmt.Fprintf(writer, `{"artifacts":[{"id":8,"name":%q,"expired":false,"archive_download_url":%q,"workflow_run":{"id":42,"head_sha":%q}}]}`, name, server.URL+"/archive", runHead)
+		case "/actions/artifacts":
+			globalCatalogRequested = true
+			fmt.Fprintf(writer, `{"artifacts":[{"id":9,"name":%q,"expired":false,"created_at":"2026-09-10T02:00:00Z","archive_download_url":%q,"workflow_run":{"id":43,"head_sha":%q}}]}`, name, server.URL+"/failed-archive", runHead)
 		case "/archive":
 			_, _ = writer.Write(archive)
+		case "/failed-archive":
+			_, _ = writer.Write(failedArchive)
 		default:
 			http.NotFound(writer, request)
 		}
@@ -90,11 +103,14 @@ func TestDownloadCanaryExecutableByCommit(t *testing.T) {
 	defer server.Close()
 
 	destination := filepath.Join(t.TempDir(), "wago")
-	if err := DownloadCanaryExecutable(context.Background(), Config{CatalogURL: server.URL + "/artifacts", HTTPClient: server.Client()}, testCommit, target, asset, destination); err != nil {
+	if err := DownloadCanaryExecutable(context.Background(), Config{CatalogURL: server.URL + "/actions/artifacts", HTTPClient: server.Client()}, testCommit, target, asset, destination); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := os.ReadFile(destination); err != nil || !bytes.Equal(got, payload) {
 		t.Fatalf("downloaded payload = %q, %v", got, err)
+	}
+	if globalCatalogRequested {
+		t.Fatal("canary download searched the global artifact catalog")
 	}
 }
 
@@ -121,7 +137,7 @@ func TestLatestCanaryCommitFindsNewestUsableTargetArtifact(t *testing.T) {
 				t.Error(err)
 			}
 		case "/actions/workflows/.github/workflows/canary.yml/runs":
-			if request.URL.Query().Get("branch") != "main" || request.URL.Query().Get("status") != "completed" {
+			if request.URL.Query().Get("branch") != "main" || request.URL.Query().Get("status") != "success" {
 				t.Errorf("workflow query = %v", request.URL.Query())
 			}
 			fmt.Fprintf(writer, `{"total_count":4,"workflow_runs":[
@@ -129,24 +145,24 @@ func TestLatestCanaryCommitFindsNewestUsableTargetArtifact(t *testing.T) {
 				{"id":4,"head_sha":%q,"head_branch":"main","conclusion":"skipped","created_at":"2026-09-10T04:00:00Z"},
 				{"id":3,"head_sha":%q,"head_branch":"main","conclusion":"success","created_at":"2026-09-10T03:00:00Z"},
 				{"id":2,"head_sha":%q,"head_branch":"main","conclusion":"success","created_at":"2026-09-10T02:00:00Z"}
-			]}`, failedCanary, testCommit, newerWithoutTarget, newest)
+			]}`, failedCanary, testCommit, newerWithoutTarget, testCommit)
 		case "/actions/runs/5/artifacts":
 			artifactRuns = append(artifactRuns, 5)
 			fmt.Fprintf(writer, `{"total_count":1,"artifacts":[{"id":9,"name":%q,"expired":false,"archive_download_url":"archive","workflow_run":{"id":5,"head_sha":%q}}]}`,
 				canaryArtifactName(failedCanary, target), failedCanary)
 		case "/actions/runs/3/artifacts":
 			artifactRuns = append(artifactRuns, 3)
-			if request.URL.Query().Get("name") != canaryArtifactName(newerWithoutTarget, target) {
+			if request.URL.Query().Get("name") != "" {
 				t.Errorf("artifact name = %q", request.URL.Query().Get("name"))
 			}
 			_, _ = writer.Write([]byte(`{"total_count":0,"artifacts":[]}`))
 		case "/actions/runs/2/artifacts":
 			artifactRuns = append(artifactRuns, 2)
-			if request.URL.Query().Get("name") != canaryArtifactName(newest, target) {
+			if request.URL.Query().Get("name") != "" {
 				t.Errorf("artifact name = %q", request.URL.Query().Get("name"))
 			}
 			fmt.Fprintf(writer, `{"total_count":1,"artifacts":[{"id":8,"name":%q,"expired":false,"archive_download_url":"archive","workflow_run":{"id":2,"head_sha":%q}}]}`,
-				canaryArtifactName(newest, target), newest)
+				canaryArtifactName(newest, target), testCommit)
 		default:
 			http.NotFound(writer, request)
 		}
