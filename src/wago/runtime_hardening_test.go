@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -23,7 +24,10 @@ func TestRuntimeConfigOwnsConstructionSnapshot(t *testing.T) {
 	base.optimizations["mutated-after-construction"] = true
 	base.functionWorkers = -1
 	cfg := rt.Config()
-	if err := cfg.Validate(); err != nil {
+	backendAvailable := runtime.GOARCH != "amd64" || hostSupportsSIMD()
+	if err := cfg.Validate(); !backendAvailable && !errors.Is(err, errNativeCPUFeatures) {
+		t.Fatalf("runtime config should fail closed on this AMD64 host: %v", err)
+	} else if backendAvailable && err != nil {
 		t.Fatalf("runtime config aliased caller mutation: %v", err)
 	}
 	if _, ok := cfg.optimizations["mutated-after-construction"]; ok || cfg.FunctionWorkers() < 0 {
