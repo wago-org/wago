@@ -124,4 +124,11 @@ type invokeCache struct {
 	boundedWrapper    bool
 	paramWidthClass   scalarSlotWidthClass
 	resultWidthClass  scalarSlotWidthClass
+	slotIndex         uint8
+}
+
+// invokeCacheOverflow exists only when an instance requests more than four
+// cache slots. Reentry swaps the whole sidecar to isolate nested cache writes.
+type invokeCacheOverflow struct {
+	entries []invokeCache
 }

@@ -19,10 +19,13 @@ type InstantiateOptions struct {
 	// uses the source policy or the 256 MiB default; native instance storage
 	// has a separate quota. A stricter limit also applies to an existing snapshot.
 	MaxCompiledMetadataBytes uint64
-	Imports                  *Imports
-	GC                       GCConfig
-	store                    *referenceStore
-	startContext             context.Context
+	// InvokeCacheSlots is the number of export-resolution cache slots per
+	// instance. Zero uses four; valid explicit values are 1 through 255.
+	InvokeCacheSlots int
+	Imports          *Imports
+	GC               GCConfig
+	store            *referenceStore
+	startContext     context.Context
 
 	ownedImports             bool // private Runtime resolution has transferred ownership
 	resolvedImports          resolvedImports
@@ -137,6 +140,9 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	}
 	b := instanceBuilder{c: c, opts: opts, imports: imports, moduleUse: moduleUse}
 	defer b.releaseModuleUse()
+	if opts.InvokeCacheSlots < 0 || opts.InvokeCacheSlots > 255 {
+		return nil, fmt.Errorf("wago: InvokeCacheSlots must be between 1 and 255 (or zero for default), got %d", opts.InvokeCacheSlots)
+	}
 	if opts.startContext != nil {
 		if err := opts.startContext.Err(); err != nil {
 			return nil, err
@@ -1543,6 +1549,16 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		threadedMemoryZero: c.threadedMemory0(),
 		moduleIdentity:     opts.moduleIdentity,
 		pluginGCImports:    opts.pluginGCImports,
+	}
+	if opts.InvokeCacheSlots != 0 && opts.InvokeCacheSlots != 4 {
+		state := in.ensurePluginState()
+		state.invokeCacheSlots = uint8(opts.InvokeCacheSlots)
+	}
+	if opts.InvokeCacheSlots > 4 {
+		extra := opts.InvokeCacheSlots - 4
+		in.pluginState.Load().invokeCacheExtra = &invokeCacheOverflow{
+			entries: make([]invokeCache, extra),
+		}
 	}
 	if c.maxResultSlots <= len(in.resultInline) {
 		in.resultVals = in.resultInline[:c.maxResultSlots:c.maxResultSlots]

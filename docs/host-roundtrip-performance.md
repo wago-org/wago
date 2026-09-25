@@ -25,6 +25,17 @@ These constraints apply before and after each optimization:
 8. Every shortcut needs a conservative fallback. State exhaustion must not
    silently remove identity or authorization checks.
 
+## Ordinary Invoke cache capacity
+
+`Instance.Invoke` caches export resolution and, for eligible synchronous host
+calls, a prepared host handle per cached export. The default is four slots.
+Low-level callers can set `InstantiateOptions{InvokeCacheSlots: 6}`; Runtime
+callers can pass `WithInvokeCacheSlots(6)` to `Runtime.Instantiate`. Explicit
+capacities from 1 through 255 are accepted; zero keeps the default. Larger
+capacities reduce eviction when calls interleave many exports, at the cost of
+per-instance cache memory. The first four slots remain inline, and overflow
+storage is allocated only for instances requesting more than four.
+
 ## Reservation-held prepared calls
 
 `PreparedSession` amortized public invocation admission across a caller-owned

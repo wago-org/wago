@@ -47,11 +47,12 @@ func TestNestedHostReentryPreservesConfiguredNativeStack(t *testing.T) {
 		results[0] = got[0]
 	}), "env.observe", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) {
 		results[0] = in.eng.StackBytes()
-	}))), WithSynchronousHostCalls())
+	}))), WithSynchronousHostCalls(), WithInvokeCacheSlots(6))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
+	outerCache := in.pluginState.Load().invokeCacheExtra
 	// Replace the observe import after instantiation is not supported, so inspect
 	// the private re-entry engine directly while preserving the same state swap
 	// used by InvokeFromHost.
@@ -59,11 +60,18 @@ func TestNestedHostReentryPreservesConfiguredNativeStack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if nestedCache := in.pluginState.Load().invokeCacheExtra; nestedCache == nil || nestedCache == outerCache || len(nestedCache.entries) != 2 {
+		restore()
+		t.Fatal("host reentry did not isolate configured invoke cache overflow")
+	}
 	if got := in.eng.StackBytes(); got != stackBytes || in.eng.StackTop()&15 != 0 {
 		restore()
 		t.Fatalf("nested host re-entry stack = %d bytes, top %#x", got, in.eng.StackTop())
 	}
 	restore()
+	if in.pluginState.Load().invokeCacheExtra != outerCache {
+		t.Fatal("host reentry did not restore configured invoke cache overflow")
+	}
 	if got := in.eng.StackBytes(); got != stackBytes {
 		t.Fatalf("restored outer stack = %d bytes, want %d", got, uint64(stackBytes))
 	}
