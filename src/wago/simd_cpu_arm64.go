@@ -2,6 +2,6 @@
 
 package wago
 
-func architectureSupportsSIMD() bool          { return true }
-func architectureSupportsBMI2() bool          { return false }
-func architectureSupportsAMD64BitCount() bool { return false }
+func architectureSupportsSIMD() bool           { return true }
+func architectureSupportsBMI2() bool           { return false }
+func architectureAMD64BitCountFeatures() uint8 { return 0 }

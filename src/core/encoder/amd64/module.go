@@ -35,6 +35,8 @@ type CompiledModule struct {
 
 	// RequiresBMI2 reports that Code contains a BMI2 instruction.
 	RequiresBMI2 bool
+	// RequiresBitCount is the mask of optional scalar bit-count instructions in Code.
+	RequiresBitCount uint8
 
 	// RequiresAVX2 reports that Code contains AVX2/YMM instructions selected by
 	// the backend (including plugin-provided portable intrinsics).

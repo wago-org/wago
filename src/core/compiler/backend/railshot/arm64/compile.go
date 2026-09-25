@@ -1353,6 +1353,7 @@ type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-arm64 compilation.
 type CompileOptions struct {
+	BitCountFeatures uint8 // unused on arm64; keeps the public compile contract uniform
 	// Optimizations is the complete selection for this compilation. nil uses the
 	// backend's environment-derived process defaults.
 	Optimizations map[string]bool

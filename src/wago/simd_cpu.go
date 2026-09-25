@@ -1,9 +1,9 @@
 package wago
 
 import (
-	"errors"
-	"runtime"
 	"sync"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
 // simdHostFeaturesSupported reports whether generated SIMD code can execute on
@@ -43,30 +43,25 @@ var bitCountHostFeaturesSupported = cachedBitCountHostFeatures
 
 var (
 	bitCountHostFeaturesOnce sync.Once
-	bitCountHostFeaturesOK   bool
+	bitCountHostFeaturesOK   uint8
 )
 
-func cachedBitCountHostFeatures() bool {
-	bitCountHostFeaturesOnce.Do(func() { bitCountHostFeaturesOK = architectureSupportsAMD64BitCount() })
+func cachedBitCountHostFeatures() uint8 {
+	bitCountHostFeaturesOnce.Do(func() { bitCountHostFeaturesOK = architectureAMD64BitCountFeatures() })
 	return bitCountHostFeaturesOK
 }
 
-func hostSupportsAMD64BitCount() bool {
-	return runtime.GOARCH != "amd64" || bitCountHostFeaturesSupported()
-}
-
-//go:noinline
-func requireAMD64BitCount() error {
-	if runtime.GOARCH != "amd64" || bitCountHostFeaturesSupported() {
-		return nil
+func amd64BitCountFeatures(ecx1, ebx7, extECX uint32) (features uint8) {
+	if extECX&(uint32(1)<<5) != 0 {
+		features |= shared.BitCountLZCNT
 	}
-	return errors.New("wago: CPU lacks bit-count")
-}
-
-func amd64BitCountFeaturesSupported(ecx1, ebx7, extECX uint32) bool {
-	return ecx1&(uint32(1)<<23) != 0 && // POPCNT
-		ebx7&(uint32(1)<<3) != 0 && // BMI1/TZCNT
-		extECX&(uint32(1)<<5) != 0 // ABM/LZCNT
+	if ebx7&(uint32(1)<<3) != 0 {
+		features |= shared.BitCountTZCNT
+	}
+	if ecx1&(uint32(1)<<23) != 0 {
+		features |= shared.BitCountPOPCNT
+	}
+	return
 }
 
 func detectSIMDHostFeatures() bool { return architectureSupportsSIMD() }
@@ -119,7 +114,15 @@ func bmi2CPUFlagsSupported(data []byte) bool {
 }
 
 // Linux reports LZCNT as "abm" in /proc/cpuinfo.
-func bitCountCPUFlagsSupported(data []byte) bool {
-	return cpuFlagPresent(data, "bmi1") && cpuFlagPresent(data, "popcnt") &&
-		cpuFlagPresent(data, "abm")
+func bitCountCPUFlags(data []byte) (features uint8) {
+	if cpuFlagPresent(data, "abm") {
+		features |= shared.BitCountLZCNT
+	}
+	if cpuFlagPresent(data, "bmi1") {
+		features |= shared.BitCountTZCNT
+	}
+	if cpuFlagPresent(data, "popcnt") {
+		features |= shared.BitCountPOPCNT
+	}
+	return
 }
