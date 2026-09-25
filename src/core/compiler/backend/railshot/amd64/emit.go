@@ -881,39 +881,41 @@ func (f *fn) popcntSWAR(result, src Reg, w bool) {
 		mask = f.allocReg(maskOf(result, src, tmp))
 		defer f.release(mask)
 	}
-	f.a.AluRR(0x89, tmp, result, w) // mov tmp, result
-	f.a.ShiftImm(5, tmp, 1, w)
-	if w {
-		f.a.MovImm64(mask, 0x5555555555555555)
-		f.a.AluRR(0x21, tmp, mask, true)
-	} else {
-		f.a.AluRI(4, tmp, 0x55555555, false)
-	}
+	f.swarShift(tmp, result, 1, w)
+	f.swarAnd(tmp, mask, 0x5555555555555555, w, true)
 	f.a.AluRR(0x29, result, tmp, w)
-	f.a.AluRR(0x89, tmp, result, w)
-	f.a.ShiftImm(5, tmp, 2, w)
-	if w {
-		f.a.MovImm64(mask, 0x3333333333333333)
-		f.a.AluRR(0x21, result, mask, true)
-		f.a.AluRR(0x21, tmp, mask, true)
-	} else {
-		f.a.AluRI(4, result, 0x33333333, false)
-		f.a.AluRI(4, tmp, 0x33333333, false)
-	}
+	f.swarShift(tmp, result, 2, w)
+	f.swarAnd(result, mask, 0x3333333333333333, w, true)
+	f.swarAnd(tmp, mask, 0x3333333333333333, w, false)
 	f.a.AluRR(0x01, result, tmp, w)
-	f.a.AluRR(0x89, tmp, result, w)
-	f.a.ShiftImm(5, tmp, 4, w)
+	f.swarShift(tmp, result, 4, w)
 	f.a.AluRR(0x01, result, tmp, w)
+	f.swarAnd(result, mask, 0x0f0f0f0f0f0f0f0f, w, true)
 	if w {
-		f.a.MovImm64(mask, 0x0f0f0f0f0f0f0f0f)
-		f.a.AluRR(0x21, result, mask, true)
 		f.a.MovImm64(mask, 0x0101010101010101)
 		f.a.IMul(result, mask, true)
 		f.a.ShiftImm(5, result, 56, true)
 	} else {
-		f.a.AluRI(4, result, 0x0f0f0f0f, false)
 		f.a.ImulRI(result, 0x01010101, false)
 		f.a.ShiftImm(5, result, 24, false)
+	}
+}
+
+//go:noinline
+func (f *fn) swarShift(dst, src Reg, count byte, w bool) {
+	f.a.AluRR(0x89, dst, src, w)
+	f.a.ShiftImm(5, dst, count, w)
+}
+
+//go:noinline
+func (f *fn) swarAnd(dst, mask Reg, value uint64, w, load bool) {
+	if w {
+		if load {
+			f.a.MovImm64(mask, value)
+		}
+		f.a.AluRR(0x21, dst, mask, true)
+	} else {
+		f.a.AluRI(4, dst, int32(value), false)
 	}
 }
 
