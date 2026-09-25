@@ -10,6 +10,87 @@ type tinySecondWalkFailure struct {
 	walks int
 }
 
+type tinyLateWalkFailure struct {
+	root  Root
+	walks int
+}
+
+func (r *tinyLateWalkFailure) RangeRoots(fn func(RootSlot) bool) { fn(&r.root) }
+
+func (r *tinyLateWalkFailure) RangeRootRefs(sink RootRefSink) bool {
+	r.walks++
+	if !sink.VisitRootRef(Ref(r.root)) {
+		return false
+	}
+	return r.walks != 2
+}
+
+func TestTinyRecoveryFromEveryCompletedEpoch(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentType, err := NewStructDesc(1, []StorageKind{StorageRefNull})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for start := 0; start <= int(tinyMarkEpochMask); start++ {
+		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 1024, TinyBlockBytes: 16}, []TypeDesc{leaf, parentType})
+		for i := 0; i < start; i++ {
+			if err := c.CollectFull(nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		parent, err := c.NewStructDefault(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fail := func(late bool) {
+			t.Helper()
+			if late {
+				roots := &tinyLateWalkFailure{root: Root(parent)}
+				if err := c.CollectFull(roots); err == nil || roots.walks != 2 {
+					t.Fatalf("start %d: late failure = %v, walks %d", start, err, roots.walks)
+				}
+			} else {
+				roots := &tinySecondWalkFailure{root: Root(parent)}
+				if err := c.CollectFull(roots); err == nil || roots.walks != 2 {
+					t.Fatalf("start %d: early failure = %v, walks %d", start, err, roots.walks)
+				}
+			}
+		}
+		fail(false)
+		child, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+			t.Fatal(err)
+		}
+		// A later callback fails after it has already visited the parent.
+		fail(true)
+		if _, err := c.NewStructDefault(0); err != nil {
+			t.Fatal(err)
+		}
+		fail(false)
+		root := Root(parent)
+		roots := Slots{&root}
+		if err := c.CollectFull(roots); err != nil {
+			t.Fatalf("start %d: recovery: %v", start, err)
+		}
+		field, err := c.StructGet(parent, 0)
+		if !c.validObjectRef(parent) || !c.validObjectRef(child) || err != nil || field.Ref != child {
+			t.Fatalf("start %d: graph lost: parent %v child %v field %v error %v", start, c.validObjectRef(parent), c.validObjectRef(child), field, err)
+		}
+		if err := c.Verify(roots); err != nil {
+			t.Fatalf("start %d: verify: %v", start, err)
+		}
+		if err := c.CollectFull(roots); err != nil {
+			t.Fatalf("start %d: ordinary follow-up: %v", start, err)
+		}
+	}
+}
+
 func (r *tinySecondWalkFailure) RangeRoots(fn func(RootSlot) bool) {
 	fn(&r.root)
 }
@@ -20,6 +101,90 @@ func (r *tinySecondWalkFailure) RangeRootRefs(sink RootRefSink) bool {
 		return false
 	}
 	return sink.VisitRootRef(Ref(r.root))
+}
+
+func TestTinyCompletedWrapThenFailedRestartsKeepReachableChild(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentType, err := NewStructDesc(1, []StorageKind{StorageRefNull})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf, parentType})
+	for i := 0; i < int(tinyMarkEpochMask); i++ {
+		if err := c.CollectFull(nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.tinyGC.markEpoch != tinyMarkEpochMask || c.tinyGC.state != tinyIdle {
+		t.Fatalf("setup epoch/state = %d/%d", c.tinyGC.markEpoch, c.tinyGC.state)
+	}
+	parent, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.tinyColorOf(handleOf(parent)) != tinyBlack {
+		t.Fatal("idle parent was not black")
+	}
+	failStart := func() {
+		t.Helper()
+		roots := &tinySecondWalkFailure{root: Root(parent)}
+		if err := c.CollectFull(roots); err == nil || roots.walks != 2 {
+			t.Fatalf("second root walk: err = %v, walks = %d", err, roots.walks)
+		}
+	}
+	failStart() // epoch 0, after a completed epoch-127 cycle
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	garbage, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < int(tinyMarkEpochMask); i++ {
+		failStart()
+	}
+	root := Root(parent)
+	roots := Slots{&root}
+	if err := c.CollectFull(roots); err != nil {
+		t.Fatal(err)
+	}
+	if !c.validObjectRef(parent) || !c.validObjectRef(child) {
+		t.Fatalf("reachable graph lost: parent=%v child=%v epoch=%d", c.validObjectRef(parent), c.validObjectRef(child), c.tinyGC.markEpoch)
+	}
+	field, err := c.StructGet(parent, 0)
+	if err != nil || field.Ref != child {
+		t.Fatalf("parent field = %v, %v; want %v", field, err, child)
+	}
+	if c.validObjectRef(garbage) {
+		t.Fatal("unreachable garbage retained")
+	}
+	if err := c.Verify(roots); err != nil {
+		t.Fatal(err)
+	}
+	reused, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.CollectFull(roots); err != nil {
+		t.Fatal(err)
+	}
+	if c.validObjectRef(reused) || !c.validObjectRef(child) {
+		t.Fatal("later collection lost child or retained garbage")
+	}
+	field, err = c.StructGet(parent, 0)
+	if err != nil || field.Ref != child {
+		t.Fatalf("later parent field = %v, %v; want %v", field, err, child)
+	}
+	if err := c.Verify(roots); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestTinyFailedRestartsDoNotAliasWrappedEpoch(t *testing.T) {
@@ -64,16 +229,10 @@ func TestTinyFailedRestartsDoNotAliasWrappedEpoch(t *testing.T) {
 	for i := uint8(2); i < tinyMarkEpochMask; i++ {
 		failSecondWalk()
 	}
-	if c.tinyGC.markEpoch != tinyMarkEpochMask {
-		t.Fatalf("mark epoch = %d, want %d", c.tinyGC.markEpoch, tinyMarkEpochMask)
-	}
 	root := Root(parent)
 	roots := Slots{&root}
 	if err := c.CollectFull(roots); err != nil {
 		t.Fatal(err)
-	}
-	if c.tinyGC.markEpoch != 1 {
-		t.Fatalf("wrapped mark epoch = %d, want 1", c.tinyGC.markEpoch)
 	}
 	if !c.validObjectRef(parent) || !c.validObjectRef(child) {
 		t.Fatal("wrapped cycle lost a live parent or child")
@@ -284,12 +443,11 @@ func TestTinyCollectFullRestartsPartialScanWithFreshEpoch(t *testing.T) {
 	if c.tinyColorOf(handleOf(keep)) != tinyWhite || c.tinyColorOf(handleOf(drop)) != tinyWhite {
 		t.Fatal("unvisited objects are not white in the active epoch")
 	}
-	activeEpoch := c.tinyGC.markEpoch
 	keepRoot := Root(keep)
 	if err := c.CollectFull(Slots{&keepRoot}); err != nil {
 		t.Fatal(err)
 	}
-	if want := activeEpoch%tinyMarkEpochMask + 1; c.tinyGC.markEpoch != want {
+	if want := uint8(1); c.tinyGC.markEpoch != want {
 		t.Fatalf("restart epoch = %d, want %d", c.tinyGC.markEpoch, want)
 	}
 	if !c.validObjectRef(keep) || c.tinyColorOf(handleOf(keep)) != tinyBlack {

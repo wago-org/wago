@@ -372,8 +372,9 @@ func (c *Collector) tinyCollectNonIncremental(roots RootSet) error {
 	if err := c.tinyCountTransientRoots(roots); err != nil {
 		return err
 	}
-	if c.tinyGC.markEpoch == tinyMarkEpochMask && c.tinyGC.state != tinyIdle {
-		// An unfinished cycle can leave black marks from a prior epoch.
+	if c.tinyGC.state != tinyIdle {
+		// An unfinished cycle can leave marks from any earlier epoch. A
+		// restart must invalidate all of them before reusing an epoch.
 		clear(c.tinyGC.color)
 		// Zero is white in epoch 1.
 		c.tinyGC.markEpoch = 1
@@ -429,8 +430,9 @@ func (c *Collector) tinyStartMark(roots RootSet) error {
 	if err := c.tinyCountTransientRoots(roots); err != nil {
 		return c.failTinyTelemetryCycle(err)
 	}
-	if c.tinyGC.markEpoch == tinyMarkEpochMask && c.tinyGC.state != tinyIdle {
-		// An unfinished cycle can leave black marks from a prior epoch.
+	if c.tinyGC.state != tinyIdle {
+		// An unfinished cycle can leave marks from any earlier epoch. A
+		// restart must invalidate all of them before reusing an epoch.
 		clear(c.tinyGC.color)
 		// Zero is white in epoch 1.
 		c.tinyGC.markEpoch = 1
