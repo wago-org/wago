@@ -190,6 +190,7 @@ jobs:
       - name: Identify Go toolchain for TinyGo cache
         id: tinygo-go
         if: matrix.target != 'windows-arm64'
+        shell: bash
         run: echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
       - name: Restore TinyGo toolchain
         if: matrix.target != 'windows-arm64'
