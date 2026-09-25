@@ -314,6 +314,58 @@ func TestBuildMemory64UsesI64AddressesAndSizes(t *testing.T) {
 	}
 }
 
+func TestBuildMemory64PreservesWideOffsets(t *testing.T) {
+	mem64 := []wasm.MemType{{Limits: wasm.Limits{Min: 1, Addr64: true}}}
+	m := decodeValidate(t, module([]wasm.FuncType{
+		{Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I32}},
+		{Params: []wasm.ValType{wasm.I64, wasm.I32}},
+	}, []uint32{0, 1}, nil, mem64, nil, [][]byte{
+		wasmtest.Code(bytes(0x20, 0x00, 0x28, 0x02, 0x80, 0x80, 0x80, 0x80, 0x10, 0x0b)),
+		wasmtest.Code(bytes(0x20, 0x00, 0x20, 0x01, 0x36, 0x02, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01, 0x0b)),
+	}))
+	im, err := BuildModule(m)
+	if err != nil {
+		t.Fatalf("BuildModule: %v", err)
+	}
+	if err := VerifyModule(im); err != nil {
+		t.Fatalf("VerifyModule: %v", err)
+	}
+	for i, want := range []string{
+		"load.i32 offset=4294967296 align=2 mem=0",
+		"store.i32 offset=18446744073709551615 align=2 mem=0",
+	} {
+		if got := FormatFunc(&im.Funcs[i]); !strings.Contains(got, want) {
+			t.Fatalf("function %d lost offset; want %q in:\n%s", i, want, got)
+		}
+	}
+}
+
+func BenchmarkBuildMemoryLoad(b *testing.B) {
+	for _, tc := range []struct {
+		name   string
+		addr64 bool
+		addr   wasm.ValType
+	}{
+		{name: "memory32", addr: wasm.I32},
+		{name: "memory64", addr64: true, addr: wasm.I64},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			m := &wasm.Module{
+				Types:     []wasm.RecType{recFuncType(wasm.FuncType{Params: []wasm.ValType{tc.addr}, Results: []wasm.ValType{wasm.I32}})},
+				FuncTypes: []wasm.TypeIdx{{Index: 0}},
+				Memories:  []wasm.MemType{{Limits: wasm.Limits{Min: 1, Addr64: tc.addr64}}},
+				Code:      []wasm.Func{{BodyBytes: bytes(0x20, 0x00, 0x28, 0x02, 0x08, 0x0b)}},
+			}
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				if _, err := BuildModule(m); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func TestBuildCallIndirectReferenceAndAddressTypes(t *testing.T) {
 	t.Run("non-bare funcref table", func(t *testing.T) {
 		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{

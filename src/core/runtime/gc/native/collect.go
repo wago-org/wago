@@ -17,7 +17,6 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	}
 	c.discardNativeStructHandles()
 	defer c.refreshNativeView()
-	c.stats.FullCollections++
 	if c.cfg.Profile == ProfileTiny {
 		if err := c.tinyCollectFull(roots); err != nil {
 			return err
@@ -27,6 +26,7 @@ func (c *Collector) CollectFull(roots RootSet) error {
 		}
 		return nil
 	}
+	c.stats.FullCollections++
 	c.clearMarks()
 	c.markRoots(roots)
 	c.sweepAll()
@@ -44,7 +44,6 @@ func (c *Collector) collectFullTelemetry(roots RootSet) (err error) {
 	}
 	c.discardNativeStructHandles()
 	defer c.refreshNativeView()
-	c.stats.FullCollections++
 	c.beginCollectionTelemetry(telemetryFull)
 	success := false
 	defer func() { c.endCollectionTelemetry(success) }()
@@ -63,6 +62,7 @@ func (c *Collector) collectFullTelemetry(roots RootSet) (err error) {
 		success = true
 		return nil
 	}
+	c.stats.FullCollections++
 	c.cfg.Telemetry.setPhase(telemetryPhaseMetadataCleanup)
 	c.clearMarks()
 	c.cfg.Telemetry.setPhase(telemetryPhaseRootEnumeration)

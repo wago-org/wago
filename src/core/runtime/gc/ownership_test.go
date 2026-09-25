@@ -142,6 +142,23 @@ func TestCheckedReferenceEgressAndPortableImmediates(t *testing.T) {
 	}
 }
 
+func TestCheckedCollectorZeroValueClose(t *testing.T) {
+	var c gc.Collector
+	c.Close()
+	c.Close()
+}
+
+func BenchmarkCheckedCollectorClose(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		c, err := gc.NewCollector(gc.Config{}, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+		c.Close()
+	}
+}
+
 func BenchmarkCheckedStructGet(b *testing.B) {
 	c := collector(b, gc.ProfileThroughput)
 	value, err := c.NewStruct(0)

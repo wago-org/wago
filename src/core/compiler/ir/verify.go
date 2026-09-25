@@ -340,7 +340,7 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 	if in.Op == OpInvalid {
 		return fmt.Errorf("inst %d has invalid op", id)
 	}
-	if in.Op != OpCallIndirect && in.Aux2 != 0 {
+	if in.Op != OpCallIndirect && in.Op != OpLoad && in.Op != OpStore && in.Aux2 != 0 {
 		return fmt.Errorf("inst %d %s has unexpected aux2 %d", id, opName(in.Op), in.Aux2)
 	}
 	if _, err := verifyValueRange(f, in.Args, fmt.Sprintf("inst %d args", id)); err != nil {
@@ -550,6 +550,9 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if argt(0) != addr {
 			return fmt.Errorf("inst %d load address is not %s", id, addr)
 		}
+		if err := verifyMemOffset(id, in, addr); err != nil {
+			return err
+		}
 		if got, ok := memLoadResult(memKind(in.Aux)); !ok || got != rest(0) {
 			return fmt.Errorf("inst %d load type mismatch", id)
 		}
@@ -569,6 +572,9 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		}
 		if argt(0) != addr {
 			return fmt.Errorf("inst %d store address is not %s", id, addr)
+		}
+		if err := verifyMemOffset(id, in, addr); err != nil {
+			return err
 		}
 		if got, ok := memStoreValue(memKind(in.Aux)); !ok || got != argt(1) {
 			return fmt.Errorf("inst %d store type mismatch", id)
@@ -751,6 +757,9 @@ func verifyGlobalAccess(m *Module, id InstID, in *Inst, got wasm.ValType) error 
 	if want != got {
 		return fmt.Errorf("inst %d global type %s, want %s", id, got, want)
 	}
+	if in.Op == OpGlobalSet && !m.Globals[idx].Mutable {
+		return fmt.Errorf("inst %d writes immutable global %d", id, idx)
+	}
 	return nil
 }
 
@@ -854,6 +863,13 @@ func memStoreValue(k MemOp) (wasm.ValType, bool) {
 func validMemAlign(aux uint64) bool {
 	d, ok := lookupMemDesc(memKind(aux))
 	return ok && memAlign(aux) <= d.naturalAlign
+}
+
+func verifyMemOffset(id InstID, in *Inst, addr wasm.ValType) error {
+	if in.Aux2 > uint64(^uint32(0)) || addr == wasm.I32 && in.Aux2 != 0 {
+		return fmt.Errorf("inst %d has invalid memory offset high bits 0x%x", id, in.Aux2)
+	}
+	return nil
 }
 
 func verifyMemoryIndex(m *Module, id InstID, idx uint32) error {

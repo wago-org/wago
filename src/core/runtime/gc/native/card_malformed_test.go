@@ -32,7 +32,7 @@ func TestMalformedObjectCardChainsFallBackToWholeObjectScan(t *testing.T) {
 			cards: func(_, other, _ uint32) []objectCard {
 				return []objectCard{{handle: other, index: 0, end: 127}}
 			},
-			verify: "owner=",
+			verify: "owner mismatch",
 		},
 		{
 			name: "self cycle",
