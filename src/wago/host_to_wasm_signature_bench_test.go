@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"fmt"
 	"testing"
 )
@@ -18,6 +19,9 @@ func BenchmarkHostToWasmSignatureMatrix(b *testing.B) {
 		{2, 2},
 		{4, 1},
 		{4, 4},
+		{5, 5},
+		{7, 7},
+		{7, 1},
 		{8, 1},
 		{8, 8},
 		{16, 16},
@@ -25,6 +29,7 @@ func BenchmarkHostToWasmSignatureMatrix(b *testing.B) {
 		{32, 32},
 		{48, 48},
 		{64, 64},
+		{128, 128},
 	} {
 		params, results := shape[0], shape[1]
 		b.Run(fmt.Sprintf("i32x%d-i32x%d", params, results), func(b *testing.B) {
@@ -66,10 +71,48 @@ func BenchmarkHostToWasmSignatureMatrix(b *testing.B) {
 					}
 				}
 			})
+			if params == 1 && results == 1 {
+				b.Run("invoke-context-background", func(b *testing.B) {
+					ctx := context.Background()
+					b.ReportAllocs()
+					for i := 0; i < b.N; i++ {
+						benchResultSink, err = in.InvokeContext(ctx, "f", args...)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				b.Run("invoke-context-cancelable", func(b *testing.B) {
+					b.ReportAllocs()
+					for i := 0; i < b.N; i++ {
+						benchResultSink, err = in.InvokeContext(ctx, "f", args...)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
 			b.Run("prepared", func(b *testing.B) {
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {
 					benchResultSink, err = prepared.Invoke(args...)
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+			session, err := prepared.OpenSession()
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer session.Close()
+			check(session.Invoke(args...))
+			b.Run("session", func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					benchResultSink, err = session.Invoke(args...)
 					if err != nil {
 						b.Fatal(err)
 					}

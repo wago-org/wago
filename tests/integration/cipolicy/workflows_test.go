@@ -63,7 +63,8 @@ func TestCIUsesPinnedJustTaskRunner(t *testing.T) {
 		`JUST_VERSION: "1.58.0"`,
 		`extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3`,
 		`run: just lint`,
-		`run: just test`,
+		`run: just test unit`,
+		`run: just test corpus all`,
 		`run: just test spec v2`,
 		`run: just build tinygo`,
 	} {
@@ -73,6 +74,42 @@ func TestCIUsesPinnedJustTaskRunner(t *testing.T) {
 	}
 	if strings.Contains(contents, "run: make ") {
 		t.Error("CI workflow still invokes the removed Makefile")
+	}
+}
+
+func TestLongNativeCorpusRunsAreShardedAndVerified(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := workflowJobBlocks(string(workflow))
+	shards, ok := jobs["corpus-correctness"]
+	if !ok {
+		t.Fatal("CI has no sharded native correctness-corpus job")
+	}
+	for _, required := range []string{
+		"go run ./cmd/corpus-shard plan",
+		"go run ./cmd/corpus-shard complete",
+		"TestCorpus|TestCorpusSemanticExec",
+		"corpus-correctness-${{ matrix.target }}-${{ matrix.shard }}",
+		"darwin/amd64",
+		"windows/arm64",
+	} {
+		if !strings.Contains(shards, required) {
+			t.Errorf("native corpus shard job is missing %q", required)
+		}
+	}
+	platform, ok := jobs["platform-test"]
+	if !ok || !strings.Contains(platform, "matrix.runtime && matrix.corpus") {
+		t.Fatal("fast native corpus lanes must remain in their platform jobs")
+	}
+	verify, ok := jobs["app-corpus-verify"]
+	if !ok || !strings.Contains(verify, "needs: [changes, app-corpus, corpus-correctness]") || !strings.Contains(verify, "TestVerifyCorpusCorrectnessShardReports") {
+		t.Fatal("corpus shard reports are not part of the coverage gate")
+	}
+	aggregate, ok := jobs["ci-ok"]
+	if !ok || !strings.Contains(aggregate, "corpus-correctness") {
+		t.Fatal("the CI aggregate does not require native corpus shards")
 	}
 }
 
@@ -86,8 +123,10 @@ func TestCanaryPublishesCommitAddressedArtifactsWithoutTags(t *testing.T) {
 		`name: Publish canary artifacts`,
 		`name: canary-${{ needs.prepare.outputs.sha }}-${{ matrix.target }}`,
 		`WAGO_VERSION: canary@${{ needs.prepare.outputs.sha }}`,
+		`scripts/smoke-release-assets.sh . "${{ matrix.target }}" "canary@${{ needs.prepare.outputs.sha }}"`,
+		`scripts/release-qualification.sh verify-ci`,
 		`retention-days: 90`,
-		`group: publish-canary-${{ github.event.workflow_run.head_sha || github.sha }}`,
+		`group: publish-canary-${{ github.event.workflow_run.head_sha || inputs.source_sha || github.sha }}`,
 	} {
 		if !strings.Contains(contents, required) {
 			t.Errorf("canary workflow is missing commit-addressed artifact policy %q", required)
@@ -96,6 +135,24 @@ func TestCanaryPublishesCommitAddressedArtifactsWithoutTags(t *testing.T) {
 	for _, forbidden := range []string{"gh release", "/releases", "--prerelease", "git/ref/tags", "refs/tags/", "RELEASE_SERIES", "contents: write"} {
 		if strings.Contains(contents, forbidden) {
 			t.Errorf("canary workflow must not publish tags or releases, found %q", forbidden)
+		}
+	}
+}
+
+func TestRegressionStressUsesReusableWorkflowProfiles(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/regression-stress.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := workflowJobBlocks(string(workflow))
+	for job, required := range map[string]string{
+		"gc-hardening":       "if: inputs.profile == 'full' || inputs.profile == 'release' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+		"stress":             "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || inputs.profile == 'release'",
+		"regression-rebuild": "if: inputs.profile == 'release'",
+	} {
+		block, ok := jobs[job]
+		if !ok || !strings.Contains(block, required) {
+			t.Errorf("reusable stress workflow job %s does not honor its caller profile", job)
 		}
 	}
 }
@@ -111,6 +168,11 @@ func TestInstallerPublishStagesRemovedBootstraps(t *testing.T) {
 	}
 	if strings.Contains(contents, "git add --all -- install.sh install.cmd install.ps1") {
 		t.Error("installer publish workflow names the removed install.cmd path")
+	}
+	for _, required := range []string{"stable-source-qualification-", `scripts/release-qualification.sh verify-ci`, "github.event.workflow_run.conclusion == 'success'", "REQUESTED_SOURCE_SHA"} {
+		if !strings.Contains(contents, required) {
+			t.Errorf("installer publication is missing exact-source CI qualification %q", required)
+		}
 	}
 }
 
@@ -140,9 +202,8 @@ func TestAggregateCIRequiresEveryWorkflowJob(t *testing.T) {
 	}
 	for _, required := range []string{
 		"if: always()",
-		"join(needs.*.result",
-		`[ "$r" = "failure" ]`,
-		`[ "$r" = "cancelled" ]`,
+		"CI_NEEDS: ${{ toJSON(needs) }}",
+		"go run ./tests/tools/ci-plan verify",
 	} {
 		if !strings.Contains(aggregate, required) {
 			t.Errorf("ci-ok aggregate is missing fail-closed result handling %q", required)
@@ -358,20 +419,24 @@ func TestRuntimeConcurrencyHarnessRunsOnLinuxAMD64AndARM64(t *testing.T) {
 	}
 	contents := string(workflow)
 	for _, required := range []string{
-		`runtime-concurrency:`,
-		`name: Runtime concurrency / ${{ matrix.name }}`,
-		`runner: ubuntu-24.04`,
-		`runner: ubuntu-24.04-arm`,
+		`name: Run bounded seeded runtime concurrency harness`,
 		`WAGO_CONCURRENCY_SEED: 439000001,439000019,439000043,439000081`,
 		`run: just test concurrency`,
 		`name: Race detector / Linux amd64`,
 		`timeout-minutes: 15`,
 		`go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency`,
-		`needs: [changes, docs, lint, regression-corpus, runtime-concurrency, race`,
+		`if: matrix.goos == 'linux'`,
 	} {
-		if !strings.Contains(contents, required) {
+		if strings.HasPrefix(required, "if:") {
+			if !strings.Contains(contents, required) {
+				t.Errorf("CI workflow is missing runtime-concurrency policy %q", required)
+			}
+		} else if !strings.Contains(contents, required) {
 			t.Errorf("CI workflow is missing runtime-concurrency policy %q", required)
 		}
+	}
+	if strings.Contains(contents, "runtime-concurrency:") {
+		t.Error("seeded concurrency must be folded into the native test lane")
 	}
 }
 
@@ -382,10 +447,17 @@ func TestDocsChangesRunDocumentationValidation(t *testing.T) {
 	}
 	contents := string(workflow)
 	for _, required := range []string{
-		`docs: ${{ steps.derive.outputs.docs }}`,
-		`if: needs.changes.outputs.docs == 'true'`,
+		`ready_for_review`,
+		`converted_to_draft`,
+		`name: Plan CI profile`,
+		`go run ./tests/tools/ci-plan plan`,
+		`if: needs.changes.outputs.profile == 'docs' || needs.changes.outputs.profile == 'full'`,
 		`run: just docs`,
-		`needs: [changes, docs, lint, regression-corpus`,
+		`name: Draft smoke / Linux amd64`,
+		`CURRENT_GO_VERSION: "1.27.1"`,
+		`name: Current Go / Linux amd64`,
+		`run: just test ci-smoke`,
+		`name: Verify every expected CI result`,
 	} {
 		if !strings.Contains(contents, required) {
 			t.Errorf("CI workflow is missing docs-validation policy %q", required)
@@ -399,13 +471,16 @@ func TestDocsOnlyChangesSkipCodeMatrix(t *testing.T) {
 		t.Fatal(err)
 	}
 	contents := string(workflow)
-	for _, required := range []string{
-		`predicate-quantifier: 'every'`,
-		"docs:\n              - '**'",
-		"code:\n              - '**'\n              - '!**/*.md'\n              - '!docs/**'\n              - '!LICENSE'",
-	} {
-		if !strings.Contains(contents, required) {
-			t.Errorf("CI workflow is missing docs-only gating policy %q", required)
+	if strings.Contains(contents, "dorny/paths-filter") {
+		t.Fatal("CI change selection must use the tested Go planner")
+	}
+	planner, err := os.ReadFile(filepath.Clean("../../tools/ci-plan/main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"documentationPath", "return planFor(\"docs\"", "unexpected pull request base", "change detection returned an empty selection"} {
+		if !strings.Contains(string(planner), required) {
+			t.Errorf("CI planner is missing fail-closed path policy %q", required)
 		}
 	}
 }

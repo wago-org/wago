@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "purpose": "Acquisition queue only. Entries here are not benchmark or correctness passes; only catalog.json admits executable workloads.",
+  "admitted": [
+    { "program": "esbuild", "benchmark": "esbuild-minify" },
+    { "program": "QuickJS", "benchmark": "quickjs-script" },
+    { "program": "Duktape", "benchmark": "duktape-script" },
+    { "program": "sqlite3", "benchmark": "sqlite3-query" },
+    { "program": "xzdec", "benchmark": "xzdec-decompress" },
+    { "program": "lzmadec", "benchmark": "lzmadec-decompress" },
+    { "program": "lzmainfo", "benchmark": "lzmainfo-header" },
+    { "program": "age", "benchmark": "age-decrypt" },
+    { "program": "age-keygen", "benchmark": "age-keygen-public" },
+    { "program": "jq", "benchmark": "jq-json-transform" },
+    { "program": "Brotli CLI", "benchmark": "brotli-compress" },
+    { "program": "tree", "benchmark": "tree-list" },
+    { "program": "json2csv", "benchmark": "json2csv-people" },
+    { "program": "icepll", "benchmark": "icepll-clock" },
+    { "program": "icebram", "benchmark": "icebram-generate" },
+    { "program": "icepack", "benchmark": "icepack-pack" },
+    { "program": "iceunpack", "benchmark": "iceunpack-unpack" },
+    { "program": "icemulti", "benchmark": "icemulti-image" },
+    { "program": "ecppll", "benchmark": "ecppll-clock" },
+    { "program": "ecpbram", "benchmark": "ecpbram-generate" },
+    { "program": "swift-format", "benchmark": "swift-format-source" },
+    { "program": "Yosys", "benchmark": "yosys-counter" },
+    { "program": "ripgrep", "benchmark": "ripgrep-source" },
+    { "program": "uutils/coreutils", "benchmark": "coreutils-sort" },
+    { "program": "ecppack", "benchmark": "ecppack-bitstream" },
+    { "program": "ecpunpack", "benchmark": "ecpunpack-config" },
+    { "program": "MicroPython", "benchmark": "micropython-squares" },
+    { "program": "Lua CLI", "benchmark": "lua-cli-buckets" },
+    { "program": "Clang", "benchmark": "clang-c-kernels" },
+    { "program": "clang++", "benchmark": "clang-cpp-kernels" },
+    { "program": "Ruby", "benchmark": "ruby-buckets" },
+    { "program": "PHP", "benchmark": "php-buckets" },
+    { "program": "GNU sed", "benchmark": "sed-records" },
+    { "program": "seqtk", "benchmark": "seqtk-fastq-to-fasta" },
+    { "program": "lcs", "benchmark": "lcs-substrings" },
+    { "program": "needleman_wunsch", "benchmark": "needleman-wunsch-dna" },
+    { "program": "smith_waterman", "benchmark": "smith-waterman-dna" },
+    { "program": "FastTree", "benchmark": "fasttree-phylogeny" },
+    { "program": "GNU seq", "benchmark": "gnu-seq-range" },
+    { "program": "GNU tr", "benchmark": "gnu-tr-uppercase" }
+  ],
+  "groups": [
+    {
+      "route": "WASI CLI",
+      "programs": [
+        "CPython",
+        "LLD", "wasm-ld", "vasm6502_oldstyle",
+        "Pandoc", "nextpnr", "Boolector",
+        "ecpmulti", "prjoxide"
+      ]
+    },
+    {
+      "route": "a-Shell command; imports and host behavior require per-artifact audit",
+      "programs": [
+        "f2c", "ctags", "readtags", "Graphviz", "FFmpeg", "ffprobe",
+        "file", "XZ",
+        "zip", "unzip", "zipcloak", "zipnote", "zipsplit", "funzip", "unzipsfx"
+      ]
+    },
+    {
+      "route": "Emscripten application; JS imports or standalone rebuild need audit",
+      "programs": [
+        "Janet", "SWI-Prolog", "ImageMagick", "QPDF", "Ghostscript", "OpenSCAD",
+        "pdfTeX", "XeTeX", "gawk", "GNU grep", "GNU findutils",
+        "7-Zip", "Z3", "cvc5"
+      ]
+    },
+    {
+      "route": "Biowasm application; Emscripten host contract needs audit",
+      "programs": [
+        "ASTER", "bcftools", "bedtools", "bhtsne", "Bowtie 2", "cawlign", "fastp",
+        "gfatools", "gffread", "tabix", "htsfile", "bgzip", "HyPhy",
+        "iVar", "Kalign", "Kent utilities", "LASTZ", "LSD2", "MAFFT", "minimap2",
+        "modbam2bed", "MUMmer4", "MUSCLE", "samtools",
+        "SSW", "TN93", "vidjil-algo", "ViralConsensus", "wgsim"
+      ]
+    },
+    {
+      "route": "Engine or API; needs a command driver and host integration",
+      "programs": [
+        "QuickJS-NG", "DuckDB", "PGlite", "MuPDF", "Tesseract", "Typst",
+        "Binaryen", "Wren", "webR"
+      ]
+    },
+    {
+      "route": "Additional WASI or host audit",
+      "programs": ["openFPGALoader"]
+    },
+    {
+      "route": "WASIX or browser host; substantial host work",
+      "programs": ["Bash", "curl", "Git", "Stockfish", "Fairy-Stockfish"]
+    }
+  ]
+}

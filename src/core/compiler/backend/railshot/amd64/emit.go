@@ -2,6 +2,11 @@
 
 package amd64
 
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/encoder/amd64"
+)
+
 // The condense engine: materialize a deferred-action valent block into machine
 // code, with target hints (compute the result straight into a destination
 // register and reuse operand registers in place). Ported from WARP's
@@ -789,7 +794,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	return result
 }
 
-// condenseUnary lowers clz/ctz/popcnt (lzcnt/tzcnt/popcnt reg,reg).
+// condenseUnary selects native bit-count instructions or baseline AMD64 code.
 func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 	w := node.valueType().is64()
 	// lzcnt/tzcnt/popcnt read their source read-only, so a register-resident source
@@ -813,11 +818,43 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 	}
 	switch node.deferredOp() {
 	case opClz:
-		f.a.Lzcnt(result, src, w)
+		if f.a.BitCountState&shared.BitCountLZCNT != 0 {
+			f.a.Lzcnt(result, src, w)
+			f.a.BitCountState |= shared.BitCountLZCNT << 4
+		} else {
+			f.a.Bsr(result, src, w)
+			zero := f.a.JccPlaceholder(amd64.CondE)
+			width := int32(32)
+			if w {
+				width = 64
+			}
+			f.a.AluRI(6, result, width-1, false) // index XOR (width-1) = clz
+			end := f.a.JmpPlaceholder()
+			f.a.PatchRel32(zero, f.a.Len())
+			f.a.MovImm32(result, width)
+			f.a.PatchRel32(end, f.a.Len())
+		}
 	case opCtz:
-		f.a.Tzcnt(result, src, w)
+		if f.a.BitCountState&shared.BitCountTZCNT != 0 {
+			f.a.Tzcnt(result, src, w)
+			f.a.BitCountState |= shared.BitCountTZCNT << 4
+		} else {
+			f.a.Bsf(result, src, w)
+			nonzero := f.a.JccPlaceholder(amd64.CondNE)
+			width := int32(32)
+			if w {
+				width = 64
+			}
+			f.a.MovImm32(result, width)
+			f.a.PatchRel32(nonzero, f.a.Len())
+		}
 	case opPopcnt:
-		f.a.Popcnt(result, src, w)
+		if f.a.BitCountState&shared.BitCountPOPCNT != 0 {
+			f.a.Popcnt(result, src, w)
+			f.a.BitCountState |= shared.BitCountPOPCNT << 4
+		} else {
+			f.popcntSWAR(result, src, w)
+		}
 	}
 	if srcOwned && result != src {
 		f.release(src)
@@ -826,6 +863,60 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 	f.occupy(node, result)
 	node.setDeferredOp(opNone)
 	return result
+}
+
+// popcntSWAR counts bits with two register temporaries and no runtime helper.
+func (f *fn) popcntSWAR(result, src Reg, w bool) {
+	if result != src {
+		if w {
+			f.a.MovReg64(result, src)
+		} else {
+			f.a.MovRegReg32(result, src)
+		}
+	}
+	tmp := f.allocReg(maskOf(result, src))
+	defer f.release(tmp)
+	var mask Reg
+	if w {
+		mask = f.allocReg(maskOf(result, src, tmp))
+		defer f.release(mask)
+	}
+	f.swarShift(tmp, result, 1, w)
+	f.swarAnd(tmp, mask, 0x5555555555555555, w, true)
+	f.a.AluRR(0x29, result, tmp, w)
+	f.swarShift(tmp, result, 2, w)
+	f.swarAnd(result, mask, 0x3333333333333333, w, true)
+	f.swarAnd(tmp, mask, 0x3333333333333333, w, false)
+	f.a.AluRR(0x01, result, tmp, w)
+	f.swarShift(tmp, result, 4, w)
+	f.a.AluRR(0x01, result, tmp, w)
+	f.swarAnd(result, mask, 0x0f0f0f0f0f0f0f0f, w, true)
+	if w {
+		f.a.MovImm64(mask, 0x0101010101010101)
+		f.a.IMul(result, mask, true)
+		f.a.ShiftImm(5, result, 56, true)
+	} else {
+		f.a.ImulRI(result, 0x01010101, false)
+		f.a.ShiftImm(5, result, 24, false)
+	}
+}
+
+//go:noinline
+func (f *fn) swarShift(dst, src Reg, count byte, w bool) {
+	f.a.AluRR(0x89, dst, src, w)
+	f.a.ShiftImm(5, dst, count, w)
+}
+
+//go:noinline
+func (f *fn) swarAnd(dst, mask Reg, value uint64, w, load bool) {
+	if w {
+		if load {
+			f.a.MovImm64(mask, value)
+		}
+		f.a.AluRR(0x21, dst, mask, true)
+	} else {
+		f.a.AluRI(4, dst, int32(value), false)
+	}
 }
 
 // condenseDivRem lowers div_s/div_u/rem_s/rem_u using x86's fixed RDX:RAX / RAX

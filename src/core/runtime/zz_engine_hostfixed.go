@@ -54,18 +54,8 @@ func (e *Engine) CallWithHostBaseScalarFixed(code uintptr, serArgs []byte, linMe
 func (e *Engine) callWithHostLoopFixed(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, ctrlPtr uintptr, rawSlots uint32, host HostCall, scalar ScalarHostCall, fixed FixedScalarHostCall, argBuf, resBuf []uint64) error {
 	rootCtrl, rootCtrlPtr := ctrl, ctrlPtr
 	n, nres := int(rawSlots&0xffff), int(rawSlots>>16)
-	for first := true; ; first = false {
-		if first {
-			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
-		} else {
-			clearTrapUnlessInterrupted(trap)
-			if TrapCode(loadTrap(trap)) == TrapInterrupted {
-				return trapErrorFromBuffer(TrapInterrupted, trap)
-			}
-			stackTop := e.StackTop()
-			prepareHostResume(ctrl, trap, stackTop, e.StackLimit())
-			resumeNative(ctrlPtr, stackTop)
-		}
+	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+	for {
 		switch tc := loadTrap(trap); {
 		case tc == hostCallPending:
 			ctrlPtr = uintptr(binary.LittleEndian.Uint64(trap[8:]))
@@ -88,7 +78,7 @@ func (e *Engine) callWithHostLoopFixed(code uintptr, serArgs []byte, linMemBase 
 					*(*uint64)(unsafe.Pointer(&ctrl[hcResults])) = result & 0xffffffff
 					*(*uint64)(unsafe.Pointer(&ctrl[hcResults+8])) = result >> 32
 				}
-				continue
+				goto resume
 			}
 
 			ctrl = hostCtrlFrame(ctrlPtr)
@@ -105,7 +95,7 @@ func (e *Engine) callWithHostLoopFixed(code uintptr, serArgs []byte, linMemBase 
 				wideResults := unsafe.Slice((*uint64)(unsafe.Pointer(&resultsArea[0])), capacity)
 				clear(wideResults[:foreignNres])
 				host(ctrlPtr, imp, args[:foreignN], wideResults[:foreignNres])
-				continue
+				goto resume
 			}
 			if scalar != nil && foreignN <= 2 && foreignNres <= 2 {
 				var a0, a1 uint64
@@ -122,8 +112,12 @@ func (e *Engine) callWithHostLoopFixed(code uintptr, serArgs []byte, linMemBase 
 						binary.LittleEndian.PutUint64(ctrl[hcResults:], result&0xffffffff)
 						binary.LittleEndian.PutUint64(ctrl[hcResults+8:], result>>32)
 					}
-					continue
+					goto resume
 				}
+			}
+			if argBuf == nil {
+				e.callWithHostFixedFallback(ctrl, imp, foreignN, foreignNres, host)
+				goto resume
 			}
 			for k := 0; k < foreignN; k++ {
 				argBuf[k] = binary.LittleEndian.Uint64(ctrl[hcArgs+k*8:])
@@ -140,5 +134,35 @@ func (e *Engine) callWithHostLoopFixed(code uintptr, serArgs []byte, linMemBase 
 		default:
 			return nil
 		}
+	resume:
+		clearTrapUnlessInterrupted(trap)
+		if TrapCode(loadTrap(trap)) == TrapInterrupted {
+			return trapErrorFromBuffer(TrapInterrupted, trap)
+		}
+		stackTop := e.StackTop()
+		prepareHostResume(ctrl, trap, stackTop, e.StackLimit())
+		resumeNative(ctrlPtr, stackTop)
+	}
+}
+
+func (e *Engine) callWithHostFixedFallback(ctrl []byte, imp uint32, n, nres int, host HostCall) {
+	if e.hostScratchInUse {
+		var args, results [maxHostArity]uint64
+		callWithHostFixedScratch(ctrl, imp, n, nres, host, args[:], results[:])
+		return
+	}
+	e.hostScratchInUse = true
+	defer func() { e.hostScratchInUse = false }()
+	callWithHostFixedScratch(ctrl, imp, n, nres, host, e.hostArgs[:], e.hostResults[:])
+}
+
+func callWithHostFixedScratch(ctrl []byte, imp uint32, n, nres int, host HostCall, args, results []uint64) {
+	for k := 0; k < n; k++ {
+		args[k] = binary.LittleEndian.Uint64(ctrl[hcArgs+k*8:])
+	}
+	clear(results[:nres])
+	host(slicePtr(ctrl), imp, args[:n], results[:nres])
+	for k := 0; k < nres; k++ {
+		binary.LittleEndian.PutUint64(ctrl[hcResults+k*8:], results[k])
 	}
 }

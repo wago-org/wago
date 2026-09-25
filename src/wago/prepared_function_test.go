@@ -1,6 +1,8 @@
 package wago
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,6 +13,89 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestWasmFuncPreparedHostRestoresInheritedContext(t *testing.T) {
+	c := MustCompile(benchReturningImportModule())
+	defer c.Close()
+	imports := NewImports()
+	imports.HostFunc("env", "f", func(v int32) int32 { return v + 1 })
+	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctrl := offHeapSlicePtr(in.ctrl)
+	outer := hostInvocationContext{id: newInvocationID(), parent: context.Background()}
+	restore := bindHostInvocationContext(ctrl, outer)
+	defer restore()
+	got, err := fn.Invoke(I32(41))
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("host invoke = %v, %v", got, err)
+	}
+	value, ok := hostInvocationContexts.Load(ctrl)
+	if !ok || value.(hostInvocationContext).id != outer.id || value.(hostInvocationContext).parent != outer.parent {
+		t.Fatalf("outer host invocation context changed: %v, %v", value, ok)
+	}
+}
+
+func TestWasmFuncPreparedHostPanicTranslation(t *testing.T) {
+	c := MustCompile(benchReturningImportModule())
+	defer c.Close()
+	sentinel := errors.New("prepared host trap")
+	for _, outcome := range []string{"host-trap", "exit", "panic"} {
+		t.Run(outcome, func(t *testing.T) {
+			imports := NewImports()
+			imports.HostFunc("env", "f", func(v int32) int32 {
+				switch outcome {
+				case "host-trap":
+					panic(HostTrap{Err: sentinel})
+				case "exit":
+					panic(HostExit{Code: 7})
+				default:
+					panic(sentinel)
+				}
+			})
+			in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.WasmFunc("g")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < 2; i++ {
+				var recovered any
+				func() {
+					defer func() { recovered = recover() }()
+					_, err = fn.Invoke(I32(41))
+				}()
+				if fn.hostPrepared == nil {
+					t.Fatal("ordinary call did not use prepared host entry")
+				}
+				switch outcome {
+				case "host-trap":
+					if recovered != nil || !errors.Is(err, sentinel) {
+						t.Fatalf("host trap = %v, panic %v", err, recovered)
+					}
+				case "exit":
+					var exit *ExitError
+					if recovered != nil || !errors.As(err, &exit) || exit.Code != 7 {
+						t.Fatalf("host exit = %v, panic %v", err, recovered)
+					}
+				case "panic":
+					if recovered != sentinel {
+						t.Fatalf("host panic = %v, err %v", recovered, err)
+					}
+				}
+			}
+		})
+	}
+}
 
 func TestWasmFuncInvokeAndCacheIndependence(t *testing.T) {
 	if _, err := (*WasmFunc)(nil).Invoke(); err == nil || !strings.Contains(err.Error(), "closed") {
@@ -44,6 +129,110 @@ func TestWasmFuncInvokeAndCacheIndependence(t *testing.T) {
 	}
 	if _, err := fn.Invoke(I32(1)); err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("invoke after close error = %v", err)
+	}
+}
+
+func TestWasmFuncPreparedHostCallRevokedByCallbackSharing(t *testing.T) {
+	c := MustCompile(sessionImportMemoryModule())
+	defer c.Close()
+	var in *Instance
+	var fn *WasmFunc
+	calls := 0
+	var identities []invocationID
+	imports := NewImports()
+	imports.HostFunc("env", "f", func(v int32) int32 {
+		calls++
+		if calls <= 2 {
+			identities = append(identities, fn.hostActivation.context(in).id)
+		}
+		if calls == 2 {
+			if _, err := in.ExportedMemory("memory"); err != nil {
+				panic(HostTrap{Err: err})
+			}
+		}
+		return v + 1
+	})
+	var err error
+	in, err = Instantiate(c, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err = in.WasmFunc("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		got, err := fn.Invoke(I32(41))
+		if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+			t.Fatalf("invoke after sharing = %v, %v", got, err)
+		}
+		if i == 0 && fn.hostPrepared == nil {
+			t.Fatal("normal typed callback did not cache its prepared entry")
+		}
+	}
+	if in.usesIndependentExecution() {
+		t.Fatal("callback publication failed to revoke independent execution")
+	}
+	if len(identities) != 2 || identities[0] == 0 || identities[0] == identities[1] {
+		t.Fatalf("cached callback identities = %v, want distinct nonzero IDs", identities)
+	}
+}
+
+func TestWasmFuncOrdinaryHostEntryReusesUnchangedNativeContext(t *testing.T) {
+	c := MustCompile(sessionImportMemoryModule())
+	defer c.Close()
+	imports := NewImports()
+	imports.HostFunc("env", "f", func(v int32) int32 { return v + 1 })
+	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if !in.usesIndependentExecution() {
+		t.Fatal("fixture must use independent native execution")
+	}
+	fn, err := in.WasmFunc("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func() {
+		t.Helper()
+		got, err := fn.Invoke(I32(41))
+		if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+			t.Fatalf("call = %v, %v; want [42]", got, err)
+		}
+	}
+	call()
+	state := in.ensurePluginState()
+	first := state.nativeContextVersion.Load()
+	call()
+	if got := state.nativeContextVersion.Load(); got != first {
+		t.Fatalf("unchanged native context rebound: version %d -> %d", first, got)
+	}
+	other, err := in.WasmFunc("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := other.Invoke(I32(41)); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("other handle call = %v, %v; want [42]", got, err)
+	}
+	intervening := state.nativeContextVersion.Load()
+	call()
+	if got := state.nativeContextVersion.Load(); got <= intervening {
+		t.Fatalf("intervening handle did not force rebind: version %d -> %d", intervening, got)
+	}
+	in.acquireInstanceNativeStateForHostAccess().Unlock()
+	invalidated := state.nativeContextVersion.Load()
+	call()
+	if got := state.nativeContextVersion.Load(); got <= invalidated {
+		t.Fatalf("invalidated native context was not rebound: version %d -> %d", invalidated, got)
+	}
+	bound := state.nativeContextVersion.Load()
+	fn.hostMemBase ^= 1
+	call()
+	if got := state.nativeContextVersion.Load(); got <= bound {
+		t.Fatalf("cached memory-base mismatch did not force rebind: version %d -> %d", bound, got)
 	}
 }
 

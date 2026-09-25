@@ -1,12 +1,12 @@
 package wagobench
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/wago-org/wago/bench/internal/semanticcorpus"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -36,6 +36,159 @@ func TestCatalogContainsOnlyExecutableWorkloads(t *testing.T) {
 	const websiteMinimum = 20
 	if got := len(manifest.Profiles["quick"]); got < websiteMinimum {
 		t.Errorf("quick profile has %d workloads, want at least %d for the website", got, websiteMinimum)
+	}
+}
+
+func TestCommandCorpusRunsOnLinuxAMD64(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(corpusDir, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest catalog
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	for _, benchmark := range manifest.Benchmarks {
+		if benchmark.Command != nil && !commandSupportsPlatform(benchmark, "linux", "amd64") {
+			t.Errorf("command benchmark %q silently skips linux/amd64", benchmark.ID)
+		}
+	}
+}
+
+func TestWebsiteProfileUsesCuratedPairedWorkloads(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(corpusDir, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest catalog
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(manifest.Profiles["website"]); got != 40 {
+		t.Fatalf("website profile has %d workloads, want 40", got)
+	}
+	modules := make(map[string]corpusModule, len(manifest.Benchmarks))
+	for _, benchmark := range manifest.Benchmarks {
+		modules[benchmark.ID] = benchmark
+	}
+	website := make(map[string]bool, len(manifest.Profiles["website"]))
+	commandCount := 0
+	for _, id := range manifest.Profiles["website"] {
+		benchmark, ok := modules[id]
+		if !ok || website[id] {
+			t.Errorf("website workload %q is missing or duplicated", id)
+		}
+		website[id] = true
+		if benchmark.Command != nil {
+			commandCount++
+			if benchmark.Command.ReferenceRuntime != "" ||
+				!commandSupportsPlatform(benchmark, "darwin", "arm64") ||
+				!commandSupportsPlatform(benchmark, "linux", "amd64") {
+				t.Errorf("website command %q lacks a paired comparison on both hosts", id)
+			}
+		}
+	}
+	if commandCount < 20 {
+		t.Errorf("website has %d command programs, want at least 20", commandCount)
+	}
+	if !website["json-as-simd"] || website["json-as"] {
+		t.Error("website must show only the SIMD json-as workload")
+	}
+}
+
+func TestSightglassLibsodiumTuningInput(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(corpusDir, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest catalog
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range manifest.Benchmarks {
+		if m.ID != "sightglass-libsodium-hash" {
+			continue
+		}
+		const input = "libsodium-hash.input"
+		module, err := os.ReadFile(filepath.Join(corpusDir, m.Artifact))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(module, []byte("./"+input)) {
+			t.Fatalf("module does not read %q", input)
+		}
+		if m.Command == nil || m.Command.Stdin != "" {
+			t.Fatal("Sightglass iterations must come from a mounted file, not stdin")
+		}
+		if _, ok := m.Command.Inputs[input]; !ok {
+			t.Fatalf("%q is not mounted", input)
+		}
+		contents, err := os.ReadFile(filepath.Join(corpusDir, m.Command.Preopen, input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(contents) != "1061\n" {
+			t.Fatalf("Sightglass iteration count = %q, want 1061", contents)
+		}
+		return
+	}
+	t.Fatal("sightglass-libsodium-hash is missing from the catalog")
+}
+
+func TestCorpusCandidatesStaySeparateFromExecutableCatalog(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(corpusDir, "candidates.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var queue struct {
+		Schema   int `json:"schema"`
+		Admitted []struct {
+			Program   string `json:"program"`
+			Benchmark string `json:"benchmark"`
+		} `json:"admitted"`
+		Groups []struct {
+			Route    string   `json:"route"`
+			Programs []string `json:"programs"`
+		} `json:"groups"`
+	}
+	if err := json.Unmarshal(data, &queue); err != nil {
+		t.Fatal(err)
+	}
+	if queue.Schema != 1 {
+		t.Fatalf("candidate schema = %d, want 1", queue.Schema)
+	}
+	seen := map[string]bool{}
+	for _, group := range queue.Groups {
+		if group.Route == "" || len(group.Programs) == 0 {
+			t.Fatalf("invalid candidate group: %+v", group)
+		}
+		for _, program := range group.Programs {
+			key := strings.ToLower(strings.TrimSpace(program))
+			if key == "" || seen[key] {
+				t.Fatalf("empty or duplicate candidate %q", program)
+			}
+			seen[key] = true
+		}
+	}
+	var catalog catalog
+	data, err = os.ReadFile(filepath.Join(corpusDir, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &catalog); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range queue.Admitted {
+		if entry.Program == "" || entry.Benchmark == "" {
+			t.Fatalf("incomplete admission: %+v", entry)
+		}
+		found := false
+		for _, benchmark := range catalog.Benchmarks {
+			found = found || benchmark.ID == entry.Benchmark
+		}
+		if !found {
+			t.Errorf("%s claims admission to missing benchmark %s", entry.Program, entry.Benchmark)
+		}
 	}
 }
 
@@ -218,31 +371,15 @@ func TestCatalogCIGates(t *testing.T) {
 			if file == ".just/test.just" && !strings.Contains(text, "quick corpus=env('CORPUS', 'all'):") {
 				t.Fatal("ordinary test gate must default to all")
 			}
-			found := false
-			for _, line := range strings.Split(text, "\n") {
-				if !strings.Contains(line, "TestApplicationCorpusRuns") {
-					continue
+			if file == ".just/test.just" {
+				if !strings.Contains(text, "application-corpus shard=") || !strings.Contains(text, "-run '^TestApplicationCorpusRuns$'") {
+					t.Fatal("application corpus must have a separate explicit CI entry point")
 				}
-				found = true
-				fields := strings.Split(line, "'")
-				if len(fields) < 3 {
-					t.Fatalf("missing quoted run expression: %s", line)
+				if strings.Contains(text, "TestApplicationCorpusRuns)$'") {
+					t.Fatal("ordinary corpus command must not repeat the application corpus")
 				}
-				pattern, err := regexp.Compile(fields[1])
-				if err != nil {
-					t.Fatal(err)
-				}
-				for _, name := range []string{"TestCorpus", "TestCorpusSemanticExec", "TestApplicationCorpusRuns", "TestCatalogContainsOnlyExecutableWorkloads", "TestCatalogSemanticLinks", "TestCatalogSelection", "TestCatalogCIGates", "TestValidateCorpusModuleRequiresEndToEndOracle", "TestValidateCorpusModuleStagesAndSource"} {
-					if !pattern.MatchString(name) {
-						t.Errorf("CI expression excludes %s", name)
-					}
-				}
-				if file == ".github/workflows/ci.yml" && !strings.Contains(line, "-wago.corpus=all") {
-					t.Fatal("Windows ordinary corpus gate must select all")
-				}
-			}
-			if !found {
-				t.Fatal("missing corpus execution gate")
+			} else if !strings.Contains(text, "-run '^TestApplicationCorpusRuns$'") || !strings.Contains(text, "WAGO_APP_CORPUS_SHARD:") || !strings.Contains(text, "TestVerifyApplicationCorpusShardReports|TestVerifyCorpusCorrectnessShardReports") {
+				t.Fatal("CI must run explicit application shards and verify full-corpus coverage")
 			}
 		})
 	}

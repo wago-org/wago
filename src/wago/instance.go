@@ -63,6 +63,7 @@ type Instance struct {
 	ownsMem                 bool                     // false when memory 0 is host-imported (don't close it)
 	memoryDir               *instanceMemoryDirectory // allocated only for indexed memory execution
 	syncMode                bool                     // true when host imports use the synchronous re-entry protocol
+	threadedMemoryZero      bool                     // immutable compiled memory-zero shape, cached for native entry
 	constructionActive      bool                     // registration through terminal instantiation observation
 	constructionReservation *pluginOperationReservation
 	executionFlags          atomic.Uint32 // independent eligibility and cross-instance native-control sharing
@@ -105,17 +106,22 @@ type instanceMemoryDirectory struct {
 // with __collect, __pin, or paired request/response exports.
 type invokeCache struct {
 	export            string
+	directEntry       uintptr
+	li                int // local index, or -1-import index for an InstanceExport re-export
+	paramSlots        int32
+	resultSlots       int32
+	slotWide          []bool // parameter slots followed by result slots; false means a 32-bit scalar
 	valid             bool
 	entryMode         preparedEntryMode
 	directIntFast     bool
+	directFloatFast   bool
 	directIntLight    bool
 	directIntBounded  bool
-	scalarWideMask    uint8
+	scalarWideMask    uint8 // low bits are scalar widths; mixed direct entries use the tagged FP-bank encoding
 	scalarResultWide  bool
-	li                int // local index, or -1-import index for an InstanceExport re-export
-	paramSlots        int
-	resultSlots       int
 	hasFuncRefParams  bool
 	hasFuncRefResults bool
-	slotWide          []bool // parameter slots followed by result slots; false means a 32-bit scalar
+	boundedWrapper    bool
+	paramWidthClass   scalarSlotWidthClass
+	resultWidthClass  scalarSlotWidthClass
 }

@@ -208,8 +208,15 @@ func TestTypedExpandedHostCallbackMayGrowStackCollectAndRecoverFromTrap(t *testi
 	if _, err := in.Invoke("run", I32(1)); err == nil || err.Error() != "expected expanded typed trap" {
 		t.Fatalf("first expanded typed call error = %v", err)
 	}
+	fn, err := in.WasmFunc("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := fn.Invoke(I32(1)); err != nil || len(got) != 1 || AsI32(got[0]) != 7 {
+		t.Fatalf("resolved expanded typed callback after stack growth, GC, and trap = %v, %v; want 7", got, err)
+	}
 	if got, err := in.Invoke("run", I32(1)); err != nil || len(got) != 1 || AsI32(got[0]) != 7 {
-		t.Fatalf("expanded typed callback after stack growth, GC, and trap = %v, %v; want 7", got, err)
+		t.Fatalf("name-based expanded typed callback after resolved call = %v, %v; want 7", got, err)
 	}
 }
 

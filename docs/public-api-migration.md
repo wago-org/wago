@@ -13,8 +13,8 @@ no deprecated aliases for the removed names.
 | `Instance.PrepareFunction` / `PreparedFunction` | `Instance.WasmFunc` / `WasmFunc` |
 | `PrepareI32...` / `PreparedI32...` families | `WasmFunc(...).Invoke(...)` |
 | `Invoke0` through `Invoke4` | `Invoke(args ...uint64)` |
-| `PreparedSession`, `OpenSession`, and session invocation | resolve one `WasmFunc` and call `Invoke` normally |
-| `Instance.Call(ctx, export, values...)` | `Instance.InvokeValues(ctx, export, values...)` |
+| `PreparedSession`, `OpenSession`, and session invocation | resolve one `WasmFunc`; use `Invoke` normally or `OpenSession` for a caller-owned batch |
+| `Instance.Call(ctx, export, values...)` | `Instance.InvokeValues(ctx, export, values...)` (legacy typed behavior) |
 
 ## Imports
 
@@ -78,10 +78,27 @@ slot count. A V128 is one logical Wasm value but two public ABI slots. Returned
 slot slices are borrowed instance storage and remain valid only until the next
 invocation on that instance; copy results that must survive another call.
 
-Use `Instance.Invoke` for by-name calls, `Instance.InvokeContext` for an explicit
-per-call cancellation/deadline context, and `Instance.InvokeValues` for tagged
-`Value` arguments and results. Resolved handles deliberately have no context or
-session variant.
+Use `Instance.Invoke` for by-name calls and `Instance.InvokeContext` for an
+explicit per-call cancellation/deadline context. Pass raw slots with `I32`,
+`I64`, `F32`, and `F64`, and decode results with `AsI32`, `AsI64`, `AsF32`, and
+`AsF64`. `InvokeValues` is deprecated but remains available when callers need
+tagged `Value` checks, independently owned results, or Runtime invoke hooks;
+raw `Invoke` does not run those hooks. Resolved handles deliberately have no
+context variant. For repeated calls on one instance, `WasmFunc.OpenSession` holds
+invocation admission until `Close`; the session and instance must not be used
+concurrently. Always close the session before closing the instance:
+
+```go
+session, err := step.OpenSession()
+if err != nil {
+	return err
+}
+defer session.Close()
+out, err := session.Invoke(wago.I32(41))
+```
+
+An idle session reserves its instance and can block unrelated operations on
+that instance. It does not retain a shared GC-domain lease between calls.
 
 See [`examples/23-public-api`](../examples/23-public-api) for the complete,
 executable migration target and reproducible guest fixture.

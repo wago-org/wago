@@ -5,6 +5,7 @@ import (
 	"fmt"
 	goruntime "runtime"
 
+	"github.com/wago-org/wago/internal/runtimebridge"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -26,6 +27,8 @@ type WasmFunc struct {
 	paramExact          []ValueTypeDescriptor
 	resultExact         []ValueTypeDescriptor
 	paramWide           []bool
+	paramWidthClass     scalarSlotWidthClass
+	resultWidthClass    scalarSlotWidthClass
 	hasReferenceParams  bool
 	hasReferenceResults bool
 	gcMaintenance       bool
@@ -33,14 +36,23 @@ type WasmFunc struct {
 	scalarFast          bool
 	scalarResultWide    bool
 	resultWide          []bool
+	boundedWrapper      bool
 	privateFast         bool
 	isolatedFast        bool
 	directIsolated      bool
 	directIntFast       bool
+	directFloatFast     bool
+	directMixedInfo     uint8
 	directIntLight      bool
 	directIntBounded    bool
 	directIntMode       preparedIntCallMode
 	directIntCall       wruntime.PreparedIntCall
+	directGate          *invocationGate
+	hostPrepared        *wruntime.PreparedHostScalarCall
+	hostMemBase         uintptr
+	hostContextVersion  uint64 // last independent native context bound for this handle
+	hostActivation      hostLoopActivation
+	hostFixed           wruntime.FixedScalarHostCall
 }
 
 type preparedIntCallMode uint8
@@ -51,6 +63,20 @@ const (
 	preparedIntCallPrebound
 )
 
+// tryDirectGate uses the gate resolved with the function. Resource publication
+// revokes this exact atomic word before sharing native state.
+func (fn *WasmFunc) tryDirectGate() bool {
+	gate := fn.directGate
+	if gate == nil || !gate.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
+		return false
+	}
+	if !fn.in.preparedFastStateValid() {
+		gate.Unlock()
+		return false
+	}
+	return true
+}
+
 func (c *Compiled) directPreparedAt(local int) bool {
 	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedEntry(c.InternalEntry[local])
 }
@@ -59,12 +85,14 @@ func (c *Compiled) directPreparedLightAt(local int) bool {
 	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedLightEntry(c.InternalEntry[local])
 }
 
+// The bounded-work bit also covers a small scalar wrapper that cannot use the
+// register entry; callers must check directPreparedAt separately when needed.
 func (c *Compiled) directPreparedBoundedAt(local int) bool {
 	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedBoundedEntry(c.InternalEntry[local])
 }
 
 func preparedDirectIntSignature(sig FuncSig) bool {
-	if len(sig.Params) > 4 || len(sig.Results) > 1 {
+	if len(sig.Params) > preparedDirectWideMaxArgs || len(sig.Results) > preparedDirectWideMaxArgs || len(sig.Results) > 2 && !preparedDirectWideSupported {
 		return false
 	}
 	for _, typ := range sig.Params {
@@ -78,6 +106,83 @@ func preparedDirectIntSignature(sig FuncSig) bool {
 		}
 	}
 	return true
+}
+
+func preparedDirectFloatSignature(sig FuncSig) bool {
+	if len(sig.Params) > 8 || len(sig.Results) > 8 {
+		return false
+	}
+	for _, typ := range sig.Params {
+		if typ != ValF32 && typ != ValF64 {
+			return false
+		}
+	}
+	for _, typ := range sig.Results {
+		if typ != ValF32 && typ != ValF64 {
+			return false
+		}
+	}
+	return true
+}
+
+func preparedDirectMixedSignature(sig FuncSig) bool {
+	if len(sig.Params) > 4 || len(sig.Results) > 4 {
+		return false
+	}
+	for _, typ := range sig.Params {
+		if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
+			return false
+		}
+	}
+	gp, fp := 0, 0
+	for _, typ := range sig.Results {
+		if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
+			return false
+		}
+		if typ == ValF32 || typ == ValF64 {
+			fp++
+		} else {
+			gp++
+		}
+	}
+	if len(sig.Results) > 2 && (gp == 0 || fp == 0 || gp > 2 || fp > 2) {
+		return false
+	}
+	return !preparedDirectIntSignature(sig) && !preparedDirectFloatSignature(sig)
+}
+
+func directMixedFloatMask(params []ValType) uint8 {
+	var mask uint8
+	for i, typ := range params {
+		if typ == ValF32 || typ == ValF64 {
+			mask |= 1 << i
+		}
+	}
+	return mask
+}
+
+const (
+	// The tagged encoding fits in invokeCache.scalarWideMask without enlarging
+	// Instance. Mixed entries never consume its ordinary integer-width mask.
+	directMixedParamMask = uint8(0x0f)
+	directMixedResultFP  = uint8(1 << 4)
+	directMixedResult1FP = uint8(1 << 5)
+	directMixedResult2FP = uint8(1 << 6)
+	directMixedEnabled   = uint8(1 << 7)
+)
+
+func encodeDirectMixedInfo(sig FuncSig) uint8 {
+	info := directMixedEnabled | directMixedFloatMask(sig.Params)
+	if len(sig.Results) > 0 && (sig.Results[0] == ValF32 || sig.Results[0] == ValF64) {
+		info |= directMixedResultFP
+	}
+	if len(sig.Results) > 1 && (sig.Results[1] == ValF32 || sig.Results[1] == ValF64) {
+		info |= directMixedResult1FP
+	}
+	if len(sig.Results) > 2 && (sig.Results[2] == ValF32 || sig.Results[2] == ValF64) {
+		info |= directMixedResult2FP
+	}
+	return info
 }
 
 // WasmFunc resolves a locally-defined function export once. The returned
@@ -132,8 +237,8 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		in:                  in,
 		export:              export,
 		entry:               in.base + uintptr(in.c.Entry[ic.li]),
-		paramSlots:          ic.paramSlots,
-		resultSlots:         ic.resultSlots,
+		paramSlots:          int(ic.paramSlots),
+		resultSlots:         int(ic.resultSlots),
 		scalarWideMask:      scalarWideMask,
 		scalarFast:          scalarFast,
 		scalarResultWide:    ic.resultSlots == 1 && resultWide[0],
@@ -142,10 +247,13 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		paramExact:          append([]ValueTypeDescriptor(nil), params...),
 		resultExact:         append([]ValueTypeDescriptor(nil), results...),
 		paramWide:           paramWide,
+		paramWidthClass:     ic.paramWidthClass,
+		resultWidthClass:    ic.resultWidthClass,
 		hasReferenceParams:  hasReferenceValType(sig.Params),
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		gcMaintenance:       in.gc != nil && (in.c.genericGCBoundaryCollectionSafe() || in.c.hasGCRefGlobals()),
 		resultWide:          resultWide,
+		boundedWrapper:      in.c.directPreparedBoundedAt(ic.li),
 	}
 	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
 		entryMode := in.preparedEntryMode()
@@ -153,7 +261,9 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 			fn.privateFast = true
 			fn.isolatedFast = preparedIsolatedEntryEnabled && entryMode == preparedEntryIsolated
 		}
-		if preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
+		if preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) &&
+			(ic.resultSlots <= 1 || preparedDirectPairSupported && in.c.directPreparedBoundedAt(ic.li)) &&
+			(!preparedDirectWideSupported || ic.paramSlots <= 4 && ic.resultSlots <= 2 || in.c.directPreparedBoundedAt(ic.li)) {
 			// directPreparedAt is the compiler proof that this internal entry is
 			// memory-free. Re-evaluate only the bounds-mode exclusion; every other
 			// ownership and lifecycle exclusion remains in force.
@@ -171,6 +281,35 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 				fn.initDirectIntCall()
 			}
 		}
+		if preparedDirectFloatSupported && preparedDirectIntEnabled && preparedDirectFloatSignature(sig) &&
+			in.c.directPreparedAt(ic.li) && in.c.directPreparedBoundedAt(ic.li) {
+			directMode := entryMode
+			if directMode == preparedEntryGeneral && in.c.boundsMode == BoundsChecksSignalsBased {
+				directMode = in.preparedMemoryFreeEntryMode()
+			}
+			if preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated {
+				fn.directIsolated = true
+				fn.directFloatFast = true
+				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+				fn.directLinMem = in.jm.LinMemBase()
+			}
+		}
+		if preparedDirectFloatSupported && preparedDirectIntEnabled && preparedDirectMixedSignature(sig) &&
+			in.c.directPreparedAt(ic.li) && in.c.directPreparedBoundedAt(ic.li) {
+			directMode := entryMode
+			if directMode == preparedEntryGeneral && in.c.boundsMode == BoundsChecksSignalsBased {
+				directMode = in.preparedMemoryFreeEntryMode()
+			}
+			if preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated {
+				fn.directIsolated = true
+				fn.directMixedInfo = encodeDirectMixedInfo(sig)
+				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+				fn.directLinMem = in.jm.LinMemBase()
+			}
+		}
+		if fn.isolatedFast || fn.directIsolated {
+			fn.directGate = &in.ensurePluginState().invokeMu
+		}
 	}
 	return fn, nil
 }
@@ -180,6 +319,9 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 	if fn != nil && fn.in != nil && len(args) == fn.paramSlots {
 		if fn.directIntFast {
+			if preparedDirectWideSupported && (len(args) > 4 || fn.resultSlots > 2) {
+				return fn.invokeDirectIntWide(args)
+			}
 			switch len(args) {
 			case 0:
 				return fn.invokeDirectIntFixed(0, 0, 0, 0)
@@ -193,17 +335,81 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 				return fn.invokeDirectIntFixed(args[0], args[1], args[2], args[3])
 			}
 		}
+		if preparedDirectFloatSupported && fn.directFloatFast {
+			return fn.invokeDirectFloat(args)
+		}
+		if preparedDirectFloatSupported && fn.directMixedInfo != 0 {
+			return fn.invokeDirectMixed(args)
+		}
 		if fn.scalarFast {
+			if len(args) == 1 && fn.resultSlots == 1 && fn.scalarWideMask == 0 && !fn.scalarResultWide && fn.hostPrepared != nil && fn.hostFixed != nil {
+				if out, err, ok := fn.tryInvokeScalarHost1(args); ok {
+					return out, err
+				}
+			}
 			return fn.invokeScalar(args)
 		}
 	}
 	return fn.invokeGeneral(args)
 }
 
+func (fn *WasmFunc) tryInvokeScalarHost1(args []uint64) ([]uint64, error, bool) {
+	in := fn.in
+	if in.gc != nil || fn.gcMaintenance || !in.usesIndependentExecution() || !in.preparedFastStateValid() {
+		return nil, nil, false
+	}
+	if err := in.beginDirectInvocation(); err != nil {
+		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err), true
+	}
+	lease := in.lockPreparedScalarNoGC()
+	if !in.usesIndependentExecution() || !in.preparedFastStateValid() {
+		lease.unlock()
+		in.endDirectInvocation()
+		return nil, nil, false
+	}
+	defer in.endDirectInvocation()
+	defer lease.unlock()
+	binary.LittleEndian.PutUint64(in.serArgs, uint64(uint32(args[0])))
+	if len(in.hostLog) > 0 {
+		binary.LittleEndian.PutUint32(in.hostLog, 0)
+	}
+	if err := fn.callScalarHostPrepared(); err != nil {
+		return nil, err, true
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:1]
+	out[0] = uint64(binary.LittleEndian.Uint32(in.results))
+	return out, nil, true
+}
+
 type preparedInvocationLease struct {
 	in    *Instance
 	state *instancePluginState
 	gc    gcInvocationLease
+}
+
+// When a scalar call has no collector or imported GC domain, keep its
+// invocation ownership in a small lease instead of copying the full GC-domain
+// view on entry and release.
+type preparedScalarNoGCLease struct {
+	in    *Instance
+	state *instancePluginState
+}
+
+func (in *Instance) lockPreparedScalarNoGC() preparedScalarNoGCLease {
+	state := in.ensurePluginState()
+	state.invokeMu.Lock()
+	state.invocationID = newInvocationID()
+	return preparedScalarNoGCLease{in: in, state: state}
+}
+
+func (l preparedScalarNoGCLease) unlock() {
+	if l.in.importsFuncrefStorage() || l.in.table != nil {
+		l.in.reconcileFuncrefRoots()
+	}
+	l.state.invocationID = 0
+	l.state.invokeMu.Unlock()
 }
 
 func (in *Instance) lockPreparedInvocation() preparedInvocationLease {
@@ -214,7 +420,33 @@ func (in *Instance) lockPreparedInvocation() preparedInvocationLease {
 	return preparedInvocationLease{in: in, state: state, gc: in.lockGCInvocation(id)}
 }
 
+func (in *Instance) lockPreparedSessionInvocation() preparedInvocationLease {
+	state := in.ensurePluginState()
+	state.invokeMu.Lock()
+	state.invocationID = newInvocationID()
+	return preparedInvocationLease{state: state}
+}
+
 func (l preparedInvocationLease) unlock() {
+	l.gc.unlock()
+	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
+		l.in.reconcileFuncrefRoots()
+	}
+	l.state.invocationID = 0
+	l.state.invokeMu.Unlock()
+}
+
+// ARM64 avoids copying the complete GC-domain lease through the scalar call
+// boundary. Keep the existing by-value admission for other call shapes.
+func (in *Instance) lockPreparedScalarInvocationInto(l *preparedInvocationLease) {
+	state := in.ensurePluginState()
+	state.invokeMu.Lock()
+	id := newInvocationID()
+	state.invocationID = id
+	l.in, l.state, l.gc = in, state, in.lockGCInvocation(id)
+}
+
+func (l *preparedInvocationLease) unlockScalarInvocation() {
 	l.gc.unlock()
 	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
 		l.in.reconcileFuncrefRoots()
@@ -311,12 +543,98 @@ func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
 	return out, nil
 }
 
+// callScalarHostPrepared keeps validation and the immutable host-call layout on
+// the resolved function, but acquires native ownership anew for every Invoke.
+// The per-call binding is still required: another entry or a host callback may
+// have changed the instance context while this function was idle.
+func (fn *WasmFunc) callScalarHostPrepared() error {
+	in := fn.in
+	entry, reuse, err := fn.beginNativeEntry()
+	if err != nil {
+		return err
+	}
+	defer in.unlockNativeEntry(entry)
+	base := in.jm.LinMemBase()
+	if fn.hostPrepared == nil || fn.hostMemBase != base {
+		rawSlots, ok := in.syncHosts[0].typedScalarSlots()
+		if !ok {
+			return fmt.Errorf("wago: invalid fixed scalar host signature")
+		}
+		fn.hostPrepared, err = in.eng.PrepareHostScalarFixedCall(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm, in.trap, in.results, in.ctrl, rawSlots)
+		if err != nil {
+			return err
+		}
+		fn.hostMemBase = base
+		fn.hostActivation = hostLoopActivation{
+			root:                        in,
+			ctrl:                        offHeapSlicePtr(in.ctrl),
+			state:                       in.ensurePluginState(),
+			entryNativeMu:               entry.local,
+			parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
+		}
+		if preparedHostFixedEnabled {
+			switch in.syncHosts[0].scalarKind {
+			case syncHostTypedI32:
+				fn.hostFixed = fn.hostActivation.dispatchSingleTypedI32FixedPortal
+			case syncHostTypedI32x2:
+				fn.hostFixed = fn.hostActivation.dispatchSingleTypedI32x2FixedPortal
+			}
+		}
+	} else if !reuse {
+		if err := in.jm.RebindTrapCell(in.trap); err != nil {
+			return err
+		}
+		in.jm.SetStackFence(in.eng.StackLimit())
+		in.jm.SetCustomCtx(offHeapSlicePtr(in.ctrl))
+	}
+	if activeHostInvocationBindings.Load() != 0 {
+		restoreInvocationContext := bindHostInvocationParent(in, nil)
+		defer restoreInvocationContext()
+	}
+	if in.c.usesAtomicWaitHelpers() {
+		//lint:ignore SA1012 nil selects the helper's background context only when atomic waits are present.
+		stopWaitContext := in.publishAtomicWaitContext(nil)
+		defer stopWaitContext()
+	}
+	// Unlike a caller-owned session, each ordinary Invoke has a new invocation
+	// identity. Foreign host dispatch must not reuse the previous call's cache.
+	if fn.hostActivation.invocation.id != 0 {
+		fn.hostActivation.invocation = hostInvocationContext{}
+	}
+	return in.callPreparedHostSyncAdmitted(fn.hostPrepared, fn.hostFixed, &fn.hostActivation)
+}
+
 func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
 	in := fn.in
-	if err := in.beginInvocation(); err != nil {
-		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+	var admissionErr error
+	if fn.isolatedFast {
+		admissionErr = in.beginDirectInvocation()
+	} else {
+		admissionErr = in.beginInvocation()
+	}
+	if admissionErr != nil {
+		return nil, fmt.Errorf("wago: invoke Wasm function: %w", admissionErr)
+	}
+	if fn.isolatedFast {
+		if fn.tryDirectGate() {
+			out, err := fn.invokeScalarAdmitted(args)
+			fn.directGate.Unlock()
+			in.endDirectInvocation()
+			return out, err
+		}
 	}
 	defer in.endInvocation()
+	if in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) == 0 {
+		preparedLease := in.lockPreparedScalarNoGC()
+		defer preparedLease.unlock()
+		return fn.invokeScalarAdmitted(args)
+	}
+	if preparedScalarInPlaceLease {
+		var preparedLease preparedInvocationLease
+		in.lockPreparedScalarInvocationInto(&preparedLease)
+		defer preparedLease.unlockScalarInvocation()
+		return fn.invokeScalarAdmitted(args)
+	}
 	preparedLease := in.lockPreparedInvocation()
 	defer preparedLease.unlock()
 	return fn.invokeScalarAdmitted(args)
@@ -349,19 +667,25 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 			put(0)
 		}
 	} else {
-		marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, fn.paramWide)
+		copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, fn.paramWide, fn.paramWidthClass)
 	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
 	if in.syncMode {
-		if err := in.callNativeSync(fn.entry); err != nil {
+		var err error
+		if in.gc == nil && in.usesIndependentExecution() && (in.hasSingleDirectTypedScalarHost() || in.hasSingleExpandedTypedScalarHost()) {
+			err = fn.callScalarHostPrepared()
+		} else {
+			err = in.callNativeSync(fn.entry)
+		}
+		if err != nil {
 			return nil, err
 		}
 	} else {
 		var err error
 		if fn.isolatedFast {
-			err = in.callPreparedIsolated(fn.entry, in.trap)
+			err = in.callPreparedIsolated(fn.entry, in.trap, false, fn.boundedWrapper)
 		} else if fn.privateFast {
 			err = in.callPreparedPrivate(fn.entry, in.trap)
 		} else {
@@ -380,6 +704,46 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:fn.resultSlots]
-	decodePublicScalarSlots(out, nativeUint64Slots(in.results), fn.resultWide)
+	copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), fn.resultWide, fn.resultWidthClass)
+	return out, nil
+}
+
+// invokeScalarHostReserved is the host-capable counterpart to
+// the ordinary scalar entry. PreparedSession already owns and has bound the
+// native execution context, while callNativeSyncAdmitted retains the complete
+// host park/resume and panic/trap protocol.
+func (fn *WasmFunc) invokeScalarHostReserved(args []uint64, prepared *wruntime.PreparedHostScalarCall, fixed wruntime.FixedScalarHostCall, activation *hostLoopActivation) ([]uint64, error) {
+	in := fn.in
+	if len(args) <= 4 {
+		put := func(slot int) {
+			bits := args[slot]
+			if fn.scalarWideMask&(1<<slot) == 0 {
+				bits = uint64(uint32(bits))
+			}
+			binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
+		}
+		switch len(args) {
+		case 4:
+			put(3)
+			fallthrough
+		case 3:
+			put(2)
+			fallthrough
+		case 2:
+			put(1)
+			fallthrough
+		case 1:
+			put(0)
+		}
+	} else {
+		copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, fn.paramWide, fn.paramWidthClass)
+	}
+	if err := in.callNativeSyncAdmitted(fn.entry, in.trap, nil, prepared, fixed, activation, nil); err != nil {
+		return nil, err
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:fn.resultSlots]
+	copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), fn.resultWide, fn.resultWidthClass)
 	return out, nil
 }

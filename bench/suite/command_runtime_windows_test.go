@@ -9,7 +9,7 @@ import (
 	"github.com/wago-org/wago"
 )
 
-func commandRuntimeImports(m corpusModule, _ []byte, _, _ io.Writer) (*wago.Imports, error) {
+func commandRuntimeImports(m corpusModule, _ string, _ []byte, _, _ io.Writer) (*wago.Imports, error) {
 	if m.Command.Runtime == "core" {
 		return nil, nil
 	}

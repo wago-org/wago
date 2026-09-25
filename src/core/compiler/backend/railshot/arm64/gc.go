@@ -972,11 +972,13 @@ func (f *fn) callGCArrayFixedSpill(typeIndex, count uint32, resultType wasm.ValT
 	if err := f.callGCStructHelper(gcArrayAllocFixedV128Spill, []wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
 		return err
 	}
-	result := f.materialize(f.popValue())
+	resultValue := f.popValue()
+	resultIsRoot := resultValue.st.hasGCRoot()
+	result := f.materialize(resultValue)
 	for i := uint32(0); i < count; i++ {
 		f.popValue()
 	}
-	f.pushReg(result, mtI64)
+	f.pushReg(result, mtI64).st.setGCRoot(resultIsRoot)
 	return nil
 }
 

@@ -31,17 +31,23 @@ var corpusSelector = flag.String("wago.corpus", "quick", "corpus profile, tag:<t
 var includeOptimizationAblations = flag.Bool("wago.bench.optimization-ablation", false, "benchmark large modules with each enabled optimization disabled in turn")
 
 type commandEntry struct {
-	Runtime      string            `json:"runtime"` // core or wasi; command runs in a fresh instance
-	Export       string            `json:"export"`
-	Platforms    []string          `json:"platforms"` // optional GOOS/GOARCH allowlist
-	Args         []string          `json:"args"`
-	Stdin        string            `json:"stdin"`   // optional path relative to corpus/
-	Preopen      string            `json:"preopen"` // optional host directory relative to corpus/, mounted at /
-	Inputs       map[string]string `json:"inputs"`  // relative path -> SHA-256 for every preopened input file
-	Want         []uint64          `json:"want"`    // optional exact function results
-	StdoutSHA256 string            `json:"stdout_sha256"`
-	StderrSHA256 string            `json:"stderr_sha256"`
-	Oracle       string            `json:"oracle"` // self-check or return; hashes are exact stream oracles
+	Runtime            string            `json:"runtime"` // core, wasi, emscripten, ashell, micropython, or php-wasmedge; fresh instance
+	Export             string            `json:"export"`
+	Argv0              string            `json:"argv0"`     // optional multicall executable name
+	Platforms          []string          `json:"platforms"` // optional GOOS/GOARCH allowlist
+	Args               []string          `json:"args"`
+	Stdin              string            `json:"stdin"`                 // optional path relative to corpus/
+	Preopen            string            `json:"preopen"`               // optional host directory relative to corpus/, mounted at /
+	ReadOnlyPreopen    string            `json:"read_only_preopen"`     // optional immutable tree mounted at /db
+	ReadOnlyTreeSHA256 string            `json:"read_only_tree_sha256"` // exact digest of all relative paths and file contents
+	Inputs             map[string]string `json:"inputs"`                // relative path -> SHA-256 for every preopened input file
+	Outputs            map[string]string `json:"outputs"`               // relative path -> SHA-256 for generated files
+	Want               []uint64          `json:"want"`                  // optional exact function results
+	StdoutSHA256       string            `json:"stdout_sha256"`
+	StdoutNormalize    string            `json:"stdout_normalize"`  // optional narrowly scoped output canonicalization
+	ReferenceRuntime   string            `json:"reference_runtime"` // "wasmtime" or "v8" skips the in-process wazero comparison
+	StderrSHA256       string            `json:"stderr_sha256"`
+	Oracle             string            `json:"oracle"` // self-check or return; hashes are exact stream oracles
 }
 
 type execEntry struct {
@@ -215,7 +221,7 @@ func validateCorpusModule(mod corpusModule) error {
 			return fmt.Errorf("%s: unknown command oracle %q", mod.ID, mod.Command.Oracle)
 		}
 		if mod.Command.Oracle == "" && mod.Command.Want == nil &&
-			mod.Command.StdoutSHA256 == "" && mod.Command.StderrSHA256 == "" {
+			mod.Command.StdoutSHA256 == "" && mod.Command.StderrSHA256 == "" && len(mod.Command.Outputs) == 0 {
 			return fmt.Errorf("%s: command execution needs an exact oracle", mod.ID)
 		}
 	}

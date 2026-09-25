@@ -907,7 +907,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	// release the register.
 	addrLocal, addrOK := localAddressKey(f.s.back())
 	seedIndexedBase := false
-	if addrOK && size == 4 && !signed && !wide && f.opt(optIndexedBaseReuse) {
+	if addrOK && size == 4 && !signed && !wide && !f.guardMode && f.opt(optIndexedBaseReuse) {
 		scan := *r
 		if op, scanErr := scan.Byte(); scanErr == nil && op == 0x6a { // i32.add
 			if op, scanErr = scan.Byte(); scanErr == nil && op == 0x21 { // local.set accumulator

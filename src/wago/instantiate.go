@@ -1539,9 +1539,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hostEvents: hostEvents, imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
 		serArgs: serArgs, results: results, trap: trap, rt: opts.runtime,
-		nativeContext:   nativeContextPtr,
-		moduleIdentity:  opts.moduleIdentity,
-		pluginGCImports: opts.pluginGCImports,
+		nativeContext:      nativeContextPtr,
+		threadedMemoryZero: c.threadedMemory0(),
+		moduleIdentity:     opts.moduleIdentity,
+		pluginGCImports:    opts.pluginGCImports,
 	}
 	if c.maxResultSlots <= len(in.resultInline) {
 		in.resultVals = in.resultInline[:c.maxResultSlots:c.maxResultSlots]
@@ -1796,10 +1797,8 @@ func (c *Compiled) needsPublicFuncrefHostReentry() bool {
 }
 
 func funcSigLocalRegABI(sig FuncSig) bool {
-	if len(sig.Results) > 2 {
-		return false
-	}
-	if len(sig.Results) == 2 && ((sig.Results[0] != ValI32 && sig.Results[0] != ValI64) || (sig.Results[1] != ValI32 && sig.Results[1] != ValI64)) {
+	if len(sig.Results) > preparedDirectWideMaxArgs && !(preparedDirectFloatSupported && len(sig.Results) <= 8 && preparedDirectFloatSignature(sig)) ||
+		len(sig.Results) > 2 && !preparedDirectWideSupported {
 		return false
 	}
 	gp, fp := 0, 0
@@ -1813,13 +1812,32 @@ func funcSigLocalRegABI(sig FuncSig) bool {
 			return false
 		}
 	}
-	if gp > 7 || fp > 8 {
+	if gp > preparedDirectWideMaxArgs || fp > 8 {
 		return false
 	}
 	for _, t := range sig.Results {
 		if t != ValI32 && t != ValI64 && t != ValF32 && t != ValF64 {
 			return false
 		}
+	}
+	if len(sig.Results) == 2 && !preparedDirectFloatSupported {
+		return (sig.Results[0] == ValI32 || sig.Results[0] == ValI64) &&
+			(sig.Results[1] == ValI32 || sig.Results[1] == ValI64)
+	}
+	if len(sig.Results) > 2 {
+		allInt, allFloat := fp == 0, preparedDirectFloatSupported && gp == 0 && len(sig.Results) <= 8
+		resGP, resFP := 0, 0
+		for _, t := range sig.Results {
+			allInt = allInt && (t == ValI32 || t == ValI64)
+			allFloat = allFloat && (t == ValF32 || t == ValF64)
+			if t == ValF32 || t == ValF64 {
+				resFP++
+			} else {
+				resGP++
+			}
+		}
+		mixed := preparedDirectFloatSupported && len(sig.Results) <= 4 && resGP > 0 && resFP > 0 && resGP <= 2 && resFP <= 2
+		return allInt || allFloat || mixed
 	}
 	return true
 }

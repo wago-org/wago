@@ -1445,7 +1445,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			syncHostSlots = gcSlots
 		}
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, DeferCodeMapping: true, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{BitCountFeatures: bitCountHostFeaturesSupported(), Workers: workers, DeferCodeMapping: true, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1485,7 +1485,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if exactNativeGCRoots || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, preparedIsolatedTables: cm.PreparedIsolatedTables, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscapeWithValidation(m, &validationAnalysis), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, preparedIsolatedTables: cm.PreparedIsolatedTables, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscapeWithValidation(m, &validationAnalysis), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresBitCount: cm.RequiresBitCount, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
 	c.codeCache.setNativeStackBytes(cfg.nativeStackBytes)
 	if c.validateMemo != nil {
 		c.validateMemo.memoryLimitPages = cfg.maxMemoryPages
@@ -2771,6 +2771,14 @@ func sortedKeys(m map[string]int) []string {
 
 // Signature returns the parameter and result types of an exported function.
 func (c *Compiled) Signature(export string) (params, results []ValType, err error) {
+	params, results, err = c.signatureView(export)
+	if err != nil {
+		return nil, nil, err
+	}
+	return append([]ValType(nil), params...), append([]ValType(nil), results...), nil
+}
+
+func (c *Compiled) signatureView(export string) (params, results []ValType, err error) {
 	c = c.executionView()
 	if c == nil {
 		return nil, nil, fmt.Errorf("compiled module is nil")
@@ -2787,13 +2795,13 @@ func (c *Compiled) Signature(export string) (params, results []ValType, err erro
 			return nil, nil, fmt.Errorf("export %q imported function index %d has no signature", export, gfi)
 		}
 		sig := c.importFuncSigs[gfi]
-		return append([]ValType(nil), sig.Params...), append([]ValType(nil), sig.Results...), nil
+		return sig.Params, sig.Results, nil
 	}
 	li := gfi - c.NumImports
 	if li < 0 || li >= len(c.Funcs) {
 		return nil, nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
 	}
-	return append([]ValType(nil), c.Funcs[li].Params...), append([]ValType(nil), c.Funcs[li].Results...), nil
+	return c.Funcs[li].Params, c.Funcs[li].Results, nil
 }
 
 // SignatureDescriptor returns the exact structural parameter and result types
@@ -4250,6 +4258,9 @@ func finishDecodedCompiled(decoded *Compiled) error {
 	if decoded.requiredFeatures.IsEnabled(CoreFeatureSIMD) && !hostSupportsSIMD() {
 		return fmt.Errorf("wago: compiled module requires SIMD CPU features unavailable on this host")
 	}
+	if decoded.requiresBitCount&^bitCountHostFeaturesSupported() != 0 {
+		return fmt.Errorf("wago: compiled module requires bit-count CPU features unavailable on this host")
+	}
 	if decoded.requiresBMI2 && !hostSupportsBMI2() {
 		return fmt.Errorf("wago: compiled module requires BMI2 CPU features unavailable on this host")
 	}
@@ -4293,7 +4304,42 @@ func LoadTrustedArtifact(b []byte) (*Compiled, error) {
 // use InvokeFromHost with the HostModule value it received. Direct invocation
 // fails with ErrPermissionDenied while callback-scoped guest storage is borrowed.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
-	return in.invoke(export, args, invocationContextSet{})
+	if in != nil && !in.syncMode {
+		if in.rt == nil {
+			state := in.pluginState.Load()
+			if state != nil && in.invocationState.CompareAndSwap(0, 1) {
+				if state.invokeMu.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
+					ic := in.findInvokeCache(export)
+					privateRefStore := in.refStore == nil || in.refStore.private
+					isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
+					if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) && len(args) == int(ic.paramSlots) && privateRefStore && !in.guestStorageBorrowed() && in.preparedFastStateValid() {
+						var out []uint64
+						var err error
+						if ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast {
+							entry := ic.directEntry
+							if ic.directIntFast && len(args) == 1 && ic.resultSlots <= 1 {
+								if goruntime.GOARCH == "amd64" && ic.directIntBounded && ic.scalarWideMask == 0 && ic.resultSlots == 1 && !ic.scalarResultWide {
+									out, err = in.invokeCachedDirectI32ToI32(ic, args[0])
+								} else {
+									out, err = in.invokeCachedDirectInt1(ic, entry, args[0])
+								}
+							} else {
+								out, err = in.invokeCachedDirectNumeric(ic, entry, args)
+							}
+						} else {
+							out, err = in.invokeCachedNumericEntry(export, ic, args, true)
+						}
+						state.invokeMu.Unlock()
+						in.endDirectInvocation()
+						return out, err
+					}
+					state.invokeMu.Unlock()
+				}
+				in.endDirectInvocation()
+			}
+		}
+	}
+	return in.invokeEntry(export, args, invocationContextSet{}, false, true)
 }
 
 // invocationContextSet keeps callback-visible cancellation independent from
@@ -4341,6 +4387,12 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		// A context without Done cannot interrupt native execution.
+		if ctx.Done() == nil {
+			return in.Invoke(export, args...)
+		}
+	} else {
+		return in.Invoke(export, args...)
 	}
 
 	contexts := invocationContextSetFor(ctx)
@@ -4350,7 +4402,7 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 }
 
 func (in *Instance) invoke(export string, args []uint64, contexts invocationContextSet) ([]uint64, error) {
-	return in.invokeEntry(export, args, contexts, false)
+	return in.invokeEntry(export, args, contexts, false, false)
 }
 
 func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invocationContextSet, reservation *pluginOperationReservation) ([]uint64, error) {
@@ -4358,9 +4410,14 @@ func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invoca
 	return in.invokeWithToken(export, args, contexts, state.invocationID, true, true, reservation)
 }
 
-func (in *Instance) invokeEntry(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted bool) ([]uint64, error) {
+func (in *Instance) invokeEntry(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted, fastProbed bool) ([]uint64, error) {
 	if in == nil {
 		return nil, nilInstanceInvokeError()
+	}
+	if !fastProbed && !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil {
+		if out, err, ok := in.tryInvokeCachedIsolatedNumeric(export, args); ok {
+			return out, err
+		}
 	}
 	// Close hooks run after the invocation gate is published and may probe that
 	// later calls fail closed. Check the gate before waiting for the per-instance
@@ -4408,50 +4465,120 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		// the audited rebinding and topology-lease route.
 		executionFlags := in.executionFlags.Load()
 		const directBlocked = preparedFastBlocked
-		if ic.directIntFast && executionFlags&directBlocked == 0 && in.lockPreparedFastState() {
+		if (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast) && executionFlags&directBlocked == 0 && in.lockPreparedFastState() {
 			defer in.unlockPreparedFastState()
-			if len(args) != ic.paramSlots {
+			if len(args) != int(ic.paramSlots) {
 				return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 			}
 			directEntry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
-			switch len(args) {
-			case 0:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, 0, 0, 0, 0)
-			case 1:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], 0, 0, 0)
-			case 2:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], 0, 0)
-			case 3:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], 0)
-			case 4:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], args[3])
-			}
+			return in.invokeCachedDirectNumeric(ic, directEntry, args)
 		}
-		if invokePrivateEntryEnabled && ic.entryMode != preparedEntryGeneral && executionFlags&directBlocked == 0 {
-			return in.invokeCachedNumericEntry(export, ic, args)
+		privateScalar := invokePrivateEntryEnabled && ic.entryMode != preparedEntryGeneral && executionFlags&directBlocked == 0
+		hostScalar := goruntime.GOARCH == "arm64" && !privateScalar && ic.li >= 0 && in.syncMode && !in.threadedMemoryZero && in.usesIndependentExecution() &&
+			(in.hasSingleDirectTypedScalarHost() || in.hasSingleExpandedTypedScalarHost()) && !ic.hasFuncRefParams && !ic.hasFuncRefResults &&
+			in.table == nil && !in.importsFuncrefStorage() && len(in.hostLog) == 0
+		if privateScalar || hostScalar {
+			out, err := in.invokeCachedNumericEntry(export, ic, args, false)
+			if hostScalar && in.table != nil {
+				in.reconcileFuncrefRoots()
+			}
+			return out, err
 		}
 	}
 	return in.invokeWithToken(export, args, contexts, state.invocationID, true, alreadyAdmitted, nil)
 }
 
-func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, args []uint64) ([]uint64, error) {
-	if len(args) != ic.paramSlots {
+// tryInvokeCachedIsolatedNumeric admits an already-cached isolated numeric
+// export, either through its bounded register entry or its prepared wrapper.
+// The fast gate excludes resource publication while the call runs; a failed
+// isolation proof falls back to full invocation admission.
+func (in *Instance) tryInvokeCachedIsolatedNumeric(export string, args []uint64) ([]uint64, error, bool) {
+	if in.rt != nil {
+		return nil, nil, false
+	}
+	state := in.pluginState.Load()
+	if state == nil || !in.invocationState.CompareAndSwap(0, 1) {
+		return nil, nil, false
+	}
+	if !state.invokeMu.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
+		in.endDirectInvocation()
+		return nil, nil, false
+	}
+	ic := in.findInvokeCache(export)
+	privateRefStore := in.refStore == nil || in.refStore.private
+	isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
+	if ic == nil || !(ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) || len(args) != int(ic.paramSlots) || !privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() {
+		state.invokeMu.Unlock()
+		in.endDirectInvocation()
+		return nil, nil, false
+	}
+	defer func() {
+		state.invokeMu.Unlock()
+		in.endDirectInvocation()
+	}()
+	var out []uint64
+	var err error
+	if ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast {
+		entry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+		out, err = in.invokeCachedDirectNumeric(ic, entry, args)
+	} else {
+		out, err = in.invokeCachedNumericEntry(export, ic, args, true)
+	}
+	return out, err, true
+}
+
+// invokeCachedDirectNumeric requires an invocation lifetime lease, the
+// serialized invocation gate, and a valid isolated-entry proof.
+func (in *Instance) invokeCachedDirectNumeric(ic *invokeCache, entry uintptr, args []uint64) ([]uint64, error) {
+	if preparedDirectFloatSupported && ic.directFloatFast {
+		if ic.scalarWideMask&directMixedEnabled != 0 {
+			return in.invokeDirectMixedEntry(entry, ic.scalarWideMask, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
+		}
+		return in.invokeDirectFloatEntry(entry, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
+	}
+	if preparedDirectWideSupported && (len(args) > 4 || ic.resultSlots > 2) {
+		return in.invokeDirectIntWideEntry(entry, ic.slotWide[:ic.paramSlots], ic.slotWide[ic.paramSlots:], args)
+	}
+	if ic.resultSlots == 2 {
+		return in.invokeDirectIntPairEntry(entry, ic.scalarWideMask, ic.slotWide[ic.paramSlots:], args)
+	}
+	switch len(args) {
+	case 0:
+		return in.invokeDirectIntEntry(entry, int(ic.paramSlots), int(ic.resultSlots), ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, 0, 0, 0, 0)
+	case 1:
+		return in.invokeDirectIntEntry(entry, int(ic.paramSlots), int(ic.resultSlots), ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], 0, 0, 0)
+	case 2:
+		return in.invokeDirectIntEntry(entry, int(ic.paramSlots), int(ic.resultSlots), ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], 0, 0)
+	case 3:
+		return in.invokeDirectIntEntry(entry, int(ic.paramSlots), int(ic.resultSlots), ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], 0)
+	case 4:
+		return in.invokeDirectIntEntry(entry, int(ic.paramSlots), int(ic.resultSlots), ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], args[3])
+	default:
+		return nil, fmt.Errorf("wago: direct integer entry has %d argument slots", len(args))
+	}
+}
+
+// reserved means the isolated gate and invocation lease are both held.
+func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, args []uint64, reserved bool) ([]uint64, error) {
+	if len(args) != int(ic.paramSlots) {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 	}
 	if len(args) > len(in.serArgs)/8 {
 		return nil, fmt.Errorf("%s requires %d arg slot(s), instance buffer has %d", export, len(args), len(in.serArgs)/8)
 	}
-	if ic.resultSlots > len(in.results)/8 {
+	if int(ic.resultSlots) > len(in.results)/8 {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
-	marshalPublicScalarSlotsByWidth(nativeUint64Slots(in.serArgs), args, ic.slotWide[:ic.paramSlots])
+	copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, ic.slotWide[:ic.paramSlots], ic.paramWidthClass)
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
 	entry := in.base + uintptr(in.c.Entry[ic.li])
 	var err error
-	if ic.entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
-		err = in.callPreparedIsolated(entry, in.trap)
+	if goruntime.GOARCH == "arm64" && in.syncMode {
+		err = in.callNativeSyncWithTrapContext(entry, in.trap, nil)
+	} else if reserved || ic.entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
+		err = in.callPreparedIsolated(entry, in.trap, reserved, ic.boundedWrapper)
 	} else {
 		err = in.callPreparedPrivate(entry, in.trap)
 	}
@@ -4466,7 +4593,7 @@ func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, arg
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:ic.resultSlots]
-	decodePublicScalarSlots(out, nativeUint64Slots(in.results), ic.slotWide[ic.paramSlots:])
+	copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), ic.slotWide[ic.paramSlots:], ic.resultWidthClass)
 	return out, nil
 }
 
@@ -4500,9 +4627,15 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 		defer in.endInvocation()
 	}
-	gcLease, err := in.lockGCInvocationContext(ctx, id)
-	if err != nil {
-		return nil, err
+	var gcLease gcInvocationLease
+	if ctx == nil {
+		gcLease = in.lockGCInvocation(id)
+	} else {
+		var err error
+		gcLease, err = in.lockGCInvocationContext(ctx, id)
+		if err != nil {
+			return nil, err
+		}
 	}
 	var reconcileAttached *Instance
 	defer func() {
@@ -4554,13 +4687,13 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 		return in.invokeReexportedHost(export, importIdx, args, id, contexts.callback)
 	}
-	if len(args) != ic.paramSlots {
+	if len(args) != int(ic.paramSlots) {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 	}
 	if len(args) > len(in.serArgs)/8 {
 		return nil, fmt.Errorf("%s requires %d arg slot(s), instance buffer has %d", export, len(args), len(in.serArgs)/8)
 	}
-	if ic.resultSlots > len(in.results)/8 {
+	if int(ic.resultSlots) > len(in.results)/8 {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
 	if err := in.collectGenericGCAtBoundary(); err != nil {
@@ -4602,7 +4735,7 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 		var err error
 		if entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
-			err = in.callPreparedIsolated(entry, in.trap)
+			err = in.callPreparedIsolated(entry, in.trap, false, ic.boundedWrapper)
 		} else if entryMode != preparedEntryGeneral {
 			err = in.callPreparedPrivate(entry, in.trap)
 		} else {
@@ -4800,8 +4933,11 @@ func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []
 	if !nativeCancellationSupported() {
 		return nil, fmt.Errorf("wago: native context cancellation requires a concurrent scheduler (TinyGo: -scheduler=threads)")
 	}
-	done := make(chan struct{})
-	stopped := make(chan struct{})
+	const (
+		watchStopped  = uint32(1)
+		watchFinished = uint32(2)
+	)
+	var watchState atomic.Uint32
 	trap := (*uint32)(unsafe.Pointer(&activeTrap[0]))
 	clearDeadline := noOpCancellationWatch
 	if deadline, ok := cancel.Deadline(); ok {
@@ -4812,7 +4948,7 @@ func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []
 		}
 	}
 	stopCallback := context.AfterFunc(cancel, func() {
-		defer close(stopped)
+		defer watchState.Add(watchFinished)
 		// The trap cell remains armed until invocation cleanup, so retries only
 		// need to bridge native entry/exit races. Bound the process-wide signal
 		// broadcasts: a guest parked indefinitely in a host call will observe the
@@ -4821,22 +4957,29 @@ func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []
 		defer retry.Stop()
 		for attempt := 0; attempt < 256; attempt++ {
 			wruntime.RequestInterrupt(activeTrap)
-			select {
-			case <-done:
+			if watchState.Load()&watchStopped != 0 {
 				return
-			case <-retry.C:
 			}
+			<-retry.C
 		}
 	})
-	var stopOnce atomic.Bool
 	return func() {
-		if !stopOnce.CompareAndSwap(false, true) {
-			return
+		for {
+			state := watchState.Load()
+			if state&watchStopped != 0 {
+				return
+			}
+			if watchState.CompareAndSwap(state, state|watchStopped) {
+				break
+			}
 		}
 		clearDeadline()
-		close(done)
 		if !stopCallback() {
-			<-stopped
+			// Cancellation already started its callback. It observes the stop bit
+			// no later than the next retry tick; wait for it before clearing the trap.
+			for watchState.Load()&watchFinished == 0 {
+				goruntime.Gosched()
+			}
 		}
 		atomic.CompareAndSwapUint32(trap, uint32(wruntime.TrapInterrupted), 0)
 	}, nil
@@ -5020,6 +5163,10 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s result slots: %w", export, err)
 	}
+	const maxCachedSlots = int(^uint32(0) >> 1)
+	if paramSlots > maxCachedSlots || resultSlots > maxCachedSlots {
+		return nil, fmt.Errorf("%s signature has too many value slots to cache", export)
+	}
 	slot := &in.ic[int(in.icNext)%len(in.ic)]
 	in.icNext++
 	widths := slot.slotWide[:0]
@@ -5049,22 +5196,42 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	}
 	directIntFast := preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
 		preparedDirectIntSupported && preparedDirectIntEnabled && directEntryMode == preparedEntryIsolated &&
-		preparedDirectIntSignature(sig) && in.c.directPreparedAt(li)
+		preparedDirectIntSignature(sig) && in.c.directPreparedAt(li) &&
+		(!preparedDirectWideSupported || paramSlots <= 4 && resultSlots <= 2 || in.c.directPreparedBoundedAt(li)) &&
+		(resultSlots <= 1 || preparedDirectPairSupported && in.c.directPreparedBoundedAt(li))
+	directFloatFast := preparedDirectFloatSupported && preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
+		preparedDirectIntEnabled && directEntryMode == preparedEntryIsolated &&
+		preparedDirectFloatSignature(sig) && in.c.directPreparedAt(li) && in.c.directPreparedBoundedAt(li)
+	directMixedFast := preparedDirectFloatSupported && preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
+		preparedDirectIntEnabled && directEntryMode == preparedEntryIsolated &&
+		preparedDirectMixedSignature(sig) && in.c.directPreparedAt(li) && in.c.directPreparedBoundedAt(li)
+	var directMixedInfo uint8
+	if directMixedFast {
+		directMixedInfo = encodeDirectMixedInfo(sig)
+		scalarWideMask = directMixedInfo
+	}
 	*slot = invokeCache{
 		export:            export,
 		valid:             true,
 		directIntFast:     directIntFast,
+		directFloatFast:   directFloatFast || directMixedFast,
 		directIntLight:    directIntFast && in.c.directPreparedLightAt(li),
 		directIntBounded:  directIntFast && in.c.directPreparedBoundedAt(li),
+		boundedWrapper:    in.c.directPreparedBoundedAt(li),
 		scalarWideMask:    scalarWideMask,
 		scalarResultWide:  resultSlots == 1 && widths[paramSlots],
+		paramWidthClass:   classifyScalarSlotWidths(widths[:paramSlots]),
+		resultWidthClass:  classifyScalarSlotWidths(widths[paramSlots:]),
 		li:                li,
-		paramSlots:        paramSlots,
-		resultSlots:       resultSlots,
+		paramSlots:        int32(paramSlots),
+		resultSlots:       int32(resultSlots),
 		hasFuncRefParams:  hasReferenceValType(sig.Params),
 		hasFuncRefResults: hasReferenceValType(sig.Results),
 		slotWide:          widths,
 		entryMode:         entryMode,
+	}
+	if slot.directIntFast || slot.directFloatFast {
+		slot.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[slot.li]))
 	}
 	return slot, nil
 }
@@ -5087,22 +5254,44 @@ func marshalPublicScalarArgs(dst []byte, values []uint64, types []ValType) {
 	}
 }
 
-func marshalPublicScalarSlotsByWidth(dst, values []uint64, wide []bool) {
-	for i, bits := range values {
-		if !wide[i] {
-			bits = uint64(uint32(bits))
-		}
-		dst[i] = bits
+type scalarSlotWidthClass uint8
+
+const (
+	scalarSlotMixed scalarSlotWidthClass = iota
+	scalarSlotNarrow
+	scalarSlotWide
+)
+
+func classifyScalarSlotWidths(wide []bool) scalarSlotWidthClass {
+	if len(wide) == 0 {
+		return scalarSlotWide
 	}
+	first := wide[0]
+	for _, w := range wide[1:] {
+		if w != first {
+			return scalarSlotMixed
+		}
+	}
+	if first {
+		return scalarSlotWide
+	}
+	return scalarSlotNarrow
 }
 
-func decodePublicScalarSlots(dst, values []uint64, wide []bool) {
-	for i := range dst {
-		bits := values[i]
-		if !wide[i] {
-			bits = uint64(uint32(bits))
+func copyPublicScalarSlotsByClass(dst, values []uint64, wide []bool, class scalarSlotWidthClass) {
+	switch class {
+	case scalarSlotWide:
+		copy(dst[:len(wide)], values[:len(wide)])
+	case scalarSlotNarrow:
+		copyNarrowScalarSlots(dst, values, len(wide))
+	default:
+		for i, w := range wide {
+			bits := values[i]
+			if !w {
+				bits = uint64(uint32(bits))
+			}
+			dst[i] = bits
 		}
-		dst[i] = bits
 	}
 }
 

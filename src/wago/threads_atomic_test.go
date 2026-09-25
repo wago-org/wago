@@ -314,6 +314,9 @@ func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 		t.Fatalf("instantiate shared atomic module: %v", err)
 	}
 	defer instance.Close()
+	if !instance.threadedMemoryZero {
+		t.Fatal("shared memory zero was not cached as threaded")
+	}
 	if compiled.usesAtomicWaitHelpers() || len(instance.ctrl) != 0 {
 		t.Fatalf("direct-only atomic module retained wait bridge: helper=%v ctrl=%d", compiled.usesAtomicWaitHelpers(), len(instance.ctrl))
 	}

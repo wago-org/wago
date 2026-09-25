@@ -58,6 +58,23 @@ go test ./...
 go test -bench .
 ```
 
+## Use Repository Worktrees
+
+You can create additional Git worktrees under `.worktrees/`
+From the repository root, create a branch and worktree with:
+
+```bash
+git fetch origin
+git worktree add .worktrees/<name> -b <branch> origin/main
+```
+
+Remove the worktree when the work is finished:
+
+```bash
+git worktree remove .worktrees/<name>
+git worktree prune
+```
+
 ## Find the Code
 
 | Path | Purpose |

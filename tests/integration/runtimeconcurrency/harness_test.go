@@ -252,13 +252,13 @@ func TestRuntimeConcurrencySameDomainHostReentry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := first.InvokeValues(context.Background(), "new")
-	if err != nil || len(created) != 1 || created[0].GCRef().IsNull() {
+	created, err := first.Invoke("new")
+	if err != nil || len(created) != 1 || created[0] == 0 {
 		t.Fatalf("new = %v, %v", created, err)
 	}
-	ref := created[0].GCRef()
-	read, err := target.InvokeValues(context.Background(), "read", wago.ValueGCRef(ref))
-	if err != nil || len(read) != 1 || read[0].I32() != 42 {
+	ref := wago.ValueOf(wago.ValAnyRef, created[0]).GCRef()
+	read, err := target.Invoke("read", wago.ValueGCRef(ref).Bits())
+	if err != nil || len(read) != 1 || wago.AsI32(read[0]) != 42 {
 		t.Fatalf("cross-instance read = %v, %v; instances did not share one collector domain", read, err)
 	}
 
@@ -355,14 +355,14 @@ func TestRuntimeConcurrencySameDomainReexportedHostReentry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := reexport.InvokeValues(context.Background(), "new")
-	if err != nil || len(created) != 1 || created[0].GCRef().IsNull() {
+	created, err := reexport.Invoke("new")
+	if err != nil || len(created) != 1 || created[0] == 0 {
 		t.Fatalf("re-exporter new = %v, %v", created, err)
 	}
-	ref := created[0].GCRef()
+	ref := wago.ValueOf(wago.ValAnyRef, created[0]).GCRef()
 	refBits = wago.ValueGCRef(ref).Bits()
-	read, err := target.InvokeValues(context.Background(), "read", wago.ValueGCRef(ref))
-	if err != nil || len(read) != 1 || read[0].I32() != 42 {
+	read, err := target.Invoke("read", wago.ValueGCRef(ref).Bits())
+	if err != nil || len(read) != 1 || wago.AsI32(read[0]) != 42 {
 		t.Fatalf("cross-instance read = %v, %v; re-exporter did not join target collector domain", read, err)
 	}
 
@@ -504,8 +504,8 @@ func TestRuntimeConcurrencyPreparedGCResultOwnership(t *testing.T) {
 			t.Fatalf("prepared new %d = %v, %v", i, out, callErr)
 		}
 		ref := wago.ValueOf(wago.ValAnyRef, out[0]).GCRef()
-		read, readErr := producer.InvokeValues(context.Background(), "read", wago.ValueGCRef(ref))
-		if readErr != nil || len(read) != 1 || read[0].I32() != 42 {
+		read, readErr := producer.Invoke("read", wago.ValueGCRef(ref).Bits())
+		if readErr != nil || len(read) != 1 || wago.AsI32(read[0]) != 42 {
 			t.Fatalf("prepared result %d read = %v, %v", i, read, readErr)
 		}
 		if err := producer.ReleaseGCRef(ref); err != nil {
@@ -1015,12 +1015,12 @@ func (h *concurrencyHarness) testGC(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			values, callErr := in.InvokeValues(context.Background(), "new")
-			if callErr != nil || len(values) != 1 || values[0].GCRef().IsNull() {
+			values, callErr := in.Invoke("new")
+			if callErr != nil || len(values) != 1 || values[0] == 0 {
 				errCh <- fmt.Errorf("worker %d create held GC object = %v, %v", worker, values, callErr)
 				return
 			}
-			held[worker] = values[0].GCRef()
+			held[worker] = wago.ValueOf(wago.ValAnyRef, values[0]).GCRef()
 		}()
 	}
 	waitForWorkers(t, &wg, "GC retained-object creation")
@@ -1043,12 +1043,12 @@ func (h *concurrencyHarness) testGC(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for iteration := 0; iteration < churn[worker]; iteration++ {
-				values, callErr := in.InvokeValues(context.Background(), "new")
-				if callErr != nil || len(values) != 1 || values[0].GCRef().IsNull() {
+				values, callErr := in.Invoke("new")
+				if callErr != nil || len(values) != 1 || values[0] == 0 {
 					errCh <- fmt.Errorf("worker %d churn %d create = %v, %v", worker, iteration, values, callErr)
 					return
 				}
-				if releaseErr := in.ReleaseGCRef(values[0].GCRef()); releaseErr != nil {
+				if releaseErr := in.ReleaseGCRef(wago.ValueOf(wago.ValAnyRef, values[0]).GCRef()); releaseErr != nil {
 					errCh <- fmt.Errorf("worker %d churn %d release: %w", worker, iteration, releaseErr)
 					return
 				}
@@ -1070,8 +1070,8 @@ func (h *concurrencyHarness) testGC(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			values, callErr := in.InvokeValues(context.Background(), "read", wago.ValueGCRef(held[worker]))
-			if callErr != nil || len(values) != 1 || values[0].I32() != 42 {
+			values, callErr := in.Invoke("read", wago.ValueGCRef(held[worker]).Bits())
+			if callErr != nil || len(values) != 1 || wago.AsI32(values[0]) != 42 {
 				errCh <- fmt.Errorf("worker %d read held GC object = %v, %v", worker, values, callErr)
 			}
 		}()

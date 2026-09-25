@@ -4,16 +4,20 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/api"
 	wazerowasi "github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	wazerosys "github.com/tetratelabs/wazero/sys"
 	"github.com/wago-org/wago"
@@ -22,6 +26,73 @@ import (
 type commandOutput struct {
 	results        []uint64
 	stdout, stderr []byte
+	files          map[string][]byte
+}
+
+var llvmIRPredPadding = regexp.MustCompile(` +; preds =`)
+
+func commandOracleStdout(m corpusModule, data []byte) ([]byte, error) {
+	switch m.Command.StdoutNormalize {
+	case "":
+		return data, nil
+	case "llvm-ir-preds":
+		return llvmIRPredPadding.ReplaceAll(data, []byte(" ; preds =")), nil
+	default:
+		return nil, fmt.Errorf("unknown stdout normalization %q", m.Command.StdoutNormalize)
+	}
+}
+
+func TestCommandOracleStdout(t *testing.T) {
+	m := corpusModule{Command: &commandEntry{StdoutNormalize: "llvm-ir-preds"}}
+	got, err := commandOracleStdout(m, []byte("block:       ; preds = %entry\n"))
+	if err != nil || string(got) != "block: ; preds = %entry\n" {
+		t.Fatalf("normalized stdout = %q, %v", got, err)
+	}
+}
+
+func TestCommandArgsMulticall(t *testing.T) {
+	m := corpusModule{ID: "coreutils-sort", Command: &commandEntry{Argv0: "coreutils", Args: []string{"sort", "/records.txt"}}}
+	if got := commandArgs(m); !slices.Equal(got, []string{"coreutils", "sort", "/records.txt"}) {
+		t.Fatalf("multicall arguments = %q", got)
+	}
+	m.Command.Argv0 = ""
+	if got := commandArgs(m); !slices.Equal(got, []string{"coreutils-sort", "sort", "/records.txt"}) {
+		t.Fatalf("default arguments = %q", got)
+	}
+}
+
+func TestCommandTreeSHA256(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "data.json")
+	if err := os.WriteFile(path, []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	first, err := commandTreeSHA256(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("second"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, err := commandTreeSHA256(root)
+	if err != nil || first == second {
+		t.Fatalf("tree digest did not change with file bytes: %s, %s, %v", first, second, err)
+	}
+	if err := os.Rename(path, filepath.Join(root, "renamed.json")); err != nil {
+		t.Fatal(err)
+	}
+	third, err := commandTreeSHA256(root)
+	if err != nil || second == third {
+		t.Fatalf("tree digest did not change with file name: %s, %s, %v", second, third, err)
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.Symlink(filepath.Join(root, "renamed.json"), path); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := commandTreeSHA256(root); err == nil {
+			t.Fatal("tree digest accepted a symlink")
+		}
+	}
 }
 
 func TestCommandSupportsPlatform(t *testing.T) {
@@ -35,6 +106,53 @@ func TestCommandSupportsPlatform(t *testing.T) {
 	}
 	if commandSupportsPlatform(darwinARM64, "linux", "amd64") {
 		t.Fatal("linux/amd64 should not be supported")
+	}
+}
+
+func TestCommandScratchPreopen(t *testing.T) {
+	m := corpusModule{Command: &commandEntry{
+		Preopen: "workloads/applications/ecpbram/inputs",
+		Inputs:  map[string]string{"README.txt": "ea6f178748399f25f5890284b55d4ea6e6ba8872e277b6c1e5e6b4849f4b9a98"},
+		Outputs: map[string]string{"bram.hex": "unused"},
+	}}
+	dir, cleanup, err := commandScratchPreopen(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if dir == commandPreopen(m) {
+		t.Fatal("generated outputs must use an isolated preopen")
+	}
+	if _, err := os.ReadFile(filepath.Join(dir, "README.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bram.hex"), []byte("generated"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, err := commandOutputFiles(m, dir)
+	if err != nil || string(files["bram.hex"]) != "generated" {
+		t.Fatalf("output files = %q, %v", files, err)
+	}
+	if _, err := os.Stat(filepath.Join(commandPreopen(m), "bram.hex")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("committed preopen was modified: %v", err)
+	}
+	for _, path := range []string{"", "../escape", "/absolute"} {
+		if validCommandPath(path) {
+			t.Fatalf("unsafe command path %q accepted", path)
+		}
+	}
+	if runtime.GOOS != "windows" {
+		outside := filepath.Join(t.TempDir(), "outside")
+		if err := os.WriteFile(outside, []byte("private"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(dir, "bram.hex.link")); err != nil {
+			t.Fatal(err)
+		}
+		m.Command.Outputs = map[string]string{"bram.hex.link": "unused"}
+		if _, err := commandOutputFiles(m, dir); err == nil {
+			t.Fatal("output symlink escaped its preopen")
+		}
 	}
 }
 
@@ -52,11 +170,34 @@ func commandCorpus(tb testing.TB) []corpusModule {
 
 func validateCommandInputs(tb testing.TB, m corpusModule) {
 	tb.Helper()
+	if m.Command.ReferenceRuntime != "" && m.Command.ReferenceRuntime != "wasmtime" && m.Command.ReferenceRuntime != "v8" {
+		tb.Fatalf("%s unknown reference runtime %q", m.ID, m.Command.ReferenceRuntime)
+	}
+	if m.Command.ReadOnlyPreopen != "" {
+		if !validCommandPath(m.Command.ReadOnlyPreopen) {
+			tb.Fatalf("%s invalid read-only preopen %q", m.ID, m.Command.ReadOnlyPreopen)
+		}
+		root := filepath.Join(corpusDir, m.Command.ReadOnlyPreopen)
+		got, err := commandTreeSHA256(root)
+		if err != nil || got != m.Command.ReadOnlyTreeSHA256 {
+			tb.Fatalf("%s read-only tree sha256 = %s, want %s (error=%v)", m.ID, got, m.Command.ReadOnlyTreeSHA256, err)
+		}
+	} else if m.Command.ReadOnlyTreeSHA256 != "" {
+		tb.Fatalf("%s declares a tree digest without a read-only preopen", m.ID)
+	}
 	if m.Command.Preopen == "" {
-		if len(m.Command.Inputs) != 0 {
-			tb.Fatalf("%s declares inputs without a preopen directory", m.ID)
+		if len(m.Command.Inputs) != 0 || len(m.Command.Outputs) != 0 {
+			tb.Fatalf("%s declares files without a preopen directory", m.ID)
 		}
 		return
+	}
+	for rel, want := range m.Command.Outputs {
+		if !validCommandPath(rel) || len(want) != 64 {
+			tb.Fatalf("%s invalid output path or digest %q", m.ID, rel)
+		}
+		if _, input := m.Command.Inputs[rel]; input {
+			tb.Fatalf("%s output %q overlaps an input", m.ID, rel)
+		}
 	}
 	root := commandPreopen(m)
 	seen := make(map[string]bool, len(m.Command.Inputs))
@@ -93,6 +234,42 @@ func validateCommandInputs(tb testing.TB, m corpusModule) {
 	}
 }
 
+// commandTreeSHA256 covers both file names and bytes, rejecting symlinks and
+// other special files so an immutable device database can be pinned compactly.
+func commandTreeSHA256(root string) (string, error) {
+	var entries []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("non-regular command input %s", path)
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, fmt.Sprintf("%s\x00%x\n", filepath.ToSlash(rel), sha256.Sum256(data)))
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	slices.Sort(entries)
+	h := sha256.New()
+	for _, entry := range entries {
+		_, _ = io.WriteString(h, entry)
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
 func commandSupportsPlatform(m corpusModule, goos, goarch string) bool {
 	if len(m.Command.Platforms) == 0 {
 		return true
@@ -120,8 +297,76 @@ func commandPreopen(m corpusModule) string {
 	return filepath.Join(corpusDir, m.Command.Preopen)
 }
 
+func validCommandPath(rel string) bool {
+	return rel != "" && rel == filepath.ToSlash(filepath.FromSlash(rel)) && filepath.IsLocal(filepath.FromSlash(rel))
+}
+
+// File-producing commands get an isolated writable preopen. The committed
+// inputs are never modified by tests or timed benchmark iterations.
+func commandScratchPreopen(m corpusModule) (string, func(), error) {
+	root := commandPreopen(m)
+	if len(m.Command.Outputs) == 0 {
+		return root, func() {}, nil
+	}
+	dir, err := os.MkdirTemp("", "wago-command-corpus-")
+	if err != nil {
+		return "", nil, err
+	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
+	for rel := range m.Command.Inputs {
+		if !validCommandPath(rel) {
+			cleanup()
+			return "", nil, fmt.Errorf("invalid input path %q", rel)
+		}
+		path := filepath.FromSlash(rel)
+		data, err := os.ReadFile(filepath.Join(root, path))
+		if err == nil {
+			err = os.MkdirAll(filepath.Dir(filepath.Join(dir, path)), 0o755)
+		}
+		if err == nil {
+			err = os.WriteFile(filepath.Join(dir, path), data, 0o644)
+		}
+		if err != nil {
+			cleanup()
+			return "", nil, err
+		}
+	}
+	return dir, cleanup, nil
+}
+
+func commandOutputFiles(m corpusModule, dir string) (map[string][]byte, error) {
+	if len(m.Command.Outputs) == 0 {
+		return nil, nil
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return nil, err
+	}
+	files := make(map[string][]byte, len(m.Command.Outputs))
+	for rel := range m.Command.Outputs {
+		resolved, err := filepath.EvalSymlinks(filepath.Join(dir, filepath.FromSlash(rel)))
+		if err != nil {
+			return nil, fmt.Errorf("output %q: %w", rel, err)
+		}
+		inside, err := filepath.Rel(resolvedRoot, resolved)
+		if err != nil || !filepath.IsLocal(inside) {
+			return nil, fmt.Errorf("output %q escapes its preopen", rel)
+		}
+		data, err := os.ReadFile(resolved)
+		if err != nil {
+			return nil, fmt.Errorf("output %q: %w", rel, err)
+		}
+		files[rel] = data
+	}
+	return files, nil
+}
+
 func commandArgs(m corpusModule) []string {
-	return append([]string{m.ID}, m.Command.Args...)
+	argv0 := m.ID
+	if m.Command.Argv0 != "" {
+		argv0 = m.Command.Argv0
+	}
+	return append([]string{argv0}, m.Command.Args...)
 }
 
 func commandExitOK(err error) bool {
@@ -137,7 +382,11 @@ func commandExitOK(err error) bool {
 }
 
 func validateCommandOutput(m corpusModule, got commandOutput) error {
-	hasStreamOracle := m.Command.StdoutSHA256 != "" || m.Command.StderrSHA256 != ""
+	stdout, err := commandOracleStdout(m, got.stdout)
+	if err != nil {
+		return err
+	}
+	hasStreamOracle := m.Command.StdoutSHA256 != "" || m.Command.StderrSHA256 != "" || len(m.Command.Outputs) != 0
 	if m.Command.Oracle == "" && m.Command.Want == nil && !hasStreamOracle {
 		return fmt.Errorf("command has no correctness oracle")
 	}
@@ -148,7 +397,7 @@ func validateCommandOutput(m corpusModule, got commandOutput) error {
 		name, want string
 		got        []byte
 	}{
-		{name: "stdout", want: m.Command.StdoutSHA256, got: got.stdout},
+		{name: "stdout", want: m.Command.StdoutSHA256, got: stdout},
 		{name: "stderr", want: m.Command.StderrSHA256, got: got.stderr},
 	} {
 		if stream.want == "" {
@@ -162,16 +411,30 @@ func validateCommandOutput(m corpusModule, got commandOutput) error {
 			return fmt.Errorf("%s sha256 %s, want %s (len=%d prefix=%q)", stream.name, sum, stream.want, len(stream.got), preview)
 		}
 	}
+	for rel, want := range m.Command.Outputs {
+		data, ok := got.files[rel]
+		if !ok {
+			return fmt.Errorf("missing output %q", rel)
+		}
+		if sum := fmt.Sprintf("%x", sha256.Sum256(data)); sum != want {
+			return fmt.Errorf("output %q sha256 %s, want %s", rel, sum, want)
+		}
+	}
 	return nil
 }
 
 func runWagoCommand(m corpusModule, compiled *wago.Compiled, stdin []byte, capture bool) (commandOutput, error) {
+	preopenDir, cleanup, err := commandScratchPreopen(m)
+	if err != nil {
+		return commandOutput{}, err
+	}
+	defer cleanup()
 	var stdout, stderr bytes.Buffer
 	stdoutWriter, stderrWriter := io.Writer(io.Discard), io.Writer(io.Discard)
 	if capture {
 		stdoutWriter, stderrWriter = &stdout, &stderr
 	}
-	imports, err := commandRuntimeImports(m, stdin, stdoutWriter, stderrWriter)
+	imports, err := commandRuntimeImports(m, preopenDir, stdin, stdoutWriter, stderrWriter)
 	if err != nil {
 		return commandOutput{}, err
 	}
@@ -180,14 +443,31 @@ func runWagoCommand(m corpusModule, compiled *wago.Compiled, stdin []byte, captu
 		return commandOutput{}, err
 	}
 	defer in.Close()
-	results, err := in.Invoke(m.Command.Export)
+	var results []uint64
+	if m.Command.Runtime == "emscripten" {
+		results, err = invokeWagoEmscriptenMain(in, m.Command.Export, commandArgs(m))
+	} else {
+		results, err = in.Invoke(m.Command.Export)
+	}
 	if !commandExitOK(err) {
 		return commandOutput{results: results, stdout: stdout.Bytes(), stderr: stderr.Bytes()}, err
 	}
-	return commandOutput{results: results, stdout: stdout.Bytes(), stderr: stderr.Bytes()}, nil
+	var files map[string][]byte
+	if capture {
+		files, err = commandOutputFiles(m, preopenDir)
+		if err != nil {
+			return commandOutput{results: results, stdout: stdout.Bytes(), stderr: stderr.Bytes()}, err
+		}
+	}
+	return commandOutput{results: results, stdout: stdout.Bytes(), stderr: stderr.Bytes(), files: files}, nil
 }
 
 func runWazeroCommand(ctx context.Context, r wazero.Runtime, compiled wazero.CompiledModule, m corpusModule, stdin []byte, capture bool) (commandOutput, error) {
+	preopenDir, cleanup, err := commandScratchPreopen(m)
+	if err != nil {
+		return commandOutput{}, err
+	}
+	defer cleanup()
 	var stdout, stderr bytes.Buffer
 	stdoutWriter, stderrWriter := io.Writer(io.Discard), io.Writer(io.Discard)
 	if capture {
@@ -195,10 +475,17 @@ func runWazeroCommand(ctx context.Context, r wazero.Runtime, compiled wazero.Com
 	}
 	cfg := wazero.NewModuleConfig().WithName("").WithStartFunctions().WithArgs(commandArgs(m)...).
 		WithStdin(bytes.NewReader(stdin)).WithStdout(stdoutWriter).WithStderr(stderrWriter).
-		WithWalltime(func() (int64, int32) { return 0, 0 }, 1).
-		WithNanotime(func() int64 { return 0 }, 1)
-	if dir := commandPreopen(m); dir != "" {
-		cfg = cfg.WithFSConfig(wazero.NewFSConfig().WithDirMount(dir, "/"))
+		WithWalltime(func() (int64, int32) { return 0, 1 }, 1).
+		WithNanotime(func() int64 { return 1 }, 1)
+	fsCfg := wazero.NewFSConfig()
+	if preopenDir != "" {
+		fsCfg = fsCfg.WithDirMount(preopenDir, "/")
+	}
+	if m.Command.ReadOnlyPreopen != "" {
+		fsCfg = fsCfg.WithReadOnlyDirMount(filepath.Join(corpusDir, m.Command.ReadOnlyPreopen), "/db")
+	}
+	if preopenDir != "" || m.Command.ReadOnlyPreopen != "" {
+		cfg = cfg.WithFSConfig(fsCfg)
 	}
 	in, err := r.InstantiateModule(ctx, compiled, cfg)
 	if err != nil {
@@ -209,23 +496,132 @@ func runWazeroCommand(ctx context.Context, r wazero.Runtime, compiled wazero.Com
 	if fn == nil {
 		return commandOutput{}, fmt.Errorf("export %q not found", m.Command.Export)
 	}
-	results, err := fn.Call(ctx)
+	var results []uint64
+	if m.Command.Runtime == "emscripten" {
+		results, err = invokeWazeroEmscriptenMain(ctx, in, fn, commandArgs(m))
+	} else {
+		results, err = fn.Call(ctx)
+	}
 	if !commandExitOK(err) {
 		return commandOutput{results: results, stdout: stdout.Bytes(), stderr: stderr.Bytes()}, err
 	}
-	return commandOutput{results: results, stdout: stdout.Bytes(), stderr: stderr.Bytes()}, nil
+	var files map[string][]byte
+	if capture {
+		files, err = commandOutputFiles(m, preopenDir)
+		if err != nil {
+			return commandOutput{results: results, stdout: stdout.Bytes(), stderr: stderr.Bytes()}, err
+		}
+	}
+	return commandOutput{results: results, stdout: stdout.Bytes(), stderr: stderr.Bytes(), files: files}, nil
+}
+
+func instantiateWazeroCommandHost(ctx context.Context, r wazero.Runtime, runtimeName string) error {
+	switch runtimeName {
+	case "core":
+		return nil
+	case "wasi":
+		_, err := wazerowasi.Instantiate(ctx, r)
+		return err
+	case "emscripten":
+		if _, err := wazerowasi.Instantiate(ctx, r); err != nil {
+			return err
+		}
+		return instantiateWazeroEmscriptenHost(ctx, r)
+	case "micropython":
+		if _, err := wazerowasi.Instantiate(ctx, r); err != nil {
+			return err
+		}
+		builder := r.NewHostModuleBuilder("micropython_wasm")
+		builder.NewFunctionBuilder().WithFunc(func() int32 { return 1024 }).Export("host_result_cap")
+		builder.NewFunctionBuilder().WithFunc(func(int32, int32, int32, int32, int32, int32) int32 { return -1 }).Export("host_call")
+		_, err := builder.Instantiate(ctx)
+		return err
+	case "php-wasmedge":
+		builder := r.NewHostModuleBuilder(wazerowasi.ModuleName)
+		wazerowasi.NewFunctionExporter().ExportFunctions(builder)
+		for _, name := range []string{"sock_open", "sock_bind", "sock_connect"} {
+			builder.NewFunctionBuilder().WithFunc(func(uint32, uint32, uint32) uint32 { return ashellErrnoNosys }).Export(name)
+		}
+		for _, name := range []string{"sock_listen", "sock_accept"} {
+			builder.NewFunctionBuilder().WithFunc(func(uint32, uint32) uint32 { return ashellErrnoNosys }).Export(name)
+		}
+		builder.NewFunctionBuilder().WithFunc(func(uint32, uint32, uint32, uint32, uint32) uint32 { return ashellErrnoNosys }).Export("sock_setsockopt")
+		_, err := builder.Instantiate(ctx)
+		return err
+	case "ashell":
+		builder := r.NewHostModuleBuilder(wazerowasi.ModuleName)
+		wazerowasi.NewFunctionExporter().ExportFunctions(builder)
+		builder.NewFunctionBuilder().WithFunc(func(_ context.Context, module api.Module, buf, bufLen, used uint32) uint32 {
+			bytes, ok := ashellWazeroMemory(module)
+			if !ok {
+				return ashellErrnoFault
+			}
+			return ashellGetcwd(bytes, buf, bufLen, used)
+		}).Export("ashell_getcwd")
+		builder.NewFunctionBuilder().WithFunc(func(_ context.Context, module api.Module, name, nameLen, buf, bufLen, used uint32) uint32 {
+			bytes, ok := ashellWazeroMemory(module)
+			if !ok {
+				return ashellErrnoFault
+			}
+			return ashellGetenv(bytes, name, nameLen, buf, bufLen, used)
+		}).Export("ashell_getenv")
+		builder.NewFunctionBuilder().WithFunc(func(uint32, uint32) uint32 { return ashellErrnoNosys }).Export("ashell_chdir")
+		builder.NewFunctionBuilder().WithFunc(func(uint32, uint32) uint32 { return ashellErrnoNosys }).Export("ashell_system")
+		_, err := builder.Instantiate(ctx)
+		return err
+	default:
+		return fmt.Errorf("unsupported command runtime %q", runtimeName)
+	}
+}
+
+func ashellWazeroMemory(module api.Module) ([]byte, bool) {
+	memory := module.Memory()
+	if memory == nil {
+		return nil, false
+	}
+	return memory.Read(0, memory.Size())
 }
 
 func TestApplicationCorpusRuns(t *testing.T) {
-	for _, m := range loadCorpus(t) {
-		if m.Command == nil || !m.supports("CommandExec") {
-			continue
-		}
-		m := m
-		t.Run(m.name(), func(t *testing.T) {
-			if !commandSupportsPlatform(m, runtime.GOOS, runtime.GOARCH) {
-				t.Skipf("command adapter is not admitted on %s/%s; supported platforms: %v", runtime.GOOS, runtime.GOARCH, m.Command.Platforms)
+	modules := applicationCorpusModules(t, runtime.GOOS, runtime.GOARCH)
+	shard, shardCount, selected, err := currentApplicationCorpusShard(modules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference := os.Getenv("WAGO_APP_CORPUS_REFERENCE")
+	if reference == "" {
+		reference = "all"
+	}
+	if reference != "all" && reference != "wago-only" {
+		t.Fatalf("invalid WAGO_APP_CORPUS_REFERENCE %q", reference)
+	}
+	report := applicationCorpusShardReport{
+		SourceSHA:  os.Getenv("CI_SOURCE_SHA"),
+		Platform:   runtime.GOOS + "/" + runtime.GOARCH,
+		Shard:      shard,
+		ShardCount: shardCount,
+		Reference:  reference,
+	}
+	if path := os.Getenv("WAGO_APP_CORPUS_REPORT"); path != "" {
+		defer func() {
+			data, err := json.Marshal(report)
+			if err != nil {
+				t.Errorf("encode application corpus report: %v", err)
+				return
 			}
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Errorf("create application corpus report directory: %v", err)
+				return
+			}
+			if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+				t.Errorf("write application corpus report: %v", err)
+			}
+		}()
+	}
+	for _, m := range selected {
+		m := m
+		started := time.Now()
+		passed := t.Run(m.name(), func(t *testing.T) {
 			validateCommandInputs(t, m)
 			stdin := commandInput(t, m)
 			t.Run("wago", func(t *testing.T) {
@@ -242,27 +638,37 @@ func TestApplicationCorpusRuns(t *testing.T) {
 					t.Fatal(err)
 				}
 			})
-			t.Run("wazero", func(t *testing.T) {
-				ctx := context.Background()
-				r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
-				defer r.Close(ctx)
-				if m.Command.Runtime == "wasi" {
-					if _, err := wazerowasi.Instantiate(ctx, r); err != nil {
+			if reference == "all" {
+				t.Run("wazero", func(t *testing.T) {
+					if m.Command.ReferenceRuntime != "" {
+						t.Skipf("in-process wazero comparison unavailable; independently captured %s oracle is pinned", m.Command.ReferenceRuntime)
+					}
+					ctx := context.Background()
+					r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
+					defer r.Close(ctx)
+					if err := instantiateWazeroCommandHost(ctx, r, m.Command.Runtime); err != nil {
 						t.Fatal(err)
 					}
-				}
-				compiled, err := r.CompileModule(ctx, m.bytes)
-				if err != nil {
-					t.Fatalf("compile: %v", err)
-				}
-				got, err := runWazeroCommand(ctx, r, compiled, m, stdin, true)
-				if err != nil {
-					t.Fatalf("run: %v (stdout=%q stderr=%q)", err, got.stdout, got.stderr)
-				}
-				if err := validateCommandOutput(m, got); err != nil {
-					t.Fatal(err)
-				}
-			})
+					compiled, err := r.CompileModule(ctx, m.bytes)
+					if err != nil {
+						t.Fatalf("compile: %v", err)
+					}
+					got, err := runWazeroCommand(ctx, r, compiled, m, stdin, true)
+					if err != nil {
+						t.Fatalf("run: %v (stdout=%q stderr=%q)", err, got.stdout, got.stderr)
+					}
+					if err := validateCommandOutput(m, got); err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+		})
+		status := "passed"
+		if !passed {
+			status = "failed"
+		}
+		report.Workloads = append(report.Workloads, applicationCorpusWorkloadResult{
+			ID: m.ID, Status: status, DurationNS: time.Since(started).Nanoseconds(),
 		})
 	}
 }
@@ -303,12 +709,13 @@ func BenchmarkWazeroCommandExec(b *testing.B) {
 	for _, m := range commandCorpus(b) {
 		m := m
 		b.Run(m.name(), func(b *testing.B) {
+			if m.Command.ReferenceRuntime != "" {
+				b.Skipf("in-process wazero comparison unavailable; independently captured %s oracle is pinned", m.Command.ReferenceRuntime)
+			}
 			r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
 			defer r.Close(ctx)
-			if m.Command.Runtime == "wasi" {
-				if _, err := wazerowasi.Instantiate(ctx, r); err != nil {
-					b.Fatal(err)
-				}
+			if err := instantiateWazeroCommandHost(ctx, r, m.Command.Runtime); err != nil {
+				b.Fatal(err)
 			}
 			compiled, err := r.CompileModule(ctx, m.bytes)
 			if err != nil {

@@ -29,6 +29,9 @@ func TestCompiledExecutionSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	params[0], results[0] = ValI64, ValI64
+	if nextParams, nextResults, err := c.Signature("f"); err != nil || nextParams[0] != ValI32 || nextResults[0] != ValI32 {
+		t.Fatalf("signature after caller mutation = %v -> %v, %v", nextParams, nextResults, err)
+	}
 	c.Funcs[0].Params[0] = ValF64
 	c.Funcs[0].Results[0] = ValF64
 	c.Entry = nil
@@ -47,6 +50,10 @@ func TestCompiledExecutionSnapshot(t *testing.T) {
 		out, err := in.Invoke("f", 41)
 		if err != nil || len(out) != 1 || out[0] != 42 {
 			t.Fatalf("Invoke = %v, %v", out, err)
+		}
+		values, err := in.InvokeValues(context.Background(), "f", ValueI32(41))
+		if err != nil || len(values) != 1 || values[0].I32() != 42 {
+			t.Fatalf("InvokeValues = %v, %v", values, err)
 		}
 	}
 }

@@ -214,6 +214,24 @@ func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, 
 	return nil
 }
 
+// CallPreparedBounded uses the compiler's straight-line work proof to keep a
+// short wrapper entry on the Go P. All trap and owner handling is unchanged.
+func (e *Engine) CallPreparedBounded(code uintptr, serArgs []byte, linMemBase uintptr, trap, results []byte) error {
+	if err := validateTrapBuffer(trap); err != nil {
+		return err
+	}
+	enterNativeBounded(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+	goruntime.KeepAlive(serArgs)
+	goruntime.KeepAlive(trap)
+	goruntime.KeepAlive(results)
+	goruntime.KeepAlive(e)
+	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
+		storeTrap(trap, 0)
+		return trapErrorFromBuffer(tc, trap)
+	}
+	return nil
+}
+
 var errIncompleteTrapBuffer = errors.New("jit: trap buffer needs at least 24 bytes")
 
 func validateTrapBuffer(trap []byte) error {
@@ -409,15 +427,7 @@ func (p *PreparedHostScalarCall) CallFixed(host HostCall, scalar ScalarHostCall,
 	}
 	clearTrapUnlessInterrupted(p.trap)
 	ctrlPtr := slicePtr(p.ctrl)
-	var callErr error
-	if p.engine.hostScratchInUse {
-		var argBuf, resBuf [maxHostArity]uint64
-		callErr = p.engine.callWithHostLoopFixed(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, p.fixedSlots, host, scalar, fixed, argBuf[:], resBuf[:])
-	} else {
-		p.engine.hostScratchInUse = true
-		defer func() { p.engine.hostScratchInUse = false }()
-		callErr = p.engine.callWithHostLoopFixed(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, p.fixedSlots, host, scalar, fixed, p.engine.hostArgs[:], p.engine.hostResults[:])
-	}
+	callErr := p.engine.callWithHostLoopFixed(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, p.fixedSlots, host, scalar, fixed, nil, nil)
 	goruntime.KeepAlive(p)
 	return callErr
 }

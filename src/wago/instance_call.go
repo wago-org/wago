@@ -21,6 +21,10 @@ import (
 // its producer Instance. Accepting a reference-typed module remains controlled
 // by compiler feature support. v128
 // parameters/results are not expressible as a Value; use Invoke for those.
+//
+// Deprecated: Use Invoke for raw-slot calls or InvokeContext when cancellation
+// is required. InvokeValues remains available for typed checks, independently
+// owned result slices, and Runtime invoke hooks, which Invoke does not provide.
 func (in *Instance) InvokeValues(ctx context.Context, export string, args ...Value) ([]Value, error) {
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("call %q: %w", export, err)
@@ -36,14 +40,20 @@ func (in *Instance) InvokeValues(ctx context.Context, export string, args ...Val
 			return nil, err
 		}
 	}
-	params, results, err := in.c.Signature(export)
+	params, results, err := in.signatureViewCached(export)
 	if err != nil {
 		return nil, err
 	}
 	if len(args) != len(params) {
 		return nil, fmt.Errorf("%s expects %d arg(s), got %d", export, len(params), len(args))
 	}
-	slots := make([]uint64, len(args))
+	var inlineSlots [4]uint64
+	slots := inlineSlots[:]
+	if len(args) > len(inlineSlots) {
+		slots = make([]uint64, len(args))
+	} else {
+		slots = slots[:len(args)]
+	}
 	for i, a := range args {
 		if params[i] == ValV128 {
 			return nil, fmt.Errorf("%s param %d is v128; use Invoke for v128 values", export, i)
@@ -108,6 +118,20 @@ func (in *Instance) InvokeValues(ctx context.Context, export string, args ...Val
 	return out, err
 }
 
+func (in *Instance) signatureViewCached(export string) (params, results []ValType, err error) {
+	if ic := in.findInvokeCache(export); ic != nil {
+		if ic.li >= 0 && ic.li < len(in.c.Funcs) {
+			sig := in.c.Funcs[ic.li]
+			return sig.Params, sig.Results, nil
+		}
+		if gfi := -1 - ic.li; gfi >= 0 && gfi < len(in.c.importFuncSigs) {
+			sig := in.c.importFuncSigs[gfi]
+			return sig.Params, sig.Results, nil
+		}
+	}
+	return in.c.signatureView(export)
+}
+
 func contextInterruptError(ctx context.Context, err error) error {
 	if err == nil || ctx == nil {
 		return err
@@ -127,7 +151,20 @@ func contextInterruptError(ctx context.Context, err error) error {
 // callInnerAdmitted performs the actual invocation and result decoding under
 // the invocation lease already held by InvokeValues.
 func (in *Instance) callInnerAdmitted(export string, slots []uint64, results []ValType, contexts invocationContextSet, reservation *pluginOperationReservation) ([]Value, error) {
-	raw, err := in.invokeAdmitted(export, slots, contexts, reservation)
+	var raw []uint64
+	var err error
+	if reservation == nil && contexts.interrupt == nil && contexts.callback == nil && (in.refStore == nil || in.refStore.private) {
+		ic := in.findInvokeCache(export)
+		if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast) && len(slots) == int(ic.paramSlots) && in.lockPreparedFastState() {
+			defer in.unlockPreparedFastState()
+			entry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+			raw, err = in.invokeCachedDirectNumeric(ic, entry, slots)
+		} else {
+			raw, err = in.invokeAdmitted(export, slots, contexts, reservation)
+		}
+	} else {
+		raw, err = in.invokeAdmitted(export, slots, contexts, reservation)
+	}
 	if err != nil {
 		return nil, err
 	}

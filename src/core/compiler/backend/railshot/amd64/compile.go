@@ -978,6 +978,7 @@ func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.UsesBMI2 = false
+	sc.asm.BitCountState &= 0x07
 	sc.asm.LocalRefs = nil
 	if compactNativePolicy(sc.policy) {
 		sc.asm.ResetRel32Recorder(finalizerRel32Limit(sc.policy))
@@ -1057,6 +1058,7 @@ type workerState struct {
 	relocs       []callReloc
 	literals     []uint64
 	usesBMI2     bool
+	usesBitCount uint8
 }
 
 // funcResult is one independently compiled local function. worker/start/end
@@ -1120,6 +1122,8 @@ func retainResolvedPreparedCallers(direct, bounded []uint64, hints []funcHints) 
 const (
 	maxBoundedPreparedCallDepth = 32
 	maxBoundedPreparedWorkBytes = 4 << 10
+	// Register-entry candidates retain the tighter 96-byte compile-time cap.
+	maxBoundedPreparedBodyBytes = 384
 )
 
 // resolveBoundedPreparedEntries admits only acyclic, statically bounded local
@@ -1155,7 +1159,7 @@ func resolveBoundedPreparedEntries(m *wasm.Module, candidates []uint64, hints []
 				continue
 			}
 			bodyBytes := len(m.Code[i].BodyBytes)
-			if bodyBytes == 0 || bodyBytes > 96 {
+			if bodyBytes == 0 || bodyBytes > maxBoundedPreparedBodyBytes {
 				continue
 			}
 			candidateWork, candidateDepth := bodyBytes, 1
@@ -1442,6 +1446,8 @@ type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
 type CompileOptions struct {
+	// BitCountFeatures selects optional scalar instructions; zero emits baseline code.
+	BitCountFeatures uint8
 	// Optimizations is the complete selection for this compilation. nil uses the
 	// backend's environment-derived process defaults.
 	Optimizations map[string]bool
@@ -1734,6 +1740,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	requiresAVX2 := false
 	requiresAVX512 := false
 	requiresBMI2 := false
+	var requiresBitCount uint8
 	for _, definition := range opts.CustomInstructions {
 		if lowering := pluginAMD64Lowering(definition); lowering != nil {
 			if lowering.Features&plugincodegen.FeatureAVX2 != 0 {
@@ -1766,6 +1773,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts, policy)
 		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
+		sc.asm.BitCountState = opts.BitCountFeatures & 0x07
 		sc.policy = policy
 		sc.classifier = classifier
 		sc.moduleTypes = moduleTypes
@@ -1853,6 +1861,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 			}
 			requiresBMI2 = requiresBMI2 || sc.asm.UsesBMI2
+			requiresBitCount |= sc.asm.BitCountState >> 4
 			internalEntry[i] = len(code) + internalOff
 			if adapterTails != nil && sc.fnState.adapterReturnOff != 0 {
 				if info := sc.fnState.adapterTailInfo(); info.returnOff != 0 {
@@ -1959,10 +1968,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if err != nil {
 				return nil, fmt.Errorf("amd64: transfer heap code image: %w", err)
 			}
-			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 		}
 		keepCodeBuffer = true
-		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, hintSidecar, immutableTables, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, moduleHasSIMD, importedFuncs)
@@ -2014,6 +2023,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
+		states[i].scratch.asm.BitCountState = opts.BitCountFeatures & 0x07
 		states[i].scratch.policy = policy
 		states[i].scratch.classifier = classifier
 		states[i].scratch.moduleTypes = moduleTypes
@@ -2096,6 +2106,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			}
 			ws.relocs = append(ws.relocs, rl...)
 			ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
+			ws.usesBitCount |= ws.scratch.asm.BitCountState >> 4
 			ws.arena = append(ws.arena, fnCode...)
 			flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
 				boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
@@ -2260,8 +2271,10 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	requiresAVX2 := false
 	requiresAVX512 := false
 	requiresBMI2 := false
+	var requiresBitCount uint8
 	for i := range states {
 		requiresBMI2 = requiresBMI2 || states[i].usesBMI2
+		requiresBitCount |= states[i].usesBitCount
 	}
 	for _, definition := range opts.CustomInstructions {
 		if lowering := pluginAMD64Lowering(definition); lowering != nil {
@@ -2269,7 +2282,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 }
 
 func allTablesPreparedIsolated(tables []immutableTableHint) bool {
@@ -3362,7 +3375,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// generated code is constrained to caller-saved GPRs. Reserve every Go
 	// callee-saved allocatable register up front; RBX remains the explicit linMem
 	// input. The body/local bounds keep any spill tradeoff away from larger code.
-	directPrepared := f.opt(optPreparedDirectEntry) && regABI && preparedDirectIntSig(ft) && (!hasCall || hints.hasNonDirectCall()) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && !hints.hasUnsupportedDynamicCall() &&
+	directPrepared := f.opt(optPreparedDirectEntry) && regABI && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && (!hasCall || hints.hasNonDirectCall()) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && !hints.hasUnsupportedDynamicCall() &&
 		(!hasCall || len(gcTypeLayouts) == 0 && !gcTypeSubtypingRefTest && !gcStructHelpers && !gcArrayHelpers && gcFrameRoots == nil) &&
 		m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall) && len(c.BodyBytes) <= 96 && nLocals <= 8
 	if directPrepared {
@@ -3412,6 +3425,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	maxPins := len(gpAlloc) - numScratchGP
 	if f.memSizeReg != regNone {
 		maxPins--
+	}
+	if hasCall && touchesMemory && !guardMode && maxPins > 4 {
+		// Explicit bounds checks need two transient registers around memory-heavy
+		// call staging in addition to x86's fixed scratch floor. With five or more
+		// local pins, ripgrep's stable small-sort silently corrupted a pinned value
+		// before a memcmp call and eventually cycled dlmalloc's free tree.
+		maxPins = 4
 	}
 	if hints.hasDeepVariableShift() {
 		maxPins = gpPinLimit(f.reserved, 9)
@@ -3536,6 +3556,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		return f.a.B, f.relocs, internalOff, nil
 	}
 
+	// The ordinary wrapper can also stay on the Go P for a small, call-free
+	// scalar leaf. Its adapter has bounded argument/result copies; the module
+	// finalizer applies the same body-work proof used by register entries.
+	sc.directPreparedBounded = !regABI && f.opt(optPreparedBoundedEntry) && sigIsIntOnly(ft) &&
+		len(ft.Params) <= 128 && len(ft.Results) <= 128 && nLocals <= 128 &&
+		len(c.BodyBytes) != 0 && len(c.BodyBytes) <= maxBoundedPreparedBodyBytes && !f.hasLoop &&
+		!hints.flags.has(hintHasCall|hintUsesBulkMem|hintMutatesTable|hintHasTailCall) &&
+		!touchesMemory && len(modGlobals) == 0 && !moduleEH && len(custom) == 0 &&
+		len(gcTypeLayouts) == 0 && gcFrameRoots == nil && len(inlinedCallees) == 0
 	f.prologue(hints.localScore)
 	if hints.flags.has(hintHasFloatConst) {
 		f.preloadFloatConsts(c.BodyBytes)
@@ -3748,7 +3777,7 @@ func (f *fn) patchReturnSites() {
 // register RBP, all spill-managed around calls by the STACK_REG model.
 //
 // RDI/RSI are deliberately NOT pinned. A call's linMem/trap setup clobbers them
-// (they are not arg registers here — intArgRegs is RAX/RCX/RDX/R8/R9/R10/R11), and
+// (RDI is an eighth argument register, but is not safe for a pinned local), and
 // in a register-heavy function that both touches memory (which reserves R15,
 // pushing pins onto RDI/RSI) and makes multi-arg calls, having a pinned local live
 // in RDI/RSI on top of the arg-register pins over-subscribed the file: the call's
@@ -4196,8 +4225,8 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
-// the internal entry takes args in GP/XMM registers and returns its single result
-// in RAX or XMM0.
+// the internal entry takes args in GP/XMM registers and returns numeric results
+// in independent GP/FP banks.
 // Returns the internal entry's offset within the function's code.
 func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, localScores []uint32, hints *funcHintView) (int, error) {
 	a := f.a
@@ -4218,20 +4247,61 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
 		a.Push(RCX)             // results ptr (also keeps RSP 16-aligned at the internal call)
 		gp, fp = 0, 0
+		rdiArgOff := int32(-1)
 		for i := 0; i < np; i++ {
 			mt := f.localType[i]
 			if mt.isFloat() {
 				a.FLoadDisp(fpArgRegs[fp], RDI, int32(8*i), mt == mtF64)
 				fp++
+			} else if intArgRegs[gp] == RDI {
+				rdiArgOff = int32(8 * i)
+				gp++
 			} else {
 				a.Load64(intArgRegs[gp], RDI, int32(8*i))
 				gp++
 			}
 		}
+		if rdiArgOff >= 0 {
+			a.Load64(RDI, RDI, rdiArgOff)
+		}
 		adapterCall = a.CallRel32()
 		f.adapterReturnOff = adapterCall + 4
-		a.Pop(RCX) // results
-		if rN == 2 {
+		if preparedDirectFloatSupported && rN > 2 && sigIsFloatOnly(f.ft) {
+			a.Pop(RCX)
+			for i, typ := range f.ft.Results {
+				a.FStoreDisp(RCX, int32(i*8), Reg(i), mtOf(typ) == mtF64)
+			}
+		} else if registerQuadResultsSupported && rN > 2 {
+			// RCX is result 2; for eight results RDI is result 7 too.
+			resultPtr := RDI
+			if rN == 8 {
+				resultPtr = RSI
+			}
+			a.Pop(resultPtr)
+			gp, fp := 0, 0
+			for i, typ := range f.ft.Results {
+				if mtOf(typ).isFloat() {
+					a.FStoreDisp(resultPtr, int32(i*8), Reg(fp), mtOf(typ) == mtF64)
+					fp++
+				} else {
+					a.Store64(resultPtr, int32(i*8), []Reg{RAX, RDX, RCX, R8, R9, R10, R11, RDI}[gp])
+					gp++
+				}
+			}
+		} else {
+			a.Pop(RCX) // results
+		}
+		if preparedDirectFloatSupported && rN == 2 && mtOf(f.ft.Results[0]).isFloat() && !mtOf(f.ft.Results[1]).isFloat() {
+			a.FStoreDisp(RCX, 0, 0, mtOf(f.ft.Results[0]) == mtF64)
+			a.Store64(RCX, 8, RAX)
+		} else if preparedDirectFloatSupported && rN == 2 && !mtOf(f.ft.Results[0]).isFloat() && mtOf(f.ft.Results[1]).isFloat() {
+			a.Store64(RCX, 0, RAX)
+			a.FStoreDisp(RCX, 8, 0, mtOf(f.ft.Results[1]) == mtF64)
+		} else if preparedDirectFloatSupported && rN == 2 && mtOf(f.ft.Results[0]).isFloat() {
+			for i, typ := range f.ft.Results {
+				a.FStoreDisp(RCX, int32(i*8), Reg(i), mtOf(typ) == mtF64)
+			}
+		} else if rN == 2 {
 			// Two-int register return in RAX/RDX. Store both to the results buffer
 			// BEFORE storeModuleGlobals, which uses RDX as scratch.
 			a.Store64(RCX, 0, RAX)
@@ -4333,10 +4403,38 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		}
 	}
 	if rN == 2 {
-		// Two-int register return: both results converged to slots 0,1. (Never
-		// singleRegResult, which is one-result only.)
-		a.Load64(RAX, RSP, f.spillOff(0)) // result 0 -> RAX
-		a.Load64(RDX, RSP, f.spillOff(1)) // result 1 -> RDX
+		// Both results converged to slots 0,1. singleRegResult is
+		// reserved for one-result functions.
+		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() && !mtOf(f.ft.Results[1]).isFloat() {
+			a.FLoadDisp(0, RSP, f.spillOff(0), mtOf(f.ft.Results[0]) == mtF64)
+			a.Load64(RAX, RSP, f.spillOff(1))
+		} else if preparedDirectFloatSupported && !mtOf(f.ft.Results[0]).isFloat() && mtOf(f.ft.Results[1]).isFloat() {
+			a.Load64(RAX, RSP, f.spillOff(0))
+			a.FLoadDisp(0, RSP, f.spillOff(1), mtOf(f.ft.Results[1]) == mtF64)
+		} else if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() {
+			for i, typ := range f.ft.Results {
+				a.FLoadDisp(Reg(i), RSP, f.spillOff(i), mtOf(typ) == mtF64)
+			}
+		} else {
+			a.Load64(RAX, RSP, f.spillOff(0))
+			a.Load64(RDX, RSP, f.spillOff(1))
+		}
+	}
+	if preparedDirectFloatSupported && rN > 2 && sigIsFloatOnly(f.ft) {
+		for i, typ := range f.ft.Results {
+			a.FLoadDisp(Reg(i), RSP, f.spillOff(i), mtOf(typ) == mtF64)
+		}
+	} else if registerQuadResultsSupported && rN > 2 {
+		gp, fp := 0, 0
+		for i, typ := range f.ft.Results {
+			if mtOf(typ).isFloat() {
+				a.FLoadDisp(Reg(fp), RSP, f.spillOff(i), mtOf(typ) == mtF64)
+				fp++
+			} else {
+				a.Load64([]Reg{RAX, RDX, RCX, R8, R9, R10, R11, RDI}[gp], RSP, f.spillOff(i))
+				gp++
+			}
+		}
 	}
 	// singleRegResult: every exit already produced the result in RAX/XMM0.
 	// No trap-slot protocol on return: the runtime zeroes the trap cell before

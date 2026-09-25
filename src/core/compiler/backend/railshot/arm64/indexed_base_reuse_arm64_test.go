@@ -41,6 +41,20 @@ func TestIndexedBaseReuseSwitchAndExecutionArm64(t *testing.T) {
 		return stats.Funcs[0]
 	}
 	on, off := compile(true), compile(false)
+	var guardStats ModuleStats
+	guarded, err := CompileModuleWith(m, CompileOptions{Stats: &guardStats, ElideBoundsChecks: true, Optimizations: map[string]bool{
+		"indexed-base-reuse": true,
+		"load-pair":          false,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if guarded.CodeImage != nil {
+		defer guarded.CodeImage.Close()
+	}
+	if hits := guardStats.Funcs[0].Peephole["indexed-base-reuse"]; hits != 0 {
+		t.Fatalf("guarded code reuses an indexed base %d times", hits)
+	}
 	run := func(on bool) uint32 {
 		saved := indexedBaseReuseEnabled
 		indexedBaseReuseEnabled = on

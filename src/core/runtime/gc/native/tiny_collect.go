@@ -659,6 +659,7 @@ func (c *Collector) tinyDrainRootBudget(roots RootSet) (bool, error) {
 }
 
 func (c *Collector) tinyFinishCycle() {
+	c.stats.FullCollections++
 	c.tinyGC.grayStack = c.tinyGC.grayStack[:0]
 	c.tinyGC.scan = tinyScanCursor{}
 	c.tinyGC.lastStepWork = tinyStepWork{}

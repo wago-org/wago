@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,8 +27,9 @@ var (
 )
 
 var requiredJobs = []string{
-	"changes", "docs", "lint", "regression-corpus", "runtime-concurrency",
-	"race", "platform-test", "core-v2", "core-v3", "fuzz", "tinygo", "size",
+	"changes", "docs", "lint", "regression-integrity", "gc-hardening", "race",
+	"platform-test", "corpus-correctness", "app-corpus", "app-corpus-verify", "core-v2", "core-v3", "current-go",
+	"fuzz", "tinygo", "size",
 }
 
 type qualificationJob struct {
@@ -36,16 +38,18 @@ type qualificationJob struct {
 }
 
 type qualification struct {
-	Schema      int                `json:"schema"`
-	Repository  string             `json:"repository"`
-	SourceSHA   string             `json:"source_sha"`
-	WorkflowSHA string             `json:"workflow_sha"`
-	RunID       int64              `json:"run_id"`
-	RunAttempt  int64              `json:"run_attempt"`
-	Event       string             `json:"event"`
-	Ref         string             `json:"ref"`
-	WorkflowRef string             `json:"workflow_ref"`
-	Jobs        []qualificationJob `json:"jobs"`
+	Schema       int                `json:"schema"`
+	Repository   string             `json:"repository"`
+	SourceSHA    string             `json:"source_sha"`
+	WorkflowSHA  string             `json:"workflow_sha"`
+	RunID        int64              `json:"run_id"`
+	RunAttempt   int64              `json:"run_attempt"`
+	Event        string             `json:"event"`
+	Ref          string             `json:"ref"`
+	WorkflowRef  string             `json:"workflow_ref"`
+	Profile      string             `json:"profile"`
+	ExpectedJobs []string           `json:"expected_jobs"`
+	Jobs         []qualificationJob `json:"jobs"`
 }
 
 type releaseAsset struct {
@@ -142,6 +146,10 @@ func positiveInt(value, name string) (int64, error) {
 }
 
 func recordCI(output string) error {
+	profile := os.Getenv("CI_PROFILE")
+	if profile != "full" {
+		return fmt.Errorf("release qualification requires the full CI profile, got %q", profile)
+	}
 	runID, err := positiveInt(os.Getenv("CI_RUN_ID"), "CI run ID")
 	if err != nil {
 		return err
@@ -156,16 +164,27 @@ func recordCI(output string) error {
 	if err := json.Unmarshal([]byte(os.Getenv("CI_NEEDS")), &needs); err != nil {
 		return fmt.Errorf("decode CI needs: %w", err)
 	}
-	jobs := make([]qualificationJob, 0, len(needs))
-	for id, need := range needs {
+	expected := strings.Split(os.Getenv("CI_EXPECTED_JOBS"), ",")
+	if len(expected) == 0 || expected[0] == "" {
+		return errors.New("release qualification has no expected job list")
+	}
+	sort.Strings(expected)
+	jobs := make([]qualificationJob, 0, len(expected))
+	for i, id := range expected {
+		if id == "" || (i > 0 && expected[i-1] == id) {
+			return fmt.Errorf("duplicate or empty expected CI job %q", id)
+		}
+		need, ok := needs[id]
+		if !ok {
+			return fmt.Errorf("expected CI job %s is missing", id)
+		}
 		jobs = append(jobs, qualificationJob{ID: id, Result: need.Result})
 	}
-	sort.Slice(jobs, func(i, j int) bool { return jobs[i].ID < jobs[j].ID })
 	q := qualification{
-		Schema: 1, Repository: os.Getenv("CI_REPOSITORY"),
+		Schema: 2, Repository: os.Getenv("CI_REPOSITORY"),
 		SourceSHA: os.Getenv("CI_SOURCE_SHA"), WorkflowSHA: os.Getenv("CI_SOURCE_SHA"),
 		RunID: runID, RunAttempt: runAttempt, Event: "push", Ref: "refs/heads/main",
-		WorkflowRef: os.Getenv("CI_WORKFLOW_REF"), Jobs: jobs,
+		WorkflowRef: os.Getenv("CI_WORKFLOW_REF"), Profile: profile, ExpectedJobs: expected, Jobs: jobs,
 	}
 	if err := verifyQualification(q, q.Repository, q.SourceSHA, q.RunID, q.RunAttempt); err != nil {
 		return err
@@ -185,18 +204,28 @@ func verifyQualification(q qualification, repository, sourceSHA string, runID, r
 	if !shaPattern.MatchString(sourceSHA) {
 		return fmt.Errorf("invalid full commit SHA %q", sourceSHA)
 	}
-	if q.Schema != 1 || q.Repository != repository || q.SourceSHA != sourceSHA ||
+	if q.Schema != 2 || q.Repository != repository || q.SourceSHA != sourceSHA ||
 		q.WorkflowSHA != sourceSHA || q.RunID != runID || q.RunAttempt != runAttempt ||
 		q.Event != "push" || q.Ref != "refs/heads/main" ||
-		q.WorkflowRef != repository+"/.github/workflows/ci.yml@refs/heads/main" {
+		q.WorkflowRef != repository+"/.github/workflows/ci.yml@refs/heads/main" || q.Profile != "full" {
 		return errors.New("CI qualification does not identify the exact successful main source run")
 	}
 	seen := make(map[string]bool, len(q.Jobs))
+	expected := make(map[string]bool, len(q.ExpectedJobs))
+	for _, id := range q.ExpectedJobs {
+		if id == "" || expected[id] {
+			return fmt.Errorf("duplicate or empty expected qualified job %q", id)
+		}
+		expected[id] = true
+	}
 	for _, job := range q.Jobs {
 		if job.ID == "" || seen[job.ID] {
 			return fmt.Errorf("duplicate or empty qualified job %q", job.ID)
 		}
 		seen[job.ID] = true
+		if !expected[job.ID] {
+			return fmt.Errorf("qualified job %s was not in the expected job plan", job.ID)
+		}
 		if job.Result != "success" {
 			return fmt.Errorf("required CI job %s did not succeed: %s", job.ID, job.Result)
 		}
@@ -204,6 +233,14 @@ func verifyQualification(q qualification, repository, sourceSHA string, runID, r
 	for _, id := range requiredJobs {
 		if !seen[id] {
 			return fmt.Errorf("CI qualification is missing required job %s", id)
+		}
+	}
+	if len(seen) != len(expected) {
+		return errors.New("CI qualification job results do not match the expected job plan")
+	}
+	for id := range expected {
+		if !seen[id] || (id != "regression-rebuild" && !slices.Contains(requiredJobs, id)) {
+			return fmt.Errorf("CI qualification contains unexpected job %s", id)
 		}
 	}
 	return nil
