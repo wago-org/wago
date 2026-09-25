@@ -2,6 +2,7 @@ package gc
 
 import (
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -13,6 +14,136 @@ type tinySecondWalkFailure struct {
 type tinyLateWalkFailure struct {
 	root  Root
 	walks int
+}
+
+type tinyFirstWalkFailure struct {
+	root  Root
+	walks int
+}
+
+func (r *tinyFirstWalkFailure) RangeRoots(fn func(RootSlot) bool) { fn(&r.root) }
+
+func (r *tinyFirstWalkFailure) RangeRootRefs(sink RootRefSink) bool {
+	r.walks++
+	// The count walk sees a root, then the callback reports incomplete input.
+	if !sink.VisitRootRef(Ref(r.root)) {
+		return false
+	}
+	return false
+}
+
+func assertTinyFailedPreflightPreservesCycle(t *testing.T, c *Collector, root Root) {
+	t.Helper()
+	beforeEpoch := c.tinyGC.markEpoch
+	beforeColor := slices.Clone(c.tinyGC.color)
+	beforeColorCap := cap(c.tinyGC.color)
+	beforeState := c.tinyGC.state
+	beforeRootPhase := c.tinyGC.rootPhase
+	beforeStack := slices.Clone(c.tinyGC.grayStack)
+	beforeStackCap := cap(c.tinyGC.grayStack)
+	beforeScan := c.tinyGC.scan
+	beforeSweep := c.tinyGC.sweep
+	beforeSweepLimit := c.tinyGC.sweepLimit
+
+	roots := &tinyFirstWalkFailure{root: root}
+	if err := c.CollectFull(roots); err == nil || roots.walks != 1 {
+		t.Fatalf("first root walk: err = %v, walks = %d", err, roots.walks)
+	}
+	if c.tinyGC.markEpoch != beforeEpoch || !slices.Equal(c.tinyGC.color, beforeColor) || cap(c.tinyGC.color) != beforeColorCap ||
+		c.tinyGC.state != beforeState || c.tinyGC.rootPhase != beforeRootPhase ||
+		!slices.Equal(c.tinyGC.grayStack, beforeStack) || cap(c.tinyGC.grayStack) != beforeStackCap ||
+		c.tinyGC.scan != beforeScan || c.tinyGC.sweep != beforeSweep ||
+		c.tinyGC.sweepLimit != beforeSweepLimit {
+		t.Fatalf("failed preflight changed cycle: epoch %d->%d, state %d->%d, stack %v->%v, scan %+v->%+v, sweep %d/%d->%d/%d, colors equal %v",
+			beforeEpoch, c.tinyGC.markEpoch, beforeState, c.tinyGC.state, beforeStack, c.tinyGC.grayStack,
+			beforeScan, c.tinyGC.scan, beforeSweep, beforeSweepLimit, c.tinyGC.sweep, c.tinyGC.sweepLimit,
+			slices.Equal(c.tinyGC.color, beforeColor))
+	}
+}
+
+func TestTinyFailedRootCountPreflightPreservesActiveCycle(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("interrupted mark", func(t *testing.T) {
+		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})
+		object, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := Root(object)
+		late := &tinyLateWalkFailure{root: root}
+		if err := c.CollectFull(late); err == nil || late.walks != 2 {
+			t.Fatalf("mark walk: err = %v, walks = %d", err, late.walks)
+		}
+		if c.tinyGC.state != tinyMark || len(c.tinyGC.grayStack) == 0 {
+			t.Fatal("setup did not leave unfinished marking work")
+		}
+		assertTinyFailedPreflightPreservesCycle(t, c, root)
+	})
+	if !tinyIncrementalBuild {
+		return
+	}
+	t.Run("partial scan", func(t *testing.T) {
+		refs, err := NewArrayDesc(1, StorageRefNull)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 1 << 16, TinyBlockBytes: 16}, []TypeDesc{leaf, refs})
+		array, err := c.NewArrayDefault(1, tinyStepScanEntries*2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		child, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := uint32(0); i < tinyStepScanEntries*2; i++ {
+			if err := c.ArraySet(array, i, RefValue(child)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		root := Root(array)
+		if err := c.Step(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Step(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+		if c.tinyGC.scan.handle != handleOf(array) || len(c.tinyGC.grayStack) == 0 {
+			t.Fatal("setup did not leave a scan cursor and queued child")
+		}
+		assertTinyFailedPreflightPreservesCycle(t, c, root)
+	})
+	t.Run("partial sweep", func(t *testing.T) {
+		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})
+		var root Root
+		for i := 0; i < 130; i++ {
+			object, err := c.NewStructDefault(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if i == 129 {
+				root = Root(object)
+			}
+		}
+		for steps := 0; steps < 16 && c.tinyGC.state != tinySweep; steps++ {
+			if err := c.Step(Slots{&root}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if c.tinyGC.state != tinySweep {
+			t.Fatal("setup did not reach sweep")
+		}
+		if err := c.Step(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+		if c.tinyGC.state != tinySweep || c.tinyGC.sweep <= 1 || c.tinyGC.sweepLimit <= c.tinyGC.sweep {
+			t.Fatal("setup did not leave a partial sweep")
+		}
+		assertTinyFailedPreflightPreservesCycle(t, c, root)
+	})
 }
 
 func (r *tinyLateWalkFailure) RangeRoots(fn func(RootSlot) bool) { fn(&r.root) }
