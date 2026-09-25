@@ -4,7 +4,9 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -106,6 +108,19 @@ func multiValueFusedBrIfV128PayloadModule(takenVec, fallthroughVec V128) []byte 
 }
 
 func TestMultiValueDefaultConfigControlCallsAndCodec(t *testing.T) {
+	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
+		if got := SupportedFeatures(); got != 0 {
+			t.Fatalf("unsupported AMD64 backend reports executable features: %s", got)
+		}
+		cfg := NewRuntimeConfig()
+		if err := cfg.Validate(); !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("default multi-value config should fail closed: %v", err)
+		}
+		if _, err := cfg.Compile(multiValueControlCallModule()); !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("multi-value compile should fail closed: %v", err)
+		}
+		return
+	}
 	if !SupportedFeatures().IsEnabled(CoreFeatureMultiValue) {
 		t.Fatal("default supported features should include multi-value")
 	}

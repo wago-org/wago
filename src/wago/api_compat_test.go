@@ -343,11 +343,21 @@ func TestRuntimeConfigPortableFluentSurface(t *testing.T) {
 	if !strings.Contains(cfg.String(), "maxMemoryPages: 3") {
 		t.Fatalf("config String = %q", cfg.String())
 	}
-	if _, err := cfg.Compile([]byte(emptyModule)); err != nil {
-		t.Fatalf("fluent Compile: %v", err)
-	}
-	if cfg.MustCompile([]byte(emptyModule)) == nil {
-		t.Fatal("MustCompile returned nil")
+	compiled, err := cfg.Compile([]byte(emptyModule))
+	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
+		if !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("fluent Compile should fail closed on this AMD64 host: %v", err)
+		}
+	} else {
+		if err != nil {
+			t.Fatalf("fluent Compile: %v", err)
+		}
+		compiled.Close()
+		if must := cfg.MustCompile([]byte(emptyModule)); must == nil {
+			t.Fatal("MustCompile returned nil")
+		} else {
+			must.Close()
+		}
 	}
 	for _, tc := range []struct {
 		mode BoundsCheckMode
@@ -363,14 +373,24 @@ func TestRuntimeConfigPortableFluentSurface(t *testing.T) {
 	if got := (&UnsupportedFeatureError{Requested: CoreFeatureTailCall, Supported: CoreFeaturesV2}).Error(); !strings.Contains(got, "tail-call") {
 		t.Fatalf("UnsupportedFeatureError = %q", got)
 	}
-	err := NewRuntimeConfig().WithFeature(CoreFeatures(1<<63), true).Validate()
-	var unsupported *UnsupportedFeatureError
-	if !errors.As(err, &unsupported) {
-		t.Fatalf("Validate unsupported = %v", err)
+	err = NewRuntimeConfig().WithFeature(CoreFeatures(1<<63), true).Validate()
+	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
+		if !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("Validate should fail closed on this AMD64 host: %v", err)
+		}
+	} else {
+		var unsupported *UnsupportedFeatureError
+		if !errors.As(err, &unsupported) {
+			t.Fatalf("Validate unsupported = %v", err)
+		}
 	}
 	if !guardPageBuilt {
 		err = NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased).Validate()
-		if !IsGuardPageUnavailable(err) {
+		if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
+			if !errors.Is(err, errNativeCPUFeatures) {
+				t.Fatalf("bounds-mode validation should fail closed on this AMD64 host: %v", err)
+			}
+		} else if !IsGuardPageUnavailable(err) {
 			t.Fatalf("Validate signals = %v", err)
 		}
 	}
@@ -390,6 +410,9 @@ func TestRuntimeBuildCapabilitiesAndOptimizationKnobs(t *testing.T) {
 	supported := SupportedFeatures()
 	if supported&^coreFeaturesWago != 0 || (hostSupportsSIMD() && supported&CoreFeatureSIMD == 0) {
 		t.Fatalf("supported features = %s", supported)
+	}
+	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() && supported != 0 {
+		t.Fatalf("unsupported AMD64 backend reports executable features: %s", supported)
 	}
 	if GuardPageSupported() != guardPageBuilt {
 		t.Fatal("guard-page build capability disagrees with build flag")
