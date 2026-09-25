@@ -211,6 +211,32 @@ func TestAggregateCIRequiresEveryWorkflowJob(t *testing.T) {
 	}
 }
 
+func TestWebAssemblyV1ConformanceIsRequiredOnLinuxTargets(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := workflowJobBlocks(string(workflow))
+	v1, ok := jobs["spec-v1"]
+	if !ok {
+		t.Fatal("CI has no dedicated WebAssembly 1.0 conformance job")
+	}
+	for _, required := range []string{
+		"if: needs.changes.outputs.profile == 'full'",
+		"name: Linux amd64",
+		"name: Linux arm64",
+		"git submodule update --init tests/conformance/spec-v1",
+		"just test spec v1",
+	} {
+		if !strings.Contains(v1, required) {
+			t.Errorf("WebAssembly 1.0 conformance job is missing %q", required)
+		}
+	}
+	if !strings.Contains(jobs["ci-ok"], "spec-v1") {
+		t.Fatal("the CI aggregate does not require WebAssembly 1.0 conformance")
+	}
+}
+
 func TestCIDoesNotScheduleCoverage(t *testing.T) {
 	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/ci.yml"))
 	if err != nil {

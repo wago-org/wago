@@ -20,7 +20,7 @@ func TestPullRequestLifecycleProfiles(t *testing.T) {
 
 	pr.PullRequest.Draft = false
 	ready, err := makePlan("pull_request", pr, []string{"src/wago/runtime.go"}, "head-sha")
-	if err != nil || ready.Profile != "full" || !slicesContain(ready.ExpectedJobs, "app-corpus-verify") || !slicesContain(ready.ExpectedJobs, "corpus-correctness") {
+	if err != nil || ready.Profile != "full" || !slicesContain(ready.ExpectedJobs, "app-corpus-verify") || !slicesContain(ready.ExpectedJobs, "corpus-correctness") || !slicesContain(ready.ExpectedJobs, "spec-v1") {
 		t.Fatalf("ready plan = %+v, %v", ready, err)
 	}
 
