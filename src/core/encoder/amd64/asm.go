@@ -37,6 +37,7 @@ type Asm struct {
 	Rel32SiteLimit               int
 	Rel32Count                   uint32
 	UsesBMI2                     bool
+	BitCountState                uint8 // low bits: policy; high bits: instructions emitted
 	Rel32Overflow                bool
 	CompactAccumulatorImmediates bool
 	LocalRefs                    *LocalRefRecorder
@@ -531,6 +532,16 @@ func (a *Asm) sseBitOp(opcode byte, dst, src Reg, w bool) {
 func (a *Asm) Lzcnt(dst, src Reg, w bool)  { a.sseBitOp(0xBD, dst, src, w) }
 func (a *Asm) Tzcnt(dst, src Reg, w bool)  { a.sseBitOp(0xBC, dst, src, w) }
 func (a *Asm) Popcnt(dst, src Reg, w bool) { a.sseBitOp(0xB8, dst, src, w) }
+
+// Bsr/Bsf leave dst undefined on zero; the caller must inspect ZF first.
+func (a *Asm) Bsr(dst, src Reg, w bool) { a.bitScan(0xBD, dst, src, w) }
+func (a *Asm) Bsf(dst, src Reg, w bool) { a.bitScan(0xBC, dst, src, w) }
+func (a *Asm) bitScan(opcode byte, dst, src Reg, w bool) {
+	if w || dst >= 8 || src >= 8 {
+		a.emit(a.rex(w, dst >= 8, false, src >= 8))
+	}
+	a.emit(0x0F, opcode, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
+}
 
 func (a *Asm) MovReg64(dst, src Reg) {
 	a.emit(a.rex(true, src >= 8, false, dst >= 8), 0x89, 0xC0|((byte(src)&7)<<3)|byte(dst&7))

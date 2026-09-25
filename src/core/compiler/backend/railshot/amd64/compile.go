@@ -978,6 +978,7 @@ func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.UsesBMI2 = false
+	sc.asm.BitCountState &= 0x07
 	sc.asm.LocalRefs = nil
 	if compactNativePolicy(sc.policy) {
 		sc.asm.ResetRel32Recorder(finalizerRel32Limit(sc.policy))
@@ -1057,6 +1058,7 @@ type workerState struct {
 	relocs       []callReloc
 	literals     []uint64
 	usesBMI2     bool
+	usesBitCount uint8
 }
 
 // funcResult is one independently compiled local function. worker/start/end
@@ -1444,6 +1446,8 @@ type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
 type CompileOptions struct {
+	// BitCountFeatures selects optional scalar instructions; zero emits baseline code.
+	BitCountFeatures uint8
 	// Optimizations is the complete selection for this compilation. nil uses the
 	// backend's environment-derived process defaults.
 	Optimizations map[string]bool
@@ -1736,6 +1740,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	requiresAVX2 := false
 	requiresAVX512 := false
 	requiresBMI2 := false
+	var requiresBitCount uint8
 	for _, definition := range opts.CustomInstructions {
 		if lowering := pluginAMD64Lowering(definition); lowering != nil {
 			if lowering.Features&plugincodegen.FeatureAVX2 != 0 {
@@ -1768,6 +1773,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts, policy)
 		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
+		sc.asm.BitCountState = opts.BitCountFeatures & 0x07
 		sc.policy = policy
 		sc.classifier = classifier
 		sc.moduleTypes = moduleTypes
@@ -1855,6 +1861,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 			}
 			requiresBMI2 = requiresBMI2 || sc.asm.UsesBMI2
+			requiresBitCount |= sc.asm.BitCountState >> 4
 			internalEntry[i] = len(code) + internalOff
 			if adapterTails != nil && sc.fnState.adapterReturnOff != 0 {
 				if info := sc.fnState.adapterTailInfo(); info.returnOff != 0 {
@@ -1961,10 +1968,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if err != nil {
 				return nil, fmt.Errorf("amd64: transfer heap code image: %w", err)
 			}
-			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 		}
 		keepCodeBuffer = true
-		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, hintSidecar, immutableTables, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, moduleHasSIMD, importedFuncs)
@@ -2016,6 +2023,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
+		states[i].scratch.asm.BitCountState = opts.BitCountFeatures & 0x07
 		states[i].scratch.policy = policy
 		states[i].scratch.classifier = classifier
 		states[i].scratch.moduleTypes = moduleTypes
@@ -2098,6 +2106,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			}
 			ws.relocs = append(ws.relocs, rl...)
 			ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
+			ws.usesBitCount |= ws.scratch.asm.BitCountState >> 4
 			ws.arena = append(ws.arena, fnCode...)
 			flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
 				boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
@@ -2262,8 +2271,10 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	requiresAVX2 := false
 	requiresAVX512 := false
 	requiresBMI2 := false
+	var requiresBitCount uint8
 	for i := range states {
 		requiresBMI2 = requiresBMI2 || states[i].usesBMI2
+		requiresBitCount |= states[i].usesBitCount
 	}
 	for _, definition := range opts.CustomInstructions {
 		if lowering := pluginAMD64Lowering(definition); lowering != nil {
@@ -2271,7 +2282,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 }
 
 func allTablesPreparedIsolated(tables []immutableTableHint) bool {

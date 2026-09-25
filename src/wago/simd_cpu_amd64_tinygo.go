@@ -22,3 +22,11 @@ func architectureSupportsBMI2() bool {
 	}
 	return bmi2CPUFlagsSupported(data)
 }
+
+func architectureAMD64BitCountFeatures() uint8 {
+	data, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return 0
+	}
+	return bitCountCPUFlags(data)
+}
