@@ -865,6 +865,42 @@ jobs:
           WAGO_CORPUS_CORRECTNESS_REPORT_DIR: ${{ github.workspace }}/ci-corpus-correctness
         run: cd bench && go test -count=1 -run '^(TestVerifyApplicationCorpusShardReports|TestVerifyCorpusCorrectnessShardReports)$' ./suite -args '-wago.corpus=all'
 
+  spec-v1:
+    name: WebAssembly 1.0 conformance / ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.profile == 'full'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux amd64
+            runner: ubuntu-24.04
+          - name: Linux arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+            cli/wago-installer/go.mod
+      - name: Install WABT
+        run: sudo apt-get update && sudo apt-get install -y wabt
+      - name: Fetch pinned WebAssembly 1.0 corpus
+        run: git submodule update --init tests/conformance/spec-v1
+      - name: Run WebAssembly 1.0 conformance suite
+        run: just test spec v1
+
   core-v2:
     name: Core v2 conformance / ${{ matrix.name }}
     needs: changes
@@ -1198,7 +1234,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, core-v2, core-v3, fuzz, tinygo, size]
+    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size]
     runs-on: ubuntu-latest
     steps:
       - name: Identify qualification profile
