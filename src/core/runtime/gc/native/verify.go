@@ -307,7 +307,7 @@ func (c *Collector) verifyCardMetadata() error {
 			seenObjectCards[pos] = true
 			card := c.objectCards[pos]
 			if card.handle != h || (c.handles[h].space != spaceOld && c.handles[h].space != spaceLarge) {
-				return errors.New("gc: object card owner=mismatch")
+				return errors.New("gc: object card owner mismatch")
 			}
 			payloadBytes := c.handles[h].size - PayloadOffset
 			if card.end < card.index || card.index >= payloadBytes || card.end >= payloadBytes || card.index%c.cardBytes != 0 {
