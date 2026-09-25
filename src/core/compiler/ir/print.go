@@ -123,7 +123,7 @@ func writeInst(b *strings.Builder, f *Func, in *Inst) {
 	case OpIUnary, OpIBinary, OpICmp, OpITest, OpFUnary, OpFBinary, OpFCmp, OpConvert, OpReinterpret:
 		fmt.Fprintf(b, ".%s", auxName(in.Op, auxKind(in.Aux)))
 	case OpLoad, OpStore:
-		fmt.Fprintf(b, ".%s offset=%d align=%d mem=%d", memName(memKind(in.Aux)), memOffset(in.Aux), memAlign(in.Aux), memIndex(in.Aux))
+		fmt.Fprintf(b, ".%s offset=%d align=%d mem=%d", memName(memKind(in.Aux)), memOffset(in.Aux, in.Aux2), memAlign(in.Aux), memIndex(in.Aux))
 	case OpMemorySize, OpMemoryGrow, OpMemoryFill:
 		fmt.Fprintf(b, " mem=%d", uint32(in.Aux))
 	case OpMemoryInit:
