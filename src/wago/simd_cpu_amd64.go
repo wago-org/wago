@@ -27,3 +27,21 @@ func architectureSupportsBMI2() bool {
 	_, ebx, _, _ := cpuid(7, 0)
 	return ebx&(uint32(1)<<8) != 0
 }
+
+func architectureAMD64BitCountFeatures() uint8 {
+	maxID, _, _, _ := cpuid(0, 0)
+	if maxID < 1 {
+		return 0
+	}
+	_, _, ecx1, _ := cpuid(1, 0)
+	var ebx7 uint32
+	if maxID >= 7 {
+		_, ebx7, _, _ = cpuid(7, 0)
+	}
+	maxExtID, _, _, _ := cpuid(0x80000000, 0)
+	var extECX uint32
+	if maxExtID >= 0x80000001 {
+		_, _, extECX, _ = cpuid(0x80000001, 0)
+	}
+	return amd64BitCountFeatures(ecx1, ebx7, extECX)
+}

@@ -1110,6 +1110,7 @@ type Compiled struct {
 	codeCache          *compiledCodeCache
 	customInstructions map[uint32]railshot.CustomInstruction
 	requiresBMI2       bool
+	requiresBitCount   uint8
 	requiresAVX2       bool
 	requiresAVX512     bool
 	syncHostSlots      uint16

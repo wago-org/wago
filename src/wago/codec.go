@@ -28,6 +28,10 @@ const (
 	compiledRegisterABIDisabled           uint64 = 1 << 58
 	compiledAtomicWaitExecution           uint64 = 1 << 59
 	compiledCPUFeatureBMI2                uint64 = 1 << 60
+	compiledCPUFeatureLZCNT               uint64 = 1 << 52
+	compiledCPUFeatureTZCNT               uint64 = 1 << 53
+	compiledCPUFeaturePOPCNT              uint64 = 1 << 54
+	compiledCPUFeatureBitCount                   = compiledCPUFeatureLZCNT | compiledCPUFeatureTZCNT | compiledCPUFeaturePOPCNT
 	compiledGCExecutionDynamicFuncRefTest uint64 = 1 << 61
 	compiledGCExecutionGenericStruct      uint64 = 1 << 62
 	compiledGCExecutionGenericArray       uint64 = 1 << 63
@@ -366,6 +370,7 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	if c.requiresBMI2 {
 		required |= compiledCPUFeatureBMI2
 	}
+	required |= uint64(c.requiresBitCount) << 52
 	if c.needsFuncRefContextHeader {
 		required |= compiledFuncRefContextHeader
 	}
@@ -986,10 +991,11 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	gcExecution := required & compiledGCExecutionMask
 	c.requiresBMI2 = required&compiledCPUFeatureBMI2 != 0
+	c.requiresBitCount = uint8((required & compiledCPUFeatureBitCount) >> 52)
 	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2 | compiledCPUFeatureBitCount))
 	genericNativeGC := gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0
 	if genericNativeGC || c.hasCollectorReferenceCallBoundary() {
 		label := "native GC call-boundary"
