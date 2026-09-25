@@ -744,6 +744,8 @@ func SupportedFeatures() CoreFeatures {
 	return supported
 }
 
+var errNativeCPUFeatures = errors.New("wago: native code requires SIMD CPU features")
+
 // GuardPageSupported reports whether this binary was built with guard-page
 // (signals-based) bounds checks — i.e. with -tags wago_guardpage. Use it to
 // pick a bounds-check mode at runtime without a hard failure.
@@ -849,7 +851,7 @@ func (c *RuntimeConfig) Validate() error {
 		return fmt.Errorf("wago: bmi2-rorx optimization requires BMI2 CPU support")
 	}
 	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
-		return fmt.Errorf("wago: native code requires SIMD CPU features")
+		return errNativeCPUFeatures
 	}
 	supported := platformCoreFeatures()
 	if unsupported := c.features &^ supported; unsupported != 0 {

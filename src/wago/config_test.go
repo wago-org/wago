@@ -34,6 +34,15 @@ func scalarFloatAddModule() []byte {
 	)
 }
 
+func scalarBulkCopyModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, []byte{0x01, 0x00, 0x01}),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00, 0x0b}))),
+	)
+}
+
 // simdModule exports f() and uses v128.const/drop, enough to exercise 0xfd
 // feature gating without requiring the public API to marshal a v128 result.
 func simdModule() []byte {
@@ -886,13 +895,6 @@ func TestConfigRejectsSIMDWhenHostUnsupported(t *testing.T) {
 	old := simdHostFeaturesSupported
 	simdHostFeaturesSupported = func() bool { return false }
 	defer func() { simdHostFeaturesSupported = old }()
-	_, scalarErr := Compile(nil, signExtModule())
-	if runtime.GOARCH == "amd64" && (scalarErr == nil || !strings.Contains(scalarErr.Error(), "CPU features")) {
-		t.Fatalf("non-SIMD module should require AMD64 backend CPU features, got %v", scalarErr)
-	}
-	if runtime.GOARCH != "amd64" && scalarErr != nil {
-		t.Fatalf("non-SIMD module should compile on this backend: %v", scalarErr)
-	}
 	_, err := Compile(nil, simdModule())
 	want := "simd disabled"
 	if runtime.GOARCH == "amd64" {
@@ -914,38 +916,48 @@ func TestScalarAMD64RequiresBackendCPU(t *testing.T) {
 		return
 	}
 	old := simdHostFeaturesSupported
-	simdHostFeaturesSupported = func() bool { return false }
 	defer func() { simdHostFeaturesSupported = old }()
+	for _, tc := range []struct {
+		name   string
+		module []byte
+	}{
+		{"scalar float", scalarFloatAddModule()},
+		{"bulk memory", scalarBulkCopyModule()},
+		{"integer", signExtModule()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)
+			simdHostFeaturesSupported = func() bool { return true }
+			compiled, err := Compile(cfg, tc.module)
+			if err != nil {
+				t.Fatalf("compile on compatible host: %v", err)
+			}
+			defer compiled.Close()
+			if compiled.requiredFeatures.IsEnabled(CoreFeatureSIMD) {
+				t.Fatal("scalar module unexpectedly requires Wasm SIMD")
+			}
+			blob, err := compiled.MarshalBinary()
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			var compatible Compiled
+			if err := compatible.UnmarshalBinary(blob); err != nil {
+				t.Fatalf("load on compatible host: %v", err)
+			}
+			compatible.Close()
 
-	_, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV1), scalarFloatAddModule())
-	if err == nil || !strings.Contains(err.Error(), "CPU features") {
-		t.Fatalf("scalar float module should require backend CPU features, got %v", err)
-	}
-}
-
-func TestScalarAMD64ArtifactRequiresBackendCPU(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
-		return
-	}
-	t.Setenv("WAGO_BOUNDS", "explicit")
-	old := simdHostFeaturesSupported
-	simdHostFeaturesSupported = func() bool { return true }
-	defer func() { simdHostFeaturesSupported = old }()
-
-	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV1), scalarFloatAddModule())
-	if err != nil {
-		t.Fatalf("compile scalar float module: %v", err)
-	}
-	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal scalar float module: %v", err)
-	}
-	simdHostFeaturesSupported = func() bool { return false }
-
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "CPU features") {
-		t.Fatalf("scalar float artifact should require backend CPU features, got %v", err)
+			simdHostFeaturesSupported = func() bool { return false }
+			if _, err := Compile(cfg, tc.module); !errors.Is(err, errNativeCPUFeatures) {
+				t.Fatalf("compile on incompatible host: %v", err)
+			}
+			var incompatible Compiled
+			if err := incompatible.UnmarshalBinary(blob); !errors.Is(err, errNativeCPUFeatures) {
+				t.Fatalf("load on incompatible host: %v", err)
+			}
+			if _, err := incompatible.ReadFrom(bytes.NewReader(blob)); !errors.Is(err, errNativeCPUFeatures) {
+				t.Fatalf("stream load on incompatible host: %v", err)
+			}
+		})
 	}
 }
 

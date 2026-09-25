@@ -4256,7 +4256,7 @@ func finishDecodedCompiled(decoded *Compiled) error {
 		return err
 	}
 	if (goruntime.GOARCH == "amd64" || decoded.requiredFeatures.IsEnabled(CoreFeatureSIMD)) && !hostSupportsSIMD() {
-		return fmt.Errorf("wago: native code requires SIMD CPU features")
+		return errNativeCPUFeatures
 	}
 	if decoded.requiresBitCount&^bitCountHostFeaturesSupported() != 0 {
 		return fmt.Errorf("wago: compiled module requires bit-count CPU features unavailable on this host")

@@ -6,11 +6,11 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
-// simdHostFeaturesSupported reports whether generated SIMD code can execute on
-// this host. On amd64, the railshot SIMD backend emits VEX.128 instructions and
-// uses SSSE3, SSE4.1, and SSE4.2 operations (for example pshufb, pmulld,
-// roundps/pd, and pcmpgtq), so AVX OS support plus SSSE3/SSE4.1/SSE4.2 are
-// required. Linux exposes AVX in
+// simdHostFeaturesSupported checks the amd64 backend baseline for all modules,
+// including scalar code, and the SIMD capability on other architectures. The
+// amd64 backend emits VEX.128 instructions and uses SSSE3, SSE4.1, and SSE4.2
+// operations, so AVX OS support plus SSSE3/SSE4.1/SSE4.2 are required.
+// Linux exposes AVX in
 // /proc/cpuinfo only when the kernel has enabled the XSAVE state needed to run
 // AVX instructions. On arm64, Advanced SIMD/NEON is part of the baseline AArch64
 // profile used by Go.
