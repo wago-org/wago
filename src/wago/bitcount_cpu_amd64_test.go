@@ -72,7 +72,7 @@ func TestAMD64BitCountPaths(t *testing.T) {
 				name = tc.name + "/native"
 			}
 			t.Run(name, func(t *testing.T) {
-				if native && actual()&tc.feature == 0 {
+				if native && selectedAMD64CompileFeatures(shared.AMD64BitCountRequirements(actual())).BitCountCapabilities()&tc.feature == 0 {
 					t.Skip("host cannot execute native instruction")
 				}
 				mask := uint8(0)
@@ -85,8 +85,8 @@ func TestAMD64BitCountPaths(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer compiled.Close()
-				if compiled.requiresBitCount != mask {
-					t.Fatalf("requirements = %#x, want %#x", compiled.requiresBitCount, mask)
+				if compiled.requiredAMD64Features.BitCountCapabilities() != mask {
+					t.Fatalf("requirements = %#x, want %#x", compiled.requiredAMD64Features.BitCountCapabilities(), mask)
 				}
 				if got := hasBitCountOpcode(compiled.code, tc.nativeOpcode); got != native {
 					t.Fatalf("native opcode presence = %v, want %v", got, native)
@@ -125,13 +125,14 @@ func TestAMD64BitCountArtifactRequirements(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, mask := range []uint8{0, tc.feature} {
+				mask = selectedAMD64CompileFeatures(shared.AMD64BitCountRequirements(mask)).BitCountCapabilities()
 				bitCountHostFeaturesSupported = func() uint8 { return mask }
 				compiled, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).Compile(bitCountModule(tc.op, tc.width))
 				if err != nil {
 					t.Fatal(err)
 				}
-				if compiled.requiresBitCount != mask {
-					t.Fatalf("compiled requirements = %#x, want %#x", compiled.requiresBitCount, mask)
+				if compiled.requiredAMD64Features.BitCountCapabilities() != mask {
+					t.Fatalf("compiled requirements = %#x, want %#x", compiled.requiredAMD64Features.BitCountCapabilities(), mask)
 				}
 				blob, err := compiled.MarshalBinary()
 				compiled.Close()
@@ -149,7 +150,7 @@ func TestAMD64BitCountArtifactRequirements(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if loaded.requiresBitCount != 0 {
+					if loaded.requiredAMD64Features.BitCountCapabilities() != 0 {
 						t.Fatal("fallback artifact acquired a CPU requirement")
 					}
 					loaded.Close()
@@ -159,8 +160,8 @@ func TestAMD64BitCountArtifactRequirements(t *testing.T) {
 				if err := roundtrip.UnmarshalBinary(blob); err != nil {
 					t.Fatal(err)
 				}
-				if roundtrip.requiresBitCount != mask {
-					t.Fatalf("roundtrip requirements = %#x", roundtrip.requiresBitCount)
+				if roundtrip.requiredAMD64Features.BitCountCapabilities() != mask {
+					t.Fatalf("roundtrip requirements = %#x", roundtrip.requiredAMD64Features.BitCountCapabilities())
 				}
 				roundtrip.Close()
 			}
@@ -180,7 +181,7 @@ func TestAMD64BitCountArtifactRequirements(t *testing.T) {
 func TestAMD64BitCountParallelArtifactUnion(t *testing.T) {
 	actual := bitCountHostFeaturesSupported
 	defer func() { bitCountHostFeaturesSupported = actual }()
-	const all = shared.BitCountLZCNT | shared.BitCountTZCNT | shared.BitCountPOPCNT
+	all := selectedAMD64CompileFeatures(shared.AMD64BitCountRequirements(shared.BitCountLZCNT | shared.BitCountTZCNT | shared.BitCountPOPCNT)).BitCountCapabilities()
 	bitCountHostFeaturesSupported = func() uint8 { return all }
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
@@ -197,8 +198,8 @@ func TestAMD64BitCountParallelArtifactUnion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	if compiled.requiresBitCount != all {
-		t.Fatalf("parallel requirements = %#x, want %#x", compiled.requiresBitCount, all)
+	if compiled.requiredAMD64Features.BitCountCapabilities() != all {
+		t.Fatalf("parallel requirements = %#x, want %#x", compiled.requiredAMD64Features.BitCountCapabilities(), all)
 	}
 	blob, err := compiled.MarshalBinary()
 	if err != nil {
@@ -206,7 +207,13 @@ func TestAMD64BitCountParallelArtifactUnion(t *testing.T) {
 	}
 	bitCountHostFeaturesSupported = func() uint8 { return all &^ shared.BitCountTZCNT }
 	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "bit-count") {
+	err = loaded.UnmarshalBinary(blob)
+	if all == 0 {
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded.Close()
+	} else if err == nil || !strings.Contains(err.Error(), "bit-count") {
 		t.Fatalf("partially capable host loaded artifact: %v", err)
 	}
 }
@@ -268,7 +275,7 @@ func BenchmarkAMD64BitCountInvoke(b *testing.B) {
 			b.Run(name, func(b *testing.B) {
 				actual := bitCountHostFeaturesSupported
 				defer func() { bitCountHostFeaturesSupported = actual }()
-				if native && actual()&tc.feature == 0 {
+				if native && selectedAMD64CompileFeatures(shared.AMD64BitCountRequirements(actual())).BitCountCapabilities()&tc.feature == 0 {
 					b.Skip("host cannot execute native instruction")
 				}
 				mask := uint8(0)

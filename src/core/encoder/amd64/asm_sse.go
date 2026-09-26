@@ -34,6 +34,27 @@ func (a *Asm) sseRRI(prefix byte, op []byte, reg, rm Reg, w bool, imm byte) {
 // dedicated helper (e.g. orps/andps/xorps used by float min/max/neg/copysign).
 func (a *Asm) SseRR(prefix, op byte, reg, rm Reg, w bool) { a.sseRR(prefix, op, reg, rm, w) }
 
+// SseMapRR encodes a legacy SSE register instruction. opcodeMap is zero for
+// the 0F map, or 0x38/0x3A for the corresponding three-byte opcode map.
+func (a *Asm) SseMapRR(prefix, opcodeMap, op byte, reg, rm Reg) {
+	if prefix != 0 {
+		a.emit(prefix)
+	}
+	if reg >= 8 || rm >= 8 {
+		a.emit(a.rex(false, reg >= 8, false, rm >= 8))
+	}
+	a.emit(0x0F)
+	if opcodeMap != 0 {
+		a.emit(opcodeMap)
+	}
+	a.emit(op, 0xC0|byte(reg&7)<<3|byte(rm&7))
+}
+
+func (a *Asm) SseMapRRI(prefix, opcodeMap, op byte, reg, rm Reg, imm byte) {
+	a.SseMapRR(prefix, opcodeMap, op, reg, rm)
+	a.emit(imm)
+}
+
 func (a *Asm) FAdd(dst, src Reg, f64 bool)  { a.sseRR(sdPrefix(f64), 0x58, dst, src, false) }
 func (a *Asm) FSub(dst, src Reg, f64 bool)  { a.sseRR(sdPrefix(f64), 0x5C, dst, src, false) }
 func (a *Asm) FMul(dst, src Reg, f64 bool)  { a.sseRR(sdPrefix(f64), 0x59, dst, src, false) }
@@ -719,4 +740,19 @@ func (a *Asm) SseIdx(prefix, op byte, xmm, base, index Reg, disp int32) {
 	}
 	a.emit(0x0F, op)
 	a.sibAddr(xmm, base, index, disp)
+}
+
+// Legacy SSE2 unaligned vector moves. Unlike the V-prefixed forms these do
+// not require AVX or OS YMM state.
+func (a *Asm) MovdquLoadDisp(dst, base Reg, disp int32) {
+	a.fmemDisp(0x6f, dst, base, disp, false)
+}
+func (a *Asm) MovdquStoreDisp(base Reg, disp int32, src Reg) {
+	a.fmemDisp(0x7f, src, base, disp, false)
+}
+func (a *Asm) MovdquLoadIdx(dst, base, index Reg, disp int32) {
+	a.SseIdx(0xf3, 0x6f, dst, base, index, disp)
+}
+func (a *Asm) MovdquStoreIdx(base, index, src Reg, disp int32) {
+	a.SseIdx(0xf3, 0x7f, src, base, index, disp)
 }

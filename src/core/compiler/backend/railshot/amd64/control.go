@@ -899,7 +899,7 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 		}
 		if typ == mtV128 {
 			x := f.materializeV128(root)
-			f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), x)
+			f.mov128StoreDisp(RSP, f.spillOff(slot), x)
 			f.releaseF(x)
 			slot += 2
 			continue
@@ -1002,7 +1002,7 @@ func (f *fn) flushWideStack(roots []*elem, gcRoots []bool, stageRegisterPressure
 		switch {
 		case typ == mtV128:
 			x := f.materializeV128(root)
-			f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), x)
+			f.mov128StoreDisp(RSP, f.spillOff(slot), x)
 			f.releaseF(x)
 		case typ.isFloat():
 			x := f.materializeF(root)

@@ -28,3 +28,5 @@ func customConsumerCodegen() codegen.Lowering {
 		return nil
 	}}
 }
+
+func customCodegenAvailable() bool { return true }

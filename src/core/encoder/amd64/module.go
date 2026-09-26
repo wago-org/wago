@@ -8,6 +8,9 @@ import "github.com/wago-org/wago/src/core/codeimage"
 // (the Asm type); the wasm→native code generator lives in backend/railshot, which
 // drives this encoder and returns a *CompiledModule.
 type CompiledModule struct {
+	// RequiredAMD64Features records optional instructions emitted by the AMD64 backend.
+	RequiredAMD64Features uint32
+
 	Code  []byte // all local functions concatenated, 16-byte aligned
 	Entry []int  // Entry[localFuncIdx] = byte offset of that function in Code
 

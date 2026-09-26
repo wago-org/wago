@@ -3,6 +3,7 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -1107,13 +1108,10 @@ type Compiled struct {
 	// first-use validation.
 	validateMemo *validateMemo
 
-	codeCache          *compiledCodeCache
-	customInstructions map[uint32]railshot.CustomInstruction
-	requiresBMI2       bool
-	requiresBitCount   uint8
-	requiresAVX2       bool
-	requiresAVX512     bool
-	syncHostSlots      uint16
+	codeCache             *compiledCodeCache
+	customInstructions    map[uint32]railshot.CustomInstruction
+	requiredAMD64Features shared.AMD64Features
+	syncHostSlots         uint16
 	// independentInstances allows instances without cross-instance Wasm imports
 	// to use instance-local native execution leases. It is intentionally not
 	// serialized because it is runtime policy rather than a module property.
@@ -1149,13 +1147,19 @@ func internalEntryOffset(off int) int {
 }
 
 // RequiresBMI2 reports whether compilation selected BMI2 instructions.
-func (c *Compiled) RequiresBMI2() bool { return c != nil && c.requiresBMI2 }
+func (c *Compiled) RequiresBMI2() bool {
+	return c != nil && c.requiredAMD64Features.Has(shared.AMD64BMI2)
+}
 
 // RequiresAVX2 reports whether compilation selected an AVX2 plugin lowering.
-func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
+func (c *Compiled) RequiresAVX2() bool {
+	return c != nil && c.requiredAMD64Features.Has(shared.AMD64AVX2)
+}
 
 // RequiresAVX512 reports whether compilation selected an AVX-512 plugin lowering.
-func (c *Compiled) RequiresAVX512() bool { return c != nil && c.requiresAVX512 }
+func (c *Compiled) RequiresAVX512() bool {
+	return c != nil && c.requiredAMD64Features.Has(shared.AMD64AVX512)
+}
 
 type validateMemo struct {
 	execution     *Compiled // private deeply owned execution metadata

@@ -3,6 +3,7 @@ package wago
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -191,10 +192,10 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 2 {
-		t.Fatalf("compiled codec version = %d, want native-resource-policy version 2", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 3 {
+		t.Fatalf("compiled codec version = %d, want native-resource-policy version 3", blob[4])
 	}
-	for _, version := range []byte{0, 1, 19, 35} {
+	for _, version := range []byte{0, 1, 2, 19, 35} {
 		unsupportedVersion := append([]byte(nil), blob...)
 		unsupportedVersion[4] = version
 		var unsupported Compiled
@@ -453,7 +454,7 @@ func TestUnmarshalRejectsSIMDBlobWhenHostUnsupported(t *testing.T) {
 	defer func() { simdHostFeaturesSupported = old }()
 
 	var dec Compiled
-	if err := dec.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires SIMD") {
+	if err := dec.UnmarshalBinary(blob); !errors.Is(err, errNativeCPUFeatures) {
 		t.Fatalf("want SIMD CPU feature rejection, got %v", err)
 	}
 }
@@ -476,7 +477,7 @@ func TestUnmarshalRejectsV128BlockTypeBlobWhenHostUnsupported(t *testing.T) {
 	defer func() { simdHostFeaturesSupported = old }()
 
 	var dec Compiled
-	if err := dec.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires SIMD") {
+	if err := dec.UnmarshalBinary(blob); !errors.Is(err, errNativeCPUFeatures) {
 		t.Fatalf("want SIMD CPU feature rejection for v128 block type, got %v", err)
 	}
 }

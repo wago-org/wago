@@ -730,6 +730,8 @@ func (f *fn) recordJumpTableFragment(start, end int, kind jumpTableFragmentKind)
 }
 
 type scratch struct {
+	amd64Features         shared.AMD64Features
+	usedAMD64Features     shared.AMD64Features
 	stack                 *stack     // the valent-block operand stack
 	asm                   *amd64.Asm // the x86-64 encoder byte buffer
 	directPrepared        bool
@@ -975,6 +977,7 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
 }
 
 func (sc *scratch) reset() {
+	sc.usedAMD64Features = 0
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.UsesBMI2 = false
@@ -1052,13 +1055,14 @@ func (sc *scratch) finishStackWorker() {
 // arena is append-only until all workers join. Results retain offsets into it,
 // never slices, because a later append may reallocate the arena.
 type workerState struct {
-	scratch      *scratch
-	scratchStats shared.WorkerScratchStats
-	arena        []byte
-	relocs       []callReloc
-	literals     []uint64
-	usesBMI2     bool
-	usesBitCount uint8
+	scratch           *scratch
+	scratchStats      shared.WorkerScratchStats
+	arena             []byte
+	relocs            []callReloc
+	literals          []uint64
+	usesBMI2          bool
+	usesBitCount      uint8
+	usedAMD64Features shared.AMD64Features
 }
 
 // funcResult is one independently compiled local function. worker/start/end
@@ -1446,6 +1450,12 @@ type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
 type CompileOptions struct {
+	// AMD64Features selects optional instructions at compile time. An explicit
+	// zero mask selects SSE2. AMD64FeaturesSet preserves the historical modern
+	// selection for direct backend callers that omit the option; the public
+	// runtime always supplies detected capabilities (or the baseline build tier).
+	AMD64Features    shared.AMD64Features
+	AMD64FeaturesSet bool
 	// BitCountFeatures selects optional scalar instructions; zero emits baseline code.
 	BitCountFeatures uint8
 	// Optimizations is the complete selection for this compilation. nil uses the
@@ -1612,6 +1622,41 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 }
 
 func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+	if !opts.AMD64FeaturesSet {
+		opts.AMD64Features = shared.AMD64ModernBaseline | shared.AMD64BMI2
+	}
+	if opts.AMD64Features&^shared.AMD64KnownFeatures != 0 {
+		return nil, fmt.Errorf("amd64: unknown CPU features")
+	}
+	if opts.AMD64FeaturesSet {
+		for index, definition := range opts.CustomInstructions {
+			if lowering := pluginAMD64Lowering(definition); lowering != nil {
+				required, err := pluginAMD64Requirements(lowering.Features)
+				if err != nil {
+					return nil, fmt.Errorf("amd64: plugin import %d: %w", index, err)
+				}
+				if !opts.AMD64Features.Has(required) {
+					return nil, fmt.Errorf("amd64: plugin import %d requires unavailable CPU features %#x", index, required&^opts.AMD64Features)
+				}
+			}
+		}
+	}
+	// Bit-count selection already has fallback coverage; do not allow the old
+	// selection field to override an explicitly restricted capability profile.
+	if opts.AMD64FeaturesSet {
+		var allowed uint8
+		if opts.AMD64Features.Has(shared.AMD64BMI1) {
+			allowed |= shared.BitCountTZCNT
+		}
+		if opts.AMD64Features.Has(shared.AMD64LZCNT) {
+			allowed |= shared.BitCountLZCNT
+		}
+		if opts.AMD64Features.Has(shared.AMD64POPCNT) {
+			allowed |= shared.BitCountPOPCNT
+		}
+		opts.BitCountFeatures &= allowed
+	}
+
 	if opts.SyncHostSlots == 0 {
 		opts.SyncHostSlots = coreruntime.MaxHostArity
 	}
@@ -1657,6 +1702,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		relocCap += int(allHints[i].callRelocSiteCount())
 		moduleHasSIMD = moduleHasSIMD || allHints[i].flags.has(hintHasSIMD)
 	}
+
 	if relocCap < minPreallocatedCallRelocs {
 		relocCap = 0
 	}
@@ -1741,6 +1787,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	requiresAVX512 := false
 	requiresBMI2 := false
 	var requiresBitCount uint8
+	var usedAMD64Features shared.AMD64Features
 	for _, definition := range opts.CustomInstructions {
 		if lowering := pluginAMD64Lowering(definition); lowering != nil {
 			if lowering.Features&plugincodegen.FeatureAVX2 != 0 {
@@ -1773,6 +1820,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts, policy)
 		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
+		sc.amd64Features = opts.AMD64Features
 		sc.asm.BitCountState = opts.BitCountFeatures & 0x07
 		sc.policy = policy
 		sc.classifier = classifier
@@ -1862,6 +1910,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			requiresBMI2 = requiresBMI2 || sc.asm.UsesBMI2
 			requiresBitCount |= sc.asm.BitCountState >> 4
+			usedAMD64Features |= sc.usedAMD64Features
 			internalEntry[i] = len(code) + internalOff
 			if adapterTails != nil && sc.fnState.adapterReturnOff != 0 {
 				if info := sc.fnState.adapterTailInfo(); info.returnOff != 0 {
@@ -1968,10 +2017,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if err != nil {
 				return nil, fmt.Errorf("amd64: transfer heap code image: %w", err)
 			}
-			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount, requiresAVX2, requiresAVX512), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2 || usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: requiresAVX512 || usedAMD64Features.Has(shared.AMD64AVX512)}, nil
 		}
 		keepCodeBuffer = true
-		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount, requiresAVX2, requiresAVX512), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2 || usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: requiresAVX512 || usedAMD64Features.Has(shared.AMD64AVX512)}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, hintSidecar, immutableTables, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, moduleHasSIMD, importedFuncs)
@@ -2023,6 +2072,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
+		states[i].scratch.amd64Features = opts.AMD64Features
 		states[i].scratch.asm.BitCountState = opts.BitCountFeatures & 0x07
 		states[i].scratch.policy = policy
 		states[i].scratch.classifier = classifier
@@ -2107,6 +2157,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			ws.relocs = append(ws.relocs, rl...)
 			ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
 			ws.usesBitCount |= ws.scratch.asm.BitCountState >> 4
+			ws.usedAMD64Features |= ws.scratch.usedAMD64Features
 			ws.arena = append(ws.arena, fnCode...)
 			flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
 				boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
@@ -2272,9 +2323,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	requiresAVX512 := false
 	requiresBMI2 := false
 	var requiresBitCount uint8
+	var usedAMD64Features shared.AMD64Features
 	for i := range states {
 		requiresBMI2 = requiresBMI2 || states[i].usesBMI2
 		requiresBitCount |= states[i].usesBitCount
+		usedAMD64Features |= states[i].usedAMD64Features
 	}
 	for _, definition := range opts.CustomInstructions {
 		if lowering := pluginAMD64Lowering(definition); lowering != nil {
@@ -2282,7 +2335,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount, requiresAVX2, requiresAVX512), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2 || usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: requiresAVX512 || usedAMD64Features.Has(shared.AMD64AVX512)}, nil
 }
 
 func allTablesPreparedIsolated(tables []immutableTableHint) bool {
@@ -3231,6 +3284,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
 	bmi2Rorx := policy.EnabledOption(optBMI2Rorx)
+	if optsFeatures := sc.amd64Features; !optsFeatures.Has(shared.AMD64BMI2) {
+		bmi2Rorx = false
+	}
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), moduleHasSIMD: moduleHasSIMD, compactLoopAlign32: policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64, bmi2Rorx: bmi2Rorx, gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
 	if f.nParams >= 64 {
 		f.localWritten = ^uint64(0)
@@ -4132,10 +4188,10 @@ func (f *fn) prologue(localScores []uint32) {
 	for i, pt := range f.ft.Params {
 		if f.localType[i] == mtV128 {
 			if pr, _, ok := f.pinReg(i); ok {
-				a.VMovdquLoadDisp(pr, RDI, paramOff) // pinned v128 param → its XMM register
+				f.mov128LoadDisp(pr, RDI, paramOff) // pinned v128 param → its XMM register
 			} else {
-				a.VMovdquLoadDisp(0, RDI, paramOff)
-				a.VMovdquStoreDisp(RSP, f.localAddr(i), 0)
+				f.mov128LoadDisp(0, RDI, paramOff)
+				f.mov128StoreDisp(RSP, f.localAddr(i), 0)
 			}
 		}
 		paramOff += abiValSize(pt)
@@ -4533,8 +4589,8 @@ func (f *fn) epilogue() {
 	out := int32(0)
 	for _, rt := range f.ft.Results {
 		if mtOf(rt) == mtV128 {
-			a.VMovdquLoadDisp(0, RSP, f.spillOff(resSlot))
-			a.VMovdquStoreDisp(RDI, out, 0)
+			f.mov128LoadDisp(0, RSP, f.spillOff(resSlot))
+			f.mov128StoreDisp(RDI, out, 0)
 			resSlot += 2
 		} else {
 			a.Load64(RAX, RSP, f.spillOff(resSlot))
