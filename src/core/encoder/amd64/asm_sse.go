@@ -10,24 +10,12 @@ func sdPrefix(f64 bool) byte {
 }
 
 func (a *Asm) sseRR(prefix, op byte, reg, rm Reg, w bool) {
-	if prefix != 0 {
-		a.emit(prefix)
-	}
-	if w || reg >= 8 || rm >= 8 {
-		a.emit(a.rex(w, reg >= 8, false, rm >= 8))
-	}
-	a.emit(0x0F, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
+	a.sseMapRR(sseFormat(prefix, 0, w), op, reg, rm)
 }
 
-func (a *Asm) sseRRI(prefix byte, op []byte, reg, rm Reg, w bool, imm byte) {
-	if prefix != 0 {
-		a.emit(prefix)
-	}
-	if w || reg >= 8 || rm >= 8 {
-		a.emit(a.rex(w, reg >= 8, false, rm >= 8))
-	}
-	a.emit(op...)
-	a.emit(0xC0|((byte(reg)&7)<<3)|byte(rm&7), imm)
+func (a *Asm) sseRRI(format uint32, op byte, reg, rm Reg, imm byte) {
+	a.sseMapRR(format, op, reg, rm)
+	a.emit(imm)
 }
 
 // SseRR exposes the raw two-operand SSE reg,reg encoder for op bytes without a
@@ -37,22 +25,40 @@ func (a *Asm) SseRR(prefix, op byte, reg, rm Reg, w bool) { a.sseRR(prefix, op, 
 // SseMapRR encodes a legacy SSE register instruction. opcodeMap is zero for
 // the 0F map, or 0x38/0x3A for the corresponding three-byte opcode map.
 func (a *Asm) SseMapRR(prefix, opcodeMap, op byte, reg, rm Reg) {
+	a.sseMapRR(sseFormat(prefix, opcodeMap, false), op, reg, rm)
+}
+
+// sseFormat packs the mandatory prefix, opcode map and REX.W. Keeping
+// the shared register encoders within six parameters avoids stack arguments
+// in TinyGo, including the immediate form.
+func sseFormat(prefix, opcodeMap byte, w bool) uint32 {
+	format := uint32(prefix) | uint32(opcodeMap)<<8
+	if w {
+		format |= 1 << 16
+	}
+	return format
+}
+
+//go:noinline
+func (a *Asm) sseMapRR(format uint32, op byte, reg, rm Reg) {
+	prefix, opcodeMap, w := byte(format), byte(format>>8), format&(1<<16) != 0
 	if prefix != 0 {
 		a.emit(prefix)
 	}
-	if reg >= 8 || rm >= 8 {
-		a.emit(a.rex(false, reg >= 8, false, rm >= 8))
+	if w || reg >= 8 || rm >= 8 {
+		a.emit(a.rex(w, reg >= 8, false, rm >= 8))
 	}
-	a.emit(0x0F)
-	if opcodeMap != 0 {
-		a.emit(opcodeMap)
+	code := [4]byte{0x0F, opcodeMap, op, 0xC0 | byte(reg&7)<<3 | byte(rm&7)}
+	start := 0
+	if opcodeMap == 0 {
+		start = 1
+		code[1] = 0x0F
 	}
-	a.emit(op, 0xC0|byte(reg&7)<<3|byte(rm&7))
+	a.emit(code[start:]...)
 }
 
 func (a *Asm) SseMapRRI(prefix, opcodeMap, op byte, reg, rm Reg, imm byte) {
-	a.SseMapRR(prefix, opcodeMap, op, reg, rm)
-	a.emit(imm)
+	a.sseRRI(sseFormat(prefix, opcodeMap, false), op, reg, rm, imm)
 }
 
 func (a *Asm) FAdd(dst, src Reg, f64 bool)  { a.sseRR(sdPrefix(f64), 0x58, dst, src, false) }
@@ -69,10 +75,9 @@ func (a *Asm) FMov(dst, src Reg, f64 bool) { a.sseRR(sdPrefix(f64), 0x10, dst, s
 //
 // The non-destructive `dst = op(src1, src2)` encoding lets a float op read both
 // operands directly and write a distinct destination, avoiding the movsd-to-scratch
-// that legacy 2-operand SSE needs to preserve an operand. wago already emits
-// LZCNT/TZCNT (BMI1/ABM, ~2013), which is newer than AVX (2011), so this raises no
-// effective ISA baseline. Always use the 3-byte VEX form (0xC4) so instruction
-// layout stays stable across register choices.
+// that legacy 2-operand SSE needs to preserve an operand. Callers select these
+// forms only when AVX and its OS register state are available. Always use the
+// 3-byte VEX form (0xC4) so instruction layout stays stable across register choices.
 
 // vexPP is the VEX pp field for scalar F2 (f64) / F3 (f32) ops.
 func vexPP(f64 bool) byte {
@@ -103,17 +108,32 @@ func (a *Asm) vex3RRRMap(opcodeMap, pp, op byte, dst, src1, src2 Reg) {
 }
 
 func (a *Asm) vex3RRRMapL(opcodeMap, pp, op byte, dst, src1, src2 Reg, l byte) {
-	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B
+	a.vexRR(vexFormat(opcodeMap, pp, l, false), op, dst, src1, src2)
+}
+
+// vexFormat holds the fixed bits of VEX bytes 1 and 2. Register fields are
+// filled by the shared encoder. The compact value keeps calls in registers.
+func vexFormat(opcodeMap, pp, l byte, w bool) uint16 {
+	byte2 := pp&3 | (l&1)<<2
+	if w {
+		byte2 |= 0x80
+	}
+	return uint16(opcodeMap&0x1f) | uint16(byte2)<<8
+}
+
+//go:noinline
+func (a *Asm) vexRR(format uint16, op byte, dst, src1, src2 Reg) {
+	rBit, bBit := byte(1), byte(1)
 	if dst >= 8 {
 		rBit = 0
 	}
 	if src2 >= 8 {
 		bBit = 0
 	}
-	vvvv := (^byte(src1)) & 0x0F
-	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03)                // W=0
-	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
-	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(dst)&7)<<3)|byte(src2&7))
+	vvvv := (^byte(src1)) & 0x0f
+	byte2 := vvvv<<3 | byte(format>>8)
+	byte1 := rBit<<7 | 1<<6 | bBit<<5 | byte(format)
+	a.emit(0xc4, byte1, byte2, op, 0xc0|byte(dst&7)<<3|byte(src2&7))
 }
 
 func (a *Asm) vex3RRIMap(opcodeMap, pp, op byte, dst, src1, src2 Reg, imm byte) {
@@ -140,19 +160,8 @@ func (a *Asm) vex3RRReservedL(opcodeMap, pp, op byte, reg, rm Reg, l byte) {
 // bit. Most SIMD instructions use W=0; BMI2's scalar RORX uses W to select the
 // 32- or 64-bit operand width.
 func (a *Asm) vex3RRReservedWL(opcodeMap, pp, op byte, reg, rm Reg, w bool, l byte) {
-	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B
-	if reg >= 8 {
-		rBit = 0
-	}
-	if rm >= 8 {
-		bBit = 0
-	}
-	byte2 := byte(0x78) | ((l & 1) << 2) | (pp & 0x03) // vvvv=1111
-	if w {
-		byte2 |= 0x80
-	}
-	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
-	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
+	// A logical source register of zero encodes the reserved vvvv=1111 field.
+	a.vexRR(vexFormat(opcodeMap, pp, l, w), op, reg, 0, rm)
 }
 
 // Rorx emits BMI2 RORX dst,src,imm. Unlike legacy ROR it is non-destructive,
@@ -278,35 +287,35 @@ func (a *Asm) VSseRRR(pp, op byte, dst, s1, s2 Reg) { a.vex3RRR(pp, op, dst, s1,
 // backend. These legacy SSE/SSE4.1 encodings are within wago's linux/amd64 SIMD
 // baseline and avoid AVX2 broadcast requirements.
 func (a *Asm) Pshufd(dst, src Reg, imm byte) {
-	a.sseRRI(0x66, []byte{0x0F, 0x70}, dst, src, false, imm)
+	a.sseRRI(sseFormat(0x66, 0, false), 0x70, dst, src, imm)
 }
 func (a *Asm) Pshuflw(dst, src Reg, imm byte) {
-	a.sseRRI(0xF2, []byte{0x0F, 0x70}, dst, src, false, imm)
+	a.sseRRI(sseFormat(0xF2, 0, false), 0x70, dst, src, imm)
 }
 func (a *Asm) Punpcklqdq(dst, src Reg) { a.sseRR(0x66, 0x6C, dst, src, false) }
 func (a *Asm) Pinsrb(dst, src Reg, imm byte) {
-	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x20}, dst, src, false, imm)
+	a.sseRRI(sseFormat(0x66, 0x3a, false), 0x20, dst, src, imm)
 }
 func (a *Asm) Pinsrw(dst, src Reg, imm byte) {
-	a.sseRRI(0x66, []byte{0x0F, 0xC4}, dst, src, false, imm)
+	a.sseRRI(sseFormat(0x66, 0, false), 0xC4, dst, src, imm)
 }
 func (a *Asm) Pinsrd(dst, src Reg, imm byte) {
-	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x22}, dst, src, false, imm)
+	a.sseRRI(sseFormat(0x66, 0x3a, false), 0x22, dst, src, imm)
 }
 func (a *Asm) Pinsrq(dst, src Reg, imm byte) {
-	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x22}, dst, src, true, imm)
+	a.sseRRI(sseFormat(0x66, 0x3a, true), 0x22, dst, src, imm)
 }
 func (a *Asm) Pextrb(dst, src Reg, imm byte) {
-	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x14}, src, dst, false, imm)
+	a.sseRRI(sseFormat(0x66, 0x3a, false), 0x14, src, dst, imm)
 }
 func (a *Asm) Pextrw(dst, src Reg, imm byte) {
-	a.sseRRI(0x66, []byte{0x0F, 0xC5}, dst, src, false, imm)
+	a.sseRRI(sseFormat(0x66, 0, false), 0xC5, dst, src, imm)
 }
 func (a *Asm) Pextrd(dst, src Reg, imm byte) {
-	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x16}, src, dst, false, imm)
+	a.sseRRI(sseFormat(0x66, 0x3a, false), 0x16, src, dst, imm)
 }
 func (a *Asm) Pextrq(dst, src Reg, imm byte) {
-	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x16}, src, dst, true, imm)
+	a.sseRRI(sseFormat(0x66, 0x3a, true), 0x16, src, dst, imm)
 }
 func (a *Asm) Pmovmskb(dst, src Reg) {
 	a.sseRR(0x66, 0xD7, dst, src, false)
@@ -668,15 +677,11 @@ func (a *Asm) VPblendw(dst, s1, s2 Reg, imm byte) {
 // Round emits ROUNDSS/ROUNDSD (SSE4.1): dst = round(src) using rounding-mode
 // imm8 (bits 0-1 select nearest/floor/ceil/trunc; bit 3 suppresses precision).
 func (a *Asm) Round(dst, src Reg, f64 bool, mode byte) {
-	a.emit(0x66)
-	if dst >= 8 || src >= 8 {
-		a.emit(a.rex(false, dst >= 8, false, src >= 8))
-	}
-	op := byte(0x0A) // roundss
+	op := byte(0x0a)
 	if f64 {
-		op = 0x0B // roundsd
+		op = 0x0b
 	}
-	a.emit(0x0F, 0x3A, op, 0xC0|((byte(dst)&7)<<3)|byte(src&7), mode)
+	a.SseMapRRI(0x66, 0x3a, op, dst, src, mode)
 }
 
 func (a *Asm) Ucomis(dst, src Reg, f64 bool) {
@@ -755,4 +760,58 @@ func (a *Asm) MovdquLoadIdx(dst, base, index Reg, disp int32) {
 }
 func (a *Asm) MovdquStoreIdx(base, index, src Reg, disp int32) {
 	a.SseIdx(0xf3, 0x7f, src, base, index, disp)
+}
+
+// VexMapRRR encodes a VEX.128 three-register instruction. opcodeMap is zero
+// for 0F, or 0x38/0x3A for the corresponding three-byte map; pp is the VEX
+// mandatory-prefix field. CPU feature selection belongs to the caller.
+func (a *Asm) VexMapRRR(opcodeMap, pp, op byte, dst, left, right Reg) {
+	m := byte(vexMap0F)
+	if opcodeMap == 0x38 {
+		m = vexMap0F38
+	} else if opcodeMap == 0x3a {
+		m = vexMap0F3A
+	}
+	a.vex3RRRMap(m, pp, op, dst, left, right)
+}
+
+// VexShiftImm encodes a VEX.128 packed immediate shift with its raw opcode
+// and ModRM extension (2: logical right, 4: arithmetic right, 6: left).
+func (a *Asm) VexShiftImm(op, ext byte, dst, src Reg, imm byte) {
+	a.vexShiftImmL(op, ext, dst, src, imm, 0)
+}
+
+// VexMapRR encodes a VEX.128 register instruction with reserved vvvv.
+// opcodeMap is zero for 0F, or 0x38/0x3A for those opcode maps.
+func (a *Asm) VexMapRR(opcodeMap, pp, op byte, dst, src Reg) {
+	m := byte(vexMap0F)
+	if opcodeMap == 0x38 {
+		m = vexMap0F38
+	} else if opcodeMap == 0x3a {
+		m = vexMap0F3A
+	}
+	a.vex3RRReserved(m, pp, op, dst, src)
+}
+
+// VSseMemDisp encodes a VEX.128 three-operand instruction in the 0F map
+// with a base+displacement memory source.
+func (a *Asm) VSseMemDisp(pp, op byte, dst, left, base Reg, disp int32) {
+	a.vex3MemDisp(vexMap0F, pp, op, dst, left, true, base, disp)
+}
+
+// MovdquDisp emits legacy MOVDQU with a base+displacement memory operand.
+// op is 0x6F for loads and 0x7F for stores; xmm is the ModRM register field.
+func (a *Asm) MovdquDisp(op byte, xmm, base Reg, disp int32) {
+	a.fmemDisp(op, xmm, base, disp, false)
+}
+
+// VMovdquDisp is the VEX.128 form of MovdquDisp.
+func (a *Asm) VMovdquDisp(op byte, xmm, base Reg, disp int32) {
+	a.vex3MemDisp(vexMap0F, 2, op, xmm, 0, false, base, disp)
+}
+
+// VMovdquIdx is the VEX.128 form with a base+index+displacement operand.
+// op is 0x6F for loads and 0x7F for stores.
+func (a *Asm) VMovdquIdx(op byte, xmm, base, index Reg, disp int32) {
+	a.vex3MemIdx(vexMap0F, 2, op, xmm, 0, false, base, index, disp)
 }
