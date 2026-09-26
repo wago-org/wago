@@ -93,7 +93,9 @@ func (f *fn) extractSIMDLane(dst, src Reg, lane byte, width int) {
 	}
 	f.a.Pshufd(tmp, src, control)
 	f.a.MovXmmToGpr(dst, tmp, width == 8)
-	f.mov128LoadDisp(tmp, RSP, f.spillOff(slot))
+	// The borrowed register may hold a live plugin YMM value. Like PSHUFD,
+	// legacy MOVDQU preserves its upper lanes; the VEX restore would clear them.
+	f.a.MovdquLoadDisp(tmp, RSP, f.spillOff(slot))
 }
 func (f *fn) insertSIMDLane(dst, src Reg, lane byte, width int) {
 	tmp, other := RAX, RDX
