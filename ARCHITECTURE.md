@@ -4,7 +4,7 @@ AMD64 uses SSE2 as its architectural baseline. Newer CPU extensions are optional
 compile-time optimization tiers and are recorded in native artifact requirements
 when emitted. Scalar, core SIMD, and supported relaxed SIMD have baseline
 fallbacks. The `wago_amd64_sse2` build tag selects portable baseline code generation
-on modern hosts. TinyGo binary-size acceptance is deferred to a follow-up PR.
+on modern hosts.
 
 Wago is a pure-Go, no-cgo WebAssembly engine. It decodes, validates, and
 compiles Wasm modules to native machine code with a single-pass backend. It then
@@ -127,8 +127,24 @@ versions fail closed. Plugin declarations, BMI2 and bit-count instructions share
 this mask. The AVX-512 plugin tier requires F/DQ/BW/VL and enabled ZMM/opmask state.
 Core and relaxed SIMD do not require FMA, AVX2, AVX-512 or VNNI.
 
-Core
-`i32x4.dot_i16x8_s` uses SSE2 `PMADDWD`, or its optional VEX.128 form.
+The immutable `shared.AMD64Features` uint32 assigns bits 0–10 to SSSE3, SSE4.1,
+SSE4.2, AVX, AVX2, BMI1, BMI2, LZCNT, POPCNT, FMA and the AVX-512 plugin tier,
+respectively. SSE2 needs no optional bit. Public compilation supplies the cached
+host mask. Direct backend callers can explicitly select zero for baseline code;
+omitting explicit selection retains the historical modern tier for compatibility.
+Serial and parallel compilation combine requirements from all emitted functions.
+
+Managed plugin vector helpers check and record their actual instruction
+requirements. Full-access raw emitters retain the trusted feature-declaration
+contract. The AVX-512 plugin tier also requires AVX2. Capability detection failure
+rejects native compilation, including baseline compilation.
+
+Nontrivial integer SIMD fallbacks use at most 80 bytes of reusable native-frame
+scratch, including preserved GPRs. Packed rounding reserves its lane snapshot
+separately from allocator spills. Encoder helpers expose x86 instructions;
+Wasm fallback semantics remain in Railshot.
+
+Core `i32x4.dot_i16x8_s` uses SSE2 `PMADDWD`, or its optional VEX.128 form.
 
 SIMD support is complete for the documented linux/amd64 baseline and remains
 explicitly feature-gated: `v128` participates in the

@@ -6,6 +6,23 @@ when emitted. Scalar, core SIMD, and supported relaxed SIMD have baseline
 fallbacks. The `wago_amd64_sse2` build tag selects portable baseline code generation
 on modern hosts. TinyGo binary-size acceptance is deferred to a follow-up PR.
 
+Baseline and modern profiles pass the official core SIMD corpus (24,325
+assertions each) and the supported relaxed SIMD corpus (69 assertions each).
+The forced-baseline public API suite and instruction-decoder checks cover
+fallback execution and exclusion of optional instructions. Functional CI,
+including TinyGo and race checks, passes; the release-size check remains blocked
+because one profile exceeds its unchanged budget.
+
+Focused performance measurements on 2026-09-26 compared `1f137e8e6` with
+`aabccddf1` on a Ryzen 7 8845HS using Go 1.27.1. Eight 250 ms samples per workload,
+one Go worker, fixed CPU affinity and alternating profile order found no
+statistically significant modern-path change across 16 workloads. Geometric
+means of median ratios were +1.83% for compilation and −0.99% for execution;
+other programs remained active, so these are not improvement claims. Modern code
+sizes, checksums and compilation allocations matched main. All execution
+profiles measured zero allocations. Larger baseline SIMD sequences remain
+candidates for code-size and execution-time optimization.
+
 Wago is a pure-Go, no-cgo, single-pass WebAssembly engine. It is a from-scratch
 port of [WARP](https://github.com/wago-org/warp)'s design. Linux, macOS, and Windows
 on amd64 and arm64 are supported. The amd64 backend uses the architectural CPU baseline

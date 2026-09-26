@@ -4,7 +4,9 @@ AMD64 uses SSE2 as its architectural baseline. Newer CPU extensions are optional
 compile-time optimization tiers and are recorded in native artifact requirements
 when emitted. Scalar, core SIMD, and supported relaxed SIMD have baseline
 fallbacks. The `wago_amd64_sse2` build tag selects portable baseline code generation
-on modern hosts. TinyGo binary-size acceptance is deferred to a follow-up PR.
+on modern hosts. Native artifact format 3 records optional CPU requirements;
+older artifacts must be rebuilt. Optional native plugins can require newer CPU
+extensions even when ordinary Wasm code can use the baseline.
 
 This is the feature-support matrix for Wago's pure-Go, no-cgo engine. Wago
 supports Linux, macOS, and Windows on amd64 and arm64. For planned work, see
