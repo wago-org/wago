@@ -153,6 +153,9 @@ func runAmd64V128WithOptions(t *testing.T, m *wasm.Module, arg *[16]byte, opts C
 		t.Fatalf("amd64 compile: %v", err)
 	}
 	if opts.Stats != nil {
+		if cm.RequiredAMD64Features != 0 {
+			t.Fatalf("baseline object requires optional features %x", cm.RequiredAMD64Features)
+		}
 		for i, fs := range stats.Funcs {
 			assertSIMDBaseline(t, cm.Code[cm.Entry[i]:cm.Entry[i]+fs.CodeBytes-fs.NativeSize.LiteralPoolBytes])
 		}

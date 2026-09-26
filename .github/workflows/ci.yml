@@ -570,6 +570,15 @@ jobs:
         if: matrix.runtime && runner.os != 'Windows'
         run: just test spec simd
 
+      - name: SSE2 core and relaxed SIMD conformance
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          WAGO_SPECTEST_DIR="$PWD/tests/conformance/spec-v1" WAGO_SPEC_VERSION=simd \
+            go test -tags wago_amd64_sse2 -count=1 -run '^TestSpecSuiteExec$' -v ./src/wago
+          WAGO_SPECTEST_DIR="$PWD/tests/conformance/spec-v3" WAGO_SPEC_VERSION=3.0 \
+            WAGO_SPEC_FILES='relaxed-simd/i32x4_relaxed_trunc,relaxed-simd/i8x16_relaxed_swizzle,relaxed-simd/relaxed_min_max,relaxed-simd/i16x8_relaxed_q15mulr_s,relaxed-simd/relaxed_dot_product,relaxed-simd/relaxed_laneselect,relaxed-simd/relaxed_madd_nmadd' \
+            go test -tags wago_amd64_sse2 -count=1 -run '^TestSpecSuiteExec$' -v ./src/wago
+
       - name: SIMD execution suite (Windows)
         if: matrix.runtime && runner.os == 'Windows'
         shell: pwsh

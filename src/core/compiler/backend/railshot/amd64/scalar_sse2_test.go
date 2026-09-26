@@ -214,7 +214,7 @@ func assertScalarBaseline(t *testing.T, code []byte) {
 		t.Fatalf("objdump: %v: %s", err, out)
 	}
 	allowed := map[string]bool{}
-	for _, op := range strings.Fields("mov movabs movd movq movss movsd movaps movups movdqu movzx movsxd push pop shl shr sar sub add and or xor cmp test jmp ret nop int3 ud2 lea call pxor xorpd addss addsd subss subsd mulss mulsd divss divsd sqrtss sqrtsd movapd movupd movlhps movhlps movlps movhps movlpd movhpd andps andpd andnps andnpd orps orpd xorps xorpd addps addpd subps subpd mulps mulpd divps divpd minps minpd maxps maxpd sqrtps sqrtpd cmpeqps cmpeqpd cmpltps cmpltpd cmpleps cmplepd cmpunordps cmpunordpd cmpneqps cmpneqpd cvtdq2ps cvtdq2pd cvtps2pd cvtpd2ps cvttps2dq cvttpd2dq pshufd pshuflw pshufhw shufps shufpd movmskps movmskpd pmovmskb pinsrw pextrw pand pandn por paddb paddw paddd paddq psubb psubw psubd psubq paddsb paddsw paddusb paddusw psubsb psubsw psubusb psubusw pavgb pavgw pminub pminsw pmaxub pmaxsw pmullw pmuludq pmaddwd pcmpeqb pcmpeqw pcmpeqd pcmpgtb pcmpgtw pcmpgtd psllw pslld psllq psrlw psrld psrlq psraw psrad punpcklbw punpcklwd punpckldq punpcklqdq punpckhbw punpckhwd punpckhdq punpckhqdq packsswb packssdw packuswb imul neg not inc dec xchg bsr bsf bswap movsx cdqe cdq cqo sete setne setl setle setg setge setb setbe seta setae sets setns setp setnp cmove cmovne cmovl cmovle cmovg cmovge cmovb cmovbe cmova cmovae cmovs cmovns cmovp cmovnp") {
+	for _, op := range strings.Fields("cvtsi2ss cvtsi2sd cvttss2si cvttsd2si cvtsd2ss cvtss2sd ucomiss ucomisd minss minsd maxss maxsd mov movabs movd movq movss movsd movaps movups movdqu movzx movsxd push pop shl shr sar sub add and or xor cmp test jmp ret nop int3 ud2 lea call pxor xorpd addss addsd subss subsd mulss mulsd divss divsd sqrtss sqrtsd movapd movupd movlhps movhlps movlps movhps movlpd movhpd andps andpd andnps andnpd orps orpd xorps xorpd addps addpd subps subpd mulps mulpd divps divpd minps minpd maxps maxpd sqrtps sqrtpd cmpeqps cmpeqpd cmpltps cmpltpd cmpleps cmplepd cmpunordps cmpunordpd cmpneqps cmpneqpd cvtdq2ps cvtdq2pd cvtps2pd cvtpd2ps cvttps2dq cvttpd2dq pshufd pshuflw pshufhw shufps shufpd movmskps movmskpd pmovmskb pinsrw pextrw pand pandn por paddb paddw paddd paddq psubb psubw psubd psubq paddsb paddsw paddusb paddusw psubsb psubsw psubusb psubusw pavgb pavgw pminub pminsw pmaxub pmaxsw pmullw pmuludq pmaddwd pcmpeqb pcmpeqw pcmpeqd pcmpgtb pcmpgtw pcmpgtd psllw pslld psllq psrlw psrld psrlq psraw psrad punpcklbw punpcklwd punpckldq punpcklqdq punpckhbw punpckhwd punpckhdq punpckhqdq packsswb packssdw packuswb imul neg not inc dec xchg bsr bsf bswap movsx cdqe cdq cqo sete setne setl setle setg setge setb setbe seta setae sets setns setp setnp cmove cmovne cmovl cmovle cmovg cmovge cmovb cmovbe cmova cmovae cmovs cmovns cmovp cmovnp") {
 		allowed[op] = true
 	}
 	for _, line := range strings.Split(string(out), "\n") {
@@ -280,3 +280,42 @@ func BenchmarkSSE2ScalarCompile(b *testing.B) {
 }
 
 func assertSIMDBaseline(t *testing.T, code []byte) { t.Helper(); assertScalarBaseline(t, code) }
+
+func TestSSE2ScalarExtendedInstructionBaseline(t *testing.T) {
+	for _, tc := range []struct {
+		input, output wasm.ValType
+		op            byte
+		arity         int
+	}{
+		{wasm.I32, wasm.I32, 0x67, 1}, {wasm.I32, wasm.I32, 0x68, 1}, {wasm.I32, wasm.I32, 0x69, 1},
+		{wasm.I64, wasm.I64, 0x79, 1}, {wasm.I64, wasm.I64, 0x7a, 1}, {wasm.I64, wasm.I64, 0x7b, 1},
+		{wasm.F32, wasm.F32, 0x8b, 1}, {wasm.F32, wasm.F32, 0x8c, 1}, {wasm.F32, wasm.F32, 0x96, 2}, {wasm.F32, wasm.F32, 0x97, 2}, {wasm.F32, wasm.F32, 0x98, 2},
+		{wasm.F64, wasm.F64, 0x99, 1}, {wasm.F64, wasm.F64, 0x9a, 1}, {wasm.F64, wasm.F64, 0xa4, 2}, {wasm.F64, wasm.F64, 0xa5, 2}, {wasm.F64, wasm.F64, 0xa6, 2},
+		{wasm.F32, wasm.I32, 0x5b, 2}, {wasm.F64, wasm.I32, 0x61, 2},
+		{wasm.I32, wasm.F32, 0xb2, 1}, {wasm.I32, wasm.F32, 0xb3, 1}, {wasm.I64, wasm.F64, 0xb9, 1}, {wasm.I64, wasm.F64, 0xba, 1},
+		{wasm.F32, wasm.I32, 0xa8, 1}, {wasm.F64, wasm.I64, 0xb0, 1}, {wasm.F32, wasm.F64, 0xbb, 1}, {wasm.F64, wasm.F32, 0xb6, 1},
+	} {
+		t.Run(fmt.Sprintf("op=%x", tc.op), func(t *testing.T) {
+			params := []wasm.ValType{tc.input}
+			body := []byte{0, 0x20, 0}
+			if tc.arity == 2 {
+				params = append(params, tc.input)
+				body = append(body, 0x20, 1)
+			}
+			body = append(body, tc.op, 0x0b)
+			var stats ModuleStats
+			cm, err := CompileModuleWith(mod1(t, params, []wasm.ValType{tc.output}, body), CompileOptions{AMD64FeaturesSet: true, BitCountFeatures: 7, Stats: &stats})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cm.CodeImage != nil {
+				defer cm.CodeImage.Close()
+			}
+			if cm.RequiredAMD64Features != 0 {
+				t.Fatalf("baseline requires %x", cm.RequiredAMD64Features)
+			}
+			fs := stats.Funcs[0]
+			assertScalarBaseline(t, cm.Code[cm.Entry[0]:cm.Entry[0]+fs.CodeBytes-fs.NativeSize.LiteralPoolBytes])
+		})
+	}
+}
