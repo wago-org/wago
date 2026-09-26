@@ -4,35 +4,6 @@ package amd64
 
 import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 
-func packedPrefix(f64 bool) byte {
-	if f64 {
-		return 0x66
-	}
-	return 0
-}
-
-func (f *fn) legacySIMDImmediate(prefix, op byte, dst, left, right Reg, imm byte) {
-	tmp := regNone
-	slot := 0
-	if dst == right && dst != left {
-		tmp = 0
-		for tmp == dst || tmp == left {
-			tmp++
-		}
-		slot = f.allocSpillSlots(2)
-		f.mov128StoreDisp(RSP, f.spillOff(slot), tmp)
-		f.mov128(tmp, right)
-		right = tmp
-	}
-	if dst != left {
-		f.mov128(dst, left)
-	}
-	f.a.SseMapRRI(prefix, 0, op, dst, right, imm)
-	if tmp != regNone {
-		f.mov128LoadDisp(tmp, RSP, f.spillOff(slot))
-	}
-}
-
 func (f *fn) emitVFCmpPacked(dst, left, right Reg, f64 bool, imm byte) {
 	if f.cpuHas(shared.AMD64AVX) {
 		f.a.VFCmpPacked(dst, left, right, f64, imm)
@@ -48,32 +19,17 @@ func (f *fn) emitVFCmpPacked(dst, left, right Reg, f64 bool, imm byte) {
 	default:
 		imm &= 7
 	}
-	f.legacySIMDImmediate(packedPrefix(f64), 0xc2, dst, left, right, imm)
+	f.legacySIMDBinary(simdFloatBinary(0xc2, f64, false)|simdHasImm|simdBinaryOp(imm)<<16, dst, left, right)
 }
 func (f *fn) emitVShufps(dst, left, right Reg, imm byte) {
 	if f.cpuHas(shared.AMD64AVX) {
 		f.a.VShufps(dst, left, right, imm)
 		return
 	}
-	f.legacySIMDImmediate(0, 0xc6, dst, left, right, imm)
+	f.legacySIMDBinary(simdFloatBinary(0xc6, false, false)|simdHasImm|simdBinaryOp(imm)<<16, dst, left, right)
 }
 func (f *fn) emitVSseRRR(pp, op byte, dst, left, right Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VSseRRR(pp, op, dst, left, right)
-		return
-	}
-	prefix := byte(0)
-	if pp == 1 {
-		prefix = 0x66
-	}
-	f.legacySIMDBinary(prefix, 0, op, dst, left, right)
-}
-func (f *fn) emitVFPackedSqrt(dst, src Reg, f64 bool) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VFPackedSqrt(dst, src, f64)
-		return
-	}
-	f.a.SseRR(packedPrefix(f64), 0x51, dst, src, false)
+	simdFloatBinary(op, pp == 1, false).emit(f, dst, left, right)
 }
 func (f *fn) emitVFRoundPacked(dst, src Reg, f64 bool, imm byte) {
 	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {

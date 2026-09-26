@@ -4,25 +4,38 @@ package amd64
 
 // legacySIMDBinary preserves the three-operand contract of vector lowering
 // while selecting the destructive legacy SSE encoding at compile time.
-func (f *fn) legacySIMDBinary(prefix, opcodeMap, op byte, dst, left, right Reg) {
+func (f *fn) legacySIMDBinary(op simdBinaryOp, dst, left, right Reg) {
+	tmp := regNone
+	slot := 0
 	if dst == right && dst != left {
-		tmp := Reg(0)
+		tmp = 0
 		for tmp == dst || tmp == left {
 			tmp++
 		}
-		slot := f.allocSpillSlots(2)
-		off := f.spillOff(slot)
-		f.mov128StoreDisp(RSP, off, tmp)
+		slot = f.allocSpillSlots(2)
+		f.mov128StoreDisp(RSP, f.spillOff(slot), tmp)
 		f.mov128(tmp, right)
-		f.mov128(dst, left)
-		f.a.SseMapRR(prefix, opcodeMap, op, dst, tmp)
-		f.mov128LoadDisp(tmp, RSP, off)
-		return
+		right = tmp
 	}
 	if dst != left {
 		f.mov128(dst, left)
 	}
-	f.a.SseMapRR(prefix, opcodeMap, op, dst, right)
+	prefix := byte(0x66)
+	if op&simdFloat != 0 && op&simdFloat64 == 0 {
+		prefix = 0
+	}
+	opcodeMap := byte(0)
+	if op&simdOptionalFeatures != 0 {
+		opcodeMap = 0x38
+	}
+	if op&simdHasImm == 0 {
+		f.a.SseMapRR(prefix, opcodeMap, byte(op), dst, right)
+	} else {
+		f.a.SseMapRRI(prefix, opcodeMap, byte(op), dst, right, byte(op>>16))
+	}
+	if tmp != regNone {
+		f.mov128LoadDisp(tmp, RSP, f.spillOff(slot))
+	}
 }
 
 // simdFallback implements the optional 0F38 integer primitives used by

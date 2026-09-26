@@ -17,9 +17,13 @@ func (f *fn) cpuHas(features shared.AMD64Features) bool {
 	return true
 }
 
-func (f *fn) scalarBinary(vop func(Reg, Reg, Reg, bool), op byte, dst, s1, s2 Reg, f64 bool) {
+func (f *fn) scalarBinary(op byte, dst, s1, s2 Reg, f64 bool) {
 	if f.cpuHas(shared.AMD64AVX) {
-		vop(dst, s1, s2, f64)
+		pp := byte(2)
+		if f64 {
+			pp = 3
+		}
+		f.a.VSseRRR(pp, op, dst, s1, s2)
 		return
 	}
 	if dst == s2 && dst != s1 {
@@ -56,11 +60,7 @@ func (f *fn) scalarLogic(pp, op byte, dst, s1, s2 Reg) {
 }
 
 func (f *fn) scalarZero(x Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPxor(x, x, x)
-	} else {
-		f.a.SseRR(0x66, 0xef, x, x, false)
-	}
+	opVPxor.emit(f, x, x, x)
 }
 
 func (f *fn) scalarRound(dst, src Reg, f64 bool, mode byte) {
@@ -91,41 +91,42 @@ func (f *fn) scalarRound(dst, src Reg, f64 bool, mode byte) {
 }
 
 func (f *fn) mov128LoadDisp(dst, base Reg, disp int32) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VMovdquLoadDisp(dst, base, disp)
-	} else {
-		f.a.MovdquLoadDisp(dst, base, disp)
-	}
+	f.mov128Mem(0x6f, dst, base, regNone, disp)
 }
 
 func (f *fn) mov128StoreDisp(base Reg, disp int32, src Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VMovdquStoreDisp(base, disp, src)
-	} else {
-		f.a.MovdquStoreDisp(base, disp, src)
-	}
+	f.mov128Mem(0x7f, src, base, regNone, disp)
 }
 
 func (f *fn) mov128LoadIdx(dst, base, index Reg, disp int32) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VMovdquLoadIdx(dst, base, index, disp)
-	} else {
-		f.a.MovdquLoadIdx(dst, base, index, disp)
-	}
+	f.mov128Mem(0x6f, dst, base, index, disp)
 }
 
 func (f *fn) mov128StoreIdx(base, index, src Reg, disp int32) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VMovdquStoreIdx(base, index, src, disp)
-	} else {
-		f.a.MovdquStoreIdx(base, index, src, disp)
-	}
+	f.mov128Mem(0x7f, src, base, index, disp)
 }
 
 func (f *fn) mov128(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VMovdqu(dst, src)
+	simdUnaryOp(0x6f|2<<8).emit(f, dst, src)
+}
+
+// mov128Mem shares the compile-time encoding choice across loads, stores and
+// addressing modes. regNone selects a base+displacement address.
+//
+//go:noinline
+func (f *fn) mov128Mem(op byte, xmm, base, index Reg, disp int32) {
+	avx := f.cpuHas(shared.AMD64AVX)
+	if index == regNone {
+		if avx {
+			f.a.VMovdquDisp(op, xmm, base, disp)
+		} else {
+			f.a.MovdquDisp(op, xmm, base, disp)
+		}
 	} else {
-		f.a.SseRR(0xf3, 0x6f, dst, src, false)
+		if avx {
+			f.a.VMovdquIdx(op, xmm, base, index, disp)
+		} else {
+			f.a.SseIdx(0xf3, op, xmm, base, index, disp)
+		}
 	}
 }

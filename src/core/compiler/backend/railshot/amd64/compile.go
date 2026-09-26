@@ -1621,6 +1621,25 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	return compiled, err
 }
 
+// validateAMD64PluginFeatures keeps cold plugin diagnostics out of module
+// emission without passing or copying the full CompileOptions value.
+//
+//go:noinline
+func validateAMD64PluginFeatures(features shared.AMD64Features, instructions map[uint32]CustomInstruction) error {
+	for index, definition := range instructions {
+		if lowering := pluginAMD64Lowering(definition); lowering != nil {
+			required, err := pluginAMD64Requirements(lowering.Features)
+			if err != nil {
+				return fmt.Errorf("amd64: plugin import %d: %w", index, err)
+			}
+			if !features.Has(required) {
+				return fmt.Errorf("amd64: plugin import %d requires unavailable CPU features %#x", index, required&^features)
+			}
+		}
+	}
+	return nil
+}
+
 func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
 	if !opts.AMD64FeaturesSet {
 		opts.AMD64Features = shared.AMD64ModernBaseline | shared.AMD64BMI2
@@ -1628,17 +1647,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if opts.AMD64Features&^shared.AMD64KnownFeatures != 0 {
 		return nil, fmt.Errorf("amd64: unknown CPU features")
 	}
-	if opts.AMD64FeaturesSet {
-		for index, definition := range opts.CustomInstructions {
-			if lowering := pluginAMD64Lowering(definition); lowering != nil {
-				required, err := pluginAMD64Requirements(lowering.Features)
-				if err != nil {
-					return nil, fmt.Errorf("amd64: plugin import %d: %w", index, err)
-				}
-				if !opts.AMD64Features.Has(required) {
-					return nil, fmt.Errorf("amd64: plugin import %d requires unavailable CPU features %#x", index, required&^opts.AMD64Features)
-				}
-			}
+	if opts.AMD64FeaturesSet && len(opts.CustomInstructions) != 0 {
+		if err := validateAMD64PluginFeatures(opts.AMD64Features, opts.CustomInstructions); err != nil {
+			return nil, err
 		}
 	}
 	// Bit-count selection already has fallback coverage; do not allow the old

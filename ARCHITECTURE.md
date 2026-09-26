@@ -106,6 +106,11 @@ cached once; CPUID and XGETBV validate AVX-family OS state under standard Go,
 and TinyGo intersects Linux CPU flags across logical processors. Optional
 extensions are selected once per compilation, with no guest invocation dispatch.
 
+Scalar and SIMD lowering pass compact instruction descriptors to shared
+selectors and encoders. This avoids retaining a separate bound method and
+feature-selection body for each opcode in TinyGo builds. Descriptors are local
+compiler values; they add no module state, allocation or guest dispatch table.
+
 Scalar arithmetic and conversions use legacy SSE/SSE2 when AVX is absent.
 Scalar rounding uses integer IEEE-754 decomposition, preserving signed zero,
 quieting NaNs and implementing ties to even without changing MXCSR. Packed

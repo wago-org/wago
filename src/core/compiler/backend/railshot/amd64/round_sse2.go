@@ -26,13 +26,8 @@ func emitRoundSSE2(a *x86.Asm, dst, src, bits, magnitude, mask, temporary Reg, f
 		done[nDone] = a.JmpPlaceholder()
 		nDone++
 	}
-	imm := func(r Reg, v uint64) {
-		if f64 {
-			a.MovImm64(r, v)
-		} else {
-			a.MovImm32(r, int32(v))
-		}
-	}
+	// All f32 masks fit uint32. MovImm64 already chooses the identical
+	// zero-extending MOV r32,imm32 form for them, so both widths share it.
 	a.MovXmmToGpr(bits, src, f64)
 	a.AluRR(0x89, magnitude, bits, f64)
 	a.ShiftImm(4, magnitude, 1, f64)
@@ -87,7 +82,7 @@ func emitRoundSSE2(a *x86.Asm, dst, src, bits, magnitude, mask, temporary Reg, f
 	a.ShiftImm(4, bits, sign, f64)
 	switch mode & 3 {
 	case 0:
-		imm(mask, uint64(bias-1)<<mantissa) // exact 0.5
+		a.MovImm64(mask, uint64(bias-1)<<mantissa) // exact 0.5
 		a.AluRR(0x39, magnitude, mask, f64)
 		finish(x86.CondBE) // ties at +/-0.5 go to signed zero
 	case 1, 2:
@@ -101,7 +96,7 @@ func emitRoundSSE2(a *x86.Asm, dst, src, bits, magnitude, mask, temporary Reg, f
 		}
 	}
 	if mode&3 != 3 {
-		imm(mask, uint64(bias)<<mantissa)
+		a.MovImm64(mask, uint64(bias)<<mantissa)
 		a.AluRR(0x09, bits, mask, f64)
 	}
 	jumpDone()
@@ -109,10 +104,10 @@ func emitRoundSSE2(a *x86.Asm, dst, src, bits, magnitude, mask, temporary Reg, f
 	a.PatchRel32(large, a.Len())
 	// Large finite inputs and infinities are already integral. Quiet any NaN
 	// using its payload bits so this path cannot overflow or raise FP flags.
-	imm(mask, uint64(2*bias+1)<<mantissa)
+	a.MovImm64(mask, uint64(2*bias+1)<<mantissa)
 	a.AluRR(0x39, magnitude, mask, f64)
 	finish(x86.CondBE)
-	imm(mask, uint64(1)<<(mantissa-1))
+	a.MovImm64(mask, uint64(1)<<(mantissa-1))
 	a.AluRR(0x09, bits, mask, f64)
 	for _, off := range done[:nDone] {
 		a.PatchRel32(off, a.Len())

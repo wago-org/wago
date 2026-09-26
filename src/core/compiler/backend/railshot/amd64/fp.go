@@ -361,7 +361,7 @@ func foldFloatMem(e *elem, f64 bool) bool {
 // and mulss/mulsd (0x59). subss/subsd and divss/divsd are not.
 func fMemCommutable(memOp byte) bool { return memOp == 0x58 || memOp == 0x59 }
 
-func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
+func (f *fn) fbin(memOp byte, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
 	if commuteFMemEnabled && fMemCommutable(memOp) && foldFloatMem(a, f64) && !foldFloatMem(b, f64) {
@@ -389,7 +389,7 @@ func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
 		dst = f.allocFReg(0)
 	}
 	f.fpinned = f.fpinned.remove(s1)
-	f.scalarBinary(vop, memOp, dst, s1, s2, f64)
+	f.scalarBinary(memOp, dst, s1, s2, f64)
 	if o1 && dst != s1 {
 		f.releaseF(s1)
 	}
@@ -399,7 +399,7 @@ func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
-func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
+func (f *fn) fbinInto(dst Reg, memOp byte, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
 	if commuteFMemEnabled && fMemCommutable(memOp) && foldFloatMem(a, f64) && !foldFloatMem(b, f64) {
@@ -414,7 +414,7 @@ func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, 
 	f.fpinned = f.fpinned.add(s1)
 	s2, o2 := f.operandRegF(b)
 	f.fpinned = f.fpinned.remove(s1)
-	f.scalarBinary(vop, memOp, dst, s1, s2, f64)
+	f.scalarBinary(memOp, dst, s1, s2, f64)
 	if o1 && dst != s1 {
 		f.releaseF(s1)
 	}

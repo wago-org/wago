@@ -4,637 +4,104 @@ package amd64
 
 import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 
-func (f *fn) emitVMovmskpd(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VMovmskpd(dst, src)
-		return
-	}
-	f.a.SseMapRR(0x66, 0, 0x50, dst, src)
-}
-
-func (f *fn) emitVMovmskps(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VMovmskps(dst, src)
-		return
-	}
-	f.a.SseMapRR(0, 0, 0x50, dst, src)
-}
-
-func (f *fn) emitVPabsb(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSSE3) {
-		f.a.VPabsb(dst, src)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSSE3) {
-		f.simdFallback(0x1C, dst, src, src)
-		return
-	}
-	f.a.SseMapRR(0x66, 0x38, 0x1C, dst, src)
-}
-
-func (f *fn) emitVPabsd(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSSE3) {
-		f.a.VPabsd(dst, src)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSSE3) {
-		f.simdFallback(0x1E, dst, src, src)
-		return
-	}
-	f.a.SseMapRR(0x66, 0x38, 0x1E, dst, src)
-}
-
-func (f *fn) emitVPabsw(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSSE3) {
-		f.a.VPabsw(dst, src)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSSE3) {
-		f.simdFallback(0x1D, dst, src, src)
-		return
-	}
-	f.a.SseMapRR(0x66, 0x38, 0x1D, dst, src)
-}
-
-func (f *fn) emitVPacksswb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPacksswb(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x63, dst, s1, s2)
-}
-
-func (f *fn) emitVPaddb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPaddb(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xFC, dst, s1, s2)
-}
-
-func (f *fn) emitVPaddd(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPaddd(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xFE, dst, s1, s2)
-}
-
-func (f *fn) emitVPaddq(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPaddq(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xD4, dst, s1, s2)
-}
-
-func (f *fn) emitVPaddsb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPaddsb(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xEC, dst, s1, s2)
-}
-
-func (f *fn) emitVPaddsw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPaddsw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xED, dst, s1, s2)
-}
-
-func (f *fn) emitVPaddusb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPaddusb(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xDC, dst, s1, s2)
-}
-
-func (f *fn) emitVPaddusw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPaddusw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xDD, dst, s1, s2)
-}
-
-func (f *fn) emitVPaddw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPaddw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xFD, dst, s1, s2)
-}
-
-func (f *fn) emitVPand(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPand(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xDB, dst, s1, s2)
-}
-
-func (f *fn) emitVPandn(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPandn(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xDF, dst, s1, s2)
-}
-
-func (f *fn) emitVPavgb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPavgb(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xE0, dst, s1, s2)
-}
-
-func (f *fn) emitVPavgw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPavgw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xE3, dst, s1, s2)
-}
-
-func (f *fn) emitVPcmpeqb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPcmpeqb(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x74, dst, s1, s2)
-}
-
-func (f *fn) emitVPcmpeqd(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPcmpeqd(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x76, dst, s1, s2)
-}
-
-func (f *fn) emitVPcmpeqq(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
-		f.a.VPcmpeqq(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE41) {
-		f.simdFallback(0x29, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x29, dst, s1, s2)
-}
-
-func (f *fn) emitVPcmpeqw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPcmpeqw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x75, dst, s1, s2)
-}
-
-func (f *fn) emitVPcmpgtb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPcmpgtb(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x64, dst, s1, s2)
-}
-
-func (f *fn) emitVPcmpgtd(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPcmpgtd(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x66, dst, s1, s2)
-}
-
-func (f *fn) emitVPcmpgtq(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE42) {
-		f.a.VPcmpgtq(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE42) {
-		f.simdFallback(0x37, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x37, dst, s1, s2)
-}
-
-func (f *fn) emitVPcmpgtw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPcmpgtw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x65, dst, s1, s2)
-}
-
-func (f *fn) emitVPhaddd(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSSE3) {
-		f.a.VPhaddd(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSSE3) {
-		f.simdFallback(0x02, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x02, dst, s1, s2)
-}
-
-func (f *fn) emitVPmaddubsw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSSE3) {
-		f.a.VPmaddubsw(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSSE3) {
-		f.simdFallback(0x04, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x04, dst, s1, s2)
-}
-
-func (f *fn) emitVPmaddwd(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPmaddwd(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xF5, dst, s1, s2)
-}
-
-func (f *fn) emitVPmaxsb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
-		f.a.VPmaxsb(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE41) {
-		f.simdFallback(0x3C, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x3C, dst, s1, s2)
-}
-
-func (f *fn) emitVPmaxsd(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
-		f.a.VPmaxsd(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE41) {
-		f.simdFallback(0x3D, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x3D, dst, s1, s2)
-}
-
-func (f *fn) emitVPmaxsw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPmaxsw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xEE, dst, s1, s2)
-}
-
-func (f *fn) emitVPmaxub(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPmaxub(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xDE, dst, s1, s2)
-}
-
-func (f *fn) emitVPmaxud(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
-		f.a.VPmaxud(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE41) {
-		f.simdFallback(0x3F, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x3F, dst, s1, s2)
-}
-
-func (f *fn) emitVPmaxuw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
-		f.a.VPmaxuw(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE41) {
-		f.simdFallback(0x3E, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x3E, dst, s1, s2)
-}
-
-func (f *fn) emitVPminsb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
-		f.a.VPminsb(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE41) {
-		f.simdFallback(0x38, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x38, dst, s1, s2)
-}
-
-func (f *fn) emitVPminsd(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
-		f.a.VPminsd(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE41) {
-		f.simdFallback(0x39, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x39, dst, s1, s2)
-}
-
-func (f *fn) emitVPminsw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPminsw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xEA, dst, s1, s2)
-}
-
-func (f *fn) emitVPminub(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPminub(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xDA, dst, s1, s2)
-}
-
-func (f *fn) emitVPminud(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
-		f.a.VPminud(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE41) {
-		f.simdFallback(0x3B, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x3B, dst, s1, s2)
-}
-
-func (f *fn) emitVPminuw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
-		f.a.VPminuw(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE41) {
-		f.simdFallback(0x3A, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x3A, dst, s1, s2)
-}
-
-func (f *fn) emitVPmovmskb(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPmovmskb(dst, src)
-		return
-	}
-	f.a.SseMapRR(0x66, 0, 0xD7, dst, src)
-}
-
-func (f *fn) emitVPmuldq(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
-		f.a.VPmuldq(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE41) {
-		f.simdFallback(0x28, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x28, dst, s1, s2)
-}
-
-func (f *fn) emitVPmulhrsw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSSE3) {
-		f.a.VPmulhrsw(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSSE3) {
-		f.simdFallback(0x0B, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x0B, dst, s1, s2)
-}
-
-func (f *fn) emitVPmulld(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
-		f.a.VPmulld(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE41) {
-		f.simdFallback(0x40, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x40, dst, s1, s2)
-}
-
-func (f *fn) emitVPmullw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPmullw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xD5, dst, s1, s2)
-}
-
-func (f *fn) emitVPmuludq(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPmuludq(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xF4, dst, s1, s2)
-}
-
-func (f *fn) emitVPor(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPor(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xEB, dst, s1, s2)
-}
-
-func (f *fn) emitVPpackssdw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPpackssdw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x6B, dst, s1, s2)
-}
-
-func (f *fn) emitVPpacksswb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPpacksswb(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x63, dst, s1, s2)
-}
-
-func (f *fn) emitVPpackusdw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
-		f.a.VPpackusdw(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSE41) {
-		f.simdFallback(0x2B, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x2B, dst, s1, s2)
-}
-
-func (f *fn) emitVPpackuswb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPpackuswb(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x67, dst, s1, s2)
-}
-
-func (f *fn) emitVPshufb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSSE3) {
-		f.a.VPshufb(dst, s1, s2)
-		return
-	}
-	if !f.cpuHas(shared.AMD64SSSE3) {
-		f.simdFallback(0x00, dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0x38, 0x00, dst, s1, s2)
-}
-
-func (f *fn) emitVPslld(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPslld(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xF2, dst, s1, s2)
-}
-
-func (f *fn) emitVPsllq(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsllq(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xF3, dst, s1, s2)
-}
-
-func (f *fn) emitVPsllw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsllw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xF1, dst, s1, s2)
-}
-
-func (f *fn) emitVPsrad(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsrad(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xE2, dst, s1, s2)
-}
-
-func (f *fn) emitVPsraw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsraw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xE1, dst, s1, s2)
-}
-
-func (f *fn) emitVPsrld(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsrld(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xD2, dst, s1, s2)
-}
-
-func (f *fn) emitVPsrlq(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsrlq(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xD3, dst, s1, s2)
-}
-
-func (f *fn) emitVPsrlw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsrlw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xD1, dst, s1, s2)
-}
-
-func (f *fn) emitVPsubb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsubb(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xF8, dst, s1, s2)
-}
-
-func (f *fn) emitVPsubd(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsubd(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xFA, dst, s1, s2)
-}
-
-func (f *fn) emitVPsubq(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsubq(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xFB, dst, s1, s2)
-}
-
-func (f *fn) emitVPsubsb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsubsb(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xE8, dst, s1, s2)
-}
-
-func (f *fn) emitVPsubsw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsubsw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xE9, dst, s1, s2)
-}
-
-func (f *fn) emitVPsubusb(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsubusb(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xD8, dst, s1, s2)
-}
-
-func (f *fn) emitVPsubusw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsubusw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xD9, dst, s1, s2)
-}
-
-func (f *fn) emitVPsubw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsubw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xF9, dst, s1, s2)
-}
+const (
+	opVPacksswb  simdBinaryOp = 0x63
+	opVPaddb     simdBinaryOp = 0xFC
+	opVPaddd     simdBinaryOp = 0xFE
+	opVPaddq     simdBinaryOp = 0xD4
+	opVPaddsb    simdBinaryOp = 0xEC
+	opVPaddsw    simdBinaryOp = 0xED
+	opVPaddusb   simdBinaryOp = 0xDC
+	opVPaddusw   simdBinaryOp = 0xDD
+	opVPaddw     simdBinaryOp = 0xFD
+	opVPand      simdBinaryOp = 0xDB
+	opVPandn     simdBinaryOp = 0xDF
+	opVPavgb     simdBinaryOp = 0xE0
+	opVPavgw     simdBinaryOp = 0xE3
+	opVPcmpeqb   simdBinaryOp = 0x74
+	opVPcmpeqd   simdBinaryOp = 0x76
+	opVPcmpeqq   simdBinaryOp = 0x29 | simdBinaryOp(shared.AMD64SSE41)<<12
+	opVPcmpeqw   simdBinaryOp = 0x75
+	opVPcmpgtb   simdBinaryOp = 0x64
+	opVPcmpgtd   simdBinaryOp = 0x66
+	opVPcmpgtq   simdBinaryOp = 0x37 | simdBinaryOp(shared.AMD64SSE42)<<12
+	opVPcmpgtw   simdBinaryOp = 0x65
+	opVPhaddd    simdBinaryOp = 0x02 | simdBinaryOp(shared.AMD64SSSE3)<<12
+	opVPmaddubsw simdBinaryOp = 0x04 | simdBinaryOp(shared.AMD64SSSE3)<<12
+	opVPmaddwd   simdBinaryOp = 0xF5
+	opVPmaxsb    simdBinaryOp = 0x3C | simdBinaryOp(shared.AMD64SSE41)<<12
+	opVPmaxsd    simdBinaryOp = 0x3D | simdBinaryOp(shared.AMD64SSE41)<<12
+	opVPmaxsw    simdBinaryOp = 0xEE
+	opVPmaxub    simdBinaryOp = 0xDE
+	opVPmaxud    simdBinaryOp = 0x3F | simdBinaryOp(shared.AMD64SSE41)<<12
+	opVPmaxuw    simdBinaryOp = 0x3E | simdBinaryOp(shared.AMD64SSE41)<<12
+	opVPminsb    simdBinaryOp = 0x38 | simdBinaryOp(shared.AMD64SSE41)<<12
+	opVPminsd    simdBinaryOp = 0x39 | simdBinaryOp(shared.AMD64SSE41)<<12
+	opVPminsw    simdBinaryOp = 0xEA
+	opVPminub    simdBinaryOp = 0xDA
+	opVPminud    simdBinaryOp = 0x3B | simdBinaryOp(shared.AMD64SSE41)<<12
+	opVPminuw    simdBinaryOp = 0x3A | simdBinaryOp(shared.AMD64SSE41)<<12
+	opVPmuldq    simdBinaryOp = 0x28 | simdBinaryOp(shared.AMD64SSE41)<<12
+	opVPmulhrsw  simdBinaryOp = 0x0B | simdBinaryOp(shared.AMD64SSSE3)<<12
+	opVPmulld    simdBinaryOp = 0x40 | simdBinaryOp(shared.AMD64SSE41)<<12
+	opVPmullw    simdBinaryOp = 0xD5
+	opVPmuludq   simdBinaryOp = 0xF4
+	opVPor       simdBinaryOp = 0xEB
+	opVPpackssdw simdBinaryOp = 0x6B
+	opVPpacksswb simdBinaryOp = 0x63
+	opVPpackusdw simdBinaryOp = 0x2B | simdBinaryOp(shared.AMD64SSE41)<<12
+	opVPpackuswb simdBinaryOp = 0x67
+	opVPshufb    simdBinaryOp = 0x00 | simdBinaryOp(shared.AMD64SSSE3)<<12
+	opVPslld     simdBinaryOp = 0xF2
+	opVPsllq     simdBinaryOp = 0xF3
+	opVPsllw     simdBinaryOp = 0xF1
+	opVPsrad     simdBinaryOp = 0xE2
+	opVPsraw     simdBinaryOp = 0xE1
+	opVPsrld     simdBinaryOp = 0xD2
+	opVPsrlq     simdBinaryOp = 0xD3
+	opVPsrlw     simdBinaryOp = 0xD1
+	opVPsubb     simdBinaryOp = 0xF8
+	opVPsubd     simdBinaryOp = 0xFA
+	opVPsubq     simdBinaryOp = 0xFB
+	opVPsubsb    simdBinaryOp = 0xE8
+	opVPsubsw    simdBinaryOp = 0xE9
+	opVPsubusb   simdBinaryOp = 0xD8
+	opVPsubusw   simdBinaryOp = 0xD9
+	opVPsubw     simdBinaryOp = 0xF9
+	opVPunpckhbw simdBinaryOp = 0x68
+	opVPunpckhdq simdBinaryOp = 0x6A
+	opVPunpckhwd simdBinaryOp = 0x69
+	opVPunpcklbw simdBinaryOp = 0x60
+	opVPunpckldq simdBinaryOp = 0x62
+	opVPunpcklwd simdBinaryOp = 0x61
+	opVPxor      simdBinaryOp = 0xEF
+)
+
+const (
+	opVMovmskpd  simdUnaryOp = 0x50 | 1<<8
+	opVMovmskps  simdUnaryOp = 0x50
+	opVPabsb     simdUnaryOp = 0x1c | 1<<8 | simdUnaryOp(shared.AMD64SSSE3)<<12
+	opVPabsd     simdUnaryOp = 0x1e | 1<<8 | simdUnaryOp(shared.AMD64SSSE3)<<12
+	opVPabsw     simdUnaryOp = 0x1d | 1<<8 | simdUnaryOp(shared.AMD64SSSE3)<<12
+	opVPmovmskb  simdUnaryOp = 0xd7 | 1<<8
+	opVcvtdq2pd  simdUnaryOp = 0xe6 | 2<<8
+	opVcvtdq2ps  simdUnaryOp = 0x5b
+	opVcvtpd2ps  simdUnaryOp = 0x5a | 1<<8
+	opVcvtps2pd  simdUnaryOp = 0x5a
+	opVcvttpd2dq simdUnaryOp = 0xe6 | 1<<8
+	opVcvttps2dq simdUnaryOp = 0x5b | 2<<8
+)
+
+const (
+	opVPsllwImm simdShiftImmediate = 0x71 | 6<<8
+	opVPsrlwImm simdShiftImmediate = 0x71 | 2<<8
+	opVPsrawImm simdShiftImmediate = 0x71 | 4<<8
+	opVPslldImm simdShiftImmediate = 0x72 | 6<<8
+	opVPsrldImm simdShiftImmediate = 0x72 | 2<<8
+	opVPsradImm simdShiftImmediate = 0x72 | 4<<8
+	opVPsllqImm simdShiftImmediate = 0x73 | 6<<8
+	opVPsrlqImm simdShiftImmediate = 0x73 | 2<<8
+)
 
 func (f *fn) emitVPtest(a1, a2 Reg) {
 	if f.cpuHas(shared.AMD64AVX | shared.AMD64SSE41) {
@@ -648,290 +115,149 @@ func (f *fn) emitVPtest(a1, a2 Reg) {
 	f.a.SseMapRR(0x66, 0x38, 0x17, a1, a2)
 }
 
-func (f *fn) emitVPunpckhbw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPunpckhbw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x68, dst, s1, s2)
-}
-
-func (f *fn) emitVPunpckhdq(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPunpckhdq(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x6A, dst, s1, s2)
-}
-
-func (f *fn) emitVPunpckhwd(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPunpckhwd(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x69, dst, s1, s2)
-}
-
-func (f *fn) emitVPunpcklbw(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPunpcklbw(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x60, dst, s1, s2)
-}
-
-func (f *fn) emitVPunpckldq(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPunpckldq(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x62, dst, s1, s2)
-}
-
-func (f *fn) emitVPunpcklwd(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPunpcklwd(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0x61, dst, s1, s2)
-}
-
-func (f *fn) emitVPxor(dst, s1, s2 Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPxor(dst, s1, s2)
-		return
-	}
-	f.legacySIMDBinary(0x66, 0, 0xEF, dst, s1, s2)
-}
-
-func (f *fn) emitVcvtdq2pd(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.Vcvtdq2pd(dst, src)
-		return
-	}
-	f.a.SseMapRR(0xf3, 0, 0xE6, dst, src)
-}
-
-func (f *fn) emitVcvtdq2ps(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.Vcvtdq2ps(dst, src)
-		return
-	}
-	f.a.SseMapRR(0, 0, 0x5B, dst, src)
-}
-
-func (f *fn) emitVcvtpd2ps(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.Vcvtpd2ps(dst, src)
-		return
-	}
-	f.a.SseMapRR(0x66, 0, 0x5A, dst, src)
-}
-
-func (f *fn) emitVcvtps2pd(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.Vcvtps2pd(dst, src)
-		return
-	}
-	f.a.SseMapRR(0, 0, 0x5A, dst, src)
-}
-
-func (f *fn) emitVcvttpd2dq(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.Vcvttpd2dq(dst, src)
-		return
-	}
-	f.a.SseMapRR(0x66, 0, 0xE6, dst, src)
-}
-
-func (f *fn) emitVcvttps2dq(dst, src Reg) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.Vcvttps2dq(dst, src)
-		return
-	}
-	f.a.SseMapRR(0xf3, 0, 0x5B, dst, src)
-}
-
 func (f *fn) emitVFPackedAdd(dst, s1, s2 Reg, f64 bool) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VFPackedAdd(dst, s1, s2, f64)
-		return
-	}
-	f.legacySIMDBinary(packedPrefix(f64), 0, 88, dst, s1, s2)
+	simdFloatBinary(0x58, f64, false).emit(f, dst, s1, s2)
 }
 
 func (f *fn) emitVFPackedSub(dst, s1, s2 Reg, f64 bool) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VFPackedSub(dst, s1, s2, f64)
-		return
-	}
-	f.legacySIMDBinary(packedPrefix(f64), 0, 92, dst, s1, s2)
+	simdFloatBinary(0x5c, f64, false).emit(f, dst, s1, s2)
 }
 
 func (f *fn) emitVFPackedMul(dst, s1, s2 Reg, f64 bool) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VFPackedMul(dst, s1, s2, f64)
-		return
-	}
-	f.legacySIMDBinary(packedPrefix(f64), 0, 89, dst, s1, s2)
+	simdFloatBinary(0x59, f64, false).emit(f, dst, s1, s2)
 }
 
-func (f *fn) emitVFPackedDiv(dst, s1, s2 Reg, f64 bool) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VFPackedDiv(dst, s1, s2, f64)
-		return
+// simdBinaryOp is a compile-time instruction descriptor. Replacing bound
+// method values keeps TinyGo from retaining a dispatch arm for every opcode.
+// It is never stored in generated code or used during guest invocation.
+// Bits 0..7 hold the opcode, 8..11 describe float/imm/swap forms, 12..14
+// hold optional SSSE3/SSE4.x requirements, and 16..23 hold an immediate.
+type simdBinaryOp uint32
+
+const (
+	simdOptionalFeatures simdBinaryOp = simdBinaryOp(shared.AMD64SSSE3|shared.AMD64SSE41|shared.AMD64SSE42) << 12
+	simdFloat64          simdBinaryOp = 1 << 8
+	simdFloat            simdBinaryOp = 1 << 9
+	simdHasImm           simdBinaryOp = 1 << 10
+	simdSwap             simdBinaryOp = 1 << 11
+)
+
+func simdFloatBinary(op byte, f64, swap bool) simdBinaryOp {
+	out := simdBinaryOp(op) | simdFloat
+	if f64 {
+		out |= simdFloat64
 	}
-	f.legacySIMDBinary(packedPrefix(f64), 0, 94, dst, s1, s2)
+	if swap {
+		out |= simdSwap
+	}
+	return out
 }
 
-func (f *fn) emitVFPackedMin(dst, s1, s2 Reg, f64 bool) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VFPackedMin(dst, s1, s2, f64)
+//go:noinline
+func (op simdBinaryOp) emit(f *fn, dst, left, right Reg) {
+	if op&simdSwap != 0 {
+		left, right = right, left
+	}
+	f64 := op&simdFloat64 != 0
+	if op&simdHasImm != 0 {
+		if byte(op) == 0xc2 {
+			f.emitVFCmpPacked(dst, left, right, f64, byte(op>>16))
+		} else {
+			f.emitVShufps(dst, left, right, byte(op>>16))
+		}
 		return
 	}
-	f.legacySIMDBinary(packedPrefix(f64), 0, 93, dst, s1, s2)
-}
-
-func (f *fn) emitVFPackedMax(dst, s1, s2 Reg, f64 bool) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VFPackedMax(dst, s1, s2, f64)
+	feature := shared.AMD64Features(op>>12) & (shared.AMD64SSSE3 | shared.AMD64SSE41 | shared.AMD64SSE42)
+	opcodeMap := byte(0)
+	if feature != 0 {
+		opcodeMap = 0x38
+	}
+	pp := byte(1)
+	if op&simdFloat != 0 && !f64 {
+		pp = 0
+	}
+	if f.cpuHas(shared.AMD64AVX | feature) {
+		f.a.VexMapRRR(opcodeMap, pp, byte(op), dst, left, right)
 		return
 	}
-	f.legacySIMDBinary(packedPrefix(f64), 0, 95, dst, s1, s2)
-}
-
-func (f *fn) emitVPsllwImm(dst, src Reg, imm byte) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsllwImm(dst, src, imm)
+	if feature != 0 && !f.cpuHas(feature) {
+		f.simdFallback(byte(op), dst, left, right)
 		return
 	}
-	if dst != src {
-		f.mov128(dst, src)
-	}
-	f.a.SseMapRRI(0x66, 0, 113, Reg(6), dst, imm)
+	f.legacySIMDBinary(op, dst, left, right)
 }
 
-func (f *fn) emitVPsrlwImm(dst, src Reg, imm byte) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsrlwImm(dst, src, imm)
-		return
-	}
-	if dst != src {
-		f.mov128(dst, src)
-	}
-	f.a.SseMapRRI(0x66, 0, 113, Reg(2), dst, imm)
-}
+// simdShiftImmediate holds the x86 opcode and ModRM extension.
+type simdShiftImmediate uint16
 
-func (f *fn) emitVPsrawImm(dst, src Reg, imm byte) {
+//go:noinline
+func (op simdShiftImmediate) emit(f *fn, dst, src Reg, imm byte) {
 	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsrawImm(dst, src, imm)
-		return
-	}
-	if dst != src {
-		f.mov128(dst, src)
-	}
-	f.a.SseMapRRI(0x66, 0, 113, Reg(4), dst, imm)
-}
-
-func (f *fn) emitVPslldImm(dst, src Reg, imm byte) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPslldImm(dst, src, imm)
-		return
-	}
-	if dst != src {
-		f.mov128(dst, src)
-	}
-	f.a.SseMapRRI(0x66, 0, 114, Reg(6), dst, imm)
-}
-
-func (f *fn) emitVPsrldImm(dst, src Reg, imm byte) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsrldImm(dst, src, imm)
+		f.a.VexShiftImm(byte(op), byte(op>>8), dst, src, imm)
 		return
 	}
 	if dst != src {
 		f.mov128(dst, src)
 	}
-	f.a.SseMapRRI(0x66, 0, 114, Reg(2), dst, imm)
+	f.a.SseMapRRI(0x66, 0, byte(op), Reg(op>>8), dst, imm)
 }
 
-func (f *fn) emitVPsradImm(dst, src Reg, imm byte) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsradImm(dst, src, imm)
+// simdUnaryOp holds an opcode, the VEX pp field, and optional feature bits.
+type simdUnaryOp uint32
+
+//go:noinline
+func (op simdUnaryOp) emit(f *fn, dst, src Reg) {
+	feature := shared.AMD64Features(op >> 12)
+	opcodeMap := byte(0)
+	if feature != 0 {
+		opcodeMap = 0x38
+	}
+	pp := byte(op>>8) & 3
+	if f.cpuHas(shared.AMD64AVX | feature) {
+		f.a.VexMapRR(opcodeMap, pp, byte(op), dst, src)
 		return
 	}
-	if dst != src {
-		f.mov128(dst, src)
-	}
-	f.a.SseMapRRI(0x66, 0, 114, Reg(4), dst, imm)
-}
-
-func (f *fn) emitVPsllqImm(dst, src Reg, imm byte) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsllqImm(dst, src, imm)
+	if feature != 0 && !f.cpuHas(feature) {
+		f.simdFallback(byte(op), dst, src, src)
 		return
 	}
-	if dst != src {
-		f.mov128(dst, src)
+	prefix := byte(0)
+	switch pp {
+	case 1:
+		prefix = 0x66
+	case 2:
+		prefix = 0xf3
+	case 3:
+		prefix = 0xf2
 	}
-	f.a.SseMapRRI(0x66, 0, 115, Reg(6), dst, imm)
+	f.a.SseMapRR(prefix, opcodeMap, byte(op), dst, src)
 }
 
-func (f *fn) emitVPsrlqImm(dst, src Reg, imm byte) {
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.VPsrlqImm(dst, src, imm)
-		return
-	}
-	if dst != src {
-		f.mov128(dst, src)
-	}
-	f.a.SseMapRRI(0x66, 0, 115, Reg(2), dst, imm)
-}
-
-func (f *fn) emitPinsrb(dst, src Reg, imm byte) {
+func (f *fn) emitPinsrLane(dst, src Reg, lane byte, width int) {
 	if f.cpuHas(shared.AMD64SSE41) {
-		f.a.Pinsrb(dst, src, imm)
+		switch width {
+		case 1:
+			f.a.Pinsrb(dst, src, lane)
+		case 4:
+			f.a.Pinsrd(dst, src, lane)
+		case 8:
+			f.a.Pinsrq(dst, src, lane)
+		}
 		return
 	}
-	f.insertSIMDLane(dst, src, imm, 1)
+	f.insertSIMDLane(dst, src, lane, width)
 }
-
-func (f *fn) emitPextrb(dst, src Reg, imm byte) {
+func (f *fn) emitPextrLane(dst, src Reg, lane byte, width int) {
 	if f.cpuHas(shared.AMD64SSE41) {
-		f.a.Pextrb(dst, src, imm)
+		switch width {
+		case 1:
+			f.a.Pextrb(dst, src, lane)
+		case 4:
+			f.a.Pextrd(dst, src, lane)
+		case 8:
+			f.a.Pextrq(dst, src, lane)
+		}
 		return
 	}
-	f.extractSIMDLane(dst, src, imm, 1)
-}
-
-func (f *fn) emitPinsrd(dst, src Reg, imm byte) {
-	if f.cpuHas(shared.AMD64SSE41) {
-		f.a.Pinsrd(dst, src, imm)
-		return
-	}
-	f.insertSIMDLane(dst, src, imm, 4)
-}
-
-func (f *fn) emitPextrd(dst, src Reg, imm byte) {
-	if f.cpuHas(shared.AMD64SSE41) {
-		f.a.Pextrd(dst, src, imm)
-		return
-	}
-	f.extractSIMDLane(dst, src, imm, 4)
-}
-
-func (f *fn) emitPinsrq(dst, src Reg, imm byte) {
-	if f.cpuHas(shared.AMD64SSE41) {
-		f.a.Pinsrq(dst, src, imm)
-		return
-	}
-	f.insertSIMDLane(dst, src, imm, 8)
-}
-
-func (f *fn) emitPextrq(dst, src Reg, imm byte) {
-	if f.cpuHas(shared.AMD64SSE41) {
-		f.a.Pextrq(dst, src, imm)
-		return
-	}
-	f.extractSIMDLane(dst, src, imm, 8)
+	f.extractSIMDLane(dst, src, lane, width)
 }
