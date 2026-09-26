@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"encoding/binary"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -128,7 +129,7 @@ func (f *fn) spillF(e *elem) {
 	}
 	if e.st.typ == mtV128 {
 		slot := f.allocSpillSlots(2)
-		f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), r)
+		f.mov128StoreDisp(RSP, f.spillOff(slot), r)
 		f.fregUser[r] = nil
 		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 		return
@@ -347,10 +348,8 @@ func (f *fn) fconst(bits uint64, typ machineType) {
 	f.pushValue(storage{kind: stConst, typ: typ, cval: int64(bits)})
 }
 
-// fbin lowers add/sub/mul/div via the 3-operand VEX form dst = s1 <op> s2. Both
-// operands are read directly (a pinned local is borrowed, never copied), and the
-// result lands in a reused owned-operand register or a fresh one — so no operand is
-// pre-copied to scratch the way legacy 2-operand SSE requires.
+// Scalar arithmetic keeps the three-operand VEX form when AVX is selected.
+// The SSE2 path explicitly preserves a source when the destination aliases it.
 // foldFloatMem reports whether e is a deferred float load of the given width that
 // can be folded directly as an SSE r/m operand (addsd/mulsd/subsd/divsd xmm, [mem]).
 func foldFloatMem(e *elem, f64 bool) bool {
@@ -390,7 +389,7 @@ func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
 		dst = f.allocFReg(0)
 	}
 	f.fpinned = f.fpinned.remove(s1)
-	vop(dst, s1, s2, f64)
+	f.scalarBinary(vop, memOp, dst, s1, s2, f64)
 	if o1 && dst != s1 {
 		f.releaseF(s1)
 	}
@@ -415,7 +414,7 @@ func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, 
 	f.fpinned = f.fpinned.add(s1)
 	s2, o2 := f.operandRegF(b)
 	f.fpinned = f.fpinned.remove(s1)
-	vop(dst, s1, s2, f64)
+	f.scalarBinary(vop, memOp, dst, s1, s2, f64)
 	if o1 && dst != s1 {
 		f.releaseF(s1)
 	}
@@ -429,11 +428,11 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 	dst := src
 	if !owned {
 		dst = f.allocFReg(maskOf(src))
-		if !f.opt(optVEXFloatMem) {
+		if !(f.cpuHas(shared.AMD64AVX) && f.opt(optVEXFloatMem)) {
 			f.a.FMov(dst, src, f64)
 		}
 	}
-	if f.opt(optVEXFloatMem) {
+	if f.cpuHas(shared.AMD64AVX) && f.opt(optVEXFloatMem) {
 		f.a.VFMemIdx(memOp, dst, src, RBX, b.st.reg, b.st.memDisp(), f64)
 	} else {
 		f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
@@ -444,10 +443,10 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 
 func (f *fn) fbinMemRightInto(dst Reg, a, b *elem, memOp byte, f64 bool) {
 	src, owned := f.operandRegF(a)
-	if !f.opt(optVEXFloatMem) && dst != src {
+	if !(f.cpuHas(shared.AMD64AVX) && f.opt(optVEXFloatMem)) && dst != src {
 		f.a.FMov(dst, src, f64)
 	}
-	if f.opt(optVEXFloatMem) {
+	if f.cpuHas(shared.AMD64AVX) && f.opt(optVEXFloatMem) {
 		f.a.VFMemIdx(memOp, dst, src, RBX, b.st.reg, b.st.memDisp(), f64)
 	} else {
 		f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
@@ -522,7 +521,11 @@ func (f *fn) fsqrt(f64 bool) {
 	// VEX 3-operand vsqrtsd dst,src,src: sqrt(src) with the upper bits taken from
 	// src, so the write to dst has no false dependency on dst's prior value (which
 	// would serialize independent sqrts across a loop — see raytrace).
-	f.a.VFSqrt(dst, src, src, f64)
+	if f.cpuHas(shared.AMD64AVX) {
+		f.a.VFSqrt(dst, src, src, f64)
+	} else {
+		f.a.FSqrt(dst, src, f64)
+	}
 	f.pushFReg(dst, mtOf2(f64))
 }
 
@@ -543,7 +546,7 @@ func (f *fn) fsign(op byte, mask64 uint64, mask32 uint32, f64 bool) {
 	if f64 {
 		pp = 0b01
 	}
-	f.a.VSseRRR(pp, op, dst, src, m)
+	f.scalarLogic(pp, op, dst, src, m)
 	f.releaseF(m)
 	f.pushFReg(dst, mtOf2(f64))
 }
@@ -557,7 +560,7 @@ func (f *fn) fround(f64 bool, mode byte) {
 	if !owned { // borrowed pinned local: round into a fresh dest, leave the local intact
 		dst = f.allocFReg(maskOf(src))
 	}
-	f.a.Round(dst, src, f64, mode)
+	f.scalarRound(dst, src, f64, mode)
 	f.pushFReg(dst, mtOf2(f64))
 }
 
@@ -597,12 +600,12 @@ func (f *fn) fcopysign(f64 bool) {
 	if f64 {
 		pp = 0b01
 	}
-	f.a.VSseRRR(pp, 0x57, dst, xa, xb) // dst = a ^ b
-	f.a.VSseRRR(pp, 0x54, dst, dst, m) // retain magnitude or sign difference
+	f.scalarLogic(pp, 0x57, dst, xa, xb) // dst = a ^ b
+	f.scalarLogic(pp, 0x54, dst, dst, m) // retain magnitude or sign difference
 	if useMagnitude {
-		f.a.VSseRRR(pp, 0x57, dst, xb, dst) // dst = b ^ magnitude(a^b)
+		f.scalarLogic(pp, 0x57, dst, xb, dst) // dst = b ^ magnitude(a^b)
 	} else {
-		f.a.VSseRRR(pp, 0x57, dst, xa, dst) // dst = a ^ sign(a^b)
+		f.scalarLogic(pp, 0x57, dst, xa, dst) // dst = a ^ sign(a^b)
 	}
 	f.releaseF(m)
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
@@ -675,7 +678,7 @@ func (f *fn) emitFCmpSetcc(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
 func (f *fn) i2f(f64, srcWide bool) {
 	gpr := f.materialize(f.popValue())
 	xmm := f.allocFReg(0)
-	f.a.VPxor(xmm, xmm, xmm) // break CVTSI2SD's false dep on xmm (loop pipelining)
+	f.scalarZero(xmm) // break CVTSI2SD's false dep on xmm (loop pipelining)
 	f.a.Cvtsi2f(xmm, gpr, f64, srcWide)
 	f.release(gpr)
 	f.pushFReg(xmm, mtOf2(f64))
@@ -692,7 +695,7 @@ func (f *fn) i2fU(f64, srcWide bool) {
 		// on xmm's previous value — which serializes independent conversions across a
 		// loop (each cvtsi2sd waits on the prior one via the reused register). Break
 		// it with a zeroing idiom so the conversions/downstream ops pipeline.
-		f.a.VPxor(xmm, xmm, xmm)
+		f.scalarZero(xmm)
 		f.a.Cvtsi2f(xmm, gpr, f64, true)
 		f.release(gpr)
 		f.pushFReg(xmm, mtOf2(f64))
@@ -701,7 +704,7 @@ func (f *fn) i2fU(f64, srcWide bool) {
 	gpr := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(gpr)
 	xmm := f.allocFReg(0)
-	f.a.VPxor(xmm, xmm, xmm) // break CVTSI2SD's false dep on xmm (both branches below)
+	f.scalarZero(xmm) // break CVTSI2SD's false dep on xmm (both branches below)
 	f.a.TestSelf(gpr, true)
 	big := f.a.JccPlaceholder(condS)
 	f.a.Cvtsi2f(xmm, gpr, f64, true)

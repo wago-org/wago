@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -1287,8 +1288,8 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.AluRI(cmpDigit, RCX, 16, false)
 	backScalar := f.a.JccPlaceholder(condB)
 	back16 := f.a.Len()
-	f.a.VMovdquLoadIdx(copyVec, RSI, RCX, -16)
-	f.a.VMovdquStoreIdx(RDI, RCX, copyVec, -16)
+	f.mov128LoadIdx(copyVec, RSI, RCX, -16)
+	f.mov128StoreIdx(RDI, RCX, copyVec, -16)
 	f.a.AluRI(5, RCX, 16, false)
 	f.a.AluRI(cmpDigit, RCX, 16, false)
 	f.a.PatchRel32(f.a.JccPlaceholder(condAE), back16)
@@ -1326,8 +1327,8 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.AluRI(cmpDigit, RCX, -16, true)
 	fwdScalar := f.a.JccPlaceholder(condG)
 	fwd16 := f.a.Len()
-	f.a.VMovdquLoadIdx(copyVec, RSI, RCX, 0)
-	f.a.VMovdquStoreIdx(RDI, RCX, copyVec, 0)
+	f.mov128LoadIdx(copyVec, RSI, RCX, 0)
+	f.mov128StoreIdx(RDI, RCX, copyVec, 0)
 	f.a.AluRI(0, RCX, 16, true)
 	f.a.AluRI(cmpDigit, RCX, -16, true)
 	f.a.PatchRel32(f.a.JccPlaceholder(condLE), fwd16)
@@ -1369,30 +1370,33 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0) // rdx = src + n
 	f.a.Cmp64(RDI, RDX)
 	fwdDisjoint := f.a.JccPlaceholder(condAE) // dst >= src+n → disjoint → forward
-	f.a.AluRI(cmpDigit, RCX, 1024, false)
-	mediumBack := f.a.JccPlaceholder(condB)
-	back128 := f.a.Len()
-	f.a.AluRI(cmpDigit, RCX, 128, false)
-	ymmDone := f.a.JccPlaceholder(condB)
-	for i, disp := range [...]int32{-128, -96, -64, -32} {
-		f.a.YMovdquLoadIdx(copyVecs[i], RSI, RCX, disp)
+	if f.cpuHas(shared.AMD64AVX) {
+		f.a.AluRI(cmpDigit, RCX, 1024, false)
+		mediumBack := f.a.JccPlaceholder(condB)
+		back128 := f.a.Len()
+		f.a.AluRI(cmpDigit, RCX, 128, false)
+		ymmDone := f.a.JccPlaceholder(condB)
+		for i, disp := range [...]int32{-128, -96, -64, -32} {
+			f.a.YMovdquLoadIdx(copyVecs[i], RSI, RCX, disp)
+		}
+		for i, disp := range [...]int32{-128, -96, -64, -32} {
+			f.a.YMovdquStoreIdx(RDI, RCX, copyVecs[i], disp)
+		}
+		f.a.AluRI(5, RCX, 128, false)
+		f.a.JmpBack(back128)
+		f.a.PatchRel32(ymmDone, f.a.Len())
+		f.a.VZeroUpper()
+		f.a.PatchRel32(mediumBack, f.a.Len())
 	}
-	for i, disp := range [...]int32{-128, -96, -64, -32} {
-		f.a.YMovdquStoreIdx(RDI, RCX, copyVecs[i], disp)
-	}
-	f.a.AluRI(5, RCX, 128, false)
-	f.a.JmpBack(back128)
-	f.a.PatchRel32(ymmDone, f.a.Len())
-	f.a.VZeroUpper()
-	f.a.PatchRel32(mediumBack, f.a.Len())
+
 	back64 := f.a.Len()
 	f.a.AluRI(cmpDigit, RCX, 64, false)
 	backTail := f.a.JccPlaceholder(condB)
 	for i, disp := range [...]int32{-64, -48, -32, -16} {
-		f.a.VMovdquLoadIdx(copyVecs[i], RSI, RCX, disp)
+		f.mov128LoadIdx(copyVecs[i], RSI, RCX, disp)
 	}
 	for i, disp := range [...]int32{-64, -48, -32, -16} {
-		f.a.VMovdquStoreIdx(RDI, RCX, copyVecs[i], disp)
+		f.mov128StoreIdx(RDI, RCX, copyVecs[i], disp)
 	}
 	f.a.AluRI(5, RCX, 64, false)
 	f.a.JmpBack(back64)
@@ -1475,10 +1479,15 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	mediumRep := f.a.JccPlaceholder(condB)
 	f.a.AluRI(cmpDigit, RCX, 16, false)
 	fillScalar := f.a.JccPlaceholder(condB)
-	f.a.Pinsrq(fillVec, RAX, 0)
-	f.a.Pinsrq(fillVec, RAX, 1)
+	if f.cpuHas(shared.AMD64SSE41) {
+		f.a.Pinsrq(fillVec, RAX, 0)
+		f.a.Pinsrq(fillVec, RAX, 1)
+	} else {
+		f.a.MovGprToXmm(fillVec, RAX, true)
+		f.a.Punpcklqdq(fillVec, fillVec)
+	}
 	fill16 := f.a.Len()
-	f.a.VMovdquStoreIdx(RDI, RCX, fillVec, -16)
+	f.mov128StoreIdx(RDI, RCX, fillVec, -16)
 	f.a.AluRI(5, RCX, 16, false)
 	f.a.AluRI(cmpDigit, RCX, 16, false)
 	f.a.PatchRel32(f.a.JccPlaceholder(condAE), fill16)
@@ -1814,12 +1823,12 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 		var favoid regMask
 		for i, c := range chunks {
 			x := f.allocFReg(favoid)
-			f.a.VMovdquLoadIdx(x, RBX, src, int32(c[0]))
+			f.mov128LoadIdx(x, RBX, src, int32(c[0]))
 			xregs[i] = x
 			favoid = favoid.add(x)
 		}
 		for i, c := range chunks {
-			f.a.VMovdquStoreIdx(RBX, dst, xregs[i], int32(c[0]))
+			f.mov128StoreIdx(RBX, dst, xregs[i], int32(c[0]))
 			f.releaseF(xregs[i])
 		}
 		f.pinned = f.pinned.remove(src)

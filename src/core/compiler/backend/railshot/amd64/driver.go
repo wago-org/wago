@@ -783,7 +783,7 @@ func (f *fn) emitSelect() {
 		f.pinned = f.pinned.remove(condReg)
 		f.a.TestSelf(condReg, false)
 		skip := f.a.JccPlaceholder(condNE) // cond != 0 → keep a
-		f.a.VMovdqu(aX, bX)                // cond == 0 → a = b (all 128 bits)
+		f.mov128(aX, bX)                   // cond == 0 → a = b (all 128 bits)
 		f.a.PatchRel32(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
 		f.releaseF(bX)
@@ -1050,12 +1050,12 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.evictRelinquishedFReg(pr)
 		if e.isValue() && e.st.kind == stLocalReg {
 			if e.st.reg != pr {
-				f.a.VMovdqu(pr, e.st.reg) // borrowed v128 local → direct move
+				f.mov128(pr, e.st.reg) // borrowed v128 local → direct move
 			}
 		} else {
 			xmm := f.materializeV128(e)
 			if xmm != pr {
-				f.a.VMovdqu(pr, xmm)
+				f.mov128(pr, xmm)
 			}
 			f.releaseF(xmm)
 		}
@@ -1094,7 +1094,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		xmm := f.materializeV128(e)
 		elideStore := tee && f.v128TeeOverwritten(reader, x)
 		if !elideStore {
-			f.a.VMovdquStoreDisp(RSP, f.localAddr(x), xmm)
+			f.mov128StoreDisp(RSP, f.localAddr(x), xmm)
 		} else {
 			f.stats.peep("simd-tee-store-elide")
 		}

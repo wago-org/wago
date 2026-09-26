@@ -91,7 +91,7 @@ func (f *fn) markDeclaredLocalZero(x int) {
 
 func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 	if f.localType[x] == mtV128 {
-		f.a.VMovdquStoreDisp(RSP, f.localAddr(x), reg)
+		f.mov128StoreDisp(RSP, f.localAddr(x), reg)
 	} else if isFloat {
 		f.a.FStoreDisp(RSP, f.localAddr(x), reg, f.localType[x] == mtF64)
 	} else {
@@ -108,7 +108,7 @@ func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
 		}
 	}
 	if f.localType[x] == mtV128 {
-		f.a.VMovdquLoadDisp(reg, RSP, f.localAddr(x))
+		f.mov128LoadDisp(reg, RSP, f.localAddr(x))
 	} else if isFloat {
 		f.a.FLoadDisp(reg, RSP, f.localAddr(x), f.localType[x] == mtF64)
 	} else {

@@ -35,12 +35,12 @@ func (f *fn) materializeV128(e *elem) Reg {
 		}
 	case stSlot:
 		x := f.allocFReg(0)
-		f.a.VMovdquLoadDisp(x, RSP, f.spillOff(e.st.slotIndex()))
+		f.mov128LoadDisp(x, RSP, f.spillOff(e.st.slotIndex()))
 		f.occupyF(e, x)
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.a.VMovdquLoadDisp(x, RSP, f.localAddr(e.st.index()))
+		f.mov128LoadDisp(x, RSP, f.localAddr(e.st.index()))
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:
@@ -49,7 +49,7 @@ func (f *fn) materializeV128(e *elem) Reg {
 		// cannot corrupt the local — mirrors arm64 materializeV128 and the scalar
 		// materializeF stLocalReg copy.
 		x := f.allocFReg(0)
-		f.a.VMovdqu(x, e.st.reg)
+		f.mov128(x, e.st.reg)
 		f.occupyF(e, x)
 		return x
 	}
@@ -126,7 +126,7 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 		return x
 	}
 	if c, ok := f.v128ConstCached(lo, hi); ok {
-		f.a.VMovdqu(x, c)
+		f.mov128(x, c)
 		return x
 	}
 	if !f.opt(optV128ConstCache) {
@@ -588,7 +588,7 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
 			return true
 		}
 		dst := f.allocFReg(maskOf(e.st.reg))
-		f.a.VMovdqu(dst, e.st.reg)
+		f.mov128(dst, e.st.reg)
 		f.pushVReg(dst)
 		f.stats.peep("simd-local-forward")
 		return true
@@ -782,7 +782,7 @@ func (f *fn) v128BinMem(r *wasm.Reader, op func(dst, s1, s2 Reg), memOp func(dst
 	dst := regNone
 	if regDisp, secondMem := f.v128StackMem(regElem); secondMem {
 		dst = f.allocFReg(0)
-		f.a.VMovdquLoadDisp(dst, RSP, regDisp)
+		f.mov128LoadDisp(dst, RSP, regDisp)
 		memOp(dst, dst, RSP, disp)
 		f.erase(right)
 		f.erase(left)
@@ -946,7 +946,7 @@ func (f *fn) v128TruncSatF64x2SignedZero() {
 	f.fpinned = f.fpinned.add(xx)
 	tmp := f.allocFReg(maskOf(xx))
 	f.fpinned = f.fpinned.add(tmp)
-	f.a.VMovdqu(tmp, xx)
+	f.mov128(tmp, xx)
 	f.a.VFCmpPacked(tmp, tmp, tmp, true, vfcmpEqOQ) // non-NaN mask
 	maxc := f.v128ConstReg(0x41dfffffffc00000, 0x41dfffffffc00000)
 	f.a.VSseRRR(0, 0x54, tmp, tmp, maxc) // ANDPS: 2147483647.0 where non-NaN, else 0
@@ -970,7 +970,7 @@ func (f *fn) v128TruncSatF32x4(signed bool) {
 	tmp := f.allocFReg(maskOf(xx))
 	f.fpinned = f.fpinned.add(tmp)
 	if signed {
-		f.a.VMovdqu(tmp, xx)
+		f.mov128(tmp, xx)
 		f.a.VFCmpPacked(tmp, tmp, tmp, false, vfcmpEqOQ) // tmp = non-NaN mask
 		f.a.VSseRRR(0, 0x54, xx, xx, tmp)                // ANDPS: NaN lanes -> +0.0
 		f.a.VSseRRR(0, 0x57, tmp, tmp, xx)               // XORPS: tmp sign bit set iff lane negative
@@ -987,7 +987,7 @@ func (f *fn) v128TruncSatF32x4(signed bool) {
 		f.a.VPcmpeqd(tmp, tmp, tmp)
 		f.a.VPsrldImm(tmp, tmp, 1)            // 0x7FFFFFFF
 		f.a.Vcvtdq2ps(tmp, tmp)               // 2147483647.0f
-		f.a.VMovdqu(tmp2, xx)                 // tmp2 = clamped value
+		f.mov128(tmp2, xx)                    // tmp2 = clamped value
 		f.a.Vcvttps2dq(xx, xx)                // low half: trunc of the clamped signed range
 		f.a.VSseRRR(0, 0x5C, tmp2, tmp2, tmp) // SUBPS: tmp2 -= 2^31f
 		f.a.VFCmpPacked(tmp, tmp, tmp2, false, vfcmpLeOQ)
@@ -2214,7 +2214,7 @@ func (f *fn) v128Load(r *wasm.Reader) error {
 	}
 	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, 16)
 	x := f.allocFReg(0)
-	f.a.VMovdquLoadIdx(x, base, ea, disp)
+	f.mov128LoadIdx(x, base, ea, disp)
 	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	f.pushVReg(x)
 	return nil
@@ -2337,7 +2337,7 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
 	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, 16)
-	f.a.VMovdquStoreIdx(base, ea, x, disp)
+	f.mov128StoreIdx(base, ea, x, disp)
 	f.fpinned = f.fpinned.remove(x)
 	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	f.releaseF(x)
