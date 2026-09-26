@@ -81,9 +81,9 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 2 -->
+<!-- artifact:codec-version 3 -->
 
-Compiled artifact version 2 is a strict ordered section stream. It has a fixed
+Compiled artifact version 3 is a strict ordered section stream. It has a fixed
 header and section count, followed by length-delimited native-code and metadata
 sections. Wago rejects unknown, duplicate, reordered, truncated, over-limit, and
 non-canonical section encodings. `Compiled.WriteTo` streams code without making a

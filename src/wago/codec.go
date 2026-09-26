@@ -27,14 +27,15 @@ const (
 	compiledDynamicFuncrefEscape          uint64 = 1 << 57
 	compiledRegisterABIDisabled           uint64 = 1 << 58
 	compiledAtomicWaitExecution           uint64 = 1 << 59
-	compiledCPUFeatureBMI2                uint64 = 1 << 60
-	compiledCPUFeatureLZCNT               uint64 = 1 << 52
-	compiledCPUFeatureTZCNT               uint64 = 1 << 53
-	compiledCPUFeaturePOPCNT              uint64 = 1 << 54
+	compiledCPUFeatureBMI2                uint64 = uint64(shared.AMD64BMI2) << 32
+	compiledCPUFeatureLZCNT               uint64 = uint64(shared.AMD64LZCNT) << 32
+	compiledCPUFeatureTZCNT               uint64 = uint64(shared.AMD64BMI1) << 32
+	compiledCPUFeaturePOPCNT              uint64 = uint64(shared.AMD64POPCNT) << 32
 	compiledCPUFeatureBitCount                   = compiledCPUFeatureLZCNT | compiledCPUFeatureTZCNT | compiledCPUFeaturePOPCNT
 	compiledGCExecutionDynamicFuncRefTest uint64 = 1 << 61
 	compiledGCExecutionGenericStruct      uint64 = 1 << 62
 	compiledGCExecutionGenericArray       uint64 = 1 << 63
+	compiledCPUFeatures                   uint64 = 0xfffff << 32
 	compiledGCExecutionMask                      = compiledGCExecutionI31Product | compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
 
 	// Import names are attacker-controlled artifact metadata. Bound the decoded
@@ -367,10 +368,7 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	if c.usesAtomicWaitHelpers() {
 		required |= compiledAtomicWaitExecution
 	}
-	if c.requiresBMI2 {
-		required |= compiledCPUFeatureBMI2
-	}
-	required |= uint64(c.requiresBitCount) << 52
+	required |= uint64(c.requiredAMD64Features) << 32
 	if c.needsFuncRefContextHeader {
 		required |= compiledFuncRefContextHeader
 	}
@@ -990,12 +988,14 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 		return err
 	}
 	gcExecution := required & compiledGCExecutionMask
-	c.requiresBMI2 = required&compiledCPUFeatureBMI2 != 0
-	c.requiresBitCount = uint8((required & compiledCPUFeatureBitCount) >> 52)
+	c.requiredAMD64Features = shared.AMD64Features((required & compiledCPUFeatures) >> 32)
+	if c.requiredAMD64Features&^shared.AMD64KnownFeatures != 0 {
+		return fmt.Errorf("unknown AMD64 CPU requirements %#x", c.requiredAMD64Features)
+	}
 	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2 | compiledCPUFeatureBitCount))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatures))
 	genericNativeGC := gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0
 	if genericNativeGC || c.hasCollectorReferenceCallBoundary() {
 		label := "native GC call-boundary"

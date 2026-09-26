@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 
 	plugincodegen "github.com/wago-org/wago/codegen/amd64"
 	x86 "github.com/wago-org/wago/src/core/encoder/amd64"
@@ -444,4 +445,32 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
 	}
 	f.stats.call("custom-machine-code-custom")
 	return nil
+}
+
+func pluginAMD64Requirements(features plugincodegen.Features) (shared.AMD64Features, error) {
+	if features & ^(plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512) != 0 {
+		return 0, fmt.Errorf("unknown plugin CPU requirements %#x", features)
+	}
+	var required shared.AMD64Features
+	if features&plugincodegen.FeatureAVX2 != 0 {
+		required |= shared.AMD64AVX | shared.AMD64AVX2
+	}
+	if features&plugincodegen.FeatureAVX512 != 0 {
+		required |= shared.AMD64AVX | shared.AMD64AVX2 | shared.AMD64AVX512
+	}
+	return required, nil
+}
+
+func combinedAMD64Requirements(features shared.AMD64Features, bmi2 bool, bitCount uint8, avx2, avx512 bool) uint32 {
+	features |= shared.AMD64BitCountRequirements(bitCount)
+	if bmi2 {
+		features |= shared.AMD64BMI2
+	}
+	if avx2 {
+		features |= shared.AMD64AVX | shared.AMD64AVX2
+	}
+	if avx512 {
+		features |= shared.AMD64AVX | shared.AMD64AVX2 | shared.AMD64AVX512
+	}
+	return uint32(features)
 }

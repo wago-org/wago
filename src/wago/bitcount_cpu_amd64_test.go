@@ -85,8 +85,8 @@ func TestAMD64BitCountPaths(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer compiled.Close()
-				if compiled.requiresBitCount != mask {
-					t.Fatalf("requirements = %#x, want %#x", compiled.requiresBitCount, mask)
+				if compiled.requiredAMD64Features.BitCountCapabilities() != mask {
+					t.Fatalf("requirements = %#x, want %#x", compiled.requiredAMD64Features.BitCountCapabilities(), mask)
 				}
 				if got := hasBitCountOpcode(compiled.code, tc.nativeOpcode); got != native {
 					t.Fatalf("native opcode presence = %v, want %v", got, native)
@@ -130,8 +130,8 @@ func TestAMD64BitCountArtifactRequirements(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if compiled.requiresBitCount != mask {
-					t.Fatalf("compiled requirements = %#x, want %#x", compiled.requiresBitCount, mask)
+				if compiled.requiredAMD64Features.BitCountCapabilities() != mask {
+					t.Fatalf("compiled requirements = %#x, want %#x", compiled.requiredAMD64Features.BitCountCapabilities(), mask)
 				}
 				blob, err := compiled.MarshalBinary()
 				compiled.Close()
@@ -149,7 +149,7 @@ func TestAMD64BitCountArtifactRequirements(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if loaded.requiresBitCount != 0 {
+					if loaded.requiredAMD64Features.BitCountCapabilities() != 0 {
 						t.Fatal("fallback artifact acquired a CPU requirement")
 					}
 					loaded.Close()
@@ -159,8 +159,8 @@ func TestAMD64BitCountArtifactRequirements(t *testing.T) {
 				if err := roundtrip.UnmarshalBinary(blob); err != nil {
 					t.Fatal(err)
 				}
-				if roundtrip.requiresBitCount != mask {
-					t.Fatalf("roundtrip requirements = %#x", roundtrip.requiresBitCount)
+				if roundtrip.requiredAMD64Features.BitCountCapabilities() != mask {
+					t.Fatalf("roundtrip requirements = %#x", roundtrip.requiredAMD64Features.BitCountCapabilities())
 				}
 				roundtrip.Close()
 			}
@@ -197,8 +197,8 @@ func TestAMD64BitCountParallelArtifactUnion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	if compiled.requiresBitCount != all {
-		t.Fatalf("parallel requirements = %#x, want %#x", compiled.requiresBitCount, all)
+	if compiled.requiredAMD64Features.BitCountCapabilities() != all {
+		t.Fatalf("parallel requirements = %#x, want %#x", compiled.requiredAMD64Features.BitCountCapabilities(), all)
 	}
 	blob, err := compiled.MarshalBinary()
 	if err != nil {

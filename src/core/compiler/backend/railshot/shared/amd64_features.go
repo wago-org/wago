@@ -16,12 +16,40 @@ const (
 	AMD64LZCNT
 	AMD64POPCNT
 	AMD64FMA
+	// AMD64AVX512 represents the plugin tier: AVX512F/DQ/BW/VL plus OS state.
+	AMD64AVX512
 )
 
 // AMD64ModernBaseline is the admission policy established by #693. Keep that
 // policy until every core/SIMD path and artifact requirement has been migrated.
 const AMD64ModernBaseline = AMD64SSSE3 | AMD64SSE41 | AMD64SSE42 | AMD64AVX
 
-const AMD64KnownFeatures = AMD64ModernBaseline | AMD64AVX2 | AMD64BMI1 | AMD64BMI2 | AMD64LZCNT | AMD64POPCNT | AMD64FMA
+const AMD64KnownFeatures = AMD64ModernBaseline | AMD64AVX2 | AMD64BMI1 | AMD64BMI2 | AMD64LZCNT | AMD64POPCNT | AMD64FMA | AMD64AVX512
 
 func (f AMD64Features) Has(required AMD64Features) bool { return f&required == required }
+
+// AMD64BitCountCapabilities bridges the legacy three-bit selection vocabulary.
+func (f AMD64Features) BitCountCapabilities() (bits uint8) {
+	if f.Has(AMD64LZCNT) {
+		bits |= BitCountLZCNT
+	}
+	if f.Has(AMD64BMI1) {
+		bits |= BitCountTZCNT
+	}
+	if f.Has(AMD64POPCNT) {
+		bits |= BitCountPOPCNT
+	}
+	return
+}
+func AMD64BitCountRequirements(bits uint8) (f AMD64Features) {
+	if bits&BitCountLZCNT != 0 {
+		f |= AMD64LZCNT
+	}
+	if bits&BitCountTZCNT != 0 {
+		f |= AMD64BMI1
+	}
+	if bits&BitCountPOPCNT != 0 {
+		f |= AMD64POPCNT
+	}
+	return
+}

@@ -731,6 +731,7 @@ func (f *fn) recordJumpTableFragment(start, end int, kind jumpTableFragmentKind)
 
 type scratch struct {
 	amd64Features         shared.AMD64Features
+	usedAMD64Features     shared.AMD64Features
 	stack                 *stack     // the valent-block operand stack
 	asm                   *amd64.Asm // the x86-64 encoder byte buffer
 	directPrepared        bool
@@ -976,6 +977,7 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
 }
 
 func (sc *scratch) reset() {
+	sc.usedAMD64Features = 0
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.UsesBMI2 = false
@@ -1053,13 +1055,14 @@ func (sc *scratch) finishStackWorker() {
 // arena is append-only until all workers join. Results retain offsets into it,
 // never slices, because a later append may reallocate the arena.
 type workerState struct {
-	scratch      *scratch
-	scratchStats shared.WorkerScratchStats
-	arena        []byte
-	relocs       []callReloc
-	literals     []uint64
-	usesBMI2     bool
-	usesBitCount uint8
+	scratch           *scratch
+	scratchStats      shared.WorkerScratchStats
+	arena             []byte
+	relocs            []callReloc
+	literals          []uint64
+	usesBMI2          bool
+	usesBitCount      uint8
+	usedAMD64Features shared.AMD64Features
 }
 
 // funcResult is one independently compiled local function. worker/start/end
@@ -1628,15 +1631,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if opts.AMD64FeaturesSet {
 		for index, definition := range opts.CustomInstructions {
 			if lowering := pluginAMD64Lowering(definition); lowering != nil {
-				// AVX-512 has no representation in the provisional capability
-				// model. Reject it (and unknown declarations) rather than silently
-				// weakening an explicit selection. The public default path retains
-				// its existing plugin admission and artifact checks.
-				if lowering.Features&^plugincodegen.FeatureAVX2 != 0 {
-					return nil, fmt.Errorf("amd64: plugin import %d has unrepresentable CPU requirements %#x", index, lowering.Features)
+				required, err := pluginAMD64Requirements(lowering.Features)
+				if err != nil {
+					return nil, fmt.Errorf("amd64: plugin import %d: %w", index, err)
 				}
-				if lowering.Features&plugincodegen.FeatureAVX2 != 0 && !opts.AMD64Features.Has(shared.AMD64AVX|shared.AMD64AVX2) {
-					return nil, fmt.Errorf("amd64: plugin import %d requires AVX and AVX2", index)
+				if !opts.AMD64Features.Has(required) {
+					return nil, fmt.Errorf("amd64: plugin import %d requires unavailable CPU features %#x", index, required&^opts.AMD64Features)
 				}
 			}
 		}
@@ -1702,9 +1702,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		relocCap += int(allHints[i].callRelocSiteCount())
 		moduleHasSIMD = moduleHasSIMD || allHints[i].flags.has(hintHasSIMD)
 	}
-	if opts.AMD64FeaturesSet && !opts.AMD64Features.Has(shared.AMD64ModernBaseline) && len(opts.CustomInstructions) != 0 {
-		return nil, fmt.Errorf("amd64: SIMD/plugin fallback coverage is not complete for the selected CPU features")
-	}
+
 	if relocCap < minPreallocatedCallRelocs {
 		relocCap = 0
 	}
@@ -1789,6 +1787,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	requiresAVX512 := false
 	requiresBMI2 := false
 	var requiresBitCount uint8
+	var usedAMD64Features shared.AMD64Features
 	for _, definition := range opts.CustomInstructions {
 		if lowering := pluginAMD64Lowering(definition); lowering != nil {
 			if lowering.Features&plugincodegen.FeatureAVX2 != 0 {
@@ -1911,6 +1910,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			requiresBMI2 = requiresBMI2 || sc.asm.UsesBMI2
 			requiresBitCount |= sc.asm.BitCountState >> 4
+			usedAMD64Features |= sc.usedAMD64Features
 			internalEntry[i] = len(code) + internalOff
 			if adapterTails != nil && sc.fnState.adapterReturnOff != 0 {
 				if info := sc.fnState.adapterTailInfo(); info.returnOff != 0 {
@@ -2017,10 +2017,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if err != nil {
 				return nil, fmt.Errorf("amd64: transfer heap code image: %w", err)
 			}
-			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount, requiresAVX2, requiresAVX512), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 		}
 		keepCodeBuffer = true
-		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount, requiresAVX2, requiresAVX512), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, hintSidecar, immutableTables, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, moduleHasSIMD, importedFuncs)
@@ -2157,6 +2157,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			ws.relocs = append(ws.relocs, rl...)
 			ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
 			ws.usesBitCount |= ws.scratch.asm.BitCountState >> 4
+			ws.usedAMD64Features |= ws.scratch.usedAMD64Features
 			ws.arena = append(ws.arena, fnCode...)
 			flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
 				boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
@@ -2322,9 +2323,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	requiresAVX512 := false
 	requiresBMI2 := false
 	var requiresBitCount uint8
+	var usedAMD64Features shared.AMD64Features
 	for i := range states {
 		requiresBMI2 = requiresBMI2 || states[i].usesBMI2
 		requiresBitCount |= states[i].usesBitCount
+		usedAMD64Features |= states[i].usedAMD64Features
 	}
 	for _, definition := range opts.CustomInstructions {
 		if lowering := pluginAMD64Lowering(definition); lowering != nil {
@@ -2332,7 +2335,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount, requiresAVX2, requiresAVX512), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 }
 
 func allTablesPreparedIsolated(tables []immutableTableHint) bool {

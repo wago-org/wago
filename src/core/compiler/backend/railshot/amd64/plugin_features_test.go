@@ -21,7 +21,8 @@ func TestExplicitPluginCPUFeatures(t *testing.T) {
 			{"missing-avx2", shared.AMD64ModernBaseline, plugincodegen.FeatureAVX2, false},
 			{"avx2", shared.AMD64ModernBaseline | shared.AMD64AVX2, plugincodegen.FeatureAVX2, true},
 			{"missing-avx-state", shared.AMD64AVX2, plugincodegen.FeatureAVX2, false},
-			{"unrepresented-avx512", shared.AMD64KnownFeatures, plugincodegen.FeatureAVX512, false},
+			{"missing-avx512", shared.AMD64ModernBaseline, plugincodegen.FeatureAVX512, false},
+			{"avx512", shared.AMD64KnownFeatures, plugincodegen.FeatureAVX512, true},
 			{"unknown", shared.AMD64KnownFeatures, 1 << 20, false},
 			{"ordinary", shared.AMD64ModernBaseline, 0, true},
 		} {

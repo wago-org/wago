@@ -2,31 +2,30 @@
 
 package wago
 
-import "os"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"os"
+)
 
-// TinyGo cannot assemble the standard Go CPUID helper. Linux remains the only
-// amd64 TinyGo runtime target; /proc/cpuinfo includes AVX only when the kernel
-// enabled the required XSAVE state.
+func architectureAMD64CPUFeatures() (shared.AMD64Features, bool) {
+	data, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return 0, false
+	}
+	return amd64LinuxCPUFeatures(data)
+}
 func architectureSupportsSIMD() bool {
-	data, err := os.ReadFile("/proc/cpuinfo")
-	if err != nil {
-		return false
-	}
-	return simdCPUFlagsSupported(data)
+	f, ok := cachedAMD64CPUFeatures()
+	return ok && f.Has(shared.AMD64ModernBaseline)
 }
-
 func architectureSupportsBMI2() bool {
-	data, err := os.ReadFile("/proc/cpuinfo")
-	if err != nil {
-		return false
-	}
-	return bmi2CPUFlagsSupported(data)
+	f, ok := cachedAMD64CPUFeatures()
+	return ok && f.Has(shared.AMD64BMI2)
 }
-
 func architectureAMD64BitCountFeatures() uint8 {
-	data, err := os.ReadFile("/proc/cpuinfo")
-	if err != nil {
+	f, ok := cachedAMD64CPUFeatures()
+	if !ok {
 		return 0
 	}
-	return bitCountCPUFlags(data)
+	return f.BitCountCapabilities()
 }

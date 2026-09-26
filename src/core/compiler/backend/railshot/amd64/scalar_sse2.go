@@ -4,14 +4,17 @@ package amd64
 
 import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 func (f *fn) cpuHas(features shared.AMD64Features) bool {
 	if f.sc == nil {
 		return (shared.AMD64ModernBaseline | shared.AMD64BMI2).Has(features)
 	}
-	return f.sc.amd64Features.Has(features)
+	if !f.sc.amd64Features.Has(features) {
+		return false
+	}
+	f.sc.usedAMD64Features |= features
+	return true
 }
 
 func (f *fn) scalarBinary(vop func(Reg, Reg, Reg, bool), op byte, dst, s1, s2 Reg, f64 bool) {
@@ -120,42 +123,4 @@ func (f *fn) mov128(dst, src Reg) {
 	} else {
 		f.a.SseRR(0xf3, 0x6f, dst, src, false)
 	}
-}
-
-// Vector types can produce vector zero initialization and ABI movement without
-// any 0xfd opcode. Include them in the temporary incomplete-SIMD admission gate.
-func moduleHasVectorTypes(m *wasm.Module) bool {
-	for _, rec := range m.Types {
-		for _, sub := range rec.SubTypes {
-			c := sub.Comp
-			for _, ts := range [][]wasm.ValType{c.Params, c.Results} {
-				for _, t := range ts {
-					if t.Kind() == wasm.ValVec {
-						return true
-					}
-				}
-			}
-			for _, field := range c.Fields {
-				if field.Storage().Val().Kind() == wasm.ValVec {
-					return true
-				}
-			}
-			if c.Kind == wasm.CompArray && c.Array.Storage().Val().Kind() == wasm.ValVec {
-				return true
-			}
-		}
-	}
-	for _, fn := range m.Code {
-		for _, local := range fn.Locals.Runs {
-			if local.Type.Kind() == wasm.ValVec {
-				return true
-			}
-		}
-	}
-	for i := 0; i < m.GlobalCount(); i++ {
-		if gt, ok := m.GlobalTypeByIndex(uint32(i)); ok && gt.Type.Kind() == wasm.ValVec {
-			return true
-		}
-	}
-	return false
 }
