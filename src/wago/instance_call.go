@@ -133,8 +133,14 @@ func (in *Instance) signatureViewCached(export string) (params, results []ValTyp
 }
 
 func contextInterruptError(ctx context.Context, err error) error {
-	if err == nil || ctx == nil {
+	if ctx == nil {
 		return err
+	}
+	// A host callback may cancel the context just as native execution returns.
+	// Whether or not the interrupt survives as a trap, cancellation during the
+	// invocation must not be reported as success.
+	if err == nil {
+		return ctx.Err()
 	}
 	var trap *wruntime.TrapError
 	if errors.As(err, &trap) && trap.Code == wruntime.TrapInterrupted {
