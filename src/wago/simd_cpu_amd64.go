@@ -31,8 +31,8 @@ func architectureAMD64CPUFeatures() (shared.AMD64Features, bool) {
 }
 
 func architectureSupportsSIMD() bool {
-	f, ok := cachedAMD64CPUFeatures()
-	return ok && f.Has(shared.AMD64ModernBaseline)
+	_, ok := cachedAMD64CPUFeatures()
+	return ok
 }
 func architectureSupportsBMI2() bool {
 	f, ok := cachedAMD64CPUFeatures()

@@ -20,8 +20,8 @@ const (
 	AMD64AVX512
 )
 
-// AMD64ModernBaseline is the admission policy established by #693. Keep that
-// policy until every core/SIMD path and artifact requirement has been migrated.
+// AMD64ModernBaseline names the historical optimization tier. It is no longer
+// a native-admission requirement; AMD64 execution has an SSE2 baseline.
 const AMD64ModernBaseline = AMD64SSSE3 | AMD64SSE41 | AMD64SSE42 | AMD64AVX
 
 const AMD64KnownFeatures = AMD64ModernBaseline | AMD64AVX2 | AMD64BMI1 | AMD64BMI2 | AMD64LZCNT | AMD64POPCNT | AMD64FMA | AMD64AVX512

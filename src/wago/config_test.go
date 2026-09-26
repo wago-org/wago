@@ -26,8 +26,8 @@ func signExtModule() []byte {
 	)
 }
 
-// The current amd64 backend needs the SIMD CPU baseline even for scalar code.
-// Older hosts can be admitted once the backend gains compatible lowerings.
+// AMD64 native admission fails closed if CPU capability detection fails.
+// Optional extensions are not required for ordinary Wasm execution.
 func currentBackendAvailable() bool { return runtime.GOARCH != "amd64" || hostSupportsSIMD() }
 
 func scalarFloatAddModule() []byte {
@@ -978,7 +978,7 @@ func TestConfigRejectsSIMDWhenHostUnsupported(t *testing.T) {
 	_, err := Compile(nil, simdModule())
 	want := "simd disabled"
 	if runtime.GOARCH == "amd64" {
-		want = "CPU features"
+		want = "CPU capability detection"
 	}
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("SIMD module should be rejected when host SIMD is unavailable, got %v", err)
@@ -1070,7 +1070,7 @@ func TestConfigRejectsV128TypesWhenHostUnsupported(t *testing.T) {
 			_, err := Compile(nil, tc.mod)
 			want := "v128"
 			if runtime.GOARCH == "amd64" {
-				want = "CPU features"
+				want = "CPU capability detection"
 			}
 			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatalf("v128 module should be rejected when host SIMD is unavailable, got %v", err)

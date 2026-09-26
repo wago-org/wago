@@ -5,6 +5,7 @@ package wago
 import (
 	"fmt"
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
@@ -29,6 +30,9 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	features, ok := cachedAMD64CPUFeatures()
 	if !ok {
 		return nil, fmt.Errorf("amd64: CPU capability detection failed")
+	}
+	if !hostSupportsBMI2() {
+		features &^= shared.AMD64BMI2
 	}
 	if !opts.AMD64FeaturesSet {
 		opts.AMD64FeaturesSet = true

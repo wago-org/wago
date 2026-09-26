@@ -3,6 +3,7 @@ package wago
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -453,7 +454,7 @@ func TestUnmarshalRejectsSIMDBlobWhenHostUnsupported(t *testing.T) {
 	defer func() { simdHostFeaturesSupported = old }()
 
 	var dec Compiled
-	if err := dec.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires SIMD") {
+	if err := dec.UnmarshalBinary(blob); !errors.Is(err, errNativeCPUFeatures) {
 		t.Fatalf("want SIMD CPU feature rejection, got %v", err)
 	}
 }
@@ -476,7 +477,7 @@ func TestUnmarshalRejectsV128BlockTypeBlobWhenHostUnsupported(t *testing.T) {
 	defer func() { simdHostFeaturesSupported = old }()
 
 	var dec Compiled
-	if err := dec.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires SIMD") {
+	if err := dec.UnmarshalBinary(blob); !errors.Is(err, errNativeCPUFeatures) {
 		t.Fatalf("want SIMD CPU feature rejection for v128 block type, got %v", err)
 	}
 }
