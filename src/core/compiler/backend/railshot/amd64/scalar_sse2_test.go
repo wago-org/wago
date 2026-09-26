@@ -80,9 +80,15 @@ func TestSSE2ScalarCompileAndExecute(t *testing.T) {
 }
 
 func TestSSE2IncompleteSIMDFailsClosed(t *testing.T) {
-	m := mod1(t, nil, []wasm.ValType{wasm.V128}, append(append([]byte{0}, v128ConstBytes([16]byte{})...), 0x0b))
-	if _, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true}); err == nil {
-		t.Fatal("selected SSE2 profile admitted incomplete SIMD lowering")
+	modules := []*wasm.Module{
+		mod1(t, nil, []wasm.ValType{wasm.V128}, append(append([]byte{0}, v128ConstBytes([16]byte{})...), 0x0b)),
+		mod1(t, []wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}, []byte{0, 0x20, 0, 0x0b}),
+		mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{1, 1, 0x7b, 0x20, 0, 0x1a, 0x41, 0, 0x0b}),
+	}
+	for i, m := range modules {
+		if _, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true}); err == nil {
+			t.Fatalf("case %d: selected SSE2 profile admitted incomplete SIMD lowering", i)
+		}
 	}
 }
 
