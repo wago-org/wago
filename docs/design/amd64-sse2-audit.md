@@ -30,7 +30,8 @@ This is an inventory of the original backend, not a claim of SSE2 compatibility.
 | TZCNT | BMI1 | i32/i64 ctz | Already optional after #696: BSF with explicit zero case |
 | POPCNT | POPCNT | i32/i64 popcnt | Already optional after #696: inline 32/64-bit SWAR |
 | RORX | BMI2; VEX encoding does not itself imply AVX | Scalar rotate optimization | Existing legacy rotate path; keep actual-emission requirement |
-| YMM integer operations, VINSERTI128 | AVX2 + OS state | Optional plugin v256, vector bulk copy/fill paths | Retain plugin gates; baseline bulk paths use scalar/SSE2 loops |
+| YMM integer arithmetic, VINSERTI128 | AVX2 + OS state | Optional plugin v256 | Retain plugin gates |
+| YMM VMOVDQU and VZEROUPPER | AVX + OS state, not AVX2 | Ordinary bulk memory and table fill | Select XMM/scalar loops when AVX is unavailable |
 | YMM floating operations | AVX + OS state (plugin tier currently AVX2) | Optional v256 plugin | Retain declared plugin requirements |
 | EVEX ZMM operations, VPTERNLOGD | AVX-512 family + OS state | Optional v512 plugins | Preserve plugin-specific requirements; no core-Wasm dependency |
 | VZEROUPPER | AVX + OS state | Bulk memory/table helper boundaries and wide plugin boundaries | Emit only when an AVX-family path was selected |
@@ -275,3 +276,34 @@ Paths in the encoder column are relative to `src/core/encoder/amd64`; callers ar
 | `ZPternlogd` | `asm_avx512.go:82` | No direct call; encoder/plugin vocabulary |
 | `ZSIMDRR` | `asm_avx512.go:78` | No direct call; encoder/plugin vocabulary |
 | `ZSIMDRRR` | `asm_avx512.go:74` | No direct call; encoder/plugin vocabulary |
+
+## Migration checkpoint
+
+Implemented after the audit:
+
+- Value-based backend capability selection, with an explicit-selection flag
+  while the default remains the old modern baseline. No global test CPU override
+  or invocation-time dispatch was added.
+- Legacy scalar arithmetic, sign operations, sqrt, and conversion zeroing.
+- All eight scalar rounding operations using integer bit decomposition. This
+  preserves signed zero, handles every exponent, quiets NaNs, and does not
+  consult or modify MXCSR. The SSE4.1 lowering is retained for selected hosts.
+- SSE2 unaligned vector movement for ABI/spill/bulk-memory use, and SSE2 fill
+  pattern construction. AVX YMM bulk paths remain optional compile-time paths.
+- Existing bit-count fallback selection is constrained by explicit CPU masks.
+- Incomplete SIMD/plugin profiles fail closed, including vector types that do
+  not use SIMD opcodes. The public #693 gate has not been relaxed.
+
+Still required before claiming the requested final SSE2 baseline:
+
+1. Complete core and relaxed SIMD lowerings, including optimizer-only paths.
+2. Consolidate host detection and TinyGo detection into the immutable mask.
+3. Track actual emitted optional instructions in artifacts; version the format
+   and reject old ambiguous requirements conservatively.
+4. Expand instruction decoding checks beyond scalar stubs and scalar functions,
+   distinguishing code from literal data and jump tables.
+5. Complete the requested differential SIMD suites and performance matrix.
+6. Narrow the public gate only after those checks pass.
+
+The checkpoint does not satisfy the full SSE2 acceptance criteria. No artifact
+format changes or weaker artifact-admission rules have been made yet.

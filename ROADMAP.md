@@ -1,5 +1,13 @@
 # Wago roadmap
 
+AMD64 SSE2 migration is in progress. Compile-time scalar fallback selection,
+legacy scalar floating arithmetic, bit-count fallbacks, integer-based rounding,
+and baseline bulk-memory paths are covered by focused tests. Core and relaxed
+SIMD fallback coverage and artifact feature unification remain incomplete, so
+the public modern-CPU admission gate remains in force. See the
+[instruction audit and migration status](docs/design/amd64-sse2-audit.md).
+
+
 Wago is a pure-Go, no-cgo, single-pass WebAssembly engine. It is a from-scratch
 port of [WARP](https://github.com/wago-org/warp)'s design. Linux, macOS, and Windows
 on amd64 and arm64 are supported. The amd64 backend uses a modern CPU baseline

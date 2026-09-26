@@ -1,5 +1,13 @@
 # Wago architecture
 
+AMD64 SSE2 migration is in progress. Compile-time scalar fallback selection,
+legacy scalar floating arithmetic, bit-count fallbacks, integer-based rounding,
+and baseline bulk-memory paths are covered by focused tests. Core and relaxed
+SIMD fallback coverage and artifact feature unification remain incomplete, so
+the public modern-CPU admission gate remains in force. See the
+[instruction audit and migration status](docs/design/amd64-sse2-audit.md).
+
+
 Wago is a pure-Go, no-cgo WebAssembly engine. It decodes, validates, and
 compiles Wasm modules to native machine code with a single-pass backend. It then
 executes that code directly from Go. It needs no C toolchain, cgo, or FFI. The
@@ -95,20 +103,28 @@ dual-format ambiguity.
 
 ### CPU and SIMD baseline
 
-**CPU baseline: modern x86-64 with SSSE3/SSE4.1/SSE4.2 plus AVX/VEX.128 XMM encodings.** The backend emits
-some instructions beyond original x86-64 without a CPUID gate or fallback:
-`POPCNT`, `LZCNT`/`TZCNT` (clz/ctz/popcnt), `ROUNDSS`/`ROUNDSD` (scalar
-f32/f64 `ceil`/`floor`/`trunc`/`nearest`), `VROUNDPS`/`VROUNDPD` (packed
-f32x4/f64x2 rounding), and 128-bit VEX-encoded XMM operations used by scalar
-float and SIMD lowering, including SSSE3-family operations such as `pshufb`, packed abs, horizontal add, and `pmulhrsw`-style helpers plus SSE4.2 `pcmpgtq` for signed i64-lane operations. This is an intentional "modern amd64" assumption,
-not "any amd64"; running generated code on an older CPU would fault with an
-illegal instruction.
+**Public CPU admission still requires SSSE3/SSE4.1/SSE4.2 and AVX with enabled
+OS XMM/YMM state.** The backend now has explicit compile-time scalar fallback
+selection. Scalar arithmetic, sign operations, sqrt and conversions can use
+legacy SSE/SSE2; scalar rounding uses integer IEEE-754 decomposition without
+changing MXCSR. CLZ/CTZ use BSR/BSF with zero handling, and POPCNT uses SWAR when
+the corresponding optional bit-count instruction is unavailable.
 
-The baseline does **not** include AVX2, FMA, VNNI, or wider YMM/ZMM vector forms.
-Those may only be emitted after an explicit feature gate or a documented baseline
-change. SIMD lowering should therefore prefer SSSE3/SSE4.1/SSE4.2-compatible semantics
-encoded with VEX.128 where possible, and use portable multi-instruction sequences
-for relaxed SIMD dot products and madd/nmadd until newer-ISA gates exist. Core
+Core and relaxed SIMD fallback coverage remains incomplete. Packed rounding,
+SSSE3 shuffle/abs/horizontal operations, SSE4.1 lane and integer operations, and
+SSE4.2 signed i64 comparisons still require the modern profile. Restricted
+backend profiles reject these modules, and the public gate remains fail closed.
+Vector movement for scalar bulk memory uses SSE2 under an explicit baseline
+profile. AVX hosts retain YMM move loops; YMM moves require AVX, whereas YMM
+integer arithmetic requires AVX2. Optional plugin requirements remain separate
+until artifact feature unification is implemented. FMA and VNNI are not used by
+core or relaxed SIMD lowering.
+
+The intended completed policy is: AMD64 uses SSE2 as its architectural baseline;
+newer extensions are optional compile-time optimizations recorded in native
+artifact requirements when emitted. That is not yet the public execution policy.
+
+Core
 `i32x4.dot_i16x8_s` uses VEX.128 `VPMADDWD`, which is within the documented
 baseline and does not require AVX2/VNNI.
 

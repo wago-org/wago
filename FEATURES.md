@@ -1,5 +1,13 @@
 # Wago feature support
 
+AMD64 SSE2 migration is in progress. Compile-time scalar fallback selection,
+legacy scalar floating arithmetic, bit-count fallbacks, integer-based rounding,
+and baseline bulk-memory paths are covered by focused tests. Core and relaxed
+SIMD fallback coverage and artifact feature unification remain incomplete, so
+the public modern-CPU admission gate remains in force. See the
+[instruction audit and migration status](docs/design/amd64-sse2-audit.md).
+
+
 This is the feature-support matrix for Wago's pure-Go, no-cgo engine. Wago
 supports Linux, macOS, and Windows on amd64 and arm64. For planned work, see
 [ROADMAP.md](ROADMAP.md).
