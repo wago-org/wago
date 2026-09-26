@@ -37,6 +37,9 @@ func TestAMD64LinuxCapabilityIntersection(t *testing.T) {
 		ok   bool
 	}{
 		{"flags : sse2\n", 0, true},
+		{" \tflags\t : sse2\n", 0, true},
+		{"flags_extra : sse2 avx\n", 0, false},
+		{"model name : flags sse2 avx\n", 0, false},
 		{"flags : sse2 avx avx2 bmi2\nflags : sse2 bmi2\n", shared.AMD64BMI2, true},
 		{"flags : sse2 avx2 fma\n", 0, true},
 		{"flags : avx avx2\n", 0, false},

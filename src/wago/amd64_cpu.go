@@ -71,7 +71,19 @@ func amd64LinuxCPUFeatures(data []byte) (shared.AMD64Features, bool) {
 			data = nil
 		}
 		colon := bytes.IndexByte(line, ':')
-		if colon < 0 || !bytes.Equal(bytes.TrimSpace(line[:colon]), []byte("flags")) {
+		if colon < 0 {
+			continue
+		}
+		// /proc/cpuinfo field names are ASCII. Avoid retaining Unicode trim
+		// helpers in the TinyGo runtime for this fixed kernel format.
+		name := line[:colon]
+		for len(name) > 0 && (name[0] == ' ' || name[0] == '\t') {
+			name = name[1:]
+		}
+		for len(name) > 0 && (name[len(name)-1] == ' ' || name[len(name)-1] == '\t') {
+			name = name[:len(name)-1]
+		}
+		if !bytes.Equal(name, []byte("flags")) {
 			continue
 		}
 		flags := line[colon+1:]
