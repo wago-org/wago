@@ -1548,7 +1548,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		nativeContext:      nativeContextPtr,
 		threadedMemoryZero: c.threadedMemory0(),
 		moduleIdentity:     opts.moduleIdentity,
-		pluginGCImports:    opts.pluginGCImports,
 	}
 	if opts.InvokeCacheSlots != 0 && opts.InvokeCacheSlots != 4 {
 		state := in.ensurePluginState()
@@ -1559,6 +1558,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		in.pluginState.Load().invokeCacheExtra = &invokeCacheOverflow{
 			entries: make([]invokeCache, extra),
 		}
+	}
+	if opts.pluginGCImports != nil {
+		in.importState.Store(&instanceImportState{pluginGCImports: opts.pluginGCImports})
 	}
 	if c.maxResultSlots <= len(in.resultInline) {
 		in.resultVals = in.resultInline[:c.maxResultSlots:c.maxResultSlots]

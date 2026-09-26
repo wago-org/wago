@@ -165,6 +165,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		for node.deferredOp() == opEqz && isFusableCompare(node.arg0) {
 			inner := node.arg0
 			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
+			f.s.exposeLogicalRoot(inner)
 			f.stats.peep("eqz-fold")
 			node = inner
 			invert = !invert

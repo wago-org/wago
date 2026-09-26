@@ -12,8 +12,53 @@ import (
 // canonicalize structurally equivalent local types so exact references have the
 // same semantics with and without a shared store.
 type gcTypeMapping struct {
-	localToDomain []gc.TypeID
-	domainToLocal []uint32
+	localToDomain       []gc.TypeID
+	domainToLocal       []uint32 // dense compatibility representation
+	domainToLocalSparse map[gc.TypeID]uint32
+	domainTypeCount     int
+}
+
+type gcTypeMappingCacheEntry struct {
+	domainTypeCount int
+	mapping         *gcTypeMapping
+}
+
+func (c *Compiled) cachedGCTypeMapping(domainID uint64, domainTypeCount int) *gcTypeMapping {
+	if c == nil || domainID == 0 {
+		return nil
+	}
+	cache := c.loadCodeCache()
+	indexes := c.loadCompileIndexes()
+	if cache == nil || indexes == nil {
+		return nil
+	}
+	cache.mu.Lock()
+	entry := indexes.gcTypeMappings[domainID]
+	cache.mu.Unlock()
+	if entry.domainTypeCount != domainTypeCount {
+		return nil
+	}
+	return entry.mapping
+}
+
+func (c *Compiled) rememberGCTypeMapping(domainID uint64, domainTypeCount int, mapping *gcTypeMapping) {
+	if c == nil || domainID == 0 || mapping == nil {
+		return
+	}
+	c.ensureCodeCache()
+	cache := c.loadCodeCache()
+	indexes := c.ensureCompileIndexes()
+	if indexes == nil {
+		return
+	}
+	cache.mu.Lock()
+	if indexes.gcTypeMappings == nil {
+		indexes.gcTypeMappings = make(map[uint64]gcTypeMappingCacheEntry)
+	}
+	if previous := indexes.gcTypeMappings[domainID]; previous.domainTypeCount <= domainTypeCount {
+		indexes.gcTypeMappings[domainID] = gcTypeMappingCacheEntry{domainTypeCount: domainTypeCount, mapping: mapping}
+	}
+	cache.mu.Unlock()
 }
 
 const unavailableLocalGCType = ^uint32(0)
@@ -32,6 +77,10 @@ func (m *gcTypeMapping) local(domain gc.TypeID) (uint32, bool) {
 	if m == nil {
 		return uint32(domain), true
 	}
+	if m.domainToLocalSparse != nil {
+		local, ok := m.domainToLocalSparse[domain]
+		return local, ok
+	}
 	if int(domain) >= len(m.domainToLocal) || m.domainToLocal[domain] == unavailableLocalGCType {
 		return 0, false
 	}
@@ -45,7 +94,11 @@ func (m *gcTypeMapping) canonicalTypes(local []gc.TypeID) ([]gc.TypeID, error) {
 	if len(local) != len(m.localToDomain) {
 		return nil, fmt.Errorf("wago: local canonical type count %d, want %d", len(local), len(m.localToDomain))
 	}
-	domain := make([]gc.TypeID, len(m.domainToLocal))
+	domainCount := len(m.domainToLocal)
+	if m.domainToLocalSparse != nil {
+		domainCount = m.domainTypeCount
+	}
+	domain := make([]gc.TypeID, domainCount)
 	seen := make([]bool, len(domain))
 	for i := range domain {
 		domain[i] = gc.TypeID(i)
@@ -81,6 +134,24 @@ func hasEquivalentLocalGCHeapTypes(c *Compiled) bool {
 	if c == nil {
 		return false
 	}
+	fingerprints, indexed := definedTypeFingerprints(c.Types)
+	if indexed {
+		candidates := make(map[[32]byte][]uint32)
+		for i := range c.Types {
+			kind := c.Types[i].Kind
+			if kind != CompositeTypeStruct && kind != CompositeTypeArray {
+				continue
+			}
+			fingerprint := fingerprints[i]
+			for _, prior := range candidates[fingerprint] {
+				if definedTypeEquivalent(uint32(i), c.Types, prior, c.Types) {
+					return true
+				}
+			}
+			candidates[fingerprint] = append(candidates[fingerprint], uint32(i))
+		}
+		return false
+	}
 	for i := 1; i < len(c.Types); i++ {
 		kind := c.Types[i].Kind
 		if kind != CompositeTypeStruct && kind != CompositeTypeArray {
@@ -100,14 +171,64 @@ func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainT
 		return nil, nil, nil, fmt.Errorf("wago: canonical GC type metadata is incomplete")
 	}
 	mapping := &gcTypeMapping{localToDomain: make([]gc.TypeID, len(c.Types))}
-	newReps := append([]gcDomainTypeRepresentative(nil), reps...)
-	newDescs := append([]gc.TypeDesc(nil), domainTypes...)
+	// Existing domain metadata is immutable to readers while its invocation gate
+	// is held. Reuse slice capacity so successful extensions append only their
+	// new tail; failed plans publish no increased length.
+	newReps := reps
+	newDescs := domainTypes
+	localFingerprints, indexed := definedTypeFingerprints(c.Types)
+	type fingerprintCacheEntry struct {
+		values [][32]byte
+	}
+	type fingerprintCacheKey struct {
+		base   *DefinedTypeDescriptor
+		length int
+	}
+	fingerprintCache := make(map[fingerprintCacheKey]fingerprintCacheEntry)
+	fingerprintFor := func(types []DefinedTypeDescriptor, index uint32) ([32]byte, bool) {
+		if int(index) >= len(types) || len(types) == 0 {
+			return [32]byte{}, false
+		}
+		base := &types[0]
+		key := fingerprintCacheKey{base: base, length: len(types)}
+		entry, ok := fingerprintCache[key]
+		if !ok {
+			values, valid := definedTypeFingerprints(types)
+			if !valid {
+				return [32]byte{}, false
+			}
+			entry = fingerprintCacheEntry{values: values}
+			fingerprintCache[key] = entry
+		}
+		return entry.values[index], true
+	}
+	var candidates map[[32]byte][]int
+	if indexed {
+		candidates = make(map[[32]byte][]int, len(newReps)+len(c.Types))
+		for domain, rep := range newReps {
+			fingerprint, ok := fingerprintFor(rep.types, rep.index)
+			if !ok {
+				indexed = false
+				break
+			}
+			candidates[fingerprint] = append(candidates[fingerprint], domain)
+		}
+	}
 	for local := range c.Types {
 		found := -1
-		for domain, rep := range newReps {
-			if gcTypeEquivalentToRepresentative(c, uint32(local), rep) {
-				found = domain
-				break
+		if indexed {
+			for _, domain := range candidates[localFingerprints[local]] {
+				if gcTypeEquivalentToRepresentative(c, uint32(local), newReps[domain]) {
+					found = domain
+					break
+				}
+			}
+		} else {
+			for domain, rep := range newReps {
+				if gcTypeEquivalentToRepresentative(c, uint32(local), rep) {
+					found = domain
+					break
+				}
 			}
 		}
 		if found < 0 {
@@ -117,6 +238,9 @@ func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainT
 			found = len(newReps)
 			newReps = append(newReps, gcDomainTypeRepresentative{types: c.Types, index: uint32(local)})
 			newDescs = append(newDescs, gc.TypeDesc{})
+			if indexed {
+				candidates[localFingerprints[local]] = append(candidates[localFingerprints[local]], found)
+			}
 		}
 		mapping.localToDomain[local] = gc.TypeID(found)
 	}
@@ -148,13 +272,11 @@ func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainT
 		}
 		newDescs[domainID] = desc
 	}
-	mapping.domainToLocal = make([]uint32, len(newReps))
-	for i := range mapping.domainToLocal {
-		mapping.domainToLocal[i] = unavailableLocalGCType
-	}
+	mapping.domainToLocalSparse = make(map[gc.TypeID]uint32, len(mapping.localToDomain))
+	mapping.domainTypeCount = len(newReps)
 	for local, domain := range mapping.localToDomain {
-		if mapping.domainToLocal[domain] == unavailableLocalGCType {
-			mapping.domainToLocal[domain] = uint32(local)
+		if _, exists := mapping.domainToLocalSparse[domain]; !exists {
+			mapping.domainToLocalSparse[domain] = uint32(local)
 		}
 	}
 	return mapping, newDescs, newReps, nil
@@ -164,15 +286,25 @@ func gcModuleFitsDomain(c *Compiled, domain *gcStoreDomain) bool {
 	if c == nil || domain == nil {
 		return false
 	}
+	domainTypeCount := len(domain.typeReps)
+	if mapping := c.cachedGCTypeMapping(domain.id, domainTypeCount); mapping != nil {
+		return len(mapping.localToDomain) == len(c.Types) &&
+			mapping.domainTypeCount == domainTypeCount &&
+			len(mapping.domainToLocalSparse) == domainTypeCount
+	}
 	mapping, descs, reps, err := gcCanonicalTypePlan(c, domain.typeReps, domain.types, false)
-	if err != nil || len(descs) != len(domain.types) || len(reps) != len(domain.typeReps) {
+	if err != nil || len(descs) != len(domain.types) || len(reps) != domainTypeCount || len(mapping.domainToLocalSparse) != domainTypeCount {
 		return false
 	}
-	for _, local := range mapping.domainToLocal {
-		if local == unavailableLocalGCType {
+	for i := 0; i < domainTypeCount; i++ {
+		if _, ok := mapping.local(gc.TypeID(i)); !ok {
 			return false
 		}
 	}
+	// The compatibility probe produced the exact translation the selected
+	// domain needs. Keep it so acquisition does not rebuild the same canonical
+	// plan after it claims and locks this domain.
+	c.rememberGCTypeMapping(domain.id, domainTypeCount, mapping)
 	return true
 }
 

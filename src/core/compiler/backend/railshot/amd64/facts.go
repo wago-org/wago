@@ -13,6 +13,7 @@ const (
 	factBoolean
 	storageGCRoot
 	storageEHRoot
+	storageLogicalRoot
 	valueFactMask = factUpper32Zero | factBoolean
 )
 
@@ -41,6 +42,16 @@ func (st *storage) setEHRoot(root bool) {
 		st.meta |= uint8(storageEHRoot)
 	} else {
 		st.meta &^= uint8(storageEHRoot)
+	}
+}
+
+func (st storage) hasLogicalRoot() bool { return valueFacts(st.meta).has(storageLogicalRoot) }
+
+func (st *storage) setLogicalRoot(root bool) {
+	if root {
+		st.meta |= uint8(storageLogicalRoot)
+	} else {
+		st.meta &^= uint8(storageLogicalRoot)
 	}
 }
 

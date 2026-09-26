@@ -56,6 +56,85 @@ func TestFunctionSubtypeTypeIndexesIncludeLoadedDynamicCandidates(t *testing.T) 
 	}
 }
 
+func TestFunctionSubtypeTypeIndexesMatchStructuralRootsAndTheirDescendants(t *testing.T) {
+	fn := CompType{Kind: CompFunc, Params: []ValType{I32}}
+	other := CompType{Kind: CompFunc, Params: []ValType{I64}}
+	m := &Module{Types: []RecType{
+		{SubTypes: []SubType{{Comp: fn}}},
+		{SubTypes: []SubType{{HasPrefix: true, Final: false, Supers: []TypeIdx{{Index: 0}}, Comp: fn}}},
+		{SubTypes: []SubType{{Comp: fn}}}, // structurally equivalent root in another group
+		{SubTypes: []SubType{{HasPrefix: true, Final: false, Supers: []TypeIdx{{Index: 2}}, Comp: fn}}},
+		{SubTypes: []SubType{{Comp: other}}},
+	}}
+	got, ok := m.FunctionSubtypeTypeIndexes(0)
+	want := []uint32{0, 1, 2, 3}
+	if !ok || len(got) != len(want) {
+		t.Fatalf("function subtype indexes = %v/%v, want %v/true", got, ok, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("function subtype indexes = %v, want %v", got, want)
+		}
+	}
+	if got, ok := m.FunctionSubtypeTypeIndexes(4); !ok || len(got) != 1 || got[0] != 4 {
+		t.Fatalf("unrelated function subtype indexes = %v/%v, want [4]/true", got, ok)
+	}
+}
+
+func TestCanonicalTypeIDsPreserveSemanticSignatureEquality(t *testing.T) {
+	bareFuncRef := FuncRef
+	explicitFuncRef := RefVal(Ref(true, AbsHeap(HeapFunc), false))
+	m := &Module{Types: []RecType{{SubTypes: []SubType{
+		{Comp: CompType{Kind: CompFunc, Params: []ValType{I32}, Results: []ValType{I64}}},
+		{Comp: CompType{Kind: CompStruct}},
+		{Comp: CompType{Kind: CompFunc, Params: []ValType{I32}, Results: []ValType{I64}}},
+		{Comp: CompType{Kind: CompFunc, Params: []ValType{bareFuncRef}}},
+		{Comp: CompType{Kind: CompFunc, Params: []ValType{explicitFuncRef}}},
+	}}}}
+
+	for idx, want := range []uint32{0, 1, 0, 3, 3} {
+		if got := m.CanonicalTypeID(uint32(idx)); got != want {
+			t.Fatalf("CanonicalTypeID(%d) = %d, want %d", idx, got, want)
+		}
+	}
+	if got := m.CanonicalTypeID(99); got != 99 {
+		t.Fatalf("out-of-range CanonicalTypeID = %d, want input index 99", got)
+	}
+}
+
+func TestImportIndexDirectoryPreservesOrderAndRefreshesOnValidation(t *testing.T) {
+	m := &Module{}
+	for i := 0; i < 128; i++ {
+		valueType := I32
+		if i == 127 {
+			valueType = I64
+		}
+		m.Imports = append(m.Imports, Import{Type: NewGlobalExternType(GlobalType{Type: valueType, Mutable: i%2 == 0})})
+	}
+	m.Globals = []Global{{Type: GlobalType{Type: F32, Mutable: true}}}
+
+	if m.ImportedGlobalCount() != 128 || m.GlobalCount() != 129 {
+		t.Fatalf("global counts = %d imported, %d total; want 128 and 129", m.ImportedGlobalCount(), m.GlobalCount())
+	}
+	if got, ok := m.GlobalTypeByIndex(127); !ok || got.Type != I64 || got.Mutable {
+		t.Fatalf("late imported global = %#v/%v, want immutable i64", got, ok)
+	}
+	if got, ok := m.GlobalTypeByIndex(128); !ok || got.Type != F32 || !got.Mutable {
+		t.Fatalf("local global = %#v/%v, want mutable f32", got, ok)
+	}
+	if _, ok := m.GlobalTypeByIndex(129); ok {
+		t.Fatal("out-of-range global resolved")
+	}
+
+	// Module sections may be edited before another validation pass. Validation
+	// invalidates module analysis directories before building a fresh view.
+	m.Imports[127].Type = NewGlobalExternType(GlobalType{Type: V128})
+	m.invalidateTypeAnalysisCaches()
+	if got, ok := m.GlobalTypeByIndex(127); !ok || got.Type != V128 {
+		t.Fatalf("global after cache invalidation = %#v/%v, want v128", got, ok)
+	}
+}
+
 func TestLocalHelpersKeepRunsCompact(t *testing.T) {
 	params := []ValType{I32}
 	runs := []LocalRun{{Count: 1 << 30, Type: I64}, {Count: 2, Type: F32}}

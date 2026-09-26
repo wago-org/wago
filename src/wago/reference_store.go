@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/bits"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -42,6 +43,151 @@ type referenceStore struct {
 	gcDomains     *gcDomainTopology
 }
 
+const gcFrameCodeRangePageShift = 12
+
+type gcFrameCodeRangeKey struct {
+	collector *gc.Collector
+	compiled  *Compiled
+	base      uintptr
+}
+
+type gcFrameCodeRange struct {
+	key    gcFrameCodeRangeKey
+	owner  *Instance
+	bytes  uintptr
+	owners *gcFrameCodeOwnerLink
+}
+
+// gcFrameCodeOwnerLink tracks one instance sharing a compiled code image, so
+// changing the representative owner never scans every live instance.
+type gcFrameCodeOwnerLink struct {
+	instance *Instance
+	image    *gcFrameCodeRange
+	prev     *gcFrameCodeOwnerLink
+	next     *gcFrameCodeOwnerLink
+}
+
+type gcCollectorCodeRanges struct {
+	byImage map[gcFrameCodeRangeKey]*gcFrameCodeRange
+	byPage  map[uintptr][]*gcFrameCodeRange
+}
+
+type gcFrameCodeRangeIndex struct {
+	byCollector map[*gc.Collector]*gcCollectorCodeRanges
+	byInstance  map[*Instance]*gcFrameCodeOwnerLink
+}
+
+func (s *referenceStore) registerGCFrameCodeRangeLocked(in *Instance) {
+	if s == nil || in == nil || in.gc == nil || in.c == nil || in.base == 0 || in.c.genericGCFrameRoots() == nil || len(in.c.code) == 0 {
+		return
+	}
+	bytes := uintptr(len(in.c.code))
+	if in.base > ^uintptr(0)-bytes {
+		return
+	}
+	if s.gcDomains == nil {
+		s.gcDomains = new(gcDomainTopology)
+	}
+	if s.gcDomains.codeRanges == nil {
+		s.gcDomains.codeRanges = &gcFrameCodeRangeIndex{
+			byCollector: make(map[*gc.Collector]*gcCollectorCodeRanges),
+		}
+	}
+	if s.gcDomains.codeRanges.byInstance == nil {
+		s.gcDomains.codeRanges.byInstance = make(map[*Instance]*gcFrameCodeOwnerLink)
+	}
+	if s.gcDomains.codeRanges.byInstance[in] != nil {
+		return
+	}
+	link := &gcFrameCodeOwnerLink{instance: in}
+	s.gcDomains.codeRanges.byInstance[in] = link
+	collector := s.gcDomains.codeRanges.byCollector[in.gc]
+	if collector == nil {
+		collector = &gcCollectorCodeRanges{byImage: make(map[gcFrameCodeRangeKey]*gcFrameCodeRange), byPage: make(map[uintptr][]*gcFrameCodeRange)}
+		s.gcDomains.codeRanges.byCollector[in.gc] = collector
+	}
+	key := gcFrameCodeRangeKey{collector: in.gc, compiled: in.c, base: in.base}
+	if image := collector.byImage[key]; image != nil {
+		link.instance, link.image, link.next = in, image, image.owners
+		if image.owners != nil {
+			image.owners.prev = link
+		}
+		image.owners, image.owner = link, in
+		return
+	}
+	image := &gcFrameCodeRange{key: key, owner: in, bytes: bytes}
+	link.instance, link.image = in, image
+	image.owners = link
+	collector.byImage[key] = image
+	firstPage, lastPage := in.base>>gcFrameCodeRangePageShift, (in.base+bytes-1)>>gcFrameCodeRangePageShift
+	for page := firstPage; ; page++ {
+		collector.byPage[page] = append(collector.byPage[page], image)
+		if page == lastPage {
+			break
+		}
+	}
+}
+
+func (s *referenceStore) unregisterGCFrameCodeRangeLocked(in *Instance) {
+	if s == nil || s.gcDomains == nil || s.gcDomains.codeRanges == nil || in == nil || in.gc == nil || in.c == nil || in.base == 0 {
+		return
+	}
+	collector := s.gcDomains.codeRanges.byCollector[in.gc]
+	if collector == nil {
+		return
+	}
+	key := gcFrameCodeRangeKey{collector: in.gc, compiled: in.c, base: in.base}
+	image := collector.byImage[key]
+	if image == nil {
+		return
+	}
+	link := s.gcDomains.codeRanges.byInstance[in]
+	if s.instances[in] == nil || link == nil || link.image != image {
+		return
+	}
+	if link.prev == nil {
+		image.owners = link.next
+	} else {
+		link.prev.next = link.next
+	}
+	if link.next != nil {
+		link.next.prev = link.prev
+	}
+	delete(s.gcDomains.codeRanges.byInstance, in)
+	image.owner = nil
+	if image.owners != nil {
+		image.owner = image.owners.instance
+		return
+	}
+	delete(collector.byImage, key)
+	firstPage, lastPage := in.base>>gcFrameCodeRangePageShift, (in.base+image.bytes-1)>>gcFrameCodeRangePageShift
+	for page := firstPage; ; page++ {
+		images := collector.byPage[page]
+		for i, candidate := range images {
+			if candidate == image {
+				images[i] = images[len(images)-1]
+				images[len(images)-1] = nil
+				images = images[:len(images)-1]
+				break
+			}
+		}
+		if len(images) == 0 {
+			delete(collector.byPage, page)
+		} else {
+			collector.byPage[page] = images
+		}
+		if page == lastPage {
+			break
+		}
+	}
+	if len(collector.byImage) == 0 {
+		delete(s.gcDomains.codeRanges.byCollector, in.gc)
+	}
+	if len(s.gcDomains.codeRanges.byCollector) == 0 && len(s.gcDomains.codeRanges.byInstance) == 0 {
+		s.gcDomains.codeRanges = nil
+	}
+}
+
 // gcDomainTopology keeps the globally ordered Runtime GC-domain list stable
 // across dynamic funcref invocations. It is a sidecar so scalar-only stores keep
 // the established referenceStore footprint. Host callbacks suspend the read
@@ -49,13 +195,100 @@ type referenceStore struct {
 // update the list before native resume.
 type gcDomainTopology struct {
 	gcTopologyGate
-	first *gcStoreDomain
-	last  *gcStoreDomain
-	n     int
+	first       *gcStoreDomain
+	last        *gcStoreDomain
+	n           int
+	byCollector map[*gc.Collector]*gcStoreDomain
+	codeRanges  *gcFrameCodeRangeIndex
 
 	funcrefMu       sync.Mutex
 	funcrefGCActive bool
 	funcrefTables   map[*Table]uint32
+}
+
+const gcCollectorIndexThreshold = 4
+
+// domainForCollectorLocked uses the side index for exact collector lookups.
+// The linked-list fallback keeps test-built and legacy zero-value topologies
+// valid; production mutations maintain byCollector together with the list.
+// Callers hold the owning referenceStore.mu.
+func (topology *gcDomainTopology) domainForCollectorLocked(collector *gc.Collector) *gcStoreDomain {
+	if topology == nil || collector == nil {
+		return nil
+	}
+	if topology.byCollector == nil {
+		for domain := topology.first; domain != nil; domain = domain.next {
+			if domain.collector == collector {
+				return domain
+			}
+		}
+		return nil
+	}
+	if domain := topology.byCollector[collector]; domain != nil {
+		return domain
+	}
+	for domain := topology.first; domain != nil; domain = domain.next {
+		if domain.collector == collector {
+			return domain
+		}
+	}
+	return nil
+}
+
+// appendDomainLocked and unlinkDomainLocked preserve global acquisition order
+// while keeping exact collector lookup and removal constant-time. Callers hold
+// the owning referenceStore.mu and the topology write gate when required.
+func (topology *gcDomainTopology) appendDomainLocked(domain *gcStoreDomain) {
+	if topology.byCollector == nil && topology.n >= gcCollectorIndexThreshold {
+		topology.byCollector = make(map[*gc.Collector]*gcStoreDomain, topology.n+1)
+		for existing := topology.first; existing != nil; existing = existing.next {
+			topology.byCollector[existing.collector] = existing
+		}
+	}
+	if topology.last == nil {
+		topology.first = domain
+	} else {
+		topology.last.next = domain
+	}
+	domain.prev, domain.next = topology.last, nil
+	topology.last = domain
+	if topology.byCollector != nil {
+		topology.byCollector[domain.collector] = domain
+	}
+	topology.n++
+}
+
+func (topology *gcDomainTopology) unlinkDomainLocked(domain *gcStoreDomain) bool {
+	if topology == nil || domain == nil {
+		return false
+	}
+	if topology.byCollector != nil && topology.byCollector[domain.collector] != domain {
+		return false
+	}
+	if domain.prev == nil && topology.first != domain || domain.prev != nil && domain.prev.next != domain {
+		return false
+	}
+	if domain.next == nil && topology.last != domain || domain.next != nil && domain.next.prev != domain {
+		return false
+	}
+	if domain.prev == nil {
+		topology.first = domain.next
+	} else {
+		domain.prev.next = domain.next
+	}
+	if domain.next == nil {
+		topology.last = domain.prev
+	} else {
+		domain.next.prev = domain.prev
+	}
+	if topology.byCollector[domain.collector] == domain {
+		delete(topology.byCollector, domain.collector)
+	}
+	domain.prev, domain.next = nil, nil
+	if topology.n > 0 {
+		topology.n--
+	}
+	return true
 }
 
 // gcStoreDomain gives Runtime-owned WasmGC instances one compact-reference
@@ -111,6 +344,7 @@ type gcInvocationDomainSet struct {
 	inline [inlineGCInvocationDomains]*gcStoreDomain
 	extra  []*gcStoreDomain
 	n      int
+	index  map[*gcStoreDomain]struct{}
 }
 
 func (s *gcInvocationDomainSet) len() int {
@@ -142,9 +376,15 @@ func (s *gcInvocationDomainSet) add(domain *gcStoreDomain) {
 	if domain == nil {
 		return
 	}
-	for i := 0; i < s.n; i++ {
-		if s.at(i) == domain {
+	if s.index != nil {
+		if _, ok := s.index[domain]; ok {
 			return
+		}
+	} else {
+		for i := 0; i < s.n; i++ {
+			if s.at(i) == domain {
+				return
+			}
 		}
 	}
 	if s.n < len(s.inline) {
@@ -153,18 +393,28 @@ func (s *gcInvocationDomainSet) add(domain *gcStoreDomain) {
 		s.extra = append(s.extra, domain)
 	}
 	s.n++
+	if s.index != nil {
+		s.index[domain] = struct{}{}
+	} else if s.n > inlineGCInvocationDomains*2 {
+		s.index = make(map[*gcStoreDomain]struct{}, s.n)
+		for i := 0; i < s.n; i++ {
+			s.index[s.at(i)] = struct{}{}
+		}
+	}
 }
 
 func (s *gcInvocationDomainSet) sort() {
-	for i := 1; i < s.n; i++ {
-		domain := s.at(i)
-		j := i
-		for j > 0 && s.at(j-1).id > domain.id {
-			s.set(j, s.at(j-1))
-			j--
-		}
-		s.set(j, domain)
-	}
+	sort.Sort(gcInvocationDomainSetSorter{s})
+}
+
+type gcInvocationDomainSetSorter struct{ set *gcInvocationDomainSet }
+
+func (s gcInvocationDomainSetSorter) Len() int           { return s.set.n }
+func (s gcInvocationDomainSetSorter) Less(i, j int) bool { return s.set.at(i).id < s.set.at(j).id }
+func (s gcInvocationDomainSetSorter) Swap(i, j int) {
+	a, b := s.set.at(i), s.set.at(j)
+	s.set.set(i, b)
+	s.set.set(j, a)
 }
 
 type gcInvocationDomainView struct {
@@ -357,6 +607,8 @@ type structuralTypeRegistration struct {
 	canonical []byte
 	refs      uint32
 }
+
+const maxStructuralCallIdentityRegistrationBytes = 16 << 20
 
 type funcrefIdentity struct {
 	descriptor uint64
@@ -677,29 +929,22 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
 		}
 		rel := uint32(retPC - codeBase)
-		for _, adapterReturn := range adapterReturnOffsets {
-			if rel == adapterReturn {
-				return true
-			}
+		adapterIndex := sort.Search(len(adapterReturnOffsets), func(i int) bool { return adapterReturnOffsets[i] >= rel })
+		if adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] == rel {
+			return true
 		}
 		if base > ^uintptr(0)-uintptr(frameBytes)-callerFrameBias {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller frame address overflows")})
 		}
 		returnBase := base + uintptr(frameBytes) + callerFrameBias
-		found := false
-		var stackAdjust uint32
-		for i := range callsites {
-			if callsites[i].returnOffset == rel {
-				offsets = callsites[i].offsets
-				frameBytes = callsites[i].frameBytes
-				stackAdjust = callsites[i].stackAdjust
-				found = true
-				break
-			}
-		}
-		if !found {
+		callsiteIndex := sort.Search(len(callsites), func(i int) bool { return callsites[i].returnOffset >= rel })
+		if callsiteIndex == len(callsites) || callsites[callsiteIndex].returnOffset != rel {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC native return offset %d has no callsite map", rel)})
 		}
+		callsite := &callsites[callsiteIndex]
+		offsets = callsite.offsets
+		frameBytes = callsite.frameBytes
+		stackAdjust := callsite.stackAdjust
 		if returnBase > ^uintptr(0)-uintptr(stackAdjust) {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller stack adjustment overflows")})
 		}
@@ -890,14 +1135,7 @@ func (s *referenceStore) ownsGCCollector(collector *gc.Collector) bool {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if topology := s.gcDomains; topology != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
-			if domain.collector == collector {
-				return true
-			}
-		}
-	}
-	return false
+	return s.gcDomains.domainForCollectorLocked(collector) != nil
 }
 
 func (s *referenceStore) gcDomainForCollector(collector *gc.Collector) *gcStoreDomain {
@@ -906,14 +1144,7 @@ func (s *referenceStore) gcDomainForCollector(collector *gc.Collector) *gcStoreD
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if topology := s.gcDomains; topology != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
-			if domain.collector == collector {
-				return domain
-			}
-		}
-	}
-	return nil
+	return s.gcDomains.domainForCollectorLocked(collector)
 }
 
 func (s *referenceStore) lockGCCollector(collector *gc.Collector) *gcStoreDomain {
@@ -921,15 +1152,7 @@ func (s *referenceStore) lockGCCollector(collector *gc.Collector) *gcStoreDomain
 		return nil
 	}
 	s.mu.Lock()
-	var found *gcStoreDomain
-	if topology := s.gcDomains; topology != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
-			if domain.collector == collector {
-				found = domain
-				break
-			}
-		}
-	}
+	found := s.gcDomains.domainForCollectorLocked(collector)
 	s.mu.Unlock()
 	if found != nil {
 		found.mu.Lock()
@@ -1257,6 +1480,16 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if topology := s.gcDomains; topology != nil && topology.codeRanges != nil {
+		if ranges := topology.codeRanges.byCollector[collector]; ranges != nil {
+			for _, image := range ranges.byPage[pc>>gcFrameCodeRangePageShift] {
+				if pc >= image.key.base && pc-image.key.base < image.bytes {
+					return image.owner
+				}
+			}
+		}
+		return nil
+	}
 	for candidate, state := range s.instances {
 		if state == nil || state.resourcesReleased || candidate == nil || candidate.gc != collector || candidate.c == nil || candidate.c.genericGCFrameRoots() == nil {
 			continue
@@ -1279,10 +1512,8 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 		return
 	}
 	// A failed construction can drop its claim without waiting for live readers.
-	for domain := topology.first; domain != nil; domain = domain.next {
-		if domain.collector != collector {
-			continue
-		}
+	domain := topology.domainForCollectorLocked(collector)
+	if domain != nil {
 		if domain.claims > 0 {
 			domain.claims--
 		}
@@ -1290,38 +1521,21 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 			s.mu.Unlock()
 			return
 		}
-		break
 	}
 	s.mu.Unlock()
+	if domain == nil {
+		return
+	}
 	topology.Lock()
 	defer topology.Unlock()
 	s.mu.Lock()
-	for domain := topology.first; domain != nil; domain = domain.next {
-		if domain.collector == collector {
-			if domain.refs != 0 || domain.claims != 0 {
-				s.mu.Unlock()
-				return
-			}
-			if domain.prev == nil {
-				topology.first = domain.next
-			} else {
-				domain.prev.next = domain.next
-			}
-			if domain.next == nil {
-				topology.last = domain.prev
-			} else {
-				domain.next.prev = domain.prev
-			}
-			domain.prev, domain.next = nil, nil
-			if topology.n > 0 {
-				topology.n--
-			}
-			s.mu.Unlock()
-			collector.Close()
-			return
-		}
+	domain = topology.domainForCollectorLocked(collector)
+	if domain == nil || domain.refs != 0 || domain.claims != 0 || !topology.unlinkDomainLocked(domain) {
+		s.mu.Unlock()
+		return
 	}
 	s.mu.Unlock()
+	collector.Close()
 }
 
 func equalGCConfigs(a, b gc.Config) bool {
@@ -1358,12 +1572,7 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 	}
 	var selected *gcStoreDomain
 	if preferred != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
-			if domain.collector == preferred {
-				selected = domain
-				break
-			}
-		}
+		selected = topology.domainForCollectorLocked(preferred)
 		if selected == nil {
 			s.mu.Unlock()
 			return nil, nil, fmt.Errorf("wago: imported WasmGC collector is not a live Runtime domain")
@@ -1404,15 +1613,10 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 			s.mu.Unlock()
 			return nil, nil, err
 		}
-		selected = &gcStoreDomain{id: newGCDomainIdentity(), collector: collector, config: config, types: types, typeReps: reps, claims: 1, prev: topology.last}
-		if topology.last == nil {
-			topology.first = selected
-		} else {
-			topology.last.next = selected
-		}
-		topology.last = selected
-		topology.n++
+		selected = &gcStoreDomain{id: newGCDomainIdentity(), collector: collector, config: config, types: types, typeReps: reps, claims: 1}
+		topology.appendDomainLocked(selected)
 		s.mu.Unlock()
+		c.rememberGCTypeMapping(selected.id, len(selected.typeReps), mapping)
 		return collector, mapping, nil
 	}
 	if selected.claims == ^uint32(0) {
@@ -1432,12 +1636,19 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 		return nil, nil, err
 	}
 	selected.mu.Lock()
-	mapping, types, reps, err := gcCanonicalTypePlan(c, selected.typeReps, selected.types, preferred != nil)
+	domainTypeCount := len(selected.typeReps)
+	mapping := c.cachedGCTypeMapping(selected.id, domainTypeCount)
+	types, reps := selected.types, selected.typeReps
+	var err error
+	if mapping == nil {
+		mapping, types, reps, err = gcCanonicalTypePlan(c, selected.typeReps, selected.types, preferred != nil)
+	}
 	if err == nil && len(types) > len(selected.types) {
 		err = selected.collector.AddTypes(types[len(selected.types):])
 	}
 	if err == nil {
 		selected.types, selected.typeReps = types, reps
+		domainTypeCount = len(selected.typeReps)
 	}
 	selected.mu.Unlock()
 	selected.invocationMu.Unlock()
@@ -1445,6 +1656,7 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 		s.releaseUnclaimedGCCollector(selected.collector)
 		return nil, nil, err
 	}
+	c.rememberGCTypeMapping(selected.id, domainTypeCount, mapping)
 	return selected.collector, mapping, nil
 }
 
@@ -1516,13 +1728,25 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 		keyCapacity = types
 	}
 	keys := make([]uint64, 0, keyCapacity)
+	identitiesByType := make(map[uint32][]byte, min(keyCapacity, len(in.c.Types)))
+	typeGroups := compiledStructuralTypeGroups(in.c.Types)
+	identityBytes := 0
 	for i, key := range in.c.FuncTypeID {
 		canonical, cached := in.c.cachedStructuralCallIdentity(i)
 		if !cached {
-			var err error
-			canonical, err = compiledStructuralCallIdentity(in.c, i)
-			if err != nil {
-				return fmt.Errorf("wago: function %d exact type: %w", i, err)
+			sig, sigOK := compiledFunctionSignature(in.c, i)
+			if sigOK && sig.HasTypeIndex {
+				canonical = identitiesByType[sig.TypeIndex]
+			}
+			if canonical == nil {
+				var err error
+				canonical, err = compiledStructuralCallIdentityWithGroups(in.c, i, typeGroups)
+				if err != nil {
+					return fmt.Errorf("wago: function %d exact type: %w", i, err)
+				}
+				if sigOK && sig.HasTypeIndex {
+					identitiesByType[sig.TypeIndex] = canonical
+				}
 			}
 		}
 		exact := structuralTypeRegistration{canonical: canonical}
@@ -1532,6 +1756,10 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 			}
 			continue
 		}
+		if len(canonical) > maxStructuralCallIdentityRegistrationBytes-identityBytes {
+			return fmt.Errorf("wago: structural call identities exceed the %d-byte per-registration budget", maxStructuralCallIdentityRegistrationBytes)
+		}
+		identityBytes += len(canonical)
 		candidate[key] = exact
 		keys = append(keys, key)
 		if registered, ok := s.typeKeys[key]; ok && !bytes.Equal(registered.canonical, exact.canonical) {
@@ -1557,11 +1785,8 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	}
 	var domain *gcStoreDomain
 	if topology := s.gcDomains; topology != nil {
-		for candidate := topology.first; candidate != nil; candidate = candidate.next {
-			if candidate.collector != in.gc {
-				continue
-			}
-			domain = candidate
+		domain = topology.domainForCollectorLocked(in.gc)
+		if domain != nil {
 			if domain.refs == ^uint32(0) {
 				return fmt.Errorf("wago: Runtime GC domain has too many instances")
 			}
@@ -1570,7 +1795,6 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 			}
 			domain.claims--
 			domain.refs++
-			break
 		}
 	}
 	if domain == nil && in.gc != nil {
@@ -1608,6 +1832,7 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 		gcDomain: domain, invocationDomains: storedInvocationDomains,
 		dynamicInvocationDomains: dynamicInvocationDomains,
 	}
+	s.registerGCFrameCodeRangeLocked(in)
 	s.liveInstances++
 	return nil
 }
@@ -1693,24 +1918,8 @@ func (s *referenceStore) releaseGCDomainLocked(entry *referenceStoreInstance) *g
 	if topology == nil {
 		return nil
 	}
-	for candidate := topology.first; candidate != nil; candidate = candidate.next {
-		if candidate == domain {
-			if candidate.prev == nil {
-				topology.first = candidate.next
-			} else {
-				candidate.prev.next = candidate.next
-			}
-			if candidate.next == nil {
-				topology.last = candidate.prev
-			} else {
-				candidate.next.prev = candidate.prev
-			}
-			candidate.prev, candidate.next = nil, nil
-			if topology.n > 0 {
-				topology.n--
-			}
-			return domain.collector
-		}
+	if topology.unlinkDomainLocked(domain) {
+		return domain.collector
 	}
 	return nil
 }
@@ -1820,6 +2029,7 @@ func (s *referenceStore) maybeReleaseEntriesLocked() referenceTokenEntries {
 }
 
 func (s *referenceStore) unregisterInstanceTypesLocked(in *Instance) {
+	s.unregisterGCFrameCodeRangeLocked(in)
 	for _, key := range s.instanceTypes[in] {
 		registered, ok := s.typeKeys[key]
 		if !ok {
@@ -2806,6 +3016,7 @@ func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
 		topology.first = nil
 		topology.last = nil
 		topology.n = 0
+		topology.byCollector = nil
 		topology.funcrefMu.Lock()
 		topology.funcrefTables = nil
 		topology.funcrefMu.Unlock()

@@ -118,7 +118,7 @@ func TestPreparedDirectRevocation(t *testing.T) {
 	}
 }
 
-func TestInvocationGateFastUnlockPreservesRevocationAndNotifiesWaiters(t *testing.T) {
+func TestInvocationGateFastUnlockPreservesRevocationAndHandsOffWaiter(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		initial uint32
@@ -127,16 +127,16 @@ func TestInvocationGateFastUnlockPreservesRevocationAndNotifiesWaiters(t *testin
 	}{
 		{"uncontended", invocationGateHeld | invocationGateFast, 0, false},
 		{"revoked", invocationGateHeld | invocationGateFast | invocationGateRevoked, invocationGateRevoked, false},
-		{"waiting", invocationGateHeld | invocationGateFast | invocationGateWaiters, 0, true},
-		{"waiting revoked", invocationGateHeld | invocationGateFast | invocationGateWaiters | invocationGateRevoked, invocationGateRevoked, true},
+		{"waiting", invocationGateHeld | invocationGateFast | invocationGateWaiters, invocationGateHeld, true},
+		{"waiting revoked", invocationGateHeld | invocationGateFast | invocationGateWaiters | invocationGateRevoked, invocationGateHeld | invocationGateRevoked, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var gate invocationGate
 			gate.state.Store(tc.initial)
-			var changed chan struct{}
+			var waiter *invocationGateWaiter
 			if tc.waiter {
-				changed = make(chan struct{})
-				gate.changed = changed
+				waiter = &invocationGateWaiter{ready: make(chan struct{}), queued: true}
+				gate.slow = &invocationGateSlowState{head: waiter, tail: waiter}
 			}
 			gate.Unlock()
 			if got := gate.state.Load(); got != tc.want {
@@ -144,9 +144,12 @@ func TestInvocationGateFastUnlockPreservesRevocationAndNotifiesWaiters(t *testin
 			}
 			if tc.waiter {
 				select {
-				case <-changed:
+				case <-waiter.ready:
 				default:
-					t.Fatal("waiter was not notified")
+					t.Fatal("waiter was not handed the gate")
+				}
+				if !waiter.granted || waiter.queued {
+					t.Fatalf("waiter state = granted %v, queued %v", waiter.granted, waiter.queued)
 				}
 			}
 		})

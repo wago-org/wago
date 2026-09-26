@@ -79,9 +79,9 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 3 -->
+<!-- artifact:codec-version 4 -->
 
-Compiled artifact version 3 is a strict ordered section stream. It has a fixed
+Compiled artifacts use a strict ordered section stream. It has a fixed
 header and section count, followed by length-delimited native-code and metadata
 sections. Wago rejects unknown, duplicate, reordered, truncated, over-limit, and
 non-canonical section encodings. `Compiled.WriteTo` streams code without making a
@@ -125,7 +125,7 @@ Lane access uses PINSRW/PEXTRW, MOVD/MOVQ and shuffles. Baseline any_true uses
 byte comparisons and PMOVMSKB. Modern hosts retain VEX.128 and SSE4.x lowerings;
 AVX also enables the existing YMM bulk-memory/table movement paths.
 
-Artifact version 3 stores the union of emitted optional CPU requirements in
+Artifact version 4 stores the union of emitted optional CPU requirements in
 bits 32–51 of the existing metadata requirement word. Loading checks that this
 mask is a subset of detected host capabilities. Unknown bits and older artifact
 versions fail closed. Plugin declarations, BMI2 and bit-count instructions share
@@ -208,11 +208,11 @@ and foreign tokens reject. Explicit cross-Runtime transfer uses
 `target.CloneGCRefFrom(source, ref)`: a bounded stable-ID graph clone maps
 structurally equivalent target types, preserves cycles/internal sharing, assigns
 new target identity, and rejects non-null opaque store-owned payloads. Direct
-cross-Runtime compact-handle sharing remains impossible. Codec version 3 persists helper
+cross-Runtime compact-handle sharing remains impossible. The codec persists helper
 admission, the required native-GC ABI version, and the 16-byte `v128` storage
 contract, but never compact handles. AMD64 final scalar struct/array accesses and initialized final-struct
 allocation use collector native ABI version 1. Artifact loading validates the Go/native
-layout and codec version 3 records the required ABI; instantiation validates the immutable
+layout and the codec records the required ABI; instantiation validates the immutable
 instance view, local canonical-type map, collector identity, collector version, and
 handle stride before publishing basedata offset 280. Native accesses then trust those
 immutable facts while reloading and validating mutable handle ranges/liveness, heap

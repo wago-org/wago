@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,58 @@ func TestGCInvocationDomainUsesRegisteredAssociation(t *testing.T) {
 	store.instances[in].gcDomain = nil
 	if got := in.gcInvocationDomain(); got != nil {
 		t.Fatalf("released invocation domain = %p, want nil", got)
+	}
+}
+
+func TestGCDomainCollectorIndexTracksOrderedTopology(t *testing.T) {
+	topology := new(gcDomainTopology)
+	domains := make([]gcStoreDomain, gcCollectorIndexThreshold+2)
+	for i := range domains {
+		domains[i].collector = new(gc.Collector)
+		topology.appendDomainLocked(&domains[i])
+		if got := topology.domainForCollectorLocked(domains[i].collector); got != &domains[i] {
+			t.Fatalf("collector %d lookup = %p, want %p", i, got, &domains[i])
+		}
+	}
+	if topology.byCollector == nil || topology.n != len(domains) {
+		t.Fatalf("collector index state: indexed=%t domains=%d, want indexed and %d", topology.byCollector != nil, topology.n, len(domains))
+	}
+	if !topology.unlinkDomainLocked(&domains[2]) || topology.domainForCollectorLocked(domains[2].collector) != nil {
+		t.Fatal("removed collector remains in the topology index")
+	}
+	if topology.first != &domains[0] || topology.last != &domains[len(domains)-1] || topology.n != len(domains)-1 {
+		t.Fatalf("unlink changed ordered topology: first=%p last=%p count=%d", topology.first, topology.last, topology.n)
+	}
+}
+
+func TestGCFrameCodeRangeRepresentativeOwnerUnlinksInConstantTime(t *testing.T) {
+	collector := new(gc.Collector)
+	compiled := &Compiled{code: []byte{0xc3}, validateMemo: &validateMemo{gcFrameRoots: &compiledGCFrameRoots{}}}
+	first := &Instance{c: compiled, gc: collector, base: 0x10000}
+	second := &Instance{c: compiled, gc: collector, base: 0x10000}
+	store := &referenceStore{
+		instances: map[*Instance]*referenceStoreInstance{
+			first:  {},
+			second: {},
+		},
+	}
+	store.registerGCFrameCodeRangeLocked(first)
+	store.registerGCFrameCodeRangeLocked(second)
+	index := store.gcDomains.codeRanges
+	collectorRanges := index.byCollector[collector]
+	key := gcFrameCodeRangeKey{collector: collector, compiled: compiled, base: first.base}
+	image := collectorRanges.byImage[key]
+	if image == nil || image.owner != second || image.owners == nil || image.owners.instance != second {
+		t.Fatalf("shared code representative = %+v, want second instance", image)
+	}
+
+	store.unregisterGCFrameCodeRangeLocked(second)
+	if image.owner != first || image.owners == nil || image.owners.instance != first || index.byInstance[second] != nil {
+		t.Fatalf("representative after unlink = %+v, want first instance", image)
+	}
+	store.unregisterGCFrameCodeRangeLocked(first)
+	if store.gcDomains.codeRanges != nil {
+		t.Fatal("empty code-range index was retained")
 	}
 }
 
@@ -260,5 +313,43 @@ func BenchmarkGCInvocationDomainManyDomains(b *testing.B) {
 		if in.gcInvocationDomain() != target {
 			b.Fatal("invocation domain changed")
 		}
+	}
+}
+
+func BenchmarkGCDomainLookupByCollector(b *testing.B) {
+	for _, domainCount := range []int{4, 16, 256, 4096} {
+		b.Run(fmt.Sprintf("domains=%d", domainCount), func(b *testing.B) {
+			collectors := make([]gc.Collector, domainCount)
+			domains := make([]gcStoreDomain, domainCount)
+			topology := new(gcDomainTopology)
+			for i := range domains {
+				domains[i].collector = &collectors[i]
+				topology.appendDomainLocked(&domains[i])
+			}
+			target := &collectors[len(collectors)-1]
+			b.Run("indexed", func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					if topology.domainForCollectorLocked(target) != &domains[len(domains)-1] {
+						b.Fatal("collector domain lookup changed")
+					}
+				}
+			})
+			b.Run("linked-list", func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					var got *gcStoreDomain
+					for domain := topology.first; domain != nil; domain = domain.next {
+						if domain.collector == target {
+							got = domain
+							break
+						}
+					}
+					if got != &domains[len(domains)-1] {
+						b.Fatal("collector domain lookup changed")
+					}
+				}
+			})
+		})
 	}
 }

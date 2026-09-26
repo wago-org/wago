@@ -1,7 +1,10 @@
 package wago
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
+	"hash"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -389,6 +392,24 @@ func (index *valueTypeInterner) intern(pool *[]ValueTypeDescriptor, t ValueTypeD
 	return i
 }
 
+// internCompiled retains the recent-entry fast path while routing misses
+// through the compiled module's indexed interner. This keeps first-seen IDs
+// stable without reverting to a full pool scan for every unique descriptor.
+func (index *valueTypeInterner) internCompiled(c *Compiled, t ValueTypeDescriptor) uint32 {
+	if c == nil {
+		return 0
+	}
+	large := len(c.ValueTypes) >= 32
+	if large && uint64(*index) < uint64(len(c.ValueTypes)) && c.ValueTypes[*index] == t {
+		return uint32(*index)
+	}
+	i := c.internExactValueType(t)
+	if large || len(c.ValueTypes) >= 32 {
+		*index = valueTypeInterner(i)
+	}
+	return i
+}
+
 func internValueType(pool *[]ValueTypeDescriptor, t ValueTypeDescriptor) uint32 {
 	for i := range *pool {
 		if (*pool)[i] == t {
@@ -397,6 +418,47 @@ func internValueType(pool *[]ValueTypeDescriptor, t ValueTypeDescriptor) uint32 
 	}
 	*pool = append(*pool, t)
 	return uint32(len(*pool) - 1)
+}
+
+func (c *Compiled) internExactValueType(t ValueTypeDescriptor) uint32 {
+	if c == nil {
+		return 0
+	}
+	indexes := c.loadCompileIndexes()
+	if len(c.ValueTypes) <= 8 && (indexes == nil || indexes.valueTypeIndex == nil) {
+		for i := range c.ValueTypes {
+			if c.ValueTypes[i] == t {
+				return uint32(i)
+			}
+		}
+		c.ValueTypes = append(c.ValueTypes, t)
+		return uint32(len(c.ValueTypes) - 1)
+	}
+	if indexes == nil {
+		indexes = c.ensureCompileIndexes()
+	}
+	if indexes == nil {
+		for i := range c.ValueTypes {
+			if c.ValueTypes[i] == t {
+				return uint32(i)
+			}
+		}
+		c.ValueTypes = append(c.ValueTypes, t)
+		return uint32(len(c.ValueTypes) - 1)
+	}
+	if indexes.valueTypeIndex == nil {
+		indexes.valueTypeIndex = make(map[ValueTypeDescriptor]uint32, len(c.ValueTypes)+1)
+		for i, existing := range c.ValueTypes {
+			indexes.valueTypeIndex[existing] = uint32(i)
+		}
+	}
+	if index, ok := indexes.valueTypeIndex[t]; ok {
+		return index
+	}
+	index := uint32(len(c.ValueTypes))
+	c.ValueTypes = append(c.ValueTypes, t)
+	indexes.valueTypeIndex[t] = index
+	return index
 }
 
 // valueTypeSubtype compares exact descriptors from independent compiled modules.
@@ -516,12 +578,203 @@ func heapTypeEquivalent(a HeapTypeDescriptor, aTypes []DefinedTypeDescriptor, b 
 	return definedTypeEquivalent(a.TypeIndex, aTypes, b.TypeIndex, bTypes)
 }
 
+// definedTypeFingerprints builds a compact candidate key for each type in a
+// flattened structural graph. Recursive-group members hash local references by
+// ordinal and external references by the referenced member fingerprint, so a
+// shared dependency is processed once instead of being unfolded at each edge.
+// Callers must still confirm matching fingerprints with definedTypeEquivalent;
+// hashes only narrow the candidate set.
+func definedTypeFingerprints(types []DefinedTypeDescriptor) ([][32]byte, bool) {
+	type groupBounds struct{ start, end int }
+	groups := make([]groupBounds, 0, len(types))
+	groupOf := make([]int, len(types))
+	for start := 0; start < len(types); {
+		end := start + 1
+		for end < len(types) && types[end].RecGroup == types[start].RecGroup {
+			end++
+		}
+		group := len(groups)
+		groups = append(groups, groupBounds{start: start, end: end})
+		for i := start; i < end; i++ {
+			groupOf[i] = group
+		}
+		start = end
+	}
+
+	fingerprints := make([][32]byte, len(types))
+	state := make([]uint8, len(groups))
+	var byteScratch [1]byte
+	var u32Scratch [4]byte
+	writeByte := func(h hash.Hash, b byte) {
+		byteScratch[0] = b
+		_, _ = h.Write(byteScratch[:])
+	}
+	writeU32 := func(h hash.Hash, value uint32) {
+		binary.LittleEndian.PutUint32(u32Scratch[:], value)
+		_, _ = h.Write(u32Scratch[:])
+	}
+	var buildGroup func(int) bool
+	var writeRef func(hash.Hash, uint32, uint32) bool
+	var writeValue func(hash.Hash, uint32, ValueTypeDescriptor) bool
+	var writeField func(hash.Hash, uint32, FieldTypeDescriptor) bool
+	writeRef = func(h hash.Hash, owner, target uint32) bool {
+		if int(owner) >= len(types) || int(target) >= len(types) {
+			return false
+		}
+		ownerGroup, targetGroup := groupOf[owner], groupOf[target]
+		if types[owner].RecGroup == types[target].RecGroup {
+			if ownerGroup != targetGroup {
+				return false
+			}
+			writeByte(h, 0xf2)
+			writeU32(h, target-uint32(groups[ownerGroup].start))
+			return true
+		}
+		if !buildGroup(targetGroup) {
+			return false
+		}
+		writeByte(h, 0xf4)
+		_, _ = h.Write(fingerprints[target][:])
+		return true
+	}
+	writeValue = func(h hash.Hash, owner uint32, value ValueTypeDescriptor) bool {
+		writeByte(h, byte(value.Kind))
+		if value.Kind != ValueTypeReference {
+			return true
+		}
+		for _, flag := range []bool{value.Ref.Nullable, value.Ref.Exact} {
+			b := byte(0)
+			if flag {
+				b = 1
+			}
+			writeByte(h, b)
+		}
+		if value.Ref.Heap.Defined {
+			writeByte(h, 1)
+			return writeRef(h, owner, value.Ref.Heap.TypeIndex)
+		}
+		writeByte(h, 0)
+		writeByte(h, byte(value.Ref.Heap.Abstract))
+		return true
+	}
+	writeField = func(h hash.Hash, owner uint32, field FieldTypeDescriptor) bool {
+		if field.Storage.Packed {
+			writeByte(h, 1)
+			writeByte(h, byte(field.Storage.PackedType))
+		} else {
+			writeByte(h, 0)
+			if !writeValue(h, owner, field.Storage.Value) {
+				return false
+			}
+		}
+		if field.Mutable {
+			writeByte(h, 1)
+		} else {
+			writeByte(h, 0)
+		}
+		return true
+	}
+	buildGroup = func(group int) bool {
+		if group < 0 || group >= len(groups) || state[group] == 1 {
+			return false
+		}
+		if state[group] == 2 {
+			return true
+		}
+		state[group] = 1
+		defer func() { state[group] = 2 }()
+		bounds := groups[group]
+		h := sha256.New()
+		writeByte(h, 0xf3)
+		writeU32(h, uint32(bounds.end-bounds.start))
+		for i := bounds.start; i < bounds.end; i++ {
+			d := &types[i]
+			owner := uint32(i)
+			writeByte(h, 0xf1)
+			if d.Final {
+				writeByte(h, 1)
+			} else {
+				writeByte(h, 0)
+			}
+			writeU32(h, uint32(len(d.Supers)))
+			for _, super := range d.Supers {
+				if !writeRef(h, owner, super) {
+					return false
+				}
+			}
+			for _, metadata := range []struct {
+				has   bool
+				index uint32
+			}{{d.HasDescribes, d.Describes}, {d.HasDescriptor, d.Descriptor}} {
+				if !metadata.has {
+					writeByte(h, 0)
+				} else {
+					writeByte(h, 1)
+					if !writeRef(h, owner, metadata.index) {
+						return false
+					}
+				}
+			}
+			writeByte(h, byte(d.Kind))
+			switch d.Kind {
+			case CompositeTypeFunction:
+				writeU32(h, uint32(len(d.Params)))
+				for _, value := range d.Params {
+					if !writeValue(h, owner, value) {
+						return false
+					}
+				}
+				writeU32(h, uint32(len(d.Results)))
+				for _, value := range d.Results {
+					if !writeValue(h, owner, value) {
+						return false
+					}
+				}
+			case CompositeTypeStruct:
+				writeU32(h, uint32(len(d.Fields)))
+				for _, field := range d.Fields {
+					if !writeField(h, owner, field) {
+						return false
+					}
+				}
+			case CompositeTypeArray:
+				if !writeField(h, owner, d.Array) {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+		var groupDigest [32]byte
+		copy(groupDigest[:], h.Sum(nil))
+		for i := bounds.start; i < bounds.end; i++ {
+			memberHash := sha256.New()
+			writeByte(memberHash, 0xf5)
+			_, _ = memberHash.Write(groupDigest[:])
+			writeU32(memberHash, uint32(i-bounds.start))
+			copy(fingerprints[i][:], memberHash.Sum(nil))
+		}
+		return true
+	}
+	for group := range groups {
+		if !buildGroup(group) {
+			return nil, false
+		}
+	}
+	return fingerprints, true
+}
+
 func definedTypeEquivalent(a uint32, aTypes []DefinedTypeDescriptor, b uint32, bTypes []DefinedTypeDescriptor) bool {
 	type pair struct{ a, b uint32 }
+	type bounds struct{ start, end uint32 }
 	state := make(map[pair]uint8)
-	groupBounds := func(types []DefinedTypeDescriptor, index uint32) (start, end uint32, ok bool) {
+	aBounds, bBounds := make(map[uint32]bounds), make(map[uint32]bounds)
+	groupBounds := func(types []DefinedTypeDescriptor, cache map[uint32]bounds, index uint32) (start, end uint32, ok bool) {
 		if int(index) >= len(types) {
 			return 0, 0, false
+		}
+		if cached, found := cache[index]; found {
+			return cached.start, cached.end, true
 		}
 		group := types[index].RecGroup
 		start, end = index, index+1
@@ -530,6 +783,9 @@ func definedTypeEquivalent(a uint32, aTypes []DefinedTypeDescriptor, b uint32, b
 		}
 		for int(end) < len(types) && types[end].RecGroup == group {
 			end++
+		}
+		for member := start; member < end; member++ {
+			cache[member] = bounds{start: start, end: end}
 		}
 		return start, end, true
 	}
@@ -603,8 +859,8 @@ func definedTypeEquivalent(a uint32, aTypes []DefinedTypeDescriptor, b uint32, b
 		return ok
 	}
 	eqType = func(x, y uint32) bool {
-		xStart, xEnd, xOK := groupBounds(aTypes, x)
-		yStart, yEnd, yOK := groupBounds(bTypes, y)
+		xStart, xEnd, xOK := groupBounds(aTypes, aBounds, x)
+		yStart, yEnd, yOK := groupBounds(bTypes, bBounds, y)
 		if !xOK || !yOK || x-xStart != y-yStart || xEnd-xStart != yEnd-yStart {
 			return false
 		}

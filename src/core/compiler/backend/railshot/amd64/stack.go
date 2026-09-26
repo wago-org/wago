@@ -245,6 +245,9 @@ type stack struct {
 	cold             []elemCold
 	cur              int
 	head             *elem
+	logicalDepth     uint32
+	canonicalSlots   bool
+	hasGCRoots       bool
 	nextChunkCap     uint16
 	nextGeometricCap uint16
 }
@@ -311,6 +314,9 @@ func (s *stack) initSentinel() {
 	*chunk = append((*chunk)[:0], elem{})
 	s.head = &(*chunk)[0]
 	s.head.prev, s.head.next = s.head, s.head
+	s.logicalDepth = 0
+	s.canonicalSlots = true
+	s.hasGCRoots = false
 }
 
 // reset rewinds the stack to empty for reuse by the next function in a module
@@ -435,9 +441,41 @@ func (s *stack) push(e *elem) *elem {
 
 // pushValue pushes a concrete value with the given storage.
 func (s *stack) pushValue(st storage) *elem {
+	s.canonicalSlots = false
+	if st.hasGCRoot() {
+		s.hasGCRoots = true
+	}
 	e := s.alloc()
 	e.setElemKind(ekValue)
 	e.st = st
+	e.st.setLogicalRoot(true)
+	s.logicalDepth++
+	return s.push(e)
+}
+
+// pushDeferred replaces one or two logical operands with their deferred
+// expression node. The physical operand nodes remain linked as the expression
+// tree, while the logical depth changes only by the arity reduction.
+func (s *stack) pushDeferred(e *elem) *elem {
+	s.canonicalSlots = false
+	arity := 1
+	if e.arg1 != nil {
+		arity = 2
+	}
+	if e.arg0 == nil || int(s.logicalDepth) < arity {
+		panic("amd64: deferred node has invalid logical operands")
+	}
+	if !e.arg0.st.hasLogicalRoot() || (arity == 2 && !e.arg1.st.hasLogicalRoot()) {
+		panic("amd64: deferred node operands are not stack roots")
+	}
+	e.arg0.st.setLogicalRoot(false)
+	if arity == 2 {
+		e.arg1.st.setLogicalRoot(false)
+	}
+	e.st.setLogicalRoot(true)
+	if arity == 2 {
+		s.logicalDepth--
+	}
 	return s.push(e)
 }
 
@@ -452,8 +490,27 @@ func (s *stack) back() *elem {
 // erase unlinks e from the physical list (used when a node is condensed away or
 // consumed). It does not touch parent/sibling links.
 func (s *stack) erase(e *elem) {
+	s.canonicalSlots = false
+	if e.st.hasLogicalRoot() {
+		e.st.setLogicalRoot(false)
+		if s.logicalDepth == 0 {
+			panic("amd64: negative logical operand depth")
+		}
+		s.logicalDepth--
+	}
 	e.prev.next, e.next.prev = e.next, e.prev
 	e.prev, e.next = nil, nil
+}
+
+// exposeLogicalRoot restores a deferred operand that an optimization peeled
+// from a wrapper without changing the logical stack depth.
+func (s *stack) exposeLogicalRoot(e *elem) {
+	s.canonicalSlots = false
+	if e == nil || e.st.hasLogicalRoot() {
+		panic("amd64: invalid logical operand root exposure")
+	}
+	e.st.setLogicalRoot(true)
+	s.logicalDepth++
 }
 
 // --- deferred-tree navigation (WARP: getFirstOperand / findBaseOfValentBlock) ---
@@ -530,7 +587,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	}
 	node.arg0, node.arg1 = left, right
 	labelDeferredNode(node)
-	f.s.push(node)
+	f.s.pushDeferred(node)
 }
 
 func max16(a, b int16) int16 {
@@ -700,5 +757,5 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	}
 	node.arg0 = operand
 	labelDeferredNode(node)
-	f.s.push(node)
+	f.s.pushDeferred(node)
 }

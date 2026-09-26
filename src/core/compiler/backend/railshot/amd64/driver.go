@@ -168,7 +168,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		f.activateIntervalLocal(int(x), r.Offset(), true)
 		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
 			value = f.pushReg(reg, f.localType[x])
-			value.st.setGCRoot(f.gcFrameLocal(int(x)))
+			f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
 			break
 		}
 		if f.localConstZero(int(x)) {
@@ -184,7 +184,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		} else {
 			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: x})
 		}
-		value.st.setGCRoot(f.gcFrameLocal(int(x)))
+		f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
@@ -827,7 +827,7 @@ func (f *fn) emitSelect() {
 	f.release(condReg)
 	f.release(bReg)
 	result := f.pushReg(aReg, mtI32OrWide(w))
-	result.st.setGCRoot(gcRoot)
+	f.setStackGCRoot(result, gcRoot)
 }
 
 func mtI32OrWide(wide bool) machineType {
@@ -876,7 +876,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	f.erase(bRoot)
 	f.erase(aRoot)
 	result := f.pushReg(aReg, mtI32OrWide(w))
-	result.st.setGCRoot(gcRoot)
+	f.setStackGCRoot(result, gcRoot)
 	return true
 }
 

@@ -2,13 +2,26 @@
 
 package amd64
 
-func markGCReference(e *elem) {
+func (f *fn) markGCReference(e *elem) {
 	if e != nil && e.isValue() {
 		e.st.setGCRoot(true)
+		if f.s != nil && e.st.hasLogicalRoot() {
+			f.s.hasGCRoots = true
+		}
 	}
 }
 
-func (f *fn) markTopGCReference() { markGCReference(f.s.back()) }
+func (f *fn) markTopGCReference() { f.markGCReference(f.s.back()) }
+
+func (f *fn) setStackGCRoot(e *elem, root bool) {
+	if e == nil {
+		return
+	}
+	e.st.setGCRoot(root)
+	if root && e.isValue() && e.st.hasLogicalRoot() && f.s != nil {
+		f.s.hasGCRoots = true
+	}
+}
 
 // Stack values that alias mutable module state (locals/globals) are realized
 // before that state is overwritten by scanning the operand stack directly
@@ -19,10 +32,15 @@ func (f *fn) markTopGCReference() { markGCReference(f.s.back()) }
 // every push/pop/replace with no reader on the other side.
 
 func (f *fn) replaceStorage(e *elem, st storage) {
+	f.s.canonicalSlots = false
 	// Replacements move the same semantic value between registers, locals, and
 	// spills. Preserve collector-root identity; raw resolved addresses live in
 	// separate function state and are never copied here.
 	st.setGCRoot(st.hasGCRoot() || e.st.hasGCRoot())
+	st.setLogicalRoot(e.st.hasLogicalRoot())
+	if st.hasGCRoot() && st.hasLogicalRoot() {
+		f.s.hasGCRoots = true
+	}
 	if st.typ == mtCustom {
 		st.cold = e.st.cold
 	}

@@ -406,7 +406,7 @@ func (f *fn) callGCArrayFixedSpill(typeIndex, count uint32, resultType wasm.ValT
 		f.popValue()
 	}
 	value := f.pushReg(result, mtI64)
-	value.st.setGCRoot(resultIsRoot)
+	f.setStackGCRoot(value, resultIsRoot)
 	return nil
 }
 

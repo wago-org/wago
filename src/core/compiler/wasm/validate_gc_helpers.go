@@ -70,19 +70,9 @@ func (v *moduleValidator) ensureTypeIndex() {
 		return
 	}
 	v.typeIndexReady = true
-	v.typeGroupBases = make([]int, len(v.m.Types)+1)
-	total := 0
-	for gi := range v.m.Types {
-		v.typeGroupBases[gi] = total
-		total += len(v.m.Types[gi].SubTypes)
-	}
-	v.typeGroupBases[len(v.m.Types)] = total
-	v.flatSubTypes = make([]moduleSubTypeRef, 0, total)
-	for gi := range v.m.Types {
-		for si := range v.m.Types[gi].SubTypes {
-			v.flatSubTypes = append(v.flatSubTypes, moduleSubTypeRef{st: &v.m.Types[gi].SubTypes[si], recGroup: gi})
-		}
-	}
+	directory := v.m.typeIndex()
+	v.typeGroupBases = directory.bases
+	v.flatSubTypes = directory.flat
 }
 
 func (v *moduleValidator) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int, bool) {
@@ -532,14 +522,22 @@ func (v *moduleValidator) heapSubtype(a, b HeapType) bool {
 // typeIdxEquivalent implements the Core 3.0 structural equivalence relation for
 // defined types. The pair-state map makes recursive comparison coinductive and
 // bounds work by the number of type pairs reachable from the two roots.
+type moduleTypePair struct{ a, b int }
+
 func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
+	return v.typeIdxEquivalentWithState(a, b, make(map[moduleTypePair]uint8))
+}
+
+// typeIdxEquivalentWithState permits a batch of comparisons to share the
+// coinductive results for recursive-group member pairs. Rechecking another
+// member of an already compared group pair then becomes a map lookup instead
+// of traversing both complete groups again.
+func (v *moduleValidator) typeIdxEquivalentWithState(a, b TypeIdx, state map[moduleTypePair]uint8) bool {
 	aFlat, aok := v.flatTypeIdxInRecGroup(a, -1)
 	bFlat, bok := v.flatTypeIdxInRecGroup(b, -1)
 	if !aok || !bok {
 		return false
 	}
-	type pair struct{ a, b int }
-	state := make(map[pair]uint8)
 	var eqType func(int, int) bool
 	var eqVal func(ValType, ValType, int, int) bool
 	eqHeap := func(x, y HeapType, xGroup, yGroup int) bool {
@@ -583,18 +581,16 @@ func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
 		return x.Mut() == y.Mut() && eqStorage(x.Storage(), y.Storage(), xGroup, yGroup)
 	}
 	groupLocation := func(flat int) (group, local, base int, ok bool) {
-		if flat < 0 {
+		v.ensureTypeIndex()
+		if flat < 0 || flat >= len(v.flatSubTypes) {
 			return 0, 0, 0, false
 		}
-		base = 0
-		for gi := range v.m.Types {
-			n := len(v.m.Types[gi].SubTypes)
-			if flat < base+n {
-				return gi, flat - base, base, true
-			}
-			base += n
+		group = v.flatSubTypes[flat].recGroup
+		if group < 0 || group+1 >= len(v.typeGroupBases) {
+			return 0, 0, 0, false
 		}
-		return 0, 0, 0, false
+		base = v.typeGroupBases[group]
+		return group, flat - base, base, true
 	}
 	eqType = func(x, y int) bool {
 		if x == y {
@@ -605,7 +601,7 @@ func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
 		if !xLocOK || !yLocOK || xLocal != yLocal || len(v.m.Types[xGroupLoc].SubTypes) != len(v.m.Types[yGroupLoc].SubTypes) {
 			return false
 		}
-		p := pair{x, y}
+		p := moduleTypePair{x, y}
 		switch state[p] {
 		case 1, 2:
 			return true

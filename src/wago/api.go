@@ -1580,7 +1580,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if err != nil {
 				return nil, fmt.Errorf("global import %q.%q type: %w", im.Module, im.Name, err)
 			}
-			typeIndex := valueTypes.intern(&c.ValueTypes, exact)
+			typeIndex := valueTypes.internCompiled(c, exact)
 			abiType, err := typeConverter.abiType(im.Type.GlobalType().Type, c.Types)
 			if err != nil {
 				return nil, fmt.Errorf("global import %q.%q ABI type: %w", im.Module, im.Name, err)
@@ -1606,7 +1606,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if err != nil {
 				return nil, fmt.Errorf("table import %q.%q ABI type: %w", im.Module, im.Name, err)
 			}
-			def := tableImportDef{Key: im.Module + "." + im.Name, Type: abiType, ValueTypeIndex: valueTypes.intern(&c.ValueTypes, exact), HasValueType: true, Addr64: im.Type.TableType().Limits.Addr64}
+			def := tableImportDef{Key: im.Module + "." + im.Name, Type: abiType, ValueTypeIndex: valueTypes.internCompiled(c, exact), HasValueType: true, Addr64: im.Type.TableType().Limits.Addr64}
 			c.validateMemo.importModuleEnds[importedFuncs+tableImportIndex] = exactImportModuleEnd(im.Module)
 			min := im.Type.TableType().Limits.Min
 			if min > uint64(maxInt()) {
@@ -1692,7 +1692,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if err != nil {
 			return nil, fmt.Errorf("global %d ABI type: %w", i, err)
 		}
-		g := GlobalDef{Type: abiType, ValueTypeIndex: valueTypes.intern(&c.ValueTypes, exact), HasValueType: true, Mutable: m.Globals[i].Type.Mutable}
+		g := GlobalDef{Type: abiType, ValueTypeIndex: valueTypes.internCompiled(c, exact), HasValueType: true, Mutable: m.Globals[i].Type.Mutable}
 		applyGlobalInit(&g, v.Init())
 		c.Globals = append(c.Globals, g)
 	}
@@ -1739,7 +1739,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if err != nil {
 			return nil, fmt.Errorf("table 0 type: %w", err)
 		}
-		c.TableValueTypeIndex = valueTypes.intern(&c.ValueTypes, exact)
+		c.TableValueTypeIndex = valueTypes.internCompiled(c, exact)
 		c.TableHasValueType = true
 		c.TableAddr64 = tt.Limits.Addr64
 		if c.tableImport == "" {
@@ -1769,7 +1769,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if tt.Limits.HasMax {
 				persistedMax = tt.Limits.Max
 			}
-			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: persistedMax, Type: abiType, ValueTypeIndex: valueTypes.intern(&c.ValueTypes, exact), HasValueType: true, HasMax: tt.Limits.HasMax, Addr64: tt.Limits.Addr64}
+			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: persistedMax, Type: abiType, ValueTypeIndex: valueTypes.internCompiled(c, exact), HasValueType: true, HasMax: tt.Limits.HasMax, Addr64: tt.Limits.Addr64}
 		}
 		for i, def := range additionalTableImports {
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: int(def.Min), Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
@@ -1921,7 +1921,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		hasValueType := e.Kind.Kind != wasm.ElemFuncs
 		var valueTypeIndex uint32
 		if hasValueType {
-			valueTypeIndex = valueTypes.intern(&c.ValueTypes, exactType)
+			valueTypeIndex = valueTypes.internCompiled(c, exactType)
 		}
 		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, ValueTypeIndex: valueTypeIndex, HasValueType: hasValueType, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
 		if i < len(c.passiveElems) {
@@ -1947,7 +1947,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			}
 			if table64 {
 				// OffsetInit's compact Base/HasGlobal forms are i32-only. Preserve the
-				// validated i64 expression so codec version 2 and instantiation retain every bit.
+				// validated i64 expression so codec version 4 and instantiation retain every bit.
 				if len(e.Mode.Offset.BodyBytes) != 0 {
 					init.Offset.Expr = append([]byte(nil), e.Mode.Offset.BodyBytes...)
 				} else {
@@ -2000,7 +2000,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if memory64 {
 			// OffsetInit's compact Base/HasGlobal forms are intentionally i32-only.
 			// Preserve the already validated i64 program in the existing Expr field so
-			// codec version 2 retains the existing expression field while instantiation preserves all 64 address bits.
+			// codec version 4 retains the existing expression field while instantiation preserves all 64 address bits.
 			if len(d.Mode.Offset.BodyBytes) != 0 {
 				init.Offset.Expr = append([]byte(nil), d.Mode.Offset.BodyBytes...)
 			} else {
@@ -4023,7 +4023,7 @@ const wagoMagic = "WAGO"
 // so incompatible development layouts were consolidated instead of consuming
 // public version numbers. The codec never serializes live owners, collector
 // handles, mappings, tokens, active handlers, thunk addresses, or store identity.
-const wagoVersion = 3
+const wagoVersion = 4
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 // Published modules serialize their frozen execution metadata; edits to the

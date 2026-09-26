@@ -27,12 +27,16 @@ func floatBits(v float64, f64 bool) uint64 {
 // --- XMM allocator ---
 
 func (f *fn) occupyF(e *elem, r Reg) {
+	f.s.canonicalSlots = false
 	f.fregUser[r] = e
 	if e.isDeferred() && e.valueType() != mtNone {
 		e.st.typ = e.valueType()
 	}
 	e.setElemKind(ekValue)
 	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
+	if e.st.hasGCRoot() && e.st.hasLogicalRoot() {
+		f.s.hasGCRoots = true
+	}
 }
 
 func (f *fn) releaseF(r Reg) {
