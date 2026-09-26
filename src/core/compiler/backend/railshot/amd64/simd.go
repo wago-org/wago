@@ -5,6 +5,7 @@ package amd64
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
 	"os"
 
@@ -29,7 +30,7 @@ func (f *fn) materializeV128(e *elem) Reg {
 	case stConst:
 		if e.st.typ == mtV128 && e.st.cval == 0 {
 			x := f.allocFReg(0)
-			f.a.VPxor(x, x, x)
+			f.emitVPxor(x, x, x)
 			f.occupyF(e, x)
 			return x
 		}
@@ -122,7 +123,7 @@ func emulationConsts(sub uint32) [][2]uint64 {
 func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 	x := f.allocFReg(0)
 	if lo == 0 && hi == 0 {
-		f.a.VPxor(x, x, x)
+		f.emitVPxor(x, x, x)
 		return x
 	}
 	if c, ok := f.v128ConstCached(lo, hi); ok {
@@ -336,7 +337,7 @@ func (f *fn) buildV128Const(x Reg, lo, hi uint64) {
 	f.a.MovGprToXmm(x, t, true) // MOVQ zeroes the high 64 bits.
 	if hi != 0 {
 		f.a.MovImm64(t, hi)
-		f.a.Pinsrq(x, t, 1)
+		f.emitPinsrq(x, t, 1)
 	}
 	f.release(t)
 }
@@ -483,8 +484,8 @@ func (f *fn) v128UnaryNot() {
 	a := f.popValue()
 	x := f.materializeV128(a)
 	m := f.allocFReg(maskOf(x))
-	f.a.VPcmpeqb(m, m, m)
-	f.a.VPxor(x, x, m)
+	f.emitVPcmpeqb(m, m, m)
+	f.emitVPxor(x, x, m)
 	f.releaseF(m)
 	f.pushVReg(x)
 }
@@ -493,7 +494,7 @@ func (f *fn) v128IntegerNeg(op func(dst, s1, s2 Reg)) {
 	a := f.popValue()
 	x := f.materializeV128(a)
 	z := f.allocFReg(maskOf(x))
-	f.a.VPxor(z, z, z)
+	f.emitVPxor(z, z, z)
 	op(x, z, x)
 	f.releaseF(z)
 	f.pushVReg(x)
@@ -509,7 +510,7 @@ func (f *fn) v128IntegerAbs(op func(dst, src Reg)) {
 func (f *fn) v128FloatRound(f64 bool, mode byte) {
 	a := f.popValue()
 	x := f.materializeV128(a)
-	f.a.VFRoundPacked(x, x, f64, mode)
+	f.emitVFRoundPacked(x, x, f64, mode)
 	f.pushVReg(x)
 }
 
@@ -520,21 +521,21 @@ func (f *fn) i8x16Popcnt() {
 
 	high := f.allocFReg(0)
 	f.fpinned = f.fpinned.add(high)
-	f.a.VPsrlwImm(high, x, 4)
+	f.emitVPsrlwImm(high, x, 4)
 
 	mask := f.v128ConstReg(0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f)
 	f.fpinned = f.fpinned.add(mask)
 	lut := f.v128ConstReg(0x0302020102010100, 0x0403030203020201)
 
-	f.a.VPand(x, x, mask)
-	f.a.VPand(high, high, mask)
+	f.emitVPand(x, x, mask)
+	f.emitVPand(high, high, mask)
 	f.fpinned = f.fpinned.remove(mask)
 	f.releaseF(mask)
 
-	f.a.VPshufb(x, lut, x)
-	f.a.VPshufb(high, lut, high)
+	f.emitVPshufb(x, lut, x)
+	f.emitVPshufb(high, lut, high)
 	f.releaseF(lut)
-	f.a.VPaddb(x, x, high)
+	f.emitVPaddb(x, x, high)
 
 	f.fpinned = f.fpinned.remove(x).remove(high)
 	f.releaseF(high)
@@ -547,7 +548,16 @@ func v128MaskBits(b [16]byte) (uint64, uint64) {
 
 func (f *fn) v128ShuffleMask(dst, src Reg, lo, hi uint64) {
 	if c, ok := f.v128ConstCached(lo, hi); ok {
-		f.a.VPshufb(dst, src, c)
+		f.emitVPshufb(dst, src, c)
+		return
+	}
+	if !f.cpuHas(shared.AMD64AVX | shared.AMD64SSSE3) {
+		old := f.fpinned
+		f.fpinned = old.union(maskOf(dst, src))
+		m := f.v128ConstReg(lo, hi)
+		f.emitVPshufb(dst, src, m)
+		f.releaseF(m)
+		f.fpinned = old
 		return
 	}
 	site := f.a.VPshufbRipPlaceholder(dst, src)
@@ -621,10 +631,10 @@ func (f *fn) i8x16Swizzle() {
 	// low nibble preserved -> src[idx]); any index >= 16 reaches >= 0x80 (bit 7
 	// set -> zero). One instruction replaces the xor/cmpgtb/and/or mask build.
 	bias := f.v128ConstReg(0x7070707070707070, 0x7070707070707070)
-	f.a.VPaddusb(idx, idx, bias)
+	f.emitVPaddusb(idx, idx, bias)
 	f.releaseF(bias)
 
-	f.a.VPshufb(src, src, idx)
+	f.emitVPshufb(src, src, idx)
 	f.fpinned = f.fpinned.remove(idx).remove(src)
 	f.releaseF(idx)
 	f.pushVReg(src)
@@ -636,13 +646,13 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 	var native func(dst, a, b Reg)
 	switch lanes {
 	case [16]byte{0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23}:
-		native = f.a.VPunpckldq
+		native = f.emitVPunpckldq
 	case [16]byte{8, 9, 10, 11, 24, 25, 26, 27, 12, 13, 14, 15, 28, 29, 30, 31}:
-		native = f.a.VPunpckhdq
+		native = f.emitVPunpckhdq
 	case [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23}:
-		native = func(dst, a, b Reg) { f.a.VShufps(dst, a, b, 0x44) }
+		native = func(dst, a, b Reg) { f.emitVShufps(dst, a, b, 0x44) }
 	case [16]byte{8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31}:
-		native = func(dst, a, b Reg) { f.a.VShufps(dst, a, b, 0xee) }
+		native = func(dst, a, b Reg) { f.emitVShufps(dst, a, b, 0xee) }
 	}
 	if native != nil {
 		xa, aOwned := f.operandRegV128(aElem)
@@ -707,7 +717,7 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 	lo, hi = v128MaskBits(bMask)
 	f.v128ShuffleMask(xb, xb, lo, hi)
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
-	f.a.VPor(xa, xa, xb)
+	f.emitVPor(xa, xa, xb)
 	f.releaseF(xb)
 	f.pushVReg(xa)
 }
@@ -768,6 +778,10 @@ func (f *fn) v128StackMem(e *elem) (int32, bool) {
 // commutative packed op. This is especially important once the 11 v128 pin slots
 // are full: the remaining hot locals no longer need a load into a scratch XMM.
 func (f *fn) v128BinMem(r *wasm.Reader, op func(dst, s1, s2 Reg), memOp func(dst, s1, base Reg, disp int32)) {
+	if !f.cpuHas(shared.AMD64AVX) {
+		f.v128Bin(r, op)
+		return
+	}
 	right := f.s.back()
 	left := baseOfValentBlock(right).prev
 	memElem, regElem := right, left
@@ -822,9 +836,9 @@ func (f *fn) v128FloatMinMax(f64, isMax bool) {
 	if f64 {
 		pp = 1 // pd
 	}
-	packed := f.a.VFPackedMin
+	packed := f.emitVFPackedMin
 	if isMax {
-		packed = f.a.VFPackedMax
+		packed = f.emitVFPackedMax
 	}
 
 	t := f.allocFReg(maskOf(xa, xb))
@@ -834,19 +848,19 @@ func (f *fn) v128FloatMinMax(f64, isMax bool) {
 	packed(t, xa, xb, f64)  // t  = op(a, b)
 	packed(xa, xb, xa, f64) // xa = op(b, a); commuted copy differs only for ±0/NaN
 
-	f.a.VFCmpPacked(c, t, xa, f64, 0x03) // c = unordered mask (all-ones in NaN lanes)
+	f.emitVFCmpPacked(c, t, xa, f64, 0x03) // c = unordered mask (all-ones in NaN lanes)
 	if isMax {
-		f.a.VSseRRR(pp, 0x54, t, t, xa) // andps: +0 beats −0 for max
+		f.emitVSseRRR(pp, 0x54, t, t, xa) // andps: +0 beats −0 for max
 	} else {
-		f.a.VSseRRR(pp, 0x56, t, t, xa) // orps: −0 beats +0 for min
+		f.emitVSseRRR(pp, 0x56, t, t, xa) // orps: −0 beats +0 for min
 	}
-	f.a.VSseRRR(pp, 0x56, t, t, c) // orps: force NaN lanes to all-ones
+	f.emitVSseRRR(pp, 0x56, t, t, c) // orps: force NaN lanes to all-ones
 	if f64 {
-		f.a.VPsrlqImm(c, c, 13) // low 51 bits: mantissa minus its MSB
+		f.emitVPsrlqImm(c, c, 13) // low 51 bits: mantissa minus its MSB
 	} else {
-		f.a.VPsrldImm(c, c, 10) // low 22 bits: mantissa minus its MSB
+		f.emitVPsrldImm(c, c, 10) // low 22 bits: mantissa minus its MSB
 	}
-	f.a.VSseRRR(pp, 0x55, t, c, t) // andnps: clear those bits → canonical NaN, others unchanged
+	f.emitVSseRRR(pp, 0x55, t, c, t) // andnps: clear those bits → canonical NaN, others unchanged
 
 	f.releaseF(c)
 	f.fpinned = f.fpinned.remove(xa).remove(xb).remove(t)
@@ -864,9 +878,9 @@ func (f *fn) v128Bitselect() {
 	xb := f.materializeV128(bElem)
 	f.fpinned = f.fpinned.add(xb)
 	xa := f.materializeV128(aElem)
-	f.a.VPand(xa, xa, mask)
-	f.a.VPandn(xb, mask, xb)
-	f.a.VPor(xa, xa, xb)
+	f.emitVPand(xa, xa, mask)
+	f.emitVPandn(xb, mask, xb)
+	f.emitVPor(xa, xa, xb)
 	f.fpinned = f.fpinned.remove(mask).remove(xb)
 	f.releaseF(mask)
 	f.releaseF(xb)
@@ -883,17 +897,17 @@ func (f *fn) v128RelaxedMadd(f64, neg bool) {
 	f.fpinned = f.fpinned.add(xb)
 	xc := f.materializeV128(cElem)
 
-	f.a.VFPackedMul(xa, xa, xb, f64)
+	f.emitVFPackedMul(xa, xa, xb, f64)
 	f.fpinned = f.fpinned.remove(xb)
 	f.releaseF(xb)
 	if neg {
-		f.a.VFPackedSub(xc, xc, xa, f64) // relaxed_nmadd: c - (a * b), without FMA.
+		f.emitVFPackedSub(xc, xc, xa, f64) // relaxed_nmadd: c - (a * b), without FMA.
 		f.fpinned = f.fpinned.remove(xa)
 		f.releaseF(xa)
 		f.pushVReg(xc)
 		return
 	}
-	f.a.VFPackedAdd(xa, xa, xc, f64)
+	f.emitVFPackedAdd(xa, xa, xc, f64)
 	f.releaseF(xc)
 	f.fpinned = f.fpinned.remove(xa)
 	f.pushVReg(xa)
@@ -921,16 +935,16 @@ func (f *fn) v128TruncSatF64x2UnsignedZero() {
 	f.fpinned = f.fpinned.add(xx)
 	zero := f.allocFReg(maskOf(xx))
 	f.fpinned = f.fpinned.add(zero)
-	f.a.VPxor(zero, zero, zero)
-	f.a.VSseRRR(1, 0x5f, xx, xx, zero) // MAXPD: clamp negatives/NaN to 0
+	f.emitVPxor(zero, zero, zero)
+	f.emitVSseRRR(1, 0x5f, xx, xx, zero) // MAXPD: clamp negatives/NaN to 0
 	maxc := f.v128ConstReg(0x41efffffffe00000, 0x41efffffffe00000)
-	f.a.VSseRRR(1, 0x5d, xx, xx, maxc) // MINPD: clamp to UINT32_MAX
+	f.emitVSseRRR(1, 0x5d, xx, xx, maxc) // MINPD: clamp to UINT32_MAX
 	f.releaseF(maxc)
-	f.a.VFRoundPacked(xx, xx, true, roundTrunc) // truncate toward zero
+	f.emitVFRoundPacked(xx, xx, true, roundTrunc) // truncate toward zero
 	magic := f.v128ConstReg(0x4330000000000000, 0x4330000000000000)
-	f.a.VSseRRR(1, 0x58, xx, xx, magic) // ADDPD: 2^52 + uint32(vi) in low 32 bits
+	f.emitVSseRRR(1, 0x58, xx, xx, magic) // ADDPD: 2^52 + uint32(vi) in low 32 bits
 	f.releaseF(magic)
-	f.a.VShufps(xx, xx, zero, 0b00_00_10_00) // pack lanes 0,2 -> dwords 0,1; upper = 0
+	f.emitVShufps(xx, xx, zero, 0b00_00_10_00) // pack lanes 0,2 -> dwords 0,1; upper = 0
 	f.fpinned = f.fpinned.remove(zero)
 	f.releaseF(zero)
 	f.fpinned = f.fpinned.remove(xx)
@@ -947,12 +961,12 @@ func (f *fn) v128TruncSatF64x2SignedZero() {
 	tmp := f.allocFReg(maskOf(xx))
 	f.fpinned = f.fpinned.add(tmp)
 	f.mov128(tmp, xx)
-	f.a.VFCmpPacked(tmp, tmp, tmp, true, vfcmpEqOQ) // non-NaN mask
+	f.emitVFCmpPacked(tmp, tmp, tmp, true, vfcmpEqOQ) // non-NaN mask
 	maxc := f.v128ConstReg(0x41dfffffffc00000, 0x41dfffffffc00000)
-	f.a.VSseRRR(0, 0x54, tmp, tmp, maxc) // ANDPS: 2147483647.0 where non-NaN, else 0
+	f.emitVSseRRR(0, 0x54, tmp, tmp, maxc) // ANDPS: 2147483647.0 where non-NaN, else 0
 	f.releaseF(maxc)
-	f.a.VSseRRR(1, 0x5d, xx, xx, tmp) // MINPD: clamp +overflow; NaN lane -> 0
-	f.a.Vcvttpd2dq(xx, xx)            // narrow to i32 low lanes, upper zeroed
+	f.emitVSseRRR(1, 0x5d, xx, xx, tmp) // MINPD: clamp +overflow; NaN lane -> 0
+	f.emitVcvttpd2dq(xx, xx)            // narrow to i32 low lanes, upper zeroed
 	f.fpinned = f.fpinned.remove(tmp)
 	f.releaseF(tmp)
 	f.fpinned = f.fpinned.remove(xx)
@@ -971,31 +985,31 @@ func (f *fn) v128TruncSatF32x4(signed bool) {
 	f.fpinned = f.fpinned.add(tmp)
 	if signed {
 		f.mov128(tmp, xx)
-		f.a.VFCmpPacked(tmp, tmp, tmp, false, vfcmpEqOQ) // tmp = non-NaN mask
-		f.a.VSseRRR(0, 0x54, xx, xx, tmp)                // ANDPS: NaN lanes -> +0.0
-		f.a.VSseRRR(0, 0x57, tmp, tmp, xx)               // XORPS: tmp sign bit set iff lane negative
-		f.a.Vcvttps2dq(xx, xx)                           // trunc; 0x80000000 on NaN/overflow
-		f.a.VSseRRR(0, 0x54, tmp, tmp, xx)               // ANDPS
-		f.a.VPsradImm(tmp, tmp, 31)                      // all-ones where positive overflow
-		f.a.VPxor(xx, xx, tmp)                           // 0x80000000 -> 0x7FFFFFFF for +overflow
+		f.emitVFCmpPacked(tmp, tmp, tmp, false, vfcmpEqOQ) // tmp = non-NaN mask
+		f.emitVSseRRR(0, 0x54, xx, xx, tmp)                // ANDPS: NaN lanes -> +0.0
+		f.emitVSseRRR(0, 0x57, tmp, tmp, xx)               // XORPS: tmp sign bit set iff lane negative
+		f.emitVcvttps2dq(xx, xx)                           // trunc; 0x80000000 on NaN/overflow
+		f.emitVSseRRR(0, 0x54, tmp, tmp, xx)               // ANDPS
+		f.emitVPsradImm(tmp, tmp, 31)                      // all-ones where positive overflow
+		f.emitVPxor(xx, xx, tmp)                           // 0x80000000 -> 0x7FFFFFFF for +overflow
 	} else {
 		zero := f.allocFReg(maskOf(xx, tmp))
 		f.fpinned = f.fpinned.add(zero)
 		tmp2 := f.allocFReg(maskOf(xx, tmp, zero))
-		f.a.VPxor(zero, zero, zero)
-		f.a.VSseRRR(0, 0x5F, xx, xx, zero) // MAXPS: clamp negatives and NaN to 0
-		f.a.VPcmpeqd(tmp, tmp, tmp)
-		f.a.VPsrldImm(tmp, tmp, 1)            // 0x7FFFFFFF
-		f.a.Vcvtdq2ps(tmp, tmp)               // 2147483647.0f
-		f.mov128(tmp2, xx)                    // tmp2 = clamped value
-		f.a.Vcvttps2dq(xx, xx)                // low half: trunc of the clamped signed range
-		f.a.VSseRRR(0, 0x5C, tmp2, tmp2, tmp) // SUBPS: tmp2 -= 2^31f
-		f.a.VFCmpPacked(tmp, tmp, tmp2, false, vfcmpLeOQ)
-		f.a.Vcvttps2dq(tmp2, tmp2)
-		f.a.VPxor(tmp2, tmp2, tmp)
-		f.a.VPxor(tmp, tmp, tmp)
-		f.a.VPmaxsd(tmp2, tmp2, tmp)
-		f.a.VPaddd(xx, xx, tmp2) // recombine the two halves
+		f.emitVPxor(zero, zero, zero)
+		f.emitVSseRRR(0, 0x5F, xx, xx, zero) // MAXPS: clamp negatives and NaN to 0
+		f.emitVPcmpeqd(tmp, tmp, tmp)
+		f.emitVPsrldImm(tmp, tmp, 1)            // 0x7FFFFFFF
+		f.emitVcvtdq2ps(tmp, tmp)               // 2147483647.0f
+		f.mov128(tmp2, xx)                      // tmp2 = clamped value
+		f.emitVcvttps2dq(xx, xx)                // low half: trunc of the clamped signed range
+		f.emitVSseRRR(0, 0x5C, tmp2, tmp2, tmp) // SUBPS: tmp2 -= 2^31f
+		f.emitVFCmpPacked(tmp, tmp, tmp2, false, vfcmpLeOQ)
+		f.emitVcvttps2dq(tmp2, tmp2)
+		f.emitVPxor(tmp2, tmp2, tmp)
+		f.emitVPxor(tmp, tmp, tmp)
+		f.emitVPmaxsd(tmp2, tmp2, tmp)
+		f.emitVPaddd(xx, xx, tmp2) // recombine the two halves
 		f.fpinned = f.fpinned.remove(zero)
 		f.releaseF(zero)
 		f.releaseF(tmp2)
@@ -1013,7 +1027,7 @@ func (f *fn) v128TruncSatF32x4(signed bool) {
 func (f *fn) v128DemoteF64x2Zero() {
 	src, owned := f.operandRegV128(f.popValue())
 	out := f.allocFReg(maskOf(src))
-	f.a.Vcvtpd2ps(out, src)
+	f.emitVcvtpd2ps(out, src)
 	if owned {
 		f.releaseF(src)
 	}
@@ -1025,7 +1039,7 @@ func (f *fn) v128DemoteF64x2Zero() {
 func (f *fn) v128PromoteLowF32x4() {
 	src, owned := f.operandRegV128(f.popValue())
 	out := f.allocFReg(maskOf(src))
-	f.a.Vcvtps2pd(out, src)
+	f.emitVcvtps2pd(out, src)
 	if owned {
 		f.releaseF(src)
 	}
@@ -1042,9 +1056,9 @@ func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 		src, owned := f.operandRegV128(f.popValue())
 		out := f.allocFReg(maskOf(src))
 		if f64dst {
-			f.a.Vcvtdq2pd(out, src)
+			f.emitVcvtdq2pd(out, src)
 		} else {
-			f.a.Vcvtdq2ps(out, src)
+			f.emitVcvtdq2ps(out, src)
 		}
 		if owned {
 			f.releaseF(src)
@@ -1062,15 +1076,15 @@ func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 		// f64 result since u < 2^32 < 2^53.
 		zero := f.allocFReg(maskOf(src))
 		f.fpinned = f.fpinned.add(zero)
-		f.a.VPxor(zero, zero, zero)
+		f.emitVPxor(zero, zero, zero)
 		zx := f.allocFReg(maskOf(src, zero))
 		f.fpinned = f.fpinned.add(zx)
-		f.a.VPunpckldq(zx, src, zero) // [u0,0,u1,0] -> qwords {u0,u1}
+		f.emitVPunpckldq(zx, src, zero) // [u0,0,u1,0] -> qwords {u0,u1}
 		f.fpinned = f.fpinned.remove(zero)
 		f.releaseF(zero)
 		magic := f.v128ConstReg(0x4330000000000000, 0x4330000000000000)
-		f.a.VPor(zx, zx, magic)
-		f.a.VFPackedSub(zx, zx, magic, true)
+		f.emitVPor(zx, zx, magic)
+		f.emitVFPackedSub(zx, zx, magic, true)
 		f.releaseF(magic)
 		f.fpinned = f.fpinned.remove(zx)
 		f.fpinned = f.fpinned.remove(src)
@@ -1087,18 +1101,18 @@ func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 	f.fpinned = f.fpinned.add(mask)
 	lo := f.allocFReg(maskOf(src, mask))
 	f.fpinned = f.fpinned.add(lo)
-	f.a.VPand(lo, src, mask)
+	f.emitVPand(lo, src, mask)
 	f.fpinned = f.fpinned.remove(mask)
 	f.releaseF(mask)
 	hi := f.allocFReg(maskOf(src, lo))
 	f.fpinned = f.fpinned.add(hi)
-	f.a.VPsrldImm(hi, src, 16)
-	f.a.Vcvtdq2ps(lo, lo)
-	f.a.Vcvtdq2ps(hi, hi)
+	f.emitVPsrldImm(hi, src, 16)
+	f.emitVcvtdq2ps(lo, lo)
+	f.emitVcvtdq2ps(hi, hi)
 	scale := f.v128ConstReg(0x4780000047800000, 0x4780000047800000) // 65536.0f
-	f.a.VFPackedMul(hi, hi, scale, false)
+	f.emitVFPackedMul(hi, hi, scale, false)
 	f.releaseF(scale)
-	f.a.VFPackedAdd(lo, lo, hi, false)
+	f.emitVFPackedAdd(lo, lo, hi, false)
 	f.fpinned = f.fpinned.remove(hi)
 	f.releaseF(hi)
 	f.fpinned = f.fpinned.remove(lo)
@@ -1168,9 +1182,9 @@ func (f *fn) i32x4ShrU(r *wasm.Reader) {
 			out := f.allocFReg(maskOf(src))
 			f.fpinned = f.fpinned.add(out)
 			tmp := f.allocFReg(maskOf(src, out))
-			f.a.VPslldImm(tmp, src, byte(leftCount&31))
-			f.a.VPsrldImm(out, src, byte(rightCount))
-			f.a.VPor(out, out, tmp)
+			f.emitVPslldImm(tmp, src, byte(leftCount&31))
+			f.emitVPsrldImm(out, src, byte(rightCount))
+			f.emitVPor(out, out, tmp)
 			f.releaseF(tmp)
 			f.fpinned = f.fpinned.remove(out).remove(src)
 			if owned {
@@ -1182,7 +1196,7 @@ func (f *fn) i32x4ShrU(r *wasm.Reader) {
 		}
 		_ = r.JumpTo(save)
 	}
-	f.v128ShiftCount(countElem, f.a.VPsrld, f.a.VPsrldImm, 31)
+	f.v128ShiftCount(countElem, f.emitVPsrld, f.emitVPsrldImm, 31)
 }
 
 // i8x16 shift kinds, used to pick the constant-count fast path.
@@ -1218,17 +1232,17 @@ func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), kind int) {
 	f.release(count)
 
 	hi := f.allocFReg(0)
-	f.a.VPor(hi, x, x)
+	f.emitVPor(hi, x, x)
 	if signed {
-		f.a.VPunpcklbw(x, x, x)
-		f.a.VPunpckhbw(hi, hi, hi)
-		f.a.VPsrawImm(x, x, 8)
-		f.a.VPsrawImm(hi, hi, 8)
+		f.emitVPunpcklbw(x, x, x)
+		f.emitVPunpckhbw(hi, hi, hi)
+		f.emitVPsrawImm(x, x, 8)
+		f.emitVPsrawImm(hi, hi, 8)
 	} else {
 		z := f.allocFReg(maskOf(x, hi, countX))
-		f.a.VPxor(z, z, z)
-		f.a.VPunpcklbw(x, x, z)
-		f.a.VPunpckhbw(hi, hi, z)
+		f.emitVPxor(z, z, z)
+		f.emitVPunpcklbw(x, x, z)
+		f.emitVPunpckhbw(hi, hi, z)
 		f.releaseF(z)
 	}
 
@@ -1238,15 +1252,15 @@ func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), kind int) {
 	f.releaseF(countX)
 
 	if signed {
-		f.a.VPpacksswb(x, x, hi)
+		f.emitVPpacksswb(x, x, hi)
 	} else {
 		mask := f.allocFReg(maskOf(x, hi))
-		f.a.VPcmpeqw(mask, mask, mask) // 0xffff per word
-		f.a.VPsrlwImm(mask, mask, 8)   // 0x00ff per word (in-register, no const load)
-		f.a.VPand(x, x, mask)
-		f.a.VPand(hi, hi, mask)
+		f.emitVPcmpeqw(mask, mask, mask) // 0xffff per word
+		f.emitVPsrlwImm(mask, mask, 8)   // 0x00ff per word (in-register, no const load)
+		f.emitVPand(x, x, mask)
+		f.emitVPand(hi, hi, mask)
 		f.releaseF(mask)
-		f.a.VPpackuswb(x, x, hi)
+		f.emitVPpackuswb(x, x, hi)
 	}
 	f.releaseF(hi)
 	f.fpinned = f.fpinned.remove(x)
@@ -1266,23 +1280,23 @@ func (f *fn) i8x16ShiftConst(kind int, n byte) {
 	f.fpinned = f.fpinned.add(x)
 	switch kind {
 	case i8ShiftShl:
-		f.a.VPsllwImm(x, x, n)
+		f.emitVPsllwImm(x, x, n)
 		m := f.v128ConstReg(bcastByte((0xff<<n)&0xff), bcastByte((0xff<<n)&0xff))
-		f.a.VPand(x, x, m)
+		f.emitVPand(x, x, m)
 		f.releaseF(m)
 	case i8ShiftShrU:
-		f.a.VPsrlwImm(x, x, n)
+		f.emitVPsrlwImm(x, x, n)
 		m := f.v128ConstReg(bcastByte(0xff>>n), bcastByte(0xff>>n))
-		f.a.VPand(x, x, m)
+		f.emitVPand(x, x, m)
 		f.releaseF(m)
 	default: // i8ShiftShrS: logical shift + mask, then (t ^ bias) - bias sign-extends
-		f.a.VPsrlwImm(x, x, n)
+		f.emitVPsrlwImm(x, x, n)
 		m := f.v128ConstReg(bcastByte(0xff>>n), bcastByte(0xff>>n))
-		f.a.VPand(x, x, m)
+		f.emitVPand(x, x, m)
 		f.releaseF(m)
 		bias := f.v128ConstReg(bcastByte(0x80>>n), bcastByte(0x80>>n))
-		f.a.VPxor(x, x, bias)
-		f.a.VPsubb(x, x, bias)
+		f.emitVPxor(x, x, bias)
+		f.emitVPsubb(x, x, bias)
 		f.releaseF(bias)
 	}
 	f.fpinned = f.fpinned.remove(x)
@@ -1319,11 +1333,11 @@ func (f *fn) i64x2ShrS() {
 	hi := f.allocReg(maskOf(RCX, lo))
 
 	f.a.MovXmmToGpr(lo, x, true)
-	f.a.Pextrq(hi, x, 1)
+	f.emitPextrq(hi, x, 1)
 	f.a.ShiftCL(7, lo, true) // sar lo, cl
 	f.a.ShiftCL(7, hi, true) // sar hi, cl
 	f.a.MovGprToXmm(x, lo, true)
-	f.a.Pinsrq(x, hi, 1)
+	f.emitPinsrq(x, hi, 1)
 
 	f.release(hi)
 	f.pinned = f.pinned.remove(lo)
@@ -1339,10 +1353,10 @@ func (f *fn) i64x2Abs() {
 	value := f.popValue()
 	x := f.materializeV128(value)
 	sign := f.allocFReg(maskOf(x))
-	f.a.VPxor(sign, sign, sign) // zero
-	f.a.VPcmpgtq(sign, sign, x) // sign = (0 > x) → all-ones per negative qword
-	f.a.VPxor(x, x, sign)
-	f.a.VPsubq(x, x, sign)
+	f.emitVPxor(sign, sign, sign) // zero
+	f.emitVPcmpgtq(sign, sign, x) // sign = (0 > x) → all-ones per negative qword
+	f.emitVPxor(x, x, sign)
+	f.emitVPsubq(x, x, sign)
 	f.releaseF(sign)
 	f.pushVReg(x)
 }
@@ -1363,14 +1377,14 @@ func (f *fn) i64x2Mul() {
 	f.fpinned = f.fpinned.add(cross)
 	t := f.allocFReg(maskOf(xa, xb, cross))
 
-	f.a.VPsrlqImm(cross, xb, 32)   // cross = bHi
-	f.a.VPmuludq(cross, cross, xa) // cross = aLo * bHi
-	f.a.VPsrlqImm(t, xa, 32)       // t = aHi
-	f.a.VPmuludq(t, t, xb)         // t = aHi * bLo
-	f.a.VPaddq(cross, cross, t)    // cross = aLo*bHi + aHi*bLo
-	f.a.VPsllqImm(cross, cross, 32)
-	f.a.VPmuludq(xa, xa, xb) // xa = aLo * bLo
-	f.a.VPaddq(xa, xa, cross)
+	f.emitVPsrlqImm(cross, xb, 32)   // cross = bHi
+	f.emitVPmuludq(cross, cross, xa) // cross = aLo * bHi
+	f.emitVPsrlqImm(t, xa, 32)       // t = aHi
+	f.emitVPmuludq(t, t, xb)         // t = aHi * bLo
+	f.emitVPaddq(cross, cross, t)    // cross = aLo*bHi + aHi*bLo
+	f.emitVPsllqImm(cross, cross, 32)
+	f.emitVPmuludq(xa, xa, xb) // xa = aLo * bLo
+	f.emitVPaddq(xa, xa, cross)
 
 	f.releaseF(t)
 	f.fpinned = f.fpinned.remove(cross)
@@ -1386,21 +1400,21 @@ func (f *fn) i16x8ExtendI8x16(signed, high bool) {
 	x := f.materializeV128(v)
 	if signed {
 		if high {
-			f.a.VPunpckhbw(x, x, x)
+			f.emitVPunpckhbw(x, x, x)
 		} else {
-			f.a.VPunpcklbw(x, x, x)
+			f.emitVPunpcklbw(x, x, x)
 		}
-		f.a.VPsrawImm(x, x, 8)
+		f.emitVPsrawImm(x, x, 8)
 		f.pushVReg(x)
 		return
 	}
 
 	z := f.allocFReg(maskOf(x))
-	f.a.VPxor(z, z, z)
+	f.emitVPxor(z, z, z)
 	if high {
-		f.a.VPunpckhbw(x, x, z)
+		f.emitVPunpckhbw(x, x, z)
 	} else {
-		f.a.VPunpcklbw(x, x, z)
+		f.emitVPunpcklbw(x, x, z)
 	}
 	f.releaseF(z)
 	f.pushVReg(x)
@@ -1414,12 +1428,12 @@ func (f *fn) i16x8ExtaddPairwiseI8x16(signed bool) {
 	// Sums of two i8/u8 fit in i16, so no saturation occurs. Put the operand
 	// carrying the value's signedness on the matching input.
 	ones := f.allocFReg(maskOf(x))
-	f.a.VPcmpeqb(ones, ones, ones) // 0xFF per byte
-	f.a.VPabsb(ones, ones)         // 0x01 per byte
+	f.emitVPcmpeqb(ones, ones, ones) // 0xFF per byte
+	f.emitVPabsb(ones, ones)         // 0x01 per byte
 	if signed {
-		f.a.VPmaddubsw(x, ones, x) // ones (unsigned) * x (signed)
+		f.emitVPmaddubsw(x, ones, x) // ones (unsigned) * x (signed)
 	} else {
-		f.a.VPmaddubsw(x, x, ones) // x (unsigned) * ones (signed)
+		f.emitVPmaddubsw(x, x, ones) // x (unsigned) * ones (signed)
 	}
 	f.releaseF(ones)
 	f.pushVReg(x)
@@ -1435,28 +1449,28 @@ func (f *fn) i16x8ExtmulI8x16(signed, high bool) {
 
 	if signed {
 		if high {
-			f.a.VPunpckhbw(xa, xa, xa)
-			f.a.VPunpckhbw(xb, xb, xb)
+			f.emitVPunpckhbw(xa, xa, xa)
+			f.emitVPunpckhbw(xb, xb, xb)
 		} else {
-			f.a.VPunpcklbw(xa, xa, xa)
-			f.a.VPunpcklbw(xb, xb, xb)
+			f.emitVPunpcklbw(xa, xa, xa)
+			f.emitVPunpcklbw(xb, xb, xb)
 		}
-		f.a.VPsrawImm(xa, xa, 8)
-		f.a.VPsrawImm(xb, xb, 8)
+		f.emitVPsrawImm(xa, xa, 8)
+		f.emitVPsrawImm(xb, xb, 8)
 	} else {
 		z := f.allocFReg(maskOf(xa, xb))
-		f.a.VPxor(z, z, z)
+		f.emitVPxor(z, z, z)
 		if high {
-			f.a.VPunpckhbw(xa, xa, z)
-			f.a.VPunpckhbw(xb, xb, z)
+			f.emitVPunpckhbw(xa, xa, z)
+			f.emitVPunpckhbw(xb, xb, z)
 		} else {
-			f.a.VPunpcklbw(xa, xa, z)
-			f.a.VPunpcklbw(xb, xb, z)
+			f.emitVPunpcklbw(xa, xa, z)
+			f.emitVPunpcklbw(xb, xb, z)
 		}
 		f.releaseF(z)
 	}
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
-	f.a.VPmullw(xa, xa, xb)
+	f.emitVPmullw(xa, xa, xb)
 	f.releaseF(xb)
 	f.pushVReg(xa)
 }
@@ -1466,21 +1480,21 @@ func (f *fn) i32x4ExtendI16x8(signed, high bool) {
 	x := f.materializeV128(v)
 	if signed {
 		if high {
-			f.a.VPunpckhwd(x, x, x)
+			f.emitVPunpckhwd(x, x, x)
 		} else {
-			f.a.VPunpcklwd(x, x, x)
+			f.emitVPunpcklwd(x, x, x)
 		}
-		f.a.VPsradImm(x, x, 16)
+		f.emitVPsradImm(x, x, 16)
 		f.pushVReg(x)
 		return
 	}
 
 	z := f.allocFReg(maskOf(x))
-	f.a.VPxor(z, z, z)
+	f.emitVPxor(z, z, z)
 	if high {
-		f.a.VPunpckhwd(x, x, z)
+		f.emitVPunpckhwd(x, x, z)
 	} else {
-		f.a.VPunpcklwd(x, x, z)
+		f.emitVPunpcklwd(x, x, z)
 	}
 	f.releaseF(z)
 	f.pushVReg(x)
@@ -1496,28 +1510,28 @@ func (f *fn) i32x4ExtmulI16x8(signed, high bool) {
 
 	if signed {
 		if high {
-			f.a.VPunpckhwd(xa, xa, xa)
-			f.a.VPunpckhwd(xb, xb, xb)
+			f.emitVPunpckhwd(xa, xa, xa)
+			f.emitVPunpckhwd(xb, xb, xb)
 		} else {
-			f.a.VPunpcklwd(xa, xa, xa)
-			f.a.VPunpcklwd(xb, xb, xb)
+			f.emitVPunpcklwd(xa, xa, xa)
+			f.emitVPunpcklwd(xb, xb, xb)
 		}
-		f.a.VPsradImm(xa, xa, 16)
-		f.a.VPsradImm(xb, xb, 16)
+		f.emitVPsradImm(xa, xa, 16)
+		f.emitVPsradImm(xb, xb, 16)
 	} else {
 		z := f.allocFReg(maskOf(xa, xb))
-		f.a.VPxor(z, z, z)
+		f.emitVPxor(z, z, z)
 		if high {
-			f.a.VPunpckhwd(xa, xa, z)
-			f.a.VPunpckhwd(xb, xb, z)
+			f.emitVPunpckhwd(xa, xa, z)
+			f.emitVPunpckhwd(xb, xb, z)
 		} else {
-			f.a.VPunpcklwd(xa, xa, z)
-			f.a.VPunpcklwd(xb, xb, z)
+			f.emitVPunpcklwd(xa, xa, z)
+			f.emitVPunpcklwd(xb, xb, z)
 		}
 		f.releaseF(z)
 	}
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
-	f.a.VPmulld(xa, xa, xb)
+	f.emitVPmulld(xa, xa, xb)
 	f.releaseF(xb)
 	f.pushVReg(xa)
 }
@@ -1528,23 +1542,23 @@ func (f *fn) i32x4ExtaddPairwiseI16x8(signed bool) {
 	if signed {
 		// VPMADDWD with a vector of 1s is a signed pairwise 16->32 add.
 		ones := f.allocFReg(maskOf(x))
-		f.a.VPcmpeqw(ones, ones, ones) // 0xFFFF per word
-		f.a.VPsrlwImm(ones, ones, 15)  // 0x0001 per word
-		f.a.VPmaddwd(x, x, ones)
+		f.emitVPcmpeqw(ones, ones, ones) // 0xFFFF per word
+		f.emitVPsrlwImm(ones, ones, 15)  // 0x0001 per word
+		f.emitVPmaddwd(x, x, ones)
 		f.releaseF(ones)
 		f.pushVReg(x)
 		return
 	}
 	hi := f.allocFReg(maskOf(x))
-	f.a.VPor(hi, x, x)
+	f.emitVPor(hi, x, x)
 	{
 		z := f.allocFReg(maskOf(x, hi))
-		f.a.VPxor(z, z, z)
-		f.a.VPunpcklwd(x, x, z)
-		f.a.VPunpckhwd(hi, hi, z)
+		f.emitVPxor(z, z, z)
+		f.emitVPunpcklwd(x, x, z)
+		f.emitVPunpckhwd(hi, hi, z)
 		f.releaseF(z)
 	}
-	f.a.VPhaddd(x, x, hi)
+	f.emitVPhaddd(x, x, hi)
 	f.releaseF(hi)
 	f.pushVReg(x)
 }
@@ -1554,20 +1568,20 @@ func (f *fn) i64x2ExtendI32x4(signed, high bool) {
 	x := f.materializeV128(v)
 
 	z := f.allocFReg(maskOf(x))
-	f.a.VPxor(z, z, z)
+	f.emitVPxor(z, z, z)
 	if signed {
 		sign := f.allocFReg(maskOf(x, z))
-		f.a.VPcmpgtd(sign, z, x) // sign dword = -1 when lane < 0, else 0.
+		f.emitVPcmpgtd(sign, z, x) // sign dword = -1 when lane < 0, else 0.
 		if high {
-			f.a.VPunpckhdq(x, x, sign)
+			f.emitVPunpckhdq(x, x, sign)
 		} else {
-			f.a.VPunpckldq(x, x, sign)
+			f.emitVPunpckldq(x, x, sign)
 		}
 		f.releaseF(sign)
 	} else if high {
-		f.a.VPunpckhdq(x, x, z)
+		f.emitVPunpckhdq(x, x, z)
 	} else {
-		f.a.VPunpckldq(x, x, z)
+		f.emitVPunpckldq(x, x, z)
 	}
 	f.releaseF(z)
 	f.pushVReg(x)
@@ -1590,9 +1604,9 @@ func (f *fn) i64x2ExtmulI32x4(signed, high bool) {
 
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
 	if signed {
-		f.a.VPmuldq(xa, xa, xb)
+		f.emitVPmuldq(xa, xa, xb)
 	} else {
-		f.a.VPmuludq(xa, xa, xb)
+		f.emitVPmuludq(xa, xa, xb)
 	}
 	f.releaseF(xb)
 	f.pushVReg(xa)
@@ -1600,15 +1614,15 @@ func (f *fn) i64x2ExtmulI32x4(signed, high bool) {
 
 func (f *fn) relaxedDotI8x16I7x16PairSInto(dst, tmp, tmp2, xa, xb Reg, pair int, min, max Reg) {
 	lane := byte(pair * 2)
-	f.a.Pextrb(dst, xa, lane)
+	f.emitPextrb(dst, xa, lane)
 	f.a.Movsx8(dst, dst, false)
-	f.a.Pextrb(tmp, xb, lane)
+	f.emitPextrb(tmp, xb, lane)
 	f.a.Movsx8(tmp, tmp, false)
 	f.a.IMul(dst, tmp, false)
 
-	f.a.Pextrb(tmp, xa, lane+1)
+	f.emitPextrb(tmp, xa, lane+1)
 	f.a.Movsx8(tmp, tmp, false)
-	f.a.Pextrb(tmp2, xb, lane+1)
+	f.emitPextrb(tmp2, xb, lane+1)
 	f.a.Movsx8(tmp2, tmp2, false)
 	f.a.IMul(tmp, tmp2, false)
 	f.a.Add32(dst, tmp)
@@ -1631,7 +1645,7 @@ func (f *fn) relaxedDotI8x16I7x16Setup() (xa, xb, out, r0, r1, r2, r3, min, max 
 	f.fpinned = f.fpinned.add(xb)
 	out = f.allocFReg(maskOf(xa, xb))
 	f.fpinned = f.fpinned.add(out)
-	f.a.VPxor(out, out, out)
+	f.emitVPxor(out, out, out)
 
 	r0 = f.allocReg(0)
 	f.pinned = f.pinned.add(r0)
@@ -1685,9 +1699,9 @@ func (f *fn) i32x4RelaxedDotI8x16I7x16AddS() {
 		f.relaxedDotI8x16I7x16PairSInto(r0, r1, r2, xa, xb, lane*2, min, max)
 		f.relaxedDotI8x16I7x16PairSInto(r1, r2, r3, xa, xb, lane*2+1, min, max)
 		f.a.Add32(r0, r1)
-		f.a.Pextrd(r1, xc, byte(lane))
+		f.emitPextrd(r1, xc, byte(lane))
 		f.a.Add32(r0, r1)
-		f.a.Pinsrd(out, r0, byte(lane))
+		f.emitPinsrd(out, r0, byte(lane))
 	}
 	f.relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3, min, max)
 	f.fpinned = f.fpinned.remove(xc)
@@ -1707,22 +1721,22 @@ func (f *fn) i16x8Q15mulrSatS() {
 	f.fpinned = f.fpinned.add(min)
 	mask := f.allocFReg(0)
 	f.fpinned = f.fpinned.add(mask)
-	f.a.VPcmpeqw(mask, xa, min)
+	f.emitVPcmpeqw(mask, xa, min)
 	tmp := f.allocFReg(0)
-	f.a.VPcmpeqw(tmp, xb, min)
-	f.a.VPand(mask, mask, tmp)
+	f.emitVPcmpeqw(tmp, xb, min)
+	f.emitVPand(mask, mask, tmp)
 	f.releaseF(tmp)
 	f.fpinned = f.fpinned.remove(min)
 	f.releaseF(min)
 
-	f.a.VPmulhrsw(xa, xa, xb)
+	f.emitVPmulhrsw(xa, xa, xb)
 	f.fpinned = f.fpinned.remove(xb)
 	f.releaseF(xb)
 
 	max := f.v128ConstReg(0x7fff7fff7fff7fff, 0x7fff7fff7fff7fff)
-	f.a.VPand(max, max, mask)
-	f.a.VPandn(xa, mask, xa)
-	f.a.VPor(xa, xa, max)
+	f.emitVPand(max, max, mask)
+	f.emitVPandn(xa, mask, xa)
+	f.emitVPor(xa, xa, max)
 	f.releaseF(max)
 	f.fpinned = f.fpinned.remove(xa).remove(mask)
 	f.releaseF(mask)
@@ -1739,8 +1753,8 @@ func (f *fn) v128BinNot(op func(dst, s1, s2 Reg)) {
 	op(xa, xa, xb)
 	f.releaseF(xb)
 	m := f.allocFReg(maskOf(xa))
-	f.a.VPcmpeqb(m, m, m)
-	f.a.VPxor(xa, xa, m)
+	f.emitVPcmpeqb(m, m, m)
+	f.emitVPxor(xa, xa, m)
 	f.releaseF(m)
 	f.pushVReg(xa)
 }
@@ -1760,8 +1774,8 @@ func (f *fn) v128SignedCmp(op func(dst, s1, s2 Reg), swap, invert bool) {
 	f.releaseF(xb)
 	if invert {
 		m := f.allocFReg(maskOf(xa))
-		f.a.VPcmpeqb(m, m, m)
-		f.a.VPxor(xa, xa, m)
+		f.emitVPcmpeqb(m, m, m)
+		f.emitVPxor(xa, xa, m)
 		f.releaseF(m)
 	}
 	f.pushVReg(xa)
@@ -1788,8 +1802,8 @@ func (f *fn) v128UnsignedCmp(mmOp, eqOp func(dst, s1, s2 Reg), invert bool) {
 	}
 	if invert {
 		m := f.allocFReg(maskOf(xa))
-		f.a.VPcmpeqb(m, m, m)
-		f.a.VPxor(xa, xa, m)
+		f.emitVPcmpeqb(m, m, m)
+		f.emitVPxor(xa, xa, m)
 		f.releaseF(m)
 	}
 	f.pushVReg(xa)
@@ -1811,14 +1825,14 @@ func (f *fn) i64x2SignedCmp(cc Cond) {
 	swap := cc == condL || cc == condGE
 	invert := cc == condLE || cc == condGE
 	if swap {
-		f.a.VPcmpgtq(xa, xb, xa)
+		f.emitVPcmpgtq(xa, xb, xa)
 	} else {
-		f.a.VPcmpgtq(xa, xa, xb)
+		f.emitVPcmpgtq(xa, xa, xb)
 	}
 	if invert {
 		ones := f.allocFReg(maskOf(xa, xb))
-		f.a.VPcmpeqd(ones, ones, ones) // all-ones (x == x per dword)
-		f.a.VPxor(xa, xa, ones)
+		f.emitVPcmpeqd(ones, ones, ones) // all-ones (x == x per dword)
+		f.emitVPxor(xa, xa, ones)
 		f.releaseF(ones)
 	}
 	if bOwned {
@@ -1837,7 +1851,7 @@ const (
 )
 
 func (f *fn) v128FCmp(r *wasm.Reader, f64 bool, pred byte) {
-	f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFCmpPacked(dst, s1, s2, f64, pred) })
+	f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFCmpPacked(dst, s1, s2, f64, pred) })
 }
 
 // v128FloatSignOp lowers f32x4/f64x2 abs (ANDPS, op 0x54) and neg (XORPS, op
@@ -1850,23 +1864,23 @@ func (f *fn) v128FloatSignOp(f64, isAbs bool, op byte) {
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
 	mask := f.allocFReg(maskOf(x))
-	f.a.VPcmpeqd(mask, mask, mask) // all-ones (x == x per dword)
+	f.emitVPcmpeqd(mask, mask, mask) // all-ones (x == x per dword)
 	switch {
 	case isAbs && f64:
-		f.a.VPsrlqImm(mask, mask, 1)
+		f.emitVPsrlqImm(mask, mask, 1)
 	case isAbs:
-		f.a.VPsrldImm(mask, mask, 1)
+		f.emitVPsrldImm(mask, mask, 1)
 	case f64:
-		f.a.VPsllqImm(mask, mask, 63)
+		f.emitVPsllqImm(mask, mask, 63)
 	default:
-		f.a.VPslldImm(mask, mask, 31)
+		f.emitVPslldImm(mask, mask, 31)
 	}
 	f.fpinned = f.fpinned.remove(x)
 	pp := byte(0)
 	if f64 {
 		pp = 1
 	}
-	f.a.VSseRRR(pp, op, x, x, mask)
+	f.emitVSseRRR(pp, op, x, x, mask)
 	f.releaseF(mask)
 	f.pushVReg(x)
 }
@@ -1875,7 +1889,7 @@ func (f *fn) v128Movemask() Reg {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	r := f.allocReg(0)
-	f.a.VPmovmskb(r, x)
+	f.emitVPmovmskb(r, x)
 	f.releaseF(x)
 	return r
 }
@@ -1883,7 +1897,7 @@ func (f *fn) v128Movemask() Reg {
 func (f *fn) v128AnyTrue() {
 	v := f.popValue()
 	x := f.materializeV128(v)
-	f.a.VPtest(x, x)
+	f.emitVPtest(x, x)
 	f.releaseF(x)
 	r := f.allocReg(0)
 	f.a.SetccReg(condNE, r)
@@ -1919,7 +1933,7 @@ func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
 	f.fpinned = f.fpinned.add(sa)
 	sb, ob := f.operandRegV128(b)
 	f.fpinned = f.fpinned.remove(sa)
-	f.a.VPtest(sa, sb)
+	f.emitVPtest(sa, sb)
 	if oa {
 		f.releaseF(sa)
 	}
@@ -1954,7 +1968,7 @@ func (f *fn) tryV128NotAnd(r *wasm.Reader) bool {
 			dst = f.allocFReg(maskOf(sa, sb))
 		}
 	}
-	f.a.VPandn(dst, sb, sa)
+	f.emitVPandn(dst, sb, sa)
 	if oa && dst != sa {
 		f.releaseF(sa)
 	}
@@ -1970,24 +1984,24 @@ func (f *fn) v128AllTrue(cmpEqZero func(dst, s1, s2 Reg)) {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	z := f.allocFReg(maskOf(x))
-	f.a.VPxor(z, z, z)
+	f.emitVPxor(z, z, z)
 	cmpEqZero(x, x, z) // lanes are all-ones only where the original lane was zero.
 	f.releaseF(z)
 	r := f.allocReg(0)
-	f.a.VPmovmskb(r, x)
+	f.emitVPmovmskb(r, x)
 	f.releaseF(x)
 	f.a.TestSelf(r, false)
 	f.a.SetccReg(condE, r)
 	f.pushReg(r, mtI32)
 }
 
-func (f *fn) i8x16AllTrue() { f.v128AllTrue(f.a.VPcmpeqb) }
+func (f *fn) i8x16AllTrue() { f.v128AllTrue(f.emitVPcmpeqb) }
 
-func (f *fn) i16x8AllTrue() { f.v128AllTrue(f.a.VPcmpeqw) }
+func (f *fn) i16x8AllTrue() { f.v128AllTrue(f.emitVPcmpeqw) }
 
-func (f *fn) i32x4AllTrue() { f.v128AllTrue(f.a.VPcmpeqd) }
+func (f *fn) i32x4AllTrue() { f.v128AllTrue(f.emitVPcmpeqd) }
 
-func (f *fn) i64x2AllTrue() { f.v128AllTrue(f.a.VPcmpeqq) }
+func (f *fn) i64x2AllTrue() { f.v128AllTrue(f.emitVPcmpeqq) }
 
 func (f *fn) i8x16Bitmask() {
 	r := f.v128Movemask()
@@ -2000,10 +2014,10 @@ func (f *fn) i16x8Bitmask() {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	packed := f.allocFReg(maskOf(x))
-	f.a.VPacksswb(packed, x, x)
+	f.emitVPacksswb(packed, x, x)
 	f.releaseF(x)
 	r := f.allocReg(0)
-	f.a.VPmovmskb(r, packed)
+	f.emitVPmovmskb(r, packed)
 	f.releaseF(packed)
 	f.a.AluRI(4, r, 0x00ff, false) // keep the low 8 lane bits
 	f.pushReg(r, mtI32)
@@ -2013,7 +2027,7 @@ func (f *fn) i32x4Bitmask() {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	r := f.allocReg(0)
-	f.a.VMovmskps(r, x) // 4 lane sign bits directly
+	f.emitVMovmskps(r, x) // 4 lane sign bits directly
 	f.releaseF(x)
 	f.pushReg(r, mtI32)
 }
@@ -2022,7 +2036,7 @@ func (f *fn) i64x2Bitmask() {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	r := f.allocReg(0)
-	f.a.VMovmskpd(r, x) // 2 lane sign bits directly
+	f.emitVMovmskpd(r, x) // 2 lane sign bits directly
 	f.releaseF(x)
 	f.pushReg(r, mtI32)
 }
@@ -2103,7 +2117,7 @@ func (f *fn) v128ExtractLane(kind uint32, lane byte) {
 	switch kind {
 	case 21, 22: // i8x16.extract_lane_s/u
 		r := f.allocReg(0)
-		f.a.Pextrb(r, x, lane)
+		f.emitPextrb(r, x, lane)
 		if kind == 21 {
 			f.a.Movsx8(r, r, false)
 		}
@@ -2119,12 +2133,12 @@ func (f *fn) v128ExtractLane(kind uint32, lane byte) {
 		f.pushReg(r, mtI32)
 	case 27: // i32x4.extract_lane
 		r := f.allocReg(0)
-		f.a.Pextrd(r, x, lane)
+		f.emitPextrd(r, x, lane)
 		f.releaseF(x)
 		f.pushReg(r, mtI32)
 	case 29: // i64x2.extract_lane
 		r := f.allocReg(0)
-		f.a.Pextrq(r, x, lane)
+		f.emitPextrq(r, x, lane)
 		f.releaseF(x)
 		f.pushReg(r, mtI64)
 	case 31: // f32x4.extract_lane
@@ -2147,7 +2161,7 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 	switch kind {
 	case 23: // i8x16.replace_lane
 		r := f.materialize(s)
-		f.a.Pinsrb(x, r, lane)
+		f.emitPinsrb(x, r, lane)
 		f.release(r)
 	case 26: // i16x8.replace_lane
 		r := f.materialize(s)
@@ -2155,11 +2169,11 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 		f.release(r)
 	case 28: // i32x4.replace_lane
 		r := f.materialize(s)
-		f.a.Pinsrd(x, r, lane)
+		f.emitPinsrd(x, r, lane)
 		f.release(r)
 	case 30: // i64x2.replace_lane
 		r := f.materialize(s)
-		f.a.Pinsrq(x, r, lane)
+		f.emitPinsrq(x, r, lane)
 		f.release(r)
 	case 32: // f32x4.replace_lane
 		f.fpinned = f.fpinned.add(x)
@@ -2168,7 +2182,7 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 		f.a.MovXmmToGpr(r, sx, false)
 		f.releaseF(sx)
 		f.fpinned = f.fpinned.remove(x)
-		f.a.Pinsrd(x, r, lane)
+		f.emitPinsrd(x, r, lane)
 		f.release(r)
 	case 34: // f64x2.replace_lane
 		f.fpinned = f.fpinned.add(x)
@@ -2177,7 +2191,7 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 		f.a.MovXmmToGpr(r, sx, true)
 		f.releaseF(sx)
 		f.fpinned = f.fpinned.remove(x)
-		f.a.Pinsrq(x, r, lane)
+		f.emitPinsrq(x, r, lane)
 		f.release(r)
 	}
 	f.pushVReg(x)
@@ -2235,33 +2249,33 @@ func (f *fn) v128LoadExtend(r *wasm.Reader, sub uint32) error {
 
 	switch sub {
 	case 1: // v128.load8x8_s
-		f.a.VPunpcklbw(x, x, x)
-		f.a.VPsrawImm(x, x, 8)
+		f.emitVPunpcklbw(x, x, x)
+		f.emitVPsrawImm(x, x, 8)
 	case 2: // v128.load8x8_u
 		z := f.allocFReg(maskOf(x))
-		f.a.VPxor(z, z, z)
-		f.a.VPunpcklbw(x, x, z)
+		f.emitVPxor(z, z, z)
+		f.emitVPunpcklbw(x, x, z)
 		f.releaseF(z)
 	case 3: // v128.load16x4_s
-		f.a.VPunpcklwd(x, x, x)
-		f.a.VPsradImm(x, x, 16)
+		f.emitVPunpcklwd(x, x, x)
+		f.emitVPsradImm(x, x, 16)
 	case 4: // v128.load16x4_u
 		z := f.allocFReg(maskOf(x))
-		f.a.VPxor(z, z, z)
-		f.a.VPunpcklwd(x, x, z)
+		f.emitVPxor(z, z, z)
+		f.emitVPunpcklwd(x, x, z)
 		f.releaseF(z)
 	case 5: // v128.load32x2_s
 		z := f.allocFReg(maskOf(x))
-		f.a.VPxor(z, z, z)
+		f.emitVPxor(z, z, z)
 		sign := f.allocFReg(maskOf(x, z))
-		f.a.VPcmpgtd(sign, z, x)
-		f.a.VPunpckldq(x, x, sign)
+		f.emitVPcmpgtd(sign, z, x)
+		f.emitVPunpckldq(x, x, sign)
 		f.releaseF(sign)
 		f.releaseF(z)
 	case 6: // v128.load32x2_u
 		z := f.allocFReg(maskOf(x))
-		f.a.VPxor(z, z, z)
-		f.a.VPunpckldq(x, x, z)
+		f.emitVPxor(z, z, z)
+		f.emitVPunpckldq(x, x, z)
 		f.releaseF(z)
 	default:
 		panic("amd64: invalid SIMD load-extend opcode")
@@ -2379,13 +2393,13 @@ func (f *fn) v128LoadLane(r *wasm.Reader, sub uint32) error {
 	f.fpinned = f.fpinned.remove(x)
 	switch size {
 	case 1:
-		f.a.Pinsrb(x, t, lane)
+		f.emitPinsrb(x, t, lane)
 	case 2:
 		f.a.Pinsrw(x, t, lane)
 	case 4:
-		f.a.Pinsrd(x, t, lane)
+		f.emitPinsrd(x, t, lane)
 	case 8:
-		f.a.Pinsrq(x, t, lane)
+		f.emitPinsrq(x, t, lane)
 	}
 	f.release(t)
 	f.pushVReg(x)
@@ -2411,13 +2425,13 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	t := f.allocReg(0)
 	switch size {
 	case 1:
-		f.a.Pextrb(t, x, lane)
+		f.emitPextrb(t, x, lane)
 	case 2:
 		f.a.Pextrw(t, x, lane)
 	case 4:
-		f.a.Pextrd(t, x, lane)
+		f.emitPextrd(t, x, lane)
 	case 8:
-		f.a.Pextrq(t, x, lane)
+		f.emitPextrq(t, x, lane)
 	}
 	f.a.StoreIdx(base, ea, t, disp, size)
 	f.release(t)
@@ -2473,7 +2487,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 14: // i8x16.swizzle
 		f.i8x16Swizzle()
 	case 256: // i8x16.relaxed_swizzle: deterministic raw PSHUFB semantics.
-		f.v128Bin(r, f.a.VPshufb)
+		f.v128Bin(r, f.emitVPshufb)
 	case 257: // i32x4.relaxed_trunc_f32x4_s: conservative saturating choice.
 		f.v128I32x4TruncSat(false, true)
 	case 258: // i32x4.relaxed_trunc_f32x4_u: conservative saturating choice.
@@ -2493,15 +2507,15 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 265, 266, 267, 268: // relaxed_laneselect: deterministic bitselect choice.
 		f.v128Bitselect()
 	case 269: // f32x4.relaxed_min: deterministic native MINPS choice.
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedMin(dst, s1, s2, false) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedMin(dst, s1, s2, false) })
 	case 270: // f32x4.relaxed_max: deterministic native MAXPS choice.
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedMax(dst, s1, s2, false) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedMax(dst, s1, s2, false) })
 	case 271: // f64x2.relaxed_min: deterministic native MINPD choice.
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedMin(dst, s1, s2, true) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedMin(dst, s1, s2, true) })
 	case 272: // f64x2.relaxed_max: deterministic native MAXPD choice.
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedMax(dst, s1, s2, true) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedMax(dst, s1, s2, true) })
 	case 273: // i16x8.relaxed_q15mulr_s: deterministic raw PMULHRSW choice.
-		f.v128Bin(r, f.a.VPmulhrsw)
+		f.v128Bin(r, f.emitVPmulhrsw)
 	case 274: // i16x8.relaxed_dot_i8x16_i7x16_s: deterministic signed scalar dot with i16 saturation.
 		f.i16x8RelaxedDotI8x16I7x16S()
 	case 275: // i32x4.relaxed_dot_i8x16_i7x16_add_s: deterministic signed scalar dot-add.
@@ -2521,65 +2535,65 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		}
 		f.v128ReplaceLane(sub, lane)
 	case 35: // i8x16.eq
-		f.v128Bin(r, f.a.VPcmpeqb)
+		f.v128Bin(r, f.emitVPcmpeqb)
 	case 36: // i8x16.ne
-		f.v128BinNot(f.a.VPcmpeqb)
+		f.v128BinNot(f.emitVPcmpeqb)
 	case 37: // i8x16.lt_s
-		f.v128SignedCmp(f.a.VPcmpgtb, true, false)
+		f.v128SignedCmp(f.emitVPcmpgtb, true, false)
 	case 38: // i8x16.lt_u
-		f.v128UnsignedCmp(f.a.VPmaxub, f.a.VPcmpeqb, true)
+		f.v128UnsignedCmp(f.emitVPmaxub, f.emitVPcmpeqb, true)
 	case 39: // i8x16.gt_s
-		f.v128Bin(r, f.a.VPcmpgtb)
+		f.v128Bin(r, f.emitVPcmpgtb)
 	case 40: // i8x16.gt_u
-		f.v128UnsignedCmp(f.a.VPminub, f.a.VPcmpeqb, true)
+		f.v128UnsignedCmp(f.emitVPminub, f.emitVPcmpeqb, true)
 	case 41: // i8x16.le_s
-		f.v128SignedCmp(f.a.VPcmpgtb, false, true)
+		f.v128SignedCmp(f.emitVPcmpgtb, false, true)
 	case 42: // i8x16.le_u
-		f.v128UnsignedCmp(f.a.VPminub, f.a.VPcmpeqb, false)
+		f.v128UnsignedCmp(f.emitVPminub, f.emitVPcmpeqb, false)
 	case 43: // i8x16.ge_s
-		f.v128SignedCmp(f.a.VPcmpgtb, true, true)
+		f.v128SignedCmp(f.emitVPcmpgtb, true, true)
 	case 44: // i8x16.ge_u
-		f.v128UnsignedCmp(f.a.VPmaxub, f.a.VPcmpeqb, false)
+		f.v128UnsignedCmp(f.emitVPmaxub, f.emitVPcmpeqb, false)
 	case 45: // i16x8.eq
-		f.v128Bin(r, f.a.VPcmpeqw)
+		f.v128Bin(r, f.emitVPcmpeqw)
 	case 46: // i16x8.ne
-		f.v128BinNot(f.a.VPcmpeqw)
+		f.v128BinNot(f.emitVPcmpeqw)
 	case 47: // i16x8.lt_s
-		f.v128SignedCmp(f.a.VPcmpgtw, true, false)
+		f.v128SignedCmp(f.emitVPcmpgtw, true, false)
 	case 48: // i16x8.lt_u
-		f.v128UnsignedCmp(f.a.VPmaxuw, f.a.VPcmpeqw, true)
+		f.v128UnsignedCmp(f.emitVPmaxuw, f.emitVPcmpeqw, true)
 	case 49: // i16x8.gt_s
-		f.v128Bin(r, f.a.VPcmpgtw)
+		f.v128Bin(r, f.emitVPcmpgtw)
 	case 50: // i16x8.gt_u
-		f.v128UnsignedCmp(f.a.VPminuw, f.a.VPcmpeqw, true)
+		f.v128UnsignedCmp(f.emitVPminuw, f.emitVPcmpeqw, true)
 	case 51: // i16x8.le_s
-		f.v128SignedCmp(f.a.VPcmpgtw, false, true)
+		f.v128SignedCmp(f.emitVPcmpgtw, false, true)
 	case 52: // i16x8.le_u
-		f.v128UnsignedCmp(f.a.VPminuw, f.a.VPcmpeqw, false)
+		f.v128UnsignedCmp(f.emitVPminuw, f.emitVPcmpeqw, false)
 	case 53: // i16x8.ge_s
-		f.v128SignedCmp(f.a.VPcmpgtw, true, true)
+		f.v128SignedCmp(f.emitVPcmpgtw, true, true)
 	case 54: // i16x8.ge_u
-		f.v128UnsignedCmp(f.a.VPmaxuw, f.a.VPcmpeqw, false)
+		f.v128UnsignedCmp(f.emitVPmaxuw, f.emitVPcmpeqw, false)
 	case 55: // i32x4.eq
-		f.v128Bin(r, f.a.VPcmpeqd)
+		f.v128Bin(r, f.emitVPcmpeqd)
 	case 56: // i32x4.ne
-		f.v128BinNot(f.a.VPcmpeqd)
+		f.v128BinNot(f.emitVPcmpeqd)
 	case 57: // i32x4.lt_s
-		f.v128SignedCmp(f.a.VPcmpgtd, true, false)
+		f.v128SignedCmp(f.emitVPcmpgtd, true, false)
 	case 58: // i32x4.lt_u
-		f.v128UnsignedCmp(f.a.VPmaxud, f.a.VPcmpeqd, true)
+		f.v128UnsignedCmp(f.emitVPmaxud, f.emitVPcmpeqd, true)
 	case 59: // i32x4.gt_s
-		f.v128Bin(r, f.a.VPcmpgtd)
+		f.v128Bin(r, f.emitVPcmpgtd)
 	case 60: // i32x4.gt_u
-		f.v128UnsignedCmp(f.a.VPminud, f.a.VPcmpeqd, true)
+		f.v128UnsignedCmp(f.emitVPminud, f.emitVPcmpeqd, true)
 	case 61: // i32x4.le_s
-		f.v128SignedCmp(f.a.VPcmpgtd, false, true)
+		f.v128SignedCmp(f.emitVPcmpgtd, false, true)
 	case 62: // i32x4.le_u
-		f.v128UnsignedCmp(f.a.VPminud, f.a.VPcmpeqd, false)
+		f.v128UnsignedCmp(f.emitVPminud, f.emitVPcmpeqd, false)
 	case 63: // i32x4.ge_s
-		f.v128SignedCmp(f.a.VPcmpgtd, true, true)
+		f.v128SignedCmp(f.emitVPcmpgtd, true, true)
 	case 64: // i32x4.ge_u
-		f.v128UnsignedCmp(f.a.VPmaxud, f.a.VPcmpeqd, false)
+		f.v128UnsignedCmp(f.emitVPmaxud, f.emitVPcmpeqd, false)
 	case 65: // f32x4.eq
 		f.v128FCmp(r, false, vfcmpEqOQ)
 	case 66: // f32x4.ne
@@ -2605,9 +2619,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 76: // f64x2.ge
 		f.v128FCmp(r, true, vfcmpGeOQ)
 	case 101: // i8x16.narrow_i16x8_s
-		f.v128Bin(r, f.a.VPpacksswb)
+		f.v128Bin(r, f.emitVPpacksswb)
 	case 102: // i8x16.narrow_i16x8_u
-		f.v128Bin(r, f.a.VPpackuswb)
+		f.v128Bin(r, f.emitVPpackuswb)
 	case 103: // f32x4.ceil
 		f.v128FloatRound(false, roundCeil)
 	case 104: // f32x4.floor
@@ -2617,39 +2631,39 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 106: // f32x4.nearest
 		f.v128FloatRound(false, roundNearest)
 	case 107: // i8x16.shl
-		f.i8x16Shift(f.a.VPsllw, i8ShiftShl)
+		f.i8x16Shift(f.emitVPsllw, i8ShiftShl)
 	case 108: // i8x16.shr_s
-		f.i8x16Shift(f.a.VPsraw, i8ShiftShrS)
+		f.i8x16Shift(f.emitVPsraw, i8ShiftShrS)
 	case 109: // i8x16.shr_u
-		f.i8x16Shift(f.a.VPsrlw, i8ShiftShrU)
+		f.i8x16Shift(f.emitVPsrlw, i8ShiftShrU)
 	case 110: // i8x16.add
-		f.v128Bin(r, f.a.VPaddb)
+		f.v128Bin(r, f.emitVPaddb)
 	case 111: // i8x16.add_sat_s
-		f.v128Bin(r, f.a.VPaddsb)
+		f.v128Bin(r, f.emitVPaddsb)
 	case 112: // i8x16.add_sat_u
-		f.v128Bin(r, f.a.VPaddusb)
+		f.v128Bin(r, f.emitVPaddusb)
 	case 113: // i8x16.sub
-		f.v128Bin(r, f.a.VPsubb)
+		f.v128Bin(r, f.emitVPsubb)
 	case 114: // i8x16.sub_sat_s
-		f.v128Bin(r, f.a.VPsubsb)
+		f.v128Bin(r, f.emitVPsubsb)
 	case 115: // i8x16.sub_sat_u
-		f.v128Bin(r, f.a.VPsubusb)
+		f.v128Bin(r, f.emitVPsubusb)
 	case 116: // f64x2.ceil
 		f.v128FloatRound(true, roundCeil)
 	case 117: // f64x2.floor
 		f.v128FloatRound(true, roundFloor)
 	case 118: // i8x16.min_s
-		f.v128Bin(r, f.a.VPminsb)
+		f.v128Bin(r, f.emitVPminsb)
 	case 119: // i8x16.min_u
-		f.v128Bin(r, f.a.VPminub)
+		f.v128Bin(r, f.emitVPminub)
 	case 120: // i8x16.max_s
-		f.v128Bin(r, f.a.VPmaxsb)
+		f.v128Bin(r, f.emitVPmaxsb)
 	case 121: // i8x16.max_u
-		f.v128Bin(r, f.a.VPmaxub)
+		f.v128Bin(r, f.emitVPmaxub)
 	case 122: // f64x2.trunc
 		f.v128FloatRound(true, roundTrunc)
 	case 123: // i8x16.avgr_u
-		f.v128Bin(r, f.a.VPavgb)
+		f.v128Bin(r, f.emitVPavgb)
 	case 124: // i16x8.extadd_pairwise_i8x16_s
 		f.i16x8ExtaddPairwiseI8x16(true)
 	case 125: // i16x8.extadd_pairwise_i8x16_u
@@ -2661,9 +2675,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 130: // i16x8.q15mulr_sat_s
 		f.i16x8Q15mulrSatS()
 	case 133: // i16x8.narrow_i32x4_s
-		f.v128Bin(r, f.a.VPpackssdw)
+		f.v128Bin(r, f.emitVPpackssdw)
 	case 134: // i16x8.narrow_i32x4_u
-		f.v128Bin(r, f.a.VPpackusdw)
+		f.v128Bin(r, f.emitVPpackusdw)
 	case 135: // i16x8.extend_low_i8x16_s
 		f.i16x8ExtendI8x16(true, false)
 	case 136: // i16x8.extend_high_i8x16_s
@@ -2673,37 +2687,37 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 138: // i16x8.extend_high_i8x16_u
 		f.i16x8ExtendI8x16(false, true)
 	case 139: // i16x8.shl
-		f.i16x8Shift(f.a.VPsllw, f.a.VPsllwImm)
+		f.i16x8Shift(f.emitVPsllw, f.emitVPsllwImm)
 	case 140: // i16x8.shr_s
-		f.i16x8Shift(f.a.VPsraw, f.a.VPsrawImm)
+		f.i16x8Shift(f.emitVPsraw, f.emitVPsrawImm)
 	case 141: // i16x8.shr_u
-		f.i16x8Shift(f.a.VPsrlw, f.a.VPsrlwImm)
+		f.i16x8Shift(f.emitVPsrlw, f.emitVPsrlwImm)
 	case 142: // i16x8.add
-		f.v128Bin(r, f.a.VPaddw)
+		f.v128Bin(r, f.emitVPaddw)
 	case 143: // i16x8.add_sat_s
-		f.v128Bin(r, f.a.VPaddsw)
+		f.v128Bin(r, f.emitVPaddsw)
 	case 144: // i16x8.add_sat_u
-		f.v128Bin(r, f.a.VPaddusw)
+		f.v128Bin(r, f.emitVPaddusw)
 	case 145: // i16x8.sub
-		f.v128Bin(r, f.a.VPsubw)
+		f.v128Bin(r, f.emitVPsubw)
 	case 146: // i16x8.sub_sat_s
-		f.v128Bin(r, f.a.VPsubsw)
+		f.v128Bin(r, f.emitVPsubsw)
 	case 147: // i16x8.sub_sat_u
-		f.v128Bin(r, f.a.VPsubusw)
+		f.v128Bin(r, f.emitVPsubusw)
 	case 148: // f64x2.nearest
 		f.v128FloatRound(true, roundNearest)
 	case 149: // i16x8.mul
-		f.v128Bin(r, f.a.VPmullw)
+		f.v128Bin(r, f.emitVPmullw)
 	case 150: // i16x8.min_s
-		f.v128Bin(r, f.a.VPminsw)
+		f.v128Bin(r, f.emitVPminsw)
 	case 151: // i16x8.min_u
-		f.v128Bin(r, f.a.VPminuw)
+		f.v128Bin(r, f.emitVPminuw)
 	case 152: // i16x8.max_s
-		f.v128Bin(r, f.a.VPmaxsw)
+		f.v128Bin(r, f.emitVPmaxsw)
 	case 153: // i16x8.max_u
-		f.v128Bin(r, f.a.VPmaxuw)
+		f.v128Bin(r, f.emitVPmaxuw)
 	case 155: // i16x8.avgr_u
-		f.v128Bin(r, f.a.VPavgw)
+		f.v128Bin(r, f.emitVPavgw)
 	case 156: // i16x8.extmul_low_i8x16_s
 		f.i16x8ExtmulI8x16(true, false)
 	case 157: // i16x8.extmul_high_i8x16_s
@@ -2721,9 +2735,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 170: // i32x4.extend_high_i16x8_u
 		f.i32x4ExtendI16x8(false, true)
 	case 171: // i32x4.shl
-		f.i32x4Shift(f.a.VPslld, f.a.VPslldImm)
+		f.i32x4Shift(f.emitVPslld, f.emitVPslldImm)
 	case 172: // i32x4.shr_s
-		f.i32x4Shift(f.a.VPsrad, f.a.VPsradImm)
+		f.i32x4Shift(f.emitVPsrad, f.emitVPsradImm)
 	case 173: // i32x4.shr_u
 		f.i32x4ShrU(r)
 	case 199: // i64x2.extend_low_i32x4_s
@@ -2735,27 +2749,27 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 202: // i64x2.extend_high_i32x4_u
 		f.i64x2ExtendI32x4(false, true)
 	case 203: // i64x2.shl
-		f.i64x2Shift(f.a.VPsllq, f.a.VPsllqImm)
+		f.i64x2Shift(f.emitVPsllq, f.emitVPsllqImm)
 	case 204: // i64x2.shr_s
 		f.i64x2ShrS()
 	case 205: // i64x2.shr_u
-		f.i64x2Shift(f.a.VPsrlq, f.a.VPsrlqImm)
+		f.i64x2Shift(f.emitVPsrlq, f.emitVPsrlqImm)
 	case 174: // i32x4.add
-		f.v128BinMem(r, f.a.VPaddd, f.a.VPadddMemDisp)
+		f.v128BinMem(r, f.emitVPaddd, f.a.VPadddMemDisp)
 	case 177: // i32x4.sub
-		f.v128Bin(r, f.a.VPsubd)
+		f.v128Bin(r, f.emitVPsubd)
 	case 181: // i32x4.mul
-		f.v128Bin(r, f.a.VPmulld)
+		f.v128Bin(r, f.emitVPmulld)
 	case 182: // i32x4.min_s
-		f.v128Bin(r, f.a.VPminsd)
+		f.v128Bin(r, f.emitVPminsd)
 	case 183: // i32x4.min_u
-		f.v128Bin(r, f.a.VPminud)
+		f.v128Bin(r, f.emitVPminud)
 	case 184: // i32x4.max_s
-		f.v128Bin(r, f.a.VPmaxsd)
+		f.v128Bin(r, f.emitVPmaxsd)
 	case 185: // i32x4.max_u
-		f.v128Bin(r, f.a.VPmaxud)
+		f.v128Bin(r, f.emitVPmaxud)
 	case 186: // i32x4.dot_i16x8_s
-		f.v128Bin(r, f.a.VPmaddwd)
+		f.v128Bin(r, f.emitVPmaddwd)
 	case 188: // i32x4.extmul_low_i16x8_s
 		f.i32x4ExtmulI16x8(true, false)
 	case 189: // i32x4.extmul_high_i16x8_s
@@ -2765,9 +2779,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 191: // i32x4.extmul_high_i16x8_u
 		f.i32x4ExtmulI16x8(false, true)
 	case 206: // i64x2.add
-		f.v128Bin(r, f.a.VPaddq)
+		f.v128Bin(r, f.emitVPaddq)
 	case 209: // i64x2.sub
-		f.v128Bin(r, f.a.VPsubq)
+		f.v128Bin(r, f.emitVPsubq)
 	case 213: // i64x2.mul
 		f.i64x2Mul()
 	case 220: // i64x2.extmul_low_i32x4_s
@@ -2779,9 +2793,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 223: // i64x2.extmul_high_i32x4_u
 		f.i64x2ExtmulI32x4(false, true)
 	case 214: // i64x2.eq
-		f.v128Bin(r, f.a.VPcmpeqq)
+		f.v128Bin(r, f.emitVPcmpeqq)
 	case 215: // i64x2.ne
-		f.v128BinNot(f.a.VPcmpeqq)
+		f.v128BinNot(f.emitVPcmpeqq)
 	case 216: // i64x2.lt_s
 		f.i64x2SignedCmp(condL)
 	case 217: // i64x2.gt_s
@@ -2795,45 +2809,45 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 225: // f32x4.neg
 		f.v128FloatSignOp(false, false, 0x57)
 	case 227: // f32x4.sqrt
-		f.v128IntegerAbs(func(dst, src Reg) { f.a.VFPackedSqrt(dst, src, false) })
+		f.v128IntegerAbs(func(dst, src Reg) { f.emitVFPackedSqrt(dst, src, false) })
 	case 228: // f32x4.add
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedAdd(dst, s1, s2, false) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedAdd(dst, s1, s2, false) })
 	case 229: // f32x4.sub
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedSub(dst, s1, s2, false) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedSub(dst, s1, s2, false) })
 	case 230: // f32x4.mul
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedMul(dst, s1, s2, false) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedMul(dst, s1, s2, false) })
 	case 231: // f32x4.div
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedDiv(dst, s1, s2, false) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedDiv(dst, s1, s2, false) })
 	case 232: // f32x4.min
 		f.v128FloatMinMax(false, false)
 	case 233: // f32x4.max
 		f.v128FloatMinMax(false, true)
 	case 234: // f32x4.pmin: deterministic pseudo-min with first operand winning equal/NaN-second lanes.
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedMin(dst, s2, s1, false) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedMin(dst, s2, s1, false) })
 	case 235: // f32x4.pmax: deterministic pseudo-max with first operand winning equal/NaN-second lanes.
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedMax(dst, s2, s1, false) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedMax(dst, s2, s1, false) })
 	case 236: // f64x2.abs
 		f.v128FloatSignOp(true, true, 0x54)
 	case 237: // f64x2.neg
 		f.v128FloatSignOp(true, false, 0x57)
 	case 239: // f64x2.sqrt
-		f.v128IntegerAbs(func(dst, src Reg) { f.a.VFPackedSqrt(dst, src, true) })
+		f.v128IntegerAbs(func(dst, src Reg) { f.emitVFPackedSqrt(dst, src, true) })
 	case 240: // f64x2.add
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedAdd(dst, s1, s2, true) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedAdd(dst, s1, s2, true) })
 	case 241: // f64x2.sub
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedSub(dst, s1, s2, true) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedSub(dst, s1, s2, true) })
 	case 242: // f64x2.mul
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedMul(dst, s1, s2, true) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedMul(dst, s1, s2, true) })
 	case 243: // f64x2.div
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedDiv(dst, s1, s2, true) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedDiv(dst, s1, s2, true) })
 	case 244: // f64x2.min
 		f.v128FloatMinMax(true, false)
 	case 245: // f64x2.max
 		f.v128FloatMinMax(true, true)
 	case 246: // f64x2.pmin: deterministic pseudo-min with first operand winning equal/NaN-second lanes.
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedMin(dst, s2, s1, true) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedMin(dst, s2, s1, true) })
 	case 247: // f64x2.pmax: deterministic pseudo-max with first operand winning equal/NaN-second lanes.
-		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedMax(dst, s2, s1, true) })
+		f.v128Bin(r, func(dst, s1, s2 Reg) { f.emitVFPackedMax(dst, s2, s1, true) })
 	case 248: // i32x4.trunc_sat_f32x4_s
 		f.v128I32x4TruncSat(false, true)
 	case 249: // i32x4.trunc_sat_f32x4_u
@@ -2873,23 +2887,23 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 196: // i64x2.bitmask
 		f.i64x2Bitmask()
 	case 96: // i8x16.abs
-		f.v128IntegerAbs(f.a.VPabsb)
+		f.v128IntegerAbs(f.emitVPabsb)
 	case 97: // i8x16.neg
-		f.v128IntegerNeg(f.a.VPsubb)
+		f.v128IntegerNeg(f.emitVPsubb)
 	case 98: // i8x16.popcnt
 		f.i8x16Popcnt()
 	case 128: // i16x8.abs
-		f.v128IntegerAbs(f.a.VPabsw)
+		f.v128IntegerAbs(f.emitVPabsw)
 	case 129: // i16x8.neg
-		f.v128IntegerNeg(f.a.VPsubw)
+		f.v128IntegerNeg(f.emitVPsubw)
 	case 160: // i32x4.abs
-		f.v128IntegerAbs(f.a.VPabsd)
+		f.v128IntegerAbs(f.emitVPabsd)
 	case 161: // i32x4.neg
-		f.v128IntegerNeg(f.a.VPsubd)
+		f.v128IntegerNeg(f.emitVPsubd)
 	case 192: // i64x2.abs
 		f.i64x2Abs()
 	case 193: // i64x2.neg
-		f.v128IntegerNeg(f.a.VPsubq)
+		f.v128IntegerNeg(f.emitVPsubq)
 	case 77: // v128.not
 		if f.tryV128NotAnd(r) {
 			break
@@ -2899,7 +2913,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		if f.tryV128AndAnyTrue(r) {
 			break
 		}
-		f.v128BinMem(r, f.a.VPand, f.a.VPandMemDisp)
+		f.v128BinMem(r, f.emitVPand, f.a.VPandMemDisp)
 	case 79: // v128.andnot (a & ~b). VPANDN(dst, s1, s2) = ~s1 & s2, so
 		// VPANDN(dst, b, a) = ~b & a = the Wasm result in one instruction.
 		b := f.popValue()
@@ -2909,7 +2923,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		sb, ob := f.operandRegV128(b)
 		f.fpinned = f.fpinned.remove(sa)
 		dst := f.allocFReg(maskOf(sa, sb))
-		f.a.VPandn(dst, sb, sa)
+		f.emitVPandn(dst, sb, sa)
 		if oa {
 			f.releaseF(sa)
 		}
@@ -2918,9 +2932,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		}
 		f.pushVReg(dst)
 	case 80: // v128.or
-		f.v128BinMem(r, f.a.VPor, f.a.VPorMemDisp)
+		f.v128BinMem(r, f.emitVPor, f.a.VPorMemDisp)
 	case 81: // v128.xor
-		f.v128BinMem(r, f.a.VPxor, f.a.VPxorMemDisp)
+		f.v128BinMem(r, f.emitVPxor, f.a.VPxorMemDisp)
 	case 82: // v128.bitselect: (a & mask) | (b & ~mask)
 		f.v128Bitselect()
 	default:

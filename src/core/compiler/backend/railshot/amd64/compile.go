@@ -1702,7 +1702,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		relocCap += int(allHints[i].callRelocSiteCount())
 		moduleHasSIMD = moduleHasSIMD || allHints[i].flags.has(hintHasSIMD)
 	}
-	if opts.AMD64FeaturesSet && !opts.AMD64Features.Has(shared.AMD64ModernBaseline) && (moduleHasSIMD || moduleHasVectorTypes(m) || len(opts.CustomInstructions) != 0) {
+	if opts.AMD64FeaturesSet && !opts.AMD64Features.Has(shared.AMD64ModernBaseline) && len(opts.CustomInstructions) != 0 {
 		return nil, fmt.Errorf("amd64: SIMD/plugin fallback coverage is not complete for the selected CPU features")
 	}
 	if relocCap < minPreallocatedCallRelocs {

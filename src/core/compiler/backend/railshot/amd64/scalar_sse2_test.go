@@ -79,15 +79,19 @@ func TestSSE2ScalarCompileAndExecute(t *testing.T) {
 	}
 }
 
-func TestSSE2IncompleteSIMDFailsClosed(t *testing.T) {
+func TestSSE2VectorMetadataCompiles(t *testing.T) {
 	modules := []*wasm.Module{
 		mod1(t, nil, []wasm.ValType{wasm.V128}, append(append([]byte{0}, v128ConstBytes([16]byte{})...), 0x0b)),
 		mod1(t, []wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}, []byte{0, 0x20, 0, 0x0b}),
 		mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{1, 1, 0x7b, 0x20, 0, 0x1a, 0x41, 0, 0x0b}),
 	}
 	for i, m := range modules {
-		if _, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true}); err == nil {
-			t.Fatalf("case %d: selected SSE2 profile admitted incomplete SIMD lowering", i)
+		cm, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true})
+		if err != nil {
+			t.Fatalf("case %d: %v", i, err)
+		}
+		if cm.CodeImage != nil {
+			cm.CodeImage.Close()
 		}
 	}
 }
@@ -210,7 +214,7 @@ func assertScalarBaseline(t *testing.T, code []byte) {
 		t.Fatalf("objdump: %v: %s", err, out)
 	}
 	allowed := map[string]bool{}
-	for _, op := range strings.Fields("mov movabs movd movq movss movsd movaps movups movdqu movzx movsxd push pop shl shr sar sub add and or xor cmp test jmp ret nop int3 ud2 lea call pxor xorpd addss addsd subss subsd mulss mulsd divss divsd sqrtss sqrtsd") {
+	for _, op := range strings.Fields("mov movabs movd movq movss movsd movaps movups movdqu movzx movsxd push pop shl shr sar sub add and or xor cmp test jmp ret nop int3 ud2 lea call pxor xorpd addss addsd subss subsd mulss mulsd divss divsd sqrtss sqrtsd movapd movupd movlhps movhlps movlps movhps movlpd movhpd andps andpd andnps andnpd orps orpd xorps xorpd addps addpd subps subpd mulps mulpd divps divpd minps minpd maxps maxpd sqrtps sqrtpd cmpeqps cmpeqpd cmpltps cmpltpd cmpleps cmplepd cmpunordps cmpunordpd cmpneqps cmpneqpd cvtdq2ps cvtdq2pd cvtps2pd cvtpd2ps cvttps2dq cvttpd2dq pshufd pshuflw pshufhw shufps shufpd movmskps movmskpd pmovmskb pinsrw pextrw pand pandn por paddb paddw paddd paddq psubb psubw psubd psubq paddsb paddsw paddusb paddusw psubsb psubsw psubusb psubusw pavgb pavgw pminub pminsw pmaxub pmaxsw pmullw pmuludq pmaddwd pcmpeqb pcmpeqw pcmpeqd pcmpgtb pcmpgtw pcmpgtd psllw pslld psllq psrlw psrld psrlq psraw psrad punpcklbw punpcklwd punpckldq punpcklqdq punpckhbw punpckhwd punpckhdq punpckhqdq packsswb packssdw packuswb imul neg not inc dec xchg bsr bsf bswap movsx cdqe cdq cqo sete setne setl setle setg setge setb setbe seta setae sets setns setp setnp cmove cmovne cmovl cmovle cmovg cmovge cmovb cmovbe cmova cmovae cmovs cmovns cmovp cmovnp") {
 		allowed[op] = true
 	}
 	for _, line := range strings.Split(string(out), "\n") {
@@ -274,3 +278,5 @@ func BenchmarkSSE2ScalarCompile(b *testing.B) {
 		}
 	}
 }
+
+func assertSIMDBaseline(t *testing.T, code []byte) { t.Helper(); assertScalarBaseline(t, code) }
