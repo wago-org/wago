@@ -68,6 +68,10 @@ func (f *fn) scalarRound(dst, src Reg, f64 bool, mode byte) {
 		f.a.Round(dst, src, f64, mode)
 		return
 	}
+	// GPR allocation can materialize a pending floating load into an XMM
+	// scratch register. The popped rounding operands have no allocator owner.
+	oldF := f.fpinned
+	f.fpinned = oldF.union(maskOf(dst, src))
 	// RCX is fixed by variable shifts. Preserve allocator ownership before
 	// claiming it, and pin it until all temporary GPRs have been released.
 	f.spillIfUsed(RCX)
@@ -83,6 +87,7 @@ func (f *fn) scalarRound(dst, src Reg, f64 bool, mode byte) {
 	f.release(magnitude)
 	f.release(bits)
 	f.pinned = old
+	f.fpinned = oldF
 }
 
 func (f *fn) mov128LoadDisp(dst, base Reg, disp int32) {

@@ -3,7 +3,9 @@
 package amd64
 
 import (
+	"bytes"
 	"fmt"
+	x86 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"math"
 	"os"
 	"os/exec"
@@ -317,5 +319,37 @@ func TestSSE2ScalarExtendedInstructionBaseline(t *testing.T) {
 			fs := stats.Funcs[0]
 			assertScalarBaseline(t, cm.Code[cm.Entry[0]:cm.Entry[0]+fs.CodeBytes-fs.NativeSize.LiteralPoolBytes])
 		})
+	}
+}
+
+// Allocating the fixed shift register can materialize a pending FP load.
+// It must not overwrite either rounding operand while doing so.
+func TestSSE2RoundingPinsOperandsDuringPendingLoadSpill(t *testing.T) {
+	for _, f64 := range []bool{false, true} {
+		for _, alias := range []bool{false, true} {
+			f := fn{a: &x86.Asm{}, sc: &scratch{}, s: newStack()}
+			pending := f.pushValue(fmemRefStorage(RCX, 0, f64, -1))
+			f.regUser[RCX] = pending
+			dst := Reg(1)
+			if alias {
+				dst = 0
+			}
+			f.scalarRound(dst, 0, f64, roundNearest)
+			// The first instruction materializes the pending load into a scratch XMM.
+			// Compare against each forbidden destination using the real encoder.
+			for _, operand := range []Reg{0, dst} {
+				forbidden := &x86.Asm{}
+				forbidden.FLoadIdx(operand, RBX, RCX, 0, f64)
+				if bytes.HasPrefix(f.a.B, forbidden.B) {
+					t.Fatalf("f64=%v alias=%v: pending load overwrote rounding operand XMM%d", f64, alias, operand)
+				}
+			}
+			if pending.st.kind != stSlot {
+				t.Fatal("pending load was not spilled")
+			}
+			if f.fpinned != 0 || f.pinned != 0 {
+				t.Fatal("temporary pins were not restored")
+			}
+		}
 	}
 }
