@@ -1450,10 +1450,10 @@ type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
 type CompileOptions struct {
-	// AMD64Features selects completed fallback paths at compile time. During
-	// migration, AMD64FeaturesSet distinguishes an explicit SSE2-only (zero)
-	// profile from the existing modern baseline. SIMD still requires the modern
-	// profile until its fallback coverage is complete. The public CPU gate stays.
+	// AMD64Features selects optional instructions at compile time. An explicit
+	// zero mask selects SSE2. AMD64FeaturesSet preserves the historical modern
+	// selection for direct backend callers that omit the option; the public
+	// runtime always supplies detected capabilities (or the baseline build tier).
 	AMD64Features    shared.AMD64Features
 	AMD64FeaturesSet bool
 	// BitCountFeatures selects optional scalar instructions; zero emits baseline code.
@@ -2017,10 +2017,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if err != nil {
 				return nil, fmt.Errorf("amd64: transfer heap code image: %w", err)
 			}
-			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount, requiresAVX2, requiresAVX512), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount, requiresAVX2, requiresAVX512), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2 || usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: requiresAVX512 || usedAMD64Features.Has(shared.AMD64AVX512)}, nil
 		}
 		keepCodeBuffer = true
-		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount, requiresAVX2, requiresAVX512), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount, requiresAVX2, requiresAVX512), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2 || usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: requiresAVX512 || usedAMD64Features.Has(shared.AMD64AVX512)}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, hintSidecar, immutableTables, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, moduleHasSIMD, importedFuncs)
@@ -2335,7 +2335,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount, requiresAVX2, requiresAVX512), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount, requiresAVX2, requiresAVX512), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: requiresAVX2 || usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: requiresAVX512 || usedAMD64Features.Has(shared.AMD64AVX512)}, nil
 }
 
 func allTablesPreparedIsolated(tables []immutableTableHint) bool {

@@ -49,3 +49,31 @@ func TestExplicitPluginCPUFeatures(t *testing.T) {
 		}
 	}
 }
+
+func TestManagedPluginTracksActualVectorRequirements(t *testing.T) {
+	for _, profile := range []shared.AMD64Features{0, shared.AMD64ModernBaseline, shared.AMD64ModernBaseline | shared.AMD64AVX2} {
+		m := hostSyncModule(wasmtest.FuncType(nil, nil), []byte{0, 0x10, 0, 0x0b})
+		lowering := &plugincodegen.Lowering{Compatibility: plugincodegen.CompatibilityManaged, Managed: func(ctx plugincodegen.ManagedContext) error {
+			// No declared AVX2 bit: the managed operation must enforce its own ISA.
+			r := ctx.ConstYMMRepeated128(0, 0)
+			ctx.ReleaseVector(r)
+			return nil
+		}}
+		cm, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: profile, CustomInstructions: map[uint32]CustomInstruction{0: {Codegen: lowering}}})
+		if cm != nil && cm.CodeImage != nil {
+			defer cm.CodeImage.Close()
+		}
+		if !profile.Has(shared.AMD64AVX2) {
+			if err == nil {
+				t.Fatalf("profile %x admitted managed AVX2", profile)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !shared.AMD64Features(cm.RequiredAMD64Features).Has(shared.AMD64AVX | shared.AMD64AVX2) {
+			t.Fatalf("lost managed requirements: %x", cm.RequiredAMD64Features)
+		}
+	}
+}

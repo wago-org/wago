@@ -12,6 +12,7 @@ import (
 )
 
 type pluginAMD64Context struct {
+	featureError error
 	f            *fn
 	paramSlots   []int
 	paramWidth   []int32
@@ -31,6 +32,16 @@ func pluginAMD64Lowering(instruction coreplugins.Instruction) *plugincodegen.Low
 }
 
 func (c *pluginAMD64Context) Encoder() *x86.Asm { return c.f.a }
+
+func (c *pluginAMD64Context) requireCPU(features shared.AMD64Features) error {
+	if c.featureError != nil {
+		return c.featureError
+	}
+	if !c.f.cpuHas(features) {
+		c.featureError = fmt.Errorf("amd64: managed plugin operation requires unavailable CPU features %#x", features)
+	}
+	return c.featureError
+}
 
 func (c *pluginAMD64Context) InputI32(index int) (x86.Reg, error) {
 	if index < 0 || index >= len(c.paramSlots) {
@@ -91,6 +102,9 @@ func (c *pluginAMD64Context) AllocYMM(exclude ...x86.Reg) x86.Reg {
 }
 
 func (c *pluginAMD64Context) ConstYMMRepeated128(lo, hi uint64) x86.Reg {
+	if c.requireCPU(shared.AMD64AVX|shared.AMD64AVX2) != nil {
+		return 0
+	}
 	r := c.f.v128ConstReg(lo, hi)
 	c.f.fpinned = c.f.fpinned.add(r)
 	upper := c.f.v128ConstReg(lo, hi)
@@ -101,6 +115,9 @@ func (c *pluginAMD64Context) ConstYMMRepeated128(lo, hi uint64) x86.Reg {
 }
 
 func (c *pluginAMD64Context) LoadYMM(input int, offset uint32) (x86.Reg, error) {
+	if err := c.requireCPU(shared.AMD64AVX); err != nil {
+		return 0, err
+	}
 	base, index, disp, err := c.CheckedMemory(input, offset, 32)
 	if err != nil {
 		return 0, err
@@ -112,6 +129,9 @@ func (c *pluginAMD64Context) LoadYMM(input int, offset uint32) (x86.Reg, error) 
 }
 
 func (c *pluginAMD64Context) StoreYMM(input int, offset uint32, value x86.Reg) error {
+	if err := c.requireCPU(shared.AMD64AVX); err != nil {
+		return err
+	}
 	if !c.ymm.has(value) {
 		return fmt.Errorf("amd64 plugin YMM register %d is not owned by the lowering", value)
 	}
@@ -125,6 +145,9 @@ func (c *pluginAMD64Context) StoreYMM(input int, offset uint32, value x86.Reg) e
 }
 
 func (c *pluginAMD64Context) LoadZMM(input int, offset uint32) (x86.Reg, error) {
+	if err := c.requireCPU(shared.AMD64AVX | shared.AMD64AVX2 | shared.AMD64AVX512); err != nil {
+		return 0, err
+	}
 	base, index, disp, err := c.CheckedMemory(input, offset, 64)
 	if err != nil {
 		return 0, err
@@ -136,6 +159,9 @@ func (c *pluginAMD64Context) LoadZMM(input int, offset uint32) (x86.Reg, error) 
 }
 
 func (c *pluginAMD64Context) StoreZMM(input int, offset uint32, value x86.Reg) error {
+	if err := c.requireCPU(shared.AMD64AVX | shared.AMD64AVX2 | shared.AMD64AVX512); err != nil {
+		return err
+	}
 	if !c.ymm.has(value) {
 		return fmt.Errorf("amd64 plugin ZMM register %d is not owned by the lowering", value)
 	}
@@ -310,6 +336,9 @@ func (c *pluginAMD64Context) finish(resultWidth int32) {
 
 func (f *fn) emitPluginAMD64(lowering *plugincodegen.Lowering, inputWidths []int32, resultWidth int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
 	if len(customInputs) != 0 || customOutput != nil {
+		if !f.cpuHas(shared.AMD64AVX) {
+			return fmt.Errorf("amd64: custom vector plugin ABI requires AVX")
+		}
 		return f.emitPluginAMD64Custom(lowering, inputWidths, resultCount, customInputs, customOutput)
 	}
 	paramCount := len(inputWidths)
@@ -339,6 +368,9 @@ func (f *fn) emitPluginAMD64(lowering *plugincodegen.Lowering, inputWidths []int
 		}
 	default:
 		return fmt.Errorf("unsupported amd64 plugin compatibility mode %d", lowering.Compatibility)
+	}
+	if ctx.featureError != nil {
+		return ctx.featureError
 	}
 	if resultCount == 1 && !ctx.outputSet {
 		return fmt.Errorf("amd64 plugin lowering did not set its i32 output")
@@ -398,6 +430,9 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
 		}
 	default:
 		return fmt.Errorf("unsupported amd64 plugin compatibility mode %d", lowering.Compatibility)
+	}
+	if ctx.featureError != nil {
+		return ctx.featureError
 	}
 	for i, typ := range customInputs {
 		if !typ.IsZero() && !ctx.customRead[i] {
