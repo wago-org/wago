@@ -4,14 +4,17 @@ AMD64 uses SSE2 as its architectural baseline. Newer CPU extensions are optional
 compile-time optimization tiers and are recorded in native artifact requirements
 when emitted. Scalar, core SIMD, and supported relaxed SIMD have baseline
 fallbacks. The `wago_amd64_sse2` build tag selects portable baseline code generation
-on modern hosts. TinyGo binary-size acceptance is deferred to a follow-up PR.
+on modern hosts. TinyGo includes both baseline and modern lowering within its
+existing release-size budget.
 
 Baseline and modern profiles pass the official core SIMD corpus (24,325
 assertions each) and the supported relaxed SIMD corpus (69 assertions each).
 The forced-baseline public API suite and instruction-decoder checks cover
-fallback execution and exclusion of optional instructions. Functional CI,
-including TinyGo and race checks, passes; the release-size check remains blocked
-because one profile exceeds its unchanged budget.
+fallback execution and exclusion of optional instructions. Standard Go, TinyGo
+and guard-page tests pass. The exact release-size check passes all four profiles
+with the CI toolchain (Go 1.22.12 and TinyGo 0.41.1). Shared instruction selectors
+and encoders reduce the TinyGo profile from 2,372,584 to 2,351,760 bytes, leaving
+240 bytes under the unchanged 2,352,000-byte budget. Both CPU tiers remain enabled.
 
 Focused performance measurements on 2026-09-26 compared `1f137e8e6` with
 `aabccddf1` on a Ryzen 7 8845HS using Go 1.27.1. Eight 250 ms samples per workload,
@@ -22,6 +25,14 @@ other programs remained active, so these are not improvement claims. Modern code
 sizes, checksums and compilation allocations matched main. All execution
 profiles measured zero allocations. Larger baseline SIMD sequences remain
 candidates for code-size and execution-time optimization.
+
+The size repair was also compared with PR head `15e7e116a` across the same 16
+workloads and both CPU tiers. Six 150 ms samples with alternating order and fixed
+CPU affinity found no statistically significant slowdowns. Modern compilation
+changed by −0.73% and execution by approximately 0.00%; baseline compilation
+changed by −0.68% and execution by −0.14% (geometric means of median ratios).
+Native code bytes, checksums, B/op and allocs/op were unchanged in both tiers.
+These small timing differences are not speedup claims.
 
 Wago is a pure-Go, no-cgo, single-pass WebAssembly engine. It is a from-scratch
 port of [WARP](https://github.com/wago-org/warp)'s design. Linux, macOS, and Windows
