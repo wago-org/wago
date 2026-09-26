@@ -425,14 +425,15 @@ func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, 
 
 func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 	src, owned := f.operandRegF(a)
+	useVEX := f.opt(optVEXFloatMem) && f.cpuHas(shared.AMD64AVX)
 	dst := src
 	if !owned {
 		dst = f.allocFReg(maskOf(src))
-		if !(f.cpuHas(shared.AMD64AVX) && f.opt(optVEXFloatMem)) {
+		if !useVEX {
 			f.a.FMov(dst, src, f64)
 		}
 	}
-	if f.cpuHas(shared.AMD64AVX) && f.opt(optVEXFloatMem) {
+	if useVEX {
 		f.a.VFMemIdx(memOp, dst, src, RBX, b.st.reg, b.st.memDisp(), f64)
 	} else {
 		f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
@@ -443,10 +444,11 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 
 func (f *fn) fbinMemRightInto(dst Reg, a, b *elem, memOp byte, f64 bool) {
 	src, owned := f.operandRegF(a)
-	if !(f.cpuHas(shared.AMD64AVX) && f.opt(optVEXFloatMem)) && dst != src {
+	useVEX := f.opt(optVEXFloatMem) && f.cpuHas(shared.AMD64AVX)
+	if !useVEX && dst != src {
 		f.a.FMov(dst, src, f64)
 	}
-	if f.cpuHas(shared.AMD64AVX) && f.opt(optVEXFloatMem) {
+	if useVEX {
 		f.a.VFMemIdx(memOp, dst, src, RBX, b.st.reg, b.st.memDisp(), f64)
 	} else {
 		f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())

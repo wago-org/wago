@@ -42,3 +42,33 @@ func TestEmittedAMD64Requirements(t *testing.T) {
 		}
 	}
 }
+
+func TestDisabledVEXMemoryOptimizationRequirements(t *testing.T) {
+	for _, into := range []bool{false, true} {
+		body := []byte{0, 0x20, 0, 0x20, 1, 0x2b, 3, 0, 0xa0}
+		if into {
+			body = append(body, 0x21, 0, 0x20, 0)
+		}
+		body = append(body, 0x0b)
+		m := modMem(t, 1, []wasm.ValType{wasm.F64, wasm.I32}, []wasm.ValType{wasm.F64}, body)
+		for _, enabled := range []bool{false, true} {
+			cm, err := CompileModuleWith(m, CompileOptions{
+				AMD64FeaturesSet: true, AMD64Features: shared.AMD64AVX,
+				Optimizations: map[string]bool{"vex-float-mem": enabled},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cm.CodeImage != nil {
+				cm.CodeImage.Close()
+			}
+			want := uint32(0)
+			if enabled {
+				want = uint32(shared.AMD64AVX)
+			}
+			if cm.RequiredAMD64Features != want {
+				t.Fatalf("into=%v enabled=%v requirements=%x want=%x", into, enabled, cm.RequiredAMD64Features, want)
+			}
+		}
+	}
+}
