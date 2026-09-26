@@ -1,12 +1,10 @@
 # Wago feature support
 
-AMD64 SSE2 migration is in progress. Compile-time scalar fallback selection,
-legacy scalar floating arithmetic, bit-count fallbacks, integer-based rounding,
-and baseline bulk-memory paths are covered by focused tests. Core and relaxed
-SIMD fallback coverage and artifact feature unification remain incomplete, so
-the public modern-CPU admission gate remains in force. See the
-[instruction audit and migration status](docs/design/amd64-sse2-audit.md).
-
+AMD64 uses SSE2 as its architectural baseline. Newer CPU extensions are optional
+compile-time optimization tiers and are recorded in native artifact requirements
+when emitted. Scalar, core SIMD, and supported relaxed SIMD have baseline
+fallbacks. The `wago_amd64_sse2` build tag selects portable baseline code generation
+on modern hosts. TinyGo binary-size acceptance is deferred to a follow-up PR.
 
 This is the feature-support matrix for Wago's pure-Go, no-cgo engine. Wago
 supports Linux, macOS, and Windows on amd64 and arm64. For planned work, see
@@ -77,7 +75,7 @@ The foreign execution stack keeps a 4 MiB default and fixed 256 KiB fence; calle
 may select an aligned 512 KiB through 1 GiB capacity with
 `RuntimeConfig.WithNativeStackBytes` or `wago run --native-stack`. Instance and
 host-re-entry engines preserve the selected capacity, and the bounded cache reuses
-only exact-capacity mappings. Codec version 2 reloads and strictly validates the
+only exact-capacity mappings. Codec version 3 reloads and strictly validates the
 root metadata. Exact
 same-Runtime cross-instance calls canonicalize recursive structural identities across
 reordered or additional module-local types, transfer compact references through one

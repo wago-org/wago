@@ -1,12 +1,10 @@
 # Wago architecture
 
-AMD64 SSE2 migration is in progress. Compile-time scalar fallback selection,
-legacy scalar floating arithmetic, bit-count fallbacks, integer-based rounding,
-and baseline bulk-memory paths are covered by focused tests. Core and relaxed
-SIMD fallback coverage and artifact feature unification remain incomplete, so
-the public modern-CPU admission gate remains in force. See the
-[instruction audit and migration status](docs/design/amd64-sse2-audit.md).
-
+AMD64 uses SSE2 as its architectural baseline. Newer CPU extensions are optional
+compile-time optimization tiers and are recorded in native artifact requirements
+when emitted. Scalar, core SIMD, and supported relaxed SIMD have baseline
+fallbacks. The `wago_amd64_sse2` build tag selects portable baseline code generation
+on modern hosts. TinyGo binary-size acceptance is deferred to a follow-up PR.
 
 Wago is a pure-Go, no-cgo WebAssembly engine. It decodes, validates, and
 compiles Wasm modules to native machine code with a single-pass backend. It then
@@ -98,35 +96,39 @@ decoding also caps the expanded function-import directory at 64 MiB, so compact
 empty names cannot produce an unbounded slice allocation. Version 2 replaced the
 initial version 1 format when generated `memory.grow` code and the native instance
 context gained a runtime memory-page quota. Wago rejects every artifact version
-other than 2, including version 1. There is no compatibility decoder or
+other than 3, including versions 1 and 2. There is no compatibility decoder or
 dual-format ambiguity.
 
 ### CPU and SIMD baseline
 
-**Public CPU admission still requires SSSE3/SSE4.1/SSE4.2 and AVX with enabled
-OS XMM/YMM state.** The backend now has explicit compile-time scalar fallback
-selection. Scalar arithmetic, sign operations, sqrt and conversions can use
-legacy SSE/SSE2; scalar rounding uses integer IEEE-754 decomposition without
-changing MXCSR. CLZ/CTZ use BSR/BSF with zero handling, and POPCNT uses SWAR when
-the corresponding optional bit-count instruction is unavailable.
+AMD64 execution requires SSE2 and successful capability detection. Detection is
+cached once; CPUID and XGETBV validate AVX-family OS state under standard Go,
+and TinyGo intersects Linux CPU flags across logical processors. Optional
+extensions are selected once per compilation, with no guest invocation dispatch.
 
-Core and relaxed SIMD fallback coverage remains incomplete. Packed rounding,
-SSSE3 shuffle/abs/horizontal operations, SSE4.1 lane and integer operations, and
-SSE4.2 signed i64 comparisons still require the modern profile. Restricted
-backend profiles reject these modules, and the public gate remains fail closed.
-Vector movement for scalar bulk memory uses SSE2 under an explicit baseline
-profile. AVX hosts retain YMM move loops; YMM moves require AVX, whereas YMM
-integer arithmetic requires AVX2. Optional plugin requirements remain separate
-until artifact feature unification is implemented. FMA and VNNI are not used by
-core or relaxed SIMD lowering.
+Scalar arithmetic and conversions use legacy SSE/SSE2 when AVX is absent.
+Scalar rounding uses integer IEEE-754 decomposition, preserving signed zero,
+quieting NaNs and implementing ties to even without changing MXCSR. Packed
+rounding applies that lowering to each lane. CLZ/CTZ use BSR/BSF with explicit
+zero handling; POPCNT uses SWAR when hardware instructions are unavailable.
 
-The intended completed policy is: AMD64 uses SSE2 as its architectural baseline;
-newer extensions are optional compile-time optimizations recorded in native
-artifact requirements when emitted. That is not yet the public execution policy.
+Core and supported relaxed SIMD keep v128 values in XMM registers. Legacy SSE2
+handles packed arithmetic, shifts, bitwise operations, conversions and movement.
+Optional SSSE3/SSE4.x primitives use bounded inline scalar/SWAR sequences where
+needed. Temporary frame scratch is reused, with no helper calls or heap state.
+Lane access uses PINSRW/PEXTRW, MOVD/MOVQ and shuffles. Baseline any_true uses
+byte comparisons and PMOVMSKB. Modern hosts retain VEX.128 and SSE4.x lowerings;
+AVX also enables the existing YMM bulk-memory/table movement paths.
+
+Artifact version 3 stores the union of emitted optional CPU requirements in
+bits 32–51 of the existing metadata requirement word. Loading checks that this
+mask is a subset of detected host capabilities. Unknown bits and older artifact
+versions fail closed. Plugin declarations, BMI2 and bit-count instructions share
+this mask. The AVX-512 plugin tier requires F/DQ/BW/VL and enabled ZMM/opmask state.
+Core and relaxed SIMD do not require FMA, AVX2, AVX-512 or VNNI.
 
 Core
-`i32x4.dot_i16x8_s` uses VEX.128 `VPMADDWD`, which is within the documented
-baseline and does not require AVX2/VNNI.
+`i32x4.dot_i16x8_s` uses SSE2 `PMADDWD`, or its optional VEX.128 form.
 
 SIMD support is complete for the documented linux/amd64 baseline and remains
 explicitly feature-gated: `v128` participates in the
@@ -138,7 +140,7 @@ signed/unsigned i8 narrow from i16 lanes, signed/unsigned i16 narrow from i32 la
 i16 q15mulr_sat_s, i8/i16/i32/i64 lane shifts, mul for i16/i32/i64 lanes, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for
 i8/i16/i32 lanes, signed/unsigned min/max for i8/i16/i32 lanes, unsigned rounding
 averages for i8/i16 lanes, and f32x4/f64x2 packed abs/neg/ceil/floor/trunc/nearest/sqrt/add/sub/mul/div/min/max/pmin/pmax,
-packed float/int conversions and f32/f64 lane-width demote/promote, plus comparisons. Core packed-float min/max use a branchless packed Wasm-correct sequence for NaN and signed-zero behavior; core packed rounding uses SSE4.1 VROUNDPS/VROUNDPD with suppress-precision immediates for ceil/floor/trunc/nearest-even while preserving signed-zero and NaN result semantics covered by tests. Packed float/int conversions use branchless packed sequences, including exact unsigned conversions and f64x2-to-i32 saturation; f32x4.demote_f64x2_zero and f64x2.promote_low_f32x4 use VCVTPD2PS/VCVTPS2PD. Core pmin/pmax use swapped native packed min/max so the first operand wins equal and NaN-second lanes. Relaxed truncations intentionally use the conservative saturating result policy (NaN and negative unsigned lanes become zero; overflows clamp; f64x2-zero forms clear high lanes). Relaxed packed-float min/max intentionally use native MINPS/MAXPS/MINPD/MAXPD, returning the second source for NaN and equal signed-zero lanes under the current lowering order; relaxed packed-float madd/nmadd intentionally use separate packed multiply plus add/subtract instead of FMA. Relaxed dot products currently use deterministic signed i8 products, signed saturating i16 pair sums, scalar SSE4.1 lane extraction/insertion, and GPR arithmetic instead of AVX2/VNNI. `i64x2.shr_s` uses a baseline-safe scalarized qword-lane sequence that masks shift counts modulo 64; signed ordered `i64x2` comparisons and abs use SSE4.2 `pcmpgtq`.
+packed float/int conversions and f32/f64 lane-width demote/promote, plus comparisons. Core packed-float min/max use a branchless packed Wasm-correct sequence for NaN and signed-zero behavior; core packed rounding optionally uses SSE4.1 VROUNDPS/VROUNDPD with suppress-precision immediates for ceil/floor/trunc/nearest-even while preserving signed-zero and NaN result semantics covered by tests. Packed float/int conversions use branchless packed sequences, including exact unsigned conversions and f64x2-to-i32 saturation; f32x4.demote_f64x2_zero and f64x2.promote_low_f32x4 use VCVTPD2PS/VCVTPS2PD. Core pmin/pmax use swapped native packed min/max so the first operand wins equal and NaN-second lanes. Relaxed truncations intentionally use the conservative saturating result policy (NaN and negative unsigned lanes become zero; overflows clamp; f64x2-zero forms clear high lanes). Relaxed packed-float min/max intentionally use native MINPS/MAXPS/MINPD/MAXPD, returning the second source for NaN and equal signed-zero lanes under the current lowering order; relaxed packed-float madd/nmadd intentionally use separate packed multiply plus add/subtract instead of FMA. Relaxed dot products currently use deterministic signed i8 products, signed saturating i16 pair sums, SSE2 or optional SSE4.1 lane extraction/insertion, and GPR arithmetic instead of AVX2/VNNI. `i64x2.shr_s` uses a baseline-safe scalarized qword-lane sequence that masks shift counts modulo 64; signed ordered `i64x2` comparisons and abs use optional SSE4.2 `pcmpgtq` or baseline scalar qword comparison.
 Unsupported `0xfd` opcodes remain front-end errors instead of falling through to
 backend code generation.
 
@@ -155,7 +157,7 @@ callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
 size, adapter return, and recursive call return-PC maps. The synchronous helper
 control frame publishes parked RSP, and Go exposes validated off-heap slots from
 each walked frame directly as mutable collector roots. Throughput/Tiny stress
-collection and the root walker remain zero-allocation after warm-up. Codec version 2
+collection and the root walker remain zero-allocation after warm-up. Codec version 3
 persists and strictly revalidates the map, including dynamic-import stack
 adjustments. Direct tail calls discard their caller frame. Numeric host callbacks
 use a bounded suspended-activation stack plus separate nested foreign stacks, and
@@ -185,11 +187,11 @@ and foreign tokens reject. Explicit cross-Runtime transfer uses
 `target.CloneGCRefFrom(source, ref)`: a bounded stable-ID graph clone maps
 structurally equivalent target types, preserves cycles/internal sharing, assigns
 new target identity, and rejects non-null opaque store-owned payloads. Direct
-cross-Runtime compact-handle sharing remains impossible. Codec version 2 persists helper
+cross-Runtime compact-handle sharing remains impossible. Codec version 3 persists helper
 admission, the required native-GC ABI version, and the 16-byte `v128` storage
 contract, but never compact handles. AMD64 final scalar struct/array accesses and initialized final-struct
 allocation use collector native ABI version 1. Artifact loading validates the Go/native
-layout and codec version 2 records the required ABI; instantiation validates the immutable
+layout and codec version 3 records the required ABI; instantiation validates the immutable
 instance view, local canonical-type map, collector identity, collector version, and
 handle stride before publishing basedata offset 280. Native accesses then trust those
 immutable facts while reloading and validating mutable handle ranges/liveness, heap

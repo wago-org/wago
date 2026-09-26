@@ -4,6 +4,9 @@ Starting revision: `1f137e8e6` (main after #693 and #696).
 
 This is an inventory of the original backend, not a claim of SSE2 compatibility. The #693 admission gate must remain until all emission sites, adapters, artifacts, and plugins are covered.
 
+The implemented fallbacks, gate migration and verification results are recorded
+in the [completed implementation report](amd64-sse2-validation.md).
+
 ## Dependency families and fallback plan
 
 | Instructions | Feature | Wasm use | Classification and fallback |
