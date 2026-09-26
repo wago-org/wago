@@ -1625,6 +1625,22 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if opts.AMD64Features&^shared.AMD64KnownFeatures != 0 {
 		return nil, fmt.Errorf("amd64: unknown CPU features")
 	}
+	if opts.AMD64FeaturesSet {
+		for index, definition := range opts.CustomInstructions {
+			if lowering := pluginAMD64Lowering(definition); lowering != nil {
+				// AVX-512 has no representation in the provisional capability
+				// model. Reject it (and unknown declarations) rather than silently
+				// weakening an explicit selection. The public default path retains
+				// its existing plugin admission and artifact checks.
+				if lowering.Features&^plugincodegen.FeatureAVX2 != 0 {
+					return nil, fmt.Errorf("amd64: plugin import %d has unrepresentable CPU requirements %#x", index, lowering.Features)
+				}
+				if lowering.Features&plugincodegen.FeatureAVX2 != 0 && !opts.AMD64Features.Has(shared.AMD64AVX|shared.AMD64AVX2) {
+					return nil, fmt.Errorf("amd64: plugin import %d requires AVX and AVX2", index)
+				}
+			}
+		}
+	}
 	// Bit-count selection already has fallback coverage; do not allow the old
 	// selection field to override an explicitly restricted capability profile.
 	if opts.AMD64FeaturesSet {
