@@ -178,6 +178,10 @@ No 984-case benchmark campaign was run.
 ## Validation
 
 - Encoder, AMD64 backend, frontend and public Wago (`-skip '^TestStaged'`) suites pass.
+- The full public Wago suite also passes with `-tags wago_amd64_sse2`; tests of
+  optional-instruction metadata respect the selected mask, and optional custom
+  vector plugins are rejected. Tests specifically requiring an available native
+  tier skip that success case under the forced baseline profile.
 - `git diff --check`, `just lint` and `just docs` pass.
 - Scalar rounding: exponent/boundary/NaN/signed-zero vectors and 8,192 deterministic
   random bit patterns per width, compared with reference and modern results.

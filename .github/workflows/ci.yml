@@ -570,9 +570,10 @@ jobs:
         if: matrix.runtime && runner.os != 'Windows'
         run: just test spec simd
 
-      - name: SSE2 core and relaxed SIMD conformance
+      - name: SSE2 public API and SIMD conformance
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: |
+          go test -tags wago_amd64_sse2 -count=1 -skip '^TestStaged' ./src/wago
           WAGO_SPECTEST_DIR="$PWD/tests/conformance/spec-v1" WAGO_SPEC_VERSION=simd \
             go test -tags wago_amd64_sse2 -count=1 -run '^TestSpecSuiteExec$' -v ./src/wago
           WAGO_SPECTEST_DIR="$PWD/tests/conformance/spec-v3" WAGO_SPEC_VERSION=3.0 \

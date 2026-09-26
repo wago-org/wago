@@ -72,7 +72,7 @@ func TestAMD64BitCountPaths(t *testing.T) {
 				name = tc.name + "/native"
 			}
 			t.Run(name, func(t *testing.T) {
-				if native && actual()&tc.feature == 0 {
+				if native && selectedAMD64CompileFeatures(shared.AMD64BitCountRequirements(actual())).BitCountCapabilities()&tc.feature == 0 {
 					t.Skip("host cannot execute native instruction")
 				}
 				mask := uint8(0)
@@ -125,6 +125,7 @@ func TestAMD64BitCountArtifactRequirements(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, mask := range []uint8{0, tc.feature} {
+				mask = selectedAMD64CompileFeatures(shared.AMD64BitCountRequirements(mask)).BitCountCapabilities()
 				bitCountHostFeaturesSupported = func() uint8 { return mask }
 				compiled, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).Compile(bitCountModule(tc.op, tc.width))
 				if err != nil {
@@ -180,7 +181,7 @@ func TestAMD64BitCountArtifactRequirements(t *testing.T) {
 func TestAMD64BitCountParallelArtifactUnion(t *testing.T) {
 	actual := bitCountHostFeaturesSupported
 	defer func() { bitCountHostFeaturesSupported = actual }()
-	const all = shared.BitCountLZCNT | shared.BitCountTZCNT | shared.BitCountPOPCNT
+	all := selectedAMD64CompileFeatures(shared.AMD64BitCountRequirements(shared.BitCountLZCNT | shared.BitCountTZCNT | shared.BitCountPOPCNT)).BitCountCapabilities()
 	bitCountHostFeaturesSupported = func() uint8 { return all }
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
@@ -206,7 +207,13 @@ func TestAMD64BitCountParallelArtifactUnion(t *testing.T) {
 	}
 	bitCountHostFeaturesSupported = func() uint8 { return all &^ shared.BitCountTZCNT }
 	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "bit-count") {
+	err = loaded.UnmarshalBinary(blob)
+	if all == 0 {
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded.Close()
+	} else if err == nil || !strings.Contains(err.Error(), "bit-count") {
 		t.Fatalf("partially capable host loaded artifact: %v", err)
 	}
 }
@@ -268,7 +275,7 @@ func BenchmarkAMD64BitCountInvoke(b *testing.B) {
 			b.Run(name, func(b *testing.B) {
 				actual := bitCountHostFeaturesSupported
 				defer func() { bitCountHostFeaturesSupported = actual }()
-				if native && actual()&tc.feature == 0 {
+				if native && selectedAMD64CompileFeatures(shared.AMD64BitCountRequirements(actual())).BitCountCapabilities()&tc.feature == 0 {
 					b.Skip("host cannot execute native instruction")
 				}
 				mask := uint8(0)

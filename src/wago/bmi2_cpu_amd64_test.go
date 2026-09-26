@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -62,6 +63,22 @@ func TestBMI2OptimizationHostGateAndCodecRequirement(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
+	if !selectedAMD64CompileFeatures(shared.AMD64BMI2).Has(shared.AMD64BMI2) {
+		if compiled.RequiresBMI2() {
+			t.Fatal("baseline profile emitted BMI2")
+		}
+		blob, err := compiled.MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+		bmi2HostFeaturesSupported = func() bool { return false }
+		var loaded Compiled
+		if err := loaded.UnmarshalBinary(blob); err != nil {
+			t.Fatal(err)
+		}
+		loaded.Close()
+		return
+	}
 	if !compiled.RequiresBMI2() {
 		t.Fatal("compiled RORX module did not record BMI2")
 	}
