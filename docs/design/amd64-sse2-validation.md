@@ -110,6 +110,11 @@ between compilations. Loading enforces `required ⊆ available`.
 
 ## Focused performance measurements
 
+The [eight-sample timing repeat](amd64-sse2-performance.md) supersedes the timing
+estimates below. It compares current main with the PR on one CPU core and finds
+no statistically significant modern-path difference in these workloads.
+The original short-run results are retained here as the implementation checkpoint.
+
 AMD Ryzen 7 8845HS, Go 1.27.1; three 50 ms samples per benchmark. Tables show
 medians. The initial checkout and updated checkout use the same workload code.
 These are short measurements on a shared development machine, not stable
