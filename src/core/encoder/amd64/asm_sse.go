@@ -720,3 +720,28 @@ func (a *Asm) SseIdx(prefix, op byte, xmm, base, index Reg, disp int32) {
 	a.emit(0x0F, op)
 	a.sibAddr(xmm, base, index, disp)
 }
+
+// Legacy SSE2 unaligned vector moves. Unlike the V-prefixed forms these do
+// not require AVX or OS YMM state.
+func (a *Asm) MovdquLoadDisp(dst, base Reg, disp int32) {
+	a.emit(0xf3)
+	if dst >= 8 || base >= 8 {
+		a.emit(a.rex(false, dst >= 8, false, base >= 8))
+	}
+	a.emit(0x0f, 0x6f)
+	a.baseAddr(byte(dst), base, disp)
+}
+func (a *Asm) MovdquStoreDisp(base Reg, disp int32, src Reg) {
+	a.emit(0xf3)
+	if src >= 8 || base >= 8 {
+		a.emit(a.rex(false, src >= 8, false, base >= 8))
+	}
+	a.emit(0x0f, 0x7f)
+	a.baseAddr(byte(src), base, disp)
+}
+func (a *Asm) MovdquLoadIdx(dst, base, index Reg, disp int32) {
+	a.SseIdx(0xf3, 0x6f, dst, base, index, disp)
+}
+func (a *Asm) MovdquStoreIdx(base, index, src Reg, disp int32) {
+	a.SseIdx(0xf3, 0x7f, src, base, index, disp)
+}
