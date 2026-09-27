@@ -1973,7 +1973,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		// register — after any eager post-call reload, which would otherwise
 		// overwrite it with the stale slot value.
 		pr, _, _ := f.pinReg(resHint)
-		f.a.MovReg64(pr, RAX)
+		f.moveInt(pr, RAX, mtOf(ft.Results[0]))
 		f.markLocalDirty(resHint)
 	}
 

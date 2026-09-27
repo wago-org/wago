@@ -1276,30 +1276,54 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 // scanLoopCallFree scans from a loop body's first opcode to its matching end.
 // The module-aware classifier keeps every proposal immediate synchronized; any
 // uncertainty conservatively rejects the proof.
-func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool) bool {
+func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool, pinnedLocals []int) (bool, uint64) {
 	r2 := *r
 	depth := 0
+	var writes uint64
+	brTable := false
+	nestedLoop := false
 	var imm wasm.InstructionImmediate
 	for {
 		op, err := r2.Byte()
 		if err != nil || classifier.ClassifyInto(&r2, op, &imm) != nil {
-			return false
+			return false, 0
 		}
 		switch imm.Kind {
 		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrReturnCall,
 			wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef,
 			wasm.InstrMemoryGrow:
-			return false
+			return false, 0
+		case wasm.InstrLocalSet, wasm.InstrLocalTee:
+			for i, x := range pinnedLocals {
+				if uint32(x) == imm.Index {
+					writes |= uint64(1) << i
+					break
+				}
+			}
+		case wasm.InstrBrTable:
+			// br_table first reconciles every pin to its frame slot. Its
+			// per-target stubs then undo register-only loop state, often on
+			// the hot path. Keep the existing stack convergence there.
+			brTable = true
 		}
 		if gcOrAtomicInstructionMayCall(imm.Kind, gcStructHelpers) {
-			return false
+			return false, 0
 		}
 		switch op {
 		case 0x02, 0x03, 0x04, 0x1f:
+			if op == 0x03 {
+				nestedLoop = true
+			}
 			depth++
 		case 0x0b:
 			if depth == 0 {
-				return true
+				// Nested loop entries already reconcile their own pin state. An
+				// outer register-only header can add stores at that inner entry
+				// without removing stores on its hot backedge.
+				if brTable || nestedLoop {
+					return true, 0
+				}
+				return true, writes
 			}
 			depth--
 		}
@@ -1333,9 +1357,19 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
-	if kind == cfLoop && !f.unreachable && f.usesCalls && !f.moduleEH && len(f.customInstructions) == 0 && scanLoopCallFree(r, f.classifier, f.gcStructHelpers) {
-		fr.set(ctrlLoopCallFree, true)
-		f.stats.peep("callfree-loop")
+	var loopPinnedWrites uint64
+	loopRegState := false
+	if kind == cfLoop && !f.unreachable && f.usesCalls && !f.moduleEH && len(f.customInstructions) == 0 {
+		loopRegState = f.opt(optLoopRegState) && len(f.pinnedLocals) <= 64
+		var pins []int
+		if loopRegState {
+			pins = f.pinnedLocals
+		}
+		if callFree, writes := scanLoopCallFree(r, f.classifier, f.gcStructHelpers, pins); callFree {
+			fr.set(ctrlLoopCallFree, true)
+			loopPinnedWrites = writes
+			f.stats.peep("callfree-loop")
+		}
 	}
 	if f.unreachable {
 		f.pushCtrl(&fr)
@@ -1375,6 +1409,18 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			// reload into every iteration instead.
 			f.reconcileLocals()
 			f.convergeFrameBranchState(&fr) // records the all-lsStackReg target
+			if fr.has(ctrlLoopCallFree) && loopRegState && loopPinnedWrites != 0 {
+				state := f.frameBranchState(&fr)
+				for i := range state {
+					if loopPinnedWrites&(uint64(1)<<i) != 0 {
+						state[i] = lsReg
+					}
+				}
+				// The initial edge has a clean slot, but a backedge may not.
+				// Compile the body against the weaker, register-only guarantee.
+				f.setLocalsState(state)
+				f.stats.peep("callfree-loop-reg-state")
+			}
 			f.flush()
 		} else {
 			f.flush()

@@ -1066,6 +1066,22 @@ func (a *Asm) LockXaddIdx(base, index, src Reg, disp int32, size int) {
 	a.sibAddr(src, base, index, disp)
 }
 
+// LockAluIdx emits a LOCK-prefixed integer ALU operation with a memory
+// destination and register source. opcode is the r/m,reg opcode for the
+// requested operand width (for example 0x21 AND, 0x09 OR, or 0x31 XOR).
+func (a *Asm) LockAluIdx(opcode byte, base, index, src Reg, disp int32, size int) {
+	if size == 2 {
+		a.emit(0x66)
+	}
+	a.emit(0xF0)
+	w := size == 8
+	if w || src >= 8 || index >= 8 || base >= 8 || (size == 1 && src >= 4) {
+		a.emit(a.rex(w, src >= 8, index >= 8, base >= 8))
+	}
+	a.emit(opcode)
+	a.sibAddr(src, base, index, disp)
+}
+
 func (a *Asm) Movzx8(dst, src Reg, wide bool) {
 	if wide || dst >= 8 || src >= 4 {
 		a.emit(a.rex(wide, dst >= 8, false, src >= 8))

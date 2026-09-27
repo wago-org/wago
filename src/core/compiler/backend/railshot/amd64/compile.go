@@ -4217,7 +4217,7 @@ func (f *fn) prologue(localScores []uint32) {
 					rdiParamOff = paramOff
 					rdiParamType = f.localType[i]
 				} else {
-					if f.opt(optCanonicalI32) && !f.usesCalls && f.localType[i] == mtI32 {
+					if f.opt(optCanonicalI32) && f.localType[i] == mtI32 {
 						a.Load32(pr, RDI, paramOff)
 					} else {
 						a.Load64(pr, RDI, paramOff)
@@ -4233,7 +4233,7 @@ func (f *fn) prologue(localScores []uint32) {
 		paramOff += abiValSize(pt)
 	}
 	if rdiParamOff >= 0 {
-		if f.opt(optCanonicalI32) && !f.usesCalls && rdiParamType == mtI32 {
+		if f.opt(optCanonicalI32) && rdiParamType == mtI32 {
 			a.Load32(RDI, RDI, rdiParamOff)
 		} else {
 			a.Load64(RDI, RDI, rdiParamOff)

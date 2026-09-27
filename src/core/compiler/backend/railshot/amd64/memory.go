@@ -784,17 +784,24 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	return base, ea, disp
 }
 
-// cleanMemory32Address reports concrete storage forms whose materialization
-// necessarily writes a 32-bit destination. Regional i32 pins are loaded from
-// canonical frame homes; call-free whole-function pins are canonicalized at
-// ingress and only receive 32-bit writes; i32 spills reload at their value width.
-// Call-making whole-function pins, globals, and deferred operations remain
-// excluded because their carrier may still have nonzero high bits.
+// cleanMemory32Address reports i32 values whose storage shape or retained
+// provenance proves the upper half is already zero. Deferred arithmetic facts
+// are set only for operations that materialize a 32-bit result. Regional i32
+// pins are loaded from canonical frame homes; whole-function pins are
+// canonicalized at ingress and on call-result assignment, then only receive
+// 32-bit writes; i32 spills reload at their value width. Globals remain
+// excluded when they have no explicit upper-zero fact.
 func (f *fn) cleanMemory32Address(e *elem) bool {
 	if !f.opt(optAddrZExtElim) || e == nil {
 		return false
 	}
-	if !e.isValue() || e.st.typ != mtI32 {
+	if e.st.typ != mtI32 {
+		return false
+	}
+	if f.opt(optValueFacts) && e.st.valueFacts().has(factUpper32Zero) {
+		return true
+	}
+	if !e.isValue() {
 		return false
 	}
 	switch e.st.kind {
@@ -805,7 +812,10 @@ func (f *fn) cleanMemory32Address(e *elem) bool {
 			return f.opt(optCanonicalI32)
 		}
 		if f.usesCalls {
-			return false
+			// Wrapper parameters, internal register arguments, local writes,
+			// fused call results, and post-call frame reloads all enter an i32
+			// pin through a 32-bit destination when canonical carriers are on.
+			return f.opt(optCanonicalI32)
 		}
 		return f.profitableCanonicalI32Carrier()
 	case stSlot:

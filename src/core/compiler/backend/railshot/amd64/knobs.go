@@ -19,6 +19,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
 	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
 	optimization.Bind("callfree-loop-cold-exit", &callFreeLoopColdExitEnabled),
+	optimization.Bind("callfree-loop-reg-state", &callFreeLoopRegStateEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
 	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
 	optimization.Bind("interval-scratch-lease", &intervalScratchLeaseEnabled),
@@ -40,6 +41,8 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("tree-order", &treeOrderEnabled),
 	optimization.Bind("assoc-tree", &associativeTreeEnabled),
 	optimization.Bind("bmi2-rorx", &bmi2RorxEnabled),
+	optimization.Bind("avx512-ternary", &avx512TernaryEnabled),
+	optimization.Bind("avx512-vrotate", &avx512VRotateEnabled),
 	optimization.Bind("vex-float-mem", &vexFloatMemEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
 	optimization.Bind("addr-zext-elim", &memory32AddrZExtElimEnabled),
@@ -76,6 +79,7 @@ var (
 	optCountedLoopLatch        = optimizationBindings.Option("counted-loop-latch")
 	optLinearSumLoop           = optimizationBindings.Option("linear-sum-loop")
 	optCallFreeLoopColdExit    = optimizationBindings.Option("callfree-loop-cold-exit")
+	optLoopRegState            = optimizationBindings.Option("callfree-loop-reg-state")
 	optIntervalRegionPins      = optimizationBindings.Option("interval-region-pins")
 	optIntervalNextUse         = optimizationBindings.Option("interval-next-use")
 	optIntervalScratchLease    = optimizationBindings.Option("interval-scratch-lease")
@@ -97,6 +101,8 @@ var (
 	optTreeOrder               = optimizationBindings.Option("tree-order")
 	optAssocTree               = optimizationBindings.Option("assoc-tree")
 	optBMI2Rorx                = optimizationBindings.Option("bmi2-rorx")
+	optAVX512Ternary           = optimizationBindings.Option("avx512-ternary")
+	optAVX512VRotate           = optimizationBindings.Option("avx512-vrotate")
 	optVEXFloatMem             = optimizationBindings.Option("vex-float-mem")
 	optMultiBoundsCert         = optimizationBindings.Option("multi-bounds-cert")
 	optAddrZExtElim            = optimizationBindings.Option("addr-zext-elim")

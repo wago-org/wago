@@ -29,6 +29,10 @@ const corpusDir = "../../corpus"
 
 var corpusSelector = flag.String("wago.corpus", "quick", "corpus profile, tag:<tag>, all, or comma-separated benchmark IDs")
 var includeOptimizationAblations = flag.Bool("wago.bench.optimization-ablation", false, "benchmark large modules with each enabled optimization disabled in turn")
+var execOptimization = flag.String("wago.exec.optimization", "", "select one optimization to toggle for execution benchmarks")
+var execOptimizationEnabled = flag.Bool("wago.exec.optimization-enabled", true, "whether the selected execution-benchmark optimization is enabled")
+var compileOptimization = flag.String("wago.compile.optimization", "", "select one optimization to toggle for full compile benchmarks")
+var compileOptimizationEnabled = flag.Bool("wago.compile.optimization-enabled", true, "whether the selected compile-benchmark optimization is enabled")
 
 type commandEntry struct {
 	Runtime            string            `json:"runtime"` // core, wasi, emscripten, ashell, micropython, or php-wasmedge; fresh instance
@@ -442,9 +446,16 @@ func BenchmarkCompileWorkers(b *testing.B) {
 
 // BenchmarkCompileFull times decode, validation, compilation, and result release.
 func BenchmarkCompileFull(b *testing.B) {
+	var cfg *wago.RuntimeConfig
+	if *compileOptimization != "" {
+		cfg = wago.NewRuntimeConfig().WithOptimization(*compileOptimization, *compileOptimizationEnabled)
+		if err := cfg.Validate(); err != nil {
+			b.Fatal(err)
+		}
+	}
 	eachModule(b, "CompileFull", func(b *testing.B, m corpusModule) {
 		for i := 0; i < b.N; i++ {
-			cm, err := wago.Compile(nil, m.bytes)
+			cm, err := wago.Compile(cfg, m.bytes)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -453,7 +464,7 @@ func BenchmarkCompileFull(b *testing.B) {
 			}
 		}
 		b.StopTimer()
-		compiled, err := wago.Compile(nil, m.bytes)
+		compiled, err := wago.Compile(cfg, m.bytes)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -610,7 +621,14 @@ func BenchmarkInstantiate(b *testing.B) {
 // BenchmarkExec times the host->wasm call for each module's manifest exec
 // entries, naming results Exec/<module>.<export>.
 func BenchmarkExec(b *testing.B) {
-	benchmarkExec(b, wago.NewRuntimeConfig())
+	cfg := wago.NewRuntimeConfig()
+	if *execOptimization != "" {
+		cfg = cfg.WithOptimization(*execOptimization, *execOptimizationEnabled)
+		if err := cfg.Validate(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	benchmarkExec(b, cfg)
 }
 
 // benchmarkExecCalls batches fast calls so every timed outer operation carries

@@ -287,7 +287,8 @@ func (f *fn) reconcileLocals() {
 
 // convergeEdgeTo converges pinned-local state for a control edge into the
 // per-frame target *target, RECORDING the target from the current state when
-// this is the frame's first edge. Targets are per-local, ∈ {lsStackReg, lsMem}:
+// this is the frame's first edge. Targets are per-local:
+//   - lsReg: only the register is guaranteed (proved call-free loop header);
 //   - lsStackReg: register AND slot valid at the merge;
 //   - lsMem: only the slot is guaranteed — a call-clobbered local stays
 //     unloaded across the merge until a read actually needs it (the lazy-merge
@@ -389,8 +390,18 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 	if !f.usesCalls || len(f.pinnedLocals) == 0 {
 		return
 	}
-	// Dirty pinned registers materialize to the slot too.
-	for _, x := range f.pinnedLocals {
+	// A proved call-free loop can require register residency at its header.
+	// Its backedges keep the register live and avoid writing the frame slot on
+	// every iteration. If a pin was temporarily homed, reload it for the edge.
+	t := *target
+	for i, x := range f.pinnedLocals {
+		if t != nil && t[i] == lsReg {
+			if f.locals[x].state == lsMem {
+				f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+			}
+			f.locals[x].state = lsReg
+			continue
+		}
 		if f.locals[x].state == lsReg {
 			f.storeLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
 			f.locals[x].state = lsStackReg
@@ -404,7 +415,6 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 		*target = t
 		return
 	}
-	t := *target
 	for i, x := range f.pinnedLocals {
 		if t[i] == lsStackReg && f.locals[x].state == lsMem {
 			f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
