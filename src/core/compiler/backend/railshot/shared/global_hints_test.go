@@ -1,19 +1,27 @@
 package shared
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestGlobalHintAccumulatorRejectsWrappedU32Index(t *testing.T) {
-	var a GlobalHintAccumulator
-	a.Reset(1)
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("global hint accumulator panicked: %v", r)
-		}
-	}()
-	a.Add(^uint32(0), 1)
-	a.MarkEligible(^uint32(0))
-	if got := a.AppendTo(nil); len(got) != 0 {
-		t.Fatalf("invalid index added %d hints", len(got))
+	for _, index := range []uint32{0, 1, 2, 0x7fffffff, 0x80000000, 0xfffffffe, 0xffffffff} {
+		t.Run(fmt.Sprintf("%08x", index), func(t *testing.T) {
+			var a GlobalHintAccumulator
+			a.Reset(2)
+			a.Add(index, 1)
+			a.MarkEligible(index)
+			got := a.AppendTo(nil)
+			if index < 2 {
+				if len(got) != 1 || got[0] != (GlobalHint{Index: index, Score: 1, Eligible: true}) {
+					t.Fatalf("valid index hints = %+v", got)
+				}
+			} else if len(got) != 0 || a.touchedN != 0 || len(a.touchedExtra) != 0 ||
+				a.scores[0] != 0 || a.scores[1] != 0 || a.marks[0] != 0 || a.marks[1] != 0 {
+				t.Fatalf("invalid index changed accumulator: %+v", a)
+			}
+		})
 	}
 }
 

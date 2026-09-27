@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -9,36 +10,52 @@ import (
 )
 
 func TestModuleFactsRejectsWrappedU32Indexes(t *testing.T) {
-	const invalid = ^uint32(0)
 	for _, tc := range []struct {
-		name string
-		kind wasm.InstrKind
+		name   string
+		kind   wasm.InstrKind
+		export wasm.ExternKind
 	}{
-		{"table.grow", wasm.InstrTableGrow},
-		{"memory.grow", wasm.InstrMemoryGrow},
+		{"table", wasm.InstrTableGrow, wasm.ExternTable},
+		{"memory", wasm.InstrMemoryGrow, wasm.ExternMem},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			defer func() {
-				if r := recover(); r != nil {
-					t.Errorf("fact collection panicked: %v", r)
-				}
-			}()
-			if err := recordModuleFact(tc.kind, invalid, NewModuleFacts(1, 1)); err == nil {
-				t.Fatal("fact collection accepted an unknown index")
+			for _, index := range []uint32{0, 1, 2, 0x7fffffff, 0x80000000, 0xfffffffe, 0xffffffff} {
+				t.Run(fmt.Sprintf("%08x", index), func(t *testing.T) {
+					facts, want := NewModuleFacts(2, 2), NewModuleFacts(2, 2)
+					err := recordModuleFact(tc.kind, index, facts)
+					if index < 2 {
+						if err != nil {
+							t.Fatalf("valid grow index: %v", err)
+						}
+						if tc.kind == wasm.InstrTableGrow {
+							want.TableGrowUsed[index] = true
+						} else {
+							want.MemoryGrowUsed[index] = true
+						}
+					} else if msg := fmt.Sprintf("%s.grow index %d out of range", tc.name, index); err == nil || err.Error() != msg {
+						t.Fatalf("grow error = %v, want %q", err, msg)
+					}
+					if !reflect.DeepEqual(facts, want) {
+						t.Fatalf("grow facts = %+v, want %+v", facts, want)
+					}
+
+					m := &wasm.Module{Tables: []wasm.Table{{}, {}}, Memories: []wasm.MemType{{}, {}},
+						Exports: []wasm.Export{{Index: wasm.ExternIdx{Kind: tc.export, Index: index}}}}
+					got, err := AnalyzeModuleFacts(m)
+					if index < 2 {
+						if err != nil {
+							t.Fatalf("valid export index: %v", err)
+						}
+						if tc.export == wasm.ExternTable && !got.TableExported[index] || tc.export == wasm.ExternMem && !got.MemoryExported[index] {
+							t.Fatalf("export fact not set: %+v", got)
+						}
+					} else if msg := fmt.Sprintf("%s export index %d out of range", tc.name, index); err == nil || err.Error() != msg || got != nil {
+						t.Fatalf("export facts = %+v, error = %v; want nil and %q", got, err, msg)
+					}
+				})
 			}
 		})
 	}
-	t.Run("export", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Errorf("export analysis panicked: %v", r)
-			}
-		}()
-		m := &wasm.Module{Tables: []wasm.Table{{}}, Exports: []wasm.Export{{Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: invalid}}}}
-		if _, err := AnalyzeModuleFacts(m); err == nil {
-			t.Fatal("export analysis accepted an unknown table")
-		}
-	})
 }
 
 func TestNewModuleFactsVectorsAreDisjoint(t *testing.T) {

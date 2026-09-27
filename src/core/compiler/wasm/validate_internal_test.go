@@ -2,26 +2,59 @@ package wasm
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"unsafe"
 )
 
 func TestValidatorRejectsWrappedU32Indexes(t *testing.T) {
-	const invalid = ^uint32(0)
 	v := moduleValidator{m: &Module{
-		FuncTypes: []TypeIdx{{}}, Tables: []Table{{}}, Memories: []MemType{{}},
-		Globals: []Global{{}}, Tags: []TagType{{}},
+		FuncTypes: []TypeIdx{{}, {}}, Tables: []Table{{}, {}}, Memories: []MemType{{}, {}},
+		Globals: []Global{{}, {}}, Tags: []TagType{{}, {}},
 	}}
-	for _, kind := range []ExternKind{ExternFunc, ExternTable, ExternMem, ExternGlobal, ExternTag} {
-		if v.validExternIdx(ExternIdx{Kind: kind, Index: invalid}) {
-			t.Errorf("external kind %d accepted index %d", kind, invalid)
-		}
+	for _, index := range []uint32{0, 1, 2, 0x7fffffff, 0x80000000, 0xfffffffe, 0xffffffff} {
+		t.Run(fmt.Sprintf("%08x", index), func(t *testing.T) {
+			for _, kind := range []ExternKind{ExternFunc, ExternTable, ExternMem, ExternGlobal, ExternTag} {
+				if got := v.validExternIdx(ExternIdx{Kind: kind, Index: index}); got != (index < 2) {
+					t.Errorf("external kind %d index %d: valid = %v", kind, index, got)
+				}
+			}
+			_, astErr := v.validateElemPayload(Elem{Kind: ElemKind{Kind: ElemFuncs, Funcs: []FuncIdx{FuncIdx(index)}}})
+			_, directErr := v.validateDirectElemPayload(directElem{kind: ElemFuncs, hasFuncs: true, maxFunc: FuncIdx(index)})
+			for _, result := range []struct {
+				name string
+				err  error
+			}{{"AST", astErr}, {"direct", directErr}} {
+				if index < 2 {
+					if result.err != nil {
+						t.Errorf("%s valid element: %v", result.name, result.err)
+					}
+				} else if !isValidationCode(result.err, ErrUnknownFunc) {
+					t.Errorf("%s element error = %v, want unknown function", result.name, result.err)
+				}
+			}
+		})
 	}
-	if _, err := v.validateElemPayload(Elem{Kind: ElemKind{Kind: ElemFuncs, Funcs: []FuncIdx{FuncIdx(invalid)}}}); err == nil {
-		t.Error("element payload accepted an unknown function")
-	}
-	if _, err := v.validateDirectElemPayload(directElem{kind: ElemFuncs, hasFuncs: true, maxFunc: FuncIdx(invalid)}); err == nil {
-		t.Error("byte-backed element payload accepted an unknown function")
+}
+
+func TestValidatorLabelDepthBounds(t *testing.T) {
+	for _, depth := range []uint32{0, 1, 2, 0x7fffffff, 0x80000000, 0xfffffffe, 0xffffffff} {
+		t.Run(fmt.Sprintf("%08x", depth), func(t *testing.T) {
+			v := funcValidator{moduleValidator: &moduleValidator{m: &Module{}}, ctrls: []ctrlFrame{
+				{kind: ctrlBlock, out: []ValType{I32}},
+				{kind: ctrlLoop, in: []ValType{I64}},
+			}}
+			got, err := v.label(depth)
+			if depth < 2 {
+				want := []ValType{I64, I32}[depth]
+				if err != nil || len(got) != 1 || got[0] != want {
+					t.Fatalf("label = %v, %v; want %v", got, err, want)
+				}
+			} else if !isValidationCode(err, ErrUnknownLabel) {
+				t.Fatalf("label error = %v, want unknown label", err)
+			}
+		})
 	}
 }
 
@@ -1368,12 +1401,20 @@ func TestValidatorCoverageMoreProposalBranches(t *testing.T) {
 	t.Run("struct field branches", func(t *testing.T) {
 		m := gcModule()
 		expectStepErr(t, coverageFuncValidator(m, nil), Instruction{Kind: InstrStructGet, Index: 99}, ErrUnknownType)
-		expectStepErr(t, coverageFuncValidator(m, nil), Instruction{Kind: InstrStructGet, Index: 0, Index2: 9}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidator(m, nil), Instruction{Kind: InstrStructGet, Index: 0, Index2: ^uint32(0)}, ErrTypeMismatch)
+		for _, field := range []uint32{2, 0x7fffffff, 0x80000000, 0xfffffffe, 0xffffffff} {
+			err := coverageFuncValidator(m, nil).step(&Instruction{Kind: InstrStructGet, Index: 0, Index2: field})
+			if !isValidationCode(err, ErrTypeMismatch) || !strings.Contains(err.Error(), "unknown field") {
+				t.Fatalf("InstrStructGet field %d error = %v, want unknown field", field, err)
+			}
+		}
 		expectStepErr(t, coverageFuncValidatorWithStack(m, I32), Instruction{Kind: InstrStructGet, Index: 0}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidator(m, nil), Instruction{Kind: InstrStructSet, Index: 99}, ErrUnknownType)
-		expectStepErr(t, coverageFuncValidator(m, nil), Instruction{Kind: InstrStructSet, Index: 0, Index2: 9}, ErrTypeMismatch)
-		expectStepErr(t, coverageFuncValidator(m, nil), Instruction{Kind: InstrStructSet, Index: 0, Index2: ^uint32(0)}, ErrTypeMismatch)
+		for _, field := range []uint32{2, 0x7fffffff, 0x80000000, 0xfffffffe, 0xffffffff} {
+			err := coverageFuncValidator(m, nil).step(&Instruction{Kind: InstrStructSet, Index: 0, Index2: field})
+			if !isValidationCode(err, ErrTypeMismatch) || !strings.Contains(err.Error(), "unknown field") {
+				t.Fatalf("InstrStructSet field %d error = %v, want unknown field", field, err)
+			}
+		}
 		expectStepErr(t, coverageFuncValidator(m, nil), Instruction{Kind: InstrStructSet, Index: 0, Index2: 1}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(m, refToType(0, true)), Instruction{Kind: InstrStructSet, Index: 0}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(m, I32), Instruction{Kind: InstrStructSet, Index: 0}, ErrTypeMismatch)
