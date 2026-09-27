@@ -1,6 +1,42 @@
 package gc
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestTinyRejectedNestedRootsStopEnumeration(t *testing.T) {
+	leaf, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})
+	object, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := &tinyFailingRoots{root: Root(object), afterRoot: true}
+	later := &oneShotDirectRoots{ref: object}
+	groups := RootGroups{
+		{Class: RootNativeFrame, Roots: &ClassifiedRoots{Class: RootSnapshotTemporary, Roots: failed}},
+		{Class: RootNativeFrame, Roots: later},
+	}
+	if err := c.CollectFull(&groups); err == nil || !strings.Contains(err.Error(), "enumeration stopped unexpectedly") {
+		t.Fatalf("nested incomplete walk: %v", err)
+	}
+	if failed.walks != 1 || later.calls != 0 {
+		t.Fatalf("walks after rejection: failed=%d later=%d, want 1/0", failed.walks, later.calls)
+	}
+	if c.tinyGC.state != tinyIdle || len(c.markStack) != 0 || c.rootMarkMode != 0 {
+		t.Fatal("nested rejection left an active cycle or staged roots")
+	}
+	if err := c.CollectFull(nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.validObjectRef(object) {
+		t.Fatal("nested rejection retained its partial root")
+	}
+}
 
 func TestTinyRejectedRestartRetainsPreviouslyMarkedRoot(t *testing.T) {
 	requireTinyIncrementalBuild(t)

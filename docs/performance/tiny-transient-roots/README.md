@@ -154,3 +154,52 @@ Raw samples: [main/default](main-default.txt),
 [main/nonincremental](main-nonincremental.txt),
 [PR before staging/nonincremental](pr-before-nonincremental.txt),
 [staging/nonincremental](staged-nonincremental.txt).
+
+## Follow-up review: release size and panic telemetry
+
+The size failure at `93622a9e43236372ebe6557ce476985ac5f6fa53` reproduces with
+CI's Go 1.22.12 and TinyGo 0.41.1 on Linux/amd64: `runtime-minimal-tiny` was
+2,352,560 bytes, 560 bytes above its unchanged 2,352,000-byte budget.
+
+Root walks now carry one compact status through recursive adapters and staging,
+then construct the existing error at the caller. The active root sink records
+whether staging completed, avoiding a second captured cleanup flag. Pointer
+classified roots unwrap directly, and telemetry bookkeeping is excluded when
+telemetry is disabled. Root-buffer storage and collection-state guarantees are
+unchanged. The complete `scripts/size-card.sh` gate passes with the same pinned
+toolchains and stripping options:
+
+| Profile | Before (bytes) | After (bytes) | Budget (bytes) |
+| --- | ---: | ---: | ---: |
+| manager | 7,970,968 | 7,970,968 | 9,000,000 |
+| runtime-standard | 8,130,712 | 8,122,520 | 8,870,000 |
+| runtime-minimal | 7,798,936 | 7,798,936 | 8,560,000 |
+| runtime-minimal-tiny | 2,352,560 | 2,351,328 | 2,352,000 |
+
+Review also found that a panicking root source during incremental `Step` left
+telemetry active after recovery, both at initial marking and at remark. Cleanup
+now closes that telemetry cycle as failed. The new regression failed in both
+phases before the fix and checks successful retry and telemetry reset afterward.
+Another regression checks that rejection inside nested pointer root groups
+stops subsequent sources and does not retain partial roots.
+
+Validation includes all four native GC build combinations (incremental and
+nonincremental, with and without `wago_gcstats`), the telemetry-enabled GC race
+suite, runtime/public API suites in default, nonincremental, and guard-page
+builds, targeted TinyGo one-shot/rejection/panic tests, all eight mutation checks,
+and lint. Using the pinned Go/TinyGo pair also makes the full `just test unit`
+gate pass, including the TinyGo linker tests noted in the earlier validation.
+
+A focused single-root regression check used five serial 200 ms samples per
+variant on the same CPU, Go 1.27.1, `GOMAXPROCS=16`, after other checks finished.
+The median changed from 101.7 to 97.12 ns/op in the default build and from 63.66
+to 63.26 ns/op in the nonincremental build. All samples retained the benchmark's
+24 bytes and one allocation per operation. These samples are a focused
+regression check; the larger benchmark tables above describe the earlier
+staging revision. The comparison overlays only `tiny_collect.go` from the
+before-review commit and uses identical benchmark sources.
+
+Raw follow-up samples: [before/default](review-before-default.txt),
+[after/default](review-after-default.txt),
+[before/nonincremental](review-before-nonincremental.txt),
+[after/nonincremental](review-after-nonincremental.txt).
