@@ -19,6 +19,7 @@ func TestValidateRootMaps(t *testing.T) {
 		want string
 	}{
 		{"function", []FunctionRootMap{{LocalFunction: 3, FrameBytes: 8}}, "out of range"},
+		{"wrapped function", []FunctionRootMap{{LocalFunction: ^uint32(0), FrameBytes: 8}}, "out of range"},
 		{"map order", []FunctionRootMap{{LocalFunction: 1}, {LocalFunction: 1}}, "not strictly ordered"},
 		{"kind", []FunctionRootMap{{FrameBytes: 16, Slots: []RootSlot{{Offset: 0, Kind: 99}}}}, "invalid kind"},
 		{"alignment", []FunctionRootMap{{FrameBytes: 16, Slots: []RootSlot{{Offset: 1, Kind: RootGCRef}}}}, "not 8-byte aligned"},
@@ -31,5 +32,21 @@ func TestValidateRootMaps(t *testing.T) {
 				t.Fatalf("ValidateRootMaps = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestValidateRootMapsRejectsNegativeFunctionCount(t *testing.T) {
+	if err := ValidateRootMaps(nil, -1); err == nil {
+		t.Fatal("negative local function count was accepted")
+	}
+}
+
+func BenchmarkValidateRootMapsFunctionBounds(b *testing.B) {
+	maps := []FunctionRootMap{{LocalFunction: 0, FrameBytes: 8, Slots: []RootSlot{{Offset: 0, Kind: RootGCRef}}}}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if err := ValidateRootMaps(maps, 1); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

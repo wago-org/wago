@@ -7,6 +7,41 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func TestVerifyModuleRejectsWrappedU32TypeIndex(t *testing.T) {
+	m := &Module{Types: []wasm.FuncType{{}}, FuncTypes: []uint32{^uint32(0)}}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("VerifyModule panicked: %v", r)
+		}
+	}()
+	if err := VerifyModule(m); err == nil {
+		t.Fatal("VerifyModule accepted an unknown type")
+	}
+}
+
+func TestVerifyCallRejectsWrappedU32FunctionIndex(t *testing.T) {
+	m := &Module{Types: []wasm.FuncType{{}}, FuncTypes: []uint32{0}}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("verifyCall panicked: %v", r)
+		}
+	}()
+	if err := verifyCall(m, 0, &Inst{Op: OpCall, Aux: uint64(^uint32(0))}, 0, 0, nil, nil); err == nil {
+		t.Fatal("verifyCall accepted an unknown function")
+	}
+}
+
+func BenchmarkVerifyCallFunctionBounds(b *testing.B) {
+	m := &Module{Types: []wasm.FuncType{{}}, FuncTypes: []uint32{0}}
+	in := &Inst{Op: OpCall, Aux: 0}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if err := verifyCall(m, 0, in, 0, 0, nil, nil); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestVerifyRejectsMissingTerminator(t *testing.T) {
 	f := &Func{Sig: wasm.FuncType{}, Entry: 0, Blocks: []Block{{}}}
 	if err := VerifyFunc(f); err == nil || !strings.Contains(err.Error(), "no terminator") {
