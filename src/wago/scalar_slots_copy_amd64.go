@@ -2,18 +2,16 @@
 
 package wago
 
+import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+
 //go:noescape
 func copyNarrowScalarSlotsAVX2(dst, src *uint64, n uintptr)
 
 var narrowScalarAVX2Supported = detectNarrowScalarAVX2()
 
 func detectNarrowScalarAVX2() bool {
-	maxID, _, _, _ := cpuid(0, 0)
-	if maxID < 7 || !architectureSupportsSIMD() {
-		return false
-	}
-	_, ebx, _, _ := cpuid(7, 0)
-	return ebx&(uint32(1)<<5) != 0
+	features, ok := cachedAMD64CPUFeatures()
+	return ok && features.Has(shared.AMD64AVX|shared.AMD64AVX2)
 }
 
 func copyNarrowScalarSlots(dst, src []uint64, n int) {

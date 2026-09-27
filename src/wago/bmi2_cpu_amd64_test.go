@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -21,8 +22,8 @@ func TestBMI2OptimizationHostGateAndCodecRequirement(t *testing.T) {
 			t.Fatal("BMI2 optimization defaulted on for an unsupported host")
 		}
 	}
-	if err := unsupported.WithOptimization("bmi2-rorx", true).Validate(); err == nil || !strings.Contains(err.Error(), "requires BMI2") {
-		t.Fatalf("unsupported BMI2 selection error = %v", err)
+	if err := unsupported.WithOptimization("bmi2-rorx", true).Validate(); err != nil {
+		t.Fatalf("optional BMI2 selection must retain its fallback: %v", err)
 	}
 
 	bmi2HostFeaturesSupported = func() bool { return true }
@@ -47,11 +48,37 @@ func TestBMI2OptimizationHostGateAndCodecRequirement(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
+	bmi2HostFeaturesSupported = func() bool { return false }
+	fallback, err := unsupported.WithOptimization("bmi2-rorx", true).Compile(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fallback.RequiresBMI2() {
+		t.Fatal("missing BMI2 did not select the rotate fallback")
+	}
+	fallback.Close()
+	bmi2HostFeaturesSupported = func() bool { return true }
 	compiled, err := cfg.Compile(module)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
+	if !selectedAMD64CompileFeatures(shared.AMD64BMI2).Has(shared.AMD64BMI2) {
+		if compiled.RequiresBMI2() {
+			t.Fatal("baseline profile emitted BMI2")
+		}
+		blob, err := compiled.MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+		bmi2HostFeaturesSupported = func() bool { return false }
+		var loaded Compiled
+		if err := loaded.UnmarshalBinary(blob); err != nil {
+			t.Fatal(err)
+		}
+		loaded.Close()
+		return
+	}
 	if !compiled.RequiresBMI2() {
 		t.Fatal("compiled RORX module did not record BMI2")
 	}

@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
@@ -677,19 +678,22 @@ func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {
 func (f *fn) fillTableEntries(dst, count Reg, slot int, vec Reg) {
 	f.a.TestSelf(count, true)
 	done := f.a.JccPlaceholder(condE)
-	f.a.AluRI(cmpDigit, count, 8, false)
-	scalar := f.a.JccPlaceholder(condB)
-	// Snapshot the 32-byte descriptor once. Reloading four words from the spill
-	// slot for every table element adds unnecessary stack traffic to large fills.
-	f.a.YMovdquLoadDisp(vec, RSP, f.spillOff(slot))
-	vectorLoop := f.a.Len()
-	f.a.YMovdquStoreDisp(dst, 0, vec)
-	f.a.LeaDisp(dst, dst, runtime.TableEntryBytes)
-	f.unitAdjust(count, true, false)
-	f.a.PatchRel32(f.a.JccPlaceholder(condNE), vectorLoop)
-	f.a.VZeroUpper()
-	finished := f.a.JmpPlaceholder()
-	f.a.PatchRel32(scalar, f.a.Len())
+	finished := -1
+	if f.cpuHas(shared.AMD64AVX) {
+		f.a.AluRI(cmpDigit, count, 8, false)
+		scalar := f.a.JccPlaceholder(condB)
+		// Snapshot the 32-byte descriptor once. Reloading four words from the spill
+		// slot for every table element adds unnecessary stack traffic to large fills.
+		f.a.YMovdquLoadDisp(vec, RSP, f.spillOff(slot))
+		vectorLoop := f.a.Len()
+		f.a.YMovdquStoreDisp(dst, 0, vec)
+		f.a.LeaDisp(dst, dst, runtime.TableEntryBytes)
+		f.unitAdjust(count, true, false)
+		f.a.PatchRel32(f.a.JccPlaceholder(condNE), vectorLoop)
+		f.a.VZeroUpper()
+		finished = f.a.JmpPlaceholder()
+		f.a.PatchRel32(scalar, f.a.Len())
+	}
 	scalarLoop := f.a.Len()
 	tmp := f.allocReg(maskOf(dst).add(count))
 	for i, off := 0, int32(0); off < runtime.TableEntryBytes; i, off = i+1, off+8 {
@@ -700,7 +704,9 @@ func (f *fn) fillTableEntries(dst, count Reg, slot int, vec Reg) {
 	f.a.LeaDisp(dst, dst, runtime.TableEntryBytes)
 	f.unitAdjust(count, true, false)
 	f.a.PatchRel32(f.a.JccPlaceholder(condNE), scalarLoop)
-	f.a.PatchRel32(finished, f.a.Len())
+	if finished >= 0 {
+		f.a.PatchRel32(finished, f.a.Len())
+	}
 	f.a.PatchRel32(done, f.a.Len())
 }
 

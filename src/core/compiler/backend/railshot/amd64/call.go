@@ -1185,8 +1185,8 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		mt := mtOf(ft.Params[i])
 		if mt.isV128() {
 			x := f.allocFReg(0)
-			f.a.VMovdquLoadDisp(x, RSP, f.spillOff(argSlot))
-			f.a.VMovdquStoreDisp(R8, argsOffset+int32(ctrlSlot)*8, x)
+			f.mov128LoadDisp(x, RSP, f.spillOff(argSlot))
+			f.mov128StoreDisp(R8, argsOffset+int32(ctrlSlot)*8, x)
 			f.releaseF(x)
 		} else if mt.is64() {
 			f.a.Load64(RAX, RSP, f.spillOff(argSlot))
@@ -1268,7 +1268,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		switch {
 		case rt.isV128():
 			res[j] = f.allocFReg(0)
-			f.a.VMovdquLoadDisp(res[j], R8, resultsOffset+int32(ctrlSlot)*8)
+			f.mov128LoadDisp(res[j], R8, resultsOffset+int32(ctrlSlot)*8)
 			f.fpinned = f.fpinned.add(res[j]) // keep across the remaining loads
 		case rt.isFloat():
 			tmp := f.allocReg(0)
@@ -1638,7 +1638,7 @@ func (f *fn) finishWrapperResultsWithRoots(belowTypes []machineType, belowGCRoot
 		switch {
 		case typ.isV128():
 			regs[i] = f.allocFReg(0)
-			f.a.VMovdquLoadDisp(regs[i], RSP, f.spillOff(resultSlotCursor))
+			f.mov128LoadDisp(regs[i], RSP, f.spillOff(resultSlotCursor))
 			f.fpinned = f.fpinned.add(regs[i])
 		case typ.isFloat():
 			tmp := f.allocReg(0)

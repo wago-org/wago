@@ -8,16 +8,16 @@ import (
 	"testing"
 )
 
-func TestCompiledCodecVersion2Contract(t *testing.T) {
+func TestCompiledCodecVersion3Contract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != wagoVersion || wagoVersion != 2 {
-		t.Fatalf("compiled codec version = %d, want native-resource-policy version 2", got)
+	if got := blob[4]; got != wagoVersion || wagoVersion != 3 {
+		t.Fatalf("compiled codec version = %d, want native-resource-policy version 3", got)
 	}
 
-	for _, version := range []byte{0, 1, 22, 35} {
+	for _, version := range []byte{0, 1, 2, 22, 35} {
 		unsupported := append([]byte(nil), blob...)
 		unsupported[4] = version
 		var got Compiled

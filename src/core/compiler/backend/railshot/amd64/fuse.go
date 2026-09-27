@@ -107,7 +107,7 @@ func (f *fn) flushBelow(node *elem) int {
 		}
 		if typ == mtV128 {
 			x := f.materializeV128(root)
-			f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), x)
+			f.mov128StoreDisp(RSP, f.spillOff(slot), x)
 			f.releaseF(x)
 			root.setElemKind(ekValue)
 			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: uint32(slot)})

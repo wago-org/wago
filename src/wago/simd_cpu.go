@@ -1,55 +1,27 @@
 package wago
 
 import (
-	"sync"
-
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
-// simdHostFeaturesSupported checks the amd64 backend baseline for all modules,
-// including scalar code, and the SIMD capability on other architectures. The
-// amd64 backend emits VEX.128 instructions and uses SSSE3, SSE4.1, and SSE4.2
-// operations, so AVX OS support plus SSSE3/SSE4.1/SSE4.2 are required.
-// Linux exposes AVX in
-// /proc/cpuinfo only when the kernel has enabled the XSAVE state needed to run
-// AVX instructions. On arm64, Advanced SIMD/NEON is part of the baseline AArch64
-// profile used by Go.
+// simdHostFeaturesSupported retains the test seam for native admission. AMD64
+// needs only its architectural SSE2 baseline and successful CPU detection;
+// optional features select compiler optimizations. ARM64 guarantees NEON.
 var simdHostFeaturesSupported = cachedSIMDHostFeatures
 
-var (
-	simdHostFeaturesOnce sync.Once
-	simdHostFeaturesOK   bool
-	bmi2HostFeaturesOnce sync.Once
-	bmi2HostFeaturesOK   bool
-)
-
-func cachedSIMDHostFeatures() bool {
-	simdHostFeaturesOnce.Do(func() { simdHostFeaturesOK = detectSIMDHostFeatures() })
-	return simdHostFeaturesOK
-}
+func cachedSIMDHostFeatures() bool { return detectSIMDHostFeatures() }
 
 func hostSupportsSIMD() bool { return simdHostFeaturesSupported() }
 
 var bmi2HostFeaturesSupported = cachedBMI2HostFeatures
 
-func cachedBMI2HostFeatures() bool {
-	bmi2HostFeaturesOnce.Do(func() { bmi2HostFeaturesOK = architectureSupportsBMI2() })
-	return bmi2HostFeaturesOK
-}
+func cachedBMI2HostFeatures() bool { return architectureSupportsBMI2() }
 
 func hostSupportsBMI2() bool { return bmi2HostFeaturesSupported() }
 
 var bitCountHostFeaturesSupported = cachedBitCountHostFeatures
 
-var (
-	bitCountHostFeaturesOnce sync.Once
-	bitCountHostFeaturesOK   uint8
-)
-
-func cachedBitCountHostFeatures() uint8 {
-	bitCountHostFeaturesOnce.Do(func() { bitCountHostFeaturesOK = architectureAMD64BitCountFeatures() })
-	return bitCountHostFeaturesOK
-}
+func cachedBitCountHostFeatures() uint8 { return architectureAMD64BitCountFeatures() }
 
 func amd64BitCountFeatures(ecx1, ebx7, extECX uint32) (features uint8) {
 	if extECX&(uint32(1)<<5) != 0 {
