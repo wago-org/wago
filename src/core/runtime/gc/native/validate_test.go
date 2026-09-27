@@ -5,7 +5,7 @@ import "testing"
 func TestValidateTypeDescs(t *testing.T) {
 	pf, _ := NewStructDesc(0, []StorageKind{StorageI32, StorageI64})
 	pf.Final = false
-	ref, _ := NewStructDesc(1, []StorageKind{StorageRef})
+	ref, _ := NewStructDesc(1, []StorageKind{StorageI32, StorageI64, StorageRef})
 	ref.HasSuper = true
 	ref.Super = 0
 	arr, _ := NewArrayDesc(2, StorageRefNull)
@@ -17,12 +17,12 @@ func TestValidateTypeDescs(t *testing.T) {
 func TestValidateTypeDescsRejectsMalformedSuperMetadata(t *testing.T) {
 	structBase, _ := NewStructDesc(0, []StorageKind{StorageI32})
 	structBase.Final = false
-	structChild, _ := NewStructDesc(1, []StorageKind{StorageRef})
+	structChild, _ := NewStructDesc(1, []StorageKind{StorageI32, StorageRef})
 	structChild.HasSuper = true
 	structChild.Super = 0
 	arrayBase, _ := NewArrayDesc(0, StorageI32)
 	arrayBase.Final = false
-	arrayChild, _ := NewArrayDesc(1, StorageRefNull)
+	arrayChild, _ := NewArrayDesc(1, StorageI32)
 	arrayChild.HasSuper = true
 	arrayChild.Super = 0
 	funcBase := TypeDesc{ID: 0, Kind: KindFunc}
@@ -36,7 +36,7 @@ func TestValidateTypeDescsRejectsMalformedSuperMetadata(t *testing.T) {
 	}
 
 	finalStruct, _ := NewStructDesc(0, []StorageKind{StorageI32})
-	childOfFinal, _ := NewStructDesc(1, []StorageKind{StorageRef})
+	childOfFinal, _ := NewStructDesc(1, []StorageKind{StorageI32})
 	childOfFinal.HasSuper = true
 	childOfFinal.Super = 0
 	structSuper, _ := NewStructDesc(0, []StorageKind{StorageI32})

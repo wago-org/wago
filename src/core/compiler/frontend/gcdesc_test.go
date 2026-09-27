@@ -220,14 +220,18 @@ func TestLowerMutuallyRecursiveTypesDoNotExpandLayout(t *testing.T) {
 }
 
 func TestLowerRecTypeIdxResolvesWithinCurrentGroup(t *testing.T) {
-	base := st(field(val(wasm.I32)))
+	base := st(field(concreteRec(true, 0)))
 	base.Final = false
 	child := st(field(concreteRec(true, 0)))
 	child.Supers = []wasm.TypeIdx{{Index: 0, Rec: true}}
-	descs, err := LowerGCTypeDescs([]wasm.RecType{
+	types := []wasm.RecType{
 		{SubTypes: []wasm.SubType{fn()}},
 		{SubTypes: []wasm.SubType{base, child}},
-	})
+	}
+	if err := wasm.ValidateModule(&wasm.Module{Types: types}); err != nil {
+		t.Fatalf("invalid Wasm subtype fixture: %v", err)
+	}
+	descs, err := LowerGCTypeDescs(types)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,13 +251,17 @@ func TestLowerRecSuperIndexAcrossMultiTypeGroup(t *testing.T) {
 	base.Final = false
 	mid := st(field(val(wasm.I64)))
 	mid.Final = false
-	child := st(field(val(wasm.I32)))
+	child := st(field(val(wasm.I64)))
 	child.Supers = []wasm.TypeIdx{{Index: 1, Rec: true}}
 
-	descs, err := LowerGCTypeDescs([]wasm.RecType{
+	types := []wasm.RecType{
 		{SubTypes: []wasm.SubType{fn()}},
 		{SubTypes: []wasm.SubType{base, mid, child}},
-	})
+	}
+	if err := wasm.ValidateModule(&wasm.Module{Types: types}); err != nil {
+		t.Fatalf("invalid Wasm subtype fixture: %v", err)
+	}
+	descs, err := LowerGCTypeDescs(types)
 	if err != nil {
 		t.Fatal(err)
 	}
