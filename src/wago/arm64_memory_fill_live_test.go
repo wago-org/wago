@@ -4,6 +4,7 @@ package wago
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math/bits"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func TestARM64MemoryFillPreservesLiveIntegerValues(t *testing.T) {
+func arm64MemoryFillLiveModule() []byte {
 	body := []byte{1, 9, 0x7f}
 	body = append(body,
 		0x20, 3, 0x41, 3, 0x6c, 0x21, 4,
@@ -43,7 +44,7 @@ func TestARM64MemoryFillPreservesLiveIntegerValues(t *testing.T) {
 		0x20, 10, 0x20, 11, 0x20, 12, 0x6a, 0x6a, 0x6a, 0x6a,
 		0x0b,
 	)
-	module := wasmtest.Module(
+	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
 			[]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
@@ -52,7 +53,10 @@ func TestARM64MemoryFillPreservesLiveIntegerValues(t *testing.T) {
 			wasmtest.ExportEntry("probe", 0, 0), wasmtest.ExportEntry("memory", 2, 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
-	compiled, err := Compile(NewRuntimeConfig(), module)
+}
+
+func TestARM64MemoryFillPreservesLiveIntegerValues(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig(), arm64MemoryFillLiveModule())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,34 +67,67 @@ func TestARM64MemoryFillPreservesLiveIntegerValues(t *testing.T) {
 	}
 	defer instance.Close()
 
-	const dst, length = uint32(64), uint32(0)
-	for _, seed := range []uint32{1, 2, 0x1234567} {
-		want := []uint32{
-			seed * 3,
-			seed + 7,
-			seed ^ 0x5a5a,
-			seed << 3,
-			seed - 11,
-			seed * 17,
-			seed | 0x100,
-			bits.RotateLeft32(seed, 5),
-		}
-		wantResult := dst + length
-		for _, value := range want {
-			wantResult += value
-		}
-		got, err := instance.Invoke("probe", uint64(dst), 255, uint64(length), uint64(seed))
-		if err != nil {
-			t.Fatalf("seed %#x: %v", seed, err)
-		}
-		if gotResult := uint32(got[0]); gotResult != wantResult {
-			t.Errorf("seed %#x: result = %#x, want %#x", seed, gotResult, wantResult)
-		}
-		memory := instance.Memory().UnsafeBytes()[dst+length : dst+length+32]
-		for i, wantValue := range want {
-			if gotValue := binary.LittleEndian.Uint32(memory[i*4:]); gotValue != wantValue {
-				t.Errorf("seed %#x: value %d = %#x, want %#x", seed, i, gotValue, wantValue)
+	const dst = uint32(64)
+	for _, length := range []uint32{0, 1, 7, 8, 63, 64, 255, 256, 1024} {
+		t.Run(fmt.Sprint(length), func(t *testing.T) {
+			for _, seed := range []uint32{1, 2, 0x1234567} {
+				want := []uint32{
+					seed * 3,
+					seed + 7,
+					seed ^ 0x5a5a,
+					seed << 3,
+					seed - 11,
+					seed * 17,
+					seed | 0x100,
+					bits.RotateLeft32(seed, 5),
+				}
+				wantResult := dst + length
+				for _, value := range want {
+					wantResult += value
+				}
+				got, err := instance.Invoke("probe", uint64(dst), 255, uint64(length), uint64(seed))
+				if err != nil {
+					t.Fatalf("seed %#x: %v", seed, err)
+				}
+				if gotResult := uint32(got[0]); gotResult != wantResult {
+					t.Errorf("seed %#x: result = %#x, want %#x", seed, gotResult, wantResult)
+				}
+				for i, value := range instance.Memory().UnsafeBytes()[dst : dst+length] {
+					if value != 255 {
+						t.Fatalf("filled byte %d = %#x, want 0xff", i, value)
+					}
+				}
+				memory := instance.Memory().UnsafeBytes()[dst+length : dst+length+32]
+				for i, wantValue := range want {
+					if gotValue := binary.LittleEndian.Uint32(memory[i*4:]); gotValue != wantValue {
+						t.Errorf("seed %#x: value %d = %#x, want %#x", seed, i, gotValue, wantValue)
+					}
+				}
 			}
+		})
+	}
+}
+
+func BenchmarkARM64MemoryFillLiveIntegerValues(b *testing.B) {
+	compiled, err := Compile(NewRuntimeConfig(), arm64MemoryFillLiveModule())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer instance.Close()
+	fn, err := instance.WasmFunc("probe")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := fn.Invoke(64, 255, 0, 1); err != nil {
+			b.Fatal(err)
 		}
 	}
 }

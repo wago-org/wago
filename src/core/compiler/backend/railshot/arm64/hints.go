@@ -578,6 +578,10 @@ func noteASTPhysicalEvent(h *funcHintView, kind wasm.InstrKind, depth int) {
 
 func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
 	switch kind {
+	// GC-reference table.set can enter the collector's write-barrier helper.
+	// Conservatively include it even when table types/helper admission are absent.
+	case wasm.InstrTableSet:
+		return true
 	case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructNewDesc, wasm.InstrStructNewDefaultDesc,
 		wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructAtomicGet, wasm.InstrStructAtomicGetS, wasm.InstrStructAtomicGetU, wasm.InstrStructSet,
 		wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData, wasm.InstrArrayNewElem,
@@ -590,6 +594,40 @@ func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
 	default:
 		return false
 	}
+}
+
+// usesBulkScratch describes ARM64 lowering, not just the Wasm memory proposal.
+// These helpers write fixed registers in X9-X14 after flushing stack operands;
+// that flush does not evict long-lived local/global pins. Segment drops matter
+// even in modules with no memory or table, and table helpers share the same pool.
+func usesBulkScratch(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrMemoryInit, wasm.InstrDataDrop, wasm.InstrMemoryCopy, wasm.InstrMemoryFill,
+		wasm.InstrTableInit, wasm.InstrElemDrop, wasm.InstrTableCopy, wasm.InstrTableFill:
+		return true
+	default:
+		return false
+	}
+}
+
+func tableSetMayCall(m *wasm.Module, index uint32) bool {
+	if m == nil {
+		return true
+	}
+	tt, ok := m.TableType(index)
+	if !ok {
+		return true
+	}
+	// Only function and external references are certainly free of the GC write
+	// barrier. Indexed reference types are conservatively treated as collector
+	// references, without allocating a type lookup table during hint collection.
+	if tt.Ref.Heap().Kind() == wasm.HeapAbs {
+		switch tt.Ref.Heap().Abs() {
+		case wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapExtern, wasm.HeapNoExtern:
+			return false
+		}
+	}
+	return true
 }
 
 func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, globalHints *shared.GlobalHintAccumulator) funcHintView {
@@ -635,6 +673,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			}
 			if shared.InstructionNeedsEHFrame(0, in.Kind) {
 				h.flags.set(hintModuleEH)
+			}
+			if usesBulkScratch(in.Kind) {
+				h.flags.set(hintUsesBulkMem)
 			}
 			switch in.Kind {
 			case wasm.InstrCall, wasm.InstrReturnCall, wasm.InstrCallRef, wasm.InstrReturnCallRef:
@@ -705,9 +746,6 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 					sub = true
 				}
 				h.noteBoundaryEvent(shared.LocalEventEnd, depth)
-			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
-				h.flags.set(hintUsesBulkMem | hintTouchesMemory)
-				h.addMemOp()
 			case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
 				wasm.InstrTableGrow, wasm.InstrTableFill:
 				h.flags.set(hintMutatesTable)
@@ -1305,11 +1343,20 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
 		case 0x25, 0x26: // table.get/set
-			if _, err := s.r.U32(); err != nil {
+			index, err := s.r.U32()
+			if err != nil {
 				return true, 0, err
 			}
 			if op == 0x26 {
 				s.h.flags.set(hintMutatesTable)
+				if tableSetMayCall(s.m, index) {
+					s.h.flags.set(hintHasCall | hintHasNonDirectCall)
+					s.h.markUnsupportedDynamicCall()
+					if loopDepth != 0 {
+						s.h.flags.set(hintHasLoopCall)
+					}
+					subHasCall = true
+				}
 			}
 		case 0xd2, 0xd5, 0xd6: // ref.func, br_on_null, br_on_non_null
 			if _, err := s.r.U32(); err != nil {
@@ -1368,7 +1415,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					s.h.noteParamAddress(prevIndex)
 				}
 			}
-			if imm.UsesBulkMemory {
+			if usesBulkScratch(imm.Kind) {
 				s.h.noteBoundaryEvent(shared.LocalEventInvalidate, depth)
 				s.h.flags.set(hintUsesBulkMem)
 			}
@@ -1420,7 +1467,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintTouchesMemory)
 				s.h.addMemOp()
 			}
-			if imm.UsesBulkMemory {
+			if usesBulkScratch(imm.Kind) {
 				s.h.flags.set(hintUsesBulkMem)
 			}
 		}

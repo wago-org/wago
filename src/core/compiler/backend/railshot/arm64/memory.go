@@ -363,7 +363,8 @@ func (f *fn) emitSharedTrapStubs() {
 				pc = uint64(first.pc)
 			}
 			f.a.MovImm64(X17, pc)
-			// X9-X11 can hold value pins. X12/X13 are never pin registers.
+			// X9-X11 can hold value-pinned globals that the trap body publishes.
+			// X12/X13 may hold leaf locals, but those die on this terminal path.
 			f.a.MovImm64(X12, uint64(first.function+1))
 			f.a.MovImm64(X13, uint64(code))
 			for _, site := range group {
@@ -1498,7 +1499,8 @@ func (f *fn) dataDrop(r *wasm.Reader) error {
 
 // memoryCopy lowers memory.copy with memmove semantics (overlap-safe). The three
 // i32 operands (dst, src, n) are read from canonical slots into the scratch
-// registers X9/X10/X11; X12/X13 are free scratch after the flush.
+// registers X9/X10/X11. The bulk hint excludes X9-X14 from local/global pins;
+// the flush releases their transient operand owners.
 func (f *fn) memoryCopy(r *wasm.Reader) error {
 	dstMemory, err := r.U32()
 	if err != nil {

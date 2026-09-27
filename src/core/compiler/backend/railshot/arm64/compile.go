@@ -2963,7 +2963,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if hasCall {
 		inlinedCallees = collectInlinedCallees(c, inlineTargets)
 	}
-	if policy.EnabledOption(optInlineCallFree) && hasCall && allCallsWillInline(c, inlineTargets, policy) {
+	// Inlined helpers execute in the caller's register frame. Reuse the existing
+	// callee hints before constructing any pin pool; the module's original hints
+	// remain unchanged, and no retained inline-target state is needed.
+	planningHints := *hints
+	for _, callee := range inlinedCallees {
+		planningHints.flags |= calleeHints[callee.globalIdx-m.ImportedFuncCount()].flags & hintUsesBulkMem
+	}
+	hints = &planningHints
+	// Inlining direct Wasm calls cannot remove GC/table/atomic runtime helpers.
+	if policy.EnabledOption(optInlineCallFree) && hasCall && !hints.flags.has(hintHasNonDirectCall) && allCallsWillInline(c, inlineTargets, policy) {
 		hasCall = false
 		f.stats.peep("all-calls-inlined")
 	}
@@ -3031,11 +3040,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.reserved = f.reserved.add(ehReg)
 	}
 	if policy.EnabledOption(optLeafScratchPins) && !hasCall {
-		// X12/X13 are fixed by loop-region promotion and bulk-memory helpers, and
-		// X14 by bulk/table helpers. A straight-line scalar leaf can spend them on
-		// three additional hot locals while the normal allocator still retains seven
-		// ordinary transient GPRs plus its two scratch-floor registers in the
-		// largest current scalar leaf.
+		// Keep the conservative loop exclusion and reserve X12-X14 for memory,
+		// table and segment helpers (including inlined helpers). Scalar leaves
+		// retain all three extra candidates.
 		if !hints.flags.has(hintHasLoop | hintUsesBulkMem) {
 			gpPool = append(gpPool, X12, X13)
 		}
@@ -3049,9 +3056,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// The inline bulk-memory helpers use X9/X10/X11 as fixed dst/src/count
 	// registers after canonicalizing the operand stack. They do not participate in
 	// the general allocator, so assigning a local to one of those registers would
-	// let memory.copy/fill silently overwrite live local state (fannkuch's dynamic
+	// let bulk memory/table helpers silently overwrite live local state (fannkuch's dynamic
 	// memory.copy turned its permutation loop into an infinite loop). The pre-scan
-	// already records this exact class; reserve only the colliding helper registers
+	// records this lowering class; reserve only the colliding helper registers
 	// and retain the rest of the call-free pin pool.
 	if hints.flags.has(hintUsesBulkMem) {
 		gpPool = withoutReg(withoutReg(withoutReg(gpPool, X9), X10), X11)
@@ -3275,7 +3282,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 // incoming argument registers while every caller-pinned register is reserved.
 // Consequently it cannot observe or modify caller state outside X0..X7/X16/X17.
 func preservesCallerPins(ft *wasm.CompType, nLocals int, h funcHints) bool {
-	if !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || nLocals != len(ft.Params) || h.flags.has(hintHasCall) || h.flags.has(hintTouchesMemory) {
+	if !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || nLocals != len(ft.Params) || h.flags.has(hintHasCall|hintTouchesMemory|hintUsesBulkMem) {
 		return false
 	}
 	if h.globalCount != 0 {
