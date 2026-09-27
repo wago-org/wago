@@ -671,6 +671,11 @@ func (c *Compiled) prepareCodeMapping() error {
 // Clear the embedded staging value:
 // its allocation remains live through pointers to the grouped private state.
 func publishCompilerCompiled(c *Compiled) (*Compiled, error) {
+	// Exact-value interning is complete at publication. Its index is scratch,
+	// not runtime metadata; retaining it would duplicate the immutable pool.
+	if indexes := c.loadCompileIndexes(); indexes != nil {
+		indexes.valueTypeIndex = nil
+	}
 	goruntime.SetFinalizer(c, nil)
 	published := new(Compiled)
 	*published = *c

@@ -110,3 +110,23 @@ func TestGCMappingCacheConcurrentDomains(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestCompiledValueTypeIndexReleasedAtPublication(t *testing.T) {
+	requireCompleteCore3Backend(t)
+	c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(indexedGlobalClusterModule(1024, 2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if indexes := c.loadCompileIndexes(); indexes != nil && indexes.valueTypeIndex != nil {
+		t.Fatal("published module retained compiler-only value-type index")
+	}
+	if len(c.ValueTypes) != 1024 {
+		t.Fatalf("published exact type pool has %d entries, want 1024", len(c.ValueTypes))
+	}
+	for i, global := range c.Globals {
+		if global.ValueTypeIndex != uint32((i/2)%1024) {
+			t.Fatalf("published global %d has type index %d", i, global.ValueTypeIndex)
+		}
+	}
+}
