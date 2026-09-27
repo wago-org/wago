@@ -539,7 +539,8 @@ func (v *moduleValidator) typeIdxEquivalentWithState(a, b TypeIdx, state map[mod
 	if !aok || !bok {
 		return false
 	}
-	var introduced []moduleTypePair
+	var firstPair [1]moduleTypePair
+	introduced := firstPair[:0]
 	var eqType func(int, int) bool
 	var eqVal func(ValType, ValType, int, int) bool
 	eqHeap := func(x, y HeapType, xGroup, yGroup int) bool {
@@ -610,11 +611,16 @@ func (v *moduleValidator) typeIdxEquivalentWithState(a, b TypeIdx, state map[mod
 		case 3:
 			return false
 		}
-		introduced = append(introduced, p)
-		state[p] = 1
 		xs, xGroup, xok := v.subtypeByFlatTypeIdx(x)
 		ys, yGroup, yok := v.subtypeByFlatTypeIdx(y)
-		ok := xok && yok && xs.Final == ys.Final && len(xs.Supers) == len(ys.Supers) && xs.Comp.Kind == ys.Comp.Kind
+		// Reject known mismatches before opening a recursive assumption. These
+		// checks cannot depend on another pair and need no rollback bookkeeping.
+		if !xok || !yok || xs.Final != ys.Final || len(xs.Supers) != len(ys.Supers) || xs.Comp.Kind != ys.Comp.Kind {
+			return false
+		}
+		introduced = append(introduced, p)
+		state[p] = 1
+		ok := true
 		// Recursive type equivalence is defined over whole groups, not only
 		// the graph reachable from one projection. A projected type from a
 		// two-member group is therefore not equivalent to an identical

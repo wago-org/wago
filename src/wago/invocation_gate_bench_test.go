@@ -112,3 +112,34 @@ func BenchmarkContendedInvoke(b *testing.B) {
 		}
 	}
 }
+
+// Each operation starts with a fully queued burst, then drains it. Unlike the
+// throughput benchmark, this forces the notification fanout that wake-one is
+// intended to bound. Goroutine/context setup is included on both revisions.
+func BenchmarkInvocationGateQueuedBurst(b *testing.B) {
+	for _, count := range []int{8, 16, 32, 64, 128, 256, 512, 1024} {
+		b.Run(fmt.Sprintf("waiters=%d", count), func(b *testing.B) {
+			var gate invocationGate
+			b.ReportAllocs()
+			for k := 0; k < b.N; k++ {
+				gate.Lock()
+				var done sync.WaitGroup
+				done.Add(count)
+				for i := 0; i < count; i++ {
+					ctx := &admissionContext{Context: context.Background(), waiting: make(chan struct{})}
+					go func() {
+						defer done.Done()
+						if err := gate.lockContext(ctx); err != nil {
+							b.Error(err)
+							return
+						}
+						gate.Unlock()
+					}()
+					<-ctx.waiting
+				}
+				gate.Unlock()
+				done.Wait()
+			}
+		})
+	}
+}
