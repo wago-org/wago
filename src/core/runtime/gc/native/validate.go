@@ -24,14 +24,15 @@ func HasHeapObjectTypes(descs []TypeDesc) bool {
 // compiled metadata or used to create a Collector. The descriptor slice is
 // indexed by TypeID; function sentinels preserve Wasm TypeIdx order but are not
 // heap-object layouts. Supertype metadata must be same-kind, non-final, and
-// acyclic so serialized .wago blobs cannot inject malformed subtype chains.
+// acyclic. Inherited field indexes/offsets and element storage must retain the
+// same representation; references may only narrow nullability within a family.
 func ValidateTypeDescs(descs []TypeDesc) error {
 	for i, d := range descs {
 		if d.ID != TypeID(i) {
 			return fmt.Errorf("gc: descriptor %d has id %d", i, d.ID)
 		}
 		if d.HasSuper {
-			if int(d.Super) >= len(descs) {
+			if uint64(d.Super) >= uint64(len(descs)) {
 				return fmt.Errorf("gc: descriptor %d has invalid super %d", i, d.Super)
 			}
 			if d.Super == d.ID {
@@ -165,16 +166,18 @@ func siftFieldOrder(order []uint16, fields []FieldDesc, root int) {
 }
 
 func validateSuperRelations(descs []TypeDesc) error {
-	for _, d := range descs {
+	// All descriptors have passed structural validation, including forward supers.
+	// Checking every direct edge is transitive and independent of table order.
+	for i, d := range descs {
 		if !d.HasSuper {
 			continue
 		}
 		s := descs[d.Super]
 		if d.Kind != s.Kind {
-			return errors.New("gc: super kind mismatch")
+			return fmt.Errorf("gc: descriptor %d kind %d cannot extend super %d kind %d", i, d.Kind, d.Super, s.Kind)
 		}
 		if s.Final {
-			return errors.New("gc: cannot extend final super")
+			return fmt.Errorf("gc: descriptor %d cannot extend final super %d", i, d.Super)
 		}
 		badLayout := false
 		if d.Kind == KindStruct {
@@ -198,6 +201,9 @@ func validateSuperRelations(descs []TypeDesc) error {
 	return validateSuperAcyclic(descs)
 }
 
+// referenceStorageCompatible takes (destination, source): child values must fit
+// parent storage. This preserves width, alignment, and tracing/token family.
+// Heap identity and field mutability live in Wasm metadata, not StorageKind.
 func inheritedStorageCompatible(actual, inherited StorageKind) bool {
 	return actual == inherited || referenceStorageCompatible(inherited, actual)
 }
