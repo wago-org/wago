@@ -8,14 +8,14 @@ import (
 )
 
 func TestVerifyModuleRejectsWrappedU32TypeIndex(t *testing.T) {
-	m := &Module{Types: []wasm.FuncType{{}}, FuncTypes: []uint32{^uint32(0)}}
+	m := &Module{Types: []wasm.FuncType{{}}, FuncTypes: []uint32{^uint32(0)}, ImportedFuncCount: 1}
 	defer func() {
 		if r := recover(); r != nil {
 			t.Errorf("VerifyModule panicked: %v", r)
 		}
 	}()
-	if err := VerifyModule(m); err == nil {
-		t.Fatal("VerifyModule accepted an unknown type")
+	if err := VerifyModule(m); err == nil || !strings.Contains(err.Error(), "unknown type") {
+		t.Fatalf("VerifyModule error = %v, want unknown type", err)
 	}
 }
 
