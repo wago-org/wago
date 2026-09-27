@@ -1282,11 +1282,15 @@ func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifie
 	var writes uint64
 	brTable := false
 	nestedLoop := false
+	hasInnerControl := false
 	var imm wasm.InstructionImmediate
 	for {
 		op, err := r2.Byte()
 		if err != nil || classifier.ClassifyInto(&r2, op, &imm) != nil {
 			return false, 0
+		}
+		if op == 0x02 || op == 0x04 || op == 0x1f {
+			hasInnerControl = true
 		}
 		switch imm.Kind {
 		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrReturnCall,
@@ -1319,8 +1323,10 @@ func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifie
 			if depth == 0 {
 				// Nested loop entries already reconcile their own pin state. An
 				// outer register-only header can add stores at that inner entry
-				// without removing stores on its hot backedge.
-				if brTable || nestedLoop {
+				// without removing stores on its hot backedge. Inner blocks and
+				// ifs likewise create merge edges where the weaker register-only
+				// state adds reconciliation outside the loop latch.
+				if brTable || nestedLoop || hasInnerControl {
 					return true, 0
 				}
 				return true, writes
