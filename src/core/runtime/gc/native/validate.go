@@ -1,9 +1,8 @@
 package gc
 
 import (
-	"cmp"
+	"errors"
 	"fmt"
-	"slices"
 )
 
 // Keep temporary index memory at most 32 KiB for untrusted field order.
@@ -45,50 +44,8 @@ func ValidateTypeDescs(descs []TypeDesc) error {
 				return fmt.Errorf("gc: function descriptor %d has heap layout metadata", i)
 			}
 		case KindStruct:
-			if d.Elem != 0 || d.ElemSize != 0 {
-				return fmt.Errorf("gc: struct descriptor %d has array metadata", i)
-			}
-			if d.Align == 0 || d.Align > 16 || d.Align&(d.Align-1) != 0 {
-				return fmt.Errorf("gc: struct descriptor %d has invalid align %d", i, d.Align)
-			}
-			if _, err := StructSize(d); err != nil {
-				return fmt.Errorf("gc: struct descriptor %d: %w", i, err)
-			}
-			var lastEnd uint32
-			ordered := true
-			seenRefs := false
-			for j, f := range d.Fields {
-				a, sz, err := storageLayout(f.Kind)
-				if err != nil {
-					return fmt.Errorf("gc: struct descriptor %d field %d: %w", i, j, err)
-				}
-				if f.Offset%a != 0 {
-					return fmt.Errorf("gc: struct descriptor %d field %d offset %d is not aligned to %d", i, j, f.Offset, a)
-				}
-				if f.Offset > ^uint32(0)-sz || f.Offset+sz > d.Size {
-					return fmt.Errorf("gc: struct descriptor %d field %d out of bounds", i, j)
-				}
-				if f.Offset < lastEnd {
-					ordered = false
-				}
-				lastEnd = f.Offset + sz
-				if isCollectorRefKind(f.Kind) {
-					seenRefs = true
-				}
-			}
-			maxEnd := lastEnd
-			if !ordered {
-				var err error
-				maxEnd, err = validateUnorderedStructFields(i, d.Fields)
-				if err != nil {
-					return err
-				}
-			}
-			if d.Size != align(maxEnd, d.Align) {
-				return fmt.Errorf("gc: struct descriptor %d size %d does not match fields", i, d.Size)
-			}
-			if d.HasRefs != seenRefs {
-				return fmt.Errorf("gc: struct descriptor %d HasRefs mismatch", i)
+			if err := validateStructDesc(d); err != nil {
+				return fmt.Errorf("gc: struct %d: %w", i, err)
 			}
 		case KindArray:
 			if len(d.Fields) != 0 || d.Size != 0 {
@@ -114,27 +71,97 @@ func ValidateTypeDescs(descs []TypeDesc) error {
 	return nil
 }
 
-func validateUnorderedStructFields(desc int, fields []FieldDesc) (uint32, error) {
+// Keep struct-layout diagnostics behind one descriptor-context wrapper. Static
+// reasons avoid repeated formatting code in size-constrained TinyGo builds.
+func validateStructDesc(d TypeDesc) error {
+	if d.Elem != 0 || d.ElemSize != 0 {
+		return errors.New("array metadata")
+	}
+	if d.Align == 0 || d.Align > 16 || d.Align&(d.Align-1) != 0 {
+		return errors.New("invalid alignment")
+	}
+	if _, err := StructSize(d); err != nil {
+		return err
+	}
+	var maxEnd uint32
+	ordered := true
+	seenRefs := false
+	for _, f := range d.Fields {
+		a, sz, err := storageLayout(f.Kind)
+		if err != nil {
+			return err
+		}
+		if d.Align < a || f.Offset%a != 0 || uint64(f.Offset)+uint64(sz) > uint64(d.Size) {
+			return errors.New("invalid field layout")
+		}
+		if f.Offset < maxEnd {
+			ordered = false
+		}
+		if f.Offset+sz > maxEnd {
+			maxEnd = f.Offset + sz
+		}
+		if isCollectorRefKind(f.Kind) {
+			seenRefs = true
+		}
+	}
+	if !ordered {
+		if err := validateUnorderedStructFields(d.Fields); err != nil {
+			return err
+		}
+	}
+	if d.Size != align(maxEnd, d.Align) {
+		return errors.New("size mismatch")
+	}
+	if d.HasRefs != seenRefs {
+		return errors.New("HasRefs mismatch")
+	}
+	return nil
+}
+
+func validateUnorderedStructFields(fields []FieldDesc) error {
 	if len(fields) > maxUnorderedStructFields {
-		return 0, fmt.Errorf("gc: struct descriptor %d has too many unordered fields", desc)
+		return errors.New("unordered field limit")
 	}
 	order := make([]uint16, len(fields))
 	for i := range order {
 		order[i] = uint16(i)
 	}
-	slices.SortFunc(order, func(a, b uint16) int {
-		return cmp.Compare(fields[a].Offset, fields[b].Offset)
-	})
+	// A min-heap visits fields in offset order without changing field indexes,
+	// which are part of the access ABI. Work is bounded by O(n log n).
+	for root := len(order)/2 - 1; root >= 0; root-- {
+		siftFieldOrder(order, fields, root)
+	}
 	var end uint32
-	for _, i := range order {
-		f := fields[i]
-		_, sz, _ := storageLayout(f.Kind)
+	for len(order) > 0 {
+		f := fields[order[0]]
+		_, sz, _ := storageLayout(f.Kind) // already checked by the caller
 		if f.Offset < end {
-			return 0, fmt.Errorf("gc: struct descriptor %d field %d overlaps another field", desc, i)
+			return errors.New("overlapping fields")
 		}
 		end = f.Offset + sz
+		order[0] = order[len(order)-1]
+		order = order[:len(order)-1]
+		if len(order) > 0 {
+			siftFieldOrder(order, fields, 0)
+		}
 	}
-	return end, nil
+	return nil
+}
+
+func siftFieldOrder(order []uint16, fields []FieldDesc, root int) {
+	value := order[root]
+	offset := fields[value].Offset
+	for child := root*2 + 1; child < len(order); child = root*2 + 1 {
+		if child+1 < len(order) && fields[order[child]].Offset > fields[order[child+1]].Offset {
+			child++
+		}
+		if offset <= fields[order[child]].Offset {
+			break
+		}
+		order[root] = order[child]
+		root = child
+	}
+	order[root] = value
 }
 
 func validateSuperRelations(descs []TypeDesc) error {
