@@ -644,14 +644,14 @@ instances can reuse parked native context if its version has not changed;
 nested entries and guarded host access invalidate it. Shared or unknown state
 uses full restoration. Native and collector leases, parked roots, and scheduler
 entry/resume protocols are still required. See
-[host-call measurements and proof limits](docs/host-roundtrip-performance.md).
+[host-call measurements and proof limits](https://github.com/wago-org/knowledge/blob/main/docs/host-roundtrip-performance.md).
 
 `func(Caller, HostCall)` is the callback ABI for memory, reference operations,
 invocation context, and authorized synchronous re-entry. `Caller` wraps a
 private immutable token and expires when the callback returns. All host
 functions use flat `(module, name)` registration and retain normal plugin gate
 and reservation checks. See the
-[concrete caller design and measurements](docs/host-caller-performance.md).
+[concrete caller design and measurements](https://github.com/wago-org/knowledge/blob/main/docs/host-caller-performance.md).
 
 ---
 
