@@ -12,11 +12,15 @@ func BenchmarkScalingTypeAnalysis(b *testing.B) {
 			b.Run(fmt.Sprintf("canonical/duplicate=%t/N=%d", duplicates, n), func(b *testing.B) {
 				types := make([]RecType, n)
 				for i := range types {
-					idx := uint32(i)
+					var params []ValType
 					if duplicates {
-						idx = 0
+						params = []ValType{I32}
+					} else if i > 0 {
+						// Absolute references name earlier groups, as in validated
+						// modules; each signature still has constant-size metadata.
+						params = []ValType{RefVal(Ref(true, IndexedHeap(TypeIdx{Index: uint32(i - 1)}), false))}
 					}
-					types[i].SubTypes = []SubType{{Comp: CompType{Kind: CompFunc, Params: []ValType{RefVal(Ref(true, IndexedHeap(TypeIdx{Index: idx}), false))}}}}
+					types[i].SubTypes = []SubType{{Comp: CompType{Kind: CompFunc, Params: params}}}
 				}
 				b.ReportAllocs()
 				b.ResetTimer()
