@@ -2,11 +2,61 @@ package frontend
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func TestModuleFactsRejectsWrappedU32Indexes(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		kind   wasm.InstrKind
+		export wasm.ExternKind
+	}{
+		{"table", wasm.InstrTableGrow, wasm.ExternTable},
+		{"memory", wasm.InstrMemoryGrow, wasm.ExternMem},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, index := range []uint32{0, 1, 2, 0x7fffffff, 0x80000000, 0xfffffffe, 0xffffffff} {
+				t.Run(fmt.Sprintf("%08x", index), func(t *testing.T) {
+					facts, want := NewModuleFacts(2, 2), NewModuleFacts(2, 2)
+					err := recordModuleFact(tc.kind, index, facts)
+					if index < 2 {
+						if err != nil {
+							t.Fatalf("valid grow index: %v", err)
+						}
+						if tc.kind == wasm.InstrTableGrow {
+							want.TableGrowUsed[index] = true
+						} else {
+							want.MemoryGrowUsed[index] = true
+						}
+					} else if msg := fmt.Sprintf("%s.grow index %d out of range", tc.name, index); err == nil || err.Error() != msg {
+						t.Fatalf("grow error = %v, want %q", err, msg)
+					}
+					if !reflect.DeepEqual(facts, want) {
+						t.Fatalf("grow facts = %+v, want %+v", facts, want)
+					}
+
+					m := &wasm.Module{Tables: []wasm.Table{{}, {}}, Memories: []wasm.MemType{{}, {}},
+						Exports: []wasm.Export{{Index: wasm.ExternIdx{Kind: tc.export, Index: index}}}}
+					got, err := AnalyzeModuleFacts(m)
+					if index < 2 {
+						if err != nil {
+							t.Fatalf("valid export index: %v", err)
+						}
+						if tc.export == wasm.ExternTable && !got.TableExported[index] || tc.export == wasm.ExternMem && !got.MemoryExported[index] {
+							t.Fatalf("export fact not set: %+v", got)
+						}
+					} else if msg := fmt.Sprintf("%s export index %d out of range", tc.name, index); err == nil || err.Error() != msg || got != nil {
+						t.Fatalf("export facts = %+v, error = %v; want nil and %q", got, err, msg)
+					}
+				})
+			}
+		})
+	}
+}
 
 func TestNewModuleFactsVectorsAreDisjoint(t *testing.T) {
 	facts := NewModuleFacts(2, 3)

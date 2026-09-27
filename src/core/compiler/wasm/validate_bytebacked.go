@@ -879,7 +879,7 @@ func (v *moduleValidator) validateDirectElem(e directElem) error {
 func (v *moduleValidator) validateDirectElemPayload(e directElem) (RefType, error) {
 	switch e.kind {
 	case ElemFuncs:
-		if e.hasFuncs && int(e.maxFunc) >= (len(v.importsOfKind(ExternFunc))+len(v.m.FuncTypes)) {
+		if e.hasFuncs && uint(e.maxFunc) >= uint(len(v.importsOfKind(ExternFunc))+len(v.m.FuncTypes)) {
 			return RefType{}, v.err(ErrUnknownFunc, "elem")
 		}
 		return Ref(false, AbsHeap(HeapFunc), false), nil

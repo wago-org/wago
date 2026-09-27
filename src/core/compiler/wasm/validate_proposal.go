@@ -126,7 +126,7 @@ func (v *funcValidator) validateCatchPayload(c Catch) error {
 	}
 	var params []ValType
 	if c.Kind == CatchTag || c.Kind == CatchRef {
-		if int(c.Tag) >= (len(v.importsOfKind(ExternTag)) + len(v.m.Tags)) {
+		if uint(c.Tag) >= uint(len(v.importsOfKind(ExternTag))+len(v.m.Tags)) {
 			return v.verr(ErrUnknownTag, "catch")
 		}
 		ft, ok := v.tagFuncType(uint32(c.Tag))
@@ -450,7 +450,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "struct.get")
 		}
-		if int(in.Index2) >= len(fields) {
+		if uint(in.Index2) >= uint(len(fields)) {
 			return v.verr(ErrTypeMismatch, "unknown field")
 		}
 		f := fields[in.Index2]
@@ -468,7 +468,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "struct.set")
 		}
-		if int(in.Index2) >= len(fields) {
+		if uint(in.Index2) >= uint(len(fields)) {
 			return v.verr(ErrTypeMismatch, "unknown field")
 		}
 		f := fields[in.Index2]

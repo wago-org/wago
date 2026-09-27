@@ -468,6 +468,19 @@ jobs:
           go version
           Get-ComputerInfo | Select-Object OsName, OsArchitecture
 
+      - name: Execute portable package tests on 386
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        env:
+          CGO_ENABLED: '0'
+          GOARCH: '386'
+        run: |
+          go env GOOS GOARCH CGO_ENABLED
+          go test -count=1 \
+            ./src/core/compiler/wasm \
+            ./src/core/compiler/ir \
+            ./src/core/nativeabi \
+            ./src/core/compiler/backend/railshot/shared
+
       - name: Build & test
         if: matrix.runtime && runner.os != 'Windows'
         run: just test unit
