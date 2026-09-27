@@ -1,0 +1,61 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkTinyRetainedHighWaterRecovery/failed-starts=1         	    2881	     80020 ns/op	     65537 color-bytes	        17.00 live-objects	      64 B/op	       3 allocs/op
+BenchmarkTinyRetainedHighWaterRecovery/failed-starts=1         	    3024	     78531 ns/op	     65537 color-bytes	        17.00 live-objects	      64 B/op	       3 allocs/op
+BenchmarkTinyRetainedHighWaterRecovery/failed-starts=1         	    3048	     79123 ns/op	     65537 color-bytes	        17.00 live-objects	      64 B/op	       3 allocs/op
+BenchmarkTinyRetainedHighWaterRecovery/failed-starts=1         	    2985	     78962 ns/op	     65537 color-bytes	        17.00 live-objects	      64 B/op	       3 allocs/op
+BenchmarkTinyRetainedHighWaterRecovery/failed-starts=1         	    3084	     77689 ns/op	     65537 color-bytes	        17.00 live-objects	      64 B/op	       3 allocs/op
+BenchmarkTinyRetainedHighWaterRecovery/failed-starts=5         	    2970	     80176 ns/op	     65537 color-bytes	        17.00 live-objects	     224 B/op	      11 allocs/op
+BenchmarkTinyRetainedHighWaterRecovery/failed-starts=5         	    2980	     82698 ns/op	     65537 color-bytes	        17.00 live-objects	     224 B/op	      11 allocs/op
+BenchmarkTinyRetainedHighWaterRecovery/failed-starts=5         	    2931	     81232 ns/op	     65537 color-bytes	        17.00 live-objects	     224 B/op	      11 allocs/op
+BenchmarkTinyRetainedHighWaterRecovery/failed-starts=5         	    2977	     80327 ns/op	     65537 color-bytes	        17.00 live-objects	     224 B/op	      11 allocs/op
+BenchmarkTinyRetainedHighWaterRecovery/failed-starts=5         	    2967	     80741 ns/op	     65537 color-bytes	        17.00 live-objects	     224 B/op	      11 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=0           	 5455930	        44.10 ns/op	         0 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=0           	 5484498	        43.65 ns/op	         0 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=0           	 5510317	        43.33 ns/op	         0 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=0           	 5552496	        43.87 ns/op	         0 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=0           	 5523032	        43.60 ns/op	         0 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=1           	 2846916	        83.89 ns/op	         8.000 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=1           	 2861979	        85.25 ns/op	         8.000 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=1           	 2847595	        84.07 ns/op	         8.000 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=1           	 2886724	        82.29 ns/op	         8.000 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=1           	 2899779	        83.54 ns/op	         8.000 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=256         	   92722	      2336 ns/op	      1024 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=256         	  100956	      2317 ns/op	      1024 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=256         	  102619	      2350 ns/op	      1024 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=256         	  102061	      2387 ns/op	      1024 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=256         	  103216	      2341 ns/op	      1024 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=4096        	    6655	     36170 ns/op	     16384 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=4096        	    6669	     36258 ns/op	     16384 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=4096        	    6625	     36761 ns/op	     16384 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=4096        	    6658	     36210 ns/op	     16384 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=false/roots=4096        	    6633	     36201 ns/op	     16384 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=0            	 5505008	        43.58 ns/op	         0 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=0            	 5489782	        44.26 ns/op	         0 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=0            	 5413821	        43.97 ns/op	         0 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=0            	 5434046	        43.89 ns/op	         0 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=0            	 5494678	        43.78 ns/op	         0 root-buffer-bytes	       0 B/op	       0 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=1            	 2390790	        97.73 ns/op	         8.000 root-buffer-bytes	       8 B/op	       1 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=1            	 2427072	        97.26 ns/op	         8.000 root-buffer-bytes	       8 B/op	       1 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=1            	 2459757	        96.74 ns/op	         8.000 root-buffer-bytes	       8 B/op	       1 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=1            	 2422287	        96.86 ns/op	         8.000 root-buffer-bytes	       8 B/op	       1 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=1            	 2470720	        96.32 ns/op	         8.000 root-buffer-bytes	       8 B/op	       1 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=256          	   84360	      2737 ns/op	      1024 root-buffer-bytes	    2040 B/op	       8 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=256          	   83792	      2784 ns/op	      1024 root-buffer-bytes	    2040 B/op	       8 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=256          	   80748	      2754 ns/op	      1024 root-buffer-bytes	    2040 B/op	       8 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=256          	   82478	      2723 ns/op	      1024 root-buffer-bytes	    2040 B/op	       8 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=256          	   84237	      2759 ns/op	      1024 root-buffer-bytes	    2040 B/op	       8 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=4096         	    5037	     42388 ns/op	     16384 root-buffer-bytes	   49784 B/op	      14 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=4096         	    5047	     42837 ns/op	     16384 root-buffer-bytes	   49784 B/op	      14 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=4096         	    4539	     44126 ns/op	     16384 root-buffer-bytes	   49784 B/op	      14 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=4096         	    5023	     41755 ns/op	     16384 root-buffer-bytes	   49784 B/op	      14 allocs/op
+BenchmarkTinyTransientRootStaging/cold=true/roots=4096         	    5218	     41932 ns/op	     16384 root-buffer-bytes	   49784 B/op	      14 allocs/op
+BenchmarkTinyFullWithDirectRoot                                	 2268736	       104.4 ns/op	      24 B/op	       1 allocs/op
+BenchmarkTinyFullWithDirectRoot                                	 2285937	       104.0 ns/op	      24 B/op	       1 allocs/op
+BenchmarkTinyFullWithDirectRoot                                	 2296638	       105.6 ns/op	      24 B/op	       1 allocs/op
+BenchmarkTinyFullWithDirectRoot                                	 2276835	       105.1 ns/op	      24 B/op	       1 allocs/op
+BenchmarkTinyFullWithDirectRoot                                	 2290623	       104.5 ns/op	      24 B/op	       1 allocs/op
+PASS
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	15.470s

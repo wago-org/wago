@@ -142,7 +142,7 @@ type Collector struct {
 	freeHandles         []uint32
 	nurseryHandles      []uint32 // dense live nursery set; minor collection never scans all old handles
 	mark                []bool
-	markStack           []uint32
+	markStack           []uint32 // Throughput tracing stack; Tiny transient-root staging buffer.
 	promotionScratch    []plannedPromotion
 	remembered          []uint32
 	objectCards         []objectCard

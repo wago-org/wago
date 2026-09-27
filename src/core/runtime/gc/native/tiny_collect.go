@@ -369,6 +369,9 @@ func (c *Collector) tinyCollectFull(roots RootSet) error {
 }
 
 func (c *Collector) tinyCollectNonIncremental(roots RootSet) error {
+	if err := c.tinyStageTransientRoots(roots); err != nil {
+		return c.failTinyTelemetryCycle(err)
+	}
 	if c.tinyGC.state != tinyIdle {
 		// An unfinished cycle can leave marks from any earlier epoch. A
 		// restart must invalidate all of them before reusing an epoch.
@@ -383,9 +386,7 @@ func (c *Collector) tinyCollectNonIncremental(roots RootSet) error {
 	c.tinyGC.scan = tinyScanCursor{}
 	c.tinyGC.rootPhase = tinyRootsNone
 	c.tinyGC.state = tinyMark
-	if err := c.tinyMarkTransientRoots(roots); err != nil {
-		return c.failTinyTelemetryCycle(err)
-	}
+	c.tinyApplyStagedRoots()
 	for _, r := range c.globalSlots {
 		c.tinyMarkRef(r)
 	}
@@ -424,6 +425,9 @@ func (c *Collector) tinyStartMark(roots RootSet) error {
 	if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle != 0 {
 		return errors.New("gc: Tiny bounded poison sweep must complete before collection restart")
 	}
+	if err := c.tinyStageTransientRoots(roots); err != nil {
+		return c.failTinyTelemetryCycle(err)
+	}
 	if c.tinyGC.state != tinyIdle {
 		// An unfinished cycle can leave marks from any earlier epoch. A
 		// restart must invalidate all of them before reusing an epoch.
@@ -439,9 +443,7 @@ func (c *Collector) tinyStartMark(roots RootSet) error {
 	c.tinyGC.state = tinyMark
 	c.tinyGC.rootPhase = tinyRootsTransient
 	c.tinyGC.sweep = 0
-	if err := c.tinyMarkTransientRoots(roots); err != nil {
-		return c.failTinyTelemetryCycle(err)
-	}
+	c.tinyApplyStagedRoots()
 	c.tinyGC.rootPhase = tinyRootsGlobals
 	_, err := c.tinyDrainRootBudget(nil)
 	return err
@@ -567,18 +569,53 @@ func (c *Collector) tinyVisitTransientRoot(class RootClass, r Ref) bool {
 	return c.VisitRootRef(r)
 }
 
-func (c *Collector) tinyMarkTransientRoots(roots RootSet) error {
-	c.rootMarkMode = rootMarkTinyBounded
-	c.tinyGC.lastStepWork.refSlots = 0
+// Stage roots before changing the mark epoch, colors, queue, or scan cursor.
+// A one-shot source is consumed once; rejection leaves the existing cycle
+// intact. Tiny reuses the otherwise idle Throughput mark stack, retaining its
+// capacity across phases and cycles without growing the Collector itself.
+func (c *Collector) tinyStageTransientRoots(roots RootSet) error {
+	c.markStack = c.markStack[:0]
+	c.rootMarkMode = rootMarkTinyStage
+	accepted := false
+	defer func() {
+		c.finishDirectRootMark()
+		if !accepted {
+			c.markStack = c.markStack[:0]
+		}
+	}()
 	complete, err := c.tinyWalkTransientRoots(roots)
-	c.finishDirectRootMark()
-	c.tinyGC.lastStepWork.refSlots = 0
 	if err != nil {
 		return err
 	}
 	if !complete {
 		return errors.New("gc: Tiny transient root enumeration stopped unexpectedly")
 	}
+	accepted = true
+	return nil
+}
+
+func (c *Collector) tinyStageRootRef(r Ref) {
+	if !r.IsObj() {
+		return
+	}
+	h := handleOf(r)
+	if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceTiny {
+		c.markStack = append(c.markStack, h)
+	}
+}
+
+func (c *Collector) tinyApplyStagedRoots() {
+	for _, h := range c.markStack {
+		c.tinyMarkRef(makeObjRef(h))
+	}
+	c.markStack = c.markStack[:0]
+}
+
+func (c *Collector) tinyMarkTransientRoots(roots RootSet) error {
+	if err := c.tinyStageTransientRoots(roots); err != nil {
+		return err
+	}
+	c.tinyApplyStagedRoots()
 	return nil
 }
 
