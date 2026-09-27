@@ -654,12 +654,12 @@ func (a *Asm) reuseIndexedBase(base, index Reg) bool {
 		return false
 	}
 	mem := a.wordAt(len(a.B) - 4)
-	// Unsigned-immediate scalar loads/stores have fixed base bits 0x39000000;
+	// Unsigned-immediate integer and SIMD/FP accesses have fixed bits 0x39000000;
 	// bits 9:5 are Rn. This form never writes its base register back.
 	if mem&0x3B000000 != 0x39000000 || Reg(mem>>5&31) != X16 {
 		return false
 	}
-	if mem&(1<<22) != 0 { // load: Rt is a destination
+	if loadStoreMayWriteGPR(mem) {
 		dst := Reg(mem & 31)
 		if dst == X16 || dst == base || dst == index {
 			return false
@@ -702,20 +702,31 @@ func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
 	return false
 }
 
+// loadStoreMayWriteGPR applies only to the non-writeback unsigned-immediate
+// and register-offset classes recognized below. With V=0, opc=00 is a store,
+// 01 is a zero-extending load, and 10/11 are sign-extending loads. With V=1,
+// Rt names a SIMD/FP register, never an address GPR (even STR Q has opc=10).
+// PRFM (V=0, size=11, opc=10), which we do not emit, is conservatively treated
+// as a possible write. This is a clobber check, not a general load decoder.
+func loadStoreMayWriteGPR(instruction uint32) bool {
+	return instruction&(1<<26) == 0 && instruction&(3<<22) != 0
+}
+
 func preservesIndexedBase(instruction uint32, base, index Reg) bool {
 	writesAddress := func(dst Reg) bool {
 		return dst == X16 || dst == base || dst == index
 	}
 	if instruction&0x3B000000 == 0x39000000 {
-		return instruction&(1<<22) == 0 || !writesAddress(Reg(instruction&31))
+		return !loadStoreMayWriteGPR(instruction) || !writesAddress(Reg(instruction&31))
 	}
 	if instruction&0x3B20FC00 == 0x38206800 {
-		return instruction&(3<<22) == 0 || !writesAddress(Reg(instruction&31))
+		return !loadStoreMayWriteGPR(instruction) || !writesAddress(Reg(instruction&31))
 	}
 	if instruction&0x1F000000 == 0x11000000 {
 		return !writesAddress(Reg(instruction & 31))
 	}
-	// ADD/SUB (shifted register), including flag-setting forms, writes only Rd.
+	// ADD/SUB (shifted or extended register), including flag-setting forms,
+	// writes only Rd.
 	// Operand width and NZCV changes do not affect the cached 64-bit address.
 	if instruction&0x1F000000 == 0x0B000000 {
 		return !writesAddress(Reg(instruction & 31))
