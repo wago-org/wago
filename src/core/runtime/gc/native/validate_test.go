@@ -36,7 +36,7 @@ func TestValidateTypeDescsRejectsMalformedSuperMetadata(t *testing.T) {
 	}
 
 	finalStruct, _ := NewStructDesc(0, []StorageKind{StorageI32})
-	childOfFinal, _ := NewStructDesc(1, []StorageKind{StorageRef})
+	childOfFinal, _ := NewStructDesc(1, []StorageKind{StorageI32})
 	childOfFinal.HasSuper = true
 	childOfFinal.Super = 0
 	structSuper, _ := NewStructDesc(0, []StorageKind{StorageI32})
