@@ -4,6 +4,7 @@ package wago
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math/bits"
 	"testing"
 
@@ -66,35 +67,44 @@ func TestARM64MemoryFillPreservesLiveIntegerValues(t *testing.T) {
 	}
 	defer instance.Close()
 
-	const dst, length = uint32(64), uint32(0)
-	for _, seed := range []uint32{1, 2, 0x1234567} {
-		want := []uint32{
-			seed * 3,
-			seed + 7,
-			seed ^ 0x5a5a,
-			seed << 3,
-			seed - 11,
-			seed * 17,
-			seed | 0x100,
-			bits.RotateLeft32(seed, 5),
-		}
-		wantResult := dst + length
-		for _, value := range want {
-			wantResult += value
-		}
-		got, err := instance.Invoke("probe", uint64(dst), 255, uint64(length), uint64(seed))
-		if err != nil {
-			t.Fatalf("seed %#x: %v", seed, err)
-		}
-		if gotResult := uint32(got[0]); gotResult != wantResult {
-			t.Errorf("seed %#x: result = %#x, want %#x", seed, gotResult, wantResult)
-		}
-		memory := instance.Memory().UnsafeBytes()[dst+length : dst+length+32]
-		for i, wantValue := range want {
-			if gotValue := binary.LittleEndian.Uint32(memory[i*4:]); gotValue != wantValue {
-				t.Errorf("seed %#x: value %d = %#x, want %#x", seed, i, gotValue, wantValue)
+	const dst = uint32(64)
+	for _, length := range []uint32{0, 1, 7, 8, 63, 64, 255, 256, 1024} {
+		t.Run(fmt.Sprint(length), func(t *testing.T) {
+			for _, seed := range []uint32{1, 2, 0x1234567} {
+				want := []uint32{
+					seed * 3,
+					seed + 7,
+					seed ^ 0x5a5a,
+					seed << 3,
+					seed - 11,
+					seed * 17,
+					seed | 0x100,
+					bits.RotateLeft32(seed, 5),
+				}
+				wantResult := dst + length
+				for _, value := range want {
+					wantResult += value
+				}
+				got, err := instance.Invoke("probe", uint64(dst), 255, uint64(length), uint64(seed))
+				if err != nil {
+					t.Fatalf("seed %#x: %v", seed, err)
+				}
+				if gotResult := uint32(got[0]); gotResult != wantResult {
+					t.Errorf("seed %#x: result = %#x, want %#x", seed, gotResult, wantResult)
+				}
+				for i, value := range instance.Memory().UnsafeBytes()[dst : dst+length] {
+					if value != 255 {
+						t.Fatalf("filled byte %d = %#x, want 0xff", i, value)
+					}
+				}
+				memory := instance.Memory().UnsafeBytes()[dst+length : dst+length+32]
+				for i, wantValue := range want {
+					if gotValue := binary.LittleEndian.Uint32(memory[i*4:]); gotValue != wantValue {
+						t.Errorf("seed %#x: value %d = %#x, want %#x", seed, i, gotValue, wantValue)
+					}
+				}
 			}
-		}
+		})
 	}
 }
 
