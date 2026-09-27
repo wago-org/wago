@@ -38,9 +38,12 @@ type FunctionRootMap struct {
 // scanner trusts native offsets. Maps and slots must be strictly ordered so
 // malformed or duplicate metadata cannot create ambiguous mutable roots.
 func ValidateRootMaps(maps []FunctionRootMap, localFunctions int) error {
+	if localFunctions < 0 {
+		return fmt.Errorf("negative local function count %d", localFunctions)
+	}
 	var previousFunction uint32
 	for i, rootMap := range maps {
-		if int(rootMap.LocalFunction) >= localFunctions {
+		if uint(rootMap.LocalFunction) >= uint(localFunctions) {
 			return fmt.Errorf("native root map %d function %d is out of range", i, rootMap.LocalFunction)
 		}
 		if i != 0 && rootMap.LocalFunction <= previousFunction {

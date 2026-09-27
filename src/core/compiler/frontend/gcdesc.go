@@ -311,7 +311,7 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 			if err != nil {
 				return 0, fmt.Errorf("invalid referenced type index %d", heap.Type().Index)
 			}
-			if int(idx) < len(resolver.flat) && resolver.flat[idx].Source.Comp.Kind == wasm.CompFunc {
+			if uint(idx) < uint(len(resolver.flat)) && resolver.flat[idx].Source.Comp.Kind == wasm.CompFunc {
 				opaque = gc.StorageFuncRef
 			}
 		} else {

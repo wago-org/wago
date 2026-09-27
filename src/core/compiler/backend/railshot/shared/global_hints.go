@@ -74,7 +74,7 @@ func (a *GlobalHintAccumulator) Reset(nGlobals int) {
 }
 
 func (a *GlobalHintAccumulator) touch(index uint32) bool {
-	if int(index) >= len(a.scores) {
+	if uint(index) >= uint(len(a.scores)) {
 		return false
 	}
 	if a.marks[index]&globalHintEpochMask != a.epoch {

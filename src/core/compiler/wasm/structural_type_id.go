@@ -85,7 +85,7 @@ func (m *Module) structuralIndexedFuncTypeKey(typeIdx uint32) (uint64, bool) {
 func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(byte)) bool {
 	const maxCanonicalBytes = 1 << 20
 	flatCount := m.flattenedTypeCount()
-	if int(typeIdx) >= flatCount {
+	if uint(typeIdx) >= uint(flatCount) {
 		return false
 	}
 	indexScratch := make([]uint32, 2*flatCount+len(m.Types))
@@ -96,7 +96,7 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 	for group := range m.Types {
 		starts[group] = flat
 		for member := range m.Types[group].SubTypes {
-			if int(flat) >= flatCount {
+			if uint(flat) >= uint(flatCount) {
 				return false
 			}
 			groupOf[flat] = uint32(group)
@@ -181,7 +181,7 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 				return writeRef(dst, heap.Type(), currentGroup)
 			case HeapDefType:
 				group, member, _, valid := heap.Def()
-				if !valid || int(group) >= len(starts) || member >= uint32(len(m.Types[group].SubTypes)) {
+				if !valid || uint(group) >= uint(len(starts)) || uint(member) >= uint(len(m.Types[group].SubTypes)) {
 					return false
 				}
 				return writeRef(dst, TypeIdx{Index: starts[group] + member}, currentGroup)
@@ -292,7 +292,7 @@ func (m *Module) writeStructuralIndexedFuncTypeLinear(typeIdx uint32, mix func(b
 		if digest, ok := memberDigests[index]; ok {
 			return digest, true
 		}
-		if int(index) >= flatCount {
+		if uint(index) >= uint(flatCount) {
 			return zero, false
 		}
 		group := int(groupOf[index])
@@ -413,7 +413,7 @@ func (m *Module) writeStructuralIndexedFuncTypeExpanded(typeIdx uint32, mix func
 				return ok && writeType(idx)
 			case HeapDefType:
 				group, member, _, valid := heap.Def()
-				if !valid || int(group) >= len(m.Types) || member >= uint32(len(m.Types[group].SubTypes)) {
+				if !valid || uint(group) >= uint(len(m.Types)) || uint(member) >= uint(len(m.Types[group].SubTypes)) {
 					return false
 				}
 				idx := uint32(0)

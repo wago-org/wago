@@ -571,7 +571,7 @@ func (v *moduleValidator) declareFunc(idx uint32) {
 
 func (v *moduleValidator) isDeclaredFunc(idx uint32) bool {
 	word := idx / 64
-	return int(word) < len(v.declaredFuncBits) && v.declaredFuncBits[word]&(uint64(1)<<(idx%64)) != 0
+	return uint(word) < uint(len(v.declaredFuncBits)) && v.declaredFuncBits[word]&(uint64(1)<<(idx%64)) != 0
 }
 
 func (v *moduleValidator) validateExternType(et ExternType) error {
@@ -856,15 +856,15 @@ func (v *moduleValidator) memoryProperties(idx uint32) (uint8, bool) {
 func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 	switch x.Kind {
 	case ExternFunc:
-		return int(x.Index) < (len(v.importsOfKind(ExternFunc)) + len(v.m.FuncTypes))
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternFunc))+len(v.m.FuncTypes))
 	case ExternTable:
-		return int(x.Index) < (len(v.importsOfKind(ExternTable)) + len(v.m.Tables))
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternTable))+len(v.m.Tables))
 	case ExternMem:
-		return int(x.Index) < (len(v.importsOfKind(ExternMem)) + len(v.m.Memories))
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternMem))+len(v.m.Memories))
 	case ExternGlobal:
-		return int(x.Index) < (len(v.importsOfKind(ExternGlobal)) + len(v.m.Globals))
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternGlobal))+len(v.m.Globals))
 	case ExternTag:
-		return int(x.Index) < (len(v.importsOfKind(ExternTag)) + len(v.m.Tags))
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternTag))+len(v.m.Tags))
 	}
 	return false
 }
@@ -918,7 +918,7 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 	switch e.Kind.Kind {
 	case ElemFuncs:
 		for _, f := range e.Kind.Funcs {
-			if int(f) >= (len(v.importsOfKind(ExternFunc)) + len(v.m.FuncTypes)) {
+			if uint(f) >= uint(len(v.importsOfKind(ExternFunc))+len(v.m.FuncTypes)) {
 				return RefType{}, v.err(ErrUnknownFunc, "elem")
 			}
 		}
@@ -1226,7 +1226,7 @@ func (v *funcValidator) restoreLocalInitialization(height int) {
 }
 
 func (v *funcValidator) label(depth uint32) ([]ValType, error) {
-	if int(depth) >= len(v.ctrls) {
+	if uint(depth) >= uint(len(v.ctrls)) {
 		return nil, v.verr(ErrUnknownLabel, "")
 	}
 	f := v.ctrls[len(v.ctrls)-1-int(depth)]
