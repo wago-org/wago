@@ -89,9 +89,18 @@ func (s *referenceStore) registerGCFrameCodeRangeLocked(in *Instance) {
 		s.gcDomains = new(gcDomainTopology)
 	}
 	if s.gcDomains.codeRanges == nil {
+		// A single GC code owner needs no hash tables or ownership links. This
+		// is the common first-instantiation case; promote when a second arrives.
+		first := s.gcDomains.singleCodeOwner
+		if first == nil || first == in {
+			s.gcDomains.singleCodeOwner = in
+			return
+		}
+		s.gcDomains.singleCodeOwner = nil
 		s.gcDomains.codeRanges = &gcFrameCodeRangeIndex{
 			byCollector: make(map[*gc.Collector]*gcCollectorCodeRanges),
 		}
+		s.registerGCFrameCodeRangeLocked(first)
 	}
 	if s.gcDomains.codeRanges.byInstance == nil {
 		s.gcDomains.codeRanges.byInstance = make(map[*Instance]*gcFrameCodeOwnerLink)
@@ -129,7 +138,14 @@ func (s *referenceStore) registerGCFrameCodeRangeLocked(in *Instance) {
 }
 
 func (s *referenceStore) unregisterGCFrameCodeRangeLocked(in *Instance) {
-	if s == nil || s.gcDomains == nil || s.gcDomains.codeRanges == nil || in == nil || in.gc == nil || in.c == nil || in.base == 0 {
+	if s == nil || s.gcDomains == nil || in == nil {
+		return
+	}
+	if s.gcDomains.singleCodeOwner == in {
+		s.gcDomains.singleCodeOwner = nil
+		return
+	}
+	if s.gcDomains.codeRanges == nil || in.gc == nil || in.c == nil || in.base == 0 {
 		return
 	}
 	collector := s.gcDomains.codeRanges.byCollector[in.gc]
@@ -195,11 +211,12 @@ func (s *referenceStore) unregisterGCFrameCodeRangeLocked(in *Instance) {
 // update the list before native resume.
 type gcDomainTopology struct {
 	gcTopologyGate
-	first       *gcStoreDomain
-	last        *gcStoreDomain
-	n           int
-	byCollector map[*gc.Collector]*gcStoreDomain
-	codeRanges  *gcFrameCodeRangeIndex
+	first           *gcStoreDomain
+	last            *gcStoreDomain
+	n               int
+	byCollector     map[*gc.Collector]*gcStoreDomain
+	codeRanges      *gcFrameCodeRangeIndex
+	singleCodeOwner *Instance
 
 	funcrefMu       sync.Mutex
 	funcrefGCActive bool
@@ -929,7 +946,14 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
 		}
 		rel := uint32(retPC - codeBase)
-		adapterIndex := sort.Search(len(adapterReturnOffsets), func(i int) bool { return adapterReturnOffsets[i] >= rel })
+		adapterIndex := 0
+		if len(adapterReturnOffsets) <= 8 {
+			for adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] < rel {
+				adapterIndex++
+			}
+		} else {
+			adapterIndex = sort.Search(len(adapterReturnOffsets), func(i int) bool { return adapterReturnOffsets[i] >= rel })
+		}
 		if adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] == rel {
 			return true
 		}
@@ -937,7 +961,16 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller frame address overflows")})
 		}
 		returnBase := base + uintptr(frameBytes) + callerFrameBias
-		callsiteIndex := sort.Search(len(callsites), func(i int) bool { return callsites[i].returnOffset >= rel })
+		// Tiny sorted tables beat binary-search setup; larger tables retain
+		// logarithmic lookup. The measured crossover is between 8 and 16.
+		callsiteIndex := 0
+		if len(callsites) <= 8 {
+			for callsiteIndex < len(callsites) && callsites[callsiteIndex].returnOffset < rel {
+				callsiteIndex++
+			}
+		} else {
+			callsiteIndex = sort.Search(len(callsites), func(i int) bool { return callsites[i].returnOffset >= rel })
+		}
 		if callsiteIndex == len(callsites) || callsites[callsiteIndex].returnOffset != rel {
 			panic(gcStructHelperError{err: fmt.Errorf("generic GC native return offset %d has no callsite map", rel)})
 		}
@@ -1480,6 +1513,13 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if topology := s.gcDomains; topology != nil && topology.singleCodeOwner != nil {
+		owner := topology.singleCodeOwner
+		if owner.gc == collector && pc >= owner.base && pc-owner.base < uintptr(len(owner.c.code)) {
+			return owner
+		}
+		return nil
+	}
 	if topology := s.gcDomains; topology != nil && topology.codeRanges != nil {
 		if ranges := topology.codeRanges.byCollector[collector]; ranges != nil {
 			for _, image := range ranges.byPage[pc>>gcFrameCodeRangePageShift] {
@@ -1647,8 +1687,12 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 		err = selected.collector.AddTypes(types[len(selected.types):])
 	}
 	if err == nil {
+		// Compatibility probes read these slices under the store lock. Keep
+		// publication in that lock as well as the collector's mutation lock.
+		s.mu.Lock()
 		selected.types, selected.typeReps = types, reps
 		domainTypeCount = len(selected.typeReps)
+		s.mu.Unlock()
 	}
 	selected.mu.Unlock()
 	selected.invocationMu.Unlock()
@@ -1728,8 +1772,8 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 		keyCapacity = types
 	}
 	keys := make([]uint64, 0, keyCapacity)
-	identitiesByType := make(map[uint32][]byte, min(keyCapacity, len(in.c.Types)))
-	typeGroups := compiledStructuralTypeGroups(in.c.Types)
+	var identitiesByType map[uint32][]byte
+	var typeGroups map[uint32]structuralTypeGroupBounds
 	identityBytes := 0
 	for i, key := range in.c.FuncTypeID {
 		canonical, cached := in.c.cachedStructuralCallIdentity(i)
@@ -1739,12 +1783,18 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 				canonical = identitiesByType[sig.TypeIndex]
 			}
 			if canonical == nil {
+				if typeGroups == nil && sigOK && sig.HasTypeIndex {
+					typeGroups = compiledStructuralTypeGroups(in.c.Types)
+				}
 				var err error
 				canonical, err = compiledStructuralCallIdentityWithGroups(in.c, i, typeGroups)
 				if err != nil {
 					return fmt.Errorf("wago: function %d exact type: %w", i, err)
 				}
-				if sigOK && sig.HasTypeIndex {
+				if sigOK && sig.HasTypeIndex && len(in.c.FuncTypeID) > 1 {
+					if identitiesByType == nil {
+						identitiesByType = make(map[uint32][]byte, min(keyCapacity, len(in.c.Types)))
+					}
 					identitiesByType[sig.TypeIndex] = canonical
 				}
 			}
@@ -3017,6 +3067,8 @@ func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
 		topology.last = nil
 		topology.n = 0
 		topology.byCollector = nil
+		topology.codeRanges = nil
+		topology.singleCodeOwner = nil
 		topology.funcrefMu.Lock()
 		topology.funcrefTables = nil
 		topology.funcrefMu.Unlock()

@@ -151,7 +151,12 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 		return true
 	}
 	appendU32 := func(dst *[]byte, value uint32) bool {
-		return appendByte(dst, byte(value)) && appendByte(dst, byte(value>>8)) && appendByte(dst, byte(value>>16)) && appendByte(dst, byte(value>>24))
+		if totalBytes > maxCanonicalBytes-4 {
+			return false
+		}
+		totalBytes += 4
+		*dst = binary.LittleEndian.AppendUint32(*dst, value)
+		return true
 	}
 
 	var buildGroup func(int) ([]byte, bool)

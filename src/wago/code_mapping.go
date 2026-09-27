@@ -61,7 +61,7 @@ type compiledHostThunkCache struct {
 // fixed code-mapping header. It is allocated only when a module needs them.
 type compiledCacheIndexes struct {
 	valueTypeIndex     map[ValueTypeDescriptor]uint32
-	gcTypeMappings     map[uint64]gcTypeMappingCacheEntry
+	gcTypeMapping      *gcTypeMappingCacheEntry
 	funcrefImportState atomic.Uint32 // 0 unknown, 1 no imported funcref containers, 2 at least one
 }
 

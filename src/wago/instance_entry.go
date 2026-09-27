@@ -8,7 +8,7 @@ import (
 )
 
 // invocationGate has a zero-value, allocation-free uncontended path. Contended
-// callers queue for direct wake-one handoff; cancellation removes its waiter in
+// callers queue for wake-one notification; cancellation removes its waiter in
 // constant time and never changes the active owner's lifetime.
 type invocationGate struct {
 	state atomic.Uint32
@@ -36,9 +36,15 @@ const (
 	invocationGateWaiters = uint32(2)
 	invocationGateFast    = uint32(4)
 	invocationGateRevoked = uint32(8)
+	invocationGateHandoff = uint32(16)
 )
 
-func (g *invocationGate) Lock() { _ = g.lockContext(nil) }
+func (g *invocationGate) Lock() {
+	if g.state.CompareAndSwap(0, invocationGateHeld) {
+		return
+	}
+	_ = g.lockContext(nil)
+}
 
 func (g *invocationGate) lockContext(ctx context.Context) error {
 	for {
@@ -47,7 +53,7 @@ func (g *invocationGate) lockContext(ctx context.Context) error {
 				return err
 			}
 		}
-		if g.state.CompareAndSwap(0, invocationGateHeld) || g.state.CompareAndSwap(invocationGateRevoked, invocationGateRevoked|invocationGateHeld) {
+		if g.state.CompareAndSwap(0, invocationGateHeld) || g.state.CompareAndSwap(invocationGateRevoked, invocationGateRevoked|invocationGateHeld) || g.tryAcquireHandoff() {
 			// Cancellation observed after acquisition wins; return the slot before
 			// the caller publishes an identity or arms an interrupt watcher.
 			if ctx != nil {
@@ -77,16 +83,11 @@ func (g *invocationGate) lockContext(ctx context.Context) error {
 			}
 			return nil
 		}
-		slow = g.slowStateLocked()
-		waiter := &invocationGateWaiter{ready: make(chan struct{}), queued: true}
-		waiter.previous = slow.tail
-		if slow.tail == nil {
-			slow.head = waiter
-		} else {
-			slow.tail.next = waiter
+		waiter := g.enqueueWaiterLocked(state)
+		if waiter == nil {
+			g.mu.Unlock()
+			continue
 		}
-		slow.tail = waiter
-		g.updateWaiterBitLocked()
 		g.mu.Unlock()
 
 		if ctx == nil {
@@ -104,11 +105,16 @@ func (g *invocationGate) lockContext(ctx context.Context) error {
 				}
 				granted := waiter.granted
 				g.mu.Unlock()
-				if granted {
+				if granted && g.tryAcquireHandoff() {
 					g.Unlock()
 				}
 				return ctx.Err()
 			}
+		}
+		// Notification transfers the obligation to acquire or pass on the gate.
+		// Another caller may claim this handoff before the notified waiter runs.
+		if !g.tryAcquireHandoff() {
+			continue
 		}
 		if ctx != nil {
 			if err := ctx.Err(); err != nil {
@@ -118,6 +124,42 @@ func (g *invocationGate) lockContext(ctx context.Context) error {
 		}
 		return nil
 	}
+}
+
+// Handoff is a reserved ownership obligation carried by a notified caller.
+// A new caller may claim it before that caller runs, avoiding a scheduler round
+// trip for every short critical section. Claiming clears Handoff atomically;
+// the successful caller alone may enter, and must eventually Unlock. A notified
+// caller that loses the claim retries admission or, when canceled, returns.
+func (g *invocationGate) tryAcquireHandoff() bool {
+	for {
+		state := g.state.Load()
+		if state&invocationGateHandoff == 0 {
+			return false
+		}
+		if g.state.CompareAndSwap(state, state&^invocationGateHandoff) {
+			return true
+		}
+	}
+}
+
+// enqueueWaiterLocked commits registration only while the observed owner still
+// owns the gate. If its atomic release wins, the caller must retry acquisition.
+// Once Waiters is published, release must take mu and will see the queued node.
+// The caller holds mu throughout publication and insertion.
+func (g *invocationGate) enqueueWaiterLocked(observed uint32) *invocationGateWaiter {
+	if observed&invocationGateHeld == 0 || !g.state.CompareAndSwap(observed, observed|invocationGateWaiters) {
+		return nil
+	}
+	slow := g.slowStateLocked()
+	waiter := &invocationGateWaiter{ready: make(chan struct{}), queued: true, previous: slow.tail}
+	if slow.tail == nil {
+		slow.head = waiter
+	} else {
+		slow.tail.next = waiter
+	}
+	slow.tail = waiter
+	return waiter
 }
 
 func (g *invocationGate) slowStateLocked() *invocationGateSlowState {
@@ -160,13 +202,16 @@ func (g *invocationGate) removeWaiterLocked(waiter *invocationGateWaiter) {
 	waiter.queued = false
 }
 
-// Unlock transfers ownership directly to the oldest waiter. No free state is
-// published between owners, so a stream of contended callers causes one wake
-// per release instead of a broadcast/retry wave.
+// Unlock notifies the oldest waiter and reserves a handoff obligation. The
+// notified caller or a new caller atomically claims it before entering. Keeping
+// Held set until the claim prevents an ownerless sleeping queue, while allowing
+// barging avoids forcing a scheduler round trip for every contended call.
 func (g *invocationGate) Unlock() {
-	// Preserve the upstream direct-call release when this owner has no queued
-	// callers or revocation observer.
-	if g.state.CompareAndSwap(invocationGateHeld|invocationGateFast, 0) {
+	// Both ordinary and direct owners release atomically when no queue or
+	// revocation observer needs a handoff. Registration validates this same word.
+	state := g.state.Load()
+	if state&invocationGateHeld != 0 && state&invocationGateWaiters == 0 &&
+		g.state.CompareAndSwap(state, state&invocationGateRevoked) {
 		return
 	}
 	g.mu.Lock()
@@ -191,7 +236,7 @@ func (g *invocationGate) Unlock() {
 	if waiter != nil {
 		g.removeWaiterLocked(waiter)
 		waiter.granted = true
-		next := previous&invocationGateRevoked | invocationGateHeld
+		next := previous&invocationGateRevoked | invocationGateHeld | invocationGateHandoff
 		if slow.head != nil || slow.revocationWaiters {
 			next |= invocationGateWaiters
 		}

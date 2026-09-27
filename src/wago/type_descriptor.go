@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"hash"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -424,16 +423,10 @@ func (c *Compiled) internExactValueType(t ValueTypeDescriptor) uint32 {
 	if c == nil {
 		return 0
 	}
-	indexes := c.loadCompileIndexes()
-	if len(c.ValueTypes) <= 8 && (indexes == nil || indexes.valueTypeIndex == nil) {
-		for i := range c.ValueTypes {
-			if c.ValueTypes[i] == t {
-				return uint32(i)
-			}
-		}
-		c.ValueTypes = append(c.ValueTypes, t)
-		return uint32(len(c.ValueTypes) - 1)
+	if len(c.ValueTypes) < 128 {
+		return internValueType(&c.ValueTypes, t)
 	}
+	indexes := c.loadCompileIndexes()
 	if indexes == nil {
 		indexes = c.ensureCompileIndexes()
 	}
@@ -603,21 +596,13 @@ func definedTypeFingerprints(types []DefinedTypeDescriptor) ([][32]byte, bool) {
 
 	fingerprints := make([][32]byte, len(types))
 	state := make([]uint8, len(groups))
-	var byteScratch [1]byte
-	var u32Scratch [4]byte
-	writeByte := func(h hash.Hash, b byte) {
-		byteScratch[0] = b
-		_, _ = h.Write(byteScratch[:])
-	}
-	writeU32 := func(h hash.Hash, value uint32) {
-		binary.LittleEndian.PutUint32(u32Scratch[:], value)
-		_, _ = h.Write(u32Scratch[:])
-	}
+	writeByte := func(dst *[]byte, b byte) { *dst = append(*dst, b) }
+	writeU32 := func(dst *[]byte, value uint32) { *dst = binary.LittleEndian.AppendUint32(*dst, value) }
 	var buildGroup func(int) bool
-	var writeRef func(hash.Hash, uint32, uint32) bool
-	var writeValue func(hash.Hash, uint32, ValueTypeDescriptor) bool
-	var writeField func(hash.Hash, uint32, FieldTypeDescriptor) bool
-	writeRef = func(h hash.Hash, owner, target uint32) bool {
+	var writeRef func(*[]byte, uint32, uint32) bool
+	var writeValue func(*[]byte, uint32, ValueTypeDescriptor) bool
+	var writeField func(*[]byte, uint32, FieldTypeDescriptor) bool
+	writeRef = func(h *[]byte, owner, target uint32) bool {
 		if int(owner) >= len(types) || int(target) >= len(types) {
 			return false
 		}
@@ -634,10 +619,10 @@ func definedTypeFingerprints(types []DefinedTypeDescriptor) ([][32]byte, bool) {
 			return false
 		}
 		writeByte(h, 0xf4)
-		_, _ = h.Write(fingerprints[target][:])
+		*h = append(*h, fingerprints[target][:]...)
 		return true
 	}
-	writeValue = func(h hash.Hash, owner uint32, value ValueTypeDescriptor) bool {
+	writeValue = func(h *[]byte, owner uint32, value ValueTypeDescriptor) bool {
 		writeByte(h, byte(value.Kind))
 		if value.Kind != ValueTypeReference {
 			return true
@@ -657,7 +642,7 @@ func definedTypeFingerprints(types []DefinedTypeDescriptor) ([][32]byte, bool) {
 		writeByte(h, byte(value.Ref.Heap.Abstract))
 		return true
 	}
-	writeField = func(h hash.Hash, owner uint32, field FieldTypeDescriptor) bool {
+	writeField = func(h *[]byte, owner uint32, field FieldTypeDescriptor) bool {
 		if field.Storage.Packed {
 			writeByte(h, 1)
 			writeByte(h, byte(field.Storage.PackedType))
@@ -684,7 +669,8 @@ func definedTypeFingerprints(types []DefinedTypeDescriptor) ([][32]byte, bool) {
 		state[group] = 1
 		defer func() { state[group] = 2 }()
 		bounds := groups[group]
-		h := sha256.New()
+		encoded := make([]byte, 0, 64)
+		h := &encoded
 		writeByte(h, 0xf3)
 		writeU32(h, uint32(bounds.end-bounds.start))
 		for i := bounds.start; i < bounds.end; i++ {
@@ -745,14 +731,13 @@ func definedTypeFingerprints(types []DefinedTypeDescriptor) ([][32]byte, bool) {
 				return false
 			}
 		}
-		var groupDigest [32]byte
-		copy(groupDigest[:], h.Sum(nil))
+		groupDigest := sha256.Sum256(encoded)
+		var member [37]byte
+		member[0] = 0xf5
+		copy(member[1:33], groupDigest[:])
 		for i := bounds.start; i < bounds.end; i++ {
-			memberHash := sha256.New()
-			writeByte(memberHash, 0xf5)
-			_, _ = memberHash.Write(groupDigest[:])
-			writeU32(memberHash, uint32(i-bounds.start))
-			copy(fingerprints[i][:], memberHash.Sum(nil))
+			binary.LittleEndian.PutUint32(member[33:], uint32(i-bounds.start))
+			fingerprints[i] = sha256.Sum256(member[:])
 		}
 		return true
 	}
@@ -765,6 +750,12 @@ func definedTypeFingerprints(types []DefinedTypeDescriptor) ([][32]byte, bool) {
 }
 
 func definedTypeEquivalent(a uint32, aTypes []DefinedTypeDescriptor, b uint32, bTypes []DefinedTypeDescriptor) bool {
+	// Distinct projections of the same declared group cannot be equivalent.
+	// Reject them before constructing group directories or recursive state.
+	if a != b && uint(a) < uint(len(aTypes)) && uint(b) < uint(len(bTypes)) &&
+		len(aTypes) == len(bTypes) && &aTypes[0] == &bTypes[0] && aTypes[a].RecGroup == bTypes[b].RecGroup {
+		return false
+	}
 	type pair struct{ a, b uint32 }
 	type bounds struct{ start, end uint32 }
 	state := make(map[pair]uint8)
@@ -773,10 +764,14 @@ func definedTypeEquivalent(a uint32, aTypes []DefinedTypeDescriptor, b uint32, b
 		if int(index) >= len(types) {
 			return 0, 0, false
 		}
+		group := types[index].RecGroup
+		if (index == 0 || types[index-1].RecGroup != group) &&
+			(uint(index)+1 == uint(len(types)) || types[index+1].RecGroup != group) {
+			return index, index + 1, true
+		}
 		if cached, found := cache[index]; found {
 			return cached.start, cached.end, true
 		}
-		group := types[index].RecGroup
 		start, end = index, index+1
 		for start > 0 && types[start-1].RecGroup == group {
 			start--

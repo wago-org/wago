@@ -16,9 +16,14 @@ type gcTypeMapping struct {
 	domainToLocal       []uint32 // dense compatibility representation
 	domainToLocalSparse map[gc.TypeID]uint32
 	domainTypeCount     int
+	mappedTypeCount     int
 }
 
+// A Compiled retains only its most recently used domain mapping. Instances own
+// their immutable mapping independently, so replacement cannot invalidate a
+// live instance and retired domains cannot accumulate in a long-lived Compiled.
 type gcTypeMappingCacheEntry struct {
+	domainID        uint64
 	domainTypeCount int
 	mapping         *gcTypeMapping
 }
@@ -33,9 +38,9 @@ func (c *Compiled) cachedGCTypeMapping(domainID uint64, domainTypeCount int) *gc
 		return nil
 	}
 	cache.mu.Lock()
-	entry := indexes.gcTypeMappings[domainID]
+	entry := indexes.gcTypeMapping
 	cache.mu.Unlock()
-	if entry.domainTypeCount != domainTypeCount {
+	if entry == nil || entry.domainID != domainID || entry.domainTypeCount != domainTypeCount {
 		return nil
 	}
 	return entry.mapping
@@ -52,11 +57,13 @@ func (c *Compiled) rememberGCTypeMapping(domainID uint64, domainTypeCount int, m
 		return
 	}
 	cache.mu.Lock()
-	if indexes.gcTypeMappings == nil {
-		indexes.gcTypeMappings = make(map[uint64]gcTypeMappingCacheEntry)
+	previous := indexes.gcTypeMapping
+	if previous != nil && previous.domainID == domainID && previous.domainTypeCount == domainTypeCount && previous.mapping == mapping {
+		cache.mu.Unlock()
+		return
 	}
-	if previous := indexes.gcTypeMappings[domainID]; previous.domainTypeCount <= domainTypeCount {
-		indexes.gcTypeMappings[domainID] = gcTypeMappingCacheEntry{domainTypeCount: domainTypeCount, mapping: mapping}
+	if previous == nil || previous.domainID != domainID || previous.domainTypeCount <= domainTypeCount {
+		indexes.gcTypeMapping = &gcTypeMappingCacheEntry{domainID: domainID, domainTypeCount: domainTypeCount, mapping: mapping}
 	}
 	cache.mu.Unlock()
 }
@@ -127,14 +134,46 @@ type gcDomainTypeRepresentative struct {
 }
 
 func gcTypeEquivalentToRepresentative(c *Compiled, local uint32, rep gcDomainTypeRepresentative) bool {
-	return c != nil && int(local) < len(c.Types) && int(rep.index) < len(rep.types) && definedTypeEquivalent(local, c.Types, rep.index, rep.types)
+	if c == nil || uint(local) >= uint(len(c.Types)) || uint(rep.index) >= uint(len(rep.types)) {
+		return false
+	}
+	if len(c.Types) == 1 {
+		// A singleton cannot equal a projection from a larger recursive group.
+		// Checking its neighbors avoids repeatedly scanning a large domain group.
+		group := rep.types[rep.index].RecGroup
+		if rep.index > 0 && rep.types[rep.index-1].RecGroup == group ||
+			uint(rep.index)+1 < uint(len(rep.types)) && rep.types[rep.index+1].RecGroup == group {
+			return false
+		}
+	}
+	return definedTypeEquivalent(local, c.Types, rep.index, rep.types)
 }
 
 func hasEquivalentLocalGCHeapTypes(c *Compiled) bool {
-	if c == nil {
+	if c == nil || len(c.Types) < 2 {
 		return false
 	}
-	fingerprints, indexed := definedTypeFingerprints(c.Types)
+	// Detect an early duplicate without fingerprinting the remaining graph.
+	// At most one comparison precedes the indexed path, so unique graphs keep
+	// linear setup cost. Tiny sets are cheaper to compare directly.
+	first := -1
+	for i := range c.Types {
+		if kind := c.Types[i].Kind; kind != CompositeTypeStruct && kind != CompositeTypeArray {
+			continue
+		}
+		if first >= 0 {
+			if definedTypeEquivalent(uint32(i), c.Types, uint32(first), c.Types) {
+				return true
+			}
+			break
+		}
+		first = i
+	}
+	var fingerprints [][32]byte
+	indexed := false
+	if len(c.Types) > 16 {
+		fingerprints, indexed = definedTypeFingerprints(c.Types)
+	}
 	if indexed {
 		candidates := make(map[[32]byte][]uint32)
 		for i := range c.Types {
@@ -176,54 +215,87 @@ func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainT
 	// new tail; failed plans publish no increased length.
 	newReps := reps
 	newDescs := domainTypes
-	localFingerprints, indexed := definedTypeFingerprints(c.Types)
-	type fingerprintCacheEntry struct {
-		values [][32]byte
-	}
-	type fingerprintCacheKey struct {
-		base   *DefinedTypeDescriptor
-		length int
-	}
-	fingerprintCache := make(map[fingerprintCacheKey]fingerprintCacheEntry)
-	fingerprintFor := func(types []DefinedTypeDescriptor, index uint32) ([32]byte, bool) {
-		if int(index) >= len(types) || len(types) == 0 {
-			return [32]byte{}, false
+	var localFingerprints [][32]byte
+	var candidates map[[32]byte][]int
+	buildIndex := func() bool {
+		var valid bool
+		localFingerprints, valid = definedTypeFingerprints(c.Types)
+		if !valid {
+			return false
 		}
-		base := &types[0]
-		key := fingerprintCacheKey{base: base, length: len(types)}
-		entry, ok := fingerprintCache[key]
-		if !ok {
-			values, valid := definedTypeFingerprints(types)
-			if !valid {
+		type fingerprintCacheEntry struct {
+			values [][32]byte
+		}
+		type fingerprintCacheKey struct {
+			base   *DefinedTypeDescriptor
+			length int
+		}
+		fingerprintCache := make(map[fingerprintCacheKey]fingerprintCacheEntry)
+		if len(c.Types) != 0 {
+			fingerprintCache[fingerprintCacheKey{base: &c.Types[0], length: len(c.Types)}] = fingerprintCacheEntry{values: localFingerprints}
+		}
+		fingerprintFor := func(types []DefinedTypeDescriptor, index uint32) ([32]byte, bool) {
+			if int(index) >= len(types) || len(types) == 0 {
 				return [32]byte{}, false
 			}
-			entry = fingerprintCacheEntry{values: values}
-			fingerprintCache[key] = entry
+			base := &types[0]
+			key := fingerprintCacheKey{base: base, length: len(types)}
+			entry, ok := fingerprintCache[key]
+			if !ok {
+				values, valid := definedTypeFingerprints(types)
+				if !valid {
+					return [32]byte{}, false
+				}
+				entry = fingerprintCacheEntry{values: values}
+				fingerprintCache[key] = entry
+			}
+			return entry.values[index], true
 		}
-		return entry.values[index], true
-	}
-	var candidates map[[32]byte][]int
-	if indexed {
 		candidates = make(map[[32]byte][]int, len(newReps)+len(c.Types))
 		for domain, rep := range newReps {
 			fingerprint, ok := fingerprintFor(rep.types, rep.index)
 			if !ok {
-				indexed = false
-				break
+				return false
 			}
 			candidates[fingerprint] = append(candidates[fingerprint], domain)
 		}
+		return true
 	}
+	// Successful direct comparisons are also required after a fingerprint hit.
+	// Delay the index until 16 misses: duplicate-heavy sets remain linear with
+	// no hashing, while mostly unique sets pay only a bounded scan prefix.
+	missesLeft := 16
+	// One local type requires only one domain scan. Hashing every domain type
+	// adds setup and allocation without reducing that linear search.
+	useIndex := len(c.Types) > 1
+	indexed := false
 	for local := range c.Types {
 		found := -1
-		if indexed {
+		if !useIndex || missesLeft > 0 {
+			for domain, rep := range newReps {
+				if gcTypeEquivalentToRepresentative(c, uint32(local), rep) {
+					found = domain
+					break
+				}
+				if !useIndex {
+					continue
+				}
+				missesLeft--
+				if missesLeft == 0 {
+					indexed = buildIndex()
+					break
+				}
+			}
+		}
+		if found < 0 && indexed {
 			for _, domain := range candidates[localFingerprints[local]] {
 				if gcTypeEquivalentToRepresentative(c, uint32(local), newReps[domain]) {
 					found = domain
 					break
 				}
 			}
-		} else {
+		} else if found < 0 && missesLeft == 0 {
+			// Malformed graphs cannot supply a fingerprint; preserve exact fallback.
 			for domain, rep := range newReps {
 				if gcTypeEquivalentToRepresentative(c, uint32(local), rep) {
 					found = domain
@@ -272,12 +344,28 @@ func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainT
 		}
 		newDescs[domainID] = desc
 	}
-	mapping.domainToLocalSparse = make(map[gc.TypeID]uint32, len(mapping.localToDomain))
 	mapping.domainTypeCount = len(newReps)
-	for local, domain := range mapping.localToDomain {
-		if _, exists := mapping.domainToLocalSparse[domain]; !exists {
-			mapping.domainToLocalSparse[domain] = uint32(local)
+	if len(newReps) <= len(mapping.localToDomain) {
+		// A dense reverse map is cheaper when its storage is bounded by this
+		// module's local type count. Sparse domains retain O(local types) space.
+		mapping.domainToLocal = make([]uint32, len(newReps))
+		for i := range mapping.domainToLocal {
+			mapping.domainToLocal[i] = unavailableLocalGCType
 		}
+		for local, domain := range mapping.localToDomain {
+			if mapping.domainToLocal[domain] == unavailableLocalGCType {
+				mapping.domainToLocal[domain] = uint32(local)
+				mapping.mappedTypeCount++
+			}
+		}
+	} else {
+		mapping.domainToLocalSparse = make(map[gc.TypeID]uint32, len(mapping.localToDomain))
+		for local, domain := range mapping.localToDomain {
+			if _, exists := mapping.domainToLocalSparse[domain]; !exists {
+				mapping.domainToLocalSparse[domain] = uint32(local)
+			}
+		}
+		mapping.mappedTypeCount = len(mapping.domainToLocalSparse)
 	}
 	return mapping, newDescs, newReps, nil
 }
@@ -290,10 +378,10 @@ func gcModuleFitsDomain(c *Compiled, domain *gcStoreDomain) bool {
 	if mapping := c.cachedGCTypeMapping(domain.id, domainTypeCount); mapping != nil {
 		return len(mapping.localToDomain) == len(c.Types) &&
 			mapping.domainTypeCount == domainTypeCount &&
-			len(mapping.domainToLocalSparse) == domainTypeCount
+			mapping.mappedTypeCount == domainTypeCount
 	}
 	mapping, descs, reps, err := gcCanonicalTypePlan(c, domain.typeReps, domain.types, false)
-	if err != nil || len(descs) != len(domain.types) || len(reps) != domainTypeCount || len(mapping.domainToLocalSparse) != domainTypeCount {
+	if err != nil || len(descs) != len(domain.types) || len(reps) != domainTypeCount || mapping.mappedTypeCount != domainTypeCount {
 		return false
 	}
 	for i := 0; i < domainTypeCount; i++ {

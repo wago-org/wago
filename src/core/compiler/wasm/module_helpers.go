@@ -85,6 +85,11 @@ func (m *Module) typeIndex() *moduleTypeIndexDirectory {
 	directory = &moduleTypeIndexDirectory{owner: owner, groups: len(m.Types), bases: make([]int, len(m.Types)+1)}
 	total := 0
 	for group := range m.Types {
+		total += len(m.Types[group].SubTypes)
+	}
+	directory.flat = make([]moduleSubTypeRef, 0, total)
+	total = 0
+	for group := range m.Types {
 		directory.bases[group] = total
 		for member := range m.Types[group].SubTypes {
 			directory.flat = append(directory.flat, moduleSubTypeRef{st: &m.Types[group].SubTypes[member], recGroup: group})
@@ -136,6 +141,39 @@ func (m *Module) importIndex() *moduleImportIndexDirectory {
 	}
 	m.importIndexDirectory = directory
 	return directory
+}
+
+// importEntry resolves an index in one import kind, or returns its local index.
+// The measured crossover for cold directories is between 32 and 64 imports.
+func (m *Module) importEntry(kind ExternKind, idx uint32) (entry int, local uint64) {
+	if len(m.Imports) <= 32 {
+		remaining := uint64(idx)
+		for i := range m.Imports {
+			if m.Imports[i].Type.Kind == kind {
+				if remaining == 0 {
+					return i, 0
+				}
+				remaining--
+			}
+		}
+		return -1, remaining
+	}
+	directory := m.importIndex()
+	var indexes []uint32
+	switch kind {
+	case ExternFunc:
+		indexes = directory.funcs
+	case ExternTable:
+		indexes = directory.tables
+	case ExternMem:
+		indexes = directory.memories
+	case ExternGlobal:
+		indexes = directory.globals
+	}
+	if uint64(idx) < uint64(len(indexes)) {
+		return int(indexes[idx]), 0
+	}
+	return -1, uint64(idx) - uint64(len(indexes))
 }
 
 // LocalCount returns the size of the wasm local index space for parameters plus
@@ -199,11 +237,10 @@ func (m *Module) TableType(idx uint32) (TableType, bool) {
 	if m == nil {
 		return TableType{}, false
 	}
-	imports := m.importIndex()
-	if uint64(idx) < uint64(len(imports.tables)) {
-		return m.Imports[imports.tables[idx]].Type.TableType(), true
+	entry, local := m.importEntry(ExternTable, idx)
+	if entry >= 0 {
+		return m.Imports[entry].Type.TableType(), true
 	}
-	local := uint64(idx) - uint64(len(imports.tables))
 	if local >= uint64(len(m.Tables)) {
 		return TableType{}, false
 	}
@@ -223,11 +260,10 @@ func (m *Module) MemoryType(idx uint32) (MemType, bool) {
 	if m == nil {
 		return MemType{}, false
 	}
-	imports := m.importIndex()
-	if uint64(idx) < uint64(len(imports.memories)) {
-		return m.Imports[imports.memories[idx]].Type.MemType(), true
+	entry, local := m.importEntry(ExternMem, idx)
+	if entry >= 0 {
+		return m.Imports[entry].Type.MemType(), true
 	}
-	local := uint64(idx) - uint64(len(imports.memories))
 	if local >= uint64(len(m.Memories)) {
 		return MemType{}, false
 	}
@@ -284,11 +320,10 @@ func (m *Module) FuncTypeIndex(idx uint32) (TypeIdx, bool) {
 	if m == nil {
 		return TypeIdx{}, false
 	}
-	imports := m.importIndex()
-	if uint64(idx) < uint64(len(imports.funcs)) {
-		return m.Imports[imports.funcs[idx]].Type.FuncType(), true
+	entry, local := m.importEntry(ExternFunc, idx)
+	if entry >= 0 {
+		return m.Imports[entry].Type.FuncType(), true
 	}
-	local := uint64(idx) - uint64(len(imports.funcs))
 	if local >= uint64(len(m.FuncTypes)) {
 		return TypeIdx{}, false
 	}
@@ -363,6 +398,16 @@ func (m *Module) subtypeByTypeIdx(idx TypeIdx) (*SubType, bool) {
 
 func (m *Module) subtypeByTypeIdxWithRecGroup(idx TypeIdx) (*SubType, int, bool) {
 	if idx.Rec {
+		return nil, 0, false
+	}
+	if len(m.Types) <= 8 {
+		remaining := uint64(idx.Index)
+		for group := range m.Types {
+			if remaining < uint64(len(m.Types[group].SubTypes)) {
+				return &m.Types[group].SubTypes[remaining], group, true
+			}
+			remaining -= uint64(len(m.Types[group].SubTypes))
+		}
 		return nil, 0, false
 	}
 	directory := m.typeIndex()
@@ -530,11 +575,10 @@ func (m *Module) GlobalTypeByIndex(idx uint32) (GlobalType, bool) {
 	if m == nil {
 		return GlobalType{}, false
 	}
-	imports := m.importIndex()
-	if uint64(idx) < uint64(len(imports.globals)) {
-		return m.Imports[imports.globals[idx]].Type.GlobalType(), true
+	entry, local := m.importEntry(ExternGlobal, idx)
+	if entry >= 0 {
+		return m.Imports[entry].Type.GlobalType(), true
 	}
-	local := uint64(idx) - uint64(len(imports.globals))
 	if local >= uint64(len(m.Globals)) {
 		return GlobalType{}, false
 	}
@@ -561,6 +605,24 @@ func FuncTypeEqual(a, b *CompType) bool {
 
 // CanonicalTypeID returns the stable signature id used by call_indirect checks.
 func (m *Module) CanonicalTypeID(typeIdx uint32) uint32 {
+	if len(m.Types) <= 8 {
+		count := 0
+		for _, group := range m.Types {
+			count += len(group.SubTypes)
+		}
+		if count <= 8 {
+			target, ok := m.TypeFunc(typeIdx)
+			if !ok {
+				return typeIdx
+			}
+			for i := 0; i < count; i++ {
+				if ft, ok := m.TypeFunc(uint32(i)); ok && FuncTypeEqual(ft, target) {
+					return uint32(i)
+				}
+			}
+			return typeIdx
+		}
+	}
 	directory := m.typeIndex()
 	if uint64(typeIdx) >= uint64(len(directory.flat)) || directory.flat[typeIdx].st.Comp.Kind != CompFunc {
 		return typeIdx

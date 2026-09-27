@@ -336,3 +336,49 @@ func TestDynamicIndexedFunctionRefTestClosureDispatch(t *testing.T) {
 		}
 	}
 }
+
+// A failed comparison of the first wrapper must not leave the second member
+// of a recursive group cached as equal for the next wrapper's dynamic ref.test.
+func TestDynamicRefTestRejectsProvisionalRecursiveEquality(t *testing.T) {
+	ref := func(i uint32) wasm.ValType {
+		return wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: i}), false))
+	}
+	group := func(base uint32, scalar wasm.ValType) []byte {
+		first := hostFuncRefTestFuncType([]wasm.ValType{ref(base + 1), scalar}, nil)
+		second := hostFuncRefTestFuncType([]wasm.ValType{ref(base)}, nil)
+		return append([]byte{0x4e}, wasmtest.Vec(first, second)...)
+	}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			group(0, wasm.I32), group(2, wasm.I64),
+			hostFuncRefTestFuncType([]wasm.ValType{ref(0), ref(1)}, nil),
+			hostFuncRefTestFuncType([]wasm.ValType{ref(2), ref(1)}, nil),
+			hostFuncRefTestFuncType([]wasm.ValType{ref(0), ref(3)}, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{4}, []byte{5}, []byte{6}, []byte{7})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0, 3})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("test", 0, 3))),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0, 1, 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x0b}), wasmtest.Code([]byte{0x0b}), wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x25, 0, 0xfb, 0x14, 4, 0x0b}),
+		)),
+	)
+	c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).Compile(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	for i, want := range []uint64{1, 0, 0} {
+		out, err := in.Invoke("test", uint64(i))
+		if err != nil || len(out) != 1 || out[0] != want {
+			t.Fatalf("ref.test table[%d] = %v, %v; want %d", i, out, err, want)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package wago
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 )
 
@@ -191,11 +192,10 @@ func compiledStructuralCallIdentityWithGroups(c *Compiled, functionIndex int, gr
 		return nil
 	}
 	appendU32 := func(dst *[]byte, v uint32) error {
-		for shift := uint(0); shift < 32; shift += 8 {
-			if err := appendByte(dst, byte(v>>shift)); err != nil {
-				return err
-			}
+		if len(*dst) > maxIdentityBytes-4 {
+			return fmt.Errorf("structural call identity exceeds %d bytes", maxIdentityBytes)
 		}
+		*dst = binary.LittleEndian.AppendUint32(*dst, v)
 		return nil
 	}
 	writeRef := func(dst *[]byte, ownerGroup, index uint32) error {

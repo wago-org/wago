@@ -761,6 +761,15 @@ func (m *Module) ImportedMemCount() int    { return m.importCount(ExternMem) }
 func (m *Module) ImportedGlobalCount() int { return m.importCount(ExternGlobal) }
 func (m *Module) ImportedTagCount() int    { return m.importCount(ExternTag) }
 func (m *Module) importCount(k ExternKind) int {
+	if m != nil && len(m.Imports) <= 32 {
+		count := 0
+		for i := range m.Imports {
+			if m.Imports[i].Type.Kind == k {
+				count++
+			}
+		}
+		return count
+	}
 	imports := m.importIndex()
 	if imports == nil {
 		return 0

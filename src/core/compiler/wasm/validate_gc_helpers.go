@@ -529,15 +529,17 @@ func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
 }
 
 // typeIdxEquivalentWithState permits a batch of comparisons to share the
-// coinductive results for recursive-group member pairs. Rechecking another
-// member of an already compared group pair then becomes a map lookup instead
-// of traversing both complete groups again.
+// proven results for recursive-group member pairs. Each top-level comparison
+// is a transaction: nested successes may depend on active recursive assumptions,
+// so a failed root discards every pair introduced by that transaction. Only a
+// successful root proves all its reachable pairs and commits them for reuse.
 func (v *moduleValidator) typeIdxEquivalentWithState(a, b TypeIdx, state map[moduleTypePair]uint8) bool {
 	aFlat, aok := v.flatTypeIdxInRecGroup(a, -1)
 	bFlat, bok := v.flatTypeIdxInRecGroup(b, -1)
 	if !aok || !bok {
 		return false
 	}
+	var introduced []moduleTypePair
 	var eqType func(int, int) bool
 	var eqVal func(ValType, ValType, int, int) bool
 	eqHeap := func(x, y HeapType, xGroup, yGroup int) bool {
@@ -608,6 +610,7 @@ func (v *moduleValidator) typeIdxEquivalentWithState(a, b TypeIdx, state map[mod
 		case 3:
 			return false
 		}
+		introduced = append(introduced, p)
 		state[p] = 1
 		xs, xGroup, xok := v.subtypeByFlatTypeIdx(x)
 		ys, yGroup, yok := v.subtypeByFlatTypeIdx(y)
@@ -683,7 +686,13 @@ func (v *moduleValidator) typeIdxEquivalentWithState(a, b TypeIdx, state map[mod
 		}
 		return ok
 	}
-	return eqType(aFlat, bFlat)
+	ok := eqType(aFlat, bFlat)
+	if !ok {
+		for _, pair := range introduced {
+			delete(state, pair)
+		}
+	}
+	return ok
 }
 
 func (v *moduleValidator) heapTypeEquivalent(a, b HeapType) bool {

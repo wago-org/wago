@@ -127,8 +127,8 @@ func TestInvocationGateFastUnlockPreservesRevocationAndHandsOffWaiter(t *testing
 	}{
 		{"uncontended", invocationGateHeld | invocationGateFast, 0, false},
 		{"revoked", invocationGateHeld | invocationGateFast | invocationGateRevoked, invocationGateRevoked, false},
-		{"waiting", invocationGateHeld | invocationGateFast | invocationGateWaiters, invocationGateHeld, true},
-		{"waiting revoked", invocationGateHeld | invocationGateFast | invocationGateWaiters | invocationGateRevoked, invocationGateHeld | invocationGateRevoked, true},
+		{"waiting", invocationGateHeld | invocationGateFast | invocationGateWaiters, invocationGateHeld | invocationGateHandoff, true},
+		{"waiting revoked", invocationGateHeld | invocationGateFast | invocationGateWaiters | invocationGateRevoked, invocationGateHeld | invocationGateRevoked | invocationGateHandoff, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var gate invocationGate
@@ -150,6 +150,13 @@ func TestInvocationGateFastUnlockPreservesRevocationAndHandsOffWaiter(t *testing
 				}
 				if !waiter.granted || waiter.queued {
 					t.Fatalf("waiter state = granted %v, queued %v", waiter.granted, waiter.queued)
+				}
+				if !gate.tryAcquireHandoff() || gate.state.Load() != tc.want&^invocationGateHandoff {
+					t.Fatal("notified waiter could not claim exclusive ownership")
+				}
+				gate.Unlock()
+				if got := gate.state.Load(); got != tc.initial&invocationGateRevoked {
+					t.Fatalf("released handoff state = %d", got)
 				}
 			}
 		})
