@@ -346,7 +346,7 @@ func (c *Collector) tinySweepBudget() error {
 }
 
 func (c *Collector) failTinyTelemetryCycle(err error) error {
-	if c.tinyGC.telemetryOwned {
+	if collectorTelemetryEnabled && c.tinyGC.telemetryOwned {
 		c.endCollectionTelemetry(false)
 		c.tinyGC.telemetryOwned = false
 	}
@@ -369,8 +369,8 @@ func (c *Collector) tinyCollectFull(roots RootSet) error {
 }
 
 func (c *Collector) tinyCollectNonIncremental(roots RootSet) error {
-	if err := c.tinyCountTransientRoots(roots); err != nil {
-		return err
+	if err := c.tinyStageTransientRoots(roots).err(); err != nil {
+		return c.failTinyTelemetryCycle(err)
 	}
 	if c.tinyGC.state != tinyIdle {
 		// An unfinished cycle can leave marks from any earlier epoch. A
@@ -386,9 +386,7 @@ func (c *Collector) tinyCollectNonIncremental(roots RootSet) error {
 	c.tinyGC.scan = tinyScanCursor{}
 	c.tinyGC.rootPhase = tinyRootsNone
 	c.tinyGC.state = tinyMark
-	if err := c.tinyMarkTransientRoots(roots); err != nil {
-		return c.failTinyTelemetryCycle(err)
-	}
+	c.tinyApplyStagedRoots()
 	for _, r := range c.globalSlots {
 		c.tinyMarkRef(r)
 	}
@@ -427,7 +425,7 @@ func (c *Collector) tinyStartMark(roots RootSet) error {
 	if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle != 0 {
 		return errors.New("gc: Tiny bounded poison sweep must complete before collection restart")
 	}
-	if err := c.tinyCountTransientRoots(roots); err != nil {
+	if err := c.tinyStageTransientRoots(roots).err(); err != nil {
 		return c.failTinyTelemetryCycle(err)
 	}
 	if c.tinyGC.state != tinyIdle {
@@ -445,168 +443,212 @@ func (c *Collector) tinyStartMark(roots RootSet) error {
 	c.tinyGC.state = tinyMark
 	c.tinyGC.rootPhase = tinyRootsTransient
 	c.tinyGC.sweep = 0
-	if err := c.tinyMarkTransientRoots(roots); err != nil {
-		return c.failTinyTelemetryCycle(err)
-	}
+	c.tinyApplyStagedRoots()
 	c.tinyGC.rootPhase = tinyRootsGlobals
 	_, err := c.tinyDrainRootBudget(nil)
 	return err
 }
 
-func (c *Collector) tinyWalkTransientRoots(roots RootSet) (bool, error) {
+// The walker has only three outcomes. Carry a compact status through recursive
+// root groups and construct the public error once at the staging boundary.
+type tinyRootWalkStatus uint8
+
+const (
+	tinyRootWalkComplete tinyRootWalkStatus = iota
+	tinyRootWalkStopped
+	tinyRootWalkUnsupported
+)
+
+func (status tinyRootWalkStatus) err() error {
+	switch status {
+	case tinyRootWalkStopped:
+		return errors.New("gc: Tiny transient root enumeration stopped unexpectedly")
+	case tinyRootWalkUnsupported:
+		return errors.New("gc: Tiny transient roots require bounded direct enumeration")
+	}
+	return nil
+}
+
+func (c *Collector) tinyWalkTransientRoots(roots RootSet) tinyRootWalkStatus {
 	return c.tinyWalkTransientRootSet(roots, RootNativeFrame)
 }
 
-func (c *Collector) tinyWalkTransientRootSet(roots RootSet, class RootClass) (bool, error) {
+func (c *Collector) tinyWalkTransientRootSet(roots RootSet, class RootClass) tinyRootWalkStatus {
 	if roots == nil {
-		return true, nil
+		return tinyRootWalkComplete
 	}
 	switch roots := roots.(type) {
 	case *ArrayInitializerRootScratch:
 		if roots == nil {
-			return true, nil
+			return tinyRootWalkComplete
 		}
-		if complete, err := c.tinyWalkTransientRootSet(roots.first, class); err != nil || !complete {
-			return complete, err
+		if result := c.tinyWalkTransientRootSet(roots.first, class); result != tinyRootWalkComplete {
+			return result
 		}
 		switch roots.mode {
 		case 1:
-			return c.tinyVisitTransientRoot(class, roots.uniform), nil
+			c.tinyVisitTransientRoot(class, roots.uniform)
 		case 2:
 			for i := range roots.values {
-				if !c.tinyVisitTransientRoot(class, roots.values[i].Ref) {
-					return false, nil
-				}
+				c.tinyVisitTransientRoot(class, roots.values[i].Ref)
 			}
 		}
-		return true, nil
+		return tinyRootWalkComplete
 	case *InitializerRootScratch:
 		if roots == nil {
-			return true, nil
+			return tinyRootWalkComplete
 		}
-		if complete, err := c.tinyWalkTransientRootSet(roots.first, class); err != nil || !complete {
-			return complete, err
+		if result := c.tinyWalkTransientRootSet(roots.first, class); result != tinyRootWalkComplete {
+			return result
 		}
 		for i := range roots.values {
-			if i < len(roots.fields) && isCollectorRefKind(roots.fields[i].Kind) && !c.tinyVisitTransientRoot(class, roots.values[i].Ref) {
-				return false, nil
+			if i < len(roots.fields) && isCollectorRefKind(roots.fields[i].Kind) {
+				c.tinyVisitTransientRoot(class, roots.values[i].Ref)
 			}
 		}
-		return true, nil
+		return tinyRootWalkComplete
 	case *InitializerWordRootScratch:
 		if roots == nil {
-			return true, nil
+			return tinyRootWalkComplete
 		}
-		if complete, err := c.tinyWalkTransientRootSet(roots.first, class); err != nil || !complete {
-			return complete, err
+		if result := c.tinyWalkTransientRootSet(roots.first, class); result != tinyRootWalkComplete {
+			return result
 		}
 		cursor := 0
 		for _, field := range roots.fields {
 			if cursor >= len(roots.words) {
 				break
 			}
-			if isCollectorRefKind(field.Kind) && !c.tinyVisitTransientRoot(class, Ref(uint32(roots.words[cursor]))) {
-				return false, nil
+			if isCollectorRefKind(field.Kind) {
+				c.tinyVisitTransientRoot(class, Ref(uint32(roots.words[cursor])))
 			}
 			cursor++
 			if field.Kind == StorageV128 {
 				cursor++
 			}
 		}
-		return true, nil
+		return tinyRootWalkComplete
 	case combinedRootSet:
-		if complete, err := c.tinyWalkTransientRootSet(roots.first, class); err != nil || !complete {
-			return complete, err
+		if result := c.tinyWalkTransientRootSet(roots.first, class); result != tinyRootWalkComplete {
+			return result
 		}
 		return c.tinyWalkTransientRootSet(roots.second, class)
 	case extraRootSet:
-		if complete, err := c.tinyWalkTransientRootSet(roots.roots, class); err != nil || !complete {
-			return complete, err
+		if result := c.tinyWalkTransientRootSet(roots.roots, class); result != tinyRootWalkComplete {
+			return result
 		}
 		if roots.extra != nil {
-			return c.tinyVisitTransientRoot(class, roots.extra.GetRef()), nil
+			c.tinyVisitTransientRoot(class, roots.extra.GetRef())
 		}
-		return true, nil
+		return tinyRootWalkComplete
 	case *RootGroups:
 		if roots == nil {
-			return true, nil
+			return tinyRootWalkComplete
 		}
 		return c.tinyWalkTransientRootSet(RootGroups(*roots), class)
 	case *ClassifiedRoots:
 		if roots == nil {
-			return true, nil
+			return tinyRootWalkComplete
 		}
-		return c.tinyWalkTransientRootSet(ClassifiedRoots(*roots), class)
+		return c.tinyWalkTransientRootSet(roots.Roots, roots.Class)
 	case RootGroups:
 		for _, group := range roots {
-			complete, err := c.tinyWalkTransientRootSet(group.Roots, group.Class)
-			if err != nil || !complete {
-				return complete, err
+			if result := c.tinyWalkTransientRootSet(group.Roots, group.Class); result != tinyRootWalkComplete {
+				return result
 			}
 		}
-		return true, nil
+		return tinyRootWalkComplete
 	case ClassifiedRoots:
 		return c.tinyWalkTransientRootSet(roots.Roots, roots.Class)
 	}
 	if c.telemetryEnabled() {
 		if classified, ok := roots.(DirectClassifiedRootRefSet); ok {
-			return classified.RangeClassifiedRootRefs(c), nil
+			return tinyRootWalkResult(classified.RangeClassifiedRootRefs(c))
 		}
 	}
 	if direct, ok := roots.(DirectRootRefSet); ok {
+		if !c.telemetryEnabled() {
+			return tinyRootWalkResult(direct.RangeRootRefs(c))
+		}
 		previous := c.telemetryRootClass
 		c.telemetryRootClass = class
 		complete := direct.RangeRootRefs(c)
 		c.telemetryRootClass = previous
-		return complete, nil
+		return tinyRootWalkResult(complete)
 	}
 	if classified, ok := roots.(DirectClassifiedRootRefSet); ok {
-		return classified.RangeClassifiedRootRefs(c), nil
+		return tinyRootWalkResult(classified.RangeClassifiedRootRefs(c))
 	}
-	return false, errors.New("gc: Tiny transient roots require bounded direct enumeration")
+	return tinyRootWalkUnsupported
 }
 
-func (c *Collector) tinyVisitTransientRoot(class RootClass, r Ref) bool {
-	if c.telemetryEnabled() {
-		return c.VisitClassifiedRootRef(class, r)
-	}
-	return c.VisitRootRef(r)
-}
-
-func (c *Collector) tinyCountTransientRoots(roots RootSet) error {
-	c.rootMarkMode = rootMarkTinyCount
-	c.tinyGC.lastStepWork.refSlots = 0
-	complete, err := c.tinyWalkTransientRoots(roots)
-	c.finishDirectRootMark()
-	c.tinyGC.lastStepWork.refSlots = 0
-	if err != nil {
-		return err
-	}
+func tinyRootWalkResult(complete bool) tinyRootWalkStatus {
 	if !complete {
-		return errors.New("gc: Tiny transient root enumeration stopped unexpectedly")
+		return tinyRootWalkStopped
 	}
-	return nil
+	return tinyRootWalkComplete
+}
+
+// The collector accepts every individual reference; an external root source
+// can still reject the complete walk through its enumeration result.
+func (c *Collector) tinyVisitTransientRoot(class RootClass, r Ref) {
+	if c.telemetryEnabled() {
+		c.VisitClassifiedRootRef(class, r)
+	} else {
+		c.VisitRootRef(r)
+	}
+}
+
+// Stage roots before changing the mark epoch, colors, queue, or scan cursor.
+// A one-shot source is consumed once; rejection leaves the existing cycle
+// intact. Tiny reuses the otherwise idle Throughput mark stack, retaining its
+// capacity across phases and cycles without growing the Collector itself.
+func (c *Collector) tinyStageTransientRoots(roots RootSet) tinyRootWalkStatus {
+	c.markStack = c.markStack[:0]
+	c.rootMarkMode = rootMarkTinyStage
+	defer func() {
+		// Success has already closed the sink. An active staging sink means the
+		// walk failed or panicked, so discard partial roots and end Step telemetry.
+		if c.rootMarkMode == rootMarkTinyStage {
+			c.markStack = c.markStack[:0]
+			c.failTinyTelemetryCycle(nil)
+		}
+		c.finishDirectRootMark()
+	}()
+	result := c.tinyWalkTransientRoots(roots)
+	if result == tinyRootWalkComplete {
+		c.finishDirectRootMark()
+	}
+	return result
+}
+
+func (c *Collector) tinyStageRootRef(r Ref) {
+	if !r.IsObj() {
+		return
+	}
+	h := handleOf(r)
+	if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceTiny {
+		c.markStack = append(c.markStack, h)
+	}
+}
+
+func (c *Collector) tinyApplyStagedRoots() {
+	for _, h := range c.markStack {
+		c.tinyMarkRef(makeObjRef(h))
+	}
+	c.markStack = c.markStack[:0]
 }
 
 func (c *Collector) tinyMarkTransientRoots(roots RootSet) error {
-	c.rootMarkMode = rootMarkTinyBounded
-	complete, err := c.tinyWalkTransientRoots(roots)
-	c.finishDirectRootMark()
-	c.tinyGC.lastStepWork.refSlots = 0
-	if err != nil {
+	if err := c.tinyStageTransientRoots(roots).err(); err != nil {
 		return err
 	}
-	if !complete {
-		return errors.New("gc: Tiny transient root set changed during bounded enumeration")
-	}
+	c.tinyApplyStagedRoots()
 	return nil
 }
 
 func (c *Collector) tinyDrainRootBudget(roots RootSet) (bool, error) {
 	if c.tinyGC.rootPhase == tinyRootsTransient {
-		if err := c.tinyCountTransientRoots(roots); err != nil {
-			return false, c.failTinyTelemetryCycle(err)
-		}
 		if err := c.tinyMarkTransientRoots(roots); err != nil {
 			return false, c.failTinyTelemetryCycle(err)
 		}
@@ -667,7 +709,7 @@ func (c *Collector) tinyFinishCycle() {
 	c.tinyGC.rootPhase = tinyRootsNone
 	c.tinyGC.sweep = 1
 	c.tinyGC.sweepLimit = 0
-	if c.tinyGC.telemetryOwned {
+	if collectorTelemetryEnabled && c.tinyGC.telemetryOwned {
 		c.cfg.Telemetry.setPhase(telemetryPhaseMetadataCleanup)
 		c.endCollectionTelemetry(true)
 		c.tinyGC.telemetryOwned = false

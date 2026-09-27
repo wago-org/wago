@@ -27,20 +27,13 @@ const (
 	rootMarkFull uint8 = iota + 1
 	rootMarkNursery
 	rootMarkTiny
-	rootMarkTinyCount
-	rootMarkTinyBounded
+	rootMarkTinyStage
 )
 
 // VisitRootRef implements RootRefSink. Collection is synchronous per Collector,
 // so the active mark mode can live in the collector instead of an escaping
 // closure allocated once per collection.
 func (c *Collector) VisitRootRef(r Ref) bool {
-	if c.rootMarkMode == rootMarkTinyCount || c.rootMarkMode == rootMarkTinyBounded {
-		c.tinyGC.lastStepWork.refSlots++
-		if c.rootMarkMode == rootMarkTinyCount {
-			return true
-		}
-	}
 	if c.telemetryEnabled() {
 		c.cfg.Telemetry.noteRoot(c.telemetryRootClass)
 	}
@@ -49,8 +42,10 @@ func (c *Collector) VisitRootRef(r Ref) bool {
 		c.markRef(r)
 	case rootMarkNursery:
 		c.markNurseryRef(r)
-	case rootMarkTiny, rootMarkTinyBounded:
+	case rootMarkTiny:
 		c.tinyMarkRef(r)
+	case rootMarkTinyStage:
+		c.tinyStageRootRef(r)
 	}
 	return true
 }
@@ -61,12 +56,6 @@ func (c *Collector) VisitRootRef(r Ref) bool {
 func (c *Collector) VisitClassifiedRootRef(class RootClass, r Ref) bool {
 	if !c.telemetryEnabled() {
 		return c.VisitRootRef(r)
-	}
-	if c.rootMarkMode == rootMarkTinyCount || c.rootMarkMode == rootMarkTinyBounded {
-		c.tinyGC.lastStepWork.refSlots++
-		if c.rootMarkMode == rootMarkTinyCount {
-			return true
-		}
 	}
 	if class >= rootClassCount {
 		class = RootNativeFrame
@@ -302,8 +291,10 @@ func (c *Collector) markRootForMode(r Ref, mode uint8) {
 	switch mode {
 	case rootMarkNursery:
 		c.markNurseryRef(r)
-	case rootMarkTiny, rootMarkTinyBounded:
+	case rootMarkTiny:
 		c.tinyMarkRef(r)
+	case rootMarkTinyStage:
+		c.tinyStageRootRef(r)
 	default:
 		c.markRef(r)
 	}

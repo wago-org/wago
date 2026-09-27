@@ -141,7 +141,8 @@ func benchmarkTinyRetainedGraph(b *testing.B, recovery bool, failures int, handl
 	for i := 0; i < b.N; i++ {
 		if recovery {
 			for j := 0; j < failures; j++ {
-				failed := tinySecondWalkFailure{root: root}
+				startTinyUnfinishedCycle(b, c)
+				failed := tinyFailingRoots{root: root, afterRoot: true}
 				if err := c.CollectFull(&failed); err == nil {
 					b.Fatal("root callback unexpectedly completed")
 				}
@@ -174,7 +175,8 @@ func BenchmarkTinyRetainedGraph(b *testing.B) {
 }
 
 // BenchmarkTinyRetainedHighWaterRecovery keeps 17 live objects after 65,536
-// handles have been published. Failed starts clear the retained color length.
+// handles have been published. Accepted unfinished restarts clear the retained
+// color length; rejected enumeration leaves that cycle intact.
 func BenchmarkTinyRetainedHighWaterRecovery(b *testing.B) {
 	for _, failures := range []int{1, 5} {
 		b.Run(fmt.Sprintf("failed-starts=%d", failures), func(b *testing.B) {

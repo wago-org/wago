@@ -6,33 +6,35 @@ import (
 	"testing"
 )
 
-type tinySecondWalkFailure struct {
-	root  Root
-	walks int
+// tinyFailingRoots rejects one enumeration before or after providing a root.
+// It records the collector phase so tests cannot silently move their failure
+// from initial marking to the later incremental remark walk.
+type tinyFailingRoots struct {
+	root      Root
+	afterRoot bool
+	walks     int
+	state     tinyGCState
+	phase     tinyRootPhase
 }
 
-type tinyLateWalkFailure struct {
-	root  Root
-	walks int
-}
+func (r *tinyFailingRoots) RangeRoots(fn func(RootSlot) bool) { fn(&r.root) }
 
-type tinyFirstWalkFailure struct {
-	root  Root
-	walks int
-}
-
-func (r *tinyFirstWalkFailure) RangeRoots(fn func(RootSlot) bool) { fn(&r.root) }
-
-func (r *tinyFirstWalkFailure) RangeRootRefs(sink RootRefSink) bool {
+func (r *tinyFailingRoots) RangeRootRefs(sink RootRefSink) bool {
 	r.walks++
-	// The count walk sees a root, then the callback reports incomplete input.
-	if !sink.VisitRootRef(Ref(r.root)) {
-		return false
+	c := sink.(*Collector)
+	r.state, r.phase = c.tinyGC.state, c.tinyGC.rootPhase
+	if r.afterRoot {
+		sink.VisitRootRef(Ref(r.root))
 	}
 	return false
 }
 
-func assertTinyFailedPreflightPreservesCycle(t *testing.T, c *Collector, root Root) {
+func assertTinyFailedRootsPreserveCycle(t *testing.T, c *Collector, root Root, afterRoot bool) {
+	t.Helper()
+	assertTinyFailedRootWalkPreservesCycle(t, c, root, afterRoot, c.CollectFull)
+}
+
+func assertTinyFailedRootWalkPreservesCycle(t *testing.T, c *Collector, root Root, afterRoot bool, collect func(RootSet) error) {
 	t.Helper()
 	beforeEpoch := c.tinyGC.markEpoch
 	beforeColor := slices.Clone(c.tinyGC.color)
@@ -45,27 +47,45 @@ func assertTinyFailedPreflightPreservesCycle(t *testing.T, c *Collector, root Ro
 	beforeSweep := c.tinyGC.sweep
 	beforeSweepLimit := c.tinyGC.sweepLimit
 
-	roots := &tinyFirstWalkFailure{root: root}
-	if err := c.CollectFull(roots); err == nil || roots.walks != 1 {
+	roots := &tinyFailingRoots{root: root, afterRoot: afterRoot}
+	if err := collect(roots); err == nil || roots.walks != 1 {
 		t.Fatalf("first root walk: err = %v, walks = %d", err, roots.walks)
+	}
+	if roots.state != beforeState || roots.phase != beforeRootPhase {
+		t.Fatalf("enumeration ran in state/phase %d/%d, want %d/%d", roots.state, roots.phase, beforeState, beforeRootPhase)
+	}
+	if c.rootMarkMode != 0 || len(c.markStack) != 0 {
+		t.Fatal("failed enumeration retained staging work or an active root sink")
 	}
 	if c.tinyGC.markEpoch != beforeEpoch || !slices.Equal(c.tinyGC.color, beforeColor) || cap(c.tinyGC.color) != beforeColorCap ||
 		c.tinyGC.state != beforeState || c.tinyGC.rootPhase != beforeRootPhase ||
 		!slices.Equal(c.tinyGC.grayStack, beforeStack) || cap(c.tinyGC.grayStack) != beforeStackCap ||
 		c.tinyGC.scan != beforeScan || c.tinyGC.sweep != beforeSweep ||
 		c.tinyGC.sweepLimit != beforeSweepLimit {
-		t.Fatalf("failed preflight changed cycle: epoch %d->%d, state %d->%d, stack %v->%v, scan %+v->%+v, sweep %d/%d->%d/%d, colors equal %v",
+		t.Fatalf("failed enumeration changed cycle: epoch %d->%d, state %d->%d, stack %v->%v, scan %+v->%+v, sweep %d/%d->%d/%d, colors equal %v",
 			beforeEpoch, c.tinyGC.markEpoch, beforeState, c.tinyGC.state, beforeStack, c.tinyGC.grayStack,
 			beforeScan, c.tinyGC.scan, beforeSweep, beforeSweepLimit, c.tinyGC.sweep, c.tinyGC.sweepLimit,
 			slices.Equal(c.tinyGC.color, beforeColor))
 	}
 }
 
-func TestTinyFailedRootCountPreflightPreservesActiveCycle(t *testing.T) {
+func TestTinyFailedRootEnumerationPreservesCycle(t *testing.T) {
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Run("idle", func(t *testing.T) {
+		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})
+		object, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertTinyFailedRootsPreserveCycle(t, c, Root(object), false)
+		assertTinyFailedRootsPreserveCycle(t, c, Root(object), true)
+		if err := c.Verify(RefSliceRoots{object}); err != nil {
+			t.Fatal(err)
+		}
+	})
 	t.Run("interrupted mark", func(t *testing.T) {
 		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})
 		object, err := c.NewStructDefault(0)
@@ -73,14 +93,16 @@ func TestTinyFailedRootCountPreflightPreservesActiveCycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		root := Root(object)
-		late := &tinyLateWalkFailure{root: root}
-		if err := c.CollectFull(late); err == nil || late.walks != 2 {
-			t.Fatalf("mark walk: err = %v, walks = %d", err, late.walks)
+		// Establish unfinished work independently of root-enumeration failures.
+		// Exercise both restart implementations, including the synchronous one.
+		if err := c.tinyStartMark(Slots{&root}); err != nil {
+			t.Fatal(err)
 		}
 		if c.tinyGC.state != tinyMark || len(c.tinyGC.grayStack) == 0 {
 			t.Fatal("setup did not leave unfinished marking work")
 		}
-		assertTinyFailedPreflightPreservesCycle(t, c, root)
+		assertTinyFailedRootsPreserveCycle(t, c, root, false)
+		assertTinyFailedRootsPreserveCycle(t, c, root, true)
 	})
 	if !tinyIncrementalBuild {
 		return
@@ -114,7 +136,8 @@ func TestTinyFailedRootCountPreflightPreservesActiveCycle(t *testing.T) {
 		if c.tinyGC.scan.handle != handleOf(array) || len(c.tinyGC.grayStack) == 0 {
 			t.Fatal("setup did not leave a scan cursor and queued child")
 		}
-		assertTinyFailedPreflightPreservesCycle(t, c, root)
+		assertTinyFailedRootsPreserveCycle(t, c, root, false)
+		assertTinyFailedRootsPreserveCycle(t, c, root, true)
 	})
 	t.Run("partial sweep", func(t *testing.T) {
 		c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})
@@ -142,18 +165,22 @@ func TestTinyFailedRootCountPreflightPreservesActiveCycle(t *testing.T) {
 		if c.tinyGC.state != tinySweep || c.tinyGC.sweep <= 1 || c.tinyGC.sweepLimit <= c.tinyGC.sweep {
 			t.Fatal("setup did not leave a partial sweep")
 		}
-		assertTinyFailedPreflightPreservesCycle(t, c, root)
+		assertTinyFailedRootsPreserveCycle(t, c, root, false)
+		assertTinyFailedRootsPreserveCycle(t, c, root, true)
 	})
 }
 
-func (r *tinyLateWalkFailure) RangeRoots(fn func(RootSlot) bool) { fn(&r.root) }
-
-func (r *tinyLateWalkFailure) RangeRootRefs(sink RootRefSink) bool {
-	r.walks++
-	if !sink.VisitRootRef(Ref(r.root)) {
-		return false
+// Start an accepted cycle but leave its object tracing unfinished. Rejected
+// root input now preserves the current cycle, so failures alone must not be used
+// as a proxy for interrupted restarts in the epoch-alias regression tests.
+func startTinyUnfinishedCycle(t testing.TB, c *Collector) {
+	t.Helper()
+	if err := c.tinyStartMark(nil); err != nil {
+		t.Fatal(err)
 	}
-	return r.walks != 2
+	if c.tinyGC.state != tinyMark || c.tinyGC.rootPhase != tinyRootsNone || len(c.tinyGC.grayStack) != 0 {
+		t.Fatal("setup did not establish an unfinished rootless mark cycle")
+	}
 }
 
 func TestTinyRecoveryFromEveryCompletedEpoch(t *testing.T) {
@@ -176,19 +203,13 @@ func TestTinyRecoveryFromEveryCompletedEpoch(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fail := func(late bool) {
+		if c.tinyGC.markEpoch != uint8(start) || c.tinyGC.state != tinyIdle {
+			t.Fatalf("setup epoch/state = %d/%d, want %d/idle", c.tinyGC.markEpoch, c.tinyGC.state, start)
+		}
+		fail := func(afterRoot bool) {
 			t.Helper()
-			if late {
-				roots := &tinyLateWalkFailure{root: Root(parent)}
-				if err := c.CollectFull(roots); err == nil || roots.walks != 2 {
-					t.Fatalf("start %d: late failure = %v, walks %d", start, err, roots.walks)
-				}
-			} else {
-				roots := &tinySecondWalkFailure{root: Root(parent)}
-				if err := c.CollectFull(roots); err == nil || roots.walks != 2 {
-					t.Fatalf("start %d: early failure = %v, walks %d", start, err, roots.walks)
-				}
-			}
+			startTinyUnfinishedCycle(t, c)
+			assertTinyFailedRootsPreserveCycle(t, c, Root(parent), afterRoot)
 		}
 		fail(false)
 		child, err := c.NewStructDefault(0)
@@ -222,18 +243,6 @@ func TestTinyRecoveryFromEveryCompletedEpoch(t *testing.T) {
 	}
 }
 
-func (r *tinySecondWalkFailure) RangeRoots(fn func(RootSlot) bool) {
-	fn(&r.root)
-}
-
-func (r *tinySecondWalkFailure) RangeRootRefs(sink RootRefSink) bool {
-	r.walks++
-	if r.walks == 2 {
-		return false
-	}
-	return sink.VisitRootRef(Ref(r.root))
-}
-
 func TestTinyCompletedWrapThenFailedRestartsKeepReachableChild(t *testing.T) {
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
@@ -261,12 +270,14 @@ func TestTinyCompletedWrapThenFailedRestartsKeepReachableChild(t *testing.T) {
 	}
 	failStart := func() {
 		t.Helper()
-		roots := &tinySecondWalkFailure{root: Root(parent)}
-		if err := c.CollectFull(roots); err == nil || roots.walks != 2 {
-			t.Fatalf("second root walk: err = %v, walks = %d", err, roots.walks)
-		}
+		startTinyUnfinishedCycle(t, c)
+		assertTinyFailedRootsPreserveCycle(t, c, Root(parent), false)
+		assertTinyFailedRootsPreserveCycle(t, c, Root(parent), true)
 	}
 	failStart() // epoch 0, after a completed epoch-127 cycle
+	if c.tinyGC.markEpoch != 0 {
+		t.Fatalf("first start did not wrap: epoch = %d", c.tinyGC.markEpoch)
+	}
 	child, err := c.NewStructDefault(0)
 	if err != nil {
 		t.Fatal(err)
@@ -338,14 +349,13 @@ func TestTinyFailedRestartsDoNotAliasWrappedEpoch(t *testing.T) {
 	if c.tinyGC.markEpoch != 1 {
 		t.Fatalf("initial mark epoch = %d, want 1", c.tinyGC.markEpoch)
 	}
-	failSecondWalk := func() {
+	failRestart := func() {
 		t.Helper()
-		roots := &tinySecondWalkFailure{root: Root(parent)}
-		if err := c.CollectFull(roots); err == nil || roots.walks != 2 {
-			t.Fatalf("second root walk: err = %v, walks = %d", err, roots.walks)
-		}
+		startTinyUnfinishedCycle(t, c)
+		assertTinyFailedRootsPreserveCycle(t, c, Root(parent), false)
+		assertTinyFailedRootsPreserveCycle(t, c, Root(parent), true)
 	}
-	failSecondWalk()
+	failRestart()
 	child, err := c.NewStructDefault(0)
 	if err != nil {
 		t.Fatal(err)
@@ -357,8 +367,8 @@ func TestTinyFailedRestartsDoNotAliasWrappedEpoch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := uint8(2); i < tinyMarkEpochMask; i++ {
-		failSecondWalk()
+	for i := uint8(1); i < tinyMarkEpochMask; i++ {
+		failRestart()
 	}
 	root := Root(parent)
 	roots := Slots{&root}
