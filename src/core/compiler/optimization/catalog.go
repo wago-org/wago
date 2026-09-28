@@ -421,7 +421,7 @@ var catalog = []Definition{
 	amd64("tree-order", "Valent tree ordering", "schedule bounded commutative trees by register need"),
 	amd64("assoc-tree", "Associative tree cover", "cover high-pressure bounded associative trees with one accumulator"),
 	experimentalAMD64("bmi2-rorx", "BMI2 rotates", "use non-destructive immediate rotates on BMI2 hosts"),
-	experimentalAMD64("avx512-ternary", "AVX-512 ternary SIMD", "fuse adjacent 128-bit vector boolean operations on AVX-512VL hosts"),
+	amd64("avx512-ternary", "AVX-512 ternary SIMD", "fuse adjacent 128-bit vector boolean operations on AVX-512VL hosts"),
 	amd64("avx512-vrotate", "AVX-512 vector rotates", "select packed rotate instructions for exact i32x4 rotate idioms on AVX-512VL hosts"),
 	amd64("callfree-loop-reg-state", "Call-free loop register state", "keep written pinned locals register-resident across simple call-free loop backedges"),
 	arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),

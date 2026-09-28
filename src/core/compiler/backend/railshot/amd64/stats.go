@@ -104,10 +104,9 @@ var (
 	// simdSuperoptEnabled gates exact bounded selection of multi-op Wasm SIMD
 	// sequences. WAGO_NO_SIMD_SUPEROPT=1 is the A/B oracle.
 	simdSuperoptEnabled = os.Getenv("WAGO_NO_SIMD_SUPEROPT") != "1"
-	// avx512TernaryEnabled gates one-instruction fusion of adjacent 128-bit
-	// AND/OR/XOR operations on AVX-512VL hosts. The catalog keeps it opt-in until
-	// broad execution and compile-cost qualification is complete.
-	avx512TernaryEnabled bool
+	// AVX-512VL hosts can cover adjacent 128-bit boolean operations with one
+	// VPTERNLOGD. WAGO_AMD64_NO_AVX512_TERNARY=1 is the rollback switch.
+	avx512TernaryEnabled = os.Getenv("WAGO_AMD64_NO_AVX512_TERNARY") != "1"
 	// WAGO_AMD64_NO_AVX512_VROTATE=1 disables packed rotate selection.
 	avx512VRotateEnabled = os.Getenv("WAGO_AMD64_NO_AVX512_VROTATE") != "1"
 	// WAGO_AMD64_NO_CALLFREE_LOOP_REG_STATE=1 is the A/B rollback switch.
