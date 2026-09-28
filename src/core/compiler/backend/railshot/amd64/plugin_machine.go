@@ -336,6 +336,15 @@ func (c *pluginAMD64Context) finish(resultWidth int32) {
 }
 
 func (f *fn) emitPluginAMD64(lowering *plugincodegen.Lowering, inputWidths []int32, resultWidth int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
+	// Check before invoking either emitter and record only lowerings that reach
+	// code generation. Unused imports and unreachable calls impose no CPU tier.
+	required, err := pluginAMD64Requirements(lowering.Features)
+	if err != nil {
+		return err
+	}
+	if !f.cpuHas(required) {
+		return fmt.Errorf("amd64: plugin lowering requires unavailable CPU features %#x", required)
+	}
 	if len(customInputs) != 0 || customOutput != nil {
 		if !f.cpuHas(shared.AMD64AVX) {
 			return fmt.Errorf("amd64: custom vector plugin ABI requires AVX")
@@ -497,16 +506,10 @@ func pluginAMD64Requirements(features plugincodegen.Features) (shared.AMD64Featu
 	return required, nil
 }
 
-func combinedAMD64Requirements(features shared.AMD64Features, bmi2 bool, bitCount uint8, avx2, avx512 bool) uint32 {
+func combinedAMD64Requirements(features shared.AMD64Features, bmi2 bool, bitCount uint8) uint32 {
 	features |= shared.AMD64BitCountRequirements(bitCount)
 	if bmi2 {
 		features |= shared.AMD64BMI2
-	}
-	if avx2 {
-		features |= shared.AMD64AVX | shared.AMD64AVX2
-	}
-	if avx512 {
-		features |= shared.AMD64AVX | shared.AMD64AVX2 | shared.AMD64AVX512
 	}
 	return uint32(features)
 }
