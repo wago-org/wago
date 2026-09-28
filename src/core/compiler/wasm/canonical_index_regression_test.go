@@ -72,3 +72,31 @@ func TestCanonicalIndexRefreshesAfterRevalidation(t *testing.T) {
 	}
 	checkCanonicalIndexAgainstLinear(t, m)
 }
+
+func TestCanonicalIndexDuplicatePrefixMatchesLinear(t *testing.T) {
+	for _, count := range []int{16, 64} {
+		for _, uniform := range []bool{true, false} {
+			t.Run(fmt.Sprintf("types=%d/uniform=%t", count, uniform), func(t *testing.T) {
+				m := &Module{Types: make([]RecType, count)}
+				for i := range m.Types {
+					comp := CompType{Kind: CompFunc, Params: []ValType{I32}}
+					if !uniform {
+						switch i {
+						case count / 2:
+							comp.Params = []ValType{I64}
+						case count/2 + 1:
+							comp = CompType{Kind: CompStruct}
+						case count/2 + 2:
+							comp.Params = []ValType{FuncRef}
+						case count/2 + 3:
+							comp.Params = []ValType{RefVal(Ref(true, AbsHeap(HeapFunc), false))}
+						}
+					}
+					m.Types[i] = RecType{SubTypes: []SubType{{Comp: comp}}}
+				}
+				checkCanonicalIndexAgainstLinear(t, m)
+				checkCanonicalIndexAgainstLinear(t, m) // Reusing published IDs preserves the proof.
+			})
+		}
+	}
+}

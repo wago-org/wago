@@ -636,8 +636,26 @@ func (m *Module) CanonicalTypeID(typeIdx uint32) uint32 {
 	}
 	directory.canonical.Do(func() {
 		ids := make([]uint32, len(directory.flat))
+		// A prefix of identical function signatures has canonical ID zero.
+		// Prove it directly before allocating keys; duplicate-only sections need
+		// no signature map, while mostly unique sections stop at the first miss.
+		prefix := 0
+		first := &directory.flat[0].st.Comp
+		if first.Kind == CompFunc {
+			prefix = 1
+			for prefix < len(directory.flat) && FuncTypeEqual(first, &directory.flat[prefix].st.Comp) {
+				prefix++
+			}
+		}
+		if prefix == len(directory.flat) {
+			directory.canonicalIDs = ids
+			return
+		}
 		firstBySignature := make(map[string]uint32)
-		for i := range directory.flat {
+		if prefix != 0 {
+			firstBySignature[canonicalFuncTypeKey(first)] = 0
+		}
+		for i := prefix; i < len(directory.flat); i++ {
 			idx := uint32(i)
 			ids[i] = idx
 			ct := &directory.flat[i].st.Comp
