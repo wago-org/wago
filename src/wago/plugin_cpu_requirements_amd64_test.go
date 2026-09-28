@@ -31,7 +31,9 @@ func TestUnusedPluginCPURequirementsArtifact(t *testing.T) {
 					originalFeatures, originalOK := amd64CPUCache.features, amd64CPUCache.ok
 					t.Cleanup(func() { amd64CPUCache.features, amd64CPUCache.ok = originalFeatures, originalOK })
 					amd64CPUCache.features, amd64CPUCache.ok = 0, true
-					rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithFunctionWorkers(workers)))
+					// Artifacts require explicit bounds checks, including guard-page builds.
+					cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(workers)
+					rt := NewRuntime(WithRuntimeConfig(cfg))
 					defer rt.Close()
 					ext := instructionMachineExt{name: "avx.marker", output: []int32{32}, lowering: &amd64codegen.Lowering{
 						Compatibility: amd64codegen.CompatibilityFullAccess,
