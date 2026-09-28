@@ -203,6 +203,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			f.localWritten |= 1 << written
 		}
 		f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
+		if op == 0x22 {
+			f.tryByteSwapAfterTee(r, written)
+		}
 	case 0x23: // global.get
 		return f.globalGet(r)
 	case 0x24: // global.set

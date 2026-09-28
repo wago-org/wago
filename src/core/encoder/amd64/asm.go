@@ -1395,3 +1395,12 @@ func (a *Asm) Neg(r Reg, w bool) {
 	}
 	a.emit(0xF7, 0xD8|byte(r&7))
 }
+
+// Bswap32 reverses the four bytes in a 32-bit register and zero-extends the
+// result to the full GPR, matching Wasm i32 carrier semantics.
+func (a *Asm) Bswap32(r Reg) {
+	if r >= 8 {
+		a.emit(a.rex(false, false, false, true))
+	}
+	a.emit(0x0F, 0xC8|byte(r&7))
+}

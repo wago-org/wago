@@ -17,6 +17,8 @@ func TestScalarAndFrameEncodings(t *testing.T) {
 		{"and32", func(a *Asm) { a.And32(RAX, RCX) }, []byte{0x21, 0xc8}},
 		{"or32", func(a *Asm) { a.Or32(RAX, RCX) }, []byte{0x09, 0xc8}},
 		{"xor32", func(a *Asm) { a.Xor32(RAX, RCX) }, []byte{0x31, 0xc8}},
+		{"bswap32 low", func(a *Asm) { a.Bswap32(RAX) }, []byte{0x0f, 0xc8}},
+		{"bswap32 extended", func(a *Asm) { a.Bswap32(R15) }, []byte{0x41, 0x0f, 0xcf}},
 		{"xor8 low", func(a *Asm) { a.AluRR8(0x30, RAX, RCX) }, []byte{0x30, 0xc8}},
 		{"xor8 rex-low", func(a *Asm) { a.AluRR8(0x30, RSP, RDI) }, []byte{0x40, 0x30, 0xfc}},
 		{"xor8 extended", func(a *Asm) { a.AluRR8(0x30, R8, R9) }, []byte{0x45, 0x30, 0xc8}},
