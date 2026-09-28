@@ -301,10 +301,10 @@ type fn struct {
 	fpinnedLocalMask regMask
 	pinRelinquished  bool // a dedicated local register may temporarily have an allocator owner
 
-	// WARP STACK_REG lazy-spill model for pinned locals in CALL-MAKING functions
+	// WARP STACK_REG lazy-spill model for call-making or regional functions
 	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
-	// Call-free functions keep locals permanently in registers (locals[].state unused).
+	// Other call-free functions retain the original eager register-home model.
 	usesCalls                  bool
 	hasCalls                   bool // emitted calls, independent of the optional lazy spill model
 	usesWide                   bool
@@ -3615,7 +3615,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// workaround; the actual root cause was the opElse merge edge skipping
 	// reconcileLocals (fixed in control.go, TestExecIfElseLocalMerge).
 	f.hasCalls = hasCall
-	f.usesCalls = hasCall && f.opt(optStackReg)
+	// Regional caches can force dedicated pins into memory even without a call.
+	// Use the existing edge contracts to restore those pins at loop headers and
+	// joins. The eager call-free model assumes they never leave their registers.
+	f.usesCalls = hasCall && f.opt(optStackReg) || f.intervalControl
 	// A call-free leaf extends the deepest checked stack by exactly one frame; the
 	// fence's 256 KiB margin (runtime stackFenceMargin) absorbs that when the frame
 	// is provably small. frameSize isn't known until after the body, so bound it:

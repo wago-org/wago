@@ -1074,7 +1074,13 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		if f.pinRelinquished && f.regUser[pr] != nil {
 			f.spillIfUsed(pr)
 		}
+		// The destination is a hard reservation until the assignment commits.
+		// Nested lowering may clear its temporary pin mask, so keep this lease
+		// separate from those expression-local pins.
+		savedReserved := f.reserved
+		f.reserved = f.reserved.add(pr)
 		f.condenseInto(e, pr)
+		f.reserved = savedReserved
 		f.release(pr)
 		f.markLocalDirty(x) // value now lives (only) in the register
 		if tee {

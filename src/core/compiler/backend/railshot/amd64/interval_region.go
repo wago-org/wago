@@ -370,7 +370,7 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 		borrowed = f.intervalBorrowedRegs()
 	}
 	for reg, x := range f.intervalOwner {
-		if x < 0 || avoid.has(Reg(reg)) || f.pinned.has(Reg(reg)) {
+		if x < 0 || avoid.has(Reg(reg)) || f.pinned.has(Reg(reg)) || f.reserved.has(Reg(reg)) {
 			continue
 		}
 		s := f.intervalResidencyScore(x)

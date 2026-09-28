@@ -5,9 +5,9 @@ package amd64
 import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 
 // WARP's STACK_REG lazy local-spill model (Common.cpp saveLocalsAndParamsFor
-// FuncCall / recoverLocalToReg / recoverAllLocalsToRegBranch), for CALL-MAKING
-// functions. Each pinned local has a dedicated register AND a frame slot; the
-// live value is tracked in one of four states:
+// FuncCall / recoverLocalToReg / recoverAllLocalsToRegBranch), for call-making
+// functions and functions with regional local caches. Each pinned local has a
+// dedicated register AND a frame slot; its value is tracked in one of four states:
 //
 //	lsConstZero — declared local's initial zero; neither register nor slot is live
 //	lsReg       — value only in the register (register is dirty vs the slot)
@@ -20,9 +20,9 @@ import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 //   - a subsequent local.get reloads lazily (recoverLocal);
 //   - branches converge everything to lsStackReg so all edges agree.
 //
-// Call-free functions never enter this path: their pinned locals live in
-// registers for the whole function (no calls to clobber them), so locals[].state is
-// unused and no reconcile stores are emitted (keeps tight compute loops fast).
+// Regional caches can reclaim dedicated pins under pressure without a call.
+// They use the same edge reconciliation so loop headers and joins retain their
+// recorded homes. Other call-free functions keep the original eager model.
 
 type locState uint8
 

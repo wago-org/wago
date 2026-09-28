@@ -1,0 +1,64 @@
+//go:build linux && amd64
+
+package amd64
+
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"math/bits"
+	"testing"
+)
+
+// Reduced from the Embench nettle-sha256 command self-check. Regional locals
+// increase pressure enough to reclaim a function pin inside a three-iteration
+// loop. Its backedge must retain the register home expected at the loop header.
+func TestIntervalControlPreservesCallFreeLoopPins(t *testing.T) {
+	body := []byte{
+		0x01, 0x10, 0x7f, 0x01, 0x41, 0x00, 0x1a, 0x41, 0x30, 0x41, 0x00, 0x36,
+		0x02, 0x00, 0x03, 0x40, 0x20, 0x01, 0x22, 0x04, 0x41, 0x01, 0x73, 0x41,
+		0x00, 0x20, 0x04, 0x71, 0x6a, 0x20, 0x02, 0x20, 0x02, 0x73, 0x20, 0x02,
+		0x73, 0x6a, 0x22, 0x00, 0x20, 0x08, 0x41, 0x01, 0x6a, 0x41, 0x00, 0x6a,
+		0x22, 0x08, 0x20, 0x07, 0x6a, 0x6a, 0x22, 0x01, 0x41, 0x1e, 0x77, 0x20,
+		0x01, 0x41, 0x13, 0x77, 0x73, 0x20, 0x01, 0x41, 0x0a, 0x77, 0x73, 0x20,
+		0x00, 0x41, 0x01, 0x71, 0x6a, 0x20, 0x0d, 0x41, 0x0a, 0x76, 0x20, 0x03,
+		0x6a, 0x22, 0x03, 0x20, 0x05, 0x41, 0xfc, 0x00, 0x6a, 0x6a, 0x6a, 0x21,
+		0x07, 0x41, 0x00, 0x21, 0x05, 0x20, 0x0f, 0x41, 0x10, 0x6a, 0x22, 0x0f,
+		0x41, 0x30, 0x49, 0x0d, 0x00, 0x0b, 0x41, 0xfc, 0x00, 0x41, 0x00, 0x36,
+		0x02, 0x00, 0x41, 0xf8, 0x00, 0x20, 0x00, 0x36, 0x02, 0x00, 0x0b,
+	}
+	for iterations := 1; iterations <= 3; iterations++ {
+		var want, a, b uint32
+		for i := 1; i <= iterations; i++ {
+			want = a ^ 1
+			a = want + uint32(i) + b
+			b = (bits.RotateLeft32(a, 30) ^ bits.RotateLeft32(a, 19) ^ bits.RotateLeft32(a, 10)) + (want & 1) + 124
+		}
+		for _, guard := range []bool{false, true} {
+			for _, enabled := range []bool{false, true} {
+				t.Run(fmt.Sprintf("iterations=%d/guard=%t/regional=%t", iterations, guard, enabled), func(t *testing.T) {
+					loopBody := bytes.ReplaceAll(body, []byte{0x41, 0x30, 0x49}, []byte{0x41, byte(iterations * 16), 0x49})
+					m := modMem(t, 1, nil, nil, loopBody)
+					// Retain regional admission while keeping the semantic repro small.
+					if n := len(m.Code[0].BodyBytes); n < 128 {
+						m.Code[0].BodyBytes = append(bytes.Repeat([]byte{0x01}, 128-n), m.Code[0].BodyBytes...)
+					}
+					var stats ModuleStats
+					_, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{
+						CompactNative: true, ElideBoundsChecks: guard, Stats: &stats,
+						Optimizations: map[string]bool{"interval-control": enabled},
+					}, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if got := binary.LittleEndian.Uint32(mem[120:]); got != want {
+						t.Fatalf("loop output = %#x, want %#x", got, want)
+					}
+					if enabled && stats.Funcs[0].Peephole["interval-control"] == 0 {
+						t.Fatal("fixture did not exercise regional control caching")
+					}
+				})
+			}
+		}
+	}
+}

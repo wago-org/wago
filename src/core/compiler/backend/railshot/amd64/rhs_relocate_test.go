@@ -157,3 +157,49 @@ func TestDeferredRHSRelocationDoesNotAllocate(t *testing.T) {
 		t.Fatalf("allocations per RHS relocation = %.2f, want 0", allocs)
 	}
 }
+
+func TestLocalSinkKeepsRegionalDestination(t *testing.T) {
+	for _, tee := range []bool{false, true} {
+		stats := new(CodegenStats)
+		f := &fn{
+			a: &encoder.Asm{}, s: newStackWithCap(16), stats: stats,
+			nLocals: 1, localType: []machineType{mtI64}, localSlot: []uint32{0},
+			locals:      []localDef{{typ: mtI64, reg: R12, state: lsReg}},
+			intervalReg: []Reg{RSP}, intervalScore: []uint32{2}, intervalActive: 1,
+			pinnedLocalMask: maskOf(R12),
+		}
+		for r := range f.intervalOwner {
+			f.intervalOwner[r] = -1
+		}
+		f.intervalOwner[R12] = 0
+		value := func(v int64) *elem { return f.s.pushValue(storage{kind: stConst, typ: mtI64, cval: v}) }
+		sub := func(left, right *elem) *elem {
+			e := f.s.alloc()
+			e.setElemKind(ekDeferred)
+			e.setDeferredOp(opSub)
+			e.setValueType(mtI64)
+			e.arg0, e.arg1 = left, right
+			return f.s.push(e)
+		}
+		left := sub(value(13), value(5))
+		rightLeft := sub(value(11), value(4))
+		rightRight := sub(value(9), value(3))
+		sub(left, sub(rightLeft, rightRight))
+		// A nested RHS relocation occurs before the outer binary lowering pins its
+		// destination. It must spill instead of evicting the pending assignment.
+		f.pinned = rhsRelocateFixturePins.remove(R12).add(R8)
+		f.setLocal(nil, 0, tee)
+		if f.locals[0].reg != R12 || f.locals[0].state != lsReg || f.intervalOwner[R12] != 0 {
+			t.Fatalf("assignment lost its destination: local=%+v owner=%d", f.locals[0], f.intervalOwner[R12])
+		}
+		if stats.Residency.Evictions != 0 || stats.Spills == 0 {
+			t.Fatalf("expected RHS spill without destination eviction: %+v", stats)
+		}
+		if f.reserved != 0 {
+			t.Fatalf("temporary destination reservation leaked: %#x", f.reserved)
+		}
+		if tee && (f.s.back().st.kind != stLocalReg || f.s.back().st.reg != R12) {
+			t.Fatal("tee lost its borrowed result")
+		}
+	}
+}
