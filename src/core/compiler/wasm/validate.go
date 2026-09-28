@@ -123,15 +123,17 @@ func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *direc
 	// decoding allocates, leaving its inline operand/control stacks reclaimed
 	// during validation.
 	v := moduleValidator{
-		m:                m,
-		funcIndex:        -1,
-		direct:           direct,
-		features:         features,
-		limits:           limits,
-		analysis:         analysis,
-		analysisFuncBase: m.ImportedFuncCount(),
+		m:         m,
+		funcIndex: -1,
+		direct:    direct,
+		features:  features,
+		limits:    limits,
+		analysis:  analysis,
 	}
 	v.ensureImportIndexes()
+	// Validation already owns an index for every import kind. Asking the module
+	// for this count would build a second directory just to read one length.
+	v.analysisFuncBase = len(v.importIndexes[ExternFunc])
 	if err := v.validateModule(); err != nil {
 		runtime.KeepAlive(m)
 		runtime.KeepAlive(direct)
@@ -275,7 +277,8 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 // body immediates may still miss the cache; resolvedCompType computes those
 // without mutating the frozen map so malformed modules remain race-free.
 func (v *moduleValidator) freezeCompCache() {
-	typeCount := v.m.flattenedTypeCount()
+	v.ensureTypeIndex()
+	typeCount := len(v.flatSubTypes)
 	for i := 0; i < typeCount; i++ {
 		_, _ = v.resolvedCompType(TypeIdx{Index: uint32(i)})
 	}
@@ -1184,14 +1187,16 @@ func (v *funcValidator) unreachable() {
 	v.ctrls[len(v.ctrls)-1].unreachable = true
 }
 func (v *funcValidator) localType(idx uint32) (ValType, bool) {
-	if uint64(idx) >= v.localCount {
-		return ValType{}, false
-	}
+	// Both lookup paths check their bounds. Keep this wrapper small enough to
+	// inline instead of repeating the local-count check on every instruction.
 	return LocalTypeIndexed(v.localParams, v.localRuns, v.localRunEnds, idx)
 }
 
 func (v *funcValidator) indexLocalRuns() {
 	v.localRunEnds = v.localRunEnds[:0]
+	if len(v.localRuns) <= 2 {
+		return
+	}
 	end := uint64(len(v.localParams))
 	for _, run := range v.localRuns {
 		end += uint64(run.Count)

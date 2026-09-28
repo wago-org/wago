@@ -5,6 +5,35 @@ import (
 	"testing"
 )
 
+func BenchmarkScalingLocalRunLookup(b *testing.B) {
+	for _, n := range []int{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024} {
+		params := []ValType{I32}
+		runs := make([]LocalRun, n)
+		ends := make([]uint64, n)
+		for i := range runs {
+			runs[i] = LocalRun{Count: 3, Type: I64}
+			ends[i] = uint64(1 + 3*(i+1))
+		}
+		index := uint32(3 * n)
+		b.Run(fmt.Sprintf("linear/N=%d", n), func(b *testing.B) {
+			b.ReportAllocs()
+			for k := 0; k < b.N; k++ {
+				if value, ok := LocalType(params, runs, index); !ok || value != I64 {
+					b.Fatal("local type")
+				}
+			}
+		})
+		b.Run(fmt.Sprintf("indexed/N=%d", n), func(b *testing.B) {
+			b.ReportAllocs()
+			for k := 0; k < b.N; k++ {
+				if value, ok := LocalTypeIndexed(params, runs, ends, index); !ok || value != I64 {
+					b.Fatal("local type")
+				}
+			}
+		})
+	}
+}
+
 // This harness uses APIs present in beta.10 as well as the optimized version.
 func BenchmarkScalingTypeAnalysis(b *testing.B) {
 	for _, n := range []int{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024} {

@@ -70,6 +70,26 @@ func (v *moduleValidator) ensureTypeIndex() {
 		return
 	}
 	v.typeIndexReady = true
+	// Tiny modules use bounded direct lookups outside validation. Keep their
+	// validator index local instead of allocating an unused shared directory.
+	if len(v.m.Types) <= 8 {
+		total := 0
+		for _, group := range v.m.Types {
+			total += len(group.SubTypes)
+		}
+		if total <= 8 {
+			v.typeGroupBases = make([]int, len(v.m.Types)+1)
+			v.flatSubTypes = make([]moduleSubTypeRef, 0, total)
+			for group := range v.m.Types {
+				v.typeGroupBases[group] = len(v.flatSubTypes)
+				for member := range v.m.Types[group].SubTypes {
+					v.flatSubTypes = append(v.flatSubTypes, moduleSubTypeRef{st: &v.m.Types[group].SubTypes[member], recGroup: group})
+				}
+			}
+			v.typeGroupBases[len(v.m.Types)] = total
+			return
+		}
+	}
 	directory := v.m.typeIndex()
 	v.typeGroupBases = directory.bases
 	v.flatSubTypes = directory.flat

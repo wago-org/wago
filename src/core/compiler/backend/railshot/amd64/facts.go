@@ -19,13 +19,13 @@ const (
 
 func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }
 
-func (st storage) valueFacts() valueFacts { return valueFacts(st.meta) & valueFactMask }
+func (st *storage) valueFacts() valueFacts { return valueFacts(st.meta) & valueFactMask }
 
 func (st *storage) setValueFacts(facts valueFacts) {
 	st.meta = st.meta&^uint8(valueFactMask) | uint8(facts&valueFactMask)
 }
 
-func (st storage) hasGCRoot() bool { return valueFacts(st.meta).has(storageGCRoot) }
+func (st *storage) hasGCRoot() bool { return valueFacts(st.meta).has(storageGCRoot) }
 
 func (st *storage) setGCRoot(root bool) {
 	if root {
@@ -35,7 +35,7 @@ func (st *storage) setGCRoot(root bool) {
 	}
 }
 
-func (st storage) hasEHRoot() bool { return valueFacts(st.meta).has(storageEHRoot) }
+func (st *storage) hasEHRoot() bool { return valueFacts(st.meta).has(storageEHRoot) }
 
 func (st *storage) setEHRoot(root bool) {
 	if root {
@@ -45,7 +45,7 @@ func (st *storage) setEHRoot(root bool) {
 	}
 }
 
-func (st storage) hasLogicalRoot() bool { return valueFacts(st.meta).has(storageLogicalRoot) }
+func (st *storage) hasLogicalRoot() bool { return valueFacts(st.meta).has(storageLogicalRoot) }
 
 func (st *storage) setLogicalRoot(root bool) {
 	if root {

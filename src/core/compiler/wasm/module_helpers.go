@@ -214,7 +214,9 @@ func LocalTypeIndexed(params []ValType, runs []LocalRun, runEnds []uint64, idx u
 	if uint64(idx) < uint64(len(params)) {
 		return params[idx], true
 	}
-	if len(runEnds) != len(runs) {
+	// Measured late-local lookup crosses over around four runs. One or two
+	// runs are cheaper to scan and do not need an index allocation.
+	if len(runs) <= 2 || len(runEnds) != len(runs) {
 		return LocalType(params, runs, idx)
 	}
 	i := sort.Search(len(runEnds), func(i int) bool { return runEnds[i] > uint64(idx) })

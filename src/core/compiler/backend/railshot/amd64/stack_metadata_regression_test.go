@@ -7,6 +7,40 @@ import (
 	"testing"
 )
 
+func TestConstantFoldingPreservesLogicalRootAndPrefix(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		op     wOp
+		input  machineType
+		output machineType
+		left   int64
+		right  int64
+		want   int64
+	}{
+		{"i32-wrap", opAdd, mtI32, mtI32, 0x7fffffff, 1, -0x80000000},
+		{"i64-add", opAdd, mtI64, mtI64, 0x100000000, 3, 0x100000003},
+		{"i64-compare", opEq, mtI64, mtI32, 0x100000000, 0x100000000, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := fn{s: newStack()}
+			prefix := f.pushValue(storage{kind: stSlot, typ: mtI64})
+			f.markGCReference(prefix)
+			left := f.pushValue(storage{kind: stConst, typ: tc.input, cval: tc.left})
+			f.pushValue(storage{kind: stConst, typ: tc.input, cval: tc.right})
+			f.pushBinOp(tc.op, tc.input)
+			if f.depth() != 2 || f.s.back() != left || left.prev != prefix || prefix.prev != f.s.head {
+				t.Fatal("fold changed the logical prefix or failed to reuse its root")
+			}
+			if left.st.kind != stConst || left.st.typ != tc.output || left.st.cval != tc.want || !left.st.hasLogicalRoot() {
+				t.Fatalf("folded storage = %+v", left.st)
+			}
+			if !prefix.st.hasGCRoot() || !prefix.st.hasLogicalRoot() || !f.s.hasGCRoots {
+				t.Fatal("fold lost the prefix GC root")
+			}
+		})
+	}
+}
+
 // Maintain a separate logical operand model while changing the physical
 // deferred-expression list. In particular, deleting expression children must
 // not reduce depth, and exposing a peeled child must restore its root status.

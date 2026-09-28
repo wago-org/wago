@@ -445,10 +445,10 @@ func (s *stack) pushValue(st storage) *elem {
 	if st.hasGCRoot() {
 		s.hasGCRoots = true
 	}
+	st.setLogicalRoot(true)
 	e := s.alloc()
 	e.setElemKind(ekValue)
 	e.st = st
-	e.st.setLogicalRoot(true)
 	s.logicalDepth++
 	return s.push(e)
 }
@@ -539,8 +539,10 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 			f.stats.peep("const-fold")
 			v := foldBin(op, left.st.cval, right.st.cval, typ.is64())
 			f.erase(right)
-			f.erase(left)
-			f.pushValue(storage{kind: stConst, typ: typ, cval: v})
+			// The left operand is already the remaining logical root. Reuse it
+			// instead of erasing, allocating, and republishing the same position.
+			f.s.clearElemCold(left)
+			f.replaceStorage(left, storage{kind: stConst, typ: typ, cval: v})
 			return
 		}
 		if isCompare(op) {
@@ -548,8 +550,8 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 			f.stats.peep("const-fold")
 			v := foldCompare(op, left.st.cval, right.st.cval, typ.is64())
 			f.erase(right)
-			f.erase(left)
-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: v})
+			f.s.clearElemCold(left)
+			f.replaceStorage(left, storage{kind: stConst, typ: mtI32, cval: v})
 			return
 		}
 	}
