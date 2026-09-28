@@ -322,9 +322,10 @@ func (s *stack) initSentinel() {
 // reset rewinds the stack to empty for reuse by the next function in a module
 // compile, retaining every chunk's backing array so the common case allocates
 // nothing per function. The prior function's nodes are dead by the time this is
-// called (its code is already emitted), so dropping them is safe; alloc rezeroes
-// every reused slot, so no stale fields survive.
+// called (its code is already emitted). Clear each used chunk once on reuse;
+// the remaining capacity is already zero, so alloc need not clear every node.
 func (s *stack) reset() {
+	clear(s.chunks[0])
 	clear(s.cold[:cap(s.cold)])
 	s.cold = s.cold[:0]
 	s.initSentinel()
@@ -413,22 +414,33 @@ func stackArenaCapForBody(bodyLen, nLocals int) int {
 func (s *stack) alloc() *elem {
 	chunk := &s.chunks[s.cur]
 	if len(*chunk) == cap(*chunk) {
-		s.cur++
-		if s.cur == len(s.chunks) {
-			s.chunks = append(s.chunks, make([]elem, 0, int(s.nextChunkCap)))
-			s.nextChunkCap = s.nextGeometricCap
-			if s.nextGeometricCap < maxStackChunkCap {
-				s.nextGeometricCap *= 2
-				if s.nextGeometricCap > maxStackChunkCap {
-					s.nextGeometricCap = maxStackChunkCap
-				}
+		return s.allocNextChunk()
+	}
+	n := len(*chunk)
+	*chunk = (*chunk)[:n+1]
+	return &(*chunk)[n]
+}
+
+// Keep growth and clearing of reused chunks off the per-operand path.
+//
+//go:noinline
+func (s *stack) allocNextChunk() *elem {
+	s.cur++
+	if s.cur == len(s.chunks) {
+		s.chunks = append(s.chunks, make([]elem, 0, int(s.nextChunkCap)))
+		s.nextChunkCap = s.nextGeometricCap
+		if s.nextGeometricCap < maxStackChunkCap {
+			s.nextGeometricCap *= 2
+			if s.nextGeometricCap > maxStackChunkCap {
+				s.nextGeometricCap = maxStackChunkCap
 			}
 		}
-		chunk = &s.chunks[s.cur]
-		*chunk = (*chunk)[:0]
+	} else {
+		clear(s.chunks[s.cur])
 	}
-	*chunk = append(*chunk, elem{})
-	return &(*chunk)[len(*chunk)-1]
+	chunk := &s.chunks[s.cur]
+	*chunk = (*chunk)[:1]
+	return &(*chunk)[0]
 }
 
 // push appends e as the new top of the stack and returns it.
@@ -462,7 +474,7 @@ func (s *stack) pushIntegerConstant(typ machineType, value int64) *elem {
 	e.st.kind = stConst
 	e.st.typ = typ
 	e.st.cval = value
-	e.st.setLogicalRoot(true)
+	e.st.meta = uint8(storageLogicalRoot)
 	s.logicalDepth++
 	return s.push(e)
 }

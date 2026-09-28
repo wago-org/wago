@@ -136,6 +136,29 @@ func compiledStructuralCallIdentity(c *Compiled, functionIndex int) ([]byte, err
 	return compiledStructuralCallIdentityWithGroups(c, functionIndex, nil)
 }
 
+// Keep the bounded encoding operations shared: inlining their growth and error
+// paths at every field makes the minimal runtime substantially larger.
+//
+//go:noinline
+func appendCallIdentityByte(dst *[]byte, b byte) error {
+	const maxIdentityBytes = 1 << 20
+	if len(*dst) >= maxIdentityBytes {
+		return fmt.Errorf("structural call identity exceeds %d bytes", maxIdentityBytes)
+	}
+	*dst = append(*dst, b)
+	return nil
+}
+
+//go:noinline
+func appendCallIdentityU32(dst *[]byte, value uint32) error {
+	const maxIdentityBytes = 1 << 20
+	if len(*dst) > maxIdentityBytes-4 {
+		return fmt.Errorf("structural call identity exceeds %d bytes", maxIdentityBytes)
+	}
+	*dst = binary.LittleEndian.AppendUint32(*dst, value)
+	return nil
+}
+
 func compiledStructuralCallIdentityWithGroups(c *Compiled, functionIndex int, groups map[uint32]structuralTypeGroupBounds) ([]byte, error) {
 	sig, ok := compiledFunctionSignature(c, functionIndex)
 	if !ok {
@@ -184,20 +207,6 @@ func compiledStructuralCallIdentityWithGroups(c *Compiled, functionIndex int, gr
 	var buildGroup func(uint32) (uint32, error)
 	var writeValue func(*[]byte, ValueTypeDescriptor, uint32) error
 	var writeField func(*[]byte, FieldTypeDescriptor, uint32) error
-	appendByte := func(dst *[]byte, b byte) error {
-		if len(*dst) >= maxIdentityBytes {
-			return fmt.Errorf("structural call identity exceeds %d bytes", maxIdentityBytes)
-		}
-		*dst = append(*dst, b)
-		return nil
-	}
-	appendU32 := func(dst *[]byte, v uint32) error {
-		if len(*dst) > maxIdentityBytes-4 {
-			return fmt.Errorf("structural call identity exceeds %d bytes", maxIdentityBytes)
-		}
-		*dst = binary.LittleEndian.AppendUint32(*dst, v)
-		return nil
-	}
 	writeRef := func(dst *[]byte, ownerGroup, index uint32) error {
 		if int(index) >= len(c.Types) {
 			return fmt.Errorf("structural type index %d out of range", index)
@@ -209,25 +218,25 @@ func compiledStructuralCallIdentityWithGroups(c *Compiled, functionIndex int, gr
 		}
 		member := index - uint32(bounds.start)
 		if targetGroup == ownerGroup {
-			if err := appendByte(dst, 0xf2); err != nil {
+			if err := appendCallIdentityByte(dst, 0xf2); err != nil {
 				return err
 			}
-			return appendU32(dst, member)
+			return appendCallIdentityU32(dst, member)
 		}
 		id, err := buildGroup(targetGroup)
 		if err != nil {
 			return err
 		}
-		if err := appendByte(dst, 0xf4); err != nil {
+		if err := appendCallIdentityByte(dst, 0xf4); err != nil {
 			return err
 		}
-		if err := appendU32(dst, id); err != nil {
+		if err := appendCallIdentityU32(dst, id); err != nil {
 			return err
 		}
-		return appendU32(dst, member)
+		return appendCallIdentityU32(dst, member)
 	}
 	writeValue = func(dst *[]byte, value ValueTypeDescriptor, ownerGroup uint32) error {
-		if err := appendByte(dst, byte(value.Kind)); err != nil {
+		if err := appendCallIdentityByte(dst, byte(value.Kind)); err != nil {
 			return err
 		}
 		if value.Kind != ValueTypeReference {
@@ -238,31 +247,31 @@ func compiledStructuralCallIdentityWithGroups(c *Compiled, functionIndex int, gr
 			if flag {
 				b = 1
 			}
-			if err := appendByte(dst, b); err != nil {
+			if err := appendCallIdentityByte(dst, b); err != nil {
 				return err
 			}
 		}
 		if value.Ref.Heap.Defined {
-			if err := appendByte(dst, 1); err != nil {
+			if err := appendCallIdentityByte(dst, 1); err != nil {
 				return err
 			}
 			return writeRef(dst, ownerGroup, value.Ref.Heap.TypeIndex)
 		}
-		if err := appendByte(dst, 0); err != nil {
+		if err := appendCallIdentityByte(dst, 0); err != nil {
 			return err
 		}
-		return appendByte(dst, byte(value.Ref.Heap.Abstract))
+		return appendCallIdentityByte(dst, byte(value.Ref.Heap.Abstract))
 	}
 	writeField = func(dst *[]byte, field FieldTypeDescriptor, ownerGroup uint32) error {
 		packed := byte(0)
 		if field.Storage.Packed {
 			packed = 1
 		}
-		if err := appendByte(dst, packed); err != nil {
+		if err := appendCallIdentityByte(dst, packed); err != nil {
 			return err
 		}
 		if field.Storage.Packed {
-			if err := appendByte(dst, byte(field.Storage.PackedType)); err != nil {
+			if err := appendCallIdentityByte(dst, byte(field.Storage.PackedType)); err != nil {
 				return err
 			}
 		} else if err := writeValue(dst, field.Storage.Value, ownerGroup); err != nil {
@@ -272,7 +281,7 @@ func compiledStructuralCallIdentityWithGroups(c *Compiled, functionIndex int, gr
 		if field.Mutable {
 			mutable = 1
 		}
-		return appendByte(dst, mutable)
+		return appendCallIdentityByte(dst, mutable)
 	}
 	buildGroup = func(group uint32) (uint32, error) {
 		if id, ok := groupIDs[group]; ok {
@@ -288,23 +297,23 @@ func compiledStructuralCallIdentityWithGroups(c *Compiled, functionIndex int, gr
 		building[group] = true
 		defer delete(building, group)
 		encoded := make([]byte, 0, 64)
-		if err := appendU32(&encoded, uint32(bounds.count)); err != nil {
+		if err := appendCallIdentityU32(&encoded, uint32(bounds.count)); err != nil {
 			return 0, err
 		}
 		for i := 0; i < bounds.count; i++ {
 			index := uint32(bounds.start + i)
 			d := &c.Types[index]
-			if err := appendByte(&encoded, 0xf1); err != nil {
+			if err := appendCallIdentityByte(&encoded, 0xf1); err != nil {
 				return 0, err
 			}
 			final := byte(0)
 			if d.Final {
 				final = 1
 			}
-			if err := appendByte(&encoded, final); err != nil {
+			if err := appendCallIdentityByte(&encoded, final); err != nil {
 				return 0, err
 			}
-			if err := appendU32(&encoded, uint32(len(d.Supers))); err != nil {
+			if err := appendCallIdentityU32(&encoded, uint32(len(d.Supers))); err != nil {
 				return 0, err
 			}
 			for _, super := range d.Supers {
@@ -317,21 +326,21 @@ func compiledStructuralCallIdentityWithGroups(c *Compiled, functionIndex int, gr
 				index uint32
 			}{{d.HasDescribes, d.Describes}, {d.HasDescriptor, d.Descriptor}} {
 				if !metadata.has {
-					if err := appendByte(&encoded, 0); err != nil {
+					if err := appendCallIdentityByte(&encoded, 0); err != nil {
 						return 0, err
 					}
-				} else if err := appendByte(&encoded, 1); err != nil {
+				} else if err := appendCallIdentityByte(&encoded, 1); err != nil {
 					return 0, err
 				} else if err := writeRef(&encoded, group, metadata.index); err != nil {
 					return 0, err
 				}
 			}
-			if err := appendByte(&encoded, byte(d.Kind)); err != nil {
+			if err := appendCallIdentityByte(&encoded, byte(d.Kind)); err != nil {
 				return 0, err
 			}
 			switch d.Kind {
 			case CompositeTypeFunction:
-				if err := appendU32(&encoded, uint32(len(d.Params))); err != nil {
+				if err := appendCallIdentityU32(&encoded, uint32(len(d.Params))); err != nil {
 					return 0, err
 				}
 				for _, value := range d.Params {
@@ -339,7 +348,7 @@ func compiledStructuralCallIdentityWithGroups(c *Compiled, functionIndex int, gr
 						return 0, err
 					}
 				}
-				if err := appendU32(&encoded, uint32(len(d.Results))); err != nil {
+				if err := appendCallIdentityU32(&encoded, uint32(len(d.Results))); err != nil {
 					return 0, err
 				}
 				for _, value := range d.Results {
@@ -348,7 +357,7 @@ func compiledStructuralCallIdentityWithGroups(c *Compiled, functionIndex int, gr
 					}
 				}
 			case CompositeTypeStruct:
-				if err := appendU32(&encoded, uint32(len(d.Fields))); err != nil {
+				if err := appendCallIdentityU32(&encoded, uint32(len(d.Fields))); err != nil {
 					return 0, err
 				}
 				for _, field := range d.Fields {

@@ -298,6 +298,23 @@ func TestStackArenaReusesChunksAcrossReset(t *testing.T) {
 	}
 }
 
+func TestStackArenaClearsReusedNodesAcrossChunks(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	for pass, count := range []int{4 * minStackArenaCap, 3, 2 * minStackArenaCap, 4 * minStackArenaCap} {
+		for i := 0; i < count; i++ {
+			e := s.alloc()
+			if *e != (elem{}) {
+				t.Fatalf("pass %d node %d retained prior operand state: %+v", pass, i, *e)
+			}
+			*e = elem{
+				st:   storage{cval: -1, slot: 9, cold: 2, idx: 3, kind: deferredStorageKind, typ: mtCustom, reg: RAX, meta: 0xff},
+				prev: s.head, next: s.head, arg0: s.head, arg1: s.head,
+			}
+		}
+		s.reset()
+	}
+}
+
 func TestRegMask(t *testing.T) {
 	m := maskOf(RAX, R12, R15)
 	for _, r := range []Reg{RAX, R12, R15} {

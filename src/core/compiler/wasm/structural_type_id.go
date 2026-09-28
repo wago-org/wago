@@ -126,8 +126,32 @@ func (m *Module) writeStructuralIndexedFuncTypeKey(typeIdx uint32, mix func(byte
 	return m.writeStructuralIndexedFuncType(typeIdx, mix, groupDigests, true)
 }
 
+// structuralEncodingBudget bounds the complete graph, including dependencies.
+// Keep these operations out of line so each field does not duplicate slice
+// growth and limit checks in the minimal runtime.
+type structuralEncodingBudget int
+
+//go:noinline
+func (budget *structuralEncodingBudget) appendByte(dst *[]byte, b byte) bool {
+	*budget++
+	if *budget > 1<<20 {
+		return false
+	}
+	*dst = append(*dst, b)
+	return true
+}
+
+//go:noinline
+func (budget *structuralEncodingBudget) appendU32(dst *[]byte, value uint32) bool {
+	if *budget > 1<<20-4 {
+		return false
+	}
+	*budget += 4
+	*dst = binary.LittleEndian.AppendUint32(*dst, value)
+	return true
+}
+
 func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), groupDigests *map[int][32]byte, compactKey bool) bool {
-	const maxCanonicalBytes = 1 << 20
 	directory := m.typeIndex()
 	flatCount := len(directory.flat)
 	if uint(typeIdx) >= uint(flatCount) {
@@ -141,23 +165,7 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 	groupBytes := make(map[int][]byte)
 	memberDigests := make(map[uint32][32]byte)
 	visiting := make(map[int]bool)
-	totalBytes := 0
-	appendByte := func(dst *[]byte, b byte) bool {
-		totalBytes++
-		if totalBytes > maxCanonicalBytes {
-			return false
-		}
-		*dst = append(*dst, b)
-		return true
-	}
-	appendU32 := func(dst *[]byte, value uint32) bool {
-		if totalBytes > maxCanonicalBytes-4 {
-			return false
-		}
-		totalBytes += 4
-		*dst = binary.LittleEndian.AppendUint32(*dst, value)
-		return true
-	}
+	var budget structuralEncodingBudget
 
 	var buildGroup func(int) ([]byte, bool)
 	var ensureGroupDigest func(int) ([32]byte, bool)
@@ -185,14 +193,14 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 		targetGroup := directory.flat[target].recGroup
 		if targetGroup == currentGroup {
 			position := uint32(resolved - directory.bases[targetGroup])
-			return appendByte(dst, 0xf2) && appendU32(dst, position)
+			return budget.appendByte(dst, 0xf2) && budget.appendU32(dst, position)
 		}
 		digest, ok := memberDigest(target)
-		if !ok || !appendByte(dst, 0xf4) {
+		if !ok || !budget.appendByte(dst, 0xf4) {
 			return false
 		}
 		for _, b := range digest {
-			if !appendByte(dst, b) {
+			if !budget.appendByte(dst, b) {
 				return false
 			}
 		}
@@ -200,12 +208,12 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 	}
 
 	writeValue = func(dst *[]byte, value ValType, currentGroup int) bool {
-		if !appendByte(dst, byte(value.Kind())) {
+		if !budget.appendByte(dst, byte(value.Kind())) {
 			return false
 		}
 		switch value.Kind() {
 		case ValNum:
-			return appendByte(dst, byte(value.Num()))
+			return budget.appendByte(dst, byte(value.Num()))
 		case ValVec, ValBot:
 			return true
 		case ValRef:
@@ -215,17 +223,17 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 				if flag {
 					b = 1
 				}
-				if !appendByte(dst, b) {
+				if !budget.appendByte(dst, b) {
 					return false
 				}
 			}
 			heap := rt.Heap()
-			if !appendByte(dst, byte(heap.Kind())) {
+			if !budget.appendByte(dst, byte(heap.Kind())) {
 				return false
 			}
 			switch heap.Kind() {
 			case HeapAbs:
-				return appendByte(dst, byte(heap.Abs()))
+				return budget.appendByte(dst, byte(heap.Abs()))
 			case HeapTypeIndex:
 				return writeRef(dst, heap.Type(), currentGroup)
 			case HeapDefType:
@@ -245,13 +253,13 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 	writeField = func(dst *[]byte, field FieldType, currentGroup int) bool {
 		storage := field.Storage()
 		if storage.Packed() {
-			if !appendByte(dst, 1) || !appendByte(dst, byte(storage.Pack())) {
+			if !budget.appendByte(dst, 1) || !budget.appendByte(dst, byte(storage.Pack())) {
 				return false
 			}
-		} else if !appendByte(dst, 0) || !writeValue(dst, storage.Val(), currentGroup) {
+		} else if !budget.appendByte(dst, 0) || !writeValue(dst, storage.Val(), currentGroup) {
 			return false
 		}
-		return appendByte(dst, byte(field.Mut()))
+		return budget.appendByte(dst, byte(field.Mut()))
 	}
 
 	buildGroup = func(group int) ([]byte, bool) {
@@ -264,19 +272,19 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 		visiting[group] = true
 		defer delete(visiting, group)
 		encoded := make([]byte, 0, 128)
-		if !appendU32(&encoded, uint32(len(m.Types[group].SubTypes))) {
+		if !budget.appendU32(&encoded, uint32(len(m.Types[group].SubTypes))) {
 			return nil, false
 		}
 		for member := range m.Types[group].SubTypes {
 			st := &m.Types[group].SubTypes[member]
-			if !appendByte(&encoded, 0xf1) {
+			if !budget.appendByte(&encoded, 0xf1) {
 				return nil, false
 			}
 			final := byte(0)
 			if st.Final {
 				final = 1
 			}
-			if !appendByte(&encoded, final) || !appendU32(&encoded, uint32(len(st.Supers))) {
+			if !budget.appendByte(&encoded, final) || !budget.appendU32(&encoded, uint32(len(st.Supers))) {
 				return nil, false
 			}
 			for _, super := range st.Supers {
@@ -287,19 +295,19 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 			for _, metadata := range []OptionalTypeIdx{st.Metadata.Describes, st.Metadata.Descriptor} {
 				idx, present := metadata.Get()
 				if !present {
-					if !appendByte(&encoded, 0) {
+					if !budget.appendByte(&encoded, 0) {
 						return nil, false
 					}
-				} else if !appendByte(&encoded, 1) || !writeRef(&encoded, idx, group) {
+				} else if !budget.appendByte(&encoded, 1) || !writeRef(&encoded, idx, group) {
 					return nil, false
 				}
 			}
-			if !appendByte(&encoded, byte(st.Comp.Kind)) {
+			if !budget.appendByte(&encoded, byte(st.Comp.Kind)) {
 				return nil, false
 			}
 			switch st.Comp.Kind {
 			case CompFunc:
-				if !appendU32(&encoded, uint32(len(st.Comp.Params))) {
+				if !budget.appendU32(&encoded, uint32(len(st.Comp.Params))) {
 					return nil, false
 				}
 				for _, param := range st.Comp.Params {
@@ -307,7 +315,7 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 						return nil, false
 					}
 				}
-				if !appendU32(&encoded, uint32(len(st.Comp.Results))) {
+				if !budget.appendU32(&encoded, uint32(len(st.Comp.Results))) {
 					return nil, false
 				}
 				for _, result := range st.Comp.Results {
@@ -316,7 +324,7 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 					}
 				}
 			case CompStruct:
-				if !appendU32(&encoded, uint32(len(st.Comp.Fields))) {
+				if !budget.appendU32(&encoded, uint32(len(st.Comp.Fields))) {
 					return nil, false
 				}
 				for _, field := range st.Comp.Fields {
@@ -333,13 +341,7 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 			}
 		}
 		groupBytes[group] = encoded
-		if compactKey && groupDigests != nil {
-			digest := sha256.Sum256(encoded)
-			if *groupDigests == nil {
-				*groupDigests = make(map[int][32]byte)
-			}
-			(*groupDigests)[group] = digest
-		}
+		// ensureGroupDigest hashes and publishes these bytes exactly once.
 		return encoded, true
 	}
 	ensureGroupDigest = func(group int) ([32]byte, bool) {
