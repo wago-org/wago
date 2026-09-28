@@ -262,9 +262,10 @@ func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainT
 		return true
 	}
 	// Successful direct comparisons are also required after a fingerprint hit.
-	// Delay the index until 16 misses: duplicate-heavy sets remain linear with
+	// Delay the index until 32 misses: duplicate-heavy sets remain linear with
 	// no hashing, while mostly unique sets pay only a bounded scan prefix.
-	missesLeft := 16
+	// The measured eight-type crossover stays below fingerprint setup cost.
+	missesLeft := 32
 	// One local type requires only one domain scan. Hashing every domain type
 	// adds setup and allocation without reducing that linear search.
 	useIndex := len(c.Types) > 1

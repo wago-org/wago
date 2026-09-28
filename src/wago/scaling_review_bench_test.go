@@ -167,3 +167,32 @@ func BenchmarkScalingSparseGCMapping(b *testing.B) {
 func reviewMappingReverseEntries(m *gcTypeMapping) int {
 	return len(m.domainToLocal) + len(m.domainToLocalSparse)
 }
+
+// Measure the production recent-entry path as well as the direct helper above.
+func BenchmarkScalingCompiledValueIntern(b *testing.B) {
+	for _, n := range []int{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048} {
+		for _, duplicates := range []bool{false, true} {
+			b.Run(fmt.Sprintf("duplicate=%t/N=%d", duplicates, n), func(b *testing.B) {
+				values := make([]ValueTypeDescriptor, n)
+				for i := range values {
+					id := i
+					if duplicates {
+						id = i / 8
+					}
+					values[i] = ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: uint32(id)}}}
+				}
+				c := &Compiled{validateMemo: &validateMemo{}}
+				b.ReportAllocs()
+				b.ResetTimer()
+				for k := 0; k < b.N; k++ {
+					c.ValueTypes = nil
+					reviewResetCompileIndexes(c)
+					var recent valueTypeInterner
+					for _, value := range values {
+						_ = recent.internCompiled(c, value)
+					}
+				}
+			})
+		}
+	}
+}

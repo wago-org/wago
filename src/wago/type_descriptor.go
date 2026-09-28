@@ -402,7 +402,14 @@ func (index *valueTypeInterner) internCompiled(c *Compiled, t ValueTypeDescripto
 	if large && uint64(*index) < uint64(len(c.ValueTypes)) && c.ValueTypes[*index] == t {
 		return uint32(*index)
 	}
-	i := c.internExactValueType(t)
+	var i uint32
+	if len(c.ValueTypes) < 128 {
+		// Keep the small-pool scan in the production interner's call frame.
+		// Larger pools retain the lazy exact index and stable insertion order.
+		i = internValueType(&c.ValueTypes, t)
+	} else {
+		i = c.internExactValueType(t)
+	}
 	if large || len(c.ValueTypes) >= 32 {
 		*index = valueTypeInterner(i)
 	}
