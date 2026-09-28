@@ -46,6 +46,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("avx512-vrotate", &avx512VRotateEnabled),
 	optimization.Bind("vex-float-mem", &vexFloatMemEnabled),
 	optimization.Bind("float-frame-mem", &floatFrameMemEnabled),
+	optimization.Bind("wide-local-pins", &wideLocalPinsEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
 	optimization.Bind("addr-zext-elim", &memory32AddrZExtElimEnabled),
 	optimization.Bind("canonical-i32", &canonicalI32CarriersEnabled),
@@ -106,6 +107,7 @@ var (
 	optBMI2Rorx                = optimizationBindings.Option("bmi2-rorx")
 	optAVX512Ternary           = optimizationBindings.Option("avx512-ternary")
 	optAVX512VRotate           = optimizationBindings.Option("avx512-vrotate")
+	optWideLocalPins           = optimizationBindings.Option("wide-local-pins")
 	optFloatFrameMem           = optimizationBindings.Option("float-frame-mem")
 	optVEXFloatMem             = optimizationBindings.Option("vex-float-mem")
 	optMultiBoundsCert         = optimizationBindings.Option("multi-bounds-cert")

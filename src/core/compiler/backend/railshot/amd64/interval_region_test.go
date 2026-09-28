@@ -444,7 +444,11 @@ func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 	if got, want := ineligible.nLocals, 100; got != want {
 		t.Fatalf("ineligible local count = %d, want %d", got, want)
 	}
-	if got, want := len(ineligible.localScore), 64; got != want {
+	wantScores := 64
+	if wideLocalPinsEnabled {
+		wantScores = 100
+	}
+	if got, want := len(ineligible.localScore), wantScores; got != want {
 		t.Fatalf("ineligible retained scores = %d, want %d", got, want)
 	}
 	if got := ineligible.localLastGet; got != nil {

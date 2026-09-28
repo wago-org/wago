@@ -33,6 +33,12 @@ import (
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
+// A small pin budget leaves transient capacity in loop functions with many
+// locals. Keep the default on the native qualification platform.
+var wideLocalPinsEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_NO_WIDE_LOCAL_PINS") != "1"
+
+const maxWideLocalPinsLocals = 256
+
 // deadGCNewEnabled removes bounded GC constructor trees whose result is dropped.
 // Struct and fixed-array trees disappear directly; dynamic/default/data/element
 // arrays retain a nonallocating preflight helper so size, segment, and initializer
@@ -2608,14 +2614,16 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
 		intervalStorage := intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), count, storageModuleEH)
+		wideScores := policy.EnabledOption(optWideLocalPins) && count > 64 && count <= maxWideLocalPinsLocals && !storageModuleEH && len(gcTypeLayouts) == 0
 		scoreCount := count
-		if count > 64 && !intervalStorage {
+		if count > 64 && !intervalStorage && !wideScores {
 			scoreCount = 64
 		}
 		if scoreCount > int(^uint(0)>>1)-totalScores {
 			return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint locals overflow")
 		}
 		allHints[i].localCount = uint16(count)
+		allHints[i].setWideLocalScores(wideScores)
 		allHints[i].flags.assign(hintIntervalRegionStorage, intervalStorage)
 		totalScores += scoreCount
 		if intervalStorage {
@@ -2673,6 +2681,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			h := funcHintsWithStorage(localScores[scoreAt : scoreAt+scoreCount])
 			h.nLocals = nLocals
 			h.localCount = uint16(nLocals)
+			h.setWideLocalScores(allHints[i].hasWideLocalScores())
 			h.localStart = uint32(scoreAt)
 			if intervalStorage {
 				h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
@@ -2851,6 +2860,7 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 			h := funcHintsWithStorage(localScores[localStart : localStart+retainedLocalScoreCount(base)])
 			h.nLocals = nLocals
 			h.localCount = base.localCount
+			h.setWideLocalScores(base.hasWideLocalScores())
 			h.localStart = base.localStart
 			h.lastGetStartPlus1 = base.lastGetStartPlus1
 			h.flags.assign(hintIntervalRegionStorage, base.flags.has(hintIntervalRegionStorage))
@@ -2943,8 +2953,9 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 func compactEHLocalScores(allHints []funcHints, scores []uint32) []uint32 {
 	total := 0
 	for i := range allHints {
-		total += min(int(allHints[i].localCount), 64)
 		allHints[i].flags.assign(hintIntervalRegionStorage, false)
+		allHints[i].setWideLocalScores(false)
+		total += retainedLocalScoreCount(allHints[i])
 		allHints[i].lastGetStartPlus1 = 0
 	}
 	if total == len(scores) {
@@ -2953,7 +2964,7 @@ func compactEHLocalScores(allHints []funcHints, scores []uint32) []uint32 {
 	compact := make([]uint32, total)
 	at := 0
 	for i := range allHints {
-		count := min(int(allHints[i].localCount), 64)
+		count := retainedLocalScoreCount(allHints[i])
 		start := int(allHints[i].localStart)
 		copy(compact[at:at+count], scores[start:start+count])
 		allHints[i].localStart = uint32(at)
@@ -3517,11 +3528,19 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if len(gpPool) > maxPins {
 		gpPool = gpPool[:maxPins]
 	}
-	// A wide local table can expose enough borrowed scalar/vector values at once to
-	// consume the transient floor. Keep those functions canonical from the start;
-	// this is a validated resource bound, not a failed-attempt retry.
+	// Wide functions keep their conservative stack policy except for bounded
+	// numeric loop bodies. Two pins per bank preserve a large transient floor.
+	wideLocalPins := f.opt(optWideLocalPins) && hints.hasWideLocalScores() && pinLocals &&
+		hints.flags.has(hintHasLoop) && !moduleHasSIMD && len(custom) == 0 && len(gcTypeLayouts) == 0 && gcFrameRoots == nil
 	if nLocals > 64 {
-		pinLocals = false
+		if wideLocalPins {
+			if len(gpPool) > 2 {
+				gpPool = gpPool[:2]
+			}
+			f.stats.peep("wide-local-pins")
+		} else {
+			pinLocals = false
+		}
 	}
 	if !pinLocals {
 		gpPool = nil
@@ -3543,6 +3562,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	fpPinLimit := baseFPPins
 	if f.opt(optExtendedFPPins) {
 		fpPinLimit = len(pinnedFLocalRegs)
+	}
+	if wideLocalPins && fpPinLimit > 2 {
+		fpPinLimit = 2
 	}
 	if !pinLocals {
 		fpPinLimit = 0
