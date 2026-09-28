@@ -3557,6 +3557,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if f.pinnedLocalMask.has(RBP) {
 		f.regMerge = false // RBP now holds a pinned local/global
 	}
+	if f.regMerge && hints.flags.has(hintCallsSelf) && len(c.BodyBytes) <= 64 &&
+		!touchesMemory && hints.globalCount == 0 && !hints.flags.has(hintHasLoop) &&
+		len(ft.Results) == 1 && isIntValType(ft.Results[0]) {
+		// In small, pure integer recursion the callee also uses the canonical
+		// merge register. Let its branch results converge through the stack.
+		f.regMerge = false
+		f.stats.peep("recursive-stack-merge")
+	}
 	// STACK_REG (lazy pinned-local spill) for every call-making function,
 	// including memory-touching ones: dirty-only stores before a call, lazy reload
 	// on the next read (WARP's model). #68 disabled this for memory functions as a
