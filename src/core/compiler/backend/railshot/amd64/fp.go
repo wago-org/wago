@@ -1000,6 +1000,9 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	return nil
 }
 
+// Borrow store inputs only on the platform with native qualification.
+var floatStoreBorrowEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_FLOAT_STORE_BORROW") != "0"
+
 func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
@@ -1010,7 +1013,17 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 		size = 8
 	}
 	f.materializePendingLoads() // deferred loads must read pre-store memory
-	xmm := f.materializeF(f.popValue())
+	value := f.popValue()
+	var xmm Reg
+	owned := true
+	if f.opt(optFloatStoreBorrow) {
+		xmm, owned = f.operandRegF(value)
+		if !owned {
+			f.stats.peep("float-store-borrow")
+		}
+	} else {
+		xmm = f.materializeF(value)
+	}
 	f.fpinned = f.fpinned.add(xmm)
 	if memoryIndex != 0 {
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
@@ -1031,7 +1044,9 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 		}
 	}
 	f.fpinned = f.fpinned.remove(xmm)
-	f.releaseF(xmm)
+	if owned {
+		f.releaseF(xmm)
+	}
 	return nil
 }
 
