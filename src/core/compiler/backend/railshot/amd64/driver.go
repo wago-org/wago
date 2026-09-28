@@ -1114,6 +1114,13 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 			f.loadFMemRef(pr, e.st)
 			f.releaseMemRef(e.st)
 			f.stats.peep("float-local-load-sink")
+		case e.isValue() && e.st.kind == stConst:
+			if cached, ok := f.floatConstReg(e.st); ok {
+				f.a.FMov(pr, cached, f64)
+			} else {
+				f.loadFConst(pr, e.st)
+			}
+			f.stats.peep("float-local-const-sink")
 		case e.isValue() && e.st.kind == stLocalReg:
 			if e.st.reg != pr {
 				f.a.FMov(pr, e.st.reg, f64) // borrowed float local → direct move

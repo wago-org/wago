@@ -143,6 +143,31 @@ func TestFloatPinnedMemoryLoad(t *testing.T) {
 	}
 }
 
+func TestFloatPinnedConstantLoad(t *testing.T) {
+	for _, uncached := range []bool{false, true} {
+		name := "cached"
+		if uncached {
+			name = "uncached"
+		}
+		t.Run(name, func(t *testing.T) {
+			body := []byte{0x00}
+			if uncached {
+				// Fill both preloaded constant registers before the assignment.
+				body = append(body, 0x44, 0, 0, 0, 0, 0, 0, 0, 0x40, 0x1a,
+					0x44, 0, 0, 0, 0, 0, 0, 0x08, 0x40, 0x1a)
+			}
+			// f64.const 1; local.set 0; then read the pinned local repeatedly.
+			body = append(body, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f,
+				0x21, 0x00, 0x20, 0x00, 0x20, 0x00, 0xa0, 0x20, 0x00, 0xa0, 0x0b)
+			m := mod1(t, []wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}, body)
+			s := compileWithStats(t, m, true).Funcs[0]
+			if s.Peephole["float-local-const-sink"] != 1 {
+				t.Fatalf("float-local-const-sink = %d, want 1 (all: %v)", s.Peephole["float-local-const-sink"], s.Peephole)
+			}
+		})
+	}
+}
+
 func TestGoldenFloatMemoryOperand(t *testing.T) {
 	// local.get 0; local.get 1; f64.load; f64.mul
 	m := modMem(t, 1, []wasm.ValType{wasm.F64, wasm.I32}, []wasm.ValType{wasm.F64},
