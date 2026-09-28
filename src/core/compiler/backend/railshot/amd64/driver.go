@@ -139,13 +139,17 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		f.s.pushIntegerConstant(mtI32, int64(v))
+		if !skipDroppedLiteral(r) {
+			f.s.pushIntegerConstant(mtI32, int64(v))
+		}
 	case 0x42: // i64.const
 		v, err := r.I64()
 		if err != nil {
 			return err
 		}
-		f.s.pushIntegerConstant(mtI64, v)
+		if !skipDroppedLiteral(r) {
+			f.s.pushIntegerConstant(mtI64, v)
+		}
 
 	case 0x20: // local.get
 		x32, err := r.U32()
@@ -446,13 +450,17 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		f.fconst(uint64(bits), mtF32)
+		if !skipDroppedLiteral(r) {
+			f.fconst(uint64(bits), mtF32)
+		}
 	case 0x44: // f64.const
 		bits, err := r.LEU64()
 		if err != nil {
 			return err
 		}
-		f.fconst(bits, mtF64)
+		if !skipDroppedLiteral(r) {
+			f.fconst(bits, mtF64)
+		}
 
 	case 0x2a: // f32.load
 		return f.fload(r, false)
@@ -1130,4 +1138,15 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.erase(e)
 		f.release(r)
 	}
+}
+
+// skipDroppedLiteral folds an adjacent numeric literal/drop after decoding the
+// literal's immediate. The pair cannot trap and leaves stack layout and GC roots
+// unchanged, so it needs neither an arena node nor a second opcode dispatch.
+func skipDroppedLiteral(r *wasm.Reader) bool {
+	if op, ok := r.Peek(); ok && op == 0x1a {
+		_, _ = r.Byte() // Peek established that this byte is available.
+		return true
+	}
+	return false
 }
