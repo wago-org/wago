@@ -48,6 +48,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("vex-float-mem", &vexFloatMemEnabled),
 	optimization.Bind("float-frame-mem", &floatFrameMemEnabled),
 	optimization.Bind("float-store-borrow", &floatStoreBorrowEnabled),
+	optimization.Bind("memory-compare-immediate", &memoryCompareEnabled),
 	optimization.Bind("wide-local-pins", &wideLocalPinsEnabled),
 	optimization.Bind("direct-int-branch-merge", &directIntBranchMergeEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
@@ -115,6 +116,7 @@ var (
 	optDirectIntBranchMerge    = optimizationBindings.Option("direct-int-branch-merge")
 	optFloatFrameMem           = optimizationBindings.Option("float-frame-mem")
 	optFloatStoreBorrow        = optimizationBindings.Option("float-store-borrow")
+	optMemoryCompareImmediate  = optimizationBindings.Option("memory-compare-immediate")
 	optVEXFloatMem             = optimizationBindings.Option("vex-float-mem")
 	optMultiBoundsCert         = optimizationBindings.Option("multi-bounds-cert")
 	optAddrZExtElim            = optimizationBindings.Option("addr-zext-elim")

@@ -183,6 +183,10 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		}
 		return cc
 	}
+	if cc, ok := f.tryMemoryCompareToFlags(node); ok {
+		f.erase(node)
+		return applyInvert(cc)
+	}
 	w := node.valueType().is64()
 	if node.deferredOp() == opEqz {
 		// TEST does not write its operand, so a register-resident value (a pinned

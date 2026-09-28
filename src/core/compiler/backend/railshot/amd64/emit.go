@@ -687,13 +687,17 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 // producing a 0/1 i32 result. (Fusing compares directly into branches is a later
 // optimization; Phase 1 materializes the boolean.)
 func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
-	if cc, ok := f.tryMaskedEqzToFlags(node); ok {
+	foldedCC, folded := f.tryMemoryCompareToFlags(node)
+	if !folded {
+		foldedCC, folded = f.tryMaskedEqzToFlags(node)
+	}
+	if folded {
 		result := dest
 		if result == regNone {
 			result = f.allocReg(0)
 		}
 		f.stats.peep("compare-setcc")
-		f.a.SetccReg(cc, result)
+		f.a.SetccReg(foldedCC, result)
 		f.occupy(node, result)
 		node.st.typ = mtI32
 		node.setDeferredOp(opNone)

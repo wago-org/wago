@@ -84,7 +84,7 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkAMD64(t *testing.T) {
 
 func TestHiddenOptimizationFamiliesUsePerCompilePolicyAMD64(t *testing.T) {
 	names := []string{
-		"simd-superopt", "simd-reduction-borrow", "float-store-borrow", "avx512-ternary", "interval-region-pins", "interval-control", "interval-next-use", "linear-sum-loop", "callfree-loop-cold-exit", "memsize-regional-lease", "module-global-regional-lease", "magic-div", "commute-fixed-self-update",
+		"simd-superopt", "simd-reduction-borrow", "float-store-borrow", "memory-compare-immediate", "avx512-ternary", "interval-region-pins", "interval-control", "interval-next-use", "linear-sum-loop", "callfree-loop-cold-exit", "memsize-regional-lease", "module-global-regional-lease", "magic-div", "commute-fixed-self-update",
 		"shared-trap-body", "shared-adapters", "dead-gc-new", "gc-native-alloc",
 	}
 	overrides := make(map[string]bool, len(names))
