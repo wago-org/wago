@@ -8,6 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
 	"os"
+	"runtime"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -1917,20 +1918,40 @@ func (f *fn) v128FloatSignOp(f64, isAbs bool, op byte) {
 	f.pushVReg(x)
 }
 
+// Keep the default on the platform qualified with native corpus measurements.
+var simdReductionBorrowEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_SIMD_REDUCTION_BORROW") != "0"
+
+// Boolean reductions only inspect their input. Keep a pinned vector local in
+// place; the general materializer copies it because other consumers overwrite it.
+func (f *fn) reductionOperand(v *elem) (Reg, bool) {
+	if f.opt(optSIMDReductionBorrow) {
+		x, owned := f.operandRegV128(v)
+		if !owned {
+			f.stats.peep("simd-reduction-borrow")
+		}
+		return x, owned
+	}
+	return f.materializeV128(v), true
+}
+
 func (f *fn) v128Movemask() Reg {
 	v := f.popValue()
-	x := f.materializeV128(v)
+	x, owned := f.reductionOperand(v)
 	r := f.allocReg(0)
 	opVPmovmskb.emit(f, r, x)
-	f.releaseF(x)
+	if owned {
+		f.releaseF(x)
+	}
 	return r
 }
 
 func (f *fn) v128AnyTrue() {
 	v := f.popValue()
-	x := f.materializeV128(v)
+	x, owned := f.reductionOperand(v)
 	f.emitVPtest(x, x)
-	f.releaseF(x)
+	if owned {
+		f.releaseF(x)
+	}
 	r := f.allocReg(0)
 	f.a.SetccReg(condNE, r)
 	f.pushReg(r, mtI32)
@@ -2168,10 +2189,12 @@ func (f *fn) i16x8Bitmask() {
 	// Sign-saturate-pack the 8 words to 8 bytes (each byte keeps its word's sign),
 	// then VPMOVMSKB gives all 8 lane signs in the low byte.
 	v := f.popValue()
-	x := f.materializeV128(v)
+	x, owned := f.reductionOperand(v)
 	packed := f.allocFReg(maskOf(x))
 	opVPacksswb.emit(f, packed, x, x)
-	f.releaseF(x)
+	if owned {
+		f.releaseF(x)
+	}
 	r := f.allocReg(0)
 	opVPmovmskb.emit(f, r, packed)
 	f.releaseF(packed)
@@ -2181,19 +2204,23 @@ func (f *fn) i16x8Bitmask() {
 
 func (f *fn) i32x4Bitmask() {
 	v := f.popValue()
-	x := f.materializeV128(v)
+	x, owned := f.reductionOperand(v)
 	r := f.allocReg(0)
 	opVMovmskps.emit(f, r, x) // 4 lane sign bits directly
-	f.releaseF(x)
+	if owned {
+		f.releaseF(x)
+	}
 	f.pushReg(r, mtI32)
 }
 
 func (f *fn) i64x2Bitmask() {
 	v := f.popValue()
-	x := f.materializeV128(v)
+	x, owned := f.reductionOperand(v)
 	r := f.allocReg(0)
 	opVMovmskpd.emit(f, r, x) // 2 lane sign bits directly
-	f.releaseF(x)
+	if owned {
+		f.releaseF(x)
+	}
 	f.pushReg(r, mtI32)
 }
 

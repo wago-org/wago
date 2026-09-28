@@ -388,6 +388,7 @@ func (b *Bindings) deltasMatchLocked(overrides, deltas map[string]bool) bool {
 var catalog = []Definition{
 	both("bounds-facts", "Bounds facts", "straight-line bounds-check elision"),
 	both("simd-superopt", "SIMD superoptimization", "recognize bounded multi-operation SIMD sequences"),
+	amd64("simd-reduction-borrow", "Read-only vector reductions", "read pinned vector inputs without copying them for bitmasks and any-true reductions"),
 	both("interval-region-pins", "Interval-region pins", "reuse registers across bounded straight-line local lifetimes"),
 	amd64("interval-control", "Regional control local cache", "reuse up to two integer local registers within call and control separated stretches"),
 	both("magic-div", "Magic division", "lower constant integer division through multiply-high sequences"),

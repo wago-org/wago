@@ -12,6 +12,7 @@ import (
 var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
+	optimization.Bind("simd-reduction-borrow", &simdReductionBorrowEnabled),
 	optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
 	optimization.Bind("prepared-bounded-entry", &preparedBoundedEntryEnabled),
 	optimization.Bind("wide-loop-int-const", &wideLoopIntConstEnabled),
@@ -76,6 +77,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 var (
 	optBoundsFacts             = optimizationBindings.Option("bounds-facts")
 	optSIMDSuperopt            = optimizationBindings.Option("simd-superopt")
+	optSIMDReductionBorrow     = optimizationBindings.Option("simd-reduction-borrow")
 	optPreparedDirectEntry     = optimizationBindings.Option("prepared-direct-entry")
 	optPreparedBoundedEntry    = optimizationBindings.Option("prepared-bounded-entry")
 	optWideLoopIntConst        = optimizationBindings.Option("wide-loop-int-const")
