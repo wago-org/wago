@@ -93,7 +93,8 @@ var (
 	stFlagsEnabled = os.Getenv("WAGO_NO_STFLAGS") != "1"
 	// store8FlagsEnabled gates direct low-byte comparison results consumed by an
 	// i32.store8. WAGO_NO_STORE8_FLAGS=1 is the A/B oracle.
-	store8FlagsEnabled = os.Getenv("WAGO_NO_STORE8_FLAGS") != "1"
+	store8FlagsEnabled   = os.Getenv("WAGO_NO_STORE8_FLAGS") != "1"
+	setGetTeeFoldEnabled = os.Getenv("WAGO_AMD64_NO_SET_GET_TEE_FOLD") != "1"
 	// swarMaskTestEnabled gates direct packed-word mask-test fusion.
 	// WAGO_NO_SWAR_MASK_TEST=1 is the A/B oracle.
 	swarMaskTestEnabled = os.Getenv("WAGO_NO_SWAR_MASK_TEST") != "1"

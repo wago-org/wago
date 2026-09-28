@@ -202,6 +202,27 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if written >= 0 && written < 64 {
 			f.localWritten |= 1 << written
 		}
+		// An adjacent get of the same i32 local has tee's stack
+		// effect. Keep the value available to its consumer without generating a
+		// second local read. i64 is excluded because reference locals share its
+		// machine type and their gets publish exact GC-root metadata. Regional
+		// locals retain their event-driven lifetime.
+		if op == 0x21 && setGetTeeFoldEnabled &&
+			f.localType[written] == mtI32 &&
+			(written >= len(f.intervalReg) || f.intervalReg[written] == regNone) {
+			look := *r
+			if next, ok := look.Peek(); ok && next == 0x20 {
+				_, _ = look.Byte()
+				if got, err := look.U32(); err == nil && got == x {
+					f.setLocal(r, written, true)
+					if err := r.JumpTo(look.Offset()); err != nil {
+						return err
+					}
+					f.stats.peep("local-set-get-tee")
+					break
+				}
+			}
+		}
 		f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
 		if op == 0x22 {
 			f.tryByteSwapAfterTee(r, written)
