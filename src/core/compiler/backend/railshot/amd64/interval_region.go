@@ -364,13 +364,26 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 	}
 	best, bestScore := -1, int(^uint(0)>>1)
 	bestNext, bestDead := uint32(0), false
-	borrowed := f.intervalBorrowedRegs()
+	var borrowed regMask
+	borrowedReady := !lazyIntervalBorrowsEnabled
+	if borrowedReady {
+		borrowed = f.intervalBorrowedRegs()
+	}
 	for reg, x := range f.intervalOwner {
-		if x < 0 || avoid.has(Reg(reg)) || f.pinned.has(Reg(reg)) || borrowed.has(Reg(reg)) {
+		if x < 0 || avoid.has(Reg(reg)) || f.pinned.has(Reg(reg)) {
 			continue
 		}
 		s := f.intervalResidencyScore(x)
 		if s >= scoreLimit {
+			continue
+		}
+		// Borrow information matters only once there is an otherwise eligible
+		// victim. Compute it once and keep the original traversal and tie order.
+		if !borrowedReady {
+			borrowed = f.intervalBorrowedRegs()
+			borrowedReady = true
+		}
+		if borrowed.has(Reg(reg)) {
 			continue
 		}
 		if f.nextUsePolicy() {

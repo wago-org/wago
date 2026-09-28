@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -3717,12 +3718,24 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	return f.a.B, f.relocs, 0, nil
 }
 
+// These filters skip compiler work without changing native selection. Keep
+// defaults on the platform with paired native qualification; zero is rollback.
+var rotateByteFilterEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_ROTATE_BYTE_FILTER") != "0"
+var lazyIntervalBorrowsEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_LAZY_INTERVAL_BORROWS") != "0"
+
 // denseRotateBody identifies only large, unrolled rotate-heavy functions where
 // RORX's three-byte VEX prefix becomes a measured instruction-fetch liability.
 // The module-aware classifier keeps proposal immediates synchronized; malformed
 // input fails closed to the ordinary BMI2 selection and is rejected later by
 // normal lowering.
 func denseRotateBody(body []byte, classifier wasm.ModuleInstructionClassifier) bool {
+	// An opcode must occur as a byte in the body. Immediate bytes may cause a
+	// false positive in this count, which still goes through exact decoding.
+	if rotateByteFilterEnabled &&
+		bytes.Count(body, []byte{0x77})+bytes.Count(body, []byte{0x78})+
+			bytes.Count(body, []byte{0x89})+bytes.Count(body, []byte{0x8a}) < denseRorxOpCrossover {
+		return false
+	}
 	r := wasm.ReaderFrom(body)
 	rotates := 0
 	for r.HasNext() {
