@@ -121,6 +121,28 @@ func TestGoldenFloatLocalSink(t *testing.T) {
 	}
 }
 
+func TestFloatPinnedMemoryLoad(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		typ                wasm.ValType
+		load, align, addOp byte
+	}{
+		{"f32", wasm.F32, 0x2a, 0x02, 0x92},
+		{"f64", wasm.F64, 0x2b, 0x03, 0xa0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// local.set 1 (float.load(local.get 0)); repeated reads pin the local.
+			body := []byte{0x00, 0x20, 0x00, tc.load, tc.align, 0x00, 0x21, 0x01,
+				0x20, 0x01, 0x20, 0x01, tc.addOp, 0x20, 0x01, tc.addOp, 0x0b}
+			m := modMem(t, 1, []wasm.ValType{wasm.I32, tc.typ}, []wasm.ValType{tc.typ}, body)
+			s := compileWithStats(t, m, true).Funcs[0]
+			if s.Peephole["float-local-load-sink"] != 1 {
+				t.Fatalf("float-local-load-sink = %d, want 1 (all: %v)", s.Peephole["float-local-load-sink"], s.Peephole)
+			}
+		})
+	}
+}
+
 func TestGoldenFloatMemoryOperand(t *testing.T) {
 	// local.get 0; local.get 1; f64.load; f64.mul
 	m := modMem(t, 1, []wasm.ValType{wasm.F64, wasm.I32}, []wasm.ValType{wasm.F64},

@@ -1103,11 +1103,22 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		// Register-pinned float local: move the value into its XMM register.
 		f.evictRelinquishedFReg(pr)
 		f64 := f.localType[x] == mtF64
-		if e.isValue() && e.st.kind == stLocalReg {
+		switch {
+		case e.isValue() && e.st.kind == stLocalRef:
+			f.a.FLoadDisp(pr, RSP, f.localAddr(e.st.index()), f64)
+			f.stats.peep("float-local-load-sink")
+		case e.isValue() && e.st.kind == stSlot:
+			f.a.FLoadDisp(pr, RSP, f.spillOff(e.st.slotIndex()), true)
+			f.stats.peep("float-local-load-sink")
+		case e.isValue() && e.st.kind == stMemRef:
+			f.loadFMemRef(pr, e.st)
+			f.releaseMemRef(e.st)
+			f.stats.peep("float-local-load-sink")
+		case e.isValue() && e.st.kind == stLocalReg:
 			if e.st.reg != pr {
 				f.a.FMov(pr, e.st.reg, f64) // borrowed float local → direct move
 			}
-		} else {
+		default:
 			xmm := f.materializeF(e)
 			if xmm != pr {
 				f.a.FMov(pr, xmm, f64)
