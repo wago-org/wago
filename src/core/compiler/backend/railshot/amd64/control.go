@@ -41,6 +41,7 @@ const (
 	ctrlHasParamGCRoots
 	ctrlHasResultGCRoots
 	ctrlLoopCallFree
+	ctrlLoopPinExchange
 )
 
 // ctrlFrame is one open control construct (or the implicit function frame).
@@ -97,6 +98,7 @@ type ctrlFrameMerge struct {
 	firstEndSite  uint32
 	secondEndSite uint32
 	eh            *ctrlFrameEH
+	loopPinPlan   uint64
 }
 
 func (m *ctrlFrameMerge) setCountedLoop(counter, bodySite int) bool {
@@ -1431,6 +1433,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	loopRegState := false
 	var loopFloatConst storage
 	loopFloatConstOK := false
+	var loopPinPlan uint64
+	var loopPinWrites uint64
+	if kind == cfLoop && !f.unreachable && pN == 0 && rN == 0 && loopPinExchangeEnabled {
+		loopPinPlan, loopPinWrites = f.planLoopPinExchange(r)
+	}
 	if kind == cfLoop && !f.unreachable && f.usesCalls && !f.moduleEH && len(f.customInstructions) == 0 {
 		loopRegState = f.opt(optLoopRegState) && len(f.pinnedLocals) <= 64
 		var pins []int
@@ -1481,6 +1488,21 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			// reload OUT of the body — a lazy (lsMem) loop target would push the
 			// reload into every iteration instead.
 			f.reconcileLocals()
+			if loopPinPlan != 0 {
+				f.flush()
+				f.applyLoopPinExchange(loopPinPlan)
+				f.ensureCtrlMerge(&fr).loopPinPlan = loopPinPlan
+				fr.set(ctrlLoopPinExchange, true)
+				f.stats.peep("loop-pin-exchange")
+				if fr.has(ctrlLoopCallFree) && loopRegState {
+					loopPinnedWrites = 0
+					for i, x := range f.pinnedLocals {
+						if loopPinWrites&(uint64(1)<<x) != 0 {
+							loopPinnedWrites |= uint64(1) << i
+						}
+					}
+				}
+			}
 			f.convergeFrameBranchState(&fr) // records the all-lsStackReg target
 			if fr.has(ctrlLoopCallFree) && loopRegState && loopPinnedWrites != 0 {
 				state := f.frameBranchState(&fr)
@@ -2063,6 +2085,9 @@ func (f *fn) opEnd() error {
 			f.a.PatchRel32(skip, f.a.Len())
 		}
 		f.ehTryDepth--
+	}
+	if fr.has(ctrlLoopPinExchange) {
+		f.restoreLoopPinExchange(f.ctrlMerge(&fr).loopPinPlan, endReachable)
 	}
 	// The frame is popped and its buffers are dead — recycle them for the next
 	// frame pushed at this or a shallower depth.

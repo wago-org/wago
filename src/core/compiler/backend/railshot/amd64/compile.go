@@ -281,7 +281,7 @@ type fn struct {
 	// type table used by existing lowering; locals holds the assigned register and
 	// call-spill state for each local.
 	locals           []localDef
-	pinnedLocals     []int // indices of register-pinned locals (fixed after assignPinnedLocals)
+	pinnedLocals     []int // indices of register-pinned locals; a simple loop may exchange up to two pins
 	pinnedLocalMask  regMask
 	fpinnedLocalMask regMask
 	pinRelinquished  bool // a dedicated local register may temporarily have an allocator owner
