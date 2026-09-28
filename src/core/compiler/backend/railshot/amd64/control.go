@@ -45,12 +45,13 @@ const (
 
 // ctrlFrame is one open control construct (or the implicit function frame).
 type ctrlFrame struct {
-	kind       ctrlKind
-	res0       machineType // first result's machine type (valid when resultN >= 1)
-	flags      ctrlFlags
-	mergeIndex uint32 // index+1 into scratch.ctrlMerges; zero has no cold merge state
-	branchN    uint32 // values transferred on a branch to this label
-	baseTypes  uint16 // fixed-arena start in low byte, count in high byte
+	kind           ctrlKind
+	res0           machineType // first result's machine type (valid when resultN >= 1)
+	flags          ctrlFlags
+	mergeIndex     uint32 // index+1 into scratch.ctrlMerges; zero has no cold merge state
+	branchN        uint32 // values transferred on a branch to this label
+	baseTypes      uint16 // fixed-arena start in low byte, count in high byte
+	floatConstBase uint8  // cfLoop: constant reservations before this loop
 
 	height          int // operand depth at the frame's result base
 	paramN, resultN int
@@ -1277,18 +1278,75 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 // The module-aware classifier keeps every proposal immediate synchronized; any
 // uncertainty conservatively rejects the proof.
 func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool, pinnedLocals []int) (bool, uint64) {
+	ok, writes, _, _ := scanLoopCallFreeDetails(r, classifier, gcStructHelpers, pinnedLocals, false)
+	return ok, writes
+}
+
+// scanLoopCallFreeDetails also picks one float constant while the
+// existing loop proof is walking the body. No second bytecode pass is needed.
+func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool, pinnedLocals []int, wantFloat bool) (bool, uint64, storage, bool) {
 	r2 := *r
 	depth := 0
 	var writes uint64
 	brTable := false
 	nestedLoop := false
 	hasInnerControl := false
+	type candidate struct {
+		st    storage
+		score uint32
+	}
+	var candidates [16]candidate
+	n, steps := 0, 0
+	floatSafe := true
+	finish := func(writes uint64) (bool, uint64, storage, bool) {
+		if !wantFloat || !floatSafe || n == 0 {
+			return true, writes, storage{}, false
+		}
+		best := 0
+		for i := 1; i < n; i++ {
+			if candidates[i].score > candidates[best].score {
+				best = i
+			}
+		}
+		return true, writes, candidates[best].st, true
+	}
 	var imm wasm.InstructionImmediate
 	for {
 		op, err := r2.Byte()
+		constReader := r2
 		if err != nil || classifier.ClassifyInto(&r2, op, &imm) != nil {
-			return false, 0
+			return false, 0, storage{}, false
 		}
+		if wantFloat && steps < 256 && (op == 0x43 || op == 0x44) {
+			var st storage
+			if op == 0x43 {
+				bits, err := constReader.LEU32()
+				if err != nil {
+					return false, 0, storage{}, false
+				}
+				st = storage{kind: stConst, typ: mtF32, cval: int64(bits)}
+			} else {
+				bits, err := constReader.LEU64()
+				if err != nil {
+					return false, 0, storage{}, false
+				}
+				st = storage{kind: stConst, typ: mtF64, cval: int64(bits)}
+			}
+			weight := uint32(1) << min(depth*2, 8)
+			found := false
+			for i := 0; i < n; i++ {
+				if candidates[i].st.typ == st.typ && candidates[i].st.cval == st.cval {
+					candidates[i].score += weight
+					found = true
+					break
+				}
+			}
+			if !found && n < len(candidates) {
+				candidates[n] = candidate{st: st, score: weight}
+				n++
+			}
+		}
+		steps++
 		if op == 0x02 || op == 0x04 || op == 0x1f {
 			hasInnerControl = true
 		}
@@ -1296,7 +1354,10 @@ func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifie
 		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrReturnCall,
 			wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef,
 			wasm.InstrMemoryGrow:
-			return false, 0
+			return false, 0, storage{}, false
+		case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
+			wasm.InstrTableGrow, wasm.InstrTableFill:
+			floatSafe = false // GC table helpers may call even in a numeric loop.
 		case wasm.InstrLocalSet, wasm.InstrLocalTee:
 			for i, x := range pinnedLocals {
 				if uint32(x) == imm.Index {
@@ -1311,7 +1372,10 @@ func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifie
 			brTable = true
 		}
 		if gcOrAtomicInstructionMayCall(imm.Kind, gcStructHelpers) {
-			return false, 0
+			return false, 0, storage{}, false
+		}
+		if imm.UsesBulkMemory {
+			floatSafe = false
 		}
 		switch op {
 		case 0x02, 0x03, 0x04, 0x1f:
@@ -1327,9 +1391,9 @@ func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifie
 				// ifs likewise create merge edges where the weaker register-only
 				// state adds reconciliation outside the loop latch.
 				if brTable || nestedLoop || hasInnerControl {
-					return true, 0
+					return finish(0)
 				}
-				return true, writes
+				return finish(writes)
 			}
 			depth--
 		}
@@ -1351,7 +1415,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else if op == 0x04 {
 		kind = cfIf
 	}
-	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
+	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes, floatConstBase: uint8(len(f.fconsts))}
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if kind == cfLoop {
 		fr.branchN = uint32(pN)
@@ -1365,15 +1429,18 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
 	var loopPinnedWrites uint64
 	loopRegState := false
+	var loopFloatConst storage
+	loopFloatConstOK := false
 	if kind == cfLoop && !f.unreachable && f.usesCalls && !f.moduleEH && len(f.customInstructions) == 0 {
 		loopRegState = f.opt(optLoopRegState) && len(f.pinnedLocals) <= 64
 		var pins []int
 		if loopRegState {
 			pins = f.pinnedLocals
 		}
-		if callFree, writes := scanLoopCallFree(r, f.classifier, f.gcStructHelpers, pins); callFree {
+		if callFree, writes, st, hasFloat := scanLoopCallFreeDetails(r, f.classifier, f.gcStructHelpers, pins, len(f.fconsts) < 2); callFree {
 			fr.set(ctrlLoopCallFree, true)
 			loopPinnedWrites = writes
+			loopFloatConst, loopFloatConstOK = st, hasFloat
 			f.stats.peep("callfree-loop")
 		}
 	}
@@ -1432,6 +1499,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			f.flush()
 		}
 		if kind == cfLoop {
+			if loopFloatConstOK {
+				if _, ok := f.preloadFloatConst(loopFloatConst); ok {
+					f.stats.peep("callfree-loop-fconst")
+				}
+			}
 			if f.compactLoopAlign32 {
 				f.a.AlignLoop32()
 				f.stats.peep("compact-loop-align32")
@@ -1864,6 +1936,9 @@ func (f *fn) opElse() error {
 func (f *fn) opEnd() error {
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
+	if fr.kind == cfLoop {
+		f.fconsts = f.fconsts[:fr.floatConstBase]
+	}
 	if fr.kind == cfLoop && f.linearSumLoopDepth == uint16(last+1) {
 		f.linearSumLoop = 0
 		f.linearSumLoopDepth = 0
