@@ -498,24 +498,15 @@ func (f *fn) intervalLocalBorrowed(x int) bool {
 	return false
 }
 
-// intervalBorrowedRegs finds every resident local referenced by the pending
-// expression forest in one traversal. Victim selection used to rescan the whole
-// forest once per resident register, making exact next-use compilation
-// quadratic in both expression depth and cache occupancy.
+// intervalBorrowedRegs finds resident locals borrowed by pending values.
+// Deferred children remain on the physical list until they are consumed, so
+// visiting each value once also covers every pending expression tree. Recursing
+// from each physical node would revisit leaves through every ancestor.
 func (f *fn) intervalBorrowedRegs() regMask {
 	var borrowed regMask
-	var visit func(*elem)
-	visit = func(e *elem) {
-		if e == nil {
-			return
-		}
-		if e.isDeferred() {
-			visit(e.arg0)
-			visit(e.arg1)
-			return
-		}
+	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if !e.isValue() {
-			return
+			continue
 		}
 		x := -1
 		switch e.st.kind {
@@ -529,9 +520,6 @@ func (f *fn) intervalBorrowedRegs() regMask {
 				borrowed = borrowed.add(reg)
 			}
 		}
-	}
-	for e := f.s.head.next; e != f.s.head; e = e.next {
-		visit(e)
 	}
 	return borrowed
 }
