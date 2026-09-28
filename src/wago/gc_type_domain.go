@@ -345,9 +345,10 @@ func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainT
 		newDescs[domainID] = desc
 	}
 	mapping.domainTypeCount = len(newReps)
-	if len(newReps) <= len(mapping.localToDomain) {
-		// A dense reverse map is cheaper when its storage is bounded by this
-		// module's local type count. Sparse domains retain O(local types) space.
+	if len(newReps) <= 32 || len(newReps) <= len(mapping.localToDomain) {
+		// Up to 32 IDs, a dense array uses no more memory than the small map and
+		// avoids its measured lookup overhead. Larger sparse domains retain
+		// O(local types) storage; the dense floor adds at most 128 bytes.
 		mapping.domainToLocal = make([]uint32, len(newReps))
 		for i := range mapping.domainToLocal {
 			mapping.domainToLocal[i] = unavailableLocalGCType

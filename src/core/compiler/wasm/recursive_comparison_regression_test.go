@@ -3,6 +3,7 @@ package wasm
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -96,4 +97,35 @@ func FuzzBatchedRecursiveComparison(f *testing.F) {
 			}
 		}
 	})
+}
+
+func TestTinyFunctionSubtypeSelectionMatchesIndependentRelation(t *testing.T) {
+	fn := SubType{Comp: CompType{Kind: CompFunc, Params: []ValType{I32}}}
+	other := SubType{Comp: CompType{Kind: CompFunc, Params: []ValType{I64}}}
+	structure := SubType{Comp: CompType{Kind: CompStruct}}
+	child := fn
+	child.Supers = []TypeIdx{{Index: 0}}
+	ref := func(member uint32) SubType {
+		return SubType{Comp: CompType{Kind: CompFunc, Params: []ValType{RefVal(Ref(true, IndexedHeap(TypeIdx{Index: member, Rec: true}), false))}}}
+	}
+	for name, types := range map[string][]RecType{
+		"singleton":           {{SubTypes: []SubType{fn}}},
+		"recursive-singleton": {{SubTypes: []SubType{ref(0)}}},
+		"matching":            {{SubTypes: []SubType{fn}}, {SubTypes: []SubType{fn}}},
+		"different":           {{SubTypes: []SubType{fn}}, {SubTypes: []SubType{other}}},
+		"super":               {{SubTypes: []SubType{fn}}, {SubTypes: []SubType{child}}},
+		"mixed":               {{SubTypes: []SubType{structure}}, {SubTypes: []SubType{fn}}},
+		"mutual-recursion":    {{SubTypes: []SubType{ref(1), ref(0)}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := &Module{Types: types}
+			for target := uint32(0); target < 3; target++ {
+				got, ok := m.FunctionSubtypeTypeIndexes(target)
+				want := functionSubtypeTypeIndexesLinear(m, target)
+				if !slices.Equal(got, want) || ok != (len(want) != 0) {
+					t.Fatalf("target %d: got %v/%t, independent %v", target, got, ok, want)
+				}
+			}
+		})
+	}
 }

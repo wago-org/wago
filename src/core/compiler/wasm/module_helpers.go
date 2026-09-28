@@ -607,6 +607,11 @@ func FuncTypeEqual(a, b *CompType) bool {
 
 // CanonicalTypeID returns the stable signature id used by call_indirect checks.
 func (m *Module) CanonicalTypeID(typeIdx uint32) uint32 {
+	// Type zero is its own first matching signature, including the invalid-type
+	// fallback. Avoid counting or indexing the section for this common query.
+	if typeIdx == 0 && m != nil {
+		return 0
+	}
 	if len(m.Types) <= 8 {
 		count := 0
 		for _, group := range m.Types {
@@ -750,6 +755,33 @@ func (m *Module) StructuralTypeKeyChecked(typeIdx uint32) (uint64, bool) {
 func (m *Module) FunctionSubtypeTypeIndexes(targetType uint32) ([]uint32, bool) {
 	if _, ok := m.TypeFunc(targetType); !ok {
 		return nil, false
+	}
+	// Measured subtype selection crosses over between two and four types.
+	// Keep tiny sections on the direct relation; there is no useful graph index
+	// to build for one identity, and at most two candidates for the small scan.
+	if len(m.Types) <= 2 {
+		count := 0
+		for _, group := range m.Types {
+			count += len(group.SubTypes)
+		}
+		if count == 1 {
+			return []uint32{targetType}, true
+		}
+		if count == 2 {
+			validator := &moduleValidator{m: m}
+			required := Ref(false, IndexedHeap(TypeIdx{Index: targetType}), false)
+			indexes := make([]uint32, 0, 1)
+			for i := uint32(0); i < 2; i++ {
+				if _, ok := m.TypeFunc(i); !ok {
+					continue
+				}
+				actual := Ref(false, IndexedHeap(TypeIdx{Index: i}), false)
+				if validator.refSubtype(actual, required) {
+					indexes = append(indexes, i)
+				}
+			}
+			return indexes, len(indexes) != 0
+		}
 	}
 	directory := m.typeIndex()
 	flat := directory.flat

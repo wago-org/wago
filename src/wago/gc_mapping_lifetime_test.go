@@ -3,8 +3,11 @@
 package wago
 
 import (
+	"fmt"
 	"sync"
 	"testing"
+
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestGCMappingCacheBoundedAcrossRetiredDomains(t *testing.T) {
@@ -128,5 +131,37 @@ func TestCompiledValueTypeIndexReleasedAtPublication(t *testing.T) {
 		if global.ValueTypeIndex != uint32((i/2)%1024) {
 			t.Fatalf("published global %d has type index %d", i, global.ValueTypeIndex)
 		}
+	}
+}
+
+// Compare both sides of the small-domain representation crossover with a
+// direct expected translation, including IDs absent from this module.
+func TestGCMappingDenseSparseTranslationsAgree(t *testing.T) {
+	for _, count := range []int{1, 8, 31, 32, 33, 128} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			types := make([]DefinedTypeDescriptor, count)
+			reps := make([]gcDomainTypeRepresentative, count)
+			descs := make([]gc.TypeDesc, count)
+			for i := range types {
+				fields := make([]FieldTypeDescriptor, 8)
+				for bit := range fields {
+					fields[bit] = FieldTypeDescriptor{Mutable: i&(1<<bit) != 0, Storage: StorageTypeDescriptor{Value: ValueTypeDescriptor{Kind: ValueTypeI32}}}
+				}
+				types[i] = DefinedTypeDescriptor{RecGroup: uint32(i), Kind: CompositeTypeStruct, Fields: fields}
+				reps[i] = gcDomainTypeRepresentative{types: types, index: uint32(i)}
+				descs[i] = gc.TypeDesc{ID: gc.TypeID(i)}
+			}
+			c := &Compiled{Types: []DefinedTypeDescriptor{types[count-1]}, GCTypeDescs: []gc.TypeDesc{{ID: 0}}}
+			mapping, _, _, err := gcCanonicalTypePlan(c, reps, descs, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for domain := 0; domain <= count; domain++ {
+				local, ok := mapping.local(gc.TypeID(domain))
+				if want := domain == count-1; ok != want || ok && local != 0 {
+					t.Fatalf("domain %d: got local=%d, present=%t; want present=%t", domain, local, ok, want)
+				}
+			}
+		})
 	}
 }
