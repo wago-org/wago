@@ -389,6 +389,7 @@ var catalog = []Definition{
 	both("bounds-facts", "Bounds facts", "straight-line bounds-check elision"),
 	both("simd-superopt", "SIMD superoptimization", "recognize bounded multi-operation SIMD sequences"),
 	both("interval-region-pins", "Interval-region pins", "reuse registers across bounded straight-line local lifetimes"),
+	amd64("interval-control", "Regional control local cache", "reuse up to two integer local registers within call and control separated stretches"),
 	both("magic-div", "Magic division", "lower constant integer division through multiply-high sequences"),
 	both("shared-trap-body", "Shared trap bodies", "share repeated cold trap bodies in size-oriented code"),
 	both("shared-adapters", "Shared adapters", "share byte-identical host adapters in size-oriented code"),

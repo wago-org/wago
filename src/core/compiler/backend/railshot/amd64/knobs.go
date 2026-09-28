@@ -21,6 +21,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("callfree-loop-cold-exit", &callFreeLoopColdExitEnabled),
 	optimization.Bind("callfree-loop-reg-state", &callFreeLoopRegStateEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
+	optimization.Bind("interval-control", &intervalControlEnabled),
 	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
 	optimization.Bind("interval-scratch-lease", &intervalScratchLeaseEnabled),
 	optimization.Bind("interval-r8-lease", &intervalR8LeaseEnabled),
@@ -81,6 +82,7 @@ var (
 	optCallFreeLoopColdExit    = optimizationBindings.Option("callfree-loop-cold-exit")
 	optLoopRegState            = optimizationBindings.Option("callfree-loop-reg-state")
 	optIntervalRegionPins      = optimizationBindings.Option("interval-region-pins")
+	optIntervalControl         = optimizationBindings.Option("interval-control")
 	optIntervalNextUse         = optimizationBindings.Option("interval-next-use")
 	optIntervalScratchLease    = optimizationBindings.Option("interval-scratch-lease")
 	optIntervalR8Lease         = optimizationBindings.Option("interval-r8-lease")

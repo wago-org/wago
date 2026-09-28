@@ -151,6 +151,10 @@ var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
 // pin allocator as an A/B and correctness oracle.
 var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
 
+// Reconcile a small regional local cache at calls and control boundaries.
+// WAGO_AMD64_INTERVAL_CONTROL=0 retains the previous whole-function pins.
+var intervalControlEnabled = os.Getenv("WAGO_AMD64_INTERVAL_CONTROL") != "0"
+
 // intervalNextUseEnabled builds a compact per-local event tape for bounded
 // straight-line regions, letting eviction choose the farthest next access and
 // discard values killed by a later definition. RuntimeConfig optimization
@@ -312,6 +316,7 @@ type fn struct {
 	intervalI64Weight bool
 	intervalScratch   bool
 	intervalR8        bool
+	intervalControl   bool
 	moduleHasSIMD     bool
 	localWritten      uint64 // conservative lexical write history for the first 64 locals
 
@@ -3537,13 +3542,18 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		fpPinLimit = 0
 	}
 	f.noteResidencyEvents(hints)
-	intervalEligible := pinLocals && regABI && !hasCall && !hints.flags.has(hintHasControlFlow) && !hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0
+	intervalControl := f.opt(optIntervalControl) && !f.moduleHasSIMD && len(f.customInstructions) == 0 &&
+		(hasCall || hints.flags.has(hintHasControlFlow|hintUsesBulkMem))
+	intervalEligible := pinLocals && regABI && len(inlinedCallees) == 0 &&
+		((!hasCall && !hints.flags.has(hintHasControlFlow|hintUsesBulkMem)) || intervalControl)
+	f.intervalControl = intervalControl
 	if f.bmi2Rorx && intervalEligible && denseRotateRegionalBody(c.BodyBytes, hints, f.localType, sc.classifier) {
 		f.bmi2Rorx = false
 		f.stats.peep("dense-rotate-legacy")
 	}
 	intervalRegion := intervalEligible && f.prepareIntervalRegion(c.BodyBytes, hints)
-	if intervalRegion {
+	f.intervalControl = intervalControl && intervalRegion
+	if intervalRegion && !intervalControl {
 		gpPool = nil // regional GP assignments supersede whole-function GP pins
 	}
 	f.assignPinnedLocals(hints.localScore, globalHints, gpPool, fpPinLimit, hasCall, pinLocals && f.opt(optV128Pins) && !hasCall)
@@ -4421,7 +4431,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	f.emitInterruptCheck(RSI) // RSI is not an int-arg reg: free before args are homed
 	f.entryTrapEnd = a.Len()
 	gp, fp = 0, 0
-	if len(f.intervalReg) != 0 {
+	if len(f.intervalReg) != 0 && !f.intervalControl {
 		// Home all incoming integer parameters so the regional cache can claim and
 		// release any parameter lazily without preserving argument-register cycles.
 		for i := 0; i < np; i++ {
@@ -4445,7 +4455,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 				a.FStoreDisp(RSP, f.localAddr(i), src, mt == mtF64)
 			}
 			fp++
-		} else if len(f.intervalReg) != 0 {
+		} else if len(f.intervalReg) != 0 && !f.intervalControl {
 			// Already homed; the regional cache loads it on first use.
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			f.moveInt(pr, intArgRegs[gp], mt)

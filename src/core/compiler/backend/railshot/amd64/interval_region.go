@@ -66,6 +66,9 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		return false
 	}
 	f.intervalRegLimit = intervalRegionRegLimit(f.guardMode)
+	if f.intervalControl {
+		f.intervalRegLimit = 2
+	}
 	// SIMD lowering has fixed integer scratch uses which are not all represented
 	// by the scalar fixed-scratch scan. Keep RDX available throughout a SIMD
 	// module: scalar helper functions share its module register/pinning plan, and
@@ -99,7 +102,7 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		return false
 	}
 	f.intervalReg, f.intervalLast, f.intervalScore = assigned, hints.localLastGet, hints.localScore
-	f.intervalNext = f.opt(optIntervalNextUse)
+	f.intervalNext = !f.intervalControl && f.opt(optIntervalNextUse)
 	f.intervalI64Weight = f.opt(optIntervalI64Weight)
 	if f.intervalNext {
 		f.prepareIntervalEvents(body, hints.localEventCount())
@@ -108,6 +111,9 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		f.intervalOwner[i] = -1
 	}
 	f.stats.peep("interval-region")
+	if f.intervalControl {
+		f.stats.peep("interval-control")
+	}
 	if f.intervalScratch {
 		f.stats.peep("interval-scratch-lease")
 	}
@@ -292,7 +298,7 @@ func (f *fn) intervalResidencyScore(x int) int {
 // operand stack. Older borrowed references are realized first; no copy or frame
 // access is needed for the final get itself.
 func (f *fn) takeFinalIntervalGet(x, pos int) (Reg, bool) {
-	if x < 0 || x >= len(f.intervalReg) || f.intervalReg[x] == regNone ||
+	if f.intervalControl || x < 0 || x >= len(f.intervalReg) || f.intervalReg[x] == regNone ||
 		f.intervalLast[x] != uint32(pos) || f.locals[x].reg == regNone {
 		return regNone, false
 	}
@@ -307,6 +313,39 @@ func (f *fn) takeFinalIntervalGet(x, pos int) (Reg, bool) {
 		f.stats.Residency.FinalTransfers++
 	}
 	return reg, true
+}
+
+// Control edges and calls use canonical frame homes. The regional cache may
+// live within their straight-line stretches, but no cached register
+// ownership crosses those boundaries.
+func (f *fn) flushControlIntervals() {
+	if !f.intervalControl || f.intervalActive == 0 {
+		return
+	}
+	for reg, x := range f.intervalOwner {
+		if x < 0 {
+			continue
+		}
+		f.realizeLocalRefs(x, nil)
+		if f.locals[x].reg != Reg(reg) {
+			continue
+		}
+		if f.locals[x].state == lsReg {
+			f.storeFrameInt(f.localAddr(x), Reg(reg), f.localType[x])
+			if f.stats != nil {
+				f.stats.Residency.DirtyWritebacks++
+			}
+		}
+		f.demoteIntervalLocalRefs(x)
+		f.locals[x].reg = regNone
+		f.locals[x].state = lsMem
+		f.intervalOwner[reg] = -1
+		f.intervalActive--
+		f.pinnedLocalMask = f.pinnedLocalMask.remove(Reg(reg))
+	}
+	if f.intervalActive != 0 {
+		panic("amd64: regional locals survived control boundary")
+	}
 }
 
 // evictIntervalLocal turns one active regional pin back into its canonical frame

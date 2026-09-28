@@ -167,6 +167,66 @@ func TestIntervalRegionDynamicReuse(t *testing.T) {
 	}
 }
 
+func TestIntervalRegionControlBoundaries(t *testing.T) {
+	savedEnabled := intervalControlEnabled
+	defer func() { intervalControlEnabled = savedEnabled }()
+	intervalControlEnabled = true
+
+	base := intervalRegionBody()
+	// The twenty local initializations end before the reduction. Read a local
+	// on both sides of each boundary so a cached value must be reconciled.
+	const reductionStart = 3 + 20*4
+	for _, tc := range []struct {
+		name     string
+		boundary []byte
+		call     bool
+	}{
+		{"if-else", []byte{0x20, 0x00, 0x04, 0x40, 0x20, 0x01, 0x1a, 0x05, 0x20, 0x02, 0x1a, 0x0b}, false},
+		{"call", []byte{0x41, 0x00, 0x10, 0x01, 0x1a}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := append([]byte(nil), base[:reductionStart]...)
+			body = append(body, 0x20, 0x00, 0x1a)
+			body = append(body, tc.boundary...)
+			body = append(body, 0x20, 0x00, 0x1a)
+			body = append(body, base[reductionStart:]...)
+			var m *wasm.Module
+			if tc.call {
+				callee := []byte{
+					0x00, 0x20, 0x00, 0x45, 0x04, 0x7f,
+					0x41, 0x07, 0x05, 0x20, 0x00, 0x41, 0x01, 0x6b,
+					0x10, 0x01, 0x0b, 0x0b,
+				} // recursive callee cannot be inlined into the regional caller
+				m = modFuncs(t,
+					funcDef{results: []wasm.ValType{wasm.I32}, body: body},
+					funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: callee})
+			} else {
+				m = mod1(t, nil, []wasm.ValType{wasm.I32}, body)
+			}
+			stats := compileWithStats(t, m, false).Funcs[0]
+			if stats.Peephole["interval-control"] != 1 || stats.Residency.MaxActive == 0 || stats.Residency.MaxActive > 2 {
+				t.Fatalf("control region not used within two-register cap: %+v", stats.Residency)
+			}
+			var disabled ModuleStats
+			compiled, err := CompileModuleWith(m, CompileOptions{
+				Stats: &disabled, Optimizations: map[string]bool{"interval-control": false},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if compiled.CodeImage != nil {
+				compiled.CodeImage.Close()
+			}
+			if got := disabled.Funcs[0].Peephole["interval-control"]; got != 0 {
+				t.Fatalf("disabled interval-control = %d, want 0", got)
+			}
+			if got := runAmd64(t, m); got != 210 {
+				t.Fatalf("result = %d, want 210", got)
+			}
+		})
+	}
+}
+
 func TestIntervalRegionScratchLeaseRejectsDivision(t *testing.T) {
 	savedRegions, savedScratch := intervalRegionPinsEnabled, intervalScratchLeaseEnabled
 	defer func() {
