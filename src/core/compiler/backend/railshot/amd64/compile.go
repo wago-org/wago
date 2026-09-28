@@ -144,6 +144,11 @@ var treeOrderEnabled = os.Getenv("WAGO_AMD64_NO_TREE_ORDER") != "1"
 // accumulator instead of materializing their internal binary nodes.
 var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
 
+// General addition flattening lost execution time on measured applications;
+// the affine LEA cover and bitwise covers remain on. This opt-in restores the
+// older addition selection for target-specific comparisons.
+var associativeAddTreeEnabled = os.Getenv("WAGO_AMD64_ASSOC_ADD") == "1"
+
 // intervalRegionPinsEnabled reuses GP registers across integer local lifetimes
 // in bounded, call-free straight-line functions. Unlike whole-function hot-local
 // pins, the regional cache is pressure-spillable and returns a register at the
