@@ -411,7 +411,11 @@ func (f *fn) materializeByType(e *elem) Reg {
 // emitted. Called before a linear-memory write so a deferred load reads the
 // pre-write value (WARP's load-before-store ordering).
 func (f *fn) materializePendingLoads() {
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	f.materializePendingLoadsBelow(f.s.head)
+}
+
+func (f *fn) materializePendingLoadsBelow(limit *elem) {
+	for e := f.s.head.next; e != limit; e = e.next {
 		if e.isValue() && e.st.kind == stMemRef {
 			f.stats.addForcedLoad()
 			f.materializeByType(e)

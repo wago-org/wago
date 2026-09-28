@@ -3,11 +3,44 @@
 package amd64
 
 import (
+	"os"
+
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
+
+// WAGO_AMD64_NO_STORE_VALUE_LOAD_FOLD=1 keeps the eager pre-store load path as
+// an exact A/B and correctness oracle.
+var storeValueLoadFoldEnabled = os.Getenv("WAGO_AMD64_NO_STORE_VALUE_LOAD_FOLD") != "1"
+
+// storeValueLastFoldableLoad returns the last deferred load in a pure integer
+// value tree. Earlier loads are forced in source order before condensation, so
+// only the final load may move among nontrapping operations.
+func storeValueLastFoldableLoad(top *elem) *elem {
+	if top == nil || !top.isDeferred() {
+		return nil
+	}
+	base := baseOfValentBlock(top)
+	var last *elem
+	for e := base; ; e = e.next {
+		if e.isValue() && e.st.kind == stMemRef {
+			last = e
+		}
+		if e.isDeferred() {
+			op := e.deferredOp()
+			if !isBinALU(op) && !isShift(op) && !isUnary(op) &&
+				!isConvert(op) && !isCompare(op) && op != opEqz {
+				return nil
+			}
+		}
+		if e == top {
+			break
+		}
+	}
+	return last
+}
 
 // memAccessSize returns the byte width of a plain scalar memory instruction.
 func memAccessSize(op byte) int {
@@ -946,7 +979,20 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		return nil
 	}
 	off32 := uint32(off)
-	f.materializePendingLoads() // deferred loads must read pre-store memory
+	// Force all pending loads before the final load in a pure value tree. That
+	// preserves earlier trap order while the final load can fold into its consumer
+	// before this store writes memory.
+	top := f.s.back()
+	lastLoad := (*elem)(nil)
+	if storeValueLoadFoldEnabled &&
+		!(size == 1 && f.opt(optStore8Flags) && isFusableCompare(top) && !top.valueType().isFloat()) {
+		lastLoad = storeValueLastFoldableLoad(top)
+	}
+	if lastLoad != nil {
+		f.materializePendingLoadsBelow(lastLoad)
+	} else {
+		f.materializePendingLoads()
+	}
 	// A constant value stores as an immediate directly (selectInstr's `mov r/m,
 	// imm` form) — no register, no load-then-store dependency chain. i64 needs
 	// two 4-byte immediate stores (low32 at disp, high32 at disp+4): a single
