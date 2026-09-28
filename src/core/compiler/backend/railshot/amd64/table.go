@@ -537,7 +537,7 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 	value := f.pushReg(slot, mtI64)
 	// A table read can remain live after the table stops retaining its object.
 	if table, ok := f.m.TableType(tableIdx); ok {
-		value.st.setGCRoot(gcFrameRefType(f.m, wasm.RefVal(table.Ref)))
+		f.setStackGCRoot(value, gcFrameRefType(f.m, wasm.RefVal(table.Ref)))
 	}
 	return nil
 }
@@ -599,7 +599,7 @@ func (f *fn) refNull(r *wasm.Reader) error {
 		}
 	}
 	if gcReference {
-		markGCReference(value)
+		f.markGCReference(value)
 	}
 	return nil
 }
@@ -650,7 +650,7 @@ func (f *fn) refAsNonNull() {
 	f.a.TestSelf(ref, true)
 	f.trapIf(condE, trapNullReference)
 	result := f.pushReg(ref, mtI64)
-	markGCReference(result)
+	f.markGCReference(result)
 }
 
 func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {

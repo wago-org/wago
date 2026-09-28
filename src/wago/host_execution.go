@@ -211,7 +211,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		// Dispatch directly here: routing through hostCall would repeat the GC-bit
 		// branch and add an indirect closure call on every helper transition.
 		if importIdx&hostFuncRefDispatchBit != 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("invalid overlapping GC/host dispatch index %#x", importIdx)})
+			panic(gcHelperFailuref("invalid overlapping GC/host dispatch index %#x", importIdx))
 		}
 		if active.gc != nil {
 			helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)

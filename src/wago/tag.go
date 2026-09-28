@@ -18,31 +18,9 @@ type Tag struct {
 }
 
 func tagTypeEquivalent(actual uint32, actualTypes []DefinedTypeDescriptor, required uint32, requiredTypes []DefinedTypeDescriptor) bool {
-	group := func(index uint32, types []DefinedTypeDescriptor) (start, end uint32, ok bool) {
-		if int(index) >= len(types) {
-			return 0, 0, false
-		}
-		id := types[index].RecGroup
-		start, end = index, index+1
-		for start > 0 && types[start-1].RecGroup == id {
-			start--
-		}
-		for int(end) < len(types) && types[end].RecGroup == id {
-			end++
-		}
-		return start, end, true
-	}
-	aStart, aEnd, aOK := group(actual, actualTypes)
-	bStart, bEnd, bOK := group(required, requiredTypes)
-	if !aOK || !bOK || aEnd-aStart != bEnd-bStart || actual-aStart != required-bStart {
-		return false
-	}
-	for i := uint32(0); i < aEnd-aStart; i++ {
-		if !definedTypeEquivalent(aStart+i, actualTypes, bStart+i, requiredTypes) {
-			return false
-		}
-	}
-	return true
+	// definedTypeEquivalent compares the complete recursive groups containing
+	// the requested members and already checks corresponding member positions.
+	return definedTypeEquivalent(actual, actualTypes, required, requiredTypes)
 }
 
 func (t *Tag) identityValue() uint64 {
@@ -163,7 +141,8 @@ func detachImportedTags(in *Instance) {
 		return
 	}
 	var seen importDedup[*Tag]
-	for i := 0; i < in.c.tagImportCount(); i++ {
+	importCount := in.c.tagImportCount()
+	for i := 0; i < importCount; i++ {
 		tag, ok := in.imports.tag(in.c.tagImportBindingKey(i))
 		if ok && seen.add(tag) {
 			tag.detachImporter()

@@ -3,7 +3,178 @@ package wasm
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"sort"
+	"strings"
+	"sync"
 )
+
+type moduleTypeIndexDirectory struct {
+	owner         *RecType
+	groups        int
+	bases         []int
+	flat          []moduleSubTypeRef
+	canonical     sync.Once
+	canonicalIDs  []uint32
+	superEdges    sync.Once
+	superOffsets  []int
+	superChildren []uint32
+	superEdgesOK  bool
+}
+
+type moduleImportIndexDirectory struct {
+	owner    *Import
+	count    int
+	funcs    []uint32
+	tables   []uint32
+	memories []uint32
+	globals  []uint32
+	tags     int
+}
+
+var moduleTypeIndexDirectoryMu sync.RWMutex
+var moduleImportIndexDirectoryMu sync.RWMutex
+
+// invalidateTypeAnalysisCaches starts a fresh validation view. Modules are
+// immutable while a validation result is consumed, but callers may edit a
+// module and validate it again; clear pointer-based indexes at that boundary so
+// same-slice edits cannot leave stale subtype pointers or structural keys.
+func (m *Module) invalidateTypeAnalysisCaches() {
+	if m == nil {
+		return
+	}
+	moduleTypeIndexDirectoryMu.Lock()
+	m.typeIndexDirectory = nil
+	moduleTypeIndexDirectoryMu.Unlock()
+	moduleImportIndexDirectoryMu.Lock()
+	m.importIndexDirectory = nil
+	moduleImportIndexDirectoryMu.Unlock()
+
+	structuralTypeCacheInitMu.Lock()
+	if cache := m.structuralTypeCache; cache != nil {
+		cache.mu.Lock()
+		cache.owner, cache.groups, cache.flat = nil, 0, 0
+		cache.keys = nil
+		cache.groupDigests = nil
+		cache.mu.Unlock()
+	}
+	structuralTypeCacheInitMu.Unlock()
+}
+
+func (m *Module) typeIndex() *moduleTypeIndexDirectory {
+	if m == nil {
+		return nil
+	}
+	var owner *RecType
+	if len(m.Types) != 0 {
+		owner = &m.Types[0]
+	}
+	moduleTypeIndexDirectoryMu.RLock()
+	directory := m.typeIndexDirectory
+	if directory != nil && directory.owner == owner && directory.groups == len(m.Types) {
+		moduleTypeIndexDirectoryMu.RUnlock()
+		return directory
+	}
+	moduleTypeIndexDirectoryMu.RUnlock()
+
+	moduleTypeIndexDirectoryMu.Lock()
+	defer moduleTypeIndexDirectoryMu.Unlock()
+	directory = m.typeIndexDirectory
+	if directory != nil && directory.owner == owner && directory.groups == len(m.Types) {
+		return directory
+	}
+	directory = &moduleTypeIndexDirectory{owner: owner, groups: len(m.Types), bases: make([]int, len(m.Types)+1)}
+	total := 0
+	for group := range m.Types {
+		total += len(m.Types[group].SubTypes)
+	}
+	directory.flat = make([]moduleSubTypeRef, 0, total)
+	total = 0
+	for group := range m.Types {
+		directory.bases[group] = total
+		for member := range m.Types[group].SubTypes {
+			directory.flat = append(directory.flat, moduleSubTypeRef{st: &m.Types[group].SubTypes[member], recGroup: group})
+		}
+		total += len(m.Types[group].SubTypes)
+	}
+	directory.bases[len(m.Types)] = total
+	m.typeIndexDirectory = directory
+	return directory
+}
+
+func (m *Module) importIndex() *moduleImportIndexDirectory {
+	if m == nil {
+		return nil
+	}
+	var owner *Import
+	if len(m.Imports) != 0 {
+		owner = &m.Imports[0]
+	}
+	moduleImportIndexDirectoryMu.RLock()
+	directory := m.importIndexDirectory
+	if directory != nil && directory.owner == owner && directory.count == len(m.Imports) {
+		moduleImportIndexDirectoryMu.RUnlock()
+		return directory
+	}
+	moduleImportIndexDirectoryMu.RUnlock()
+
+	moduleImportIndexDirectoryMu.Lock()
+	defer moduleImportIndexDirectoryMu.Unlock()
+	directory = m.importIndexDirectory
+	if directory != nil && directory.owner == owner && directory.count == len(m.Imports) {
+		return directory
+	}
+	directory = &moduleImportIndexDirectory{owner: owner, count: len(m.Imports)}
+	for i := range m.Imports {
+		importType := &m.Imports[i].Type
+		switch importType.Kind {
+		case ExternFunc:
+			directory.funcs = append(directory.funcs, uint32(i))
+		case ExternTable:
+			directory.tables = append(directory.tables, uint32(i))
+		case ExternMem:
+			directory.memories = append(directory.memories, uint32(i))
+		case ExternGlobal:
+			directory.globals = append(directory.globals, uint32(i))
+		case ExternTag:
+			directory.tags++
+		}
+	}
+	m.importIndexDirectory = directory
+	return directory
+}
+
+// importEntry resolves an index in one import kind, or returns its local index.
+// The measured crossover for cold directories is between 32 and 64 imports.
+func (m *Module) importEntry(kind ExternKind, idx uint32) (entry int, local uint64) {
+	if len(m.Imports) <= 32 {
+		remaining := uint64(idx)
+		for i := range m.Imports {
+			if m.Imports[i].Type.Kind == kind {
+				if remaining == 0 {
+					return i, 0
+				}
+				remaining--
+			}
+		}
+		return -1, remaining
+	}
+	directory := m.importIndex()
+	var indexes []uint32
+	switch kind {
+	case ExternFunc:
+		indexes = directory.funcs
+	case ExternTable:
+		indexes = directory.tables
+	case ExternMem:
+		indexes = directory.memories
+	case ExternGlobal:
+		indexes = directory.globals
+	}
+	if uint64(idx) < uint64(len(indexes)) {
+		return int(indexes[idx]), 0
+	}
+	return -1, uint64(idx) - uint64(len(indexes))
+}
 
 // LocalCount returns the size of the wasm local index space for parameters plus
 // compact declared-local runs. The overflow result is true only if the uint64
@@ -36,6 +207,25 @@ func LocalType(params []ValType, runs []LocalRun, idx uint32) (ValType, bool) {
 	return ValType{}, false
 }
 
+// LocalTypeIndexed resolves an index using absolute run ends prepared once by
+// the containing function. It preserves compact run-length declarations while
+// making repeated late-local lookups logarithmic in the number of runs.
+func LocalTypeIndexed(params []ValType, runs []LocalRun, runEnds []uint64, idx uint32) (ValType, bool) {
+	if uint64(idx) < uint64(len(params)) {
+		return params[idx], true
+	}
+	// Measured late-local lookup crosses over around four runs. One or two
+	// runs are cheaper to scan and do not need an index allocation.
+	if len(runs) <= 2 || len(runEnds) != len(runs) {
+		return LocalType(params, runs, idx)
+	}
+	i := sort.Search(len(runEnds), func(i int) bool { return runEnds[i] > uint64(idx) })
+	if i == len(runs) {
+		return ValType{}, false
+	}
+	return runs[i].Type, true
+}
+
 // GlobalValueType returns the canonical global value type.
 func GlobalValueType(gt GlobalType) ValType { return gt.Type }
 
@@ -45,28 +235,20 @@ func TableRefType(tt TableType) RefType { return tt.Ref }
 // TableType resolves a table index across imported tables followed by local
 // definitions without materializing a parallel index. The module validator,
 // frontend support pass, and direct backend use the same declaration order.
+//
+//go:noinline
 func (m *Module) TableType(idx uint32) (TableType, bool) {
 	if m == nil {
 		return TableType{}, false
 	}
-	n := uint32(0)
-	for i := range m.Imports {
-		if m.Imports[i].Type.Kind != ExternTable {
-			continue
-		}
-		if n == idx {
-			return m.Imports[i].Type.TableType(), true
-		}
-		n++
+	entry, local := m.importEntry(ExternTable, idx)
+	if entry >= 0 {
+		return m.Imports[entry].Type.TableType(), true
 	}
-	if idx < n {
+	if local >= uint64(len(m.Tables)) {
 		return TableType{}, false
 	}
-	local := int(idx - n)
-	if local < 0 || local >= len(m.Tables) {
-		return TableType{}, false
-	}
-	return m.Tables[local].Type, true
+	return m.Tables[int(local)].Type, true
 }
 
 func TableAddrType(tt TableType) ValType {
@@ -78,28 +260,20 @@ func TableAddrType(tt TableType) ValType {
 
 // MemoryType resolves a memory index across imported memories followed by local
 // definitions without materializing a parallel index.
+//
+//go:noinline
 func (m *Module) MemoryType(idx uint32) (MemType, bool) {
 	if m == nil {
 		return MemType{}, false
 	}
-	n := uint32(0)
-	for i := range m.Imports {
-		if m.Imports[i].Type.Kind != ExternMem {
-			continue
-		}
-		if n == idx {
-			return m.Imports[i].Type.MemType(), true
-		}
-		n++
+	entry, local := m.importEntry(ExternMem, idx)
+	if entry >= 0 {
+		return m.Imports[entry].Type.MemType(), true
 	}
-	if idx < n {
+	if local >= uint64(len(m.Memories)) {
 		return MemType{}, false
 	}
-	local := int(idx - n)
-	if local < 0 || local >= len(m.Memories) {
-		return MemType{}, false
-	}
-	return m.Memories[local], true
+	return m.Memories[int(local)], true
 }
 
 func MemoryAddrType(mt MemType) ValType {
@@ -149,24 +323,22 @@ func MustEncodeValType(t ValType) byte {
 
 // FuncTypeIndex returns the declared type index for a global function index.
 func (m *Module) FuncTypeIndex(idx uint32) (TypeIdx, bool) {
-	i := uint32(0)
-	for j := range m.Imports {
-		if m.Imports[j].Type.Kind != ExternFunc {
-			continue
-		}
-		if i == idx {
-			return m.Imports[j].Type.FuncType(), true
-		}
-		i++
-	}
-	local := int(idx - i)
-	if idx < i || local < 0 || local >= len(m.FuncTypes) {
+	if m == nil {
 		return TypeIdx{}, false
 	}
-	return m.FuncTypes[local], true
+	entry, local := m.importEntry(ExternFunc, idx)
+	if entry >= 0 {
+		return m.Imports[entry].Type.FuncType(), true
+	}
+	if local >= uint64(len(m.FuncTypes)) {
+		return TypeIdx{}, false
+	}
+	return m.FuncTypes[int(local)], true
 }
 
 // FuncSignature returns the function signature for a global function index.
+//
+//go:noinline
 func (m *Module) FuncSignature(idx uint32) (*CompType, bool) {
 	typeIdx, ok := m.FuncTypeIndex(idx)
 	if !ok {
@@ -211,6 +383,8 @@ func (m *Module) ResolvedLocalFuncType(localIdx int) (*CompType, bool) {
 // recursive-local type indexes resolved. Unlike ResolvedLocalFuncType, callers
 // that already own scratch storage need not allocate a CompType wrapper. When
 // no rewrite is needed, the immutable parameter/result slices alias the module.
+//
+//go:noinline
 func (m *Module) ResolveLocalFuncType(localIdx int, dst *CompType) bool {
 	if localIdx < 0 || localIdx >= len(m.FuncTypes) {
 		return false
@@ -232,29 +406,34 @@ func (m *Module) subtypeByTypeIdx(idx TypeIdx) (*SubType, bool) {
 	return st, ok
 }
 
+//go:noinline
 func (m *Module) subtypeByTypeIdxWithRecGroup(idx TypeIdx) (*SubType, int, bool) {
 	if idx.Rec {
 		return nil, 0, false
 	}
-	want := uint64(idx.Index)
-	for gi := range m.Types {
-		rt := &m.Types[gi]
-		if want < uint64(len(rt.SubTypes)) {
-			return &rt.SubTypes[int(want)], gi, true
+	if len(m.Types) <= 8 {
+		remaining := uint64(idx.Index)
+		for group := range m.Types {
+			if remaining < uint64(len(m.Types[group].SubTypes)) {
+				return &m.Types[group].SubTypes[remaining], group, true
+			}
+			remaining -= uint64(len(m.Types[group].SubTypes))
 		}
-		want -= uint64(len(rt.SubTypes))
+		return nil, 0, false
 	}
-	return nil, 0, false
+	directory := m.typeIndex()
+	if uint64(idx.Index) >= uint64(len(directory.flat)) {
+		return nil, 0, false
+	}
+	ref := directory.flat[idx.Index]
+	return ref.st, ref.recGroup, true
 }
 
 func (m *Module) flattenedTypeCount() int {
-	n := 0
-	for i := range m.Types {
-		n += len(m.Types[i].SubTypes)
-	}
-	return n
+	return len(m.typeIndex().flat)
 }
 
+//go:noinline
 func (m *Module) typeFunc(idx TypeIdx) (*CompType, bool) {
 	st, ok := m.subtypeByTypeIdx(idx)
 	if !ok || st.Comp.Kind != CompFunc {
@@ -275,6 +454,8 @@ func (m *Module) resolvedTypeFunc(idx TypeIdx) (*CompType, bool) {
 // index to dst. Non-recursive parameter and result slices alias immutable
 // module storage; recursive-local indexes are resolved into exact owned slices.
 // Callers must not mutate aliased slices and must not retain them beyond m.
+//
+//go:noinline
 func (m *Module) ResolveTypeFunc(typeIdx uint32, dst *CompType) bool {
 	return m.resolveTypeFunc(TypeIdx{Index: typeIdx}, dst, true)
 }
@@ -327,9 +508,11 @@ func (m *Module) ReferenceTypeSubtype(actual, required RefType) bool {
 	return (&moduleValidator{m: m}).refSubtype(actual, required)
 }
 
+//go:noinline
 func (m *Module) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int, bool) {
+	directory := m.typeIndex()
 	if !idx.Rec {
-		if _, ok := m.subtypeByTypeIdx(idx); !ok {
+		if uint64(idx.Index) >= uint64(len(directory.flat)) {
 			return 0, false
 		}
 		return int(idx.Index), true
@@ -337,11 +520,7 @@ func (m *Module) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int, bool) {
 	if recGroup < 0 || recGroup >= len(m.Types) || idx.Index >= uint32(len(m.Types[recGroup].SubTypes)) {
 		return 0, false
 	}
-	abs := 0
-	for gi := 0; gi < recGroup; gi++ {
-		abs += len(m.Types[gi].SubTypes)
-	}
-	return abs + int(idx.Index), true
+	return directory.bases[recGroup] + int(idx.Index), true
 }
 
 func (m *Module) resolveCompTypeRecIndexes(ct CompType, recGroup int) CompType {
@@ -408,21 +587,17 @@ func (m *Module) resolveTypeIdxRecIndex(idx TypeIdx, recGroup int) TypeIdx {
 
 // GlobalTypeByIndex returns the declared type for a wasm global index.
 func (m *Module) GlobalTypeByIndex(idx uint32) (GlobalType, bool) {
-	i := uint32(0)
-	for j := range m.Imports {
-		if m.Imports[j].Type.Kind != ExternGlobal {
-			continue
-		}
-		if i == idx {
-			return m.Imports[j].Type.GlobalType(), true
-		}
-		i++
-	}
-	local := int(idx - i)
-	if idx < i || local < 0 || local >= len(m.Globals) {
+	if m == nil {
 		return GlobalType{}, false
 	}
-	return m.Globals[local].Type, true
+	entry, local := m.importEntry(ExternGlobal, idx)
+	if entry >= 0 {
+		return m.Imports[entry].Type.GlobalType(), true
+	}
+	if local >= uint64(len(m.Globals)) {
+		return GlobalType{}, false
+	}
+	return m.Globals[int(local)].Type, true
 }
 
 // FuncTypeEqual compares function signatures.
@@ -445,17 +620,122 @@ func FuncTypeEqual(a, b *CompType) bool {
 
 // CanonicalTypeID returns the stable signature id used by call_indirect checks.
 func (m *Module) CanonicalTypeID(typeIdx uint32) uint32 {
-	target, ok := m.TypeFunc(typeIdx)
-	if !ok {
-		return typeIdx
+	// Type zero is its own first matching signature, including the invalid-type
+	// fallback. Avoid counting or indexing the section for this common query.
+	if typeIdx == 0 && m != nil {
+		return 0
 	}
-	for j := 0; j < m.flattenedTypeCount(); j++ {
-		ft, ok := m.TypeFunc(uint32(j))
-		if ok && FuncTypeEqual(ft, target) {
-			return uint32(j)
+	if len(m.Types) <= 8 {
+		count := 0
+		for _, group := range m.Types {
+			count += len(group.SubTypes)
+		}
+		if count <= 8 {
+			target, ok := m.TypeFunc(typeIdx)
+			if !ok {
+				return typeIdx
+			}
+			for i := 0; i < count; i++ {
+				if ft, ok := m.TypeFunc(uint32(i)); ok && FuncTypeEqual(ft, target) {
+					return uint32(i)
+				}
+			}
+			return typeIdx
 		}
 	}
-	return typeIdx
+	directory := m.typeIndex()
+	if uint64(typeIdx) >= uint64(len(directory.flat)) || directory.flat[typeIdx].st.Comp.Kind != CompFunc {
+		return typeIdx
+	}
+	directory.canonical.Do(func() {
+		ids := make([]uint32, len(directory.flat))
+		// A prefix of identical function signatures has canonical ID zero.
+		// Prove it directly before allocating keys; duplicate-only sections need
+		// no signature map, while mostly unique sections stop at the first miss.
+		prefix := 0
+		first := &directory.flat[0].st.Comp
+		if first.Kind == CompFunc {
+			prefix = 1
+			for prefix < len(directory.flat) && FuncTypeEqual(first, &directory.flat[prefix].st.Comp) {
+				prefix++
+			}
+		}
+		if prefix == len(directory.flat) {
+			directory.canonicalIDs = ids
+			return
+		}
+		firstBySignature := make(map[string]uint32)
+		if prefix != 0 {
+			firstBySignature[canonicalFuncTypeKey(first)] = 0
+		}
+		for i := prefix; i < len(directory.flat); i++ {
+			idx := uint32(i)
+			ids[i] = idx
+			ct := &directory.flat[i].st.Comp
+			if ct.Kind != CompFunc {
+				continue
+			}
+			key := canonicalFuncTypeKey(ct)
+			if first, ok := firstBySignature[key]; ok {
+				ids[i] = first
+				continue
+			}
+			firstBySignature[key] = idx
+		}
+		directory.canonicalIDs = ids
+	})
+	return directory.canonicalIDs[typeIdx]
+}
+
+// canonicalFuncTypeKey encodes exactly the fields observed by equalValType.
+// Keeping the complete normalized signature as a string makes map equality
+// collision-safe while assigning all module IDs in one pass.
+func canonicalFuncTypeKey(ft *CompType) string {
+	var key strings.Builder
+	key.Grow(16 + 16*(len(ft.Params)+len(ft.Results)))
+	var count [8]byte
+	binary.LittleEndian.PutUint64(count[:], uint64(len(ft.Params)))
+	_, _ = key.Write(count[:])
+	for _, t := range ft.Params {
+		writeCanonicalValTypeKey(&key, t)
+	}
+	binary.LittleEndian.PutUint64(count[:], uint64(len(ft.Results)))
+	_, _ = key.Write(count[:])
+	for _, t := range ft.Results {
+		writeCanonicalValTypeKey(&key, t)
+	}
+	return key.String()
+}
+
+func writeCanonicalValTypeKey(dst *strings.Builder, t ValType) {
+	var key [16]byte
+	key[0] = byte(t.Kind())
+	key[1] = byte(t.Num())
+	if t.Kind() == ValRef {
+		rt := t.Ref()
+		heap := rt.Heap()
+		typeIdx := heap.Type()
+		if rt.Nullable() {
+			key[2] = 1
+		}
+		if rt.Exact() {
+			key[3] = 1
+		}
+		key[4] = byte(heap.Kind())
+		key[5] = byte(heap.Abs())
+		if typeIdx.Rec {
+			key[6] = 1
+		}
+		binary.LittleEndian.PutUint32(key[8:12], typeIdx.Index)
+		if heap.Kind() == HeapDefType {
+			_, member, _, valid := heap.Def()
+			if valid {
+				key[7] = 1
+				binary.LittleEndian.PutUint32(key[12:16], member)
+			}
+		}
+	}
+	_, _ = dst.Write(key[:])
 }
 
 // StructuralTypeID returns a call_indirect signature id derived only from the
@@ -485,9 +765,9 @@ func (m *Module) StructuralTypeKey(typeIdx uint32) uint64 {
 }
 
 // StructuralTypeKeyChecked is stable across modules with equivalent indexed or
-// recursive graphs, uses only bounded per-call state, and has no process-global
-// interning cache. The boolean is false for a non-function type, malformed graph,
-// or a graph exceeding the bounded canonicalization work limit.
+// recursive graphs. It bounds canonicalization work and shares completed group
+// digests in the module-local type-key cache. The boolean is false for a
+// non-function type, malformed graph, or a graph exceeding the work limit.
 func (m *Module) StructuralTypeKeyChecked(typeIdx uint32) (uint64, bool) {
 	ft, ok := m.TypeFunc(typeIdx)
 	if !ok {
@@ -507,14 +787,117 @@ func (m *Module) FunctionSubtypeTypeIndexes(targetType uint32) ([]uint32, bool) 
 	if _, ok := m.TypeFunc(targetType); !ok {
 		return nil, false
 	}
-	required := Ref(false, IndexedHeap(TypeIdx{Index: targetType}), false)
-	indexes := make([]uint32, 0, 1)
-	for typeIndex := 0; typeIndex < m.flattenedTypeCount(); typeIndex++ {
-		if _, ok := m.TypeFunc(uint32(typeIndex)); !ok {
-			continue
+	// Measured subtype selection crosses over between two and four types.
+	// Keep tiny sections on the direct relation; there is no useful graph index
+	// to build for one identity, and at most two candidates for the small scan.
+	if len(m.Types) <= 2 {
+		count := 0
+		for _, group := range m.Types {
+			count += len(group.SubTypes)
 		}
-		actual := Ref(false, IndexedHeap(TypeIdx{Index: uint32(typeIndex)}), false)
-		if m.ReferenceTypeSubtype(actual, required) {
+		if count == 1 {
+			return []uint32{targetType}, true
+		}
+		if count == 2 {
+			validator := &moduleValidator{m: m}
+			required := Ref(false, IndexedHeap(TypeIdx{Index: targetType}), false)
+			indexes := make([]uint32, 0, 1)
+			for i := uint32(0); i < 2; i++ {
+				if _, ok := m.TypeFunc(i); !ok {
+					continue
+				}
+				actual := Ref(false, IndexedHeap(TypeIdx{Index: i}), false)
+				if validator.refSubtype(actual, required) {
+					indexes = append(indexes, i)
+				}
+			}
+			return indexes, len(indexes) != 0
+		}
+	}
+	directory := m.typeIndex()
+	flat := directory.flat
+	validator := &moduleValidator{m: m}
+	state := make(map[moduleTypePair]uint8)
+	equivalent := make([]bool, len(flat))
+	for typeIndex, ref := range flat {
+		if ref.st.Comp.Kind == CompFunc {
+			equivalent[typeIndex] = validator.typeIdxEquivalentWithState(
+				TypeIdx{Index: uint32(typeIndex)}, TypeIdx{Index: targetType}, state,
+			)
+		}
+	}
+
+	// Reverse the declared-super edges once, then walk descendants from every
+	// structurally equivalent target. Calling ReferenceTypeSubtype for each
+	// candidate repeatedly walks the same super chains; a long subtype chain
+	// otherwise costs quadratic time.
+	directory.superEdges.Do(func() {
+		maxInt := int(^uint(0) >> 1)
+		if len(flat) > maxInt-1 || uint64(len(flat)) > uint64(^uint32(0)) {
+			return
+		}
+		offsets := make([]int, len(flat)+1)
+		edgeCount := 0
+		for _, ref := range flat {
+			for _, super := range ref.st.Supers {
+				superIndex, ok := m.flatTypeIdxInRecGroup(super, ref.recGroup)
+				if !ok {
+					continue
+				}
+				if edgeCount == maxInt {
+					return
+				}
+				offsets[superIndex+1]++
+				edgeCount++
+			}
+		}
+		for i := 1; i < len(offsets); i++ {
+			offsets[i] += offsets[i-1]
+		}
+		children := make([]uint32, edgeCount)
+		cursor := append([]int(nil), offsets[:len(flat)]...)
+		for typeIndex, ref := range flat {
+			for _, super := range ref.st.Supers {
+				superIndex, ok := m.flatTypeIdxInRecGroup(super, ref.recGroup)
+				if !ok {
+					continue
+				}
+				position := cursor[superIndex]
+				children[position] = uint32(typeIndex)
+				cursor[superIndex]++
+			}
+		}
+		directory.superOffsets = offsets
+		directory.superChildren = children
+		directory.superEdgesOK = true
+	})
+	if !directory.superEdgesOK {
+		return nil, false
+	}
+
+	reachable := make([]bool, len(flat))
+	queue := make([]uint32, 0, len(flat))
+	for typeIndex, isEquivalent := range equivalent {
+		if isEquivalent {
+			reachable[typeIndex] = true
+			queue = append(queue, uint32(typeIndex))
+		}
+	}
+	for head := 0; head < len(queue); head++ {
+		parent := int(queue[head])
+		for edge := directory.superOffsets[parent]; edge < directory.superOffsets[parent+1]; edge++ {
+			child := directory.superChildren[edge]
+			if reachable[child] {
+				continue
+			}
+			reachable[child] = true
+			queue = append(queue, child)
+		}
+	}
+
+	indexes := make([]uint32, 0, 1)
+	for typeIndex, ref := range flat {
+		if reachable[typeIndex] && ref.st.Comp.Kind == CompFunc {
 			indexes = append(indexes, uint32(typeIndex))
 		}
 	}

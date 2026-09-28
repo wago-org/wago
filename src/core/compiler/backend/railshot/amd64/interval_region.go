@@ -487,6 +487,7 @@ func (f *fn) intervalBorrowedRegs() regMask {
 func (f *fn) demoteIntervalLocalRefs(x int) {
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.isValue() && e.st.kind == stLocalReg && e.st.idx == uint32(x) {
+			f.s.canonicalSlots = false
 			e.st.kind = stLocalRef
 			e.st.reg = regNone
 		}

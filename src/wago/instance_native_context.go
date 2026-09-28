@@ -387,10 +387,11 @@ func (in *Instance) markNativeControlShared() {
 		gate := &state.invokeMu
 		gate.mu.Lock()
 		for in.executionFlags.Load()&executionFlagPreparedActive != 0 {
-			if gate.changed == nil {
-				gate.changed = make(chan struct{})
+			slow := gate.slowStateLocked()
+			if slow.changed == nil {
+				slow.changed = make(chan struct{})
 			}
-			changed := gate.changed
+			changed := slow.changed
 			gate.mu.Unlock()
 			<-changed
 			gate.mu.Lock()
@@ -555,9 +556,11 @@ func (in *Instance) unlockPreparedFastState() {
 		if flags&executionFlagNativeControlShared != 0 {
 			gate := &in.ensurePluginState().invokeMu
 			gate.mu.Lock()
-			if gate.changed != nil {
-				close(gate.changed)
-				gate.changed = nil
+			if slow := gate.slow; slow != nil && slow.changed != nil {
+				close(slow.changed)
+				slow.changed = nil
+				slow.revocationWaiters = false
+				gate.updateWaiterBitLocked()
 			}
 			gate.mu.Unlock()
 		}

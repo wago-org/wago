@@ -52,10 +52,11 @@ type ctrlFrame struct {
 	branchN    uint32 // values transferred on a branch to this label
 	baseTypes  uint16 // fixed-arena start in low byte, count in high byte
 
-	height          int // operand depth at the frame's result base
-	paramN, resultN int
-	controlSite     int           // cfLoop: backward target; cfIf: false-edge branch, -1 once patched
-	types           []machineType // parameters followed by results; split by paramN/resultN
+	height             int // operand depth at the frame's result base
+	paramN, resultN    int
+	controlSite        int           // cfLoop: backward target; cfIf: false-edge branch, -1 once patched
+	callFreeLoopPrefix int           // count of call-free loops through this frame
+	types              []machineType // parameters followed by results; split by paramN/resultN
 }
 
 func (fr *ctrlFrame) branchArity() int { return int(fr.branchN) }
@@ -64,7 +65,7 @@ func (fr *ctrlFrame) baseTypeStart() int { return int(uint8(fr.baseTypes)) }
 
 func (fr *ctrlFrame) baseTypeCount() int {
 	if fr.has(ctrlColdBaseTypes) {
-		return len(fr.types) - fr.paramN - fr.resultN
+		return fr.height
 	}
 	return int(uint8(fr.baseTypes >> 8))
 }
@@ -93,6 +94,7 @@ type ctrlFrameMerge struct {
 	ends          []uint32 // overflow after two inline forward-end sites
 	branchState   []locState
 	entryState    []locState
+	baseTypeTop   *elem // cold control-base type prefix; immutable for the frame lifetime
 	firstEndSite  uint32
 	secondEndSite uint32
 	eh            *ctrlFrameEH
@@ -506,6 +508,10 @@ func (f *fn) pushCtrl(fr *ctrlFrame) {
 			fr.mergeIndex = stale
 		}
 	}
+	if fr.has(ctrlLoopCallFree) {
+		f.callFreeLoopDepth++
+	}
+	fr.callFreeLoopPrefix = f.callFreeLoopDepth
 	f.ctrl = append(f.ctrl, *fr)
 }
 
@@ -546,53 +552,83 @@ func (f *fn) frameBaseGCRoots(fr *ctrlFrame) []bool {
 }
 
 func (fr *ctrlFrame) appendParameterTypes(dst []machineType) []machineType {
-	start := 0
-	if fr.has(ctrlColdBaseTypes) {
-		start = fr.baseTypeCount()
-	}
-	return append(dst, fr.types[start:start+fr.paramN]...)
+	return append(dst, fr.types[:fr.paramN]...)
 }
 
 func (fr *ctrlFrame) appendResultTypes(dst []machineType) []machineType {
-	if fr.resultN == 1 && fr.types == nil && !fr.has(ctrlColdBaseTypes) {
+	if fr.resultN == 1 && fr.types == nil {
 		return append(dst, fr.res0)
 	}
-	start := fr.paramN
-	if fr.has(ctrlColdBaseTypes) {
-		start += fr.baseTypeCount()
-	}
-	return append(dst, fr.types[start:start+fr.resultN]...)
+	return append(dst, fr.types[fr.paramN:fr.paramN+fr.resultN]...)
 }
 
-func (f *fn) setFrameBaseTypes(fr *ctrlFrame, types []machineType) {
+func (f *fn) setFrameBaseTypePrefix(fr *ctrlFrame, height int) {
+	if height < 0 || height > f.depth() {
+		panic("amd64: invalid control base-type prefix height")
+	}
+	fr.height = height
 	fr.set(ctrlBaseTypesSet, true)
 	start := int(f.controlBaseTypeN)
 	storage := f.scratchState().functionResultTypeArena[:]
-	if start+len(types) <= len(storage) {
-		copy(storage[start:], types)
-		fr.setBaseTypeRange(start, len(types))
-		f.controlBaseTypeN += uint8(len(types))
+	if start+height <= len(storage) {
+		top := f.logicalStackRootAtDepth(height)
+		for i := height - 1; i >= 0; i-- {
+			if top == f.s.head {
+				panic("amd64: control base-type prefix ended before its height")
+			}
+			storage[start+i] = rootMachineType(top)
+			top = baseOfValentBlock(top).prev
+		}
+		fr.setBaseTypeRange(start, height)
+		f.controlBaseTypeN += uint8(height)
 		return
 	}
-
-	// Unusually wide/deep control uses the frame's existing cold type backing.
-	// This preserves exact semantics without growing persistent worker state.
-	all := make([]machineType, len(types)+fr.paramN+fr.resultN)
-	copy(all, types)
-	sig := all[len(types):]
-	copy(sig, fr.types[:fr.paramN])
-	if fr.resultN == 1 && fr.types == nil {
-		sig[fr.paramN] = fr.res0
-	} else {
-		copy(sig[fr.paramN:], fr.types[fr.paramN:fr.paramN+fr.resultN])
-	}
-	fr.types = all
+	// Large prefixes are immutable below their control frame. Retain the existing
+	// operand-root handle instead of hashing and copying the whole type prefix for
+	// each nested frame.
+	f.ensureCtrlMerge(fr).baseTypeTop = f.logicalStackRootAtDepth(height)
 	fr.set(ctrlColdBaseTypes, true)
+}
+
+// logicalStackRootAtDepth returns the top logical operand at the requested
+// height. The common nested-control case skips only block parameters, so it does
+// not rescan or copy the unchanged prefix.
+func (f *fn) logicalStackRootAtDepth(height int) *elem {
+	if height < 0 || height > f.depth() {
+		panic("amd64: logical stack depth out of range")
+	}
+	cur := f.s.back()
+	for depth := f.depth(); depth > height; depth-- {
+		if cur == nil || cur == f.s.head {
+			panic("amd64: logical stack ended before requested depth")
+		}
+		cur = baseOfValentBlock(cur).prev
+	}
+	return cur
 }
 
 func (f *fn) frameBaseTypes(fr *ctrlFrame) []machineType {
 	if fr.has(ctrlColdBaseTypes) {
-		return fr.types[:fr.baseTypeCount()]
+		out := f.tmpTypes[:0]
+		if cap(out) < fr.height {
+			out = make([]machineType, fr.height)
+		} else {
+			out = out[:fr.height]
+		}
+		merge := f.ctrlMerge(fr)
+		if merge == nil {
+			panic("amd64: cold control base has no prefix handle")
+		}
+		top := merge.baseTypeTop
+		for i := fr.height - 1; i >= 0; i-- {
+			if top == nil || top == f.s.head {
+				panic("amd64: cold control base prefix ended before its height")
+			}
+			out[i] = rootMachineType(top)
+			top = baseOfValentBlock(top).prev
+		}
+		f.tmpTypes = out
+		return out
 	}
 	start := fr.baseTypeStart()
 	return f.scratchState().functionResultTypeArena[start : start+fr.baseTypeCount()]
@@ -723,11 +759,7 @@ func typesOfVals(vals []wasm.ValType) []machineType {
 
 // depth returns the number of logical operands (valent-block roots) on the stack.
 func (f *fn) depth() int {
-	n := 0
-	for cur := f.s.head.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
-		n++
-	}
-	return n
+	return int(f.s.logicalDepth)
 }
 
 // rootsBottomToTop returns the logical operands in bottom-to-top order.
@@ -777,6 +809,9 @@ func gcRootFlags(roots []*elem) []bool {
 }
 
 func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
+	if !f.s.hasGCRoots {
+		return
+	}
 	roots := f.rootsBottomToTop()
 	if fr.height < 0 || fr.height+fr.paramN > len(roots) {
 		return
@@ -876,7 +911,18 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 	f.stats.addFlush()
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
+	if f.s.canonicalSlots {
+		return
+	}
 	roots := f.rootsBottomToTop()
+	// A storage replacement can conservatively invalidate the layout bit even
+	// when every logical operand still names its canonical slot. Recognize that
+	// case once; subsequent adjacent control boundaries then take the constant-
+	// time path above instead of rescanning and rebuilding the same prefix.
+	if canonicalSlotLayout(roots) {
+		f.s.canonicalSlots = true
+		return
+	}
 	gcRoots := f.tmpGCRoots[:0]
 	for _, root := range roots {
 		gcRoots = append(gcRoots, root.isValue() && root.st.hasGCRoot())
@@ -929,15 +975,23 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
 
-// flushWideStack stages unusually wide or overlapping operand stacks in a
-// disjoint frame range before copying them to canonical slots. The normal
-// one-pass flush is faster, but a value already spilled below its destination
-// may be overwritten by an earlier canonical store before it is reloaded. This
-// occurs below the historical 64-slot width threshold when register pressure
-// spills a later wrapper argument into an earlier argument's destination.
-func (f *fn) flushWideStack(roots []*elem, gcRoots []bool, stageRegisterPressure bool) bool {
-	const wideFlushSlots = 64
+func canonicalSlotLayout(roots []*elem) bool {
+	slot := 0
+	for _, root := range roots {
+		typ := rootMachineType(root)
+		if typ == mtCustom || !root.isValue() || root.st.kind != stSlot || root.st.slotIndex() != slot || root.st.typ != typ {
+			return false
+		}
+		slot += typ.stackSlots()
+	}
+	return true
+}
 
+// flushWideStack stages hazardous or register-pressure-constrained operand
+// stacks in a disjoint frame range before copying them to canonical slots. A
+// value already spilled below its destination may be overwritten by an earlier
+// canonical store before it is reloaded; stack width alone is not a hazard.
+func (f *fn) flushWideStack(roots []*elem, gcRoots []bool, stageRegisterPressure bool) bool {
 	types := f.tmpFlushTypes[:0]
 	total, gpValues, fpValues := 0, 0, 0
 	needsStage := false
@@ -981,7 +1035,7 @@ func (f *fn) flushWideStack(roots []*elem, gcRoots []bool, stageRegisterPressure
 		}
 	}
 	f.tmpFlushTypes = types
-	if total <= wideFlushSlots && !needsStage {
+	if !needsStage {
 		return false
 	}
 
@@ -1046,17 +1100,25 @@ func (f *fn) setDepthTypes(types []machineType) {
 
 func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
+	f.s.logicalDepth = 0
+	f.s.canonicalSlots = false
+	f.s.hasGCRoots = false
 	slot := 0
+	canonical := true
 	for i, typ := range types {
+		if typ == mtCustom {
+			canonical = false
+		}
 		value := f.pushValue(storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 		if i < len(gcRoots) {
-			value.st.setGCRoot(gcRoots[i])
+			f.setStackGCRoot(value, gcRoots[i])
 		}
 		slot += typ.stackSlots()
 	}
 	if slot > f.maxSpill {
 		f.maxSpill = slot
 	}
+	f.s.canonicalSlots = canonical
 	for i := range f.regUser {
 		f.regUser[i] = nil
 		f.fregUser[i] = nil
@@ -1240,12 +1302,7 @@ func (f *fn) callFreeLoopExit(fi int) bool {
 	if !f.opt(optCallFreeLoopColdExit) {
 		return false
 	}
-	for i := len(f.ctrl) - 1; i > fi; i-- {
-		if f.ctrl[i].kind == cfLoop && f.ctrl[i].has(ctrlLoopCallFree) {
-			return true
-		}
-	}
-	return false
+	return fi >= 0 && fi < len(f.ctrl) && f.callFreeLoopDepth > f.ctrl[fi].callFreeLoopPrefix
 }
 
 // branchJump emits the jump for a branch that targets frame fr.
@@ -1276,15 +1333,33 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 // scanLoopCallFree scans from a loop body's first opcode to its matching end.
 // The module-aware classifier keeps every proposal immediate synchronized; any
 // uncertainty conservatively rejects the proof.
-func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool) bool {
+const maxCallFreeLoopLookaheadBytes = 64 << 10
+
+func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool, budget *int) bool {
+	if budget == nil || *budget >= maxCallFreeLoopLookaheadBytes {
+		return false
+	}
 	r2 := *r
 	depth := 0
 	var imm wasm.InstructionImmediate
 	for {
+		before := r2.Offset()
 		op, err := r2.Byte()
-		if err != nil || classifier.ClassifyInto(&r2, op, &imm) != nil {
+		if err != nil {
 			return false
 		}
+		if err = classifier.ClassifyInto(&r2, op, &imm); err != nil {
+			used := min(maxCallFreeLoopLookaheadBytes-*budget, r2.Offset()-before)
+			*budget += used
+			return false
+		}
+		consumed := r2.Offset() - before
+		remaining := maxCallFreeLoopLookaheadBytes - *budget
+		if consumed > remaining {
+			*budget = maxCallFreeLoopLookaheadBytes
+			return false
+		}
+		*budget += consumed
 		switch imm.Kind {
 		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrReturnCall,
 			wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef,
@@ -1333,7 +1408,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
-	if kind == cfLoop && !f.unreachable && f.usesCalls && !f.moduleEH && len(f.customInstructions) == 0 && scanLoopCallFree(r, f.classifier, f.gcStructHelpers) {
+	if kind == cfLoop && !f.unreachable && f.usesCalls && !f.moduleEH && len(f.customInstructions) == 0 && scanLoopCallFree(r, f.classifier, f.gcStructHelpers, &f.callFreeLoopLookaheadBytes) {
 		fr.set(ctrlLoopCallFree, true)
 		f.stats.peep("callfree-loop")
 	}
@@ -1349,7 +1424,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			f.flushBelow(cond)
 			cc := f.condenseToFlags(cond)
 			fr.height = f.depth() - pN
-			f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
+			f.setFrameBaseTypePrefix(&fr, fr.height)
 			f.captureGCFrameShape(&fr)
 			fr.controlSite = f.a.JccPlaceholder(invertCond(cc)) // to else/end when false
 			f.pushCtrl(&fr)
@@ -1357,7 +1432,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 		creg, cOwned := f.materializeRead(f.popValue()) // TEST only reads: a pinned local needs no copy
 		fr.height = f.depth() - pN
-		f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
+		f.setFrameBaseTypePrefix(&fr, fr.height)
 		f.captureGCFrameShape(&fr)
 		f.flush()
 		f.a.TestSelf(creg, false)
@@ -1367,7 +1442,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		fr.controlSite = f.a.JccPlaceholder(condE) // jz else/end
 	} else {
 		fr.height = f.depth() - pN
-		f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
+		f.setFrameBaseTypePrefix(&fr, fr.height)
 		f.captureGCFrameShape(&fr)
 		if kind == cfLoop {
 			// Loop tops converge eagerly (all lsStackReg): hoists any post-call
@@ -1535,7 +1610,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		eh.catches = append(eh.catches, clause)
 	}
 	fr.height = f.depth() - fr.paramN
-	f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
+	f.setFrameBaseTypePrefix(&fr, fr.height)
 	f.captureGCFrameShape(&fr)
 	if f.unreachable {
 		f.pushCtrl(&fr)
@@ -1822,6 +1897,9 @@ func (f *fn) opEnd() error {
 	paramGCRoots := f.frameParamGCRoots(&fr)
 	resultGCRoots := f.frameResultGCRoots(&fr)
 	firstEnd, secondEnd, ends := f.frameEndSites(&fr)
+	if fr.has(ctrlLoopCallFree) {
+		f.callFreeLoopDepth--
+	}
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
 
@@ -1915,10 +1993,19 @@ func (f *fn) opEnd() error {
 				result = f.pushReg(mergeReg, fr.res0)
 			}
 			if len(resultGCRoots) != 0 {
-				result.st.setGCRoot(resultGCRoots[0])
+				f.setStackGCRoot(result, resultGCRoots[0])
 			}
 		} else {
-			f.setDepthTypesWithGCRoots(f.frameDepthTypesForFrame(&fr, false), frameGCRootFlags(baseGCRoots, resultGCRoots))
+			// A straight fallthrough with no other incoming end edge already has
+			// exactly this canonical base-plus-result image from flush() above.
+			// Reuse its stack nodes rather than rebuilding the entire prefix at
+			// every nested block boundary.
+			reuseFallthrough := fallthroughReachable && fr.kind != cfTry && !fr.has(ctrlEndReachable) &&
+				!(fr.kind == cfIf && !fr.has(ctrlHasElse) && !fr.has(ctrlEntryUnreachable)) &&
+				f.s.canonicalSlots && f.depth() == fr.height+fr.resultN
+			if !reuseFallthrough {
+				f.setDepthTypesWithGCRoots(f.frameDepthTypesForFrame(&fr, false), frameGCRootFlags(baseGCRoots, resultGCRoots))
+			}
 		}
 		f.markEHReferenceResults(&fr)
 	}
@@ -2063,7 +2150,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	fallthroughRef := f.allocReg(0)
 	f.a.Load64(fallthroughRef, RSP, f.spillOff(refSlot))
 	result := f.pushReg(fallthroughRef, mtI64)
-	markGCReference(result)
+	f.markGCReference(result)
 	return nil
 }
 
@@ -2078,7 +2165,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	}
 	ref := f.materialize(f.popValue())
 	result := f.pushReg(ref, mtI64)
-	markGCReference(result)
+	f.markGCReference(result)
 	fr := &f.ctrl[fi]
 	f.convergeBranchLocals(fr)
 	allTypes := append([]machineType(nil), f.currentLogicalTypes()...)

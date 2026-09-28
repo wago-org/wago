@@ -667,9 +667,9 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	copyReg := f.allocReg(maskOf(value))
 	f.a.MovReg64(copyReg, value)
 	original := f.pushReg(value, mtI64) // original identity for either selected edge
-	markGCReference(original)
+	f.markGCReference(original)
 	copyValue := f.pushReg(copyReg, mtI64) // copied helper operand
-	markGCReference(copyValue)
+	f.markGCReference(copyValue)
 	f.pushValue(storage{kind: stConst, typ: mtI64, cval: target})
 	if flags&2 != 0 {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
@@ -695,7 +695,7 @@ func (f *fn) emitGCI31(sub uint32) error {
 		f.a.ShiftImm(4, value, 1, false) // low 31 bits << 1; 32-bit write clears the upper half
 		f.a.AluRI(1, value, 1, false)    // tag immediate with low bit 1
 		result := f.pushReg(value, mtI64)
-		markGCReference(result)
+		f.markGCReference(result)
 	case 29: // i31.get_s
 		f.a.TestSelf(value, true)
 		f.trapIf(condE, trapNullReference)

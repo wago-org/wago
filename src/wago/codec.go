@@ -203,7 +203,7 @@ func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded *Compile
 	defer func() { read = r.n }()
 	var header [6]byte
 	if _, err = io.ReadFull(r, header[:]); err != nil {
-		return decoded, nil, 0, fmt.Errorf("compiled artifact header: %w", err)
+		return decoded, nil, 0, wrapContextError("compiled artifact header", err)
 	}
 	if string(header[:4]) != wagoMagic {
 		return decoded, nil, 0, fmt.Errorf("not a wago module")
@@ -240,16 +240,16 @@ func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded *Compile
 	}
 	image, err = coreruntime.NewCodeBuffer(codeLen)
 	if err != nil {
-		return decoded, nil, 0, fmt.Errorf("allocate compiled code section: %w", err)
+		return decoded, nil, 0, wrapContextError("allocate compiled code section", err)
 	}
 	code, err := image.AppendSpace(codeLen)
 	if err != nil {
 		_ = image.Close()
-		return decoded, nil, 0, fmt.Errorf("size compiled code section: %w", err)
+		return decoded, nil, 0, wrapContextError("size compiled code section", err)
 	}
 	if _, err := io.ReadFull(r, code); err != nil {
 		_ = image.Close()
-		return decoded, nil, 0, fmt.Errorf("truncated code section: %w", err)
+		return decoded, nil, 0, wrapContextError("truncated code section", err)
 	}
 	metadataLen, err := readSectionHeader(compiledSectionMetadata, "metadata", limits.MaxMetadataBytes)
 	if err != nil {
@@ -264,7 +264,7 @@ func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded *Compile
 	metadata := make([]byte, metadataLen)
 	if _, err := io.ReadFull(r, metadata); err != nil {
 		_ = image.Close()
-		return decoded, nil, 0, fmt.Errorf("truncated metadata section: %w", err)
+		return decoded, nil, 0, wrapContextError("truncated metadata section", err)
 	}
 	decoded.code = code
 	if err := unmarshalCompiledMetadataBudget(decoded, metadata, budget); err != nil {
@@ -835,7 +835,7 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	r := compiledReader{data: data}
 	count, err := r.u8()
 	if err != nil {
-		return fmt.Errorf("compiled section count: %w", err)
+		return wrapContextError("compiled section count", err)
 	}
 	if count != compiledSectionCount {
 		return fmt.Errorf("compiled section count %d unsupported (want %d)", count, compiledSectionCount)
@@ -1394,7 +1394,7 @@ func (r *compiledReader) tags(c *Compiled) error {
 	}
 	c.memoryDir.ehTagExports, err = r.stringIntMap()
 	if err != nil {
-		return fmt.Errorf("exception tag exports: %w", err)
+		return wrapContextError("exception tag exports", err)
 	}
 	return nil
 }

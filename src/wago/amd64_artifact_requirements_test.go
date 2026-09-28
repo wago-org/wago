@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"strings"
 	"testing"
@@ -59,9 +60,11 @@ func TestAMD64ArtifactCapabilityRoundTrip(t *testing.T) {
 			t.Fatalf("roundtrip=%x want=%x", loaded.requiredAMD64Features, required)
 		}
 		loaded.Close()
-		data[4] = 2
-		if err := loaded.UnmarshalBinary(data); err == nil || !strings.Contains(err.Error(), "version 2 unsupported") {
-			t.Fatalf("ambiguous version 2 artifact admitted: %v", err)
+		for _, oldVersion := range []byte{2, 3} {
+			data[4] = oldVersion
+			if err := loaded.UnmarshalBinary(data); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("version %d unsupported", oldVersion)) {
+				t.Fatalf("ambiguous version %d artifact admitted: %v", oldVersion, err)
+			}
 		}
 	}
 	compiled, err = Compile(nil, benchAddOneModule())

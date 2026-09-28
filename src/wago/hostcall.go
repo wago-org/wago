@@ -2146,14 +2146,17 @@ func (in *Instance) pluginGCImportSet() map[uint32]struct{} {
 	if in == nil {
 		return nil
 	}
-	return in.pluginGCImports
+	if state := in.importState.Load(); state != nil {
+		return state.pluginGCImports
+	}
+	return nil
 }
 
 func (in *Instance) pluginGCHostSignature(dispatch uint32) (FuncSig, bool) {
 	if in == nil || in.c == nil || dispatch&hostFuncRefDispatchBit != 0 || uint64(dispatch) >= uint64(len(in.c.Imports)) || uint64(dispatch) >= uint64(len(in.c.importFuncSigs)) || !funcSigHasGCRefs(in.c.importFuncSigs[dispatch]) {
 		return FuncSig{}, false
 	}
-	if _, ok := in.pluginGCImports[dispatch]; !ok {
+	if _, ok := in.pluginGCImportSet()[dispatch]; !ok {
 		return FuncSig{}, false
 	}
 	return in.c.importFuncSigs[dispatch], true
@@ -2309,7 +2312,7 @@ func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, resul
 	}
 	if importIdx&gcStructDispatchBit != 0 {
 		if importIdx&hostFuncRefDispatchBit != 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("invalid overlapping GC/host dispatch index %#x", importIdx)})
+			panic(gcHelperFailuref("invalid overlapping GC/host dispatch index %#x", importIdx))
 		}
 		helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)
 		in.dispatchGCHelperParked(ctrl, helper, safepoint, args, results)

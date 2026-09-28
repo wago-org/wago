@@ -1297,7 +1297,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 			f.pinned = f.pinned.remove(res[j])
 			value = f.pushReg(res[j], rt)
 		}
-		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[j]))
+		f.setStackGCRoot(value, gcFrameRefType(f.m, ft.Results[j]))
 	}
 	// Arbitrary host code can synchronously re-enter this instance and grow its
 	// memory. Reload after reconstructing the operand stack so the continuation
@@ -1667,7 +1667,7 @@ func (f *fn) finishWrapperResultsWithRoots(belowTypes []machineType, belowGCRoot
 			f.pinned = f.pinned.remove(regs[i])
 			value = f.pushReg(regs[i], typ)
 		}
-		value.st.setGCRoot(gcFrameRefType(f.m, results[i]))
+		f.setStackGCRoot(value, gcFrameRefType(f.m, results[i]))
 	}
 }
 
@@ -1954,7 +1954,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		for i, src := range []Reg{RAX, RDX, RCX, R8, R9, R10, R11, RDI} {
 			f.a.Store64(RSP, f.spillOff(base+i), src)
 			value := f.pushValue(storage{kind: stSlot, typ: mtOf(ft.Results[i]), slot: uint32(base + i)})
-			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+			f.setStackGCRoot(value, gcFrameRefType(f.m, ft.Results[i]))
 		}
 	} else if registerQuadResultsSupported && rN > 2 {
 		for i, src := range []Reg{RAX, RDX, RCX, R8, R9, R10, R11}[:rN] {
@@ -1980,25 +1980,25 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	if rN == 1 && resHint < 0 {
 		f.pinned = f.pinned.remove(resReg)
 		value := f.pushReg(resReg, mtOf(ft.Results[0]))
-		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[0]))
+		f.setStackGCRoot(value, gcFrameRefType(f.m, ft.Results[0]))
 	}
 	if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
 		for i := range 2 {
 			value := f.pushFReg(Reg(i), mtOf(ft.Results[i]))
-			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+			f.setStackGCRoot(value, gcFrameRefType(f.m, ft.Results[i]))
 		}
 	} else if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
 			value := f.pushReg(reg, mtOf(ft.Results[i]))
-			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+			f.setStackGCRoot(value, gcFrameRefType(f.m, ft.Results[i]))
 		}
 	}
 	if registerQuadResultsSupported && rN > 2 && rN < 8 {
 		for i, reg := range quadRes[:rN] {
 			f.pinned = f.pinned.remove(reg)
 			value := f.pushReg(reg, mtOf(ft.Results[i]))
-			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+			f.setStackGCRoot(value, gcFrameRefType(f.m, ft.Results[i]))
 		}
 	}
 	return returnOffset
@@ -2194,7 +2194,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.pinned = f.pinned.remove(resReg)
 			value = f.pushReg(resReg, rt)
 		}
-		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[0]))
+		f.setStackGCRoot(value, gcFrameRefType(f.m, ft.Results[0]))
 	}
 	if mixedPair {
 		for _, typ := range ft.Results {
@@ -2205,18 +2205,18 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 				f.pinned = f.pinned.remove(pairRes[0])
 				value = f.pushReg(pairRes[0], mtOf(typ))
 			}
-			value.st.setGCRoot(gcFrameRefType(f.m, typ))
+			f.setStackGCRoot(value, gcFrameRefType(f.m, typ))
 		}
 	} else if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
 		for i := range 2 {
 			value := f.pushFReg(Reg(i), mtOf(ft.Results[i]))
-			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+			f.setStackGCRoot(value, gcFrameRefType(f.m, ft.Results[i]))
 		}
 	} else if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
 			value := f.pushReg(reg, mtOf(ft.Results[i]))
-			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
+			f.setStackGCRoot(value, gcFrameRefType(f.m, ft.Results[i]))
 		}
 	}
 	if sigHasMixedWideResults(ft) {
@@ -2232,12 +2232,12 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 				value = f.pushReg(reg, mtOf(typ))
 				gp++
 			}
-			value.st.setGCRoot(gcFrameRefType(f.m, typ))
+			f.setStackGCRoot(value, gcFrameRefType(f.m, typ))
 		}
 	} else if preparedDirectFloatSupported && rN > 2 {
 		for i, typ := range ft.Results {
 			value := f.pushFReg(Reg(i), mtOf(typ))
-			value.st.setGCRoot(gcFrameRefType(f.m, typ))
+			f.setStackGCRoot(value, gcFrameRefType(f.m, typ))
 		}
 	}
 }

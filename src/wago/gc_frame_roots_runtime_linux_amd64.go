@@ -4,7 +4,6 @@ package wago
 
 import (
 	"encoding/binary"
-	"fmt"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -29,28 +28,28 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	}
 	safepoint := plan.safepointByID(safepointID)
 	if safepointID == 0 || safepoint == nil {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root safepoint %d is unavailable", safepointID)})
+		panic(gcHelperFailuref("generic GC frame-root safepoint %d is unavailable", safepointID))
 	}
 	offsets := safepoint.offsets
 	frameBytes := safepoint.frameBytes
 	if state == nil || frameBytes < 8 || !validGCFrameOffsets(offsets, frameBytes) {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root metadata is unavailable or malformed")})
+		panic(gcHelperFailuref("generic GC frame-root metadata is unavailable or malformed"))
 	}
 	ctrlHead := unsafe.Slice((*byte)(offHeapPtr(ctrl+abi.SyncHostCallSavedNativeSPOffset)), 8)
 	savedRSP := uintptr(binary.LittleEndian.Uint64(ctrlHead))
 	if savedRSP == 0 || savedRSP > ^uintptr(0)-abi.AMD64CallReturnAddressBytes {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root control has invalid saved RSP %#x", savedRSP)})
+		panic(gcHelperFailuref("generic GC frame-root control has invalid saved RSP %#x", savedRSP))
 	}
 	base := savedRSP + abi.AMD64CallReturnAddressBytes
 	for _, off := range offsets {
 		if off%8 != 0 || off > frameBytes-8 || base > ^uintptr(0)-uintptr(off) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root offset %d is outside frame size %d", off, frameBytes)})
+			panic(gcHelperFailuref("generic GC frame-root offset %d is outside frame size %d", off, frameBytes))
 		}
 		word := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(off))), 8)
 		bits := binary.LittleEndian.Uint64(word)
 		ref := gc.Ref(uint32(bits))
 		if bits != uint64(ref) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root offset %d contains non-compact reference %#x", off, bits)})
+			panic(gcHelperFailuref("generic GC frame-root offset %d contains non-compact reference %#x", off, bits))
 		}
 	}
 	state.frameRoots.owner = in

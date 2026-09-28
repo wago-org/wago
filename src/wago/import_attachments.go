@@ -3,6 +3,7 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -17,9 +18,14 @@ type importDedup[T comparable] struct {
 	inline [4]T
 	n      int
 	extra  []T
+	index  map[T]struct{}
 }
 
 func (d *importDedup[T]) contains(v T) bool {
+	if d.index != nil {
+		_, ok := d.index[v]
+		return ok
+	}
 	for i := 0; i < d.n && i < len(d.inline); i++ {
 		if d.inline[i] == v {
 			return true
@@ -42,6 +48,15 @@ func (d *importDedup[T]) push(v T) {
 		d.extra = append(d.extra, v)
 	}
 	d.n++
+	if d.index != nil {
+		d.index[v] = struct{}{}
+	} else if d.n > 8 {
+		// Keep tiny sets allocation-free. Once the ordered slice has grown past
+		// the small case, an index prevents all subsequent membership checks from
+		// rescanning the accumulated owners.
+		d.index = make(map[T]struct{}, d.n)
+		d.each(func(item T) { d.index[item] = struct{}{} })
+	}
 }
 
 // add inserts v if absent and reports whether it was newly inserted.
@@ -79,6 +94,7 @@ func (d *importDedup[T]) reset() {
 	}
 	d.n = 0
 	d.extra = nil
+	d.index = nil
 }
 
 type functionImportAttachments struct {
@@ -486,22 +502,85 @@ func importedFuncrefProducerRoots(in *Instance) []*Instance {
 	return roots
 }
 
-func (in *Instance) importsFuncrefStorage() bool {
-	if in == nil || in.c == nil {
+func (c *Compiled) hasFuncrefImportContainers() bool {
+	if c == nil {
 		return false
 	}
-	for _, imp := range in.c.GlobalImports {
-		if imp.Type == ValFuncRef {
-			return true
+	scan := func() bool {
+		for _, imp := range c.GlobalImports {
+			if imp.Type == ValFuncRef {
+				return true
+			}
+		}
+		for tableIndex := 0; tableIndex < c.tableImportCount(); tableIndex++ {
+			def, _ := c.tableImportAt(tableIndex)
+			if def.Type == ValFuncRef {
+				return true
+			}
+		}
+		return false
+	}
+	indexes := c.ensureCompileIndexes()
+	if indexes == nil {
+		return scan()
+	}
+	if state := indexes.funcrefImportState.Load(); state != 0 {
+		return state == 2
+	}
+	state := uint32(1)
+	if scan() {
+		state = 2
+	}
+	indexes.funcrefImportState.CompareAndSwap(0, state)
+	return indexes.funcrefImportState.Load() == 2
+}
+
+func (in *Instance) importsFuncrefStorage() bool {
+	if in == nil || in.c == nil || len(in.c.GlobalImports) == 0 && in.c.tableImport == "" {
+		return false
+	}
+	return in.c.hasFuncrefImportContainers()
+}
+
+type funcrefImportContainers struct {
+	once    sync.Once
+	globals importDedup[*Global]
+	tables  importDedup[*Table]
+}
+
+func (in *Instance) funcrefImportContainers() *funcrefImportContainers {
+	state := in.ensureImportState()
+	containers := state.funcrefImports.Load()
+	if containers == nil {
+		candidate := new(funcrefImportContainers)
+		if state.funcrefImports.CompareAndSwap(nil, candidate) {
+			containers = candidate
+		} else {
+			containers = state.funcrefImports.Load()
 		}
 	}
-	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
-		def, _ := in.c.tableImportAt(tableIndex)
-		if def.Type == ValFuncRef {
-			return true
+	containers.once.Do(func() {
+		for i, imp := range in.c.GlobalImports {
+			if imp.Type != ValFuncRef {
+				continue
+			}
+			provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
+			if ok && provided.Global != nil {
+				containers.globals.add(provided.Global)
+			}
 		}
-	}
-	return false
+		for i := 0; i < in.c.tableImportCount(); i++ {
+			def, _ := in.c.tableImportAt(i)
+			if def.Type != ValFuncRef {
+				continue
+			}
+			table, ok := in.imports.table(in.c.tableImportBindingKey(i))
+			if ok && table != nil {
+				containers.tables.add(table)
+			}
+		}
+	})
+	return containers
 }
 
 // reconcileFuncrefRoots drops producer roots after a completed guest invocation
@@ -513,23 +592,9 @@ func (in *Instance) reconcileFuncrefRoots() {
 	if in == nil || in.c == nil {
 		return
 	}
-	var globals importDedup[*Global]
-	for i, imp := range in.c.GlobalImports {
-		if imp.Type != ValFuncRef {
-			continue
-		}
-		provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
-		if ok && provided.Global != nil && globals.add(provided.Global) {
-			provided.Global.pruneRetainedInstances()
-		}
-	}
-	var tables importDedup[*Table]
-	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
-		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
-		if ok && table != nil && tables.add(table) {
-			table.pruneRetainedInstances()
-		}
-	}
+	imports := in.funcrefImportContainers()
+	imports.globals.each((*Global).pruneRetainedInstances)
+	imports.tables.each((*Table).pruneRetainedInstances)
 	// Walk the local export-handle chain one link at a time under lifeMu, but
 	// reconcile only after releasing it. pruneRetainedInstances may drop a
 	// producer's final root and synchronously finalize that producer; its scan can
@@ -540,8 +605,9 @@ func (in *Instance) reconcileFuncrefRoots() {
 	in.lifeMu.Lock()
 	table := in.table
 	in.lifeMu.Unlock()
+	var localTables importDedup[*Table]
 	for table != nil {
-		if table.owner != nil && table.owner.elementType == ValFuncRef && tables.add(table) {
+		if table.owner != nil && table.owner.elementType == ValFuncRef && !imports.tables.contains(table) && localTables.add(table) {
 			table.pruneRetainedInstances()
 		}
 		in.lifeMu.Lock()
