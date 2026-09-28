@@ -1504,7 +1504,10 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// → mergeFReg) carries that value in a register across all its edges (fall-
 	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
-	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
+	// The extended FP pin pool can own XMM11, the canonical FP merge register.
+	// Keep those results in stack slots while its local home is reserved.
+	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128 &&
+		(!res0.isFloat() || !f.fpinnedLocalMask.has(mergeFReg)))
 	var loopPinnedWrites uint64
 	loopRegState := false
 	var loopFloatConst storage
@@ -1533,11 +1536,15 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		return nil
 	}
 	if kind == cfIf {
-		f.convergeFrameEntryState(&fr) // header snapshot: else entry / cond-false edge state
-		if isFusableCompare(f.s.back()) {
-			cond := f.s.back()
+		cond := f.s.back()
+		if isFusableCompare(cond) {
 			f.flushBelow(cond)
+			f.convergeFrameEntryState(&fr)
 			cc := f.condenseToFlags(cond)
+			if f.pinRelinquished {
+				// Lazy zeros are already materialized; these reloads preserve flags.
+				f.convergeFrameEntryState(&fr)
+			}
 			fr.height = f.depth() - pN
 			f.setFrameBaseTypePrefix(&fr, fr.height)
 			f.captureGCFrameShape(&fr)
@@ -1545,11 +1552,16 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			f.pushCtrl(&fr)
 			return nil
 		}
-		creg, cOwned := f.materializeRead(f.popValue()) // TEST only reads: a pinned local needs no copy
+		if cond.isDeferred() {
+			f.condense(cond, regNone)
+		}
+		f.flushBelow(cond)
+		f.convergeFrameEntryState(&fr)
+		creg, cOwned := f.materializeRead(cond) // TEST only reads
+		f.erase(cond)
 		fr.height = f.depth() - pN
 		f.setFrameBaseTypePrefix(&fr, fr.height)
 		f.captureGCFrameShape(&fr)
-		f.flush()
 		f.a.TestSelf(creg, false)
 		if cOwned {
 			f.release(creg)
@@ -1560,12 +1572,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		f.setFrameBaseTypePrefix(&fr, fr.height)
 		f.captureGCFrameShape(&fr)
 		if kind == cfLoop {
-			// Loop tops converge eagerly (all lsStackReg): hoists any post-call
-			// reload OUT of the body — a lazy (lsMem) loop target would push the
-			// reload into every iteration instead.
+			// Finish deferred work before establishing loop-header homes. Eager
+			// restoration hoists missing-pin reloads out of the loop body.
+			f.flush()
 			f.reconcileLocals()
 			if loopPinPlan != 0 {
-				f.flush()
 				f.applyLoopPinExchange(loopPinPlan)
 				f.ensureCtrlMerge(&fr).loopPinPlan = loopPinPlan
 				fr.set(ctrlLoopPinExchange, true)
@@ -1579,7 +1590,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 					}
 				}
 			}
-			f.convergeFrameBranchState(&fr) // records the all-lsStackReg target
+			f.convergeFrameBranchState(&fr) // records the loop-header local homes
 			if fr.has(ctrlLoopCallFree) && loopRegState && loopPinnedWrites != 0 {
 				state := f.frameBranchState(&fr)
 				for i := range state {
@@ -1592,7 +1603,6 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				f.setLocalsState(state)
 				f.stats.peep("callfree-loop-reg-state")
 			}
-			f.flush()
 		} else {
 			f.flush()
 		}
@@ -2009,12 +2019,12 @@ func (f *fn) opElse() error {
 		// (#68's root cause was skipping this). Converge to the end's recorded
 		// state; as the chronologically first end edge it usually fixes it.
 		f.recordGCBranchResults(fr, fr.resultN)
-		f.convergeFrameBranchState(fr)
 		if fr.has(ctrlRegMerge1) {
 			f.reconcileMerge1(fr) // then-branch result → mergeReg
 		} else {
 			f.flush()
 		}
+		f.convergeFrameBranchState(fr)
 		f.frameAddEnd(fr, f.a.JmpPlaceholder())
 		fr.set(ctrlEndReachable, true)
 	}
@@ -2068,17 +2078,18 @@ func (f *fn) opEnd() error {
 	if fallthroughReachable {
 		f.recordGCBranchResults(&fr, fr.resultN)
 		resultGCRoots = f.frameResultGCRoots(&fr)
+
+		if fr.has(ctrlRegMerge1) {
+			f.reconcileMerge1(&fr) // result → mergeReg, operands below → slots
+		} else {
+			f.flush() // results at [height, height+resultN)
+		}
 		if fr.kind != cfLoop {
 			// Merge edge: converge to the end's recorded state (or fix it).
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
 			// fall-through's state simply flows out.
 			f.convergeFrameBranchState(&fr)
 			branchState = f.frameBranchState(&fr)
-		}
-		if fr.has(ctrlRegMerge1) {
-			f.reconcileMerge1(&fr) // result → mergeReg, operands below → slots
-		} else {
-			f.flush() // results at [height, height+resultN)
 		}
 	}
 	// An if without else: the cond-false path reaches end with params == results.
@@ -2187,24 +2198,25 @@ func (f *fn) opEnd() error {
 	return nil
 }
 
-// branchToFrame emits an unconditional branch edge to control frame fi: converge
-// pinned locals, flush operands, move the branched values into the frame's
+// branchToFrame emits an unconditional branch edge to control frame fi: evaluate
+// operands, reconcile pinned locals, move the branched values into the frame's
 // canonical slots (or merge register), and jump. Shared by opBr's unconditional
 // path and opReturn's inlined-callee routing. The caller sets f.unreachable.
 func (f *fn) branchToFrame(fi int) {
 	fr := &f.ctrl[fi]
-	f.convergeBranchLocals(fr)
 	if f.opt(optDirectIntBranchMerge) && fr.has(ctrlRegMerge1) && !fr.res0.isFloat() {
 		// No fallthrough needs a stack copy. Preserve the base operands and
 		// deliver the result using the established merge-register contract.
 		f.recordGCBranchResults(fr, 1)
 		f.reconcileMerge1(fr)
+		f.convergeBranchLocals(fr)
 		f.stats.peep("direct-int-branch-merge")
 		f.branchJump(fr)
 		return
 	}
 	a, d := fr.branchArity(), f.depth()
 	f.flush()
+	f.convergeBranchLocals(fr)
 	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
@@ -2231,10 +2243,15 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		}
 		return f.brIfFused(r, top, idx)
 	}
-	var creg Reg
-	cOwned := false
+	var predicate *elem
 	if conditional {
-		creg, cOwned = f.materializeRead(f.popValue()) // TEST only reads
+		predicate = f.s.back()
+		if predicate.isDeferred() {
+			f.condense(predicate, regNone)
+		}
+		// Keep the predicate tracked while flushing operands and restoring
+		// local pins. Either operation may spill its current register.
+		f.flushBelow(predicate)
 	}
 	idx, err := r.U32()
 	if err != nil {
@@ -2258,8 +2275,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	if !coldExit {
 		f.convergeBranchLocals(fr)
 	}
+	creg, cOwned := f.materializeRead(predicate) // TEST only reads
+	f.erase(predicate)
 	a, d := fr.branchArity(), f.depth()
-	f.flush()
 	f.a.TestSelf(creg, false)
 	if cOwned {
 		f.release(creg)
@@ -2402,8 +2420,10 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		}
 		return nil
 	}
-	f.reconcileLocals() // eager: one state (all lsStackReg) satisfies every target
-	ireg := f.materialize(f.popValue())
+	index := f.s.back()
+	if index.isDeferred() {
+		f.condense(index, regNone)
+	}
 	n, err := r.U32()
 	if err != nil {
 		return err
@@ -2427,12 +2447,15 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.flushBelow(index)
+	f.reconcileLocals() // establish every case's local homes before dispatch
+	ireg := f.materialize(index)
+	f.erase(index)
 	d := f.depth()
-	f.pinned = f.pinned.add(ireg) // survive the flush
-	f.flush()
-	// After the flush + reconcile, per-case edge code (converge / slot moves /
-	// merge-reg load) uses only fixed scratch and pinned registers and mutates no
-	// compile-time state — so case bodies can be emitted in any order and shared.
+	f.pinned = f.pinned.add(ireg)
+	// Every case starts with live pinned registers and canonical operands.
+	// Per-target convergence and transfers therefore need no pin reloads and
+	// case bodies can be emitted in any order and shared.
 	emitCase := func(labelIdx uint32) {
 		fr := &f.ctrl[len(f.ctrl)-1-int(labelIdx)]
 		f.convergeBranchLocals(fr) // post-reconcile state records/no-op converges (no code, no flags)

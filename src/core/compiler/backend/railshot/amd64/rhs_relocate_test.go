@@ -27,7 +27,7 @@ func rhsRelocateFixture(f *fn) (root, right *elem) {
 		e.setDeferredOp(opSub)
 		e.setValueType(mtI64)
 		e.arg0, e.arg1 = left, right
-		return f.s.push(e)
+		return f.s.pushDeferred(e)
 	}
 
 	left := deferredSub(value(13), value(5))
@@ -179,7 +179,7 @@ func TestLocalSinkKeepsRegionalDestination(t *testing.T) {
 			e.setDeferredOp(opSub)
 			e.setValueType(mtI64)
 			e.arg0, e.arg1 = left, right
-			return f.s.push(e)
+			return f.s.pushDeferred(e)
 		}
 		left := sub(value(13), value(5))
 		rightLeft := sub(value(11), value(4))

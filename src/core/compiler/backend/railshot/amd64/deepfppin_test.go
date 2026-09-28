@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"bytes"
 	"math"
 	"testing"
 
@@ -172,5 +173,41 @@ func TestRelinquishedFPPinWriteEvictsBorrower(t *testing.T) {
 				t.Fatalf("borrower was not reloadable: reg=%v storage=%v", reg, borrower.st.kind)
 			}
 		})
+	}
+}
+
+func TestDeepFPPinsDoNotAliasMergeResult(t *testing.T) {
+	body := []byte{0x01, 0x0d, 0x7c} // thirteen f64 locals
+	for x := byte(0); x < 12; x++ {
+		body = append(body, 0x44)
+		bits := math.Float64bits(float64(x + 1))
+		for shift := uint(0); shift < 64; shift += 8 {
+			body = append(body, byte(bits>>shift))
+		}
+		body = append(body, 0x21, x)
+	}
+	body = append(body, 0x41, 0x01, 0x04, 0x7c, 0x20, 0x00, 0x05, 0x20, 0x01, 0x0b, 0x21, 0x0c)
+	body = append(body, 0x20, 0x0c)
+	for x := byte(0); x < 12; x++ {
+		body = append(body, 0x20, x, 0x20, x, 0xa0, 0xa0)
+	}
+	body = append(body, 0x0b)
+	for _, condition := range []byte{0, 1} {
+		testBody := bytes.Replace(body, []byte{0x41, 0x01, 0x04, 0x7c}, []byte{0x41, condition, 0x04, 0x7c}, 1)
+		m := mod1(t, nil, []wasm.ValType{wasm.F64}, testBody)
+		var stats ModuleStats
+		got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{
+			Stats: &stats, Optimizations: map[string]bool{"ext-fp-pins": true, "reg-merge": true},
+		}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stats.Funcs[0].PinnedLocals != 12 {
+			t.Fatalf("fixture pins = %d, want 12", stats.Funcs[0].PinnedLocals)
+		}
+		want := float64(158 - condition)
+		if result := math.Float64frombits(got); result != want {
+			t.Fatalf("condition=%d: FP result = %g, want %g (merge must preserve every local)", condition, result, want)
+		}
 	}
 }
