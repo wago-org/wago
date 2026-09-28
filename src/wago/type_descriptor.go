@@ -73,6 +73,8 @@ type ValueTypeDescriptor struct {
 // graph and is consulted for indexed references. Struct/array references use
 // ValAnyRef metadata slots. Non-null ingress remains fail-closed; the exact
 // staged basic-struct result may egress only through a bounded store-owned token.
+//
+//go:noinline
 func (t ValueTypeDescriptor) ABIType(types []DefinedTypeDescriptor) (ValType, bool) {
 	switch t.Kind {
 	case ValueTypeI32:
@@ -203,6 +205,7 @@ func (c wasmTypeDescriptorConverter) groupOffset(group int) uint32 {
 	return c.inlineGroupAt[group]
 }
 
+//go:noinline
 func (c wasmTypeDescriptorConverter) abiType(t wasm.ValType, types []DefinedTypeDescriptor) (ValType, error) {
 	exact, err := c.valueType(t, -1)
 	if err != nil {
@@ -215,6 +218,7 @@ func (c wasmTypeDescriptorConverter) abiType(t wasm.ValType, types []DefinedType
 	return abi, nil
 }
 
+//go:noinline
 func (c wasmTypeDescriptorConverter) abiTypes(ts []wasm.ValType, types []DefinedTypeDescriptor) ([]ValType, error) {
 	out := make([]ValType, len(ts))
 	if err := c.abiTypesInto(out, ts, types); err != nil {
@@ -223,6 +227,7 @@ func (c wasmTypeDescriptorConverter) abiTypes(ts []wasm.ValType, types []Defined
 	return out, nil
 }
 
+//go:noinline
 func (c wasmTypeDescriptorConverter) abiTypesInto(out []ValType, ts []wasm.ValType, types []DefinedTypeDescriptor) error {
 	if len(out) != len(ts) {
 		return fmt.Errorf("ABI type destination length %d, want %d", len(out), len(ts))
@@ -603,8 +608,6 @@ func definedTypeFingerprints(types []DefinedTypeDescriptor) ([][32]byte, bool) {
 
 	fingerprints := make([][32]byte, len(types))
 	state := make([]uint8, len(groups))
-	writeByte := func(dst *[]byte, b byte) { *dst = append(*dst, b) }
-	writeU32 := func(dst *[]byte, value uint32) { *dst = binary.LittleEndian.AppendUint32(*dst, value) }
 	var buildGroup func(int) bool
 	var writeRef func(*[]byte, uint32, uint32) bool
 	var writeValue func(*[]byte, uint32, ValueTypeDescriptor) bool
@@ -618,19 +621,19 @@ func definedTypeFingerprints(types []DefinedTypeDescriptor) ([][32]byte, bool) {
 			if ownerGroup != targetGroup {
 				return false
 			}
-			writeByte(h, 0xf2)
-			writeU32(h, target-uint32(groups[ownerGroup].start))
+			appendTypeFingerprintByte(h, 0xf2)
+			appendTypeFingerprintU32(h, target-uint32(groups[ownerGroup].start))
 			return true
 		}
 		if !buildGroup(targetGroup) {
 			return false
 		}
-		writeByte(h, 0xf4)
+		appendTypeFingerprintByte(h, 0xf4)
 		*h = append(*h, fingerprints[target][:]...)
 		return true
 	}
 	writeValue = func(h *[]byte, owner uint32, value ValueTypeDescriptor) bool {
-		writeByte(h, byte(value.Kind))
+		appendTypeFingerprintByte(h, byte(value.Kind))
 		if value.Kind != ValueTypeReference {
 			return true
 		}
@@ -639,30 +642,30 @@ func definedTypeFingerprints(types []DefinedTypeDescriptor) ([][32]byte, bool) {
 			if flag {
 				b = 1
 			}
-			writeByte(h, b)
+			appendTypeFingerprintByte(h, b)
 		}
 		if value.Ref.Heap.Defined {
-			writeByte(h, 1)
+			appendTypeFingerprintByte(h, 1)
 			return writeRef(h, owner, value.Ref.Heap.TypeIndex)
 		}
-		writeByte(h, 0)
-		writeByte(h, byte(value.Ref.Heap.Abstract))
+		appendTypeFingerprintByte(h, 0)
+		appendTypeFingerprintByte(h, byte(value.Ref.Heap.Abstract))
 		return true
 	}
 	writeField = func(h *[]byte, owner uint32, field FieldTypeDescriptor) bool {
 		if field.Storage.Packed {
-			writeByte(h, 1)
-			writeByte(h, byte(field.Storage.PackedType))
+			appendTypeFingerprintByte(h, 1)
+			appendTypeFingerprintByte(h, byte(field.Storage.PackedType))
 		} else {
-			writeByte(h, 0)
+			appendTypeFingerprintByte(h, 0)
 			if !writeValue(h, owner, field.Storage.Value) {
 				return false
 			}
 		}
 		if field.Mutable {
-			writeByte(h, 1)
+			appendTypeFingerprintByte(h, 1)
 		} else {
-			writeByte(h, 0)
+			appendTypeFingerprintByte(h, 0)
 		}
 		return true
 	}
@@ -678,18 +681,18 @@ func definedTypeFingerprints(types []DefinedTypeDescriptor) ([][32]byte, bool) {
 		bounds := groups[group]
 		encoded := make([]byte, 0, 64)
 		h := &encoded
-		writeByte(h, 0xf3)
-		writeU32(h, uint32(bounds.end-bounds.start))
+		appendTypeFingerprintByte(h, 0xf3)
+		appendTypeFingerprintU32(h, uint32(bounds.end-bounds.start))
 		for i := bounds.start; i < bounds.end; i++ {
 			d := &types[i]
 			owner := uint32(i)
-			writeByte(h, 0xf1)
+			appendTypeFingerprintByte(h, 0xf1)
 			if d.Final {
-				writeByte(h, 1)
+				appendTypeFingerprintByte(h, 1)
 			} else {
-				writeByte(h, 0)
+				appendTypeFingerprintByte(h, 0)
 			}
-			writeU32(h, uint32(len(d.Supers)))
+			appendTypeFingerprintU32(h, uint32(len(d.Supers)))
 			for _, super := range d.Supers {
 				if !writeRef(h, owner, super) {
 					return false
@@ -700,31 +703,31 @@ func definedTypeFingerprints(types []DefinedTypeDescriptor) ([][32]byte, bool) {
 				index uint32
 			}{{d.HasDescribes, d.Describes}, {d.HasDescriptor, d.Descriptor}} {
 				if !metadata.has {
-					writeByte(h, 0)
+					appendTypeFingerprintByte(h, 0)
 				} else {
-					writeByte(h, 1)
+					appendTypeFingerprintByte(h, 1)
 					if !writeRef(h, owner, metadata.index) {
 						return false
 					}
 				}
 			}
-			writeByte(h, byte(d.Kind))
+			appendTypeFingerprintByte(h, byte(d.Kind))
 			switch d.Kind {
 			case CompositeTypeFunction:
-				writeU32(h, uint32(len(d.Params)))
+				appendTypeFingerprintU32(h, uint32(len(d.Params)))
 				for _, value := range d.Params {
 					if !writeValue(h, owner, value) {
 						return false
 					}
 				}
-				writeU32(h, uint32(len(d.Results)))
+				appendTypeFingerprintU32(h, uint32(len(d.Results)))
 				for _, value := range d.Results {
 					if !writeValue(h, owner, value) {
 						return false
 					}
 				}
 			case CompositeTypeStruct:
-				writeU32(h, uint32(len(d.Fields)))
+				appendTypeFingerprintU32(h, uint32(len(d.Fields)))
 				for _, field := range d.Fields {
 					if !writeField(h, owner, field) {
 						return false
@@ -988,21 +991,21 @@ func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup i
 	for _, idx := range st.Supers {
 		x, err := c.typeIndex(idx, sourceGroup)
 		if err != nil {
-			return d, fmt.Errorf("supertype: %w", err)
+			return d, wrapContextError("supertype", err)
 		}
 		d.Supers = append(d.Supers, x)
 	}
 	if describes, present := st.Metadata.Describes.Get(); present {
 		x, err := c.typeIndex(describes, sourceGroup)
 		if err != nil {
-			return d, fmt.Errorf("describes: %w", err)
+			return d, wrapContextError("describes", err)
 		}
 		d.HasDescribes, d.Describes = true, x
 	}
 	if descriptor, present := st.Metadata.Descriptor.Get(); present {
 		x, err := c.typeIndex(descriptor, sourceGroup)
 		if err != nil {
-			return d, fmt.Errorf("descriptor: %w", err)
+			return d, wrapContextError("descriptor", err)
 		}
 		d.HasDescriptor, d.Descriptor = true, x
 	}
@@ -1011,11 +1014,11 @@ func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup i
 		d.Kind = CompositeTypeFunction
 		d.Params = params
 		if err := c.valueTypesInto(d.Params, st.Comp.Params, sourceGroup); err != nil {
-			return d, fmt.Errorf("params: %w", err)
+			return d, wrapContextError("params", err)
 		}
 		d.Results = results
 		if err := c.valueTypesInto(d.Results, st.Comp.Results, sourceGroup); err != nil {
-			return d, fmt.Errorf("results: %w", err)
+			return d, wrapContextError("results", err)
 		}
 	case wasm.CompStruct:
 		d.Kind = CompositeTypeStruct
@@ -1031,7 +1034,7 @@ func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup i
 		d.Kind = CompositeTypeArray
 		f, err := c.fieldType(st.Comp.Array, sourceGroup)
 		if err != nil {
-			return d, fmt.Errorf("array field: %w", err)
+			return d, wrapContextError("array field", err)
 		}
 		d.Array = f
 	default:
@@ -1070,6 +1073,7 @@ func (c wasmTypeDescriptorConverter) valueTypes(ts []wasm.ValType, group int) ([
 	return out, nil
 }
 
+//go:noinline
 func (c wasmTypeDescriptorConverter) valueTypesInto(out []ValueTypeDescriptor, ts []wasm.ValType, group int) error {
 	if len(out) != len(ts) {
 		return fmt.Errorf("value type destination length %d, want %d", len(out), len(ts))
@@ -1084,6 +1088,7 @@ func (c wasmTypeDescriptorConverter) valueTypesInto(out []ValueTypeDescriptor, t
 	return nil
 }
 
+//go:noinline
 func (c wasmTypeDescriptorConverter) valueType(t wasm.ValType, group int) (ValueTypeDescriptor, error) {
 	switch t.Kind() {
 	case wasm.ValNum:
@@ -1109,6 +1114,7 @@ func (c wasmTypeDescriptorConverter) valueType(t wasm.ValType, group int) (Value
 	}
 }
 
+//go:noinline
 func (c wasmTypeDescriptorConverter) refType(t wasm.RefType, group int) (ReferenceTypeDescriptor, error) {
 	out := ReferenceTypeDescriptor{Nullable: t.Nullable(), Exact: t.Exact()}
 	heap := t.Heap()
@@ -1138,6 +1144,7 @@ func (c wasmTypeDescriptorConverter) refType(t wasm.RefType, group int) (Referen
 	return out, nil
 }
 
+//go:noinline
 func (c wasmTypeDescriptorConverter) typeIndex(idx wasm.TypeIdx, group int) (uint32, error) {
 	if !idx.Rec {
 		if c.m != nil && idx.Index >= c.groupOffset(c.groupCount) {
@@ -1294,4 +1301,14 @@ func abstractHeapTypeFromWasm(t wasm.AbsHeapType) (AbstractHeapType, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// Keep the buffer-growth paths shared across structural descriptor fields.
+//
+//go:noinline
+func appendTypeFingerprintByte(dst *[]byte, b byte) { *dst = append(*dst, b) }
+
+//go:noinline
+func appendTypeFingerprintU32(dst *[]byte, value uint32) {
+	*dst = binary.LittleEndian.AppendUint32(*dst, value)
 }

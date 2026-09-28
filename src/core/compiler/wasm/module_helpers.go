@@ -235,6 +235,8 @@ func TableRefType(tt TableType) RefType { return tt.Ref }
 // TableType resolves a table index across imported tables followed by local
 // definitions without materializing a parallel index. The module validator,
 // frontend support pass, and direct backend use the same declaration order.
+//
+//go:noinline
 func (m *Module) TableType(idx uint32) (TableType, bool) {
 	if m == nil {
 		return TableType{}, false
@@ -258,6 +260,8 @@ func TableAddrType(tt TableType) ValType {
 
 // MemoryType resolves a memory index across imported memories followed by local
 // definitions without materializing a parallel index.
+//
+//go:noinline
 func (m *Module) MemoryType(idx uint32) (MemType, bool) {
 	if m == nil {
 		return MemType{}, false
@@ -333,6 +337,8 @@ func (m *Module) FuncTypeIndex(idx uint32) (TypeIdx, bool) {
 }
 
 // FuncSignature returns the function signature for a global function index.
+//
+//go:noinline
 func (m *Module) FuncSignature(idx uint32) (*CompType, bool) {
 	typeIdx, ok := m.FuncTypeIndex(idx)
 	if !ok {
@@ -377,6 +383,8 @@ func (m *Module) ResolvedLocalFuncType(localIdx int) (*CompType, bool) {
 // recursive-local type indexes resolved. Unlike ResolvedLocalFuncType, callers
 // that already own scratch storage need not allocate a CompType wrapper. When
 // no rewrite is needed, the immutable parameter/result slices alias the module.
+//
+//go:noinline
 func (m *Module) ResolveLocalFuncType(localIdx int, dst *CompType) bool {
 	if localIdx < 0 || localIdx >= len(m.FuncTypes) {
 		return false
@@ -398,6 +406,7 @@ func (m *Module) subtypeByTypeIdx(idx TypeIdx) (*SubType, bool) {
 	return st, ok
 }
 
+//go:noinline
 func (m *Module) subtypeByTypeIdxWithRecGroup(idx TypeIdx) (*SubType, int, bool) {
 	if idx.Rec {
 		return nil, 0, false
@@ -424,6 +433,7 @@ func (m *Module) flattenedTypeCount() int {
 	return len(m.typeIndex().flat)
 }
 
+//go:noinline
 func (m *Module) typeFunc(idx TypeIdx) (*CompType, bool) {
 	st, ok := m.subtypeByTypeIdx(idx)
 	if !ok || st.Comp.Kind != CompFunc {
@@ -444,6 +454,8 @@ func (m *Module) resolvedTypeFunc(idx TypeIdx) (*CompType, bool) {
 // index to dst. Non-recursive parameter and result slices alias immutable
 // module storage; recursive-local indexes are resolved into exact owned slices.
 // Callers must not mutate aliased slices and must not retain them beyond m.
+//
+//go:noinline
 func (m *Module) ResolveTypeFunc(typeIdx uint32, dst *CompType) bool {
 	return m.resolveTypeFunc(TypeIdx{Index: typeIdx}, dst, true)
 }
@@ -496,6 +508,7 @@ func (m *Module) ReferenceTypeSubtype(actual, required RefType) bool {
 	return (&moduleValidator{m: m}).refSubtype(actual, required)
 }
 
+//go:noinline
 func (m *Module) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int, bool) {
 	directory := m.typeIndex()
 	if !idx.Rec {

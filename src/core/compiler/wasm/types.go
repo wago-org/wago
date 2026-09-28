@@ -760,6 +760,8 @@ func (m *Module) ImportedTableCount() int  { return m.importCount(ExternTable) }
 func (m *Module) ImportedMemCount() int    { return m.importCount(ExternMem) }
 func (m *Module) ImportedGlobalCount() int { return m.importCount(ExternGlobal) }
 func (m *Module) ImportedTagCount() int    { return m.importCount(ExternTag) }
+
+//go:noinline
 func (m *Module) importCount(k ExternKind) int {
 	if m != nil && len(m.Imports) <= 32 {
 		count := 0

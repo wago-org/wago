@@ -715,7 +715,7 @@ func (r *gcNativeFrameRoots) syncGlobalsBeforeCollection() {
 		return
 	}
 	if err := r.owner.syncGenericGCGlobalRootsLocked(r.suspended); err != nil {
-		panic(gcStructHelperError{err: err})
+		panic(gcHelperFailure(err))
 	}
 	// Native execution remains parked for the complete allocation attempt. One
 	// synchronization therefore covers a minor collection, root rewrites, and a
@@ -742,7 +742,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 				continue
 			}
 			if int(activation.callsite) >= len(state.hostRootPlan.callsites) {
-				panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation callsite %d is unavailable", activation.callsite)})
+				panic(gcHelperFailuref("generic GC host activation callsite %d is unavailable", activation.callsite))
 			}
 			callsite := &state.hostRootPlan.callsites[activation.callsite]
 			chain := gcNativeFrameRoots{
@@ -793,7 +793,7 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 				continue
 			}
 			if int(activation.callsite) >= len(state.hostRootPlan.callsites) {
-				panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation callsite %d is unavailable", activation.callsite)})
+				panic(gcHelperFailuref("generic GC host activation callsite %d is unavailable", activation.callsite))
 			}
 			callsite := &state.hostRootPlan.callsites[activation.callsite]
 			chain := gcNativeFrameRoots{
@@ -846,13 +846,13 @@ func (r *gcNativeTableRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 	header := unsafe.Slice((*byte)(offHeapPtr(r.desc)), 8)
 	length := uint64(binary.LittleEndian.Uint32(header))
 	if length > uint64((r.bytes-8)/8) {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC table length %d exceeds descriptor capacity", length)})
+		panic(gcHelperFailuref("generic GC table length %d exceeds descriptor capacity", length))
 	}
 	for i := uint64(0); i < length; i++ {
 		addr := r.desc + 8 + uintptr(i*8)
 		word := binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(addr)), 8))
 		if word != uint64(gc.Ref(uint32(word))) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC table root %d contains non-compact reference %#x", i, word)})
+			panic(gcHelperFailuref("generic GC table root %d contains non-compact reference %#x", i, word))
 		}
 		slot := (*gc.Root)(offHeapPtr(addr))
 		if sink != nil {
@@ -876,7 +876,7 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 		}
 		desc := in.tableDescriptor(tableIndex)
 		if len(desc) < 8 {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC table %d descriptor is unavailable", tableIndex)})
+			panic(gcHelperFailuref("generic GC table %d descriptor is unavailable", tableIndex))
 		}
 		roots := gcNativeTableRoots{desc: uintptr(unsafe.Pointer(&desc[0])), bytes: uintptr(len(desc))}
 		if !roots.walk(fn, sink) {
@@ -890,17 +890,17 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 			continue
 		}
 		if passiveBase == 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC passive element descriptor %d is unavailable", i)})
+			panic(gcHelperFailuref("generic GC passive element descriptor %d is unavailable", i))
 		}
 		descAddr := passiveBase + uintptr(i*coreruntime.PassiveElemDescBytes)
 		desc := unsafe.Slice((*byte)(offHeapPtr(descAddr)), coreruntime.PassiveElemDescBytes)
 		entries := uintptr(binary.LittleEndian.Uint64(desc))
 		length := uint64(binary.LittleEndian.Uint32(desc[8:]))
 		if length > uint64(len(elem.Values)) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC passive element %d length %d exceeds %d", i, length, len(elem.Values))})
+			panic(gcHelperFailuref("generic GC passive element %d length %d exceeds %d", i, length, len(elem.Values)))
 		}
 		if length != 0 && entries == 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC passive element %d entries are unavailable", i)})
+			panic(gcHelperFailuref("generic GC passive element %d entries are unavailable", i))
 		}
 		for j := uint64(0); j < length; j++ {
 			slot := (*gc.Root)(offHeapPtr(entries + uintptr(j*8)))
@@ -923,7 +923,7 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 	adapterReturnOffsets, callsites := r.adapterReturnOffsets, r.callsites
 	for depth := 0; ; depth++ {
 		if depth > 4096 {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC native frame chain exceeds 4096 frames")})
+			panic(gcHelperFailuref("generic GC native frame chain exceeds 4096 frames"))
 		}
 		for _, off := range offsets {
 			// gc.Ref is the low 32 bits of the validated little-endian native qword.
@@ -947,7 +947,7 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			callerFrameBias = uintptr(shared.ARM64FrameRecordBytes)
 		}
 		if base > ^uintptr(0)-uintptr(frameBytes)-returnPCBias {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC native frame address overflows")})
+			panic(gcHelperFailuref("generic GC native frame address overflows"))
 		}
 		retWord := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(frameBytes)+returnPCBias)), 8)
 		retPC := uintptr(binary.LittleEndian.Uint64(retWord))
@@ -960,7 +960,7 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 				if r.allowExternalReturn {
 					return true
 				}
-				panic(gcStructHelperError{err: fmt.Errorf("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC)})
+				panic(gcHelperFailuref("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC))
 			}
 			owner = foreign
 			plan := foreign.c.genericGCFrameRoots()
@@ -980,7 +980,7 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			return true
 		}
 		if base > ^uintptr(0)-uintptr(frameBytes)-callerFrameBias {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller frame address overflows")})
+			panic(gcHelperFailuref("generic GC caller frame address overflows"))
 		}
 		returnBase := base + uintptr(frameBytes) + callerFrameBias
 		// Tiny sorted tables beat binary-search setup; larger tables retain
@@ -994,14 +994,14 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			callsiteIndex = sort.Search(len(callsites), func(i int) bool { return callsites[i].returnOffset >= rel })
 		}
 		if callsiteIndex == len(callsites) || callsites[callsiteIndex].returnOffset != rel {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC native return offset %d has no callsite map", rel)})
+			panic(gcHelperFailuref("generic GC native return offset %d has no callsite map", rel))
 		}
 		callsite := &callsites[callsiteIndex]
 		offsets = callsite.offsets
 		frameBytes = callsite.frameBytes
 		stackAdjust := callsite.stackAdjust
 		if returnBase > ^uintptr(0)-uintptr(stackAdjust) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller stack adjustment overflows")})
+			panic(gcHelperFailuref("generic GC caller stack adjustment overflows"))
 		}
 		base = returnBase + uintptr(stackAdjust)
 	}
@@ -1481,7 +1481,7 @@ func (s *referenceStore) rangeGCDomainPersistentRoots(collector *gc.Collector, f
 			bits := binary.LittleEndian.Uint64(global.cell)
 			ref := gc.Ref(uint32(bits))
 			if bits != uint64(ref) {
-				panic(gcStructHelperError{err: fmt.Errorf("Runtime GC-domain global %d contains non-compact reference %#x", i, bits)})
+				panic(gcHelperFailuref("Runtime GC-domain global %d contains non-compact reference %#x", i, bits))
 			}
 			slot := (*gc.Root)(unsafe.Pointer(&global.cell[0]))
 			if sink != nil {
@@ -1516,7 +1516,7 @@ func (s *referenceStore) rangeGCDomainPersistentRootsClassified(collector *gc.Co
 			bits := binary.LittleEndian.Uint64(global.cell)
 			ref := gc.Ref(uint32(bits))
 			if bits != uint64(ref) {
-				panic(gcStructHelperError{err: fmt.Errorf("Runtime GC-domain global %d contains non-compact reference %#x", i, bits)})
+				panic(gcHelperFailuref("Runtime GC-domain global %d contains non-compact reference %#x", i, bits))
 			}
 			if !sink.VisitClassifiedRootRef(gc.RootGlobal, ref) {
 				return false
@@ -2761,14 +2761,14 @@ func (in *Instance) clearGCHostResultRoots(token gcHostActivationToken) {
 	argumentCount := state.hostArgumentRootCount[token.index]
 	for i := uint8(0); i < argumentCount; i++ {
 		if err := in.gc.SetGlobalSlot(state.hostArgumentRootSlots[token.index][i], gc.Null()); err != nil {
-			panic(gcStructHelperError{err: fmt.Errorf("clear GC host argument root %d: %w", i, err)})
+			panic(gcHelperFailuref("clear GC host argument root %d: %w", i, err))
 		}
 	}
 	state.hostArgumentRootCount[token.index] = 0
 	resultCount := state.hostResultRootCount[token.index]
 	for i := uint8(0); i < resultCount; i++ {
 		if err := in.gc.SetGlobalSlot(state.hostResultRootSlots[token.index][i], gc.Null()); err != nil {
-			panic(gcStructHelperError{err: fmt.Errorf("clear GC host result root %d: %w", i, err)})
+			panic(gcHelperFailuref("clear GC host result root %d: %w", i, err))
 		}
 	}
 	state.hostResultRootCount[token.index] = 0
@@ -2787,7 +2787,7 @@ func (in *Instance) clearGCRefArgumentRoots() {
 	defer state.mu.Unlock()
 	for i := uint32(0); i < state.argumentRootCount; i++ {
 		if err := in.gc.SetGlobalSlot(state.argumentRootSlot(i), gc.Null()); err != nil {
-			panic(gcStructHelperError{err: fmt.Errorf("clear GC reference argument root %d: %w", i, err)})
+			panic(gcHelperFailuref("clear GC reference argument root %d: %w", i, err))
 		}
 	}
 	state.argumentRootCount = 0

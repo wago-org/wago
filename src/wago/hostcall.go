@@ -2312,7 +2312,7 @@ func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, resul
 	}
 	if importIdx&gcStructDispatchBit != 0 {
 		if importIdx&hostFuncRefDispatchBit != 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("invalid overlapping GC/host dispatch index %#x", importIdx)})
+			panic(gcHelperFailuref("invalid overlapping GC/host dispatch index %#x", importIdx))
 		}
 		helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)
 		in.dispatchGCHelperParked(ctrl, helper, safepoint, args, results)

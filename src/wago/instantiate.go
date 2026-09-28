@@ -135,7 +135,7 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 		var err error
 		imports, err = opts.Imports.snapshot()
 		if err != nil {
-			return nil, fmt.Errorf("wago: finalize imports: %w", err)
+			return nil, wrapContextError("wago: finalize imports", err)
 		}
 	}
 	b := instanceBuilder{c: c, opts: opts, imports: imports, moduleUse: moduleUse}
@@ -162,7 +162,7 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 		mappingOwner = moduleUse.compiledView
 	}
 	if err := mappingOwner.prepareCodeMapping(); err != nil {
-		return nil, fmt.Errorf("wago: instantiate: map code: %w", err)
+		return nil, wrapContextError("wago: instantiate: map code", err)
 	}
 	var err error
 	c, err = c.freezeExecution(opts.MaxCompiledMetadataBytes)
@@ -300,7 +300,7 @@ func (b *instanceBuilder) prepareCollector() error {
 			b.opts.store.releaseUnclaimedGCCollector(collector)
 			b.collector = nil
 			b.collectorShared = false
-			return fmt.Errorf("wago: Runtime GC domain has no native identity")
+			return errors.New("wago: Runtime GC domain has no native identity")
 		}
 		b.gcTypeMap = mapping
 		return nil
@@ -419,7 +419,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	arenaNeed := c.arenaNeedForImports(imports, syncMode)
 	if c.memoryCount() == 1 && (opts.memoryLimitPages != 0 || c.memoryImport != "" && c.threadedMemory0()) {
 		if arenaNeed > maxInt()-abi.MemoryDirEntryBytes {
-			return nil, fmt.Errorf("instance metadata footprint overflows memory policy directory")
+			return nil, errors.New("instance metadata footprint overflows memory policy directory")
 		}
 		arenaNeed += abi.MemoryDirEntryBytes
 	}
@@ -530,7 +530,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if err != nil {
 				m.detachImporter()
 				runtime.ReleaseEngine(eng)
-				return nil, fmt.Errorf("allocate threaded instance control: %w", err)
+				return nil, wrapContextError("allocate threaded instance control", err)
 			}
 			threadedControl = true
 		} else {
@@ -703,13 +703,13 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		// callable after crossing from another instance.
 		ctrl = ar.AllocNoZero(c.hostCtrlFrameBytes())
 		if err := runtime.InitHostCtrlFrame(ctrl); err != nil {
-			return nil, fmt.Errorf("instantiate: initialize host control frame: %w", err)
+			return nil, wrapContextError("instantiate: initialize host control frame", err)
 		}
 		jm.SetCustomCtx(uintptr(unsafe.Pointer(&ctrl[0])))
 		if len(c.Imports) > 0 {
 			syncHosts, err = c.buildSyncHosts(imports)
 			if err != nil {
-				return nil, fmt.Errorf("instantiate: %w", err)
+				return nil, wrapContextError("instantiate", err)
 			}
 		}
 	} else if len(c.Imports) > 0 {
@@ -733,7 +733,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		if hasHostImport {
 			hostEvents, err = c.buildHostEvents(imports)
 			if err != nil {
-				return nil, fmt.Errorf("instantiate: %w", err)
+				return nil, wrapContextError("instantiate", err)
 			}
 			// The log's count header is reset at the start of every Invoke and its
 			// body is written by native code before deferred callbacks read it, so
@@ -742,7 +742,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
 			for _, global := range c.GlobalImports {
 				if valTypeMayCarryFuncref(global.Type) {
-					return nil, fmt.Errorf("deferred host-event instance cannot import a funcref global: %w", ErrPermissionDenied)
+					return nil, wrapContextError("deferred host-event instance cannot import a funcref global", ErrPermissionDenied)
 				}
 			}
 		}
@@ -1001,7 +1001,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				return fmt.Errorf("GC element expression has incompatible destination %s", refType)
 			}
 			if len(entry) < 8 {
-				return fmt.Errorf("GC element expression entry is truncated")
+				return errors.New("GC element expression entry is truncated")
 			}
 			bits, err := evalCompiledGCConstExpr(value.Expr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, len(globalCells), funcRefDescs, instantiationRoots)
 			if err != nil {
@@ -1030,7 +1030,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					return nil
 				}
 				if len(entry) < runtime.TableEntryBytes {
-					return fmt.Errorf("funcref element global descriptor is truncated")
+					return errors.New("funcref element global descriptor is truncated")
 				}
 				descriptor := unsafe.Slice((*byte)(offHeapPtr(uintptr(bits))), runtime.FuncRefDescBytes)
 				// Keep this explicit: Go 1.26.5 can ICE while lowering copy from
@@ -1050,7 +1050,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 						if li >= 0 && li < len(producer.c.Entry) {
 							taggedHome, ok := abi.TagFuncRefHome(uint64(producer.jm.LinMemBase()), abi.FuncRefEntryCrossInstanceWrapper)
 							if !ok {
-								return fmt.Errorf("funcref element global producer home collides with descriptor tags")
+								return errors.New("funcref element global producer home collides with descriptor tags")
 							}
 							binary.LittleEndian.PutUint64(entry[runtime.TableEntryCodePtrOffset:], uint64(producer.base)+uint64(producer.c.Entry[li]))
 							binary.LittleEndian.PutUint64(entry[runtime.TableEntryHomeLinMemOffset:], taggedHome)
@@ -1060,13 +1060,13 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				return nil
 			case ValExternRef, ValAnyRef, ValI31Ref:
 				if len(entry) < 8 {
-					return fmt.Errorf("reference element global entry is truncated")
+					return errors.New("reference element global entry is truncated")
 				}
 				binary.LittleEndian.PutUint64(entry, bits)
 				return nil
 			case ValExnRef:
 				if bits != 0 {
-					return fmt.Errorf("non-null exception element globals require active handler ownership")
+					return errors.New("non-null exception element globals require active handler ownership")
 				}
 				clear(entry)
 				return nil
@@ -1077,7 +1077,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		switch normalizedElemRefType(refType) {
 		case ValExternRef, ValExnRef, ValAnyRef:
 			if !value.Null {
-				return fmt.Errorf("externref element contains a non-null initializer")
+				return errors.New("externref element contains a non-null initializer")
 			}
 			clear(entry)
 			return nil
@@ -1087,7 +1087,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				return nil
 			}
 			if value.FuncIndex&1 == 0 || len(entry) < 8 {
-				return fmt.Errorf("i31 element contains an invalid immediate")
+				return errors.New("i31 element contains an invalid immediate")
 			}
 			binary.LittleEndian.PutUint64(entry, uint64(value.FuncIndex))
 			return nil
@@ -1097,7 +1097,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				return nil
 			}
 			if writeTableEntry == nil {
-				return fmt.Errorf("non-null funcref element has no descriptor arena")
+				return errors.New("non-null funcref element has no descriptor arena")
 			}
 			writeTableEntry(entry, value.FuncIndex)
 			return nil
@@ -1348,7 +1348,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				}
 				value, err := evalCompiledScalarConstExpr(el.Offset.Expr, offsetType, globalCells, c.Globals, constExprGlobalScope{context: constExprElementOffset, limit: len(c.Globals)})
 				if err != nil {
-					initErr = fmt.Errorf("element offset extended expression: %w", err)
+					initErr = wrapContextError("element offset extended expression", err)
 					break
 				}
 				if table64 {
@@ -1382,7 +1382,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				valid = tableCount == 3 && c.tableEntryBytes(0) == 8 && c.tableEntryBytes(1) == runtime.TableEntryBytes && c.tableEntryBytes(2) == 8
 			}
 			if !valid {
-				initErr = fmt.Errorf("GC ref.test product has an invalid mixed-table layout")
+				initErr = errors.New("GC ref.test product has an invalid mixed-table layout")
 			} else {
 				canonicalTypes, err := b.gcTypeMap.canonicalTypes(product.refTestCanonicalTypes())
 				if err != nil {
@@ -1482,7 +1482,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				}
 				value, err := evalCompiledScalarConstExpr(d.Offset.Expr, want, globalCells, c.Globals, constExprGlobalScope{context: constExprDataOffset, limit: len(c.Globals)})
 				if err != nil {
-					initErr = fmt.Errorf("data offset extended expression: %w", err)
+					initErr = wrapContextError("data offset extended expression", err)
 					break
 				}
 				off = value
@@ -1503,17 +1503,17 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 
 	argsBytes, err := runtime.SlotBytes(c.maxParamSlots)
 	if err != nil {
-		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
+		return nil, wrapContextError("compiled metadata invalid", err)
 	}
 	resultsBytes, err := runtime.SlotBytes(c.maxResultSlots)
 	if err != nil {
-		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
+		return nil, wrapContextError("compiled metadata invalid", err)
 	}
 	serArgs := ar.Alloc(argsBytes)
 	results := ar.Alloc(resultsBytes)
 	trap := ar.Alloc(runtime.TrapBufferBytes)
 	if err := jm.BindTrapCell(trap); err != nil {
-		return nil, fmt.Errorf("bind trap cell: %w", err)
+		return nil, wrapContextError("bind trap cell", err)
 	}
 
 	var tableDescPtr uintptr
@@ -1533,7 +1533,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 		gcNativeView, err = b.buildNativeGCInstanceView(gcNativeTypes)
 		if err != nil {
-			return nil, fmt.Errorf("instantiate: native GC metadata view: %w", err)
+			return nil, wrapContextError("instantiate: native GC metadata view", err)
 		}
 		jm.SetGCNativeViewPtr(uintptr(unsafe.Pointer(gcNativeView)))
 	}
@@ -1582,7 +1582,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	b.registeredInstance = in
 	if in.syncMode {
 		if err := registerHostControl(in); err != nil {
-			return nil, fmt.Errorf("instantiate: register host control frame: %w", err)
+			return nil, wrapContextError("instantiate: register host control frame", err)
 		}
 		defer func() {
 			if !b.success {
@@ -1664,7 +1664,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if recovered := recover(); recovered != nil {
 				result = nil
 				if panicErr, ok := recovered.(error); ok {
-					err = fmt.Errorf("wago: instantiation panicked after instance creation: %w", panicErr)
+					err = wrapContextError("wago: instantiation panicked after instance creation", panicErr)
 				} else {
 					err = fmt.Errorf("wago: instantiation panicked after instance creation: %v", recovered)
 				}
@@ -1689,7 +1689,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	if needsExternConversion {
 		if in.refStore == nil || gcExternConversion == nil || gcRefTestTable == nil {
-			return nil, fmt.Errorf("GC extern conversion ownership is unavailable")
+			return nil, errors.New("GC extern conversion ownership is unavailable")
 		}
 		if err := gcRefTestTable.attachConversion(gcExternConversion); err != nil {
 			return nil, err
@@ -1769,7 +1769,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 						_ = in.Close()
 					}
 				}
-				return nil, fmt.Errorf("start function trapped: %w", startErr)
+				return nil, wrapContextError("start function trapped", startErr)
 			}
 		}
 	}
@@ -1787,12 +1787,12 @@ func callImportedStart(fn syncHostBinding, caller instanceHostModule) (err error
 				err = &ExitError{Code: value.Code}
 			case *HostExit:
 				if value == nil {
-					err = fmt.Errorf("host start panicked with a nil *HostExit")
+					err = errors.New("host start panicked with a nil *HostExit")
 				} else {
 					err = &ExitError{Code: value.Code}
 				}
 			case error:
-				err = fmt.Errorf("host start panicked: %w", value)
+				err = wrapContextError("host start panicked", value)
 			default:
 				err = fmt.Errorf("host start panicked: %v", value)
 			}
@@ -1969,7 +1969,7 @@ func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool) (s
 	}
 	mem, base, err := runtime.MapCode(blob)
 	if err != nil {
-		return 0, nil, nil, nil, fmt.Errorf("host import wrapper thunk: %w", err)
+		return 0, nil, nil, nil, wrapContextError("host import wrapper thunk", err)
 	}
 	addr := make(map[uint32]uint64, len(offs))
 	for fidx, o := range offs {
@@ -1991,7 +1991,7 @@ func (c *Compiled) sharedHostFuncThunks(syncMode bool) (uintptr, []int, error) {
 	defer cc.mu.Unlock()
 	memo := c.loadValidateMemo()
 	if memo == nil {
-		return 0, nil, fmt.Errorf("shared host import wrapper thunk: validation metadata is missing")
+		return 0, nil, errors.New("shared host import wrapper thunk: validation metadata is missing")
 	}
 	cache := &memo.hostThunks[cacheIndex]
 	if cache.mem != nil {
@@ -2023,7 +2023,7 @@ func (c *Compiled) sharedHostFuncThunks(syncMode bool) (uintptr, []int, error) {
 	}
 	mem, base, err := runtime.MapCode(blob)
 	if err != nil {
-		return 0, nil, fmt.Errorf("shared host import wrapper thunk: %w", err)
+		return 0, nil, wrapContextError("shared host import wrapper thunk", err)
 	}
 	cache.mem, cache.base, cache.offsets = mem, base, offsets
 	return base, offsets, nil

@@ -2,7 +2,6 @@ package wago
 
 import (
 	"fmt"
-	"reflect"
 
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
@@ -330,7 +329,7 @@ func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainT
 				}
 				candidate.Super = mapping.localToDomain[candidate.Super]
 			}
-			if !reflect.DeepEqual(candidate, domainTypes[domainID]) {
+			if !gcCollectorLayoutEqual(candidate, domainTypes[domainID]) {
 				return nil, nil, nil, fmt.Errorf("wago: structurally equivalent module type %d has incompatible collector layout", local)
 			}
 			continue
@@ -473,7 +472,7 @@ func (in *Instance) gcLocalType(domain gc.TypeID) (uint32, bool) {
 func (in *Instance) requireGCDomainType(local uint32) gc.TypeID {
 	domain, ok := in.gcDomainType(local)
 	if !ok {
-		panic(gcStructHelperError{err: fmt.Errorf("gc module type %d has no Runtime-domain identity", local)})
+		panic(gcHelperFailuref("gc module type %d has no Runtime-domain identity", local))
 	}
 	return domain
 }
@@ -535,4 +534,22 @@ func (in *Instance) gcRefMatchesValueType(ref gc.Ref, required ValueTypeDescript
 	}
 	matched, err := in.gc.RefTest(ref, target)
 	return err == nil && matched
+}
+
+// gcCollectorLayoutEqual compares the collector metadata after local type IDs
+// have been translated into domain IDs. Keep this typed: reflection would retain
+// metadata and generic equality machinery for every collector descriptor field.
+func gcCollectorLayoutEqual(a, b gc.TypeDesc) bool {
+	if a.ID != b.ID || a.Kind != b.Kind || a.Elem != b.Elem || a.Size != b.Size ||
+		a.ElemSize != b.ElemSize || a.Align != b.Align || a.HasRefs != b.HasRefs ||
+		a.Final != b.Final || a.Super != b.Super || a.HasSuper != b.HasSuper ||
+		len(a.Fields) != len(b.Fields) || (a.Fields == nil) != (b.Fields == nil) {
+		return false
+	}
+	for i, field := range a.Fields {
+		if field != b.Fields[i] {
+			return false
+		}
+	}
+	return true
 }
