@@ -31,6 +31,25 @@ func TestGCTypeMappingRejectsConflictingCanonicalTypes(t *testing.T) {
 	}
 }
 
+func TestGCModuleDomainProbeCachesCanonicalPlan(t *testing.T) {
+	compiled := &Compiled{
+		Types:        []DefinedTypeDescriptor{{Kind: CompositeTypeStruct, RecGroup: 0}},
+		GCTypeDescs:  []gc.TypeDesc{{ID: 0}},
+		validateMemo: &validateMemo{},
+	}
+	domain := &gcStoreDomain{
+		id:       991,
+		typeReps: []gcDomainTypeRepresentative{{types: compiled.Types, index: 0}},
+		types:    []gc.TypeDesc{{ID: 0}},
+	}
+	if !gcModuleFitsDomain(compiled, domain) {
+		t.Fatal("structurally identical GC type was rejected by its domain")
+	}
+	if mapping := compiled.cachedGCTypeMapping(domain.id, len(domain.typeReps)); mapping == nil {
+		t.Fatal("successful compatibility probe did not retain its canonical plan")
+	}
+}
+
 func TestPreferredGCCollectorIgnoresReferenceFreeFunctionImports(t *testing.T) {
 	store := &referenceStore{}
 	foreignStore := &referenceStore{}

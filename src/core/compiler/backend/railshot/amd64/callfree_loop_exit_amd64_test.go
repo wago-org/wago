@@ -159,3 +159,22 @@ func TestCallFreeLoopRegisterStateAfterConditionalWriteAMD64(t *testing.T) {
 		cm.CodeImage.Close()
 	}
 }
+
+func TestCallFreeLoopDetailsSharedBudgetAMD64(t *testing.T) {
+	body := []byte{0x41, 1, 0x21, 0, 0x43, 0, 0, 0x80, 0x3f, 0x1a, 0x0b}
+	classifier := wasm.ModuleInstructionClassifier{}
+	budget := maxCallFreeLoopLookaheadBytes - len(body)
+	ok, writes, st, hasFloat := scanLoopCallFreeDetails(wasm.NewReader(body), classifier, false, []int{0}, true, &budget)
+	if !ok || writes != 1 || !hasFloat || st.typ != mtF32 || st.cval != 0x3f800000 || budget != maxCallFreeLoopLookaheadBytes {
+		t.Fatalf("complete scan: ok=%t writes=%x float=%t storage=%+v budget=%d", ok, writes, hasFloat, st, budget)
+	}
+	ok, writes, _, hasFloat = scanLoopCallFreeDetails(wasm.NewReader(body), classifier, false, []int{0}, true, &budget)
+	if ok || writes != 0 || hasFloat || budget != maxCallFreeLoopLookaheadBytes {
+		t.Fatal("exhausted shared budget admitted another loop")
+	}
+	budget = maxCallFreeLoopLookaheadBytes - len(body) + 1
+	ok, writes, _, hasFloat = scanLoopCallFreeDetails(wasm.NewReader(body), classifier, false, []int{0}, true, &budget)
+	if ok || writes != 0 || hasFloat || budget != maxCallFreeLoopLookaheadBytes {
+		t.Fatal("partial scan published loop facts")
+	}
+}

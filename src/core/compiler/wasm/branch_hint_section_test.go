@@ -31,6 +31,23 @@ func branchHintModule(custom []byte) []byte {
 	)
 }
 
+func TestAbsentBranchHintsDoNotAllocate(t *testing.T) {
+	imports := make([]Import, 128)
+	for i := range imports {
+		imports[i].Type = NewFuncExternType(TypeIdx{Index: 0})
+	}
+	allocs := testing.AllocsPerRun(100, func() {
+		// Use a fresh module so a warmed import directory cannot hide setup.
+		m := Module{Imports: imports}
+		if err := validateBranchHints(&m); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if allocs != 0 {
+		t.Fatalf("absent branch hints allocated %v times, want 0", allocs)
+	}
+}
+
 func TestDecodeBranchHintSection(t *testing.T) {
 	dm, err := DecodeModuleByteBacked(branchHintModule(branchHintCustom(branchHintPayload(0, 3, 1))))
 	if err != nil {

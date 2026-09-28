@@ -97,6 +97,7 @@ func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidat
 }
 
 func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits, analysis *ValidatedModuleAnalysis) (err error) {
+	m.invalidateTypeAnalysisCaches()
 	if analysis != nil {
 		analysis.reset(m)
 		defer func() {
@@ -122,15 +123,17 @@ func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *direc
 	// decoding allocates, leaving its inline operand/control stacks reclaimed
 	// during validation.
 	v := moduleValidator{
-		m:                m,
-		funcIndex:        -1,
-		direct:           direct,
-		features:         features,
-		limits:           limits,
-		analysis:         analysis,
-		analysisFuncBase: m.ImportedFuncCount(),
+		m:         m,
+		funcIndex: -1,
+		direct:    direct,
+		features:  features,
+		limits:    limits,
+		analysis:  analysis,
 	}
 	v.ensureImportIndexes()
+	// Validation already owns an index for every import kind. Asking the module
+	// for this count would build a second directory just to read one length.
+	v.analysisFuncBase = len(v.importIndexes[ExternFunc])
 	if err := v.validateModule(); err != nil {
 		runtime.KeepAlive(m)
 		runtime.KeepAlive(direct)
@@ -274,7 +277,9 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 // body immediates may still miss the cache; resolvedCompType computes those
 // without mutating the frozen map so malformed modules remain race-free.
 func (v *moduleValidator) freezeCompCache() {
-	for i := 0; i < v.m.flattenedTypeCount(); i++ {
+	v.ensureTypeIndex()
+	typeCount := len(v.flatSubTypes)
+	for i := 0; i < typeCount; i++ {
 		_, _ = v.resolvedCompType(TypeIdx{Index: uint32(i)})
 	}
 	v.compCacheFrozen = true
@@ -693,13 +698,18 @@ func (v *moduleValidator) validateValType(t ValType) error {
 
 func (v *moduleValidator) validateValTypeInRecGroup(t ValType, recGroup int) error {
 	switch t.Kind() {
-	case ValNum, ValVec:
-		return nil
+	case ValNum:
+		if t == I32 || t == I64 || t == F32 || t == F64 {
+			return nil
+		}
+	case ValVec:
+		if t == V128 {
+			return nil
+		}
 	case ValRef:
 		return v.validateRefTypeInRecGroup(t.Ref(), recGroup)
-	default:
-		return v.err(ErrUnknownType, "value type")
 	}
+	return v.err(ErrUnknownType, "value type")
 }
 
 func (v *moduleValidator) validateRefType(rt RefType) error {
@@ -717,7 +727,12 @@ func (v *moduleValidator) validateHeapType(ht HeapType) error {
 func (v *moduleValidator) validateHeapTypeInRecGroup(ht HeapType, recGroup int) error {
 	switch ht.Kind() {
 	case HeapAbs:
-		return nil
+		switch ht.Abs() {
+		case HeapString, HeapExn, HeapArray, HeapStruct, HeapI31, HeapEq, HeapAny,
+			HeapExtern, HeapFunc, HeapNone, HeapNoExtern, HeapNoFunc, HeapNoExn:
+			return nil
+		}
+		return v.err(ErrUnknownType, "heap type")
 	case HeapTypeIndex:
 		if !v.validTypeIdxInRecGroup(ht.Type(), recGroup) {
 			return v.err(ErrUnknownType, "heap type")
@@ -1020,12 +1035,13 @@ type funcValidator struct {
 	// Small inline backing stores cover the common straight-line function and
 	// const-expression cases without heap-allocating separate stack slices. Larger
 	// or deeply nested functions still grow normally and reuse that capacity.
-	valBuf      [2]val
-	ctrlBuf     [1]ctrlFrame
-	constResult [1]ValType
-	localParams []ValType
-	localRuns   []LocalRun
-	localCount  uint64
+	valBuf       [2]val
+	ctrlBuf      [1]ctrlFrame
+	constResult  [1]ValType
+	localParams  []ValType
+	localRuns    []LocalRun
+	localRunEnds []uint64
+	localCount   uint64
 	// Non-nullable reference locals have no default value. Track successful
 	// local.set/local.tee operations sparsely and roll them back at structured
 	// control boundaries. The map grows only with locals actually initialized by
@@ -1096,6 +1112,7 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	if v.localCount > uint64(v.limits.MaxFunctionLocals) {
 		return v.verr(ErrInvalidLimitRange, "parameter and local count exceeds configured limit")
 	}
+	v.indexLocalRuns()
 	for _, run := range fn.Locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {
 			return err
@@ -1180,10 +1197,21 @@ func (v *funcValidator) unreachable() {
 	v.ctrls[len(v.ctrls)-1].unreachable = true
 }
 func (v *funcValidator) localType(idx uint32) (ValType, bool) {
-	if uint64(idx) >= v.localCount {
-		return ValType{}, false
+	// Both lookup paths check their bounds. Keep this wrapper small enough to
+	// inline instead of repeating the local-count check on every instruction.
+	return LocalTypeIndexed(v.localParams, v.localRuns, v.localRunEnds, idx)
+}
+
+func (v *funcValidator) indexLocalRuns() {
+	v.localRunEnds = v.localRunEnds[:0]
+	if len(v.localRuns) <= 2 {
+		return
 	}
-	return LocalType(v.localParams, v.localRuns, idx)
+	end := uint64(len(v.localParams))
+	for _, run := range v.localRuns {
+		end += uint64(run.Count)
+		v.localRunEnds = append(v.localRunEnds, end)
+	}
 }
 
 func (v *funcValidator) resetLocalInitialization() {

@@ -304,9 +304,11 @@ type fn struct {
 	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
 	// Call-free functions keep locals permanently in registers (locals[].state unused).
-	usesCalls bool
-	hasCalls  bool // emitted calls, independent of the optional lazy spill model
-	usesWide  bool
+	usesCalls                  bool
+	hasCalls                   bool // emitted calls, independent of the optional lazy spill model
+	usesWide                   bool
+	callFreeLoopLookaheadBytes int
+	callFreeLoopDepth          int
 	// controlBaseTypeN partitions the fixed function-result scratch: function
 	// results occupy its prefix and open control-frame bases use the remaining tail.
 	controlBaseTypeN uint8

@@ -1070,7 +1070,7 @@ type Compiled struct {
 	memoryImport string
 
 	// tableImport preserves the direct table-0 API/runtime metadata. Additional
-	// imported tables occupy the leading extraTables entries, and codec version 2 writes
+	// imported tables occupy the leading extraTables entries, and codec version 4 writes
 	// every declaration in exact Wasm index order.
 	tableImport       string
 	tableImportMin    int
@@ -1167,7 +1167,8 @@ type validateMemo struct {
 	snapshotBytes uint64    // protected by the code-cache lock
 	// hostThunks lazily owns immutable async and sync import wrappers. Instances
 	// retain them through the code cache's refs counter and lock.
-	hostThunks [2]compiledHostThunkCache
+	hostThunks     [2]compiledHostThunkCache
+	compileIndexes *compiledCacheIndexes
 
 	once                     sync.Once
 	err                      error

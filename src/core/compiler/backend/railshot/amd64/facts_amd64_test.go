@@ -16,7 +16,7 @@ func TestValueFactsAndRootsFitCompactStorageAMD64(t *testing.T) {
 	if got, want := unsafe.Sizeof(elem{}), uintptr(56); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(stack{}), uintptr(72); got != want {
+	if got, want := unsafe.Sizeof(stack{}), uintptr(80); got != want {
 		t.Fatalf("stack size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(trapSite{}), uintptr(12); got != want {

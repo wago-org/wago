@@ -147,13 +147,17 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(v)})
+		if !skipDroppedLiteral(r) {
+			f.s.pushIntegerConstant(mtI32, int64(v))
+		}
 	case 0x42: // i64.const
 		v, err := r.I64()
 		if err != nil {
 			return err
 		}
-		f.pushValue(storage{kind: stConst, typ: mtI64, cval: v})
+		if !skipDroppedLiteral(r) {
+			f.s.pushIntegerConstant(mtI64, v)
+		}
 
 	case 0x20: // local.get
 		x32, err := r.U32()
@@ -176,7 +180,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		f.activateIntervalLocal(int(x), r.Offset(), true)
 		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
 			value = f.pushReg(reg, f.localType[x])
-			value.st.setGCRoot(f.gcFrameLocal(int(x)))
+			f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
 			break
 		}
 		if f.localConstZero(int(x)) {
@@ -192,7 +196,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		} else {
 			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: x})
 		}
-		value.st.setGCRoot(f.gcFrameLocal(int(x)))
+		f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
@@ -478,13 +482,17 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		f.fconst(uint64(bits), mtF32)
+		if !skipDroppedLiteral(r) {
+			f.fconst(uint64(bits), mtF32)
+		}
 	case 0x44: // f64.const
 		bits, err := r.LEU64()
 		if err != nil {
 			return err
 		}
-		f.fconst(bits, mtF64)
+		if !skipDroppedLiteral(r) {
+			f.fconst(bits, mtF64)
+		}
 
 	case 0x2a: // f32.load
 		return f.fload(r, false)
@@ -859,7 +867,7 @@ func (f *fn) emitSelect() {
 	f.release(condReg)
 	f.release(bReg)
 	result := f.pushReg(aReg, mtI32OrWide(w))
-	result.st.setGCRoot(gcRoot)
+	f.setStackGCRoot(result, gcRoot)
 }
 
 func mtI32OrWide(wide bool) machineType {
@@ -908,7 +916,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	f.erase(bRoot)
 	f.erase(aRoot)
 	result := f.pushReg(aReg, mtI32OrWide(w))
-	result.st.setGCRoot(gcRoot)
+	f.setStackGCRoot(result, gcRoot)
 	return true
 }
 
@@ -1180,4 +1188,15 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.erase(e)
 		f.release(r)
 	}
+}
+
+// skipDroppedLiteral folds an adjacent numeric literal/drop after decoding the
+// literal's immediate. The pair cannot trap and leaves stack layout and GC roots
+// unchanged, so it needs neither an arena node nor a second opcode dispatch.
+func skipDroppedLiteral(r *wasm.Reader) bool {
+	if op, ok := r.Peek(); ok && op == 0x1a {
+		_, _ = r.Byte() // Peek established that this byte is available.
+		return true
+	}
+	return false
 }

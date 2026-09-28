@@ -50,7 +50,7 @@ type Instance struct {
 	resultVals              []uint64       // reusable Invoke result buffer (valid until the next call)
 	resultInline            [2]uint64      // small results stay with their instance, not in adjacent tiny heap objects
 	ic                      [4]invokeCache // tiny fixed export resolution cache
-	pluginGCImports         map[uint32]struct{}
+	importState             atomic.Pointer[instanceImportState]
 	refStore                *referenceStore
 	lifeMu                  sync.Mutex
 	resourceRefs            int
@@ -78,6 +78,25 @@ type Instance struct {
 	// moduleIdentity is an opaque token, not a Compiled pointer. It lets an
 	// instance finish its own lifecycle after its Module wrapper has closed.
 	moduleIdentity ModuleIdentity
+}
+
+// instanceImportState shares the existing Instance import-state pointer
+// between Runtime plugin policy and cold funcref-owner indexes.
+type instanceImportState struct {
+	pluginGCImports map[uint32]struct{}
+	funcrefImports  atomic.Pointer[funcrefImportContainers]
+}
+
+func (in *Instance) ensureImportState() *instanceImportState {
+	state := in.importState.Load()
+	if state != nil {
+		return state
+	}
+	candidate := new(instanceImportState)
+	if in.importState.CompareAndSwap(nil, candidate) {
+		return candidate
+	}
+	return in.importState.Load()
 }
 
 // nativeUint64Slots views an arena-backed, 8-byte-aligned byte buffer as native

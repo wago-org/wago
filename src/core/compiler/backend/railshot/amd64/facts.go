@@ -13,18 +13,19 @@ const (
 	factBoolean
 	storageGCRoot
 	storageEHRoot
+	storageLogicalRoot
 	valueFactMask = factUpper32Zero | factBoolean
 )
 
 func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }
 
-func (st storage) valueFacts() valueFacts { return valueFacts(st.meta) & valueFactMask }
+func (st *storage) valueFacts() valueFacts { return valueFacts(st.meta) & valueFactMask }
 
 func (st *storage) setValueFacts(facts valueFacts) {
 	st.meta = st.meta&^uint8(valueFactMask) | uint8(facts&valueFactMask)
 }
 
-func (st storage) hasGCRoot() bool { return valueFacts(st.meta).has(storageGCRoot) }
+func (st *storage) hasGCRoot() bool { return valueFacts(st.meta).has(storageGCRoot) }
 
 func (st *storage) setGCRoot(root bool) {
 	if root {
@@ -34,13 +35,23 @@ func (st *storage) setGCRoot(root bool) {
 	}
 }
 
-func (st storage) hasEHRoot() bool { return valueFacts(st.meta).has(storageEHRoot) }
+func (st *storage) hasEHRoot() bool { return valueFacts(st.meta).has(storageEHRoot) }
 
 func (st *storage) setEHRoot(root bool) {
 	if root {
 		st.meta |= uint8(storageEHRoot)
 	} else {
 		st.meta &^= uint8(storageEHRoot)
+	}
+}
+
+func (st *storage) hasLogicalRoot() bool { return valueFacts(st.meta).has(storageLogicalRoot) }
+
+func (st *storage) setLogicalRoot(root bool) {
+	if root {
+		st.meta |= uint8(storageLogicalRoot)
+	} else {
+		st.meta &^= uint8(storageLogicalRoot)
 	}
 }
 

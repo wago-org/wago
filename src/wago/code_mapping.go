@@ -57,6 +57,14 @@ type compiledHostThunkCache struct {
 	offsets []int
 }
 
+// compiledCacheIndexes holds cold compile/runtime indexes separately from the
+// fixed code-mapping header. It is allocated only when a module needs them.
+type compiledCacheIndexes struct {
+	valueTypeIndex     map[ValueTypeDescriptor]uint32
+	gcTypeMapping      *gcTypeMappingCacheEntry
+	funcrefImportState atomic.Uint32 // 0 unknown, 1 no imported funcref containers, 2 at least one
+}
+
 // compilerCompiledState groups the fixed private state owned for the complete
 // lifetime of a compiler-produced Compiled. Compiled keeps pointers to all
 // three fields, so the owner cannot become unreachable before the module does.
@@ -539,6 +547,38 @@ func (c *Compiled) loadCodeCache() *compiledCodeCache {
 	return (*compiledCodeCache)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.codeCache))))
 }
 
+func (c *Compiled) loadCompileIndexes() *compiledCacheIndexes {
+	if c == nil {
+		return nil
+	}
+	memo := c.loadValidateMemo()
+	if memo == nil {
+		return nil
+	}
+	return (*compiledCacheIndexes)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&memo.compileIndexes))))
+}
+
+func (c *Compiled) ensureCompileIndexes() *compiledCacheIndexes {
+	if c == nil {
+		return nil
+	}
+	memo := c.loadValidateMemo()
+	if memo == nil {
+		return nil
+	}
+	if indexes := c.loadCompileIndexes(); indexes != nil {
+		return indexes
+	}
+	compiledPublicationMu.Lock()
+	defer compiledPublicationMu.Unlock()
+	if indexes := c.loadCompileIndexes(); indexes != nil {
+		return indexes
+	}
+	indexes := new(compiledCacheIndexes)
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&memo.compileIndexes)), unsafe.Pointer(indexes))
+	return indexes
+}
+
 func (c *Compiled) loadValidateMemo() *validateMemo {
 	if c == nil {
 		return nil
@@ -631,6 +671,11 @@ func (c *Compiled) prepareCodeMapping() error {
 // Clear the embedded staging value:
 // its allocation remains live through pointers to the grouped private state.
 func publishCompilerCompiled(c *Compiled) (*Compiled, error) {
+	// Exact-value interning is complete at publication. Its index is scratch,
+	// not runtime metadata; retaining it would duplicate the immutable pool.
+	if indexes := c.loadCompileIndexes(); indexes != nil {
+		indexes.valueTypeIndex = nil
+	}
 	goruntime.SetFinalizer(c, nil)
 	published := new(Compiled)
 	*published = *c

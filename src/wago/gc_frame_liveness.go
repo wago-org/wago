@@ -29,6 +29,11 @@ const maxGCFrameBranchTargets = maxGCFrameLivenessArenaBytes / 4
 
 const maxGCFrameLivenessWorkWords = maxGCFrameLivenessArenaBytes / 8
 
+// The graph admission product bounds one sweep. This second limit also caps
+// repeated convergence work across cyclic control flow; exhaustion rejects the
+// exact root plan instead of publishing a partial fixed point.
+const maxGCFrameLivenessCumulativeWork = maxGCFrameLivenessWorkWords * 8
+
 // Four conservative local roots and a 512 root-byte budget bound additional
 // guest retention and serialized offsets while avoiding a pointer-rich CFG and
 // backwards dataflow for common narrow-root functions. A root-free collecting
@@ -37,6 +42,7 @@ const maxGCFrameLivenessWorkWords = maxGCFrameLivenessArenaBytes / 8
 const (
 	gcFrameConservativeLocalLimit    = 4
 	gcFrameConservativeRootByteLimit = 512
+	gcFrameSparseRootCountThreshold  = 1024
 )
 
 func gcFramePreferConservativeMasks(localRoots, bodyBytes int) bool {
@@ -57,6 +63,17 @@ func gcFrameLivenessWorkFits(nodes, branchEdges, words int) bool {
 	units := nodes + branchEdges
 	return nodes >= 0 && branchEdges >= 0 && units >= nodes && words > 0 &&
 		(units == 0 || words <= maxGCFrameLivenessWorkWords/units)
+}
+
+// The predecessor directory supports change-driven backwards propagation.
+// It stores one source index per CFG edge plus CSR offsets, a reusable queue,
+// and one queued flag per node.
+func gcFramePredecessorArenaFits(nodes, edges int) bool {
+	if nodes < 0 || edges < 0 || nodes > (maxGCFrameLivenessArenaBytes-4)/9 {
+		return false
+	}
+	remaining := maxGCFrameLivenessArenaBytes - 4 - 9*nodes
+	return edges <= remaining/4
 }
 
 type gcLiveNode struct {
@@ -88,6 +105,7 @@ type gcLiveFrame struct {
 
 type gcFrameLiveMasks struct {
 	words        []uint64 // site-major: allocation sites, then native calls
+	rootIndexes  []uint32 // nil is identity; otherwise each bit maps to an input local index
 	allocationN  int
 	callN        int
 	wordsPerSite int
@@ -127,7 +145,18 @@ func (m gcFrameLiveMasks) site(site int) []uint64 {
 //
 //go:noinline
 func gcFrameCompactLiveLocalsArena(locals []shared.GCFrameLocal, masks gcFrameLiveMasks) ([]shared.GCFrameLocal, gcFrameLiveMasks, int, error) {
-	wordCount := (len(locals) + 63) / 64
+	rootCount := len(locals)
+	if masks.rootIndexes != nil {
+		rootCount = len(masks.rootIndexes)
+		previous := -1
+		for _, local := range masks.rootIndexes {
+			if int(local) >= len(locals) || int(local) <= previous {
+				return nil, gcFrameLiveMasks{}, 0, fmt.Errorf("GC local liveness root index %d is invalid or unordered", local)
+			}
+			previous = int(local)
+		}
+	}
+	wordCount := (rootCount + 63) / 64
 	if wordCount == 0 {
 		wordCount = 1
 	}
@@ -150,20 +179,18 @@ func gcFrameCompactLiveLocalsArena(locals []shared.GCFrameLocal, masks gcFrameLi
 	// Every set bit in a site belongs to the union. Retain a direct old-to-new
 	// mapping so reconstruction visits arena words and live bits rather than
 	// rescanning the complete retained union at every site.
-	remap := make([]uint32, len(locals))
+	remap := make([]uint32, rootCount)
 	kept := 0
-	for root := range locals {
+	compactedLocals := make([]shared.GCFrameLocal, 0, rootCount)
+	for root := 0; root < rootCount; root++ {
 		if union[root/64]&(uint64(1)<<uint(root%64)) != 0 {
 			remap[root] = uint32(kept)
+			local := root
+			if masks.rootIndexes != nil {
+				local = int(masks.rootIndexes[root])
+			}
+			compactedLocals = append(compactedLocals, locals[local])
 			kept++
-		}
-	}
-	compactedLocals := make([]shared.GCFrameLocal, kept)
-	compacted := 0
-	for root := range locals {
-		if union[root/64]&(uint64(1)<<uint(root%64)) != 0 {
-			compactedLocals[compacted] = locals[root]
-			compacted++
 		}
 	}
 	newWordCount := (kept + 63) / 64
@@ -171,12 +198,13 @@ func gcFrameCompactLiveLocalsArena(locals []shared.GCFrameLocal, masks gcFrameLi
 		newWordCount = 1
 	}
 	compactedMasks := masks
-	if newWordCount != wordCount || kept != len(locals) && wordCount > 1 {
+	if newWordCount != wordCount || kept != rootCount {
 		if !gcFrameLiveMaskArenaFits(masks.allocationN, masks.callN, newWordCount) {
 			return nil, gcFrameLiveMasks{}, 0, fmt.Errorf("compacted GC local liveness mask arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
 		}
 		compactedMasks = newGCFrameLiveMasks(masks.allocationN, masks.callN, newWordCount)
 	}
+	compactedMasks.rootIndexes = nil
 	for site := 0; site < totalSites; site++ {
 		oldWords := masks.site(site)
 		var newLow uint64
@@ -218,9 +246,15 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 	if len(locals) > shared.GCFrameTrackedLocalLimit {
 		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness tracks %d locals, limit %d", len(locals), shared.GCFrameTrackedLocalLimit)
 	}
-	bits := make(map[uint32]uint32, len(locals))
+	rootByLocalIndex := make(map[uint32]uint32, len(locals))
 	for i, local := range locals {
-		bits[local.Index] = uint32(i)
+		rootByLocalIndex[local.Index] = uint32(i)
+	}
+	var usedRootBits []uint64
+	usedRootCount := len(locals)
+	if len(locals) > gcFrameSparseRootCountThreshold {
+		usedRootBits = make([]uint64, (len(locals)+63)/64)
+		usedRootCount = 0
 	}
 
 	r := wasm.NewReader(body)
@@ -269,11 +303,11 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 
 		switch imm.Kind {
 		case wasm.InstrLocalGet:
-			if bit, ok := bits[imm.Index]; ok {
+			if bit, ok := rootByLocalIndex[imm.Index]; ok {
 				node.use = bit
 			}
 		case wasm.InstrLocalSet, wasm.InstrLocalTee:
-			if bit, ok := bits[imm.Index]; ok {
+			if bit, ok := rootByLocalIndex[imm.Index]; ok {
 				node.def = bit
 			}
 		}
@@ -437,17 +471,6 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 		case gcLiveStop:
 		}
 	}
-	wordCount := (len(locals) + 63) / 64
-	if wordCount == 0 {
-		wordCount = 1
-	}
-	if !gcFrameLivenessArenaFits(len(nodes), wordCount) {
-		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
-	}
-	if !gcFrameLivenessWorkFits(len(nodes), branchEdgeN, wordCount) {
-		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness graph exceeds %d bitmap-word implementation limit", maxGCFrameLivenessWorkWords)
-	}
-
 	work := []int{0}
 	for len(work) != 0 {
 		i := work[len(work)-1]
@@ -456,6 +479,14 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 			continue
 		}
 		nodes[i].reachable = true
+		if nodes[i].use != noGCLiveIndex && len(usedRootBits) != 0 {
+			root := int(nodes[i].use)
+			mask := uint64(1) << uint(root%64)
+			if usedRootBits[root/64]&mask == 0 {
+				usedRootCount++
+				usedRootBits[root/64] |= mask
+			}
+		}
 		for j := uint8(0); j < nodes[i].succN; j++ {
 			work = append(work, int(nodes[i].succ[j]))
 		}
@@ -466,9 +497,10 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 			}
 		}
 	}
-	allocationN, nativeCallN = 0, 0
+	allocationN, nativeCallN, sweepNodeUnits := 0, 0, 0
 	for i := range nodes {
 		if nodes[i].reachable {
+			sweepNodeUnits += 1 + int(nodes[i].succN) + int(nodes[i].indexN)
 			if nodes[i].allocation {
 				allocationN++
 			}
@@ -477,9 +509,66 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 			}
 		}
 	}
+	analysisRootCount := len(locals)
+	var rootIndexes []uint32
+	if len(usedRootBits) != 0 && usedRootCount != len(locals) {
+		usedRoots := make([]uint32, 0, usedRootCount)
+		for word, value := range usedRootBits {
+			for value != 0 {
+				bit := bits.TrailingZeros64(value)
+				value &= value - 1
+				usedRoots = append(usedRoots, uint32(word*64+bit))
+			}
+		}
+		rootToLiveIndex := make(map[uint32]uint32, len(usedRoots))
+		for index, root := range usedRoots {
+			rootToLiveIndex[root] = uint32(index)
+		}
+		for i := range nodes {
+			if !nodes[i].reachable {
+				nodes[i].use, nodes[i].def = noGCLiveIndex, noGCLiveIndex
+				continue
+			}
+			if nodes[i].use != noGCLiveIndex {
+				nodes[i].use = rootToLiveIndex[nodes[i].use]
+			}
+			if nodes[i].def != noGCLiveIndex {
+				if index, ok := rootToLiveIndex[nodes[i].def]; ok {
+					nodes[i].def = index
+				} else {
+					nodes[i].def = noGCLiveIndex
+				}
+			}
+		}
+		rootIndexes = usedRoots
+		analysisRootCount = usedRootCount
+	}
+	wordCount := (analysisRootCount + 63) / 64
+	if wordCount == 0 {
+		wordCount = 1
+	}
+	if !gcFrameLivenessArenaFits(len(nodes), wordCount) {
+		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
+	}
+	if !gcFrameLivenessWorkFits(len(nodes), branchEdgeN, wordCount) {
+		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness graph exceeds %d bitmap-word implementation limit", maxGCFrameLivenessWorkWords)
+	}
+	if sweepNodeUnits > maxGCFrameLivenessCumulativeWork/wordCount {
+		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness convergence exceeds %d bitmap-word operations", maxGCFrameLivenessCumulativeWork)
+	}
 	liveIn := make([]uint64, len(nodes)*wordCount)
+	cumulativeWork := 0
+	sweepWork := sweepNodeUnits * wordCount
 	changed := true
-	for changed {
+	// Reverse-order sweeps are cheaper for the common case and usually converge
+	// quickly on structured Wasm. Bound that shortcut to four passes; graphs that
+	// need more propagation switch to a predecessor worklist instead of paying
+	// for another whole-graph sweep.
+	for sweep := 0; sweep < 4 && changed; sweep++ {
+		if cumulativeWork > maxGCFrameLivenessCumulativeWork-sweepWork {
+			return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness convergence exceeds %d bitmap-word operations", maxGCFrameLivenessCumulativeWork)
+		}
+		cumulativeWork += sweepWork
 		changed = false
 		for i := len(nodes) - 1; i >= 0; i-- {
 			if !nodes[i].reachable {
@@ -504,7 +593,166 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 					in |= uint64(1) << uint(nodes[i].use%64)
 				}
 				if in != liveIn[base+word] {
-					liveIn[base+word], changed = in, true
+					liveIn[base+word] = in
+					changed = true
+				}
+			}
+		}
+	}
+	if changed {
+		transfer := func(i int) bool {
+			base := i * wordCount
+			changed := false
+			for word := 0; word < wordCount; word++ {
+				var in uint64
+				for j := uint8(0); j < nodes[i].succN; j++ {
+					in |= liveIn[int(nodes[i].succ[j])*wordCount+word]
+				}
+				if nodes[i].indexN != 0 {
+					start := int(nodes[i].index)
+					for _, succ := range branchTargets[start : start+int(nodes[i].indexN)] {
+						in |= liveIn[int(succ)*wordCount+word]
+					}
+				}
+				if nodes[i].def != noGCLiveIndex && int(nodes[i].def/64) == word {
+					in &^= uint64(1) << uint(nodes[i].def%64)
+				}
+				if nodes[i].use != noGCLiveIndex && int(nodes[i].use/64) == word {
+					in |= uint64(1) << uint(nodes[i].use%64)
+				}
+				if in != liveIn[base+word] {
+					liveIn[base+word] = in
+					changed = true
+				}
+			}
+			return changed
+		}
+		edgeCount := 0
+		for i := range nodes {
+			if nodes[i].reachable {
+				edgeCount += int(nodes[i].succN) + int(nodes[i].indexN)
+			}
+		}
+		if edgeCount < 0 || !gcFramePredecessorArenaFits(len(nodes), edgeCount) {
+			return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness predecessor arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
+		}
+		predOffsets := make([]uint32, len(nodes)+1)
+		predCursor := make([]uint32, len(nodes))
+		countPredecessor := func(target uint32) error {
+			if int(target) >= len(nodes) || !nodes[target].reachable {
+				return fmt.Errorf("GC liveness predecessor target %d is invalid or unreachable", target)
+			}
+			if predCursor[target] == ^uint32(0) {
+				return fmt.Errorf("GC liveness predecessor count exceeds implementation limit")
+			}
+			predCursor[target]++
+			return nil
+		}
+		for source := range nodes {
+			if !nodes[source].reachable {
+				continue
+			}
+			for j := uint8(0); j < nodes[source].succN; j++ {
+				if err := countPredecessor(nodes[source].succ[j]); err != nil {
+					return gcFrameLiveMasks{}, err
+				}
+			}
+			if nodes[source].indexN != 0 {
+				start := int(nodes[source].index)
+				for _, target := range branchTargets[start : start+int(nodes[source].indexN)] {
+					if err := countPredecessor(target); err != nil {
+						return gcFrameLiveMasks{}, err
+					}
+				}
+			}
+		}
+		var totalPredecessors uint64
+		for i, count := range predCursor {
+			if totalPredecessors > uint64(^uint32(0))-uint64(count) {
+				return gcFrameLiveMasks{}, fmt.Errorf("GC liveness predecessor arena exceeds implementation limit")
+			}
+			predOffsets[i] = uint32(totalPredecessors)
+			totalPredecessors += uint64(count)
+		}
+		predOffsets[len(nodes)] = uint32(totalPredecessors)
+		if totalPredecessors != uint64(edgeCount) {
+			return gcFrameLiveMasks{}, fmt.Errorf("GC liveness predecessor count %d does not match CFG edge count %d", totalPredecessors, edgeCount)
+		}
+		copy(predCursor, predOffsets[:len(nodes)])
+		predSources := make([]uint32, edgeCount)
+		appendPredecessor := func(source int, target uint32) error {
+			position := predCursor[target]
+			if position >= predOffsets[target+1] {
+				return fmt.Errorf("GC liveness predecessor directory overflow at target %d", target)
+			}
+			predSources[position] = uint32(source)
+			predCursor[target]++
+			return nil
+		}
+		for source := range nodes {
+			if !nodes[source].reachable {
+				continue
+			}
+			for j := uint8(0); j < nodes[source].succN; j++ {
+				if err := appendPredecessor(source, nodes[source].succ[j]); err != nil {
+					return gcFrameLiveMasks{}, err
+				}
+			}
+			if nodes[source].indexN != 0 {
+				start := int(nodes[source].index)
+				for _, target := range branchTargets[start : start+int(nodes[source].indexN)] {
+					if err := appendPredecessor(source, target); err != nil {
+						return gcFrameLiveMasks{}, err
+					}
+				}
+			}
+		}
+		// The cursor arena is no longer needed for the predecessor CSR, so reuse
+		// it as a bounded ring queue instead of allocating a second node slice.
+		queue := predCursor
+		queued := make([]bool, len(nodes))
+		queueHead, queueTail, queueCount := 0, 0, 0
+		push := func(index uint32) bool {
+			if queued[index] {
+				return true
+			}
+			if queueCount == len(queue) {
+				return false
+			}
+			queue[queueTail] = index
+			queueTail++
+			if queueTail == len(queue) {
+				queueTail = 0
+			}
+			queueCount++
+			queued[index] = true
+			return true
+		}
+		for i := len(nodes) - 1; i >= 0; i-- {
+			if nodes[i].reachable && !push(uint32(i)) {
+				return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness work queue overflow")
+			}
+		}
+		for queueCount != 0 {
+			i := int(queue[queueHead])
+			queueHead++
+			if queueHead == len(queue) {
+				queueHead = 0
+			}
+			queueCount--
+			queued[i] = false
+			predecessorCount := int(predOffsets[i+1] - predOffsets[i])
+			successorCount := int(nodes[i].succN) + int(nodes[i].indexN)
+			work := wordCount*(1+successorCount) + predecessorCount
+			if work < 0 || cumulativeWork > maxGCFrameLivenessCumulativeWork-work {
+				return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness convergence exceeds %d bitmap-word operations", maxGCFrameLivenessCumulativeWork)
+			}
+			cumulativeWork += work
+			if transfer(i) {
+				for predecessor := predOffsets[i]; predecessor < predOffsets[i+1]; predecessor++ {
+					if !push(predSources[predecessor]) {
+						return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness work queue overflow")
+					}
 				}
 			}
 		}
@@ -513,6 +761,7 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness mask arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
 	}
 	masks := newGCFrameLiveMasks(allocationN, nativeCallN, wordCount)
+	masks.rootIndexes = rootIndexes
 	allocationIndex, callIndex := 0, 0
 	for i := range nodes {
 		if !nodes[i].reachable {

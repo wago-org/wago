@@ -6,6 +6,25 @@ func indexedRef(index uint32, nullable bool) ValType {
 	return RefVal(Ref(nullable, IndexedHeap(TypeIdx{Index: index}), false))
 }
 
+func TestStructuralTypeKeyCacheInvalidatesReplacedTypeSection(t *testing.T) {
+	makeTypes := func(leaf ValType) []RecType {
+		return []RecType{
+			{SubTypes: []SubType{{Final: true, Comp: CompType{Kind: CompFunc, Params: []ValType{leaf}}}}},
+			{SubTypes: []SubType{{Final: true, Comp: CompType{Kind: CompFunc, Params: []ValType{indexedRef(0, true)}}}}},
+		}
+	}
+	module := &Module{Types: makeTypes(I32)}
+	first, ok := module.StructuralTypeKeyChecked(1)
+	if !ok {
+		t.Fatal("initial structural key unavailable")
+	}
+	module.Types = makeTypes(I64)
+	second, ok := module.StructuralTypeKeyChecked(1)
+	if !ok || second == first {
+		t.Fatalf("replaced type section key = %#x,%v, want a different valid key from %#x", second, ok, first)
+	}
+}
+
 func TestStructuralTypeIDIncludesIndexedReferenceStructure(t *testing.T) {
 	nested := SubType{Final: true, Comp: CompType{Kind: CompFunc, Params: []ValType{I32}, Results: []ValType{I64}}}
 	rootA := SubType{Final: true, Comp: CompType{Kind: CompFunc, Params: []ValType{indexedRef(0, true)}, Results: []ValType{indexedRef(0, false)}}}
@@ -148,6 +167,47 @@ func TestStructuralTypeKeyCanonicalizationScalesAndRemainsBounded(t *testing.T) 
 	if key, ok := adversarial.StructuralTypeKeyChecked(1); ok || key != 0 {
 		t.Fatalf("truly over-budget canonicalization = %#x,%v, want zero,false", key, ok)
 	}
+}
+
+func TestStructuralTypeKeySharesGroupDigestsAcrossMembers(t *testing.T) {
+	const members = 128
+	module := structuralReferenceFanout(members)
+	root := uint32(members)
+	if _, ok := module.StructuralTypeKeyChecked(root); !ok {
+		t.Fatal("fanout structural key unavailable")
+	}
+	cache := module.structuralTypeCache
+	if cache == nil || len(cache.groupDigests) != 2 {
+		t.Fatalf("cached group digests = %d, want the two reachable groups", len(cache.groupDigests))
+	}
+
+	keys := make(map[uint64]struct{}, members)
+	for i := uint32(0); i < members; i++ {
+		key, ok := module.StructuralTypeKeyChecked(i)
+		if !ok {
+			t.Fatalf("member %d key unavailable", i)
+		}
+		if _, duplicate := keys[key]; duplicate {
+			t.Fatalf("member %d reused an earlier recursive-group key %#x", i, key)
+		}
+		keys[key] = struct{}{}
+	}
+	if got := len(cache.groupDigests); got != 2 {
+		t.Fatalf("group digest cache grew to %d after querying every member, want 2", got)
+	}
+}
+
+func structuralReferenceFanout(members int) *Module {
+	group := RecType{SubTypes: make([]SubType, members)}
+	for i := range group.SubTypes {
+		group.SubTypes[i] = SubType{Final: true, Comp: CompType{Kind: CompFunc}}
+	}
+	params := make([]ValType, members)
+	for i := range params {
+		params[i] = indexedRef(uint32(i), true)
+	}
+	root := RecType{SubTypes: []SubType{{Final: true, Comp: CompType{Kind: CompFunc, Params: params}}}}
+	return &Module{Types: []RecType{group, root}}
 }
 
 func TestStructuralTypeKeySeparatesDeliberateLegacyCollision(t *testing.T) {
