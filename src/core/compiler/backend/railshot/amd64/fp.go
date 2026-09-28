@@ -4,9 +4,11 @@ package amd64
 
 import (
 	"encoding/binary"
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
+	"os"
+	"runtime"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -346,12 +348,20 @@ func (f *fn) fconst(bits uint64, typ machineType) {
 	f.pushValue(storage{kind: stConst, typ: typ, cval: int64(bits)})
 }
 
-// Scalar arithmetic keeps the three-operand VEX form when AVX is selected.
-// The SSE2 path explicitly preserves a source when the destination aliases it.
-// foldFloatMem reports whether e is a deferred float load of the given width that
-// can be folded directly as an SSE r/m operand (addsd/mulsd/subsd/divsd xmm, [mem]).
-func foldFloatMem(e *elem, f64 bool) bool {
-	return e.isValue() && e.st.kind == stMemRef && e.st.typ.isFloat() && e.st.memSize() == fsize(f64)
+// WAGO_AMD64_NO_FLOAT_FRAME_MEM=1 is the rollback switch. Keep the default on
+// the native platform qualified with execution and corpus gates.
+var floatFrameMemEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_NO_FLOAT_FRAME_MEM") != "1"
+
+// foldFloatMem admits exact-width deferred loads and canonical scalar frame
+// homes as arithmetic memory operands. Pinned locals retain their register form.
+func (f *fn) foldFloatMem(e *elem, f64 bool) bool {
+	if !e.isValue() || e.st.typ != mtOf2(f64) {
+		return false
+	}
+	if e.st.kind == stMemRef {
+		return e.st.memSize() == fsize(f64)
+	}
+	return f.opt(optFloatFrameMem) && (e.st.kind == stSlot || e.st.kind == stLocalRef)
 }
 
 // fMemCommutable reports whether an SSE arithmetic memOp is commutative, so its
@@ -362,11 +372,11 @@ func fMemCommutable(memOp byte) bool { return memOp == 0x58 || memOp == 0x59 }
 func (f *fn) fbin(memOp byte, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
-	if commuteFMemEnabled && fMemCommutable(memOp) && foldFloatMem(a, f64) && !foldFloatMem(b, f64) {
+	if commuteFMemEnabled && fMemCommutable(memOp) && f.foldFloatMem(a, f64) && !f.foldFloatMem(b, f64) {
 		a, b = b, a
 		f.stats.peep("fcommute_mem")
 	}
-	if foldFloatMem(b, f64) {
+	if f.foldFloatMem(b, f64) {
 		f.fbinMemRight(a, b, memOp, f64)
 		return
 	}
@@ -400,11 +410,11 @@ func (f *fn) fbin(memOp byte, f64 bool) {
 func (f *fn) fbinInto(dst Reg, memOp byte, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
-	if commuteFMemEnabled && fMemCommutable(memOp) && foldFloatMem(a, f64) && !foldFloatMem(b, f64) {
+	if commuteFMemEnabled && fMemCommutable(memOp) && f.foldFloatMem(a, f64) && !f.foldFloatMem(b, f64) {
 		a, b = b, a
 		f.stats.peep("fcommute_mem")
 	}
-	if foldFloatMem(b, f64) {
+	if f.foldFloatMem(b, f64) {
 		f.fbinMemRightInto(dst, a, b, memOp, f64)
 		return
 	}
@@ -431,12 +441,7 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 			f.a.FMov(dst, src, f64)
 		}
 	}
-	if useVEX {
-		f.a.VFMemIdx(memOp, dst, src, RBX, b.st.reg, b.st.memDisp(), f64)
-	} else {
-		f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
-	}
-	f.releaseMemRef(b.st)
+	f.emitFloatMemSource(dst, src, b.st, memOp, f64, useVEX)
 	f.pushFReg(dst, mtOf2(f64))
 }
 
@@ -446,15 +451,40 @@ func (f *fn) fbinMemRightInto(dst Reg, a, b *elem, memOp byte, f64 bool) {
 	if !useVEX && dst != src {
 		f.a.FMov(dst, src, f64)
 	}
-	if useVEX {
-		f.a.VFMemIdx(memOp, dst, src, RBX, b.st.reg, b.st.memDisp(), f64)
-	} else {
-		f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
-	}
-	f.releaseMemRef(b.st)
+	f.emitFloatMemSource(dst, src, b.st, memOp, f64, useVEX)
 	if owned && dst != src {
 		f.releaseF(src)
 	}
+}
+
+// emitFloatMemSource folds one exact-width scalar source without allocating a
+// temporary XMM. Frame locals and spill slots are canonical nontrapping homes.
+func (f *fn) emitFloatMemSource(dst, src Reg, st storage, memOp byte, f64, useVEX bool) {
+	if st.kind == stMemRef {
+		if useVEX {
+			f.a.VFMemIdx(memOp, dst, src, RBX, st.reg, st.memDisp(), f64)
+		} else {
+			f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, st.reg, st.memDisp())
+		}
+		f.releaseMemRef(st)
+		return
+	}
+	var off int32
+	if st.kind == stLocalRef {
+		off = f.localAddr(st.index())
+	} else {
+		off = f.spillOff(st.slotIndex())
+	}
+	if useVEX {
+		pp := byte(2)
+		if f64 {
+			pp = 3
+		}
+		f.a.VSseMemDisp(pp, memOp, dst, src, RSP, off)
+	} else {
+		f.a.FAluDisp(memOp, dst, RSP, off, f64)
+	}
+	f.stats.peep("float-frame-mem")
 }
 
 // scalarFMinMaxInto implements wasm min/max for one scalar lane, which x86

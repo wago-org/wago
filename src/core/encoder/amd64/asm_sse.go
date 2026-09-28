@@ -815,3 +815,8 @@ func (a *Asm) VMovdquDisp(op byte, xmm, base Reg, disp int32) {
 func (a *Asm) VMovdquIdx(op byte, xmm, base, index Reg, disp int32) {
 	a.vex3MemIdx(vexMap0F, 2, op, xmm, 0, false, base, index, disp)
 }
+
+// FAluDisp emits legacy scalar SSE arithmetic with a base-displacement source.
+func (a *Asm) FAluDisp(op byte, dst, base Reg, disp int32, f64 bool) {
+	a.fmemDisp(op, dst, base, disp, f64)
+}
