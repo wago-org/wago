@@ -445,6 +445,7 @@ var catalog = []Definition{
 	arm64("convert-read", "Direct conversion reads", "read pinned integer conversion inputs without a temporary copy"),
 	arm64("cold-call-local-pins", "Cold-call local pins", "pin hot locals when every direct local call is outside loops"),
 	amd64("vex-float-mem", "VEX memory operands", "fold scalar float loads into AVX operations"),
+	amd64("direct-int-branch-merge", "Direct integer branch results", "deliver unconditional integer branch results directly to their merge register"),
 	amd64("wide-local-pins", "Bounded wide-function pins", "keep up to two locals per register bank in bounded numeric functions with loops"),
 	amd64("float-frame-mem", "Float frame operands", "fold scalar frame locals and spills into exact-width SSE or AVX arithmetic"),
 	both("multi-bounds-cert", "Multiple bounds proofs", "retain independent proofs for interleaved arrays"),

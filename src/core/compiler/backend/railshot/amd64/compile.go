@@ -37,6 +37,9 @@ var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 // locals. Keep the default on the native qualification platform.
 var wideLocalPinsEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_NO_WIDE_LOCAL_PINS") != "1"
 
+// Float transport keeps the existing path: direct FP edges regressed NanoSVG.
+var directIntBranchMergeEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_NO_DIRECT_INT_BRANCH_MERGE") != "1"
+
 const maxWideLocalPinsLocals = 256
 
 // deadGCNewEnabled removes bounded GC constructor trees whose result is dropped.

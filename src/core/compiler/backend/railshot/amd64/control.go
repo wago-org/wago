@@ -2106,6 +2106,15 @@ func (f *fn) opEnd() error {
 func (f *fn) branchToFrame(fi int) {
 	fr := &f.ctrl[fi]
 	f.convergeBranchLocals(fr)
+	if f.opt(optDirectIntBranchMerge) && fr.has(ctrlRegMerge1) && !fr.res0.isFloat() {
+		// No fallthrough needs a stack copy. Preserve the base operands and
+		// deliver the result using the established merge-register contract.
+		f.recordGCBranchResults(fr, 1)
+		f.reconcileMerge1(fr)
+		f.stats.peep("direct-int-branch-merge")
+		f.branchJump(fr)
+		return
+	}
 	a, d := fr.branchArity(), f.depth()
 	f.flush()
 	if fr.has(ctrlRegMerge1) {
