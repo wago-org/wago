@@ -139,13 +139,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(v)})
+		f.s.pushIntegerConstant(mtI32, int64(v))
 	case 0x42: // i64.const
 		v, err := r.I64()
 		if err != nil {
 			return err
 		}
-		f.pushValue(storage{kind: stConst, typ: mtI64, cval: v})
+		f.s.pushIntegerConstant(mtI64, v)
 
 	case 0x20: // local.get
 		x32, err := r.U32()

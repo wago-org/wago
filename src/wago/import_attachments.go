@@ -536,7 +536,7 @@ func (c *Compiled) hasFuncrefImportContainers() bool {
 }
 
 func (in *Instance) importsFuncrefStorage() bool {
-	if in == nil || in.c == nil {
+	if in == nil || in.c == nil || len(in.c.GlobalImports) == 0 && in.c.tableImport == "" {
 		return false
 	}
 	return in.c.hasFuncrefImportContainers()

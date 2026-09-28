@@ -43,6 +43,16 @@ func (g *invocationGate) Lock() {
 	if g.state.CompareAndSwap(0, invocationGateHeld) {
 		return
 	}
+	g.lockAfterFastAttempt()
+}
+
+// Keep the ordinary CAS path inline without repeating it for a revoked gate.
+//
+//go:noinline
+func (g *invocationGate) lockAfterFastAttempt() {
+	if g.state.Load() == invocationGateRevoked && g.state.CompareAndSwap(invocationGateRevoked, invocationGateRevoked|invocationGateHeld) {
+		return
+	}
 	_ = g.lockContext(nil)
 }
 

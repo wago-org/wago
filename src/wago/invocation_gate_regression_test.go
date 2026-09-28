@@ -164,3 +164,27 @@ func TestInvocationGateBargingPreservesNotifiedWaiterProgress(t *testing.T) {
 		t.Fatal("displaced waiter made no progress")
 	}
 }
+
+func TestInvocationGateRevokedUncontended(t *testing.T) {
+	for _, ordinary := range []bool{true, false} {
+		var gate invocationGate
+		gate.state.Store(invocationGateRevoked)
+		for i := 0; i < 32; i++ {
+			if ordinary {
+				gate.Lock()
+			} else {
+				//lint:ignore SA1012 Explicitly exercise the internal nil-context admission path.
+				if err := gate.lockContext(nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := gate.state.Load(); got != invocationGateHeld|invocationGateRevoked {
+				t.Fatalf("acquired state %d, want held and revoked", got)
+			}
+			gate.Unlock()
+			if got := gate.state.Load(); got != invocationGateRevoked {
+				t.Fatalf("released state %d, want revoked", got)
+			}
+		}
+	}
+}

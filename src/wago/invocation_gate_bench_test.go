@@ -18,6 +18,28 @@ func BenchmarkInvocationGate(b *testing.B) {
 			gate.Unlock()
 		}
 	})
+	for _, ordinary := range []bool{true, false} {
+		name := "ordinary-context-revoked"
+		if ordinary {
+			name = "ordinary-revoked"
+		}
+		b.Run(name, func(b *testing.B) {
+			var gate invocationGate
+			gate.state.Store(invocationGateRevoked)
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				if ordinary {
+					gate.Lock()
+				} else {
+					//lint:ignore SA1012 Explicitly exercise the internal nil-context admission path.
+					if err := gate.lockContext(nil); err != nil {
+						b.Fatal(err)
+					}
+				}
+				gate.Unlock()
+			}
+		})
+	}
 	b.Run("direct-fast", func(b *testing.B) {
 		var gate invocationGate
 		b.ReportAllocs()

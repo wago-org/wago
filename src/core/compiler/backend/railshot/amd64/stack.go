@@ -453,6 +453,20 @@ func (s *stack) pushValue(st storage) *elem {
 	return s.push(e)
 }
 
+// pushIntegerConstant initializes a scalar literal in its zeroed arena node.
+// Logical depth and canonical-slot invalidation match pushValue. Numeric
+// constants cannot introduce a collector root.
+func (s *stack) pushIntegerConstant(typ machineType, value int64) *elem {
+	s.canonicalSlots = false
+	e := s.alloc()
+	e.st.kind = stConst
+	e.st.typ = typ
+	e.st.cval = value
+	e.st.setLogicalRoot(true)
+	s.logicalDepth++
+	return s.push(e)
+}
+
 // pushDeferred replaces one or two logical operands with their deferred
 // expression node. The physical operand nodes remain linked as the expression
 // tree, while the logical depth changes only by the arity reduction.

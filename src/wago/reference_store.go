@@ -421,7 +421,29 @@ func (s *gcInvocationDomainSet) add(domain *gcStoreDomain) {
 }
 
 func (s *gcInvocationDomainSet) sort() {
-	sort.Sort(gcInvocationDomainSetSorter{s})
+	if s == nil || s.n < 2 {
+		return
+	}
+	if s.n <= len(s.inline) {
+		// The inline set has at most four entries. Keep it on the caller's stack.
+		for i := 1; i < s.n; i++ {
+			value := s.inline[i]
+			j := i
+			for j > 0 && value.id < s.inline[j-1].id {
+				s.inline[j] = s.inline[j-1]
+				j--
+			}
+			s.inline[j] = value
+		}
+		return
+	}
+	*s = sortedGCInvocationDomainSet(*s)
+}
+
+// The sort interface retains only this copy. Empty and inline sets never escape.
+func sortedGCInvocationDomainSet(s gcInvocationDomainSet) gcInvocationDomainSet {
+	sort.Sort(gcInvocationDomainSetSorter{&s})
+	return s
 }
 
 type gcInvocationDomainSetSorter struct{ set *gcInvocationDomainSet }
