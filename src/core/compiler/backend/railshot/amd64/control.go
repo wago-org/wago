@@ -1517,7 +1517,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	if kind == cfLoop && !f.unreachable && pN == 0 && rN == 0 && loopPinExchangeEnabled {
 		loopPinPlan, loopPinWrites = f.planLoopPinExchange(r)
 	}
-	if kind == cfLoop && !f.unreachable && f.usesCalls && !f.moduleEH && len(f.customInstructions) == 0 {
+	if kind == cfLoop && !f.unreachable && f.usesCalls && !f.callFreeRegMerges() && !f.moduleEH && len(f.customInstructions) == 0 {
 		loopRegState = f.opt(optLoopRegState) && len(f.pinnedLocals) <= 64
 		var pins []int
 		if loopRegState {

@@ -256,6 +256,22 @@ func (f *fn) reloadLocalsForCall() {
 	}
 }
 
+// callFreeRegMerges uses the existing whole-function call classification. With
+// no calls, every edge can promise register homes without also storing locals.
+func (f *fn) callFreeRegMerges() bool {
+	return f.intervalControl && !f.hasCalls && callFreeRegMergesEnabled
+}
+
+// Callers materialize lazy zeros and finish deferred operand evaluation first.
+func (f *fn) restorePinnedRegisters() {
+	for _, x := range f.pinnedLocals {
+		if f.locals[x].state == lsMem {
+			f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+		}
+		f.locals[x].state = lsReg
+	}
+}
+
 // reconcileLocals converges local state at a control-flow boundary. Lazy zero
 // locals are materialized before paths diverge so unpinned locals have a real
 // slot value on every edge. In call-making functions, pinned locals are also
@@ -270,6 +286,10 @@ func (f *fn) reconcileLocals() {
 				f.materializeZeroLocal(x, true) // leaves pinned locals in lsStackReg
 			}
 		}
+	}
+	if f.callFreeRegMerges() {
+		f.restorePinnedRegisters()
+		return
 	}
 	if !f.usesCalls {
 		return
@@ -288,7 +308,7 @@ func (f *fn) reconcileLocals() {
 // convergeEdgeTo converges pinned-local state for a control edge into the
 // per-frame target *target, RECORDING the target from the current state when
 // this is the frame's first edge. Targets are per-local:
-//   - lsReg: only the register is guaranteed (proved call-free loop header);
+//   - lsReg: only the register is guaranteed (a proved call-free contract);
 //   - lsStackReg: register AND slot valid at the merge;
 //   - lsMem: only the slot is guaranteed — a call-clobbered local stays
 //     unloaded across the merge until a read actually needs it (the lazy-merge
@@ -388,6 +408,19 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 		}
 	}
 	if !f.usesCalls || len(f.pinnedLocals) == 0 {
+		return
+	}
+	// A call-free regional function uses the same register-only contract at
+	// every merge. Reclaimed pins are restored; dirty live pins need no store.
+	if f.callFreeRegMerges() {
+		f.restorePinnedRegisters()
+		if *target == nil {
+			t := f.newLocStateBuf()
+			for i := range t {
+				t[i] = lsReg
+			}
+			*target = t
+		}
 		return
 	}
 	// A proved call-free loop can require register residency at its header.

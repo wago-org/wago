@@ -169,6 +169,9 @@ var intervalRegionPinsEnabled = os.Getenv("WAGO_AMD64_INTERVAL_REGIONS") != "0"
 // WAGO_AMD64_INTERVAL_CONTROL=0 retains the previous whole-function pins.
 var intervalControlEnabled = os.Getenv("WAGO_AMD64_INTERVAL_CONTROL") != "0"
 
+// Call-free regional functions reconcile dedicated pins to register homes.
+var callFreeRegMergesEnabled = os.Getenv("WAGO_AMD64_CALLFREE_REG_MERGES") != "0"
+
 // intervalNextUseEnabled builds a compact per-local event tape for bounded
 // straight-line regions, letting eviction choose the farthest next access and
 // discard values killed by a later definition. RuntimeConfig optimization
