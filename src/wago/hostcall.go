@@ -667,6 +667,7 @@ func (s *hostCallScope) expireInvocationContext(state *hostCallState, generation
 }
 
 type instancePluginState struct {
+	//lint:ignore U1000 used only by wago_profile builds; the ordinary placeholder is empty
 	profileState         profileInstanceState
 	hostScope            hostCallScope
 	activations          instanceActivations

@@ -23,6 +23,7 @@ var hostControlInstances sync.Map // map[uintptr]*Instance
 // parked activation and lets the producer's bound host dispatcher construct a
 // HostModule authorized by the invocation that actually owns the GC lease.
 type hostInvocationContext struct {
+	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
 	profileInvocationState
 	id          invocationID
 	reservation *pluginOperationReservation

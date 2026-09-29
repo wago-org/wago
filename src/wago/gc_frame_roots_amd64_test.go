@@ -1004,7 +1004,9 @@ func TestGCNativeFrameRootAdapterClassifiesFrames(t *testing.T) {
 }
 
 func BenchmarkGCNativeFrameRootMetadataWidths(b *testing.B) {
-	requireCompilerDiagnostics(b)
+	if !requireCompilerDiagnostics(b) {
+		return
+	}
 	for _, roots := range []uint32{64, 65, 128, 256, 1024} {
 		b.Run(fmt.Sprintf("roots=%d", roots), func(b *testing.B) {
 			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithGCCodeTelemetry(true), gcFrameRootLimitModule(roots))

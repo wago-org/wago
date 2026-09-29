@@ -103,6 +103,7 @@ func instantiateArgs(args []any) (InstantiateOptions, error) {
 // fields keep unsafe/off-heap ownership visible; no generic cleanup stack is
 // used on this allocation-sensitive path.
 type instanceBuilder struct {
+	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
 	profileBuilderState
 	c       *Compiled
 	opts    InstantiateOptions

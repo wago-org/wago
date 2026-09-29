@@ -25,7 +25,9 @@ const (
 // required comma-separated exact result vector (`none` for no results), so an A/B
 // cannot pass merely because two wrong executions produced nonzero checksums.
 func BenchmarkGCOptimizationWorkload(b *testing.B) {
-	requireCompilerDiagnostics(b)
+	if !requireCompilerDiagnostics(b) {
+		return
+	}
 	path := os.Getenv(gcOptimizationWorkloadEnv)
 	if path == "" {
 		b.Skipf("set %s to a standalone WasmGC workload exporting run", gcOptimizationWorkloadEnv)

@@ -100,6 +100,8 @@ func (p *compiledProfile) register(base uintptr, code []byte, regions []CodeProf
 	im.Functions = functions
 	p.mappings[base] = p.session.Register(im, code)
 }
+
+//lint:ignore U1000 called by the wago_profile mapping-retirement implementation
 func (p *compiledProfile) retire(base uintptr) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

@@ -53,7 +53,9 @@ func gcNativeResolverSharedModule() []byte {
 }
 
 func TestGCNativeResolverTelemetryAttributesModuleStub(t *testing.T) {
-	requireCompilerDiagnostics(t)
+	if !requireCompilerDiagnostics(t) {
+		return
+	}
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithGCCodeTelemetry(true), gcNativeResolverSharedModule())
 	if err != nil {
 		t.Fatal(err)
