@@ -469,15 +469,25 @@ sample totals instead of producing a truncated or misleading profile.
 function, and sampled `native_pcs` carry their exact `compiler_site` when present.
 Text annotations display the same kind beside the sample count and CPU weight.
 Use pprof's `compiler_site_kind` labels to select samples at these sites.
+`wagoprof top --sites CAPTURE` (or `--sites --json`) summarizes sample counts and
+weights by recorded site kind across all functions, independent of `--limit`.
+Unclassified guest samples and unknown/non-guest samples remain separate.
 
 Current kinds distinguish explicit GP, floating-point, and vector operand spills
 and materialized reloads, plus custom-value spill stores and linear-memory bounds
-branches. A bounds site covers the conditional failure branch; it does not claim
+branches. AMD64 also records `gp-local-load` and `gp-local-store` for direct
+integer local-frame transfers, including initialization, parameter homing,
+pinned-local writebacks, and call synchronization. These are separate from
+operand spill counters. A bounds site covers the conditional failure branch; it does not claim
 the surrounding address or predicate instructions. Folded stack operands,
-pinned-local writebacks, and decisions without recorded sites stay unclassified.
+scalar FP/vector local transfers, and decisions without recorded sites stay unclassified.
 The map is separate from existing function-level counters and need not have the
 same totals. It describes final surviving emission sites, not dynamic operation
 counts or a measured saving from a compiler optimization.
+Sample weight at a load or store is not a count of memory accesses or time spent
+waiting for memory; instruction-level sampling can include skid and surrounding
+dependencies. Use native disassembly and matched execution measurements to
+evaluate a proposed change.
 
 Sites follow tentative-code rollback, instruction shortening, frame compaction,
 and module adapter layout changes. Eliminated sites disappear; neighboring sites

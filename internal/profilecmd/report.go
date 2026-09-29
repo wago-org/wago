@@ -108,6 +108,9 @@ func report(command string, args []string) error {
 	if err := f.Parse(args); err != nil {
 		return err
 	}
+	if *cfg.sites && command != "top" {
+		return fmt.Errorf("--sites is only supported by top")
+	}
 	if *limit < 0 {
 		return fmt.Errorf("limit must be nonnegative")
 	}
@@ -149,6 +152,15 @@ func report(command string, args []string) error {
 	top, err := makeTop(c, *limit)
 	if err != nil {
 		return err
+	}
+	if *cfg.sites {
+		if top.StaticOnly {
+			return fmt.Errorf("--sites requires native samples")
+		}
+		top.SiteSamples, err = summarizeSites(c.report)
+		if err != nil {
+			return err
+		}
 	}
 	return writeTop(os.Stdout, top, *asJSON)
 }
@@ -306,6 +318,7 @@ type reportConfig struct {
 	assembly *bool
 	limit    *int
 	asJSON   *bool
+	sites    *bool
 }
 
 func reportFlags(command string) (*flag.FlagSet, *reportConfig) {
@@ -315,6 +328,7 @@ func reportFlags(command string) (*flag.FlagSet, *reportConfig) {
 	cfg.assembly = f.Bool("assembly", false, "use perf annotate for native disassembly")
 	cfg.limit = f.Int("limit", 20, "maximum displayed top rows; zero shows all")
 	cfg.asJSON = f.Bool("json", false, "print machine-readable report")
+	cfg.sites = f.Bool("sites", false, "top: summarize samples at recorded compiler sites across all functions")
 	return f, cfg
 }
 

@@ -62,10 +62,14 @@ func (f *fn) localConstZero(x int) bool {
 }
 
 func (f *fn) loadFrameInt(dst Reg, off int32, typ machineType) {
+	start := f.a.Len()
 	if typ == mtI32 {
 		f.a.Load32(dst, RSP, off)
 	} else {
 		f.a.Load64(dst, RSP, off)
+	}
+	if profileEnabled {
+		f.recordProfileCodeSite(start, "gp-local-load")
 	}
 }
 
@@ -78,10 +82,14 @@ func (f *fn) moveInt(dst, src Reg, typ machineType) {
 }
 
 func (f *fn) storeFrameInt(off int32, src Reg, typ machineType) {
+	start := f.a.Len()
 	if typ == mtI32 {
 		f.a.Store32(RSP, off, src)
 	} else {
 		f.a.Store64(RSP, off, src)
+	}
+	if profileEnabled {
+		f.recordProfileCodeSite(start, "gp-local-store")
 	}
 }
 

@@ -11,6 +11,51 @@ import (
 	"testing"
 )
 
+func TestProfileLocalFrameTransfersAreSeparateFromOperandSpills(t *testing.T) {
+	for _, typ := range []machineType{mtI32, mtI64} {
+		emit := func(enabled bool) ([]byte, []jitprofile.CodeSite) {
+			f := &fn{a: &encoder.Asm{}, stats: &CodegenStats{RecordSources: enabled}}
+			f.a.B = append(f.a.B, 0x90)
+			f.loadFrameInt(R12, 24, typ)
+			f.a.B = append(f.a.B, 0x90)
+			f.storeFrameInt(24, R12, typ)
+			f.a.B = append(f.a.B, 0x90)
+			if f.stats.Spills != 0 || f.stats.Reloads != 0 {
+				t.Fatal("local transport counted as operand spills", f.stats)
+			}
+			return f.a.B, f.profileCodeSites()
+		}
+		plain, absent := emit(false)
+		code, sites := emit(true)
+		if !bytes.Equal(plain, code) || len(absent) != 0 || len(sites) != 2 || sites[0].Kind != "gp-local-load" || sites[1].Kind != "gp-local-store" {
+			t.Fatal(typ, sites, absent)
+		}
+		if err := jitprofile.ValidateCodeSites(sites, uint64(len(code))); err != nil {
+			t.Fatal(err)
+		}
+		for i, site := range sites {
+			want := &encoder.Asm{}
+			if i == 0 {
+				if typ == mtI32 {
+					want.Load32(R12, RSP, 24)
+				} else {
+					want.Load64(R12, RSP, 24)
+				}
+			} else if typ == mtI32 {
+				want.Store32(RSP, 24, R12)
+			} else {
+				want.Store64(RSP, 24, R12)
+			}
+			if !bytes.Equal(code[site.Offset:site.Offset+site.Size], want.B) {
+				t.Fatal("site does not cover exactly one local transfer", site)
+			}
+		}
+		if _, ok := jitprofile.LookupCodeSite(sites, uint64(len(code)-1)); ok {
+			t.Fatal("site covers trailing NOP")
+		}
+	}
+}
+
 func TestProfileCustomSpillSitesCoverEachStoredRegister(t *testing.T) {
 	typ, err := plugins.PrepareCustomType(plugins.CustomTypeSpec{Name: "profile.vector", Size: 64, Carrier: plugins.WasmI32})
 	if err != nil {
