@@ -485,6 +485,28 @@ jobs:
         if: matrix.runtime && runner.os != 'Windows'
         run: just test unit
 
+      - name: Diagnostic dead-code elimination
+        if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: scripts/check-diagnostic-dce.sh
+
+      - name: Compiler diagnostic tests
+        if: matrix.runtime
+        run: go test -count=1 -tags wago_codegenstats ./src/core/compiler/backend/railshot/... ./src/wago ./cli/runtime/internal/artifactcache
+
+      - name: Profiling metadata and capture tests
+        if: matrix.runtime
+        run: go test -count=1 -tags wago_profile ./internal/jitprofile ./profile ./internal/profcapture ./internal/profilecmd ./cli/internal/profiling
+
+      - name: Profiling runtime and source-map tests
+        if: matrix.runtime
+        run: go test -count=1 -tags wago_profile -run '^Test(CodeProfile|Profile|AdapterUnwind)' ./src/wago ./src/core/compiler/backend/railshot/...
+
+      - name: Build native unwind qualification fixtures
+        if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          mkdir -p "$RUNNER_TEMP/unwind-fixtures"
+          go build -tags wago_profile -o "$RUNNER_TEMP/unwind-fixtures/" ./profile/testdata/unwindprobe ./profile/testdata/wasmunwind ./profile/testdata/adapterunwind
+
       - name: Native GC telemetry tests
         if: matrix.runtime
         run: go test -tags wago_gcstats ./src/core/runtime/gc/... -count=1
