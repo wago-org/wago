@@ -76,7 +76,12 @@ build_profile() {
   fi
   (cd "$dir" && GOOS="$target_os" GOARCH="$target_arch" tinygo "${args[@]}" -o "$output" "$package")
   if [[ "$target_os" == linux ]]; then
-    if command -v strip >/dev/null 2>&1 && strip --help 2>&1 | grep -q -- '--strip-section-headers'; then
+    # A GNU-compatible override supports reproducible cross-host qualification.
+    # LLVM's fallback preserves ELF segment gaps even after removing .eh_frame,
+    # so its file size is not equivalent to the GNU-stripped CI release artifact.
+    if [[ -n "${SIZE_STRIP_TOOL:-}" ]]; then
+      "$SIZE_STRIP_TOOL" -s --strip-section-headers --remove-section=.eh_frame --remove-section=.eh_frame_hdr --remove-section=.comment "$output"
+    elif command -v strip >/dev/null 2>&1 && strip --help 2>&1 | grep -q -- '--strip-section-headers'; then
       strip -s --strip-section-headers --remove-section=.eh_frame --remove-section=.eh_frame_hdr --remove-section=.comment "$output"
     elif command -v llvm-strip >/dev/null 2>&1; then
       llvm-strip --strip-sections "$output"
@@ -97,7 +102,11 @@ if [[ -n "$baseline_ref" ]] && git rev-parse --verify -q "$baseline_ref^{commit}
   baseline_sha=$(git rev-parse "$baseline_ref^{commit}")
   go_toolchain=$(go version)
   tinygo_toolchain=$(tinygo version 2>/dev/null || printf 'unavailable')
-  strip_toolchain=$(strip --version 2>/dev/null | sed -n '1p' || llvm-strip --version 2>/dev/null | sed -n '1p' || printf 'unavailable')
+  if [[ -n "${SIZE_STRIP_TOOL:-}" ]]; then
+    strip_toolchain=$("$SIZE_STRIP_TOOL" --version | sed -n '1p')
+  else
+    strip_toolchain=$(strip --version 2>/dev/null | sed -n '1p' || llvm-strip --version 2>/dev/null | sed -n '1p' || printf 'unavailable')
+  fi
   baseline_identity=$(printf '%s\n' \
     "source=$baseline_sha" \
     "target=$target_os/$target_arch" \
@@ -184,18 +193,22 @@ while IFS='|' read -r name tags package toolchain; do
   fi
 done < <(profile_specs)
 
-for name in "${symbol_profiles[@]}"; do
-  while IFS='|' read -r profile tags package toolchain; do
-    [[ "$profile" == "$name" ]] || continue
-    attributed="$build_tmp/$name-symbols"
-    build_profile "$root" "$name" "$tags" "$package" "$toolchain" "$attributed" true
-    rank=0
-    while read -r _address symbol_bytes symbol_type symbol_name; do
-      rank=$((rank + 1))
-      printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$rank" "$symbol_bytes" "$symbol_type" "$symbol_name" >>"$symbol_tsv"
-    done < <(go tool nm -size -sort size "$attributed" | awk 'NR <= 25')
-  done < <(profile_specs)
-done
+# Bash 3.2 treats expansion of an empty array as unbound under set -u.
+# All Go profiles may pass while the TinyGo profile alone exceeds its budget.
+if (( ${#symbol_profiles[@]} > 0 )); then
+  for name in "${symbol_profiles[@]}"; do
+    while IFS='|' read -r profile tags package toolchain; do
+      [[ "$profile" == "$name" ]] || continue
+      attributed="$build_tmp/$name-symbols"
+      build_profile "$root" "$name" "$tags" "$package" "$toolchain" "$attributed" true
+      rank=0
+      while read -r _address symbol_bytes symbol_type symbol_name; do
+        rank=$((rank + 1))
+        printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$rank" "$symbol_bytes" "$symbol_type" "$symbol_name" >>"$symbol_tsv"
+      done < <(go tool nm -size -sort size "$attributed" | awk 'NR <= 25')
+    done < <(profile_specs)
+  done
+fi
 
 summary="Build sizes: $profiles profiles within budget"
 if (( failures != 0 )); then
@@ -203,7 +216,7 @@ if (( failures != 0 )); then
 fi
 {
   printf '%s\n\n' "$summary"
-  printf '| Profile | Size | Delta vs main | Budget |\n'
+  printf '| Profile | Size | Delta vs baseline | Budget |\n'
   printf '|---|---:|---:|---:|\n'
   printf '%b' "$rows"
   # Backticks are Markdown literals; target substitution is through printf's %s.

@@ -85,6 +85,7 @@ func TestEightGPReferenceAndCrossTailRemainGated(t *testing.T) {
 }
 
 func TestReturnCallDirectReusesFrameForDeepRecursion(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	// (func (param i32) (result i32)
 	//   local.get 0; i32.eqz
 	//   if (result i32) i32.const 7
@@ -157,6 +158,7 @@ func TestReturnCallDirectPreservesResultsAndTraps(t *testing.T) {
 }
 
 func TestReturnCallDirectWrapperReusesBoundedTailBank(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modFuncs(t, funcDef{
 		params:  []wasm.ValType{wasm.I32, wasm.FuncRef},
 		results: []wasm.ValType{wasm.I32},

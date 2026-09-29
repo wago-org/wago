@@ -12,6 +12,7 @@ import (
 )
 
 func TestSizeIncDecImmediateForms(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	tests := []struct {
 		name    string
 		type_   wasm.ValType
@@ -51,6 +52,7 @@ func TestSizeIncDecImmediateForms(t *testing.T) {
 }
 
 func TestSizeIncDecDirectAdjustments(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	tests := []struct {
 		name      string
 		compact   bool

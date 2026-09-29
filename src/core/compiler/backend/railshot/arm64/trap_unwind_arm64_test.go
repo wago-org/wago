@@ -22,6 +22,7 @@ func emitTwoTrapGroupsArm64(compact bool) (*fn, int) {
 }
 
 func TestModuleSharedTrapBodySeedsFromHostBoundaryArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 	callee := []byte{
 		0x00,
@@ -72,6 +73,7 @@ func TestCompactNativeSharedTrapUnwindExecutesArm64(t *testing.T) {
 }
 
 func TestCompactNativeSharesFunctionLocalTrapUnwindArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := sharedTrapBodyEnabled
 	sharedTrapBodyEnabled = false
 	t.Cleanup(func() { sharedTrapBodyEnabled = before })
@@ -89,6 +91,7 @@ func TestCompactNativeSharesFunctionLocalTrapUnwindArm64(t *testing.T) {
 }
 
 func TestCompactNativeSharesCompleteTrapBodyArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := sharedTrapBodyEnabled
 	sharedTrapBodyEnabled = true
 	t.Cleanup(func() { sharedTrapBodyEnabled = before })
@@ -106,6 +109,7 @@ func TestCompactNativeSharesCompleteTrapBodyArm64(t *testing.T) {
 }
 
 func TestCompactNativeSharesModuleTrapBodiesArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	oldInline := inlineEnabled
 	inlineEnabled = false
 	t.Cleanup(func() { inlineEnabled = oldInline })

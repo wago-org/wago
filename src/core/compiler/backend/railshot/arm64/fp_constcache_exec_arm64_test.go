@@ -10,6 +10,7 @@ import (
 )
 
 func TestFloatConstCacheInlineBranchExecARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	// The caller has no float literal, so its hint skips preload. Inlining
 	// introduces 100 in each arm after the function becomes call-free.
 	// Installing it in the then arm leaves the else arm uninitialized.

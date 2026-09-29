@@ -33,6 +33,7 @@ func compactI32FrameOptions(enabled bool, stats *ModuleStats) CompileOptions {
 }
 
 func compileCompactI32FrameStats(t *testing.T, m *wasm.Module, enabled bool) *CodegenStats {
+	requireCompilerDiagnostics(t)
 	t.Helper()
 	stats := &ModuleStats{}
 	cm, err := CompileModuleWith(m, compactI32FrameOptions(enabled, stats))

@@ -66,6 +66,7 @@ func brTableLabelsInRAX(t testing.TB, labels []uint32, def uint32) *wasm.Module 
 }
 
 func TestExecBrTableCompactTargetIDsAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	labels := []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}
 	m := brTableLabelsInRAX(t, labels, 4)
 	var stats ModuleStats

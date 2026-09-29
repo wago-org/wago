@@ -13,8 +13,8 @@ import (
 )
 
 func TestStagedStructuralProductSidecarFootprint(t *testing.T) {
-	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
-		t.Fatalf("compiledCodeCache size = %d, want 64 bytes", got)
+	if got := unsafe.Sizeof(compiledCodeCache{}) - unsafe.Sizeof(profileCacheState{}); got != 64 {
+		t.Fatalf("compiledCodeCache non-profiling size = %d, want 64 bytes", got)
 	}
 }
 

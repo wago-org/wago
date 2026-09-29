@@ -103,7 +103,11 @@ func (f *fn) spillF(e *elem) {
 		cold := f.s.elemCold(e)
 		slot := f.allocSpillSlots(int(cold.custom.Size() / 8))
 		for i, reg := range cold.vregs {
+			start := f.a.Len()
 			f.a.StrQ(SP, f.spillOff(slot+i*2), reg)
+			if profileEnabled {
+				f.recordProfileCodeSite(start, "custom-spill")
+			}
 			f.fregUser[reg] = nil
 		}
 		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: uint32(slot)})
@@ -112,12 +116,18 @@ func (f *fn) spillF(e *elem) {
 	if e.st.typ == mtV128 {
 		slot := f.allocSpillSlots(2)
 		f.a.StrQ(a64.SP, f.spillOff(slot), r)
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "vector-spill")
+		}
 		f.fregUser[r] = nil
 		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 		return
 	}
 	slot := f.allocSpillSlot()
 	f.a.StrF(a64.SP, f.spillOff(slot), r, true)
+	if profileEnabled {
+		f.recordProfileCodeSite(before, "fp-spill")
+	}
 	f.fregUser[r] = nil
 	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 }
@@ -144,6 +154,9 @@ func (f *fn) materializeF(e *elem) Reg {
 		x := f.allocFReg(0)
 		before := f.a.Len()
 		f.a.LdrF(x, a64.SP, f.spillOff(e.st.slotIndex()), true) // 8B; f32 uses the low 4
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "fp-reload")
+		}
 		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
 		f.occupyF(e, x)
 		return x
@@ -161,7 +174,7 @@ func (f *fn) materializeF(e *elem) Reg {
 		return x
 	case stMemRef:
 		x := f.allocFReg(0)
-		f.loadFMemRef(x, e.st)
+		f.loadFMemRef(x, e)
 		f.releaseMemRef(e.st)
 		f.occupyF(e, x)
 		return x
@@ -404,7 +417,7 @@ func (f *fn) emitFloatConstPool() error {
 		}
 	}
 	f.recordOpaqueData(poolStart, f.a.Len())
-	if f.stats != nil {
+	if diagnosticsEnabled && f.stats != nil {
 		f.stats.NativeSize.LiteralPoolBytes += f.a.Len() - poolStart
 	}
 	f.floatPool = f.floatPool[:0]
@@ -1045,7 +1058,12 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 
 // helpers
 
-func (f *fn) loadFMemRef(dst Reg, st storage) {
+func (f *fn) loadFMemRef(dst Reg, e *elem) {
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		previous := f.enterProfileNode(e)
+		defer f.switchProfileOrigin(previous)
+	}
+	st := e.st
 	f.a.LdrFIdx(dst, linMemReg, st.reg, st.memDisp(), st.typ == mtF64)
 }
 

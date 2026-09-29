@@ -196,6 +196,7 @@ func TestScratchClearNodeReferencesArm64(t *testing.T) {
 }
 
 func TestScratchNodeResourceStatsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	nodes := int(shared.MaxRetainedStackArenaBytes/uint64(unsafe.Sizeof(elem{}))) + maxStackChunkCap
 	sc := newScratchWithStackCap(minStackArenaCap)
 	for i := 1; i < nodes; i++ {

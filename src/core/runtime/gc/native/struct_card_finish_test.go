@@ -123,13 +123,10 @@ func TestStructCardRejectedPrefix(t *testing.T) {
 			stack := append([]uint32(nil), c.markStack...)
 			cards := append([]objectCard(nil), c.objectCards...)
 			entries := append([]handleEntry(nil), c.handles...)
-			c.cfg.Telemetry = new(Telemetry)
-			c.cfg.Telemetry.active.active = true
-			telemetry := *c.cfg.Telemetry
 			if c.scanStructCardRanges(h) {
 				t.Fatal("rejected metadata admitted")
 			}
-			if !reflect.DeepEqual(marks, c.mark) || !reflect.DeepEqual(stack, c.markStack) || !reflect.DeepEqual(cards, c.objectCards) || !reflect.DeepEqual(entries, c.handles) || c.cardFallback || !reflect.DeepEqual(telemetry, *c.cfg.Telemetry) {
+			if !reflect.DeepEqual(marks, c.mark) || !reflect.DeepEqual(stack, c.markStack) || !reflect.DeepEqual(cards, c.objectCards) || !reflect.DeepEqual(entries, c.handles) || c.cardFallback {
 				t.Fatal("rejection changed scan state")
 			}
 			full := kind != "duplicate" && kind != "overlap" && kind != "33"

@@ -10,6 +10,7 @@ import (
 )
 
 func TestMemory32AddressZExtElision(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	t.Run("frame local", func(t *testing.T) {
 		// Give fifteen parameters more uses than parameter 15 so the latter remains
 		// frame-resident. The wrapper passes dirty upper bits, while the i32 frame
@@ -270,6 +271,7 @@ func TestCleanMemory32AddressProof(t *testing.T) {
 }
 
 func TestMemory64AddressDoesNotUseZExtElision(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}, []byte{
 		0x00, 0x20, 0x00, 0x2d, 0x00, 0x00, 0x0b,
 	})

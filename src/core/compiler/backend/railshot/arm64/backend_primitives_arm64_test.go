@@ -381,6 +381,7 @@ func TestSpillIfUsedRegisterValue(t *testing.T) {
 }
 
 func TestOwnedMemRefDestinationAliasUsesThreeRegisters(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	stats := &CodegenStats{}
 	f := &fn{a: &a64.Asm{}, s: newStack(), stats: stats}
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
@@ -1172,6 +1173,7 @@ func TestOptimizationKnobAndABIHelpers(t *testing.T) {
 }
 
 func TestCodegenStatsFormattingAndRegisterNames(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	stats := &CodegenStats{
 		FuncIdx:           2,
 		Name:              "work",

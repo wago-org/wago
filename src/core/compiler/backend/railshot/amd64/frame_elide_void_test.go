@@ -9,6 +9,7 @@ import (
 )
 
 func TestFrameElidesRegisterOnlyVoidLeafAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modFuncs(t, funcDef{body: []byte{0x00, 0x0b}})
 	compile := func(enabled bool) (*ModuleStats, int) {
 		var stats ModuleStats
@@ -48,6 +49,7 @@ func TestFrameElidesRegisterOnlyVoidLeafAMD64(t *testing.T) {
 }
 
 func TestFrameDoesNotElideExceptionHandlingVoidLeafAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modFuncs(t, funcDef{body: []byte{
 		0x00,                                        // no locals
 		0x1f, 0x40, 0x01, byte(wasm.CatchAll), 0x00, // try_table void, catch_all label 0

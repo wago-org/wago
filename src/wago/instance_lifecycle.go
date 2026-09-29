@@ -51,6 +51,10 @@ func (in *Instance) Close() (err error) {
 			in.tryFinalize()
 		}
 	}()
+	if codeProfileEnabled && in.lifecycleProfile() != nil {
+		span := in.beginProfileLifecycle("logical-close")
+		defer finishProfileBoundary(span, &err)
+	}
 	return in.closeOnce()
 }
 
@@ -458,6 +462,10 @@ func (in *Instance) constructionReservationSnapshot() *pluginOperationReservatio
 // releaseResources performs the physical teardown after tryFinalize has claimed
 // it by setting resourcesClosed under lifeMu.
 func (in *Instance) releaseResources() {
+	if codeProfileEnabled && in.lifecycleProfile() != nil {
+		span := in.beginProfileLifecycle("physical-release")
+		defer finishProfileBoundary(span, nil)
+	}
 	if state := in.closeState.Load(); state != nil && state.interruptStop != nil {
 		state.interruptStop()
 		state.interruptStop = nil
@@ -495,7 +503,7 @@ func (in *Instance) releaseResources() {
 	}
 	unregisterHostControl(in)
 	if in.thunkMem != nil {
-		runtime.Unmap(in.thunkMem)
+		in.c.unmapProfileCode(in.thunkMem)
 		in.thunkMem = nil
 	}
 	in.c.releaseCode()

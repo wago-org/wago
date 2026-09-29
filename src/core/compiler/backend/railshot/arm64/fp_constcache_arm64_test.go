@@ -77,6 +77,7 @@ func TestEncodeFPImmediateArm64Exhaustive(t *testing.T) {
 }
 
 func TestFPImmediateConstExecArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, value := range []float64{0, 0.125, 0.5, 1, 2, -1, -31} {
 		t.Run(fmt.Sprintf("%g", value), func(t *testing.T) {
 			bits := math.Float64bits(value)
@@ -104,6 +105,7 @@ func TestFPImmediateConstExecArm64(t *testing.T) {
 }
 
 func TestFloatLiteralPoolExecArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforePool := floatLiteralPoolEnabled
 	beforeValidate := nativeFinalizerValidate
 	floatLiteralPoolEnabled = true

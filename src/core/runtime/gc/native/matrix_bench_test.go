@@ -86,61 +86,6 @@ func (h *pauseHistogram) report(b *testing.B, prefix string) {
 	b.ReportMetric(float64(h.maxNS), prefix+"-max-ns")
 }
 
-type gcMatrixTelemetryTotals struct {
-	cycles  uint64
-	totalNS uint64
-	phases  PhaseTelemetry
-	roots   RootTelemetry
-	trace   TraceTelemetry
-	nursery NurseryTelemetry
-	cards   CardTelemetry
-}
-
-func (t *gcMatrixTelemetryTotals) add(c CollectionTelemetry) {
-	t.cycles += c.Cycles
-	t.totalNS += c.TotalNS
-	addPhaseTelemetry(&t.phases, c.Phases)
-	addRootTelemetry(&t.roots, c.Roots)
-	addTraceTelemetry(&t.trace, c.Trace)
-	addNurseryTelemetry(&t.nursery, c.Nursery)
-	addCardTelemetry(&t.cards, c.Cards)
-}
-
-func rootClassTelemetry(roots RootTelemetry, class RootClass) (count, ns uint64) {
-	switch class {
-	case RootGlobal:
-		return roots.Globals, roots.GlobalNS
-	case RootTable:
-		return roots.Tables, roots.TableNS
-	case RootPublicToken:
-		return roots.PublicTokens, roots.PublicTokenNS
-	case RootForeignInstance:
-		return roots.ForeignInstances, roots.ForeignInstanceNS
-	case RootSnapshotTemporary:
-		return roots.SnapshotTemporaries, roots.SnapshotTemporaryNS
-	default:
-		return roots.NativeFrames, roots.NativeFrameNS
-	}
-}
-
-func (t *gcMatrixTelemetryTotals) report(b *testing.B) {
-	if t.cycles == 0 {
-		return
-	}
-	perOp := 1 / float64(b.N)
-	b.ReportMetric(float64(t.totalNS)*perOp, "collector-total-ns/op")
-	b.ReportMetric(float64(t.phases.RootEnumerationNS+t.phases.PersistentRootsNS+t.phases.NativeFrameRootsNS)*perOp, "root-ns/op")
-	b.ReportMetric(float64(t.phases.ReferenceScanningNS)*perOp, "reference-scan-ns/op")
-	b.ReportMetric(float64(t.phases.PromotionCopyNS)*perOp, "promotion-ns/op")
-	b.ReportMetric(float64(t.phases.SweepNS)*perOp, "sweep-ns/op")
-	b.ReportMetric(float64(t.trace.ObjectsVisited)*perOp, "objects-visited/op")
-	b.ReportMetric(float64(t.trace.PayloadBytesVisited)*perOp, "payload-bytes-visited/op")
-	b.ReportMetric(float64(t.trace.ReferenceSlotsVisited)*perOp, "reference-slots-visited/op")
-	b.ReportMetric(float64(t.nursery.PromotedBytes)*perOp, "promoted-bytes/op")
-	b.ReportMetric(float64(t.cards.ScannedSlots)*perOp, "card-slots-scanned/op")
-	b.ReportMetric(float64(t.cards.WholeObjectScans)*perOp, "whole-object-scans/op")
-}
-
 func TestGCPauseHistogram(t *testing.T) {
 	var h pauseHistogram
 	for _, ns := range []time.Duration{0, 1, 2, 3, 4, 8, 16, 32, 64, 128} {
@@ -285,9 +230,7 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 				name := fmt.Sprintf("%s/%s/survival=%d", profile.name, layout.name, survival)
 				b.Run(name, func(b *testing.B) {
 					cfg := gcMatrixConfig(profile.profile)
-					if collectorTelemetryEnabled {
-						cfg.Telemetry = new(Telemetry)
-					}
+
 					c, err := NewCollector(cfg, types)
 					if err != nil {
 						b.Fatal(err)
@@ -299,7 +242,6 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 						roots[i] = &rootValues[i]
 					}
 					var pauses pauseHistogram
-					var telemetryTotals gcMatrixTelemetryTotals
 					var checksum uint64
 					b.ReportAllocs()
 					b.ReportMetric(100, "objects/op")
@@ -307,9 +249,7 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
 						b.StopTimer()
-						if collectorTelemetryEnabled {
-							c.ResetTelemetry()
-						}
+
 						for j := 0; j < 100; j++ {
 							r, err := layout.alloc(c)
 							if err != nil {
@@ -335,17 +275,7 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 						if err != nil {
 							b.Fatal(err)
 						}
-						if collectorTelemetryEnabled {
-							telemetrySnapshot, ok := c.TelemetrySnapshot()
-							if !ok {
-								b.Fatal("collector telemetry disabled")
-							}
-							if profile.collection == "minor" {
-								telemetryTotals.add(telemetrySnapshot.Minor)
-							} else {
-								telemetryTotals.add(telemetrySnapshot.Full)
-							}
-						}
+
 						if got := c.Stats().LiveObjects; got != uint32(survival) {
 							b.Fatalf("live objects = %d, want %d", got, survival)
 						}
@@ -374,7 +304,6 @@ func BenchmarkGCCollectionMatrix(b *testing.B) {
 						b.Fatal("semantic checksum is zero")
 					}
 					pauses.report(b, "pause")
-					telemetryTotals.report(b)
 				})
 			}
 		}
@@ -398,9 +327,7 @@ func BenchmarkGCSparseRememberedArray(b *testing.B) {
 			for _, density := range []string{"sparse", "dense"} {
 				b.Run(fmt.Sprintf("elements=%d/card-bytes=%d/%s", length, cardBytes, density), func(b *testing.B) {
 					cfg := Config{NurseryBytes: 1 << 20, ThroughputHeapBytes: 64 << 20}
-					if collectorTelemetryEnabled {
-						cfg.Telemetry = new(Telemetry)
-					}
+
 					c, err := NewCollector(cfg, []TypeDesc{leaf, refs})
 					if err != nil {
 						b.Fatal(err)
@@ -428,9 +355,7 @@ func BenchmarkGCSparseRememberedArray(b *testing.B) {
 					} else {
 						b.ReportMetric(float64(length), "dirty-writes/op")
 					}
-					if collectorTelemetryEnabled {
-						c.ResetTelemetry()
-					}
+
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
 						b.StopTimer()
@@ -495,15 +420,7 @@ func BenchmarkGCSparseRememberedArray(b *testing.B) {
 					if checksum == 0 {
 						b.Fatal("remembered-set semantic checksum is zero")
 					}
-					if collectorTelemetryEnabled {
-						snapshot, ok := c.TelemetrySnapshot()
-						if !ok {
-							b.Fatal("collector telemetry disabled")
-						}
-						b.ReportMetric(float64(snapshot.Minor.Cards.ScannedSlots)/float64(b.N), "card-slots-scanned/op")
-						b.ReportMetric(float64(snapshot.Minor.Cards.WholeObjectScans)/float64(b.N), "whole-object-scans/op")
-						b.ReportMetric(float64(snapshot.Minor.Cards.DuplicateDirties)/float64(b.N), "duplicate-dirties/op")
-					}
+
 					pauses.report(b, "minor-pause")
 				})
 			}
@@ -524,9 +441,7 @@ func BenchmarkGCDirtyPersistentRoots(b *testing.B) {
 			// survivor policy out of the fixture so one minor deterministically
 			// promotes the retained child before the cleanup full collection.
 			cfg := Config{NurseryBytes: 1 << 20, DisableMovingNursery: true}
-			if collectorTelemetryEnabled {
-				cfg.Telemetry = new(Telemetry)
-			}
+
 			c, err := NewCollector(cfg, []TypeDesc{leaf})
 			if err != nil {
 				b.Fatal(err)
@@ -537,9 +452,7 @@ func BenchmarkGCDirtyPersistentRoots(b *testing.B) {
 			}
 			dirty := uint32(slots - 1)
 			var pauses pauseHistogram
-			if collectorTelemetryEnabled {
-				c.ResetTelemetry()
-			}
+
 			b.ReportAllocs()
 			b.ReportMetric(1, "dirty-root-slots/op")
 			b.ResetTimer()
@@ -573,14 +486,7 @@ func BenchmarkGCDirtyPersistentRoots(b *testing.B) {
 				b.StartTimer()
 			}
 			b.StopTimer()
-			if collectorTelemetryEnabled {
-				snapshot, ok := c.TelemetrySnapshot()
-				if !ok {
-					b.Fatal("collector telemetry disabled")
-				}
-				b.ReportMetric(float64(snapshot.Minor.Cards.DirtyRootCards)/float64(b.N), "dirty-root-cards/op")
-				b.ReportMetric(float64(snapshot.Minor.Roots.Globals)/float64(b.N), "global-root-visits/op")
-			}
+
 			pauses.report(b, "minor-pause")
 		})
 	}
@@ -618,9 +524,7 @@ func BenchmarkGCRootClassMatrix(b *testing.B) {
 			for _, rootCount := range []int{1, 64, 4096} {
 				b.Run(fmt.Sprintf("%s/%s/count=%d", profile.name, rootClass.name, rootCount), func(b *testing.B) {
 					cfg := gcMatrixConfig(profile.profile)
-					if collectorTelemetryEnabled {
-						cfg.Telemetry = new(Telemetry)
-					}
+
 					c, err := NewCollector(cfg, []TypeDesc{leaf})
 					if err != nil {
 						b.Fatal(err)
@@ -652,9 +556,7 @@ func BenchmarkGCRootClassMatrix(b *testing.B) {
 					var checksum uint64
 					b.ReportAllocs()
 					b.ReportMetric(float64(rootCount), "roots/op")
-					if collectorTelemetryEnabled {
-						c.ResetTelemetry()
-					}
+
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
 						start := time.Now()
@@ -671,15 +573,7 @@ func BenchmarkGCRootClassMatrix(b *testing.B) {
 					if checksum != uint64(b.N) {
 						b.Fatalf("live checksum = %d, want %d", checksum, b.N)
 					}
-					if collectorTelemetryEnabled {
-						snapshot, ok := c.TelemetrySnapshot()
-						if !ok {
-							b.Fatal("collector telemetry disabled")
-						}
-						count, ns := rootClassTelemetry(snapshot.Full.Roots, rootClass.class)
-						b.ReportMetric(float64(count)/float64(b.N), "classified-roots/op")
-						b.ReportMetric(float64(ns)/float64(b.N), "classified-root-ns/op")
-					}
+
 					pauses.report(b, "full-pause")
 				})
 			}

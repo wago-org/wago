@@ -969,6 +969,10 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 
 	old := f.localBase
 	oldTraceFunc, oldTraceBase, oldPC := f.traceFuncIdx, f.tracePCBase, f.wasmPC
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		previous := f.enterProfileInline()
+		defer f.leaveProfileInline(previous)
+	}
 	f.localBase = base
 	f.traceFuncIdx, f.tracePCBase = uint32(t.globalIdx), t.localDeclBytes
 	oldInlineDepth := f.inlineDepth
@@ -1075,7 +1079,15 @@ func (f *fn) inlineBody(body []byte) error {
 		case 0x01: // nop — the driver's body() handles this outside emitPlain
 			continue
 		}
-		if err := f.emitPlain(r, op); err != nil {
+		var previous profileOrigin
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			previous = f.enterProfileInstruction()
+		}
+		err = f.emitPlain(r, op)
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.switchProfileOrigin(previous)
+		}
+		if err != nil {
 			return err
 		}
 	}

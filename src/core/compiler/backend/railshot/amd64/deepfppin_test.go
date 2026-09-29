@@ -106,6 +106,7 @@ func TestDeepFPPinsAcrossCall(t *testing.T) {
 }
 
 func TestFPPinRelinquishmentAvoidsRetry(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const local = 0
 	stats := &CodegenStats{}
 	f := fn{
@@ -134,6 +135,7 @@ func TestFPPinRelinquishmentAvoidsRetry(t *testing.T) {
 }
 
 func TestRelinquishedFPPinWriteEvictsBorrower(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, tc := range []struct {
 		name string
 		typ  machineType

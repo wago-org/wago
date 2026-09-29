@@ -258,7 +258,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		// A deferred linear-memory load can NEVER be folded as a CMP operand on
 		// arm64 (memRefFoldable is always false, §4a), so we always materialize the
 		// value into a register first, then compare register-register.
-		r := f.memRefValue(right.st)
+		r := f.memRefValue(right)
 		f.cmpRR(L, r, w)
 		f.release(r)
 		f.releaseMemRef(right.st)
@@ -331,6 +331,9 @@ func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, er
 	var coldEdgeCode []byte
 	if canDefer && f.a.Len() != mark {
 		coldEdgeCode = append(coldEdgeCode, f.a.B[mark:]...)
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.rewindProfileEmission(mark)
+		}
 		f.a.B = f.a.B[:mark]
 		f.restoreLocalStates(saved)
 	}
@@ -399,6 +402,9 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	var coldEdgeCode []byte
 	if canDefer && f.a.Len() != reconcileMark {
 		coldEdgeCode = append(coldEdgeCode, f.a.B[reconcileMark:]...)
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.rewindProfileEmission(reconcileMark)
+		}
 		f.a.B = f.a.B[:reconcileMark]
 		f.restoreLocalStates(saved)
 	}
@@ -419,6 +425,9 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	}
 	if len(coldEdgeCode) != 0 {
 		coldEdgeCode = append(coldEdgeCode, f.a.B[mark:]...)
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.rewindProfileEmission(mark)
+		}
 		f.a.B = f.a.B[:mark]
 		site := f.a.Bcond(cc)
 		f.appendFrameColdEdge(fr, coldEdge{site: site, code: coldEdgeCode})
@@ -442,6 +451,9 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 		// fall-through and defer only the true-edge reconciliation to the target
 		// frame, preserving the flags window at the source branch.
 		edge := append([]byte(nil), f.a.B[mark:]...)
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.rewindProfileEmission(mark)
+		}
 		f.a.B = f.a.B[:mark]
 		site := f.a.Bcond(cc)
 		f.appendFrameColdEdge(fr, coldEdge{site: site, code: edge})
@@ -450,6 +462,9 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	// Non-empty edge: insert the skip guard right after the CMP (keeping the flag
 	// window tight) by relocating the edge bytes up one word.
 	f.edgeScratch = append(f.edgeScratch[:0], f.a.B[mark:]...)
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.rewindProfileEmission(mark)
+	}
 	f.a.B = f.a.B[:mark]
 	over := f.a.Bcond(invertCond(cc)) // fall through when the compare is false
 	f.a.B = append(f.a.B, f.edgeScratch...)

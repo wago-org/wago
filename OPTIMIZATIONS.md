@@ -284,7 +284,7 @@ execution benefit failed to justify duplicated code generation and compile-resou
 cost. Facts and load-forwarding subprocess oracles continue to compare exact results
 and trap codes under both switch states.
 
-**Executed WasmGC helper counters (2026-08-02).** The diagnostic
+**Executed WasmGC helper counters (historical, 2026-08-02; since removed).** The diagnostic
 `wago_gcstats` build tag exposes `Instance.SetGCHelperStatsTracking(true)` and
 `Instance.GCHelperStats()`, separating total, allocation, struct/array mutation,
 reference-mutation, parent-space, and remembered-state transitions. Production
@@ -412,7 +412,7 @@ Tiny keeps immediate per-edge shading. Tiny bulk barriers process 64 elements pe
 chunk and drain at most 64 gray objects between chunks, bounding queued publication
 work at the collector's one-object scan granularity. Numeric and function-identity
 bulk operations remain barrier-free. Static barrier-state hits use
-`CodegenStats.Peephole`; `wago_gcstats` snapshots now expose dynamic checked-path
+`CodegenStats.Peephole`; historical `wago_gcstats` snapshots exposed dynamic checked-path
 counts for all six states separately. The existing native stubs remain the dynamic
 source of nursery/existing-card/card-mark decisions without adding release-build
 counter writes to hot code. Generated barrier/helper bytes retain separate code-size

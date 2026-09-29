@@ -15,6 +15,7 @@ import (
 // TestCorpusDifferential on the compute kernels (nbody/fannkuch/sha256/raytrace);
 // this pins the counter behaviour and the invalidation points.
 func TestBoundsFactsElision(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 
 	// func(p i32){ local.get p; i32.load off=4; drop;   // check proves p+8 <= mem

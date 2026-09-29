@@ -131,6 +131,7 @@ func refDivRem(op divOp, w64 bool, n, d uint64) uint64 {
 // trapping divide path, and signed division by -1, whose strength reduction must
 // preserve the INT_MIN/-1 overflow trap.
 func TestDivByConstFallback(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	// div by constant 0 traps.
 	for _, w64 := range []bool{false, true} {
 		for _, op := range divOps(w64) {
@@ -172,6 +173,7 @@ func TestDivByConstFallback(t *testing.T) {
 }
 
 func TestSignedUnitDivisorsStrengthReduceWhereSafe(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	values := []uint64{0, 1, 7, 0x7fffffff, 0x80000000, 0xffffffffffffffff, 0x8000000000000000}
 	for _, w64 := range []bool{false, true} {
 		for _, tc := range []struct {

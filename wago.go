@@ -27,6 +27,19 @@ type (
 	CallerResolver                  = impl.CallerResolver
 	Capability                      = impl.Capability
 	CapabilityOption                = impl.CapabilityOption
+	CodeProfile                     = impl.CodeProfile
+	CodeProfileEvent                = impl.CodeProfileEvent
+	CodeProfileFunction             = impl.CodeProfileFunction
+	CodeProfileImage                = impl.CodeProfileImage
+	CodeProfileInlineFrame          = impl.CodeProfileInlineFrame
+	CodeProfileOptions              = impl.CodeProfileOptions
+	CodeProfileRegion               = impl.CodeProfileRegion
+	CodeProfileSite                 = impl.CodeProfileSite
+	CodeProfileSourceRange          = impl.CodeProfileSourceRange
+	CodeProfileSpan                 = impl.CodeProfileSpan
+	CodeProfileSpanToken            = impl.CodeProfileSpanToken
+	CodeProfileStatus               = impl.CodeProfileStatus
+	CodeProfileUnwindRange          = impl.CodeProfileUnwindRange
 	Compatibility                   = impl.Compatibility
 	CompilationIdentity             = impl.CompilationIdentity
 	Compiled                        = impl.Compiled
@@ -60,20 +73,13 @@ type (
 	FuncSig                         = impl.FuncSig
 	FunctionMetadata                = impl.FunctionMetadata
 	GCAllocatorKind                 = impl.GCAllocatorKind
-	GCBenchmarkConfiguration        = impl.GCBenchmarkConfiguration
-	GCBenchmarkTelemetryReport      = impl.GCBenchmarkTelemetryReport
 	GCConfig                        = impl.GCConfig
-	GCHelperStats                   = impl.GCHelperStats
 	GCHostModule                    = impl.GCHostModule
-	GCManagedHeapTelemetry          = impl.GCManagedHeapTelemetry
-	GCMemoryDomains                 = impl.GCMemoryDomains
 	GCNativeCodeTelemetry           = impl.GCNativeCodeTelemetry
 	GCNativeRootAdmission           = impl.GCNativeRootAdmission
 	GCProfile                       = impl.GCProfile
 	GCRef                           = impl.GCRef
 	GCRuntimeKind                   = impl.GCRuntimeKind
-	GCTelemetry                     = impl.GCTelemetry
-	GCTelemetrySnapshot             = impl.GCTelemetrySnapshot
 	Global                          = impl.Global
 	GlobalDef                       = impl.GlobalDef
 	GlobalImport                    = impl.GlobalImport
@@ -298,7 +304,6 @@ const (
 	GCProfileTiny                              = impl.GCProfileTiny
 	GCRuntimeGenerational                      = impl.GCRuntimeGenerational
 	GCRuntimeIncrementalMarkSweep              = impl.GCRuntimeIncrementalMarkSweep
-	GCTelemetrySchemaVersion                   = impl.GCTelemetrySchemaVersion
 	GuestGCArrayExternRef                      = impl.GuestGCArrayExternRef
 	GuestGCArrayF32                            = impl.GuestGCArrayF32
 	GuestGCArrayF64                            = impl.GuestGCArrayF64
@@ -404,10 +409,6 @@ func CanonicalPluginDefinition(def PluginDefinition) (PluginDefinition, error) {
 
 func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(docs) }
 
-func CaptureGCMemoryDomains(compilerHeapBytes uint64, executableJITBytes uint64, heap GCManagedHeapTelemetry) GCMemoryDomains {
-	return impl.CaptureGCMemoryDomains(compilerHeapBytes, executableJITBytes, heap)
-}
-
 func Compile(args ...any) (*Compiled, error) { return impl.Compile(args...) }
 
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
@@ -438,8 +439,6 @@ func FeatureInfoByName(name string) (FeatureInfo, bool) { return impl.FeatureInf
 
 func FeatureInfos() []FeatureInfo { return impl.FeatureInfos() }
 
-func GCTelemetryAvailable() bool { return impl.GCTelemetryAvailable() }
-
 func GuardPageSupported() bool { return impl.GuardPageSupported() }
 
 func I32(v int32) uint64 { return impl.I32(v) }
@@ -466,9 +465,7 @@ func NewBits(width int32, littleEndian []byte) (Bits, error) {
 	return impl.NewBits(width, littleEndian)
 }
 
-func NewGCBenchmarkTelemetryReport(name string) GCBenchmarkTelemetryReport {
-	return impl.NewGCBenchmarkTelemetryReport(name)
-}
+func NewCodeProfile(options CodeProfileOptions) *CodeProfile { return impl.NewCodeProfile(options) }
 
 func NewGlobalF32(v float32, mutable bool) *Global { return impl.NewGlobalF32(v, mutable) }
 

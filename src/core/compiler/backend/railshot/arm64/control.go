@@ -1365,6 +1365,9 @@ func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
 	case cfLoop:
 		site := f.a.Bcond(cc)
 		if !f.a.PatchBranch19(site, fr.controlSite) {
+			if profileEnabled && f.stats != nil && f.stats.RecordSources {
+				f.rewindProfileEmission(site)
+			}
 			f.a.B = f.a.B[:site] // out of imm19 range: undo and let the caller fall back
 			return false
 		}
@@ -1386,6 +1389,9 @@ func (f *fn) zeroBranchJump(fr *ctrlFrame, condition Reg) bool {
 	case cfLoop:
 		site := f.a.Cbnz32(condition)
 		if !f.a.PatchBranch19(site, fr.controlSite) {
+			if profileEnabled && f.stats != nil && f.stats.RecordSources {
+				f.rewindProfileEmission(site)
+			}
 			f.a.B = f.a.B[:site]
 			return false
 		}
@@ -1517,7 +1523,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
 	fr.set(ctrlCallFreeRegion, callFreeLoopRegionEnabled && kind != cfLoop && f.inCallFreeLoop())
-	if kind == cfLoop && !f.unreachable && (f.stats != nil || f.usesCalls && (f.pinnedLocalMask != 0 || f.fpinnedLocalMask != 0)) {
+	if kind == cfLoop && !f.unreachable && ((diagnosticsEnabled && f.stats != nil) || f.usesCalls && (f.pinnedLocalMask != 0 || f.fpinnedLocalMask != 0)) {
 		base := len(f.loopSetLocals)
 		setLocals, hasCall := scanLoopSetLocals(r, f.classifier, f.loopSetLocals)
 		if setLocals != nil {
@@ -2550,6 +2556,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	var coldEdgeCode []byte
 	if canDefer && f.a.Len() != reconcileMark {
 		coldEdgeCode = append(coldEdgeCode, f.a.B[reconcileMark:]...)
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.rewindProfileEmission(reconcileMark)
+		}
 		f.a.B = f.a.B[:reconcileMark]
 		f.restoreLocalStates(saved)
 	}
@@ -2571,6 +2580,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	}
 	if len(coldEdgeCode) != 0 {
 		coldEdgeCode = append(coldEdgeCode, f.a.B[mark:]...)
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.rewindProfileEmission(mark)
+		}
 		f.a.B = f.a.B[:mark]
 		site := f.a.Bcond(condNE)
 		f.appendFrameColdEdge(fr, coldEdge{site: site, code: coldEdgeCode})
@@ -2580,6 +2592,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	}
 	if f.a.Len() == mark {
 		if f.opt(optZeroBranch) && f.policy.CompactNative {
+			if profileEnabled && f.stats != nil && f.stats.RecordSources {
+				f.rewindProfileEmission(testAt)
+			}
 			f.a.B = f.a.B[:testAt]
 			if f.opt(optBranchFold) && f.zeroBranchJump(fr, creg) {
 				f.stats.peep("zero-branch")
@@ -2607,6 +2622,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		// position-independent local/value reconciliation bytes; its final jump
 		// is emitted when the target frame closes.
 		edge := append([]byte(nil), f.a.B[mark:]...)
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.rewindProfileEmission(mark)
+		}
 		f.a.B = f.a.B[:mark]
 		site := f.a.Bcond(condNE)
 		f.appendFrameColdEdge(fr, coldEdge{site: site, code: edge})
@@ -2615,6 +2633,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	// Non-empty edge: the edge is already emitted at [mark:]; insert the skip guard
 	// before it by relocating the (position-independent) edge bytes up one word.
 	f.edgeScratch = append(f.edgeScratch[:0], f.a.B[mark:]...)
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.rewindProfileEmission(mark)
+	}
 	f.a.B = f.a.B[:mark]
 	over := f.a.Bcond(condE) // skip the edge when the condition is false (== 0)
 	f.a.B = append(f.a.B, f.edgeScratch...)

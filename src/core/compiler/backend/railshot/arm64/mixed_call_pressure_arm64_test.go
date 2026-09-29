@@ -160,6 +160,7 @@ func mixedCallVariantModule(t testing.TB, f64 bool, nargs int, computed, wide bo
 }
 
 func TestMixedCallFloatRegisterPressureARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, f64 := range []bool{false, true} {
 		for _, nargs := range []int{4, 5, 8} {
 			t.Run(fmt.Sprintf("f64=%t/args=%d", f64, nargs), func(t *testing.T) {
@@ -184,6 +185,7 @@ func TestMixedCallFloatRegisterPressureARM64(t *testing.T) {
 }
 
 func TestMixedCallEagerReloadARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, f64 := range []bool{false, true} {
 		for _, variant := range []string{"computed", "canonical", "snapshot"} {
 			t.Run(fmt.Sprintf("f64=%t/%s", f64, variant), func(t *testing.T) {
@@ -207,6 +209,7 @@ func TestMixedCallEagerReloadARM64(t *testing.T) {
 }
 
 func TestMixedCallDeepF32SpillARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, stackReg := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stack-reg=%t", stackReg), func(t *testing.T) {
 			m, want := mixedCallVariantModule(t, false, 8, true, false, "deep")
@@ -226,6 +229,7 @@ func TestMixedCallDeepF32SpillARM64(t *testing.T) {
 }
 
 func BenchmarkCompileMixedCallPressureARM64(b *testing.B) {
+	requireCompilerDiagnostics(b)
 	for _, nargs := range []int{4, 8} {
 		b.Run(fmt.Sprintf("args=%d", nargs), func(b *testing.B) {
 			m, _ := mixedCallPressureModule(b, true, nargs)
@@ -251,6 +255,7 @@ func BenchmarkCompileMixedCallPressureARM64(b *testing.B) {
 }
 
 func TestMixedCallExistingSpillsARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, f64 := range []bool{false, true} {
 		for _, wide := range []bool{false, true} {
 			t.Run(fmt.Sprintf("f64=%t/wide=%t", f64, wide), func(t *testing.T) {
@@ -280,6 +285,7 @@ func TestMixedCallExistingSpillsARM64(t *testing.T) {
 }
 
 func BenchmarkCompileMixedCallExistingSpillsARM64(b *testing.B) {
+	requireCompilerDiagnostics(b)
 	for _, wide := range []bool{false, true} {
 		b.Run(fmt.Sprintf("wide=%t", wide), func(b *testing.B) {
 			nargs := 8
@@ -309,6 +315,7 @@ func BenchmarkCompileMixedCallExistingSpillsARM64(b *testing.B) {
 }
 
 func TestMixedCallLocalHomesAndCanonicalSlotsARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, f64 := range []bool{false, true} {
 		for _, variant := range []string{"canonical", "snapshot"} {
 			t.Run(fmt.Sprintf("f64=%t/%s", f64, variant), func(t *testing.T) {
@@ -333,6 +340,7 @@ func TestMixedCallLocalHomesAndCanonicalSlotsARM64(t *testing.T) {
 }
 
 func BenchmarkCompileMixedCallCanonicalARM64(b *testing.B) {
+	requireCompilerDiagnostics(b)
 	m, _ := mixedCallVariantModule(b, true, 8, false, false, "canonical")
 	opts := CompileOptions{Workers: 1, Optimizations: map[string]bool{"inline": false}}
 	var stats ModuleStats
@@ -354,6 +362,7 @@ func BenchmarkCompileMixedCallCanonicalARM64(b *testing.B) {
 }
 
 func BenchmarkCompileMixedCallDeepF32ARM64(b *testing.B) {
+	requireCompilerDiagnostics(b)
 	m, _ := mixedCallVariantModule(b, false, 8, true, false, "deep")
 	opts := CompileOptions{Workers: 1, Optimizations: map[string]bool{"inline": false, "stack-reg": true, "ext-fp-pins": true}}
 	var stats ModuleStats

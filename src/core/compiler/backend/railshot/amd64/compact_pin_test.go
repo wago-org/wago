@@ -20,6 +20,7 @@ func TestPreferPinRegAMD64(t *testing.T) {
 }
 
 func TestSizePrefersLowRegisterForHotLeafLocalAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := compactLowPinEnabled
 	t.Cleanup(func() { compactLowPinEnabled = before })
 	i32 := []wasm.ValType{wasm.I32}

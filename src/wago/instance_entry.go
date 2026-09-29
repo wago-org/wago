@@ -358,7 +358,13 @@ func (in *Instance) invokeVoidEntry(ctx context.Context, entry uintptr, reservat
 	}
 	if ctx == nil || ctx.Done() == nil {
 		// Keep non-cancelable entries free of context watcher allocations.
-		if err := in.callVoidNative(entry); err != nil {
+		var err error
+		if codeProfileEnabled && in.lifecycleProfile() != nil && in.syncMode {
+			err = in.callNativeSyncWithTrapContext(entry, in.trap, ctx)
+		} else {
+			err = in.callVoidNative(entry)
+		}
+		if err != nil {
 			return err
 		}
 		return in.reconcileGCGlobalRoots()

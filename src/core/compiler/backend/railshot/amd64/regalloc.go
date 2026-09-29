@@ -148,12 +148,12 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 			r := e.st.reg
 			if e.st.typ.isFloat() {
 				x := f.allocFReg(0)
-				f.loadFMemRef(x, e.st)
+				f.loadFMemRef(x, e)
 				f.releaseMemRef(e.st)
 				f.occupyF(e, x)
 				f.spillF(e)
 			} else {
-				f.loadMemRef(r, e.st)
+				f.loadMemRef(r, e)
 				f.occupy(e, r)
 				f.spill(e)
 			}
@@ -193,7 +193,7 @@ func (f *fn) relinquishPinnedLocal(avoid regMask) Reg {
 		}
 		f.locals[x].state = lsMem
 		f.pinRelinquished = true
-		if f.stats != nil {
+		if diagnosticsEnabled && f.stats != nil {
 			f.stats.PinRelinquishments++
 		}
 		f.stats.peep("pin-relinquish")
@@ -235,7 +235,7 @@ func (f *fn) spill(e *elem) {
 		// for div/mul, RCX for a shift count).
 		if e.st.typ.isFloat() {
 			x := f.allocFReg(0)
-			f.loadFMemRef(x, e.st)
+			f.loadFMemRef(x, e)
 			f.releaseMemRef(e.st)
 			f.occupyF(e, x)
 			f.spillF(e)
@@ -249,7 +249,7 @@ func (f *fn) spill(e *elem) {
 			// a fresh register instead.
 			dst = f.allocReg(maskOf(e.st.reg))
 		}
-		f.loadMemRef(dst, e.st)
+		f.loadMemRef(dst, e)
 		f.occupy(e, dst)
 		// e is now a plain register value; fall through to spill it.
 	}
@@ -257,7 +257,11 @@ func (f *fn) spill(e *elem) {
 	f.stats.addSpill()
 	r := e.st.reg
 	slot := f.allocSpillSlot()
+	spillStart := f.a.Len()
 	f.a.Store64(RSP, f.spillOff(slot), r)
+	if profileEnabled {
+		f.recordProfileCodeSite(spillStart, "gp-spill")
+	}
 	f.regUser[r] = nil
 	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 }
@@ -324,6 +328,9 @@ func (f *fn) materialize(e *elem) Reg {
 			f.a.Load64(r, RSP, f.spillOff(e.st.slotIndex()))
 		}
 		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "gp-reload")
+		}
 		f.occupy(e, r)
 		return r
 	case stLocalRef:
@@ -354,7 +361,7 @@ func (f *fn) materialize(e *elem) Reg {
 		if e.st.memBorrow() >= 0 {
 			dst = f.allocReg(maskOf(e.st.reg))
 		}
-		f.loadMemRef(dst, e.st)
+		f.loadMemRef(dst, e)
 		f.occupy(e, dst)
 		return dst
 	}
@@ -377,12 +384,13 @@ func (f *fn) materializeRead(e *elem) (Reg, bool) {
 // memRefValue emits a deferred load and returns an OWNED register holding the
 // value (the address register is reused when owned; a borrowed pinned-local
 // address loads into a fresh register). The caller releases the result.
-func (f *fn) memRefValue(st storage) Reg {
+func (f *fn) memRefValue(e *elem) Reg {
+	st := e.st
 	dst := st.reg
 	if st.memBorrow() >= 0 {
 		dst = f.allocReg(maskOf(st.reg))
 	}
-	f.loadMemRef(dst, st)
+	f.loadMemRef(dst, e)
 	return dst
 }
 
@@ -395,7 +403,12 @@ func (f *fn) releaseMemRef(st storage) {
 }
 
 // loadMemRef emits the actual load for a deferred memory value into dst.
-func (f *fn) loadMemRef(dst Reg, st storage) {
+func (f *fn) loadMemRef(dst Reg, e *elem) {
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		previous := f.enterProfileNode(e)
+		defer f.switchProfileOrigin(previous)
+	}
+	st := e.st
 	f.a.LoadIdx(dst, RBX, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
 }
 

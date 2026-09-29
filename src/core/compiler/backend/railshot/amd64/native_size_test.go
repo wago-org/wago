@@ -12,6 +12,7 @@ import (
 )
 
 func TestNativeSizeReportAccountsModuleAndFunctionBytesAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	oldCompact := nativeCompactionEnabled
 	nativeCompactionEnabled = false
 	t.Cleanup(func() { nativeCompactionEnabled = oldCompact })
@@ -73,6 +74,7 @@ func TestNativeSizeReportAccountsModuleAndFunctionBytesAMD64(t *testing.T) {
 }
 
 func TestCompactNativeSharesAdapterTailsAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := sharedAdaptersEnabled
 	sharedAdaptersEnabled = false
 	t.Cleanup(func() { sharedAdaptersEnabled = before })
@@ -112,6 +114,7 @@ func TestCompactNativeSharesAdapterTailsAMD64(t *testing.T) {
 }
 
 func TestCompactNativeSharesWholeAdaptersAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := sharedAdaptersEnabled
 	beforeStackDelta := stackDeltaAdapterThunkEnabled
 	t.Cleanup(func() {

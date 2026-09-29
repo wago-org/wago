@@ -261,7 +261,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		if memRefFoldable(right.st, w) {
 			f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
 		} else {
-			r := f.memRefValue(right.st)
+			r := f.memRefValue(right)
 			f.cmpRR(L, r, w)
 			f.release(r)
 		}

@@ -32,7 +32,7 @@ staticcheck:
     if command -v staticcheck >/dev/null 2>&1; then
       go run ./tests/tools/staticcheck-baseline verify
     else
-      echo 'just: staticcheck not found, skipping (go install honnef.co/go/tools/cmd/staticcheck@2024.1.1)'
+      echo 'just: staticcheck not found, skipping (go install honnef.co/go/tools/cmd/staticcheck@2026.2.1)'
     fi
 
 # Test website data generators and the engine-state oracle.

@@ -56,7 +56,15 @@ func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, expor
 			return nil, err
 		}
 	}
+	if codeProfileEnabled && activeHostInvocationContext(active).profileSession() != nil {
+		var span profileSpanToken
+		ctx, span = profileReentryContext(active, in, ctx)
+		defer finishProfileBoundary(span, &err)
+	}
 	contexts := invocationContextSetFor(ctx)
+	if codeProfileEnabled && activeHostInvocationContext(active).profileSession() != nil {
+		contexts.callback = ctx
+	}
 	depth, ok := acquireHostReentryDepth(id)
 	if !ok {
 		return nil, fmt.Errorf("wago: host re-entry depth %d exceeds limit %d: %w", depth+1, maxHostReentryDepth, ErrPermissionDenied)
@@ -659,6 +667,8 @@ func (s *hostCallScope) expireInvocationContext(state *hostCallState, generation
 }
 
 type instancePluginState struct {
+	//lint:ignore U1000 used only by wago_profile builds; the ordinary placeholder is empty
+	profileState         profileInstanceState
 	hostScope            hostCallScope
 	activations          instanceActivations
 	nativeContextVersion atomic.Uint64
@@ -2638,7 +2648,13 @@ func (in *Instance) callPreparedHostSyncAdmitted(prepared *runtime.PreparedHostS
 	return err
 }
 
-func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCall, fixed runtime.FixedScalarHostCall, activation *hostLoopActivation) error {
+func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCall, fixed runtime.FixedScalarHostCall, activation *hostLoopActivation) (err error) {
+	if codeProfileEnabled && in.boundaryProfile() != nil {
+		span, restore := activation.beginProfileActivation()
+		defer restore()
+		defer finishProfileBoundary(span, &err)
+		return prepared.Call(activation.dispatch, profileScalarFallback)
+	}
 	if preparedHostFixedEnabled {
 		if fixed == nil {
 			fixed = activation.dispatchSingleTypedScalarFixedPortal
@@ -2669,7 +2685,12 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		entryNativeMu:               heldNativeMu,
 		parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
 	}
-	if in.hasSingleDirectTypedScalarHost() {
+	if codeProfileEnabled && (in.boundaryProfile() != nil || activeHostInvocationContext(in).profileSession() != nil) {
+		span, restore := activation.beginProfileActivation()
+		defer restore()
+		defer finishProfileBoundary(span, &err)
+		err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch)
+	} else if in.hasSingleDirectTypedScalarHost() {
 		err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleTypedScalarPortal)
 	} else if in.hasSingleExpandedTypedScalarHost() {
 		rawSlots, ok := in.syncHosts[0].typedScalarSlots()

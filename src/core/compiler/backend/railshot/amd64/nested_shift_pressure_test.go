@@ -92,6 +92,7 @@ func TestI64ShiftCountBoundaries(t *testing.T) {
 }
 
 func TestNestedShiftDivisionPressure(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const depth = 24
 	for _, width := range []int{32, 64} {
 		typ, constant, xor, divBase, shiftBase := i32, byte(0x41), byte(0x73), byte(0x6d), byte(0x74)

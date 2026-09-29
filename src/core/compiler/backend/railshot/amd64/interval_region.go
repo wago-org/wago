@@ -125,7 +125,7 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 }
 
 func (f *fn) noteResidencyEvents(hints *funcHintView) {
-	if f.stats == nil {
+	if !diagnosticsEnabled || f.stats == nil {
 		return
 	}
 	f.stats.Residency.Events = hints.localEventCount()
@@ -309,7 +309,7 @@ func (f *fn) takeFinalIntervalGet(x, pos int) (Reg, bool) {
 	f.intervalOwner[reg] = -1
 	f.intervalActive--
 	f.pinnedLocalMask = f.pinnedLocalMask.remove(reg)
-	if f.stats != nil {
+	if diagnosticsEnabled && f.stats != nil {
 		f.stats.Residency.FinalTransfers++
 	}
 	return reg, true
@@ -408,7 +408,7 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 	reg := f.locals[best].reg
 	if f.locals[best].state == lsReg && !bestDead {
 		f.storeFrameInt(f.localAddr(best), reg, f.localType[best])
-		if f.stats != nil {
+		if diagnosticsEnabled && f.stats != nil {
 			f.stats.Residency.DirtyWritebacks++
 		}
 	}
@@ -428,7 +428,7 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 	f.intervalActive--
 	f.pinnedLocalMask = f.pinnedLocalMask.remove(reg)
 	f.stats.peep("interval-region-evict")
-	if f.stats != nil {
+	if diagnosticsEnabled && f.stats != nil {
 		f.stats.Residency.Evictions++
 	}
 	return reg
@@ -461,19 +461,19 @@ func (f *fn) nextIntervalLocalAccess(x int) (next uint32, dead bool) {
 }
 
 func (f *fn) noteResidencyCandidates(n int) {
-	if f.stats != nil {
+	if diagnosticsEnabled && f.stats != nil {
 		f.stats.Residency.Candidates += n
 	}
 }
 
 func (f *fn) noteResidencyPressureMiss() {
-	if f.stats != nil {
+	if diagnosticsEnabled && f.stats != nil {
 		f.stats.Residency.PressureMisses++
 	}
 }
 
 func (f *fn) noteResidencyActivation(load bool) {
-	if f.stats == nil {
+	if !diagnosticsEnabled || f.stats == nil {
 		return
 	}
 	r := &f.stats.Residency

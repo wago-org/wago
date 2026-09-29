@@ -33,6 +33,7 @@ const (
 )
 
 type compiledCodeCache struct {
+	profileCacheState
 	mu                     sync.Mutex
 	mem                    []byte
 	base                   uintptr
@@ -704,6 +705,7 @@ func (c *Compiled) acquireCode() (uintptr, error) {
 			return 0, err
 		}
 		cc.sealed = true
+		c.registerProfileCodeLocked()
 	}
 	cc.refs++
 	return cc.base, nil
@@ -721,7 +723,7 @@ func (c *Compiled) releaseCode() {
 	}
 	if cc.refs == 0 && cc.closed {
 		if cc.mem != nil {
-			_ = coreruntime.Unmap(cc.mem)
+			_ = c.unmapProfileCode(cc.mem)
 			cc.mem = nil
 			cc.base = 0
 		}
@@ -741,7 +743,7 @@ func (c *Compiled) releaseHostThunksLocked() {
 	for i := range memo.hostThunks {
 		cache := &memo.hostThunks[i]
 		if cache.mem != nil {
-			_ = coreruntime.Unmap(cache.mem)
+			_ = c.unmapProfileCode(cache.mem)
 			*cache = compiledHostThunkCache{}
 		}
 	}
@@ -788,11 +790,11 @@ func (c *Compiled) replaceDecoded(decoded Compiled, snapshotLimit uint64) error 
 		goruntime.SetFinalizer(c, nil)
 		var releaseErr error
 		if mem != nil {
-			releaseErr = errors.Join(releaseErr, coreruntime.Unmap(mem))
+			releaseErr = errors.Join(releaseErr, c.unmapProfileCode(mem))
 		}
 		for i := range hostThunks {
 			if hostThunks[i].mem != nil {
-				releaseErr = errors.Join(releaseErr, coreruntime.Unmap(hostThunks[i].mem))
+				releaseErr = errors.Join(releaseErr, c.unmapProfileCode(hostThunks[i].mem))
 			}
 		}
 		if releaseErr != nil {
@@ -839,10 +841,10 @@ func (c *Compiled) Close() error {
 	cc.mem = nil
 	cc.base = 0
 	hostThunks := c.takeHostThunksLocked()
-	err := coreruntime.Unmap(mem)
+	err := c.unmapProfileCode(mem)
 	for i := range hostThunks {
 		if hostThunks[i].mem != nil {
-			err = errors.Join(err, coreruntime.Unmap(hostThunks[i].mem))
+			err = errors.Join(err, c.unmapProfileCode(hostThunks[i].mem))
 		}
 	}
 	return err

@@ -70,9 +70,7 @@ func newTinyCollector(config Config, types []TypeDesc) (*Collector, error) {
 		return nil, fmt.Errorf("gc: tiny block size %d is smaller than required object alignment %d", config.TinyBlockBytes, objectAlign)
 	}
 	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), objectAlign: objectAlign, handles: []handleEntry{{}}}
-	if c.telemetryEnabled() {
-		c.cfg.Telemetry.attach(config.Profile, 0)
-	}
+
 	if err := c.initSubtypeIntervals(); err != nil {
 		return nil, err
 	}
@@ -497,9 +495,7 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 	if paced {
 		c.tinyAddAllocationDebt(allocatedBytes)
 	}
-	if c.telemetryEnabled() {
-		c.cfg.Telemetry.paths.GoAllocationPaths++
-	}
+
 	c.refreshNativeView()
 	return r, nil
 }

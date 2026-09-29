@@ -197,10 +197,14 @@ func (f *fn) emitInterruptCheck(scratch Reg) {
 // a ~20-byte inline trap block at every site (better I-cache, not-taken hot
 // branches, one stub per trap code instead of one block per check).
 func (f *fn) trapIf(cc Cond, code uint32) {
+	before := f.a.Len()
 	if code == trapMemOOB {
 		f.stats.addBoundsCheck() // inline linear-memory OOB check (P6 elides these)
 	}
 	f.sc.trapSites[code] = append(f.sc.trapSites[code], f.trapSite(f.a.JccPlaceholder(cc)))
+	if profileEnabled && code == trapMemOOB {
+		f.recordProfileCodeSite(before, "memory-bounds-branch")
+	}
 }
 
 // trapAlways is trapIf's unconditional form (`unreachable`): a 5-byte jmp to the
@@ -210,6 +214,9 @@ func (f *fn) trapAlways(code uint32) {
 }
 
 func (f *fn) trapSite(branch int) trapSite {
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.recordProfileTrap(branch)
+	}
 	return trapSite{branch: compactTrapBranch(branch), function: f.traceFuncIdx, pc: f.wasmPC}
 }
 

@@ -230,6 +230,7 @@ func runAmd64V128(t *testing.T, m *wasm.Module, arg *[16]byte) [16]byte {
 }
 
 func runAmd64V128WithOptions(t *testing.T, m *wasm.Module, arg *[16]byte, opts CompileOptions) [16]byte {
+	requireCompilerDiagnostics(t)
 	var stats ModuleStats
 	if opts.AMD64FeaturesSet && opts.AMD64Features == 0 {
 		opts.Stats = &stats

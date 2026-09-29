@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"github.com/wago-org/wago/cli/internal/profiling"
 
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
@@ -35,7 +36,7 @@ func buildCommandRegistry() *command.Cmd {
 
 func buildCommandRegistryContext(ctx context.Context) *command.Cmd {
 	environment := commandEnvironment{ctx: ctx}
-	return &command.Cmd{
+	return profiling.Append(&command.Cmd{
 		Name: "wago",
 		Children: []*command.Cmd{
 			statuscmd.Command(environment),
@@ -51,7 +52,7 @@ func buildCommandRegistryContext(ctx context.Context) *command.Cmd {
 			cachecmd.Command(environment),
 			configcmd.Command(environment),
 		},
-	}
+	})
 }
 
 func topLevelAddCommand(environment commandEnvironment) *command.Cmd {

@@ -53,6 +53,11 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if err != nil {
 			return err
 		}
+		var previous profileOrigin
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			previous = f.enterProfileInstruction()
+		}
+
 		if f.intervalControl {
 			switch op {
 			case 0x00, 0x02, 0x03, 0x04, 0x05, 0x08, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -61,6 +66,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 				f.flushControlIntervals()
 			}
 		}
+
 		f.prepareStoreForward(op)
 		f.prepareGCResolvedObject(op)
 		switch op {
@@ -97,6 +103,10 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 				err = f.emitPlain(r, op)
 			}
 		}
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.switchProfileOrigin(previous)
+		}
+
 		if err != nil {
 			return err
 		}
@@ -1148,7 +1158,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 			f.a.FLoadDisp(pr, RSP, f.spillOff(e.st.slotIndex()), true)
 			f.stats.peep("float-local-load-sink")
 		case e.isValue() && e.st.kind == stMemRef:
-			f.loadFMemRef(pr, e.st)
+			f.loadFMemRef(pr, e)
 			f.releaseMemRef(e.st)
 			f.stats.peep("float-local-load-sink")
 		case e.isValue() && e.st.kind == stConst:

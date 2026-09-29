@@ -30,6 +30,7 @@ func callFreeLoopExitModuleAMD64(t testing.TB) *wasm.Module {
 }
 
 func TestCallFreeLoopExitReconciliationIsColdAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := callFreeLoopExitModuleAMD64(t)
 	compile := func(enabled bool) *ModuleStats {
 		var stats ModuleStats

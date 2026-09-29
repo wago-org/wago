@@ -14,6 +14,7 @@ import (
 )
 
 func TestCompileResourceStatsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0x00, 0x20, 0x00, 0x0b})
 	var stats ModuleStats
 	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
@@ -38,6 +39,7 @@ func TestCompileResourceStatsArm64(t *testing.T) {
 // the module stats. guard selects guard-page-style bounds elision vs explicit
 // inline bounds checks.
 func compileWithStats(t *testing.T, m *wasm.Module, guard bool) *ModuleStats {
+	requireCompilerDiagnostics(t)
 	t.Helper()
 	var ms ModuleStats
 	if _, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, Stats: &ms}); err != nil {
@@ -271,6 +273,7 @@ func TestCodegenStatsConversionLocalSinkArm64(t *testing.T) {
 }
 
 func TestCodegenStatsCodegenNeutralArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
 	shapes := []struct {
@@ -375,6 +378,7 @@ func TestModuleGlobalPinRequiresABIWideReuseArm64(t *testing.T) {
 }
 
 func TestCommonBoundsLimitUsesMemoryZeroMinimumArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	body := []byte{
 		0x00,
 		0x02, 0x40,

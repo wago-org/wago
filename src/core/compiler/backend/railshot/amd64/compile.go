@@ -270,6 +270,8 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
+	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
+	profileFnState
 	a             *amd64.Asm // the (reused) x86-64 encoder
 	s             *stack     // the valent-block operand stack
 	m             *wasm.Module
@@ -1390,7 +1392,7 @@ func (f *fn) localAddr(i int) int32 {
 		}
 		f.a.LocalRefs.Mark(uint32(i))
 	}
-	if f.stats != nil {
+	if diagnosticsEnabled && f.stats != nil {
 		f.stats.Encoding.RecordLocalFrameAddress(off)
 	}
 	return off
@@ -1475,6 +1477,10 @@ type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
 type CompileOptions struct {
+	SourceMaps bool
+	UnwindMaps bool
+	// Profile records finalized code regions without changing emitted bytes. Requires Stats.
+	Profile bool
 	// AMD64Features selects optional instructions at compile time. An explicit
 	// zero mask selects SSE2. AMD64FeaturesSet preserves the historical modern
 	// selection for direct backend callers that omit the option; the public
@@ -1568,7 +1574,8 @@ type CompileOptions struct {
 	Codegen codegen.Options
 
 	// Stats, when non-nil, collects per-function codegen counters into it (the
-	// codegen dashboard). Independent of WAGO_EXPLAIN, which prints the same dump
+	// codegen dashboard). Requires wago_codegenstats or wago_profile.
+	// Independent of WAGO_EXPLAIN, which prints the same dump
 	// to stderr. nil = no collection, zero overhead.
 	Stats *ModuleStats
 	// CollectInlineReport enables the additional whole-module analysis used by
@@ -1640,6 +1647,21 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+	if !diagnosticsEnabled && (opts.Stats != nil || opts.CollectInlineReport) {
+		return nil, fmt.Errorf("compiler diagnostics require -tags=wago_codegenstats or wago_profile")
+	}
+	if opts.UnwindMaps && !opts.Profile {
+		return nil, fmt.Errorf("unwind maps require profiling")
+	}
+	if opts.SourceMaps && !opts.Profile {
+		return nil, fmt.Errorf("source maps require profiling")
+	}
+	if opts.Profile && !profileEnabled {
+		return nil, fmt.Errorf("profiling requires a build with -tags=wago_profile")
+	}
+	if opts.Profile && opts.Stats == nil {
+		return nil, fmt.Errorf("amd64: profiling requires a ModuleStats destination")
+	}
 	compiled, err := compileModuleWith(m, opts)
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(opts)
@@ -1701,10 +1723,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
 	var hintStart time.Time
-	if opts.Stats != nil || explainEnabled {
+	if diagnosticsEnabled && (opts.Stats != nil || explainEnabled) {
 		hintStart = time.Now()
 	}
-	allHints, hintSidecar, globalScores, err := computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, workers, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy, opts.Stats != nil || explainEnabled)
+	allHints, hintSidecar, globalScores, err := computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, workers, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy, diagnosticsEnabled && (opts.Stats != nil || explainEnabled))
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
@@ -1719,7 +1741,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		relocCap = 0
 	}
 	var hintNanos uint64
-	if !hintStart.IsZero() {
+	if diagnosticsEnabled && !hintStart.IsZero() {
 		hintNanos = uint64(time.Since(hintStart))
 	}
 	immutableTables := computeImmutableTableHints(m, allHints, policy)
@@ -1754,12 +1776,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// Stats collection is opt-in: an explicit sink (opts.Stats) or WAGO_EXPLAIN=1.
 	// nil ms => st stays nil in the loop => zero-overhead counter no-ops.
 	var ms *ModuleStats
-	if opts.Stats != nil {
+	if diagnosticsEnabled && opts.Stats != nil {
 		ms = opts.Stats
-	} else if explainEnabled {
+	} else if diagnosticsEnabled && explainEnabled {
 		ms = &ModuleStats{}
 	}
-	if ms != nil {
+	if diagnosticsEnabled && ms != nil {
 		hintHeaderBytes, hintSidecarBytes := funcHintStorageBytes(allHints, hintSidecar)
 		// A stats sink is reusable across compiles. Reset the complete module-level
 		// attribution, including optional analyses that may be unavailable for the
@@ -1773,7 +1795,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			},
 		}
 		ms.Compile.StageNanos[shared.CompileStageHints] = hintNanos
-		if opts.CollectInlineReport || explainEnabled {
+		if diagnosticsEnabled && (opts.CollectInlineReport || explainEnabled) {
 			// Inline-candidate detection is report-only. Failure to analyze is
 			// non-fatal because it never changes code generation.
 			if rep, ierr := analyzeInlineCandidates(m, policy); ierr == nil {
@@ -1865,8 +1887,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		relocArena := make([]callReloc, 0, relocCap)
 		for i := range m.Code {
 			var st *CodegenStats
-			if ms != nil {
-				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
+			if diagnosticsEnabled && ms != nil {
+				st = &CodegenStats{RecordAdapterUnwind: profileEnabled && opts.Profile && opts.UnwindMaps, RecordUnwind: profileEnabled && opts.Profile && opts.UnwindMaps, RecordSources: profileEnabled && opts.Profile && opts.SourceMaps, FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 				ms.Funcs[i] = st
 			}
 			if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
@@ -1991,7 +2013,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if err := codeBuffer.Append(stubCode); err != nil {
 				return nil, fmt.Errorf("amd64: append GC stub island: %w", err)
 			}
-			if ms != nil {
+			if diagnosticsEnabled && ms != nil {
 				ms.GCSharedStubBytes = len(stubCode)
 				ms.GCSharedStubs = 1
 				ms.GCSharedStubCallSites = countGCSharedStubRelocs(relocs)
@@ -1999,6 +2021,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		}
 		code := codeBuffer.Bytes()
 		finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd, len(literalCode), len(codeBuffer.Mapping()))
+		if profileEnabled && opts.Profile {
+			recordProfileRegions(ms, entry, importedFuncs, len(code), functionsEnd, sharedAdapterBytes, literalBase, len(literalCode), stubBase, len(stubCode))
+		}
 		if err := patchModuleRelocs(code, entry, internalEntry, relocs, stubBase, stubOffsets); err != nil {
 			return nil, err
 		}
@@ -2009,7 +2034,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		directPrepared = retainResolvedPreparedCallers(directPrepared, directPreparedBounded, allHints)
 		ms.setNodeScratchStats(sc)
 		ms.finalizeCompileResourceStats()
-		if explainEnabled && ms != nil {
+		if diagnosticsEnabled && explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
 		if opts.DeferCodeMapping {
@@ -2052,9 +2077,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	// Parallel codegen starts only after every module-wide decision is complete.
 	// Each function has a deterministic stats destination, and each worker owns all
 	// mutable compiler state plus an append-only arena for completed function code.
-	if ms != nil {
+	if diagnosticsEnabled && ms != nil {
 		for i := range m.Code {
-			ms.Funcs[i] = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
+			ms.Funcs[i] = &CodegenStats{RecordAdapterUnwind: profileEnabled && opts.Profile && opts.UnwindMaps, RecordUnwind: profileEnabled && opts.Profile && opts.UnwindMaps, RecordSources: profileEnabled && opts.Profile && opts.SourceMaps, FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 		}
 	}
 	states := make([]workerState, workers)
@@ -2106,7 +2131,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				return
 			}
 			var st *CodegenStats
-			if ms != nil {
+			if diagnosticsEnabled && ms != nil {
 				st = ms.Funcs[i]
 			}
 			if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
@@ -2256,7 +2281,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		relocs[i] = states[int(r.worker)].relocs[int(r.relocStart):int(r.relocEnd)]
 		if policy.EnabledOption(optSharedTrapBody) && policy.CompactNative {
 			var st *CodegenStats
-			if ms != nil {
+			if diagnosticsEnabled && ms != nil {
 				st = ms.Funcs[i]
 			}
 			fnCode = trapBodyCluster.shareFunction(r.layoutFlags&layoutHostAdapter != 0, code, fnCode, entry[i], r.trapBody, st)
@@ -2295,7 +2320,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 		stubBase = len(code)
 		code = append(code, stubCode...)
-		if ms != nil {
+		if diagnosticsEnabled && ms != nil {
 			ms.GCSharedStubBytes = len(stubCode)
 			ms.GCSharedStubs = 1
 			ms.GCSharedStubCallSites = countGCSharedStubRelocs(relocs)
@@ -2310,13 +2335,16 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	directPreparedBounded = resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables)
 	directPrepared = retainResolvedPreparedCallers(directPrepared, directPreparedBounded, allHints)
 	finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd, len(literalCode), 0)
-	if ms != nil {
+	if profileEnabled && opts.Profile {
+		recordProfileRegions(ms, entry, importedFuncs, len(code), functionsEnd, sharedAdapterBytes, literalBase, len(literalCode), stubBase, len(stubCode))
+	}
+	if diagnosticsEnabled && ms != nil {
 		for i := range states {
 			ms.Compile.AddWorkerScratch(states[i].scratchStats)
 		}
 	}
 	ms.finalizeCompileResourceStats()
-	if explainEnabled && ms != nil {
+	if diagnosticsEnabled && explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
 	requiresBMI2 := false
@@ -2432,7 +2460,7 @@ func patchModuleRelocs(code []byte, entry, internalEntry []int, relocs [][]callR
 }
 
 func finalizeModuleNativeSizeAMD64(ms *ModuleStats, codeLen, functionsEnd, moduleLiteralBytes, mappedBytes int) {
-	if ms == nil {
+	if !diagnosticsEnabled || ms == nil {
 		return
 	}
 	var native shared.NativeSizeReport
@@ -3177,7 +3205,7 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 		}
 		pins = append(pins, moduleGlobalPin{global: uint32(c.g), reg: moduleGlobalRegs[k]})
 	}
-	if debugModGlobals {
+	if diagnosticsEnabled && debugModGlobals {
 		fmt.Fprintf(os.Stderr, "wago: module-pinned globals (K=%d):", len(pins))
 		for _, p := range pins {
 			fmt.Fprintf(os.Stderr, " g%d→%s", p.global, regName(p.reg))
@@ -3199,7 +3227,7 @@ const minPreallocatedCallRelocs = 8
 // pressure-spillable inside the attempt, so emitted work is never discarded.
 func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, inlineTargets inlineTargetTable, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	var compileStart time.Time
-	if stats != nil {
+	if diagnosticsEnabled && stats != nil {
 		stats.FunctionAttempts++
 		compileStart = time.Now()
 		defer func() { stats.CompileNanos += uint64(time.Since(compileStart)) }()
@@ -3223,7 +3251,7 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	if len(sc.stack.chunks) > 1 {
 		sc.finishStackFunction()
 	}
-	if stats != nil {
+	if diagnosticsEnabled && stats != nil {
 		sc.noteControlScratch()
 	}
 	return
@@ -3253,7 +3281,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	nLocals := hints.nLocals
 
 	sc.reset()
-	if stats != nil {
+	if diagnosticsEnabled && stats != nil {
 		sc.asm.EncodingStats = &stats.Encoding
 	} else {
 		sc.asm.EncodingStats = nil
@@ -3608,6 +3636,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		sc.asm.LocalRefs = &sc.localRefs
 	}
 
+	if profileEnabled && f.stats != nil && f.stats.RecordUnwind {
+		// Only the two fixed frame adjustments may change RSP in this subset.
+		// Direct local calls use the fixed frame; other lowerings are rejected
+		// after emission. GC/plugin paths need separate recovery rules.
+		f.stats.UnwindHasCalls = hasCall
+		f.stats.RecordUnwind = !moduleEH && len(custom) == 0 && len(gcTypeLayouts) == 0 && gcFrameRoots == nil && len(inlinedCallees) == 0 && !hints.flags.has(hintHasTailCall|hintUsesBulkMem|hintMutatesTable|hintHasJumpTableData|hintGCSharedResolver|hintGCDeferredResolver)
+	}
+
 	if regABI {
 		// The prepared trampoline establishes RBX, and every admitted function was
 		// compiled without the unsaved R12-R15 set. The module finalizer below
@@ -3659,6 +3695,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.epilogue()
 	f.emitNativeGCStubs()
+	if profileEnabled {
+		f.collectProfileSources(0)
+	}
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
 	if err := f.patchFrameSize(); err != nil {
@@ -3808,7 +3847,7 @@ func (f *fn) localRefCount(local int) uint32 { return f.localSlot[local] >> loca
 // emission sites during the body.
 func (f *fn) finalizeStats(codeLen int) {
 	s := f.stats
-	if s == nil {
+	if !diagnosticsEnabled || s == nil {
 		return
 	}
 	s.Rel32Sites = f.a.Rel32Count
@@ -4339,6 +4378,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		}
 		f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
 		a.Push(RCX)             // results ptr (also keeps RSP 16-aligned at the internal call)
+		if profileEnabled && f.stats != nil && f.stats.RecordAdapterUnwind {
+			f.stats.unwindAdapterPushEnd = a.Len()
+		}
 		gp, fp = 0, 0
 		rdiArgOff := int32(-1)
 		for i := 0; i < np; i++ {
@@ -4411,7 +4453,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		}
 		a.Ret()
 		f.adapterEndOff = a.Len()
-		if f.stats != nil {
+		if diagnosticsEnabled && f.stats != nil {
 			f.stats.NativeSize.HostAdapterBytes = a.Len()
 		}
 	}
@@ -4425,7 +4467,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		if internalEntryShouldAlign(a.Len(), len(c.BodyBytes), f.policy) {
 			a.Align16()
 		}
-		if f.stats != nil {
+		if diagnosticsEnabled && f.stats != nil {
 			f.stats.NativeSize.AdapterToInternalPaddingBytes = a.Len() - beforeAlign
 		}
 	}
@@ -4540,6 +4582,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
 	f.emitNativeGCStubs()
+	if profileEnabled {
+		f.collectProfileSources(internalOff)
+	}
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
 
@@ -4549,7 +4594,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	}
 	if hostAdapter {
 		a.PatchRel32(adapterCall, internalOff)
-		if f.stats != nil {
+		if diagnosticsEnabled && f.stats != nil {
 			f.stats.NativeSize.HostAdapterShapeHash = shared.AdapterShapeHash(f.a.B[:f.stats.NativeSize.HostAdapterBytes], adapterCall, 4)
 			f.stats.NativeSize.HostAdapterTailBytes = f.stats.NativeSize.HostAdapterBytes - f.adapterReturnOff
 			f.stats.NativeSize.HostAdapterTailShapeHash = shared.AdapterShapeHash(f.a.B[f.adapterReturnOff:f.stats.NativeSize.HostAdapterBytes], -1, 0)
@@ -4596,7 +4641,7 @@ func (f *fn) patchFrameSize() error {
 		return fmt.Errorf("amd64: native frame %d bytes exceeds stack-fence headroom %d", frameBytes, shared.MaxNativeFrameBytes-shared.MaxNativeInboundCallBytes)
 	}
 	size := uint32(frameBytes)
-	if f.stats != nil {
+	if diagnosticsEnabled && f.stats != nil {
 		sites := len(f.sc.tailFrameSites) + 2
 		f.stats.NativeSize.FrameAdjustmentBytes += 7 * sites
 		deadPerSite := 0

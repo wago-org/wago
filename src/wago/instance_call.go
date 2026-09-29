@@ -153,7 +153,7 @@ func contextInterruptError(ctx context.Context, err error) error {
 func (in *Instance) callInnerAdmitted(export string, slots []uint64, results []ValType, contexts invocationContextSet, reservation *pluginOperationReservation) ([]Value, error) {
 	var raw []uint64
 	var err error
-	if reservation == nil && contexts.interrupt == nil && contexts.callback == nil && (in.refStore == nil || in.refStore.private) {
+	if !(codeProfileEnabled && in.boundaryProfile() != nil) && reservation == nil && contexts.interrupt == nil && contexts.callback == nil && (in.refStore == nil || in.refStore.private) {
 		ic := in.findInvokeCache(export)
 		if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast) && len(slots) == int(ic.paramSlots) && in.lockPreparedFastState() {
 			defer in.unlockPreparedFastState()

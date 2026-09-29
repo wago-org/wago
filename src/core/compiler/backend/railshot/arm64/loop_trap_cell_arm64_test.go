@@ -9,6 +9,7 @@ import (
 )
 
 func TestLoopTrapCellCachePreservesPollLayout(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	body := []byte{
 		0x00,       // no declared locals
 		0x02, 0x40, // block
@@ -71,6 +72,7 @@ func TestLoopTrapCellRegisterSelectionPreservesPressureFloor(t *testing.T) {
 }
 
 func TestLoopTrapCellCacheIncludesMemoryFreeLoops(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	body := []byte{
 		0x01, 0x01, 0x7f, // one declared i32 local; excludes caller-pin-preserving leaf ABI
 		0x03, 0x40, // loop

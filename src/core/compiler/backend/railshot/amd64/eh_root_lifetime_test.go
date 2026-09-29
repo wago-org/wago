@@ -45,6 +45,7 @@ func exceptionFuncrefRootLifetimeModule(payloadType []byte) []byte {
 }
 
 func TestExceptionFuncrefRootsInitializeAndClear(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	// Compiler-plugin custom values live in a cold sidecar; keep the ordinary
 	// storage record at its measured 24-byte ceiling while EH roots continue to
 	// use compact inline metadata.

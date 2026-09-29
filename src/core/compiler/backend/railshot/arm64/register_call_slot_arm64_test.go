@@ -48,6 +48,7 @@ func overlappingSlotCallCode(indirect bool) []byte {
 }
 
 func TestRegisterCallOverlappingArgumentSlotARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, indirect := range []bool{false, true} {
 		name := "direct"
 		if indirect {
@@ -67,6 +68,7 @@ func TestRegisterCallOverlappingArgumentSlotARM64(t *testing.T) {
 }
 
 func BenchmarkRegisterCallOverlappingArgumentSlotARM64(b *testing.B) {
+	requireCompilerDiagnostics(b)
 	for _, indirect := range []bool{false, true} {
 		name := "direct"
 		if indirect {

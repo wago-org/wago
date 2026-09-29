@@ -137,6 +137,11 @@ func planSharedAdapterTailsAMD64(code []byte, entry []int, infos []adapterTailIn
 }
 
 func compactSharedAdapterTailsAMD64(code []byte, oldLen int, entry, internalEntry []int, relocs [][]callReloc, literalWords []uint64, literalOffsets []uint32, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats, groups []adapterTailGroup, infos []adapterTailInfo, sharedBytes int) (int, error) {
+	if profileEnabled {
+		if err := recordSharedAdapterTailUnwind(ms, groups, infos); err != nil {
+			return 0, err
+		}
+	}
 	for i := range groups {
 		g := &groups[i]
 		if g.count*g.length <= g.count*sharedAdapterTailJumpBytesAMD64+g.length {
@@ -175,7 +180,7 @@ func compactSharedAdapterTailsAMD64(code []byte, oldLen int, entry, internalEntr
 					plan.ShiftCallsiteReturnOffsets(info.endOff, uint32(deleted))
 				}
 			}
-			if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {
+			if (diagnosticsEnabled && ms != nil) && i < len(ms.Funcs) && ms.Funcs[i] != nil {
 				native := &ms.Funcs[i].NativeSize
 				native.TotalBytes -= deleted
 				native.HostAdapterBytes -= deleted
@@ -203,7 +208,7 @@ func compactSharedAdapterTailsAMD64(code []byte, oldLen int, entry, internalEntr
 		i := int(info.function)
 		returnOff := int(info.returnOff)
 		asm.PatchRel32(entry[i]+returnOff-4, internalEntry[i])
-		if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {
+		if (diagnosticsEnabled && ms != nil) && i < len(ms.Funcs) && ms.Funcs[i] != nil {
 			native := &ms.Funcs[i].NativeSize
 			native.HostAdapterShapeHash = shared.AdapterShapeHash(code[entry[i]:entry[i]+native.HostAdapterBytes], returnOff-4, 4)
 			native.HostAdapterTailShapeHash = shared.AdapterShapeHash(code[entry[i]+returnOff:entry[i]+returnOff+sharedAdapterTailJumpBytesAMD64], -1, 0)

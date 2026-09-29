@@ -17,6 +17,7 @@ import (
 // The extend feeds the outer i64.add as its RHS, so it is condensed with no dest
 // hint (result == src) — the case where dropping the redundant mov is a real win.
 func TestExtendElimZeroExtends(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	body := []byte{
 		0x00,       // 0 locals
 		0x20, 0x00, // local.get 0        (i64 n)
