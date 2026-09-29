@@ -222,6 +222,7 @@ func (m BoundsCheckMode) String() string {
 // RuntimeConfig configures compilation and execution. It is immutable — every
 // WithXxx returns a copy, so a base config can be shared and specialised safely.
 type RuntimeConfig struct {
+	codeProfile              *CodeProfile
 	features                 CoreFeatures
 	optimizations            map[string]bool
 	optimizationSnapshot     railshotOptimizationSnapshot
@@ -421,7 +422,8 @@ func (c *RuntimeConfig) WithFeature(feature CoreFeatures, enabled bool) *Runtime
 
 // WithGCCodeTelemetry enables code-neutral WasmGC native-byte attribution on
 // freshly compiled modules. It does not change emitted code and is not persisted
-// in .wago artifacts.
+// in .wago artifacts. Requires a build with wago_codegenstats, wago_gcstats,
+// or wago_profile; Validate rejects unavailable telemetry.
 func (c *RuntimeConfig) WithGCCodeTelemetry(enabled bool) *RuntimeConfig {
 	n := *c
 	n.gcCodeTelemetry = enabled
@@ -822,6 +824,12 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 // surfacing a bad config early (e.g. at startup). A feature flag is never a
 // silent no-op.
 func (c *RuntimeConfig) Validate() error {
+	if c.gcCodeTelemetry && !compilerTelemetryEnabled {
+		return fmt.Errorf("wago: compiler telemetry requires -tags=wago_codegenstats, wago_gcstats, or wago_profile")
+	}
+	if c.codeProfile != nil && !codeProfileEnabled {
+		return fmt.Errorf("wago: profiling requires a build with -tags=wago_profile")
+	}
 	if c.maxFunctionLocals == 0 || c.maxFunctionLocals > MaxFunctionLocalsLimit {
 		return fmt.Errorf("wago: max function locals must be between 1 and %d, got %d", MaxFunctionLocalsLimit, c.maxFunctionLocals)
 	}

@@ -155,6 +155,7 @@ func TestStorageMetadataFieldsAreIndependentArm64(t *testing.T) {
 }
 
 func TestSignedI32LoadCarriesUpperZeroFactArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
 		0x00,       // no locals
 		0x20, 0x00, // local.get 0
@@ -187,6 +188,7 @@ func TestCompareCarriesBooleanFactArm64(t *testing.T) {
 }
 
 func TestStraightLineLocalCarriesUpperZeroFactArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
 		0x01, 0x01, 0x7f, // one declared i32 local
 		0x20, 0x00, // local.get 0
@@ -212,6 +214,7 @@ func TestStraightLineLocalCarriesUpperZeroFactArm64(t *testing.T) {
 }
 
 func TestLocalFactsDisabledAcrossControlFlowArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
 		0x01, 0x01, 0x7f, // one declared i32 local
 		0x02, 0x40, // block
@@ -280,6 +283,7 @@ func TestMemoryAddressUsesUpperZeroFactArm64(t *testing.T) {
 }
 
 func TestI32ParameterKeepsMemoryAddressCanonicalizationAcrossBlockArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x00,       // no locals
 		0x02, 0x40, // block (forces value-specific facts off)
@@ -323,6 +327,7 @@ func TestI32ParameterKeepsMemoryAddressCanonicalizationAcrossBlockArm64(t *testi
 }
 
 func TestDeclaredI32LocalCanonicalizesOnceAcrossControlFlowArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x01, 0x01, 0x7f, // one declared i32 local
 		0x02, 0x40, // block (disables assignment-version facts)
@@ -365,6 +370,7 @@ func TestDeclaredI32LocalCanonicalizesOnceAcrossControlFlowArm64(t *testing.T) {
 }
 
 func TestHotI32ParameterCanonicalizesOnceAtEntryArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x00,       // no locals
 		0x03, 0x40, // loop: parameter reads receive loop-weighted hotness

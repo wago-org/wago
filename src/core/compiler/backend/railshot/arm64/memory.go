@@ -147,6 +147,7 @@ func (f *fn) emitInterruptCheck(preserveLayout bool) {
 // an inline trap block at every site (better I-cache, not-taken hot branches, one
 // stub per trap code instead of one block per check).
 func (f *fn) trapIf(cc Cond, code uint32) {
+	before := f.a.Len()
 	if code == trapMemOOB {
 		f.stats.addBoundsCheck() // inline linear-memory OOB check (P6 elides these)
 	}
@@ -154,6 +155,9 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 	// emitTrapStubs uses it to tag Bcond vs Branch patch ranges (§6.2).
 	sc := f.scratchState()
 	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.a.Bcond(cc)))
+	if profileEnabled && code == trapMemOOB {
+		f.recordProfileCodeSite(before, "memory-bounds-branch")
+	}
 }
 
 // zeroBranch emits a branch on a register's zero/nonzero value. Every caller is
@@ -178,12 +182,16 @@ func (f *fn) emitZeroBranch(reg Reg, wide, onZero bool) int {
 }
 
 func (f *fn) trapIfZero(reg Reg, wide, onZero bool, code uint32) {
+	before := f.a.Len()
 	if code == trapMemOOB {
 		f.stats.addBoundsCheck()
 	}
 	f.stats.peep("direct-zero-branch")
 	sc := f.scratchState()
 	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.emitZeroBranch(reg, wide, onZero)))
+	if profileEnabled && code == trapMemOOB {
+		f.recordProfileCodeSite(before, "memory-bounds-branch")
+	}
 }
 
 // trapAlways is trapIf's unconditional form (`unreachable`): a single B to the
@@ -196,6 +204,9 @@ func (f *fn) trapAlways(code uint32) {
 }
 
 func (f *fn) trapSite(branch int) trapSite {
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.recordProfileTrap(branch)
+	}
 	return trapSite{branch: compactTrapBranch(branch), function: f.traceFuncIdx, pc: f.wasmPC}
 }
 
@@ -324,6 +335,9 @@ func (f *fn) emitTrapStubs() {
 				if !f.a.PatchBranch26(site, sharedUnwind) {
 					// A pathological >128 MiB function remains correct: discard the
 					// just-emitted B and retain this group's local unwind.
+					if profileEnabled && f.stats != nil && f.stats.RecordSources {
+						f.rewindProfileEmission(site)
+					}
 					f.a.B = f.a.B[:site]
 					f.emitTrapUnwind()
 				} else {
@@ -521,7 +535,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) 
 		leaDisp = rangeExtent
 	}
 	f.boundsCertUpdate(bcKind, bcIdx, leaDisp)
-	if f.stats != nil {
+	if diagnosticsEnabled && f.stats != nil {
 		if bcKind != 0 && f.inLoop() {
 			f.stats.addBoundsInLoop()
 		}

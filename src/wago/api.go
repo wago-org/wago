@@ -1361,7 +1361,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
 	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || indexedFunctionRefOps
 	var gcCodeStats *railshotModuleStats
-	if cfg.gcCodeTelemetry {
+	if (compilerTelemetryEnabled && cfg.gcCodeTelemetry) || (codeProfileEnabled && cfg.codeProfile != nil) {
 		gcCodeStats = new(railshotModuleStats)
 	}
 	syncHostSlots, err := moduleSyncHostSlotCapacity(m)
@@ -1378,7 +1378,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			syncHostSlots = gcSlots
 		}
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{BitCountFeatures: bitCountHostFeaturesSupported(), Workers: workers, DeferCodeMapping: true, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{BitCountFeatures: bitCountHostFeaturesSupported(), Workers: workers, DeferCodeMapping: true, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats, SourceMaps: codeProfileEnabled && cfg.codeProfile.IncludeSources(), UnwindMaps: codeProfileEnabled && cfg.codeProfile.IncludeUnwind(), Profile: codeProfileEnabled && cfg.codeProfile != nil})
 	if err != nil {
 		return nil, wrapContextError("compile", err)
 	}
@@ -1418,7 +1418,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if exactNativeGCRoots || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, preparedIsolatedTables: cm.PreparedIsolatedTables, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscapeWithValidation(m, &validationAnalysis), customInstructions: customInstructions, requiredAMD64Features: shared.AMD64Features(cm.RequiredAMD64Features), syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, preparedIsolatedTables: cm.PreparedIsolatedTables, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscapeWithValidation(m, &validationAnalysis), customInstructions: customInstructions, requiredAMD64Features: shared.AMD64Features(cm.RequiredAMD64Features), syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: compilerTelemetryEnabled && cfg.gcCodeTelemetry})
 	c.codeCache.setNativeStackBytes(cfg.nativeStackBytes)
 	if c.validateMemo != nil {
 		c.validateMemo.memoryLimitPages = cfg.maxMemoryPages
@@ -1428,7 +1428,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	c.memoryDir.exactExports = true
 	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
 	c.memoryDir.stagedMemory64 = features.Memory64 && usesMemory64
-	if cfg.gcCodeTelemetry {
+	if compilerTelemetryEnabled && cfg.gcCodeTelemetry {
 		c.gcCodeTelemetry = railshotGCNativeCodeTelemetry(gcCodeStats)
 		c.gcCodeTelemetry.TotalBytes = uint64(len(code))
 	}
@@ -1560,6 +1560,11 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if gcI31Product != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.gcI31Product = gcI31Product
+	}
+	if codeProfileEnabled && cfg.codeProfile != nil {
+		if err := compiled.installCodeProfile(cfg, wasmBytes, gcCodeStats); err != nil {
+			return nil, joinPrimary(err, compiled.Close())
+		}
 	}
 	return publishCompilerCompiled(compiled)
 }
@@ -3753,6 +3758,9 @@ func LoadTrustedArtifact(b []byte) (*Compiled, error) {
 // use InvokeFromHost with the HostModule value it received. Direct invocation
 // fails with ErrPermissionDenied while callback-scoped guest storage is borrowed.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
+	if codeProfileEnabled && in.boundaryProfile() != nil {
+		return in.invokeEntry(export, args, invocationContextSet{}, false, true)
+	}
 	if in != nil && in.syncMode && goruntime.GOARCH == "amd64" && in.rt == nil {
 		if out, err, ok := in.tryInvokeCachedHostScalar1(export, args); ok {
 			return out, err
@@ -3901,16 +3909,21 @@ func (in *Instance) invoke(export string, args []uint64, contexts invocationCont
 	return in.invokeEntry(export, args, contexts, false, false)
 }
 
-func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invocationContextSet, reservation *pluginOperationReservation) ([]uint64, error) {
+func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invocationContextSet, reservation *pluginOperationReservation) (result []uint64, resultErr error) {
+	if codeProfileEnabled && in.boundaryProfile() != nil {
+		span, restore := in.beginProfileInvocation(export)
+		defer restore()
+		defer finishProfileBoundary(span, &resultErr)
+	}
 	state := in.ensurePluginState()
 	return in.invokeWithToken(export, args, contexts, state.invocationID, true, true, reservation)
 }
 
-func (in *Instance) invokeEntry(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted, fastProbed bool) ([]uint64, error) {
+func (in *Instance) invokeEntry(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted, fastProbed bool) (result []uint64, resultErr error) {
 	if in == nil {
 		return nil, nilInstanceInvokeError()
 	}
-	if !fastProbed && !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil {
+	if !fastProbed && !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil && !(codeProfileEnabled && in.boundaryProfile() != nil) {
 		if out, err, ok := in.tryInvokeCachedIsolatedNumeric(export, args); ok {
 			return out, err
 		}
@@ -3937,6 +3950,18 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		}
 		state.unlockInvocation()
 	}()
+	if codeProfileEnabled && in.boundaryProfile() != nil {
+		if !alreadyAdmitted {
+			if err := in.beginInvocation(); err != nil {
+				return nil, fmt.Errorf("invoke %q: %w", export, err)
+			}
+			admittedHere = true
+			alreadyAdmitted = true
+		}
+		span, restore := in.beginProfileInvocation(export)
+		defer restore()
+		defer finishProfileBoundary(span, &resultErr)
+	}
 	privateRefStore := in.refStore == nil || in.refStore.private
 	if !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil && privateRefStore {
 		// Admit before reading cached or compiled entry metadata. Close publishes
@@ -4627,6 +4652,11 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	defer gcSuspension.resume()
 	restoreInvocationContext := bindHostInvocationParent(in, parent)
 	defer restoreInvocationContext()
+	if codeProfileEnabled && activeHostInvocationContext(in).profileSession() != nil {
+		span, restore := in.beginProfileHostCallback(importIdx)
+		defer restore()
+		defer finishProfileBoundary(span, &err)
+	}
 	fn := &in.syncHosts[importIdx]
 	caller := in.beginHostCallScope()
 	defer caller.scope.end(caller.generation, caller.parentGeneration)

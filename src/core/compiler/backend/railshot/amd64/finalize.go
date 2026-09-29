@@ -171,6 +171,14 @@ func (f *fn) jumpTableBranchRelaxationLimit() int {
 }
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
+	if profileEnabled {
+		if err := f.collectProfileAdapterUnwind(); err != nil {
+			return 0, err
+		}
+		if err := f.collectProfileUnwind(internalOff); err != nil {
+			return 0, err
+		}
+	}
 	if !nativeFinalizerEnabled {
 		return internalOff, nil
 	}
@@ -183,6 +191,42 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		return 0, err
 	}
 	f.a.B = result.Code
+	if profileEnabled && f.stats != nil && len(f.stats.AdapterUnwind) != 0 {
+		mapped, err := shared.RemapNativeUnwind(f.stats.AdapterUnwind, result.Offsets)
+		if err != nil {
+			return 0, err
+		}
+		f.stats.AdapterUnwind = mapped
+	}
+	if profileEnabled && f.stats != nil && f.stats.RecordUnwind {
+		mapped, err := shared.RemapNativeUnwind(f.stats.UnwindRanges, result.Offsets)
+		if err != nil {
+			return 0, err
+		}
+		f.stats.UnwindRanges = mapped
+		start, _, ok := result.Offsets.MapRange(internalOff, internalOff)
+		if !ok {
+			return 0, fmt.Errorf("invalid unwind internal entry")
+		}
+		f.stats.UnwindInternalOffset = start
+	}
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		sites, err := shared.RemapNativeCodeSites(f.stats.CodeSites, result.Offsets)
+		if err != nil {
+			return 0, err
+		}
+		f.stats.CodeSites = sites
+		mapped, err := shared.RemapNativeSources(f.stats.SourceRanges, result.Offsets)
+		if err != nil {
+			return 0, err
+		}
+		f.stats.SourceRanges = mapped
+		start, _, ok := result.Offsets.MapRange(internalOff, internalOff)
+		if !ok {
+			return 0, fmt.Errorf("invalid profile internal entry")
+		}
+		f.stats.SourceInternalOffset = start
+	}
 	if len(result.Code) == oldLen && internalOff == 0 && len(f.relocs) == 0 && f.adapterReturnOff == 0 && f.trapBodyEnd == 0 && f.gcFrameRoots == nil {
 		// The common tiny internal leaf has no function-relative metadata to
 		// remap. FinalizeIdentity has still validated the emitted image; avoid a
@@ -257,11 +301,11 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 			return 0, fmt.Errorf("amd64: malformed GC callsite stream")
 		}
 	}
-	if frameDeleted != 0 && f.stats != nil {
+	if frameDeleted != 0 && (diagnosticsEnabled && f.stats != nil) {
 		f.stats.NativeSize.FrameAdjustmentBytes -= frameDeleted
 		f.stats.NativeSize.DeadFrameReservationBytes = 0
 	}
-	if holeDeleted != 0 && f.stats != nil {
+	if holeDeleted != 0 && (diagnosticsEnabled && f.stats != nil) {
 		f.stats.NativeSize.BranchFoldHoleBytes -= holeDeleted
 	}
 	return internalOff, nil

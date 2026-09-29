@@ -10,6 +10,7 @@ import (
 )
 
 func TestCompactLogicalMoveImmediateArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	body := []byte{0x00, 0x42}
 	body = append(body, wasmtest.SLEB64(0x00ff00ff00ff00ff)...)
 	body = append(body, 0x0b)
@@ -54,6 +55,7 @@ func TestCompactLogicalMoveImmediateArm64(t *testing.T) {
 }
 
 func TestCompactMoveImmediate32Arm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{0x00, 0x41, 0x7f, 0x0b})
 	before := compactMoveImmediate32Enabled
 	t.Cleanup(func() { compactMoveImmediate32Enabled = before })

@@ -16,6 +16,7 @@ import (
 // Numeric call_indirect uses the wrapper ABI. Exercise the mixed emitter
 // directly so a pre-flush in descriptor dispatch cannot remove the pressure.
 func TestMixedCallIndirectPressureARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, f64 := range []bool{false, true} {
 		for _, stackReg := range []bool{false, true} {
 			t.Run(fmt.Sprintf("f64=%t/stack-reg=%t", f64, stackReg), func(t *testing.T) {

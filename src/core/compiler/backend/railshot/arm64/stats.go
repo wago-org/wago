@@ -2,12 +2,10 @@
 
 package arm64
 
-// CodegenStats is the railshot "explain" dashboard: per-function counters that
-// make every later optimization prove itself. Collection
-// is opt-in â a *CodegenStats is threaded through the fn only when the caller asks
-// (CompileOptions.Stats) or WAGO_EXPLAIN=1 is set. When off, the field is nil and
-// every counter method is a no-op (nil-receiver methods), so the hot compile path
-// pays nothing.
+// CodegenStats is the Railshot compiler diagnostics dashboard. Collection requires
+// wago_codegenstats, wago_gcstats, or wago_profile at build time, followed by a
+// CompileOptions.Stats destination or WAGO_EXPLAIN=1 at runtime. Ordinary builds
+// compile out counters, reports, and diagnostic environment-variable reads.
 //
 // The counters are the sinks the plan's phases target: MemRefsForcedByStore is
 // what P2's alias-aware loads shrink, BoundsChecks is what P6's bounds facts
@@ -21,6 +19,7 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/jitprofile"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
@@ -31,11 +30,11 @@ var (
 	// explainEnabled prints a per-module CodegenStats dump to stderr after every
 	// compile. "size" retains the full report and highlights its native byte
 	// ledger; "1" remains the backward-compatible spelling.
-	explainMode    = os.Getenv("WAGO_EXPLAIN")
+	explainMode    = diagnosticEnv("WAGO_EXPLAIN")
 	explainEnabled = explainMode == "1" || explainMode == "size"
 	// debugModGlobals prints the module-pinned-global choices (the #90-era temp
 	// print, now first-class).
-	debugModGlobals = os.Getenv("WAGO_DEBUG_MODGLOBALS") == "1"
+	debugModGlobals = diagnosticsEnabled && os.Getenv("WAGO_DEBUG_MODGLOBALS") == "1"
 	// pinGlobalK overrides the adaptive module-global pin count K: -1 = auto (the
 	// pickModuleGlobals heuristic), 0..len(moduleGlobalRegs) = force that many.
 	pinGlobalK = parsePinGlobalK(os.Getenv("WAGO_PIN_GLOBAL_K"))
@@ -156,8 +155,13 @@ func parsePinGlobalK(s string) int {
 // CodegenStats holds one function's codegen counters. All fields are zero when a
 // phenomenon did not occur; maps are nil until first use.
 type CodegenStats struct {
-	FuncIdx int    // local function index (0-based over m.Code)
-	Name    string // name-section / export name, or "" if anonymous
+	CodeSites            []shared.NativeCodeSite
+	RecordSources        bool
+	SourceInternalOffset int
+	SourceRanges         []shared.NativeSourceRange
+	SourceFrames         []shared.NativeInlineFrame
+	FuncIdx              int    // local function index (0-based over m.Code)
+	Name                 string // name-section / export name, or "" if anonymous
 
 	// Size.
 	CodeBytes       int                      // emitted machine-code length
@@ -212,14 +216,14 @@ type CodegenStats struct {
 }
 
 func (ms *ModuleStats) finalizeCompileResourceStats() {
-	if ms == nil {
+	if !diagnosticsEnabled || ms == nil {
 		return
 	}
 	c := &ms.Compile
 	c.StageNanos[shared.CompileStageFunctions] = 0
 	c.FunctionAttempts = 0
 	for _, s := range ms.Funcs {
-		if s == nil {
+		if !diagnosticsEnabled || s == nil {
 			continue
 		}
 		c.StageNanos[shared.CompileStageFunctions] += s.CompileNanos
@@ -228,7 +232,7 @@ func (ms *ModuleStats) finalizeCompileResourceStats() {
 }
 
 func (ms *ModuleStats) setNodeScratchStats(sc *scratch) {
-	if ms == nil {
+	if !diagnosticsEnabled || ms == nil {
 		return
 	}
 	ms.Compile.NodeScratchReserved = 0
@@ -243,7 +247,7 @@ func (ms *ModuleStats) setNodeScratchStats(sc *scratch) {
 }
 
 func (ms *ModuleStats) addNodeScratchStats(sc *scratch) {
-	if ms == nil || sc == nil {
+	if (!diagnosticsEnabled || ms == nil) || sc == nil {
 		return
 	}
 	ms.Compile.AddWorkerScratch(workerScratchStats(sc))
@@ -268,7 +272,7 @@ func workerScratchStats(sc *scratch) shared.WorkerScratchStats {
 }
 
 func (s *CodegenStats) setFinalizerFallback(reason string) {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.FinalizerFallback = reason
 	}
 }
@@ -276,17 +280,17 @@ func (s *CodegenStats) setFinalizerFallback(reason string) {
 // --- nil-safe counter methods (no-op when collection is off) ---
 
 func (s *CodegenStats) addFlush() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.Flushes++
 	}
 }
 func (s *CodegenStats) addFlushBelow() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.FlushBelows++
 	}
 }
 func (s *CodegenStats) addFlushRoot(deferred bool) {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.FlushRoots++
 		if deferred {
 			s.FlushDeferredRoots++
@@ -294,7 +298,7 @@ func (s *CodegenStats) addFlushRoot(deferred bool) {
 	}
 }
 func (s *CodegenStats) addFlushBelowRoot(deferred bool) {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.FlushBelowRoots++
 		if deferred {
 			s.FlushBelowDeferred++
@@ -302,134 +306,134 @@ func (s *CodegenStats) addFlushBelowRoot(deferred bool) {
 	}
 }
 func (s *CodegenStats) addCallFlush() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.CallFlushes++
 	}
 }
 func (s *CodegenStats) addLocalSetDeferred() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.LocalSetDeferred++
 	}
 }
 func (s *CodegenStats) addCondense() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.Condenses++
 	}
 }
 func (s *CodegenStats) addSpill() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.Spills++
 	}
 }
 func (s *CodegenStats) addReload() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.Reloads++
 	}
 }
 func (s *CodegenStats) addForcedLoad() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.MemRefsForcedByStore++
 	}
 }
 func (s *CodegenStats) addTrapStub() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.TrapStubs++
 	}
 }
 func (s *CodegenStats) addTrapGroup() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.TrapGroups++
 	}
 }
 func (s *CodegenStats) addBoundsCheck() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.BoundsChecks++
 	}
 }
 func (s *CodegenStats) addBoundsElidable() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.BoundsChecksElidable++
 	}
 }
 func (s *CodegenStats) addBoundsInLoop() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.BoundsChecksInLoop++
 	}
 }
 func (s *CodegenStats) addBoundsHoistable() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.BoundsChecksHoistable++
 	}
 }
 func (s *CodegenStats) addPinnedLocal() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.PinnedLocals++
 	}
 }
 func (s *CodegenStats) addPinnedGlobalValue() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.PinnedGlobalsValue++
 	}
 }
 func (s *CodegenStats) addGCAllocationBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.Allocation += n
 	}
 }
 func (s *CodegenStats) addGCHandleResolutionBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.HandleResolution += n
 	}
 }
 func (s *CodegenStats) addGCTypeCastBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.TypeCast += n
 	}
 }
 func (s *CodegenStats) addGCNullCheckBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.NullCheck += n
 	}
 }
 func (s *CodegenStats) addGCBoundsCheckBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.BoundsCheck += n
 	}
 }
 func (s *CodegenStats) addGCBarrierBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.Barrier += n
 	}
 }
 func (s *CodegenStats) addGCHelperCallBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.HelperCall += n
 	}
 }
 func (s *CodegenStats) addGCSharedStubBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.SharedStub += n
 	}
 }
 func (s *CodegenStats) addGCSpillReloadBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.SpillReload += n
 	}
 }
 func (s *CodegenStats) addGCTrapStubBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.TrapStub += n
 	}
 }
 func (s *CodegenStats) addGCRootMapBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.RootMap += n
 	}
 }
 
 // call records one call lowering of the given kind.
 func (s *CodegenStats) call(kind string) {
-	if s == nil {
+	if !diagnosticsEnabled || s == nil {
 		return
 	}
 	if s.Calls == nil {
@@ -439,14 +443,14 @@ func (s *CodegenStats) call(kind string) {
 }
 
 func (s *CodegenStats) addInlineSiteBytes(n int) {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.InlineSiteBytes += n
 	}
 }
 
 // peep records one peephole/instruction-selection rewrite by stable name.
 func (s *CodegenStats) peep(name string) {
-	if s == nil {
+	if !diagnosticsEnabled || s == nil {
 		return
 	}
 	if s.Peephole == nil {
@@ -467,6 +471,11 @@ type ModuleGlobalPinInfo = shared.ModuleGlobalPinInfo
 // ModuleStats aggregates one module's per-function stats plus the module-wide
 // decisions. The zero value is ready to collect into.
 type ModuleStats struct {
+	CodeSites        []shared.NativeCodeSite
+	UnwindRanges     []jitprofile.UnwindRange
+	SourceRanges     []shared.NativeSourceRange
+	SourceFrames     []shared.NativeInlineFrame
+	ProfileRegions   []jitprofile.Region
 	Funcs            []*CodegenStats
 	ModuleGlobalPins []ModuleGlobalPinInfo
 	Inline           *InlineReport // inline-candidate detection (nil if not analyzed)
@@ -483,7 +492,10 @@ type NativeSizeReport = shared.NativeSizeReport
 // String renders the explain dump: a module summary line, the module-pinned
 // globals, then one block per function.
 func (ms *ModuleStats) String() string {
-	if ms == nil {
+	if !diagnosticsEnabled {
+		return "compiler diagnostics omitted from this build"
+	}
+	if !diagnosticsEnabled || ms == nil {
 		return ""
 	}
 	var b strings.Builder
@@ -526,7 +538,7 @@ func (ms *ModuleStats) String() string {
 	type fallbackTotal struct{ count, bytes int }
 	fallbacks := make(map[string]fallbackTotal)
 	for _, s := range ms.Funcs {
-		if s == nil || s.FinalizerFallback == "" {
+		if !diagnosticsEnabled || s == nil || s.FinalizerFallback == "" {
 			continue
 		}
 		total := fallbacks[s.FinalizerFallback]
@@ -560,7 +572,7 @@ func (ms *ModuleStats) String() string {
 		b.WriteString(ms.Inline.String())
 	}
 	for _, s := range ms.Funcs {
-		if s == nil {
+		if !diagnosticsEnabled || s == nil {
 			continue
 		}
 		b.WriteString(s.report())
@@ -570,7 +582,7 @@ func (ms *ModuleStats) String() string {
 
 // report renders one function's counters as an indented block.
 func (s *CodegenStats) report() string {
-	if s == nil {
+	if !diagnosticsEnabled || s == nil {
 		return ""
 	}
 	name := s.Name
@@ -721,4 +733,12 @@ func funcDisplayName(m *wasm.Module, localIdx, importedFuncs int) string {
 		}
 	}
 	return ""
+}
+
+// Keep environment reads out of ordinary builds, including package initialization.
+func diagnosticEnv(key string) string {
+	if !diagnosticsEnabled {
+		return ""
+	}
+	return os.Getenv(key)
 }

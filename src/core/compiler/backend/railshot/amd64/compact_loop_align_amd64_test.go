@@ -10,6 +10,7 @@ import (
 )
 
 func TestCompactLoopAlign32PolicyAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modFuncs(t, funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I64}, body: []byte{
 		0x01, 0x03, 0x7e, // three i64 locals
 		0x42, 0x00, 0x21, 0x01,
@@ -53,6 +54,7 @@ func TestCompactLoopAlign32PolicyAMD64(t *testing.T) {
 }
 
 func TestCompactLoopAlign32RejectsLargeFunctionsAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	body := []byte{0x00} // no locals
 	for range 64 {
 		body = append(body, 0x01) // nop

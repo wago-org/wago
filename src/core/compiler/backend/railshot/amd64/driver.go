@@ -51,6 +51,11 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if err != nil {
 			return err
 		}
+		var previous profileOrigin
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			previous = f.enterProfileInstruction()
+		}
+
 		f.prepareStoreForward(op)
 		f.prepareGCResolvedObject(op)
 		switch op {
@@ -87,6 +92,10 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 				err = f.emitPlain(r, op)
 			}
 		}
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.switchProfileOrigin(previous)
+		}
+
 		if err != nil {
 			return err
 		}

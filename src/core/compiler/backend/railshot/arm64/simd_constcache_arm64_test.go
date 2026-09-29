@@ -49,6 +49,7 @@ func TestSIMDV128ConstSplatMaterialization(t *testing.T) {
 }
 
 func TestSIMDV128ConstCacheArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	v := i64x2Bytes(0x0123456789abcdef, 0x76543210fedcba98)
 	body := append([]byte{0x00}, simdConst(v)...)
 	body = append(body, simdConst(v)...)

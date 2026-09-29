@@ -180,6 +180,7 @@ func TestScratchClearNodeReferences(t *testing.T) {
 }
 
 func TestScratchNodeResourceStats(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	nodes := int(shared.MaxRetainedStackArenaBytes/uint64(unsafe.Sizeof(elem{}))) + maxStackChunkCap
 	sc := newScratchWithStackCap(minStackArenaCap)
 	for i := 1; i < nodes; i++ {

@@ -36,7 +36,11 @@ func (f *fn) materializeV128(e *elem) Reg {
 		}
 	case stSlot:
 		x := f.allocFReg(0)
+		before := f.a.Len()
 		f.mov128LoadDisp(x, RSP, f.spillOff(e.st.slotIndex()))
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "vector-reload")
+		}
 		f.occupyF(e, x)
 		return x
 	case stLocalRef:
@@ -202,7 +206,7 @@ func (f *fn) emitV128ConstPool() {
 	if len(f.v128Pool) == 0 {
 		return
 	}
-	if f.stats != nil {
+	if diagnosticsEnabled && f.stats != nil {
 		for _, c := range f.v128Pool {
 			f.stats.literalKeys = append(f.stats.literalKeys, literalKey{lo: c.lo, hi: c.hi, size: c.size})
 		}
@@ -238,7 +242,7 @@ func (f *fn) emitV128ConstPool() {
 	}
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
-	if f.stats != nil {
+	if diagnosticsEnabled && f.stats != nil {
 		f.stats.NativeSize.LiteralPoolBytes += f.a.Len() - poolStart
 	}
 }

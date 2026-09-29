@@ -102,6 +102,7 @@ func runIndirectTail(t *testing.T, m *wasm.Module, tableFuncs []int, args ...uin
 }
 
 func TestReturnCallIndirectReusesFrameAndMatchesTraps(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := indirectTailModule(t)
 	out, err := runIndirectTail(t, m, []int{0, 1}, 1_000_000, 0)
 	if err != nil {

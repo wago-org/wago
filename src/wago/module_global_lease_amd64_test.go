@@ -58,6 +58,7 @@ func moduleGlobalLeaseRegressionModule() []byte {
 }
 
 func TestModuleGlobalRegionalLeasePreservesResultSlotsAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	module := moduleGlobalLeaseRegressionModule()
 	decoded, err := wasm.DecodeModule(module)
 	if err != nil {

@@ -93,6 +93,7 @@ func checkConditionalSnapshotValues(t *testing.T, got, want []uint64) {
 }
 
 func checkConditionalSnapshotPins(t *testing.T, data []byte, function, want int) {
+	requireCompilerDiagnostics(t)
 	t.Helper()
 	m, err := wasm.DecodeModule(data)
 	if err != nil {

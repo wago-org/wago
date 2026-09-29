@@ -16,6 +16,7 @@ func copysignBits(a, b uint64, f64 bool) uint64 {
 }
 
 func TestFCopysignXorMaskExec(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	shapes := []struct {
 		name        string
 		leftPrefix  []byte

@@ -317,6 +317,9 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 // Invoke calls the resolved export. Arguments and results use the same raw slot
 // representation and lifetime rules as Instance.Invoke.
 func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
+	if codeProfileEnabled && fn != nil && fn.in.boundaryProfile() != nil {
+		return fn.invokeGeneral(args)
+	}
 	if fn != nil && fn.in != nil && len(args) == fn.paramSlots {
 		if fn.directIntFast {
 			if preparedDirectWideSupported && (len(args) > 4 || fn.resultSlots > 2) {
@@ -455,7 +458,7 @@ func (l *preparedInvocationLease) unlockScalarInvocation() {
 	l.state.invokeMu.Unlock()
 }
 
-func (fn *WasmFunc) invokeGeneral(args []uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeGeneral(args []uint64) (result []uint64, resultErr error) {
 	if fn == nil || fn.in == nil {
 		return nil, fmt.Errorf("wago: invoke closed Wasm function")
 	}
@@ -470,6 +473,11 @@ func (fn *WasmFunc) invokeGeneral(args []uint64) ([]uint64, error) {
 	// reference-result tokenization.
 	preparedLease := in.lockPreparedInvocation()
 	defer preparedLease.unlock()
+	if codeProfileEnabled && in.boundaryProfile() != nil {
+		span, restore := in.beginProfileInvocation(fn.export)
+		defer restore()
+		defer finishProfileBoundary(span, &resultErr)
+	}
 	return fn.invokeGeneralAdmitted(args)
 }
 

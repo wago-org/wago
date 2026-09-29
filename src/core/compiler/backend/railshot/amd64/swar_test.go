@@ -22,6 +22,7 @@ func swarMaskBranchBody() []byte {
 }
 
 func TestSWARMaskTestFusion(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i64, i32 := []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}
 	m := mod1(t, i64, i32, swarMaskEqzBody())
 	s := compileWithStats(t, m, false).Funcs[0]

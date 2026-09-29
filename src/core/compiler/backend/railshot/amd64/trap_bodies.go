@@ -74,7 +74,7 @@ func (c *sharedTrapBodyClusterAMD64) share(codeBefore, fnCode []byte, entry int,
 		fnCode[info.off] = 0xe9
 		binary.LittleEndian.PutUint32(fnCode[info.off+1:], uint32(int32(delta)))
 		deleted := len(body) - sharedTrapBodyThunkBytesAMD64
-		if stats != nil {
+		if diagnosticsEnabled && stats != nil {
 			stats.CodeBytes -= deleted
 			stats.NativeSize.TotalBytes -= deleted
 			stats.NativeSize.InternalFunctionBytes -= deleted
@@ -85,6 +85,9 @@ func (c *sharedTrapBodyClusterAMD64) share(codeBefore, fnCode []byte, entry int,
 		return fnCode[:int(info.off)+sharedTrapBodyThunkBytesAMD64]
 	}
 	if int(c.n) < len(c.groups) {
+		if diagnosticsEnabled && stats != nil {
+			stats.NativeSize.SharedTrapBodyBytes = len(body)
+		}
 		c.groups[c.n] = sharedTrapBodyGroupAMD64{target: entry + int(info.off), length: len(body), hash: hash}
 		c.n++
 	}

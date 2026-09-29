@@ -5,6 +5,7 @@ package arm64
 import "testing"
 
 func TestFrameElidesRegisterOnlyVoidLeafArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modFuncs(t, funcDef{body: []byte{0x00, 0x0b}})
 	var stats ModuleStats
 	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})

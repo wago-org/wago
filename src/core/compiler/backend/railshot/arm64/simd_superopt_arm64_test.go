@@ -35,6 +35,7 @@ func simdI32x4SignedShiftOrBodyArm64(v [16]byte, shift byte) []byte {
 }
 
 func TestSIMDI32x4RotateRightSuperoptArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	values := []uint32{0x01234567, 0x89abcdef, 0x80000001, 0xfedcba98}
 	v := i32x4Bytes(int32(values[0]), int32(values[1]), int32(values[2]), int32(values[3]))
 	for _, shift := range []byte{1, 7, 12, 31} {
@@ -275,6 +276,7 @@ func simdBitmaskNonZeroBodyArm64(v [16]byte, compare int32) []byte {
 }
 
 func TestSIMDBitmaskNonZeroSuperoptArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, tc := range []struct {
 		name string
 		v    [16]byte
@@ -331,6 +333,7 @@ func simdBitmaskPopcntBodyArm64(v [16]byte) []byte {
 }
 
 func TestSIMDBitmaskPopcntSuperoptArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, tc := range []struct {
 		name string
 		v    [16]byte
@@ -417,6 +420,7 @@ func simdNotAndBodyArm64(a, b [16]byte) []byte {
 }
 
 func TestSIMDNotAndSuperoptArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 	b := i8x16Bytes(-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
 	body := simdNotAndBodyArm64(a, b)

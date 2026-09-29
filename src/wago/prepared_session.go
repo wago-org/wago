@@ -51,7 +51,7 @@ func (fn *WasmFunc) OpenSession() (*PreparedSession, error) {
 	}
 	state := &preparedSessionState{fn: fn}
 	s := &PreparedSession{state: state}
-	if (fn.isolatedFast || fn.directIsolated && (fn.directIntFast || preparedDirectFloatSupported && (fn.directFloatFast || fn.directMixedInfo != 0))) && in.tryPreparedDirect() {
+	if (fn.isolatedFast || fn.directIsolated && (fn.directIntFast || preparedDirectFloatSupported && (fn.directFloatFast || fn.directMixedInfo != 0))) && !(codeProfileEnabled && in.boundaryProfile() != nil) && in.tryPreparedDirect() {
 		state.fast = true
 		return s, nil
 	}
@@ -196,7 +196,7 @@ func (s *PreparedSession) Invoke4(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	return s.invokeFixed(4, a0, a1, a2, a3)
 }
 
-func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) ([]uint64, error) {
+func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) (result []uint64, resultErr error) {
 	if s == nil || s.state == nil || s.state.closed.Load() {
 		return nil, fmt.Errorf("wago: invoke closed prepared session")
 	}
@@ -229,6 +229,11 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) ([]uint6
 		return nil, err
 	}
 	defer state.endCall(gcLease)
+	if codeProfileEnabled && fn.in.boundaryProfile() != nil {
+		span, restore := fn.in.beginProfileInvocation(fn.export)
+		defer restore()
+		defer finishProfileBoundary(span, &resultErr)
+	}
 	args := [4]uint64{a0, a1, a2, a3}
 	if state.host {
 		return state.invokeScalarHostReserved(args[:count])
@@ -239,7 +244,7 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) ([]uint6
 	return fn.invokeGeneralAdmitted(args[:count])
 }
 
-func (s *PreparedSession) invokeArgs(args []uint64) ([]uint64, error) {
+func (s *PreparedSession) invokeArgs(args []uint64) (result []uint64, resultErr error) {
 	if s == nil || s.state == nil || s.state.closed.Load() {
 		return nil, fmt.Errorf("wago: invoke closed prepared session")
 	}
@@ -262,6 +267,11 @@ func (s *PreparedSession) invokeArgs(args []uint64) ([]uint64, error) {
 		return nil, err
 	}
 	defer state.endCall(gcLease)
+	if codeProfileEnabled && fn.in.boundaryProfile() != nil {
+		span, restore := fn.in.beginProfileInvocation(fn.export)
+		defer restore()
+		defer finishProfileBoundary(span, &resultErr)
+	}
 	if state.host {
 		return state.invokeScalarHostReserved(args)
 	}

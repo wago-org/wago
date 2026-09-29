@@ -27,6 +27,19 @@ type (
 	CallerResolver                  = impl.CallerResolver
 	Capability                      = impl.Capability
 	CapabilityOption                = impl.CapabilityOption
+	CodeProfile                     = impl.CodeProfile
+	CodeProfileEvent                = impl.CodeProfileEvent
+	CodeProfileFunction             = impl.CodeProfileFunction
+	CodeProfileImage                = impl.CodeProfileImage
+	CodeProfileInlineFrame          = impl.CodeProfileInlineFrame
+	CodeProfileOptions              = impl.CodeProfileOptions
+	CodeProfileRegion               = impl.CodeProfileRegion
+	CodeProfileSite                 = impl.CodeProfileSite
+	CodeProfileSourceRange          = impl.CodeProfileSourceRange
+	CodeProfileSpan                 = impl.CodeProfileSpan
+	CodeProfileSpanToken            = impl.CodeProfileSpanToken
+	CodeProfileStatus               = impl.CodeProfileStatus
+	CodeProfileUnwindRange          = impl.CodeProfileUnwindRange
 	Compatibility                   = impl.Compatibility
 	CompilationIdentity             = impl.CompilationIdentity
 	Compiled                        = impl.Compiled
@@ -465,6 +478,8 @@ func MustCompile(wasmBytes []byte) *Compiled { return impl.MustCompile(wasmBytes
 func NewBits(width int32, littleEndian []byte) (Bits, error) {
 	return impl.NewBits(width, littleEndian)
 }
+
+func NewCodeProfile(options CodeProfileOptions) *CodeProfile { return impl.NewCodeProfile(options) }
 
 func NewGCBenchmarkTelemetryReport(name string) GCBenchmarkTelemetryReport {
 	return impl.NewGCBenchmarkTelemetryReport(name)

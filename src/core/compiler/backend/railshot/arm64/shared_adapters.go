@@ -209,7 +209,7 @@ func compactSharedAdapters(code []byte, oldLen int, entry, internalEntry []int, 
 					plan.ShiftCallsiteReturnOffsets(info.endOff, uint32(deleted))
 				}
 			}
-			if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {
+			if (diagnosticsEnabled && ms != nil) && i < len(ms.Funcs) && ms.Funcs[i] != nil {
 				native := &ms.Funcs[i].NativeSize
 				native.TotalBytes -= deleted
 				native.HostAdapterBytes = sharedAdapterThunkBytes
@@ -251,7 +251,7 @@ func compactSharedAdapters(code []byte, oldLen int, entry, internalEntry []int, 
 				plan.AdapterReturnOffset = uint32(sharedAt + g.callOff + 4 - entry[i])
 			}
 		}
-		if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {
+		if (diagnosticsEnabled && ms != nil) && i < len(ms.Funcs) && ms.Funcs[i] != nil {
 			native := &ms.Funcs[i].NativeSize
 			native.HostAdapterShapeHash = shared.AdapterShapeHash(code[thunk:thunk+sharedAdapterThunkBytes], 0, sharedAdapterThunkBytes)
 			native.HostAdapterTailShapeHash = 0

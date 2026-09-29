@@ -39,7 +39,11 @@ func (f *fn) materializeV128(e *elem) Reg {
 		}
 	case stSlot:
 		x := f.allocFReg(0)
+		before := f.a.Len()
 		f.a.LdrQ(x, SP, f.spillOff(e.st.slotIndex()))
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "vector-reload")
+		}
 		f.occupyF(e, x)
 		return x
 	case stLocalRef:

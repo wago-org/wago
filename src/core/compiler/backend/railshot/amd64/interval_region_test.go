@@ -53,6 +53,7 @@ func TestIntervalNextUseRejectsPendingLocalBorrow(t *testing.T) {
 }
 
 func TestIntervalNextUseShrinksBlakeKernel(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	root := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads", "assemblyscript", "blake-as.wasm")
 	m := readParallelTestModule(t, root)
 	compile := func(on bool) (int, CodegenStats) {
@@ -193,6 +194,7 @@ func TestIntervalRegionScratchLeaseRejectsDivision(t *testing.T) {
 }
 
 func TestIntervalRegionScratchLeaseRejectsSIMD(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	savedRegions, savedScratch := intervalRegionPinsEnabled, intervalScratchLeaseEnabled
 	defer func() {
 		intervalRegionPinsEnabled, intervalScratchLeaseEnabled = savedRegions, savedScratch
@@ -227,6 +229,7 @@ func TestIntervalRegionScratchLeaseRejectsSIMD(t *testing.T) {
 }
 
 func TestMemSizeRegionalLeasePolicy(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := intervalRegionModule(t)
 	m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
 	body := m.Code[0].BodyBytes

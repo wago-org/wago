@@ -102,6 +102,7 @@ func TestAdapterTemplateCacheRejectsOversizeShapeArm64(t *testing.T) {
 }
 
 func TestAdapterTemplateCachePreservesNativeSizeAttributionArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 	m := modFuncs(t,
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x0b}},

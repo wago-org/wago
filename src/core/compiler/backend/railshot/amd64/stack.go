@@ -608,6 +608,9 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	}
 	node := f.s.alloc()
 	node.setElemKind(ekDeferred)
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.rememberProfileNode(node)
+	}
 	node.setDeferredOp(op)
 	node.setValueType(typ)
 	if f.opt(optValueFacts) {
@@ -778,6 +781,9 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	}
 	node := f.s.alloc()
 	node.setElemKind(ekDeferred)
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.rememberProfileNode(node)
+	}
 	node.setDeferredOp(op)
 	node.setValueType(typ)
 	if f.opt(optValueFacts) {

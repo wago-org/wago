@@ -199,7 +199,7 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
 		wrWord(b, mid, nopWord)
 		f.recordDeadHole(mid)
 		f.stats.peep("br-pair-fold")
-		if f.stats != nil {
+		if diagnosticsEnabled && f.stats != nil {
 			f.stats.NativeSize.BranchFoldHoleBytes += 4
 		}
 		pc += 4 // step past the NOP we just wrote
@@ -244,7 +244,7 @@ func (f *fn) forwardStoreLoadAt(b []byte, n, pc int, targets []uint64, recordHol
 		if recordHole {
 			f.recordDeadHole(ld)
 		}
-		if f.stats != nil {
+		if diagnosticsEnabled && f.stats != nil {
 			f.stats.NativeSize.StoreLoadNopBytes += 4
 		}
 	} else if w64 {

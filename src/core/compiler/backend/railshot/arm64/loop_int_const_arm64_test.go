@@ -95,6 +95,7 @@ func loopIntConstModuleArm64(t testing.TB) *wasm.Module {
 }
 
 func TestLoopIntConstCompileSwitchArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := loopIntConstModuleArm64(t)
 	compile := func(on bool) *CodegenStats {
 		var stats ModuleStats
