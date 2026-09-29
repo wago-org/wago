@@ -1129,6 +1129,7 @@ jobs:
           # Linux/arm64 artifact and otherwise makes setup fail with a 404.
           install-binaryen: false
       - name: Apply upstream TinyGo task scheduler fix
+        shell: bash
         run: scripts/patch-tinygo-042.sh
       - name: Record TinyGo tree provenance
         env:
@@ -1229,6 +1230,7 @@ jobs:
           tinygo-version: ${{ env.TINYGO_VERSION }}
           install-binaryen: false
       - name: Apply upstream TinyGo task scheduler fix
+        shell: bash
         run: scripts/patch-tinygo-042.sh
       - name: Record TinyGo tree provenance
         env:

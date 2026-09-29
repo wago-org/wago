@@ -212,6 +212,7 @@ jobs:
           install-binaryen: false
       - name: Apply upstream TinyGo task scheduler fix
         if: matrix.target != 'windows-arm64'
+        shell: bash
         run: scripts/patch-tinygo-042.sh
       - name: Record TinyGo tree provenance
         if: matrix.target != 'windows-arm64'
