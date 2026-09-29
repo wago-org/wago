@@ -5,6 +5,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"github.com/wago-org/wago/internal/jitprofile"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -133,7 +134,11 @@ func TestRuntimeCommandSurfaceCoversEveryLeaf(t *testing.T) {
 		}
 	}
 	walk(root, nil)
-	if got, want := strings.Join(leaves, ","), "run,plugin list,plugin inspect,module imports,module exports,module capabilities,build,validate"; got != want {
+	want := "run,plugin list,plugin inspect,module imports,module exports,module capabilities,build,validate"
+	if jitprofile.Enabled {
+		want += ",profile record,profile top,profile annotate,profile diff,profile timeline"
+	}
+	if got := strings.Join(leaves, ","); got != want {
 		t.Fatalf("runtime command leaves = %q, want %q", got, want)
 	}
 }

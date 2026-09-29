@@ -15,6 +15,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
+	"github.com/wago-org/wago/cli/internal/profiling"
 	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/cli/internal/watchsupervisor"
 	versioninstall "github.com/wago-org/wago/cli/manager/commands/version/install"
@@ -66,6 +67,12 @@ func Main(v string) {
 	args, err := automation.ParseLeading(os.Args[1:])
 	if err != nil {
 		ui.Usage("%v", err)
+	}
+	if profiling.IsInvocation(args) {
+		stop()
+	}
+	if profiling.Capture(args) {
+		return
 	}
 	if len(args) == 0 {
 		if automation.JSON() {

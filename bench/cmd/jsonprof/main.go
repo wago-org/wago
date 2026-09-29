@@ -1,115 +1,75 @@
-// jsonprof runs the json-as (SWAR) serialize/deserialize workload through the
-// amd64 backend in a tight loop, and writes a /tmp/perf-<pid>.map JIT symbol map so
-// `perf` can attribute samples to individual wasm functions.
-//
-// Usage:
-//
-//	go build -o /tmp/jsonprof ./cmd/jsonprof
-//	perf record -g -F 4000 -o /tmp/j.data -- /tmp/jsonprof 15s
-//	perf report -i /tmp/j.data --stdio | head -60
-//
-// Set WAGO_JSON_MODULE to the module path, or it defaults to the committed
-// corpus/workloads/assemblyscript/json-as.wasm workload (when run from bench/).
-// Pass "guard" as a 2nd arg to use signals-based (guard-page) bounds.
+// jsonprof is the compatibility preset for wagoprof's JSON-AS workload. New
+// captures should use wagoprof record --workload json-as. External sampling can
+// use `perf record -F 499 -- ./jsonprof 15s`; precise phase isolation requires
+// wagoprof's perf backend and its start/stop acknowledgement protocol.
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
-	"github.com/wago-org/wago/src/wago"
+	"github.com/wago-org/wago/internal/profcapture"
 )
 
+func main() {
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, "jsonprof:", err)
+		os.Exit(1)
+	}
+}
+func run(args []string) error {
+	duration := 15 * time.Second
+	if len(args) > 2 {
+		return fmt.Errorf("usage: jsonprof [positive-duration] [guard]")
+	}
+	if len(args) > 0 {
+		var err error
+		duration, err = time.ParseDuration(args[0])
+		if err != nil || duration <= 0 {
+			return fmt.Errorf("invalid positive duration %q", args[0])
+		}
+	}
+	bounds := "explicit"
+	if len(args) == 2 {
+		if args[1] != "guard" {
+			return fmt.Errorf("unknown bounds argument %q", args[1])
+		}
+		bounds = "signals"
+	}
+	w, b, err := profcapture.LoadWorkload("../corpus/catalog.json", "json-as", "", "", "", "", "")
+	if err != nil {
+		return err
+	}
+	if module := os.Getenv("WAGO_JSON_MODULE"); module != "" {
+		b, err = os.ReadFile(module)
+		if err != nil {
+			return err
+		}
+		w.Artifact = module
+		sum := sha256.Sum256(b)
+		w.Hash = hex.EncodeToString(sum[:])
+	}
+	switch only := os.Getenv("WAGO_JSONPROF_ONLY"); only {
+	case "":
+	case "ser":
+		w.Calls = w.Calls[:1]
+	case "deser":
+		w.Calls = w.Calls[1:]
+	default:
+		return fmt.Errorf("invalid WAGO_JSONPROF_ONLY %q", only)
+	}
+	out := filepath.Join(os.TempDir(), fmt.Sprintf("jsonprof-%d.wagoprof", os.Getpid()))
+	fmt.Printf("jsonprof pid=%d, bundle=%s (external capture includes all phases)\n", os.Getpid(), out)
+	return profcapture.Run(profcapture.Options{Out: out, Backend: "perf-map", Phase: "execute", Mode: "public", Duration: duration, Warmup: 5, Bounds: bounds, Rate: 499}, w, b)
+}
+
 func modulePath() string {
-	if p := os.Getenv("WAGO_JSON_MODULE"); p != "" {
-		return p
+	if path := os.Getenv("WAGO_JSON_MODULE"); path != "" {
+		return path
 	}
 	return "../corpus/workloads/assemblyscript/json-as.wasm"
-}
-
-func main() {
-	dur := 15 * time.Second
-	if len(os.Args) > 1 {
-		if d, err := time.ParseDuration(os.Args[1]); err == nil {
-			dur = d
-		}
-	}
-	b, err := os.ReadFile(modulePath())
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "read module:", err)
-		os.Exit(1)
-	}
-	cfg := wago.NewRuntimeConfig()
-	if len(os.Args) > 2 && os.Args[2] == "guard" {
-		cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)
-	}
-	c, err := wago.Compile(cfg, b)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "compile:", err)
-		os.Exit(1)
-	}
-	imports := wago.NewImports()
-	imports.HostFunc("env", "abort", func(wago.HostCall) {})
-	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "instantiate:", err)
-		os.Exit(1)
-	}
-	if _, err := in.Invoke("_initialize"); err != nil {
-		fmt.Fprintln(os.Stderr, "_initialize:", err)
-		os.Exit(1)
-	}
-
-	writePerfMap(in, c)
-
-	fmt.Printf("jsonprof pid=%d running %s (perf map at /tmp/perf-%d.map)\n", os.Getpid(), dur, os.Getpid())
-	deadline := time.Now().Add(dur)
-	var sink int64
-	only := os.Getenv("WAGO_JSONPROF_ONLY") // "ser" / "deser" / "" (both)
-	for time.Now().Before(deadline) {
-		for i := 0; i < 200; i++ {
-			if only != "deser" {
-				r, err := in.Invoke("serializeN", 256)
-				if err != nil {
-					fmt.Fprintln(os.Stderr, "serializeN:", err)
-					os.Exit(1)
-				}
-				sink += int64(r[0])
-			}
-			if only != "ser" {
-				r, err := in.Invoke("deserializeN", 256)
-				if err != nil {
-					fmt.Fprintln(os.Stderr, "deserializeN:", err)
-					os.Exit(1)
-				}
-				sink += int64(r[0])
-			}
-		}
-	}
-	fmt.Printf("done (sink=%d)\n", sink&1)
-}
-
-// writePerfMap emits a /tmp/perf-<pid>.map with one line per local wasm function:
-// "<start_hex> <size_hex> <name>". perf reads this to symbolize JIT code.
-func writePerfMap(in *wago.Instance, c *wago.Compiled) {
-	base, entries := in.CodeBase()
-	f, err := os.Create(fmt.Sprintf("/tmp/perf-%d.map", os.Getpid()))
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "perf map:", err)
-		return
-	}
-	defer f.Close()
-	codeLen := c.CodeSize()
-	for i, off := range entries {
-		end := codeLen
-		if i+1 < len(entries) {
-			end = entries[i+1]
-		}
-		name, ok := c.LocalFuncName(i)
-		if !ok || name == "" {
-			name = fmt.Sprintf("wasmfunc%d", i)
-		}
-		fmt.Fprintf(f, "%x %x %s\n", base+uintptr(off), end-off, name)
-	}
 }
