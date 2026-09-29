@@ -18,7 +18,6 @@ type profileFnState struct {
 	inlineFrames   []shared.NativeInlineFrame
 	nodes          map[*elem]profileOrigin
 	traps          map[int]profileOrigin
-	trapBranches   []int
 	active         profileOrigin
 	emission       shared.SourceEmission
 }
@@ -50,7 +49,6 @@ func (f *fn) recordProfileTrap(branch int) {
 		f.traps = make(map[int]profileOrigin)
 	}
 	f.traps[branch] = origin
-	f.trapBranches = append(f.trapBranches, branch)
 }
 func (f *fn) profileTrapOrigin(branch int) (uint32, uint32, bool) {
 	origin, ok := f.traps[branch]
@@ -60,14 +58,6 @@ func (f *fn) profileTrapOrigin(branch int) (uint32, uint32, bool) {
 func (f *fn) switchProfileOrigin(origin profileOrigin) {
 	f.emission.Switch(f.a.Len(), shared.EmissionOrigin{Function: origin.function, PC: origin.pc, InlineParent: origin.caller, Valid: origin.valid})
 	f.active = origin
-}
-func (f *fn) rewindProfileEmission(at int) {
-	f.sites.Rewind(at)
-	f.emission.Rewind(at)
-	for len(f.trapBranches) > 0 && f.trapBranches[len(f.trapBranches)-1] >= at {
-		delete(f.traps, f.trapBranches[len(f.trapBranches)-1])
-		f.trapBranches = f.trapBranches[:len(f.trapBranches)-1]
-	}
 }
 func (f *fn) profileEmissionRanges() []shared.NativeSourceRange { return f.emission.Ranges() }
 

@@ -60,7 +60,6 @@ func (*Telemetry) resume()                                                      
 func (*Telemetry) noteRoot(RootClass)                                             {}
 func (*Telemetry) addRootTime(RootClass, uint64)                                  {}
 func (*Telemetry) scanStart() time.Time                                           { return time.Time{} }
-func (*Telemetry) noteObjectScan(time.Time, uint32, uint32)                       {}
 func (*Telemetry) noteObjectScanWork(time.Time, objectScanWork, bool, bool, bool) {}
 func (*Telemetry) noteTinyStepWork(objectScanWork)                                {}
 func (*Telemetry) noteCardScan(time.Time, uint64, uint64, uint64, uint64, bool)   {}

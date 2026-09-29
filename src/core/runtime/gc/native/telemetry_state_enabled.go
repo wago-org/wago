@@ -434,14 +434,6 @@ func (t *Telemetry) scanStart() time.Time {
 	return time.Now()
 }
 
-func (t *Telemetry) noteObjectScan(start time.Time, size, slots uint32) {
-	work := objectScanWork{ObjectRanges: 1, RefSlots: slots}
-	if size > PayloadOffset {
-		work.PayloadBytes = size - PayloadOffset
-	}
-	t.noteObjectScanWork(start, work, true, false, true)
-}
-
 func (t *Telemetry) noteObjectScanWork(start time.Time, work objectScanWork, began, resumed, completed bool) {
 	if t == nil || !t.active.active || !t.active.suspendStart.IsZero() {
 		return

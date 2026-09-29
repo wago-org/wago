@@ -32,7 +32,6 @@ func TestDisabledTelemetryHooksRemainInert(t *testing.T) {
 		if !telemetry.scanStart().IsZero() {
 			panic("disabled scan clock changed")
 		}
-		telemetry.noteObjectScan(time.Time{}, 4, 5)
 		telemetry.noteCardScan(time.Time{}, 6, 7, 8, 9, true)
 		telemetry.noteNurseryOccupancy(10, 11)
 		telemetry.noteSurvivor(12, 2, true, true)

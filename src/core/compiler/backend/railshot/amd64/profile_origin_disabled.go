@@ -16,8 +16,6 @@ func (*fn) enterProfileNode(*elem) profileOrigin         { return profileOrigin{
 func (*fn) recordProfileTrap(int)                        {}
 func (*fn) profileTrapOrigin(int) (uint32, uint32, bool) { return 0, 0, false }
 
-//lint:ignore U1000 keeps the disabled origin hooks aligned with the profiling implementation
-func (*fn) rewindProfileEmission(int)                         {}
 func (*fn) profileEmissionRanges() []shared.NativeSourceRange { return nil }
 
 func (*fn) switchProfileOrigin(profileOrigin) {}
