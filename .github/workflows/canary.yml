@@ -25,8 +25,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.22"
-  TINYGO_VERSION: "0.41.1"
+  GO_VERSION: "1.27.1"
+  TINYGO_VERSION: "0.42.0"
 
 jobs:
   prepare:
@@ -210,6 +210,9 @@ jobs:
         with:
           tinygo-version: ${{ env.TINYGO_VERSION }}
           install-binaryen: false
+      - name: Apply upstream TinyGo task scheduler fix
+        if: matrix.target != 'windows-arm64'
+        run: scripts/patch-tinygo-042.sh
       - name: Record TinyGo tree provenance
         if: matrix.target != 'windows-arm64'
         env:
