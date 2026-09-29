@@ -4,10 +4,13 @@ package runtime
 
 import (
 	"fmt"
+	goruntime "runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // Darwin has no Linux-style targeted queued signal broadcast. Interruption is
@@ -175,6 +178,10 @@ func requestDarwinInterrupt(trapPtr uintptr) bool {
 	// another while each is walking the process thread list.
 	darwinInterruptMu.Lock()
 	defer darwinInterruptMu.Unlock()
+	// Keep the self port associated with this goroutine throughout enumeration.
+	// A migration could otherwise make a candidate become our current thread.
+	goruntime.LockOSThread()
+	defer goruntime.UnlockOSThread()
 	task := machTaskSelf()
 	self := machThreadSelf()
 	if task == 0 || self == 0 {
@@ -214,7 +221,7 @@ func requestDarwinInterrupt(trapPtr uintptr) bool {
 		stateCount := uint32(armThreadState64Count)
 		if machThreadGetState(thread, &state, &stateCount) == 0 && stateCount >= armThreadState64Count && darwinGeneratedPC(uintptr(state.PC)) {
 			linMem := uintptr(state.X[26])
-			if linMem != 0 && *(*uintptr)(offHeapPointer(linMem - 104)) == trapPtr {
+			if darwinTrapContextMatches(task, linMem, trapPtr) {
 				state.X[9] = uint64(linMem)
 				state.PC = uint64(darwinInterruptLandingPC)
 				state.Flags |= armThreadStateNoPtrauth
@@ -233,6 +240,22 @@ func requestDarwinInterrupt(trapPtr uintptr) bool {
 		}
 	}
 	return false
+}
+
+// A PC inside a code image does not establish that X26 contains linear memory:
+// entry/exit adapters can be sampled before installing or after restoring it.
+// Ask the kernel to copy the candidate word so an invalid or unmapped register
+// value cannot fault the cancellation goroutine. This is a cold-path operation.
+func darwinTrapContextMatches(task uint32, linMem, trapPtr uintptr) bool {
+	if linMem < abi.TrapCellPtrOffset || trapPtr == 0 {
+		return false
+	}
+	var candidate uintptr
+	var copied uint64
+	result, _, _ := syscall6(addrMachVMReadOverwrite(), uintptr(task),
+		linMem-abi.TrapCellPtrOffset, unsafe.Sizeof(candidate),
+		uintptr(unsafe.Pointer(&candidate)), uintptr(unsafe.Pointer(&copied)), 0)
+	return int32(result) == 0 && copied == uint64(unsafe.Sizeof(candidate)) && candidate == trapPtr
 }
 
 func machTaskSelf() uint32 {
@@ -287,6 +310,7 @@ func addrMachThreadGetState() uintptr
 func addrMachThreadSetState() uintptr
 func addrMachPortDeallocate() uintptr
 func addrMachVMDeallocate() uintptr
+func addrMachVMReadOverwrite() uintptr
 func addrDarwinNativeInterruptTrap() uintptr
 
 //go:cgo_import_dynamic libc_mach_task_self mach_task_self "/usr/lib/libSystem.B.dylib"
@@ -298,3 +322,5 @@ func addrDarwinNativeInterruptTrap() uintptr
 //go:cgo_import_dynamic libc_thread_set_state thread_set_state "/usr/lib/libSystem.B.dylib"
 //go:cgo_import_dynamic libc_mach_port_deallocate mach_port_deallocate "/usr/lib/libSystem.B.dylib"
 //go:cgo_import_dynamic libc_mach_vm_deallocate mach_vm_deallocate "/usr/lib/libSystem.B.dylib"
+
+//go:cgo_import_dynamic libc_mach_vm_read_overwrite mach_vm_read_overwrite "/usr/lib/libSystem.B.dylib"
