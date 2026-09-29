@@ -28,6 +28,33 @@ be resolved or independently qualified before advertising reliable repeated
 capture on that collector/kernel combination. It does not justify suppressing
 errors or marking failed captures complete.
 
+## September 29 review follow-up
+
+The implementation remains experimental. The CI fixes at `ccdc008b` passed the
+full GitHub CI run, including Linux/amd64 TinyGo. Follow-up capture/report fixes
+add phase-local completed work, one text/JSON top model, independent collection
+and conversion safety deadlines, and saved-input/aggregation limits.
+
+Native Linux/amd64 regression tests cover silent injection and sample-conversion
+hangs, deadline errors, child reaping, incomplete manifests, and preservation of
+raw data. The integrated CLI test uses a non-returning Wasm call to distinguish
+measurement duration from the independent collection deadline. Phase reporting
+tests hold initialization samples fixed while changing subsequent iteration
+counts; metadata-only JSON and text share rows and limits. Input tests cover
+compressed expansion, byte/count/code limits, metadata and aggregation limits,
+and trailing JSON. Focused suites passed with Go 1.22.12 on native AMD64; ARM64
+race checks passed with Go 1.26.5.
+
+Staticcheck 2024.1.1 now checks ordinary, runtime, profiling, and compiler/GC
+telemetry builds. Existing reviewed ordinary findings apply to shared code in
+diagnostic builds; new findings and duplicate occurrences still fail. All four
+profiles passed with no new findings. Two unused helpers exposed by the expanded
+check were removed. All 24 ordinary-build DCE configurations passed again.
+
+These checks do not resolve the historical perf enable-acknowledgement stall or
+establish a new overhead bound. Artifact sidecars, application harness APIs,
+rotation/churn scaling, and deeper stack/memory analysis remain later milestones.
+
 ## Current results
 
 | Check | Result |

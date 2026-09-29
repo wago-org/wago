@@ -1032,6 +1032,23 @@ explicit unsupported ranges, and collector-path portability. Capturing raw stack
 bytes must remain a separate diagnostic opt-in. Neither static inline ancestry,
 GC root maps, nor the successful exporter fixture establishes those contracts.
 
+### Experimental capture and report limits
+
+The profiler remains an opt-in experimental developer tool. Each measured phase
+owns its completed-work count and unit; later execution iterations cannot change
+reported startup cost. Text and JSON share a report model, including static-only
+rows and row limits. Whole-capture CPU totals and elapsed phase breakdowns remain
+separate measurements.
+
+The CLI supervises capture in another process with a collection safety deadline,
+independent of workload duration. Perf conversion has a separate deadline;
+quiet converters and non-returning guest calls cannot wait indefinitely.
+Cancellation terminates private process groups on Linux/macOS and retains an
+incomplete manifest and available raw evidence. Saved inputs share explicit file,
+decompression, image, sample, code, metadata, and aggregation limits. The journal's
+64 MiB budget is not a bound on total reporting memory. See
+[resource limits and capture safety](docs/profiling.md) for defaults and coverage.
+
 ### Remaining qualification and acceptance
 
 The first useful release is a reproducible capture of a defined workload phase,

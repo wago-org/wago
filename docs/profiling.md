@@ -1,5 +1,8 @@
 # Profiling Wago workloads
 
+This is an experimental, opt-in developer tool. See the qualification record
+before relying on a particular collector, target, or measurement capability.
+
 `wagoprof` records a defined workload, retains the identities and lifetimes of
 Wago's generated code, and joins sampled functions to Railshot's compiler
 statistics. Collection and visualization remain with perf, pprof, and Samply.
@@ -111,9 +114,9 @@ phase selections are `compile` (decode + validate + native compilation),
 `reload` (trusted artifact decoding), `instantiate` (including Wasm start),
 `initialize`, `execute`, `close`, and `all`.
 Warmup has its own recorded interval. `all` includes runner/exporter overhead.
-Acknowledgement timeouts fail the capture. If perf remains alive after a failed
-child writes its final manifest, the parent interrupts it and allows two seconds
-for shutdown before forcing termination; the bundle remains marked incomplete.
+Acknowledgement timeouts fail the capture. A failed child or expired safety
+deadline terminates the collector; on Linux/macOS its private process group is
+terminated too. Pipe shutdown is bounded, and the bundle remains incomplete.
 `--phase=reload` first compiles the supplied Wasm, serializes it in a separate
 `artifact-prepare` phase, closes the preparatory module, and records only decoding
 with `LoadTrustedArtifact`. Executable mapping still occurs during instantiation.
@@ -124,7 +127,25 @@ Current artifacts omit compiler/source metadata, so loaded bodies remain unknown
 and the manifest reports that limitation. Diffs reject mixed reloaded/direct
 compilation captures. Phase timestamps use Unix nanoseconds; `elapsed_ns` and
 execution duration use the monotonic clock. Blocking or nonterminating guest calls are not preempted by a
-workload duration; the deadline is checked between iterations.
+workload duration; the measurement deadline is checked between iterations.
+The CLI's separate `--collection-timeout` (default 5 minutes) supervises setup,
+warmup, invocation, and teardown in another process, including a guest call that
+never returns. `--conversion-timeout` (default 2 minutes) bounds perf injection
+and sample conversion together. These safety limits do not set the measurement
+window; raise them explicitly for long experiments. Both effective limits appear
+in the manifest. A deadline fails the capture and preserves available evidence;
+it does not fabricate phase completion or completed work. Internal `capture`
+re-execution and direct `profcapture.Run` calls rely on the supervising parent.
+
+Every measured phase records its own `completed_work` and `work_unit`.
+`top` normalizes execute samples by validated workload iterations, instantiation
+by completed instantiations, initialization by completed initialization calls,
+and compile/reload/close by their own completed operations. No-op initialization
+has zero completed work. Old bundles without these counts show startup/teardown
+totals only. `all` shows CPU totals and elapsed phase breakdowns; it does not
+relabel startup amortization as execution cost. Text and JSON use the same rows,
+static compiler metadata, denominator, and `--limit`; total sample/weight fields
+still describe the full capture.
 
 Jitdump records contain copied native bytes, so `--include-code` is required for
 `perf`. Its load records use the same monotonic clock as perf. Retirement remains
@@ -333,12 +354,28 @@ conversion. Samply's loss accounting and mixed-stack completeness are not
 qualified. Export/write/close failures and incorrect guest results fail the run
 and leave a failed manifest where output creation succeeded.
 
-Perf conversion streams sample text into a parser capped at 10 million samples
+Perf conversion streams sample text into a parser capped at one million samples
 and a 1 MiB input line, instead of buffering all command output first. Malformed
 records or the sample limit stop the producer and suppress partial reports.
 Injection and sample-conversion diagnostics retain at most 32 KiB; exceeding that
 limit also stops conversion and reports truncation. Raw capture files remain in
 the failed bundle for investigation with existing tools.
+
+Saved-bundle readers share `profile.DefaultLimits`: 128 MiB per stored input
+file, 128 MiB of decoded/decompressed JSON, 64 MiB of retained native code,
+65,536 events, 8,192 image records, one million samples and metadata/table
+entries, 100,000 report rows, and 250,000 distinct hot PCs. Inline depth is capped
+at 128 and expanded inline entries have a separate one-million-entry ceiling.
+Sample and image arrays decode incrementally and stop before retaining an excess
+record. Image JSON also has a one-million structural-entry budget and nesting
+depth 128, checked before allocating nested metadata arrays/maps. Samply JSON has a decompressed byte ceiling and nested sample/table arrays
+enforce shared cardinality budgets as they decode, before aggregation. Raw perf inputs are checked
+before conversion. Limit violations reject the report rather than display an
+apparently complete subset. These are separate resource budgets, **not a 64 MiB
+process-memory guarantee**: parsing, sorting, and report construction still use
+additional bounded storage. Incremental aggregation and mapping-churn scaling
+remain later work. The Go APIs accept explicit `Limits`; CLI readers use the
+default policy.
 
 If an external collector's child leaves a missing, truncated, or unsupported
 manifest, the parent publishes a failed manifest with actual phases and completed
