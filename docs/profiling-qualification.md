@@ -51,6 +51,22 @@ diagnostic builds; new findings and duplicate occurrences still fail. All four
 profiles passed with no new findings. Two unused helpers exposed by the expanded
 check were removed. All 24 ordinary-build DCE configurations passed again.
 
+Fresh end-to-end captures used clean implementation commit
+`df147f2778c93359cb40cb45dfe47193f697d356`. On macOS/arm64 (Go 1.26.5,
+Samply 0.13.1), JSON-AS completed 18,972 validated iterations; 1,211 whole-process
+observations included 97 attributed guest leaves. The report labels these as
+observations across all phases, with no per-work CPU estimate. On Linux/amd64
+(Go 1.22.12, perf 7.0.14), JSON-AS completed 15,674 iterations with 98 samples,
+two unknown/non-guest. The execution report uses 15,674 completed workload
+iterations as its denominator. Both manifests report complete, with clean source
+provenance. A separate metadata-only initialization capture reports one completed
+initialization and retains compiler statistics in limited JSON output.
+
+Native AMD64 profiler/compiler/runtime profiling fixtures passed on that source,
+as did ARM64 race tests and all 24 DCE configurations. The broad isolated AMD64
+runtime run encountered missing pinned conformance corpora; it is not recorded
+as a full native conformance pass. The full local ordinary-build suite passed.
+
 These checks do not resolve the historical perf enable-acknowledgement stall or
 establish a new overhead bound. Artifact sidecars, application harness APIs,
 rotation/churn scaling, and deeper stack/memory analysis remain later milestones.
