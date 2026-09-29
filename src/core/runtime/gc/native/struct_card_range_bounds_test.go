@@ -40,26 +40,23 @@ func TestStructCardPayloadRangeBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
-		name              string
-		start, end, slots uint32
-		marked            [4]bool
+		name       string
+		start, end uint32
+		marked     [4]bool
 	}{
-		{"first", 0, 0, 1, [4]bool{true, false, false, false}},
-		{"gap and numeric", 1, 7, 0, [4]bool{}},
-		{"inclusive start", 8, 8, 1, [4]bool{false, true, false, false}},
-		{"inclusive end", 8, 12, 2, [4]bool{false, true, true, false}},
-		{"exclude below start", 9, 12, 1, [4]bool{false, false, true, false}},
-		{"null and high end", 13, ^uint32(0), 1, [4]bool{}},
-		{"high start", ^uint32(0), ^uint32(0), 0, [4]bool{}},
-		{"full uint32 range", 0, ^uint32(0), 4, [4]bool{true, true, true, false}},
-		{"reversed", 12, 8, 0, [4]bool{}},
+		{"first", 0, 0, [4]bool{true, false, false, false}},
+		{"gap and numeric", 1, 7, [4]bool{}},
+		{"inclusive start", 8, 8, [4]bool{false, true, false, false}},
+		{"inclusive end", 8, 12, [4]bool{false, true, true, false}},
+		{"exclude below start", 9, 12, [4]bool{false, false, true, false}},
+		{"null and high end", 13, ^uint32(0), [4]bool{}},
+		{"high start", ^uint32(0), ^uint32(0), [4]bool{}},
+		{"full uint32 range", 0, ^uint32(0), [4]bool{true, true, true, false}},
+		{"reversed", 12, 8, [4]bool{}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			c.clearNurseryMarks()
-			slots, _ := c.scanObjectPayloadRange(handleOf(parent), test.start, test.end)
-			if slots != test.slots {
-				t.Fatalf("slots=%d want=%d", slots, test.slots)
-			}
+			c.scanObjectPayloadRange(handleOf(parent), test.start, test.end)
 			for i, child := range children {
 				if c.mark[handleOf(child)] != test.marked[i] {
 					t.Fatalf("child %d marked=%v want=%v", i, c.mark[handleOf(child)], test.marked[i])

@@ -234,7 +234,7 @@ Current tracks:
   while exact casts use canonical ID equality. Reference/v128 loads, bulk, and
   barrier-requiring operations remain helper-bound. Focused non-final cast/test
   loops measure 3.54–3.66 ns/op, 0 B/op, and 0 allocs/op, with zero synchronous
-  helper calls under `wago_gcstats`.
+  helper calls under the since-removed `wago_gcstats` diagnostics.
 - [x] **Bounded structured WasmGC facts (#314):** AMD64 carries compact
   nullability/heap/exact-type/identity/freshness/generation/pointer-free/array-length
   facts through Valent stack values and locals, intersects them at structured joins
@@ -567,7 +567,7 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   composition allocation-free with reusable scratch, switch early Throughput
   growth to geometric capacity, and release the duplicate Go-heap JIT code copy
   after RX mapping.
-- [x] Add decision-grade opt-in GC telemetry behind `wago_gcstats`: bounded pause
+- [x] Historical GC telemetry experiment (since removed): bounded pause
   histograms, additive phase timing, exact trace/root/card/promotion/path counters,
   managed-memory domains, JSONL A/B reports, code-neutral JIT byte attribution,
   and hot-versus-sparse static-site benchmarks. Ordinary builds retain the

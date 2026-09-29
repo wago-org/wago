@@ -82,6 +82,7 @@ func TestLocalSlotOrderShrinksHotUnpinnedFrameRefs(t *testing.T) {
 }
 
 func TestLocalSlotOrderDefaultsOnForCompaction(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := localSlotOrderModule(t)
 	var stats ModuleStats
 	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats})
@@ -115,6 +116,7 @@ func TestLocalSlotOrderDoesNotGrowMixedCompactFrame(t *testing.T) {
 }
 
 func TestLocalSlotOrderSkipsGCFrameRootFunctions(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	refs := encamd64.LocalRefRecorder{
 		Sites:  []encamd64.LocalRefSite{{Local: 1}},
 		Limit:  1,
@@ -161,6 +163,7 @@ func TestLocalSlotOrderExcludesMultiSlotHomes(t *testing.T) {
 }
 
 func compileLocalSlotOrder(t *testing.T, m *wasm.Module, enabled bool) *ModuleStats {
+	requireCompilerDiagnostics(t)
 	t.Helper()
 	var stats ModuleStats
 	cm, err := CompileModuleWith(m, CompileOptions{

@@ -60,6 +60,10 @@ const (
 // regNone to pick a fresh one. Returns the register now holding the value and
 // converts `node` into that value on the stack (its operands are consumed).
 func (f *fn) condense(node *elem, dest Reg) Reg {
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		previous := f.enterProfileNode(node)
+		defer f.switchProfileOrigin(previous)
+	}
 	f.stats.addCondense()
 	switch {
 	case isBinALU(node.deferredOp()):
@@ -758,7 +762,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			} else {
 				// A narrow/wide mismatch needs a register value. Preserve a pinned
 				// local whose register is only borrowed as the load address.
-				r := f.memRefValue(right.st)
+				r := f.memRefValue(right)
 				f.cmpRR(L, r, w)
 				f.release(r)
 			}
@@ -1053,7 +1057,7 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 			f.moveInt(dest, e.st.reg, e.st.typ) // copy from the pinned local/global; never release it
 		}
 	case stMemRef:
-		f.loadMemRef(dest, e.st) // emit the deferred load into dest
+		f.loadMemRef(dest, e) // emit the deferred load into dest
 		f.releaseMemRef(e.st)
 	}
 }
@@ -1106,7 +1110,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 			f.a.AluIdx(enc.rm, dest, RBX, right.st.reg, right.st.memDisp(), w) // op dest, [mem]
 			f.releaseMemRef(right.st)
 		} else {
-			r := f.memRefValue(right.st)
+			r := f.memRefValue(right)
 			f.a.AluRR(enc.rr, dest, r, w)
 			f.release(r)
 			f.releaseMemRef(right.st)
@@ -1182,7 +1186,7 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 			f.a.ImulIdx(dest, RBX, right.st.reg, right.st.memDisp(), w)
 			f.releaseMemRef(right.st)
 		} else {
-			r := f.memRefValue(right.st)
+			r := f.memRefValue(right)
 			f.a.IMul(dest, r, w)
 			f.release(r)
 			f.releaseMemRef(right.st)

@@ -1,7 +1,6 @@
 package gc
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -74,77 +73,62 @@ func TestTinyOneShotRootsKeepGraphAndReleaseNextCycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, measured := range []bool{false, true} {
-		for _, form := range []string{"direct", "classified", "composite"} {
-			t.Run(fmt.Sprintf("%s/telemetry=%v", form, measured), func(t *testing.T) {
-				cfg := Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}
-				if measured {
-					cfg.Telemetry = new(Telemetry)
-				}
-				c := newTestCollectorWithTypes(t, cfg, []TypeDesc{leaf, parentType})
-				parent, err := c.NewStructDefault(1)
-				if err != nil {
-					t.Fatal(err)
-				}
-				child, err := c.NewStructDefault(0)
-				if err != nil {
-					t.Fatal(err)
-				}
-				garbage, err := c.NewStructDefault(0)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
-					t.Fatal(err)
-				}
-				direct := &oneShotDirectRoots{ref: parent}
-				classified := &oneShotClassifiedRoots{ref: parent}
-				var roots RootSet = direct
-				calls := &direct.calls
-				if form == "classified" {
-					roots, calls = classified, &classified.calls
-				} else if form == "composite" {
-					roots = RootGroups{{Class: RootSnapshotTemporary, Roots: combineRootSets(direct, EmptyRoots{})}}
-				}
-				if err := c.CollectFull(roots); err != nil {
-					t.Fatal(err)
-				}
-				wantWalks := 1
-				if tinyIncrementalBuild {
-					wantWalks = 2
-				} // Initial roots, then remark.
-				if *calls != wantWalks {
-					t.Fatalf("root walks = %d, want %d", *calls, wantWalks)
-				}
-				field, err := c.StructGet(parent, 0)
-				if !c.validObjectRef(parent) || !c.validObjectRef(child) || c.validObjectRef(garbage) || err != nil || field.Ref != child {
-					t.Fatalf("one-shot graph lost or garbage retained: field=%v error=%v", field, err)
-				}
-				if err := c.Verify(RefSliceRoots{parent}); err != nil {
-					t.Fatal(err)
-				}
-				if snapshot, ok := c.TelemetrySnapshot(); ok {
-					want := RootTelemetry{NativeFrames: 1}
-					if form != "direct" {
-						want = RootTelemetry{SnapshotTemporaries: 1}
-					}
-					got := snapshot.Full.Roots
-					if got.NativeFrames != want.NativeFrames || got.SnapshotTemporaries != want.SnapshotTemporaries ||
-						got.Globals != 0 || got.Tables != 0 || got.PublicTokens != 0 || got.ForeignInstances != 0 {
-						t.Fatalf("root accounting = %+v, want counts %+v", got, want)
-					}
-				}
-				if err := c.CollectFull(nil); err != nil {
-					t.Fatal(err)
-				}
-				if c.validObjectRef(parent) || c.validObjectRef(child) {
-					t.Fatal("staging retained roots into the next cycle")
-				}
-				if err := c.Verify(nil); err != nil {
-					t.Fatal(err)
-				}
-			})
-		}
+	for _, form := range []string{"direct", "classified", "composite"} {
+		t.Run(form, func(t *testing.T) {
+			cfg := Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}
+			c := newTestCollectorWithTypes(t, cfg, []TypeDesc{leaf, parentType})
+			parent, err := c.NewStructDefault(1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			child, err := c.NewStructDefault(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			garbage, err := c.NewStructDefault(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+				t.Fatal(err)
+			}
+			direct := &oneShotDirectRoots{ref: parent}
+			classified := &oneShotClassifiedRoots{ref: parent}
+			var roots RootSet = direct
+			calls := &direct.calls
+			if form == "classified" {
+				roots, calls = classified, &classified.calls
+			} else if form == "composite" {
+				roots = RootGroups{{Class: RootSnapshotTemporary, Roots: combineRootSets(direct, EmptyRoots{})}}
+			}
+			if err := c.CollectFull(roots); err != nil {
+				t.Fatal(err)
+			}
+			wantWalks := 1
+			if tinyIncrementalBuild {
+				wantWalks = 2
+			} // Initial roots, then remark.
+			if *calls != wantWalks {
+				t.Fatalf("root walks = %d, want %d", *calls, wantWalks)
+			}
+			field, err := c.StructGet(parent, 0)
+			if !c.validObjectRef(parent) || !c.validObjectRef(child) || c.validObjectRef(garbage) || err != nil || field.Ref != child {
+				t.Fatalf("one-shot graph lost or garbage retained: field=%v error=%v", field, err)
+			}
+			if err := c.Verify(RefSliceRoots{parent}); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := c.CollectFull(nil); err != nil {
+				t.Fatal(err)
+			}
+			if c.validObjectRef(parent) || c.validObjectRef(child) {
+				t.Fatal("staging retained roots into the next cycle")
+			}
+			if err := c.Verify(nil); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

@@ -25,6 +25,7 @@ func indexedBaseReuseModuleArm64(t testing.TB) *wasm.Module {
 }
 
 func TestIndexedBaseReuseSwitchAndExecutionArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := indexedBaseReuseModuleArm64(t)
 	compile := func(on bool) *CodegenStats {
 		var stats ModuleStats
@@ -86,6 +87,7 @@ func TestIndexedBaseReuseSwitchAndExecutionArm64(t *testing.T) {
 // result must include sign extension. The precise aliasing regression lives in
 // runtime.TestSignedLoadIndexedBaseExecution, independent of allocator choices.
 func TestSignedLoadIndexedBaseWasmArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, load := range []struct {
 		name  string
 		op    byte

@@ -29,6 +29,7 @@ func linearSumLoopModuleARM64(t *testing.T) *wasm.Module {
 }
 
 func TestLinearSumLoopBoundsHoistAndUnrollARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := linearSumLoopModuleARM64(t)
 	var stats ModuleStats
 	cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
@@ -66,6 +67,7 @@ func TestLinearSumLoopBoundsHoistAndUnrollARM64(t *testing.T) {
 }
 
 func TestLinearSumLoopOptimizationCanBeDisabledARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := linearSumLoopModuleARM64(t)
 	var stats ModuleStats
 	cm, err := CompileModuleWith(m, CompileOptions{

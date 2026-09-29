@@ -55,6 +55,7 @@ func compileIntervalCorpusArm64(t testing.TB, name string, on bool) (int, *Codeg
 }
 
 func TestIntervalNextUseShrinksScalarBlakeArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	baseBytes, base := compileIntervalCorpusArm64(t, "blake-as.wasm", false)
 	nextBytes, next := compileIntervalCorpusArm64(t, "blake-as.wasm", true)
 	if next.Peephole["interval-dead-store-elide"] == 0 {
@@ -66,6 +67,7 @@ func TestIntervalNextUseShrinksScalarBlakeArm64(t *testing.T) {
 }
 
 func TestIntervalNextUseRejectsSIMDModuleArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	baseBytes, base := compileIntervalCorpusArm64(t, "blake-as-simd.wasm", false)
 	nextBytes, next := compileIntervalCorpusArm64(t, "blake-as-simd.wasm", true)
 	if next.Peephole["interval-dead-store-elide"] != 0 || nextBytes != baseBytes || next.CodeBytes != base.CodeBytes {

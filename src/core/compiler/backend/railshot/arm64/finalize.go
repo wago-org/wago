@@ -267,6 +267,23 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		}
 	}
 	f.a.B = code
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		sites, err := shared.RemapNativeCodeSites(f.stats.CodeSites, offsets)
+		if err != nil {
+			return 0, err
+		}
+		f.stats.CodeSites = sites
+		mapped, err := shared.RemapNativeSources(f.stats.SourceRanges, offsets)
+		if err != nil {
+			return 0, err
+		}
+		f.stats.SourceRanges = mapped
+		start, _, ok := offsets.MapRange(internalOff, internalOff)
+		if !ok {
+			return 0, fmt.Errorf("invalid profile internal entry")
+		}
+		f.stats.SourceInternalOffset = start
+	}
 
 	mappedInternal, err := mapFinalOffset(offsets, internalOff, len(code), "internal entry")
 	if err != nil {
@@ -605,7 +622,7 @@ func literalTarget(pc int, word uint32) (int, bool) {
 }
 
 func (f *fn) remapNativeSizeStats(offsets *shared.OffsetMap, newInternalOff, frameDeleted int) {
-	if f.stats == nil {
+	if !diagnosticsEnabled || f.stats == nil {
 		return
 	}
 	s := &f.stats.NativeSize

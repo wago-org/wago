@@ -48,6 +48,7 @@ func resetRHSRelocateFixture(f *fn) (root, right *elem) {
 }
 
 func TestDeferredRHSRelocationRetainsArenaOwner(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	stats := new(CodegenStats)
 	f := &fn{
 		a:     &encoder.Asm{},
@@ -107,6 +108,7 @@ func TestDeferredRHSRelocationTracksForcedSpill(t *testing.T) {
 }
 
 func TestExecDeferredRHSRelocation(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	params := make([]wasm.ValType, 10)
 	for i := range params {
 		params[i] = wasm.I64

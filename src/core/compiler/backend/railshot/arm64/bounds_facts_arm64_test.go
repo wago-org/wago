@@ -9,6 +9,7 @@ import (
 )
 
 func TestBoundsFactsElisionArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 	covered := []byte{0x00,
 		0x20, 0x00, 0x28, 0x02, 0x04, 0x1a,

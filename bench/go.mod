@@ -2,7 +2,7 @@ module github.com/wago-org/wago/bench
 
 go 1.22.0
 
-toolchain go1.22.2
+toolchain go1.27.1
 
 require (
 	github.com/tetratelabs/wazero v1.9.0

@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Run the public verification gates plus focused wago_gcstats collector coverage
+# Run the public verification gates
 # and render a compact per-package report. Backs `just coverage` and the CI coverage
 # job. When
 # COVER_BASELINE_REF is set (e.g. origin/main) the report gains a "Δ vs main"
@@ -20,7 +20,7 @@ root=$(git rev-parse --show-toplevel) || {
 }
 cd "$root"
 
-# measure <dir> <profile-out>: run normal, wago_gcstats collector, guard-page,
+# measure <dir> <profile-out>: run normal, guard-page,
 # spec1, spec2, and SIMD coverage for the module rooted at <dir>, merge by source
 # block, and print
 # "covered<TAB>total<TAB>pkg" per package, plus a final TOTAL row.
@@ -41,9 +41,6 @@ measure() {
 
 	(cd "$dir" && go test -count=1 -covermode=atomic -coverpkg=./... \
 		-coverprofile="$profiles/normal.out" ./... >/dev/null)
-	(cd "$dir" && go test -count=1 -tags wago_gcstats -covermode=atomic \
-		-coverpkg=./src/core/runtime/gc/... -coverprofile="$profiles/gcstats.out" \
-		./src/core/runtime/gc/... >/dev/null)
 	(cd "$dir" && go test -count=1 -tags wago_guardpage -covermode=atomic \
 		-coverpkg=./... -coverprofile="$profiles/guard-root.out" ./src/wago/ >/dev/null)
 	(cd "$dir/bench" && go test -count=1 -tags wago_guardpage \

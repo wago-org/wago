@@ -11,6 +11,7 @@ import "os"
 // bytes that current size-preserving rewrites have made semantically dead and a
 // compacting finalizer can remove; they must not be added to TotalBytes.
 type NativeFunctionSizeReport struct {
+	SharedTrapBodyBytes           int `json:"shared_trap_body_bytes,omitempty"`
 	TotalBytes                    int `json:"total_bytes"`
 	HostAdapterBytes              int `json:"host_adapter_bytes"`
 	AdapterToInternalPaddingBytes int `json:"adapter_to_internal_padding_bytes"`

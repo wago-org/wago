@@ -26,6 +26,7 @@ func singleBitMaskBranchBodyArm64() []byte {
 }
 
 func TestSWARMaskTestFusionArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i64, i32 := []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}
 	m := mod1(t, i64, i32, swarMaskEqzBodyArm64())
 	s := compileWithStats(t, m, false).Funcs[0]
@@ -81,6 +82,7 @@ func TestSWARMaskBranchFusionArm64(t *testing.T) {
 }
 
 func TestSingleBitBranchUsesBranchFoldPolicyArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := mod1(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}, singleBitMaskBranchBodyArm64())
 	for _, enabled := range []bool{false, true} {
 		var stats ModuleStats

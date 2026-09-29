@@ -9,6 +9,7 @@ import (
 )
 
 func TestSizeDirectJecxzBulkTails(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	params := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}
 	tests := []struct {
 		name string

@@ -11,6 +11,7 @@ import (
 )
 
 func TestNativeSizeReportAccountsModuleAndFunctionBytesArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforeFinalizer := nativeFinalizerEnabled
 	beforeCompact := nativeCompactionEnabled
 	nativeFinalizerEnabled = true
@@ -87,6 +88,7 @@ func TestNativeSizeReportAccountsModuleAndFunctionBytesArm64(t *testing.T) {
 }
 
 func TestCompactNativeSharesAdapterTailsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := sharedAdaptersEnabled
 	sharedAdaptersEnabled = false
 	t.Cleanup(func() { sharedAdaptersEnabled = before })
@@ -125,6 +127,7 @@ func TestCompactNativeSharesAdapterTailsArm64(t *testing.T) {
 }
 
 func TestCompactNativeSharesWholeAdaptersArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := sharedAdaptersEnabled
 	t.Cleanup(func() { sharedAdaptersEnabled = before })
 	i32 := []wasm.ValType{wasm.I32}

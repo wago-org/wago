@@ -92,6 +92,7 @@ func TestSortTrapSitesByFunction(t *testing.T) {
 }
 
 func TestManyInlinedTrapFunctionsCompile(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const n = 64
 	m := manyInlinedTrapFunctionsModule(t, n)
 	var stats ModuleStats

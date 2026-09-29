@@ -64,6 +64,7 @@ func TestCompactFuncResultRangeArm64(t *testing.T) {
 }
 
 func TestCompileWorkersDeterministicArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
 	for _, name := range []string{
 		"synthetic/tiny.wasm",
@@ -90,6 +91,7 @@ func TestCompileWorkersDeterministicArm64(t *testing.T) {
 }
 
 func TestCompileWorkersSizeSharedAdaptersDeterministicArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
 	for _, name := range []string{"synthetic/many_funcs.wasm", "assemblyscript/json-as-simd.wasm"} {
 		t.Run(name, func(t *testing.T) {
@@ -168,6 +170,7 @@ func compileWorkerTestModuleArm64(t *testing.T, m *wasm.Module, workers int) (*e
 }
 
 func compileWorkerTestModuleCompactArm64(t *testing.T, m *wasm.Module, workers int, compact bool) (*encoder.CompiledModule, *ModuleStats) {
+	requireCompilerDiagnostics(t)
 	t.Helper()
 	stats := &ModuleStats{}
 	cm, err := CompileModuleWith(m, CompileOptions{Workers: workers, Stats: stats, CompactNative: compact})

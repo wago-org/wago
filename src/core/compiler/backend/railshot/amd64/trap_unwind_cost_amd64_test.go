@@ -34,6 +34,7 @@ func TestFunctionLocalTrapUnwindSharingIsNotProfitableAMD64(t *testing.T) {
 }
 
 func TestSizeSharesTrapBodiesAcrossFunctionsAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	oldInline := inlineEnabled
 	inlineEnabled = false
 	t.Cleanup(func() { inlineEnabled = oldInline })
@@ -95,6 +96,7 @@ func TestSizeSharesTrapBodiesAcrossFunctionsAMD64(t *testing.T) {
 }
 
 func TestSizeSharesCompleteTrapBodyAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := sharedTrapBodyEnabled
 	t.Cleanup(func() { sharedTrapBodyEnabled = before })
 	emit := func(enabled bool) (int, *CodegenStats) {

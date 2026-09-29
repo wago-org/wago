@@ -169,6 +169,7 @@ func TestWorkerControlFrameCapBoundsModuleOutlier(t *testing.T) {
 }
 
 func TestParallelControlFrameScratchDoesNotMultiplyOutlier(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const workers, depth = 4, 40
 	m := benchParallelControlOutlierModule(t, 64, depth)
 	var stats ModuleStats

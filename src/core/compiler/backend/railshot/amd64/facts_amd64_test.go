@@ -131,6 +131,7 @@ func TestStorageMetadataFieldsAreIndependentAMD64(t *testing.T) {
 }
 
 func TestSignedI32LoadCarriesUpperZeroFactAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
 		0x00,       // no locals
 		0x20, 0x00, // local.get 0

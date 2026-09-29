@@ -62,7 +62,7 @@ func (f *fn) finalizeBranchFolds() {
 		copy(b[over+4:over+9], []byte{0x0F, 0x1F, 0x44, 0x00, 0x00}) // 5-byte NOP
 		f.a.ForgetRel32(over + 5)
 		f.stats.peep("br-pair-fold")
-		if f.stats != nil {
+		if diagnosticsEnabled && f.stats != nil {
 			f.stats.NativeSize.BranchFoldHoleBytes += 5
 		}
 	}

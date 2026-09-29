@@ -38,6 +38,10 @@ var aluTable = [...]aluEnc{
 // regNone to pick a fresh one. Returns the register now holding the value and
 // converts `node` into that value on the stack (its operands are consumed).
 func (f *fn) condense(node *elem, dest Reg) Reg {
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		previous := f.enterProfileNode(node)
+		defer f.switchProfileOrigin(previous)
+	}
 	f.stats.addCondense()
 	switch {
 	case isBinALU(node.deferredOp()):
@@ -1016,7 +1020,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			// always false), so materialize it and compare register-register. A load
 			// whose address borrows a pinned local must use a fresh destination and
 			// must not release the local's register.
-			r := f.memRefValue(right.st)
+			r := f.memRefValue(right)
 			f.cmpRR(L, r, w)
 			f.release(r)
 			f.releaseMemRef(right.st)
@@ -1323,7 +1327,7 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 			f.a.MovReg64(dest, e.st.reg) // copy from the pinned local/global; never release it
 		}
 	case stMemRef:
-		f.loadMemRef(dest, e.st) // emit the deferred load into dest
+		f.loadMemRef(dest, e) // emit the deferred load into dest
 		f.releaseMemRef(e.st)
 	}
 }
@@ -1359,7 +1363,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		f.release(t)
 	case stMemRef:
 		// arm64: no memory-operand ALU (memRefFoldable is always false) — load then reg-reg.
-		r := f.memRefValue(right.st)
+		r := f.memRefValue(right)
 		f.aluRR(enc.op, dest, r, w)
 		f.release(r)
 		f.releaseMemRef(right.st)
@@ -1537,7 +1541,7 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 		f.release(t)
 	case stMemRef:
 		// arm64: no memory-operand MUL (memRefFoldable is always false) — load then reg-reg.
-		r := f.memRefValue(right.st)
+		r := f.memRefValue(right)
 		f.mulRR(dest, r, w)
 		f.release(r)
 		f.releaseMemRef(right.st)

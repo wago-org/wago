@@ -23,6 +23,8 @@ var hostControlInstances sync.Map // map[uintptr]*Instance
 // parked activation and lets the producer's bound host dispatcher construct a
 // HostModule authorized by the invocation that actually owns the GC lease.
 type hostInvocationContext struct {
+	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
+	profileInvocationState
 	id          invocationID
 	reservation *pluginOperationReservation
 	parent      context.Context
@@ -33,7 +35,7 @@ type hostInvocationContext struct {
 type resolvedHostCall func(uintptr, uint32, []uint64, []uint64, hostInvocationContext)
 
 func (c hostInvocationContext) empty() bool {
-	return c.id == 0 && c.reservation == nil && c.parent == nil
+	return c.id == 0 && c.reservation == nil && c.parent == nil && c.profileSession() == nil
 }
 
 var hostInvocationContexts sync.Map // map[uintptr]hostInvocationContext
@@ -137,6 +139,9 @@ func bindHostInvocationParent(in *Instance, parent context.Context) func() {
 	}
 	invocation := currentHostInvocationContext(ctrl, in)
 	invocation.parent = parent
+	if codeProfileEnabled {
+		invocation = inheritProfileContext(invocation, parent)
+	}
 	return bindHostInvocationContext(ctrl, invocation)
 }
 
@@ -198,6 +203,10 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		}
 	}
 	if importIdx&shared.AtomicWaitDispatchBit != 0 {
+		if codeProfileEnabled && a.invocation.profileSession() != nil {
+			span := a.profileHelper(active, "atomic-wait-helper", int(importIdx&^shared.AtomicWaitDispatchBit))
+			defer finishProfileBoundary(span, nil)
+		}
 		if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
 			panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
 		}
@@ -205,6 +214,10 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		return
 	}
 	if importIdx&gcStructDispatchBit != 0 {
+		if codeProfileEnabled && a.invocation.profileSession() != nil {
+			span := a.profileHelper(active, "gc-helper", int(importIdx&^gcStructDispatchBit))
+			defer finishProfileBoundary(span, nil)
+		}
 		// Internal GC helpers cannot re-enter Wasm or arbitrary host code. Keep the
 		// native execution lease while operating on the parked frame instead of
 		// paying the public host-call release/reacquire protocol at every GC opcode.
@@ -341,7 +354,11 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		restoreInvocationContext := bindHostInvocationContext(ctrl, invocation)
 		defer restoreInvocationContext()
 	}
-	active.callHostDispatch(ctrl, importIdx, args, results, invocation)
+	if codeProfileEnabled && invocation.profileSession() != nil {
+		a.callProfiledHost(active, ctrl, importIdx, args, results, invocation)
+	} else {
+		active.callHostDispatch(ctrl, importIdx, args, results, invocation)
+	}
 }
 
 func (in *Instance) callHostDispatch(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {

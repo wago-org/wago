@@ -9,6 +9,7 @@ import (
 )
 
 func TestRegisterABIElidesWrapperFrameHeaderAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	// Fourteen i64 locals put the old frame at 136 bytes and the compact frame at
 	// 120, crossing AMD64's imm8 frame-adjustment boundary as well as proving the
 	// physical slot offsets move with the header.

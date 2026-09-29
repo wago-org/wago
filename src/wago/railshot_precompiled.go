@@ -20,6 +20,9 @@ type railshotOptimizationSnapshot = optimization.Snapshot
 type railshotModuleStats struct{}
 
 type railshotCompileOptions struct {
+	SourceMaps             bool
+	UnwindMaps             bool
+	Profile                bool
 	BitCountFeatures       uint8
 	Optimizations          map[string]bool
 	OptimizationSnapshot   railshotOptimizationSnapshot

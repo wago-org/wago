@@ -211,6 +211,7 @@ func TestBulkMemoryExecLargeArm64(t *testing.T) {
 }
 
 func TestMemoryCopyDynamicChunksArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const (
 		head = 4096
 		size = 65536

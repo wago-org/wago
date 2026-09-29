@@ -39,6 +39,11 @@ TEXT ·addrMachVMDeallocate(SB), NOSPLIT, $0-8
 	MOVD R0, ret+0(FP)
 	RET
 
+TEXT ·addrMachVMReadOverwrite(SB), NOSPLIT, $0-8
+    MOVD $libc_mach_vm_read_overwrite(SB), R0
+    MOVD R0, ret+0(FP)
+    RET
+
 // The rewritten state resumes with X9 naming active linear memory. The native
 // trampoline published its foreign-stack save area and continuation in basedata.
 TEXT ·darwinNativeInterruptTrap(SB), NOSPLIT|NOFRAME, $0-0

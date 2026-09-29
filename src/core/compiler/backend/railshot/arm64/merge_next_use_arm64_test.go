@@ -46,6 +46,7 @@ func compileForwardMergeStatsARM64(t testing.TB, m *wasm.Module, on bool) Codege
 }
 
 func TestForwardMergeNextUseSkipsDeadReloadARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := forwardMergeModuleARM64(t, nil)
 	without := compileForwardMergeStatsARM64(t, m, false)
 	with := compileForwardMergeStatsARM64(t, m, true)
@@ -65,6 +66,7 @@ func TestForwardMergeNextUseSkipsDeadReloadARM64(t *testing.T) {
 }
 
 func TestForwardMergeNextUseSkipsDeadFloatReloadARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	body := []byte{
 		0x00,
 		0x20, 0x00,
@@ -95,6 +97,7 @@ func TestForwardMergeNextUseSkipsDeadFloatReloadARM64(t *testing.T) {
 }
 
 func TestForwardMergeNextUseKeepsReadAndFuelFallbackARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	read := forwardMergeModuleARM64(t, []byte{0x20, 0x00, 0x1a})
 	readStats := compileForwardMergeStatsARM64(t, read, true)
 	readFallback := compileForwardMergeStatsARM64(t, read, false)

@@ -49,6 +49,7 @@ func TestSIMDAnyTrueUsesVPTEST(t *testing.T) {
 }
 
 func TestSIMDAndAnyTrueSuperopt(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 	for _, tc := range []struct {
 		name string
@@ -114,6 +115,7 @@ func simdNotAndBody(a, b [16]byte) []byte {
 }
 
 func TestSIMDNotAndSuperopt(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 	b := i8x16Bytes(-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
 	body := simdNotAndBody(a, b)

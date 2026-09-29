@@ -724,7 +724,7 @@ func (r *gcNativeFrameRoots) syncGlobalsBeforeCollection() {
 }
 
 // RangeClassifiedRootRefs preserves exact runtime ownership for opt-in
-// collector telemetry without allocating composite RootSet values on helper
+// root traversal without allocating composite RootSet values on helper
 // paths.
 func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSink) bool {
 	if r == nil || sink == nil {
@@ -1601,16 +1601,10 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 }
 
 func equalGCConfigs(a, b gc.Config) bool {
-	// Telemetry is a diagnostic sink, not a heap-semantics parameter. A consumer
-	// may join an existing Runtime domain without supplying the owner's recorder.
-	a.Telemetry, b.Telemetry = nil, nil
 	return a == b
 }
 
 func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Config, c *Compiled, preferred *gc.Collector) (*gc.Collector, *gcTypeMapping, error) {
-	if !gc.TelemetryAvailable() {
-		config.Telemetry = nil
-	}
 	if s == nil || s.private {
 		return nil, nil, fmt.Errorf("wago: shared WasmGC ownership requires an explicit Runtime")
 	}
@@ -1643,10 +1637,6 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 			s.mu.Unlock()
 			return nil, nil, fmt.Errorf("wago: WasmGC collector configuration is incompatible with the imported Runtime GC domain")
 		}
-		if config.Telemetry != nil && selected.config.Telemetry != config.Telemetry {
-			s.mu.Unlock()
-			return nil, nil, fmt.Errorf("wago: WasmGC telemetry recorder does not own the imported Runtime GC domain")
-		}
 	} else {
 		for domain := topology.first; domain != nil; domain = domain.next {
 			if !gcModuleFitsDomain(c, domain) {
@@ -1655,10 +1645,6 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 			if !equalGCConfigs(domain.config, config) {
 				s.mu.Unlock()
 				return nil, nil, fmt.Errorf("wago: WasmGC collector configuration is incompatible with the matching Runtime GC domain")
-			}
-			if config.Telemetry != nil && domain.config.Telemetry != config.Telemetry {
-				s.mu.Unlock()
-				return nil, nil, fmt.Errorf("wago: WasmGC telemetry recorder does not own the matching Runtime GC domain")
 			}
 			selected = domain
 			break

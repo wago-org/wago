@@ -10,6 +10,7 @@ import (
 )
 
 func TestEHCatchRouteSnapshotAbove16Pins(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const n = 24
 	params := make([]wasm.ValType, n)
 	for i := range params {

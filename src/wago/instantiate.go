@@ -103,6 +103,8 @@ func instantiateArgs(args []any) (InstantiateOptions, error) {
 // fields keep unsafe/off-heap ownership visible; no generic cleanup stack is
 // used on this allocation-sensitive path.
 type instanceBuilder struct {
+	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
+	profileBuilderState
 	c       *Compiled
 	opts    InstantiateOptions
 	imports resolvedImports
@@ -127,7 +129,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	return instantiateCoreWithModuleLease(c, opts, nil)
 }
 
-func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, moduleUse *Module) (*Instance, error) {
+func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, moduleUse *Module) (result *Instance, resultErr error) {
 	defer goruntime.KeepAlive(c)
 	// Keep validation, native linking, public lookup, and teardown on one binding set.
 	imports := opts.resolvedImports
@@ -139,6 +141,10 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 		}
 	}
 	b := instanceBuilder{c: c, opts: opts, imports: imports, moduleUse: moduleUse}
+	if codeProfileEnabled {
+		span := b.beginProfileInstantiation()
+		defer finishProfileBoundary(span, &resultErr)
+	}
 	defer b.releaseModuleUse()
 	if opts.InvokeCacheSlots < 0 || opts.InvokeCacheSlots > 255 {
 		return nil, fmt.Errorf("wago: InvokeCacheSlots must be between 1 and 255 (or zero for default), got %d", opts.InvokeCacheSlots)
@@ -682,7 +688,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			return
 		}
 		if thunkMem != nil {
-			runtime.Unmap(thunkMem)
+			c.unmapProfileCode(thunkMem)
 		}
 		c.releaseCode()
 		runtime.ReleaseArena(ar)
@@ -1549,6 +1555,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		threadedMemoryZero: c.threadedMemory0(),
 		moduleIdentity:     opts.moduleIdentity,
 	}
+	if codeProfileEnabled {
+		b.bindProfileInstance(in)
+	}
 	if opts.InvokeCacheSlots != 0 && opts.InvokeCacheSlots != 4 {
 		state := in.ensurePluginState()
 		state.invokeCacheSlots = uint8(opts.InvokeCacheSlots)
@@ -1720,6 +1729,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	}
 	if c.HasStart {
+		if codeProfileEnabled && in.lifecycleProfile() != nil {
+			var span profileSpanToken
+			span, opts.startContext = b.beginProfileInitialization(in, opts.startContext)
+			defer finishProfileBoundary(span, &err)
+		}
 		if c.StartIsImport {
 			// Imported start: run the imported function through the same normalized
 			// binding machinery used by ordinary host imports. Validation guarantees
@@ -1971,6 +1985,7 @@ func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool) (s
 	if err != nil {
 		return 0, nil, nil, nil, wrapContextError("host import wrapper thunk", err)
 	}
+	c.registerProfileThunks(base, mem[:len(blob)], offs)
 	addr := make(map[uint32]uint64, len(offs))
 	for fidx, o := range offs {
 		addr[fidx] = uint64(base) + uint64(o)
@@ -2024,6 +2039,15 @@ func (c *Compiled) sharedHostFuncThunks(syncMode bool) (uintptr, []int, error) {
 	mem, base, err := runtime.MapCode(blob)
 	if err != nil {
 		return 0, nil, wrapContextError("shared host import wrapper thunk", err)
+	}
+	if codeProfileEnabled {
+		profileOffsets := make(map[uint32]int, len(offsets))
+		for i, off := range offsets {
+			if off >= 0 {
+				profileOffsets[uint32(i)] = off
+			}
+		}
+		c.registerProfileThunks(base, mem[:len(blob)], profileOffsets)
 	}
 	cache.mem, cache.base, cache.offsets = mem, base, offsets
 	return base, offsets, nil

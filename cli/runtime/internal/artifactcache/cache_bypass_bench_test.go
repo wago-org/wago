@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"strings"
 	"testing"
 )
 
@@ -19,6 +20,12 @@ func BenchmarkCacheGeneration(b *testing.B) {
 					source = append(source, wasmtest.Section(0, payload)...)
 				}
 				cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit).WithGCCodeTelemetry(telemetry)
+				if err := cfg.Validate(); err != nil {
+					if telemetry && strings.Contains(err.Error(), "compiler telemetry requires") {
+						b.Skip(err)
+					}
+					b.Fatal(err)
+				}
 				rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
 				defer rt.Close()
 				cache := Cache{Dir: b.TempDir(), Identity: []byte("benchmark-cache-generation")}

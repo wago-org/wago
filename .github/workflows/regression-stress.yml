@@ -44,7 +44,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.22"
+  GO_VERSION: "1.27.1"
 
 jobs:
   draft-smoke:

@@ -284,6 +284,7 @@ func BenchmarkSSE2ScalarCompile(b *testing.B) {
 func assertSIMDBaseline(t *testing.T, code []byte) { t.Helper(); assertScalarBaseline(t, code) }
 
 func TestSSE2ScalarExtendedInstructionBaseline(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, tc := range []struct {
 		input, output wasm.ValType
 		op            byte

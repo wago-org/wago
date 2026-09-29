@@ -87,6 +87,7 @@ func TestWideLoopIntConstUsesOnlyIdleRegistersAMD64(t *testing.T) {
 }
 
 func TestWideLoopIntConstCompileSwitchAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := wideLoopIntConstModuleAMD64(t)
 	compile := func(on bool) (*encoderamd64.CompiledModule, *CodegenStats) {
 		var stats ModuleStats
@@ -119,6 +120,7 @@ func TestWideLoopIntConstCompileSwitchAMD64(t *testing.T) {
 }
 
 func TestWideLoopIntConstInterruptPollPreservesConstantsAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := wideLoopIntConstInterruptModuleAMD64(t)
 	compile := func(on bool) (*encoderamd64.CompiledModule, *CodegenStats) {
 		var stats ModuleStats
@@ -152,6 +154,7 @@ func TestWideLoopIntConstInterruptPollPreservesConstantsAMD64(t *testing.T) {
 }
 
 func TestWideLoopIntConstRejectsImm32AMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	body := []byte{0x00, 0x03, 0x40, 0x20, 0x00}
 	body = appendWideI64ConstAMD64(body, 0x12345678, 0x7c)
 	body = append(body, 0x1a, 0x0b, 0x42, 0x00, 0x0b)

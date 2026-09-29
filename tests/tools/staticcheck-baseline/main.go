@@ -26,6 +26,8 @@ type profile struct {
 var profiles = []profile{
 	{name: "standard", args: []string{"./..."}},
 	{name: "runtime", args: []string{"-tags", "wago_runtime", "./cli/..."}},
+	{name: "profiling", args: []string{"-tags", "wago_profile", "./..."}},
+	{name: "diagnostics", args: []string{"-tags", "wago_codegenstats", "./..."}},
 }
 
 type position struct {
@@ -169,6 +171,15 @@ func findingsBeyondBaseline(actual, baseline []finding) []finding {
 	allowed := make(map[string]int, len(baseline))
 	for _, item := range baseline {
 		allowed[findingKey(item)]++
+		// Diagnostic builds share reviewed ordinary-code findings, but cannot
+		// introduce additional findings or duplicate occurrences.
+		if item.Profile == "standard" {
+			for _, name := range []string{"profiling", "diagnostics"} {
+				copy := item
+				copy.Profile = name
+				allowed[findingKey(copy)]++
+			}
+		}
 	}
 	seen := make(map[string]int, len(actual))
 	var added []finding

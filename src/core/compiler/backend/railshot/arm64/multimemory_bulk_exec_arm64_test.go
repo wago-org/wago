@@ -41,6 +41,7 @@ func multiMemoryFillModuleArm64(t testing.TB) *wasm.Module {
 }
 
 func TestConstBulkChecksIndexedMemorySizeArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const (
 		dst       = 1 << 16
 		fillValue = 0x5a

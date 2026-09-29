@@ -593,6 +593,7 @@ func TestBranchHintWeightsIfArmLocalScores(t *testing.T) {
 }
 
 func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 	elem := []byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00} // active elem: table[0] = func 0
 	mod := wasmtest.Module(

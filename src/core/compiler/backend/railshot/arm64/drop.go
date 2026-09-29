@@ -98,10 +98,10 @@ func (f *fn) releaseDroppedValue(e *elem) {
 		if f.guardMode {
 			if e.st.typ.isFloat() {
 				x := f.allocFReg(0)
-				f.loadFMemRef(x, e.st)
+				f.loadFMemRef(x, e)
 				f.releaseF(x)
 			} else {
-				r := f.memRefValue(e.st) // never write a borrowed address register
+				r := f.memRefValue(e) // never write a borrowed address register
 				f.release(r)
 			}
 		}

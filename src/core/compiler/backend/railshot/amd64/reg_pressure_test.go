@@ -71,6 +71,7 @@ func TestWrapperResultsUseSlotsWhenGlobalPinsReduceCapacity(t *testing.T) {
 }
 
 func TestCompileWrapperResultsWithThreePinnedGlobals(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	results := make([]wasm.ValType, 12)
 	for i := range results {
 		results[i] = wasm.I32
@@ -120,6 +121,7 @@ func TestCompileWrapperResultsWithThreePinnedGlobals(t *testing.T) {
 // target-derived transient floor must compile a register-heavy nested-shift tree
 // on its first attempt and preserve the result.
 func TestExecRegHeavyUsesOneCompileAttempt(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const nParams, depth = 8, 7
 	m := regHeavyShiftChain(t, nParams, depth)
 

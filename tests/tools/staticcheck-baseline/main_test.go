@@ -38,3 +38,15 @@ func TestFindingsBeyondBaselineRejectNewMessagesAndDuplicates(t *testing.T) {
 		t.Fatalf("new findings = %+v", got)
 	}
 }
+
+func TestDiagnosticProfilesRejectNewFindings(t *testing.T) {
+	b := finding{Profile: "standard", File: "old.go", Code: "U1000", Message: "old"}
+	old := b
+	old.Profile = "profiling"
+	extra := old
+	extra.File = "profile.go"
+	got := findingsBeyondBaseline([]finding{old, extra, old}, []finding{b})
+	if len(got) != 2 || got[0].File != "profile.go" {
+		t.Fatalf("diagnostic findings hidden: %+v", got)
+	}
+}

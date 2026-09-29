@@ -28,6 +28,7 @@ func countedLoopLatchModuleAMD64(t testing.TB, exactExit bool) *wasm.Module {
 }
 
 func TestCountedLoopLatchAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, enabled := range []bool{false, true} {
 		for _, n := range []uint64{0, 1, 7, 100} {
 			var stats ModuleStats
@@ -55,6 +56,7 @@ func TestCountedLoopLatchAMD64(t *testing.T) {
 }
 
 func TestCountedLoopLatchAMD64RejectsUnsafeShapes(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, test := range []struct {
 		name          string
 		exactExit     bool

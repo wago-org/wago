@@ -258,6 +258,7 @@ func TestFinalizerCandidateInventoryIsBoundedArm64(t *testing.T) {
 }
 
 func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
 	beforeLoops := loopCompactionEnabled
 	nativeCompactionEnabled, nativeCompactionDisabled, loopCompactionEnabled = false, false, true
@@ -313,6 +314,7 @@ func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
 }
 
 func TestLoopCompactionHasFixedFunctionSizeBoundArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforeLimit := arm64LoopCompactionLimit
 	arm64LoopCompactionLimit = 16 << 10
 	t.Cleanup(func() { arm64LoopCompactionLimit = beforeLimit })
@@ -334,6 +336,7 @@ func TestLoopCompactionHasFixedFunctionSizeBoundArm64(t *testing.T) {
 }
 
 func TestLoopCompactionLimitRespectsArchitectureAndPolicyBoundsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforeLimit := arm64LoopCompactionLimit
 	t.Cleanup(func() { arm64LoopCompactionLimit = beforeLimit })
 	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)

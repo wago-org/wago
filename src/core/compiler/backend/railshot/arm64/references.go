@@ -23,7 +23,11 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 }
 
 func (f *fn) pushValue(st storage) *elem {
-	return f.s.pushValue(st)
+	e := f.s.pushValue(st)
+	if profileEnabled && f.stats != nil && f.stats.RecordSources && st.kind == stMemRef {
+		f.rememberProfileNode(e)
+	}
+	return e
 }
 
 func (f *fn) erase(e *elem) {

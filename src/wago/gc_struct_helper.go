@@ -64,18 +64,6 @@ func gcHelperMayAllocate(helper uint32) bool {
 	}
 }
 
-//lint:ignore U1000 used by builds with wago_gcstats enabled
-func gcHelperMayMutate(helper uint32) bool {
-	switch helper {
-	case gcStructSet, gcStructTableSet,
-		gcArraySet, gcArrayDropElem, gcArrayFill, gcArrayCopy,
-		gcArrayInitData, gcArrayInitElem:
-		return true
-	default:
-		return false
-	}
-}
-
 func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64) {
 	if in == nil || (in.gc == nil && helper != gcFuncRefTest) {
 		panic(gcHelperFailuref("gc struct helper %d has no live collector", helper))
@@ -85,7 +73,6 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		lockedDomain = in.lockGCCollector()
 	}
 	defer unlockGCCollector(lockedDomain)
-	recordSynchronousGCHelper(in, helper, args)
 	var state *gcPublicState
 	var frameRoots gc.RootSet = gc.EmptyRoots{}
 	if gcHelperMayAllocate(helper) {
