@@ -1,49 +1,11 @@
 # Wago architecture
 
-AMD64 uses SSE2 as its architectural baseline. Newer CPU extensions are optional
-compile-time optimization tiers and are recorded in native artifact requirements
-when emitted. Scalar, core SIMD, and supported relaxed SIMD have baseline
-fallbacks. The `wago_amd64_sse2` build tag selects portable baseline code generation
-on modern hosts.
-
 Wago is a pure-Go, no-cgo WebAssembly engine. It decodes, validates, and
 compiles Wasm modules to native machine code with a single-pass backend. It then
 executes that code directly from Go. It needs no C toolchain, cgo, or FFI. The
 host-boundary shape and runtime ABI are derived from
 [WARP](https://github.com/wago-org/warp), a C++ single-pass wasm engine maintained
 as a separate repository.
-
-The amd64 GP allocator must only spill GP values. Scalar float, SIMD, and
-custom XMM values use a separate register bank, even when register numbers match.
-
-Context-aware invocation checks cancellation after it acquires the instance
-gate, before it reads export metadata or enters guest or host code.
-
-CLI feature settings apply enables before disables. An explicit disable of
-`extended-constant-expressions` also disables `extended-const-expressions`.
-Version-1 global and local settings accept known retired optimization names as
-compatibility no-ops. Unknown names still produce an error.
-The retired list includes `inline-loop-callees` and `deep-fp-pins` from v1.
-
-Host calls convert both `HostExit` and non-nil `*HostExit` panics to `ExitError`,
-including calls through a Wasm wrapper and replayed host logs.
-
-Both native backends consume the complete result-type vector of a typed
-`select` through the shared Wasm immediate reader. Explicit reference types
-include a nullable/non-null prefix and a signed heap-type index, which can span
-multiple bytes. No heap-type byte may re-enter the instruction stream.
-`TestTypedSelectReferenceImmediates` checks reference identity and selection for
-both nullability forms and one-byte/multi-byte type indexes.
-
-Reference instructions constrain an unreachable stack value to a reference.
-The validator uses an internal heap bottom type for this value; it cannot match
-a numeric or vector operand and has no binary encoding.
-An unreachable `try_table` body still produces its declared results at the
-parent validation frame, just like a block.
-
-Generated trap exits persist dirty value-pinned globals as well as module pins. Entry
-traps first reload value pins because the prologue has not initialized them.
-Cold trap stores use a fixed scratch register and preserve pins until stored.
 
 ## Start here
 
@@ -58,10 +20,11 @@ full path from Wasm bytes to a function call.
 | how native code is made | [Back end](#4-back-end--valent-block-code-generation-srccorecompilerbackendrailshot) |
 | how an instance runs native code | [Runtime](#7-runtime-srccoreruntime) |
 | public Go APIs | [Public API](#13-public-api--the-generated-facade) |
+| profiling ownership, build removal, and qualification | [Profiling and telemetry](#17-profiling-and-telemetry) |
 | supported features | [FEATURES.md](FEATURES.md) |
 
-The rest of this introduction records platform and implementation rules. The
-numbered sections explain the system in the order that a module moves through it.
+The platform rules describe native-code compatibility. The numbered sections
+follow a module from compilation through execution and public API ownership.
 
 ### Terms used here
 
@@ -95,14 +58,16 @@ dotted flat-key collisions from crossing module authority boundaries. Artifact
 decoding also caps the expanded function-import directory at 64 MiB, so compact
 empty names cannot produce an unbounded slice allocation. Version 2 replaced the
 initial version 1 format when generated `memory.grow` code and the native instance
-context gained a runtime memory-page quota. Wago rejects every artifact version
-other than 3, including versions 1 and 2. There is no compatibility decoder or
+context gained a runtime memory-page quota. The current format is version 4,
+which records optional CPU requirements as well as exact native GC metadata.
+Wago rejects all earlier versions; there is no compatibility decoder or
 dual-format ambiguity.
 
 ### CPU and SIMD baseline
 
-AMD64 execution requires SSE2 and successful capability detection. Detection is
-cached once; CPUID and XGETBV validate AVX-family OS state under standard Go,
+AMD64 execution requires SSE2 and successful capability detection. The
+`wago_amd64_sse2` build tag selects baseline code generation on modern hosts.
+Detection is cached once; CPUID and XGETBV validate AVX-family OS state under standard Go,
 and TinyGo intersects Linux CPU flags across logical processors. Optional
 extensions are selected once per compilation, with no guest invocation dispatch.
 
@@ -167,6 +132,11 @@ backend code generation.
 
 ### WasmGC boundary
 
+Exact native GC liveness starts with bounded backward sweeps, switching to a
+compact predecessor directory and work queue when more propagation is needed.
+Root bitsets can omit unused locals, and explicit work/memory limits bound
+analysis. This metadata pass supplements Railshot's native code generation.
+
 WasmGC uses stable compact references and bounded collector heaps. Generated
 modules collect only where exact native roots are published; unsupported root
 shapes remain fail-closed rather than using approximate scanning. A bounded linux/amd64 slice
@@ -178,7 +148,7 @@ callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
 size, adapter return, and recursive call return-PC maps. The synchronous helper
 control frame publishes parked RSP, and Go exposes validated off-heap slots from
 each walked frame directly as mutable collector roots. Throughput/Tiny stress
-collection and the root walker remain zero-allocation after warm-up. Codec version 3
+collection and the root walker remain zero-allocation after warm-up. The current codec
 persists and strictly revalidates the map, including dynamic-import stack
 adjustments. Direct tail calls discard their caller frame. Numeric host callbacks
 use a bounded suspended-activation stack plus separate nested foreign stacks, and
@@ -295,37 +265,59 @@ function index. `Instantiate` turns a `*Compiled` into a runnable `*Instance`.
 ## 2. Repository layout
 
 ```
-src/wago/                         public API implementation (package wago)
+src/wago/                           public API implementation (package wago)
   instantiate.go                  staged instance-construction transaction
   instance.go                     live instance state and native-visible handles
   instance_lifecycle.go           close/physical-release ownership transfer
   reference_lifetime.go           close/quiescence/root-transfer convergence
   import_attachments.go           imported owner attachment and root retention
-wago.go                           generated root facade (re-exports src/wago)
-internal/genfacade/               generator for wago.go (+ up-to-date test)
-cli/wago/                         manager and runtime command entry point
-cli/wago-installer/               installer command entry point
-cli/installer/                    shared installer implementation
-src/core/compiler/wasm/           decoder + validator (front end)
-src/core/compiler/backend/railshot/  direct native codegen (Valent-Block)
+wago.go                             generated root facade (re-exports src/wago)
+internal/genfacade/                 generator for wago.go (+ up-to-date test)
+cli/wago/                           manager and runtime command entry point
+cli/wago-installer/                 installer command entry point
+cli/installer/                      shared installer implementation
+cli/manager/                        installation, plugins, runtime selection
+cli/runtime/                        engine-backed runtime commands
+cli/internal/project/               project configuration and lockfiles
+plugin/                             public plugin contracts
+src/core/plugins/                   compiler-facing plugin integration
+src/core/compiler/wasm/             decoder + validator (front end)
+src/core/compiler/backend/railshot/ direct native codegen (Valent-Block)
   amd64/                            x86-64 selection, registers, ABI, encoding
   arm64/                            AArch64 selection, registers, ABI, encoding
   shared/                           architecture-neutral policy and metadata
-src/core/runtime/                 mmap, foreign stack, JobMemory, traps
-src/core/runtime/abi/             layout constants shared by codegen + runtime
-tests/conformance/spec-v1/      WebAssembly spec testsuite (submodule, MVP-pinned)
-tests/conformance/spec-v2/      WebAssembly 2.0 specification (submodule)
-tests/fixtures/                 small Wasm, benchmark, and parser fixtures
-tests/corpus/regressions/       pinned binary regression corpus
-tests/conformance/spectest/     shared specification-test helpers
-tests/support/wasmtest/         programmatic Wasm fixture builders
-tests/scripts/                  shell integration tests
-spectest_exec_test.go             wasm 1.0 conformance harness (+ SPECTEST.md)
-bench/                            benchmarks vs wazero (separate Go module)
+src/core/runtime/                   mmap, foreign stack, JobMemory, traps
+src/core/runtime/abi/               layout constants shared by codegen + runtime
+src/core/runtime/gc/                collector and versioned native GC ABI
+src/core/compiler/ir/               isolated scalar SSA research/oracle package
+corpus/                             shared correctness/benchmark workload inventory
+tests/conformance/spec-v1/          WebAssembly spec testsuite (submodule, MVP-pinned)
+tests/conformance/spec-v2/          WebAssembly 2.0 specification (submodule)
+tests/fixtures/                     small Wasm, benchmark, and parser fixtures
+tests/corpus/regressions/           pinned binary regression corpus
+tests/conformance/spectest/         shared specification-test helpers
+tests/support/wasmtest/             programmatic Wasm fixture builders
+tests/scripts/                      shell integration tests
+spectest_exec_test.go               wasm 1.0 conformance harness (+ SPECTEST.md)
+bench/                              benchmarks vs wazero (separate Go module)
 ```
 
-The root module is dependency-free (stdlib only); `bench/` is a separate module
-so the public package stays clean.
+The root module uses `golang.org/x/sys` for platform integration; it does not
+require a C toolchain. `bench/` and `cli/wago-installer/` are separate modules,
+joined with the root by `go.work`. Benchmark runtime and WASI dependencies stay
+in the benchmark module.
+
+The CLI separates management from execution. `cli/manager/` owns installation,
+release/registry networking, authentication, plugin builds, and runtime selection.
+`cli/runtime/` executes engine-backed commands without release networking or
+managing toolchains. `cli/internal/project/` owns project manifests, lockfiles,
+and transactional project updates.
+
+CLI feature settings apply enables before disables. Disabling
+`extended-constant-expressions` also disables its `extended-const-expressions`
+alias. Version-1 settings accept known retired optimization names, including
+`inline-loop-callees` and `deep-fp-pins`, as compatibility no-ops; unknown names
+still produce an error.
 
 ---
 
@@ -354,6 +346,32 @@ Type-indexed control encodings record multi-value even for zero or one result.
   validation.
 - Unsupported value types and opcodes are rejected explicitly rather than
   silently accepted. Correctness and clear failure come first.
+
+Both native backends consume the complete result-type vector of a typed
+`select` through the shared Wasm immediate reader. Explicit reference types
+include a nullable/non-null prefix and a signed heap-type index, which can span
+multiple bytes. No heap-type byte may re-enter the instruction stream.
+`TestTypedSelectReferenceImmediates` checks reference identity and selection for
+both nullability forms and one-byte/multi-byte type indexes.
+
+Reference instructions constrain an unreachable stack value to a reference.
+The validator uses an internal heap bottom type for this value; it cannot match
+a numeric or vector operand and has no binary encoding.
+An unreachable `try_table` body still produces its declared results at the
+parent validation frame, just like a block.
+
+### Type and import indexes
+
+The decoded module caches flattened type and per-kind import directories in
+`module_helpers.go`. Recursive-group boundaries, canonical type IDs, and subtype
+edges are shared across queries instead of repeatedly walking declarations.
+Validation invalidates these caches first, including when a caller edits an
+existing module in place and validates it again.
+
+Structural function keys reuse recursive-group digests without expanding shared
+type subgraphs at every reference. Keys select candidate matches; exact structural
+comparison remains the authority for equality. Hash collisions must never make
+incompatible function or collector types interchangeable.
 
 Validation is intentionally stricter than the narrow const-expression decoder
 the compiler uses for global/segment initializers: the validator guarantees
@@ -401,14 +419,17 @@ that a serialized 64-bit parameter carrier has zero high bits.
 The backend is a **single forward pass** that fuses code generation and register
 allocation. It uses the *Valent-Block* technique from WARP: instead of emitting
 a push/pop for every wasm operand, it keeps a **compile-time symbolic operand
-stack** whose entries (`ventry`) are deferred values:
+stack** whose nodes (`elem`) hold deferred operations and values. A value's
+`storage` records where it lives:
 
-| kind     | meaning                                            |
-|----------|----------------------------------------------------|
-| `vConst` | an immediate constant, not yet materialized        |
-| `vLocal` | a lazy reference to a local's frame slot           |
-| `vReg`   | a value already resident in a scratch register     |
-| `vSpill` | a value flushed to its canonical frame slot        |
+| Storage kind | Meaning |
+|---|---|
+| `stConst` | An immediate constant, not yet materialized |
+| `stLocalRef` / `stGlobalRef` | A deferred local or global read |
+| `stReg` | A value that owns a physical register |
+| `stLocalReg` / `stGlobReg` | A borrowed read of a register-pinned value |
+| `stSlot` | A value in a native frame slot |
+| `stMemRef` | A checked memory read deferred until consumption |
 
 Pure, stack-neutral instructions are recorded symbolically and stay
 register-resident. Only when a value is actually **consumed**, or a
@@ -425,10 +446,15 @@ results are joined and relocated in original function order. This reduces
 one-module latency without making code layout or serialized output depend on
 scheduling.
 
-The net effect: straight-line code emits essentially no per-operation stack
-traffic. `valent_test.go`'s `TestRegisterResident` disassembles a straight-line
-function and asserts the body contains **zero** push/pop beyond the prologue's
-`push rbp` — proof the operand stack lives in registers.
+Straight-line expressions can remain in registers until a consumer or boundary
+requires materialization. Register pressure, calls, and control-flow joins can
+still require spills; the symbolic Wasm stack is not a native push/pop stack.
+
+AMD64 keeps GP and XMM register ownership separate, even when register numbers
+match. Its operand nodes track value-stack depth and GC-root prefix counts;
+control frames can retain immutable operand prefixes for cold merge state instead
+of copying the full stack at every nested block. These indexes reduce repeated
+scans while preserving exact branch types and root placement.
 
 The production compiler path is still single-pass: there is no separate
 register-allocation pass on the hot load path; Valent-Block is the compiler's
@@ -436,7 +462,7 @@ middle and back end in one pass.
 
 ---
 
-## 5. Scalar SSA IR tier (`src/core/compiler/ir`)
+## 5. Scalar SSA IR research package (`src/core/compiler/ir`)
 
 The `ir` package contains a compact block-parameter SSA form for focused
 verification and differential-oracle experiments. It is intentionally isolated:
@@ -490,8 +516,8 @@ at the top of this file for the current wire version.
 
 A single contiguous, mmap'd region. Native code receives a pointer to the
 **linear-memory base**; the runtime's bookkeeping lives at **negative offsets**
-below that base (`[linMem - off]`), a layout verified field-for-field against
-WARP's `basedataoffsets.hpp`:
+below that base (`[linMem - off]`), a convention derived from
+WARP. Current offsets are defined in `src/core/runtime/abi`:
 
 | offset | field |
 |-------:|-------|
@@ -557,8 +583,10 @@ instance is live, so it cannot orphan that ownership chain.
 
 ### Execution: the foreign stack & trampoline
 
-`Engine` owns a dedicated **4 MiB off-heap execution stack**. `Engine.Call`
-enters native code through `enterNative` (`trampoline_amd64.s`), which:
+`Engine` owns a dedicated off-heap execution stack, **4 MiB by default** and
+configurable through `RuntimeConfig`. `Engine.Call` enters native code through
+an architecture-specific trampoline. On amd64, `enterNative` uses the following
+sequence:
 
 1. switches `RSP` to the foreign stack top,
 2. calls the wasm wrapper following the System V mapping
@@ -579,9 +607,10 @@ Every export is called through one fixed shape:
 WasmWrapper(serArgs, linMem, trap, results)
 ```
 
-Arguments and results are 8-byte slots in off-heap buffers; `i32`/`f32` use the
-low 32 bits. `linMem` is the JobMemory linear-memory base (so the wrapper reaches
-basedata at negative offsets). Traps are reported by writing a trap code into the
+Arguments and results use 8-byte slots in off-heap buffers; `i32`/`f32` use the
+low 32 bits, while `v128` occupies two consecutive slots (16 bytes). `linMem` is
+the JobMemory linear-memory base (so the wrapper reaches basedata at negative
+offsets). Traps are reported by writing a trap code into the
 `trap` slot. This uniform shape is what makes the host↔wasm boundary cheap and
 allocation-free on the hot path.
 
@@ -592,17 +621,21 @@ allocation-free on the hot path.
 Each instance owns a **pointer table** (one 8-byte slot per global, in wasm
 global-index order; imported globals first). Codegen reads/writes a global by
 loading the table base from `[linMem - 112]`, indexing the slot, and
-dereferencing the 8-byte cell.
+dereferencing the cell: 8 bytes for scalar/reference values, 16 for `v128`.
 
 - Module-local globals point at instance-local cells.
 - **Imported mutable globals are shared by object identity**: a host-owned
   `*Global` cell is pointed at directly, so writes from wasm, `Instance.SetGlobal`,
   `g.Set`, and other instances importing the same `*Global` all observe the same
   storage. Duplicate imports of one key alias the same cell.
-- Coherence invariant: the cell is the sole
-  host-/cross-instance-visible storage. The current backend reads/writes it on
-  every `global.get`/`global.set`; a future register-caching pass must spill at
-  function return and around calls.
+- The cell is the host-/cross-instance-visible storage. Codegen may cache its
+  address and pin eligible global values in registers. Dirty values must reach
+  their cells at observable boundaries, including calls, returns, and traps;
+  cached values are reloaded where calls can change them.
+
+Generated trap exits persist dirty value-pinned globals as well as module pins.
+Entry traps first reload value pins because the prologue has not initialized them.
+Cold trap stores use a fixed scratch register and preserve pins until stored.
 
 Element- and data-segment offsets may reference an imported immutable i32 global,
 resolved at instantiate time after imports are bound.
@@ -627,6 +660,9 @@ Imported calls are compiled once as loads from the per-instance dispatch table.
 At instantiation, each cell receives a wrapper entry, home linear-memory base,
 target instance context, and caller context. Cross-instance cells point directly
 at the producer's wrapper entry; host cells point at small instance-owned thunks.
+
+Host calls convert both `HostExit` and non-nil `*HostExit` panics to `ExitError`,
+including calls through a Wasm wrapper and replayed host logs.
 
 Explicit deferred `I32HostEvent` imports may append calls
 to the off-heap log at basedata offset 40 and replay them after native return.
@@ -678,6 +714,38 @@ Active and passive data operations retain strict bounds and dropped-state checks
 
 ## 13. Public API & the generated facade
 
+### Runtime, compiled modules, and instances
+
+`Runtime` is the high-level owner of configuration, plugins, capabilities,
+registered imports, resource reservations, and a reference store. Package-level
+`Compile` and `Instantiate` remain available for lower-level embedding.
+`RuntimeConfig` is immutable: `With...` methods return modified copies.
+
+`Compiled` owns reusable code and validated metadata. Each `Instance` owns its
+execution state and retains the code mapping and any imported resource owners.
+Instantiation is a staged transaction: failed construction releases acquired
+resources and attachments. Logical close prevents new use; physical release
+waits for active operations and retained references to become quiescent. See
+`instantiate.go`, `instance_lifecycle.go`, and `reference_lifetime.go`.
+
+Context-aware invocation checks cancellation after acquiring the instance gate,
+before reading export metadata or entering guest or host code. Prepared functions
+reuse export/signature resolution. `WasmFunc.OpenSession` reserves an instance
+for repeated calls and avoids repeated lifecycle/gate work; the session must be
+closed before its instance and is not safe for concurrent use. Shared GC domains
+are leased during active calls, so an idle session does not block collection.
+
+### Exact reference identity
+
+The reference store owns function descriptors and retained reference tokens.
+Structural keys and descriptor digests index candidate buckets, followed by exact
+comparison of the type graph. Per-type registration memoization and a bounded
+compiled identity cache reduce repeated work; exceeding the cache budget falls
+back to reconstructing exact identities. Collector-domain type mapping follows
+the same rule: hashes accelerate lookup but never establish compatibility alone.
+
+### Generated root package
+
 The public package lives at `src/wago/` (package `wago`). To keep the import path
 clean (`github.com/wago-org/wago`) while the code lives under `src/`, the root
 `wago.go` is a **generated facade** that re-exports every public symbol:
@@ -699,12 +767,12 @@ the runtime facade.
 
 ## 14. Relationship to WARP
 
-wago is an independent Go reimplementation that deliberately stays
-**ABI-compatible** with WARP's runtime conventions:
+Wago is an independent Go reimplementation that derives its core compilation
+and runtime conventions from WARP:
 
 - the Valent-Block compilation approach,
-- the `[basedata | linear memory]` JobMemory layout and negative-offset fields
-  (verified against WARP's `src/core/common/basedataoffsets.hpp`),
+- the `[basedata | linear memory]` JobMemory layout and negative-offset field
+  convention, extended with Wago-specific instance, cancellation, and GC state,
 - the `WasmWrapper(serArgs, linMem, trap, results)` boundary shape.
 
 WARP remains an external reference oracle; it is not vendored, built, or needed
@@ -725,7 +793,16 @@ to build and test the Go module.
 - **Unit/codegen tests**: amd64 codegen is asserted by disassembling emitted
   bytes (`objdump`) and checking instruction shape; runtime has stress tests for
   stack, memory, host-call, and trap behavior.
-- **Benchmarks** (`bench/`, separate module): wago vs wazero v1.9.
+- **Corpus correctness and benchmarks** share `corpus/catalog.json`, with pinned
+  artifacts and exact output oracles. `bench/` is a separate module comparing
+  Wago with wazero; regression-only artifacts live under `tests/corpus/`.
+- **Architecture contracts**: `TestRepositoryStatusDocuments` checks platform and
+  artifact-version markers; `TestFacadeUpToDate` checks the generated public API.
+  Separate boundary tests enforce the IR quarantine and CLI package ownership.
+
+Use `just test` for the normal unit/integration and corpus gate,
+`just test corpus all` for the full curated corpus, and `just test spec` for all
+pinned specification suites. See [tests/README.md](tests/README.md) for prerequisites and narrower gates.
 
 ---
 
@@ -750,3 +827,238 @@ to build and test the Go module.
 This section only sketches scope — **[FEATURES.md](FEATURES.md) is the source of
 truth** for per-feature status, with [ROADMAP.md](ROADMAP.md) for the plan and
 [SPECTEST.md](SPECTEST.md) for the live spec-conformance board.
+
+## 17. Profiling and telemetry
+
+`internal/jitprofile` is a bounded code-image journal, enabled in runtime paths
+only by the `wago_profile` build tag. All ordinary builds, including embedding
+applications, compile out compiler diagnostics as well. Diagnostic builds
+explicitly enable collection with
+`wago_profile`, `wago_codegenstats`, or `wago_gcstats`.
+The removal contract is checked by `scripts/check-diagnostic-dce.sh`, which
+inspects unstripped manager, standard-runtime, minimal-runtime, and embedding binaries for
+both architectures on Linux, macOS, and Windows. Profiling must add no generated
+guest instrumentation or steady-state recording to ordinary builds.
+
+### Build contract
+
+Removal is a build-time requirement for every ordinary CLI and embedding build.
+It covers all Wago profiling and telemetry: compiler statistics, GC diagnostics,
+code-image metadata, source and unwind recording, boundary timelines, capture
+orchestration, and reporting. New diagnostic features inherit this requirement;
+there is no exception for a cheap counter or an inactive collector.
+An unconfigured session or a runtime `enabled` check is insufficient. Disabled
+builds must contain no executable diagnostic collectors, exporters, report
+generators, or compiler-counter updates; ordinary execution must perform no
+profiling allocations, timestamp reads, or recording-buffer writes. Profiling
+must not add instructions to generated guest code. Per-image and per-activation
+diagnostic state must also disappear from ordinary runtime structures.
+
+Build-tagged implementations and constant-false gates let the Go compiler and
+linker remove these paths. Compatibility types and unavailable-feature stubs may
+remain, but requesting a compiled-out feature must fail explicitly. Runtime flags
+and environment variables cannot enable it. Diagnostic collection requires an
+explicit diagnostic build; it is still opt-in within that build.
+
+The public session and span-token APIs use zero-state compatibility stubs in
+ordinary builds. Even an embedding application that constructs a profile and
+calls its recording methods cannot retain the journal through those methods.
+The session reports closed/unavailable, and execution configuration rejects it.
+The embedding DCE fixture exercises this API as well as normal execution.
+
+The acceptance gates are complementary: unstripped symbol audits check retained
+implementation, layout tests check diagnostic state, generated-byte comparisons
+check instrumentation, and matched allocation/throughput measurements check the
+ordinary execution path. A small stripped binary alone does not establish DCE.
+New profiling features must extend these gates before entering a release build.
+
+### Ownership and measurement
+
+`RuntimeConfig.WithCodeProfile`
+collects finalized Railshot regions and static compiler counters without changing
+native instructions. Mapping publication and retirement follow the compiled-code
+cache and host-thunk ownership paths; shared instances reuse one registration.
+Module hashes, artifact hashes, full Wasm function indexes, and mapping generations
+separate logical identity from virtual addresses. Snapshot-plus-cursor reads are
+ordered with subsequent events, and overflow is reported explicitly.
+
+Late attachment serializes body publication and thunk retirement, including
+private per-instance thunks. A profiling-only directory keeps non-owning views
+until real unmapping; attachment copies requested bytes while those views are
+protected. Preexisting images distinguish first observation from original load
+time. Absent compiler metadata remains unknown, and live attachment cannot turn
+on boundary tracing halfway through existing activations.
+
+The registry performs no I/O or observer callbacks and retains copied bytes rather
+than executable pointers. `profile/` owns perf-map/jitdump encoders, temporal PC
+resolution, and pprof output with optional compiler-recorded inline ancestry.
+`internal/profcapture` owns workload contracts, collector phase control, and
+manifests; `internal/profilecmd` owns the shared parser and reports. Profiling
+captures remain incomplete while an external collector or conversion is pending.
+The workload child records that handoff explicitly; only the collector-owning
+parent publishes overall completion after successful export and finalization.
+Profiling builds attach `wago profile` through `cli/internal/profiling`; ordinary manager
+and runtime builds omit it entirely. `bench/cmd/wagoprof` is a thin standalone
+wrapper, and `jsonprof` remains a compatibility preset. CPU weights, elapsed phases, and static compiler counts remain distinct.
+No asynchronous guest-stack or Wasm instruction-map support is implied by symbol
+registration. See [Profiling workloads](docs/profiling.md) for tested capabilities
+and current limitations.
+
+Optional boundary spans share the journal byte budget and reserve completion
+storage at entry. Invocation ancestry follows the existing host control-frame
+context, while instance identities remain separate from shared code-image IDs.
+Observed prepared host calls use generic dispatch to preserve trace coverage.
+The elapsed-time analyzer subtracts immediate-child interval unions and withholds
+exclusive estimates after record loss. Boundary tracing is compiled out without
+`wago_profile`; its present coverage is documented in each capture manifest.
+
+Lifecycle tracing allocates an instance identity before native construction,
+records start initialization beneath instantiation, and distinguishes logical
+close from eventual physical release. It never releases ownership or extends
+resource lifetimes. Independent lifecycle operations can overlap invocation
+spans; their elapsed durations are not additive CPU costs.
+
+Opt-in source maps scope bytecode lowering, including calls and control flow,
+and retain deferred-expression emission and verified scalar memory, integer
+division/remainder, and unreachable check provenance. Deferred expressions and
+scalar loads retain their original Wasm location in profile-only side metadata.
+Fused native instructions have one principal lowering origin; the map does not
+invent separate instructions for folded or eliminated operations. Nested scopes split parent emission
+ranges; tentative native-code rollback discards the corresponding metadata.
+Original check ranges are captured before
+shared-trap lowering reuses its scratch branch records.
+Function finalizers project ranges through the same deletion maps used for code,
+then module publication adjusts for removed adapters and excludes retired cold
+regions. Image metadata owns final ranges only; unmapped PCs stay unknown.
+Inline caller tables retain static call-site ancestry, including deferred nodes
+that emit after the callee bytecode driver returns. Per-function indexes relocate
+when modules publish their final ranges. These locations and static inline chains
+do not establish sampled native call stacks or asynchronous unwind rules.
+
+Detailed source capture also records sparse compiler sites for explicit operand
+spills/reloads and linear-memory bounds branches. These are separate from Wasm
+origins and function-level `CodegenStats` totals: a site describes an emitted
+operation, never how often it executed. GP, floating-point, vector, and custom
+spill kinds remain distinct. The bounds site covers the failure branch, not the
+entire predicate computation. Folded stack operands and unrecorded compiler
+decisions remain unclassified.
+
+Site emission follows native rollback; finalizers project it through the same
+deletion maps as code, and module publication relocates it past adapter changes.
+Sites cannot cross executable-region owners. Sessions copy and budget the
+directory, retain it only with detailed source capture, and clear it for separate
+thunk mappings. Sample resolution joins an exact native PC to its containing
+site; JSON annotations and pprof labels retain that static explanation. The
+recorder and remapping paths are covered by the ordinary-build DCE audit.
+
+The capture harness defaults to 99 Hz native sampling and records the requested
+rate separately from observed samples and their event periods. Linux perf uses
+an acknowledged enable/disable handshake around the selected phase. Native flat
+attribution has been exercised with perf on Linux/amd64 and Samply on macOS/arm64;
+this does not qualify asynchronous native stacks. Release-size and ordinary-build
+allocation gates are separate from sampling overhead. See
+[profiling qualification](docs/profiling-qualification.md) for measurements,
+toolchain details, and remaining limitations.
+
+Capture phases include an explicit trusted-artifact reload path. The runner
+serializes only its own freshly compiled module, records artifact preparation
+separately, and isolates decoding from subsequent mapping/instantiation. Artifact
+hashes and sizes identify the loaded bytes. Since artifacts do not persist
+profiling metadata, reloaded bodies remain unknown; preparatory compiler metadata
+is never reassigned to them. Phase elapsed durations use the monotonic clock.
+
+The low-level jitdump exporter can bind an optional DWARF unwind record to the
+next exact mapping generation and native region. It rejects mismatched image
+identities and code addresses/sizes, late
+metadata, orphan records, malformed framing, and output failures. Its framing is
+qualified with a frameless recursive native fixture. The fixture also established a perf/libdw integration constraint:
+perf 7.0.14's JIT module-base workaround depends on a `/tmp/jitted-` pathname
+prefix. See [the unwind qualification fixture](profile/testdata/unwindprobe/README.md).
+
+`UnwindMaps` independently opts into compiler recovery metadata. AMD64 currently
+records fixed-frame bodies with no calls or only qualified direct-local call
+lowerings: CFA is RSP plus the current frame size and return
+address slot, and the caller PC is at CFA minus eight. Every unspecified caller
+register remains unknown. The rules change at the ends of frame adjustments;
+the native finalizer projects those boundaries through instruction shortening
+and frame elision, then module layout relocates them past removed adapters.
+Call admission uses the actual emitted lowering kinds; a call classified by the
+front end without a known lowering is rejected. Register, mixed-register, and
+wrapper direct-local lowerings keep the caller's RSP fixed. Entry-adapter rules
+track the saved result pointer and its restoration. Shared adapters additionally
+track target-delta pushes and pops; shared return tails retain their original
+stack state after relocation. Independent instruction-walking tests check these
+layouts. Native perf sampling qualifies the ordinary register-ABI adapter and
+body-to-adapter recovery in compacted legacy, target-delta, and shared-tail layouts.
+Host/indirect/tail calls, inlined bodies, GC/EH/plugin paths, jump-table
+data, and cold trap bodies remain unqualified. ARM64 explicitly reports
+unsupported coverage. `--unwind-maps` saves these sparse rules and converts them
+to offline DWARF records when exporting jitdump. Metadata alone takes no stack
+samples. Linux/AMD64 `--stack-bytes` separately opts into bounded raw-memory
+sampling through perf's DWARF collector. It requires native bytes and unwind
+metadata, and rejects artifact reloads. The manifest records the byte limit and
+continues to advertise incomplete guest-stack support; built-in reports remain
+flat. Ordinary builds remove this collector path with the rest of profiling.
+
+For stack captures, the perf parent owns a private `/tmp/jitted-wago-*`
+discovery directory. After injection it copies dump and ELF files into the
+bundle's relative `symbols` tree before removing that directory. Existing
+viewers use `--symfs` to reopen the relocated bundle while preserving the JIT
+pathname prefix required by the qualified libdw implementation. Copy and export
+failures fail the capture and remain in its manifest. Host DSO symbols are not
+part of this JIT tree.
+
+The encoder emits a separate FDE for each contiguous known span and relocates
+image-relative rules to each exported code region. It explicitly marks other
+general-purpose and vector registers unrecoverable. Rules crossing region
+boundaries or non-executable bytes, unsupported targets, conflicting manual
+records, and unrepresentable offsets fail the export. A native Railshot fixture
+qualifies nine-level direct recursion with register, mixed I32/F64 register, and
+wrapper call lowering;
+metadata-free controls resolve at most one guest frame. This does not qualify
+the still-unknown transition paths or complete mixed Go/Wasm stacks.
+
+The journal copies and budgets unwind metadata with its owning code image, and
+does not retain it unless requested. Thunk mappings do not inherit body rules;
+trusted-artifact reloads and late attachment cannot reconstruct missing rules.
+Missing ranges remain unknown even when neighboring bytes have a valid rule.
+The compiler's native-byte comparisons and final-instruction boundary tests are
+separate from real collector qualification; the manifest continues to advertise
+no qualified guest stacks.
+
+Production guest-stack support still requires compiler-owned recovery rules for
+every supported entry/call/return transition, relocation through finalization,
+explicit unsupported ranges, and collector-path portability. Capturing raw stack
+bytes must remain a separate diagnostic opt-in. Neither static inline ancestry,
+GC root maps, nor the successful exporter fixture establishes those contracts.
+
+### Remaining qualification and acceptance
+
+The first useful release is a reproducible capture of a defined workload phase,
+with correct guest/helper attribution after teardown and output that opens in an
+existing viewer. Complete mixed Go/Wasm stacks are a separate capability. The
+following work extends that foundation; it must not weaken ordinary-build removal.
+
+| Extension | Required evidence before advertising support |
+|---|---|
+| Native call chains | Compiler-owned recovery rules follow final layout through compaction. Fixtures cover adapters, frameless bodies, recursion, indirect and tail calls, prologues/epilogues, shared cold code, and guest/host transitions for each qualified target/ABI. Unsupported ranges stay visibly unknown. |
+| More detailed source attribution | Final native ranges resolve to verified Wasm locations and inline ancestry, including after module layout changes. Source-file lines require actual producer metadata; names and byte offsets do not imply them. |
+| Additional instruction-level compiler explanations | Beyond explicit spill/reload and memory-bounds sites, new decision sites must join to finalized ranges without filling gaps or conflating static decisions with runtime savings. |
+| Additional collectors and targets | Each backend independently qualifies symbols, clock/phase correlation, loss reporting, and stacks. A cooperative fallback must identify safepoint bias and omitted host execution. |
+| Memory profiling | Go heap, guest linear-memory capacity, executable mappings, and native-GC statistics retain separate definitions and units. A Go heap capture is not a guest allocation profile. |
+
+Correctness gates use deterministic image/region/lifetime fixtures for duplicate
+names, imported-function offsets, shared mappings, reloads, address reuse, and
+attachment races. Real sampling tests use dominant hotspots and statistical
+tolerances. Stress tests must preserve execution leases and roots through traps,
+panics, cancellation, GC, and nested cross-instance calls. Buffer exhaustion and
+export failures make capture quality incomplete rather than silently dropping
+attribution records.
+
+The proposed normal-sampling budget is approximately 3% overhead on representative
+long-running workloads, measured against equivalent completed work. It is an
+acceptance target, not a universal measured result. Default builds require no
+additional steady-state allocations or meaningful throughput regression, and
+shared-module metadata must scale with executable images rather than instances.
+No viewer, protobuf encoder, symbolizer, or cgo requirement may enter the ordinary
+runtime dependency graph as a consequence of profiling.
