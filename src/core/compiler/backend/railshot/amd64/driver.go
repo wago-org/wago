@@ -4,6 +4,8 @@ package amd64
 
 import (
 	"fmt"
+	"os"
+	"runtime"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -878,8 +880,8 @@ func mtI32OrWide(wide bool) machineType {
 }
 
 // trySelectOnFlags lowers `select` on the flags of a fusable compare condition
-// (cond, the top operand). It materializes the two integer branches into owned
-// registers, emits the compare's CMP (which sets the flags last), and CMOVs —
+// (cond, the top operand). It owns the result register and may borrow the
+// alternative, emits the compare's CMP (which sets the flags last), and CMOVs —
 // no SETcc/TEST. Returns false (leaving the operand stack untouched) when the
 // branches are not both integer (floats/v128 have no CMOV) or the block shape is
 // unexpected, so the caller falls back to the materialized-boolean path.
@@ -897,7 +899,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 		return false
 	}
 	w := at.is64() || bt.is64()
-	// Materialize both branches into owned registers BEFORE the compare: their loads
+	// Prepare both branches BEFORE the compare: their loads
 	// clobber flags harmlessly (the CMP comes after and sets them cleanly). Keep them
 	// out of x86's fixed-role registers: nested div/rem and shifts reclaim RAX/RDX/RCX
 	// even when ordinary allocator pins are set, so caching one of those register
@@ -905,19 +907,40 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	gcRoot := (aRoot.isValue() && aRoot.st.hasGCRoot()) || (bRoot.isValue() && bRoot.st.hasGCRoot())
 	aReg := f.materializeSelectBranch(aRoot, at)
 	f.pinned = f.pinned.add(aReg)
-	bReg := f.materializeSelectBranch(bRoot, bt)
+	savedReserved := f.reserved
+	bReg, bOwned := f.materializeSelectReadBranch(bRoot, bt)
+	if !bOwned {
+		f.reserved = f.reserved.add(bReg)
+	}
 	f.pinned = f.pinned.add(bReg)
 	cc := f.condenseToFlags(cond) // emits the CMP (last flag-affecting insn), consumes cond
 	f.stats.peep("select-flags")
 	f.a.Cmovcc(invertCond(cc), aReg, bReg, w) // cond false → a = b
 	f.pinned = f.pinned.remove(aReg)
 	f.pinned = f.pinned.remove(bReg)
-	f.release(bReg)
+	f.reserved = savedReserved
+	if bOwned {
+		f.release(bReg)
+	}
 	f.erase(bRoot)
 	f.erase(aRoot)
 	result := f.pushReg(aReg, mtI32OrWide(w))
 	f.setStackGCRoot(result, gcRoot)
 	return true
+}
+
+// Default only on the platform qualified with native corpus measurements.
+var selectReadBorrowEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_SELECT_READ_BORROW") != "0"
+
+// CMOV reads its alternative without modifying it. A borrowed source must
+// survive predicate lowering, including nested fixed-register operations.
+func (f *fn) materializeSelectReadBranch(e *elem, typ machineType) (Reg, bool) {
+	if selectReadBorrowEnabled && e.isValue() && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) &&
+		e.st.reg != RAX && e.st.reg != RDX && e.st.reg != RCX {
+		f.stats.peep("select-read-borrow")
+		return e.st.reg, false
+	}
+	return f.materializeSelectBranch(e, typ), true
 }
 
 func (f *fn) materializeSelectBranch(e *elem, typ machineType) Reg {
