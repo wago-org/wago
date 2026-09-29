@@ -17,6 +17,16 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func TestMain(m *testing.M) {
+	// The record command re-executes its executable for supervised capture.
+	// Route that child through the same entry point as the production CLI;
+	// otherwise the test binary recursively runs the suite instead.
+	if Capture(os.Args[1:]) {
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
 func TestProfileCommandRecordsAndParsesReports(t *testing.T) {
 	automation.Configure(automation.Options{})
 	t.Cleanup(func() { automation.Configure(automation.Options{}) })
