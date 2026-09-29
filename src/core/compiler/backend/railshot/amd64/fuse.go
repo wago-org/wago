@@ -21,7 +21,7 @@ func invertCond(c Cond) Cond { return c ^ 1 }
 // isFusableCompare reports whether e is a deferred relational/eqz node whose flag
 // result can be branched on directly.
 func isFusableCompare(e *elem) bool {
-	return e != nil && e.isDeferred() && (isCompare(e.deferredOp()) || e.deferredOp() == opEqz)
+	return e != nil && e.isDeferred() && (isCompare(e.deferredOp()) || isFloatCompare(e.deferredOp()) || e.deferredOp() == opEqz)
 }
 
 // tryMaskedEqzToFlags recognizes `(x & mask) == 0`, the core reduction used by
@@ -182,6 +182,12 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 			return invertCond(cc)
 		}
 		return cc
+	}
+	if isFloatCompare(node.deferredOp()) {
+		cc := f.emitFloatCompareFlags(node)
+		f.erase(node)
+		f.stats.peep("float-branch-fuse")
+		return applyInvert(cc)
 	}
 	if cc, ok := f.tryMemoryCompareToFlags(node); ok {
 		f.erase(node)

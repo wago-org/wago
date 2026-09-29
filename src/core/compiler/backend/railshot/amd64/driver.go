@@ -507,30 +507,30 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 
 	// f32 comparisons
 	case 0x5b:
-		f.fcmp(opEq, false)
+		f.fcmpNext(r, opEq, false)
 	case 0x5c:
-		f.fcmp(opNe, false)
+		f.fcmpNext(r, opNe, false)
 	case 0x5d:
-		f.fcmp(opLtS, false)
+		f.fcmpNext(r, opLtS, false)
 	case 0x5e:
-		f.fcmp(opGtS, false)
+		f.fcmpNext(r, opGtS, false)
 	case 0x5f:
-		f.fcmp(opLeS, false)
+		f.fcmpNext(r, opLeS, false)
 	case 0x60:
-		f.fcmp(opGeS, false)
+		f.fcmpNext(r, opGeS, false)
 	// f64 comparisons
 	case 0x61:
-		f.fcmp(opEq, true)
+		f.fcmpNext(r, opEq, true)
 	case 0x62:
-		f.fcmp(opNe, true)
+		f.fcmpNext(r, opNe, true)
 	case 0x63:
-		f.fcmp(opLtS, true)
+		f.fcmpNext(r, opLtS, true)
 	case 0x64:
-		f.fcmp(opGtS, true)
+		f.fcmpNext(r, opGtS, true)
 	case 0x65:
-		f.fcmp(opLeS, true)
+		f.fcmpNext(r, opLeS, true)
 	case 0x66:
-		f.fcmp(opGeS, true)
+		f.fcmpNext(r, opGeS, true)
 
 	// f32 unary/binary
 	case 0x8b:

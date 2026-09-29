@@ -66,6 +66,8 @@ func (f *fn) condense(node *elem, dest Reg) Reg {
 		return f.condenseBinary(node, dest)
 	case isShift(node.deferredOp()):
 		return f.condenseShift(node, dest)
+	case isFloatCompare(node.deferredOp()):
+		return f.condenseFloatCompare(node, dest)
 	case isCompare(node.deferredOp()) || node.deferredOp() == opEqz:
 		return f.condenseCompare(node, dest)
 	case isUnary(node.deferredOp()):
