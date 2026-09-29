@@ -24,7 +24,7 @@ func Append(root *command.Cmd) *command.Cmd {
 		name := spec.name
 		cmd := &command.Cmd{Name: name, Summary: spec.summary, Args: spec.args}
 		profilecmd.FlagSet(name).VisitAll(func(f *flag.Flag) {
-			if f.Name == "control" || f.Name == "ack" || f.Name == "jit-dir" {
+			if f.Name == "control" || f.Name == "ack" || f.Name == "jit-dir" || f.Name == "supervised" {
 				return
 			}
 			if f.Name == "json" {

@@ -35,6 +35,9 @@ func TestPerfFallbackRejectsMalformedOutputPromptly(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "images.json"), []byte("[]"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "perf.data"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan error, 1)
 	go func() { _, err := loadCapture(dir); done <- err }()
 	select {

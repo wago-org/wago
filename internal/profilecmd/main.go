@@ -56,6 +56,8 @@ func record(command string, args []string, prefix []string) error {
 		err = profcapture.RecordPerf(o, args)
 	} else if o.Backend == "samply" && command == "record" {
 		err = profcapture.RecordSamply(o, args)
+	} else if command == "record" {
+		err = profcapture.RecordLocal(o, args)
 	} else {
 		err = profcapture.Run(o, w, b)
 	}
@@ -80,12 +82,15 @@ func recordFlags(command string) (*flag.FlagSet, *recordConfig) {
 	f.StringVar(&o.Phase, "phase", "execute", "all, compile, reload, instantiate, initialize, execute, close")
 	f.StringVar(&o.Mode, "mode", "public", "public (named Invoke) or prepared (resolved WasmFunc)")
 	f.DurationVar(&o.Duration, "duration", 15*time.Second, "recording workload duration; use 0 with --iterations")
+	f.DurationVar(&o.CollectionTimeout, "collection-timeout", profcapture.DefaultCollectionTimeout, "safety limit for setup, warmup, execution and teardown; independent of measurement duration")
+	f.DurationVar(&o.ConversionTimeout, "conversion-timeout", profcapture.DefaultConversionTimeout, "safety limit for native conversion; independent of measurement duration")
 	f.Uint64Var(&o.Iterations, "iterations", 0, "fixed complete workload iterations")
 	f.Uint64Var(&o.Warmup, "warmup", 5, "warmup iterations before capture")
 	f.BoolVar(&o.Timeline, "timeline", false, "record elapsed synchronous native boundaries and host re-entry across all phases")
 	f.IntVar(&o.MaxSpans, "max-spans", 65536, "maximum retained boundary spans")
 	f.BoolVar(&o.UnwindMaps, "unwind-maps", false, "retain experimental AMD64 fixed-frame recovery metadata; does not record stack samples")
 	f.IntVar(&o.RawStackBytes, "stack-bytes", 0, "opt in to raw stack memory: 256..65528 bytes per perf sample, multiple of 8 (Linux/amd64); requires unwind-maps and include-code; 0 disables")
+	f.BoolVar(&o.Supervised, "supervised", false, "internal supervisor completion handshake")
 	f.StringVar(&o.JITDir, "jit-dir", "", "internal perf JIT discovery directory")
 	f.BoolVar(&o.SourceMaps, "source-maps", false, "retain Wasm lowering origins, static inline ancestry, and emitted compiler sites")
 	f.BoolVar(&o.ReloadArtifact, "reload-artifact", false, "execute a freshly serialized and reloaded artifact; implied by --phase=reload")

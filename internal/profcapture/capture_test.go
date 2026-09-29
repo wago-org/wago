@@ -52,6 +52,24 @@ func TestCapturePhasesAndResultOracle(t *testing.T) {
 			if valid && (m.Iterations != 5 || m.Invocations != 5 || len(m.Phases) != 6) {
 				t.Fatal(m)
 			}
+			if valid {
+				for _, p := range m.Phases {
+					switch p.Name {
+					case "execute":
+						if p.Completed != 5 || p.WorkUnit != "workload iteration" {
+							t.Fatal(p)
+						}
+					case "compile", "instantiate", "close":
+						if p.Completed != 1 || p.WorkUnit == "" {
+							t.Fatal(p)
+						}
+					case "initialize":
+						if p.Completed != 0 {
+							t.Fatal("invented initialization", p)
+						}
+					}
+				}
+			}
 			if m.Status.Dropped != 0 {
 				t.Fatal(m.Status)
 			}

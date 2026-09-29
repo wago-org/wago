@@ -41,7 +41,7 @@ func ensureCollectorBundle(o Options, runErr error) error {
 		if manifestErr == nil && m.Version != 1 {
 			manifestErr = fmt.Errorf("unsupported capture manifest version %d", m.Version)
 		}
-		if manifestErr == nil && m.CollectorPending && (m.Complete || m.Backend != o.Backend || m.Backend != "perf" && m.Backend != "samply") {
+		if manifestErr == nil && m.CollectorPending && (m.Complete || m.Backend != o.Backend || m.Backend != "perf" && m.Backend != "samply" && !m.ParentSupervised) {
 			manifestErr = fmt.Errorf("invalid pending collector state")
 		}
 	} else if !os.IsNotExist(readErr) {
@@ -83,6 +83,7 @@ func ensureCollectorBundle(o Options, runErr error) error {
 	if m.Dirty == "" {
 		m.Dirty = "unknown"
 	}
+	m.CollectionTimeoutNS, m.ConversionTimeoutNS = int64(o.collectionTimeout()), int64(o.conversionTimeout())
 	m.RawStackBytes = o.RawStackBytes
 	m.UnwindMapsRequested = o.UnwindMaps
 	m.SourceMapsRequested = o.SourceMaps

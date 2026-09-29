@@ -21,6 +21,9 @@ func TestAssemblyUsesRelocatedSymbolsAndSampledRegion(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "perf"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" >> \"$WAGO_ANNOTATE_ARGS\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "perf.jit.data"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
 	image := &wago.CodeProfileImage{ModuleID: "module", ArtifactID: "artifact", ID: 1, Size: 32,
 		Regions: []wago.CodeProfileRegion{
 			{Offset: 0, Size: 8, Kind: "entry-adapter", Function: 0, Name: "loop"},

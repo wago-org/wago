@@ -1,7 +1,6 @@
 package profile
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -13,25 +12,16 @@ import (
 // Observations can include off-CPU time; neither sample weights nor thread CPU
 // deltas are relabelled as CPU time. Ancestor frames are deliberately ignored.
 func ReadSamply(r io.Reader, events []jitprofile.Event) (Report, error) {
-	var input struct {
-		Threads []struct {
-			Strings []string `json:"stringArray"`
-			Samples struct {
-				Stack  []*int  `json:"stack"`
-				Weight []int64 `json:"weight"`
-			} `json:"samples"`
-			Stack struct {
-				Frame []int `json:"frame"`
-			} `json:"stackTable"`
-			Frames struct {
-				Function []int `json:"func"`
-			} `json:"frameTable"`
-			Functions struct {
-				Name []int `json:"name"`
-			} `json:"funcTable"`
-		} `json:"threads"`
+	return ReadSamplyWithLimits(r, events, DefaultLimits())
+}
+func ReadSamplyWithLimits(r io.Reader, events []jitprofile.Event, limits Limits) (Report, error) {
+	if err := ValidateEvents(events, limits); err != nil {
+		return Report{}, err
 	}
-	if err := json.NewDecoder(r).Decode(&input); err != nil {
+	input := struct {
+		Threads samplyInput `json:"threads"`
+	}{Threads: samplyInput{limits: limits}}
+	if err := DecodeJSON(r, &input, limits.DecodedBytes); err != nil {
 		return Report{}, err
 	}
 	result := Report{Unit: "observations"}
@@ -53,6 +43,9 @@ func ReadSamply(r io.Reader, events []jitprofile.Event) (Report, error) {
 				key := fmt.Sprintf("%s/%s/%d/%s/%d", im.ModuleID, im.ArtifactID, region.Function, kind, offset)
 				index, ok := keys[key]
 				if !ok {
+					if len(result.Rows) >= limits.Rows {
+						return Report{}, fmt.Errorf("samply aggregation row limit exceeded")
+					}
 					row := Row{ModuleID: im.ModuleID, ArtifactID: im.ArtifactID, Function: region.Function, Kind: kind, Name: region.Name, RegionOffset: offset}
 					for _, fn := range im.Functions {
 						if fn.Index == region.Function {
@@ -69,7 +62,7 @@ func ReadSamply(r io.Reader, events []jitprofile.Event) (Report, error) {
 			}
 		}
 	}
-	for _, thread := range input.Threads {
+	for _, thread := range input.Threads.threads {
 		for i, stack := range thread.Samples.Stack {
 			weight := int64(1)
 			if len(thread.Samples.Weight) > 0 {
@@ -80,6 +73,9 @@ func ReadSamply(r io.Reader, events []jitprofile.Event) (Report, error) {
 			}
 			if weight < 0 {
 				return result, fmt.Errorf("negative samply sample weight")
+			}
+			if uint64(weight) > ^uint64(0)-result.Weight {
+				return Report{}, fmt.Errorf("samply weight overflow")
 			}
 			result.Samples += uint64(weight)
 			result.Weight += uint64(weight)

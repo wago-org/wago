@@ -3,7 +3,6 @@
 package profcapture
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -119,14 +118,13 @@ func RecordPerf(o Options, args []string) error {
 	if jitDir != "" {
 		flags = append(flags, "--jit-dir", jitDir)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := timedContext(o.collectionTimeout())
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "perf", flags...)
 	// A collector can stop servicing its control FIFO while its child exits
 	// after an acknowledgement timeout. Preserve the failed bundle and bound
 	// collector shutdown instead of waiting indefinitely for perf to notice.
-	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
-	cmd.WaitDelay = 2 * time.Second
+	boundProcess(cmd)
 	cmd.Stdout = os.Stdout
 	log, err := os.Create(filepath.Join(dir, "collector.log"))
 	if err != nil {
@@ -155,15 +153,20 @@ func RecordPerf(o Options, args []string) error {
 	}()
 	runErr := cmd.Run()
 	close(collectorDone)
-	runErr = errors.Join(runErr, log.Close())
+	runErr = errors.Join(runErr, ctx.Err(), log.Close())
 	runErr = ensureCollectorBundle(o, runErr)
 	for _, name := range []string{"perf.data", "collector.log"} {
 		if err := copyCaptureFile(filepath.Join(dir, name), filepath.Join(o.Out, name)); err != nil {
 			runErr = errors.Join(runErr, err)
 		}
 	}
+	conversionCtx, conversionCancel := timedContext(o.conversionTimeout())
+	defer conversionCancel()
 	if runErr == nil {
-		runErr = injectPerf(filepath.Join(o.Out, "perf.data"), filepath.Join(o.Out, "perf.jit.data"))
+		runErr = profile.CheckInput(filepath.Join(o.Out, "perf.data"))
+	}
+	if runErr == nil {
+		runErr = injectPerfContext(conversionCtx, filepath.Join(o.Out, "perf.data"), filepath.Join(o.Out, "perf.jit.data"))
 	}
 	symbolRoot := ""
 	if jitDir != "" {
@@ -184,16 +187,17 @@ func RecordPerf(o Options, args []string) error {
 	if runErr == nil {
 		// Raw call chains are retained for existing viewers. The temporal
 		// attribution report still consumes exactly one leaf PC per sample.
-		samples, err := ReadPerfSamples(filepath.Join(o.Out, "perf.data"), 10_000_000)
+		samples, err := ReadPerfSamplesContext(conversionCtx, filepath.Join(o.Out, "perf.data"), profile.DefaultLimits().Samples)
 		if err != nil {
 			runErr = fmt.Errorf("incomplete or unsupported perf capture: %w", err)
 		} else {
 			runErr = writeJSON(filepath.Join(o.Out, "samples.json"), samples)
 			if runErr == nil {
 				var events []wago.CodeProfileEvent
-				b, err := os.ReadFile(filepath.Join(o.Out, "images.json"))
+				f, r, err := profile.OpenInput(filepath.Join(o.Out, "images.json"), profile.DefaultLimits().FileBytes)
 				if err == nil {
-					err = json.Unmarshal(b, &events)
+					events, err = profile.ReadEventsJSON(r, profile.DefaultLimits())
+					f.Close()
 				}
 				if err == nil {
 					report, resolveErr := profile.Resolve(events, samples, "nanoseconds")

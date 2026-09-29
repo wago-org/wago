@@ -294,3 +294,48 @@ exec sleep 30
 		t.Fatalf("lost child failure: %+v", m)
 	}
 }
+
+func TestSilentConversionFailsManifestAndPreservesRaw(t *testing.T) {
+	for _, stage := range []string{"inject", "script"} {
+		t.Run(stage, func(t *testing.T) {
+			dir := t.TempDir()
+			out := filepath.Join(dir, "capture")
+			t.Setenv("WAGO_TEST_CAPTURE", out)
+			t.Setenv("WAGO_HANG_STAGE", stage)
+			installPerfProducer(t, `case "$1" in
+record)
+ while [ "$#" -gt 0 ]; do if [ "$1" = -o ]; then printf raw > "$2"; break; fi; shift; done
+ mkdir "$WAGO_TEST_CAPTURE"
+ printf '%s' '{"version":1,"complete":false,"collector_pending":true,"backend":"perf"}' > "$WAGO_TEST_CAPTURE/manifest.json"
+ printf '[]' > "$WAGO_TEST_CAPTURE/images.json"
+ ;;
+inject|script)
+ if [ "$1" = "$WAGO_HANG_STAGE" ]; then exec sleep 30; fi
+ ;;
+esac`)
+			started := time.Now()
+			err := RecordPerf(Options{Out: out, Backend: "perf", ConversionTimeout: 150 * time.Millisecond}, nil)
+			if err == nil || !strings.Contains(err.Error(), "deadline exceeded") {
+				t.Fatalf("missing deadline: %v", err)
+			}
+			if time.Since(started) > 3*time.Second {
+				t.Fatal("conversion hung")
+			}
+			raw, e := os.ReadFile(filepath.Join(out, "perf.data"))
+			if e != nil || string(raw) != "raw" {
+				t.Fatal("raw evidence lost", e)
+			}
+			var m Manifest
+			b, e := os.ReadFile(filepath.Join(out, "manifest.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			if e = json.Unmarshal(b, &m); e != nil {
+				t.Fatal(e)
+			}
+			if m.Complete || m.CollectorPending || !strings.Contains(strings.Join(m.Diagnostics, " "), "deadline exceeded") {
+				t.Fatalf("invalid failure manifest: %+v", m)
+			}
+		})
+	}
+}

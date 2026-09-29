@@ -3,7 +3,10 @@
 package profcapture
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"github.com/wago-org/wago/profile"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,5 +96,32 @@ func TestPerfSampleStreamStartFailure(t *testing.T) {
 	samples, err := ReadPerfSamples("capture/perf.data", 2)
 	if samples != nil || !errors.Is(err, exec.ErrNotFound) {
 		t.Fatalf("lost start error: %v, %v", samples, err)
+	}
+}
+
+func TestSilentPerfConvertersHaveDeadlines(t *testing.T) {
+	for _, inject := range []bool{false, true} {
+		t.Run(fmt.Sprint(inject), func(t *testing.T) {
+			installPerfProducer(t, `exec sleep 30`)
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			started := time.Now()
+			var err error
+			if inject {
+				err = injectPerfContext(ctx, "raw", "converted")
+			} else {
+				var samples []profile.Sample
+				samples, err = ReadPerfSamplesContext(ctx, "raw", 10)
+				if samples != nil {
+					t.Fatal("partial samples returned")
+				}
+			}
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("deadline lost: %v", err)
+			}
+			if time.Since(started) > 3*time.Second {
+				t.Fatal("silent converter not reaped promptly")
+			}
+		})
 	}
 }

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/wago-org/wago/profile"
 )
@@ -42,14 +42,19 @@ func (d *perfDiagnostics) err() error {
 }
 
 func injectPerf(input, output string) error {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := timedContext(DefaultConversionTimeout)
+	defer cancel()
+	return injectPerfContext(ctx, input, output)
+}
+func injectPerfContext(parent context.Context, input, output string) error {
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "perf", "inject", "--jit", "-i", input, "-o", output)
-	cmd.WaitDelay = 2 * time.Second
+	boundProcess(cmd)
 	diagnostics := perfDiagnostics{cancel: cancel}
 	cmd.Stdout, cmd.Stderr = &diagnostics, &diagnostics
 	runErr := cmd.Run()
-	if err := errors.Join(runErr, diagnostics.err()); err != nil {
+	if err := errors.Join(runErr, parent.Err(), diagnostics.err()); err != nil {
 		return fmt.Errorf("perf inject: %w: %s", err, strings.TrimSpace(string(diagnostics.prefix)))
 	}
 	return nil
@@ -59,10 +64,17 @@ func injectPerf(input, output string) error {
 // Parse failure stops and reaps the producer; it never returns partial samples.
 // Diagnostic output is separately bounded, and truncation fails conversion.
 func ReadPerfSamples(path string, maxSamples int) ([]profile.Sample, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := timedContext(DefaultConversionTimeout)
+	defer cancel()
+	return ReadPerfSamplesContext(ctx, path, maxSamples)
+}
+
+// ReadPerfSamplesContext cancels and reaps conversion when the caller deadline expires.
+func ReadPerfSamplesContext(parent context.Context, path string, maxSamples int) ([]profile.Sample, error) {
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "perf", "script", "--hide-call-graph", "--show-lost-events", "--ns", "-i", path, "-F", "time,ip,period")
-	cmd.WaitDelay = 2 * time.Second
+	boundProcess(cmd)
 	diagnostics := perfDiagnostics{cancel: cancel}
 	cmd.Stderr = &diagnostics
 	reader, writer := io.Pipe()
@@ -81,11 +93,22 @@ func ReadPerfSamples(path string, maxSamples int) ([]profile.Sample, error) {
 		cancel()
 	}
 	runErr := <-done
-	if err := errors.Join(parseErr, runErr, diagnostics.err()); err != nil {
+	if err := errors.Join(parseErr, runErr, parent.Err(), diagnostics.err()); err != nil {
 		if detail := strings.TrimSpace(string(diagnostics.prefix)); detail != "" {
 			return nil, fmt.Errorf("perf script: %w: %s", err, detail)
 		}
 		return nil, fmt.Errorf("perf script: %w", err)
 	}
 	return samples, nil
+}
+
+// PerfAnnotate bounds offline disassembly while streaming its output to the viewer.
+func PerfAnnotate(args []string) error {
+	ctx, cancel := timedContext(DefaultConversionTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "perf", args...)
+	boundProcess(cmd)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return errors.Join(cmd.Run(), ctx.Err())
 }

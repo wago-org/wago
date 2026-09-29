@@ -19,6 +19,9 @@ import (
 )
 
 type Options struct {
+	Supervised        bool // internal child/parent completion handshake
+	CollectionTimeout time.Duration
+	ConversionTimeout time.Duration
 	// CommandPrefix routes collector subprocesses through the current CLI.
 	CommandPrefix []string
 	Samply        string
@@ -44,12 +47,17 @@ type Options struct {
 	Ack            string
 }
 type Phase struct {
-	Name    string `json:"name"`
-	Start   int64  `json:"start_ns"`
-	End     int64  `json:"end_ns"`
-	Elapsed int64  `json:"elapsed_ns"`
+	Completed uint64 `json:"completed_work"`
+	WorkUnit  string `json:"work_unit,omitempty"`
+	Name      string `json:"name"`
+	Start     int64  `json:"start_ns"`
+	End       int64  `json:"end_ns"`
+	Elapsed   int64  `json:"elapsed_ns"`
 }
 type Manifest struct {
+	ParentSupervised    bool                   `json:"parent_supervised,omitempty"`
+	CollectionTimeoutNS int64                  `json:"collection_timeout_ns"`
+	ConversionTimeoutNS int64                  `json:"conversion_timeout_ns"`
 	CompilerSites       bool                   `json:"native_compiler_sites"`
 	SiteCoverage        string                 `json:"compiler_site_coverage,omitempty"`
 	RawStackBytes       int                    `json:"raw_stack_bytes_limit"`
@@ -101,6 +109,9 @@ type Manifest struct {
 }
 
 func (o Options) Validate() error {
+	if o.CollectionTimeout < 0 || o.ConversionTimeout < 0 {
+		return fmt.Errorf("safety timeouts must be positive (zero uses defaults)")
+	}
 	if err := o.validateStackCapture(); err != nil {
 		return err
 	}
@@ -182,6 +193,8 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		return err
 	}
 	m := Manifest{Version: 1, UnwindMapsRequested: o.UnwindMaps, SourceMapsRequested: o.SourceMaps, Revision: "unknown", Dirty: "unknown", GoVersion: runtime.Version(), Target: runtime.GOOS + "/" + runtime.GOARCH, CPUs: runtime.NumCPU(), Workload: w.ID, ModuleHash: w.Hash, Backend: o.Backend, Phase: o.Phase, PhaseIsolation: "collector-start-stop", Mode: o.Mode, RequestedNS: int64(o.Duration), Warmup: o.Warmup, CodeIncluded: o.IncludeCode, RequestedRate: o.Rate}
+	m.CollectionTimeoutNS, m.ConversionTimeoutNS = int64(o.collectionTimeout()), int64(o.conversionTimeout())
+	m.ParentSupervised = o.Supervised
 	m.ReloadArtifact = o.ReloadArtifact || o.Phase == "reload"
 	m.RawStackBytes = o.RawStackBytes
 	if o.RawStackBytes != 0 {
@@ -353,7 +366,7 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		m.Complete = result == nil
 		// The external collector still has to exit, retain its raw data, and
 		// finish conversion. Only the parent may publish overall completion.
-		m.CollectorPending = m.Complete && (o.Backend == "perf" || o.Backend == "samply")
+		m.CollectorPending = m.Complete && (o.Supervised || o.Backend == "perf" || o.Backend == "samply")
 		if m.CollectorPending {
 			m.Complete = false
 		}
@@ -412,6 +425,7 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		cfg = cfg.WithBoundsChecks(wago.BoundsChecksExplicit)
 	}
 	m.Config = map[string]any{"bounds": o.Bounds, "features": cfg.CoreFeatures(), "native_stack_bytes": cfg.NativeStackBytes(), "optimizations": cfg.OptimizationInfos(), "result_validation": "every invocation", "import_environment": "env.abort traps; all other imports must be supplied by module"}
+	var warmupCompleted uint64
 	phase := func(name string, fn func() error) error {
 		capture := o.Phase == name
 		if capture {
@@ -421,10 +435,32 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		}
 		started := time.Now()
 		p := Phase{Name: name, Start: started.UnixNano()}
+		before := m.Iterations
 		err := fn()
 		ended := time.Now()
 		p.End = ended.UnixNano()
 		p.Elapsed = int64(ended.Sub(started))
+		switch name {
+		case "execute":
+			p.WorkUnit, p.Completed = "workload iteration", m.Iterations-before
+		case "warmup":
+			p.WorkUnit, p.Completed = "workload iteration", warmupCompleted
+		case "artifact-prepare":
+			p.WorkUnit = "artifact preparation"
+		case "compile":
+			p.WorkUnit = "compilation"
+		case "reload":
+			p.WorkUnit = "reload"
+		case "instantiate":
+			p.WorkUnit = "instantiation"
+		case "initialize":
+			p.WorkUnit = "initialization"
+		case "close":
+			p.WorkUnit = "teardown"
+		}
+		if p.WorkUnit != "" && name != "execute" && name != "warmup" && err == nil && (name != "initialize" || w.Init != "") {
+			p.Completed = 1
+		}
 		m.Phases = append(m.Phases, p)
 		if name == "execute" {
 			m.ActualNS = p.Elapsed
@@ -533,6 +569,7 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 			if err := run(false); err != nil {
 				return err
 			}
+			warmupCompleted++
 		}
 		return nil
 	}); err != nil {

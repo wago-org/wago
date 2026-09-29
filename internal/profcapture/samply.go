@@ -29,14 +29,17 @@ func RecordSamply(o Options, args []string) error {
 	flags = append(flags, o.CommandPrefix...)
 	flags = append(flags, "capture")
 	flags = append(flags, args...)
-	cmd := exec.Command(o.Samply, flags...)
+	ctx, cancel := timedContext(o.collectionTimeout())
+	defer cancel()
+	cmd := exec.CommandContext(ctx, o.Samply, flags...)
+	boundProcess(cmd)
 	cmd.Stdout = os.Stdout
 	log, err := os.Create(filepath.Join(dir, "collector.log"))
 	if err != nil {
 		return err
 	}
 	cmd.Stderr = log
-	runErr := errors.Join(cmd.Run(), log.Close())
+	runErr := errors.Join(cmd.Run(), ctx.Err(), log.Close())
 	runErr = ensureCollectorBundle(o, runErr)
 	for _, name := range []string{"samply.json.gz", "collector.log"} {
 		if err := copyCaptureFile(filepath.Join(dir, name), filepath.Join(o.Out, name)); err != nil {

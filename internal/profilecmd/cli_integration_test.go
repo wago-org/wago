@@ -142,6 +142,31 @@ printf '%s' '{"threads":[]}' | gzip -c > "$output"
 	case <-time.After(5 * time.Second):
 		t.Fatal("manager swallowed profiler interrupt")
 	}
+	// The measurement duration is checked between iterations; the independent
+	// safety deadline must also stop a single guest invocation that never returns.
+	spin := filepath.Join(dir, "spin.wasm")
+	spinBytes := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("spin", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x03, 0x40, 0x0c, 0, 0x0b, 0x0b}))))
+	if err := os.WriteFile(spin, spinBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	spinOut := filepath.Join(dir, "spin-capture")
+	safety := exec.CommandContext(ctx, binary, "profile", "record", "--module="+spin, "--export=spin", "--want=[]", "--warmup=0", "--duration=10ms", "--collection-timeout=250ms", "--out="+spinOut)
+	started := time.Now()
+	output, err := safety.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "deadline exceeded") || time.Since(started) > 5*time.Second {
+		t.Fatalf("non-returning invocation was not bounded: %v %s", err, output)
+	}
+	b, err := os.ReadFile(filepath.Join(spinOut, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var failed profcapture.Manifest
+	if err := json.Unmarshal(b, &failed); err != nil {
+		t.Fatal(err)
+	}
+	if failed.Complete {
+		t.Fatal("timed out guest reported success")
+	}
 	help := string(run("profile", "record", "--help"))
 	if !strings.Contains(help, "--source-maps") || !strings.Contains(help, "--stack-bytes") || strings.Contains(help, "--control") || strings.Contains(help, "--jit-dir") {
 		t.Fatal(help)

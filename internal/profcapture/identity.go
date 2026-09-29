@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 func workloadHash(w Workload) string {
@@ -19,15 +20,22 @@ func workloadHash(w Workload) string {
 	return hex.EncodeToString(h[:])
 }
 func collectorVersion() string {
-	b, err := exec.Command("perf", "version").Output()
-	if err != nil {
-		return "unavailable"
-	}
-	return strings.TrimSpace(string(b))
+	return commandVersion("perf", "version")
 }
 
 func commandVersion(command string, args ...string) string {
-	b, err := exec.Command(command, args...).Output()
+	ctx, cancel := timedContext(5 * time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, command, args...)
+	boundProcess(cmd)
+	output := perfDiagnostics{cancel: cancel}
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	err := cmd.Run()
+	b := output.prefix
+	if output.err() != nil || ctx.Err() != nil {
+		return "unavailable"
+	}
 	if err != nil {
 		return "unavailable"
 	}

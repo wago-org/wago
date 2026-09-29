@@ -37,6 +37,7 @@ type HotPC struct {
 	Weight        uint64                  `json:"weight"`
 }
 type Row struct {
+	CPUPerWork   *float64             `json:"cpu_ns_per_work,omitempty"`
 	ModuleID     string               `json:"module_id"`
 	ArtifactID   string               `json:"artifact_id"`
 	Function     int                  `json:"function"`
@@ -90,7 +91,7 @@ func decimalNS(s string) (uint64, error) {
 // are trusted: resolution uses timestamp, address, and the captured image journal.
 func ParsePerfScript(r io.Reader, maxSamples int) ([]Sample, error) {
 	if maxSamples <= 0 {
-		maxSamples = 10_000_000
+		maxSamples = DefaultLimits().Samples
 	}
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 4096), 1<<20)
@@ -127,7 +128,16 @@ func ParsePerfScript(r io.Reader, maxSamples int) ([]Sample, error) {
 // Resolve performs a time-ordered join. Retired mappings cannot label later
 // samples, even when the virtual address is reused. No call chains are inferred.
 func Resolve(events []jitprofile.Event, samples []Sample, unit string) (Report, error) {
+	return ResolveWithLimits(events, samples, unit, DefaultLimits())
+}
+func ResolveWithLimits(events []jitprofile.Event, samples []Sample, unit string, limits Limits) (Report, error) {
 	report := Report{Unit: unit}
+	if err := ValidateEvents(events, limits); err != nil {
+		return report, err
+	}
+	if len(samples) > limits.Samples {
+		return report, fmt.Errorf("profile sample limit exceeded")
+	}
 	events = append([]jitprofile.Event(nil), events...)
 	samples = append([]Sample(nil), samples...)
 	sort.SliceStable(events, func(i, j int) bool {
@@ -143,6 +153,8 @@ func Resolve(events []jitprofile.Event, samples []Sample, unit string) (Report, 
 	rows := make(map[string]int)
 	hot := make(map[string]map[uint64]*HotPC)
 	event := 0
+	hotCount := 0
+	inlineCount := 0
 	for _, sample := range samples {
 		changed := false
 		for event < len(events) && events[event].Timestamp <= sample.Timestamp {
@@ -234,6 +246,9 @@ func Resolve(events []jitprofile.Event, samples []Sample, unit string) (Report, 
 		key := fmt.Sprintf("%s/%s/%d/%s/%d", im.ModuleID, im.ArtifactID, region.Function, kind, regionKey)
 		index, ok := rows[key]
 		if !ok {
+			if len(rows) >= limits.Rows {
+				return Report{}, fmt.Errorf("profile aggregation row limit exceeded")
+			}
 			row := Row{ModuleID: im.ModuleID, ArtifactID: im.ArtifactID, Function: region.Function, Kind: kind, Name: region.Name, RegionOffset: regionKey}
 			if symbol := symbols[im.ID][region.Function]; symbol != nil {
 				copy := *symbol
@@ -249,6 +264,10 @@ func Resolve(events []jitprofile.Event, samples []Sample, unit string) (Report, 
 		row.Weight += sample.Period
 		pc := hot[key][off]
 		if pc == nil {
+			hotCount++
+			if hotCount > limits.HotPCs {
+				return Report{}, fmt.Errorf("profile hot-PC limit exceeded")
+			}
 			pc = &HotPC{Offset: off}
 			if site, ok := jitprofile.LookupCodeSite(im.CodeSites, off); ok {
 				pc.CompilerSite = &site
@@ -259,6 +278,10 @@ func Resolve(events []jitprofile.Event, samples []Sample, unit string) (Report, 
 					pc.SourceName = symbol.Name
 				}
 				for _, frame := range jitprofile.InlineCallers(im.InlineFrames, source.InlineParent) {
+					inlineCount++
+					if inlineCount > limits.Metadata {
+						return Report{}, fmt.Errorf("profile expanded inline metadata limit exceeded")
+					}
 					caller := InlineCaller{Function: frame.Function, WasmOffset: frame.WasmOffset}
 					if symbol := symbols[im.ID][int(frame.Function)]; symbol != nil {
 						caller.Name = symbol.Name

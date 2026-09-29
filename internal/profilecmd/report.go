@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 
@@ -23,11 +22,7 @@ type capture struct {
 }
 
 func readJSON(path string, v any) error {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(b, v)
+	return profile.ReadJSONFile(path, v, profile.DefaultLimits().FileBytes)
 }
 func loadCapture(dir string) (capture, error) {
 	var c capture
@@ -41,12 +36,19 @@ func loadCapture(dir string) (capture, error) {
 		return c, fmt.Errorf("unsupported JIT symbol root")
 	}
 	if c.manifest.CollectorPending {
-		return c, fmt.Errorf("capture is incomplete: collector finalization is pending")
+		return c, fmt.Errorf("capture is incomplete: capture finalization is pending")
 	}
 	if !c.manifest.Complete || c.manifest.Status.Dropped != 0 {
 		return c, fmt.Errorf("capture is incomplete: %v", c.manifest.Diagnostics)
 	}
-	if err := readJSON(filepath.Join(dir, "images.json"), &c.events); err != nil {
+	limits := profile.DefaultLimits()
+	images, ir, err := profile.OpenInput(filepath.Join(dir, "images.json"), limits.FileBytes)
+	if err != nil {
+		return c, err
+	}
+	c.events, err = profile.ReadEventsJSON(ir, limits)
+	images.Close()
+	if err != nil {
 		return c, err
 	}
 	for _, event := range c.events {
@@ -63,12 +65,12 @@ func loadCapture(dir string) (capture, error) {
 		}
 	}
 	if c.manifest.Backend == "samply" {
-		f, err := os.Open(filepath.Join(dir, "samply.json.gz"))
+		f, compressed, err := profile.OpenInput(filepath.Join(dir, "samply.json.gz"), limits.FileBytes)
 		if err != nil {
 			return c, err
 		}
 		defer f.Close()
-		gz, err := gzip.NewReader(f)
+		gz, err := gzip.NewReader(compressed)
 		if err != nil {
 			return c, err
 		}
@@ -83,9 +85,16 @@ func loadCapture(dir string) (capture, error) {
 		return c, fmt.Errorf("unsupported sample clock/event")
 	}
 	var samples []profile.Sample
-	err := readJSON(filepath.Join(dir, "samples.json"), &samples)
+	sf, sr, err := profile.OpenInput(filepath.Join(dir, "samples.json"), limits.FileBytes)
+	if err == nil {
+		samples, err = profile.ReadSamplesJSON(sr, limits)
+		sf.Close()
+	}
 	if os.IsNotExist(err) {
-		samples, err = profcapture.ReadPerfSamples(filepath.Join(dir, "perf.data"), 10_000_000)
+		if err := profile.CheckInput(filepath.Join(dir, "perf.data")); err != nil {
+			return c, err
+		}
+		samples, err = profcapture.ReadPerfSamples(filepath.Join(dir, "perf.data"), limits.Samples)
 	}
 	if err != nil {
 		return c, err
@@ -137,56 +146,13 @@ func report(command string, args []string) error {
 		}
 		return annotate(f.Arg(0), c, *function, *assembly)
 	}
-	if *asJSON {
-		return json.NewEncoder(os.Stdout).Encode(c.report)
+	top, err := makeTop(c, *limit)
+	if err != nil {
+		return err
 	}
-	m := c.manifest
-	if command == "top" && *limit > 0 && len(c.report.Rows) > *limit {
-		c.report.Rows = c.report.Rows[:*limit]
-	}
-	fmt.Printf("%s: %d iterations, %d invocations, %.3f ms elapsed (%s, %s)\n", m.Workload, m.Iterations, m.Invocations, float64(m.ActualNS)/1e6, m.Mode, m.Backend)
-	if m.Backend == "samply" {
-		fmt.Printf("%d observations; %d unmapped/non-guest. May include off-CPU observations; all phases were collected.\n", c.report.Samples, c.report.UnknownSamples)
-		for _, r := range c.report.Rows {
-			fmt.Printf("%8d observations f%-6d %-30s", r.Samples, r.Function, r.Name)
-			if r.Static != nil {
-				fmt.Printf(" %d bytes / %d static spills / %d reloads / %d checks", r.Static.NativeBytes, r.Static.Spills, r.Static.Reloads, r.Static.BoundsChecks)
-			}
-			fmt.Println()
-		}
-		return nil
-	}
-	if m.Backend != "perf" {
-		fmt.Println("No native samples available. Static compiler output follows; these are not measured hotspots.")
-		shown := 0
-		for _, e := range c.events {
-			if e.Image != nil {
-				for _, fn := range e.Image.Functions {
-					if *limit > 0 && shown >= *limit {
-						return nil
-					}
-					shown++
-					fmt.Printf("f%-6d %-32s %7d bytes  %5d frame bytes  %4d spills  %4d reloads  %4d checks\n", fn.Index, fn.Name, fn.NativeBytes, fn.FrameBytes, fn.Spills, fn.Reloads, fn.BoundsChecks)
-				}
-			}
-		}
-		return nil
-	}
-	fmt.Printf("%d native samples; %d unknown/non-guest samples. Flat self attribution only.\n", c.report.Samples, c.report.UnknownSamples)
-	fmt.Println("samples     CPU ms   CPU ns/iteration   function                   native bytes / static spills / reloads / checks")
-	for _, r := range c.report.Rows {
-		cost := 0.0
-		if m.Iterations > 0 {
-			cost = float64(r.Weight) / float64(m.Iterations)
-		}
-		fmt.Printf("%7d %10.3f %18.1f   f%-5d %-28s", r.Samples, float64(r.Weight)/1e6, cost, r.Function, r.Name)
-		if r.Static != nil {
-			fmt.Printf(" %d / %d / %d / %d", r.Static.NativeBytes, r.Static.Spills, r.Static.Reloads, r.Static.BoundsChecks)
-		}
-		fmt.Println()
-	}
-	return nil
+	return writeTop(os.Stdout, top, *asJSON)
 }
+
 func annotate(dir string, c capture, selected string, assembly bool) error {
 	if selected == "" {
 		return fmt.Errorf("annotate requires --function")
@@ -267,10 +233,10 @@ func annotate(dir string, c capture, selected string, assembly bool) error {
 						}
 						args = append(args, "--symfs", root)
 					}
-					cmd := exec.Command("perf", args...)
-					cmd.Stdout = os.Stdout
-					cmd.Stderr = os.Stderr
-					if err := cmd.Run(); err != nil {
+					if err := profile.CheckInput(filepath.Join(dir, "perf.jit.data")); err != nil {
+						return err
+					}
+					if err := profcapture.PerfAnnotate(args); err != nil {
 						return err
 					}
 				}
@@ -307,6 +273,9 @@ func timelineReport(args []string) error {
 	var timeline profile.TimelineReport
 	if err := readJSON(filepath.Join(f.Arg(0), "timeline.json"), &timeline); err != nil {
 		return err
+	}
+	if len(timeline.Rows) > profile.DefaultLimits().Events {
+		return fmt.Errorf("timeline record limit exceeded")
 	}
 	if *jsonOutput {
 		return json.NewEncoder(os.Stdout).Encode(timeline)
