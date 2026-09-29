@@ -10,7 +10,15 @@ case "$(tinygo version)" in
 esac
 
 tinygo_root=$(tinygo env TINYGOROOT)
-python3 - "$tinygo_root" <<'PY'
+if command -v python3 >/dev/null 2>&1; then
+  python_cmd=python3
+elif command -v python >/dev/null 2>&1; then
+  python_cmd=python
+else
+  echo 'patch-tinygo-042: Python 3 is required to patch the toolchain' >&2
+  exit 1
+fi
+"$python_cmd" - "$tinygo_root" <<'PY'
 from pathlib import Path
 import sys
 
