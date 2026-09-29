@@ -19,6 +19,7 @@ type Call struct {
 }
 type Workload struct {
 	ID       string          `json:"id"`
+	Contract string          `json:"contract,omitempty"`
 	Artifact string          `json:"artifact"`
 	Hash     string          `json:"artifact_sha256"`
 	Init     string          `json:"init"`

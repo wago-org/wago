@@ -16,7 +16,7 @@ Those additions do not imply complete stack or platform support.
 |---|---|
 | Remove all diagnostics from ordinary builds | Build-time removal covers recording, compiler and GC telemetry, image metadata, timelines, exporters, and reports. The 24-binary audit complements state-layout, allocation, and generated-code checks. |
 | Reproducible workload capture | Validated workload definitions, explicit phases, actual completed work, versioned manifests, and failed/incomplete capture states replace the JSON-only harness. Collector phase isolation is reported per backend. |
-| Correct code-image ownership | Finalized regions, logical and mapping identities, real mapping retirement, shared-instance ownership, and ordered attachment are covered by deterministic and race tests. Metadata absent at compilation or artifact reload remains explicitly unknown. |
+| Correct code-image ownership | Finalized regions, logical and mapping identities, real mapping retirement, shared-instance ownership, and ordered attachment are covered by deterministic and race tests. Metadata absent at compilation remains explicitly unknown; a matching optional sidecar can restore diagnostics on artifact reload. |
 | Native collection and existing viewers | Linux perf/jitdump and macOS Samply leaf attribution have real capture evidence; perf-map and pprof exports remain available. Linux repeated-startup reliability has an unresolved collector stall documented below. |
 | Connect hotness to compiler output | Function statistics, sparse final-PC origins, explicit spill/reload and bounds-branch sites, annotation, and comparable per-operation diffs are available. Static decisions are not reported as measured savings. |
 | Optional elapsed timelines | Nested boundaries and lifecycle spans preserve invocation/instance identity and distinguish inclusive/exclusive elapsed time from CPU measurements. Loss suppresses unsupported exclusive estimates. |
@@ -391,6 +391,10 @@ builds pass the stronger check rejecting any executable profiling-library or
 internal-journal symbol. Diagnostic builds retain the working session API.
 
 ## Artifact reload
+
+The following results describe the prior qualification run, before diagnostic
+sidecars were added; the current sidecar path has deterministic tests but has
+not yet been repeated through the native collector qualification matrix.
 
 `--phase=reload` isolates trusted-artifact decoding from compile and
 `artifact-prepare`; `--reload-artifact` also supports executing the loaded image.

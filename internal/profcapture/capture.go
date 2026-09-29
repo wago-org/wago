@@ -43,8 +43,10 @@ type Options struct {
 	MaxSpans       int
 	Bounds         string
 	Rate           int
-	Control        string
-	Ack            string
+	// WagoRevision overrides executable VCS information for embedded captures.
+	WagoRevision string
+	Control      string
+	Ack          string
 }
 type Phase struct {
 	Completed uint64 `json:"completed_work"`
@@ -69,6 +71,7 @@ type Manifest struct {
 	ReloadArtifact      bool                   `json:"artifact_reloaded"`
 	ArtifactHash        string                 `json:"artifact_sha256,omitempty"`
 	ArtifactBytes       int                    `json:"artifact_bytes,omitempty"`
+	DiagnosticSidecar   bool                   `json:"diagnostic_sidecar,omitempty"`
 	SourceMapsRequested bool                   `json:"source_maps_requested"`
 	SourceCoverage      string                 `json:"source_map_coverage,omitempty"`
 	TimelineCoverage    string                 `json:"timeline_coverage,omitempty"`
@@ -140,8 +143,8 @@ func (o Options) Validate() error {
 	default:
 		return fmt.Errorf("unsupported phase %q", o.Phase)
 	}
-	if o.Mode != "public" && o.Mode != "prepared" {
-		return fmt.Errorf("mode must be public or prepared")
+	if o.Mode != "public" && o.Mode != "prepared" && o.Mode != "application" {
+		return fmt.Errorf("mode must be public, prepared, or application")
 	}
 	if o.Bounds != "explicit" && o.Bounds != "signals" {
 		return fmt.Errorf("bounds must be explicit or signals")
@@ -183,6 +186,13 @@ func writeJSON(path string, v any) error {
 // Run creates a self-contained capture in a new private directory. Any workload,
 // collector or exporter error produces a failed manifest and a non-nil error.
 func Run(o Options, w Workload, wasm []byte) (result error) {
+	if o.Mode == "application" {
+		return fmt.Errorf("application mode requires RunWithHarness")
+	}
+	return run(o, w, wasm, nil)
+}
+
+func run(o Options, w Workload, wasm []byte, h *Harness) (result error) {
 	if err := o.Validate(); err != nil {
 		return err
 	}
@@ -204,19 +214,24 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 	m.WorkloadHash = workloadHash(w)
 	m.CPUModel, m.OSVersion = hostIdentity()
 	m.RateAccounting = "requested rate only; raw collector samples retain actual observations"
-	if b, ok := debug.ReadBuildInfo(); ok {
-		for _, s := range b.Settings {
-			switch s.Key {
-			case "vcs.revision":
-				m.Revision = s.Value
-			case "vcs.modified":
-				m.Dirty = s.Value
+	if h == nil {
+		if b, ok := debug.ReadBuildInfo(); ok {
+			for _, s := range b.Settings {
+				switch s.Key {
+				case "vcs.revision":
+					m.Revision = s.Value
+				case "vcs.modified":
+					m.Dirty = s.Value
+				}
 			}
 		}
 	}
 	if BuildRevision != "" {
 		m.Revision = BuildRevision
 		m.Dirty = BuildDirty
+	}
+	if h != nil && o.WagoRevision != "" {
+		m.Revision = o.WagoRevision
 	}
 	if m.Revision == "unknown" {
 		m.Diagnostics = append(m.Diagnostics, "build revision unavailable; build with scripts/build-profiler.sh for reproducible provenance")
@@ -418,13 +433,18 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		m.PhaseIsolation = "no-sampling"
 		m.CollectorVersion = "none"
 	}
-	cfg := wago.NewRuntimeConfig().WithCodeProfile(session)
-	if o.Bounds == "signals" {
+	cfg := wago.NewRuntimeConfig()
+	if h != nil && h.RuntimeConfig != nil {
+		cfg = h.RuntimeConfig
+	} else if o.Bounds == "signals" {
 		cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)
-	} else {
-		cfg = cfg.WithBoundsChecks(wago.BoundsChecksExplicit)
 	}
-	m.Config = map[string]any{"bounds": o.Bounds, "features": cfg.CoreFeatures(), "native_stack_bytes": cfg.NativeStackBytes(), "optimizations": cfg.OptimizationInfos(), "result_validation": "every invocation", "import_environment": "env.abort traps; all other imports must be supplied by module"}
+	cfg = cfg.WithCodeProfile(session)
+	m.Config = map[string]any{"bounds": cfg.BoundsChecks().String(), "features": cfg.CoreFeatures(), "native_stack_bytes": cfg.NativeStackBytes(), "optimizations": cfg.OptimizationInfos(), "result_validation": "every invocation", "import_environment": "env.abort traps; all other imports must be supplied by module"}
+	if h != nil {
+		m.Config["result_validation"] = "application Execute callback returns an error for invalid work"
+		m.Config["import_environment"] = "application-supplied instantiation options"
+	}
 	var warmupCompleted uint64
 	phase := func(name string, fn func() error) error {
 		capture := o.Phase == name
@@ -443,8 +463,14 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		switch name {
 		case "execute":
 			p.WorkUnit, p.Completed = "workload iteration", m.Iterations-before
+			if h != nil {
+				p.WorkUnit = h.WorkUnit
+			}
 		case "warmup":
 			p.WorkUnit, p.Completed = "workload iteration", warmupCompleted
+			if h != nil {
+				p.WorkUnit = h.WorkUnit
+			}
 		case "artifact-prepare":
 			p.WorkUnit = "artifact preparation"
 		case "compile":
@@ -458,7 +484,7 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		case "close":
 			p.WorkUnit = "teardown"
 		}
-		if p.WorkUnit != "" && name != "execute" && name != "warmup" && err == nil && (name != "initialize" || w.Init != "") {
+		if p.WorkUnit != "" && name != "execute" && name != "warmup" && err == nil && (name != "initialize" || w.Init != "" || h != nil && h.Initialize != nil) {
 			p.Completed = 1
 		}
 		m.Phases = append(m.Phases, p)
@@ -476,7 +502,7 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		}
 	}
 	compileConfig := cfg
-	if m.ReloadArtifact {
+	if m.ReloadArtifact && !profileSidecarAvailable {
 		// Artifacts do not serialize diagnostic metadata. Do not expose the
 		// preparatory compiler's metadata as if it belonged to the loaded image.
 		compileConfig = cfg.WithCodeProfile(nil)
@@ -486,6 +512,7 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 	}
 	if m.ReloadArtifact {
 		var artifact []byte
+		var sidecar []byte
 		if err := phase("artifact-prepare", func() error {
 			var err error
 			artifact, err = compiled.MarshalBinary()
@@ -495,6 +522,16 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 			sum := sha256.Sum256(artifact)
 			m.ArtifactHash = hex.EncodeToString(sum[:])
 			m.ArtifactBytes = len(artifact)
+			if profileSidecarAvailable {
+				sidecar, err = marshalProfileSidecar(compiled, artifact)
+				if err != nil {
+					return err
+				}
+				if err = os.WriteFile(filepath.Join(o.Out, "artifact.profile.json"), sidecar, 0600); err != nil {
+					return err
+				}
+				m.DiagnosticSidecar = true
+			}
 			err = compiled.Close()
 			compiled = nil
 			return err
@@ -509,22 +546,37 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		}); err != nil {
 			return err
 		}
-		artifact = nil
-		if err := compiled.AttachCodeProfile(session); err != nil {
-			return err
+		if profileSidecarAvailable {
+			if err := attachProfileSidecar(compiled, session, artifact, sidecar); err != nil {
+				return err
+			}
+		} else {
+			if err := compiled.AttachCodeProfile(session); err != nil {
+				return err
+			}
+			m.Diagnostics = append(m.Diagnostics, "reloaded artifact has no serialized compiler/source metadata; its native body is attributed as unknown")
 		}
-		m.Diagnostics = append(m.Diagnostics, "reloaded artifact has no serialized compiler/source metadata; its native body is attributed as unknown")
+		artifact, sidecar = nil, nil
 	}
-	imports := wago.NewImports()
-	imports.HostFunc("env", "abort", func(wago.HostCall) { panic("guest env.abort") })
+	instOpts := wago.InstantiateOptions{}
+	if h != nil {
+		instOpts = h.InstantiateOptions
+	} else {
+		imports := wago.NewImports()
+		imports.HostFunc("env", "abort", func(wago.HostCall) { panic("guest env.abort") })
+		instOpts.Imports = imports
+	}
 	if err := phase("instantiate", func() error {
 		var err error
-		instance, err = wago.Instantiate(compiled, wago.InstantiateOptions{Imports: imports})
+		instance, err = wago.Instantiate(compiled, instOpts)
 		return err
 	}); err != nil {
 		return err
 	}
 	if err := phase("initialize", func() error {
+		if h != nil && h.Initialize != nil {
+			return h.Initialize(instance)
+		}
 		if w.Init != "" {
 			_, err := instance.Invoke(w.Init)
 			return err
@@ -534,7 +586,7 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		return err
 	}
 	prepared := make([]*wago.WasmFunc, len(w.Calls))
-	if o.Mode == "prepared" {
+	if h == nil && o.Mode == "prepared" {
 		for i, c := range w.Calls {
 			var err error
 			prepared[i], err = instance.WasmFunc(c.Export)
@@ -544,6 +596,15 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		}
 	}
 	run := func(count bool) error {
+		if h != nil {
+			if err := h.Execute(instance); err != nil {
+				return err
+			}
+			if count {
+				m.Invocations++
+			}
+			return nil
+		}
 		for i, c := range w.Calls {
 			var out []uint64
 			var err error
