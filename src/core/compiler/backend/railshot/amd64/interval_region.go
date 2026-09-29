@@ -322,6 +322,11 @@ func (f *fn) flushControlIntervals() {
 	if !f.intervalControl || f.intervalActive == 0 {
 		return
 	}
+	// Preserve the address carrier through reference copies below: spilling it
+	// under pressure would execute the deferred load too early.
+	protected := f.detachControlIntervalAddresses()
+	savedReserved := f.reserved
+	f.reserved = f.reserved.union(protected)
 	for reg, x := range f.intervalOwner {
 		if x < 0 {
 			continue
@@ -343,6 +348,7 @@ func (f *fn) flushControlIntervals() {
 		f.intervalActive--
 		f.pinnedLocalMask = f.pinnedLocalMask.remove(Reg(reg))
 	}
+	f.reserved = savedReserved
 	if f.intervalActive != 0 {
 		panic("amd64: regional locals survived control boundary")
 	}
