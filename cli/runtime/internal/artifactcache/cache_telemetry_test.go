@@ -1,4 +1,4 @@
-//go:build wago_codegenstats || wago_gcstats || wago_profile
+//go:build wago_codegenstats || wago_profile
 
 package artifactcache
 

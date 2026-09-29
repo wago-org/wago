@@ -97,7 +97,7 @@ rotation/churn scaling, and deeper stack/memory analysis remain later milestones
 ## Default-build removal and size
 
 Ordinary builds, including embedding applications, omit profiling and compiler
-telemetry. `wago_profile`, `wago_codegenstats`, and `wago_gcstats` explicitly enable
+telemetry. `wago_profile` and `wago_codegenstats` explicitly enable
 the corresponding diagnostics. Requests for unavailable counters fail rather
 than quietly returning empty statistics. Diagnostic environment reads compile
 out. Ordinary compiled caches retain their 64-byte AMD64 footprint; the optional
@@ -453,7 +453,7 @@ go test -tags=wago_profile ./internal/profcapture ./internal/profilecmd ./cli/in
 go test -tags=wago_profile ./src/core/compiler/backend/railshot/arm64
 go test -tags=wago_profile -race ./internal/jitprofile ./profile ./src/wago \
   -run 'Test(CodeProfile|Journal|SnapshotPublication|BoundedJournal|JITDump|Export|Temporal|ParsePerf|Samply)'
-(cd bench && GOWORK=off go test -tags=wago_profile ./cmd/wagoprof ./cmd/jsonprof)
+(cd bench && GOWORK=off go test -tags=wago_profile ./cmd/wagoprof)
 GOTOOLCHAIN=go1.22.12 CARD_BASELINE_REF=HEAD \
   SIZE_REPORT=/tmp/wago-profile-size/size.md scripts/size-card.sh
 scripts/build-profiler.sh /tmp/wagoprof
@@ -470,3 +470,11 @@ CI-equivalent TinyGo size measurement. Ordinary CI does not require real samplin
 or exact sample percentages. Complete native unwinding, source-file lines, other
 collector/platform combinations, and repeatable Linux overhead remain open
 qualification work.
+
+### Legacy diagnostics removal
+
+The JSON-only compatibility command, GC cycle recorder and snapshot/report APIs,
+process-wide GC helper counters, and the `wago_gcstats` build tag have been
+removed. Earlier tagged qualification results above describe the historical
+implementation. Compiler diagnostics remain available through `wago_profile`
+and `wago_codegenstats`; ordinary builds retain their removal contract.

@@ -24,7 +24,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			}
 			tx = c.throughput.beginAllocTransaction()
 		}
-		e, err := c.allocThroughput(size, spaceLarge)
+		e, err := c.throughput.alloc(size, spaceLarge)
 		if err != nil {
 			if isInjectedFailure(err) {
 				c.throughput.restoreAllocTransaction(tx)
@@ -45,9 +45,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		}
 		c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
 		c.stats.Allocations++
-		if c.telemetryEnabled() {
-			c.cfg.Telemetry.paths.GoAllocationPaths++
-		}
+
 		c.refreshNativeView()
 		return r, nil
 	}
@@ -80,7 +78,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			}
 			allocationTx = c.throughput.beginAllocTransaction()
 		}
-		e, err = c.allocThroughput(size, spaceLarge)
+		e, err = c.throughput.alloc(size, spaceLarge)
 		if err != nil {
 			if isInjectedFailure(err) {
 				c.throughput.restoreAllocTransaction(allocationTx)
@@ -101,7 +99,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 				}
 				allocationTx = c.throughput.beginAllocTransaction()
 			}
-			e, err = c.allocThroughput(size, spaceLarge)
+			e, err = c.throughput.alloc(size, spaceLarge)
 			if err != nil {
 				return Null(), err
 			}
@@ -124,9 +122,6 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		var fits bool
 		off, fits = nurseryOffset()
 		if !fits {
-			if c.telemetryEnabled() {
-				c.cfg.Telemetry.paths.NurseryExhaustions++
-			}
 			if roots == nil {
 				return Null(), errors.New("gc: nursery exhausted and no roots were supplied")
 			}
@@ -169,9 +164,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	}
 	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
 	c.stats.Allocations++
-	if c.telemetryEnabled() {
-		c.cfg.Telemetry.paths.GoAllocationPaths++
-	}
+
 	if sp == spaceNursery {
 		c.refreshNativeHandles()
 	} else {

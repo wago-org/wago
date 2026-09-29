@@ -68,8 +68,7 @@ directories must be new; the runner never replaces an earlier capture.
 
 `--workload` reads the existing `corpus/catalog.json` benchmark contract: module
 hash, initialization export, calls, arguments, and exact result oracle. JSON-AS
-is a preset, not a separate workload implementation. `jsonprof` remains a
-compatibility command using this runner and the same oracle.
+is a preset using the same runner and result oracle as other workloads.
 
 For a custom module:
 
@@ -398,7 +397,7 @@ Format references: [Linux jitdump specification](https://github.com/torvalds/lin
 
 Mapping profiling requires `-tags=wago_profile`; the build script supplies it. An ordinary runtime build removes the journal, registration, retirement, and finalized-region collection paths. Requesting profiling in such a build fails configuration validation.
 
-All ordinary builds, including embedding applications, compile out compiler counters and explain reports. Explicit `wago_profile`, `wago_codegenstats`, or `wago_gcstats` tags enable compiler diagnostics; requesting unavailable diagnostics returns an error. `wago_nodiagnostics` is no longer needed. GC cycle telemetry still requires `wago_gcstats`.
+All ordinary builds, including embedding applications, compile out compiler counters and explain reports. Explicit `wago_profile` or `wago_codegenstats` tags enable compiler diagnostics; requesting unavailable diagnostics returns an error. `wago_nodiagnostics` is no longer needed. Legacy GC cycle telemetry and helper counters have been removed. The removed surface includes `GCConfig.Telemetry`, `GCTelemetrySnapshot`, `ResetGCTelemetry`, the GC benchmark JSON reports, and helper-tracking APIs. Root enumeration, collector pacing, and operational GC statistics remain part of execution; they are not capture sessions.
 
 Run compiler-statistics tests with `go test -tags=wago_codegenstats ./src/core/compiler/backend/railshot/... ./src/wago`; CI runs these alongside ordinary-build tests. The ordinary suite skips assertions that require counters and tests that diagnostic requests are rejected. For the standalone compiler report, run `go run -tags=wago_codegenstats ./cmd/explain module.wasm` from `bench/`.
 

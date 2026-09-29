@@ -422,7 +422,7 @@ func (c *RuntimeConfig) WithFeature(feature CoreFeatures, enabled bool) *Runtime
 
 // WithGCCodeTelemetry enables code-neutral WasmGC native-byte attribution on
 // freshly compiled modules. It does not change emitted code and is not persisted
-// in .wago artifacts. Requires a build with wago_codegenstats, wago_gcstats,
+// in .wago artifacts. Requires a build with wago_codegenstats
 // or wago_profile; Validate rejects unavailable telemetry.
 func (c *RuntimeConfig) WithGCCodeTelemetry(enabled bool) *RuntimeConfig {
 	n := *c
@@ -825,7 +825,7 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 // silent no-op.
 func (c *RuntimeConfig) Validate() error {
 	if c.gcCodeTelemetry && !compilerTelemetryEnabled {
-		return fmt.Errorf("wago: compiler telemetry requires -tags=wago_codegenstats, wago_gcstats, or wago_profile")
+		return fmt.Errorf("wago: compiler telemetry requires -tags=wago_codegenstats or wago_profile")
 	}
 	if c.codeProfile != nil && !codeProfileEnabled {
 		return fmt.Errorf("wago: profiling requires a build with -tags=wago_profile")

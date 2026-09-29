@@ -1,4 +1,4 @@
-//go:build wago_profile || wago_gcstats || wago_codegenstats
+//go:build wago_profile || wago_codegenstats
 
 package wago
 

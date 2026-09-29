@@ -871,9 +871,6 @@ func (c *Collector) arrayFill(ref Ref, start uint32, value Value, length uint32,
 	if !barrier && isCollectorRefKind(d.Elem) && value.Ref.IsObj() {
 		return errors.New("gc: barrier-free array.fill cannot store an object reference")
 	}
-	if !barrier && isCollectorRefKind(d.Elem) {
-		c.noteBarrierState(runtimeBarrierNoBarrier)
-	}
 	if length == 0 {
 		return nil
 	}

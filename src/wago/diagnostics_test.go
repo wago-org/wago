@@ -11,7 +11,7 @@ import (
 func requireCompilerDiagnostics(t testing.TB) bool {
 	t.Helper()
 	if !compilerTelemetryEnabled {
-		const reason = "compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile or wago_gcstats)"
+		const reason = "compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)"
 		if runtime.Compiler == "tinygo" {
 			// TinyGo SkipNow also marks the test failed; log and let the caller return.
 			t.Log(reason)

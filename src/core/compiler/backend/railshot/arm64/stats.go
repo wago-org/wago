@@ -3,7 +3,7 @@
 package arm64
 
 // CodegenStats is the Railshot compiler diagnostics dashboard. Collection requires
-// wago_codegenstats, wago_gcstats, or wago_profile at build time, followed by a
+// wago_codegenstats or wago_profile at build time, followed by a
 // CompileOptions.Stats destination or WAGO_EXPLAIN=1 at runtime. Ordinary builds
 // compile out counters, reports, and diagnostic environment-variable reads.
 //

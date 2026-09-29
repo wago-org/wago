@@ -1,4 +1,4 @@
-//go:build amd64 && !wago_profile && !wago_gcstats && !wago_codegenstats
+//go:build amd64 && !wago_profile && !wago_codegenstats
 
 package amd64
 

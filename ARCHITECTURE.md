@@ -834,7 +834,10 @@ truth** for per-feature status, with [ROADMAP.md](ROADMAP.md) for the plan and
 only by the `wago_profile` build tag. All ordinary builds, including embedding
 applications, compile out compiler diagnostics as well. Diagnostic builds
 explicitly enable collection with
-`wago_profile`, `wago_codegenstats`, or `wago_gcstats`.
+`wago_profile` or `wago_codegenstats`. The legacy JSON-only profiler, GC cycle
+telemetry, and process-wide GC helper counters have been removed. Compiler
+statistics and static WasmGC native-code attribution remain available to the
+new profiler.
 The removal contract is checked by `scripts/check-diagnostic-dce.sh`, which
 inspects unstripped manager, standard-runtime, minimal-runtime, and embedding binaries for
 both architectures on Linux, macOS, and Windows. Profiling must add no generated
@@ -899,7 +902,7 @@ The workload child records that handoff explicitly; only the collector-owning
 parent publishes overall completion after successful export and finalization.
 Profiling builds attach `wago profile` through `cli/internal/profiling`; ordinary manager
 and runtime builds omit it entirely. `bench/cmd/wagoprof` is a thin standalone
-wrapper, and `jsonprof` remains a compatibility preset. CPU weights, elapsed phases, and static compiler counts remain distinct.
+wrapper. CPU weights, elapsed phases, and static compiler counts remain distinct.
 No asynchronous guest-stack or Wasm instruction-map support is implied by symbol
 registration. See [Profiling workloads](docs/profiling.md) for tested capabilities
 and current limitations.

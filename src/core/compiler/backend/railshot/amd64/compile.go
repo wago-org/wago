@@ -1550,7 +1550,7 @@ type CompileOptions struct {
 	Codegen codegen.Options
 
 	// Stats, when non-nil, collects per-function codegen counters into it (the
-	// codegen dashboard). Requires wago_codegenstats, wago_gcstats, or wago_profile.
+	// codegen dashboard). Requires wago_codegenstats or wago_profile.
 	// Independent of WAGO_EXPLAIN, which prints the same dump
 	// to stderr. nil = no collection, zero overhead.
 	Stats *ModuleStats
@@ -1624,7 +1624,7 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
 	if !diagnosticsEnabled && (opts.Stats != nil || opts.CollectInlineReport) {
-		return nil, fmt.Errorf("compiler diagnostics require -tags=wago_codegenstats, wago_gcstats, or wago_profile")
+		return nil, fmt.Errorf("compiler diagnostics require -tags=wago_codegenstats or wago_profile")
 	}
 	if opts.UnwindMaps && !opts.Profile {
 		return nil, fmt.Errorf("unwind maps require profiling")

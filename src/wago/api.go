@@ -27,31 +27,7 @@ type GCConfig = gc.Config
 type GCProfile = gc.Profile
 type GCAllocatorKind = gc.AllocatorKind
 type GCRuntimeKind = gc.RuntimeKind
-type GCTelemetry = gc.Telemetry
-type GCTelemetrySnapshot = gc.TelemetrySnapshot
-type GCBenchmarkTelemetryReport = gc.BenchmarkTelemetryReport
-type GCBenchmarkConfiguration = gc.BenchmarkConfiguration
-type GCMemoryDomains = gc.MemoryDomains
-type GCManagedHeapTelemetry = gc.ManagedHeapTelemetry
 type GCNativeCodeTelemetry = gc.NativeCodeTelemetry
-
-const GCTelemetrySchemaVersion = gc.TelemetrySchemaVersion
-
-// GCTelemetryAvailable reports whether this binary includes collector-cycle
-// instrumentation and JSON reporting through the wago_gcstats build tag.
-func GCTelemetryAvailable() bool { return gc.TelemetryAvailable() }
-
-// NewGCBenchmarkTelemetryReport initializes a stable JSONL report with host
-// identity fields.
-func NewGCBenchmarkTelemetryReport(name string) GCBenchmarkTelemetryReport {
-	return gc.NewBenchmarkTelemetryReport(name)
-}
-
-// CaptureGCMemoryDomains samples host memory while preserving benchmark-owned
-// compiler, executable-code, and managed-heap attribution.
-func CaptureGCMemoryDomains(compilerHeapBytes, executableJITBytes uint64, heap GCManagedHeapTelemetry) GCMemoryDomains {
-	return gc.CaptureMemoryDomains(compilerHeapBytes, executableJITBytes, heap)
-}
 
 // ArtifactLimits bounds allocation while streaming a compiled artifact.
 // Values must be non-negative. Zero rejects a non-empty encoded section;
@@ -1991,7 +1967,6 @@ func (c *Compiled) validateImportBindingsWithPluginGC(imports resolvedImports, s
 		}
 	}
 	return nil
-
 }
 
 func sigMatches(required FuncSig, requiredTypes []DefinedTypeDescriptor, ex *InstanceExport, allowSubtype bool) bool {

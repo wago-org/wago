@@ -507,10 +507,6 @@ jobs:
           mkdir -p "$RUNNER_TEMP/unwind-fixtures"
           go build -tags wago_profile -o "$RUNNER_TEMP/unwind-fixtures/" ./profile/testdata/unwindprobe ./profile/testdata/wasmunwind ./profile/testdata/adapterunwind
 
-      - name: Native GC telemetry tests
-        if: matrix.runtime
-        run: go test -tags wago_gcstats ./src/core/runtime/gc/... -count=1
-
       - name: Build & test (Windows)
         if: matrix.runtime && runner.os == 'Windows'
         shell: pwsh

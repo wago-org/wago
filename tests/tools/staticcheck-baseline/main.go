@@ -27,7 +27,7 @@ var profiles = []profile{
 	{name: "standard", args: []string{"./..."}},
 	{name: "runtime", args: []string{"-tags", "wago_runtime", "./cli/..."}},
 	{name: "profiling", args: []string{"-tags", "wago_profile", "./..."}},
-	{name: "diagnostics", args: []string{"-tags", "wago_codegenstats,wago_gcstats", "./..."}},
+	{name: "diagnostics", args: []string{"-tags", "wago_codegenstats", "./..."}},
 }
 
 type position struct {

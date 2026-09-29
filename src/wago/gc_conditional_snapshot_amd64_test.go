@@ -184,8 +184,6 @@ func runConditionalSnapshotStore(t *testing.T, array bool, n, repeats int, track
 	}
 	// Initialization leaves root cards; the first array store must add an object card.
 	cards := in.gc.CardCount()
-	in.SetGCHelperStatsTracking(true)
-	defer in.SetGCHelperStatsTracking(false)
 	args, want := conditionalSnapshotValues(n)
 	got, err := in.Invoke("run", args...)
 	if err != nil {

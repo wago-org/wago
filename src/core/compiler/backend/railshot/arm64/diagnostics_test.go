@@ -9,6 +9,6 @@ import "testing"
 func requireCompilerDiagnostics(t testing.TB) {
 	t.Helper()
 	if !diagnosticsEnabled {
-		t.Skip("compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile or wago_gcstats)")
+		t.Skip("compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)")
 	}
 }

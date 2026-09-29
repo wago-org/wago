@@ -1,4 +1,4 @@
-//go:build arm64 && !wago_profile && !wago_gcstats && !wago_codegenstats
+//go:build arm64 && !wago_profile && !wago_codegenstats
 
 package arm64
 

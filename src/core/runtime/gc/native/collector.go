@@ -33,12 +33,6 @@ const (
 )
 
 type Config struct {
-	// Telemetry opts this collector into bounded cycle timing and deterministic
-	// work counters when built with wago_gcstats. Nil keeps diagnostic builds on
-	// the no-telemetry path. Ordinary builds discard the pointer. One recorder
-	// must not be attached to multiple collectors concurrently.
-	Telemetry *Telemetry
-
 	NurseryBytes uint32
 	// SurvivorBytes is the capacity of each of two bounded Throughput survivor
 	// semispaces. Zero selects half the normalized Eden capacity. It is ignored
@@ -156,7 +150,6 @@ type Collector struct {
 	tableSlots          []Ref
 	stats               Stats
 	rootMarkMode        uint8
-	telemetryRootClass  RootClass
 	closed              bool
 	checkedHandles      *[]uint64
 }
@@ -175,9 +168,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !collectorTelemetryEnabled {
-		config.Telemetry = nil
-	}
+
 	if config.Profile == ProfileTiny {
 		return newTinyCollector(config, types)
 	}
@@ -203,9 +194,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if config.DisableMovingNursery || config.SurvivorBytes == 0 {
 		c.tenuringThreshold = 1
 	}
-	if c.telemetryEnabled() {
-		c.cfg.Telemetry.attach(config.Profile, 0)
-	}
+
 	if err := c.initSubtypeIntervals(); err != nil {
 		return nil, err
 	}
@@ -292,10 +281,6 @@ func (c *Collector) Profile() Profile {
 		return ProfileThroughput
 	}
 	return c.cfg.Profile
-}
-
-func (c *Collector) telemetryEnabled() bool {
-	return collectorTelemetryEnabled && c != nil && c.cfg.Telemetry != nil
 }
 
 func (c *Collector) errIfClosed() error {
