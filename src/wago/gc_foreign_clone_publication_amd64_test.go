@@ -56,7 +56,9 @@ func TestForeignClonePublicationLockedHelpersSerializeCollection(t *testing.T) {
 			firstResult := make(chan result, 1)
 			secondResult := make(chan result, 1)
 			go func() {
-				unlockNative := lockNativeExecutionForHostAccess()
+				invocation := target.lockGCInvocation(newInvocationID())
+				defer invocation.unlock()
+				unlockNative := target.lockInstanceNativeStateForHostAccess()
 				domain := target.lockGCCollector()
 				state := target.publicGCState()
 				state.mu.Lock()
@@ -158,7 +160,9 @@ func TestForeignClonePublicationFailureClearsPrivateRoot(t *testing.T) {
 			t.Fatal(err)
 		}
 		func() {
-			unlockNative := lockNativeExecutionForHostAccess()
+			invocation := target.lockGCInvocation(newInvocationID())
+			defer invocation.unlock()
+			unlockNative := target.lockInstanceNativeStateForHostAccess()
 			defer unlockNative()
 			domain := target.lockGCCollector()
 			defer unlockGCCollector(domain)
@@ -181,7 +185,10 @@ func TestForeignClonePublicationFailureClearsPrivateRoot(t *testing.T) {
 			}
 		}()
 		objects = append(objects, gcCloneObject{typeID: ^gc.TypeID(0)})
-		if _, _, err := restoreForeignGCGraph(target, objects, root); err == nil {
+		invocation := target.lockGCInvocation(newInvocationID())
+		_, _, err = restoreForeignGCGraph(target, objects, root)
+		invocation.unlock()
+		if err == nil {
 			t.Fatal("invalid trailing object did not fail reconstruction")
 		}
 		state := target.existingPublicGCState()
@@ -190,7 +197,9 @@ func TestForeignClonePublicationFailureClearsPrivateRoot(t *testing.T) {
 		}
 		// The standalone cleanup entry point must also remain safe after a
 		// failed reconstruction has already cleared its temporary ownership.
+		invocation = target.lockGCInvocation(newInvocationID())
 		clearForeignCloneRoot(target, true)
+		invocation.unlock()
 		if !target.gc.GlobalSlot(state.cloneRootSlot).IsNull() || state.resultTokenCount != 0 || target.gc.Stats().LiveObjects != 0 {
 			t.Fatal("repeated cleanup changed ownership after failed reconstruction")
 		}
