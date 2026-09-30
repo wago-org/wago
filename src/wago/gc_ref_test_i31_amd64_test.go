@@ -20,7 +20,7 @@ func stagedGCI31RefTestBytes(t testing.TB) []byte {
 
 func TestStagedGCI31RefTestExecution(t *testing.T) {
 	data := stagedGCI31RefTestBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public Compile admitted staged ref.test product")
 	}
 	c, err := compileStagedGCI31(data)

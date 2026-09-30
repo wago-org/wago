@@ -33,12 +33,6 @@ const (
 )
 
 type Config struct {
-	// Telemetry opts this collector into bounded cycle timing and deterministic
-	// work counters when built with wago_gcstats. Nil keeps diagnostic builds on
-	// the no-telemetry path. Ordinary builds discard the pointer. One recorder
-	// must not be attached to multiple collectors concurrently.
-	Telemetry *Telemetry
-
 	NurseryBytes uint32
 	// SurvivorBytes is the capacity of each of two bounded Throughput survivor
 	// semispaces. Zero selects half the normalized Eden capacity. It is ignored
@@ -142,7 +136,7 @@ type Collector struct {
 	freeHandles         []uint32
 	nurseryHandles      []uint32 // dense live nursery set; minor collection never scans all old handles
 	mark                []bool
-	markStack           []uint32
+	markStack           []uint32 // Throughput tracing stack; Tiny transient-root staging buffer.
 	promotionScratch    []plannedPromotion
 	remembered          []uint32
 	objectCards         []objectCard
@@ -156,9 +150,10 @@ type Collector struct {
 	tableSlots          []Ref
 	stats               Stats
 	rootMarkMode        uint8
-	telemetryRootClass  RootClass
 	closed              bool
 	checkedHandles      *[]uint64
+	// Keep optional proof state last so existing collector field offsets stay fixed.
+	lastCardBounds objectCardBounds
 }
 
 const defaultNursery = 64 << 10
@@ -175,9 +170,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !collectorTelemetryEnabled {
-		config.Telemetry = nil
-	}
+
 	if config.Profile == ProfileTiny {
 		return newTinyCollector(config, types)
 	}
@@ -203,9 +196,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if config.DisableMovingNursery || config.SurvivorBytes == 0 {
 		c.tenuringThreshold = 1
 	}
-	if c.telemetryEnabled() {
-		c.cfg.Telemetry.attach(config.Profile, 0)
-	}
+
 	if err := c.initSubtypeIntervals(); err != nil {
 		return nil, err
 	}
@@ -234,6 +225,7 @@ func (c *Collector) Close() {
 	c.subtypeIntervals = nil
 	c.promotionScratch = nil
 	c.remembered = nil
+	c.lastCardBounds = objectCardBounds{}
 	c.objectCards = nil
 	c.freeObjectCardSlot = 0
 	c.slotCards = nil
@@ -248,9 +240,9 @@ func (c *Collector) Close() {
 
 // AddTypes appends immutable Runtime-domain type descriptors without relocating
 // live objects. Callers serialize this with native readers, allocation, and
-// collection. IDs must
-// be new, and any appended supertype must already exist or appear in the same
-// append batch.
+// collection. IDs must be new, and any appended supertype must already exist
+// or appear in the same append batch. Successful type growth invalidates all
+// existing TypeCanonicalization maps; callers must build new maps before use.
 func (c *Collector) AddTypes(types []TypeDesc) error {
 	if c == nil || c.closed {
 		return errCollectorClosed
@@ -281,16 +273,17 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 	return nil
 }
 
+// CollectsOnAllocation reports whether allocation may trigger collection.
+func (c *Collector) CollectsOnAllocation() bool {
+	return c != nil && !c.cfg.DisableCollection
+}
+
 // Profile reports the collector's immutable barrier/allocation profile.
 func (c *Collector) Profile() Profile {
 	if c == nil {
 		return ProfileThroughput
 	}
 	return c.cfg.Profile
-}
-
-func (c *Collector) telemetryEnabled() bool {
-	return collectorTelemetryEnabled && c != nil && c.cfg.Telemetry != nil
 }
 
 func (c *Collector) errIfClosed() error {

@@ -3,7 +3,6 @@ package wago
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -99,6 +98,55 @@ type ImportSpec struct {
 // Key returns the "module.name" import key.
 func (s ImportSpec) Key() string { return s.Module + "." + s.Name }
 
+func (s ImportSpec) bindingKey() string { return importBindingMapKey(s.Module, s.Name) }
+
+func (c *Compiled) functionImportBindingKey(index int) string {
+	if c == nil || index < 0 || index >= len(c.Imports) {
+		return ""
+	}
+	ends, _, _, _, _ := c.importModuleEndSections()
+	module, name := splitImportKeyAt(c.Imports[index], importModuleEndAt(ends, index))
+	return importBindingMapKey(module, name)
+}
+
+func (c *Compiled) globalImportBindingKey(index int) string {
+	if c == nil || index < 0 || index >= len(c.GlobalImports) {
+		return ""
+	}
+	def := c.GlobalImports[index]
+	return importBindingMapKey(def.Module, def.Name)
+}
+
+func (c *Compiled) memoryImportBindingKey(index int) string {
+	def, ok := c.memoryImportAt(index)
+	if !ok {
+		return ""
+	}
+	_, _, ends, _, _ := c.importModuleEndSections()
+	module, name := splitImportKeyAt(def.ImportKey, importModuleEndAt(ends, index))
+	return importBindingMapKey(module, name)
+}
+
+func (c *Compiled) tableImportBindingKey(index int) string {
+	def, ok := c.tableImportAt(index)
+	if !ok {
+		return ""
+	}
+	_, ends, _, _, _ := c.importModuleEndSections()
+	module, name := splitImportKeyAt(def.Key, importModuleEndAt(ends, index))
+	return importBindingMapKey(module, name)
+}
+
+func (c *Compiled) tagImportBindingKey(index int) string {
+	if c == nil || c.memoryDir == nil || index < 0 || index >= len(c.memoryDir.ehTags) {
+		return ""
+	}
+	_, _, _, ends, _ := c.importModuleEndSections()
+	def := c.memoryDir.ehTags[index]
+	module, name := splitImportKeyAt(def.ImportKey, importModuleEndAt(ends, index))
+	return importBindingMapKey(module, name)
+}
+
 // FunctionMetadata describes one function in Wasm function-index order.
 type FunctionMetadata struct {
 	Index        int
@@ -184,7 +232,7 @@ type ModuleMetadata struct {
 
 type moduleBindings struct {
 	rt                       *Runtime
-	imports                  Imports
+	imports                  resolvedImports
 	importMeta               map[string]*registeredImport
 	independentInstances     bool
 	moduleIdentity           bool
@@ -246,8 +294,9 @@ func buildModule(c *Compiled, bindings moduleBindings) (*Module, error) {
 				spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
 			}
 		}
-		meta := bindings.importMeta[key]
-		if _, ok := bindings.imports[key]; ok && registeredImportMatches(meta, mod, name) {
+		bindingKey := importBindingMapKey(mod, name)
+		meta := bindings.importMeta[bindingKey]
+		if _, ok := bindings.imports[bindingKey]; ok && registeredImportMatches(meta, mod, name) {
 			spec.Provided = true
 		}
 		if meta != nil && registeredImportMatches(meta, mod, name) {
@@ -261,7 +310,7 @@ func buildModule(c *Compiled, bindings moduleBindings) (*Module, error) {
 		m.imports = append(m.imports, spec)
 	}
 	for i, gi := range c.GlobalImports {
-		key := gi.Module + "." + gi.Name
+		key := importBindingMapKey(gi.Module, gi.Name)
 		exact, exactErr := exactValueType(gi.Type, gi.HasValueType, gi.ValueTypeIndex, c.ValueTypes, c.Types)
 		m.imports = append(m.imports, ImportSpec{
 			Module: gi.Module, Name: gi.Name, Kind: ImportGlobal, Index: i,
@@ -274,7 +323,7 @@ func buildModule(c *Compiled, bindings moduleBindings) (*Module, error) {
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportMemory, Index: i,
 			MemoryMin: def.Min, MemoryMax: def.Max, HasMax: def.HasMax, Addr64: def.Addr64, Shared: def.Shared,
-			Provided: bindings.imports[def.ImportKey] != nil,
+			Provided: bindings.imports[importBindingMapKey(mod, name)] != nil,
 		})
 	}
 	for i := 0; i < c.tableImportCount(); i++ {
@@ -284,7 +333,7 @@ func buildModule(c *Compiled, bindings moduleBindings) (*Module, error) {
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportTable, Index: i,
 			Type: def.Type, ValueType: exact, HasValueType: exactErr == nil, Min: def.Min, Max: def.Max, HasMax: def.HasMax, Addr64: def.Addr64,
-			Provided: bindings.imports[def.Key] != nil,
+			Provided: bindings.imports[importBindingMapKey(mod, name)] != nil,
 		})
 	}
 	if c.memoryDir != nil {
@@ -293,63 +342,27 @@ func buildModule(c *Compiled, bindings moduleBindings) (*Module, error) {
 			mod, name := splitImportKeyAt(def.ImportKey, importModuleEndAt(tagModuleEnds, i))
 			sig := c.Types[def.TypeIndex]
 			params, _ := valTypesFromDescriptors(sig.Params, c.Types)
-			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: sig.Params, Provided: bindings.imports[def.ImportKey] != nil})
+			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: sig.Params, Provided: bindings.imports[importBindingMapKey(mod, name)] != nil})
 		}
 	}
 	return m, nil
 }
 
-// indexDeclaredImportIdentities rejects distinct structured import names that
-// the low-level flat Imports namespace cannot represent independently. It keeps
-// the resulting index only when dotted components make alternate splits
-// possible, so per-instance exact overrides can be checked in linear time.
+// indexDeclaredImportIdentities records exact identities independently of the
+// human-readable "module.name" spelling.
 func indexDeclaredImportIdentities(specs []ImportSpec) (map[string]importBindingKey, error) {
-	ambiguous := false
-	for _, spec := range specs {
-		if strings.Contains(spec.Module, ".") || strings.Contains(spec.Name, ".") {
-			ambiguous = true
-			break
-		}
-	}
-	if !ambiguous {
+	if len(specs) == 0 {
 		return nil, nil
 	}
-
-	// For up to four rows the immutable ImportSpec slice is already a compact
-	// lookup table. Reuse it without adding bytes to every Module or a sidecar.
-	if len(specs) <= inlineImportIdentityLimit {
-		for i, spec := range specs {
-			identity := importBindingKey{module: spec.Module, name: spec.Name}
-			for _, previous := range specs[:i] {
-				other := importBindingKey{module: previous.Module, name: previous.Name}
-				if identity != other && sameFlattenedImport(identity, other) {
-					return nil, importIdentityCollisionError(other, identity)
-				}
-			}
-		}
-		return nil, nil
-	}
-
-	flatIdentities := make(map[string]importBindingKey, len(specs))
+	exactIdentities := make(map[string]importBindingKey, len(specs))
 	for _, spec := range specs {
 		identity := importBindingKey{module: spec.Module, name: spec.Name}
-		key := spec.Key()
-		if previous, ok := flatIdentities[key]; ok && previous != identity {
-			return nil, importIdentityCollisionError(previous, identity)
-		}
-		flatIdentities[key] = identity
+		exactIdentities[spec.bindingKey()] = identity
 	}
-	return flatIdentities, nil
+	return exactIdentities, nil
 }
 
-func importIdentityCollisionError(previous, identity importBindingKey) error {
-	return fmt.Errorf("wago: imports %q.%q and %q.%q share flattened key %q and cannot be bound safely", previous.module, previous.name, identity.module, identity.name, identity.module+"."+identity.name)
-}
-
-// registeredImportMatches prevents the legacy flat binding namespace from
-// crossing an exact Wasm module/name boundary. A nil record identifies an
-// explicitly supplied legacy binding, which has no structured identity to
-// verify and retains the public Imports API's historical behavior.
+// registeredImportMatches verifies plugin declaration metadata.
 func registeredImportMatches(meta *registeredImport, module, name string) bool {
 	return meta == nil || meta.module == module && meta.name == name
 }
@@ -726,36 +739,14 @@ func (c *Compiled) validateImportModuleEnds() error {
 	return nil
 }
 
-const inlineImportIdentityLimit = 4
-
-func sameFlattenedImport(a, b importBindingKey) bool {
-	if len(a.module) == len(b.module) {
-		return a == b
-	}
-	if len(a.module) > len(b.module) {
-		a, b = b, a
-	}
-	// b's longer module must be a.module + "." + a prefix of a.name.
-	n := len(a.module)
-	if b.module[:n] != a.module || b.module[n] != '.' {
-		return false
-	}
-	return flatImportMatches(a.name, b.module[n+1:], b.name)
-}
-func flatImportMatches(key, module, name string) bool {
-	n := len(module)
-	return len(key) == n+1+len(name) && key[n] == '.' && key[:n] == module && key[n+1:] == name
-}
 func declaredImportIdentity(specs []ImportSpec, index map[string]importBindingKey, key string) (importBindingKey, bool) {
 	if index != nil {
 		identity, ok := index[key]
 		return identity, ok
 	}
-	if len(specs) <= inlineImportIdentityLimit {
-		for _, spec := range specs {
-			if flatImportMatches(key, spec.Module, spec.Name) {
-				return importBindingKey{module: spec.Module, name: spec.Name}, true
-			}
+	for _, spec := range specs {
+		if spec.bindingKey() == key {
+			return importBindingKey{module: spec.Module, name: spec.Name}, true
 		}
 	}
 	return importBindingKey{}, false

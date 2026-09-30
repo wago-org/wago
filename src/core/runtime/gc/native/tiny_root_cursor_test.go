@@ -130,7 +130,7 @@ func (r classifiedOnlyTinyRoots) RangeClassifiedRootRefs(sink ClassifiedRootRefS
 	return true
 }
 
-func TestTinyClassifiedTransientRootsCountOnceWithoutTelemetry(t *testing.T) {
+func TestTinyClassifiedTransientRootsCountOnce(t *testing.T) {
 	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
@@ -192,12 +192,12 @@ func TestTinyRejectsTransientRootsWithoutDirectEnumeration(t *testing.T) {
 	}
 }
 
-func TestClassifiedFallbackRootsRemainVisibleToThroughputTelemetry(t *testing.T) {
+func TestClassifiedFallbackRootsRemainVisibleToThroughput(t *testing.T) {
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := newTestCollectorWithTypes(t, Config{Telemetry: new(Telemetry), ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}, []TypeDesc{leaf})
+	c := newTestCollectorWithTypes(t, Config{ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}, []TypeDesc{leaf})
 	object, err := c.NewStructDefault(0)
 	if err != nil {
 		t.Fatal(err)

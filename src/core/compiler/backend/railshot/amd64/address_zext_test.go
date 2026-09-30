@@ -9,6 +9,7 @@ import (
 )
 
 func TestMemory32AddressZExtElision(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	t.Run("frame local", func(t *testing.T) {
 		// Give fifteen parameters more uses than parameter 15 so the latter remains
 		// frame-resident. The wrapper passes dirty upper bits, while the i32 frame
@@ -98,7 +99,7 @@ func TestCleanMemory32AddressProof(t *testing.T) {
 		t.Fatal("addr-zext-elim is not registered")
 	}
 
-	f := new(fn)
+	f := &fn{policy: currentCodegenPolicy()}
 	tests := []struct {
 		name string
 		e    *elem
@@ -137,12 +138,14 @@ func TestCleanMemory32AddressProof(t *testing.T) {
 	if !SetOptKnob("addr-zext-elim", false) {
 		t.Fatal("addr-zext-elim is not registered")
 	}
+	f.policy = currentCodegenPolicy()
 	if f.cleanMemory32Address(testValueElem(storage{kind: stConst, typ: mtI32})) {
 		t.Fatal("disabled optimization accepted a clean address")
 	}
 }
 
 func TestMemory64AddressDoesNotUseZExtElision(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}, []byte{
 		0x00, 0x20, 0x00, 0x2d, 0x00, 0x00, 0x0b,
 	})

@@ -205,7 +205,7 @@ func BuildFunc(m *wasm.Module, localFuncIdx int) (*Func, error) {
 }
 
 func (b *Builder) buildFunc(localIdx uint32) (*Func, error) {
-	if int(localIdx) >= len(b.m.FuncTypes) || int(localIdx) >= len(b.m.Code) {
+	if uint(localIdx) >= uint(len(b.m.FuncTypes)) || uint(localIdx) >= uint(len(b.m.Code)) {
 		return nil, fmt.Errorf("ir: local function index %d out of range", localIdx)
 	}
 	typeIdx := b.m.FuncTypes[localIdx].Index
@@ -962,11 +962,18 @@ func (b *Builder) lowerMem(op byte) error {
 	if err != nil {
 		return err
 	}
-	off, err := b.r.U32()
+	mt, err := b.memoryType(0)
 	if err != nil {
 		return err
 	}
-	mt, err := b.memoryType(0)
+	var off uint64
+	if mt.Limits.Addr64 {
+		off, err = b.r.U64()
+	} else {
+		var off32 uint32
+		off32, err = b.r.U32()
+		off = uint64(off32)
+	}
 	if err != nil {
 		return err
 	}
@@ -985,7 +992,7 @@ func (b *Builder) lowerMem(op byte) error {
 			return err
 		}
 		if b.reachable {
-			b.addInst(OpStore, packMem(kind, align, 0, off), 0, []ValueID{addr, val}, nil, EffectCanTrap|EffectWriteMem)
+			b.addInst(OpStore, packMem(kind, align, 0, uint32(off)), off>>32, []ValueID{addr, val}, nil, EffectCanTrap|EffectWriteMem)
 		}
 	} else {
 		addr, err := b.popTyped(addrType)
@@ -993,7 +1000,7 @@ func (b *Builder) lowerMem(op byte) error {
 			return err
 		}
 		if b.reachable {
-			b.pushValues(b.addInst(OpLoad, packMem(kind, align, 0, off), 0, []ValueID{addr}, []wasm.ValType{res}, EffectCanTrap|EffectReadMem))
+			b.pushValues(b.addInst(OpLoad, packMem(kind, align, 0, uint32(off)), off>>32, []ValueID{addr}, []wasm.ValType{res}, EffectCanTrap|EffectReadMem))
 		} else {
 			b.pushPoisons([]wasm.ValType{res})
 		}
@@ -1349,8 +1356,12 @@ func (b *Builder) lowerFC() error {
 		}
 		return nil
 	case 8:
-		if _, err := b.r.U32(); err != nil { // dataidx
+		data, err := b.r.U32()
+		if err != nil {
 			return err
+		}
+		if uint(data) >= uint(len(b.m.Data)) {
+			return fmt.Errorf("unknown data segment %d", data)
 		}
 		mem, err := b.readZeroMemoryImmediate()
 		if err != nil {
@@ -1360,20 +1371,34 @@ func (b *Builder) lowerFC() error {
 		if err != nil {
 			return err
 		}
-		addr := memoryAddrType(mt)
-		if _, err := b.popTyped(wasm.I32); err != nil { // length in passive segment bytes
+		n, err := b.popTyped(wasm.I32)
+		if err != nil {
 			return err
 		}
-		if _, err := b.popTyped(wasm.I32); err != nil { // source offset in passive segment
+		src, err := b.popTyped(wasm.I32)
+		if err != nil {
 			return err
 		}
-		if _, err := b.popTyped(addr); err != nil { // destination offset in memory
+		dst, err := b.popTyped(memoryAddrType(mt))
+		if err != nil {
 			return err
+		}
+		if b.reachable {
+			b.addInst(OpMemoryInit, uint64(mem)|uint64(data)<<32, 0, []ValueID{dst, src, n}, nil, EffectCanTrap|EffectReadData|EffectWriteMem)
 		}
 		return nil
 	case 9:
-		_, err := b.r.U32()
-		return err
+		data, err := b.r.U32()
+		if err != nil {
+			return err
+		}
+		if uint(data) >= uint(len(b.m.Data)) {
+			return fmt.Errorf("unknown data segment %d", data)
+		}
+		if b.reachable {
+			b.addInst(OpDataDrop, uint64(data), 0, nil, nil, EffectWriteData)
+		}
+		return nil
 	case 10:
 		dst, err := b.readZeroMemoryImmediate()
 		if err != nil {
@@ -1538,7 +1563,7 @@ func (b *Builder) popMaybe(t wasm.ValType) (ValueID, error) {
 	// unreachable region closes.
 	if len(b.stack) <= b.ctrlH[len(b.ctrlH)-1] {
 		if !b.reachable {
-			return b.newValue(wasm.I32, ValueDefPoison, 0), nil
+			return b.newValue(wasm.ValType{}, ValueDefPoison, 0), nil
 		}
 		return InvalidValue, fmt.Errorf("stack underflow")
 	}
@@ -1593,7 +1618,7 @@ func (b *Builder) setReturn(args []ValueID) {
 }
 func (b *Builder) setTrap() { b.fn.Blocks[b.cur].Term = Term{Kind: TermTrap} }
 func (b *Builder) labelAt(depth uint32) (label, error) {
-	if int(depth) >= len(b.labels) {
+	if uint(depth) >= uint(len(b.labels)) {
 		return label{}, fmt.Errorf("unknown label depth %d", depth)
 	}
 	return b.labels[len(b.labels)-1-int(depth)], nil
@@ -1657,7 +1682,7 @@ func (b *Builder) funcType(fi uint32) (*wasm.FuncType, error) {
 	if err != nil {
 		return nil, err
 	}
-	if int(ti) >= len(b.out.Types) {
+	if uint(ti) >= uint(len(b.out.Types)) {
 		return nil, fmt.Errorf("unknown type %d", ti)
 	}
 	if !irTypeIsFunc(b.out, ti) {
@@ -1672,13 +1697,13 @@ func (b *Builder) funcType(fi uint32) (*wasm.FuncType, error) {
 func (b *Builder) funcTypeIndex(fi uint32) (uint32, error) {
 	// Function metadata is flattened once when the builder is created. Use it for
 	// O(1) call validation instead of re-scanning imports for every call opcode.
-	if int(fi) >= len(b.out.FuncTypes) {
+	if uint(fi) >= uint(len(b.out.FuncTypes)) {
 		return 0, fmt.Errorf("unknown function %d", fi)
 	}
 	return b.out.FuncTypes[fi], nil
 }
 func (b *Builder) globalType(x uint32) (wasm.GlobalType, error) {
-	if int(x) >= len(b.out.Globals) {
+	if uint(x) >= uint(len(b.out.Globals)) {
 		return wasm.GlobalType{}, fmt.Errorf("unknown global %d", x)
 	}
 	gt := b.out.Globals[x]
@@ -1691,19 +1716,19 @@ func (b *Builder) memoryType(x uint32) (wasm.MemType, error) {
 	if x != 0 {
 		return wasm.MemType{}, fmt.Errorf("multi-memory unsupported: memory index %d", x)
 	}
-	if int(x) >= len(b.out.Memories) {
+	if uint(x) >= uint(len(b.out.Memories)) {
 		return wasm.MemType{}, fmt.Errorf("unknown memory %d", x)
 	}
 	return b.out.Memories[x], nil
 }
 func (b *Builder) tableType(x uint32) (wasm.TableType, error) {
-	if int(x) >= len(b.out.Tables) {
+	if uint(x) >= uint(len(b.out.Tables)) {
 		return wasm.TableType{}, fmt.Errorf("unknown table %d", x)
 	}
 	return b.out.Tables[x], nil
 }
 func typeOf(f *Func, v ValueID) wasm.ValType {
-	if v == InvalidValue || int(v) >= len(f.Values) {
+	if v == InvalidValue || uint(v) >= uint(len(f.Values)) {
 		return wasm.ValType{}
 	}
 	return f.Values[v].Type

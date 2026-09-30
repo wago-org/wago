@@ -60,18 +60,13 @@ func TestCloseSnapshotsPostHostFuncrefWritesAfterQuiescence(t *testing.T) {
 			(i32.const 0) (ref.func $target) (table.set 0)
 			(ref.func $target) (global.set $global)
 			(call $after)))`)
-	writer, err = rt.Instantiate(context.Background(), writerCode, WithImports(Imports{
-		"env.before": HostFunc(func(HostModule, []uint64, []uint64) {
-			close(enteredBefore)
-			<-releaseBefore
-		}),
-		"env.after": HostFunc(func(HostModule, []uint64, []uint64) {
-			close(enteredAfter)
-			<-releaseAfter
-		}),
-		"env.table":  table,
-		"env.global": global,
-	}))
+	writer, err = rt.Instantiate(context.Background(), writerCode, WithImports(testImports("env.before", slotHostFunc(func(HostModule, []uint64, []uint64) {
+		close(enteredBefore)
+		<-releaseBefore
+	}), "env.after", slotHostFunc(func(HostModule, []uint64, []uint64) {
+		close(enteredAfter)
+		<-releaseAfter
+	}), "env.table", table, "env.global", global)))
 	if err != nil {
 		t.Fatalf("instantiate writer: %v", err)
 	}
@@ -103,7 +98,7 @@ func TestCloseSnapshotsPostHostFuncrefWritesAfterQuiescence(t *testing.T) {
 		(import "env" "table" (table 1 1 funcref))
 		(func (export "call") (result i32)
 			(i32.const 0) (call_indirect (type $target))))`)
-	tableReader, err := rt.Instantiate(context.Background(), tableReaderCode, WithImports(Imports{"env.table": table}))
+	tableReader, err := rt.Instantiate(context.Background(), tableReaderCode, WithImports(testImports("env.table", table)))
 	if err != nil {
 		t.Fatalf("instantiate table reader: %v", err)
 	}
@@ -118,7 +113,7 @@ func TestCloseSnapshotsPostHostFuncrefWritesAfterQuiescence(t *testing.T) {
 		(func (export "call") (result i32)
 			(i32.const 0) (global.get $global) (table.set 0)
 			(i32.const 0) (call_indirect (type $target))))`)
-	globalReader, err := rt.Instantiate(context.Background(), globalReaderCode, WithImports(Imports{"env.global": global}))
+	globalReader, err := rt.Instantiate(context.Background(), globalReaderCode, WithImports(testImports("env.global", global)))
 	if err != nil {
 		t.Fatalf("instantiate global reader: %v", err)
 	}
@@ -195,8 +190,8 @@ func TestClosedProducerFuncrefInSharedTableStaysCallable(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))))),
 	)
 
-	setter := tableTestInstantiateWithImports(t, setterMod, Imports{"env.t": tbl})
-	caller := tableTestInstantiateWithImports(t, callerMod, Imports{"env.t": tbl})
+	setter := tableTestInstantiateWithImports(t, setterMod, testImports("env.t", tbl))
+	caller := tableTestInstantiateWithImports(t, callerMod, testImports("env.t", tbl))
 	defer caller.Close()
 
 	if _, err := setter.Invoke("set0"); err != nil {
@@ -234,8 +229,8 @@ func TestSharedTableOverwriteReleasesClosedProducerAtomically(t *testing.T) {
 			wasmtest.Code(tableTestBody(tableTestI32Const(0), tableTestRefFunc(0), []byte{0x26, 0x00})),
 		)),
 	)
-	setter := tableTestInstantiateWithImports(t, setterMod, Imports{"env.t": tbl})
-	clearer := tableTestInstantiateWithImports(t, sharedTableClearerModule(), Imports{"env.t": tbl})
+	setter := tableTestInstantiateWithImports(t, setterMod, testImports("env.t", tbl))
+	clearer := tableTestInstantiateWithImports(t, sharedTableClearerModule(), testImports("env.t", tbl))
 	defer clearer.Close()
 
 	if _, err := setter.Invoke("set"); err != nil {
@@ -283,7 +278,7 @@ func TestClosedProducerFuncrefInSharedGlobalIsRetained(t *testing.T) {
 		(func $f)
 		(elem declare func $f)
 		(func (export "store") (global.set 0 (ref.func $f))))`)
-	in, err := rt.Instantiate(context.Background(), producer, WithImports(Imports{"env.g": g}))
+	in, err := rt.Instantiate(context.Background(), producer, WithImports(testImports("env.g", g)))
 	if err != nil {
 		t.Fatalf("instantiate producer: %v", err)
 	}
@@ -322,7 +317,7 @@ func TestSharedGlobalHostOverwriteReleasesClosedProducer(t *testing.T) {
 		(func $f)
 		(elem declare func $f)
 		(func (export "store") (global.set 0 (ref.func $f))))`)
-	in, err := rt.Instantiate(context.Background(), producer, WithImports(Imports{"env.g": g}))
+	in, err := rt.Instantiate(context.Background(), producer, WithImports(testImports("env.g", g)))
 	if err != nil {
 		t.Fatalf("instantiate producer: %v", err)
 	}

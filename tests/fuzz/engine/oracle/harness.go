@@ -133,15 +133,14 @@ func (h *Harness) Register(reg *wago.Registrar) error {
 	if err != nil {
 		return err
 	}
-	module, err := imports.Module("__fuzz")
-	if err != nil {
-		return err
+	adapt := func(fn func(wago.HostModule, []uint64, []uint64)) func(wago.Caller, wago.HostCall) {
+		return func(caller wago.Caller, call wago.HostCall) { fn(caller, call.ParamSlots(), call.ResultSlots()) }
 	}
-	module.Func("input_i32", h.inputI32).Params(wago.ValI32).Results(wago.ValI32)
-	module.Func("input_i64", h.inputI64).Params(wago.ValI32).Results(wago.ValI64)
-	module.Func("mark", h.mark).Params(wago.ValI32)
-	module.Func("observe_i32", h.observeI32).Params(wago.ValI32, wago.ValI32)
-	module.Func("observe_i64", h.observeI64).Params(wago.ValI32, wago.ValI64)
+	imports.HostFunc("__fuzz", "input_i32", adapt(h.inputI32)).Params(wago.ValI32).Results(wago.ValI32)
+	imports.HostFunc("__fuzz", "input_i64", adapt(h.inputI64)).Params(wago.ValI32).Results(wago.ValI64)
+	imports.HostFunc("__fuzz", "mark", adapt(h.mark)).Params(wago.ValI32)
+	imports.HostFunc("__fuzz", "observe_i32", adapt(h.observeI32)).Params(wago.ValI32, wago.ValI32)
+	imports.HostFunc("__fuzz", "observe_i64", adapt(h.observeI64)).Params(wago.ValI32, wago.ValI64)
 	interceptor, err := reg.InstanceInstantiateInterceptor()
 	if err != nil {
 		return err

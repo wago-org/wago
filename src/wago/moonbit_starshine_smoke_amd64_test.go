@@ -28,10 +28,10 @@ func starshineSmokeConfig() *RuntimeConfig {
 		WithBoundsChecks(BoundsChecksExplicit)
 }
 
-func starshineSmokeImports(compiled *Compiled) Imports {
-	imports := make(Imports, len(compiled.Imports))
+func starshineSmokeImports(compiled *Compiled) *Imports {
+	imports := NewImports()
 	for _, key := range compiled.Imports {
-		imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
+		testSetImport(imports, key, slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 	}
 	return imports
 }
@@ -46,7 +46,7 @@ func TestMoonBitStarshineWasmGCSmokeCompile(t *testing.T) {
 	if len(compiled.FuncTypeID) < 10_000 || len(compiled.Imports) == 0 {
 		t.Fatalf("decoded Starshine footprint = functions %d imports %d", len(compiled.FuncTypeID), len(compiled.Imports))
 	}
-	if err := compiled.validateImportBindings(starshineSmokeImports(compiled), nil); err != nil {
+	if err := compiled.validateImportBindings(starshineSmokeImports(compiled).bindings, nil); err != nil {
 		t.Fatalf("validate MoonBit Starshine wasm-gc imports: %v", err)
 	}
 	if len(compiled.code) == 0 || len(compiled.Entry) < 10_000 {
@@ -101,7 +101,7 @@ func BenchmarkMoonBitStarshineWasmGCCompileLink(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		if err := compiled.validateImportBindings(starshineSmokeImports(compiled), nil); err != nil {
+		if err := compiled.validateImportBindings(starshineSmokeImports(compiled).bindings, nil); err != nil {
 			_ = compiled.Close()
 			b.Fatal(err)
 		}
@@ -124,7 +124,7 @@ func BenchmarkMoonBitStarshineWasmGCLinkCold(b *testing.B) {
 		}
 		imports := starshineSmokeImports(compiled)
 		b.StartTimer()
-		err = compiled.validateImportBindings(imports, nil)
+		err = compiled.validateImportBindings(imports.bindings, nil)
 		b.StopTimer()
 		if err != nil {
 			_ = compiled.Close()
@@ -145,7 +145,7 @@ func BenchmarkMoonBitStarshineWasmGCInstantiate(b *testing.B) {
 	}
 	defer compiled.Close()
 	imports := starshineSmokeImports(compiled)
-	if err := compiled.validateImportBindings(imports, nil); err != nil {
+	if err := compiled.validateImportBindings(imports.bindings, nil); err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()

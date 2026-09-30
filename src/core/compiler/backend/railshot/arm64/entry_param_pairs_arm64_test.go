@@ -31,6 +31,7 @@ func parameterTypes(n int) []wasm.ValType {
 }
 
 func TestEntryParamPairsWrapperARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const n = 32
 	m := mod1(t, parameterTypes(n), []wasm.ValType{wasm.I64}, parameterSumBody(n))
 	compile := func(on bool) (int, ModuleStats) {
@@ -71,6 +72,7 @@ func TestEntryParamPairsWrapperARM64(t *testing.T) {
 }
 
 func TestEntryParamPairsOffsetCapARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	f := fn{a: &encoderarm64.Asm{}, stats: &CodegenStats{}}
 	p := f.queueWrapperParamHome(pendingWrapperParamHome{}, 504, 504)
 	p = f.queueWrapperParamHome(p, 512, 512)
@@ -86,6 +88,7 @@ func TestEntryParamPairsOffsetCapARM64(t *testing.T) {
 }
 
 func BenchmarkEntryParamPairsARM64(b *testing.B) {
+	requireCompilerDiagnostics(b)
 	const n = 32
 	m := mod1(b, parameterTypes(n), []wasm.ValType{wasm.I64}, parameterSumBody(n))
 	for _, tc := range []struct {

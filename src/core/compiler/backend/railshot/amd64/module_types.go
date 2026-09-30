@@ -12,9 +12,12 @@ import (
 const maxModuleTypeCacheBytes = 1 << 20
 
 type moduleTypeCache struct {
-	memories []wasm.MemType
-	globals  []wasm.GlobalType
-	valid    bool
+	funcCount       int
+	funcStart       int
+	memories        []wasm.MemType
+	globals         []wasm.GlobalType
+	funcsContiguous bool
+	valid           bool
 }
 
 func buildModuleTypeCache(m *wasm.Module, bodyBytes int) moduleTypeCache {
@@ -27,7 +30,7 @@ func buildModuleTypeCache(m *wasm.Module, bodyBytes int) moduleTypeCache {
 	if bytes > maxModuleTypeCacheBytes {
 		return moduleTypeCache{}
 	}
-	c := moduleTypeCache{valid: true}
+	c := moduleTypeCache{valid: true, funcsContiguous: true}
 	if memories != 0 {
 		c.memories = make([]wasm.MemType, memories)
 	}
@@ -39,6 +42,13 @@ func buildModuleTypeCache(m *wasm.Module, bodyBytes int) moduleTypeCache {
 	for i := range m.Imports {
 		typ := m.Imports[i].Type
 		switch typ.Kind {
+		case wasm.ExternFunc:
+			if c.funcCount == 0 {
+				c.funcStart = i
+			} else if i != c.funcStart+c.funcCount {
+				c.funcsContiguous = false
+			}
+			c.funcCount++
 		case wasm.ExternMem:
 			c.memories[memAt] = typ.MemType()
 			memAt++
@@ -72,4 +82,24 @@ func (f *fn) globalType(index uint32) (wasm.GlobalType, bool) {
 		return f.sc.moduleTypes.globals[index], true
 	}
 	return f.m.GlobalTypeByIndex(index)
+}
+
+func (f *fn) importedFunctionCount() int {
+	if f.sc != nil && f.sc.moduleTypes.valid {
+		return f.sc.moduleTypes.funcCount
+	}
+	return f.m.ImportedFuncCount()
+}
+
+func (f *fn) functionSignature(index uint32) (*wasm.CompType, bool) {
+	if f.sc != nil && f.sc.moduleTypes.valid {
+		c := &f.sc.moduleTypes
+		if uint64(index) >= uint64(c.funcCount) {
+			return f.m.LocalFuncType(int(uint64(index) - uint64(c.funcCount)))
+		}
+		if c.funcsContiguous {
+			return f.m.ImportFuncType(c.funcStart + int(index))
+		}
+	}
+	return f.m.FuncSignature(index)
 }

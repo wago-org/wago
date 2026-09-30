@@ -34,7 +34,7 @@ func BenchmarkThreadsAtomicInvoke(b *testing.B) {
 			defer compiled.Close()
 			memory, _ := NewSharedMemory(1, 1)
 			defer memory.Close()
-			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+			instance, err := Instantiate(compiled, testImports("env.memory", memory))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -60,12 +60,12 @@ func BenchmarkThreadsWaitNotifyRoundTrip(b *testing.B) {
 	defer compiled.Close()
 	memory, _ := NewSharedMemory(1, 1)
 	defer memory.Close()
-	waiter, err := Instantiate(compiled, Imports{"env.memory": memory})
+	waiter, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		b.Fatal(err)
 	}
 	defer waiter.Close()
-	notifier, err := Instantiate(compiled, Imports{"env.memory": memory})
+	notifier, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func BenchmarkThreadsNativeEntry(b *testing.B) {
 		defer compiled.Close()
 		memory, _ := NewSharedMemory(1, 1)
 		defer memory.Close()
-		instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+		instance, err := Instantiate(compiled, testImports("env.memory", memory))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -179,7 +179,7 @@ func TestThreadsWarmedDirectAtomicInvokeAllocatesZero(t *testing.T) {
 	defer compiled.Close()
 	memory, _ := NewSharedMemory(1, 1)
 	defer memory.Close()
-	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	instance, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -34,7 +34,7 @@ func TestCallArityAndPreparedStack(t *testing.T) {
 	if got, err := in.Invoke("add", I32(20), I32(22)); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
 		t.Fatalf("add(20,22) = %v, %v; want 42", got, err)
 	}
-	prepared, err := in.PrepareFunction("add")
+	prepared, err := in.WasmFunc("add")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestImportedMutableGlobalUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer, err := rt.Instantiate(context.Background(), consumerCode, WithImports(Imports{"env.g": global}))
+	consumer, err := rt.Instantiate(context.Background(), consumerCode, WithImports(testImports("env.g", global)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,10 +107,10 @@ func TestCallImportedHostFunctionIndirectly(t *testing.T) {
   (func (export "call") (param i32) (result i32)
     local.get 0
     i32.const 0
-    call_indirect (type $host-type)))`), Imports{"env.host": HostFunc(func(_ HostModule, params, results []uint64) {
+    call_indirect (type $host-type)))`), testImports("env.host", slotHostFunc(func(_ HostModule, params, results []uint64) {
 		calls++
 		results[0] = I32(AsI32(params[0]) + 1)
-	})})
+	})))
 	defer in.Close()
 	got, err := in.Invoke("call", I32(41))
 	if err != nil || len(got) != 1 || AsI32(got[0]) != 42 || calls != 1 {
@@ -142,10 +142,10 @@ func TestMemoryGrowThroughHostReentry(t *testing.T) {
 	var in *Instance
 	calls := 0
 	var nestedErr error
-	in, nestedErr = Instantiate(compiled, Imports{"env.reenter": HostFunc(func(mod HostModule, _, _ []uint64) {
+	in, nestedErr = Instantiate(compiled, testImports("env.reenter", slotHostFunc(func(mod HostModule, _, _ []uint64) {
 		calls++
 		_, nestedErr = in.InvokeFromHost(context.Background(), mod, "grow")
-	})})
+	})))
 	if nestedErr != nil {
 		t.Fatalf("instantiate: %v", nestedErr)
 	}
@@ -217,11 +217,11 @@ func TestCloseWhileHostCallInFlight(t *testing.T) {
 	release := make(chan struct{})
 	var once sync.Once
 	mod := blockingImportModule()
-	in := mustInstantiateAdversarial(t, mod, Imports{"env.block": HostFunc(func(_ HostModule, params, results []uint64) {
+	in := mustInstantiateAdversarial(t, mod, testImports("env.block", slotHostFunc(func(_ HostModule, params, results []uint64) {
 		once.Do(func() { close(entered) })
 		<-release
 		results[0] = params[0]
-	})})
+	})))
 
 	callDone := make(chan error, 1)
 	go func() {
@@ -268,12 +268,12 @@ func TestNestedHostPanicDoesNotCorruptRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	producer, err := rt.Instantiate(context.Background(), producerCode, WithImports(Imports{"env.panic": HostFunc(func(_ HostModule, params, results []uint64) {
+	producer, err := rt.Instantiate(context.Background(), producerCode, WithImports(testImports("env.panic", slotHostFunc(func(_ HostModule, params, results []uint64) {
 		if AsI32(params[0]) == 0 {
 			panic(errors.New("adversarial-host-panic"))
 		}
 		results[0] = I32(AsI32(params[0]) + 1)
-	})}))
+	}))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,7 @@ func TestNestedHostPanicDoesNotCorruptRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer, err := rt.Instantiate(context.Background(), consumerCode, WithImports(Imports{"env.target": target}))
+	consumer, err := rt.Instantiate(context.Background(), consumerCode, WithImports(testImports("env.target", target)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestCloseTableOwnerOrWriterKeepsEntriesCallable(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		consumer, err := rt.Instantiate(context.Background(), mustCompileAdversarial(t, rt, tableConsumerWAT), WithImports(Imports{"env.t": table}))
+		consumer, err := rt.Instantiate(context.Background(), mustCompileAdversarial(t, rt, tableConsumerWAT), WithImports(testImports("env.t", table)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -392,7 +392,7 @@ func TestCloseTableOwnerOrWriterKeepsEntriesCallable(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		writer, err := rt.Instantiate(context.Background(), mustCompileAdversarial(t, rt, tableWriterWAT), WithImports(Imports{"env.t": table}))
+		writer, err := rt.Instantiate(context.Background(), mustCompileAdversarial(t, rt, tableWriterWAT), WithImports(testImports("env.t", table)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -415,7 +415,7 @@ func TestCloseInterruptsInfiniteInvocation(t *testing.T) {
     call $entered
     loop $again
       br $again
-    end))`), Imports{"env.entered": HostFunc(func(_ HostModule, _, _ []uint64) { close(entered) })})
+    end))`), testImports("env.entered", slotHostFunc(func(_ HostModule, _, _ []uint64) { close(entered) })))
 	callDone := make(chan error, 1)
 	go func() {
 		_, err := in.Invoke("infinite_loop")
@@ -456,7 +456,7 @@ func TestHostCallbackClosesCallingModules(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			producer, err = rt.Instantiate(context.Background(), producerCode, WithImports(Imports{"env.block": HostFunc(func(_ HostModule, params, results []uint64) {
+			producer, err = rt.Instantiate(context.Background(), producerCode, WithImports(testImports("env.block", slotHostFunc(func(_ HostModule, params, results []uint64) {
 				if tc.closeConsumer {
 					closeErr = errors.Join(closeErr, consumer.Close())
 				}
@@ -464,7 +464,7 @@ func TestHostCallbackClosesCallingModules(t *testing.T) {
 					closeErr = errors.Join(closeErr, producer.Close())
 				}
 				results[0] = params[0]
-			})}))
+			}))))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -476,7 +476,7 @@ func TestHostCallbackClosesCallingModules(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			consumer, err = rt.Instantiate(context.Background(), consumerCode, WithImports(Imports{"env.target": target}))
+			consumer, err = rt.Instantiate(context.Background(), consumerCode, WithImports(testImports("env.target", target)))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -508,12 +508,12 @@ func TestHostCallbackClosesCallingModules(t *testing.T) {
 func TestCloseWhilePreparedCallInFlight(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	in := mustInstantiateAdversarial(t, blockingImportModule(), Imports{"env.block": HostFunc(func(_ HostModule, params, results []uint64) {
+	in := mustInstantiateAdversarial(t, blockingImportModule(), testImports("env.block", slotHostFunc(func(_ HostModule, params, results []uint64) {
 		close(entered)
 		<-release
 		results[0] = params[0]
-	})})
-	prepared, err := in.PrepareFunction("call")
+	})))
+	prepared, err := in.WasmFunc("call")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,7 +541,7 @@ func TestCloseWhilePreparedCallInFlight(t *testing.T) {
 		t.Fatal("prepared call did not finish")
 	}
 	if _, err := prepared.Invoke(I32(18)); err == nil {
-		t.Fatal("prepared function remained callable after close")
+		t.Fatal("Wasm function remained callable after close")
 	}
 }
 
@@ -565,11 +565,11 @@ func TestCloseImportedOrImportingModuleWhileCallInFlight(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			producer, err := rt.Instantiate(context.Background(), producerCode, WithImports(Imports{"env.block": HostFunc(func(_ HostModule, params, results []uint64) {
+			producer, err := rt.Instantiate(context.Background(), producerCode, WithImports(testImports("env.block", slotHostFunc(func(_ HostModule, params, results []uint64) {
 				once.Do(func() { close(entered) })
 				<-release
 				results[0] = params[0]
-			})}))
+			}))))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -581,7 +581,7 @@ func TestCloseImportedOrImportingModuleWhileCallInFlight(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			consumer, err := rt.Instantiate(context.Background(), consumerCode, WithImports(Imports{"env.target": target}))
+			consumer, err := rt.Instantiate(context.Background(), consumerCode, WithImports(testImports("env.target", target)))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -706,7 +706,7 @@ func TestRepeatedRuntimeCompileInstantiateDoesNotRetainHeap(t *testing.T) {
 			}
 			owners := make([]*HostFuncRef, 32)
 			for j := range owners {
-				owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, _ []uint64) {}), FuncSig{})
+				owner, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, _, _ []uint64) {}), FuncSig{})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -792,7 +792,7 @@ func mustCompileAdversarial(t *testing.T, rt *Runtime, wat string) *Module {
 	return compiled
 }
 
-func mustInstantiateAdversarial(t *testing.T, mod []byte, imports Imports) *Instance {
+func mustInstantiateAdversarial(t *testing.T, mod []byte, imports *Imports) *Instance {
 	t.Helper()
 	compiled, err := Compile(nil, mod)
 	if err != nil {

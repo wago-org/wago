@@ -513,3 +513,17 @@ func fakeReleaseVerification(t *testing.T) {
 		return os.WriteFile(filepath.Join(dest, "go.mod"), []byte("module github.com/wago-org/wago\n"), 0644)
 	}
 }
+
+func TestFishCompletionCleanupWithoutHome(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	if got := fishCompletionPath(); got != "" {
+		t.Errorf("cleanup guessed a path without a home: %q", got)
+	}
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	if got, want := fishCompletionPath(), filepath.Join(xdg, "fish", "completions", "wago.fish"); got != want {
+		t.Errorf("cleanup = %q, want %q", got, want)
+	}
+}

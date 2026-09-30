@@ -5,9 +5,9 @@ package shared
 // planning.
 const LocalEventLimit = 32 * 1024
 
-// LocalEventInitialCapacity bounds eager tape reservation. It covers the
-// measured BLAKE/SWAR kernels without making a different large eligible body
-// dictate module-wide scratch. Append still grows fail-soft up to the hard cap.
+// LocalEventInitialCapacity bounds eager tape reservation for moderately large
+// eligible functions without letting an outlier dictate module-wide scratch.
+// Append still grows fail-soft up to the hard cap.
 const LocalEventInitialCapacity = 1152
 
 // NoLocal is stored on events which describe a boundary rather than a local.

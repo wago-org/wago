@@ -22,26 +22,26 @@ func TestLocalRootClearsOverrides(t *testing.T) {
 	}
 }
 
-func TestExperimentalPreviewIsGeneratedFromRuntimeFeatures(t *testing.T) {
-	catalog := settings.Experimental()
-	found := false
-	for _, setting := range catalog {
-		if setting.Key == "features.gc" {
-			found = true
-			if !setting.Experimental {
-				t.Fatal("WasmGC should remain experimental")
-			}
+func TestCore3FeaturesAreStableAndThreadsRemainExperimental(t *testing.T) {
+	stable := map[string]bool{}
+	for _, setting := range settings.Features() {
+		stable[setting.Key] = true
+	}
+	if !stable["features.gc"] || !stable["features.exception-handling"] {
+		t.Fatalf("stable features = %v, want WasmGC and exception handling", stable)
+	}
+	for _, setting := range settings.Experimental() {
+		if setting.Key == "features.threads" {
+			return
 		}
 	}
-	if !found {
-		t.Fatal("WasmGC preview is missing")
-	}
+	t.Fatal("threads preview is missing")
 }
 
 func TestPrintIncludesExperimentalSectionOnRequest(t *testing.T) {
 	var output bytes.Buffer
 	Print(&output, settings.Default(), true, settings.ScopeLocal, "./wago.json", []settings.Override{{Key: "features.simd", Base: "false", Value: "true"}})
-	for _, want := range []string{"Wago configuration", "WebAssembly features", "Compiler optimizations", "Experimental preview", "gc", "override"} {
+	for _, want := range []string{"Wago configuration", "WebAssembly features", "Compiler optimizations", "Experimental preview", "threads", "override"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("output missing %q:\n%s", want, output.String())
 		}

@@ -52,9 +52,9 @@ func TestRuntimeRegressionPortMultiResultCallBoundaries(t *testing.T) {
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
 		)
-		in := instantiateRegressionAPIModule(t, mod, Imports{"host.triple": HostFunc(func(_ HostModule, _ []uint64, results []uint64) {
+		in := instantiateRegressionAPIModule(t, mod, testImports("host.triple", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) {
 			results[0], results[1], results[2] = 1, 2, 3
-		})})
+		})))
 		assertRegressionAPIResults(t, in, "run", nil, []uint64{1, 2, 3})
 	})
 
@@ -106,7 +106,7 @@ func TestRuntimeRegressionPortV128TypedCallBoundaries(t *testing.T) {
 	assertRegressionAPIResults(t, in, "b", append(append([]uint64{}, v1...), v2...), append(append([]uint64{}, v1...), v2...))
 }
 
-func instantiateRegressionAPIModule(t *testing.T, mod []byte, imports Imports) *Instance {
+func instantiateRegressionAPIModule(t *testing.T, mod []byte, imports *Imports) *Instance {
 	t.Helper()
 	compiled, err := Compile(nil, mod)
 	if err != nil {

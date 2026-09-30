@@ -56,7 +56,7 @@ func testPreparedDirectTrapAfterOrdinaryEntryAMD64(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	prepared, err := in.PrepareFunction("div")
+	prepared, err := in.WasmFunc("div")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func testPreparedDirectTrapAfterOrdinaryEntryAMD64(t *testing.T) {
 	if _, err := in.Invoke("ordinary", 0x3ff8000000000000); err != nil {
 		t.Fatalf("ordinary entry: %v", err)
 	}
-	if _, err := prepared.Invoke2(I32(7), I32(0)); err == nil || !strings.Contains(err.Error(), "division by zero") {
+	if _, err := prepared.Invoke(I32(7), I32(0)); err == nil || !strings.Contains(err.Error(), "division by zero") {
 		t.Fatalf("prepared trap after ordinary entry = %v, want division-by-zero trap", err)
 	}
 }

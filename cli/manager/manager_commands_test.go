@@ -2,6 +2,7 @@ package manager
 
 import (
 	"bytes"
+	"github.com/wago-org/wago/internal/jitprofile"
 	"io"
 	"os"
 	"path/filepath"
@@ -50,6 +51,9 @@ func TestManagerCommandSurfaceCoversEveryLeaf(t *testing.T) {
 		"config list", "config diff", "config get", "config set", "config reset", "config completions",
 		"run", "module imports", "module exports", "module capabilities", "build", "validate",
 	}, "\n")
+	if jitprofile.Enabled {
+		want = strings.Replace(want, "config completions\nrun", "config completions\nprofile record\nprofile top\nprofile annotate\nprofile diff\nprofile timeline\nrun", 1)
+	}
 	if got := strings.Join(leaves, "\n"); got != want {
 		t.Fatalf("manager command leaves:\n%s\nwant:\n%s", got, want)
 	}
@@ -145,7 +149,11 @@ func TestManagerCommandRegistry(t *testing.T) {
 	for _, command := range managerRoot.Children {
 		names = append(names, command.Name)
 	}
-	if got := strings.Join(names, ","); got != "status,compile,update,version,auth,init,add,rm,plugin,self,cache,config" {
+	want := "status,compile,update,version,auth,init,add,rm,plugin,self,cache,config"
+	if jitprofile.Enabled {
+		want += ",profile"
+	}
+	if got := strings.Join(names, ","); got != want {
 		t.Fatalf("manager commands = %q", got)
 	}
 	if managerRoot.Child("plugins") == nil {

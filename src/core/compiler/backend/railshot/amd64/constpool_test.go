@@ -49,6 +49,7 @@ func TestConstPoolUsesFlatReusableStorageAMD64(t *testing.T) {
 }
 
 func TestConstPoolAttributesLiteralBytesAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	f := fn{a: &encoderamd64.Asm{B: make([]byte, 4)}, stats: &CodegenStats{}}
 	f.recordConst([]byte{1, 2, 3, 4}, 0)
 	f.emitV128ConstPool()
@@ -60,7 +61,24 @@ func TestConstPoolAttributesLiteralBytesAMD64(t *testing.T) {
 	}
 }
 
+func TestFloatConstCacheInstallsOnlyDuringPreloadAMD64(t *testing.T) {
+	f := fn{a: &encoderamd64.Asm{}}
+	st := storage{kind: stConst, typ: mtF64, cval: int64(math.Float64bits(100))}
+
+	if r, ok := f.floatConstReg(st); ok || r != regNone || len(f.fconsts) != 0 {
+		t.Fatalf("ordinary lookup = (%v, %v), cache entries = %d; want miss without installation", r, ok, len(f.fconsts))
+	}
+	r, ok := f.preloadFloatConst(st)
+	if !ok || r == regNone || len(f.fconsts) != 1 {
+		t.Fatalf("preload = (%v, %v), cache entries = %d; want one installed constant", r, ok, len(f.fconsts))
+	}
+	if cached, ok := f.floatConstReg(st); !ok || cached != r || len(f.fconsts) != 1 {
+		t.Fatalf("cached lookup = (%v, %v), cache entries = %d; want register %v", cached, ok, len(f.fconsts), r)
+	}
+}
+
 func TestModuleLiteralLedgerCountsCrossFunctionDuplicatesAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	key := literalKey{lo: 0x04030201, size: 4}
 	stats := ModuleStats{Funcs: []*CodegenStats{
 		{NativeSize: NativeFunctionSizeReport{TotalBytes: 4, InternalFunctionBytes: 4, LiteralPoolBytes: 4}, literalKeys: []literalKey{key}},
@@ -76,6 +94,7 @@ func TestModuleLiteralLedgerCountsCrossFunctionDuplicatesAMD64(t *testing.T) {
 }
 
 func TestCompactNativeSharesModuleLiteralsAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	want := math.Float64bits(3.75)
 	body := []byte{0x00, 0x44} // f64.const 1.5
 	body = binary.LittleEndian.AppendUint64(body, math.Float64bits(1.5))

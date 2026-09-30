@@ -343,11 +343,11 @@ func TestAtomicAndGCInstructionDecodeMatrix(t *testing.T) {
 	}
 }
 
-func TestNameSectionDetailSpan(t *testing.T) {
-	bad := module(custom("name", 0x01, 0x07, 0x02, 0x01, 0x01, 'b', 0x00, 0x01, 'a'))
+func TestCustomSectionNameDetailSpan(t *testing.T) {
+	bad := module(section(secCustom, 0x01, 0xff))
 	_, err := DecodeModule(bad)
 	var de *DecodeError
 	if !errors.As(err, &de) || de.Code != ErrInvalidSection || de.SectionID != secCustom || de.SectionStart != 10 || de.SectionEnd != len(bad) {
-		t.Fatalf("expected malformed name detail with custom span, got %#v / %v", de, err)
+		t.Fatalf("expected malformed custom-section name with section span, got %#v / %v", de, err)
 	}
 }

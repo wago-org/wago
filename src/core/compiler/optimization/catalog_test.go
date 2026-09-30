@@ -42,16 +42,15 @@ func TestLegacyPinsAreRemoved(t *testing.T) {
 	}
 }
 
-func TestV128ConstCacheIsAMD64Only(t *testing.T) {
-	if _, ok := Lookup("arm64", "v128-const-cache"); ok {
-		t.Fatal("arm64 still exposes the measured-low-value v128 constant cache")
-	}
-	definition, ok := Lookup("amd64", "v128-const-cache")
-	if !ok {
-		t.Fatal("amd64 lost its high-value v128 constant cache")
-	}
-	if !definition.Default {
-		t.Fatal("amd64 v128 constant cache no longer defaults on")
+func TestV128ConstCacheIsAvailableOnBothBackends(t *testing.T) {
+	for _, arch := range []string{"amd64", "arm64"} {
+		definition, ok := Lookup(arch, "v128-const-cache")
+		if !ok {
+			t.Fatalf("%s lost its v128 constant cache", arch)
+		}
+		if !definition.Default {
+			t.Fatalf("%s v128 constant cache no longer defaults on", arch)
+		}
 	}
 }
 
@@ -61,6 +60,8 @@ func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
 		"amd64": {
 			"simd-superopt",
 			"interval-region-pins",
+			"interval-next-use",
+			"linear-sum-loop",
 			"magic-div",
 			"shared-trap-body",
 			"shared-adapters",
@@ -75,8 +76,10 @@ func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
 			"shared-adapters",
 			"zero-branch",
 			"mul-add-fuse",
+			"fp-literal-pool",
 			"entry-init-elision",
 			"v128-direct-results",
+			"counted-loop-latch",
 		},
 	}
 	for arch, names := range want {

@@ -102,7 +102,7 @@ func TestTypedHostSignatureMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer compiled.Close()
-			in, err := Instantiate(compiled, Imports{"env.f": tc.typed})
+			in, err := Instantiate(compiled, testImports("env.f", tc.typed))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -139,10 +139,7 @@ func TestMixedOriginalAndExpandedTypedHostSignatures(t *testing.T) {
 	}
 	defer compiled.Close()
 	seen := int32(0)
-	in, err := Instantiate(compiled, Imports{
-		"env.transform": func(v int32) int32 { return v + 1 },
-		"env.event":     func(v int32) { seen = v },
-	})
+	in, err := Instantiate(compiled, testImports("env.transform", func(v int32) int32 { return v + 1 }, "env.event", func(v int32) { seen = v }))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +163,7 @@ func BenchmarkHostSignatureMatrix(b *testing.B) {
 				name string
 				fn   any
 			}{
-				{name: "generic", fn: CallerHostFunc(func(_ Caller, _ []uint64, results []uint64) {
+				{name: "generic", fn: callerSlotHostFunc(func(_ Caller, _ []uint64, results []uint64) {
 					for i := range results {
 						results[i] = uint64(7 + 2*i)
 					}
@@ -195,7 +192,7 @@ func BenchmarkHostSignatureMatrix(b *testing.B) {
 			}
 			for _, path := range paths {
 				b.Run(path.name, func(b *testing.B) {
-					in, err := Instantiate(compiled, Imports{"env.f": path.fn})
+					in, err := Instantiate(compiled, testImports("env.f", path.fn))
 					if err != nil {
 						b.Fatal(err)
 					}

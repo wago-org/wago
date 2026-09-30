@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -22,6 +23,8 @@ var hostControlInstances sync.Map // map[uintptr]*Instance
 // parked activation and lets the producer's bound host dispatcher construct a
 // HostModule authorized by the invocation that actually owns the GC lease.
 type hostInvocationContext struct {
+	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
+	profileInvocationState
 	id          invocationID
 	reservation *pluginOperationReservation
 	parent      context.Context
@@ -32,10 +35,15 @@ type hostInvocationContext struct {
 type resolvedHostCall func(uintptr, uint32, []uint64, []uint64, hostInvocationContext)
 
 func (c hostInvocationContext) empty() bool {
-	return c.id == 0 && c.reservation == nil && c.parent == nil
+	return c.id == 0 && c.reservation == nil && c.parent == nil && c.profileSession() == nil
 }
 
 var hostInvocationContexts sync.Map // map[uintptr]hostInvocationContext
+
+// An empty count proves the map has no active bindings. Increment before
+// publishing and decrement after restoring so readers may conservatively take
+// the map path during transitions but never miss a published context.
+var activeHostInvocationBindings atomic.Int64
 
 // hostLoopActivation belongs to one Go native-entry/host-resume loop. The
 // invocation gate keeps the root identity/reservation stable, and the parent
@@ -46,6 +54,8 @@ type hostLoopActivation struct {
 	ctrl                        uintptr
 	invocation                  hostInvocationContext
 	state                       *instancePluginState
+	entryNativeMu               *sync.Mutex
+	preparedMigration           *atomic.Bool
 	parkedNativeContextReusable bool
 }
 
@@ -103,6 +113,7 @@ func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() 
 		return func() {}
 	}
 	previous, loaded := hostInvocationContexts.Load(ctrl)
+	activeHostInvocationBindings.Add(1)
 	hostInvocationContexts.Store(ctrl, next)
 	return func() {
 		if loaded {
@@ -110,6 +121,7 @@ func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() 
 		} else {
 			hostInvocationContexts.Delete(ctrl)
 		}
+		activeHostInvocationBindings.Add(-1)
 	}
 }
 
@@ -118,12 +130,18 @@ func bindHostInvocationParent(in *Instance, parent context.Context) func() {
 		return func() {}
 	}
 	ctrl := offHeapSlicePtr(in.ctrl)
-	_, inherited := hostInvocationContexts.Load(ctrl)
+	inherited := false
+	if activeHostInvocationBindings.Load() != 0 {
+		_, inherited = hostInvocationContexts.Load(ctrl)
+	}
 	if parent == nil && !inherited {
 		return func() {}
 	}
 	invocation := currentHostInvocationContext(ctrl, in)
 	invocation.parent = parent
+	if codeProfileEnabled {
+		invocation = inheritProfileContext(invocation, parent)
+	}
 	return bindHostInvocationContext(ctrl, invocation)
 }
 
@@ -184,10 +202,11 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 			panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no live instance", ctrl)})
 		}
 	}
-	if active.hostCall == nil {
-		panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no dispatcher", ctrl)})
-	}
 	if importIdx&shared.AtomicWaitDispatchBit != 0 {
+		if codeProfileEnabled && a.invocation.profileSession() != nil {
+			span := a.profileHelper(active, "atomic-wait-helper", int(importIdx&^shared.AtomicWaitDispatchBit))
+			defer finishProfileBoundary(span, nil)
+		}
 		if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
 			panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
 		}
@@ -195,13 +214,17 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		return
 	}
 	if importIdx&gcStructDispatchBit != 0 {
+		if codeProfileEnabled && a.invocation.profileSession() != nil {
+			span := a.profileHelper(active, "gc-helper", int(importIdx&^gcStructDispatchBit))
+			defer finishProfileBoundary(span, nil)
+		}
 		// Internal GC helpers cannot re-enter Wasm or arbitrary host code. Keep the
 		// native execution lease while operating on the parked frame instead of
 		// paying the public host-call release/reacquire protocol at every GC opcode.
 		// Dispatch directly here: routing through hostCall would repeat the GC-bit
 		// branch and add an indirect closure call on every helper transition.
 		if importIdx&hostFuncRefDispatchBit != 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("invalid overlapping GC/host dispatch index %#x", importIdx)})
+			panic(gcHelperFailuref("invalid overlapping GC/host dispatch index %#x", importIdx))
 		}
 		if active.gc != nil {
 			helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)
@@ -211,7 +234,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		// Preserve the injected dispatcher path used by hardening tests and by a
 		// partially constructed instance so missing-collector diagnostics remain
 		// centralized in the configured host dispatcher.
-		active.hostCall(ctrl, importIdx, args, results, hostInvocationContext{})
+		active.callHostDispatch(ctrl, importIdx, args, results, hostInvocationContext{})
 		return
 	}
 	// Run arbitrary Go host code without the non-reentrant native execution
@@ -255,12 +278,12 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	var epoch uint64
 	var localVersion uint64
 	state := a.stateFor(active)
-	if active.usesIndependentExecution() {
-		if active.memoryDir != nil {
-			localMu = &active.memoryDir.nativeMu
-		} else {
-			localMu = &state.nativeExecutionMu
-		}
+	if active == root && a.localNativeMu() != nil {
+		localMu = a.localNativeMu()
+		localVersion = state.nativeContextVersion.Load()
+		localMu.Unlock()
+	} else if active.usesIndependentExecution() {
+		localMu = active.independentNativeExecutionMu()
 		localVersion = state.nativeContextVersion.Load()
 		localMu.Unlock()
 	} else {
@@ -276,8 +299,16 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		if gcSuspension != nil {
 			gcSuspension.resume()
 		}
+		migrated := false
 		if localMu != nil {
-			localMu.Lock()
+			if active == root {
+				migrated = reacquireRootNative(root, localMu)
+				if migrated && a.preparedMigration != nil {
+					a.preparedMigration.Store(true)
+				}
+			} else {
+				localMu.Lock()
+			}
 		} else {
 			nativeExecutionMu.Lock()
 		}
@@ -287,7 +318,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		// local lease. All root, interruption, and resume steps remain required.
 		restore := false
 		if localMu != nil {
-			restore = !active.canReuseParkedNativeContextWithState(localVersion, state)
+			restore = migrated || !active.canReuseParkedNativeContextWithState(localVersion, state)
 		} else {
 			restore = nativeExecutionEpoch != epoch
 		}
@@ -311,11 +342,31 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	// call chain cannot masquerade as this parked activation.
 	markNativeActiveState(state, id)
 	defer unmarkNativeActiveState(state, id)
+	if root != nil && root != active {
+		// The producer parked on the root's native activation and invocation gate.
+		// A callback authorized by that invocation may therefore re-enter either
+		// the active producer or the public relay without waiting on its own gate.
+		rootState := a.stateFor(root)
+		markNativeActiveState(rootState, id)
+		defer unmarkNativeActiveState(rootState, id)
+	}
 	if active != root {
 		restoreInvocationContext := bindHostInvocationContext(ctrl, invocation)
 		defer restoreInvocationContext()
 	}
-	active.hostCall(ctrl, importIdx, args, results, invocation)
+	if codeProfileEnabled && invocation.profileSession() != nil {
+		a.callProfiledHost(active, ctrl, importIdx, args, results, invocation)
+	} else {
+		active.callHostDispatch(ctrl, importIdx, args, results, invocation)
+	}
+}
+
+func (in *Instance) callHostDispatch(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
+	if in.hostCall != nil {
+		in.hostCall(ctrl, importIdx, args, results, invocation)
+		return
+	}
+	in.dispatchHostCall(ctrl, importIdx, args, results, invocation)
 }
 
 // parkIndependentHostCallback gives closure-based public host access the same
@@ -323,25 +374,65 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 // caller, so errors and panics restore ownership too. No other goroutine gains
 // callback authority; public state access still acquires the native mutex.
 type parkedIndependentHostLease struct {
-	root     *Instance
-	state    *instancePluginState
-	reusable bool
-	mu       *sync.Mutex
-	version  uint64
-	ctrl     uintptr
+	root      *Instance
+	state     *instancePluginState
+	reusable  bool
+	mu        *sync.Mutex
+	migration *atomic.Bool
+	version   uint64
+	ctrl      uintptr
 }
 
 func (a *hostLoopActivation) parkIndependentHostCallback(ctrl uintptr) parkedIndependentHostLease {
-	lease := parkedIndependentHostLease{root: a.root, state: a.state, reusable: a.parkedNativeContextReusable, mu: a.root.independentNativeExecutionMu(), version: a.state.nativeContextVersion.Load(), ctrl: ctrl}
+	mu := a.localNativeMu()
+	if mu == nil {
+		panic("wago: local host callback has no native execution lease")
+	}
+	lease := parkedIndependentHostLease{root: a.root, state: a.state, reusable: a.parkedNativeContextReusable, mu: mu, migration: a.preparedMigration, version: a.state.nativeContextVersion.Load(), ctrl: ctrl}
 	lease.mu.Unlock()
 	return lease
 }
 
 func (l parkedIndependentHostLease) resume() {
-	l.mu.Lock()
-	if !l.reusable || !l.root.canReuseParkedNativeContextWithState(l.version, l.state) {
+	migrated := reacquireRootNative(l.root, l.mu)
+	if migrated && l.migration != nil {
+		l.migration.Store(true)
+	}
+	if migrated || !l.reusable || l.version == ^uint64(0) || l.state.nativeContextVersion.Load() != l.version {
 		l.root.restoreTypedScalarNativeContext(l.ctrl)
 	}
+}
+
+// reacquireRootNative preserves the lease chosen at entry unless resource
+// publication revoked independent execution while the activation was parked.
+// In that case, transfer ownership to the process-wide lease before native code
+// can resume. The outer entry observes the revoked mode when it releases.
+func reacquireRootNative(root *Instance, localMu *sync.Mutex) bool {
+	localMu.Lock()
+	if root.threadedMemoryZero || root.usesIndependentExecution() {
+		return false
+	}
+	localMu.Unlock()
+	nativeExecutionMu.Lock()
+	nativeExecutionEpoch++
+	return true
+}
+
+// localNativeMu reports ownership separately from pending prepared revocation.
+func (a *hostLoopActivation) localNativeMu() *sync.Mutex {
+	if a == nil || a.entryNativeMu == nil {
+		return nil
+	}
+	if a.preparedMigration != nil {
+		if a.preparedMigration.Load() {
+			return nil
+		}
+		return a.entryNativeMu
+	}
+	if a.root.threadedMemoryZero || a.root.usesIndependentExecution() {
+		return a.entryNativeMu
+	}
+	return nil
 }
 
 // dispatchTypedScalarPortal is the capability-free root portal. Its callback
@@ -372,8 +463,7 @@ func (a *hostLoopActivation) dispatchTypedScalarExpandedPortal(ctrl uintptr, imp
 		return 0, false
 	}
 
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(ctrl)
 		defer resume.resume()
 		var result uint64
@@ -424,8 +514,7 @@ func (a *hostLoopActivation) dispatchTypedScalarPortal(ctrl uintptr, importIdx, 
 		return 0, false
 	}
 
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(ctrl)
 		defer resume.resume()
 		var result uint64
@@ -468,8 +557,7 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarPortal(ctrl uintptr, impor
 		return 0, false
 	}
 
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		return a.dispatchTypedScalarPortal(ctrl, importIdx, rawSlots, a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(ctrl)
@@ -493,8 +581,7 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarExpandedPortal(ctrl uintpt
 		return 0, false
 	}
 
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+	if a.localNativeMu() == nil {
 		return a.dispatchTypedScalarExpandedPortal(ctrl, importIdx, rawSlots, a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(ctrl)
@@ -521,8 +608,7 @@ func (a *hostLoopActivation) dispatchSingleHostCall(ctrl uintptr, importIdx uint
 		})
 	}
 
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(ctrl)
 		defer resume.resume()
 		call()
@@ -558,8 +644,7 @@ func (a *hostLoopActivation) dispatchSingleHostCallView(ctrl uintptr, importIdx 
 		})
 	}
 
-	flags := active.executionFlags.Load()
-	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(ctrl)
 		defer resume.resume()
 		call()
@@ -754,6 +839,9 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 	outerArgs, outerResults, outerTrap := in.serArgs, in.results, in.trap
 	outerResultVals := in.resultVals
 	outerInvokeCache, outerInvokeCacheNext := in.ic, in.icNext
+	pluginState := in.ensurePluginState()
+	outerHostInvokeCache := pluginState.hostInvokeCache
+	outerInvokeCacheExtra := pluginState.invokeCacheExtra
 	outerInstructionState := in.instructionState
 	in.eng = eng
 	in.ctrl = ctrl
@@ -763,12 +851,20 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 	in.resultVals = make([]uint64, len(outerResultVals), cap(outerResultVals))
 	in.ic = [4]invokeCache{}
 	in.icNext = 0
+	pluginState.hostInvokeCache = nil
+	if outerInvokeCacheExtra != nil {
+		pluginState.invokeCacheExtra = &invokeCacheOverflow{
+			entries: make([]invokeCache, len(outerInvokeCacheExtra.entries)),
+		}
+	}
 	in.instructionState = instructionState{}
 	if err := registerHostControl(in); err != nil {
 		in.eng, in.ctrl = outerEngine, outerCtrl
 		in.serArgs, in.results, in.trap = outerArgs, outerResults, outerTrap
 		in.resultVals = outerResultVals
 		in.ic, in.icNext = outerInvokeCache, outerInvokeCacheNext
+		pluginState.hostInvokeCache = outerHostInvokeCache
+		pluginState.invokeCacheExtra = outerInvokeCacheExtra
 		in.instructionState = outerInstructionState
 		_ = coreruntime.ReleaseEngine(eng)
 		in.lifeMu.Unlock()
@@ -797,6 +893,8 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 		in.serArgs, in.results, in.trap = outerArgs, outerResults, outerTrap
 		in.resultVals = outerResultVals
 		in.ic, in.icNext = outerInvokeCache, outerInvokeCacheNext
+		pluginState.hostInvokeCache = outerHostInvokeCache
+		pluginState.invokeCacheExtra = outerInvokeCacheExtra
 		in.instructionState = outerInstructionState
 		if err := coreruntime.ReleaseEngine(eng); err != nil {
 			in.lifeMu.Unlock()

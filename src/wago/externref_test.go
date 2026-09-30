@@ -79,7 +79,7 @@ func TestExternrefParamsResultsLocalsAndControlFlow(t *testing.T) {
 		{name: "branch", export: "branch", args: []Value{ValueI32(1), ValueExternRef(left)}, want: left},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := in.Call(context.Background(), tc.export, tc.args...)
+			got, err := in.InvokeValues(context.Background(), tc.export, tc.args...)
 			if err != nil {
 				t.Fatalf("Call: %v", err)
 			}
@@ -93,7 +93,7 @@ func TestExternrefParamsResultsLocalsAndControlFlow(t *testing.T) {
 	}
 
 	for _, name := range []string{"local_zero", "null", "block_null"} {
-		got, err := in.Call(context.Background(), name)
+		got, err := in.InvokeValues(context.Background(), name)
 		if err != nil {
 			t.Fatalf("Call %s: %v", name, err)
 		}
@@ -109,7 +109,7 @@ func TestExternrefParamsResultsLocalsAndControlFlow(t *testing.T) {
 		{name: "null", arg: ValueExternRef(NullExternRef()), want: 1},
 		{name: "non-null", arg: ValueExternRef(left), want: 0},
 	} {
-		got, err := in.Call(context.Background(), "is_null", tc.arg)
+		got, err := in.InvokeValues(context.Background(), "is_null", tc.arg)
 		if err != nil {
 			t.Fatalf("is_null(%s): %v", tc.name, err)
 		}
@@ -130,34 +130,32 @@ func TestExternrefHostImportRoundTripsObjects(t *testing.T) {
 	outputObject := &struct{ id int }{99}
 	input := issueExternref(t, rt, inputObject)
 	calls := 0
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
-		"env.echo": HostFunc(func(m HostModule, params, results []uint64) {
-			calls++
-			hostRefs, ok := m.(ExternRefHostModule)
-			if !ok {
-				t.Fatalf("host module %T does not expose externref lifecycle", m)
-			}
-			temporary := issueExternref(t, hostRefs, "temporary")
-			if !hostRefs.ReleaseExternRef(temporary) {
-				t.Fatal("host callback could not release temporary externref")
-			}
-			if _, ok := hostRefs.ExternRefValue(temporary); ok {
-				t.Fatal("released host-callback externref still resolved")
-			}
-			ref := ValueOf(ValExternRef, params[0]).ExternRef()
-			if got := resolveExternref(t, m, ref); got != inputObject {
-				t.Fatalf("host resolved %#v, want original input object", got)
-			}
-			output := issueExternref(t, m, outputObject)
-			results[0] = ValueExternRef(output).Bits()
-		}),
-	}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.echo", slotHostFunc(func(m HostModule, params, results []uint64) {
+		calls++
+		hostRefs, ok := m.(ExternRefHostModule)
+		if !ok {
+			t.Fatalf("host module %T does not expose externref lifecycle", m)
+		}
+		temporary := issueExternref(t, hostRefs, "temporary")
+		if !hostRefs.ReleaseExternRef(temporary) {
+			t.Fatal("host callback could not release temporary externref")
+		}
+		if _, ok := hostRefs.ExternRefValue(temporary); ok {
+			t.Fatal("released host-callback externref still resolved")
+		}
+		ref := ValueOf(ValExternRef, params[0]).ExternRef()
+		if got := resolveExternref(t, m, ref); got != inputObject {
+			t.Fatalf("host resolved %#v, want original input object", got)
+		}
+		output := issueExternref(t, m, outputObject)
+		results[0] = ValueExternRef(output).Bits()
+	}))))
 	if err != nil {
 		t.Fatalf("Instantiate externref host module: %v", err)
 	}
 	defer in.Close()
 
-	got, err := in.Call(context.Background(), "roundtrip", ValueExternRef(input))
+	got, err := in.InvokeValues(context.Background(), "roundtrip", ValueExternRef(input))
 	if err != nil {
 		t.Fatalf("Call roundtrip: %v", err)
 	}
@@ -189,13 +187,13 @@ func TestExternrefCrossInstanceCallsRequireSameStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile consumer: %v", err)
 	}
-	consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(Imports{"env.echo": target}))
+	consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(testImports("env.echo", target)))
 	if err != nil {
 		t.Fatalf("Instantiate same-store consumer: %v", err)
 	}
 	defer consumer.Close()
 	ref := issueExternref(t, rt, "same-store")
-	if got, err := consumer.Call(context.Background(), "roundtrip", ValueExternRef(ref)); err != nil || len(got) != 1 || got[0].ExternRef() != ref {
+	if got, err := consumer.InvokeValues(context.Background(), "roundtrip", ValueExternRef(ref)); err != nil || len(got) != 1 || got[0].ExternRef() != ref {
 		t.Fatalf("same-store cross-instance roundtrip = %v, %v", got, err)
 	}
 
@@ -205,7 +203,7 @@ func TestExternrefCrossInstanceCallsRequireSameStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile foreign consumer: %v", err)
 	}
-	if in, err := foreignRT.Instantiate(context.Background(), foreignMod, WithImports(Imports{"env.echo": target})); err == nil || !strings.Contains(err.Error(), "same reference store") {
+	if in, err := foreignRT.Instantiate(context.Background(), foreignMod, WithImports(testImports("env.echo", target))); err == nil || !strings.Contains(err.Error(), "same reference store") {
 		if in != nil {
 			_ = in.Close()
 		}
@@ -214,7 +212,7 @@ func TestExternrefCrossInstanceCallsRequireSameStore(t *testing.T) {
 
 	standaloneConsumer := MustCompile(externrefHostRoundTripModule())
 	defer standaloneConsumer.Close()
-	if in, err := Instantiate(standaloneConsumer, InstantiateOptions{Imports: Imports{"env.echo": target}}); err == nil || !strings.Contains(err.Error(), "same reference store") {
+	if in, err := Instantiate(standaloneConsumer, InstantiateOptions{Imports: testImports("env.echo", target)}); err == nil || !strings.Contains(err.Error(), "same reference store") {
 		if in != nil {
 			_ = in.Close()
 		}
@@ -229,11 +227,9 @@ func TestExternrefHostResultRejectsForgedTokenBeforeWasmReentry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile forged-result module: %v", err)
 	}
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
-		"env.bad": HostFunc(func(_ HostModule, _ []uint64, results []uint64) {
-			results[0] = 0xfeedfacecafebeef
-		}),
-	}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.bad", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) {
+		results[0] = 0xfeedfacecafebeef
+	}))))
 	if err != nil {
 		t.Fatalf("Instantiate forged-result module: %v", err)
 	}
@@ -269,7 +265,7 @@ func TestExternrefRejectsForgedCrossRuntimeAndPrivateStoreTokensBeforeExecution(
 		"forged":        ValueOf(ValExternRef, ValueExternRef(producer).Bits()^0xa5a5a5a5a5a5a5a5).ExternRef(),
 	} {
 		t.Run(name, func(t *testing.T) {
-			got, err := consumer.Call(context.Background(), "sink", ValueExternRef(ref))
+			got, err := consumer.InvokeValues(context.Background(), "sink", ValueExternRef(ref))
 			if err == nil || !strings.Contains(err.Error(), "invalid externref token") || got != nil {
 				t.Fatalf("sink = %v, %v; want invalid externref token", got, err)
 			}
@@ -284,7 +280,7 @@ func TestExternrefRejectsForgedCrossRuntimeAndPrivateStoreTokensBeforeExecution(
 	privateB := instantiateFuncrefBoundaryTestModule(t, externrefIngressMarkerModule())
 	defer privateB.Close()
 	privateRef := issueExternref(t, privateA, "private-a")
-	if got, err := privateB.Call(context.Background(), "sink", ValueExternRef(privateRef)); err == nil || !strings.Contains(err.Error(), "invalid externref token") || got != nil {
+	if got, err := privateB.InvokeValues(context.Background(), "sink", ValueExternRef(privateRef)); err == nil || !strings.Contains(err.Error(), "invalid externref token") || got != nil {
 		t.Fatalf("cross-private sink = %v, %v; want invalid externref token", got, err)
 	}
 }

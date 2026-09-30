@@ -245,6 +245,9 @@ type stack struct {
 	cold             []elemCold
 	cur              int
 	head             *elem
+	logicalDepth     uint32
+	canonicalSlots   bool
+	hasGCRoots       bool
 	nextChunkCap     uint16
 	nextGeometricCap uint16
 }
@@ -311,14 +314,18 @@ func (s *stack) initSentinel() {
 	*chunk = append((*chunk)[:0], elem{})
 	s.head = &(*chunk)[0]
 	s.head.prev, s.head.next = s.head, s.head
+	s.logicalDepth = 0
+	s.canonicalSlots = true
+	s.hasGCRoots = false
 }
 
 // reset rewinds the stack to empty for reuse by the next function in a module
 // compile, retaining every chunk's backing array so the common case allocates
 // nothing per function. The prior function's nodes are dead by the time this is
-// called (its code is already emitted), so dropping them is safe; alloc rezeroes
-// every reused slot, so no stale fields survive.
+// called (its code is already emitted). Clear each used chunk once on reuse;
+// the remaining capacity is already zero, so alloc need not clear every node.
 func (s *stack) reset() {
+	clear(s.chunks[0])
 	clear(s.cold[:cap(s.cold)])
 	s.cold = s.cold[:0]
 	s.initSentinel()
@@ -407,22 +414,33 @@ func stackArenaCapForBody(bodyLen, nLocals int) int {
 func (s *stack) alloc() *elem {
 	chunk := &s.chunks[s.cur]
 	if len(*chunk) == cap(*chunk) {
-		s.cur++
-		if s.cur == len(s.chunks) {
-			s.chunks = append(s.chunks, make([]elem, 0, int(s.nextChunkCap)))
-			s.nextChunkCap = s.nextGeometricCap
-			if s.nextGeometricCap < maxStackChunkCap {
-				s.nextGeometricCap *= 2
-				if s.nextGeometricCap > maxStackChunkCap {
-					s.nextGeometricCap = maxStackChunkCap
-				}
+		return s.allocNextChunk()
+	}
+	n := len(*chunk)
+	*chunk = (*chunk)[:n+1]
+	return &(*chunk)[n]
+}
+
+// Keep growth and clearing of reused chunks off the per-operand path.
+//
+//go:noinline
+func (s *stack) allocNextChunk() *elem {
+	s.cur++
+	if s.cur == len(s.chunks) {
+		s.chunks = append(s.chunks, make([]elem, 0, int(s.nextChunkCap)))
+		s.nextChunkCap = s.nextGeometricCap
+		if s.nextGeometricCap < maxStackChunkCap {
+			s.nextGeometricCap *= 2
+			if s.nextGeometricCap > maxStackChunkCap {
+				s.nextGeometricCap = maxStackChunkCap
 			}
 		}
-		chunk = &s.chunks[s.cur]
-		*chunk = (*chunk)[:0]
+	} else {
+		clear(s.chunks[s.cur])
 	}
-	*chunk = append(*chunk, elem{})
-	return &(*chunk)[len(*chunk)-1]
+	chunk := &s.chunks[s.cur]
+	*chunk = (*chunk)[:1]
+	return &(*chunk)[0]
 }
 
 // push appends e as the new top of the stack and returns it.
@@ -435,9 +453,55 @@ func (s *stack) push(e *elem) *elem {
 
 // pushValue pushes a concrete value with the given storage.
 func (s *stack) pushValue(st storage) *elem {
+	s.canonicalSlots = false
+	if st.hasGCRoot() {
+		s.hasGCRoots = true
+	}
+	st.setLogicalRoot(true)
 	e := s.alloc()
 	e.setElemKind(ekValue)
 	e.st = st
+	s.logicalDepth++
+	return s.push(e)
+}
+
+// pushIntegerConstant initializes a scalar literal in its zeroed arena node.
+// Logical depth and canonical-slot invalidation match pushValue. Numeric
+// constants cannot introduce a collector root.
+func (s *stack) pushIntegerConstant(typ machineType, value int64) *elem {
+	s.canonicalSlots = false
+	e := s.alloc()
+	e.st.kind = stConst
+	e.st.typ = typ
+	e.st.cval = value
+	e.st.meta = uint8(storageLogicalRoot)
+	s.logicalDepth++
+	return s.push(e)
+}
+
+// pushDeferred replaces one or two logical operands with their deferred
+// expression node. The physical operand nodes remain linked as the expression
+// tree, while the logical depth changes only by the arity reduction.
+func (s *stack) pushDeferred(e *elem) *elem {
+	s.canonicalSlots = false
+	arity := 1
+	if e.arg1 != nil {
+		arity = 2
+	}
+	if e.arg0 == nil || int(s.logicalDepth) < arity {
+		panic("amd64: deferred node has invalid logical operands")
+	}
+	if !e.arg0.st.hasLogicalRoot() || (arity == 2 && !e.arg1.st.hasLogicalRoot()) {
+		panic("amd64: deferred node operands are not stack roots")
+	}
+	e.arg0.st.setLogicalRoot(false)
+	if arity == 2 {
+		e.arg1.st.setLogicalRoot(false)
+	}
+	e.st.setLogicalRoot(true)
+	if arity == 2 {
+		s.logicalDepth--
+	}
 	return s.push(e)
 }
 
@@ -452,8 +516,27 @@ func (s *stack) back() *elem {
 // erase unlinks e from the physical list (used when a node is condensed away or
 // consumed). It does not touch parent/sibling links.
 func (s *stack) erase(e *elem) {
+	s.canonicalSlots = false
+	if e.st.hasLogicalRoot() {
+		e.st.setLogicalRoot(false)
+		if s.logicalDepth == 0 {
+			panic("amd64: negative logical operand depth")
+		}
+		s.logicalDepth--
+	}
 	e.prev.next, e.next.prev = e.next, e.prev
 	e.prev, e.next = nil, nil
+}
+
+// exposeLogicalRoot restores a deferred operand that an optimization peeled
+// from a wrapper without changing the logical stack depth.
+func (s *stack) exposeLogicalRoot(e *elem) {
+	s.canonicalSlots = false
+	if e == nil || e.st.hasLogicalRoot() {
+		panic("amd64: invalid logical operand root exposure")
+	}
+	e.st.setLogicalRoot(true)
+	s.logicalDepth++
 }
 
 // --- deferred-tree navigation (WARP: getFirstOperand / findBaseOfValentBlock) ---
@@ -482,8 +565,10 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 			f.stats.peep("const-fold")
 			v := foldBin(op, left.st.cval, right.st.cval, typ.is64())
 			f.erase(right)
-			f.erase(left)
-			f.pushValue(storage{kind: stConst, typ: typ, cval: v})
+			// The left operand is already the remaining logical root. Reuse it
+			// instead of erasing, allocating, and republishing the same position.
+			f.s.clearElemCold(left)
+			f.replaceStorage(left, storage{kind: stConst, typ: typ, cval: v})
 			return
 		}
 		if isCompare(op) {
@@ -491,8 +576,8 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 			f.stats.peep("const-fold")
 			v := foldCompare(op, left.st.cval, right.st.cval, typ.is64())
 			f.erase(right)
-			f.erase(left)
-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: v})
+			f.s.clearElemCold(left)
+			f.replaceStorage(left, storage{kind: stConst, typ: mtI32, cval: v})
 			return
 		}
 	}
@@ -523,6 +608,9 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	}
 	node := f.s.alloc()
 	node.setElemKind(ekDeferred)
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.rememberProfileNode(node)
+	}
 	node.setDeferredOp(op)
 	node.setValueType(typ)
 	if f.opt(optValueFacts) {
@@ -530,7 +618,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	}
 	node.arg0, node.arg1 = left, right
 	labelDeferredNode(node)
-	f.s.push(node)
+	f.s.pushDeferred(node)
 }
 
 func max16(a, b int16) int16 {
@@ -693,6 +781,9 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	}
 	node := f.s.alloc()
 	node.setElemKind(ekDeferred)
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.rememberProfileNode(node)
+	}
 	node.setDeferredOp(op)
 	node.setValueType(typ)
 	if f.opt(optValueFacts) {
@@ -700,5 +791,5 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	}
 	node.arg0 = operand
 	labelDeferredNode(node)
-	f.s.push(node)
+	f.s.pushDeferred(node)
 }

@@ -10,6 +10,7 @@ import (
 )
 
 func TestCompactSharedAdaptersRemapsCallsAndGCReturnsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	build := func(target int) []byte {
 		a := &a64.Asm{}
 		for i := 0; i < 4; i++ {

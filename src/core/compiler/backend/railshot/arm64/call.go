@@ -147,7 +147,7 @@ func isIntValType(t wasm.ValType) bool {
 }
 
 func preparedDirectIntSig(ft *wasm.CompType) bool {
-	if len(ft.Params) > 4 || len(ft.Results) > 1 {
+	if len(ft.Params) > len(intArgRegs) || len(ft.Results) > len(intArgRegs) || len(ft.Results) > 2 && !registerQuadResultsSupported {
 		return false
 	}
 	for _, typ := range ft.Params {
@@ -161,6 +161,40 @@ func preparedDirectIntSig(ft *wasm.CompType) bool {
 		}
 	}
 	return true
+}
+
+func preparedDirectFloatSig(ft *wasm.CompType) bool {
+	if len(ft.Params) > len(fpArgRegs) || len(ft.Results) > len(fpArgRegs) {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	return true
+}
+
+func preparedDirectMixedSig(ft *wasm.CompType) bool {
+	if len(ft.Params) > 4 || len(ft.Results) > 4 || len(ft.Results) > 2 && !sigHasMixedWideResults(ft) {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if !isIntValType(typ) && !isFloatValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isIntValType(typ) && !isFloatValType(typ) {
+			return false
+		}
+	}
+	return !preparedDirectIntSig(ft) && !preparedDirectFloatSig(ft)
 }
 
 func isFloatValType(t wasm.ValType) bool {
@@ -181,14 +215,57 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 	return true
 }
 
-// sigFitsRegABI reports whether a signature can use the register ABI: integer-
-// and float params are assigned to separate GP/V banks; one result returns in
-// X0/V0, and the deliberately limited two-result form uses X0/X1 for integers.
-func sigFitsRegABI(ft *wasm.CompType) bool {
-	if len(ft.Results) > 2 {
+func sigIsFloatOnly(ft *wasm.CompType) bool {
+	for _, typ := range ft.Params {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if !isFloatValType(typ) {
+			return false
+		}
+	}
+	return true
+}
+
+// sigHasMixedWideResults is the two-GP/two-FP register result shape also used
+// by the bounded mixed prepared bridge. Results may interleave in Wasm order.
+func sigHasMixedWideResults(ft *wasm.CompType) bool {
+	if !preparedDirectFloatSupported || len(ft.Results) < 3 || len(ft.Results) > 4 {
 		return false
 	}
-	if len(ft.Results) == 2 && (!isIntValType(ft.Results[0]) || !isIntValType(ft.Results[1])) {
+	gp, fp := 0, 0
+	for _, typ := range ft.Results {
+		switch {
+		case isIntValType(typ):
+			gp++
+		case isFloatValType(typ):
+			fp++
+		default:
+			return false
+		}
+	}
+	return gp > 0 && fp > 0 && gp <= 2 && fp <= 2
+}
+
+// sigFitsRegABI reports whether a signature can use the register ABI: integer-
+// and float params are assigned to separate GP/V banks; one result returns in
+// X0/V0; two results use independent GP/FP banks, and integer-only signatures
+// can return up to eight values in X0..X7; float-only signatures can likewise
+// return in V0..V7. Mixed results use up to two registers in each bank.
+func sigFitsRegABI(ft *wasm.CompType) bool {
+	if len(ft.Results) > len(intArgRegs) && !(preparedDirectFloatSupported && len(ft.Results) <= len(fpArgRegs) && sigIsFloatOnly(ft)) ||
+		len(ft.Results) > 2 && !registerQuadResultsSupported {
+		return false
+	}
+	if len(ft.Results) > 2 && !sigIsIntOnly(ft) && !(preparedDirectFloatSupported && sigIsFloatOnly(ft)) && !sigHasMixedWideResults(ft) {
+		return false
+	}
+	if len(ft.Results) == 2 && !((isIntValType(ft.Results[0]) && isIntValType(ft.Results[1])) ||
+		(preparedDirectFloatSupported &&
+			(isIntValType(ft.Results[0]) || isFloatValType(ft.Results[0])) &&
+			(isIntValType(ft.Results[1]) || isFloatValType(ft.Results[1])))) {
 		return false
 	}
 	gp, fp := 0, 0
@@ -270,11 +347,11 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	ft, ok := f.m.FuncSignature(idx)
+	ft, ok := f.functionSignature(idx)
 	if !ok {
 		return fmt.Errorf("call: unknown function %d", idx)
 	}
-	imported := f.m.ImportedFuncCount()
+	imported := f.importedFunctionCount()
 	if int(idx) < imported && f.customInstructions != nil {
 		if custom, ok := f.customInstructions[idx]; ok && pluginARM64Lowering(custom) != nil {
 			return f.emitCustomInstruction(custom, ft)
@@ -287,7 +364,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// so this is a pure operand-stack/local transform.
 	if !f.inlineTargets.empty() {
 		if t := f.inlineTargets.target(int(idx)); t != nil {
-			if _, ok := f.inlineBase[int(idx)]; ok && !(t.inlineInLoopIsRegressive() && f.inCallSiteLoop()) {
+			if _, ok := f.inlineBase[int(idx)]; ok && (!t.recursive() || f.inlineDepth == 0) && !(t.inlineInLoopIsRegressive() && f.inCallSiteLoop()) {
 				f.consumeGCFrameCallsite()
 				return f.inlineCall(t)
 			}
@@ -338,14 +415,14 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	ft, ok := f.m.FuncSignature(idx)
+	ft, ok := f.functionSignature(idx)
 	if !ok {
 		return fmt.Errorf("return_call: unknown function %d", idx)
 	}
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call: target %d result shape differs from caller", idx)
 	}
-	imported := f.m.ImportedFuncCount()
+	imported := f.importedFunctionCount()
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) {
 			binding := f.importBindings[idx]
@@ -542,7 +619,7 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, emitJump func()) {
 	f.a.LdpPost(LR, X3, SP, 16)
 	emitJump()
 
-	f.a.PatchBranch19(nested, f.a.Len())
+	f.patchBranch19(nested, f.a.Len())
 	f.a.SubSP64(32)
 	f.st64(SP, 0, LR)
 	f.a.LeaSP(X3, 16)
@@ -655,7 +732,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	f.a.LdpPost(LR, X3, SP, 16)
 	transfer()
 
-	f.a.PatchBranch19(nested, f.a.Len())
+	f.patchBranch19(nested, f.a.Len())
 	// [LR, caller linMem, caller context, pad, result0, result1, pad, pad].
 	f.a.SubSP64(64)
 	f.st64(SP, 0, LR)
@@ -732,7 +809,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 		return fmt.Errorf("return_call_ref: type %d exceeds bounded native identity", typeIdx)
 	}
 	refValue := f.popValue()
-	if refValue.elemKind() == ekValue && refValue.st.kind == stFuncRef && refValue.st.idx < uint32(f.m.ImportedFuncCount()) {
+	if refValue.elemKind() == ekValue && refValue.st.kind == stFuncRef && refValue.st.idx < uint32(f.importedFunctionCount()) {
 		importIndex := refValue.st.index()
 		if f.importBindings != nil && importIndex < len(f.importBindings) {
 			binding := f.importBindings[importIndex]
@@ -820,7 +897,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 			f.emitTailWrapperToRegisterJump(ft, func() { f.a.Br(X17) })
 		}
 
-		f.a.PatchBranch19(wrapper, f.a.Len())
+		f.patchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals
 		f.setDepthTypesWithGCRoots(types, gcRoots)
 	}
@@ -833,7 +910,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 		notHost := f.a.Bcond(condNE)
 		f.emitTailWrapperJump(ft, func() { f.a.Br(X17) })
 
-		f.a.PatchBranch19(notHost, f.a.Len())
+		f.patchBranch19(notHost, f.a.Len())
 		f.locals = savedLocals
 		f.setDepthTypesWithGCRoots(types, gcRoots)
 	}
@@ -913,7 +990,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	f.a.LdpPost(LR, X3, SP, 16)
 	transfer()
 
-	f.a.PatchBranch19(nested, f.a.Len())
+	f.patchBranch19(nested, f.a.Len())
 	f.a.SubSP64(64)
 	f.st64(SP, 0, LR)
 	f.st64(SP, 8, linMemReg)
@@ -979,7 +1056,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 		f.cmpRR(idx, ln, f.tableAddr64(tableIdx))
 		f.release(ln)
 		f.trapIf(condAE, trapIndirectOOB)
-		f.a.LslImm(idx, idx, 5, true)
+		f.a.LslImm64(idx, idx, 5)
 		f.a.Add64(idx, idx, tbl)
 		f.ld64(idx, idx, 8+runtime.TableEntryRefSlotOffset)
 		f.release(tbl)
@@ -1001,7 +1078,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.cmpRR(idx, ln, f.tableAddr64(tableIdx))
 	f.release(ln)
 	f.trapIf(condAE, trapIndirectOOB)
-	f.a.LslImm(idx, idx, 5, true)
+	f.a.LslImm64(idx, idx, 5)
 	f.a.Add64(idx, idx, tbl)
 	f.release(tbl)
 	code := f.allocReg(maskOf(idx))
@@ -1409,7 +1486,9 @@ func HostIndirectThunk(importIdx uint32) []byte {
 	a.AddImm32(X11, X11, 1) // count++
 	a.Store32(X11, X10, 0)
 	a.Ret()
-	a.PatchBranch19(full, a.Len())
+	if !a.PatchBranch19(full, a.Len()) {
+		panic("arm64: fixed host thunk branch exceeds instruction range")
+	}
 	a.SubImm64(X10, X1, offTrapCellPtr)
 	a.Load64(X10, X10, 0)
 	a.MovImm64(X16, uint64(runtime.TrapHostEventOverflow))
@@ -1815,6 +1894,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	allTypes := f.logicalTypes(allRoots)
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
+	belowSlots := slotsOfTypes(belowTypes)
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 	if !preservesPins {
 		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
@@ -1835,14 +1915,21 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		}
 	}
 
-	// Register-resident args (deferred/reg/pinned-local) are materialized into
-	// owned, pinned registers now (protected from the flush below); const/memory
-	// args are loaded straight into their target register afterward.
+	// Capture register args and overlapping slots before the lower stack flush.
 	moves := f.tmpMoves[:0]
 	deferred := f.tmpDeferred[:0]
 	for i := 0; i < p; i++ {
 		root := argRoots[i]
-		if root.isDeferred() || (root.elemKind() == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
+		capture := root.isDeferred()
+		if root.elemKind() == ekValue {
+			switch root.st.kind {
+			case stReg, stLocalReg, stGlobReg, stMemRef:
+				capture = true
+			case stSlot:
+				capture = root.st.slotIndex() < belowSlots
+			}
+		}
+		if capture {
 			reg := f.materialize(root) // stMemRef → emits the deferred load into its addr reg
 			f.pinned = f.pinned.add(reg)
 			moves = append(moves, regMove{dst: intArgRegs[i], src: reg})
@@ -1927,7 +2014,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.pinned = f.pinned.add(resReg)
 	}
 	var pairRes [2]Reg
-	if rN == 2 {
+	if rN == 2 && isIntValType(ft.Results[0]) {
 		if preservesPins {
 			pairRes = [2]Reg{X0, X1}
 		} else {
@@ -1938,6 +2025,14 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 			f.a.MovReg64(pairRes[1], X1)
 		}
 		f.pinned = f.pinned.add(pairRes[0]).add(pairRes[1])
+	}
+	var quadRes [8]Reg
+	if registerQuadResultsSupported && rN > 2 {
+		for i, src := range []Reg{X0, X1, X2, X3, X4, X5, X6, X7}[:rN] {
+			quadRes[i] = f.allocReg(maskOf(X0, X1, X2, X3, X4, X5, X6, X7))
+			f.a.MovReg64(quadRes[i], src)
+			f.pinned = f.pinned.add(quadRes[i])
+		}
 	}
 	if !preservesPins {
 		f.reloadLocalsForCall() // non-STACK_REG model only
@@ -1964,8 +2059,18 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.pinned = f.pinned.remove(resReg)
 		f.pushReg(resReg, mtOf(ft.Results[0]))
 	}
-	if rN == 2 {
+	if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
+		for i := range 2 {
+			f.pushFReg(Reg(i), mtOf(ft.Results[i]))
+		}
+	} else if rN == 2 {
 		for i, reg := range pairRes {
+			f.pinned = f.pinned.remove(reg)
+			f.pushReg(reg, mtOf(ft.Results[i]))
+		}
+	}
+	if registerQuadResultsSupported && rN > 2 {
+		for i, reg := range quadRes[:rN] {
 			f.pinned = f.pinned.remove(reg)
 			f.pushReg(reg, mtOf(ft.Results[i]))
 		}
@@ -1989,6 +2094,55 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	f.emitMixedRegisterCallVia(localIdx, regNone, ft)
 }
 
+// stageMixedCallSpills protects sources from the canonical stores in flushBelow.
+func (f *fn) stageMixedCallSpills(belowSlots int, belowRoots []*elem) {
+	if belowSlots == 0 {
+		return
+	}
+	nextSlot := f.spillFloor
+	for pass := 0; pass < 2; pass++ {
+		rootIndex := 0
+		canonicalSlot := 0
+		overlaps := false
+		for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
+			canonical := false
+			if rootIndex < len(belowRoots) && e == belowRoots[rootIndex] {
+				canonical = e.elemKind() == ekValue && e.st.kind == stSlot && e.st.slotIndex() == canonicalSlot
+				canonicalSlot += rootMachineType(e).stackSlots()
+				rootIndex++
+			}
+			if e.elemKind() != ekValue || e.st.kind != stSlot {
+				continue
+			}
+			from, width := e.st.slotIndex(), e.st.typ.stackSlots()
+			if pass == 0 && from+width > nextSlot {
+				nextSlot = from + width
+			}
+			// A complete root already at its destination is skipped by the flush.
+			// Deferred children and arguments never qualify for this exception.
+			if from >= belowSlots || canonical {
+				continue
+			}
+			overlaps = true
+			if pass == 0 {
+				continue
+			}
+			for i := 0; i < width; i++ {
+				f.ld64(X16, SP, f.spillOff(from+i))
+				f.st64(SP, f.spillOff(nextSlot+i), X16)
+			}
+			e.st.slot = uint32(nextSlot)
+			nextSlot += width
+		}
+		if !overlaps {
+			return
+		}
+	}
+	if nextSlot > f.maxSpill {
+		f.maxSpill = nextSlot
+	}
+}
+
 func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompType) uint32 {
 	if indirect != regNone {
 		// GP argument staging owns X0-X7. Preserve a descriptor target selected in
@@ -2002,23 +2156,20 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	allTypes := f.logicalTypes(allRoots)
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
+	// Existing and new spills must stay above slots written by flushBelow.
+	oldSpillFloor := f.spillFloor
+	belowSlots := 0
+	for _, typ := range belowTypes {
+		belowSlots += typ.stackSlots()
+	}
+	if belowSlots > f.spillFloor {
+		f.spillFloor = belowSlots
+	}
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
-	argRoots := f.tmpRoots[:0]
-	if cap(argRoots) < p {
-		argRoots = make([]*elem, p)
-	} else {
-		argRoots = argRoots[:p]
-	}
-	f.tmpRoots = argRoots
-	cur := f.s.back()
-	for i := p - 1; i >= 0; i-- {
-		argRoots[i] = cur
-		if i > 0 {
-			cur = f.s.prev(f.s.baseOfValentBlock(cur))
-		}
-	}
+	// Materializing arguments preserves these roots and does not reuse tmpRoots.
+	belowRoots, argRoots := allRoots[:d-p], allRoots[d-p:]
 	type deferredMixedArg struct {
 		target Reg
 		root   *elem
@@ -2034,11 +2185,28 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		root := argRoots[i]
 		if mt.isFloat() {
 			target := fpArgRegs[fp]
+			if root.elemKind() == ekValue && root.st.kind == stLocalReg {
+				available := ^uint32(f.blockedFRegs(0))
+				if available&(available-1) == 0 {
+					// spillLocalsForCall makes this borrowed local's home current.
+					deferred = append(deferred, deferredMixedArg{target: target, root: root, float: true})
+					f.stats.peep("mixed-call-local-home")
+					fp++
+					continue
+				}
+			}
 			if root.isDeferred() || (root.elemKind() == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
 				reg := f.materializeF(root)
-				f.fpinned = f.fpinned.add(reg)
-				fpMoves = append(fpMoves, regMove{dst: target, src: reg})
-				f.stats.peep("mixed-call-reg-arg")
+				// Keep one V register for later arguments and the below-call flush.
+				// Reload overflow arguments after the parallel register moves.
+				if uint32(f.blockedFRegs(maskOf(reg))) == ^uint32(0) {
+					f.spillF(root)
+					deferred = append(deferred, deferredMixedArg{target: target, root: root, float: true})
+				} else {
+					f.fpinned = f.fpinned.add(reg)
+					fpMoves = append(fpMoves, regMove{dst: target, src: reg})
+					f.stats.peep("mixed-call-reg-arg")
+				}
 			} else {
 				deferred = append(deferred, deferredMixedArg{target: target, root: root, float: true})
 			}
@@ -2056,6 +2224,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 			gp++
 		}
 	}
+	f.stageMixedCallSpills(belowSlots, belowRoots)
 	if p > 0 {
 		f.stats.addCallFlush()
 		f.flushBelow(argRoots[0])
@@ -2063,8 +2232,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		f.stats.addCallFlush()
 		f.flush()
 	}
-	// Dirty locals are saved after argument values have been copied into owned
-	// registers; the mixed callee may clobber every caller pin.
+	// Save dirty locals before register moves or deferred local-home loads.
 	f.spillLocalsForCall()
 	for _, m := range gpMoves {
 		f.pinned = f.pinned.remove(m.src)
@@ -2121,8 +2289,9 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 					f.a.FmovFromGpr(da.target, X16, false)
 				}
 			case stSlot:
-				f.fld(da.target, SP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
-			case stLocalRef:
+				// Scalar FP operand spill slots are eight bytes, including f32.
+				f.fld(da.target, SP, f.spillOff(da.root.st.slotIndex()), true)
+			case stLocalRef, stLocalReg:
 				f.fld(da.target, SP, f.localOff(da.root.st.index()), da.root.st.typ == mtF64)
 			}
 			continue
@@ -2137,6 +2306,13 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		}
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
+	// Eager local reloads do not use the prologue's FP/LR frame record.
+	lrSlot := -1
+	if !f.usesCalls {
+		lrSlot = f.allocSpillSlot()
+		f.st64(SP, f.spillOff(lrSlot), LR)
+	}
+	f.spillFloor = oldSpillFloor
 
 	var returnOffset uint32
 	if localIdx >= 0 {
@@ -2146,6 +2322,30 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	} else {
 		f.a.Blr(indirect)
 		returnOffset = uint32(f.a.Len())
+	}
+	mixedPair := preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) != isFloatValType(ft.Results[1])
+	mixedIntReg := regNone
+	if mixedPair {
+		mixedIntReg = f.allocReg(maskOf(X0))
+		f.a.MovReg64(mixedIntReg, X0)
+		f.pinned = f.pinned.add(mixedIntReg)
+	}
+	mixedWideInts := [2]Reg{regNone, regNone}
+	if sigHasMixedWideResults(ft) {
+		gp := 0
+		for _, typ := range ft.Results {
+			if isFloatValType(typ) {
+				continue
+			}
+			reg := f.allocReg(maskOf(X0, X1))
+			f.a.MovReg64(reg, []Reg{X0, X1}[gp])
+			f.pinned = f.pinned.add(reg)
+			mixedWideInts[gp] = reg
+			gp++
+		}
+	}
+	if lrSlot >= 0 {
+		f.ld64(LR, SP, f.spillOff(lrSlot))
 	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
@@ -2160,7 +2360,19 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 			f.pushReg(resReg, rt)
 		}
 	}
-	if rN == 2 {
+	if mixedPair {
+		for _, typ := range ft.Results {
+			if isFloatValType(typ) {
+				f.pushFReg(0, mtOf(typ))
+			} else {
+				f.pinned = f.pinned.remove(mixedIntReg)
+				f.pushReg(mixedIntReg, mtOf(typ))
+			}
+		}
+	} else if preparedDirectFloatSupported && rN == 2 && isFloatValType(ft.Results[0]) {
+		f.pushFReg(0, mtOf(ft.Results[0]))
+		f.pushFReg(1, mtOf(ft.Results[1]))
+	} else if rN == 2 {
 		// Two-int register return (X0/X1): a mixed sig has float params but may
 		// still return two integers, e.g. (f64,i64,i64)->(i64,i64).
 		var pairRes [2]Reg
@@ -2173,6 +2385,24 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
 			f.pushReg(reg, mtOf(ft.Results[i]))
+		}
+	}
+	if sigHasMixedWideResults(ft) {
+		gp, fp := 0, 0
+		for _, typ := range ft.Results {
+			if isFloatValType(typ) {
+				f.pushFReg(Reg(fp), mtOf(typ))
+				fp++
+			} else {
+				reg := mixedWideInts[gp]
+				f.pinned = f.pinned.remove(reg)
+				f.pushReg(reg, mtOf(typ))
+				gp++
+			}
+		}
+	} else if preparedDirectFloatSupported && rN > 2 {
+		for i, typ := range ft.Results {
+			f.pushFReg(Reg(i), mtOf(typ))
 		}
 	}
 	return returnOffset
@@ -2269,7 +2499,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.release(code)
 		done := f.a.Branch()
 
-		f.a.PatchBranch19(wrapper, f.a.Len())
+		f.patchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals
 		f.setDepthTypesWithGCRoots(types, gcRoots)
 		f.stripDescriptorHomeTags(home)
@@ -2279,7 +2509,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		f.emitIndirectCallHomeAware(ft, home, targetContext, rootOffsets, recordRoots)
-		f.a.PatchBranch26(done, f.a.Len())
+		f.patchBranch26(done, f.a.Len())
 		return nil
 	}
 
@@ -2332,8 +2562,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.trapIf(condAE, trapIndirectOOB) // idx >= length → cold stub
 
 	// 64-bit pointer arithmetic: entry address = tbl + idx*32 (TableEntryBytes).
-	f.a.LslImm(idxReg, idxReg, 5, true) // idx *= 32
-	f.a.Add64(idxReg, idxReg, tbl)      // idx += tbl
+	f.a.LslImm64(idxReg, idxReg, 5) // idx *= 32
+	f.a.Add64(idxReg, idxReg, tbl)  // idx += tbl
 	f.pinned = f.pinned.remove(tbl)
 	f.release(tbl)
 
@@ -2431,7 +2661,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		done := f.a.Branch()
-		f.a.PatchBranch19(wrapper, f.a.Len())
+		f.patchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals
 		f.setDepthTypesWithGCRoots(types, gcRoots)
 		f.st64(linMemReg, -int32(offSpillRegion), code)
@@ -2441,7 +2671,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.validateWrapperDescriptor(kind, home)
 		f.release(kind)
 		f.emitIndirectCallHomeAware(ft, home, targetContext, rootOffsets, recordRoots)
-		f.a.PatchBranch26(done, f.a.Len())
+		f.patchBranch26(done, f.a.Len())
 		return nil
 	}
 
@@ -2547,7 +2777,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	jdone := f.a.Branch()
 	// Cross-instance: preserve the caller's invariants (+ one alignment pad), copy
 	// the control words caller→callee, enter with X1 = callee linMem, then restore.
-	f.a.PatchBranch19(jne, f.a.Len()) // the false edge is a B.cond (imm19)
+	f.patchBranch19(jne, f.a.Len()) // the false edge is a B.cond (imm19)
 	f.a.StpPre(linMemReg, X24, SP, -16)
 	f.a.StpPre(X25, X23, SP, -16)
 	f.a.StpPre(X27, ehReg, SP, -16)
@@ -2576,8 +2806,8 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.a.LdpPost(X25, X23, SP, 16)
 	f.a.LdpPost(linMemReg, X24, SP, 16)
 	f.copyInstanceContext(linMemReg, X13)
-	f.deriveModuleGlobals()             // cross-instance callee may have written shared global cells
-	f.a.PatchBranch26(jdone, f.a.Len()) // fr.jdone is an unconditional B (imm26)
+	f.deriveModuleGlobals()           // cross-instance callee may have written shared global cells
+	f.patchBranch26(jdone, f.a.Len()) // fr.jdone is an unconditional B (imm26)
 
 	f.reloadLocalsForCall()
 	f.derivePinnedGlobals()

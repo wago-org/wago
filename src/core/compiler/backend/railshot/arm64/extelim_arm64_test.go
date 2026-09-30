@@ -16,6 +16,7 @@ import (
 //
 //	n + i64.extend_i32_u( (i32.wrap_i64 n) + 1 )
 func TestExtendElimZeroExtendsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	body := []byte{
 		0x00,       // 0 locals
 		0x20, 0x00, // local.get 0        (i64 n)
@@ -51,6 +52,7 @@ func TestExtendElimZeroExtendsArm64(t *testing.T) {
 //
 //	i64.extend_i32_u( i32.wrap_i64( i64.extend_i32_s( i32.wrap_i64 n ) ) )
 func TestExtendWrapElimArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	body := []byte{
 		0x00,       // 0 locals
 		0x20, 0x00, // local.get 0     (i64 n)

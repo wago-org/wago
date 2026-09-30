@@ -87,7 +87,7 @@ func instantiateDirectCrossTail(t testing.TB, exportName string) (*Instance, *In
 		t.Fatalf("compile direct-tail consumer: %v", err)
 	}
 	t.Cleanup(func() { _ = consumerCompiled.Close() })
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		_ = producer.Close()
 		t.Fatalf("instantiate direct-tail consumer: %v", err)
@@ -102,12 +102,10 @@ func TestStagedDirectReturnCallDynamicHostDispatch(t *testing.T) {
 	}
 	defer compiled.Close()
 	calls := 0
-	in, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": HostFunc(func(_ HostModule, params, results []uint64) {
-			calls++
-			results[0] = I32(AsI32(params[0]) + 1)
-		}),
-	}})
+	in, err := instantiateCore(compiled, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, params, results []uint64) {
+		calls++
+		results[0] = I32(AsI32(params[0]) + 1)
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +231,7 @@ func TestStagedDirectCrossInstanceReturnCallTwoIntegerResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.pair": export}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.pair", export)})
 	if err != nil {
 		producer.Close()
 		t.Fatal(err)
@@ -312,7 +310,7 @@ func instantiateDirectCrossTailFloat(t testing.TB) (*Instance, *Instance) {
 		t.Fatalf("compile float direct-tail consumer: %v", err)
 	}
 	t.Cleanup(func() { _ = consumerCompiled.Close() })
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		_ = producer.Close()
 		t.Fatalf("instantiate float direct-tail consumer: %v", err)
@@ -445,7 +443,7 @@ func TestStagedDirectCrossInstanceReturnCallFloatParamIntegerResult(t *testing.T
 		t.Fatal(err)
 	}
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		producer.Close()
 		t.Fatal(err)
@@ -519,7 +517,7 @@ func TestStagedDirectCrossInstanceReturnCallKeepsOtherFloatShapesGated(t *testin
 		t.Fatal(err)
 	}
 	defer consumerCompiled.Close()
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}}); err == nil || !strings.Contains(err.Error(), "unsupported cross-instance tail ABI") {
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)}); err == nil || !strings.Contains(err.Error(), "unsupported cross-instance tail ABI") {
 		t.Fatalf("unproven float direct-tail shape error = %v", err)
 	}
 }
@@ -570,7 +568,7 @@ func TestStagedDirectCrossInstanceReturnCallRejectsOversizedSignature(t *testing
 		t.Fatal(err)
 	}
 	defer consumerCompiled.Close()
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}}); err == nil || !strings.Contains(err.Error(), "unsupported cross-instance tail ABI") {
+	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)}); err == nil || !strings.Contains(err.Error(), "unsupported cross-instance tail ABI") {
 		t.Fatalf("oversized direct cross-tail error = %v", err)
 	}
 	if err := producer.Close(); err != nil {
@@ -598,7 +596,7 @@ func BenchmarkStagedDirectCrossInstanceReturnCallFloatParamIntegerResult(b *test
 		b.Fatal(err)
 	}
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		b.Fatal(err)
 	}

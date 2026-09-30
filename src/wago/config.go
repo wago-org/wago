@@ -109,15 +109,6 @@ const (
 		CoreFeatureSIMD |
 		CoreFeatureExtendedConst |
 		CoreFeatureExtendedConstExpressions
-
-	// defaultCore3Features contains the finalized Core 3 families that extend
-	// validation and execution without making managed-object lifetime or native
-	// exception unwinding part of every runtime's default contract.
-	defaultCore3Features = CoreFeatureTailCall |
-		CoreFeatureTypedFunctionReferences |
-		CoreFeatureMultiMemory |
-		CoreFeatureMemory64 |
-		CoreFeatureTable64
 )
 
 // IsEnabled returns true if all bits in feature are set.
@@ -169,8 +160,8 @@ var featureRegistry = []FeatureInfo{
 	{Feature: CoreFeatureExtendedConstExpressions, Name: "extended-const-expressions", Label: "Extended constant expressions", Description: "imported globals in constant expressions"},
 	{Feature: CoreFeatureTailCall, Name: "tail-call", Label: "Tail calls", Description: "return_call, return_call_indirect, and return_call_ref"},
 	{Feature: CoreFeatureTypedFunctionReferences, Name: "typed-function-references", Label: "Typed function references", Description: "typed references, call_ref, and related casts"},
-	{Feature: CoreFeatureGC, Name: "gc", Label: "Garbage collection", Description: "struct, array, i31, and managed reference instructions", Experimental: true},
-	{Feature: CoreFeatureExceptionHandling, Name: "exception-handling", Label: "Exception handling", Description: "tags, throw, and try_table", Experimental: true},
+	{Feature: CoreFeatureGC, Name: "gc", Label: "Garbage collection", Description: "struct, array, i31, and managed reference instructions"},
+	{Feature: CoreFeatureExceptionHandling, Name: "exception-handling", Label: "Exception handling", Description: "tags, throw, and try_table"},
 	{Feature: CoreFeatureMultiMemory, Name: "multi-memory", Label: "Multiple memories", Description: "multiple memories and indexed memory instructions"},
 	{Feature: CoreFeatureMemory64, Name: "memory64", Label: "64-bit memory", Description: "64-bit linear-memory limits and addresses"},
 	{Feature: CoreFeatureTable64, Name: "table64", Label: "64-bit tables", Description: "64-bit table limits and indexes"},
@@ -180,10 +171,8 @@ var featureRegistry = []FeatureInfo{
 // FeatureInfos returns every registered feature in stable display order. Its
 // default and availability fields describe the current build.
 func FeatureInfos() []FeatureInfo {
-	// Configuration describes the build's compiler surface, not the current
-	// machine's optional CPU instructions. SIMD remains configurable on a host
-	// without SIMD just as RuntimeConfig.Validate permits it; compilation still
-	// fails closed when a module actually requires unavailable instructions.
+	// Configuration describes the compiler's feature set. Validate checks the
+	// AMD64 host CPU before it compiles any module.
 	supported := platformCoreFeatures()
 	result := make([]FeatureInfo, len(featureRegistry))
 	for index, feature := range featureRegistry {
@@ -233,6 +222,7 @@ func (m BoundsCheckMode) String() string {
 // RuntimeConfig configures compilation and execution. It is immutable — every
 // WithXxx returns a copy, so a base config can be shared and specialised safely.
 type RuntimeConfig struct {
+	codeProfile              *CodeProfile
 	features                 CoreFeatures
 	optimizations            map[string]bool
 	optimizationSnapshot     railshotOptimizationSnapshot
@@ -432,7 +422,8 @@ func (c *RuntimeConfig) WithFeature(feature CoreFeatures, enabled bool) *Runtime
 
 // WithGCCodeTelemetry enables code-neutral WasmGC native-byte attribution on
 // freshly compiled modules. It does not change emitted code and is not persisted
-// in .wago artifacts.
+// in .wago artifacts. Requires a build with wago_codegenstats
+// or wago_profile; Validate rejects unavailable telemetry.
 func (c *RuntimeConfig) WithGCCodeTelemetry(enabled bool) *RuntimeConfig {
 	n := *c
 	n.gcCodeTelemetry = enabled
@@ -736,21 +727,26 @@ func platformCoreFeatures() CoreFeatures {
 	return supported
 }
 
-// defaultCoreFeatures admits selected finalized Core 3 families on backends that
-// implement the complete product. Other targets retain the portable Release 2
-// plus extended-constant surface instead of silently accepting partial support.
-// GC, exception handling, and the separate threads proposal remain opt-in.
+// defaultCoreFeatures admits the complete Core 3 release on backends that
+// implement it. Other targets retain the portable Release 2 plus
+// extended-constant surface instead of silently accepting partial support.
+// The separate threads proposal remains opt-in.
 func defaultCoreFeatures() CoreFeatures {
-	return coreFeaturesWithoutSidecar | (defaultCore3Features & platformCoreFeatures())
+	return coreFeaturesWithoutSidecar | (CoreFeaturesV3 & platformCoreFeatures())
 }
 
 func SupportedFeatures() CoreFeatures {
 	supported := platformCoreFeatures()
 	if !hostSupportsSIMD() {
+		if runtime.GOARCH == "amd64" {
+			return 0
+		}
 		supported &^= CoreFeatureSIMD
 	}
 	return supported
 }
+
+var errNativeCPUFeatures = errors.New("wago: native CPU capability detection failed")
 
 // GuardPageSupported reports whether this binary was built with guard-page
 // (signals-based) bounds checks — i.e. with -tags wago_guardpage. Use it to
@@ -793,11 +789,7 @@ func (e *UnsupportedFeatureError) Error() string {
 func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 	simd := c.features.IsEnabled(CoreFeatureSIMD)
 	if simd && !hostSupportsSIMD() {
-		// Do not admit SIMD modules on hosts that cannot execute the backend's AVX
-		// and SSSE3/SSE4.1/SSE4.2 instruction sequences: reject at compile time
-		// instead of risking SIGILL at runtime. Non-SIMD modules still compile with
-		// the default
-		// feature set on such hosts.
+		// Do not admit SIMD modules on hosts that lack the required CPU features.
 		simd = false
 	}
 	return frontend.Features{
@@ -832,6 +824,12 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 // surfacing a bad config early (e.g. at startup). A feature flag is never a
 // silent no-op.
 func (c *RuntimeConfig) Validate() error {
+	if c.gcCodeTelemetry && !compilerTelemetryEnabled {
+		return fmt.Errorf("wago: compiler telemetry requires -tags=wago_codegenstats or wago_profile")
+	}
+	if c.codeProfile != nil && !codeProfileEnabled {
+		return fmt.Errorf("wago: profiling requires a build with -tags=wago_profile")
+	}
 	if c.maxFunctionLocals == 0 || c.maxFunctionLocals > MaxFunctionLocalsLimit {
 		return fmt.Errorf("wago: max function locals must be between 1 and %d, got %d", MaxFunctionLocalsLimit, c.maxFunctionLocals)
 	}
@@ -857,13 +855,9 @@ func (c *RuntimeConfig) Validate() error {
 			}
 		}
 	}
-	if c.optimizations["bmi2-rorx"] && !hostSupportsBMI2() {
-		return fmt.Errorf("wago: bmi2-rorx optimization requires BMI2 CPU support")
+	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
+		return errNativeCPUFeatures
 	}
-	// SIMD remains configurable on builds whose host CPU cannot execute it so
-	// scalar modules still compile under the default config; the frontend clears
-	// SIMD admission for those modules. Architecture-incomplete Core 3 families,
-	// in contrast, fail here before decoding or lowering.
 	supported := platformCoreFeatures()
 	if unsupported := c.features &^ supported; unsupported != 0 {
 		return &UnsupportedFeatureError{

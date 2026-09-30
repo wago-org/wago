@@ -20,7 +20,8 @@ Use `just` as the public entry point. Run `just --list test` or
 `just --list test spec` to explore:
 
 ```sh
-just test                         # unit/integration tests + quick corpus
+just test                         # unit/integration tests + every benchmark corpus workload
+CORPUS=quick just test            # faster representative local gate
 just test corpus algorithms
 just test corpus tag:polybench
 just test corpus all              # every curated executable workload

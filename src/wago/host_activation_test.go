@@ -12,6 +12,30 @@ func TestHostInvocationContextCrossInstanceChain(t *testing.T) {
 	t.Run("concrete", func(t *testing.T) { testHostInvocationContextCrossInstanceChain(t, true) })
 }
 
+func TestHostInvocationBindingCountTracksNestedScopes(t *testing.T) {
+	frame := make([]byte, 8)
+	ctrl := offHeapSlicePtr(frame)
+	base := activeHostInvocationBindings.Load()
+	first := hostInvocationContext{id: 91, parent: context.Background()}
+	restoreFirst := bindHostInvocationContext(ctrl, first)
+	if got := activeHostInvocationBindings.Load(); got != base+1 {
+		t.Fatalf("outer binding count = %d, want %d", got, base+1)
+	}
+	second := hostInvocationContext{id: 92}
+	restoreSecond := bindHostInvocationContext(ctrl, second)
+	if got := activeHostInvocationBindings.Load(); got != base+2 {
+		t.Fatalf("nested binding count = %d, want %d", got, base+2)
+	}
+	restoreSecond()
+	if got := currentHostInvocationContext(ctrl, nil); got != first {
+		t.Fatalf("restored context = %+v, want %+v", got, first)
+	}
+	restoreFirst()
+	if got := activeHostInvocationBindings.Load(); got != base {
+		t.Fatalf("binding count after restore = %d, want %d", got, base)
+	}
+}
+
 func TestHostLoopActivationContextNesting(t *testing.T) {
 	// Model distinct parked control frames without entering native code. Real
 	// re-entry, including A -> B -> A, is covered by the chain test above.
@@ -76,7 +100,7 @@ func testHostInvocationContextCrossInstanceChain(t *testing.T, concrete bool) {
 	var rootID invocationID
 	var outer instanceHostModule
 	calls := 0
-	host := func(owner **Instance, next **Instance) HostFunc {
+	host := func(owner **Instance, next **Instance) slotHostFunc {
 		return func(mod HostModule, p, r []uint64) {
 			h, _ := resolveHostCaller(mod)
 			calls++
@@ -108,12 +132,12 @@ func testHostInvocationContextCrossInstanceChain(t *testing.T, concrete bool) {
 		}
 	}
 	var err error
-	a, err = Instantiate(c, Imports{"env.f": callerTestCallback(concrete, host(&a, &b))})
+	a, err = Instantiate(c, testImports("env.f", callerTestCallback(concrete, host(&a, &b))))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	b, err = Instantiate(c, Imports{"env.f": callerTestCallback(concrete, host(&b, &a))})
+	b, err = Instantiate(c, testImports("env.f", callerTestCallback(concrete, host(&b, &a))))
 	if err != nil {
 		t.Fatal(err)
 	}

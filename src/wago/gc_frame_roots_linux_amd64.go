@@ -177,6 +177,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string, ana
 	return modulePlan
 }
 
+//go:noinline
 func gcFrameTablesSafe(m *wasm.Module) bool {
 	if m == nil {
 		return false
@@ -264,6 +265,7 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
 	return true
 }
 
+//go:noinline
 func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctions, localFunctions int, classifier *wasm.ModuleInstructionClassifier) bool {
 	r := wasm.NewReader(body)
 	var imm wasm.InstructionImmediate
@@ -311,6 +313,7 @@ func gcFrameConservativeMasks(body []byte, localRoots int, classifier *wasm.Modu
 	return gcFrameAllLiveMasksArenaWithClassifier(body, localRoots, classifier)
 }
 
+//go:noinline
 func gcFrameHostCallABI(ft *wasm.CompType) bool {
 	if ft == nil {
 		return false

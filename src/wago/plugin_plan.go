@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -582,6 +583,9 @@ func registerPlan(immutable *immutablePlan) ([]plannedPlugin, error) {
 }
 
 func validateRegistration(reg *Registrar) error {
+	if reg.importErr != nil {
+		return reg.importErr
+	}
 	for authority := range reg.used {
 		if _, declared := reg.requests[authority]; !declared {
 			return fmt.Errorf("exercised undeclared authority %q: %w", authority, ErrPermissionDenied)
@@ -589,11 +593,14 @@ func validateRegistration(reg *Registrar) error {
 	}
 	for _, imp := range reg.imports {
 		if imp.fn == nil && imp.eventI32 == nil || imp.module == "" || imp.name == "" {
-			return fmt.Errorf("invalid host import %q", imp.key())
+			return fmt.Errorf("invalid host import %q", imp.displayName())
 		}
 		if imp.fn != nil {
+			if imp.inferred && (!slices.Equal(imp.params, imp.inferredParams) || !slices.Equal(imp.results, imp.inferredResults)) {
+				return fmt.Errorf("invalid host import %q: declared signature %v -> %v does not match callback signature %v -> %v", imp.displayName(), imp.params, imp.results, imp.inferredParams, imp.inferredResults)
+			}
 			if _, err := gateHostImport(imp.fn, reg.callGate); err != nil {
-				return fmt.Errorf("invalid host import %q: %w", imp.key(), err)
+				return fmt.Errorf("invalid host import %q: %w", imp.displayName(), err)
 			}
 		}
 	}
@@ -629,7 +636,7 @@ func validateRegistration(reg *Registrar) error {
 	seenImports := map[string]struct{}{}
 	for _, imp := range reg.imports {
 		if _, duplicate := seenImports[imp.key()]; duplicate {
-			return fmt.Errorf("duplicate host import %q: %w", imp.key(), ErrPluginConflict)
+			return fmt.Errorf("duplicate host import %q: %w", imp.displayName(), ErrPluginConflict)
 		}
 		seenImports[imp.key()] = struct{}{}
 	}
@@ -827,7 +834,7 @@ func validatePluginCommitConflicts(plan []plannedPlugin, existing map[string]*re
 				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("import module %q already owned by plugin %q: %w", imp.module, owner, ErrPluginConflict)}
 			}
 			if owner, exists := importOwner[imp.key()]; exists && policy != AllowTestOverrides {
-				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("import %q already provided by plugin %q: %w", imp.key(), owner, ErrPluginConflict)}
+				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("import %q already provided by plugin %q: %w", imp.displayName(), owner, ErrPluginConflict)}
 			}
 			moduleOwner[imp.module], importOwner[imp.key()] = id, id
 		}

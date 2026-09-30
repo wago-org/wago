@@ -38,9 +38,7 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 		defer standardMemory.Close()
 
 		unknownCompiled := stagedMultiMemoryCompile(t, modules[1])
-		if _, err := instantiateCore(unknownCompiled, InstantiateOptions{Imports: Imports{
-			"Mt.tab": table, "spectest.memory": standardMemory,
-		}}); err == nil || !strings.Contains(err.Error(), `missing imported memory "Mt.mem"`) {
+		if _, err := instantiateCore(unknownCompiled, InstantiateOptions{Imports: testImports("Mt.tab", table, "spectest.memory", standardMemory)}); err == nil || !strings.Contains(err.Error(), `missing imported memory "Mt.mem"`) {
 			unknownCompiled.Close()
 			t.Fatalf("linking0 unknown import error = %v", err)
 		}
@@ -51,7 +49,7 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 		expectIndirectTrapAt(t, producer, 9)
 
 		failedCompiled := stagedMultiMemoryCompile(t, modules[2])
-		if _, err := instantiateCore(failedCompiled, InstantiateOptions{Imports: Imports{"Mt.tab": table}}); err == nil || !strings.Contains(err.Error(), "active data segment") {
+		if _, err := instantiateCore(failedCompiled, InstantiateOptions{Imports: testImports("Mt.tab", table)}); err == nil || !strings.Contains(err.Error(), "active data segment") {
 			failedCompiled.Close()
 			t.Fatalf("linking0 data trap error = %v", err)
 		}
@@ -89,7 +87,7 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 		}
 
 		mixedCompiled := stagedMultiMemoryCompile(t, modules[1])
-		mixed, err := instantiateCore(mixedCompiled, InstantiateOptions{Imports: Imports{"Mm.load": load, "Mm.mem0": mem0}})
+		mixed, err := instantiateCore(mixedCompiled, InstantiateOptions{Imports: testImports("Mm.load", load, "Mm.mem0", mem0)})
 		if err != nil {
 			mixedCompiled.Close()
 			t.Fatalf("instantiate linking1 re-export-only function consumer: %v", err)
@@ -108,7 +106,7 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 
 		consumerCompiled := stagedMultiMemoryCompile(t, modules[2])
 		defer consumerCompiled.Close()
-		consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"Mm.mem1": mem1}})
+		consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("Mm.mem1", mem1)})
 		if err != nil {
 			t.Fatalf("instantiate linking1 memory-only consumer: %v", err)
 		}
@@ -127,7 +125,7 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 		}
 
 		boundaryCompiled := stagedMultiMemoryCompile(t, modules[3])
-		boundary, err := instantiateCore(boundaryCompiled, InstantiateOptions{Imports: Imports{"Mm.mem1": mem1}})
+		boundary, err := instantiateCore(boundaryCompiled, InstantiateOptions{Imports: testImports("Mm.mem1", mem1)})
 		if err != nil {
 			boundaryCompiled.Close()
 			t.Fatalf("instantiate linking1 final-byte data segment: %v", err)
@@ -147,7 +145,7 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 			{data: modules[5], key: "Mm.mem1", memory: mem1},
 		} {
 			compiled := stagedMultiMemoryCompile(t, tc.data)
-			if _, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{tc.key: tc.memory}}); err == nil || !strings.Contains(err.Error(), "active data segment") {
+			if _, err := instantiateCore(compiled, InstantiateOptions{Imports: testImports(tc.key, tc.memory)}); err == nil || !strings.Contains(err.Error(), "active data segment") {
 				compiled.Close()
 				t.Fatalf("linking1 bounds trap %d = %v", i, err)
 			}
@@ -175,7 +173,7 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 		}
 		consumerCompiled := stagedMultiMemoryCompile(t, modules[1])
 		defer consumerCompiled.Close()
-		consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"Mm.mem1": mem1}})
+		consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("Mm.mem1", mem1)})
 		if err != nil {
 			t.Fatalf("instantiate linking2 grow consumer: %v", err)
 		}
@@ -210,10 +208,7 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 		}
 
 		unknownCompiled := stagedMultiMemoryCompile(t, modules[1])
-		if _, err := instantiateCore(unknownCompiled, InstantiateOptions{Imports: Imports{
-			"spectest.print": HostFunc(func(HostModule, []uint64, []uint64) {}),
-			"Mm.mem1":        mem1,
-		}}); err == nil || !strings.Contains(err.Error(), `missing imported table "Mm.tab"`) {
+		if _, err := instantiateCore(unknownCompiled, InstantiateOptions{Imports: testImports("spectest.print", slotHostFunc(func(HostModule, []uint64, []uint64) {}), "Mm.mem1", mem1)}); err == nil || !strings.Contains(err.Error(), `missing imported table "Mm.tab"`) {
 			unknownCompiled.Close()
 			t.Fatalf("linking3 unknown table error = %v", err)
 		}
@@ -225,7 +220,7 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 		}
 
 		dataTrapCompiled := stagedMultiMemoryCompile(t, modules[2])
-		if _, err := instantiateCore(dataTrapCompiled, InstantiateOptions{Imports: Imports{"Mm.mem1": mem1}}); err == nil || !strings.Contains(err.Error(), "active data segment 1") {
+		if _, err := instantiateCore(dataTrapCompiled, InstantiateOptions{Imports: testImports("Mm.mem1", mem1)}); err == nil || !strings.Contains(err.Error(), "active data segment 1") {
 			dataTrapCompiled.Close()
 			t.Fatalf("linking3 second data segment error = %v", err)
 		}
@@ -241,7 +236,7 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 
 		mem1.UnsafeBytes()[0] = 0
 		unsafeContextCompiled := stagedMultiMemoryCompile(t, modules[3])
-		if _, err := instantiateCore(unsafeContextCompiled, InstantiateOptions{Imports: Imports{"Mm.mem1": mem1}}); err == nil || !strings.Contains(err.Error(), "active element segment 0 out of bounds") {
+		if _, err := instantiateCore(unsafeContextCompiled, InstantiateOptions{Imports: testImports("Mm.mem1", mem1)}); err == nil || !strings.Contains(err.Error(), "active element segment 0 out of bounds") {
 			unsafeContextCompiled.Close()
 			t.Fatalf("linking3 active-element instantiation failure = %v", err)
 		}
@@ -268,9 +263,7 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 			t.Fatal(err)
 		}
 		startTrapCompiled := stagedMultiMemoryCompile(t, modules[5])
-		if _, err := instantiateCore(startTrapCompiled, InstantiateOptions{Imports: Imports{
-			"Ms.memory": memory, "Ms.table": table,
-		}}); err == nil || !strings.Contains(err.Error(), "start function trapped") {
+		if _, err := instantiateCore(startTrapCompiled, InstantiateOptions{Imports: testImports("Ms.memory", memory, "Ms.table", table)}); err == nil || !strings.Contains(err.Error(), "start function trapped") {
 			startTrapCompiled.Close()
 			t.Fatalf("linking3 start trap error = %v", err)
 		}

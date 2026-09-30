@@ -16,7 +16,7 @@ func TestValueFactsAndRootsFitCompactStorageAMD64(t *testing.T) {
 	if got, want := unsafe.Sizeof(elem{}), uintptr(56); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(stack{}), uintptr(72); got != want {
+	if got, want := unsafe.Sizeof(stack{}), uintptr(80); got != want {
 		t.Fatalf("stack size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(trapSite{}), uintptr(12); got != want {
@@ -131,6 +131,7 @@ func TestStorageMetadataFieldsAreIndependentAMD64(t *testing.T) {
 }
 
 func TestSignedI32LoadCarriesUpperZeroFactAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
 		0x00,       // no locals
 		0x20, 0x00, // local.get 0
@@ -154,7 +155,7 @@ func TestSignedI32LoadCarriesUpperZeroFactAMD64(t *testing.T) {
 }
 
 func TestCompareCarriesBooleanFactAMD64(t *testing.T) {
-	f := fn{s: newStack()}
+	f := fn{s: newStack(), policy: currentCodegenPolicy()}
 	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
 	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
 	f.pushBinOp(opLtU, mtI32)

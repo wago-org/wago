@@ -32,12 +32,8 @@ func TestStagedOfficialReturnCallIndirect(t *testing.T) {
 			_ = compiled[i].Close()
 		}
 	}()
-	noop := HostFunc(func(HostModule, []uint64, []uint64) {})
-	standard := Imports{
-		"spectest.print": noop, "spectest.print_i32": noop, "spectest.print_i64": noop,
-		"spectest.print_f32": noop, "spectest.print_f64": noop,
-		"spectest.print_i32_f32": noop, "spectest.print_f64_f64": noop,
-	}
+	noop := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	standard := testImports("spectest.print", noop, "spectest.print_i32", noop, "spectest.print_i64", noop, "spectest.print_f32", noop, "spectest.print_f64", noop, "spectest.print_i32_f32", noop, "spectest.print_f64_f64", noop)
 
 	for _, cmd := range script.Commands {
 		counts.Commands++

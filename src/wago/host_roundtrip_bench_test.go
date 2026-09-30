@@ -116,15 +116,15 @@ func benchmarkHostRoundtripLoop(b *testing.B, callbackKind hostRoundtripCallback
 							}
 							instances := make([]*Instance, workers)
 							for i := range instances {
-								var callback any = HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })
+								var callback any = slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })
 								if callbackKind == hostRoundtripCaller {
-									callback = CallerHostFunc(func(_ Caller, p, r []uint64) { r[0] = p[0] + 1 })
+									callback = callerSlotHostFunc(func(_ Caller, p, r []uint64) { r[0] = p[0] + 1 })
 								} else if callbackKind == hostRoundtripTyped {
 									callback = func(v int32) int32 { return v + 1 }
 								} else if callbackKind == hostRoundtripCall {
 									callback = func(call HostCall) { call.SetI32(0, call.I32(0)+1) }
 								}
-								in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.step": callback}})
+								in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.step", callback)})
 								if err != nil {
 									b.Fatal(err)
 								}

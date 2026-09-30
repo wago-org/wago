@@ -126,7 +126,7 @@ func stagedGCRefEqLeaderDeltaFor(data []byte, line int) (stagedGCRefEqLeaderDelt
 }
 
 func compileStagedGCRefEqAccounting(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	if product, ok := stagedGCStructExecutionProduct(data); ok && product == stagedGCStructRefEq {

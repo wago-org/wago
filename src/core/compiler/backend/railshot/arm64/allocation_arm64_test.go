@@ -258,6 +258,7 @@ func regHeavyShiftChainArm64(t *testing.T, nParams, depth int) *wasm.Module {
 // "no register available to spill". Covers amd64's one-attempt register-pressure
 // and deep-tree-cap regressions.
 func TestExecRegHeavyShiftChainArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const nParams = 8
 	for _, depth := range []int{7, 15, 20, 40, 100} {
 		m := regHeavyShiftChainArm64(t, nParams, depth)
@@ -366,6 +367,7 @@ func brTableComputedLabelsArm64(t testing.TB, labels []uint32, def uint32) *wasm
 }
 
 func TestExecBrTableCompactTargetIDsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	labels := []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}
 	m := brTableComputedLabelsArm64(t, labels, 4)
 	var stats ModuleStats
@@ -389,6 +391,7 @@ func TestExecBrTableCompactTargetIDsArm64(t *testing.T) {
 }
 
 func TestExecBrTableCompactTargetIDsImmediateBoundaryArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, labelN := range []int{4093, 4095} {
 		t.Run(fmt.Sprint(labelN), func(t *testing.T) {
 			labels := make([]uint32, labelN)
@@ -418,6 +421,7 @@ func TestExecBrTableCompactTargetIDsImmediateBoundaryArm64(t *testing.T) {
 // dispatch to the correct arm. It also asserts the jump-table lowering actually
 // fired (not an if-chain fallback).
 func TestExecBrTableComputedIndexArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforeFinalizer := nativeFinalizerEnabled
 	beforeCompact := nativeCompactionEnabled
 	nativeFinalizerEnabled = true
@@ -453,6 +457,7 @@ func TestExecBrTableComputedIndexArm64(t *testing.T) {
 }
 
 func TestExecBrTableCompactNativeUsesSmallerLinearFormArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := brTableComputedIndexArm64(t)
 	var balancedStats, sizeStats ModuleStats
 	if _, err := CompileModuleWith(m, CompileOptions{Stats: &balancedStats}); err != nil {

@@ -107,18 +107,18 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 						in.Close()
 						t.Fatalf("read_struct Invoke = %v, %v", got, err)
 					}
-					if got, err := in.Call(context.Background(), "read_struct", ValueGCRef(structRef)); err != nil || len(got) != 1 || got[0].I32() != 42 {
+					if got, err := in.InvokeValues(context.Background(), "read_struct", ValueGCRef(structRef)); err != nil || len(got) != 1 || got[0].I32() != 42 {
 						in.Close()
 						t.Fatalf("read_struct Call = %v, %v", got, err)
 					}
-					prepared, err := in.PrepareFunction("read_struct")
+					prepared, err := in.WasmFunc("read_struct")
 					if err != nil {
 						in.Close()
 						t.Fatal(err)
 					}
 					if got, err := prepared.Invoke(structToken); err != nil || len(got) != 1 || got[0] != 42 {
 						in.Close()
-						t.Fatalf("read_struct PreparedFunction = %v, %v", got, err)
+						t.Fatalf("read_struct WasmFunc = %v, %v", got, err)
 					}
 					if got, err := in.Invoke("read_pair", structToken, structToken); err != nil || len(got) != 1 || got[0] != 84 {
 						in.Close()
@@ -137,7 +137,7 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 						in.Close()
 						t.Fatalf("cleared argument roots = %+v", state)
 					}
-					values, err := in.Call(context.Background(), "new_array")
+					values, err := in.InvokeValues(context.Background(), "new_array")
 					if err != nil || len(values) != 1 || values[0].Type() != ValAnyRef || values[0].GCRef().IsNull() || values[0].Bits()>>32 == 0 {
 						in.Close()
 						t.Fatalf("second live new_array = %v, %v; want typed opaque token", values, err)
@@ -151,7 +151,7 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 						in.Close()
 						t.Fatalf("stale GC token ingress = %v", err)
 					}
-					if got, err := in.Call(context.Background(), "read_array", ValueGCRef(arrayRef)); err != nil || len(got) != 1 || got[0].I32() != 7 {
+					if got, err := in.InvokeValues(context.Background(), "read_array", ValueGCRef(arrayRef)); err != nil || len(got) != 1 || got[0].I32() != 7 {
 						in.Close()
 						t.Fatalf("read_array Call = %v, %v", got, err)
 					}
@@ -181,14 +181,14 @@ func TestGenericGCMultiResultIssuesIndependentTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	values, err := in.Call(context.Background(), "new_pair")
+	values, err := in.InvokeValues(context.Background(), "new_pair")
 	if err != nil || len(values) != 2 || values[0].GCRef().IsNull() || values[1].GCRef().IsNull() || values[0].Bits() == values[1].Bits() {
 		t.Fatalf("new_pair = %v, %v", values, err)
 	}
-	if got, err := in.Call(context.Background(), "read_struct", ValueGCRef(values[0].GCRef())); err != nil || len(got) != 1 || got[0].I32() != 42 {
+	if got, err := in.InvokeValues(context.Background(), "read_struct", ValueGCRef(values[0].GCRef())); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("read pair struct = %v, %v", got, err)
 	}
-	if got, err := in.Call(context.Background(), "read_array", ValueGCRef(values[1].GCRef())); err != nil || len(got) != 1 || got[0].I32() != 7 {
+	if got, err := in.InvokeValues(context.Background(), "read_array", ValueGCRef(values[1].GCRef())); err != nil || len(got) != 1 || got[0].I32() != 7 {
 		t.Fatalf("read pair array = %v, %v", got, err)
 	}
 	if err := in.Close(); err != nil {

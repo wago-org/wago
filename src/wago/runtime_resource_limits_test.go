@@ -173,7 +173,7 @@ func TestMemoryPageQuotaImportedMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer memory.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.memory": memory}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.memory", memory)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestMemoryPageQuotaImportedMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tooLarge.Close()
-	if in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.memory": tooLarge}}); in != nil || !errors.Is(err, ErrResourceLimit) {
+	if in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.memory", tooLarge)}); in != nil || !errors.Is(err, ErrResourceLimit) {
 		t.Fatalf("oversized imported live memory = %v, %v; want resource limit", in, err)
 	}
 }
@@ -230,7 +230,7 @@ func TestMemoryPageQuotaImportedMemoryUsesColdPerInstanceDirectory(t *testing.T)
 	defer highMemory.Close()
 	low := compile(2)
 	defer low.Close()
-	lowInstance, err := Instantiate(low, InstantiateOptions{Imports: Imports{"env.memory": lowMemory}})
+	lowInstance, err := Instantiate(low, InstantiateOptions{Imports: testImports("env.memory", lowMemory)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestMemoryPageQuotaImportedMemoryUsesColdPerInstanceDirectory(t *testing.T)
 
 	high := compile(4)
 	defer high.Close()
-	highInstance, err := Instantiate(high, InstantiateOptions{Imports: Imports{"env.memory": highMemory}})
+	highInstance, err := Instantiate(high, InstantiateOptions{Imports: testImports("env.memory", highMemory)})
 	if err != nil {
 		t.Fatal(err)
 	}

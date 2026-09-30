@@ -51,6 +51,11 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if err != nil {
 			return err
 		}
+		var previous profileOrigin
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			previous = f.enterProfileInstruction()
+		}
+
 		f.prepareStoreForward(op)
 		f.prepareGCResolvedObject(op)
 		switch op {
@@ -87,6 +92,10 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 				err = f.emitPlain(r, op)
 			}
 		}
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.switchProfileOrigin(previous)
+		}
+
 		if err != nil {
 			return err
 		}
@@ -139,13 +148,17 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(v)})
+		if !skipDroppedLiteral(r) {
+			f.s.pushIntegerConstant(mtI32, int64(v))
+		}
 	case 0x42: // i64.const
 		v, err := r.I64()
 		if err != nil {
 			return err
 		}
-		f.pushValue(storage{kind: stConst, typ: mtI64, cval: v})
+		if !skipDroppedLiteral(r) {
+			f.s.pushIntegerConstant(mtI64, v)
+		}
 
 	case 0x20: // local.get
 		x32, err := r.U32()
@@ -153,8 +166,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
-		if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
-			return err
+		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
+				return err
+			}
 		}
 		if f.localType[x] == mtV128 {
 			next, _ := r.Peek()
@@ -166,7 +181,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		f.activateIntervalLocal(int(x), r.Offset(), true)
 		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
 			value = f.pushReg(reg, f.localType[x])
-			value.st.setGCRoot(f.gcFrameLocal(int(x)))
+			f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
 			break
 		}
 		if f.localConstZero(int(x)) {
@@ -182,11 +197,15 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		} else {
 			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: x})
 		}
-		value.st.setGCRoot(f.gcFrameLocal(int(x)))
+		f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
 			return err
+		}
+		written := int(x) + f.localBase
+		if written >= 0 && written < 64 {
+			f.localWritten |= 1 << written
 		}
 		f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
 	case 0x23: // global.get
@@ -440,13 +459,17 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		f.fconst(uint64(bits), mtF32)
+		if !skipDroppedLiteral(r) {
+			f.fconst(uint64(bits), mtF32)
+		}
 	case 0x44: // f64.const
 		bits, err := r.LEU64()
 		if err != nil {
 			return err
 		}
-		f.fconst(bits, mtF64)
+		if !skipDroppedLiteral(r) {
+			f.fconst(bits, mtF64)
+		}
 
 	case 0x2a: // f32.load
 		return f.fload(r, false)
@@ -500,25 +523,25 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x91:
 		f.fsqrt(false)
 	case 0x92:
-		if done, err := f.tryFbinLocalSet(r, f.a.VFAdd, 0x58, false); done || err != nil {
+		if done, err := f.tryFbinLocalSet(r, 0x58, false); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.VFAdd, 0x58, false)
+		f.fbin(0x58, false)
 	case 0x93:
-		if done, err := f.tryFbinLocalSet(r, f.a.VFSub, 0x5C, false); done || err != nil {
+		if done, err := f.tryFbinLocalSet(r, 0x5C, false); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.VFSub, 0x5C, false)
+		f.fbin(0x5C, false)
 	case 0x94:
-		if done, err := f.tryFbinLocalSet(r, f.a.VFMul, 0x59, false); done || err != nil {
+		if done, err := f.tryFbinLocalSet(r, 0x59, false); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.VFMul, 0x59, false)
+		f.fbin(0x59, false)
 	case 0x95:
-		if done, err := f.tryFbinLocalSet(r, f.a.VFDiv, 0x5E, false); done || err != nil {
+		if done, err := f.tryFbinLocalSet(r, 0x5E, false); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.VFDiv, 0x5E, false)
+		f.fbin(0x5E, false)
 	case 0x96:
 		f.fminmax(false, false)
 	case 0x97:
@@ -541,25 +564,25 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x9f:
 		f.fsqrt(true)
 	case 0xa0:
-		if done, err := f.tryFbinLocalSet(r, f.a.VFAdd, 0x58, true); done || err != nil {
+		if done, err := f.tryFbinLocalSet(r, 0x58, true); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.VFAdd, 0x58, true)
+		f.fbin(0x58, true)
 	case 0xa1:
-		if done, err := f.tryFbinLocalSet(r, f.a.VFSub, 0x5C, true); done || err != nil {
+		if done, err := f.tryFbinLocalSet(r, 0x5C, true); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.VFSub, 0x5C, true)
+		f.fbin(0x5C, true)
 	case 0xa2:
-		if done, err := f.tryFbinLocalSet(r, f.a.VFMul, 0x59, true); done || err != nil {
+		if done, err := f.tryFbinLocalSet(r, 0x59, true); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.VFMul, 0x59, true)
+		f.fbin(0x59, true)
 	case 0xa3:
-		if done, err := f.tryFbinLocalSet(r, f.a.VFDiv, 0x5E, true); done || err != nil {
+		if done, err := f.tryFbinLocalSet(r, 0x5E, true); done || err != nil {
 			return err
 		}
-		f.fbin(f.a.VFDiv, 0x5E, true)
+		f.fbin(0x5E, true)
 	case 0xa4:
 		f.fminmax(true, false)
 	case 0xa5:
@@ -707,7 +730,7 @@ func (f *fn) popValue() *elem {
 	return e
 }
 
-func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) (bool, error) {
+func (f *fn) tryFbinLocalSet(r *wasm.Reader, memOp byte, f64 bool) (bool, error) {
 	save := r.Offset()
 	op, ok := r.Peek()
 	if !ok || (op != 0x21 && op != 0x22) {
@@ -739,7 +762,7 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 	left := baseOfValentBlock(right).prev
 	f.realizeLocalRefs(x, left)
 	f.evictRelinquishedFReg(pr)
-	f.fbinInto(pr, vop, memOp, f64)
+	f.fbinInto(pr, memOp, f64)
 	f.markLocalDirty(x)
 	f.stats.peep("float-local-sink")
 	if op == 0x22 {
@@ -777,7 +800,7 @@ func (f *fn) emitSelect() {
 		f.pinned = f.pinned.remove(condReg)
 		f.a.TestSelf(condReg, false)
 		skip := f.a.JccPlaceholder(condNE) // cond != 0 → keep a
-		f.a.VMovdqu(aX, bX)                // cond == 0 → a = b (all 128 bits)
+		f.mov128(aX, bX)                   // cond == 0 → a = b (all 128 bits)
 		f.a.PatchRel32(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
 		f.releaseF(bX)
@@ -821,7 +844,7 @@ func (f *fn) emitSelect() {
 	f.release(condReg)
 	f.release(bReg)
 	result := f.pushReg(aReg, mtI32OrWide(w))
-	result.st.setGCRoot(gcRoot)
+	f.setStackGCRoot(result, gcRoot)
 }
 
 func mtI32OrWide(wide bool) machineType {
@@ -870,7 +893,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	f.erase(bRoot)
 	f.erase(aRoot)
 	result := f.pushReg(aReg, mtI32OrWide(w))
-	result.st.setGCRoot(gcRoot)
+	f.setStackGCRoot(result, gcRoot)
 	return true
 }
 
@@ -1044,12 +1067,12 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.evictRelinquishedFReg(pr)
 		if e.isValue() && e.st.kind == stLocalReg {
 			if e.st.reg != pr {
-				f.a.VMovdqu(pr, e.st.reg) // borrowed v128 local → direct move
+				f.mov128(pr, e.st.reg) // borrowed v128 local → direct move
 			}
 		} else {
 			xmm := f.materializeV128(e)
 			if xmm != pr {
-				f.a.VMovdqu(pr, xmm)
+				f.mov128(pr, xmm)
 			}
 			f.releaseF(xmm)
 		}
@@ -1088,7 +1111,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		xmm := f.materializeV128(e)
 		elideStore := tee && f.v128TeeOverwritten(reader, x)
 		if !elideStore {
-			f.a.VMovdquStoreDisp(RSP, f.localAddr(x), xmm)
+			f.mov128StoreDisp(RSP, f.localAddr(x), xmm)
 		} else {
 			f.stats.peep("simd-tee-store-elide")
 		}
@@ -1124,4 +1147,15 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.erase(e)
 		f.release(r)
 	}
+}
+
+// skipDroppedLiteral folds an adjacent numeric literal/drop after decoding the
+// literal's immediate. The pair cannot trap and leaves stack layout and GC roots
+// unchanged, so it needs neither an arena node nor a second opcode dispatch.
+func skipDroppedLiteral(r *wasm.Reader) bool {
+	if op, ok := r.Peek(); ok && op == 0x1a {
+		_, _ = r.Byte() // Peek established that this byte is available.
+		return true
+	}
+	return false
 }

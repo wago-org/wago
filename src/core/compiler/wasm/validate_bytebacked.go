@@ -314,11 +314,9 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 	if err != nil {
 		return err
 	}
-	if name == "name" {
-		if dm.seenName {
-			return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
-		}
-		ns, err := decodeNameSecWithBudget(payload, r.budget)
+	firstName := name == "name" && !dm.seenName
+	if firstName {
+		ns, err := decodeOptionalNameSec(payload, r.budget)
 		if err != nil {
 			return err
 		}
@@ -337,7 +335,7 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 		dm.seenBranchHints = true
 	}
 	ownedPayload := append([]byte(nil), payload...)
-	if name == "name" {
+	if firstName {
 		dm.m.RawNameSecPayload = ownedPayload
 	}
 	dm.m.Customs = append(dm.m.Customs, CustomSec{Name: name, Data: ownedPayload})
@@ -881,7 +879,7 @@ func (v *moduleValidator) validateDirectElem(e directElem) error {
 func (v *moduleValidator) validateDirectElemPayload(e directElem) (RefType, error) {
 	switch e.kind {
 	case ElemFuncs:
-		if e.hasFuncs && int(e.maxFunc) >= (len(v.importsOfKind(ExternFunc))+len(v.m.FuncTypes)) {
+		if e.hasFuncs && uint(e.maxFunc) >= uint(len(v.importsOfKind(ExternFunc))+len(v.m.FuncTypes)) {
 			return RefType{}, v.err(ErrUnknownFunc, "elem")
 		}
 		return Ref(false, AbsHeap(HeapFunc), false), nil
@@ -935,12 +933,12 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	if v.localCount > uint64(v.limits.MaxFunctionLocals) {
 		return v.verr(ErrInvalidLimitRange, "parameter and local count exceeds configured limit")
 	}
+	v.prepareLocalLookup()
 	for _, run := range body.locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {
 			return err
 		}
 	}
-	v.prepareLocalLookup()
 	v.resetLocalInitialization()
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
 	v.rd.reset(body.body)
@@ -1317,7 +1315,7 @@ func (v *funcValidator) directEnd() error {
 			if len(v.vals) != f.ifThenHeight {
 				return v.verr(ErrTypeMismatch, "if branch heights")
 			}
-		} else if !v.sameValTypes(f.in, f.out) {
+		} else if !v.matchValTypes(f.in, f.out) {
 			return v.verr(ErrTypeMismatch, "if without else")
 		}
 	}

@@ -126,7 +126,7 @@ func (v *funcValidator) validateCatchPayload(c Catch) error {
 	}
 	var params []ValType
 	if c.Kind == CatchTag || c.Kind == CatchRef {
-		if int(c.Tag) >= (len(v.importsOfKind(ExternTag)) + len(v.m.Tags)) {
+		if uint(c.Tag) >= uint(len(v.importsOfKind(ExternTag))+len(v.m.Tags)) {
 			return v.verr(ErrUnknownTag, "catch")
 		}
 		ft, ok := v.tagFuncType(uint32(c.Tag))
@@ -350,17 +350,20 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		}
 		v.push(I32)
 		return nil
-	case InstrAnyConvertExtern:
-		if err := v.popExpect(ExternRef); err != nil {
+	case InstrAnyConvertExtern, InstrExternConvertAny:
+		operand, result := ExternRef, AnyRef
+		if in.Kind == InstrExternConvertAny {
+			operand, result = AnyRef, ExternRef
+		}
+		x, err := v.pop()
+		if err != nil {
 			return err
 		}
-		v.push(AnyRef)
-		return nil
-	case InstrExternConvertAny:
-		if err := v.popExpect(AnyRef); err != nil {
-			return err
+		if !x.unknown && !v.subtype(x.t, operand) {
+			return v.verr(ErrTypeMismatch, x.t.String()+" is not "+operand.String())
 		}
-		v.push(ExternRef)
+		// An unreachable stack operand can use the non-null input type.
+		v.push(RefVal(result.Ref().WithNullable(!x.unknown && x.t.Ref().Nullable())))
 		return nil
 	case InstrRefTest, InstrRefTestDesc:
 		x, err := v.pop()
@@ -447,7 +450,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "struct.get")
 		}
-		if int(in.Index2) >= len(fields) {
+		if uint(in.Index2) >= uint(len(fields)) {
 			return v.verr(ErrTypeMismatch, "unknown field")
 		}
 		f := fields[in.Index2]
@@ -465,7 +468,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "struct.set")
 		}
-		if int(in.Index2) >= len(fields) {
+		if uint(in.Index2) >= uint(len(fields)) {
 			return v.verr(ErrTypeMismatch, "unknown field")
 		}
 		f := fields[in.Index2]

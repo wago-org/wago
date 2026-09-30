@@ -165,87 +165,83 @@ func TestManagedForkContext(t *testing.T) {
 			defer mod.Close()
 			started, resumed, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			defer close(release)
-			imports := Imports{
-				"env.start": gate.wrapCaller(func(caller Caller, _, out []uint64) {
-					if parent == nil {
-						out[0] = 0
+			imports := testImports("env.start", gate.wrapCaller(func(caller Caller, _, out []uint64) {
+				if parent == nil {
+					out[0] = 0
+					return
+				}
+				if caller.invocationID == 0 || !caller.reservation.allows(gate) {
+					t.Error("start lacks invocation identity or reservation")
+				}
+				if longStart {
+					if activeHostInvocationContext(caller.in).parent != forkCtx {
+						t.Error("start lost its parent context")
+					}
+					close(started)
+					select {
+					case <-release:
+					case <-forkCtx.Done():
+					case <-time.After(10 * time.Second):
+						t.Error("start callback timed out")
 						return
 					}
-					if caller.invocationID == 0 || !caller.reservation.allows(gate) {
-						t.Error("start lacks invocation identity or reservation")
-					}
-					if longStart {
-						if activeHostInvocationContext(caller.in).parent != forkCtx {
-							t.Error("start lost its parent context")
-						}
-						close(started)
-						select {
-						case <-release:
-						case <-forkCtx.Done():
-						case <-time.After(10 * time.Second):
-							t.Error("start callback timed out")
-							return
-						}
-						out[0] = 1
-					} else {
-						out[0] = 0
-					}
-				}),
-				"env.resumed": gate.wrapCaller(func(Caller, []uint64, []uint64) {
-					// Guest instructions ran after env.start returned, before
-					// entering this second callback and the native loop.
-					close(resumed)
-				}),
-				"env.fork": gate.wrapCaller(func(caller Caller, _, _ []uint64) {
-					before := managedReservations(manager, gate)
+					out[0] = 1
+				} else {
+					out[0] = 0
+				}
+			}), "env.resumed", gate.wrapCaller(func(Caller, []uint64, []uint64) {
+				// Guest instructions ran after env.start returned, before
+				// entering this second callback and the native loop.
+				close(resumed)
+			}), "env.fork", gate.wrapCaller(func(caller Caller, _, _ []uint64) {
+				before := managedReservations(manager, gate)
+				if mode == "deadline" {
+					var stop context.CancelFunc
+					forkCtx, stop = context.WithTimeout(context.Background(), 250*time.Millisecond)
+					defer stop()
+				}
+				child, err := manager.Fork(forkCtx, caller)
+				wantCanceled := mode == "canceled" || mode == "before-create" || longStart || afterStart
+				if wantCanceled {
+					want := context.Canceled
 					if mode == "deadline" {
-						var stop context.CancelFunc
-						forkCtx, stop = context.WithTimeout(context.Background(), 250*time.Millisecond)
-						defer stop()
+						want = context.DeadlineExceeded
 					}
-					child, err := manager.Fork(forkCtx, caller)
-					wantCanceled := mode == "canceled" || mode == "before-create" || longStart || afterStart
-					if wantCanceled {
-						want := context.Canceled
-						if mode == "deadline" {
-							want = context.DeadlineExceeded
-						}
-						if child != nil || !errors.Is(err, want) {
-							t.Errorf("Fork = %v, %v; want %v", child, err, want)
-						}
-						if errors.Is(err, ErrCallbackPanic) != (mode == "after-start-close-panic") {
-							t.Errorf("Fork close error = %v", err)
-						}
-					} else if mode == "unsupported-scheduler" {
-						if child != nil || err == nil || !strings.Contains(err.Error(), "requires a concurrent scheduler") {
-							t.Errorf("Fork = %v, %v; want unsupported scheduler", child, err)
-						}
-					} else if mode == "mapping-limit" {
-						if child != nil || !errors.Is(err, ErrResourceLimit) {
-							t.Errorf("Fork = %v, %v; want mapping limit", child, err)
-						}
-					} else if err != nil || child == nil {
-						t.Errorf("Fork = %v, %v", child, err)
+					if child != nil || !errors.Is(err, want) {
+						t.Errorf("Fork = %v, %v; want %v", child, err, want)
 					}
-					if child != nil {
-						released := make(chan struct{})
-						child.Instance().referenceLifetime().afterPhysicalRelease(func() { close(released) })
-						if child.Instance().currentInvocationID() != 0 {
-							t.Error("start identity leaked")
-						}
-						if err := child.Close(); err != nil {
-							t.Error(err)
-						}
-						if err := child.WaitClosed(); err != nil {
-							t.Error(err)
-						}
-						awaitCloseSignal(t, released)
+					if errors.Is(err, ErrCallbackPanic) != (mode == "after-start-close-panic") {
+						t.Errorf("Fork close error = %v", err)
 					}
-					if after := managedReservations(manager, gate); after != before {
-						t.Errorf("reservations: before=%+v after=%+v", before, after)
+				} else if mode == "unsupported-scheduler" {
+					if child != nil || err == nil || !strings.Contains(err.Error(), "requires a concurrent scheduler") {
+						t.Errorf("Fork = %v, %v; want unsupported scheduler", child, err)
 					}
-				}),
-			}
+				} else if mode == "mapping-limit" {
+					if child != nil || !errors.Is(err, ErrResourceLimit) {
+						t.Errorf("Fork = %v, %v; want mapping limit", child, err)
+					}
+				} else if err != nil || child == nil {
+					t.Errorf("Fork = %v, %v", child, err)
+				}
+				if child != nil {
+					released := make(chan struct{})
+					child.Instance().referenceLifetime().afterPhysicalRelease(func() { close(released) })
+					if child.Instance().currentInvocationID() != 0 {
+						t.Error("start identity leaked")
+					}
+					if err := child.Close(); err != nil {
+						t.Error(err)
+					}
+					if err := child.WaitClosed(); err != nil {
+						t.Error(err)
+					}
+					awaitCloseSignal(t, released)
+				}
+				if after := managedReservations(manager, gate); after != before {
+					t.Errorf("reservations: before=%+v after=%+v", before, after)
+				}
+			}))
 			owned, err := manager.Instantiate(nil, mod, WithImports(imports))
 			if err != nil {
 				t.Fatal(err)
@@ -376,7 +372,7 @@ func TestManagedTableReentryCleanup(t *testing.T) {
 	var hostTrap bool
 	trapErr := errors.New("managed host trap")
 	var callbacks int
-	owned, err := manager.Instantiate(nil, mod, WithImports(Imports{"env.host": CallerHostFunc(func(caller Caller, _, _ []uint64) {
+	owned, err := manager.Instantiate(nil, mod, WithImports(testImports("env.host", callerSlotHostFunc(func(caller Caller, _, _ []uint64) {
 		callbacks++
 		if caller.invocationID == 0 || caller.invocationID == lastID {
 			t.Error("missing or reused invocation identity")
@@ -401,7 +397,7 @@ func TestManagedTableReentryCleanup(t *testing.T) {
 		if hostTrap {
 			panic(HostTrap{Err: trapErr})
 		}
-	})}))
+	}))))
 	if err != nil {
 		t.Fatal(err)
 	}

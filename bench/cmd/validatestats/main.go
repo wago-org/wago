@@ -85,8 +85,8 @@ func main() {
 		}
 		printResult(res)
 		moduleAvgs = append(moduleAvgs, res.avg)
-		for i, d := range res.durations {
-			corpusRunTotals[i] += d
+		for i := range corpusRunTotals {
+			corpusRunTotals[i] += res.durations[i]
 		}
 	}
 

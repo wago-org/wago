@@ -408,21 +408,83 @@ func (a *Asm) StrD(base Reg, disp int32, src Reg) {
 	}
 }
 
+// baseDispImmediate forms dst = base + signed disp when one ADD/SUB fits.
+func (a *Asm) baseDispImmediate(dst, base Reg, disp int32) bool {
+	magnitude := int64(disp)
+	op := uint32(0x91000000)
+	if magnitude < 0 {
+		magnitude = -magnitude
+		op = 0xD1000000
+	}
+	if magnitude <= 0xfff {
+		a.addSubImm(op, dst, base, uint32(magnitude))
+		return true
+	}
+	if magnitude&0xfff == 0 && magnitude>>12 <= 0xfff {
+		a.addSubImmLSL12(op, dst, base, uint32(magnitude))
+		return true
+	}
+	return false
+}
+
+// materializeBaseDisp forms dst = base + signed disp. X17 is needed only
+// when X16 already holds the base. Extended-register ADD/SUB also accepts SP.
+func (a *Asm) materializeBaseDisp(dst, base Reg, disp int32) {
+	if a.baseDispImmediate(dst, base, disp) {
+		return
+	}
+	scratch := X16
+	if base == X16 {
+		scratch = X17
+	}
+	magnitude := int64(disp)
+	op := uint32(0x8B206000) // ADD dst, base, scratch, UXTX #0
+	if magnitude < 0 {
+		magnitude = -magnitude
+		op = 0xCB206000
+	}
+	a.MovImm64(scratch, uint64(magnitude))
+	a.word(op | r(scratch)<<16 | r(base)<<5 | r(dst))
+}
+
 // LdrQ / StrQ are 128-bit spill load/store with a signed byte displacement,
 // matching the backend's amd64-legacy call shape (dst,base,disp)/(base,disp,src).
 func (a *Asm) LdrQ(dst, base Reg, disp int32) {
 	if a.ldStrScaled(0x3DC00000, 4, dst, base, uint32(disp)) {
 		return
 	}
-	a.AddImm64(X16, base, uint32(disp))
-	a.ldStrScaled(0x3DC00000, 4, dst, X16, 0)
+	if disp >= -256 && disp <= 255 {
+		a.word(0x3CC00000 | (uint32(disp)&0x1ff)<<12 | r(base)<<5 | r(dst))
+		return
+	}
+	if a.baseDispImmediate(X16, base, disp) {
+		a.ldStrScaled(0x3DC00000, 4, dst, X16, 0)
+		return
+	}
+	a.ldStrQIndexed(0x3CE06800, dst, base, disp)
 }
 func (a *Asm) StrQ(base Reg, disp int32, src Reg) {
 	if a.ldStrScaled(0x3D800000, 4, src, base, uint32(disp)) {
 		return
 	}
-	a.AddImm64(X16, base, uint32(disp))
-	a.ldStrScaled(0x3D800000, 4, src, X16, 0)
+	if disp >= -256 && disp <= 255 {
+		a.word(0x3C800000 | (uint32(disp)&0x1ff)<<12 | r(base)<<5 | r(src))
+		return
+	}
+	if a.baseDispImmediate(X16, base, disp) {
+		a.ldStrScaled(0x3D800000, 4, src, X16, 0)
+		return
+	}
+	a.ldStrQIndexed(0x3CA06800, src, base, disp)
+}
+
+func (a *Asm) ldStrQIndexed(indexed uint32, rt, base Reg, disp int32) {
+	scratch := X16
+	if base == X16 {
+		scratch = X17
+	}
+	a.MovImm64(scratch, uint64(int64(disp)))
+	a.word(indexed | r(scratch)<<16 | r(base)<<5 | r(rt))
 }
 
 // LdpQ / StpQ load or store two adjacent 128-bit SIMD registers without
@@ -450,7 +512,7 @@ func (a *Asm) addDispX16(disp int32) {
 	case disp == 0:
 	case disp > 0 && disp <= 0xFFF:
 		a.AddImm64(X16, X16, uint32(disp))
-	case disp < 0 && -disp <= 0xFFF:
+	case disp < 0 && disp >= -0xFFF:
 		a.SubImm64(X16, X16, uint32(-disp))
 	default:
 		a.MovImm64(X17, uint64(int64(disp)))
@@ -528,8 +590,9 @@ func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wideDe
 		a.LdrIdx(dst, base, index, size, signed, wideDest)
 		return
 	}
-	if foldIdxDispEnabled && a.DenseIdxDisp {
-		if !a.reuseIndexedBase(base, index) && !a.reuseIndexedBaseStablePhase(base, index) {
+	reused := foldIdxDispEnabled && (a.reuseIndexedBase(base, index) || a.reuseIndexedBaseStablePhase(base, index))
+	if foldIdxDispEnabled && (a.DenseIdxDisp || reused) {
+		if !reused {
 			a.AddShifted(X16, base, index, 0, false)
 		}
 		if a.loadDisp(dst, X16, disp, size, signed, wideDest) {
@@ -591,12 +654,12 @@ func (a *Asm) reuseIndexedBase(base, index Reg) bool {
 		return false
 	}
 	mem := a.wordAt(len(a.B) - 4)
-	// Unsigned-immediate scalar loads/stores have fixed base bits 0x39000000;
+	// Unsigned-immediate integer and SIMD/FP accesses have fixed bits 0x39000000;
 	// bits 9:5 are Rn. This form never writes its base register back.
 	if mem&0x3B000000 != 0x39000000 || Reg(mem>>5&31) != X16 {
 		return false
 	}
-	if mem&(1<<22) != 0 { // load: Rt is a destination
+	if loadStoreMayWriteGPR(mem) {
 		dst := Reg(mem & 31)
 		if dst == X16 || dst == base || dst == index {
 			return false
@@ -614,11 +677,23 @@ func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
 		return false
 	}
 	wantAdd := uint32(0x8B000000) | uint32(index&31)<<16 | uint32(base&31)<<5 | uint32(X16)
+	wantCanonical := uint32(0x2A000000) | uint32(index&31)<<16 | uint32(XZR)<<5 | uint32(index&31)
+	sawCanonical := false
 	for words := 1; words <= 4 && words*4 <= len(a.B); words++ {
 		instruction := a.wordAt(len(a.B) - words*4)
 		if instruction == wantAdd {
+			if sawCanonical {
+				before := len(a.B) - (words+1)*4
+				if before < 0 || a.wordAt(before) != wantCanonical {
+					return false
+				}
+			}
 			a.IndexedBaseReuses++
 			return true
+		}
+		if instruction == wantCanonical {
+			sawCanonical = true
+			continue
 		}
 		if !preservesIndexedBase(instruction, base, index) {
 			return false
@@ -627,17 +702,33 @@ func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
 	return false
 }
 
+// loadStoreMayWriteGPR applies only to the non-writeback unsigned-immediate
+// and register-offset classes recognized below. With V=0, opc=00 is a store,
+// 01 is a zero-extending load, and 10/11 are sign-extending loads. With V=1,
+// Rt names a SIMD/FP register, never an address GPR (even STR Q has opc=10).
+// PRFM (V=0, size=11, opc=10), which we do not emit, is conservatively treated
+// as a possible write. This is a clobber check, not a general load decoder.
+func loadStoreMayWriteGPR(instruction uint32) bool {
+	return instruction&(1<<26) == 0 && instruction&(3<<22) != 0
+}
+
 func preservesIndexedBase(instruction uint32, base, index Reg) bool {
 	writesAddress := func(dst Reg) bool {
 		return dst == X16 || dst == base || dst == index
 	}
 	if instruction&0x3B000000 == 0x39000000 {
-		return instruction&(1<<22) == 0 || !writesAddress(Reg(instruction&31))
+		return !loadStoreMayWriteGPR(instruction) || !writesAddress(Reg(instruction&31))
 	}
 	if instruction&0x3B20FC00 == 0x38206800 {
-		return instruction&(3<<22) == 0 || !writesAddress(Reg(instruction&31))
+		return !loadStoreMayWriteGPR(instruction) || !writesAddress(Reg(instruction&31))
 	}
 	if instruction&0x1F000000 == 0x11000000 {
+		return !writesAddress(Reg(instruction & 31))
+	}
+	// ADD/SUB (shifted or extended register), including flag-setting forms,
+	// writes only Rd.
+	// Operand width and NZCV changes do not affect the cached 64-bit address.
+	if instruction&0x1F000000 == 0x0B000000 {
 		return !writesAddress(Reg(instruction & 31))
 	}
 	return false
@@ -736,9 +827,9 @@ func (a *Asm) StrQIdx(rn, rm, rt Reg, disp int32) {
 	a.word(0x3CA06800 | r(XZR)<<16 | r(X16)<<5 | r(rt))
 }
 
-// LeaSP computes rd = SP + off (off <= 4095), the SP-relative address form.
+// LeaSP computes rd = SP + signed off; large offsets can clobber X16.
 func (a *Asm) LeaSP(rd Reg, off int32) {
-	a.word(0x91000000 | (uint32(off)&0xFFF)<<10 | 31<<5 | r(rd))
+	a.materializeBaseDisp(rd, SP, off)
 }
 
 // Grow reserves room for n more bytes without changing the emitted length.

@@ -7,7 +7,6 @@ import (
 	"sync"
 	"syscall"
 	"unsafe"
-	_ "unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
@@ -107,9 +106,6 @@ func sigaction(sig syscall.Signal, act, old *darwinSigaction) syscall.Errno {
 	_, _, errno := syscall6(addrLibcSigactionTrampoline(), uintptr(sig), uintptr(unsafe.Pointer(act)), uintptr(unsafe.Pointer(old)), 0, 0, 0)
 	return errno
 }
-
-//go:linkname syscall6 syscall.syscall6
-func syscall6(fn, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err syscall.Errno)
 
 func libcSigactionTrampoline()
 func addrLibcSigactionTrampoline() uintptr

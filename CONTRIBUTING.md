@@ -58,6 +58,23 @@ go test ./...
 go test -bench .
 ```
 
+## Use Repository Worktrees
+
+You can create additional Git worktrees under `.worktrees/`
+From the repository root, create a branch and worktree with:
+
+```bash
+git fetch origin
+git worktree add .worktrees/<name> -b <branch> origin/main
+```
+
+Remove the worktree when the work is finished:
+
+```bash
+git worktree remove .worktrees/<name>
+git worktree prune
+```
+
 ## Find the Code
 
 | Path | Purpose |
@@ -197,12 +214,12 @@ For synchronous host-boundary work, run `BenchmarkInvokeHostFuncDirect` and
 `BenchmarkHostRoundtripLoop` in `./src/wago`, including the independent-instance
 parallel cases. Compare counts on the same host-capable export and subtract the
 matched guest-loop slope. Record each stage separately. See the
-[host-call measurement and safety rules](docs/host-roundtrip-performance.md).
+[host-call measurement and safety rules](https://github.com/wago-org/knowledge/blob/main/docs/host-roundtrip-performance.md).
 Also compare `BenchmarkInvokeCallerHostFuncDirect`,
 `BenchmarkHostRoundtripLoopCaller`, `BenchmarkCallerGCLoop`,
 `BenchmarkCallerDomainLoop`, and `BenchmarkCallerArity` when changing concrete
 callback dispatch. Record medians and ranges, not just the fastest sample. See
-the [concrete caller invariants](docs/host-caller-performance.md). Run profiles
+the [concrete caller invariants](https://github.com/wago-org/knowledge/blob/main/docs/host-caller-performance.md). Run profiles
 and benchmarks without concurrent builds. The full race suite starts many
 subprocesses; `GORACE=atexit_sleep_ms=0` avoids the race runtime's fixed exit
 delay while retaining race checks.

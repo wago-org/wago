@@ -576,14 +576,14 @@ func TestGCHostReentryNativeFrameRoots(t *testing.T) {
 		for _, cfg := range profiles {
 			var in *Instance
 			calls := 0
-			in, err = Instantiate(candidate, InstantiateOptions{GC: cfg, Imports: Imports{"env.reenter": HostFunc(func(mod HostModule, _, results []uint64) {
+			in, err = Instantiate(candidate, InstantiateOptions{GC: cfg, Imports: testImports("env.reenter", slotHostFunc(func(mod HostModule, _, results []uint64) {
 				calls++
 				got, callErr := in.InvokeFromHost(context.Background(), mod, "inner")
 				if callErr != nil || !reflect.DeepEqual(got, []uint64{0}) {
 					panic(fmt.Sprintf("inner = %v, %v", got, callErr))
 				}
 				results[0] = 0
-			})}})
+			}))})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1004,6 +1004,9 @@ func TestGCNativeFrameRootAdapterClassifiesFrames(t *testing.T) {
 }
 
 func BenchmarkGCNativeFrameRootMetadataWidths(b *testing.B) {
+	if !requireCompilerDiagnostics(b) {
+		return
+	}
 	for _, roots := range []uint32{64, 65, 128, 256, 1024} {
 		b.Run(fmt.Sprintf("roots=%d", roots), func(b *testing.B) {
 			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithGCCodeTelemetry(true), gcFrameRootLimitModule(roots))

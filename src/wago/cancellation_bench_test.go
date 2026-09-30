@@ -44,7 +44,7 @@ func BenchmarkInterruptCancelLatency(b *testing.B) {
 			canceledAt.Store(time.Now().UnixNano())
 			cancel()
 		})
-		_, err := in.Call(ctx, "spin")
+		_, err := in.InvokeValues(ctx, "spin")
 		returnedAt := time.Now().UnixNano()
 		timer.Stop()
 		cancel()

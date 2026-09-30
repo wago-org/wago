@@ -67,11 +67,17 @@ func decodeSection(m *Module, r *reader, id byte) error {
 		if err != nil {
 			return err
 		}
-		if name == "name" {
-			if m.NameSec != nil {
-				return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+		firstName := name == "name"
+		if firstName {
+			for _, custom := range m.Customs {
+				if custom.Name == "name" {
+					firstName = false
+					break
+				}
 			}
-			ns, err := decodeNameSecWithBudget(payload, r.budget)
+		}
+		if firstName {
+			ns, err := decodeOptionalNameSec(payload, r.budget)
 			if err != nil {
 				return err
 			}
@@ -81,7 +87,7 @@ func decodeSection(m *Module, r *reader, id byte) error {
 			return err
 		}
 		ownedPayload := append([]byte(nil), payload...)
-		if name == "name" {
+		if firstName {
 			m.RawNameSecPayload = ownedPayload
 		}
 		m.Customs = append(m.Customs, CustomSec{Name: name, Data: ownedPayload})

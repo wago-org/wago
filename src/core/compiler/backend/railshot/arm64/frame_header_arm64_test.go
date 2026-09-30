@@ -9,6 +9,7 @@ import (
 )
 
 func TestRegisterABIElidesWrapperFrameHeaderArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	callee := make([]byte, 0, 202)
 	callee = append(callee, 0x00)
 	for range 200 {

@@ -89,7 +89,7 @@ func TestReferenceEncodingFormDoesNotAffectTypedCalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export shorthand function: %v", err)
 	}
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		t.Fatalf("link explicit function import: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestStagedTypedCrossInstanceCallRefRetainsProducer(t *testing.T) {
 		t.Fatalf("export producer function: %v", err)
 	}
 	consumerCompiled := stagedTypedStorageCompile(t, typedCrossInstanceConsumerModule())
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		t.Fatalf("instantiate typed call_ref consumer: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestStagedTypedNestedStructuralImportRetainsProducer(t *testing.T) {
 		t.Fatalf("export nested producer: %v", err)
 	}
 	consumerCompiled := stagedTypedStorageCompile(t, typedNestedReferenceConsumerModule())
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		t.Fatalf("instantiate shifted nested consumer: %v", err)
 	}
@@ -330,7 +330,7 @@ func BenchmarkStagedTypedCrossInstanceCallRef(b *testing.B) {
 		b.Fatal(err)
 	}
 	consumerCompiled := stagedTypedStorageCompile(b, typedCrossInstanceConsumerModule())
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		b.Fatal(err)
 	}

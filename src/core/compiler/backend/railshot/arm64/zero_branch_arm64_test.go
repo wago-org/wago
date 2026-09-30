@@ -10,6 +10,7 @@ import (
 )
 
 func TestDirectZeroBranchEncodingArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, test := range []struct {
 		name   string
 		wide   bool
@@ -43,6 +44,7 @@ func zeroBranchOptions(enabled, compact bool, stats *ModuleStats) CompileOptions
 }
 
 func compileZeroBranchStats(t *testing.T, m *wasm.Module, enabled, compact bool) *CodegenStats {
+	requireCompilerDiagnostics(t)
 	t.Helper()
 	stats := &ModuleStats{}
 	cm, err := CompileModuleWith(m, zeroBranchOptions(enabled, compact, stats))

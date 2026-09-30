@@ -576,9 +576,9 @@ func TestGCDirectScalarArrayCanonicalizesDirtyHostI32Index(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.idx": HostFunc(func(_ HostModule, _, results []uint64) {
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.idx", slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = 0xffff_ffff_0000_0000
-	})}})
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}

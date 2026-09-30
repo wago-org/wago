@@ -6,12 +6,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago"
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
@@ -57,6 +59,211 @@ func TestLoadOrCompileCachesAndRepairsArtifact(t *testing.T) {
 	matches, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".wago-*"))
 	if err != nil || len(matches) != 0 {
 		t.Fatalf("temporary artifacts remain: %v (err %v)", matches, err)
+	}
+}
+
+func TestCacheHitRetriesPrune(t *testing.T) {
+	dir := t.TempDir()
+	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: dir, Identity: []byte("runtime-a")}
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	defer rt.Close()
+
+	module, err := cache.LoadOrCompile(constantModule(), config, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	path, ok := cache.path(constantModule(), config)
+	if !ok {
+		t.Fatal("cache key unavailable")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(dir, "old.wago")
+	if err := os.WriteFile(old, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	when := time.Unix(1, 0)
+	if err := os.Chtimes(old, when, when); err != nil {
+		t.Fatal(err)
+	}
+	cache.MaxBytes = info.Size()
+	module, err = cache.LoadOrCompile(constantModule(), config, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(old); err != nil {
+		t.Fatalf("recent maintenance did not skip warm-hit scan: %v", err)
+	}
+	marker := filepath.Join(dir, cachePruneMarker)
+	stale := time.Now().Add(-cachePruneInterval - time.Second)
+	if err := os.Chtimes(marker, stale, stale); err != nil {
+		t.Fatal(err)
+	}
+	module, err = cache.LoadOrCompile(constantModule(), config, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatalf("stale overflow entry remains after cache hit: %v", err)
+	}
+}
+
+func TestMalformedPruneMarkerDoesNotDisableMaintenance(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, cachePruneMarker), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	artifact := filepath.Join(dir, "oversize.wago")
+	if err := os.WriteFile(artifact, []byte("oversize"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cache := Cache{Dir: dir, MaxBytes: 1}
+	if err := cache.pruneIfDue(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(artifact); !os.IsNotExist(err) {
+		t.Fatalf("oversize artifact remains with malformed marker: %v", err)
+	}
+}
+
+func TestCachePruneBoundsTotalArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	cache := Cache{Dir: dir, MaxBytes: 5}
+	nestedOld := filepath.Join(dir, "legacy", "nested", "old.wago")
+	if err := os.MkdirAll(filepath.Dir(nestedOld), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nestedOld, []byte("123"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(nestedOld, time.Unix(1, 0), time.Unix(1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	for i, name := range []string{"old.wago", "middle.wago", "new.wago"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("123"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		when := time.Unix(int64(i+1), 0)
+		if err := os.Chtimes(path, when, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := cache.prune(); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := filepath.Glob(filepath.Join(dir, "*.wago"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || filepath.Base(entries[0]) != "new.wago" {
+		t.Fatalf("remaining cache entries = %v, want newest only", entries)
+	}
+	if _, err := os.Stat(nestedOld); !os.IsNotExist(err) {
+		t.Fatalf("nested overflow entry remains: %v", err)
+	}
+}
+
+func TestCachePruneRemovesArtifactLargerThanLimit(t *testing.T) {
+	dir := t.TempDir()
+	artifact := filepath.Join(dir, "nested", "large.wago")
+	if err := os.Mkdir(filepath.Dir(artifact), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(artifact, []byte("large"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := (Cache{Dir: dir, MaxBytes: 1}).prune(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(artifact); !os.IsNotExist(err) {
+		t.Fatalf("oversize artifact remains: %v", err)
+	}
+}
+
+func TestArtifactFitsCacheRespectsDecoderSectionLimits(t *testing.T) {
+	limits := wago.DefaultArtifactLimits()
+	within := wago.ArtifactSectionSizes{
+		Code:     limits.MaxCodeBytes,
+		Metadata: limits.MaxMetadataBytes,
+		Total:    limits.MaxCodeBytes + limits.MaxMetadataBytes + 16,
+	}
+	if !artifactFitsCache(within, within.Total) {
+		t.Fatal("artifact at decoder and cache limits was rejected")
+	}
+	tooMuchCode := within
+	tooMuchCode.Code++
+	if artifactFitsCache(tooMuchCode, -1) {
+		t.Fatal("artifact beyond decoder code limit was accepted")
+	}
+	tooMuchMetadata := within
+	tooMuchMetadata.Metadata++
+	if artifactFitsCache(tooMuchMetadata, -1) {
+		t.Fatal("artifact beyond decoder metadata limit was accepted")
+	}
+	if artifactFitsCache(within, within.Total-1) {
+		t.Fatal("artifact beyond cache total limit was accepted")
+	}
+}
+
+func TestCachePruneBoundsEntryIndex(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Unix(1, 0)
+	for i := 0; i < maxPruneEntries+1; i++ {
+		path := filepath.Join(dir, fmt.Sprintf("%04d.wago", i))
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	newest := filepath.Join(dir, fmt.Sprintf("%04d.wago", maxPruneEntries))
+	if err := os.Chtimes(newest, old.Add(time.Second), old.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := (Cache{Dir: dir}).prune(); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := filepath.Glob(filepath.Join(dir, "*.wago"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != maxPruneEntries {
+		t.Fatalf("remaining cache entries = %d, want %d", len(entries), maxPruneEntries)
+	}
+	if _, err := os.Stat(newest); err != nil {
+		t.Fatalf("newest overflow entry was not retained: %v", err)
+	}
+}
+
+func TestCachePruneRejectsExcessiveDirectoryDepth(t *testing.T) {
+	dir := t.TempDir()
+	deep := dir
+	for i := 0; i <= maxCacheDirectoryDepth; i++ {
+		deep = filepath.Join(deep, "nested")
+	}
+	if err := os.MkdirAll(deep, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(deep, "entry.wago"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := (Cache{Dir: dir, MaxBytes: 1}).prune()
+	if err == nil || !strings.Contains(err.Error(), "directory nesting exceeds limit") {
+		t.Fatalf("deep cache prune error = %v, want nesting limit", err)
 	}
 }
 
@@ -171,6 +378,59 @@ func TestLoadOrCompileReportsPublicationFailure(t *testing.T) {
 	}
 	if !errors.Is(reported, injected) {
 		t.Fatalf("reported error = %v", reported)
+	}
+}
+
+func TestLoadOrCompileSkipsArtifactLargerThanCache(t *testing.T) {
+	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a"), MaxBytes: 1}
+	stale := filepath.Join(cache.Dir, "stale.wago")
+	if err := os.WriteFile(stale, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	defer rt.Close()
+
+	calls := 0
+	oldPublish := publishArtifact
+	publishArtifact = func(string, *wago.Compiled) error {
+		calls++
+		return nil
+	}
+	t.Cleanup(func() { publishArtifact = oldPublish })
+
+	module, err := cache.LoadOrCompile(constantModule(), config, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	if calls != 0 {
+		t.Fatalf("oversized artifact publication calls = %d, want 0", calls)
+	}
+	entries, err := filepath.Glob(filepath.Join(cache.Dir, "*.wago"))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("oversized artifact cache entries = %v, %v; want none", entries, err)
+	}
+}
+
+func TestLoadOrCompileOversizedArtifactTreatsMissingCacheAsEmpty(t *testing.T) {
+	config := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	cache := Cache{Dir: filepath.Join(t.TempDir(), "missing"), Identity: []byte("runtime-a"), MaxBytes: 1}
+	var reported error
+	cache.ReportError = func(err error) { reported = err }
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
+	defer rt.Close()
+
+	module, err := cache.LoadOrCompile(constantModule(), config, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	if reported != nil {
+		t.Fatalf("missing empty cache reported maintenance error: %v", reported)
+	}
+	if _, err := os.Stat(cache.Dir); !os.IsNotExist(err) {
+		t.Fatalf("oversized artifact created cache root: %v", err)
 	}
 }
 
@@ -300,55 +560,6 @@ func TestLoadOrCompileUsesDestinationRuntimeConfig(t *testing.T) {
 	}
 	if _, err := os.Stat(callerPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("mismatched caller-config artifact exists: %v", err)
-	}
-}
-
-func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
-	source := constantModule()
-	base := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
-	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
-	seedRuntime := wago.NewRuntime(wago.WithRuntimeConfig(base))
-	seed, err := cache.LoadOrCompile(source, base, seedRuntime)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := seed.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := seedRuntime.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	telemetry := base.WithGCCodeTelemetry(true)
-	var compileCalls int
-	rt := wago.NewRuntime(wago.WithRuntimeConfig(telemetry))
-	loadCachePlugin(t, rt, "example.com/cache/telemetry", []wago.AuthorityRequest{{
-		Name: wago.AuthorityModuleSourceTransform, Mode: wago.AuthorityRequired, Reason: "count fresh compiles",
-	}}, func(reg *wago.Registrar) error {
-		transformer, err := reg.ModuleSourceTransformer()
-		if err != nil {
-			return err
-		}
-		return transformer.Transform(func(wago.ModuleSourceContext, []byte) ([]byte, error) {
-			compileCalls++
-			return nil, nil
-		})
-	})
-	module, err := cache.LoadOrCompile(source, telemetry, rt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if compileCalls != 1 {
-		t.Fatalf("compile-only telemetry used a warm artifact; compile calls = %d", compileCalls)
-	}
-	if _, ok := module.Compiled().GCNativeCodeTelemetry(); !ok {
-		t.Fatal("fresh telemetry compile did not retain requested attribution")
-	}
-	if err := module.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.Close(); err != nil {
-		t.Fatal(err)
 	}
 }
 

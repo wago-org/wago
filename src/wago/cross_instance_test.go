@@ -38,13 +38,11 @@ func TestHostMediatedCrossInstanceCallRestoresCallerMemoryContext(t *testing.T) 
 	callee, err := rt.Instantiate(ctx, mustCompileWat(rt, t, `(module
 		(import "env" "host" (func $host))
 		(memory (export "memory") 1)
-		(func (export "ping") (call $host)))`), WithImports(Imports{
-		"env.host": HostFunc(func(mod HostModule, _ []uint64, _ []uint64) {
-			if _, callErr := caller.InvokeFromHost(ctx, mod, "middle"); callErr != nil {
-				panic(HostTrap{Err: callErr})
-			}
-		}),
-	}), WithSynchronousHostCalls())
+		(func (export "ping") (call $host)))`), WithImports(testImports("env.host", slotHostFunc(func(mod HostModule, _ []uint64, _ []uint64) {
+		if _, callErr := caller.InvokeFromHost(ctx, mod, "middle"); callErr != nil {
+			panic(HostTrap{Err: callErr})
+		}
+	}))), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,19 +67,15 @@ func TestHostMediatedCrossInstanceCallRestoresCallerMemoryContext(t *testing.T) 
 			(memory.copy (local.get $dst) (local.get $src) (i32.const 6160))
 			(i32.load8_u (i32.const 16159)))
 		(func (export "middle") (call $nested))
-		(func (export "alloc")))`), WithImports(Imports{
-		"env.ping": HostFunc(func(mod HostModule, _, _ []uint64) {
-			if _, callErr := callee.InvokeFromHost(ctx, mod, "ping"); callErr != nil {
-				panic(HostTrap{Err: callErr})
-			}
-		}),
-		"env.nested": HostFunc(func(mod HostModule, _ []uint64, _ []uint64) {
-			if _, callErr := caller.InvokeFromHost(ctx, mod, "alloc"); callErr != nil {
-				panic(HostTrap{Err: callErr})
-			}
-		}),
-		"env.memory": callerMemory,
-	}), WithSynchronousHostCalls())
+		(func (export "alloc")))`), WithImports(testImports("env.ping", slotHostFunc(func(mod HostModule, _, _ []uint64) {
+		if _, callErr := callee.InvokeFromHost(ctx, mod, "ping"); callErr != nil {
+			panic(HostTrap{Err: callErr})
+		}
+	}), "env.nested", slotHostFunc(func(mod HostModule, _ []uint64, _ []uint64) {
+		if _, callErr := caller.InvokeFromHost(ctx, mod, "alloc"); callErr != nil {
+			panic(HostTrap{Err: callErr})
+		}
+	}), "env.memory", callerMemory)), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +124,7 @@ func TestCrossInstanceImportedTablePreservesFourArguments(t *testing.T) {
 		(import "env" "mem" (memory 1))
 		(import "env" "target" (func $target (type $sig)))
 		(table (export "table") 1 funcref)
-		(elem (i32.const 0) func $target))`), WithImports(Imports{"env.mem": mem, "env.target": fn}))
+		(elem (i32.const 0) func $target))`), WithImports(testImports("env.mem", mem, "env.target", fn)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +141,7 @@ func TestCrossInstanceImportedTablePreservesFourArguments(t *testing.T) {
 		(func (export "call") (result i32)
 			(call_indirect (type $sig)
 				(i32.const 11) (i32.const 22) (i32.const 33) (i32.const 44)
-				(i32.const 0))))`), WithImports(Imports{"env.mem": mem, "env.table": table}))
+				(i32.const 0))))`), WithImports(testImports("env.mem", mem, "env.table", table)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +171,7 @@ func TestCrossInstanceImportedTableTargetMayCallHost(t *testing.T) {
 		(func (export "target") (param i32 i32 i32 i32) (result i32)
 			(local.get 2) (call $host))
 		(func (export "void-target") (param i32 i32 i32 i32)
-			(local.get 2) (call $host) drop))`), WithImports(Imports{"env.host": HostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] })}), WithSynchronousHostCalls())
+			(local.get 2) (call $host) drop))`), WithImports(testImports("env.host", slotHostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] }))), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +197,7 @@ func TestCrossInstanceImportedTableTargetMayCallHost(t *testing.T) {
 		(table (export "table") 1 funcref)
 		(table (export "void-table") 1 funcref)
 		(elem (table 0) (i32.const 0) func $target)
-		(elem (table 1) (i32.const 0) func $void-target))`), WithImports(Imports{"env.mem": mem, "env.target": fn, "env.void-target": voidFn}), WithSynchronousHostCalls())
+		(elem (table 1) (i32.const 0) func $void-target))`), WithImports(testImports("env.mem", mem, "env.target", fn, "env.void-target", voidFn)), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +215,7 @@ func TestCrossInstanceImportedTableTargetMayCallHost(t *testing.T) {
 		(import "env" "mem" (memory 1))
 		(import "env" "table" (table 1 funcref))
 		(func (export "call") (result i32)
-			(call_indirect (type $sig) (i32.const 11) (i32.const 22) (i32.const 33) (i32.const 44) (i32.const 0))))`), WithImports(Imports{"env.mem": mem, "env.table": table}), WithSynchronousHostCalls())
+			(call_indirect (type $sig) (i32.const 11) (i32.const 22) (i32.const 33) (i32.const 44) (i32.const 0))))`), WithImports(testImports("env.mem", mem, "env.table", table)), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +236,7 @@ func TestCrossInstanceImportedTableTargetMayCallHost(t *testing.T) {
 		(func (export "call") (result i32)
 			(call $call)
 			(i32.const 9)
-			(i32.add)))`), WithImports(Imports{"env.call": callerFn}), WithSynchronousHostCalls())
+			(i32.add)))`), WithImports(testImports("env.call", callerFn)), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +254,7 @@ func TestCrossInstanceImportedTableTargetMayCallHost(t *testing.T) {
 		(import "env" "table" (table 1 funcref))
 		(func (export "call") (result i32)
 			(call_indirect (type $sig) (i32.const 11) (i32.const 22) (i32.const 33) (i32.const 44) (i32.const 0))
-			(i32.const 55)))`), WithImports(Imports{"env.mem": mem, "env.table": voidTable}), WithSynchronousHostCalls())
+			(i32.const 55)))`), WithImports(testImports("env.mem", mem, "env.table", voidTable)), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,10 +290,10 @@ func TestNestedCrossInstanceCallsMayResumeAfterHostCall(t *testing.T) {
 			(local.get 0)
 			(call $host)
 			(i32.const 3)
-			(i32.add)))`), WithImports(Imports{"env.host": HostFunc(func(_ HostModule, params, results []uint64) {
+			(i32.add)))`), WithImports(testImports("env.host", slotHostFunc(func(_ HostModule, params, results []uint64) {
 		hostCalls++
 		results[0] = params[0]
-	}), "env.memory": sharedMemory}), WithSynchronousHostCalls())
+	}), "env.memory", sharedMemory)), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +312,7 @@ func TestNestedCrossInstanceCallsMayResumeAfterHostCall(t *testing.T) {
 			(i32.add)
 			(call $next)
 			(i32.const 5)
-			(i32.add)))`), WithImports(Imports{"env.next": cCall, "env.memory": sharedMemory}), WithSynchronousHostCalls())
+			(i32.add)))`), WithImports(testImports("env.next", cCall, "env.memory", sharedMemory)), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +329,7 @@ func TestNestedCrossInstanceCallsMayResumeAfterHostCall(t *testing.T) {
 			(local.get 0)
 			(call $next)
 			(i32.const 7)
-			(i32.add)))`), WithImports(Imports{"env.next": bCall, "env.memory": sharedMemory}), WithSynchronousHostCalls())
+			(i32.add)))`), WithImports(testImports("env.next", bCall, "env.memory", sharedMemory)), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +368,7 @@ func TestCrossInstanceCycleMayResumeAfterHostCall(t *testing.T) {
 		(func (export "call") (param i32 i32 i32 i32) (result i32)
 			(local.get 0) (local.get 1) (local.get 2) (local.get 3)
 			(i32.const 0)
-			(call_indirect (type $callback))))`), WithImports(Imports{"env.memory": sharedMemory}), WithSynchronousHostCalls())
+			(call_indirect (type $callback))))`), WithImports(testImports("env.memory", sharedMemory)), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +392,7 @@ func TestCrossInstanceCycleMayResumeAfterHostCall(t *testing.T) {
 		(func (export "allocate") (param i32) (result i32)
 			(local.get 0)
 			(i32.const 1)
-			(i32.add)))`), WithImports(Imports{"env.shim": shimCall, "env.memory": sharedMemory}), WithSynchronousHostCalls())
+			(i32.add)))`), WithImports(testImports("env.shim", shimCall, "env.memory", sharedMemory)), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,14 +422,9 @@ func TestCrossInstanceCycleMayResumeAfterHostCall(t *testing.T) {
 			(drop)
 			(local.get 0) (local.get 1) (local.get 2) (local.get 3)
 			(call $host)
-			(local.get 2)))`), WithImports(Imports{
-		"env.middle":   middleCall,
-		"env.allocate": middleAllocate,
-		"env.memory":   sharedMemory,
-		"env.host": HostFunc(func(_ HostModule, params, results []uint64) {
-			hostCalls++
-		}),
-	}), WithSynchronousHostCalls())
+			(local.get 2)))`), WithImports(testImports("env.middle", middleCall, "env.allocate", middleAllocate, "env.memory", sharedMemory, "env.host", slotHostFunc(func(_ HostModule, params, results []uint64) {
+		hostCalls++
+	}))), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,7 +437,7 @@ func TestCrossInstanceCycleMayResumeAfterHostCall(t *testing.T) {
 		(type $callback (func (param i32 i32 i32 i32) (result i32)))
 		(import "env" "table" (table 1 funcref))
 		(import "env" "callback" (func $callback (type $callback)))
-		(elem (i32.const 0) func $callback))`), WithImports(Imports{"env.table": table, "env.callback": callback}), WithSynchronousHostCalls())
+		(elem (i32.const 0) func $callback))`), WithImports(testImports("env.table", table, "env.callback", callback)), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,7 +514,7 @@ func TestCrossInstanceMemoryShared(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x2d, 0x00, 0x00, 0x0b}),             // load8_u
 		)),
 	)
-	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: Imports{"env.mem": memImport}})
+	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: testImports("env.mem", memImport)})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -602,7 +591,7 @@ func TestCrossInstanceGlobalShared(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}), // local.get 0; global.set 0; end
 		)),
 	)
-	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: Imports{"env.g": gImport}})
+	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: testImports("env.g", gImport)})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -644,7 +633,7 @@ func TestCrossInstanceFunctionImportRetainsProducerResources(t *testing.T) {
 	}
 	consumerCode := MustCompile(benchReturningImportModule())
 	defer consumerCode.Close()
-	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.f": target}})
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: testImports("env.f", target)})
 	if err != nil {
 		t.Fatalf("Instantiate consumer: %v", err)
 	}
@@ -688,7 +677,7 @@ func TestIndependentInstanceExecutionFallsBackForCrossInstanceFunction(t *testin
 	if err != nil {
 		t.Fatalf("compile consumer: %v", err)
 	}
-	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.f": target}})
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: testImports("env.f", target)})
 	if err != nil {
 		t.Fatalf("instantiate consumer: %v", err)
 	}
@@ -712,7 +701,7 @@ func TestProcessLeaseAllowsCrossInstanceFunction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile consumer: %v", err)
 	}
-	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.f": target}})
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: testImports("env.f", target)})
 	if err != nil {
 		t.Fatalf("instantiate consumer: %v", err)
 	}
@@ -760,7 +749,7 @@ func TestCrossInstanceCallNoArgs(t *testing.T) {
 	if !cB.dynamicImports || len(cB.code) == 0 {
 		t.Fatalf("B should compile returning imports through dynamic dispatch")
 	}
-	inB, err := Instantiate(cB, InstantiateOptions{Imports: Imports{"env.f": fExport}})
+	inB, err := Instantiate(cB, InstantiateOptions{Imports: testImports("env.f", fExport)})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -775,7 +764,7 @@ func TestCrossInstanceCallNoArgs(t *testing.T) {
 	if _, err := inA.Invoke("trap"); crossInstanceTrapCode(err) != TrapUnreachable {
 		t.Fatalf("producer trap after cross-instance entry = %v, want unreachable", err)
 	}
-	preparedTrap, err := inA.PrepareFunction("trap")
+	preparedTrap, err := inA.WasmFunc("trap")
 	if err != nil {
 		t.Fatalf("prepare producer trap: %v", err)
 	}
@@ -818,7 +807,7 @@ func TestCrossInstanceCallArgs(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("addBoth", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x14, 0x41, 0x16, 0x10, 0x00, 0x0b}))), // i32.const 20; i32.const 22; call 0; end
 	)
-	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: Imports{"env.add": addExport}})
+	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: testImports("env.add", addExport)})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -892,7 +881,7 @@ func TestCrossInstanceIndirectCallReloadsModulePinnedGlobal(t *testing.T) {
 		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00})), // elem (i32.const 0) [imported set]
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
-	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: Imports{"env.set": setExport, "env.g": gExport}})
+	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: testImports("env.set", setExport, "env.g", gExport)})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -946,7 +935,7 @@ func TestCrossInstanceCallMultiValueImport(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
-	inB, err := Instantiate(MustCompile(modB), Imports{"env.reorder": reorderExport})
+	inB, err := Instantiate(MustCompile(modB), testImports("env.reorder", reorderExport))
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -966,7 +955,7 @@ func TestCrossInstanceCallMultiValueImport(t *testing.T) {
 		t.Fatalf("cross-instance i32 result = %d, want %d", got, wantI32)
 	}
 
-	out, err := inB.Call(context.Background(), "call")
+	out, err := inB.InvokeValues(context.Background(), "call")
 	if err != nil {
 		t.Fatalf("typed call cross-instance multi-value: %v", err)
 	}
@@ -1010,7 +999,7 @@ func TestCrossInstanceCallV128(t *testing.T) {
 	if !cB.dynamicImports || len(cB.code) == 0 {
 		t.Fatal("v128 function import should compile through dynamic dispatch")
 	}
-	inB, err := Instantiate(cB, InstantiateOptions{Imports: Imports{"env.id": idExport}})
+	inB, err := Instantiate(cB, InstantiateOptions{Imports: testImports("env.id", idExport)})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -1030,7 +1019,7 @@ func TestCrossInstanceCallV128(t *testing.T) {
 		wasmtest.Section(2, wasmtest.Vec(imp)),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("id", 0, 0))),
 	)
-	inReexport, err := Instantiate(MustCompile(modReexport), InstantiateOptions{Imports: Imports{"env.id": idExport}})
+	inReexport, err := Instantiate(MustCompile(modReexport), InstantiateOptions{Imports: testImports("env.id", idExport)})
 	if err != nil {
 		t.Fatalf("instantiate re-export: %v", err)
 	}

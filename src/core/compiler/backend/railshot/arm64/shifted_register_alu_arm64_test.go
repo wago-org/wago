@@ -38,6 +38,7 @@ func shiftedRegisterALUModuleARM64(t testing.TB, typ wasm.ValType, shiftOp, aluO
 }
 
 func TestShiftedRegisterALUArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	type tc struct {
 		name          string
 		shift32, op32 byte

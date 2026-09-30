@@ -68,6 +68,7 @@ const (
 	hintHasLoopCall
 	hintHasNonDirectCall
 	hintCallsImport
+	hintModuleSIMD
 )
 
 func (f funcHintFlags) has(flag funcHintFlags) bool { return f&flag != 0 }
@@ -84,7 +85,10 @@ func (f *funcHintFlags) assign(flag funcHintFlags, value bool) {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	memOps          uint32 // scalar/vector/bulk linear-memory instructions
+	// memOps packs a saturated memory-op count in the low 20 bits and exact
+	// memory-zero offset+width=four accesses in the high 12 bits. Keeping the
+	// secondary frequency in existing header storage preserves the 28-byte hint.
+	memOps          uint32
 	localStart      uint32
 	globalStart     uint32
 	globalCount     uint32
@@ -574,6 +578,10 @@ func noteASTPhysicalEvent(h *funcHintView, kind wasm.InstrKind, depth int) {
 
 func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
 	switch kind {
+	// GC-reference table.set can enter the collector's write-barrier helper.
+	// Conservatively include it even when table types/helper admission are absent.
+	case wasm.InstrTableSet:
+		return true
 	case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructNewDesc, wasm.InstrStructNewDefaultDesc,
 		wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructAtomicGet, wasm.InstrStructAtomicGetS, wasm.InstrStructAtomicGetU, wasm.InstrStructSet,
 		wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData, wasm.InstrArrayNewElem,
@@ -588,6 +596,40 @@ func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
 	}
 }
 
+// usesBulkScratch describes ARM64 lowering, not just the Wasm memory proposal.
+// These helpers write fixed registers in X9-X14 after flushing stack operands;
+// that flush does not evict long-lived local/global pins. Segment drops matter
+// even in modules with no memory or table, and table helpers share the same pool.
+func usesBulkScratch(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrMemoryInit, wasm.InstrDataDrop, wasm.InstrMemoryCopy, wasm.InstrMemoryFill,
+		wasm.InstrTableInit, wasm.InstrElemDrop, wasm.InstrTableCopy, wasm.InstrTableFill:
+		return true
+	default:
+		return false
+	}
+}
+
+func tableSetMayCall(m *wasm.Module, index uint32) bool {
+	if m == nil {
+		return true
+	}
+	tt, ok := m.TableType(index)
+	if !ok {
+		return true
+	}
+	// Only function and external references are certainly free of the GC write
+	// barrier. Indexed reference types are conservatively treated as collector
+	// references, without allocating a type lookup table during hint collection.
+	if tt.Ref.Heap().Kind() == wasm.HeapAbs {
+		switch tt.Ref.Heap().Abs() {
+		case wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapExtern, wasm.HeapNoExtern:
+			return false
+		}
+	}
+	return true
+}
+
 func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, globalHints *shared.GlobalHintAccumulator) funcHintView {
 	elig.reset()
 	// walk returns whether the subtree contains a call. curLoop identifies the
@@ -598,12 +640,21 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if isExactBounds4Kind(in.Kind) {
+				memarg := in.MemArg()
+				if memarg.Offset == 0 && (memarg.Mem == nil || *memarg.Mem == 0) {
+					h.addBounds4Op()
+				}
+			}
 			if depth != 0 && (in.Kind == wasm.InstrBlock || in.Kind == wasm.InstrIf) && scalarMergeBlockType(in.BlockType()) {
 				h.addScalarMergeWeight(loopWeight(depth))
 			}
 			noteASTPhysicalEvent(&h, in.Kind, depth)
 			if in.Kind == wasm.InstrF32Const || in.Kind == wasm.InstrF64Const {
 				h.flags.set(hintHasFloatConst)
+			}
+			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
+				h.flags.set(hintModuleSIMD)
 			}
 			if gcOrAtomicInstructionMayCall(in.Kind) {
 				sub = true
@@ -622,6 +673,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			}
 			if shared.InstructionNeedsEHFrame(0, in.Kind) {
 				h.flags.set(hintModuleEH)
+			}
+			if usesBulkScratch(in.Kind) {
+				h.flags.set(hintUsesBulkMem)
 			}
 			switch in.Kind {
 			case wasm.InstrCall, wasm.InstrReturnCall, wasm.InstrCallRef, wasm.InstrReturnCallRef:
@@ -692,16 +746,13 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 					sub = true
 				}
 				h.noteBoundaryEvent(shared.LocalEventEnd, depth)
-			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
-				h.flags.set(hintUsesBulkMem | hintTouchesMemory)
-				h.memOps++
 			case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
 				wasm.InstrTableGrow, wasm.InstrTableFill:
 				h.flags.set(hintMutatesTable)
 			default:
 				if instrTouchesMemory(in.Kind) {
 					h.flags.set(hintTouchesMemory)
-					h.memOps++
+					h.addMemOp()
 				}
 			}
 		}
@@ -1292,11 +1343,20 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
 		case 0x25, 0x26: // table.get/set
-			if _, err := s.r.U32(); err != nil {
+			index, err := s.r.U32()
+			if err != nil {
 				return true, 0, err
 			}
 			if op == 0x26 {
 				s.h.flags.set(hintMutatesTable)
+				if tableSetMayCall(s.m, index) {
+					s.h.flags.set(hintHasCall | hintHasNonDirectCall)
+					s.h.markUnsupportedDynamicCall()
+					if loopDepth != 0 {
+						s.h.flags.set(hintHasLoopCall)
+					}
+					subHasCall = true
+				}
 			}
 		case 0xd2, 0xd5, 0xd6: // ref.func, br_on_null, br_on_non_null
 			if _, err := s.r.U32(); err != nil {
@@ -1307,6 +1367,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.entryPrefix = false
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0xfc, 0xfd, 0xfe, 0xfb:
+			if op == 0xfd {
+				s.h.flags.set(hintModuleSIMD)
+			}
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
@@ -1344,12 +1407,15 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)
-				s.h.memOps++
+				s.h.addMemOp()
+				if isExactBounds4Opcode(op) && imm.MemOffset == 0 && (!imm.HasMemIndex || imm.MemIndex == 0) {
+					s.h.addBounds4Op()
+				}
 				if op >= 0x28 && op <= 0x35 && prevOp == 0x20 {
 					s.h.noteParamAddress(prevIndex)
 				}
 			}
-			if imm.UsesBulkMemory {
+			if usesBulkScratch(imm.Kind) {
 				s.h.noteBoundaryEvent(shared.LocalEventInvalidate, depth)
 				s.h.flags.set(hintUsesBulkMem)
 			}
@@ -1399,9 +1465,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)
-				s.h.memOps++
+				s.h.addMemOp()
 			}
-			if imm.UsesBulkMemory {
+			if usesBulkScratch(imm.Kind) {
 				s.h.flags.set(hintUsesBulkMem)
 			}
 		}
@@ -1506,6 +1572,46 @@ func instrTouchesMemory(k wasm.InstrKind) bool {
 		wasm.InstrI32Store8, wasm.InstrI32Store16, wasm.InstrI64Store8, wasm.InstrI64Store16,
 		wasm.InstrI64Store32,
 		wasm.InstrMemorySize, wasm.InstrMemoryGrow, wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
+		return true
+	default:
+		return false
+	}
+}
+
+const (
+	memOpCountBits = 20
+	memOpCountMask = uint32(1<<memOpCountBits - 1)
+	bounds4OpMask  = uint32(1<<(32-memOpCountBits) - 1)
+)
+
+func (h funcHints) memOpCount() uint32     { return h.memOps & memOpCountMask }
+func (h funcHints) bounds4OpCount() uint32 { return h.memOps >> memOpCountBits }
+
+func (h *funcHintView) addMemOp() {
+	if h.memOpCount() != memOpCountMask {
+		h.memOps++
+	}
+}
+
+func (h *funcHintView) addBounds4Op() {
+	if h.bounds4OpCount() != bounds4OpMask {
+		h.memOps += 1 << memOpCountBits
+	}
+}
+
+func isExactBounds4Opcode(op byte) bool {
+	switch op {
+	case 0x28, 0x2a, 0x34, 0x35, 0x36, 0x38, 0x3e:
+		return true
+	default:
+		return false
+	}
+}
+
+func isExactBounds4Kind(k wasm.InstrKind) bool {
+	switch k {
+	case wasm.InstrI32Load, wasm.InstrF32Load, wasm.InstrI64Load32S, wasm.InstrI64Load32U,
+		wasm.InstrI32Store, wasm.InstrF32Store, wasm.InstrI64Store32:
 		return true
 	default:
 		return false

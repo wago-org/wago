@@ -39,3 +39,17 @@ func TestParseArgsRejectsUnsupportedParameterBeforeSlotMarshalling(t *testing.T)
 		t.Fatalf("ParseArgs v128 error = %v", err)
 	}
 }
+
+func TestFormatResultsMismatchedLengths(t *testing.T) {
+	for _, tc := range []struct {
+		values []uint64
+		types  []wago.ValType
+	}{
+		{[]uint64{7}, nil}, {nil, []wago.ValType{wago.ValI32}},
+		{[]uint64{7, 8}, []wago.ValType{wago.ValI32}},
+	} {
+		if got := FormatResults(tc.values, tc.types); !strings.Contains(got, "invalid result count") {
+			t.Fatalf("mismatch output=%q", got)
+		}
+	}
+}

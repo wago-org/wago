@@ -9,26 +9,28 @@ import (
 
 // Adapt test callbacks only. Production concrete dispatch must not make this
 // interface conversion; it deliberately remains visible to helper API tests.
-func callerTestCallback(concrete bool, fn HostFunc) any {
+func callerTestCallback(concrete bool, fn slotHostFunc) any {
 	if concrete {
-		return CallerHostFunc(func(c Caller, p, r []uint64) { fn(c, p, r) })
+		return callerSlotHostFunc(func(c Caller, p, r []uint64) { fn(c, p, r) })
 	}
 	return fn
 }
 
-func callerTestDeclare(module *ImportModuleBuilder, concrete bool) func(string, HostFunc) *ImportFuncBuilder {
+func callerTestDeclare(imports *HostImportRegistrar, module string, concrete bool) func(string, slotHostFunc) *ImportFuncBuilder {
 	if concrete {
-		return func(name string, fn HostFunc) *ImportFuncBuilder {
-			return module.Func(name, CallerHostFunc(func(c Caller, p, r []uint64) { fn(c, p, r) }))
+		return func(name string, fn slotHostFunc) *ImportFuncBuilder {
+			return testRegisterHostFunc(imports, module, name, callerSlotHostFunc(func(c Caller, p, r []uint64) { fn(c, p, r) }))
 		}
 	}
-	return func(name string, fn HostFunc) *ImportFuncBuilder { return module.Func(name, fn) }
+	return func(name string, fn slotHostFunc) *ImportFuncBuilder {
+		return testRegisterHostFunc(imports, module, name, fn)
+	}
 }
 
 func BenchmarkInvokeCallerHostFuncDirect(b *testing.B) {
 	c := benchMustCompile(b, benchReturningImportModule())
 	defer c.Close()
-	in, err := Instantiate(c, Imports{"env.f": CallerHostFunc(func(_ Caller, p, r []uint64) { r[0] = p[0] + 1 })})
+	in, err := Instantiate(c, testImports("env.f", callerSlotHostFunc(func(_ Caller, p, r []uint64) { r[0] = p[0] + 1 })))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -58,7 +60,7 @@ func TestCallerRetainedAndNested(t *testing.T) {
 		}
 	}
 	var err error
-	in, err = Instantiate(c, Imports{"env.f": CallerHostFunc(func(h Caller, p, r []uint64) {
+	in, err = Instantiate(c, testImports("env.f", callerSlotHostFunc(func(h Caller, p, r []uint64) {
 		calls++
 		if h.generation <= seq {
 			t.Fatal("generation reused")
@@ -84,7 +86,7 @@ func TestCallerRetainedAndNested(t *testing.T) {
 			}
 		}
 		r[0] = p[0] + 1
-	})})
+	})))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +105,7 @@ func TestCallerRetainedAndNested(t *testing.T) {
 func TestCallerScalarDispatchAllocations(t *testing.T) {
 	c := MustCompile(benchReturningImportModule())
 	defer c.Close()
-	in, err := Instantiate(c, Imports{"env.f": CallerHostFunc(func(_ Caller, p, r []uint64) { r[0] = p[0] + 1 })})
+	in, err := Instantiate(c, testImports("env.f", callerSlotHostFunc(func(_ Caller, p, r []uint64) { r[0] = p[0] + 1 })))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,13 +127,13 @@ func TestCallerConcurrentIndependentInstances(t *testing.T) {
 		t.Run(fmt.Sprint(worker), func(t *testing.T) {
 			t.Parallel()
 			var retained Caller
-			in, err := Instantiate(c, Imports{"env.f": CallerHostFunc(func(h Caller, p, r []uint64) {
+			in, err := Instantiate(c, testImports("env.f", callerSlotHostFunc(func(h Caller, p, r []uint64) {
 				if !h.valid() || retained.valid() || h.generation <= retained.generation {
 					t.Error("independent callback lost authority or revived an expired generation")
 				}
 				retained = h
 				r[0] = p[0] + 1
-			})})
+			})))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -242,7 +244,7 @@ func TestCallerCapabilityHelpers(t *testing.T) {
 	}
 	defer in.Close()
 	for i := 0; i < 2; i++ {
-		if _, err := in.Call(context.Background(), "call"); err != nil {
+		if _, err := in.InvokeValues(context.Background(), "call"); err != nil {
 			t.Fatal(err)
 		}
 		expired(retained)
@@ -255,13 +257,13 @@ func TestCallerImportedStart(t *testing.T) {
 	defer c.Close()
 	var retained Caller
 	calls := 0
-	in, err := Instantiate(c, Imports{"env.start": CallerHostFunc(func(h Caller, p, r []uint64) {
+	in, err := Instantiate(c, testImports("env.start", callerSlotHostFunc(func(h Caller, p, r []uint64) {
 		calls++
 		retained = h
 		if !h.valid() || len(p) != 0 || len(r) != 0 {
 			t.Fatal("invalid start callback")
 		}
-	})})
+	})))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +294,7 @@ func TestCallerReexport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if _, err := in.Call(context.Background(), "call"); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "call"); err != nil {
 		t.Fatal(err)
 	}
 	if retained.in != in || retained.valid() {

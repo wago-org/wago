@@ -97,6 +97,7 @@ func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidat
 }
 
 func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits, analysis *ValidatedModuleAnalysis) (err error) {
+	m.invalidateTypeAnalysisCaches()
 	if analysis != nil {
 		analysis.reset(m)
 		defer func() {
@@ -122,15 +123,17 @@ func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *direc
 	// decoding allocates, leaving its inline operand/control stacks reclaimed
 	// during validation.
 	v := moduleValidator{
-		m:                m,
-		funcIndex:        -1,
-		direct:           direct,
-		features:         features,
-		limits:           limits,
-		analysis:         analysis,
-		analysisFuncBase: m.ImportedFuncCount(),
+		m:         m,
+		funcIndex: -1,
+		direct:    direct,
+		features:  features,
+		limits:    limits,
+		analysis:  analysis,
 	}
 	v.ensureImportIndexes()
+	// Validation already owns an index for every import kind. Asking the module
+	// for this count would build a second directory just to read one length.
+	v.analysisFuncBase = len(v.importIndexes[ExternFunc])
 	if err := v.validateModule(); err != nil {
 		runtime.KeepAlive(m)
 		runtime.KeepAlive(direct)
@@ -183,9 +186,6 @@ func (v *moduleValidator) validateFunctionsSerial() error {
 func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) (counts validationSegmentCounts, err error) {
 	fn := &v.m.Code[localIndex]
 	abs := importedFuncs + localIndex
-	if localIndex >= len(v.m.FuncTypes) {
-		return counts, v.err(ErrUnknownFunc, "code without function type")
-	}
 	ft, ok := v.funcType(uint32(abs))
 	if !ok {
 		return counts, v.err(ErrUnknownType, "function type")
@@ -277,7 +277,9 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 // body immediates may still miss the cache; resolvedCompType computes those
 // without mutating the frozen map so malformed modules remain race-free.
 func (v *moduleValidator) freezeCompCache() {
-	for i := 0; i < v.m.flattenedTypeCount(); i++ {
+	v.ensureTypeIndex()
+	typeCount := len(v.flatSubTypes)
+	for i := 0; i < typeCount; i++ {
 		_, _ = v.resolvedCompType(TypeIdx{Index: uint32(i)})
 	}
 	v.compCacheFrozen = true
@@ -339,6 +341,9 @@ func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
 }
 
 func (v *moduleValidator) validateModule() error {
+	if len(v.m.FuncTypes) != len(v.m.Code) {
+		return v.err(ErrUnknownFunc, "function and code section counts differ")
+	}
 	if v.m.UsesCompactImports && !v.features.CompactImports {
 		return v.err(ErrUnsupportedFeature, "compact imports")
 	}
@@ -571,7 +576,7 @@ func (v *moduleValidator) declareFunc(idx uint32) {
 
 func (v *moduleValidator) isDeclaredFunc(idx uint32) bool {
 	word := idx / 64
-	return int(word) < len(v.declaredFuncBits) && v.declaredFuncBits[word]&(uint64(1)<<(idx%64)) != 0
+	return uint(word) < uint(len(v.declaredFuncBits)) && v.declaredFuncBits[word]&(uint64(1)<<(idx%64)) != 0
 }
 
 func (v *moduleValidator) validateExternType(et ExternType) error {
@@ -693,13 +698,18 @@ func (v *moduleValidator) validateValType(t ValType) error {
 
 func (v *moduleValidator) validateValTypeInRecGroup(t ValType, recGroup int) error {
 	switch t.Kind() {
-	case ValNum, ValVec:
-		return nil
+	case ValNum:
+		if t == I32 || t == I64 || t == F32 || t == F64 {
+			return nil
+		}
+	case ValVec:
+		if t == V128 {
+			return nil
+		}
 	case ValRef:
 		return v.validateRefTypeInRecGroup(t.Ref(), recGroup)
-	default:
-		return v.err(ErrUnknownType, "value type")
 	}
+	return v.err(ErrUnknownType, "value type")
 }
 
 func (v *moduleValidator) validateRefType(rt RefType) error {
@@ -717,7 +727,12 @@ func (v *moduleValidator) validateHeapType(ht HeapType) error {
 func (v *moduleValidator) validateHeapTypeInRecGroup(ht HeapType, recGroup int) error {
 	switch ht.Kind() {
 	case HeapAbs:
-		return nil
+		switch ht.Abs() {
+		case HeapString, HeapExn, HeapArray, HeapStruct, HeapI31, HeapEq, HeapAny,
+			HeapExtern, HeapFunc, HeapNone, HeapNoExtern, HeapNoFunc, HeapNoExn:
+			return nil
+		}
+		return v.err(ErrUnknownType, "heap type")
 	case HeapTypeIndex:
 		if !v.validTypeIdxInRecGroup(ht.Type(), recGroup) {
 			return v.err(ErrUnknownType, "heap type")
@@ -856,15 +871,15 @@ func (v *moduleValidator) memoryProperties(idx uint32) (uint8, bool) {
 func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 	switch x.Kind {
 	case ExternFunc:
-		return int(x.Index) < (len(v.importsOfKind(ExternFunc)) + len(v.m.FuncTypes))
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternFunc))+len(v.m.FuncTypes))
 	case ExternTable:
-		return int(x.Index) < (len(v.importsOfKind(ExternTable)) + len(v.m.Tables))
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternTable))+len(v.m.Tables))
 	case ExternMem:
-		return int(x.Index) < (len(v.importsOfKind(ExternMem)) + len(v.m.Memories))
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternMem))+len(v.m.Memories))
 	case ExternGlobal:
-		return int(x.Index) < (len(v.importsOfKind(ExternGlobal)) + len(v.m.Globals))
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternGlobal))+len(v.m.Globals))
 	case ExternTag:
-		return int(x.Index) < (len(v.importsOfKind(ExternTag)) + len(v.m.Tags))
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternTag))+len(v.m.Tags))
 	}
 	return false
 }
@@ -918,7 +933,7 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 	switch e.Kind.Kind {
 	case ElemFuncs:
 		for _, f := range e.Kind.Funcs {
-			if int(f) >= (len(v.importsOfKind(ExternFunc)) + len(v.m.FuncTypes)) {
+			if uint(f) >= uint(len(v.importsOfKind(ExternFunc))+len(v.m.FuncTypes)) {
 				return RefType{}, v.err(ErrUnknownFunc, "elem")
 			}
 		}
@@ -1025,7 +1040,7 @@ type funcValidator struct {
 	constResult     [1]ValType
 	localParams     []ValType
 	localRuns       []LocalRun
-	localRunStarts  []uint64 // worker-owned prefix index; never retained by the module
+	localRunEnds    []uint64
 	localLookupWork uint64
 	localCount      uint64
 	// Non-nullable reference locals have no default value. Track successful
@@ -1098,12 +1113,12 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	if v.localCount > uint64(v.limits.MaxFunctionLocals) {
 		return v.verr(ErrInvalidLimitRange, "parameter and local count exceeds configured limit")
 	}
+	v.prepareLocalLookup()
 	for _, run := range fn.Locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {
 			return err
 		}
 	}
-	v.prepareLocalLookup()
 	v.resetLocalInitialization()
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
 	for _, in := range fn.Body.Instrs {
@@ -1183,68 +1198,73 @@ func (v *funcValidator) unreachable() {
 	v.ctrls[len(v.ctrls)-1].unreachable = true
 }
 
-// localType retains the small declaration path and its inlining budget.
-func (v *funcValidator) localType(idx uint32) (ValType, bool) {
-	if uint64(idx) >= v.localCount {
-		return ValType{}, false
-	}
-	return LocalType(v.localParams, v.localRuns, idx)
-}
-
-func (v *funcValidator) localTypeIndexed(idx uint32) (ValType, bool) {
-	if uint64(idx) >= v.localCount {
-		return ValType{}, false
-	}
-	if len(v.localRuns) <= 8 || uint64(idx) < uint64(len(v.localParams)) {
-		return LocalType(v.localParams, v.localRuns, idx)
-	}
-	if len(v.localRunStarts) == 0 {
-		// Defer construction until prior lookups have visited four times the
-		// run count. Few accesses and repeated early-run accesses stay linear.
-		if v.localLookupWork < 4*uint64(len(v.localRuns)) {
-			rem := uint64(idx) - uint64(len(v.localParams))
-			for i, run := range v.localRuns {
-				if rem < uint64(run.Count) {
-					v.localLookupWork += uint64(i + 1)
-					return run.Type, true
-				}
-				rem -= uint64(run.Count)
-			}
-			return ValType{}, false
-		}
-		v.buildLocalLookup()
-	}
-	// Repeated starts from zero-count runs require an upper-bound search.
-	lo, hi := 0, len(v.localRunStarts)
-	for lo < hi {
-		mid := lo + (hi-lo)/2
-		if v.localRunStarts[mid] <= uint64(idx) {
-			lo = mid + 1
-		} else {
-			hi = mid
-		}
-	}
-	return v.localRuns[lo-1].Type, true
-}
+// Reuse small indexes freely, but discard a large high-water mark when moving
+// to substantially smaller functions. Similarly sized functions still reuse it.
+const smallLocalRunIndexCapacity = 1024
 
 func (v *funcValidator) prepareLocalLookup() {
-	v.localRunStarts = v.localRunStarts[:0]
+	if cap(v.localRunEnds) > smallLocalRunIndexCapacity && len(v.localRuns) < cap(v.localRunEnds)/4 {
+		v.localRunEnds = nil
+	} else {
+		v.localRunEnds = v.localRunEnds[:0]
+	}
 	v.localLookupWork = 0
 }
 
-// Each validation worker owns and reuses its buffer. Construction is lazy and
-// uses one prefix entry per run, not per declared local.
-func (v *funcValidator) buildLocalLookup() {
-	n := len(v.localRuns)
-	if cap(v.localRunStarts) < n {
-		v.localRunStarts = make([]uint64, n)
-	} else {
-		v.localRunStarts = v.localRunStarts[:n]
+func (v *funcValidator) localType(idx uint32) (ValType, bool) {
+	// LocalType inlines here, keeping the common tiny-run case to one call.
+	if len(v.localRuns) <= 2 {
+		return LocalType(v.localParams, v.localRuns, idx)
 	}
-	next := uint64(len(v.localParams))
+	if len(v.localRunEnds) != 0 {
+		return LocalTypeIndexed(v.localParams, v.localRuns, v.localRunEnds, idx)
+	}
+	if uint64(idx) < uint64(len(v.localParams)) {
+		return v.localParams[idx], true
+	}
+	if uint64(idx) >= v.localCount {
+		return ValType{}, false
+	}
+	rem := uint64(idx) - uint64(len(v.localParams))
+	// These two runs are cheaper to scan than index, even if previous late
+	// lookups have already exhausted the scan budget.
+	for _, run := range v.localRuns[:2] {
+		if rem < uint64(run.Count) {
+			return run.Type, true
+		}
+		rem -= uint64(run.Count)
+	}
+	// Pay for the index only after prior lookups have done comparable work.
+	// At most O(runs) scanning precedes the O(runs) build, so repeated late
+	// lookups still take O(runs + reads*log(runs)) total work.
+	if v.localLookupWork >= 2*uint64(len(v.localRuns)) {
+		v.indexLocalRuns()
+		return LocalTypeIndexed(v.localParams, v.localRuns, v.localRunEnds, idx)
+	}
+	for i, run := range v.localRuns[2:] {
+		if rem < uint64(run.Count) {
+			v.localLookupWork += uint64(i + 1)
+			return run.Type, true
+		}
+		rem -= uint64(run.Count)
+	}
+	return ValType{}, false
+}
+
+func (v *funcValidator) indexLocalRuns() {
+	v.localRunEnds = v.localRunEnds[:0]
+	if len(v.localRuns) <= 2 {
+		return
+	}
+	if cap(v.localRunEnds) < len(v.localRuns) {
+		v.localRunEnds = make([]uint64, len(v.localRuns))
+	} else {
+		v.localRunEnds = v.localRunEnds[:len(v.localRuns)]
+	}
+	end := uint64(len(v.localParams))
 	for i, run := range v.localRuns {
-		v.localRunStarts[i] = next
-		next += uint64(run.Count)
+		end += uint64(run.Count)
+		v.localRunEnds[i] = end
 	}
 }
 
@@ -1288,7 +1308,7 @@ func (v *funcValidator) restoreLocalInitialization(height int) {
 }
 
 func (v *funcValidator) label(depth uint32) ([]ValType, error) {
-	if int(depth) >= len(v.ctrls) {
+	if uint(depth) >= uint(len(v.ctrls)) {
 		return nil, v.verr(ErrUnknownLabel, "")
 	}
 	f := v.ctrls[len(v.ctrls)-1-int(depth)]

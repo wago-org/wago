@@ -41,7 +41,7 @@ func TestInstanceResultStorage(t *testing.T) {
 			if slots > 0 && (&in.resultVals[0] == &in.resultInline[0]) != (slots <= len(in.resultInline)) {
 				t.Fatal("wrong inline/fallback result storage")
 			}
-			fn, err := in.PrepareFunction("f")
+			fn, err := in.WasmFunc("f")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -90,7 +90,7 @@ func BenchmarkInstanceResultLayout(b *testing.B) {
 					b.Fatal(err)
 				}
 				workers := runtime.GOMAXPROCS(0)
-				functions := make([]*PreparedFunction, workers)
+				functions := make([]*WasmFunc, workers)
 				results := make([]uint64, workers)
 				for i := range functions {
 					in, err := Instantiate(c, InstantiateOptions{})
@@ -101,11 +101,11 @@ func BenchmarkInstanceResultLayout(b *testing.B) {
 					if packed {
 						in.resultVals = results[i : i+1 : i+1]
 					}
-					functions[i], err = in.PrepareFunction("f")
+					functions[i], err = in.WasmFunc("f")
 					if err != nil {
 						b.Fatal(err)
 					}
-					if got, err := functions[i].Invoke1(41); err != nil || len(got) != 1 || got[0] != 42 {
+					if got, err := functions[i].Invoke(41); err != nil || len(got) != 1 || got[0] != 42 {
 						b.Fatalf("warmup: %v, %v", got, err)
 					}
 				}
@@ -115,7 +115,7 @@ func BenchmarkInstanceResultLayout(b *testing.B) {
 				b.RunParallel(func(pb *testing.PB) {
 					fn := functions[next.Add(1)-1]
 					for pb.Next() {
-						if _, err := fn.Invoke1(41); err != nil {
+						if _, err := fn.Invoke(41); err != nil {
 							b.Error(err)
 							return
 						}

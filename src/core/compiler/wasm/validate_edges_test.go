@@ -237,15 +237,15 @@ func TestBranchTableFrameEpochDeduplicatesWithoutAllocation(t *testing.T) {
 }
 
 func TestBranchTableFrameEpochFitsValidatorPadding(t *testing.T) {
-	// The embedded byte reader also holds the shared decode-budget pointer.
-	wantValidator, wantFrame := uintptr(656)+unsafe.Sizeof((*decodeBudget)(nil)), uintptr(80)
+	// The embedded byte reader also holds the shared decode-budget pointer. The
+	// validator keeps one compact run-end index for logarithmic local lookup.
+	wantValidator, wantFrame := uintptr(656)+unsafe.Sizeof((*decodeBudget)(nil))+unsafe.Sizeof([]uint64{}), uintptr(80)
 	if unsafe.Sizeof(uintptr(0)) == 4 {
-		wantValidator, wantFrame = 412+unsafe.Sizeof((*decodeBudget)(nil)), 44
+		wantValidator, wantFrame = 412+unsafe.Sizeof((*decodeBudget)(nil))+unsafe.Sizeof([]uint64{}), 44
 	}
-	// Local lookup now owns one reusable prefix slice and one scan-work
-	// counter (32 bytes on 64-bit, 20 bytes on 32-bit). These cannot share the
-	// live operand/control stacks or reference-local initialization log.
-	wantValidator += unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(uint64(0))
+	// Lazy local indexing adds only a scan-work counter; the existing compact
+	// run-end index is reused, and control-frame epoch padding is unchanged.
+	wantValidator += unsafe.Sizeof(uint64(0))
 	var validator funcValidator
 	if unsafe.Offsetof(validator.constOnly) != unsafe.Offsetof(validator.branchTableEpoch)+unsafe.Sizeof(validator.branchTableEpoch) {
 		t.Fatal("branch-table epoch no longer packs immediately before constOnly")

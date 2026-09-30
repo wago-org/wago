@@ -2,7 +2,11 @@
 
 package amd64
 
-import "math/bits"
+import (
+	"math/bits"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // Compare→branch fusion: when a relational compare (or eqz) feeds directly into
 // br_if or if, emit the compare's CMP/TEST and branch on its flags, skipping the
@@ -103,7 +107,7 @@ func (f *fn) flushBelow(node *elem) int {
 		}
 		if typ == mtV128 {
 			x := f.materializeV128(root)
-			f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), x)
+			f.mov128StoreDisp(RSP, f.spillOff(slot), x)
 			f.releaseF(x)
 			root.setElemKind(ekValue)
 			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: uint32(slot)})
@@ -161,6 +165,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		for node.deferredOp() == opEqz && isFusableCompare(node.arg0) {
 			inner := node.arg0
 			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
+			f.s.exposeLogicalRoot(inner)
 			f.stats.peep("eqz-fold")
 			node = inner
 			invert = !invert
@@ -246,7 +251,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		if memRefFoldable(right.st, w) {
 			f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
 		} else {
-			r := f.memRefValue(right.st)
+			r := f.memRefValue(right)
 			f.cmpRR(L, r, w)
 			f.release(r)
 		}
@@ -262,7 +267,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 }
 
 // brIfFused lowers `<compare> br_if L` as CMP + conditional jump.
-func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
+func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 	fi := len(f.ctrl) - 1 - int(labelIdx)
 	if fi < 0 {
 		return errBadLabel
@@ -277,7 +282,14 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&
 			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == loop.controlSite
 	}
-	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
+	coldExit := f.callFreeLoopExit(fi)
+	var saved localStateSnapshot
+	if coldExit {
+		saved, coldExit = f.snapshotLocalStates()
+	}
+	if !coldExit {
+		f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
+	}
 	k := f.flushBelow(top)
 	if loopHeader && f.a.Len() != f.ctrl[len(f.ctrl)-1].controlSite {
 		loopHeader = false
@@ -285,6 +297,11 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	cc := f.condenseToFlags(top)
 	a := fr.branchArity()
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
+	if coldExit {
+		// MOV loads/stores used by local reconciliation preserve x86 flags, so
+		// the taken exit alone pays this work after the fused compare.
+		f.convergeBranchLocals(fr)
+	}
 	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, k)
 	} else {
@@ -292,11 +309,16 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	}
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
+	if coldExit {
+		f.restoreLocalStates(saved)
+		f.stats.peep("callfree-loop-exit-cold")
+	}
 	f.recordBrFold(over)
 	if loopHeader {
 		loop := &f.ctrl[len(f.ctrl)-1]
 		_, isFloat, pinned := f.pinReg(counter)
 		if pinned && !isFloat {
+			f.tryHoistLinearSumBounds(r, counter, loop)
 			f.ensureCtrlMerge(loop).setCountedLoop(counter, f.a.Len())
 		}
 	}

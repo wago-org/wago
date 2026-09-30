@@ -18,6 +18,7 @@ func convertReadModuleArm64(t testing.TB) *wasm.Module {
 }
 
 func TestConvertReadSwitchAndExecutionArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := convertReadModuleArm64(t)
 	compile := func(on bool) *CodegenStats {
 		var stats ModuleStats

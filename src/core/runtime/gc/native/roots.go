@@ -2,6 +2,19 @@ package gc
 
 import "errors"
 
+// RootClass identifies the owner of an exact root set.
+type RootClass uint8
+
+const (
+	RootNativeFrame RootClass = iota
+	RootGlobal
+	RootTable
+	RootPublicToken
+	RootForeignInstance
+	RootSnapshotTemporary
+	rootClassCount
+)
+
 // RootSlot is the mutable root slot abstraction used by the collector to update
 // references after moving nursery collection. Generated stack maps will expose
 // frame slots through an allocation-free equivalent later.
@@ -22,9 +35,8 @@ type RootRefSink interface{ VisitRootRef(Ref) bool }
 // root sets propagate that result without allocating adapter state.
 type DirectRootRefSet interface{ RangeRootRefs(RootRefSink) bool }
 
-// ClassifiedRootRefSink receives immutable roots with their exact telemetry
-// ownership. It is used only by opt-in telemetry integrations; ordinary
-// collection continues through DirectRootRefSet.
+// ClassifiedRootRefSink receives immutable roots with their ownership class.
+// Collection treats all root classes equally.
 type ClassifiedRootRefSink interface {
 	VisitClassifiedRootRef(RootClass, Ref) bool
 }
@@ -36,8 +48,8 @@ type DirectClassifiedRootRefSet interface {
 	RangeClassifiedRootRefs(ClassifiedRootRefSink) bool
 }
 
-// ClassifiedRoots assigns one telemetry ownership class to an exact root set.
-// Collection semantics are unchanged when telemetry is disabled.
+// ClassifiedRoots assigns one ownership class to an exact root set.
+// The class does not affect collection semantics.
 type ClassifiedRoots struct {
 	Class RootClass
 	Roots RootSet
@@ -70,7 +82,7 @@ type RootGroup struct {
 	Roots RootSet
 }
 
-// RootGroups is an exact composite RootSet used by telemetry-aware runtime
+// RootGroups is an exact composite RootSet used by runtime
 // integrations for frames, public tokens, foreign instances, and temporary roots.
 type RootGroups []RootGroup
 
@@ -609,17 +621,12 @@ func (c *Collector) NewCheckedGlobalSlot(initial Ref) (uint32, error) {
 }
 
 // NewCheckedClassifiedGlobalSlot creates a collector-owned persistent slot and
-// assigns its telemetry ownership. Classification is inert without
-// wago_gcstats or an attached recorder.
+// validates its ownership class. All classes share the same slot semantics.
 func (c *Collector) NewCheckedClassifiedGlobalSlot(initial Ref, class RootClass) (uint32, error) {
 	if class >= rootClassCount {
-		return 0, errors.New("gc: invalid root telemetry class")
+		return 0, errors.New("gc: invalid root ownership class")
 	}
-	i, err := c.newRootSlot(SlotGlobal, &c.globalSlots, initial)
-	if err == nil && c.telemetryEnabled() {
-		c.cfg.Telemetry.setGlobalRootClass(i, class)
-	}
-	return i, err
+	return c.newRootSlot(SlotGlobal, &c.globalSlots, initial)
 }
 
 // SetGlobalSlot validates and publishes a collector-owned global root. Tiny

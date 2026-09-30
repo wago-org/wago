@@ -69,31 +69,31 @@ func TestTypedFunctionReferencePublicCallBoundary(t *testing.T) {
 	}
 	defer in.Close()
 
-	f, err := in.Call(context.Background(), "getF")
+	f, err := in.InvokeValues(context.Background(), "getF")
 	if err != nil || len(f) != 1 || f[0].FuncRef().IsNull() {
 		t.Fatalf("getF = %v, %v", f, err)
 	}
-	g, err := in.Call(context.Background(), "getG")
+	g, err := in.InvokeValues(context.Background(), "getG")
 	if err != nil || len(g) != 1 || g[0].FuncRef().IsNull() {
 		t.Fatalf("getG = %v, %v", g, err)
 	}
 
-	got, err := in.Call(context.Background(), "id", f[0])
+	got, err := in.InvokeValues(context.Background(), "id", f[0])
 	if err != nil || len(got) != 1 || got[0].Bits() != f[0].Bits() {
 		t.Fatalf("id(f) = %v, %v; want stable token %#x", got, err, f[0].Bits())
 	}
-	if _, err := in.Call(context.Background(), "id", g[0]); err == nil || !strings.Contains(err.Error(), "exact structural type") {
+	if _, err := in.InvokeValues(context.Background(), "id", g[0]); err == nil || !strings.Contains(err.Error(), "exact structural type") {
 		t.Fatalf("id(g) mismatch error = %v", err)
 	}
 	if _, err := in.Invoke("id", g[0].Bits()); err == nil || !strings.Contains(err.Error(), "exact structural type") {
 		t.Fatalf("Invoke id(g) mismatch error = %v", err)
 	}
 
-	null, err := in.Call(context.Background(), "id", ValueFuncRef(FuncRef{}))
+	null, err := in.InvokeValues(context.Background(), "id", ValueFuncRef(FuncRef{}))
 	if err != nil || len(null) != 1 || !null[0].FuncRef().IsNull() {
 		t.Fatalf("nullable id(null) = %v, %v", null, err)
 	}
-	if _, err := in.Call(context.Background(), "nonNull", ValueFuncRef(FuncRef{})); err == nil || !strings.Contains(err.Error(), "non-null argument") {
+	if _, err := in.InvokeValues(context.Background(), "nonNull", ValueFuncRef(FuncRef{})); err == nil || !strings.Contains(err.Error(), "non-null argument") {
 		t.Fatalf("nonNull(null) error = %v", err)
 	}
 }

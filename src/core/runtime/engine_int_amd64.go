@@ -6,6 +6,22 @@ package runtime
 // RBX carries linMem, RAX/RCX/RDX/R8 carry up to four arguments, and RAX returns
 // the optional scalar result.
 func enterNativeIntRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
+func enterNativeIntPairRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) (uintptr, uintptr)
+
+//go:noescape
+func enterNativeIntWideRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr, uintptr)
+
+//go:noescape
+func enterNativeIntOctRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr)
+
+//go:noescape
+func enterNativeFloatRaw(code, linMem uintptr, args *[4]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
+
+//go:noescape
+func enterNativeFloatOctRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr)
+
+//go:noescape
+func enterNativeMixedRaw(code, linMem uintptr, args *[8]uint64, foreignStackTop uintptr) (uintptr, uintptr, uintptr, uintptr)
 func enterNativeIntPreboundContextRaw(call *PreparedIntCall, a0, a1, a2, a3 uintptr) uintptr
 func enterNativeIntCallRaw(call *PreparedIntCall) uintptr
 
@@ -39,6 +55,47 @@ func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint6
 // state.
 func (e *Engine) EnterPreparedIntBounded(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
 	return uint64(enterNativeIntRaw(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)), nil
+}
+
+// EnterPreparedIntPairBounded enters a compiler-proven bounded integer function
+// whose two results return in RAX/RDX. Callers inspect the trap cell afterward.
+func (e *Engine) EnterPreparedIntPairBounded(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, uint64) {
+	r0, r1 := enterNativeIntPairRaw(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)
+	return uint64(r0), uint64(r1)
+}
+
+// EnterPreparedIntWideBounded enters a compiler-proven bounded integer leaf
+// with up to eight register arguments and five register results.
+func (e *Engine) EnterPreparedIntWideBounded(code, linMemBase uintptr, args *[8]uint64) (uint64, uint64, uint64, uint64, uint64) {
+	r0, r1, r2, r3, r4 := enterNativeIntWideRaw(code, linMemBase, args, e.stackTop)
+	return uint64(r0), uint64(r1), uint64(r2), uint64(r3), uint64(r4)
+}
+
+// EnterPreparedIntOctBounded enters a compiler-proven bounded integer leaf
+// returning six to eight values through the register bank.
+func (e *Engine) EnterPreparedIntOctBounded(code, linMemBase uintptr, args *[8]uint64) (uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64) {
+	r0, r1, r2, r3, r4, r5, r6, r7 := enterNativeIntOctRaw(code, linMemBase, args, e.stackTop)
+	return uint64(r0), uint64(r1), uint64(r2), uint64(r3), uint64(r4), uint64(r5), uint64(r6), uint64(r7)
+}
+
+// EnterPreparedFloatBounded enters a compiler-proven bounded FP leaf with up
+// to four FP register arguments and four FP register results.
+func (e *Engine) EnterPreparedFloatBounded(code, linMemBase uintptr, args *[4]uint64) (uint64, uint64, uint64, uint64) {
+	r0, r1, r2, r3 := enterNativeFloatRaw(code, linMemBase, args, e.stackTop)
+	return uint64(r0), uint64(r1), uint64(r2), uint64(r3)
+}
+
+// EnterPreparedFloatOctBounded enters a bounded FP leaf using all eight FP registers.
+func (e *Engine) EnterPreparedFloatOctBounded(code, linMemBase uintptr, args *[8]uint64) (uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64) {
+	r0, r1, r2, r3, r4, r5, r6, r7 := enterNativeFloatOctRaw(code, linMemBase, args, e.stackTop)
+	return uint64(r0), uint64(r1), uint64(r2), uint64(r3), uint64(r4), uint64(r5), uint64(r6), uint64(r7)
+}
+
+// EnterPreparedMixedBounded stages up to four GP and four FP arguments in
+// independent register banks. The caller selects the result bank by signature.
+func (e *Engine) EnterPreparedMixedBounded(code, linMemBase uintptr, args *[8]uint64) (uint64, uint64, uint64, uint64) {
+	gp0, gp1, fp0, fp1 := enterNativeMixedRaw(code, linMemBase, args, e.stackTop)
+	return uint64(gp0), uint64(gp1), uint64(fp0), uint64(fp1)
 }
 
 // EnterPreparedIntPreboundContextBounded reads immutable entry state from call

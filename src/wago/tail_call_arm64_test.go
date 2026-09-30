@@ -55,9 +55,7 @@ func TestTailCallARM64DynamicHostAndCrossInstance(t *testing.T) {
 	}
 	defer consumerCode.Close()
 
-	host, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{
-		"env.f": HostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] + 1 }),
-	}})
+	host, err := Instantiate(consumerCode, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] + 1 }))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +85,7 @@ func TestTailCallARM64DynamicHostAndCrossInstance(t *testing.T) {
 		provider.Close()
 		t.Fatal(err)
 	}
-	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.f": exported}})
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: testImports("env.f", exported)})
 	if err != nil {
 		provider.Close()
 		t.Fatal(err)

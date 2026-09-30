@@ -23,11 +23,23 @@ type (
 	BoundsCheckMode                 = impl.BoundsCheckMode
 	Caller                          = impl.Caller
 	CallerHostCallFunc              = impl.CallerHostCallFunc
-	CallerHostFunc                  = impl.CallerHostFunc
 	CallerInvoker                   = impl.CallerInvoker
 	CallerResolver                  = impl.CallerResolver
 	Capability                      = impl.Capability
 	CapabilityOption                = impl.CapabilityOption
+	CodeProfile                     = impl.CodeProfile
+	CodeProfileEvent                = impl.CodeProfileEvent
+	CodeProfileFunction             = impl.CodeProfileFunction
+	CodeProfileImage                = impl.CodeProfileImage
+	CodeProfileInlineFrame          = impl.CodeProfileInlineFrame
+	CodeProfileOptions              = impl.CodeProfileOptions
+	CodeProfileRegion               = impl.CodeProfileRegion
+	CodeProfileSite                 = impl.CodeProfileSite
+	CodeProfileSourceRange          = impl.CodeProfileSourceRange
+	CodeProfileSpan                 = impl.CodeProfileSpan
+	CodeProfileSpanToken            = impl.CodeProfileSpanToken
+	CodeProfileStatus               = impl.CodeProfileStatus
+	CodeProfileUnwindRange          = impl.CodeProfileUnwindRange
 	Compatibility                   = impl.Compatibility
 	CompilationIdentity             = impl.CompilationIdentity
 	Compiled                        = impl.Compiled
@@ -61,20 +73,13 @@ type (
 	FuncSig                         = impl.FuncSig
 	FunctionMetadata                = impl.FunctionMetadata
 	GCAllocatorKind                 = impl.GCAllocatorKind
-	GCBenchmarkConfiguration        = impl.GCBenchmarkConfiguration
-	GCBenchmarkTelemetryReport      = impl.GCBenchmarkTelemetryReport
 	GCConfig                        = impl.GCConfig
-	GCHelperStats                   = impl.GCHelperStats
 	GCHostModule                    = impl.GCHostModule
-	GCManagedHeapTelemetry          = impl.GCManagedHeapTelemetry
-	GCMemoryDomains                 = impl.GCMemoryDomains
 	GCNativeCodeTelemetry           = impl.GCNativeCodeTelemetry
 	GCNativeRootAdmission           = impl.GCNativeRootAdmission
 	GCProfile                       = impl.GCProfile
 	GCRef                           = impl.GCRef
 	GCRuntimeKind                   = impl.GCRuntimeKind
-	GCTelemetry                     = impl.GCTelemetry
-	GCTelemetrySnapshot             = impl.GCTelemetrySnapshot
 	Global                          = impl.Global
 	GlobalDef                       = impl.GlobalDef
 	GlobalImport                    = impl.GlobalImport
@@ -97,23 +102,15 @@ type (
 	HostCall                        = impl.HostCall
 	HostCallFunc                    = impl.HostCallFunc
 	HostExit                        = impl.HostExit
-	HostFunc                        = impl.HostFunc
 	HostFuncRef                     = impl.HostFuncRef
 	HostImportRegistrar             = impl.HostImportRegistrar
 	HostModule                      = impl.HostModule
 	HostTrap                        = impl.HostTrap
 	I31Ref                          = impl.I31Ref
 	I32HostEvent                    = impl.I32HostEvent
-	I32HostFunc                     = impl.I32HostFunc
-	I32I32HostFunc                  = impl.I32I32HostFunc
-	I32I32ToI32HostFunc             = impl.I32I32ToI32HostFunc
-	I32I32ToI32I32HostFunc          = impl.I32I32ToI32I32HostFunc
-	I32ToI32HostFunc                = impl.I32ToI32HostFunc
-	I32ToI32I32HostFunc             = impl.I32ToI32I32HostFunc
 	ImplementationLimitError        = impl.ImplementationLimitError
 	ImportFuncBuilder               = impl.ImportFuncBuilder
 	ImportKind                      = impl.ImportKind
-	ImportModuleBuilder             = impl.ImportModuleBuilder
 	ImportOverridePolicy            = impl.ImportOverridePolicy
 	ImportSpec                      = impl.ImportSpec
 	Imports                         = impl.Imports
@@ -158,7 +155,6 @@ type (
 	ModuleSourceTransformer         = impl.ModuleSourceTransformer
 	ModuleView                      = impl.ModuleView
 	NativeMemoryStats               = impl.NativeMemoryStats
-	NoArgsHostFunc                  = impl.NoArgsHostFunc
 	OffsetInit                      = impl.OffsetInit
 	OperationIdentity               = impl.OperationIdentity
 	OptKnobInfo                     = impl.OptKnobInfo
@@ -178,9 +174,7 @@ type (
 	PluginSet                       = impl.PluginSet
 	Policy                          = impl.Policy
 	PreparedCompile                 = impl.PreparedCompile
-	PreparedFunction                = impl.PreparedFunction
-	PreparedI32I32ToI32             = impl.PreparedI32I32ToI32
-	PreparedI32ToI32                = impl.PreparedI32ToI32
+	PreparedSession                 = impl.PreparedSession
 	ProviderCatalogDocument         = impl.ProviderCatalogDocument
 	ProviderCatalogEntry            = impl.ProviderCatalogEntry
 	RefInit                         = impl.RefInit
@@ -209,6 +203,7 @@ type (
 	Value                           = impl.Value
 	ValueTypeDescriptor             = impl.ValueTypeDescriptor
 	ValueTypeKind                   = impl.ValueTypeKind
+	WasmFunc                        = impl.WasmFunc
 	WasmType                        = impl.WasmType
 )
 
@@ -309,7 +304,6 @@ const (
 	GCProfileTiny                              = impl.GCProfileTiny
 	GCRuntimeGenerational                      = impl.GCRuntimeGenerational
 	GCRuntimeIncrementalMarkSweep              = impl.GCRuntimeIncrementalMarkSweep
-	GCTelemetrySchemaVersion                   = impl.GCTelemetrySchemaVersion
 	GuestGCArrayExternRef                      = impl.GuestGCArrayExternRef
 	GuestGCArrayF32                            = impl.GuestGCArrayF32
 	GuestGCArrayF64                            = impl.GuestGCArrayF64
@@ -415,10 +409,6 @@ func CanonicalPluginDefinition(def PluginDefinition) (PluginDefinition, error) {
 
 func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(docs) }
 
-func CaptureGCMemoryDomains(compilerHeapBytes uint64, executableJITBytes uint64, heap GCManagedHeapTelemetry) GCMemoryDomains {
-	return impl.CaptureGCMemoryDomains(compilerHeapBytes, executableJITBytes, heap)
-}
-
 func Compile(args ...any) (*Compiled, error) { return impl.Compile(args...) }
 
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
@@ -449,8 +439,6 @@ func FeatureInfoByName(name string) (FeatureInfo, bool) { return impl.FeatureInf
 
 func FeatureInfos() []FeatureInfo { return impl.FeatureInfos() }
 
-func GCTelemetryAvailable() bool { return impl.GCTelemetryAvailable() }
-
 func GuardPageSupported() bool { return impl.GuardPageSupported() }
 
 func I32(v int32) uint64 { return impl.I32(v) }
@@ -477,9 +465,7 @@ func NewBits(width int32, littleEndian []byte) (Bits, error) {
 	return impl.NewBits(width, littleEndian)
 }
 
-func NewGCBenchmarkTelemetryReport(name string) GCBenchmarkTelemetryReport {
-	return impl.NewGCBenchmarkTelemetryReport(name)
-}
+func NewCodeProfile(options CodeProfileOptions) *CodeProfile { return impl.NewCodeProfile(options) }
 
 func NewGlobalF32(v float32, mutable bool) *Global { return impl.NewGlobalF32(v, mutable) }
 
@@ -494,6 +480,8 @@ func NewGlobalV128(v V128, mutable bool) *Global { return impl.NewGlobalV128(v, 
 func NewHandleTable() *HandleTable { return impl.NewHandleTable() }
 
 func NewI31Ref(v int32) I31Ref { return impl.NewI31Ref(v) }
+
+func NewImports() *Imports { return impl.NewImports() }
 
 func NewMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 	return impl.NewMemory(minPages, maxPages)
@@ -575,7 +563,9 @@ func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 	return impl.WithImportOverridePolicy(p)
 }
 
-func WithImports(im Imports) InstantiateOption { return impl.WithImports(im) }
+func WithImports(im *Imports) InstantiateOption { return impl.WithImports(im) }
+
+func WithInvokeCacheSlots(slots int) InstantiateOption { return impl.WithInvokeCacheSlots(slots) }
 
 func WithPolicy(p Policy) InstantiateOption { return impl.WithPolicy(p) }
 

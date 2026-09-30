@@ -109,6 +109,7 @@ func TestRemapPCRelativeWordArm64(t *testing.T) {
 		word       uint32
 		wantTarget int
 		adr        bool
+		literal    bool
 	}{
 		{name: "B forward", oldPC: 0, word: 0x14000000 | 5, wantTarget: 16},
 		{name: "BL forward", oldPC: 0, word: 0x94000000 | 5, wantTarget: 16},
@@ -116,6 +117,8 @@ func TestRemapPCRelativeWordArm64(t *testing.T) {
 		{name: "CBZ backward", oldPC: 16, word: 0x34000000 | (uint32(0x7FFFC) << 5), wantTarget: 0},
 		{name: "TBZ backward", oldPC: 16, word: 0x36000000 | (uint32(0x3FFC) << 5), wantTarget: 0},
 		{name: "ADR forward", oldPC: 0, word: encodeADR(20), wantTarget: 16, adr: true},
+		{name: "LDR D forward", oldPC: 0, word: 0x5C000000 | 5<<5, wantTarget: 16, literal: true},
+		{name: "LDR S backward", oldPC: 16, word: 0x1C000000 | uint32(0x7FFFC)<<5, wantTarget: 0, literal: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -130,6 +133,8 @@ func TestRemapPCRelativeWordArm64(t *testing.T) {
 			var target int
 			if test.adr {
 				target, ok = adrTarget(newPC, got)
+			} else if test.literal {
+				target, ok = literalTarget(newPC, got)
 			} else {
 				target, ok = branchTarget(newPC, got)
 			}
@@ -253,6 +258,7 @@ func TestFinalizerCandidateInventoryIsBoundedArm64(t *testing.T) {
 }
 
 func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
 	beforeLoops := loopCompactionEnabled
 	nativeCompactionEnabled, nativeCompactionDisabled, loopCompactionEnabled = false, false, true
@@ -308,6 +314,7 @@ func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
 }
 
 func TestLoopCompactionHasFixedFunctionSizeBoundArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforeLimit := arm64LoopCompactionLimit
 	arm64LoopCompactionLimit = 16 << 10
 	t.Cleanup(func() { arm64LoopCompactionLimit = beforeLimit })
@@ -329,6 +336,7 @@ func TestLoopCompactionHasFixedFunctionSizeBoundArm64(t *testing.T) {
 }
 
 func TestLoopCompactionLimitRespectsArchitectureAndPolicyBoundsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforeLimit := arm64LoopCompactionLimit
 	t.Cleanup(func() { arm64LoopCompactionLimit = beforeLimit })
 	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)

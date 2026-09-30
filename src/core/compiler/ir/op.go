@@ -31,6 +31,8 @@ const (
 	OpLocalGet
 	OpLocalSet
 	OpLocalTee
+	OpMemoryInit
+	OpDataDrop
 )
 
 // opNames is the single source of truth for IR opcode names used by printing
@@ -62,6 +64,8 @@ var opNames = [...]string{
 	OpCallIndirect: "call_indirect",
 	OpLocalGet:     "local.get",
 	OpLocalSet:     "local.set",
+	OpMemoryInit:   "memory.init",
+	OpDataDrop:     "data.drop",
 	OpLocalTee:     "local.tee",
 }
 
@@ -90,6 +94,8 @@ const (
 	EffectHost
 	EffectReadLocal
 	EffectWriteLocal
+	EffectReadData
+	EffectWriteData
 )
 
 type IUnaryOp uint8
@@ -286,10 +292,12 @@ func auxType(aux uint64) wasm.ValType {
 func packMem(kind MemOp, align, memidx, offset uint32) uint64 {
 	return uint64(kind) | uint64(align)<<8 | uint64(memidx)<<16 | uint64(offset)<<32
 }
-func memKind(aux uint64) MemOp    { return MemOp(byte(aux)) }
-func memAlign(aux uint64) uint32  { return uint32((aux >> 8) & 0xff) }
-func memIndex(aux uint64) uint32  { return uint32((aux >> 16) & 0xffff) }
-func memOffset(aux uint64) uint32 { return uint32(aux >> 32) }
+func memKind(aux uint64) MemOp   { return MemOp(byte(aux)) }
+func memAlign(aux uint64) uint32 { return uint32((aux >> 8) & 0xff) }
+func memIndex(aux uint64) uint32 { return uint32((aux >> 16) & 0xffff) }
+
+// Load and store instructions keep the high 32 offset bits in Aux2.
+func memOffset(aux, aux2 uint64) uint64 { return aux2<<32 | aux>>32 }
 
 func packCallIndirect(typeIdx, tableIdx uint32) uint64 { return uint64(typeIdx) | uint64(tableIdx)<<32 }
 func callIndirectType(aux uint64) uint32               { return uint32(aux) }

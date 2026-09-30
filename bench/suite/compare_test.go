@@ -21,6 +21,9 @@ import (
 func BenchmarkWazeroCompile(b *testing.B) {
 	ctx := context.Background()
 	for _, m := range loadCorpus(b) {
+		if m.Command != nil && m.Command.ReferenceRuntime != "" {
+			continue
+		}
 		b.Run(m.name(), func(b *testing.B) {
 			r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
 			defer r.Close(ctx)
@@ -96,7 +99,7 @@ func wazeroCodeSize(cm wazero.CompiledModule) (int, error) {
 func BenchmarkWazeroInstantiate(b *testing.B) {
 	ctx := context.Background()
 	for _, m := range loadCorpus(b) {
-		if !m.supports("Instantiate") {
+		if !m.supports("Instantiate") || m.Command != nil && m.Command.ReferenceRuntime != "" {
 			continue
 		}
 		b.Run(m.name(), func(b *testing.B) {

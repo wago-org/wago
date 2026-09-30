@@ -130,7 +130,7 @@ func hostFuncRefScalarExactTypeModule() []byte {
 func TestHostFuncRefPreservesIndexedScalarSignature(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
-	owner, err := rt.NewHostFuncRef(HostFunc(func(m HostModule, args, results []uint64) {
+	owner, err := rt.NewHostFuncRef(slotHostFunc(func(m HostModule, args, results []uint64) {
 		storageModule, ok := m.(GuestStorageHostModule)
 		if !ok {
 			panic(HostTrap{Err: fmt.Errorf("host module does not expose guest storage")})
@@ -157,11 +157,11 @@ func TestHostFuncRefPreservesIndexedScalarSignature(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	in, err := rt.Instantiate(context.Background(), compiled, WithImports(Imports{"host.scalar": owner}))
+	in, err := rt.Instantiate(context.Background(), compiled, WithImports(testImports("host.scalar", owner)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, err := in.Call(context.Background(), "run", ValueI32(9)); err != nil || len(got) != 1 || got[0].I64() != 9 {
+	if got, err := in.InvokeValues(context.Background(), "run", ValueI32(9)); err != nil || len(got) != 1 || got[0].I64() != 9 {
 		t.Fatalf("scalar owned host call = %v, %v; want [9], nil", got, err)
 	}
 	owner.mu.Lock()
@@ -194,7 +194,7 @@ func TestHostFuncRefUsesImporterLocalExactSignature(t *testing.T) {
 	defer rt.Close()
 
 	var seenTypeIndexes []uint32
-	owner, err := rt.NewHostFuncRef(HostFunc(func(m HostModule, args, results []uint64) {
+	owner, err := rt.NewHostFuncRef(slotHostFunc(func(m HostModule, args, results []uint64) {
 		storageModule, ok := m.(GuestStorageHostModule)
 		if !ok {
 			panic(HostTrap{Err: fmt.Errorf("host module does not expose guest storage")})
@@ -240,12 +240,12 @@ func TestHostFuncRefUsesImporterLocalExactSignature(t *testing.T) {
 			t.Fatalf("compile importer with %d padding types: %v", padding, err)
 		}
 		defer compiled.Close()
-		in, err := rt.Instantiate(context.Background(), compiled, WithImports(Imports{"host.echo": owner}))
+		in, err := rt.Instantiate(context.Background(), compiled, WithImports(testImports("host.echo", owner)))
 		if err != nil {
 			t.Fatalf("instantiate importer with %d padding types: %v", padding, err)
 		}
 		instances = append(instances, in)
-		if got, err := in.Call(context.Background(), "run"); err != nil || len(got) != 1 || got[0].I32() != 0 {
+		if got, err := in.InvokeValues(context.Background(), "run"); err != nil || len(got) != 1 || got[0].I32() != 0 {
 			t.Fatalf("run importer with %d padding types = %v, %v; want [0], nil", padding, got, err)
 		}
 	}
@@ -254,13 +254,13 @@ func TestHostFuncRefUsesImporterLocalExactSignature(t *testing.T) {
 		t.Fatalf("compile duplicate importer bindings: %v", err)
 	}
 	defer duplicate.Close()
-	duplicateInstance, err := rt.Instantiate(context.Background(), duplicate, WithImports(Imports{"host.echo-a": owner, "host.echo-b": owner}))
+	duplicateInstance, err := rt.Instantiate(context.Background(), duplicate, WithImports(testImports("host.echo-a", owner, "host.echo-b", owner)))
 	if err != nil {
 		t.Fatalf("instantiate duplicate importer bindings: %v", err)
 	}
 	instances = append(instances, duplicateInstance)
 	for _, export := range []string{"run-a", "run-b"} {
-		if got, err := duplicateInstance.Call(context.Background(), export); err != nil || len(got) != 1 || got[0].I32() != 0 {
+		if got, err := duplicateInstance.InvokeValues(context.Background(), export); err != nil || len(got) != 1 || got[0].I32() != 0 {
 			t.Fatalf("%s duplicate importer binding = %v, %v; want [0], nil", export, got, err)
 		}
 	}
@@ -273,7 +273,7 @@ func TestHostFuncRefUsesImporterLocalExactSignature(t *testing.T) {
 		t.Fatalf("compile structural mismatch: %v", err)
 	}
 	defer mismatch.Close()
-	if _, err := rt.Instantiate(context.Background(), mismatch, WithImports(Imports{"host.echo": owner})); err == nil || !strings.Contains(err.Error(), "structural signature mismatch") {
+	if _, err := rt.Instantiate(context.Background(), mismatch, WithImports(testImports("host.echo", owner))); err == nil || !strings.Contains(err.Error(), "structural signature mismatch") {
 		t.Fatalf("non-equivalent recursive host signature error = %v", err)
 	}
 }

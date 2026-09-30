@@ -28,6 +28,7 @@ func Run(root string, mod Module) error {
 	if err != nil {
 		return fmt.Errorf("compile: %w", err)
 	}
+	defer compiled.Close()
 
 	if mod.Invoke.Vectors != nil {
 		return runVectors(compiled, mod, timeout)
@@ -63,6 +64,7 @@ func RunRepeated(root string, mod Module, repetitions int) error {
 	if err != nil {
 		return fmt.Errorf("compile: %w", err)
 	}
+	defer compiled.Close()
 	inst, err := wago.Instantiate(compiled, wago.InstantiateOptions{})
 	if err != nil {
 		return fmt.Errorf("instantiate: %w", err)

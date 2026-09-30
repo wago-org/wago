@@ -60,6 +60,7 @@ func TestIdentityFinalizerPreservesBytesAndMetadata(t *testing.T) {
 }
 
 func TestSizeCompactsBoundedLoopFrameReservationsAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	oldEnabled, oldDisabled, oldLoops := nativeCompactionEnabled, nativeCompactionDisabled, loopCompactionEnabled
 	nativeCompactionEnabled, nativeCompactionDisabled, loopCompactionEnabled = false, false, true
 	t.Cleanup(func() {
@@ -204,6 +205,7 @@ func TestFinalizerCompactsSmallFrameAdjustments(t *testing.T) {
 }
 
 func TestFinalizerCompactsBoundedSubsetOfBranchHoles(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	oldEnabled, oldCompact, oldDisabled := nativeFinalizerEnabled, nativeCompactionEnabled, nativeCompactionDisabled
 	oldPartial := partialHoleCompactionEnabled
 	nativeFinalizerEnabled, nativeCompactionEnabled, nativeCompactionDisabled, partialHoleCompactionEnabled = true, true, false, true
@@ -271,6 +273,7 @@ func TestFinalizerCompactsBoundedSubsetOfBranchHoles(t *testing.T) {
 }
 
 func TestFinalizerDeletesBranchFoldHole(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 	m := mod1(t, i32, i32, []byte{
 		0x00,       // no locals
@@ -518,6 +521,7 @@ func TestFinalizerRelaxIterationLimit(t *testing.T) {
 }
 
 func TestSizeCompactsBranchesWithoutShrinkingLargeFrameAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	oldEnabled, oldDisabled := nativeCompactionEnabled, nativeCompactionDisabled
 	nativeCompactionEnabled, nativeCompactionDisabled = false, false
 	t.Cleanup(func() {

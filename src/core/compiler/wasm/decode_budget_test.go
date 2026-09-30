@@ -93,10 +93,15 @@ func TestDecodeOpaqueCustomPayloadBudget(t *testing.T) {
 	if _, err := DecodeModuleByteBackedWithLimits(data, ValidationFeatures{}, DecodeLimits{MaxMetadataBytes: uint64(len(payload))}); err == nil || !strings.Contains(err.Error(), "allocation limit") {
 		t.Fatalf("owned payload exceeded budget: %v", err)
 	}
-	for _, name := range []string{"name", branchHintSectionName} {
-		if _, err := DecodeModule(module(custom(name))); err == nil || strings.Contains(err.Error(), "allocation limit") {
-			t.Fatalf("malformed structured %s payload did not reach strict parsing: %v", name, err)
-		}
+	if _, err := DecodeModule(module(custom(branchHintSectionName))); err == nil || strings.Contains(err.Error(), "allocation limit") {
+		t.Fatalf("malformed branch hint payload did not reach strict parsing: %v", err)
+	}
+	m, err := DecodeModule(module(custom("name")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.NameSec != nil || len(m.RawNameSecPayload) != len(payload) {
+		t.Fatal("malformed name payload was not preserved as opaque data")
 	}
 }
 

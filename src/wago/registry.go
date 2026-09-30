@@ -22,6 +22,7 @@ type Registrar struct {
 	sealed         bool
 	caps           []capabilitySpec
 	imports        []*registeredImport
+	importErr      error
 	hooks          *hookRegistry
 	managers       []*InstanceManager
 	activate       []func(*Runtime)
@@ -36,6 +37,12 @@ type Registrar struct {
 	config         json.RawMessage
 	customTypes    map[string]CustomType
 	instructions   []*registeredInstruction
+}
+
+func (r *Registrar) recordImportError(module, name string, err error) {
+	if r != nil && err != nil {
+		r.importErr = errors.Join(r.importErr, fmt.Errorf("host import %q.%q: %w", module, name, err))
+	}
 }
 
 func newRegistrar(def PluginDefinition, selection PluginSelection) *Registrar {
@@ -160,18 +167,23 @@ func CapabilityDocs(docs string) CapabilityOption {
 
 // registeredImport is one declared host function.
 type registeredImport struct {
-	module   string
-	name     string
-	fn       any
-	eventI32 I32HostEvent
-	params   []ValType
-	results  []ValType
-	cap      Capability
-	hasCap   bool
-	docs     string
+	module          string
+	name            string
+	fn              any
+	eventI32        I32HostEvent
+	params          []ValType
+	results         []ValType
+	inferredParams  []ValType
+	inferredResults []ValType
+	inferred        bool
+	cap             Capability
+	hasCap          bool
+	docs            string
 }
 
-func (i *registeredImport) key() string { return i.module + "." + i.name }
+func (i *registeredImport) key() string { return importBindingMapKey(i.module, i.name) }
+
+func (i *registeredImport) displayName() string { return i.module + "." + i.name }
 
 func cloneRegisteredImport(imp *registeredImport) *registeredImport {
 	if imp == nil {
@@ -180,69 +192,83 @@ func cloneRegisteredImport(imp *registeredImport) *registeredImport {
 	clone := *imp
 	clone.params = append([]ValType(nil), imp.params...)
 	clone.results = append([]ValType(nil), imp.results...)
+	clone.inferredParams = append([]ValType(nil), imp.inferredParams...)
+	clone.inferredResults = append([]ValType(nil), imp.inferredResults...)
 	return &clone
 }
 
-// ImportModuleBuilder scopes declarations to one exact Wasm module.
-type ImportModuleBuilder struct {
-	reg    *Registrar
-	module string
+type ImportFuncBuilder struct {
+	imp     *registeredImport
+	imports *Imports
+	reg     *Registrar
 }
 
-// Func declares a synchronous host import. Ordinary Go functions use a
-// reflection-free specialized lane when their shape is recognized. HostCallFunc
-// (or func(HostCall)) is the universal form for arbitrary arity and every Wasm
-// value type; declare its signature with Params and Results.
-func (m *ImportModuleBuilder) Func(name string, fn any) *ImportFuncBuilder {
-	if m == nil {
-		return &ImportFuncBuilder{}
+func (f *ImportFuncBuilder) mutable() bool {
+	if f == nil || f.imp == nil {
+		return false
 	}
-	imp := &registeredImport{module: m.module, name: name, fn: fn}
-	imp.params, imp.results, _ = inferredHostFuncSignature(fn)
-	if m.reg != nil && !m.reg.sealed {
-		m.reg.imports = append(m.reg.imports, imp)
+	if f.reg != nil && f.reg.sealed {
+		f.reg.recordImportError(f.imp.module, f.imp.name, fmt.Errorf("plugin registrar is sealed"))
+		return false
 	}
-	return &ImportFuncBuilder{imp: imp}
+	return true
 }
-
-// I32Event declares a deferred capability-free (i32) -> () import. Calls are
-// delivered in order after the native invocation returns.
-func (m *ImportModuleBuilder) I32Event(name string, fn I32HostEvent) *ImportFuncBuilder {
-	if m == nil {
-		return &ImportFuncBuilder{}
-	}
-	imp := &registeredImport{module: m.module, name: name, eventI32: fn, params: []ValType{ValI32}}
-	if m.reg != nil && !m.reg.sealed {
-		m.reg.imports = append(m.reg.imports, imp)
-	}
-	return &ImportFuncBuilder{imp: imp}
-}
-
-type ImportFuncBuilder struct{ imp *registeredImport }
 
 func (f *ImportFuncBuilder) Params(types ...ValType) *ImportFuncBuilder {
-	if f != nil && f.imp != nil {
+	if f.mutable() {
+		if f.imports != nil {
+			f.imports.mu.Lock()
+			defer f.imports.mu.Unlock()
+		}
+		if f.imports != nil && f.imports.sealed {
+			f.imports.record(fmt.Errorf("wago: import %q.%q: collection is sealed", f.imp.module, f.imp.name))
+			return f
+		}
 		f.imp.params = append(f.imp.params[:0], types...)
 	}
 	return f
 }
 
 func (f *ImportFuncBuilder) Results(types ...ValType) *ImportFuncBuilder {
-	if f != nil && f.imp != nil {
+	if f.mutable() {
+		if f.imports != nil {
+			f.imports.mu.Lock()
+			defer f.imports.mu.Unlock()
+		}
+		if f.imports != nil && f.imports.sealed {
+			f.imports.record(fmt.Errorf("wago: import %q.%q: collection is sealed", f.imp.module, f.imp.name))
+			return f
+		}
 		f.imp.results = append(f.imp.results[:0], types...)
 	}
 	return f
 }
 
 func (f *ImportFuncBuilder) Capability(cap Capability) *ImportFuncBuilder {
-	if f != nil && f.imp != nil {
+	if f.mutable() {
+		if f.imports != nil {
+			f.imports.mu.Lock()
+			defer f.imports.mu.Unlock()
+		}
+		if f.imports != nil && f.imports.sealed {
+			f.imports.record(fmt.Errorf("wago: import %q.%q: collection is sealed", f.imp.module, f.imp.name))
+			return f
+		}
 		f.imp.cap, f.imp.hasCap = cap, true
 	}
 	return f
 }
 
 func (f *ImportFuncBuilder) Docs(docs string) *ImportFuncBuilder {
-	if f != nil && f.imp != nil {
+	if f.mutable() {
+		if f.imports != nil {
+			f.imports.mu.Lock()
+			defer f.imports.mu.Unlock()
+		}
+		if f.imports != nil && f.imports.sealed {
+			f.imports.record(fmt.Errorf("wago: import %q.%q: collection is sealed", f.imp.module, f.imp.name))
+			return f
+		}
 		f.imp.docs = docs
 	}
 	return f

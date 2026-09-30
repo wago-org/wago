@@ -27,6 +27,7 @@ func gcFrameFixedOffsets(rootMap *nativeabi.FunctionRootMap) []uint32 {
 	return offsets
 }
 
+//go:noinline
 func gcFramePrepareModuleRootPlan(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, analysis *wasm.ValidatedModuleAnalysis) (*shared.GCModuleFrameRootPlan, error) {
 	module := shared.NewGCModuleFrameRootPlan(len(m.Code))
 	collectingFunctions := 0

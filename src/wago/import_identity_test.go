@@ -159,8 +159,9 @@ func TestRuntimePluginBindingRequiresExactImportIdentity(t *testing.T) {
 	const flatKey = "a.b.c"
 	rt := NewRuntime()
 	defer rt.Close()
-	rt.imports[flatKey] = HostFunc(func(HostModule, []uint64, []uint64) {})
-	rt.importMeta[flatKey] = &registeredImport{
+	bindingKey := importBindingMapKey("a", "b.c")
+	rt.imports[bindingKey] = slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	rt.importMeta[bindingKey] = &registeredImport{
 		module: "a", name: "b.c",
 		cap: Capability("host.exact"), hasCap: true,
 	}
@@ -182,11 +183,11 @@ func TestRuntimePluginBindingRequiresExactImportIdentity(t *testing.T) {
 		t.Fatalf("colliding plugin binding error = %v, want ErrMissingImport", err)
 	}
 
-	if instance, err := rt.Instantiate(context.Background(), module, WithImports(Imports{flatKey: HostFunc(func(HostModule, []uint64, []uint64) {})})); err == nil || instance != nil || !strings.Contains(err.Error(), "use WithImport") {
-		t.Fatalf("ambiguous flat override = %v, %v; want exact-import error", instance, err)
+	if instance, err := rt.Instantiate(context.Background(), module, WithImports(testImports(flatKey, slotHostFunc(func(HostModule, []uint64, []uint64) {})))); err == nil || instance != nil || !errors.Is(err, ErrMissingImport) {
+		t.Fatalf("distinct exact override = %v, %v; want ErrMissingImport", instance, err)
 	}
 
-	instance, err := rt.Instantiate(context.Background(), module, WithImport("a.b", "c", HostFunc(func(HostModule, []uint64, []uint64) {})))
+	instance, err := rt.Instantiate(context.Background(), module, WithImport("a.b", "c", slotHostFunc(func(HostModule, []uint64, []uint64) {})))
 	if err != nil {
 		t.Fatalf("exact override: %v", err)
 	}
@@ -195,7 +196,7 @@ func TestRuntimePluginBindingRequiresExactImportIdentity(t *testing.T) {
 	}
 }
 
-func TestRuntimeRejectsCollidingExactImportIdentities(t *testing.T) {
+func TestRuntimeAcceptsDistinctExactImportIdentities(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	moduleBytes := wasmtest.Module(
@@ -205,12 +206,22 @@ func TestRuntimeRejectsCollidingExactImportIdentities(t *testing.T) {
 			importEntry("a", "b.c", 0, 0),
 		)),
 	)
-	if module, err := rt.Compile(moduleBytes); err == nil || module != nil || !strings.Contains(err.Error(), "cannot be bound safely") {
-		t.Fatalf("colliding declared imports = %v, %v; want rejection", module, err)
+	module, err := rt.Compile(moduleBytes)
+	if err != nil {
+		t.Fatalf("compile exact identities: %v", err)
 	}
+	defer module.Close()
+	imports := NewImports()
+	imports.HostFunc("a.b", "c", func() {})
+	imports.HostFunc("a", "b.c", func() {})
+	instance, err := rt.Instantiate(context.Background(), module, WithImports(imports))
+	if err != nil {
+		t.Fatalf("instantiate exact identities: %v", err)
+	}
+	instance.Close()
 }
 
-func TestRuntimeRejectsExactOverrideCollidingWithDeclaration(t *testing.T) {
+func TestRuntimeDistinctExactOverrideDoesNotSatisfyDeclaration(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	module, err := rt.Compile(wasmtest.Module(
@@ -222,13 +233,13 @@ func TestRuntimeRejectsExactOverrideCollidingWithDeclaration(t *testing.T) {
 	}
 	defer module.Close()
 	if instance, err := rt.Instantiate(context.Background(), module,
-		WithImport("a", "b.c", HostFunc(func(HostModule, []uint64, []uint64) {})),
-	); err == nil || instance != nil || !strings.Contains(err.Error(), "cannot be bound safely") {
-		t.Fatalf("colliding exact override = %v, %v; want rejection", instance, err)
+		WithImport("a", "b.c", slotHostFunc(func(HostModule, []uint64, []uint64) {})),
+	); err == nil || instance != nil || !errors.Is(err, ErrMissingImport) {
+		t.Fatalf("distinct exact override = %v, %v; want ErrMissingImport", instance, err)
 	}
 }
 
-func TestRuntimeRejectsCollidingUndeclaredExactOverrides(t *testing.T) {
+func TestRuntimeRetainsDistinctUndeclaredExactOverrides(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	module, err := rt.Compile(wasmtest.Module())
@@ -236,11 +247,21 @@ func TestRuntimeRejectsCollidingUndeclaredExactOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer module.Close()
-	if instance, err := rt.Instantiate(context.Background(), module,
-		WithImport("a.b", "c", new(int)),
-		WithImport("a", "b.c", new(int)),
-	); err == nil || instance != nil || !strings.Contains(err.Error(), "cannot be bound safely") {
-		t.Fatalf("colliding undeclared exact overrides = %v, %v; want rejection", instance, err)
+	first, second := new(int), new(int)
+	instance, err := rt.Instantiate(context.Background(), module,
+		WithImport("a.b", "c", first),
+		WithImport("a", "b.c", second),
+	)
+	if err != nil {
+		t.Fatalf("distinct undeclared exact overrides: %v", err)
+	}
+	defer instance.Close()
+	got := instance.Imports()
+	if value, ok := got.Lookup("a.b", "c"); !ok || value != first {
+		t.Fatalf("first exact override = %v, %v", value, ok)
+	}
+	if value, ok := got.Lookup("a", "b.c"); !ok || value != second {
+		t.Fatalf("second exact override = %v, %v", value, ok)
 	}
 }
 
@@ -258,7 +279,7 @@ func TestRuntimeRetainsUndeclaredExactImport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	if got := instance.Imports()["unused.mod.value.name"]; got != marker {
+	if got := instance.Imports().bindings[importBindingMapKey("unused.mod", "value.name")]; got != marker {
 		t.Fatalf("undeclared exact import = %v, want %p", got, marker)
 	}
 }
@@ -267,8 +288,9 @@ func TestRuntimeReservedExactOverrideIgnoresCollidingIdentity(t *testing.T) {
 	const flatKey = "wago_timer.a.b"
 	rt := NewRuntime()
 	defer rt.Close()
-	rt.imports[flatKey] = HostFunc(func(HostModule, []uint64, []uint64) {})
-	rt.importMeta[flatKey] = &registeredImport{module: "wago_timer.a", name: "b"}
+	bindingKey := importBindingMapKey("wago_timer.a", "b")
+	rt.imports[bindingKey] = slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	rt.importMeta[bindingKey] = &registeredImport{module: "wago_timer.a", name: "b"}
 	module, err := rt.Compile(wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("wago_timer"), wasmtest.Name("a.b")...), 0x00, 0x00))),
@@ -277,7 +299,7 @@ func TestRuntimeReservedExactOverrideIgnoresCollidingIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer module.Close()
-	instance, err := rt.Instantiate(context.Background(), module, WithImport("wago_timer", "a.b", HostFunc(func(HostModule, []uint64, []uint64) {})))
+	instance, err := rt.Instantiate(context.Background(), module, WithImport("wago_timer", "a.b", slotHostFunc(func(HostModule, []uint64, []uint64) {})))
 	if err != nil {
 		t.Fatalf("exact override of distinct reserved identity: %v", err)
 	}
@@ -295,11 +317,11 @@ func TestRuntimeRejectsMixedExactAndFlatOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer module.Close()
-	first := HostFunc(func(HostModule, []uint64, []uint64) {})
-	second := HostFunc(func(HostModule, []uint64, []uint64) {})
+	first := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	second := slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	for _, opts := range [][]InstantiateOption{
-		{WithImport("env", "f", first), WithImports(Imports{"env.f": second})},
-		{WithImports(Imports{"env.f": first}), WithImport("env", "f", second)},
+		{WithImport("env", "f", first), WithImports(testImports("env.f", second))},
+		{WithImports(testImports("env.f", first)), WithImport("env", "f", second)},
 	} {
 		if instance, err := rt.Instantiate(context.Background(), module, opts...); err == nil || instance != nil || !strings.Contains(err.Error(), "both WithImport and WithImports") {
 			t.Fatalf("mixed override = %v, %v; want explicit rejection", instance, err)

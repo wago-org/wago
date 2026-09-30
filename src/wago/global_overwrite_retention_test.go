@@ -15,7 +15,7 @@ func localFuncrefGlobalProducer(t *testing.T, rt *Runtime, global *Global, value
 		(func $target (result i32) (i32.const `+itoa32(value)+`))
 		(elem declare func $target)
 		(func (export "seed") (ref.func $target) (global.set $global)))`)
-	in, err := rt.Instantiate(context.Background(), module, WithImports(Imports{"env.global": global}))
+	in, err := rt.Instantiate(context.Background(), module, WithImports(testImports("env.global", global)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,11 +74,11 @@ func TestGlobalOverwriteReplacesProducerAndBoundsRepeatedWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	outA, err := producerA.Call(context.Background(), "get")
+	outA, err := producerA.InvokeValues(context.Background(), "get")
 	if err != nil {
 		t.Fatal(err)
 	}
-	outB, err := producerB.Call(context.Background(), "get")
+	outB, err := producerB.InvokeValues(context.Background(), "get")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestGlobalOverwriteReplacesProducerAndBoundsRepeatedWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, err := consumer.Call(context.Background(), "call", value); err != nil || len(got) != 1 || got[0].I32() != 42 {
+	if got, err := consumer.InvokeValues(context.Background(), "call", value); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("replacement call = %v, %v; want 42", got, err)
 	}
 	_ = consumer.Close()
@@ -148,7 +148,7 @@ func TestGlobalOverwriteRacesCloseWithoutDoubleRelease(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		out, err := producer.Call(context.Background(), "get")
+		out, err := producer.InvokeValues(context.Background(), "get")
 		if err != nil {
 			t.Fatal(err)
 		}

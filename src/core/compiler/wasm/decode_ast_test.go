@@ -105,11 +105,8 @@ func decodeASTCustomSectionForTest(m *Module, r *reader, seenName *bool) error {
 	if err != nil {
 		return err
 	}
-	if name == "name" {
-		if *seenName {
-			return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
-		}
-		ns, err := decodeNameSec(payload)
+	if name == "name" && !*seenName {
+		ns, err := decodeOptionalNameSec(payload, r.budget)
 		if err != nil {
 			return err
 		}
@@ -126,7 +123,7 @@ func decodeASTTableSectionForTest(m *Module, r *reader) error {
 	if err != nil {
 		return err
 	}
-	m.Tables = make([]Table, 0, minIntForTest(int(n), r.left()))
+	m.Tables = make([]Table, 0, boundedCountForTest(n, r.left()))
 	for i := uint32(0); i < n; i++ {
 		if b, ok := r.peek(); ok && b == 0x40 {
 			_, _ = r.byte()
@@ -159,7 +156,7 @@ func decodeASTGlobalSectionForTest(m *Module, r *reader) error {
 	if err != nil {
 		return err
 	}
-	m.Globals = make([]Global, 0, minIntForTest(int(n), r.left()))
+	m.Globals = make([]Global, 0, boundedCountForTest(n, r.left()))
 	for i := uint32(0); i < n; i++ {
 		gt, err := decodeGlobalType(r)
 		if err != nil {
@@ -179,7 +176,7 @@ func decodeASTCodeSectionForTest(m *Module, r *reader, multiMemory bool) error {
 	if err != nil {
 		return err
 	}
-	m.Code = make([]Func, 0, minIntForTest(int(n), r.left()))
+	m.Code = make([]Func, 0, boundedCountForTest(n, r.left()))
 	for i := uint32(0); i < n; i++ {
 		size, err := r.u32()
 		if err != nil {
@@ -213,7 +210,7 @@ func decodeASTDataSectionForTest(m *Module, r *reader) error {
 	if err != nil {
 		return err
 	}
-	m.Data = make([]Data, 0, minIntForTest(int(n), r.left()))
+	m.Data = make([]Data, 0, boundedCountForTest(n, r.left()))
 	for i := uint32(0); i < n; i++ {
 		d, err := decodeASTDataForTest(r)
 		if err != nil {
@@ -265,7 +262,7 @@ func decodeASTElementSectionForTest(m *Module, r *reader) error {
 	if err != nil {
 		return err
 	}
-	m.Elements = make([]Elem, 0, minIntForTest(int(n), r.left()))
+	m.Elements = make([]Elem, 0, boundedCountForTest(n, r.left()))
 	for i := uint32(0); i < n; i++ {
 		e, err := decodeASTElemForTest(r)
 		if err != nil {
@@ -395,7 +392,7 @@ func readFuncIdxVecForTest(r *reader) ([]FuncIdx, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]FuncIdx, 0, minIntForTest(int(n), r.left()))
+	out := make([]FuncIdx, 0, boundedCountForTest(n, r.left()))
 	for i := uint32(0); i < n; i++ {
 		x, err := r.u32()
 		if err != nil {
@@ -411,7 +408,7 @@ func readASTExprVecForTest(r *reader) ([]Expr, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Expr, 0, minIntForTest(int(n), r.left()))
+	out := make([]Expr, 0, boundedCountForTest(n, r.left()))
 	for i := uint32(0); i < n; i++ {
 		e, err := decodeExpr(r, 0)
 		if err != nil {
@@ -422,9 +419,9 @@ func readASTExprVecForTest(r *reader) ([]Expr, error) {
 	return out, nil
 }
 
-func minIntForTest(a, b int) int {
-	if a < b {
-		return a
+func boundedCountForTest(count uint32, remaining int) int {
+	if uint(count) < uint(remaining) {
+		return int(count)
 	}
-	return b
+	return remaining
 }

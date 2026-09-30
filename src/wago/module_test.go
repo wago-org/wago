@@ -21,7 +21,7 @@ func TestInstanceCallTyped(t *testing.T) {
 	}
 	defer in.Close()
 
-	out, err := in.Call(context.Background(), "g", ValueI32(7))
+	out, err := in.InvokeValues(context.Background(), "g", ValueI32(7))
 	if err != nil {
 		t.Fatalf("call: %v", err)
 	}
@@ -30,11 +30,11 @@ func TestInstanceCallTyped(t *testing.T) {
 	}
 
 	// Wrong arg type is rejected.
-	if _, err := in.Call(context.Background(), "g", ValueI64(7)); err == nil {
+	if _, err := in.InvokeValues(context.Background(), "g", ValueI64(7)); err == nil {
 		t.Fatal("expected type-mismatch error for i64 arg to i32 param")
 	}
 	// Wrong arg count is rejected.
-	if _, err := in.Call(context.Background(), "g"); err == nil {
+	if _, err := in.InvokeValues(context.Background(), "g"); err == nil {
 		t.Fatal("expected arity error")
 	}
 }
@@ -51,7 +51,7 @@ func TestInstanceCallCanceledContext(t *testing.T) {
 	defer in.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := in.Call(ctx, "g", ValueI32(1)); !errors.Is(err, context.Canceled) {
+	if _, err := in.InvokeValues(ctx, "g", ValueI32(1)); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Call with canceled ctx = %v, want context.Canceled", err)
 	}
 }
@@ -88,7 +88,7 @@ func TestModuleInspection(t *testing.T) {
 
 	imps := mod.Imports()
 	if len(imps) != 1 {
-		t.Fatalf("Imports() = %+v, want 1", imps)
+		t.Fatalf("*Imports() = %+v, want 1", imps)
 	}
 	got := imps[0]
 	if got.Module != "env" || got.Name != "f" || got.Kind != ImportFunc {

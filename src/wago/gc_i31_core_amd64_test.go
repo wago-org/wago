@@ -10,7 +10,7 @@ import (
 
 func TestStagedGCI31CoreExecutionAndPublicCategory(t *testing.T) {
 	data := stagedGCI31CoreBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(strings.ToLower(err.Error()), "i31") {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(strings.ToLower(err.Error()), "i31") {
 		t.Fatalf("public Compile i31 product = %v", err)
 	}
 	c, err := compileStagedGCI31(data)
@@ -77,7 +77,7 @@ func TestStagedGCI31CoreExecutionAndPublicCategory(t *testing.T) {
 			if err != nil || len(raw) != 1 || raw[0] != uint64(uint32(0xffffffff)) {
 				t.Fatalf("raw new(-1)=%#v err=%v", raw, err)
 			}
-			values, err := in.Call(context.Background(), "new", ValueI32(-1))
+			values, err := in.InvokeValues(context.Background(), "new", ValueI32(-1))
 			if err != nil || len(values) != 1 || values[0].Type() != ValI31Ref || values[0].I31Ref().IsNull() || values[0].I31Ref().Signed() != -1 || values[0].I31Ref().Unsigned() != 0x7fffffff {
 				t.Fatalf("typed new(-1)=%v err=%v", values, err)
 			}

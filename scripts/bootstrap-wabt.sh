@@ -38,10 +38,26 @@ esac
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 root="$repo/.tools/wabt-$version-$platform"
 bin="$root/bin/wast2json"
+stamp="$root/.wago-provenance"
+
+sha256_file() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | awk '{ print $1 }'
+	else
+		shasum -a 256 "$1" | awk '{ print $1 }'
+	fi
+}
 
 verify() {
 	[ -x "$bin" ] || return 1
 	[ "$($bin --version 2>/dev/null)" = "$version" ] || return 1
+	[ -f "$stamp" ] || return 1
+	grep -Fxq "version=$version" "$stamp" || return 1
+	grep -Fxq "platform=$platform" "$stamp" || return 1
+	grep -Fxq "archive_sha256=$sha256" "$stamp" || return 1
+	grep -Fxq "source_build=$source_build" "$stamp" || return 1
+	grep -Fxq "bootstrap_sha256=$(sha256_file "$0")" "$stamp" || return 1
+	grep -Fxq "binary_sha256=$(sha256_file "$bin")" "$stamp" || return 1
 }
 
 if ! verify; then
@@ -71,8 +87,16 @@ if ! verify; then
 		rm -rf "$root"
 		mv "$extracted" "$root"
 	fi
+	{
+		printf 'version=%s\n' "$version"
+		printf 'platform=%s\n' "$platform"
+		printf 'archive_sha256=%s\n' "$sha256"
+		printf 'source_build=%s\n' "$source_build"
+		printf 'bootstrap_sha256=%s\n' "$(sha256_file "$0")"
+		printf 'binary_sha256=%s\n' "$(sha256_file "$bin")"
+	} >"$stamp"
 	verify || {
-		echo "bootstrap-wabt: installed wast2json did not report pinned version $version" >&2
+		echo "bootstrap-wabt: installed wast2json failed provenance verification for $version" >&2
 		exit 1
 	}
 fi

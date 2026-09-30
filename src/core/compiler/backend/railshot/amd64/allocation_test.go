@@ -51,7 +51,8 @@ func TestGPPinLimitReservesTransientLoweringRegisters(t *testing.T) {
 	}
 }
 
-func TestCompileRegisterPressureCorpusUsesOneAttemptPerFunction(t *testing.T) {
+func TestCompileRegisterPressureCorpusUsesBoundedPinsInOneAttempt(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	root := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
 	for _, name := range []string{"applications/embench/embench-matmult-int.wasm"} {
 		t.Run(name, func(t *testing.T) {
@@ -67,18 +68,17 @@ func TestCompileRegisterPressureCorpusUsesOneAttemptPerFunction(t *testing.T) {
 			if got, want := stats.Compile.FunctionAttempts, uint64(len(m.Code)); got != want {
 				t.Fatalf("function attempts = %d, want %d", got, want)
 			}
-			relinquishments := 0
-			for _, fs := range stats.Funcs {
-				relinquishments += fs.PinRelinquishments
-			}
-			if relinquishments == 0 {
-				t.Fatal("expected at least one bounded pin relinquishment")
+			for i, fs := range stats.Funcs {
+				if fs.PinRelinquishments != 0 {
+					t.Fatalf("function %d pin relinquishments = %d, want 0", i, fs.PinRelinquishments)
+				}
 			}
 		})
 	}
 }
 
 func TestWideMixedLocalsUseOneCompileAttempt(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	path := filepath.Join("..", "..", "..", "..", "..", "..", "tests", "corpus", "regressions", "fuzzcases", "1797d.wasm")
 	m := readParallelTestModule(t, path)
 	var stats ModuleStats

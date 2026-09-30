@@ -380,6 +380,30 @@ func TestSpillIfUsedRegisterValue(t *testing.T) {
 	f.spillIfUsed(X0)
 }
 
+func TestOwnedMemRefDestinationAliasUsesThreeRegisters(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	stats := &CodegenStats{}
+	f := &fn{a: &a64.Asm{}, s: newStack(), stats: stats}
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
+	right := f.pushValue(memRefStorage(X0, 0, 4, false, false, -1, -1))
+	f.regUser[X0] = right
+	f.pushBinOp(opSub, mtI32)
+
+	if got := f.condense(f.s.back(), X0); got != X0 {
+		t.Fatalf("result register = %v, want X0", got)
+	}
+	want := &a64.Asm{}
+	want.LoadIdx(X0, linMemReg, X0, 0, 4, false, false)
+	want.MovImm32(X9, 7)
+	want.Sub32(X0, X9, X0)
+	if !bytes.Equal(f.a.B, want.B) {
+		t.Fatalf("code = %x, want %x", f.a.B, want.B)
+	}
+	if f.maxSpill != 0 || stats.Spills != 0 || stats.Reloads != 0 {
+		t.Fatalf("spill slots/spills/reloads = %d/%d/%d, want 0/0/0", f.maxSpill, stats.Spills, stats.Reloads)
+	}
+}
+
 func TestSpillFRegisterValues(t *testing.T) {
 	for _, typ := range []machineType{mtF32, mtV128} {
 		f := &fn{a: &a64.Asm{}, s: newStack()}
@@ -878,8 +902,8 @@ func TestSIMDShiftLowering(t *testing.T) {
 		{"i8-right", func(f *fn) error { return f.i8x16Shift(wasm.NewReader(nil), f.a.NeonUshrvB, f.a.NeonUshrB, true) }},
 		{"i16-left", func(f *fn) error { return f.i16x8Shift(wasm.NewReader(nil), f.a.NeonUshlH, f.a.NeonShlH, false) }},
 		{"i16-right", func(f *fn) error { return f.i16x8Shift(wasm.NewReader(nil), f.a.NeonSshrvH, f.a.NeonSshrH, true) }},
-		{"i32-left", func(f *fn) error { return f.i32x4Shift(wasm.NewReader(nil), f.a.NeonUshlS, f.a.NeonShlS, false) }},
-		{"i32-right", func(f *fn) error { return f.i32x4Shift(wasm.NewReader(nil), f.a.NeonUshrvS, f.a.NeonUshrS, true) }},
+		{"i32-left", func(f *fn) error { return f.i32x4Shift(wasm.NewReader(nil), f.a.NeonUshlS, f.a.NeonShlS, false, false) }},
+		{"i32-right", func(f *fn) error { return f.i32x4Shift(wasm.NewReader(nil), f.a.NeonUshrvS, f.a.NeonUshrS, true, true) }},
 		{"i64-left", func(f *fn) error { return f.i64x2Shift(wasm.NewReader(nil), f.a.NeonUshlD, f.a.NeonShlD, false) }},
 		{"i64-right", func(f *fn) error { return f.i64x2Shift(wasm.NewReader(nil), f.a.NeonSshrvD, f.a.NeonSshrD, true) }},
 	} {
@@ -901,7 +925,7 @@ func TestTableEntrySnapshotAndFillEmitters(t *testing.T) {
 		emit func(*fn)
 	}{
 		{"snapshot-funcref", func(f *fn) { f.snapshotFuncrefDescriptor(X0, 0) }},
-		{"fill-funcref", func(f *fn) { f.fillTableEntries(X0, X1, 0) }},
+		{"fill-funcref", func(f *fn) { f.fillTableEntries(X0, X1, 0, 0, 1) }},
 		{"fill-externref", func(f *fn) { f.fillExternrefEntries(X0, X1, X2) }},
 		{"copy-funcref", func(f *fn) { f.copyFuncrefToEntry(X0, X1) }},
 	} {
@@ -1149,6 +1173,7 @@ func TestOptimizationKnobAndABIHelpers(t *testing.T) {
 }
 
 func TestCodegenStatsFormattingAndRegisterNames(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	stats := &CodegenStats{
 		FuncIdx:           2,
 		Name:              "work",

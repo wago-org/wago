@@ -3,7 +3,6 @@ package validate
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -11,6 +10,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
 	runcmd "github.com/wago-org/wago/cli/runtime/commands/run"
+	"github.com/wago-org/wago/cli/runtime/internal/modulefile"
 	"github.com/wago-org/wago/internal/functionworkers"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -33,7 +33,7 @@ func run(c *command.Ctx) {
 	if len(c.Args) != 1 {
 		ui.Usage("validate: need exactly one <file>")
 	}
-	src, err := os.ReadFile(c.Args[0])
+	src, err := modulefile.Read(c.Args[0])
 	if err != nil {
 		ui.Fatal("%v", err)
 	}
@@ -59,7 +59,13 @@ func ModuleBytes(src []byte) error {
 }
 
 func ModuleBytesWithPolicy(src []byte, policy int) error {
-	m, err := wasm.DecodeModule(src)
+	features := wasm.ValidationFeatures{
+		CompactImports:       true,
+		MultiMemory:          true,
+		ExtendedConstGlobals: true,
+		GCConstExpr:          true,
+	}
+	m, err := wasm.DecodeModuleWithFeatures(src, features)
 	if err != nil {
 		return fmt.Errorf("decode: %w", err)
 	}
@@ -68,7 +74,7 @@ func ModuleBytesWithPolicy(src []byte, policy int) error {
 		bodyBytes += len(m.Code[i].BodyBytes)
 	}
 	workers := functionworkers.Resolve(policy, len(m.Code), bodyBytes)
-	if err := wasm.ValidateModuleWithWorkers(m, workers); err != nil {
+	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, features, workers); err != nil {
 		return fmt.Errorf("validate: %w", err)
 	}
 	return nil

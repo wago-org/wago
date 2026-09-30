@@ -1,9 +1,43 @@
 # Wago roadmap
 
+AMD64 uses SSE2 as its architectural baseline. Newer CPU extensions are optional
+compile-time optimization tiers and are recorded in native artifact requirements
+when emitted. Scalar, core SIMD, and supported relaxed SIMD have baseline
+fallbacks. The `wago_amd64_sse2` build tag selects portable baseline code generation
+on modern hosts. TinyGo includes both baseline and modern lowering within its
+existing release-size budget.
+
+Baseline and modern profiles pass the official core SIMD corpus (24,325
+assertions each) and the supported relaxed SIMD corpus (69 assertions each).
+The forced-baseline public API suite and instruction-decoder checks cover
+fallback execution and exclusion of optional instructions. Standard Go, TinyGo
+and guard-page tests pass. The exact release-size check passes all four profiles
+with the CI toolchain (Go 1.22.12 and TinyGo 0.41.1). Shared instruction selectors
+and encoders reduce the TinyGo profile from 2,372,584 to 2,351,760 bytes, leaving
+240 bytes under the unchanged 2,352,000-byte budget. Both CPU tiers remain enabled.
+
+Focused performance measurements on 2026-09-26 compared `1f137e8e6` with
+`aabccddf1` on a Ryzen 7 8845HS using Go 1.27.1. Eight 250 ms samples per workload,
+one Go worker, fixed CPU affinity and alternating profile order found no
+statistically significant modern-path change across 16 workloads. Geometric
+means of median ratios were +1.83% for compilation and −0.99% for execution;
+other programs remained active, so these are not improvement claims. Modern code
+sizes, checksums and compilation allocations matched main. All execution
+profiles measured zero allocations. Larger baseline SIMD sequences remain
+candidates for code-size and execution-time optimization.
+
+The size repair was also compared with PR head `15e7e116a` across the same 16
+workloads and both CPU tiers. Six 150 ms samples with alternating order and fixed
+CPU affinity found no statistically significant slowdowns. Modern compilation
+changed by −0.73% and execution by approximately 0.00%; baseline compilation
+changed by −0.68% and execution by −0.14% (geometric means of median ratios).
+Native code bytes, checksums, B/op and allocs/op were unchanged in both tiers.
+These small timing differences are not speedup claims.
+
 Wago is a pure-Go, no-cgo, single-pass WebAssembly engine. It is a from-scratch
 port of [WARP](https://github.com/wago-org/warp)'s design. Linux, macOS, and Windows
-on amd64 and arm64 are supported. The amd64 backend uses a modern CPU baseline
-of SSSE3/SSE4.1/SSE4.2 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain
+on amd64 and arm64 are supported. The amd64 backend uses the architectural CPU baseline
+of SSE2, with optional SSSE3/SSE4.x and AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain
 outside the baseline and require explicit feature gates.
 
 ## Start here
@@ -120,14 +154,14 @@ Current tracks:
 - [x] Complete mandatory extended constants, relaxed SIMD, tails, typed function
   references, GC, exception handling, multi-memory, memory64, and table64 on the
   primary product. Tail calls, typed function references, multi-memory, memory64,
-  and table64 now default on for complete backends; GC and exceptions remain
-  opt-in through the full Core 3 selection.
+  and table64 now default on for complete backends. WasmGC and exception handling
+  joined them when the complete Core 3 release became the default.
 - [x] Add exact linux/amd64 and Linux/Darwin arm64 WasmGC roots across local
   direct/indirect/reference calls, recursion, bounded host re-entry,
   mutable/shared GC globals, local/shared collector-reference tables, EH payload
   records, local starts, and same-Runtime cross-instance calls. One-/two-word and
   flat masks feed variable-size exact root vectors; locals dead at every collecting
-  site are compacted from the plan. Codec version 2
+  site are compacted from the plan. Codec version 3
   validates the native maps and the required native-GC ABI version.
 - [x] Add snapshot version 1 stable-ID heap graphs for objects reachable from owned
   local GC globals and one or more heterogeneous local collector-reference tables,
@@ -200,7 +234,7 @@ Current tracks:
   while exact casts use canonical ID equality. Reference/v128 loads, bulk, and
   barrier-requiring operations remain helper-bound. Focused non-final cast/test
   loops measure 3.54–3.66 ns/op, 0 B/op, and 0 allocs/op, with zero synchronous
-  helper calls under `wago_gcstats`.
+  helper calls under the since-removed `wago_gcstats` diagnostics.
 - [x] **Bounded structured WasmGC facts (#314):** AMD64 carries compact
   nullability/heap/exact-type/identity/freshness/generation/pointer-free/array-length
   facts through Valent stack values and locals, intersects them at structured joins
@@ -300,7 +334,7 @@ Current tracks:
   one site for that trap class. Shared multi-site stubs still report the
   function without guessing a PC. Full caller-chain unwind metadata remains a
   follow-up.
-- [x] WebAssembly 2.0 product closeout: `.wago` codec version 2 persists structural
+- [x] WebAssembly 2.0 product closeout: `.wago` codec version 3 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table/memory-limit forms, indexed memory imports/exports, and required-feature
   bits without serializing live runtime identity.
@@ -330,7 +364,7 @@ Current tracks:
 
 ## Larger feature areas
 
-- [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1/SSE4.2 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates.
+- [x] SIMD (`v128`) — complete for the documented AMD64 SSE2 baseline with optional modern tiers: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates.
 - [x] **Threads & atomics** — bounded experimental
   product on Linux/macOS amd64/arm64 with explicit bounds and one memory32;
   shared memory must be an exact-max import, while unshared memory can be local
@@ -344,7 +378,7 @@ Current tracks:
   host, cross-instance, indirect, typed-reference, trap, and validation paths.
   Broader platform and bounds-mode parity is tracked above.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
-  globals, active offsets, strict validation, and codec version 2 persistence.
+  globals, active offsets, strict validation, and codec version 3 persistence.
 - [x] Typed function references — recursive structural typing, typed tables,
   elements and globals, `call_ref`, casts/tests, null branches, linking, ownership,
   codec metadata, and official invalid/unlinkable behavior are complete for the
@@ -363,7 +397,7 @@ Current tracks:
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple
-  local/imported tables, exact exports/re-exports, codec version 2 structural metadata,
+  local/imported tables, exact exports/re-exports, codec version 3 structural metadata,
   snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
 - [x] Native Linux, macOS, and Windows runtime paths on amd64 and arm64, with
@@ -398,7 +432,9 @@ initializers, generic `array.new_data`/`array.new_elem`, imported/exported tags,
 `spectest.table64`, shared-memory co-tenant serialization, and reference
 argument/result ownership. A later default-policy pass promoted the lower-risk
 tail, typed-reference, and indexed/wide memory/table families on complete
-backends while retaining GC and exceptions as explicit Core 3 opt-ins.
+backends while retaining GC and exceptions as explicit Core 3 opt-ins. That
+staged policy was later superseded when the complete Core 3 release became the
+default on complete backends.
 
 ## Iteration 75 generated WasmGC smoke hardening
 
@@ -452,7 +488,7 @@ Direct numeric local calls record native return PCs, caller frame sizes, and the
 roots live at each callsite. The runtime walks cross-function and recursive
 frames from parked RSP until a validated adapter return, preserving caller
 objects while the deepest frame performs 1,000 allocations under Throughput and
-Tiny stress. Direct tail calls discard each caller frame and retain no callsite roots. Codec version 2
+Tiny stress. Direct tail calls discard each caller frame and retain no callsite roots. Codec version 3
 persists and strictly validates frame sizes, safepoint ordering, root alignment,
 callsite returns, and adapter termination. Forged metadata fails closed. Five
 500 ms samples measured 432.5-443.5 ns/op, 0 B/op, and 0 allocs/op. The expanded
@@ -465,7 +501,7 @@ Numeric host imports now record dynamic-wrapper stack adjustments and preserve
 up to eight suspended activations. Each nested callback borrows a separate
 foreign execution stack, while the outer control header and exact native roots
 remain parked. Boundary and allocating-helper collections scan every suspended
-activation. Codec version 2 persists and validates the new callsite shape. Throughput
+activation. Codec version 3 persists and validates the new callsite shape. Throughput
 forced-major and Tiny collect-every-allocation stress preserve an outer struct
 across 1,000 allocations in a re-entered function, including codec reload.
 
@@ -531,7 +567,7 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   composition allocation-free with reusable scratch, switch early Throughput
   growth to geometric capacity, and release the duplicate Go-heap JIT code copy
   after RX mapping.
-- [x] Add decision-grade opt-in GC telemetry behind `wago_gcstats`: bounded pause
+- [x] Historical GC telemetry experiment (since removed): bounded pause
   histograms, additive phase timing, exact trace/root/card/promotion/path counters,
   managed-memory domains, JSONL A/B reports, code-neutral JIT byte attribution,
   and hot-versus-sparse static-site benchmarks. Ordinary builds retain the

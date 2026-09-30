@@ -66,6 +66,12 @@ func TestCustomTypeCarriersCompileAndExecuteAsErasedValues(t *testing.T) {
 	for i, carrier := range carriers {
 		t.Run(fmt.Sprintf("carrier-%x", carrier), func(t *testing.T) {
 			mod, err := rt.Compile(customCarrierModule(fmt.Sprintf("test.value.%d", i), carrier))
+			if !customCodegenAvailable() {
+				if err == nil || !strings.Contains(err.Error(), "unavailable CPU features") {
+					t.Fatalf("optional plugin rejection = %v", err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -112,6 +118,9 @@ func TestCustomTypeCarriersDeterminePhysicalSignatures(t *testing.T) {
 }
 
 func TestCustomTypeIdentityIsStrongerThanPhysicalCarrier(t *testing.T) {
+	if !customCodegenAvailable() {
+		t.Skip("custom vector plugin requires an optional CPU tier")
+	}
 	rt := NewRuntime()
 	if err := rt.Use(customCarrierExtension{}); err != nil {
 		t.Fatal(err)

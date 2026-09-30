@@ -34,7 +34,7 @@ func loadSqli(tb testing.TB) *wago.Instance {
 	if err != nil {
 		tb.Fatalf("compile: %v", err)
 	}
-	imp := wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})}
+	imp := abortImports()
 	in, err := wago.Instantiate(c, imp)
 	if err != nil {
 		tb.Fatalf("instantiate: %v", err)
@@ -75,7 +75,7 @@ func TestSqliCalibrate(t *testing.T) {
 	}
 	c, _ := wago.Compile(src)
 	for _, id := range []uint64{1, 2, 3, 4, 5} {
-		imp := wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})}
+		imp := abortImports()
 		in, err := wago.Instantiate(c, imp)
 		if err != nil {
 			t.Fatalf("instantiate: %v", err)

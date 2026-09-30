@@ -96,7 +96,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		f.pushFReg(xmm, mtOf2(f64))
 	case wasm.EqualValType(gtv, wasm.V128):
 		xmm := f.allocFReg(0)
-		f.a.VMovdquLoadDisp(xmm, cell, 0)
+		f.mov128LoadDisp(xmm, cell, 0)
 		f.pushVReg(xmm)
 	default:
 		return fmt.Errorf("amd64: global.get type %s not yet supported (global %d)", gtv, x)
@@ -157,7 +157,7 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		xmm := f.materializeV128(f.popValue())
 		f.fpinned = f.fpinned.add(xmm)
 		cell := f.globalCellPtr(x) // cached, pinned
-		f.a.VMovdquStoreDisp(cell, 0, xmm)
+		f.mov128StoreDisp(cell, 0, xmm)
 		f.fpinned = f.fpinned.remove(xmm)
 		f.releaseF(xmm)
 		return nil

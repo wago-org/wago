@@ -10,6 +10,7 @@ import (
 )
 
 func TestSharedTrapBodyClusterAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	first := make([]byte, 24)
 	second := make([]byte, 24)
 	for i := range first {

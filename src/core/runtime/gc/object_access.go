@@ -63,12 +63,12 @@ func (c *Collector) NewRefArrayWithRoots(id TypeID, length uint32, initial RootS
 	if initial == nil {
 		return Ref{}, ErrInvalidReference
 	}
-	value := initial.GetRef()
 	scratch, r, err := c.prepareScratch(roots, nil)
 	defer c.releaseScratch(scratch)
 	if err != nil {
 		return Ref{}, err
 	}
+	value := initial.GetRef()
 	input, err := c.input(RefValue(value))
 	if err != nil {
 		return Ref{}, err

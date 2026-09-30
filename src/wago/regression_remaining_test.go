@@ -279,7 +279,7 @@ func TestRuntimeRegressionPortParallelValidationErrorIsDeterministic(t *testing.
 }
 
 // Port of tests/all/import_indexes.rs::same_import_names_still_distinct. The
-// upstream oracle is import metadata identity; Wago's public Imports map binds
+// upstream oracle is import metadata identity; Wago's public *Imports map binds
 // duplicate keys to one host value, so the execution below is only a call-site
 // smoke test and does not claim independently bindable duplicate imports.
 func TestRuntimeRegressionPortSameNamedImportDeclarationsRemainDistinct(t *testing.T) {
@@ -311,7 +311,7 @@ func TestRuntimeRegressionPortSameNamedImportDeclarationsRemainDistinct(t *testi
 		t.Fatalf("same-named import metadata = %#v", decls)
 	}
 	calls := 0
-	host := HostFunc(func(_ HostModule, _ []uint64, results []uint64) {
+	host := slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) {
 		if calls%2 == 0 {
 			results[0] = I32(1)
 		} else {
@@ -319,13 +319,13 @@ func TestRuntimeRegressionPortSameNamedImportDeclarationsRemainDistinct(t *testi
 		}
 		calls++
 	})
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{".": host}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports(".", host)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
 	for attempt := 0; attempt < 2; attempt++ {
-		got, err := in.Call(context.Background(), "run")
+		got, err := in.InvokeValues(context.Background(), "run")
 		if err != nil || len(got) != 1 || got[0].I32() != 3 {
 			t.Fatalf("run attempt %d = %v, %v; want 3", attempt, got, err)
 		}

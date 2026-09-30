@@ -5,7 +5,7 @@
 //
 // Usage:
 //
-//	go run ./cmd/explain [-guard] [-compact] [module.wasm]
+//	go run -tags=wago_codegenstats ./cmd/explain [-guard] [-compact] [module.wasm]
 //
 // With no path it defaults to corpus/json-as.wasm. -guard selects guard-page
 // (bounds-elided) mode instead of explicit bounds. Equivalent to setting

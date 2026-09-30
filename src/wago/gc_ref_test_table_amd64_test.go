@@ -25,7 +25,7 @@ func stagedGCRefTestTableBytes(t testing.TB) []byte {
 
 func TestStagedGCRefTestTableProfiles(t *testing.T) {
 	data := stagedGCRefTestTableBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public Compile admitted staged object ref.test product")
 	}
 	for _, tc := range []struct {

@@ -42,7 +42,7 @@ func TestSharedMemoryImporterRebindsBasedataState(t *testing.T) {
 		(data (global.get 0) "a"))`)
 	immutableZero := NewGlobalI32(0, false)
 	defer immutableZero.Close()
-	initializer, err := rt.Instantiate(context.Background(), initOnlyGlobal, WithImports(Imports{"env.mem": memImport, "env.g": immutableZero}))
+	initializer, err := rt.Instantiate(context.Background(), initOnlyGlobal, WithImports(testImports("env.mem", memImport, "env.g", immutableZero)))
 	if err != nil {
 		t.Fatalf("initializer-only shared-memory importer: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestSharedMemoryImporterRebindsBasedataState(t *testing.T) {
 		(import "env" "mem" (memory 1))
 		(import "env" "g" (global (mut i32)))
 		(func (export "f") (result i32) (global.get 0)))`)
-	globalUser, err := rt.Instantiate(context.Background(), withGlobal, WithImports(Imports{"env.mem": memImport, "env.g": globalImport}))
+	globalUser, err := rt.Instantiate(context.Background(), withGlobal, WithImports(testImports("env.mem", memImport, "env.g", globalImport)))
 	if err != nil {
 		t.Fatalf("shared-memory importer with imported global: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestSharedMemoryImporterRebindsBasedataState(t *testing.T) {
 		(func $f)
 		(elem declare func $f)
 		(func (export "g") (result funcref) (ref.func $f)))`)
-	funcrefUser, err := rt.Instantiate(context.Background(), withFuncref, WithImports(Imports{"env.mem": memImport}))
+	funcrefUser, err := rt.Instantiate(context.Background(), withFuncref, WithImports(testImports("env.mem", memImport)))
 	if err != nil {
 		t.Fatalf("shared-memory importer using ref.func: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestSharedMemoryImporterRebindsBasedataState(t *testing.T) {
 	pure := mustCompileWat(rt, t, `(module
 		(import "env" "mem" (memory 1))
 		(func (export "load") (param i32) (result i32) (i32.load8_u (local.get 0))))`)
-	consumer, err := rt.Instantiate(context.Background(), pure, WithImports(Imports{"env.mem": memImport}))
+	consumer, err := rt.Instantiate(context.Background(), pure, WithImports(testImports("env.mem", memImport)))
 	if err != nil {
 		t.Fatalf("pure-compute shared-memory importer should succeed: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestSharedMemoryIndirectCallSwitchesPrivateContext(t *testing.T) {
 		(global $g (mut i32) (i32.const 10))
 		(func (export "target") (result i32)
 			(global.set $g (i32.add (global.get $g) (i32.const 1)))
-			(global.get $g)))`), WithImports(Imports{"env.mem": memory}))
+			(global.get $g)))`), WithImports(testImports("env.mem", memory)))
 	if err != nil {
 		t.Fatalf("instantiate producer: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestSharedMemoryIndirectCallSwitchesPrivateContext(t *testing.T) {
 			(call_indirect (type $result-i32) (i32.const 0)))
 		(func (export "own") (result i32)
 			(global.set $g (i32.add (global.get $g) (i32.const 1)))
-			(global.get $g)))`), WithImports(Imports{"env.mem": memory, "env.target": target}))
+			(global.get $g)))`), WithImports(testImports("env.mem", memory, "env.target", target)))
 	if err != nil {
 		t.Fatalf("instantiate consumer: %v", err)
 	}
@@ -172,24 +172,22 @@ func TestHostReentryRefreshesMemorySizeAfterNestedGrow(t *testing.T) {
 			(call $reenter)
 			memory.size
 			(i32.store (i32.const 131072) (i32.const 99))
-			(i32.load (i32.const 131072))))`), WithImports(Imports{
-		"env.reenter": HostFunc(func(caller HostModule, _, results []uint64) {
-			grown, callErr := instance.InvokeFromHost(ctx, caller, "grow")
-			if callErr != nil {
-				panic(HostTrap{Err: callErr})
-			}
-			if len(grown) != 1 {
-				panic(HostTrap{Err: fmt.Errorf("nested memory.grow = %v, want one result", grown)})
-			}
-			if got := len(instance.Memory().UnsafeBytes()); got < 2*65536 || got > 3*65536 {
-				panic(HostTrap{Err: fmt.Errorf("memory after nested grow = %d bytes", got)})
-			}
-			if got := len(caller.Memory()); got < 2*65536 || got > 3*65536 {
-				panic(HostTrap{Err: fmt.Errorf("caller memory after nested grow = %d bytes", got)})
-			}
-			results[0] = grown[0]
-		}),
-	}), WithSynchronousHostCalls())
+			(i32.load (i32.const 131072))))`), WithImports(testImports("env.reenter", slotHostFunc(func(caller HostModule, _, results []uint64) {
+		grown, callErr := instance.InvokeFromHost(ctx, caller, "grow")
+		if callErr != nil {
+			panic(HostTrap{Err: callErr})
+		}
+		if len(grown) != 1 {
+			panic(HostTrap{Err: fmt.Errorf("nested memory.grow = %v, want one result", grown)})
+		}
+		if got := len(instance.Memory().UnsafeBytes()); got < 2*65536 || got > 3*65536 {
+			panic(HostTrap{Err: fmt.Errorf("memory after nested grow = %d bytes", got)})
+		}
+		if got := len(caller.Memory()); got < 2*65536 || got > 3*65536 {
+			panic(HostTrap{Err: fmt.Errorf("caller memory after nested grow = %d bytes", got)})
+		}
+		results[0] = grown[0]
+	}))), WithSynchronousHostCalls())
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -240,7 +238,7 @@ func BenchmarkExternalCallMemoryContinuation(b *testing.B) {
 				(memory 1 1)
 				(func (export "run") (result i32)
 					%s))`, body.String()))
-			var external any = HostFunc(func(HostModule, []uint64, []uint64) {})
+			var external any = slotHostFunc(func(HostModule, []uint64, []uint64) {})
 			var callee *Instance
 			if tc.crossInstance {
 				calleeMod := mustCompileWat(rt, b, `(module (func (export "external")))`)
@@ -255,7 +253,7 @@ func BenchmarkExternalCallMemoryContinuation(b *testing.B) {
 					b.Fatalf("export callee: %v", err)
 				}
 			}
-			in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.external": external}), WithSynchronousHostCalls())
+			in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.external", external)), WithSynchronousHostCalls())
 			if err != nil {
 				b.Fatalf("instantiate caller: %v", err)
 			}

@@ -106,7 +106,7 @@ func TestCompiledCodecRoundTripsEmptyStrings(t *testing.T) {
 
 	got := publicArtifactRoundTrip(t, input)
 	if len(got.Imports) != 1 || got.Imports[0] != "" {
-		t.Fatalf("Imports = %#v, want one empty string", got.Imports)
+		t.Fatalf("*Imports = %#v, want one empty string", got.Imports)
 	}
 	if len(got.importFuncSigs) != 1 || len(got.importFuncSigs[0].Params) != 0 || len(got.importFuncSigs[0].Results) != 0 {
 		t.Fatalf("importFuncSigs = %#v, want one empty signature", got.importFuncSigs)
