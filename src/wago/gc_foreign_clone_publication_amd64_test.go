@@ -188,6 +188,12 @@ func TestForeignClonePublicationFailureClearsPrivateRoot(t *testing.T) {
 		if !target.gc.GlobalSlot(state.cloneRootSlot).IsNull() || state.resultTokenCount != 0 || target.gc.Stats().LiveObjects != 0 {
 			t.Fatal("failed reconstruction leaked ownership")
 		}
+		// The standalone cleanup entry point must also remain safe after a
+		// failed reconstruction has already cleared its temporary ownership.
+		clearForeignCloneRoot(target, true)
+		if !target.gc.GlobalSlot(state.cloneRootSlot).IsNull() || state.resultTokenCount != 0 || target.gc.Stats().LiveObjects != 0 {
+			t.Fatal("repeated cleanup changed ownership after failed reconstruction")
+		}
 	}
 }
 
