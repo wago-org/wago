@@ -268,6 +268,48 @@ func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]
 	return objects, root, nil
 }
 
+// gcForeignCloneRoots composes the usual runtime roots with reconstruction
+// scratch once per clone. Direct visitors avoid per-object root boxing.
+type gcForeignCloneRoots struct {
+	normal *gcNativeFrameRoots
+	refs   gc.RefSliceRoots
+}
+
+func (r *gcForeignCloneRoots) RangeRoots(fn func(gc.RootSlot) bool) {
+	if !r.normal.walk(fn, nil) {
+		return
+	}
+	for i := range r.refs {
+		if !fn((*gc.Root)(&r.refs[i])) {
+			return
+		}
+	}
+}
+
+func (r *gcForeignCloneRoots) RangeRootRefs(sink gc.RootRefSink) bool {
+	if !r.normal.RangeRootRefs(sink) {
+		return false
+	}
+	for _, ref := range r.refs {
+		if !sink.VisitRootRef(ref) {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *gcForeignCloneRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSink) bool {
+	if !r.normal.RangeClassifiedRootRefs(sink) {
+		return false
+	}
+	for _, ref := range r.refs {
+		if !sink.VisitClassifiedRootRef(gc.RootSnapshotTemporary, ref) {
+			return false
+		}
+	}
+	return true
+}
+
 // restoreForeignGCGraph requires the caller to hold target GC invocation admission.
 func restoreForeignGCGraph(target *Instance, objects []gcCloneObject, root gcCloneRef) (gc.Ref, uint32, error) {
 	if root.kind != gcCloneRefObject || root.value == 0 || int(root.value) > len(objects) {
@@ -297,10 +339,14 @@ func restoreForeignGCGraphLocked(target *Instance, state *gcPublicState, objects
 		return gc.Null(), 0, fmt.Errorf("target GC collector domain is closed")
 	}
 
+	if err := target.prepareGCCollectionRootsLocked(state); err != nil {
+		return gc.Null(), 0, err
+	}
 	refs := make(gc.RefSliceRoots, len(objects))
+	roots := gcForeignCloneRoots{normal: &state.frameRoots, refs: refs}
 	rollback := func(cause error) (gc.Ref, uint32, error) {
 		clear(refs)
-		_ = target.gc.CollectFull(nil)
+		_ = target.gc.CollectFull(&state.frameRoots)
 		return gc.Null(), 0, cause
 	}
 	for i, object := range objects {
@@ -315,9 +361,9 @@ func restoreForeignGCGraphLocked(target *Instance, state *gcPublicState, objects
 		var ref gc.Ref
 		var err error
 		if desc.Kind == gc.KindStruct {
-			ref, err = target.gc.NewStructUninitializedWithRoots(domainType, refs)
+			ref, err = target.gc.NewStructUninitializedWithRoots(domainType, &roots)
 		} else {
-			ref, err = target.gc.NewArrayUninitializedWithRoots(domainType, object.arrayLen, refs)
+			ref, err = target.gc.NewArrayUninitializedWithRoots(domainType, object.arrayLen, &roots)
 		}
 		if err != nil {
 			return rollback(fmt.Errorf("allocate target object %d: %w", i+1, err))
@@ -391,6 +437,9 @@ func clearForeignCloneRootLocked(target *Instance, state *gcPublicState, collect
 		_ = target.gc.SetGlobalSlot(state.cloneRootSlot, gc.Null())
 	}
 	if collect {
-		_ = target.gc.CollectFull(nil)
+		// If root preparation fails, leave reclamation to a later safe collection.
+		if err := target.prepareGCCollectionRootsLocked(state); err == nil {
+			_ = target.gc.CollectFull(&state.frameRoots)
+		}
 	}
 }

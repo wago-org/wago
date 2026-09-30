@@ -76,10 +76,9 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 	state := h.in.publicGCState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	if err := h.in.syncGenericGCGlobalRootsLocked(state); err != nil {
+	if err := h.in.prepareGCCollectionRootsLocked(state); err != nil {
 		return 0, err
 	}
-	state.frameRoots = h.in.gcCollectFrameRoots(state)
 	ref, err := h.in.gc.NewArrayDefaultWithRoots(domainType, length, &state.frameRoots)
 	if err != nil {
 		return 0, fmt.Errorf("wago: allocate host GC array result: %w", err)
