@@ -136,7 +136,10 @@ func TestForeignClonePreservesParkedGuestRoots(t *testing.T) {
 							t.Fatal(err)
 						}
 						objects = append(objects, gcCloneObject{typeID: ^gc.TypeID(0)})
-						if _, _, err := restoreForeignGCGraph(target, objects, root); err == nil {
+						invocation := target.lockGCInvocation(newInvocationID())
+						_, _, err = restoreForeignGCGraph(target, objects, root)
+						invocation.unlock()
+						if err == nil {
 							t.Fatal("invalid trailing object did not trigger rollback")
 						}
 						if live := target.gc.Stats().LiveObjects; live != 2 {
@@ -150,7 +153,9 @@ func TestForeignClonePreservesParkedGuestRoots(t *testing.T) {
 						}
 						checkForeignCloneCycle(t, target, cloned)
 						if mode == "publication-cleanup" {
+							invocation := target.lockGCInvocation(newInvocationID())
 							clearForeignCloneRoot(target, true)
+							invocation.unlock()
 						}
 					}
 				}))

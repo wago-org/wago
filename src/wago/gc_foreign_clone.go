@@ -81,6 +81,10 @@ func (target *Instance) CloneGCRefFrom(source *Instance, value GCRef) (GCRef, er
 	if err != nil {
 		return GCRef{}, err
 	}
+	// Source admission ends before target admission starts. Hold the target
+	// through publication and cleanup, just as for a complete guest call.
+	invocation := target.lockGCInvocation(newInvocationID())
+	defer invocation.unlock()
 	ref, localType, err := restoreForeignGCGraph(target, objects, root)
 	if err != nil {
 		return GCRef{}, err
@@ -97,7 +101,9 @@ func (target *Instance) CloneGCRefFrom(source *Instance, value GCRef) (GCRef, er
 }
 
 func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]gcCloneObject, gcCloneRef, error) {
-	unlockNative := lockNativeExecutionForHostAccess()
+	invocation := source.lockGCInvocation(newInvocationID())
+	defer invocation.unlock()
+	unlockNative := source.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	lockedDomain := source.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
@@ -290,11 +296,12 @@ func (r *gcForeignCloneRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefS
 	return true
 }
 
+// restoreForeignGCGraph requires the caller to hold target GC invocation admission.
 func restoreForeignGCGraph(target *Instance, objects []gcCloneObject, root gcCloneRef) (gc.Ref, uint32, error) {
 	if root.kind != gcCloneRefObject || root.value == 0 || int(root.value) > len(objects) {
 		return gc.Null(), 0, fmt.Errorf("foreign GC graph has an invalid root")
 	}
-	unlockNative := lockNativeExecutionForHostAccess()
+	unlockNative := target.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	lockedDomain := target.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
@@ -383,11 +390,12 @@ func restoreForeignGCGraph(target *Instance, objects []gcCloneObject, root gcClo
 	return result, uint32(objects[root.value-1].typeID), nil
 }
 
+// clearForeignCloneRoot requires the caller to hold target GC invocation admission.
 func clearForeignCloneRoot(target *Instance, collect bool) {
 	if target == nil || target.gc == nil {
 		return
 	}
-	unlockNative := lockNativeExecutionForHostAccess()
+	unlockNative := target.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	lockedDomain := target.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
