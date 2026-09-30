@@ -113,6 +113,35 @@ func TestLongNativeCorpusRunsAreShardedAndVerified(t *testing.T) {
 	}
 }
 
+func TestCorpusDownloadsAreBoundedAndSeparateFromTests(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := workflowJobBlocks(string(workflow))
+	const preparation = `      - name: Prepare corpus Go dependencies
+        shell: bash
+        timeout-minutes: 3
+        working-directory: bench
+        run: sh ../scripts/ci-download-go-modules.sh
+`
+	for job, testStep := range map[string]string{
+		"corpus-correctness": "Run selected correctness workloads",
+		"app-corpus":         "Run this target's application shard",
+	} {
+		block := jobs[job]
+		if !strings.Contains(block, preparation+"      - name: "+testStep+"\n") {
+			t.Errorf("%s must prepare modules in a separate, time-bounded step immediately before tests", job)
+		}
+		if strings.Count(block, "run: sh ../scripts/ci-download-go-modules.sh") != 1 {
+			t.Errorf("%s must prepare modules exactly once", job)
+		}
+		if strings.Contains(block, "continue-on-error:") {
+			t.Errorf("%s must propagate download and test failures", job)
+		}
+	}
+}
+
 func TestCanaryPublishesCommitAddressedArtifactsWithoutTags(t *testing.T) {
 	canary, err := os.ReadFile(filepath.Clean("../../../.github/workflows/canary.yml"))
 	if err != nil {
