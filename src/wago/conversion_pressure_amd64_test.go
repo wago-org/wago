@@ -82,7 +82,9 @@ func TestUnsignedConversionsPreserveLiveIntegersAMD64(t *testing.T) {
 						live := uint64(7 + step*4)
 						args := []uint64{live}
 						converted := live
-						if tc.source != wasm.I64 {
+						if tc.source == wasm.I64 {
+							input = float64(live)
+						} else {
 							bits := F64(input)
 							if tc.source == wasm.F32 {
 								bits = F32(float32(input))
@@ -154,6 +156,35 @@ func TestSignedSaturationPreservesLiveFloatsAMD64(t *testing.T) {
 						}
 					})
 				}
+			}
+		}
+	}
+}
+
+// Reinterpret the result instead of converting it back to signed i64 so the
+// high-bit branch can be exercised over the whole unsigned input range.
+func TestUnsignedFloatConversionHighBitPreservesLiveIntegersAMD64(t *testing.T) {
+	for _, f64 := range []bool{false, true} {
+		conversion := []byte{0xb5, 0xbc, 0xad} // convert f32; reinterpret i32; extend u32
+		if f64 {
+			conversion = []byte{0xba, 0xbd}
+		}
+		for _, n := range []int{0, 7} {
+			for _, pool := range []bool{false, true} {
+				t.Run(fmt.Sprintf("f64=%v/live=%d/pool=%v", f64, n, pool), func(t *testing.T) {
+					_, instance := compileConversionPressure(t, integerConversionPressureModule(n, wasm.I64, conversion), pool)
+					for _, input := range []uint64{7, 1 << 63, 1<<63 + 1, math.MaxUint64, 11} {
+						converted := uint64(math.Float32bits(float32(input)))
+						if f64 {
+							converted = math.Float64bits(float64(input))
+						}
+						want := uint64(n)*input + converted
+						got, err := instance.Invoke("run", input)
+						if err != nil || len(got) != 1 || got[0] != want {
+							t.Errorf("input=%#x: got %v, %v; want %#x", input, got, err, want)
+						}
+					}
+				})
 			}
 		}
 	}
