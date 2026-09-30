@@ -1035,13 +1035,14 @@ type funcValidator struct {
 	// Small inline backing stores cover the common straight-line function and
 	// const-expression cases without heap-allocating separate stack slices. Larger
 	// or deeply nested functions still grow normally and reuse that capacity.
-	valBuf       [2]val
-	ctrlBuf      [1]ctrlFrame
-	constResult  [1]ValType
-	localParams  []ValType
-	localRuns    []LocalRun
-	localRunEnds []uint64
-	localCount   uint64
+	valBuf          [2]val
+	ctrlBuf         [1]ctrlFrame
+	constResult     [1]ValType
+	localParams     []ValType
+	localRuns       []LocalRun
+	localRunEnds    []uint64
+	localLookupWork uint64
+	localCount      uint64
 	// Non-nullable reference locals have no default value. Track successful
 	// local.set/local.tee operations sparsely and roll them back at structured
 	// control boundaries. The map grows only with locals actually initialized by
@@ -1112,7 +1113,7 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	if v.localCount > uint64(v.limits.MaxFunctionLocals) {
 		return v.verr(ErrInvalidLimitRange, "parameter and local count exceeds configured limit")
 	}
-	v.indexLocalRuns()
+	v.prepareLocalLookup()
 	for _, run := range fn.Locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {
 			return err
@@ -1196,10 +1197,58 @@ func (v *funcValidator) unreachable() {
 	v.vals = v.vals[:f.height]
 	v.ctrls[len(v.ctrls)-1].unreachable = true
 }
+
+// Reuse small indexes freely, but discard a large high-water mark when moving
+// to substantially smaller functions. Similarly sized functions still reuse it.
+const smallLocalRunIndexCapacity = 1024
+
+func (v *funcValidator) prepareLocalLookup() {
+	if cap(v.localRunEnds) > smallLocalRunIndexCapacity && len(v.localRuns) < cap(v.localRunEnds)/4 {
+		v.localRunEnds = nil
+	} else {
+		v.localRunEnds = v.localRunEnds[:0]
+	}
+	v.localLookupWork = 0
+}
+
 func (v *funcValidator) localType(idx uint32) (ValType, bool) {
-	// Both lookup paths check their bounds. Keep this wrapper small enough to
-	// inline instead of repeating the local-count check on every instruction.
-	return LocalTypeIndexed(v.localParams, v.localRuns, v.localRunEnds, idx)
+	// LocalType inlines here, keeping the common tiny-run case to one call.
+	if len(v.localRuns) <= 2 {
+		return LocalType(v.localParams, v.localRuns, idx)
+	}
+	if len(v.localRunEnds) != 0 {
+		return LocalTypeIndexed(v.localParams, v.localRuns, v.localRunEnds, idx)
+	}
+	if uint64(idx) < uint64(len(v.localParams)) {
+		return v.localParams[idx], true
+	}
+	if uint64(idx) >= v.localCount {
+		return ValType{}, false
+	}
+	rem := uint64(idx) - uint64(len(v.localParams))
+	// These two runs are cheaper to scan than index, even if previous late
+	// lookups have already exhausted the scan budget.
+	for _, run := range v.localRuns[:2] {
+		if rem < uint64(run.Count) {
+			return run.Type, true
+		}
+		rem -= uint64(run.Count)
+	}
+	// Pay for the index only after prior lookups have done comparable work.
+	// At most O(runs) scanning precedes the O(runs) build, so repeated late
+	// lookups still take O(runs + reads*log(runs)) total work.
+	if v.localLookupWork >= 2*uint64(len(v.localRuns)) {
+		v.indexLocalRuns()
+		return LocalTypeIndexed(v.localParams, v.localRuns, v.localRunEnds, idx)
+	}
+	for i, run := range v.localRuns[2:] {
+		if rem < uint64(run.Count) {
+			v.localLookupWork += uint64(i + 1)
+			return run.Type, true
+		}
+		rem -= uint64(run.Count)
+	}
+	return ValType{}, false
 }
 
 func (v *funcValidator) indexLocalRuns() {
@@ -1207,10 +1256,15 @@ func (v *funcValidator) indexLocalRuns() {
 	if len(v.localRuns) <= 2 {
 		return
 	}
+	if cap(v.localRunEnds) < len(v.localRuns) {
+		v.localRunEnds = make([]uint64, len(v.localRuns))
+	} else {
+		v.localRunEnds = v.localRunEnds[:len(v.localRuns)]
+	}
 	end := uint64(len(v.localParams))
-	for _, run := range v.localRuns {
+	for i, run := range v.localRuns {
 		end += uint64(run.Count)
-		v.localRunEnds = append(v.localRunEnds, end)
+		v.localRunEnds[i] = end
 	}
 }
 

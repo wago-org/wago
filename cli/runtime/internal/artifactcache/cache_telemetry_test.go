@@ -3,8 +3,11 @@
 package artifactcache
 
 import (
-	"github.com/wago-org/wago"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/wago-org/wago"
 )
 
 func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
@@ -20,6 +23,14 @@ func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := seedRuntime.Close(); err != nil {
+		t.Fatal(err)
+	}
+	seedPath, ok := cache.path(source, base)
+	if !ok {
+		t.Fatal("seed cache key unavailable")
+	}
+	cache.MaxBytes = 1
+	if err := os.Remove(filepath.Join(cache.Dir, cachePruneMarker)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -47,6 +58,9 @@ func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
 	}
 	if _, ok := module.Compiled().GCNativeCodeTelemetry(); !ok {
 		t.Fatal("fresh telemetry compile did not retain requested attribution")
+	}
+	if _, err := os.Stat(seedPath); !os.IsNotExist(err) {
+		t.Fatalf("non-cacheable compile left oversized cache entry: %v", err)
 	}
 	if err := module.Close(); err != nil {
 		t.Fatal(err)

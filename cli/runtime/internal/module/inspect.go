@@ -3,10 +3,10 @@ package module
 
 import (
 	"context"
-	"os"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/ui"
+	"github.com/wago-org/wago/cli/runtime/internal/modulefile"
 	runtimeplugin "github.com/wago-org/wago/cli/runtime/internal/plugin"
 )
 
@@ -18,7 +18,7 @@ func Compile(file string) (*wago.Runtime, *wago.Module) {
 			ui.Fatal("plugins: %v", err)
 		}
 	}
-	src, err := os.ReadFile(file)
+	src, err := modulefile.Read(file)
 	if err != nil {
 		rt.Close()
 		ui.Fatal("%v", err)

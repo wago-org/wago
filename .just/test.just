@@ -38,6 +38,7 @@ ci-smoke:
     go test ./tests/tools/tinygo-cache -count=1
     tests/scripts/build-release-assets.sh
     tests/scripts/release-qualification.sh
+    bash tests/scripts/ci-download-go-modules.sh
     go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/*.yml
 
 # Run the deterministic runtime concurrency harness.
