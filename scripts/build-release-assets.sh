@@ -28,7 +28,7 @@ standard_tiny="${release_out}/wago-runtime-standard-tiny-${release_target}"
 minimal_tiny="${release_out}/wago-runtime-minimal-tiny-${release_target}"
 
 go_build "" "$manager" ./cli/wago
-go_build "" "$installer" ./cli/installer
+go_build "" "$installer" ./cli/wago-installer
 go_build wago_runtime "$standard_normal" ./cli/wago
 go_build wago_runtime,wago_minimal "$minimal_normal" ./cli/wago
 

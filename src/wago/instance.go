@@ -6,7 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // offHeapPtr reinterprets a known off-heap address — JIT arena / table-descriptor
@@ -27,13 +27,14 @@ type Instance struct {
 	memory                  *Memory // the memory object (owned or host-imported)
 	ar                      *runtime.Arena
 	base                    uintptr
-	hosts                   map[string]HostFunc
-	imports                 Imports // the imports as provided to Instantiate
+	hostEvents              *hostEventBindings // nil outside deferred event mode
+	imports                 resolvedImports    // immutable bindings captured for this instance
 	hostLog                 []byte
 	ctrl                    []byte                              // sync host-call control frame (nil in async mode)
-	syncHosts               []HostFunc                          // per import-func-index host, sync mode only
-	hostCall                runtime.HostCall                    // active instance's bound host imports
+	syncHosts               []syncHostBinding                   // immutable per-import sync host bindings
+	hostCall                resolvedHostCall                    // optional specialized/injected host dispatcher
 	pluginState             atomic.Pointer[instancePluginState] // allocated only after privileged instance services activate
+	closeState              atomic.Pointer[instanceCloseState]  // allocated on first Close; independent of privileged services
 	globals                 []byte                              // pointer table handed to JIT code
 	globalCells             []*Global
 	table                   *Table        // lazily created importer-owned local export-handle chain
@@ -41,14 +42,15 @@ type Instance struct {
 	tableDescLen            int           // descriptor byte length for safe slice reconstruction
 	funcRefDescs            []byte        // canonical funcref descriptor handles for this instance's function index space
 	passiveDataDesc         []byte        // per-instance data-segment descriptors; active slots start dropped
-	thunkMem                []byte        // executable mapping for host-func-in-table log thunks (nil if none)
+	thunkMem                []byte        // instance-specific executable HostFuncRef thunks (nil for ordinary host imports)
 	gc                      *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
 	gcTypeMap               *gcTypeMapping
 	gcNativeView            *gc.NativeInstanceView
 	serArgs, results, trap  []byte
 	resultVals              []uint64       // reusable Invoke result buffer (valid until the next call)
+	resultInline            [2]uint64      // small results stay with their instance, not in adjacent tiny heap objects
 	ic                      [4]invokeCache // tiny fixed export resolution cache
-	pluginGCImports         map[uint32]struct{}
+	importState             atomic.Pointer[instanceImportState]
 	refStore                *referenceStore
 	lifeMu                  sync.Mutex
 	resourceRefs            int
@@ -56,11 +58,12 @@ type Instance struct {
 	closed                  bool          // logical close; retained references may defer physical release
 	finalizing              bool          // one goroutine owns quiescent finalization
 	resourcesClosed         bool
-	icNext                  uint8 // round-robin invoke-cache replacement cursor
-	physicalFinalizer       func()
+	icNext                  uint8                    // round-robin invoke-cache replacement cursor
+	finalizers              *instanceFinalizers      // optional lifecycle callbacks; lifeMu protects access
 	ownsMem                 bool                     // false when memory 0 is host-imported (don't close it)
 	memoryDir               *instanceMemoryDirectory // allocated only for indexed memory execution
 	syncMode                bool                     // true when host imports use the synchronous re-entry protocol
+	threadedMemoryZero      bool                     // immutable compiled memory-zero shape, cached for native entry
 	constructionActive      bool                     // registration through terminal instantiation observation
 	constructionReservation *pluginOperationReservation
 	executionFlags          atomic.Uint32 // independent eligibility and cross-instance native-control sharing
@@ -75,6 +78,34 @@ type Instance struct {
 	// moduleIdentity is an opaque token, not a Compiled pointer. It lets an
 	// instance finish its own lifecycle after its Module wrapper has closed.
 	moduleIdentity ModuleIdentity
+}
+
+// instanceImportState shares the existing Instance import-state pointer
+// between Runtime plugin policy and cold funcref-owner indexes.
+type instanceImportState struct {
+	pluginGCImports map[uint32]struct{}
+	funcrefImports  atomic.Pointer[funcrefImportContainers]
+}
+
+func (in *Instance) ensureImportState() *instanceImportState {
+	state := in.importState.Load()
+	if state != nil {
+		return state
+	}
+	candidate := new(instanceImportState)
+	if in.importState.CompareAndSwap(nil, candidate) {
+		return candidate
+	}
+	return in.importState.Load()
+}
+
+// nativeUint64Slots views an arena-backed, 8-byte-aligned byte buffer as native
+// value slots. Instance argument and result buffers satisfy both invariants.
+func nativeUint64Slots(bytes []byte) []uint64 {
+	if len(bytes) == 0 {
+		return nil
+	}
+	return unsafe.Slice((*uint64)(unsafe.Pointer(&bytes[0])), len(bytes)/8)
 }
 
 // instanceMemoryDirectory is allocated only after indexed memory execution is
@@ -94,12 +125,29 @@ type instanceMemoryDirectory struct {
 // with __collect, __pin, or paired request/response exports.
 type invokeCache struct {
 	export            string
+	directEntry       uintptr
+	li                int // local index, or -1-import index for an InstanceExport re-export
+	paramSlots        int32
+	resultSlots       int32
+	slotWide          []bool // parameter slots followed by result slots; false means a 32-bit scalar
 	valid             bool
 	entryMode         preparedEntryMode
-	li                int // local index, or -1-import index for an InstanceExport re-export
-	paramSlots        int
-	resultSlots       int
+	directIntFast     bool
+	directFloatFast   bool
+	directIntLight    bool
+	directIntBounded  bool
+	scalarWideMask    uint8 // low bits are scalar widths; mixed direct entries use the tagged FP-bank encoding
+	scalarResultWide  bool
 	hasFuncRefParams  bool
 	hasFuncRefResults bool
-	resultWide        []bool // one entry per returned uint64 slot; false means read low 32 bits
+	boundedWrapper    bool
+	paramWidthClass   scalarSlotWidthClass
+	resultWidthClass  scalarSlotWidthClass
+	slotIndex         uint8
+}
+
+// invokeCacheOverflow exists only when an instance requests more than four
+// cache slots. Reentry swaps the whole sidecar to isolate nested cache writes.
+type invokeCacheOverflow struct {
+	entries []invokeCache
 }

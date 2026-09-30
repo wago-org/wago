@@ -1,6 +1,10 @@
 package settings
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/wago-org/wago/cli/internal/project"
+)
 
 func TestRegisteredBooleanSettingOwnsValueAccess(t *testing.T) {
 	config := Default()
@@ -19,7 +23,8 @@ func TestRegisteredBooleanSettingOwnsValueAccess(t *testing.T) {
 
 func TestSchemaNamesComeFromRegisteredSettings(t *testing.T) {
 	names := SchemaNames()
-	if len(names["features"])+len(names["optimizations"]) != len(allKnownBoolean()) {
-		t.Fatalf("schema names = %d, registered settings = %d", len(names["features"])+len(names["optimizations"]), len(allKnownBoolean()))
+	want := len(allKnownBoolean()) + len(project.RetiredOptimizationNames())
+	if len(names["features"])+len(names["optimizations"]) != want {
+		t.Fatalf("schema names = %d, active plus retired v1 settings = %d", len(names["features"])+len(names["optimizations"]), want)
 	}
 }

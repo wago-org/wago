@@ -3,7 +3,6 @@ package wago
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -61,16 +60,16 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 	}
 	s := m.state.Load()
 	if s == nil {
-		return 0, fmt.Errorf("wago: atomic wait requires shared memory")
+		return 0, &TrapError{Code: TrapExpectedSharedMemory}
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	s.mu.Lock()
-	if !s.has(memoryStateShared) {
+	if !s.has(memoryStateWasmShared) {
 		s.mu.Unlock()
-		return 0, fmt.Errorf("wago: atomic wait requires shared memory")
+		return 0, &TrapError{Code: TrapExpectedSharedMemory}
 	}
 	if s.has(memoryStateClosed) || m.jm == nil {
 		s.mu.Unlock()
@@ -205,19 +204,27 @@ func (m *Memory) notify(offset uint64, count uint32) (uint32, error) {
 	}
 	s := m.state.Load()
 	if s == nil {
-		return 0, fmt.Errorf("wago: atomic notify requires shared memory")
+		jm := m.jm
+		if jm == nil {
+			return 0, errMemoryWaitClosed
+		}
+		b := jm.HostBytes()
+		if offset > uint64(len(b)) || 4 > uint64(len(b))-offset {
+			return 0, &TrapError{Code: TrapLinMemOutOfBounds}
+		}
+		return 0, nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.has(memoryStateShared) {
-		return 0, fmt.Errorf("wago: atomic notify requires shared memory")
-	}
 	if s.has(memoryStateClosed) || m.jm == nil {
 		return 0, errMemoryWaitClosed
 	}
 	b := m.jm.HostBytes()
 	if offset > uint64(len(b)) || 4 > uint64(len(b))-offset {
 		return 0, &TrapError{Code: TrapLinMemOutOfBounds}
+	}
+	if !s.has(memoryStateWasmShared) {
+		return 0, nil
 	}
 	ws := s.waiterStateLocked(false)
 	if count == 0 || ws == nil {

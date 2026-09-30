@@ -194,7 +194,7 @@ func ReleaseArena(a *Arena) error {
 	if a == nil {
 		return nil
 	}
-	if len(a.mem) > roundUpPage(InstantiateArenaSize) {
+	if len(a.mem) > roundUpPage(InstantiateArenaCacheBytes) {
 		return a.Close()
 	}
 	arenaCache.Lock()

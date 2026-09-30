@@ -49,7 +49,7 @@ func commandWithSelector(environment Environment, selectComponents componentSele
 			{Name: "plugins", Bool: true, Help: "update enabled plugins"},
 			{Name: "all", Short: "a", Bool: true, Help: "update manager, runtime, and plugins"},
 			{Name: "force", Short: "f", Bool: true, Help: "update even when installed commits match"},
-			{Name: "channel", Short: "c", Arg: "<name>", Help: "runtime channel: canary or nightly"},
+			{Name: "channel", Short: "c", Arg: "<name>", Help: "runtime channel: canary or beta"},
 			{Name: "profile", Short: "p", Arg: "<name>", Help: "runtime profile"},
 			{Name: "build", Short: "b", Arg: "<name>", Help: "runtime build"},
 			plugin.GlobalFlag(),
@@ -69,8 +69,8 @@ func commandWithSelector(environment Environment, selectComponents componentSele
 			if ctx.Bool("use") && ctx.Bool("no-use") {
 				ui.Usage("update: choose --use or --no-use")
 			}
-			if channel := ctx.Str("channel"); channel != "" && channel != "canary" && channel != "nightly" {
-				ui.Usage("update: --channel must be canary or nightly")
+			if channel := ctx.Str("channel"); channel != "" && channel != "canary" && channel != "beta" {
+				ui.Usage("update: --channel must be canary or beta")
 			}
 			if value := ctx.Str("profile"); value != "" {
 				if _, err := wagopaths.ParseProfile(value); err != nil {

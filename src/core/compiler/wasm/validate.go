@@ -1,6 +1,7 @@
 package wasm
 
 import (
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -16,13 +17,42 @@ type ValidationFeatures struct {
 	GCConstExpr          bool // internal staged admission for GC allocation/conversion constant expressions
 }
 
+// ValidationLimits bounds implementation resources consumed by one module.
+// MaxFunctionLocals counts function parameters and declared locals together.
+// MaxMemoriesPerModule counts imported and local memories. A zero field selects
+// its default value.
+type ValidationLimits struct {
+	MaxFunctionLocals    uint32
+	MaxMemoriesPerModule uint32
+}
+
+// DefaultMaxFunctionLocals is the largest count represented by the current
+// uint16-backed compiler metadata. Native frame safety is checked separately.
+const DefaultMaxFunctionLocals uint32 = MaximumFunctionLocals
+
+// DefaultMaxMemoriesPerModule is the ordinary validation ceiling. It matches
+// the WebAssembly JavaScript API implementation limit. The configurable maximum
+// cannot exceed the Linux process registry capacity.
+const DefaultMaxMemoriesPerModule uint32 = 100
+
+// MaximumFunctionLocals is the largest configurable validation ceiling.
+const MaximumFunctionLocals uint32 = 1<<16 - 1
+
+// MaximumMemoriesPerModule is the largest configurable validation ceiling.
+const MaximumMemoriesPerModule uint32 = 4096
+
+var defaultValidationLimits = ValidationLimits{
+	MaxFunctionLocals:    DefaultMaxFunctionLocals,
+	MaxMemoriesPerModule: DefaultMaxMemoriesPerModule,
+}
+
 // ValidateModule validates module-level indexes and typechecks function bodies.
 // The default path consumes raw BodyBytes produced by DecodeModule instead of a
 // structured function-body instruction tree. Programmatically constructed tests
 // may still supply Func.Body instructions when BodyBytes is empty. The default
 // preserves the WebAssembly 2.0 single-memory validation boundary.
 func ValidateModule(m *Module) error {
-	return validateModuleWithWorkersAndFeatures(m, nil, 1, ValidationFeatures{})
+	return validateModuleWithWorkersFeaturesAndLimits(m, nil, 1, ValidationFeatures{}, defaultValidationLimits)
 }
 
 // ValidateModuleWithWorkers is ValidateModule with bounded function-body
@@ -32,33 +62,87 @@ func ValidateModule(m *Module) error {
 // function count. If multiple functions are invalid, the lowest function index
 // wins regardless of completion order.
 func ValidateModuleWithWorkers(m *Module, workers int) error {
-	return validateModuleWithWorkersAndFeatures(m, nil, workers, ValidationFeatures{})
+	return validateModuleWithWorkersFeaturesAndLimits(m, nil, workers, ValidationFeatures{}, defaultValidationLimits)
 }
 
 // ValidateModuleWithFeatures validates a module under explicitly staged release
 // features. Unsupported execution remains the frontend's responsibility.
 func ValidateModuleWithFeatures(m *Module, features ValidationFeatures) error {
-	return validateModuleWithWorkersAndFeatures(m, nil, 1, features)
+	return validateModuleWithWorkersFeaturesAndLimits(m, nil, 1, features, defaultValidationLimits)
 }
 
 // ValidateModuleWithFeaturesAndWorkers combines explicitly staged validation
 // features with bounded function-body parallelism.
 func ValidateModuleWithFeaturesAndWorkers(m *Module, features ValidationFeatures, workers int) error {
-	return validateModuleWithWorkersAndFeatures(m, nil, workers, features)
+	return validateModuleWithWorkersFeaturesAndLimits(m, nil, workers, features, defaultValidationLimits)
 }
 
-func validateModuleWithWorkersAndFeatures(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures) error {
+// ValidateModuleWithConfig validates a module with explicit feature, worker,
+// and resource-limit policy.
+func ValidateModuleWithConfig(m *Module, features ValidationFeatures, workers int, limits ValidationLimits) error {
+	return validateModuleWithWorkersFeaturesAndLimits(m, nil, workers, features, limits)
+}
+
+// ValidateModuleWithAnalysis validates a module and gathers transient,
+// architecture-neutral facts during the same function-body walk. analysis is
+// cleared on failure. Callers must use ValidFor: successful tree validation
+// does not produce complete facts. Keep the module immutable until all summary
+// consumers finish; edits require a new validation.
+func ValidateModuleWithAnalysis(m *Module, features ValidationFeatures, workers int, limits ValidationLimits, analysis *ValidatedModuleAnalysis) error {
+	return validateModuleWithWorkersFeaturesAndLimitsAnalysis(m, nil, workers, features, limits, analysis)
+}
+
+func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits) error {
+	return validateModuleWithWorkersFeaturesAndLimitsAnalysis(m, direct, workers, features, limits, nil)
+}
+
+func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits, analysis *ValidatedModuleAnalysis) (err error) {
+	m.invalidateTypeAnalysisCaches()
+	if analysis != nil {
+		analysis.reset(m)
+		defer func() {
+			if err != nil {
+				*analysis = ValidatedModuleAnalysis{}
+			}
+		}()
+	}
+	if limits.MaxFunctionLocals == 0 {
+		limits.MaxFunctionLocals = DefaultMaxFunctionLocals
+	}
+	if limits.MaxMemoriesPerModule == 0 {
+		limits.MaxMemoriesPerModule = DefaultMaxMemoriesPerModule
+	}
+	if limits.MaxFunctionLocals > MaximumFunctionLocals {
+		return &ValidationError{Code: ErrInvalidLimitRange, Func: -1, Detail: "configured function local limit exceeds 65535"}
+	}
+	if limits.MaxMemoriesPerModule > MaximumMemoriesPerModule {
+		return &ValidationError{Code: ErrInvalidLimitRange, Func: -1, Detail: "configured memory count limit exceeds 4096"}
+	}
 	// Keep the serial validation owner in this frame. TinyGo's conservative
 	// collector can otherwise lose a short-lived heap validator while nested
 	// decoding allocates, leaving its inline operand/control stacks reclaimed
 	// during validation.
-	v := moduleValidator{m: m, funcIndex: -1, direct: direct, features: features}
+	v := moduleValidator{
+		m:         m,
+		funcIndex: -1,
+		direct:    direct,
+		features:  features,
+		limits:    limits,
+		analysis:  analysis,
+	}
+	v.ensureImportIndexes()
+	// Validation already owns an index for every import kind. Asking the module
+	// for this count would build a second directory just to read one length.
+	v.analysisFuncBase = len(v.importIndexes[ExternFunc])
 	if err := v.validateModule(); err != nil {
 		runtime.KeepAlive(m)
 		runtime.KeepAlive(direct)
 		return err
 	}
-	err := v.validateFunctions(workers)
+	err = v.validateFunctions(workers)
+	if err == nil && analysis != nil {
+		analysis.finish()
+	}
 	// TinyGo's conservative collector needs the metadata owners to remain live
 	// while validators consume their nested byte slices and type views.
 	runtime.KeepAlive(m)
@@ -78,35 +162,54 @@ func (v *moduleValidator) validateFunctions(workers int) error {
 }
 
 func (v *moduleValidator) validateFunctionsSerial() error {
-	importedFuncs := v.m.ImportedFuncCount()
+	importedFuncs := len(v.importsOfKind(ExternFunc))
 	widths := moduleMemargWidths(v.m)
 	// Keep the reusable operand/control-stack owner in the validating frame.
 	// Besides avoiding one allocation, this makes its lifetime explicit for
 	// TinyGo's conservative collector across allocation-heavy decode steps.
 	fv := funcValidator{moduleValidator: v}
+	var summary validationSegmentCounts
 	for i := range v.m.Code {
-		if err := v.validateFunction(&fv, i, importedFuncs, widths); err != nil {
+		counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+		if err != nil {
 			return err
 		}
+		summary.merge(counts)
+	}
+	if v.analysis != nil {
+		v.analysis.elemStateCount = summary.elem
+		v.analysis.dataStateCount = summary.data
 	}
 	return nil
 }
 
-func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) error {
+func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) (counts validationSegmentCounts, err error) {
 	fn := &v.m.Code[localIndex]
 	abs := importedFuncs + localIndex
-	if localIndex >= len(v.m.FuncTypes) {
-		return v.err(ErrUnknownFunc, "code without function type")
-	}
 	ft, ok := v.funcType(uint32(abs))
 	if !ok {
-		return v.err(ErrUnknownType, "function type")
+		return counts, v.err(ErrUnknownType, "function type")
+	}
+	if v.analysis != nil {
+		v.analysis.funcs[localIndex] = ValidatedFuncFacts{BodyBytes: saturatingUint32(len(fn.BodyBytes))}
 	}
 	fv.beginFunc(abs)
 	if len(fn.BodyBytes) != 0 {
-		return fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory)
+		err = fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory, &counts)
+	} else {
+		err = fv.validateFunc(*fn, ft)
 	}
-	return fv.validateFunc(*fn, ft)
+	return counts, err
+}
+
+type validationSegmentCounts struct {
+	elem uint32
+	data uint32
+}
+
+func (s *validationSegmentCounts) merge(other validationSegmentCounts) {
+	s.elem = max(s.elem, other.elem)
+	s.data = max(s.data, other.data)
 }
 
 // validateFunctionsParallel is split from the serial path so its goroutine
@@ -115,11 +218,13 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 // declared-function bits are immutable, the component-type cache is frozen, and
 // the serial const-expression validator is no longer reachable from body checks.
 func (v *moduleValidator) validateFunctionsParallel(workers int) error {
-	importedFuncs := v.m.ImportedFuncCount()
+	importedFuncs := len(v.importsOfKind(ExternFunc))
 	widths := moduleMemargWidths(v.m)
 	type result struct {
-		index int
-		err   error
+		index          int
+		err            error
+		elemStateCount uint32
+		dataStateCount uint32
 	}
 	results := make([]result, workers)
 	var next atomic.Int64
@@ -130,15 +235,22 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 		go func() {
 			defer wg.Done()
 			fv := funcValidator{moduleValidator: v}
+			var summary validationSegmentCounts
+			defer func() {
+				results[worker].elemStateCount = summary.elem
+				results[worker].dataStateCount = summary.data
+			}()
 			for {
 				i := int(next.Add(1) - 1)
 				if i >= len(v.m.Code) {
 					return
 				}
-				if err := v.validateFunction(&fv, i, importedFuncs, widths); err != nil {
+				counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+				if err != nil {
 					results[worker] = result{index: i, err: err}
 					return
 				}
+				summary.merge(counts)
 			}
 		}()
 	}
@@ -151,6 +263,12 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 			first = results[i].err
 		}
 	}
+	if first == nil && v.analysis != nil {
+		for i := range results {
+			v.analysis.elemStateCount = max(v.analysis.elemStateCount, results[i].elemStateCount)
+			v.analysis.dataStateCount = max(v.analysis.dataStateCount, results[i].dataStateCount)
+		}
+	}
 	return first
 }
 
@@ -159,17 +277,26 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 // body immediates may still miss the cache; resolvedCompType computes those
 // without mutating the frozen map so malformed modules remain race-free.
 func (v *moduleValidator) freezeCompCache() {
-	for i := 0; i < v.m.flattenedTypeCount(); i++ {
+	v.ensureTypeIndex()
+	typeCount := len(v.flatSubTypes)
+	for i := 0; i < typeCount; i++ {
 		_, _ = v.resolvedCompType(TypeIdx{Index: uint32(i)})
 	}
 	v.compCacheFrozen = true
 }
 
 type moduleValidator struct {
-	m         *Module
-	funcIndex int
-	direct    *directValidationEnv
-	features  ValidationFeatures
+	importIndexes    [5][]uint32
+	importIndexReady bool
+	m                *Module
+	funcIndex        int
+	direct           *directValidationEnv
+	features         ValidationFeatures
+	limits           ValidationLimits
+	analysis         *ValidatedModuleAnalysis
+	// analysisFuncBase converts the absolute funcIndex already carried by a
+	// funcValidator into the caller-owned declared-function summary index.
+	analysisFuncBase int
 
 	// declaredFuncBits is the module validation context's declared function-
 	// reference set. The inline word keeps the common <=64-function module from
@@ -185,6 +312,12 @@ type moduleValidator struct {
 	// time; caching returns a shared read-only pointer instead.
 	compCache       map[uint32]compCacheEntry
 	compCacheFrozen bool
+
+	// Type-section indexes are built once and reused by GC subtype validation.
+	// Without them, every flat or recursive-group lookup rescans preceding groups.
+	typeIndexReady bool
+	flatSubTypes   []moduleSubTypeRef
+	typeGroupBases []int
 
 	// constFV is serial module-validation scratch for global/table/data offsets
 	// and element initializer expressions. Function-body validation never reaches
@@ -208,15 +341,24 @@ func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
 }
 
 func (v *moduleValidator) validateModule() error {
+	if len(v.m.FuncTypes) != len(v.m.Code) {
+		return v.err(ErrUnknownFunc, "function and code section counts differ")
+	}
 	if v.m.UsesCompactImports && !v.features.CompactImports {
 		return v.err(ErrUnsupportedFeature, "compact imports")
 	}
 	v.collectDeclaredFuncs()
 	for gi, rt := range v.m.Types {
-		for _, st := range rt.SubTypes {
+		for si, st := range rt.SubTypes {
+			if len(st.Supers) > 1 {
+				return v.err(ErrTypeMismatch, "multiple supertypes")
+			}
 			for _, sup := range st.Supers {
 				if !v.validTypeIdxInRecGroup(sup, gi) {
 					return v.err(ErrUnknownType, "supertype")
+				}
+				if sup.Rec && sup.Index >= uint32(si) {
+					return v.err(ErrTypeMismatch, "supertype must precede subtype")
 				}
 			}
 			if describes, present := st.Metadata.Describes.Get(); present && !v.validTypeIdxInRecGroup(describes, gi) {
@@ -269,8 +411,11 @@ func (v *moduleValidator) validateModule() error {
 			return err
 		}
 	}
-	if v.m.MemCount() > 1 && !v.features.MultiMemory {
+	if (len(v.importsOfKind(ExternMem))+len(v.m.Memories)) > 1 && !v.features.MultiMemory {
 		return v.err(ErrUnsupportedFeature, "multiple memories")
+	}
+	if uint64((len(v.importsOfKind(ExternMem)) + len(v.m.Memories))) > uint64(v.limits.MaxMemoriesPerModule) {
+		return v.err(ErrResourceLimitExceeded, fmt.Sprintf("memory count %d exceeds configured limit %d", (len(v.importsOfKind(ExternMem))+len(v.m.Memories)), v.limits.MaxMemoriesPerModule))
 	}
 	for _, tag := range v.m.Tags {
 		if err := v.validateTagType(tag, "tag"); err != nil {
@@ -281,7 +426,7 @@ func (v *moduleValidator) validateModule() error {
 		if err := v.validateGlobalType(g.Type); err != nil {
 			return err
 		}
-		globalLimit := v.m.ImportedGlobalCount() + i
+		globalLimit := len(v.importsOfKind(ExternGlobal)) + i
 		if v.direct != nil {
 			if i >= len(v.direct.globalInits) {
 				return v.err(ErrTypeMismatch, "global init")
@@ -414,7 +559,7 @@ func (v *moduleValidator) collectDeclaredFuncsInExpr(expr Expr) {
 }
 
 func (v *moduleValidator) declareFunc(idx uint32) {
-	funcCount := v.m.FuncCount()
+	funcCount := (len(v.importsOfKind(ExternFunc)) + len(v.m.FuncTypes))
 	if uint64(idx) >= uint64(funcCount) {
 		return
 	}
@@ -431,7 +576,7 @@ func (v *moduleValidator) declareFunc(idx uint32) {
 
 func (v *moduleValidator) isDeclaredFunc(idx uint32) bool {
 	word := idx / 64
-	return int(word) < len(v.declaredFuncBits) && v.declaredFuncBits[word]&(uint64(1)<<(idx%64)) != 0
+	return uint(word) < uint(len(v.declaredFuncBits)) && v.declaredFuncBits[word]&(uint64(1)<<(idx%64)) != 0
 }
 
 func (v *moduleValidator) validateExternType(et ExternType) error {
@@ -553,13 +698,18 @@ func (v *moduleValidator) validateValType(t ValType) error {
 
 func (v *moduleValidator) validateValTypeInRecGroup(t ValType, recGroup int) error {
 	switch t.Kind() {
-	case ValNum, ValVec:
-		return nil
+	case ValNum:
+		if t == I32 || t == I64 || t == F32 || t == F64 {
+			return nil
+		}
+	case ValVec:
+		if t == V128 {
+			return nil
+		}
 	case ValRef:
 		return v.validateRefTypeInRecGroup(t.Ref(), recGroup)
-	default:
-		return v.err(ErrUnknownType, "value type")
 	}
+	return v.err(ErrUnknownType, "value type")
 }
 
 func (v *moduleValidator) validateRefType(rt RefType) error {
@@ -577,7 +727,12 @@ func (v *moduleValidator) validateHeapType(ht HeapType) error {
 func (v *moduleValidator) validateHeapTypeInRecGroup(ht HeapType, recGroup int) error {
 	switch ht.Kind() {
 	case HeapAbs:
-		return nil
+		switch ht.Abs() {
+		case HeapString, HeapExn, HeapArray, HeapStruct, HeapI31, HeapEq, HeapAny,
+			HeapExtern, HeapFunc, HeapNone, HeapNoExtern, HeapNoFunc, HeapNoExn:
+			return nil
+		}
+		return v.err(ErrUnknownType, "heap type")
 	case HeapTypeIndex:
 		if !v.validTypeIdxInRecGroup(ht.Type(), recGroup) {
 			return v.err(ErrUnknownType, "heap type")
@@ -615,15 +770,12 @@ func (v *moduleValidator) validateMemType(mt MemType) error {
 	return nil
 }
 func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternFunc {
-			if n == idx {
-				ft := v.funcTypeFromTypeIdx(im.Type.FuncType())
-				return ft, ft != nil
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternFunc)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		ft := v.funcTypeFromTypeIdx(im.Type.FuncType())
+		return ft, ft != nil
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.FuncTypes) {
@@ -637,14 +789,11 @@ func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
 // packed, so returning a pointer would force their reconstructed value to
 // escape on every global.get/global.set validation.
 func (v *moduleValidator) globalType(idx uint32) (GlobalType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternGlobal {
-			if n == idx {
-				return im.Type.GlobalType(), true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternGlobal)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.GlobalType(), true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Globals) {
@@ -654,14 +803,11 @@ func (v *moduleValidator) globalType(idx uint32) (GlobalType, bool) {
 }
 
 func (v *moduleValidator) globalProperties(idx uint32) (typ ValType, mutable bool, ok bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternGlobal {
-			if n == idx {
-				return im.Type.value, im.Type.flags&externTypeMutable != 0, true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternGlobal)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.value, im.Type.flags&externTypeMutable != 0, true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Globals) {
@@ -671,14 +817,11 @@ func (v *moduleValidator) globalProperties(idx uint32) (typ ValType, mutable boo
 	return gt.Type, gt.Mutable, true
 }
 func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternTable {
-			if n == idx {
-				return im.Type.TableType(), true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternTable)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.TableType(), true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Tables) {
@@ -691,14 +834,11 @@ func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
 // packed, so returning a pointer would make reconstruction escape on every
 // load/store validated by checkMemArg.
 func (v *moduleValidator) memoryType(idx uint32) (MemType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternMem {
-			if n == idx {
-				return im.Type.MemType(), true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternMem)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.MemType(), true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Memories) {
@@ -708,14 +848,11 @@ func (v *moduleValidator) memoryType(idx uint32) (MemType, bool) {
 }
 
 func (v *moduleValidator) memoryProperties(idx uint32) (uint8, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternMem {
-			if n == idx {
-				return im.Type.flags, true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternMem)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.flags, true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Memories) {
@@ -734,21 +871,21 @@ func (v *moduleValidator) memoryProperties(idx uint32) (uint8, bool) {
 func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 	switch x.Kind {
 	case ExternFunc:
-		return int(x.Index) < v.m.FuncCount()
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternFunc))+len(v.m.FuncTypes))
 	case ExternTable:
-		return int(x.Index) < v.m.TableCount()
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternTable))+len(v.m.Tables))
 	case ExternMem:
-		return int(x.Index) < v.m.MemCount()
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternMem))+len(v.m.Memories))
 	case ExternGlobal:
-		return int(x.Index) < v.m.GlobalCount()
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternGlobal))+len(v.m.Globals))
 	case ExternTag:
-		return int(x.Index) < v.m.TagCount()
+		return uint(x.Index) < uint(len(v.importsOfKind(ExternTag))+len(v.m.Tags))
 	}
 	return false
 }
 
 func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
-	return v.validateConstExprWithGlobalLimit(e, want, v.m.ImportedGlobalCount()+len(v.m.Globals))
+	return v.validateConstExprWithGlobalLimit(e, want, len(v.importsOfKind(ExternGlobal))+len(v.m.Globals))
 }
 
 func (v *moduleValidator) validateConstExprWithGlobalLimit(e Expr, want ValType, globalLimit int) error {
@@ -796,7 +933,7 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 	switch e.Kind.Kind {
 	case ElemFuncs:
 		for _, f := range e.Kind.Funcs {
-			if int(f) >= v.m.FuncCount() {
+			if uint(f) >= uint(len(v.importsOfKind(ExternFunc))+len(v.m.FuncTypes)) {
 				return RefType{}, v.err(ErrUnknownFunc, "elem")
 			}
 		}
@@ -850,6 +987,15 @@ type val struct {
 	t       ValType
 	unknown bool
 }
+
+func nonNullValidationType(x val) ValType {
+	if x.unknown {
+		// A reference instruction constrains value bottom to reference bottom.
+		return RefVal(Ref(false, HeapType{lo: uint64(heapBottom)}, false))
+	}
+	return RefVal(x.t.Ref().WithNullable(false))
+}
+
 type ctrlKind uint8
 
 const (
@@ -861,10 +1007,8 @@ const (
 )
 
 type ctrlFrame struct {
-	kind        ctrlKind
-	in, out     []ValType
-	height      int
-	unreachable bool
+	in, out []ValType
+	height  int
 	// initHeight is the local-initialization log watermark at control entry.
 	// Initializations performed inside a block do not escape that block; an
 	// else arm likewise restarts from the if entry state.
@@ -875,7 +1019,12 @@ type ctrlFrame struct {
 	// the operand-stack height at the end of the then-arm (after its results were
 	// re-pushed) so the else-arm end can confirm both arms leave the same shape.
 	ifThenHeight int
-	ifSeenElse   bool
+	// branchTableEpoch marks whether this exact label frame has already been
+	// checked by the current br_table.
+	branchTableEpoch uint32
+	kind             ctrlKind
+	unreachable      bool
+	ifSeenElse       bool
 }
 
 type funcValidator struct {
@@ -886,20 +1035,24 @@ type funcValidator struct {
 	// Small inline backing stores cover the common straight-line function and
 	// const-expression cases without heap-allocating separate stack slices. Larger
 	// or deeply nested functions still grow normally and reuse that capacity.
-	valBuf      [2]val
-	ctrlBuf     [1]ctrlFrame
-	constResult [1]ValType
-	localParams []ValType
-	localRuns   []LocalRun
-	localCount  uint64
+	valBuf       [2]val
+	ctrlBuf      [1]ctrlFrame
+	constResult  [1]ValType
+	localParams  []ValType
+	localRuns    []LocalRun
+	localRunEnds []uint64
+	localCount   uint64
 	// Non-nullable reference locals have no default value. Track successful
 	// local.set/local.tee operations sparsely and roll them back at structured
 	// control boundaries. The map grows only with locals actually initialized by
 	// the function body, not with an attacker-controlled declared local count.
 	initializedLocals map[uint32]struct{}
 	localInitLog      []uint32
-	constOnly         bool
 	constGlobalLimit  int // globals below this absolute index are visible to a const expression
+	// branchTableEpoch is packed before constOnly. Each
+	// funcValidator owns its control frames, including under parallel validation.
+	branchTableEpoch uint32
+	constOnly        bool
 	// rd is reused across bodies validated by this funcValidator so the byte
 	// cursor is not heap-allocated per function/const-expression.
 	rd reader
@@ -913,6 +1066,17 @@ type funcValidator struct {
 
 func (v *funcValidator) verr(c ValidationErrorCode, d string) error {
 	return &ValidationError{Code: c, Func: v.funcIndex, Detail: d}
+}
+
+func (v *funcValidator) analysisFacts() *ValidatedFuncFacts {
+	if v.moduleValidator == nil || v.analysis == nil {
+		return nil
+	}
+	index := v.funcIndex - v.analysisFuncBase
+	if index < 0 || index >= len(v.analysis.funcs) {
+		return nil
+	}
+	return &v.analysis.funcs[index]
 }
 
 // beginFunc resets the per-function operand/control stacks so a single
@@ -945,6 +1109,10 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	if overflow {
 		return v.verr(ErrInvalidLimitRange, "local count overflow")
 	}
+	if v.localCount > uint64(v.limits.MaxFunctionLocals) {
+		return v.verr(ErrInvalidLimitRange, "parameter and local count exceeds configured limit")
+	}
+	v.indexLocalRuns()
 	for _, run := range fn.Locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {
 			return err
@@ -961,7 +1129,9 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	return err
 }
 func (v *funcValidator) top() *ctrlFrame { return &v.ctrls[len(v.ctrls)-1] }
-func (v *funcValidator) push(t ValType)  { v.vals = append(v.vals, val{t: t}) }
+func (v *funcValidator) push(t ValType) {
+	v.vals = append(v.vals, val{t: t})
+}
 func (v *funcValidator) pushAll(ts []ValType) {
 	for _, t := range ts {
 		v.push(t)
@@ -1027,10 +1197,21 @@ func (v *funcValidator) unreachable() {
 	v.ctrls[len(v.ctrls)-1].unreachable = true
 }
 func (v *funcValidator) localType(idx uint32) (ValType, bool) {
-	if uint64(idx) >= v.localCount {
-		return ValType{}, false
+	// Both lookup paths check their bounds. Keep this wrapper small enough to
+	// inline instead of repeating the local-count check on every instruction.
+	return LocalTypeIndexed(v.localParams, v.localRuns, v.localRunEnds, idx)
+}
+
+func (v *funcValidator) indexLocalRuns() {
+	v.localRunEnds = v.localRunEnds[:0]
+	if len(v.localRuns) <= 2 {
+		return
 	}
-	return LocalType(v.localParams, v.localRuns, idx)
+	end := uint64(len(v.localParams))
+	for _, run := range v.localRuns {
+		end += uint64(run.Count)
+		v.localRunEnds = append(v.localRunEnds, end)
+	}
 }
 
 func (v *funcValidator) resetLocalInitialization() {
@@ -1073,7 +1254,7 @@ func (v *funcValidator) restoreLocalInitialization(height int) {
 }
 
 func (v *funcValidator) label(depth uint32) ([]ValType, error) {
-	if int(depth) >= len(v.ctrls) {
+	if uint(depth) >= uint(len(v.ctrls)) {
 		return nil, v.verr(ErrUnknownLabel, "")
 	}
 	f := v.ctrls[len(v.ctrls)-1-int(depth)]

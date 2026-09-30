@@ -9,7 +9,30 @@ import (
 	"github.com/wago-org/wago"
 )
 
+// ValidateSignature rejects values that the command-line text format cannot
+// represent. The low-level Go API remains available for v128 and reference
+// values.
+func ValidateSignature(params, results []wago.ValType) error {
+	if err := validateSignatureValues("parameter", params); err != nil {
+		return err
+	}
+	return validateSignatureValues("result", results)
+}
+
+func validateSignatureValues(kind string, types []wago.ValType) error {
+	for index, typ := range types {
+		if typ <= wago.ValF64 {
+			continue
+		}
+		return fmt.Errorf("%s %d is %s; unsupported", kind, index, typ)
+	}
+	return nil
+}
+
 func ParseArgs(values []string, params []wago.ValType) ([]uint64, error) {
+	if err := ValidateSignature(params, nil); err != nil {
+		return nil, err
+	}
 	if len(values) != len(params) {
 		return nil, fmt.Errorf("expected %d arg(s), got %d", len(params), len(values))
 	}
@@ -77,20 +100,11 @@ func FormatValue(bits uint64, valueType wago.ValType) string {
 	}
 }
 
-func Format(export string, args, results []uint64, paramTypes, resultTypes []wago.ValType) string {
-	arguments := make([]string, len(args))
-	for index, value := range args {
-		arguments[index] = FormatValue(value, paramTypes[index])
-	}
-	call := fmt.Sprintf("%s(%s)", export, strings.Join(arguments, ", "))
-	if len(results) == 0 {
-		return call + " = ()"
-	}
-	return fmt.Sprintf("%s = %s", call, FormatResults(results, resultTypes))
-}
-
 // FormatResults renders raw function results without a call-expression prefix.
 func FormatResults(results []uint64, resultTypes []wago.ValType) string {
+	if len(results) != len(resultTypes) {
+		return fmt.Sprintf("invalid result count: got %d values for %d types", len(results), len(resultTypes))
+	}
 	formatted := make([]string, len(results))
 	for index, value := range results {
 		formatted[index] = FormatValue(value, resultTypes[index])

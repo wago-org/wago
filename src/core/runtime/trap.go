@@ -33,6 +33,8 @@ const (
 	TrapCastFailure          TrapCode = 18
 	TrapTableOutOfBounds     TrapCode = 19
 	TrapAtomicUnaligned      TrapCode = 20
+	TrapExpectedSharedMemory TrapCode = 21
+	TrapHostEventOverflow    TrapCode = 22
 )
 
 var trapMessages = [...]string{
@@ -57,6 +59,8 @@ var trapMessages = [...]string{
 	TrapCastFailure:          "cast failure",
 	TrapTableOutOfBounds:     "table access out of bounds",
 	TrapAtomicUnaligned:      "unaligned atomic memory access",
+	TrapExpectedSharedMemory: "expected shared memory",
+	TrapHostEventOverflow:    "deferred host event log capacity exceeded",
 }
 
 func (c TrapCode) String() string {

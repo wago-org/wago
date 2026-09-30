@@ -66,7 +66,7 @@ func TestCommandWritesRunnableArtifact(t *testing.T) {
 	if !wago.IsCompiled(artifact) {
 		t.Fatalf("build output is not a .wago artifact: %x", artifact)
 	}
-	if _, err := wago.Load(artifact); err != nil {
+	if _, err := wago.LoadTrustedArtifact(artifact); err != nil {
 		t.Fatalf("load build output: %v", err)
 	}
 }

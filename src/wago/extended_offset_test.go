@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func localGlobalDataOffsetModule() []byte {
@@ -84,7 +84,7 @@ func TestActiveOffsetsUseLocalImmutableGlobals(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			compiled, err = Load(blob)
+			compiled, err = LoadTrustedArtifact(blob)
 			if err != nil {
 				t.Fatal(err)
 			}

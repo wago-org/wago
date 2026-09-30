@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestAbstractGCRefNullGlobalInitializers(t *testing.T) {
@@ -22,7 +22,7 @@ func TestAbstractGCRefNullGlobalInitializers(t *testing.T) {
 	if got := len(compiled.Globals); got != len(globals) {
 		t.Fatalf("compiled global count = %d, want %d", got, len(globals))
 	}
-	loaded := roundTripCompiled(t, compiled)
+	loaded := publicArtifactRoundTrip(t, compiled)
 	defer loaded.Close()
 	in, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {

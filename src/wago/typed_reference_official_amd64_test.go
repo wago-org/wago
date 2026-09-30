@@ -15,10 +15,10 @@ import (
 	"testing"
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/spectest"
+	"github.com/wago-org/wago/tests/conformance/spectest"
 )
 
-const stagedTypedReferenceDeltaPath = "tests/spec-v3-staged-typed-reference.json"
+const stagedTypedReferenceDeltaPath = "tests/conformance/baselines/spec-v3-staged-typed-reference.json"
 
 // stagedTypedReferenceOfficialFiles is the complete bounded Release 3 accounting
 // set for non-GC typed function references plus the structural files that mix
@@ -126,7 +126,7 @@ func stagedTypedReferenceGateList(counts map[string]int) []stagedTypedReferenceG
 
 func stagedOfficialTypedReferenceJSON(t testing.TB, base string, dst any) string {
 	t.Helper()
-	checkout := filepath.Clean("../../tests/spec-v3")
+	checkout := filepath.Clean("../../tests/conformance/spec-v3")
 	suite, err := spectest.DiscoverRelease3(checkout)
 	if err != nil {
 		t.Fatalf("discover pinned Release 3 suite: %v", err)
@@ -198,17 +198,8 @@ func replayStagedTypedReferenceScript(t *testing.T, base, tmp string, script sta
 		t.Fatal(err)
 	}
 	defer standardMemory.Close()
-	noop := HostFunc(func(HostModule, []uint64, []uint64) {})
-	standard := Imports{
-		"spectest.print": noop, "spectest.print_i32": noop, "spectest.print_i64": noop,
-		"spectest.print_f32": noop, "spectest.print_f64": noop,
-		"spectest.print_i32_f32": noop, "spectest.print_f64_f64": noop,
-		"spectest.global_i32": GlobalImport{Type: ValI32, Bits: I32(666)},
-		"spectest.global_i64": GlobalImport{Type: ValI64, Bits: I64(666)},
-		"spectest.global_f32": GlobalImport{Type: ValF32, Bits: F32(666)},
-		"spectest.global_f64": GlobalImport{Type: ValF64, Bits: F64(666)},
-		"spectest.memory":     standardMemory, "spectest.table": standardTable,
-	}
+	noop := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	standard := testImports("spectest.print", noop, "spectest.print_i32", noop, "spectest.print_i64", noop, "spectest.print_f32", noop, "spectest.print_f64", noop, "spectest.print_i32_f32", noop, "spectest.print_f64_f64", noop, "spectest.global_i32", GlobalImport{Type: ValI32, Bits: I32(666)}, "spectest.global_i64", GlobalImport{Type: ValI64, Bits: I64(666)}, "spectest.global_f32", GlobalImport{Type: ValF32, Bits: F32(666)}, "spectest.global_f64", GlobalImport{Type: ValF64, Bits: F64(666)}, "spectest.memory", standardMemory, "spectest.table", standardTable)
 	var current stagedSpecModule
 	var live []stagedSpecModule
 	defer func() {

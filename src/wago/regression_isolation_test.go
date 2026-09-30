@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wago-org/wago/tests/regressiontest"
+	"github.com/wago-org/wago/tests/support/regressiontest"
 )
 
 func runRegressionIsolatedPortTest(t *testing.T) bool {

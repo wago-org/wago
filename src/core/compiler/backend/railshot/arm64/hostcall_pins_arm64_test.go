@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func asyncHostPinnedLocalModuleARM64(t testing.TB) *wasm.Module {
@@ -88,11 +88,11 @@ func TestAsyncHostLogSpillsOnlyScratchPinnedLocalsARM64(t *testing.T) {
 		if stats.PinnedLocals != 8 {
 			t.Fatalf("pinned locals = %d, want 8", stats.PinnedLocals)
 		}
-		if got := stats.Peephole["call-local-store"]; got != 3 {
-			t.Fatalf("async host-log local stores = %d, want 3 for X9-X11 only (all: %v)", got, stats.Peephole)
+		if got := stats.Peephole["call-local-store"]; got != 1 {
+			t.Fatalf("async host-log local stores = %d, want 1 for the caller-saved pin only (all: %v)", got, stats.Peephole)
 		}
-		if got := stats.Peephole["call-local-reload-gp"]; got != 3 {
-			t.Fatalf("async host-log local reloads = %d, want 3 for X9-X11 only (all: %v)", got, stats.Peephole)
+		if got := stats.Peephole["call-local-reload-gp"]; got != 1 {
+			t.Fatalf("async host-log local reloads = %d, want 1 for the caller-saved pin only (all: %v)", got, stats.Peephole)
 		}
 	})
 

@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/wago-org/wago/cli/internal/project"
 )
 
 func TestProjectSchemaCoversEveryLocalSetting(t *testing.T) {
@@ -40,6 +42,13 @@ func TestProjectSchemaCoversEveryLocalSetting(t *testing.T) {
 			t.Errorf("schema.json omits %s", setting.Key)
 		}
 		delete(known, setting.Key)
+	}
+	for _, name := range project.RetiredOptimizationNames() {
+		key := "optimizations." + name
+		if !known[key] {
+			t.Errorf("schema.json omits retired v1 setting %s", key)
+		}
+		delete(known, key)
 	}
 	for key := range known {
 		t.Errorf("schema.json contains unregistered setting %s", key)

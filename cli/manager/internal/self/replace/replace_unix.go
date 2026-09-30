@@ -20,4 +20,6 @@ func Remove(executable string) (bool, error) {
 	return false, err
 }
 
-func ScheduleTargetRemoval(_ string, _ []string) (bool, error) { return false, nil }
+func ScheduleTargetRemoval(_ string, _ []string, _ string, _ []string) (bool, error) {
+	return false, nil
+}

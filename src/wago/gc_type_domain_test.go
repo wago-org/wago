@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestGCTypeMappingRemapsCanonicalTypesToRuntimeDomain(t *testing.T) {
@@ -28,5 +28,62 @@ func TestGCTypeMappingRejectsConflictingCanonicalTypes(t *testing.T) {
 	}
 	if _, err := mapping.canonicalTypes([]gc.TypeID{0, 0, 1}); err == nil {
 		t.Fatal("conflicting canonical representatives succeeded")
+	}
+}
+
+func TestGCModuleDomainProbeCachesCanonicalPlan(t *testing.T) {
+	compiled := &Compiled{
+		Types:        []DefinedTypeDescriptor{{Kind: CompositeTypeStruct, RecGroup: 0}},
+		GCTypeDescs:  []gc.TypeDesc{{ID: 0}},
+		validateMemo: &validateMemo{},
+	}
+	domain := &gcStoreDomain{
+		id:       991,
+		typeReps: []gcDomainTypeRepresentative{{types: compiled.Types, index: 0}},
+		types:    []gc.TypeDesc{{ID: 0}},
+	}
+	if !gcModuleFitsDomain(compiled, domain) {
+		t.Fatal("structurally identical GC type was rejected by its domain")
+	}
+	if mapping := compiled.cachedGCTypeMapping(domain.id, len(domain.typeReps)); mapping == nil {
+		t.Fatal("successful compatibility probe did not retain its canonical plan")
+	}
+}
+
+func TestPreferredGCCollectorIgnoresReferenceFreeFunctionImports(t *testing.T) {
+	store := &referenceStore{}
+	foreignStore := &referenceStore{}
+	scalarCollector := new(gc.Collector)
+	scalarProvider := &Instance{gc: scalarCollector, refStore: foreignStore}
+	imports := testImports("env.call", &InstanceExport{inst: scalarProvider})
+
+	scalar := &Compiled{
+		Imports:        []string{"env.call"},
+		importFuncSigs: []FuncSig{{Results: []ValType{ValI64, ValI64, ValF32, ValF32, ValV128, ValI32}}},
+	}
+	got, err := preferredGCCollectorFromImports(scalar, imports.bindings, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("scalar-only import selected collector %p; want an independent domain", got)
+	}
+
+	referenceCollector := new(gc.Collector)
+	referenceProvider := &Instance{gc: referenceCollector, refStore: store}
+	imports.Function("env", "reference", &InstanceExport{inst: referenceProvider})
+	reference := &Compiled{
+		Imports: []string{"env.call", "env.reference"},
+		importFuncSigs: []FuncSig{
+			{Results: []ValType{ValI64, ValI64, ValF32, ValF32, ValV128, ValI32}},
+			{Results: []ValType{ValAnyRef}},
+		},
+	}
+	got, err = preferredGCCollectorFromImports(reference, imports.bindings, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != referenceCollector {
+		t.Fatalf("collector-reference import selected collector %p; want %p", got, referenceCollector)
 	}
 }

@@ -11,16 +11,12 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/arm64spike"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func simdConst(v [16]byte) []byte {
 	out := []byte{0xfd, 0x0c}
 	return append(out, v[:]...)
-}
-
-func simdOp(sub uint32) []byte {
-	return append([]byte{0xfd}, wasmtest.ULEB(sub)...)
 }
 
 func i8x16Bytes(v ...int8) [16]byte {
@@ -131,7 +127,7 @@ func runArm64Result(t *testing.T, m *wasm.Module, n int) []byte {
 
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(coreruntime.TrapBufferBytes)
 	if err := eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results); err != nil {
 		t.Fatalf("call: %v", err)
 	}

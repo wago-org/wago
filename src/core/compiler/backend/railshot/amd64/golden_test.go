@@ -13,7 +13,7 @@ import (
 )
 
 // Golden disassembly tests: the per-optimization shape regression net
-// (docs/no-ir-plan.md P1). Each later phase adds its golden here alongside its
+// Each later phase adds its golden here alongside its
 // CodegenStats counter, so a codegen change that silently drops an optimization
 // is caught by shape, not just by a benchmark. These shell out to objdump and
 // skip cleanly where it is unavailable.

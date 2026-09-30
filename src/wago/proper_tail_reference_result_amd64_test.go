@@ -18,7 +18,7 @@ func TestProperTailReferenceResultContractsExecuteAcrossKinds(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			got, err := in.Call(context.Background(), "run")
+			got, err := in.InvokeValues(context.Background(), "run")
 			if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() || !in.FuncRefMatchesFunction(got[0].FuncRef(), 0) {
 				t.Fatalf("proper-tail funcref result = %v, %v", got, err)
 			}

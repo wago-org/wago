@@ -40,7 +40,6 @@
 //	cfg := wago.NewRuntimeConfig()
 //	mod, err := cfg.Compile(wasmBytes)
 //
-// See docs/guardpage-spike.md for the mechanism and its limitations. Benchmarks
-// and other default-config entry points can be pinned with WAGO_BOUNDS=explicit
+// Benchmarks and other default-config entry points can be pinned with WAGO_BOUNDS=explicit
 // or WAGO_BOUNDS=signals.
 package wago

@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func gcCrossInstanceProviderModule() []byte {
@@ -147,7 +147,7 @@ func TestGCCrossInstanceSharedCollectorOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.retain": export}})
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.retain", export)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,8 +193,8 @@ func TestGCCrossInstanceCanonicalTypesAcrossReorderedModules(t *testing.T) {
 		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
 			providerCandidate, consumerCandidate := providerCode, consumerCode
 			if codec {
-				providerCandidate = roundTripCompiled(t, providerCode)
-				consumerCandidate = roundTripCompiled(t, consumerCode)
+				providerCandidate = publicArtifactRoundTrip(t, providerCode)
+				consumerCandidate = publicArtifactRoundTrip(t, consumerCode)
 				defer providerCandidate.Close()
 				defer consumerCandidate.Close()
 			}
@@ -210,7 +210,7 @@ func TestGCCrossInstanceCanonicalTypesAcrossReorderedModules(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			consumer, err := instantiateCore(consumerCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.retain": export}})
+			consumer, err := instantiateCore(consumerCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.retain", export)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -247,7 +247,7 @@ func TestGCCrossInstanceCanonicalTypesAcrossReorderedModules(t *testing.T) {
 				t.Fatal(err)
 			}
 			consumerToken := GCRef{token: token}
-			returned, err := provider.Call(context.Background(), "retain", ValueGCRef(consumerToken))
+			returned, err := provider.InvokeValues(context.Background(), "retain", ValueGCRef(consumerToken))
 			if err != nil || len(returned) != 1 || returned[0].GCRef().token == 0 {
 				t.Fatalf("cross-module token ingress = %v, %v", returned, err)
 			}
@@ -283,9 +283,9 @@ func TestGCCrossInstanceMultiHopFrameRootsAndCodec(t *testing.T) {
 		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
 			providerCandidate, relayCandidate, consumerCandidate := providerCode, relayCode, consumerCode
 			if codec {
-				providerCandidate = roundTripCompiled(t, providerCode)
-				relayCandidate = roundTripCompiled(t, relayCode)
-				consumerCandidate = roundTripCompiled(t, consumerCode)
+				providerCandidate = publicArtifactRoundTrip(t, providerCode)
+				relayCandidate = publicArtifactRoundTrip(t, relayCode)
+				consumerCandidate = publicArtifactRoundTrip(t, consumerCode)
 				defer providerCandidate.Close()
 				defer relayCandidate.Close()
 				defer consumerCandidate.Close()
@@ -305,7 +305,7 @@ func TestGCCrossInstanceMultiHopFrameRootsAndCodec(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			relay, err := instantiateCore(relayCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.retain": providerExport}})
+			relay, err := instantiateCore(relayCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.retain", providerExport)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -314,7 +314,7 @@ func TestGCCrossInstanceMultiHopFrameRootsAndCodec(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			consumer, err := instantiateCore(consumerCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.retain": relayExport}})
+			consumer, err := instantiateCore(consumerCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.retain", relayExport)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -412,7 +412,7 @@ func TestGCRuntimeCollectorDomainRollbackAndConfigMismatch(t *testing.T) {
 	}
 	mismatch := baseConfig
 	mismatch.StressNurseryBytes = 64
-	if _, err := instantiateCore(consumerCode, InstantiateOptions{GC: mismatch, store: store, Imports: Imports{"provider.retain": export}}); err == nil {
+	if _, err := instantiateCore(consumerCode, InstantiateOptions{GC: mismatch, store: store, Imports: testImports("provider.retain", export)}); err == nil {
 		t.Fatal("cross-instance GC link accepted incompatible collector configuration")
 	}
 	if got := gcStoreDomainCount(store); got != 1 {

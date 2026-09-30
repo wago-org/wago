@@ -21,6 +21,7 @@ func entryZeroPairsModuleARM64(t testing.TB, locals, localType byte) *wasm.Modul
 }
 
 func TestEntryZeroPairsARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, tc := range []struct {
 		name      string
 		locals    byte
@@ -61,6 +62,7 @@ func TestEntryZeroPairsARM64(t *testing.T) {
 }
 
 func TestEntryZeroPairsV128ARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	body := []byte{0x01, 0x02, 0x7b, 0x20, 0x01, 0x1a, 0x20, 0x00}
 	body = append(body, simdOp(29)...)
 	body = append(body, 0x01, 0x0b) // i64x2.extract_lane 1; end
@@ -85,6 +87,7 @@ func TestEntryZeroPairsV128ARM64(t *testing.T) {
 }
 
 func BenchmarkEntryZeroPairsARM64(b *testing.B) {
+	requireCompilerDiagnostics(b)
 	m := entryZeroPairsModuleARM64(b, 64, 0x70)
 	for _, tc := range []struct {
 		name string
@@ -118,7 +121,7 @@ func BenchmarkEntryZeroPairsARM64(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer coreruntime.Unmap(code)
-			args, results, trap := arena.Alloc(8), arena.Alloc(8), arena.Alloc(8)
+			args, results, trap := arena.Alloc(8), arena.Alloc(8), arena.Alloc(coreruntime.TrapBufferBytes)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {

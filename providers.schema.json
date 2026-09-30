@@ -220,6 +220,7 @@
               "name": {
                 "enum": [
                   "host.caller.identify",
+                  "host.caller.invoke",
                   "host.arguments.read",
                   "runtime.close.observe",
                   "module.source.transform",
@@ -247,6 +248,7 @@
       "enum": [
         "host.import.define",
         "host.caller.identify",
+        "host.caller.invoke",
         "host.arguments.read",
         "runtime.close.observe",
         "module.source.transform",

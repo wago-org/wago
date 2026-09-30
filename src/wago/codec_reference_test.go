@@ -8,16 +8,16 @@ import (
 	"testing"
 )
 
-func TestCompiledCodecVersion1Contract(t *testing.T) {
+func TestCompiledCodecVersion4Contract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != wagoVersion || wagoVersion != 1 {
-		t.Fatalf("compiled codec version = %d, want initial public version 1", got)
+	if got := blob[4]; got != wagoVersion || wagoVersion != 4 {
+		t.Fatalf("compiled codec version = %d, want codec version 4", got)
 	}
 
-	for _, version := range []byte{0, 2, 22, 35} {
+	for _, version := range []byte{0, 1, 2, 3, 22, 35} {
 		unsupported := append([]byte(nil), blob...)
 		unsupported[4] = version
 		var got Compiled
@@ -116,12 +116,12 @@ func TestCompiledCodecRejectsLiveAndMalformedReferenceMetadata(t *testing.T) {
 
 func TestCompiledCodecRequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 	fixture := structuralReferenceCodecFixture()
-	loaded := roundTripCompiled(t, fixture)
+	loaded := publicArtifactRoundTrip(t, fixture)
 	want := CoreFeatureMutableGlobal | CoreFeatureMultiValue | CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes
 	if got := CoreFeatures(loaded.requiredFeatures); got != want {
 		t.Fatalf("required features = %s, want %s", got, want)
 	}
-	if got := CoreFeatures(roundTripCompiled(t, &Compiled{}).requiredFeatures); got != 0 {
+	if got := CoreFeatures(publicArtifactRoundTrip(t, &Compiled{}).requiredFeatures); got != 0 {
 		t.Fatalf("scalar required features = %s, want none", got)
 	}
 
@@ -157,6 +157,15 @@ func TestCompiledCodecRequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 
 	blob, err = (&Compiled{}).MarshalBinary()
 	if err != nil {
+		t.Fatalf("marshal forged i31-product fixture: %v", err)
+	}
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionI31Product)
+	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires the recorded GC feature") {
+		t.Fatalf("forged i31 execution product error = %v, want fail-closed GC rejection", err)
+	}
+
+	blob, err = (&Compiled{}).MarshalBinary()
+	if err != nil {
 		t.Fatalf("marshal forged generic-GC fixture: %v", err)
 	}
 	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionGenericArray)
@@ -183,7 +192,7 @@ func TestCompiledCodecCompileRecordsUsedFeatureFamilies(t *testing.T) {
 			if got := CoreFeatures(compiled.requiredFeatures); got != tc.want {
 				t.Fatalf("compiled required features = %s, want %s", got, tc.want)
 			}
-			loaded := roundTripCompiled(t, compiled)
+			loaded := publicArtifactRoundTrip(t, compiled)
 			if got := CoreFeatures(loaded.requiredFeatures); got != tc.want {
 				t.Fatalf("loaded required features = %s, want %s", got, tc.want)
 			}
@@ -242,7 +251,7 @@ func TestCompiledCodecLoadedReferenceExecution(t *testing.T) {
 			if err != nil {
 				t.Fatalf("MarshalBinary: %v", err)
 			}
-			loaded, err := Load(blob)
+			loaded, err := LoadTrustedArtifact(blob)
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}

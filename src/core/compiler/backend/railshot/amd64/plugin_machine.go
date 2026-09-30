@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 
 	plugincodegen "github.com/wago-org/wago/codegen/amd64"
 	x86 "github.com/wago-org/wago/src/core/encoder/amd64"
@@ -11,6 +12,7 @@ import (
 )
 
 type pluginAMD64Context struct {
+	featureError error
 	f            *fn
 	paramSlots   []int
 	paramWidth   []int32
@@ -31,6 +33,16 @@ func pluginAMD64Lowering(instruction coreplugins.Instruction) *plugincodegen.Low
 
 func (c *pluginAMD64Context) Encoder() *x86.Asm { return c.f.a }
 
+func (c *pluginAMD64Context) requireCPU(features shared.AMD64Features) error {
+	if c.featureError != nil {
+		return c.featureError
+	}
+	if !c.f.cpuHas(features) {
+		c.featureError = fmt.Errorf("amd64: managed plugin operation requires unavailable CPU features %#x", features)
+	}
+	return c.featureError
+}
+
 func (c *pluginAMD64Context) InputI32(index int) (x86.Reg, error) {
 	if index < 0 || index >= len(c.paramSlots) {
 		return 0, fmt.Errorf("amd64 plugin input %d out of range", index)
@@ -49,7 +61,8 @@ func (c *pluginAMD64Context) InputCustom(index int) ([]x86.Reg, error) {
 	}
 	e := c.paramElems[index]
 	want := c.paramCustom[index]
-	if e.kind != ekValue || e.st.typ != mtCustom || e.st.custom == nil || !e.st.custom.Equal(want) {
+	cold := c.f.s.elemCold(e)
+	if !e.isValue() || e.st.typ != mtCustom || cold == nil || cold.custom == nil || !cold.custom.Equal(want) {
 		return nil, fmt.Errorf("amd64 plugin custom input %d has incompatible custom type", index)
 	}
 	regs := c.f.materializePluginCustom(e)
@@ -59,7 +72,7 @@ func (c *pluginAMD64Context) InputCustom(index int) ([]x86.Reg, error) {
 		c.f.fpinned = c.f.fpinned.add(reg)
 		c.ymm = c.ymm.add(reg)
 	}
-	e.st.vregs = nil
+	cold.vregs = nil
 	c.customRead[index] = true
 	return out, nil
 }
@@ -89,6 +102,9 @@ func (c *pluginAMD64Context) AllocYMM(exclude ...x86.Reg) x86.Reg {
 }
 
 func (c *pluginAMD64Context) ConstYMMRepeated128(lo, hi uint64) x86.Reg {
+	if c.requireCPU(shared.AMD64AVX|shared.AMD64AVX2) != nil {
+		return 0
+	}
 	r := c.f.v128ConstReg(lo, hi)
 	c.f.fpinned = c.f.fpinned.add(r)
 	upper := c.f.v128ConstReg(lo, hi)
@@ -99,6 +115,9 @@ func (c *pluginAMD64Context) ConstYMMRepeated128(lo, hi uint64) x86.Reg {
 }
 
 func (c *pluginAMD64Context) LoadYMM(input int, offset uint32) (x86.Reg, error) {
+	if err := c.requireCPU(shared.AMD64AVX); err != nil {
+		return 0, err
+	}
 	base, index, disp, err := c.CheckedMemory(input, offset, 32)
 	if err != nil {
 		return 0, err
@@ -110,6 +129,9 @@ func (c *pluginAMD64Context) LoadYMM(input int, offset uint32) (x86.Reg, error) 
 }
 
 func (c *pluginAMD64Context) StoreYMM(input int, offset uint32, value x86.Reg) error {
+	if err := c.requireCPU(shared.AMD64AVX); err != nil {
+		return err
+	}
 	if !c.ymm.has(value) {
 		return fmt.Errorf("amd64 plugin YMM register %d is not owned by the lowering", value)
 	}
@@ -123,6 +145,9 @@ func (c *pluginAMD64Context) StoreYMM(input int, offset uint32, value x86.Reg) e
 }
 
 func (c *pluginAMD64Context) LoadZMM(input int, offset uint32) (x86.Reg, error) {
+	if err := c.requireCPU(shared.AMD64AVX | shared.AMD64AVX2 | shared.AMD64AVX512); err != nil {
+		return 0, err
+	}
 	base, index, disp, err := c.CheckedMemory(input, offset, 64)
 	if err != nil {
 		return 0, err
@@ -134,6 +159,9 @@ func (c *pluginAMD64Context) LoadZMM(input int, offset uint32) (x86.Reg, error) 
 }
 
 func (c *pluginAMD64Context) StoreZMM(input int, offset uint32, value x86.Reg) error {
+	if err := c.requireCPU(shared.AMD64AVX | shared.AMD64AVX2 | shared.AMD64AVX512); err != nil {
+		return err
+	}
 	if !c.ymm.has(value) {
 		return fmt.Errorf("amd64 plugin ZMM register %d is not owned by the lowering", value)
 	}
@@ -212,7 +240,7 @@ func (c *pluginAMD64Context) CheckedMemory(input int, offset uint32, size int) (
 	if size <= 0 {
 		return 0, 0, 0, fmt.Errorf("amd64 plugin memory access has invalid size %d", size)
 	}
-	c.f.pushValue(storage{kind: stSlot, typ: mtI32, slot: c.paramSlots[input]})
+	c.f.pushValue(storage{kind: stSlot, typ: mtI32, slot: uint32(c.paramSlots[input])})
 	ea, owned, _, disp := c.f.memAddr(offset, size, true, 0)
 	if owned {
 		c.f.pinned = c.f.pinned.add(ea)
@@ -258,13 +286,14 @@ func (c *pluginAMD64Context) OutputCustom(regs ...x86.Reg) error {
 }
 
 func (f *fn) materializePluginCustom(e *elem) []Reg {
+	cold := f.s.elemCold(e)
 	if e.st.kind == stReg {
-		return e.st.vregs
+		return cold.vregs
 	}
-	if e.st.kind != stSlot || e.st.custom == nil {
+	if e.st.kind != stSlot || cold == nil || cold.custom == nil {
 		panic("amd64: cannot materialize custom plugin value")
 	}
-	count := int((e.st.custom.Size() + 31) / 32)
+	count := int((cold.custom.Size() + 31) / 32)
 	regs := make([]Reg, count)
 	var avoid regMask
 	for i := 0; i < count; i++ {
@@ -272,15 +301,16 @@ func (f *fn) materializePluginCustom(e *elem) []Reg {
 		avoid = avoid.add(reg)
 		f.fpinned = f.fpinned.add(reg)
 		regs[i] = reg
-		f.a.YMovdquLoadDisp(reg, RSP, f.spillOff(e.st.slot+i*4))
+		f.a.YMovdquLoadDisp(reg, RSP, f.spillOff(e.st.slotIndex()+i*4))
 	}
 	for i := 0; i < count; i++ {
 		f.fpinned = f.fpinned.remove(regs[i])
 		f.fregUser[regs[i]] = e
 	}
+	f.s.canonicalSlots = false
 	e.st.kind, e.st.typ, e.st.reg = stReg, mtCustom, regs[0]
-	e.st.vregs = regs
-	return e.st.vregs
+	cold.vregs = regs
+	return cold.vregs
 }
 
 func (c *pluginAMD64Context) finish(resultWidth int32) {
@@ -306,7 +336,19 @@ func (c *pluginAMD64Context) finish(resultWidth int32) {
 }
 
 func (f *fn) emitPluginAMD64(lowering *plugincodegen.Lowering, inputWidths []int32, resultWidth int32, resultCount int, customInputs []coreplugins.CustomType, customOutput *coreplugins.CustomType) error {
+	// Check before invoking either emitter and record only lowerings that reach
+	// code generation. Unused imports and unreachable calls impose no CPU tier.
+	required, err := pluginAMD64Requirements(lowering.Features)
+	if err != nil {
+		return err
+	}
+	if !f.cpuHas(required) {
+		return fmt.Errorf("amd64: plugin lowering requires unavailable CPU features %#x", required)
+	}
 	if len(customInputs) != 0 || customOutput != nil {
+		if !f.cpuHas(shared.AMD64AVX) {
+			return fmt.Errorf("amd64: custom vector plugin ABI requires AVX")
+		}
 		return f.emitPluginAMD64Custom(lowering, inputWidths, resultCount, customInputs, customOutput)
 	}
 	paramCount := len(inputWidths)
@@ -320,10 +362,10 @@ func (f *fn) emitPluginAMD64(lowering *plugincodegen.Lowering, inputWidths []int
 	ctx := &pluginAMD64Context{f: f, paramSlots: make([]int, paramCount), paramWidth: inputWidths, output: regNone}
 	for i := range ctx.paramSlots {
 		e := roots[base+i]
-		if e.kind != ekValue || e.st.kind != stSlot || e.st.typ != mtI32 {
+		if !e.isValue() || e.st.kind != stSlot || e.st.typ != mtI32 {
 			return fmt.Errorf("amd64 plugin input %d is not a canonical i32 slot", i)
 		}
-		ctx.paramSlots[i] = e.st.slot
+		ctx.paramSlots[i] = e.st.slotIndex()
 	}
 	switch lowering.Compatibility {
 	case plugincodegen.CompatibilityManaged:
@@ -336,6 +378,9 @@ func (f *fn) emitPluginAMD64(lowering *plugincodegen.Lowering, inputWidths []int
 		}
 	default:
 		return fmt.Errorf("unsupported amd64 plugin compatibility mode %d", lowering.Compatibility)
+	}
+	if ctx.featureError != nil {
+		return ctx.featureError
 	}
 	if resultCount == 1 && !ctx.outputSet {
 		return fmt.Errorf("amd64 plugin lowering did not set its i32 output")
@@ -370,18 +415,19 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
 	for i, typ := range customInputs {
 		e := ctx.paramElems[i]
 		if !typ.IsZero() {
-			if e.kind != ekValue || e.st.typ != mtCustom || e.st.custom == nil || !e.st.custom.Equal(typ) {
+			cold := f.s.elemCold(e)
+			if !e.isValue() || e.st.typ != mtCustom || cold == nil || cold.custom == nil || !cold.custom.Equal(typ) {
 				return fmt.Errorf("amd64 plugin custom input %d has incompatible custom type", i)
 			}
 			continue
 		}
-		if e.kind != ekValue || e.st.typ != mtI32 {
+		if !e.isValue() || e.st.typ != mtI32 {
 			return fmt.Errorf("amd64 plugin input %d is not i32", i)
 		}
 		r := f.materialize(e)
 		f.spill(e)
 		f.release(r)
-		ctx.paramSlots[i] = e.st.slot
+		ctx.paramSlots[i] = e.st.slotIndex()
 	}
 	switch lowering.Compatibility {
 	case plugincodegen.CompatibilityManaged:
@@ -394,6 +440,9 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
 		}
 	default:
 		return fmt.Errorf("unsupported amd64 plugin compatibility mode %d", lowering.Compatibility)
+	}
+	if ctx.featureError != nil {
+		return ctx.featureError
 	}
 	for i, typ := range customInputs {
 		if !typ.IsZero() && !ctx.customRead[i] {
@@ -421,15 +470,15 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
 	}
 	for _, root := range ctx.paramElems {
 		if root.st.typ == mtCustom {
-			for _, reg := range root.st.vregs {
+			for _, reg := range f.s.elemCold(root).vregs {
 				f.releaseF(reg)
 			}
 		}
 		f.erase(root)
 	}
 	if customOutput != nil {
-		st := storage{kind: stReg, typ: mtCustom, reg: ctx.customRegs[0], custom: customOutput, vregs: append([]Reg(nil), ctx.customRegs...)}
-		e := f.pushValue(st)
+		e := f.pushValue(storage{kind: stReg, typ: mtCustom, reg: ctx.customRegs[0]})
+		f.s.setElemCold(e, customOutput, append([]Reg(nil), ctx.customRegs...))
 		for _, reg := range ctx.customRegs {
 			ctx.ymm = ctx.ymm.remove(reg)
 			f.fpinned = f.fpinned.remove(reg)
@@ -441,4 +490,26 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
 	}
 	f.stats.call("custom-machine-code-custom")
 	return nil
+}
+
+func pluginAMD64Requirements(features plugincodegen.Features) (shared.AMD64Features, error) {
+	if features & ^(plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512) != 0 {
+		return 0, fmt.Errorf("unknown plugin CPU requirements %#x", features)
+	}
+	var required shared.AMD64Features
+	if features&plugincodegen.FeatureAVX2 != 0 {
+		required |= shared.AMD64AVX | shared.AMD64AVX2
+	}
+	if features&plugincodegen.FeatureAVX512 != 0 {
+		required |= shared.AMD64AVX | shared.AMD64AVX2 | shared.AMD64AVX512
+	}
+	return required, nil
+}
+
+func combinedAMD64Requirements(features shared.AMD64Features, bmi2 bool, bitCount uint8) uint32 {
+	features |= shared.AMD64BitCountRequirements(bitCount)
+	if bmi2 {
+		features |= shared.AMD64BMI2
+	}
+	return uint32(features)
 }

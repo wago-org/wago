@@ -100,7 +100,7 @@ func TestAdd1(t *testing.T) {
 
 	serArgs := ar.Alloc(16)
 	results := ar.Alloc(16)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(TrapBufferBytes)
 	binary.LittleEndian.PutUint32(serArgs, 41)
 
 	if err := eng.Call(slicePtr(code), serArgs, jm.LinearMemory(), trap, results); err != nil {
@@ -121,7 +121,7 @@ func TestTrapReadback(t *testing.T) {
 
 	serArgs := ar.Alloc(16)
 	results := ar.Alloc(16)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(TrapBufferBytes)
 
 	err = eng.Call(slicePtr(code), serArgs, jm.LinearMemory(), trap, results)
 	var te *TrapError
@@ -138,7 +138,7 @@ func TestLinearMemoryZeroCopy(t *testing.T) {
 	lin := jm.LinearMemory()
 	serArgs := ar.Alloc(16)
 	results := ar.Alloc(16)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(TrapBufferBytes)
 
 	storeCode, err := mmapExec(stubMemStore())
 	if err != nil {

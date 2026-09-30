@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestThreadsOfficialAtomicCoreExecutesWithinImportedMemoryBoundary(t *testing.T) {
-	dir := filepath.Clean("../../tests/regressions/spectest-proposals/threads")
+	dir := filepath.Clean("../../tests/corpus/regressions/spectest-proposals/threads")
 	original, err := os.ReadFile(filepath.Join(dir, "atomic.0.wasm"))
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestThreadsOfficialAtomicCoreExecutesWithinImportedMemoryBoundary(t *testin
 		t.Fatal(err)
 	}
 	defer memory.Close()
-	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	instance, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestThreadsOfficialAtomicCoreExecutesWithinImportedMemoryBoundary(t *testin
 			if len(args) != 1 {
 				t.Fatalf("line %d init arity = %d", command.Line, len(args))
 			}
-			binary.LittleEndian.PutUint64(memory.Bytes()[:8], args[0])
+			binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], args[0])
 			actions++
 			continue
 		}
@@ -114,7 +114,7 @@ func TestThreadsOfficialAtomicCoreExecutesWithinImportedMemoryBoundary(t *testin
 }
 
 func TestThreadsOfficialAtomicWaitNotifyExecutesWithinImportedMemoryBoundary(t *testing.T) {
-	dir := filepath.Clean("../../tests/regressions/spectest-proposals/threads")
+	dir := filepath.Clean("../../tests/corpus/regressions/spectest-proposals/threads")
 	original, err := os.ReadFile(filepath.Join(dir, "atomic.1.wasm"))
 	if err != nil {
 		t.Fatal(err)
@@ -131,12 +131,12 @@ func TestThreadsOfficialAtomicWaitNotifyExecutesWithinImportedMemoryBoundary(t *
 	defer compiled.Close()
 	memory, _ := NewSharedMemory(1, 1)
 	defer memory.Close()
-	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	instance, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	binary.LittleEndian.PutUint64(memory.Bytes()[:8], 0xffffffffffff)
+	binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], 0xffffffffffff)
 
 	for _, tc := range []struct {
 		name string

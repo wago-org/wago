@@ -37,6 +37,7 @@ func classifyExprOpAfterOpcodeWithModuleFeatures(r *reader, op byte, imm *Instru
 }
 
 func classifyExprOpAfterOpcodeWithWidths(r *reader, op byte, imm *InstructionImmediate, widths memargWidths, multiMemory bool) (directOpKind, error) {
+	widths.multiMemory = multiMemory
 	if k := simpleOpcode[op]; k != InstrInvalid {
 		imm.Kind = k
 		return directInstr, nil
@@ -150,7 +151,7 @@ func classifyExprOpAfterOpcodeWithWidths(r *reader, op byte, imm *InstructionImm
 	case 0xfb:
 		return directInstr, classifyFBBytes(r, imm)
 	case 0xfc:
-		return directInstr, classifyFCBytes(r, imm)
+		return directInstr, classifyFCBytes(r, imm, multiMemory)
 	case 0xfd:
 		return directInstr, classifyFDBytes(r, imm, widths)
 	case 0xfe:
@@ -225,13 +226,34 @@ func skipRefHeapTypeBytes(r *reader) error {
 }
 
 func classifyMemArgBytes(r *reader, imm *InstructionImmediate, widths memargWidths) error {
-	ma, err := decodeMemArgWithWidths(r, widths)
-	imm.MemAlign = ma.Align
-	imm.MemOffset = ma.Offset
-	if ma.Mem != nil {
-		imm.HasMemIndex = true
-		imm.MemIndex = uint32(*ma.Mem)
+	n, err := r.u32()
+	if err != nil {
+		return err
 	}
+	memoryIndex := uint32(0)
+	switch {
+	case n < 64:
+		imm.MemAlign = n
+	case n < 128:
+		if !widths.multiMemory {
+			return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
+		}
+		imm.MemAlign = n - 64
+		memoryIndex, err = r.u32()
+		if err != nil {
+			return err
+		}
+		imm.HasMemIndex = true
+		imm.MemIndex = memoryIndex
+	default:
+		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
+	}
+	if widths.offset64(memoryIndex) {
+		imm.MemOffset, err = r.u64()
+		return err
+	}
+	offset, err := r.u32()
+	imm.MemOffset = uint64(offset)
 	return err
 }
 
@@ -264,7 +286,7 @@ func skipCatchVecBytes(r *reader) error {
 	return nil
 }
 
-func classifyFCBytes(r *reader, imm *InstructionImmediate) error {
+func classifyFCBytes(r *reader, imm *InstructionImmediate, multiMemory bool) error {
 	sub, err := r.u32()
 	imm.Prefix, imm.Subopcode = 0xfc, sub
 	if err != nil {
@@ -277,10 +299,19 @@ func classifyFCBytes(r *reader, imm *InstructionImmediate) error {
 	switch sub {
 	case 8, 10, 12, 14:
 		imm.Kind = fcIndexedKind(sub)
-		if imm.Index, err = r.u32(); err != nil {
+		if sub == 10 {
+			imm.Index, err = readMemoryIndex(r, multiMemory)
+		} else {
+			imm.Index, err = r.u32()
+		}
+		if err != nil {
 			return err
 		}
-		imm.Index2, err = r.u32()
+		if sub == 8 || sub == 10 {
+			imm.Index2, err = readMemoryIndex(r, multiMemory)
+		} else {
+			imm.Index2, err = r.u32()
+		}
 		imm.TouchesMemory = sub == 8 || sub == 10
 		imm.UsesBulkMemory = sub == 10
 		return err
@@ -290,7 +321,7 @@ func classifyFCBytes(r *reader, imm *InstructionImmediate) error {
 		return err
 	case 11:
 		imm.Kind = InstrMemoryFill
-		imm.Index, err = r.u32()
+		imm.Index, err = readMemoryIndex(r, multiMemory)
 		imm.TouchesMemory = true
 		imm.UsesBulkMemory = true
 		return err

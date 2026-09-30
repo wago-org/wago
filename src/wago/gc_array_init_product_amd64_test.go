@@ -10,7 +10,7 @@ import (
 	"testing"
 	"unsafe"
 
-	corergc "github.com/wago-org/wago/src/core/runtime/gc"
+	corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func stagedGCArrayInitLeaderBytes(t testing.TB, filename string) []byte {
@@ -38,7 +38,7 @@ func stagedGCArrayInitLeaderBytes(t testing.TB, filename string) []byte {
 func TestStagedGCArrayInitDataProductBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		filename string
-		roots    uint8
+		roots    uint32
 	}{
 		{filename: "array_init_data.2.wasm", roots: 3},
 		{filename: "array_init_data.3.wasm", roots: 0},
@@ -87,7 +87,7 @@ func TestStagedGCArrayInitDataProductBoundary(t *testing.T) {
 			}
 			defer in.Close()
 			state := in.pluginState.Load()
-			var roots uint8
+			var roots uint32
 			if state != nil {
 				roots = state.gcGlobalRootCount
 			}
@@ -131,7 +131,7 @@ func TestStagedGCArrayInitDataProductBoundary(t *testing.T) {
 
 func TestStagedGCArrayInitElemProductBoundaryAndTinyLifecycle(t *testing.T) {
 	data := stagedGCArrayInitLeaderBytes(t, "array_init_elem.3.wasm")
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public compile unexpectedly admitted array.init_elem")
 	}
 	guardCfg := NewRuntimeConfig()

@@ -26,7 +26,7 @@ func VerifyModule(m *Module) error {
 		return err
 	}
 	for i := range m.FuncTypes {
-		if int(m.FuncTypes[i]) >= len(m.Types) {
+		if uint(m.FuncTypes[i]) >= uint(len(m.Types)) {
 			return fmt.Errorf("ir: function %d has unknown type %d", i, m.FuncTypes[i])
 		}
 		if !irTypeIsFunc(m, m.FuncTypes[i]) {
@@ -68,7 +68,7 @@ func verifyCanonicalTypeIDs(m *Module) error {
 			continue
 		}
 		canon := m.CanonicalTypeIDs[i]
-		if int(canon) >= len(m.Types) {
+		if uint(canon) >= uint(len(m.Types)) {
 			return fmt.Errorf("ir: canonical type id for type %d out of range: %d", i, canon)
 		}
 		if !irTypeIsFunc(m, canon) {
@@ -92,7 +92,7 @@ func verifyCanonicalTypeIDs(m *Module) error {
 }
 
 func verifyModuleFuncHeaders(m *Module) error {
-	if int(m.ImportedFuncCount) > len(m.FuncTypes) {
+	if uint(m.ImportedFuncCount) > uint(len(m.FuncTypes)) {
 		return fmt.Errorf("ir: imported function count %d exceeds function type count %d", m.ImportedFuncCount, len(m.FuncTypes))
 	}
 	wantLocalFuncs := len(m.FuncTypes) - int(m.ImportedFuncCount)
@@ -147,7 +147,7 @@ func verifyFunc(f *Func, m *Module) error {
 	if f == nil {
 		return fmt.Errorf("ir: nil func")
 	}
-	if int(f.Entry) >= len(f.Blocks) {
+	if uint(f.Entry) >= uint(len(f.Blocks)) {
 		return fmt.Errorf("entry block %d out of range", f.Entry)
 	}
 	if err := verifyLocalLayout(f); err != nil {
@@ -155,16 +155,16 @@ func verifyFunc(f *Func, m *Module) error {
 	}
 	for i := range f.Values {
 		v := f.Values[i]
-		if !validValType(v.Type) {
+		if !validValType(v.Type) && !(v.DefKind == ValueDefPoison && v.Type == (wasm.ValType{})) {
 			return fmt.Errorf("value %d has invalid type %s", i, v.Type)
 		}
 		switch v.DefKind {
 		case ValueDefBlockParam:
-			if int(v.Def) >= len(f.Blocks) {
+			if uint(v.Def) >= uint(len(f.Blocks)) {
 				return fmt.Errorf("value %d has invalid block def %d", i, v.Def)
 			}
 		case ValueDefInst:
-			if int(v.Def) >= len(f.Insts) {
+			if uint(v.Def) >= uint(len(f.Insts)) {
 				return fmt.Errorf("value %d has invalid inst def %d", i, v.Def)
 			}
 		case ValueDefPoison:
@@ -340,7 +340,7 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 	if in.Op == OpInvalid {
 		return fmt.Errorf("inst %d has invalid op", id)
 	}
-	if in.Op != OpCallIndirect && in.Aux2 != 0 {
+	if in.Op != OpCallIndirect && in.Op != OpLoad && in.Op != OpStore && in.Aux2 != 0 {
 		return fmt.Errorf("inst %d %s has unexpected aux2 %d", id, opName(in.Op), in.Aux2)
 	}
 	if _, err := verifyValueRange(f, in.Args, fmt.Sprintf("inst %d args", id)); err != nil {
@@ -550,6 +550,9 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if argt(0) != addr {
 			return fmt.Errorf("inst %d load address is not %s", id, addr)
 		}
+		if err := verifyMemOffset(id, in, addr); err != nil {
+			return err
+		}
 		if got, ok := memLoadResult(memKind(in.Aux)); !ok || got != rest(0) {
 			return fmt.Errorf("inst %d load type mismatch", id)
 		}
@@ -569,6 +572,9 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		}
 		if argt(0) != addr {
 			return fmt.Errorf("inst %d store address is not %s", id, addr)
+		}
+		if err := verifyMemOffset(id, in, addr); err != nil {
+			return err
 		}
 		if got, ok := memStoreValue(memKind(in.Aux)); !ok || got != argt(1) {
 			return fmt.Errorf("inst %d store type mismatch", id)
@@ -611,6 +617,33 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 			return fmt.Errorf("inst %d memory.grow type mismatch", id)
 		}
 		if err := verifyEffects(id, in, EffectReadMem|EffectWriteMem); err != nil {
+			return err
+		}
+	case OpMemoryInit:
+		if err := want(3, 0); err != nil {
+			return err
+		}
+		if m != nil && uint64(uint32(in.Aux>>32)) >= uint64(len(m.Data)) {
+			return fmt.Errorf("inst %d unknown data segment", id)
+		}
+		addr, err := verifyMemoryAddrType(m, id, uint32(in.Aux))
+		if err != nil {
+			return err
+		}
+		if argt(0) != addr || argt(1) != wasm.I32 || argt(2) != wasm.I32 {
+			return fmt.Errorf("inst %d memory.init type mismatch", id)
+		}
+		if err := verifyEffects(id, in, EffectCanTrap|EffectReadData|EffectWriteMem); err != nil {
+			return err
+		}
+	case OpDataDrop:
+		if err := want(0, 0); err != nil {
+			return err
+		}
+		if in.Aux > uint64(^uint32(0)) || (m != nil && in.Aux >= uint64(len(m.Data))) {
+			return fmt.Errorf("inst %d unknown data segment", id)
+		}
+		if err := verifyEffects(id, in, EffectWriteData); err != nil {
 			return err
 		}
 	case OpMemoryCopy, OpMemoryFill:
@@ -717,12 +750,15 @@ func verifyGlobalAccess(m *Module, id InstID, in *Inst, got wasm.ValType) error 
 		return nil
 	}
 	idx := uint32(in.Aux)
-	if int(idx) >= len(m.Globals) {
+	if uint(idx) >= uint(len(m.Globals)) {
 		return fmt.Errorf("inst %d global index %d out of range", id, idx)
 	}
 	want := globalTypeValue(m.Globals[idx])
 	if want != got {
 		return fmt.Errorf("inst %d global type %s, want %s", id, got, want)
+	}
+	if in.Op == OpGlobalSet && !m.Globals[idx].Mutable {
+		return fmt.Errorf("inst %d writes immutable global %d", id, idx)
 	}
 	return nil
 }
@@ -829,6 +865,13 @@ func validMemAlign(aux uint64) bool {
 	return ok && memAlign(aux) <= d.naturalAlign
 }
 
+func verifyMemOffset(id InstID, in *Inst, addr wasm.ValType) error {
+	if in.Aux2 > uint64(^uint32(0)) || addr == wasm.I32 && in.Aux2 != 0 {
+		return fmt.Errorf("inst %d has invalid memory offset high bits 0x%x", id, in.Aux2)
+	}
+	return nil
+}
+
 func verifyMemoryIndex(m *Module, id InstID, idx uint32) error {
 	// The IR is deliberately single-memory until wago implements multi-memory
 	// end-to-end. Reject non-zero indexes even if hand-built metadata contains
@@ -836,7 +879,7 @@ func verifyMemoryIndex(m *Module, id InstID, idx uint32) error {
 	if idx != 0 {
 		return fmt.Errorf("inst %d multi-memory unsupported: memory index %d", id, idx)
 	}
-	if m != nil && int(idx) >= len(m.Memories) {
+	if m != nil && uint(idx) >= uint(len(m.Memories)) {
 		return fmt.Errorf("inst %d memory index %d out of range", id, idx)
 	}
 	return nil
@@ -892,7 +935,7 @@ func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(
 	if in.Op == OpCallIndirect {
 		typeIdx := callIndirectType(in.Aux)
 		tableIdx := callIndirectTable(in.Aux)
-		if int(typeIdx) >= len(m.Types) {
+		if uint(typeIdx) >= uint(len(m.Types)) {
 			return fmt.Errorf("inst %d call_indirect type %d out of range", id, typeIdx)
 		}
 		if !irTypeIsFunc(m, typeIdx) {
@@ -901,7 +944,7 @@ func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(
 		if got, want := uint32(in.Aux2), irCanonicalTypeID(m, typeIdx); got != want {
 			return fmt.Errorf("inst %d call_indirect canonical type id %d, want %d", id, got, want)
 		}
-		if int(tableIdx) >= len(m.Tables) {
+		if uint(tableIdx) >= uint(len(m.Tables)) {
 			return fmt.Errorf("inst %d call_indirect table %d out of range", id, tableIdx)
 		}
 		if !irIsFuncRefTableType(m, tableRefType(m.Tables[tableIdx])) {
@@ -928,7 +971,7 @@ func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(
 		return nil
 	}
 	fi := uint32(in.Aux)
-	if int(fi) >= len(m.FuncTypes) {
+	if uint(fi) >= uint(len(m.FuncTypes)) {
 		return fmt.Errorf("inst %d call function %d out of range", id, fi)
 	}
 	if in.Op == OpCallImport && fi >= m.ImportedFuncCount {
@@ -938,7 +981,7 @@ func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(
 		return fmt.Errorf("inst %d call function %d is imported", id, fi)
 	}
 	typeIdx := m.FuncTypes[fi]
-	if int(typeIdx) >= len(m.Types) {
+	if uint(typeIdx) >= uint(len(m.Types)) {
 		return fmt.Errorf("inst %d call function %d has unknown type %d", id, fi, typeIdx)
 	}
 	if !irTypeIsFunc(m, typeIdx) {
@@ -967,7 +1010,7 @@ func irIsFuncRefTableType(m *Module, rt wasm.RefType) bool {
 	case wasm.HeapAbs:
 		return heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc
 	case wasm.HeapTypeIndex:
-		if m == nil || heap.Type().Rec || int(heap.Type().Index) >= len(m.Types) {
+		if m == nil || heap.Type().Rec || uint(heap.Type().Index) >= uint(len(m.Types)) {
 			return false
 		}
 		return irTypeIsFunc(m, heap.Type().Index)
@@ -1040,7 +1083,7 @@ func verifyEdges(f *Func, bid BlockID, r Range) error {
 	}
 	for ei := r.Start; ei < end; ei++ {
 		e := f.Edges[ei]
-		if int(e.To) >= len(f.Blocks) {
+		if uint(e.To) >= uint(len(f.Blocks)) {
 			return fmt.Errorf("block %d edge %d target %d out of range", bid, ei, e.To)
 		}
 		if _, err := verifyValueRange(f, e.Args, "edge args"); err != nil {
@@ -1130,7 +1173,7 @@ func verifyDominance(f *Func) error {
 			}
 			return nil
 		}
-		if int(defBlock) >= len(reachable) || !reachable[defBlock] || !dominatesInterval(domPre, domEnd, defBlock, use) {
+		if uint(defBlock) >= uint(len(reachable)) || !reachable[defBlock] || !dominatesInterval(domPre, domEnd, defBlock, use) {
 			return fmt.Errorf("%s value %d from b%d does not dominate b%d", what, v, defBlock, use)
 		}
 		return nil
@@ -1192,7 +1235,7 @@ func branchEdges(t *Term) (Range, bool) {
 
 func reversePostorder(entry BlockID, succs [][]BlockID) ([]bool, []BlockID) {
 	reachable := make([]bool, len(succs))
-	if int(entry) >= len(succs) {
+	if uint(entry) >= uint(len(succs)) {
 		return reachable, nil
 	}
 	type frame struct {
@@ -1232,7 +1275,7 @@ func computeIDoms(entry BlockID, preds [][]BlockID, reachable []bool, rpo []Bloc
 	for i, b := range rpo {
 		order[b] = int32(i)
 	}
-	if int(entry) >= len(idom) {
+	if uint(entry) >= uint(len(idom)) {
 		return idom, order
 	}
 	idom[entry] = entry
@@ -1285,7 +1328,7 @@ func dominanceIntervals(entry BlockID, idom []BlockID, reachable []bool) ([]int3
 	for i := range pre {
 		pre[i], end[i] = -1, -1
 	}
-	if int(entry) >= len(idom) || !reachable[entry] {
+	if uint(entry) >= uint(len(idom)) || !reachable[entry] {
 		return pre, end
 	}
 	children := make([][]BlockID, len(idom))
@@ -1323,7 +1366,7 @@ func dominanceIntervals(entry BlockID, idom []BlockID, reachable []bool) ([]int3
 }
 
 func dominatesInterval(pre, end []int32, a, b BlockID) bool {
-	if int(a) >= len(pre) || int(b) >= len(pre) || pre[a] < 0 || pre[b] < 0 {
+	if uint(a) >= uint(len(pre)) || uint(b) >= uint(len(pre)) || pre[a] < 0 || pre[b] < 0 {
 		return false
 	}
 	return pre[a] <= pre[b] && pre[b] < end[a]
@@ -1352,7 +1395,7 @@ func verifyRange(r Range, total int, what string) (uint32, error) {
 	return r.Start + r.Len, nil
 }
 func verifyValue(f *Func, v ValueID, what string) error {
-	if v == InvalidValue || int(v) >= len(f.Values) {
+	if v == InvalidValue || uint(v) >= uint(len(f.Values)) {
 		return fmt.Errorf("%s invalid value %d", what, v)
 	}
 	return nil

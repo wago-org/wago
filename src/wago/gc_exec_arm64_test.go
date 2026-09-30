@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func arm64GCStructModule() []byte {
@@ -24,6 +24,40 @@ func arm64GCStructModule() []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("roundtrip", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
+}
+
+func arm64GCSparseLiveFrameRootModule(count uint32) []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	locals := append([]byte{0x01}, wasmtest.ULEB(count)...)
+	locals = append(locals, 0x63, 0x00)
+	body := append(locals, 0xfb, 0x01, 0x00, 0x1a, 0x20, 0x00, 0x1a, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestGCArm64NativeRootAdmissionCompactsDeadDeclaredLocals(t *testing.T) {
+	const declaredRoots = 1138
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCSparseLiveFrameRootModule(declaredRoots))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	status := compiled.GCNativeRootAdmission()
+	if !status.Exact || status.Safepoints != 1 || status.MaximumRoots != 1 {
+		t.Fatalf("%d-declared-root arm64 admission = %+v", declaredRoots, status)
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 32, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestARM64GCNativeABIArtifactAndInstantiationPreflight(t *testing.T) {
@@ -447,7 +481,7 @@ func TestGCStructExecutionArm64(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -478,7 +512,7 @@ func TestGCArm64ReferenceConstructorTemporaryRoots(t *testing.T) {
 	if roots := compiled.genericGCFrameRoots(); roots == nil || len(roots.safepoints) != 2 || len(roots.safepoints[1].offsets) != 0 {
 		t.Fatalf("reference-constructor arm64 root plan = %+v", roots)
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -509,7 +543,7 @@ func TestGCArm64ActiveFrameCollectionPreservesHiddenOperand(t *testing.T) {
 	if roots := compiled.genericGCFrameRoots(); roots == nil || len(roots.safepoints) != 2 || len(roots.safepoints[1].offsets) != 1 {
 		t.Fatalf("hidden-operand arm64 root plan = %+v", roots)
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -542,7 +576,7 @@ func TestGCArm64CrossFunctionFrameWalking(t *testing.T) {
 	if roots := compiled.genericGCFrameRoots(); roots == nil || len(roots.safepoints) != 2 || len(roots.callsites) != 1 || len(roots.callsites[0].offsets) != 1 {
 		t.Fatalf("cross-function arm64 root plan = %+v", roots)
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -581,7 +615,7 @@ func TestGCArm64RecursiveFrameWalking(t *testing.T) {
 		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
 		{Profile: GCProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true},
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -639,7 +673,7 @@ func TestGCArm64CallRefFrameRoots(t *testing.T) {
 	if adjusted != 1 {
 		t.Fatalf("call_ref arm64 adjusted paths = %d, want 1: %+v", adjusted, plan)
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -668,7 +702,7 @@ func TestGCArm64IndirectFrameRoots(t *testing.T) {
 	if plan == nil || len(plan.callsites) != 1 || len(plan.callsites[0].offsets) != 1 {
 		t.Fatalf("indirect arm64 root map = %+v", plan)
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -715,7 +749,7 @@ func TestGCArm64PolymorphicIndirectFrameRoots(t *testing.T) {
 		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
 		{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -762,7 +796,7 @@ func TestGCArm64MutableGlobalAndTableRoots(t *testing.T) {
 			if compiled.genericGCFrameRoots() == nil {
 				t.Fatal("persistent-root module lost exact arm64 admission")
 			}
-			for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+			for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 				if candidate != compiled {
 					defer candidate.Close()
 				}
@@ -865,7 +899,7 @@ func TestGCArm64InlinedCallKeepsLaterHostRootMapExact(t *testing.T) {
 	if roots := compiled.genericGCFrameRoots(); roots == nil || len(roots.callsites) == 0 {
 		t.Fatalf("inlined-call host root map = %+v", roots)
 	}
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.gc": HostFunc(func(module HostModule, _, _ []uint64) {
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.gc", slotHostFunc(func(module HostModule, _, _ []uint64) {
 		collector, ok := module.(GCHostModule)
 		if !ok {
 			panic("host module has no collector")
@@ -873,7 +907,7 @@ func TestGCArm64InlinedCallKeepsLaterHostRootMapExact(t *testing.T) {
 		if err := collector.CollectGC(); err != nil {
 			panic(err)
 		}
-	})}})
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -894,7 +928,7 @@ func TestGCArm64HostReentryRoots(t *testing.T) {
 	if plan == nil || len(plan.callsites) != 1 || len(plan.callsites[0].offsets) != 1 {
 		t.Fatalf("host re-entry arm64 root map = %+v", plan)
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -904,14 +938,14 @@ func TestGCArm64HostReentryRoots(t *testing.T) {
 		} {
 			var in *Instance
 			calls := 0
-			in, err = Instantiate(candidate, InstantiateOptions{GC: profile, Imports: Imports{"env.reenter": HostFunc(func(caller HostModule, _, results []uint64) {
+			in, err = Instantiate(candidate, InstantiateOptions{GC: profile, Imports: testImports("env.reenter", slotHostFunc(func(caller HostModule, _, results []uint64) {
 				calls++
 				got, callErr := in.InvokeFromHost(context.Background(), caller, "inner")
 				if callErr != nil || !reflect.DeepEqual(got, []uint64{0}) {
 					panic(fmt.Sprintf("inner = %v, %v", got, callErr))
 				}
 				results[0] = 0
-			})}})
+			}))})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -954,7 +988,7 @@ func TestGCArm64CrossInstanceRoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: Imports{"provider.retain": export}})
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: testImports("provider.retain", export)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1018,7 +1052,7 @@ func TestGCArm64ForeignCallRefRoots(t *testing.T) {
 			store.closeRuntime()
 			t.Fatal(err)
 		}
-		consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: Imports{"provider.retain": export}})
+		consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: testImports("provider.retain", export)})
 		if err != nil {
 			provider.Close()
 			store.closeRuntime()
@@ -1085,7 +1119,7 @@ func TestGCArm64ForeignReturnCallRef(t *testing.T) {
 			store.closeRuntime()
 			t.Fatal(err)
 		}
-		consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: Imports{"provider.read": export}})
+		consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: profile, store: store, Imports: testImports("provider.read", export)})
 		if err != nil {
 			provider.Close()
 			store.closeRuntime()
@@ -1144,7 +1178,7 @@ func TestGCArm64ActiveFrameCollectionPreservesLocalRoot(t *testing.T) {
 	if roots := compiled.genericGCFrameRoots(); roots == nil || len(roots.safepoints) != 2 || len(roots.safepoints[1].offsets) != 1 {
 		t.Fatalf("arm64 native root plan = %+v", roots)
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}

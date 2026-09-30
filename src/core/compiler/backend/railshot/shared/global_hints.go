@@ -1,6 +1,23 @@
 package shared
 
-import "slices"
+import (
+	"math/bits"
+	"slices"
+)
+
+// GlobalHintCapacity gives serial and parallel sidecars the same capacity
+// contract. At most twice the live record count is retained. It does not depend
+// on append batching; one referenced global reserves one record, not eight.
+func GlobalHintCapacity(count int) int {
+	if count <= 0 {
+		return 0
+	}
+	shift := bits.Len(uint(count - 1))
+	if shift >= bits.UintSize-1 {
+		return count
+	}
+	return 1 << shift
+}
 
 // GlobalHint is the compact per-function record retained for a referenced
 // global. Modules with sparse global use keep one record per actual use target
@@ -15,11 +32,30 @@ type GlobalHint struct {
 // sparse records. One accumulator is reset and reused for every serially scanned
 // function; epoch marks avoid clearing the dense scratch between functions.
 type GlobalHintAccumulator struct {
-	scores   []uint32
-	eligible []bool
-	marks    []uint32
-	epoch    uint32
-	touched  []uint32
+	scores        []uint32
+	marks         []uint32
+	epoch         uint32
+	touchedInline [32]uint32
+	touchedN      uint8
+	touchedExtra  []uint32
+}
+
+const (
+	globalHintEligible  = uint32(1 << 31)
+	globalHintEpochMask = globalHintEligible - 1
+)
+
+// ResetWithScratch accepts caller-owned, exclusive scratch for initial dense
+// storage. Short scratch keeps Reset's normal allocation fallback. Full-slice
+// bounds prevent one worker's append from overwriting another worker's range.
+func (a *GlobalHintAccumulator) ResetWithScratch(nGlobals int, scratch []uint32) {
+	if len(a.scores) < nGlobals && nGlobals <= len(scratch)/2 {
+		a.scores = scratch[:nGlobals:nGlobals]
+		a.marks = scratch[nGlobals : 2*nGlobals : 2*nGlobals]
+		clear(a.marks)
+		a.epoch = 0
+	}
+	a.Reset(nGlobals)
 }
 
 func (a *GlobalHintAccumulator) Reset(nGlobals int) {
@@ -27,25 +63,29 @@ func (a *GlobalHintAccumulator) Reset(nGlobals int) {
 		words := make([]uint32, 2*nGlobals)
 		a.scores = words[:nGlobals:nGlobals]
 		a.marks = words[nGlobals:]
-		a.eligible = make([]bool, nGlobals)
 	}
-	a.epoch++
+	a.epoch = (a.epoch + 1) & globalHintEpochMask
 	if a.epoch == 0 {
 		clear(a.marks)
 		a.epoch = 1
 	}
-	a.touched = a.touched[:0]
+	a.touchedN = 0
+	a.touchedExtra = a.touchedExtra[:0]
 }
 
 func (a *GlobalHintAccumulator) touch(index uint32) bool {
-	if int(index) >= len(a.scores) {
+	if uint(index) >= uint(len(a.scores)) {
 		return false
 	}
-	if a.marks[index] != a.epoch {
+	if a.marks[index]&globalHintEpochMask != a.epoch {
 		a.marks[index] = a.epoch
 		a.scores[index] = 0
-		a.eligible[index] = false
-		a.touched = append(a.touched, index)
+		if int(a.touchedN) < len(a.touchedInline) {
+			a.touchedInline[a.touchedN] = index
+			a.touchedN++
+		} else {
+			a.touchedExtra = append(a.touchedExtra, index)
+		}
 	}
 	return true
 }
@@ -64,16 +104,40 @@ func (a *GlobalHintAccumulator) Add(index uint32, delta int64) {
 
 func (a *GlobalHintAccumulator) MarkEligible(index uint32) {
 	if a.touch(index) {
-		a.eligible[index] = true
+		a.marks[index] |= globalHintEligible
 	}
 }
 
 // AppendTo appends deterministic index-sorted records to dst. Callers can keep
 // offset ranges while dst grows, then publish slices after the final append.
 func (a *GlobalHintAccumulator) AppendTo(dst []GlobalHint) []GlobalHint {
-	slices.Sort(a.touched)
-	for _, index := range a.touched {
-		dst = append(dst, GlobalHint{Index: index, Score: a.scores[index], Eligible: a.eligible[index]})
+	needed := len(dst) + int(a.touchedN) + len(a.touchedExtra)
+	if needed > cap(dst) {
+		grown := make([]GlobalHint, len(dst), GlobalHintCapacity(needed))
+		copy(grown, dst)
+		dst = grown
+	}
+	inline := a.touchedInline[:a.touchedN]
+	slices.Sort(inline)
+	slices.Sort(a.touchedExtra)
+	appendIndex := func(index uint32) {
+		dst = append(dst, GlobalHint{Index: index, Score: a.scores[index], Eligible: a.marks[index]&globalHintEligible != 0})
+	}
+	i, j := 0, 0
+	for i < len(inline) && j < len(a.touchedExtra) {
+		if inline[i] < a.touchedExtra[j] {
+			appendIndex(inline[i])
+			i++
+		} else {
+			appendIndex(a.touchedExtra[j])
+			j++
+		}
+	}
+	for ; i < len(inline); i++ {
+		appendIndex(inline[i])
+	}
+	for ; j < len(a.touchedExtra); j++ {
+		appendIndex(a.touchedExtra[j])
 	}
 	return dst
 }

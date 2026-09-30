@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-const stagedMemory64DeltaPath = "tests/spec-v3-staged-memory64.json"
+const stagedMemory64DeltaPath = "tests/conformance/baselines/spec-v3-staged-memory64.json"
 
 // stagedMemory64OfficialFiles is the complete pinned Release 3 memory64 family
 // excluding the nine table64-specific files, which have their own accounting
@@ -91,17 +91,8 @@ func replayStagedMemory64Script(t *testing.T, base, tmp string, script stagedSpe
 		t.Fatal(err)
 	}
 	defer standardMemory.Close()
-	noop := HostFunc(func(HostModule, []uint64, []uint64) {})
-	standard := Imports{
-		"spectest.print": noop, "spectest.print_i32": noop, "spectest.print_i64": noop,
-		"spectest.print_f32": noop, "spectest.print_f64": noop,
-		"spectest.print_i32_f32": noop, "spectest.print_f64_f64": noop,
-		"spectest.global_i32": GlobalImport{Type: ValI32, Bits: I32(666)},
-		"spectest.global_i64": GlobalImport{Type: ValI64, Bits: I64(666)},
-		"spectest.global_f32": GlobalImport{Type: ValF32, Bits: F32(666)},
-		"spectest.global_f64": GlobalImport{Type: ValF64, Bits: F64(666)},
-		"spectest.memory":     standardMemory, "spectest.table": standardTable,
-	}
+	noop := slotHostFunc(func(HostModule, []uint64, []uint64) {})
+	standard := testImports("spectest.print", noop, "spectest.print_i32", noop, "spectest.print_i64", noop, "spectest.print_f32", noop, "spectest.print_f64", noop, "spectest.print_i32_f32", noop, "spectest.print_f64_f64", noop, "spectest.global_i32", GlobalImport{Type: ValI32, Bits: I32(666)}, "spectest.global_i64", GlobalImport{Type: ValI64, Bits: I64(666)}, "spectest.global_f32", GlobalImport{Type: ValF32, Bits: F32(666)}, "spectest.global_f64", GlobalImport{Type: ValF64, Bits: F64(666)}, "spectest.memory", standardMemory, "spectest.table", standardTable)
 	var current stagedSpecModule
 	var live []stagedSpecModule
 	defer func() {

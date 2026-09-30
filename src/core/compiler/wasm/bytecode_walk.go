@@ -47,12 +47,12 @@ func ClassifyInstructionImmediateInto(r *Reader, op byte, imm *InstructionImmedi
 // The width flag affects only memory offsets; instruction classification and all
 // malformed-immediate checks remain identical to ClassifyInstructionImmediateInto.
 func ClassifyInstructionImmediateIntoWithMemarg64(r *Reader, op byte, imm *InstructionImmediate, memarg64 bool) error {
-	return ClassifyInstructionImmediateIntoWithFeatures(r, op, imm, memarg64, false)
+	return ClassifyInstructionImmediateIntoWithFeatures(r, op, imm, memarg64, true)
 }
 
 // ClassifyInstructionImmediateIntoWithFeatures is the staged-feature form used
-// by validated module walkers. multiMemory changes memory.size/memory.grow from
-// the legacy reserved-zero byte to a memory index; memarg64 selects u64 offsets.
+// by validated module walkers. multiMemory selects indexed memargs and memory
+// index grammar for scalar and bulk instructions; memarg64 selects u64 offsets.
 func ClassifyInstructionImmediateIntoWithFeatures(r *Reader, op byte, imm *InstructionImmediate, memarg64, multiMemory bool) error {
 	return classifyInstructionImmediateIntoWithWidths(r, op, imm, fixedMemargWidths(memarg64), multiMemory)
 }

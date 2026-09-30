@@ -24,10 +24,12 @@ func (e *UnsupportedError) Error() string {
 	return fmt.Sprintf("unsupported %s %s", e.Category, e.Feature)
 }
 
+func (e *UnsupportedError) Unwrap() error { return runtime.ErrUnsupported }
+
 // DecodeValidate decodes without materializing function-body instruction trees,
 // validates, and runs wago's support pass over data.
 func DecodeValidate(data []byte) (*wasm.Module, error) {
-	m, err := wasm.DecodeModule(data)
+	m, err := wasm.DecodeModuleWithFeatures(data, wasm.ValidationFeatures{})
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
@@ -96,18 +98,41 @@ func RejectUnsupportedWithFeatures(m *wasm.Module, f Features) error {
 // using the caller's immutable module analysis. Production compilation computes
 // this once and reuses it for admission and runtime footprint construction.
 func RejectUnsupportedWithFeaturesAndFacts(m *wasm.Module, f Features, facts *ModuleFacts) error {
+	return RejectUnsupportedWithFeaturesFactsAndValidation(m, f, facts, nil)
+}
+
+// RejectUnsupportedWithFeaturesFactsAndValidation reuses facts gathered by the
+// successful validation walk. Functions whose fixed summary proves ordinary
+// frontend support avoid a second bytecode decode; staged or ambiguous
+// functions retain the contextual scanner and its existing errors.
+func RejectUnsupportedWithFeaturesFactsAndValidation(m *wasm.Module, f Features, facts *ModuleFacts, analysis *wasm.ValidatedModuleAnalysis) error {
 	if m == nil || facts == nil {
 		return fmt.Errorf("nil module or module facts")
 	}
-	p := supportPass{m: m, feat: f, facts: facts, classifier: wasm.NewModuleInstructionClassifier(m, true)}
+	p := supportPass{m: m, feat: f, facts: facts, validation: analysis, classifier: wasm.NewModuleInstructionClassifier(m, true)}
+	for i := 0; i < m.MemCount(); i++ {
+		if mt, ok := m.MemoryType(uint32(i)); ok && mt.Limits.Addr64 {
+			p.hasMemory64 = true
+			break
+		}
+	}
+	for i := 0; i < m.TableCount(); i++ {
+		if tt, ok := m.TableType(uint32(i)); ok && tt.Limits.Addr64 {
+			p.hasTable64 = true
+			break
+		}
+	}
 	return p.runWithFacts()
 }
 
 type supportPass struct {
-	m          *wasm.Module
-	feat       Features
-	facts      *ModuleFacts
-	classifier wasm.ModuleInstructionClassifier
+	m           *wasm.Module
+	feat        Features
+	facts       *ModuleFacts
+	validation  *wasm.ValidatedModuleAnalysis
+	classifier  wasm.ModuleInstructionClassifier
+	hasMemory64 bool
+	hasTable64  bool
 }
 
 // ModuleFacts is the allocation-bounded declaration/body prepass shared by
@@ -278,7 +303,7 @@ func SupportedTableRuntimeShapesFromFacts(m *wasm.Module, facts *ModuleFacts) ([
 			// spare capacity cannot be observed and cannot fit in the bounded arena are
 			// represented at their minimum, admitting valid huge declarations without
 			// changing grow/export semantics or common fixed-table footprints.
-			if !observableCapacity && max > uint64((runtime.InstantiateArenaSize-8)/entryBytes) {
+			if !observableCapacity && max > uint64((runtime.InstantiateArenaCacheBytes-8)/entryBytes) {
 				max = min
 			}
 		} else if observableCapacity {
@@ -336,12 +361,12 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 		ex := m.Exports[i].Index
 		switch ex.Kind {
 		case wasm.ExternTable:
-			if int(ex.Index) >= len(facts.TableExported) {
+			if uint(ex.Index) >= uint(len(facts.TableExported)) {
 				return nil, fmt.Errorf("table export index %d out of range", ex.Index)
 			}
 			facts.TableExported[ex.Index] = true
 		case wasm.ExternMem:
-			if int(ex.Index) >= len(facts.MemoryExported) {
+			if uint(ex.Index) >= uint(len(facts.MemoryExported)) {
 				return nil, fmt.Errorf("memory export index %d out of range", ex.Index)
 			}
 			facts.MemoryExported[ex.Index] = true
@@ -444,12 +469,12 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 func recordModuleFact(kind wasm.InstrKind, index uint32, facts *ModuleFacts) error {
 	switch kind {
 	case wasm.InstrTableGrow:
-		if int(index) >= len(facts.TableGrowUsed) {
+		if uint(index) >= uint(len(facts.TableGrowUsed)) {
 			return fmt.Errorf("table.grow index %d out of range", index)
 		}
 		facts.TableGrowUsed[index] = true
 	case wasm.InstrMemoryGrow:
-		if int(index) >= len(facts.MemoryGrowUsed) {
+		if uint(index) >= uint(len(facts.MemoryGrowUsed)) {
 			return fmt.Errorf("memory.grow index %d out of range", index)
 		}
 		facts.MemoryGrowUsed[index] = true
@@ -501,6 +526,10 @@ func inertOversizedLocalTable64(m *wasm.Module, localIndex int) bool {
 
 func (p supportPass) unsupported(category, feature, context string) error {
 	return &UnsupportedError{Category: category, Feature: feature, Context: context}
+}
+
+func (p supportPass) implementation(feature, shape string, limit uint64) error {
+	return &runtime.ImplementationLimitError{Feature: feature, Shape: shape, Limit: limit}
 }
 
 func (p supportPass) runWithFacts() error {
@@ -562,17 +591,21 @@ func (p supportPass) types() error {
 				return p.unsupported("gc type", "subtyping metadata (gc disabled)", ctx)
 			}
 			if st.Comp.Kind != wasm.CompFunc {
-				if !p.feat.SIMD {
-					switch st.Comp.Kind {
-					case wasm.CompStruct:
-						for fi := range st.Comp.Fields {
-							if storageTypeRequiresSIMD(st.Comp.Fields[fi].Storage()) {
-								return p.unsupported("v128", "simd disabled", fmt.Sprintf("%s field %d", ctx, fi))
+				switch st.Comp.Kind {
+				case wasm.CompStruct:
+					for fi := range st.Comp.Fields {
+						storage := st.Comp.Fields[fi].Storage()
+						if !storage.Packed() {
+							if err := p.valType(storage.Val(), fmt.Sprintf("%s field %d", ctx, fi)); err != nil {
+								return err
 							}
 						}
-					case wasm.CompArray:
-						if storageTypeRequiresSIMD(st.Comp.Array.Storage()) {
-							return p.unsupported("v128", "simd disabled", ctx+" array element")
+					}
+				case wasm.CompArray:
+					storage := st.Comp.Array.Storage()
+					if !storage.Packed() {
+						if err := p.valType(storage.Val(), ctx+" array element"); err != nil {
+							return err
 						}
 					}
 				}
@@ -621,38 +654,39 @@ func compTypeName(k wasm.CompTypeKind) string {
 
 func (p supportPass) imports() error {
 	for i, im := range p.m.Imports {
-		ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
 			ft, ok := p.funcType(im.Type.FuncType())
 			if !ok {
-				return p.unsupported("import", "function with unknown type", ctx)
+				return p.unsupported("import", "function with unknown type", fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name))
 			}
 			// Reflection-free host imports admit externref handles and opaque funcref
 			// tokens. Instantiation still requires explicit ownership before a host
 			// descriptor itself may cross a public funcref boundary.
 			for _, pt := range ft.Params {
 				if !p.supportedValType(pt) {
-					return p.valType(pt, ctx+" function signature")
+					return p.valType(pt, fmt.Sprintf("import %d %q.%q function signature", i, im.Module, im.Name))
 				}
 			}
 			for _, rt := range ft.Results {
 				if !p.supportedValType(rt) {
-					return p.valType(rt, ctx+" function result")
+					return p.valType(rt, fmt.Sprintf("import %d %q.%q function result", i, im.Module, im.Name))
 				}
 			}
 		case wasm.ExternGlobal:
+			ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 			// Imported reference globals are admitted structurally here; instantiation
 			// requires an exact typed, mutable, compatible-store Global owner.
 			if err := p.globalType(im.Type.GlobalType().Type, ctx); err != nil {
 				return err
 			}
 		case wasm.ExternTable:
+			ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 			// Imported tables carry their exact reference type into the shared
 			// runtime handle. Externref imports additionally require reference types
 			// and a compatible store-bound owner at instantiation.
 			table := im.Type.TableType()
-			if !isFuncRef(table.Ref) && !isExternRef(table.Ref) && !p.supportedTypedFuncRef(table.Ref) && !p.supportedGCReference(table.Ref) {
+			if !isFuncRef(table.Ref) && !isExternRef(table.Ref) && !p.supportedTypedFuncRef(table.Ref) && !p.supportedNullReference(table.Ref) && !p.supportedGCReference(table.Ref) {
 				return p.valType(wasm.RefVal(table.Ref), ctx+" table type")
 			}
 			if isExternRef(table.Ref) && !p.feat.ReferenceTypes {
@@ -663,22 +697,23 @@ func (p supportPass) imports() error {
 					return p.unsupported("import", "64-bit table (table64 disabled)", ctx)
 				}
 				if table.Limits.Min > stagedTable64Max {
-					return p.unsupported("import", fmt.Sprintf("table64 minimum %d exceeds staged ceiling %d", table.Limits.Min, stagedTable64Max), ctx)
+					return p.implementation("imported table64", fmt.Sprintf("minimum %d entries exceeds executable capacity", table.Limits.Min), stagedTable64Max)
 				}
 				if table.Limits.HasMax && table.Limits.Max > stagedTable64Max {
-					return p.unsupported("import", fmt.Sprintf("table64 maximum %d exceeds staged ceiling %d", table.Limits.Max, stagedTable64Max), ctx)
+					return p.implementation("imported table64", fmt.Sprintf("maximum %d entries exceeds executable capacity", table.Limits.Max), stagedTable64Max)
 				}
 			}
 		case wasm.ExternMem:
+			ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 			if err := p.checkMemType(im.Type.MemType(), ctx); err != nil {
 				return err
 			}
 		case wasm.ExternTag:
 			if !p.feat.ExceptionHandling {
-				return p.unsupported("import", "tag (exception-handling disabled)", ctx)
+				return p.unsupported("import", "tag (exception-handling disabled)", fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name))
 			}
 		default:
-			return p.unsupported("import", "unknown external kind", ctx)
+			return p.unsupported("import", "unknown external kind", fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name))
 		}
 	}
 	return nil
@@ -693,7 +728,7 @@ func (p supportPass) tables() error {
 	for i, t := range p.m.Tables {
 		tableIndex := imported + i
 		ctx := fmt.Sprintf("table %d", tableIndex)
-		if !isFuncRef(t.Type.Ref) && !isExternRef(t.Type.Ref) && !p.supportedTypedFuncRef(t.Type.Ref) && !p.supportedGCReference(t.Type.Ref) {
+		if !isFuncRef(t.Type.Ref) && !isExternRef(t.Type.Ref) && !p.supportedTypedFuncRef(t.Type.Ref) && !p.supportedNullReference(t.Type.Ref) && !p.supportedGCReference(t.Type.Ref) {
 			return p.valType(wasm.RefVal(t.Type.Ref), ctx)
 		}
 		if isExternRef(t.Type.Ref) && !p.feat.ReferenceTypes {
@@ -704,10 +739,10 @@ func (p supportPass) tables() error {
 				return p.unsupported("table", "64-bit limits (table64 disabled)", ctx)
 			}
 			if t.Type.Limits.Min > stagedTable64Max {
-				return p.unsupported("table", fmt.Sprintf("table64 minimum %d exceeds staged ceiling %d", t.Type.Limits.Min, stagedTable64Max), ctx)
+				return p.implementation("table64", fmt.Sprintf("table %d minimum %d entries exceeds executable capacity", tableIndex, t.Type.Limits.Min), stagedTable64Max)
 			}
 			if t.Type.Limits.HasMax && t.Type.Limits.Max > stagedTable64Max && !inertOversizedLocalTable64(p.m, i) {
-				return p.unsupported("table", fmt.Sprintf("table64 maximum %d exceeds staged executable ceiling %d", t.Type.Limits.Max, stagedTable64Max), ctx)
+				return p.implementation("table64", fmt.Sprintf("table %d maximum %d entries exceeds executable capacity", tableIndex, t.Type.Limits.Max), stagedTable64Max)
 			}
 		}
 		if t.Init != nil {
@@ -763,12 +798,13 @@ func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 	}
 	maxPages := uint64(65536)
 	if mem.Limits.Addr64 {
-		// The staged memory64 execution product remains bounded to the finite
-		// reservation used before the u64 memory-size-cache extension.
+		// Temporary implementation limit: the executable reservation still uses
+		// the bounded 32-bit page cache. TODO(runtime-resource-model): replace it
+		// with platform-qualified sparse Memory64 reservation and growth accounting.
 		maxPages = 65535
 	}
 	if mem.Limits.Min > maxPages {
-		return p.unsupported("memory", fmt.Sprintf("minimum %d pages exceeds %d", mem.Limits.Min, maxPages), ctx)
+		return p.implementation("memory64 execution", fmt.Sprintf("%s minimum %d pages exceeds executable reservation capacity", ctx, mem.Limits.Min), maxPages)
 	}
 	return nil
 }
@@ -839,7 +875,7 @@ func (p supportPass) elements() error {
 			if !p.feat.ReferenceTypes {
 				return p.unsupported("reference type", elemKindName(e.Kind.Kind), ctx)
 			}
-			if e.Kind.Kind == wasm.ElemTypedExprs && !isFuncRef(e.Kind.Ref) && !isExternRef(e.Kind.Ref) && !p.supportedTypedFuncRef(e.Kind.Ref) && !p.supportedGCReference(e.Kind.Ref) {
+			if e.Kind.Kind == wasm.ElemTypedExprs && !isFuncRef(e.Kind.Ref) && !isExternRef(e.Kind.Ref) && !p.supportedTypedFuncRef(e.Kind.Ref) && !p.supportedNullReference(e.Kind.Ref) && !p.supportedGCReference(e.Kind.Ref) {
 				return p.valType(wasm.RefVal(e.Kind.Ref), ctx)
 			}
 			for j, ex := range e.Kind.Exprs {
@@ -865,10 +901,18 @@ func (p supportPass) elementExpr(e wasm.Expr, context string) error {
 		body, _ = wasm.EncodeExpr(e)
 	}
 	r := wasm.NewReader(body)
-	if op, err := r.Byte(); err == nil && op == 0x23 {
-		if _, err := r.U32(); err == nil {
-			if end, err := r.Byte(); err == nil && end == 0x0b && r.BytesLeft() == 0 {
-				return nil
+	if op, err := r.Byte(); err == nil {
+		switch op {
+		case 0x23:
+			if _, err := r.U32(); err == nil {
+				if end, err := r.Byte(); err == nil && end == 0x0b && r.BytesLeft() == 0 {
+					return nil
+				}
+			}
+		case 0xd0:
+			heap, err := r.S33()
+			if err == nil && (heap == -13 || heap == -14) && !p.supportedNullReferenceHeap(heap) {
+				return p.unsupported("element expression", fmt.Sprintf("ref.null heap type %d (gc disabled)", heap), context)
 			}
 		}
 	}
@@ -971,7 +1015,7 @@ func (p supportPass) runtimeFootprint() error {
 	if needsPublicFuncrefHostReentry(p.m, tables) {
 		hostCallBytes = runtime.HostCtrlFrameBytes
 	}
-	need, err := runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
+	_, err = runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
 		FuncImportCount:    p.m.ImportedFuncCount(),
 		HostCallBytes:      hostCallBytes,
 		FuncRefCount:       funcRefCount,
@@ -990,9 +1034,6 @@ func (p supportPass) runtimeFootprint() error {
 	})
 	if err != nil {
 		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")
-	}
-	if need > runtime.InstantiateArenaSize {
-		return p.unsupported("runtime footprint", fmt.Sprintf("instantiate arena need %d > limit %d", need, runtime.InstantiateArenaSize), "instantiate arena")
 	}
 	return nil
 }
@@ -1072,6 +1113,9 @@ func (p supportPass) funcs() error {
 				return err
 			}
 		}
+		if p.validatedFuncAccepted(i, &fn) {
+			continue
+		}
 		if len(fn.BodyBytes) != 0 {
 			if err := p.funcExprBytes(fn.BodyBytes, funcIndex); err != nil {
 				return err
@@ -1083,6 +1127,37 @@ func (p supportPass) funcs() error {
 		}
 	}
 	return nil
+}
+
+func (p supportPass) validatedFuncAccepted(localIndex int, fn *wasm.Func) bool {
+	if !p.validation.ValidFor(p.m) || len(fn.BodyBytes) == 0 {
+		return false
+	}
+	facts := p.validation.Func(localIndex)
+	if uint64(facts.BodyBytes) != uint64(len(fn.BodyBytes)) || facts.Flags&wasm.ValidatedFuncNeedsDetailedAdmission != 0 {
+		return false
+	}
+	flags := facts.Flags
+	if flags&wasm.ValidatedFuncUsesSignExtension != 0 && !p.feat.SignExtension ||
+		flags&wasm.ValidatedFuncUsesBulkMemory != 0 && !p.feat.BulkMemory ||
+		flags&wasm.ValidatedFuncUsesSaturatingTrunc != 0 && !p.feat.SaturatingTrunc ||
+		flags&wasm.ValidatedFuncUsesReferenceTypes != 0 && !p.feat.ReferenceTypes ||
+		flags&wasm.ValidatedFuncUsesTypedFunctionReferences != 0 && !p.feat.TypedFunctionReferences ||
+		flags&wasm.ValidatedFuncUsesSIMD != 0 && !p.feat.SIMD {
+		return false
+	}
+	if p.hasMemory64 && flags&wasm.ValidatedFuncTouchesMemory != 0 {
+		return false
+	}
+	if p.hasTable64 && flags&wasm.ValidatedFuncTouchesTable != 0 {
+		return false
+	}
+	// Memory immediates can require multi-memory even in a one-memory module.
+	// The fixed summary does not carry explicit memarg encodings or indexes.
+	if !p.feat.MultiMemory && flags&wasm.ValidatedFuncTouchesMemory != 0 {
+		return false
+	}
+	return true
 }
 
 func (p supportPass) funcExprBytes(body []byte, funcIndex int) error {
@@ -1132,7 +1207,7 @@ func (p supportPass) exprBytes(body []byte, context string) error {
 
 func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr int) (bool, error) {
 	ctx := func() string { return instructionContext(context, instr) }
-	skipBlockType := func() error {
+	skipValType := func(block bool) error {
 		b, err := r.Byte()
 		if err != nil {
 			return err
@@ -1143,7 +1218,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			}
 			return nil
 		}
-		if b == 0x40 || b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c {
+		if b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c || block && b == 0x40 {
 			return nil
 		}
 		if isRefTypeLeadByte(b) {
@@ -1158,9 +1233,12 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 				}
 				return nil
 			}
-			if p.feat.ReferenceTypes {
+			if p.supportedValType(wasm.RefVal(wasm.AbsRef(wasm.AbsHeapType(b)))) {
 				return nil
 			}
+			return p.unsupported("value type", fmt.Sprintf("0x%02x", b), ctx())
+		}
+		if !block {
 			return p.unsupported("value type", fmt.Sprintf("0x%02x", b), ctx())
 		}
 		// Multi-value block type: the first byte was part of a signed LEB. The
@@ -1173,35 +1251,6 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			}
 		}
 		return nil
-	}
-	skipValType := func() error {
-		b, err := r.Byte()
-		if err != nil {
-			return err
-		}
-		if b == 0x7b {
-			if !p.feat.SIMD {
-				return p.unsupported("value type", "v128 (simd disabled)", ctx())
-			}
-			return nil
-		}
-		if b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c {
-			return nil
-		}
-		if isRefTypeLeadByte(b) && p.feat.ReferenceTypes {
-			if b == 0x63 || b == 0x64 {
-				heap, err := r.S33()
-				if err != nil {
-					return err
-				}
-				exceptionHeap := heap == -23 || heap == -12
-				if !((p.feat.ExceptionReferences && exceptionHeap) || p.supportedNullReferenceHeap(heap) || p.supportedGCHeap(heap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
-					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references/exception-references disabled or unsupported)", heap), ctx())
-				}
-			}
-			return nil
-		}
-		return p.unsupported("value type", fmt.Sprintf("0x%02x", b), ctx())
 	}
 	switch op {
 	case 0x00, 0x01, 0x05, 0x0f, 0x1a, 0x1b,
@@ -1221,7 +1270,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 	case 0x0b:
 		return true, nil
 	case 0x02, 0x03, 0x04:
-		return false, skipBlockType()
+		return false, skipValType(true)
 	case 0x08: // throw tagidx
 		if _, err := r.U32(); err != nil {
 			return false, err
@@ -1236,7 +1285,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, nil
 	case 0x1f: // try_table blocktype vec(catch)
-		if err := skipBlockType(); err != nil {
+		if err := skipValType(true); err != nil {
 			return false, err
 		}
 		n, err := r.U32()
@@ -1315,7 +1364,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			return false, err
 		}
 		for i := uint32(0); i < n; i++ {
-			if err := skipValType(); err != nil {
+			if err := skipValType(false); err != nil {
 				return false, err
 			}
 		}
@@ -1398,7 +1447,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			return false, p.unsupported("reference instruction", "RefNull", ctx())
 		}
 		exceptionHeap := heap == -23 || heap == -12
-		if heap != -17 && heap != -14 && heap != -16 && heap != -13 && !(p.feat.ExceptionReferences && exceptionHeap) && !p.supportedNullReferenceHeap(heap) && !p.supportedGCHeap(heap) && (!p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap)) {
+		if heap != -17 && heap != -16 && !(p.feat.ExceptionReferences && exceptionHeap) && !p.supportedNullReferenceHeap(heap) && !p.supportedGCHeap(heap) && (!p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap)) {
 			return false, p.unsupported("reference instruction", fmt.Sprintf("ref.null heap %d", heap), ctx())
 		}
 		return false, nil
@@ -1696,7 +1745,7 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 		switch in.Kind {
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const:
 		case wasm.InstrGlobalGet:
-			if !p.feat.ExtendedConstGlobals && (p.m == nil || int(in.Index) >= p.m.ImportedGlobalCount()) {
+			if !p.feat.ExtendedConstGlobals && (p.m == nil || uint(in.Index) >= uint(p.m.ImportedGlobalCount())) {
 				return p.unsupported("const expression", "prior global.get (extended-const-expressions disabled)", instructionContext(context, i))
 			}
 		case wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul,
@@ -1761,7 +1810,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			if err != nil {
 				return err
 			}
-			if !p.feat.ExtendedConstGlobals && (p.m == nil || int(idx) >= p.m.ImportedGlobalCount()) {
+			if !p.feat.ExtendedConstGlobals && (p.m == nil || uint(idx) >= uint(p.m.ImportedGlobalCount())) {
 				return p.unsupported("const expression", "prior global.get (extended-const-expressions disabled)", ctx())
 			}
 		case 0x41:
@@ -1797,7 +1846,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			// may additionally admit a bounded abstract heap set; indexed function
 			// heaps remain behind the staged typed-reference gate.
 			switch heap {
-			case -16, -17, -13, -14:
+			case -16, -17:
 			default:
 				if !p.supportedNullReferenceHeap(heap) && !p.supportedGCHeap(heap) && (!p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap)) {
 					return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), ctx())
@@ -2207,7 +2256,21 @@ func (p supportPass) supportedValType(v wasm.ValType) bool {
 	if p.feat.SIMD && v.Kind() == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
 		return true
 	}
-	return p.feat.ReferenceTypes && v.Kind() == wasm.ValRef && (isFuncRef(v.Ref()) || isExternRef(v.Ref()) || p.supportedTypedFuncRef(v.Ref()) || p.supportedStagedExternRef(v.Ref()) || p.supportedExceptionRef(v.Ref()) || p.supportedNullReference(v.Ref()) || p.supportedGCReference(v.Ref()) || p.supportedStructuralTypeRef(v.Ref()))
+	if !p.feat.ReferenceTypes || v.Kind() != wasm.ValRef ||
+		referenceTypeRequiresTypedFunctionReferences(v.Ref()) && !p.feat.TypedFunctionReferences ||
+		referenceTypeRequiresExceptionHandling(v.Ref()) && !p.feat.ExceptionHandling {
+		return false
+	}
+	return isFuncRef(v.Ref()) || isExternRef(v.Ref()) || p.supportedTypedFuncRef(v.Ref()) || p.supportedStagedExternRef(v.Ref()) || p.supportedExceptionRef(v.Ref()) || p.supportedNullReference(v.Ref()) || p.supportedGCReference(v.Ref()) || p.supportedStructuralTypeRef(v.Ref())
+}
+
+func referenceTypeRequiresTypedFunctionReferences(rt wasm.RefType) bool {
+	return rt.Heap().Kind() == wasm.HeapTypeIndex || !rt.Nullable() || rt.Exact()
+}
+
+func referenceTypeRequiresExceptionHandling(rt wasm.RefType) bool {
+	heap := rt.Heap()
+	return heap.Kind() == wasm.HeapAbs && (heap.Abs() == wasm.HeapExn || heap.Abs() == wasm.HeapNoExn)
 }
 
 func (p supportPass) supportedExceptionRef(rt wasm.RefType) bool {
@@ -2294,8 +2357,10 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 		feature := valTypeName(v)
 		if !p.feat.ReferenceTypes {
 			feature += " (reference-types disabled)"
-		} else if p.isTypedFuncRef(v.Ref()) && !p.feat.TypedFunctionReferences {
+		} else if referenceTypeRequiresTypedFunctionReferences(v.Ref()) && !p.feat.TypedFunctionReferences {
 			feature += " (typed-function-references disabled)"
+		} else if referenceTypeRequiresExceptionHandling(v.Ref()) && !p.feat.ExceptionHandling {
+			feature += " (exception-handling disabled)"
 		}
 		return p.unsupported("reference type", feature, context)
 	}
@@ -2304,14 +2369,16 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {
 	if v.Kind() == wasm.ValRef {
-		if p.feat.ReferenceTypes && (isFuncRef(v.Ref()) || isExternRef(v.Ref()) || p.supportedTypedFuncRef(v.Ref()) || p.supportedStagedExternRef(v.Ref()) || p.supportedNullReference(v.Ref()) || p.supportedGCReference(v.Ref()) || p.supportedStructuralTypeRef(v.Ref())) {
+		if p.supportedValType(v) {
 			return nil
 		}
 		feature := valTypeName(v)
 		if !p.feat.ReferenceTypes {
 			feature += " (reference-types disabled)"
-		} else if p.isTypedFuncRef(v.Ref()) && !p.feat.TypedFunctionReferences {
+		} else if referenceTypeRequiresTypedFunctionReferences(v.Ref()) && !p.feat.TypedFunctionReferences {
 			feature += " (typed-function-references disabled)"
+		} else if referenceTypeRequiresExceptionHandling(v.Ref()) && !p.feat.ExceptionHandling {
+			feature += " (exception-handling disabled)"
 		}
 		return p.unsupported("global type", feature, context)
 	}
@@ -2576,7 +2643,7 @@ func (p supportPass) supportedTypedFuncRef(rt wasm.RefType) bool {
 }
 
 func (p supportPass) supportedTypedFuncHeap(heap int64) bool {
-	if heap == -17 || heap == -16 || heap == -14 || heap == -13 { // extern / func / noextern / nofunc
+	if heap == -17 || heap == -16 { // extern / func
 		return true
 	}
 	if heap < 0 || uint64(heap) > uint64(^uint32(0)) {
@@ -2591,14 +2658,14 @@ func (p supportPass) supportedStagedExternRef(rt wasm.RefType) bool {
 	if !p.feat.TypedFunctionReferences || rt.Exact() || heap.Kind() != wasm.HeapAbs {
 		return false
 	}
-	return heap.Abs() == wasm.HeapExtern || heap.Abs() == wasm.HeapNoExtern
+	return heap.Abs() == wasm.HeapExtern
 }
 
 func (p supportPass) isTypedFuncRef(rt wasm.RefType) bool {
 	heap := rt.Heap()
 	switch heap.Kind() {
 	case wasm.HeapAbs:
-		return !isFuncRef(rt) && (heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc)
+		return !isFuncRef(rt) && heap.Abs() == wasm.HeapFunc
 	case wasm.HeapTypeIndex:
 		_, ok := p.m.TypeFunc(heap.Type().Index)
 		return ok
@@ -2630,18 +2697,16 @@ func compactRefTableType(rt wasm.RefType) bool {
 	}
 }
 
-// isNullableAbsRef reports whether rt is a nullable reference to one of the
-// abstract heap types wago can lower as a null const value: the func and extern
-// families, including their nofunc/noextern bottoms. Validation accepts a bottom
-// null (e.g. ref.null nofunc) as a subtype of func/extern, so the const-expr
-// support pass must accept it too or it rejects valid WebAssembly 2.0 modules.
+// isNullableAbsRef reports whether rt is one of the two legacy nullable
+// reference types. Bottom func/extern heap types are part of GC and remain
+// behind supportedNullReference instead.
 func isNullableAbsRef(rt wasm.RefType) bool {
 	heap := rt.Heap()
 	if !(rt.Nullable() && !rt.Exact() && heap.Kind() == wasm.HeapAbs) {
 		return false
 	}
 	switch heap.Abs() {
-	case wasm.HeapFunc, wasm.HeapExtern, wasm.HeapNoFunc, wasm.HeapNoExtern:
+	case wasm.HeapFunc, wasm.HeapExtern:
 		return true
 	}
 	return false

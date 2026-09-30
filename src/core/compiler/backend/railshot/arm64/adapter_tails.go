@@ -39,7 +39,7 @@ type adapterTailGroup struct {
 	sharedOff   int
 }
 
-func shareAdapterTailsCodeBuffer(codeBuffer *coreruntime.CodeBuffer, entry, internalEntry []int, relocs [][]callReloc, infos []adapterTailInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) (int, error) {
+func shareAdapterTailsCodeBuffer(codeBuffer *coreruntime.CodeBuffer, entry, internalEntry []int, relocs *callRelocTable, infos []adapterTailInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) (int, error) {
 	oldLen := len(codeBuffer.Bytes())
 	groups, infos, sharedBytes := planSharedAdapterTails(codeBuffer.Bytes(), entry, infos)
 	if sharedBytes == 0 || !adapterTailIslandInRange(oldLen, sharedBytes) {
@@ -59,7 +59,7 @@ func shareAdapterTailsCodeBuffer(codeBuffer *coreruntime.CodeBuffer, entry, inte
 	return sharedBytes, nil
 }
 
-func shareAdapterTails(code []byte, entry, internalEntry []int, relocs [][]callReloc, infos []adapterTailInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) ([]byte, int, error) {
+func shareAdapterTails(code []byte, entry, internalEntry []int, relocs *callRelocTable, infos []adapterTailInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) ([]byte, int, error) {
 	oldLen := len(code)
 	groups, infos, sharedBytes := planSharedAdapterTails(code, entry, infos)
 	if sharedBytes == 0 || !adapterTailIslandInRange(oldLen, sharedBytes) {
@@ -151,7 +151,7 @@ func adapterTailPositionIndependent(tail []byte) bool {
 	return true
 }
 
-func compactSharedAdapterTails(code []byte, oldLen int, entry, internalEntry []int, relocs [][]callReloc, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats, groups []adapterTailGroup, infos []adapterTailInfo, sharedBytes int) (int, error) {
+func compactSharedAdapterTails(code []byte, oldLen int, entry, internalEntry []int, relocs *callRelocTable, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats, groups []adapterTailGroup, infos []adapterTailInfo, sharedBytes int) (int, error) {
 	// Save one exact template per admitted group in the appended range before
 	// compaction overwrites function-local tails.
 	for i := range groups {
@@ -182,21 +182,21 @@ func compactSharedAdapterTails(code []byte, oldLen int, entry, internalEntry []i
 			src = end
 			deleted := end - keepEnd
 			removed += deleted
-			for j := range relocs[i] {
-				if relocs[i][j].at >= int(info.endOff) {
-					relocs[i][j].at -= deleted
+			functionRelocs := relocs.serialFunction(i)
+			if relocs.results != nil {
+				functionRelocs = relocs.parallelFunction(i)
+			}
+			for j := range functionRelocs {
+				if functionRelocs[j].at >= info.endOff {
+					functionRelocs[j].at -= uint32(deleted)
 				}
 			}
 			if roots != nil {
 				if plan := roots.Function(i); plan != nil {
-					for j := range plan.Callsites {
-						if plan.Callsites[j].ReturnOffset >= info.endOff {
-							plan.Callsites[j].ReturnOffset -= uint32(deleted)
-						}
-					}
+					plan.ShiftCallsiteReturnOffsets(info.endOff, uint32(deleted))
 				}
 			}
-			if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {
+			if (diagnosticsEnabled && ms != nil) && i < len(ms.Funcs) && ms.Funcs[i] != nil {
 				native := &ms.Funcs[i].NativeSize
 				native.TotalBytes -= deleted
 				native.HostAdapterBytes -= deleted
@@ -230,7 +230,7 @@ func compactSharedAdapterTails(code []byte, oldLen int, entry, internalEntry []i
 		if !asm.PatchBranch26(call, internalEntry[i]) {
 			return 0, fmt.Errorf("arm64: adapter call for function %d exceeds BL range", i)
 		}
-		if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {
+		if (diagnosticsEnabled && ms != nil) && i < len(ms.Funcs) && ms.Funcs[i] != nil {
 			native := &ms.Funcs[i].NativeSize
 			native.HostAdapterShapeHash = shared.AdapterShapeHash(code[entry[i]:entry[i]+native.HostAdapterBytes], returnOff-4, 4)
 			native.HostAdapterTailShapeHash = shared.AdapterShapeHash(code[entry[i]+returnOff:entry[i]+returnOff+4], -1, 0)

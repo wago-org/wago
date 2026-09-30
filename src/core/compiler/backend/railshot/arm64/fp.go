@@ -3,12 +3,28 @@
 package arm64
 
 import (
+	"encoding/binary"
+	"fmt"
 	"math"
+	"os"
 
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+var floatLiteralPoolEnabled = os.Getenv("WAGO_ARM64_NO_FCONST_POOL") != "1"
+
+type floatPoolConst struct {
+	bits uint64
+	head uint32 // floatPoolSites index + 1; zero ends the list
+	f64  bool
+}
+
+type floatPoolSite struct {
+	off  uint32
+	next uint32
+}
 
 // floatBits returns the bit pattern of v in the given float width.
 func floatBits(v float64, f64 bool) uint64 {
@@ -28,11 +44,11 @@ func floatBits(v float64, f64 bool) uint64 {
 
 func (f *fn) occupyF(e *elem, r Reg) {
 	f.fregUser[r] = e
-	if e.kind == ekDeferred && e.typ != mtNone {
-		e.st.typ = e.typ
+	if e.isDeferred() {
+		f.s.removePendingDeferred()
 	}
-	e.kind = ekValue
 	e.st.kind, e.st.reg = stReg, r
+	e.setElemKind(ekValue)
 }
 
 func (f *fn) releaseF(r Reg) {
@@ -55,17 +71,21 @@ func (f *fn) fconstMask() regMask {
 	return m
 }
 
+func (f *fn) blockedFRegs(avoid regMask) regMask {
+	return avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
+}
+
 // allocFReg returns a free V register, spilling the deepest float-resident stack
 // value if none is free.
 func (f *fn) allocFReg(avoid regMask) Reg {
-	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask())
+	block := f.blockedFRegs(avoid)
 	for _, r := range fpAllocRegs {
 		if f.fregUser[r] == nil && !block.has(r) {
 			return r
 		}
 	}
-	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
+	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
+		if e.elemKind() == ekValue && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spillF(e)
 			return r
@@ -80,25 +100,36 @@ func (f *fn) spillF(e *elem) {
 	defer func() { f.stats.addGCSpillReloadBytes(f.a.Len() - before) }()
 	r := e.st.reg
 	if e.st.typ == mtCustom {
-		slot := f.allocSpillSlots(int(e.st.custom.Size() / 8))
-		for i, reg := range e.st.vregs {
+		cold := f.s.elemCold(e)
+		slot := f.allocSpillSlots(int(cold.custom.Size() / 8))
+		for i, reg := range cold.vregs {
+			start := f.a.Len()
 			f.a.StrQ(SP, f.spillOff(slot+i*2), reg)
+			if profileEnabled {
+				f.recordProfileCodeSite(start, "custom-spill")
+			}
 			f.fregUser[reg] = nil
 		}
-		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: slot, custom: e.st.custom})
+		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: uint32(slot)})
 		return
 	}
 	if e.st.typ == mtV128 {
 		slot := f.allocSpillSlots(2)
 		f.a.StrQ(a64.SP, f.spillOff(slot), r)
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "vector-spill")
+		}
 		f.fregUser[r] = nil
-		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
+		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 		return
 	}
 	slot := f.allocSpillSlot()
 	f.a.StrF(a64.SP, f.spillOff(slot), r, true)
+	if profileEnabled {
+		f.recordProfileCodeSite(before, "fp-spill")
+	}
 	f.fregUser[r] = nil
-	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
+	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 }
 
 // materializeF ensures float value e lives in a V register and returns it.
@@ -122,13 +153,16 @@ func (f *fn) materializeF(e *elem) Reg {
 	case stSlot:
 		x := f.allocFReg(0)
 		before := f.a.Len()
-		f.a.LdrF(x, a64.SP, f.spillOff(e.st.slot), true) // 8B; f32 uses the low 4
+		f.a.LdrF(x, a64.SP, f.spillOff(e.st.slotIndex()), true) // 8B; f32 uses the low 4
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "fp-reload")
+		}
 		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
 		f.occupyF(e, x)
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.a.LdrF(x, a64.SP, f.localOff(e.st.idx), e.st.typ == mtF64)
+		f.a.LdrF(x, a64.SP, f.localOff(e.st.index()), e.st.typ == mtF64)
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:
@@ -140,7 +174,7 @@ func (f *fn) materializeF(e *elem) Reg {
 		return x
 	case stMemRef:
 		x := f.allocFReg(0)
-		f.loadFMemRef(x, e.st)
+		f.loadFMemRef(x, e)
 		f.releaseMemRef(e.st)
 		f.occupyF(e, x)
 		return x
@@ -155,10 +189,10 @@ func (f *fn) materializeF(e *elem) Reg {
 // This avoids the fmov-to-scratch that materializeF emits for a pinned local when
 // the value is only being read — the dominant per-op float overhead.
 func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
-	if e.kind == ekValue && e.st.kind == stLocalReg {
+	if e.elemKind() == ekValue && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
-	if e.kind == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls {
+	if e.elemKind() == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls {
 		if r, ok := f.floatConstReg(e.st); ok {
 			return r, false
 		}
@@ -171,6 +205,15 @@ func (f *fn) floatConstReg(st storage) (Reg, bool) {
 		if c.typ == st.typ && c.bits == st.cval {
 			return c.reg, true
 		}
+	}
+	return regNone, false
+}
+
+// Persistent constants must be initialized before control-flow-dependent body
+// execution. Constants missed by preload use ordinary materialization.
+func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
+	if r, ok := f.floatConstReg(st); ok {
+		return r, true
 	}
 	if len(f.fconsts) >= 2 {
 		return regNone, false
@@ -238,7 +281,7 @@ func (f *fn) preloadFloatConsts(code []byte) {
 		if !found {
 			if nCand == len(cand) {
 				for i := 0; i < 2; i++ {
-					f.floatConstReg(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
+					f.preloadFloatConst(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
 				}
 				return
 			}
@@ -275,11 +318,14 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	if bestN >= 2*firstN {
 		choice = best
 	}
+	oldSuppress := f.suppressFloatLiteral
+	f.suppressFloatLiteral = true
 	for _, i := range choice {
 		if i >= 0 {
-			f.floatConstReg(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
+			f.preloadFloatConst(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
 		}
 	}
+	f.suppressFloatLiteral = oldSuppress
 }
 
 // pushFReg pushes a V-resident float value of the given type.
@@ -292,6 +338,27 @@ func (f *fn) pushFReg(r Reg, typ machineType) *elem {
 // loadFConst materializes a float constant's bits into V register r (via a GP
 // scratch).
 func (f *fn) loadFConst(r Reg, st storage) {
+	if f.opt(optFPImmediateConst) {
+		bits := uint64(st.cval)
+		if st.typ == mtF32 {
+			bits = uint64(uint32(st.cval))
+		}
+		if bits == 0 {
+			f.a.FmovFromGpr(r, a64.ZR, st.typ == mtF64)
+			f.stats.peep("fp-immediate-zero")
+			return
+		}
+		if imm8, ok := encodeFPImmediate(bits, st.typ == mtF64); ok {
+			f.a.FmovImm(r, imm8, st.typ == mtF64)
+			f.stats.peep("fp-immediate-const")
+			return
+		}
+	}
+	if f.floatLiteralPool && !f.suppressFloatLiteral {
+		f.recordFloatLiteral(uint64(st.cval), st.typ == mtF64, f.a.LdrLiteralF(r, st.typ == mtF64))
+		f.stats.peep("fp-literal-const")
+		return
+	}
 	t := f.allocReg(0)
 	if st.typ == mtF64 {
 		f.a.MovImm64(t, uint64(st.cval))
@@ -301,6 +368,100 @@ func (f *fn) loadFConst(r Reg, st storage) {
 		f.a.FmovFromGpr(r, t, false)
 	}
 	f.release(t)
+}
+
+func (f *fn) recordFloatLiteral(bits uint64, f64 bool, site int) {
+	if !f64 {
+		bits = uint64(uint32(bits))
+	}
+	for i := range f.floatPool {
+		c := &f.floatPool[i]
+		if c.bits == bits && c.f64 == f64 {
+			f.floatPoolSites = append(f.floatPoolSites, floatPoolSite{off: uint32(site), next: c.head})
+			c.head = uint32(len(f.floatPoolSites))
+			f.recordPCRelative(site)
+			return
+		}
+	}
+	f.floatPoolSites = append(f.floatPoolSites, floatPoolSite{off: uint32(site)})
+	f.floatPool = append(f.floatPool, floatPoolConst{bits: bits, head: uint32(len(f.floatPoolSites)), f64: f64})
+	f.recordPCRelative(site)
+}
+
+// emitFloatConstPool appends deduplicated scalar constants after the terminating
+// code and patches every LDR literal site. The pool is opaque to the native
+// finalizer, which still remaps each PC-relative load when it compacts code.
+func (f *fn) emitFloatConstPool() error {
+	if len(f.floatPool) == 0 {
+		return nil
+	}
+	poolStart := f.a.Len()
+	if poolStart&7 != 0 {
+		f.a.B = append(f.a.B, 0, 0, 0, 0)
+	}
+	for _, c := range f.floatPool {
+		off := f.a.Len()
+		var raw [8]byte
+		binary.LittleEndian.PutUint64(raw[:], c.bits)
+		size := 4
+		if c.f64 {
+			size = 8
+		}
+		f.a.B = append(f.a.B, raw[:size]...)
+		for head := c.head; head != 0; {
+			s := f.floatPoolSites[head-1]
+			if !f.a.PatchLiteral19(int(s.off), off) {
+				return fmt.Errorf("arm64: float literal at %d is out of range from load at %d", off, s.off)
+			}
+			head = s.next
+		}
+	}
+	f.recordOpaqueData(poolStart, f.a.Len())
+	if diagnosticsEnabled && f.stats != nil {
+		f.stats.NativeSize.LiteralPoolBytes += f.a.Len() - poolStart
+	}
+	f.floatPool = f.floatPool[:0]
+	f.floatPoolSites = f.floatPoolSites[:0]
+	return nil
+}
+
+// encodeFPImmediate is the inverse of ARM's VFPExpandImm for f32/f64. The
+// representable set is exact: one sign bit, a constrained exponent, the high
+// four fraction bits, and zero in every remaining fraction bit.
+func encodeFPImmediate(bits uint64, f64 bool) (uint8, bool) {
+	var sign, exponent, fraction uint64
+	var repeatBits uint64
+	if f64 {
+		sign = bits >> 63
+		exponent = bits >> 52 & 0x7ff
+		fraction = bits & (uint64(1)<<52 - 1)
+		if fraction&(uint64(1)<<48-1) != 0 {
+			return 0, false
+		}
+		repeatBits = exponent >> 2 & 0xff
+	} else {
+		bits = uint64(uint32(bits))
+		sign = bits >> 31
+		exponent = bits >> 23 & 0xff
+		fraction = bits & (uint64(1)<<23 - 1)
+		if fraction&(uint64(1)<<19-1) != 0 {
+			return 0, false
+		}
+		repeatBits = exponent >> 2 & 0x1f
+	}
+	b6 := repeatBits & 1
+	repeatMask := uint64(0x1f)
+	topBit := uint64(7)
+	fracShift := uint(19)
+	if f64 {
+		repeatMask = 0xff
+		topBit = 10
+		fracShift = 48
+	}
+	if repeatBits != b6*repeatMask || exponent>>topBit != b6^1 {
+		return 0, false
+	}
+	return uint8(sign<<7 | b6<<6 | (exponent&3)<<4 | fraction>>fracShift), true
 }
 
 // loadFMask materializes a 32/64-bit bit mask into V register dst (via a GP
@@ -349,12 +510,15 @@ func (f *fn) fconst(bits uint64, typ machineType) {
 // arm64 has no memory-source float ops (§4a): a stMemRef right operand is not
 // folded here; operandRegF materializes it with an explicit LDR (loadFMemRef).
 // memOp is retained for caller-signature parity with the amd64 twin and is unused.
-func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
+func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64, poolRHS bool) {
 	b := f.popValue()
 	a := f.popValue()
 	s1, o1 := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(s1)
+	oldSuppress := f.suppressFloatLiteral
+	f.suppressFloatLiteral = !poolRHS
 	s2, o2 := f.operandRegF(b)
+	f.suppressFloatLiteral = oldSuppress
 	// Destination: reuse an owned operand's register in place (it is being
 	// consumed), else a fresh register so a borrowed pinned local isn't clobbered.
 	var dst Reg
@@ -411,7 +575,7 @@ func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	}
 	jdone := f.a.Branch()
 
-	f.a.PatchBranch19(jdist, f.a.Len())
+	f.patchBranch19(jdist, f.a.Len())
 	// Distinct ordered operands: scalar FMAX/FMIN give the larger/smaller because
 	// the operands are neither NaN nor equal here.
 	if isMax {
@@ -421,11 +585,11 @@ func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	}
 	jdone2 := f.a.Branch()
 
-	f.a.PatchBranch19(jnan, f.a.Len())
+	f.patchBranch19(jnan, f.a.Len())
 	f.a.Fadd(xa, xa, xb, f64) // NaN + x -> quiet NaN.
 
-	f.a.PatchBranch26(jdone, f.a.Len())
-	f.a.PatchBranch26(jdone2, f.a.Len())
+	f.patchBranch26(jdone, f.a.Len())
+	f.patchBranch26(jdone2, f.a.Len())
 }
 
 // fminmaxInto lowers scalar wasm min/max through the shared lane helper used by
@@ -554,7 +718,7 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 // emitFCmpCset emits FCMP plus the NaN-correct CSET for a float relational op,
 // landing a 0/1 i32 boolean in dst. The ordered ops (gt/ge/lt/le) use GT/GE
 // (unordered clears N=V, so NaN yields false); lt/le swap the operands. Shared by
-// fcmp (eager boolean) and condenseFCompareValue (deferred-node fallback).
+// fcmp (eager boolean).
 func (f *fn) emitFCmpCset(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
 	switch kind {
 	case opEq: // ordered equal: EQ requires Z=1, which unordered does not set
@@ -576,99 +740,6 @@ func (f *fn) emitFCmpCset(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
 		f.a.Fcmp(xb, xa, f64)
 		f.a.Cset32(dst, a64.CondGE)
 	}
-}
-
-// pushFCompare pushes a DEFERRED float relational op (gt/ge/lt/le only) instead
-// of materializing a boolean, so the immediately-following if/br_if can fuse it
-// into FCMP + B.cond via condenseFCompareToFlags. The driver only defers when the
-// next opcode is if/br_if, so the node never lingers past its consumer. eq/ne are
-// never deferred (their branch form needs two conditional branches).
-func (f *fn) pushFCompare(op wOp, f64 bool) {
-	typ := mtF32
-	if f64 {
-		typ = mtF64
-	}
-	right := f.s.back()
-	left := baseOfValentBlock(right).prev
-	node := f.s.alloc()
-	node.kind, node.op, node.typ = ekDeferred, op, typ
-	if f.opt(optValueFacts) {
-		node.st.facts = deferredResultFacts(op, typ)
-	}
-	node.arg0, node.arg1 = left, right
-	node.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
-	f.s.push(node)
-}
-
-// condenseFCompareToFlags lowers a deferred float relational node to FCMP (no
-// CSET), consumes the node and its operands, and returns the branch condition
-// that is true when the comparison holds. Mirrors emitFCmpCset's operand
-// ordering. invert (from an eqz peel) flips the condition; that stays NaN-correct
-// because wasm's eqz(float-cmp) and the inverted arm64 condition both include the
-// unordered case on the negated side (GT↔LE, GE↔LT).
-func (f *fn) condenseFCompareToFlags(node *elem, invert bool) Cond {
-	f.stats.peep("fcmp-branch-fuse")
-	f64 := node.typ == mtF64
-	xa, xaOwned := f.operandRegF(node.arg0)
-	f.fpinned = f.fpinned.add(xa)
-	xb, xbOwned := f.operandRegF(node.arg1)
-	f.fpinned = f.fpinned.remove(xa)
-	var cc Cond
-	switch node.op {
-	case opGtS:
-		f.a.Fcmp(xa, xb, f64)
-		cc = a64.CondGT
-	case opGeS:
-		f.a.Fcmp(xa, xb, f64)
-		cc = a64.CondGE
-	case opLtS:
-		f.a.Fcmp(xb, xa, f64)
-		cc = a64.CondGT
-	case opLeS:
-		f.a.Fcmp(xb, xa, f64)
-		cc = a64.CondGE
-	}
-	if xaOwned {
-		f.releaseF(xa)
-	}
-	if xbOwned {
-		f.releaseF(xb)
-	}
-	if invert {
-		cc = invertCond(cc)
-	}
-	f.consumeBlockBelow(node)
-	f.erase(node)
-	return cc
-}
-
-// condenseFCompareValue materializes a deferred float relational node to a 0/1
-// boolean. Defensive: the driver only defers a float compare directly before its
-// if/br_if consumer, so this is normally unreachable, but it keeps a deferred
-// float node correct on any path that condenses it as a value.
-func (f *fn) condenseFCompareValue(node *elem, dest Reg) Reg {
-	f.stats.peep("fcmp-value-fallback")
-	f64 := node.typ == mtF64
-	xa, xaOwned := f.operandRegF(node.arg0)
-	f.fpinned = f.fpinned.add(xa)
-	xb, xbOwned := f.operandRegF(node.arg1)
-	f.fpinned = f.fpinned.remove(xa)
-	result := dest
-	if result == regNone {
-		result = f.allocReg(0)
-	}
-	f.emitFCmpCset(node.op, xa, xb, f64, result)
-	if xaOwned {
-		f.releaseF(xa)
-	}
-	if xbOwned {
-		f.releaseF(xb)
-	}
-	f.consumeBlockBelow(node)
-	f.occupy(node, result)
-	node.st.typ = mtI32
-	node.op = opNone
-	return result
 }
 
 // i2f converts a signed integer to float. srcWide selects an i64 source.
@@ -775,9 +846,9 @@ func (f *fn) truncU64InRange(x, r Reg, srcF64 bool) {
 	f.a.Add64(r, r, t)
 	f.release(t)
 	done := f.a.Branch()
-	f.a.PatchBranch19(simple, f.a.Len())
+	f.patchBranch19(simple, f.a.Len())
 	f.a.Fcvtzs(r, x, srcF64, true)
-	f.a.PatchBranch26(done, f.a.Len())
+	f.patchBranch26(done, f.a.Len())
 	f.releaseF(p63)
 }
 
@@ -815,7 +886,7 @@ func (f *fn) truncSatSigned(x, r Reg, f64src, dstWide bool) {
 	notNaN := f.a.Bcond(a64.CondVC) // ordered
 	f.a.MovImm64(r, 0)              // NaN → 0
 	toEnd := f.a.Branch()
-	f.a.PatchBranch19(notNaN, f.a.Len())
+	f.patchBranch19(notNaN, f.a.Len())
 	hi := f.loadFConstBits(floatBits(math.Ldexp(1, n-1), f64src), f64src) // 2^(n-1)
 	f.a.Fcmp(x, hi, f64src)
 	f.releaseF(hi)
@@ -825,8 +896,8 @@ func (f *fn) truncSatSigned(x, r Reg, f64src, dstWide bool) {
 	} else {
 		f.a.MovImm32(r, 0x7FFFFFFF)
 	}
-	f.a.PatchBranch19(below, f.a.Len())
-	f.a.PatchBranch26(toEnd, f.a.Len())
+	f.patchBranch19(below, f.a.Len())
+	f.patchBranch26(toEnd, f.a.Len())
 }
 
 func (f *fn) truncSatU32(x, r Reg, f64src bool) {
@@ -837,14 +908,14 @@ func (f *fn) truncSatU32(x, r Reg, f64src bool) {
 	pos := f.a.Bcond(a64.CondGT) // x > 0 (ordered; NaN → not taken)
 	f.a.MovImm64(r, 0)           // NaN/≤0 → 0
 	toEnd := f.a.Branch()
-	f.a.PatchBranch19(pos, f.a.Len())
+	f.patchBranch19(pos, f.a.Len())
 	hi := f.loadFConstBits(floatBits(math.Ldexp(1, 32), f64src), f64src)
 	f.a.Fcmp(x, hi, f64src)
 	f.releaseF(hi)
 	below := f.a.Bcond(a64.CondLT)
 	f.a.MovImm32(r, -1) // ≥2^32 → 0xFFFFFFFF
-	f.a.PatchBranch19(below, f.a.Len())
-	f.a.PatchBranch26(toEnd, f.a.Len())
+	f.patchBranch19(below, f.a.Len())
+	f.patchBranch26(toEnd, f.a.Len())
 }
 
 func (f *fn) truncSatU64(x, r Reg, f64src bool) {
@@ -854,14 +925,14 @@ func (f *fn) truncSatU64(x, r Reg, f64src bool) {
 	pos := f.a.Bcond(a64.CondGT)
 	f.a.MovImm64(r, 0)
 	end0 := f.a.Branch()
-	f.a.PatchBranch19(pos, f.a.Len())
+	f.patchBranch19(pos, f.a.Len())
 	hi := f.loadFConstBits(floatBits(math.Ldexp(1, 64), f64src), f64src)
 	f.a.Fcmp(x, hi, f64src)
 	f.releaseF(hi)
 	inRange := f.a.Bcond(a64.CondLT)
 	f.a.MovImm64(r, 0xFFFFFFFFFFFFFFFF) // ≥2^64 → all ones
 	endMax := f.a.Branch()
-	f.a.PatchBranch19(inRange, f.a.Len())
+	f.patchBranch19(inRange, f.a.Len())
 	p63 := f.loadFConstBits(floatBits2p63(f64src), f64src)
 	f.a.Fcmp(x, p63, f64src)
 	simple := f.a.Bcond(a64.CondLT)
@@ -872,12 +943,12 @@ func (f *fn) truncSatU64(x, r Reg, f64src bool) {
 	f.a.Add64(r, r, t)
 	f.release(t)
 	biasEnd := f.a.Branch()
-	f.a.PatchBranch19(simple, f.a.Len())
+	f.patchBranch19(simple, f.a.Len())
 	f.a.Fcvtzs(r, x, f64src, true)
-	f.a.PatchBranch26(biasEnd, f.a.Len())
+	f.patchBranch26(biasEnd, f.a.Len())
 	f.releaseF(p63)
-	f.a.PatchBranch26(endMax, f.a.Len())
-	f.a.PatchBranch26(end0, f.a.Len())
+	f.patchBranch26(endMax, f.a.Len())
+	f.patchBranch26(end0, f.a.Len())
 }
 
 func (f *fn) fpromote() { // f32 → f64
@@ -942,7 +1013,7 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if addrOK {
 		aliasLocal = addrLocal
 	}
-	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, 0)
 	e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow, aliasLocal))
 	if eaOwned {
 		f.regUser[ea] = e
@@ -972,7 +1043,7 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 		return nil
 	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true, 0)
 	f.pinned = f.pinned.add(ea)
 	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	f.a.StrFIdx(linMemReg, ea, xmm, disp, f64)
@@ -987,7 +1058,12 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 
 // helpers
 
-func (f *fn) loadFMemRef(dst Reg, st storage) {
+func (f *fn) loadFMemRef(dst Reg, e *elem) {
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		previous := f.enterProfileNode(e)
+		defer f.switchProfileOrigin(previous)
+	}
+	st := e.st
 	f.a.LdrFIdx(dst, linMemReg, st.reg, st.memDisp(), st.typ == mtF64)
 }
 

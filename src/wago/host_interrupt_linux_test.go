@@ -12,7 +12,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestPublicCompileOmitsCooperativeInterruptPolls(t *testing.T) {
@@ -66,9 +66,7 @@ func TestKernelDeadlineInterruptsDuringStopTheWorld(t *testing.T) {
 			wasmtest.Code([]byte{0x10, 0x00, 0x03, 0x40, 0x0c, 0x00, 0x0b, 0x0b}),
 		)),
 	)
-	in, err := Instantiate(MustCompile(raw), InstantiateOptions{Imports: Imports{
-		"env.entered": HostFunc(func(HostModule, []uint64, []uint64) { close(entered) }),
-	}})
+	in, err := Instantiate(MustCompile(raw), InstantiateOptions{Imports: testImports("env.entered", slotHostFunc(func(HostModule, []uint64, []uint64) { close(entered) }))})
 	if err != nil {
 		t.Fatal(err)
 	}

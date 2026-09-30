@@ -100,6 +100,7 @@ const (
 	ErrDuplicateExport
 	ErrUnsupportedValidationOpcode
 	ErrUnsupportedFeature
+	ErrResourceLimitExceeded
 )
 
 type ValidationError struct {
@@ -161,6 +162,8 @@ func (c ValidationErrorCode) String() string {
 		return "unsupported validation opcode"
 	case ErrUnsupportedFeature:
 		return "unsupported feature"
+	case ErrResourceLimitExceeded:
+		return "resource limit exceeded"
 	default:
 		return fmt.Sprintf("validation error %d", int(c))
 	}

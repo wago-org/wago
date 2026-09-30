@@ -79,6 +79,9 @@ func NewJobMemory(linBytes int) (*JobMemory, error) {
 // exposes only initialBytes as in-bounds linear memory. memory.grow raises the
 // size cache up to maxBytes without any remap, so the base pointer never moves.
 func NewJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
+	if err := validateJobMemorySizes(initialBytes, maxBytes); err != nil {
+		return nil, err
+	}
 	initialBytes, maxBytes, reserveBytes := normalizeMemorySizes(initialBytes, maxBytes)
 	mem, err := mmapRWReserve(basedataSize + reserveBytes)
 	if err != nil {
@@ -86,7 +89,18 @@ func NewJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 	}
 	j := &JobMemory{mem: mem, linOff: basedataSize, linLen: reserveBytes}
 	j.reset(initialBytes, maxBytes, reserveBytes, false)
+	if err := j.registerInterruptLinearMemory(); err != nil {
+		_ = j.Close()
+		return nil, err
+	}
 	return j, nil
+}
+
+func validateJobMemorySizes(initialBytes, maxBytes int) error {
+	if initialBytes < 0 || maxBytes < 0 {
+		return fmt.Errorf("runtime: negative linear-memory size: initial %d maximum %d", initialBytes, maxBytes)
+	}
+	return nil
 }
 
 func normalizeMemorySizes(initialBytes, maxBytes int) (int, int, int) {
@@ -127,26 +141,31 @@ func (j *JobMemory) reset(initialBytes, maxBytes, reserveBytes int, clearMem boo
 
 // AcquireJobMemoryGrowable returns a non-guarded JobMemory, reusing one parked by
 // ReleaseJobMemory when the parked reservation is at least as large as this
-// module needs. ReleaseJobMemory zero-reclaims (madvise MADV_DONTNEED) everything
-// the previous instance could have dirtied, and every access is confined to
-// [0,curBytes) by bounds checks, so the whole reservation already reads back as
-// zero — reset only reinstalls the size caches, with no clear() proportional to
-// the (possibly multi-GiB) reservation. This lets even growable/exported-memory
-// modules, whose reservation is the full ~4 GiB logical max, reuse the mapping
-// instead of paying a fresh mmap+munmap of that range on every instantiate.
+// module needs. ReleaseJobMemory zero-reclaims everything the previous instance
+// could have dirtied, using page reclamation where supported and an explicit
+// clear fallback where necessary. Every access is confined to [0,curBytes) by
+// bounds checks, so reset only needs to reinstall the size caches. This lets even
+// growable/exported-memory modules, whose reservation is the full ~4 GiB logical
+// max, reuse the mapping instead of paying a fresh mmap+munmap of that range on
+// every instantiate.
 func AcquireJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
+	if err := validateJobMemorySizes(initialBytes, maxBytes); err != nil {
+		return nil, err
+	}
 	initialBytes, maxBytes, reserveBytes := normalizeMemorySizes(initialBytes, maxBytes)
 	need := basedataSize + reserveBytes
 	jobMemoryCache.Lock()
 	j := jobMemoryCache.j
 	if j != nil && j.reserveBase == 0 && len(j.mem) >= need {
 		jobMemoryCache.j = nil
+		changeInterruptLinearMemoryCache(-1)
 		jobMemoryCache.Unlock()
 		j.reset(initialBytes, maxBytes, reserveBytes, false)
 		return j, nil
 	}
 	if j != nil && len(j.mem) < need {
 		jobMemoryCache.j = nil
+		changeInterruptLinearMemoryCache(-1)
 		jobMemoryCache.Unlock()
 		_ = j.Close()
 		return NewJobMemoryGrowable(initialBytes, maxBytes)
@@ -158,9 +177,10 @@ func AcquireJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 // jobMemoryReclaimThreshold splits reclaimForReuse's two zeroing strategies. At
 // or below it, an in-place clear() is cheaper and keeps the pages committed, so
 // the next reuse skips minor page faults — this keeps small, frequently-cycled
-// modules (tiny/fib) near their ~0.7µs best. Above it, clearing a large (up to
-// ~4 GiB) region dominates, so MADV_DONTNEED wins by dropping the pages instead.
-// The crossover (clear cost ≈ madvise+refault cost) measures near ~384 KiB.
+// modules (tiny/fib) near their ~0.7µs best. Above it, madviseDontNeed asks the
+// platform to zero-reclaim the pages. Platforms that cannot guarantee zeroed
+// pages may explicitly clear instead, retaining their backing memory. The
+// crossover (clear cost ≈ madvise+refault cost) measures near ~384 KiB.
 const jobMemoryReclaimThreshold = 384 << 10
 
 // reclaimForReuse returns this non-guarded reservation to a zeroed state so it
@@ -168,8 +188,9 @@ const jobMemoryReclaimThreshold = 384 << 10
 // needs to reclaim what the instance could have dirtied — basedata plus linear
 // memory up to its current logical size — because memory.grow just raises the
 // size cache and bounds checks confine every access to [0,curBytes). Small
-// regions are cleared in place (pages stay committed); large regions are dropped
-// with MADV_DONTNEED (mirrors the guard-page path's decommitGuarded, minus the
+// regions are cleared in place (pages stay committed); large regions use the
+// platform's zero-reclamation operation or its correctness-preserving explicit
+// clear fallback (mirrors the guard-page path's decommitGuarded, minus the
 // PROT_NONE re-arm — explicit bounds never fault, so the mapping stays RW).
 func (j *JobMemory) reclaimForReuse() error {
 	used := roundUpPage(basedataSize + j.curBytes())
@@ -193,7 +214,7 @@ func (j *JobMemory) CurrentPages() uint32 { return j.getU32(offLinMemWasmSize) }
 func (j *JobMemory) MaxPages() uint32     { return j.getU32(offMaxLinMemPages) }
 
 // CurrentBytes returns the host-facing view of linear memory at its current
-// (possibly grown) logical size — what Memory.Bytes exposes.
+// (possibly grown) logical size — what Memory.UnsafeBytes exposes.
 func (j *JobMemory) CurrentBytes() []byte {
 	n := j.curBytes()
 	return j.mem[j.linOff : j.linOff+n : j.linOff+n]
@@ -242,13 +263,14 @@ func (j *JobMemory) LinMemBase() uintptr {
 // guard ([linMem - 72]).
 func (j *JobMemory) SetStackFence(v uintptr) { j.putU64(offStackFence, uint64(v)) }
 
-// BindTrapCell installs the stable trap-cell pointer used by native trap stubs
-// and establishes the zero-on-entry invariant required by Engine.CallPrepared.
-// The caller must keep trap alive and at a stable address for the JobMemory's
-// native calls (Arena-backed instance buffers satisfy this).
+// BindTrapCell installs the stable trap-buffer pointer used by native trap
+// stubs and establishes the zero-on-entry invariant required by
+// Engine.CallPrepared. Native trap stubs write through byte 23, so the caller
+// must provide TrapBufferBytes stable off-heap bytes for all native calls
+// (Arena-backed instance buffers satisfy this).
 func (j *JobMemory) BindTrapCell(trap []byte) error {
-	if len(trap) < 4 {
-		return fmt.Errorf("trap cell requires at least 4 bytes")
+	if err := validateTrapBuffer(trap); err != nil {
+		return err
 	}
 	binary.LittleEndian.PutUint32(trap, 0)
 	j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
@@ -259,8 +281,8 @@ func (j *JobMemory) BindTrapCell(trap []byte) error {
 // nested entry changed basedata. Unlike BindTrapCell, it preserves a concurrent
 // interruption while clearing stale host-pending or ordinary trap state.
 func (j *JobMemory) RebindTrapCell(trap []byte) error {
-	if len(trap) < 4 {
-		return fmt.Errorf("trap cell requires at least 4 bytes")
+	if err := validateTrapBuffer(trap); err != nil {
+		return err
 	}
 	clearTrapUnlessInterrupted(trap)
 	j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
@@ -271,7 +293,7 @@ func (j *JobMemory) RebindTrapCell(trap []byte) error {
 // Cross-instance entry replaces the pointer (and the fence alongside it), so
 // this one-word identity check is sufficient for the prepared-call fast path.
 func (j *JobMemory) HasTrapCell(trap []byte) bool {
-	return len(trap) >= 4 && j.getU64(abi.TrapCellPtrOffset) == uint64(slicePtr(trap))
+	return len(trap) >= TrapBufferBytes && j.getU64(abi.TrapCellPtrOffset) == uint64(slicePtr(trap))
 }
 
 // InstanceContext is the per-instance subset of basedata. It deliberately
@@ -457,7 +479,20 @@ var guardOwnerHook func(reserveBase, ownerLinMem uintptr)
 // configurations, where Close is the correct fallback).
 var guardReleaseHook func(j *JobMemory) bool
 
+var interruptLinearMemoryRegister func(uintptr) error
+var interruptLinearMemoryUnregister func(uintptr)
+
+func (j *JobMemory) registerInterruptLinearMemory() error {
+	if interruptLinearMemoryRegister == nil {
+		return nil
+	}
+	return interruptLinearMemoryRegister(j.LinMemBase())
+}
+
 func (j *JobMemory) Close() error {
+	if interruptLinearMemoryUnregister != nil {
+		interruptLinearMemoryUnregister(j.LinMemBase())
+	}
 	if j.reserveBase != 0 { // guard-page reservation
 		if guardCloseHook != nil {
 			guardCloseHook(j.reserveBase)
@@ -482,16 +517,18 @@ func ReleaseJobMemory(j *JobMemory) error {
 		}
 		return j.Close()
 	}
-	// Zero-reclaim the region this instance could have dirtied so the reservation
-	// can be reused without a full clear(), then park it in the one-slot cache.
-	// Any size fits the slot now (the reservation costs address space, not RAM,
-	// once decommitted), so growable modules stop churning fresh mmaps.
+	// Restore the zero-on-reuse contract for the region this instance could have
+	// dirtied, then park the reservation in the one-slot cache.
+	// Any size fits the slot now. A successfully decommitted reservation costs
+	// address space rather than RAM; platform clear fallbacks can retain resident
+	// pages, but still preserve correctness while avoiding fresh mmap churn.
 	if err := j.reclaimForReuse(); err != nil {
 		return j.Close()
 	}
 	jobMemoryCache.Lock()
 	if jobMemoryCache.j == nil {
 		jobMemoryCache.j = j
+		changeInterruptLinearMemoryCache(1)
 		jobMemoryCache.Unlock()
 		return nil
 	}

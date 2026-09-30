@@ -12,8 +12,133 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/src/core/runtime/arm64spike"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestCollectInlinedCalleesDeduplicatesPastStackSetArm64(t *testing.T) {
+	const targetsN = inlineLinearSeenTargets + 1
+	data := &inlineTargetData{slots: make([]uint32, targetsN), targets: make([]inlineTarget, targetsN)}
+	body := make([]byte, 0, 2*(targetsN+1)+1)
+	for i := range targetsN {
+		data.slots[i] = uint32(i + 1)
+		data.targets[i].globalIdx = i
+		body = append(body, 0x10, byte(i))
+	}
+	body = append(body, 0x10, 0, 0x0b)
+	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
+	got := collectInlinedCallees(&wasm.Func{BodyBytes: body}, targets)
+	if len(got) != targetsN {
+		t.Fatalf("distinct inline targets = %d, want %d", len(got), targetsN)
+	}
+	for i, target := range got {
+		if target.globalIdx != i {
+			t.Fatalf("inline target %d = %d, want %d", i, target.globalIdx, i)
+		}
+	}
+}
+
+func TestCollectInlinedCalleesFastImmediateDecodeArm64(t *testing.T) {
+	data := &inlineTargetData{slots: []uint32{1, 2}, targets: make([]inlineTarget, 2)}
+	data.targets[0].globalIdx = 0
+	data.targets[1].globalIdx = 1
+	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
+	body := []byte{
+		0x00,       // unreachable (immediate-free; stands in for the local decl byte)
+		0x20, 0x00, // local.get 0
+		0x41, 0x7f, // i32.const -1
+		0x10, 0x01, // call 1
+		0x44, 0, 0, 0, 0, 0, 0, 0, 0, // f64.const 0
+		0x23, 0x00, // global.get 0
+		0x10, 0x00, // call 0
+		0x28, 0x00, 0x00, // i32.load align=0 offset=0 (classifier fallback)
+		0x10, 0x01, // duplicate call 1
+		0x0b,
+	}
+	got := collectInlinedCallees(&wasm.Func{BodyBytes: body}, targets)
+	if len(got) != 2 || got[0].globalIdx != 1 || got[1].globalIdx != 0 {
+		t.Fatalf("inline targets = %#v, want [1 0] in first-call order", got)
+	}
+}
+
+func TestAllCallsWillInlineDeepControlArm64(t *testing.T) {
+	data := &inlineTargetData{slots: []uint32{1}, targets: []inlineTarget{{globalIdx: 0}}}
+	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
+	policy := currentCodegenPolicy()
+
+	// Exercise the allocation-free 64-frame bit stack and its bounded deep fallback.
+	body := []byte{0x00}
+	for range 65 {
+		body = append(body, 0x02, 0x40) // block void
+	}
+	body = append(body, 0x10, 0x00) // call 0
+	for range 66 {                  // close 65 blocks and the function
+		body = append(body, 0x0b)
+	}
+	if !allCallsWillInline(&wasm.Func{BodyBytes: body}, targets, policy) {
+		t.Fatal("deep block-nested direct call was not recognized as fully inlineable")
+	}
+
+	// A loop in the deep fallback must still activate the loop regression guard.
+	body = []byte{0x00}
+	for range 64 {
+		body = append(body, 0x02, 0x40)
+	}
+	body = append(body, 0x03, 0x40, 0x10, 0x00) // loop void; call 0
+	for range 66 {
+		body = append(body, 0x0b)
+	}
+	if allCallsWillInline(&wasm.Func{BodyBytes: body}, targets, policy) {
+		t.Fatal("regressive call in a deeply nested loop was classified as fully inlineable")
+	}
+}
+
+func TestInlineBasePoolRetentionIsBoundedArm64(t *testing.T) {
+	targetsData := &inlineTargetData{targets: make([]inlineTarget, maxRetainedInlineBases+1)}
+	callees := make([]*inlineTarget, len(targetsData.targets))
+	for i := range targetsData.targets {
+		targetsData.targets[i].globalIdx = i
+		callees[i] = &targetsData.targets[i]
+	}
+	targets := inlineTargetTable{data: targetsData}
+	var f fn
+	f.reserveInlineLocals(callees[:1], targets)
+	if allocs := testing.AllocsPerRun(100, func() {
+		f.reserveInlineLocals(callees[:1], targets)
+	}); allocs != 0 {
+		t.Fatalf("reused inline base allocations = %.0f, want 0", allocs)
+	}
+	f.reserveInlineLocals(callees, targets)
+	if got := len(f.inlineBase); got != len(callees) {
+		t.Fatalf("ephemeral inline bases = %d, want %d", got, len(callees))
+	}
+	if got := len(f.inlineBasePool); got != 1 {
+		t.Fatalf("retained inline bases after oversized plan = %d, want 1", got)
+	}
+}
+
+func TestInlineTargetSizeArm64(t *testing.T) {
+	if got, want := unsafe.Sizeof(inlineTarget{}), uintptr(64); got != want {
+		t.Fatalf("inlineTarget size = %d, want %d", got, want)
+	}
+}
+
+func TestInlineTargetPlanWithoutCandidatesDoesNotAllocateArm64(t *testing.T) {
+	m := modFuncs(t,
+		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
+		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
+	)
+	hints := []funcHints{{flags: hintHasCall}, {flags: hintHasCall}}
+	policy := currentCodegenPolicy()
+	var targets inlineTargetTable
+	if allocs := testing.AllocsPerRun(100, func() {
+		targets = buildInlineTargets(m, hints, policy)
+	}); allocs != 0 {
+		t.Fatalf("candidate-free inline plan allocations = %.0f, want 0", allocs)
+	}
+	if !targets.empty() {
+		t.Fatal("candidate-free inline plan is not empty")
+	}
+}
 
 func TestAnalyzeInlineCandidatesMixedMemory64MemargArm64(t *testing.T) {
 	body := []byte{
@@ -38,6 +163,7 @@ func TestAnalyzeInlineCandidatesMixedMemory64MemargArm64(t *testing.T) {
 }
 
 func TestInlineLeafExecAndStatsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	caller := []byte{
 		0x00,
 		0x41, 0x01, 0x41, 0x02, 0x10, 0x01,
@@ -62,6 +188,12 @@ func TestInlineLeafExecAndStatsArm64(t *testing.T) {
 	inlineEnabled = true
 	var ms ModuleStats
 	if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
+		t.Fatalf("stats-only compile: %v", err)
+	}
+	if ms.Inline != nil {
+		t.Fatalf("stats-only inline report = %#v, want nil", ms.Inline)
+	}
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms, CollectInlineReport: true}); err != nil {
 		t.Fatalf("compile: %v", err)
 	}
 	if ms.Inline == nil || ms.Inline.NumCandidates != 1 {
@@ -84,7 +216,7 @@ func TestInlineBrOnNullRespectsCalleeBoundaryArm64(t *testing.T) {
 		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x00, 0x10, 0x01, 0x1a, 0x41, 0x01, 0x0b}},
 		funcDef{body: []byte{0x00, 0xd0, 0x70, 0xd5, 0x00, 0x1a, 0x0b}},
 	)
-	hints, _, err := computeModuleHints(m, 0, 0)
+	hints, _, _, err := computeModuleHints(m, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +235,7 @@ func TestInlineTargetsRejectEHArm64(t *testing.T) {
 		funcDef{body: []byte{0x00, 0x0b}},
 	)
 	policy := shared.DefaultCodegenPolicy(currentCodegenPolicy().Selection)
-	hints := []funcHints{{hasCall: true}, {moduleEH: true, inlineCallSites: 1}}
+	hints := []funcHints{{flags: hintHasCall}, {flags: hintModuleEH, inlineCallSites: 1}}
 	if target := buildInlineTargets(m, hints, policy).target(1); target != nil {
 		t.Fatal("ordinary policy admitted EH inline target")
 	}
@@ -125,7 +257,48 @@ func TestInlineRejectsRecursiveArm64(t *testing.T) {
 	}
 }
 
+func TestInlineExecOneLevelRecursiveArm64(t *testing.T) {
+	savedInline, savedRecursive := inlineEnabled, recursiveInlineEnabled
+	inlineEnabled, recursiveInlineEnabled = true, true
+	t.Cleanup(func() { inlineEnabled, recursiveInlineEnabled = savedInline, savedRecursive })
+
+	// fib(n) = n < 2 ? n : fib(n-1) + fib(n-2).
+	body := []byte{0x00, 0x20, 0x00, 0x41, 0x02, 0x48, 0x04, 0x7e,
+		0x20, 0x00, 0xac, 0x05,
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x10, 0x00,
+		0x20, 0x00, 0x41, 0x02, 0x6b, 0x10, 0x00, 0x7c, 0x0b, 0x0b}
+	m := modFuncs(t, funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I64}, body: body})
+	if got := runArm64Internal2(t, m, 10, 0); got != 55 {
+		t.Fatalf("fib(10) = %d, want 55", got)
+	}
+	s := compileWithStats(t, m, false).Funcs[0]
+	if s.Calls["inline"] != 2 || s.Calls["regabi"] != 4 {
+		t.Fatalf("recursive call lowering = %v, want inline=2 regabi=4", s.Calls)
+	}
+	rep, err := AnalyzeInlineCandidates(m)
+	if err != nil || rep.NumCandidates != 1 || !rep.Funcs[0].Candidate {
+		t.Fatalf("recursive inline report = %#v, err=%v", rep, err)
+	}
+}
+
+func TestInlineBodyLimitArm64(t *testing.T) {
+	saved := inlineMaxBytes
+	inlineMaxBytes = inlineMaxBodyBytes
+	t.Cleanup(func() { inlineMaxBytes = saved })
+
+	policy := currentCodegenPolicy()
+	facts := inlineFacts{bodyBytes: inlineMaxBodyBytes, regABIIntOnly: true}
+	if !inlineOK(facts, policy) {
+		t.Fatalf("%d-byte leaf rejected at the inline limit", inlineMaxBodyBytes)
+	}
+	facts.bodyBytes++
+	if inlineOK(facts, policy) {
+		t.Fatalf("%d-byte leaf accepted above the inline limit", facts.bodyBytes)
+	}
+}
+
 func TestCompactInlineRequiresNativeByteProofArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	caller := []byte{0x00, 0x41, 0x05, 0x41, 0x07, 0x10, 0x01, 0x0b}
 	leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}
 	m := modFuncs(t,
@@ -154,9 +327,9 @@ func TestCompactInlinePrunesTransitiveOmissionArm64(t *testing.T) {
 	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
 	policy.MaxCompactInlineBodyBytes = 12
 	hints := []funcHints{
-		{hasCall: true},
-		{nLocals: 1, hasCall: true, inlineCallSites: 1, directCallRefs: 1},
-		{nLocals: 1, inlineCallSites: 1, directCallRefs: 1},
+		{flags: hintHasCall},
+		{localCount: 1, flags: hintHasCall, inlineCallSites: 1, directCallRefs: 1},
+		{localCount: 1, inlineCallSites: 1, directCallRefs: 1},
 	}
 	targets := buildInlineTargets(m, hints, policy)
 	if targets.target(1) != nil {
@@ -165,9 +338,16 @@ func TestCompactInlinePrunesTransitiveOmissionArm64(t *testing.T) {
 	if targets.target(2) == nil || !targets.omitStandaloneBody(2, false) {
 		t.Fatal("leaf child was not retained as an omittable inline target")
 	}
+	if got, want := len(targets.data.targets), 1; got != want {
+		t.Fatalf("retained inline target records = %d, want %d", got, want)
+	}
+	if got, want := len(targets.data.slots), len(m.Code); got != want {
+		t.Fatalf("inline target slots = %d, want %d", got, want)
+	}
 }
 
 func TestCompactInlineRetainsNestedCallPlanningArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modFuncs(t,
 		// Keep arg 0 live while the single-use helper returns its result.
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x05, 0x10, 0x01, 0x6a, 0x0b}},
@@ -190,6 +370,7 @@ func TestCompactInlineRetainsNestedCallPlanningArm64(t *testing.T) {
 }
 
 func TestCompactInlineAdmitsTinySingleUseLeafArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	caller := []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}
 	leaf := []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}
 	m := modFuncs(t,
@@ -260,10 +441,12 @@ func TestCompactInlineAdmitsTinySingleUseLeafArm64(t *testing.T) {
 }
 
 func TestFinalizeOmittedInlineEntriesRejectsResidualCallArm64(t *testing.T) {
-	targets := inlineTargetTable{targets: []inlineTarget{{}, {valid: true, omitStandalone: true}}}
+	targets := inlineTargetTable{data: &inlineTargetData{
+		slots: []uint32{0, 1}, targets: []inlineTarget{{globalIdx: 1, omitStandalone: true}},
+	}}
 	err := finalizeOmittedInlineEntries(
 		[]int{0, 12}, []int{4, 12},
-		[][]callReloc{{{target: 1, internal: true}}, nil},
+		testCallRelocTable(t, []callReloc{{target: 1, internal: true}}, nil),
 		[]bool{true, false}, targets,
 	)
 	if err == nil {
@@ -277,7 +460,7 @@ func TestInlineDeadBodyProofRejectsTailAndLoopReferencesArm64(t *testing.T) {
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 	)
 	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
-	base := []funcHints{{hasCall: true}, {nLocals: 1, inlineCallSites: 1, directCallRefs: 1}}
+	base := []funcHints{{flags: hintHasCall}, {localCount: 1, inlineCallSites: 1, directCallRefs: 1}}
 	if targets := buildInlineTargets(m, base, policy); !targets.omitStandaloneBody(1, false) {
 		t.Fatal("single ordinary non-loop call did not prove standalone body dead")
 	}
@@ -287,13 +470,14 @@ func TestInlineDeadBodyProofRejectsTailAndLoopReferencesArm64(t *testing.T) {
 		t.Fatal("tail-call reference permitted standalone body omission")
 	}
 	loop := slices.Clone(base)
-	loop[1].hasInlineLoopCall = true
+	loop[1].flags.set(hintHasInlineLoopCall)
 	if targets := buildInlineTargets(m, loop, policy); targets.omitStandaloneBody(1, false) {
 		t.Fatal("ARM64 loop-site exclusion permitted standalone body omission")
 	}
 }
 
 func TestInlineDeadBodyRetainsTailReferencedCalleeArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modFuncs(t,
 		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
@@ -313,6 +497,7 @@ func TestInlineDeadBodyRetainsTailReferencedCalleeArm64(t *testing.T) {
 }
 
 func TestInlineDeadBodyRetainsArm64LoopSiteCallee(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	caller := []byte{
 		0x00,
 		0x02, 0x40, // block

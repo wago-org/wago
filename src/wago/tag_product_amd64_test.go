@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func stagedTagImportEntry(module, name string, typeIndex uint32) []byte {
@@ -255,7 +255,7 @@ func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
 		t.Fatalf("unmarshal imported tag product: %v", err)
 	}
 	defer loadedConsumer.Close()
-	loadedConsumerInstance, err := instantiateCore(&loadedConsumer, InstantiateOptions{Imports: Imports{"env.first": primary, "env.second": primary}})
+	loadedConsumerInstance, err := instantiateCore(&loadedConsumer, InstantiateOptions{Imports: testImports("env.first", primary, "env.second", primary)})
 	if err != nil {
 		t.Fatalf("instantiate reloaded imported tags: %v", err)
 	}
@@ -268,13 +268,16 @@ func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
 	}
 	rt := NewRuntime()
 	defer rt.Close()
-	rt.imports = Imports{"env.first": primary, "env.second": primary}
-	consumerModule := rt.buildModule(consumerCompiled)
+	rt.imports = testImports("env.first", primary, "env.second", primary).bindings
+	consumerModule, err := rt.buildModule(consumerCompiled)
+	if err != nil {
+		t.Fatal(err)
+	}
 	imports := consumerModule.Imports()
 	if len(imports) != 2 || imports[0].Kind != ImportTag || imports[0].Index != 0 || imports[1].Index != 1 || !reflect.DeepEqual(imports[0].Params, []ValType{ValI32, ValF64}) {
 		t.Fatalf("tag import inspection = %#v", imports)
 	}
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.first": primary, "env.second": primary}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.first", primary, "env.second", primary)})
 	if err != nil {
 		t.Fatalf("instantiate tag consumer: %v", err)
 	}
@@ -325,7 +328,7 @@ func TestStagedTagProductRollbackAndImportedThrowCompile(t *testing.T) {
 
 	mismatch := compileStagedExceptionHandling(t, stagedTagProductConsumerModule(0, 1))
 	defer mismatch.Close()
-	if in, err := instantiateCore(mismatch, InstantiateOptions{Imports: Imports{"env.first": primary, "env.second": primary}}); err == nil {
+	if in, err := instantiateCore(mismatch, InstantiateOptions{Imports: testImports("env.first", primary, "env.second", primary)}); err == nil {
 		_ = in.Close()
 		t.Fatal("mismatched tag import instantiated")
 	} else if !strings.Contains(err.Error(), "tag type") {
@@ -376,11 +379,7 @@ func TestStagedCrossInstanceExceptionHandlerTransfer(t *testing.T) {
 	consumerCompiled := compileStagedExceptionHandling(t, stagedCrossInstanceEHConsumerModule())
 	defer consumerCompiled.Close()
 	newConsumer := func() *Instance {
-		in, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-			"env.tag":       tag,
-			"env.tag-alias": tag,
-			"env.throw":     thrower,
-		}})
+		in, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.tag", tag, "env.tag-alias", tag, "env.throw", thrower)})
 		if err != nil {
 			t.Fatalf("instantiate EH consumer: %v", err)
 		}

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func stagedGCRefCastBytes(t testing.TB, class stagedGCRefCastClass) []byte {
@@ -39,7 +39,7 @@ func stagedGCRefCastBytes(t testing.TB, class stagedGCRefCastClass) []byte {
 }
 
 func compileStagedGCRefCastProduct(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCStructProducts = true
@@ -63,7 +63,7 @@ func TestStagedGCRefCastProductBoundaryLifecycle(t *testing.T) {
 	abstract := stagedGCRefCastBytes(t, stagedGCRefCastAbstract)
 	concrete := stagedGCRefCastBytes(t, stagedGCRefCastConcrete)
 	for class, data := range map[stagedGCRefCastClass][]byte{stagedGCRefCastAbstract: abstract, stagedGCRefCastConcrete: concrete} {
-		if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+		if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 			t.Fatalf("public Compile admitted staged %s gc/ref_cast product", class)
 		}
 		guardCfg := NewRuntimeConfig()

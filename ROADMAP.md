@@ -1,26 +1,67 @@
-# wago roadmap
+# Wago roadmap
 
-wago is a pure-Go (no cgo) single-pass WebAssembly engine — a from-scratch port
-of [WARP](https://github.com/wago-org/warp)'s design. Linux, macOS, and Windows
-on amd64 and arm64 are supported. The amd64 backend uses a modern CPU baseline
-of SSSE3/SSE4.1/SSE4.2 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain
-outside the baseline and require explicit feature gates. This file tracks what
-works and what's next at a glance.
+AMD64 uses SSE2 as its architectural baseline. Newer CPU extensions are optional
+compile-time optimization tiers and are recorded in native artifact requirements
+when emitted. Scalar, core SIMD, and supported relaxed SIMD have baseline
+fallbacks. The `wago_amd64_sse2` build tag selects portable baseline code generation
+on modern hosts. TinyGo includes both baseline and modern lowering within its
+existing release-size budget.
 
-Four companion docs go deeper:
+Baseline and modern profiles pass the official core SIMD corpus (24,325
+assertions each) and the supported relaxed SIMD corpus (69 assertions each).
+The forced-baseline public API suite and instruction-decoder checks cover
+fallback execution and exclusion of optional instructions. Standard Go, TinyGo
+and guard-page tests pass. The exact release-size check passes all four profiles
+with the CI toolchain (Go 1.22.12 and TinyGo 0.41.1). Shared instruction selectors
+and encoders reduce the TinyGo profile from 2,372,584 to 2,351,760 bytes, leaving
+240 bytes under the unchanged 2,352,000-byte budget. Both CPU tiers remain enabled.
+
+Focused performance measurements on 2026-09-26 compared `1f137e8e6` with
+`aabccddf1` on a Ryzen 7 8845HS using Go 1.27.1. Eight 250 ms samples per workload,
+one Go worker, fixed CPU affinity and alternating profile order found no
+statistically significant modern-path change across 16 workloads. Geometric
+means of median ratios were +1.83% for compilation and −0.99% for execution;
+other programs remained active, so these are not improvement claims. Modern code
+sizes, checksums and compilation allocations matched main. All execution
+profiles measured zero allocations. Larger baseline SIMD sequences remain
+candidates for code-size and execution-time optimization.
+
+The size repair was also compared with PR head `15e7e116a` across the same 16
+workloads and both CPU tiers. Six 150 ms samples with alternating order and fixed
+CPU affinity found no statistically significant slowdowns. Modern compilation
+changed by −0.73% and execution by approximately 0.00%; baseline compilation
+changed by −0.68% and execution by −0.14% (geometric means of median ratios).
+Native code bytes, checksums, B/op and allocs/op were unchanged in both tiers.
+These small timing differences are not speedup claims.
+
+Wago is a pure-Go, no-cgo, single-pass WebAssembly engine. It is a from-scratch
+port of [WARP](https://github.com/wago-org/warp)'s design. Linux, macOS, and Windows
+on amd64 and arm64 are supported. The amd64 backend uses the architectural CPU baseline
+of SSE2, with optional SSSE3/SSE4.x and AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain
+outside the baseline and require explicit feature gates.
+
+## Start here
+
+This file tracks completed work, active work, and longer-term ideas. For users,
+[FEATURES.md](FEATURES.md) is the source of truth for support on a selected
+build. For maintainers, use [Current work](#current-work-near-term) to find the
+active tracks. The later iteration sections are historical completion records;
+they keep the evidence behind current feature status.
+
+## Related files
+
+These documents give more detail:
 - [FEATURES.md](FEATURES.md) — the per-feature support matrix (source of truth for
   spec-feature status).
 - [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — the optimization roadmap (what codegen work
   is landed / pending, and why).
-- [docs/no-ir-plan.md](docs/no-ir-plan.md) — the July 3, 2026 no-IR decision,
-  original P0–P8 plan, and its preserved design rationale. This roadmap is the
-  current source for priority and completion status.
-- [docs/wasm3.md](docs/wasm3.md) — the mandatory Core 3.0 implementation ledger,
-  official suite pin, measurements, platform gates, and recursive slices.
 
 Status: [x] done · 🚧 in progress · [ ] planned.
 
 ## Done
+
+This section is a summary of delivered capabilities. It is not a compatibility
+promise for every build; check [FEATURES.md](FEATURES.md) for exact support.
 
 **Full WebAssembly 1.0 (MVP).** The pinned pre-reference-types spec testsuite passes
 in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPECTEST.md)).
@@ -55,7 +96,9 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 
 **Runtime (`src/core/runtime`)**
 - [x] No-cgo execution: W^X `mmap`, foreign-stack trampoline, `g` preservation,
-  trap→error, zero-copy linear memory
+  trap→error, zero-copy linear memory. Native stack capacity is configurable from
+  512 KiB through 1 GiB while retaining the 4 MiB default, 256 KiB fence, exact
+  engine-cache matching, and equal-capacity synchronous host re-entry stacks.
 - [x] Cross-instance linking: function / global / table / memory imports & exports,
   including shared mutable tables + memories. Imported calls compile once and bind
   through per-instance dispatch cells with explicit direct/indirect context switching.
@@ -86,8 +129,9 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 **Arm64 acceptance (done)**
 - [x] Parent/child corpus runner with hard per-case deadlines and explicit/guard/wazero outcomes
 - [x] Darwin/arm64 guard-page execution via synchronous SIGSEGV/SIGBUS context rewriting (Mach-port receiver avoided)
-- [x] Guard-page execution on all six native targets, including Darwin/amd64
-  signal-context rewriting and Windows vectored exception handling
+- [x] Guard-page execution on Linux/amd64, Linux/arm64, and Darwin/arm64.
+  All six native targets support explicit bounds; Darwin/amd64 and Windows use
+  explicit bounds rather than signal-backed guard pages.
 - [x] Verify json-as serialize/deserialize in explicit and guard modes and SQLite's
   recursive-CTE aggregate workload against committed goldens on Darwin/arm64
 - [x] Reference globals, heterogeneous indexed table operations, and nonzero-table
@@ -96,12 +140,11 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
   exception handling, multi-memory, memory64, and table64, with a zero-gap complete
   official suite under Linux/arm64 QEMU and native Linux/Darwin arm64 CI gates
 
-## Next (near-term)
+## Current work (near-term)
 
-The no-IR decision and preserved phase designs are in
-**[docs/no-ir-plan.md](docs/no-ir-plan.md)**; this roadmap is authoritative for
-current optimization priorities. The Core 3.0 implementation ledger is
-**[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
+This roadmap is authoritative for current optimization priorities. The lists
+keep completed items for context; look for 🚧 and [ ] to find work that remains.
+Current tracks:
 
 **WebAssembly 3.0** (primary conformance complete; product hardening continues)
 - [x] Pin and execute the complete official `WebAssembly/spec` `wg-3.0` corpus.
@@ -111,14 +154,15 @@ current optimization priorities. The Core 3.0 implementation ledger is
 - [x] Complete mandatory extended constants, relaxed SIMD, tails, typed function
   references, GC, exception handling, multi-memory, memory64, and table64 on the
   primary product. Tail calls, typed function references, multi-memory, memory64,
-  and table64 now default on for complete backends; GC and exceptions remain
-  opt-in through the full Core 3 selection.
+  and table64 now default on for complete backends. WasmGC and exception handling
+  joined them when the complete Core 3 release became the default.
 - [x] Add exact linux/amd64 and Linux/Darwin arm64 WasmGC roots across local
   direct/indirect/reference calls, recursion, bounded host re-entry,
   mutable/shared GC globals, local/shared collector-reference tables, EH payload
   records, local starts, and same-Runtime cross-instance calls. One-/two-word and
-  bounded flat masks cover up to 1,024 roots; codec version 1 validates the native
-  maps and the required native-GC ABI version.
+  flat masks feed variable-size exact root vectors; locals dead at every collecting
+  site are compacted from the plan. Codec version 3
+  validates the native maps and the required native-GC ABI version.
 - [x] Add snapshot version 1 stable-ID heap graphs for objects reachable from owned
   local GC globals and one or more heterogeneous local collector-reference tables,
   preserving cycles, sharing, growth state, strict structural subtype validation,
@@ -160,10 +204,10 @@ current optimization priorities. The Core 3.0 implementation ledger is
   collector descriptors append safely under the domain lock, codec-loaded modules and
   checked host tokens use the same mapping, and incompatible layouts/configurations
   remain fail-closed.
-- [x] **Bounded host-held GC results:** generic struct/array results issue up to 64
-  opaque `GCRef` tokens per producer, atomically roll back partial multi-result egress,
-  reuse released checked slots, retain exact Runtime/store ownership after producer
-  close, and reject stale/cross-producer release.
+- [x] **Host-held GC results:** generic struct/array results use a 64-slot inline
+  fast path plus reusable dynamic overflow storage, atomically roll back partial
+  multi-result egress, retain exact Runtime/store ownership after producer close,
+  and reject stale/cross-producer release.
 - [x] **Host GC token ingress:** non-null `GCRef` arguments re-enter only the exact
   collector domain after structural subtype validation, use up to 64 reusable checked
   roots, survive concurrent release after staging, and reject stale/foreign tokens.
@@ -180,14 +224,17 @@ current optimization priorities. The Core 3.0 implementation ledger is
   explicit checks. Native Linux/ARM64 and Darwin/ARM64 `spec3-signals` are mandatory
   CI cells alongside their explicit-bounds cells.
 - [x] **Versioned native GC metadata and checked scalar hot paths:** collectors
-  publish one stable ABI version 1 view whose handle/heap pointers, lengths, and generation
-  refresh after every allocation and collection; each instance adds an immutable
-  local-to-domain type view at basedata offset 280. AMD64 final scalar struct/array
-  get/set lowering validates ABI version, handle kind/range, space range, object
-  extent, canonical type, and array index before direct access. Reference/v128,
-  non-final, bulk, and barrier-requiring operations remain helper-bound. Current
-  end-to-end set/get measurements are 228–230 ns for structs and 265–266 ns for
-  arrays, with 0 B/op and 0 allocs/op.
+  publish one stable ABI version 1 view whose handle/heap pointers, lengths,
+  subtype-interval pointer/count, and generation refresh after every relevant
+  mutation; each instance adds an immutable local-to-domain type view at basedata
+  offset 280. AMD64 scalar struct/array get/set lowering validates ABI version,
+  handle kind/range, space range, object extent, canonical type, and array index
+  before direct access. Non-final defined struct/array `ref.cast` and `ref.test`
+  now use canonical DFS interval containment after the same checked resolution,
+  while exact casts use canonical ID equality. Reference/v128 loads, bulk, and
+  barrier-requiring operations remain helper-bound. Focused non-final cast/test
+  loops measure 3.54–3.66 ns/op, 0 B/op, and 0 allocs/op, with zero synchronous
+  helper calls under the since-removed `wago_gcstats` diagnostics.
 - [x] **Bounded structured WasmGC facts (#314):** AMD64 carries compact
   nullability/heap/exact-type/identity/freshness/generation/pointer-free/array-length
   facts through Valent stack values and locals, intersects them at structured joins
@@ -242,9 +289,10 @@ current optimization priorities. The Core 3.0 implementation ledger is
   `WAGO_EXPLAIN`, golden-disassembly harness, `WAGO_DEBUG_MODGLOBALS`, and
   `WAGO_PIN_GLOBAL_K` are implemented on amd64 and arm64.
 <!-- roadmap:P2 status=partial -->
-- 🚧 **P2 — cheap railshot wins**: the const-fold pack and same-operand integer
-  identities are landed; alias-aware pending loads, pure-tree `drop`, and
-  narrow-load mask elision remain measurement-gated.
+- 🚧 **P2 — cheap railshot wins**: the const-fold pack, same-operand integer
+  identities, direct commutative self-updates, generalized low-32 i64 masks,
+  alias-aware pending loads, and pure-tree `drop` are landed. Broader narrow-load
+  mask elision remains measurement-gated.
 <!-- roadmap:P3 status=partial -->
 - 🚧 **P3 — `stFlags` and compare fusion**: eqz-of-compare inversion and ordered
   float compare-to-branch fusion are landed; broader flags-resident consumers
@@ -279,13 +327,14 @@ current optimization priorities. The Core 3.0 implementation ledger is
   zero interruption instrumentation in generated Wasm. Other targets retain
   function-entry and loop-header polls. Both Linux architectures return
   `context.Canceled`/`DeadlineExceeded`, and active-instance close uses the same
-  trap. See `docs/linux-host-interrupt.md`.
+  trap. Standard Go releases the P at the foreign boundary. TinyGo release
+  builds use the safe `tasks` scheduler and reject cancelable native calls.
 - [x] Wasm-level trap source frames: generated cold edges report the logical
   function (including inlined callees) and an exact Wasm PC when a function has
   one site for that trap class. Shared multi-site stubs still report the
   function without guessing a PC. Full caller-chain unwind metadata remains a
   follow-up.
-- [x] WebAssembly 2.0 product closeout: `.wago` codec version 1 persists structural
+- [x] WebAssembly 2.0 product closeout: `.wago` codec version 3 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table/memory-limit forms, indexed memory imports/exports, and required-feature
   bits without serializing live runtime identity.
@@ -306,20 +355,21 @@ current optimization priorities. The Core 3.0 implementation ledger is
   selects TinyGo for the final link and strips the resulting native binary.
   Platform-sensitive codegen keeps both link paths native-target-only.
 
-## Verification & quality
+## Verification and quality
 
 - [ ] Differential oracle: fuzz modules, compare results/traps against C++ WARP (the
   off-path `src/core/compiler/ir` package is reserved as this oracle)
 - [ ] Byte-for-byte codegen diffing against WARP for shared inputs
 - [ ] Golden disassembly regression net (grows one golden per optimization from P1 on)
 
-## Bigger bets
+## Larger feature areas
 
-- [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1/SSE4.2 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
-- [x] [Threads & atomics](docs/threads-atomics-plan.md) — bounded experimental
-  product on Linux/macOS amd64/arm64 with explicit bounds, one exact-max imported
-  shared memory32, true distinct-instance native overlap, the full classic atomic
-  matrix, and bounded wait/notify. Broader shared-everything threads, growth,
+- [x] SIMD (`v128`) — complete for the documented AMD64 SSE2 baseline with optional modern tiers: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates.
+- [x] **Threads & atomics** — bounded experimental
+  product on Linux/macOS amd64/arm64 with explicit bounds and one memory32;
+  shared memory must be an exact-max import, while unshared memory can be local
+  or imported. It includes true distinct-instance native overlap, the full classic
+  atomic matrix, and bounded wait/notify. Broader shared-everything threads, growth,
   memory64/multi-memory, signal bounds, mutable global imports, GC/EH, and
   snapshots remain deliberately outside this product. Same-instance entry is
   accepted but serialized around the instance's reusable invocation state.
@@ -328,7 +378,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
   host, cross-instance, indirect, typed-reference, trap, and validation paths.
   Broader platform and bounds-mode parity is tracked above.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
-  globals, active offsets, strict validation, and codec version 1 persistence.
+  globals, active offsets, strict validation, and codec version 3 persistence.
 - [x] Typed function references — recursive structural typing, typed tables,
   elements and globals, `call_ref`, casts/tests, null branches, linking, ownership,
   codec metadata, and official invalid/unlinkable behavior are complete for the
@@ -347,21 +397,22 @@ current optimization priorities. The Core 3.0 implementation ledger is
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple
-  local/imported tables, exact exports/re-exports, codec version 1 structural metadata,
+  local/imported tables, exact exports/re-exports, codec version 3 structural metadata,
   snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
 - [x] Native Linux, macOS, and Windows runtime paths on amd64 and arm64, with
   mandatory native CI and release assets for all six targets.
 - [ ] wazero-compatible API shim for drop-in migration
 
-## Non-goals (for now)
+## Non-goals for now
 
 - An interpreter tier (supported modules execute as native code)
-- **An SSA / IR execution tier** — decided against 2026-07-03; railshot is the one and
-  only backend, and the ceiling is attacked incrementally instead
-  (see [docs/no-ir-plan.md](docs/no-ir-plan.md) §0)
+- **An SSA / IR execution tier** — decided against 2026-07-03; Railshot is the
+  only backend, and the ceiling is attacked incrementally instead.
 - Re-implementing WARP's linker/disassembler/fuzzer (WARP remains the external
   reference)
+
+## Historical milestones
 
 ### Iteration 72 boundary
 
@@ -381,7 +432,9 @@ initializers, generic `array.new_data`/`array.new_elem`, imported/exported tags,
 `spectest.table64`, shared-memory co-tenant serialization, and reference
 argument/result ownership. A later default-policy pass promoted the lower-risk
 tail, typed-reference, and indexed/wide memory/table families on complete
-backends while retaining GC and exceptions as explicit Core 3 opt-ins.
+backends while retaining GC and exceptions as explicit Core 3 opt-ins. That
+staged policy was later superseded when the complete Core 3 release became the
+default on complete backends.
 
 ## Iteration 75 generated WasmGC smoke hardening
 
@@ -435,7 +488,7 @@ Direct numeric local calls record native return PCs, caller frame sizes, and the
 roots live at each callsite. The runtime walks cross-function and recursive
 frames from parked RSP until a validated adapter return, preserving caller
 objects while the deepest frame performs 1,000 allocations under Throughput and
-Tiny stress. Direct tail calls discard each caller frame and retain no callsite roots. Codec version 1
+Tiny stress. Direct tail calls discard each caller frame and retain no callsite roots. Codec version 3
 persists and strictly validates frame sizes, safepoint ordering, root alignment,
 callsite returns, and adapter termination. Forged metadata fails closed. Five
 500 ms samples measured 432.5-443.5 ns/op, 0 B/op, and 0 allocs/op. The expanded
@@ -448,7 +501,7 @@ Numeric host imports now record dynamic-wrapper stack adjustments and preserve
 up to eight suspended activations. Each nested callback borrows a separate
 foreign execution stack, while the outer control header and exact native roots
 remain parked. Boundary and allocating-helper collections scan every suspended
-activation. Codec version 1 persists and validates the new callsite shape. Throughput
+activation. Codec version 3 persists and validates the new callsite shape. Throughput
 forced-major and Tiny collect-every-allocation stress preserve an outer struct
 across 1,000 allocations in a re-entered function, including codec reload.
 
@@ -514,7 +567,7 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   composition allocation-free with reusable scratch, switch early Throughput
   growth to geometric capacity, and release the duplicate Go-heap JIT code copy
   after RX mapping.
-- [x] Add decision-grade opt-in GC telemetry behind `wago_gcstats`: bounded pause
+- [x] Historical GC telemetry experiment (since removed): bounded pause
   histograms, additive phase timing, exact trace/root/card/promotion/path counters,
   managed-memory domains, JSONL A/B reports, code-neutral JIT byte attribution,
   and hot-versus-sparse static-site benchmarks. Ordinary builds retain the
@@ -533,12 +586,19 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   into the stable native head slot; repeated non-head writes improve 16.9% in the
   interleaved control. The 256K two-write fixture falls from 262,144 to 64 scanned
   slots while dense work remains within 3% of baseline.
-- [x] Generalize exact native-root admission: retain the one-word <=64-root path,
-  add two-word <=128-root masks and a bounded flat arena through 1,024 roots,
-  admit exact local starts, omit independently proven non-collecting functions,
-  share repeated immutable offset maps, and expose fail-closed diagnostics. The
-  one-root 16K-instruction compile benchmark improves 3.2% while temporary bytes
-  fall 18.6%; dense safepoint lookup remains about 1.66 ns, zero allocation.
+- [x] Historical wide-root phase: retain the one-word <=64-root path, add
+  two-word <=128-root masks and a bounded flat arena through 1,024 roots, admit
+  exact local starts, omit independently proven non-collecting functions, share
+  repeated immutable offset maps, and expose fail-closed diagnostics. This was
+  not a permanent semantic ceiling; the following per-site-liveness work removes
+  it. The one-root 16K-instruction compile benchmark improves 3.2% while
+  temporary bytes fall 18.6%; dense safepoint lookup remains about 1.66 ns, zero
+  allocation.
+- [x] Base large-frame admission on per-site liveness: track the configured local
+  population, compact locals dead at every collection point, and emit variable-size
+  exact root vectors. Function parameters plus declared locals default to 65,535;
+  lower configured admission limits remain available, and the native 256 KiB stack
+  fence remains independent.
 - [x] Add bounded Throughput survivor aging: Eden feeds two bump-copy semispaces,
   handle-owned age bits retain the 20-byte native entry, medium-lived objects
   tenure after measured survival, and large young objects age in place. Exact
@@ -559,6 +619,7 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   globals after successful helper-free invocation sequences.
 - [x] Keep default and guard-tag runtime/Wago suites green, including explicit-
   bounds snapshot fixtures and cross-architecture compile gates.
-
-Measured details and regression coverage are in
-[`docs/wasm3-hardening-2026-08.md`](docs/wasm3-hardening-2026-08.md).
+- [x] Admit large GC struct helpers through a module-derived synchronous host
+  frame extension: 404-slot reference constructors retain exact initializer
+  roots, AMD64/ARM64 share the u16 check, codec reload recomputes capacity, and
+  ordinary modules retain the 64-slot inline frame and unchanged `Compiled` size.

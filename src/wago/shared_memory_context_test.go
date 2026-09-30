@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func sharedMemoryPrivateGlobalModule(initial byte) []byte {
@@ -71,16 +71,13 @@ func TestSharedMemoryHostReentryRestoresParkedContext(t *testing.T) {
 	defer compiled.Close()
 
 	var in *Instance
-	in, err = Instantiate(compiled, Imports{
-		"env.memory": memory,
-		"env.reenter": HostFunc(func(mod HostModule, params, results []uint64) {
-			nested, nestedErr := in.InvokeFromHost(context.Background(), mod, "inner", params[0])
-			if nestedErr != nil {
-				panic(nestedErr)
-			}
-			results[0] = nested[0]
-		}),
-	})
+	in, err = Instantiate(compiled, testImports("env.memory", memory, "env.reenter", slotHostFunc(func(mod HostModule, params, results []uint64) {
+		nested, nestedErr := in.InvokeFromHost(context.Background(), mod, "inner", params[0])
+		if nestedErr != nil {
+			panic(nestedErr)
+		}
+		results[0] = nested[0]
+	})))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +118,7 @@ func TestSharedMemoryRebindsPrivateInstanceContext(t *testing.T) {
 		return compiled
 	}
 	instantiate := func(compiled *Compiled) *Instance {
-		instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+		instance, err := Instantiate(compiled, testImports("env.memory", memory))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"unsafe"
 
-	corergc "github.com/wago-org/wago/src/core/runtime/gc"
+	corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func stagedGCArrayBulkLeaderBytes(t testing.TB, base string) []byte {

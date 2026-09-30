@@ -5,15 +5,14 @@ package arm64
 import (
 	"fmt"
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestModuleScratchUsesBoundedStackArenaHintArm64(t *testing.T) {
 	m := mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{0x00, 0x41, 0x2a, 0x0b})
-	hints, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
+	hints, _, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
 	if err != nil {
 		t.Fatalf("compute hints: %v", err)
 	}
@@ -28,20 +27,171 @@ func TestModuleScratchUsesBoundedStackArenaHintArm64(t *testing.T) {
 		t.Fatalf("scratch first chunk cap = %d, want %d", got, wantCap)
 	}
 
-	// elem is the unit actually reserved by newStackWithCap. Pin the static
-	// allocation reduction rather than a runtime.MemStats sample, which would be
-	// vulnerable to unrelated test-process allocation noise.
-	savedBytes := uintptr(defaultStackArenaCap-gotCap) * unsafe.Sizeof(elem{})
-	if minimum := uintptr(24 << 10); savedBytes < minimum {
-		t.Fatalf("initial arena saving = %d bytes, want at least %d", savedBytes, minimum)
+}
+
+func TestModuleControlFrameCapIsExactAndLazyArm64(t *testing.T) {
+	m := &wasm.Module{Code: make([]wasm.Func, 2)}
+	if got := moduleControlFrameCap(m, []funcHints{{}, {}}); got != 0 {
+		t.Fatalf("straight-line control cap = %d, want lazy zero", got)
+	}
+	if got := moduleControlFrameCap(m, []funcHints{{maxControlDepth: 2}, {maxControlDepth: 4}}); got != 5 {
+		t.Fatalf("nested control cap = %d, want 5", got)
 	}
 }
 
-func TestModuleStackArenaCapDoesNotGrowPastLegacyDefaultArm64(t *testing.T) {
+func TestModuleControlFrameCapFallsBackConservativelyArm64(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{}}}
+	if got := moduleControlFrameCap(m, nil); got != 0 {
+		t.Fatalf("incomplete hints cap = %d, want zero fallback", got)
+	}
+	if got := moduleControlFrameCap(m, []funcHints{{maxControlDepth: maxHintedControlFrames}}); got != 0 {
+		t.Fatalf("deep control cap = %d, want zero fallback", got)
+	}
+}
+
+func TestWorkerControlFrameCapBoundsModuleOutlierArm64(t *testing.T) {
+	m := &wasm.Module{Code: make([]wasm.Func, 3)}
+	if got := workerControlFrameCap(m, []funcHints{{maxControlDepth: 2}, {maxControlDepth: 3}, {maxControlDepth: 40}}); got != maxWorkerInitialControlFrames {
+		t.Fatalf("worker control cap = %d, want %d", got, maxWorkerInitialControlFrames)
+	}
+	if got := workerControlFrameCap(m, []funcHints{{maxControlDepth: 2}, {maxControlDepth: 3}, {maxControlDepth: 4}}); got != 5 {
+		t.Fatalf("ordinary worker control cap = %d, want 5", got)
+	}
+}
+
+func TestModuleStackArenaCapFallsBackForMultiValueTypesArm64(t *testing.T) {
+	m := &wasm.Module{
+		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32, wasm.I64}}}}}},
+		Code:  []wasm.Func{{BodyBytes: []byte{0x0b}}},
+	}
+	if got := moduleStackArenaCap(m, []funcHints{{}}); got != defaultStackArenaCap {
+		t.Fatalf("multi-value stack arena cap = %d, want %d", got, defaultStackArenaCap)
+	}
+}
+
+func TestModuleStackArenaCapUsesCheapBodyBoundArm64(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 64)}}}
+	hints := []funcHints{{localCount: 12}}
+	want := stackArenaCapForBody(64, 12)
+	if got := moduleStackArenaCap(m, hints); got != want {
+		t.Fatalf("medium-function cap = %d, want body bound %d", got, want)
+	}
+}
+
+func TestModuleStackArenaCapFallsBackWhenBodyBoundReachesDefaultArm64(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, defaultStackArenaCap*2)}}}
+	if got := moduleStackArenaCap(m, []funcHints{{}}); got != defaultStackArenaCap {
+		t.Fatalf("large-function cap = %d, want default %d", got, defaultStackArenaCap)
+	}
+}
+
+func TestWorkerStackArenaCapDoesNotMultiplyLargeBodyArm64(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 4096)}}}
-	hints := []funcHints{{stackArenaNodes: 4096}}
-	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
-		t.Fatalf("large-module initial cap = %d, want legacy cap %d", got, defaultStackArenaCap)
+	hints := []funcHints{{}}
+	if got := workerStackArenaCap(m, hints, inlineTargetTable{}, false); got != defaultStackArenaCap {
+		t.Fatalf("worker stack arena cap = %d, want %d", got, defaultStackArenaCap)
+	}
+}
+
+func TestInlineTargetsKeepLegacyStackArenaCapArm64(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: []byte{0x0b}}}}
+	hints := []funcHints{{}}
+	targets := inlineTargetTable{data: &inlineTargetData{slots: []uint32{1}, targets: []inlineTarget{{}}}}
+	if got := serialStackArenaCap(m, hints, targets, false); got != defaultStackArenaCap {
+		t.Fatalf("serial inline stack arena cap = %d, want %d", got, defaultStackArenaCap)
+	}
+	if got := workerStackArenaCap(m, hints, targets, false); got != defaultStackArenaCap {
+		t.Fatalf("worker inline stack arena cap = %d, want %d", got, defaultStackArenaCap)
+	}
+}
+
+func TestGCTypeSubtypingUsesExpandedStackLoweringArm64(t *testing.T) {
+	if expandedStackLowering(CompileOptions{}) {
+		t.Fatal("empty options reported expanded stack lowering")
+	}
+	if !expandedStackLowering(CompileOptions{GCTypeSubtypingRefTest: true}) {
+		t.Fatal("GC subtype helper did not report expanded stack lowering")
+	}
+}
+
+func TestExpandedLoweringKeepsLegacyStackArenaCapArm64(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 512)}}}
+	hints := []funcHints{{}}
+	if got := serialStackArenaCap(m, hints, inlineTargetTable{}, true); got != defaultStackArenaCap {
+		t.Fatalf("serial expanded-lowering stack arena cap = %d, want %d", got, defaultStackArenaCap)
+	}
+	if got := workerStackArenaCap(m, hints, inlineTargetTable{}, true); got != defaultStackArenaCap {
+		t.Fatalf("worker expanded-lowering stack arena cap = %d, want %d", got, defaultStackArenaCap)
+	}
+}
+
+func TestFunctionResultTypesUseBoundedScratchArm64(t *testing.T) {
+	var sc scratch
+	got := lowerFunctionResultTypes(&sc, []wasm.ValType{wasm.I32, wasm.F64})
+	if len(got) != 2 || got[0] != mtI32 || got[1] != mtF64 {
+		t.Fatalf("lowered result types = %v, want [i32 f64]", got)
+	}
+	if &got[0] != &sc.functionResultTypeArena[0] {
+		t.Fatal("common function results did not use scratch backing")
+	}
+	one := []wasm.ValType{wasm.I32}
+	var sink machineType
+	if allocs := testing.AllocsPerRun(100, func() {
+		sink = lowerFunctionResultTypes(&sc, one)[0]
+	}); allocs != 0 {
+		t.Fatalf("common result lowering allocations = %v, want 0", allocs)
+	}
+	_ = sink
+
+	wide := make([]wasm.ValType, maxScratchFunctionResults+1)
+	overflow := lowerFunctionResultTypes(&sc, wide)
+	if &overflow[0] == &sc.functionResultTypeArena[0] {
+		t.Fatal("oversized function results unexpectedly used bounded scratch")
+	}
+
+	again := lowerFunctionResultTypes(&sc, []wasm.ValType{wasm.I64})
+	if &again[0] != &sc.functionResultTypeArena[0] || again[0] != mtI64 {
+		t.Fatalf("reused result scratch = %v, want [i64]", again)
+	}
+}
+
+func TestModuleGlobalMembershipUsesBorrowedBoundedPinsArm64(t *testing.T) {
+	const nGlobals = 4096
+	f := fn{
+		m:         &wasm.Module{Globals: make([]wasm.Global, nGlobals)},
+		globalReg: make([]Reg, nGlobals),
+	}
+	f.initGlobalRegs(nGlobals)
+	pins := []moduleGlobalPin{{global: 123, reg: moduleGlobalRegs[0]}}
+	if allocs := testing.AllocsPerRun(100, func() {
+		f.installModuleGlobals(pins)
+	}); allocs != 0 {
+		t.Fatalf("module-global membership allocations = %v, want 0", allocs)
+	}
+	if !f.isModuleGlobal(123) || f.isModuleGlobal(124) {
+		t.Fatalf("module-global membership mismatch")
+	}
+	f.globalReg[123] |= globalRegDirty
+	if got := globalRegValue(f.globalReg[123]); got != moduleGlobalRegs[0] || !globalRegIsDirty(f.globalReg[123]) {
+		t.Fatalf("packed global register = %d/%v", got, globalRegIsDirty(f.globalReg[123]))
+	}
+	backing := &f.globalReg[0]
+	f.globalReg = f.globalReg[:0]
+	if allocs := testing.AllocsPerRun(100, func() { f.initGlobalRegs(nGlobals) }); allocs != 0 {
+		t.Fatalf("global register scratch reuse allocations = %v, want 0", allocs)
+	}
+	if &f.globalReg[0] != backing || f.globalReg[123] != regNone {
+		t.Fatal("global register scratch was not reused and cleared")
+	}
+}
+
+func TestGPPinLimitReservesTransientLoweringRegistersArm64(t *testing.T) {
+	if got, want := gpPinLimit(0), len(gpAlloc)-4; got != want {
+		t.Fatalf("pin limit without module reservations = %d, want %d", got, want)
+	}
+	reserved := maskOf(X23, X24, X25, X27)
+	if got, want := gpPinLimit(reserved), len(gpAlloc)-8; got != want {
+		t.Fatalf("pin limit with four module registers = %d, want %d", got, want)
 	}
 }
 
@@ -102,17 +252,26 @@ func regHeavyShiftChainArm64(t *testing.T, nParams, depth int) *wasm.Module {
 }
 
 // TestExecRegHeavyShiftChainArm64 is the register-pressure regression: a deep
-// nested-shift tree must compile (via the deferred-tree depth cap breaking it into
-// register-sized segments, or the pinning-off retry) instead of failing to link,
+// nested-shift tree must compile via the deferred-tree depth cap breaking it into
+// register-sized segments instead of failing to link,
 // and must still compute the right value. Depths past ~14 used to hard-fail with
-// "no register available to spill". Covers amd64's TestExecRegHeavyUnpinnedRetry
-// and TestExecRegHeavyDeepCapped.
+// "no register available to spill". Covers amd64's one-attempt register-pressure
+// and deep-tree-cap regressions.
 func TestExecRegHeavyShiftChainArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const nParams = 8
 	for _, depth := range []int{7, 15, 20, 40, 100} {
 		m := regHeavyShiftChainArm64(t, nParams, depth)
-		if _, err := CompileModuleWith(m, CompileOptions{}); err != nil {
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+		if err != nil {
 			t.Fatalf("depth %d: compile: %v", depth, err)
+		}
+		if cm.CodeImage != nil {
+			_ = cm.CodeImage.Close()
+		}
+		if stats.Compile.FunctionAttempts != 1 || stats.Funcs[0].FunctionAttempts != 1 {
+			t.Fatalf("depth %d: function attempts module/function = %d/%d, want 1/1", depth, stats.Compile.FunctionAttempts, stats.Funcs[0].FunctionAttempts)
 		}
 		args := make([]uint64, nParams)
 		args[0] = 5
@@ -208,6 +367,7 @@ func brTableComputedLabelsArm64(t testing.TB, labels []uint32, def uint32) *wasm
 }
 
 func TestExecBrTableCompactTargetIDsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	labels := []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}
 	m := brTableComputedLabelsArm64(t, labels, 4)
 	var stats ModuleStats
@@ -231,6 +391,7 @@ func TestExecBrTableCompactTargetIDsArm64(t *testing.T) {
 }
 
 func TestExecBrTableCompactTargetIDsImmediateBoundaryArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, labelN := range []int{4093, 4095} {
 		t.Run(fmt.Sprint(labelN), func(t *testing.T) {
 			labels := make([]uint32, labelN)
@@ -260,6 +421,7 @@ func TestExecBrTableCompactTargetIDsImmediateBoundaryArm64(t *testing.T) {
 // dispatch to the correct arm. It also asserts the jump-table lowering actually
 // fired (not an if-chain fallback).
 func TestExecBrTableComputedIndexArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforeFinalizer := nativeFinalizerEnabled
 	beforeCompact := nativeCompactionEnabled
 	nativeFinalizerEnabled = true
@@ -295,6 +457,7 @@ func TestExecBrTableComputedIndexArm64(t *testing.T) {
 }
 
 func TestExecBrTableCompactNativeUsesSmallerLinearFormArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := brTableComputedIndexArm64(t)
 	var balancedStats, sizeStats ModuleStats
 	if _, err := CompileModuleWith(m, CompileOptions{Stats: &balancedStats}); err != nil {
@@ -334,10 +497,10 @@ func TestStackArenaOverflowKeepsExistingPointersStableArm64(t *testing.T) {
 	for i := 0; i < defaultStackArenaCap+8; i++ {
 		s.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i + 2)})
 	}
-	if first.kind != ekValue || first.st.cval != 1 {
-		t.Fatalf("first arena elem changed after overflow: kind=%v cval=%d", first.kind, first.st.cval)
+	if first.elemKind() != ekValue || first.st.cval != 1 {
+		t.Fatalf("first arena elem changed after overflow: kind=%v cval=%d", first.elemKind(), first.st.cval)
 	}
-	if s.head.next != first {
+	if s.node(s.head.next) != first {
 		t.Fatal("first elem is no longer linked after arena overflow")
 	}
 	if len(s.chunks) < 2 {

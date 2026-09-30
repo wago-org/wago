@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestMemoryCopyBackwardVectorTiers(t *testing.T) {
@@ -42,7 +42,7 @@ func TestMemoryCopyBackwardVectorTiers(t *testing.T) {
 			}
 			defer instance.Close()
 
-			memory := instance.Memory().Bytes()
+			memory := instance.Memory().UnsafeBytes()
 			for i := 0; i <= n; i++ {
 				memory[i] = byte(i*31 + 7)
 			}

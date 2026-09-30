@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // Inlining positive/negative suite, ported from amd64/inline_test.go. The existing
@@ -24,6 +24,7 @@ func withInlineEnabledArm64(t *testing.T, fn func()) {
 }
 
 func TestInlineExecMemoryArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	withInlineEnabledArm64(t, func() {
 		// leaf (addr,val)->i32: store val at addr, load it back.
 		leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x36, 0x02, 0x00, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}
@@ -61,6 +62,7 @@ func TestInlineExecMemoryArm64(t *testing.T) {
 }
 
 func TestInlineExecIfElseArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	withInlineEnabledArm64(t, func() {
 		// leaf max(a,b): if a>b then a else b
 		leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x4a, 0x04, 0x7f, 0x20, 0x00, 0x05, 0x20, 0x01, 0x0b, 0x0b}

@@ -54,7 +54,7 @@ func BenchmarkStagedMultiMemoryImportedContextRebind(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.mem1": m1, "M.mem2": m2}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M.mem1", m1, "M.mem2", m2)})
 	if err != nil {
 		b.Fatalf("instantiate consumer: %v", err)
 	}
@@ -86,7 +86,7 @@ func BenchmarkStagedMultiMemoryExecutableOwnerContextRebind(b *testing.B) {
 	}
 	consumerCompiled := stagedMultiMemoryCompile(b, officialMultiMemoryConsumerModule())
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.mem1": m1, "M.mem2": m2}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M.mem1", m1, "M.mem2", m2)})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -123,9 +123,7 @@ func BenchmarkStagedMultiMemoryImportedGlobalContextRebind(b *testing.B) {
 	defer counter.Close()
 	consumerCompiled := stagedMultiMemoryCompile(b, importedGlobalMultiMemoryModule())
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"M.mem1": memory, "env.counter": GlobalImport{Global: counter},
-	}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M.mem1", memory, "env.counter", GlobalImport{Global: counter})})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -167,9 +165,7 @@ func BenchmarkStagedMultiMemoryImportedTableContextRebind(b *testing.B) {
 	}
 	consumerCompiled := stagedMultiMemoryCompile(b, soleImportedTableMultiMemoryModule())
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"M.mem1": memory, "env.table": table,
-	}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M.mem1", memory, "env.table", table)})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -199,7 +195,7 @@ func BenchmarkStagedMultiMemorySIMDLoad(b *testing.B) {
 	if err != nil {
 		b.Fatalf("export memory 1: %v", err)
 	}
-	copy(m1.Bytes()[32:], []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
+	copy(m1.UnsafeBytes()[32:], []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

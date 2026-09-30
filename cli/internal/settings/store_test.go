@@ -1,12 +1,36 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/internal/atomicfile"
 )
+
+func TestGlobalSettingsIgnoreRetiredV1Optimizations(t *testing.T) {
+	for _, name := range project.RetiredOptimizationNames() {
+		for _, enabled := range []bool{false, true} {
+			path := filepath.Join(t.TempDir(), "settings.json")
+			data := fmt.Sprintf(`{"version":1,"optimizations":{%q:%t}}`, name, enabled)
+			if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			config, err := LoadFile(path)
+			if err != nil {
+				t.Fatalf("%s=%v: %v", name, enabled, err)
+			}
+			if _, ok := config.Optimizations[name]; ok {
+				t.Fatalf("retired option %s retained in active settings", name)
+			}
+		}
+	}
+}
 
 func TestSettingsRoundTripAndDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
@@ -35,6 +59,33 @@ func TestSettingsRoundTripAndDefaults(t *testing.T) {
 	}
 }
 
+func TestSettingsSavePreservesExistingOnReplaceFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	original := []byte(`{"version":1}`)
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	injected := errors.New("replace failed")
+	previous := replaceSettingsFile
+	replaceSettingsFile = func(_ string, _ atomicfile.Options, write func(io.Writer) error) error {
+		if err := write(io.Discard); err != nil {
+			t.Fatal(err)
+		}
+		return injected
+	}
+	t.Cleanup(func() { replaceSettingsFile = previous })
+	if err := SaveFile(path, Default()); !errors.Is(err, injected) {
+		t.Fatalf("SaveFile error = %v, want %v", err, injected)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("failed save changed existing settings to %q", got)
+	}
+}
+
 func TestPartialSettingsKeepBuiltInDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	if err := os.WriteFile(path, []byte(`{"version":1,"features":{"simd":false},"runtime":{}}`), 0o644); err != nil {
@@ -49,6 +100,25 @@ func TestPartialSettingsKeepBuiltInDefaults(t *testing.T) {
 	}
 }
 
+func TestSettingsRejectDuplicateMembers(t *testing.T) {
+	for _, data := range []string{
+		`{"version":1,"version":1}`,
+		`{"version":1,"Version":1}`,
+		`{"version":1,"features":{"simd":true,"simd":false}}`,
+		`{"version":1,"features":{"simd":false,"SIMD":false}}`,
+		`{"version":1,"features":{"tail-call":false,"tail_call":false}}`,
+		`{"version":1,"optimizations":{"inline":false,"INLINE":false}}`,
+	} {
+		path := filepath.Join(t.TempDir(), "settings.json")
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadFile(path); err == nil || !strings.Contains(err.Error(), "duplicate") {
+			t.Fatalf("duplicate settings members accepted: %s: %v", data, err)
+		}
+	}
+}
+
 func TestSettingsRejectPreviewAndUnknown(t *testing.T) {
 	config := Default()
 	var experimental BoolSetting
@@ -58,21 +128,20 @@ func TestSettingsRejectPreviewAndUnknown(t *testing.T) {
 			break
 		}
 	}
-	if experimental.Key == "" {
-		t.Fatal("no available experimental setting")
-	}
-	if err := Set(&config, experimental.Key, "on", false); err == nil {
-		t.Fatal("experimental setting was enabled without the flag")
-	}
-	if err := Set(&config, experimental.Key, "on", true); err != nil {
-		t.Fatalf("experimental setting was not enabled with flag: %v", err)
-	}
-	name := experimental.Key[strings.IndexByte(experimental.Key, '.')+1:]
-	if strings.HasPrefix(experimental.Key, "features.") && !config.Features[name] {
-		t.Fatal("experimental feature was not stored")
-	}
-	if strings.HasPrefix(experimental.Key, "optimizations.") && !config.Optimizations[name] {
-		t.Fatal("experimental optimization was not stored")
+	if experimental.Key != "" {
+		if err := Set(&config, experimental.Key, "on", false); err == nil {
+			t.Fatal("experimental setting was enabled without the flag")
+		}
+		if err := Set(&config, experimental.Key, "on", true); err != nil {
+			t.Fatalf("experimental setting was not enabled with flag: %v", err)
+		}
+		name := experimental.Key[strings.IndexByte(experimental.Key, '.')+1:]
+		if strings.HasPrefix(experimental.Key, "features.") && !config.Features[name] {
+			t.Fatal("experimental feature was not stored")
+		}
+		if strings.HasPrefix(experimental.Key, "optimizations.") && !config.Optimizations[name] {
+			t.Fatal("experimental optimization was not stored")
+		}
 	}
 	if err := Set(&config, "not-a-setting", "on", false); err == nil {
 		t.Fatal("unknown setting was accepted")

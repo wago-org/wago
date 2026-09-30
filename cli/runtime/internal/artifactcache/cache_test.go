@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/wago-org/wago"
+	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestLoadOrCompileCachesAndRepairsArtifact(t *testing.T) {
@@ -532,7 +534,7 @@ func TestLoadOrCompileUsesDestinationRuntimeConfig(t *testing.T) {
 	source := constantModule()
 	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
 	runtimeConfig := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
-	callerConfig := runtimeConfig.WithMemoryLimitPages(runtimeConfig.MemoryLimitPages() - 1)
+	callerConfig := runtimeConfig.WithMaxFunctionLocals(runtimeConfig.MaxFunctionLocals() - 1)
 	callerPath, ok := cache.path(source, callerConfig)
 	if !ok {
 		t.Fatal("caller cache key unavailable")
@@ -561,69 +563,9 @@ func TestLoadOrCompileUsesDestinationRuntimeConfig(t *testing.T) {
 	}
 }
 
-func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
-	source := constantModule()
-	base := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
-	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
-	seedRuntime := wago.NewRuntime(wago.WithRuntimeConfig(base))
-	seed, err := cache.LoadOrCompile(source, base, seedRuntime)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := seed.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := seedRuntime.Close(); err != nil {
-		t.Fatal(err)
-	}
-	seedPath, ok := cache.path(source, base)
-	if !ok {
-		t.Fatal("seed cache key unavailable")
-	}
-	cache.MaxBytes = 1
-	if err := os.Remove(filepath.Join(cache.Dir, cachePruneMarker)); err != nil {
-		t.Fatal(err)
-	}
-
-	telemetry := base.WithGCCodeTelemetry(true)
-	var compileCalls int
-	rt := wago.NewRuntime(wago.WithRuntimeConfig(telemetry))
-	loadCachePlugin(t, rt, "example.com/cache/telemetry", []wago.AuthorityRequest{{
-		Name: wago.AuthorityModuleSourceTransform, Mode: wago.AuthorityRequired, Reason: "count fresh compiles",
-	}}, func(reg *wago.Registrar) error {
-		transformer, err := reg.ModuleSourceTransformer()
-		if err != nil {
-			return err
-		}
-		return transformer.Transform(func(wago.ModuleSourceContext, []byte) ([]byte, error) {
-			compileCalls++
-			return nil, nil
-		})
-	})
-	module, err := cache.LoadOrCompile(source, telemetry, rt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if compileCalls != 1 {
-		t.Fatalf("compile-only telemetry used a warm artifact; compile calls = %d", compileCalls)
-	}
-	if _, ok := module.Compiled().GCNativeCodeTelemetry(); !ok {
-		t.Fatal("fresh telemetry compile did not retain requested attribution")
-	}
-	if _, err := os.Stat(seedPath); !os.IsNotExist(err) {
-		t.Fatalf("non-cacheable compile left oversized cache entry: %v", err)
-	}
-	if err := module.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
-	if cacheKeyFormat != 2 {
-		t.Fatalf("cache key format = %d, want objective-free version 2", cacheKeyFormat)
+	if cacheKeyFormat != 5 {
+		t.Fatalf("cache key format = %d, want runtime-memory-quota-independent version 5", cacheKeyFormat)
 	}
 	source := constantModule()
 	dir := t.TempDir()
@@ -632,9 +574,12 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	knob := base.OptimizationInfos()[0]
 	optimizationOff := base.WithOptimization(knob.Name, !knob.On)
 	workers := base.WithFunctionWorkers(2)
+	nativeStack := base.WithNativeStackBytes(8 << 20)
 	bounds := base.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 	deferredOff := base.WithDeferBoundsChecks(false)
-	memoryLimit := base.WithMemoryLimitPages(base.MemoryLimitPages() - 1)
+	memoryLimit := base.WithMemoryLimitPages(1)
+	localLimit := base.WithMaxFunctionLocals(base.MaxFunctionLocals() - 1)
+	memoryCountLimit := base.WithMaxMemoriesPerModule(base.MaxMemoriesPerModule() - 1)
 
 	basePath, ok := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, base)
 	if !ok {
@@ -643,9 +588,12 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	featurePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, featureOff)
 	optimizationPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, optimizationOff)
 	workersPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, workers)
+	nativeStackPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, nativeStack)
 	boundsPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, bounds)
 	deferredPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, deferredOff)
 	memoryPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, memoryLimit)
+	localPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, localLimit)
+	memoryCountPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, memoryCountLimit)
 	runtimePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-b")}).path(source, base)
 	sourcePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(append(source, 0), base)
 	if basePath == featurePath {
@@ -660,17 +608,71 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	if basePath != workersPath {
 		t.Fatal("function-worker scheduling policy changed artifact key")
 	}
+	if basePath != nativeStackPath {
+		t.Fatal("runtime-only native stack capacity changed artifact key")
+	}
 	if basePath == boundsPath {
 		t.Fatal("bounds-check mode did not change artifact key")
 	}
 	if basePath == deferredPath {
 		t.Fatal("deferred-bounds policy did not change artifact key")
 	}
-	if basePath == memoryPath {
-		t.Fatal("memory limit did not change artifact key")
+	if basePath != memoryPath {
+		t.Fatal("runtime-only memory page quota changed artifact key")
+	}
+	if basePath == localPath {
+		t.Fatal("function local limit did not change artifact key")
+	}
+	if basePath == memoryCountPath {
+		t.Fatal("module memory count limit did not change artifact key")
 	}
 	if basePath == sourcePath {
 		t.Fatal("source bytes did not change artifact key")
+	}
+}
+
+func cacheMemoryQuotaModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]corewasm.ValType{corewasm.I32}, []corewasm.ValType{corewasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x03})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", byte(corewasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x40, 0x00, 0x0b}))),
+	)
+}
+
+func TestCachedArtifactCannotBypassStricterMemoryPageQuota(t *testing.T) {
+	source := cacheMemoryQuotaModule()
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	unlimited := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	seed := wago.NewRuntime(wago.WithRuntimeConfig(unlimited))
+	mod, err := cache.LoadOrCompile(source, unlimited, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mod.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	strict := unlimited.WithMemoryLimitPages(1)
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(strict))
+	defer rt.Close()
+	mod, err = cache.LoadOrCompile(source, strict, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	values, err := in.Invoke("grow", wago.I32(1))
+	if err != nil || len(values) != 1 || uint32(values[0]) != ^uint32(0) {
+		t.Fatalf("cached artifact growth past strict quota = %v, %v", values, err)
 	}
 }
 

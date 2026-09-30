@@ -1,0 +1,110 @@
+# Corpus Provenance
+
+The exact source revision, toolchain, artifact digest, inputs, and oracle for
+semantic workloads are recorded directly in `catalog.json`. The remaining local
+workloads are rebuilt from `sources/` with the scripts in `build/`.
+
+| class | retained workloads | source or revision |
+| --- | --- | --- |
+| synthetic WAT | tiny, recursion, memory, indirect dispatch, function scale | reviewed files in `sources/wat` |
+| Rust compute | linked list, nbody, fannkuch, matmul, SHA-256, ray tracing | reviewed files in `sources/rust` |
+| AssemblyScript | json-as, blake-as, utf-as; scalar and SIMD | local adapters plus the corresponding upstream package checkout |
+| semantic | CoreMark, BLAKE3, QOI, LZ4, zlib, zstd | revisions and WASI SDK versions pinned per catalog check |
+| parsers/text | yyjson, cJSON, TinyXML-2, utf8proc, PCRE2, fast_float | revisions pinned in `catalog.json`, WASI SDK 34 |
+| numeric/crypto | xxHash, LibTomMath, KissFFT, Monocypher | revisions pinned in `catalog.json`, WASI SDK 34 |
+| compression/media | miniz, LodePNG, dr_wav | deterministic generated inputs, revisions pinned in `catalog.json`, WASI SDK 34 |
+| graphics | NanoSVG parse plus shape/path traversal | `239e102ec2c691f2902e20ace2ed36ee4a35cfe6`, WASI SDK 34 |
+| interpreters | Lua 5.4.8 and Wren running embedded deterministic programs | revisions pinned in `catalog.json`, WASI SDK 34 |
+| PolyBench/C | all 30 kernels, small dataset | `5474c59fe88f4e36ba968e8f8c4ac913ee83f0d0`, WASI SDK 34 |
+| Embench | crc32, huffbench, matmult-int, nettle-aes, nettle-sha256, qrduino | `09c2ed8c3b7008c95d08b038de4a3f6dc103ed70`, WASI SDK 34 |
+| Sightglass | shootout base64, libsodium hash | `9ce88522d75b2d155e358f576e7d88ed26d14de8`, Binaryen 130 timing-hook removal |
+| TACLeBench | self-checking bubble sort | `c6a0d73e47bbd2bc86e34637156fb26dd4d5cf08`, WASI SDK 34 |
+| esbuild CLI | pinned Go/WASI minifier processing 2.16 MB of generated production-shaped JavaScript from stdin | `f6058f8364fe7ab91ca57a83e02577ed74c9cae4`, Go 1.26.5; exact output independently captured with Wasmtime |
+| QuickJS CLI | pinned WASI SDK 34 build of the standalone `qjs` interpreter processing 50,000 generated service events; exact JavaScript output captured with Wasmtime | `saghul/wasi-lab` `05d2c175afeed626187f792c9dd1a8142e11f95a`; deterministic stripped rebuild |
+| Duktape CLI | pinned WASI SDK 34 build of the standalone `duk` interpreter processing the same 50,000-event script; exact JavaScript output captured with Wasmtime | same `saghul/wasi-lab` revision; embedded Duktape source reports `44ca54f726bfa651a7ab59286dd5c371dba2ddfc` |
+| swift-format CLI | pinned upstream WASI release formatting a real Swift source file; exact output captured with Wasmtime | `kkebo/swift-format` `92097d54ac3be47738fe77e38c918e9aabce0302`, release `603.0.0-wasm32-wasi` |
+| SQLite CLI | upstream public-domain 3.53.4 amalgamation recursively generates one million rows and computes four exact aggregates | `sqlite-amalgamation-3530400.zip`, archive SHA-256 `1e71ddf93849c6a6ecf58b827c0692073d2dd7ee40196158068f7b29f422e87d`; output captured with Wasmtime |
+| xzdec CLI | upstream XZ Utils 5.8.4 decoder built with WASI SDK 34; exact decompressed bytes captured with Wasmtime | `d3e650e63c110e830fd5391e7f8b45df0b91d3da`, release archive SHA-256 `4ce24038fd4221e0d13bc1a2de7a4db56e90b92b3bf75321f6c14be73f65de4b` |
+| lzmadec CLI | same upstream XZ Utils 5.8.4 source, configured for the legacy LZMA decoder; exact decompressed bytes captured with Wasmtime | `d3e650e63c110e830fd5391e7f8b45df0b91d3da`, WASI SDK 34 |
+| lzmainfo CLI | same upstream XZ Utils 5.8.4 source, configured for legacy LZMA header inspection; exact output captured with Wasmtime | `d3e650e63c110e830fd5391e7f8b45df0b91d3da`, WASI SDK 34 |
+| age and age-keygen | Go/WASI commands decrypting a fixed test ciphertext and deriving its public recipient; exact outputs captured with Wasmtime | `b74dce4cdbe35b5e5f66c06d9612b72f89028758`, Go 1.27.0, `-trimpath`; the identity is deliberately public test data |
+| jq CLI | standalone JSON processor sorts, groups, and aggregates 50,000 generated objects using bundled Oniguruma and WASI SDK 34 | `34f7186b86743a083a589741b6cea95293524108`, source archive SHA-256 `71b8d6e8f5fe81f6c6d0d110e3892251f6ce76ed095abd315e26e6e1193af3af`; exact output captured with Wasmtime |
+| Brotli CLI | upstream 1.2.0 command compresses 2.16 MB of generated JavaScript at quality 10; exact output captured with Wasmtime | `028fb5a23661f123017c060daa546b55cf4bde29`, rebuild instructions and WASI compatibility header in `workloads/applications/brotli/` |
+| tree CLI | upstream 2.2.1 command built with WASI SDK 34; exact recursive listing captured with Wasmtime | `d501b58ff9cbfd64272c8cbcad0bda36a3fada06`, numeric UID/GID fallback headers and rebuild instructions in `workloads/applications/tree/` |
+| a-Shell tree CLI | prebuilt tree 1.8.0 from a-Shell release 0.1; four-file listing checked in Wago and wazero with exact output | release asset `20591324`, updated 2020-05-10; exact artifact SHA-256 and host contract in `catalog.json` and `workloads/applications/tree/README.md` |
+| json2csv CLI | a-Shell release command converts NDJSON with nested field extraction; exact CSV captured with Wasmtime | release asset `68082085`, updated 2022-06-10; underlying `jehiah/json2csv` is MIT; artifact and fixture hashes in `catalog.json` |
+| YoWASP iCE40 and ECP5 tools | icepll, icebram, icepack, iceunpack, icemulti, ecppll, and ecpbram; exact stream or generated-file outputs captured with Wasmtime and checked in Wago and wazero | icepll wheel `0.11.1.0.post826` SHA-256 `d220c8d6d936f3e6c91ed119d6ae58a638d0cd331e61be3e48b47fd743bd5607`; other iCE40 tools wheel `0.5.0.0.post399` SHA-256 `20cf1df7e403252268837937df10686798bea1260e519569a9a1686e6eca6144`; ECP5 tools wheel `0.5.0.0.post399` SHA-256 `b14ac842164ed97c929cc8ab1335679bacc233da7f819ccbe6d12a627fe19b06` |
+| Yosys CLI | YoWASP Yosys reads a pinned Verilog counter, lowers its sequential process, and prints exact design statistics, independently captured with Wasmtime | PyPI wheel `yowasp-yosys==0.32.0.0.post560`, wheel SHA-256 `ae2980dbef16117d3fa226c16a67ad81fab14f61b568607319e09dcb0921a355`; artifact and input hashes in `catalog.json` |
+| ripgrep CLI | a-Shell `rg` release asset searches a pinned JavaScript program, with exact matching lines captured with Wasmtime | release asset `RA_kwDOD6Z6Xc4OLJYu`, updated 2025-03-15; artifact SHA-256 `bd3d27817f2f34d625a3d24029eb2d5b16746ee4bb097d01eed8c99be9b83263` |
+| uutils/coreutils | upstream multicall WASI command, with exact sort, SHA-256, base64, and word-count output captured with Wasmtime and checked in Wago and wazero | release `0.10.0`, `coreutils-0.10.0-wasm32-wasip1.tar.gz` SHA-256 `ee86ae5bda92f7db76ece3c9ddbdfa02528eb026195a2ed47e39d2601bb02c0b`; artifact SHA-256 `393da2c407ef0498be397f48d8b030cd4106bd30e0ddec504bfc75718486d034` |
+| Project Trellis ECP5 | YoWASP `ecppack` and `ecpunpack` process a pinned empty LFE5U-25F configuration and its generated bitstream, with exact file hashes captured with Wasmtime and checked in Wago and wazero | ECP5 wheel `0.5.0.0.post399` SHA-256 `b14ac842164ed97c929cc8ab1335679bacc233da7f819ccbe6d12a627fe19b06`; LFE5U-25F database subset from wheel `0.11.1.0.post826` SHA-256 `42c70c022cc2e0620761db725b5b57aa5c6b9b7e32b1f31b29343fc10a767986`, tree SHA-256 `688d3f0b7f408f18bfd98423fdee9403ae8366efd8618ae09fc681b3ea93f280` |
+| MicroPython CLI | packaged WASI interpreter runs two million state, aggregate, modulo, and branch iterations | PyPI `micropython-wasm==0.1a2` wheel SHA-256 `a57989e2b56e9603438b98c55bb7edc6f275366a37a43dcd25952d465e01dc19`; module SHA-256 `1c054a4d21d4a6589bc568821ebf562889988ddaaf8a17a2e2985a56cf228051`; exact output captured with the package's Wasmtime host |
+| Lua 5.4.6 CLI | standalone interpreter aggregates one million generated events into 257 ranked table buckets | npm `@antonz/lua-wasi@5.4.6` tarball SHA-256 `2b69ee6e70c4e1ed4c7b30488a7464e11303b2f54941dc54bd5d02ff1ce54a49`; original binary SHA-256 `02754c9822caf5112e9a2ccaec3dd29076bf37b51d65cb886ae1606389370c84`; WABT-rewritten Preview 1 artifact SHA-256 `51e8072539c5ba5f4e97e7e776ef852f9879cb5b97b4e5d0f9f1e9c3956ffbe2`; exact output captured with Wasmtime |
+| Clang C/C++ frontend | standalone Clang 8.0.1 parses C functions and a C++17 template from stdin, emitting LLVM IR; Wasmtime oracles canonicalize only `; preds =` padding; Wago results match | `binji/wasm-clang` `648c4a89997a351eef75cdaec3ef5b89d4937dec`; original artifact SHA-256 `2a466f0e990329d3230b869d04fc20803eae96a7feb3a3f6c93e25a77b8aed1d`, WABT-rewritten Preview 1 artifact SHA-256 `d817b7af8c2cc851527d5872256f27079d6905750a755668683293ec8e36b584` |
+| Ruby 3.2.2 CLI | slim WASI interpreter groups 5,000 integers into 17 buckets; exact output captured with Wasmtime and checked in Wago and wazero | WLR release `ruby/3.2.2+20230714-11be424`, asset SHA-256 `de598f394e398763d2b147e3e51a6eeadf048128598ac4a3f992a97204c192b0`; Ruby and WLR license notices retained |
+| PHP 8.2.6 CLI | WasmEdge-flavored WASI interpreter groups 5,000 integers into 17 buckets; native PHP and wazero output checked against Wago, with socket extensions denied | WLR release `php/8.2.6+20230714-11be424`, asset SHA-256 `5461eea8426378e2257f46c7eb1c734f607a89de9a921b72f8fc14c20ac3a33a`; PHP and WLR license notices retained |
+| GNU sed 4.8 | Biowasm command applies two substitutions to a pinned record stream; the matching JavaScript glue under Node/V8 establishes the exact output | original SHA-256 `0b4657e74593059737a40d37c3fa6a77e163618f44aae923da72a05536cba3fd`; Preview 1 import rewrite SHA-256 `f219fd9bb74d730d1df83242109ed3e17b05f52dec4fa06a1ed88d2ac0cd06be` |
+| seqtk 1.4 | Biowasm command converts pinned FASTQ on stdin to FASTA; the matching JavaScript glue under Node/V8 establishes the exact output | original SHA-256 `cd6d040b48c752d0bd669f3cc222883a2ad725839c0f8fefc36fb37c766407f9`; Preview 1 import rewrite SHA-256 `d0a899c3a17ad8245c6cc99cdad7c4bb30f189dab82609d233dad225384f9678` |
+| seq-align commands | Biowasm `lcs`, `needleman_wunsch`, and `smith_waterman` executables run pinned sequence arguments; matching JavaScript glue under Node/V8 establishes each exact output | upstream revision `dc41988`; original module SHA-256 values `54d4376352d4c469728f2e75852b06fc5079bfc8cabc0259494d389bbe7848b6`, `44ce58a899b679fb75a00c1252cef49df458448d8fd77a6083bd00be102be17b`, and `3376540d3596497ab50cf1ff4d008cf2e8d020fe433afab052fee27fd2557083`; minified host names expanded reproducibly |
+| FastTree 2.1.11 | Biowasm command infers a nucleotide phylogeny from a pinned alignment; matching JavaScript glue under Node/V8 establishes the exact Newick output | original SHA-256 `18ceb801b13b694940577e41ecac3d8a6537cfdba54bc36719bbc38d1d0dc6d8`; expanded-host-name artifact SHA-256 `780ce84c3a0ce8442fe259a5de0fe5db07f663430f2a8d1bc23187161de23387` |
+| GNU coreutils 8.32 commands | Biowasm `seq` prints a fixed range and `tr` uppercases a pinned stream; matching JavaScript glue under Node/V8 establishes both exact outputs | original SHA-256 values `fb5a383f63a18a61062e67d9514d9cd60b56965c662030deff9435dcf7505f82` and `545193c0f7e251a1265e8656bd7c59bdbf6923583b5ba570b34db3b53bb855e2`; Preview 1 import rewrite SHA-256 values `bdbd39485bb579411c626deab515d5fde792cae1050d9481f0ecb95be713059a` and `47e7ad6a441d4de920e876abb9559d5936dbd6c280e79bbdb1274814e1b46384` |
+
+The PolyBench adapter includes each upstream kernel unchanged, replaces its
+dump stream with a deterministic checksum at the suite's two-decimal output
+precision, and exports `polybench_run`. That keeps the complete live-out scan
+and dead-code-elimination barrier without putting text formatting or I/O in the
+timed workload. The checked result was independently captured with Wasmtime.
+
+The suite intentionally excludes generated ISA sweeps, opaque Wasm-R3 replays,
+platform-gated WABench ports, redundant microbenchmarks, and third-party
+programs that only proved they compiled or did not trap. Those artifacts add
+maintenance and CI cost without providing a stable correctness or performance
+signal.
+
+The yyjson, utf8proc, xxHash, LibTomMath, NanoSVG, KissFFT, TinyXML-2, Lua,
+cJSON, miniz, Monocypher, dr_wav, LodePNG, fast_float, PCRE2, and Wren expected
+return values were captured independently with Wasmtime 46.0.1. Node 26/V8
+was also used to inspect every module's import surface. TinyXML-2, Lua, cJSON,
+LodePNG, and Wren retain WASI libc imports and therefore run through the
+command harness; the other eleven are import-free core modules. Wren's unused
+clock primitive is bound to a deterministic guest stub. The Lua adapter
+replaces error recovery with a fail-fast trap because its embedded valid
+program does not test error recovery; any unexpected interpreter error
+therefore fails the corpus rather than being swallowed.
+
+Rebuild scripts never redefine admission. Review rebuilt bytes, update the
+catalog digest and provenance deliberately, and rerun the individual
+correctness and benchmark-wiring targets before committing.
+
+## Reproducible builds and excluded-path recheck
+
+For the sixteen added workloads, use the WASI SDK 34.0 **x86_64-linux** archive:
+`wasi-sdk-34.0-x86_64-linux.tar.gz`, SHA-256
+`b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4`.
+Clang identifies LLVM revision `895aa2c896ada719451be2e3673c83da8ddf1141`.
+All build scripts retain their pinned source revisions and optimization flags;
+they now pass `--strip-debug` to exclude SDK library debug paths. The previous
+artifacts contained macOS SDK build paths. A Linux SDK rebuild did not reproduce
+nine of those artifacts: seven differed only in debug data, while NanoSVG and
+TinyXML-2 also differed in executable sections. Do not assume that different SDK
+host distributions produce identical bytes. The catalog now pins reviewed Linux
+SDK output. A second build reproduces all sixteen artifacts byte for byte.
+No upstream revision or license changed. Each original expected result was
+rechecked with Wasmtime 48.0.2; none was changed to match Wago.
+
+Wren retains its classes/closures/collections workload and adds `wren-modulo`.
+The recovered pre-`c7eaea13c` prime sieve passes on the combined code, returning
+210661955 in both engines (historical artifact SHA-256
+`4c5349da94ef84075e644a5b753716b3db28b8eb381a1d071ed8118b3e775bc3`).
+The permanent adapter also computes `5.5 % 2` and returns the raw f64 bits with
+`memcpy`, without an integer conversion of the floating result. Its result is
+210661956.5, bits `0x41a91ce489000000` (4731344651406016512), independently checked
+with Wasmtime 48.0.2. The shared Wren artifact is
+`2b1647ba27936995e85892492c7389d114811496e5c276a2c4b2d44e8a455b41`.
+This establishes coverage of those operations with #666 present; it does not
+establish that #666 caused the earlier Wren discrepancy.
+
+NanoSVG rasterization still fails. The original and reduced adapters, artifacts,
+build commands, and independent expected results are retained in the
+[NanoSVG handoff](repro/nanosvg/README.md). The passing catalog continues to check
+its parsing and shape/path traversal only.

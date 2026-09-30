@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -13,7 +14,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 const uremRegallocWasmBase64 = "AGFzbQEAAAABEgNgBH9/f38Bf2ABfwBgAn9/AAIWAQVyZXBybwx1cGRhdGVfbm9uY2UAAQMEAwIAAAUDAQARBgYBfwFBAAsHIQIPX19zdGFja19wb2ludGVyAwALZmlsbF9ibG9ja3MAAwq5CQMDAAALBABBEgutCQIafwt+IwAiBCEaIAQkACAAKAIQIhhBAnQiBEVFBEABQQYhGQJAAkACQAJAIAAoAggiEyAYQQN0IgcgEyAHSxsgBG4iCCAEbCIVIAJLIgYNACAIQQJ0IhRFDQMgACgCDCEJIBQgFSAVIBRwayIXS0UEQAEgFEEKdCEKQQAhCyABIQUDQCALIg5BAWohCyAXIBRrIRcgBSAKaiEFQQAhFkEAIQQDQCARQQQ2AtQIIBFBBDYCzAggEUHAADYCxAggESADNgLACCARIBY2AjwgESAONgJAIBEgEUHAAGo2AtAIIBEgEUE8ajYCyAggEUHAEGpBAEEB/AsAIBFBwAhqQQMgEUHAEGpBgAgQAiIZQf8BcUESRw0DIARBgAhqIQwgFkEBaiEWIBFBwBBqIQJBgAghBEEAIRNBgQEhBwNAIARBB00NBiAHQX9qIgdFDQUgEyACKQAANwMAIBNBAWohEyACIARBCCAEQQhJGyISaiECIAQgEmsiBA0ACyAMIgQgBEcNAAsgFCAXTQ0ACwtBEiEZIAlFDQBBACABIAYbIQ8gCEEDbCIXQX9qIQsgAC0AUCIErUIDgyEmQgEhJyAJrSEkIBWtIShCACEfIAAoAkRBEEYhGyAEIRADQCAfIiBCAXwhHyAbICBQIgxyIQ4gECAMcSEcQgAhIQNAICEhHiARQQFGBH9BAQUBIBwLIRYgHkIBfCEhIBhFRQRAASAeUCEdIAghAyAIIB6nbCEKIB4gIIRC/////w+DISVCACEiA0AgEUHAAGpBAEGACPwLACARQcAIakEAQYAI/AsAIBFBwBBqQQBBgAj8CwACfwJAAkAgFkVFBEABIBEgJjcD6AggESAkNwPgCCARICg3A9gIIBEgHjcD0AggESAiNwPICCARICA3A8AIICVQRQ0BDAILICVQDQELIBQgIqdsIApqIgcgHWohBEEAIRIgCiEGIBEMAQtBAiESIBQgIqdsQQJyIgchBEEBCyEAIBIgCE9FBEABIAYhCSAEQX9qIQQgASAHQQp0aiETICKnIQUDQAJAAkAgFkUEQAEgBCAVTw0BIA8gBEEKdGohAgwCCwJAIBJB/wBxIgINAAsgEUHAAGogAkEDdGohAgwBCwALIAIpAwAhIwJ/IAxFRQRAASAARUUEQAEgBSENIBJBf2oMAgsgIiAjQiCIpyAYcCINrVFFBEABIAYgEkVrDAILIAkgEmoMAQsgIiAjQiCIpyAYcCINrVFFBEABIBcgEkVrDAELIAsgEmoLIgIgA2ogI0L/////D4MiIyAjfkIgiCACrX5CIIinQX9zaiAUcCECAkACQAJAAkAgBCAVT0UEQAEgAiANIBRsaiAVTw0BIA5FBEABIAcgFU8NA0EAIQQDQCATIARqIgIgAikDACARQcAYaiAEaikDAIU3AwAgBEEIaiIEQYAIRw0ACwwFCyAHIBVJDQMACwALAAsACyABIAdBCnRqIBFBwBhqQYAI/AoAAAsgE0EAaiETIAciBEEBaiEHIBJBAWoiEiAISQ0ACwsgIkIBfCIiICdSDQALCyAhQgRSDQALIB8gJFINAAsLIBokACAZDwsACwALAAsACw=="
@@ -152,11 +153,11 @@ func TestCompiledModuleInstantiationIsolation(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	for i := 0; i < 100; i++ {
-		in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
+		in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports()})
 		if err != nil {
 			t.Fatalf("instantiate %d: %v", i, err)
 		}
-		if got := binary.LittleEndian.Uint64(in.Memory().Bytes()[1:]); got != 0 {
+		if got := binary.LittleEndian.Uint64(in.Memory().UnsafeBytes()[1:]); got != 0 {
 			_ = in.Close()
 			t.Fatalf("instance %d inherited memory value %d", i, got)
 		}
@@ -164,7 +165,7 @@ func TestCompiledModuleInstantiationIsolation(t *testing.T) {
 			_ = in.Close()
 			t.Fatalf("instance %d store: %v", i, err)
 		}
-		if got := binary.LittleEndian.Uint64(in.Memory().Bytes()[1:]); got != 1000 {
+		if got := binary.LittleEndian.Uint64(in.Memory().UnsafeBytes()[1:]); got != 1000 {
 			_ = in.Close()
 			t.Fatalf("instance %d memory value = %d, want 1000", i, got)
 		}
@@ -194,7 +195,7 @@ func TestHostFunctionSeesCallerMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	host := HostFunc(func(m HostModule, params, results []uint64) {
+	host := slotHostFunc(func(m HostModule, params, results []uint64) {
 		offset := uint32(params[0])
 		if uint64(offset)+8 > uint64(len(m.Memory())) {
 			results[0] = 1
@@ -203,7 +204,7 @@ func TestHostFunctionSeesCallerMemory(t *testing.T) {
 		binary.LittleEndian.PutUint64(m.Memory()[offset:], params[1])
 		results[0] = 0
 	})
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"host.store_int": host}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("host.store_int", host)})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -213,7 +214,7 @@ func TestHostFunctionSeesCallerMemory(t *testing.T) {
 		t.Fatalf("store_int result = %v, err %v", got, err)
 	}
 	want := []byte{0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0}
-	if mem := in.Memory().Bytes()[:10]; string(mem) != string(want) {
+	if mem := in.Memory().UnsafeBytes()[:10]; string(mem) != string(want) {
 		t.Fatalf("memory prefix = %x, want %x", mem, want)
 	}
 }
@@ -252,14 +253,14 @@ func TestRecursiveHostReentry(t *testing.T) {
 	}
 	var in *Instance
 	hostCalls := 0
-	host := HostFunc(func(mod HostModule, _, _ []uint64) {
+	host := slotHostFunc(func(mod HostModule, _, _ []uint64) {
 		hostCalls++
 		got, callErr := in.InvokeFromHost(context.Background(), mod, "called_by_host_func")
 		if callErr != nil || len(got) != 1 || AsI32(got[0]) != 100 {
 			t.Errorf("recursive host re-entry = %v, err %v", got, callErr)
 		}
 	})
-	in, err = Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.host_func": host}})
+	in, err = Instantiate(compiled, InstantiateOptions{Imports: testImports("env.host_func", host)})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -270,6 +271,241 @@ func TestRecursiveHostReentry(t *testing.T) {
 	if hostCalls != 3 {
 		t.Fatalf("host calls = %d, want 3", hostCalls)
 	}
+}
+
+func TestNilTargetHostReentryFailsClosed(t *testing.T) {
+	c := MustCompile(voidI32ImportCallerModule())
+	defer c.Close()
+	var reentryErr error
+	in, err := Instantiate(c, testImports("env.log", slotHostFunc(func(caller HostModule, _, _ []uint64) {
+		var target *Instance
+		_, reentryErr = target.InvokeFromHost(context.Background(), caller, "missing")
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("g", I32(1)); err != nil {
+		t.Fatalf("invoke host callback: %v", err)
+	}
+	if reentryErr == nil || !strings.Contains(reentryErr.Error(), "instance is nil") {
+		t.Fatalf("nil-target host re-entry = %v, want instance-is-nil error", reentryErr)
+	}
+}
+
+func TestHostReentryDepthCounterBoundsAndReleases(t *testing.T) {
+	id := newInvocationID()
+	for want := uint8(1); want <= maxHostReentryDepth; want++ {
+		if got, ok := acquireHostReentryDepth(id); !ok || got != want {
+			t.Fatalf("acquire depth = %d, %t, want %d, true", got, ok, want)
+		}
+	}
+	if got, ok := acquireHostReentryDepth(id); ok || got != maxHostReentryDepth {
+		t.Fatalf("overflow acquire depth = %d, %t, want %d, false", got, ok, maxHostReentryDepth)
+	}
+	for range maxHostReentryDepth {
+		releaseHostReentryDepth(id)
+	}
+	hostReentryDepths.Lock()
+	_, retained := hostReentryDepths.values[id]
+	hostReentryDepths.Unlock()
+	if retained {
+		t.Fatal("released host re-entry depth retained its invocation")
+	}
+	if got, ok := acquireHostReentryDepth(id); !ok || got != 1 {
+		t.Fatalf("reacquire depth = %d, %t, want 1, true", got, ok)
+	}
+	releaseHostReentryDepth(id)
+}
+
+func TestHostReentryDepthCounterReleasesOversizedMap(t *testing.T) {
+	ids := make([]invocationID, maxRetainedHostReentryChains+1)
+	for i := range ids {
+		ids[i] = newInvocationID()
+		if _, ok := acquireHostReentryDepth(ids[i]); !ok {
+			t.Fatalf("acquire invocation %d failed", i)
+		}
+	}
+	hostReentryDepths.Lock()
+	resetWhenIdle := hostReentryDepths.resetWhenIdle
+	hostReentryDepths.Unlock()
+	if !resetWhenIdle {
+		t.Fatal("oversized host re-entry map was not marked for reset")
+	}
+	for _, id := range ids {
+		releaseHostReentryDepth(id)
+	}
+	hostReentryDepths.Lock()
+	values := hostReentryDepths.values
+	resetWhenIdle = hostReentryDepths.resetWhenIdle
+	hostReentryDepths.Unlock()
+	if values != nil || resetWhenIdle {
+		t.Fatalf("drained oversized host re-entry map = %p, reset %t; want nil, false", values, resetWhenIdle)
+	}
+}
+
+func assertHostReentryDepthsEmpty(t *testing.T) {
+	t.Helper()
+	hostReentryDepths.Lock()
+	entries := len(hostReentryDepths.values)
+	resetWhenIdle := hostReentryDepths.resetWhenIdle
+	hostReentryDepths.Unlock()
+	if entries != 0 || resetWhenIdle {
+		t.Fatalf("host re-entry accounting after unwind = %d entries, reset %t; want 0, false", entries, resetWhenIdle)
+	}
+}
+
+func TestRecursiveHostReentryDepthIsBounded(t *testing.T) {
+	funcImport := append(wasmtest.Name("env"), wasmtest.Name("reenter")...)
+	funcImport = append(funcImport, 0x00, 0x00)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(funcImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("recurse", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+	compiled, err := Compile(nil, mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	var in *Instance
+	host := slotHostFunc(func(caller HostModule, _, _ []uint64) {
+		if _, err := in.InvokeFromHost(context.Background(), caller, "recurse"); err != nil {
+			panic(HostTrap{Err: err})
+		}
+	})
+	in, err = Instantiate(compiled, InstantiateOptions{Imports: testImports("env.reenter", host)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("recurse"); err == nil || !errors.Is(err, ErrPermissionDenied) || !strings.Contains(err.Error(), "host re-entry depth") {
+		t.Fatalf("recursive re-entry error = %v, want bounded-depth rejection", err)
+	}
+	assertHostReentryDepthsEmpty(t)
+}
+
+func TestRecursiveHostReentryDepthCrossesInstanceExport(t *testing.T) {
+	typeSection := wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil)))
+	producerImport := append(wasmtest.Name("env"), wasmtest.Name("reenter")...)
+	producerImport = append(producerImport, 0x00, 0x00)
+	producerModule := wasmtest.Module(
+		typeSection,
+		wasmtest.Section(2, wasmtest.Vec(producerImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+	relayImport := append(wasmtest.Name("env"), wasmtest.Name("call")...)
+	relayImport = append(relayImport, 0x00, 0x00)
+	relayModule := wasmtest.Module(
+		typeSection,
+		wasmtest.Section(2, wasmtest.Vec(relayImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("recurse", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+	producerCompiled, err := Compile(nil, producerModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producerCompiled.Close()
+	relayCompiled, err := Compile(nil, relayModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer relayCompiled.Close()
+
+	var relay *Instance
+	hostCalls := 0
+	host := slotHostFunc(func(caller HostModule, _, _ []uint64) {
+		hostCalls++
+		if _, err := relay.InvokeFromHost(context.Background(), caller, "recurse"); err != nil {
+			panic(HostTrap{Err: err})
+		}
+	})
+	producer, err := Instantiate(producerCompiled, InstantiateOptions{Imports: testImports("env.reenter", host)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	export, err := producer.ExportedFunc("call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	relay, err = Instantiate(relayCompiled, InstantiateOptions{Imports: testImports("env.call", export)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer relay.Close()
+
+	if _, err := relay.Invoke("recurse"); err == nil || !errors.Is(err, ErrPermissionDenied) || !strings.Contains(err.Error(), "host re-entry depth") {
+		t.Fatalf("cross-instance recursive re-entry error = %v, want bounded-depth rejection", err)
+	}
+	if hostCalls != maxHostReentryDepth+1 {
+		t.Fatalf("host calls = %d, want %d", hostCalls, maxHostReentryDepth+1)
+	}
+	assertHostReentryDepthsEmpty(t)
+}
+
+func TestRecursiveHostReentryDepthTracksSavedOuterCaller(t *testing.T) {
+	callImportModule := func(importName, exportName string) []byte {
+		functionImport := append(wasmtest.Name("env"), wasmtest.Name(importName)...)
+		functionImport = append(functionImport, 0x00, 0x00)
+		return wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(2, wasmtest.Vec(functionImport)),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry(exportName, 0, 1))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+		)
+	}
+	outerCompiled, err := Compile(nil, callImportModule("enter", "start"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outerCompiled.Close()
+	recursiveCompiled, err := Compile(nil, callImportModule("reenter", "recurse"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recursiveCompiled.Close()
+
+	var outerCaller HostModule
+	var recursive *Instance
+	hostCalls := 0
+	reenter := slotHostFunc(func(_ HostModule, _, _ []uint64) {
+		hostCalls++
+		if _, err := recursive.InvokeFromHost(context.Background(), outerCaller, "recurse"); err != nil {
+			panic(HostTrap{Err: err})
+		}
+	})
+	recursive, err = Instantiate(recursiveCompiled, InstantiateOptions{Imports: testImports("env.reenter", reenter)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recursive.Close()
+	enter := slotHostFunc(func(caller HostModule, _, _ []uint64) {
+		outerCaller = caller
+		if _, err := recursive.InvokeFromHost(context.Background(), caller, "recurse"); err != nil {
+			panic(HostTrap{Err: err})
+		}
+	})
+	outer, err := Instantiate(outerCompiled, InstantiateOptions{Imports: testImports("env.enter", enter)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outer.Close()
+
+	if _, err := outer.Invoke("start"); err == nil || !errors.Is(err, ErrPermissionDenied) || !strings.Contains(err.Error(), "host re-entry depth") {
+		t.Fatalf("saved-caller recursive re-entry error = %v, want bounded-depth rejection", err)
+	}
+	if hostCalls != maxHostReentryDepth {
+		t.Fatalf("saved-caller host calls = %d, want %d", hostCalls, maxHostReentryDepth)
+	}
+	assertHostReentryDepthsEmpty(t)
 }
 
 func TestConcurrentPublicInvokeWaitsForParkedHostCallback(t *testing.T) {
@@ -300,13 +536,13 @@ func TestConcurrentPublicInvokeWaitsForParkedHostCallback(t *testing.T) {
 	}
 	entered := make(chan callback, 2)
 	release := map[int32]chan struct{}{1: make(chan struct{}), 2: make(chan struct{})}
-	host := HostFunc(func(caller HostModule, params, results []uint64) {
+	host := slotHostFunc(func(caller HostModule, params, results []uint64) {
 		id := AsI32(params[0])
 		entered <- callback{id: id, caller: caller}
 		<-release[id]
 		results[0] = I32(id + 10)
 	})
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.host": host}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.host", host)})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -404,14 +640,12 @@ func TestARM64UremRegalloc(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"repro.update_nonce": HostFunc(func(_ HostModule, _, _ []uint64) {}),
-	}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("repro.update_nonce", slotHostFunc(func(_ HostModule, _, _ []uint64) {}))})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	self := in.Memory().Bytes()[0x100000:]
+	self := in.Memory().UnsafeBytes()[0x100000:]
 	binary.LittleEndian.PutUint32(self[8:], 8)
 	binary.LittleEndian.PutUint32(self[12:], 2)
 	binary.LittleEndian.PutUint32(self[16:], 1)
@@ -432,13 +666,13 @@ func (crossRuntimeImportExt) Info() ExtensionInfo {
 
 func (crossRuntimeImportExt) Register(reg *Registry) error {
 	reg.ImportModule("env").
-		Func("proxy", HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[1] })).
+		Func("proxy", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[1] })).
 		Params(ValI32, ValI64).Results(ValI64)
 	return nil
 }
 
 func TestHugeCallStackUnwindsToStartTrap(t *testing.T) {
-	mod, err := os.ReadFile(filepath.Join("..", "..", "tests", "regressions", "engine", "huge_call_stack_unwind.wasm"))
+	mod, err := os.ReadFile(filepath.Join("..", "..", "tests", "corpus", "regressions", "engine", "huge_call_stack_unwind.wasm"))
 	if err != nil {
 		t.Fatalf("read upstream fixture: %v", err)
 	}
@@ -447,7 +681,7 @@ func TestHugeCallStackUnwindsToStartTrap(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	defer compiled.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports()})
 	if in != nil {
 		_ = in.Close()
 		t.Fatal("recursive trapping start function unexpectedly instantiated")
@@ -504,7 +738,7 @@ func TestCrossRuntimeInstantiationUsesStructuralImportTypes(t *testing.T) {
 }
 
 func TestHugeMixedValueStack(t *testing.T) {
-	mod, err := os.ReadFile(filepath.Join("..", "..", "tests", "regressions", "engine", "hugestack.wasm"))
+	mod, err := os.ReadFile(filepath.Join("..", "..", "tests", "corpus", "regressions", "engine", "hugestack.wasm"))
 	if err != nil {
 		t.Fatalf("read upstream fixture: %v", err)
 	}
@@ -513,7 +747,7 @@ func TestHugeMixedValueStack(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	defer compiled.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -556,7 +790,7 @@ func instantiateRegressionModule(t *testing.T, mod []byte) *Instance {
 			t.Errorf("close compiled module: %v", err)
 		}
 	})
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}

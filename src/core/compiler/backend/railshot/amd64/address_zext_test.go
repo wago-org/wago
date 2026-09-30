@@ -9,6 +9,7 @@ import (
 )
 
 func TestMemory32AddressZExtElision(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	t.Run("frame local", func(t *testing.T) {
 		// Give fifteen parameters more uses than parameter 15 so the latter remains
 		// frame-resident. The wrapper passes dirty upper bits, while the i32 frame
@@ -40,8 +41,7 @@ func TestMemory32AddressZExtElision(t *testing.T) {
 
 	t.Run("dirty host upper", func(t *testing.T) {
 		// A wrapper-ABI i32 argument occupies a 64-bit word and may carry arbitrary
-		// high bits. A nonregional pinned parameter must retain the canonicalizing
-		// self-move and use only its low 32-bit address.
+		// high bits. Call-free pinned-local ingress canonicalizes it once.
 		m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 			0x00,
 			0x20, 0x00, 0x2d, 0x00, 0x00,
@@ -56,13 +56,13 @@ func TestMemory32AddressZExtElision(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got := ms.Funcs[0].Peephole["addr-zext-elim"]; got != 0 {
-			t.Fatalf("borrowed parameter used addr-zext-elim %d times", got)
+			t.Fatalf("isolated borrowed parameter used addr-zext-elim %d times", got)
 		}
 	})
 
 	t.Run("borrowed local tee", func(t *testing.T) {
-		// local.tee of a pinned parameter can preserve the wrapper's dirty upper
-		// half when source and destination are the same native register.
+		// local.tee preserves the canonical call-free register form established at
+		// wrapper ingress.
 		m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 			0x00,
 			0x20, 0x00, // local.get 0
@@ -78,7 +78,7 @@ func TestMemory32AddressZExtElision(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got := ms.Funcs[0].Peephole["addr-zext-elim"]; got != 0 {
-			t.Fatalf("borrowed local.tee used addr-zext-elim %d times", got)
+			t.Fatalf("isolated borrowed local.tee used addr-zext-elim %d times", got)
 		}
 	})
 
@@ -99,24 +99,24 @@ func TestCleanMemory32AddressProof(t *testing.T) {
 		t.Fatal("addr-zext-elim is not registered")
 	}
 
-	f := new(fn)
+	f := &fn{policy: currentCodegenPolicy()}
 	tests := []struct {
 		name string
 		e    *elem
 		want bool
 	}{
 		{name: "nil"},
-		{name: "clean deferred is not concrete", e: &elem{kind: ekDeferred, typ: mtI32, op: opAdd}},
-		{name: "nonclean deferred", e: &elem{kind: ekDeferred, typ: mtI32, op: opSExt8}},
-		{name: "wrong deferred type", e: &elem{kind: ekDeferred, typ: mtI64, op: opAdd}},
-		{name: "i32 constant", e: &elem{kind: ekValue, st: storage{kind: stConst, typ: mtI32}}, want: true},
-		{name: "i32 frame local", e: &elem{kind: ekValue, st: storage{kind: stLocalRef, typ: mtI32}}, want: true},
-		{name: "i64 constant", e: &elem{kind: ekValue, st: storage{kind: stConst, typ: mtI64}}},
-		{name: "owned register", e: &elem{kind: ekValue, st: storage{kind: stReg, typ: mtI32}}},
-		{name: "spill slot", e: &elem{kind: ekValue, st: storage{kind: stSlot, typ: mtI32}}},
-		{name: "borrowed local", e: &elem{kind: ekValue, st: storage{kind: stLocalReg, typ: mtI32}}},
-		{name: "borrowed global", e: &elem{kind: ekValue, st: storage{kind: stGlobReg, typ: mtI32}}},
-		{name: "deferred memory load", e: &elem{kind: ekValue, st: storage{kind: stMemRef, typ: mtI32}}},
+		{name: "clean deferred is not concrete", e: testDeferredElem(opAdd, mtI32, nil, nil)},
+		{name: "nonclean deferred", e: testDeferredElem(opSExt8, mtI32, nil, nil)},
+		{name: "wrong deferred type", e: testDeferredElem(opAdd, mtI64, nil, nil)},
+		{name: "i32 constant", e: testValueElem(storage{kind: stConst, typ: mtI32}), want: true},
+		{name: "i32 frame local", e: testValueElem(storage{kind: stLocalRef, typ: mtI32}), want: true},
+		{name: "i64 constant", e: testValueElem(storage{kind: stConst, typ: mtI64})},
+		{name: "owned register", e: testValueElem(storage{kind: stReg, typ: mtI32})},
+		{name: "spill slot", e: testValueElem(storage{kind: stSlot, typ: mtI32})},
+		{name: "borrowed local", e: testValueElem(storage{kind: stLocalReg, typ: mtI32})},
+		{name: "borrowed global", e: testValueElem(storage{kind: stGlobReg, typ: mtI32})},
+		{name: "deferred memory load", e: testValueElem(storage{kind: stMemRef, typ: mtI32})},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -125,16 +125,27 @@ func TestCleanMemory32AddressProof(t *testing.T) {
 			}
 		})
 	}
+	f.usesCalls = true
+	if got := f.cleanMemory32Address(testValueElem(storage{kind: stLocalReg, typ: mtI32})); got {
+		t.Fatal("call-making whole-function i32 local was treated as canonical")
+	}
+	f.intervalReg = []Reg{R12}
+	f.canonicalI32Uses = 2
+	if got := f.cleanMemory32Address(testValueElem(storage{kind: stLocalReg, typ: mtI32})); !got {
+		t.Fatal("third regional borrowed i32 use was not proven profitable and canonical")
+	}
 
 	if !SetOptKnob("addr-zext-elim", false) {
 		t.Fatal("addr-zext-elim is not registered")
 	}
-	if f.cleanMemory32Address(&elem{kind: ekValue, st: storage{kind: stConst, typ: mtI32}}) {
+	f.policy = currentCodegenPolicy()
+	if f.cleanMemory32Address(testValueElem(storage{kind: stConst, typ: mtI32})) {
 		t.Fatal("disabled optimization accepted a clean address")
 	}
 }
 
 func TestMemory64AddressDoesNotUseZExtElision(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}, []byte{
 		0x00, 0x20, 0x00, 0x2d, 0x00, 0x00, 0x0b,
 	})

@@ -65,6 +65,36 @@ func TestBulkMemoryValidationEdges(t *testing.T) {
 	})
 }
 
+func TestArrayDataInstructionsRequireDataCount(t *testing.T) {
+	base := func(body ...Instruction) *Module {
+		return &Module{
+			Types:     []RecType{arrayType(packedField(PackI8, Var)), ft(nil, nil)},
+			FuncTypes: []TypeIdx{{Index: 1}},
+			Code:      []Func{{Body: Expr{Instrs: body}}},
+			Data:      []Data{{Mode: DataMode{Kind: DataPassive}}},
+		}
+	}
+
+	t.Run("array.new_data", func(t *testing.T) {
+		expectValidateErr(t, base(
+			Instruction{Kind: InstrI32Const},
+			Instruction{Kind: InstrI32Const},
+			Instruction{Kind: InstrArrayNewData, Index: 0, Index2: 0},
+			Instruction{Kind: InstrDrop},
+		), ErrInvalidDataCount)
+	})
+	t.Run("array.init_data", func(t *testing.T) {
+		expectValidateErr(t, base(
+			Instruction{Kind: InstrI32Const},
+			Instruction{Kind: InstrArrayNewDefault, Index: 0},
+			Instruction{Kind: InstrI32Const},
+			Instruction{Kind: InstrI32Const},
+			Instruction{Kind: InstrI32Const},
+			Instruction{Kind: InstrArrayInitData, Index: 0, Index2: 0},
+		), ErrInvalidDataCount)
+	})
+}
+
 func TestTableBulkValidationEdges(t *testing.T) {
 	funcrefTable := Table{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}}}
 	elem := Elem{Mode: ElemMode{Kind: ElemPassive}, Kind: ElemKind{Kind: ElemFuncs}}

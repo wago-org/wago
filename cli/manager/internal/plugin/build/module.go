@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/internal/atomicfile"
+	"github.com/wago-org/wago/internal/managedrelease"
 )
 
 const (
@@ -645,13 +647,16 @@ func ModuleDir() (string, error) {
 	if d := os.Getenv("WAGO_SRC"); d != "" {
 		return d, nil
 	}
+	if source := managedrelease.Source(); source != "" {
+		return source, nil
+	}
 	// Inside a wago checkout (e.g. hacking on wago itself)? Use it.
 	command := exec.Command("go", "env", "GOMOD")
 	automation.ConfigureCommand(command)
 	if out, err := command.Output(); err == nil {
 		gomod := strings.TrimSpace(string(out))
 		if gomod != "" && gomod != os.DevNull {
-			if b, err := os.ReadFile(gomod); err == nil && strings.Contains(string(b), "module github.com/wago-org/wago") {
+			if b, err := os.ReadFile(gomod); err == nil && isWagoModule(b) {
 				return filepath.Dir(gomod), nil
 			}
 		}
@@ -668,12 +673,15 @@ func ModuleDir() (string, error) {
 // installedWagoSource returns the wago source the installer places at ~/.wago/src,
 // or "" if it isn't a wago checkout.
 func InstalledSource() string {
+	if source := managedrelease.Source(); source != "" {
+		return source
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
 	dir := filepath.Join(home, ".wago", "src")
-	if b, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && strings.Contains(string(b), "module github.com/wago-org/wago") {
+	if b, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && isWagoModule(b) {
 		return dir
 	}
 	return ""
@@ -684,4 +692,27 @@ func exeSuffix() string {
 		return ".exe"
 	}
 	return ""
+}
+
+func isWagoModule(data []byte) bool {
+	for len(data) != 0 {
+		line, rest, _ := bytes.Cut(data, []byte{'\n'})
+		data = rest
+		line, _, _ = bytes.Cut(line, []byte("//"))
+		line = bytes.TrimSpace(line)
+		split := bytes.IndexAny(line, " \t")
+		if split < 0 || !bytes.Equal(line[:split], []byte("module")) {
+			continue
+		}
+		path := string(bytes.TrimSpace(line[split:]))
+		if len(path) > 0 && (path[0] == '"' || path[0] == '`') {
+			unquoted, err := strconv.Unquote(path)
+			if err != nil {
+				return false
+			}
+			path = unquoted
+		}
+		return path == wagoModuleName
+	}
+	return false
 }

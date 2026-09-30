@@ -17,9 +17,9 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	if c == 0 {
 		return regNone, false // div/rem by zero traps — leave it to the div path
 	}
-	w := node.typ.is64()
-	signed := node.op == opDivS || node.op == opRemS
-	wantRem := node.op == opRemU || node.op == opRemS
+	w := node.st.typ.is64()
+	signed := node.deferredOp() == opDivS || node.deferredOp() == opRemS
+	wantRem := node.deferredOp() == opRemU || node.deferredOp() == opRemS
 
 	// Decide whether we can handle this divisor before emitting anything, so a
 	// bail-out leaves the operand stack untouched for the div fallback.
@@ -32,7 +32,7 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	// orthogonal, so no register needs to be avoided here.
 	res := f.allocReg(maskOf())
 	f.pinned = f.pinned.add(res)
-	f.condenseInto(node.arg0, res) // res = n (dividend)
+	f.condenseInto(f.s.arg0(node), res) // res = n (dividend)
 
 	if signed {
 		f.divConstSigned(res, c, w, wantRem)
@@ -53,7 +53,6 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
-	node.op = opNone
 	f.stats.peep("div-by-const")
 	return result, true
 }

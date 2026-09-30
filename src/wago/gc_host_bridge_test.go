@@ -24,7 +24,7 @@ func TestRuntimeGCHostFuncRefCallAndTailOwnership(t *testing.T) {
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	defer rt.Close()
 	var calls int
-	owner, err := rt.NewGCHostFuncRef(HostFunc(func(_ HostModule, args, results []uint64) {
+	owner, err := rt.NewGCHostFuncRef(slotHostFunc(func(_ HostModule, args, results []uint64) {
 		calls++
 		if len(args) != 1 || len(results) == 0 || args[0] == 0 || args[0]>>32 == 0 {
 			panic("GC host argument is not an opaque non-null token")
@@ -40,7 +40,7 @@ func TestRuntimeGCHostFuncRefCallAndTailOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mod.Close()
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"host.echo": owner}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("host.echo", owner)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,17 +48,17 @@ func TestRuntimeGCHostFuncRefCallAndTailOwnership(t *testing.T) {
 	if owner.gc.collector == nil || owner.gc.collector != in.gc || owner.gc.domainID == 0 || owner.gc.domainID != instanceNativeGCDomainID(in) {
 		t.Fatalf("GC host owner domain = %p/%d, instance = %p/%d", owner.gc.collector, owner.gc.domainID, in.gc, instanceNativeGCDomainID(in))
 	}
-	created, err := in.Call(context.Background(), "new")
+	created, err := in.InvokeValues(context.Background(), "new")
 	if err != nil || len(created) != 1 || created[0].GCRef().IsNull() {
 		t.Fatalf("new = %v, %v", created, err)
 	}
 	input := created[0].GCRef()
 	for _, name := range []string{"direct", "call_ref", "tail", "indirect"} {
-		got, callErr := in.Call(context.Background(), name, ValueGCRef(input))
+		got, callErr := in.InvokeValues(context.Background(), name, ValueGCRef(input))
 		if callErr != nil || len(got) != 1 || got[0].Type() != ValAnyRef || got[0].GCRef().IsNull() {
 			t.Fatalf("%s = %v, %v", name, got, callErr)
 		}
-		if read, readErr := in.Call(context.Background(), "read", ValueGCRef(got[0].GCRef())); readErr != nil || !reflect.DeepEqual(read, []Value{ValueI32(42)}) {
+		if read, readErr := in.InvokeValues(context.Background(), "read", ValueGCRef(got[0].GCRef())); readErr != nil || !reflect.DeepEqual(read, []Value{ValueI32(42)}) {
 			t.Fatalf("read(%s) = %v, %v", name, read, readErr)
 		}
 		if err := in.ReleaseGCRef(got[0].GCRef()); err != nil {
@@ -82,7 +82,7 @@ func TestRuntimeGCHostFuncRefRejectsUnownedAndForeignDomains(t *testing.T) {
 	}
 	defer compiled.Close()
 	plainRT := NewRuntime(WithRuntimeConfig(cfg))
-	plain, err := plainRT.NewHostFuncRef(HostFunc(func(_ HostModule, args, results []uint64) { results[0] = args[0] }), FuncSig{Params: []ValType{ValAnyRef}, Results: []ValType{ValAnyRef}})
+	plain, err := plainRT.NewHostFuncRef(slotHostFunc(func(_ HostModule, args, results []uint64) { results[0] = args[0] }), FuncSig{Params: []ValType{ValAnyRef}, Results: []ValType{ValAnyRef}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestRuntimeGCHostFuncRefRejectsUnownedAndForeignDomains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := plainRT.Instantiate(context.Background(), plainMod, WithImports(Imports{"host.echo": plain})); err == nil || !strings.Contains(err.Error(), "NewGCHostFuncRef") {
+	if _, err := plainRT.Instantiate(context.Background(), plainMod, WithImports(testImports("host.echo", plain))); err == nil || !strings.Contains(err.Error(), "NewGCHostFuncRef") {
 		t.Fatalf("plain GC host import error = %v", err)
 	}
 	_ = plainMod.Close()
@@ -99,7 +99,7 @@ func TestRuntimeGCHostFuncRefRejectsUnownedAndForeignDomains(t *testing.T) {
 
 	firstRT := NewRuntime(WithRuntimeConfig(cfg))
 	defer firstRT.Close()
-	owner, err := firstRT.NewGCHostFuncRef(HostFunc(func(_ HostModule, args, results []uint64) { results[0] = args[0] }), FuncSig{Params: []ValType{ValAnyRef}, Results: []ValType{ValAnyRef}})
+	owner, err := firstRT.NewGCHostFuncRef(slotHostFunc(func(_ HostModule, args, results []uint64) { results[0] = args[0] }), FuncSig{Params: []ValType{ValAnyRef}, Results: []ValType{ValAnyRef}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestRuntimeGCHostFuncRefRejectsUnownedAndForeignDomains(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer firstMod.Close()
-	first, err := firstRT.Instantiate(context.Background(), firstMod, WithImports(Imports{"host.echo": owner}))
+	first, err := firstRT.Instantiate(context.Background(), firstMod, WithImports(testImports("host.echo", owner)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestRuntimeGCHostFuncRefRejectsUnownedAndForeignDomains(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer secondMod.Close()
-	if _, err := secondRT.Instantiate(context.Background(), secondMod, WithImports(Imports{"host.echo": owner})); err == nil || !strings.Contains(err.Error(), "cannot transfer collector references") {
+	if _, err := secondRT.Instantiate(context.Background(), secondMod, WithImports(testImports("host.echo", owner))); err == nil || !strings.Contains(err.Error(), "cannot transfer collector references") {
 		t.Fatalf("foreign Runtime GC host import error = %v", err)
 	}
 }

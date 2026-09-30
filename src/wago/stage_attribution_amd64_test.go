@@ -25,14 +25,12 @@ type core3StageFixture struct {
 
 func core3StageFixtures() []core3StageFixture {
 	root := filepath.Clean("../..")
-	corpus := filepath.Join(root, "bench", "corpus")
+	corpus := filepath.Join(root, "corpus", "workloads")
 	return []core3StageFixture{
-		{name: "tiny", path: filepath.Join(corpus, "tiny.wasm"), instantiate: true, execExport: "add", execArgs: []uint64{I32(7), I32(5)}},
-		{name: "json-as", path: filepath.Join(corpus, "json-as.wasm"), instantiate: true, initExport: "_initialize", execExport: "serializeN", execArgs: []uint64{I32(200)}},
-		{name: "wasm3", path: filepath.Join(corpus, "wasm3.wasm")},
-		{name: "sqlite3", path: filepath.Join(corpus, "sqlite3.wasm")},
-		{name: "ruby", path: filepath.Join(corpus, "ruby.wasm")},
-		{name: "esbuild", path: filepath.Join(corpus, "esbuild.wasm")},
+		{name: "tiny", path: filepath.Join(corpus, "synthetic", "tiny.wasm"), instantiate: true, execExport: "add", execArgs: []uint64{I32(7), I32(5)}},
+		{name: "json-as", path: filepath.Join(corpus, "assemblyscript", "json-as.wasm"), instantiate: true, initExport: "_initialize", execExport: "serializeN", execArgs: []uint64{I32(200)}},
+		{name: "coremark", path: filepath.Join(corpus, "semantic", "coremark", "coremark.wasm")},
+		{name: "polybench-gemm", path: filepath.Join(corpus, "polybench", "gemm.wasm"), instantiate: true, execExport: "polybench_run"},
 		{name: "starshine", env: "WAGO_STARSHINE_SMOKE_WASM", core3: true, instantiate: true, linkCold: true},
 	}
 }
@@ -276,9 +274,9 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 						if err != nil {
 							b.Fatal(err)
 						}
-						imports := make(Imports, len(compiled.Imports))
+						imports := NewImports()
 						for _, key := range compiled.Imports {
-							imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
+							testSetImport(imports, key, slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 						}
 						b.StartTimer()
 						instance, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
@@ -302,9 +300,9 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 						b.Fatal(err)
 					}
 					defer compiled.Close()
-					imports := make(Imports, len(compiled.Imports))
+					imports := NewImports()
 					for _, key := range compiled.Imports {
-						imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
+						testSetImport(imports, key, slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 					}
 					b.ReportAllocs()
 					b.ResetTimer()
@@ -326,9 +324,9 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 						b.Fatal(err)
 					}
 					defer compiled.Close()
-					imports := make(Imports, len(compiled.Imports))
+					imports := NewImports()
 					for _, key := range compiled.Imports {
-						imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
+						testSetImport(imports, key, slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 					}
 					instance, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
 					if err != nil {
@@ -340,7 +338,7 @@ func BenchmarkCore3FrontendStages(b *testing.B) {
 							b.Fatal(err)
 						}
 					}
-					fn, err := instance.PrepareFunction(fixture.execExport)
+					fn, err := instance.WasmFunc(fixture.execExport)
 					if err != nil {
 						b.Fatal(err)
 					}

@@ -12,7 +12,9 @@ import (
 func emitTwoTrapGroupsArm64(compact bool) (*fn, int) {
 	a := &a64.Asm{}
 	sc := &scratch{asm: a}
-	f := &fn{a: a, sc: sc, stats: &CodegenStats{}, policy: CodegenPolicy{CompactNative: compact}}
+	policy := currentCodegenPolicy()
+	policy.CompactNative = compact
+	f := &fn{a: a, sc: sc, stats: &CodegenStats{}, policy: policy}
 	sc.trapSites[trapUnreachable] = append(sc.trapSites[trapUnreachable], f.trapSite(a.Branch()|1))
 	sc.trapSites[trapMemOOB] = append(sc.trapSites[trapMemOOB], f.trapSite(a.Branch()|1))
 	f.emitTrapStubs()
@@ -20,6 +22,7 @@ func emitTwoTrapGroupsArm64(compact bool) (*fn, int) {
 }
 
 func TestModuleSharedTrapBodySeedsFromHostBoundaryArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 	callee := []byte{
 		0x00,
@@ -70,6 +73,7 @@ func TestCompactNativeSharedTrapUnwindExecutesArm64(t *testing.T) {
 }
 
 func TestCompactNativeSharesFunctionLocalTrapUnwindArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := sharedTrapBodyEnabled
 	sharedTrapBodyEnabled = false
 	t.Cleanup(func() { sharedTrapBodyEnabled = before })
@@ -87,6 +91,7 @@ func TestCompactNativeSharesFunctionLocalTrapUnwindArm64(t *testing.T) {
 }
 
 func TestCompactNativeSharesCompleteTrapBodyArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := sharedTrapBodyEnabled
 	sharedTrapBodyEnabled = true
 	t.Cleanup(func() { sharedTrapBodyEnabled = before })
@@ -104,6 +109,7 @@ func TestCompactNativeSharesCompleteTrapBodyArm64(t *testing.T) {
 }
 
 func TestCompactNativeSharesModuleTrapBodiesArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	oldInline := inlineEnabled
 	inlineEnabled = false
 	t.Cleanup(func() { inlineEnabled = oldInline })
@@ -133,20 +139,27 @@ func TestCompactNativeSharesModuleTrapBodiesArm64(t *testing.T) {
 		funcDef{i32, i32, callee},
 	)
 	for _, workers := range []int{1, 2} {
-		var stats ModuleStats
-		opts := CompileOptions{CompactNative: true, Stats: &stats, Workers: workers}
-		if _, err := CompileModuleWith(m, opts); err != nil {
-			t.Fatal(err)
-		}
-		if got := stats.Funcs[1].Peephole["module-shared-trap-body"] + stats.Funcs[2].Peephole["module-shared-trap-body"]; got != 1 {
-			t.Fatalf("workers=%d module trap shares = %d, want 1", workers, got)
-		}
-		if stats.NativeSize.AccountedBytes() != stats.NativeSize.TotalBytes {
-			t.Fatalf("workers=%d module native ledger = %+v", workers, stats.NativeSize)
-		}
-		for _, arg := range []uint64{0, 1} {
-			if _, err := runArm64WrapperWithOptions(t, m, CompileOptions{CompactNative: true, Workers: workers}, arg); err == nil {
-				t.Fatalf("workers=%d argument %d did not trap through module body island", workers, arg)
+		for _, enabled := range []bool{false, true} {
+			var stats ModuleStats
+			opts := CompileOptions{CompactNative: true, Stats: &stats, Workers: workers, Optimizations: map[string]bool{"shared-trap-body": enabled}}
+			if _, err := CompileModuleWith(m, opts); err != nil {
+				t.Fatal(err)
+			}
+			wantShares := 0
+			if enabled {
+				wantShares = 1
+			}
+			if got := stats.Funcs[1].Peephole["module-shared-trap-body"] + stats.Funcs[2].Peephole["module-shared-trap-body"]; got != wantShares {
+				t.Fatalf("workers=%d enabled=%t module trap shares = %d, want %d", workers, enabled, got, wantShares)
+			}
+			if stats.NativeSize.AccountedBytes() != stats.NativeSize.TotalBytes {
+				t.Fatalf("workers=%d enabled=%t module native ledger = %+v", workers, enabled, stats.NativeSize)
+			}
+			for _, arg := range []uint64{0, 1} {
+				runOpts := CompileOptions{CompactNative: true, Workers: workers, Optimizations: map[string]bool{"shared-trap-body": enabled}}
+				if _, err := runArm64WrapperWithOptions(t, m, runOpts, arg); err == nil {
+					t.Fatalf("workers=%d enabled=%t argument %d did not trap", workers, enabled, arg)
+				}
 			}
 		}
 	}

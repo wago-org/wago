@@ -1,0 +1,131 @@
+{
+  "generated": "2026-09-10",
+  "sourceCommit": "5158df0b6eb24a210460df5ad1c72832f98af3e5",
+  "machine": "Apple M4 Max, darwin/arm64",
+  "method": "hyperfine -N --warmup 5 --min-runs 30; fresh process per run (spawn→exit)",
+  "unit": "ms",
+  "architecture": "arm64",
+  "runtimes": {
+    "wago": {
+      "label": "wago",
+      "tag": "single-pass",
+      "version": "release      e2e-5158df0b6eb24a210460df5ad1c72832f98af3e5"
+    },
+    "wazero": {
+      "label": "wazero",
+      "tag": "compiler",
+      "version": "v1.12.0"
+    },
+    "wasmtime": {
+      "label": "wasmtime",
+      "tag": "cranelift",
+      "version": "wasmtime 46.0.1 (823d1b8f2 2026-06-24)"
+    },
+    "v8": {
+      "label": "v8",
+      "tag": "turboshaft",
+      "version": "V8 version 15.5.28"
+    },
+    "wasm3": {
+      "label": "wasm3",
+      "tag": "interpreter",
+      "version": "Wasm3 v0.9.0 on arm64-v8a"
+    },
+    "wasmi": {
+      "label": "wasmi",
+      "tag": "interpreter",
+      "version": "wasmi_cli 1.1.0"
+    },
+    "wavm": {
+      "label": "wavm",
+      "tag": "llvm",
+      "version": "WAVM version 0.0.0-prerelease"
+    }
+  },
+  "workloads": [
+    {
+      "id": "nbody",
+      "label": "nbody",
+      "desc": "Benchmarks-Game N-body leapfrog integrator (f64)",
+      "results": {
+        "wago": 16.102,
+        "wazero": 17.311,
+        "wasmtime": 18.506,
+        "v8": 35.581,
+        "wasm3": 109.049,
+        "wasmi": 222.084,
+        "wavm": 30.638
+      }
+    },
+    {
+      "id": "fib",
+      "label": "fib",
+      "desc": "recursive Fibonacci",
+      "results": {
+        "wago": 6.074,
+        "wazero": 22.993,
+        "wasmtime": 8.085,
+        "v8": 38.228,
+        "wasm3": 46.58,
+        "wasmi": 54.505,
+        "wavm": 9.014
+      }
+    },
+    {
+      "id": "spectralnorm",
+      "label": "spectralnorm",
+      "desc": "Benchmarks-Game power iteration (f64)",
+      "results": {
+        "wago": 3.413,
+        "wazero": 4.263,
+        "wasmtime": 5.72,
+        "v8": 17.385,
+        "wasm3": 11.629,
+        "wasmi": 17.619,
+        "wavm": 19.433
+      }
+    },
+    {
+      "id": "quicksort",
+      "label": "quicksort",
+      "desc": "recursive in-place int sort",
+      "results": {
+        "wago": 8.055,
+        "wazero": 9.938,
+        "wasmtime": 10.289,
+        "v8": 18.16,
+        "wasm3": 22.496,
+        "wasmi": 25.432,
+        "wavm": 41.377
+      }
+    },
+    {
+      "id": "raytrace",
+      "label": "raytrace",
+      "desc": "recursive Whitted ray tracer (f64)",
+      "results": {
+        "wago": 6.346,
+        "wazero": 6.545,
+        "wasmtime": 8.502,
+        "v8": 16.127,
+        "wasm3": 17.256,
+        "wasmi": 32.911,
+        "wavm": 27.748
+      }
+    },
+    {
+      "id": "sha256",
+      "label": "sha256",
+      "desc": "64-round SHA-256, integer rotate/xor",
+      "results": {
+        "wago": 2.741,
+        "wazero": 3.014,
+        "wasmtime": 5.217,
+        "v8": 14.278,
+        "wasm3": 3.347,
+        "wasmi": 5.624,
+        "wavm": 18.891
+      }
+    }
+  ]
+}

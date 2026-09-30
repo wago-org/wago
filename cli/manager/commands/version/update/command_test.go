@@ -7,16 +7,16 @@ import (
 )
 
 type testEnvironment struct {
-	args            []string
-	nightly, canary bool
-	force           bool
-	profile, build  string
-	use             string
+	args           []string
+	beta, canary   bool
+	force          bool
+	profile, build string
+	use            string
 }
 
-func (e *testEnvironment) UpdateVersion(args []string, nightly, canary, force bool, profile, build, use string) {
+func (e *testEnvironment) UpdateVersion(args []string, beta, canary, force bool, profile, build, use string) {
 	e.args = append([]string(nil), args...)
-	e.nightly, e.canary = nightly, canary
+	e.beta, e.canary = beta, canary
 	e.force = force
 	e.profile, e.build = profile, build
 	e.use = use
@@ -37,7 +37,7 @@ func TestRunForwardsOptions(t *testing.T) {
 		map[string]string{"profile": "minimal", "build": "tiny"},
 		map[string]bool{"canary": true, "force": true},
 	))
-	if len(environment.args) != 0 || environment.nightly || !environment.canary || !environment.force ||
+	if len(environment.args) != 0 || environment.beta || !environment.canary || !environment.force ||
 		environment.profile != "minimal" || environment.build != "tiny" {
 		t.Fatalf("update = %#v", environment)
 	}

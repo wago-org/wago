@@ -42,6 +42,9 @@ func guardedLinOff(base uintptr) int {
 // compiled in signals-based bounds mode (the arm64 backend's guard mode, which
 // elides the inline bounds checks and relies on the guard-page fault instead).
 func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
+	if err := validateGuardedJobMemorySizes(linBytes, maxBytes); err != nil {
+		return nil, err
+	}
 	// Place linMem on a 64 KiB wasm-page boundary. The signal handler commits one
 	// whole wasm page at a time, so host-page alignment alone is insufficient:
 	// mmap may return a base whose 64 KiB phase would make that commit straddle the
@@ -70,6 +73,10 @@ func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 	j.putGuardedSizeCaches(linBytes, maxBytes)
 	if err := registerGuardRegion(base, base+guardReserveBytes, base+uintptr(linOff)); err != nil {
 		_, _, _ = syscall.Syscall(syscall.SYS_MUNMAP, base, guardReserveBytes, 0)
+		return nil, err
+	}
+	if err := j.registerInterruptLinearMemory(); err != nil {
+		_ = j.Close()
 		return nil, err
 	}
 	return j, nil
@@ -113,9 +120,15 @@ func init() { guardReleaseHook = releaseGuardedJobMemory }
 // cached reservation can back any request — only the committed initial region and
 // the basedata size caches differ, which rearmGuarded installs.
 func AcquireJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
+	if err := validateGuardedJobMemorySizes(linBytes, maxBytes); err != nil {
+		return nil, err
+	}
 	jobMemoryGuardedCache.Lock()
 	j := jobMemoryGuardedCache.j
 	jobMemoryGuardedCache.j = nil
+	if j != nil {
+		changeInterruptLinearMemoryCache(-1)
+	}
 	jobMemoryGuardedCache.Unlock()
 	if j == nil {
 		return NewJobMemoryGuarded(linBytes, maxBytes)
@@ -144,6 +157,7 @@ func releaseGuardedJobMemory(j *JobMemory) bool {
 	jobMemoryGuardedCache.Lock()
 	if jobMemoryGuardedCache.j == nil {
 		jobMemoryGuardedCache.j = j
+		changeInterruptLinearMemoryCache(1)
 		jobMemoryGuardedCache.Unlock()
 		return true
 	}

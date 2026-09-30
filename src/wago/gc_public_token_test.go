@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func gcGenericPublicTokenModule() []byte {
@@ -81,7 +81,7 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			compiled := base
 			if codec {
-				compiled = roundTripCompiled(t, base)
+				compiled = publicArtifactRoundTrip(t, base)
 				defer compiled.Close()
 			}
 			for _, tc := range []struct {
@@ -107,18 +107,18 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 						in.Close()
 						t.Fatalf("read_struct Invoke = %v, %v", got, err)
 					}
-					if got, err := in.Call(context.Background(), "read_struct", ValueGCRef(structRef)); err != nil || len(got) != 1 || got[0].I32() != 42 {
+					if got, err := in.InvokeValues(context.Background(), "read_struct", ValueGCRef(structRef)); err != nil || len(got) != 1 || got[0].I32() != 42 {
 						in.Close()
 						t.Fatalf("read_struct Call = %v, %v", got, err)
 					}
-					prepared, err := in.PrepareFunction("read_struct")
+					prepared, err := in.WasmFunc("read_struct")
 					if err != nil {
 						in.Close()
 						t.Fatal(err)
 					}
 					if got, err := prepared.Invoke(structToken); err != nil || len(got) != 1 || got[0] != 42 {
 						in.Close()
-						t.Fatalf("read_struct PreparedFunction = %v, %v", got, err)
+						t.Fatalf("read_struct WasmFunc = %v, %v", got, err)
 					}
 					if got, err := in.Invoke("read_pair", structToken, structToken); err != nil || len(got) != 1 || got[0] != 84 {
 						in.Close()
@@ -137,7 +137,7 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 						in.Close()
 						t.Fatalf("cleared argument roots = %+v", state)
 					}
-					values, err := in.Call(context.Background(), "new_array")
+					values, err := in.InvokeValues(context.Background(), "new_array")
 					if err != nil || len(values) != 1 || values[0].Type() != ValAnyRef || values[0].GCRef().IsNull() || values[0].Bits()>>32 == 0 {
 						in.Close()
 						t.Fatalf("second live new_array = %v, %v; want typed opaque token", values, err)
@@ -151,7 +151,7 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 						in.Close()
 						t.Fatalf("stale GC token ingress = %v", err)
 					}
-					if got, err := in.Call(context.Background(), "read_array", ValueGCRef(arrayRef)); err != nil || len(got) != 1 || got[0].I32() != 7 {
+					if got, err := in.InvokeValues(context.Background(), "read_array", ValueGCRef(arrayRef)); err != nil || len(got) != 1 || got[0].I32() != 7 {
 						in.Close()
 						t.Fatalf("read_array Call = %v, %v", got, err)
 					}
@@ -181,14 +181,14 @@ func TestGenericGCMultiResultIssuesIndependentTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	values, err := in.Call(context.Background(), "new_pair")
+	values, err := in.InvokeValues(context.Background(), "new_pair")
 	if err != nil || len(values) != 2 || values[0].GCRef().IsNull() || values[1].GCRef().IsNull() || values[0].Bits() == values[1].Bits() {
 		t.Fatalf("new_pair = %v, %v", values, err)
 	}
-	if got, err := in.Call(context.Background(), "read_struct", ValueGCRef(values[0].GCRef())); err != nil || len(got) != 1 || got[0].I32() != 42 {
+	if got, err := in.InvokeValues(context.Background(), "read_struct", ValueGCRef(values[0].GCRef())); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("read pair struct = %v, %v", got, err)
 	}
-	if got, err := in.Call(context.Background(), "read_array", ValueGCRef(values[1].GCRef())); err != nil || len(got) != 1 || got[0].I32() != 7 {
+	if got, err := in.InvokeValues(context.Background(), "read_array", ValueGCRef(values[1].GCRef())); err != nil || len(got) != 1 || got[0].I32() != 7 {
 		t.Fatalf("read pair array = %v, %v", got, err)
 	}
 	if err := in.Close(); err != nil {
@@ -211,7 +211,7 @@ func TestGenericGCMultiResultIssuesIndependentTokens(t *testing.T) {
 	}
 }
 
-func TestGenericGCResultTokenLimitAndReuse(t *testing.T) {
+func TestGenericGCResultTokensGrowAndReuse(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcGenericPublicTokenModule())
 	if err != nil {
 		t.Fatal(err)
@@ -222,7 +222,8 @@ func TestGenericGCResultTokenLimitAndReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	refs := make([]GCRef, gcPublicSlotLimit)
+	const live = 160
+	refs := make([]GCRef, live)
 	for i := range refs {
 		bits, err := in.Invoke("new_struct")
 		if err != nil || len(bits) != 1 {
@@ -231,35 +232,35 @@ func TestGenericGCResultTokenLimitAndReuse(t *testing.T) {
 		refs[i] = ValueOf(ValAnyRef, bits[0]).GCRef()
 	}
 	state := in.existingPublicGCState()
-	if state == nil || int(state.resultTokenCount) != gcPublicSlotLimit || int(state.resultRootsMade) != gcPublicSlotLimit {
-		t.Fatalf("full result-token state = %+v", state)
-	}
-	if _, err := in.Invoke("new_struct"); err == nil || !strings.Contains(err.Error(), "exceeds 64") {
-		t.Fatalf("65th live result token error = %v", err)
+	if state == nil || int(state.resultTokenCount) != live || int(state.resultRootsMade) != live || len(state.resultTokensExtra) != live-gcPublicSlotLimit {
+		t.Fatalf("wide result-token state = %+v", state)
 	}
 	const released = 17
-	releasedSlot := state.resultRootSlots[released]
-	if err := in.ReleaseGCRef(refs[released]); err != nil {
+	releasedSlot := state.resultRootSlot(released)
+	stale := refs[released]
+	if err := in.ReleaseGCRef(stale); err != nil {
 		t.Fatal(err)
 	}
 	refs[released] = GCRef{}
 	if !in.gc.GlobalSlot(releasedSlot).IsNull() {
 		t.Fatal("released result root remains non-null")
 	}
-	if _, err := in.Invoke("new_pair"); err == nil || !strings.Contains(err.Error(), "exceeds 64") {
-		t.Fatalf("two-result capacity error = %v", err)
-	}
-	if state.resultTokenCount != gcPublicSlotLimit-1 || !in.gc.GlobalSlot(releasedSlot).IsNull() {
-		t.Fatalf("failed multi-result rollback state = %+v", state)
+	if err := in.ReleaseGCRef(stale); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("released token became valid again: %v", err)
 	}
 	bits, err := in.Invoke("new_array")
 	if err != nil || len(bits) != 1 {
 		t.Fatalf("reissue into released slot = %v, %v", bits, err)
 	}
 	refs[released] = ValueOf(ValAnyRef, bits[0]).GCRef()
-	if state.resultTokenCount != gcPublicSlotLimit || state.resultRootsMade != gcPublicSlotLimit || state.resultRootSlots[released] != releasedSlot {
+	if state.resultTokenCount != live || state.resultRootsMade != live || state.resultRootSlot(released) != releasedSlot {
 		t.Fatalf("reused result-token state = %+v", state)
 	}
+	pair, err := in.Invoke("new_pair")
+	if err != nil || len(pair) != 2 {
+		t.Fatalf("wide two-result issue = %v, %v", pair, err)
+	}
+	refs = append(refs, ValueOf(ValAnyRef, pair[0]).GCRef(), ValueOf(ValAnyRef, pair[1]).GCRef())
 	for i, ref := range refs {
 		if err := in.ReleaseGCRef(ref); err != nil {
 			t.Fatalf("release token %d: %v", i, err)
@@ -399,7 +400,7 @@ func TestGenericGCArgumentIngressWarmedAllocations(t *testing.T) {
 	}
 }
 
-func TestGenericGCArgumentRootLimit(t *testing.T) {
+func TestGenericGCArgumentRootsGrowAndReuse(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcGenericPublicTokenModule())
 	if err != nil {
 		t.Fatal(err)
@@ -420,18 +421,21 @@ func TestGenericGCArgumentRootLimit(t *testing.T) {
 	if err != nil || len(params) != 1 {
 		t.Fatalf("read_struct signature = %v, %v", params, err)
 	}
-	for i := 0; i < 64; i++ {
+	const roots = 160
+	for i := 0; i < roots; i++ {
 		if _, err := in.refStore.stageGCRefArgument(in, token, params[0]); err != nil {
 			t.Fatalf("stage argument root %d: %v", i, err)
 		}
 	}
-	if _, err := in.refStore.stageGCRefArgument(in, token, params[0]); err == nil || !strings.Contains(err.Error(), "exceeds 64") {
-		t.Fatalf("65th argument root error = %v", err)
-	}
 	in.clearGCRefArgumentRoots()
 	state := in.existingPublicGCState()
-	if state == nil || state.argumentRootCount != 0 || state.argumentRootsMade != 64 || !in.gc.GlobalSlot(state.argumentRootSlots[0]).IsNull() || !in.gc.GlobalSlot(state.argumentRootSlots[63]).IsNull() {
-		t.Fatalf("bounded argument-root state = %+v", state)
+	if state == nil || state.argumentRootCount != 0 || state.argumentRootsMade != roots || len(state.argumentRootSlotsExtra) != roots-gcPublicSlotLimit {
+		t.Fatalf("wide argument-root state = %+v", state)
+	}
+	for _, index := range []uint32{0, 63, 64, roots - 1} {
+		if !in.gc.GlobalSlot(state.argumentRootSlot(index)).IsNull() {
+			t.Fatalf("argument root %d remained live", index)
+		}
 	}
 	if err := in.ReleaseGCRef(ref); err != nil {
 		t.Fatal(err)

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func fullMemory32Module() []byte {
@@ -126,7 +126,7 @@ func TestNewMemoryRejectsOversizedAndPreservesFourGiBLimit(t *testing.T) {
 	if got := memory.jobMemory().MaxPages(); got != 65536 {
 		t.Fatalf("maximum pages = %d, want 65536", got)
 	}
-	if got := len(memory.Bytes()); uint64(got) != uint64(65536)*65536 {
+	if got := len(memory.UnsafeBytes()); uint64(got) != uint64(65536)*65536 {
 		t.Fatalf("byte length = %d, want 4294967296", got)
 	}
 }

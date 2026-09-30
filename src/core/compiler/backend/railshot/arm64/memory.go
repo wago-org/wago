@@ -10,6 +10,22 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+// memAccessSize returns the byte width of a plain scalar memory instruction.
+func memAccessSize(op byte) int {
+	switch op {
+	case 0x2c, 0x2d, 0x30, 0x31, 0x3a, 0x3c:
+		return 1
+	case 0x2e, 0x2f, 0x32, 0x33, 0x3b, 0x3d:
+		return 2
+	case 0x28, 0x2a, 0x34, 0x35, 0x36, 0x38, 0x3e:
+		return 4
+	case 0x29, 0x2b, 0x37, 0x39:
+		return 8
+	default:
+		return 0
+	}
+}
+
 // Linear-memory access: scalar loads/stores with a linear bounds check, plus
 // memory.size/grow. Ported from WARP's memory lowering, adapted to wago's runtime
 // memory ABI (the same one src/core/encoder/arm64 targets): the linear-memory base is
@@ -40,7 +56,7 @@ const (
 const (
 	bdCurPages  = 4                                // u32: current size in 64 KiB pages
 	bdCurBytes  = abi.ActualLinMemByteSize64Offset // u64: bounds-check limit
-	bdMaxPages  = 12                               // u32: grow ceiling in pages
+	bdMaxPages  = 12                               // u32: declared/runtime grow ceiling
 	wasmPageLog = 16                               // log2(65536)
 )
 
@@ -56,7 +72,7 @@ const (
 // smallBulkMax is the dynamic memory.copy/fill length below which the inline
 // 8-byte chunk loops beat the NEON loop startup latency. At the boundary the
 // NEON path wins, so its dispatch uses n >= smallBulkMax.
-const smallBulkMax = 64
+const smallBulkMax = 32
 
 // offTrapCellPtr is the basedata slot holding the address of the trap cell
 // (runtime installTrapCell / abi.TrapCellPtrOffset). The trap pointer is NOT
@@ -105,13 +121,24 @@ func (f *fn) emitTrapUnwind() {
 // emitInterruptCheck polls the invocation trap cell at bounded native safe
 // points. A context watcher writes TrapInterrupted there; the ordinary cold trap
 // path then unwinds the complete wasm call tree.
-func (f *fn) emitInterruptCheck() {
+func (f *fn) emitInterruptCheck(preserveLayout bool) {
 	if !f.interruptible {
 		return
 	}
-	f.ld64(X16, linMemReg, -int32(offTrapCellPtr))
-	f.ld32(X17, X16, 0)
+	cell := X16
+	if f.trapCellReg != regNone {
+		cell = f.trapCellReg
+	} else {
+		f.ld64(cell, linMemReg, -int32(offTrapCellPtr))
+	}
+	f.ld32(X17, cell, 0)
 	f.trapIfZero(X17, false, false, trapInterrupted)
+	if preserveLayout && f.trapCellReg != regNone {
+		// Keep the following loop body at the same address as the uncached form.
+		// Replacing the dependent pointer load with a NOP isolates the latency win
+		// from fetch-block phase changes in unrelated functions.
+		f.a.Nop()
+	}
 }
 
 // trapIf records a conditional branch to this function's shared trap stub for
@@ -120,6 +147,7 @@ func (f *fn) emitInterruptCheck() {
 // an inline trap block at every site (better I-cache, not-taken hot branches, one
 // stub per trap code instead of one block per check).
 func (f *fn) trapIf(cc Cond, code uint32) {
+	before := f.a.Len()
 	if code == trapMemOOB {
 		f.stats.addBoundsCheck() // inline linear-memory OOB check (P6 elides these)
 	}
@@ -127,21 +155,17 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 	// emitTrapStubs uses it to tag Bcond vs Branch patch ranges (§6.2).
 	sc := f.scratchState()
 	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.a.Bcond(cc)))
+	if profileEnabled && code == trapMemOOB {
+		f.recordProfileCodeSite(before, "memory-bounds-branch")
+	}
 }
 
 // zeroBranch emits a branch on a register's zero/nonzero value. Every caller is
 // an explicit compiler-authored test whose next consumer is this branch, so no
 // later instruction observes the CMP flags removed by the compact form.
 func (f *fn) zeroBranch(reg Reg, wide, onZero bool) int {
-	if directZeroBranchEnabled {
-		f.stats.peep("direct-zero-branch")
-		return f.emitZeroBranch(reg, wide, onZero)
-	}
-	f.cmpImm(reg, 0, wide)
-	if onZero {
-		return f.a.Bcond(condE)
-	}
-	return f.a.Bcond(condNE)
+	f.stats.peep("direct-zero-branch")
+	return f.emitZeroBranch(reg, wide, onZero)
 }
 
 func (f *fn) emitZeroBranch(reg Reg, wide, onZero bool) int {
@@ -158,21 +182,16 @@ func (f *fn) emitZeroBranch(reg Reg, wide, onZero bool) int {
 }
 
 func (f *fn) trapIfZero(reg Reg, wide, onZero bool, code uint32) {
-	if !directZeroBranchEnabled {
-		f.cmpImm(reg, 0, wide)
-		if onZero {
-			f.trapIf(condE, code)
-		} else {
-			f.trapIf(condNE, code)
-		}
-		return
-	}
+	before := f.a.Len()
 	if code == trapMemOOB {
 		f.stats.addBoundsCheck()
 	}
 	f.stats.peep("direct-zero-branch")
 	sc := f.scratchState()
 	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.emitZeroBranch(reg, wide, onZero)))
+	if profileEnabled && code == trapMemOOB {
+		f.recordProfileCodeSite(before, "memory-bounds-branch")
+	}
 }
 
 // trapAlways is trapIf's unconditional form (`unreachable`): a single B to the
@@ -185,7 +204,44 @@ func (f *fn) trapAlways(code uint32) {
 }
 
 func (f *fn) trapSite(branch int) trapSite {
-	return trapSite{branch: branch, function: f.traceFuncIdx, pc: f.wasmPC}
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.recordProfileTrap(branch)
+	}
+	return trapSite{branch: compactTrapBranch(branch), function: f.traceFuncIdx, pc: f.wasmPC}
+}
+
+func compactTrapBranch(branch int) uint32 {
+	if branch < 0 || uint64(branch) > uint64(^uint32(0)) {
+		panic("arm64: trap branch offset exceeds 32-bit function domain")
+	}
+	return uint32(branch)
+}
+
+// Entry checks precede pin initialization. Reload value pins only on those cold
+// edges, before the common trap exit persists them.
+func (f *fn) prepareEntryTrapPins() {
+	needed := false
+	for g, state := range f.globalReg {
+		needed = needed || (!f.isModuleGlobal(g) && globalRegIsDirty(state))
+	}
+	if !needed {
+		return
+	}
+	for _, code := range [...]uint32{trapStackFence, trapInterrupted} {
+		sites := f.scratchState().trapSites[code]
+		for i := range sites {
+			if int(sites[i].branch&^1) >= f.entryTrapEnd {
+				break
+			}
+			if sites[i].branch&1 != 0 {
+				f.patchBranch26(int(sites[i].branch&^1), f.a.Len())
+			} else {
+				f.patchBranch19(int(sites[i].branch), f.a.Len())
+			}
+			f.derivePinnedGlobals()
+			sites[i].branch = compactTrapBranch(f.a.Branch()) | 1
+		}
+	}
 }
 
 // emitTrapStubs emits one trap stub per trap code used by this function and
@@ -193,9 +249,10 @@ func (f *fn) trapSite(branch int) trapSite {
 func (f *fn) emitTrapStubs() {
 	before := f.a.Len()
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
+	f.prepareEntryTrapPins()
 	compact := f.policy.CompactNative
 	groups := 0
-	if (sharedTrapUnwindEnabled || f.opt(optSharedTrapBody)) && compact {
+	if compact {
 		for code := uint32(1); code <= trapAtomicUnaligned; code++ {
 			sites := f.scratchState().trapSites[code]
 			if len(sites) == 0 {
@@ -215,17 +272,13 @@ func (f *fn) emitTrapStubs() {
 	// established local-record/shared-unwind path.
 	sharedBodyInRange := int64(f.a.Len())+int64(groups)*52+64 < 128<<20
 	if f.opt(optSharedTrapBody) && compact && groups >= 2 && sharedBodyInRange {
-		if moduleSharedTrapBodyEnabled {
-			f.emitSharedTrapStubs()
-		} else {
-			f.emitSharedTrapStubsHead()
-		}
+		f.emitSharedTrapStubs()
 		f.stats.peep("shared-trap-body")
 		return
 	}
 	// Two 16-byte unwind tails cost 32 bytes. Two B sites plus one tail cost 24,
 	// and the extra branch is confined to a terminal cold path.
-	shareUnwind := sharedTrapUnwindEnabled && compact && groups >= 2
+	shareUnwind := compact && groups >= 2
 	sharedUnwind := -1
 	sharedTails := 0
 	if shareUnwind {
@@ -259,9 +312,9 @@ func (f *fn) emitTrapStubs() {
 				f.a.MovImm64(X17, uint64(first.pc))
 				commonJump = f.a.Branch()
 				if first.branch&1 != 0 {
-					f.a.PatchBranch26(first.branch&^1, pos)
+					f.patchBranch26(int(first.branch&^1), pos)
 				} else {
-					f.a.PatchBranch19(first.branch, pos)
+					f.patchBranch19(int(first.branch), pos)
 				}
 			}
 			common := f.a.Len()
@@ -269,19 +322,22 @@ func (f *fn) emitTrapStubs() {
 				f.a.MovImm64(X17, uint64(^uint32(0)))
 				for _, site := range group {
 					if site.branch&1 != 0 {
-						f.a.PatchBranch26(site.branch&^1, common)
+						f.patchBranch26(int(site.branch&^1), common)
 					} else {
-						f.a.PatchBranch19(site.branch, common)
+						f.patchBranch19(int(site.branch), common)
 					}
 				}
 			}
-			f.storeModuleGlobals(X9)
+			f.storeGlobalPins(X16, true)
 			f.emitTrapRecord(code, first.function)
 			if shareUnwind {
 				site := f.a.Branch()
 				if !f.a.PatchBranch26(site, sharedUnwind) {
 					// A pathological >128 MiB function remains correct: discard the
 					// just-emitted B and retain this group's local unwind.
+					if profileEnabled && f.stats != nil && f.stats.RecordSources {
+						f.rewindProfileEmission(site)
+					}
 					f.a.B = f.a.B[:site]
 					f.emitTrapUnwind()
 				} else {
@@ -291,59 +347,13 @@ func (f *fn) emitTrapStubs() {
 				f.emitTrapUnwind()
 			}
 			if commonJump >= 0 {
-				f.a.PatchBranch26(commonJump, common)
+				f.patchBranch26(commonJump, common)
 			}
 			start = end
 		}
 	}
 	if sharedTails != 0 {
 		f.stats.peepN("cold-trap-unwind-share", sharedTails-1)
-	}
-}
-
-// emitSharedTrapStubsHead is the exact pre-module-sharing layout retained by
-// WAGO_ARM64_NO_MODULE_SHARED_TRAP_BODY. Keeping the body before its groups
-// makes that switch a byte-exact corpus oracle rather than merely disabling the
-// module compaction pass.
-func (f *fn) emitSharedTrapStubsHead() {
-	common := f.a.Len()
-	f.emitTrapFromRegisters()
-	for code := uint32(1); code <= trapAtomicUnaligned; code++ {
-		sites := f.scratchState().trapSites[code]
-		if len(sites) == 0 {
-			continue
-		}
-		f.stats.addTrapStub()
-		for start := 0; start < len(sites); {
-			end := start + 1
-			for end < len(sites) && sites[end].function == sites[start].function {
-				end++
-			}
-			group := sites[start:end]
-			first := group[0]
-			pos := f.a.Len()
-			pc := uint64(^uint32(0))
-			if len(group) == 1 {
-				pc = uint64(first.pc)
-			}
-			f.a.MovImm64(X17, pc)
-			f.a.MovImm64(X10, uint64(first.function+1))
-			f.a.MovImm64(X11, uint64(code))
-			for _, site := range group {
-				if site.branch&1 != 0 {
-					f.a.PatchBranch26(site.branch&^1, pos)
-				} else {
-					f.a.PatchBranch19(site.branch, pos)
-				}
-			}
-			branch := f.a.Branch()
-			if !f.a.PatchBranch26(branch, common) {
-				f.a.B = f.a.B[:branch]
-				f.emitTrapFromRegisters()
-			}
-			f.stats.addTrapGroup()
-			start = end
-		}
 	}
 }
 
@@ -367,16 +377,18 @@ func (f *fn) emitSharedTrapStubs() {
 				pc = uint64(first.pc)
 			}
 			f.a.MovImm64(X17, pc)
-			f.a.MovImm64(X10, uint64(first.function+1))
-			f.a.MovImm64(X11, uint64(code))
+			// X9-X11 can hold value-pinned globals that the trap body publishes.
+			// X12/X13 may hold leaf locals, but those die on this terminal path.
+			f.a.MovImm64(X12, uint64(first.function+1))
+			f.a.MovImm64(X13, uint64(code))
 			for _, site := range group {
 				if site.branch&1 != 0 {
-					f.a.PatchBranch26(site.branch&^1, pos)
+					f.patchBranch26(int(site.branch&^1), pos)
 				} else {
-					f.a.PatchBranch19(site.branch, pos)
+					f.patchBranch19(int(site.branch), pos)
 				}
 			}
-			group[0].branch = f.a.Branch()
+			group[0].branch = compactTrapBranch(f.a.Branch())
 			f.stats.addTrapGroup()
 			start = end
 		}
@@ -392,7 +404,7 @@ func (f *fn) emitSharedTrapStubs() {
 			for end < len(sites) && sites[end].function == sites[start].function {
 				end++
 			}
-			if !f.a.PatchBranch26(sites[start].branch, f.trapBodyOff) {
+			if !f.a.PatchBranch26(int(sites[start].branch), f.trapBodyOff) {
 				panic("arm64: bounded trap body branch exceeded imm26")
 			}
 			start = end
@@ -401,11 +413,11 @@ func (f *fn) emitSharedTrapStubs() {
 }
 
 func (f *fn) emitTrapFromRegisters() {
-	f.storeModuleGlobals(X9)
+	f.storeGlobalPins(X16, true)
 	f.ld64(X9, linMemReg, -int32(offTrapCellPtr))
-	f.st32(X9, 16, X10)
+	f.st32(X9, 16, X12)
 	f.st32(X9, 20, X17)
-	f.st32(X9, 0, X11)
+	f.st32(X9, 0, X13)
 	f.emitTrapUnwind()
 }
 
@@ -444,16 +456,24 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // aliasPinned lets a pinned-local address be used in place (no copy) — only
 // valid when the access is emitted immediately (stores), not deferred (loads);
 // eaOwned reports whether the caller must release ea.
-func (f *fn) memAddr(off uint64, size int, aliasPinned bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
+func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) (ea Reg, eaOwned bool, borrow int, disp int32) {
 	if f.memoryAddr64(0) {
 		return f.memAddr64(off, size)
 	}
 	off32 := uint32(off)
 	e := f.popValue()
+	// Do not infer this from the Wasm i32 type alone: serialized parameters and
+	// other external carriers may have non-canonical upper bits. Constants are
+	// materialized with a W-register move; the fact is set only by producers
+	// whose AArch64 lowering also writes a W register and survives exact-value
+	// moves and spills.
+	upper32Zero := e.st.kind == stConst ||
+		f.opt(optValueFacts) && e.st.valueFacts().has(factUpper32Zero)
 	// Bounds-certificate source: the address's stable value carrier (a local or
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
 	bcKind, bcIdx := uint8(0), uint32(0)
+	loadDefinedLocal := f.loadDefinedAddressLocal(e)
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:
 		bcKind, bcIdx = 1, uint32(e.st.idx)
@@ -467,17 +487,31 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	if aliasPinned && !needAdd {
 		ea, eaOwned = f.materializeRead(e) // a pinned local's reg is read in place
 		if !eaOwned {
-			borrow = e.st.idx
+			borrow = e.st.index()
 		}
 	} else {
 		ea, eaOwned = f.materialize(e), true
 	}
-	// ABI slots are 64-bit words; memory32 consumes only the low i32 bits.
-	f.a.MovReg32(ea, ea)
+	// ABI slots are 64-bit words; memory32 consumes only the low i32 bits. Skip
+	// the canonicalization when the producer already guarantees a zero upper
+	// half (notably every ARM64-backed Wasm i32 local).
+	if !upper32Zero || loadDefinedLocal {
+		f.a.MovReg32(ea, ea)
+		if loadDefinedLocal && upper32Zero {
+			f.stats.peep("memory-address-load-rename")
+		}
+	} else {
+		f.stats.peep("memory-address-zext-elim")
+		// Keep later function entry addresses stable: move the removed hot word
+		// to this function's cold tail rather than shifting the module layout.
+		f.phasePadWords++
+	}
 	if int64(off32)+int64(size) <= 0x7FFFFFFF {
 		disp = int32(off32)
 		leaDisp = int32(off32) + int32(size)
 	} else if off32 != 0 {
+		// The adjusted address has no certificate for the original base.
+		bcKind, rangeExtent = 0, 0
 		t := f.allocReg(maskOf(ea))
 		f.a.MovImm64(t, uint64(off32))
 		f.a.Add64(ea, ea, t)
@@ -485,13 +519,6 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	}
 
 	if f.guardMode {
-		return ea, eaOwned, borrow, disp
-	}
-	// Loop-precheck fast body: a loop-invariant base local proven in bounds by the
-	// pre-loop check needs no per-access check (memBytes only grows). See
-	// boundshoist.go.
-	if f.elideBases != nil && bcKind == 1 && f.elideBases[bcIdx] {
-		f.stats.addBoundsHoistable()
 		return ea, eaOwned, borrow, disp
 	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
@@ -504,14 +531,29 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool) (ea Reg, eaOwned bo
 		f.stats.addBoundsElidable()
 		return ea, eaOwned, borrow, disp
 	}
-	f.boundsCertUpdate(bcKind, bcIdx, leaDisp)
-	if bcKind != 0 && f.inLoop() {
-		f.stats.addBoundsInLoop()
+	if rangeExtent > leaDisp {
+		leaDisp = rangeExtent
 	}
-	if f.boundsHoistable(bcKind, bcIdx) {
-		f.stats.addBoundsHoistable()
+	f.boundsCertUpdate(bcKind, bcIdx, leaDisp)
+	if diagnosticsEnabled && f.stats != nil {
+		if bcKind != 0 && f.inLoop() {
+			f.stats.addBoundsInLoop()
+		}
+		if f.boundsHoistable(bcKind, bcIdx) {
+			f.stats.addBoundsHoistable()
+		}
 	}
 	f.pinned = f.pinned.add(ea)
+	if f.memLimitReg != regNone && leaDisp == f.memLimitExtent {
+		f.cmpRR(ea, f.memLimitReg, true)
+		f.stats.peep("common-bounds-limit-hit")
+		f.trapIf(condA, trapMemOOB)
+		// Preserve later function entry addresses: relocate the removed hot ADD to
+		// this function's cold tail instead of shifting the rest of the module.
+		f.phasePadWords++
+		f.pinned = f.pinned.remove(ea)
+		return ea, eaOwned, borrow, disp
+	}
 	t := f.allocReg(0)
 	f.leaDisp(t, ea, leaDisp, true) // t = ea + off + size
 	if f.memSizeReg != regNone {
@@ -584,7 +626,7 @@ func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex uint32, off uint64, err err
 
 func (f *fn) memAddrAt(memoryIndex uint32, off uint64, size int) (base, ea Reg, releaseBase, eaOwned bool, borrow int, disp int32) {
 	if memoryIndex == 0 {
-		ea, eaOwned, borrow, disp = f.memAddr(off, size, true)
+		ea, eaOwned, borrow, disp = f.memAddr(off, size, true, 0)
 		return linMemReg, ea, false, eaOwned, borrow, disp
 	}
 	base, ea, disp = f.indexedMemAddr(memoryIndex, off, size)
@@ -593,9 +635,16 @@ func (f *fn) memAddrAt(memoryIndex uint32, off uint64, size int) (base, ea Reg, 
 
 func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32) {
 	e := f.popValue()
+	loadDefinedLocal := f.loadDefinedAddressLocal(e)
 	ea = f.materialize(e)
-	if !f.memoryAddr64(memoryIndex) {
+	if !f.memoryAddr64(memoryIndex) && (!e.st.valueFacts().has(factUpper32Zero) || loadDefinedLocal) {
 		f.a.MovReg32(ea, ea)
+		if loadDefinedLocal && e.st.valueFacts().has(factUpper32Zero) {
+			f.stats.peep("memory-address-load-rename")
+		}
+	} else if !f.memoryAddr64(memoryIndex) {
+		f.stats.peep("memory-address-zext-elim")
+		f.phasePadWords++
 	}
 	disp = 0
 	if off != 0 {
@@ -626,7 +675,104 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	return base, ea, disp
 }
 
-// boundsCertCovers reports whether the active straight-line certificate already
+func (f *fn) loadDefinedAddressLocal(e *elem) bool {
+	return e.elemKind() == ekValue && (e.st.kind == stLocalReg || e.st.kind == stLocalRef) &&
+		e.st.idx < 64 && f.loadDefinedLocals&(uint64(1)<<e.st.idx) != 0
+}
+
+type boundsCert struct {
+	kind   uint8
+	idx    uint32
+	extent int32
+}
+
+func boundsSource(s storage) (kind uint8, idx uint32) {
+	switch s.kind {
+	case stLocalReg, stLocalRef:
+		return 1, uint32(s.idx)
+	case stGlobReg:
+		return 2, uint32(s.idx)
+	default:
+		return 0, 0
+	}
+}
+
+const maxStraightLineRangeOps = 4096
+
+// straightLineLoadExtent finds later scalar loads from the same stable source
+// across only non-trapping local integer work. Any effect, control edge, store,
+// or potential trap ends the scan, preserving observable trap order.
+func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, extent int32) int32 {
+	scan := *r
+	prevKind, prevIdx := uint8(0), uint32(0)
+	for n := 0; n < maxStraightLineRangeOps && scan.HasNext(); n++ {
+		op, err := scan.Byte()
+		if err != nil {
+			break
+		}
+		nextKind, nextIdx := uint8(0), uint32(0)
+		switch {
+		case op == 0x20:
+			x, err := scan.U32()
+			if err != nil {
+				return extent
+			}
+			nextKind, nextIdx = 1, x
+		case op == 0x23:
+			x, err := scan.U32()
+			if err != nil {
+				return extent
+			}
+			nextKind, nextIdx = 2, x
+		case op == 0x21 || op == 0x22:
+			x, err := scan.U32()
+			if err != nil || kind == 1 && x == idx {
+				return extent
+			}
+		case op >= 0x28 && op <= 0x35:
+			size := memAccessSize(op)
+			align, err := scan.U32()
+			if err != nil {
+				return extent
+			}
+			memoryIndex := uint32(0)
+			if align >= 64 && align < 128 {
+				memoryIndex, err = scan.U32()
+				if err != nil {
+					return extent
+				}
+			}
+			off, err := scan.U32()
+			if err != nil || memoryIndex != 0 {
+				return extent
+			}
+			if prevKind == kind && prevIdx == idx {
+				candidate := int64(off) + int64(size)
+				if candidate > 0x7fffffff {
+					return extent
+				}
+				if int32(candidate) > extent {
+					extent = int32(candidate)
+				}
+			}
+		case op == 0x01 || op == 0x1a || op == 0x1b,
+			op == 0x41 || op == 0x42,
+			op >= 0x45 && op <= 0x6c,
+			op >= 0x71 && op <= 0x7e,
+			op >= 0x83 && op <= 0x8a,
+			op == 0xa7 || op == 0xac || op == 0xad:
+			if err := skipImmediates(&scan, op); err != nil {
+				return extent
+			}
+		default:
+			return extent
+		}
+		prevKind, prevIdx = nextKind, nextIdx
+	}
+	return extent
+}
+
+// boundsCertCovers reports whether an active straight-line certificate already
 // proves this access in-bounds (P6.1): the same keyable source, with this
 // access's extent (off+size) within the proven extent. A check proves
 // source+extent <= memBytes; memBytes only ever grows, so a later access on the
@@ -635,28 +781,78 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 // join), memory.grow, and a set of the certified source — exactly the set that
 // makes the proving check dominate this one on every path, so eliding is sound.
 func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
-	return kind != 0 && f.bcKind == kind && f.bcIdx == idx && extent <= f.bcExtent
+	if kind == 0 {
+		return false
+	}
+	if !f.opt(optMultiBoundsCert) {
+		c := &f.boundsCerts[0]
+		return c.kind == kind && c.idx == idx && extent <= c.extent
+	}
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			return extent <= c.extent
+		}
+	}
+	return false
 }
 
-// boundsCertUpdate records the check about to be emitted: establish or extend the
-// single-entry certificate for a keyable source; an unkeyable (computed) base
-// ends the straight-line certificate.
+// boundsCertUpdate records the check about to be emitted. The bounded
+// round-robin set covers interleaved arrays with fixed compiler state.
 func (f *fn) boundsCertUpdate(kind uint8, idx uint32, extent int32) {
-	if kind == 0 {
-		f.bcKind = 0
-		return
-	}
-	if f.bcKind == kind && f.bcIdx == idx {
-		if extent > f.bcExtent {
-			f.bcExtent = extent // same source, larger reach — extend the proven extent
+	if !f.opt(optMultiBoundsCert) {
+		c := &f.boundsCerts[0]
+		if kind == 0 {
+			*c = boundsCert{}
+		} else if c.kind == kind && c.idx == idx {
+			if extent > c.extent {
+				c.extent = extent
+			}
+		} else {
+			*c = boundsCert{kind: kind, idx: idx, extent: extent}
 		}
 		return
 	}
-	f.bcKind, f.bcIdx, f.bcExtent = kind, idx, extent
+	if kind == 0 {
+		return
+	}
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			if extent > c.extent {
+				c.extent = extent
+			}
+			return
+		}
+	}
+	for i := range f.boundsCerts {
+		if f.boundsCerts[i].kind == 0 {
+			f.boundsCerts[i] = boundsCert{kind: kind, idx: idx, extent: extent}
+			return
+		}
+	}
+	i := int(f.nextBoundsCert) % len(f.boundsCerts)
+	f.boundsCerts[i] = boundsCert{kind: kind, idx: idx, extent: extent}
+	f.nextBoundsCert++
 }
 
-// invalidateBoundsCert drops the straight-line bounds certificate.
-func (f *fn) invalidateBoundsCert() { f.bcKind = 0 }
+// invalidateBoundsCert drops every straight-line bounds certificate.
+func (f *fn) invalidateBoundsCert() {
+	for i := range f.boundsCerts {
+		f.boundsCerts[i] = boundsCert{}
+	}
+	f.nextBoundsCert = 0
+}
+
+// invalidateBoundsCertFor drops only the proof whose address source changed.
+func (f *fn) invalidateBoundsCertFor(kind uint8, idx uint32) {
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			*c = boundsCert{}
+		}
+	}
+}
 
 // inLoop reports whether any enclosing control frame is a loop.
 func (f *fn) inLoop() bool {
@@ -678,7 +874,8 @@ func (f *fn) boundsHoistable(kind uint8, idx uint32) bool {
 	}
 	for i := len(f.ctrl) - 1; i >= 0; i-- {
 		if f.ctrl[i].kind == cfLoop {
-			return !f.ctrl[i].loopSetLocals[idx]
+			cold := f.ctrlMerge(&f.ctrl[i])
+			return cold != nil && cold.hasLoopSet() && !loopSetsLocal(f.frameLoopSetLocals(&f.ctrl[i]), idx)
 		}
 	}
 	return false // not inside a loop
@@ -709,19 +906,63 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		return nil
 	}
 	f.invalidateStoreForward()
+	rangeExtent := int32(0)
+	if f.boundsFacts && !f.guardMode && !f.threadedMemory0 && !f.memoryAddr64(0) && int64(off)+int64(size) <= 0x7fffffff {
+		if top := f.s.back(); top != nil && top.elemKind() == ekValue {
+			kind, idx := boundsSource(top.st)
+			currentExtent := int32(off) + int32(size)
+			if kind != 0 && !f.boundsCertCovers(kind, idx, currentExtent) {
+				rangeExtent = f.straightLineLoadExtent(r, kind, idx, currentExtent)
+			}
+		}
+	}
 	// The address may read a pinned local's register in place (WARP
 	// liftToRegInPlace): the deferred load records the borrow so a local.set of
 	// that local realizes the load first, and consumers neither write nor
 	// release the register.
 	addrLocal, addrOK := localAddressKey(f.s.back())
+	seedIndexedBase := false
+	if addrOK && size == 4 && !signed && !wide && !f.guardMode && f.opt(optIndexedBaseReuse) {
+		scan := *r
+		if op, scanErr := scan.Byte(); scanErr == nil && op == 0x6a { // i32.add
+			if op, scanErr = scan.Byte(); scanErr == nil && op == 0x21 { // local.set accumulator
+				setLocal, setErr := scan.U32()
+				if setErr == nil && int(setLocal)+f.localBase != addrLocal {
+					if op, scanErr = scan.Byte(); scanErr == nil && op == 0x20 { // local.get same address
+						getLocal, getErr := scan.U32()
+						if getErr == nil && int(getLocal)+f.localBase == addrLocal {
+							if op, scanErr = scan.Byte(); scanErr == nil && op == 0x28 { // i32.load
+								memory2, off2, argErr := f.readMemArg(&scan)
+								seedIndexedBase = argErr == nil && memory2 == 0 && off2 == off+4
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 	aliasLocal := -1
 	if addrOK {
 		aliasLocal = addrLocal
 	}
-	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, rangeExtent)
+	if seedIndexedBase && borrow == addrLocal && disp >= 0 && disp%4 == 0 && disp/4 <= 4095 {
+		f.a.AddShifted(X16, linMemReg, ea, 0, false)
+		out := f.allocReg(maskOf(ea))
+		if f.a.Load32(out, X16, uint32(disp)) {
+			if eaOwned {
+				f.release(ea)
+			}
+			value := f.pushReg(out, mtI32)
+			value.st.setValueFacts(factUpper32Zero)
+			f.stats.peep("indexed-base-seed")
+			return nil
+		}
+		f.release(out)
+	}
 	if f.opt(optLoadPair) && !f.memoryAddr64(0) && !f.guardMode && !f.threadedMemory0 && !signed &&
 		(size == 4 && !wide || size == 8 && wide) && addrOK {
-		if first := f.s.back(); first != nil && first.kind == ekValue && first.st.kind == stMemRef &&
+		if first := f.s.back(); first != nil && first.elemKind() == ekValue && first.st.kind == stMemRef &&
 			first.st.memAliasLocal() == addrLocal && first.st.memSize() == size &&
 			!first.st.memSigned() && first.st.typ.is64() == wide &&
 			disp == first.st.memDisp()+int32(size) {
@@ -745,7 +986,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 				f.occupy(first, dst)
 				second := f.pushReg(dst2, first.st.typ)
 				if f.opt(optValueFacts) && !wide {
-					second.st.facts = factUpper32Zero
+					second.st.setValueFacts(factUpper32Zero)
 				}
 				f.stats.peep("load-pair")
 				return nil
@@ -766,7 +1007,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if f.opt(optValueFacts) && !wide {
 		// Every i32 load writes a W register, including sign-extending byte/word
 		// forms, so its physical X-register upper half is known zero.
-		st.facts = factUpper32Zero
+		st.setValueFacts(factUpper32Zero)
 	}
 	e := f.pushValue(st)
 	if eaOwned {
@@ -800,12 +1041,12 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// (low32 at disp, high32 at disp+4); narrower stores truncate to the low `size`
 	// bytes exactly like a materialized constant would (i64.store8/16/32 route here
 	// too).
-	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 		f.stats.peep("store-imm")
 		v := top.st.cval
 		f.erase(top)
 		addrLocal, addrOK := localAddressKey(f.s.back())
-		ea, eaOwned, _, disp := f.memAddr(off, size, true)
+		ea, eaOwned, _, disp := f.memAddr(off, size, true, 0)
 		f.pinned = f.pinned.add(ea)
 		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 		if size == 8 {
@@ -828,7 +1069,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	vreg, vOwned := f.materializeRead(value)
 	f.pinned = f.pinned.add(vreg)
 	addrLocal, addrOK := localAddressKey(f.s.back())
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true, 0)
 	f.pinned = f.pinned.add(ea)
 	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	f.a.StoreIdx(linMemReg, ea, vreg, disp, size)
@@ -909,12 +1150,12 @@ func (f *fn) invalidateStoreForward() {
 }
 
 func localAddressKey(e *elem) (int, bool) {
-	if e == nil || e.kind != ekValue {
+	if e == nil || e.elemKind() != ekValue {
 		return 0, false
 	}
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:
-		return e.st.idx, true
+		return e.st.index(), true
 	default:
 		return 0, false
 	}
@@ -949,64 +1190,112 @@ func (f *fn) trapUnlessLE(t, mb Reg) {
 	f.trapIf(condA, trapMemOOB)
 }
 
+// Bulk callers flush operands before these loops. Preserve local pins and
+// constant caches; very wide vector functions can leave only two scratch regs.
+func (f *fn) bulkCopyRegs() [4]Reg {
+	var regs [4]Reg
+	avoid := f.blockedFRegs(0)
+	free := 0
+	for _, r := range fpAllocRegs {
+		if !avoid.has(r) {
+			free++
+		}
+	}
+	n := 4
+	if free < n {
+		n = 2
+	}
+	for i := 0; i < n; i++ {
+		regs[i] = f.allocFReg(avoid)
+		avoid = avoid.add(regs[i])
+	}
+	if n == 2 {
+		regs[2], regs[3] = regNone, regNone
+	}
+	return regs
+}
+
 // copyFwdLoop emits a forward block-copy loop (AArch64 has no `rep movsb`, §4f):
 // copy 64-byte NEON groups while possible, then 32-, 16-, and 8-byte chunks and
 // a byte tail. dst/src are absolute byte pointers and n the count; all three are
-// clobbered, and V16/X16 holds each chunk.
+// clobbered. Vector scratch is allocator-owned; scalar tails use X16.
 func (f *fn) copyFwdLoop(dst, src, n Reg) {
+	vecs := f.bulkCopyRegs()
 	skip := f.a.Cbz64(n) // nothing to copy
 	f.cmpImm(n, 64, true)
 	wideTail := f.a.Bcond(condB)
 	wideLoop := f.a.Len()
-	f.a.LdrQ(X16, src, 0)
-	f.a.LdrQ(X17, src, 16)
-	f.a.LdrQ(X18, src, 32)
-	f.a.LdrQ(X19, src, 48)
-	f.a.StrQ(dst, 0, X16)
-	f.a.StrQ(dst, 16, X17)
-	f.a.StrQ(dst, 32, X18)
-	f.a.StrQ(dst, 48, X19)
+	if vecs[2] == regNone {
+		if f.memcopyQPairs {
+			f.a.LdpQ(vecs[0], vecs[1], src, 0)
+			f.a.StpQ(vecs[0], vecs[1], dst, 0)
+		} else {
+			f.a.LdrQ(vecs[0], src, 0)
+			f.a.LdrQ(vecs[1], src, 16)
+			f.a.StrQ(dst, 0, vecs[0])
+			f.a.StrQ(dst, 16, vecs[1])
+		}
+		if f.memcopyQPairs {
+			f.a.LdpQ(vecs[0], vecs[1], src, 32)
+			f.a.StpQ(vecs[0], vecs[1], dst, 32)
+		} else {
+			f.a.LdrQ(vecs[0], src, 32)
+			f.a.LdrQ(vecs[1], src, 48)
+			f.a.StrQ(dst, 32, vecs[0])
+			f.a.StrQ(dst, 48, vecs[1])
+		}
+	} else if f.memcopyQPairs {
+		f.a.LdpQ(vecs[0], vecs[1], src, 0)
+		f.a.LdpQ(vecs[2], vecs[3], src, 32)
+		f.a.StpQ(vecs[0], vecs[1], dst, 0)
+		f.a.StpQ(vecs[2], vecs[3], dst, 32)
+	} else {
+		f.a.LdrQ(vecs[0], src, 0)
+		f.a.LdrQ(vecs[1], src, 16)
+		f.a.LdrQ(vecs[2], src, 32)
+		f.a.LdrQ(vecs[3], src, 48)
+		f.a.StrQ(dst, 0, vecs[0])
+		f.a.StrQ(dst, 16, vecs[1])
+		f.a.StrQ(dst, 32, vecs[2])
+		f.a.StrQ(dst, 48, vecs[3])
+	}
 	f.a.AddImm64(src, src, 64)
 	f.a.AddImm64(dst, dst, 64)
 	f.a.SubImm64(n, n, 64)
 	f.cmpImm(n, 64, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
-	f.a.PatchBranch19(wideTail, f.a.Len())
+	f.patchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.patchBranch19(wideTail, f.a.Len())
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
-	vecLoop32 := f.a.Len()
-	f.a.LdrQ(X16, src, 0)
-	f.a.LdrQ(X17, src, 16)
-	f.a.StrQ(dst, 0, X16)
-	f.a.StrQ(dst, 16, X17)
+	if f.memcopyQPairs {
+		f.a.LdpQ(vecs[0], vecs[1], src, 0)
+		f.a.StpQ(vecs[0], vecs[1], dst, 0)
+	} else {
+		f.a.LdrQ(vecs[0], src, 0)
+		f.a.LdrQ(vecs[1], src, 16)
+		f.a.StrQ(dst, 0, vecs[0])
+		f.a.StrQ(dst, 16, vecs[1])
+	}
 	f.a.AddImm64(src, src, 32)
 	f.a.AddImm64(dst, dst, 32)
 	f.a.SubImm64(n, n, 32)
-	f.cmpImm(n, 32, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop32)
-	f.a.PatchBranch19(vecTail, f.a.Len())
+	f.patchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
-	vecLoop := f.a.Len()
-	f.a.LdrQ(X16, src, 0)
-	f.a.StrQ(dst, 0, X16)
+	f.a.LdrQ(vecs[0], src, 0)
+	f.a.StrQ(dst, 0, vecs[0])
 	f.a.AddImm64(src, src, 16)
 	f.a.AddImm64(dst, dst, 16)
 	f.a.SubImm64(n, n, 16)
-	f.cmpImm(n, 16, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop)
-	f.a.PatchBranch19(wordTail, f.a.Len())
+	f.patchBranch19(wordTail, f.a.Len())
 	f.cmpImm(n, 8, true)
 	byteTail := f.a.Bcond(condB)
-	wordLoop := f.a.Len()
 	f.a.Load64(X16, src, 0)
 	f.a.Store64(X16, dst, 0)
 	f.a.AddImm64(src, src, 8)
 	f.a.AddImm64(dst, dst, 8)
 	f.a.SubImm64(n, n, 8)
-	f.cmpImm(n, 8, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), wordLoop)
-	f.a.PatchBranch19(byteTail, f.a.Len())
+	f.patchBranch19(byteTail, f.a.Len())
 	done := f.a.Cbz64(n)
 	loop := f.a.Len()
 	f.a.Ldrb(X16, src, 0)
@@ -1014,18 +1303,18 @@ func (f *fn) copyFwdLoop(dst, src, n Reg) {
 	f.a.AddImm64(src, src, 1)
 	f.a.AddImm64(dst, dst, 1)
 	f.a.SubImm64(n, n, 1)
-	f.a.PatchBranch19(f.a.Cbnz64(n), loop)
-	f.a.PatchBranch19(done, f.a.Len())
-	f.a.PatchBranch19(skip, f.a.Len())
+	f.patchBranch19(f.a.Cbnz64(n), loop)
+	f.patchBranch19(done, f.a.Len())
+	f.patchBranch19(skip, f.a.Len())
 }
 
 // copyBackLoop emits a backward byte-copy loop for overlap-safe memmove when dst
 // is ahead of src (the arm64 analog of amd64's `std; rep movsb; cld`): it walks
 // from the end down, copying 64-byte NEON groups, then 32-, 16-, and 8-byte
 // chunks and the byte tail. dst/src are absolute base pointers, n the count;
-// all clobbered, and
-// V16/X16 holds each chunk.
+// all clobbered. Vector scratch is allocator-owned; scalar tails use X16.
 func (f *fn) copyBackLoop(dst, src, n Reg) {
+	vecs := f.bulkCopyRegs()
 	skip := f.a.Cbz64(n)
 	f.a.Add64(dst, dst, n)
 	f.a.Add64(src, src, n)
@@ -1034,53 +1323,75 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 	wideLoop := f.a.Len()
 	f.a.SubImm64(src, src, 64)
 	f.a.SubImm64(dst, dst, 64)
-	f.a.LdrQ(X16, src, 0)
-	f.a.LdrQ(X17, src, 16)
-	f.a.LdrQ(X18, src, 32)
-	f.a.LdrQ(X19, src, 48)
-	f.a.StrQ(dst, 0, X16)
-	f.a.StrQ(dst, 16, X17)
-	f.a.StrQ(dst, 32, X18)
-	f.a.StrQ(dst, 48, X19)
+	if vecs[2] == regNone {
+		if f.memcopyQPairs {
+			f.a.LdpQ(vecs[0], vecs[1], src, 32)
+			f.a.StpQ(vecs[0], vecs[1], dst, 32)
+		} else {
+			f.a.LdrQ(vecs[0], src, 32)
+			f.a.LdrQ(vecs[1], src, 48)
+			f.a.StrQ(dst, 32, vecs[0])
+			f.a.StrQ(dst, 48, vecs[1])
+		}
+		if f.memcopyQPairs {
+			f.a.LdpQ(vecs[0], vecs[1], src, 0)
+			f.a.StpQ(vecs[0], vecs[1], dst, 0)
+		} else {
+			f.a.LdrQ(vecs[0], src, 0)
+			f.a.LdrQ(vecs[1], src, 16)
+			f.a.StrQ(dst, 0, vecs[0])
+			f.a.StrQ(dst, 16, vecs[1])
+		}
+	} else if f.memcopyQPairs {
+		f.a.LdpQ(vecs[0], vecs[1], src, 0)
+		f.a.LdpQ(vecs[2], vecs[3], src, 32)
+		f.a.StpQ(vecs[0], vecs[1], dst, 0)
+		f.a.StpQ(vecs[2], vecs[3], dst, 32)
+	} else {
+		f.a.LdrQ(vecs[0], src, 0)
+		f.a.LdrQ(vecs[1], src, 16)
+		f.a.LdrQ(vecs[2], src, 32)
+		f.a.LdrQ(vecs[3], src, 48)
+		f.a.StrQ(dst, 0, vecs[0])
+		f.a.StrQ(dst, 16, vecs[1])
+		f.a.StrQ(dst, 32, vecs[2])
+		f.a.StrQ(dst, 48, vecs[3])
+	}
 	f.a.SubImm64(n, n, 64)
 	f.cmpImm(n, 64, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
-	f.a.PatchBranch19(wideTail, f.a.Len())
+	f.patchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.patchBranch19(wideTail, f.a.Len())
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
-	vecLoop32 := f.a.Len()
 	f.a.SubImm64(src, src, 32)
 	f.a.SubImm64(dst, dst, 32)
-	f.a.LdrQ(X16, src, 0)
-	f.a.LdrQ(X17, src, 16)
-	f.a.StrQ(dst, 0, X16)
-	f.a.StrQ(dst, 16, X17)
+	if f.memcopyQPairs {
+		f.a.LdpQ(vecs[0], vecs[1], src, 0)
+		f.a.StpQ(vecs[0], vecs[1], dst, 0)
+	} else {
+		f.a.LdrQ(vecs[0], src, 0)
+		f.a.LdrQ(vecs[1], src, 16)
+		f.a.StrQ(dst, 0, vecs[0])
+		f.a.StrQ(dst, 16, vecs[1])
+	}
 	f.a.SubImm64(n, n, 32)
-	f.cmpImm(n, 32, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop32)
-	f.a.PatchBranch19(vecTail, f.a.Len())
+	f.patchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
-	vecLoop := f.a.Len()
 	f.a.SubImm64(src, src, 16)
 	f.a.SubImm64(dst, dst, 16)
-	f.a.LdrQ(X16, src, 0)
-	f.a.StrQ(dst, 0, X16)
+	f.a.LdrQ(vecs[0], src, 0)
+	f.a.StrQ(dst, 0, vecs[0])
 	f.a.SubImm64(n, n, 16)
-	f.cmpImm(n, 16, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop)
-	f.a.PatchBranch19(wordTail, f.a.Len())
+	f.patchBranch19(wordTail, f.a.Len())
 	f.cmpImm(n, 8, true)
 	byteTail := f.a.Bcond(condB)
-	wordLoop := f.a.Len()
 	f.a.SubImm64(src, src, 8)
 	f.a.SubImm64(dst, dst, 8)
 	f.a.Load64(X16, src, 0)
 	f.a.Store64(X16, dst, 0)
 	f.a.SubImm64(n, n, 8)
-	f.cmpImm(n, 8, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), wordLoop)
-	f.a.PatchBranch19(byteTail, f.a.Len())
+	f.patchBranch19(byteTail, f.a.Len())
 	done := f.a.Cbz64(n)
 	loop := f.a.Len()
 	f.a.SubImm64(src, src, 1)
@@ -1088,66 +1399,58 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 	f.a.Ldrb(X16, src, 0)
 	f.a.Strb(X16, dst, 0)
 	f.a.SubImm64(n, n, 1)
-	f.a.PatchBranch19(f.a.Cbnz64(n), loop)
-	f.a.PatchBranch19(done, f.a.Len())
-	f.a.PatchBranch19(skip, f.a.Len())
+	f.patchBranch19(f.a.Cbnz64(n), loop)
+	f.patchBranch19(done, f.a.Len())
+	f.patchBranch19(skip, f.a.Len())
 }
 
 // fillLoop emits a forward byte-fill loop (the arm64 analog of `rep stosb`):
 // write 64-byte NEON groups while possible, then 32-, 16-, and 8-byte chunks
 // and a byte tail.
 func (f *fn) fillLoop(dst, pat, n Reg) {
+	vec := f.allocFReg(0)
 	skip := f.a.Cbz64(n)
-	f.a.FmovFromGpr(X16, pat, true)
-	f.a.NeonInsD(X16, pat, 1)
+	f.a.FmovFromGpr(vec, pat, true)
+	f.a.NeonInsD(vec, pat, 1)
 	f.cmpImm(n, 64, true)
 	wideTail := f.a.Bcond(condB)
 	wideLoop := f.a.Len()
-	f.a.StrQ(dst, 0, X16)
-	f.a.StrQ(dst, 16, X16)
-	f.a.StrQ(dst, 32, X16)
-	f.a.StrQ(dst, 48, X16)
+	f.a.StrQ(dst, 0, vec)
+	f.a.StrQ(dst, 16, vec)
+	f.a.StrQ(dst, 32, vec)
+	f.a.StrQ(dst, 48, vec)
 	f.a.AddImm64(dst, dst, 64)
 	f.a.SubImm64(n, n, 64)
 	f.cmpImm(n, 64, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
-	f.a.PatchBranch19(wideTail, f.a.Len())
+	f.patchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.patchBranch19(wideTail, f.a.Len())
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
-	vecLoop32 := f.a.Len()
-	f.a.StrQ(dst, 0, X16)
-	f.a.StrQ(dst, 16, X16)
+	f.a.StrQ(dst, 0, vec)
+	f.a.StrQ(dst, 16, vec)
 	f.a.AddImm64(dst, dst, 32)
 	f.a.SubImm64(n, n, 32)
-	f.cmpImm(n, 32, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop32)
-	f.a.PatchBranch19(vecTail, f.a.Len())
+	f.patchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
-	vecLoop := f.a.Len()
-	f.a.StrQ(dst, 0, X16)
+	f.a.StrQ(dst, 0, vec)
 	f.a.AddImm64(dst, dst, 16)
 	f.a.SubImm64(n, n, 16)
-	f.cmpImm(n, 16, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop)
-	f.a.PatchBranch19(wordTail, f.a.Len())
+	f.patchBranch19(wordTail, f.a.Len())
 	f.cmpImm(n, 8, true)
 	byteTail := f.a.Bcond(condB)
-	wordLoop := f.a.Len()
 	f.a.Store64(pat, dst, 0)
 	f.a.AddImm64(dst, dst, 8)
 	f.a.SubImm64(n, n, 8)
-	f.cmpImm(n, 8, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), wordLoop)
-	f.a.PatchBranch19(byteTail, f.a.Len())
+	f.patchBranch19(byteTail, f.a.Len())
 	done := f.a.Cbz64(n)
 	loop := f.a.Len()
 	f.a.Strb(pat, dst, 0)
 	f.a.AddImm64(dst, dst, 1)
 	f.a.SubImm64(n, n, 1)
-	f.a.PatchBranch19(f.a.Cbnz64(n), loop)
-	f.a.PatchBranch19(done, f.a.Len())
-	f.a.PatchBranch19(skip, f.a.Len())
+	f.patchBranch19(f.a.Cbnz64(n), loop)
+	f.patchBranch19(done, f.a.Len())
+	f.patchBranch19(skip, f.a.Len())
 }
 
 // memoryInit lowers memory.init. The three i32 operands (dst, src, n) are read
@@ -1165,9 +1468,12 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
-	f.ld64(X10, SP, f.spillOff(d-2)) // src offset in passive segment
-	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	countArg := f.s.back()
+	valueArg := f.s.prev(countArg)
+	dstArg := f.s.prev(valueArg)
+	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))    // dst offset
+	f.ld64(X10, SP, f.spillOff(valueArg.st.slotIndex())) // src offset in passive segment
+	f.ld64(X11, SP, f.spillOff(countArg.st.slotIndex())) // n
 	if !f.memoryAddr64(memoryIndex) {
 		f.a.MovReg32(X9, X9)
 	}
@@ -1207,7 +1513,8 @@ func (f *fn) dataDrop(r *wasm.Reader) error {
 
 // memoryCopy lowers memory.copy with memmove semantics (overlap-safe). The three
 // i32 operands (dst, src, n) are read from canonical slots into the scratch
-// registers X9/X10/X11; X12/X13 are free scratch after the flush.
+// registers X9/X10/X11. The bulk hint excludes X9-X14 from local/global pins;
+// the flush releases their transient operand owners.
 func (f *fn) memoryCopy(r *wasm.Reader) error {
 	dstMemory, err := r.U32()
 	if err != nil {
@@ -1218,7 +1525,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		return err
 	}
 	if !f.memoryAddr64(dstMemory) && !f.memoryAddr64(srcMemory) {
-		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.stats.peep("memcopy-unroll")
 				f.memoryCopyConst(int(n), dstMemory, srcMemory)
@@ -1229,94 +1536,142 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
-	f.ld64(X10, SP, f.spillOff(d-2)) // src offset
-	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	countArg := f.s.back()
+	valueArg := f.s.prev(countArg)
+	dstArg := f.s.prev(valueArg)
+	const dst, src, count, scratch = X9, X10, X11, X12
+	f.ld64(dst, SP, f.spillOff(dstArg.st.slotIndex()))     // dst offset
+	f.ld64(src, SP, f.spillOff(valueArg.st.slotIndex()))   // src offset
+	f.ld64(count, SP, f.spillOff(countArg.st.slotIndex())) // n
 	if !f.memoryAddr64(dstMemory) {
-		f.a.MovReg32(X9, X9)
+		f.a.MovReg32(dst, dst)
 	}
 	if !f.memoryAddr64(srcMemory) {
-		f.a.MovReg32(X10, X10)
+		f.a.MovReg32(src, src)
 	}
 	if !f.memoryAddr64(dstMemory) || !f.memoryAddr64(srcMemory) {
-		f.a.MovReg32(X11, X11)
+		f.a.MovReg32(count, count)
 	}
-	f.absoluteBulkAddr(dstMemory, X9, X11)
-	f.absoluteBulkAddr(srcMemory, X10, X11)
+	f.absoluteBulkAddr(dstMemory, dst, count)
+	f.absoluteBulkAddr(srcMemory, src, count)
+	if f.memcopyQPairs {
+		f.stats.peep("memcopy-qpairs")
+	}
 
 	// Hybrid dispatch: small dynamic copies take an inline 8-byte-chunk memmove
 	// loop (WARP emitMemcpyNoBoundsCheck) — the byte-copy loop's per-element cost
 	// dominates the string-append copies AssemblyScript's __renew makes constantly;
 	// large copies fall through to the block byte-copy loops. joins26 collects the
 	// unconditional B (imm26) exits, joins19 the CBZ (imm19) exits.
-	var joins26, joins19 []int
-	f.cmpImm(X11, smallBulkMax, true)
+	// Three imm26 exits and two imm19 exits are emitted below. These are compiler-local
+	// patch sites, not runtime state; append retains its ordinary growth path.
+	var scratch26 [3]int
+	var scratch19 [2]int
+	joins26, joins19 := scratch26[:0], scratch19[:0]
+	f.cmpImm(count, smallBulkMax, true)
 	big := f.a.Bcond(condAE)
 
-	f.cmpRR(X10, X9, true)
+	f.cmpRR(src, dst, true)
 	fwdSmall := f.a.Bcond(condA) // src > dst → forward copy is overlap-safe
 	// dst >= src: copy backward, indexing [ptr+n-k] while counting n down.
 	back8 := f.a.Len()
-	f.cmpImm(X11, 8, false)
+	f.cmpImm(count, 8, false)
 	b8done := f.a.Bcond(condB)
-	f.a.LoadIdx(X12, X10, X11, -8, 8, false, true)
-	f.a.StoreIdx(X9, X11, X12, -8, 8)
-	f.a.SubImm32(X11, X11, 8) // n -= 8
-	f.a.PatchBranch26(f.a.Branch(), back8)
-	f.a.PatchBranch19(b8done, f.a.Len())
-	joins19 = append(joins19, f.a.Cbz64(X11)) // n == 0 → done
+	f.a.LoadIdx(scratch, src, count, -8, 8, false, true)
+	f.a.StoreIdx(dst, count, scratch, -8, 8)
+	f.a.SubImm32(count, count, 8) // n -= 8
+	f.patchBranch26(f.a.Branch(), back8)
+	f.patchBranch19(b8done, f.a.Len())
+	if f.memcopyTail4 {
+		f.cmpImm(count, 4, false)
+		done := f.a.Bcond(condB)
+		f.a.LoadIdx(scratch, src, count, -4, 4, false, false)
+		f.a.StoreIdx(dst, count, scratch, -4, 4)
+		f.a.SubImm32(count, count, 4)
+		f.patchBranch19(done, f.a.Len())
+	}
+	joins19 = append(joins19, f.a.Cbz64(count)) // n == 0 → done
 	back1 := f.a.Len()
-	f.a.LoadIdx(X12, X10, X11, -1, 1, false, false)
-	f.a.StoreIdx(X9, X11, X12, -1, 1)
-	f.a.SubImm32(X11, X11, 1)
-	f.a.PatchBranch19(f.a.Cbnz64(X11), back1)
+	f.a.LoadIdx(scratch, src, count, -1, 1, false, false)
+	f.a.StoreIdx(dst, count, scratch, -1, 1)
+	f.a.SubImm32(count, count, 1)
+	f.patchBranch19(f.a.Cbnz64(count), back1)
 	joins26 = append(joins26, f.a.Branch())
 
 	// src > dst: copy forward via a negative index climbing to zero (WARP's shape).
-	f.a.PatchBranch19(fwdSmall, f.a.Len())
-	f.a.Add64(X10, X10, X11)
-	f.a.Add64(X9, X9, X11)
-	f.a.Sub64(X11, ZR, X11) // neg n (NEG = SUB from XZR)
+	f.patchBranch19(fwdSmall, f.a.Len())
+	// Thirty-two bytes is a common small-array copy. Keep the scalar 8-byte store
+	// width (which forwards efficiently into following i32 loads) but remove the
+	// four counted-loop iterations when the dynamic length hits this exact shape.
+	// Restrict the extra dispatch to call-free loop kernels with a bounded local
+	// set; allocator-heavy string paths copy many other sizes and measurably lose
+	// to even one additional branch in their hot helper.
+	exact32 := -1
+	if !f.usesCalls && f.hasLoop && f.nLocals >= 16 && f.nLocals <= 32 {
+		f.cmpImm(count, 32, false)
+		exact32 = f.a.Bcond(condE)
+	}
+	f.a.Add64(src, src, count)
+	f.a.Add64(dst, dst, count)
+	f.a.Sub64(count, ZR, count) // neg n (NEG = SUB from XZR)
 	fwd8 := f.a.Len()
-	f.cmpImmS(X11, -8, true)
+	f.cmpImmS(count, -8, true)
 	f8done := f.a.Bcond(condG)
-	f.a.LoadIdx(X12, X10, X11, 0, 8, false, true)
-	f.a.StoreIdx(X9, X11, X12, 0, 8)
-	f.a.AddImm64(X11, X11, 8) // n += 8
-	f.a.PatchBranch26(f.a.Branch(), fwd8)
-	f.a.PatchBranch19(f8done, f.a.Len())
-	joins19 = append(joins19, f.a.Cbz64(X11))
+	f.a.LoadIdx(scratch, src, count, 0, 8, false, true)
+	f.a.StoreIdx(dst, count, scratch, 0, 8)
+	f.a.AddImm64(count, count, 8) // n += 8
+	f.patchBranch26(f.a.Branch(), fwd8)
+	f.patchBranch19(f8done, f.a.Len())
+	if f.memcopyTail4 {
+		f.cmpImmS(count, -4, true)
+		done := f.a.Bcond(condG)
+		f.a.LoadIdx(scratch, src, count, 0, 4, false, false)
+		f.a.StoreIdx(dst, count, scratch, 0, 4)
+		f.a.AddImm64(count, count, 4)
+		f.patchBranch19(done, f.a.Len())
+	}
+	joins19 = append(joins19, f.a.Cbz64(count))
 	fwd1 := f.a.Len()
-	f.a.LoadIdx(X12, X10, X11, 0, 1, false, false)
-	f.a.StoreIdx(X9, X11, X12, 0, 1)
-	f.a.AddImm64(X11, X11, 1)
-	f.a.PatchBranch19(f.a.Cbnz64(X11), fwd1)
+	f.a.LoadIdx(scratch, src, count, 0, 1, false, false)
+	f.a.StoreIdx(dst, count, scratch, 0, 1)
+	f.a.AddImm64(count, count, 1)
+	f.patchBranch19(f.a.Cbnz64(count), fwd1)
 	joins26 = append(joins26, f.a.Branch())
+	if exact32 >= 0 {
+		f.patchBranch19(exact32, f.a.Len())
+		for off := uint32(0); off < 32; off += 8 {
+			f.a.Load32(X12, src, off)
+			f.a.Load32(X13, src, off+4)
+			f.a.Store32(X12, dst, off)
+			f.a.Store32(X13, dst, off+4)
+		}
+		joins26 = append(joins26, f.a.Branch())
+		f.stats.peep("memcopy-forward-32")
+	}
 
 	// Large: overlap-safe block copy. Copy backward only when the regions truly
 	// overlap with dst ahead of src; a disjoint copy (dst >= src+n, e.g.
 	// AssemblyScript __renew growing a buffer) is forward-safe, and the forward
 	// byte loop is the common case — so route disjoint high-dst copies to the
 	// forward loop instead of the slower backward one.
-	f.a.PatchBranch19(big, f.a.Len())
-	f.cmpRR(X9, X10, true)
-	fwd := f.a.Bcond(condBE)               // dst <= src → forward
-	f.leaScaled(X12, X10, X11, 0, 0, true) // X12 = src + n
-	f.cmpRR(X9, X12, true)
+	f.patchBranch19(big, f.a.Len())
+	f.cmpRR(dst, src, true)
+	fwd := f.a.Bcond(condBE)                     // dst <= src → forward
+	f.leaScaled(scratch, src, count, 0, 0, true) // scratch = src + n
+	f.cmpRR(dst, scratch, true)
 	fwdDisjoint := f.a.Bcond(condAE) // dst >= src+n → disjoint → forward
-	f.copyBackLoop(X9, X10, X11)     // dst ahead of src and overlapping → backward
+	f.copyBackLoop(dst, src, count)  // dst ahead of src and overlapping → backward
 	done := f.a.Branch()
-	f.a.PatchBranch19(fwd, f.a.Len())
-	f.a.PatchBranch19(fwdDisjoint, f.a.Len())
-	f.copyFwdLoop(X9, X10, X11) // forward
-	f.a.PatchBranch26(done, f.a.Len())
+	f.patchBranch19(fwd, f.a.Len())
+	f.patchBranch19(fwdDisjoint, f.a.Len())
+	f.copyFwdLoop(dst, src, count) // forward
+	f.patchBranch26(done, f.a.Len())
 	for _, j := range joins26 {
-		f.a.PatchBranch26(j, f.a.Len())
+		f.patchBranch26(j, f.a.Len())
 	}
 	for _, j := range joins19 {
-		f.a.PatchBranch19(j, f.a.Len())
+		f.patchBranch19(j, f.a.Len())
 	}
-
 	f.setDepth(d - 3)
 	return nil
 }
@@ -1329,7 +1684,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		return err
 	}
 	if !f.memoryAddr64(memoryIndex) {
-		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.memoryFillConst(int(n), memoryIndex)
 				return nil
@@ -1339,9 +1694,12 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.ld64(X9, SP, f.spillOff(d-3))  // dst offset
-	f.ld64(X14, SP, f.spillOff(d-2)) // fill byte (low 8 bits)
-	f.ld64(X11, SP, f.spillOff(d-1)) // n
+	countArg := f.s.back()
+	valueArg := f.s.prev(countArg)
+	dstArg := f.s.prev(valueArg)
+	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))    // dst offset
+	f.ld64(X14, SP, f.spillOff(valueArg.st.slotIndex())) // fill byte (low 8 bits)
+	f.ld64(X11, SP, f.spillOff(countArg.st.slotIndex())) // n
 	if !f.memoryAddr64(memoryIndex) {
 		f.a.MovReg32(X9, X9)
 		f.a.MovReg32(X11, X11)
@@ -1363,18 +1721,18 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f8done := f.a.Bcond(condB)
 	f.a.StoreIdx(X9, X11, X14, -8, 8)
 	f.a.SubImm32(X11, X11, 8)
-	f.a.PatchBranch26(f.a.Branch(), fill8)
-	f.a.PatchBranch19(f8done, f.a.Len())
+	f.patchBranch26(f.a.Branch(), fill8)
+	f.patchBranch19(f8done, f.a.Len())
 	fillDone := f.a.Cbz64(X11)
 	fill1 := f.a.Len()
 	f.a.StoreIdx(X9, X11, X14, -1, 1)
 	f.a.SubImm32(X11, X11, 1)
-	f.a.PatchBranch19(f.a.Cbnz64(X11), fill1)
+	f.patchBranch19(f.a.Cbnz64(X11), fill1)
 	skipFill := f.a.Branch()
-	f.a.PatchBranch19(bigF, f.a.Len())
+	f.patchBranch19(bigF, f.a.Len())
 	f.fillLoop(X9, X14, X11) // [X9..] = X14[7:0], X11 times
-	f.a.PatchBranch26(skipFill, f.a.Len())
-	f.a.PatchBranch19(fillDone, f.a.Len())
+	f.patchBranch26(skipFill, f.a.Len())
+	f.patchBranch19(fillDone, f.a.Len())
 
 	f.setDepth(d - 3)
 	return nil
@@ -1424,62 +1782,90 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	}
 	res := f.allocReg(maskOf(delta))
 	base := linMemReg
-	dir := regNone
-	entry := int32(0)
+	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	if memoryIndex != 0 {
-		dir = f.allocReg(maskOf(delta, res))
-		f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
-		entry = int32(memoryIndex) * abi.MemoryDirEntryBytes
-		base = f.allocReg(maskOf(delta, res, dir))
-		f.ld64(base, dir, entry)
+		base = f.allocReg(maskOf(delta, res))
+		f.ld64(base, linMemReg, -int32(offMemoryDirPtr))
+		f.ld64(base, base, entry)
 	}
 	f.ld32(res, base, -int32(bdCurPages))
-	avoid := maskOf(delta, res, base)
-	if dir != regNone {
-		avoid = avoid.add(dir)
-	}
-	nw := f.allocReg(avoid)
+	// memory.grow 0 cannot change memory state and always returns the current
+	// size. Bypass maximum checks and cache publication; this operation is used
+	// as a cheap size query by generated runtimes.
+	zeroDelta := f.zeroBranch(delta, false, true)
+	nw := f.allocReg(maskOf(delta, res, base))
 	f.a.MovReg32(nw, res)
 	f.a.Adds32(nw, nw, delta)
 	failOverflow := f.a.Bcond(a64.CondCS)
-	mx := f.allocReg(avoid.add(nw))
-	f.ld32(mx, base, -int32(bdMaxPages))
-	f.cmpRR(nw, mx, false)
+	// Delta is dead after the addition. Reuse its register budget for the
+	// limit, directory, and cache address to stay within the four-GP floor.
+	f.pinned = f.pinned.remove(delta)
+	f.release(delta)
+	tmp := f.allocReg(maskOf(res, base, nw))
+	f.ld32(tmp, base, -int32(bdMaxPages))
+	f.cmpRR(nw, tmp, false)
 	failMax := f.a.Bcond(condA)
-	f.st32(base, -int32(bdCurPages), nw)
-	f.a.MovReg32(mx, nw)
-	f.shiftImm(shLSL, mx, wasmPageLog, true)
-	cacheAddr := f.allocReg(avoid.add(nw).add(mx))
-	f.a.SubImm64(cacheAddr, base, uint32(bdCurBytes))
-	f.a.Store64(mx, cacheAddr, 0)
-	f.release(cacheAddr)
-	f.st32(base, -8, mx) // legacy u32 cache; wraps only at exactly 4 GiB
-	if dir != regNone {
-		f.st64(dir, entry+abi.MemoryDirCurrentBytesOffset, mx)
-		f.st32(dir, entry+abi.MemoryDirCurrentPagesOffset, nw)
+	f.ld64(tmp, linMemReg, -int32(offMemoryDirPtr))
+	noPolicyDir := -1
+	if memoryIndex == 0 {
+		noPolicyDir = f.zeroBranch(tmp, true, true)
 	}
+	f.ld32(tmp, tmp, entry+abi.MemoryDirPolicyMaxPagesOffset)
+	noPolicy := f.zeroBranch(tmp, false, true)
+	f.cmpRR(nw, tmp, false)
+	failPolicy := f.a.Bcond(condA)
+	policyDone := f.a.Len()
+	if noPolicyDir >= 0 {
+		f.patchBranch19(noPolicyDir, policyDone)
+	}
+	f.patchBranch19(noPolicy, policyDone)
+	f.st32(base, -int32(bdCurPages), nw)
+	if memoryIndex != 0 {
+		f.ld64(tmp, linMemReg, -int32(offMemoryDirPtr))
+		f.st32(tmp, entry+abi.MemoryDirCurrentPagesOffset, nw)
+	}
+	f.shiftImm(shLSL, nw, wasmPageLog, true)
+	if memoryIndex != 0 {
+		f.st64(tmp, entry+abi.MemoryDirCurrentBytesOffset, nw)
+	}
+	f.a.SubImm64(tmp, base, uint32(bdCurBytes))
+	f.a.Store64(nw, tmp, 0)
+	f.st32(base, -8, nw) // legacy u32 cache; wraps only at exactly 4 GiB
+	if memoryIndex == 0 && f.memSizeReg != regNone {
+		// The successful path already has the new byte size in nw. Forward it to
+		// the regional bounds cache instead of reloading the value just stored.
+		f.a.MovReg64(f.memSizeReg, nw)
+		if f.memLimitReg != regNone {
+			f.a.SubImm64(f.memLimitReg, f.memSizeReg, uint32(f.memLimitExtent))
+		}
+	}
+
 	done := f.a.Branch()
 	if failDelta >= 0 {
-		f.a.PatchBranch19(failDelta, f.a.Len())
+		f.patchBranch19(failDelta, f.a.Len())
 	}
-	f.a.PatchBranch19(failOverflow, f.a.Len())
-	f.a.PatchBranch19(failMax, f.a.Len())
+	f.patchBranch19(failOverflow, f.a.Len())
+	f.patchBranch19(failMax, f.a.Len())
+	f.patchBranch19(failPolicy, f.a.Len())
 	if memory64 {
 		f.a.MovImm64(res, ^uint64(0))
 	} else {
 		f.a.MovImm64(res, uint64(0xffffffff))
 	}
-	f.a.PatchBranch26(done, f.a.Len())
 	if memoryIndex == 0 && f.memSizeReg != regNone {
+		// Failure preserves the old memory size, so reload the cache only on this
+		// path. Success forwarded nw before jumping here.
 		f.ld64(f.memSizeReg, linMemReg, -int32(bdCurBytes))
+		if f.memLimitReg != regNone {
+			f.a.SubImm64(f.memLimitReg, f.memSizeReg, uint32(f.memLimitExtent))
+		}
 	}
-	f.pinned = f.pinned.remove(delta)
-	f.release(delta)
+	f.patchBranch26(done, f.a.Len())
+	f.patchBranch19(zeroDelta, f.a.Len())
 	f.release(nw)
-	f.release(mx)
-	if dir != regNone {
+	f.release(tmp)
+	if memoryIndex != 0 {
 		f.release(base)
-		f.release(dir)
 	}
 	if memory64 {
 		f.pushReg(res, mtI64)
@@ -1518,7 +1904,7 @@ func bulkChunks(n int, buf *[8][2]int) [][2]int {
 }
 
 func (f *fn) memoryAddr64(memoryIndex uint32) bool {
-	mt, ok := f.m.MemoryType(memoryIndex)
+	mt, ok := f.memoryType(memoryIndex)
 	return ok && mt.Limits.Addr64
 }
 
@@ -1561,6 +1947,7 @@ func (f *fn) bulkDynamicBoundsCheck(base, n Reg, memoryIndex uint32) {
 }
 
 func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
+	alreadyPinned := f.pinned.has(base)
 	f.pinned = f.pinned.add(base)
 	t := f.allocReg(0)
 	if f.memoryAddr64(memoryIndex) {
@@ -1571,17 +1958,24 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	} else {
 		f.leaDisp(t, base, int32(n), true)
 	}
-	if f.memSizeReg != regNone {
+	if memoryIndex == 0 && f.memSizeReg != regNone {
 		f.cmpRR(t, f.memSizeReg, true)
 	} else {
 		mb := f.allocReg(maskOf(t))
-		f.ld64(mb, linMemReg, -int32(bdCurBytes))
+		if memoryIndex == 0 {
+			f.ld64(mb, linMemReg, -int32(bdCurBytes))
+		} else {
+			f.ld64(mb, linMemReg, -int32(offMemoryDirPtr))
+			f.ld64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentBytesOffset)
+		}
 		f.cmpRR(t, mb, true)
 		f.release(mb)
 	}
 	f.trapIf(condA, trapMemOOB)
 	f.release(t)
-	f.pinned = f.pinned.remove(base)
+	if !alreadyPinned {
+		f.pinned = f.pinned.remove(base)
+	}
 }
 
 func (f *fn) indexedMemoryBase(memoryIndex uint32, avoid regMask) (Reg, bool) {

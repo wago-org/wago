@@ -13,10 +13,15 @@ import (
 // compileWithStats compiles m collecting per-function codegen stats and returns
 // the module stats. guard selects guard-page (elide) vs explicit bounds mode.
 func compileWithStats(t *testing.T, m *wasm.Module, guard bool) *ModuleStats {
+	requireCompilerDiagnostics(t)
 	t.Helper()
 	var ms ModuleStats
-	if _, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, Stats: &ms}); err != nil {
+	compiled, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, Stats: &ms})
+	if err != nil {
 		t.Fatalf("compile: %v", err)
+	}
+	if compiled.CodeImage != nil {
+		defer compiled.CodeImage.Close()
 	}
 	if len(ms.Funcs) != len(m.Code) {
 		t.Fatalf("stats funcs = %d, want %d", len(ms.Funcs), len(m.Code))
@@ -25,6 +30,7 @@ func compileWithStats(t *testing.T, m *wasm.Module, guard bool) *ModuleStats {
 }
 
 func TestModuleStatsReportsFinalizerFallbacks(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	ms := ModuleStats{Funcs: []*CodegenStats{
 		{FinalizerFallback: "rel32-overflow", NativeSize: NativeFunctionSizeReport{BranchFoldHoleBytes: 5}, Rel32Sites: 1100, Rel32Recorded: 1024, Rel32Overflow: true},
 		{FinalizerFallback: "loop-function-size", NativeSize: NativeFunctionSizeReport{DeadFrameReservationBytes: 7}, Rel32Sites: 200, Rel32Recorded: 200},
@@ -45,7 +51,7 @@ func TestModuleStatsReportsFinalizerFallbacks(t *testing.T) {
 // TestCodegenStatsPeepholes checks that each instruction-selection rewrite bumps
 // its named counter exactly once for a body built to trigger it precisely once,
 // and does not fire the others. This is the trustworthiness net the plan's exit
-// criterion asks for (docs/no-ir-plan.md P1).
+// criterion requires.
 func TestCodegenStatsPeepholes(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
@@ -202,6 +208,7 @@ func TestCodegenStatsSizeCounters(t *testing.T) {
 // TestModuleStatsReport checks the explain dump renders the module-pin line and
 // the per-function counters in a stable, greppable form.
 func TestModuleStatsReport(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	ms := &ModuleStats{
 		ModuleGlobalPins: []ModuleGlobalPinInfo{{Global: 2, Reg: "r14"}, {Global: 4, Reg: "r13"}},
 		Funcs: []*CodegenStats{{
@@ -231,11 +238,9 @@ func TestModuleStatsReport(t *testing.T) {
 // buffer. This is the guardrail that lets every later phase trust the dashboard
 // without suspecting it perturbs the code it measures.
 func TestCodegenStatsGCNativeByteAttribution(t *testing.T) {
-	savedFacts := exactGCRefFactsEnabled
-	exactGCRefFactsEnabled = false
-	defer func() { exactGCRefFactsEnabled = savedFacts }()
+	requireCompilerDiagnostics(t)
 	var stats ModuleStats
-	if _, err := CompileModuleWith(exactGCRefFactModule(t, true), CompileOptions{GCStructHelpers: true, Stats: &stats}); err != nil {
+	if _, err := CompileModuleWith(gcNativeAttributionModule(t, true), CompileOptions{GCStructHelpers: true, Stats: &stats}); err != nil {
 		t.Fatal(err)
 	}
 	s := stats.Funcs[0]
@@ -254,6 +259,7 @@ func TestCodegenStatsGCNativeByteAttribution(t *testing.T) {
 }
 
 func TestCodegenStatsCodegenNeutral(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
 	shapes := []struct {

@@ -1,11 +1,11 @@
 // Command explain compiles a wasm module through the railshot backend and prints
-// its per-function CodegenStats dashboard (docs/no-ir-plan.md P1) — the counters
+// its per-function CodegenStats dashboard — the counters
 // every later optimization proves itself against: pins, flushes, condenses,
 // forced deferred loads, bounds checks, calls by kind, and peephole hits.
 //
 // Usage:
 //
-//	go run ./cmd/explain [-guard] [-compact] [module.wasm]
+//	go run -tags=wago_codegenstats ./cmd/explain [-guard] [-compact] [module.wasm]
 //
 // With no path it defaults to corpus/json-as.wasm. -guard selects guard-page
 // (bounds-elided) mode instead of explicit bounds. Equivalent to setting

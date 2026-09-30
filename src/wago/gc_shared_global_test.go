@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func gcSharedGlobalProviderModule(mutable bool) []byte {
@@ -130,7 +130,7 @@ func TestGCSharedImmutableGlobalSameDomainCollectionAndCloseOrder(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.g": global}})
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.g", global)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,8 +165,8 @@ func TestGCSharedGlobalCodecAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumerBase.Close()
-	providerCode := roundTripCompiled(t, providerBase)
-	consumerCode := roundTripCompiled(t, consumerBase)
+	providerCode := publicArtifactRoundTrip(t, providerBase)
+	consumerCode := publicArtifactRoundTrip(t, consumerBase)
 	defer providerCode.Close()
 	defer consumerCode.Close()
 	if providerCode.genericGCFrameRoots() == nil || consumerCode.genericGCFrameRoots() == nil {
@@ -184,7 +184,7 @@ func TestGCSharedGlobalCodecAndRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.g": global}})
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.g", global)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestGCSharedGlobalCodecAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := sharedGlobalDomainCount(store)
-	if _, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.g": distinctGlobal}}); err == nil {
+	if _, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.g", distinctGlobal)}); err == nil {
 		t.Fatal("distinct GC-domain global import unexpectedly succeeded")
 	}
 	if got := sharedGlobalDomainCount(store); got != before {
@@ -248,7 +248,7 @@ func TestGCSharedMutableGlobalAliasesPublishRootsAndBarriers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.g": global}})
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.g", global)})
 	if err != nil {
 		t.Fatal(err)
 	}

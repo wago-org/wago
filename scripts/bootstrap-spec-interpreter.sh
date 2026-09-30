@@ -3,11 +3,12 @@ set -eu
 
 revision=9d36019973201a19f9c9ebb0f10828b2fe2374aa
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-suite="$repo/tests/spec-v3"
+suite="$repo/tests/conformance/spec-v3"
 source_dir="$suite/interpreter"
 root="$repo/.tools/spec-interpreter-$revision"
 bin="$root/wasm"
 stamp="$root/source-revision"
+provenance="$root/build-provenance"
 
 actual_revision() {
 	[ -e "$suite/.git" ] || return 0
@@ -17,8 +18,8 @@ actual_revision() {
 require_source() {
 	actual=$(actual_revision)
 	if [ "$actual" != "$revision" ]; then
-		echo "bootstrap-spec-interpreter: tests/spec-v3 revision ${actual:-unavailable}, want $revision" >&2
-		echo "bootstrap-spec-interpreter: initialize the pinned submodule with: git submodule update --init tests/spec-v3" >&2
+		echo "bootstrap-spec-interpreter: tests/conformance/spec-v3 revision ${actual:-unavailable}, want $revision" >&2
+		echo "bootstrap-spec-interpreter: initialize the pinned submodule with: git submodule update --init tests/conformance/spec-v3" >&2
 		exit 1
 	fi
 	[ -f "$source_dir/dune-project" ] || {
@@ -32,6 +33,34 @@ verify() {
 	[ -f "$stamp" ] || return 1
 	[ "$(cat "$stamp")" = "$revision" ] || return 1
 	[ "$("$bin" -v --help 2>/dev/null | sed -n '1p')" = "wasm 3.0.0 reference interpreter" ] || return 1
+	[ -f "$provenance" ] || return 1
+	[ "$(cat "$provenance")" = "$(expected_provenance)" ] || return 1
+}
+
+sha256_file() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | awk '{ print $1 }'
+	else
+		shasum -a 256 "$1" | awk '{ print $1 }'
+	fi
+}
+
+toolchain_versions() {
+	command -v ocamlc >/dev/null 2>&1 || return 1
+	command -v dune >/dev/null 2>&1 || return 1
+	command -v menhir >/dev/null 2>&1 || return 1
+	ocamlc -version
+	dune --version
+	menhir --version 2>&1 | sed -n '1p'
+}
+
+expected_provenance() {
+	versions=$(toolchain_versions) || return 1
+	ocaml=$(printf '%s\n' "$versions" | sed -n '1p')
+	dune=$(printf '%s\n' "$versions" | sed -n '2p')
+	menhir=$(printf '%s\n' "$versions" | sed -n '3p')
+	printf 'revision=%s\nbootstrap_sha256=%s\nocaml=%s\ndune=%s\nmenhir=%s\nbinary_sha256=%s' \
+		"$revision" "$(sha256_file "$0")" "$ocaml" "$dune" "$menhir" "$(sha256_file "$bin")"
 }
 
 build() {
@@ -55,6 +84,14 @@ build() {
 	cp "$source_dir/wasm" "$tmp/wasm"
 	chmod 755 "$tmp/wasm"
 	printf '%s\n' "$revision" >"$tmp/source-revision"
+	# Stamp the source, recipe, native toolchain, and actual interpreter bytes.
+	# The stamp is checked on every cache hit before the tool can be used.
+	old_root="$root"
+	root="$tmp"
+	bin="$tmp/wasm"
+	expected_provenance >"$tmp/build-provenance"
+	root="$old_root"
+	bin="$root/wasm"
 	rm -rf "$root"
 	mv "$tmp" "$root"
 	trap - EXIT HUP INT TERM

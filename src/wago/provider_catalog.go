@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/wago-org/wago/internal/jsonstrict"
 )
 
 const (
@@ -90,6 +92,9 @@ func EncodeProviderCatalog(importPath string, providers []PluginProvider) ([]byt
 func DecodeProviderCatalog(encoded []byte) (ProviderCatalogDocument, error) {
 	if len(encoded) == 0 || len(encoded) > 2<<20 {
 		return ProviderCatalogDocument{}, errors.New("wago: provider catalog must contain 1 byte to 2 MiB")
+	}
+	if err := jsonstrict.ValidateTypedJSON(encoded, ProviderCatalogDocument{}); err != nil {
+		return ProviderCatalogDocument{}, fmt.Errorf("wago: decode provider catalog: %w", err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.DisallowUnknownFields()

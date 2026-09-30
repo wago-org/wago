@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/wago-org/wago/internal/jsonstrict"
+	"github.com/wago-org/wago/internal/regularfile"
 	"io"
 	"os"
 	"path/filepath"
@@ -214,6 +216,9 @@ func (mutation *Mutation) publish(manifestData, lockData *[]byte) error {
 		return err
 	}
 	encoded = append(encoded, '\n')
+	if len(encoded) > maxProjectJournalBytes {
+		return fmt.Errorf("project journal exceeds byte limit %d", maxProjectJournalBytes)
+	}
 	journalPath := projectJournalPath(mutation.dir)
 	if err := replaceProjectFile(journalPath, atomicfile.Options{Mode: 0o600, Sync: true}, func(writer io.Writer) error {
 		_, err := writer.Write(encoded)
@@ -232,26 +237,15 @@ func (mutation *Mutation) publish(manifestData, lockData *[]byte) error {
 
 func (mutation *Mutation) recover() error {
 	path := projectJournalPath(mutation.dir)
-	file, err := os.Open(path)
+	data, err := regularfile.Read(path, maxProjectJournalBytes)
 	if os.IsNotExist(err) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("open project transaction journal: %w", err)
-	}
-	opened, openErr := file.Stat()
-	linked, linkErr := os.Lstat(path)
-	if openErr != nil || linkErr != nil || !opened.Mode().IsRegular() || linked.Mode()&os.ModeSymlink != 0 || !linked.Mode().IsRegular() || !os.SameFile(opened, linked) {
-		_ = file.Close()
-		if cause := errors.Join(openErr, linkErr); cause != nil {
-			return fmt.Errorf("project transaction journal %s is not a stable regular file: %w", path, cause)
-		}
-		return fmt.Errorf("project transaction journal %s is not a stable regular file", path)
-	}
-	data, readErr := io.ReadAll(file)
-	closeErr := file.Close()
-	if err := errors.Join(readErr, closeErr); err != nil {
 		return fmt.Errorf("read project transaction journal: %w", err)
+	}
+	if err := jsonstrict.ValidateTypedJSONWithLimits(data, projectJournal{}, projectJSONLimits); err != nil {
+		return err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -300,6 +294,9 @@ func writeJournalFile(path string, file *journalFile) error {
 }
 
 func newJournalFile(path string, data []byte) (*journalFile, error) {
+	if len(data) > maxProjectMetadataBytes {
+		return nil, fmt.Errorf("project metadata exceeds byte limit %d", maxProjectMetadataBytes)
+	}
 	mode := os.FileMode(0o644)
 	info, err := os.Lstat(path)
 	if err == nil {

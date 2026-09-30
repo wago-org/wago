@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func gcCrossInstancePersistentProviderModule() []byte {
@@ -88,8 +88,8 @@ func TestGCCrossInstanceCallsWithSharedPersistentRoots(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			providerCandidate, consumerCandidate := providerCode, consumerCode
 			if codec {
-				providerCandidate = roundTripCompiled(t, providerCode)
-				consumerCandidate = roundTripCompiled(t, consumerCode)
+				providerCandidate = publicArtifactRoundTrip(t, providerCode)
+				consumerCandidate = publicArtifactRoundTrip(t, consumerCode)
 				defer providerCandidate.Close()
 				defer consumerCandidate.Close()
 			}
@@ -120,7 +120,7 @@ func TestGCCrossInstanceCallsWithSharedPersistentRoots(t *testing.T) {
 						provider.Close()
 						t.Fatal(err)
 					}
-					consumer, err := instantiateCore(consumerCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"provider.retain": retain, "provider.t": table, "provider.g": global}})
+					consumer, err := instantiateCore(consumerCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.retain", retain, "provider.t", table, "provider.g", global)})
 					if err != nil {
 						provider.Close()
 						t.Fatal(err)

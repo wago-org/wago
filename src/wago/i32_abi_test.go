@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // WebAssembly i32 operations must ignore dirty bits in the upper half of public
@@ -16,7 +16,7 @@ func TestI32UpperBits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{}})
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestI32UpperBits(t *testing.T) {
 		})
 	}
 
-	prepared, err := instance.PrepareFunction("i32_store_load")
+	prepared, err := instance.WasmFunc("i32_store_load")
 	if err != nil {
 		t.Fatalf("prepare i32_store_load: %v", err)
 	}

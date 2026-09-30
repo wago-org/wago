@@ -65,9 +65,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		nullable := sub == 21
 		if heap >= 0 {
 			top := f.s.back()
-			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.kind == ekValue && top.st.kind == stFuncRef && top.st.idx >= f.m.ImportedFuncCount() && top.st.idx < len(f.m.FuncTypes) {
+			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.elemKind() == ekValue && top.st.kind == stFuncRef && top.st.idx >= uint32(f.m.ImportedFuncCount()) && top.st.idx < uint32(len(f.m.FuncTypes)) {
 				f.popValue()
-				actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[top.st.idx]), false)
+				actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[top.st.index()]), false)
 				required := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
 				matched := int64(0)
 				if f.m.ReferenceTypeSubtype(actual, required) {
@@ -132,16 +132,16 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if f.gcTypeSubtypingRefTest && heap >= 0 {
 			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc {
 				value := f.popValue()
-				gcRoot := value.st.gcRoot
+				gcRoot := value.st.hasGCRoot()
 				ref := f.materialize(value)
 				f.emitLocalFunctionSubtypeIdentityCheck(ref, uint32(heap), sub == 23, exactTarget, trapCastFailure)
-				f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+				f.pushReg(ref, mtI64).st.setGCRoot(gcRoot)
 				return nil
 			}
 		}
 		if !moduleHasCollectorTypes(f.m) {
 			value := f.popValue()
-			gcRoot := value.st.gcRoot
+			gcRoot := value.st.hasGCRoot()
 			ref := f.materialize(value)
 			nullable := sub == 23
 			var done int
@@ -163,9 +163,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				return fmt.Errorf("arm64: ref.cast heap %d requires a live collector", heap)
 			}
 			if nullable {
-				f.a.PatchBranch19(done, f.a.Len())
+				f.patchBranch19(done, f.a.Len())
 			}
-			f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+			f.pushReg(ref, mtI64).st.setGCRoot(gcRoot)
 			return nil
 		}
 		if !f.gcStructHelpers {
@@ -202,7 +202,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			if !f.a.OrrImm32(value, value, 1) {
 				panic("arm64: i31 tag immediate is not encodable")
 			}
-			f.pushReg(value, mtI64).st.gcRoot = f.tracksGCFrameRoots()
+			f.pushReg(value, mtI64).st.setGCRoot(f.tracksGCFrameRoots())
 		case 29: // i31.get_s
 			f.trapIfZero(value, false, true, trapNullReference)
 			f.a.AsrImm(value, value, 1, true)
@@ -358,11 +358,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		valueSlots := funcTypeSlots([]wasm.ValType{valueType})
 		if uint64(count)*uint64(valueSlots)+2 > maxSyncHostSlots {
-			if wasm.EqualValType(valueType, wasm.V128) {
-				result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-				return f.callGCArrayFixedV128Spill(typeIndex, count, result)
-			}
-			return fmt.Errorf("arm64: array.new_fixed count %d exceeds helper slot bound", count)
+			result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+			return f.callGCArrayFixedSpill(typeIndex, count, result)
 		}
 		params := make([]wasm.ValType, 0, int(count)+2)
 		for i := uint32(0); i < count; i++ {
@@ -603,11 +600,11 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	savedLocals := append([]localDef(nil), f.locals...)
 	f.flush()
 	valueElem := f.s.back()
-	if valueElem == f.s.head || valueElem.kind != ekValue || valueElem.st.kind != stSlot {
+	if valueElem == f.s.head || valueElem.elemKind() != ekValue || valueElem.st.kind != stSlot {
 		return fmt.Errorf("arm64: dynamic function ref.test lost canonical operand")
 	}
 	value := f.allocReg(0)
-	f.ld64(value, SP, f.spillOff(valueElem.st.slot))
+	f.ld64(value, SP, f.spillOff(valueElem.st.slotIndex()))
 	nullSite := f.zeroBranch(value, true, true)
 	base := f.allocReg(maskOf(value))
 	f.ld64(base, linMemReg, -int32(offFuncRefDescPtr))
@@ -702,14 +699,14 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	}
 	f.flush()
 	result := f.s.back()
-	if result == f.s.head || result.kind != ekValue || result.st.kind != stSlot {
+	if result == f.s.head || result.elemKind() != ekValue || result.st.kind != stSlot {
 		return fmt.Errorf("arm64: dynamic function ref.test lost canonical result")
 	}
 	done := f.a.Branch()
 	if !f.a.PatchBranch19(known, f.a.Len()) {
 		return fmt.Errorf("arm64: dynamic function ref.test known edge exceeds conditional branch range")
 	}
-	f.st32(SP, f.spillOff(result.st.slot), resultReg)
+	f.st32(SP, f.spillOff(result.st.slotIndex()), resultReg)
 	if !f.a.PatchBranch26(done, f.a.Len()) {
 		return fmt.Errorf("arm64: dynamic function ref.test result join exceeds branch range")
 	}
@@ -746,7 +743,7 @@ func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32,
 	f.trapAlways(trapCode)
 	done := f.a.Len()
 	for _, site := range success {
-		f.a.PatchBranch19(site, done)
+		f.patchBranch19(site, done)
 	}
 }
 
@@ -785,12 +782,12 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 		return err
 	}
 	original := f.popValue()
-	gcRoot := original.st.gcRoot
+	gcRoot := original.st.hasGCRoot()
 	value := f.materialize(original)
 	copyReg := f.allocReg(maskOf(value))
 	f.a.MovReg64(copyReg, value)
-	f.pushReg(value, mtI64).st.gcRoot = gcRoot
-	f.pushReg(copyReg, mtI64).st.gcRoot = gcRoot
+	f.pushReg(value, mtI64).st.setGCRoot(gcRoot)
+	f.pushReg(copyReg, mtI64).st.setGCRoot(gcRoot)
 	f.pushValue(storage{kind: stConst, typ: mtI64, cval: target})
 	nullable := int64(0)
 	if flags&2 != 0 {
@@ -839,7 +836,7 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 
 func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 	plan := f.gcFrameRoots
-	id := plan.SafepointBase + uint32(len(plan.Safepoints)+1)
+	id := plan.SafepointBase + uint32(plan.SafepointCount()+1)
 	if id == 0 || id > shared.GCSafepointIDMax {
 		plan.Exact = false
 		return 0
@@ -849,37 +846,49 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		plan.Exact = false
 		return id
 	}
-	siteIndex := len(plan.Safepoints)
-	if siteIndex >= len(plan.LiveLocalMasks) {
+	siteIndex := plan.SafepointCount()
+	if siteIndex >= plan.AllocationMaskCount() {
 		plan.Exact = false
 		return id
 	}
 	f.materializeGCFrameLocalsAt(siteIndex, false)
-	offsets := make([]uint32, 0, len(plan.LocalOffsets))
-	for i, off := range plan.LocalOffsets {
-		if plan.LocalLiveAt(siteIndex, i) {
-			offsets = append(offsets, off)
-		}
+	builder := plan.BeginSafepoint()
+	if !plan.VisitLiveLocals(siteIndex, false, func(root int) {
+		builder.AppendOffset(plan.Locals[root].Offset)
+	}) {
+		builder.Abort()
+		plan.Exact = false
+		return id
 	}
 	hidden := len(roots) - paramCount
 	slot := 0
 	for i, root := range roots {
-		if i < hidden && root.kind == ekValue && root.st.gcRoot {
+		if i < hidden && root.elemKind() == ekValue && root.st.hasGCRoot() {
 			off := f.spillOff(slot)
 			if off < 0 {
+				builder.Abort()
 				plan.Exact = false
 				return id
 			}
-			offsets = append(offsets, uint32(off))
+			builder.AppendOffset(uint32(off))
 		}
 		slot += rootMachineType(root).stackSlots()
 	}
-	offsets = append(offsets, plan.FixedOffsets...)
-	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	if len(offsets) > shared.GCFrameRootLimit {
-		plan.Exact = false
+	for _, off := range plan.FixedOffsets() {
+		builder.AppendOffset(off)
 	}
-	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{ID: id, Offsets: offsets})
+	offsets, ok := builder.Offsets()
+	if !ok {
+		builder.Abort()
+		plan.Exact = false
+		return id
+	}
+	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
+	if !builder.Commit() {
+		builder.Abort()
+		plan.Exact = false
+		return id
+	}
 	f.stats.addGCRootMapBytes(8 + len(offsets)*4)
 	return id
 }
@@ -923,15 +932,10 @@ func (f *fn) tracksGCFrameRoots() bool {
 }
 
 func (f *fn) gcFrameLocal(index int) bool {
-	if !f.tracksGCFrameRoots() {
+	if index < 0 || f.gcFrameRoots == nil {
 		return false
 	}
-	for _, candidate := range f.gcFrameRoots.LocalIndexes {
-		if int(candidate) == index {
-			return true
-		}
-	}
-	return false
+	return f.gcFrameRoots.TracksLocal(uint32(index))
 }
 
 func arm64GCHelperMayAllocate(helper uint32) bool {
@@ -945,7 +949,7 @@ func arm64GCHelperMayAllocate(helper uint32) bool {
 	}
 }
 
-func (f *fn) callGCArrayFixedV128Spill(typeIndex, count uint32, resultType wasm.ValType) error {
+func (f *fn) callGCArrayFixedSpill(typeIndex, count uint32, resultType wasm.ValType) error {
 	roots := f.rootsBottomToTop()
 	if uint64(count) > uint64(len(roots)) {
 		return fmt.Errorf("arm64: array.new_fixed count %d exceeds operand depth %d", count, len(roots))
@@ -954,8 +958,8 @@ func (f *fn) callGCArrayFixedV128Spill(typeIndex, count uint32, resultType wasm.
 	firstSlot := 0
 	for i := 0; i < first; i++ {
 		typ := roots[i].st.typ
-		if roots[i].kind == ekDeferred && roots[i].typ != mtNone {
-			typ = roots[i].typ
+		if roots[i].elemKind() == ekDeferred && roots[i].st.typ != mtNone {
+			typ = roots[i].st.typ
 		}
 		firstSlot += typ.stackSlots()
 	}
@@ -968,11 +972,13 @@ func (f *fn) callGCArrayFixedV128Spill(typeIndex, count uint32, resultType wasm.
 	if err := f.callGCStructHelper(gcArrayAllocFixedV128Spill, []wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
 		return err
 	}
-	result := f.materialize(f.popValue())
+	resultValue := f.popValue()
+	resultIsRoot := resultValue.st.hasGCRoot()
+	result := f.materialize(resultValue)
 	for i := uint32(0); i < count; i++ {
 		f.popValue()
 	}
-	f.pushReg(result, mtI64)
+	f.pushReg(result, mtI64).st.setGCRoot(resultIsRoot)
 	return nil
 }
 

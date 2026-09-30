@@ -52,6 +52,30 @@ func TestNormalizeMemorySizesBoundaries(t *testing.T) {
 	}
 }
 
+func TestJobMemoryRejectsNegativeSizes(t *testing.T) {
+	tests := []struct {
+		name string
+		new  func() (*JobMemory, error)
+	}{
+		{"fixed", func() (*JobMemory, error) { return NewJobMemory(-1) }},
+		{"growable initial", func() (*JobMemory, error) { return NewJobMemoryGrowable(-1, 0) }},
+		{"growable maximum", func() (*JobMemory, error) { return NewJobMemoryGrowable(0, -1) }},
+		{"acquired initial", func() (*JobMemory, error) { return AcquireJobMemoryGrowable(-1, 0) }},
+		{"acquired maximum", func() (*JobMemory, error) { return AcquireJobMemoryGrowable(0, -1) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			jm, err := test.new()
+			if jm != nil {
+				_ = jm.Close()
+			}
+			if err == nil {
+				t.Fatal("negative memory size was accepted")
+			}
+		})
+	}
+}
+
 func TestJobMemoryBasedataControl(t *testing.T) {
 	j, err := NewJobMemoryGrowable(128, 65536)
 	if err != nil {
@@ -76,7 +100,7 @@ func TestJobMemoryHasTrapCellDetectsCrossInstanceOverwrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer jm.Close()
-	trap := make([]byte, 8)
+	trap := make([]byte, TrapBufferBytes)
 	if jm.HasTrapCell(trap) {
 		t.Fatal("fresh job memory unexpectedly has the trap cell bound")
 	}
@@ -119,8 +143,8 @@ func TestJobMemoryRebindTrapCellPreservesInterruption(t *testing.T) {
 }
 
 func TestTrapMessagesStayCompactAndComplete(t *testing.T) {
-	if got := unsafe.Sizeof(trapMessages); got != 336 {
-		t.Fatalf("trap message storage = %d bytes, want 336", got)
+	if got := unsafe.Sizeof(trapMessages); got != 368 {
+		t.Fatalf("trap message storage = %d bytes, want 368", got)
 	}
 	for code, message := range trapMessages {
 		if message == "" {
@@ -149,6 +173,37 @@ func TestTrapAndSlotFormattingHelpers(t *testing.T) {
 		if got != tc.want || (err != nil) != tc.err {
 			t.Fatalf("SlotBytes(%d) = %d, %v", tc.n, got, err)
 		}
+	}
+}
+
+func TestEngineCacheMatchesRequestedStackCapacity(t *testing.T) {
+	for _, stackBytes := range []uint64{MinNativeStackBytes - 1, MinNativeStackBytes + 1, MaxNativeStackBytes + 1} {
+		if engine, err := AcquireEngineWithStackBytes(stackBytes); err == nil || engine != nil {
+			if engine != nil {
+				_ = engine.Close()
+			}
+			t.Fatalf("AcquireEngineWithStackBytes(%d) = %v, %v; want validation failure", stackBytes, engine, err)
+		}
+	}
+	large, err := AcquireEngineWithStackBytes(8 << 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if large.StackBytes() != 8<<20 || large.StackTop()&15 != 0 {
+		t.Fatalf("large engine stack = %d bytes, top %#x", large.StackBytes(), large.StackTop())
+	}
+	if err := ReleaseEngine(large); err != nil {
+		t.Fatal(err)
+	}
+	standard, err := AcquireEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if standard == large || standard.StackBytes() != DefaultNativeStackBytes {
+		t.Fatalf("default engine = %p/%d, want fresh %d-byte capacity", standard, standard.StackBytes(), DefaultNativeStackBytes)
+	}
+	if err := standard.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -228,7 +283,7 @@ func TestRuntimeMappingBoundaryHelpers(t *testing.T) {
 	if err := ReleaseArena(nil); err != nil {
 		t.Fatalf("ReleaseArena(nil): %v", err)
 	}
-	large, err := NewArena(InstantiateArenaSize + 1)
+	large, err := NewArena(InstantiateArenaCacheBytes + 1)
 	if err != nil {
 		t.Fatal(err)
 	}

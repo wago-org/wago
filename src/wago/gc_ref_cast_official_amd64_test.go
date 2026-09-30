@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	stagedGCRefCastDeltaPath         = "tests/spec-v3-staged-gc-ref-cast.json"
+	stagedGCRefCastDeltaPath         = "tests/conformance/baselines/spec-v3-staged-gc-ref-cast.json"
 	stagedGCRefCastOfficialExecution = true
 )
 
@@ -148,7 +148,7 @@ func stagedGCRefCastLeaderDeltaFor(data []byte, line int) (stagedGCRefCastLeader
 }
 
 func compileStagedGCRefCastAccounting(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	if stagedGCRefCastOfficialExecution {

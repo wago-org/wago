@@ -10,7 +10,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func callRefModule(t *testing.T) *wasm.Module {
@@ -82,7 +82,7 @@ func runCallRefRaw(t *testing.T, m *wasm.Module, value uint64, descriptor bool, 
 	binary.LittleEndian.PutUint64(args, value)
 	binary.LittleEndian.PutUint64(args[8:], ref)
 	results := arena.Alloc(8)
-	trap := arena.Alloc(8)
+	trap := arena.Alloc(coreruntime.TrapBufferBytes)
 	err = eng.Call(base+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results)
 	return append([]byte(nil), results...), err
 }
@@ -169,7 +169,7 @@ func runReturnCallRefRaw(t *testing.T, m *wasm.Module, n uint64, sigKey uint64, 
 	args := arena.Alloc(8)
 	binary.LittleEndian.PutUint64(args, n)
 	results := arena.Alloc(8)
-	trap := arena.Alloc(8)
+	trap := arena.Alloc(coreruntime.TrapBufferBytes)
 	err = eng.Call(base+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results)
 	return append([]byte(nil), results...), err
 }

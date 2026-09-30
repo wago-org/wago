@@ -6,8 +6,9 @@ import (
 )
 
 type reader struct {
-	data []byte
-	pos  int
+	data   []byte
+	pos    int
+	budget *decodeBudget
 }
 
 func newReader(data []byte) *reader { return &reader{data: data} }
@@ -36,7 +37,7 @@ func (r *reader) byte() (byte, error) {
 	return b, nil
 }
 func (r *reader) bytes(n int) ([]byte, error) {
-	if n < 0 || r.pos+n > len(r.data) {
+	if n < 0 || n > len(r.data)-r.pos {
 		return nil, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.pos}
 	}
 	b := r.data[r.pos : r.pos+n]
@@ -100,12 +101,34 @@ func (r *reader) leb(signed bool, maxBits uint32) (uint64, error) {
 		}
 	}
 }
-func (r *reader) u32() (uint32, error) { v, err := r.leb(false, 32); return uint32(v), err }
+func (r *reader) u32() (uint32, error) {
+	if r.pos < len(r.data) {
+		if b := r.data[r.pos]; b < 0x80 {
+			r.pos++
+			return uint32(b), nil
+		}
+	}
+	v, err := r.leb(false, 32)
+	return uint32(v), err
+}
 func (r *reader) u33() (uint64, error) { return r.leb(false, 33) }
 func (r *reader) u64() (uint64, error) { return r.leb(false, 64) }
 func (r *reader) s33() (int64, error)  { v, err := r.leb(true, 33); return int64(v), err }
-func (r *reader) i32() (int32, error)  { v, err := r.leb(true, 32); return int32(v), err }
-func (r *reader) i64() (int64, error)  { v, err := r.leb(true, 64); return int64(v), err }
+func (r *reader) i32() (int32, error) {
+	if r.pos < len(r.data) {
+		if b := r.data[r.pos]; b < 0x80 {
+			r.pos++
+			value := int32(b)
+			if b&0x40 != 0 {
+				value |= ^int32(0x7f)
+			}
+			return value, nil
+		}
+	}
+	v, err := r.leb(true, 32)
+	return int32(v), err
+}
+func (r *reader) i64() (int64, error) { v, err := r.leb(true, 64); return int64(v), err }
 func (r *reader) name() (string, error) {
 	n, err := r.u32()
 	if err != nil {
@@ -119,6 +142,9 @@ func (r *reader) name() (string, error) {
 	if !utf8.Valid(b) {
 		return "", &DecodeError{Code: ErrInvalidSection, Offset: start}
 	}
+	if err := r.reserve(uint64(len(b)), 2); err != nil {
+		return "", err
+	}
 	return string(b), nil
 }
 
@@ -127,15 +153,10 @@ func readVec[T any](r *reader, fn func(*reader) (T, error)) ([]T, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The declared vector length is attacker-controlled. Do not use it as a
-	// capacity hint directly: a tiny malformed payload can otherwise request a
-	// multi-gigabyte allocation before the first element read discovers EOF. Keep
-	// the hint in int space until n has been proven smaller, so this is safe on
-	// 32-bit Go as well as amd64.
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
+	if err := reserveDecodedSlice[T](r, n); err != nil {
+		return nil, err
 	}
+	capHint := boundedVecCap(n, r.left())
 	out := make([]T, 0, capHint)
 	for i := uint32(0); i < n; i++ {
 		v, err := fn(r)
@@ -145,5 +166,20 @@ func readVec[T any](r *reader, fn func(*reader) (T, error)) ([]T, error) {
 		out = append(out, v)
 	}
 	return out, nil
+}
+
+// boundedVecCap avoids multiplying an attacker-controlled byte count by the
+// in-memory size of a decoded element before any element has been validated.
+// Valid larger vectors grow normally after this modest initial allocation.
+func boundedVecCap(n uint32, remainingBytes int) int {
+	const maxInitialVecElements = 1024
+	capHint := remainingBytes
+	if capHint > maxInitialVecElements {
+		capHint = maxInitialVecElements
+	}
+	if uint64(n) < uint64(capHint) {
+		capHint = int(n)
+	}
+	return capHint
 }
 func ptr[T any](v T) *T { return &v }

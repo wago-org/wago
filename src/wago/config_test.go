@@ -4,14 +4,16 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // signExtModule exports f(i32)->i32 = i32.extend8_s(local0).
@@ -21,6 +23,27 @@ func signExtModule() []byte {
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0xc0, 0x0b}))),
+	)
+}
+
+// AMD64 native admission fails closed if CPU capability detection fails.
+// Optional extensions are not required for ordinary Wasm execution.
+func currentBackendAvailable() bool { return runtime.GOARCH != "amd64" || hostSupportsSIMD() }
+
+func scalarFloatAddModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64, wasm.F64}, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0xa0, 0x0b}))),
+	)
+}
+
+func scalarBulkCopyModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, []byte{0x01, 0x00, 0x01}),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00, 0x0b}))),
 	)
 }
 
@@ -156,29 +179,43 @@ func v128FuncImportModule() []byte {
 }
 
 func TestConfigDefaultAcceptsSupportedFeatures(t *testing.T) {
-	if _, err := Compile(nil, signExtModule()); err != nil {
-		t.Fatalf("default config should accept sign-extension: %v", err)
-	}
-	if hostSupportsSIMD() {
-		if _, err := Compile(nil, simdModule()); err != nil {
-			t.Fatalf("default config should accept supported SIMD: %v", err)
+	check := func(name string, compiled *Compiled, err error) {
+		t.Helper()
+		if !currentBackendAvailable() {
+			if !errors.Is(err, errNativeCPUFeatures) {
+				t.Fatalf("%s should fail closed on this AMD64 host: %v", name, err)
+			}
+			return
 		}
+		if err != nil {
+			t.Fatalf("%s should compile with the default config: %v", name, err)
+		}
+		compiled.Close()
 	}
-	if _, err := Compile(nil, signExtModule()); err != nil {
-		t.Fatalf("nil config should use defaults: %v", err)
+	compiled, err := Compile(nil, signExtModule())
+	check("sign-extension", compiled, err)
+	if hostSupportsSIMD() {
+		compiled, err = Compile(nil, simdModule())
+		check("SIMD", compiled, err)
 	}
+	compiled, err = Compile(signExtModule())
+	check("shorthand", compiled, err)
 }
 
 func TestConfigFeatureGatingRejects(t *testing.T) {
 	cfg := NewRuntimeConfig().WithCoreFeatures(platformCoreFeatures() &^ CoreFeatureSignExtensionOps)
 	_, err := Compile(cfg, signExtModule())
-	if err == nil || !strings.Contains(err.Error(), "sign-extension") {
+	if !currentBackendAvailable() && !errors.Is(err, errNativeCPUFeatures) {
+		t.Fatalf("disabling sign-extension should retain AMD64 backend admission, got %v", err)
+	} else if currentBackendAvailable() && (err == nil || !strings.Contains(err.Error(), "sign-extension")) {
 		t.Fatalf("disabling sign-extension should reject the module, got %v", err)
 	}
 
 	cfg = NewRuntimeConfig().WithCoreFeatures(platformCoreFeatures() &^ CoreFeatureSIMD)
 	_, err = Compile(cfg, simdModule())
-	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
+	if !currentBackendAvailable() && !errors.Is(err, errNativeCPUFeatures) {
+		t.Fatalf("disabling SIMD should retain AMD64 backend admission, got %v", err)
+	} else if currentBackendAvailable() && (err == nil || !strings.Contains(err.Error(), "simd disabled")) {
 		t.Fatalf("disabling SIMD should reject the module, got %v", err)
 	}
 }
@@ -219,7 +256,11 @@ func TestEffectiveCompileBoundsModeZeroMemoryARM64Fallback(t *testing.T) {
 func TestConfigSignalsBasedRequiresBuildTag(t *testing.T) {
 	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
 	_, err := Compile(cfg, signExtModule())
-	if guardPageBuilt {
+	if !currentBackendAvailable() {
+		if !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("unsupported AMD64 backend should fail before bounds-mode admission: %v", err)
+		}
+	} else if guardPageBuilt {
 		if err != nil {
 			t.Fatalf("signals-based should compile under the build tag: %v", err)
 		}
@@ -245,6 +286,41 @@ func TestConfigImmutable(t *testing.T) {
 	}
 	if derived.BoundsChecks() != BoundsChecksSignalsBased {
 		t.Fatal("derived config did not take the new bounds mode")
+	}
+}
+
+func TestConfigMemoryCountLimit(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec(
+			[]byte{0x00, 0x00},
+			[]byte{0x00, 0x00},
+		)),
+	)
+	if SupportedFeatures().IsEnabled(CoreFeatureMultiMemory) {
+		if _, err := Compile(NewRuntimeConfig().WithMaxMemoriesPerModule(1), module); err == nil || !strings.Contains(err.Error(), "memory count 2 exceeds configured limit 1") {
+			t.Fatalf("memory count limit error = %v", err)
+		}
+	}
+	base := NewRuntimeConfig()
+	derived := base.WithMaxMemoriesPerModule(4)
+	if base.MaxMemoriesPerModule() != DefaultMaxMemoriesPerModule || derived.MaxMemoriesPerModule() != 4 {
+		t.Fatalf("memory count configs = base %d derived %d", base.MaxMemoriesPerModule(), derived.MaxMemoriesPerModule())
+	}
+	for _, value := range []uint32{0, MaxMemoriesPerModuleLimit + 1} {
+		if err := base.WithMaxMemoriesPerModule(value).Validate(); err == nil {
+			t.Fatalf("Validate accepted max memories per module %d", value)
+		}
+	}
+	combined := base.WithInstanceLimits(2, 3).WithNativeMemoryMappingLimit(4)
+	if limits := combined.instanceLimits; limits.maxInstances != 2 || limits.maxMemoryBytes != 3 || limits.maxNativeMemoryMappings != 4 {
+		t.Fatalf("combined instance limits = %#v", limits)
+	}
+	updated := combined.WithInstanceLimits(5, 6)
+	if limits := updated.instanceLimits; limits.maxInstances != 5 || limits.maxMemoryBytes != 6 || limits.maxNativeMemoryMappings != 4 {
+		t.Fatalf("updated instance limits = %#v", limits)
+	}
+	if limits := combined.instanceLimits; limits.maxInstances != 2 || limits.maxMemoryBytes != 3 || limits.maxNativeMemoryMappings != 4 {
+		t.Fatalf("WithInstanceLimits mutated base limits = %#v", limits)
 	}
 }
 
@@ -277,6 +353,7 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		t.Fatal("CoreFeaturesV3 must include the existing SIMD admission bit that also gates relaxed SIMD")
 	}
 	completeCore3Backend := supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH)
+	backendAvailable := currentBackendAvailable()
 	for _, tc := range []struct {
 		bit       CoreFeatures
 		name      string
@@ -292,8 +369,8 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		{CoreFeatureTable64, "table64", completeCore3Backend},
 		{CoreFeatureThreads, "threads", supportsThreadsBackend(runtime.GOOS, runtime.GOARCH)},
 	} {
-		if got := SupportedFeatures().IsEnabled(tc.bit); got != tc.supported {
-			t.Errorf("SupportedFeatures admission for %s = %v, want %v", tc.name, got, tc.supported)
+		if got, want := SupportedFeatures().IsEnabled(tc.bit), tc.supported && backendAvailable; got != want {
+			t.Errorf("SupportedFeatures admission for %s = %v, want %v", tc.name, got, want)
 		}
 		if got := tc.bit.String(); got != tc.name {
 			t.Errorf("%#x String() = %q, want %q", uint64(tc.bit), got, tc.name)
@@ -301,7 +378,11 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 	}
 
 	err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Validate()
-	if completeCore3Backend {
+	if !backendAvailable {
+		if !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("CoreFeaturesV3 Validate should fail closed on this AMD64 host: %v", err)
+		}
+	} else if completeCore3Backend {
 		if err != nil {
 			t.Fatalf("CoreFeaturesV3 Validate = %v, want complete admission", err)
 		}
@@ -319,13 +400,16 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 func TestDefaultCoreFeaturePolicy(t *testing.T) {
 	want := coreFeaturesWithoutSidecar
 	if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
-		want |= defaultCore3Features
+		want |= CoreFeaturesV3
 	}
 	if got := NewRuntimeConfig().CoreFeatures(); got != want {
 		t.Fatalf("default features = %s, want %s", got, want)
 	}
-	if want.IsEnabled(CoreFeatureGC | CoreFeatureExceptionHandling | CoreFeatureThreads) {
-		t.Fatalf("default unexpectedly includes ownership-sensitive opt-in features: %s", want)
+	if want.IsEnabled(CoreFeatureThreads) {
+		t.Fatalf("default unexpectedly includes the opt-in threads proposal: %s", want)
+	}
+	if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) && !want.IsEnabled(CoreFeaturesV3) {
+		t.Fatalf("complete backend default = %s, want full Core 3 set %s", want, CoreFeaturesV3)
 	}
 	for _, info := range FeatureInfos() {
 		expected := want.IsEnabled(info.Feature)
@@ -346,8 +430,14 @@ func TestDefaultCoreFeaturePolicy(t *testing.T) {
 		)),
 	)
 	compiled, err := Compile(nil, module)
+	if !currentBackendAvailable() {
+		if !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("default Core 3 compile should fail closed on this AMD64 host: %v", err)
+		}
+		return
+	}
 	if err != nil {
-		t.Fatalf("default compile of selected Core 3 tail call: %v", err)
+		t.Fatalf("default compile of Core 3 tail call: %v", err)
 	}
 	_ = compiled.Close()
 }
@@ -411,32 +501,72 @@ func TestConfigTypedErrors(t *testing.T) {
 	// Unsupported feature -> *UnsupportedFeatureError naming it.
 	unknown := CoreFeatures(uint64(1) << 63)
 	_, err := NewRuntimeConfig().WithFeature(unknown, true).Compile(signExtModule())
-	var ufe *UnsupportedFeatureError
-	if !errors.As(err, &ufe) {
-		t.Fatalf("want *UnsupportedFeatureError, got %T: %v", err, err)
-	}
-	if ufe.Requested != unknown {
-		t.Fatalf("error should preserve unknown feature bit, got %#x", uint64(ufe.Requested))
+	if !currentBackendAvailable() {
+		if !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("unsupported AMD64 backend should fail before feature validation: %v", err)
+		}
+	} else {
+		var ufe *UnsupportedFeatureError
+		if !errors.As(err, &ufe) {
+			t.Fatalf("want *UnsupportedFeatureError, got %T: %v", err, err)
+		}
+		if ufe.Requested != unknown {
+			t.Fatalf("error should preserve unknown feature bit, got %#x", uint64(ufe.Requested))
+		}
 	}
 	// Signals-based without the build tag -> GuardPageUnavailableError (default build).
 	if !guardPageBuilt {
 		err = NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased).Validate()
-		if !IsGuardPageUnavailable(err) {
+		if !currentBackendAvailable() && !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("unsupported AMD64 backend should fail before bounds-mode validation: %v", err)
+		} else if currentBackendAvailable() && !IsGuardPageUnavailable(err) {
 			t.Fatalf("want GuardPageUnavailableError, got %v", err)
 		}
 	}
 }
 
 func TestConfigValidateAndIntrospection(t *testing.T) {
-	if err := NewRuntimeConfig().Validate(); err != nil {
+	backendAvailable := currentBackendAvailable()
+	if err := NewRuntimeConfig().Validate(); !backendAvailable && !errors.Is(err, errNativeCPUFeatures) {
+		t.Fatalf("default config should fail closed on this AMD64 host: %v", err)
+	} else if backendAvailable && err != nil {
 		t.Fatalf("default config should validate: %v", err)
 	}
 	if err := NewRuntimeConfig().WithFunctionWorkers(-1).Validate(); err == nil || !strings.Contains(err.Error(), "non-negative") {
 		t.Fatalf("negative function workers should fail validation, got %v", err)
 	}
+	if got := NewRuntimeConfig().MaxFunctionLocals(); got != 65535 {
+		t.Fatalf("default max function locals = %d, want 65535", got)
+	}
+	if got := NewRuntimeConfig().MemoryLimitPages(); got != 0 {
+		t.Fatalf("default memory page quota = %d, want unbounded zero", got)
+	}
+	metadata := NewRuntimeConfig().WithMaxInstanceMetadataBytes(1234)
+	if metadata.MaxInstanceMetadataBytes() != 1234 || NewRuntimeConfig().MaxInstanceMetadataBytes() != 0 {
+		t.Fatal("instance metadata quota must be immutable and unbounded by default")
+	}
+	if err := NewRuntimeConfig().WithMaxFunctionLocals(0).Validate(); err == nil || !strings.Contains(err.Error(), "between 1 and 65535") {
+		t.Fatalf("zero max function locals should fail validation, got %v", err)
+	}
+	if err := NewRuntimeConfig().WithMaxFunctionLocals(MaxFunctionLocalsLimit + 1).Validate(); err == nil || !strings.Contains(err.Error(), "between 1 and 65535") {
+		t.Fatalf("oversized max function locals should fail validation, got %v", err)
+	}
+	maximumLocals := NewRuntimeConfig().WithMaxFunctionLocals(MaxFunctionLocalsLimit)
+	if maximumLocals.MaxFunctionLocals() != 65535 || NewRuntimeConfig().MaxFunctionLocals() != DefaultMaxFunctionLocals {
+		t.Fatal("WithMaxFunctionLocals must be immutable and accept the uint16 maximum")
+	}
 	workers := NewRuntimeConfig().WithFunctionWorkers(4)
 	if workers.FunctionWorkers() != 4 || NewRuntimeConfig().FunctionWorkers() != 1 {
 		t.Fatal("WithFunctionWorkers must be immutable and observable; default must remain serial")
+	}
+	stack := NewRuntimeConfig().WithNativeStackBytes(8 << 20)
+	if stack.NativeStackBytes() != 8<<20 || NewRuntimeConfig().NativeStackBytes() != DefaultNativeStackBytes {
+		t.Fatal("WithNativeStackBytes must be immutable and preserve the 4 MiB default")
+	}
+	for _, value := range []uint64{MinNativeStackBytes - 1, MinNativeStackBytes + 1, MaxNativeStackBytes + 1} {
+		if err := NewRuntimeConfig().WithNativeStackBytes(value).Validate(); err == nil || !strings.Contains(err.Error(), "native stack bytes") {
+			t.Fatalf("native stack size %d validation = %v", value, err)
+		}
 	}
 	if got := NewRuntimeConfig().WithCompileWorkers(3); got.CompileWorkers() != 3 || got.FunctionWorkers() != 3 {
 		t.Fatal("deprecated compile-worker aliases must preserve the function-worker policy")
@@ -458,7 +588,9 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 		}
 		wantFeatures &^= unsupported
 	}
-	if !hostSupportsSIMD() {
+	if !backendAvailable {
+		wantFeatures = 0
+	} else if !hostSupportsSIMD() {
 		wantFeatures &^= CoreFeatureSIMD
 	}
 	if !supportsThreadsBackend(runtime.GOOS, runtime.GOARCH) {
@@ -472,8 +604,73 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	}
 	// String is non-empty / informative. The default bounds mode depends on the
 	// build tag (explicit normally, signals-based under wago_guardpage).
-	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") {
+	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") || !strings.Contains(s, "maxFunctionLocals: 65535") || !strings.Contains(s, "nativeStackBytes: 4194304") {
 		t.Fatalf("config String missing bounds mode or serial default policy: %q", s)
+	}
+}
+
+func TestRuntimeRejectsInvalidNativeStackBeforeInstantiation(t *testing.T) {
+	compiled := MustCompile(wasmtest.Module())
+	defer compiled.Close()
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithNativeStackBytes(MinNativeStackBytes + 1)))
+	defer rt.Close()
+	module, err := rt.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	if _, err := rt.Instantiate(context.Background(), module); err == nil || !strings.Contains(err.Error(), "16-byte aligned") {
+		t.Fatalf("invalid native stack instantiate = %v", err)
+	}
+}
+
+func TestRuntimeUsesConfiguredNativeStackCapacity(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithNativeStackBytes(8 << 20)))
+	defer rt.Close()
+	module, err := rt.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	instance, err := rt.Instantiate(context.Background(), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got := instance.eng.StackBytes(); got != 8<<20 {
+		t.Fatalf("instance native stack = %d, want %d", got, uint64(8<<20))
+	}
+}
+
+func functionLocalLimitModule(params, locals uint32, typ wasm.ValType) []byte {
+	paramTypes := make([]wasm.ValType, params)
+	for i := range paramTypes {
+		paramTypes[i] = typ
+	}
+	body := []byte{0x01}
+	body = append(body, wasmtest.ULEB(locals)...)
+	body = append(body, wasm.MustEncodeValType(typ), 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(paramTypes, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestMaxFunctionLocalsCountsParametersAndPreservesStackFence(t *testing.T) {
+	module := functionLocalLimitModule(1, 1, wasm.I32)
+	if _, err := Compile(NewRuntimeConfig().WithMaxFunctionLocals(1), module); err == nil || !strings.Contains(err.Error(), "parameter and local count exceeds configured limit") {
+		t.Fatalf("combined parameter/local limit error = %v", err)
+	}
+	if compiled, err := Compile(NewRuntimeConfig().WithMaxFunctionLocals(2), module); err != nil {
+		t.Fatalf("combined parameter/local boundary: %v", err)
+	} else {
+		compiled.Close()
+	}
+
+	_, err := Compile(NewRuntimeConfig().WithMaxFunctionLocals(MaxFunctionLocalsLimit), functionLocalLimitModule(0, MaxFunctionLocalsLimit, wasm.V128))
+	if err == nil || !strings.Contains(err.Error(), "exceeds stack-fence headroom") {
+		t.Fatalf("uint16 maximum must retain native stack-fence rejection, got %v", err)
 	}
 }
 
@@ -487,15 +684,21 @@ func TestConfigOptimizationSelectionIsImmutableAndValidated(t *testing.T) {
 	if base.OptimizationInfos()[0].On == changed.OptimizationInfos()[0].On {
 		t.Fatal("WithOptimization mutated the base selection")
 	}
-	if err := changed.Validate(); err != nil {
+	if err := changed.Validate(); !currentBackendAvailable() && !errors.Is(err, errNativeCPUFeatures) {
+		t.Fatalf("selected optimization should retain AMD64 backend admission: %v", err)
+	} else if currentBackendAvailable() && err != nil {
 		t.Fatalf("selected optimization should validate: %v", err)
 	}
 	processDefault := OptKnobs()[0].On
 	compiled, err := changed.Compile(benchAddOneModule())
-	if err != nil {
+	if !currentBackendAvailable() && !errors.Is(err, errNativeCPUFeatures) {
+		t.Fatalf("compile should fail closed on this AMD64 host: %v", err)
+	} else if currentBackendAvailable() && err != nil {
 		t.Fatalf("compile with runtime-local optimization selection: %v", err)
 	}
-	compiled.Close()
+	if compiled != nil {
+		compiled.Close()
+	}
 	if got := OptKnobs()[0].On; got != processDefault {
 		t.Fatalf("compile leaked optimization selection: process default = %v, want %v", got, processDefault)
 	}
@@ -504,38 +707,21 @@ func TestConfigOptimizationSelectionIsImmutableAndValidated(t *testing.T) {
 	}
 }
 
-func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
-	wantOff := map[string]bool{
-		"loop-precheck": true,
+func TestRuntimeConfigRejectsDisabledStackFence(t *testing.T) {
+	cfg := NewRuntimeConfig().WithOptimization("stack-fence", false)
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "stack-fence is required") {
+		t.Fatalf("disabled stack-fence validation = %v", err)
 	}
-	switch runtime.GOARCH {
-	case "amd64":
-		for _, name := range []string{"affine-lea", "call-next-use", "commute-self-update", "tee-spill-elide", "v128-sink"} {
-			wantOff[name] = true
-		}
+	if _, err := cfg.Compile(benchAddOneModule()); err == nil || !strings.Contains(err.Error(), "stack-fence is required") {
+		t.Fatalf("disabled stack-fence compile = %v", err)
 	}
+}
 
-	seen := make(map[string]bool, len(wantOff))
+func TestMeasuredLowValueOptimizationsAreRemoved(t *testing.T) {
 	for _, info := range NewRuntimeConfig().OptimizationInfos() {
-		if info.Name == "inline-loop-callees" {
-			t.Fatal("removed inline-loop-callees optimization is still exposed")
-		}
-		if info.Name == "deep-fp-pins" {
-			t.Fatal("removed deep-fp-pins optimization is still exposed")
-		}
-		if runtime.GOARCH == "arm64" && info.Name == "v128-sink" {
-			t.Fatal("removed ARM64 v128-sink optimization is still exposed")
-		}
-		if wantOff[info.Name] {
-			seen[info.Name] = true
-			if info.On || info.Default {
-				t.Errorf("%s default state = on:%v catalog:%v, want both false", info.Name, info.On, info.Default)
-			}
-		}
-	}
-	for name := range wantOff {
-		if !seen[name] {
-			t.Errorf("default-off optimization %s is not exposed", name)
+		switch info.Name {
+		case "inline-loop-callees", "deep-fp-pins", "affine-lea", "tee-spill-elide", "v128-sink", "loop-precheck":
+			t.Fatalf("removed optimization %s is still exposed", info.Name)
 		}
 	}
 }
@@ -543,14 +729,32 @@ func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 var defaultRuntimeConfigAllocationSink *RuntimeConfig
 
 func TestDefaultRuntimeConfigAllocationBudget(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "")
+	t.Setenv("WAGO_AMD64_NO_BMI2_RORX", "")
+	// Keep the constructor's one-allocation budget independent of the Go
+	// version's Windows environment conversion costs. Measure that OS baseline
+	// separately; additional configuration storage must still fail this test.
+	envAllocs := testing.AllocsPerRun(1000, func() {
+		_ = os.Getenv("WAGO_BOUNDS")
+		if runtime.GOARCH == "amd64" && hostSupportsBMI2() {
+			_ = os.Getenv("WAGO_AMD64_NO_BMI2_RORX")
+		}
+	})
+	maxConfigAllocs := 1 + envAllocs
 	configAllocs := testing.AllocsPerRun(1000, func() {
 		defaultRuntimeConfigAllocationSink = NewRuntimeConfig()
 	})
-	if configAllocs > 1 {
-		t.Fatalf("NewRuntimeConfig allocations = %.0f, want <= 1", configAllocs)
+	if configAllocs > maxConfigAllocs {
+		t.Fatalf("NewRuntimeConfig allocations = %.0f, want <= %.0f (including %.0f environment lookup allocations)", configAllocs, maxConfigAllocs, envAllocs)
 	}
 
 	module := benchAddOneModule()
+	if !currentBackendAvailable() {
+		if _, err := Compile(nil, module); !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("default compile should fail closed on this AMD64 host: %v", err)
+		}
+		return
+	}
 	compileAllocs := testing.AllocsPerRun(50, func() {
 		compiled, err := Compile(nil, module)
 		if err != nil {
@@ -583,13 +787,26 @@ func TestDefaultRuntimeConfigSnapshotIsolationAndCodeIdentity(t *testing.T) {
 	if got := newer.OptimizationInfos()[0].On; got != !original {
 		t.Fatalf("new config did not capture changed process default: %s = %v, want %v", name, got, !original)
 	}
+	if got := OptKnobs()[0].On; got != !original {
+		t.Fatalf("new config leaked selection: process default = %v, want %v", got, !original)
+	}
 
+	explicit := NewRuntimeConfig().WithOptimization(name, original)
 	baseCompiled, err := base.Compile(benchAddOneModule())
+	if !currentBackendAvailable() {
+		if !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("stale default snapshot should fail closed on this AMD64 host: %v", err)
+		}
+		if _, err := explicit.Compile(benchAddOneModule()); !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("explicit selection should fail closed on this AMD64 host: %v", err)
+		}
+		return
+	}
 	if err != nil {
 		t.Fatalf("compile stale default snapshot: %v", err)
 	}
 	defer baseCompiled.Close()
-	explicitCompiled, err := NewRuntimeConfig().WithOptimization(name, original).Compile(benchAddOneModule())
+	explicitCompiled, err := explicit.Compile(benchAddOneModule())
 	if err != nil {
 		t.Fatalf("compile explicit captured selection: %v", err)
 	}
@@ -605,6 +822,15 @@ func TestDefaultRuntimeConfigSnapshotIsolationAndCodeIdentity(t *testing.T) {
 func TestDefaultRuntimeConfigFastPathCodeIdentity(t *testing.T) {
 	base := NewRuntimeConfig()
 	defaultCompiled, err := base.Compile(benchAddOneModule())
+	if !currentBackendAvailable() {
+		if !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("default snapshot should fail closed on this AMD64 host: %v", err)
+		}
+		if _, err := base.WithOptimizations(map[string]bool{}).Compile(benchAddOneModule()); !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("explicit selection should fail closed on this AMD64 host: %v", err)
+		}
+		return
+	}
 	if err != nil {
 		t.Fatalf("compile default snapshot: %v", err)
 	}
@@ -634,7 +860,7 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 	}
 
 	mod := benchImportedModule(64, 16)
-	imports := Imports{"env.f": f}
+	imports := testImports("env.f", f)
 	compile := func(workers int) *Compiled {
 		t.Helper()
 		c, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(workers).Compile(mod)
@@ -644,7 +870,7 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 		if !c.dynamicImports || len(c.code) == 0 {
 			t.Fatalf("workers=%d dynamic=%v code=%d", workers, c.dynamicImports, len(c.code))
 		}
-		if err := c.validateImportBindings(imports, nil); err != nil {
+		if err := c.validateImportBindings(imports.bindings, nil); err != nil {
 			_ = c.Close()
 			t.Fatalf("workers=%d bindings: %v", workers, err)
 		}
@@ -676,6 +902,22 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 	if !loaded.dynamicImports {
 		t.Fatal("serialized imported module lost dynamic dispatch metadata")
 	}
+	for _, compiled := range []*Compiled{serial, parallel, &loaded} {
+		instance, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer instance.Close()
+		mapped := compiled.codeCache.mem
+		if len(compiled.code) == 0 || len(mapped) == 0 || &compiled.code[0] != &mapped[0] {
+			t.Fatal("live compiled public view retained separate heap code backing")
+		}
+		result, err := instance.Invoke("f0", I32(1))
+		if err != nil || len(result) != 1 || AsI32(result[0]) != 18 {
+			t.Fatalf("mapped imported code = %v, %v", result, err)
+		}
+	}
+
 }
 
 func intSliceBytes(v []int) []byte {
@@ -733,15 +975,76 @@ func TestConfigRejectsSIMDWhenHostUnsupported(t *testing.T) {
 	old := simdHostFeaturesSupported
 	simdHostFeaturesSupported = func() bool { return false }
 	defer func() { simdHostFeaturesSupported = old }()
-	if _, err := Compile(nil, signExtModule()); err != nil {
-		t.Fatalf("non-SIMD module should still compile when host SIMD is unavailable: %v", err)
-	}
 	_, err := Compile(nil, simdModule())
-	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
+	want := "simd disabled"
+	if runtime.GOARCH == "amd64" {
+		want = "CPU capability detection"
+	}
+	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("SIMD module should be rejected when host SIMD is unavailable, got %v", err)
 	}
-	if SupportedFeatures().IsEnabled(CoreFeatureSIMD) {
+	if runtime.GOARCH == "amd64" && SupportedFeatures() != 0 {
+		t.Fatal("SupportedFeatures should clear all features when the AMD64 backend is unavailable")
+	}
+	if runtime.GOARCH != "amd64" && SupportedFeatures().IsEnabled(CoreFeatureSIMD) {
 		t.Fatal("SupportedFeatures should clear SIMD when host SIMD is unavailable")
+	}
+}
+
+func TestScalarAMD64RequiresBackendCPU(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		return
+	}
+	old := simdHostFeaturesSupported
+	defer func() { simdHostFeaturesSupported = old }()
+	simdHostFeaturesSupported = func() bool { return false }
+	if err := NewRuntimeConfig().Validate(); !errors.Is(err, errNativeCPUFeatures) {
+		t.Fatalf("default config should fail closed without the current AMD64 baseline: %v", err)
+	}
+	if got := SupportedFeatures(); got != 0 {
+		t.Fatalf("unsupported AMD64 backend reports executable features: %s", got)
+	}
+	for _, tc := range []struct {
+		name   string
+		module []byte
+	}{
+		{"scalar float", scalarFloatAddModule()},
+		{"bulk memory", scalarBulkCopyModule()},
+		{"integer", signExtModule()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)
+			simdHostFeaturesSupported = func() bool { return true }
+			compiled, err := Compile(cfg, tc.module)
+			if err != nil {
+				t.Fatalf("compile on compatible host: %v", err)
+			}
+			defer compiled.Close()
+			if compiled.requiredFeatures.IsEnabled(CoreFeatureSIMD) {
+				t.Fatal("scalar module unexpectedly requires Wasm SIMD")
+			}
+			blob, err := compiled.MarshalBinary()
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			var compatible Compiled
+			if err := compatible.UnmarshalBinary(blob); err != nil {
+				t.Fatalf("load on compatible host: %v", err)
+			}
+			compatible.Close()
+
+			simdHostFeaturesSupported = func() bool { return false }
+			if _, err := Compile(cfg, tc.module); !errors.Is(err, errNativeCPUFeatures) {
+				t.Fatalf("compile on incompatible host: %v", err)
+			}
+			var incompatible Compiled
+			if err := incompatible.UnmarshalBinary(blob); !errors.Is(err, errNativeCPUFeatures) {
+				t.Fatalf("load on incompatible host: %v", err)
+			}
+			if _, err := incompatible.ReadFrom(bytes.NewReader(blob)); !errors.Is(err, errNativeCPUFeatures) {
+				t.Fatalf("stream load on incompatible host: %v", err)
+			}
+		})
 	}
 }
 
@@ -765,7 +1068,11 @@ func TestConfigRejectsV128TypesWhenHostUnsupported(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Compile(nil, tc.mod)
-			if err == nil || !strings.Contains(err.Error(), "v128") {
+			want := "v128"
+			if runtime.GOARCH == "amd64" {
+				want = "CPU capability detection"
+			}
+			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatalf("v128 module should be rejected when host SIMD is unavailable, got %v", err)
 			}
 		})
@@ -773,9 +1080,17 @@ func TestConfigRejectsV128TypesWhenHostUnsupported(t *testing.T) {
 }
 
 func TestConfigCompileMethod(t *testing.T) {
-	if _, err := NewRuntimeConfig().Compile(signExtModule()); err != nil {
+	compiled, err := NewRuntimeConfig().Compile(signExtModule())
+	if !currentBackendAvailable() {
+		if !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("fluent Compile should fail closed on this AMD64 host: %v", err)
+		}
+		return
+	}
+	if err != nil {
 		t.Fatalf("fluent Compile: %v", err)
 	}
+	compiled.Close()
 }
 
 func TestConfigWithFeatures(t *testing.T) {

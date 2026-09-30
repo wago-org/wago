@@ -15,10 +15,10 @@ import (
 	"testing"
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
-const stagedGCExternDeltaPath = "tests/spec-v3-staged-gc-extern.json"
+const stagedGCExternDeltaPath = "tests/conformance/baselines/spec-v3-staged-gc-extern.json"
 
 const stagedGCExternGate = "extern conversion constant globals/table with bounded anyref ingress and result ownership"
 
@@ -98,7 +98,7 @@ func stagedGCExternLeaderDeltaFor(data []byte, line int) (stagedGCExternLeaderDe
 }
 
 func compileStagedGCExternAccounting(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCStructProducts = true

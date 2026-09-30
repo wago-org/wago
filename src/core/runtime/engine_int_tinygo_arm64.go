@@ -37,16 +37,10 @@ func tinygoARM64IntEntryCode(foreignStackTop uintptr) []byte {
 }
 
 func preparedIntThunkFor(e *Engine) (uintptr, error) {
-	if e.preparedInt.entry != 0 {
-		return e.preparedInt.entry, nil
-	}
-	mem, err := mmapExec(tinygoARM64IntEntryCode(e.stackTop))
-	if err != nil {
+	if err := e.initNativeEntry(); err != nil {
 		return 0, err
 	}
-	e.preparedInt.mem = mem
-	e.preparedInt.entry = uintptr(unsafe.Pointer(&mem[0]))
-	return e.preparedInt.entry, nil
+	return uintptr(unsafe.Pointer(&e.preparedInt.mem[0])) + tinygoARM64PreparedIntEntryOffset, nil
 }
 
 func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
@@ -57,6 +51,31 @@ func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint6
 	fv := tinygoARM64FuncValue{context: code, fnptr: entry}
 	call := *(*func(uintptr, uintptr, uintptr, uintptr, uintptr) uintptr)(unsafe.Pointer(&fv))
 	return uint64(call(linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3))), nil
+}
+
+func (e *Engine) EnterPreparedIntLight(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
+}
+
+func (e *Engine) EnterPreparedIntBounded(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
+}
+
+func (e *Engine) EnterPreparedIntLightBounded(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
+}
+
+func (e *Engine) PrepareIntCall(call *PreparedIntCall, code, linMem uintptr) {
+	call.code, call.linMem, call.stack = code, linMem, e.stackTop
+}
+
+func (e *Engine) EnterPreparedIntCallBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
+	result, _ := e.EnterPreparedIntLightBounded(call.code, call.linMem, a0, a1, a2, a3)
+	return result
+}
+
+func (e *Engine) EnterPreparedIntPreboundContextBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
+	return e.EnterPreparedIntCallBounded(call, a0, a1, a2, a3)
 }
 
 func PreparedIntTrapCode(trap []byte) TrapCode {

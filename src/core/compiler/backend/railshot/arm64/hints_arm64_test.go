@@ -3,17 +3,378 @@
 package arm64
 
 import (
+	"os"
+	"reflect"
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+// Hint scanning is portable and does not enter generated code. Keep its
+// fixture loader available to Windows ARM64 as well as native-entry targets.
+func readParallelTestModuleArm64(t testing.TB, path string) *wasm.Module {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := frontend.DecodeValidate(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestParallelModuleHintsMatchSerialDetailedResidencyArm64(t *testing.T) {
+	for _, name := range []string{"assemblyscript/json-as-simd.wasm", "semantic/coremark/coremark.wasm"} {
+		t.Run(name, func(t *testing.T) {
+			m := readParallelTestModuleArm64(t, "../../../../../../corpus/workloads/"+name)
+			policy := currentCodegenPolicy()
+			serial, serialSidecar, serialGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, policy, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parallel, parallelSidecar, parallelGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 4, policy, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(parallel, serial) {
+				for i := range serial {
+					if parallel[i] != serial[i] {
+						t.Fatalf("function %d hints differ:\nparallel: %#v\nserial:   %#v", i, parallel[i], serial[i])
+					}
+				}
+			}
+			if !reflect.DeepEqual(parallelSidecar, serialSidecar) {
+				t.Fatalf("sidecars differ: parallel scores=%d last=%d globals=%d; serial scores=%d last=%d globals=%d", len(parallelSidecar.localScore), len(parallelSidecar.localLastGet), len(parallelSidecar.sparseGlobals), len(serialSidecar.localScore), len(serialSidecar.localLastGet), len(serialSidecar.sparseGlobals))
+			}
+			if !reflect.DeepEqual(parallelGlobals, serialGlobals) {
+				t.Fatal("module global scores differ")
+			}
+			if cap(parallelSidecar.sparseGlobals) != cap(serialSidecar.sparseGlobals) {
+				t.Fatalf("global sidecar backing capacity: parallel %d, serial %d", cap(parallelSidecar.sparseGlobals), cap(serialSidecar.sparseGlobals))
+			}
+		})
+	}
+}
+
+func TestParallelModuleHintsMatchSerialArm64(t *testing.T) {
+	for _, name := range []string{"assemblyscript/json-as-simd.wasm", "semantic/coremark/coremark.wasm"} {
+		t.Run(name, func(t *testing.T) {
+			m := readParallelTestModuleArm64(t, "../../../../../../corpus/workloads/"+name)
+			policy := currentCodegenPolicy()
+			serial, serialSidecar, serialGlobals, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parallel, parallelSidecar, parallelGlobals, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 4, policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(parallel, serial) {
+				for i := range serial {
+					if parallel[i] != serial[i] {
+						t.Fatalf("function %d hints differ:\nparallel: %#v\nserial:   %#v", i, parallel[i], serial[i])
+					}
+				}
+			}
+			if !reflect.DeepEqual(parallelSidecar, serialSidecar) {
+				t.Fatalf("sidecars differ: parallel scores=%d last=%d globals=%d; serial scores=%d last=%d globals=%d", len(parallelSidecar.localScore), len(parallelSidecar.localLastGet), len(parallelSidecar.sparseGlobals), len(serialSidecar.localScore), len(serialSidecar.localLastGet), len(serialSidecar.sparseGlobals))
+			}
+			if !reflect.DeepEqual(parallelGlobals, serialGlobals) {
+				t.Fatal("module global scores differ")
+			}
+			if cap(parallelSidecar.sparseGlobals) != cap(serialSidecar.sparseGlobals) {
+				t.Fatalf("global sidecar backing capacity: parallel %d, serial %d", cap(parallelSidecar.sparseGlobals), cap(serialSidecar.sparseGlobals))
+			}
+		})
+	}
+}
+
+func TestLocalEventTapeScansStructuredLocalsArm64(t *testing.T) {
+	h := newFuncHints(2, 0)
+	var tape shared.LocalEventTape
+	tape.Reset(shared.LocalEventLimit)
+	h.localEvents = &tape
+	elig := newGlobalEligibilityTracker(0)
+	var globals shared.GlobalHintAccumulator
+	got, err := scanBodyBytesIntoModule([]byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}, 0, 2, 0, 0, nil, h, &elig, nil, nil, nil, nil, 0, &globals, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []shared.LocalEventKind{shared.LocalEventBlock, shared.LocalEventRead, shared.LocalEventDefine, shared.LocalEventEnd, shared.LocalEventEnd}
+	if len(tape.Events) != len(want) {
+		t.Fatalf("events = %+v, want kinds %v", tape.Events, want)
+	}
+	for i := range want {
+		if tape.Events[i].Kind != want[i] {
+			t.Fatalf("event %d = %+v, want kind %v", i, tape.Events[i], want[i])
+		}
+	}
+	if got.localEvents != &tape {
+		t.Fatal("scanner lost worker-owned tape")
+	}
+}
+
+func TestLoadDefinedLocalHintRequiresFullWidthSelfRecurrenceArm64(t *testing.T) {
+	h, err := scanBodyBytes([]byte{
+		0x20, 0x00, 0x28, 0x02, 0x00, 0x21, 0x00, // x = i32.load(x)
+		0x20, 0x01, 0x2d, 0x00, 0x00, 0x21, 0x01, // y = i32.load8_u(y)
+		0x0b,
+	}, 2, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loadDefinedLocalMask(h.localScore); got != 1 {
+		t.Fatalf("load-defined local mask = %#x, want only full-width self recurrence local 0", got)
+	}
+}
+
+func TestCallPlacementHintsDistinguishColdDirectCallsArm64(t *testing.T) {
+	cold, err := scanBodyBytes([]byte{0x10, 0x01, 0x03, 0x40, 0x0b, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cold.flags.has(hintHasCall) || cold.flags.has(hintHasLoopCall) || cold.flags.has(hintHasNonDirectCall) {
+		t.Fatalf("cold direct flags = %#x", cold.flags)
+	}
+	hot, err := scanBodyBytes([]byte{0x03, 0x40, 0x10, 0x01, 0x0b, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hot.flags.has(hintHasLoopCall) || hot.flags.has(hintHasNonDirectCall) {
+		t.Fatalf("loop direct flags = %#x", hot.flags)
+	}
+	dynamic, err := scanBodyBytes([]byte{0x11, 0x00, 0x00, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dynamic.flags.has(hintHasNonDirectCall) {
+		t.Fatalf("dynamic call flags = %#x", dynamic.flags)
+	}
+	if dynamic.hasUnsupportedDynamicCall() {
+		t.Fatal("call_indirect was classified as an unsupported dynamic call")
+	}
+	callRef, err := scanBodyBytes([]byte{0x14, 0x00, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !callRef.flags.has(hintHasNonDirectCall) || !callRef.hasUnsupportedDynamicCall() {
+		t.Fatalf("call_ref flags/dynamic marker = %#x/%v", callRef.flags, callRef.hasUnsupportedDynamicCall())
+	}
+	imported := newFuncHints(0, 0)
+	elig := newGlobalEligibilityTracker(0)
+	var globals shared.GlobalHintAccumulator
+	imported, err = scanBodyBytesIntoModule([]byte{0x10, 0x00, 0x0b}, 0, 0, 0, 1, nil, imported, &elig, nil, nil, nil, nil, 1, &globals, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !imported.flags.has(hintCallsImport) {
+		t.Fatalf("import call flags = %#x", imported.flags)
+	}
+}
+
 func TestFuncHintsSizeArm64(t *testing.T) {
-	const want = 200
+	const want = 28
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
+	}
+}
+
+func TestSerialLocalScratchCapacityUsesTotalLocalCountArm64(t *testing.T) {
+	params := make([]wasm.ValType, 96)
+	for i := range params {
+		params[i] = wasm.I64
+	}
+	m := modFuncs(t,
+		funcDef{body: []byte{0x00, 0x0b}},
+		funcDef{params: params, body: []byte{0x01, 0x07, 0x7e, 0x0b}},
+		funcDef{params: params[:16], body: []byte{0x00, 0x0b}},
+	)
+	hints, _, _, err := computeModuleHints(m, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := serialLocalScratchCapacity(hints, inlineTargetTable{}, make([]bool, len(m.Code))), 103; got != want {
+		t.Fatalf("serial local scratch capacity = %d, want total parameter-plus-local count %d", got, want)
+	}
+}
+
+func TestTaglessExceptionHandlingOmitsIntervalSidecarsArm64(t *testing.T) {
+	body := []byte{0x01, 0x80, 0x01, 0x7f} // 128 i32 locals.
+	body = append(body, make([]byte, 128)...)
+	body = append(body, 0x1f, 0x40, 0x01, byte(wasm.CatchAll), 0x00, 0x0b, 0x0b)
+	m := modFuncs(t, funcDef{body: body})
+	hints, sidecar, _, err := computeModuleHints(m, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := sidecar.view(hints[0])
+	if !hints[0].flags.has(hintModuleEH) {
+		t.Fatal("tagless try_table module was not classified as exception handling")
+	}
+	if hints[0].flags.has(hintIntervalRegionStorage) || len(view.localLastGet) != 0 || len(view.localScore) != 64 {
+		t.Fatalf("tagless EH interval sidecars = interval:%v scores:%d last-gets:%d, want false/64/0", hints[0].flags.has(hintIntervalRegionStorage), len(view.localScore), len(view.localLastGet))
+	}
+}
+
+func TestDirectCalleePreservesPinsUsesRetainedHint(t *testing.T) {
+	hints := make([]funcHints, 2)
+	hints[1].flags.set(hintPreservesCallerPins)
+	f := fn{calleeHints: hints}
+	if f.directCalleePreservesPins(0) {
+		t.Fatal("unmarked callee preserves pins")
+	}
+	if !f.directCalleePreservesPins(1) {
+		t.Fatal("marked callee does not preserve pins")
+	}
+	if f.directCalleePreservesPins(-1) || f.directCalleePreservesPins(len(hints)) {
+		t.Fatal("out-of-range callee preserves pins")
+	}
+}
+
+func TestScanBodyBytesFloatConstHintArm64(t *testing.T) {
+	integer, err := scanBodyBytes([]byte{0x41, 0x00, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if integer.flags.has(hintHasFloatConst) {
+		t.Fatal("integer body reported a float constant")
+	}
+	for _, body := range [][]byte{
+		{0x43, 0, 0, 0, 0, 0x0b},
+		{0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0x0b},
+	} {
+		h, err := scanBodyBytes(body, 0, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !h.flags.has(hintHasFloatConst) {
+			t.Fatalf("float body %x did not report a float constant", body)
+		}
+	}
+	decoded := scanBody(wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrF32Const}}}, 0, 0, 0)
+	if !decoded.flags.has(hintHasFloatConst) {
+		t.Fatal("decoded float body did not report a float constant")
+	}
+}
+
+func TestControlDepthHintCountsNestedFramesArm64(t *testing.T) {
+	h, err := scanBodyBytes([]byte{
+		0x02, 0x40, // block
+		0x04, 0x40, // if
+		0x03, 0x40, // loop
+		0x0e, 0x01, 0x00, 0x00, // br_table 0 0; does not open a frame
+		0x0b, 0x05, 0x0b, 0x0b, 0x0b,
+	}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.maxControlDepth != 3 {
+		t.Fatalf("max control depth = %d, want 3", h.maxControlDepth)
+	}
+}
+
+func TestControlDepthHintSaturatesArm64(t *testing.T) {
+	var h funcHints
+	h.noteControlDepth(254)
+	h.noteControlDepth(300)
+	if h.controlDepth() != 255 {
+		t.Fatalf("saturated max control depth = %d, want 255", h.controlDepth())
+	}
+}
+
+func TestHotScalarMergeHintSharesControlDepthByteArm64(t *testing.T) {
+	var h funcHintView
+	h.noteControlDepth(3)
+	h.addScalarMergeWeight(int64(hotScalarMergeThreshold - 1))
+	if h.hasHotScalarMerge() {
+		t.Fatal("sub-threshold scalar merge was marked hot")
+	}
+	h.addScalarMergeWeight(1)
+	if !h.hasHotScalarMerge() {
+		t.Fatal("threshold scalar merge was not marked hot")
+	}
+	if got := h.controlDepth(); got != 3 {
+		t.Fatalf("control depth after packed hot bit = %d, want 3", got)
+	}
+}
+
+func TestHotScalarMergeHintRequiresLoopWeightArm64(t *testing.T) {
+	cold, err := scanBodyBytes([]byte{0x02, 0x7f, 0x41, 0x00, 0x0b, 0x1a, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cold.hasHotScalarMerge() {
+		t.Fatal("straight-line scalar result block was marked hot")
+	}
+	hot, err := scanBodyBytes([]byte{
+		0x03, 0x40, // loop
+		0x03, 0x40, // nested loop: weight 100
+		0x02, 0x7f, 0x41, 0x00, 0x0b, 0x1a, // block (result i32); drop
+		0x0b, 0x0b, 0x0b,
+	}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hot.hasHotScalarMerge() {
+		t.Fatal("nested-loop scalar result block was not marked hot")
+	}
+	if got := hot.controlDepth(); got != 3 {
+		t.Fatalf("nested-loop control depth = %d, want 3", got)
+	}
+}
+
+func TestControlDepthHintLeavesStraightLineLazyArm64(t *testing.T) {
+	h, err := scanBodyBytes([]byte{0x41, 0x00, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.maxControlDepth != 0 {
+		t.Fatalf("max control depth = %d, want 0", h.maxControlDepth)
+	}
+}
+
+func TestModuleHintsCountLocalDirectCallRelocations(t *testing.T) {
+	m := &wasm.Module{
+		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		FuncTypes: []wasm.TypeIdx{
+			{Index: 0},
+			{Index: 0},
+		},
+		Code: []wasm.Func{
+			{BodyBytes: []byte{0x10, 0x01, 0x10, 0x01, 0x0b}},
+			{BodyBytes: []byte{0x0b}},
+		},
+	}
+	hints, _, _, err := computeModuleHints(m, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hints[0].callRelocSiteCount(); got != 2 {
+		t.Fatalf("call relocation sites = %d, want 2", got)
+	}
+}
+
+func TestEntryInitializedSharesLocalScoreStorageArm64(t *testing.T) {
+	scores := make([]uint32, 2)
+	h := funcHintsWithStorage(scores)
+	h.markEntryInitialized(1)
+	if h.entryInitialized != uint64(1)<<1 {
+		t.Fatalf("scan-local entry initialized = %#x, want bit 1", h.entryInitialized)
+	}
+	addHotness(scores, 1, 7)
+	if got := localHotness(scores[1]); got != 7 {
+		t.Fatalf("local hotness = %d, want 7", got)
+	}
+	scores[1] = localScoreEntryInitialized | localScoreHotnessMask
+	addHotness(scores, 1, 1)
+	if got := scores[1]; got != localScoreEntryInitialized|localScoreHotnessMask {
+		t.Fatalf("saturated packed score = %#x", got)
 	}
 }
 
@@ -28,12 +389,12 @@ func TestTableMutationHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scanBodyBytes: %v", err)
 	}
-	if !h.mutatesTable {
+	if !h.flags.has(hintMutatesTable) {
 		t.Fatal("table.set was not recorded as a table mutation")
 	}
 
 	ast := wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableGrow}}}
-	if h := scanBody(ast, 0, 0, 0); !h.mutatesTable {
+	if h := scanBody(ast, 0, 0, 0); !h.flags.has(hintMutatesTable) {
 		t.Fatal("AST table.grow was not recorded as a table mutation")
 	}
 }
@@ -49,8 +410,8 @@ func TestGCHelperHintScannersMarkNativeCalls(t *testing.T) {
 		{Kind: wasm.InstrArrayNewDefault, Index: 0},
 		{Kind: wasm.InstrDrop},
 	}}, 0, 0, 0)
-	if !byteHints.hasCall || !astHints.hasCall {
-		t.Fatalf("array helper call hints byte/AST = %v/%v, want true/true", byteHints.hasCall, astHints.hasCall)
+	if !byteHints.flags.has(hintHasCall) || !astHints.flags.has(hintHasCall) {
+		t.Fatalf("array helper call hints byte/AST = %v/%v, want true/true", byteHints.flags.has(hintHasCall), astHints.flags.has(hintHasCall))
 	}
 }
 
@@ -60,8 +421,8 @@ func TestASTExceptionHintsReserveHandlerState(t *testing.T) {
 		{Kind: wasm.InstrArrayNewDefault, Index: 0},
 	}}
 	h := scanBody(ast, 0, 0, 0)
-	if !h.moduleEH || !h.hasControlFlow || !h.hasCall {
-		t.Fatalf("AST exception hints = EH:%v control:%v call:%v, want all true", h.moduleEH, h.hasControlFlow, h.hasCall)
+	if !h.flags.has(hintModuleEH) || !h.flags.has(hintHasControlFlow) || !h.flags.has(hintHasCall) {
+		t.Fatalf("AST exception hints = EH:%v control:%v call:%v, want all true", h.flags.has(hintModuleEH), h.flags.has(hintHasControlFlow), h.flags.has(hintHasCall))
 	}
 }
 
@@ -70,14 +431,14 @@ func TestLoopHintReservesLoopScratchPins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scanBodyBytes: %v", err)
 	}
-	if !h.hasLoop {
+	if !h.flags.has(hintHasLoop) {
 		t.Fatal("structured loop was not recorded")
 	}
 	straight, err := scanBodyBytes([]byte{0x01, 0x0b}, 0, 0, 0) // nop; end
 	if err != nil {
 		t.Fatalf("straight scanBodyBytes: %v", err)
 	}
-	if straight.hasLoop {
+	if straight.flags.has(hintHasLoop) {
 		t.Fatal("straight-line body was classified as a loop")
 	}
 }
@@ -169,19 +530,38 @@ func TestScanInlineFactsAST(t *testing.T) {
 }
 
 func TestInlineBoundaryParityBytesArm64(t *testing.T) {
-	for _, op := range []byte{0xd5, 0xd6} {
-		body := []byte{op, 0x00, 0x0b}
-		h, err := scanBodyBytes(body, 0, 0, 0)
-		if err != nil {
-			t.Fatalf("production scan opcode %#x: %v", op, err)
-		}
-		var facts inlineFacts
-		if err := scanInlineFactsBytes(body, &facts); err != nil {
-			t.Fatalf("inline scan opcode %#x: %v", op, err)
-		}
-		if !h.hasControlFlow || !facts.hasControlFlow {
-			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.hasControlFlow, facts.hasControlFlow)
-		}
+	tests := []struct {
+		name string
+		op   byte
+		body []byte
+	}{
+		{"unreachable", 0x00, []byte{0x00, 0x0b}},
+		{"block", 0x02, []byte{0x02, 0x40, 0x0b, 0x0b}},
+		{"loop", 0x03, []byte{0x03, 0x40, 0x0b, 0x0b}},
+		{"if-else", 0x04, []byte{0x04, 0x40, 0x05, 0x0b, 0x0b}},
+		{"br", 0x0c, []byte{0x0c, 0x00, 0x0b}},
+		{"br-if", 0x0d, []byte{0x0d, 0x00, 0x0b}},
+		{"br-table", 0x0e, []byte{0x0e, 0x00, 0x00, 0x0b}},
+		{"return", 0x0f, []byte{0x0f, 0x0b}},
+		{"try-table", 0x1f, []byte{0x1f, 0x40, 0x00, 0x0b, 0x0b}},
+		{"br-on-null", 0xd5, []byte{0xd5, 0x00, 0x0b}},
+		{"br-on-non-null", 0xd6, []byte{0xd6, 0x00, 0x0b}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := test.body
+			h, err := scanBodyBytes(body, 0, 0, 0)
+			if err != nil {
+				t.Fatalf("production scan opcode %#x: %v", test.op, err)
+			}
+			var facts inlineFacts
+			if err := scanInlineFactsBytes(body, &facts); err != nil {
+				t.Fatalf("inline scan opcode %#x: %v", test.op, err)
+			}
+			if !h.flags.has(hintHasControlFlow) || !facts.hasControlFlow {
+				t.Fatalf("opcode %#x control classification: production=%v inline=%v", test.op, h.flags.has(hintHasControlFlow), facts.hasControlFlow)
+			}
+		})
 	}
 }
 
@@ -213,6 +593,7 @@ func TestBranchHintWeightsIfArmLocalScores(t *testing.T) {
 }
 
 func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 	elem := []byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00} // active elem: table[0] = func 0
 	mod := wasmtest.Module(
@@ -244,14 +625,12 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 	}
 
 	m.Exports = append(m.Exports, wasm.Export{Name: "table", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}})
-	hints, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
+	hints, _, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
 	if err != nil {
 		t.Fatalf("exported-table hints: %v", err)
 	}
-	for i := range hints {
-		if hints[i].immutableLocalTable {
-			t.Fatalf("function %d specialized an externally mutable exported table", i)
-		}
+	if immutableTable := computeImmutableTableHint(m, hints, currentCodegenPolicy()); immutableTable.local {
+		t.Fatal("module specialized an externally mutable exported table")
 	}
 }
 

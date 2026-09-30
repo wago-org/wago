@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // directGCScalar describes a pointer-free scalar storage location that can be
@@ -477,6 +476,10 @@ func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, l
 		return f.gcResolved.reg, func() {}
 	}
 	f.invalidateGCResolvedObject()
+	if f.gcDeferResolver && f.gcHandleResolutions != 0 {
+		f.gcSharedResolver = true
+		f.gcDeferResolver = false
+	}
 	if f.gcSharedResolver {
 		obj, done = f.emitSharedCheckedGCObject(object, localType, requiredBytes)
 	} else {
@@ -507,7 +510,7 @@ func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes ui
 	f.a.MovImm32(RDX, int32(localType))
 	f.a.MovImm32(RCX, int32(requiredBytes))
 	site := f.a.CallRel32()
-	f.relocs = append(f.relocs, callReloc{at: site, gcStub: gcSharedStubResolveObject})
+	f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubResolveObject))
 	f.stats.call("gcnative-leaf")
 	f.stats.peep("gc-shared-resolve-call")
 
@@ -632,7 +635,7 @@ func (f *fn) emitNativeFinalCastArrayLen(typeIndex uint32, nullable bool) error 
 	return nil
 }
 
-func (f *fn) emitNativeFinalCast(typeIndex uint32, nullable bool) error {
+func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact bool) error {
 	object := f.popValue()
 	f.flush()
 	ref := f.materialize(object)
@@ -646,11 +649,38 @@ func (f *fn) emitNativeFinalCast(typeIndex uint32, nullable bool) error {
 	} else {
 		f.a.MovImm32(RCX, 0)
 	}
+	if exact {
+		f.a.MovImm32(RSI, 1)
+	} else {
+		f.a.MovImm32(RSI, 0)
+	}
 	site := f.a.CallRel32()
 	f.sc.gcFinalCastStubSites = append(f.sc.gcFinalCastStubSites, site)
 	f.stats.call("gcnative")
 	result := f.pushReg(RAX, mtI64)
-	result.st.gcRoot = true
+	f.setStackGCRoot(result, true)
+	return nil
+}
+
+func (f *fn) emitNativeDefinedTest(typeIndex uint32, nullable bool) error {
+	object := f.popValue()
+	f.flush()
+	ref := f.materialize(object)
+	if ref != RAX {
+		f.a.MovReg64(RAX, ref)
+	}
+	f.release(ref)
+	f.a.MovImm32(RDX, int32(typeIndex))
+	if nullable {
+		f.a.MovImm32(RCX, 1)
+	} else {
+		f.a.MovImm32(RCX, 0)
+	}
+	f.a.MovImm32(RSI, 0) // ref.test does not admit exact heap markers
+	site := f.a.CallRel32()
+	f.sc.gcDefinedTestStubSites = append(f.sc.gcDefinedTestStubSites, site)
+	f.stats.call("gcnative")
+	f.pushReg(RAX, mtI32)
 	return nil
 }
 
@@ -678,38 +708,20 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 	f.stats.call("gcnative")
 	f.a.Load32(RAX, RAX, int32(gc.PayloadOffset+fieldOffset))
 	result := f.pushReg(RAX, mtI64)
-	result.st.gcRoot = true
+	f.setStackGCRoot(result, true)
 	return nil
 }
 
-func (f *fn) emitDirectGCStructRefSetNoBarrier(typeIndex, fieldOffset uint32, state shared.GCBarrierState) bool {
-	valueRoot := f.s.back()
-	if valueRoot == nil {
-		return false
-	}
-	objectRoot := baseOfValentBlock(valueRoot).prev
-	local, hasLocal := gcLocalProvenance(objectRoot)
-	f.flush()
-	oldFloor := f.spillFloor
-	f.spillFloor = f.curSpillSlot()
-	value := f.popValue()
-	object := f.popValue()
-	required := gc.PayloadOffset + fieldOffset + 4
-	obj, done := f.emitDirectGCObject(object, typeIndex, required, local, hasLocal)
-	child := f.materialize(value)
-	f.a.StoreIdx(obj, RSP, child, int32(gc.PayloadOffset+fieldOffset), 4)
-	f.release(child)
-	done()
-	f.spillFloor = oldFloor
-	f.recordGCBarrierState(state)
-	f.stats.peep("gc-barrier-elide")
-	return true
-}
-
 func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffset uint32, valueType wasm.ValType) error {
-	var savedLocals [16]locState
-	if len(f.pinnedLocals) > len(savedLocals) {
-		return fmt.Errorf("amd64: %d pinned locals exceed conditional GC store bound", len(f.pinnedLocals))
+	var inlineLocals [16]locState
+	savedLocals := inlineLocals[:]
+	if len(f.pinnedLocals) > len(inlineLocals) {
+		// Integer and floating-point pins share this snapshot. Their combined
+		// count can exceed either register bank; use the existing frame-state
+		// pool for wide functions while keeping small snapshots on the stack.
+		pooledLocals := f.newLocStateBuf()
+		savedLocals = pooledLocals
+		defer f.freeLocStateBuf(pooledLocals)
 	}
 	for i, local := range f.pinnedLocals {
 		savedLocals[i] = f.locals[local].state
@@ -717,11 +729,11 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
 	f.flush()
 	value := f.s.back()
 	object := value.prev
-	if value == f.s.head || object == f.s.head || value.kind != ekValue || object.kind != ekValue || value.st.kind != stSlot || object.st.kind != stSlot {
+	if value == f.s.head || object == f.s.head || !value.isValue() || !object.isValue() || value.st.kind != stSlot || object.st.kind != stSlot {
 		return fmt.Errorf("amd64: native nursery struct reference store lost canonical operands")
 	}
-	f.a.Load64(RAX, RSP, f.spillOff(object.st.slot))
-	f.a.Load64(RSI, RSP, f.spillOff(value.st.slot))
+	f.a.Load64(RAX, RSP, f.spillOff(object.st.slotIndex()))
+	f.a.Load64(RSI, RSP, f.spillOff(value.st.slotIndex()))
 	required := uint64(gc.PayloadOffset) + uint64(fieldOffset) + 4
 	if required > math.MaxInt32 {
 		return fmt.Errorf("amd64: final struct reference store extent %d exceeds native immediate", required)
@@ -744,58 +756,16 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
 	return err
 }
 
-func (f *fn) emitDirectGCArrayRefSetNoBarrier(typeIndex uint32, state shared.GCBarrierState) bool {
-	valueRoot := f.s.back()
-	if valueRoot == nil {
-		return false
-	}
-	indexRoot := baseOfValentBlock(valueRoot).prev
-	if indexRoot == nil {
-		return false
-	}
-	objectRoot := baseOfValentBlock(indexRoot).prev
-	local, hasLocal := gcLocalProvenance(objectRoot)
-	f.flush()
-	oldFloor := f.spillFloor
-	f.spillFloor = f.curSpillSlot()
-	value := f.popValue()
-	indexValue := f.popValue()
-	object := f.popValue()
-	obj, done := f.emitDirectGCObject(object, typeIndex, gc.PayloadOffset, local, hasLocal)
-	index := f.materialize(indexValue)
-	f.a.MovRegReg32(index, index) // Wasm i32 indexes ignore dirty host-result high bits.
-	f.pinned = f.pinned.add(index)
-	tmp := f.allocReg(maskOf(obj, index))
-	f.pinned = f.pinned.add(tmp)
-	f.a.Load32(tmp, obj, 8)
-	f.a.Cmp32(index, tmp)
-	f.trapIf(condAE, trapBuiltin)
-	f.a.ImulRI(index, 4, true)
-	f.a.Load32(tmp, obj, 4)
-	end := f.allocReg(maskOf(obj, index, tmp))
-	f.pinned = f.pinned.add(end)
-	f.a.MovReg64(end, index)
-	f.a.AluRI(0, end, int32(gc.PayloadOffset)+4, true)
-	f.a.Cmp64(end, tmp)
-	f.trapIf(condA, trapCastFailure)
-	f.pinned = f.pinned.remove(end)
-	f.pinned = f.pinned.remove(tmp)
-	child := f.materialize(value)
-	f.a.StoreIdx(obj, index, child, int32(gc.PayloadOffset), 4)
-	f.release(child)
-	f.pinned = f.pinned.remove(index)
-	f.release(index)
-	done()
-	f.spillFloor = oldFloor
-	f.recordGCBarrierState(state)
-	f.stats.peep("gc-barrier-elide")
-	return true
-}
-
 func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValType) error {
-	var savedLocals [16]locState
-	if len(f.pinnedLocals) > len(savedLocals) {
-		return fmt.Errorf("amd64: %d pinned locals exceed conditional GC store bound", len(f.pinnedLocals))
+	var inlineLocals [16]locState
+	savedLocals := inlineLocals[:]
+	if len(f.pinnedLocals) > len(inlineLocals) {
+		// Integer and floating-point pins share this snapshot. Their combined
+		// count can exceed either register bank; use the existing frame-state
+		// pool for wide functions while keeping small snapshots on the stack.
+		pooledLocals := f.newLocStateBuf()
+		savedLocals = pooledLocals
+		defer f.freeLocStateBuf(pooledLocals)
 	}
 	for i, local := range f.pinnedLocals {
 		savedLocals[i] = f.locals[local].state
@@ -804,12 +774,12 @@ func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValT
 	value := f.s.back()
 	index := value.prev
 	object := index.prev
-	if value == f.s.head || index == f.s.head || object == f.s.head || value.kind != ekValue || index.kind != ekValue || object.kind != ekValue || value.st.kind != stSlot || index.st.kind != stSlot || object.st.kind != stSlot {
+	if value == f.s.head || index == f.s.head || object == f.s.head || !value.isValue() || !index.isValue() || !object.isValue() || value.st.kind != stSlot || index.st.kind != stSlot || object.st.kind != stSlot {
 		return fmt.Errorf("amd64: native nursery array reference store lost canonical operands")
 	}
-	f.a.Load64(RAX, RSP, f.spillOff(object.st.slot))
-	f.a.Load64(RCX, RSP, f.spillOff(index.st.slot))
-	f.a.Load64(RSI, RSP, f.spillOff(value.st.slot))
+	f.a.Load64(RAX, RSP, f.spillOff(object.st.slotIndex()))
+	f.a.Load64(RCX, RSP, f.spillOff(index.st.slotIndex()))
+	f.a.Load64(RSI, RSP, f.spillOff(value.st.slotIndex()))
 	f.a.MovImm32(RDX, int32(typeIndex))
 	site := f.a.CallRel32()
 	f.sc.gcArrayRefSetStubSites = append(f.sc.gcArrayRefSetStubSites, site)
@@ -860,7 +830,7 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
 	f.sc.gcArrayRefGetSites = append(f.sc.gcArrayRefGetSites, site)
 	f.stats.call("gcnative")
 	result := f.pushReg(RAX, mtI64)
-	result.st.gcRoot = true
+	f.setStackGCRoot(result, true)
 	return nil
 }
 
@@ -910,8 +880,15 @@ func (f *fn) emitNativeGCStubs() {
 	}
 	if len(f.sc.gcFinalCastStubSites) != 0 {
 		stub := f.a.Len()
-		f.emitNativeFinalCastStub()
+		f.emitNativeDefinedCastStub()
 		for _, site := range f.sc.gcFinalCastStubSites {
+			f.a.PatchRel32(site, stub)
+		}
+	}
+	if len(f.sc.gcDefinedTestStubSites) != 0 {
+		stub := f.a.Len()
+		f.emitNativeDefinedTestStub()
+		for _, site := range f.sc.gcDefinedTestStubSites {
 			f.a.PatchRel32(site, stub)
 		}
 	}
@@ -961,7 +938,8 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1252,7 +1230,8 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1446,7 +1425,8 @@ func (f *fn) emitNativeFinalCastArrayLenStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1521,9 +1501,18 @@ func (f *fn) emitNativeFinalCastArrayLenStub() {
 	a.Ret()
 }
 
-// emitNativeFinalCastStub validates one final defined collector cast and returns
-// the original compact reference. Null succeeds only for ref.cast_null.
-func (f *fn) emitNativeFinalCastStub() {
+// emitNativeDefinedCastStub validates one defined collector cast through exact
+// canonical identity or the collector's immutable subtype interval table.
+func (f *fn) emitNativeDefinedCastStub() { f.emitNativeDefinedTypeCheckStub(false) }
+
+// emitNativeDefinedTestStub returns the dynamic defined-type test result without
+// entering Go. Invalid compact references remain fail-closed traps.
+func (f *fn) emitNativeDefinedTestStub() { f.emitNativeDefinedTypeCheckStub(true) }
+
+// emitNativeDefinedTypeCheckStub consumes EAX=compact reference,
+// EDX=module-local target type, ECX=nullable flag, and ESI=exact flag. Test mode
+// returns zero/one in EAX; cast mode returns the original compact reference.
+func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -1531,7 +1520,8 @@ func (f *fn) emitNativeFinalCastStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1541,25 +1531,42 @@ func (f *fn) emitNativeFinalCastStub() {
 			a.Push(R9 + Reg(i))
 		}
 	}
+
+	mismatches := make([]int, 0, 3)
+	failIf := func(cond Cond) {
+		if test {
+			mismatches = append(mismatches, a.JccPlaceholder(cond))
+		} else {
+			f.trapIf(cond, trapCastFailure)
+		}
+	}
+
 	a.TestSelf(RAX, false)
 	nonNull := a.JccPlaceholder(condNE)
-	a.TestSelf(RCX, false)
-	f.trapIf(condE, trapCastFailure)
-	nullSuccess := a.JmpPlaceholder()
+	if test {
+		a.MovRegReg32(RAX, RCX)
+	} else {
+		a.TestSelf(RCX, false)
+		f.trapIf(condE, trapCastFailure)
+	}
+	nullDone := a.JmpPlaceholder()
 	a.PatchRel32(nonNull, a.Len())
 
-	// Save the physical compact reference while EAX becomes the handle index.
-	a.MovRegReg32(RSI, RAX)
+	if !test {
+		a.MovRegReg32(RDI, RAX) // retain the original compact reference
+	}
 	a.MovRegReg32(R10, RAX)
 	a.AluRI(4, R10, 1, false)
 	a.TestSelf(R10, false)
-	f.trapIf(condNE, trapCastFailure)
+	failIf(condNE) // i31 cannot satisfy a defined struct/array target
 
+	// Resolve the module-local target into the collector's canonical domain.
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
 	a.ImulRI(RDX, 4, true)
 	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
 
+	// Resolve and validate the compact handle against the current heap backing.
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
@@ -1591,12 +1598,61 @@ func (f *fn) emitNativeFinalCastStub() {
 	f.trapIf(condB, trapCastFailure)
 
 	a.Add64(R11, RAX)
-	a.Load32(RCX, R11, 0)
+	a.Load32(RCX, R11, 0) // actual canonical type ID
+
+	// Exact casts compare canonical IDs. Ordinary casts/tests use DFS interval
+	// containment: required.pre <= actual.pre && actual.post <= required.post.
+	a.TestSelf(RSI, false)
+	nonExact := a.JccPlaceholder(condE)
 	a.Cmp32(RCX, RDX)
-	f.trapIf(condNE, trapCastFailure)
-	a.MovRegReg32(RAX, RSI)
-	done := a.Len()
-	a.PatchRel32(nullSuccess, done)
+	failIf(condNE)
+	exactDone := a.JmpPlaceholder()
+	a.PatchRel32(nonExact, a.Len())
+
+	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+	a.MovRegReg32(RAX, RCX)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+	f.trapIf(condAE, trapCastFailure)
+	a.MovRegReg32(RAX, RDX)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+	f.trapIf(condAE, trapCastFailure)
+	a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
+	a.TestSelf(R10, true)
+	f.trapIf(condE, trapCastFailure)
+	a.MovRegReg32(RAX, RCX)
+	a.ImulRI(RAX, 8, true)
+	a.LoadIdx(R9, R10, RAX, 0, 8, false, true)
+	a.MovRegReg32(RAX, RDX)
+	a.ImulRI(RAX, 8, true)
+	a.LoadIdx(R10, R10, RAX, 0, 8, false, true)
+	a.MovReg64(RAX, R9)
+	a.ShiftImm(5, RAX, 32, true)
+	a.MovReg64(RCX, R10)
+	a.ShiftImm(5, RCX, 32, true)
+	a.Cmp32(RAX, RCX)
+	failIf(condB)
+	a.Cmp32(R9, R10)
+	failIf(condA)
+
+	successAt := a.Len()
+	a.PatchRel32(exactDone, successAt)
+	if test {
+		a.MovImm32(RAX, 1)
+	} else {
+		a.MovRegReg32(RAX, RDI)
+	}
+	done := a.JmpPlaceholder()
+	if test {
+		mismatchAt := a.Len()
+		a.MovImm32(RAX, 0)
+		for _, branch := range mismatches {
+			a.PatchRel32(branch, mismatchAt)
+		}
+	}
+	finish := a.Len()
+	a.PatchRel32(nullDone, finish)
+	a.PatchRel32(done, finish)
 	for i := len(preserve) - 1; i >= 0; i-- {
 		if preserve[i] {
 			a.Pop(R9 + Reg(i))
@@ -1615,7 +1671,8 @@ func (f *fn) emitNativeFinalArrayRefGetStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1706,7 +1763,8 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1794,7 +1852,8 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1934,7 +1993,8 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}

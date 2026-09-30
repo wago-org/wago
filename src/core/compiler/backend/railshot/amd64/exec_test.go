@@ -13,7 +13,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func f32b(v float32) uint64 { return uint64(math.Float32bits(v)) }
@@ -100,6 +100,9 @@ func runAmd64(t *testing.T, m *wasm.Module, args ...int32) int32 {
 	if err != nil {
 		t.Fatalf("amd64 compile: %v", err)
 	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
 	eng, err := runtime.NewEngine()
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +126,7 @@ func runAmd64(t *testing.T, m *wasm.Module, args ...int32) int32 {
 
 	serArgs := ar.Alloc(128)
 	results := ar.Alloc(128)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	for i, a := range args {
 		binary.LittleEndian.PutUint32(serArgs[i*8:], uint32(a))
 	}
@@ -166,6 +169,9 @@ func runMemAmd64WithOptions(t *testing.T, m *wasm.Module, opts CompileOptions, s
 	if err != nil {
 		t.Fatalf("amd64 compile: %v", err)
 	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
 	eng, err := runtime.NewEngine()
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +198,7 @@ func runMemAmd64WithOptions(t *testing.T, m *wasm.Module, opts CompileOptions, s
 	defer runtime.Unmap(mem)
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(serArgs[i*8:], a)
 	}
@@ -207,6 +213,9 @@ func runAmd64u(t *testing.T, m *wasm.Module, args ...uint64) uint64 {
 	cm, err := CompileModule(m)
 	if err != nil {
 		t.Fatalf("amd64 compile: %v", err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
 	}
 	return runCompiledAmd64u(t, cm, args...)
 }
@@ -236,7 +245,7 @@ func runCompiledAmd64u(t *testing.T, cm *encoderamd64.CompiledModule, args ...ui
 
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(serArgs[i*8:], a)
 	}
@@ -853,7 +862,7 @@ func TestAmd64Phase4Calls(t *testing.T) {
 		}
 		defer runtime.Unmap(mem)
 		res := ar.Alloc(64)
-		trap := ar.Alloc(8)
+		trap := ar.Alloc(runtime.TrapBufferBytes)
 		err = eng.Call(entry+uintptr(cm.Entry[0]), ar.Alloc(64), jm.LinearMemory(), trap, res)
 		if err == nil {
 			t.Fatal("expected trap to propagate through caller, got nil")
@@ -916,7 +925,7 @@ func TestAmd64BulkAndSat(t *testing.T) {
 			defer runtime.Unmap(mem)
 			serArgs := ar.Alloc(256)
 			results := ar.Alloc(256)
-			trap := ar.Alloc(8)
+			trap := ar.Alloc(runtime.TrapBufferBytes)
 			for i, a := range args {
 				binary.LittleEndian.PutUint64(serArgs[i*8:], a)
 			}
@@ -1966,8 +1975,8 @@ func TestExecConstBulkMem(t *testing.T) {
 }
 
 // TestExecDynamicBulkMem covers the hybrid dynamic memory.copy/fill lowering:
-// the small inline chunk-loop path (n < 96) in both overlap directions, the
-// large rep path, and the boundary sizes.
+// the small inline vector path (n < 256) in both overlap directions, the large
+// rep path, and the scalar/vector/rep boundary sizes.
 func TestExecDynamicBulkMem(t *testing.T) {
 	copyBody := []byte{0x00,
 		0x20, 0x00, 0x20, 0x01, 0x20, 0x02, // dst, src, n (all dynamic)
@@ -1978,12 +1987,17 @@ func TestExecDynamicBulkMem(t *testing.T) {
 		0xfc, 0x0b, 0x00,
 		0x41, 0x00, 0x0b}
 	seq := func(l []byte) {
-		for i := 0; i < 256; i++ {
+		for i := 0; i < 512; i++ {
 			l[1000+i] = byte(i + 1)
+			l[2000+i] = 0x5a
 		}
 	}
 	params := []wasm.ValType{i32, i32, i32}
-	for _, n := range []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 63, 95, 96, 97, 200} {
+	for _, n := range []int{
+		0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+		31, 32, 37, 63, 64, 80, 94, 95, 96, 97, 112, 120, 127, 128, 129,
+		144, 160, 176, 192, 200, 208, 224, 240, 254, 255, 256, 257,
+	} {
 		t.Run(fmt.Sprintf("copy-n%d", n), func(t *testing.T) {
 			m := modMem(t, 1, params, []wasm.ValType{i32}, copyBody)
 			_, lin, err := runMemAmd64(t, m, seq, 2000, 1000, uint64(n))
@@ -1995,7 +2009,7 @@ func TestExecDynamicBulkMem(t *testing.T) {
 					t.Fatalf("byte %d = %#x, want %#x", i, lin[2000+i], byte(i+1))
 				}
 			}
-			if n < 256 && lin[2000+n] == byte(n+1) {
+			if n < 512 && lin[2000+n] != 0x5a {
 				t.Fatal("copy overran")
 			}
 		})
@@ -2020,6 +2034,18 @@ func TestExecDynamicBulkMem(t *testing.T) {
 			for i := 0; i < n; i++ {
 				if lin[1000+i] != byte(i+5) {
 					t.Fatalf("bwd-overlap byte %d = %#x, want %#x", i, lin[1000+i], byte(i+5))
+				}
+			}
+		})
+		t.Run(fmt.Sprintf("copy-same-n%d", n), func(t *testing.T) {
+			m := modMem(t, 1, params, []wasm.ValType{i32}, copyBody)
+			_, lin, err := runMemAmd64(t, m, seq, 1000, 1000, uint64(n))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < n; i++ {
+				if lin[1000+i] != byte(i+1) {
+					t.Fatalf("same-address byte %d = %#x, want %#x", i, lin[1000+i], byte(i+1))
 				}
 			}
 		})

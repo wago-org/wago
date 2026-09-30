@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-const stagedTypedTailDeltaPath = "tests/spec-v3-staged-return-call-ref.json"
+const stagedTypedTailDeltaPath = "tests/conformance/baselines/spec-v3-staged-return-call-ref.json"
 
 type stagedTypedTailDelta struct {
 	Schema        int              `json:"schema"`

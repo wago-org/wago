@@ -3,6 +3,8 @@ package wago
 import (
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
 func TestAMD64SIMDFeaturesSupported(t *testing.T) {
@@ -65,6 +67,44 @@ func TestBMI2CPUFlagsSupported(t *testing.T) {
 	} {
 		if got := bmi2CPUFlagsSupported([]byte(tc.data)); got != tc.want {
 			t.Fatalf("bmi2CPUFlagsSupported(%q) = %v, want %v", tc.data, got, tc.want)
+		}
+	}
+}
+
+func TestAMD64BitCountFeatures(t *testing.T) {
+	const popcnt = uint32(1) << 23
+	const bmi1 = uint32(1) << 3
+	const lzcnt = uint32(1) << 5
+	for _, tc := range []struct {
+		ecx1, ebx7, extECX uint32
+		want               uint8
+	}{
+		{popcnt, bmi1, lzcnt, shared.BitCountLZCNT | shared.BitCountTZCNT | shared.BitCountPOPCNT},
+		{0, bmi1, lzcnt, shared.BitCountLZCNT | shared.BitCountTZCNT},
+		{popcnt, 0, lzcnt, shared.BitCountLZCNT | shared.BitCountPOPCNT},
+		{popcnt, bmi1, 0, shared.BitCountTZCNT | shared.BitCountPOPCNT},
+		{0, 0, 0, 0},
+	} {
+		if got := amd64BitCountFeatures(tc.ecx1, tc.ebx7, tc.extECX); got != tc.want {
+			t.Fatalf("amd64BitCountFeatures(%#x, %#x, %#x) = %#x, want %#x", tc.ecx1, tc.ebx7, tc.extECX, got, tc.want)
+		}
+	}
+}
+
+func TestBitCountCPUFlags(t *testing.T) {
+	for _, tc := range []struct {
+		data string
+		want uint8
+	}{
+		{"flags : fpu abm bmi1 popcnt\n", shared.BitCountLZCNT | shared.BitCountTZCNT | shared.BitCountPOPCNT},
+		{"flags : fpu abm\n", shared.BitCountLZCNT},
+		{"flags : fpu bmi1\n", shared.BitCountTZCNT},
+		{"flags : fpu popcnt\n", shared.BitCountPOPCNT},
+		{"flags : xabm xbmi1 popcnt2\n", 0},
+		{"", 0},
+	} {
+		if got := bitCountCPUFlags([]byte(tc.data)); got != tc.want {
+			t.Fatalf("bitCountCPUFlags(%q) = %#x, want %#x", tc.data, got, tc.want)
 		}
 	}
 }

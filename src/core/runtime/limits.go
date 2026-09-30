@@ -6,14 +6,17 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// InstantiateArenaSize is the maximum supported arena size for per-instance
-// runtime metadata: host-call log, globals, table descriptor, call buffers, and
-// trap buffer. Instantiate maps the exact validated footprint, bounded by this
-// limit. Keep footprint checks in compiler/front-end support code in sync with
-// allocations in InstantiateWithImports.
-const InstantiateArenaSize = 1 << 20
+// InstantiateArenaCacheBytes is only the small-instance mmap reuse threshold.
+// It is not a semantic module limit. Larger validated metadata arenas are mapped
+// at their exact size and are unmapped instead of entering the one-entry cache.
+const InstantiateArenaCacheBytes = 1 << 20
 
-const HostCallLogBytes = 8 + ((1<<16)/8)*8
+const (
+	// HostCallLogEntries is the maximum number of deferred host events recorded
+	// by one native invocation before it traps without replaying a partial log.
+	HostCallLogEntries = 1 << 13
+	HostCallLogBytes   = 8 + HostCallLogEntries*8
+)
 
 // TrapBufferBytes reserves the 4-byte trap code, an 8-byte parked-host
 // control-frame pointer at offset 8, and an 8-byte packed Wasm source location
@@ -233,11 +236,10 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		return 0, fmt.Errorf("funcref type-ID count %d overflows arena allocation", fp.FuncRefTypeIDCount)
 	}
 	need += funcRefTypeIDBytes
-	passiveElemBytes := fp.PassiveElemCount * PassiveElemDescBytes
-	if need > maxInt()-passiveElemBytes {
+	if fp.PassiveElemCount > (maxInt()-need)/PassiveElemDescBytes {
 		return 0, fmt.Errorf("passive element count %d overflows arena allocation", fp.PassiveElemCount)
 	}
-	need += passiveElemBytes
+	need += fp.PassiveElemCount * PassiveElemDescBytes
 	if need > maxInt()-fp.PassiveElemBytes {
 		return 0, fmt.Errorf("passive element payload bytes %d overflow arena allocation", fp.PassiveElemBytes)
 	}

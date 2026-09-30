@@ -3,6 +3,8 @@
 package runtime
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"os"
 	goruntime "runtime"
@@ -15,9 +17,10 @@ import (
 )
 
 const (
-	maxInterruptRequests    = 64
-	maxExecutableCodeRanges = 4096
-	interruptDeadlineRetry  = 50 * time.Microsecond
+	maxInterruptRequests       = 64
+	maxExecutableCodeRanges    = 4096
+	maxInterruptLinearMemories = 4096
+	interruptDeadlineRetry     = 50 * time.Microsecond
 )
 
 // interruptRequest is published only while a cold interruption request is
@@ -25,9 +28,10 @@ const (
 // register, so the signal handler obtains the active trap cell directly from
 // the saved CPU context and needs no per-invocation activation.
 type interruptRequest struct {
-	trap uintptr
-	ack  uint32
-	refs uint32
+	trap  uintptr
+	ack   uint32
+	refs  uint32
+	token uint64
 }
 
 type executableCodeRange struct {
@@ -36,14 +40,138 @@ type executableCodeRange struct {
 }
 
 var (
-	interruptRequests        [maxInterruptRequests]interruptRequest
-	executableCodeRanges     [maxExecutableCodeRanges]executableCodeRange
-	executableCodeRangeLimit uint32
-	executableCodeMu         sync.Mutex
+	interruptRequests          [maxInterruptRequests]interruptRequest
+	executableCodeRanges       [maxExecutableCodeRanges]executableCodeRange
+	executableCodeRangeLimit   uint32
+	executableCodeMu           sync.Mutex
+	interruptLinearMemories    [maxInterruptLinearMemories]uintptr
+	interruptLinearMemoryLimit uint32
+	interruptLinearMemoryState uint32
+	interruptLinearMemoryCount uint32
+	interruptLinearMemoryPeak  uint32
+	interruptLinearMemoryCache uint32
+	interruptLinearMemoryMu    sync.Mutex
 
-	interruptInstallOnce sync.Once
-	interruptInstallErr  error
-	interruptSignal      uint32
+	interruptRequestMu       sync.Mutex
+	interruptOldAction       interruptSigaction
+	interruptOurAction       interruptSigaction
+	interruptCookie          uint32
+	interruptSequence        uint32
+	interruptSignal          uint32
+	interruptPreferredSignal uintptr // executableCodeMu protects the bounded hint
+	interruptPreferredAction interruptSigaction
+)
+
+func init() {
+	interruptLinearMemoryRegister = registerInterruptLinearMemory
+	interruptLinearMemoryUnregister = unregisterInterruptLinearMemory
+	interruptLinearMemoryCacheChange = changeInterruptLinearMemoryCacheLinux
+	nativeMemoryStatsSnapshot = processNativeMemoryStatsLinux
+}
+
+func changeInterruptLinearMemoryCacheLinux(delta int32) {
+	atomic.AddUint32(&interruptLinearMemoryCache, uint32(delta))
+}
+
+func processNativeMemoryStatsLinux() NativeMemoryStats {
+	registered := atomic.LoadUint32(&interruptLinearMemoryCount)
+	cached := atomic.LoadUint32(&interruptLinearMemoryCache)
+	active := uint32(0)
+	if cached <= registered {
+		active = registered - cached
+	}
+	return NativeMemoryStats{
+		Supported:      true,
+		Active:         active,
+		Cached:         cached,
+		Registered:     registered,
+		PeakRegistered: atomic.LoadUint32(&interruptLinearMemoryPeak),
+		Capacity:       maxInterruptLinearMemories,
+		ScanSpan:       atomic.LoadUint32(&interruptLinearMemoryLimit),
+	}
+}
+
+func registerInterruptLinearMemory(linMem uintptr) error {
+	if linMem == 0 {
+		return fmt.Errorf("register interrupt linear memory: zero base")
+	}
+	interruptLinearMemoryMu.Lock()
+	defer interruptLinearMemoryMu.Unlock()
+	limit := int(atomic.LoadUint32(&interruptLinearMemoryLimit))
+	firstHole := -1
+	for i := 0; i < limit; i++ {
+		registered := atomic.LoadUintptr(&interruptLinearMemories[i])
+		if registered == linMem {
+			return nil
+		}
+		if registered == 0 && firstHole < 0 {
+			firstHole = i
+		}
+	}
+	if firstHole < 0 {
+		if limit == len(interruptLinearMemories) {
+			return &ResourceLimitError{
+				Resource:   "native memory mappings",
+				Scope:      "process",
+				Used:       uint64(atomic.LoadUint32(&interruptLinearMemoryCount)),
+				Requested:  1,
+				Limit:      maxInterruptLinearMemories,
+				Suggestion: "close unused Instance or Memory values, inspect ProcessNativeMemoryStats, or use another process",
+			}
+		}
+		firstHole = limit
+	}
+	atomic.StoreUintptr(&interruptLinearMemories[firstHole], linMem)
+	count := atomic.AddUint32(&interruptLinearMemoryCount, 1)
+	for peak := atomic.LoadUint32(&interruptLinearMemoryPeak); count > peak; peak = atomic.LoadUint32(&interruptLinearMemoryPeak) {
+		if atomic.CompareAndSwapUint32(&interruptLinearMemoryPeak, peak, count) {
+			break
+		}
+	}
+	if firstHole == limit {
+		atomic.StoreUint32(&interruptLinearMemoryLimit, uint32(limit+1))
+	}
+	return nil
+}
+
+func unregisterInterruptLinearMemory(linMem uintptr) {
+	interruptLinearMemoryMu.Lock()
+	defer interruptLinearMemoryMu.Unlock()
+	// Set the writer gate before clearing entries. Signal readers that entered
+	// earlier remain counted; later readers observe the gate and do not inspect
+	// the registry. Reopening the gate publishes the cleared slots before Close
+	// proceeds to unmap the memory.
+	for {
+		state := atomic.LoadUint32(&interruptLinearMemoryState)
+		if atomic.CompareAndSwapUint32(&interruptLinearMemoryState, state, state|interruptLinearMemoryWriter) {
+			break
+		}
+	}
+	limit := int(atomic.LoadUint32(&interruptLinearMemoryLimit))
+	removed := uint32(0)
+	for i := 0; i < limit; i++ {
+		if atomic.LoadUintptr(&interruptLinearMemories[i]) != linMem {
+			continue
+		}
+		atomic.StoreUintptr(&interruptLinearMemories[i], 0)
+		removed++
+	}
+	if removed != 0 {
+		atomic.AddUint32(&interruptLinearMemoryCount, ^uint32(removed-1))
+	}
+	for limit > 0 && atomic.LoadUintptr(&interruptLinearMemories[limit-1]) == 0 {
+		limit--
+	}
+	atomic.StoreUint32(&interruptLinearMemoryLimit, uint32(limit))
+	for atomic.LoadUint32(&interruptLinearMemoryState)&interruptLinearMemoryReaders != 0 {
+		goruntime.Gosched()
+	}
+	atomic.StoreUint32(&interruptLinearMemoryState, 0)
+}
+
+const (
+	interruptLinearMemoryWriter  uint32 = 1 << 31
+	interruptLinearMemoryReaders        = interruptLinearMemoryWriter - 1
 )
 
 //lint:ignore U1000 referenced from interrupt_linux_{amd64,arm64}.s
@@ -53,8 +181,8 @@ var interruptTrapPC uintptr
 var interruptOldHandler uintptr
 
 const (
-	_ = uint(unsafe.Sizeof(interruptRequest{}) - 16)
-	_ = uint(16 - unsafe.Sizeof(interruptRequest{}))
+	_ = uint(unsafe.Sizeof(interruptRequest{}) - 24)
+	_ = uint(24 - unsafe.Sizeof(interruptRequest{}))
 	_ = uint(unsafe.Offsetof(interruptRequest{}.ack) - 8)
 	_ = uint(8 - unsafe.Offsetof(interruptRequest{}.ack))
 	_ = uint(unsafe.Sizeof(executableCodeRange{}) - 16)
@@ -63,12 +191,9 @@ const (
 	_ = uint(64 - unsafe.Sizeof(interruptSigevent{}))
 )
 
-// Linux's kernel real-time signal range is 32..64 and glibc reserves the bottom
-// two. Signal 40 is Wago's process-wide reserved host-interrupt signal. Go
-// preinstalls its dispatcher for the full range, so installation preserves that
-// handler and the asm path chains non-tgkill deliveries to it.
-const interruptReservedSignal = 40
-
+// Signals 32..34 belong to libc. Prefer a ignored signal, then a Go
+// dispatcher that can safely share authenticated deliveries. Never replace an
+// unrelated native handler. os/signal deliveries retain their original action.
 type interruptSigaction struct {
 	handler  uintptr
 	flags    uint64
@@ -90,39 +215,96 @@ func interruptRTSigaction(sig uintptr, act, old *interruptSigaction) error {
 	return nil
 }
 
-func installInterruptHandler() {
+func installInterruptHandler() error {
+	if atomic.LoadUint32(&interruptSignal) != 0 {
+		return nil
+	}
 	interruptTrapPC = addrNativeInterruptTrap()
-	sig := uintptr(interruptReservedSignal)
-	var old interruptSigaction
-	if err := interruptRTSigaction(sig, nil, &old); err != nil {
-		interruptInstallErr = fmt.Errorf("inspect reserved real-time signal %d: %w", sig, err)
-		return
+	interruptRequestMu.Lock()
+	var cookieErr error
+	if atomic.LoadUint32(&interruptCookie) == 0 {
+		cookieErr = renewInterruptCookie()
 	}
+	interruptRequestMu.Unlock()
+	if cookieErr != nil {
+		return cookieErr
+	}
+	// Recheck the previously compatible OS action. This avoids rescanning every
+	// real-time signal on sequential compile/close workloads without assuming that
+	// another library left signal ownership unchanged while no mapping was live.
+	if interruptPreferredSignal != 0 {
+		var current interruptSigaction
+		if err := interruptRTSigaction(interruptPreferredSignal, nil, &current); err != nil {
+			return err
+		}
+		if current == interruptPreferredAction {
+			return installInterruptAction(interruptPreferredSignal, current)
+		}
+	}
+	for pass := 0; pass < 2; pass++ {
+		for sig := uintptr(64); sig >= 35; sig-- {
+			var old interruptSigaction
+			if err := interruptRTSigaction(sig, nil, &old); err != nil {
+				return err
+			}
+			vacant := old.handler == 1
+			compatible := false
+			if f := goruntime.FuncForPC(old.handler); f != nil {
+				compatible = f.Name() == "runtime.sigtramp" || f.Name() == "runtime.cgoSigtramp"
+			}
+			if (pass == 0 && !vacant) || (pass == 1 && !compatible) {
+				continue
+			}
+			return installInterruptAction(sig, old)
+		}
+	}
+	return fmt.Errorf("no compatible real-time signal available for native interruption")
+}
+
+// Called under executableCodeMu after verifying that old is compatible.
+func installInterruptAction(sig uintptr, old interruptSigaction) error {
+	act := old
+	act.handler = addrInterruptSigHandler()
+	act.flags |= interruptSA_SIGINFO | interruptSA_ONSTACK
+	if act.restorer == 0 {
+		configureInterruptSigaction(&act)
+	}
+	interruptOldAction = old
 	interruptOldHandler = old.handler
-	act := interruptSigaction{
-		handler: addrInterruptSigHandler(),
-		flags:   interruptSA_SIGINFO | interruptSA_ONSTACK,
-	}
-	configureInterruptSigaction(&act)
+	interruptOurAction = act
 	if err := interruptRTSigaction(sig, &act, nil); err != nil {
-		interruptInstallErr = fmt.Errorf("install reserved real-time signal %d: %w", sig, err)
+		return err
+	}
+	interruptPreferredSignal, interruptPreferredAction = sig, old
+	atomic.StoreUint32(&interruptSignal, uint32(sig))
+	return nil
+}
+
+func restoreInterruptHandler() {
+	sig := atomic.LoadUint32(&interruptSignal)
+	if sig == 0 {
 		return
 	}
-	atomic.StoreUint32(&interruptSignal, uint32(sig))
+	var current interruptSigaction
+	if interruptRTSigaction(uintptr(sig), nil, &current) == nil && current == interruptOurAction {
+		if interruptRTSigaction(uintptr(sig), &interruptOldAction, nil) != nil {
+			return
+		}
+	}
+	atomic.StoreUint32(&interruptSignal, 0)
 }
 
 func registerExecutableCode(mem []byte) error {
 	if len(mem) == 0 {
 		return fmt.Errorf("register executable code: empty mapping")
 	}
-	interruptInstallOnce.Do(installInterruptHandler)
-	if interruptInstallErr != nil {
-		return fmt.Errorf("jit host interrupt: %w", interruptInstallErr)
-	}
 	start := slicePtr(mem)
 	end := start + uintptr(len(mem))
 	executableCodeMu.Lock()
 	defer executableCodeMu.Unlock()
+	if err := installInterruptHandler(); err != nil {
+		return fmt.Errorf("jit host interrupt: %w", err)
+	}
 	for i := range executableCodeRanges {
 		r := &executableCodeRanges[i]
 		if atomic.LoadUintptr(&r.start) == 0 {
@@ -155,13 +337,16 @@ func unregisterExecutableCode(mem []byte) {
 				limit--
 			}
 			atomic.StoreUint32(&executableCodeRangeLimit, uint32(limit))
+			if limit == 0 {
+				restoreInterruptHandler()
+			}
 			return
 		}
 	}
 }
 
 // RequestInterrupt publishes the ordinary interruption trap, then broadcasts
-// Wago's reserved signal to the process threads. Only a thread whose saved PC
+// authenticated queued deliveries on the negotiated signal to process threads. Only a thread whose saved PC
 // is generated Wasm and whose fixed linear-memory register names this trap cell
 // rewrites its CPU context; all other deliveries return immediately.
 func RequestInterrupt(trap []byte) {
@@ -182,7 +367,7 @@ func requestInterruptPointer(trapPtr uintptr) bool {
 		return false
 	}
 	atomic.StoreUint32(&request.ack, 0)
-	broadcastInterruptSignal(sig)
+	broadcastInterruptSignal(sig, request.token)
 	for attempt := 0; attempt < 64 && atomic.LoadUint32(&request.ack) == 0; attempt++ {
 		goruntime.Gosched()
 	}
@@ -191,13 +376,52 @@ func requestInterruptPointer(trapPtr uintptr) bool {
 	return acknowledged
 }
 
+// renewInterruptCookie runs under interruptRequestMu with no live requests.
+// Keep the cookie distinct across an idle rollover so a queued old token cannot
+// identify a new request after its sequence number is reused.
+func renewInterruptCookie() error {
+	old := atomic.LoadUint32(&interruptCookie)
+	var bytes [4]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return err
+	}
+	cookie := binary.LittleEndian.Uint32(bytes[:]) | 1
+	if cookie == old {
+		cookie += 2
+	} // odd, nonzero, and distinct even on wrap
+	atomic.StoreUint32(&interruptCookie, cookie)
+	return nil
+}
+
 func acquireInterruptRequest(trapPtr uintptr) *interruptRequest {
+	interruptRequestMu.Lock()
+	defer interruptRequestMu.Unlock()
 	start := int((trapPtr >> 4) & (maxInterruptRequests - 1))
 	for probe := 0; probe < maxInterruptRequests; probe++ {
 		request := &interruptRequests[(start+probe)&(maxInterruptRequests-1)]
 		owner := atomic.LoadUintptr(&request.trap)
-		if owner == trapPtr || (owner == 0 && atomic.CompareAndSwapUintptr(&request.trap, 0, trapPtr)) {
+		if owner == trapPtr || owner == 0 {
+			if owner == 0 {
+				if interruptSequence == ^uint32(0) {
+					for i := range interruptRequests {
+						if atomic.LoadUintptr(&interruptRequests[i].trap) != 0 {
+							return nil
+						}
+					}
+					if err := renewInterruptCookie(); err != nil {
+						return nil
+					}
+					interruptSequence = 0
+				}
+				interruptSequence++
+				atomic.StoreUint64(&request.token, uint64(atomic.LoadUint32(&interruptCookie))<<32|uint64(interruptSequence))
+			}
 			atomic.AddUint32(&request.refs, 1)
+			// Writers hold interruptRequestMu. Publish only after the token is
+			// ready for the asynchronous handler, including when a slot is reused.
+			if owner == 0 {
+				atomic.StoreUintptr(&request.trap, trapPtr)
+			}
 			return request
 		}
 	}
@@ -205,12 +429,25 @@ func acquireInterruptRequest(trapPtr uintptr) *interruptRequest {
 }
 
 func releaseInterruptRequest(request *interruptRequest, trapPtr uintptr) {
+	interruptRequestMu.Lock()
+	defer interruptRequestMu.Unlock()
 	if atomic.AddUint32(&request.refs, ^uint32(0)) == 0 {
 		atomic.CompareAndSwapUintptr(&request.trap, trapPtr, 0)
 	}
 }
 
-func broadcastInterruptSignal(sig uint32) {
+type interruptSiginfo struct {
+	signo int32
+	errno int32
+	code  int32
+	_     int32
+	pid   int32
+	uid   uint32
+	value uint64
+	_     [96]byte
+}
+
+func broadcastInterruptSignal(sig uint32, token uint64) {
 	entries, err := os.ReadDir("/proc/self/task")
 	if err != nil {
 		return
@@ -219,7 +456,8 @@ func broadcastInterruptSignal(sig uint32) {
 	for _, entry := range entries {
 		tid, err := strconv.Atoi(entry.Name())
 		if err == nil {
-			_, _, _ = syscall.RawSyscall(syscall.SYS_TGKILL, uintptr(pid), uintptr(tid), uintptr(sig))
+			info := interruptSiginfo{signo: int32(sig), code: -1, pid: int32(pid), uid: uint32(syscall.Getuid()), value: token}
+			_, _, _ = syscall.RawSyscall6(syscall.SYS_RT_TGSIGQUEUEINFO, uintptr(pid), uintptr(tid), uintptr(sig), uintptr(unsafe.Pointer(&info)), 0, 0)
 		}
 	}
 }
@@ -279,18 +517,19 @@ type interruptItimerspec struct {
 // SetInterruptDeadline takes the slow path only for a context carrying an
 // actual deadline. Pinning that invocation lets a per-thread kernel timer keep
 // working even while Go is stopped for GC; ordinary calls execute none of this.
-func SetInterruptDeadline(trap []byte, deadline time.Time) func() {
+func SetInterruptDeadline(trap []byte, deadline time.Time) (func(), error) {
 	if len(trap) < 4 || deadline.IsZero() {
-		return func() {}
+		return func() {}, nil
 	}
 	goruntime.LockOSThread()
 	trapPtr := slicePtr(trap)
 	request := acquireInterruptRequest(trapPtr)
 	if request == nil {
 		goruntime.UnlockOSThread()
-		return func() {}
+		return nil, &ResourceLimitError{Resource: "native deadline requests", Scope: "process", Used: maxInterruptRequests, Requested: 1, Limit: maxInterruptRequests, Suggestion: "reduce concurrent deadline calls"}
 	}
 	event := interruptSigevent{
+		value:  request.token,
 		signo:  int32(atomic.LoadUint32(&interruptSignal)),
 		notify: 4, // SIGEV_THREAD_ID
 		tid:    int32(syscall.Gettid()),
@@ -301,7 +540,7 @@ func SetInterruptDeadline(trap []byte, deadline time.Time) func() {
 	if errno != 0 {
 		releaseInterruptRequest(request, trapPtr)
 		goruntime.UnlockOSThread()
-		return func() {}
+		return nil, fmt.Errorf("create native deadline timer: %w", errno)
 	}
 	delay := time.Until(deadline)
 	if delay <= 0 {
@@ -323,37 +562,20 @@ func SetInterruptDeadline(trap []byte, deadline time.Time) func() {
 		_, _, _ = syscall.RawSyscall(syscall.SYS_TIMER_DELETE, uintptr(uint32(timerID)), 0, 0)
 		releaseInterruptRequest(request, trapPtr)
 		goruntime.UnlockOSThread()
-		return func() {}
+		return nil, fmt.Errorf("arm native deadline timer: %w", errno)
 	}
 	return func() {
 		deleteInterruptTimer(timerID)
 		releaseInterruptRequest(request, trapPtr)
 		goruntime.UnlockOSThread()
-	}
+	}, nil
 }
 
-// deleteInterruptTimer blocks the reserved signal on the pinned target thread,
-// deletes the timer, and drains any already-pending expiration before the
-// deadline request is unpublished. A late timer signal therefore cannot affect
-// a later invocation that reuses the same trap address.
+// Deleting the timer stops future expirations. A queued late expiration carries
+// its old request token, so it cannot interrupt a later use of the same trap.
+// Do not drain the signal queue: it also carries unrelated host deliveries.
 func deleteInterruptTimer(timerID int32) {
-	sigset := uint64(1) << (interruptReservedSignal - 1)
-	var oldset uint64
-	_, _, errno := syscall.RawSyscall6(syscall.SYS_RT_SIGPROCMASK, 0, // SIG_BLOCK
-		uintptr(unsafe.Pointer(&sigset)), uintptr(unsafe.Pointer(&oldset)), 8, 0, 0)
 	_, _, _ = syscall.RawSyscall(syscall.SYS_TIMER_DELETE, uintptr(uint32(timerID)), 0, 0)
-	if errno == 0 {
-		var zero interruptTimespec
-		for {
-			_, _, waitErr := syscall.RawSyscall6(syscall.SYS_RT_SIGTIMEDWAIT,
-				uintptr(unsafe.Pointer(&sigset)), 0, uintptr(unsafe.Pointer(&zero)), 8, 0, 0)
-			if waitErr != 0 {
-				break
-			}
-		}
-		_, _, _ = syscall.RawSyscall6(syscall.SYS_RT_SIGPROCMASK, 2, // SIG_SETMASK
-			uintptr(unsafe.Pointer(&oldset)), 0, 8, 0, 0)
-	}
 }
 
 func HostInterruptSupported() bool { return true }

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func pureDeferredDropModule(tb testing.TB, n int) *wasm.Module {
@@ -37,6 +37,7 @@ func pureDeferredDropModule(tb testing.TB, n int) *wasm.Module {
 }
 
 func TestPureDeferredDropElimination(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	// (local.get 0 + local.get 1) * 3 is a side-effect-free deferred tree whose
 	// result is immediately dropped. It should emit no ALU instructions.
 	m := pureDeferredDropModule(t, 1)

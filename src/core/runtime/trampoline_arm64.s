@@ -9,7 +9,7 @@
 // freely use AAPCS64 callee-saved registers; X26 is the pinned linMem register.
 // X28 remains Go's g register even while native code runs, so async signals and
 // preemption see the expected Go context.
-TEXT ·enterNative(SB), NOSPLIT, $0-48
+TEXT ·enterNativeRaw(SB), NOSPLIT, $0-48
 	MOVD code+0(FP), R9
 	MOVD serArgs+8(FP), R0
 	MOVD linMem+16(FP), R1

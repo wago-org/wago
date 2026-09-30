@@ -42,19 +42,49 @@ func (r *Registrar) HostImports() (*HostImportRegistrar, error) {
 	return &HostImportRegistrar{reg: r, modules: modules}, nil
 }
 
-// Module begins declarations in one granted exact module. Empty, parent, and
-// wildcard-looking scopes are never inferred.
-func (a *HostImportRegistrar) Module(name string) (*ImportModuleBuilder, error) {
+// HostFunc declares a synchronous host import in one exact granted module.
+// Declaration errors are recorded and rejected before plugin activation.
+func (a *HostImportRegistrar) HostFunc(module, name string, fn any) *ImportFuncBuilder {
 	if a == nil || a.reg == nil {
-		return nil, fmt.Errorf("wago: nil host-import registrar")
+		return &ImportFuncBuilder{}
 	}
 	if err := a.reg.ensureOpen(); err != nil {
-		return nil, err
+		a.reg.recordImportError(module, name, err)
+		return &ImportFuncBuilder{}
 	}
-	if _, ok := a.modules[name]; !ok {
-		return nil, &PluginError{Plugin: a.reg.definition.ID, Phase: PluginPhaseAuthorize, Authority: AuthorityHostImportDefine, Path: "scope.modules", Err: fmt.Errorf("module %q is outside the grant: %w", name, ErrPermissionDenied)}
+	if _, ok := a.modules[module]; !ok {
+		a.reg.recordImportError(module, name, &PluginError{Plugin: a.reg.definition.ID, Phase: PluginPhaseAuthorize, Authority: AuthorityHostImportDefine, Path: "scope.modules", Err: fmt.Errorf("module %q is outside the grant: %w", module, ErrPermissionDenied)})
+		return &ImportFuncBuilder{}
 	}
-	return &ImportModuleBuilder{reg: a.reg, module: name}, nil
+	imp := &registeredImport{module: module, name: name, fn: fn}
+	var supported, nilCallback bool
+	imp.inferredParams, imp.inferredResults, imp.inferred, supported, nilCallback = inspectHostFuncSignature(fn)
+	imp.params = append([]ValType(nil), imp.inferredParams...)
+	imp.results = append([]ValType(nil), imp.inferredResults...)
+	a.reg.imports = append(a.reg.imports, imp)
+	if fn == nil || nilCallback {
+		a.reg.recordImportError(module, name, fmt.Errorf("host callback is nil"))
+	} else if !supported {
+		a.reg.recordImportError(module, name, fmt.Errorf("unsupported host callback %T", fn))
+	}
+	return &ImportFuncBuilder{imp: imp, reg: a.reg}
+}
+
+func (a *HostImportRegistrar) I32Event(module, name string, fn I32HostEvent) *ImportFuncBuilder {
+	if a == nil || a.reg == nil {
+		return &ImportFuncBuilder{}
+	}
+	if err := a.reg.ensureOpen(); err != nil {
+		a.reg.recordImportError(module, name, err)
+		return &ImportFuncBuilder{}
+	}
+	if _, ok := a.modules[module]; !ok {
+		a.reg.recordImportError(module, name, fmt.Errorf("module %q is outside the grant: %w", module, ErrPermissionDenied))
+		return &ImportFuncBuilder{}
+	}
+	imp := &registeredImport{module: module, name: name, eventI32: fn, params: []ValType{ValI32}}
+	a.reg.imports = append(a.reg.imports, imp)
+	return &ImportFuncBuilder{imp: imp, reg: a.reg}
 }
 
 // GuestArgumentsAccess is a revocable read-only view of guest argv.
@@ -104,13 +134,27 @@ func (a *GuestArgumentsAccess) close() error {
 	return nil
 }
 
-// HostCallers returns an identity-only, revocable resolver for synchronous host
-// calls. It cannot create, invoke, or close instances.
+// HostCallers returns a read-only, revocable resolver for synchronous host
+// caller identity and invocation cancellation/deadline context. It cannot
+// create, invoke, or close instances.
 func (r *Registrar) HostCallers() (*CallerResolver, error) {
 	if _, err := r.authorize(AuthorityHostCallerIdentify); err != nil {
 		return nil, err
 	}
 	a := &CallerResolver{}
+	r.activate = append(r.activate, a.activate)
+	r.revoke = append(r.revoke, a.close)
+	return a, nil
+}
+
+// HostCallerInvoker returns a revocable handle that may synchronously re-enter
+// only the guest instance making the active host call. It cannot retain,
+// discover, close, or invoke any other instance.
+func (r *Registrar) HostCallerInvoker() (*CallerInvoker, error) {
+	if _, err := r.authorize(AuthorityHostCallerInvoke); err != nil {
+		return nil, err
+	}
+	a := &CallerInvoker{}
 	r.activate = append(r.activate, a.activate)
 	r.revoke = append(r.revoke, a.close)
 	return a, nil
@@ -399,10 +443,14 @@ func (r *Registrar) CoreFuncRefFactory() (*CoreFuncRefFactory, error) {
 	return a, nil
 }
 
-func (a *CoreFuncRefFactory) New(fn HostFunc, sig FuncSig) (*HostFuncRef, error) {
+func (a *CoreFuncRefFactory) New(fn any, sig FuncSig) (*HostFuncRef, error) {
 	rt, err := a.state.runtime("core funcref create")
 	if err != nil {
 		return nil, err
 	}
-	return rt.newHostFuncRef(a.gate.wrap(fn), sig, false, true)
+	gated, err := gateHostImport(fn, a.gate)
+	if err != nil {
+		return nil, err
+	}
+	return rt.newHostFuncRef(gated, sig, false, true)
 }

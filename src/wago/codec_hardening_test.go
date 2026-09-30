@@ -3,6 +3,7 @@ package wago
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -10,7 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestMarshalRoundTripsReturningImportDispatch(t *testing.T) {
@@ -206,7 +207,7 @@ func TestMarshalRoundTripsSyncHostDispatch(t *testing.T) {
 	}
 	defer loaded.Close()
 	called := 0
-	in, err := Instantiate(&loaded, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) { called++ })}})
+	in, err := Instantiate(&loaded, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) { called++ }))})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -230,10 +231,10 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 1 {
-		t.Fatalf("compiled codec version = %d, want initial public version 1", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 4 {
+		t.Fatalf("compiled codec version = %d, want codec version 4", blob[4])
 	}
-	for _, version := range []byte{0, 2, 19, 35} {
+	for _, version := range []byte{0, 1, 2, 3, 19, 35} {
 		unsupportedVersion := append([]byte(nil), blob...)
 		unsupportedVersion[4] = version
 		var unsupported Compiled
@@ -365,7 +366,7 @@ func TestCompiledCodecAcceptsStructuralReferenceGlobalsAndRejectsLiveBits(t *tes
 			Globals:       []GlobalDef{{Type: ValExternRef}},
 		},
 	} {
-		_ = roundTripCompiled(t, c)
+		_ = publicArtifactRoundTrip(t, c)
 	}
 	if _, err := (&Compiled{Globals: []GlobalDef{{Type: ValExternRef, Bits: 0x1234}}}).MarshalBinary(); err == nil || !strings.Contains(err.Error(), "non-null externref") {
 		t.Fatalf("MarshalBinary live externref error = %v, want fail-closed rejection", err)
@@ -435,7 +436,7 @@ func TestMarshalGlobalScalarAndV128RoundTrip(t *testing.T) {
 		t.Fatalf("gv = % x, %v; want % x", got, err, vec)
 	}
 
-	scalar := *c
+	scalar := *mutableCompiledFixture(c)
 	scalar.Globals = []GlobalDef{{Type: ValI32, Bits: I32(1)}, {Type: ValI64, Bits: I64(2)}}
 	scalar.GlobalExports = map[string]int{}
 	compact, err := scalar.MarshalBinary()
@@ -492,7 +493,7 @@ func TestUnmarshalRejectsSIMDBlobWhenHostUnsupported(t *testing.T) {
 	defer func() { simdHostFeaturesSupported = old }()
 
 	var dec Compiled
-	if err := dec.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires SIMD") {
+	if err := dec.UnmarshalBinary(blob); !errors.Is(err, errNativeCPUFeatures) {
 		t.Fatalf("want SIMD CPU feature rejection, got %v", err)
 	}
 }
@@ -515,7 +516,7 @@ func TestUnmarshalRejectsV128BlockTypeBlobWhenHostUnsupported(t *testing.T) {
 	defer func() { simdHostFeaturesSupported = old }()
 
 	var dec Compiled
-	if err := dec.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires SIMD") {
+	if err := dec.UnmarshalBinary(blob); !errors.Is(err, errNativeCPUFeatures) {
 		t.Fatalf("want SIMD CPU feature rejection for v128 block type, got %v", err)
 	}
 }
@@ -543,4 +544,48 @@ func codecSIMDBlockTypeModule() []byte {
 			0x0b, // end function
 		}))),
 	)
+}
+
+// Reusing the caller's authenticated buffer must not change retained state.
+func TestUnmarshalOwnsArtifactBytes(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchAddOneModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.Close()
+	want, err := loaded.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range blob {
+		blob[i] = 0
+	}
+	got, err := loaded.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatal("caller buffer reuse changed retained artifact")
+	}
+	if loaded.codeCache == nil || loaded.codeCache.flags&compiledCacheWritableCode == 0 {
+		t.Fatal("missing owned code image")
+	}
+	in, err := Instantiate(&loaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	out, err := in.Invoke("f", 41)
+	if err != nil || len(out) != 1 || out[0] != 42 {
+		t.Fatalf("Invoke = %v, %v", out, err)
+	}
 }

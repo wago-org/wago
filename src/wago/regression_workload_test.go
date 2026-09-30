@@ -20,7 +20,7 @@ func TestRuntimeRegressionPortRustFannkuchExecution(t *testing.T) {
 	if runRegressionIsolatedPortTest(t) {
 		return
 	}
-	data, err := os.ReadFile("../../tests/regressions/runtime/core/rust_fannkuch/commands.0.wasm")
+	data, err := os.ReadFile("../../tests/corpus/regressions/runtime/core/rust_fannkuch/commands.0.wasm")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,9 +45,9 @@ func TestRuntimeRegressionPortRustFannkuchExecution(t *testing.T) {
 		{n: 9, want: 8629},
 	} {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		got, err := in.Call(ctx, "run_fannkuch", wago.ValueI32(tc.n))
+		got, err := in.InvokeContext(ctx, "run_fannkuch", wago.I32(tc.n))
 		cancel()
-		if err != nil || len(got) != 1 || got[0].Type() != wago.ValI32 || got[0].I32() != tc.want {
+		if err != nil || len(got) != 1 || wago.AsI32(got[0]) != tc.want {
 			t.Fatalf("run_fannkuch(%d) = %v, %v; want %d", tc.n, got, err, tc.want)
 		}
 	}
@@ -90,7 +90,7 @@ func runRegressionEmbenchen(t *testing.T, name string) (int32, []byte) {
 	t.Helper()
 	rt := wago.NewRuntime()
 	t.Cleanup(func() { _ = rt.Close() })
-	data, err := os.ReadFile("../../tests/regressions/runtime/core/" + name + "/commands.1.wasm")
+	data, err := os.ReadFile("../../tests/corpus/regressions/runtime/core/" + name + "/commands.1.wasm")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,24 +139,17 @@ func runRegressionEmbenchen(t *testing.T, name string) (int32, []byte) {
 	if stackTop >= stackMax {
 		t.Fatalf("Emscripten fixture static data leaves no test stack: top=%d max=%d", stackTop, stackMax)
 	}
-	binary.LittleEndian.PutUint32(memory.Bytes()[dynamicTopPtr:], stackMax)
+	binary.LittleEndian.PutUint32(memory.UnsafeBytes()[dynamicTopPtr:], stackMax)
 
-	imports := wago.Imports{
-		"env.DYNAMICTOP_PTR": wago.GlobalImport{Type: wago.ValI32, Bits: uint64(dynamicTopPtr)},
-		"env.STACKTOP":       wago.GlobalImport{Type: wago.ValI32, Bits: uint64(stackTop)},
-		"env.STACK_MAX":      wago.GlobalImport{Type: wago.ValI32, Bits: uint64(stackMax)},
-		"env.memoryBase":     wago.GlobalImport{Type: wago.ValI32},
-		"env.tableBase":      wago.GlobalImport{Type: wago.ValI32},
-		"env.memory":         memory,
-		"env.table":          table,
-	}
+	imports := testWagoImports("env.DYNAMICTOP_PTR", wago.GlobalImport{Type: wago.ValI32, Bits: uint64(dynamicTopPtr)}, "env.STACKTOP", wago.GlobalImport{Type: wago.ValI32, Bits: uint64(stackTop)}, "env.STACK_MAX", wago.GlobalImport{Type: wago.ValI32, Bits: uint64(stackMax)}, "env.memoryBase", wago.GlobalImport{Type: wago.ValI32}, "env.tableBase", wago.GlobalImport{Type: wago.ValI32}, "env.memory", memory, "env.table", table)
 	var output []byte
 	for _, spec := range mod.Imports() {
 		if spec.Kind != wago.ImportFunc {
 			continue
 		}
 		importName := spec.Name
-		imports[spec.Key()] = wago.HostFunc(func(m wago.HostModule, params, results []uint64) {
+		imports.HostFunc(spec.Module, spec.Name, func(caller wago.Caller, call wago.HostCall) {
+			m, params, results := caller, call.ParamSlots(), call.ResultSlots()
 			switch importName {
 			case "abort", "_abort", "_pthread_cleanup_pop", "_pthread_cleanup_push", "___setErrNo":
 				// The upstream WAST env provider defines these as no-op functions.
@@ -217,7 +210,7 @@ func runRegressionEmbenchen(t *testing.T, name string) (int32, []byte) {
 			default:
 				panic(fmt.Errorf("unsupported Emscripten host import %q", importName))
 			}
-		})
+		}).Params(spec.Params...).Results(spec.Results...)
 	}
 
 	in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
@@ -225,21 +218,21 @@ func runRegressionEmbenchen(t *testing.T, name string) (int32, []byte) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = in.Close() })
-	binary.LittleEndian.PutUint32(memory.Bytes()[argv:], prog)
-	binary.LittleEndian.PutUint32(memory.Bytes()[argv+4:], arg)
-	copy(memory.Bytes()[prog:], "bench\x00")
-	copy(memory.Bytes()[arg:], "1\x00")
+	binary.LittleEndian.PutUint32(memory.UnsafeBytes()[argv:], prog)
+	binary.LittleEndian.PutUint32(memory.UnsafeBytes()[argv+4:], arg)
+	copy(memory.UnsafeBytes()[prog:], "bench\x00")
+	copy(memory.UnsafeBytes()[arg:], "1\x00")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	got, err := in.Call(ctx, "_main", wago.ValueI32(2), wago.ValueI32(int32(argv)))
+	got, err := in.InvokeContext(ctx, "_main", wago.I32(2), wago.I32(int32(argv)))
 	if err != nil {
 		t.Fatalf("_main: %v", err)
 	}
-	if len(got) != 1 || got[0].Type() != wago.ValI32 {
+	if len(got) != 1 {
 		t.Fatalf("_main result = %v, want one i32", got)
 	}
-	return got[0].I32(), output
+	return wago.AsI32(got[0]), output
 }
 
 func regressionEmbenchenSlice(memory []byte, offset, length uint32, what string) []byte {

@@ -10,8 +10,8 @@ import (
 func TestSyncHostPolicyUsesBindingIndependentCode(t *testing.T) {
 	c := MustCompile(voidImportCallModule())
 	defer c.Close()
-	imports := Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}
-	if err := c.validateImportBindings(imports, nil); err != nil {
+	imports := testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) {}))
+	if err := c.validateImportBindings(imports.bindings, nil); err != nil {
 		t.Fatalf("validate synchronous binding: %v", err)
 	}
 	if !c.dynamicImports || len(c.code) == 0 {
@@ -24,9 +24,9 @@ func TestImportedInstancesShareCodeAcrossBindings(t *testing.T) {
 	defer c.Close()
 	instantiate := func(delta uint64) *Instance {
 		t.Helper()
-		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, params, results []uint64) {
+		in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, params, results []uint64) {
 			results[0] = params[0] + delta
-		})}})
+		}))})
 		if err != nil {
 			t.Fatalf("Instantiate delta=%d: %v", delta, err)
 		}
@@ -36,7 +36,7 @@ func TestImportedInstancesShareCodeAcrossBindings(t *testing.T) {
 	defer first.Close()
 	second := instantiate(2)
 	defer second.Close()
-	if first.c != c || second.c != c || first.base != second.base {
+	if first.c != c.executionView() || second.c != c.executionView() || first.base != second.base {
 		t.Fatalf("instances did not share compiled image: c=%p first=%p/%#x second=%p/%#x", c, first.c, first.base, second.c, second.base)
 	}
 	for _, tc := range []struct {
@@ -51,9 +51,9 @@ func TestImportedInstancesShareCodeAcrossBindings(t *testing.T) {
 }
 
 func TestImportedModuleCodeIsBindingIndependent(t *testing.T) {
-	src, err := os.ReadFile("../../bench/corpus/jsonproc.wasm")
+	src, err := os.ReadFile("../../corpus/workloads/assemblyscript/json-as.wasm")
 	if err != nil {
-		t.Skip("jsonproc.wasm not present")
+		t.Fatal(err)
 	}
 	c, err := Compile(nil, src)
 	if err != nil {
@@ -63,11 +63,11 @@ func TestImportedModuleCodeIsBindingIndependent(t *testing.T) {
 	if !c.dynamicImports || len(c.code) == 0 || len(c.Entry) == 0 {
 		t.Fatalf("imported module dynamic=%v code=%d entries=%d", c.dynamicImports, len(c.code), len(c.Entry))
 	}
-	stubs := Imports{}
+	stubs := testImports()
 	for _, name := range c.Imports {
-		stubs[name] = HostFunc(func(HostModule, []uint64, []uint64) {})
+		testSetImport(stubs, name, slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 	}
-	if err := c.validateImportBindings(stubs, nil); err != nil {
+	if err := c.validateImportBindings(stubs.bindings, nil); err != nil {
 		t.Fatalf("validate bindings: %v", err)
 	}
 }

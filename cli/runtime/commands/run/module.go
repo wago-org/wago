@@ -13,28 +13,40 @@ import (
 	"github.com/wago-org/wago/cli/runtime/internal/modulefile"
 )
 
-func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runtime, cache artifactcache.Cache) *wago.Module {
-	source, artifact, artifactFile, size, err := modulefile.ReadSourceOrOpenArtifact(file)
-	if err != nil {
-		ui.Fatal("%v", err)
-	}
-	if artifact != nil {
-		defer artifactFile.Close()
-		compiled, err := loadCompiledArtifactReader(artifact, size)
-		if err != nil {
-			ui.Fatal("%v", err)
-		}
-		module, err := runtime.AdoptModule(compiled)
-		if err != nil {
-			ui.Fatal("%v", err)
-		}
-		return module
-	}
-	module, err := cache.LoadOrCompile(source, config, runtime)
+func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runtime, cache artifactcache.Cache, allowNativeArtifact bool) *wago.Module {
+	module, err := loadModule(file, config, runtime, cache, allowNativeArtifact)
 	if err != nil {
 		ui.Fatal("%v", err)
 	}
 	return module
+}
+
+func loadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runtime, cache artifactcache.Cache, allowNativeArtifact bool) (*wago.Module, error) {
+	source, artifact, artifactFile, size, err := modulefile.ReadSourceOrOpenArtifact(file)
+	if err != nil {
+		return nil, err
+	}
+	if artifact != nil {
+		defer artifactFile.Close()
+		if !allowNativeArtifact {
+			return nil, fmt.Errorf("refusing native-code artifact %q; pass --allow-native-artifact only for a trusted .wago file", file)
+		}
+		compiled, err := loadCompiledArtifactReader(artifact, size)
+		if err != nil {
+			return nil, err
+		}
+		module, err := runtime.AdoptModule(compiled)
+		if err != nil {
+			_ = compiled.Close()
+			return nil, err
+		}
+		return module, nil
+	}
+	module, err := cache.LoadOrCompile(source, config, runtime)
+	if err != nil {
+		return nil, err
+	}
+	return module, nil
 }
 
 func loadCompiledArtifact(source []byte) (*wago.Compiled, error) {

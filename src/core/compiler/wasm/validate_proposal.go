@@ -103,36 +103,8 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 		return err
 	}
 	for _, c := range in.Catches() {
-		lt, err := v.label(uint32(c.Label))
-		if err != nil {
+		if err := v.validateCatchPayload(c); err != nil {
 			return err
-		}
-		var payload []ValType
-		if c.Kind == CatchTag || c.Kind == CatchRef {
-			if int(c.Tag) >= v.m.TagCount() {
-				return v.verr(ErrUnknownTag, "catch")
-			}
-			ft, ok := v.tagFuncType(uint32(c.Tag))
-			if !ok {
-				return v.verr(ErrUnknownTag, "catch")
-			}
-			payload = append(payload, ft.Params...)
-		}
-		if c.Kind == CatchRef || c.Kind == CatchAllRef {
-			// Reference catches materialize a non-null exception reference. The
-			// target label may widen it to nullable exnref, but not vice versa.
-			payload = append(payload, RefVal(Ref(false, AbsHeap(HeapExn), false)))
-		}
-		if c.Kind == CatchAll && len(lt) != 0 {
-			return v.verr(ErrTypeMismatch, "catch_all label must expect no values")
-		}
-		if len(payload) != len(lt) {
-			return v.verr(ErrTypeMismatch, "catch payload label mismatch")
-		}
-		for i := range payload {
-			if !v.subtype(payload[i], lt[i]) {
-				return v.verr(ErrTypeMismatch, "catch payload label mismatch")
-			}
 		}
 	}
 	if err := v.pushCtrl(ctrlTry, ins, outs); err != nil {
@@ -143,25 +115,60 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 			return err
 		}
 	}
-	fr, err := v.popCtrl()
-	if err == nil && fr.unreachable {
-		// A try_table whose body has no normal completion leaves its parent path
-		// unreachable; catches branch directly to their declared outer labels.
-		v.unreachable()
-	}
+	_, err = v.popCtrl()
 	return err
 }
 
-func (v *moduleValidator) tagFuncType(idx uint32) (*CompType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternTag {
-			if n == idx {
-				ft := v.funcTypeFromTypeIdx(im.Type.TagType().Type)
-				return ft, ft != nil
-			}
-			n++
+func (v *funcValidator) validateCatchPayload(c Catch) error {
+	lt, err := v.label(uint32(c.Label))
+	if err != nil {
+		return err
+	}
+	var params []ValType
+	if c.Kind == CatchTag || c.Kind == CatchRef {
+		if uint(c.Tag) >= uint(len(v.importsOfKind(ExternTag))+len(v.m.Tags)) {
+			return v.verr(ErrUnknownTag, "catch")
 		}
+		ft, ok := v.tagFuncType(uint32(c.Tag))
+		if !ok {
+			return v.verr(ErrUnknownTag, "catch")
+		}
+		params = ft.Params
+	}
+	hasRef := c.Kind == CatchRef || c.Kind == CatchAllRef
+	if c.Kind == CatchAll && len(lt) != 0 {
+		return v.verr(ErrTypeMismatch, "catch_all label must expect no values")
+	}
+	payloadLen := len(params)
+	if hasRef {
+		payloadLen++
+	}
+	if payloadLen != len(lt) {
+		return v.verr(ErrTypeMismatch, "catch payload label mismatch")
+	}
+	for i := range params {
+		if !v.subtype(params[i], lt[i]) {
+			return v.verr(ErrTypeMismatch, "catch payload label mismatch")
+		}
+	}
+	if hasRef {
+		// Reference catches materialize a non-null exception reference. The target
+		// label may widen it to nullable exnref, but not vice versa.
+		exn := RefVal(Ref(false, AbsHeap(HeapExn), false))
+		if !v.subtype(exn, lt[len(params)]) {
+			return v.verr(ErrTypeMismatch, "catch payload label mismatch")
+		}
+	}
+	return nil
+}
+
+func (v *moduleValidator) tagFuncType(idx uint32) (*CompType, bool) {
+	indexes := v.importsOfKind(ExternTag)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		ft := v.funcTypeFromTypeIdx(im.Type.TagType().Type)
+		return ft, ft != nil
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Tags) {
@@ -176,7 +183,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		return nil
 	}
 	if in.Kind == InstrMemoryAtomicNotify {
-		addr, err := v.checkSharedMemArg(in.MemArg(), 2)
+		addr, err := v.checkAtomicMemArg(in.MemArg(), 2)
 		if err != nil {
 			return err
 		}
@@ -194,7 +201,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		if in.Kind == InstrMemoryAtomicWait64 {
 			natural = 3
 		}
-		addr, err := v.checkSharedMemArg(in.MemArg(), natural)
+		addr, err := v.checkAtomicMemArg(in.MemArg(), natural)
 		if err != nil {
 			return err
 		}
@@ -215,7 +222,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		return nil
 	}
 	if eff, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicLoad, in.Kind); ok {
-		addr, err := v.checkSharedMemArg(in.MemArg(), uint32(eff.align))
+		addr, err := v.checkAtomicMemArg(in.MemArg(), uint32(eff.align))
 		if err != nil {
 			return err
 		}
@@ -226,7 +233,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		return nil
 	}
 	if eff, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicStore, in.Kind); ok {
-		addr, err := v.checkSharedMemArg(in.MemArg(), uint32(eff.align))
+		addr, err := v.checkAtomicMemArg(in.MemArg(), uint32(eff.align))
 		if err != nil {
 			return err
 		}
@@ -238,7 +245,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 	if in.Kind == InstrAtomicRmw {
 		eff := atomicRmwEffect(in.AtomicOp)
 		typ := eff.typ.valType()
-		addr, err := v.checkSharedMemArg(in.MemArg(), uint32(eff.align))
+		addr, err := v.checkAtomicMemArg(in.MemArg(), uint32(eff.align))
 		if err != nil {
 			return err
 		}
@@ -254,7 +261,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 	if in.Kind == InstrAtomicCmpxchg {
 		eff := atomicCmpxchgEffect(in.AtomicOp)
 		typ := eff.typ.valType()
-		addr, err := v.checkSharedMemArg(in.MemArg(), uint32(eff.align))
+		addr, err := v.checkAtomicMemArg(in.MemArg(), uint32(eff.align))
 		if err != nil {
 			return err
 		}
@@ -343,17 +350,20 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		}
 		v.push(I32)
 		return nil
-	case InstrAnyConvertExtern:
-		if err := v.popExpect(ExternRef); err != nil {
+	case InstrAnyConvertExtern, InstrExternConvertAny:
+		operand, result := ExternRef, AnyRef
+		if in.Kind == InstrExternConvertAny {
+			operand, result = AnyRef, ExternRef
+		}
+		x, err := v.pop()
+		if err != nil {
 			return err
 		}
-		v.push(AnyRef)
-		return nil
-	case InstrExternConvertAny:
-		if err := v.popExpect(AnyRef); err != nil {
-			return err
+		if !x.unknown && !v.subtype(x.t, operand) {
+			return v.verr(ErrTypeMismatch, x.t.String()+" is not "+operand.String())
 		}
-		v.push(ExternRef)
+		// An unreachable stack operand can use the non-null input type.
+		v.push(RefVal(result.Ref().WithNullable(!x.unknown && x.t.Ref().Nullable())))
 		return nil
 	case InstrRefTest, InstrRefTestDesc:
 		x, err := v.pop()
@@ -399,8 +409,14 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !x.unknown && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "ref.cast expects a reference operand")
 		}
-		if !x.unknown && in.Kind == InstrRefCastDescEq && !v.descriptorCompatible(x.t.Ref(), target.Ref()) {
-			return v.verr(ErrTypeMismatch, "target does not match operand type")
+		if !x.unknown {
+			compatible := v.refTestCompatible(x.t.Ref(), target.Ref())
+			if in.Kind == InstrRefCastDescEq {
+				compatible = v.descriptorCompatible(x.t.Ref(), target.Ref())
+			}
+			if !compatible {
+				return v.verr(ErrTypeMismatch, "target does not match operand type")
+			}
 		}
 		v.push(target)
 		return nil
@@ -434,20 +450,25 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "struct.get")
 		}
-		if int(in.Index2) >= len(fields) {
+		if uint(in.Index2) >= uint(len(fields)) {
 			return v.verr(ErrTypeMismatch, "unknown field")
+		}
+		f := fields[in.Index2]
+		packedGet := packedFieldGet(in.Kind)
+		if f.Storage().Packed() != packedGet {
+			return v.verr(ErrTypeMismatch, "field storage does not match struct.get variant")
 		}
 		if err := v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false))); err != nil {
 			return err
 		}
-		v.push(storageValType(fields[in.Index2].Storage(), in.Kind != InstrStructGet))
+		v.push(storageValType(f.Storage(), packedGet))
 		return nil
 	case InstrStructSet:
 		fields, _, ok := v.structFields(TypeIdx{Index: in.Index})
 		if !ok {
 			return v.verr(ErrUnknownType, "struct.set")
 		}
-		if int(in.Index2) >= len(fields) {
+		if uint(in.Index2) >= uint(len(fields)) {
 			return v.verr(ErrTypeMismatch, "unknown field")
 		}
 		f := fields[in.Index2]
@@ -465,13 +486,17 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownType, "array.get")
 		}
+		packedGet := packedFieldGet(in.Kind)
+		if f.Storage().Packed() != packedGet {
+			return v.verr(ErrTypeMismatch, "field storage does not match array.get variant")
+		}
 		if err := v.popExpect(I32); err != nil {
 			return err
 		}
 		if err := v.popExpect(RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false))); err != nil {
 			return err
 		}
-		v.push(storageValType(f.Storage(), in.Kind != InstrArrayGet))
+		v.push(storageValType(f.Storage(), packedGet))
 		return nil
 	case InstrArraySet:
 		f, _, ok := v.arrayField(TypeIdx{Index: in.Index})
@@ -558,8 +583,8 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !field.Storage().Packed() && field.Storage().Val().Kind() == ValRef {
 			return v.verr(ErrTypeMismatch, "array type is not numeric or vector")
 		}
-		if int(in.Index2) >= len(v.m.Data) {
-			return v.verr(ErrInvalidDataCount, "array.init_data")
+		if err := v.checkDataIndex(in.Index2, "array.init_data"); err != nil {
+			return err
 		}
 		for range 3 {
 			if err := v.popExpect(I32); err != nil {
@@ -674,8 +699,8 @@ func (v *funcValidator) stepArrayNew(in Instruction) error {
 		if !f.Storage().Packed() && f.Storage().Val().Kind() == ValRef {
 			return v.verr(ErrTypeMismatch, "array type is not numeric or vector")
 		}
-		if int(in.Index2) >= len(v.m.Data) {
-			return v.verr(ErrInvalidDataCount, "array.new_data")
+		if err := v.checkDataIndex(in.Index2, "array.new_data"); err != nil {
+			return err
 		}
 		if err := v.popExpect(I32); err != nil {
 			return err
@@ -737,25 +762,25 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 	if rt2.Nullable() {
 		failed = failed.WithNullable(false)
 	}
-	branchTypes := append([]ValType(nil), lt...)
+	prefix := lt[:len(lt)-1]
 	if in.Kind == InstrBrOnCastFail {
 		if !v.subtype(RefVal(failed), labelRef) {
 			return v.verr(ErrTypeMismatch, "failed source does not match label rt")
 		}
-		branchTypes[len(branchTypes)-1] = RefVal(failed)
-		if err := v.popAll(branchTypes[:len(branchTypes)-1]); err != nil {
+		if err := v.popAll(prefix); err != nil {
 			return err
 		}
+		v.pushAll(prefix)
 		v.push(RefVal(rt2))
 		return nil
 	}
 	if !v.subtype(RefVal(rt2), labelRef) {
 		return v.verr(ErrTypeMismatch, "rt2 does not match label rt")
 	}
-	branchTypes[len(branchTypes)-1] = RefVal(rt2)
-	if err := v.popAll(branchTypes[:len(branchTypes)-1]); err != nil {
+	if err := v.popAll(prefix); err != nil {
 		return err
 	}
+	v.pushAll(prefix)
 	v.push(RefVal(failed))
 	return nil
 }

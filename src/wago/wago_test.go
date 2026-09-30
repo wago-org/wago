@@ -9,12 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // testdata loads a checked-in wasm fixture from the repo-root tests/fixtures/wasm
@@ -72,7 +73,7 @@ func TestInvokeDynamicallySizesArgBuffer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("InstantiateWithImports: %v", err)
 	}
@@ -110,7 +111,7 @@ func TestInvokeV128UsesTwoPublicSlots(t *testing.T) {
 	if !reflect.DeepEqual(params, []ValType{ValI32, ValV128, ValI32}) || !reflect.DeepEqual(results, []ValType{ValV128, ValI32}) {
 		t.Fatalf("Signature = (%v) -> (%v), want (i32 v128 i32) -> (v128 i32)", params, results)
 	}
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -149,7 +150,7 @@ func TestInvokeDynamicallySizesResultBuffer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("InstantiateWithImports: %v", err)
 	}
@@ -171,7 +172,7 @@ func TestInvokeDynamicallySizesResultBuffer(t *testing.T) {
 // runv compiles, instantiates with no imports, and invokes an export.
 func runv(t *testing.T, wasm []byte, export string, args ...uint64) []uint64 {
 	t.Helper()
-	return runImports(t, wasm, Imports{}, export, args...)
+	return runImports(t, wasm, testImports(), export, args...)
 }
 
 // run1 invokes an export taking i32 args and returning one i32.
@@ -190,7 +191,7 @@ func run1(t *testing.T, wasm []byte, export string, args ...int32) int32 {
 
 // runImports compiles, instantiates with imports, and invokes an export — the
 // pipeline for one-shot runs that need host functions or imported globals.
-func runImports(t *testing.T, wasm []byte, imports Imports, export string, args ...uint64) []uint64 {
+func runImports(t *testing.T, wasm []byte, imports *Imports, export string, args ...uint64) []uint64 {
 	t.Helper()
 	c, err := Compile(nil, wasm)
 	if err != nil {
@@ -272,9 +273,7 @@ func TestAssemblyScriptRecursion(t *testing.T) {
 // Host imports: AssemblyScript calls an imported log() which we wire to Go.
 func TestAssemblyScriptHostLog(t *testing.T) {
 	var logged []int32
-	hosts := Imports{
-		"logdemo.log": HostFunc(func(_ HostModule, params, _ []uint64) { logged = append(logged, AsI32(params[0])) }),
-	}
+	hosts := testImports("logdemo.log", slotHostFunc(func(_ HostModule, params, _ []uint64) { logged = append(logged, AsI32(params[0])) }))
 	runImports(t, logdemoWasm, hosts, "countdown", I32(5))
 	want := []int32{5, 4, 3, 2, 1, 0}
 	if fmt.Sprint(logged) != fmt.Sprint(want) {
@@ -320,7 +319,7 @@ func TestMultiParamHostImport(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
 	var captured []int32
-	hosts := Imports{"env.abort": HostFunc(func(_ HostModule, params, _ []uint64) { captured = append(captured, AsI32(params[0])) })}
+	hosts := testImports("env.abort", slotHostFunc(func(_ HostModule, params, _ []uint64) { captured = append(captured, AsI32(params[0])) }))
 	res := runImports(t, mod, hosts, "ping")
 	if AsI32(res[0]) != 7 {
 		t.Fatalf("ping() = %d, want 7", AsI32(res[0]))
@@ -397,7 +396,10 @@ func TestCompiledRoundtrip(t *testing.T) {
 	if !IsCompiled(blob) {
 		t.Fatal("blob not recognized as compiled")
 	}
-	c2, err := Load(blob) // load precompiled, no recompile
+	if loaded, err := Load(blob); err == nil || loaded != nil || !strings.Contains(err.Error(), "refuses native-code artifacts") {
+		t.Fatalf("ambiguous Load artifact = %v, %v; want trust-boundary rejection", loaded, err)
+	}
+	c2, err := LoadTrustedArtifact(blob) // load precompiled, no recompile
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,6 +414,17 @@ func TestCompiledRoundtrip(t *testing.T) {
 	}
 	if AsI32(res[0]) != 832040 {
 		t.Fatalf("fib(30) from blob = %d, want 832040", AsI32(res[0]))
+	}
+}
+
+func TestLoadCompilesRawWasm(t *testing.T) {
+	compiled, err := Load(fibWasm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if len(compiled.Entry) == 0 {
+		t.Fatal("raw Wasm was not compiled")
 	}
 }
 
@@ -472,7 +485,7 @@ func TestCompiledRoundtripPreservesDebugNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatalf("Load compiled: %v", err)
 	}
@@ -490,7 +503,7 @@ func TestCompiledRoundtripPreservesDebugNames(t *testing.T) {
 func TestCompiledUnsupportedVersionsRejected(t *testing.T) {
 	for _, version := range []byte{0, wagoVersion + 1} {
 		blob := []byte{'W', 'A', 'G', 'O', version}
-		if _, err := Load(blob); err == nil {
+		if _, err := LoadTrustedArtifact(blob); err == nil {
 			t.Fatalf("Load compiled version %d succeeded, want error", version)
 		}
 	}
@@ -506,18 +519,18 @@ func representativeGCTypeDescs(t *testing.T) []gc.TypeDesc {
 	if err != nil {
 		t.Fatal(err)
 	}
-	arrI32, err := gc.NewArrayDesc(3, gc.StorageI32)
+	arrRefBase, err := gc.NewArrayDesc(3, gc.StorageRefNull)
 	if err != nil {
 		t.Fatal(err)
 	}
-	arrI32.Final = false
-	arrRef, err := gc.NewArrayDesc(4, gc.StorageRefNull)
+	arrRefBase.Final = false
+	arrRef, err := gc.NewArrayDesc(4, gc.StorageRef)
 	if err != nil {
 		t.Fatal(err)
 	}
 	arrRef.HasSuper = true
 	arrRef.Super = 3
-	return []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc, Final: true}, pf, pr, arrI32, arrRef}
+	return []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc, Final: true}, pf, pr, arrRefBase, arrRef}
 }
 
 func TestCompiledGCTypeDescsRoundTrip(t *testing.T) {
@@ -604,6 +617,7 @@ func TestCompiledValidateGCTypeDescFailures(t *testing.T) {
 		{"invalid super", []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc, HasSuper: true, Super: 9}}},
 		{"invalid kind", []gc.TypeDesc{{ID: 0, Kind: 99}}},
 		{"invalid ref offset", []gc.TypeDesc{{ID: 0, Kind: gc.KindStruct, Fields: []gc.FieldDesc{{Kind: gc.StorageRef, Offset: 8}}, Size: 4, Align: 4, HasRefs: true}}},
+		{"overlapping ref field", []gc.TypeDesc{{ID: 0, Kind: gc.KindStruct, Fields: []gc.FieldDesc{{Kind: gc.StorageRefNull}, {Kind: gc.StorageI32}}, Size: 4, Align: 4, HasRefs: true}}},
 		{"malformed func", []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc, Size: 4}}},
 	}
 	for _, tc := range cases {
@@ -630,7 +644,7 @@ func TestInstantiateGCCollectorLifecycle(t *testing.T) {
 	}
 	in.Close()
 
-	funcOnly := *c
+	funcOnly := *mutableCompiledFixture(c)
 	funcOnly.GCTypeDescs = []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc}}
 	in, err = Instantiate(&funcOnly, InstantiateOptions{})
 	if err != nil {
@@ -641,6 +655,7 @@ func TestInstantiateGCCollectorLifecycle(t *testing.T) {
 	}
 	in.Close()
 
+	c = mutableCompiledFixture(c)
 	c.GCTypeDescs = representativeGCTypeDescs(t)
 	in, err = Instantiate(c, InstantiateOptions{})
 	if err != nil {
@@ -657,6 +672,7 @@ func TestInstantiateWithOptionsGCConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c = mutableCompiledFixture(c)
 	c.GCTypeDescs = representativeGCTypeDescs(t)
 	in, err := Instantiate(c, InstantiateOptions{GC: gc.Config{Profile: gc.ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}})
 	if err != nil {
@@ -670,7 +686,7 @@ func TestInstantiateWithOptionsGCConfig(t *testing.T) {
 	}
 	in.Close()
 
-	funcOnly := *c
+	funcOnly := *mutableCompiledFixture(c)
 	funcOnly.GCTypeDescs = []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc}}
 	in, err = Instantiate(&funcOnly, InstantiateOptions{GC: gc.Config{Profile: gc.ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}})
 	if err != nil {

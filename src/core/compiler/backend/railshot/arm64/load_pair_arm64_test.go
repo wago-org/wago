@@ -102,7 +102,7 @@ func BenchmarkLoadPairArm64(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer coreruntime.Unmap(code)
-			args, results, trap := arena.Alloc(8), arena.Alloc(8), arena.Alloc(8)
+			args, results, trap := arena.Alloc(8), arena.Alloc(8), arena.Alloc(coreruntime.TrapBufferBytes)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
@@ -142,6 +142,7 @@ func BenchmarkCompileLoadPairArm64(b *testing.B) {
 }
 
 func TestLoadPairFiresAndNearMissesArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	var stats ModuleStats
 	paired, err := CompileModuleWith(loadPairModuleARM64(t, 4), CompileOptions{Stats: &stats, Optimizations: map[string]bool{"load-pair": true}})
 	if err != nil {

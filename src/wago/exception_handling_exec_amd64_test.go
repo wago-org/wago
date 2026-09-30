@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func stagedExceptionHandlingModule() []byte {
@@ -22,7 +22,7 @@ func stagedExceptionHandlingModule() []byte {
 		0x1f, 0x40, 0x01, 0x00, 0x00, 0x00, // try_table void, catch tag 0 -> label 0
 		0x20, 0x02, 0x04, 0x40, 0x00, 0x0b, // if control != 0: unreachable
 		0x20, 0x00, 0x20, 0x01, 0x10, 0x00, 0x00, // nested call thrower; unreachable if it returns
-		0x0b,                   // end try_table
+		0x0b, 0x00, // end try_table; normal continuation is unreachable
 		0x0b,                   // end payload block
 		0x21, 0x01, 0x21, 0x00, // preserve payload order in params 0/1
 		0x20, 0x00, 0x41, 0x0a, 0x6c, 0x20, 0x01, 0x6a,
@@ -221,7 +221,7 @@ func compileStagedExceptionHandling(t testing.TB, data []byte) *Compiled {
 
 func compileStagedExceptionHandlingFeatures(t testing.TB, data []byte, exceptionReferences bool) *Compiled {
 	t.Helper()
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.ExceptionHandling = true
 	features.ExceptionReferences = exceptionReferences
@@ -235,10 +235,13 @@ func compileStagedExceptionHandlingFeatures(t testing.TB, data []byte, exception
 
 func TestStagedExceptionHandlingLocalScalarExecution(t *testing.T) {
 	data := stagedExceptionHandlingModule()
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "exception-handling") {
-		t.Fatalf("public compile = %v, want closed exception-handling gate", err)
+	if _, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2), data); err == nil || !strings.Contains(err.Error(), "exception-handling") {
+		t.Fatalf("Core 2 compile = %v, want closed exception-handling gate", err)
 	}
-	c := compileStagedExceptionHandling(t, data)
+	c, err := Compile(NewRuntimeConfig(), data)
+	if err != nil {
+		t.Fatalf("default Core 3 compile: %v", err)
+	}
 	defer c.Close()
 	if !c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) {
 		t.Fatal("compiled module lost exception-handling required feature")
@@ -377,7 +380,7 @@ func TestStagedExceptionHandlingRootedReferenceNestedCallAndNullTrap(t *testing.
 }
 
 func compileStagedExceptionHandlingFeaturesForTest(data []byte, exceptionReferences bool) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.ExceptionHandling = true
 	features.ExceptionReferences = exceptionReferences
@@ -453,6 +456,49 @@ func BenchmarkStagedExceptionHandlingCatch(b *testing.B) {
 		got, err := in.Invoke("catch", I32(4), I32(2), I32(0))
 		if err != nil || len(got) != 1 || uint32(got[0]) != 42 {
 			b.Fatalf("result=%v err=%v", got, err)
+		}
+	}
+}
+
+func BenchmarkStagedExceptionHandlingCompile(b *testing.B) {
+	data := stagedExceptionHandlingGeneralModule()
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		compiled := compileStagedExceptionHandling(b, data)
+		if err := compiled.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkGCFrameRootPlanSparseExceptionRoots(b *testing.B) {
+	indexedFuncParam := []byte{0x60, 0x01, 0x64, 0x00, 0x00} // (func (param (ref 0)))
+	body := []byte{0x02, 0x40, 0x1f, 0x40, 0x01, byte(wasm.CatchRef), 0x00, 0x00, 0x01, 0x0b, 0x0b, 0x0b}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), indexedFuncParam)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x00})),
+		wasmtest.Section(13, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code([]byte{0x0b}))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+	const functions = 1024
+	funcType, code := m.FuncTypes[len(m.FuncTypes)-1], m.Code[len(m.Code)-1]
+	for len(m.Code) < functions {
+		m.FuncTypes = append(m.FuncTypes, funcType)
+		m.Code = append(m.Code, code)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		var diagnostic string
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, &diagnostic, nil)
+		if gcFrameRootPlanSink == nil || diagnostic != "" {
+			b.Fatalf("exact root plan = %+v, diagnostic = %q", gcFrameRootPlanSink, diagnostic)
 		}
 	}
 }

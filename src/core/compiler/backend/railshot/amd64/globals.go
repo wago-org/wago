@@ -49,8 +49,10 @@ func (f *fn) invalidateGlobalsCache() {
 // is value-pinned (a hot mutable int global in a call-free function). See
 // assignPinnedLocals / loadPinnedGlobals / storePinnedGlobals.
 func (f *fn) pinnedGlobalValueReg(x uint32) (Reg, bool) {
-	if int(x) < len(f.globalReg) && f.globalReg[x] != regNone {
-		return f.globalReg[x], true
+	if int(x) < len(f.globalReg) {
+		if reg := globalRegValue(f.globalReg[x]); reg != regNone {
+			return reg, true
+		}
 	}
 	return regNone, false
 }
@@ -60,7 +62,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	gt, ok := f.m.GlobalTypeByIndex(x)
+	gt, ok := f.globalType(x)
 	if !ok {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
@@ -74,7 +76,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		if wasm.EqualValType(gtv, wasm.I64) {
 			typ = mtI64
 		}
-		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, idx: int(x)})
+		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, idx: x})
 		return nil
 	}
 	cell := f.globalCellPtr(x) // cached, pinned — read the value into a separate reg
@@ -94,7 +96,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		f.pushFReg(xmm, mtOf2(f64))
 	case wasm.EqualValType(gtv, wasm.V128):
 		xmm := f.allocFReg(0)
-		f.a.VMovdquLoadDisp(xmm, cell, 0)
+		f.mov128LoadDisp(xmm, cell, 0)
 		f.pushVReg(xmm)
 	default:
 		return fmt.Errorf("amd64: global.get type %s not yet supported (global %d)", gtv, x)
@@ -116,9 +118,9 @@ func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
 		}
 		next := e.next
 		switch {
-		case e.kind == ekValue && e.st.kind == stGlobReg && uint32(e.st.idx) == x:
+		case e.isValue() && e.st.kind == stGlobReg && e.st.idx == x:
 			f.materialize(e)
-		case e.kind == ekDeferred && subtreeRefsGlobal(e, x):
+		case e.isDeferred() && subtreeRefsGlobal(e, x):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -131,10 +133,10 @@ func subtreeRefsGlobal(e *elem, x uint32) bool {
 	if e == nil {
 		return false
 	}
-	if e.kind == ekValue {
-		return e.st.kind == stGlobReg && uint32(e.st.idx) == x
+	if e.isValue() {
+		return e.st.kind == stGlobReg && e.st.idx == x
 	}
-	if e.kind == ekDeferred {
+	if e.isDeferred() {
 		return subtreeRefsGlobal(e.arg0, x) || subtreeRefsGlobal(e.arg1, x)
 	}
 	return false
@@ -146,7 +148,7 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		return err
 	}
 	f.invalidateBoundsCertFor(2, x)
-	gt, ok := f.m.GlobalTypeByIndex(x)
+	gt, ok := f.globalType(x)
 	if !ok {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
@@ -155,7 +157,7 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		xmm := f.materializeV128(f.popValue())
 		f.fpinned = f.fpinned.add(xmm)
 		cell := f.globalCellPtr(x) // cached, pinned
-		f.a.VMovdquStoreDisp(cell, 0, xmm)
+		f.mov128StoreDisp(cell, 0, xmm)
 		f.fpinned = f.fpinned.remove(xmm)
 		f.releaseF(xmm)
 		return nil
@@ -179,14 +181,14 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		// condenseInto consume the top expression straight into x's register instead
 		// of pre-copying its (global.get $x) operand (mirrors setLocal's skipFrom).
 		var skipFrom *elem
-		if e != nil && e.isDeferred() && isBinALU(e.op) {
+		if e != nil && e.isDeferred() && isBinALU(e.deferredOp()) {
 			skipFrom = baseOfValentBlock(e)
 		}
 		f.realizeGlobalRefs(x, skipFrom)
 		f.condenseInto(e, reg)
 		f.release(reg)
 		f.erase(e)
-		f.globalDirty[x] = true
+		f.globalReg[x] |= globalRegDirty
 		return nil
 	}
 	rg := f.materialize(f.popValue())

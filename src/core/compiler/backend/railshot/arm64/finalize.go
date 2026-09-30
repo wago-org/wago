@@ -83,8 +83,8 @@ const (
 )
 
 type finalizerFragment struct {
-	start int
-	end   int
+	start uint32
+	end   uint32
 	kind  finalizerFragmentKind
 }
 
@@ -94,10 +94,10 @@ type finalizerFragmentCursor struct {
 }
 
 func (c *finalizerFragmentCursor) at(pc int) (finalizerFragment, bool) {
-	for c.index < len(c.fragments) && pc >= c.fragments[c.index].end {
+	for c.index < len(c.fragments) && pc >= int(c.fragments[c.index].end) {
 		c.index++
 	}
-	if c.index == len(c.fragments) || pc < c.fragments[c.index].start {
+	if c.index == len(c.fragments) || pc < int(c.fragments[c.index].start) {
 		return finalizerFragment{}, false
 	}
 	return c.fragments[c.index], true
@@ -116,14 +116,14 @@ func decodeFinalizerMarker(key int) (off int, marker finalizerMarker, ok bool) {
 }
 
 func (f *fn) recordFinalizerMarker(off int, marker finalizerMarker) {
-	if !nativeFinalizerEnabled {
+	if !nativeFinalizerEnabled || !nativeFinalizerValidate {
 		return
 	}
 	sc := f.scratchState()
-	if sc.branchTargets == nil {
-		sc.branchTargets = make(map[int]bool, 16)
+	if sc.finalizerMarkers == nil {
+		sc.finalizerMarkers = make(map[int]bool, 16)
 	}
-	sc.branchTargets[finalizerMarkerKey(off, marker)] = true
+	sc.finalizerMarkers[finalizerMarkerKey(off, marker)] = true
 }
 
 func (f *fn) recordJumpTableData(start, end int) {
@@ -156,10 +156,17 @@ func (f *fn) recordFinalizerFragment(start, end int, kind finalizerFragmentKind)
 		return
 	}
 	sc := f.scratchState()
-	sc.finalFragments = append(sc.finalFragments, finalizerFragment{start: start, end: end, kind: kind})
+	if start < 0 || uint64(end) > uint64(^uint32(0)) {
+		sc.fragmentOverflow = true
+		return
+	}
+	sc.finalFragments = append(sc.finalFragments, finalizerFragment{start: uint32(start), end: uint32(end), kind: kind})
 }
 
 func (f *fn) recordPCRelative(off int) {
+	if nativeFinalizerEnabled {
+		f.scratchState().hasPCRelative = true
+	}
 	f.recordFinalizerMarker(off, markerPCRelative)
 }
 
@@ -216,8 +223,16 @@ func loopCompactionLimitArm64(policy CodegenPolicy) int {
 }
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
+	// Mandatory branch patches also occur after body lowering, in return, trap,
+	// and adapter code. Reject failures before any optional finalization path.
+	if f.representationLimit != functionRepresentationOK {
+		return 0, f.representationError()
+	}
 	if !nativeFinalizerEnabled {
 		return internalOff, nil
+	}
+	if f.scratchState().fragmentOverflow {
+		return 0, fmt.Errorf("arm64 finalizer: fragment offset exceeds 32-bit function domain")
 	}
 	if nativeFinalizerValidate {
 		if err := f.validateFinalizerInventory(internalOff); err != nil {
@@ -252,6 +267,23 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		}
 	}
 	f.a.B = code
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		sites, err := shared.RemapNativeCodeSites(f.stats.CodeSites, offsets)
+		if err != nil {
+			return 0, err
+		}
+		f.stats.CodeSites = sites
+		mapped, err := shared.RemapNativeSources(f.stats.SourceRanges, offsets)
+		if err != nil {
+			return 0, err
+		}
+		f.stats.SourceRanges = mapped
+		start, _, ok := offsets.MapRange(internalOff, internalOff)
+		if !ok {
+			return 0, fmt.Errorf("invalid profile internal entry")
+		}
+		f.stats.SourceInternalOffset = start
+	}
 
 	mappedInternal, err := mapFinalOffset(offsets, internalOff, len(code), "internal entry")
 	if err != nil {
@@ -259,11 +291,14 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	}
 	internalOff = mappedInternal
 	for i := range f.relocs {
-		mapped, err := mapFinalOffset(offsets, f.relocs[i].at, len(code), "call relocation")
+		mapped, err := mapFinalOffset(offsets, int(f.relocs[i].at), len(code), "call relocation")
 		if err != nil {
 			return 0, err
 		}
-		f.relocs[i].at = mapped
+		if uint64(mapped) >= uint64(invalidCallRelocField) {
+			return 0, fmt.Errorf("arm64 finalizer: call relocation offset %#x exceeds compact domain", mapped)
+		}
+		f.relocs[i].at = uint32(mapped)
 	}
 	if f.adapterReturnOff != 0 {
 		mapped, err := mapFinalOffset(offsets, f.adapterReturnOff, len(code), "adapter return")
@@ -291,12 +326,20 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 			}
 			plan.AdapterReturnOffset = uint32(mapped)
 		}
-		for i := range plan.Callsites {
-			mapped, err := mapFinalOffset(offsets, int(plan.Callsites[i].ReturnOffset), len(code), "GC call return")
-			if err != nil {
-				return 0, err
+		var callsiteErr error
+		if !plan.VisitCallsites(func(_ int, callsite shared.GCFrameCallsite) bool {
+			var mapped int
+			mapped, callsiteErr = mapFinalOffset(offsets, int(callsite.ReturnOffset()), len(code), "GC call return")
+			if callsiteErr != nil {
+				return false
 			}
-			plan.Callsites[i].ReturnOffset = uint32(mapped)
+			callsite.SetReturnOffset(uint32(mapped))
+			return true
+		}) {
+			if callsiteErr != nil {
+				return 0, callsiteErr
+			}
+			return 0, fmt.Errorf("arm64: malformed GC callsite stream")
 		}
 	}
 	if len(code) != oldLen {
@@ -328,12 +371,8 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 		return true
 	}
 	sc := f.scratchState()
-	for key := range sc.branchTargets {
-		_, marker, ok := decodeFinalizerMarker(key)
-		if !ok {
-			continue
-		}
-		if marker == markerPluginStart || marker == markerPluginEnd {
+	for _, fragment := range sc.finalFragments {
+		if fragment.kind == fragmentPlugin {
 			return f.rejectCompaction("plugin-fragment")
 		}
 	}
@@ -469,7 +508,7 @@ func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.Del
 		if inFragment && fragment.kind == fragmentOpaqueData {
 			// Compact target-ID bytes are data, not instructions or relocations.
 		} else if inFragment && fragment.kind == fragmentJumpData {
-			word, err = remapJumpTableWord(word, fragment.start, offsets)
+			word, err = remapJumpTableWord(word, int(fragment.start), offsets)
 		} else if isPCRelativeWord(word) {
 			word, err = remapPCRelativeWord(word, src, dst, offsets)
 		}
@@ -489,22 +528,15 @@ func (f *fn) compactionNeedsReencode() bool {
 	if len(f.relocs) != 0 {
 		return true
 	}
-	for key := range f.scratchState().branchTargets {
-		if key >= 0 {
-			return true
-		}
-		_, marker, ok := decodeFinalizerMarker(key)
-		if ok && (marker == markerJumpDataStart || marker == markerJumpDataEnd || marker == markerOpaqueDataStart || marker == markerOpaqueDataEnd || marker == markerPCRelative) {
-			return true
-		}
-	}
-	return false
+	sc := f.scratchState()
+	return sc.hasBranchTargets || sc.hasPCRelative || len(sc.finalFragments) != 0
 }
 
 func isPCRelativeWord(word uint32) bool {
 	return word&0xFC000000 == 0x14000000 || word&0xFC000000 == 0x94000000 ||
 		word&0xFF000010 == 0x54000000 || word&0x7E000000 == 0x34000000 ||
-		word&0x7E000000 == 0x36000000 || word&0x9F000000 == 0x10000000
+		word&0x7E000000 == 0x36000000 || word&0x9F000000 == 0x10000000 ||
+		word&0x3B000000 == 0x18000000
 }
 
 func remapJumpTableWord(word uint32, oldBase int, offsets *shared.OffsetMap) (uint32, error) {
@@ -522,6 +554,21 @@ func remapJumpTableWord(word uint32, oldBase int, offsets *shared.OffsetMap) (ui
 }
 
 func remapPCRelativeWord(word uint32, oldPC, newPC int, offsets *shared.OffsetMap) (uint32, error) {
+	if oldTarget, literal := literalTarget(oldPC, word); literal {
+		newTarget, ok := offsets.Map(oldTarget)
+		if !ok {
+			return 0, fmt.Errorf("arm64 finalizer: literal load at %d targets deleted offset %d", oldPC, oldTarget)
+		}
+		delta := newTarget - newPC
+		if delta&3 != 0 {
+			return 0, fmt.Errorf("arm64 finalizer: unaligned literal delta %d at %d", delta, oldPC)
+		}
+		d := delta / 4
+		if d < -(1<<18) || d >= 1<<18 {
+			return 0, fmt.Errorf("arm64 finalizer: literal load at %d exceeds range", oldPC)
+		}
+		return word&^(0x7FFFF<<5) | (uint32(d)&0x7FFFF)<<5, nil
+	}
 	oldTarget, branch := branchTarget(oldPC, word)
 	if branch {
 		newTarget, ok := offsets.Map(oldTarget)
@@ -567,8 +614,15 @@ func remapPCRelativeWord(word uint32, oldPC, newPC int, offsets *shared.OffsetMa
 	return word, nil
 }
 
+func literalTarget(pc int, word uint32) (int, bool) {
+	if word&0x3B000000 != 0x18000000 {
+		return 0, false
+	}
+	return pc + imm19(word)*4, true
+}
+
 func (f *fn) remapNativeSizeStats(offsets *shared.OffsetMap, newInternalOff, frameDeleted int) {
-	if f.stats == nil {
+	if !diagnosticsEnabled || f.stats == nil {
 		return
 	}
 	s := &f.stats.NativeSize
@@ -614,7 +668,7 @@ func (f *fn) validateFinalizerInventory(internalOff int) error {
 		return fmt.Errorf("arm64 identity finalizer: %w", err)
 	}
 	var jumpStarts, jumpEnds, pluginStarts, pluginEnds, dataStarts, dataEnds int
-	for encoded := range sc.branchTargets {
+	for encoded := range sc.finalizerMarkers {
 		off, marker, ok := decodeFinalizerMarker(encoded)
 		if !ok {
 			continue
@@ -661,7 +715,7 @@ func (f *fn) validateFinalizerInventory(internalOff int) error {
 }
 
 func (f *fn) validatePCRelativeInventory() error {
-	markers := f.scratchState().branchTargets
+	markers := f.scratchState().finalizerMarkers
 	opaque := false
 	for pc := 0; pc+4 <= len(f.a.B); pc += 4 {
 		if finalizerOpaqueAt(markers, pc, &opaque) {
@@ -672,10 +726,16 @@ func (f *fn) validatePCRelativeInventory() error {
 		if !ok {
 			target, ok = adrTarget(pc, word)
 		}
+		if !ok {
+			target, ok = literalTarget(pc, word)
+		}
 		if ok && (target < 0 || target > len(f.a.B) || target&3 != 0) {
 			return fmt.Errorf("arm64 identity finalizer: PC-relative reference at %d targets %d outside %d-byte function", pc, target, len(f.a.B))
 		}
 	}
+	// A trailing opaque data fragment ends at len(code), which is a valid marker
+	// position but not an instruction offset visited by the loop above.
+	finalizerOpaqueAt(markers, len(f.a.B), &opaque)
 	if opaque {
 		return fmt.Errorf("arm64 identity finalizer: unterminated opaque fragment")
 	}

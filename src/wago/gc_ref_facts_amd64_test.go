@@ -3,15 +3,11 @@
 package wago
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestGCBoundedLoadForwardingExecutes(t *testing.T) {
@@ -580,9 +576,9 @@ func TestGCDirectScalarArrayCanonicalizesDirtyHostI32Index(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.idx": HostFunc(func(_ HostModule, _, results []uint64) {
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.idx", slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = 0xffff_ffff_0000_0000
-	})}})
+	}))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -952,75 +948,9 @@ func gcFactDifferentialModules() []struct {
 	}
 }
 
-func TestGCRefFactsSemanticDifferential(t *testing.T) {
-	const childEnv = "WAGO_GC_FACT_DIFFERENTIAL_CHILD"
-	const prefix = "GC_FACT_DIFFERENTIAL="
-	if os.Getenv(childEnv) == "1" {
-		out := make([]gcFactDifferentialOutcome, 0, len(gcFactDifferentialModules()))
-		for _, tc := range gcFactDifferentialModules() {
-			out = append(out, runGCRefFactDifferentialModule(t, tc.name, tc.data, tc.args...))
-		}
-		data, err := json.Marshal(out)
-		if err != nil {
-			t.Fatal(err)
-		}
-		fmt.Println(prefix + string(data))
-		return
-	}
-
-	run := func(envOverride string) []gcFactDifferentialOutcome {
-		t.Helper()
-		cmd := exec.Command(os.Args[0], "-test.run=^TestGCRefFactsSemanticDifferential$", "-test.count=1")
-		env := make([]string, 0, len(os.Environ())+2)
-		for _, entry := range os.Environ() {
-			if strings.HasPrefix(entry, "WAGO_AMD64_NO_GC_REF_FACTS=") ||
-				strings.HasPrefix(entry, "WAGO_AMD64_NO_EXACT_GC_REF_FACTS=") ||
-				strings.HasPrefix(entry, "WAGO_AMD64_NO_GC_LOAD_FORWARDING=") ||
-				strings.HasPrefix(entry, "WAGO_LOOP_PRECHECK=") ||
-				strings.HasPrefix(entry, childEnv+"=") {
-				continue
-			}
-			env = append(env, entry)
-		}
-		env = append(env, childEnv+"=1")
-		if envOverride != "" {
-			env = append(env, envOverride)
-		}
-		cmd.Env = env
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("differential child %q: %v\n%s", envOverride, err, output)
-		}
-		for _, line := range strings.Split(string(output), "\n") {
-			if !strings.HasPrefix(line, prefix) {
-				continue
-			}
-			var out []gcFactDifferentialOutcome
-			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, prefix)), &out); err != nil {
-				t.Fatalf("decode differential child %q: %v", envOverride, err)
-			}
-			return out
-		}
-		t.Fatalf("differential child %q produced no oracle:\n%s", envOverride, output)
-		return nil
-	}
-
-	for _, knob := range []struct {
-		name     string
-		enabled  string
-		disabled string
-	}{
-		{name: "GC facts", enabled: "WAGO_AMD64_NO_GC_REF_FACTS=0", disabled: "WAGO_AMD64_NO_GC_REF_FACTS=1"},
-		{name: "GC facts compatibility alias", enabled: "WAGO_AMD64_NO_EXACT_GC_REF_FACTS=0", disabled: "WAGO_AMD64_NO_EXACT_GC_REF_FACTS=1"},
-		{name: "GC load forwarding", enabled: "WAGO_AMD64_NO_GC_LOAD_FORWARDING=0", disabled: "WAGO_AMD64_NO_GC_LOAD_FORWARDING=1"},
-		{name: "loop precheck", enabled: "WAGO_LOOP_PRECHECK=1", disabled: "WAGO_LOOP_PRECHECK=0"},
-	} {
-		on, off := run(knob.enabled), run(knob.disabled)
-		onJSON, _ := json.Marshal(on)
-		offJSON, _ := json.Marshal(off)
-		if string(onJSON) != string(offJSON) {
-			t.Fatalf("%s semantic mismatch:\non:  %s\noff: %s", knob.name, onJSON, offJSON)
-		}
+func TestGCRetiredFactCorpusExecutesCanonicalLowering(t *testing.T) {
+	for _, tc := range gcFactDifferentialModules() {
+		runGCRefFactDifferentialModule(t, tc.name, tc.data, tc.args...)
 	}
 }
 

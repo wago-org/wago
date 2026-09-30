@@ -2,10 +2,12 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"math/bits"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -13,7 +15,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // referenceStore owns public reference tokens. Runtime-created instances share
@@ -36,8 +38,170 @@ type referenceStore struct {
 	gcByToken     map[uint64]gcRefTokenEntry
 	externKey     uint64
 	externSeed    uint32
+	externFree    uint32
 	externrefs    []externrefSlot
 	gcDomains     *gcDomainTopology
+}
+
+const gcFrameCodeRangePageShift = 12
+
+type gcFrameCodeRangeKey struct {
+	collector *gc.Collector
+	compiled  *Compiled
+	base      uintptr
+}
+
+type gcFrameCodeRange struct {
+	key    gcFrameCodeRangeKey
+	owner  *Instance
+	bytes  uintptr
+	owners *gcFrameCodeOwnerLink
+}
+
+// gcFrameCodeOwnerLink tracks one instance sharing a compiled code image, so
+// changing the representative owner never scans every live instance.
+type gcFrameCodeOwnerLink struct {
+	instance *Instance
+	image    *gcFrameCodeRange
+	prev     *gcFrameCodeOwnerLink
+	next     *gcFrameCodeOwnerLink
+}
+
+type gcCollectorCodeRanges struct {
+	byImage map[gcFrameCodeRangeKey]*gcFrameCodeRange
+	byPage  map[uintptr][]*gcFrameCodeRange
+}
+
+type gcFrameCodeRangeIndex struct {
+	byCollector map[*gc.Collector]*gcCollectorCodeRanges
+	byInstance  map[*Instance]*gcFrameCodeOwnerLink
+}
+
+func (s *referenceStore) registerGCFrameCodeRangeLocked(in *Instance) {
+	if s == nil || in == nil || in.gc == nil || in.c == nil || in.base == 0 || in.c.genericGCFrameRoots() == nil || len(in.c.code) == 0 {
+		return
+	}
+	bytes := uintptr(len(in.c.code))
+	if in.base > ^uintptr(0)-bytes {
+		return
+	}
+	if s.gcDomains == nil {
+		s.gcDomains = new(gcDomainTopology)
+	}
+	if s.gcDomains.codeRanges == nil {
+		// A single GC code owner needs no hash tables or ownership links. This
+		// is the common first-instantiation case; promote when a second arrives.
+		first := s.gcDomains.singleCodeOwner
+		if first == nil || first == in {
+			s.gcDomains.singleCodeOwner = in
+			return
+		}
+		s.gcDomains.singleCodeOwner = nil
+		s.gcDomains.codeRanges = &gcFrameCodeRangeIndex{
+			byCollector: make(map[*gc.Collector]*gcCollectorCodeRanges),
+		}
+		s.registerGCFrameCodeRangeLocked(first)
+	}
+	if s.gcDomains.codeRanges.byInstance == nil {
+		s.gcDomains.codeRanges.byInstance = make(map[*Instance]*gcFrameCodeOwnerLink)
+	}
+	if s.gcDomains.codeRanges.byInstance[in] != nil {
+		return
+	}
+	link := &gcFrameCodeOwnerLink{instance: in}
+	s.gcDomains.codeRanges.byInstance[in] = link
+	collector := s.gcDomains.codeRanges.byCollector[in.gc]
+	if collector == nil {
+		collector = &gcCollectorCodeRanges{byImage: make(map[gcFrameCodeRangeKey]*gcFrameCodeRange), byPage: make(map[uintptr][]*gcFrameCodeRange)}
+		s.gcDomains.codeRanges.byCollector[in.gc] = collector
+	}
+	key := gcFrameCodeRangeKey{collector: in.gc, compiled: in.c, base: in.base}
+	if image := collector.byImage[key]; image != nil {
+		link.instance, link.image, link.next = in, image, image.owners
+		if image.owners != nil {
+			image.owners.prev = link
+		}
+		image.owners, image.owner = link, in
+		return
+	}
+	image := &gcFrameCodeRange{key: key, owner: in, bytes: bytes}
+	link.instance, link.image = in, image
+	image.owners = link
+	collector.byImage[key] = image
+	firstPage, lastPage := in.base>>gcFrameCodeRangePageShift, (in.base+bytes-1)>>gcFrameCodeRangePageShift
+	for page := firstPage; ; page++ {
+		collector.byPage[page] = append(collector.byPage[page], image)
+		if page == lastPage {
+			break
+		}
+	}
+}
+
+func (s *referenceStore) unregisterGCFrameCodeRangeLocked(in *Instance) {
+	if s == nil || s.gcDomains == nil || in == nil {
+		return
+	}
+	if s.gcDomains.singleCodeOwner == in {
+		s.gcDomains.singleCodeOwner = nil
+		return
+	}
+	if s.gcDomains.codeRanges == nil || in.gc == nil || in.c == nil || in.base == 0 {
+		return
+	}
+	collector := s.gcDomains.codeRanges.byCollector[in.gc]
+	if collector == nil {
+		return
+	}
+	key := gcFrameCodeRangeKey{collector: in.gc, compiled: in.c, base: in.base}
+	image := collector.byImage[key]
+	if image == nil {
+		return
+	}
+	link := s.gcDomains.codeRanges.byInstance[in]
+	if s.instances[in] == nil || link == nil || link.image != image {
+		return
+	}
+	if link.prev == nil {
+		image.owners = link.next
+	} else {
+		link.prev.next = link.next
+	}
+	if link.next != nil {
+		link.next.prev = link.prev
+	}
+	delete(s.gcDomains.codeRanges.byInstance, in)
+	image.owner = nil
+	if image.owners != nil {
+		image.owner = image.owners.instance
+		return
+	}
+	delete(collector.byImage, key)
+	firstPage, lastPage := in.base>>gcFrameCodeRangePageShift, (in.base+image.bytes-1)>>gcFrameCodeRangePageShift
+	for page := firstPage; ; page++ {
+		images := collector.byPage[page]
+		for i, candidate := range images {
+			if candidate == image {
+				images[i] = images[len(images)-1]
+				images[len(images)-1] = nil
+				images = images[:len(images)-1]
+				break
+			}
+		}
+		if len(images) == 0 {
+			delete(collector.byPage, page)
+		} else {
+			collector.byPage[page] = images
+		}
+		if page == lastPage {
+			break
+		}
+	}
+	if len(collector.byImage) == 0 {
+		delete(s.gcDomains.codeRanges.byCollector, in.gc)
+	}
+	if len(s.gcDomains.codeRanges.byCollector) == 0 && len(s.gcDomains.codeRanges.byInstance) == 0 {
+		s.gcDomains.codeRanges = nil
+	}
 }
 
 // gcDomainTopology keeps the globally ordered Runtime GC-domain list stable
@@ -46,14 +210,102 @@ type referenceStore struct {
 // lease together with collector leases, allowing instantiation and teardown to
 // update the list before native resume.
 type gcDomainTopology struct {
-	sync.RWMutex
-	first *gcStoreDomain
-	last  *gcStoreDomain
-	n     int
+	gcTopologyGate
+	first           *gcStoreDomain
+	last            *gcStoreDomain
+	n               int
+	byCollector     map[*gc.Collector]*gcStoreDomain
+	codeRanges      *gcFrameCodeRangeIndex
+	singleCodeOwner *Instance
 
 	funcrefMu       sync.Mutex
 	funcrefGCActive bool
 	funcrefTables   map[*Table]uint32
+}
+
+const gcCollectorIndexThreshold = 4
+
+// domainForCollectorLocked uses the side index for exact collector lookups.
+// The linked-list fallback keeps test-built and legacy zero-value topologies
+// valid; production mutations maintain byCollector together with the list.
+// Callers hold the owning referenceStore.mu.
+func (topology *gcDomainTopology) domainForCollectorLocked(collector *gc.Collector) *gcStoreDomain {
+	if topology == nil || collector == nil {
+		return nil
+	}
+	if topology.byCollector == nil {
+		for domain := topology.first; domain != nil; domain = domain.next {
+			if domain.collector == collector {
+				return domain
+			}
+		}
+		return nil
+	}
+	if domain := topology.byCollector[collector]; domain != nil {
+		return domain
+	}
+	for domain := topology.first; domain != nil; domain = domain.next {
+		if domain.collector == collector {
+			return domain
+		}
+	}
+	return nil
+}
+
+// appendDomainLocked and unlinkDomainLocked preserve global acquisition order
+// while keeping exact collector lookup and removal constant-time. Callers hold
+// the owning referenceStore.mu and the topology write gate when required.
+func (topology *gcDomainTopology) appendDomainLocked(domain *gcStoreDomain) {
+	if topology.byCollector == nil && topology.n >= gcCollectorIndexThreshold {
+		topology.byCollector = make(map[*gc.Collector]*gcStoreDomain, topology.n+1)
+		for existing := topology.first; existing != nil; existing = existing.next {
+			topology.byCollector[existing.collector] = existing
+		}
+	}
+	if topology.last == nil {
+		topology.first = domain
+	} else {
+		topology.last.next = domain
+	}
+	domain.prev, domain.next = topology.last, nil
+	topology.last = domain
+	if topology.byCollector != nil {
+		topology.byCollector[domain.collector] = domain
+	}
+	topology.n++
+}
+
+func (topology *gcDomainTopology) unlinkDomainLocked(domain *gcStoreDomain) bool {
+	if topology == nil || domain == nil {
+		return false
+	}
+	if topology.byCollector != nil && topology.byCollector[domain.collector] != domain {
+		return false
+	}
+	if domain.prev == nil && topology.first != domain || domain.prev != nil && domain.prev.next != domain {
+		return false
+	}
+	if domain.next == nil && topology.last != domain || domain.next != nil && domain.next.prev != domain {
+		return false
+	}
+	if domain.prev == nil {
+		topology.first = domain.next
+	} else {
+		domain.prev.next = domain.next
+	}
+	if domain.next == nil {
+		topology.last = domain.prev
+	} else {
+		domain.next.prev = domain.prev
+	}
+	if topology.byCollector[domain.collector] == domain {
+		delete(topology.byCollector, domain.collector)
+	}
+	domain.prev, domain.next = nil, nil
+	if topology.n > 0 {
+		topology.n--
+	}
+	return true
 }
 
 // gcStoreDomain gives Runtime-owned WasmGC instances one compact-reference
@@ -66,7 +318,7 @@ type gcStoreDomain struct {
 	// and helper locks alone leave a window where another tenant can collect an
 	// as-yet-unrooted result from this shared collector. Arbitrary host callbacks
 	// suspend this lease while exact parked roots remain published.
-	invocationMu    sync.Mutex
+	invocationMu    invocationGate
 	invocationState sync.Mutex
 	invocationOwner invocationID
 	id              uint64
@@ -109,6 +361,7 @@ type gcInvocationDomainSet struct {
 	inline [inlineGCInvocationDomains]*gcStoreDomain
 	extra  []*gcStoreDomain
 	n      int
+	index  map[*gcStoreDomain]struct{}
 }
 
 func (s *gcInvocationDomainSet) len() int {
@@ -140,9 +393,15 @@ func (s *gcInvocationDomainSet) add(domain *gcStoreDomain) {
 	if domain == nil {
 		return
 	}
-	for i := 0; i < s.n; i++ {
-		if s.at(i) == domain {
+	if s.index != nil {
+		if _, ok := s.index[domain]; ok {
 			return
+		}
+	} else {
+		for i := 0; i < s.n; i++ {
+			if s.at(i) == domain {
+				return
+			}
 		}
 	}
 	if s.n < len(s.inline) {
@@ -151,18 +410,50 @@ func (s *gcInvocationDomainSet) add(domain *gcStoreDomain) {
 		s.extra = append(s.extra, domain)
 	}
 	s.n++
+	if s.index != nil {
+		s.index[domain] = struct{}{}
+	} else if s.n > inlineGCInvocationDomains*2 {
+		s.index = make(map[*gcStoreDomain]struct{}, s.n)
+		for i := 0; i < s.n; i++ {
+			s.index[s.at(i)] = struct{}{}
+		}
+	}
 }
 
 func (s *gcInvocationDomainSet) sort() {
-	for i := 1; i < s.n; i++ {
-		domain := s.at(i)
-		j := i
-		for j > 0 && s.at(j-1).id > domain.id {
-			s.set(j, s.at(j-1))
-			j--
-		}
-		s.set(j, domain)
+	if s == nil || s.n < 2 {
+		return
 	}
+	if s.n <= len(s.inline) {
+		// The inline set has at most four entries. Keep it on the caller's stack.
+		for i := 1; i < s.n; i++ {
+			value := s.inline[i]
+			j := i
+			for j > 0 && value.id < s.inline[j-1].id {
+				s.inline[j] = s.inline[j-1]
+				j--
+			}
+			s.inline[j] = value
+		}
+		return
+	}
+	*s = sortedGCInvocationDomainSet(*s)
+}
+
+// The sort interface retains only this copy. Empty and inline sets never escape.
+func sortedGCInvocationDomainSet(s gcInvocationDomainSet) gcInvocationDomainSet {
+	sort.Sort(gcInvocationDomainSetSorter{&s})
+	return s
+}
+
+type gcInvocationDomainSetSorter struct{ set *gcInvocationDomainSet }
+
+func (s gcInvocationDomainSetSorter) Len() int           { return s.set.n }
+func (s gcInvocationDomainSetSorter) Less(i, j int) bool { return s.set.at(i).id < s.set.at(j).id }
+func (s gcInvocationDomainSetSorter) Swap(i, j int) {
+	a, b := s.set.at(i), s.set.at(j)
+	s.set.set(i, b)
+	s.set.set(j, a)
 }
 
 type gcInvocationDomainView struct {
@@ -356,6 +647,8 @@ type structuralTypeRegistration struct {
 	refs      uint32
 }
 
+const maxStructuralCallIdentityRegistrationBytes = 16 << 20
+
 type funcrefIdentity struct {
 	descriptor uint64
 	instance   *Instance
@@ -372,7 +665,7 @@ type gcRefTokenEntry struct {
 	token      uint64
 	ref        gc.Ref
 	slot       uint32
-	ownerIndex uint8
+	ownerIndex uint32
 	exact      ValueTypeDescriptor // owner-local diagnostic identity
 	domainType gc.TypeID           // canonical collector-domain identity
 	owner      *Instance
@@ -381,6 +674,8 @@ type gcRefTokenEntry struct {
 const (
 	gcNativeFrameLayoutAMD64 uint8 = iota
 	gcNativeFrameLayoutARM64
+	gcNativeFrameLayoutMask      = 0x7f
+	gcNativeFrameSyncGlobalRoots = 0x80
 )
 
 type gcNativeFrameRoots struct {
@@ -415,13 +710,27 @@ func (r *gcNativeFrameRoots) RangeRootRefs(sink gc.RootRefSink) bool {
 	return r.walk(nil, sink)
 }
 
+func (r *gcNativeFrameRoots) syncGlobalsBeforeCollection() {
+	if r == nil || r.frameLayout&gcNativeFrameSyncGlobalRoots == 0 || r.owner == nil || r.suspended == nil {
+		return
+	}
+	if err := r.owner.syncGenericGCGlobalRootsLocked(r.suspended); err != nil {
+		panic(gcHelperFailure(err))
+	}
+	// Native execution remains parked for the complete allocation attempt. One
+	// synchronization therefore covers a minor collection, root rewrites, and a
+	// possible full-collection retry. The next helper republishes this flag.
+	r.frameLayout &^= gcNativeFrameSyncGlobalRoots
+}
+
 // RangeClassifiedRootRefs preserves exact runtime ownership for opt-in
-// collector telemetry without allocating composite RootSet values on helper
+// root traversal without allocating composite RootSet values on helper
 // paths.
 func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSink) bool {
 	if r == nil || sink == nil {
 		return true
 	}
+	r.syncGlobalsBeforeCollection()
 	if !r.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
 		return false
 	}
@@ -433,7 +742,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 				continue
 			}
 			if int(activation.callsite) >= len(state.hostRootPlan.callsites) {
-				panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation callsite %d is unavailable", activation.callsite)})
+				panic(gcHelperFailuref("generic GC host activation callsite %d is unavailable", activation.callsite))
 			}
 			callsite := &state.hostRootPlan.callsites[activation.callsite]
 			chain := gcNativeFrameRoots{
@@ -472,6 +781,7 @@ func (s classifiedRootSink) VisitRootRef(r gc.Ref) bool {
 }
 
 func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
+	r.syncGlobalsBeforeCollection()
 	if !r.rangeChain(fn, sink) {
 		return false
 	}
@@ -483,7 +793,7 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 				continue
 			}
 			if int(activation.callsite) >= len(state.hostRootPlan.callsites) {
-				panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation callsite %d is unavailable", activation.callsite)})
+				panic(gcHelperFailuref("generic GC host activation callsite %d is unavailable", activation.callsite))
 			}
 			callsite := &state.hostRootPlan.callsites[activation.callsite]
 			chain := gcNativeFrameRoots{
@@ -536,13 +846,13 @@ func (r *gcNativeTableRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 	header := unsafe.Slice((*byte)(offHeapPtr(r.desc)), 8)
 	length := uint64(binary.LittleEndian.Uint32(header))
 	if length > uint64((r.bytes-8)/8) {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC table length %d exceeds descriptor capacity", length)})
+		panic(gcHelperFailuref("generic GC table length %d exceeds descriptor capacity", length))
 	}
 	for i := uint64(0); i < length; i++ {
 		addr := r.desc + 8 + uintptr(i*8)
 		word := binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(addr)), 8))
 		if word != uint64(gc.Ref(uint32(word))) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC table root %d contains non-compact reference %#x", i, word)})
+			panic(gcHelperFailuref("generic GC table root %d contains non-compact reference %#x", i, word))
 		}
 		slot := (*gc.Root)(offHeapPtr(addr))
 		if sink != nil {
@@ -566,7 +876,7 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 		}
 		desc := in.tableDescriptor(tableIndex)
 		if len(desc) < 8 {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC table %d descriptor is unavailable", tableIndex)})
+			panic(gcHelperFailuref("generic GC table %d descriptor is unavailable", tableIndex))
 		}
 		roots := gcNativeTableRoots{desc: uintptr(unsafe.Pointer(&desc[0])), bytes: uintptr(len(desc))}
 		if !roots.walk(fn, sink) {
@@ -580,17 +890,17 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 			continue
 		}
 		if passiveBase == 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC passive element descriptor %d is unavailable", i)})
+			panic(gcHelperFailuref("generic GC passive element descriptor %d is unavailable", i))
 		}
 		descAddr := passiveBase + uintptr(i*coreruntime.PassiveElemDescBytes)
 		desc := unsafe.Slice((*byte)(offHeapPtr(descAddr)), coreruntime.PassiveElemDescBytes)
 		entries := uintptr(binary.LittleEndian.Uint64(desc))
 		length := uint64(binary.LittleEndian.Uint32(desc[8:]))
 		if length > uint64(len(elem.Values)) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC passive element %d length %d exceeds %d", i, length, len(elem.Values))})
+			panic(gcHelperFailuref("generic GC passive element %d length %d exceeds %d", i, length, len(elem.Values)))
 		}
 		if length != 0 && entries == 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC passive element %d entries are unavailable", i)})
+			panic(gcHelperFailuref("generic GC passive element %d entries are unavailable", i))
 		}
 		for j := uint64(0); j < length; j++ {
 			slot := (*gc.Root)(offHeapPtr(entries + uintptr(j*8)))
@@ -613,7 +923,7 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 	adapterReturnOffsets, callsites := r.adapterReturnOffsets, r.callsites
 	for depth := 0; ; depth++ {
 		if depth > 4096 {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC native frame chain exceeds 4096 frames")})
+			panic(gcHelperFailuref("generic GC native frame chain exceeds 4096 frames"))
 		}
 		for _, off := range offsets {
 			// gc.Ref is the low 32 bits of the validated little-endian native qword.
@@ -632,12 +942,12 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			return true
 		}
 		returnPCBias, callerFrameBias := uintptr(0), uintptr(abi.AMD64CallReturnAddressBytes)
-		if r.frameLayout == gcNativeFrameLayoutARM64 {
+		if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutARM64 {
 			returnPCBias = uintptr(shared.ARM64SavedLROffset)
 			callerFrameBias = uintptr(shared.ARM64FrameRecordBytes)
 		}
 		if base > ^uintptr(0)-uintptr(frameBytes)-returnPCBias {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC native frame address overflows")})
+			panic(gcHelperFailuref("generic GC native frame address overflows"))
 		}
 		retWord := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(frameBytes)+returnPCBias)), 8)
 		retPC := uintptr(binary.LittleEndian.Uint64(retWord))
@@ -650,7 +960,7 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 				if r.allowExternalReturn {
 					return true
 				}
-				panic(gcStructHelperError{err: fmt.Errorf("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC)})
+				panic(gcHelperFailuref("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC))
 			}
 			owner = foreign
 			plan := foreign.c.genericGCFrameRoots()
@@ -658,31 +968,40 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
 		}
 		rel := uint32(retPC - codeBase)
-		for _, adapterReturn := range adapterReturnOffsets {
-			if rel == adapterReturn {
-				return true
+		adapterIndex := 0
+		if len(adapterReturnOffsets) <= 8 {
+			for adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] < rel {
+				adapterIndex++
 			}
+		} else {
+			adapterIndex = sort.Search(len(adapterReturnOffsets), func(i int) bool { return adapterReturnOffsets[i] >= rel })
+		}
+		if adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] == rel {
+			return true
 		}
 		if base > ^uintptr(0)-uintptr(frameBytes)-callerFrameBias {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller frame address overflows")})
+			panic(gcHelperFailuref("generic GC caller frame address overflows"))
 		}
 		returnBase := base + uintptr(frameBytes) + callerFrameBias
-		found := false
-		var stackAdjust uint32
-		for i := range callsites {
-			if callsites[i].returnOffset == rel {
-				offsets = callsites[i].offsets
-				frameBytes = callsites[i].frameBytes
-				stackAdjust = callsites[i].stackAdjust
-				found = true
-				break
+		// Tiny sorted tables beat binary-search setup; larger tables retain
+		// logarithmic lookup. The measured crossover is between 8 and 16.
+		callsiteIndex := 0
+		if len(callsites) <= 8 {
+			for callsiteIndex < len(callsites) && callsites[callsiteIndex].returnOffset < rel {
+				callsiteIndex++
 			}
+		} else {
+			callsiteIndex = sort.Search(len(callsites), func(i int) bool { return callsites[i].returnOffset >= rel })
 		}
-		if !found {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC native return offset %d has no callsite map", rel)})
+		if callsiteIndex == len(callsites) || callsites[callsiteIndex].returnOffset != rel {
+			panic(gcHelperFailuref("generic GC native return offset %d has no callsite map", rel))
 		}
+		callsite := &callsites[callsiteIndex]
+		offsets = callsite.offsets
+		frameBytes = callsite.frameBytes
+		stackAdjust := callsite.stackAdjust
 		if returnBase > ^uintptr(0)-uintptr(stackAdjust) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC caller stack adjustment overflows")})
+			panic(gcHelperFailuref("generic GC caller stack adjustment overflows"))
 		}
 		base = returnBase + uintptr(stackAdjust)
 	}
@@ -691,23 +1010,28 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 const gcPublicSlotLimit = 64
 
 // gcPublicState serializes public-token, generic helper, and boundary-collection
-// access. Fixed result and argument slots bound host-held references while keeping
-// token egress and ingress allocation-free after first use.
+// access. The first 64 result and argument roots stay inline. Wider workloads use
+// reusable overflow slices; released result slots remain holes and are reused
+// without making stale opaque tokens valid again.
 type gcPublicState struct {
-	mu                sync.Mutex
-	resultTokenCount  uint8
-	resultRootsMade   uint8
-	resultTokens      [gcPublicSlotLimit]uint64
-	resultRootSlots   [gcPublicSlotLimit]uint32
-	argumentRootCount uint8
-	argumentRootsMade uint8
-	argumentRootSlots [gcPublicSlotLimit]uint32
-	cloneRootSlot     uint32
-	cloneRootMade     bool
+	mu                     sync.Mutex
+	resultTokenCount       uint32
+	resultRootsMade        uint32
+	resultTokens           [gcPublicSlotLimit]uint64
+	resultTokensExtra      []uint64
+	resultRootSlots        [gcPublicSlotLimit]uint32
+	resultRootSlotsExtra   []uint32
+	argumentRootCount      uint32
+	argumentRootsMade      uint32
+	argumentRootSlots      [gcPublicSlotLimit]uint32
+	argumentRootSlotsExtra []uint32
+	cloneRootSlot          uint32
+	cloneRootMade          bool
 	// values is the bounded synchronous-helper constructor scratch. Collector
 	// access is serialized by mu, so struct.new and array.new_fixed reuse it
 	// without per-allocation Go heap traffic.
 	values                [63]gc.Value
+	valuesExtra           []gc.Value
 	initializerRoots      gc.InitializerWordRootScratch
 	arrayInitializerRoots gc.ArrayInitializerRootScratch
 	frameRoots            gcNativeFrameRoots    // exact parked native-frame roots; reused under mu
@@ -725,10 +1049,92 @@ type gcPublicState struct {
 	hostCodeBytes         uintptr
 }
 
+func (s *gcPublicState) resultCapacity() uint32 {
+	return gcPublicSlotLimit + uint32(len(s.resultTokensExtra))
+}
+
+func (s *gcPublicState) resultToken(index uint32) uint64 {
+	if index < gcPublicSlotLimit {
+		return s.resultTokens[index]
+	}
+	return s.resultTokensExtra[index-gcPublicSlotLimit]
+}
+
+func (s *gcPublicState) setResultToken(index uint32, token uint64) {
+	if index < gcPublicSlotLimit {
+		s.resultTokens[index] = token
+		return
+	}
+	s.resultTokensExtra[index-gcPublicSlotLimit] = token
+}
+
+func (s *gcPublicState) resultRootSlot(index uint32) uint32 {
+	if index < gcPublicSlotLimit {
+		return s.resultRootSlots[index]
+	}
+	return s.resultRootSlotsExtra[index-gcPublicSlotLimit]
+}
+
+func (s *gcPublicState) appendResultRootSlot(slot uint32) uint32 {
+	index := s.resultRootsMade
+	if index < gcPublicSlotLimit {
+		s.resultRootSlots[index] = slot
+	} else {
+		s.resultRootSlotsExtra = append(s.resultRootSlotsExtra, slot)
+		s.resultTokensExtra = append(s.resultTokensExtra, 0)
+	}
+	s.resultRootsMade++
+	return index
+}
+
+func (s *gcPublicState) nextResultSlot() uint32 {
+	for index := uint32(0); index < s.resultRootsMade; index++ {
+		if s.resultToken(index) == 0 {
+			return index
+		}
+	}
+	return s.resultRootsMade
+}
+
+func (s *gcPublicState) constructorValues(count uint32) ([]gc.Value, error) {
+	if count <= uint32(len(s.values)) {
+		return s.values[:count], nil
+	}
+	if uint64(count) > uint64(maxInt()) {
+		return nil, fmt.Errorf("GC constructor value count %d overflows int", count)
+	}
+	if cap(s.valuesExtra) < int(count) {
+		s.valuesExtra = make([]gc.Value, count)
+	} else {
+		s.valuesExtra = s.valuesExtra[:count]
+		clear(s.valuesExtra)
+	}
+	return s.valuesExtra, nil
+}
+
+func (s *gcPublicState) argumentRootSlot(index uint32) uint32 {
+	if index < gcPublicSlotLimit {
+		return s.argumentRootSlots[index]
+	}
+	return s.argumentRootSlotsExtra[index-gcPublicSlotLimit]
+}
+
+func (s *gcPublicState) appendArgumentRootSlot(slot uint32) {
+	if s.argumentRootsMade < gcPublicSlotLimit {
+		s.argumentRootSlots[s.argumentRootsMade] = slot
+	} else {
+		s.argumentRootSlotsExtra = append(s.argumentRootSlotsExtra, slot)
+	}
+	s.argumentRootsMade++
+}
+
 type externrefSlot struct {
 	value      any
 	generation uint32
+	nextFree   uint32
 }
+
+const externrefInternalSlot = ^uint32(0)
 
 func newReferenceStore(private bool) *referenceStore {
 	return &referenceStore{private: private, runtimeClosed: private}
@@ -784,30 +1190,16 @@ func (s *referenceStore) ownsGCCollector(collector *gc.Collector) bool {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if topology := s.gcDomains; topology != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
-			if domain.collector == collector {
-				return true
-			}
-		}
-	}
-	return false
+	return s.gcDomains.domainForCollectorLocked(collector) != nil
 }
 
-func (s *referenceStore) gcDomainIdentity(collector *gc.Collector) uint64 {
+func (s *referenceStore) gcDomainForCollector(collector *gc.Collector) *gcStoreDomain {
 	if s == nil || collector == nil {
-		return 0
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if topology := s.gcDomains; topology != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
-			if domain.collector == collector {
-				return domain.id
-			}
-		}
-	}
-	return 0
+	return s.gcDomains.domainForCollectorLocked(collector)
 }
 
 func (s *referenceStore) lockGCCollector(collector *gc.Collector) *gcStoreDomain {
@@ -815,15 +1207,7 @@ func (s *referenceStore) lockGCCollector(collector *gc.Collector) *gcStoreDomain
 		return nil
 	}
 	s.mu.Lock()
-	var found *gcStoreDomain
-	if topology := s.gcDomains; topology != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
-			if domain.collector == collector {
-				found = domain
-				break
-			}
-		}
-	}
+	found := s.gcDomains.domainForCollectorLocked(collector)
 	s.mu.Unlock()
 	if found != nil {
 		found.mu.Lock()
@@ -919,6 +1303,24 @@ func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
 }
 
 func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
+	// Ordinary scalar calls still acquire the invocation gate, but modules with
+	// no collector or imported/dynamic GC domain have nothing to lock here.
+	if in == nil || in.refStore == nil || in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) == 0 {
+		return gcInvocationLease{}
+	}
+	lease, _ := in.lockGCInvocationContext(context.Background(), owner)
+	return lease
+}
+
+func (in *Instance) lockGCInvocationContext(ctx context.Context, owner invocationID) (gcInvocationLease, error) {
+	if ctx != nil && ctx.Done() == nil {
+		ctx = nil
+	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return gcInvocationLease{}, err
+		}
+	}
 	if owner == 0 {
 		owner = newInvocationID()
 	}
@@ -931,14 +1333,16 @@ func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 		if topology == nil {
 			panic("wago: dynamic Runtime GC invocation has no topology")
 		}
-		topology.RLock()
+		if err := topology.lockContext(ctx, false); err != nil {
+			return gcInvocationLease{}, err
+		}
 	}
 	domains := in.gcInvocationDomains()
 	if domains.len() == 0 {
 		if dynamic {
-			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}
+			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}, nil
 		}
-		return gcInvocationLease{}
+		return gcInvocationLease{}, nil
 	}
 	// A native cross-instance call reuses the public root's invocation identity.
 	// The root pre-acquires the transitive, globally ordered domain set, so a
@@ -955,11 +1359,18 @@ func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 		if dynamic {
 			topology.RUnlock()
 		}
-		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner}
+		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner}, nil
 	}
-	domains.lock()
+	if ctx == nil {
+		domains.lock()
+	} else if err := domains.lockContext(ctx); err != nil {
+		if dynamic {
+			topology.RUnlock()
+		}
+		return gcInvocationLease{}, err
+	}
 	domains.claim(owner)
-	return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, dynamic: dynamic}
+	return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, dynamic: dynamic}, nil
 }
 
 func (l gcInvocationLease) unlock() {
@@ -988,7 +1399,26 @@ func (in *Instance) ownsGCInvocation(owner invocationID) bool {
 	return owned
 }
 
-func (in *Instance) suspendGCInvocation(owner invocationID) func() {
+type gcInvocationSuspension struct {
+	in       *Instance
+	topology *gcDomainTopology
+	domains  gcInvocationDomainView
+	owner    invocationID
+	dynamic  bool
+	active   bool
+}
+
+// hostCallNeedsGCSuspension is checked on the actual lease owner under native
+// ownership. Collector identity and domain-admission flags are established
+// before invocation. Dynamic topology always falls back, even when empty now.
+// No signature-based test can replace this predicate: a scalar relay can own
+// imported domains without having a local collector.
+func (in *Instance) hostCallNeedsGCSuspension() bool {
+	return in != nil && (in.gc != nil || in.executionFlags.Load()&
+		(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) != 0)
+}
+
+func (in *Instance) suspendGCInvocation(owner invocationID) gcInvocationSuspension {
 	dynamic := in != nil && in.refStore != nil && in.executionFlags.Load()&executionFlagDynamicGCDomain != 0
 	var topology *gcDomainTopology
 	if dynamic {
@@ -1001,14 +1431,14 @@ func (in *Instance) suspendGCInvocation(owner invocationID) func() {
 	}
 	domains := in.gcInvocationDomains()
 	if owner == 0 || domains.len() == 0 && !dynamic {
-		return func() {}
+		return gcInvocationSuspension{}
 	}
 	if !domains.ownedBy(owner) {
 		if !domains.dynamic && domains.set == nil {
 			// Start-function and construction callbacks can run before a public
 			// invocation lease exists. Their native entry is already serialized, so
 			// there is no complete-call lease to suspend or restore.
-			return func() {}
+			return gcInvocationSuspension{}
 		}
 		panic("wago: partial Runtime GC invocation lease ownership")
 	}
@@ -1017,14 +1447,21 @@ func (in *Instance) suspendGCInvocation(owner invocationID) func() {
 	if dynamic {
 		topology.RUnlock()
 	}
-	return func() {
-		if dynamic {
-			topology.RLock()
-			domains = in.gcInvocationDomains()
-		}
-		domains.lock()
-		domains.claim(owner)
+	return gcInvocationSuspension{in: in, topology: topology, domains: domains, owner: owner, dynamic: dynamic, active: true}
+}
+
+func (s *gcInvocationSuspension) resume() {
+	if s == nil || !s.active {
+		return
 	}
+	s.active = false
+	domains := s.domains
+	if s.dynamic {
+		s.topology.RLock()
+		domains = s.in.gcInvocationDomains()
+	}
+	domains.lock()
+	domains.claim(s.owner)
 }
 
 func (s *referenceStore) rangeGCDomainPersistentRoots(collector *gc.Collector, fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
@@ -1044,7 +1481,7 @@ func (s *referenceStore) rangeGCDomainPersistentRoots(collector *gc.Collector, f
 			bits := binary.LittleEndian.Uint64(global.cell)
 			ref := gc.Ref(uint32(bits))
 			if bits != uint64(ref) {
-				panic(gcStructHelperError{err: fmt.Errorf("Runtime GC-domain global %d contains non-compact reference %#x", i, bits)})
+				panic(gcHelperFailuref("Runtime GC-domain global %d contains non-compact reference %#x", i, bits))
 			}
 			slot := (*gc.Root)(unsafe.Pointer(&global.cell[0]))
 			if sink != nil {
@@ -1079,7 +1516,7 @@ func (s *referenceStore) rangeGCDomainPersistentRootsClassified(collector *gc.Co
 			bits := binary.LittleEndian.Uint64(global.cell)
 			ref := gc.Ref(uint32(bits))
 			if bits != uint64(ref) {
-				panic(gcStructHelperError{err: fmt.Errorf("Runtime GC-domain global %d contains non-compact reference %#x", i, bits)})
+				panic(gcHelperFailuref("Runtime GC-domain global %d contains non-compact reference %#x", i, bits))
 			}
 			if !sink.VisitClassifiedRootRef(gc.RootGlobal, ref) {
 				return false
@@ -1098,6 +1535,23 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if topology := s.gcDomains; topology != nil && topology.singleCodeOwner != nil {
+		owner := topology.singleCodeOwner
+		if owner.gc == collector && pc >= owner.base && pc-owner.base < uintptr(len(owner.c.code)) {
+			return owner
+		}
+		return nil
+	}
+	if topology := s.gcDomains; topology != nil && topology.codeRanges != nil {
+		if ranges := topology.codeRanges.byCollector[collector]; ranges != nil {
+			for _, image := range ranges.byPage[pc>>gcFrameCodeRangePageShift] {
+				if pc >= image.key.base && pc-image.key.base < image.bytes {
+					return image.owner
+				}
+			}
+		}
+		return nil
+	}
 	for candidate, state := range s.instances {
 		if state == nil || state.resourcesReleased || candidate == nil || candidate.gc != collector || candidate.c == nil || candidate.c.genericGCFrameRoots() == nil {
 			continue
@@ -1115,60 +1569,49 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 	}
 	s.mu.Lock()
 	topology := s.gcDomains
-	s.mu.Unlock()
 	if topology == nil {
+		s.mu.Unlock()
+		return
+	}
+	// A failed construction can drop its claim without waiting for live readers.
+	domain := topology.domainForCollectorLocked(collector)
+	if domain != nil {
+		if domain.claims > 0 {
+			domain.claims--
+		}
+		if domain.refs != 0 || domain.claims != 0 {
+			s.mu.Unlock()
+			return
+		}
+	}
+	s.mu.Unlock()
+	if domain == nil {
 		return
 	}
 	topology.Lock()
 	defer topology.Unlock()
 	s.mu.Lock()
-	for domain := topology.first; domain != nil; domain = domain.next {
-		if domain.collector == collector {
-			if domain.claims > 0 {
-				domain.claims--
-			}
-			if domain.refs != 0 || domain.claims != 0 {
-				s.mu.Unlock()
-				return
-			}
-			if domain.prev == nil {
-				topology.first = domain.next
-			} else {
-				domain.prev.next = domain.next
-			}
-			if domain.next == nil {
-				topology.last = domain.prev
-			} else {
-				domain.next.prev = domain.prev
-			}
-			domain.prev, domain.next = nil, nil
-			if topology.n > 0 {
-				topology.n--
-			}
-			s.mu.Unlock()
-			collector.Close()
-			return
-		}
+	domain = topology.domainForCollectorLocked(collector)
+	if domain == nil || domain.refs != 0 || domain.claims != 0 || !topology.unlinkDomainLocked(domain) {
+		s.mu.Unlock()
+		return
 	}
 	s.mu.Unlock()
+	collector.Close()
 }
 
 func equalGCConfigs(a, b gc.Config) bool {
-	// Telemetry is a diagnostic sink, not a heap-semantics parameter. A consumer
-	// may join an existing Runtime domain without supplying the owner's recorder.
-	a.Telemetry, b.Telemetry = nil, nil
 	return a == b
 }
 
-func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, preferred *gc.Collector) (*gc.Collector, *gcTypeMapping, error) {
-	if !gc.TelemetryAvailable() {
-		config.Telemetry = nil
-	}
+func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Config, c *Compiled, preferred *gc.Collector) (*gc.Collector, *gcTypeMapping, error) {
 	if s == nil || s.private {
 		return nil, nil, fmt.Errorf("wago: shared WasmGC ownership requires an explicit Runtime")
 	}
 	topology := s.ensureGCTopology()
-	topology.Lock()
+	if err := topology.lockContext(ctx, true); err != nil {
+		return nil, nil, err
+	}
 	topologyLocked := true
 	defer func() {
 		if topologyLocked {
@@ -1185,12 +1628,7 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 	}
 	var selected *gcStoreDomain
 	if preferred != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
-			if domain.collector == preferred {
-				selected = domain
-				break
-			}
-		}
+		selected = topology.domainForCollectorLocked(preferred)
 		if selected == nil {
 			s.mu.Unlock()
 			return nil, nil, fmt.Errorf("wago: imported WasmGC collector is not a live Runtime domain")
@@ -1198,10 +1636,6 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 		if !equalGCConfigs(selected.config, config) {
 			s.mu.Unlock()
 			return nil, nil, fmt.Errorf("wago: WasmGC collector configuration is incompatible with the imported Runtime GC domain")
-		}
-		if config.Telemetry != nil && selected.config.Telemetry != config.Telemetry {
-			s.mu.Unlock()
-			return nil, nil, fmt.Errorf("wago: WasmGC telemetry recorder does not own the imported Runtime GC domain")
 		}
 	} else {
 		for domain := topology.first; domain != nil; domain = domain.next {
@@ -1211,10 +1645,6 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 			if !equalGCConfigs(domain.config, config) {
 				s.mu.Unlock()
 				return nil, nil, fmt.Errorf("wago: WasmGC collector configuration is incompatible with the matching Runtime GC domain")
-			}
-			if config.Telemetry != nil && domain.config.Telemetry != config.Telemetry {
-				s.mu.Unlock()
-				return nil, nil, fmt.Errorf("wago: WasmGC telemetry recorder does not own the matching Runtime GC domain")
 			}
 			selected = domain
 			break
@@ -1231,15 +1661,10 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 			s.mu.Unlock()
 			return nil, nil, err
 		}
-		selected = &gcStoreDomain{id: newGCDomainIdentity(), collector: collector, config: config, types: types, typeReps: reps, claims: 1, prev: topology.last}
-		if topology.last == nil {
-			topology.first = selected
-		} else {
-			topology.last.next = selected
-		}
-		topology.last = selected
-		topology.n++
+		selected = &gcStoreDomain{id: newGCDomainIdentity(), collector: collector, config: config, types: types, typeReps: reps, claims: 1}
+		topology.appendDomainLocked(selected)
 		s.mu.Unlock()
+		c.rememberGCTypeMapping(selected.id, len(selected.typeReps), mapping)
 		return collector, mapping, nil
 	}
 	if selected.claims == ^uint32(0) {
@@ -1251,19 +1676,39 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 	topology.Unlock()
 	topologyLocked = false
 
+	// Native subtype readers hold invocationMu but do not enter Go or selected.mu.
+	// Quiesce the whole domain before replacing and republishing the interval
+	// backing, then follow the ordinary invocationMu -> mu lock order.
+	if err := selected.invocationMu.lockContext(ctx); err != nil {
+		s.releaseUnclaimedGCCollector(selected.collector)
+		return nil, nil, err
+	}
 	selected.mu.Lock()
-	mapping, types, reps, err := gcCanonicalTypePlan(c, selected.typeReps, selected.types, preferred != nil)
+	domainTypeCount := len(selected.typeReps)
+	mapping := c.cachedGCTypeMapping(selected.id, domainTypeCount)
+	types, reps := selected.types, selected.typeReps
+	var err error
+	if mapping == nil {
+		mapping, types, reps, err = gcCanonicalTypePlan(c, selected.typeReps, selected.types, preferred != nil)
+	}
 	if err == nil && len(types) > len(selected.types) {
 		err = selected.collector.AddTypes(types[len(selected.types):])
 	}
 	if err == nil {
+		// Compatibility probes read these slices under the store lock. Keep
+		// publication in that lock as well as the collector's mutation lock.
+		s.mu.Lock()
 		selected.types, selected.typeReps = types, reps
+		domainTypeCount = len(selected.typeReps)
+		s.mu.Unlock()
 	}
 	selected.mu.Unlock()
+	selected.invocationMu.Unlock()
 	if err != nil {
 		s.releaseUnclaimedGCCollector(selected.collector)
 		return nil, nil, err
 	}
+	c.rememberGCTypeMapping(selected.id, domainTypeCount, mapping)
 	return selected.collector, mapping, nil
 }
 
@@ -1272,14 +1717,14 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	dynamicInvocationDomains := !s.private && in != nil && compiledHasDynamicFuncrefReachability(in.c)
 	importsPrivateInvocationDomain := false
 	if in != nil && in.c != nil {
-		for _, key := range in.c.Imports {
-			export, ok := in.imports[key].(*InstanceExport)
+		for i, displayKey := range in.c.Imports {
+			export, ok := in.imports[in.c.functionImportBindingKey(i)].(*InstanceExport)
 			if !ok || export == nil || export.inst == nil {
 				continue
 			}
 			if export.inst.executionFlags.Load()&executionFlagDynamicGCDomain != 0 {
 				if export.inst.refStore != s {
-					return fmt.Errorf("wago: dynamic funcref import %q requires the same Runtime", key)
+					return fmt.Errorf("wago: dynamic funcref import %q requires the same Runtime", displayKey)
 				}
 				dynamicInvocationDomains = true
 				continue
@@ -1328,14 +1773,38 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	// the compact key authoritatively: the store invariant guarantees that one key
 	// never denotes two distinct live structural types.
 	candidate := make(map[uint64]structuralTypeRegistration)
-	keys := make([]uint64, 0, len(in.c.FuncTypeID))
+	keyCapacity := len(in.c.FuncTypeID)
+	if types := len(in.c.Types); types > 0 && types < keyCapacity {
+		// Most functions reuse declared types. This is only an allocation hint:
+		// append still accepts every distinct key, including legacy metadata.
+		keyCapacity = types
+	}
+	keys := make([]uint64, 0, keyCapacity)
+	var identitiesByType map[uint32][]byte
+	var typeGroups map[uint32]structuralTypeGroupBounds
+	identityBytes := 0
 	for i, key := range in.c.FuncTypeID {
 		canonical, cached := in.c.cachedStructuralCallIdentity(i)
 		if !cached {
-			var err error
-			canonical, err = compiledStructuralCallIdentity(in.c, i)
-			if err != nil {
-				return fmt.Errorf("wago: function %d exact type: %w", i, err)
+			sig, sigOK := compiledFunctionSignature(in.c, i)
+			if sigOK && sig.HasTypeIndex {
+				canonical = identitiesByType[sig.TypeIndex]
+			}
+			if canonical == nil {
+				if typeGroups == nil && sigOK && sig.HasTypeIndex {
+					typeGroups = compiledStructuralTypeGroups(in.c.Types)
+				}
+				var err error
+				canonical, err = compiledStructuralCallIdentityWithGroups(in.c, i, typeGroups)
+				if err != nil {
+					return fmt.Errorf("wago: function %d exact type: %w", i, err)
+				}
+				if sigOK && sig.HasTypeIndex && len(in.c.FuncTypeID) > 1 {
+					if identitiesByType == nil {
+						identitiesByType = make(map[uint32][]byte, min(keyCapacity, len(in.c.Types)))
+					}
+					identitiesByType[sig.TypeIndex] = canonical
+				}
 			}
 		}
 		exact := structuralTypeRegistration{canonical: canonical}
@@ -1345,6 +1814,10 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 			}
 			continue
 		}
+		if len(canonical) > maxStructuralCallIdentityRegistrationBytes-identityBytes {
+			return fmt.Errorf("wago: structural call identities exceed the %d-byte per-registration budget", maxStructuralCallIdentityRegistrationBytes)
+		}
+		identityBytes += len(canonical)
 		candidate[key] = exact
 		keys = append(keys, key)
 		if registered, ok := s.typeKeys[key]; ok && !bytes.Equal(registered.canonical, exact.canonical) {
@@ -1370,11 +1843,8 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	}
 	var domain *gcStoreDomain
 	if topology := s.gcDomains; topology != nil {
-		for candidate := topology.first; candidate != nil; candidate = candidate.next {
-			if candidate.collector != in.gc {
-				continue
-			}
-			domain = candidate
+		domain = topology.domainForCollectorLocked(in.gc)
+		if domain != nil {
 			if domain.refs == ^uint32(0) {
 				return fmt.Errorf("wago: Runtime GC domain has too many instances")
 			}
@@ -1383,7 +1853,6 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 			}
 			domain.claims--
 			domain.refs++
-			break
 		}
 	}
 	if domain == nil && in.gc != nil {
@@ -1421,6 +1890,7 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 		gcDomain: domain, invocationDomains: storedInvocationDomains,
 		dynamicInvocationDomains: dynamicInvocationDomains,
 	}
+	s.registerGCFrameCodeRangeLocked(in)
 	s.liveInstances++
 	return nil
 }
@@ -1506,24 +1976,8 @@ func (s *referenceStore) releaseGCDomainLocked(entry *referenceStoreInstance) *g
 	if topology == nil {
 		return nil
 	}
-	for candidate := topology.first; candidate != nil; candidate = candidate.next {
-		if candidate == domain {
-			if candidate.prev == nil {
-				topology.first = candidate.next
-			} else {
-				candidate.prev.next = candidate.next
-			}
-			if candidate.next == nil {
-				topology.last = candidate.prev
-			} else {
-				candidate.next.prev = candidate.prev
-			}
-			candidate.prev, candidate.next = nil, nil
-			if topology.n > 0 {
-				topology.n--
-			}
-			return domain.collector
-		}
+	if topology.unlinkDomainLocked(domain) {
+		return domain.collector
 	}
 	return nil
 }
@@ -1633,6 +2087,7 @@ func (s *referenceStore) maybeReleaseEntriesLocked() referenceTokenEntries {
 }
 
 func (s *referenceStore) unregisterInstanceTypesLocked(in *Instance) {
+	s.unregisterGCFrameCodeRangeLocked(in)
 	for _, key := range s.instanceTypes[in] {
 		registered, ok := s.typeKeys[key]
 		if !ok {
@@ -1673,7 +2128,7 @@ func (s *referenceStore) registerHostFuncRef(owner *HostFuncRef) (uint32, error)
 		return 0, fmt.Errorf("wago: reference store has too many live objects")
 	}
 	s.liveObjects++
-	s.externrefs = append(s.externrefs, externrefSlot{value: owner})
+	s.externrefs = append(s.externrefs, externrefSlot{value: owner, nextFree: externrefInternalSlot})
 	return uint32(len(s.externrefs)), nil
 }
 
@@ -1701,7 +2156,7 @@ func (s *referenceStore) registerHostFuncRefBindingLocked(binding *hostFuncRefDi
 	if len(s.externrefs) >= int(hostFuncRefDispatchBit-1) {
 		return 0, fmt.Errorf("wago: reference store has too many host dispatch bindings")
 	}
-	s.externrefs = append(s.externrefs, externrefSlot{value: binding, generation: 1})
+	s.externrefs = append(s.externrefs, externrefSlot{value: binding, generation: 1, nextFree: externrefInternalSlot})
 	return uint32(len(s.externrefs)), nil
 }
 
@@ -1799,6 +2254,9 @@ func (s *referenceStore) issueMode(source *Instance, descriptor uint64, attached
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if entry := s.byIdentity[funcrefIdentity{descriptor: descriptor}]; entry != nil {
+		if entry.owner != nil && entry.owner.hostEvents != nil {
+			return 0, deferredHostEventCalleeError()
+		}
 		return entry.token, nil
 	}
 	if source == nil {
@@ -1808,13 +2266,22 @@ func (s *referenceStore) issueMode(source *Instance, descriptor uint64, attached
 	if !ok {
 		return 0, fmt.Errorf("invalid funcref result descriptor")
 	}
+	if owner.hostEvents != nil {
+		return 0, deferredHostEventCalleeError()
+	}
 	identity, hasIdentity := source.funcrefFunctionIdentity(descriptor)
 	if hasIdentity {
 		if entry := s.byIdentity[identity]; entry != nil {
+			if entry.owner != nil && entry.owner.hostEvents != nil {
+				return 0, deferredHostEventCalleeError()
+			}
 			return entry.token, nil
 		}
 	}
 	if entry := s.byIdentity[funcrefIdentity{descriptor: canonical}]; entry != nil {
+		if entry.owner != nil && entry.owner.hostEvents != nil {
+			return 0, deferredHostEventCalleeError()
+		}
 		return entry.token, nil
 	}
 	var retained bool
@@ -1899,16 +2366,7 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 	state := source.publicGCState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	if int(state.resultTokenCount) >= len(state.resultTokens) {
-		return 0, fmt.Errorf("public GC result token count exceeds %d", len(state.resultTokens))
-	}
-	ownerIndex := uint8(0)
-	for ownerIndex < state.resultRootsMade && state.resultTokens[ownerIndex] != 0 {
-		ownerIndex++
-	}
-	if int(ownerIndex) >= len(state.resultTokens) {
-		return 0, fmt.Errorf("public GC result token count exceeds %d", len(state.resultTokens))
-	}
+	ownerIndex := state.nextResultSlot()
 	if source.gc == nil {
 		return 0, fmt.Errorf("public GC result has no live collector")
 	}
@@ -1957,10 +2415,9 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 		if slotErr != nil {
 			return 0, fmt.Errorf("root public GC result: %w", slotErr)
 		}
-		state.resultRootSlots[ownerIndex] = slot
-		state.resultRootsMade++
+		state.appendResultRootSlot(slot)
 	} else {
-		slot = state.resultRootSlots[ownerIndex]
+		slot = state.resultRootSlot(ownerIndex)
 		if err := source.gc.SetGlobalSlot(slot, ref); err != nil {
 			return 0, fmt.Errorf("root public GC result: %w", err)
 		}
@@ -1978,7 +2435,7 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 			s.gcByToken = make(map[uint64]gcRefTokenEntry)
 		}
 		s.gcByToken[token] = gcRefTokenEntry{token: token, ref: ref, slot: slot, ownerIndex: ownerIndex, exact: exact, domainType: typeID, owner: source}
-		state.resultTokens[ownerIndex] = token
+		state.setResultToken(ownerIndex, token)
 		state.resultTokenCount++
 	}
 	s.mu.Unlock()
@@ -2013,7 +2470,7 @@ func (s *referenceStore) releaseGCRef(source *Instance, token uint64) error {
 	s.mu.Lock()
 	entry, ok = s.gcByToken[token]
 	ownerIndex := entry.ownerIndex
-	if !ok || entry.owner != source || state.resultTokenCount == 0 || ownerIndex >= state.resultRootsMade || state.resultTokens[ownerIndex] != token || state.resultRootSlots[ownerIndex] != entry.slot {
+	if !ok || entry.owner != source || state.resultTokenCount == 0 || ownerIndex >= state.resultRootsMade || state.resultToken(ownerIndex) != token || state.resultRootSlot(ownerIndex) != entry.slot {
 		s.mu.Unlock()
 		state.mu.Unlock()
 		unlockGCCollector(lockedDomain)
@@ -2035,7 +2492,7 @@ func (s *referenceStore) releaseGCRef(source *Instance, token uint64) error {
 		return fmt.Errorf("release GC reference token: %w", err)
 	}
 	delete(s.gcByToken, token)
-	state.resultTokens[ownerIndex] = 0
+	state.setResultToken(ownerIndex, 0)
 	state.resultTokenCount--
 	s.mu.Unlock()
 	state.mu.Unlock()
@@ -2116,7 +2573,7 @@ func (s *referenceStore) stageGCRefArgument(target *Instance, token uint64, requ
 	targetRecord := s.instances[target]
 	s.mu.Unlock()
 	ownerIndex := current.ownerIndex
-	if !ok || current.owner != owner || current.ref != entry.ref || current.slot != entry.slot || ownerIndex >= ownerState.resultRootsMade || ownerState.resultTokens[ownerIndex] != token || ownerState.resultRootSlots[ownerIndex] != entry.slot {
+	if !ok || current.owner != owner || current.ref != entry.ref || current.slot != entry.slot || ownerIndex >= ownerState.resultRootsMade || ownerState.resultToken(ownerIndex) != token || ownerState.resultRootSlot(ownerIndex) != entry.slot {
 		return gc.Null(), fmt.Errorf("invalid or stale GC reference token")
 	}
 	if ownerRecord == nil || ownerRecord.resourcesReleased || targetRecord == nil || targetRecord.resourcesReleased || owner.refStore != s || target.refStore != s || owner.gc == nil || owner.gc != target.gc {
@@ -2125,18 +2582,14 @@ func (s *referenceStore) stageGCRefArgument(target *Instance, token uint64, requ
 	if required.Kind != ValueTypeReference || !target.gcRefMatchesValueType(current.ref, required) {
 		return gc.Null(), fmt.Errorf("GC reference token does not match the required structural argument type")
 	}
-	if int(targetState.argumentRootCount) >= len(targetState.argumentRootSlots) {
-		return gc.Null(), fmt.Errorf("GC reference argument count exceeds %d", len(targetState.argumentRootSlots))
-	}
 	rootIndex := targetState.argumentRootCount
 	if rootIndex == targetState.argumentRootsMade {
 		slot, err := target.gc.NewCheckedClassifiedGlobalSlot(current.ref, gc.RootForeignInstance)
 		if err != nil {
 			return gc.Null(), fmt.Errorf("root GC reference argument: %w", err)
 		}
-		targetState.argumentRootSlots[rootIndex] = slot
-		targetState.argumentRootsMade++
-	} else if err := target.gc.SetGlobalSlot(targetState.argumentRootSlots[rootIndex], current.ref); err != nil {
+		targetState.appendArgumentRootSlot(slot)
+	} else if err := target.gc.SetGlobalSlot(targetState.argumentRootSlot(rootIndex), current.ref); err != nil {
 		return gc.Null(), fmt.Errorf("root GC reference argument: %w", err)
 	}
 	targetState.argumentRootCount++
@@ -2245,7 +2698,7 @@ func (s *referenceStore) stageGCHostResult(target *Instance, ctrl uintptr, token
 	targetRecord := s.instances[target]
 	s.mu.Unlock()
 	ownerIndex := current.ownerIndex
-	if !ok || current.owner != owner || current.ref != entry.ref || current.slot != entry.slot || ownerIndex >= ownerState.resultRootsMade || ownerState.resultTokens[ownerIndex] != token || ownerState.resultRootSlots[ownerIndex] != entry.slot {
+	if !ok || current.owner != owner || current.ref != entry.ref || current.slot != entry.slot || ownerIndex >= ownerState.resultRootsMade || ownerState.resultToken(ownerIndex) != token || ownerState.resultRootSlot(ownerIndex) != entry.slot {
 		return gc.Null(), fmt.Errorf("invalid or stale GC host result token")
 	}
 	if ownerRecord == nil || ownerRecord.resourcesReleased || targetRecord == nil || targetRecord.resourcesReleased || owner.refStore != s || target.refStore != s || owner.gc == nil || owner.gc != target.gc {
@@ -2294,14 +2747,14 @@ func (in *Instance) clearGCHostResultRoots(token gcHostActivationToken) {
 	argumentCount := state.hostArgumentRootCount[token.index]
 	for i := uint8(0); i < argumentCount; i++ {
 		if err := in.gc.SetGlobalSlot(state.hostArgumentRootSlots[token.index][i], gc.Null()); err != nil {
-			panic(gcStructHelperError{err: fmt.Errorf("clear GC host argument root %d: %w", i, err)})
+			panic(gcHelperFailuref("clear GC host argument root %d: %w", i, err))
 		}
 	}
 	state.hostArgumentRootCount[token.index] = 0
 	resultCount := state.hostResultRootCount[token.index]
 	for i := uint8(0); i < resultCount; i++ {
 		if err := in.gc.SetGlobalSlot(state.hostResultRootSlots[token.index][i], gc.Null()); err != nil {
-			panic(gcStructHelperError{err: fmt.Errorf("clear GC host result root %d: %w", i, err)})
+			panic(gcHelperFailuref("clear GC host result root %d: %w", i, err))
 		}
 	}
 	state.hostResultRootCount[token.index] = 0
@@ -2318,9 +2771,9 @@ func (in *Instance) clearGCRefArgumentRoots() {
 	defer unlockGCCollector(lockedDomain)
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	for i := uint8(0); i < state.argumentRootCount; i++ {
-		if err := in.gc.SetGlobalSlot(state.argumentRootSlots[i], gc.Null()); err != nil {
-			panic(gcStructHelperError{err: fmt.Errorf("clear GC reference argument root %d: %w", i, err)})
+	for i := uint32(0); i < state.argumentRootCount; i++ {
+		if err := in.gc.SetGlobalSlot(state.argumentRootSlot(i), gc.Null()); err != nil {
+			panic(gcHelperFailuref("clear GC reference argument root %d: %w", i, err))
 		}
 	}
 	state.argumentRootCount = 0
@@ -2458,7 +2911,7 @@ func (in *Instance) attachedFunctionIndexExactType(index int) (ValueTypeDescript
 	if index >= len(in.c.Imports) {
 		return ValueTypeDescriptor{}, nil, false
 	}
-	if export, ok := in.imports[in.c.Imports[index]].(*InstanceExport); ok && export != nil && export.inst != nil && export.inst.c != nil && export.localIdx >= 0 {
+	if export, ok := in.imports[in.c.functionImportBindingKey(index)].(*InstanceExport); ok && export != nil && export.inst != nil && export.inst.c != nil && export.localIdx >= 0 {
 		providerIndex := export.inst.c.NumImports + export.localIdx
 		exact, err := export.inst.c.functionRefExactType(uint32(providerIndex))
 		return exact, export.inst.c.Types, err == nil
@@ -2473,7 +2926,7 @@ func (s *referenceStore) issueExternref(value any) (uint64, error) {
 	if s.runtimeClosed && !s.private {
 		return 0, fmt.Errorf("wago: reference store is closed")
 	}
-	if uint64(len(s.externrefs)) >= uint64(^uint32(0)) {
+	if s.externFree == 0 && uint64(len(s.externrefs)) >= uint64(^uint32(0)) {
 		return 0, fmt.Errorf("wago: externref store is full")
 	}
 	if s.externKey == 0 {
@@ -2484,23 +2937,59 @@ func (s *referenceStore) issueExternref(value any) (uint64, error) {
 		s.externKey = key
 		s.externSeed = uint32(key>>32) | 1
 	}
-	index := uint32(len(s.externrefs)) + 1
-	generation := s.externSeed + index - 1
-	if generation == 0 {
-		generation = 1
-	}
-	for {
-		raw := uint64(generation)<<32 | uint64(index)
-		token := bits.RotateLeft64(raw^s.externKey, 17)
-		if token != 0 {
-			s.externrefs = append(s.externrefs, externrefSlot{value: value, generation: generation})
-			return token, nil
-		}
-		generation++
+	var index uint32
+	if s.externFree != 0 {
+		index = s.externFree
+		slot := &s.externrefs[index-1]
+		s.externFree = slot.nextFree
+		slot.nextFree = 0
+		slot.value = value
+	} else {
+		index = uint32(len(s.externrefs)) + 1
+		generation := s.externSeed + index - 1
 		if generation == 0 {
 			generation = 1
 		}
+		s.externrefs = append(s.externrefs, externrefSlot{value: value, generation: generation})
 	}
+	slot := &s.externrefs[index-1]
+	for {
+		raw := uint64(slot.generation)<<32 | uint64(index)
+		token := bits.RotateLeft64(raw^s.externKey, 17)
+		if token != 0 {
+			return token, nil
+		}
+		slot.generation = nextExternrefGeneration(slot.generation)
+	}
+}
+
+type releasedExternrefMarker struct{ reserved byte }
+
+var releasedExternrefValue = &releasedExternrefMarker{}
+
+func (s *referenceStore) releaseExternref(token uint64) bool {
+	if token == 0 {
+		return true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.externKey == 0 {
+		return false
+	}
+	raw := bits.RotateLeft64(token, -17) ^ s.externKey
+	index, generation := uint32(raw), uint32(raw>>32)
+	if index == 0 || uint64(index) > uint64(len(s.externrefs)) {
+		return false
+	}
+	slot := &s.externrefs[index-1]
+	if slot.generation != generation || slot.value == releasedExternrefValue || slot.nextFree == externrefInternalSlot {
+		return false
+	}
+	slot.value = releasedExternrefValue
+	slot.generation = nextExternrefGeneration(slot.generation)
+	slot.nextFree = s.externFree
+	s.externFree = index
+	return true
 }
 
 func (s *referenceStore) resolveExternref(token uint64) (any, bool) {
@@ -2577,6 +3066,7 @@ func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
 	s.externrefs = nil
 	s.externKey = 0
 	s.externSeed = 0
+	s.externFree = 0
 	if topology := s.gcDomains; topology != nil {
 		for domain := topology.first; domain != nil; domain = domain.next {
 			entries.collectors = append(entries.collectors, domain.collector)
@@ -2584,6 +3074,9 @@ func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
 		topology.first = nil
 		topology.last = nil
 		topology.n = 0
+		topology.byCollector = nil
+		topology.codeRanges = nil
+		topology.singleCodeOwner = nil
 		topology.funcrefMu.Lock()
 		topology.funcrefTables = nil
 		topology.funcrefMu.Unlock()
@@ -2603,11 +3096,11 @@ func releaseReferenceEntries(entries referenceTokenEntries) {
 		if state != nil {
 			state.mu.Lock()
 			ownerIndex := entry.ownerIndex
-			if ownerIndex < state.resultRootsMade && state.resultTokens[ownerIndex] == entry.token && state.resultRootSlots[ownerIndex] == entry.slot {
+			if ownerIndex < state.resultRootsMade && state.resultToken(ownerIndex) == entry.token && state.resultRootSlot(ownerIndex) == entry.slot {
 				if entry.owner.gc != nil {
 					_ = entry.owner.gc.SetGlobalSlot(entry.slot, gc.Null())
 				}
-				state.resultTokens[ownerIndex] = 0
+				state.setResultToken(ownerIndex, 0)
 				if state.resultTokenCount != 0 {
 					state.resultTokenCount--
 				}
@@ -2663,7 +3156,7 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 		if fidx >= len(source.c.Imports) || fidx >= len(source.c.importFuncSigs) {
 			return nil, 0, false
 		}
-		key := source.c.Imports[fidx]
+		key := source.c.functionImportBindingKey(fidx)
 		off := (fidx + 1) * coreruntime.FuncRefDescBytes
 		refSlot := binary.LittleEndian.Uint64(source.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])
 		if ex, ok := source.imports[key].(*InstanceExport); ok {
@@ -2750,7 +3243,7 @@ func (in *Instance) funcrefFunctionIdentity(descriptor uint64) (funcrefIdentity,
 	if fidx >= len(in.c.Imports) {
 		return funcrefIdentity{}, false
 	}
-	export, ok := in.imports[in.c.Imports[fidx]].(*InstanceExport)
+	export, ok := in.imports[in.c.functionImportBindingKey(fidx)].(*InstanceExport)
 	if !ok || export == nil || export.inst == nil || export.localIdx < 0 {
 		return funcrefIdentity{}, false
 	}
@@ -2788,7 +3281,7 @@ func (in *Instance) hostFuncRefForDescriptor(descriptor uint64) *HostFuncRef {
 	if !ok || funcIndex < 0 || funcIndex >= in.c.NumImports || funcIndex >= len(in.c.Imports) {
 		return nil
 	}
-	owner, _ := in.imports[in.c.Imports[funcIndex]].(*HostFuncRef)
+	owner, _ := in.imports[in.c.functionImportBindingKey(funcIndex)].(*HostFuncRef)
 	return owner
 }
 

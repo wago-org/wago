@@ -84,9 +84,10 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkArm64(t *testing.T) {
 
 func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
 	names := []string{
-		"simd-superopt", "swar-idioms", "interval-region-pins", "fcmp-fuse", "magic-div",
-		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "entry-init-elision",
-		"v128-direct-results",
+		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
+		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "indexed-base-reuse",
+		"v128-direct-results", "cold-call-local-pins", "convert-read",
+		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
 	}
 	overrides := make(map[string]bool, len(names))
 	for _, name := range names {
@@ -145,7 +146,7 @@ func TestFunctionStartPaddingPolicyArm64(t *testing.T) {
 	selection := currentCodegenPolicy().Selection
 	ordinary := shared.DefaultCodegenPolicy(selection)
 	compact := shared.CompactCodegenPolicy(selection)
-	hot := funcHints{hasLoop: true}
+	hot := funcHints{flags: hintHasLoop}
 	for _, test := range []struct {
 		name      string
 		off       int

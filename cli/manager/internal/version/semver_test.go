@@ -14,6 +14,9 @@ func TestCompare(t *testing.T) {
 		{"1.2.0", "1.2.1", -1},
 		{"1.0", "1.0.0", -1},
 		{"1.x", "1.2", 1},
+		{"1.9", "1.10x", -1},
+		{"99999999999999999999.0", "100000000000000000000.0", -1},
+		{"2.0", "18446744073709551615.0", -1},
 	}
 	for _, test := range tests {
 		if got := Compare(test.a, test.b); got != test.want {
@@ -26,7 +29,12 @@ func TestParseNumeric(t *testing.T) {
 	if number, ok := ParseNumeric("012"); !ok || number != 12 {
 		t.Fatalf("ParseNumeric = %d, %v", number, ok)
 	}
-	if _, ok := ParseNumeric("1x"); ok {
-		t.Fatal("ParseNumeric accepted a non-numeric component")
+	for _, value := range []string{"1x", "+1", "-1"} {
+		if _, ok := ParseNumeric(value); ok {
+			t.Fatalf("ParseNumeric(%q) accepted a non-numeric component", value)
+		}
+	}
+	if _, ok := ParseNumeric("99999999999999999999"); ok {
+		t.Fatal("ParseNumeric accepted a component that overflows int")
 	}
 }

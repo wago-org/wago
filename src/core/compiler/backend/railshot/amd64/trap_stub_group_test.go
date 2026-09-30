@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func manyInlinedTrapFunctionsModule(tb testing.TB, n int) *wasm.Module {
@@ -82,7 +82,7 @@ func TestSortTrapSitesByFunction(t *testing.T) {
 		if i != 0 && sites[i-1].function > site.function {
 			t.Fatalf("sites are not sorted at %d: %+v", i, sites)
 		}
-		seen[site.branch] = true
+		seen[int(site.branch)] = true
 	}
 	for _, branch := range []int{10, 20, 30, 40, 50} {
 		if !seen[branch] {
@@ -92,6 +92,7 @@ func TestSortTrapSitesByFunction(t *testing.T) {
 }
 
 func TestManyInlinedTrapFunctionsCompile(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const n = 64
 	m := manyInlinedTrapFunctionsModule(t, n)
 	var stats ModuleStats

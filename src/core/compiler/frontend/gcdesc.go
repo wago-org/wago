@@ -5,7 +5,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // BuildGCTypeDescs lowers decoded Wasm GC recursive type groups into runtime GC
@@ -311,7 +311,7 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 			if err != nil {
 				return 0, fmt.Errorf("invalid referenced type index %d", heap.Type().Index)
 			}
-			if int(idx) < len(resolver.flat) && resolver.flat[idx].Source.Comp.Kind == wasm.CompFunc {
+			if uint(idx) < uint(len(resolver.flat)) && resolver.flat[idx].Source.Comp.Kind == wasm.CompFunc {
 				opaque = gc.StorageFuncRef
 			}
 		} else {

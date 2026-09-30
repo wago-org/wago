@@ -2,9 +2,53 @@ package shared
 
 import (
 	"errors"
+	"sync"
 	"testing"
 	"unsafe"
 )
+
+func TestLowestIndexError(t *testing.T) {
+	var errs LowestIndexError
+	errs.Reset(8)
+	first := errors.New("first function error")
+	var wg sync.WaitGroup
+	for _, index := range []int{7, 5, 2, 6} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := errors.New("later function error")
+			if index == 2 {
+				err = first
+			}
+			errs.Record(index, err)
+		}()
+	}
+	wg.Wait()
+	index, err := errs.Result()
+	if index != 2 || !errors.Is(err, first) {
+		t.Fatalf("lowest error = (%d, %v), want (2, first function error)", index, err)
+	}
+}
+
+func TestLowestIndexErrorCutoffKeepsLowerWork(t *testing.T) {
+	var failures LowestIndexError
+	failures.Reset(20)
+	if !failures.ShouldStart(19) || failures.ShouldStart(20) {
+		t.Fatal("initial cutoff")
+	}
+	failures.Record(12, errors.New("later function"))
+	if !failures.ShouldStart(11) || failures.ShouldStart(12) {
+		t.Fatal("cutoff lost lower work")
+	}
+	failures.Record(3, errors.New("earlier function"))
+	if !failures.ShouldStart(2) || failures.ShouldStart(4) {
+		t.Fatal("cutoff did not decrease")
+	}
+	index, err := failures.Result()
+	if index != 3 || err == nil {
+		t.Fatalf("result %d, %v", index, err)
+	}
+}
 
 func TestResolveWorkers(t *testing.T) {
 	for _, tc := range []struct {
@@ -59,14 +103,5 @@ func TestModuleEntriesUsesOneExactBackingAllocation(t *testing.T) {
 	emptyEntry, emptyInternal := ModuleEntries(0)
 	if emptyEntry == nil || emptyInternal == nil {
 		t.Fatal("zero-function entry tables changed from non-nil empty slices")
-	}
-}
-
-func TestFirstErrorIndex(t *testing.T) {
-	first, second := errors.New("first"), errors.New("second")
-	errs := []error{nil, first, second}
-	idx, err := FirstErrorIndex(len(errs), func(i int) error { return errs[i] })
-	if idx != 1 || !errors.Is(err, first) {
-		t.Fatalf("FirstErrorIndex = %d, %v", idx, err)
 	}
 }

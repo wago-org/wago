@@ -589,6 +589,23 @@ func TestVerifyRejectsBadMemoryAlignment(t *testing.T) {
 	wantErr(t, VerifyFunc(f), "alignment 3 exceeds natural")
 }
 
+func TestVerifyMemoryOffsetHighBits(t *testing.T) {
+	f := instFunc(OpLoad, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, EffectCanTrap|EffectReadMem)
+	f.Insts[0].Aux = packMem(MemI32, 2, 0, 0)
+	f.Insts[0].Aux2 = 1
+	wantErr(t, VerifyFunc(f), "invalid memory offset high bits")
+
+	f = instFunc(OpLoad, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}, EffectCanTrap|EffectReadMem)
+	f.Insts[0].Aux = packMem(MemI32, 2, 0, 0)
+	f.Insts[0].Aux2 = 1
+	m := &Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Addr64: true}}}}
+	if err := VerifyFuncInModule(f, m); err != nil {
+		t.Fatalf("VerifyFuncInModule: %v", err)
+	}
+	f.Insts[0].Aux2 = uint64(1) << 32
+	wantErr(t, VerifyFuncInModule(f, m), "invalid memory offset high bits")
+}
+
 func TestVerifyRejectsStaleAux2OnNonCallIndirect(t *testing.T) {
 	f := instFunc(OpConst, nil, []wasm.ValType{wasm.I32}, EffectNone)
 	f.Insts[0].Aux2 = 1

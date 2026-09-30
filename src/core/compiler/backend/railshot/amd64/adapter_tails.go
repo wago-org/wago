@@ -137,6 +137,11 @@ func planSharedAdapterTailsAMD64(code []byte, entry []int, infos []adapterTailIn
 }
 
 func compactSharedAdapterTailsAMD64(code []byte, oldLen int, entry, internalEntry []int, relocs [][]callReloc, literalWords []uint64, literalOffsets []uint32, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats, groups []adapterTailGroup, infos []adapterTailInfo, sharedBytes int) (int, error) {
+	if profileEnabled {
+		if err := recordSharedAdapterTailUnwind(ms, groups, infos); err != nil {
+			return 0, err
+		}
+	}
 	for i := range groups {
 		g := &groups[i]
 		if g.count*g.length <= g.count*sharedAdapterTailJumpBytesAMD64+g.length {
@@ -165,21 +170,17 @@ func compactSharedAdapterTailsAMD64(code []byte, oldLen int, entry, internalEntr
 			deleted := end - keepEnd
 			removed += deleted
 			for j := range relocs[i] {
-				if relocs[i][j].at >= int(info.endOff) {
-					relocs[i][j].at -= deleted
+				if relocs[i][j].at >= info.endOff {
+					relocs[i][j].at -= uint32(deleted)
 				}
 			}
 			remapModuleLiteralPlanAMD64(literalWords, literalOffsets, i, int(info.endOff), deleted)
 			if roots != nil {
 				if plan := roots.Function(i); plan != nil {
-					for j := range plan.Callsites {
-						if plan.Callsites[j].ReturnOffset >= info.endOff {
-							plan.Callsites[j].ReturnOffset -= uint32(deleted)
-						}
-					}
+					plan.ShiftCallsiteReturnOffsets(info.endOff, uint32(deleted))
 				}
 			}
-			if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {
+			if (diagnosticsEnabled && ms != nil) && i < len(ms.Funcs) && ms.Funcs[i] != nil {
 				native := &ms.Funcs[i].NativeSize
 				native.TotalBytes -= deleted
 				native.HostAdapterBytes -= deleted
@@ -207,7 +208,7 @@ func compactSharedAdapterTailsAMD64(code []byte, oldLen int, entry, internalEntr
 		i := int(info.function)
 		returnOff := int(info.returnOff)
 		asm.PatchRel32(entry[i]+returnOff-4, internalEntry[i])
-		if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {
+		if (diagnosticsEnabled && ms != nil) && i < len(ms.Funcs) && ms.Funcs[i] != nil {
 			native := &ms.Funcs[i].NativeSize
 			native.HostAdapterShapeHash = shared.AdapterShapeHash(code[entry[i]:entry[i]+native.HostAdapterBytes], returnOff-4, 4)
 			native.HostAdapterTailShapeHash = shared.AdapterShapeHash(code[entry[i]+returnOff:entry[i]+returnOff+sharedAdapterTailJumpBytesAMD64], -1, 0)

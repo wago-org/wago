@@ -37,6 +37,7 @@ type Asm struct {
 	Rel32SiteLimit               int
 	Rel32Count                   uint32
 	UsesBMI2                     bool
+	BitCountState                uint8 // low bits: policy; high bits: instructions emitted
 	Rel32Overflow                bool
 	CompactAccumulatorImmediates bool
 	LocalRefs                    *LocalRefRecorder
@@ -362,11 +363,22 @@ func (a *Asm) Grow(n int) {
 	}
 }
 
-func (a *Asm) emit(bs ...byte) { a.B = append(a.B, bs...) }
+func (a *Asm) emit(bs ...byte) {
+	switch len(bs) {
+	case 1:
+		a.B = append(a.B, bs[0])
+	case 2:
+		a.B = append(a.B, bs[0], bs[1])
+	case 3:
+		a.B = append(a.B, bs[0], bs[1], bs[2])
+	case 4:
+		a.B = append(a.B, bs[0], bs[1], bs[2], bs[3])
+	default:
+		a.B = append(a.B, bs...)
+	}
+}
 func (a *Asm) imm32(v int32) {
-	var t [4]byte
-	binary.LittleEndian.PutUint32(t[:], uint32(v))
-	a.B = append(a.B, t[:]...)
+	a.B = append(a.B, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 }
 func (a *Asm) Len() int                  { return len(a.B) }
 func (a *Asm) PatchU32(at int, v uint32) { binary.LittleEndian.PutUint32(a.B[at:], v) }
@@ -520,6 +532,16 @@ func (a *Asm) sseBitOp(opcode byte, dst, src Reg, w bool) {
 func (a *Asm) Lzcnt(dst, src Reg, w bool)  { a.sseBitOp(0xBD, dst, src, w) }
 func (a *Asm) Tzcnt(dst, src Reg, w bool)  { a.sseBitOp(0xBC, dst, src, w) }
 func (a *Asm) Popcnt(dst, src Reg, w bool) { a.sseBitOp(0xB8, dst, src, w) }
+
+// Bsr/Bsf leave dst undefined on zero; the caller must inspect ZF first.
+func (a *Asm) Bsr(dst, src Reg, w bool) { a.bitScan(0xBD, dst, src, w) }
+func (a *Asm) Bsf(dst, src Reg, w bool) { a.bitScan(0xBC, dst, src, w) }
+func (a *Asm) bitScan(opcode byte, dst, src Reg, w bool) {
+	if w || dst >= 8 || src >= 8 {
+		a.emit(a.rex(w, dst >= 8, false, src >= 8))
+	}
+	a.emit(0x0F, opcode, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
+}
 
 func (a *Asm) MovReg64(dst, src Reg) {
 	a.emit(a.rex(true, src >= 8, false, dst >= 8), 0x89, 0xC0|((byte(src)&7)<<3)|byte(dst&7))
@@ -1300,6 +1322,12 @@ func (a *Asm) AlignLoop() {
 	if offset >= 24 {
 		pad = 32 - offset + 8
 	}
+	a.nop(pad)
+}
+
+// AlignLoop32 places a compact loop at the start of a 32-byte fetch block.
+func (a *Asm) AlignLoop32() {
+	pad := (32 - len(a.B)%32) % 32
 	a.nop(pad)
 }
 

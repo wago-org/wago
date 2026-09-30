@@ -2,12 +2,10 @@
 
 package amd64
 
-// CodegenStats is the railshot "explain" dashboard: per-function counters that
-// make every later optimization prove itself (docs/no-ir-plan.md P1). Collection
-// is opt-in — a *CodegenStats is threaded through the fn only when the caller asks
-// (CompileOptions.Stats) or WAGO_EXPLAIN=1 is set. When off, the field is nil and
-// every counter method is a no-op (nil-receiver methods), so the hot compile path
-// pays nothing.
+// CodegenStats is the Railshot compiler diagnostics dashboard. Collection requires
+// wago_codegenstats or wago_profile at build time, followed by a
+// CompileOptions.Stats destination or WAGO_EXPLAIN=1 at runtime. Ordinary builds
+// compile out counters, reports, and diagnostic environment-variable reads.
 //
 // The counters are the sinks the plan's phases target: MemRefsForcedByStore is
 // what P2's alias-aware loads shrink, BoundsChecks is what P6's bounds facts
@@ -17,9 +15,12 @@ package amd64
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
+	"unsafe"
 
+	"github.com/wago-org/wago/internal/jitprofile"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
@@ -29,47 +30,44 @@ import (
 var (
 	// explainEnabled prints a per-module CodegenStats dump to stderr after every
 	// compile. "size" highlights the native-byte ledger; "1" remains compatible.
-	explainMode    = os.Getenv("WAGO_EXPLAIN")
+	explainMode    = diagnosticEnv("WAGO_EXPLAIN")
 	explainEnabled = explainMode == "1" || explainMode == "size"
 	// debugModGlobals prints the module-pinned-global choices (the #90-era temp
 	// print, now first-class).
-	debugModGlobals = os.Getenv("WAGO_DEBUG_MODGLOBALS") == "1"
+	debugModGlobals = diagnosticsEnabled && os.Getenv("WAGO_DEBUG_MODGLOBALS") == "1"
 	// pinGlobalK overrides the adaptive module-global pin count K: -1 = auto (the
 	// pickModuleGlobals heuristic), 0..len(moduleGlobalRegs) = force that many.
 	pinGlobalK = parsePinGlobalK(os.Getenv("WAGO_PIN_GLOBAL_K"))
 	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check — the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
-	// boundsRangeEnabled lets a first scalar load certify later fixed-offset loads
-	// in the same pure straight-line range. Kept separate for A/B measurement.
-	boundsRangeEnabled = os.Getenv("WAGO_NO_BOUNDS_RANGE") != "1"
+	// preparedDirectEntryEnabled admits compiler-proved register-ABI entries.
+	// preparedBoundedEntryEnabled further marks the loop-free subset which may
+	// retain its P across the tightly bounded native activation.
+	preparedDirectEntryEnabled  = os.Getenv("WAGO_AMD64_NO_PREPARED_DIRECT_ENTRY") != "1"
+	preparedBoundedEntryEnabled = os.Getenv("WAGO_AMD64_NO_PREPARED_BOUNDED_ENTRY") != "1"
+	// wideLoopIntConstEnabled keeps repeatedly materialized non-imm32 i64 loop
+	// constants in otherwise-idle registers. It defaults on only for the
+	// Linux/AMD64 target whose native corpus qualifies its fixed-register
+	// interactions; explicit optimization policy can still enable it elsewhere.
+	// WAGO_AMD64_NO_WIDE_LOOP_INT_CONST=1 is the bounded rollback switch.
+	wideLoopIntConstEnabled = wideLoopIntConstPlatformDefault(runtime.GOOS) && os.Getenv("WAGO_AMD64_NO_WIDE_LOOP_INT_CONST") != "1"
+	// memSizeRegionalLeaseEnabled lets a large straight-line, call-free regional
+	// allocator borrow R15. Bounds checks read the immutable current byte size
+	// directly, and the register-ABI return reloads R15 for its caller.
+	memSizeRegionalLeaseEnabled      = os.Getenv("WAGO_AMD64_NO_MEMSIZE_REGIONAL_LEASE") != "1"
+	moduleGlobalRegionalLeaseEnabled = os.Getenv("WAGO_AMD64_NO_MODULE_GLOBAL_REGIONAL_LEASE") != "1"
+	// compactLoopAlign32Enabled gives small loop functions a complete 32-byte
+	// fetch block. Larger functions retain the lower-padding mixed policy.
+	compactLoopAlign32Enabled = os.Getenv("WAGO_AMD64_NO_COMPACT_LOOP_ALIGN32") != "1"
 	// compactI32FrameEnabled packs i32 locals in admitted kernels.
 	compactI32FrameEnabled = os.Getenv("WAGO_NO_COMPACT_I32_FRAME") != "1"
-	// compactI32ControlFlowEnabled extends that typed-slot layout through structured
-	// control flow. Calls remain excluded because some argument-staging paths use
-	// intentionally full-width local loads.
-	compactI32ControlFlowEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_I32_CONTROL") != "1"
-	// compactI32CallsEnabled admits call-making functions after every deferred
-	// local argument load has selected its width from the local's machine type.
-	compactI32CallsEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_I32_CALLS") != "1"
 	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings on
 	// the explicit native-compaction path.
 	accumulatorImmediateEnabled = os.Getenv("WAGO_AMD64_NO_ACCUMULATOR_IMMEDIATE") != "1"
-	// incDecEnabled selects compact INC/DEC for compact Wasm add/sub by
-	// one when CF is not a compiler value. The kill switch is the A/B oracle.
-	incDecEnabled = os.Getenv("WAGO_AMD64_NO_INCDEC") != "1"
-	// directIncDecEnabled extends the same encoding choice to compiler-authored
-	// counters whose next flag consumer is ZF or whose flags are dead.
-	directIncDecEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_INCDEC") != "1"
-	// directJecxzEnabled selects JECXZ for bounded ECX byte-tail guards whose
-	// flags are dead and whose checked targets remain in rel8 range.
-	directJecxzEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_JECXZ") != "1"
 	// sharedTrapBodyEnabled lets compact trap groups share the invariant
 	// trap-cell stores and native-stack unwind within one compiled function.
 	sharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_SHARED_TRAP_BODY") != "1"
-	// moduleSharedTrapBodyEnabled lets later internal functions replace an exact
-	// complete trap-body copy with one near jump to a retained cold body.
-	moduleSharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_MODULE_SHARED_TRAP_BODY") != "1"
 	// compactLowPinEnabled makes RBP the first integer-local pin only for
 	// call-free, straight-line compact functions. The register set and pin
 	// count stay unchanged; this is an encoded-size tie-break experiment.
@@ -78,15 +76,12 @@ var (
 	// compact compilation swap referenced disp32 homes with equal-type zero-reference
 	// low homes during finalization. WAGO_LOCAL_SLOT_ORDER=0 is the rollback.
 	localSlotOrderEnabled = os.Getenv("WAGO_LOCAL_SLOT_ORDER") != "0"
-	// teeSpillElideEnabled reuses an unpinned scalar local.tee's canonical frame
-	// slot when its still-live result must be evicted from a register. It is
-	// default-off; WAGO_TEE_SPILL_ELIDE=1 opts in.
-	teeSpillElideEnabled = envDefaultOff(os.Getenv("WAGO_TEE_SPILL_ELIDE"))
 	// commuteSelfUpdateEnabled makes a non-fixed destination the accumulator for
-	// commutative x=f(y) op x expressions instead of spilling x first. It is
-	// default-off; WAGO_COMMUTE_SELF_UPDATE=1 opts in.
-	commuteSelfUpdateEnabled = envDefaultOff(os.Getenv("WAGO_COMMUTE_SELF_UPDATE"))
-	// i64Mask32Enabled lowers i64.and with the low-32 mask to a 32-bit AND whose
+	// commutative x=f(y) op x expressions instead of spilling x first.
+	// WAGO_AMD64_NO_COMMUTE_SELF_UPDATE=1 is the A/B oracle.
+	commuteSelfUpdateEnabled      = os.Getenv("WAGO_AMD64_NO_COMMUTE_SELF_UPDATE") != "1"
+	commuteFixedSelfUpdateEnabled = os.Getenv("WAGO_AMD64_NO_COMMUTE_FIXED_SELF_UPDATE") != "1"
+	// i64Mask32Enabled lowers i64.and with any low-32-bit mask to a 32-bit AND whose
 	// destination write implicitly zero-extends. WAGO_AMD64_NO_I64_MASK32=1 is the
 	// A/B oracle.
 	i64Mask32Enabled = os.Getenv("WAGO_AMD64_NO_I64_MASK32") != "1"
@@ -104,18 +99,9 @@ var (
 	// singleBitMaskTestEnabled selects BT for one-bit mask predicates in
 	// native compaction. WAGO_AMD64_NO_SINGLE_BIT_MASK_TEST=1 is the A/B oracle.
 	singleBitMaskTestEnabled = os.Getenv("WAGO_AMD64_NO_SINGLE_BIT_MASK_TEST") != "1"
-	// swarIdiomsEnabled gates exact, bounded recognition of open-coded packed-byte
-	// algorithms. WAGO_NO_SWAR_IDIOMS=1 is the A/B oracle.
-	swarIdiomsEnabled = os.Getenv("WAGO_NO_SWAR_IDIOMS") != "1"
 	// simdSuperoptEnabled gates exact bounded selection of multi-op Wasm SIMD
 	// sequences. WAGO_NO_SIMD_SUPEROPT=1 is the A/B oracle.
 	simdSuperoptEnabled = os.Getenv("WAGO_NO_SIMD_SUPEROPT") != "1"
-
-	// fcmpFuseEnabled gates float compare→branch fusion: an ordered float relation
-	// (lt/le/gt/ge) directly before if/br_if lowers to UCOMIS + a NaN-safe Jcc
-	// instead of UCOMIS + SETcc + TEST + Jcc. It is default-off after paired
-	// screening; WAGO_FCMP_FUSE=1 opts in and WAGO_NO_FCMP_FUSE=1 rolls it back.
-	fcmpFuseEnabled = envDefaultOff(os.Getenv("WAGO_FCMP_FUSE")) && os.Getenv("WAGO_NO_FCMP_FUSE") != "1"
 
 	// mul3opEnabled gates three-operand IMUL (dest = src*imm) that folds a borrowed
 	// register source into a constant multiply. WAGO_NO_MUL3=1 is the A/B oracle.
@@ -133,6 +119,8 @@ var (
 	// WAGO_NO_COMMUTE_FMEM=1 is the A/B oracle.
 	commuteFMemEnabled = os.Getenv("WAGO_NO_COMMUTE_FMEM") != "1"
 )
+
+func wideLoopIntConstPlatformDefault(goos string) bool { return goos == "linux" }
 
 const (
 	callKindInline         = shared.CallInline
@@ -164,8 +152,20 @@ func parsePinGlobalK(s string) int {
 // CodegenStats holds one function's codegen counters. All fields are zero when a
 // phenomenon did not occur; maps are nil until first use.
 type CodegenStats struct {
-	FuncIdx int    // local function index (0-based over m.Code)
-	Name    string // name-section / export name, or "" if anonymous
+	CodeSites            []shared.NativeCodeSite
+	RecordAdapterUnwind  bool
+	unwindAdapterPushEnd int
+	AdapterUnwind        []jitprofile.UnwindRange
+	RecordUnwind         bool
+	UnwindHasCalls       bool
+	UnwindInternalOffset int
+	UnwindRanges         []jitprofile.UnwindRange
+	RecordSources        bool
+	SourceInternalOffset int
+	SourceRanges         []shared.NativeSourceRange
+	SourceFrames         []shared.NativeInlineFrame
+	FuncIdx              int    // local function index (0-based over m.Code)
+	Name                 string // name-section / export name, or "" if anonymous
 
 	// Size.
 	CodeBytes     int                      // emitted machine-code length
@@ -196,8 +196,8 @@ type CodegenStats struct {
 	// Bounds / traps.
 	BoundsChecks            int // inline memory-OOB checks emitted (P6 elides these)
 	BoundsChecksElidable    int // subset of BoundsChecks a straight-line certificate covers (P6.1 sizing; count-only)
-	BoundsChecksInLoop      int // subset emitted inside a loop on a keyable base (P6.2 loop-precheck ceiling; count-only)
-	BoundsChecksHoistable   int // subset on a loop-INVARIANT local base (not set in the loop) — the P6.2 hoistable target; count-only
+	BoundsChecksInLoop      int // subset emitted inside a loop on a keyable base; count-only
+	BoundsChecksHoistable   int // reserved for cross-target reporting; AMD64 no longer prewalks loops solely to populate it
 	TrapStubs               int // shared cold trap stubs emitted (one per trap code used)
 	TrapGroups              int // distinct source-function groups across trap stubs
 	GCHandleResolutions     int // dynamic compact-handle resolutions emitted
@@ -210,35 +210,74 @@ type CodegenStats struct {
 	// Pins.
 	PinnedLocals       int // integer/float locals given a dedicated register
 	PinnedGlobalsValue int // hot mutable-int globals value-pinned in this function
+	PinRelinquishments int // pinned locals temporarily homed at exact exhaustion points
+	Residency          shared.ResidencyStats
 
-	// UnpinnedRetry is set when the pinned compile exhausted the register file
-	// (a pathologically deep expression tree) and the function was recompiled with
-	// local pinning disabled — a diagnostic flag for such register-heavy functions.
-	UnpinnedRetry bool
+	CompileNanos     uint64
+	FunctionAttempts uint64
 
 	// Peephole/instruction-selection rewrites that fired, by stable name.
 	Peephole map[string]int
 }
 
-// resetFuncStats clears every accumulated counter/map of s, keeping only its
-// identity (FuncIdx, Name), so a recompile of the same function (the pinning-off
-// retry) starts from a clean slate instead of double-counting the failed attempt.
-func resetFuncStats(s *CodegenStats) {
-	if s == nil {
+func (ms *ModuleStats) finalizeCompileResourceStats() {
+	if !diagnosticsEnabled || ms == nil {
 		return
 	}
-	idx, name := s.FuncIdx, s.Name
-	*s = CodegenStats{FuncIdx: idx, Name: name}
+	c := &ms.Compile
+	c.StageNanos[shared.CompileStageFunctions] = 0
+	c.FunctionAttempts = 0
+	for _, s := range ms.Funcs {
+		if !diagnosticsEnabled || s == nil {
+			continue
+		}
+		c.StageNanos[shared.CompileStageFunctions] += s.CompileNanos
+		c.FunctionAttempts += s.FunctionAttempts
+	}
 }
 
-func (s *CodegenStats) setUnpinnedRetry() {
-	if s != nil {
-		s.UnpinnedRetry = true
+func (ms *ModuleStats) setNodeScratchStats(sc *scratch) {
+	if !diagnosticsEnabled || ms == nil {
+		return
+	}
+	ms.Compile.NodeScratchReserved = 0
+	ms.Compile.NodeScratchPeak = 0
+	ms.Compile.NodeScratchRetained = 0
+	ms.Compile.NodeScratchDiscarded = 0
+	ms.Compile.ControlScratchReserved = 0
+	ms.Compile.ControlScratchPeak = 0
+	ms.Compile.ControlScratchRetained = 0
+	ms.Compile.ControlScratchDiscarded = 0
+	ms.addNodeScratchStats(sc)
+}
+
+func (ms *ModuleStats) addNodeScratchStats(sc *scratch) {
+	if (!diagnosticsEnabled || ms == nil) || sc == nil {
+		return
+	}
+	ms.Compile.AddWorkerScratch(workerScratchStats(sc))
+}
+
+func workerScratchStats(sc *scratch) shared.WorkerScratchStats {
+	if sc == nil {
+		return shared.WorkerScratchStats{}
+	}
+	_, retained := sc.stack.nodeMemory()
+	frameBytes := uint64(unsafe.Sizeof(ctrlFrame{}))
+	mergeBytes := uint64(unsafe.Sizeof(ctrlFrameMerge{}))
+	rootBytes := uint64(unsafe.Sizeof(ctrlFrameRoots{}))
+	return shared.WorkerScratchStats{
+		NodeReserved: sc.nodeScratchReserved, NodePeak: sc.nodeScratchPeak,
+		NodeRetained: retained, NodeDiscarded: sc.nodeScratchDiscarded,
+		ControlReserved:  uint64(sc.controlScratchReserved) * frameBytes,
+		ControlPeak:      uint64(sc.controlScratchPeak)*frameBytes + uint64(sc.controlMergePeak)*mergeBytes + uint64(sc.controlRootPeak)*rootBytes,
+		ControlRetained:  uint64(cap(sc.ctrl))*frameBytes + uint64(cap(sc.ctrlMerges))*mergeBytes + uint64(cap(sc.ctrlRoots))*rootBytes,
+		ControlDiscarded: uint64(sc.controlScratchDiscarded)*frameBytes + uint64(sc.controlMergeDiscarded)*mergeBytes + uint64(sc.controlRootDiscarded)*rootBytes,
 	}
 }
 
 func (s *CodegenStats) setFinalizerFallback(reason string) {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.FinalizerFallback = reason
 	}
 }
@@ -246,144 +285,139 @@ func (s *CodegenStats) setFinalizerFallback(reason string) {
 // --- nil-safe counter methods (no-op when collection is off) ---
 
 func (s *CodegenStats) addFlush() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.Flushes++
 	}
 }
 func (s *CodegenStats) addFlushBelow() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.FlushBelows++
 	}
 }
 func (s *CodegenStats) addCondense() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.Condenses++
 	}
 }
 func (s *CodegenStats) addSpill() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.Spills++
 	}
 }
 func (s *CodegenStats) addReload() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.Reloads++
 	}
 }
 func (s *CodegenStats) addForcedLoad() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.MemRefsForcedByStore++
 	}
 }
 func (s *CodegenStats) addTrapStub() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.TrapStubs++
 	}
 }
 func (s *CodegenStats) addTrapGroup() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.TrapGroups++
 	}
 }
 func (s *CodegenStats) addBoundsCheck() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.BoundsChecks++
 	}
 }
 func (s *CodegenStats) addBoundsElidable() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.BoundsChecksElidable++
 	}
 }
 func (s *CodegenStats) addBoundsInLoop() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.BoundsChecksInLoop++
 	}
 }
-func (s *CodegenStats) addBoundsHoistable() {
-	if s != nil {
-		s.BoundsChecksHoistable++
-	}
-}
 func (s *CodegenStats) addPinnedLocal() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.PinnedLocals++
 	}
 }
 func (s *CodegenStats) addPinnedGlobalValue() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.PinnedGlobalsValue++
 	}
 }
 func (s *CodegenStats) addGCHandleResolution() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.GCHandleResolutions++
 	}
 }
 func (s *CodegenStats) addGCHandleResolutionReuse() {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.GCHandleResolutionReuse++
 	}
 }
 func (s *CodegenStats) addGCAllocationBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.Allocation += n
 	}
 }
 func (s *CodegenStats) addGCHandleResolutionBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.HandleResolution += n
 	}
 }
 func (s *CodegenStats) addGCTypeCastBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.TypeCast += n
 	}
 }
 func (s *CodegenStats) addGCNullCheckBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.NullCheck += n
 	}
 }
 func (s *CodegenStats) addGCBoundsCheckBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.BoundsCheck += n
 	}
 }
 func (s *CodegenStats) addGCBarrierBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.Barrier += n
 	}
 }
 func (s *CodegenStats) addGCHelperCallBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.HelperCall += n
 	}
 }
 func (s *CodegenStats) addGCSharedStubBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.SharedStub += n
 	}
 }
 func (s *CodegenStats) addGCSpillReloadBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.SpillReload += n
 	}
 }
 func (s *CodegenStats) addGCTrapStubBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.TrapStub += n
 	}
 }
 func (s *CodegenStats) addGCRootMapBytes(n int) {
-	if s != nil && n > 0 {
+	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.RootMap += n
 	}
 }
 
 // call records one call lowering of the given kind.
 func (s *CodegenStats) call(kind string) {
-	if s == nil {
+	if !diagnosticsEnabled || s == nil {
 		return
 	}
 	if s.Calls == nil {
@@ -393,14 +427,14 @@ func (s *CodegenStats) call(kind string) {
 }
 
 func (s *CodegenStats) addInlineSiteBytes(n int) {
-	if s != nil {
+	if diagnosticsEnabled && s != nil {
 		s.InlineSiteBytes += n
 	}
 }
 
 // peep records one peephole/instruction-selection rewrite by stable name.
 func (s *CodegenStats) peep(name string) {
-	if s == nil {
+	if !diagnosticsEnabled || s == nil {
 		return
 	}
 	if s.Peephole == nil {
@@ -413,7 +447,7 @@ func (s *CodegenStats) peep(name string) {
 // sink. It is used only on the opt-in explain path; ordinary compilation has a
 // nil stats receiver and returns immediately.
 func (s *CodegenStats) reclassifyPeep(from, to string) {
-	if s == nil {
+	if !diagnosticsEnabled || s == nil {
 		return
 	}
 	s.Peephole[from]--
@@ -429,6 +463,12 @@ type ModuleGlobalPinInfo = shared.ModuleGlobalPinInfo
 // ModuleStats aggregates one module's per-function stats plus the module-wide
 // decisions. The zero value is ready to collect into.
 type ModuleStats struct {
+	CodeSites             []shared.NativeCodeSite
+	SharedAdapterUnwind   []jitprofile.UnwindRange
+	UnwindRanges          []jitprofile.UnwindRange
+	SourceRanges          []shared.NativeSourceRange
+	SourceFrames          []shared.NativeInlineFrame
+	ProfileRegions        []jitprofile.Region
 	Funcs                 []*CodegenStats
 	ModuleGlobalPins      []ModuleGlobalPinInfo
 	Inline                *InlineReport // inline-candidate detection (nil if not analyzed)
@@ -437,6 +477,7 @@ type ModuleStats struct {
 	GCSharedStubCallSites int
 	NativeSize            shared.NativeSizeReport
 	Encoding              encoderamd64.EncodingStats
+	Compile               shared.CompileResourceStats
 }
 
 type NativeFunctionSizeReport = shared.NativeFunctionSizeReport
@@ -445,11 +486,24 @@ type NativeSizeReport = shared.NativeSizeReport
 // String renders the explain dump: a module summary line, the module-pinned
 // globals, then one block per function.
 func (ms *ModuleStats) String() string {
-	if ms == nil {
+	if !diagnosticsEnabled {
+		return "compiler diagnostics omitted from this build"
+	}
+	if !diagnosticsEnabled || ms == nil {
 		return ""
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "=== codegen explain: %d function(s) ===\n", len(ms.Funcs))
+	fmt.Fprintf(&b, "compile: hints=%dns functions=%dns finalize=%dns hint-headers=%dB hint-sidecars=%dB attempts=%d\n",
+		ms.Compile.StageNanos[shared.CompileStageHints], ms.Compile.StageNanos[shared.CompileStageFunctions],
+		ms.Compile.StageNanos[shared.CompileStageFinalize], ms.Compile.HintHeaderBytes,
+		ms.Compile.HintSidecarBytes, ms.Compile.FunctionAttempts)
+	fmt.Fprintf(&b, "compile-node-scratch: reserved=%dB peak-envelope=%dB retained=%dB discarded=%dB\n",
+		ms.Compile.NodeScratchReserved, ms.Compile.NodeScratchPeak,
+		ms.Compile.NodeScratchRetained, ms.Compile.NodeScratchDiscarded)
+	fmt.Fprintf(&b, "compile-control-scratch: reserved=%dB peak-envelope=%dB retained=%dB discarded=%dB\n",
+		ms.Compile.ControlScratchReserved, ms.Compile.ControlScratchPeak,
+		ms.Compile.ControlScratchRetained, ms.Compile.ControlScratchDiscarded)
 	fmt.Fprintf(&b, "native: total=%d functions=%d function-align=%d module-other=%d dead-reserved=%d\n",
 		ms.NativeSize.TotalBytes, ms.NativeSize.FunctionBytes, ms.NativeSize.FunctionAlignmentBytes,
 		ms.NativeSize.ModuleOtherBytes, ms.NativeSize.DeadReservationBytes())
@@ -477,7 +531,7 @@ func (ms *ModuleStats) String() string {
 	type fallbackTotal struct{ count, bytes int }
 	fallbacks := make(map[string]fallbackTotal)
 	for _, s := range ms.Funcs {
-		if s == nil || s.FinalizerFallback == "" {
+		if !diagnosticsEnabled || s == nil || s.FinalizerFallback == "" {
 			continue
 		}
 		total := fallbacks[s.FinalizerFallback]
@@ -500,7 +554,7 @@ func (ms *ModuleStats) String() string {
 	}
 	rel32Sites, rel32Recorded, rel32OverflowFuncs, rel32OverflowSites, maxRel32Sites := uint64(0), 0, 0, uint64(0), uint32(0)
 	for _, s := range ms.Funcs {
-		if s == nil {
+		if !diagnosticsEnabled || s == nil {
 			continue
 		}
 		rel32Sites += uint64(s.Rel32Sites)
@@ -550,7 +604,7 @@ func (ms *ModuleStats) String() string {
 		b.WriteString(ms.Inline.String())
 	}
 	for _, s := range ms.Funcs {
-		if s == nil {
+		if !diagnosticsEnabled || s == nil {
 			continue
 		}
 		b.WriteString(s.report())
@@ -560,7 +614,7 @@ func (ms *ModuleStats) String() string {
 
 // report renders one function's counters as an indented block.
 func (s *CodegenStats) report() string {
-	if s == nil {
+	if !diagnosticsEnabled || s == nil {
 		return ""
 	}
 	name := s.Name
@@ -599,8 +653,19 @@ func (s *CodegenStats) report() string {
 		s.Encoding.AluImm32Acc+s.Encoding.TestImm32Acc)
 	fmt.Fprintf(&b, "    alloc: flushes=%d flushBelow=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
-	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
-		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)
+	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d relinquish=%d\n",
+		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue, s.PinRelinquishments)
+	if r := s.Residency; r.Active() {
+		fmt.Fprintf(&b, "    residency: events=%d overflows=%d candidates=%d activations=%d loads=%d misses=%d evictions=%d writebacks=%d final-transfers=%d max-active=%d\n",
+			r.Events, r.EventOverflows, r.Candidates, r.Activations, r.ActivationLoads, r.PressureMisses,
+			r.Evictions, r.DirtyWritebacks, r.FinalTransfers, r.MaxActive)
+		if p := r.Shadow; p.Active() {
+			fmt.Fprintf(&b, "    residency-shadow: candidates=%d versions=%d segments=%d profitable=%d reads=%d defines=%d loads-avoided=%d sync-debt=%d pressure-debt=%d max-live=%d admissions=%d evictions=%d reloads=%d writebacks=%d fail-soft=%d\n",
+				p.Candidates, p.Versions, p.Segments, p.Profitable, p.Reads, p.Defines,
+				p.LoadsAvoided, p.SyncDebt, p.PressureDebt, p.MaxLive, p.Admissions,
+				p.Evictions, p.Reloads, p.Writebacks, p.FailSoft)
+		}
+	}
 	if s.InlineSiteBytes != 0 {
 		fmt.Fprintf(&b, "    inline-site-bytes: %d\n", s.InlineSiteBytes)
 	}
@@ -689,4 +754,12 @@ func funcDisplayName(m *wasm.Module, localIdx, importedFuncs int) string {
 		}
 	}
 	return ""
+}
+
+// Keep environment reads out of ordinary builds, including package initialization.
+func diagnosticEnv(key string) string {
+	if !diagnosticsEnabled {
+		return ""
+	}
+	return os.Getenv(key)
 }

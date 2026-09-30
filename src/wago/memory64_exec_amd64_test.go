@@ -6,13 +6,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func uleb64(v uint64) []byte {
@@ -553,7 +554,7 @@ func TestStagedMemory64ActiveDataLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := memory.Bytes()[65532:65536]; !bytes.Equal(got, []byte{1, 2, 3, 4}) {
+	if got := memory.UnsafeBytes()[65532:65536]; !bytes.Equal(got, []byte{1, 2, 3, 4}) {
 		t.Fatalf("memory64 active data bytes = %v, want [1 2 3 4]", got)
 	}
 
@@ -602,7 +603,7 @@ func TestStagedMemory64PassiveDataLifecycle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			mem := memory.Bytes()
+			mem := memory.UnsafeBytes()
 			if _, err := in.Invoke("init", 16, I32(1), I32(3)); err != nil {
 				t.Fatalf("memory64.init: %v", err)
 			}
@@ -663,7 +664,7 @@ func TestStagedMemory64IntegerScalarFamily(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mem := memory.Bytes()
+	mem := memory.UnsafeBytes()
 	const addr = 64
 	loadCases := map[string]struct {
 		bits uint64
@@ -736,7 +737,7 @@ func TestStagedMemory64FloatScalarFamily(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mem := memory.Bytes()
+	mem := memory.UnsafeBytes()
 	const addr = 96
 	f32bits := uint32(0x7fa00001)
 	f64bits := uint64(0x7ff4000000000001)
@@ -814,10 +815,10 @@ func TestStagedMemory64SIMDMemoryFamily(t *testing.T) {
 		if got := invokeV128(t, in, "run", 3, lo, hi); got != want {
 			t.Fatalf("memory64 v128 round trip = % x, want % x", got, want)
 		}
-		if got := V128(memory.Bytes()[8:24]); got != want {
+		if got := V128(memory.UnsafeBytes()[8:24]); got != want {
 			t.Fatalf("memory64 v128 bytes = % x, want % x", got, want)
 		}
-		if _, err := in.Invoke("run", uint64(len(memory.Bytes())-20), lo, hi); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+		if _, err := in.Invoke("run", uint64(len(memory.UnsafeBytes())-20), lo, hi); err == nil || !strings.Contains(err.Error(), "out of bounds") {
 			t.Fatalf("memory64 v128 end trap = %v", err)
 		}
 
@@ -854,11 +855,11 @@ func TestStagedMemory64SIMDMemoryFamily(t *testing.T) {
 			body := append([]byte{0x20, 0x00}, memory64SIMDMemOp(tc.sub, tc.align, 5)...)
 			body = append(body, 0x0b)
 			_, in, memory := compile(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.V128}, body)
-			copy(memory.Bytes()[8:], tc.input[:tc.size])
+			copy(memory.UnsafeBytes()[8:], tc.input[:tc.size])
 			if got := invokeV128(t, in, "run", 3); got != tc.want {
 				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
 			}
-			if _, err := in.Invoke("run", uint64(len(memory.Bytes())-5-tc.size+1)); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+			if _, err := in.Invoke("run", uint64(len(memory.UnsafeBytes())-5-tc.size+1)); err == nil || !strings.Contains(err.Error(), "out of bounds") {
 				t.Fatalf("%s exact-width end trap = %v", tc.name, err)
 			}
 		})
@@ -877,10 +878,10 @@ func TestStagedMemory64SIMDMemoryFamily(t *testing.T) {
 			loadBody = append(loadBody, 0x0b)
 			_, loadIn, loadMemory := compile(t, []wasm.ValType{wasm.I64, wasm.V128}, []wasm.ValType{wasm.V128}, loadBody)
 			for i := byte(0); i < tc.size; i++ {
-				loadMemory.Bytes()[8+int(i)] = 0xa0 + i
+				loadMemory.UnsafeBytes()[8+int(i)] = 0xa0 + i
 			}
 			want := initial
-			copy(want[int(tc.lane)*int(tc.size):], loadMemory.Bytes()[8:8+int(tc.size)])
+			copy(want[int(tc.lane)*int(tc.size):], loadMemory.UnsafeBytes()[8:8+int(tc.size)])
 			if got := invokeV128(t, loadIn, "run", 3, lo, hi); got != want {
 				t.Fatalf("load lane = % x, want % x", got, want)
 			}
@@ -892,14 +893,14 @@ func TestStagedMemory64SIMDMemoryFamily(t *testing.T) {
 				t.Fatal(err)
 			}
 			laneStart := int(tc.lane) * int(tc.size)
-			if got, wantBytes := storeMemory.Bytes()[8:8+int(tc.size)], initial[laneStart:laneStart+int(tc.size)]; !bytes.Equal(got, wantBytes) {
+			if got, wantBytes := storeMemory.UnsafeBytes()[8:8+int(tc.size)], initial[laneStart:laneStart+int(tc.size)]; !bytes.Equal(got, wantBytes) {
 				t.Fatalf("stored lane = % x, want % x", got, wantBytes)
 			}
-			before := append([]byte(nil), storeMemory.Bytes()[8:8+int(tc.size)]...)
-			if _, err := storeIn.Invoke("run", uint64(len(storeMemory.Bytes())-5-int(tc.size)+1), lo, hi); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+			before := append([]byte(nil), storeMemory.UnsafeBytes()[8:8+int(tc.size)]...)
+			if _, err := storeIn.Invoke("run", uint64(len(storeMemory.UnsafeBytes())-5-int(tc.size)+1), lo, hi); err == nil || !strings.Contains(err.Error(), "out of bounds") {
 				t.Fatalf("store lane end trap = %v", err)
 			}
-			if got := storeMemory.Bytes()[8 : 8+int(tc.size)]; !bytes.Equal(got, before) {
+			if got := storeMemory.UnsafeBytes()[8 : 8+int(tc.size)]; !bytes.Equal(got, before) {
 				t.Fatalf("trapping lane store changed memory: % x", got)
 			}
 		})
@@ -943,7 +944,7 @@ func TestStagedMemory64BulkCopyFill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mem := memory.Bytes()
+	mem := memory.UnsafeBytes()
 	for i := 0; i < 64; i++ {
 		mem[i] = byte(i)
 	}
@@ -1044,7 +1045,7 @@ func TestStagedMemory64InstanceExportImportLifecycle(t *testing.T) {
 		t.Fatalf("memory64 import codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Memories, meta.Memories)
 	}
 
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.memory": memory}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.memory", memory)})
 	if err != nil {
 		t.Fatalf("instantiate memory64 consumer: %v", err)
 	}
@@ -1116,7 +1117,7 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 		if err != nil {
 			t.Fatalf("compile %s: %v", name, err)
 		}
-		in, err := instantiateCore(c, InstantiateOptions{Imports: Imports{"env.memory": bounded}})
+		in, err := instantiateCore(c, InstantiateOptions{Imports: testImports("env.memory", bounded)})
 		if err != nil {
 			c.Close()
 			t.Fatalf("%s: %v", name, err)
@@ -1133,7 +1134,7 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := instantiateCore(c, InstantiateOptions{Imports: Imports{"env.memory": bounded}}); err == nil {
+		if _, err := instantiateCore(c, InstantiateOptions{Imports: testImports("env.memory", bounded)}); err == nil {
 			c.Close()
 			t.Fatalf("%s mismatch was accepted", name)
 		}
@@ -1145,7 +1146,7 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := instantiateCore(valid, InstantiateOptions{Imports: Imports{"env.memory": bounded}})
+	in, err := instantiateCore(valid, InstantiateOptions{Imports: testImports("env.memory", bounded)})
 	if err != nil {
 		valid.Close()
 		t.Fatalf("valid memory64 import after failed links: %v", err)
@@ -1160,7 +1161,7 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	noMaxIn, err := instantiateCore(noMaxConsumer, InstantiateOptions{Imports: Imports{"env.memory": unbounded}})
+	noMaxIn, err := instantiateCore(noMaxConsumer, InstantiateOptions{Imports: testImports("env.memory", unbounded)})
 	if err != nil {
 		noMaxConsumer.Close()
 		t.Fatalf("no-max memory64 import: %v", err)
@@ -1178,7 +1179,7 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, provider := range map[string]*Memory{"owner": unbounded, "re-export": reexported} {
-		if _, err := instantiateCore(boundedImport, InstantiateOptions{Imports: Imports{"env.memory": provider}}); err == nil || !strings.Contains(err.Error(), "no declared maximum") {
+		if _, err := instantiateCore(boundedImport, InstantiateOptions{Imports: testImports("env.memory", provider)}); err == nil || !strings.Contains(err.Error(), "no declared maximum") {
 			boundedImport.Close()
 			noMaxIn.Close()
 			noMaxConsumer.Close()
@@ -1206,14 +1207,14 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mixed.Close()
-	if _, err := instantiateCore(mixed, InstantiateOptions{Imports: Imports{"env.memory": memory32}}); err == nil || !strings.Contains(err.Error(), "provider is memory32, import requires memory64") {
+	if _, err := instantiateCore(mixed, InstantiateOptions{Imports: testImports("env.memory", memory32)}); err == nil || !strings.Contains(err.Error(), "provider is memory32, import requires memory64") {
 		t.Fatalf("memory32 provider into memory64 import = %v", err)
 	}
 }
 
 func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 	unallocatable := append([]byte{0x04}, uleb64(65536)...)
-	if _, err := compileStagedMemory64(wasmtest.Module(wasmtest.Section(5, wasmtest.Vec(unallocatable)))); err == nil || !strings.Contains(err.Error(), "minimum 65536 pages exceeds 65535") {
+	if _, err := compileStagedMemory64(wasmtest.Module(wasmtest.Section(5, wasmtest.Vec(unallocatable)))); err == nil || !strings.Contains(err.Error(), "implementation limit") || !errors.Is(err, ErrImplementationLimit) || errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("unallocatable memory64 minimum error = %v", err)
 	}
 	shared := append([]byte{0x07}, uleb64(1)...)
@@ -1395,7 +1396,7 @@ func BenchmarkStagedMemory64ImportedSize(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.memory": memory}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.memory", memory)})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1489,7 +1490,7 @@ func BenchmarkStagedMemory64FloatLoad(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	binary.LittleEndian.PutUint64(memory.Bytes()[64:], 0x7ff4000000000001)
+	binary.LittleEndian.PutUint64(memory.UnsafeBytes()[64:], 0x7ff4000000000001)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

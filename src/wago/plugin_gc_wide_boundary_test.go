@@ -4,10 +4,11 @@ package wago
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 type pluginGCWideBoundaryTestPlugin struct{}
@@ -31,25 +32,26 @@ func (pluginGCWideBoundaryTestPlugin) Register(reg *Registrar) error {
 	if err != nil {
 		return err
 	}
-	module, err := imports.Module("plugin_gc_wide")
-	if err != nil {
-		return err
-	}
-	module.Func("wide_result", func(_ HostModule, _, results []uint64) {
+	testRegisterHostFunc(imports, "plugin_gc_wide", "wide_result", func(_ HostModule, _, results []uint64) {
 		results[0] = 0
 		results[1] = 1
 		results[2] = 2
 		results[3] = 3
 		results[4] = 4
 	}).Results(ValAnyRef, ValI32, ValI64, ValI32, ValI32)
-	module.Func("null_result", func(_ HostModule, _, results []uint64) {
+	testRegisterHostFunc(imports, "plugin_gc_wide", "null_result", func(_ HostModule, _, results []uint64) {
 		results[0] = 0
 	}).Results(ValAnyRef)
 	params := make([]ValType, 11)
 	for i := range params {
 		params[i] = ValI32
 	}
-	module.Func("scalar_11", func(HostModule, []uint64, []uint64) {}).Params(params...)
+	testRegisterHostFunc(imports, "plugin_gc_wide", "scalar_11", func(HostModule, []uint64, []uint64) {}).Params(params...)
+	testRegisterHostFunc(imports, "plugin_gc_wide", "wide_scalar_results", func(_ HostModule, params, results []uint64) {
+		for i := range results {
+			results[i] = uint64(i) + params[0]
+		}
+	}).Params(ValI32).Results(ValI32, ValI32, ValI64, ValI64, ValI32, ValI64, ValI32, ValI64, ValI32, ValI32)
 	return nil
 }
 
@@ -107,6 +109,166 @@ func pluginGCFourResultCallerModule() []byte {
 	)
 }
 
+func pluginGCWideScalarResultModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01} // (struct (field (mut i32)))
+	wideScalarType := wasmtest.FuncType(
+		[]wasm.ValType{wasm.I32},
+		[]wasm.ValType{wasm.I32, wasm.I32, wasm.I64, wasm.I64, wasm.I32, wasm.I64, wasm.I32, wasm.I64, wasm.I32, wasm.I32},
+	)
+	runType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	body := []byte{
+		0x41, 0x00, // i32.const 0
+		0x10, 0x00, // call wide_scalar_results
+		0x1a, 0x1a, 0x1a, 0x1a, 0x1a, // drop ten scalar results
+		0x1a, 0x1a, 0x1a, 0x1a, 0x1a,
+		0xfb, 0x01, 0x00, 0x1a, // struct.new_default 0; drop
+		0x41, 0x07, // i32.const 7
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, wideScalarType, runType)),
+		wasmtest.Section(2, wasmtest.Vec(pluginGCImport("plugin_gc_wide", "wide_scalar_results", 1))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func pluginGCWideScalarCallerModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01} // (struct (field (mut i32)))
+	wideScalarType := wasmtest.FuncType(
+		[]wasm.ValType{wasm.I32},
+		[]wasm.ValType{wasm.I32, wasm.I32, wasm.I64, wasm.I64, wasm.I32, wasm.I64, wasm.I32, wasm.I64, wasm.I32, wasm.I32},
+	)
+	wideCallerType := []byte{
+		0x60, 0x08, 0x63, 0x00, // func, eight params, (ref null 0)
+		0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, // seven i32 params
+		0x01, 0x7f, // one i32 result
+	}
+	runType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	wideCallerBody := []byte{
+		0x20, 0x01, // local.get 1
+		0x10, 0x00, // call wide_scalar_results
+		0x1a, 0x1a, 0x1a, 0x1a, 0x1a, // drop ten scalar results
+		0x1a, 0x1a, 0x1a, 0x1a, 0x1a,
+		0x20, 0x00, 0xd1, 0x1a, // local.get 0; ref.is_null; drop
+		0xfb, 0x01, 0x00, 0x1a, // struct.new_default 0; drop
+		0x20, 0x07, // local.get 7
+		0x0b,
+	}
+	runBody := []byte{
+		0xfb, 0x01, 0x00, // struct.new_default 0
+		0x41, 0x01, 0x41, 0x02, 0x41, 0x03, 0x41, 0x04,
+		0x41, 0x05, 0x41, 0x06, 0x41, 0x07,
+		0x10, 0x01, // call wide_caller
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, wideScalarType, wideCallerType, runType)),
+		wasmtest.Section(2, wasmtest.Vec(pluginGCImport("plugin_gc_wide", "wide_scalar_results", 1))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(3))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(wideCallerBody), wasmtest.Code(runBody))),
+	)
+}
+
+// This architecture-neutral regression runs in the mandatory native amd64 and
+// arm64 suites. The module itself has no collector-reference import boundary:
+// its wide import is scalar-only, while struct.new_default still requires exact
+// roots for collection in the calling native frame.
+func TestPluginGCWideScalarHostImportUsesSynchronousABI(t *testing.T) {
+	requireCompleteCore3Backend(t)
+	rt := newPluginGCWideBoundaryRuntime(t)
+	defer rt.Close()
+
+	mod, err := rt.Compile(pluginGCWideScalarResultModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	admission := mod.c.GCNativeRootAdmission()
+	if !admission.Required || !admission.Exact || admission.Callsites == 0 || admission.Safepoints == 0 {
+		t.Fatalf("wide scalar host root admission = %+v", admission)
+	}
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	values, err := in.InvokeValues(context.Background(), "run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 1 || values[0].I32() != 7 {
+		t.Fatalf("run = %v; want i32(7)", values)
+	}
+}
+
+// The wide local function uses the wrapper entry ABI. Its scalar host call uses
+// the synchronous host ABI. Neither boundary needs the smaller reference-call
+// register proof merely because the module has no collector-reference import.
+func TestPluginGCWideScalarCallerUsesSynchronousABI(t *testing.T) {
+	requireCompleteCore3Backend(t)
+	rt := newPluginGCWideBoundaryRuntime(t)
+	defer rt.Close()
+
+	mod, err := rt.Compile(pluginGCWideScalarCallerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	admission := mod.c.GCNativeRootAdmission()
+	if !admission.Required || !admission.Exact || admission.Callsites == 0 || admission.Safepoints == 0 || admission.MaximumRoots == 0 {
+		t.Fatalf("wide scalar caller root admission = %+v", admission)
+	}
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	values, err := in.InvokeValues(context.Background(), "run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 1 || values[0].I32() != 7 {
+		t.Fatalf("run = %v; want i32(7)", values)
+	}
+}
+
+func TestGCWideDynamicCallRefRetainsRegisterABIProof(t *testing.T) {
+	requireCompleteCore3Backend(t)
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	wideType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32})
+	runType := wasmtest.FuncType(nil, nil)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, wideType, runType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target", 0, 0), // declares target for ref.func
+			wasmtest.ExportEntry("run", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x01, 0x41, 0x02, 0x41, 0x03, 0x0b}),
+			wasmtest.Code([]byte{
+				0xd2, 0x00, // ref.func 0
+				0x14, 0x01, // call_ref type 1
+				0x1a, 0x1a, 0x1a,
+				0xfb, 0x01, 0x00, 0x1a, // collecting allocation remains present
+				0x0b,
+			}),
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	admission := compiled.GCNativeRootAdmission()
+	if !admission.Required || admission.Exact || !strings.Contains(admission.Reason, "unsupported native call or frame shape") {
+		t.Fatalf("wide dynamic call_ref root admission = %+v", admission)
+	}
+}
+
 func TestPluginGCHostBoundaryWideWrapperABI(t *testing.T) {
 	requireCompleteCore3Backend(t)
 	rt := newPluginGCWideBoundaryRuntime(t)
@@ -131,7 +293,7 @@ func TestPluginGCHostBoundaryWideWrapperABI(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			values, err := in.Call(context.Background(), "run")
+			values, err := in.InvokeValues(context.Background(), "run")
 			if err != nil {
 				t.Fatal(err)
 			}

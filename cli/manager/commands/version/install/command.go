@@ -9,10 +9,10 @@ import (
 )
 
 type Options struct {
-	Versions                []string
-	Latest, Nightly, Canary bool
-	Profile, Build          string
-	Use                     string
+	Versions             []string
+	Latest, Beta, Canary bool
+	Profile, Build       string
+	Use                  string
 }
 
 type Environment interface {
@@ -28,7 +28,7 @@ func Command(environment Environment) *command.Cmd {
 		Flags: []command.Flag{
 			{Name: "version", Short: "v", Arg: "<version>", Help: "install an exact release or commit"},
 			{Name: "latest", Short: "l", Bool: true, Help: "install the latest release"},
-			{Name: "nightly", Short: "n", Bool: true, Help: "install nightly"},
+			{Name: "beta", Bool: true, Help: "install the latest beta"},
 			{Name: "canary", Short: "c", Bool: true, Help: "install the latest canary"},
 			{Name: "profile", Short: "p", Arg: "<name>", Help: "standard or minimal"},
 			{Name: "build", Short: "b", Arg: "<name>", Help: "normal or tiny"},
@@ -44,7 +44,7 @@ func Command(environment Environment) *command.Cmd {
 				versions = []string{value}
 			}
 			channels := 0
-			for _, selected := range []bool{c.Bool("latest"), c.Bool("nightly"), c.Bool("canary")} {
+			for _, selected := range []bool{c.Bool("latest"), c.Bool("beta"), c.Bool("canary")} {
 				if selected {
 					channels++
 				}
@@ -73,8 +73,8 @@ func Command(environment Environment) *command.Cmd {
 				use = "no"
 			}
 			if automation.NoInput() {
-				if len(versions) == 0 && !c.Bool("latest") && !c.Bool("nightly") && !c.Bool("canary") {
-					ui.Usage("version install: --no-input requires [version], --latest, --nightly, or --canary")
+				if len(versions) == 0 && !c.Bool("latest") && !c.Bool("beta") && !c.Bool("canary") {
+					ui.Usage("version install: --no-input requires [version], --latest, --beta, or --canary")
 				}
 				if use == "" && !automation.DryRun() {
 					ui.Usage("version install: --no-input requires --use or --no-use")
@@ -83,7 +83,7 @@ func Command(environment Environment) *command.Cmd {
 			environment.InstallRequested(Options{
 				Versions: versions,
 				Latest:   c.Bool("latest"),
-				Nightly:  c.Bool("nightly"),
+				Beta:     c.Bool("beta"),
 				Canary:   c.Bool("canary"),
 				Profile:  c.Str("profile"),
 				Build:    c.Str("build"),

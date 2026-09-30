@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestNullableLocalExternrefGlobals(t *testing.T) {
@@ -31,13 +31,13 @@ func TestNullableLocalExternrefGlobals(t *testing.T) {
 	defer in.Close()
 
 	for _, name := range []string{"get_immutable", "get_mutable"} {
-		out, err := in.Call(context.Background(), name)
+		out, err := in.InvokeValues(context.Background(), name)
 		if err != nil || len(out) != 1 || out[0].Type() != ValExternRef || !out[0].ExternRef().IsNull() {
 			t.Fatalf("Call %s = %v, %v; want one null externref", name, out, err)
 		}
 	}
 	ref := issueExternref(t, in, "local-global")
-	out, err := in.Call(context.Background(), "set_and_get", ValueExternRef(ref))
+	out, err := in.InvokeValues(context.Background(), "set_and_get", ValueExternRef(ref))
 	if err != nil || len(out) != 1 || out[0].ExternRef() != ref {
 		t.Fatalf("set_and_get(ref) = %v, %v; want stable externref", out, err)
 	}
@@ -82,7 +82,7 @@ func TestLocalExternrefGlobalsRespectFeatureStoreAndLifetimeBoundaries(t *testin
 		t.Fatalf("Compile imported externref global: %v", err)
 	}
 	defer importedCompiled.Close()
-	if _, err := Instantiate(importedCompiled, Imports{"env.ref": GlobalImport{Type: ValExternRef}}); err == nil || !strings.Contains(err.Error(), "explicit store-bound *Global") {
+	if _, err := Instantiate(importedCompiled, testImports("env.ref", GlobalImport{Type: ValExternRef})); err == nil || !strings.Contains(err.Error(), "explicit store-bound *Global") {
 		t.Fatalf("Instantiate unowned imported externref global error = %v", err)
 	}
 
@@ -162,7 +162,7 @@ func TestLocalExternrefGlobalsRespectFeatureStoreAndLifetimeBoundaries(t *testin
 func TestLocalExternrefGlobalsRemainOutOfSerializedState(t *testing.T) {
 	c := compileExplicitArtifact(t, nullableLocalExternrefGlobalsModule())
 	defer c.Close()
-	_ = roundTripCompiled(t, c)
+	_ = publicArtifactRoundTrip(t, c)
 	if _, err := Instantiate(&Compiled{Globals: []GlobalDef{{Type: ValExternRef, Bits: 1}}}); err == nil || !strings.Contains(err.Error(), "non-null externref global initializer") {
 		t.Fatalf("Instantiate forged externref metadata error = %v", err)
 	}
@@ -194,7 +194,7 @@ func TestRelease2ExternrefGlobalSourceGuard(t *testing.T) {
 		}},
 	}
 	for _, site := range sites {
-		raw, err := os.ReadFile(filepath.Join("../../tests/spec-v2/test/core", site.file))
+		raw, err := os.ReadFile(filepath.Join("../../tests/conformance/spec-v2/test/core", site.file))
 		if err != nil {
 			t.Skipf("Release 2 fixture unavailable: %v", err)
 		}

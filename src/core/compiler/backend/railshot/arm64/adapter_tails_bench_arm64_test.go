@@ -49,7 +49,7 @@ func BenchmarkExecSharedAdapterTailArm64(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer coreruntime.Unmap(code)
-			results, trap := arena.Alloc(8), arena.Alloc(8)
+			results, trap := arena.Alloc(8), arena.Alloc(coreruntime.TrapBufferBytes)
 			b.ReportMetric(float64(len(cm.Code)), "code-B")
 			b.ReportAllocs()
 			b.ResetTimer()

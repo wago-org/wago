@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func gcMutableFuncrefTailProviderModule() []byte {
@@ -133,11 +133,11 @@ func TestGCMutableImportedFuncrefTableReturnCallRef(t *testing.T) {
 	}
 
 	for _, codec := range []bool{false, true} {
-		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
+		t.Run(map[bool]string{false: "compiled", true: "private-payload-codec"}[codec], func(t *testing.T) {
 			providerCandidate, consumerCandidate := providerCode, consumerCode
 			if codec {
-				providerCandidate = roundTripCompiled(t, providerCode)
-				consumerCandidate = roundTripCompiled(t, consumerCode)
+				providerCandidate = privatePayloadRoundTrip(t, providerCode)
+				consumerCandidate = privatePayloadRoundTrip(t, consumerCode)
 				providerCandidate.ensureCodeCache()
 				consumerCandidate.ensureCodeCache()
 				providerCandidate.codeCache.stagedFeatures |= CoreFeatureTailCall
@@ -165,7 +165,7 @@ func TestGCMutableImportedFuncrefTableReturnCallRef(t *testing.T) {
 						provider.Close()
 						t.Fatal(err)
 					}
-					consumer, err := instantiateCore(consumerCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: Imports{"env.table": table, "env.memory": memory}})
+					consumer, err := instantiateCore(consumerCandidate, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("env.table", table, "env.memory", memory)})
 					if err != nil {
 						provider.Close()
 						t.Fatal(err)
@@ -236,7 +236,7 @@ func TestGCMutableFuncrefTailRejectsForeignCollectorDomain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: consumerStore, Imports: Imports{"env.table": table, "env.memory": memory}})
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: consumerStore, Imports: testImports("env.table", table, "env.memory", memory)})
 	if err == nil {
 		consumer.Close()
 		t.Fatal("foreign Runtime funcref table unexpectedly instantiated")
@@ -276,7 +276,7 @@ func BenchmarkGCMutableImportedFuncrefTableReturnCallRef(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	consumer, err := instantiateCore(consumerCode, InstantiateOptions{store: store, Imports: Imports{"env.table": table, "env.memory": memory}})
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{store: store, Imports: testImports("env.table", table, "env.memory", memory)})
 	if err != nil {
 		b.Fatal(err)
 	}

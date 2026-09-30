@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -79,6 +80,9 @@ func TestHelpCollapsesBooleanPairs(t *testing.T) {
 		t.Fatalf("run help did not collapse advanced optimization help:\n%s", text)
 	}
 	if !strings.Contains(text, "--parallel, -p [workers]") ||
+		!strings.Contains(text, "--native-stack <size>") ||
+		!strings.Contains(text, "--gc-heap <size>") ||
+		!strings.Contains(text, "--gc-nursery <size>") ||
 		!strings.Contains(text, "-p8 / -p 8 / --parallel=8") ||
 		!strings.Contains(text, "use -- before colliding guest flags") {
 		t.Fatalf("run help did not document function parallelism:\n%s", text)
@@ -117,6 +121,93 @@ func TestRunRecognizesFlagsAfterModulePath(t *testing.T) {
 	}
 	if !ctx.Bool("global") || len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
 		t.Fatalf("file --global parsed as global=%v args=%v", ctx.Bool("global"), ctx.Args)
+	}
+}
+
+func TestRunNativeStackFlag(t *testing.T) {
+	cmd := Command(testEnvironment{})
+	for _, tc := range []struct {
+		value string
+		want  uint64
+	}{
+		{"512KiB", 512 << 10},
+		{"8MiB", 8 << 20},
+		{"1GiB", 1 << 30},
+		{"8388608B", 8 << 20},
+		{"8388608", 8 << 20},
+	} {
+		normalized, err := cmd.Normalize([]string{"module.wasm", "--native-stack", tc.value})
+		if err != nil {
+			t.Fatalf("normalize %q: %v", tc.value, err)
+		}
+		ctx, err := cmd.Parse("wago run", normalized)
+		if err != nil {
+			t.Fatalf("parse %q: %v", tc.value, err)
+		}
+		got, err := parseNativeStackBytes(ctx.Str("native-stack"))
+		if err != nil || got != tc.want {
+			t.Fatalf("native stack %q = %d, %v; want %d", tc.value, got, err, tc.want)
+		}
+		if len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
+			t.Fatalf("native stack flag consumed guest arguments: %v", ctx.Args)
+		}
+	}
+	for _, value := range []string{"", "511KiB", "524289", "2GiB", "1GB", "many"} {
+		if _, err := parseNativeStackBytes(value); err == nil {
+			t.Errorf("native stack %q was accepted", value)
+		}
+	}
+}
+
+func TestRunGCHeapFlags(t *testing.T) {
+	cmd := Command(testEnvironment{})
+	normalized, err := cmd.Normalize([]string{"module.wasm", "--gc-heap", "2GiB", "--gc-nursery=64MiB"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := cmd.Parse("wago run", normalized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, configured, err := gcConfiguration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configured || cfg.ThroughputHeapBytes != 2<<30 || cfg.NurseryBytes != 64<<20 {
+		t.Fatalf("GC config = %+v, configured=%v", cfg, configured)
+	}
+	if len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
+		t.Fatalf("GC flags consumed guest arguments: %v", ctx.Args)
+	}
+
+	for _, value := range []string{"0", "4GiB", "1GB", "many"} {
+		ctx := command.NewContext(nil, map[string]string{"gc-heap": value}, nil)
+		if _, _, err := gcConfiguration(ctx); err == nil {
+			t.Errorf("gc heap %q was accepted", value)
+		}
+	}
+	if _, configured, err := gcConfiguration(command.NewContext(nil, nil, nil)); err != nil || configured {
+		t.Fatalf("default GC config = configured %v, error %v", configured, err)
+	}
+}
+
+func TestRunParsesNativeArtifactOptInAsBoolean(t *testing.T) {
+	cmd := Command(testEnvironment{})
+	for _, args := range [][]string{
+		{"--allow-native-artifact", "module.wago"},
+		{"module.wago", "--allow-native-artifact"},
+	} {
+		normalized, err := cmd.Normalize(args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, err := cmd.Parse("wago run", normalized)
+		if err != nil {
+			t.Fatalf("parse %v: %v", args, err)
+		}
+		if !ctx.Bool("allow-native-artifact") || len(ctx.Args) != 1 || ctx.Args[0] != "module.wago" {
+			t.Fatalf("parse %v = opt-in %v, args %v", args, ctx.Bool("allow-native-artifact"), ctx.Args)
+		}
 	}
 }
 
@@ -166,7 +257,7 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	rt := wago.NewRuntime()
 	defer rt.Close()
 	config := wago.NewRuntimeConfig()
-	mod := mustLoadModule(path, config, rt, artifactcache.Cache{})
+	mod := mustLoadModule(path, config, rt, artifactcache.Cache{}, false)
 	if got := mustResolveExport(mod.Compiled(), ""); got != "f" {
 		t.Fatalf("default export = %q", got)
 	}
@@ -181,7 +272,10 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	if err := os.WriteFile(compiledPath, encoded, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := mustResolveExport(mustLoadModule(compiledPath, config, rt, artifactcache.Cache{}).Compiled(), "f"); got != "f" {
+	if mod, err := loadModule(compiledPath, config, rt, artifactcache.Cache{}, false); err == nil || mod != nil || !strings.Contains(err.Error(), "--allow-native-artifact") {
+		t.Fatalf("untrusted artifact load = %v, %v; want explicit opt-in", mod, err)
+	}
+	if got := mustResolveExport(mustLoadModule(compiledPath, config, rt, artifactcache.Cache{}, true).Compiled(), "f"); got != "f" {
 		t.Fatalf("loaded export = %q", got)
 	}
 	withTrailing := append(append([]byte(nil), encoded...), 0)
@@ -194,6 +288,18 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 }
 
 func TestLoadCompiledArtifactEnforcesSectionLimits(t *testing.T) {
+	// Derive the header from the current encoder so format revisions do not
+	// turn section-limit checks into version-mismatch checks.
+	rt := wago.NewRuntime()
+	defer rt.Close()
+	module, err := rt.Compile([]byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := module.Compiled().MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
 	limits := wago.DefaultArtifactLimits()
 	for _, tc := range []struct {
 		name        string
@@ -205,7 +311,7 @@ func TestLoadCompiledArtifactEnforcesSectionLimits(t *testing.T) {
 		{name: "metadata", metadataLen: uint64(limits.MaxMetadataBytes) + 1, want: "metadata section length"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			artifact := []byte{'W', 'A', 'G', 'O', 1, 2, 1}
+			artifact := append([]byte(nil), encoded[:7]...)
 			artifact = binary.AppendUvarint(artifact, tc.codeBytes)
 			if tc.codeBytes == 0 {
 				artifact = append(artifact, 2)
@@ -307,6 +413,94 @@ func TestRunExecValueMode(t *testing.T) {
 	implementation{environment: testEnvironment{}}.Run(command.NewContext([]string{path}, nil, map[string]bool{"no-deferred-bounds-checking": true}))
 }
 
+func TestRunExecInvokesReactorInitializerInOrder(t *testing.T) {
+	const helper = "WAGO_TEST_RUN_REACTOR_SEQUENCE"
+	if os.Getenv(helper) != "" {
+		cmd := Command(testEnvironment{})
+		args, err := cmd.Normalize([]string{
+			os.Getenv(helper), "--invoke", "_initialize", "--invoke", "value",
+		})
+		if err != nil {
+			panic(err)
+		}
+		ctx, err := cmd.Parse("wago run", args)
+		if err != nil {
+			panic(err)
+		}
+		implementation{environment: testEnvironment{}}.Run(ctx)
+		os.Exit(0)
+	}
+	path := filepath.Join(t.TempDir(), "reactor.wasm")
+	if err := os.WriteFile(path, reactorModule(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRunExecInvokesReactorInitializerInOrder$", "-test.count=1")
+	cmd.Env = append(os.Environ(), helper+"="+path, "WAGO_BARE=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("reactor invocation sequence: %v\n%s", err, output)
+	}
+	if got := string(output); got != "42\n" {
+		t.Fatalf("output = %q, want 42", got)
+	}
+}
+
+func TestRunExecMultipleInvokesConsumeArgumentsByArity(t *testing.T) {
+	const helper = "WAGO_TEST_RUN_INVOKE_SEQUENCE"
+	if os.Getenv(helper) != "" {
+		cmd := Command(testEnvironment{})
+		args, err := cmd.Normalize([]string{
+			os.Getenv(helper), "--invoke", "set", "7:i32", "--invoke", "add", "35", "subcommand",
+		})
+		if err != nil {
+			panic(err)
+		}
+		ctx, err := cmd.Parse("wago run", args)
+		if err != nil {
+			panic(err)
+		}
+		implementation{environment: testEnvironment{}}.Run(ctx)
+		os.Exit(0)
+	}
+	path := filepath.Join(t.TempDir(), "sequence.wasm")
+	if err := os.WriteFile(path, invokeSequenceModule(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRunExecMultipleInvokesConsumeArgumentsByArity$", "-test.count=1")
+	cmd.Env = append(os.Environ(), helper+"="+path, "WAGO_BARE=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("ordered invocation: %v\n%s", err, output)
+	}
+	if got := string(output); got != "42\n" {
+		t.Fatalf("output = %q, want 42", got)
+	}
+}
+
+func TestRunExecGCHeapOverride(t *testing.T) {
+	if wago.CoreFeaturesV3&^wago.SupportedFeatures() != 0 {
+		t.Skip("complete Core 3 execution is unavailable on this platform")
+	}
+	t.Setenv("WAGO_BARE", "1")
+	// (module (type (array (mut i8))) (func (export "_start")
+	//   i32.const 20971520 array.new_default 0 drop))
+	wasm := []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+		0x01, 0x07, 0x02, 0x5e, 0x78, 0x01, 0x60, 0x00,
+		0x00, 0x03, 0x02, 0x01, 0x01, 0x07, 0x0a, 0x01,
+		0x06, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x00,
+		0x00, 0x0a, 0x0d, 0x01, 0x0b, 0x00, 0x41, 0x80,
+		0x80, 0x80, 0x0a, 0xfb, 0x07, 0x00, 0x1a, 0x0b}
+	path := filepath.Join(t.TempDir(), "large-array.wasm")
+	if err := os.WriteFile(path, wasm, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	implementation{environment: testEnvironment{}}.Run(command.NewContext(
+		[]string{path},
+		map[string]string{"core": "3", "gc-heap": "32MiB"},
+		nil,
+	))
+}
+
 func TestRunExecProgramMode(t *testing.T) {
 	t.Setenv("WAGO_BARE", "1")
 	// (module (func (export "_start")))
@@ -353,11 +547,11 @@ func TestRunValueParsingAndFormatting(t *testing.T) {
 			t.Errorf("parseVal(%q, %s) accepted invalid value", tc.in, tc.typ)
 		}
 	}
-	args := mustParseArgs([]string{"7", "1.5:f32"}, []wago.ValType{wago.ValI32, wago.ValI64})
-	if got := format("f", args, []uint64{wago.I64(9)}, []wago.ValType{wago.ValI32, wago.ValF32}, []wago.ValType{wago.ValI64}); got != "f(7, 1.5) = 9" {
+	_ = mustParseArgs([]string{"7", "1.5:f32"}, []wago.ValType{wago.ValI32, wago.ValI64})
+	if got := format([]uint64{wago.I64(9)}, []wago.ValType{wago.ValI64}); got != "9" {
 		t.Fatalf("format result = %q", got)
 	}
-	if got := format("g", nil, nil, nil, nil); got != "g() = ()" {
+	if got := format(nil, nil); got != "" {
 		t.Fatalf("format void = %q", got)
 	}
 	if got := trapReason(&wago.TrapError{Code: wago.TrapDivZero}); got != "integer division by zero" {
@@ -365,5 +559,39 @@ func TestRunValueParsingAndFormatting(t *testing.T) {
 	}
 	if got := trapReason(errors.New("plain error")); got != "plain error" {
 		t.Fatalf("plain trap reason = %q", got)
+	}
+}
+
+func reactorModule() []byte {
+	// (module
+	//   (global $initialized (mut i32) (i32.const 0))
+	//   (func (export "_initialize") (global.set $initialized (i32.const 1)))
+	//   (func (export "value") (result i32)
+	//     (if (result i32) (global.get $initialized)
+	//       (then (i32.const 42)) (else unreachable))))
+	return []byte{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x60,
+		0x00, 0x00, 0x60, 0x00, 0x01, 0x7f, 0x03, 0x03, 0x02, 0x00, 0x01, 0x06,
+		0x06, 0x01, 0x7f, 0x01, 0x41, 0x00, 0x0b, 0x07, 0x17, 0x02, 0x0b, 0x5f,
+		0x69, 0x6e, 0x69, 0x74, 0x69, 0x61, 0x6c, 0x69, 0x7a, 0x65, 0x00, 0x00,
+		0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x00, 0x01, 0x0a, 0x14, 0x02, 0x06,
+		0x00, 0x41, 0x01, 0x24, 0x00, 0x0b, 0x0b, 0x00, 0x23, 0x00, 0x04, 0x7f,
+		0x41, 0x2a, 0x05, 0x00, 0x0b, 0x0b,
+	}
+}
+
+func invokeSequenceModule() []byte {
+	// (module
+	//   (global $value (mut i32) (i32.const 0))
+	//   (func (export "set") (param i32) (global.set $value (local.get 0)))
+	//   (func (export "add") (param i32) (result i32)
+	//     (i32.add (global.get $value) (local.get 0))))
+	return []byte{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x0a, 0x02, 0x60,
+		0x01, 0x7f, 0x00, 0x60, 0x01, 0x7f, 0x01, 0x7f, 0x03, 0x03, 0x02, 0x00,
+		0x01, 0x06, 0x06, 0x01, 0x7f, 0x01, 0x41, 0x00, 0x0b, 0x07, 0x0d, 0x02,
+		0x03, 0x73, 0x65, 0x74, 0x00, 0x00, 0x03, 0x61, 0x64, 0x64, 0x00, 0x01,
+		0x0a, 0x10, 0x02, 0x06, 0x00, 0x20, 0x00, 0x24, 0x00, 0x0b, 0x07, 0x00,
+		0x23, 0x00, 0x20, 0x00, 0x6a, 0x0b,
 	}
 }

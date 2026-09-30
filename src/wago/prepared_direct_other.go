@@ -6,11 +6,26 @@ import "fmt"
 
 const preparedDirectIntSupported = false
 const preparedDirectIntPrivateSupported = false
+const preparedIntCallBlockDefault = false
 
-func (fn *PreparedFunction) invokeDirectInt([]uint64) ([]uint64, error) {
+func (fn *WasmFunc) initDirectIntCall() {}
+
+func (in *Instance) invokeCachedDirectInt1(*invokeCache, uintptr, uint64) ([]uint64, error) {
 	return nil, fmt.Errorf("wago: direct prepared integer entry is unavailable on this architecture")
 }
 
-func (fn *PreparedFunction) invokeDirectIntFixed(uint64, uint64, uint64, uint64) ([]uint64, error) {
+func (in *Instance) invokeCachedDirectI32ToI32(*invokeCache, uint64) ([]uint64, error) {
+	return nil, fmt.Errorf("wago: direct prepared integer entry is unavailable on this architecture")
+}
+
+func (fn *WasmFunc) invokeDirectInt([]uint64) ([]uint64, error) {
+	return nil, fmt.Errorf("wago: direct prepared integer entry is unavailable on this architecture")
+}
+
+func (fn *WasmFunc) invokeDirectIntFixed(uint64, uint64, uint64, uint64) ([]uint64, error) {
+	return nil, fmt.Errorf("wago: direct prepared integer entry is unavailable on this architecture")
+}
+
+func (in *Instance) invokeDirectIntEntry(uintptr, int, int, uint8, bool, bool, bool, bool, uint64, uint64, uint64, uint64) ([]uint64, error) {
 	return nil, fmt.Errorf("wago: direct prepared integer entry is unavailable on this architecture")
 }

@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func findGuestStorageArrayType(t *testing.T, compiled *Compiled, storage gc.StorageKind, mutable bool) uint32 {
@@ -93,13 +93,13 @@ func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	var resultTemps gcHostTempTokens
 	caller.ephemeralGCResults = &resultTemps
-	caller.exactResults = []ValueTypeDescriptor{{
+	caller.exact = &DefinedTypeDescriptor{Results: []ValueTypeDescriptor{{
 		Kind: ValueTypeReference,
 		Ref: ReferenceTypeDescriptor{
 			Nullable: true,
 			Heap:     HeapTypeDescriptor{Defined: true, TypeIndex: typeIndex},
 		},
-	}}
+	}}}
 
 	want := []byte{1, 2, 3, 4, 5}
 	token, err := caller.NewGCArrayResult(0, uint32(len(want)), func(payload []byte, info GuestGCArrayInfo) error {

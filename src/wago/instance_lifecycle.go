@@ -1,11 +1,18 @@
 package wago
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/runtime"
 )
+
+var completedInstanceClose = func() <-chan struct{} {
+	done := make(chan struct{})
+	close(done)
+	return done
+}()
 
 const (
 	instanceInvocationClosed = uint32(1 << 31)
@@ -16,44 +23,76 @@ const (
 // owned memory as soon as no invocation or retained reference can still reach
 // them. An activation parked in host code may finish after Close returns; its
 // invocation lease defers physical release until native execution has unwound.
-// Imported memory is left for the host to Close. Close is idempotent. Concurrent
-// callers wait for the active close operation and receive its same result.
+// Imported memory is left for the host to Close. Close is idempotent. A caller
+// that joins an active close returns promptly, which permits callback reentry.
+// Call WaitClosed to wait for the active close operation and receive its result.
 func (in *Instance) Close() (err error) {
 	if in == nil {
 		return nil
 	}
 	state, owner := in.beginClose()
 	if !owner {
-		select {
-		case <-state.done:
+		if state.completed.Load() {
 			return state.result
-		default:
-			// A callback may reenter Close while the lifecycle owner is still
-			// active. Returning promptly avoids self-deadlock; external callers
-			// that need completion use closeAndWait or Runtime.WaitClosed.
-			return nil
 		}
+		// A callback may reenter Close while the lifecycle owner is still
+		// active. Returning promptly avoids self-deadlock; external callers
+		// that need completion use WaitClosed.
+		return nil
 	}
 	defer func() {
 		if recover() != nil {
 			err = joinPrimary(err, fmt.Errorf("wago: instance close: %w", ErrCallbackPanic))
 		}
-		state.result = err
-		close(state.done)
+		state.complete(err)
+		// Managed terminal work must not detach ownership before the logical
+		// result is available to drain and WaitClosed. Retry after publication.
+		if in.hasManagedOwner() {
+			in.tryFinalize()
+		}
 	}()
+	if codeProfileEnabled && in.lifecycleProfile() != nil {
+		span := in.beginProfileLifecycle("logical-close")
+		defer finishProfileBoundary(span, &err)
+	}
 	return in.closeOnce()
 }
 
+// WaitClosed waits for an already-started Close operation and returns its result.
+// It does not start closure or wait for physical release held by active guest
+// calls or retained references. Close callbacks must not wait for themselves.
+func (in *Instance) WaitClosed(ctx context.Context) error {
+	if in == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	state := in.closeState.Load()
+	if state == nil {
+		return fmt.Errorf("wago: instance close has not started")
+	}
+	select {
+	case <-state.doneChannel():
+		return state.result
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (in *Instance) beginClose() (*instanceCloseState, bool) {
-	state := in.ensurePluginState()
-	if active := state.close.Load(); active != nil {
+	if active := in.closeState.Load(); active != nil {
 		return active, false
 	}
-	candidate := &instanceCloseState{done: make(chan struct{}), quiesced: make(chan struct{})}
-	if state.close.CompareAndSwap(nil, candidate) {
+	candidate := &instanceCloseState{}
+	if in.rt != nil || in.hasManagedOwner() {
+		candidate.quiesced = make(chan struct{})
+		candidate.terminalDone = make(chan struct{})
+	}
+	if in.closeState.CompareAndSwap(nil, candidate) {
 		return candidate, true
 	}
-	return state.close.Load(), false
+	return in.closeState.Load(), false
 }
 
 func (in *Instance) closeOnce() error {
@@ -81,7 +120,7 @@ func (in *Instance) closeOnce() error {
 	if activeInvocations != 0 && len(in.trap) >= 4 {
 		// Host re-entry swaps the trap slice under lifeMu, so Close observes one
 		// complete active slice header before requesting interruption.
-		in.ensurePluginState().close.Load().interruptStop = runtime.RequestInterruptAsync(in.trap)
+		in.closeState.Load().interruptStop = runtime.RequestInterruptAsync(in.trap)
 	}
 	in.lifeMu.Unlock()
 
@@ -98,7 +137,7 @@ func (in *Instance) closeOnce() error {
 	if hooks != nil && (len(hooks.beforeClose) != 0 || len(hooks.afterClose) != 0) {
 		event := InstanceCloseEvent{Module: ModuleView{compiled: in.c, identity: in.moduleIdentity}, Instance: InstanceIdentity{value: in}, Origin: in.instantiateOrigin()}
 		closeEvent = &event
-		closeState := in.ensurePluginState().close.Load()
+		closeState := in.closeState.Load()
 		closeState.hooks, closeState.event = hooks, closeEvent
 		for i := len(hooks.beforeClose) - 1; i >= 0; i-- {
 			fn := hooks.beforeClose[i]
@@ -116,6 +155,7 @@ func (in *Instance) closeOnce() error {
 	in.lifeMu.Unlock()
 
 	appendStep("close reference store instance", func() { in.referenceLifetime().notifyStore(store, referenceLifetimeClosed) })
+	in.closeState.Load().prepared.Store(true)
 	appendStep("finalize instance resources", in.tryFinalize)
 	return errors.Join(errs...)
 }
@@ -128,14 +168,22 @@ func (in *Instance) closeAndWait() error {
 	if in == nil {
 		return nil
 	}
-	closeErr := in.Close()
-	state := in.ensurePluginState().close.Load()
+	_ = in.Close()
+	return in.waitTerminalClose()
+}
+
+// waitTerminalClose joins logical preparation and terminal hooks, but does not
+// wait for resources retained by other instances or public reference tokens.
+func (in *Instance) waitTerminalClose() error {
+	state := in.closeState.Load()
 	if state != nil {
-		<-state.done
-		<-state.quiesced
+		<-state.doneChannel()
+		if state.terminalDone != nil {
+			<-state.terminalDone
+		}
 		return joinPrimary(state.result, state.terminalResult)
 	}
-	return closeErr
+	return nil
 }
 
 func (in *Instance) isLogicallyClosed() bool {
@@ -161,18 +209,19 @@ func (in *Instance) beginInvocation() error {
 	if in.guestStorageBorrowed() {
 		return fmt.Errorf("instance access is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
-	if in.rt != nil {
-		in.rt.mu.Lock()
-		if in.rt.state == runtimeClosed || in.rt.state == runtimeClosing && in.instantiateOrigin() != InstantiateManaged {
-			in.rt.mu.Unlock()
-			return fmt.Errorf("instance runtime is closed")
-		}
-		in.rt.activeOperations++
-		in.rt.mu.Unlock()
+	if in.rt == nil {
+		return in.beginInstanceInvocation()
 	}
+	in.rt.mu.Lock()
+	if in.rt.state == runtimeClosed || in.rt.state == runtimeClosing && in.instantiateOrigin() != InstantiateManaged {
+		in.rt.mu.Unlock()
+		return fmt.Errorf("instance runtime is closed")
+	}
+	in.rt.activeOperations++
+	in.rt.mu.Unlock()
 	admitted := false
 	defer func() {
-		if admitted || in.rt == nil {
+		if admitted {
 			return
 		}
 		in.rt.mu.Lock()
@@ -180,6 +229,14 @@ func (in *Instance) beginInvocation() error {
 		in.rt.stateCond.Broadcast()
 		in.rt.mu.Unlock()
 	}()
+	if err := in.beginInstanceInvocation(); err != nil {
+		return err
+	}
+	admitted = true
+	return nil
+}
+
+func (in *Instance) beginInstanceInvocation() error {
 	for {
 		state := in.invocationState.Load()
 		if state&instanceInvocationClosed != 0 {
@@ -189,10 +246,16 @@ func (in *Instance) beginInvocation() error {
 			return fmt.Errorf("instance has too many active invocations")
 		}
 		if in.invocationState.CompareAndSwap(state, state+1) {
-			admitted = true
 			return nil
 		}
 	}
+}
+
+func (in *Instance) beginDirectInvocation() error {
+	if in.rt == nil && !in.guestStorageBorrowed() && in.invocationState.CompareAndSwap(0, 1) {
+		return nil
+	}
+	return in.beginInvocation()
 }
 
 func (in *Instance) endInvocation() {
@@ -209,15 +272,14 @@ func (in *Instance) endInvocation() {
 			continue
 		}
 		if next == instanceInvocationClosed {
-			if closeState := in.ensurePluginState().close.Load(); closeState != nil {
-				closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
+			if closeState := in.closeState.Load(); closeState != nil {
+				closeState.signalQuiesced()
 			}
 			in.tryFinalize()
 		}
-		// Keep the Runtime operation admitted through terminal instance
-		// finalization. Runtime shutdown uses this count as its barrier, so
-		// publishing it earlier could let WaitClosed return before reference
-		// tokens and store membership were released.
+		// Keep the Runtime operation admitted through invocation finalization.
+		// Managed terminal hooks can finish asynchronously; manager drain
+		// separately waits for terminalDone before provider teardown.
 		if in.rt != nil {
 			in.rt.mu.Lock()
 			if in.rt.activeOperations == 0 {
@@ -232,28 +294,120 @@ func (in *Instance) endInvocation() {
 	}
 }
 
+// endDirectInvocation releases the uncontended direct-instance lease with one
+// atomic operation. A concurrent Close changes the state and takes the full
+// endInvocation finalization path; Runtime-owned instances retain operation accounting.
+func (in *Instance) endDirectInvocation() {
+	if in.rt == nil && in.invocationState.CompareAndSwap(1, 0) {
+		return
+	}
+	in.endInvocation()
+}
+
 // tryFinalize delegates the reference-lifetime transition. Keeping this small
 // call point lets resource-root and invocation paths remain direct.
 func (in *Instance) tryFinalize() {
 	if in == nil || in.constructionIsActive() || in.invocationState.Load()&instanceInvocationClosed == 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
 		return
 	}
-	if closeState := in.ensurePluginState().close.Load(); closeState != nil {
-		closeState.terminalOnce.Do(func() {
-			if closeState.hooks != nil && closeState.event != nil {
-				var errs []error
-				for i := len(closeState.hooks.afterClose) - 1; i >= 0; i-- {
-					fn := closeState.hooks.afterClose[i]
-					if err := callShutdownSafely("AfterClose", func() { fn(*closeState.event) }); err != nil {
-						errs = append(errs, err)
-					}
-				}
-				closeState.terminalResult = errors.Join(errs...)
+	if closeState := in.closeState.Load(); closeState != nil {
+		if !closeState.prepared.Load() {
+			return
+		}
+		managed := in.hasManagedOwner()
+		if managed {
+			if !closeState.completed.Load() {
+				return
 			}
-			closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
-		})
+		}
+		closeState.signalQuiesced()
+		if closeState.terminalStarted.CompareAndSwap(false, true) {
+			if managed && closeState.hooks != nil && len(closeState.hooks.afterClose) != 0 {
+				// Managed Close must return without waiting for terminal hooks.
+				// One short-lived worker owns hooks, detachment, and finalization;
+				// there is no per-instance background waiter for ownership cleanup.
+				go in.finishTerminalClose(closeState)
+			} else {
+				in.finishTerminalClose(closeState)
+			}
+			return
+		} else {
+			// A hook can release a reference and reenter tryFinalize. Do not
+			// wait for that hook here, or release its resources underneath it.
+			if !closeState.terminalComplete.Load() {
+				return
+			}
+		}
 	}
 	in.referenceLifetime().finalize()
+}
+
+func (in *Instance) hasManagedOwner() bool {
+	in.lifeMu.Lock()
+	managed := in.finalizers != nil && in.finalizers.managed != nil
+	in.lifeMu.Unlock()
+	return managed
+}
+
+func (in *Instance) finishTerminalClose(state *instanceCloseState) {
+	if state.hooks != nil && state.event != nil {
+		var errs []error
+		for i := len(state.hooks.afterClose) - 1; i >= 0; i-- {
+			fn := state.hooks.afterClose[i]
+			if err := callShutdownSafely("AfterClose", func() { fn(*state.event) }); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		state.terminalResult = errors.Join(errs...)
+	}
+	in.lifeMu.Lock()
+	if in.finalizers != nil && in.finalizers.managed != nil {
+		managed := in.finalizers.managed
+		in.finalizers.managed = nil
+		managed.finishTerminalClose(state)
+	} else {
+		state.signalTerminalDone()
+	}
+	in.lifeMu.Unlock()
+	in.referenceLifetime().finalize()
+}
+
+func (state *instanceCloseState) signalQuiesced() {
+	if state.quiesced != nil {
+		state.quiescedOnce.Do(func() { close(state.quiesced) })
+	}
+}
+
+func (state *instanceCloseState) complete(result error) {
+	state.result = result
+	state.completed.Store(true)
+	state.doneMu.Lock()
+	if state.done != nil {
+		close(state.done)
+	}
+	state.doneMu.Unlock()
+}
+
+func (state *instanceCloseState) doneChannel() <-chan struct{} {
+	if state.completed.Load() {
+		return completedInstanceClose
+	}
+	state.doneMu.Lock()
+	defer state.doneMu.Unlock()
+	if state.completed.Load() {
+		return completedInstanceClose
+	}
+	if state.done == nil {
+		state.done = make(chan struct{})
+	}
+	return state.done
+}
+
+func (state *instanceCloseState) signalTerminalDone() {
+	state.terminalComplete.Store(true)
+	if state.terminalDone != nil {
+		close(state.terminalDone)
+	}
 }
 
 func (in *Instance) constructionIsActive() bool {
@@ -308,7 +462,11 @@ func (in *Instance) constructionReservationSnapshot() *pluginOperationReservatio
 // releaseResources performs the physical teardown after tryFinalize has claimed
 // it by setting resourcesClosed under lifeMu.
 func (in *Instance) releaseResources() {
-	if state := in.ensurePluginState().close.Load(); state != nil && state.interruptStop != nil {
+	if codeProfileEnabled && in.lifecycleProfile() != nil {
+		span := in.beginProfileLifecycle("physical-release")
+		defer finishProfileBoundary(span, nil)
+	}
+	if state := in.closeState.Load(); state != nil && state.interruptStop != nil {
 		state.interruptStop()
 		state.interruptStop = nil
 	}
@@ -320,7 +478,6 @@ func (in *Instance) releaseResources() {
 	detachImportedGlobals(in)
 	detachImportedTables(in)
 	detachImportedTags(in)
-	transferredImportAttachments.Delete(in)
 	if in.gc != nil {
 		closeCollector := func() {
 			if table := in.existingGCRefTestTableState(); table != nil {
@@ -346,7 +503,7 @@ func (in *Instance) releaseResources() {
 	}
 	unregisterHostControl(in)
 	if in.thunkMem != nil {
-		runtime.Unmap(in.thunkMem)
+		in.c.unmapProfileCode(in.thunkMem)
 		in.thunkMem = nil
 	}
 	in.c.releaseCode()
@@ -362,14 +519,14 @@ func (in *Instance) releaseResources() {
 				memoryJM := memory.jobMemory()
 				memory.ownerClosed()
 				runtime.ReleaseJobMemory(memoryJM)
-			} else if detachedMemories.add(memory) {
+			} else if detachedMemories.add(memory) && !in.ownsTransferredMemoryAttachment(memory) {
 				memory.detachImporter()
 			}
 		}
 	}
 	if in.c.threadedMemory0() {
 		runtime.ReleaseJobMemory(in.jm)
-		if in.memory != nil && detachedMemories.add(in.memory) {
+		if in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
 			in.memory.detachImporter()
 		}
 	} else if in.ownsMem {
@@ -377,9 +534,10 @@ func (in *Instance) releaseResources() {
 			in.memory.ownerClosed()
 		}
 		runtime.ReleaseJobMemory(in.jm)
-	} else if in.memory != nil && detachedMemories.add(in.memory) {
+	} else if in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
 		in.memory.detachImporter()
 	}
+	transferredImportAttachments.Delete(in)
 	runtime.ReleaseEngine(in.eng)
 	if in.rt != nil {
 		in.rt.unregisterInstance(in)
@@ -406,8 +564,9 @@ func (in *Instance) releaseResources() {
 }
 
 // Memory returns the instance's linear-memory object (instance-owned or the
-// host-imported one). Use Memory().Bytes() for the zero-copy byte view. A close
-// that wins the acquisition race returns nil instead of a dangling object.
+// host-imported one). Use Memory().UnsafeBytes() for an explicitly unsafe
+// zero-copy byte view. A close that wins the acquisition race returns nil
+// instead of a dangling object.
 func (in *Instance) Memory() *Memory {
 	if in == nil || in.c == nil || in.c.memoryCount() == 0 || in.memory == nil || in.beginInvocation() != nil {
 		return nil

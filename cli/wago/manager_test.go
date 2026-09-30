@@ -497,3 +497,102 @@ func TestManagerAuthLoginStoresCredentialWithoutSelectedRunner(t *testing.T) {
 		}
 	}
 }
+
+func TestManagerAuthLoginReadsTokenFromStdinForCI(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WAGO_HOME", root)
+	t.Setenv("WAGO_TOKEN", "")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/me" || r.Header.Get("Authorization") != "Bearer stdin-token" {
+			http.Error(w, "bad request", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"login":"ci-bot"}`))
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_REGISTRY", server.URL)
+
+	stdinRead, stdinWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(stdinWrite, "stdin-token\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := stdinWrite.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stdoutRead, stdoutWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldArgs, oldStdin, oldStdout := os.Args, os.Stdin, os.Stdout
+	t.Cleanup(func() {
+		os.Args, os.Stdin, os.Stdout = oldArgs, oldStdin, oldStdout
+		_ = stdinRead.Close()
+	})
+	os.Stdin, os.Stdout = stdinRead, stdoutWrite
+	os.Args = []string{"wago", "auth", "login", "--no-input", "--with-token"}
+	main()
+	if err := stdoutWrite.Close(); err != nil {
+		t.Fatal(err)
+	}
+	output, err := io.ReadAll(stdoutRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stdoutRead.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if text := string(output); !strings.Contains(text, "Logged in as ci-bot") || strings.Contains(text, "stdin-token") {
+		t.Fatalf("manager stdin-token output = %q", text)
+	}
+	credentials, err := os.ReadFile(filepath.Join(root, "config", "credentials.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(credentials), `"token": "stdin-token"`) {
+		t.Fatalf("stdin token was not persisted: %s", credentials)
+	}
+}
+
+func TestManagerAuthWhoamiUsesEnvironmentTokenWithoutCredentialFile(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WAGO_HOME", root)
+	t.Setenv("WAGO_TOKEN", "environment-token")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/me" || r.Header.Get("Authorization") != "Bearer environment-token" {
+			http.Error(w, "bad request", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"login":"ci-bot"}`))
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_REGISTRY", server.URL)
+
+	oldArgs, oldStdout := os.Args, os.Stdout
+	t.Cleanup(func() { os.Args, os.Stdout = oldArgs, oldStdout })
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = write
+	os.Args = []string{"wago", "auth", "whoami", "--no-input"}
+	main()
+	if err := write.Close(); err != nil {
+		t.Fatal(err)
+	}
+	output, err := io.ReadAll(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := read.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(output)); got != "ci-bot" {
+		t.Fatalf("environment-token whoami = %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "config", "credentials.json")); !os.IsNotExist(err) {
+		t.Fatalf("environment token wrote credentials: %v", err)
+	}
+}

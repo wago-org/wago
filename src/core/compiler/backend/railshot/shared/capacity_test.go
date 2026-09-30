@@ -2,6 +2,28 @@ package shared
 
 import "testing"
 
+func TestJoinedModuleCodeCapacity(t *testing.T) {
+	const maxInt = int(^uint(0) >> 1)
+	for _, tt := range []struct {
+		name                               string
+		estimate, emitted, functions, want int
+	}{
+		{"large overestimate", 1 << 20, 128 << 10, 100, (128 << 10) + 1600 + 4096},
+		{"small estimate", 256, 80, 1, 256},
+		{"underestimate retains growth", 10000, 20000, 3, 10000},
+		{"negative emitted", 8000, -1, 1, 8000},
+		{"negative functions", 8000, 100, -1, 8000},
+		{"emitted overflow", 8000, maxInt, 1, 8000},
+		{"function overflow", 8000, 100, maxInt, 8000},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := JoinedModuleCodeCapacity(tt.estimate, tt.emitted, tt.functions); got != tt.want {
+				t.Fatalf("joined capacity = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStackArenaCapacity(t *testing.T) {
 	if got := StackArenaCapacity(64, 0, 12); got != 19 {
 		t.Fatalf("hinted capacity = %d, want 19", got)

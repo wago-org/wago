@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 type properTailBehaviorKind uint8
@@ -174,7 +174,7 @@ func TestProperTailTypedGlobalReturnCallRefPreservesAdapterResult(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer in.Close()
-	got, err := in.Call(context.Background(), "run")
+	got, err := in.InvokeValues(context.Background(), "run")
 	if err != nil || len(got) != 1 || got[0].Type() != ValI32 || got[0].I32() != 77 {
 		t.Fatalf("typed-global return_call_ref = %v, %v", got, err)
 	}

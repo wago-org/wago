@@ -8,7 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // importMemModule imports "env.mem" (memory 1) and exports
@@ -32,6 +32,82 @@ func importMemModule() []byte {
 			wasmtest.Code([]byte{0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}),             // local.get0; i32.load
 		)),
 	)
+}
+
+func TestImportedMemoryRejectsTypedNil(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), importMemModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	in, err := Instantiate(c, testImports("env.mem", (*Memory)(nil)))
+	if in != nil {
+		_ = in.Close()
+		t.Fatal("typed-nil memory import returned an instance")
+	}
+	if err == nil {
+		t.Fatal("typed-nil memory import was accepted")
+	}
+}
+
+func TestMemoryCloseRacingInstantiationFailsClosed(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), importMemModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	const iterations = 500
+	for i := 0; i < iterations; i++ {
+		memory, err := NewMemory(1, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := make(chan struct{})
+		instanceResult := make(chan struct {
+			instance *Instance
+			err      error
+		}, 1)
+		closeResult := make(chan error, 1)
+		go func() {
+			<-start
+			instance, err := Instantiate(c, testImports("env.mem", memory))
+			instanceResult <- struct {
+				instance *Instance
+				err      error
+			}{instance, err}
+		}()
+		go func() {
+			<-start
+			closeResult <- memory.Close()
+		}()
+		close(start)
+
+		result, closeErr := <-instanceResult, <-closeResult
+		switch {
+		case result.instance != nil:
+			if result.err != nil {
+				t.Fatalf("iteration %d: instance and error returned: %v", i, result.err)
+			}
+			if closeErr == nil {
+				_ = result.instance.Close()
+				t.Fatalf("iteration %d: Memory.Close succeeded with a live importer", i)
+			}
+			if err := result.instance.Close(); err != nil {
+				t.Fatalf("iteration %d: close instance: %v", i, err)
+			}
+			if err := memory.Close(); err != nil {
+				t.Fatalf("iteration %d: close memory after importer: %v", i, err)
+			}
+		case result.err == nil:
+			t.Fatalf("iteration %d: instantiation returned neither instance nor error", i)
+		case closeErr != nil:
+			t.Fatalf("iteration %d: both racing operations failed: instantiate: %v; close: %v", i, result.err, closeErr)
+		case memory.UnsafeBytes() != nil:
+			t.Fatalf("iteration %d: closed memory still has a host view", i)
+		}
+	}
 }
 
 // growMemModule declares its own exported memory (min 1, max 10 pages) plus
@@ -116,7 +192,7 @@ func TestImportedMemoryLinkingValidatesExportNameAndCodecLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if in, err := Instantiate(&loaded, Imports{"env.mem": tooSmall}); err == nil {
+	if in, err := Instantiate(&loaded, testImports("env.mem", tooSmall)); err == nil {
 		_ = in.Close()
 		t.Fatal("memory below the imported minimum linked successfully")
 	}
@@ -128,7 +204,7 @@ func TestImportedMemoryLinkingValidatesExportNameAndCodecLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if in, err := Instantiate(&loaded, Imports{"env.mem": tooWide}); err == nil {
+	if in, err := Instantiate(&loaded, testImports("env.mem", tooWide)); err == nil {
 		_ = in.Close()
 		t.Fatal("memory above the imported maximum linked successfully")
 	}
@@ -140,7 +216,7 @@ func TestImportedMemoryLinkingValidatesExportNameAndCodecLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(&loaded, Imports{"env.mem": compatible})
+	in, err := Instantiate(&loaded, testImports("env.mem", compatible))
 	if err != nil {
 		t.Fatalf("compatible memory import: %v", err)
 	}
@@ -163,7 +239,7 @@ func TestImportedMemoryShared(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mem.Close()
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,11 +249,11 @@ func TestImportedMemoryShared(t *testing.T) {
 	if _, err := in.Invoke("store", I32(8), I32(0xCAFE)); err != nil {
 		t.Fatal(err)
 	}
-	if got := binary.LittleEndian.Uint32(mem.Bytes()[8:]); got != 0xCAFE {
+	if got := binary.LittleEndian.Uint32(mem.UnsafeBytes()[8:]); got != 0xCAFE {
 		t.Fatalf("host sees mem[8] = %#x, want 0xCAFE", got)
 	}
 	// host writes -> wasm observes.
-	binary.LittleEndian.PutUint32(mem.Bytes()[16:], 0x1234)
+	binary.LittleEndian.PutUint32(mem.UnsafeBytes()[16:], 0x1234)
 	r, err := in.Invoke("load", I32(16))
 	if err != nil {
 		t.Fatal(err)
@@ -210,7 +286,7 @@ func TestMemoryGrowExported(t *testing.T) {
 	if prev := AsI32(r[0]); prev != 1 {
 		t.Fatalf("memory.grow returned %d, want previous count 1", prev)
 	}
-	if got := len(in.Memory().Bytes()); got != 5*65536 {
+	if got := len(in.Memory().UnsafeBytes()); got != 5*65536 {
 		t.Fatalf("after grow, Bytes() len = %d, want %d", got, 5*65536)
 	}
 }
@@ -230,12 +306,12 @@ func TestImportedMemorySingleInstance(t *testing.T) {
 	c, _ := Compile(nil, importMemModule())
 	mem, _ := NewMemory(1, 1)
 	defer mem.Close()
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if _, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}}); err == nil {
+	if _, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)}); err == nil {
 		t.Fatal("a second instance importing the same in-use memory should fail")
 	}
 }
@@ -264,11 +340,11 @@ func TestSharedHostMemoryPreservesStateAndCloseOrdering(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	first, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		t.Fatalf("instantiate first importer: %v", err)
 	}
-	second, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	second, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		_ = first.Close()
 		_ = mem.Close()
@@ -333,7 +409,7 @@ func TestImportedMemoryReexportPreservesOriginalOwner(t *testing.T) {
 		wasmtest.Section(2, wasmtest.Vec(append(append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 0x02), 0x00, 0x01))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("memory", 2, 0))),
 	)
-	reexporter, err := Instantiate(MustCompile(reexportModule), Imports{"env.memory": memory})
+	reexporter, err := Instantiate(MustCompile(reexportModule), testImports("env.memory", memory))
 	if err != nil {
 		_ = owner.Close()
 		t.Fatalf("instantiate memory re-exporter: %v", err)
@@ -347,7 +423,7 @@ func TestImportedMemoryReexportPreservesOriginalOwner(t *testing.T) {
 	if reexported != memory {
 		t.Fatal("imported memory re-export did not preserve the original owner identity")
 	}
-	consumer, err := Instantiate(MustCompile(importMemModule()), Imports{"env.mem": reexported})
+	consumer, err := Instantiate(MustCompile(importMemModule()), testImports("env.mem", reexported))
 	if err != nil {
 		_ = reexporter.Close()
 		_ = owner.Close()
@@ -388,7 +464,7 @@ func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,7 +476,7 @@ func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mem.Close()
-	in, err := Instantiate(loaded, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	in, err := Instantiate(loaded, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +484,7 @@ func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
 	if _, err := in.Invoke("store", I32(4), I32(0x55AA)); err != nil {
 		t.Fatal(err)
 	}
-	if got := binary.LittleEndian.Uint32(mem.Bytes()[4:]); got != 0x55AA {
+	if got := binary.LittleEndian.Uint32(mem.UnsafeBytes()[4:]); got != 0x55AA {
 		t.Fatalf("host sees mem[4] = %#x, want 0x55AA", got)
 	}
 }

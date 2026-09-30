@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func gcStaticSiteModule(tb testing.TB, sites int) *wasm.Module {
@@ -46,6 +46,7 @@ func gcStaticSiteModule(tb testing.TB, sites int) *wasm.Module {
 // product benchmarks; this layer isolates compile B/op, allocations, JIT bytes,
 // helper sequences, stubs, and root-map metadata per static site.
 func BenchmarkGCStaticSiteCompilation(b *testing.B) {
+	requireCompilerDiagnostics(b)
 	for _, sites := range []int{1, 4096} {
 		b.Run(fmt.Sprintf("sites=%d", sites), func(b *testing.B) {
 			m := gcStaticSiteModule(b, sites)
@@ -99,9 +100,38 @@ func gcResolverDensityModule(tb testing.TB, sites int) *wasm.Module {
 	return m
 }
 
+func gcDistinctResolverModule(tb testing.TB, sites int) *wasm.Module {
+	tb.Helper()
+	body := []byte{0x00}
+	funcType := []byte{0x60, byte(sites)}
+	for i := 0; i < sites; i++ {
+		funcType = append(funcType, 0x64, 0x00)
+		body = append(body, 0x20, byte(i), 0xfb, 0x02, 0x00, 0x00)
+	}
+	funcType = append(funcType, 0x01, 0x7f)
+	for i := 1; i < sites; i++ {
+		body = append(body, 0x6a)
+	}
+	body = append(body, 0x0b)
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 0x01, 0x7f, 0x00}, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		tb.Fatal(err)
+	}
+	return m
+}
+
 // BenchmarkGCResolverCodeSize permanently records the low/dense-site crossover
 // for the module-owned compact-handle resolver and the bounded reuse certificate.
 func BenchmarkGCResolverCodeSize(b *testing.B) {
+	requireCompilerDiagnostics(b)
 	for _, sites := range []int{1, 8, 128} {
 		m := gcResolverDensityModule(b, sites)
 		for _, shared := range []bool{false, true} {
@@ -149,9 +179,31 @@ func BenchmarkGCResolverCodeSize(b *testing.B) {
 			}
 		})
 	}
+	distinct := gcDistinctResolverModule(b, 8)
+	b.Run("distinct-reuse", func(b *testing.B) {
+		savedShared, savedReuse := gcSharedStubsEnabled, gcResolveReuseEnabled
+		gcSharedStubsEnabled, gcResolveReuseEnabled = true, true
+		defer func() { gcSharedStubsEnabled, gcResolveReuseEnabled = savedShared, savedReuse }()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			var stats ModuleStats
+			compiled, err := CompileModuleWith(distinct, CompileOptions{Workers: 1, GCStructHelpers: true, Stats: &stats})
+			if err != nil {
+				b.Fatal(err)
+			}
+			function := stats.Funcs[0]
+			b.ReportMetric(float64(len(compiled.Code)), "native-bytes/op")
+			b.ReportMetric(float64(stats.Compile.FunctionAttempts), "attempts/op")
+			b.ReportMetric(float64(function.GCHandleResolutions), "resolutions/op")
+			if compiled.CodeImage != nil {
+				_ = compiled.CodeImage.Close()
+			}
+		}
+	})
 }
 
 func TestGCStaticSiteTelemetrySmoke(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, sites := range []int{1, 128} {
 		m := gcStaticSiteModule(t, sites)
 		var stats ModuleStats

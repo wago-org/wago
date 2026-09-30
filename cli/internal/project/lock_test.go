@@ -123,6 +123,25 @@ func TestModuleCloseAuthorityIsKnownAndUnscoped(t *testing.T) {
 	}
 }
 
+func TestActiveCallerInvokeAuthorityIsKnownAndUnscoped(t *testing.T) {
+	document := NewLockDocument()
+	entry := testLockEntry(true, "github.com/acme/plugin", map[string]string{})
+	entry.RequestedAuthorities = []AuthorityRequest{{
+		Name: "host.caller.invoke", Mode: AuthorityRequired, Reason: "run an active guest callback",
+	}}
+	entry.Grants = []AuthorityGrant{{Name: "host.caller.invoke"}}
+	document.Plugins["github.com/acme/plugin"] = entry
+	if err := ValidateLock(document); err != nil {
+		t.Fatalf("active caller invoke authority: %v", err)
+	}
+
+	entry.Grants[0].Scope.Modules = []string{"env"}
+	document.Plugins["github.com/acme/plugin"] = entry
+	if err := ValidateLock(document); err == nil || !strings.Contains(err.Error(), "does not accept a scope") {
+		t.Fatalf("scoped active caller invoke authority error=%v", err)
+	}
+}
+
 func TestLockContractBindingsAndCycles(t *testing.T) {
 	document := NewLockDocument()
 	consumer := testLockEntry(true, "github.com/acme/pool", map[string]string{"github.com/acme/workers": "^1.0.0"})

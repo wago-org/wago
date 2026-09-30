@@ -1,15 +1,17 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestRuntimeConfigOwnsConstructionSnapshot(t *testing.T) {
@@ -22,7 +24,10 @@ func TestRuntimeConfigOwnsConstructionSnapshot(t *testing.T) {
 	base.optimizations["mutated-after-construction"] = true
 	base.functionWorkers = -1
 	cfg := rt.Config()
-	if err := cfg.Validate(); err != nil {
+	backendAvailable := runtime.GOARCH != "amd64" || hostSupportsSIMD()
+	if err := cfg.Validate(); !backendAvailable && !errors.Is(err, errNativeCPUFeatures) {
+		t.Fatalf("runtime config should fail closed on this AMD64 host: %v", err)
+	} else if backendAvailable && err != nil {
 		t.Fatalf("runtime config aliased caller mutation: %v", err)
 	}
 	if _, ok := cfg.optimizations["mutated-after-construction"]; ok || cfg.FunctionWorkers() < 0 {
@@ -213,6 +218,29 @@ func TestPreparedCompileAdoptNilConsumesPreparation(t *testing.T) {
 	}
 }
 
+func TestPreparedCompileFailedAdoptClosesArtifact(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	prepared, err := rt.PrepareCompile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prepared.Close(); err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepared.Adopt(compiled); err == nil || !strings.Contains(err.Error(), "already consumed") {
+		t.Fatalf("Adopt after Close = %v", err)
+	}
+	var code bytes.Buffer
+	if _, err := compiled.WriteCodeTo(&code); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("rejected compiled artifact remains open: %v", err)
+	}
+}
+
 func TestPreparedCompileCloseReleasesShutdownAdmission(t *testing.T) {
 	rt := NewRuntime()
 	prepared, err := rt.PrepareCompile(wasmtest.Module())
@@ -246,14 +274,12 @@ func TestRuntimeCloseFromImportedStartIsReentrant(t *testing.T) {
 	callbackReturned := make(chan struct{})
 	instantiateDone := make(chan error, 1)
 	go func() {
-		in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
-			"env.start": HostFunc(func(HostModule, []uint64, []uint64) {
-				if err := rt.Close(); err != nil {
-					t.Errorf("reentrant Close: %v", err)
-				}
-				close(callbackReturned)
-			}),
-		}))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.start", slotHostFunc(func(HostModule, []uint64, []uint64) {
+			if err := rt.Close(); err != nil {
+				t.Errorf("reentrant Close: %v", err)
+			}
+			close(callbackReturned)
+		}))))
 		if in != nil {
 			_ = in.Close()
 		}
@@ -502,11 +528,7 @@ func TestRuntimeRegisteredImportMetadataIsOwned(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			module, err := hosts.Module("env")
-			if err != nil {
-				return err
-			}
-			builder = module.Func("f", func(HostModule, []uint64, []uint64) {}).Params(ValI32).Results(ValI64).Docs("original")
+			builder = testRegisterHostFunc(hosts, "env", "f", func(HostModule, []uint64, []uint64) {}).Params(ValI32).Results(ValI64).Docs("original")
 			return nil
 		})
 	}}

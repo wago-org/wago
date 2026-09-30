@@ -27,7 +27,7 @@ func TestReleaseFromOutput(t *testing.T) {
 	}{
 		{name: "diagnostic", output: "Wago\n  channel      canary\n  release      canary-20260729-7d8c58a\n", fallback: "canary", want: "canary-20260729-7d8c58a"},
 		{name: "legacy", output: "wago v0.2.0 (darwin/arm64)\n", fallback: "canary", want: "v0.2.0"},
-		{name: "fallback", output: "unknown\n", fallback: "nightly", want: "nightly"},
+		{name: "fallback", output: "unknown\n", fallback: "beta", want: "beta"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := ReleaseFromOutput([]byte(test.output), test.fallback); got != test.want {

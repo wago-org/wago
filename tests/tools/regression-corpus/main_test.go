@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/tests/regressioncorpus"
+	"github.com/wago-org/wago/tests/support/regressioncorpus"
 )
 
 func TestAdaptSource(t *testing.T) {
@@ -38,7 +38,7 @@ func TestAdaptSource(t *testing.T) {
 
 func TestNormalizeWABTJSON(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "commands.json")
-	source := "tests/regressions/runtime/core/winch/use-innermost-frame/source.wast"
+	source := "tests/corpus/regressions/runtime/core/winch/use-innermost-frame/source.wast"
 	malformed := `{"source_filename": "` + source + `",
  "commands": [
   {"type": "module", "line": 7, "filename": "commands.0.wasm"},
@@ -66,14 +66,14 @@ func TestNormalizeWABTJSON(t *testing.T) {
 }
 
 func FuzzNormalizeWABTJSONDoesNotPanic(f *testing.F) {
-	f.Add([]byte(`{"source_filename":"tests/regressions/runtime/core/winch/use-innermost-frame/source.wast","commands":[]}`))
+	f.Add([]byte(`{"source_filename":"tests/corpus/regressions/runtime/core/winch/use-innermost-frame/source.wast","commands":[]}`))
 	f.Add([]byte(`{"source_filename":"x", "commands":[{"type":"module","line":1,"filename":"commands.0.wasm"},{"type":"assert_trap","line":2,"action":{"type":"invoke","field":"main","args":[]},"text":"unreachable", "expected": [{}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		path := filepath.Join(t.TempDir(), "commands.json")
 		if err := os.WriteFile(path, data, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		_ = normalizeWABTJSON("winch/use-innermost-frame.wast", "tests/regressions/runtime/core/winch/use-innermost-frame/source.wast", path)
+		_ = normalizeWABTJSON("winch/use-innermost-frame.wast", "tests/corpus/regressions/runtime/core/winch/use-innermost-frame/source.wast", path)
 	})
 }
 

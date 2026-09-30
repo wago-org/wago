@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	stagedGCArrayBulkDeltaPath         = "tests/spec-v3-staged-gc-array-bulk.json"
+	stagedGCArrayBulkDeltaPath         = "tests/conformance/baselines/spec-v3-staged-gc-array-bulk.json"
 	stagedGCArrayBulkOfficialExecution = true
 )
 
@@ -209,7 +209,7 @@ func stagedGCArrayBulkActionKey(cmd stagedSpecCommand) string {
 }
 
 func compileStagedGCArrayBulk(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCArrayProducts = true

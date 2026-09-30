@@ -3,9 +3,21 @@
 package arm64
 
 import (
+	"unsafe"
+
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
+
+func funcHintStorageBytes(hints []funcHints, sidecar funcHintSidecar) (headers, sidecars uint64) {
+	headers = uint64(cap(hints)) * uint64(unsafe.Sizeof(funcHints{}))
+	sidecars = uint64(cap(sidecar.localScore)+cap(sidecar.localLastGet)+cap(sidecar.localEventMeta))*uint64(unsafe.Sizeof(uint32(0))) +
+		uint64(cap(sidecar.sparseGlobals))*uint64(unsafe.Sizeof(shared.GlobalHint{})) +
+		uint64(cap(sidecar.residencyShadow))*uint64(unsafe.Sizeof(shared.ResidencyShadowEntry{})) +
+		uint64(cap(sidecar.loopIntConsts))*uint64(unsafe.Sizeof(loopIntConstHintEntry{}))
+	return
+}
 
 // Function pre-scan (OPTIMIZATIONS.md "FuncHints"): one allocation-conscious
 // walk collects call/memory shape and loop-weighted hotness scores for register
@@ -38,102 +50,411 @@ func weightedBranchPath(weight int64) int64 {
 	return weight * branchHintWeight
 }
 
-// funcHints is everything scanFuncBody yields.
-type funcHints struct {
-	nLocals           int
-	hasCall           bool   // any direct or indirect call
-	callsSelf         bool   // a direct call to the function's own index
-	hasLoop           bool   // structured loop (X12/X13 may be borrowed by loop promotion)
-	touchesMemory     bool   // any linear-memory op
-	inlineCallSites   uint16 // saturated ordinary direct call sites targeting this local function
-	directCallRefs    uint8  // saturated call + return_call references targeting this local function
-	hasInlineLoopCall bool   // an ordinary direct call site is nested in a loop
-	memOps            int    // scalar/vector/bulk linear-memory instructions
-	usesBulkMem       bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
-	mutatesTable      bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
-	hasControlFlow    bool   // control opcode relevant to inline splice framing
-	moduleEH          bool   // module-wide: reserve the active exception-handler register
+type funcHintFlags uint16
 
-	// immutableLocalTable is derived after the one-pass per-function scans have
-	// been aggregated. The table must also be private (an exported table can be
-	// mutated by another importing instance). Every non-null entry is then a
-	// same-module function and can use the internal register ABI without a
-	// run-time home-tag fork.
-	immutableLocalTable bool
-	immutableTableType  uint64
-	immutableTableTyped bool
-	monomorphicTarget   int // local function index when every non-null entry is identical; -1 otherwise
+const (
+	hintHasCall funcHintFlags = 1 << iota
+	hintCallsSelf
+	hintHasLoop
+	hintTouchesMemory
+	hintHasInlineLoopCall
+	hintUsesBulkMem
+	hintMutatesTable
+	hintHasControlFlow
+	hintModuleEH
+	hintHasFloatConst
+	hintIntervalRegionStorage
+	hintPreservesCallerPins
+	hintHasLoopCall
+	hintHasNonDirectCall
+	hintCallsImport
+	hintModuleSIMD
+)
 
-	// Loop-weighted hotness: local.get/global.get = 1×, set/tee = 2×, ×loopWeight
-	// per enclosing loop level.
-	localScore  []uint32
-	globalScore []uint32
-	// localLastGet records the byte offset immediately after each local's final
-	// local.get. It lets the bounded regional cache return a register as soon as
-	// that local's lifetime ends without rescanning the body during compilation.
-	localLastGet []uint32
-	// entryInitialized marks locals whose first access in the straight-line entry
-	// prefix is local.set/tee, making their declared zero unobservable.
-	entryInitialized uint64
+func (f funcHintFlags) has(flag funcHintFlags) bool { return f&flag != 0 }
 
-	// globalElig[g]: global g is accessed inside a loop whose subtree contains NO
-	// call. Value-pinning such a global in a call-making function is a win: the
-	// per-iteration memory traffic disappears while the coherence spill/reload
-	// lands only on the (sparse) calls outside that loop. The innermost enclosing
-	// loop decides — if it calls, no outer loop can be call-free.
-	globalElig []bool
-	// sparseGlobals replaces the dense score/eligibility slices for modules whose
-	// functions-by-globals matrix would exceed the bounded dense fast path.
-	sparseGlobals []shared.GlobalHint
-	globalAccum   *shared.GlobalHintAccumulator
+func (f *funcHintFlags) set(flag funcHintFlags) { *f |= flag }
 
-	// stackArenaNodes is a conservative pre-scan estimate of operand-stack elem
-	// allocations while compiling this body. It lets compileFunc avoid reserving
-	// arena nodes for long immediates (notably v128.const payload bytes) while the
-	// stack's heap fallback still preserves pointer stability if the estimate is
-	// low for unusual control flow.
-	stackArenaNodes int
+func (f *funcHintFlags) assign(flag funcHintFlags, value bool) {
+	if value {
+		*f |= flag
+	} else {
+		*f &^= flag
+	}
 }
 
-func newFuncHints(nLocals, nGlobals int) funcHints {
-	h := funcHintsWithStorage(make([]uint32, nLocals), make([]uint32, nGlobals), make([]bool, nGlobals))
+// funcHints is everything scanFuncBody yields.
+type funcHints struct {
+	// memOps packs a saturated memory-op count in the low 20 bits and exact
+	// memory-zero offset+width=four accesses in the high 12 bits. Keeping the
+	// secondary frequency in existing header storage preserves the 28-byte hint.
+	memOps          uint32
+	localStart      uint32
+	globalStart     uint32
+	globalCount     uint32
+	localCount      uint16 // complete parameter-plus-declared-local population
+	inlineCallSites uint16 // saturated ordinary direct call sites targeting this local function
+	flags           funcHintFlags
+	directCallRefs  uint8 // saturated call + return_call references targeting this local function
+	// maxControlDepth stores the greatest simultaneously open structured-control
+	// depth in its low seven bits. 127 is the saturated fallback sentinel; the
+	// high bit records a hot scalar-result join without growing this fixed header.
+	maxControlDepth uint8
+	// callRelocSites packs a saturated direct-call count in the low 14 bits.
+	// The high bits retain sparse loop-constant presence and fail closed for
+	// non-table dynamic/helper calls without growing the compact hint record.
+	callRelocSites   uint16
+	immediateFreeOps uint16 // saturated arena sizing hint in the final two padding bytes
+}
+
+const (
+	callRelocSiteCountMask          = uint16(1<<14 - 1)
+	callRelocLoopIntConstMask       = uint16(1 << 14)
+	callRelocUnsupportedDynamicMask = uint16(1 << 15)
+)
+
+func (h funcHints) callRelocSiteCount() uint16 { return h.callRelocSites & callRelocSiteCountMask }
+
+func (h funcHints) hasUnsupportedDynamicCall() bool {
+	return h.callRelocSites&callRelocUnsupportedDynamicMask != 0
+}
+
+func (h *funcHints) markUnsupportedDynamicCall() {
+	h.callRelocSites |= callRelocUnsupportedDynamicMask
+}
+
+func (h funcHints) hasLoopIntConsts() bool {
+	return h.callRelocSites&callRelocLoopIntConstMask != 0
+}
+
+func (h *funcHints) markLoopIntConsts() {
+	h.callRelocSites |= callRelocLoopIntConstMask
+}
+
+// funcHintView reconstructs scan/compile slices on the stack. Only funcHints is
+// retained per function; all variable-length data lives in one module sidecar.
+type funcHintView struct {
+	funcHints
+	scalarMergeWeight uint32 // scan-only; retained as one threshold bit in maxControlDepth
+	entryInitialized  uint64 // scan-local view; compilation decodes bits during pin planning
+	paramAddressSeen  uint64 // scan-local first direct scalar-load use; second use is retained in localScore
+	nLocals           int
+	localScore        []uint32
+	localLastGet      []uint32
+	sparseGlobals     []shared.GlobalHint
+	localEvents       *shared.LocalEventTape // scan-only, never copied into funcHints
+	localEventMeta    uint32                 // reconstructed from the sparse sidecar
+	residencyShadow   shared.ResidencyShadowSummary
+	loopIntConst      [4]int64
+	loopIntConstTypes uint8 // two bits per entry: 1=i32, 2=i64
+	loopIntConstCount uint8
+}
+
+type loopIntConstHintEntry struct {
+	function uint32
+	bits     [4]int64
+	types    uint8
+	count    uint8
+}
+
+type funcHintSidecar struct {
+	localScore             []uint32
+	localLastGet           []uint32
+	sparseGlobals          []shared.GlobalHint
+	localEventMeta         []uint32 // ordered localStart, packed event summary pairs
+	residencyShadow        []shared.ResidencyShadowEntry
+	loopIntConsts          []loopIntConstHintEntry
+	localLastGetRangeCount uint32
+}
+
+func retainedLocalScoreCount(h funcHints) int {
+	n := int(h.localCount)
+	if n > 64 && !h.flags.has(hintIntervalRegionStorage) {
+		return 64
+	}
+	return n
+}
+
+func (s funcHintSidecar) view(h funcHints) funcHintView {
+	return s.viewAt(h, -1)
+}
+
+func (s funcHintSidecar) viewAt(h funcHints, function int) funcHintView {
+	nLocals := int(h.localCount)
+	localStart := int(h.localStart)
+	localEnd := localStart + retainedLocalScoreCount(h)
+	var localLastGet []uint32
+	if s.localLastGetRangeCount == 0 && len(s.localLastGet) == len(s.localScore) {
+		localLastGet = s.localLastGet[localStart:localEnd]
+	} else if s.localLastGetRangeCount != 0 {
+		// Sparse ranges are ordered by localStart because module hints are
+		// appended in function order. Each pair at the front of localLastGet
+		// names the dense score offset and its compact last-get offset. Keeping
+		// ranges and values in one backing avoids another slice allocation.
+		// Binary search remains independent of parallel worker scheduling.
+		key := uint32(h.localStart)
+		lo, hi := 0, int(s.localLastGetRangeCount)
+		for lo < hi {
+			mid := int(uint(lo+hi) >> 1)
+			if s.localLastGet[mid*2] < key {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if lo < int(s.localLastGetRangeCount) && s.localLastGet[lo*2] == key {
+			start := int(s.localLastGet[lo*2+1])
+			localLastGet = s.localLastGet[start : start+nLocals]
+		}
+	}
+	globalStart := int(h.globalStart)
+	globalEnd := globalStart + int(h.globalCount)
+	eventMeta := shared.FindLocalEventMeta(s.localEventMeta, h.localStart)
+	shadow := shared.FindResidencyShadow(s.residencyShadow, h.localStart)
+	view := funcHintView{
+		funcHints:       h,
+		nLocals:         nLocals,
+		localScore:      s.localScore[localStart:localEnd],
+		localLastGet:    localLastGet,
+		sparseGlobals:   s.sparseGlobals[globalStart:globalEnd],
+		localEventMeta:  eventMeta,
+		residencyShadow: shadow,
+	}
+	// Loop constants are sparse. Most functions in application modules have no
+	// loop at all, so avoid a binary search for entries they cannot own.
+	if function < 0 || !h.hasLoopIntConsts() || len(s.loopIntConsts) == 0 {
+		return view
+	}
+	lo, hi := 0, len(s.loopIntConsts)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if int(s.loopIntConsts[mid].function) < function {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo < len(s.loopIntConsts) && int(s.loopIntConsts[lo].function) == function {
+		entry := s.loopIntConsts[lo]
+		view.loopIntConst = entry.bits
+		view.loopIntConstTypes = entry.types
+		view.loopIntConstCount = entry.count
+	}
+	return view
+}
+
+// immutableTableHint is one module-owned proof shared by every function
+// compilation. It must not be copied into the retained per-function summaries.
+type immutableTableHint struct {
+	local             bool
+	typeKey           uint64
+	typed             bool
+	monomorphicTarget int
+}
+
+func (h *funcHints) noteControlDepth(depth int) {
+	const depthMask = uint8(0x7f)
+	flags := h.maxControlDepth &^ depthMask
+	current := h.maxControlDepth & depthMask
+	if depth >= int(depthMask) {
+		current = depthMask
+	} else if d := uint8(depth); d > current {
+		current = d
+	}
+	h.maxControlDepth = flags | current
+}
+
+const (
+	hotScalarMergeBit       = uint8(0x80)
+	hotScalarMergeThreshold = uint32(100)
+)
+
+func (h funcHints) controlDepth() int {
+	depth := h.maxControlDepth &^ hotScalarMergeBit
+	if depth == 0x7f {
+		return 255
+	}
+	return int(depth)
+}
+
+func (h funcHints) hasHotScalarMerge() bool { return h.maxControlDepth&hotScalarMergeBit != 0 }
+
+func (h *funcHintView) addScalarMergeWeight(weight int64) {
+	if weight <= 0 {
+		return
+	}
+	if uint64(weight) >= uint64(^uint32(0)-h.scalarMergeWeight) {
+		h.scalarMergeWeight = ^uint32(0)
+	} else {
+		h.scalarMergeWeight += uint32(weight)
+	}
+	if h.scalarMergeWeight >= hotScalarMergeThreshold {
+		h.maxControlDepth |= hotScalarMergeBit
+	}
+}
+
+func scalarMergeBlockType(bt wasm.BlockType) bool {
+	return bt.Kind == wasm.BlockVal && (bt.Val == wasm.I32 || bt.Val == wasm.I64 || bt.Val == wasm.F32 || bt.Val == wasm.F64)
+}
+
+func encodedScalarMergeBlockType(r wasm.Reader, m *wasm.Module) bool {
+	x, err := r.S33()
+	if err != nil {
+		return false
+	}
+	switch x {
+	case -1, -2, -3, -4: // i32, i64, f32, f64
+		return true
+	case -64: // empty block type
+		return false
+	}
+	if x < 0 || m == nil {
+		return false
+	}
+	ft, ok := m.TypeFunc(uint32(x))
+	if !ok || len(ft.Results) != 1 {
+		return false
+	}
+	typ := ft.Results[0]
+	return typ == wasm.I32 || typ == wasm.I64 || typ == wasm.F32 || typ == wasm.F64
+}
+
+const (
+	localEventCountMask = uint32(1<<17 - 1)
+	localEventOverflow  = uint32(1 << 17)
+)
+
+func (h *funcHintView) setLocalEventSummary(count int, overflow bool) {
+	if count > int(localEventCountMask) {
+		count = int(localEventCountMask)
+	}
+	h.localEventMeta = uint32(count)
+	if overflow {
+		h.localEventMeta |= localEventOverflow
+	}
+}
+
+func (h funcHintView) localEventCount() int { return int(h.localEventMeta & localEventCountMask) }
+func (h funcHintView) localEventOverflowed() bool {
+	return h.localEventMeta&localEventOverflow != 0
+}
+
+func (h *funcHintView) noteLocalEvent(kind shared.LocalEventKind, local uint32, depth int) {
+	if h.localEvents == nil {
+		return
+	}
+	if local > uint32(^uint16(0)-1) {
+		h.localEvents.Overflow = true
+		return
+	}
+	h.localEvents.Append(kind, uint16(local), depth)
+}
+
+func (h *funcHintView) noteBoundaryEvent(kind shared.LocalEventKind, depth int) {
+	if h.localEvents != nil {
+		h.localEvents.Append(kind, shared.NoLocal, depth)
+	}
+}
+
+func newFuncHints(nLocals, nGlobals int) funcHintView {
+	h := funcHintsWithStorage(make([]uint32, nLocals))
 	h.localLastGet = make([]uint32, nLocals)
+	h.localCount = uint16(nLocals)
 	h.nLocals = nLocals
 	return h
 }
 
-func funcHintsWithStorage(localScore, globalScore []uint32, globalElig []bool) funcHints {
-	return funcHints{localScore: localScore, globalScore: globalScore, globalElig: globalElig}
+func funcHintsWithStorage(localScore []uint32) funcHintView {
+	return funcHintView{nLocals: len(localScore), localScore: localScore}
+}
+
+const (
+	localScoreEntryInitialized = uint32(1 << 31)
+	// A self-load-defined i32 local is a dependent-address carrier. Keeping an
+	// explicit W-register rename before using it as an address shortens the load
+	// dependency chain on Apple ARM cores, so retain this bounded provenance from
+	// the existing body scan without allocating another sidecar.
+	localScoreLoadDefined = uint32(1 << 30)
+	// A parameter used directly as a scalar-load address at least twice can pay
+	// one entry canonicalization instead of one canonicalization per load. The
+	// first occurrence stays scan-local so the retained score spends one bit only
+	// on proven reuse.
+	localScoreParamAddressReuse = uint32(1 << 29)
+	localScoreHotnessMask       = localScoreParamAddressReuse - 1
+)
+
+func localHotness(score uint32) uint32 { return score & localScoreHotnessMask }
+
+func loadDefinedLocalMask(scores []uint32) uint64 {
+	var mask uint64
+	for i, score := range scores[:min(len(scores), 64)] {
+		if score&localScoreLoadDefined != 0 {
+			mask |= uint64(1) << uint(i)
+		}
+	}
+	return mask
+}
+
+func loadDefinedLocalMaskForHints(h *funcHintView) uint64 {
+	// Load-defined provenance only affects address formation. Functions that do
+	// not touch linear memory cannot consume it, so skip walking their local
+	// scores during compilation.
+	if !h.flags.has(hintTouchesMemory) {
+		return 0
+	}
+	return loadDefinedLocalMask(h.localScore)
+}
+
+func (h *funcHintView) markEntryInitialized(idx uint32) {
+	if idx >= 64 || int(idx) >= len(h.localScore) {
+		return
+	}
+	h.entryInitialized |= uint64(1) << idx
+	h.localScore[idx] |= localScoreEntryInitialized
+}
+
+func (h *funcHintView) markLoadDefined(idx uint32) {
+	if int(idx) < len(h.localScore) {
+		h.localScore[idx] |= localScoreLoadDefined
+	}
+}
+
+func (h *funcHintView) noteParamAddress(idx uint32) {
+	if idx >= 64 || int(idx) >= len(h.localScore) {
+		return
+	}
+	bit := uint64(1) << idx
+	if h.paramAddressSeen&bit != 0 {
+		h.localScore[idx] |= localScoreParamAddressReuse
+	} else {
+		h.paramAddressSeen |= bit
+	}
+}
+
+func finishGlobalHints(h funcHintView, accum *shared.GlobalHintAccumulator) funcHintView {
+	h.sparseGlobals = accum.AppendTo(h.sparseGlobals[:0])
+	h.globalCount = uint32(len(h.sparseGlobals))
+	return h
 }
 
 func addHotness(scores []uint32, idx uint32, delta int64) {
 	if int(idx) >= len(scores) || delta <= 0 {
 		return
 	}
-	const max = ^uint32(0)
-	if uint64(scores[idx])+uint64(delta) >= uint64(max) {
-		scores[idx] = max
+	flags, score := scores[idx]&^localScoreHotnessMask, localHotness(scores[idx])
+	if uint64(score)+uint64(delta) >= uint64(localScoreHotnessMask) {
+		scores[idx] = flags | localScoreHotnessMask
 	} else {
-		scores[idx] += uint32(delta)
+		scores[idx] = flags | (score + uint32(delta))
 	}
 }
 
-func (h *funcHints) addGlobalHotness(idx uint32, delta int64) {
-	if h.globalAccum != nil {
-		h.globalAccum.Add(idx, delta)
-		return
-	}
-	addHotness(h.globalScore, idx, delta)
+func addGlobalHotness(accum *shared.GlobalHintAccumulator, idx uint32, delta int64) {
+	accum.Add(idx, delta)
 }
 
-func (h *funcHints) markGlobalEligible(idx uint32) {
-	if h.globalAccum != nil {
-		h.globalAccum.MarkEligible(idx)
-		return
-	}
-	if int(idx) < len(h.globalElig) {
-		h.globalElig[idx] = true
-	}
+func markGlobalEligible(accum *shared.GlobalHintAccumulator, idx uint32) {
+	accum.MarkEligible(idx)
 }
 
 type globalEligibilityTracker struct {
@@ -199,33 +520,68 @@ func (t *globalEligibilityTracker) pop(frame int) {
 
 // scanFuncBody chooses the byte-backed scanner used for decoded modules, falling
 // back to the AST scanner for tests or callers that construct Func.Body directly.
-func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, m *wasm.Module) (funcHints, error) {
+func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, m *wasm.Module) (funcHintView, error) {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanFuncBodyInto(fn, nLocals, nGlobals, selfIdx, branchHints, h, &elig, m)
+	var accum shared.GlobalHintAccumulator
+	accum.Reset(nGlobals)
+	h, err := scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, &elig, m, nil, nil, 0, &accum, true)
+	return finishGlobalHints(h, &accum), err
 }
 
-func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
-	return scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, nil, 0)
-}
-
-func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
+func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collectLoopIntConsts bool) (funcHintView, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, classifier, moduleHints, importedFuncs)
+		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, classifier, moduleHints, nil, importedFuncs, globalHints, collectLoopIntConsts)
 	}
-	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig), nil
+	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, globalHints), nil
 }
 
 // scanBody performs the AST pre-scan walk. selfIdx is the function's global
 // function index (for callsSelf).
-func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
+func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHintView {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig)
+	var accum shared.GlobalHintAccumulator
+	accum.Reset(nGlobals)
+	return finishGlobalHints(scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig, &accum), &accum)
+}
+
+func noteASTPhysicalEvent(h *funcHintView, kind wasm.InstrKind, depth int) {
+	var event shared.LocalEventKind
+	switch kind {
+	case wasm.InstrBlock, wasm.InstrTryTable:
+		event = shared.LocalEventBlock
+	case wasm.InstrLoop:
+		event = shared.LocalEventLoop
+	case wasm.InstrIf:
+		event = shared.LocalEventIf
+	case wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn:
+		event = shared.LocalEventBranch
+	case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrReturnCall,
+		wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef:
+		event = shared.LocalEventCall
+	case wasm.InstrGlobalSet, wasm.InstrTableSet, wasm.InstrMemoryGrow,
+		wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill,
+		wasm.InstrTableInit, wasm.InstrTableCopy, wasm.InstrTableGrow, wasm.InstrTableFill:
+		event = shared.LocalEventInvalidate
+	default:
+		if gcOrAtomicInstructionMayCall(kind) {
+			event = shared.LocalEventCollection
+		} else if wasm.IsSIMDValidationInstructionKind(kind) {
+			event = shared.LocalEventPressure
+		} else {
+			return
+		}
+	}
+	h.noteBoundaryEvent(event, depth)
 }
 
 func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
 	switch kind {
+	// GC-reference table.set can enter the collector's write-barrier helper.
+	// Conservatively include it even when table types/helper admission are absent.
+	case wasm.InstrTableSet:
+		return true
 	case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructNewDesc, wasm.InstrStructNewDefaultDesc,
 		wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructAtomicGet, wasm.InstrStructAtomicGetS, wasm.InstrStructAtomicGetU, wasm.InstrStructSet,
 		wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData, wasm.InstrArrayNewElem,
@@ -240,7 +596,41 @@ func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
 	}
 }
 
-func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) funcHints {
+// usesBulkScratch describes ARM64 lowering, not just the Wasm memory proposal.
+// These helpers write fixed registers in X9-X14 after flushing stack operands;
+// that flush does not evict long-lived local/global pins. Segment drops matter
+// even in modules with no memory or table, and table helpers share the same pool.
+func usesBulkScratch(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrMemoryInit, wasm.InstrDataDrop, wasm.InstrMemoryCopy, wasm.InstrMemoryFill,
+		wasm.InstrTableInit, wasm.InstrElemDrop, wasm.InstrTableCopy, wasm.InstrTableFill:
+		return true
+	default:
+		return false
+	}
+}
+
+func tableSetMayCall(m *wasm.Module, index uint32) bool {
+	if m == nil {
+		return true
+	}
+	tt, ok := m.TableType(index)
+	if !ok {
+		return true
+	}
+	// Only function and external references are certainly free of the GC write
+	// barrier. Indexed reference types are conservatively treated as collector
+	// references, without allocating a type lookup table during hint collection.
+	if tt.Ref.Heap().Kind() == wasm.HeapAbs {
+		switch tt.Ref.Heap().Abs() {
+		case wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapExtern, wasm.HeapNoExtern:
+			return false
+		}
+	}
+	return true
+}
+
+func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, globalHints *shared.GlobalHintAccumulator) funcHintView {
 	elig.reset()
 	// walk returns whether the subtree contains a call. curLoop identifies the
 	// innermost enclosing loop whose globals are being considered for eligibility.
@@ -250,40 +640,84 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if isExactBounds4Kind(in.Kind) {
+				memarg := in.MemArg()
+				if memarg.Offset == 0 && (memarg.Mem == nil || *memarg.Mem == 0) {
+					h.addBounds4Op()
+				}
+			}
+			if depth != 0 && (in.Kind == wasm.InstrBlock || in.Kind == wasm.InstrIf) && scalarMergeBlockType(in.BlockType()) {
+				h.addScalarMergeWeight(loopWeight(depth))
+			}
+			noteASTPhysicalEvent(&h, in.Kind, depth)
+			if in.Kind == wasm.InstrF32Const || in.Kind == wasm.InstrF64Const {
+				h.flags.set(hintHasFloatConst)
+			}
+			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
+				h.flags.set(hintModuleSIMD)
+			}
 			if gcOrAtomicInstructionMayCall(in.Kind) {
-				sub, h.hasCall = true, true
+				sub = true
+				h.flags.set(hintHasCall)
+				h.flags.set(hintHasNonDirectCall)
+				h.markUnsupportedDynamicCall()
+				if curLoop >= 0 {
+					h.flags.set(hintHasLoopCall)
+				}
 			}
 			if shared.InstructionNeedsInlineBoundary(0, in.Kind) {
-				h.hasControlFlow = true
+				h.flags.set(hintHasControlFlow)
 				if in.Kind == wasm.InstrLoop {
-					h.hasLoop = true
+					h.flags.set(hintHasLoop)
 				}
 			}
 			if shared.InstructionNeedsEHFrame(0, in.Kind) {
-				h.moduleEH = true
+				h.flags.set(hintModuleEH)
+			}
+			if usesBulkScratch(in.Kind) {
+				h.flags.set(hintUsesBulkMem)
 			}
 			switch in.Kind {
 			case wasm.InstrCall, wasm.InstrReturnCall, wasm.InstrCallRef, wasm.InstrReturnCallRef:
-				sub, h.hasCall = true, true
+				sub = true
+				h.flags.set(hintHasCall)
+				// The legacy AST view does not retain imported-function cardinality.
+				// Fail closed for cold-local-call pinning; decoded byte bodies carry
+				// the exact local/import distinction below.
+				h.flags.set(hintHasNonDirectCall)
+				h.markUnsupportedDynamicCall()
+				if curLoop >= 0 {
+					h.flags.set(hintHasLoopCall)
+				}
 				if in.Kind == wasm.InstrCall && in.Index == selfIdx {
-					h.callsSelf = true
+					h.flags.set(hintCallsSelf)
 				}
 			case wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect:
-				sub, h.hasCall = true, true
+				sub = true
+				h.flags.set(hintHasCall)
+				h.flags.set(hintHasNonDirectCall)
+				// Programmatic AST bodies are deliberately fail-closed: the byte
+				// scanner is the production path that proves table-only dispatch.
+				h.markUnsupportedDynamicCall()
+				if curLoop >= 0 {
+					h.flags.set(hintHasLoopCall)
+				}
 			case wasm.InstrLocalGet:
 				if int(in.Index) < nLocals {
+					h.noteLocalEvent(shared.LocalEventRead, in.Index, depth)
 					addHotness(h.localScore, in.Index, w)
 				}
 			case wasm.InstrLocalSet, wasm.InstrLocalTee:
 				if int(in.Index) < nLocals {
+					h.noteLocalEvent(shared.LocalEventDefine, in.Index, depth)
 					addHotness(h.localScore, in.Index, 2*w)
 				}
 			case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
 				if int(in.Index) < nGlobals {
 					if in.Kind == wasm.InstrGlobalSet {
-						h.addGlobalHotness(in.Index, 2*w)
+						addGlobalHotness(globalHints, in.Index, 2*w)
 					} else {
-						h.addGlobalHotness(in.Index, w)
+						addGlobalHotness(globalHints, in.Index, w)
 					}
 					elig.add(curLoop, in.Index)
 				}
@@ -293,31 +727,32 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 					sub = true // call inside: its globals are not eligible
 				} else {
 					for _, g := range elig.globalsIn(loop) {
-						h.markGlobalEligible(g)
+						markGlobalEligible(globalHints, g)
 					}
 				}
 				elig.pop(loop)
+				h.noteBoundaryEvent(shared.LocalEventEnd, depth)
 			case wasm.InstrBlock, wasm.InstrTryTable:
 				if walk(in.Body().Instrs, depth, curLoop) {
 					sub = true
 				}
+				h.noteBoundaryEvent(shared.LocalEventEnd, depth)
 			case wasm.InstrIf:
 				if walk(in.Then(), depth, curLoop) {
 					sub = true
 				}
+				h.noteBoundaryEvent(shared.LocalEventElse, depth)
 				if walk(in.Else(), depth, curLoop) {
 					sub = true
 				}
-			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
-				h.usesBulkMem, h.touchesMemory = true, true
-				h.memOps++
+				h.noteBoundaryEvent(shared.LocalEventEnd, depth)
 			case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
 				wasm.InstrTableGrow, wasm.InstrTableFill:
-				h.mutatesTable = true
+				h.flags.set(hintMutatesTable)
 			default:
 				if instrTouchesMemory(in.Kind) {
-					h.touchesMemory = true
-					h.memOps++
+					h.flags.set(hintTouchesMemory)
+					h.addMemOp()
 				}
 			}
 		}
@@ -486,21 +921,20 @@ func (s *globalScoreByteScanner) classifyInstructionInto(op byte, imm *wasm.Inst
 // scanBodyBytes performs the same pre-scan over raw expression bytecode without
 // allocating Instruction trees. body includes the terminating end opcode and
 // excludes local declarations.
-func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (funcHints, error) {
+func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (funcHintView, error) {
 	return scanBodyBytesWithHints(body, 0, nLocals, nGlobals, selfIdx, nil)
 }
 
-func scanBodyBytesWithHints(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint) (funcHints, error) {
+func scanBodyBytesWithHints(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint) (funcHintView, error) {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanBodyBytesInto(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, &elig, nil)
+	var accum shared.GlobalHintAccumulator
+	accum.Reset(nGlobals)
+	h, err := scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, &elig, nil, nil, nil, nil, 0, &accum, true)
+	return finishGlobalHints(h, &accum), err
 }
 
-func scanBodyBytesInto(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
-	return scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, nil, 0)
-}
-
-func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
+func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, parallelCalls []parallelCalleeHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collectLoopIntConsts bool) (funcHintView, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
 	var cached wasm.ModuleInstructionClassifier
@@ -509,67 +943,216 @@ func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nG
 	} else {
 		cached = wasm.NewModuleInstructionClassifier(m, true)
 	}
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, m: m, classifier: cached, moduleHints: moduleHints, importedFuncs: importedFuncs, entryPrefix: true}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, globalHints: globalHints, m: m, classifier: cached, moduleHints: moduleHints, parallelCalls: parallelCalls, importedFuncs: importedFuncs, entryPrefix: true, collectLoopIntConsts: collectLoopIntConsts}
 	called, term, err := s.scanExpr(0, 0, -1, false, 1)
 	if err != nil {
 		return s.h, err
 	}
 	if called {
-		s.h.hasCall = true
+		s.h.flags.set(hintHasCall)
 	}
 	if term != 0x0b || s.r.has() {
 		return s.h, s.r.err(wasm.ErrInvalidInstruction, s.r.off())
 	}
+	if s.loopIntConstN != 0 {
+		s.finishLoopIntConsts()
+	}
 	return s.h, nil
 }
 
+type loopIntConstCandidate struct {
+	bits      int64
+	scoreType uint64 // saturated score in low 62 bits; value type in high 2 bits
+}
+
+const maxLoopIntConstCandidates = 8
+
+const loopIntConstScoreMask = uint64(1<<62 - 1)
+
+func newLoopIntConstCandidate(bits int64, score uint64, typ uint8) loopIntConstCandidate {
+	return loopIntConstCandidate{bits: bits, scoreType: min(score, loopIntConstScoreMask) | uint64(typ&3)<<62}
+}
+
+func (c loopIntConstCandidate) typ() uint8    { return uint8(c.scoreType >> 62) }
+func (c loopIntConstCandidate) score() uint64 { return c.scoreType & loopIntConstScoreMask }
+
+func (c *loopIntConstCandidate) addScore(score uint64) {
+	current := c.score()
+	if score > loopIntConstScoreMask-current {
+		current = loopIntConstScoreMask
+	} else {
+		current += score
+	}
+	c.scoreType = current | uint64(c.typ())<<62
+}
+
 type byteBodyScanner struct {
-	r              byteScanReader
-	h              funcHints
-	nLocals        int
-	nGlobals       int
-	selfIdx        uint32
-	localDeclBytes uint32
-	branchHints    []wasm.BranchHint
-	elig           *globalEligibilityTracker
-	m              *wasm.Module
-	classifier     wasm.ModuleInstructionClassifier
-	moduleHints    []funcHints
-	importedFuncs  int
-	entryPrefix    bool
-	entrySeen      uint64
+	r                    byteScanReader
+	h                    funcHintView
+	nLocals              int
+	nGlobals             int
+	selfIdx              uint32
+	localDeclBytes       uint32
+	branchHints          []wasm.BranchHint
+	elig                 *globalEligibilityTracker
+	globalHints          *shared.GlobalHintAccumulator
+	m                    *wasm.Module
+	classifier           wasm.ModuleInstructionClassifier
+	moduleHints          []funcHints
+	parallelCalls        []parallelCalleeHints
+	importedFuncs        int
+	entryPrefix          bool
+	entrySeen            uint64
+	collectLoopIntConsts bool
+	loopIntConsts        [maxLoopIntConstCandidates]loopIntConstCandidate
+	loopIntConstN        uint8
+}
+
+func intConstWideMoveCost(bits int64, typ uint8) int {
+	words := 4
+	v := uint64(bits)
+	if typ == 1 {
+		words, v = 2, uint64(uint32(bits))
+	}
+	zeros, ones := 0, 0
+	for i := 0; i < words; i++ {
+		h := uint16(v >> (16 * i))
+		if h == 0 {
+			zeros++
+		} else if h == 0xffff {
+			ones++
+		}
+	}
+	cost := words - zeros
+	if words-ones < cost {
+		cost = words - ones
+	}
+	if cost == 0 {
+		return 1
+	}
+	return cost
+}
+
+func loopIntConstNeedsRegister(next byte, bits int64, typ uint8) bool {
+	switch next {
+	case 0x6c, 0x7e: // i32/i64.mul have no immediate form.
+		return true
+	case 0x6a, 0x6b, 0x7c, 0x7d: // add/sub admit a signed +/- 12-bit magnitude.
+		return bits < -0xfff || bits > 0xfff
+	case 0x71, 0x72, 0x73: // i32 and/or/xor logical immediate.
+		return typ == 1 && !a64.LogicalImmediate32(uint32(bits))
+	case 0x83, 0x84, 0x85: // i64 and/or/xor logical immediate.
+		return typ == 2 && !a64.LogicalImmediate64(uint64(bits))
+	default:
+		return false
+	}
+}
+
+func (s *byteBodyScanner) noteLoopIntConst(bits int64, typ uint8, loopDepth int, pathWeight int64) {
+	if loopDepth == 0 {
+		return
+	}
+	cost := intConstWideMoveCost(bits, typ)
+	score := uint64(pathWeight * loopWeight(loopDepth) * int64(cost))
+	for i := 0; i < int(s.loopIntConstN); i++ {
+		c := &s.loopIntConsts[i]
+		if c.bits == bits && c.typ() == typ {
+			c.addScore(score)
+			return
+		}
+	}
+	if int(s.loopIntConstN) == len(s.loopIntConsts) {
+		return
+	}
+	s.loopIntConsts[s.loopIntConstN] = newLoopIntConstCandidate(bits, score, typ)
+	s.loopIntConstN++
+}
+
+func (s *byteBodyScanner) finishLoopIntConsts() {
+	for out := 0; out < len(s.h.loopIntConst); out++ {
+		best := -1
+		for i := 0; i < int(s.loopIntConstN); i++ {
+			if s.loopIntConsts[i].typ() != 0 && (best < 0 || s.loopIntConsts[i].score() > s.loopIntConsts[best].score()) {
+				best = i
+			}
+		}
+		if best < 0 {
+			break
+		}
+		c := s.loopIntConsts[best]
+		s.h.loopIntConst[out] = c.bits
+		s.h.loopIntConstTypes |= c.typ() << (2 * out)
+		s.h.loopIntConstCount++
+		s.loopIntConsts[best].scoreType = 0
+	}
+	if s.h.loopIntConstCount != 0 {
+		s.h.markLoopIntConsts()
+	}
+}
+
+func (s *byteBodyScanner) notePhysicalEvent(op byte, depth int) {
+	var kind shared.LocalEventKind
+	switch op {
+	case 0x02, 0x1f:
+		kind = shared.LocalEventBlock
+	case 0x03:
+		kind = shared.LocalEventLoop
+	case 0x04:
+		kind = shared.LocalEventIf
+	case 0x05:
+		kind = shared.LocalEventElse
+	case 0x0b:
+		kind = shared.LocalEventEnd
+	case 0x08, 0x09, 0x0a, 0x0c, 0x0d, 0x0e, 0x0f:
+		kind = shared.LocalEventBranch
+	case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15:
+		kind = shared.LocalEventCall
+	case 0x24, 0x26, 0x40:
+		kind = shared.LocalEventInvalidate
+	case 0xfd:
+		kind = shared.LocalEventPressure
+	default:
+		return
+	}
+	s.h.noteBoundaryEvent(kind, depth)
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool, pathWeight int64) (bool, byte, error) {
 	if depth > 20000 {
 		return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
 	}
+	hotnessWeight := pathWeight * loopWeight(loopDepth)
 	subHasCall := false
+	var prevOp, prevPrevOp byte
+	var prevIndex, prevPrevIndex uint32
 	for {
 		op, err := s.r.byte()
 		if err != nil {
 			return true, 0, err
 		}
-		if shared.InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) {
-			s.h.hasControlFlow = true
-			s.entryPrefix = false
-			if op == 0x03 {
-				s.h.hasLoop = true
-			}
-		}
+		curIndex := ^uint32(0)
+		s.notePhysicalEvent(op, depth)
 		switch op {
+		case 0x00: // unreachable
+			s.h.flags.set(hintHasControlFlow)
+			s.entryPrefix = false
 		case 0x0b: // end
-			s.h.stackArenaNodes += 2 // flush/rebuild allowance for the closing edge.
 			return subHasCall, op, nil
 		case 0x05: // else
-			s.h.stackArenaNodes += 2 // then-edge flush plus else-entry rebuild.
+			s.h.flags.set(hintHasControlFlow)
+			s.entryPrefix = false
 			if stopAtElse {
 				return subHasCall, op, nil
 			}
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
+			s.h.flags.set(hintHasControlFlow)
+			s.entryPrefix = false
 			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
-			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
+			s.h.noteControlDepth(depth + 1)
+			if loopDepth != 0 && op != 0x03 && encodedScalarMergeBlockType(s.r.Reader, s.m) {
+				s.h.addScalarMergeWeight(pathWeight * loopWeight(loopDepth))
+			}
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
@@ -584,7 +1167,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 				subHasCall = subHasCall || calls
 			case 0x03: // loop
-				s.h.hasLoop = true
+				s.h.flags.set(hintHasLoop)
 				loop := s.elig.push()
 				calls, term, err := s.scanExpr(depth+1, loopDepth+1, loop, false, pathWeight)
 				if err != nil {
@@ -597,7 +1180,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					subHasCall = true
 				} else {
 					for _, g := range s.elig.globalsIn(loop) {
-						s.h.markGlobalEligible(g)
+						markGlobalEligible(s.globalHints, g)
 					}
 				}
 				s.elig.pop(loop)
@@ -627,101 +1210,220 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				subHasCall = subHasCall || callsThen || callsElse
 			}
 		case 0x10, 0x12: // call, return_call
+			idx, err := s.r.U32()
+			if err != nil {
+				return true, 0, err
+			}
+			s.h.flags.set(hintHasCall)
+			if int(idx) < s.importedFuncs {
+				s.h.flags.set(hintCallsImport)
+			}
+			if loopDepth != 0 {
+				s.h.flags.set(hintHasLoopCall)
+			}
+			subHasCall = true
+			if op == 0x10 && idx == s.selfIdx {
+				s.h.flags.set(hintCallsSelf)
+			}
+			s.noteDirectCallRef(idx, op == 0x10, loopDepth != 0)
+		case 0x11, 0x13: // indirect calls
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
-			s.h.hasCall, subHasCall = true, true
-			if op == 0x10 && imm.Index == s.selfIdx {
-				s.h.callsSelf = true
+			s.h.flags.set(hintHasCall)
+			s.h.flags.set(hintHasNonDirectCall)
+			if loopDepth != 0 {
+				s.h.flags.set(hintHasLoopCall)
 			}
-			s.noteDirectCallRef(imm.Index, op == 0x10, loopDepth != 0)
-		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
-			if err != nil {
+			subHasCall = true
+		case 0x14, 0x15: // call_ref, return_call_ref
+			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
-			s.h.hasCall, subHasCall = true, true
+			s.h.flags.set(hintHasCall)
+			s.h.flags.set(hintHasNonDirectCall)
+			if op == 0x14 || op == 0x15 {
+				s.h.markUnsupportedDynamicCall()
+			}
+			if loopDepth != 0 {
+				s.h.flags.set(hintHasLoopCall)
+			}
+			subHasCall = true
 		case 0x20, 0x21, 0x22: // local.get/set/tee
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
+			idx, err := s.r.U32()
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
-			idx := imm.Index
+			curIndex = idx
 			if int(idx) < s.nLocals {
+				// Recognize a true dependent pointer recurrence:
+				// local.get x; scalar load; local.set/tee x. Broader
+				// "assigned by any load" marking retains dependency-breaking
+				// renames in unrelated codec temporaries and loses their gain.
+				if prevOp == 0x28 && op != 0x20 &&
+					prevPrevOp == 0x20 && prevPrevIndex == idx {
+					s.h.markLoadDefined(idx)
+				}
+				kind := shared.LocalEventDefine
+				if op == 0x20 {
+					kind = shared.LocalEventRead
+				}
+				s.h.noteLocalEvent(kind, idx, depth)
 				if s.entryPrefix && idx < 64 {
 					bit := uint64(1) << idx
 					if s.entrySeen&bit == 0 {
 						s.entrySeen |= bit
 						if op != 0x20 {
-							s.h.entryInitialized |= bit
+							s.h.markEntryInitialized(idx)
 						}
 					}
 				}
 				if op == 0x20 {
-					addHotness(s.h.localScore, idx, pathWeight*loopWeight(loopDepth))
+					addHotness(s.h.localScore, idx, hotnessWeight)
 					if int(idx) < len(s.h.localLastGet) {
 						s.h.localLastGet[idx] = uint32(s.r.off())
 					}
 				} else {
-					addHotness(s.h.localScore, idx, 2*pathWeight*loopWeight(loopDepth))
+					addHotness(s.h.localScore, idx, 2*hotnessWeight)
 				}
 			}
 		case 0x23, 0x24: // global.get/set
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
+			idx, err := s.r.U32()
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
-			idx := imm.Index
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
-					s.h.addGlobalHotness(idx, 2*pathWeight*loopWeight(loopDepth))
+					addGlobalHotness(s.globalHints, idx, 2*hotnessWeight)
 				} else {
-					s.h.addGlobalHotness(idx, pathWeight*loopWeight(loopDepth))
+					addGlobalHotness(s.globalHints, idx, hotnessWeight)
 				}
 				s.elig.add(curLoop, idx)
 			}
+		case 0x41, 0x42: // i32.const, i64.const
+			var bits int64
+			var typ uint8
+			if op == 0x41 {
+				v, err := s.r.I32()
+				if err != nil {
+					return true, 0, err
+				}
+				bits, typ = int64(v), 1
+			} else {
+				v, err := s.r.I64()
+				if err != nil {
+					return true, 0, err
+				}
+				bits, typ = v, 2
+			}
+			if s.collectLoopIntConsts && loopDepth != 0 {
+				if next, ok := s.r.Reader.Peek(); ok && loopIntConstNeedsRegister(next, bits, typ) {
+					s.noteLoopIntConst(bits, typ, loopDepth, pathWeight)
+				}
+			}
+		case 0x43: // f32.const
+			s.h.flags.set(hintHasFloatConst)
+			if _, err := s.r.Bytes(4); err != nil {
+				return true, 0, err
+			}
+		case 0x44: // f64.const
+			s.h.flags.set(hintHasFloatConst)
+			if _, err := s.r.Bytes(8); err != nil {
+				return true, 0, err
+			}
+		case 0x0c, 0x0d: // br, br_if
+			s.h.flags.set(hintHasControlFlow)
+			s.entryPrefix = false
+			if _, err := s.r.U32(); err != nil {
+				return true, 0, err
+			}
+		case 0x0f: // return
+			s.h.flags.set(hintHasControlFlow)
+			s.entryPrefix = false
+		case 0x25, 0x26: // table.get/set
+			index, err := s.r.U32()
+			if err != nil {
+				return true, 0, err
+			}
+			if op == 0x26 {
+				s.h.flags.set(hintMutatesTable)
+				if tableSetMayCall(s.m, index) {
+					s.h.flags.set(hintHasCall | hintHasNonDirectCall)
+					s.h.markUnsupportedDynamicCall()
+					if loopDepth != 0 {
+						s.h.flags.set(hintHasLoopCall)
+					}
+					subHasCall = true
+				}
+			}
+		case 0xd2, 0xd5, 0xd6: // ref.func, br_on_null, br_on_non_null
+			if _, err := s.r.U32(); err != nil {
+				return true, 0, err
+			}
+			if op != 0xd2 {
+				s.h.flags.set(hintHasControlFlow)
+				s.entryPrefix = false
+			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0xfc, 0xfd, 0xfe, 0xfb:
+			if op == 0xfd {
+				s.h.flags.set(hintModuleSIMD)
+			}
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
-				s.h.hasControlFlow = true
+				s.h.flags.set(hintHasControlFlow)
 			}
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
-				s.h.moduleEH = true
+				s.h.flags.set(hintModuleEH)
 			}
 			if op == 0xfb {
+				s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
 				// Collector-backed GC instructions may enter the synchronous Go
 				// helper bridge. Preserve LR and use call-safe local state for the
 				// whole family; direct-only subopcodes pay only the frame-record cost.
-				s.h.hasCall, subHasCall = true, true
+				s.h.flags.set(hintHasCall)
+				s.h.flags.set(hintHasNonDirectCall)
+				s.h.markUnsupportedDynamicCall()
+				if loopDepth != 0 {
+					s.h.flags.set(hintHasLoopCall)
+				}
+				subHasCall = true
 			}
 			switch imm.Kind {
 			case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
-				s.h.hasCall, subHasCall = true, true
+				s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
+				s.h.flags.set(hintHasCall)
+				s.h.flags.set(hintHasNonDirectCall)
+				s.h.markUnsupportedDynamicCall()
+				if loopDepth != 0 {
+					s.h.flags.set(hintHasLoopCall)
+				}
+				subHasCall = true
 			}
 			if imm.TouchesMemory {
-				s.h.touchesMemory = true
-				s.h.memOps++
+				s.h.flags.set(hintTouchesMemory)
+				s.h.addMemOp()
+				if isExactBounds4Opcode(op) && imm.MemOffset == 0 && (!imm.HasMemIndex || imm.MemIndex == 0) {
+					s.h.addBounds4Op()
+				}
+				if op >= 0x28 && op <= 0x35 && prevOp == 0x20 {
+					s.h.noteParamAddress(prevIndex)
+				}
 			}
-			if imm.UsesBulkMemory {
-				s.h.usesBulkMem = true
+			if usesBulkScratch(imm.Kind) {
+				s.h.noteBoundaryEvent(shared.LocalEventInvalidate, depth)
+				s.h.flags.set(hintUsesBulkMem)
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
-			s.h.moduleEH = true
-			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
+			s.h.flags.set(hintHasControlFlow)
+			s.entryPrefix = false
+			s.h.flags.set(hintModuleEH)
+			s.h.noteControlDepth(depth + 1)
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
@@ -733,41 +1435,64 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
 			subHasCall = subHasCall || calls
-		case 0x08, 0x0a: // throw, throw_ref
-			s.h.moduleEH = true
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
-			if err != nil {
+		case 0x08: // throw
+			s.h.flags.set(hintModuleEH)
+			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
+		case 0x0a: // throw_ref
+			s.h.flags.set(hintModuleEH)
 		default:
+			if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
+				if s.h.immediateFreeOps < defaultStackArenaCap {
+					s.h.immediateFreeOps++
+				}
+				break
+			}
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
-				s.h.hasControlFlow = true
+				s.h.flags.set(hintHasControlFlow)
+				if op == 0x0e { // br_table is the only unprefixed boundary in this path.
+					s.entryPrefix = false
+				}
 			}
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
-				s.h.moduleEH = true
+				s.h.flags.set(hintModuleEH)
 			}
 			if imm.TouchesMemory {
-				s.h.touchesMemory = true
-				s.h.memOps++
+				s.h.flags.set(hintTouchesMemory)
+				s.h.addMemOp()
 			}
-			if imm.UsesBulkMemory {
-				s.h.usesBulkMem = true
+			if usesBulkScratch(imm.Kind) {
+				s.h.flags.set(hintUsesBulkMem)
 			}
 		}
+		prevPrevOp, prevPrevIndex = prevOp, prevIndex
+		prevOp, prevIndex = op, curIndex
 	}
 }
 
 func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline, inLoop bool) {
 	local := int(globalIdx) - s.importedFuncs
-	if local < 0 || local >= len(s.moduleHints) {
+	if local < 0 || local >= len(s.moduleHints) && local >= len(s.parallelCalls) {
+		return
+	}
+	if count := s.h.callRelocSiteCount(); count != callRelocSiteCountMask {
+		s.h.callRelocSites = s.h.callRelocSites&(callRelocLoopIntConstMask|callRelocUnsupportedDynamicMask) | count + 1
+	}
+	if len(s.parallelCalls) != 0 {
+		target := &s.parallelCalls[local]
+		target.direct.Add(1)
+		if inline {
+			target.inline.Add(1)
+			if inLoop {
+				target.loop.Store(true)
+			}
+		}
 		return
 	}
 	target := &s.moduleHints[local]
@@ -778,7 +1503,7 @@ func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline, inLoop boo
 		target.inlineCallSites++
 	}
 	if inline && inLoop {
-		target.hasInlineLoopCall = true
+		target.flags.set(hintHasInlineLoopCall)
 	}
 }
 
@@ -809,7 +1534,7 @@ func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.Instruction
 		}
 	}
 	if err == nil && isTableMutation(imm.Kind) {
-		s.h.mutatesTable = true
+		s.h.flags.set(hintMutatesTable)
 	}
 	return err
 }
@@ -819,47 +1544,6 @@ func isTableMutation(kind wasm.InstrKind) bool {
 	case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
 		wasm.InstrTableGrow, wasm.InstrTableFill:
 		return true
-	default:
-		return false
-	}
-}
-
-func (s *byteBodyScanner) noteStackArenaOp(op byte, imm *wasm.InstructionImmediate) {
-	if stackArenaOpAllocates(op, imm) {
-		s.h.stackArenaNodes++
-	}
-}
-
-func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {
-	switch op {
-	case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, // calls: conservatively allow one result node.
-		0x1b, 0x1c, // select
-		0x20, 0x23, 0x25, // local.get/global.get/table.get
-		0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, // loads
-		0x3f, 0x40, // memory.size/grow
-		0x41, 0x42, 0x43, 0x44, // constants
-		0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f,
-		0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a,
-		0x5b, 0x5c, 0x5d, 0x5e, 0x5f, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66,
-		0x67, 0x68, 0x69,
-		0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78,
-		0x79, 0x7a, 0x7b,
-		0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a,
-		0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98,
-		0x99, 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6,
-		0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf, 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf,
-		0xc0, 0xc1, 0xc2, 0xc3, 0xc4,
-		0xd0, 0xd1, 0xd2, 0xd3:
-		return true
-	case 0xfc:
-		return imm.Subopcode <= 7 || imm.Subopcode == 15 || imm.Subopcode == 16 // trunc_sat/table.grow/table.size push.
-	case 0xfd:
-		switch imm.Subopcode {
-		case 11, 88, 89, 90, 91: // v128.store and v128.store{8,16,32,64}_lane push no result.
-			return false
-		default:
-			return true
-		}
 	default:
 		return false
 	}
@@ -888,6 +1572,46 @@ func instrTouchesMemory(k wasm.InstrKind) bool {
 		wasm.InstrI32Store8, wasm.InstrI32Store16, wasm.InstrI64Store8, wasm.InstrI64Store16,
 		wasm.InstrI64Store32,
 		wasm.InstrMemorySize, wasm.InstrMemoryGrow, wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
+		return true
+	default:
+		return false
+	}
+}
+
+const (
+	memOpCountBits = 20
+	memOpCountMask = uint32(1<<memOpCountBits - 1)
+	bounds4OpMask  = uint32(1<<(32-memOpCountBits) - 1)
+)
+
+func (h funcHints) memOpCount() uint32     { return h.memOps & memOpCountMask }
+func (h funcHints) bounds4OpCount() uint32 { return h.memOps >> memOpCountBits }
+
+func (h *funcHintView) addMemOp() {
+	if h.memOpCount() != memOpCountMask {
+		h.memOps++
+	}
+}
+
+func (h *funcHintView) addBounds4Op() {
+	if h.bounds4OpCount() != bounds4OpMask {
+		h.memOps += 1 << memOpCountBits
+	}
+}
+
+func isExactBounds4Opcode(op byte) bool {
+	switch op {
+	case 0x28, 0x2a, 0x34, 0x35, 0x36, 0x38, 0x3e:
+		return true
+	default:
+		return false
+	}
+}
+
+func isExactBounds4Kind(k wasm.InstrKind) bool {
+	switch k {
+	case wasm.InstrI32Load, wasm.InstrF32Load, wasm.InstrI64Load32S, wasm.InstrI64Load32U,
+		wasm.InstrI32Store, wasm.InstrF32Store, wasm.InstrI64Store32:
 		return true
 	default:
 		return false

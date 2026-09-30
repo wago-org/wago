@@ -12,7 +12,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const stagedGCArrayReferenceHex = "0061736d0100000001cd808080000f5e78005e6400005e6400015e6300005e6e0160000164016000016403600001640460037f7f6401017f60027f7f017f60047f7f64027f017f60037f7f7f017f6001646a017f6000017f600000038c808080000b0505060708090a0b0c0d0e07b88080800006036e657700000c6e65772d6f766572666c6f770001036765740005077365745f6765740007036c656e00090964726f705f73656773000a099680808000010564000241074103fb06000b41014102fb0800020b0abf818080000b8a808080000041004102fb0a01000b928080800000418080808078418080808078fb0a01000b8a808080000041004102fb0a03000b8a808080000041004102fb0a04000b8e808080000020022000fb0b012001fb0d000b8a808080000020002001100010040b9c80808000002002200020022003fb0b02fb0e0220022000fb0b022001fb0d000b9280808000002000200141004102fb0a0200200210060b8680808000002000fb0f0b868080800000100010080b858080800000fc0d000b"
@@ -48,7 +48,7 @@ func TestGenericGCArrayNewElemPreservesI31Values(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	got, err := in.Call(context.Background(), "array-new-elem-contents")
+	got, err := in.InvokeValues(context.Background(), "array-new-elem-contents")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestStagedGCArrayReferenceElementSegmentRoots(t *testing.T) {
 			if binary.LittleEndian.Uint64(descriptor) != 0 || binary.LittleEndian.Uint32(descriptor[8:]) != 2 || state.Count != 2 {
 				t.Fatalf("segment descriptor/state = %x/%+v", descriptor, state)
 			}
-			for i := uint8(0); i < state.Count; i++ {
+			for i := uint32(0); i < state.Count; i++ {
 				rooted, err := collector.CheckedTableSlot(state.Slots[i])
 				if err != nil || rooted != state.Refs[i] || !rooted.IsObj() {
 					t.Fatalf("segment root %d = %v, %v; want %v", i, rooted, err, state.Refs[i])
@@ -121,7 +121,7 @@ func TestStagedGCArrayReferenceElementSegmentRoots(t *testing.T) {
 			if binary.LittleEndian.Uint32(descriptor[8:]) != 0 {
 				t.Fatalf("dropped descriptor = %x", descriptor)
 			}
-			for i := uint8(0); i < state.Count; i++ {
+			for i := uint32(0); i < state.Count; i++ {
 				if rooted, err := collector.CheckedTableSlot(state.Slots[i]); err != nil || !rooted.IsNull() {
 					t.Fatalf("dropped segment root %d = %v, %v", i, rooted, err)
 				}
@@ -214,7 +214,7 @@ func TestStagedGCArrayReferenceElementAllocationAndDrop(t *testing.T) {
 			if binary.LittleEndian.Uint32(state.Descriptor[8:]) != 0 {
 				t.Fatalf("dropped instance descriptor = %x", state.Descriptor)
 			}
-			for i := uint8(0); i < state.Count; i++ {
+			for i := uint32(0); i < state.Count; i++ {
 				if rooted, err := in.gc.CheckedTableSlot(state.Slots[i]); err != nil || !rooted.IsNull() {
 					t.Fatalf("dropped instance root %d = %v, %v", i, rooted, err)
 				}
@@ -237,7 +237,7 @@ func TestStagedGCArrayReferenceElementAllocationAndDrop(t *testing.T) {
 
 func TestStagedGCArrayReferenceOfficialProduct(t *testing.T) {
 	data := stagedGCArrayReferenceBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public compile unexpectedly admitted reference GC arrays")
 	}
 	c, err := compileStagedGCArray(data)
@@ -295,7 +295,7 @@ func TestStagedGCArrayReferenceOfficialProduct(t *testing.T) {
 			if err := in.ReleaseGCRef(ValueOf(ValAnyRef, token).GCRef()); err != nil {
 				t.Fatal(err)
 			}
-			values, err := in.Call(context.Background(), "new")
+			values, err := in.InvokeValues(context.Background(), "new")
 			if err != nil || len(values) != 1 || values[0].GCRef().IsNull() {
 				t.Fatalf("Call new = %v, %v", values, err)
 			}
@@ -372,7 +372,11 @@ func TestStagedGCArrayReferenceFootprint(t *testing.T) {
 		"compiledMemoryDirectory": unsafe.Sizeof(compiledMemoryDirectory{}),
 		"instancePluginState":     unsafe.Sizeof(instancePluginState{}),
 	} {
-		want := map[string]uintptr{"gcArrayElementInit": 96, "gcArrayElementState": 56, "compiledMemoryDirectory": 136, "instancePluginState": 128}[name]
+		// The plugin sidecar includes instance-local counted activations and
+		// monotonic callback/context versions. Retained host-session and
+		// ordinary-call cache pointers and optional overflow slots live here,
+		// not on every Instance.
+		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 272}[name]
 		if got != want {
 			t.Fatalf("%s size = %d, want %d", name, got, want)
 		}

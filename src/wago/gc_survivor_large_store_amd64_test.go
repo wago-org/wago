@@ -5,7 +5,7 @@ package wago
 import (
 	"testing"
 
-	corergc "github.com/wago-org/wago/src/core/runtime/gc"
+	corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestGCNativeOldArrayStoreCardsLargeYoungChild(t *testing.T) {

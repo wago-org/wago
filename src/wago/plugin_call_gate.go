@@ -99,9 +99,9 @@ func (g *pluginCallGate) enter() error {
 	}
 }
 
-func (g *pluginCallGate) wrap(fn HostFunc) HostFunc {
+func (g *pluginCallGate) wrap(fn slotHostFunc) slotHostFunc {
 	return func(module HostModule, params, results []uint64) {
-		if caller, ok := module.(instanceHostModule); ok && caller.reservation != nil && caller.reservation.allows(g) {
+		if caller, ok := resolveHostCaller(module); ok && caller.reservation != nil && caller.reservation.allows(g) {
 			fn(module, params, results)
 			return
 		}
@@ -110,6 +110,20 @@ func (g *pluginCallGate) wrap(fn HostFunc) HostFunc {
 		}
 		defer g.release()
 		fn(module, params, results)
+	}
+}
+
+func (g *pluginCallGate) wrapCaller(fn callerSlotHostFunc) callerSlotHostFunc {
+	return func(caller Caller, params, results []uint64) {
+		if caller.reservation != nil && caller.reservation.allows(g) {
+			fn(caller, params, results)
+			return
+		}
+		if err := g.enter(); err != nil {
+			panic(HostTrap{Err: err})
+		}
+		defer g.release()
+		fn(caller, params, results)
 	}
 }
 

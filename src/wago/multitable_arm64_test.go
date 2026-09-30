@@ -67,45 +67,45 @@ func TestARM64IndexedTableOperations(t *testing.T) {
 	defer in.Close()
 
 	ref := issueExternref(t, rt, "indexed-table")
-	if _, err := in.Call(context.Background(), "set2", ValueI32(0), ValueExternRef(ref)); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "set2", ValueI32(0), ValueExternRef(ref)); err != nil {
 		t.Fatalf("set2: %v", err)
 	}
-	got, err := in.Call(context.Background(), "get2", ValueI32(0))
+	got, err := in.InvokeValues(context.Background(), "get2", ValueI32(0))
 	if err != nil || len(got) != 1 || got[0].ExternRef() != ref {
 		t.Fatalf("get2 = %v, %v; want %v", got, err, ref)
 	}
-	got, err = in.Call(context.Background(), "grow2", ValueExternRef(ref), ValueI32(2))
+	got, err = in.InvokeValues(context.Background(), "grow2", ValueExternRef(ref), ValueI32(2))
 	if err != nil || got[0].I32() != 1 {
 		t.Fatalf("grow2 = %v, %v; want old size 1", got, err)
 	}
-	if _, err := in.Call(context.Background(), "fill2", ValueI32(1), ValueExternRef(ref), ValueI32(2)); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "fill2", ValueI32(1), ValueExternRef(ref), ValueI32(2)); err != nil {
 		t.Fatalf("fill2: %v", err)
 	}
-	got, err = in.Call(context.Background(), "size2")
+	got, err = in.InvokeValues(context.Background(), "size2")
 	if err != nil || got[0].I32() != 3 {
 		t.Fatalf("size2 = %v, %v; want 3", got, err)
 	}
-	if _, err := in.Call(context.Background(), "copy0to2", ValueI32(0), ValueI32(0), ValueI32(2)); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "copy0to2", ValueI32(0), ValueI32(0), ValueI32(2)); err != nil {
 		t.Fatalf("copy0to2: %v", err)
 	}
-	got, err = in.Call(context.Background(), "get2", ValueI32(0))
+	got, err = in.InvokeValues(context.Background(), "get2", ValueI32(0))
 	if err != nil || !got[0].ExternRef().IsNull() {
 		t.Fatalf("get2 after copy = %v, %v; want null", got, err)
 	}
-	if _, err := in.Call(context.Background(), "init2", ValueI32(0), ValueI32(0), ValueI32(2)); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "init2", ValueI32(0), ValueI32(0), ValueI32(2)); err != nil {
 		t.Fatalf("init2: %v", err)
 	}
-	if _, err := in.Call(context.Background(), "set2", ValueI32(2), ValueExternRef(ref)); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "set2", ValueI32(2), ValueExternRef(ref)); err != nil {
 		t.Fatalf("set2 before trapping fill: %v", err)
 	}
-	if _, err := in.Call(context.Background(), "fill2", ValueI32(2), ValueExternRef(NullExternRef()), ValueI32(2)); err == nil {
+	if _, err := in.InvokeValues(context.Background(), "fill2", ValueI32(2), ValueExternRef(NullExternRef()), ValueI32(2)); err == nil {
 		t.Fatal("out-of-bounds fill2 unexpectedly succeeded")
 	}
-	got, err = in.Call(context.Background(), "get2", ValueI32(2))
+	got, err = in.InvokeValues(context.Background(), "get2", ValueI32(2))
 	if err != nil || got[0].ExternRef() != ref {
 		t.Fatalf("trapping fill mutated table: %v, %v; want %v", got, err, ref)
 	}
-	got, err = in.Call(context.Background(), "fun-null")
+	got, err = in.InvokeValues(context.Background(), "fun-null")
 	if err != nil || got[0].I32() != 1 {
 		t.Fatalf("fun-null = %v, %v; want 1", got, err)
 	}

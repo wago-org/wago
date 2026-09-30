@@ -15,11 +15,13 @@ import (
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"
+	"github.com/wago-org/wago/cli/internal/profiling"
 	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/cli/internal/watchsupervisor"
 	versioninstall "github.com/wago-org/wago/cli/manager/commands/version/install"
 	managerplugin "github.com/wago-org/wago/cli/manager/internal/plugin"
 	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
+	"github.com/wago-org/wago/internal/managedrelease"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -42,6 +44,12 @@ func versionString() string {
 // the active host runner; the manager itself owns version selection and network
 // installation so every profile retains the same management commands.
 func Main(v string) {
+	if dispatched, err := managedrelease.Dispatch(); dispatched || err != nil {
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		os.Exit(managedrelease.ExitCode(err))
+	}
 	watchsupervisor.Enter()
 	version = v
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -59,6 +67,12 @@ func Main(v string) {
 	args, err := automation.ParseLeading(os.Args[1:])
 	if err != nil {
 		ui.Usage("%v", err)
+	}
+	if profiling.IsInvocation(args) {
+		stop()
+	}
+	if profiling.Capture(args) {
+		return
 	}
 	if len(args) == 0 {
 		if automation.JSON() {

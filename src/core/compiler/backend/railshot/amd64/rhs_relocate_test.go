@@ -23,7 +23,9 @@ func rhsRelocateFixture(f *fn) (root, right *elem) {
 	}
 	deferredSub := func(left, right *elem) *elem {
 		e := f.s.alloc()
-		e.kind, e.op, e.typ = ekDeferred, opSub, mtI64
+		e.setElemKind(ekDeferred)
+		e.setDeferredOp(opSub)
+		e.setValueType(mtI64)
 		e.arg0, e.arg1 = left, right
 		return f.s.push(e)
 	}
@@ -46,6 +48,7 @@ func resetRHSRelocateFixture(f *fn) (root, right *elem) {
 }
 
 func TestDeferredRHSRelocationRetainsArenaOwner(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	stats := new(CodegenStats)
 	f := &fn{
 		a:     &encoder.Asm{},
@@ -61,8 +64,8 @@ func TestDeferredRHSRelocationRetainsArenaOwner(t *testing.T) {
 	if result != RAX {
 		t.Fatalf("result register = %v, want RAX", result)
 	}
-	if right.kind != ekValue || right.st.kind != stReg || right.st.reg != R8 {
-		t.Fatalf("arena RHS after relocation = kind %v, storage %+v; want stReg R8", right.kind, right.st)
+	if !right.isValue() || right.st.kind != stReg || right.st.reg != R8 {
+		t.Fatalf("arena RHS after relocation = kind %v, storage %+v; want stReg R8", right.elemKind(), right.st)
 	}
 	if right.prev != nil || right.next != nil {
 		t.Fatal("consumed arena RHS remains linked on the operand stack")
@@ -105,6 +108,7 @@ func TestDeferredRHSRelocationTracksForcedSpill(t *testing.T) {
 }
 
 func TestExecDeferredRHSRelocation(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	params := make([]wasm.ValType, 10)
 	for i := range params {
 		params[i] = wasm.I64

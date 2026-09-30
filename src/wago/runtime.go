@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	goruntime "runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
 
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/semver"
 )
 
@@ -29,36 +31,74 @@ const (
 // host imports into it, and it threads those through Compile/Instantiate. The
 // package-level Compile/Instantiate remain available as the low-level API.
 type Runtime struct {
-	mu                    sync.Mutex
-	stateCond             *sync.Cond
-	state                 runtimeState
-	loadingDone           chan struct{}
-	pluginsLoadAttempted  bool
-	operational           bool
-	activeOperations      uint64
-	compileOperations     uint64
-	moduleCloseOperations uint64
-	closeState            *runtimeCloseState
-	instances             map[*Instance]uint64
-	instanceSequence      uint64
-	cfg                   *RuntimeConfig
-	overridePolicy        ImportOverridePolicy
-	managedActive         atomic.Bool
-	callerResolverActive  atomic.Bool
-	hooks                 *hookRegistry
-	publishedHooks        atomic.Pointer[hookRegistry]
-	refStore              *referenceStore
-	guestArguments        []string
+	mu                       sync.Mutex
+	stateCond                *sync.Cond
+	state                    runtimeState
+	loadingDone              chan struct{}
+	pluginsLoadAttempted     bool
+	operational              bool
+	activeOperations         uint64
+	compileOperations        uint64
+	moduleCloseOperations    uint64
+	closeState               *runtimeCloseState
+	instances                map[*Instance]uint64
+	instanceReservations     map[*Instance]*runtimeInstanceReservation
+	instanceSequence         uint64
+	directInstanceCount      uint32
+	directInstanceMemory     uint64
+	nativeMemoryMappings     uint32
+	nativeMemoryMappingsPeak uint32
+	cfg                      *RuntimeConfig
+	overridePolicy           ImportOverridePolicy
+	managedActive            atomic.Bool
+	callerResolverActive     atomic.Bool
+	hooks                    *hookRegistry
+	publishedHooks           atomic.Pointer[hookRegistry]
+	refStore                 *referenceStore
+	guestArguments           []string
 
-	plugins      []PluginDefinition
-	imports      Imports                      // "module.name" -> host fn (any)
-	importMeta   map[string]*registeredImport // "module.name" -> declared signature/cap/docs
-	importOwner  map[string]string            // "module.name" -> owning plugin ID
-	moduleOwner  map[string]string            // import module -> owning plugin ID
-	caps         map[Capability]string
-	capOrder     []Capability
-	instructions map[string]*registeredInstruction
-	pluginRuns   []registeredPluginRun
+	plugins       []PluginDefinition
+	imports       resolvedImports              // "module.name" -> host fn (any)
+	importsShared bool                         // rt.mu protects copy-on-write publication of both import maps
+	importMeta    map[string]*registeredImport // "module.name" -> declared signature/cap/docs
+	importOwner   map[string]string            // "module.name" -> owning plugin ID
+	moduleOwner   map[string]string            // import module -> owning plugin ID
+	caps          map[Capability]string
+	capOrder      []Capability
+	instructions  map[string]*registeredInstruction
+	pluginRuns    []registeredPluginRun
+}
+
+type runtimeInstanceReservation struct {
+	rt         *Runtime
+	memory     uint64
+	mappings   uint32
+	direct     bool
+	registered atomic.Bool
+	once       sync.Once
+}
+
+func (r *runtimeInstanceReservation) release() {
+	if r == nil || r.rt == nil {
+		return
+	}
+	r.once.Do(func() {
+		r.rt.mu.Lock()
+		if r.direct && (r.rt.directInstanceCount == 0 || r.memory > r.rt.directInstanceMemory) {
+			r.rt.mu.Unlock()
+			panic("wago: direct instance reservation underflow")
+		}
+		if r.mappings > r.rt.nativeMemoryMappings {
+			r.rt.mu.Unlock()
+			panic("wago: native memory mapping reservation underflow")
+		}
+		if r.direct {
+			r.rt.directInstanceCount--
+			r.rt.directInstanceMemory -= r.memory
+		}
+		r.rt.nativeMemoryMappings -= r.mappings
+		r.rt.mu.Unlock()
+	})
 }
 
 type runtimeState uint8
@@ -149,7 +189,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 		cfg:          NewRuntimeConfig(),
 		hooks:        &hookRegistry{},
 		refStore:     newReferenceStore(false),
-		imports:      Imports{},
+		imports:      resolvedImports{},
 		importMeta:   map[string]*registeredImport{},
 		importOwner:  map[string]string{},
 		moduleOwner:  map[string]string{},
@@ -292,7 +332,7 @@ func (rt *Runtime) beginOperationKind(label string, allowLoading, compile bool) 
 	return runtimeOperation{rt: rt, compile: compile, active: true}, nil
 }
 
-func (rt *Runtime) registerInstance(in *Instance) error {
+func (rt *Runtime) registerInstance(in *Instance, reservation *runtimeInstanceReservation) error {
 	if rt == nil || in == nil {
 		return fmt.Errorf("wago: cannot register a nil runtime instance")
 	}
@@ -303,6 +343,13 @@ func (rt *Runtime) registerInstance(in *Instance) error {
 	}
 	rt.instanceSequence++
 	rt.instances[in] = rt.instanceSequence
+	if reservation != nil {
+		if rt.instanceReservations == nil {
+			rt.instanceReservations = make(map[*Instance]*runtimeInstanceReservation)
+		}
+		rt.instanceReservations[in] = reservation
+		reservation.registered.Store(true)
+	}
 	return nil
 }
 
@@ -337,7 +384,85 @@ func (rt *Runtime) unregisterInstance(in *Instance) {
 	}
 	rt.mu.Lock()
 	delete(rt.instances, in)
+	reservation := rt.instanceReservations[in]
+	delete(rt.instanceReservations, in)
+	if len(rt.instanceReservations) == 0 {
+		rt.instanceReservations = nil
+	}
 	rt.mu.Unlock()
+	reservation.release()
+}
+
+func (rt *Runtime) reserveRuntimeInstance(mod *Module, origin InstantiateOrigin) (*runtimeInstanceReservation, error) {
+	limits := rt.cfg.instanceLimits
+	if limits == nil {
+		return nil, nil
+	}
+	trackDirect := origin == InstantiateDirect && (limits.maxInstances != 0 || limits.maxMemoryBytes != 0)
+	trackMappings := limits.maxNativeMemoryMappings != 0
+	if !trackDirect && !trackMappings {
+		return nil, nil
+	}
+	var memory uint64
+	if trackDirect && limits.maxMemoryBytes != 0 {
+		var err error
+		memory, err = managedMemoryReservation(mod)
+		if err != nil {
+			return nil, fmt.Errorf("wago: module memory limits: %v: %w", err, ErrPermissionDenied)
+		}
+	}
+	var mappings uint32
+	if trackMappings {
+		mappings = runtimeOwnedNativeMemoryMappings(mod)
+	}
+	if !trackDirect && mappings == 0 {
+		return nil, nil
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if trackDirect && limits.maxInstances != 0 && rt.directInstanceCount >= limits.maxInstances {
+		return nil, fmt.Errorf("wago: runtime instance limit %d reached: %w", limits.maxInstances, ErrPermissionDenied)
+	}
+	if trackDirect && limits.maxMemoryBytes != 0 && memory > limits.maxMemoryBytes-rt.directInstanceMemory {
+		return nil, fmt.Errorf("wago: aggregate direct instance memory %d + %d exceeds limit %d: %w", rt.directInstanceMemory, memory, limits.maxMemoryBytes, ErrPermissionDenied)
+	}
+	if trackMappings && mappings > limits.maxNativeMemoryMappings-rt.nativeMemoryMappings {
+		return nil, &coreruntime.ResourceLimitError{
+			Resource:   "native memory mappings",
+			Scope:      "runtime",
+			Used:       uint64(rt.nativeMemoryMappings),
+			Requested:  uint64(mappings),
+			Limit:      uint64(limits.maxNativeMemoryMappings),
+			Suggestion: "close unused instances or create a Runtime with a higher WithNativeMemoryMappingLimit value after you inspect ResourceStats and ProcessNativeMemoryStats",
+			Cause:      ErrPermissionDenied,
+		}
+	}
+	if trackDirect {
+		rt.directInstanceCount++
+		rt.directInstanceMemory += memory
+	}
+	rt.nativeMemoryMappings += mappings
+	if rt.nativeMemoryMappings > rt.nativeMemoryMappingsPeak {
+		rt.nativeMemoryMappingsPeak = rt.nativeMemoryMappings
+	}
+	return &runtimeInstanceReservation{rt: rt, memory: memory, mappings: mappings, direct: trackDirect}, nil
+}
+
+func runtimeOwnedNativeMemoryMappings(mod *Module) uint32 {
+	if mod == nil || mod.c == nil {
+		return 0
+	}
+	c := mod.c
+	var count uint32
+	if c.memoryImport == "" || c.threadedMemory0() {
+		count = 1
+	}
+	for index := 1; index < c.memoryCount(); index++ {
+		if c.memoryDef(index).ImportKey == "" {
+			count++
+		}
+	}
+	return count
 }
 
 func (rt *Runtime) beginModuleCloseCallbacks() (*hookRegistry, func()) {
@@ -446,8 +571,7 @@ func (rt *Runtime) prepareCompile(wasmBytes []byte, allowLoading bool) (*Prepare
 		var transformErr error
 		panicErr := callHookSafely("ModuleSourceTransformer", func() { next, transformErr = transform(ctx, source) })
 		if err := joinPrimary(transformErr, panicErr); err != nil {
-			operation.end()
-			return nil, emitCompileError(hooks, compilation, err)
+			return nil, finishPreparedCompileError(&operation, hooks, compilation, err)
 		}
 		if next == nil {
 			next = source
@@ -503,6 +627,7 @@ func (p *PreparedCompile) finish() {
 		return
 	}
 	p.finished = true
+	p.bindings = moduleBindings{} // release the captured registry generation
 	p.mu.Unlock()
 	p.operation.end()
 }
@@ -525,17 +650,31 @@ func (p *PreparedCompile) Compile() (*Module, error) {
 // ownership. A failed adoption closes the artifact exactly once.
 func (p *PreparedCompile) Adopt(c *Compiled) (*Module, error) {
 	if err := p.consume(); err != nil {
+		if c != nil {
+			err = joinPrimary(err, c.Close())
+		}
 		return nil, err
 	}
 	defer p.finish()
 	if c == nil {
 		return nil, fmt.Errorf("wago: nil compiled artifact")
 	}
+	if err := checkArtifactAdmissionLimits(c, p.cfg.maxNativeCodeBytes, p.cfg.maxMemoriesPerModule); err != nil {
+		return nil, emitCompileError(p.hooks, p.compilation, joinPrimary(err, c.Close()))
+	}
 	return p.finishCompile(c)
 }
 
 func (p *PreparedCompile) finishCompile(c *Compiled) (*Module, error) {
-	mod := buildModule(c, p.bindings)
+	mod, err := buildModule(c, p.bindings)
+	if err != nil {
+		return nil, emitCompileError(p.hooks, p.compilation, joinPrimary(err, c.Close()))
+	}
+	identities, err := indexDeclaredImportIdentities(mod.imports)
+	if err != nil {
+		return nil, emitCompileError(p.hooks, p.compilation, joinPrimary(err, c.Close()))
+	}
+	mod.importIdentities = identities
 	if len(p.hooks.afterCompile) != 0 {
 		event := ModuleCompiledEvent{Compilation: p.compilation, Module: moduleView(mod), SourceDigest: DigestModuleSource(p.source)}
 		for _, fn := range p.hooks.afterCompile {
@@ -563,6 +702,13 @@ func (p *PreparedCompile) Close() error {
 	p.mu.Unlock()
 	p.finish()
 	return nil
+}
+
+// Keep the terminal observer inside its compile lifetime. This helper keeps the
+// defer outside the transform loop so the compiler can keep it on the stack.
+func finishPreparedCompileError(operation *runtimeOperation, hooks *hookRegistry, compilation CompilationIdentity, original error) error {
+	defer operation.end()
+	return emitCompileError(hooks, compilation, original)
 }
 
 func emitCompileError(hooks *hookRegistry, compilation CompilationIdentity, original error) error {
@@ -597,7 +743,7 @@ func (rt *Runtime) Module(c *Compiled) (*Module, error) {
 func (rt *Runtime) AdoptModule(c *Compiled) (*Module, error) {
 	mod, err := rt.bindModule(c, true)
 	if err != nil && c != nil {
-		_ = c.Close()
+		err = joinPrimary(err, c.Close())
 	}
 	return mod, err
 }
@@ -614,12 +760,25 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 	rt.mu.Lock()
 	hooks := rt.loadHooks()
 	bindings := rt.snapshotModuleBindingsLocked(hooks)
+	maxMemories := rt.cfg.maxMemoriesPerModule
+	maxNativeCodeBytes := rt.cfg.maxNativeCodeBytes
 	rt.mu.Unlock()
 	var compilation CompilationIdentity
 	if len(hooks.afterCompile) != 0 || len(hooks.onCompileError) != 0 {
 		compilation = CompilationIdentity{value: &compilationIdentityToken{}}
 	}
-	mod := buildModule(c, bindings)
+	if err := checkArtifactAdmissionLimits(c, maxNativeCodeBytes, maxMemories); err != nil {
+		return nil, emitCompileError(hooks, compilation, err)
+	}
+	mod, err := buildModule(c, bindings)
+	if err != nil {
+		return nil, emitCompileError(hooks, compilation, err)
+	}
+	identities, err := indexDeclaredImportIdentities(mod.imports)
+	if err != nil {
+		return nil, emitCompileError(hooks, compilation, err)
+	}
+	mod.importIdentities = identities
 	if len(hooks.afterCompile) != 0 {
 		event := ModuleCompiledEvent{Compilation: compilation, Module: moduleView(mod)}
 		for _, fn := range hooks.afterCompile {
@@ -633,15 +792,53 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 	return mod, nil
 }
 
+// checkArtifactAdmissionLimits applies destination limits to an existing image.
+// Prepared compilation supplies its captured configuration, not a later runtime
+// generation. Source compilation checks these limits during compilation.
+func checkArtifactAdmissionLimits(c *Compiled, maxNativeCodeBytes uint64, maxMemories uint32) error {
+	if maxNativeCodeBytes != 0 && uint64(len(c.code)) > maxNativeCodeBytes {
+		return &coreruntime.ResourceLimitError{
+			Resource:  "native code bytes",
+			Scope:     "compile",
+			Requested: uint64(len(c.code)),
+			Limit:     maxNativeCodeBytes,
+		}
+	}
+	if memoryCount := uint64(c.memoryCount()); memoryCount > uint64(maxMemories) {
+		return &coreruntime.ResourceLimitError{
+			Resource:   "memories per module",
+			Scope:      "runtime configuration",
+			Requested:  memoryCount,
+			Limit:      uint64(maxMemories),
+			Suggestion: "use a smaller module or increase WithMaxMemoriesPerModule after you inspect the module metadata",
+		}
+	}
+	return nil
+}
+
 // InstantiateOption configures a single Instantiate call.
 type InstantiateOption func(*instantiateConfig)
 
 type instantiateConfig struct {
-	imports       Imports
-	gc            GCConfig
-	hasGC         bool
-	policy        Policy
-	forceSyncHost bool
+	imports          *Imports
+	extraImports     []*Imports
+	exactImports     map[string]exactImportOverride
+	importErr        error
+	gc               GCConfig
+	hasGC            bool
+	policy           Policy
+	forceSyncHost    bool
+	invokeCacheSlots int
+}
+
+type importBindingKey struct {
+	module string
+	name   string
+}
+
+type exactImportOverride struct {
+	identity importBindingKey
+	value    any
 }
 
 // WithPolicy applies a capability/resource policy to the instance. A module that
@@ -654,14 +851,27 @@ func WithPolicy(p Policy) InstantiateOption {
 // WithImports adds per-call imports on top of the plugin-provided namespace.
 // A per-call import may not shadow a reserved wago_* module unless the runtime's
 // override policy is AllowTestOverrides.
-func WithImports(im Imports) InstantiateOption {
+func WithImports(im *Imports) InstantiateOption {
 	return func(c *instantiateConfig) {
 		if c.imports == nil {
-			c.imports = Imports{}
+			c.imports = im
+		} else {
+			c.extraImports = append(c.extraImports, im)
 		}
-		for k, v := range im {
-			c.imports[k] = v
+	}
+
+}
+
+// WithImport adds one per-call non-callback import override using its exact Wasm
+// module and name. New callback declarations should use Imports.HostFunc.
+func WithImport(module, name string, value any) InstantiateOption {
+	return func(c *instantiateConfig) {
+		if c.exactImports == nil {
+			c.exactImports = make(map[string]exactImportOverride)
 		}
+		identity := importBindingKey{module: module, name: name}
+		key := importBindingMapKey(module, name)
+		c.exactImports[key] = exactImportOverride{identity: identity, value: value}
 	}
 }
 
@@ -675,6 +885,12 @@ func WithGC(gc GCConfig) InstantiateOption {
 // this when host functions can arrive indirectly through an imported table.
 func WithSynchronousHostCalls() InstantiateOption {
 	return func(c *instantiateConfig) { c.forceSyncHost = true }
+}
+
+// WithInvokeCacheSlots sets the per-instance export-resolution cache capacity.
+// Zero keeps the four-slot default; explicit values from 1 through 255 are valid.
+func WithInvokeCacheSlots(slots int) InstantiateOption {
+	return func(c *instantiateConfig) { c.invokeCacheSlots = slots }
 }
 
 // Instantiate instantiates a module, wiring the runtime's plugin imports plus
@@ -722,12 +938,32 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	if len(opts) != 0 {
 		cfg = applyInstantiateOptions(opts)
 	}
+	if cfg.importErr != nil {
+		return nil, cfg.importErr
+	}
 	if err := applyPolicy(mod, cfg.policy); err != nil {
 		return nil, err
 	}
-
-	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, cfg.imports)
+	var overrides resolvedImports
+	var extraOverrides []resolvedImports
+	if cfg.imports != nil {
+		overrides, err = cfg.imports.snapshot()
+		if err != nil {
+			return nil, fmt.Errorf("wago: finalize imports: %w", err)
+		}
+	}
+	for _, collection := range cfg.extraImports {
+		bindings, snapshotErr := collection.snapshot()
+		if snapshotErr != nil {
+			return nil, fmt.Errorf("wago: finalize imports: %w", snapshotErr)
+		}
+		extraOverrides = append(extraOverrides, bindings)
+	}
+	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, mod.importIdentities, overrides, cfg.exactImports, extraOverrides...)
 	if err != nil {
+		return nil, err
+	}
+	if err := applyResolvedTablePolicy(mod.c, imports, cfg.policy); err != nil {
 		return nil, err
 	}
 
@@ -736,7 +972,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	// retained code ownership before start-time host callbacks.
 	mod.endUse()
 	usingModule = false
-	in, err := rt.instantiateWithHooksOrigin(mod, imports, pluginGCImports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin, hooks, operation.reservation)
+	in, err := rt.instantiateWithHooksOrigin(ctx, mod, imports, pluginGCImports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, cfg.invokeCacheSlots, origin, hooks, operation.reservation)
 	if err == nil && rt.isClosed() {
 		err = joinPrimary(fmt.Errorf("wago: runtime closed during instantiation"), in.Close())
 		in = nil
@@ -748,35 +984,74 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 // cloning runtime imports the module cannot use. Explicit per-call imports are
 // retained even when undeclared, preserving the low-level Imports inspection
 // behavior. Runtime imports are only retained for declared module keys.
-func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports) (Imports, map[uint32]struct{}, error) {
+func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities map[string]importBindingKey, overrides resolvedImports, exactOverrides map[string]exactImportOverride, extraOverrides ...resolvedImports) (resolvedImports, map[uint32]struct{}, error) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 
-	for key := range overrides {
-		module := importModule(key)
-		if !isReserved(module) || rt.overridePolicy == AllowTestOverrides {
+	for key, exact := range exactOverrides {
+		identity := exact.identity
+		if _, duplicated := lookupImportOverride(key, overrides, extraOverrides); duplicated {
+			return nil, nil, fmt.Errorf("wago: import %q.%q is configured by both WithImport and WithImports", identity.module, identity.name)
+		}
+	}
+	for index := -1; index < len(extraOverrides); index++ {
+		source := overrides
+		if index >= 0 {
+			source = extraOverrides[index]
+		}
+		for key := range source {
+			module := importModule(key)
+			if !isReserved(module) || rt.overridePolicy == AllowTestOverrides {
+				continue
+			}
+			if _, provided := rt.imports[key]; provided {
+				return nil, nil, fmt.Errorf("wago: import %q may not override reserved module %q", key, module)
+			}
+		}
+	}
+	for key, exact := range exactOverrides {
+		identity := exact.identity
+		if !isReserved(identity.module) || rt.overridePolicy == AllowTestOverrides {
 			continue
 		}
-		if _, provided := rt.imports[key]; provided {
-			return nil, nil, fmt.Errorf("wago: import %q may not override reserved module %q", key, module)
+		if _, provided := rt.imports[key]; provided && registeredImportMatches(rt.importMeta[key], identity.module, identity.name) {
+			return nil, nil, fmt.Errorf("wago: import %q.%q may not override reserved module %q", identity.module, identity.name, identity.module)
 		}
 	}
+	_ = declaredIdentities
 
-	capacity := len(overrides) + len(specs)
-	if available := len(overrides) + len(rt.imports); available < capacity {
+	overrideCount := len(overrides)
+	for _, source := range extraOverrides {
+		overrideCount += len(source)
+	}
+	capacity := overrideCount + len(exactOverrides) + len(specs)
+	if available := overrideCount + len(exactOverrides) + len(rt.imports); available < capacity {
 		capacity = available
 	}
-	var resolved Imports
+	var resolved resolvedImports
 	var pluginGCImports map[uint32]struct{}
-	if len(overrides) != 0 {
-		resolved = make(Imports, capacity)
+	if overrideCount != 0 {
+		resolved = make(resolvedImports, capacity)
 		for key, value := range overrides {
 			resolved[key] = value
 		}
+		for _, source := range extraOverrides {
+			for key, value := range source {
+				resolved[key] = value
+			}
+		}
 	}
 	for _, spec := range specs {
-		key := spec.Key()
-		if _, provided := overrides[key]; provided {
+		key := spec.bindingKey()
+		identity := importBindingKey{module: spec.Module, name: spec.Name}
+		if exact, provided := exactOverrides[key]; provided && exact.identity == identity {
+			if resolved == nil {
+				resolved = make(resolvedImports, capacity)
+			}
+			resolved[key] = exact.value
+			continue
+		}
+		if _, provided := lookupImportOverride(key, overrides, extraOverrides); provided {
 			continue
 		}
 		value, provided := rt.imports[key]
@@ -790,7 +1065,7 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports)
 			continue
 		}
 		if resolved == nil {
-			resolved = make(Imports, capacity)
+			resolved = make(resolvedImports, capacity)
 		}
 		resolved[key] = value
 		if spec.Kind == ImportFunc {
@@ -799,7 +1074,7 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports)
 				declared := FuncSig{Params: meta.params, Results: meta.results}
 				actual := FuncSig{Params: spec.Params, Results: spec.Results}
 				if !funcSigEqual(declared, actual) {
-					return nil, nil, fmt.Errorf("Runtime plugin host import %q signature mismatch", key)
+					return nil, nil, fmt.Errorf("Runtime plugin host import %q signature mismatch", spec.Key())
 				}
 				if funcSigHasGCRefs(declared) {
 					if pluginGCImports == nil {
@@ -809,6 +1084,12 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports)
 				}
 			}
 		}
+	}
+	for key, exact := range exactOverrides {
+		if resolved == nil {
+			resolved = make(resolvedImports, capacity)
+		}
+		resolved[key] = exact.value
 	}
 	return resolved, pluginGCImports, nil
 }
@@ -823,14 +1104,40 @@ func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
 
 // instantiateWithHooksOrigin runs the Runtime-aware instantiation path and emits
 // plugin lifecycle callbacks around the low-level instantiator.
-func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
+func (rt *Runtime) instantiateWithHooksOrigin(ctx context.Context, mod *Module, imports resolvedImports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, invokeCacheSlots int, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !mod.beginUse() {
+		return nil, fmt.Errorf("wago: Instantiate: module is closed")
+	}
+	runtimeReservation, err := rt.reserveRuntimeInstance(mod, origin)
+	mod.endUse()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if runtimeReservation != nil && !runtimeReservation.registered.Load() {
+			runtimeReservation.release()
+		}
+	}()
 	iopts := InstantiateOptions{
-		Imports: imports, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,
-		forceSyncHost:        forceSyncHost || rt.callerResolverActive.Load(),
-		moduleIdentity:       mod.moduleIdentity(),
-		operationReservation: reservation,
-		independentInstances: mod.independentInstances,
-		hasExecutionPolicy:   true,
+		InvokeCacheSlots:         invokeCacheSlots,
+		startContext:             ctx,
+		MaxCompiledMetadataBytes: rt.cfg.maxCompiledMetadataBytes,
+		resolvedImports:          imports, ownedImports: true, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,
+		forceSyncHost:            forceSyncHost || rt.callerResolverActive.Load(),
+		moduleIdentity:           mod.moduleIdentity(),
+		operationReservation:     reservation,
+		runtimeReservation:       runtimeReservation,
+		independentInstances:     mod.independentInstances,
+		hasExecutionPolicy:       true,
+		nativeStackBytes:         rt.cfg.nativeStackBytes,
+		memoryLimitPages:         rt.cfg.maxMemoryPages,
+		maxInstanceMetadataBytes: rt.cfg.maxInstanceMetadataBytes,
 	}
 	if hasGC {
 		iopts.GC = gc
@@ -838,10 +1145,18 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, plug
 	}
 
 	// Keep the no-lifecycle-hook path allocation-free.
+	var in *Instance
 	if len(hooks.beforeInstantiate) == 0 && len(hooks.afterCreate) == 0 && len(hooks.afterInstantiate) == 0 && len(hooks.onInstantiateError) == 0 {
-		return instantiateCoreWithModuleUse(mod, iopts)
+		in, err = instantiateCoreWithModuleUse(mod, iopts)
+	} else {
+		in, err = instantiateWithLifecycleHooks(mod, iopts, origin, hooks, reservation)
 	}
-	return instantiateWithLifecycleHooks(mod, iopts, origin, hooks, reservation)
+	if err == nil && ctx.Err() != nil {
+		err = joinPrimary(ctx.Err(), in.closeAndWait())
+		in = nil
+		err = emitInstantiationError(hooks, InstantiationRequest{Module: moduleView(mod), Origin: origin, reservation: reservation}, err)
+	}
+	return in, err
 }
 
 // instantiateWithLifecycleHooks is kept separate from the ordinary no-hook
@@ -852,16 +1167,7 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, plug
 func instantiateWithLifecycleHooks(mod *Module, iopts InstantiateOptions, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
 	request := InstantiationRequest{Module: moduleView(mod), Origin: origin, reservation: reservation}
 	emitError := func(original error) error {
-		var hookErrs []error
-		for _, fn := range hooks.onInstantiateError {
-			observer := fn
-			if panicErr := callHookSafely("OnInstantiateError", func() {
-				observer(InstantiationErrorEvent{Module: request.Module, Origin: origin, Err: original, reservation: reservation})
-			}); panicErr != nil {
-				hookErrs = append(hookErrs, panicErr)
-			}
-		}
-		return joinPrimary(original, hookErrs...)
+		return emitInstantiationError(hooks, request, original)
 	}
 
 	for _, fn := range hooks.beforeInstantiate {
@@ -899,6 +1205,21 @@ func instantiateWithLifecycleHooks(mod *Module, iopts InstantiateOptions, origin
 	return inst, nil
 }
 
+// The caller retains the plugin-operation reservation through every observer,
+// including when cancellation is first detected after AfterInstantiate.
+func emitInstantiationError(hooks *hookRegistry, request InstantiationRequest, original error) error {
+	var hookErrs []error
+	for _, fn := range hooks.onInstantiateError {
+		observer := fn
+		if panicErr := callHookSafely("OnInstantiateError", func() {
+			observer(InstantiationErrorEvent{Module: request.Module, Origin: request.Origin, Err: original, reservation: request.reservation})
+		}); panicErr != nil {
+			hookErrs = append(hookErrs, panicErr)
+		}
+	}
+	return joinPrimary(original, hookErrs...)
+}
+
 func instantiateCoreWithModuleUse(mod *Module, opts InstantiateOptions) (*Instance, error) {
 	if !mod.beginUse() {
 		return nil, fmt.Errorf("wago: Instantiate: module is closed")
@@ -934,7 +1255,7 @@ func (rt *Runtime) Capabilities() []Capability {
 
 // ProvidedImports returns immutable metadata for host functions contributed by
 // loaded plugins, sorted by Wasm module and name. It intentionally omits each
-// callable HostFunc binding; this is an inspection surface, not an authority
+// callable slotHostFunc binding; this is an inspection surface, not an authority
 // escape into the low-level instantiator.
 func (rt *Runtime) ProvidedImports() []ImportSpec {
 	rt.mu.Lock()
@@ -1170,13 +1491,8 @@ func (rt *Runtime) finishClose(ctx context.Context, state *runtimeCloseState, ho
 	}
 	rt.mu.Unlock()
 	for i := len(instances) - 1; i >= 0; i-- {
-		closeState := instances[i].ensurePluginState().close.Load()
-		if closeState != nil {
-			<-closeState.done
-			<-closeState.quiesced
-			if err := joinPrimary(closeState.result, closeState.terminalResult); err != nil {
-				errs = append(errs, err)
-			}
+		if err := instances[i].waitTerminalClose(); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	for i := len(internalClose) - 1; i >= 0; i-- {
@@ -1222,7 +1538,7 @@ func (rt *Runtime) rollbackCommittedPluginPlan(ctx context.Context) error {
 	err := state.result
 	rt.mu.Lock()
 	rt.plugins = nil
-	rt.imports = Imports{}
+	rt.imports = resolvedImports{}
 	rt.importMeta = map[string]*registeredImport{}
 	rt.importOwner = map[string]string{}
 	rt.moduleOwner = map[string]string{}
@@ -1234,6 +1550,7 @@ func (rt *Runtime) rollbackCommittedPluginPlan(ctx context.Context) error {
 	rt.managedActive.Store(false)
 	rt.callerResolverActive.Store(false)
 	rt.instances = map[*Instance]uint64{}
+	rt.instanceReservations = nil
 	rt.instanceSequence = 0
 	rt.mu.Unlock()
 	return err
@@ -1282,9 +1599,11 @@ func closePluginRun(ctx context.Context, run registeredPluginRun) (errs []error)
 	return errs
 }
 
-// importModule returns the module part of a "module.name" import key (up to the
-// first dot), matching how Compile builds the key.
+// importModule returns the module part of an internal exact import key.
 func importModule(key string) string {
+	if module, _, ok := splitImportBindingMapKey(key); ok {
+		return module
+	}
 	for i := 0; i < len(key); i++ {
 		if key[i] == '.' {
 			return key[:i]
@@ -1335,4 +1654,28 @@ func checkCompat(c Compatibility) error {
 		return fmt.Errorf("requires wago %s, have %s", constraint, Version)
 	}
 	return nil
+}
+
+// writableImportsLocked forks both maps once before mutating a published
+// generation. Registered metadata is already owned and immutable at insertion.
+// The caller holds rt.mu; snapshotModuleBindingsLocked publishes the pair.
+func (rt *Runtime) writableImportsLocked() {
+	if !rt.importsShared {
+		return
+	}
+	rt.imports = maps.Clone(rt.imports)
+	rt.importMeta = maps.Clone(rt.importMeta)
+	rt.importsShared = false
+}
+
+// Options remain borrowed until resolution constructs the one instance-owned
+// map. Later WithImports options retain their documented overwrite precedence.
+func lookupImportOverride(key string, first resolvedImports, rest []resolvedImports) (any, bool) {
+	for i := len(rest) - 1; i >= 0; i-- {
+		if value, ok := rest[i][key]; ok {
+			return value, true
+		}
+	}
+	value, ok := first[key]
+	return value, ok
 }

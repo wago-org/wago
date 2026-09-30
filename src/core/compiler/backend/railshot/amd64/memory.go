@@ -3,10 +3,27 @@
 package amd64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
+
+// memAccessSize returns the byte width of a plain scalar memory instruction.
+func memAccessSize(op byte) int {
+	switch op {
+	case 0x2c, 0x2d, 0x30, 0x31, 0x3a, 0x3c:
+		return 1
+	case 0x2e, 0x2f, 0x32, 0x33, 0x3b, 0x3d:
+		return 2
+	case 0x28, 0x2a, 0x34, 0x35, 0x36, 0x38, 0x3e:
+		return 4
+	case 0x29, 0x2b, 0x37, 0x39:
+		return 8
+	default:
+		return 0
+	}
+}
 
 // Linear-memory access: scalar loads/stores with a linear bounds check, plus
 // memory.size/grow. Ported from WARP's memory lowering, adapted to wago's runtime
@@ -40,7 +57,7 @@ const (
 const (
 	bdCurPages  = 4                                // u32: current size in 64 KiB pages
 	bdCurBytes  = abi.ActualLinMemByteSize64Offset // u64: bounds-check limit
-	bdMaxPages  = 12                               // u32: grow ceiling in pages
+	bdMaxPages  = 12                               // u32: declared/runtime grow ceiling
 	wasmPageLog = 16                               // log2(65536)
 )
 
@@ -51,7 +68,10 @@ const offTrapStackReentry = 24
 
 // smallBulkMax is the dynamic memory.copy/fill length below which the inline
 // chunk loops beat `rep movs/stos` startup latency.
-const smallBulkMax = 96
+const (
+	smallCopyMax = 256
+	smallFillMax = 256
+)
 
 type rcxZeroSite struct {
 	off     int
@@ -59,7 +79,7 @@ type rcxZeroSite struct {
 }
 
 func (f *fn) rcxZero32Placeholder() rcxZeroSite {
-	if directJecxzEnabled && f.policy.CompactNative {
+	if f.policy.CompactNative {
 		f.stats.peep("direct-jecxz")
 		return rcxZeroSite{off: f.a.JcxzPlaceholder(false), compact: true}
 	}
@@ -98,7 +118,7 @@ const offTrapCellPtr = abi.TrapCellPtrOffset
 const offPassiveDataPtr = abi.PassiveDataPtrOffset
 
 // offMemoryDirPtr points at abi.MemoryDirEntryBytes indexed-memory entries.
-// Memory 0 never uses it.
+// Memory 0 uses only the optional quota field on its memory.grow cold path.
 const offMemoryDirPtr = abi.MemoryDirPtrOffset
 
 // emitTrap writes the logical Wasm PC from RAX and the function index argument,
@@ -144,10 +164,14 @@ func (f *fn) emitInterruptCheck(scratch Reg) {
 // a ~20-byte inline trap block at every site (better I-cache, not-taken hot
 // branches, one stub per trap code instead of one block per check).
 func (f *fn) trapIf(cc Cond, code uint32) {
+	before := f.a.Len()
 	if code == trapMemOOB {
 		f.stats.addBoundsCheck() // inline linear-memory OOB check (P6 elides these)
 	}
 	f.sc.trapSites[code] = append(f.sc.trapSites[code], f.trapSite(f.a.JccPlaceholder(cc)))
+	if profileEnabled && code == trapMemOOB {
+		f.recordProfileCodeSite(before, "memory-bounds-branch")
+	}
 }
 
 // trapAlways is trapIf's unconditional form (`unreachable`): a 5-byte jmp to the
@@ -157,7 +181,40 @@ func (f *fn) trapAlways(code uint32) {
 }
 
 func (f *fn) trapSite(branch int) trapSite {
-	return trapSite{branch: branch, function: f.traceFuncIdx, pc: f.wasmPC}
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.recordProfileTrap(branch)
+	}
+	return trapSite{branch: compactTrapBranch(branch), function: f.traceFuncIdx, pc: f.wasmPC}
+}
+
+func compactTrapBranch(branch int) uint32 {
+	if branch < 0 || uint64(branch) >= uint64(^uint32(0)) {
+		panic("amd64: trap branch offset exceeds 32-bit function domain")
+	}
+	return uint32(branch)
+}
+
+// Entry checks precede pin initialization. On those cold edges, reload value
+// pins before the common trap exit writes them back.
+func (f *fn) prepareEntryTrapPins() {
+	needed := false
+	for g, state := range f.globalReg {
+		needed = needed || (!f.isModuleGlobal(g) && globalRegIsDirty(state))
+	}
+	if !needed {
+		return
+	}
+	for _, code := range [...]uint32{trapStackFence, trapInterrupted} {
+		sites := f.sc.trapSites[code]
+		for i := range sites {
+			if int(sites[i].branch) >= f.entryTrapEnd {
+				break
+			}
+			f.a.PatchRel32(int(sites[i].branch), f.a.Len())
+			f.derivePinnedGlobals()
+			sites[i].branch = compactTrapBranch(f.a.JmpPlaceholder())
+		}
+	}
 }
 
 // emitTrapStubs emits one trap stub per trap code used by this function and
@@ -165,6 +222,7 @@ func (f *fn) trapSite(branch int) trapSite {
 func (f *fn) emitTrapStubs() {
 	before := f.a.Len()
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
+	f.prepareEntryTrapPins()
 	groups := 0
 	for code := uint32(1); code <= trapMax; code++ {
 		sites := f.sc.trapSites[code]
@@ -207,16 +265,17 @@ func (f *fn) emitTrapStubs() {
 				pos := f.a.Len()
 				f.a.MovImm32(RAX, int32(first.pc))
 				commonJump = f.a.JmpPlaceholder()
-				f.a.PatchRel32(first.branch, pos)
+				f.a.PatchRel32(int(first.branch), pos)
 			}
 			common := f.a.Len()
 			if len(group) != 1 {
 				f.a.MovImm32(RAX, -1)
 				for _, site := range group {
-					f.a.PatchRel32(site.branch, common)
+					f.a.PatchRel32(int(site.branch), common)
 				}
 			}
-			f.storeModuleGlobals(RSI)
+			f.restoreModuleGlobalRegionalLease()
+			f.storeGlobalPins(RSI, true)
 			f.emitTrap(code, first.function)
 			if commonJump >= 0 {
 				f.a.PatchRel32(commonJump, common)
@@ -250,14 +309,14 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 			f.a.MovImm32(RCX, int32(first.function+1))
 			f.a.MovImm32(RDX, int32(code))
 			for _, site := range group {
-				f.a.PatchRel32(site.branch, pos)
+				f.a.PatchRel32(int(site.branch), pos)
 			}
 			f.stats.addTrapGroup()
 			emitted++
 			if emitted < groupCount {
-				group[0].branch = f.a.JmpPlaceholder()
+				group[0].branch = compactTrapBranch(f.a.JmpPlaceholder())
 			} else {
-				group[0].branch = -1
+				group[0].branch = ^uint32(0)
 			}
 			start = end
 		}
@@ -265,7 +324,8 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 
 	common := f.a.Len()
 	f.trapBodyOff = common
-	f.storeModuleGlobals(RSI)
+	f.restoreModuleGlobalRegionalLease()
+	f.storeGlobalPins(RSI, true)
 	f.a.Load64(RSI, RBX, -offTrapCellPtr)
 	f.a.Store32(RSI, 16, RCX)
 	f.a.Store32(RSI, 20, RAX)
@@ -281,8 +341,8 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 			for end < len(sites) && sites[end].function == sites[start].function {
 				end++
 			}
-			if sites[start].branch >= 0 {
-				f.a.PatchRel32(sites[start].branch, common)
+			if sites[start].branch != ^uint32(0) {
+				f.a.PatchRel32(int(sites[start].branch), common)
 			}
 			start = end
 		}
@@ -331,6 +391,11 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
 	bcKind, bcIdx := boundsSource(e.st)
+	hoistedLoopBounds := f.hoistedLoopBoundsCover(bcKind, bcIdx)
+	// The preheader proof zero-extends the induction local, and the admitted
+	// update is a 32-bit add. Its physical register therefore remains canonical
+	// throughout the loop; don't emit a self-move before every access.
+	cleanAddress = cleanAddress || hoistedLoopBounds
 	disp = 0
 	borrow = -1
 	leaDisp := int32(size)
@@ -338,7 +403,7 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	if aliasPinned && !needAdd {
 		ea, eaOwned = f.materializeRead(e) // a pinned local's reg is read in place
 		if !eaOwned {
-			borrow = e.st.idx
+			borrow = e.st.index()
 		}
 	} else {
 		ea, eaOwned = f.materialize(e), true
@@ -354,6 +419,9 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 		disp = int32(off)
 		leaDisp = int32(off) + int32(size)
 	} else if off != 0 {
+		// The adjusted address has no certificate for the original base.
+		bcKind, rangeExtent = 0, 0
+		hoistedLoopBounds = false
 		t := f.allocReg(maskOf(ea))
 		f.a.MovImm32(t, int32(off))
 		f.a.Add64(ea, t)
@@ -363,11 +431,8 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	if f.guardMode {
 		return ea, eaOwned, borrow, disp
 	}
-	// Loop-precheck fast body: a loop-invariant base local proven in bounds by the
-	// pre-loop check needs no per-access check (memBytes only grows). See
-	// boundshoist.go.
-	if f.elideBases != nil && bcKind == 1 && f.elideBases[bcIdx] {
-		f.stats.addBoundsHoistable()
+	if hoistedLoopBounds {
+		f.stats.addBoundsElidable()
 		return ea, eaOwned, borrow, disp
 	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
@@ -393,14 +458,13 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	if bcKind != 0 && f.inLoop() {
 		f.stats.addBoundsInLoop()
 	}
-	if f.boundsHoistable(bcKind, bcIdx) {
-		f.stats.addBoundsHoistable()
-	}
 	f.pinned = f.pinned.add(ea)
 	t := f.allocReg(0)
 	f.a.LeaDisp(t, ea, leaDisp) // t = ea + off + size
 	if f.memSizeReg != regNone {
 		f.a.Cmp64(t, f.memSizeReg) // memBytes lives in a register (WARP REGS::memSize)
+	} else if f.memSizeRegionalLease {
+		f.a.AluRM(cmpRMcode, t, RBX, -bdCurBytes, true)
 	} else {
 		mb := f.allocReg(maskOf(t))
 		f.a.Load64(mb, RBX, -bdCurBytes) // memory size in bytes
@@ -411,6 +475,20 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	f.release(t)
 	f.pinned = f.pinned.remove(ea)
 	return ea, eaOwned, borrow, disp
+}
+
+func (f *fn) hoistedLoopBoundsCover(kind uint8, idx uint32) bool {
+	if kind != 1 {
+		return false
+	}
+	for i := len(f.ctrl) - 1; i >= 0; i-- {
+		fr := &f.ctrl[i]
+		if fr.kind != cfLoop {
+			continue
+		}
+		return f.linearSumLoopDepth == uint16(i+1) && uint32(uint16(f.linearSumLoop)) == idx+1
+	}
+	return false
 }
 
 type boundsCert struct {
@@ -529,6 +607,8 @@ func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, 
 	f.trapIf(condB, trapMemOOB)
 	if f.memSizeReg != regNone {
 		f.a.Cmp64(t, f.memSizeReg)
+	} else if f.memSizeRegionalLease {
+		f.a.AluRM(cmpRMcode, t, RBX, -bdCurBytes, true)
 	} else {
 		mb := f.allocReg(maskOf(t))
 		f.a.Load64(mb, RBX, -bdCurBytes)
@@ -632,24 +712,8 @@ func (f *fn) inLoop() bool {
 	return false
 }
 
-// boundsHoistable reports whether a check on address source (kind,idx) is
-// hoistable out of its innermost enclosing loop: a LOCAL base that is
-// loop-invariant (not set anywhere in that loop, per the loop-header scan).
-// Globals are excluded — a callee can change a global but never a caller local.
-func (f *fn) boundsHoistable(kind uint8, idx uint32) bool {
-	if kind != 1 { // locals only
-		return false
-	}
-	for i := len(f.ctrl) - 1; i >= 0; i-- {
-		if f.ctrl[i].kind == cfLoop {
-			return !f.ctrl[i].loopSetLocals[idx]
-		}
-	}
-	return false // not inside a loop
-}
-
 func (f *fn) memoryAddr64(memoryIndex uint32) bool {
-	mt, ok := f.m.MemoryType(memoryIndex)
+	mt, ok := f.memoryType(memoryIndex)
 	return ok && mt.Limits.Addr64
 }
 
@@ -728,22 +792,46 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 }
 
 // cleanMemory32Address reports concrete storage forms whose materialization
-// necessarily writes a 32-bit destination. Borrowed local/global registers,
-// spill slots, and deferred operations are deliberately excluded: their
-// native-width carriers may have nonzero high bits, including after local.tee,
-// a sign-extending narrow load, or an identity-folded deferred operation.
+// necessarily writes a 32-bit destination. Regional i32 pins are loaded from
+// canonical frame homes; call-free whole-function pins are canonicalized at
+// ingress and only receive 32-bit writes; i32 spills reload at their value width.
+// Call-making whole-function pins, globals, and deferred operations remain
+// excluded because their carrier may still have nonzero high bits.
 func (f *fn) cleanMemory32Address(e *elem) bool {
 	if !f.opt(optAddrZExtElim) || e == nil {
 		return false
 	}
-	if e.kind != ekValue || e.st.typ != mtI32 {
+	if !e.isValue() || e.st.typ != mtI32 {
 		return false
 	}
 	switch e.st.kind {
 	case stConst, stLocalRef:
 		return true
+	case stLocalReg:
+		if len(f.intervalReg) != 0 {
+			return f.opt(optCanonicalI32)
+		}
+		if f.usesCalls {
+			return false
+		}
+		return f.profitableCanonicalI32Carrier()
+	case stSlot:
+		return f.profitableCanonicalI32Carrier()
 	}
 	return false
+}
+
+// profitableCanonicalI32Carrier waits for the third eligible use before
+// changing code shape. Canonicalizing isolated carriers is semantically safe
+// but can perturb hot-loop placement for no amortized instruction saving.
+func (f *fn) profitableCanonicalI32Carrier() bool {
+	if !f.opt(optCanonicalI32) {
+		return false
+	}
+	if f.canonicalI32Uses != ^uint8(0) {
+		f.canonicalI32Uses++
+	}
+	return f.canonicalI32Uses >= 3
 }
 
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;
@@ -767,7 +855,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 			e = f.pushReg(out, mtI32)
 		}
 		if f.opt(optValueFacts) && !wide {
-			e.st.facts = factUpper32Zero
+			e.st.setValueFacts(factUpper32Zero)
 		}
 		return nil
 	}
@@ -776,7 +864,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		ea, eaOwned, borrow, disp := f.memAddr64(off, size)
 		st := memRefStorage(ea, disp, size, signed, wide, borrow)
 		if f.opt(optValueFacts) && !wide {
-			st.facts = factUpper32Zero
+			st.setValueFacts(factUpper32Zero)
 		}
 		e := f.pushValue(st)
 		if eaOwned {
@@ -792,8 +880,8 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	rangeExtent := int32(0)
 	// Do not move a later extent proof earlier for shared memory: another agent
 	// may grow it between the two loads, so an early check could spuriously trap.
-	if boundsRangeEnabled && f.boundsFacts && !f.guardMode && !f.threadedMemory0 && int64(off32)+int64(size) <= 0x7fffffff {
-		if top := f.s.back(); top != nil && top.kind == ekValue {
+	if f.boundsFacts && !f.guardMode && !f.threadedMemory0 && int64(off32)+int64(size) <= 0x7fffffff {
+		if top := f.s.back(); top != nil && top.isValue() {
 			kind, idx := boundsSource(top.st)
 			currentExtent := int32(off32) + int32(size)
 			if kind != 0 && !f.boundsCertCovers(kind, idx, currentExtent) {
@@ -812,7 +900,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if f.opt(optValueFacts) && !wide {
 		// Every i32 load writes a 32-bit destination, including sign-extending
 		// byte/word forms, so the physical register upper half is known zero.
-		st.facts = factUpper32Zero
+		st.setValueFacts(factUpper32Zero)
 	}
 	e := f.pushValue(st)
 	if eaOwned {
@@ -862,7 +950,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// 64-bit imm-store sign-extends imm32, which is wrong for an arbitrary
 	// 64-bit pattern; narrower stores truncate to the low `size` bytes exactly
 	// like a materialized constant would (i64.store8/16/32 route here too).
-	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 		f.stats.peep("store-imm")
 		v := top.st.cval
 		f.erase(top)
@@ -882,7 +970,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// low byte. Keep SETcc's upper-register garbage dead and omit MOVZX; the byte
 	// store cannot observe it. Pending loads were materialized above, preserving
 	// pre-store reads and trap order before this dedicated sink condenses the tree.
-	if top := f.s.back(); size == 1 && f.opt(optStore8Flags) && isFusableCompare(top) && !top.typ.isFloat() {
+	if top := f.s.back(); size == 1 && f.opt(optStore8Flags) && isFusableCompare(top) && !top.valueType().isFloat() {
 		// condenseToFlags may recursively lower div/rem or a variable shift. Those
 		// paths temporarily claim and then unpin x86's fixed-role registers; because
 		// the pin mask is not reference-counted, nesting would drop this outer
@@ -933,12 +1021,12 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 // or ok=false if e is not a local reference. Store forwarding keys the address on
 // a local identity, not a physical register.
 func localAddressKey(e *elem) (int, bool) {
-	if e == nil || e.kind != ekValue {
+	if e == nil || !e.isValue() {
 		return 0, false
 	}
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:
-		return e.st.idx, true
+		return e.st.index(), true
 	default:
 		return 0, false
 	}
@@ -1094,16 +1182,17 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset (i64 for memory64)
+	topSlot := f.s.back().st.slotIndex()
+	f.a.Load64(RDI, RSP, f.spillOff(topSlot-2)) // dst offset (i64 for memory64)
 	if f.memoryAddr64(memoryIndex) {
 		// Core 3 keeps passive-segment source and length operands i32. Loading
 		// them explicitly as u32 prevents stale high spill bits from widening
 		// the source range while leaving the memory32 instruction stream intact.
-		f.a.Load32(RSI, RSP, f.spillOff(d-2))
-		f.a.Load32(RCX, RSP, f.spillOff(d-1))
+		f.a.Load32(RSI, RSP, f.spillOff(topSlot-1))
+		f.a.Load32(RCX, RSP, f.spillOff(topSlot))
 	} else {
-		f.a.Load64(RSI, RSP, f.spillOff(d-2))
-		f.a.Load64(RCX, RSP, f.spillOff(d-1))
+		f.a.Load64(RSI, RSP, f.spillOff(topSlot-1))
+		f.a.Load64(RCX, RSP, f.spillOff(topSlot))
 		f.a.MovRegReg32(RDI, RDI)
 		f.a.MovRegReg32(RSI, RSI)
 		f.a.MovRegReg32(RCX, RCX)
@@ -1154,7 +1243,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		return err
 	}
 	if dstMemory == 0 && srcMemory == 0 && !f.memoryAddr64(0) {
-		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.stats.peep("memcopy-unroll")
 				f.memoryCopyConst(int(n), dstMemory, srcMemory)
@@ -1165,9 +1254,10 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
-	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src offset
-	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
+	topSlot := f.s.back().st.slotIndex()
+	f.a.Load64(RDI, RSP, f.spillOff(topSlot-2)) // dst offset
+	f.a.Load64(RSI, RSP, f.spillOff(topSlot-1)) // src offset
+	f.a.Load64(RCX, RSP, f.spillOff(topSlot))   // n
 	if !f.memoryAddr64(dstMemory) {
 		f.a.MovRegReg32(RDI, RDI)
 	}
@@ -1181,33 +1271,59 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
 	f.absoluteBulkAddr(dstMemory, RDI, RCX)
 	f.absoluteBulkAddr(srcMemory, RSI, RCX)
+	var copyVecs [4]Reg
+	var copyAvoid regMask
+	for i := range copyVecs {
+		copyVecs[i] = f.allocFReg(copyAvoid)
+		copyAvoid = copyAvoid.add(copyVecs[i])
+	}
+	copyVec := copyVecs[0]
 
-	// Hybrid dispatch: small dynamic copies take an inline 8-byte-chunk memmove
-	// loop (WARP emitMemcpyNoBoundsCheck) — `rep movsb`'s ~30-cycle startup
-	// dominates the string-append copies AssemblyScript's __renew makes
-	// constantly; large copies keep rep movsb (ERMSB wins at size).
-	var joins []int
-	f.a.AluRI(cmpDigit, RCX, smallBulkMax, true)
+	// Hybrid dispatch: small dynamic copies take inline XMM/8-byte memmove loops.
+	// `rep movsb` startup and its medium-size cliffs dominate the string-append
+	// copies AssemblyScript's __renew makes constantly; large copies keep ERMSB.
+	// Four exits are emitted below. Keep their patch sites on the Go stack;
+	// append still grows if a later lowering adds more exits.
+	var joinScratch [4]int
+	joins := joinScratch[:0]
+	f.a.AluRI(cmpDigit, RCX, smallCopyMax, true)
 	big := f.a.JccPlaceholder(condAE)
 
 	f.a.Cmp64(RSI, RDI)
 	fwdSmall := f.a.JccPlaceholder(condA) // src > dst → forward copy is overlap-safe
 	// dst >= src: copy backward, indexing [ptr+rcx-k] while counting rcx down.
+	f.a.AluRI(cmpDigit, RCX, 16, false)
+	backScalar := f.a.JccPlaceholder(condB)
+	back16 := f.a.Len()
+	f.mov128LoadIdx(copyVec, RSI, RCX, -16)
+	f.mov128StoreIdx(RDI, RCX, copyVec, -16)
+	f.a.AluRI(5, RCX, 16, false)
+	f.a.AluRI(cmpDigit, RCX, 16, false)
+	f.a.PatchRel32(f.a.JccPlaceholder(condAE), back16)
 	back8 := f.a.Len()
+	f.a.PatchRel32(backScalar, back8)
 	f.a.AluRI(cmpDigit, RCX, 8, false)
 	b8done := f.a.JccPlaceholder(condB)
 	f.a.LoadIdx(RDX, RSI, RCX, -8, 8, false, true)
 	f.a.StoreIdx(RDI, RCX, RDX, -8, 8)
 	f.a.AluRI(5, RCX, 8, false) // rcx -= 8
-	f.a.JmpBack(back8)
 	f.a.PatchRel32(b8done, f.a.Len())
+	f.a.AluRI(cmpDigit, RCX, 4, false)
+	b4done := f.a.JccPlaceholder(condB)
+	f.a.LoadIdx(RDX, RSI, RCX, -4, 4, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, -4, 4)
+	f.a.AluRI(5, RCX, 4, false)
+	f.a.PatchRel32(b4done, f.a.Len())
+	f.a.AluRI(cmpDigit, RCX, 2, false)
+	b2done := f.a.JccPlaceholder(condB)
+	f.a.LoadIdx(RDX, RSI, RCX, -2, 2, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, -2, 2)
+	f.a.AluRI(5, RCX, 2, false)
+	f.a.PatchRel32(b2done, f.a.Len())
 	f.a.TestSelf(RCX, false)
 	joins = append(joins, f.a.JccPlaceholder(condE))
-	back1 := f.a.Len()
 	f.a.LoadIdx(RDX, RSI, RCX, -1, 1, false, false)
 	f.a.StoreIdx(RDI, RCX, RDX, -1, 1)
-	f.unitAdjust(RCX, false, false)
-	f.a.PatchRel32(f.a.JccPlaceholder(condNE), back1)
 	joins = append(joins, f.a.JmpPlaceholder())
 
 	// src > dst: copy forward via a negative index climbing to zero (WARP's shape).
@@ -1215,21 +1331,38 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.Add64(RSI, RCX)
 	f.a.Add64(RDI, RCX)
 	f.a.Neg(RCX, true)
+	f.a.AluRI(cmpDigit, RCX, -16, true)
+	fwdScalar := f.a.JccPlaceholder(condG)
+	fwd16 := f.a.Len()
+	f.mov128LoadIdx(copyVec, RSI, RCX, 0)
+	f.mov128StoreIdx(RDI, RCX, copyVec, 0)
+	f.a.AluRI(0, RCX, 16, true)
+	f.a.AluRI(cmpDigit, RCX, -16, true)
+	f.a.PatchRel32(f.a.JccPlaceholder(condLE), fwd16)
 	fwd8 := f.a.Len()
+	f.a.PatchRel32(fwdScalar, fwd8)
 	f.a.AluRI(cmpDigit, RCX, -8, true)
 	f8done := f.a.JccPlaceholder(condG)
 	f.a.LoadIdx(RDX, RSI, RCX, 0, 8, false, true)
 	f.a.StoreIdx(RDI, RCX, RDX, 0, 8)
 	f.a.AluRI(0, RCX, 8, true) // rcx += 8
-	f.a.JmpBack(fwd8)
 	f.a.PatchRel32(f8done, f.a.Len())
+	f.a.AluRI(cmpDigit, RCX, -4, true)
+	f4done := f.a.JccPlaceholder(condG)
+	f.a.LoadIdx(RDX, RSI, RCX, 0, 4, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, 0, 4)
+	f.a.AluRI(0, RCX, 4, true)
+	f.a.PatchRel32(f4done, f.a.Len())
+	f.a.AluRI(cmpDigit, RCX, -2, true)
+	f2done := f.a.JccPlaceholder(condG)
+	f.a.LoadIdx(RDX, RSI, RCX, 0, 2, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, 0, 2)
+	f.a.AluRI(0, RCX, 2, true)
+	f.a.PatchRel32(f2done, f.a.Len())
 	f.a.TestSelf(RCX, true)
 	joins = append(joins, f.a.JccPlaceholder(condE))
-	fwd1 := f.a.Len()
 	f.a.LoadIdx(RDX, RSI, RCX, 0, 1, false, false)
 	f.a.StoreIdx(RDI, RCX, RDX, 0, 1)
-	f.unitAdjust(RCX, true, true)
-	f.a.PatchRel32(f.a.JccPlaceholder(condNE), fwd1)
 	joins = append(joins, f.a.JmpPlaceholder())
 
 	// Large: forward-safe copies retain ERMS/FSRM-accelerated rep movsb. True
@@ -1237,38 +1370,40 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	// accelerate DF=1 and commonly fall to roughly one byte per cycle. Load the
 	// complete chunk before storing it so even a one-byte overlap retains memmove
 	// semantics. Medium copies stay on the lower-startup XMM path; copies of at
-	// least 1 KiB use 128-byte YMM chunks before the XMM/scalar tail. XMM0..3 are
-	// scratch after flush; pinned float/vector locals use the high register bank.
+	// least 1 KiB use 128-byte YMM chunks before the XMM/scalar tail.
 	f.a.PatchRel32(big, f.a.Len())
 	f.a.Cmp64(RDI, RSI)
 	fwd := f.a.JccPlaceholder(condBE)  // dst <= src → forward
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0) // rdx = src + n
 	f.a.Cmp64(RDI, RDX)
 	fwdDisjoint := f.a.JccPlaceholder(condAE) // dst >= src+n → disjoint → forward
-	f.a.AluRI(cmpDigit, RCX, 1024, false)
-	mediumBack := f.a.JccPlaceholder(condB)
-	back128 := f.a.Len()
-	f.a.AluRI(cmpDigit, RCX, 128, false)
-	ymmDone := f.a.JccPlaceholder(condB)
-	for i, disp := range [...]int32{-128, -96, -64, -32} {
-		f.a.YMovdquLoadIdx(Reg(i), RSI, RCX, disp)
+	if f.cpuHas(shared.AMD64AVX) {
+		f.a.AluRI(cmpDigit, RCX, 1024, false)
+		mediumBack := f.a.JccPlaceholder(condB)
+		back128 := f.a.Len()
+		f.a.AluRI(cmpDigit, RCX, 128, false)
+		ymmDone := f.a.JccPlaceholder(condB)
+		for i, disp := range [...]int32{-128, -96, -64, -32} {
+			f.a.YMovdquLoadIdx(copyVecs[i], RSI, RCX, disp)
+		}
+		for i, disp := range [...]int32{-128, -96, -64, -32} {
+			f.a.YMovdquStoreIdx(RDI, RCX, copyVecs[i], disp)
+		}
+		f.a.AluRI(5, RCX, 128, false)
+		f.a.JmpBack(back128)
+		f.a.PatchRel32(ymmDone, f.a.Len())
+		f.a.VZeroUpper()
+		f.a.PatchRel32(mediumBack, f.a.Len())
 	}
-	for i, disp := range [...]int32{-128, -96, -64, -32} {
-		f.a.YMovdquStoreIdx(RDI, RCX, Reg(i), disp)
-	}
-	f.a.AluRI(5, RCX, 128, false)
-	f.a.JmpBack(back128)
-	f.a.PatchRel32(ymmDone, f.a.Len())
-	f.a.VZeroUpper()
-	f.a.PatchRel32(mediumBack, f.a.Len())
+
 	back64 := f.a.Len()
 	f.a.AluRI(cmpDigit, RCX, 64, false)
 	backTail := f.a.JccPlaceholder(condB)
 	for i, disp := range [...]int32{-64, -48, -32, -16} {
-		f.a.VMovdquLoadIdx(Reg(i), RSI, RCX, disp)
+		f.mov128LoadIdx(copyVecs[i], RSI, RCX, disp)
 	}
 	for i, disp := range [...]int32{-64, -48, -32, -16} {
-		f.a.VMovdquStoreIdx(RDI, RCX, Reg(i), disp)
+		f.mov128StoreIdx(RDI, RCX, copyVecs[i], disp)
 	}
 	f.a.AluRI(5, RCX, 64, false)
 	f.a.JmpBack(back64)
@@ -1296,6 +1431,9 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	for _, j := range joins {
 		f.a.PatchRel32(j, f.a.Len())
 	}
+	for _, r := range copyVecs {
+		f.releaseF(r)
+	}
 
 	f.setDepth(d - 3)
 	return nil
@@ -1308,7 +1446,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		return err
 	}
 	if memoryIndex == 0 && !f.memoryAddr64(0) {
-		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.memoryFillConst(int(n), memoryIndex)
 				return nil
@@ -1318,9 +1456,10 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
-	f.a.Load64(RAX, RSP, f.spillOff(d-2)) // AL = fill byte
-	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
+	topSlot := f.s.back().st.slotIndex()
+	f.a.Load64(RDI, RSP, f.spillOff(topSlot-2)) // dst offset
+	f.a.Load64(RAX, RSP, f.spillOff(topSlot-1)) // AL = fill byte
+	f.a.Load64(RCX, RSP, f.spillOff(topSlot))   // n
 	if !f.memoryAddr64(memoryIndex) {
 		f.a.MovRegReg32(RDI, RDI)
 		f.a.MovRegReg32(RCX, RCX)
@@ -1328,6 +1467,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 
 	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
 	f.absoluteBulkAddr(memoryIndex, RDI, RCX)
+	fillVec := f.allocFReg(0)
 
 	// Byte-replicate the fill value once (rep stosb only reads AL, so the
 	// pattern's low byte keeps the big path compatible).
@@ -1335,17 +1475,43 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.a.MovImm64(RDX, 0x0101010101010101)
 	f.a.IMul(RAX, RDX, true)
 
-	// Small dynamic fills: inline 8-byte pattern stores (rep stosb startup
-	// dominates); large keep rep stosb.
-	f.a.AluRI(cmpDigit, RCX, smallBulkMax, true)
+	// Small dynamic fills: inline XMM/8-byte pattern stores (rep stosb startup
+	// and its medium-size cliffs dominate); large keep rep stosb.
+	f.a.AluRI(cmpDigit, RCX, smallFillMax, true)
 	bigF := f.a.JccPlaceholder(condAE)
+	// Keep the fast-string window immediately below 128 bytes on rep stosb while
+	// the inline vector path avoids its sharp 128-byte slowdown.
+	f.a.LeaDisp(RDX, RCX, -96)
+	f.a.AluRI(cmpDigit, RDX, 32, false)
+	mediumRep := f.a.JccPlaceholder(condB)
+	f.a.AluRI(cmpDigit, RCX, 16, false)
+	fillScalar := f.a.JccPlaceholder(condB)
+	if f.cpuHas(shared.AMD64SSE41) {
+		f.a.Pinsrq(fillVec, RAX, 0)
+		f.a.Pinsrq(fillVec, RAX, 1)
+	} else {
+		f.a.MovGprToXmm(fillVec, RAX, true)
+		f.a.Punpcklqdq(fillVec, fillVec)
+	}
+	fill16 := f.a.Len()
+	f.mov128StoreIdx(RDI, RCX, fillVec, -16)
+	f.a.AluRI(5, RCX, 16, false)
+	f.a.AluRI(cmpDigit, RCX, 16, false)
+	f.a.PatchRel32(f.a.JccPlaceholder(condAE), fill16)
 	fill8 := f.a.Len()
+	f.a.PatchRel32(fillScalar, fill8)
 	f.a.AluRI(cmpDigit, RCX, 8, false)
-	f8done := f.a.JccPlaceholder(condB)
+	fillByte := f.a.JccPlaceholder(condB)
 	f.a.StoreIdx(RDI, RCX, RAX, -8, 8)
 	f.a.AluRI(5, RCX, 8, false)
-	f.a.JmpBack(fill8)
-	f.a.PatchRel32(f8done, f.a.Len())
+	f.a.TestSelf(RCX, false)
+	fill8Exact := f.a.JccPlaceholder(condE)
+	// Re-storing an overlapping prefix is safe for fill and avoids a counted
+	// byte tail for every dynamic length of at least eight bytes.
+	f.a.Store64(RDI, 0, RAX)
+	f.a.PatchRel32(fill8Exact, f.a.Len())
+	f.a.XorSelf32(RCX)
+	f.a.PatchRel32(fillByte, f.a.Len())
 	fillDone := f.rcxZero32Placeholder()
 	fill1 := f.a.Len()
 	f.a.StoreIdx(RDI, RCX, RAX, -1, 1)
@@ -1353,20 +1519,26 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.closeRCXZero32Loop(fillDone, fill1)
 	if fillDone.compact {
 		skipRep := f.a.JmpRel8Placeholder()
-		f.a.PatchRel32(bigF, f.a.Len())
+		rep := f.a.Len()
+		f.a.PatchRel32(bigF, rep)
+		f.a.PatchRel32(mediumRep, rep)
 		f.a.RepStosb() // [RDI..] = AL, RCX times (DF=0)
 		if !f.a.PatchRel8(skipRep, f.a.Len()) {
 			panic("amd64: bounded memory.fill skip exceeded rel8 range")
 		}
 		f.patchRCXZero32(fillDone)
+		f.releaseF(fillVec)
 		f.setDepth(d - 3)
 		return nil
 	}
 	skipRep := f.a.JmpPlaceholder()
-	f.a.PatchRel32(bigF, f.a.Len())
+	rep := f.a.Len()
+	f.a.PatchRel32(bigF, rep)
+	f.a.PatchRel32(mediumRep, rep)
 	f.a.RepStosb() // [RDI..] = AL, RCX times (DF=0)
 	f.a.PatchRel32(skipRep, f.a.Len())
 	f.patchRCXZero32(fillDone)
+	f.releaseF(fillVec)
 
 	f.setDepth(d - 3)
 	return nil
@@ -1428,6 +1600,11 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 		f.a.Load64(base, dir, entry)
 	}
 	f.a.Load32(res, base, -bdCurPages) // old pages — the success result
+	// memory.grow 0 cannot change memory state and always returns the current
+	// size. Bypass maximum checks and cache publication; this operation is used
+	// as a cheap size query by generated runtimes.
+	f.a.TestSelf(delta, false)
+	zeroDelta := f.a.JccPlaceholder(condE)
 	avoid := maskOf(delta).add(res).add(base)
 	if dir != regNone {
 		avoid = avoid.add(dir)
@@ -1439,7 +1616,24 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	mx := f.allocReg(avoid.add(nw))
 	f.a.Load32(mx, base, -bdMaxPages)
 	f.a.Cmp32(nw, mx)
-	failMax := f.a.JccPlaceholder(condA) // new > max
+	failMax := f.a.JccPlaceholder(condA) // new > declared/runtime max
+	noPolicyDir := -1
+	if memoryIndex == 0 {
+		dir = f.allocReg(avoid.add(nw).add(mx))
+		f.a.Load64(dir, RBX, -offMemoryDirPtr)
+		f.a.TestSelf(dir, true)
+		noPolicyDir = f.a.JccPlaceholder(condE)
+	}
+	f.a.Load32(mx, dir, entry+abi.MemoryDirPolicyMaxPagesOffset)
+	f.a.TestSelf(mx, false)
+	noPolicy := f.a.JccPlaceholder(condE)
+	f.a.Cmp32(nw, mx)
+	failPolicy := f.a.JccPlaceholder(condA)
+	policyDone := f.a.Len()
+	if noPolicyDir >= 0 {
+		f.a.PatchRel32(noPolicyDir, policyDone)
+	}
+	f.a.PatchRel32(noPolicy, policyDone)
 	f.a.Store32(base, -bdCurPages, nw)
 	f.a.MovRegReg32(mx, nw)
 	f.a.ShiftImm(4, mx, wasmPageLog, true) // bytes = uint64(pages) << 16
@@ -1451,27 +1645,38 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 		f.a.Store64(dir, entry+abi.MemoryDirCurrentBytesOffset, mx)
 		f.a.Store32(dir, entry+abi.MemoryDirCurrentPagesOffset, nw)
 	}
+	if memoryIndex == 0 && f.memSizeReg != regNone {
+		// The successful path already has the new byte size in mx. Forward it to
+		// the regional bounds cache instead of reloading the value just stored.
+		f.a.MovReg64(f.memSizeReg, mx)
+	}
 	done := f.a.JmpPlaceholder()
 	if failDelta >= 0 {
 		f.a.PatchRel32(failDelta, f.a.Len())
 	}
 	f.a.PatchRel32(failOverflow, f.a.Len())
 	f.a.PatchRel32(failMax, f.a.Len())
+	f.a.PatchRel32(failPolicy, f.a.Len())
 	if memory64 {
 		f.a.MovImm64(res, ^uint64(0))
 	} else {
 		f.a.MovImm32(res, -1)
 	}
-	f.a.PatchRel32(done, f.a.Len())
 	if memoryIndex == 0 && f.memSizeReg != regNone {
-		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes) // refresh the memory-0 cache (both paths)
+		// Failure preserves the old memory size, so reload the cache only on this
+		// path. Success forwarded mx before jumping here.
+		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
 	}
+	f.a.PatchRel32(done, f.a.Len())
+	f.a.PatchRel32(zeroDelta, f.a.Len())
 	f.pinned = f.pinned.remove(delta)
 	f.release(delta)
 	f.release(nw)
 	f.release(mx)
 	if memoryIndex != 0 {
 		f.release(base)
+	}
+	if dir != regNone {
 		f.release(dir)
 	}
 	if memory64 {
@@ -1522,6 +1727,7 @@ func bulkChunks16(n int, buf *[4][2]int) [][2]int {
 // op. Constant paths always check, including signals-based mode: a zero-length
 // operation has no later load/store to fault and must still reject base > size.
 func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
+	alreadyPinned := f.pinned.has(base)
 	f.pinned = f.pinned.add(base)
 	t := f.allocReg(0)
 	if f.memoryAddr64(memoryIndex) {
@@ -1549,7 +1755,9 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	}
 	f.trapIf(condA, trapMemOOB)
 	f.release(t)
-	f.pinned = f.pinned.remove(base)
+	if !alreadyPinned {
+		f.pinned = f.pinned.remove(base)
+	}
 }
 
 // memoryFillConst lowers memory.fill with a small constant length as unrolled
@@ -1622,12 +1830,12 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 		var favoid regMask
 		for i, c := range chunks {
 			x := f.allocFReg(favoid)
-			f.a.VMovdquLoadIdx(x, RBX, src, int32(c[0]))
+			f.mov128LoadIdx(x, RBX, src, int32(c[0]))
 			xregs[i] = x
 			favoid = favoid.add(x)
 		}
 		for i, c := range chunks {
-			f.a.VMovdquStoreIdx(RBX, dst, xregs[i], int32(c[0]))
+			f.mov128StoreIdx(RBX, dst, xregs[i], int32(c[0]))
 			f.releaseF(xregs[i])
 		}
 		f.pinned = f.pinned.remove(src)

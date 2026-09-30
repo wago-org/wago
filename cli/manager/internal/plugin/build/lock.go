@@ -21,22 +21,36 @@ func withBuildLock(dir string, fn func() error) error {
 	if err := os.MkdirAll(filepath.Dir(lockDir), 0o755); err != nil {
 		return err
 	}
+	if err := acquireBuildLock(lockDir, os.Mkdir); err != nil {
+		return err
+	}
+	defer os.Remove(lockDir)
+	return fn()
+}
+
+func acquireBuildLock(lockDir string, mkdir func(string, os.FileMode) error) error {
 	deadline := time.Now().Add(buildLockTimeout)
+	retriedPermission := false
 	for {
-		err := os.Mkdir(lockDir, 0o755)
+		err := mkdir(lockDir, 0o755)
 		if err == nil {
-			break
+			return nil
 		}
-		if !buildLockContended(lockDir, err) {
-			return fmt.Errorf("lock plugin build: %w", err)
+		if buildLockContended(lockDir, err) {
+			retriedPermission = false
+		} else {
+			// Windows can deny mkdir during removal, then report the lock
+			// absent to Stat. Retry once; persistent denial stays an error.
+			if !os.IsPermission(err) || retriedPermission {
+				return fmt.Errorf("lock plugin build: %w", err)
+			}
+			retriedPermission = true
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("plugin build lock timed out; if no Wago process is running, remove %s", lockDir)
 		}
 		time.Sleep(buildLockPoll)
 	}
-	defer os.Remove(lockDir)
-	return fn()
 }
 
 func buildLockContended(lockDir string, mkdirErr error) bool {

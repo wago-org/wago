@@ -3,8 +3,11 @@
 package amd64
 
 import (
+	"slices"
 	"testing"
+	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -35,6 +38,191 @@ func TestNewStackWithCapSizesFirstChunk(t *testing.T) {
 	}
 }
 
+func TestStackCustomSidecarIsLazyAndCleared(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	_, ordinaryReserved := s.nodeMemory()
+	e := s.pushValue(storage{kind: stReg, typ: mtCustom})
+	s.setElemCold(e, nil, []Reg{1, 2})
+	if e.st.cold == 0 || len(s.cold) != 1 {
+		t.Fatalf("custom sidecar index=%d len=%d, want nonzero and 1", e.st.cold, len(s.cold))
+	}
+	if _, reserved := s.nodeMemory(); reserved <= ordinaryReserved {
+		t.Fatalf("reserved node memory = %d, want more than ordinary %d", reserved, ordinaryReserved)
+	}
+	s.reset()
+	if len(s.cold) != 0 {
+		t.Fatalf("reset custom sidecars = %d, want 0", len(s.cold))
+	}
+	if stale := s.cold[:cap(s.cold)][0]; stale.custom != nil || stale.vregs != nil {
+		t.Fatalf("reset retained custom sidecar pointers: %+v", stale)
+	}
+}
+
+func TestHintedStackGrowthMatchesLegacyRetention(t *testing.T) {
+	const (
+		firstCap = 386
+		nodes    = 31_000
+	)
+	hinted, legacy := newStackWithCap(firstCap), newStack()
+	for i := 1; i < nodes; i++ { // each stack already contains its sentinel
+		hinted.alloc()
+		legacy.alloc()
+	}
+	if len(hinted.chunks) < 2 || cap(hinted.chunks[1]) != 768-firstCap {
+		t.Fatalf("hinted fallback chunks = %v, want second cap %d", stackChunkCaps(hinted), 768-firstCap)
+	}
+	if got, want := retainedStackArenaCapacity(hinted), retainedStackArenaCapacity(legacy); got != want {
+		t.Fatalf("hinted retained capacity = %d, want legacy %d; hinted=%v legacy=%v", got, want, stackChunkCaps(hinted), stackChunkCaps(legacy))
+	}
+}
+
+func TestSubDefaultHintPreservesGeometricGrowth(t *testing.T) {
+	const nodes = 2_000
+	s := newStackWithCap(101)
+	for i := 1; i < nodes; i++ {
+		s.alloc()
+	}
+	want := []int{101, 27, 128, 256, 512, 1024}
+	if got := stackChunkCaps(s); !slices.Equal(got, want) {
+		t.Fatalf("sub-default growth = %v, want %v", got, want)
+	}
+}
+
+func TestStackFinishFunctionRetainsBoundedReusableOverflow(t *testing.T) {
+	const nodes = 2_000
+	s := newStackWithCap(minStackArenaCap)
+	for i := 1; i < nodes; i++ {
+		s.alloc()
+	}
+	wantCapacity := retainedStackArenaCapacity(s)
+	if got := uint64(wantCapacity) * uint64(unsafe.Sizeof(elem{})); got >= shared.MaxRetainedStackArenaBytes {
+		t.Fatalf("ordinary backing = %d bytes, want below retention limit", got)
+	}
+	if got := s.finishFunction(); got != 0 {
+		t.Fatalf("ordinary function discarded %d bytes, want 0", got)
+	}
+	overflow := &s.chunks[1][0]
+
+	s.reset()
+	for i := 1; i < 4; i++ {
+		s.alloc()
+	}
+	if got := s.finishFunction(); got != 0 {
+		t.Fatalf("tiny successor discarded %d bytes within budget", got)
+	}
+
+	s.reset()
+	for i := 1; i < nodes; i++ {
+		s.alloc()
+	}
+	if got := &s.chunks[1][0]; got != overflow {
+		t.Fatal("recurring ordinary demand did not reuse overflow backing")
+	}
+	if got := s.finishFunction(); got != 0 {
+		t.Fatalf("recurring ordinary function discarded %d bytes, want 0", got)
+	}
+
+	giantNodes := int(shared.MaxRetainedStackArenaBytes/uint64(unsafe.Sizeof(elem{}))) + maxStackChunkCap
+	s.reset()
+	for i := 1; i < giantNodes; i++ {
+		s.alloc()
+	}
+	oldChunks := s.chunks
+	oldCapacity := retainedStackArenaCapacity(s)
+	keepCapacity := 0
+	keep := 0
+	for i := range s.chunks {
+		chunkBytes := uint64(cap(s.chunks[i])) * uint64(unsafe.Sizeof(elem{}))
+		if i != 0 && uint64(keepCapacity)*uint64(unsafe.Sizeof(elem{}))+chunkBytes > shared.MaxRetainedStackArenaBytes {
+			break
+		}
+		keepCapacity += cap(s.chunks[i])
+		keep = i + 1
+	}
+	wantDiscarded := uint64(oldCapacity-keepCapacity) * uint64(unsafe.Sizeof(elem{}))
+	if got := s.finishFunction(); got != wantDiscarded {
+		t.Fatalf("giant overflow discarded %d bytes, want %d", got, wantDiscarded)
+	}
+	if len(s.chunks) != keep {
+		t.Fatalf("retained chunks = %d, want %d", len(s.chunks), keep)
+	}
+	for i := keep; i < len(oldChunks); i++ {
+		if oldChunks[i] != nil {
+			t.Fatalf("discarded chunk %d still has a slice header", i)
+		}
+	}
+	if stale := s.chunks[0][:cap(s.chunks[0])][1]; stale.prev != nil || stale.next != nil || stale.arg0 != nil || stale.arg1 != nil {
+		t.Fatal("retained backing still points at prior-function nodes")
+	}
+}
+
+func TestScratchClearNodeReferences(t *testing.T) {
+	e := &elem{}
+	sc := scratch{}
+	sc.fnState.regUser[0] = e
+	sc.fnState.fregUser[0] = e
+	sc.transient.tmpRoots = make([]*elem, 1, 4)
+	sc.transient.tmpRoots[:cap(sc.transient.tmpRoots)][3] = e
+	sc.transient.tmpBelow = make([]*elem, 1, 4)
+	sc.transient.tmpBelow[:cap(sc.transient.tmpBelow)][3] = e
+	sc.transient.tmpDeferred = make([]deferredArg, 1, 4)
+	sc.transient.tmpDeferred[:cap(sc.transient.tmpDeferred)][3].root = e
+
+	sc.clearNodeReferences()
+	if sc.fnState.regUser[0] != nil || sc.fnState.fregUser[0] != nil {
+		t.Fatal("register-user table retained an operand node")
+	}
+	if sc.transient.tmpRoots[:cap(sc.transient.tmpRoots)][3] != nil ||
+		sc.transient.tmpBelow[:cap(sc.transient.tmpBelow)][3] != nil ||
+		sc.transient.tmpDeferred[:cap(sc.transient.tmpDeferred)][3].root != nil {
+		t.Fatal("pointer-bearing scratch capacity retained an operand node")
+	}
+}
+
+func TestScratchNodeResourceStats(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	nodes := int(shared.MaxRetainedStackArenaBytes/uint64(unsafe.Sizeof(elem{}))) + maxStackChunkCap
+	sc := newScratchWithStackCap(minStackArenaCap)
+	for i := 1; i < nodes; i++ {
+		sc.stack.alloc()
+	}
+	peakCapacity := retainedStackArenaCapacity(sc.stack)
+	sc.finishStackFunction()
+	retainedCapacity := retainedStackArenaCapacity(sc.stack)
+
+	elemBytes := uint64(unsafe.Sizeof(elem{}))
+	ms := &ModuleStats{}
+	ms.setNodeScratchStats(sc)
+	if got, want := ms.Compile.NodeScratchReserved, uint64(minStackArenaCap)*elemBytes; got != want {
+		t.Fatalf("initial node scratch = %d, want %d", got, want)
+	}
+	if got, want := ms.Compile.NodeScratchPeak, uint64(peakCapacity)*elemBytes; got != want {
+		t.Fatalf("peak node scratch = %d, want %d", got, want)
+	}
+	if got, want := ms.Compile.NodeScratchRetained, uint64(retainedCapacity)*elemBytes; got != want {
+		t.Fatalf("retained node scratch = %d, want %d", got, want)
+	}
+	if got, want := ms.Compile.NodeScratchDiscarded, uint64(peakCapacity-retainedCapacity)*elemBytes; got != want {
+		t.Fatalf("discarded node scratch = %d, want %d", got, want)
+	}
+}
+
+func retainedStackArenaCapacity(s *stack) int {
+	total := 0
+	for i := range s.chunks {
+		total += cap(s.chunks[i])
+	}
+	return total
+}
+
+func stackChunkCaps(s *stack) []int {
+	caps := make([]int, len(s.chunks))
+	for i := range s.chunks {
+		caps[i] = cap(s.chunks[i])
+	}
+	return caps
+}
+
 func TestStackArenaCapForBodyTinyFunction(t *testing.T) {
 	s := newStackWithCap(stackArenaCapForBody(0, 0))
 	if cap(s.chunks[0]) != minStackArenaCap {
@@ -45,21 +233,18 @@ func TestStackArenaCapForBodyTinyFunction(t *testing.T) {
 func TestStackArenaCapForBodyMediumFunction(t *testing.T) {
 	const bodyLen = 64
 	const locals = 12
-	want := bodyLen + locals/4 + 1
+	want := bodyLen/2 + locals/4 + 1
 	s := newStackWithCap(stackArenaCapForBody(bodyLen, locals))
 	if cap(s.chunks[0]) != want {
 		t.Fatalf("medium stack first chunk cap = %d, want %d", cap(s.chunks[0]), want)
 	}
 }
 
-func TestStackArenaCapForHintsIgnoresLongImmediates(t *testing.T) {
-	// A body with a few stack-producing opcodes and long immediates should reserve
-	// from the opcode hint, not one arena elem per byte.
-	const bodyLen = 64
-	const nodes = 12
-	want := nodes + nodes/2 + 1
-	if got := stackArenaCapForHints(bodyLen, 0, nodes); got != want {
-		t.Fatalf("stackArenaCapForHints(%d, 0, %d) = %d, want %d", bodyLen, nodes, got, want)
+func TestStackArenaCapForBodyIncludesLocalAllowance(t *testing.T) {
+	const bodyLen, locals = 64, 12
+	want := bodyLen/2 + locals/4 + 1
+	if got := stackArenaCapForBody(bodyLen, locals); got != want {
+		t.Fatalf("stackArenaCapForBody(%d, %d) = %d, want %d", bodyLen, locals, got, want)
 	}
 }
 
@@ -111,6 +296,23 @@ func TestStackArenaReusesChunksAcrossReset(t *testing.T) {
 	}
 	if len(s.chunks) != grown {
 		t.Fatalf("reuse allocated new chunks: %d, want %d retained", len(s.chunks), grown)
+	}
+}
+
+func TestStackArenaClearsReusedNodesAcrossChunks(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	for pass, count := range []int{4 * minStackArenaCap, 3, 2 * minStackArenaCap, 4 * minStackArenaCap} {
+		for i := 0; i < count; i++ {
+			e := s.alloc()
+			if *e != (elem{}) {
+				t.Fatalf("pass %d node %d retained prior operand state: %+v", pass, i, *e)
+			}
+			*e = elem{
+				st:   storage{cval: -1, slot: 9, cold: 2, idx: 3, kind: deferredStorageKind, typ: mtCustom, reg: RAX, meta: 0xff},
+				prev: s.head, next: s.head, arg0: s.head, arg1: s.head,
+			}
+		}
+		s.reset()
 	}
 }
 
@@ -170,7 +372,7 @@ func TestAssignPinnedLocalsUsesLocalDefs(t *testing.T) {
 		m:         &wasm.Module{},
 		sc:        &scratch{},
 	}
-	f.assignPinnedLocals([]uint32{1, 10, 5}, nil, nil, nil, pinnedLocalRegs, baseFPPins, false, false)
+	f.assignPinnedLocals([]uint32{1, 10, 5}, nil, pinnedLocalRegs, baseFPPins, false, false)
 
 	r, isFloat, ok := f.pinReg(1)
 	if !ok || !isFloat || r != pinnedFLocalRegs[0] {

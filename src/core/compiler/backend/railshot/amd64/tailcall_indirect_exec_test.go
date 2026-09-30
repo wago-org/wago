@@ -11,7 +11,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func indirectTailModule(t *testing.T) *wasm.Module {
@@ -93,7 +93,7 @@ func runIndirectTail(t *testing.T, m *wasm.Module, tableFuncs []int, args ...uin
 
 	argBuf := arena.Alloc(128)
 	resultBuf := arena.Alloc(128)
-	trap := arena.Alloc(8)
+	trap := arena.Alloc(coreruntime.TrapBufferBytes)
 	for i, arg := range args {
 		binary.LittleEndian.PutUint64(argBuf[i*8:], arg)
 	}
@@ -102,6 +102,7 @@ func runIndirectTail(t *testing.T, m *wasm.Module, tableFuncs []int, args ...uin
 }
 
 func TestReturnCallIndirectReusesFrameAndMatchesTraps(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := indirectTailModule(t)
 	out, err := runIndirectTail(t, m, []int{0, 1}, 1_000_000, 0)
 	if err != nil {

@@ -5,7 +5,7 @@ package wago
 import (
 	"testing"
 
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func typedTableDynamicModule(typeDefs [][]byte, targetType uint32, imported bool) []byte {
@@ -92,7 +92,7 @@ func TestTypedFunctionReferenceDynamicTableLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export typed table: %v", err)
 	}
-	consumer, err := instantiateCore(stagedTypedStorageCompile(t, consumerModule), InstantiateOptions{Imports: Imports{"env.table": table}, store: store})
+	consumer, err := instantiateCore(stagedTypedStorageCompile(t, consumerModule), InstantiateOptions{Imports: testImports("env.table", table), store: store})
 	if err != nil {
 		t.Fatalf("instantiate shifted-type consumer: %v", err)
 	}

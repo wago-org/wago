@@ -67,6 +67,19 @@ func TestDecodeDataCountConsistency(t *testing.T) {
 }
 
 func TestDecodeDataInstructionsRequireDataCount(t *testing.T) {
+	gcDataModule := func(body ...byte) []byte {
+		code := append([]byte{0x00}, body...)
+		return module(
+			section(secType,
+				0x02,
+				0x5e, 0x78, 0x01, // type 0: (array (mut i8))
+				0x60, 0x00, 0x00, // type 1: () -> ()
+			),
+			section(secFunction, 0x01, 0x01),
+			section(secCode, append([]byte{0x01}, append(u32(uint32(len(code))), code...)...)...),
+			section(secData, 0x01, 0x01, 0x01, 0x00),
+		)
+	}
 	memoryInit := module(
 		section(secType, 0x01, 0x60, 0x00, 0x00),
 		section(secFunction, 0x01, 0x00),
@@ -87,6 +100,22 @@ func TestDecodeDataInstructionsRequireDataCount(t *testing.T) {
 		section(secCode, 0x01, 0x05, 0x00, 0xfc, 0x09, 0x00, 0x0b),
 		section(secData, 0x01, 0x01, 0x00),
 	)
+	arrayNewData := gcDataModule(
+		0x41, 0x00, // i32.const 0: source offset
+		0x41, 0x01, // i32.const 1: length
+		0xfb, 0x09, 0x00, 0x00, // array.new_data type 0, data 0
+		0x1a, // drop
+		0x0b, // end
+	)
+	arrayInitData := gcDataModule(
+		0x41, 0x01, // i32.const 1: array length
+		0xfb, 0x07, 0x00, // array.new_default type 0
+		0x41, 0x00, // i32.const 0: destination offset
+		0x41, 0x00, // i32.const 0: source offset
+		0x41, 0x01, // i32.const 1: length
+		0xfb, 0x12, 0x00, 0x00, // array.init_data type 0, data 0
+		0x0b, // end
+	)
 	plain := module(
 		section(secType, 0x01, 0x60, 0x00, 0x00),
 		section(secFunction, 0x01, 0x00),
@@ -101,20 +130,35 @@ func TestDecodeDataInstructionsRequireDataCount(t *testing.T) {
 	}{
 		{name: "memory.init", data: memoryInit, wantErr: true},
 		{name: "data.drop", data: dataDrop, wantErr: true},
+		{name: "array.new_data", data: arrayNewData, wantErr: true},
+		{name: "array.init_data", data: arrayInitData, wantErr: true},
 		{name: "no data instruction", data: plain},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := DecodeModule(tc.data)
-			if !tc.wantErr {
-				if err != nil {
-					t.Fatalf("DecodeModule rejected valid module: %v", err)
-				}
-				return
-			}
-			var de *DecodeError
-			if !errors.As(err, &de) || de.Code != ErrInvalidModule {
-				t.Fatalf("DecodeModule error = %v, want ErrInvalidModule", err)
+			for _, validate := range []struct {
+				name string
+				fn   func() error
+			}{
+				{name: "DecodeModule", fn: func() error {
+					_, err := DecodeModule(tc.data)
+					return err
+				}},
+				{name: "ValidateByteBackedModule", fn: func() error { return ValidateByteBackedModule(tc.data) }},
+			} {
+				t.Run(validate.name, func(t *testing.T) {
+					err := validate.fn()
+					if !tc.wantErr {
+						if err != nil {
+							t.Fatalf("rejected valid module: %v", err)
+						}
+						return
+					}
+					var de *DecodeError
+					if !errors.As(err, &de) || de.Code != ErrInvalidModule {
+						t.Fatalf("error = %v, want ErrInvalidModule", err)
+					}
+				})
 			}
 		})
 	}

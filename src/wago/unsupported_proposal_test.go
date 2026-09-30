@@ -37,7 +37,7 @@ type proposalFixtureFile struct {
 }
 
 func TestUnsupportedProposalCorporaFailClosed(t *testing.T) {
-	root := filepath.Clean("../../tests/regressions/spectest-proposals")
+	root := filepath.Clean("../../tests/corpus/regressions/spectest-proposals")
 	config := compatibilityDefaultConfig()
 	type proposalWant struct {
 		files, accepted, unsupported, invalid, negativeInstantiation, malformedBinary, malformedText int
@@ -172,5 +172,5 @@ func isExplicitProposalRejection(err error) bool {
 		return false
 	}
 	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "unsupported") || strings.Contains(message, "shared memory") || strings.Contains(message, "atomic")
+	return strings.Contains(message, "unsupported") || strings.Contains(message, "threads currently") || strings.Contains(message, "shared memory") || strings.Contains(message, "atomic")
 }

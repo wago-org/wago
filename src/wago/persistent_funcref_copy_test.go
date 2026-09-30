@@ -16,7 +16,7 @@ func localFuncrefTableProducer(rt *Runtime, t *testing.T, table *Table, value in
 		(elem declare func $target)
 		(func (export "seed")
 			(i32.const 0) (ref.func $target) (table.set 0)))`)
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.table": table}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.table", table)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func tableCaller(t *testing.T, table *Table) *Instance {
 	t.Helper()
 	code := MustCompile(importedFuncrefTableCallerModule())
 	t.Cleanup(func() { _ = code.Close() })
-	in, err := Instantiate(code, Imports{"env.table": table})
+	in, err := Instantiate(code, testImports("env.table", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestPersistentFuncrefTableToTableCopiesRetainActualProducer(t *testing.T) {
 				(import "env" "src" (table $src 1 1 funcref))
 				(import "env" "dst" (table $dst 1 1 funcref))
 				(func (export "copy") `+copyBody.wat+`))`)
-			writer, err := rt.Instantiate(context.Background(), writerMod, WithImports(Imports{"env.src": source, "env.dst": destination}))
+			writer, err := rt.Instantiate(context.Background(), writerMod, WithImports(testImports("env.src", source, "env.dst", destination)))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -114,7 +114,7 @@ func TestPersistentFuncrefTableToGlobalRetainsActualProducer(t *testing.T) {
 		(import "env" "src" (table 1 1 funcref))
 		(import "env" "dst" (global $dst (mut funcref)))
 		(func (export "copy") (i32.const 0) (table.get 0) (global.set $dst)))`)
-	writer, err := rt.Instantiate(context.Background(), writerMod, WithImports(Imports{"env.src": source, "env.dst": global}))
+	writer, err := rt.Instantiate(context.Background(), writerMod, WithImports(testImports("env.src", source, "env.dst", global)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestPersistentFuncrefTableToGlobalRetainsActualProducer(t *testing.T) {
 		(func (export "call") (result i32)
 			(i32.const 0) (global.get 0) (table.set 0)
 			(i32.const 0) (call_indirect (type $target))))`)
-	reader, err := rt.Instantiate(context.Background(), readerMod, WithImports(Imports{"env.g": global}))
+	reader, err := rt.Instantiate(context.Background(), readerMod, WithImports(testImports("env.g", global)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestPersistentFuncrefGlobalToGlobalRetainsActualProducer(t *testing.T) {
 		(import "env" "g1" (global (mut funcref)))
 		(import "env" "g2" (global $g2 (mut funcref)))
 		(func (export "copy") (global.get 0) (global.set $g2)))`)
-	writer, err := rt.Instantiate(context.Background(), writerMod, WithImports(Imports{"env.g1": g1, "env.g2": g2}))
+	writer, err := rt.Instantiate(context.Background(), writerMod, WithImports(testImports("env.g1", g1, "env.g2", g2)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestPersistentFuncrefGlobalToGlobalRetainsActualProducer(t *testing.T) {
 	}
 	callerMod, _ := rt.Compile(funcrefCallableConsumerModule())
 	caller, _ := rt.Instantiate(context.Background(), callerMod)
-	got, err := caller.Call(context.Background(), "call", value)
+	got, err := caller.InvokeValues(context.Background(), "call", value)
 	if err != nil || got[0].I32() != 42 {
 		t.Fatalf("G2 call = %v, %v", got, err)
 	}
@@ -221,11 +221,11 @@ func instantiateTableCopyWriter(t *testing.T, rt *Runtime, source, destination *
 	)
 	if rt != nil {
 		module := mustCompileWat(rt, t, wat)
-		writer, err = rt.Instantiate(context.Background(), module, WithImports(Imports{"env.src": source, "env.dst": destination}))
+		writer, err = rt.Instantiate(context.Background(), module, WithImports(testImports("env.src", source, "env.dst", destination)))
 	} else {
 		compiled := MustCompile(watToWasmCA(t, wat))
 		t.Cleanup(func() { _ = compiled.Close() })
-		writer, err = Instantiate(compiled, Imports{"env.src": source, "env.dst": destination})
+		writer, err = Instantiate(compiled, testImports("env.src", source, "env.dst", destination))
 	}
 	if err != nil {
 		t.Fatal(err)
@@ -244,7 +244,7 @@ func localFuncrefTableProducerStoreless(t *testing.T, table *Table, value int32)
 		(elem declare func $target)
 		(func (export "seed") (i32.const 0) (ref.func $target) (table.set 0)))`))
 	t.Cleanup(func() { _ = compiled.Close() })
-	in, err := Instantiate(compiled, Imports{"env.table": table})
+	in, err := Instantiate(compiled, testImports("env.table", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +357,7 @@ func TestCrossRuntimePersistentFuncrefTableToGlobalRetainsProxy(t *testing.T) {
 		(import "env" "src" (table 1 1 funcref))
 		(import "env" "dst" (global $dst (mut funcref)))
 		(func (export "copy") (i32.const 0) (table.get 0) (global.set $dst)))`)
-	writer, err := rtB.Instantiate(context.Background(), writerMod, WithImports(Imports{"env.src": source, "env.dst": destination}))
+	writer, err := rtB.Instantiate(context.Background(), writerMod, WithImports(testImports("env.src", source, "env.dst", destination)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,7 +381,7 @@ func TestCrossRuntimePersistentFuncrefTableToGlobalRetainsProxy(t *testing.T) {
 		(func (export "call") (result i32)
 			(i32.const 0) (global.get 0) (table.set 0)
 			(i32.const 0) (call_indirect (type $target))))`)
-	reader, err := rtB.Instantiate(context.Background(), readerMod, WithImports(Imports{"env.g": destination}))
+	reader, err := rtB.Instantiate(context.Background(), readerMod, WithImports(testImports("env.g", destination)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +456,7 @@ func TestPersistentFuncrefPublicIngressAndCrossInstanceResult(t *testing.T) {
 	writerMod := mustCompileWat(rt, t, `(module
 		(import "env" "dst" (table 1 1 funcref))
 		(func (export "store") (param funcref) (i32.const 0) (local.get 0) (table.set 0)))`)
-	writer, _ := rt.Instantiate(context.Background(), writerMod, WithImports(Imports{"env.dst": destination}))
+	writer, _ := rt.Instantiate(context.Background(), writerMod, WithImports(testImports("env.dst", destination)))
 	if _, err := writer.Invoke("store", relayToken[0]); err != nil {
 		t.Fatal(err)
 	}

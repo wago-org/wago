@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-// TestMemoryBytesAfterGrowGuardPage is a regression for Memory.Bytes() using the
+// TestMemoryBytesAfterGrowGuardPage is a regression for Memory.UnsafeBytes() using the
 // grow-safe host accessor. Under guard-page bounds the Go-side j.mem slice stays
 // capped at the initial commit while memory.grow commits pages in the reservation;
-// Memory.Bytes() must reflect the grown logical size (previously it called
+// Memory.UnsafeBytes() must reflect the grown logical size (previously it called
 // CurrentBytes and panicked with "slice bounds out of range" after growth).
 func TestMemoryBytesAfterGrowGuardPage(t *testing.T) {
 	const page = 65536
@@ -25,7 +25,7 @@ func TestMemoryBytesAfterGrowGuardPage(t *testing.T) {
 	}
 	defer in.Close()
 
-	if got := len(in.Memory().Bytes()); got != page {
+	if got := len(in.Memory().UnsafeBytes()); got != page {
 		t.Fatalf("initial Bytes() len = %d, want %d", got, page)
 	}
 
@@ -39,7 +39,7 @@ func TestMemoryBytesAfterGrowGuardPage(t *testing.T) {
 	}
 
 	// The whole point: Bytes() reflects the grown size and does not panic.
-	if got := len(in.Memory().Bytes()); got != 5*page {
+	if got := len(in.Memory().UnsafeBytes()); got != 5*page {
 		t.Fatalf("after grow, Bytes() len = %d, want %d", got, 5*page)
 	}
 
@@ -48,7 +48,7 @@ func TestMemoryBytesAfterGrowGuardPage(t *testing.T) {
 	if _, err := in.Invoke("store", I32(int32(off)), I32(0xABCD)); err != nil {
 		t.Fatalf("store into grown page: %v", err)
 	}
-	if got := binary.LittleEndian.Uint32(in.Memory().Bytes()[off:]); got != 0xABCD {
+	if got := binary.LittleEndian.Uint32(in.Memory().UnsafeBytes()[off:]); got != 0xABCD {
 		t.Fatalf("grown page via Bytes() = %#x, want 0xABCD", got)
 	}
 }

@@ -1,13 +1,35 @@
 package main
 
-import "testing"
+import (
+	"regexp"
+	"testing"
+)
+
+func TestSuiteRegexIncludesPublishedBoundaryBenchmarks(t *testing.T) {
+	re := regexp.MustCompile(suiteRegex)
+	for _, name := range []string{
+		"BenchmarkExecCallOverhead_wago",
+		"BenchmarkExecCallOverhead_wazero",
+		"BenchmarkExecTypedCall_wago",
+		"BenchmarkExecHostCallback_wago",
+		"BenchmarkExecHostRoundtrip_wago",
+		"BenchmarkExecHostRoundtrip_wazero",
+	} {
+		if !re.MatchString(name) {
+			t.Errorf("suiteRegex does not match %s", name)
+		}
+	}
+	if re.MatchString("BenchmarkExecGlobalGet_wago") {
+		t.Fatal("suiteRegex unexpectedly includes an unpublished microbenchmark")
+	}
+}
 
 func TestParseRunAcceptsOptionalProcessorSuffix(t *testing.T) {
 	const input = `goos: linux
 goarch: amd64
 cpu: test cpu
-BenchmarkDecode/tiny          10  100 ns/op  20 B/op  3 allocs/op
-BenchmarkDecode/tiny          10  120 ns/op  24 B/op  5 allocs/op
+BenchmarkDecode/tiny          10  100 ns/op  20 B/op  3 allocs/op  96 code-B
+BenchmarkDecode/tiny          10  120 ns/op  24 B/op  5 allocs/op  104 code-B
 BenchmarkExec/tiny.add-16     20   30 ns/op   0 B/op  0 allocs/op
 `
 	run := parseRun(input)
@@ -18,7 +40,7 @@ BenchmarkExec/tiny.add-16     20   30 ns/op   0 B/op  0 allocs/op
 	if !ok {
 		t.Fatal("missing suffix-free Decode/tiny metric")
 	}
-	if decode.Ns != 110 || decode.Bytes != 22 || decode.Allocs != 4 {
+	if decode.Ns != 110 || decode.Bytes != 22 || decode.Allocs != 4 || decode.CodeBytes != 100 {
 		t.Fatalf("Decode/tiny = %+v", decode)
 	}
 	exec, ok := run.Metrics["Exec/tiny.add"]

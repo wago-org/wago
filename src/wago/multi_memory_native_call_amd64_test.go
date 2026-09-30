@@ -10,7 +10,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func sameMemoryNativeFuncImport(module, name string, typeIndex byte) []byte {
@@ -215,9 +215,7 @@ func instantiateSameMemoryNativeChain(tb testing.TB) *sameMemoryNativeChain {
 	}
 
 	middleCompiled := stagedMultiMemoryCompile(tb, sameMemoryNativeTenantModule("A", 20))
-	middle, err := instantiateCore(middleCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": ownerStep, "A.boom": ownerBoom, "A.grow": ownerGrow, "A.mem": memory,
-	}})
+	middle, err := instantiateCore(middleCompiled, InstantiateOptions{Imports: testImports("A.step", ownerStep, "A.boom", ownerBoom, "A.grow", ownerGrow, "A.mem", memory)})
 	if err != nil {
 		tb.Fatalf("instantiate middle: %v", err)
 	}
@@ -235,9 +233,7 @@ func instantiateSameMemoryNativeChain(tb testing.TB) *sameMemoryNativeChain {
 	}
 
 	rootCompiled := stagedMultiMemoryCompile(tb, sameMemoryNativeTenantModule("B", 30))
-	root, err := instantiateCore(rootCompiled, InstantiateOptions{Imports: Imports{
-		"B.step": middleStep, "B.boom": middleBoom, "B.grow": middleGrow, "A.mem": memory,
-	}})
+	root, err := instantiateCore(rootCompiled, InstantiateOptions{Imports: testImports("B.step", middleStep, "B.boom", middleBoom, "B.grow", middleGrow, "A.mem", memory)})
 	if err != nil {
 		tb.Fatalf("instantiate root: %v", err)
 	}
@@ -265,10 +261,7 @@ func instantiateSameMemoryNativeGlobalChain(tb testing.TB) *sameMemoryNativeChai
 	counter := NewGlobalI32(7, true)
 
 	middleCompiled := stagedMultiMemoryCompile(tb, sameMemoryNativeGlobalTenantModule("A", 20))
-	middle, err := instantiateCore(middleCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": ownerStep, "A.boom": ownerBoom, "A.grow": ownerGrow, "A.mem": memory,
-		"env.counter": GlobalImport{Global: counter},
-	}})
+	middle, err := instantiateCore(middleCompiled, InstantiateOptions{Imports: testImports("A.step", ownerStep, "A.boom", ownerBoom, "A.grow", ownerGrow, "A.mem", memory, "env.counter", GlobalImport{Global: counter})})
 	if err != nil {
 		tb.Fatalf("instantiate global-composition middle: %v", err)
 	}
@@ -277,10 +270,7 @@ func instantiateSameMemoryNativeGlobalChain(tb testing.TB) *sameMemoryNativeChai
 	middleGrow, _ := middle.ExportedFunc("grow")
 
 	rootCompiled := stagedMultiMemoryCompile(tb, sameMemoryNativeGlobalTenantModule("B", 30))
-	root, err := instantiateCore(rootCompiled, InstantiateOptions{Imports: Imports{
-		"B.step": middleStep, "B.boom": middleBoom, "B.grow": middleGrow, "A.mem": memory,
-		"env.counter": GlobalImport{Global: counter},
-	}})
+	root, err := instantiateCore(rootCompiled, InstantiateOptions{Imports: testImports("B.step", middleStep, "B.boom", middleBoom, "B.grow", middleGrow, "A.mem", memory, "env.counter", GlobalImport{Global: counter})})
 	if err != nil {
 		tb.Fatalf("instantiate global-composition root: %v", err)
 	}
@@ -327,10 +317,7 @@ func instantiateSameMemoryNativeTableChain(tb testing.TB) *sameMemoryNativeTable
 	}
 
 	middleCompiled := stagedMultiMemoryCompile(tb, sameMemoryNativeTableTenantModule("A", 20))
-	middle, err := instantiateCore(middleCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": ownerStep, "A.boom": ownerBoom, "A.grow": ownerGrow,
-		"A.mem": memory, "env.table": table,
-	}})
+	middle, err := instantiateCore(middleCompiled, InstantiateOptions{Imports: testImports("A.step", ownerStep, "A.boom", ownerBoom, "A.grow", ownerGrow, "A.mem", memory, "env.table", table)})
 	if err != nil {
 		tb.Fatalf("instantiate table-composition middle: %v", err)
 	}
@@ -339,10 +326,7 @@ func instantiateSameMemoryNativeTableChain(tb testing.TB) *sameMemoryNativeTable
 	middleGrow, _ := middle.ExportedFunc("grow")
 
 	rootCompiled := stagedMultiMemoryCompile(tb, sameMemoryNativeTableTenantModule("B", 30))
-	root, err := instantiateCore(rootCompiled, InstantiateOptions{Imports: Imports{
-		"B.step": middleStep, "B.boom": middleBoom, "B.grow": middleGrow,
-		"A.mem": memory, "env.table": table,
-	}})
+	root, err := instantiateCore(rootCompiled, InstantiateOptions{Imports: testImports("B.step", middleStep, "B.boom", middleBoom, "B.grow", middleGrow, "A.mem", memory, "env.table", table)})
 	if err != nil {
 		tb.Fatalf("instantiate table-composition root: %v", err)
 	}
@@ -391,10 +375,7 @@ func instantiateSameMemoryNativeGlobalTableChain(tb testing.TB) *sameMemoryNativ
 	counter := NewGlobalI32(7, true)
 
 	middleCompiled := stagedMultiMemoryCompile(tb, sameMemoryNativeGlobalTableTenantModule("A", 20))
-	middle, err := instantiateCore(middleCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": ownerStep, "A.boom": ownerBoom, "A.grow": ownerGrow,
-		"A.mem": memory, "env.counter": GlobalImport{Global: counter}, "env.table": table,
-	}})
+	middle, err := instantiateCore(middleCompiled, InstantiateOptions{Imports: testImports("A.step", ownerStep, "A.boom", ownerBoom, "A.grow", ownerGrow, "A.mem", memory, "env.counter", GlobalImport{Global: counter}, "env.table", table)})
 	if err != nil {
 		tb.Fatalf("instantiate global+table middle: %v", err)
 	}
@@ -403,10 +384,7 @@ func instantiateSameMemoryNativeGlobalTableChain(tb testing.TB) *sameMemoryNativ
 	middleGrow, _ := middle.ExportedFunc("grow")
 
 	rootCompiled := stagedMultiMemoryCompile(tb, sameMemoryNativeGlobalTableTenantModule("B", 30))
-	root, err := instantiateCore(rootCompiled, InstantiateOptions{Imports: Imports{
-		"B.step": middleStep, "B.boom": middleBoom, "B.grow": middleGrow,
-		"A.mem": memory, "env.counter": GlobalImport{Global: counter}, "env.table": table,
-	}})
+	root, err := instantiateCore(rootCompiled, InstantiateOptions{Imports: testImports("B.step", middleStep, "B.boom", middleBoom, "B.grow", middleGrow, "A.mem", memory, "env.counter", GlobalImport{Global: counter}, "env.table", table)})
 	if err != nil {
 		tb.Fatalf("instantiate global+table root: %v", err)
 	}
@@ -617,6 +595,8 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalTableComposition(t *test
 		}
 	}
 	features := NewRuntimeConfig().frontendFeatures()
+	features.TailCalls = false
+	features.TypedTailCalls = false
 	features.MultiMemory = true
 	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), returnCall, features); err == nil || !strings.Contains(err.Error(), "tail") {
 		t.Fatalf("global+table return_call without staged tail feature = %v, want rejection", err)
@@ -741,6 +721,8 @@ func TestStagedMultiMemoryNativeSameMemoryImportedTableComposition(t *testing.T)
 		}
 	}
 	features := NewRuntimeConfig().frontendFeatures()
+	features.TailCalls = false
+	features.TypedTailCalls = false
 	features.MultiMemory = true
 	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), returnCall, features); err == nil || !strings.Contains(err.Error(), "tail") {
 		t.Fatalf("imported-table return_call without staged tail feature = %v, want rejection", err)
@@ -849,10 +831,7 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalComposition(t *testing.T
 	ownerGrow, _ := chain.owner.ExportedFunc("grow")
 	consumerCompiled := stagedMultiMemoryCompile(t, sameMemoryNativeGlobalTenantModule("A", 20))
 	defer consumerCompiled.Close()
-	hostConsumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": HostFunc(func(_ HostModule, _ []uint64, results []uint64) { results[0] = 0 }), "A.boom": ownerBoom, "A.grow": ownerGrow,
-		"A.mem": chain.memory, "env.counter": GlobalImport{Global: chain.counter},
-	}})
+	hostConsumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("A.step", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) { results[0] = 0 }), "A.boom", ownerBoom, "A.grow", ownerGrow, "A.mem", chain.memory, "env.counter", GlobalImport{Global: chain.counter})})
 	if err != nil {
 		t.Fatalf("composed host callback binding: %v", err)
 	}
@@ -873,10 +852,7 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalComposition(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreignConsumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": ownerStep, "A.boom": ownerBoom, "A.grow": ownerGrow,
-		"A.mem": foreignMemory, "env.counter": GlobalImport{Global: chain.counter},
-	}})
+	foreignConsumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("A.step", ownerStep, "A.boom", ownerBoom, "A.grow", ownerGrow, "A.mem", foreignMemory, "env.counter", GlobalImport{Global: chain.counter})})
 	if err != nil {
 		t.Fatalf("composed foreign-memory binding: %v", err)
 	}
@@ -898,6 +874,8 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalComposition(t *testing.T
 		t.Fatalf("decode composed return_call gate module: %v", err)
 	}
 	features := NewRuntimeConfig().frontendFeatures()
+	features.TailCalls = false
+	features.TypedTailCalls = false
 	features.MultiMemory = true
 	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), returnCall, features); err == nil || !strings.Contains(err.Error(), "tail") {
 		t.Fatalf("imported-global return_call without staged tail feature = %v, want rejection (module=%d funcs)", err, len(returnModule.Code))
@@ -982,9 +960,7 @@ func TestStagedMultiMemoryNativeContextProductAndGates(t *testing.T) {
 	ownerGrow, _ := chain.owner.ExportedFunc("grow")
 	consumerCompiled := stagedMultiMemoryCompile(t, sameMemoryNativeTenantModule("A", 20))
 	defer consumerCompiled.Close()
-	foreignConsumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": ownerStep, "A.boom": ownerBoom, "A.grow": ownerGrow, "A.mem": foreignMemory,
-	}})
+	foreignConsumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("A.step", ownerStep, "A.boom", ownerBoom, "A.grow", ownerGrow, "A.mem", foreignMemory)})
 	if err != nil {
 		t.Fatalf("foreign-memory native binding: %v", err)
 	}
@@ -994,9 +970,7 @@ func TestStagedMultiMemoryNativeContextProductAndGates(t *testing.T) {
 	if err := foreignConsumer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	hostConsumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": HostFunc(func(_ HostModule, _ []uint64, results []uint64) { results[0] = 0 }), "A.boom": ownerBoom, "A.grow": ownerGrow, "A.mem": chain.memory,
-	}})
+	hostConsumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("A.step", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) { results[0] = 0 }), "A.boom", ownerBoom, "A.grow", ownerGrow, "A.mem", chain.memory)})
 	if err != nil {
 		t.Fatalf("host callback binding: %v", err)
 	}
@@ -1019,6 +993,8 @@ func TestStagedMultiMemoryNativeContextProductAndGates(t *testing.T) {
 		t.Fatalf("decode return_call gate module: %v", err)
 	}
 	features := NewRuntimeConfig().frontendFeatures()
+	features.TailCalls = false
+	features.TypedTailCalls = false
 	features.MultiMemory = true
 	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), returnCall, features); err == nil || !strings.Contains(err.Error(), "tail") {
 		t.Fatalf("return_call without staged tail feature = %v, want fail-closed rejection (module=%d funcs)", err, len(returnModule.Code))
@@ -1027,10 +1003,13 @@ func TestStagedMultiMemoryNativeContextProductAndGates(t *testing.T) {
 
 func TestStagedMultiMemoryNativeContextAccounting(t *testing.T) {
 	if runtime.InstanceContextBytes != 112 {
-		t.Fatalf("native instance context = %d bytes, want 112", runtime.InstanceContextBytes)
+		t.Fatalf("native instance context = %d bytes, want restored hot-path size 112", runtime.InstanceContextBytes)
 	}
 	if abi.BasedataSize != 288 {
-		t.Fatalf("basedata = %d bytes, want 288", abi.BasedataSize)
+		t.Fatalf("basedata = %d bytes, want restored hot-path size 288", abi.BasedataSize)
+	}
+	if abi.MemoryDirEntryBytes != 24 || abi.MemoryDirPolicyMaxPagesOffset != 20 {
+		t.Fatalf("memory policy directory = %d-byte entries at offset %d, want 24 and 20", abi.MemoryDirEntryBytes, abi.MemoryDirPolicyMaxPagesOffset)
 	}
 }
 

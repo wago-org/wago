@@ -8,9 +8,10 @@ import (
 // Typed little-endian accessors over an instance's linear memory.
 //
 // They read/write through a single aligned machine load/store after one bounds
-// check, which is faster than reaching for encoding/binary on Memory().Bytes() —
+// check, which is faster than reaching for encoding/binary on
+// Memory().UnsafeBytes() —
 // and it closes the host-side gap under TinyGo, whose LLVM backend optimizes
-// encoding/binary's per-byte assembly less aggressively (see docs/tinygo.md;
+// encoding/binary's per-byte assembly less aggressively (about
 // ~0.43 ns/op vs ~1.6 ns/op for the binary idiom, at parity with the standard
 // toolchain). wago targets little-endian amd64, so a native load already yields
 // little-endian byte order.
@@ -236,18 +237,20 @@ func (in *Instance) WriteFloat64Le(offset uint32, v float64) bool {
 }
 
 // Read returns a copy of length bytes starting at offset, or ok=false if the
-// range falls outside linear memory. For zero-copy access use Memory().Bytes().
+// range falls outside linear memory. For explicitly unsafe zero-copy access use
+// Memory().UnsafeBytes().
 func (in *Instance) Read(offset, length uint32) ([]byte, bool) {
 	if in == nil || in.beginInvocation() != nil {
 		return nil, false
 	}
 	defer in.endInvocation()
 	mem := in.mem()
-	if uint64(offset)+uint64(length) > uint64(len(mem)) {
+	end := uint64(offset) + uint64(length)
+	if end > uint64(len(mem)) {
 		return nil, false
 	}
 	out := make([]byte, length)
-	copy(out, mem[offset:offset+length])
+	copy(out, mem[offset:end])
 	return out, true
 }
 

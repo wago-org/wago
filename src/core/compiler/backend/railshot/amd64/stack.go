@@ -3,9 +3,24 @@
 package amd64
 
 import (
+	"unsafe"
+
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	coreplugins "github.com/wago-org/wago/src/core/plugins"
 )
+
+func (s *stack) nodeMemory() (used, reserved uint64) {
+	for i := range s.chunks {
+		reserved += uint64(cap(s.chunks[i]))
+		if i <= s.cur {
+			used += uint64(len(s.chunks[i]))
+		}
+	}
+	size := uint64(unsafe.Sizeof(elem{}))
+	coldSize := uint64(unsafe.Sizeof(elemCold{}))
+	return used*size + uint64(len(s.cold))*coldSize,
+		reserved*size + uint64(cap(s.cold))*coldSize
+}
 
 // The operand stack and its element model — ported from WARP's Stack /
 // StackElement / StackType / VariableStorage (warp/src/core/compiler/common/).
@@ -79,7 +94,7 @@ func memRefStorage(ea Reg, disp int32, size int, signed, wide bool, borrow int) 
 	if signed {
 		sidx |= 0x100
 	}
-	return storage{kind: stMemRef, typ: typ, reg: ea, slot: int(disp), idx: sidx, cval: int64(borrow + 1)}
+	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: uint32(sidx), cval: int64(borrow + 1)}
 }
 
 func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow int) storage {
@@ -89,11 +104,13 @@ func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow int) storage {
 		typ = mtF64
 		size = 8
 	}
-	return storage{kind: stMemRef, typ: typ, reg: ea, slot: int(disp), idx: size, cval: int64(borrow + 1)}
+	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: uint32(size), cval: int64(borrow + 1)}
 }
 
 func (st storage) memDisp() int32  { return int32(st.slot) }
-func (st storage) memSize() int    { return st.idx & 0xff }
+func (st storage) slotIndex() int  { return int(st.slot) }
+func (st storage) index() int      { return int(st.idx) }
+func (st storage) memSize() int    { return int(st.idx & 0xff) }
 func (st storage) memSigned() bool { return st.idx&0x100 != 0 }
 
 // memBorrow returns the local whose pinned register serves as this deferred
@@ -109,15 +126,19 @@ func memRefFoldable(st storage, w bool) bool {
 
 // storage records where a value lives and its machine type.
 type storage struct {
-	kind   storageKind
-	typ    machineType
-	reg    Reg
-	ehRoot bool // frame-relative rooted exception identity; clear the three-word record on drop
-	gcRoot bool // value may contain a collector-owned gc.Ref and must be mapped at safepoints
-	facts  valueFacts
-	slot   int
-	idx    int   // local/global index for stLocalRef/stGlobalRef
-	cval   int64 // constant value/bits for stConst
+	cval int64  // constant value/bits for stConst
+	slot uint32 // spill-slot index, bounded GC array length for local refs, or int32 displacement bits for stMemRef
+	cold uint32 // index+1 into stack.cold for custom plugin values
+	idx  uint32 // local/global/function index, bounded GC array length, or packed stMemRef metadata
+	kind storageKind
+	typ  machineType
+	reg  Reg
+	meta uint8 // semantic value facts and root-state bits
+}
+
+// elemCold contains state used only by custom plugin values. Keeping it out of
+// storage removes a pointer and slice header from every ordinary operand node.
+type elemCold struct {
 	custom *coreplugins.CustomType
 	vregs  []Reg
 }
@@ -128,15 +149,16 @@ type elemKind uint8
 const (
 	ekValue    elemKind = iota // a concrete value (const / reg / slot / local-or-global ref) — storage is live
 	ekDeferred                 // an un-emitted operation with operand children
-	ekBlock                    // structural control frame (block/loop/if)
-	ekSkip                     // tombstone: condensed-away node, skipped in traversal
 )
 
 // elem is one node on the operand stack: a value, a deferred operation, or a
 // control-frame marker. Deferred nodes carry their opcode and operand links.
 type elem struct {
-	kind elemKind
-	st   storage // valid when kind == ekValue
+	// st is the variant payload. Concrete values use it as storage. Deferred
+	// nodes reuse slot for their opcode, depth, and register-need labels; those
+	// bits are otherwise dead for the variant. typ and metadata retain their
+	// ordinary value meaning in both variants.
+	st storage
 
 	// Intrusive doubly-linked list (physical stack order).
 	prev, next *elem
@@ -147,29 +169,53 @@ type elem struct {
 	// sibling-over-the-physical-stack layout — architecturally equivalent (still a
 	// deferred tree condensed by the same allocator), simpler for nesting.
 	arg0, arg1 *elem
+}
 
-	// Deferred operation payload.
-	op  wOp
-	typ machineType // result type of a deferred op
+const deferredStorageKind storageKind = 1 << 6
 
-	// deferDepth is the height of this deferred subtree (1 + max child height;
-	// leaves/values are 0). Used to cap how deep a tree condense() may recurse so a
-	// pathological left-spine cannot pin one register per level and exhaust the
-	// file — see maxDeferDepth in pushBinOp. Valid only when kind == ekDeferred.
-	deferDepth int16
+func (e *elem) elemKind() elemKind {
+	if e.st.kind == deferredStorageKind {
+		return ekDeferred
+	}
+	return ekValue
+}
+func (e *elem) setElemKind(kind elemKind) {
+	if kind == ekDeferred {
+		e.st.kind = deferredStorageKind
+		return
+	}
+	e.st.kind = stInvalid
+}
 
-	// regNeed is the Sethi-Ullman register requirement of this deferred subtree.
-	// It is labeled once when the node is built so sink-time selection can compare
-	// alternatives without repeatedly walking the same tree. Zero is reserved for
-	// synthetic test nodes and falls back to an on-demand calculation.
-	regNeed int16
+func (e *elem) isValue() bool { return e.st.kind != deferredStorageKind }
+
+func (e *elem) deferredOp() wOp { return wOp(e.st.slot) }
+func (e *elem) setDeferredOp(op wOp) {
+	e.st.slot = e.st.slot&^0xff | uint32(op)
+}
+
+// deferredDepth is the deferred-subtree height. registerNeed is its bounded
+// Sethi-Ullman label. Both fit in a byte: depth is capped at maxDeferDepth and
+// register demand cannot exceed that height plus one.
+func (e *elem) deferredDepth() int16 { return int16(uint8(e.st.slot >> 8)) }
+func (e *elem) setDeferredDepth(depth int16) {
+	e.st.slot = e.st.slot&^0xff00 | uint32(uint8(depth))<<8
+}
+func (e *elem) registerNeed() int16 { return int16(uint8(e.st.slot >> 16)) }
+func (e *elem) setRegisterNeed(need int16) {
+	e.st.slot = e.st.slot&^0xff0000 | uint32(uint8(need))<<16
+}
+
+func (e *elem) valueType() machineType { return e.st.typ }
+func (e *elem) setValueType(typ machineType) {
+	e.st.typ = typ
 }
 
 // deferDepthOf is the subtree height contributed by an operand: its deferDepth
 // when deferred, else 0 (a concrete value is a leaf).
 func deferDepthOf(e *elem) int16 {
-	if e != nil && e.kind == ekDeferred {
-		return e.deferDepth
+	if e != nil && e.isDeferred() {
+		return e.deferredDepth()
 	}
 	return 0
 }
@@ -178,26 +224,32 @@ func deferDepthOf(e *elem) int16 {
 // level, so an unbounded left-spine (e.g. a long chain of variable shifts or
 // adds) exhausts the register file. When a new node would exceed this, the deeper
 // operand is condensed now, breaking the chain into register-sized segments. Set
-// well under the neutral-register count so the segment always fits (even on the
-// pinning-off recompile).
+// well under the neutral-register count so the segment always fits in one pass.
 const maxDeferDepth = 6
 
 // isDeferred reports whether e is an un-emitted operation.
-func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
+func (e *elem) isDeferred() bool { return e.st.kind == deferredStorageKind }
 
 // stack is the operand stack: a sentinel-terminated doubly-linked list backed by
 // a chunked bump arena of elems. Each chunk is a fixed-capacity []elem that is
 // never reallocated once created, so every *elem handed out stays valid for the
-// life of the function even as the arena grows without bound. Chunks grow
-// geometrically (256, 512, … capped) so a huge function costs O(log n) chunk
-// allocations instead of one heap object per node; reset() reuses every chunk
-// across the module compile, so after the largest function is seen the arena
-// allocates nothing further. Nodes are never freed mid-function — that matches
-// single-pass usage.
+// life of the function even as the arena grows without bound. Sub-default hints
+// fill to a power-of-two total before doubling. At or above 256, growth fills to the next legacy
+// 256/512/... cumulative boundary and then resumes the capped geometric sequence,
+// so an underestimate cannot regress legacy retention. reset() reuses every chunk
+// across the module compile up to a fixed byte ceiling, so ordinary recurring
+// demand allocates once while giant-function overflow remains ephemeral. Nodes
+// are never freed mid-function — that matches single-pass usage.
 type stack struct {
-	chunks [][]elem
-	cur    int
-	head   *elem
+	chunks           [][]elem
+	cold             []elemCold
+	cur              int
+	head             *elem
+	logicalDepth     uint32
+	canonicalSlots   bool
+	hasGCRoots       bool
+	nextChunkCap     uint16
+	nextGeometricCap uint16
 }
 
 const (
@@ -212,9 +264,47 @@ func newStackWithCap(capHint int) *stack {
 	if capHint < minStackArenaCap {
 		capHint = minStackArenaCap
 	}
-	s := &stack{chunks: [][]elem{make([]elem, 0, capHint)}}
+	next, geometric := stackArenaGrowthCaps(capHint)
+	s := &stack{
+		chunks:           [][]elem{make([]elem, 0, capHint)},
+		nextChunkCap:     uint16(next),
+		nextGeometricCap: uint16(geometric),
+	}
 	s.initSentinel()
 	return s
+}
+
+func stackArenaGrowthCaps(firstCap int) (next, geometric int) {
+	if firstCap < defaultStackArenaCap {
+		// Fill to the next power-of-two total, then double the total.
+		// A one-node underestimate must not triple retained small arenas.
+		total := minStackArenaCap
+		for total <= firstCap {
+			total *= 2
+		}
+		return total - firstCap, total
+	}
+	total, geometric := defaultStackArenaCap, defaultStackArenaCap*2
+	for total < firstCap {
+		total += geometric
+		if geometric < maxStackChunkCap {
+			geometric *= 2
+			if geometric > maxStackChunkCap {
+				geometric = maxStackChunkCap
+			}
+		}
+	}
+	if remainder := total - firstCap; remainder > 0 {
+		return remainder, geometric
+	}
+	next = geometric
+	if geometric < maxStackChunkCap {
+		geometric *= 2
+		if geometric > maxStackChunkCap {
+			geometric = maxStackChunkCap
+		}
+	}
+	return next, geometric
 }
 
 // initSentinel rewinds to the first chunk and installs the sentinel node.
@@ -224,26 +314,97 @@ func (s *stack) initSentinel() {
 	*chunk = append((*chunk)[:0], elem{})
 	s.head = &(*chunk)[0]
 	s.head.prev, s.head.next = s.head, s.head
+	s.logicalDepth = 0
+	s.canonicalSlots = true
+	s.hasGCRoots = false
 }
 
 // reset rewinds the stack to empty for reuse by the next function in a module
 // compile, retaining every chunk's backing array so the common case allocates
 // nothing per function. The prior function's nodes are dead by the time this is
-// called (its code is already emitted), so dropping them is safe; alloc rezeroes
-// every reused slot, so no stale fields survive.
-func (s *stack) reset() { s.initSentinel() }
-
-func stackArenaCapForBody(bodyLen, nLocals int) int {
-	return stackArenaCapForHints(bodyLen, nLocals, 0)
+// called (its code is already emitted). Clear each used chunk once on reuse;
+// the remaining capacity is already zero, so alloc need not clear every node.
+func (s *stack) reset() {
+	clear(s.chunks[0])
+	clear(s.cold[:cap(s.cold)])
+	s.cold = s.cold[:0]
+	s.initSentinel()
 }
 
-func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
-	// Node-count estimate used to size the first chunk so a typical function fits
-	// without advancing chunks. Historically one node per body byte; the pre-scan's
-	// opcode-based estimate avoids reserving nodes for long immediates (notably
-	// 16-byte SIMD constants). The chunked arena grows past any underestimate while
-	// preserving pointer stability, so this is a hint, not a bound.
-	return shared.StackArenaCapacity(bodyLen, nLocals, nodeHint)
+func (s *stack) elemCold(e *elem) *elemCold {
+	if e.st.cold == 0 {
+		return nil
+	}
+	return &s.cold[e.st.cold-1]
+}
+
+func (s *stack) setElemCold(e *elem, custom *coreplugins.CustomType, vregs []Reg) {
+	if e.st.cold == 0 {
+		s.cold = append(s.cold, elemCold{})
+		e.st.cold = uint32(len(s.cold))
+	}
+	*s.elemCold(e) = elemCold{custom: custom, vregs: vregs}
+}
+
+func (s *stack) clearElemCold(e *elem) {
+	if cold := s.elemCold(e); cold != nil {
+		*cold = elemCold{}
+	}
+}
+
+// finishFunction releases the suffix above the fixed worker-retention budget.
+// The caller invokes it only after the function is complete and has severed
+// scratch-owned node references. Keeping every chunk within the byte budget
+// makes reuse independent of function ordering; giant overflow is ephemeral.
+func (s *stack) finishFunction() (discarded uint64) {
+	elemBytes := uint64(unsafe.Sizeof(elem{}))
+	retained, keep := uint64(0), 0
+	for i := range s.chunks {
+		chunkBytes := uint64(cap(s.chunks[i])) * elemBytes
+		if i != 0 && (retained >= shared.MaxRetainedStackArenaBytes || chunkBytes > shared.MaxRetainedStackArenaBytes-retained) {
+			break
+		}
+		retained += chunkBytes
+		keep = i + 1
+	}
+	if keep == len(s.chunks) {
+		return 0
+	}
+	for i := 0; i < keep; i++ {
+		clear(s.chunks[i][:cap(s.chunks[i])])
+	}
+	for i := keep; i < len(s.chunks); i++ {
+		discarded += uint64(cap(s.chunks[i])) * elemBytes
+		s.chunks[i] = nil
+	}
+	s.chunks = s.chunks[:keep]
+	s.resetGrowthCaps()
+	s.initSentinel()
+	return discarded
+}
+
+func (s *stack) resetGrowthCaps() {
+	next, geometric := stackArenaGrowthCaps(cap(s.chunks[0]))
+	s.nextChunkCap, s.nextGeometricCap = uint16(next), uint16(geometric)
+	for range s.chunks[1:] {
+		s.nextChunkCap = s.nextGeometricCap
+		if s.nextGeometricCap < maxStackChunkCap {
+			s.nextGeometricCap *= 2
+			if s.nextGeometricCap > maxStackChunkCap {
+				s.nextGeometricCap = maxStackChunkCap
+			}
+		}
+	}
+}
+
+func stackArenaCapForBody(bodyLen, nLocals int) int {
+	// Most node-producing opcodes are one byte, while locals, constants, calls,
+	// memory operations, and prefixed instructions also carry immediates. One
+	// node per two body bytes is a cheap corpus-backed estimate that avoids the
+	// former per-opcode predictor. Stable chunk growth preserves correctness when
+	// an unusually dense function exceeds it.
+	nodes := bodyLen / 2
+	return nodes + nLocals/4 + 1
 }
 
 // alloc returns a fresh zeroed node from the arena. The returned pointer is
@@ -253,19 +414,33 @@ func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
 func (s *stack) alloc() *elem {
 	chunk := &s.chunks[s.cur]
 	if len(*chunk) == cap(*chunk) {
-		s.cur++
-		if s.cur == len(s.chunks) {
-			nextCap := cap(*chunk) * 2
-			if nextCap > maxStackChunkCap {
-				nextCap = maxStackChunkCap
-			}
-			s.chunks = append(s.chunks, make([]elem, 0, nextCap))
-		}
-		chunk = &s.chunks[s.cur]
-		*chunk = (*chunk)[:0]
+		return s.allocNextChunk()
 	}
-	*chunk = append(*chunk, elem{})
-	return &(*chunk)[len(*chunk)-1]
+	n := len(*chunk)
+	*chunk = (*chunk)[:n+1]
+	return &(*chunk)[n]
+}
+
+// Keep growth and clearing of reused chunks off the per-operand path.
+//
+//go:noinline
+func (s *stack) allocNextChunk() *elem {
+	s.cur++
+	if s.cur == len(s.chunks) {
+		s.chunks = append(s.chunks, make([]elem, 0, int(s.nextChunkCap)))
+		s.nextChunkCap = s.nextGeometricCap
+		if s.nextGeometricCap < maxStackChunkCap {
+			s.nextGeometricCap *= 2
+			if s.nextGeometricCap > maxStackChunkCap {
+				s.nextGeometricCap = maxStackChunkCap
+			}
+		}
+	} else {
+		clear(s.chunks[s.cur])
+	}
+	chunk := &s.chunks[s.cur]
+	*chunk = (*chunk)[:1]
+	return &(*chunk)[0]
 }
 
 // push appends e as the new top of the stack and returns it.
@@ -278,8 +453,55 @@ func (s *stack) push(e *elem) *elem {
 
 // pushValue pushes a concrete value with the given storage.
 func (s *stack) pushValue(st storage) *elem {
+	s.canonicalSlots = false
+	if st.hasGCRoot() {
+		s.hasGCRoots = true
+	}
+	st.setLogicalRoot(true)
 	e := s.alloc()
-	e.kind, e.st = ekValue, st
+	e.setElemKind(ekValue)
+	e.st = st
+	s.logicalDepth++
+	return s.push(e)
+}
+
+// pushIntegerConstant initializes a scalar literal in its zeroed arena node.
+// Logical depth and canonical-slot invalidation match pushValue. Numeric
+// constants cannot introduce a collector root.
+func (s *stack) pushIntegerConstant(typ machineType, value int64) *elem {
+	s.canonicalSlots = false
+	e := s.alloc()
+	e.st.kind = stConst
+	e.st.typ = typ
+	e.st.cval = value
+	e.st.meta = uint8(storageLogicalRoot)
+	s.logicalDepth++
+	return s.push(e)
+}
+
+// pushDeferred replaces one or two logical operands with their deferred
+// expression node. The physical operand nodes remain linked as the expression
+// tree, while the logical depth changes only by the arity reduction.
+func (s *stack) pushDeferred(e *elem) *elem {
+	s.canonicalSlots = false
+	arity := 1
+	if e.arg1 != nil {
+		arity = 2
+	}
+	if e.arg0 == nil || int(s.logicalDepth) < arity {
+		panic("amd64: deferred node has invalid logical operands")
+	}
+	if !e.arg0.st.hasLogicalRoot() || (arity == 2 && !e.arg1.st.hasLogicalRoot()) {
+		panic("amd64: deferred node operands are not stack roots")
+	}
+	e.arg0.st.setLogicalRoot(false)
+	if arity == 2 {
+		e.arg1.st.setLogicalRoot(false)
+	}
+	e.st.setLogicalRoot(true)
+	if arity == 2 {
+		s.logicalDepth--
+	}
 	return s.push(e)
 }
 
@@ -294,8 +516,27 @@ func (s *stack) back() *elem {
 // erase unlinks e from the physical list (used when a node is condensed away or
 // consumed). It does not touch parent/sibling links.
 func (s *stack) erase(e *elem) {
+	s.canonicalSlots = false
+	if e.st.hasLogicalRoot() {
+		e.st.setLogicalRoot(false)
+		if s.logicalDepth == 0 {
+			panic("amd64: negative logical operand depth")
+		}
+		s.logicalDepth--
+	}
 	e.prev.next, e.next.prev = e.next, e.prev
 	e.prev, e.next = nil, nil
+}
+
+// exposeLogicalRoot restores a deferred operand that an optimization peeled
+// from a wrapper without changing the logical stack depth.
+func (s *stack) exposeLogicalRoot(e *elem) {
+	s.canonicalSlots = false
+	if e == nil || e.st.hasLogicalRoot() {
+		panic("amd64: invalid logical operand root exposure")
+	}
+	e.st.setLogicalRoot(true)
+	s.logicalDepth++
 }
 
 // --- deferred-tree navigation (WARP: getFirstOperand / findBaseOfValentBlock) ---
@@ -318,14 +559,16 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	right := f.s.back()
 	left := baseOfValentBlock(right).prev
 	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
-	if right.kind == ekValue && right.st.kind == stConst &&
-		left.kind == ekValue && left.st.kind == stConst {
+	if right.isValue() && right.st.kind == stConst &&
+		left.isValue() && left.st.kind == stConst {
 		if foldable(op) {
 			f.stats.peep("const-fold")
 			v := foldBin(op, left.st.cval, right.st.cval, typ.is64())
 			f.erase(right)
-			f.erase(left)
-			f.pushValue(storage{kind: stConst, typ: typ, cval: v})
+			// The left operand is already the remaining logical root. Reuse it
+			// instead of erasing, allocating, and republishing the same position.
+			f.s.clearElemCold(left)
+			f.replaceStorage(left, storage{kind: stConst, typ: typ, cval: v})
 			return
 		}
 		if isCompare(op) {
@@ -333,14 +576,14 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 			f.stats.peep("const-fold")
 			v := foldCompare(op, left.st.cval, right.st.cval, typ.is64())
 			f.erase(right)
-			f.erase(left)
-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: v})
+			f.s.clearElemCold(left)
+			f.replaceStorage(left, storage{kind: stConst, typ: mtI32, cval: v})
 			return
 		}
 	}
 	// One-constant algebraic simplification + strength reduction (P4): identities
 	// collapse without emitting a node; expensive ops rewrite to cheaper ones.
-	if right.kind == ekValue && right.st.kind == stConst {
+	if right.isValue() && right.st.kind == stConst {
 		if op2, done := f.simplifyConstRHS(op, typ, left, right); done {
 			f.stats.peep("alu-identity")
 			return
@@ -353,17 +596,6 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 		f.stats.peep("same-operand")
 		return
 	}
-	if op == opOr && typ == mtI64 && f.opt(optSWARIdioms) {
-		if source := matchSWARPack4(left, right); source != nil {
-			node := f.s.alloc()
-			node.kind, node.op, node.typ = ekDeferred, opSWARPack4, mtI64
-			node.arg0 = source
-			labelDeferredNode(node)
-			f.s.push(node)
-			f.stats.peep("swar-pack4")
-			return
-		}
-	}
 	// Cap deferred-tree height: condense the deeper operand now if deferring this
 	// op would push the subtree past maxDeferDepth, so the tree condense() later
 	// walks never pins more registers than the file holds. Rare on real code
@@ -375,13 +607,18 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 		f.materialize(right)
 	}
 	node := f.s.alloc()
-	node.kind, node.op, node.typ = ekDeferred, op, typ
+	node.setElemKind(ekDeferred)
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.rememberProfileNode(node)
+	}
+	node.setDeferredOp(op)
+	node.setValueType(typ)
 	if f.opt(optValueFacts) {
-		node.st.facts = deferredResultFacts(op, typ)
+		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
 	node.arg0, node.arg1 = left, right
 	labelDeferredNode(node)
-	f.s.push(node)
+	f.s.pushDeferred(node)
 }
 
 func max16(a, b int16) int16 {
@@ -463,7 +700,7 @@ func (f *fn) simplifyConstRHS(op wOp, typ machineType, left, right *elem) (wOp, 
 // simplifySameOperand handles `local.get x; local.get x; <op>` — both operands
 // reading the same local (borrowed or lazy): sub/xor → 0, and/or → x.
 func (f *fn) simplifySameOperand(op wOp, typ machineType, left, right *elem) bool {
-	if left.kind != ekValue || right.kind != ekValue {
+	if !left.isValue() || !right.isValue() {
 		return false
 	}
 	sameLocal := (left.st.kind == stLocalRef || left.st.kind == stLocalReg) &&
@@ -501,7 +738,7 @@ func (f *fn) simplifySameOperand(op wOp, typ machineType, left, right *elem) boo
 // memRef keeps its node (the simplification is skipped) rather than growing a
 // full recursive release path for a rare case.
 func (f *fn) discardSimple(left *elem) bool {
-	if left.kind != ekValue {
+	if !left.isValue() {
 		return false
 	}
 	switch left.st.kind {
@@ -530,12 +767,8 @@ func log2u(v uint64) int {
 // when condensed.
 func (f *fn) pushUnOp(op wOp, typ machineType) {
 	operand := f.s.back()
-	if op == opWrap && f.trySWARPack4(operand) {
-		operand.typ = mtI32
-		return
-	}
 	// Constant-fold clz/ctz/popcnt/eqz and the width conversions over a constant.
-	if operand.kind == ekValue && operand.st.kind == stConst {
+	if operand.isValue() && operand.st.kind == stConst {
 		if v, rtyp, ok := foldUnaryConst(op, operand.st.cval, typ); ok {
 			f.stats.peep("const-fold")
 			f.erase(operand)
@@ -547,11 +780,16 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 		f.materialize(operand) // cap deferred-tree height (see pushBinOp)
 	}
 	node := f.s.alloc()
-	node.kind, node.op, node.typ = ekDeferred, op, typ
+	node.setElemKind(ekDeferred)
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.rememberProfileNode(node)
+	}
+	node.setDeferredOp(op)
+	node.setValueType(typ)
 	if f.opt(optValueFacts) {
-		node.st.facts = deferredResultFacts(op, typ)
+		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
 	node.arg0 = operand
 	labelDeferredNode(node)
-	f.s.push(node)
+	f.s.pushDeferred(node)
 }

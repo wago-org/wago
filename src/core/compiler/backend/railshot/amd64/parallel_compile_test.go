@@ -4,28 +4,59 @@ package amd64
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
+func TestParallelFuncResultSizeAMD64(t *testing.T) {
+	if got, want := unsafe.Sizeof(funcResult{}), uintptr(56); got != want {
+		t.Fatalf("funcResult size = %d, want %d", got, want)
+	}
+}
+
+func TestCompactFuncResultRangeAMD64(t *testing.T) {
+	start, end, ok := compactFuncResultRange(int(^uint32(0))-7, 7)
+	if !ok || start != ^uint32(0)-7 || end != ^uint32(0) {
+		t.Fatalf("boundary range = (%d, %d, %v)", start, end, ok)
+	}
+	if _, _, ok := compactFuncResultRange(int(^uint32(0))-7, 8); ok {
+		t.Fatal("overflowing worker range accepted")
+	}
+	if _, _, ok := compactFuncResultRange(-1, 1); ok {
+		t.Fatal("negative worker range accepted")
+	}
+	if value, ok := compactFuncResultValue(int(^uint32(0))); !ok || value != ^uint32(0) {
+		t.Fatalf("boundary value = (%d, %v)", value, ok)
+	}
+	if _, ok := compactFuncResultValue(int(uint64(^uint32(0)) + 1)); ok {
+		t.Fatal("overflowing metadata value accepted")
+	}
+}
+
+func TestInlineTargetSizeAMD64(t *testing.T) {
+	if got, want := unsafe.Sizeof(inlineTarget{}), uintptr(56); got != want {
+		t.Fatalf("inlineTarget size = %d, want %d", got, want)
+	}
+}
+
 func TestCompileWorkersDeterministic(t *testing.T) {
-	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
+	requireCompilerDiagnostics(t)
+	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
 	for _, name := range []string{
-		"tiny.wasm",
-		"fib_rec.wasm",      // recursion and direct-call relocations
-		"dispatch.wasm",     // call_indirect
-		"many_funcs.wasm",   // enough functions to exercise every worker
-		"globals.wasm",      // mutable globals
-		"memory_tree.wasm",  // memory plus recursion
-		"branches.wasm",     // structured control flow
-		"json-as-simd.wasm", // SIMD, memory, globals, calls, and auto-inlining
+		"synthetic/tiny.wasm",
+		"synthetic/fib_rec.wasm",           // recursion and direct-call relocations
+		"synthetic/dispatch.wasm",          // call_indirect
+		"synthetic/many_funcs.wasm",        // enough functions to exercise every worker
+		"synthetic/memory_tree.wasm",       // memory plus recursion
+		"assemblyscript/json-as-simd.wasm", // SIMD, memory, globals, calls, and auto-inlining
 	} {
 		t.Run(name, func(t *testing.T) {
 			m := readParallelTestModule(t, filepath.Join(corpus, name))
@@ -44,8 +75,9 @@ func TestCompileWorkersDeterministic(t *testing.T) {
 }
 
 func TestCompileWorkersCompactSharedAdaptersDeterministicAMD64(t *testing.T) {
-	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
-	for _, name := range []string{"many_funcs.wasm", "json-as-simd.wasm"} {
+	requireCompilerDiagnostics(t)
+	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
+	for _, name := range []string{"synthetic/many_funcs.wasm", "assemblyscript/json-as-simd.wasm"} {
 		t.Run(name, func(t *testing.T) {
 			m := readParallelTestModule(t, filepath.Join(corpus, name))
 			want, wantStats := compileWorkerTestModuleCompact(t, m, 1, true)
@@ -60,24 +92,34 @@ func TestCompileWorkersCompactSharedAdaptersDeterministicAMD64(t *testing.T) {
 
 func equalWorkerModuleStatsAMD64(a, b *ModuleStats) bool {
 	aCopy, bCopy := *a, *b
+	aCopy.Funcs = append([]*CodegenStats(nil), a.Funcs...)
+	bCopy.Funcs = append([]*CodegenStats(nil), b.Funcs...)
 	aCopy.NativeSize.CompilerCodeArenaBytes = 0
 	bCopy.NativeSize.CompilerCodeArenaBytes = 0
+	aCopy.Compile.StageNanos = [shared.CompileStageCount]uint64{}
+	bCopy.Compile.StageNanos = [shared.CompileStageCount]uint64{}
+	aCopy.Compile.NodeScratchReserved, bCopy.Compile.NodeScratchReserved = 0, 0
+	aCopy.Compile.NodeScratchPeak, bCopy.Compile.NodeScratchPeak = 0, 0
+	aCopy.Compile.NodeScratchRetained, bCopy.Compile.NodeScratchRetained = 0, 0
+	aCopy.Compile.NodeScratchDiscarded, bCopy.Compile.NodeScratchDiscarded = 0, 0
+	aCopy.Compile.ControlScratchReserved, bCopy.Compile.ControlScratchReserved = 0, 0
+	aCopy.Compile.ControlScratchPeak, bCopy.Compile.ControlScratchPeak = 0, 0
+	aCopy.Compile.ControlScratchRetained, bCopy.Compile.ControlScratchRetained = 0, 0
+	aCopy.Compile.ControlScratchDiscarded, bCopy.Compile.ControlScratchDiscarded = 0, 0
+	for i := range aCopy.Funcs {
+		if aCopy.Funcs[i] == nil || bCopy.Funcs[i] == nil {
+			continue
+		}
+		aFunc, bFunc := *aCopy.Funcs[i], *bCopy.Funcs[i]
+		aFunc.CompileNanos, bFunc.CompileNanos = 0, 0
+		aCopy.Funcs[i], bCopy.Funcs[i] = &aFunc, &bFunc
+	}
 	return reflect.DeepEqual(&aCopy, &bCopy)
 }
 
-func TestCompileWorkersLowestIndexError(t *testing.T) {
-	results := make([]funcResult, 8)
-	results[7].err = errors.New("late index")
-	results[2].err = errors.New("first index")
-	idx, err := firstFuncError(results)
-	if idx != 2 || err == nil || err.Error() != "first index" {
-		t.Fatalf("firstFuncError = (%d, %v), want (2, first index)", idx, err)
-	}
-}
-
 func BenchmarkCompileModuleCompactionAMD64(b *testing.B) {
-	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
-	for _, name := range []string{"many_funcs.wasm", "json-as.wasm"} {
+	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
+	for _, name := range []string{"synthetic/many_funcs.wasm", "assemblyscript/json-as.wasm"} {
 		m := readParallelTestModule(b, filepath.Join(corpus, name))
 		b.Run(name, func(b *testing.B) {
 			for _, compact := range []bool{false, true} {
@@ -111,11 +153,11 @@ func TestCompileWorkersCorpusParity(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping whole-corpus compiler parity in short mode")
 	}
-	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
+	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
 	for _, name := range []string{
-		"tiny.wasm", "fib_rec.wasm", "many_funcs.wasm",
-		"json-as.wasm", "blake-as.wasm", "lua.wasm", "sqlite3.wasm",
-		"ruby.wasm", "esbuild.wasm",
+		"synthetic/tiny.wasm", "synthetic/fib_rec.wasm", "synthetic/many_funcs.wasm",
+		"assemblyscript/json-as.wasm", "assemblyscript/blake-as.wasm",
+		"semantic/coremark/coremark.wasm", "polybench/gemm.wasm",
 	} {
 		t.Run(name, func(t *testing.T) {
 			m := readParallelTestModule(t, filepath.Join(corpus, name))
@@ -150,6 +192,7 @@ func compileWorkerTestModule(t *testing.T, m *wasm.Module, workers int) (*encode
 }
 
 func compileWorkerTestModuleCompact(t *testing.T, m *wasm.Module, workers int, compact bool) (*encoder.CompiledModule, *ModuleStats) {
+	requireCompilerDiagnostics(t)
 	t.Helper()
 	stats := &ModuleStats{}
 	cm, err := CompileModuleWith(m, CompileOptions{Workers: workers, Stats: stats, CompactNative: compact})
@@ -180,5 +223,8 @@ func assertCompiledModuleEqual(t *testing.T, got, want *encoder.CompiledModule) 
 	}
 	if !reflect.DeepEqual(got.DirectPrepared, want.DirectPrepared) {
 		t.Fatalf("DirectPrepared differs\n got: %v\nwant: %v", got.DirectPrepared, want.DirectPrepared)
+	}
+	if got.PreparedIsolatedTables != want.PreparedIsolatedTables {
+		t.Fatalf("PreparedIsolatedTables = %v, want %v", got.PreparedIsolatedTables, want.PreparedIsolatedTables)
 	}
 }

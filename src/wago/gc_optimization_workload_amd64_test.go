@@ -25,6 +25,9 @@ const (
 // required comma-separated exact result vector (`none` for no results), so an A/B
 // cannot pass merely because two wrong executions produced nonzero checksums.
 func BenchmarkGCOptimizationWorkload(b *testing.B) {
+	if !requireCompilerDiagnostics(b) {
+		return
+	}
 	path := os.Getenv(gcOptimizationWorkloadEnv)
 	if path == "" {
 		b.Skipf("set %s to a standalone WasmGC workload exporting run", gcOptimizationWorkloadEnv)
@@ -46,11 +49,11 @@ func BenchmarkGCOptimizationWorkload(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.Cleanup(func() { _ = compiled.Close() })
-	imports := make(Imports, len(compiled.Imports))
+	imports := NewImports()
 	for _, key := range compiled.Imports {
-		imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
+		testSetImport(imports, key, slotHostFunc(func(HostModule, []uint64, []uint64) {}))
 	}
-	if err := compiled.validateImportBindings(imports, nil); err != nil {
+	if err := compiled.validateImportBindings(imports.bindings, nil); err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()

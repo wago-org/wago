@@ -35,9 +35,7 @@ func TestHostCallThenGrow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
-		"env.f": HostFunc(func(_ HostModule, _, _ []uint64) {}),
-	}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(_ HostModule, _, _ []uint64) {}))})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}

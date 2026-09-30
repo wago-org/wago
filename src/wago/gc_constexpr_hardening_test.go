@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	corergc "github.com/wago-org/wago/src/core/runtime/gc"
-	"github.com/wago-org/wago/tests/wasmtest"
+	corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 type gcConstDirectTestRoots []corergc.Ref
@@ -50,8 +50,7 @@ func TestGCConstClassifiedRootsHonorDirectSinkStop(t *testing.T) {
 		t.Fatalf("classified direct stop visited %v", sink.refs)
 	}
 
-	elements := &gcArrayElementRoots{Count: 1}
-	elements.Values[0] = corergc.Root(corergc.I31New(3))
+	elements := &gcArrayElementRoots{Count: 1, Values: []corergc.Root{corergc.Root(corergc.I31New(3))}}
 	roots.extra = elements
 	sink = &gcConstStoppingClassifiedSink{limit: 1}
 	if roots.RangeClassifiedRootRefs(sink) {
@@ -140,7 +139,7 @@ func TestGCConstExprStoresFunctionReferences(t *testing.T) {
 		t.Fatalf("compile function-reference GC constants: %v", err)
 	}
 	defer compiled.Close()
-	loaded := roundTripCompiled(t, compiled)
+	loaded := publicArtifactRoundTrip(t, compiled)
 	defer loaded.Close()
 	for _, candidate := range []*Compiled{compiled, loaded} {
 		in, err := instantiateCore(candidate, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true}})
@@ -194,6 +193,7 @@ func TestCompiledCodecRejectsIllTypedGCConstExpr(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
+	compiled = mutableCompiledFixture(compiled)
 	compiled.Globals[1].InitExpr = []byte{0xd0, byte(wasm.HeapNone), 0x0b}
 	if _, err := compiled.MarshalBinary(); err == nil {
 		t.Fatal("MarshalBinary accepted ref.null none for a non-null concrete global")
@@ -204,6 +204,7 @@ func TestCompiledCodecRejectsIllTypedGCConstExpr(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
+	compiled = mutableCompiledFixture(compiled)
 	compiled.Globals[1].InitExpr = []byte{0xfb, 0x01, 0x7f, 0x0b}
 	if _, err := compiled.MarshalBinary(); err == nil {
 		t.Fatal("MarshalBinary accepted an out-of-range GC constructor type")
@@ -218,6 +219,7 @@ func TestCompiledCodecRejectsIllTypedGCConstExpr(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
+	compiled = mutableCompiledFixture(compiled)
 	compiled.Elems[0].Values[0].Expr = []byte{0xd0, byte(wasm.HeapNone), 0x0b}
 	if _, err := compiled.MarshalBinary(); err == nil {
 		t.Fatal("MarshalBinary accepted a null GC element for a non-null concrete element type")

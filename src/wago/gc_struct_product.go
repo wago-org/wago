@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // stagedGCStructProduct identifies the exact product boundary of each valid

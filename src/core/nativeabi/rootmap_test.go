@@ -1,6 +1,7 @@
 package nativeabi
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -31,5 +32,41 @@ func TestValidateRootMaps(t *testing.T) {
 				t.Fatalf("ValidateRootMaps = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestValidateRootMapsFunctionBounds(t *testing.T) {
+	for _, index := range []uint32{0, 1, 2, 0x7fffffff, 0x80000000, 0xfffffffe, 0xffffffff} {
+		t.Run(fmt.Sprintf("%08x", index), func(t *testing.T) {
+			err := ValidateRootMaps([]FunctionRootMap{{LocalFunction: index, FrameBytes: 8}}, 2)
+			if index < 2 {
+				if err != nil {
+					t.Fatalf("valid function index: %v", err)
+				}
+			} else if want := fmt.Sprintf("function %d out of range", index); err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("root map error = %v, want %q", err, want)
+			}
+		})
+	}
+}
+
+func TestValidateRootMapsRejectsNegativeFunctionCount(t *testing.T) {
+	for _, count := range []int{-1, -int(^uint(0)>>1) - 1} {
+		if err := ValidateRootMaps(nil, count); err == nil || err.Error() != "negative local function count" {
+			t.Errorf("count %d error = %v, want negative local function count", count, err)
+		}
+	}
+	if err := ValidateRootMaps(nil, 0); err != nil {
+		t.Fatalf("empty root maps: %v", err)
+	}
+}
+
+func BenchmarkValidateRootMapsFunctionBounds(b *testing.B) {
+	maps := []FunctionRootMap{{LocalFunction: 0, FrameBytes: 8, Slots: []RootSlot{{Offset: 0, Kind: RootGCRef}}}}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if err := ValidateRootMaps(maps, 1); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

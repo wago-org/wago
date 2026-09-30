@@ -12,9 +12,20 @@ import (
 var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
-	optimization.Bind("swar-idioms", &swarIdiomsEnabled),
+	optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
+	optimization.Bind("prepared-bounded-entry", &preparedBoundedEntryEnabled),
+	optimization.Bind("wide-loop-int-const", &wideLoopIntConstEnabled),
+	optimization.Bind("compact-loop-align32", &compactLoopAlign32Enabled),
+	optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
+	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
+	optimization.Bind("callfree-loop-cold-exit", &callFreeLoopColdExitEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
-	optimization.Bind("fcmp-fuse", &fcmpFuseEnabled),
+	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
+	optimization.Bind("interval-scratch-lease", &intervalScratchLeaseEnabled),
+	optimization.Bind("interval-r8-lease", &intervalR8LeaseEnabled),
+	optimization.Bind("interval-i64-weight", &intervalI64WeightEnabled),
+	optimization.Bind("memsize-regional-lease", &memSizeRegionalLeaseEnabled),
+	optimization.Bind("module-global-regional-lease", &moduleGlobalRegionalLeaseEnabled),
 	optimization.Bind("magic-div", &magicDivEnabled),
 	optimization.Bind("shared-trap-body", &sharedTrapBodyEnabled),
 	optimization.Bind("shared-adapters", &sharedAdaptersEnabled),
@@ -26,14 +37,13 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("branch-fold", &branchFoldEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
 	optimization.Bind("ext-fp-pins", &extendedFPPinsEnabled),
-	optimization.Bind("call-next-use", &callNextUseEnabled),
-	optimization.Bind("affine-lea", &affineLeaEnabled),
 	optimization.Bind("tree-order", &treeOrderEnabled),
 	optimization.Bind("assoc-tree", &associativeTreeEnabled),
 	optimization.Bind("bmi2-rorx", &bmi2RorxEnabled),
 	optimization.Bind("vex-float-mem", &vexFloatMemEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
 	optimization.Bind("addr-zext-elim", &memory32AddrZExtElimEnabled),
+	optimization.Bind("canonical-i32", &canonicalI32CarriersEnabled),
 	optimization.Bind("value-facts", &valueFactsEnabled),
 	optimization.Bind("immutable-table", &immutableLocalTableEnabled),
 	optimization.Bind("immutable-table-type", &immutableTableTypeEnabled),
@@ -42,71 +52,75 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("frame-elide", &smallFrameElideEnabled),
 	optimization.Bind("compact-i32-frame", &compactI32FrameEnabled),
 	optimization.Bind("local-slot-order", &localSlotOrderEnabled),
-	optimization.Bind("tee-spill-elide", &teeSpillElideEnabled),
 	optimization.Bind("commute-self-update", &commuteSelfUpdateEnabled),
+	optimization.Bind("commute-fixed-self-update", &commuteFixedSelfUpdateEnabled),
 	optimization.Bind("i64-mask32", &i64Mask32Enabled),
 	optimization.Bind("accumulator-immediate", &accumulatorImmediateEnabled),
 	optimization.Bind("dead-gc-new", &deadGCNewEnabled),
-	optimization.Bind("gc-ref-facts", &exactGCRefFactsEnabled),
 	optimization.Bind("gc-native-alloc", &nativeGCStructAllocEnabled),
 	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
-	optimization.Bind("v128-sink", &v128LocalSinkEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
-	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
 	optimization.BindInverted("stack-fence", &noStackFence),
 	optimization.BindInverted("stack-reg", &noStackReg),
 )
 
 var (
-	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
-	optSIMDSuperopt         = optimizationBindings.Option("simd-superopt")
-	optSWARIdioms           = optimizationBindings.Option("swar-idioms")
-	optIntervalRegionPins   = optimizationBindings.Option("interval-region-pins")
-	optFCmpFuse             = optimizationBindings.Option("fcmp-fuse")
-	optMagicDiv             = optimizationBindings.Option("magic-div")
-	optSharedTrapBody       = optimizationBindings.Option("shared-trap-body")
-	optSharedAdapters       = optimizationBindings.Option("shared-adapters")
-	optSTFlags              = optimizationBindings.Option("st-flags")
-	optStore8Flags          = optimizationBindings.Option("store8-flags")
-	optRegMerge             = optimizationBindings.Option("reg-merge")
-	optTeeSink              = optimizationBindings.Option("tee-sink")
-	optUnarySink            = optimizationBindings.Option("unary-sink")
-	optBranchFold           = optimizationBindings.Option("branch-fold")
-	optEntryArgPins         = optimizationBindings.Option("entry-arg-pins")
-	optExtendedFPPins       = optimizationBindings.Option("ext-fp-pins")
-	optCallNextUse          = optimizationBindings.Option("call-next-use")
-	optAffineLEA            = optimizationBindings.Option("affine-lea")
-	optTreeOrder            = optimizationBindings.Option("tree-order")
-	optAssocTree            = optimizationBindings.Option("assoc-tree")
-	optBMI2Rorx             = optimizationBindings.Option("bmi2-rorx")
-	optVEXFloatMem          = optimizationBindings.Option("vex-float-mem")
-	optMultiBoundsCert      = optimizationBindings.Option("multi-bounds-cert")
-	optAddrZExtElim         = optimizationBindings.Option("addr-zext-elim")
-	optValueFacts           = optimizationBindings.Option("value-facts")
-	optImmutableTable       = optimizationBindings.Option("immutable-table")
-	optImmutableTableType   = optimizationBindings.Option("immutable-table-type")
-	optInlineCallFree       = optimizationBindings.Option("inline-callfree")
-	optStoreForward         = optimizationBindings.Option("store-forward")
-	optFrameElide           = optimizationBindings.Option("frame-elide")
-	optCompactI32Frame      = optimizationBindings.Option("compact-i32-frame")
-	optLocalSlotOrder       = optimizationBindings.Option("local-slot-order")
-	optTeeSpillElide        = optimizationBindings.Option("tee-spill-elide")
-	optCommuteSelfUpdate    = optimizationBindings.Option("commute-self-update")
-	optI64Mask32            = optimizationBindings.Option("i64-mask32")
-	optAccumulatorImmediate = optimizationBindings.Option("accumulator-immediate")
-	optDeadGCNew            = optimizationBindings.Option("dead-gc-new")
-	optGCRefFacts           = optimizationBindings.Option("gc-ref-facts")
-	optGCNativeAlloc        = optimizationBindings.Option("gc-native-alloc")
-	optV128ConstCache       = optimizationBindings.Option("v128-const-cache")
-	optV128Pins             = optimizationBindings.Option("v128-pins")
-	optV128Sink             = optimizationBindings.Option("v128-sink")
-	optRegABI               = optimizationBindings.Option("reg-abi")
-	optInline               = optimizationBindings.Option("inline")
-	optLoopPrecheck         = optimizationBindings.Option("loop-precheck")
-	optStackFence           = optimizationBindings.Option("stack-fence")
-	optStackReg             = optimizationBindings.Option("stack-reg")
+	optBoundsFacts             = optimizationBindings.Option("bounds-facts")
+	optSIMDSuperopt            = optimizationBindings.Option("simd-superopt")
+	optPreparedDirectEntry     = optimizationBindings.Option("prepared-direct-entry")
+	optPreparedBoundedEntry    = optimizationBindings.Option("prepared-bounded-entry")
+	optWideLoopIntConst        = optimizationBindings.Option("wide-loop-int-const")
+	optCompactLoopAlign32      = optimizationBindings.Option("compact-loop-align32")
+	optCountedLoopLatch        = optimizationBindings.Option("counted-loop-latch")
+	optLinearSumLoop           = optimizationBindings.Option("linear-sum-loop")
+	optCallFreeLoopColdExit    = optimizationBindings.Option("callfree-loop-cold-exit")
+	optIntervalRegionPins      = optimizationBindings.Option("interval-region-pins")
+	optIntervalNextUse         = optimizationBindings.Option("interval-next-use")
+	optIntervalScratchLease    = optimizationBindings.Option("interval-scratch-lease")
+	optIntervalR8Lease         = optimizationBindings.Option("interval-r8-lease")
+	optIntervalI64Weight       = optimizationBindings.Option("interval-i64-weight")
+	optMemSizeRegionalLease    = optimizationBindings.Option("memsize-regional-lease")
+	optModuleGlobalRegionLease = optimizationBindings.Option("module-global-regional-lease")
+	optMagicDiv                = optimizationBindings.Option("magic-div")
+	optSharedTrapBody          = optimizationBindings.Option("shared-trap-body")
+	optSharedAdapters          = optimizationBindings.Option("shared-adapters")
+	optSTFlags                 = optimizationBindings.Option("st-flags")
+	optStore8Flags             = optimizationBindings.Option("store8-flags")
+	optRegMerge                = optimizationBindings.Option("reg-merge")
+	optTeeSink                 = optimizationBindings.Option("tee-sink")
+	optUnarySink               = optimizationBindings.Option("unary-sink")
+	optBranchFold              = optimizationBindings.Option("branch-fold")
+	optEntryArgPins            = optimizationBindings.Option("entry-arg-pins")
+	optExtendedFPPins          = optimizationBindings.Option("ext-fp-pins")
+	optTreeOrder               = optimizationBindings.Option("tree-order")
+	optAssocTree               = optimizationBindings.Option("assoc-tree")
+	optBMI2Rorx                = optimizationBindings.Option("bmi2-rorx")
+	optVEXFloatMem             = optimizationBindings.Option("vex-float-mem")
+	optMultiBoundsCert         = optimizationBindings.Option("multi-bounds-cert")
+	optAddrZExtElim            = optimizationBindings.Option("addr-zext-elim")
+	optCanonicalI32            = optimizationBindings.Option("canonical-i32")
+	optValueFacts              = optimizationBindings.Option("value-facts")
+	optImmutableTable          = optimizationBindings.Option("immutable-table")
+	optImmutableTableType      = optimizationBindings.Option("immutable-table-type")
+	optInlineCallFree          = optimizationBindings.Option("inline-callfree")
+	optStoreForward            = optimizationBindings.Option("store-forward")
+	optFrameElide              = optimizationBindings.Option("frame-elide")
+	optCompactI32Frame         = optimizationBindings.Option("compact-i32-frame")
+	optLocalSlotOrder          = optimizationBindings.Option("local-slot-order")
+	optCommuteSelfUpdate       = optimizationBindings.Option("commute-self-update")
+	optCommuteFixedSelfUpdate  = optimizationBindings.Option("commute-fixed-self-update")
+	optI64Mask32               = optimizationBindings.Option("i64-mask32")
+	optAccumulatorImmediate    = optimizationBindings.Option("accumulator-immediate")
+	optDeadGCNew               = optimizationBindings.Option("dead-gc-new")
+	optGCNativeAlloc           = optimizationBindings.Option("gc-native-alloc")
+	optV128ConstCache          = optimizationBindings.Option("v128-const-cache")
+	optV128Pins                = optimizationBindings.Option("v128-pins")
+	optRegABI                  = optimizationBindings.Option("reg-abi")
+	optInline                  = optimizationBindings.Option("inline")
+	optStackFence              = optimizationBindings.Option("stack-fence")
+	optStackReg                = optimizationBindings.Option("stack-reg")
 )
 
 type KnobInfo = optimization.Info

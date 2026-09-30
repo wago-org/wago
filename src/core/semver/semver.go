@@ -156,11 +156,11 @@ func comparePre(a, b []string) int {
 	}
 	for i := 0; i < len(a) && i < len(b); i++ {
 		ai, bi := a[i], b[i]
-		an, aNum := numericID(ai)
-		bn, bNum := numericID(bi)
+		aNum := numericID(ai)
+		bNum := numericID(bi)
 		switch {
 		case aNum && bNum:
-			if c := cmpUint(an, bn); c != 0 {
+			if c := compareNumericID(ai, bi); c != 0 {
 				return c
 			}
 		case aNum && !bNum:
@@ -179,14 +179,35 @@ func comparePre(a, b []string) int {
 	return cmpInt(len(a), len(b))
 }
 
-func numericID(s string) (uint64, bool) {
+func numericID(s string) bool {
+	if s == "" {
+		return false
+	}
 	for i := 0; i < len(s); i++ {
 		if s[i] < '0' || s[i] > '9' {
-			return 0, false
+			return false
 		}
 	}
-	n, err := strconv.ParseUint(s, 10, 64)
-	return n, err == nil
+	return true
+}
+
+func compareNumericID(a, b string) int {
+	for len(a) > 1 && a[0] == '0' {
+		a = a[1:]
+	}
+	for len(b) > 1 && b[0] == '0' {
+		b = b[1:]
+	}
+	if c := cmpInt(len(a), len(b)); c != 0 {
+		return c
+	}
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
 }
 
 func cmpUint(a, b uint64) int {

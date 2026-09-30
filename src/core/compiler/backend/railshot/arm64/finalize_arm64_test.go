@@ -12,6 +12,16 @@ import (
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
+func TestFinalizerRejectsFragmentOffsetOverflowArm64(t *testing.T) {
+	before := nativeFinalizerEnabled
+	nativeFinalizerEnabled = true
+	t.Cleanup(func() { nativeFinalizerEnabled = before })
+	f := fn{sc: &scratch{fragmentOverflow: true}}
+	if _, err := f.finalizeNativeCode(0); err == nil {
+		t.Fatal("finalizer accepted an overflowing compact fragment offset")
+	}
+}
+
 func TestIdentityFinalizerRemapsAllArm64Metadata(t *testing.T) {
 	before := nativeFinalizerEnabled
 	beforeValidate := nativeFinalizerValidate
@@ -25,14 +35,8 @@ func TestIdentityFinalizerRemapsAllArm64Metadata(t *testing.T) {
 		nativeCompactionEnabled = beforeCompact
 	})
 
-	plan := &shared.GCFrameRootPlan{
-		AdapterReturnOffset: 12,
-		Callsites: []shared.GCFrameCallsitePlan{
-			{ReturnOffset: 16},
-			{ReturnOffset: 24, StackAdjust: 64},
-		},
-	}
-	sc := &scratch{asm: &a64.Asm{B: make([]byte, 32)}, branchTargets: map[int]bool{finalizerMarkerKey(28, markerDeadHole): true}}
+	plan := testGCPlanWithCallsites(t, 12, [2]uint32{16, 0}, [2]uint32{24, 64})
+	sc := &scratch{asm: &a64.Asm{B: make([]byte, 32)}, finalizerMarkers: map[int]bool{finalizerMarkerKey(28, markerDeadHole): true}}
 	f := fn{
 		a:                sc.asm,
 		sc:               sc,
@@ -50,8 +54,8 @@ func TestIdentityFinalizerRemapsAllArm64Metadata(t *testing.T) {
 	if internal != 8 || f.adapterReturnOff != 12 || plan.AdapterReturnOffset != 12 {
 		t.Fatalf("entry/adapter offsets changed: internal=%d adapter=%d plan=%d", internal, f.adapterReturnOff, plan.AdapterReturnOffset)
 	}
-	if f.relocs[0].at != 4 || f.relocs[1].at != 20 || plan.Callsites[0].ReturnOffset != 16 || plan.Callsites[1].ReturnOffset != 24 {
-		t.Fatalf("relocation/callsite offsets changed: relocs=%#v callsites=%#v", f.relocs, plan.Callsites)
+	if f.relocs[0].at != 4 || f.relocs[1].at != 20 || testGCCallsiteReturn(t, plan, 0) != 16 || testGCCallsiteReturn(t, plan, 1) != 24 {
+		t.Fatalf("relocation/callsite offsets changed: relocs=%#v callsite-data=%#v", f.relocs, plan.CallsiteData)
 	}
 }
 
@@ -105,6 +109,7 @@ func TestRemapPCRelativeWordArm64(t *testing.T) {
 		word       uint32
 		wantTarget int
 		adr        bool
+		literal    bool
 	}{
 		{name: "B forward", oldPC: 0, word: 0x14000000 | 5, wantTarget: 16},
 		{name: "BL forward", oldPC: 0, word: 0x94000000 | 5, wantTarget: 16},
@@ -112,6 +117,8 @@ func TestRemapPCRelativeWordArm64(t *testing.T) {
 		{name: "CBZ backward", oldPC: 16, word: 0x34000000 | (uint32(0x7FFFC) << 5), wantTarget: 0},
 		{name: "TBZ backward", oldPC: 16, word: 0x36000000 | (uint32(0x3FFC) << 5), wantTarget: 0},
 		{name: "ADR forward", oldPC: 0, word: encodeADR(20), wantTarget: 16, adr: true},
+		{name: "LDR D forward", oldPC: 0, word: 0x5C000000 | 5<<5, wantTarget: 16, literal: true},
+		{name: "LDR S backward", oldPC: 16, word: 0x1C000000 | uint32(0x7FFFC)<<5, wantTarget: 0, literal: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -126,6 +133,8 @@ func TestRemapPCRelativeWordArm64(t *testing.T) {
 			var target int
 			if test.adr {
 				target, ok = adrTarget(newPC, got)
+			} else if test.literal {
+				target, ok = literalTarget(newPC, got)
 			} else {
 				target, ok = branchTarget(newPC, got)
 			}
@@ -162,6 +171,61 @@ func TestFinalizePeepholesRecordsBranchToNextArm64(t *testing.T) {
 	}
 }
 
+func TestFinalizePeepholesSkipOpaqueFragmentsArm64(t *testing.T) {
+	beforeFinalizer, beforeCompaction := nativeFinalizerEnabled, nativeCompactionEnabled
+	nativeFinalizerEnabled, nativeCompactionEnabled = true, true
+	t.Cleanup(func() { nativeFinalizerEnabled, nativeCompactionEnabled = beforeFinalizer, beforeCompaction })
+
+	a := &a64.Asm{}
+	a.Store64(a64.X0, a64.SP, 0)
+	a.Load64(a64.X0, a64.SP, 0)
+	want := bytes.Clone(a.B)
+	sc := &scratch{asm: a, finalFragments: []finalizerFragment{{start: 0, end: uint32(len(a.B)), kind: fragmentPlugin}}}
+	f := fn{a: a, sc: sc, opaqueFragments: true}
+	f.finalizePeepholes()
+	if !bytes.Equal(a.B, want) {
+		t.Fatalf("opaque fragment rewritten: got %x, want %x", a.B, want)
+	}
+}
+
+func TestBranchTargetBitsArm64(t *testing.T) {
+	targets := make([]uint64, 65)
+	const n = 65 * 64 * 4
+	for _, off := range []int{0, 252, 256, n - 4} {
+		branchTargetAdd(targets, off, n)
+		if !branchTargeted(targets, off) {
+			t.Fatalf("target %d was not retained", off)
+		}
+	}
+	for _, off := range []int{-4, 2, n, n + 4} {
+		branchTargetAdd(targets, off, n)
+		if branchTargeted(targets, off) {
+			t.Fatalf("invalid target %d was retained", off)
+		}
+	}
+}
+
+func TestFinalizePeepholesDoesNotRetainGiantBranchTargetBitsArm64(t *testing.T) {
+	beforeFinalizer, beforeCompaction := nativeFinalizerEnabled, nativeCompactionEnabled
+	nativeFinalizerEnabled, nativeCompactionEnabled = true, true
+	t.Cleanup(func() { nativeFinalizerEnabled, nativeCompactionEnabled = beforeFinalizer, beforeCompaction })
+
+	giant := make([]byte, len((scratch{}).branchTargetInline)*64*4+4)
+	wrWord(giant, 0, 0x14000001)
+	sc := &scratch{asm: &a64.Asm{B: giant}}
+	f := fn{a: sc.asm, sc: sc}
+	f.finalizePeepholes()
+	if len(sc.branchTargets) <= len(sc.branchTargetInline) {
+		t.Fatalf("giant target words = %d, want overflow", len(sc.branchTargets))
+	}
+
+	sc.asm.B = make([]byte, 8)
+	f.finalizePeepholes()
+	if len(sc.branchTargets) != 1 || &sc.branchTargets[0] != &sc.branchTargetInline[0] {
+		t.Fatal("small successor retained giant branch-target backing")
+	}
+}
+
 func TestFinalizerCandidateInventoryIsBoundedArm64(t *testing.T) {
 	beforeFinalizer, beforeCompaction := nativeFinalizerEnabled, nativeCompactionEnabled
 	beforeDisabled := nativeCompactionDisabled
@@ -194,6 +258,7 @@ func TestFinalizerCandidateInventoryIsBoundedArm64(t *testing.T) {
 }
 
 func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
 	beforeLoops := loopCompactionEnabled
 	nativeCompactionEnabled, nativeCompactionDisabled, loopCompactionEnabled = false, false, true
@@ -249,6 +314,7 @@ func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
 }
 
 func TestLoopCompactionHasFixedFunctionSizeBoundArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforeLimit := arm64LoopCompactionLimit
 	arm64LoopCompactionLimit = 16 << 10
 	t.Cleanup(func() { arm64LoopCompactionLimit = beforeLimit })
@@ -270,6 +336,7 @@ func TestLoopCompactionHasFixedFunctionSizeBoundArm64(t *testing.T) {
 }
 
 func TestLoopCompactionLimitRespectsArchitectureAndPolicyBoundsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	beforeLimit := arm64LoopCompactionLimit
 	t.Cleanup(func() { arm64LoopCompactionLimit = beforeLimit })
 	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
@@ -308,7 +375,7 @@ func TestCompactNativeCodeRemapsBranchesAndJumpTableArm64(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		f := fn{a: &a64.Asm{B: code}, sc: &scratch{branchTargets: map[int]bool{20: true}}}
+		f := fn{a: &a64.Asm{B: code}, sc: &scratch{hasBranchTargets: true}}
 		got, err := f.compactNativeCode(&offsets, deletions)
 		if err != nil {
 			t.Fatal(err)
@@ -340,8 +407,8 @@ func TestCompactNativeCodeRemapsBranchesAndJumpTableArm64(t *testing.T) {
 			finalizerMarkerKey(16, markerJumpDataEnd):  true,
 		}
 		f := fn{a: &a64.Asm{B: code}, sc: &scratch{
-			branchTargets:  markers,
-			finalFragments: []finalizerFragment{{start: 8, end: 16, kind: fragmentJumpData}},
+			finalizerMarkers: markers,
+			finalFragments:   []finalizerFragment{{start: 8, end: 16, kind: fragmentJumpData}},
 		}}
 		got, err := f.compactNativeCode(&offsets, deletions)
 		if err != nil {

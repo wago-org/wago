@@ -5,6 +5,7 @@ package amd64
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
 	"testing"
 	"unsafe"
@@ -13,7 +14,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func v128ConstBytes(b [16]byte) []byte {
@@ -131,9 +132,34 @@ func cmpMaskBytes(width int, lanes ...bool) [16]byte {
 
 func runAmd64V128(t *testing.T, m *wasm.Module, arg *[16]byte) [16]byte {
 	t.Helper()
-	cm, err := CompileModule(m)
+	modern := runAmd64V128WithOptions(t, m, arg, CompileOptions{})
+	for _, profile := range []shared.AMD64Features{0, shared.AMD64SSSE3, shared.AMD64SSSE3 | shared.AMD64SSE41, shared.AMD64SSSE3 | shared.AMD64SSE41 | shared.AMD64SSE42, shared.AMD64ModernBaseline | shared.AMD64BMI1 | shared.AMD64POPCNT} {
+		baseline := runAmd64V128WithOptions(t, m, arg, CompileOptions{AMD64FeaturesSet: true, AMD64Features: profile})
+		if modern != baseline {
+			t.Fatalf("SIMD profile=%x baseline=%x modern=%x", profile, baseline, modern)
+		}
+	}
+	return modern
+}
+
+func runAmd64V128WithOptions(t *testing.T, m *wasm.Module, arg *[16]byte, opts CompileOptions) [16]byte {
+	requireCompilerDiagnostics(t)
+	var stats ModuleStats
+	if opts.AMD64FeaturesSet && opts.AMD64Features == 0 {
+		opts.Stats = &stats
+	}
+	t.Helper()
+	cm, err := CompileModuleWith(m, opts)
 	if err != nil {
 		t.Fatalf("amd64 compile: %v", err)
+	}
+	if opts.Stats != nil {
+		if cm.RequiredAMD64Features != 0 {
+			t.Fatalf("baseline object requires optional features %x", cm.RequiredAMD64Features)
+		}
+		for i, fs := range stats.Funcs {
+			assertSIMDBaseline(t, cm.Code[cm.Entry[i]:cm.Entry[i]+fs.CodeBytes-fs.NativeSize.LiteralPoolBytes])
+		}
 	}
 	eng, err := runtime.NewEngine()
 	if err != nil {
@@ -158,7 +184,7 @@ func runAmd64V128(t *testing.T, m *wasm.Module, arg *[16]byte) [16]byte {
 
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	if arg != nil {
 		copy(serArgs, arg[:])
 	}
@@ -199,7 +225,7 @@ func runAmd64ResultBuffer(t *testing.T, m *wasm.Module, setup func(*runtime.JobM
 
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	if setup != nil {
 		setup(jm, serArgs, entry, cm)
 	}
@@ -211,7 +237,16 @@ func runAmd64ResultBuffer(t *testing.T, m *wasm.Module, setup func(*runtime.JobM
 
 func runMemAmd64V128(t *testing.T, m *wasm.Module, setup func([]byte)) ([16]byte, []byte, error) {
 	t.Helper()
-	cm, err := CompileModule(m)
+	modern, mem, err := runMemAmd64V128WithOptions(t, m, setup, CompileOptions{})
+	baseline, bmem, berr := runMemAmd64V128WithOptions(t, m, setup, CompileOptions{AMD64FeaturesSet: true})
+	if modern != baseline || !bytes.Equal(mem, bmem) || (err == nil) != (berr == nil) {
+		t.Fatalf("SIMD memory baseline=%x modern=%x errors=%v/%v", baseline, modern, berr, err)
+	}
+	return baseline, bmem, berr
+}
+func runMemAmd64V128WithOptions(t *testing.T, m *wasm.Module, setup func([]byte), opts CompileOptions) ([16]byte, []byte, error) {
+	t.Helper()
+	cm, err := CompileModuleWith(m, opts)
 	if err != nil {
 		t.Fatalf("amd64 compile: %v", err)
 	}
@@ -241,7 +276,7 @@ func runMemAmd64V128(t *testing.T, m *wasm.Module, setup func([]byte)) ([16]byte
 	defer runtime.Unmap(mem)
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	callErr := eng.Call(entry+uintptr(cm.Entry[0]), serArgs, lin, trap, results)
 	var out [16]byte
 	copy(out[:], results[:16])
@@ -2322,7 +2357,7 @@ func TestSIMDV128FunctionABIUsesSixteenByteSlots(t *testing.T) {
 	defer runtime.Unmap(code)
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	binary.LittleEndian.PutUint32(serArgs[0:4], 0x11111111)
 	copy(serArgs[8:24], arg[:])
 	binary.LittleEndian.PutUint32(serArgs[24:28], 0x76543210)

@@ -12,10 +12,14 @@ import (
 // capabilities it requires, and lightweight metadata). rt.Compile returns one;
 // rt.Instantiate consumes one.
 type Module struct {
-	rt      *Runtime
-	c       *Compiled
-	imports []ImportSpec
-	reqCaps []Capability
+	rt           *Runtime
+	c            *Compiled
+	compiledView *Compiled
+	imports      []ImportSpec
+	reqCaps      []Capability
+	// importIdentities is populated only when a declared component contains a
+	// dot and the flat binding namespace can therefore be ambiguous.
+	importIdentities map[string]importBindingKey
 
 	identity             atomic.Pointer[moduleIdentityToken]
 	ownsCompiled         bool
@@ -93,6 +97,55 @@ type ImportSpec struct {
 
 // Key returns the "module.name" import key.
 func (s ImportSpec) Key() string { return s.Module + "." + s.Name }
+
+func (s ImportSpec) bindingKey() string { return importBindingMapKey(s.Module, s.Name) }
+
+func (c *Compiled) functionImportBindingKey(index int) string {
+	if c == nil || index < 0 || index >= len(c.Imports) {
+		return ""
+	}
+	ends, _, _, _, _ := c.importModuleEndSections()
+	module, name := splitImportKeyAt(c.Imports[index], importModuleEndAt(ends, index))
+	return importBindingMapKey(module, name)
+}
+
+func (c *Compiled) globalImportBindingKey(index int) string {
+	if c == nil || index < 0 || index >= len(c.GlobalImports) {
+		return ""
+	}
+	def := c.GlobalImports[index]
+	return importBindingMapKey(def.Module, def.Name)
+}
+
+func (c *Compiled) memoryImportBindingKey(index int) string {
+	def, ok := c.memoryImportAt(index)
+	if !ok {
+		return ""
+	}
+	_, _, ends, _, _ := c.importModuleEndSections()
+	module, name := splitImportKeyAt(def.ImportKey, importModuleEndAt(ends, index))
+	return importBindingMapKey(module, name)
+}
+
+func (c *Compiled) tableImportBindingKey(index int) string {
+	def, ok := c.tableImportAt(index)
+	if !ok {
+		return ""
+	}
+	_, ends, _, _, _ := c.importModuleEndSections()
+	module, name := splitImportKeyAt(def.Key, importModuleEndAt(ends, index))
+	return importBindingMapKey(module, name)
+}
+
+func (c *Compiled) tagImportBindingKey(index int) string {
+	if c == nil || c.memoryDir == nil || index < 0 || index >= len(c.memoryDir.ehTags) {
+		return ""
+	}
+	_, _, _, ends, _ := c.importModuleEndSections()
+	def := c.memoryDir.ehTags[index]
+	module, name := splitImportKeyAt(def.ImportKey, importModuleEndAt(ends, index))
+	return importBindingMapKey(module, name)
+}
 
 // FunctionMetadata describes one function in Wasm function-index order.
 type FunctionMetadata struct {
@@ -178,36 +231,34 @@ type ModuleMetadata struct {
 }
 
 type moduleBindings struct {
-	rt                   *Runtime
-	imports              Imports
-	importMeta           map[string]*registeredImport
-	independentInstances bool
-	moduleIdentity       bool
+	rt                       *Runtime
+	imports                  resolvedImports
+	importMeta               map[string]*registeredImport
+	independentInstances     bool
+	moduleIdentity           bool
+	maxCompiledMetadataBytes uint64
 }
 
 // snapshotModuleBindingsLocked captures one immutable import-policy generation.
 // The caller must hold rt.mu.
 func (rt *Runtime) snapshotModuleBindingsLocked(hooks *hookRegistry) moduleBindings {
-	cfg := rt.cfg.clone()
+	rt.importsShared = true
+	cfg := rt.cfg
+	if cfg == nil {
+		cfg = NewRuntimeConfig()
+	}
 	bindings := moduleBindings{
-		rt:                   rt,
-		imports:              make(Imports, len(rt.imports)),
-		importMeta:           make(map[string]*registeredImport, len(rt.importMeta)),
-		independentInstances: cfg.IndependentInstanceExecution(),
-		moduleIdentity:       hooks.needsModuleIdentity(),
-	}
-	for key, value := range rt.imports {
-		bindings.imports[key] = value
-	}
-	for key, value := range rt.importMeta {
-		bindings.importMeta[key] = cloneRegisteredImport(value)
+		rt: rt, imports: rt.imports, importMeta: rt.importMeta,
+		independentInstances:     cfg.IndependentInstanceExecution(),
+		moduleIdentity:           hooks.needsModuleIdentity(),
+		maxCompiledMetadataBytes: cfg.MaxCompiledMetadataBytes(),
 	}
 	return bindings
 }
 
 // buildModule wraps a compiled module with the runtime's current binding
 // generation. Callers that already hold rt.mu should snapshot directly instead.
-func (rt *Runtime) buildModule(c *Compiled) *Module {
+func (rt *Runtime) buildModule(c *Compiled) (*Module, error) {
 	rt.mu.Lock()
 	hooks := rt.loadHooks()
 	bindings := rt.snapshotModuleBindingsLocked(hooks)
@@ -215,8 +266,14 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 	return buildModule(c, bindings)
 }
 
-func buildModule(c *Compiled, bindings moduleBindings) *Module {
-	m := &Module{rt: bindings.rt, c: c, independentInstances: bindings.independentInstances}
+func buildModule(c *Compiled, bindings moduleBindings) (*Module, error) {
+	snapshot, err := c.freezeExecution(bindings.maxCompiledMetadataBytes)
+	if err != nil {
+		return nil, err
+	}
+	m := &Module{rt: bindings.rt, c: snapshot, compiledView: c, independentInstances: bindings.independentInstances}
+	c = m.c
+	m.imports = make([]ImportSpec, 0, len(c.Imports)+len(c.GlobalImports)+c.memoryImportCount()+c.tableImportCount()+c.tagImportCount())
 	if bindings.moduleIdentity {
 		m.identity.Store(&moduleIdentityToken{})
 	}
@@ -227,12 +284,19 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 		mod, name := splitImportKeyAt(key, importModuleEndAt(funcModuleEnds, i))
 		spec := ImportSpec{Module: mod, Name: name, Kind: ImportFunc, Index: i}
 		if i < len(c.importFuncSigs) {
-			spec.Params = append([]ValType(nil), c.importFuncSigs[i].Params...)
-			spec.Results = append([]ValType(nil), c.importFuncSigs[i].Results...)
-			spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
+			spec.Params = c.importFuncSigs[i].Params
+			spec.Results = c.importFuncSigs[i].Results
+			if c.importFuncSigs[i].HasTypeIndex {
+				if validateFuncSignature(c.importFuncSigs[i], c.Types) == nil {
+					spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignatureView(c.importFuncSigs[i], c.Types)
+				}
+			} else {
+				spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
+			}
 		}
-		meta := bindings.importMeta[key]
-		if _, ok := bindings.imports[key]; ok && registeredImportMatches(meta, mod, name) {
+		bindingKey := importBindingMapKey(mod, name)
+		meta := bindings.importMeta[bindingKey]
+		if _, ok := bindings.imports[bindingKey]; ok && registeredImportMatches(meta, mod, name) {
 			spec.Provided = true
 		}
 		if meta != nil && registeredImportMatches(meta, mod, name) {
@@ -246,7 +310,7 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 		m.imports = append(m.imports, spec)
 	}
 	for i, gi := range c.GlobalImports {
-		key := gi.Module + "." + gi.Name
+		key := importBindingMapKey(gi.Module, gi.Name)
 		exact, exactErr := exactValueType(gi.Type, gi.HasValueType, gi.ValueTypeIndex, c.ValueTypes, c.Types)
 		m.imports = append(m.imports, ImportSpec{
 			Module: gi.Module, Name: gi.Name, Kind: ImportGlobal, Index: i,
@@ -259,7 +323,7 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportMemory, Index: i,
 			MemoryMin: def.Min, MemoryMax: def.Max, HasMax: def.HasMax, Addr64: def.Addr64, Shared: def.Shared,
-			Provided: bindings.imports[def.ImportKey] != nil,
+			Provided: bindings.imports[importBindingMapKey(mod, name)] != nil,
 		})
 	}
 	for i := 0; i < c.tableImportCount(); i++ {
@@ -269,7 +333,7 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportTable, Index: i,
 			Type: def.Type, ValueType: exact, HasValueType: exactErr == nil, Min: def.Min, Max: def.Max, HasMax: def.HasMax, Addr64: def.Addr64,
-			Provided: bindings.imports[def.Key] != nil,
+			Provided: bindings.imports[importBindingMapKey(mod, name)] != nil,
 		})
 	}
 	if c.memoryDir != nil {
@@ -278,16 +342,27 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 			mod, name := splitImportKeyAt(def.ImportKey, importModuleEndAt(tagModuleEnds, i))
 			sig := c.Types[def.TypeIndex]
 			params, _ := valTypesFromDescriptors(sig.Params, c.Types)
-			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: append([]ValueTypeDescriptor(nil), sig.Params...), Provided: bindings.imports[def.ImportKey] != nil})
+			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: sig.Params, Provided: bindings.imports[importBindingMapKey(mod, name)] != nil})
 		}
 	}
-	return m
+	return m, nil
 }
 
-// registeredImportMatches prevents the legacy flat binding namespace from
-// crossing an exact Wasm module/name boundary. A nil record identifies an
-// explicitly supplied legacy binding, which has no structured identity to
-// verify and retains the public Imports API's historical behavior.
+// indexDeclaredImportIdentities records exact identities independently of the
+// human-readable "module.name" spelling.
+func indexDeclaredImportIdentities(specs []ImportSpec) (map[string]importBindingKey, error) {
+	if len(specs) == 0 {
+		return nil, nil
+	}
+	exactIdentities := make(map[string]importBindingKey, len(specs))
+	for _, spec := range specs {
+		identity := importBindingKey{module: spec.Module, name: spec.Name}
+		exactIdentities[spec.bindingKey()] = identity
+	}
+	return exactIdentities, nil
+}
+
+// registeredImportMatches verifies plugin declaration metadata.
 func registeredImportMatches(meta *registeredImport, module, name string) bool {
 	return meta == nil || meta.module == module && meta.name == name
 }
@@ -310,7 +385,12 @@ func (m *Module) moduleIdentity() ModuleIdentity {
 }
 
 // Compiled returns the underlying low-level compiled module.
-func (m *Module) Compiled() *Compiled { return m.c }
+func (m *Module) Compiled() *Compiled {
+	if m.compiledView != nil {
+		return m.compiledView
+	}
+	return m.c
+}
 
 // Exports returns the module's exported function names, sorted.
 func (m *Module) Exports() []string { return m.c.ExportedFunctions() }
@@ -595,8 +675,8 @@ func (c *Compiled) importModuleEndSections() (functions, tables, memories, tags 
 		return nil, nil, nil, nil, false
 	}
 	var ends []uint64
-	if c.validateMemo != nil {
-		ends = c.validateMemo.importModuleEnds
+	if memo := c.loadValidateMemo(); memo != nil {
+		ends = memo.importModuleEnds
 	}
 	functionCount := len(c.Imports)
 	tableCount := c.tableImportCount()
@@ -623,13 +703,14 @@ func (c *Compiled) appendImportModuleEnd(moduleEnd uint64) {
 }
 
 func (c *Compiled) validateImportModuleEnds() error {
-	if c == nil || c.validateMemo == nil || len(c.validateMemo.importModuleEnds) == 0 {
+	memo := c.loadValidateMemo()
+	if memo == nil || len(memo.importModuleEnds) == 0 {
 		return nil
 	}
 	functionEnds, tableEnds, memoryEnds, tagEnds, exact := c.importModuleEndSections()
 	if !exact {
 		want := len(c.Imports) + c.tableImportCount() + c.memoryImportCount() + c.tagImportCount()
-		return fmt.Errorf("compiled metadata invalid: import module-name ends length %d != non-global import count %d", len(c.validateMemo.importModuleEnds), want)
+		return fmt.Errorf("compiled metadata invalid: import module-name ends length %d != non-global import count %d", len(memo.importModuleEnds), want)
 	}
 	for i, key := range c.Imports {
 		if err := validateImportModuleEnd(key, functionEnds[i]); err != nil {
@@ -656,4 +737,17 @@ func (c *Compiled) validateImportModuleEnds() error {
 		}
 	}
 	return nil
+}
+
+func declaredImportIdentity(specs []ImportSpec, index map[string]importBindingKey, key string) (importBindingKey, bool) {
+	if index != nil {
+		identity, ok := index[key]
+		return identity, ok
+	}
+	for _, spec := range specs {
+		if spec.bindingKey() == key {
+			return importBindingKey{module: spec.Module, name: spec.Name}, true
+		}
+	}
+	return importBindingKey{}, false
 }

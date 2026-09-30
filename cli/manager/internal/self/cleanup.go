@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wago-org/wago/internal/managedrelease"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -28,15 +29,15 @@ func ParseMode(value string) (Mode, error) {
 }
 
 func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
-	var candidates []string
+	executable = managedrelease.Launcher(executable)
+	candidates := managedrelease.RemovalTargets(executable)
 	switch mode {
 	case Full:
 		if root := selectedWagoRoot(dirs, executable); root != "" {
 			candidates = append(candidates, root)
-		} else {
-			// Linux's default XDG layout has no single Wago root.
-			candidates = append(candidates, dirs.Data, dirs.Config, filepath.Dir(dirs.Cache))
 		}
+		// Active XDG directories can coexist with a legacy Wago root.
+		candidates = append(candidates, dirs.Data, dirs.Config, filepath.Dir(dirs.Cache))
 		candidates = append(candidates, InstalledSourcePath())
 	case Partial:
 		candidates = append(candidates, dirs.Versions, dirs.Config, filepath.Dir(dirs.Cache), InstalledSourcePath())
@@ -57,10 +58,10 @@ func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
 		covered := false
 		for i := 0; i < len(targets); {
 			switch {
-			case pathContains(targets[i], candidate):
+			case removalCovers(targets[i], candidate):
 				covered = true
 				i = len(targets)
-			case pathContains(candidate, targets[i]):
+			case removalCovers(candidate, targets[i]):
 				targets = append(targets[:i], targets[i+1:]...)
 			default:
 				i++
@@ -92,6 +93,9 @@ func selectedWagoRoot(dirs wagopaths.Dirs, executable string) string {
 }
 
 func InstalledSourcePath() string {
+	if source := managedrelease.Source(); source != "" {
+		return source
+	}
 	source := os.Getenv("WAGO_SRC_DIR")
 	if source != "" {
 		if _, err := os.Stat(source); err == nil {
@@ -188,6 +192,49 @@ func RemoveManagedPath(path string) error {
 	return os.RemoveAll(clean)
 }
 
+// Keep the coordinator and its parent directories linked until all destructive
+// work finishes. Retiring it earlier would let a new publisher bypass the lock.
+func removeManagedPathKeepingLock(path, lockPath string) error {
+	clean := filepath.Clean(path)
+	if !safeManagedPath(clean) {
+		return fmt.Errorf("refusing unsafe path %q", path)
+	}
+	if pathContains(clean, lockPath) && pathContains(lockPath, clean) {
+		return nil
+	}
+	if !pathContains(clean, lockPath) {
+		return os.RemoveAll(clean)
+	}
+	entries, err := os.ReadDir(clean)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := removeManagedPathKeepingLock(filepath.Join(clean, entry.Name()), lockPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func emptyCleanupDirs(lockPath string, targets []string, installationDir string) []string {
+	var dirs []string
+	for dir := filepath.Dir(lockPath); ; dir = filepath.Dir(dir) {
+		covered := dir == installationDir
+		for _, target := range targets {
+			covered = covered || pathContains(target, dir)
+		}
+		if !covered || !safeManagedPath(dir) {
+			break
+		}
+		dirs = append(dirs, dir)
+	}
+	return dirs
+}
+
 func removeEmptyInstallationDir(path string) error {
 	clean := filepath.Clean(path)
 	if !safeManagedPath(clean) {
@@ -226,15 +273,11 @@ func isCompletionCommand(line string) bool {
 }
 
 func fishCompletionPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
+	path, err := wagopaths.FishCompletionPath()
+	if err != nil {
 		return ""
 	}
-	root := os.Getenv("XDG_CONFIG_HOME")
-	if root == "" {
-		root = filepath.Join(home, ".config")
-	}
-	return filepath.Join(root, "fish", "completions", "wago.fish")
+	return path
 }
 
 func isInstallerPathCommand(line string) bool {
@@ -244,16 +287,43 @@ func isInstallerPathCommand(line string) bool {
 		strings.HasPrefix(line, "$env.PATH = ($env.PATH | prepend ")
 }
 
+func removalCovers(parent, child string) bool {
+	if filepath.Clean(parent) == filepath.Clean(child) {
+		return true
+	}
+	// RemoveAll removes a symlink entry, not its resolved destination.
+	for _, path := range [...]string{parent, child} {
+		if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return false
+		}
+	}
+	return pathContains(parent, child)
+}
+
 func pathContains(parent, child string) bool {
+	parent = resolvedCleanupPath(parent)
+	child = resolvedCleanupPath(child)
 	relative, err := filepath.Rel(parent, child)
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func safeManagedPath(path string) bool {
-	clean := filepath.Clean(path)
+	clean := resolvedCleanupPath(path)
 	home, _ := os.UserHomeDir()
+	home = resolvedCleanupPath(home)
 	return clean != "" &&
 		clean != "." &&
 		clean != filepath.VolumeName(clean)+string(filepath.Separator) &&
 		(home == "" || clean != filepath.Clean(home))
+}
+
+func resolvedCleanupPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	clean := filepath.Clean(path)
+	if resolved, err := filepath.EvalSymlinks(clean); err == nil {
+		return resolved
+	}
+	return clean
 }

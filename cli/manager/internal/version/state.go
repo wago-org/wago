@@ -1,8 +1,10 @@
 package version
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -33,35 +35,48 @@ func installedVersions(d wagopaths.Dirs) []string {
 	return vers
 }
 
-func activeVersion(d wagopaths.Dirs) string {
-	b, err := os.ReadFile(d.ConfigFile("active-version"))
-	if err != nil {
-		return ""
+func validateVersionStorageName(name string) error {
+	if name == "" || name == "." || name == ".." || name[len(name)-1] == '.' {
+		return fmt.Errorf("invalid version %q: use letters, digits, '.', '-', '+', '@', or '_'", name)
 	}
-	return strings.TrimSpace(string(b))
-}
-
-func activeProfile(d wagopaths.Dirs) wagopaths.Profile {
-	b, err := os.ReadFile(d.ConfigFile("active-profile"))
-	if err == nil {
-		if profile, parseErr := wagopaths.ParseProfile(strings.TrimSpace(string(b))); parseErr == nil {
-			return profile
+	for index := 0; index < len(name); index++ {
+		char := name[index]
+		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') || char == '.' || char == '-' ||
+			char == '+' || char == '@' || char == '_') {
+			return fmt.Errorf("invalid version %q: use letters, digits, '.', '-', '+', '@', or '_'", name)
 		}
 	}
-	return wagopaths.ProfileStandard
+	if windowsReservedVersionName(name) {
+		return fmt.Errorf("invalid version %q: name is reserved on Windows", name)
+	}
+	return nil
 }
 
-func activeBuild(d wagopaths.Dirs) wagopaths.Build {
-	b, err := os.ReadFile(d.ConfigFile("active-build"))
-	if err == nil {
-		if build, parseErr := wagopaths.ParseBuild(strings.TrimSpace(string(b))); parseErr == nil {
-			return build
-		}
+func windowsReservedVersionName(name string) bool {
+	base := name
+	if dot := strings.IndexByte(base, '.'); dot >= 0 {
+		base = base[:dot]
 	}
-	return wagopaths.BuildNormal
+	if strings.EqualFold(base, "CON") || strings.EqualFold(base, "PRN") ||
+		strings.EqualFold(base, "AUX") || strings.EqualFold(base, "NUL") {
+		return true
+	}
+	return len(base) == 4 && base[3] >= '1' && base[3] <= '9' &&
+		(strings.EqualFold(base[:3], "COM") || strings.EqualFold(base[:3], "LPT"))
+}
+
+func versionDirectory(d wagopaths.Dirs, name string) (string, error) {
+	if err := validateVersionStorageName(name); err != nil {
+		return "", err
+	}
+	return filepath.Join(d.Versions, name), nil
 }
 
 func installedRuntime(d wagopaths.Dirs, ver string, requestedProfile wagopaths.Profile, requestedBuild wagopaths.Build) (string, wagopaths.Profile, wagopaths.Build, bool) {
+	if validateVersionStorageName(ver) != nil {
+		return "", "", "", false
+	}
 	if requestedProfile != "" && requestedBuild != "" {
 		path := d.RuntimeBinary(ver, string(requestedProfile), string(requestedBuild))
 		if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
@@ -103,30 +118,16 @@ func installedRuntime(d wagopaths.Dirs, ver string, requestedProfile wagopaths.P
 }
 
 func activeRunner(d wagopaths.Dirs) (path, version string, profile wagopaths.Profile, build wagopaths.Build, ok bool) {
-	version = activeVersion(d)
+	state, err := readActiveInstallation(d)
+	if err != nil {
+		return "", "", "", "", false
+	}
+	version, profile, build = state.Version, state.Profile, state.Build
 	if version == "" {
 		return "", "", "", "", false
 	}
-	profile = activeProfile(d)
-	build = activeBuild(d)
 	path, profile, build, ok = installedRuntime(d, version, profile, build)
 	return path, version, profile, build, ok
-}
-
-func setActiveInstallation(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) error {
-	if err := d.Ensure(); err != nil {
-		return err
-	}
-	if err := os.WriteFile(d.ConfigFile("active-version"), []byte(ver+"\n"), 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(d.ConfigFile("active-profile"), []byte(string(profile)+"\n"), 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(d.ConfigFile("active-build"), []byte(string(build)+"\n"), 0o644); err != nil {
-		return err
-	}
-	return nil
 }
 
 func setActiveVersion(d wagopaths.Dirs, ver string) error {
@@ -173,7 +174,7 @@ func vmList(d wagopaths.Dirs) {
 		fmt.Println(dim("no versions installed; run: wago version install --latest --use"))
 		return
 	}
-	active, profile, build := activeVersion(d), activeProfile(d), activeBuild(d)
+	active, profile, build := activeTuple(d)
 	for _, v := range vers {
 		marker := "  "
 		if v == active {
@@ -204,46 +205,34 @@ func installedProfiles(d wagopaths.Dirs, ver string) []string {
 }
 
 func vmCurrent(d wagopaths.Dirs) {
+	version, profile, build := activeTuple(d)
 	if automation.JSON() {
-		version := activeVersion(d)
-		ui.PrintJSON(map[string]any{
-			"active": version != "", "version": version,
-			"profile": string(activeProfile(d)), "build": string(activeBuild(d)),
-		})
+		ui.PrintJSON(map[string]any{"active": version != "", "version": version, "profile": string(profile), "build": string(build)})
 		return
 	}
-	if a := activeVersion(d); a != "" {
-		fmt.Printf("%s %s %s\n", a, activeProfile(d), activeBuild(d))
+	if version != "" {
+		fmt.Printf("%s %s %s\n", version, profile, build)
 		return
 	}
 	fmt.Println(dim("no active version set; run: wago version install --latest --use"))
 }
 
 func vmWhich(d wagopaths.Dirs) {
-	a := activeVersion(d)
-	if a == "" {
-		fatal("version which: no active version set")
-	}
-	path, _, _, _, ok := activeRunner(d)
+	path, version, profile, build, ok := activeRunner(d)
 	if !ok {
 		fatal("version which: active runtime is not installed")
 	}
 	if automation.JSON() {
-		ui.PrintJSON(map[string]string{"path": path, "version": a, "profile": string(activeProfile(d)), "build": string(activeBuild(d))})
+		ui.PrintJSON(map[string]string{"path": path, "version": version, "profile": string(profile), "build": string(build)})
 		return
 	}
 	fmt.Println(path)
 }
 
 func vmUse(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
-	_, profile, build, ok := installedRuntime(d, ver, profile, build)
-	if !ok {
-		if profile == "" {
-			fatal("version use: %s is not installed (try: wago version install %s)", ver, ver)
-		}
-		fatal("version use: %s %s/%s is not installed (try: wago version install %s --profile %s --build %s)", ver, profile, build, ver, profile, build)
-	}
-	if err := setActiveInstallation(d, ver, profile, build); err != nil {
+	var err error
+	profile, build, err = useInstalledVersion(context.Background(), d, ver, profile, build)
+	if err != nil {
 		fatal("version use: %v", err)
 	}
 	fmt.Printf("%s\n", cyan("Using "+installedWagoLabel(ver, ver, profile, build)))

@@ -392,9 +392,6 @@ func withoutWatchFlags(arguments []string, flags []command.Flag) []string {
 		if argument == "--" {
 			return append(result, arguments[index:]...)
 		}
-		if argument == "-" || argument == "" || argument[0] != '-' {
-			return append(result, arguments[index:]...)
-		}
 		flag, inline, ok := watchedCommandFlag(argument, flags)
 		if !ok {
 			result = append(result, argument)

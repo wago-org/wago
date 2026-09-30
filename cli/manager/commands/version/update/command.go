@@ -9,7 +9,7 @@ import (
 )
 
 type Environment interface {
-	UpdateVersion(args []string, nightly, canary, force bool, profile, build, use string)
+	UpdateVersion(args []string, beta, canary, force bool, profile, build, use string)
 }
 
 func Command(environment Environment) *command.Cmd {
@@ -20,8 +20,8 @@ func Command(environment Environment) *command.Cmd {
 		Automation: command.DryRun,
 		Args:       "[channel]",
 		Flags: []command.Flag{
-			{Name: "channel", Short: "c", Arg: "<name>", Help: "canary or nightly"},
-			{Name: "nightly", Bool: true, Help: "refresh the latest nightly release"},
+			{Name: "channel", Short: "c", Arg: "<name>", Help: "canary or beta"},
+			{Name: "beta", Bool: true, Help: "refresh the latest beta release"},
 			{Name: "canary", Bool: true, Help: "refresh the canary built from main"},
 			{Name: "force", Short: "f", Bool: true, Help: "reinstall even when the commit matches"},
 			{Name: "profile", Short: "p", Arg: "<name>", Help: "profile to refresh (default active)"},
@@ -38,7 +38,7 @@ func Command(environment Environment) *command.Cmd {
 				args = []string{value}
 			}
 			channels := len(args)
-			if c.Bool("nightly") {
+			if c.Bool("beta") {
 				channels++
 			}
 			if c.Bool("canary") {
@@ -71,7 +71,7 @@ func Command(environment Environment) *command.Cmd {
 				ui.Usage("version update: --no-input requires --use or --no-use")
 			}
 			environment.UpdateVersion(
-				args, c.Bool("nightly"), c.Bool("canary"), c.Bool("force"), c.Str("profile"), c.Str("build"), use,
+				args, c.Bool("beta"), c.Bool("canary"), c.Bool("force"), c.Str("profile"), c.Str("build"), use,
 			)
 		},
 	}

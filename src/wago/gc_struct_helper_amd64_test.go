@@ -10,12 +10,12 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestStagedGCStructGetDefaultCollectorProfiles(t *testing.T) {
 	data := stagedGCStructGetOnlyBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
 		t.Fatalf("public compile = %v, want closed GC gate", err)
 	}
 
@@ -248,7 +248,7 @@ func TestStagedGCStructBasicNumericActionsAndPublicResultToken(t *testing.T) {
 			if err := in.ReleaseGCRef(ref); err != nil {
 				t.Fatalf("release new public result: %v", err)
 			}
-			values, err := in.Call(context.Background(), "new")
+			values, err := in.InvokeValues(context.Background(), "new")
 			if err != nil || len(values) != 1 || values[0].Type() != ValAnyRef || values[0].GCRef().IsNull() || values[0].Bits()>>32 == 0 {
 				t.Fatalf("Call new public result = %v, %v; want typed opaque GCRef", values, err)
 			}
@@ -317,11 +317,11 @@ func TestStagedGCStructGetAllocationFailureAndCodecGate(t *testing.T) {
 }
 
 func TestStagedGCStructHelperFootprint(t *testing.T) {
-	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
-		t.Fatalf("compiledCodeCache size = %d, want 64", got)
+	if got := unsafe.Sizeof(compiledCodeCache{}) - unsafe.Sizeof(profileCacheState{}); got != 64 {
+		t.Fatalf("compiledCodeCache non-profiling size = %d, want 64", got)
 	}
-	if got := unsafe.Sizeof(gcPublicState{}); got != 3888 {
-		t.Fatalf("gcPublicState size = %d, want 3888", got)
+	if got := unsafe.Sizeof(gcPublicState{}); got != 3984 {
+		t.Fatalf("gcPublicState size = %d, want 3984 with inline fast paths and dynamic overflow slices", got)
 	}
 	if got := unsafe.Sizeof(gcRefTokenEntry{}); got != 48 {
 		t.Fatalf("gcRefTokenEntry size = %d, want 48", got)

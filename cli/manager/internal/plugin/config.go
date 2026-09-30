@@ -27,11 +27,12 @@ func Configure(request ConfigRequest) error {
 	if len(request.Config) == 0 || !json.Valid(request.Config) {
 		return fmt.Errorf("plugin %s configuration must be exactly one valid JSON value", id)
 	}
-	src, err := depsSource(global)
+	selection := capturePluginRuntime()
+	src, err := selection.depsSource(global)
 	if err != nil {
 		return err
 	}
-	buildDir, err := buildDirFor(global)
+	buildDir, err := selection.buildDirFor(global)
 	if err != nil {
 		return err
 	}
@@ -53,6 +54,6 @@ func Configure(request ConfigRequest) error {
 		if err := project.ValidateLock(lock); err != nil {
 			return err
 		}
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false)
+		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false, selection.config())
 	})
 }

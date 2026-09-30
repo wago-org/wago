@@ -4,11 +4,13 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func multiValueBranchPayloadModule() []byte {
@@ -106,6 +108,19 @@ func multiValueFusedBrIfV128PayloadModule(takenVec, fallthroughVec V128) []byte 
 }
 
 func TestMultiValueDefaultConfigControlCallsAndCodec(t *testing.T) {
+	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
+		if got := SupportedFeatures(); got != 0 {
+			t.Fatalf("unsupported AMD64 backend reports executable features: %s", got)
+		}
+		cfg := NewRuntimeConfig()
+		if err := cfg.Validate(); !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("default multi-value config should fail closed: %v", err)
+		}
+		if _, err := cfg.Compile(multiValueControlCallModule()); !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("multi-value compile should fail closed: %v", err)
+		}
+		return
+	}
 	if !SupportedFeatures().IsEnabled(CoreFeatureMultiValue) {
 		t.Fatal("default supported features should include multi-value")
 	}
@@ -124,7 +139,7 @@ func TestMultiValueDefaultConfigControlCallsAndCodec(t *testing.T) {
 		if err != nil {
 			t.Fatalf("MarshalBinary: %v", err)
 		}
-		c, err = Load(blob)
+		c, err = LoadTrustedArtifact(blob)
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
@@ -199,7 +214,7 @@ func TestMultiValueBranchPayloadsAndTypedCall(t *testing.T) {
 		if err != nil {
 			t.Fatalf("MarshalBinary: %v", err)
 		}
-		c, err = Load(blob)
+		c, err = LoadTrustedArtifact(blob)
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
@@ -218,7 +233,7 @@ func TestMultiValueBranchPayloadsAndTypedCall(t *testing.T) {
 		t.Fatalf("block_br = %#x, want %#x", got, want)
 	}
 
-	out, err := in.Call(context.Background(), "block_br")
+	out, err := in.InvokeValues(context.Background(), "block_br")
 	if err != nil {
 		t.Fatalf("Call block_br: %v", err)
 	}
@@ -240,7 +255,7 @@ func TestMultiValueBranchPayloadsAndTypedCall(t *testing.T) {
 		if !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("br_if_pair(%d) = %#x, want %#x", tc.selector, got, tc.want)
 		}
-		out, err = in.Call(context.Background(), "br_if_pair", ValueI32(tc.selector))
+		out, err = in.InvokeValues(context.Background(), "br_if_pair", ValueI32(tc.selector))
 		if err != nil {
 			t.Fatalf("Call br_if_pair(%d): %v", tc.selector, err)
 		}
@@ -264,7 +279,7 @@ func TestMultiValueBranchPayloadsAndTypedCall(t *testing.T) {
 		if !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("br_table_pair(%d) = %#x, want %#x", tc.selector, got, tc.want)
 		}
-		out, err = in.Call(context.Background(), "br_table_pair", ValueI32(tc.selector))
+		out, err = in.InvokeValues(context.Background(), "br_table_pair", ValueI32(tc.selector))
 		if err != nil {
 			t.Fatalf("Call br_table_pair(%d): %v", tc.selector, err)
 		}

@@ -59,7 +59,13 @@ func ModuleBytes(src []byte) error {
 }
 
 func ModuleBytesWithPolicy(src []byte, policy int) error {
-	m, err := wasm.DecodeModule(src)
+	features := wasm.ValidationFeatures{
+		CompactImports:       true,
+		MultiMemory:          true,
+		ExtendedConstGlobals: true,
+		GCConstExpr:          true,
+	}
+	m, err := wasm.DecodeModuleWithFeatures(src, features)
 	if err != nil {
 		return fmt.Errorf("decode: %w", err)
 	}
@@ -68,7 +74,7 @@ func ModuleBytesWithPolicy(src []byte, policy int) error {
 		bodyBytes += len(m.Code[i].BodyBytes)
 	}
 	workers := functionworkers.Resolve(policy, len(m.Code), bodyBytes)
-	if err := wasm.ValidateModuleWithWorkers(m, workers); err != nil {
+	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, features, workers); err != nil {
 		return fmt.Errorf("validate: %w", err)
 	}
 	return nil

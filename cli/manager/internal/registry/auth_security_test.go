@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -137,14 +138,85 @@ func TestDeviceAuthorizationKeepsCredentialsOutOfURLs(t *testing.T) {
 	}
 }
 
+func TestLinkDeviceFlowShowsCompleteLinkWithoutSeparateCodeInstructions(t *testing.T) {
+	server, capture := newDeviceFlowServer(t, `{"access_token":"`+testGitHubToken+`"}`,
+		http.StatusOK, `{"token":"`+testRegistryToken+`"}`)
+	var openedURL string
+	hooks := deviceFlowTestHooks(t, server.URL, &openedURL)
+	hooks.promptAction = func() (tui.Action, bool, bool) {
+		return tui.ActionOpen, true, false
+	}
+
+	output := captureStdout(t, func() {
+		token, err := githubDeviceTokenUsingContext(context.Background(), server.URL, true, hooks)
+		if err != nil || token != testRegistryToken {
+			t.Fatalf("device token = %q, %v", token, err)
+		}
+	})
+	if openedURL != capture.verificationURL {
+		t.Fatalf("opened URL = %q, want %q", openedURL, capture.verificationURL)
+	}
+	if !strings.Contains(output, capture.verificationURL) {
+		t.Fatalf("link flow did not show complete link:\n%s", output)
+	}
+	for _, unwanted := range []string{"copy your one-time code", "enter the code"} {
+		if strings.Contains(strings.ToLower(output), unwanted) {
+			t.Fatalf("link flow showed code instructions %q:\n%s", unwanted, output)
+		}
+	}
+}
+
+func TestCodeDeviceFlowShowsCodeAndVerificationPage(t *testing.T) {
+	server, capture := newDeviceFlowServer(t, `{"access_token":"`+testGitHubToken+`"}`,
+		http.StatusOK, `{"token":"`+testRegistryToken+`"}`)
+	hooks := deviceFlowTestHooks(t, server.URL, new(string))
+
+	output := captureStdout(t, func() {
+		token, err := githubDeviceTokenUsingContext(context.Background(), server.URL, false, hooks)
+		if err != nil || token != testRegistryToken {
+			t.Fatalf("device token = %q, %v", token, err)
+		}
+	})
+	if !strings.Contains(output, "short-lived-code") || !strings.Contains(output, server.URL+"/login/device") {
+		t.Fatalf("code flow did not show code and verification page:\n%s", output)
+	}
+	if strings.Contains(output, capture.verificationURL) {
+		t.Fatalf("code flow unexpectedly showed complete link:\n%s", output)
+	}
+}
+
+func captureStdout(t *testing.T, run func()) string {
+	t.Helper()
+	old := os.Stdout
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = write
+	t.Cleanup(func() { os.Stdout = old })
+	run()
+	if err := write.Close(); err != nil {
+		t.Fatal(err)
+	}
+	output, err := io.ReadAll(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := read.Close(); err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = old
+	return string(output)
+}
+
 func TestInteractiveDeviceAuthorizationWaitsForBrowserAction(t *testing.T) {
 	server, _ := newDeviceFlowServer(t, `{"access_token":"`+testGitHubToken+`"}`,
 		http.StatusOK, `{"token":"`+testRegistryToken+`"}`)
-	var openedURL, copiedCode string
+	var openedURL, copiedLink string
 	actions := []tui.Action{tui.ActionCopy, tui.ActionOpen}
 	hooks := deviceFlowTestHooks(t, server.URL, &openedURL)
-	hooks.copyCode = func(code string) error {
-		copiedCode = code
+	hooks.copyLink = func(link string) error {
+		copiedLink = link
 		return nil
 	}
 	hooks.promptAction = func() (tui.Action, bool, bool) {
@@ -157,8 +229,8 @@ func TestInteractiveDeviceAuthorizationWaitsForBrowserAction(t *testing.T) {
 	if err != nil || token != testRegistryToken {
 		t.Fatalf("device token = %q, %v", token, err)
 	}
-	if copiedCode != "short-lived-code" {
-		t.Fatalf("copied code = %q", copiedCode)
+	if copiedLink != openedURL {
+		t.Fatalf("copied link = %q, opened link = %q", copiedLink, openedURL)
 	}
 	if openedURL == "" {
 		t.Fatal("browser was not opened after the explicit action")

@@ -7,7 +7,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wago "github.com/wago-org/wago/src/wago"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // addModule exports add(i32, i32) -> i32.
@@ -51,7 +51,7 @@ func ExampleSupportedFeatures() {
 func ExampleRuntimeConfig_WithFeature() {
 	cfg := wago.NewRuntimeConfig().WithFeature(wago.CoreFeatureBulkMemoryOperations, false)
 	fmt.Println(cfg.CoreFeatures())
-	// Output: multi-value|mutable-global|nontrapping-float-to-int-conversion|reference-types|sign-extension-ops|simd|extended-constant-expressions|extended-const-expressions|tail-call|typed-function-references|multi-memory|memory64|table64
+	// Output: multi-value|mutable-global|nontrapping-float-to-int-conversion|reference-types|sign-extension-ops|simd|extended-constant-expressions|extended-const-expressions|tail-call|typed-function-references|gc|exception-handling|multi-memory|memory64|table64
 }
 
 func ExampleCoreFeatures_IsEnabled() {

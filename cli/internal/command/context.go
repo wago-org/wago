@@ -12,7 +12,7 @@ type Ctx struct {
 	Path  string
 	Args  []string
 	input []string
-	strs  map[string]string
+	strs  map[string][]string
 	bools map[string]bool
 }
 
@@ -24,11 +24,25 @@ func NewContext(args []string, strs map[string]string, bools map[string]bool) *C
 	if bools == nil {
 		bools = map[string]bool{}
 	}
-	return &Ctx{Args: args, strs: strs, bools: bools}
+	values := make(map[string][]string, len(strs))
+	for name, value := range strs {
+		values[name] = []string{value}
+	}
+	return &Ctx{Args: args, strs: values, bools: bools}
 }
 
-func (c *Ctx) Str(name string) string { return c.strs[name] }
-func (c *Ctx) Bool(name string) bool  { return c.bools[name] }
+func (c *Ctx) Str(name string) string {
+	values := c.strs[name]
+	if len(values) == 0 {
+		return ""
+	}
+	return values[len(values)-1]
+}
+
+// Strings returns every value supplied for a string flag, in command-line order.
+func (c *Ctx) Strings(name string) []string { return append([]string(nil), c.strs[name]...) }
+
+func (c *Ctx) Bool(name string) bool { return c.bools[name] }
 
 // Invocation returns the normalized arguments that produced this context.
 func (c *Ctx) Invocation() []string { return append([]string(nil), c.input...) }

@@ -2,12 +2,14 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 type managedTestExtension struct{ manager *InstanceManager }
@@ -137,33 +139,28 @@ func TestManagedCallerAndWatcherDuringHostCall(t *testing.T) {
 }
 
 func TestManagedForkImportCopyValidation(t *testing.T) {
-	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	fn := slotHostFunc(func(HostModule, []uint64, []uint64) {})
 	parent := &Instance{c: &Compiled{
 		Imports:       []string{"env.fn"},
 		GlobalImports: []GlobalImportDef{{Module: "env", Name: "g"}},
 		memoryImport:  "env.mem",
 		tableImport:   "env.table",
-	}, imports: Imports{
-		"env.fn":    fn,
-		"env.g":     GlobalImport{Type: ValI32},
-		"env.mem":   fn,
-		"env.table": fn,
-	}}
+	}, imports: testImports("env.fn", fn, "env.g", GlobalImport{Type: ValI32}, "env.mem", fn, "env.table", fn).bindings}
 	got, err := managedForkImports(parent)
-	if err != nil || len(got) != 4 || got["env.fn"] == nil || got["env.g"] == nil {
+	if err != nil || len(got) != 4 || got[testImportKey("env.fn")] == nil || got[testImportKey("env.g")] == nil {
 		t.Fatalf("managedForkImports = %#v, %v", got, err)
 	}
 	for _, tc := range []struct {
 		name string
 		mut  func(*Instance)
 	}{
-		{"missing", func(in *Instance) { delete(in.imports, "env.fn") }},
-		{"unsafe", func(in *Instance) { in.imports["env.fn"] = 3 }},
-		{"borrowed global", func(in *Instance) { in.imports["env.g"] = GlobalImport{Global: &Global{}} }},
-		{"unsafe memory", func(in *Instance) { in.imports["env.mem"] = &Global{} }},
+		{"missing", func(in *Instance) { delete(in.imports, testImportKey("env.fn")) }},
+		{"unsafe", func(in *Instance) { in.imports[testImportKey("env.fn")] = 3 }},
+		{"borrowed global", func(in *Instance) { in.imports[testImportKey("env.g")] = GlobalImport{Global: &Global{}} }},
+		{"unsafe memory", func(in *Instance) { in.imports[testImportKey("env.mem")] = &Global{} }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			clone := &Instance{c: parent.c, imports: make(Imports, len(parent.imports))}
+			clone := &Instance{c: parent.c, imports: make(resolvedImports, len(parent.imports))}
 			for k, v := range parent.imports {
 				clone.imports[k] = v
 			}
@@ -203,6 +200,13 @@ func TestManagedVoidTableDispatch(t *testing.T) {
 	}
 	if err := owned.InvokeVoidTable(context.Background(), 0); err != nil {
 		t.Fatalf("InvokeVoidTable: %v", err)
+	}
+	if allocs := testing.AllocsPerRun(100, func() {
+		if err := owned.InvokeVoidTable(context.Background(), 0); err != nil {
+			panic(err)
+		}
+	}); allocs != 0 {
+		t.Fatalf("background InvokeVoidTable allocations = %.0f, want 0", allocs)
 	}
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -252,6 +256,45 @@ func TestManagedVoidTableValidationRejectsNullAndWrongSignature(t *testing.T) {
 			t.Fatal("non-void table entry accepted")
 		}
 	})
+}
+
+func TestManagedInvokeVoidTableContextInterruptsNativeLoop(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		// TinyGo's cooperative scheduler cannot run a context timer while native
+		// Wasm owns the thread; its interruption coverage uses external signals.
+		return
+	}
+	ext := &managedTestExtension{}
+	rt := NewRuntime()
+	defer rt.Close()
+	if err := rt.Use(ext); err != nil {
+		t.Fatal(err)
+	}
+	mod, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x03, 0x40, 0x0c, 0x00, 0x0b, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	owned, err := ext.manager.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owned.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if err := owned.InvokeVoidTable(ctx, 0); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("infinite table invocation = %v, want context deadline", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("table cancellation took %v, want bounded interruption", elapsed)
+	}
 }
 
 func TestManagedCapabilityGuardHelpers(t *testing.T) {

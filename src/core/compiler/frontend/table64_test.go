@@ -129,12 +129,12 @@ func TestStagedTable64RequiresFiniteRuntimeBound(t *testing.T) {
 		t.Fatalf("inert oversized table64 declaration: %v", err)
 	}
 	m.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableSize}}}}}
-	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "executable ceiling") {
+	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "implementation limit") {
 		t.Fatalf("executable oversized table64 error = %v", err)
 	}
 	m.Code = nil
 	m.Exports = []wasm.Export{{Name: "table", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}}}
-	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "executable ceiling") {
+	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "implementation limit") {
 		t.Fatalf("exported oversized table64 error = %v", err)
 	}
 	m.Exports = nil
@@ -183,7 +183,7 @@ func TestStagedTable64ImportBounds(t *testing.T) {
 	table = m.Imports[0].Type.TableType()
 	table.Limits.Max, table.Limits.HasMax = tooLarge, true
 	m.Imports[0].Type = wasm.NewTableExternType(table)
-	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "exceeds staged ceiling") {
+	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "implementation limit") {
 		t.Fatalf("oversized table64 import error = %v", err)
 	}
 }

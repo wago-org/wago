@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func gcNativeResolverReuseModule() []byte {
@@ -53,6 +53,9 @@ func gcNativeResolverSharedModule() []byte {
 }
 
 func TestGCNativeResolverTelemetryAttributesModuleStub(t *testing.T) {
+	if !requireCompilerDiagnostics(t) {
+		return
+	}
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithGCCodeTelemetry(true), gcNativeResolverSharedModule())
 	if err != nil {
 		t.Fatal(err)

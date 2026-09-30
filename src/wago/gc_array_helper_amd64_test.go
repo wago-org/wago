@@ -10,7 +10,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const stagedGCArrayNumericDefaultHex = "0061736d0100000001b080808000095e7d005e7d01600001640060027f6400017d60017f017d60037f64017d017d60027f7d017d6001646a017f6000017f038880808000070203040506070806988080800002640000430000803f4103fb06000b6400004103fb07000b079d8080800004036e65770000036765740002077365745f6765740004036c656e00060ae780808000078780808000004103fb07000b89808080000020012000fb0b000b8880808000002000100010010b928080800000200120002002fb0e0120012000fb0b010b8d808080000020004103fb0701200110030b8680808000002000fb0f0b868080800000100010050b"
@@ -19,7 +19,7 @@ const stagedGCArrayNumericFixedHex = "0061736d0100000001b080808000095e7d005e7d01
 
 func TestStagedGCArrayNumericLocalProfiles(t *testing.T) {
 	data := stagedGCArrayNumericLocalBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
 		t.Fatalf("public compile = %v, want closed GC gate", err)
 	}
 	profiles := []struct {
@@ -101,7 +101,7 @@ func TestStagedGCArrayNumericDefaultGlobalRoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public compile unexpectedly admitted GC array constant expressions")
 	}
 	profiles := []struct {
@@ -133,7 +133,7 @@ func TestStagedGCArrayNumericDefaultGlobalRoots(t *testing.T) {
 			if state == nil || state.gcGlobalRootCount != 2 {
 				t.Fatalf("default array root mapping = %#v", state)
 			}
-			for i := uint8(0); i < state.gcGlobalRootCount; i++ {
+			for i := uint32(0); i < state.gcGlobalRootCount; i++ {
 				mapping := state.gcGlobalRoots[i]
 				ref := gc.Ref(uint32(readGlobalObject(in.globalCells[mapping.GlobalIndex], ValAnyRef)))
 				rooted, err := in.gc.CheckedGlobalSlot(mapping.SlotIndex)
@@ -192,7 +192,7 @@ func TestStagedGCArrayNumericDefaultGlobalRoots(t *testing.T) {
 			if err := in.ReleaseGCRef(ValueOf(ValAnyRef, token).GCRef()); err != nil {
 				t.Fatal(err)
 			}
-			values, err := in.Call(context.Background(), "new")
+			values, err := in.InvokeValues(context.Background(), "new")
 			if err != nil || len(values) != 1 || values[0].GCRef().IsNull() {
 				t.Fatalf("Call new = %v, %v", values, err)
 			}
@@ -297,7 +297,7 @@ func TestStagedGCArrayNumericFixedOfficialProduct(t *testing.T) {
 			if err := in.ReleaseGCRef(ValueOf(ValAnyRef, raw[0]).GCRef()); err != nil {
 				t.Fatal(err)
 			}
-			values, err := in.Call(context.Background(), "new")
+			values, err := in.InvokeValues(context.Background(), "new")
 			if err != nil || len(values) != 1 || values[0].GCRef().IsNull() {
 				t.Fatalf("Call new = %v, %v", values, err)
 			}
@@ -335,11 +335,11 @@ func TestStagedGCArrayNumericFixedOfficialProduct(t *testing.T) {
 }
 
 func TestStagedGCArrayHelperFootprint(t *testing.T) {
-	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
-		t.Fatalf("compiledCodeCache size = %d, want 64", got)
+	if got := unsafe.Sizeof(compiledCodeCache{}) - unsafe.Sizeof(profileCacheState{}); got != 64 {
+		t.Fatalf("compiledCodeCache non-profiling size = %d, want 64", got)
 	}
-	if got := unsafe.Sizeof(gcArrayGlobalInit{}); got != 48 {
-		t.Fatalf("gcArrayGlobalInit size = %d, want 48", got)
+	if got := unsafe.Sizeof(gcArrayGlobalInit{}); got != 40 {
+		t.Fatalf("gcArrayGlobalInit size = %d, want 40 with dynamic value storage", got)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/cli/internal/project"
 )
 
 type BoolSetting struct {
@@ -181,16 +182,32 @@ func validateValues(kind boolSettingKind, values map[string]bool) error {
 		prefix = "optimizations."
 		label = "optimization"
 	}
+	seen := make(map[string]string, len(values))
 	for name, enabled := range values {
 		setting, ok := Lookup(prefix + name)
 		if !ok || setting.kind != kind {
 			return fmt.Errorf("unknown %s setting %q", label, name)
+		}
+		if err := recordCanonicalSetting(seen, setting.Key, name, label); err != nil {
+			return err
 		}
 		if enabled && !setting.Available {
 			return fmt.Errorf("%s setting %q is unavailable", label, name)
 		}
 	}
 	return nil
+}
+
+func recordCanonicalSetting(seen map[string]string, canonical, name, label string) error {
+	previous, duplicate := seen[canonical]
+	if !duplicate {
+		seen[canonical] = name
+		return nil
+	}
+	if name < previous {
+		previous, name = name, previous
+	}
+	return fmt.Errorf("duplicate %s settings %q and %q", label, previous, name)
 }
 
 func ValidateFeatureValues(values map[string]bool) error {
@@ -211,6 +228,10 @@ func SchemaNames() map[string][]string {
 		}
 		result[section] = append(result[section], setting.name)
 	}
+	// The URI remains v1, so its editor schema must continue to accept retired
+	// optimization properties even though they no longer appear in the active
+	// runtime catalog.
+	result["optimizations"] = append(result["optimizations"], project.RetiredOptimizationNames()...)
 	for section := range result {
 		sort.Strings(result[section])
 	}

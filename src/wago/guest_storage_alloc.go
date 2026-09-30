@@ -3,7 +3,7 @@ package wago
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // GuestGCArrayAllocatorHostModule is the optional host-callback surface for
@@ -29,16 +29,14 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 	if !h.valid() || h.in == nil {
 		return 0, fmt.Errorf("wago: GC result allocation is outside its active host callback: %w", ErrPermissionDenied)
 	}
-	if resultIndex < 0 || resultIndex >= len(h.exactResults) {
+	_, results := h.exactSignature()
+	if resultIndex < 0 || resultIndex >= len(results) {
 		return 0, fmt.Errorf("wago: host result index %d is out of range", resultIndex)
 	}
 	if h.ephemeralGCResults == nil {
 		return 0, fmt.Errorf("wago: GC result allocation requires the active host dispatch: %w", ErrPermissionDenied)
 	}
-	if int(h.ephemeralGCResults.count) >= len(h.ephemeralGCResults.tokens) {
-		return 0, fmt.Errorf("wago: allocated GC host result count exceeds %d", len(h.ephemeralGCResults.tokens))
-	}
-	required := h.exactResults[resultIndex]
+	required := results[resultIndex]
 	if required.Kind != ValueTypeReference || !required.Ref.Heap.Defined {
 		return 0, fmt.Errorf("wago: host result %d is not a defined GC reference type", resultIndex)
 	}
@@ -66,13 +64,13 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 		return 0, fmt.Errorf("wago: host result type %d has no Runtime-domain identity", localType)
 	}
 
-	endBorrow, err := beginGuestStorageBorrow(h.in)
+	borrowState, err := beginGuestStorageBorrow(h.in)
 	if err != nil {
 		return 0, err
 	}
-	defer endBorrow()
-	unlockNative := h.in.lockInstanceNativeStateForHostAccess()
-	defer unlockNative()
+	defer borrowState.guestStorageBorrow.Store(0)
+	nativeMu := h.in.acquireInstanceNativeStateForHostAccess()
+	defer nativeMu.Unlock()
 	lockedDomain := h.in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
 	state := h.in.publicGCState()
@@ -101,7 +99,7 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 		return 0, err
 	}
 	temps := h.ephemeralGCResults
-	temps.tokens[temps.count] = token
+	temps.setToken(temps.count, token)
 	temps.count++
 	return token, nil
 }
@@ -117,16 +115,7 @@ func issueHostGCResultLocked(source *Instance, state *gcPublicState, ref gc.Ref,
 	if required.Kind != ValueTypeReference || !source.gcRefMatchesValueType(ref, required) {
 		return 0, fmt.Errorf("wago: allocated GC result type %d does not match host result type", localType)
 	}
-	if int(state.resultTokenCount) >= len(state.resultTokens) {
-		return 0, fmt.Errorf("wago: public GC result token count exceeds %d", len(state.resultTokens))
-	}
-	ownerIndex := uint8(0)
-	for ownerIndex < state.resultRootsMade && state.resultTokens[ownerIndex] != 0 {
-		ownerIndex++
-	}
-	if int(ownerIndex) >= len(state.resultTokens) {
-		return 0, fmt.Errorf("wago: public GC result token count exceeds %d", len(state.resultTokens))
-	}
+	ownerIndex := state.nextResultSlot()
 
 	s := source.refStore
 	s.mu.Lock()
@@ -149,10 +138,9 @@ func issueHostGCResultLocked(source *Instance, state *gcPublicState, ref gc.Ref,
 		if err != nil {
 			return 0, fmt.Errorf("wago: root host GC result: %w", err)
 		}
-		state.resultRootSlots[ownerIndex] = slot
-		state.resultRootsMade++
+		state.appendResultRootSlot(slot)
 	} else {
-		slot = state.resultRootSlots[ownerIndex]
+		slot = state.resultRootSlot(ownerIndex)
 		if err := source.gc.SetGlobalSlot(slot, ref); err != nil {
 			return 0, fmt.Errorf("wago: root host GC result: %w", err)
 		}
@@ -177,7 +165,7 @@ func issueHostGCResultLocked(source *Instance, state *gcPublicState, ref gc.Ref,
 			token: token, ref: ref, slot: slot, ownerIndex: ownerIndex,
 			exact: exact, domainType: domainType, owner: source,
 		}
-		state.resultTokens[ownerIndex] = token
+		state.setResultToken(ownerIndex, token)
 		state.resultTokenCount++
 	}
 	s.mu.Unlock()

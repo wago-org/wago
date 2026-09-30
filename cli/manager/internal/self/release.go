@@ -16,8 +16,8 @@ func Channel(current string) string {
 }
 
 func pinnedChannel(version string) string {
-	for _, channel := range []string{"canary", "nightly"} {
-		if strings.HasPrefix(version, channel+"-") || strings.HasPrefix(version, channel+"@") {
+	for _, channel := range []string{"canary", "beta"} {
+		if strings.Contains(version, "-"+channel+".") || strings.HasPrefix(version, channel+"@") {
 			return channel
 		}
 	}
@@ -25,5 +25,5 @@ func pinnedChannel(version string) string {
 }
 
 func rolling(version string) bool {
-	return version == "canary" || version == "nightly"
+	return version == "canary" || version == "beta"
 }

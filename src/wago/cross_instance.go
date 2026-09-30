@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // InstanceExport is a handle to another instance's exported function, used as an
@@ -27,6 +27,14 @@ type InstanceExport struct {
 	results  []ValType
 }
 
+func deferredHostEventCalleeError() error {
+	return fmt.Errorf("instance with deferred host events cannot be used as a cross-instance native callee")
+}
+
+func valTypeMayCarryFuncref(typ ValType) bool {
+	return typ == ValFuncRef || typ == ValAnyRef
+}
+
 // ExportedFunc returns a handle to this instance's exported function `name`,
 // suitable as a cross-instance import value in another module's Imports. A
 // re-exported InstanceExport resolves to the original producer handle, preserving
@@ -40,6 +48,9 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 		return nil, err
 	}
 	defer in.endInvocation()
+	if in.hostEvents != nil {
+		return nil, deferredHostEventCalleeError()
+	}
 	gfi, ok := in.c.Exports[name]
 	if !ok {
 		return nil, fmt.Errorf("no exported function %q", name)
@@ -51,7 +62,7 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 		if gfi >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", name, gfi)
 		}
-		ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport)
+		ex, ok := in.imports[in.c.functionImportBindingKey(gfi)].(*InstanceExport)
 		if !ok || ex == nil || ex.inst == nil {
 			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", name)
 		}
@@ -113,6 +124,16 @@ type tableOwner struct {
 	funcrefGCStore *referenceStore
 	importers      int
 	closed         bool
+}
+
+func (t *Table) instanceOwner() *Instance {
+	if t == nil || t.owner == nil {
+		return nil
+	}
+	t.owner.mu.Lock()
+	owner := t.owner.instance
+	t.owner.mu.Unlock()
+	return owner
 }
 
 // NewTable creates a host-owned funcref table that modules can import and share
@@ -197,6 +218,51 @@ func (t *Table) Size() int {
 		return 0
 	}
 	return int(binary.LittleEndian.Uint32(t.desc))
+}
+
+// EntryIsNull reports whether one table entry is null without exposing its
+// internal descriptor or allocating a public reference token. Callers must not
+// race this diagnostic read with guest table mutation.
+func (t *Table) EntryIsNull(index uint64) (bool, error) {
+	if t == nil {
+		return false, fmt.Errorf("wago: nil table")
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed || len(t.desc) < 8 || t.owner == nil {
+		return false, fmt.Errorf("wago: table is closed or invalid")
+	}
+	size := uint64(binary.LittleEndian.Uint32(t.desc))
+	if index >= size {
+		return false, fmt.Errorf("wago: table index %d out of bounds (size %d)", index, size)
+	}
+	stride := coreruntime.TableEntryBytes
+	valueOffset := 0
+	if t.owner.elementType != ValFuncRef {
+		stride = 8
+	} else {
+		valueOffset = coreruntime.TableEntryRefSlotOffset
+	}
+	if index > uint64((maxInt()-8-valueOffset)/stride) {
+		return false, fmt.Errorf("wago: table index %d overflows host addressing", index)
+	}
+	offset := 8 + int(index)*stride + valueOffset
+	if offset < 8 || offset+8 > len(t.desc) {
+		return false, fmt.Errorf("wago: table descriptor is truncated")
+	}
+	return binary.LittleEndian.Uint64(t.desc[offset:]) == 0, nil
+}
+
+func (t *Table) runtimeCapacity() (uint32, bool) {
+	if t == nil {
+		return 0, false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed || len(t.desc) < 8 {
+		return 0, false
+	}
+	return binary.LittleEndian.Uint32(t.desc[4:]), true
 }
 
 // Close releases a host-created table after every importer closes. Instance-owned
@@ -911,8 +977,12 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 			return nil, fmt.Errorf("no exported table %q", name)
 		}
 	}
-	if importDef, imported := in.c.tableImportAt(tableIndex); imported {
-		table, ok := in.imports.table(importDef.Key)
+	elementType := in.c.tableElementType(tableIndex)
+	if in.hostEvents != nil && valTypeMayCarryFuncref(elementType) {
+		return nil, deferredHostEventCalleeError()
+	}
+	if _, imported := in.c.tableImportAt(tableIndex); imported {
+		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if !ok || len(table.desc) < 8 {
 			return nil, fmt.Errorf("exported table %q imported descriptor is invalid", name)
 		}
@@ -922,7 +992,6 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	if len(desc) < 8 {
 		return nil, fmt.Errorf("exported table %q index %d descriptor is invalid", name, tableIndex)
 	}
-	elementType := in.c.tableElementType(tableIndex)
 	store := in.refStore
 	if (elementType == ValExternRef || isGCRefValType(elementType)) && store == nil {
 		var err error
@@ -1019,6 +1088,9 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 		return nil, fmt.Errorf("exported global %q index %d out of range", name, idx)
 	}
 	g := in.globalCells[idx]
+	if in.hostEvents != nil && valTypeMayCarryFuncref(g.Type) {
+		return nil, deferredHostEventCalleeError()
+	}
 	if idx < len(in.c.GlobalImports) {
 		return g, nil
 	}

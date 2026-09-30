@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func stagedGCStructNumericGlobalsBytes(t testing.TB) []byte {
@@ -21,7 +21,7 @@ func stagedGCStructNumericGlobalsBytes(t testing.TB) []byte {
 
 func TestStagedGCStructGlobalRootsAndPublicEgress(t *testing.T) {
 	data := stagedGCStructNumericGlobalsBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public compile unexpectedly admitted GC constant-expression globals")
 	}
 
@@ -54,7 +54,7 @@ func TestStagedGCStructGlobalRootsAndPublicEgress(t *testing.T) {
 			if state == nil || state.gcGlobalRootCount != 2 {
 				t.Fatalf("GC global root mapping = %#v", state)
 			}
-			for i := uint8(0); i < state.gcGlobalRootCount; i++ {
+			for i := uint32(0); i < state.gcGlobalRootCount; i++ {
 				mapping := state.gcGlobalRoots[i]
 				want := gc.Ref(uint32(readGlobalObject(in.globalCells[mapping.GlobalIndex], ValAnyRef)))
 				got, err := collector.CheckedGlobalSlot(mapping.SlotIndex)

@@ -1,13 +1,13 @@
 package plugin
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/internal/jsonstrict"
 )
 
 func SplitCommaList(value string) []string {
@@ -32,7 +32,7 @@ func ParseAuthorityScopeOverrides(raw string) (AuthorityScopeOverrides, error) {
 	if len(raw) > 1<<20 {
 		return nil, fmt.Errorf("--scopes JSON exceeds 1 MiB")
 	}
-	if err := rejectDuplicateJSONKeys([]byte(raw)); err != nil {
+	if err := jsonstrict.ValidateTypedJSON([]byte(raw), AuthorityScopeOverrides{}); err != nil {
 		return nil, fmt.Errorf("--scopes: %w", err)
 	}
 	decoder := json.NewDecoder(strings.NewReader(raw))
@@ -70,73 +70,4 @@ func ParseAuthorityScopeOverrides(raw string) (AuthorityScopeOverrides, error) {
 		}
 	}
 	return overrides, nil
-}
-
-func rejectDuplicateJSONKeys(raw []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	var walk func() error
-	walk = func() error {
-		token, err := decoder.Token()
-		if err != nil {
-			return err
-		}
-		delim, ok := token.(json.Delim)
-		if !ok {
-			return nil
-		}
-		switch delim {
-		case '{':
-			seen := map[string]struct{}{}
-			for decoder.More() {
-				keyToken, err := decoder.Token()
-				if err != nil {
-					return err
-				}
-				key, ok := keyToken.(string)
-				if !ok {
-					return fmt.Errorf("object key is not a string")
-				}
-				if _, duplicate := seen[key]; duplicate {
-					return fmt.Errorf("duplicate JSON key %q", key)
-				}
-				seen[key] = struct{}{}
-				if err := walk(); err != nil {
-					return err
-				}
-			}
-			closing, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			if closing != json.Delim('}') {
-				return fmt.Errorf("invalid JSON object")
-			}
-		case '[':
-			for decoder.More() {
-				if err := walk(); err != nil {
-					return err
-				}
-			}
-			closing, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			if closing != json.Delim(']') {
-				return fmt.Errorf("invalid JSON array")
-			}
-		default:
-			return fmt.Errorf("unexpected JSON delimiter %q", delim)
-		}
-		return nil
-	}
-	if err := walk(); err != nil {
-		return err
-	}
-	if _, err := decoder.Token(); err != io.EOF {
-		if err == nil {
-			return fmt.Errorf("multiple JSON values")
-		}
-		return err
-	}
-	return nil
 }

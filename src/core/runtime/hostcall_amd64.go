@@ -16,12 +16,11 @@ import (
 // control frame and unwinds to Go through the existing trap re-entry SP; Go runs
 // the host function on the goroutine stack and writes the results; resumeNative
 // restores the saved register state and returns to the instruction after the
-// call. See docs/host-import-results-plan.md §2.
+// call.
 
-// maxHostArity bounds the uint64 param/result slots a single host import may
-// carry through the control frame. v128 values use two slots; host imports with
-// many scalar params also need more than eight. Changing it shifts hcResults, so
-// the hand-assembled stubs that hard-code that offset must move too.
+// maxHostArity is the inline uint64 param/result capacity. Wider internal calls
+// use the checked extension described in hostcall_layout.go, leaving this common
+// control-frame layout and its memory cost unchanged.
 const maxHostArity = 64
 
 // Control-frame field offsets (bytes). Off-heap; the frame's address is

@@ -1,39 +1,40 @@
 package wago
 
-import "sync"
-
-// simdHostFeaturesSupported reports whether generated SIMD code can execute on
-// this host. On amd64, the railshot SIMD backend emits VEX.128 instructions and
-// uses SSSE3, SSE4.1, and SSE4.2 operations (for example pshufb, pmulld,
-// roundps/pd, and pcmpgtq), so AVX OS support plus SSSE3/SSE4.1/SSE4.2 are
-// required. Linux exposes AVX in
-// /proc/cpuinfo only when the kernel has enabled the XSAVE state needed to run
-// AVX instructions. On arm64, Advanced SIMD/NEON is part of the baseline AArch64
-// profile used by Go.
-var simdHostFeaturesSupported = cachedSIMDHostFeatures
-
-var (
-	simdHostFeaturesOnce sync.Once
-	simdHostFeaturesOK   bool
-	bmi2HostFeaturesOnce sync.Once
-	bmi2HostFeaturesOK   bool
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
-func cachedSIMDHostFeatures() bool {
-	simdHostFeaturesOnce.Do(func() { simdHostFeaturesOK = detectSIMDHostFeatures() })
-	return simdHostFeaturesOK
-}
+// simdHostFeaturesSupported retains the test seam for native admission. AMD64
+// needs only its architectural SSE2 baseline and successful CPU detection;
+// optional features select compiler optimizations. ARM64 guarantees NEON.
+var simdHostFeaturesSupported = cachedSIMDHostFeatures
+
+func cachedSIMDHostFeatures() bool { return detectSIMDHostFeatures() }
 
 func hostSupportsSIMD() bool { return simdHostFeaturesSupported() }
 
 var bmi2HostFeaturesSupported = cachedBMI2HostFeatures
 
-func cachedBMI2HostFeatures() bool {
-	bmi2HostFeaturesOnce.Do(func() { bmi2HostFeaturesOK = architectureSupportsBMI2() })
-	return bmi2HostFeaturesOK
-}
+func cachedBMI2HostFeatures() bool { return architectureSupportsBMI2() }
 
 func hostSupportsBMI2() bool { return bmi2HostFeaturesSupported() }
+
+var bitCountHostFeaturesSupported = cachedBitCountHostFeatures
+
+func cachedBitCountHostFeatures() uint8 { return architectureAMD64BitCountFeatures() }
+
+func amd64BitCountFeatures(ecx1, ebx7, extECX uint32) (features uint8) {
+	if extECX&(uint32(1)<<5) != 0 {
+		features |= shared.BitCountLZCNT
+	}
+	if ebx7&(uint32(1)<<3) != 0 {
+		features |= shared.BitCountTZCNT
+	}
+	if ecx1&(uint32(1)<<23) != 0 {
+		features |= shared.BitCountPOPCNT
+	}
+	return
+}
 
 func detectSIMDHostFeatures() bool { return architectureSupportsSIMD() }
 
@@ -49,50 +50,51 @@ func amd64SIMDFeaturesSupported(ecx, xcr0 uint32) bool {
 	return ecx&required == required && xcr0&0x6 == 0x6
 }
 
-// simdCPUFlagsSupported recognizes the four exact whitespace-delimited Linux
-// cpuinfo flags without converting the complete file to a string, lowercasing it,
-// splitting every token, or building a hash map. It normally returns from the
-// first processor's flags line and performs no allocation.
-func simdCPUFlagsSupported(data []byte) bool {
-	var avx, ssse3, sse41, sse42 bool
+//go:noinline
+func cpuFlagPresent(data []byte, flag string) bool {
 	for i := 0; i < len(data); {
-		for i < len(data) && data[i] <= ' ' {
+		if data[i] <= ' ' {
 			i++
+			continue
 		}
 		start := i
 		for i < len(data) && data[i] > ' ' {
 			i++
 		}
-		token := data[start:i]
-		switch len(token) {
-		case 3:
-			avx = avx || token[0] == 'a' && token[1] == 'v' && token[2] == 'x'
-		case 5:
-			ssse3 = ssse3 || token[0] == 's' && token[1] == 's' && token[2] == 's' && token[3] == 'e' && token[4] == '3'
-		case 6:
-			sse41 = sse41 || token[0] == 's' && token[1] == 's' && token[2] == 'e' && token[3] == '4' && token[4] == '_' && token[5] == '1'
-			sse42 = sse42 || token[0] == 's' && token[1] == 's' && token[2] == 'e' && token[3] == '4' && token[4] == '_' && token[5] == '2'
+		if i-start != len(flag) {
+			continue
 		}
-		if avx && ssse3 && sse41 && sse42 {
+		j := 0
+		for j < len(flag) && data[start+j] == flag[j] {
+			j++
+		}
+		if j == len(flag) {
 			return true
 		}
 	}
 	return false
 }
 
+// simdCPUFlagsSupported checks exact Linux cpuinfo tokens without allocation.
+func simdCPUFlagsSupported(data []byte) bool {
+	return cpuFlagPresent(data, "avx") && cpuFlagPresent(data, "ssse3") &&
+		cpuFlagPresent(data, "sse4_1") && cpuFlagPresent(data, "sse4_2")
+}
+
 func bmi2CPUFlagsSupported(data []byte) bool {
-	for i := 0; i < len(data); {
-		for i < len(data) && data[i] <= ' ' {
-			i++
-		}
-		start := i
-		for i < len(data) && data[i] > ' ' {
-			i++
-		}
-		token := data[start:i]
-		if len(token) == 4 && token[0] == 'b' && token[1] == 'm' && token[2] == 'i' && token[3] == '2' {
-			return true
-		}
+	return cpuFlagPresent(data, "bmi2")
+}
+
+// Linux reports LZCNT as "abm" in /proc/cpuinfo.
+func bitCountCPUFlags(data []byte) (features uint8) {
+	if cpuFlagPresent(data, "abm") {
+		features |= shared.BitCountLZCNT
 	}
-	return false
+	if cpuFlagPresent(data, "bmi1") {
+		features |= shared.BitCountTZCNT
+	}
+	if cpuFlagPresent(data, "popcnt") {
+		features |= shared.BitCountPOPCNT
+	}
+	return
 }

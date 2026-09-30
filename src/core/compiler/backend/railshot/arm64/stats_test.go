@@ -4,15 +4,42 @@ package arm64
 
 import (
 	"bytes"
+	"encoding/binary"
+	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
+
+func TestCompileResourceStatsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0x00, 0x20, 0x00, 0x0b})
+	var stats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
+		t.Fatal(err)
+	}
+	wantHeaders := uint64(len(m.Code)) * uint64(unsafe.Sizeof(funcHints{}))
+	if got := stats.Compile.HintHeaderBytes; got != wantHeaders {
+		t.Fatalf("hint header bytes = %d, want %d", got, wantHeaders)
+	}
+	if got, want := stats.Compile.HintSidecarBytes, uint64(unsafe.Sizeof(uint32(0))); got != want {
+		t.Fatalf("hint sidecar bytes = %d, want %d", got, want)
+	}
+	if stats.Compile.FunctionAttempts != 1 || stats.Funcs[0].FunctionAttempts != 1 {
+		t.Fatalf("function attempts module/function = %d/%d, want 1/1", stats.Compile.FunctionAttempts, stats.Funcs[0].FunctionAttempts)
+	}
+	if report := stats.String(); !strings.Contains(report, "hint-headers=28B hint-sidecars=4B attempts=1") {
+		t.Fatalf("resource report missing ledger: %q", report)
+	}
+}
 
 // compileWithStats compiles m collecting per-function codegen stats and returns
 // the module stats. guard selects guard-page-style bounds elision vs explicit
 // inline bounds checks.
 func compileWithStats(t *testing.T, m *wasm.Module, guard bool) *ModuleStats {
+	requireCompilerDiagnostics(t)
 	t.Helper()
 	var ms ModuleStats
 	if _, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, Stats: &ms}); err != nil {
@@ -22,6 +49,30 @@ func compileWithStats(t *testing.T, m *wasm.Module, guard bool) *ModuleStats {
 		t.Fatalf("stats funcs = %d, want %d", len(ms.Funcs), len(m.Code))
 	}
 	return &ms
+}
+
+func TestPendingPacketIsBoundedArm64(t *testing.T) {
+	const roots = 96
+	body := make([]byte, 1, 1+roots*6+roots+1)
+	for range roots {
+		body = append(body, 0x20, 0x00, 0x20, 0x01, 0x6a) // local.get 0; local.get 1; i32.add
+	}
+	for range roots {
+		body = append(body, 0x1a) // drop
+	}
+	body = append(body, 0x0b)
+	m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32}, nil, body)
+	stats := compileWithStats(t, m, false)
+	s := stats.Funcs[0]
+	if s.FunctionAttempts != 1 {
+		t.Fatalf("function attempts = %d, want 1", s.FunctionAttempts)
+	}
+	if s.Peephole["pending-packet-cap"] == 0 {
+		t.Fatal("pending packet did not reach its soft cap")
+	}
+	if s.MaxPendingNodes > defaultPendingNodes {
+		t.Fatalf("max pending nodes = %d, want <= %d", s.MaxPendingNodes, defaultPendingNodes)
+	}
 }
 
 func TestCodegenStatsPeepholesArm64(t *testing.T) {
@@ -147,6 +198,17 @@ func TestCodegenStatsPeepholesArm64(t *testing.T) {
 	}
 }
 
+func TestCodegenStatsSelectLocalTeeArm64(t *testing.T) {
+	// select; local.tee $0 writes CSEL directly into $0 and leaves a
+	// borrowed result on the operand stack instead of copying the value.
+	body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x1b, 0x22, 0x00, 0x20, 0x00, 0x6a, 0x0b}
+	m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	s := compileWithStats(t, m, false).Funcs[0]
+	if got := s.Peephole["select-local-tee-sink"]; got != 1 {
+		t.Fatalf("select-local-tee-sink = %d, want 1 (all: %v)", got, s.Peephole)
+	}
+}
+
 func TestCodegenStatsStoreAndBoundsArm64(t *testing.T) {
 	body := []byte{0x00, 0x41, 0x10, 0x41, 0x2a, 0x36, 0x02, 0x00, 0x0b}
 	m := modMem(t, 1, nil, nil, body)
@@ -211,6 +273,7 @@ func TestCodegenStatsConversionLocalSinkArm64(t *testing.T) {
 }
 
 func TestCodegenStatsCodegenNeutralArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
 	shapes := []struct {
@@ -223,6 +286,7 @@ func TestCodegenStatsCodegenNeutralArm64(t *testing.T) {
 		{"strength", false, i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x08, 0x6c, 0x0b}},
 		{"store", true, nil, nil, []byte{0x00, 0x41, 0x10, 0x41, 0x2a, 0x36, 0x02, 0x00, 0x0b}},
 		{"load", true, i32, i32, []byte{0x00, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}},
+		{"loop-load", true, i32, i32, []byte{0x00, 0x03, 0x7f, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b, 0x0b}},
 	}
 	for _, sh := range shapes {
 		for _, guard := range []bool{false, true} {
@@ -236,13 +300,17 @@ func TestCodegenStatsCodegenNeutralArm64(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s off: %v", sh.name, err)
 			}
-			on, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, Stats: &ModuleStats{}})
+			stats := &ModuleStats{}
+			on, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, Stats: stats})
 			if err != nil {
 				t.Fatalf("%s on: %v", sh.name, err)
 			}
 			if !bytes.Equal(off.Code, on.Code) {
 				t.Errorf("%s guard=%v: stats collection changed emitted code (%d vs %d bytes)",
 					sh.name, guard, len(off.Code), len(on.Code))
+			}
+			if sh.name == "loop-load" && !guard && stats.Funcs[0].BoundsChecksHoistable != 1 {
+				t.Errorf("loop-load: hoistable bounds checks = %d, want 1", stats.Funcs[0].BoundsChecksHoistable)
 			}
 		}
 	}
@@ -306,5 +374,60 @@ func TestModuleGlobalPinRequiresABIWideReuseArm64(t *testing.T) {
 	got := pickModuleGlobals(m, 1, []int64{bar})
 	if len(got) != 1 || got[0].global != 0 || got[0].reg != moduleGlobalRegs[0] {
 		t.Fatalf("hot global pin = %+v, want g0 -> %s", got, regName(moduleGlobalRegs[0]))
+	}
+}
+
+func TestCommonBoundsLimitUsesMemoryZeroMinimumArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	body := []byte{
+		0x00,
+		0x02, 0x40,
+		0x20, 0x00, 0x28, 0x02, 0x00, 0x1a,
+		0x20, 0x00, 0x28, 0x02, 0x00, 0x1a,
+		0x0b,
+		0x0b,
+	}
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, nil, body)
+	m.Imports = append(m.Imports, wasm.Import{
+		Module: "host",
+		Name:   "memory0",
+		Type:   wasm.NewMemExternType(wasm.MemType{Limits: wasm.Limits{Min: 0}}),
+	})
+	var moduleStats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: &moduleStats})
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	defer cm.CodeImage.Close()
+	stats := moduleStats.Funcs[0]
+	if got := stats.Peephole["common-bounds-limit"]; got != 0 {
+		t.Fatalf("common bounds limit selected %d time(s) from local memory minimum, want 0", got)
+	}
+
+	eng, err := coreruntime.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	jm, err := coreruntime.NewJobMemory(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	arena, err := coreruntime.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer arena.Close()
+	code, entry, err := coreruntime.MapCode(cm.Code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coreruntime.Unmap(code)
+	args, results := arena.Alloc(8), arena.Alloc(8)
+	trap := arena.Alloc(coreruntime.TrapBufferBytes)
+	binary.LittleEndian.PutUint32(args, 0)
+	if err := eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results); err == nil {
+		t.Fatal("zero-length imported memory access did not trap")
 	}
 }

@@ -20,13 +20,13 @@ PATH="$test_root:$PATH" \
   CAPTURE_BODY="$capture_body" \
   DOCS_SYNC_TOKEN=test-token \
   "$repository_root/scripts/dispatch-docs-release.sh" \
-  nightly nightly-20260731-0123456 0123456789abcdef0123456789abcdef01234567
+  beta v0.1.0-beta.1 0123456789abcdef0123456789abcdef01234567
 
 grep -qx -- 'api --method POST repos/wago-org/docs/dispatches --input -' "$capture_args"
 jq -e '
   .event_type == "code-release" and
-  .client_payload.channel == "nightly" and
-  .client_payload.tag == "nightly-20260731-0123456" and
+  .client_payload.channel == "beta" and
+  .client_payload.tag == "v0.1.0-beta.1" and
   .client_payload.sha == "0123456789abcdef0123456789abcdef01234567"
 ' "$capture_body" >/dev/null
 

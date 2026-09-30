@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func deadGCConstructorTreeModule(t *testing.T) *wasm.Module {
@@ -132,6 +132,7 @@ func checkedDeadGCSegmentArrayModule(t *testing.T, elem bool) *wasm.Module {
 }
 
 func TestCheckedDeadGCArrayConstructorsPreservePreflight(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	saved := deadGCNewEnabled
 	defer func() { deadGCNewEnabled = saved }()
 	for _, tc := range []struct {
@@ -214,6 +215,7 @@ func checkedDeadGCReferenceUniformModule(t *testing.T) *wasm.Module {
 }
 
 func TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	saved := deadGCNewEnabled
 	deadGCNewEnabled = true
 	defer func() { deadGCNewEnabled = saved }()
@@ -241,6 +243,7 @@ func TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors(t *testing
 }
 
 func TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	innerArray := []byte{0x5e, 0x7f, 0x01}
 	outerArray := []byte{0x5e, 0x63, 0x00, 0x00} // immutable (ref null 0) array
 	wrapper := []byte{0x5f}
@@ -277,6 +280,7 @@ func TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate(t *testing.T) {
 }
 
 func TestDeadGCConstructorTreeElimination(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := deadGCConstructorTreeModule(t)
 	compile := func() *CodegenStats {
 		var stats ModuleStats

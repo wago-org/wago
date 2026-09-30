@@ -21,9 +21,25 @@ type (
 	AuthorityScope                  = impl.AuthorityScope
 	Bits                            = impl.Bits
 	BoundsCheckMode                 = impl.BoundsCheckMode
+	Caller                          = impl.Caller
+	CallerHostCallFunc              = impl.CallerHostCallFunc
+	CallerInvoker                   = impl.CallerInvoker
 	CallerResolver                  = impl.CallerResolver
 	Capability                      = impl.Capability
 	CapabilityOption                = impl.CapabilityOption
+	CodeProfile                     = impl.CodeProfile
+	CodeProfileEvent                = impl.CodeProfileEvent
+	CodeProfileFunction             = impl.CodeProfileFunction
+	CodeProfileImage                = impl.CodeProfileImage
+	CodeProfileInlineFrame          = impl.CodeProfileInlineFrame
+	CodeProfileOptions              = impl.CodeProfileOptions
+	CodeProfileRegion               = impl.CodeProfileRegion
+	CodeProfileSite                 = impl.CodeProfileSite
+	CodeProfileSourceRange          = impl.CodeProfileSourceRange
+	CodeProfileSpan                 = impl.CodeProfileSpan
+	CodeProfileSpanToken            = impl.CodeProfileSpanToken
+	CodeProfileStatus               = impl.CodeProfileStatus
+	CodeProfileUnwindRange          = impl.CodeProfileUnwindRange
 	Compatibility                   = impl.Compatibility
 	CompilationIdentity             = impl.CompilationIdentity
 	Compiled                        = impl.Compiled
@@ -48,6 +64,7 @@ type (
 	ElemInit                        = impl.ElemInit
 	ElemMode                        = impl.ElemMode
 	ExitError                       = impl.ExitError
+	ExnRef                          = impl.ExnRef
 	ExternRef                       = impl.ExternRef
 	ExternRefHostModule             = impl.ExternRefHostModule
 	FeatureInfo                     = impl.FeatureInfo
@@ -56,20 +73,13 @@ type (
 	FuncSig                         = impl.FuncSig
 	FunctionMetadata                = impl.FunctionMetadata
 	GCAllocatorKind                 = impl.GCAllocatorKind
-	GCBenchmarkConfiguration        = impl.GCBenchmarkConfiguration
-	GCBenchmarkTelemetryReport      = impl.GCBenchmarkTelemetryReport
 	GCConfig                        = impl.GCConfig
-	GCHelperStats                   = impl.GCHelperStats
 	GCHostModule                    = impl.GCHostModule
-	GCManagedHeapTelemetry          = impl.GCManagedHeapTelemetry
-	GCMemoryDomains                 = impl.GCMemoryDomains
 	GCNativeCodeTelemetry           = impl.GCNativeCodeTelemetry
 	GCNativeRootAdmission           = impl.GCNativeRootAdmission
 	GCProfile                       = impl.GCProfile
 	GCRef                           = impl.GCRef
 	GCRuntimeKind                   = impl.GCRuntimeKind
-	GCTelemetry                     = impl.GCTelemetry
-	GCTelemetrySnapshot             = impl.GCTelemetrySnapshot
 	Global                          = impl.Global
 	GlobalDef                       = impl.GlobalDef
 	GlobalImport                    = impl.GlobalImport
@@ -89,16 +99,18 @@ type (
 	Handle                          = impl.Handle
 	HandleTable                     = impl.HandleTable
 	HeapTypeDescriptor              = impl.HeapTypeDescriptor
+	HostCall                        = impl.HostCall
+	HostCallFunc                    = impl.HostCallFunc
 	HostExit                        = impl.HostExit
-	HostFunc                        = impl.HostFunc
 	HostFuncRef                     = impl.HostFuncRef
 	HostImportRegistrar             = impl.HostImportRegistrar
 	HostModule                      = impl.HostModule
 	HostTrap                        = impl.HostTrap
 	I31Ref                          = impl.I31Ref
+	I32HostEvent                    = impl.I32HostEvent
+	ImplementationLimitError        = impl.ImplementationLimitError
 	ImportFuncBuilder               = impl.ImportFuncBuilder
 	ImportKind                      = impl.ImportKind
-	ImportModuleBuilder             = impl.ImportModuleBuilder
 	ImportOverridePolicy            = impl.ImportOverridePolicy
 	ImportSpec                      = impl.ImportSpec
 	Imports                         = impl.Imports
@@ -142,6 +154,7 @@ type (
 	ModuleSourceDigest              = impl.ModuleSourceDigest
 	ModuleSourceTransformer         = impl.ModuleSourceTransformer
 	ModuleView                      = impl.ModuleView
+	NativeMemoryStats               = impl.NativeMemoryStats
 	OffsetInit                      = impl.OffsetInit
 	OperationIdentity               = impl.OperationIdentity
 	OptKnobInfo                     = impl.OptKnobInfo
@@ -161,18 +174,20 @@ type (
 	PluginSet                       = impl.PluginSet
 	Policy                          = impl.Policy
 	PreparedCompile                 = impl.PreparedCompile
-	PreparedFunction                = impl.PreparedFunction
+	PreparedSession                 = impl.PreparedSession
 	ProviderCatalogDocument         = impl.ProviderCatalogDocument
 	ProviderCatalogEntry            = impl.ProviderCatalogEntry
 	RefInit                         = impl.RefInit
 	ReferenceTypeDescriptor         = impl.ReferenceTypeDescriptor
 	Registrar                       = impl.Registrar
 	Resource                        = impl.Resource
+	ResourceLimitError              = impl.ResourceLimitError
 	Runtime                         = impl.Runtime
 	RuntimeCloseEvent               = impl.RuntimeCloseEvent
 	RuntimeCloseObserver            = impl.RuntimeCloseObserver
 	RuntimeConfig                   = impl.RuntimeConfig
 	RuntimeOption                   = impl.RuntimeOption
+	RuntimeResourceStats            = impl.RuntimeResourceStats
 	Stability                       = impl.Stability
 	StorageTypeDescriptor           = impl.StorageTypeDescriptor
 	Table                           = impl.Table
@@ -188,6 +203,7 @@ type (
 	Value                           = impl.Value
 	ValueTypeDescriptor             = impl.ValueTypeDescriptor
 	ValueTypeKind                   = impl.ValueTypeKind
+	WasmFunc                        = impl.WasmFunc
 	WasmType                        = impl.WasmType
 )
 
@@ -213,6 +229,7 @@ const (
 	AuthorityCoreModuleCompile                 = impl.AuthorityCoreModuleCompile
 	AuthorityHostArgumentsRead                 = impl.AuthorityHostArgumentsRead
 	AuthorityHostCallerIdentify                = impl.AuthorityHostCallerIdentify
+	AuthorityHostCallerInvoke                  = impl.AuthorityHostCallerInvoke
 	AuthorityHostImportDefine                  = impl.AuthorityHostImportDefine
 	AuthorityInstanceCloseObserve              = impl.AuthorityInstanceCloseObserve
 	AuthorityInstanceInstantiateIntercept      = impl.AuthorityInstanceInstantiateIntercept
@@ -263,17 +280,23 @@ const (
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
 	CoreFeaturesV3                             = impl.CoreFeaturesV3
+	DefaultMaxFunctionLocals                   = impl.DefaultMaxFunctionLocals
+	DefaultMaxMemoriesPerModule                = impl.DefaultMaxMemoriesPerModule
+	DefaultNativeStackBytes                    = impl.DefaultNativeStackBytes
 	Deprecated                                 = impl.Deprecated
 	ElemModeActive                             = impl.ElemModeActive
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
 	ElemModePassive                            = impl.ElemModePassive
 	ErrCallbackPanic                           = impl.ErrCallbackPanic
 	ErrForeignModule                           = impl.ErrForeignModule
+	ErrImplementationLimit                     = impl.ErrImplementationLimit
 	ErrInvalidHandle                           = impl.ErrInvalidHandle
 	ErrManagedImportLifetime                   = impl.ErrManagedImportLifetime
 	ErrMissingImport                           = impl.ErrMissingImport
 	ErrPermissionDenied                        = impl.ErrPermissionDenied
 	ErrPluginConflict                          = impl.ErrPluginConflict
+	ErrResourceLimit                           = impl.ErrResourceLimit
+	ErrUnsupported                             = impl.ErrUnsupported
 	Experimental                               = impl.Experimental
 	GCAllocatorPagedSizeClass                  = impl.GCAllocatorPagedSizeClass
 	GCAllocatorTinyFixedBlock                  = impl.GCAllocatorTinyFixedBlock
@@ -281,7 +304,6 @@ const (
 	GCProfileTiny                              = impl.GCProfileTiny
 	GCRuntimeGenerational                      = impl.GCRuntimeGenerational
 	GCRuntimeIncrementalMarkSweep              = impl.GCRuntimeIncrementalMarkSweep
-	GCTelemetrySchemaVersion                   = impl.GCTelemetrySchemaVersion
 	GuestGCArrayExternRef                      = impl.GuestGCArrayExternRef
 	GuestGCArrayF32                            = impl.GuestGCArrayF32
 	GuestGCArrayF64                            = impl.GuestGCArrayF64
@@ -303,6 +325,11 @@ const (
 	ImportTag                                  = impl.ImportTag
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateManaged                         = impl.InstantiateManaged
+	MaxDeferredHostEventsPerInvocation         = impl.MaxDeferredHostEventsPerInvocation
+	MaxFunctionLocalsLimit                     = impl.MaxFunctionLocalsLimit
+	MaxMemoriesPerModuleLimit                  = impl.MaxMemoriesPerModuleLimit
+	MaxNativeStackBytes                        = impl.MaxNativeStackBytes
+	MinNativeStackBytes                        = impl.MinNativeStackBytes
 	NoPluginOverrides                          = impl.NoPluginOverrides
 	PackedTypeI16                              = impl.PackedTypeI16
 	PackedTypeI8                               = impl.PackedTypeI8
@@ -323,6 +350,7 @@ const (
 	TrapCastFailure                            = impl.TrapCastFailure
 	TrapDivOverflow                            = impl.TrapDivOverflow
 	TrapDivZero                                = impl.TrapDivZero
+	TrapExpectedSharedMemory                   = impl.TrapExpectedSharedMemory
 	TrapIndirectOutOfBounds                    = impl.TrapIndirectOutOfBounds
 	TrapIndirectWrongSig                       = impl.TrapIndirectWrongSig
 	TrapInterrupted                            = impl.TrapInterrupted
@@ -381,10 +409,6 @@ func CanonicalPluginDefinition(def PluginDefinition) (PluginDefinition, error) {
 
 func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(docs) }
 
-func CaptureGCMemoryDomains(compilerHeapBytes uint64, executableJITBytes uint64, heap GCManagedHeapTelemetry) GCMemoryDomains {
-	return impl.CaptureGCMemoryDomains(compilerHeapBytes, executableJITBytes, heap)
-}
-
 func Compile(args ...any) (*Compiled, error) { return impl.Compile(args...) }
 
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
@@ -415,8 +439,6 @@ func FeatureInfoByName(name string) (FeatureInfo, bool) { return impl.FeatureInf
 
 func FeatureInfos() []FeatureInfo { return impl.FeatureInfos() }
 
-func GCTelemetryAvailable() bool { return impl.GCTelemetryAvailable() }
-
 func GuardPageSupported() bool { return impl.GuardPageSupported() }
 
 func I32(v int32) uint64 { return impl.I32(v) }
@@ -435,15 +457,15 @@ func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable
 
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
 
+func LoadTrustedArtifact(b []byte) (*Compiled, error) { return impl.LoadTrustedArtifact(b) }
+
 func MustCompile(wasmBytes []byte) *Compiled { return impl.MustCompile(wasmBytes) }
 
 func NewBits(width int32, littleEndian []byte) (Bits, error) {
 	return impl.NewBits(width, littleEndian)
 }
 
-func NewGCBenchmarkTelemetryReport(name string) GCBenchmarkTelemetryReport {
-	return impl.NewGCBenchmarkTelemetryReport(name)
-}
+func NewCodeProfile(options CodeProfileOptions) *CodeProfile { return impl.NewCodeProfile(options) }
 
 func NewGlobalF32(v float32, mutable bool) *Global { return impl.NewGlobalF32(v, mutable) }
 
@@ -458,6 +480,8 @@ func NewGlobalV128(v V128, mutable bool) *Global { return impl.NewGlobalV128(v, 
 func NewHandleTable() *HandleTable { return impl.NewHandleTable() }
 
 func NewI31Ref(v int32) I31Ref { return impl.NewI31Ref(v) }
+
+func NewImports() *Imports { return impl.NewImports() }
 
 func NewMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 	return impl.NewMemory(minPages, maxPages)
@@ -477,6 +501,8 @@ func NewTable64(minSize uint32, maxSize uint32) (*Table, error) {
 	return impl.NewTable64(minSize, maxSize)
 }
 
+func NullExnRef() ExnRef { return impl.NullExnRef() }
+
 func NullExternRef() ExternRef { return impl.NullExternRef() }
 
 func NullFuncRef() FuncRef { return impl.NullFuncRef() }
@@ -490,6 +516,8 @@ func OptKnobs() []OptKnobInfo { return impl.OptKnobs() }
 func OptimizationInfos() []OptKnobInfo { return impl.OptimizationInfos() }
 
 func OptimizationInfosForArch(arch string) []OptKnobInfo { return impl.OptimizationInfosForArch(arch) }
+
+func ProcessNativeMemoryStats() NativeMemoryStats { return impl.ProcessNativeMemoryStats() }
 
 func ProvideContract(reg *Registrar, spec ContractSpec, value any) error {
 	return impl.ProvideContract(reg, spec, value)
@@ -527,11 +555,17 @@ func WithGC(gc GCConfig) InstantiateOption { return impl.WithGC(gc) }
 
 func WithGuestArguments(args []string) RuntimeOption { return impl.WithGuestArguments(args) }
 
+func WithImport(module string, name string, value any) InstantiateOption {
+	return impl.WithImport(module, name, value)
+}
+
 func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 	return impl.WithImportOverridePolicy(p)
 }
 
-func WithImports(im Imports) InstantiateOption { return impl.WithImports(im) }
+func WithImports(im *Imports) InstantiateOption { return impl.WithImports(im) }
+
+func WithInvokeCacheSlots(slots int) InstantiateOption { return impl.WithInvokeCacheSlots(slots) }
 
 func WithPolicy(p Policy) InstantiateOption { return impl.WithPolicy(p) }
 

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func arm64Memory64Module() []byte {
@@ -54,7 +54,7 @@ func TestMemory64ARM64ExecutionAndCodec(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 type customCarrierExtension struct{}
@@ -66,10 +66,22 @@ func TestCustomTypeCarriersCompileAndExecuteAsErasedValues(t *testing.T) {
 	for i, carrier := range carriers {
 		t.Run(fmt.Sprintf("carrier-%x", carrier), func(t *testing.T) {
 			mod, err := rt.Compile(customCarrierModule(fmt.Sprintf("test.value.%d", i), carrier))
+			if !customCodegenAvailable() {
+				if err == nil || !strings.Contains(err.Error(), "unavailable CPU features") {
+					t.Fatalf("optional plugin rejection = %v", err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
 			in, err := rt.Instantiate(context.Background(), mod)
+			if carrier == 0x7b {
+				if err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") {
+					t.Fatalf("instantiate error = %v, want unsupported v128 host callback", err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -106,6 +118,9 @@ func TestCustomTypeCarriersDeterminePhysicalSignatures(t *testing.T) {
 }
 
 func TestCustomTypeIdentityIsStrongerThanPhysicalCarrier(t *testing.T) {
+	if !customCodegenAvailable() {
+		t.Skip("custom vector plugin requires an optional CPU tier")
+	}
 	rt := NewRuntime()
 	if err := rt.Use(customCarrierExtension{}); err != nil {
 		t.Fatal(err)

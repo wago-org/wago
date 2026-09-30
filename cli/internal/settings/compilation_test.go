@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"fmt"
 	"runtime"
 	"testing"
 
@@ -30,6 +31,24 @@ func TestResolveCompilationOwnsPrecedence(t *testing.T) {
 	}
 	if got := selection.RuntimeConfig().CoreFeatures(); !got.IsEnabled(wago.CoreFeaturesV3) {
 		t.Fatalf("runtime config features = %s, missing Core 3 set %s", got, wago.CoreFeaturesV3)
+	}
+}
+
+func TestExtendedConstantSettingsDisableWins(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		for _, umbrella := range []bool{false, true} {
+			selection := CompilationSelection{Core: 3, Features: map[string]bool{
+				"extended-constant-expressions": legacy,
+				"extended-const-expressions":    umbrella,
+			}}
+			for i := 0; i < 100; i++ {
+				got := selection.RuntimeConfig().CoreFeatures()
+				if got.IsEnabled(wago.CoreFeatureExtendedConst) != legacy ||
+					got.IsEnabled(wago.CoreFeatureExtendedConstExpressions) != (legacy && umbrella) {
+					t.Fatalf("legacy=%v umbrella=%v: features=%v", legacy, umbrella, got)
+				}
+			}
+		}
 	}
 }
 
@@ -70,5 +89,42 @@ func TestCoreSelectionDefaultsAndExplicitRelease2(t *testing.T) {
 	}
 	if got := selection.RuntimeConfig().CoreFeatures(); got != wago.CoreFeaturesV2 {
 		t.Fatalf("explicit Core 2 features = %s, want %s", got, wago.CoreFeaturesV2)
+	}
+}
+
+func TestExplicitCoreOverridesStoredFeatures(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		for _, core := range []string{"", "2", "3"} {
+			t.Run(fmt.Sprintf("core=%s/stored=%t", core, enabled), func(t *testing.T) {
+				config := Default()
+				config.Features = map[string]bool{"gc": enabled}
+				selection, err := ResolveCompilationFrom(config, true, CompilationRequest{Arch: runtime.GOARCH, Core: core})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if core == "" {
+					if selected, ok := selection.Features["gc"]; !ok || selected != enabled {
+						t.Fatalf("stored GC setting was not retained: %v", selection.Features)
+					}
+				} else if len(selection.Features) != 0 {
+					t.Fatalf("explicit Core profile retained stored overrides: %v", selection.Features)
+				}
+				feature, ok := wago.FeatureInfoByName("gc")
+				if !ok {
+					t.Fatal("GC feature is missing from the catalog")
+				}
+				want := enabled && feature.Available
+				if core != "" {
+					want = core == "3"
+				}
+				got := selection.RuntimeConfig().CoreFeatures().IsEnabled(wago.CoreFeatureGC)
+				if got != want {
+					t.Fatalf("GC enabled=%v,want %v", got, want)
+				}
+				if config.Features["gc"] != enabled {
+					t.Fatal("stored setting changed")
+				}
+			})
+		}
 	}
 }

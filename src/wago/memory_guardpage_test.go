@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestGuardedImportedGrownMemoryAcceptsActiveData(t *testing.T) {
@@ -34,12 +34,12 @@ func TestGuardedImportedGrownMemoryAcceptsActiveData(t *testing.T) {
 		t.Fatalf("compile consumer: %v", err)
 	}
 	defer consumerCode.Close()
-	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.mem": memory}})
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: testImports("env.mem", memory)})
 	if err != nil {
 		t.Fatalf("instantiate consumer after grow: %v", err)
 	}
 	defer consumer.Close()
-	if got := memory.Bytes()[4*65536]; got != 'x' {
+	if got := memory.UnsafeBytes()[4*65536]; got != 'x' {
 		t.Fatalf("active data byte = %q, want x", got)
 	}
 }
@@ -65,7 +65,7 @@ func TestImportedMemoryGuardPage(t *testing.T) {
 	if guarded, _ := mem.importShape(); !guarded {
 		t.Fatal("NewMemory should be guard-page backed in a wago_guardpage build")
 	}
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.mem", mem)})
 	if err != nil {
 		t.Fatalf("instantiate imported memory under guard-page mode: %v", err)
 	}
@@ -75,11 +75,11 @@ func TestImportedMemoryGuardPage(t *testing.T) {
 	if _, err := in.Invoke("store", I32(8), I32(0xCAFE)); err != nil {
 		t.Fatal(err)
 	}
-	if got := binary.LittleEndian.Uint32(mem.Bytes()[8:]); got != 0xCAFE {
+	if got := binary.LittleEndian.Uint32(mem.UnsafeBytes()[8:]); got != 0xCAFE {
 		t.Fatalf("host sees mem[8] = %#x, want 0xCAFE", got)
 	}
 	// host write -> wasm observes.
-	binary.LittleEndian.PutUint32(mem.Bytes()[16:], 0x1234)
+	binary.LittleEndian.PutUint32(mem.UnsafeBytes()[16:], 0x1234)
 	if r, err := in.Invoke("load", I32(16)); err != nil || AsI32(r[0]) != 0x1234 {
 		t.Fatalf("wasm load = %#x err=%v, want 0x1234", AsI32(r[0]), err)
 	}
@@ -143,7 +143,7 @@ func TestImportedMemoryGuardPageCrossInstance(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x2d, 0x00, 0x00, 0x0b}),             // load8_u
 		)),
 	)
-	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: Imports{"env.mem": memImport}})
+	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: testImports("env.mem", memImport)})
 	if err != nil {
 		t.Fatalf("instantiate B on shared guard-page memory: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestSignalsRequestedExplicitFallbackStillExportsGuardedSecondaryMemory(t *t
 		t.Fatal(err)
 	}
 	defer importer.Close()
-	imported, err := Instantiate(importer, InstantiateOptions{Imports: Imports{"env.mem": memory}})
+	imported, err := Instantiate(importer, InstantiateOptions{Imports: testImports("env.mem", memory)})
 	if err != nil {
 		t.Fatalf("re-import guarded secondary memory: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestImportedMemoryGuardPageRejectsPlainMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile importer: %v", err)
 	}
-	if _, err := Instantiate(importer, InstantiateOptions{Imports: Imports{"env.mem": memImport}}); err == nil {
+	if _, err := Instantiate(importer, InstantiateOptions{Imports: testImports("env.mem", memImport)}); err == nil {
 		t.Fatal("signals-based module importing an unguarded memory should be rejected")
 	}
 }

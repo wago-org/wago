@@ -13,7 +13,7 @@ import (
 	"github.com/wago-org/wago/codegen"
 	amd64codegen "github.com/wago-org/wago/codegen/amd64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 type instructionTestExt struct {
@@ -416,6 +416,9 @@ func TestCustomInstructionPluginMachineCode(t *testing.T) {
 	})
 
 	t.Run("feature-declaration", func(t *testing.T) {
+		if !customCodegenAvailable() {
+			t.Skip("AVX2 declaration success requires the optional tier; rejection is tested separately")
+		}
 		ext := instructionMachineExt{name: "avx2.marker", output: []int32{32}}
 		ext.lowering = &amd64codegen.Lowering{Compatibility: amd64codegen.CompatibilityFullAccess, Features: amd64codegen.FeatureAVX2, Emit: func(ctx amd64codegen.Context) error {
 			r := ctx.AllocGP()

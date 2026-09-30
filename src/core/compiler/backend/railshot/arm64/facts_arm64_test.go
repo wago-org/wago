@@ -3,25 +3,159 @@
 package arm64
 
 import (
+	"encoding/binary"
+	"reflect"
 	"testing"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func TestValueFactsFitExistingStoragePaddingArm64(t *testing.T) {
-	if got, want := unsafe.Sizeof(storage{}), uintptr(64); got != want {
+func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
+	if got, want := unsafe.Sizeof(storage{}), uintptr(24); got != want {
 		t.Fatalf("storage size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(elem{}), uintptr(112); got != want {
+	if got, want := unsafe.Sizeof(elem{}), uintptr(32); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(stack{}), uintptr(72); got != want {
+		t.Fatalf("stack size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(trapSite{}), uintptr(12); got != want {
+		t.Fatalf("trapSite size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(callReloc{}), uintptr(12); got != want {
+		t.Fatalf("callReloc size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(localDef{}), uintptr(4); got != want {
 		t.Fatalf("local definition size = %d, want %d", got, want)
 	}
+	if got, want := unsafe.Sizeof(gpCand{}), uintptr(12); got != want {
+		t.Fatalf("GP candidate size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(finalizerFragment{}), uintptr(12); got != want {
+		t.Fatalf("finalizer fragment size = %d, want %d", got, want)
+	}
+}
+
+func TestOperandNodeBackingIsPointerFreeArm64(t *testing.T) {
+	var visit func(reflect.Type) bool
+	visit = func(typ reflect.Type) bool {
+		switch typ.Kind() {
+		case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func, reflect.Interface, reflect.String, reflect.UnsafePointer:
+			return true
+		case reflect.Array:
+			return visit(typ.Elem())
+		case reflect.Struct:
+			for i := 0; i < typ.NumField(); i++ {
+				if visit(typ.Field(i).Type) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if visit(reflect.TypeFor[elem]()) {
+		t.Fatal("operand node contains a Go-scanned pointer field")
+	}
+}
+
+func TestCompactOperandNodeVariantPayloadArm64(t *testing.T) {
+	e := elem{}
+	e.st.typ = mtI64
+	e.st.setValueFacts(factUpper32Zero | factBoolean)
+	e.setElemKind(ekDeferred)
+	e.setDeferredOp(opRotr)
+	e.setDeferredDepth(6)
+	e.setChildren(nodeID(0x12340056), nodeID(0x789000ab))
+
+	if got := e.elemKind(); got != ekDeferred {
+		t.Fatalf("kind = %v, want deferred", got)
+	}
+	if got := e.deferredOp(); got != opRotr {
+		t.Fatalf("op = %v, want rotr", got)
+	}
+	if got := e.deferredDepth(); got != 6 {
+		t.Fatalf("depth = %d, want 6", got)
+	}
+	if got := e.child0ID(); got != nodeID(0x12340056) {
+		t.Fatalf("child 0 = %#x", got)
+	}
+	if got := e.child1ID(); got != nodeID(0x789000ab) {
+		t.Fatalf("child 1 = %#x", got)
+	}
+	if e.st.typ != mtI64 || e.st.valueFacts() != factUpper32Zero|factBoolean {
+		t.Fatalf("shared type/facts changed: typ=%v meta=%#x", e.st.typ, e.st.meta)
+	}
+
+	e.st.setGCRoot(true)
+	e.st.setEHRoot(true)
+	e.setElemKind(ekValue)
+	if e.elemKind() != ekValue || !e.st.hasGCRoot() || !e.st.hasEHRoot() {
+		t.Fatalf("value kind changed root metadata: kind=%v meta=%#x", e.elemKind(), e.st.meta)
+	}
+}
+
+func TestCompactCallRelocFieldArm64(t *testing.T) {
+	f := fn{}
+	if got, want := f.compactCallRelocField(int(invalidCallRelocField-1)), invalidCallRelocField-1; got != want {
+		t.Fatalf("compact call relocation field = %d, want %d", got, want)
+	}
+	if got := f.compactCallRelocField(-1); got != 0 || f.representationLimit != functionRepresentationCallReloc {
+		t.Fatalf("negative call relocation field = %d, limit = %d", got, f.representationLimit)
+	}
+	if got := f.representationError().Error(); got != "arm64: function call relocation exceeds compact representation limit" {
+		t.Fatalf("call relocation error = %q", got)
+	}
+}
+
+func TestCompactControlOffsetsFailClosedArm64(t *testing.T) {
+	f := fn{}
+	f.appendReturnSite(-1)
+	if f.representationLimit != functionRepresentationReturnSite {
+		t.Fatalf("return-site limit = %d", f.representationLimit)
+	}
+	f = fn{}
+	if got := f.packFrameEndSite(-1, false); got != 0 || f.representationLimit != functionRepresentationFrameEnd {
+		t.Fatalf("frame-end field = %d, limit = %d", got, f.representationLimit)
+	}
+}
+
+func TestCompactTrapBranchDomainArm64(t *testing.T) {
+	if got, want := compactTrapBranch(int(^uint32(0))), ^uint32(0); got != want {
+		t.Fatalf("compact trap branch = %d, want %d", got, want)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("negative trap branch offset accepted")
+		}
+	}()
+	compactTrapBranch(-1)
+}
+
+func TestStorageMetadataFieldsAreIndependentArm64(t *testing.T) {
+	var st storage
+	st.setGCRoot(true)
+	st.setEHRoot(true)
+	st.setValueFacts(factUpper32Zero | factBoolean)
+	if !st.hasGCRoot() || !st.hasEHRoot() {
+		t.Fatalf("setting facts cleared roots: meta=%#x", st.meta)
+	}
+	if got := st.valueFacts(); got != factUpper32Zero|factBoolean {
+		t.Fatalf("value facts = %#x, want upper-zero and boolean", got)
+	}
+	st.setValueFacts(0)
+	if !st.hasGCRoot() || !st.hasEHRoot() {
+		t.Fatalf("clearing facts cleared roots: meta=%#x", st.meta)
+	}
+	st.setGCRoot(false)
+	if st.hasGCRoot() || !st.hasEHRoot() {
+		t.Fatalf("clearing GC root changed another field: meta=%#x", st.meta)
+	}
 }
 
 func TestSignedI32LoadCarriesUpperZeroFactArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
 		0x00,       // no locals
 		0x20, 0x00, // local.get 0
@@ -44,16 +178,17 @@ func TestSignedI32LoadCarriesUpperZeroFactArm64(t *testing.T) {
 }
 
 func TestCompareCarriesBooleanFactArm64(t *testing.T) {
-	f := fn{s: newStack()}
+	f := fn{s: newStack(), policy: currentCodegenPolicy()}
 	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
 	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
 	f.pushBinOp(opLtU, mtI32)
-	if got := f.s.back().st.facts; !got.has(factUpper32Zero | factBoolean) {
+	if got := f.s.back().st.valueFacts(); !got.has(factUpper32Zero | factBoolean) {
 		t.Fatalf("compare facts = %#x, want upper-zero and boolean", got)
 	}
 }
 
 func TestStraightLineLocalCarriesUpperZeroFactArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
 		0x01, 0x01, 0x7f, // one declared i32 local
 		0x20, 0x00, // local.get 0
@@ -79,6 +214,7 @@ func TestStraightLineLocalCarriesUpperZeroFactArm64(t *testing.T) {
 }
 
 func TestLocalFactsDisabledAcrossControlFlowArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
 		0x01, 0x01, 0x7f, // one declared i32 local
 		0x02, 0x40, // block
@@ -97,5 +233,177 @@ func TestLocalFactsDisabledAcrossControlFlowArm64(t *testing.T) {
 	defer compiled.CodeImage.Close()
 	if got := stats.Funcs[0].Peephole["local-fact"]; got != 0 {
 		t.Fatalf("local-fact transfers = %d, want 0 across control flow; peeps=%v", got, stats.Funcs[0].Peephole)
+	}
+}
+
+func TestMemoryAddressUsesUpperZeroFactArm64(t *testing.T) {
+	computed := modMem(t, 1,
+		[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32},
+		[]byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x28, 0x02, 0x00, 0x0b},
+	)
+	on, err := CompileModuleWith(computed, CompileOptions{Optimizations: map[string]bool{"value-facts": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer on.CodeImage.Close()
+	off, err := CompileModuleWith(computed, CompileOptions{Optimizations: map[string]bool{"value-facts": false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer off.CodeImage.Close()
+	if got, want := len(on.Code), len(off.Code); got != want {
+		t.Fatalf("upper-zero address code bytes = %d, want %d (without fact: %d)", got, want, len(off.Code))
+	}
+	if got, err := runArm64WrapperWithOptions(t, computed, CompileOptions{Optimizations: map[string]bool{"value-facts": true}}, 1, 2); err != nil || got != 0 {
+		t.Fatalf("computed address load = %#x, %v; want zero", got, err)
+	}
+
+	// Serialized callers may leave high bits set. Without a machine-value proof,
+	// the address canonicalization must remain even when value facts are enabled.
+	parameter := modMem(t, 1,
+		[]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32},
+		[]byte{0x00, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b},
+	)
+	paramOn, err := CompileModuleWith(parameter, CompileOptions{Optimizations: map[string]bool{"value-facts": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer paramOn.CodeImage.Close()
+	paramOff, err := CompileModuleWith(parameter, CompileOptions{Optimizations: map[string]bool{"value-facts": false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer paramOff.CodeImage.Close()
+	if len(paramOn.Code) != len(paramOff.Code) {
+		t.Fatalf("unknown-upper address changed code bytes: with facts %d, without %d", len(paramOn.Code), len(paramOff.Code))
+	}
+	if got, err := runArm64WrapperWithOptions(t, parameter, CompileOptions{Optimizations: map[string]bool{"value-facts": true}}, uint64(1)<<32); err != nil || got != 0 {
+		t.Fatalf("non-canonical parameter address = %#x, %v; want truncated address zero", got, err)
+	}
+}
+
+func TestI32ParameterKeepsMemoryAddressCanonicalizationAcrossBlockArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x00,       // no locals
+		0x02, 0x40, // block (forces value-specific facts off)
+		0x20, 0x00, // local.get 0
+		0x28, 0x02, 0x00, // i32.load align=4 offset=0
+		0x0b, 0x0b, // end block/function
+	})
+	compile := func(enabled bool) *CodegenStats {
+		t.Helper()
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{
+			Stats:         &stats,
+			Optimizations: map[string]bool{"value-facts": enabled},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cm.CodeImage != nil {
+			t.Cleanup(func() { _ = cm.CodeImage.Close() })
+		}
+		return stats.Funcs[0]
+	}
+	on, off := compile(true), compile(false)
+	if got := on.Peephole["memory-address-zext-elim"]; got != 0 {
+		t.Fatalf("unproven parameter address zext eliminations = %d, want 0", got)
+	}
+	if got := off.Peephole["memory-address-zext-elim"]; got != 0 {
+		t.Fatalf("disabled address zext eliminations = %d, want 0", got)
+	}
+	if on.CodeBytes != off.CodeBytes {
+		t.Fatalf("optimized code = %d bytes, rollback = %d; following-function phase changed", on.CodeBytes, off.CodeBytes)
+	}
+	if got, err := runArm64WrapperMem(t, m, 4, func(memory []byte) {
+		binary.LittleEndian.PutUint32(memory[4:], 42)
+	}); err != nil || got != 42 {
+		t.Fatalf("load(4) = %d, %v; want 42", got, err)
+	}
+	if got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"value-facts": true}}, uint64(1)<<32); err != nil || got != 0 {
+		t.Fatalf("non-canonical parameter across block = %d, %v; want address zero", got, err)
+	}
+}
+
+func TestDeclaredI32LocalCanonicalizesOnceAcrossControlFlowArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x01, 0x01, 0x7f, // one declared i32 local
+		0x02, 0x40, // block (disables assignment-version facts)
+		0x20, 0x00, // local.get 0: serialized parameter may have high bits set
+		0x21, 0x01, // local.set 1: establish the declared-local representation
+		0x0b,
+		0x20, 0x01, 0x28, 0x02, 0x00, // i32.load local1
+		0x20, 0x01, 0x28, 0x02, 0x00, // i32.load local1 again
+		0x6a,
+		0x0b,
+	})
+	compile := func(enabled bool) *CodegenStats {
+		t.Helper()
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{
+			Stats:         &stats,
+			Optimizations: map[string]bool{"value-facts": enabled},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cm.CodeImage != nil {
+			t.Cleanup(func() { _ = cm.CodeImage.Close() })
+		}
+		return stats.Funcs[0]
+	}
+	on, off := compile(true), compile(false)
+	if got := on.Peephole["local-i32-canonicalize"]; got != 1 {
+		t.Fatalf("declared-local canonicalizations = %d, want 1; peeps=%v", got, on.Peephole)
+	}
+	if got := on.Peephole["memory-address-zext-elim"]; got != 2 {
+		t.Fatalf("declared-local address eliminations = %d, want 2; peeps=%v", got, on.Peephole)
+	}
+	if off.Peephole["local-i32-canonicalize"] != 0 || off.Peephole["memory-address-zext-elim"] != 0 {
+		t.Fatalf("disabled value facts changed representation: peeps=%v", off.Peephole)
+	}
+	if got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"value-facts": true}}, uint64(1)<<32); err != nil || got != 0 {
+		t.Fatalf("non-canonical parameter copied through declared local = %#x, %v; want address zero", got, err)
+	}
+}
+
+func TestHotI32ParameterCanonicalizesOnceAtEntryArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x00,       // no locals
+		0x03, 0x40, // loop: parameter reads receive loop-weighted hotness
+		0x20, 0x00, 0x28, 0x02, 0x00, // i32.load param0
+		0x20, 0x00, 0x28, 0x02, 0x00, // i32.load param0 again
+		0x6a,
+		0x0f,       // return the sum
+		0x0b, 0x0b, // end loop/function
+	})
+	for _, tc := range []struct {
+		name   string
+		regABI bool
+	}{{"register-abi", true}, {"wrapper-abi", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := map[string]bool{"value-facts": true, "reg-abi": tc.regABI}
+			var stats ModuleStats
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: opts})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cm.CodeImage != nil {
+				defer cm.CodeImage.Close()
+			}
+			peeps := stats.Funcs[0].Peephole
+			if got := peeps["entry-i32-param-canonicalize"]; got != 1 {
+				t.Fatalf("entry parameter canonicalizations = %d, want 1; peeps=%v", got, peeps)
+			}
+			if got := peeps["memory-address-zext-elim"]; got != 2 {
+				t.Fatalf("hot parameter address eliminations = %d, want 2; peeps=%v", got, peeps)
+			}
+			if got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: opts}, uint64(1)<<32); err != nil || got != 0 {
+				t.Fatalf("non-canonical hot parameter address = %#x, %v; want address zero", got, err)
+			}
+		})
 	}
 }

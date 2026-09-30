@@ -34,12 +34,10 @@ func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
 			(call $block)
 			(i32.const 0) (local.get 0) (table.set 0)
 			(i32.const 0) (call_indirect (type $target))))`)
-	writer, err := rt.Instantiate(context.Background(), writerMod, WithImports(Imports{
-		"env.block": HostFunc(func(HostModule, []uint64, []uint64) {
-			close(entered)
-			<-resume
-		}),
-	}))
+	writer, err := rt.Instantiate(context.Background(), writerMod, WithImports(testImports("env.block", slotHostFunc(func(HostModule, []uint64, []uint64) {
+		close(entered)
+		<-resume
+	}))))
 	if err != nil {
 		t.Fatal(err)
 	}

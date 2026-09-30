@@ -184,6 +184,11 @@ func copyStackDeltaSharedAdapterAMD64(dst, src []byte, dispOff int) {
 }
 
 func compactSharedAdaptersAMD64(code []byte, oldLen int, entry, internalEntry []int, relocs [][]callReloc, literalWords []uint64, literalOffsets []uint32, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats, groups []sharedAdapterGroup, infos []sharedAdapterInfo, sharedBytes int) (int, error) {
+	if profileEnabled {
+		if err := recordSharedAdapterUnwind(ms, groups, infos); err != nil {
+			return 0, err
+		}
+	}
 	for i := range groups {
 		g := &groups[i]
 		legacyLength := g.length - sharedAdapterCallShrinkAMD64
@@ -222,21 +227,17 @@ func compactSharedAdaptersAMD64(code []byte, oldLen int, entry, internalEntry []
 			deleted := int(info.endOff) - thunkBytes
 			removed += deleted
 			for j := range relocs[i] {
-				if relocs[i][j].at >= int(info.endOff) {
-					relocs[i][j].at -= deleted
+				if relocs[i][j].at >= info.endOff {
+					relocs[i][j].at -= uint32(deleted)
 				}
 			}
 			remapModuleLiteralPlanAMD64(literalWords, literalOffsets, i, int(info.endOff), deleted)
 			if roots != nil {
 				if plan := roots.Function(i); plan != nil {
-					for j := range plan.Callsites {
-						if plan.Callsites[j].ReturnOffset >= info.endOff {
-							plan.Callsites[j].ReturnOffset -= uint32(deleted)
-						}
-					}
+					plan.ShiftCallsiteReturnOffsets(info.endOff, uint32(deleted))
 				}
 			}
-			if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {
+			if (diagnosticsEnabled && ms != nil) && i < len(ms.Funcs) && ms.Funcs[i] != nil {
 				native := &ms.Funcs[i].NativeSize
 				native.TotalBytes -= deleted
 				native.HostAdapterBytes = thunkBytes
@@ -278,7 +279,7 @@ func compactSharedAdaptersAMD64(code []byte, oldLen int, entry, internalEntry []
 				plan.AdapterReturnOffset = uint32(sharedReturn - entry[i])
 			}
 		}
-		if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {
+		if (diagnosticsEnabled && ms != nil) && i < len(ms.Funcs) && ms.Funcs[i] != nil {
 			native := &ms.Funcs[i].NativeSize
 			thunkBytes := g.thunkBytes()
 			if g.stackDelta {

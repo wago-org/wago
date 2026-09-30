@@ -34,7 +34,7 @@ func TestCompiledCodecRoundTripsAllNameSectionMaps(t *testing.T) {
 		},
 	}
 
-	got := roundTripCompiled(t, input)
+	got := publicArtifactRoundTrip(t, input)
 	if !reflect.DeepEqual(got.Names, input.Names) {
 		t.Fatalf("Names after round trip = %#v, want %#v", got.Names, input.Names)
 	}

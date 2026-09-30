@@ -4,24 +4,21 @@
 # companion to publish-charts.sh. Like that script, run this on a stable machine
 # (never CI): shared runners make benchmark numbers noisy and pollute the trend.
 #
-# Artifacts land in docs/bench/: bench.json (latest run), history.json (all runs,
-# sorted by version), and charts/{latency,trend}-<stage>.svg.
+# Artifacts land in the external wago-org/docs repository under docs/bench/:
+# bench.json (latest run), history.json (all runs, sorted by version), and
+# charts/{latency,trend}-<stage>.svg.
 set -eu
 
 docs_remote="${WAGO_DOCS_REMOTE:-git@github.com:wago-org/docs.git}"
 docs_branch="main"
 benchtime="${WAGO_BENCHTIME:-1s}"
 count="${WAGO_BENCH_COUNT:-1}"
-bench_isa="${WAGO_BENCH_ISA:-0}"
-benchpub_isa_flag=""
-if [ "$bench_isa" = 1 ] || [ "$bench_isa" = true ] || [ "$bench_isa" = yes ]; then
-	benchpub_isa_flag="-isa"
-fi
+corpus="${WAGO_CORPUS:-all}"
 
 # WAGO_BENCH_IN: publish a previously captured `go test -bench` output instead of
 # re-running the suite. Capture one (once) with:
-#   cd bench && go test -run '^$' -bench . -benchmem -count 1 -timeout 0 . | tee run.txt
-# then: WAGO_BENCH_IN=run.txt make bench-publish
+#   just bench run all all 1 1s
+# then: WAGO_BENCH_IN=run.txt just bench publish
 # Resolve to an absolute path now, before the script cd's into the docs clone.
 bench_in="${WAGO_BENCH_IN:-}"
 [ -z "$bench_in" ] || case "$bench_in" in /*) : ;; *) bench_in="$(pwd)/$bench_in" ;; esac
@@ -44,12 +41,11 @@ if [ -n "$bench_in" ]; then
 	set -- -in "$bench_in"
 	printf 'wago: publishing saved run %s (suite not re-run)\n' "$bench_in"
 else
-	set -- -benchtime "$benchtime" -count "$count"
-	printf 'wago: running benchmark suite (benchtime=%s count=%s)...\n' "$benchtime" "$count"
+	set -- -benchtime "$benchtime" -count "$count" -corpus "$corpus"
+	printf 'wago: running benchmark suite (corpus=%s benchtime=%s count=%s)...\n' "$corpus" "$benchtime" "$count"
 fi
 
 (cd "$root/bench" && go run ./cmd/benchpub "$@" \
-	$benchpub_isa_flag \
 	-history "$clone/bench/history.json" \
 	-out "$clone/bench")
 

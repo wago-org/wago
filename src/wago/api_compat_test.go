@@ -8,7 +8,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestPublicAPICompatibilityForms(t *testing.T) {
@@ -16,9 +16,9 @@ func TestPublicAPICompatibilityForms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile([]byte): %v", err)
 	}
-	in, err := Instantiate(c, Imports{})
+	in, err := Instantiate(c, testImports())
 	if err != nil {
-		t.Fatalf("Instantiate(compiled, Imports): %v", err)
+		t.Fatalf("Instantiate(compiled, *Imports): %v", err)
 	}
 	in.Close()
 	in, err = Instantiate(c, nil)
@@ -59,6 +59,68 @@ func TestInvokeCacheKeepsAlternatingExports(t *testing.T) {
 		if _, err := in.Invoke("__collect"); err != nil {
 			t.Fatalf("Invoke __collect: %v", err)
 		}
+	}
+}
+
+func TestInvokeCacheSelectsIsolatedDirectIntegerEntry(t *testing.T) {
+	in, err := Instantiate(MustCompile(alternatingExportsModule()))
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+
+	got, err := in.Invoke("f", I32(41))
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("invoke = %v, %v; want [42], nil", got, err)
+	}
+	ic := in.findInvokeCache("f")
+	wantDirect := preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
+		preparedDirectIntSupported && preparedDirectIntEnabled && in.preparedMemoryFreeEntryMode() == preparedEntryIsolated &&
+		in.c.directPreparedAt(0)
+	if ic == nil || ic.directIntFast != wantDirect {
+		t.Fatalf("direct integer cache selection = %+v; want %v", ic, wantDirect)
+	}
+	if wantDirect && ic.directEntry == 0 {
+		t.Fatal("direct integer cache did not retain the native entry")
+	}
+	if got, err := in.Invoke("f", ^uint64(0)); err != nil || len(got) != 1 || got[0] != 0 {
+		t.Fatalf("cached i32 truncation = %v, %v; want [0], nil", got, err)
+	}
+	if _, err := in.Invoke("f"); err == nil {
+		t.Fatal("wrong-arity cached direct invocation succeeded")
+	}
+	if got := in.invocationState.Load() & instanceInvocationCount; got != 0 {
+		t.Fatalf("invocation count after direct error = %d, want 0", got)
+	}
+	got, err = in.Invoke("f", I32(9))
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 10 {
+		t.Fatalf("invoke after direct error = %v, %v; want [10], nil", got, err)
+	}
+}
+
+func TestInvokeCachedDirectI32TrapRecovery(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x01, 0x20, 0x00, 0x6d, 0x0b}))),
+	)
+	in, err := Instantiate(MustCompile(module))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("f", 1); err != nil || len(got) != 1 || got[0] != 1 {
+		t.Fatalf("first invoke = %v, %v; want [1], nil", got, err)
+	}
+	if ic := in.findInvokeCache("f"); ic == nil || !ic.directIntFast || !ic.directIntBounded {
+		t.Fatalf("trap fixture did not select bounded direct entry: %+v", ic)
+	}
+	if _, err := in.Invoke("f", 0); err == nil {
+		t.Fatal("divide by zero did not trap")
+	}
+	if got, err := in.Invoke("f", 1); err != nil || len(got) != 1 || got[0] != 1 {
+		t.Fatalf("invoke after trap = %v, %v; want [1], nil", got, err)
 	}
 }
 
@@ -214,11 +276,15 @@ func TestCompiledAPIHelpers(t *testing.T) {
 	if got := c.FuncDebugName(1); got != "a" {
 		t.Fatalf("FuncDebugName export fallback = %q", got)
 	}
-	imports := Imports{"env.g": NewGlobalI32(3, false)}
-	defer imports["env.g"].(*Global).Close()
-	in := &Instance{imports: imports}
-	if got := in.Imports(); got["env.g"] != imports["env.g"] {
-		t.Fatalf("Imports = %v, want supplied map", got)
+	imports := testImports("env.g", NewGlobalI32(3, false))
+	bindings, err := imports.snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bindings[testImportKey("env.g")].(*Global).Close()
+	in := &Instance{imports: bindings}
+	if got := in.Imports(); got.bindings[testImportKey("env.g")] != bindings[testImportKey("env.g")] {
+		t.Fatalf("*Imports = %v, want supplied map", got)
 	}
 }
 
@@ -237,8 +303,12 @@ func TestReturningHostImportUsesCompiledDispatch(t *testing.T) {
 		t.Fatalf("Compile deferred host module: %v", err)
 	}
 	defer c.Close()
-	imports := Imports{"env.answer": HostFunc(func(_ HostModule, _, results []uint64) { results[0] = I32(42) })}
-	if err := c.validateImportBindings(imports, nil); err != nil {
+	imports := testImports("env.answer", slotHostFunc(func(_ HostModule, _, results []uint64) { results[0] = I32(42) }))
+	bindings, err := imports.snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.validateImportBindings(bindings, nil); err != nil {
 		t.Fatalf("validate returning host bindings: %v", err)
 	}
 	if !c.dynamicImports || len(c.code) == 0 {
@@ -273,11 +343,21 @@ func TestRuntimeConfigPortableFluentSurface(t *testing.T) {
 	if !strings.Contains(cfg.String(), "maxMemoryPages: 3") {
 		t.Fatalf("config String = %q", cfg.String())
 	}
-	if _, err := cfg.Compile([]byte(emptyModule)); err != nil {
-		t.Fatalf("fluent Compile: %v", err)
-	}
-	if cfg.MustCompile([]byte(emptyModule)) == nil {
-		t.Fatal("MustCompile returned nil")
+	compiled, err := cfg.Compile([]byte(emptyModule))
+	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
+		if !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("fluent Compile should fail closed on this AMD64 host: %v", err)
+		}
+	} else {
+		if err != nil {
+			t.Fatalf("fluent Compile: %v", err)
+		}
+		compiled.Close()
+		if must := cfg.MustCompile([]byte(emptyModule)); must == nil {
+			t.Fatal("MustCompile returned nil")
+		} else {
+			must.Close()
+		}
 	}
 	for _, tc := range []struct {
 		mode BoundsCheckMode
@@ -293,14 +373,24 @@ func TestRuntimeConfigPortableFluentSurface(t *testing.T) {
 	if got := (&UnsupportedFeatureError{Requested: CoreFeatureTailCall, Supported: CoreFeaturesV2}).Error(); !strings.Contains(got, "tail-call") {
 		t.Fatalf("UnsupportedFeatureError = %q", got)
 	}
-	err := NewRuntimeConfig().WithFeature(CoreFeatures(1<<63), true).Validate()
-	var unsupported *UnsupportedFeatureError
-	if !errors.As(err, &unsupported) {
-		t.Fatalf("Validate unsupported = %v", err)
+	err = NewRuntimeConfig().WithFeature(CoreFeatures(1<<63), true).Validate()
+	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
+		if !errors.Is(err, errNativeCPUFeatures) {
+			t.Fatalf("Validate should fail closed on this AMD64 host: %v", err)
+		}
+	} else {
+		var unsupported *UnsupportedFeatureError
+		if !errors.As(err, &unsupported) {
+			t.Fatalf("Validate unsupported = %v", err)
+		}
 	}
 	if !guardPageBuilt {
 		err = NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased).Validate()
-		if !IsGuardPageUnavailable(err) {
+		if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
+			if !errors.Is(err, errNativeCPUFeatures) {
+				t.Fatalf("bounds-mode validation should fail closed on this AMD64 host: %v", err)
+			}
+		} else if !IsGuardPageUnavailable(err) {
 			t.Fatalf("Validate signals = %v", err)
 		}
 	}
@@ -320,6 +410,9 @@ func TestRuntimeBuildCapabilitiesAndOptimizationKnobs(t *testing.T) {
 	supported := SupportedFeatures()
 	if supported&^coreFeaturesWago != 0 || (hostSupportsSIMD() && supported&CoreFeatureSIMD == 0) {
 		t.Fatalf("supported features = %s", supported)
+	}
+	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() && supported != 0 {
+		t.Fatalf("unsupported AMD64 backend reports executable features: %s", supported)
 	}
 	if GuardPageSupported() != guardPageBuilt {
 		t.Fatal("guard-page build capability disagrees with build flag")

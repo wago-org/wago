@@ -2,10 +2,27 @@
 
 package runtime
 
-import (
-	"encoding/binary"
-	"unsafe"
-)
+import "unsafe"
+
+func (e *Engine) PrepareIntCall(call *PreparedIntCall, code, linMem uintptr) {
+	call.code, call.linMem, call.stack = code, linMem, e.stackTop
+}
+
+// PrepareBoundedIntContext is a no-op under TinyGo: its portable entry path
+// establishes the trap re-entry context on each call.
+func (*Engine) PrepareBoundedIntContext(uintptr) {}
+
+func (e *Engine) EnterPreparedIntCallBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
+	result, _ := e.EnterPreparedIntBounded(call.code, call.linMem, a0, a1, a2, a3)
+	return result
+}
+
+// EnterPreparedIntPreboundContextBounded retains the immutable call descriptor
+// contract while using TinyGo's portable per-call transition.
+func (e *Engine) EnterPreparedIntPreboundContextBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
+	result, _ := e.EnterPreparedIntBounded(call.code, call.linMem, a0, a1, a2, a3)
+	return result
+}
 
 // TinyGo cannot assemble engine_int_amd64.s. Its indirect-call ABI passes the
 // five explicit uintptr arguments in RDI, RSI, RDX, RCX, and R8, followed by the
@@ -45,19 +62,10 @@ var tinygoIntThunkTemplate = []byte{
 const tinygoIntThunkStackTopOff = 2
 
 func preparedIntThunkFor(e *Engine) (uintptr, error) {
-	if e.preparedInt.entry != 0 {
-		return e.preparedInt.entry, nil
-	}
-	code := make([]byte, len(tinygoIntThunkTemplate))
-	copy(code, tinygoIntThunkTemplate)
-	binary.LittleEndian.PutUint64(code[tinygoIntThunkStackTopOff:], uint64(e.stackTop))
-	mem, err := mmapExec(code)
-	if err != nil {
+	if err := e.initNativeEntry(); err != nil {
 		return 0, err
 	}
-	e.preparedInt.mem = mem
-	e.preparedInt.entry = uintptr(unsafe.Pointer(&mem[0]))
-	return e.preparedInt.entry, nil
+	return uintptr(unsafe.Pointer(&e.preparedInt.mem[0])) + tinygoPreparedIntEntryOffset, nil
 }
 
 func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
@@ -68,6 +76,10 @@ func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint6
 	fv := funcValue{context: code, fnptr: entry}
 	call := *(*func(uintptr, uintptr, uintptr, uintptr, uintptr) uintptr)(unsafe.Pointer(&fv))
 	return uint64(call(linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3))), nil
+}
+
+func (e *Engine) EnterPreparedIntBounded(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
 }
 
 func PreparedIntTrapCode(trap []byte) TrapCode {

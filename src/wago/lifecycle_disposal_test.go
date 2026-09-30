@@ -8,13 +8,13 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 type disposalTestPlugin struct {
 	id          string
 	requires    []PluginCapability
-	hostFn      HostFunc
+	hostFn      slotHostFunc
 	hostName    string
 	hostParams  []ValType
 	hostResults []ValType
@@ -42,7 +42,7 @@ func (p *disposalTestPlugin) Register(reg *Registry) error {
 		if name == "" {
 			name = "f"
 		}
-		host.Module("env").Func(name, p.hostFn).Params(p.hostParams...).Results(p.hostResults...)
+		host.HostFunc("env", name, p.hostFn).Params(p.hostParams...).Results(p.hostResults...)
 	}
 	if len(p.afterInst)+len(p.onInstErr)+len(p.beforeClose)+len(p.afterClose) != 0 {
 		lifecycle, err := reg.InstanceLifecycle()
@@ -347,7 +347,7 @@ func TestRuntimeCloseWaitsForPendingManagedInstantiation(t *testing.T) {
 	}
 }
 
-func TestConcurrentInstanceCloseWaitsAndRunsOnce(t *testing.T) {
+func TestConcurrentInstanceWaitClosedRunsOnce(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	var before, after atomic.Int32
@@ -377,11 +377,17 @@ func TestConcurrentInstanceCloseWaitsAndRunsOnce(t *testing.T) {
 	for i := 0; i < callers; i++ {
 		go func() {
 			<-start
-			results <- in.Close()
+			_ = in.Close()
+			results <- in.WaitClosed(context.Background())
 		}()
 	}
 	close(start)
 	<-entered
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := in.WaitClosed(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("blocked close wait = %v", err)
+	}
 	close(release)
 	var panicResults int
 	for i := 0; i < callers; i++ {
@@ -392,8 +398,8 @@ func TestConcurrentInstanceCloseWaitsAndRunsOnce(t *testing.T) {
 			t.Fatalf("Close[%d] = %v, want nil or ErrCallbackPanic", i, err)
 		}
 	}
-	if panicResults == 0 {
-		t.Fatal("close lifecycle owner did not report ErrCallbackPanic")
+	if panicResults != callers {
+		t.Fatalf("WaitClosed panic results = %d, want %d", panicResults, callers)
 	}
 	if before.Load() != 1 || after.Load() != 1 {
 		t.Fatalf("hook counts = %d/%d, want 1/1", before.Load(), after.Load())
@@ -639,7 +645,7 @@ func TestCallerResolverAuthorityAndExpiry(t *testing.T) {
 		t.Fatalf("Instantiate: %v", err)
 	}
 	defer in.Close()
-	if _, err := in.Call(context.Background(), "call"); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "call"); err != nil {
 		t.Fatalf("Call: %v", err)
 	}
 	if resolveErr != nil || resolved != in {
@@ -666,7 +672,7 @@ func TestCallerResolverAuthorityAndExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cross Instantiate: %v", err)
 	}
-	if _, err := in2.Call(context.Background(), "call"); err != nil {
+	if _, err := in2.InvokeValues(context.Background(), "call"); err != nil {
 		t.Fatalf("cross Call: %v", err)
 	}
 	_ = in2.Close()
@@ -709,7 +715,7 @@ func TestCallerResolverManagedInstance(t *testing.T) {
 		t.Fatalf("managed Instantiate: %v", err)
 	}
 	in := managed.Instance()
-	if _, err := in.Call(context.Background(), "call"); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "call"); err != nil {
 		t.Fatalf("Call: %v", err)
 	}
 	if resolveErr != nil || resolved != in {
@@ -787,7 +793,7 @@ func TestManagedForkLifecycleAndRuntimeOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parent Instantiate: %v", err)
 	}
-	if _, err := parent.Call(context.Background(), "call"); err != nil {
+	if _, err := parent.InvokeValues(context.Background(), "call"); err != nil {
 		t.Fatalf("parent Call: %v", err)
 	}
 	if childCreateErr != nil || child == nil || child.Instance() == nil {
@@ -842,7 +848,7 @@ func TestTrapReportsAfterInvokeButDoesNotClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
-	if _, err := in.Call(context.Background(), "boom"); err == nil {
+	if _, err := in.InvokeValues(context.Background(), "boom"); err == nil {
 		t.Fatal("trapping Call returned nil error")
 	}
 	if invokeErr == nil {

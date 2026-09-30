@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestFuzzRegressionFixtureManifest(t *testing.T) {
@@ -30,7 +30,7 @@ func TestFuzzRegressionFixtureManifest(t *testing.T) {
 		"2140", "2201", "2260", "695", "696", "699", "701", "704", "708", "709", "715",
 		"716", "717", "718", "719", "720", "721", "722", "725", "730", "733", "873", "874", "888",
 	}
-	paths, err := filepath.Glob(filepath.Join("..", "..", "tests", "regressions", "fuzzcases", "*.wasm"))
+	paths, err := filepath.Glob(filepath.Join("..", "..", "tests", "corpus", "regressions", "fuzzcases", "*.wasm"))
 	if err != nil {
 		t.Fatalf("glob fuzz fixtures: %v", err)
 	}
@@ -171,12 +171,12 @@ func TestFuzzRegressionCorpus(t *testing.T) {
 			if err != nil {
 				t.Fatalf("compile %d: %v", i, err)
 			}
-			in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
+			in, err := Instantiate(c, InstantiateOptions{Imports: testImports()})
 			if err != nil {
 				_ = c.Close()
 				t.Fatalf("instantiate %d: %v", i, err)
 			}
-			memories = append(memories, append([]byte(nil), in.Memory().Bytes()...))
+			memories = append(memories, append([]byte(nil), in.Memory().UnsafeBytes()...))
 			_ = in.Close()
 			_ = c.Close()
 		}
@@ -439,7 +439,7 @@ func TestFuzzRegressionCorpus(t *testing.T) {
 
 func readFuzzFixture(t *testing.T, id string) []byte {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "tests", "regressions", "fuzzcases", id+".wasm"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "tests", "corpus", "regressions", "fuzzcases", id+".wasm"))
 	if err != nil {
 		t.Fatalf("read fuzz fixture %s: %v", id, err)
 	}
@@ -453,7 +453,7 @@ func instantiateFuzzFixture(t *testing.T, id string) *Instance {
 		t.Fatalf("compile fuzz fixture %s: %v", id, err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports()})
 	if err != nil {
 		t.Fatalf("instantiate fuzz fixture %s: %v", id, err)
 	}
@@ -468,7 +468,7 @@ func assertFuzzInstantiateError(t *testing.T, id, contains string) {
 		t.Fatalf("compile fuzz fixture %s: %v", id, err)
 	}
 	defer c.Close()
-	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports()})
 	if in != nil {
 		_ = in.Close()
 	}
@@ -552,7 +552,7 @@ func assertFuzzMemorySHA(t *testing.T, in *Instance, wantLen int, want string) {
 	if in.Memory() == nil {
 		t.Fatal("module has no memory")
 	}
-	b := in.Memory().Bytes()
+	b := in.Memory().UnsafeBytes()
 	if len(b) != wantLen {
 		t.Fatalf("memory length = %d, want %d", len(b), wantLen)
 	}
@@ -594,7 +594,7 @@ func testFuzzRegression888(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile 888: %v", err)
 	}
-	consumer, err := rt.Instantiate(context.Background(), consumerModule, WithImports(Imports{"host.": global, "host.s": memory}))
+	consumer, err := rt.Instantiate(context.Background(), consumerModule, WithImports(testImports("host.", global, "host.s", memory)))
 	if err != nil {
 		t.Fatalf("instantiate 888 with imported funcref global: %v", err)
 	}
@@ -614,7 +614,7 @@ func testExtendedConstElementFixture(t *testing.T, id string) {
 	if err != nil {
 		t.Fatalf("marshal extended-const fixture %s: %v", id, err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatalf("load extended-const fixture %s: %v", id, err)
 	}
@@ -631,7 +631,7 @@ func testExtendedConstElementFixture(t *testing.T, id string) {
 		t.Fatalf("codec lost global.get element initializer for %s", id)
 	}
 
-	imports := Imports{}
+	imports := testImports()
 	for _, imp := range mod.Imports() {
 		if imp.Kind != ImportGlobal {
 			continue
@@ -649,7 +649,8 @@ func testExtendedConstElementFixture(t *testing.T, id string) {
 			t.Fatalf("create %s global for %s: %v", imp.Type, id, err)
 		}
 		defer global.Close()
-		imports[imp.Key()] = global
+		module, name := splitImportKey(imp.Key())
+		imports.Global(module, name, global)
 	}
 	in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {

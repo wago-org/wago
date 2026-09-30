@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // brTableIndexInRAX builds a one-function module whose br_table dispatches on an
@@ -66,6 +66,7 @@ func brTableLabelsInRAX(t testing.TB, labels []uint32, def uint32) *wasm.Module 
 }
 
 func TestExecBrTableCompactTargetIDsAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	labels := []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}
 	m := brTableLabelsInRAX(t, labels, 4)
 	var stats ModuleStats

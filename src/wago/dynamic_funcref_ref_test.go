@@ -11,7 +11,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func compileDynamicFuncrefFixture(t testing.TB, filename string) *Compiled {
@@ -30,6 +30,28 @@ func compileDynamicFuncrefFixture(t testing.TB, filename string) *Compiled {
 	return compiled
 }
 
+func TestDynamicFuncrefValidationAnalysisParity(t *testing.T) {
+	for _, filename := range []string{"dynamic_funcref_cast.wasm", "dynamic_funcref_import_consumer.wasm"} {
+		t.Run(filename, func(t *testing.T) {
+			data, err := os.ReadFile("testdata/" + filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := wasm.DecodeModule(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var analysis wasm.ValidatedModuleAnalysis
+			if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, &analysis); err != nil {
+				t.Fatal(err)
+			}
+			if got, want := moduleDynamicFuncrefEscapeWithValidation(m, &analysis), moduleDynamicFuncrefEscape(m); got != want {
+				t.Fatalf("dynamic reference-call fact = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
 func instantiateDynamicFuncrefImportPair(t testing.TB, consumerFilename string) (*Instance, *Instance, *Compiled) {
 	t.Helper()
 	providerCompiled := compileDynamicFuncrefFixture(t, "dynamic_funcref_import_provider.wasm")
@@ -45,7 +67,7 @@ func instantiateDynamicFuncrefImportPair(t testing.TB, consumerFilename string) 
 	if err != nil {
 		t.Fatalf("export dynamic funcref provider: %v", err)
 	}
-	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		t.Fatalf("instantiate %s: %v", consumerFilename, err)
 	}
@@ -150,7 +172,7 @@ func TestGCStructConstructorAcceptsImportedFuncrefFromTable(t *testing.T) {
 	}
 	consumer, err := instantiateCore(consumerCode, InstantiateOptions{
 		store:   store,
-		Imports: Imports{"env.f": f},
+		Imports: testImports("env.f", f),
 		GC:      GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true},
 	})
 	if err != nil {
@@ -181,7 +203,7 @@ func TestDynamicIndexedFunctionRefTestUsesBareProviderActualType(t *testing.T) {
 	}
 	consumerCompiled := compileDynamicFuncrefFixture(t, "dynamic_funcref_import_proxy_consumer.wasm")
 	defer consumerCompiled.Close()
-	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: Imports{"env.f": export}})
+	consumer, err := Instantiate(consumerCompiled, InstantiateOptions{Imports: testImports("env.f", export)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +235,7 @@ func TestDynamicIndexedFunctionRefTestClosureDispatch(t *testing.T) {
 		t.Fatalf("compile dynamic closure ref.test: %v", err)
 	}
 	defer compiled.Close()
-	loaded := roundTripCompiled(t, compiled)
+	loaded := publicArtifactRoundTrip(t, compiled)
 	defer loaded.Close()
 	if coreruntime.FuncRefDescBytes != 40 || !compiled.usesDynamicFuncRefTest() || !loaded.usesDynamicFuncRefTest() {
 		t.Fatalf("dynamic ref.test metadata = descriptor %d source=%v loaded=%v; want 40/true/true", coreruntime.FuncRefDescBytes, compiled.usesDynamicFuncRefTest(), loaded.usesDynamicFuncRefTest())
@@ -252,7 +274,7 @@ func TestDynamicIndexedFunctionRefTestClosureDispatch(t *testing.T) {
 				in.Close()
 				t.Fatalf("%s closure dispatch = %v, %v; want [%d]", tc.name, got, callErr, tc.want)
 			}
-			prepared, prepareErr := in.PrepareFunction(tc.name)
+			prepared, prepareErr := in.WasmFunc(tc.name)
 			if prepareErr != nil {
 				in.Close()
 				t.Fatal(prepareErr)
@@ -285,14 +307,14 @@ func TestDynamicIndexedFunctionRefTestClosureDispatch(t *testing.T) {
 			get  string
 			want uint64
 		}{{get: "get_child", want: 1}, {get: "get_unrelated", want: 0}} {
-			foreign, callErr := producer.Call(context.Background(), tc.get)
+			foreign, callErr := producer.InvokeValues(context.Background(), tc.get)
 			if callErr != nil || len(foreign) != 1 || foreign[0].Type() != ValFuncRef {
 				consumer.Close()
 				producer.Close()
 				rt.Close()
 				t.Fatalf("producer %s = %v, %v; want one funcref", tc.get, foreign, callErr)
 			}
-			got, callErr := consumer.Call(context.Background(), "foreign_is_root", foreign[0])
+			got, callErr := consumer.InvokeValues(context.Background(), "foreign_is_root", foreign[0])
 			if callErr != nil || len(got) != 1 || got[0].Bits() != tc.want {
 				consumer.Close()
 				producer.Close()
@@ -311,6 +333,52 @@ func TestDynamicIndexedFunctionRefTestClosureDispatch(t *testing.T) {
 		}
 		if err := rt.Close(); err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+// A failed comparison of the first wrapper must not leave the second member
+// of a recursive group cached as equal for the next wrapper's dynamic ref.test.
+func TestDynamicRefTestRejectsProvisionalRecursiveEquality(t *testing.T) {
+	ref := func(i uint32) wasm.ValType {
+		return wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: i}), false))
+	}
+	group := func(base uint32, scalar wasm.ValType) []byte {
+		first := hostFuncRefTestFuncType([]wasm.ValType{ref(base + 1), scalar}, nil)
+		second := hostFuncRefTestFuncType([]wasm.ValType{ref(base)}, nil)
+		return append([]byte{0x4e}, wasmtest.Vec(first, second)...)
+	}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			group(0, wasm.I32), group(2, wasm.I64),
+			hostFuncRefTestFuncType([]wasm.ValType{ref(0), ref(1)}, nil),
+			hostFuncRefTestFuncType([]wasm.ValType{ref(2), ref(1)}, nil),
+			hostFuncRefTestFuncType([]wasm.ValType{ref(0), ref(3)}, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{4}, []byte{5}, []byte{6}, []byte{7})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0, 3})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("test", 0, 3))),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0, 1, 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x0b}), wasmtest.Code([]byte{0x0b}), wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x25, 0, 0xfb, 0x14, 4, 0x0b}),
+		)),
+	)
+	c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).Compile(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	for i, want := range []uint64{1, 0, 0} {
+		out, err := in.Invoke("test", uint64(i))
+		if err != nil || len(out) != 1 || out[0] != want {
+			t.Fatalf("ref.test table[%d] = %v, %v; want %d", i, out, err, want)
 		}
 	}
 }

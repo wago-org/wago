@@ -30,7 +30,7 @@ func TestTinyGoBoundedRunStability(t *testing.T) {
 
 	serArgs := ar.Alloc(16)
 	results := ar.Alloc(16)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(TrapBufferBytes)
 	lin := jm.LinearMemory()
 
 	const iters = 50000

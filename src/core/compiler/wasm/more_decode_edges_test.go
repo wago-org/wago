@@ -115,15 +115,9 @@ func TestMoreNameSectionEdges(t *testing.T) {
 		return append(out, payload...)
 	}
 
-	t.Run("malformed function name map ordering rejects module", func(t *testing.T) {
-		// custom name section: subsection 1 (function names), payload vector
-		// [(2,"b"),(1,"a")], which violates the strictly-increasing map order.
-		namePayload := subsection(1, append(u32(2), append(append(u32(2), name("b")...), append(u32(1), name("a")...)...)...))
-		_, err := DecodeModule(module(custom("name", namePayload...)))
-		var de *DecodeError
-		if !errors.As(err, &de) || de.Code != ErrInvalidSection {
-			t.Fatalf("expected malformed name-section error, got %v", err)
-		}
+	t.Run("malformed function name map is ignored", func(t *testing.T) {
+		namePayload := subsection(1, nameMap(NameAssoc{Index: 2, Name: "b"}, NameAssoc{Index: 1, Name: "a"}))
+		requireIgnoredNamePayload(t, namePayload)
 	})
 	t.Run("stale name indexes remain non-semantic", func(t *testing.T) {
 		namePayload := append([]byte{}, subsection(1, nameMap(NameAssoc{Index: 99, Name: "stale-func"}))...)

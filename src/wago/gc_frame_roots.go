@@ -5,9 +5,51 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/nativeabi"
 )
 
-const gcNativeFrameRootLimit = shared.GCFrameRootLimit
+func gcFrameFixedOffsets(rootMap *nativeabi.FunctionRootMap) []uint32 {
+	gcRoots := 0
+	for _, slot := range rootMap.Slots {
+		if slot.Kind == nativeabi.RootGCRef {
+			gcRoots++
+		}
+	}
+	if gcRoots == 0 {
+		return nil
+	}
+	offsets := make([]uint32, 0, gcRoots)
+	for _, slot := range rootMap.Slots {
+		if slot.Kind == nativeabi.RootGCRef {
+			offsets = append(offsets, slot.Offset)
+		}
+	}
+	return offsets
+}
+
+//go:noinline
+func gcFramePrepareModuleRootPlan(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, analysis *wasm.ValidatedModuleAnalysis) (*shared.GCModuleFrameRootPlan, error) {
+	module := shared.NewGCModuleFrameRootPlan(len(m.Code))
+	collectingFunctions := 0
+	for function := range m.Code {
+		mayCollect := false
+		if analysis.ValidFor(m) {
+			mayCollect = analysis.Func(function).Flags&wasm.ValidatedFuncMayCollect != 0
+		} else {
+			mayCollect = gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, classifier)
+		}
+		if mayCollect {
+			if !module.MarkFunction(function) {
+				return nil, fmt.Errorf("function %d root plan ownership is invalid", function)
+			}
+			collectingFunctions++
+		}
+	}
+	if !module.ReserveFunctions(collectingFunctions) {
+		return nil, fmt.Errorf("root plan capacity %d is invalid", collectingFunctions)
+	}
+	return module, nil
+}
 
 // collectorFrameRefType classifies reference types represented by the Wasm GC
 // collector. It deliberately excludes funcref, externref, and exnref. Indexed
@@ -101,12 +143,32 @@ func wasmFuncTypeTransfersCollectorRefs(m *wasm.Module, ft *wasm.CompType) bool 
 	return false
 }
 
+func wasmFuncTypeReferenceFree(ft *wasm.CompType) bool {
+	if ft == nil {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if typ.Kind() == wasm.ValRef {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if typ.Kind() == wasm.ValRef {
+			return false
+		}
+	}
+	return true
+}
+
 func moduleHasCollectorReferenceCallBoundary(m *wasm.Module) bool {
 	if m == nil {
 		return false
 	}
-	for i := 0; i < m.ImportedFuncCount(); i++ {
-		ft, ok := m.FuncSignature(uint32(i))
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != wasm.ExternFunc {
+			continue
+		}
+		ft, ok := m.ImportFuncType(i)
 		if !ok || wasmFuncTypeTransfersCollectorRefs(m, ft) {
 			return true
 		}
@@ -127,6 +189,13 @@ func moduleHasGCAllocationSites(m *wasm.Module) bool {
 	return false
 }
 
+func moduleHasGCAllocationSitesWithValidation(m *wasm.Module, analysis *wasm.ValidatedModuleAnalysis) bool {
+	if analysis.ValidFor(m) {
+		return analysis.Flags()&wasm.ValidatedFuncMayAllocate != 0
+	}
+	return moduleHasGCAllocationSites(m)
+}
+
 // GCNativeRootAdmission describes whether a compiled generic-GC module can
 // collect while native frames are active. Reason is populated for fail-closed
 // collection-disabled admission. MetadataBytes is the direct serialized root-map
@@ -144,6 +213,7 @@ type GCNativeRootAdmission struct {
 // GCNativeRootAdmission reports exact native-root coverage and actionable
 // fail-closed diagnostics without exposing live frames or process-local handles.
 func (c *Compiled) GCNativeRootAdmission() GCNativeRootAdmission {
+	c = c.executionView()
 	status := GCNativeRootAdmission{Required: c != nil && c.needsExactNativeGCRoots()}
 	if c == nil {
 		status.Reason = "nil compiled module"
@@ -197,41 +267,51 @@ func gcFrameCollectorElementExprSafe(expr wasm.Expr) bool {
 }
 
 func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
-	if module == nil || len(module.Functions) == 0 {
+	if module == nil || module.FunctionCount() == 0 {
 		return false
 	}
 	totalSafepoints, totalCallsites := 0, 0
 	var previousID uint32
-	for _, plan := range module.Functions {
+	for function := 0; function < module.FunctionCount(); function++ {
+		if module.FunctionPending(function) {
+			return false // fail closed if a producer omitted a collecting function
+		}
+		plan := module.Function(function)
 		if plan == nil {
 			continue // proven non-collecting function; no active-frame map is needed
 		}
-		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || len(plan.LiveLocalMasks) != len(plan.Safepoints) || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > gcNativeFrameRootLimit {
+		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || plan.AllocationMaskCount() != plan.SafepointCount() || len(plan.Locals) > shared.GCFrameTrackedLocalLimit {
 			return false
 		}
-		active := len(plan.Safepoints) != 0 || len(plan.Callsites) != 0
+		active := plan.SafepointCount() != 0 || plan.CallsiteCount() != 0
 		if active && plan.FrameBytes < 8 {
 			return false
 		}
-		if active && !validGCFrameOffsets(plan.LocalOffsets, plan.FrameBytes) {
+		if active && !validGCFrameLocals(plan.Locals, plan.FrameBytes) {
 			return false
 		}
 		var previousReturn uint32
-		for i := range plan.Callsites {
-			callsite := &plan.Callsites[i]
-			if callsite.ReturnOffset == 0 || (i != 0 && callsite.ReturnOffset <= previousReturn) || callsite.StackAdjust%8 != 0 || callsite.StackAdjust > 1<<20 || len(callsite.Offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.Offsets, plan.FrameBytes) {
+		if !plan.VisitCallsites(func(i int, callsite shared.GCFrameCallsite) bool {
+			returnOffset, stackAdjust := callsite.ReturnOffset(), callsite.StackAdjust()
+			if returnOffset == 0 || (i != 0 && returnOffset <= previousReturn) || stackAdjust%8 != 0 || stackAdjust > 1<<20 || !validGCFrameOffsets(callsite.Offsets(), plan.FrameBytes) {
 				return false
 			}
-			previousReturn = callsite.ReturnOffset
+			previousReturn = returnOffset
 			totalCallsites++
+			return true
+		}) {
+			return false
 		}
-		for i := range plan.Safepoints {
-			safepoint := &plan.Safepoints[i]
-			if safepoint.ID == 0 || safepoint.ID > shared.GCSafepointIDMax || (totalSafepoints != 0 && safepoint.ID <= previousID) || len(safepoint.Offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(safepoint.Offsets, plan.FrameBytes) {
+		if !plan.VisitSafepoints(func(i int, offsets []uint32) bool {
+			id64 := uint64(plan.SafepointBase) + uint64(i) + 1
+			if id64 == 0 || id64 > uint64(shared.GCSafepointIDMax) || (totalSafepoints != 0 && uint32(id64) <= previousID) || !validGCFrameOffsets(offsets, plan.FrameBytes) {
 				return false
 			}
-			previousID = safepoint.ID
+			previousID = uint32(id64)
 			totalSafepoints++
+			return true
+		}) {
+			return false
 		}
 	}
 	return totalSafepoints != 0 || totalCallsites != 0
@@ -282,7 +362,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	var previousReturn uint32
 	for i := range rootMap.callsites {
 		callsite := &rootMap.callsites[i]
-		if callsite.frameBytes < 8 || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.code)) || (i != 0 && callsite.returnOffset <= previousReturn) || callsite.stackAdjust%8 != 0 || callsite.stackAdjust > 1<<20 || len(callsite.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
+		if callsite.frameBytes < 8 || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.code)) || (i != 0 && callsite.returnOffset <= previousReturn) || callsite.stackAdjust%8 != 0 || callsite.stackAdjust > 1<<20 || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
 			return fmt.Errorf("GC frame-root callsite %d is malformed", callsite.returnOffset)
 		}
 		previousReturn = callsite.returnOffset
@@ -290,7 +370,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	var previousID uint32
 	for i := range rootMap.safepoints {
 		safepoint := &rootMap.safepoints[i]
-		if safepoint.frameBytes < 8 || safepoint.frameBytes > 1<<31-1 || safepoint.id == 0 || safepoint.id > shared.GCSafepointIDMax || (i != 0 && safepoint.id <= previousID) || len(safepoint.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(safepoint.offsets, safepoint.frameBytes) {
+		if safepoint.frameBytes < 8 || safepoint.frameBytes > 1<<31-1 || safepoint.id == 0 || safepoint.id > shared.GCSafepointIDMax || (i != 0 && safepoint.id <= previousID) || !validGCFrameOffsets(safepoint.offsets, safepoint.frameBytes) {
 			return fmt.Errorf("GC frame-root safepoint %d is malformed", safepoint.id)
 		}
 		previousID = safepoint.id
@@ -413,6 +493,22 @@ func validGCFrameOffsets(offsets []uint32, frameBytes uint32) bool {
 			return false
 		}
 		previous = off
+	}
+	return true
+}
+
+func validGCFrameLocals(locals []shared.GCFrameLocal, frameBytes uint32) bool {
+	if len(locals) != 0 && frameBytes < 8 {
+		return false
+	}
+	var previousIndex, previousOffset uint32
+	for i, local := range locals {
+		off := local.Offset
+		if off%8 != 0 || off > frameBytes-8 ||
+			(i != 0 && (local.Index <= previousIndex || off <= previousOffset)) {
+			return false
+		}
+		previousIndex, previousOffset = local.Index, off
 	}
 	return true
 }

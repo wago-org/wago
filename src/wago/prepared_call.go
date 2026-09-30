@@ -11,15 +11,15 @@ var preparedCallEnabled = os.Getenv("WAGO_PREPARED_CALL") != "0"
 // WAGO_DIRECT_PREPARED=0 restores routing through callNative for clean A/B.
 var directPreparedCallEnabled = os.Getenv("WAGO_DIRECT_PREPARED") != "0"
 
-// preparedScalarFastEnabled selects the bounded scalar PreparedFunction path.
+// preparedScalarFastEnabled selects the bounded scalar WasmFunc path.
 // WAGO_PREPARED_SCALAR_FAST=0 restores generic slot marshaling for same-binary
 // benchmark comparisons.
 var preparedScalarFastEnabled = os.Getenv("WAGO_PREPARED_SCALAR_FAST") != "0"
 
-// preparedPrivateEntryEnabled lets a PreparedFunction with a private,
+// preparedPrivateEntryEnabled lets a WasmFunc with a private,
 // already-bound native context bypass the process-wide rebinding lease.
 // WAGO_PREPARED_PRIVATE_ENTRY=0 restores the ordinary entry path for A/B.
-var preparedPrivateEntryEnabled = os.Getenv("WAGO_PREPARED_PRIVATE_ENTRY") != "0"
+var preparedPrivateEntryEnabled = preparedCallEnabled && os.Getenv("WAGO_PREPARED_PRIVATE_ENTRY") != "0"
 
 // preparedIsolatedEntryEnabled lets a prepared scalar call whose instance has
 // no host-visible native state enter its instance-owned Engine without taking
@@ -28,10 +28,23 @@ var preparedPrivateEntryEnabled = os.Getenv("WAGO_PREPARED_PRIVATE_ENTRY") != "0
 var preparedIsolatedEntryEnabled = os.Getenv("WAGO_PREPARED_ISOLATED_ENTRY") != "0"
 
 // invokePrivateEntryEnabled lets the bounded scalar Instance.Invoke path reuse
-// the same already-bound private entry as PreparedFunction. Export resolution
+// the same already-bound private entry as WasmFunc. Export resolution
 // remains in Invoke; WAGO_INVOKE_PRIVATE_ENTRY=0 restores the general entry.
-var invokePrivateEntryEnabled = os.Getenv("WAGO_INVOKE_PRIVATE_ENTRY") != "0"
+var invokePrivateEntryEnabled = preparedCallEnabled && os.Getenv("WAGO_INVOKE_PRIVATE_ENTRY") != "0"
 
 // preparedDirectIntEnabled selects register-ABI entry for adapter-free integer
 // scalar leaves. WAGO_PREPARED_DIRECT_INT=0 restores the wrapper adapter.
 var preparedDirectIntEnabled = os.Getenv("WAGO_PREPARED_DIRECT_INT") != "0"
+
+// preparedIntCallBlockEnabled reuses a per-handle call block for compiler-
+// bounded entries. ARM64 enables it by default; AMD64's value-argument thunk is
+// faster on the native Ryzen gate. An explicit 0/1 overrides the architecture
+// default for measurement and rollback.
+var preparedIntCallBlockEnabled = preparedIntCallBlockSetting()
+
+func preparedIntCallBlockSetting() bool {
+	if value, ok := os.LookupEnv("WAGO_PREPARED_INT_CALL_BLOCK"); ok {
+		return value != "0"
+	}
+	return preparedIntCallBlockDefault
+}

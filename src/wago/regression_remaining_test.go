@@ -16,7 +16,7 @@ import (
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // These tests adapt portable runtime and compiler regressions from Regression's
@@ -36,7 +36,7 @@ func TestRuntimeRegressionPortReusedMemoryIsZeroed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	memory := first.Memory().Bytes()
+	memory := first.Memory().UnsafeBytes()
 	for i := range memory {
 		memory[i] = 0xfe
 	}
@@ -53,7 +53,7 @@ func TestRuntimeRegressionPortReusedMemoryIsZeroed(t *testing.T) {
 	if second.jm != reused {
 		t.Fatalf("JobMemory cache did not reuse the dirtied mapping: first=%p second=%p", reused, second.jm)
 	}
-	for i, b := range second.Memory().Bytes() {
+	for i, b := range second.Memory().UnsafeBytes() {
 		if b != 0 {
 			t.Fatalf("reused memory byte %d = %#x, want zero", i, b)
 		}
@@ -136,7 +136,7 @@ func TestRuntimeRegressionPortFailedInstantiationMemoryDoesNotLeak(t *testing.T)
 	if after.jm != reused {
 		t.Fatalf("failed instantiation did not return the primed mapping: prime=%p after=%p", reused, after.jm)
 	}
-	for i, b := range after.Memory().Bytes() {
+	for i, b := range after.Memory().UnsafeBytes() {
 		if b != 0 {
 			t.Fatalf("memory byte %d after failed instantiation = %#x, want zero", i, b)
 		}
@@ -279,7 +279,7 @@ func TestRuntimeRegressionPortParallelValidationErrorIsDeterministic(t *testing.
 }
 
 // Port of tests/all/import_indexes.rs::same_import_names_still_distinct. The
-// upstream oracle is import metadata identity; Wago's public Imports map binds
+// upstream oracle is import metadata identity; Wago's public *Imports map binds
 // duplicate keys to one host value, so the execution below is only a call-site
 // smoke test and does not claim independently bindable duplicate imports.
 func TestRuntimeRegressionPortSameNamedImportDeclarationsRemainDistinct(t *testing.T) {
@@ -311,7 +311,7 @@ func TestRuntimeRegressionPortSameNamedImportDeclarationsRemainDistinct(t *testi
 		t.Fatalf("same-named import metadata = %#v", decls)
 	}
 	calls := 0
-	host := HostFunc(func(_ HostModule, _ []uint64, results []uint64) {
+	host := slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) {
 		if calls%2 == 0 {
 			results[0] = I32(1)
 		} else {
@@ -319,13 +319,13 @@ func TestRuntimeRegressionPortSameNamedImportDeclarationsRemainDistinct(t *testi
 		}
 		calls++
 	})
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{".": host}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports(".", host)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
 	for attempt := 0; attempt < 2; attempt++ {
-		got, err := in.Call(context.Background(), "run")
+		got, err := in.InvokeValues(context.Background(), "run")
 		if err != nil || len(got) != 1 || got[0].I32() != 3 {
 			t.Fatalf("run attempt %d = %v, %v; want 3", attempt, got, err)
 		}
@@ -466,7 +466,9 @@ func TestRuntimeRegressionPortResourceFootprintRemainsBounded(t *testing.T) {
 	if baseFDs >= 0 && gotFDs > baseFDs+1 {
 		t.Fatalf("file descriptors grew from %d to %d after repeated instances", baseFDs, gotFDs)
 	}
-	if baseMaps >= 0 && gotMaps > baseMaps+4 {
+	// The race runtime adds shadow-memory mappings lazily. Their count is not a
+	// stable leak signal, so retain the mapping check in ordinary test binaries.
+	if !raceDetectorEnabled && baseMaps >= 0 && gotMaps > baseMaps+4 {
 		t.Fatalf("memory mappings grew from %d to %d after repeated instances", baseMaps, gotMaps)
 	}
 }
@@ -484,7 +486,7 @@ func regressionProcessResourceCounts() (fds, mappings int) {
 
 func compileRegressionDirectFixture(t *testing.T, fixture string, module int) *Compiled {
 	t.Helper()
-	path := filepath.Join("../../tests/regressions/runtime/core", fixture, fmt.Sprintf("module.%d.wasm", module))
+	path := filepath.Join("../../tests/corpus/regressions/runtime/core", fixture, fmt.Sprintf("module.%d.wasm", module))
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

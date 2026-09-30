@@ -166,4 +166,7 @@ func TestCustomNameSectionPreserved(t *testing.T) {
 	if string(m.RawNameSecPayload) != string(namePayload) {
 		t.Fatalf("raw name payload mismatch")
 	}
+	if &m.RawNameSecPayload[0] != &m.Customs[0].Data[0] {
+		t.Fatal("raw name payload does not share the owned custom-section bytes")
+	}
 }
