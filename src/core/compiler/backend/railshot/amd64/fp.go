@@ -763,6 +763,9 @@ func (f *fn) i2fU(f64, srcWide bool) {
 	}
 	gpr := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(gpr)
+	// Scratch allocation may spill a live value. Do it before either native
+	// branch, and before acquiring an unowned XMM temporary.
+	half := f.allocReg(maskOf(gpr))
 	xmm := f.allocFReg(0)
 	f.scalarZero(xmm) // break CVTSI2SD's false dep on xmm (both branches below)
 	f.a.TestSelf(gpr, true)
@@ -770,7 +773,6 @@ func (f *fn) i2fU(f64, srcWide bool) {
 	f.a.Cvtsi2f(xmm, gpr, f64, true)
 	done := f.a.JmpPlaceholder()
 	f.a.PatchRel32(big, f.a.Len())
-	half := f.allocReg(maskOf(gpr))
 	f.a.MovReg64(half, gpr)
 	f.a.ShiftImm(5, half, 1, true) // shr half,1
 	f.a.AluRI(4, gpr, 1, true)     // and gpr,1
@@ -850,14 +852,18 @@ func (f *fn) f2iTrunc(dstWide, srcF64, signed bool) {
 // truncU64InRange converts x, already proven in [0, 2^64), to u64: a signed cvtt
 // overflows for x >= 2^63, so bias by cvtt(x - 2^63) + 2^63.
 func (f *fn) truncU64InRange(x, r Reg, srcF64 bool) {
+	// Acquire scratch before branching so every path executes any emitted spill.
+	// Pin it while loading the bound, which may itself need GP scratch.
+	t := f.allocReg(maskOf(r))
+	f.pinned = f.pinned.add(t)
 	p63 := f.loadFConstBits(floatBits2p63(srcF64), srcF64)
 	f.a.Ucomis(x, p63, srcF64)
 	simple := f.a.JccPlaceholder(condB)
 	f.a.FSub(x, p63, srcF64)
 	f.a.Cvttf2si(r, x, srcF64, true)
-	t := f.allocReg(maskOf(r))
 	f.a.MovImm64(t, 0x8000000000000000)
 	f.a.Add64(r, t)
+	f.pinned = f.pinned.remove(t)
 	f.release(t)
 	done := f.a.JmpPlaceholder()
 	f.a.PatchRel32(simple, f.a.Len())
@@ -895,13 +901,15 @@ func (f *fn) truncSatSigned(x, r Reg, f64src, dstWide bool) {
 	if dstWide {
 		n = 64
 	}
+	// Materializing the bound may spill a live XMM or GP value. The NaN path
+	// must execute that spill too, even though it does not compare the bound.
+	hi := f.loadFConstBits(floatBits(math.Ldexp(1, n-1), f64src), f64src)
 	f.a.Cvttf2si(r, x, f64src, dstWide)
 	f.a.Ucomis(x, x, f64src)
 	notNaN := f.a.JccPlaceholder(condNP)
 	f.a.XorSelf32(r) // NaN → 0
 	toEnd := f.a.JmpPlaceholder()
 	f.a.PatchRel32(notNaN, f.a.Len())
-	hi := f.loadFConstBits(floatBits(math.Ldexp(1, n-1), f64src), f64src) // 2^(n-1)
 	f.a.Ucomis(x, hi, f64src)
 	f.releaseF(hi)
 	below := f.a.JccPlaceholder(condB)
@@ -933,6 +941,10 @@ func (f *fn) truncSatU32(x, r Reg, f64src bool) {
 }
 
 func (f *fn) truncSatU64(x, r Reg, f64src bool) {
+	// All native paths share the allocator's spill state. Reserve the bias
+	// scratch before the first split and protect it during bound materialization.
+	t := f.allocReg(maskOf(r))
+	f.pinned = f.pinned.add(t)
 	zero := f.loadFConstBits(floatBits(0, f64src), f64src)
 	f.a.Ucomis(x, zero, f64src)
 	f.releaseF(zero)
@@ -952,9 +964,9 @@ func (f *fn) truncSatU64(x, r Reg, f64src bool) {
 	simple := f.a.JccPlaceholder(condB)
 	f.a.FSub(x, p63, f64src)
 	f.a.Cvttf2si(r, x, f64src, true)
-	t := f.allocReg(maskOf(r))
 	f.a.MovImm64(t, 0x8000000000000000)
 	f.a.Add64(r, t)
+	f.pinned = f.pinned.remove(t)
 	f.release(t)
 	biasEnd := f.a.JmpPlaceholder()
 	f.a.PatchRel32(simple, f.a.Len())
