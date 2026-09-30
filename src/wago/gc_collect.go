@@ -60,9 +60,18 @@ func (in *Instance) collectGC() error {
 	defer unlockGCCollector(lockedDomain)
 	public.mu.Lock()
 	defer public.mu.Unlock()
+	if err := in.prepareGCCollectionRootsLocked(public); err != nil {
+		return err
+	}
+	return in.gc.CollectFull(&public.frameRoots)
+}
+
+// prepareGCCollectionRootsLocked prepares the standard root universe while
+// native execution, the collector domain, and public.mu are held.
+func (in *Instance) prepareGCCollectionRootsLocked(public *gcPublicState) error {
 	if err := in.syncGenericGCGlobalRootsLocked(public); err != nil {
 		return err
 	}
 	public.frameRoots = in.gcCollectFrameRoots(public)
-	return in.gc.CollectFull(&public.frameRoots)
+	return nil
 }

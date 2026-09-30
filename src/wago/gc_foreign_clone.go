@@ -81,6 +81,10 @@ func (target *Instance) CloneGCRefFrom(source *Instance, value GCRef) (GCRef, er
 	if err != nil {
 		return GCRef{}, err
 	}
+	// Source admission ends before target admission starts. Hold the target
+	// through publication and cleanup, just as for a complete guest call.
+	invocation := target.lockGCInvocation(newInvocationID())
+	defer invocation.unlock()
 	ref, localType, err := restoreForeignGCGraph(target, objects, root)
 	if err != nil {
 		return GCRef{}, err
@@ -97,7 +101,9 @@ func (target *Instance) CloneGCRefFrom(source *Instance, value GCRef) (GCRef, er
 }
 
 func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]gcCloneObject, gcCloneRef, error) {
-	unlockNative := lockNativeExecutionForHostAccess()
+	invocation := source.lockGCInvocation(newInvocationID())
+	defer invocation.unlock()
+	unlockNative := source.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	lockedDomain := source.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
@@ -248,11 +254,54 @@ func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]
 	return objects, root, nil
 }
 
+// gcForeignCloneRoots composes the usual runtime roots with reconstruction
+// scratch once per clone. Direct visitors avoid per-object root boxing.
+type gcForeignCloneRoots struct {
+	normal *gcNativeFrameRoots
+	refs   gc.RefSliceRoots
+}
+
+func (r *gcForeignCloneRoots) RangeRoots(fn func(gc.RootSlot) bool) {
+	if !r.normal.walk(fn, nil) {
+		return
+	}
+	for i := range r.refs {
+		if !fn((*gc.Root)(&r.refs[i])) {
+			return
+		}
+	}
+}
+
+func (r *gcForeignCloneRoots) RangeRootRefs(sink gc.RootRefSink) bool {
+	if !r.normal.RangeRootRefs(sink) {
+		return false
+	}
+	for _, ref := range r.refs {
+		if !sink.VisitRootRef(ref) {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *gcForeignCloneRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSink) bool {
+	if !r.normal.RangeClassifiedRootRefs(sink) {
+		return false
+	}
+	for _, ref := range r.refs {
+		if !sink.VisitClassifiedRootRef(gc.RootSnapshotTemporary, ref) {
+			return false
+		}
+	}
+	return true
+}
+
+// restoreForeignGCGraph requires the caller to hold target GC invocation admission.
 func restoreForeignGCGraph(target *Instance, objects []gcCloneObject, root gcCloneRef) (gc.Ref, uint32, error) {
 	if root.kind != gcCloneRefObject || root.value == 0 || int(root.value) > len(objects) {
 		return gc.Null(), 0, fmt.Errorf("foreign GC graph has an invalid root")
 	}
-	unlockNative := lockNativeExecutionForHostAccess()
+	unlockNative := target.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	lockedDomain := target.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
@@ -266,10 +315,14 @@ func restoreForeignGCGraph(target *Instance, objects []gcCloneObject, root gcClo
 		return gc.Null(), 0, fmt.Errorf("target GC collector domain is closed")
 	}
 
+	if err := target.prepareGCCollectionRootsLocked(state); err != nil {
+		return gc.Null(), 0, err
+	}
 	refs := make(gc.RefSliceRoots, len(objects))
+	roots := gcForeignCloneRoots{normal: &state.frameRoots, refs: refs}
 	rollback := func(cause error) (gc.Ref, uint32, error) {
 		clear(refs)
-		_ = target.gc.CollectFull(nil)
+		_ = target.gc.CollectFull(&state.frameRoots)
 		return gc.Null(), 0, cause
 	}
 	for i, object := range objects {
@@ -284,9 +337,9 @@ func restoreForeignGCGraph(target *Instance, objects []gcCloneObject, root gcClo
 		var ref gc.Ref
 		var err error
 		if desc.Kind == gc.KindStruct {
-			ref, err = target.gc.NewStructUninitializedWithRoots(domainType, refs)
+			ref, err = target.gc.NewStructUninitializedWithRoots(domainType, &roots)
 		} else {
-			ref, err = target.gc.NewArrayUninitializedWithRoots(domainType, object.arrayLen, refs)
+			ref, err = target.gc.NewArrayUninitializedWithRoots(domainType, object.arrayLen, &roots)
 		}
 		if err != nil {
 			return rollback(fmt.Errorf("allocate target object %d: %w", i+1, err))
@@ -337,11 +390,12 @@ func restoreForeignGCGraph(target *Instance, objects []gcCloneObject, root gcClo
 	return result, uint32(objects[root.value-1].typeID), nil
 }
 
+// clearForeignCloneRoot requires the caller to hold target GC invocation admission.
 func clearForeignCloneRoot(target *Instance, collect bool) {
 	if target == nil || target.gc == nil {
 		return
 	}
-	unlockNative := lockNativeExecutionForHostAccess()
+	unlockNative := target.lockInstanceNativeStateForHostAccess()
 	defer unlockNative()
 	lockedDomain := target.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
@@ -354,7 +408,10 @@ func clearForeignCloneRoot(target *Instance, collect bool) {
 		_ = target.gc.SetGlobalSlot(state.cloneRootSlot, gc.Null())
 	}
 	if collect {
-		_ = target.gc.CollectFull(nil)
+		// If root preparation fails, leave reclamation to a later safe collection.
+		if err := target.prepareGCCollectionRootsLocked(state); err == nil {
+			_ = target.gc.CollectFull(&state.frameRoots)
+		}
 	}
 	state.mu.Unlock()
 }
