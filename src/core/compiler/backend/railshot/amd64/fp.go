@@ -184,7 +184,7 @@ func (f *fn) materializeF(e *elem) Reg {
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.a.FLoadDisp(x, RSP, f.localAddr(e.st.index()), e.st.typ == mtF64)
+		f.loadFrameFloat(x, f.localAddr(e.st.index()), e.st.typ == mtF64)
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:

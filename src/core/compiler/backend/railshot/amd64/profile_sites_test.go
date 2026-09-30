@@ -6,6 +6,7 @@ import (
 	"bytes"
 
 	"github.com/wago-org/wago/internal/jitprofile"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
 	plugins "github.com/wago-org/wago/src/core/plugins"
 	"testing"
@@ -175,6 +176,67 @@ func TestProfileOperandSitesIdentifyActualStackInstructions(t *testing.T) {
 		}
 		if _, ok := jitprofile.LookupCodeSite(sites, uint64(len(code)-1)); ok {
 			t.Fatal("site leaked into trailing NOP")
+		}
+	}
+}
+
+func TestProfileFloatVectorLocalTransfers(t *testing.T) {
+	for _, features := range []shared.AMD64Features{0, shared.AMD64ModernBaseline} {
+		for _, typ := range []machineType{mtF32, mtF64, mtV128} {
+			emit := func(enabled bool) ([]byte, []jitprofile.CodeSite) {
+				sc := scratch{amd64Features: features}
+				f := &fn{a: &encoder.Asm{}, sc: &sc, stats: &CodegenStats{RecordSources: enabled}}
+				f.a.B = append(f.a.B, 0x90)
+				if typ == mtV128 {
+					f.loadFrameVector(R12, 32)
+				} else {
+					f.loadFrameFloat(R12, 32, typ == mtF64)
+				}
+				f.a.B = append(f.a.B, 0x90)
+				if typ == mtV128 {
+					f.storeFrameVector(32, R12)
+				} else {
+					f.storeFrameFloat(32, R12, typ == mtF64)
+				}
+				f.a.B = append(f.a.B, 0x90)
+				if f.stats.Spills != 0 || f.stats.Reloads != 0 {
+					t.Fatal("local transfer counted as operand spill", f.stats)
+				}
+				return f.a.B, f.profileCodeSites()
+			}
+			plain, absent := emit(false)
+			code, sites := emit(true)
+			prefix := "fp-local-"
+			if typ == mtV128 {
+				prefix = "vector-local-"
+			}
+			if !bytes.Equal(plain, code) || len(absent) != 0 || len(sites) != 2 || sites[0].Kind != prefix+"load" || sites[1].Kind != prefix+"store" {
+				t.Fatal(typ, features, sites, absent)
+			}
+			if err := jitprofile.ValidateCodeSites(sites, uint64(len(code))); err != nil {
+				t.Fatal(err)
+			}
+			for i, site := range sites {
+				sc := scratch{amd64Features: features}
+				want := &fn{a: &encoder.Asm{}, sc: &sc}
+				if typ == mtV128 {
+					if i == 0 {
+						want.mov128LoadDisp(R12, RSP, 32)
+					} else {
+						want.mov128StoreDisp(RSP, 32, R12)
+					}
+				} else if i == 0 {
+					want.a.FLoadDisp(R12, RSP, 32, typ == mtF64)
+				} else {
+					want.a.FStoreDisp(RSP, 32, R12, typ == mtF64)
+				}
+				if !bytes.Equal(code[site.Offset:site.Offset+site.Size], want.a.B) {
+					t.Fatal("site does not cover exactly one local transfer", typ, features, site)
+				}
+				if site.Offset == 0 || code[site.Offset-1] != 0x90 || code[site.Offset+site.Size] != 0x90 {
+					t.Fatal("site includes neighboring code", site)
+				}
+			}
 		}
 	}
 }

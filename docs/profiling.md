@@ -475,12 +475,15 @@ Unclassified guest samples and unknown/non-guest samples remain separate.
 
 Current kinds distinguish explicit GP, floating-point, and vector operand spills
 and materialized reloads, plus custom-value spill stores and linear-memory bounds
-branches. AMD64 also records `gp-local-load` and `gp-local-store` for direct
+branches. AMD64 also records `fp-local-load`, `fp-local-store`,
+`vector-local-load`, and `vector-local-store` for direct scalar FP and vector
+frame-local transfers, including local recovery and call argument loads.
+AMD64 records `gp-local-load` and `gp-local-store` for direct
 integer local-frame transfers, including initialization, parameter homing,
 pinned-local writebacks, and call synchronization. These are separate from
 operand spill counters. A bounds site covers the conditional failure branch; it does not claim
-the surrounding address or predicate instructions. Folded stack operands,
-scalar FP/vector local transfers, and decisions without recorded sites stay unclassified.
+the surrounding address or predicate instructions. Folded stack operands and
+decisions without recorded sites stay unclassified.
 The map is separate from existing function-level counters and need not have the
 same totals. It describes final surviving emission sites, not dynamic operation
 counts or a measured saving from a compiler optimization.

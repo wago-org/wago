@@ -46,7 +46,7 @@ func (f *fn) materializeV128(e *elem) Reg {
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.mov128LoadDisp(x, RSP, f.localAddr(e.st.index()))
+		f.loadFrameVector(x, f.localAddr(e.st.index()))
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/internal/jitprofile"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -400,6 +401,60 @@ func TestProfileOpcodeLowering(t *testing.T) {
 		for _, pc := range []uint32{3, 7, 12} {
 			if !covered[pc] {
 				t.Fatalf("compact=%v missing if/call/load pc=%d; ranges=%+v", compact, pc, stats.SourceRanges)
+			}
+		}
+	}
+}
+
+func TestProfileFloatVectorLocalsFinalizedLayout(t *testing.T) {
+	for _, typ := range []wasm.ValType{wasm.F32, wasm.F64, wasm.V128} {
+		body := []byte{1, 63, wasm.MustEncodeValType(typ)}
+		body = append(body, 0x20, 0, 0x21, 64, 0x20, 64, 0x0b)
+		data := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{typ, typ}, []wasm.ValType{typ}))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("transfer", 0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		)
+		m, err := wasm.DecodeModule(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, features := range []shared.AMD64Features{0, shared.AMD64ModernBaseline} {
+			for _, compact := range []bool{false, true} {
+				for _, workers := range []int{1, 4} {
+					opts := CompileOptions{AMD64Features: features, AMD64FeaturesSet: true, CompactNative: compact, Workers: workers, DeferCodeMapping: true}
+					plain, err := CompileModuleWith(m, opts)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var stats ModuleStats
+					opts.Stats, opts.Profile, opts.SourceMaps = &stats, true, true
+					observed, err := CompileModuleWith(m, opts)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(plain.Code, observed.Code) {
+						t.Fatal("profiling changed native code", typ, features, compact, workers)
+					}
+					if err := jitprofile.ValidateCodeSites(stats.CodeSites, uint64(len(observed.Code))); err != nil {
+						t.Fatal(err)
+					}
+					if err := jitprofile.ValidateCodeSiteRegions(stats.CodeSites, stats.ProfileRegions); err != nil {
+						t.Fatal(err)
+					}
+					prefix := "fp-local-"
+					if typ == wasm.V128 {
+						prefix = "vector-local-"
+					}
+					seen := make(map[string]bool)
+					for _, site := range stats.CodeSites {
+						seen[site.Kind] = true
+					}
+					if !seen[prefix+"load"] || !seen[prefix+"store"] {
+						t.Fatal("missing local traffic", typ, features, compact, workers, stats.CodeSites)
+					}
+				}
 			}
 		}
 	}

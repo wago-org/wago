@@ -4267,7 +4267,7 @@ func (f *fn) prologue(localScores []uint32) {
 				f.mov128LoadDisp(pr, RDI, paramOff) // pinned v128 param → its XMM register
 			} else {
 				f.mov128LoadDisp(0, RDI, paramOff)
-				f.mov128StoreDisp(RSP, f.localAddr(i), 0)
+				f.storeFrameVector(f.localAddr(i), 0)
 			}
 		}
 		paramOff += abiValSize(pt)
@@ -4502,7 +4502,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 			if pr, isFloat, ok := f.pinReg(i); ok && isFloat {
 				a.FMov(pr, src, mt == mtF64)
 			} else {
-				a.FStoreDisp(RSP, f.localAddr(i), src, mt == mtF64)
+				f.storeFrameFloat(f.localAddr(i), src, mt == mtF64)
 			}
 			fp++
 		} else if len(f.intervalReg) != 0 && !f.intervalControl {

@@ -1152,7 +1152,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f64 := f.localType[x] == mtF64
 		switch {
 		case e.isValue() && e.st.kind == stLocalRef:
-			f.a.FLoadDisp(pr, RSP, f.localAddr(e.st.index()), f64)
+			f.loadFrameFloat(pr, f.localAddr(e.st.index()), f64)
 			f.stats.peep("float-local-load-sink")
 		case e.isValue() && e.st.kind == stSlot:
 			f.a.FLoadDisp(pr, RSP, f.spillOff(e.st.slotIndex()), true)
@@ -1191,7 +1191,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		xmm := f.materializeV128(e)
 		elideStore := tee && f.v128TeeOverwritten(reader, x)
 		if !elideStore {
-			f.mov128StoreDisp(RSP, f.localAddr(x), xmm)
+			f.storeFrameVector(f.localAddr(x), xmm)
 		} else {
 			f.stats.peep("simd-tee-store-elide")
 		}
@@ -1209,7 +1209,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	}
 	if f.localType[x].isFloat() {
 		xmm := f.materializeF(e)
-		f.a.FStoreDisp(RSP, f.localAddr(x), xmm, f.localType[x] == mtF64)
+		f.storeFrameFloat(f.localAddr(x), xmm, f.localType[x] == mtF64)
 		f.locals[x].state = lsMem
 		if !tee {
 			f.erase(e)

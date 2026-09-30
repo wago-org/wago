@@ -93,15 +93,58 @@ func (f *fn) storeFrameInt(off int32, src Reg, typ machineType) {
 	}
 }
 
+// Frame-local transfers are distinct from operand-stack spills. Keep these
+// sites on the transfer instruction only, after any allocator work.
+func (f *fn) loadFrameFloat(dst Reg, off int32, f64 bool) {
+	start := 0
+	if profileEnabled {
+		start = f.a.Len()
+	}
+	f.a.FLoadDisp(dst, RSP, off, f64)
+	if profileEnabled {
+		f.recordProfileCodeSite(start, "fp-local-load")
+	}
+}
+func (f *fn) storeFrameFloat(off int32, src Reg, f64 bool) {
+	start := 0
+	if profileEnabled {
+		start = f.a.Len()
+	}
+	f.a.FStoreDisp(RSP, off, src, f64)
+	if profileEnabled {
+		f.recordProfileCodeSite(start, "fp-local-store")
+	}
+}
+func (f *fn) loadFrameVector(dst Reg, off int32) {
+	start := 0
+	if profileEnabled {
+		start = f.a.Len()
+	}
+	f.mov128LoadDisp(dst, RSP, off)
+	if profileEnabled {
+		f.recordProfileCodeSite(start, "vector-local-load")
+	}
+}
+func (f *fn) storeFrameVector(off int32, src Reg) {
+	start := 0
+	if profileEnabled {
+		start = f.a.Len()
+	}
+	f.mov128StoreDisp(RSP, off, src)
+	if profileEnabled {
+		f.recordProfileCodeSite(start, "vector-local-store")
+	}
+}
+
 func (f *fn) markDeclaredLocalZero(x int) {
 	f.locals[x].state = lsConstZero
 }
 
 func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 	if f.localType[x] == mtV128 {
-		f.mov128StoreDisp(RSP, f.localAddr(x), reg)
+		f.storeFrameVector(f.localAddr(x), reg)
 	} else if isFloat {
-		f.a.FStoreDisp(RSP, f.localAddr(x), reg, f.localType[x] == mtF64)
+		f.storeFrameFloat(f.localAddr(x), reg, f.localType[x] == mtF64)
 	} else {
 		f.storeFrameInt(f.localAddr(x), reg, f.localType[x])
 	}
@@ -116,9 +159,9 @@ func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
 		}
 	}
 	if f.localType[x] == mtV128 {
-		f.mov128LoadDisp(reg, RSP, f.localAddr(x))
+		f.loadFrameVector(reg, f.localAddr(x))
 	} else if isFloat {
-		f.a.FLoadDisp(reg, RSP, f.localAddr(x), f.localType[x] == mtF64)
+		f.loadFrameFloat(reg, f.localAddr(x), f.localType[x] == mtF64)
 	} else {
 		f.loadFrameInt(reg, f.localAddr(x), f.localType[x])
 	}

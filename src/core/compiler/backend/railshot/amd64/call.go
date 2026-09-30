@@ -981,7 +981,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			case stSlot:
 				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slotIndex()), arg.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(arg.target, RSP, f.localAddr(arg.root.st.index()), arg.root.st.typ == mtF64)
+				f.loadFrameFloat(arg.target, f.localAddr(arg.root.st.index()), arg.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -2128,7 +2128,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			case stSlot:
 				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(da.target, RSP, f.localAddr(da.root.st.index()), da.root.st.typ == mtF64)
+				f.loadFrameFloat(da.target, f.localAddr(da.root.st.index()), da.root.st.typ == mtF64)
 			}
 			continue
 		}
