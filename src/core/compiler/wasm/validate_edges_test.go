@@ -243,6 +243,13 @@ func TestBranchTableFrameEpochFitsValidatorPadding(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) == 4 {
 		wantValidator, wantFrame = 412+unsafe.Sizeof((*decodeBudget)(nil))+unsafe.Sizeof([]uint64{}), 44
 	}
+	// Lazy local indexing adds only a scan-work counter; the existing compact
+	// run-end index is reused, and control-frame epoch padding is unchanged.
+	wantValidator += unsafe.Sizeof(uint64(0))
+	var validator funcValidator
+	if unsafe.Offsetof(validator.constOnly) != unsafe.Offsetof(validator.branchTableEpoch)+unsafe.Sizeof(validator.branchTableEpoch) {
+		t.Fatal("branch-table epoch no longer packs immediately before constOnly")
+	}
 	if got := unsafe.Sizeof(funcValidator{}); got != wantValidator {
 		t.Fatalf("funcValidator size = %d, want %d", got, wantValidator)
 	}

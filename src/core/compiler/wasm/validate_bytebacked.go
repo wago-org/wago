@@ -933,7 +933,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	if v.localCount > uint64(v.limits.MaxFunctionLocals) {
 		return v.verr(ErrInvalidLimitRange, "parameter and local count exceeds configured limit")
 	}
-	v.indexLocalRuns()
+	v.prepareLocalLookup()
 	for _, run := range body.locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {
 			return err

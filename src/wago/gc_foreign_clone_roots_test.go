@@ -58,3 +58,46 @@ func TestForeignCloneRootsEnumeratesNormalAndTemporaryRoots(t *testing.T) {
 	}
 	runtime.KeepAlive(frame)
 }
+
+type foreignCloneStoppingSink struct {
+	seen   int
+	stopAt int
+}
+
+func (s *foreignCloneStoppingSink) VisitRootRef(gc.Ref) bool {
+	s.seen++
+	return s.seen < s.stopAt
+}
+
+func (s *foreignCloneStoppingSink) VisitClassifiedRootRef(gc.RootClass, gc.Ref) bool {
+	return s.VisitRootRef(gc.Null())
+}
+
+func TestForeignCloneRootsStopsAtEachRoot(t *testing.T) {
+	frame := make([]byte, 16)
+	t.Cleanup(func() { runtime.KeepAlive(frame) })
+	binary.LittleEndian.PutUint64(frame, 7)
+	normal := gcNativeFrameRoots{base: uintptr(unsafe.Pointer(&frame[0])), offsets: []uint32{0}}
+	roots := gcForeignCloneRoots{normal: &normal, refs: gc.RefSliceRoots{11, 13}}
+	// Stop in the normal roots, in the middle of scratch roots, and on the
+	// final scratch root. Every visitor must propagate the stop immediately.
+	for stopAt := 1; stopAt <= 3; stopAt++ {
+		sink := foreignCloneStoppingSink{stopAt: stopAt}
+		if roots.RangeRootRefs(&sink) || sink.seen != stopAt {
+			t.Fatalf("direct stop at %d visited %d roots", stopAt, sink.seen)
+		}
+		sink = foreignCloneStoppingSink{stopAt: stopAt}
+		if roots.RangeClassifiedRootRefs(&sink) || sink.seen != stopAt {
+			t.Fatalf("classified stop at %d visited %d roots", stopAt, sink.seen)
+		}
+		seen := 0
+		roots.RangeRoots(func(gc.RootSlot) bool {
+			seen++
+			return seen < stopAt
+		})
+		if seen != stopAt {
+			t.Fatalf("mutable stop at %d visited %d roots", stopAt, seen)
+		}
+	}
+	runtime.KeepAlive(frame)
+}

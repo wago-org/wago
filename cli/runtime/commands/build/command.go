@@ -14,6 +14,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
 	runcmd "github.com/wago-org/wago/cli/runtime/commands/run"
+	"github.com/wago-org/wago/cli/runtime/internal/modulefile"
 )
 
 type Environment interface {
@@ -97,7 +98,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 	} else if !os.IsNotExist(err) {
 		ui.Fatal("build: %v", err)
 	}
-	source, err := os.ReadFile(input)
+	source, err := modulefile.Read(input)
 	if err != nil {
 		ui.Fatal("build: %v", err)
 	}

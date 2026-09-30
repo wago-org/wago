@@ -140,6 +140,9 @@ jobs:
           tests/scripts/build-release-assets.sh
           tests/scripts/release-qualification.sh
 
+      - name: Go module download retry contract tests
+        run: bash tests/scripts/ci-download-go-modules.sh
+
       - name: Validation statistics command tests
         working-directory: bench
         run: go test ./cmd/validatestats -count=1
@@ -708,6 +711,11 @@ jobs:
             --shard "$CORPUS_SHARD/$CORPUS_SHARDS" \
             --report "$CORPUS_REPORT" \
             --output "$GITHUB_OUTPUT"
+      - name: Prepare corpus Go dependencies
+        shell: bash
+        timeout-minutes: 3
+        working-directory: bench
+        run: sh ../scripts/ci-download-go-modules.sh
       - name: Run selected correctness workloads
         shell: bash
         env:
@@ -850,6 +858,11 @@ jobs:
             bench/go.mod
             bench/go.sum
             cli/wago-installer/go.mod
+      - name: Prepare corpus Go dependencies
+        shell: bash
+        timeout-minutes: 3
+        working-directory: bench
+        run: sh ../scripts/ci-download-go-modules.sh
       - name: Run this target's application shard
         shell: bash
         env:
