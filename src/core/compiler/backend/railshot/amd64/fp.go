@@ -73,6 +73,9 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.isValue() && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
+			if profileEnabled {
+				f.recordProfileFPressure(avoid, "fp-pressure-spill")
+			}
 			f.spillF(e)
 			return r
 		}
@@ -80,7 +83,13 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 	// Float and vector local pins are caches too. Home one at the exact pressure
 	// point instead of recompiling the function without pins.
 	if r := f.relinquishPinnedFLocal(avoid); r != regNone {
+		if profileEnabled {
+			f.recordProfileFPressure(avoid, "fp-pressure-local-relinquish")
+		}
 		return r
+	}
+	if profileEnabled {
+		f.recordProfileFPressure(avoid, "fp-pressure-exhaustion")
 	}
 	panic(regExhausted{class: "FP/vector"})
 }

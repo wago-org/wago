@@ -487,6 +487,17 @@ pinned-local writebacks, and call synchronization. These are separate from
 operand spill counters. A bounds site covers the conditional failure branch; it does not claim
 the surrounding address or predicate instructions. Folded stack operands and
 decisions without recorded sites stay unclassified.
+AMD64 function decisions also report `fp-pressure-spill`,
+`fp-pressure-local-relinquish`, and `fp-pressure-exhaustion` when the XMM
+allocator has no free register. The accompanying
+`fp-pressure-scalar-constant-available` and
+`fp-pressure-vector-constant-available` decisions identify requests for which a
+constant reservation blocks an otherwise unused, unborrowed register;
+`fp-pressure-constant-available` counts their union. These are static compiler
+choices, including tentative emission, not surviving sites or dynamic operation
+counts. They do not prove that cache revocation is safe across backedges or that
+it would improve execution.
+
 The map is separate from existing function-level counters and need not have the
 same totals. It describes final surviving emission sites, not dynamic operation
 counts or a measured saving from a compiler optimization.
