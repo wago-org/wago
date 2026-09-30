@@ -2352,13 +2352,6 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 	if source.c == nil {
 		return 0, fmt.Errorf("public GC result ownership is outside exact collector execution")
 	}
-	arrayProduct := source.c.stagedGCArrayProduct()
-	admittedArray := arrayProduct == stagedGCArrayProductNumericDefault || arrayProduct == stagedGCArrayProductNumericFixed || arrayProduct == stagedGCArrayProductPackedData || arrayProduct == stagedGCArrayProductReferenceElements || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem
-	legacyStruct := source.c.stagedGCStructProduct() == stagedGCStructBasic
-	generic := source.c.needsExactNativeGCRoots() && source.c.genericGCFrameRoots() != nil
-	if !legacyStruct && !admittedArray && !generic {
-		return 0, fmt.Errorf("public GC result ownership is outside exact collector execution")
-	}
 	unlockNative := lockNativeExecutionForHostAccess()
 	defer unlockNative()
 	lockedDomain := source.lockGCCollector()
@@ -2366,6 +2359,25 @@ func (s *referenceStore) issueGCRef(source *Instance, ref gc.Ref, required Value
 	state := source.publicGCState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
+	return s.issueGCRefLocked(source, state, ref, required)
+}
+
+// issueGCRefLocked publishes a retained public token while the caller holds
+// native execution, the collector domain, and state.mu, in that order.
+func (s *referenceStore) issueGCRefLocked(source *Instance, state *gcPublicState, ref gc.Ref, required ValueTypeDescriptor) (uint64, error) {
+	if source == nil || ref.IsNull() || !ref.IsObj() {
+		return 0, fmt.Errorf("invalid non-null GC result")
+	}
+	if source.c == nil {
+		return 0, fmt.Errorf("public GC result ownership is outside exact collector execution")
+	}
+	arrayProduct := source.c.stagedGCArrayProduct()
+	admittedArray := arrayProduct == stagedGCArrayProductNumericDefault || arrayProduct == stagedGCArrayProductNumericFixed || arrayProduct == stagedGCArrayProductPackedData || arrayProduct == stagedGCArrayProductReferenceElements || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem
+	legacyStruct := source.c.stagedGCStructProduct() == stagedGCStructBasic
+	generic := source.c.needsExactNativeGCRoots() && source.c.genericGCFrameRoots() != nil
+	if !legacyStruct && !admittedArray && !generic {
+		return 0, fmt.Errorf("public GC result ownership is outside exact collector execution")
+	}
 	ownerIndex := state.nextResultSlot()
 	if source.gc == nil {
 		return 0, fmt.Errorf("public GC result has no live collector")

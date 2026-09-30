@@ -81,15 +81,28 @@ func (target *Instance) CloneGCRefFrom(source *Instance, value GCRef) (GCRef, er
 	if err != nil {
 		return GCRef{}, err
 	}
-	ref, localType, err := restoreForeignGCGraph(target, objects, root)
+	return cloneForeignGCGraph(target, objects, root)
+}
+
+// cloneForeignGCGraph keeps reconstruction and public ownership in one critical
+// section. Cleanup cannot run between a private root and token publication.
+func cloneForeignGCGraph(target *Instance, objects []gcCloneObject, root gcCloneRef) (GCRef, error) {
+	unlockNative := lockNativeExecutionForHostAccess()
+	defer unlockNative()
+	lockedDomain := target.lockGCCollector()
+	defer unlockGCCollector(lockedDomain)
+	state := target.publicGCState()
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	ref, localType, err := restoreForeignGCGraphLocked(target, state, objects, root)
 	if err != nil {
 		return GCRef{}, err
 	}
 	required := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{
 		Exact: true, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: localType},
 	}}
-	token, err := target.refStore.issueGCRef(target, ref, required)
-	clearForeignCloneRoot(target, err != nil)
+	token, err := target.refStore.issueGCRefLocked(target, state, ref, required)
+	clearForeignCloneRootLocked(target, state, err != nil)
 	if err != nil {
 		return GCRef{}, fmt.Errorf("retain cloned GC graph: %w", err)
 	}
@@ -259,6 +272,15 @@ func restoreForeignGCGraph(target *Instance, objects []gcCloneObject, root gcClo
 	state := target.publicGCState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
+	return restoreForeignGCGraphLocked(target, state, objects, root)
+}
+
+// restoreForeignGCGraphLocked requires native execution, the collector domain,
+// and state.mu. The caller must publish ownership before releasing these locks.
+func restoreForeignGCGraphLocked(target *Instance, state *gcPublicState, objects []gcCloneObject, root gcCloneRef) (gc.Ref, uint32, error) {
+	if root.kind != gcCloneRefObject || root.value == 0 || int(root.value) > len(objects) {
+		return gc.Null(), 0, fmt.Errorf("foreign GC graph has an invalid root")
+	}
 	target.refStore.mu.Lock()
 	record := target.refStore.instances[target]
 	target.refStore.mu.Unlock()
@@ -350,11 +372,15 @@ func clearForeignCloneRoot(target *Instance, collect bool) {
 		return
 	}
 	state.mu.Lock()
+	defer state.mu.Unlock()
+	clearForeignCloneRootLocked(target, state, collect)
+}
+
+func clearForeignCloneRootLocked(target *Instance, state *gcPublicState, collect bool) {
 	if state.cloneRootMade {
 		_ = target.gc.SetGlobalSlot(state.cloneRootSlot, gc.Null())
 	}
 	if collect {
 		_ = target.gc.CollectFull(nil)
 	}
-	state.mu.Unlock()
 }
