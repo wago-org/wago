@@ -119,7 +119,7 @@ func TestCorpusDownloadsAreBoundedAndSeparateFromTests(t *testing.T) {
 		t.Fatal(err)
 	}
 	jobs := workflowJobBlocks(string(workflow))
-	const preparation = `      - name: Download corpus Go modules
+	const preparation = `      - name: Prepare corpus Go dependencies
         shell: bash
         timeout-minutes: 3
         working-directory: bench

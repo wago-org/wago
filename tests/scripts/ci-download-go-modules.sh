@@ -10,8 +10,8 @@ cat >"$test_root/bin/go" <<'EOF'
 #!/bin/sh
 set -eu
 printf '%s\n' "$*" >>"$CAPTURE_GO"
-if [ "$#" -ne 2 ] || [ "$1" != mod ] || [ "$2" != download ]; then
-	echo "Only go mod download may be retried" >&2
+if [ "$*" != 'list -deps -test ./suite' ]; then
+	echo "Only corpus dependency discovery may be retried" >&2
 	exit 99
 fi
 attempt=$(wc -l <"$CAPTURE_GO")
@@ -36,10 +36,10 @@ run_case() {
     sh "$repository_root/scripts/ci-download-go-modules.sh" >"$test_root/output" 2>&1 || status=$?
   [[ "$status" -eq "$expected_status" ]]
   [[ $(wc -l <"$test_root/go") -eq "$expected_attempts" ]]
-  [[ $(grep -c '^mod download$' "$test_root/go") -eq "$expected_attempts" ]]
+  [[ $(grep -Fxc 'list -deps -test ./suite' "$test_root/go") -eq "$expected_attempts" ]]
   [[ $(cat "$test_root/sleep") == "$expected_sleep" ]]
   if [[ "$expected_status" -ne 0 ]]; then
-    grep -F 'Go module download failed after 3 attempts (exit 42)' "$test_root/output" >/dev/null
+    grep -F 'Go dependency preparation failed after 3 attempts (exit 42)' "$test_root/output" >/dev/null
   fi
 }
 

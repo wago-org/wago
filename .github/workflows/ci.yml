@@ -711,7 +711,7 @@ jobs:
             --shard "$CORPUS_SHARD/$CORPUS_SHARDS" \
             --report "$CORPUS_REPORT" \
             --output "$GITHUB_OUTPUT"
-      - name: Download corpus Go modules
+      - name: Prepare corpus Go dependencies
         shell: bash
         timeout-minutes: 3
         working-directory: bench
@@ -858,7 +858,7 @@ jobs:
             bench/go.mod
             bench/go.sum
             cli/wago-installer/go.mod
-      - name: Download corpus Go modules
+      - name: Prepare corpus Go dependencies
         shell: bash
         timeout-minutes: 3
         working-directory: bench
