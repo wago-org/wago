@@ -310,7 +310,7 @@ func (f *fn) reloadLocalsForCall() {
 // callFreeRegMerges uses the existing whole-function call classification. With
 // no calls, every edge can promise register homes without also storing locals.
 func (f *fn) callFreeRegMerges() bool {
-	return f.intervalControl && !f.hasCalls && callFreeRegMergesEnabled
+	return (f.intervalControl || f.vectorRegion.enabled) && !f.hasCalls && callFreeRegMergesEnabled
 }
 
 // Callers materialize lazy zeros and finish deferred operand evaluation first.

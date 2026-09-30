@@ -67,6 +67,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			}
 		}
 
+		if f.vectorRegion.enabled {
+			f.vectorRegionBoundary(op)
+		}
 		f.prepareStoreForward(op)
 		f.prepareGCResolvedObject(op)
 		switch op {
@@ -1122,6 +1125,12 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 			f.erase(e)
 		}
 		return
+	}
+	if f.vectorRegion.enabled && f.localType[x] == mtV128 && f.locals[x].reg == regNone &&
+		f.vectorRegionWillRead(reader, x) {
+		if f.cacheVectorLocal(e, x, tee) {
+			return
+		}
 	}
 	if pr, _, ok := f.pinReg(x); ok && f.localType[x] == mtV128 {
 		// Register-pinned v128 local: 128-bit move into its XMM register (the

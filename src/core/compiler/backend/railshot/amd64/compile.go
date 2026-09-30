@@ -299,6 +299,7 @@ type fn struct {
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and
 	// call-spill state for each local.
+	vectorRegion     vectorRegionState
 	locals           []localDef
 	pinnedLocals     []int // indices of register-pinned locals; a simple loop may exchange up to two pins
 	pinnedLocalMask  regMask
@@ -3561,6 +3562,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if !pinLocals {
 		fpPinLimit = 0
 	}
+	f.vectorRegion.enabled = vectorRegionsEnabled && pinLocals && regABI &&
+		!moduleEH && len(gcTypeLayouts) == 0 && len(custom) == 0 && len(inlinedCallees) == 0 &&
+		hints.flags.has(hintHasSIMD) && !hints.flags.has(hintUsesBulkMem) &&
+		f.nLocals >= 16 && f.nLocals <= 256 && len(c.BodyBytes) >= 128 && len(c.BodyBytes) <= 16<<10
+	if f.vectorRegion.enabled && fpPinLimit > 8 {
+		fpPinLimit = 8
+	}
 	f.noteResidencyEvents(hints)
 	intervalControl := f.opt(optIntervalControl) && !f.moduleHasSIMD && len(f.customInstructions) == 0 &&
 		(hasCall || hints.flags.has(hintHasControlFlow|hintUsesBulkMem))
@@ -3604,7 +3612,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// Regional caches can force dedicated pins into memory even without a call.
 	// Use the existing edge contracts to restore those pins at loop headers and
 	// joins. The eager call-free model assumes they never leave their registers.
-	f.usesCalls = hasCall && f.opt(optStackReg) || f.intervalControl
+	f.usesCalls = hasCall && f.opt(optStackReg) || f.intervalControl || f.vectorRegion.enabled
 	// A call-free leaf extends the deepest checked stack by exactly one frame; the
 	// fence's 256 KiB margin (runtime stackFenceMargin) absorbs that when the frame
 	// is provably small. frameSize isn't known until after the body, so bound it:
