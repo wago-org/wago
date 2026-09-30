@@ -31,7 +31,7 @@ machine code.
 
 ## Why Wago?
 
-* **Fast and lightweight.** Using a few *kilobytes* of ram, we compile _5x faster_ and execute _40% quicker_ than wazero.
+* **Fast and lightweight.** Using a few *kilobytes* of ram, we compile _5x quicker_ and execute _80% faster_ than wazero.
 * **Pure Go.** Embed Wago without CGO while keeping straightforward Go builds
   and cross-compilation.
 * **Standards Compliant** We pass the [official WebAssembly test suite](https://github.com/WebAssembly/testsuite), millions of fuzzes, and many real-world corpora.
@@ -56,21 +56,8 @@ irm https://install.wago.sh/ps | iex
 Or run the installer with Go:
 
 ```sh
-go run github.com/wago-org/wago/cli/wago-installer@main
+go run github.com/wago-org/wago/cli/wago-installer@latest
 ```
-
-To keep the installer command:
-
-```sh
-go install github.com/wago-org/wago/cli/wago-installer@latest
-wago-installer
-```
-
-These commands install the Wago manager. Run `wago version install` to install
-a runtime. Its picker lists available Official, Beta, and Canary channels in
-that order; unavailable channels remain visible and disabled at the bottom. See
-[Getting started](https://docs.wago.sh/getting-started) for other installation
-methods, release channels, and source builds.
 
 ## Run a module
 
@@ -102,14 +89,15 @@ Add Wago to your module:
 go get github.com/wago-org/wago
 ```
 
-Run the Go API example:
+Run the complete Go API example:
 
 ```sh
-go run github.com/wago-org/wago/examples/02-runtime-typed@latest
+go run github.com/wago-org/wago/examples/23-public-api@latest
 ```
 
-The example compiles a module, creates an instance, and invokes an exported
-function with `wago.I32`, `wago.I64`, `wago.F32`, and `wago.F64` slot encodings.
+The example loads a checked-in `.wasm` fixture, registers host functions,
+compiles and instantiates it, and invokes exports by name and through a resolved
+`WasmFunc`.
 See
 [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for the complete guide.
 
@@ -117,16 +105,31 @@ Register synchronous imports with ordinary Go functions. Wago infers supported
 hot signatures once and dispatches them without reflection or allocation:
 
 ```go
-module.Func("add", func(a, b int32) int32 { return a + b })
-module.Func("hypot", func(a, b float64) float64 { return math.Hypot(a, b) })
+imports := wago.NewImports()
+imports.HostFunc("env", "add", func(a, b int32) int32 { return a + b })
+imports.HostFunc("math", "hypot", func(a, b float64) float64 { return math.Hypot(a, b) })
 ```
 
-For arbitrary arity, mixed scalar types, or references, use the same `Func`
+For arbitrary arity, mixed scalar types, or references, use the same `HostFunc`
 method with `func(wago.HostCall)`. The call is a borrowed logical view supported
 under both Go and TinyGo. Eligible wide scalar signatures use the parked
 argument/result slots directly. High-arity adapters can process the borrowed raw
 ABI slices directly with `ParamSlots()` and `ResultSlots()`. V128 values are
 intentionally unsupported at host callback boundaries for now.
+
+Resolve an export once when it will be called repeatedly:
+
+```go
+step, err := instance.WasmFunc("step")
+if err != nil {
+	return err
+}
+out, err := step.Invoke(wago.I32(41))
+```
+
+`Invoke` handles every supported arity. The returned slice is borrowed until
+the next invocation on that instance; copy slots that must survive another
+call. A `WasmFunc` does not hold an execution reservation between calls.
 
 For high-frequency one-way `(i32) -> ()` imports, `wago.I32HostEvent` avoids a
 Go stack transition for every call. Events are delivered in order after the

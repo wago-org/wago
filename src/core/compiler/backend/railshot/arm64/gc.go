@@ -163,7 +163,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				return fmt.Errorf("arm64: ref.cast heap %d requires a live collector", heap)
 			}
 			if nullable {
-				f.a.PatchBranch19(done, f.a.Len())
+				f.patchBranch19(done, f.a.Len())
 			}
 			f.pushReg(ref, mtI64).st.setGCRoot(gcRoot)
 			return nil
@@ -743,7 +743,7 @@ func (f *fn) emitLocalFunctionSubtypeIdentityCheck(value Reg, targetType uint32,
 	f.trapAlways(trapCode)
 	done := f.a.Len()
 	for _, site := range success {
-		f.a.PatchBranch19(site, done)
+		f.patchBranch19(site, done)
 	}
 }
 
@@ -972,11 +972,13 @@ func (f *fn) callGCArrayFixedSpill(typeIndex, count uint32, resultType wasm.ValT
 	if err := f.callGCStructHelper(gcArrayAllocFixedV128Spill, []wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
 		return err
 	}
-	result := f.materialize(f.popValue())
+	resultValue := f.popValue()
+	resultIsRoot := resultValue.st.hasGCRoot()
+	result := f.materialize(resultValue)
 	for i := uint32(0); i < count; i++ {
 		f.popValue()
 	}
-	f.pushReg(result, mtI64)
+	f.pushReg(result, mtI64).st.setGCRoot(resultIsRoot)
 	return nil
 }
 

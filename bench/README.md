@@ -12,12 +12,16 @@ just bench                              # quick profile, all benchmark groups
 just bench run algorithms exec          # representative raw algorithms
 just bench run tag:polybench exec
 just bench run tag:compute exec
+cd bench && go run ./cmd/benchpub -corpus website -count 3 -benchtime 200ms -out out
 just bench run tiny,fib_rec compile
 just bench run all                      # every admitted workload
 just bench check                        # one iteration, wiring only
 ```
 
-`CORPUS` accepts `quick`, `algorithms`, `all`, `tag:<tag>`, or comma-separated benchmark IDs.
+`CORPUS` accepts `quick`, `website`, `algorithms`, `all`, `tag:<tag>`, or comma-separated benchmark IDs.
+The `website` profile moves from tiny mechanisms through numeric, AssemblyScript,
+semantic-library, and PolyBench workloads to Embench, Sightglass, and full command applications.
+It includes only workloads that completed repeated runs on both published architectures.
 `BENCH` accepts `all`, `pipeline`, `compile`, `exec`, or a Go benchmark regex.
 The remaining positional arguments set count, duration, and output; environment
 variables remain available for automation. `just bench check` is a
@@ -37,3 +41,16 @@ end-to-end and pass its oracle.
 The default benchmark writes `bench/.bench-run.txt`. `just bench render`,
 `just bench website`, and `just bench publish` consume that capture without
 silently changing the selected corpus.
+
+## Workload profiling
+
+Use [`wagoprof`](../docs/profiling.md) for reproducible phase captures, native
+code-image lifetimes, perf/jitdump and Samply export, and sampled hotness joined
+to Railshot compiler statistics. Build from the repository root with
+`scripts/build-profiler.sh /tmp/wagoprof`; run from `bench/` with
+`/tmp/wagoprof record --workload json-as --iterations 1000 --out /tmp/json.wagoprof`.
+
+The integrated profiling CLI uses the same implementation: from the repository
+root, run `scripts/build-profiler.sh /tmp/wago --cli`, then
+`/tmp/wago profile record --workload json-as --iterations 1000 --out /tmp/json-cli.wagoprof`.
+Profiling commands are absent from ordinary manager and runtime builds.

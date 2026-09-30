@@ -35,7 +35,7 @@ func TestThreadsOfficialAtomicCoreExecutesWithinImportedMemoryBoundary(t *testin
 		t.Fatal(err)
 	}
 	defer memory.Close()
-	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	instance, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestThreadsOfficialAtomicWaitNotifyExecutesWithinImportedMemoryBoundary(t *
 	defer compiled.Close()
 	memory, _ := NewSharedMemory(1, 1)
 	defer memory.Close()
-	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	instance, err := Instantiate(compiled, testImports("env.memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}

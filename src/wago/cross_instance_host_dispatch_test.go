@@ -107,7 +107,7 @@ func TestReplayableHostProducerPropagatesSynchronousDispatch(t *testing.T) {
 	producerCode := MustCompile(voidImportForwarderModule("env", "tick", "run"))
 	defer producerCode.Close()
 	calls := 0
-	producer, err := Instantiate(producerCode, Imports{"env.tick": HostFunc(func(HostModule, []uint64, []uint64) { calls++ })})
+	producer, err := Instantiate(producerCode, testImports("env.tick", slotHostFunc(func(HostModule, []uint64, []uint64) { calls++ })))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestReplayableHostProducerPropagatesSynchronousDispatch(t *testing.T) {
 	}
 	consumerCode := MustCompile(voidImportForwarderModule("producer", "run", "call"))
 	defer consumerCode.Close()
-	consumer, err := Instantiate(consumerCode, Imports{"producer.run": target})
+	consumer, err := Instantiate(consumerCode, testImports("producer.run", target))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestCrossInstanceHostDispatchUsesActiveCallee(t *testing.T) {
 
 	readerCode := MustCompile(privateSharedMemoryReaderModule(222))
 	defer readerCode.Close()
-	reader, err := Instantiate(readerCode, Imports{"env.memory": m2})
+	reader, err := Instantiate(readerCode, testImports("env.memory", m2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,24 +161,19 @@ func TestCrossInstanceHostDispatchUsesActiveCallee(t *testing.T) {
 	producerCode := MustCompile(crossHostProducerModule())
 	defer producerCode.Close()
 	asyncCalls, syncCalls, nestedCalls := 0, 0, 0
-	producer, err := Instantiate(producerCode, Imports{
-		"env.memory": m2,
-		"env.async": HostFunc(func(_ HostModule, _, _ []uint64) {
-			asyncCalls++
-		}),
-		"env.sync": HostFunc(func(_ HostModule, _, results []uint64) {
-			syncCalls++
-			results[0] = I32(73)
-		}),
-		"env.reenter": HostFunc(func(_ HostModule, _, results []uint64) {
-			nestedCalls++
-			values, callErr := reader.Invoke("get")
-			if callErr != nil || len(values) != 1 || AsI32(values[0]) != 222 {
-				panic("nested shared-memory reader used the wrong instance context")
-			}
-			results[0] = 0
-		}),
-	})
+	producer, err := Instantiate(producerCode, testImports("env.memory", m2, "env.async", slotHostFunc(func(_ HostModule, _, _ []uint64) {
+		asyncCalls++
+	}), "env.sync", slotHostFunc(func(_ HostModule, _, results []uint64) {
+		syncCalls++
+		results[0] = I32(73)
+	}), "env.reenter", slotHostFunc(func(_ HostModule, _, results []uint64) {
+		nestedCalls++
+		values, callErr := reader.Invoke("get")
+		if callErr != nil || len(values) != 1 || AsI32(values[0]) != 222 {
+			panic("nested shared-memory reader used the wrong instance context")
+		}
+		results[0] = 0
+	})))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,12 +187,7 @@ func TestCrossInstanceHostDispatchUsesActiveCallee(t *testing.T) {
 	targetExport, _ := producer.ExportedFunc("target")
 	consumerCode := MustCompile(crossHostConsumerModule())
 	defer consumerCode.Close()
-	consumer, err := Instantiate(consumerCode, Imports{
-		"env.memory":      m1,
-		"producer.async":  asyncExport,
-		"producer.sync":   syncExport,
-		"producer.target": targetExport,
-	})
+	consumer, err := Instantiate(consumerCode, testImports("env.memory", m1, "producer.async", asyncExport, "producer.sync", syncExport, "producer.target", targetExport))
 	if err != nil {
 		t.Fatal(err)
 	}

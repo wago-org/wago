@@ -82,7 +82,7 @@ func TestTailCallsPreserveValidatedReferenceResultCovariance(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			got, err := in.Call(context.Background(), "run")
+			got, err := in.InvokeValues(context.Background(), "run")
 			if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() {
 				t.Fatalf("covariant tail result = %v, %v", got, err)
 			}

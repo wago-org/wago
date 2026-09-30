@@ -210,7 +210,7 @@ func stagedGCArrayInitActionKey(cmd stagedSpecCommand) string {
 }
 
 func compileStagedGCArrayInit(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCArrayProducts = true

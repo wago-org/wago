@@ -37,6 +37,7 @@ func pureDeferredDropModuleArm64(tb testing.TB, n int) *wasm.Module {
 }
 
 func TestPureDeferredDropEliminationArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	// (local.get 0 + local.get 1) * 3 is a side-effect-free deferred tree whose
 	// result is immediately dropped. It should emit no ALU instructions.
 	m := pureDeferredDropModuleArm64(t, 1)

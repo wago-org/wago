@@ -101,14 +101,14 @@ func TestStagedMultiMemoryOfficialImportGrowLinking(t *testing.T) {
 	if len(keys) != 2 || keys[0] != "M.mem1" || keys[1] != "M.mem2" {
 		t.Fatalf("memory imports = %v, want [M.mem1 M.mem2]", keys)
 	}
-	imports := make(Imports, len(keys))
+	imports := NewImports()
 	for _, key := range keys {
 		field := strings.TrimPrefix(key, "M.")
 		memory, err := producer.ExportedMemory(field)
 		if err != nil {
 			t.Fatalf("resolve registered memory %q: %v", key, err)
 		}
-		imports[key] = memory
+		testSetImport(imports, key, memory)
 	}
 	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: imports})
 	if err != nil {
@@ -200,7 +200,7 @@ func TestStagedMultiMemoryNativeProducerTenantRebindsContext(t *testing.T) {
 	}
 	consumerCompiled := stagedMultiMemoryCompile(t, officialMultiMemoryConsumerModule())
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.mem1": m1, "M.mem2": m2}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M.mem1", m1, "M.mem2", m2)})
 	if err != nil {
 		t.Fatalf("instantiate against executable memory owner: %v", err)
 	}
@@ -285,9 +285,7 @@ func TestStagedMultiMemoryContextRetainsImportedNumericGlobal(t *testing.T) {
 	counter := NewGlobalI32(7, true)
 	consumerCompiled := stagedMultiMemoryCompile(t, importedGlobalMultiMemoryModule())
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"M.mem1": memory, "env.counter": GlobalImport{Global: counter},
-	}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M.mem1", memory, "env.counter", GlobalImport{Global: counter})})
 	if err != nil {
 		producer.Close()
 		counter.Close()
@@ -442,9 +440,7 @@ func TestStagedMultiMemoryContextRetainsSoleImportedTable(t *testing.T) {
 
 	consumerCompiled := stagedMultiMemoryCompile(t, soleImportedTableMultiMemoryModule())
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"M.mem1": memory, "env.table": table,
-	}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M.mem1", memory, "env.table", table)})
 	if err != nil {
 		memoryOwner.Close()
 		tableOwner.Close()
@@ -564,7 +560,7 @@ func TestStagedMultiMemoryContextRunsWiderImportedTableOps(t *testing.T) {
 	defer table.Close()
 	compiled := stagedMultiMemoryCompile(t, growingImportedTableMultiMemoryModule())
 	defer compiled.Close()
-	consumer, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{"M.mem1": memory, "env.table": table}})
+	consumer, err := instantiateCore(compiled, InstantiateOptions{Imports: testImports("M.mem1", memory, "env.table", table)})
 	if err != nil {
 		t.Fatalf("instantiate wider imported-table tenant: %v", err)
 	}
@@ -600,7 +596,7 @@ func TestStagedMultiMemoryContextIsolatesLocalGlobal(t *testing.T) {
 	}
 	compiled := stagedMultiMemoryCompile(t, localGlobalMultiMemoryModule())
 	defer compiled.Close()
-	consumer, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{"M.mem1": memory}})
+	consumer, err := instantiateCore(compiled, InstantiateOptions{Imports: testImports("M.mem1", memory)})
 	if err != nil {
 		t.Fatalf("instantiate local-global tenant: %v", err)
 	}
@@ -643,7 +639,7 @@ func TestStagedMultiMemoryNativeImportedCallRebindsContext(t *testing.T) {
 	}
 	consumerCompiled := stagedMultiMemoryCompile(t, importedCallMultiMemoryModule())
 	defer consumerCompiled.Close()
-	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.f": fn, "M.mem1": memory}})
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("M.f", fn, "M.mem1", memory)})
 	if err != nil {
 		t.Fatalf("instantiate native imported-call consumer: %v", err)
 	}
@@ -671,7 +667,7 @@ func TestStagedMultiMemoryFailedLinkIsAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := instantiateCore(compiled, InstantiateOptions{Imports: Imports{"env.first": memory}}); err == nil || !strings.Contains(err.Error(), "missing imported memory") {
+	if _, err := instantiateCore(compiled, InstantiateOptions{Imports: testImports("env.first", memory)}); err == nil || !strings.Contains(err.Error(), "missing imported memory") {
 		t.Fatalf("instantiate with missing second memory = %v, want explicit missing-import error", err)
 	}
 	if err := memory.Close(); err != nil {

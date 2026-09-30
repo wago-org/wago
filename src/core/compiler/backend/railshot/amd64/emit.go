@@ -2,6 +2,11 @@
 
 package amd64
 
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/encoder/amd64"
+)
+
 // The condense engine: materialize a deferred-action valent block into machine
 // code, with target hints (compute the result straight into a destination
 // register and reuse operand registers in place). Ported from WARP's
@@ -55,6 +60,10 @@ const (
 // regNone to pick a fresh one. Returns the register now holding the value and
 // converts `node` into that value on the stack (its operands are consumed).
 func (f *fn) condense(node *elem, dest Reg) Reg {
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		previous := f.enterProfileNode(node)
+		defer f.switchProfileOrigin(previous)
+	}
 	f.stats.addCondense()
 	switch {
 	case isBinALU(node.deferredOp()):
@@ -599,7 +608,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	right := node.arg1
 
 	if right.isValue() && right.st.kind == stConst {
-		if f.opt(optBMI2Rorx) && (node.deferredOp() == opRotr || node.deferredOp() == opRotl) {
+		if f.bmi2Rorx && (node.deferredOp() == opRotr || node.deferredOp() == opRotl) {
 			mask := int64(31)
 			if w {
 				mask = 63
@@ -653,15 +662,8 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		return dest
 	}
 
-	// Variable count → CL. Compute the shifted value into a scratch register that
-	// no sub-computation hard-targets — not RAX/RDX (a div/rem operand may appear
-	// in `left` or `right`) and not RCX (the count, or a nested variable shift).
-	// A caller-supplied `dest` can itself be such a fixed register (e.g. RAX when a
-	// div consumes this shift), so shift in the neutral scratch and move to dest at
-	// the end. Evaluate left before right (wasm order).
-	val := f.allocReg(maskOf(RAX, RDX, RCX))
-	f.pinned = f.pinned.add(val)
-	f.condenseInto(left, val)
+	// Keep the left operand spillable while evaluating the count.
+	f.materialize(left)
 	cnt := f.materialize(right)
 	if cnt != RCX {
 		f.spillIfUsed(RCX)
@@ -669,10 +671,10 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		f.release(cnt)
 	}
 	f.pinned = f.pinned.add(RCX)
+	val := f.materialize(left)
 	f.a.ShiftCL(digit, val, w)
 	f.pinned = f.pinned.remove(RCX)
 	f.release(RCX)
-	f.pinned = f.pinned.remove(val)
 	result := val
 	if dest != regNone && dest != val {
 		f.moveInt(dest, val, node.valueType())
@@ -760,7 +762,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			} else {
 				// A narrow/wide mismatch needs a register value. Preserve a pinned
 				// local whose register is only borrowed as the load address.
-				r := f.memRefValue(right.st)
+				r := f.memRefValue(right)
 				f.cmpRR(L, r, w)
 				f.release(r)
 			}
@@ -796,7 +798,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	return result
 }
 
-// condenseUnary lowers clz/ctz/popcnt (lzcnt/tzcnt/popcnt reg,reg).
+// condenseUnary selects native bit-count instructions or baseline AMD64 code.
 func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 	w := node.valueType().is64()
 	// lzcnt/tzcnt/popcnt read their source read-only, so a register-resident source
@@ -820,11 +822,43 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 	}
 	switch node.deferredOp() {
 	case opClz:
-		f.a.Lzcnt(result, src, w)
+		if f.a.BitCountState&shared.BitCountLZCNT != 0 {
+			f.a.Lzcnt(result, src, w)
+			f.a.BitCountState |= shared.BitCountLZCNT << 4
+		} else {
+			f.a.Bsr(result, src, w)
+			zero := f.a.JccPlaceholder(amd64.CondE)
+			width := int32(32)
+			if w {
+				width = 64
+			}
+			f.a.AluRI(6, result, width-1, false) // index XOR (width-1) = clz
+			end := f.a.JmpPlaceholder()
+			f.a.PatchRel32(zero, f.a.Len())
+			f.a.MovImm32(result, width)
+			f.a.PatchRel32(end, f.a.Len())
+		}
 	case opCtz:
-		f.a.Tzcnt(result, src, w)
+		if f.a.BitCountState&shared.BitCountTZCNT != 0 {
+			f.a.Tzcnt(result, src, w)
+			f.a.BitCountState |= shared.BitCountTZCNT << 4
+		} else {
+			f.a.Bsf(result, src, w)
+			nonzero := f.a.JccPlaceholder(amd64.CondNE)
+			width := int32(32)
+			if w {
+				width = 64
+			}
+			f.a.MovImm32(result, width)
+			f.a.PatchRel32(nonzero, f.a.Len())
+		}
 	case opPopcnt:
-		f.a.Popcnt(result, src, w)
+		if f.a.BitCountState&shared.BitCountPOPCNT != 0 {
+			f.a.Popcnt(result, src, w)
+			f.a.BitCountState |= shared.BitCountPOPCNT << 4
+		} else {
+			f.popcntSWAR(result, src, w)
+		}
 	}
 	if srcOwned && result != src {
 		f.release(src)
@@ -833,6 +867,60 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 	f.occupy(node, result)
 	node.setDeferredOp(opNone)
 	return result
+}
+
+// popcntSWAR counts bits with two register temporaries and no runtime helper.
+func (f *fn) popcntSWAR(result, src Reg, w bool) {
+	if result != src {
+		if w {
+			f.a.MovReg64(result, src)
+		} else {
+			f.a.MovRegReg32(result, src)
+		}
+	}
+	tmp := f.allocReg(maskOf(result, src))
+	defer f.release(tmp)
+	var mask Reg
+	if w {
+		mask = f.allocReg(maskOf(result, src, tmp))
+		defer f.release(mask)
+	}
+	f.swarShift(tmp, result, 1, w)
+	f.swarAnd(tmp, mask, 0x5555555555555555, w, true)
+	f.a.AluRR(0x29, result, tmp, w)
+	f.swarShift(tmp, result, 2, w)
+	f.swarAnd(result, mask, 0x3333333333333333, w, true)
+	f.swarAnd(tmp, mask, 0x3333333333333333, w, false)
+	f.a.AluRR(0x01, result, tmp, w)
+	f.swarShift(tmp, result, 4, w)
+	f.a.AluRR(0x01, result, tmp, w)
+	f.swarAnd(result, mask, 0x0f0f0f0f0f0f0f0f, w, true)
+	if w {
+		f.a.MovImm64(mask, 0x0101010101010101)
+		f.a.IMul(result, mask, true)
+		f.a.ShiftImm(5, result, 56, true)
+	} else {
+		f.a.ImulRI(result, 0x01010101, false)
+		f.a.ShiftImm(5, result, 24, false)
+	}
+}
+
+//go:noinline
+func (f *fn) swarShift(dst, src Reg, count byte, w bool) {
+	f.a.AluRR(0x89, dst, src, w)
+	f.a.ShiftImm(5, dst, count, w)
+}
+
+//go:noinline
+func (f *fn) swarAnd(dst, mask Reg, value uint64, w, load bool) {
+	if w {
+		if load {
+			f.a.MovImm64(mask, value)
+		}
+		f.a.AluRR(0x21, dst, mask, true)
+	} else {
+		f.a.AluRI(4, dst, int32(value), false)
+	}
 }
 
 // condenseDivRem lowers div_s/div_u/rem_s/rem_u using x86's fixed RDX:RAX / RAX
@@ -969,7 +1057,7 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 			f.moveInt(dest, e.st.reg, e.st.typ) // copy from the pinned local/global; never release it
 		}
 	case stMemRef:
-		f.loadMemRef(dest, e.st) // emit the deferred load into dest
+		f.loadMemRef(dest, e) // emit the deferred load into dest
 		f.releaseMemRef(e.st)
 	}
 }
@@ -1022,7 +1110,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 			f.a.AluIdx(enc.rm, dest, RBX, right.st.reg, right.st.memDisp(), w) // op dest, [mem]
 			f.releaseMemRef(right.st)
 		} else {
-			r := f.memRefValue(right.st)
+			r := f.memRefValue(right)
 			f.a.AluRR(enc.rr, dest, r, w)
 			f.release(r)
 			f.releaseMemRef(right.st)
@@ -1098,7 +1186,7 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 			f.a.ImulIdx(dest, RBX, right.st.reg, right.st.memDisp(), w)
 			f.releaseMemRef(right.st)
 		} else {
-			r := f.memRefValue(right.st)
+			r := f.memRefValue(right)
 			f.a.IMul(dest, r, w)
 			f.release(r)
 			f.releaseMemRef(right.st)

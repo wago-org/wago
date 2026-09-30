@@ -61,6 +61,32 @@ func TestCodeBufferGrowSealClose(t *testing.T) {
 	}
 }
 
+func TestHeapCodeBufferGrowAndTransfer(t *testing.T) {
+	b, err := NewHeapCodeBuffer(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Append([]byte{1, 2, 3, 4}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Seal(); err == nil {
+		t.Fatal("Seal unexpectedly accepted heap staging")
+	}
+	if _, _, err := b.Take(); err == nil {
+		t.Fatal("Take unexpectedly accepted heap staging")
+	}
+	code, err := b.TakeHeap()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := code, []byte{1, 2, 3, 4}; !bytes.Equal(got, want) {
+		t.Fatalf("code = %v, want %v", got, want)
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCodeBufferAppendTail(t *testing.T) {
 	b, err := NewCodeBuffer(1)
 	if err != nil {
@@ -168,4 +194,77 @@ func BenchmarkCodeImageTransition(b *testing.B) {
 			b.StartTimer()
 		}
 	})
+}
+
+func TestCodeBufferSelfAppend(t *testing.T) {
+	for _, backing := range []string{"heap", "native"} {
+		for _, scenario := range []string{"no_growth", "growth", "subslice_growth", "mapping_tail_growth"} {
+			t.Run(backing+"/"+scenario, func(t *testing.T) {
+				constructor := NewCodeBuffer
+				if backing == "heap" {
+					constructor = NewHeapCodeBuffer
+				}
+				b, err := constructor(64)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer b.Close()
+				n := len(b.Mapping())
+				if scenario == "no_growth" {
+					n /= 4
+				}
+				initial := make([]byte, n)
+				for i := range initial {
+					initial[i] = byte(i*37 + 11)
+				}
+				if err := b.Append(initial); err != nil {
+					t.Fatal(err)
+				}
+				source := b.Bytes()
+				if scenario == "subslice_growth" {
+					source = source[7 : len(source)-3]
+				}
+				if scenario == "mapping_tail_growth" {
+					if err := b.Truncate(n / 2); err != nil {
+						t.Fatal(err)
+					}
+					source = b.Mapping()[n/4:]
+				}
+				want := append([]byte(nil), b.Bytes()...)
+				want = append(want, source...)
+				if err := b.Append(source); err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(b.Bytes(), want) {
+					t.Fatal("self append changed bytes")
+				}
+			})
+		}
+	}
+}
+
+func TestCodeBufferAppendNoGrowthAllocations(t *testing.T) {
+	for _, constructor := range []func(int) (*CodeBuffer, error){NewHeapCodeBuffer, NewCodeBuffer} {
+		b, err := constructor(128)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer b.Close()
+		input := [16]byte{1, 2, 3}
+		if err := b.Append(input[:]); err != nil {
+			t.Fatal(err)
+		}
+		for _, source := range [][]byte{input[:], b.Bytes()} {
+			if got := testing.AllocsPerRun(100, func() {
+				if err := b.Append(source); err != nil {
+					panic(err)
+				}
+				if err := b.Truncate(16); err != nil {
+					panic(err)
+				}
+			}); got != 0 {
+				t.Fatalf("Append allocated %g times", got)
+			}
+		}
+	}
 }

@@ -10,6 +10,7 @@ import (
 )
 
 func TestCompactSharedTrapBodiesArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	const nop = uint32(0xd503201f)
 	first := make([]byte, 16)
 	second := make([]byte, 16)

@@ -119,16 +119,16 @@ func runWasmtimeCore3FixtureInProcess(t *testing.T, fixture string) specExecStat
 		t.Fatal(err)
 	}
 	cfg := wago.NewRuntimeConfig().WithCoreFeatures(wago.CoreFeaturesV3)
-	gcImport := wago.HostFunc(func(module wago.HostModule, _, _ []uint64) {
-		collector, ok := module.(wago.GCHostModule)
+	gcImport := func(caller wago.Caller, _ wago.HostCall) {
+		collector, ok := any(caller).(wago.GCHostModule)
 		if !ok {
 			panic("wasmtime.gc called without a collector-backed host module")
 		}
 		if err := collector.CollectGC(); err != nil {
 			panic(err)
 		}
-	})
-	return runSpecExecFileWithConfigAndImports(t, fixture, dir, sf, cfg, wago.Imports{"wasmtime.gc": gcImport})
+	}
+	return runSpecExecFileWithConfigAndImports(t, fixture, dir, sf, cfg, testWagoImportMap("wasmtime.gc", gcImport))
 }
 
 func runWasmtimeCore3FixtureChild(t *testing.T, fixture string) specExecStats {

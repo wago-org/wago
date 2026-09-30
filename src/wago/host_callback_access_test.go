@@ -119,10 +119,10 @@ func testHostCallbackGlobalAccess(t *testing.T, mode string) {
 	case "hostcall":
 		host = HostCallFunc(func(c HostCall) { c.SetI32(0, access(c.I32(0))) })
 	case "generic":
-		host = HostFunc(func(_ HostModule, a, r []uint64) { r[0] = I32(access(AsI32(a[0]))) })
+		host = slotHostFunc(func(_ HostModule, a, r []uint64) { r[0] = I32(access(AsI32(a[0]))) })
 	}
 	var err error
-	in, err = Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": host}})
+	in, err = Instantiate(c, InstantiateOptions{Imports: testImports("env.f", host)})
 	if err != nil {
 		t.Fatal(err)
 	}

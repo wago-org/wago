@@ -151,7 +151,7 @@ func stagedGCRefTestLeaderDeltaFor(data []byte, line int) (stagedGCRefTestLeader
 }
 
 func compileStagedGCRefTestAccounting(data []byte) (*Compiled, error) {
-	cfg := NewRuntimeConfig()
+	cfg := compatibilityDefaultConfig()
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	if product, ok := stagedGCStructExecutionProduct(data); ok && (product == stagedGCStructRefTestConcrete || product == stagedGCStructRefTestAbstract) {

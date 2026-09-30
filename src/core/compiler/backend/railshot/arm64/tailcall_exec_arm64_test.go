@@ -4,10 +4,8 @@ package arm64
 
 import (
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/arm64spike"
 )
 
 func TestDirectTailCallReusesARM64Frame(t *testing.T) {
@@ -29,18 +27,9 @@ func TestDirectTailCallReusesARM64Frame(t *testing.T) {
 			0x0b,
 		},
 	})
-	cm, err := CompileModule(m)
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
-	code, err := arm64spike.MapExec(cm.Code)
-	if err != nil {
-		t.Fatalf("map: %v", err)
-	}
-	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
-	const n = uintptr(1_000_000)
+	const n = uint64(1_000_000)
 	want := uint32((uint64(n) * uint64(n+1) / 2) & 0xffffffff)
-	if got := uint32(arm64spike.Call2(entry, n, 0)); got != want {
+	if got := uint32(runArm64u(t, m, n, 0)); got != want {
 		t.Fatalf("tail sum(%d) = %d, want %d", n, got, want)
 	}
 }

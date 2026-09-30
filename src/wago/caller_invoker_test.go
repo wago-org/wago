@@ -23,11 +23,8 @@ func (p *callerInvokerPlugin) Register(reg *Registrar) error {
 	if err != nil {
 		return err
 	}
-	module, err := imports.Module("env")
-	if err != nil {
-		return err
-	}
-	module.Func("outer", func(caller HostModule, params, results []uint64) {
+	imports.HostFunc("env", "outer", func(caller Caller, call HostCall) {
+		params, results := call.ParamSlots(), call.ResultSlots()
 		nested, err := p.invoker.Invoke(context.Background(), caller, "callback", params...)
 		if err != nil {
 			panic(HostTrap{Err: err})

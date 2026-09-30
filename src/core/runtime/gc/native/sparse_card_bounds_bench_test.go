@@ -2,10 +2,16 @@ package gc
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
 )
 
 func sparseCardBoundsFixture(tb testing.TB, count int) (*Collector, Ref, Ref) {
+	tb.Helper()
+	return sparseCardBoundsFixtureConfig(tb, count, Config{NurseryBytes: 1 << 20, ThroughputHeapBytes: 4 << 20, DisableMovingNursery: true})
+}
+
+func sparseCardBoundsFixtureConfig(tb testing.TB, count int, cfg Config) (*Collector, Ref, Ref) {
 	tb.Helper()
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
@@ -15,7 +21,7 @@ func sparseCardBoundsFixture(tb testing.TB, count int) (*Collector, Ref, Ref) {
 	if err != nil {
 		tb.Fatal(err)
 	}
-	c, err := NewCollector(Config{NurseryBytes: 1 << 20, ThroughputHeapBytes: 4 << 20, DisableMovingNursery: true}, []TypeDesc{leaf, refs})
+	c, err := NewCollector(cfg, []TypeDesc{leaf, refs})
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -45,10 +51,10 @@ func BenchmarkGCSparseCardInsert(b *testing.B) {
 					if order == "descending" {
 						index = count - 1 - i
 					}
-					if order == "random" {
-						index = (i * 73) % count
-					}
 					indexes[i] = uint32(index * 128)
+				}
+				if order == "random" {
+					rand.New(rand.NewSource(641)).Shuffle(len(indexes), func(i, j int) { indexes[i], indexes[j] = indexes[j], indexes[i] })
 				}
 				// Warm card storage so the timed path reflects lookup rather than growth.
 				for _, index := range indexes {

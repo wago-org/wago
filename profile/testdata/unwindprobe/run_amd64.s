@@ -1,0 +1,12 @@
+#include "textflag.h"
+TEXT ·run(SB),NOSPLIT|NOFRAME,$0-24
+ MOVQ code+0(FP), AX
+ MOVQ sp+8(FP), CX
+ MOVQ depth+16(FP), DI
+ MOVQ SP, R12
+ MOVQ BP, R13
+ MOVQ CX, SP
+ CALL AX
+ MOVQ R12, SP
+ MOVQ R13, BP
+ RET

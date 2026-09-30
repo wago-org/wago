@@ -5,6 +5,8 @@ package semanticcorpus
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,4 +106,31 @@ func nonTerminatingPointerModule() []byte {
 			wasmtest.Code([]byte{0x0b}),
 		)),
 	)
+}
+
+func TestExecutionRejectsChangedOracle(t *testing.T) {
+	m := loadManifest(t)
+	var mod Module
+	for _, candidate := range m.Modules {
+		if candidate.ID == "nanosvg/parse-structure" {
+			mod = candidate
+			break
+		}
+	}
+
+	if mod.ID == "" {
+		t.Fatal("no return-oracle fixture")
+	}
+	if err := Run(CorpusRoot(), mod); err != nil {
+		t.Fatalf("valid oracle: %v", err)
+	}
+	want, err := parseHexUint64(mod.Expect.Return[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod.Expect.Return = append([]string(nil), mod.Expect.Return...)
+	mod.Expect.Return[0] = fmt.Sprintf("0x%x", want^1)
+	if err := Run(CorpusRoot(), mod); err == nil || !strings.Contains(err.Error(), "result[0]") {
+		t.Fatalf("changed oracle: %v", err)
+	}
 }

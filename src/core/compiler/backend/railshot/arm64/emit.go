@@ -38,6 +38,10 @@ var aluTable = [...]aluEnc{
 // regNone to pick a fresh one. Returns the register now holding the value and
 // converts `node` into that value on the stack (its operands are consumed).
 func (f *fn) condense(node *elem, dest Reg) Reg {
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		previous := f.enterProfileNode(node)
+		defer f.switchProfileOrigin(previous)
+	}
 	f.stats.addCondense()
 	switch {
 	case isBinALU(node.deferredOp()):
@@ -284,6 +288,27 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		// explicit-mode miscompile: the i64 bit-buffer OR). The on-stack node tracks
 		// the spill; consumeBlockBelow erases it and applyALU releases its register.
 		// Mirrors the spill-fallback in the relocate branch above.
+	} else if right.st.kind == stMemRef && dest != regNone && right.st.reg == dest {
+		if right.st.memBorrow() < 0 {
+			// Keep the loaded RHS in dest and use the three-register form so the
+			// LHS cannot overwrite it. This needs no relocation register or spill.
+			f.materialize(right)
+			f.pinned = f.pinned.add(dest)
+			lr, owned := f.materializeRead(left)
+			f.pinned = f.pinned.remove(dest)
+			f.aluRR3(node.deferredOp(), dest, lr, dest, w)
+			if owned && lr != dest {
+				f.release(lr)
+			}
+			f.stats.peep("memref-dest-alias")
+			f.consumeBlockBelow(node)
+			f.occupy(node, dest)
+			return dest
+		}
+
+		// A borrowed address loads into a different, allocator-tracked register.
+		f.materialize(right)
+		f.stats.peep("memref-dest-alias")
 	} else if (right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) && dest != regNone && right.st.reg == dest {
 		// In-place self-update (e.g. `x = (a<<b) | x`): the old RHS lives in dest,
 		// which computing the LHS will overwrite. Spill it to a slot so applyALU
@@ -718,7 +743,7 @@ func (f *fn) leaScaled(dst, base, idx Reg, scale uint8, disp int32, w bool) {
 // leaDisp lowers `lea dst,[base + disp]` to add/sub-immediate (or a copy when disp
 // is zero).
 func (f *fn) leaDisp(dst, base Reg, disp int32, w bool) {
-	if disp == 0 {
+	if disp == 0 && !(w && base == SP) {
 		if dst != base {
 			f.a.MovReg64(dst, base)
 		}
@@ -731,6 +756,10 @@ func (f *fn) leaDisp(dst, base Reg, disp int32, w bool) {
 // the magnitude fits, else materializing the displacement in the backend scratch
 // X16 and using the register form.
 func (f *fn) addDisp(dst, base Reg, disp int32, w bool) {
+	if w && base == SP {
+		f.a.LeaSP(dst, disp)
+		return
+	}
 	if f.shiftedAddSubImmediate(int64(disp)) {
 		magnitude := int64(disp)
 		if magnitude < 0 {
@@ -757,7 +786,7 @@ func (f *fn) addDisp(dst, base Reg, disp int32, w bool) {
 		} else {
 			f.a.AddImm32(dst, base, uint32(disp))
 		}
-	case disp < 0 && -disp <= 0xFFF:
+	case disp < 0 && disp >= -0xFFF:
 		if w {
 			f.a.SubImm64(dst, base, uint32(-disp))
 		} else {
@@ -991,7 +1020,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			// always false), so materialize it and compare register-register. A load
 			// whose address borrows a pinned local must use a fresh destination and
 			// must not release the local's register.
-			r := f.memRefValue(right.st)
+			r := f.memRefValue(right)
 			f.cmpRR(L, r, w)
 			f.release(r)
 			f.releaseMemRef(right.st)
@@ -1119,19 +1148,19 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 		noOvf := f.a.Bcond(condNE)
 		f.cmpIntMin(dividend, w) // cmp dividend, INT_MIN
 		f.trapIf(condE, trapDivOverflow)
-		f.a.PatchBranch19(noOvf, f.a.Len())
+		f.patchBranch19(noOvf, f.a.Len())
 		f.sdiv(result, dividend, divisor, w)
 	case signed: // rem_s: x % -1 == 0, computed directly to avoid the INT_MIN/-1 fault
 		f.cmpImmS(divisor, -1, w) // cmp divisor, -1
 		notM1 := f.a.Bcond(condNE)
 		f.a.MovImm64(result, 0) // remainder is 0
 		done := f.a.Branch()
-		f.a.PatchBranch19(notM1, f.a.Len())
+		f.patchBranch19(notM1, f.a.Len())
 		q := f.allocReg(maskOf(divisor, dividend, result))
 		f.sdiv(q, dividend, divisor, w)
 		f.msub(result, q, divisor, dividend, w) // rem = dividend - q*divisor
 		f.release(q)
-		f.a.PatchBranch26(done, f.a.Len())
+		f.patchBranch26(done, f.a.Len())
 	case !wantRem: // div_u
 		f.udiv(result, dividend, divisor, w)
 	default: // rem_u
@@ -1298,7 +1327,7 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 			f.a.MovReg64(dest, e.st.reg) // copy from the pinned local/global; never release it
 		}
 	case stMemRef:
-		f.loadMemRef(dest, e.st) // emit the deferred load into dest
+		f.loadMemRef(dest, e) // emit the deferred load into dest
 		f.releaseMemRef(e.st)
 	}
 }
@@ -1334,7 +1363,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		f.release(t)
 	case stMemRef:
 		// arm64: no memory-operand ALU (memRefFoldable is always false) — load then reg-reg.
-		r := f.memRefValue(right.st)
+		r := f.memRefValue(right)
 		f.aluRR(enc.op, dest, r, w)
 		f.release(r)
 		f.releaseMemRef(right.st)
@@ -1512,7 +1541,7 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 		f.release(t)
 	case stMemRef:
 		// arm64: no memory-operand MUL (memRefFoldable is always false) — load then reg-reg.
-		r := f.memRefValue(right.st)
+		r := f.memRefValue(right)
 		f.mulRR(dest, r, w)
 		f.release(r)
 		f.releaseMemRef(right.st)

@@ -655,7 +655,7 @@ func TestRuntimeRegressionPortTableFill(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		consumer := instantiateRegressionCoreRuntimeFixture(t, rt, "winch/table_fill.wast", 2, wago.Imports{"t.t": table})
+		consumer := instantiateRegressionCoreRuntimeFixture(t, rt, "winch/table_fill.wast", 2, testWagoImports("t.t", table))
 
 		assertRegressionResult(t, consumer, "fill1", nil, wago.I32(0), 0, wago.I32(0))
 		assertRegressionResult(t, consumer, "fill1", nil, wago.I32(0), 0, wago.I32(1))
@@ -711,7 +711,7 @@ func compileRegressionCoreDirectFixture(t *testing.T, path string, module int) *
 	return compiled
 }
 
-func instantiateRegressionCoreDirectFixture(t *testing.T, path string, module int, imports wago.Imports) *wago.Instance {
+func instantiateRegressionCoreDirectFixture(t *testing.T, path string, module int, imports *wago.Imports) *wago.Instance {
 	t.Helper()
 	compiled := compileRegressionCoreDirectFixture(t, path, module)
 	t.Cleanup(func() { _ = compiled.Close() })
@@ -723,7 +723,7 @@ func instantiateRegressionCoreDirectFixture(t *testing.T, path string, module in
 	return in
 }
 
-func instantiateRegressionCoreRuntimeFixture(t *testing.T, rt *wago.Runtime, path string, module int, imports wago.Imports) *wago.Instance {
+func instantiateRegressionCoreRuntimeFixture(t *testing.T, rt *wago.Runtime, path string, module int, imports *wago.Imports) *wago.Instance {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(regressionCoreFixtureDir(path), "module."+strconv.Itoa(module)+".wasm"))
 	if err != nil {

@@ -25,6 +25,7 @@ func indexedBaseReuseModuleArm64(t testing.TB) *wasm.Module {
 }
 
 func TestIndexedBaseReuseSwitchAndExecutionArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := indexedBaseReuseModuleArm64(t)
 	compile := func(on bool) *CodegenStats {
 		var stats ModuleStats
@@ -41,6 +42,20 @@ func TestIndexedBaseReuseSwitchAndExecutionArm64(t *testing.T) {
 		return stats.Funcs[0]
 	}
 	on, off := compile(true), compile(false)
+	var guardStats ModuleStats
+	guarded, err := CompileModuleWith(m, CompileOptions{Stats: &guardStats, ElideBoundsChecks: true, Optimizations: map[string]bool{
+		"indexed-base-reuse": true,
+		"load-pair":          false,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if guarded.CodeImage != nil {
+		defer guarded.CodeImage.Close()
+	}
+	if hits := guardStats.Funcs[0].Peephole["indexed-base-reuse"]; hits != 0 {
+		t.Fatalf("guarded code reuses an indexed base %d times", hits)
+	}
 	run := func(on bool) uint32 {
 		saved := indexedBaseReuseEnabled
 		indexedBaseReuseEnabled = on
@@ -64,5 +79,55 @@ func TestIndexedBaseReuseSwitchAndExecutionArm64(t *testing.T) {
 	}
 	if off.Peephole["indexed-base-reuse"] != 0 || on.CodeBytes >= off.CodeBytes {
 		t.Fatalf("enabled code/hits = %d/%d, disabled = %d/%d", on.CodeBytes, on.Peephole["indexed-base-reuse"], off.CodeBytes, off.Peephole["indexed-base-reuse"])
+	}
+}
+
+// Keep a Wasm-level check alongside the encoder execution regression. These
+// borrowed local addresses should remain reusable for signed loads, and the
+// result must include sign extension. The precise aliasing regression lives in
+// runtime.TestSignedLoadIndexedBaseExecution, independent of allocator choices.
+func TestSignedLoadIndexedBaseWasmArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, load := range []struct {
+		name  string
+		op    byte
+		align byte
+	}{
+		{"i64.load8_s", 0x30, 0},
+		{"i64.load16_s", 0x32, 1},
+		{"i64.load32_s", 0x34, 2},
+	} {
+		t.Run(load.name, func(t *testing.T) {
+			body := []byte{0x01, 0x01, 0x7e} // one i64 local
+			// Initialize negative values with Wasm stores, then overwrite the
+			// address local to end store forwarding before the loads.
+			for off := byte(4); off <= 32; off += 4 {
+				body = append(body, 0x20, 0x00, 0x41, 0x7f-off/4, 0x36, 0x02, off)
+			}
+			body = append(body, 0x20, 0x00, 0x41, 0x01, 0x74, 0x21, 0x00)
+			for off := byte(4); off <= 32; off += 4 {
+				body = append(body, 0x20, 0x01, 0x20, 0x00, load.op, load.align, off, 0x7c, 0x21, 0x01)
+			}
+			body = append(body, 0x20, 0x01, 0x0b)
+			m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, body)
+			for _, on := range []bool{false, true} {
+				var stats ModuleStats
+				opts := CompileOptions{Stats: &stats, Optimizations: map[string]bool{
+					"indexed-base-reuse": on,
+					"load-pair":          false,
+				}}
+				got, err := runArm64WrapperWithOptions(t, m, opts, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if want := ^uint64(43); got != want { // -2 + -3 + ... + -9 = -44
+					t.Fatalf("reuse=%t: got %#x, want %#x", on, got, want)
+				}
+				hits := stats.Funcs[0].Peephole["indexed-base-reuse"]
+				if on && hits == 0 || !on && hits != 0 {
+					t.Fatalf("reuse=%t: %d hits", on, hits)
+				}
+			}
+		})
 	}
 }

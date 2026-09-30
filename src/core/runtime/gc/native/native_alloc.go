@@ -79,10 +79,7 @@ func (c *Collector) reserveNativeHandles() {
 		s.HandleBase = base
 	}
 	s.Epoch = c.nativeAllocEpoch
-	if c.telemetryEnabled() {
-		c.cfg.Telemetry.paths.HandleRefills++
-		c.cfg.Telemetry.paths.ConditionalMediumPaths++
-	}
+
 	c.refreshNativeHandles()
 }
 

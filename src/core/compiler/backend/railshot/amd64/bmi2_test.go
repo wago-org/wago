@@ -10,6 +10,7 @@ import (
 )
 
 func TestBMI2RorxSelectionAndRequirement(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32},
 		[]byte{0x00, 0x20, 0x00, 0x41, 0x07, 0x78, 0x0b})
 

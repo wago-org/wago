@@ -25,6 +25,9 @@ func (v *funcValidator) markBranchTableLabel(label uint32) bool {
 // Instruction struct is ~56 bytes and this is the validator's innermost hot path,
 // so passing a value here shows up as runtime.duffcopy under profiling.
 func (v *funcValidator) step(in *Instruction) error {
+	if in.Kind >= InstrKind(len(opEffects)) {
+		return v.verr(ErrUnsupportedValidationOpcode, in.Kind.String())
+	}
 	if v.constOnly && !isConstInstruction(in.Kind) && !(v.features.GCConstExpr && (in.Kind == InstrStructNew || in.Kind == InstrArrayNew || in.Kind == InstrArrayNewDefault || in.Kind == InstrRefI31 || in.Kind == InstrAnyConvertExtern || in.Kind == InstrExternConvertAny)) {
 		return v.verr(ErrConstExprRequired, in.Kind.String())
 	}
@@ -117,15 +120,15 @@ func (v *funcValidator) step(in *Instruction) error {
 			if err != nil {
 				return err
 			}
-		} else if !v.sameValTypes(ins, outs) {
+		} else if !v.matchValTypes(ins, outs) {
 			// With no else arm, the false path preserves the block inputs as the
-			// expression results. Accept only the shape the IR builder can model
-			// directly: identical input/output types.
+			// expression results, including reference type widening.
 			return v.verr(ErrTypeMismatch, "if without else")
 		}
 		if len(in.Else()) > 0 && len(v.vals) != len(thenVals) {
 			return v.verr(ErrTypeMismatch, "if branch heights")
 		}
+		v.vals = thenVals
 	case InstrBr:
 		lt, err := v.label(in.Index)
 		if err != nil {
@@ -311,8 +314,8 @@ func (v *funcValidator) step(in *Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownGlobal, "")
 		}
-		if v.constOnly && (mutable || int(in.Index) >= v.constGlobalLimit ||
-			(int(in.Index) >= len(v.importsOfKind(ExternGlobal)) && !v.features.ExtendedConstGlobals)) {
+		if v.constOnly && (mutable || uint(in.Index) >= uint(v.constGlobalLimit) ||
+			(uint(in.Index) >= uint(len(v.importsOfKind(ExternGlobal))) && !v.features.ExtendedConstGlobals)) {
 			return v.verr(ErrConstExprRequired, "global.get")
 		}
 		v.push(typ)
@@ -386,7 +389,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		}
 		v.push(I32)
 	case InstrStringConst:
-		if int(in.Index) >= len(v.m.StringRefs) {
+		if uint(in.Index) >= uint(len(v.m.StringRefs)) {
 			return v.verr(ErrTypeMismatch, "string.const index")
 		}
 		v.push(StringRef)
@@ -532,10 +535,10 @@ func (v *funcValidator) step(in *Instruction) error {
 		return v.popExpect(addrDst)
 	case InstrElemDrop:
 		if v.direct != nil {
-			if int(in.Index) >= len(v.direct.elements) {
+			if uint(in.Index) >= uint(len(v.direct.elements)) {
 				return v.verr(ErrUnknownTable, "elem.drop")
 			}
-		} else if int(in.Index) >= len(v.m.Elements) {
+		} else if uint(in.Index) >= uint(len(v.m.Elements)) {
 			return v.verr(ErrUnknownTable, "elem.drop")
 		}
 	case InstrTableSize:
@@ -599,18 +602,6 @@ func (v *funcValidator) matchValTypes(actual, expected []ValType) bool {
 	}
 	for i := range actual {
 		if !v.subtype(actual[i], expected[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-func (v *funcValidator) sameValTypes(a, b []ValType) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if !v.subtype(a[i], b[i]) || !v.subtype(b[i], a[i]) {
 			return false
 		}
 	}
@@ -737,7 +728,7 @@ func (v *funcValidator) checkMem(align uint32) error {
 func (v *funcValidator) checkDataIndex(idx uint32, op string) error {
 	// Bulk-memory data instructions are guarded by the data count section. The
 	// segment may have any mode; active segments are already dropped at runtime.
-	if v.m.DataCount == nil || idx >= *v.m.DataCount || int(idx) >= len(v.m.Data) {
+	if v.m.DataCount == nil || idx >= *v.m.DataCount || uint(idx) >= uint(len(v.m.Data)) {
 		return v.verr(ErrInvalidDataCount, op+" data index")
 	}
 	return nil

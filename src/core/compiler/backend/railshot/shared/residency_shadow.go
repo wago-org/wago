@@ -85,7 +85,7 @@ func planResidencyShadow(events []LocalEvent, nLocals, regBudget int, overflow, 
 
 	var reads, defines [ResidencyShadowMaxLocals]uint16
 	for _, event := range events {
-		if event.Local == NoLocal || int(event.Local) >= nLocals {
+		if event.Local == NoLocal || uint(event.Local) >= uint(nLocals) {
 			continue
 		}
 		switch event.Kind {
@@ -195,7 +195,7 @@ func planResidencyShadow(events []LocalEvent, nLocals, regBudget int, overflow, 
 	}
 
 	for at, event := range events {
-		if event.Local != NoLocal && int(event.Local) < nLocals && selected[event.Local] {
+		if event.Local != NoLocal && uint(event.Local) < uint(nLocals) && selected[event.Local] {
 			switch event.Kind {
 			case LocalEventRead:
 				s := open(event.Local, at)
@@ -340,7 +340,7 @@ func planShadowTransitions(events []LocalEvent, segments []shadowSegment, candid
 			break
 		}
 		event := events[at]
-		if event.Local == NoLocal || int(event.Local) >= len(current) || current[event.Local] < 0 || !resident[event.Local] {
+		if event.Local == NoLocal || uint(event.Local) >= uint(len(current)) || current[event.Local] < 0 || !resident[event.Local] {
 			continue
 		}
 		idx := current[event.Local]

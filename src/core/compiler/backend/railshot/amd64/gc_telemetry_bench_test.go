@@ -46,6 +46,7 @@ func gcStaticSiteModule(tb testing.TB, sites int) *wasm.Module {
 // product benchmarks; this layer isolates compile B/op, allocations, JIT bytes,
 // helper sequences, stubs, and root-map metadata per static site.
 func BenchmarkGCStaticSiteCompilation(b *testing.B) {
+	requireCompilerDiagnostics(b)
 	for _, sites := range []int{1, 4096} {
 		b.Run(fmt.Sprintf("sites=%d", sites), func(b *testing.B) {
 			m := gcStaticSiteModule(b, sites)
@@ -130,6 +131,7 @@ func gcDistinctResolverModule(tb testing.TB, sites int) *wasm.Module {
 // BenchmarkGCResolverCodeSize permanently records the low/dense-site crossover
 // for the module-owned compact-handle resolver and the bounded reuse certificate.
 func BenchmarkGCResolverCodeSize(b *testing.B) {
+	requireCompilerDiagnostics(b)
 	for _, sites := range []int{1, 8, 128} {
 		m := gcResolverDensityModule(b, sites)
 		for _, shared := range []bool{false, true} {
@@ -201,6 +203,7 @@ func BenchmarkGCResolverCodeSize(b *testing.B) {
 }
 
 func TestGCStaticSiteTelemetrySmoke(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	for _, sites := range []int{1, 128} {
 		m := gcStaticSiteModule(t, sites)
 		var stats ModuleStats

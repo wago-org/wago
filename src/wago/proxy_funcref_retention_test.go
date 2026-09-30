@@ -64,7 +64,7 @@ func clearSharedFuncrefSlot(t *testing.T, table *Table) {
 	t.Helper()
 	code := MustCompile(importedFuncrefTableClearerModule())
 	defer code.Close()
-	clearer, err := Instantiate(code, Imports{"env.table": table})
+	clearer, err := Instantiate(code, testImports("env.table", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestImportedAndProxyFuncrefsTransferWriterLifetimeToTable(t *testing.T) {
 			}
 			writerCode := MustCompile(importedFuncrefTableWriterModule())
 			defer writerCode.Close()
-			writer, err := Instantiate(writerCode, Imports{"env.target": export, "env.table": table})
+			writer, err := Instantiate(writerCode, testImports("env.target", export, "env.table", table))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -117,7 +117,7 @@ func TestImportedAndProxyFuncrefsTransferWriterLifetimeToTable(t *testing.T) {
 
 			callerCode := MustCompile(importedFuncrefTableCallerModule())
 			defer callerCode.Close()
-			caller, err := Instantiate(callerCode, Imports{"env.table": table})
+			caller, err := Instantiate(callerCode, testImports("env.table", table))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -141,7 +141,7 @@ func TestImportedAndProxyFuncrefsTransferWriterLifetimeToTable(t *testing.T) {
 
 func TestHostFuncRefProxyTransfersWriterLifetimeToTable(t *testing.T) {
 	rt := NewRuntime()
-	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+	owner, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, _, results []uint64) {
 		results[0] = I32(91)
 	}), FuncSig{Results: []ValType{ValI32}})
 	if err != nil {
@@ -155,7 +155,7 @@ func TestHostFuncRefProxyTransfersWriterLifetimeToTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writer, err := rt.Instantiate(context.Background(), writerMod, WithImports(Imports{"env.target": owner, "env.table": table}))
+	writer, err := rt.Instantiate(context.Background(), writerMod, WithImports(testImports("env.target", owner, "env.table", table)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,11 +170,11 @@ func TestHostFuncRefProxyTransfersWriterLifetimeToTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	caller, err := rt.Instantiate(context.Background(), callerMod, WithImports(Imports{"env.table": table}))
+	caller, err := rt.Instantiate(context.Background(), callerMod, WithImports(testImports("env.table", table)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	values, err := caller.Call(context.Background(), "call")
+	values, err := caller.InvokeValues(context.Background(), "call")
 	if err != nil || len(values) != 1 || values[0].I32() != 91 {
 		t.Fatalf("call retained HostFuncRef proxy = %v, %v; want 91", values, err)
 	}

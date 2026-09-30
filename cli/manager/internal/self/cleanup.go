@@ -35,10 +35,9 @@ func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
 	case Full:
 		if root := selectedWagoRoot(dirs, executable); root != "" {
 			candidates = append(candidates, root)
-		} else {
-			// Linux's default XDG layout has no single Wago root.
-			candidates = append(candidates, dirs.Data, dirs.Config, filepath.Dir(dirs.Cache))
 		}
+		// Active XDG directories can coexist with a legacy Wago root.
+		candidates = append(candidates, dirs.Data, dirs.Config, filepath.Dir(dirs.Cache))
 		candidates = append(candidates, InstalledSourcePath())
 	case Partial:
 		candidates = append(candidates, dirs.Versions, dirs.Config, filepath.Dir(dirs.Cache), InstalledSourcePath())
@@ -59,10 +58,10 @@ func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
 		covered := false
 		for i := 0; i < len(targets); {
 			switch {
-			case pathContains(targets[i], candidate):
+			case removalCovers(targets[i], candidate):
 				covered = true
 				i = len(targets)
-			case pathContains(candidate, targets[i]):
+			case removalCovers(candidate, targets[i]):
 				targets = append(targets[:i], targets[i+1:]...)
 			default:
 				i++
@@ -274,15 +273,11 @@ func isCompletionCommand(line string) bool {
 }
 
 func fishCompletionPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
+	path, err := wagopaths.FishCompletionPath()
+	if err != nil {
 		return ""
 	}
-	root := os.Getenv("XDG_CONFIG_HOME")
-	if root == "" {
-		root = filepath.Join(home, ".config")
-	}
-	return filepath.Join(root, "fish", "completions", "wago.fish")
+	return path
 }
 
 func isInstallerPathCommand(line string) bool {
@@ -290,6 +285,19 @@ func isInstallerPathCommand(line string) bool {
 	return strings.HasPrefix(line, "export PATH=") ||
 		strings.HasPrefix(line, "fish_add_path --path ") ||
 		strings.HasPrefix(line, "$env.PATH = ($env.PATH | prepend ")
+}
+
+func removalCovers(parent, child string) bool {
+	if filepath.Clean(parent) == filepath.Clean(child) {
+		return true
+	}
+	// RemoveAll removes a symlink entry, not its resolved destination.
+	for _, path := range [...]string{parent, child} {
+		if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return false
+		}
+	}
+	return pathContains(parent, child)
 }
 
 func pathContains(parent, child string) bool {

@@ -4,7 +4,6 @@ package wago
 
 import (
 	"encoding/binary"
-	"fmt"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -36,7 +35,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stackTop
 	control := unsafe.Slice((*byte)(offHeapPtr(ctrl)), 64)
 	savedRSP := uintptr(binary.LittleEndian.Uint64(control[abi.SyncHostCallSavedNativeSPOffset:]))
 	if savedRSP == 0 || savedRSP > ^uintptr(0)-abi.AMD64CallReturnAddressBytes {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation has invalid saved RSP %#x", savedRSP)})
+		panic(gcHelperFailuref("generic GC host activation has invalid saved RSP %#x", savedRSP))
 	}
 	findCallsite := func(pc uintptr) int {
 		if pc < in.base || pc-in.base >= uintptr(len(in.c.code)) {
@@ -59,7 +58,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stackTop
 		// candidate solely when it equals a validated logical callsite return PC.
 		const wrapperScanBytes = uintptr(512)
 		if stackTop <= savedRSP+8 {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation saved RSP %#x is outside the foreign stack", savedRSP)})
+			panic(gcHelperFailuref("generic GC host activation saved RSP %#x is outside the foreign stack", savedRSP))
 		}
 		limit := wrapperScanBytes
 		if available := stackTop - savedRSP - 8; available < limit {
@@ -76,13 +75,13 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stackTop
 		}
 	}
 	if callsite < 0 && !gcBridge {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation return PC %#x has no callsite map in the bounded wrapper envelope", retPC)})
+		panic(gcHelperFailuref("generic GC host activation return PC %#x has no callsite map in the bounded wrapper envelope", retPC))
 	}
 	state := in.publicGCState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	if state.hostActivationCount >= gcHostActivationLimit {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation depth exceeds %d", gcHostActivationLimit)})
+		panic(gcHelperFailuref("generic GC host activation depth exceeds %d", gcHostActivationLimit))
 	}
 	index := state.hostActivationCount
 	activation := &state.hostActivations[index]
@@ -94,7 +93,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stackTop
 		activation.noFrame = true
 	} else {
 		if returnSlot > ^uintptr(0)-abi.AMD64CallReturnAddressBytes-uintptr(plan.callsites[callsite].stackAdjust) {
-			panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation frame base overflows")})
+			panic(gcHelperFailuref("generic GC host activation frame base overflows"))
 		}
 		activation.base = returnSlot + abi.AMD64CallReturnAddressBytes + uintptr(plan.callsites[callsite].stackAdjust)
 		activation.callsite = uint32(callsite)
@@ -117,7 +116,7 @@ func (in *Instance) popGCHostActivation(token gcHostActivationToken) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	if state.hostActivationCount == 0 || token.index != state.hostActivationCount-1 {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation stack is not LIFO")})
+		panic(gcHelperFailuref("generic GC host activation stack is not LIFO"))
 	}
 	activation := &state.hostActivations[token.index]
 	control := unsafe.Slice((*byte)(offHeapPtr(activation.ctrl)), 64)

@@ -180,6 +180,7 @@ func TestScratchClearNodeReferences(t *testing.T) {
 }
 
 func TestScratchNodeResourceStats(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	nodes := int(shared.MaxRetainedStackArenaBytes/uint64(unsafe.Sizeof(elem{}))) + maxStackChunkCap
 	sc := newScratchWithStackCap(minStackArenaCap)
 	for i := 1; i < nodes; i++ {
@@ -295,6 +296,23 @@ func TestStackArenaReusesChunksAcrossReset(t *testing.T) {
 	}
 	if len(s.chunks) != grown {
 		t.Fatalf("reuse allocated new chunks: %d, want %d retained", len(s.chunks), grown)
+	}
+}
+
+func TestStackArenaClearsReusedNodesAcrossChunks(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	for pass, count := range []int{4 * minStackArenaCap, 3, 2 * minStackArenaCap, 4 * minStackArenaCap} {
+		for i := 0; i < count; i++ {
+			e := s.alloc()
+			if *e != (elem{}) {
+				t.Fatalf("pass %d node %d retained prior operand state: %+v", pass, i, *e)
+			}
+			*e = elem{
+				st:   storage{cval: -1, slot: 9, cold: 2, idx: 3, kind: deferredStorageKind, typ: mtCustom, reg: RAX, meta: 0xff},
+				prev: s.head, next: s.head, arg0: s.head, arg1: s.head,
+			}
+		}
+		s.reset()
 	}
 }
 

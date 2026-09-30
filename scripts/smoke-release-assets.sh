@@ -6,10 +6,14 @@ target="${2:?release target is required}"
 version="${3:?release version is required}"
 repository_root=$(git rev-parse --show-toplevel)
 
-[[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.(0|[1-9][0-9]*))?$ ]] || {
+if [[ "$version" =~ ^canary@[0-9a-f]{40}$ ]]; then
+  version_pattern="$version"
+elif [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.(0|[1-9][0-9]*))?$ ]]; then
+  version_pattern=${version//./\\.}
+else
   echo "invalid release version: $version" >&2
   exit 1
-}
+fi
 
 manager="$release_dir/wago-$target"
 installer="$release_dir/wago-installer-$target"

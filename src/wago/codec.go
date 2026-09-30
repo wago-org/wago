@@ -27,10 +27,15 @@ const (
 	compiledDynamicFuncrefEscape          uint64 = 1 << 57
 	compiledRegisterABIDisabled           uint64 = 1 << 58
 	compiledAtomicWaitExecution           uint64 = 1 << 59
-	compiledCPUFeatureBMI2                uint64 = 1 << 60
+	compiledCPUFeatureBMI2                uint64 = uint64(shared.AMD64BMI2) << 32
+	compiledCPUFeatureLZCNT               uint64 = uint64(shared.AMD64LZCNT) << 32
+	compiledCPUFeatureTZCNT               uint64 = uint64(shared.AMD64BMI1) << 32
+	compiledCPUFeaturePOPCNT              uint64 = uint64(shared.AMD64POPCNT) << 32
+	compiledCPUFeatureBitCount                   = compiledCPUFeatureLZCNT | compiledCPUFeatureTZCNT | compiledCPUFeaturePOPCNT
 	compiledGCExecutionDynamicFuncRefTest uint64 = 1 << 61
 	compiledGCExecutionGenericStruct      uint64 = 1 << 62
 	compiledGCExecutionGenericArray       uint64 = 1 << 63
+	compiledCPUFeatures                   uint64 = 0xfffff << 32
 	compiledGCExecutionMask                      = compiledGCExecutionI31Product | compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
 
 	// Import names are attacker-controlled artifact metadata. Bound the decoded
@@ -198,7 +203,7 @@ func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded *Compile
 	defer func() { read = r.n }()
 	var header [6]byte
 	if _, err = io.ReadFull(r, header[:]); err != nil {
-		return decoded, nil, 0, fmt.Errorf("compiled artifact header: %w", err)
+		return decoded, nil, 0, wrapContextError("compiled artifact header", err)
 	}
 	if string(header[:4]) != wagoMagic {
 		return decoded, nil, 0, fmt.Errorf("not a wago module")
@@ -235,16 +240,16 @@ func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded *Compile
 	}
 	image, err = coreruntime.NewCodeBuffer(codeLen)
 	if err != nil {
-		return decoded, nil, 0, fmt.Errorf("allocate compiled code section: %w", err)
+		return decoded, nil, 0, wrapContextError("allocate compiled code section", err)
 	}
 	code, err := image.AppendSpace(codeLen)
 	if err != nil {
 		_ = image.Close()
-		return decoded, nil, 0, fmt.Errorf("size compiled code section: %w", err)
+		return decoded, nil, 0, wrapContextError("size compiled code section", err)
 	}
 	if _, err := io.ReadFull(r, code); err != nil {
 		_ = image.Close()
-		return decoded, nil, 0, fmt.Errorf("truncated code section: %w", err)
+		return decoded, nil, 0, wrapContextError("truncated code section", err)
 	}
 	metadataLen, err := readSectionHeader(compiledSectionMetadata, "metadata", limits.MaxMetadataBytes)
 	if err != nil {
@@ -259,7 +264,7 @@ func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded *Compile
 	metadata := make([]byte, metadataLen)
 	if _, err := io.ReadFull(r, metadata); err != nil {
 		_ = image.Close()
-		return decoded, nil, 0, fmt.Errorf("truncated metadata section: %w", err)
+		return decoded, nil, 0, wrapContextError("truncated metadata section", err)
 	}
 	decoded.code = code
 	if err := unmarshalCompiledMetadataBudget(decoded, metadata, budget); err != nil {
@@ -275,12 +280,24 @@ func marshalCompiledMetadata(c *Compiled) ([]byte, error) {
 }
 
 func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes, error) {
-	w := compiledWriter{buf: make([]byte, 0, 256)}
+	return encodeCompiledMetadataMeasured(c, false)
+}
+
+func measureCompiledMetadata(c *Compiled) (ArtifactSectionSizes, error) {
+	_, sizes, err := encodeCompiledMetadataMeasured(c, true)
+	return sizes, err
+}
+
+func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, ArtifactSectionSizes, error) {
+	w := compiledWriter{countOnly: countOnly}
+	if !countOnly {
+		w.buf = make([]byte, 0, 256)
+	}
 	var sizes ArtifactSectionSizes
-	start := 0
+	start := int64(0)
 	mark := func(dst *int64) {
-		*dst = int64(len(w.buf) - start)
-		start = len(w.buf)
+		*dst = w.length() - start
+		start = w.length()
 	}
 	w.intSlice(c.Entry)
 	w.internalEntrySlice(c.InternalEntry)
@@ -343,8 +360,8 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	w.stringIntMap(c.memoryExportMap())
 	mark(&sizes.Memories)
 	w.bool(c.dynamicImports)
-	sizes.Features = int64(len(w.buf) - start)
-	start = len(w.buf)
+	sizes.Features = w.length() - start
+	start = w.length()
 	w.tags(c)
 	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
@@ -363,9 +380,7 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	if c.usesAtomicWaitHelpers() {
 		required |= compiledAtomicWaitExecution
 	}
-	if c.requiresBMI2 {
-		required |= compiledCPUFeatureBMI2
-	}
+	required |= uint64(c.requiredAMD64Features) << 32
 	if c.needsFuncRefContextHeader {
 		required |= compiledFuncRefContextHeader
 	}
@@ -376,8 +391,8 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 		required |= compiledRegisterABIDisabled
 	}
 	w.u64(required)
-	sizes.Features += int64(len(w.buf) - start)
-	start = len(w.buf)
+	sizes.Features += w.length() - start
+	start = w.length()
 	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.hasCollectorReferenceCallBoundary() {
 		w.u32(c.nativeGCABIRequirement())
 	}
@@ -389,15 +404,44 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 		w.gcFrameRoots(rootMap)
 	}
 	mark(&sizes.GC)
+	sizes.Metadata = w.length()
 	return w.buf, sizes, nil
 }
 
 type compiledWriter struct {
-	buf []byte
-	tmp [binary.MaxVarintLen64]byte
+	buf       []byte
+	tmp       [binary.MaxVarintLen64]byte
+	count     int64
+	countOnly bool
 }
 
-func (w *compiledWriter) u8(v byte) { w.buf = append(w.buf, v) }
+func (w *compiledWriter) length() int64 {
+	if w.countOnly {
+		return w.count
+	}
+	return int64(len(w.buf))
+}
+
+func (w *compiledWriter) appendBytes(p []byte) {
+	if w.countOnly {
+		w.count += int64(len(p))
+	} else {
+		w.buf = append(w.buf, p...)
+	}
+}
+
+func (w *compiledWriter) appendString(s string) {
+	if w.countOnly {
+		w.count += int64(len(s))
+	} else {
+		w.buf = append(w.buf, s...)
+	}
+}
+
+func (w *compiledWriter) u8(v byte) {
+	w.tmp[0] = v
+	w.appendBytes(w.tmp[:1])
+}
 func (w *compiledWriter) bool(v bool) {
 	if v {
 		w.u8(1)
@@ -407,30 +451,32 @@ func (w *compiledWriter) bool(v bool) {
 }
 func (w *compiledWriter) uvar(v uint64) {
 	n := binary.PutUvarint(w.tmp[:], v)
-	w.buf = append(w.buf, w.tmp[:n]...)
+	w.appendBytes(w.tmp[:n])
 }
 func (w *compiledWriter) ivar(v int) {
 	n := binary.PutVarint(w.tmp[:], int64(v))
-	w.buf = append(w.buf, w.tmp[:n]...)
+	w.appendBytes(w.tmp[:n])
 }
 func (w *compiledWriter) u32(v uint32) {
-	w.buf = binary.LittleEndian.AppendUint32(w.buf, v)
+	binary.LittleEndian.PutUint32(w.tmp[:4], v)
+	w.appendBytes(w.tmp[:4])
 }
 func (w *compiledWriter) u64(v uint64) {
-	w.buf = binary.LittleEndian.AppendUint64(w.buf, v)
+	binary.LittleEndian.PutUint64(w.tmp[:8], v)
+	w.appendBytes(w.tmp[:8])
 }
 func (w *compiledWriter) bytes(b []byte) {
 	w.uvar(uint64(len(b)))
-	w.buf = append(w.buf, b...)
+	w.appendBytes(b)
 }
 func (w *compiledWriter) section(id byte, payload []byte) {
 	w.u8(id)
 	w.uvar(uint64(len(payload)))
-	w.buf = append(w.buf, payload...)
+	w.appendBytes(payload)
 }
 func (w *compiledWriter) str(s string) {
 	w.uvar(uint64(len(s)))
-	w.buf = append(w.buf, s...)
+	w.appendString(s)
 }
 func (w *compiledWriter) stringSlice(v []string) {
 	w.uvar(uint64(len(v)))
@@ -499,12 +545,19 @@ func (w *compiledWriter) memories(c *Compiled) {
 }
 
 func (w *compiledWriter) stringIntMap(m map[string]int) {
+	w.uvar(uint64(len(m)))
+	if w.countOnly {
+		for k, v := range m {
+			w.str(k)
+			w.ivar(v)
+		}
+		return
+	}
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	w.uvar(uint64(len(keys)))
 	for _, k := range keys {
 		w.str(k)
 		w.ivar(m[k])
@@ -727,7 +780,7 @@ func (w *compiledWriter) globals(v []GlobalDef, c *Compiled) error {
 			w.u8(0)
 			w.u64(g.Bits)
 			if g.Type == ValV128 {
-				w.buf = append(w.buf, g.V128[:]...)
+				w.appendBytes(g.V128[:])
 			}
 		}
 	}
@@ -832,7 +885,7 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	r := compiledReader{data: data}
 	count, err := r.u8()
 	if err != nil {
-		return fmt.Errorf("compiled section count: %w", err)
+		return wrapContextError("compiled section count", err)
 	}
 	if count != compiledSectionCount {
 		return fmt.Errorf("compiled section count %d unsupported (want %d)", count, compiledSectionCount)
@@ -985,11 +1038,14 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 		return err
 	}
 	gcExecution := required & compiledGCExecutionMask
-	c.requiresBMI2 = required&compiledCPUFeatureBMI2 != 0
+	c.requiredAMD64Features = shared.AMD64Features((required & compiledCPUFeatures) >> 32)
+	if c.requiredAMD64Features&^shared.AMD64KnownFeatures != 0 {
+		return fmt.Errorf("unknown AMD64 CPU requirements %#x", c.requiredAMD64Features)
+	}
 	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatures))
 	genericNativeGC := gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0
 	if genericNativeGC || c.hasCollectorReferenceCallBoundary() {
 		label := "native GC call-boundary"
@@ -1388,7 +1444,7 @@ func (r *compiledReader) tags(c *Compiled) error {
 	}
 	c.memoryDir.ehTagExports, err = r.stringIntMap()
 	if err != nil {
-		return fmt.Errorf("exception tag exports: %w", err)
+		return wrapContextError("exception tag exports", err)
 	}
 	return nil
 }

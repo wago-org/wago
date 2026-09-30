@@ -47,7 +47,7 @@ func TestGCAtomicWaitReferenceImportRejected(t *testing.T) {
 		validateMemo: &validateMemo{gcFrameRoots: &compiledGCFrameRoots{}},
 	}
 
-	err := consumer.validateImportBindings(Imports{"env.read": export}, store)
+	err := consumer.validateImportBindings(testImports("env.read", export).bindings, store)
 	if err == nil || !strings.Contains(err.Error(), "atomic wait helpers") {
 		t.Fatalf("GC+Threads reference import error = %v, want atomic-wait rejection", err)
 	}
@@ -76,7 +76,7 @@ func TestGCAtomicWaitScalarRuntimeGCDomainImportRejected(t *testing.T) {
 		validateMemo: &validateMemo{gcFrameRoots: &compiledGCFrameRoots{}},
 	}
 
-	err := consumer.validateImportBindings(Imports{"env.notify": export}, store)
+	err := consumer.validateImportBindings(testImports("env.notify", export).bindings, store)
 	if err == nil || !strings.Contains(err.Error(), "Runtime GC-domain import") || !strings.Contains(err.Error(), "atomic wait helpers") {
 		t.Fatalf("GC+Threads scalar Runtime GC import error = %v, want atomic-wait GC-domain rejection", err)
 	}
@@ -106,7 +106,7 @@ func TestGCAtomicWaitForeignRuntimeGCDomainImportRejected(t *testing.T) {
 	}
 	consumerStore := newReferenceStore(false)
 
-	err := consumer.validateImportBindings(Imports{"env.notify": export}, consumerStore)
+	err := consumer.validateImportBindings(testImports("env.notify", export).bindings, consumerStore)
 	if err == nil || !strings.Contains(err.Error(), "Runtime GC-domain import") || !strings.Contains(err.Error(), "atomic wait helpers") {
 		t.Fatalf("GC+Threads foreign Runtime GC import error = %v, want atomic-wait GC-domain rejection", err)
 	}

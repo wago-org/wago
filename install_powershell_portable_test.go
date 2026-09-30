@@ -12,6 +12,29 @@ import (
 	"testing"
 )
 
+func TestPowerShellBootstrapReleaseSelection(t *testing.T) {
+	shells := []string{"pwsh"}
+	if runtime.GOOS == "windows" {
+		shells = append(shells, "powershell.exe")
+	}
+	for _, shell := range shells {
+		t.Run(shell, func(t *testing.T) {
+			path, err := exec.LookPath(shell)
+			if err != nil {
+				if runtime.GOOS == "windows" {
+					t.Fatal(err)
+				}
+				t.Skip("PowerShell is not available")
+			}
+			command := exec.Command(path, "-NoLogo", "-NoProfile", "-NonInteractive",
+				"-ExecutionPolicy", "Bypass", "-File", filepath.Join("tests", "scripts", "install-fallback.ps1"))
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("release selection: %v\n%s", err, output)
+			}
+		})
+	}
+}
+
 func TestPowerShellBootstrapFallsBackToGoForMainWithoutRelease(t *testing.T) {
 	if _, err := exec.LookPath("pwsh"); err != nil {
 		t.Skip("pwsh is not available")

@@ -172,6 +172,7 @@ func (f *fn) foldSingleBitBranches(b []byte, n int, targets []uint64) {
 // B that becomes a NOP): an external entrant would otherwise see a NOP where it
 // expected a branch. We prove that by collecting every PC-relative branch
 // target first and only folding pairs whose middle word is not among them.
+
 func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
 	for pc := 0; pc+8 <= n; pc += 4 {
 		w := rdWord(b, pc)
@@ -198,7 +199,7 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
 		wrWord(b, mid, nopWord)
 		f.recordDeadHole(mid)
 		f.stats.peep("br-pair-fold")
-		if f.stats != nil {
+		if diagnosticsEnabled && f.stats != nil {
 			f.stats.NativeSize.BranchFoldHoleBytes += 4
 		}
 		pc += 4 // step past the NOP we just wrote
@@ -216,6 +217,7 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
 // Correct because the two instructions are adjacent (nothing rewrites the slot or
 // SP between them) and only fired when nothing branches to the load: an external
 // entrant that skipped the store must genuinely load from memory.
+
 func (f *fn) forwardStoreLoads(b []byte, n int, targets []uint64) {
 	for pc := 0; pc+8 <= n; pc += 4 {
 		if f.forwardStoreLoadAt(b, n, pc, targets, true) {
@@ -242,7 +244,7 @@ func (f *fn) forwardStoreLoadAt(b []byte, n, pc int, targets []uint64, recordHol
 		if recordHole {
 			f.recordDeadHole(ld)
 		}
-		if f.stats != nil {
+		if diagnosticsEnabled && f.stats != nil {
 			f.stats.NativeSize.StoreLoadNopBytes += 4
 		}
 	} else if w64 {

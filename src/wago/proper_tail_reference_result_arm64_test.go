@@ -67,7 +67,7 @@ func TestARM64OrdinaryCallUsesFuncrefResultRegisterABI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	got, err := in.Call(context.Background(), "run")
+	got, err := in.InvokeValues(context.Background(), "run")
 	if err != nil || len(got) != 1 || got[0].I32() != 1 {
 		t.Fatalf("ordinary funcref-result call = %v, %v; want [1]", got, err)
 	}
@@ -116,7 +116,7 @@ func TestARM64OrdinaryDynamicCallsUseFuncrefResultRegisterABI(t *testing.T) {
 	}
 	defer in.Close()
 	for _, export := range []string{"run_ref", "run_indirect"} {
-		got, err := in.Call(context.Background(), export)
+		got, err := in.InvokeValues(context.Background(), export)
 		if err != nil || len(got) != 1 || got[0].I32() != 1 {
 			t.Fatalf("%s funcref-result dynamic call = %v, %v; want [1]", export, got, err)
 		}
@@ -143,7 +143,7 @@ func TestARM64OrdinaryDynamicCallsUseFuncrefResultRegisterABI(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, export := range []string{"run_ref", "run_indirect"} {
-				got, err := in.Call(context.Background(), export)
+				got, err := in.InvokeValues(context.Background(), export)
 				if err != nil || len(got) != 1 || got[0].I32() != 1 {
 					t.Fatalf("%s wrapper-ABI dynamic call = %v, %v; want [1]", export, got, err)
 				}
@@ -173,7 +173,7 @@ func TestARM64ProperTailReferenceResultContractsExecuteAcrossKinds(t *testing.T)
 						t.Fatal(err)
 					}
 					defer in.Close()
-					got, err := in.Call(context.Background(), "run")
+					got, err := in.InvokeValues(context.Background(), "run")
 					if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() != tc.null {
 						t.Fatalf("proper-tail funcref result = %v, %v; null=%v", got, err, tc.null)
 					}
@@ -234,7 +234,7 @@ func TestARM64WideWrapperCallerTailsToNarrowFuncrefRegisterTarget(t *testing.T) 
 				t.Fatal(err)
 			}
 			defer in.Close()
-			got, err := in.Call(context.Background(), "run", args...)
+			got, err := in.InvokeValues(context.Background(), "run", args...)
 			if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() {
 				t.Fatalf("mixed wrapper/register proper-tail result = %v, %v", got, err)
 			}
@@ -264,7 +264,7 @@ func TestARM64ProperTailReferenceResultWrapperFallbacks(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer in.Close()
-					got, err := in.Call(context.Background(), "run")
+					got, err := in.InvokeValues(context.Background(), "run")
 					if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() != tc.null {
 						t.Fatalf("wide proper-tail funcref result = %v, %v; null=%v", got, err, tc.null)
 					}

@@ -154,7 +154,7 @@ func tableTestInstantiate(t *testing.T, mod []byte) *Instance {
 	return tableTestInstantiateWithImports(t, mod, nil)
 }
 
-func tableTestInstantiateWithImports(t *testing.T, mod []byte, imports Imports) *Instance {
+func tableTestInstantiateWithImports(t *testing.T, mod []byte, imports *Imports) *Instance {
 	t.Helper()
 	c, err := Compile(nil, mod)
 	if err != nil {
@@ -441,9 +441,7 @@ func TestFuncrefTableInitializerExpressionRejectsWhenReferenceTypesDisabled(t *t
 }
 
 func TestFuncrefTableInitializerExpressionCanTargetHostImport(t *testing.T) {
-	inst := tableTestInstantiateWithImports(t, tableInitializerImportModule(), Imports{
-		"env.f": HostFunc(func(_ HostModule, _ []uint64, r []uint64) { r[0] = I32(55) }),
-	})
+	inst := tableTestInstantiateWithImports(t, tableInitializerImportModule(), testImports("env.f", slotHostFunc(func(_ HostModule, _ []uint64, r []uint64) { r[0] = I32(55) })))
 	defer inst.Close()
 	for _, idx := range []int32{0, 1} {
 		if got := tableTestCallI32(t, inst, "callAt", I32(idx)); got != 55 {
@@ -474,7 +472,7 @@ func TestFuncrefTableInitializerExpressionCanTargetCrossInstanceImport(t *testin
 	if got, want := reloaded.FuncTypeID, producerCompiled.FuncTypeID; len(got) != 1 || got[0] != want[0] {
 		t.Fatalf("reloaded native type keys = %#v, want %#v", got, want)
 	}
-	prodInst, err := Instantiate(&reloaded, Imports{})
+	prodInst, err := Instantiate(&reloaded, testImports())
 	if err != nil {
 		t.Fatalf("Instantiate producer: %v", err)
 	}
@@ -487,7 +485,7 @@ func TestFuncrefTableInitializerExpressionCanTargetCrossInstanceImport(t *testin
 	if len(consumer.FuncTypeID) == 0 || consumer.FuncTypeID[0] != reloaded.FuncTypeID[0] {
 		t.Fatalf("cross-module equivalent keys = %#v / %#v", consumer.FuncTypeID, reloaded.FuncTypeID)
 	}
-	consInst, err := Instantiate(consumer, Imports{"env.f": export})
+	consInst, err := Instantiate(consumer, testImports("env.f", export))
 	if err != nil {
 		t.Fatalf("Instantiate consumer: %v", err)
 	}
@@ -1364,7 +1362,7 @@ func TestMultipleLocalTableExportsResolveByName(t *testing.T) {
 		{name: "second", table: second, want: 22},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			consumer, err := Instantiate(consumerCompiled, Imports{"env.t": tc.table})
+			consumer, err := Instantiate(consumerCompiled, testImports("env.t", tc.table))
 			if err != nil {
 				t.Fatalf("Instantiate consumer: %v", err)
 			}
@@ -1430,14 +1428,14 @@ func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTable tooSmall: %v", err)
 	}
-	if _, err := Instantiate(consumerCompiled, Imports{"owner.shared": tooSmall}); err == nil || !strings.Contains(err.Error(), "required minimum") {
+	if _, err := Instantiate(consumerCompiled, testImports("owner.shared", tooSmall)); err == nil || !strings.Contains(err.Error(), "required minimum") {
 		t.Fatalf("Instantiate with too-small imported table = %v, want limit mismatch", err)
 	}
 	if err := tooSmall.Close(); err != nil {
 		t.Fatalf("close too-small table: %v", err)
 	}
 
-	consumer, err := Instantiate(consumerCompiled, Imports{"owner.shared": shared})
+	consumer, err := Instantiate(consumerCompiled, testImports("owner.shared", shared))
 	if err != nil {
 		t.Fatalf("Instantiate imported+local consumer: %v", err)
 	}
@@ -1492,7 +1490,7 @@ func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 		(import "consumer" "local" (table $table 2 4 funcref))
 		(func (export "call") (param i32) (result i32)
 			(local.get 0) (call_indirect $table (type $ret))))`))
-	downstream, err := Instantiate(downstreamCompiled, Imports{"consumer.local": local})
+	downstream, err := Instantiate(downstreamCompiled, testImports("consumer.local", local))
 	if err != nil {
 		t.Fatalf("Instantiate downstream: %v", err)
 	}
@@ -1606,7 +1604,7 @@ func TestMultipleImportedFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 		t.Fatalf("close metadata runtime: %v", err)
 	}
 	_ = publicArtifactRoundTrip(t, consumerCompiled)
-	consumer, err := Instantiate(consumerCompiled, Imports{"a.table": tableA, "b.table": tableB})
+	consumer, err := Instantiate(consumerCompiled, testImports("a.table", tableA, "b.table", tableB))
 	if err != nil {
 		t.Fatalf("Instantiate multiple imported tables: %v", err)
 	}
@@ -1661,7 +1659,7 @@ func TestMultipleImportedFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile downstream: %v", err)
 	}
-	downstream, err := Instantiate(downstreamCompiled, Imports{"consumer.t1": reexportB})
+	downstream, err := Instantiate(downstreamCompiled, testImports("consumer.t1", reexportB))
 	if err != nil {
 		t.Fatalf("Instantiate downstream: %v", err)
 	}
@@ -1712,7 +1710,7 @@ func TestMultipleImportedFuncrefTablesMayAliasOneHandle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile duplicate table imports: %v", err)
 	}
-	in, err := Instantiate(compiled, Imports{"env.shared": shared})
+	in, err := Instantiate(compiled, testImports("env.shared", shared))
 	if err != nil {
 		t.Fatalf("Instantiate duplicate table imports: %v", err)
 	}
@@ -1763,7 +1761,7 @@ func TestMultipleImportedTablesCheckEveryLimit(t *testing.T) {
 				t.Fatalf("NewTable b: %v", err)
 			}
 			defer b.Close()
-			if _, err := Instantiate(compiled, Imports{"a.table": a, "b.table": b}); err == nil || !strings.Contains(err.Error(), "b.table") || !strings.Contains(err.Error(), tc.want) {
+			if _, err := Instantiate(compiled, testImports("a.table", a, "b.table", b)); err == nil || !strings.Contains(err.Error(), "b.table") || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Instantiate limit mismatch = %v, want b.table %q", err, tc.want)
 			}
 		})
@@ -1796,7 +1794,7 @@ func TestImportedThenLocalTablesRebindSharedMemoryContext(t *testing.T) {
 		(import "owner" "memory" (memory 1))
 		(import "owner" "table" (table 1 1 funcref))
 		(table 1 1 funcref))`))
-	combined, err := Instantiate(compiled, Imports{"owner.memory": memory, "owner.table": table})
+	combined, err := Instantiate(compiled, testImports("owner.memory", memory, "owner.table", table))
 	if err != nil {
 		t.Fatalf("Instantiate shared-memory imported+local tables: %v", err)
 	}
@@ -1814,7 +1812,7 @@ func TestImportedThenLocalTablesRebindSharedMemoryContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile shared-memory multiple imported tables: %v", err)
 	}
-	multiple, err := Instantiate(multipleImports, Imports{"owner.memory": memory, "owner.a": table, "owner.b": second})
+	multiple, err := Instantiate(multipleImports, testImports("owner.memory", memory, "owner.a", table, "owner.b", second))
 	if err != nil {
 		t.Fatalf("Instantiate shared-memory multiple imported tables: %v", err)
 	}
@@ -1842,7 +1840,7 @@ func TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites(t *testing
 		(func $f (result i32) (i32.const 909))
 		(elem (table $imported) (i32.const 0) func $f)
 		(elem (table $local) (i32.const 1) func $f))`))
-	if in, err := Instantiate(failedCompiled, Imports{"owner.shared": shared}); err == nil || in != nil || !strings.Contains(err.Error(), "table 1") {
+	if in, err := Instantiate(failedCompiled, testImports("owner.shared", shared)); err == nil || in != nil || !strings.Contains(err.Error(), "table 1") {
 		t.Fatalf("failed imported+local instantiate = %v, %v; want local table-1 bounds failure", in, err)
 	}
 	shared.mu.Lock()
@@ -1898,7 +1896,7 @@ func TestMultipleImportedTablesRetainFailedInstancesAcrossEveryHandle(t *testing
 	if err != nil {
 		t.Fatalf("Compile failed-instantiation fixture: %v", err)
 	}
-	if in, err := Instantiate(failed, Imports{"env.first": first, "env.second": second}); err == nil || in != nil || !strings.Contains(err.Error(), "table 2") {
+	if in, err := Instantiate(failed, testImports("env.first", first, "env.second", second)); err == nil || in != nil || !strings.Contains(err.Error(), "table 2") {
 		t.Fatalf("Instantiate failed fixture = %v, %v; want local table-2 bounds failure", in, err)
 	}
 	first.mu.Lock()
@@ -1955,7 +1953,7 @@ func TestMultipleImportedTablesRetainFailedInstancesAcrossEveryHandle(t *testing
 	if err != nil {
 		t.Fatalf("Compile aliased failed fixture: %v", err)
 	}
-	if in, err := Instantiate(aliased, Imports{"env.same": alias}); err == nil || in != nil {
+	if in, err := Instantiate(aliased, testImports("env.same", alias)); err == nil || in != nil {
 		t.Fatalf("Instantiate aliased failed fixture = %v, %v; want failure", in, err)
 	}
 	alias.mu.Lock()
@@ -2064,7 +2062,7 @@ func TestCompiledCodecPreservesTableImport(t *testing.T) {
 		t.Fatalf("NewTable: %v", err)
 	}
 	defer tbl.Close()
-	inst, err := Instantiate(loaded, Imports{"env.t": tbl})
+	inst, err := Instantiate(loaded, testImports("env.t", tbl))
 	if err != nil {
 		t.Fatalf("Instantiate with imported table: %v", err)
 	}
@@ -2090,7 +2088,7 @@ func TestImportedTableLimitsCheckedAtInstantiate(t *testing.T) {
 		t.Fatalf("NewTable tooSmall: %v", err)
 	}
 	defer tooSmall.Close()
-	if _, err := Instantiate(c, Imports{"env.t": tooSmall}); err == nil {
+	if _, err := Instantiate(c, testImports("env.t", tooSmall)); err == nil {
 		t.Fatal("Instantiate accepted imported table below declared minimum")
 	}
 	tooLargeMax, err := NewTable(2, 5)
@@ -2098,7 +2096,7 @@ func TestImportedTableLimitsCheckedAtInstantiate(t *testing.T) {
 		t.Fatalf("NewTable tooLargeMax: %v", err)
 	}
 	defer tooLargeMax.Close()
-	if _, err := Instantiate(c, Imports{"env.t": tooLargeMax}); err == nil {
+	if _, err := Instantiate(c, testImports("env.t", tooLargeMax)); err == nil {
 		t.Fatal("Instantiate accepted imported table above declared maximum")
 	}
 }
@@ -2121,7 +2119,7 @@ func TestImportedTableInstantiateUsesGrownDescriptorLength(t *testing.T) {
 			wasmtest.Code(tableTestBody(tableTestRefNullFunc(), tableTestI32Const(2), tableTestBulk(15, 0))),
 		)),
 	)
-	growInst := tableTestInstantiateWithImports(t, growMod, Imports{"env.t": tbl})
+	growInst := tableTestInstantiateWithImports(t, growMod, testImports("env.t", tbl))
 	defer growInst.Close()
 	if got := tableTestCallI32(t, growInst, "grow"); got != 1 {
 		t.Fatalf("imported table.grow = %d, want old size 1", got)
@@ -2145,7 +2143,7 @@ func TestImportedTableInstantiateUsesGrownDescriptorLength(t *testing.T) {
 			wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))),
 		)),
 	)
-	initInst := tableTestInstantiateWithImports(t, initMod, Imports{"env.t": reexported})
+	initInst := tableTestInstantiateWithImports(t, initMod, testImports("env.t", reexported))
 	defer initInst.Close()
 	if got := tableTestCallI32(t, initInst, "callAt", I32(2)); got != 77 {
 		t.Fatalf("callAt(2) after active elem into grown imported table = %d, want 77", got)
@@ -2173,9 +2171,9 @@ func TestTableGrowImportedTableVisibleToAnotherInstance(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestBulk(16, 0))))),
 	)
-	growInst := tableTestInstantiateWithImports(t, growMod, Imports{"env.t": tbl})
+	growInst := tableTestInstantiateWithImports(t, growMod, testImports("env.t", tbl))
 	defer growInst.Close()
-	sizeInst := tableTestInstantiateWithImports(t, sizeMod, Imports{"env.t": tbl})
+	sizeInst := tableTestInstantiateWithImports(t, sizeMod, testImports("env.t", tbl))
 	defer sizeInst.Close()
 
 	if got := tableTestCallI32(t, sizeInst, "size"); got != 1 {
@@ -2206,7 +2204,7 @@ func TestImportedTableGetSetPreservesProducerFuncref(t *testing.T) {
 		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestI32Const(123))))),
 	)
-	instA := tableTestInstantiateWithImports(t, writerA, Imports{"env.t": tbl})
+	instA := tableTestInstantiateWithImports(t, writerA, testImports("env.t", tbl))
 	defer instA.Close()
 
 	copierB := wasmtest.Module(
@@ -2222,7 +2220,7 @@ func TestImportedTableGetSetPreservesProducerFuncref(t *testing.T) {
 			wasmtest.Code(tableTestBody(tableTestI32Const(1), tableTestI32Const(0), []byte{0x25, 0x00}, []byte{0x26, 0x00})),
 		)),
 	)
-	instB := tableTestInstantiateWithImports(t, copierB, Imports{"env.t": tbl})
+	instB := tableTestInstantiateWithImports(t, copierB, testImports("env.t", tbl))
 	defer instB.Close()
 	if _, err := instB.Invoke("copy0to1"); err != nil {
 		t.Fatalf("copy0to1: %v", err)
@@ -2238,7 +2236,7 @@ func TestImportedTableGetSetPreservesProducerFuncref(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("callAt", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))))),
 	)
-	obs := tableTestInstantiateWithImports(t, observer, Imports{"env.t": tbl})
+	obs := tableTestInstantiateWithImports(t, observer, testImports("env.t", tbl))
 	defer obs.Close()
 	if got := tableTestCallI32(t, obs, "callAt", I32(1)); got != 123 {
 		t.Fatalf("callAt(1) after table.get/table.set copy = %d, want producer value 123", got)
@@ -2276,9 +2274,9 @@ func TestTableSetImportedTableVisibleToAnotherInstance(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("callAt", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))))),
 	)
-	setter := tableTestInstantiateWithImports(t, setterMod, Imports{"env.t": tbl})
+	setter := tableTestInstantiateWithImports(t, setterMod, testImports("env.t", tbl))
 	defer setter.Close()
-	caller := tableTestInstantiateWithImports(t, callerMod, Imports{"env.t": tbl})
+	caller := tableTestInstantiateWithImports(t, callerMod, testImports("env.t", tbl))
 	defer caller.Close()
 
 	_, err = caller.Invoke("callAt", I32(0))
@@ -2327,9 +2325,9 @@ func TestTableFillAndCopyImportedTableVisibleToAnotherInstance(t *testing.T) {
 			wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))),
 		)),
 	)
-	mutator := tableTestInstantiateWithImports(t, mod, Imports{"env.t": tbl})
+	mutator := tableTestInstantiateWithImports(t, mod, testImports("env.t", tbl))
 	defer mutator.Close()
-	observer := tableTestInstantiateWithImports(t, mod, Imports{"env.t": tbl})
+	observer := tableTestInstantiateWithImports(t, mod, testImports("env.t", tbl))
 	defer observer.Close()
 
 	if got := tableTestCallI32(t, observer, "size"); got != 4 {
@@ -2400,7 +2398,7 @@ func TestCompiledCodecPreservesMinOnlyTableImportAndAcceptsLargerHostTable(t *te
 		t.Fatalf("NewTable: %v", err)
 	}
 	defer tbl.Close()
-	inst, err := Instantiate(loaded, Imports{"env.t": tbl})
+	inst, err := Instantiate(loaded, testImports("env.t", tbl))
 	if err != nil {
 		t.Fatalf("Instantiate with larger host table and min-only import: %v", err)
 	}
@@ -2625,9 +2623,9 @@ func TestImportedTableActiveNullElementVisibleToAnotherInstance(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("callAt", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))))),
 	)
-	initializer := tableTestInstantiateWithImports(t, initMod, Imports{"env.t": tbl})
+	initializer := tableTestInstantiateWithImports(t, initMod, testImports("env.t", tbl))
 	defer initializer.Close()
-	observer := tableTestInstantiateWithImports(t, observerMod, Imports{"env.t": tbl})
+	observer := tableTestInstantiateWithImports(t, observerMod, testImports("env.t", tbl))
 	defer observer.Close()
 
 	for _, idx := range []int32{0, 2} {
@@ -2810,9 +2808,9 @@ func TestImportedTableGrowFailureVisibleToAnotherInstanceAsNoChange(t *testing.T
 			wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))),
 		)),
 	)
-	grower := tableTestInstantiateWithImports(t, initGrowMod, Imports{"env.t": tbl})
+	grower := tableTestInstantiateWithImports(t, initGrowMod, testImports("env.t", tbl))
 	defer grower.Close()
-	observer := tableTestInstantiateWithImports(t, observerMod, Imports{"env.t": tbl})
+	observer := tableTestInstantiateWithImports(t, observerMod, testImports("env.t", tbl))
 	defer observer.Close()
 
 	if got := tableTestCallI32(t, grower, "grow1"); got != -1 {
@@ -2862,9 +2860,9 @@ func TestImportedTableGrowWithNonNullInitializerVisibleToAnotherInstance(t *test
 			wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))),
 		)),
 	)
-	grower := tableTestInstantiateWithImports(t, growMod, Imports{"env.t": tbl})
+	grower := tableTestInstantiateWithImports(t, growMod, testImports("env.t", tbl))
 	defer grower.Close()
-	observer := tableTestInstantiateWithImports(t, observerMod, Imports{"env.t": tbl})
+	observer := tableTestInstantiateWithImports(t, observerMod, testImports("env.t", tbl))
 	defer observer.Close()
 
 	if got := tableTestCallI32(t, observer, "size"); got != 1 {
@@ -2917,7 +2915,7 @@ func TestEmptyActiveElementBoundsCheckedAtInstantiation(t *testing.T) {
 			wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 2))),
 			wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(2))),
 		)
-		inst := tableTestInstantiateWithImports(t, mod, Imports{"env.t": tbl})
+		inst := tableTestInstantiateWithImports(t, mod, testImports("env.t", tbl))
 		defer inst.Close()
 	})
 	t.Run("imported one past boundary rejected without mutating shared table", func(t *testing.T) {
@@ -2933,7 +2931,7 @@ func TestEmptyActiveElementBoundsCheckedAtInstantiation(t *testing.T) {
 			wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestI32Const(77))))),
 		)
-		seed := tableTestInstantiateWithImports(t, seedMod, Imports{"env.t": tbl})
+		seed := tableTestInstantiateWithImports(t, seedMod, testImports("env.t", tbl))
 		defer seed.Close()
 
 		oobMod := wasmtest.Module(
@@ -2944,7 +2942,7 @@ func TestEmptyActiveElementBoundsCheckedAtInstantiation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Compile OOB: %v", err)
 		}
-		if _, err := Instantiate(c, Imports{"env.t": tbl}); err == nil || !strings.Contains(err.Error(), "active element segment 0 out of bounds") {
+		if _, err := Instantiate(c, testImports("env.t", tbl)); err == nil || !strings.Contains(err.Error(), "active element segment 0 out of bounds") {
 			t.Fatalf("Instantiate imported empty OOB = %v, want active element bounds error", err)
 		}
 
@@ -2955,7 +2953,7 @@ func TestEmptyActiveElementBoundsCheckedAtInstantiation(t *testing.T) {
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call0", 0, 0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}))),
 		)
-		caller := tableTestInstantiateWithImports(t, callMod, Imports{"env.t": tbl})
+		caller := tableTestInstantiateWithImports(t, callMod, testImports("env.t", tbl))
 		defer caller.Close()
 		if got := tableTestCallI32(t, caller, "call0"); got != 77 {
 			t.Fatalf("call0 after failed empty segment = %d, want 77", got)
@@ -3018,7 +3016,7 @@ func TestImportedTableActiveElementEarlierSegmentPersistsBeforeLaterOOB(t *testi
 		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestI32Const(77))))),
 	)
-	seed := tableTestInstantiateWithImports(t, seedMod, Imports{"env.t": tbl})
+	seed := tableTestInstantiateWithImports(t, seedMod, testImports("env.t", tbl))
 	defer seed.Close()
 
 	badMod := wasmtest.Module(
@@ -3035,7 +3033,7 @@ func TestImportedTableActiveElementEarlierSegmentPersistsBeforeLaterOOB(t *testi
 	if err != nil {
 		t.Fatalf("Compile bad module: %v", err)
 	}
-	bad, err := Instantiate(c, Imports{"env.t": tbl})
+	bad, err := Instantiate(c, testImports("env.t", tbl))
 	if bad != nil {
 		defer bad.Close()
 	}
@@ -3056,7 +3054,7 @@ func TestImportedTableActiveElementEarlierSegmentPersistsBeforeLaterOOB(t *testi
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("callAt", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))))),
 	)
-	observer := tableTestInstantiateWithImports(t, observerMod, Imports{"env.t": tbl})
+	observer := tableTestInstantiateWithImports(t, observerMod, testImports("env.t", tbl))
 	defer observer.Close()
 	if got := tableTestCallI32(t, observer, "callAt", I32(0)); got != 909 {
 		t.Fatalf("callAt(0) after failed multi-segment instantiate = %d, want 909 from the earlier segment", got)
@@ -3080,7 +3078,7 @@ func TestSharedTableFailedInstanceRootsStayCapacityBounded(t *testing.T) {
 			(func $f (result i32) (i32.const %d))
 			(func $start unreachable)
 			(start $start))`, value)))
-		if _, err := Instantiate(mod, Imports{"env.table": tbl}); err == nil {
+		if _, err := Instantiate(mod, testImports("env.table", tbl)); err == nil {
 			t.Fatalf("iteration %d: trapping start instantiated successfully", value)
 		}
 		if err := mod.Close(); err != nil {
@@ -3152,9 +3150,9 @@ func TestImportedTableActiveElementOOBDoesNotMutateHostTable(t *testing.T) {
 			wasmtest.Code(tableTestBody(tableTestLocalGet(0), []byte{0x25, 0x00}, []byte{0xd1})),
 		)),
 	)
-	seed := tableTestInstantiateWithImports(t, seedMod, Imports{"env.t": tbl})
+	seed := tableTestInstantiateWithImports(t, seedMod, testImports("env.t", tbl))
 	defer seed.Close()
-	observer := tableTestInstantiateWithImports(t, observerMod, Imports{"env.t": tbl})
+	observer := tableTestInstantiateWithImports(t, observerMod, testImports("env.t", tbl))
 	defer observer.Close()
 
 	assertOriginal := func(phase string) {
@@ -3182,7 +3180,7 @@ func TestImportedTableActiveElementOOBDoesNotMutateHostTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile OOB module: %v", err)
 	}
-	bad, err := Instantiate(c, Imports{"env.t": tbl})
+	bad, err := Instantiate(c, testImports("env.t", tbl))
 	if bad != nil {
 		defer bad.Close()
 	}
@@ -3206,7 +3204,7 @@ func TestImportedMinOnlyTableImportObservesAlreadyGrownHostTable(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow2", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestRefNullFunc(), tableTestI32Const(2), tableTestBulk(15, 0))))),
 	)
-	grower := tableTestInstantiateWithImports(t, growMod, Imports{"env.t": tbl})
+	grower := tableTestInstantiateWithImports(t, growMod, testImports("env.t", tbl))
 	defer grower.Close()
 	if got := tableTestCallI32(t, grower, "grow2"); got != 1 {
 		t.Fatalf("imported table.grow = %d, want old size 1", got)
@@ -3219,7 +3217,7 @@ func TestImportedMinOnlyTableImportObservesAlreadyGrownHostTable(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestBulk(16, 0))))),
 	)
-	observer := tableTestInstantiateWithImports(t, minOnlyMod, Imports{"env.t": tbl})
+	observer := tableTestInstantiateWithImports(t, minOnlyMod, testImports("env.t", tbl))
 	defer observer.Close()
 	if got := tableTestCallI32(t, observer, "size"); got != 3 {
 		t.Fatalf("min-only importer table.size = %d, want grown size 3", got)
@@ -3538,7 +3536,7 @@ func TestCompiledCodecMinOnlyTableImportRejectsBelowMinAfterLoad(t *testing.T) {
 		t.Fatalf("NewTable: %v", err)
 	}
 	defer tbl.Close()
-	if _, err := Instantiate(loaded, Imports{"env.t": tbl}); err == nil || !strings.Contains(err.Error(), "required minimum 2") {
+	if _, err := Instantiate(loaded, testImports("env.t", tbl)); err == nil || !strings.Contains(err.Error(), "required minimum 2") {
 		t.Fatalf("Instantiate below min after Load error = %v, want required minimum", err)
 	}
 }

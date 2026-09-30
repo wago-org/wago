@@ -3,6 +3,7 @@ package wago
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -59,6 +60,45 @@ func TestCompiledWriteToMatchesMarshalBinary(t *testing.T) {
 	attributed := sizes.Entries + sizes.Imports + sizes.Types + sizes.Functions + sizes.ExportsAndNames + sizes.Globals + sizes.Tables + sizes.Elements + sizes.Data + sizes.Memories + sizes.Tags + sizes.Features + sizes.GC
 	if attributed != sizes.Metadata {
 		t.Fatalf("attributed metadata = %d, want %d: %+v", attributed, sizes.Metadata, sizes)
+	}
+}
+
+func TestArtifactSectionSizesDoesNotMaterializeMetadata(t *testing.T) {
+	const payloadBytes = 8 << 20
+	c := &Compiled{PassiveData: []PassiveDataInit{{Bytes: make([]byte, payloadBytes)}}}
+	defer c.Close()
+	sizes, err := c.ArtifactSectionSizes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sizes.Data < payloadBytes || sizes.Metadata < payloadBytes {
+		t.Fatalf("large metadata sizes = data %d metadata %d, want at least %d", sizes.Data, sizes.Metadata, payloadBytes)
+	}
+	var measured ArtifactSectionSizes
+	if allocs := testing.AllocsPerRun(10, func() {
+		measured, err = c.ArtifactSectionSizes()
+	}); allocs != 0 {
+		t.Fatalf("ArtifactSectionSizes allocations = %.1f, want 0", allocs)
+	}
+	if err != nil || measured != sizes {
+		t.Fatalf("repeated artifact sizing = %+v, %v; want %+v", measured, err, sizes)
+	}
+}
+
+func TestCountOnlyStringMapDoesNotAllocate(t *testing.T) {
+	values := make(map[string]int, 4096)
+	for i := 0; i < 4096; i++ {
+		values[fmt.Sprintf("export-%04d", i)] = i
+	}
+	w := compiledWriter{countOnly: true}
+	if allocs := testing.AllocsPerRun(10, func() {
+		w.count = 0
+		w.stringIntMap(values)
+	}); allocs != 0 {
+		t.Fatalf("count-only string map allocations = %.1f, want 0", allocs)
+	}
+	if w.count == 0 {
+		t.Fatal("count-only string map measured no bytes")
 	}
 }
 
@@ -167,7 +207,7 @@ func TestMarshalRoundTripsSyncHostDispatch(t *testing.T) {
 	}
 	defer loaded.Close()
 	called := 0
-	in, err := Instantiate(&loaded, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) { called++ })}})
+	in, err := Instantiate(&loaded, InstantiateOptions{Imports: testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) { called++ }))})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -191,10 +231,10 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 2 {
-		t.Fatalf("compiled codec version = %d, want native-resource-policy version 2", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 4 {
+		t.Fatalf("compiled codec version = %d, want codec version 4", blob[4])
 	}
-	for _, version := range []byte{0, 1, 19, 35} {
+	for _, version := range []byte{0, 1, 2, 3, 19, 35} {
 		unsupportedVersion := append([]byte(nil), blob...)
 		unsupportedVersion[4] = version
 		var unsupported Compiled
@@ -453,7 +493,7 @@ func TestUnmarshalRejectsSIMDBlobWhenHostUnsupported(t *testing.T) {
 	defer func() { simdHostFeaturesSupported = old }()
 
 	var dec Compiled
-	if err := dec.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires SIMD") {
+	if err := dec.UnmarshalBinary(blob); !errors.Is(err, errNativeCPUFeatures) {
 		t.Fatalf("want SIMD CPU feature rejection, got %v", err)
 	}
 }
@@ -476,7 +516,7 @@ func TestUnmarshalRejectsV128BlockTypeBlobWhenHostUnsupported(t *testing.T) {
 	defer func() { simdHostFeaturesSupported = old }()
 
 	var dec Compiled
-	if err := dec.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires SIMD") {
+	if err := dec.UnmarshalBinary(blob); !errors.Is(err, errNativeCPUFeatures) {
 		t.Fatalf("want SIMD CPU feature rejection for v128 block type, got %v", err)
 	}
 }

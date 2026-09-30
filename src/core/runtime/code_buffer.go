@@ -14,9 +14,20 @@ import (
 type CodeBuffer struct {
 	mem        []byte
 	n          int
+	heap       bool
 	sealed     bool
 	registered bool
 	closed     bool
+}
+
+// NewHeapCodeBuffer creates a staging image whose address need not remain
+// stable after compilation. It is used when executable mapping is deferred
+// until first instantiation.
+func NewHeapCodeBuffer(capacity int) (*CodeBuffer, error) {
+	if capacity < 0 {
+		return nil, fmt.Errorf("jit: negative code capacity %d", capacity)
+	}
+	return &CodeBuffer{mem: make([]byte, capacity), heap: true}, nil
 }
 
 // NewCodeBuffer allocates an RW code image with at least capacity bytes.
@@ -34,8 +45,25 @@ func NewCodeBuffer(capacity int) (*CodeBuffer, error) {
 // Append adds p to the image. A capacity underestimate grows the mapping
 // geometrically instead of turning a valid Wasm module into a compile failure.
 func (b *CodeBuffer) Append(p []byte) error {
-	if err := b.grow(len(p)); err != nil {
+	aliasOffset, preserveEnd := -1, 0
+	if b != nil && len(p) > len(b.mem)-b.n && len(b.mem) != 0 {
+		base := uintptr(unsafe.Pointer(unsafe.SliceData(b.mem)))
+		source := uintptr(unsafe.Pointer(unsafe.SliceData(p)))
+		if source >= base && source-base < uintptr(len(b.mem)) {
+			aliasOffset = int(source - base)
+			if len(p) > len(b.mem)-aliasOffset {
+				return fmt.Errorf("jit: append source exceeds code mapping")
+			}
+			preserveEnd = aliasOffset + len(p)
+		} else if source < base && uintptr(len(p)) > base-source {
+			return fmt.Errorf("jit: append source overlaps code mapping boundary")
+		}
+	}
+	if err := b.growPreserving(len(p), preserveEnd); err != nil {
 		return err
+	}
+	if aliasOffset >= 0 {
+		p = b.mem[aliasOffset:preserveEnd]
 	}
 	copy(b.mem[b.n:], p)
 	b.n += len(p)
@@ -160,6 +188,9 @@ func (b *CodeBuffer) Seal() error {
 	if b.sealed {
 		return nil
 	}
+	if b.heap {
+		return fmt.Errorf("jit: heap code buffer cannot be sealed")
+	}
 	if err := SealCode(b.mem); err != nil {
 		_ = munmap(b.mem)
 		b.mem = nil
@@ -184,11 +215,32 @@ func (b *CodeBuffer) Take() ([]byte, uintptr, error) {
 	if b.sealed {
 		return nil, 0, fmt.Errorf("jit: sealed code buffer cannot transfer ownership")
 	}
+	if b.heap {
+		return nil, 0, fmt.Errorf("jit: heap code buffer has no mapping")
+	}
 	mem, base := b.mem, b.Base()
 	b.mem = nil
 	b.n = 0
 	b.closed = true
 	return mem, base, nil
+}
+
+// TakeHeap transfers an unsealed heap staging image to its compiler owner.
+func (b *CodeBuffer) TakeHeap() ([]byte, error) {
+	if b == nil {
+		return nil, fmt.Errorf("jit: nil code buffer")
+	}
+	if b.closed {
+		return nil, fmt.Errorf("jit: code buffer is closed")
+	}
+	if b.sealed || !b.heap {
+		return nil, fmt.Errorf("jit: code buffer is not heap staging")
+	}
+	mem := b.mem[:b.n:b.n]
+	b.mem = nil
+	b.n = 0
+	b.closed = true
+	return mem, nil
 }
 
 // Close releases the mapping. Callers must ensure no instance can still enter
@@ -204,10 +256,17 @@ func (b *CodeBuffer) Close() error {
 	b.mem = nil
 	b.n = 0
 	b.closed = true
+	if b.heap {
+		return nil
+	}
 	return munmap(mem)
 }
 
 func (b *CodeBuffer) grow(extra int) error {
+	return b.growPreserving(extra, 0)
+}
+
+func (b *CodeBuffer) growPreserving(extra, preserveEnd int) error {
 	if b == nil {
 		return fmt.Errorf("jit: nil code buffer")
 	}
@@ -228,13 +287,23 @@ func (b *CodeBuffer) grow(extra int) error {
 	if capacity < need {
 		capacity = need
 	}
-	mem, err := mmapCodeRW(capacity)
-	if err != nil {
-		return err
+	var mem []byte
+	if b.heap {
+		mem = make([]byte, capacity)
+	} else {
+		var err error
+		mem, err = mmapCodeRW(capacity)
+		if err != nil {
+			return err
+		}
 	}
-	copy(mem, b.mem[:b.n])
+	// An append source can include writable mapping bytes beyond the image.
+	copy(mem, b.mem[:max(b.n, preserveEnd)])
 	old := b.mem
 	b.mem = mem
+	if b.heap {
+		return nil
+	}
 	if err := munmap(old); err != nil {
 		_ = munmap(mem)
 		b.mem = nil

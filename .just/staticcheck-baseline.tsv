@@ -1,0 +1,282 @@
+# Reviewed existing Staticcheck findings. New findings fail CI.
+# Columns: profile, file, check, message.
+diagnostics	internal/profcapture/capture.go	SA4023	this comparison is always true
+diagnostics	internal/profcapture/capture.go	SA4023	this comparison is always true
+diagnostics	internal/profcapture/capture.go	SA4023	this comparison is always true
+diagnostics	src/core/compiler/backend/railshot/amd64/control.go	U1000	func (*fn).frameDepthTypes is unused
+diagnostics	src/core/compiler/backend/railshot/amd64/control.go	U1000	func typesOfVals is unused
+diagnostics	src/core/compiler/backend/railshot/amd64/gc_direct.go	U1000	func (*fn).emitDirectGCArrayLen is unused
+diagnostics	src/core/compiler/backend/railshot/amd64/inline.go	U1000	func allCallsWillInline is unused
+diagnostics	src/core/compiler/backend/railshot/amd64/interval_region.go	U1000	func (*fn).intervalLocalHasMemBorrow is unused
+diagnostics	src/core/compiler/backend/railshot/amd64/magicdiv.go	U1000	func strengthReducible is unused
+diagnostics	src/core/compiler/backend/railshot/arm64/call.go	U1000	func (*fn).finishWrapperResults is unused
+diagnostics	src/core/compiler/backend/railshot/arm64/compile.go	U1000	field profileFnState is unused
+diagnostics	src/core/compiler/backend/railshot/arm64/control.go	U1000	func (*fn).frameDepthTypes is unused
+diagnostics	src/core/compiler/backend/railshot/arm64/control.go	U1000	func skipImmediatesWithMemory64 is unused
+diagnostics	src/core/compiler/backend/railshot/arm64/control.go	U1000	func typesOfVals is unused
+diagnostics	src/core/compiler/backend/railshot/arm64/interval_region.go	U1000	func (*fn).intervalLocalHasMemBorrow is unused
+diagnostics	src/core/compiler/backend/railshot/arm64/memory.go	U1000	func (*fn).bulkDynamicBoundsCheck is unused
+diagnostics	src/core/compiler/backend/railshot/arm64/op.go	U1000	const opNone is unused
+diagnostics	src/core/compiler/backend/railshot/arm64/profile_origin_disabled.go	U1000	type profileFnState is unused
+diagnostics	src/core/compiler/backend/railshot/arm64/simd_exec_arm64_test.go	SA4026	in Go, the floating-point literal '-0.0' is the same as '0.0', it does not produce a negative zero
+diagnostics	src/core/compiler/backend/railshot/arm64/stats.go	ST1018	string literal contains Unicode control characters, consider using escape sequences instead
+diagnostics	src/core/compiler/backend/railshot/arm64/stats.go	U1000	func (*CodegenStats).addGCSharedStubBytes is unused
+diagnostics	src/core/compiler/wasm/bytecode_skip.go	U1000	func classifyExprOpAfterOpcodeWithModuleFeatures is unused
+diagnostics	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeExprWithMemarg64 is unused
+diagnostics	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeInstructionWithMemarg64 is unused
+diagnostics	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeMemArgWithWidth is unused
+diagnostics	src/core/runtime/gc/native/tiny_pacing_test.go	SA4006	this value of roots is never used
+diagnostics	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).close is unused
+diagnostics	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).enterWasm is unused
+diagnostics	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).leaveWasm is unused
+diagnostics	src/core/runtime/interrupt_darwin_arm64.go	U1000	func beginInterruptActivation is unused
+diagnostics	src/core/runtime/interrupt_darwin_arm64.go	U1000	type interruptActivation is unused
+diagnostics	src/core/runtime/limits_test.go	U1000	field args is unused
+diagnostics	src/core/runtime/limits_test.go	U1000	field inUse is unused
+diagnostics	src/core/runtime/limits_test.go	U1000	field preparedInt is unused
+diagnostics	src/core/runtime/limits_test.go	U1000	field results is unused
+diagnostics	src/core/runtime/limits_test.go	U1000	field stack is unused
+diagnostics	src/core/runtime/limits_test.go	U1000	field stackTop is unused
+diagnostics	src/wago/amd64_codegen_profile.go	U1000	func selectedAMD64CompileFeatures is unused
+diagnostics	src/wago/api.go	U1000	func (*Compiled).tableMinimum is unused
+diagnostics	src/wago/diagnostics_test.go	U1000	func requireCompilerDiagnostics is unused
+diagnostics	src/wago/gc_array_helper.go	U1000	func (*Instance).dispatchGCArrayHelper is unused
+diagnostics	src/wago/gc_frame_liveness.go	U1000	func gcFrameBodyMayCollect is unused
+diagnostics	src/wago/gc_frame_roots_arm64.go	U1000	func arm64GCFrameCallRefABI is unused
+diagnostics	src/wago/gc_native_entry_guard_release.go	U1000	const nativeGCEntryValidationEnabled is unused
+diagnostics	src/wago/gc_ref_test_table.go	U1000	func (*gcRefTestTableState).set is unused
+diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructFieldString is unused
+diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructLeaderPinFor is unused
+diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructOpcodeInventory is unused
+diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructProduct.gateReason is unused
+diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructStateGraph is unused
+diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructTypeGraph is unused
+diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructValTypes is unused
+diagnostics	src/wago/gc_struct_product.go	U1000	type stagedGCStructOpcodeCount is unused
+diagnostics	src/wago/gc_struct_product_gate_test.go	U1000	func stagedGCStructMutationBytes is unused
+diagnostics	src/wago/host_execution.go	U1000	func (*hostLoopActivation).dispatchSingleTypedScalarExpandedPortal is unused
+diagnostics	src/wago/hostcall_test.go	U1000	func hostV128FromSlots is unused
+diagnostics	src/wago/import_identity_test.go	U1000	const flatKey is unused
+diagnostics	src/wago/imports_external_test.go	S1034	assigning the result of this type assertion to a variable (switch value := value.(type)) could eliminate type assertions in switch cases
+diagnostics	src/wago/imports_legacy_test.go	U1000	func testCloneImports is unused
+diagnostics	src/wago/instance_close_completion_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+diagnostics	src/wago/instance_entry.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/instance_native_context.go	SA2001	empty critical section
+diagnostics	src/wago/invocation_admission_test.go	SA2001	empty critical section
+diagnostics	src/wago/invocation_admission_test.go	SA2001	empty critical section
+diagnostics	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/module.go	U1000	func declaredImportIdentity is unused
+diagnostics	src/wago/null_reference_product_test.go	U1000	func compileStagedNullReferenceProductForTest is unused
+diagnostics	src/wago/null_reference_product_test.go	U1000	func namesForBottomNullReferenceProduct is unused
+diagnostics	src/wago/null_reference_product_test.go	U1000	func stagedBottomNullReferenceModule is unused
+diagnostics	src/wago/prepared_direct_amd64.go	U1000	func (*WasmFunc).invokeDirectInt is unused
+diagnostics	src/wago/prepared_direct_arm64.go	U1000	func (*WasmFunc).invokeDirectInt is unused
+diagnostics	src/wago/reference_store.go	U1000	field reserved is unused
+diagnostics	src/wago/reference_store.go	U1000	func (*gcPublicState).resultCapacity is unused
+diagnostics	src/wago/reference_store.go	U1000	func (*referenceStore).gcRefExactType is unused
+diagnostics	src/wago/services.go	U1000	func (*contractSlot).deactivate is unused
+diagnostics	src/wago/spectest_exec_test.go	U1000	func specExecStats.gapCount is unused
+diagnostics	src/wago/structural_type_product.go	U1000	func stagedStructuralTypeProduct.gateReason is unused
+diagnostics	src/wago/structural_type_product_test.go	U1000	func compileStagedStructuralTypeProductForTest is unused
+diagnostics	src/wago/structural_type_product_test.go	U1000	func stagedTypeRecLeaderPinFor is unused
+profiling	internal/profcapture/capture.go	SA4023	this comparison is always true
+profiling	internal/profcapture/capture.go	SA4023	this comparison is always true
+profiling	internal/profcapture/capture.go	SA4023	this comparison is always true
+profiling	src/core/compiler/backend/railshot/amd64/control.go	U1000	func (*fn).frameDepthTypes is unused
+profiling	src/core/compiler/backend/railshot/amd64/control.go	U1000	func typesOfVals is unused
+profiling	src/core/compiler/backend/railshot/amd64/gc_direct.go	U1000	func (*fn).emitDirectGCArrayLen is unused
+profiling	src/core/compiler/backend/railshot/amd64/inline.go	U1000	func allCallsWillInline is unused
+profiling	src/core/compiler/backend/railshot/amd64/interval_region.go	U1000	func (*fn).intervalLocalHasMemBorrow is unused
+profiling	src/core/compiler/backend/railshot/amd64/magicdiv.go	U1000	func strengthReducible is unused
+profiling	src/core/compiler/backend/railshot/arm64/call.go	U1000	func (*fn).finishWrapperResults is unused
+profiling	src/core/compiler/backend/railshot/arm64/control.go	U1000	func (*fn).frameDepthTypes is unused
+profiling	src/core/compiler/backend/railshot/arm64/control.go	U1000	func skipImmediatesWithMemory64 is unused
+profiling	src/core/compiler/backend/railshot/arm64/control.go	U1000	func typesOfVals is unused
+profiling	src/core/compiler/backend/railshot/arm64/interval_region.go	U1000	func (*fn).intervalLocalHasMemBorrow is unused
+profiling	src/core/compiler/backend/railshot/arm64/memory.go	U1000	func (*fn).bulkDynamicBoundsCheck is unused
+profiling	src/core/compiler/backend/railshot/arm64/op.go	U1000	const opNone is unused
+profiling	src/core/compiler/backend/railshot/arm64/simd_exec_arm64_test.go	SA4026	in Go, the floating-point literal '-0.0' is the same as '0.0', it does not produce a negative zero
+profiling	src/core/compiler/backend/railshot/arm64/stats.go	ST1018	string literal contains Unicode control characters, consider using escape sequences instead
+profiling	src/core/compiler/backend/railshot/arm64/stats.go	U1000	func (*CodegenStats).addGCSharedStubBytes is unused
+profiling	src/core/compiler/wasm/bytecode_skip.go	U1000	func classifyExprOpAfterOpcodeWithModuleFeatures is unused
+profiling	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeExprWithMemarg64 is unused
+profiling	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeInstructionWithMemarg64 is unused
+profiling	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeMemArgWithWidth is unused
+profiling	src/core/runtime/gc/native/tiny_pacing_test.go	SA4006	this value of roots is never used
+profiling	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).close is unused
+profiling	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).enterWasm is unused
+profiling	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).leaveWasm is unused
+profiling	src/core/runtime/interrupt_darwin_arm64.go	U1000	func beginInterruptActivation is unused
+profiling	src/core/runtime/interrupt_darwin_arm64.go	U1000	type interruptActivation is unused
+profiling	src/core/runtime/limits_test.go	U1000	field args is unused
+profiling	src/core/runtime/limits_test.go	U1000	field inUse is unused
+profiling	src/core/runtime/limits_test.go	U1000	field preparedInt is unused
+profiling	src/core/runtime/limits_test.go	U1000	field results is unused
+profiling	src/core/runtime/limits_test.go	U1000	field stack is unused
+profiling	src/core/runtime/limits_test.go	U1000	field stackTop is unused
+profiling	src/wago/amd64_codegen_profile.go	U1000	func selectedAMD64CompileFeatures is unused
+profiling	src/wago/api.go	U1000	func (*Compiled).tableMinimum is unused
+profiling	src/wago/diagnostics_test.go	U1000	func requireCompilerDiagnostics is unused
+profiling	src/wago/gc_array_helper.go	U1000	func (*Instance).dispatchGCArrayHelper is unused
+profiling	src/wago/gc_frame_liveness.go	U1000	func gcFrameBodyMayCollect is unused
+profiling	src/wago/gc_frame_roots_arm64.go	U1000	func arm64GCFrameCallRefABI is unused
+profiling	src/wago/gc_native_entry_guard_release.go	U1000	const nativeGCEntryValidationEnabled is unused
+profiling	src/wago/gc_ref_test_table.go	U1000	func (*gcRefTestTableState).set is unused
+profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructFieldString is unused
+profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructLeaderPinFor is unused
+profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructOpcodeInventory is unused
+profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructProduct.gateReason is unused
+profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructStateGraph is unused
+profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructTypeGraph is unused
+profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructValTypes is unused
+profiling	src/wago/gc_struct_product.go	U1000	type stagedGCStructOpcodeCount is unused
+profiling	src/wago/gc_struct_product_gate_test.go	U1000	func stagedGCStructMutationBytes is unused
+profiling	src/wago/host_execution.go	U1000	func (*hostLoopActivation).dispatchSingleTypedScalarExpandedPortal is unused
+profiling	src/wago/hostcall_test.go	U1000	func hostV128FromSlots is unused
+profiling	src/wago/import_identity_test.go	U1000	const flatKey is unused
+profiling	src/wago/imports_external_test.go	S1034	assigning the result of this type assertion to a variable (switch value := value.(type)) could eliminate type assertions in switch cases
+profiling	src/wago/imports_legacy_test.go	U1000	func testCloneImports is unused
+profiling	src/wago/instance_close_completion_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+profiling	src/wago/instance_entry.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/instance_native_context.go	SA2001	empty critical section
+profiling	src/wago/invocation_admission_test.go	SA2001	empty critical section
+profiling	src/wago/invocation_admission_test.go	SA2001	empty critical section
+profiling	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/module.go	U1000	func declaredImportIdentity is unused
+profiling	src/wago/null_reference_product_test.go	U1000	func compileStagedNullReferenceProductForTest is unused
+profiling	src/wago/null_reference_product_test.go	U1000	func namesForBottomNullReferenceProduct is unused
+profiling	src/wago/null_reference_product_test.go	U1000	func stagedBottomNullReferenceModule is unused
+profiling	src/wago/prepared_direct_amd64.go	U1000	func (*WasmFunc).invokeDirectInt is unused
+profiling	src/wago/prepared_direct_arm64.go	U1000	func (*WasmFunc).invokeDirectInt is unused
+profiling	src/wago/reference_store.go	U1000	field reserved is unused
+profiling	src/wago/reference_store.go	U1000	func (*gcPublicState).resultCapacity is unused
+profiling	src/wago/reference_store.go	U1000	func (*referenceStore).gcRefExactType is unused
+profiling	src/wago/services.go	U1000	func (*contractSlot).deactivate is unused
+profiling	src/wago/spectest_exec_test.go	U1000	func specExecStats.gapCount is unused
+profiling	src/wago/structural_type_product.go	U1000	func stagedStructuralTypeProduct.gateReason is unused
+profiling	src/wago/structural_type_product_test.go	U1000	func compileStagedStructuralTypeProductForTest is unused
+profiling	src/wago/structural_type_product_test.go	U1000	func stagedTypeRecLeaderPinFor is unused
+standard	internal/profcapture/capture.go	SA4023	this comparison is always true
+standard	internal/profcapture/capture.go	SA4023	this comparison is always true
+standard	internal/profcapture/capture.go	SA4023	this comparison is always true
+standard	src/core/compiler/backend/railshot/amd64/control.go	U1000	func (*fn).frameDepthTypes is unused
+standard	src/core/compiler/backend/railshot/amd64/control.go	U1000	func typesOfVals is unused
+standard	src/core/compiler/backend/railshot/amd64/gc_direct.go	U1000	func (*fn).emitDirectGCArrayLen is unused
+standard	src/core/compiler/backend/railshot/amd64/inline.go	U1000	func allCallsWillInline is unused
+standard	src/core/compiler/backend/railshot/amd64/interval_region.go	U1000	func (*fn).intervalLocalHasMemBorrow is unused
+standard	src/core/compiler/backend/railshot/amd64/magicdiv.go	U1000	func strengthReducible is unused
+standard	src/core/compiler/backend/railshot/arm64/call.go	U1000	func (*fn).finishWrapperResults is unused
+standard	src/core/compiler/backend/railshot/arm64/compile.go	U1000	field profileFnState is unused
+standard	src/core/compiler/backend/railshot/arm64/control.go	U1000	func (*fn).frameDepthTypes is unused
+standard	src/core/compiler/backend/railshot/arm64/control.go	U1000	func skipImmediatesWithMemory64 is unused
+standard	src/core/compiler/backend/railshot/arm64/control.go	U1000	func typesOfVals is unused
+standard	src/core/compiler/backend/railshot/arm64/interval_region.go	U1000	func (*fn).intervalLocalHasMemBorrow is unused
+standard	src/core/compiler/backend/railshot/arm64/memory.go	U1000	func (*fn).bulkDynamicBoundsCheck is unused
+standard	src/core/compiler/backend/railshot/arm64/op.go	U1000	const opNone is unused
+standard	src/core/compiler/backend/railshot/arm64/profile_origin_disabled.go	U1000	type profileFnState is unused
+standard	src/core/compiler/backend/railshot/arm64/simd_exec_arm64_test.go	SA4026	in Go, the floating-point literal '-0.0' is the same as '0.0', it does not produce a negative zero
+standard	src/core/compiler/backend/railshot/arm64/stats.go	ST1018	string literal contains Unicode control characters, consider using escape sequences instead
+standard	src/core/compiler/backend/railshot/arm64/stats.go	U1000	func (*CodegenStats).addGCSharedStubBytes is unused
+standard	src/core/compiler/wasm/bytecode_skip.go	U1000	func classifyExprOpAfterOpcodeWithModuleFeatures is unused
+standard	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeExprWithMemarg64 is unused
+standard	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeInstructionWithMemarg64 is unused
+standard	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeMemArgWithWidth is unused
+standard	src/core/runtime/gc/native/tiny_pacing_test.go	SA4006	this value of roots is never used
+standard	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).close is unused
+standard	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).enterWasm is unused
+standard	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).leaveWasm is unused
+standard	src/core/runtime/interrupt_darwin_arm64.go	U1000	func beginInterruptActivation is unused
+standard	src/core/runtime/interrupt_darwin_arm64.go	U1000	type interruptActivation is unused
+standard	src/core/runtime/limits_test.go	U1000	field args is unused
+standard	src/core/runtime/limits_test.go	U1000	field inUse is unused
+standard	src/core/runtime/limits_test.go	U1000	field preparedInt is unused
+standard	src/core/runtime/limits_test.go	U1000	field results is unused
+standard	src/core/runtime/limits_test.go	U1000	field stack is unused
+standard	src/core/runtime/limits_test.go	U1000	field stackTop is unused
+standard	src/wago/amd64_codegen_profile.go	U1000	func selectedAMD64CompileFeatures is unused
+standard	src/wago/api.go	U1000	func (*Compiled).tableMinimum is unused
+standard	src/wago/diagnostics_test.go	U1000	func requireCompilerDiagnostics is unused
+standard	src/wago/gc_array_helper.go	U1000	func (*Instance).dispatchGCArrayHelper is unused
+standard	src/wago/gc_frame_liveness.go	U1000	func gcFrameBodyMayCollect is unused
+standard	src/wago/gc_frame_roots_arm64.go	U1000	func arm64GCFrameCallRefABI is unused
+standard	src/wago/gc_native_entry_guard_release.go	U1000	const nativeGCEntryValidationEnabled is unused
+standard	src/wago/gc_ref_test_table.go	U1000	func (*gcRefTestTableState).set is unused
+standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructFieldString is unused
+standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructLeaderPinFor is unused
+standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructOpcodeInventory is unused
+standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructProduct.gateReason is unused
+standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructStateGraph is unused
+standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructTypeGraph is unused
+standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructValTypes is unused
+standard	src/wago/gc_struct_product.go	U1000	type stagedGCStructOpcodeCount is unused
+standard	src/wago/gc_struct_product_gate_test.go	U1000	func stagedGCStructMutationBytes is unused
+standard	src/wago/host_execution.go	U1000	func (*hostLoopActivation).dispatchSingleTypedScalarExpandedPortal is unused
+standard	src/wago/hostcall_test.go	U1000	func hostV128FromSlots is unused
+standard	src/wago/import_identity_test.go	U1000	const flatKey is unused
+standard	src/wago/imports_external_test.go	S1034	assigning the result of this type assertion to a variable (switch value := value.(type)) could eliminate type assertions in switch cases
+standard	src/wago/imports_legacy_test.go	U1000	func testCloneImports is unused
+standard	src/wago/instance_close_completion_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+standard	src/wago/instance_entry.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/instance_native_context.go	SA2001	empty critical section
+standard	src/wago/invocation_admission_test.go	SA2001	empty critical section
+standard	src/wago/invocation_admission_test.go	SA2001	empty critical section
+standard	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_close_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/module.go	U1000	func declaredImportIdentity is unused
+standard	src/wago/null_reference_product_test.go	U1000	func compileStagedNullReferenceProductForTest is unused
+standard	src/wago/null_reference_product_test.go	U1000	func namesForBottomNullReferenceProduct is unused
+standard	src/wago/null_reference_product_test.go	U1000	func stagedBottomNullReferenceModule is unused
+standard	src/wago/prepared_direct_amd64.go	U1000	func (*WasmFunc).invokeDirectInt is unused
+standard	src/wago/prepared_direct_arm64.go	U1000	func (*WasmFunc).invokeDirectInt is unused
+standard	src/wago/reference_store.go	U1000	field reserved is unused
+standard	src/wago/reference_store.go	U1000	func (*gcPublicState).resultCapacity is unused
+standard	src/wago/reference_store.go	U1000	func (*referenceStore).gcRefExactType is unused
+standard	src/wago/services.go	U1000	func (*contractSlot).deactivate is unused
+standard	src/wago/spectest_exec_test.go	U1000	func specExecStats.gapCount is unused
+standard	src/wago/structural_type_product.go	U1000	func stagedStructuralTypeProduct.gateReason is unused
+standard	src/wago/structural_type_product_test.go	U1000	func compileStagedStructuralTypeProductForTest is unused
+standard	src/wago/structural_type_product_test.go	U1000	func stagedTypeRecLeaderPinFor is unused

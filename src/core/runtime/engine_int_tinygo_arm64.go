@@ -74,6 +74,10 @@ func (e *Engine) EnterPreparedIntCallBounded(call *PreparedIntCall, a0, a1, a2, 
 	return result
 }
 
+func (e *Engine) EnterPreparedIntPreboundContextBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
+	return e.EnterPreparedIntCallBounded(call, a0, a1, a2, a3)
+}
+
 func PreparedIntTrapCode(trap []byte) TrapCode {
 	if len(trap) < 4 {
 		return TrapNone

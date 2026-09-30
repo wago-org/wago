@@ -47,6 +47,7 @@ func TestStoreForwardFiresArm64(t *testing.T) {
 }
 
 func TestSizeStoreForwardCompactionClearsDeadByteLedgerArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	a := &a64.Asm{}
 	a.Store64(a64.X0, a64.SP, 0)
 	a.Load64(a64.X0, a64.SP, 0)

@@ -121,12 +121,11 @@ func TestTypedBottomElementRequirementsAndAdmission(t *testing.T) {
 				t.Fatalf("run = %v, %v; want [0], nil", result, err)
 			}
 
-			if defaultCompiled, err := NewRuntimeConfig().Compile(module); err == nil {
-				defaultCompiled.Close()
-				t.Fatal("default GC-off feature set accepted a typed bottom element")
-			} else if !strings.Contains(err.Error(), "unsupported reference type") {
-				t.Fatalf("default feature error = %v, want GC reference rejection", err)
+			defaultCompiled, err := NewRuntimeConfig().Compile(module)
+			if err != nil {
+				t.Fatalf("default Core 3 compile: %v", err)
 			}
+			defaultCompiled.Close()
 		})
 	}
 }

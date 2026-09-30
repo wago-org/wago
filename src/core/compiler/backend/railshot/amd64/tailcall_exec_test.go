@@ -66,7 +66,26 @@ func TestDirectCrossTailABIAcceptsMixedBankVoidSignature(t *testing.T) {
 	}
 }
 
+func TestEightGPReferenceAndCrossTailRemainGated(t *testing.T) {
+	params := []wasm.ValType{wasm.I64, wasm.I64, wasm.I64, wasm.I64, wasm.I64, wasm.I64, wasm.I64, wasm.I64}
+	ft := &wasm.CompType{Params: params, Results: []wasm.ValType{wasm.I64}}
+	if !sigFitsRegABI(ft) {
+		t.Fatal("eight-GP local call must use the register ABI")
+	}
+	if sigFitsDirectCrossTailABI(ft) {
+		t.Fatal("eight-GP cross-instance tail must remain on the wrapper ABI")
+	}
+	if sigFitsTypedReferenceRegABI(ft) {
+		t.Fatal("eight-GP typed-reference tail must remain gated")
+	}
+	ft.Results = []wasm.ValType{wasm.FuncRef}
+	if sigFitsReferenceResultRegABI(ft) {
+		t.Fatal("eight-GP reference-result tail must remain gated")
+	}
+}
+
 func TestReturnCallDirectReusesFrameForDeepRecursion(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	// (func (param i32) (result i32)
 	//   local.get 0; i32.eqz
 	//   if (result i32) i32.const 7
@@ -139,6 +158,7 @@ func TestReturnCallDirectPreservesResultsAndTraps(t *testing.T) {
 }
 
 func TestReturnCallDirectWrapperReusesBoundedTailBank(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	m := modFuncs(t, funcDef{
 		params:  []wasm.ValType{wasm.I32, wasm.FuncRef},
 		results: []wasm.ValType{wasm.I32},

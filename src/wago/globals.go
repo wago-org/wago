@@ -3,6 +3,7 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -34,16 +35,9 @@ func valTypeCode(t wasm.ValType) byte {
 	return b
 }
 
-// Imports supplies a module's imports by "module.name" key, JS-style: one
-// namespace whose function values may be an ordinary supported Go function,
-// HostCallFunc, HostFunc, CallerHostFunc, or I32HostEvent, alongside a GlobalImport, *Global, or
-// *Memory.
-// This mirrors the WebAssembly JS API's single imports object.
-type Imports map[string]any
-
 // global returns the imported global for key, accepting either a GlobalImport
 // value or a *Global object.
-func (im Imports) global(key string) (GlobalImport, bool) {
+func (im resolvedImports) global(key string) (GlobalImport, bool) {
 	switch g := im[key].(type) {
 	case GlobalImport:
 		return g, true
@@ -364,7 +358,7 @@ func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, pro
 // NewFuncRefGlobal creates a host-owned funcref global bound to this Runtime's
 // exact reference store. The initial token must be null or have been issued by
 // the same Runtime. A non-null host-function token can originate only from an
-// explicit HostFuncRef owner; raw HostFunc descriptors remain fail-closed.
+// explicit HostFuncRef owner; raw slotHostFunc descriptors remain fail-closed.
 func (g *Global) pruneRetainedInstances() {
 	if g == nil || g.owner == nil {
 		return
@@ -1076,7 +1070,7 @@ type Compiled struct {
 	memoryImport string
 
 	// tableImport preserves the direct table-0 API/runtime metadata. Additional
-	// imported tables occupy the leading extraTables entries, and codec version 2 writes
+	// imported tables occupy the leading extraTables entries, and codec version 4 writes
 	// every declaration in exact Wasm index order.
 	tableImport       string
 	tableImportMin    int
@@ -1114,12 +1108,10 @@ type Compiled struct {
 	// first-use validation.
 	validateMemo *validateMemo
 
-	codeCache          *compiledCodeCache
-	customInstructions map[uint32]railshot.CustomInstruction
-	requiresBMI2       bool
-	requiresAVX2       bool
-	requiresAVX512     bool
-	syncHostSlots      uint16
+	codeCache             *compiledCodeCache
+	customInstructions    map[uint32]railshot.CustomInstruction
+	requiredAMD64Features shared.AMD64Features
+	syncHostSlots         uint16
 	// independentInstances allows instances without cross-instance Wasm imports
 	// to use instance-local native execution leases. It is intentionally not
 	// serialized because it is runtime policy rather than a module property.
@@ -1155,18 +1147,28 @@ func internalEntryOffset(off int) int {
 }
 
 // RequiresBMI2 reports whether compilation selected BMI2 instructions.
-func (c *Compiled) RequiresBMI2() bool { return c != nil && c.requiresBMI2 }
+func (c *Compiled) RequiresBMI2() bool {
+	return c != nil && c.requiredAMD64Features.Has(shared.AMD64BMI2)
+}
 
 // RequiresAVX2 reports whether compilation selected an AVX2 plugin lowering.
-func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
+func (c *Compiled) RequiresAVX2() bool {
+	return c != nil && c.requiredAMD64Features.Has(shared.AMD64AVX2)
+}
 
 // RequiresAVX512 reports whether compilation selected an AVX-512 plugin lowering.
-func (c *Compiled) RequiresAVX512() bool { return c != nil && c.requiresAVX512 }
+func (c *Compiled) RequiresAVX512() bool {
+	return c != nil && c.requiredAMD64Features.Has(shared.AMD64AVX512)
+}
 
 type validateMemo struct {
 	execution     *Compiled // private deeply owned execution metadata
 	snapshotLimit uint64    // source admission policy; zero selects the default
 	snapshotBytes uint64    // protected by the code-cache lock
+	// hostThunks lazily owns immutable async and sync import wrappers. Instances
+	// retain them through the code cache's refs counter and lock.
+	hostThunks     [2]compiledHostThunkCache
+	compileIndexes *compiledCacheIndexes
 
 	once                     sync.Once
 	err                      error
@@ -1315,16 +1317,17 @@ type resolvedGlobalImport struct {
 	mutable     bool
 }
 
-func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, error) {
+func (c *Compiled) importedGlobals(imports resolvedImports) ([]*resolvedGlobalImport, error) {
 	// Global imports use the public API's "module.name" map key. Duplicate
 	// imports of the same key intentionally resolve to the same descriptor so
 	// wasm global object identity is preserved.
 	globals := make([]*resolvedGlobalImport, len(c.GlobalImports))
 	byKey := map[string]*resolvedGlobalImport{}
 	for i, imp := range c.GlobalImports {
-		key := imp.Module + "." + imp.Name
+		displayKey := imp.Module + "." + imp.Name
+		key := c.globalImportBindingKey(i)
 		if g := byKey[key]; g != nil {
-			if err := c.validateResolvedImportedGlobal(key, g, imp); err != nil {
+			if err := c.validateResolvedImportedGlobal(displayKey, g, imp); err != nil {
 				return nil, err
 			}
 			globals[i] = g
@@ -1332,10 +1335,10 @@ func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, er
 		}
 		provided, ok := imports.global(key)
 		if !ok {
-			return nil, fmt.Errorf("missing imported global %q", key)
+			return nil, fmt.Errorf("missing imported global %q", displayKey)
 		}
 		g := &resolvedGlobalImport{global: provided.Global, initialType: provided.Type, initialBits: provided.Bits, initialV128: provided.V128, mutable: provided.Mutable}
-		if err := c.validateResolvedImportedGlobal(key, g, imp); err != nil {
+		if err := c.validateResolvedImportedGlobal(displayKey, g, imp); err != nil {
 			return nil, err
 		}
 		byKey[key] = g

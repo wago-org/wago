@@ -93,13 +93,12 @@ func applyPolicy(mod *Module, p Policy) error {
 	return nil
 }
 
-func applyResolvedTablePolicy(c *Compiled, imports Imports, p Policy) error {
+func applyResolvedTablePolicy(c *Compiled, imports resolvedImports, p Policy) error {
 	if p.MaxTableEntries == 0 {
 		return nil
 	}
 	for i := 0; i < c.tableImportCount(); i++ {
-		declared, _ := c.tableImportAt(i)
-		table, ok := imports.table(declared.Key)
+		table, ok := imports.table(c.tableImportBindingKey(i))
 		if !ok {
 			continue
 		}

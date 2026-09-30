@@ -91,6 +91,25 @@ func TestWatchedStopErrorRejectsCleanupFailure(t *testing.T) {
 	}
 }
 
+func TestWatchedStopAcceptsGracefulExitAfterKillAttempt(t *testing.T) {
+	interrupted := errors.New("interrupted")
+	for _, result := range []watchedProcessResult{
+		{err: interrupted, exitCode: 130},
+		{err: interrupted, exitSignal: syscall.SIGINT},
+	} {
+		if err := watchedStopError(result, syscall.SIGINT, true); err != nil {
+			t.Errorf("graceful exit after kill attempt: %v", err)
+		}
+		if err := watchedStopError(result, syscall.SIGTERM, true); !errors.Is(err, interrupted) {
+			t.Errorf("unexpected interrupt exit = %v, want %v", err, interrupted)
+		}
+	}
+	cleanup := errors.New("supervisor cleanup failed")
+	if err := watchedStopError(watchedProcessResult{err: cleanup, exitCode: 1}, syscall.SIGINT, true); !errors.Is(err, cleanup) {
+		t.Fatalf("cleanup failure after kill attempt = %v, want %v", err, cleanup)
+	}
+}
+
 func detachWatchHelperProcess(command *exec.Cmd) {
 	command.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }

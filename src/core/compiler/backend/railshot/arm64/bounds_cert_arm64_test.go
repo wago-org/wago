@@ -9,7 +9,7 @@ func TestMultiBoundsCertificatesRetainIndependentSourcesArm64(t *testing.T) {
 	multiBoundsCertEnabled = true
 	defer func() { multiBoundsCertEnabled = old }()
 
-	var f fn
+	f := fn{policy: currentCodegenPolicy()}
 	f.boundsCertUpdate(1, 3, 16)
 	f.boundsCertUpdate(1, 7, 32)
 	if !f.boundsCertCovers(1, 3, 8) || !f.boundsCertCovers(1, 7, 24) {
@@ -33,7 +33,7 @@ func TestSingleBoundsCertificateCompatibilityArm64(t *testing.T) {
 	multiBoundsCertEnabled = false
 	defer func() { multiBoundsCertEnabled = old }()
 
-	var f fn
+	f := fn{policy: currentCodegenPolicy()}
 	f.boundsCertUpdate(1, 3, 16)
 	f.boundsCertUpdate(1, 7, 32)
 	if f.boundsCertCovers(1, 3, 8) {

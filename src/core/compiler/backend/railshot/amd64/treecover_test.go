@@ -178,7 +178,9 @@ func TestAssociativeTreeCoverNestedRepeatedDestination(t *testing.T) {
 	}
 	appendSum(0, 8)
 	body = append(body, 0x21, 0x00, 0x20, 0x00, 0x0b)
-	params := make([]wasm.ValType, 8)
+	// Keep this optimizer fixture on the wrapper ABI: eight parameters now use
+	// the internal register ABI and a different accumulator lowering.
+	params := make([]wasm.ValType, 9)
 	for i := range params {
 		params[i] = wasm.I32
 	}
@@ -187,7 +189,7 @@ func TestAssociativeTreeCoverNestedRepeatedDestination(t *testing.T) {
 	defer func() { associativeTreeEnabled = saved }()
 	associativeTreeEnabled = true
 	stats := compileWithStats(t, m, false).Funcs[0]
-	if got := runAmd64(t, m, 3, 1, 2, 3, 4, 5, 6, 0); got != 35 {
+	if got := runAmd64(t, m, 3, 1, 2, 3, 4, 5, 6, 0, 0); got != 35 {
 		t.Fatalf("result = %d, want 35", got)
 	}
 	if hits := stats.Peephole["assoc-tree-dest-repeat"]; hits != 1 {
@@ -195,7 +197,7 @@ func TestAssociativeTreeCoverNestedRepeatedDestination(t *testing.T) {
 	}
 	associativeTreeEnabled = false
 	off := compileWithStats(t, m, false).Funcs[0]
-	if got := runAmd64(t, m, 3, 1, 2, 3, 4, 5, 6, 0); got != 35 {
+	if got := runAmd64(t, m, 3, 1, 2, 3, 4, 5, 6, 0, 0); got != 35 {
 		t.Fatalf("disabled result = %d, want 35", got)
 	}
 	if hits := off.Peephole["assoc-tree-dest-repeat"]; hits != 0 {

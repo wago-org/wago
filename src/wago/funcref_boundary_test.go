@@ -26,7 +26,7 @@ func TestPublicFuncrefIngressRejectsForgedNonNullBeforeNativeExecution(t *testin
 		{
 			name: "Call",
 			call: func(in *Instance, forged uint64) ([]uint64, error) {
-				out, err := in.Call(context.Background(), "sink", ValueOf(ValFuncRef, forged))
+				out, err := in.InvokeValues(context.Background(), "sink", ValueOf(ValFuncRef, forged))
 				if out != nil {
 					return []uint64{1}, err
 				}
@@ -86,7 +86,7 @@ func TestPublicFuncrefEgressReturnsStableOpaqueToken(t *testing.T) {
 	if err != nil || len(second) != 1 || second[0] != token {
 		t.Fatalf("second Invoke get = %v, %v; want stable token %#x", second, err, token)
 	}
-	typed, err := in.Call(context.Background(), "get")
+	typed, err := in.InvokeValues(context.Background(), "get")
 	if err != nil || len(typed) != 1 || typed[0].Type() != ValFuncRef || typed[0].Bits() != token {
 		t.Fatalf("Call get = %v, %v; want typed token %#x", typed, err, token)
 	}
@@ -132,15 +132,15 @@ func TestRuntimeFuncrefTokenRoundTripsAndRetainsProducer(t *testing.T) {
 	}
 	defer relay.Close()
 
-	out, err := producer.Call(context.Background(), "get")
+	out, err := producer.InvokeValues(context.Background(), "get")
 	if err != nil || len(out) != 1 || out[0].FuncRef().IsNull() {
 		t.Fatalf("producer get = %v, %v; want non-null funcref", out, err)
 	}
 	token := out[0]
-	if got, err := relay.Call(context.Background(), "id", token); err != nil || len(got) != 1 || got[0].Bits() != token.Bits() {
+	if got, err := relay.InvokeValues(context.Background(), "id", token); err != nil || len(got) != 1 || got[0].Bits() != token.Bits() {
 		t.Fatalf("same-runtime relay = %v, %v; want stable token %#x", got, err, token.Bits())
 	}
-	if got, err := consumer.Call(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
+	if got, err := consumer.InvokeValues(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("consumer call before producer close = %v, %v; want 42", got, err)
 	}
 	if err := rt.Close(); err != nil {
@@ -149,7 +149,7 @@ func TestRuntimeFuncrefTokenRoundTripsAndRetainsProducer(t *testing.T) {
 	if err := producer.Close(); err != nil {
 		t.Fatalf("Close producer: %v", err)
 	}
-	if _, err := consumer.Call(context.Background(), "call", token); err == nil || !strings.Contains(err.Error(), "closed") {
+	if _, err := consumer.InvokeValues(context.Background(), "call", token); err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("consumer call after runtime close = %v; want closed handle", err)
 	}
 }
@@ -173,7 +173,7 @@ func TestRuntimeImportedFuncrefUsesProducerIdentityAndLifetime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile importer: %v", err)
 	}
-	importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": target}))
+	importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(testImports("env.target", target)))
 	if err != nil {
 		t.Fatalf("Instantiate importer: %v", err)
 	}
@@ -243,11 +243,11 @@ func TestRuntimeImportedFuncrefFromBareProducerGetsStableIdentity(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Compile importer: %v", err)
 	}
-	importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": target}))
+	importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(testImports("env.target", target)))
 	if err != nil {
 		t.Fatalf("Instantiate importer: %v", err)
 	}
-	alias, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": target}))
+	alias, err := rt.Instantiate(context.Background(), importerMod, WithImports(testImports("env.target", target)))
 	if err != nil {
 		t.Fatalf("Instantiate alias importer: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 		if err != nil {
 			t.Fatalf("Compile importer: %v", err)
 		}
-		importer, err := importerRT.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": target}))
+		importer, err := importerRT.Instantiate(context.Background(), importerMod, WithImports(testImports("env.target", target)))
 		if err == nil || importer != nil || !strings.Contains(err.Error(), "dynamic funcref producer requires the same Runtime") {
 			t.Fatalf("cross-runtime dynamic producer instantiate = %v, %v; want same-Runtime rejection", importer, err)
 		}
@@ -327,9 +327,9 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 		if err != nil {
 			t.Fatalf("Compile importer: %v", err)
 		}
-		importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": HostFunc(func(_ HostModule, _, results []uint64) {
+		importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(testImports("env.target", slotHostFunc(func(_ HostModule, _, results []uint64) {
 			results[0] = I32(42)
-		})}))
+		}))))
 		if err != nil {
 			t.Fatalf("Instantiate importer: %v", err)
 		}
@@ -364,7 +364,7 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 		if err != nil {
 			t.Fatalf("Compile importer: %v", err)
 		}
-		importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": target}))
+		importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(testImports("env.target", target)))
 		if err != nil {
 			t.Fatalf("Instantiate importer: %v", err)
 		}

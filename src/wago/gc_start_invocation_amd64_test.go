@@ -41,7 +41,7 @@ func TestGCAllocatingLocalStartWaitsForInvocationLease(t *testing.T) {
 	first, err := instantiateCore(compiled, InstantiateOptions{
 		GC:      gcCfg,
 		store:   store,
-		Imports: Imports{"env.started": HostFunc(func(HostModule, []uint64, []uint64) {})},
+		Imports: testImports("env.started", slotHostFunc(func(HostModule, []uint64, []uint64) {})),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -55,9 +55,9 @@ func TestGCAllocatingLocalStartWaitsForInvocationLease(t *testing.T) {
 		second, instantiateErr := instantiateCore(compiled, InstantiateOptions{
 			GC:    gcCfg,
 			store: store,
-			Imports: Imports{"env.started": HostFunc(func(HostModule, []uint64, []uint64) {
+			Imports: testImports("env.started", slotHostFunc(func(HostModule, []uint64, []uint64) {
 				started <- struct{}{}
-			})},
+			})),
 		})
 		if second != nil {
 			_ = second.Close()

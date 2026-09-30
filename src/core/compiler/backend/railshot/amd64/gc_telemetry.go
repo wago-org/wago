@@ -3,7 +3,7 @@
 package amd64
 
 func (f *fn) recordGCOpcodeBytes(sub uint32, n int) {
-	if n <= 0 || f.stats == nil {
+	if n <= 0 || (!diagnosticsEnabled || f.stats == nil) {
 		return
 	}
 	switch sub {

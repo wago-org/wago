@@ -245,11 +245,12 @@ func (in *Instance) Read(offset, length uint32) ([]byte, bool) {
 	}
 	defer in.endInvocation()
 	mem := in.mem()
-	if uint64(offset)+uint64(length) > uint64(len(mem)) {
+	end := uint64(offset) + uint64(length)
+	if end > uint64(len(mem)) {
 		return nil, false
 	}
 	out := make([]byte, length)
-	copy(out, mem[offset:offset+length])
+	copy(out, mem[offset:end])
 	return out, true
 }
 

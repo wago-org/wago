@@ -604,12 +604,8 @@ func run(command *exec.Cmd, started func()) (int, error) {
 				if !ok || child.started != directChild.started || (child.state != 'T' && child.state != 't') {
 					continue
 				}
+				// SIGSTOP can return before we stop; only SIGCONT may resume the child.
 				if err := syscall.Kill(os.Getpid(), syscall.SIGSTOP); err != nil {
-					_ = signalProcessIdentity(directChild, syscall.SIGKILL)
-					result := <-exited
-					return 1, errors.Join(err, result.err, cleanup())
-				}
-				if err := signalProcessIdentity(directChild, syscall.SIGCONT); err != nil && !errors.Is(err, os.ErrProcessDone) {
 					_ = signalProcessIdentity(directChild, syscall.SIGKILL)
 					result := <-exited
 					return 1, errors.Join(err, result.err, cleanup())

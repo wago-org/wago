@@ -70,10 +70,7 @@ func TestMemory32OperationsCanonicalizeDirtySynchronousHostResults(t *testing.T)
 		{name: "init", want: 42},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-				"env.zero": HostFunc(func(_ HostModule, _, results []uint64) { results[0] = 0xdead_beef_0000_0000 }),
-				"env.one":  HostFunc(func(_ HostModule, _, results []uint64) { results[0] = 0xcafe_babe_0000_0001 }),
-			}})
+			in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.zero", slotHostFunc(func(_ HostModule, _, results []uint64) { results[0] = 0xdead_beef_0000_0000 }), "env.one", slotHostFunc(func(_ HostModule, _, results []uint64) { results[0] = 0xcafe_babe_0000_0001 }))})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -85,10 +82,7 @@ func TestMemory32OperationsCanonicalizeDirtySynchronousHostResults(t *testing.T)
 		})
 	}
 
-	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.zero": HostFunc(func(_ HostModule, _, results []uint64) { results[0] = 0xdead_beef_0001_0000 }),
-		"env.one":  HostFunc(func(_ HostModule, _, results []uint64) { results[0] = 1 }),
-	}})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.zero", slotHostFunc(func(_ HostModule, _, results []uint64) { results[0] = 0xdead_beef_0001_0000 }), "env.one", slotHostFunc(func(_ HostModule, _, results []uint64) { results[0] = 1 }))})
 	if err != nil {
 		t.Fatal(err)
 	}

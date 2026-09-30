@@ -9,6 +9,7 @@ import (
 )
 
 func TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := stackDeltaAdapterThunkEnabled
 	stackDeltaAdapterThunkEnabled = true
 	t.Cleanup(func() { stackDeltaAdapterThunkEnabled = before })

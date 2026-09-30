@@ -43,7 +43,7 @@ func TestNativeCodeLimitIsOneFinalModuleBudget(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": func(v int32) int32 { return v }}})
+			in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.f", func(v int32) int32 { return v })})
 			if err != nil {
 				t.Fatal(err)
 			}

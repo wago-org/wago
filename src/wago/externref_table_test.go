@@ -50,7 +50,7 @@ func TestLocalExternrefTablesExecuteAcrossHeterogeneousIndexes(t *testing.T) {
 
 	callRef := func(name string, index int32) ExternRef {
 		t.Helper()
-		out, err := in.Call(context.Background(), name, ValueI32(index))
+		out, err := in.InvokeValues(context.Background(), name, ValueI32(index))
 		if err != nil || len(out) != 1 || out[0].Type() != ValExternRef {
 			t.Fatalf("Call %s(%d) = %v, %v; want one externref", name, index, out, err)
 		}
@@ -78,19 +78,19 @@ func TestLocalExternrefTablesExecuteAcrossHeterogeneousIndexes(t *testing.T) {
 
 	refA := issueExternref(t, rt, "table-a")
 	refB := issueExternref(t, rt, "table-b")
-	if _, err := in.Call(context.Background(), "set0", ValueI32(1), ValueExternRef(refA)); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "set0", ValueI32(1), ValueExternRef(refA)); err != nil {
 		t.Fatalf("set0: %v", err)
 	}
 	if got := callRef("get0", 1); got != refA {
 		t.Fatalf("get0(1) = %v, want same-store identity %v", got, refA)
 	}
-	if _, err := in.Call(context.Background(), "set2", ValueI32(0), ValueExternRef(refA)); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "set2", ValueI32(0), ValueExternRef(refA)); err != nil {
 		t.Fatalf("set2: %v", err)
 	}
 	if got := callRef("get2", 0); got != refA {
 		t.Fatalf("get2(0) = %v, want same-store identity %v", got, refA)
 	}
-	out, err := in.Call(context.Background(), "grow2", ValueExternRef(refB), ValueI32(2))
+	out, err := in.InvokeValues(context.Background(), "grow2", ValueExternRef(refB), ValueI32(2))
 	if err != nil || len(out) != 1 || out[0].I32() != 1 {
 		t.Fatalf("grow2(refB, 2) = %v, %v; want old size 1", out, err)
 	}
@@ -102,7 +102,7 @@ func TestLocalExternrefTablesExecuteAcrossHeterogeneousIndexes(t *testing.T) {
 			t.Fatalf("get2(%d) after grow = %v, want %v", index, got, refB)
 		}
 	}
-	if _, err := in.Call(context.Background(), "fill0", ValueI32(0), ValueExternRef(refB), ValueI32(2)); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "fill0", ValueI32(0), ValueExternRef(refB), ValueI32(2)); err != nil {
 		t.Fatalf("fill0: %v", err)
 	}
 	for _, index := range []int32{0, 1} {
@@ -110,14 +110,14 @@ func TestLocalExternrefTablesExecuteAcrossHeterogeneousIndexes(t *testing.T) {
 			t.Fatalf("get0(%d) after fill = %v, want %v", index, got, refB)
 		}
 	}
-	if _, err := in.Call(context.Background(), "fill0", ValueI32(3), ValueExternRef(refA), ValueI32(0)); err != nil {
+	if _, err := in.InvokeValues(context.Background(), "fill0", ValueI32(3), ValueExternRef(refA), ValueI32(0)); err != nil {
 		t.Fatalf("zero-length fill at end: %v", err)
 	}
-	out, err = in.Call(context.Background(), "grow0", ValueExternRef(refA), ValueI32(0))
+	out, err = in.InvokeValues(context.Background(), "grow0", ValueExternRef(refA), ValueI32(0))
 	if err != nil || len(out) != 1 || out[0].I32() != 3 {
 		t.Fatalf("zero grow0 = %v, %v; want old size 3", out, err)
 	}
-	out, err = in.Call(context.Background(), "grow0", ValueExternRef(refA), ValueI32(1))
+	out, err = in.InvokeValues(context.Background(), "grow0", ValueExternRef(refA), ValueI32(1))
 	if err != nil || len(out) != 1 || out[0].I32() != -1 {
 		t.Fatalf("over-max grow0 = %v, %v; want -1", out, err)
 	}
@@ -131,7 +131,7 @@ func TestLocalExternrefTablesExecuteAcrossHeterogeneousIndexes(t *testing.T) {
 		{"set0", []Value{ValueI32(3), ValueExternRef(NullExternRef())}},
 		{"fill2", []Value{ValueI32(2), ValueExternRef(refA), ValueI32(2)}},
 	} {
-		if _, err := in.Call(context.Background(), tc.name, tc.args...); err == nil {
+		if _, err := in.InvokeValues(context.Background(), tc.name, tc.args...); err == nil {
 			t.Fatalf("%s%v unexpectedly succeeded", tc.name, tc.args)
 		}
 	}
@@ -218,11 +218,11 @@ func TestLocalExternrefTablesRespectFeatureStoreAndPersistenceBoundaries(t *test
 		"cross-runtime": foreign,
 		"forged":        ValueOf(ValExternRef, ValueExternRef(foreign).Bits()^0x9e3779b97f4a7c15).ExternRef(),
 	} {
-		if _, err := inB.Call(context.Background(), "set", ValueI32(0), ValueExternRef(ref)); err == nil || !strings.Contains(err.Error(), "invalid externref token") {
+		if _, err := inB.InvokeValues(context.Background(), "set", ValueI32(0), ValueExternRef(ref)); err == nil || !strings.Contains(err.Error(), "invalid externref token") {
 			t.Fatalf("%s table.set error = %v, want invalid token before storage", name, err)
 		}
 	}
-	out, err := inB.Call(context.Background(), "get", ValueI32(0))
+	out, err := inB.InvokeValues(context.Background(), "get", ValueI32(0))
 	if err != nil || len(out) != 1 || !out[0].ExternRef().IsNull() {
 		t.Fatalf("table after rejected stores = %v, %v; want null", out, err)
 	}
@@ -233,7 +233,7 @@ func TestLocalExternrefTablesRespectFeatureStoreAndPersistenceBoundaries(t *test
 		t.Fatal("closed producer runtime retained cross-store externref")
 	}
 	local := issueExternref(t, rtB, "local-table-root")
-	if _, err := inB.Call(context.Background(), "set", ValueI32(0), ValueExternRef(local)); err != nil {
+	if _, err := inB.InvokeValues(context.Background(), "set", ValueI32(0), ValueExternRef(local)); err != nil {
 		t.Fatalf("store local table root: %v", err)
 	}
 	if err := rtB.Close(); err != nil {

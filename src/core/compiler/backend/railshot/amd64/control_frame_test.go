@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"encoding/binary"
+	"strconv"
 	"testing"
 	"unsafe"
 
@@ -12,10 +13,10 @@ import (
 )
 
 func TestCtrlFrameSize(t *testing.T) {
-	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(72); got != want {
+	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(80); got != want {
 		t.Fatalf("ctrlFrame size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(88); got != want {
+	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(96); got != want {
 		t.Fatalf("ctrlFrameMerge size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(ctrlFrameRoots{}), uintptr(24); got != want {
@@ -63,9 +64,9 @@ func TestControlGCRootSegmentsShareBackingAMD64(t *testing.T) {
 func TestCaptureControlGCRootSegmentsAMD64(t *testing.T) {
 	f := fn{s: newStack()}
 	base := f.s.pushValue(storage{})
-	base.st.setGCRoot(true)
+	f.setStackGCRoot(base, true)
 	param := f.s.pushValue(storage{})
-	param.st.setGCRoot(true)
+	f.setStackGCRoot(param, true)
 	fr := ctrlFrame{height: 1, paramN: 1, resultN: 1}
 	f.captureGCFrameShape(&fr)
 
@@ -77,6 +78,91 @@ func TestCaptureControlGCRootSegmentsAMD64(t *testing.T) {
 	}
 	if got := f.frameResultGCRoots(&fr); got != nil {
 		t.Fatalf("result roots = %v, want nil", got)
+	}
+}
+
+func TestCaptureControlGCRootShapeSkipsScalarStackAMD64(t *testing.T) {
+	f := fn{s: newStackWithCap(128)}
+	for range 128 {
+		f.pushValue(storage{kind: stConst, typ: mtI64})
+	}
+	var fr ctrlFrame
+	f.captureGCFrameShape(&fr)
+	if f.tmpRoots != nil {
+		t.Fatalf("scalar-only capture walked the operand stack: roots=%d", len(f.tmpRoots))
+	}
+	if fr.has(ctrlHasBaseGCRoots) || fr.has(ctrlHasParamGCRoots) {
+		t.Fatal("scalar-only capture recorded GC roots")
+	}
+}
+
+func TestOpEndReusesCanonicalFallthroughStackAMD64(t *testing.T) {
+	const height = 128
+	a := &x86.Asm{}
+	f := fn{
+		a:    a,
+		s:    newStackWithCap(height + 8),
+		ctrl: []ctrlFrame{{kind: cfBlock, height: height, controlSite: -1}},
+	}
+	types := make([]machineType, height)
+	for i := range types {
+		types[i] = mtI64
+	}
+	f.setDepthTypesWithGCRoots(types, nil)
+	last := f.s.back()
+	codeLen := a.Len()
+	if !f.s.canonicalSlots {
+		t.Fatal("setDepthTypes did not mark the slot image canonical")
+	}
+	if err := f.opEnd(); err != nil {
+		t.Fatal(err)
+	}
+	if f.s.back() != last {
+		t.Fatal("opEnd rebuilt an unchanged canonical fallthrough stack")
+	}
+	if !f.s.canonicalSlots || f.depth() != height {
+		t.Fatalf("post-end stack canonical=%v depth=%d, want canonical depth %d", f.s.canonicalSlots, f.depth(), height)
+	}
+	if got := a.Len(); got != codeLen {
+		t.Fatalf("opEnd emitted %d bytes for an empty fallthrough block, want 0", got-codeLen)
+	}
+}
+
+func BenchmarkCanonicalControlBoundaryAMD64(b *testing.B) {
+	for _, height := range []int{64, 256, 1024, 4096} {
+		b.Run("Fast/H"+strconv.Itoa(height), func(b *testing.B) {
+			f := fn{s: newStackWithCap(height + 8)}
+			types := make([]machineType, height)
+			for i := range types {
+				types[i] = mtI64
+			}
+			f.setDepthTypesWithGCRoots(types, nil)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				f.flush()
+			}
+		})
+		b.Run("ScanOnly/H"+strconv.Itoa(height), func(b *testing.B) {
+			f := fn{s: newStackWithCap(height + 8)}
+			types := make([]machineType, height)
+			for i := range types {
+				types[i] = mtI64
+			}
+			f.setDepthTypesWithGCRoots(types, nil)
+			roots := f.rootsBottomToTop()
+			if !canonicalSlotLayout(roots) {
+				b.Fatal("benchmark stack is not canonical")
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				roots = f.rootsBottomToTop()
+				if !canonicalSlotLayout(roots) {
+					b.Fatal("benchmark stack lost canonical layout")
+				}
+			}
+		})
 	}
 }
 
@@ -98,18 +184,21 @@ func TestScalarBlockResultUsesInlineFrameTypeAMD64(t *testing.T) {
 }
 
 func TestControlBaseTypeArenaAMD64(t *testing.T) {
-	var f fn
+	f := fn{s: newStack()}
+	f.pushValue(storage{kind: stConst, typ: mtI32})
+	f.pushValue(storage{kind: stConst, typ: mtV128})
 	outer := ctrlFrame{}
+	f.setFrameBaseTypePrefix(&outer, f.depth())
+	f.pushValue(storage{kind: stConst, typ: mtF64})
 	inner := ctrlFrame{}
-	f.setFrameBaseTypes(&outer, []machineType{mtI32, mtV128})
-	f.setFrameBaseTypes(&inner, []machineType{mtF64})
+	f.setFrameBaseTypePrefix(&inner, f.depth())
 	f.releaseFrameBaseTypes(&ctrlFrame{}) // unreachable frames never acquire arena storage
 
 	if got := f.frameBaseTypes(&outer); len(got) != 2 || got[0] != mtI32 || got[1] != mtV128 {
 		t.Fatalf("outer base types = %v, want [i32 v128]", got)
 	}
-	if got := f.frameBaseTypes(&inner); len(got) != 1 || got[0] != mtF64 {
-		t.Fatalf("inner base types = %v, want [f64]", got)
+	if got := f.frameBaseTypes(&inner); len(got) != 3 || got[0] != mtI32 || got[1] != mtV128 || got[2] != mtF64 {
+		t.Fatalf("inner base types = %v, want [i32 v128 f64]", got)
 	}
 
 	f.releaseFrameBaseTypes(&inner)
@@ -118,21 +207,33 @@ func TestControlBaseTypeArenaAMD64(t *testing.T) {
 		t.Fatalf("released arena length = %d, want 0", f.controlBaseTypeN)
 	}
 	reused := ctrlFrame{}
-	f.setFrameBaseTypes(&reused, []machineType{mtI64, mtF32})
+	f.setDepthTypesWithGCRoots(nil, nil)
+	f.pushValue(storage{kind: stConst, typ: mtI64})
+	f.pushValue(storage{kind: stConst, typ: mtF32})
+	f.setFrameBaseTypePrefix(&reused, f.depth())
 	if got := f.frameBaseTypes(&reused); len(got) != 2 || got[0] != mtI64 || got[1] != mtF32 {
 		t.Fatalf("reused base types = %v, want [i64 f32]", got)
 	}
 }
 
 func TestControlBaseTypeArenaColdFallbackAMD64(t *testing.T) {
-	f := fn{controlBaseTypeN: uint8(maxScratchFunctionResults)}
-	fr := ctrlFrame{resultN: 1, res0: mtI64}
-	f.setFrameBaseTypes(&fr, []machineType{mtI32})
+	f := fn{s: newStack(), controlBaseTypeN: uint8(maxScratchFunctionResults)}
+	f.pushValue(storage{kind: stConst, typ: mtI32})
+	f.pushValue(storage{kind: stConst, typ: mtV128})
+	f.pushValue(storage{kind: stConst, typ: mtF64})
+	fr := ctrlFrame{height: 3, resultN: 1, res0: mtI64}
+	f.setFrameBaseTypePrefix(&fr, 3)
 	if !fr.has(ctrlColdBaseTypes) {
-		t.Fatal("overflow frame did not use cold type storage")
+		t.Fatal("overflow frame did not use a cold prefix handle")
 	}
-	if got := f.frameBaseTypes(&fr); len(got) != 1 || got[0] != mtI32 {
-		t.Fatalf("cold base types = %v, want [i32]", got)
+	if got := f.ctrlMerge(&fr).baseTypeTop; got != f.s.back() {
+		t.Fatal("cold prefix did not retain the existing operand root")
+	}
+	// A flush replaces the live operand nodes. The captured control prefix must
+	// still describe the original immutable base.
+	f.setDepthTypesWithGCRoots([]machineType{mtI32}, nil)
+	if got := f.frameBaseTypes(&fr); len(got) != 3 || got[0] != mtI32 || got[1] != mtV128 || got[2] != mtF64 {
+		t.Fatalf("cold base types = %v, want [i32 v128 f64]", got)
 	}
 	if got := fr.appendResultTypes(nil); len(got) != 1 || got[0] != mtI64 {
 		t.Fatalf("cold result types = %v, want [i64]", got)
@@ -141,22 +242,111 @@ func TestControlBaseTypeArenaColdFallbackAMD64(t *testing.T) {
 	if f.controlBaseTypeN != uint8(maxScratchFunctionResults) {
 		t.Fatalf("cold release changed arena length to %d", f.controlBaseTypeN)
 	}
-	typed := ctrlFrame{paramN: 1, resultN: 2, types: []machineType{mtF32, mtI32, mtF64}}
-	f.setFrameBaseTypes(&typed, []machineType{mtV128})
-	if got := typed.appendParameterTypes(nil); len(got) != 1 || got[0] != mtF32 {
-		t.Fatalf("cold parameter types = %v, want [f32]", got)
+	f.releaseCtrlMerge(&fr)
+}
+
+func TestLogicalOperandDepthCounterAMD64(t *testing.T) {
+	f := fn{s: newStack()}
+	left := f.pushValue(storage{kind: stConst, typ: mtI64})
+	right := f.pushValue(storage{kind: stConst, typ: mtI32})
+	if got := f.depth(); got != 2 {
+		t.Fatalf("value depth = %d, want 2", got)
 	}
-	if got := typed.appendResultTypes(nil); len(got) != 2 || got[0] != mtI32 || got[1] != mtF64 {
-		t.Fatalf("cold multi-result types = %v, want [i32 f64]", got)
+	f.erase(left) // optimizer removes a lower operand while the right stays live
+	if got := f.depth(); got != 1 {
+		t.Fatalf("depth after lower-operand removal = %d, want 1", got)
+	}
+	f.erase(right)
+	if got := f.depth(); got != 0 {
+		t.Fatalf("depth after removing both values = %d, want 0", got)
+	}
+
+	left = f.pushValue(storage{kind: stConst, typ: mtI64})
+	right = f.pushValue(storage{kind: stConst, typ: mtI32})
+	node := f.s.alloc()
+	node.setElemKind(ekDeferred)
+	node.setValueType(mtI64)
+	node.arg0, node.arg1 = left, right
+	f.s.pushDeferred(node)
+	if got := f.depth(); got != 1 {
+		t.Fatalf("binary expression depth = %d, want 1", got)
+	}
+	if got := len(f.rootsBottomToTop()); got != 1 {
+		t.Fatalf("binary expression roots = %d, want 1", got)
+	}
+}
+
+func BenchmarkControlBasePrefixCaptureAMD64(b *testing.B) {
+	for _, height := range []int{256, 1024, 4096} {
+		for _, frames := range []int{1, 8, 32} {
+			name := "H" + strconv.Itoa(height) + "/D" + strconv.Itoa(frames)
+			b.Run("Handle/"+name, func(b *testing.B) {
+				f := fn{s: newStackWithCap(height + 8), controlBaseTypeN: uint8(maxScratchFunctionResults)}
+				for i := 0; i < height; i++ {
+					f.pushValue(storage{kind: stConst, typ: machineType(1 + i%5)})
+				}
+				var fr ctrlFrame
+				f.setFrameBaseTypePrefix(&fr, height) // reserve the cold-prefix sidecar before timing
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					for j := 0; j < frames; j++ {
+						f.setFrameBaseTypePrefix(&fr, height)
+					}
+				}
+				b.ReportMetric(float64(frames), "frames/op")
+			})
+			b.Run("Expanded/"+name, func(b *testing.B) {
+				f := fn{s: newStackWithCap(height + 8)}
+				for i := 0; i < height; i++ {
+					f.pushValue(storage{kind: stConst, typ: machineType(1 + i%5)})
+				}
+				cache := make(map[uint64][][]machineType)
+				legacyCapture := func() {
+					types := f.currentLogicalTypes()[:height]
+					hash := uint64(len(types)) ^ 1469598103934665603
+					for _, typ := range types {
+						hash ^= uint64(typ)
+						hash *= 1099511628211
+					}
+					for _, prior := range cache[hash] {
+						if len(prior) != len(types) {
+							continue
+						}
+						equal := true
+						for i := range types {
+							if prior[i] != types[i] {
+								equal = false
+								break
+							}
+						}
+						if equal {
+							return
+						}
+					}
+					cache[hash] = append(cache[hash], append([]machineType(nil), types...))
+				}
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					for j := 0; j < frames; j++ {
+						legacyCapture()
+					}
+				}
+				b.ReportMetric(float64(frames), "frames/op")
+			})
+		}
 	}
 }
 
 func TestControlBaseTypeArenaRejectsOutOfOrderReleaseAMD64(t *testing.T) {
-	var f fn
+	f := fn{s: newStack()}
+	f.pushValue(storage{kind: stConst, typ: mtI32})
 	outer := ctrlFrame{}
 	inner := ctrlFrame{}
-	f.setFrameBaseTypes(&outer, []machineType{mtI32})
-	f.setFrameBaseTypes(&inner, []machineType{mtI64})
+	f.setFrameBaseTypePrefix(&outer, 1)
+	f.pushValue(storage{kind: stConst, typ: mtI64})
+	f.setFrameBaseTypePrefix(&inner, 2)
 	defer func() {
 		if recover() == nil {
 			t.Fatal("out-of-order release did not panic")

@@ -31,13 +31,13 @@ func TestNullableLocalExternrefGlobals(t *testing.T) {
 	defer in.Close()
 
 	for _, name := range []string{"get_immutable", "get_mutable"} {
-		out, err := in.Call(context.Background(), name)
+		out, err := in.InvokeValues(context.Background(), name)
 		if err != nil || len(out) != 1 || out[0].Type() != ValExternRef || !out[0].ExternRef().IsNull() {
 			t.Fatalf("Call %s = %v, %v; want one null externref", name, out, err)
 		}
 	}
 	ref := issueExternref(t, in, "local-global")
-	out, err := in.Call(context.Background(), "set_and_get", ValueExternRef(ref))
+	out, err := in.InvokeValues(context.Background(), "set_and_get", ValueExternRef(ref))
 	if err != nil || len(out) != 1 || out[0].ExternRef() != ref {
 		t.Fatalf("set_and_get(ref) = %v, %v; want stable externref", out, err)
 	}
@@ -82,7 +82,7 @@ func TestLocalExternrefGlobalsRespectFeatureStoreAndLifetimeBoundaries(t *testin
 		t.Fatalf("Compile imported externref global: %v", err)
 	}
 	defer importedCompiled.Close()
-	if _, err := Instantiate(importedCompiled, Imports{"env.ref": GlobalImport{Type: ValExternRef}}); err == nil || !strings.Contains(err.Error(), "explicit store-bound *Global") {
+	if _, err := Instantiate(importedCompiled, testImports("env.ref", GlobalImport{Type: ValExternRef})); err == nil || !strings.Contains(err.Error(), "explicit store-bound *Global") {
 		t.Fatalf("Instantiate unowned imported externref global error = %v", err)
 	}
 

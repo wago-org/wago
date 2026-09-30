@@ -64,6 +64,9 @@ func decodeBranchHintSectionWithBudget(payload []byte, budget *decodeBudget) ([]
 // instruction immediate, but this walk gives the metadata its required exact
 // instruction-boundary check.
 func validateBranchHints(m *Module) error {
+	if len(m.BranchHints) == 0 {
+		return nil
+	}
 	imported := m.ImportedFuncCount()
 	classifier := NewModuleInstructionClassifier(m, true)
 	for _, funcs := range m.BranchHints {

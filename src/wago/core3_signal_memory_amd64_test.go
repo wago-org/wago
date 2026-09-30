@@ -92,7 +92,7 @@ func TestCore3SignalsMultiMemoryUsesGuardedExportableMappings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumerCode.Close()
-	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: Imports{"env.memory": exported}})
+	consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: testImports("env.memory", exported)})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -71,7 +71,7 @@ func (c *sharedTrapBodyCluster) share(codeBefore, fnCode []byte, entry int, info
 			return fnCode
 		}
 		deleted := len(body) - sharedTrapBodyThunkBytes
-		if stats != nil {
+		if diagnosticsEnabled && stats != nil {
 			stats.CodeBytes -= deleted
 			stats.NativeSize.TotalBytes -= deleted
 			stats.NativeSize.InternalFunctionBytes -= deleted
@@ -82,6 +82,9 @@ func (c *sharedTrapBodyCluster) share(codeBefore, fnCode []byte, entry int, info
 		return fnCode[:int(info.off)+sharedTrapBodyThunkBytes]
 	}
 	if int(c.n) < len(c.groups) {
+		if diagnosticsEnabled && stats != nil {
+			stats.NativeSize.SharedTrapBodyBytes = len(body)
+		}
 		c.groups[c.n] = sharedTrapBodyGroup{target: entry + int(info.off), length: len(body), hash: hash}
 		c.n++
 	}

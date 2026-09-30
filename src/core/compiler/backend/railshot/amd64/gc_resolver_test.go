@@ -44,6 +44,7 @@ func gcNativeAttributionModule(t testing.TB, controlBoundary bool) *wasm.Module 
 }
 
 func gcResolveReuseStats(t *testing.T, composite, funcType, body []byte) *CodegenStats {
+	requireCompilerDiagnostics(t)
 	t.Helper()
 	data := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(composite, funcType)),
@@ -118,6 +119,7 @@ func TestGCResolvedHandleReuseAndInvalidation(t *testing.T) {
 }
 
 func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	compile := func(m *wasm.Module, shared, reuse bool) (int, ModuleStats) {
 		savedShared, savedReuse := gcSharedStubsEnabled, gcResolveReuseEnabled
 		gcSharedStubsEnabled, gcResolveReuseEnabled = shared, reuse

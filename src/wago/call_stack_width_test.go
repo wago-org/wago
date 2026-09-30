@@ -73,12 +73,12 @@ func TestV128BelowRegisterCalls(t *testing.T) {
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(caller))),
 		)
 		calls := 0
-		imports := Imports{"host.sink": HostFunc(func(_ HostModule, params, _ []uint64) {
+		imports := testImports("host.sink", slotHostFunc(func(_ HostModule, params, _ []uint64) {
 			calls++
 			if len(params) != 1 || AsI32(params[0]) != 42 {
 				t.Errorf("host params = %v, want [42]", params)
 			}
-		})}
+		}))
 		assertStackWidthVector(t, mod, imports, lo, hi)
 		if calls != 1 {
 			t.Fatalf("host calls = %d, want 1", calls)
@@ -94,7 +94,7 @@ func stackWidthV128Const(lo, hi uint64) []byte {
 	return append(out, bits[:]...)
 }
 
-func assertStackWidthVector(t *testing.T, mod []byte, imports Imports, wantLo, wantHi uint64) {
+func assertStackWidthVector(t *testing.T, mod []byte, imports *Imports, wantLo, wantHi uint64) {
 	t.Helper()
 	compiled, err := Compile(nil, mod)
 	if err != nil {

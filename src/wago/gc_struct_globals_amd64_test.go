@@ -21,7 +21,7 @@ func stagedGCStructNumericGlobalsBytes(t testing.TB) []byte {
 
 func TestStagedGCStructGlobalRootsAndPublicEgress(t *testing.T) {
 	data := stagedGCStructNumericGlobalsBytes(t)
-	if _, err := Compile(NewRuntimeConfig(), data); err == nil {
+	if _, err := Compile(compatibilityDefaultConfig(), data); err == nil {
 		t.Fatal("public compile unexpectedly admitted GC constant-expression globals")
 	}
 

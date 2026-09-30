@@ -22,18 +22,20 @@ func main() {
 		panic(err)
 	}
 
-	write := wago.HostFunc(func(m wago.HostModule, params, results []uint64) {
-		ptr, n := uint32(params[0]), uint32(params[1])
-		mem := m.Memory() // a view of the calling instance's linear memory
+	write := func(caller wago.Caller, call wago.HostCall) {
+		ptr, n := uint32(call.I32(0)), uint32(call.I32(1))
+		mem := caller.Memory()
 		if int(ptr)+int(n) > len(mem) {
-			results[0] = wago.I32(-1) // out of bounds
+			call.SetI32(0, -1)
 			return
 		}
 		fmt.Printf("guest wrote: %q\n", mem[ptr:ptr+n])
-		results[0] = wago.I32(int32(n))
-	})
+		call.SetI32(0, int32(n))
+	}
 
-	inst, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: wago.Imports{"env.write": write}})
+	imports := wago.NewImports()
+	imports.HostFunc("env", "write", write).Params(wago.ValI32, wago.ValI32).Results(wago.ValI32)
+	inst, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: imports})
 	if err != nil {
 		panic(err)
 	}

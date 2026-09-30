@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"encoding/binary"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -26,12 +27,16 @@ func floatBits(v float64, f64 bool) uint64 {
 // --- XMM allocator ---
 
 func (f *fn) occupyF(e *elem, r Reg) {
+	f.s.canonicalSlots = false
 	f.fregUser[r] = e
 	if e.isDeferred() && e.valueType() != mtNone {
 		e.st.typ = e.valueType()
 	}
 	e.setElemKind(ekValue)
 	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
+	if e.st.hasGCRoot() && e.st.hasLogicalRoot() {
+		f.s.hasGCRoots = true
+	}
 }
 
 func (f *fn) releaseF(r Reg) {
@@ -101,7 +106,7 @@ func (f *fn) relinquishPinnedFLocal(avoid regMask) Reg {
 		}
 		f.locals[x].state = lsMem
 		f.pinRelinquished = true
-		if f.stats != nil {
+		if diagnosticsEnabled && f.stats != nil {
 			f.stats.PinRelinquishments++
 		}
 		f.stats.peep("fp-pin-relinquish")
@@ -120,7 +125,11 @@ func (f *fn) spillF(e *elem) {
 		chunks := int((cold.custom.Size() + 31) / 32)
 		slot := f.allocSpillSlots(chunks * 4)
 		for i, reg := range cold.vregs {
+			start := f.a.Len()
 			f.a.YMovdquStoreDisp(RSP, f.spillOff(slot+i*4), reg)
+			if profileEnabled {
+				f.recordProfileCodeSite(start, "custom-spill")
+			}
 			f.fregUser[reg] = nil
 		}
 		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: uint32(slot)})
@@ -128,13 +137,19 @@ func (f *fn) spillF(e *elem) {
 	}
 	if e.st.typ == mtV128 {
 		slot := f.allocSpillSlots(2)
-		f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), r)
+		f.mov128StoreDisp(RSP, f.spillOff(slot), r)
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "vector-spill")
+		}
 		f.fregUser[r] = nil
 		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 		return
 	}
 	slot := f.allocSpillSlot()
 	f.a.FStoreDisp(RSP, f.spillOff(slot), r, true)
+	if profileEnabled {
+		f.recordProfileCodeSite(before, "fp-spill")
+	}
 	f.fregUser[r] = nil
 	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 }
@@ -161,6 +176,9 @@ func (f *fn) materializeF(e *elem) Reg {
 		x := f.allocFReg(0)
 		before := f.a.Len()
 		f.a.FLoadDisp(x, RSP, f.spillOff(e.st.slotIndex()), true) // 8B; f32 uses the low 4
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "fp-reload")
+		}
 		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
 		f.occupyF(e, x)
 		return x
@@ -178,7 +196,7 @@ func (f *fn) materializeF(e *elem) Reg {
 		return x
 	case stMemRef:
 		x := f.allocFReg(0)
-		f.loadFMemRef(x, e.st)
+		f.loadFMemRef(x, e)
 		f.releaseMemRef(e.st)
 		f.occupyF(e, x)
 		return x
@@ -210,6 +228,17 @@ func (f *fn) floatConstReg(st storage) (Reg, bool) {
 			return c.reg, true
 		}
 	}
+	return regNone, false
+}
+
+// preloadFloatConst installs a function-persistent constant before body
+// lowering starts. Constants discovered later cannot be cached persistently:
+// their first use may be inside one control-flow arm, while a later use is
+// reachable from another arm that never initialized the register.
+func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
+	if r, ok := f.floatConstReg(st); ok {
+		return r, true
+	}
 	if len(f.fconsts) >= 2 {
 		return regNone, false
 	}
@@ -237,13 +266,13 @@ func (f *fn) preloadFloatConsts(code []byte) {
 			if err != nil {
 				return
 			}
-			f.floatConstReg(storage{kind: stConst, typ: mtF32, cval: int64(bits)})
+			f.preloadFloatConst(storage{kind: stConst, typ: mtF32, cval: int64(bits)})
 		case 0x44: // f64.const
 			bits, err := r.LEU64()
 			if err != nil {
 				return
 			}
-			f.floatConstReg(storage{kind: stConst, typ: mtF64, cval: int64(bits)})
+			f.preloadFloatConst(storage{kind: stConst, typ: mtF64, cval: int64(bits)})
 		default:
 			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
 				return
@@ -336,10 +365,8 @@ func (f *fn) fconst(bits uint64, typ machineType) {
 	f.pushValue(storage{kind: stConst, typ: typ, cval: int64(bits)})
 }
 
-// fbin lowers add/sub/mul/div via the 3-operand VEX form dst = s1 <op> s2. Both
-// operands are read directly (a pinned local is borrowed, never copied), and the
-// result lands in a reused owned-operand register or a fresh one — so no operand is
-// pre-copied to scratch the way legacy 2-operand SSE requires.
+// Scalar arithmetic keeps the three-operand VEX form when AVX is selected.
+// The SSE2 path explicitly preserves a source when the destination aliases it.
 // foldFloatMem reports whether e is a deferred float load of the given width that
 // can be folded directly as an SSE r/m operand (addsd/mulsd/subsd/divsd xmm, [mem]).
 func foldFloatMem(e *elem, f64 bool) bool {
@@ -351,7 +378,7 @@ func foldFloatMem(e *elem, f64 bool) bool {
 // and mulss/mulsd (0x59). subss/subsd and divss/divsd are not.
 func fMemCommutable(memOp byte) bool { return memOp == 0x58 || memOp == 0x59 }
 
-func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
+func (f *fn) fbin(memOp byte, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
 	if commuteFMemEnabled && fMemCommutable(memOp) && foldFloatMem(a, f64) && !foldFloatMem(b, f64) {
@@ -379,7 +406,7 @@ func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
 		dst = f.allocFReg(0)
 	}
 	f.fpinned = f.fpinned.remove(s1)
-	vop(dst, s1, s2, f64)
+	f.scalarBinary(memOp, dst, s1, s2, f64)
 	if o1 && dst != s1 {
 		f.releaseF(s1)
 	}
@@ -389,7 +416,7 @@ func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
-func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
+func (f *fn) fbinInto(dst Reg, memOp byte, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
 	if commuteFMemEnabled && fMemCommutable(memOp) && foldFloatMem(a, f64) && !foldFloatMem(b, f64) {
@@ -404,7 +431,7 @@ func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, 
 	f.fpinned = f.fpinned.add(s1)
 	s2, o2 := f.operandRegF(b)
 	f.fpinned = f.fpinned.remove(s1)
-	vop(dst, s1, s2, f64)
+	f.scalarBinary(memOp, dst, s1, s2, f64)
 	if o1 && dst != s1 {
 		f.releaseF(s1)
 	}
@@ -415,14 +442,15 @@ func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, 
 
 func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 	src, owned := f.operandRegF(a)
+	useVEX := f.opt(optVEXFloatMem) && f.cpuHas(shared.AMD64AVX)
 	dst := src
 	if !owned {
 		dst = f.allocFReg(maskOf(src))
-		if !f.opt(optVEXFloatMem) {
+		if !useVEX {
 			f.a.FMov(dst, src, f64)
 		}
 	}
-	if f.opt(optVEXFloatMem) {
+	if useVEX {
 		f.a.VFMemIdx(memOp, dst, src, RBX, b.st.reg, b.st.memDisp(), f64)
 	} else {
 		f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
@@ -433,10 +461,11 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 
 func (f *fn) fbinMemRightInto(dst Reg, a, b *elem, memOp byte, f64 bool) {
 	src, owned := f.operandRegF(a)
-	if !f.opt(optVEXFloatMem) && dst != src {
+	useVEX := f.opt(optVEXFloatMem) && f.cpuHas(shared.AMD64AVX)
+	if !useVEX && dst != src {
 		f.a.FMov(dst, src, f64)
 	}
-	if f.opt(optVEXFloatMem) {
+	if useVEX {
 		f.a.VFMemIdx(memOp, dst, src, RBX, b.st.reg, b.st.memDisp(), f64)
 	} else {
 		f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
@@ -511,7 +540,11 @@ func (f *fn) fsqrt(f64 bool) {
 	// VEX 3-operand vsqrtsd dst,src,src: sqrt(src) with the upper bits taken from
 	// src, so the write to dst has no false dependency on dst's prior value (which
 	// would serialize independent sqrts across a loop — see raytrace).
-	f.a.VFSqrt(dst, src, src, f64)
+	if f.cpuHas(shared.AMD64AVX) {
+		f.a.VFSqrt(dst, src, src, f64)
+	} else {
+		f.a.FSqrt(dst, src, f64)
+	}
 	f.pushFReg(dst, mtOf2(f64))
 }
 
@@ -532,7 +565,7 @@ func (f *fn) fsign(op byte, mask64 uint64, mask32 uint32, f64 bool) {
 	if f64 {
 		pp = 0b01
 	}
-	f.a.VSseRRR(pp, op, dst, src, m)
+	f.scalarLogic(pp, op, dst, src, m)
 	f.releaseF(m)
 	f.pushFReg(dst, mtOf2(f64))
 }
@@ -546,7 +579,7 @@ func (f *fn) fround(f64 bool, mode byte) {
 	if !owned { // borrowed pinned local: round into a fresh dest, leave the local intact
 		dst = f.allocFReg(maskOf(src))
 	}
-	f.a.Round(dst, src, f64, mode)
+	f.scalarRound(dst, src, f64, mode)
 	f.pushFReg(dst, mtOf2(f64))
 }
 
@@ -586,12 +619,12 @@ func (f *fn) fcopysign(f64 bool) {
 	if f64 {
 		pp = 0b01
 	}
-	f.a.VSseRRR(pp, 0x57, dst, xa, xb) // dst = a ^ b
-	f.a.VSseRRR(pp, 0x54, dst, dst, m) // retain magnitude or sign difference
+	f.scalarLogic(pp, 0x57, dst, xa, xb) // dst = a ^ b
+	f.scalarLogic(pp, 0x54, dst, dst, m) // retain magnitude or sign difference
 	if useMagnitude {
-		f.a.VSseRRR(pp, 0x57, dst, xb, dst) // dst = b ^ magnitude(a^b)
+		f.scalarLogic(pp, 0x57, dst, xb, dst) // dst = b ^ magnitude(a^b)
 	} else {
-		f.a.VSseRRR(pp, 0x57, dst, xa, dst) // dst = a ^ sign(a^b)
+		f.scalarLogic(pp, 0x57, dst, xa, dst) // dst = a ^ sign(a^b)
 	}
 	f.releaseF(m)
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
@@ -664,7 +697,7 @@ func (f *fn) emitFCmpSetcc(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
 func (f *fn) i2f(f64, srcWide bool) {
 	gpr := f.materialize(f.popValue())
 	xmm := f.allocFReg(0)
-	f.a.VPxor(xmm, xmm, xmm) // break CVTSI2SD's false dep on xmm (loop pipelining)
+	f.scalarZero(xmm) // break CVTSI2SD's false dep on xmm (loop pipelining)
 	f.a.Cvtsi2f(xmm, gpr, f64, srcWide)
 	f.release(gpr)
 	f.pushFReg(xmm, mtOf2(f64))
@@ -681,7 +714,7 @@ func (f *fn) i2fU(f64, srcWide bool) {
 		// on xmm's previous value — which serializes independent conversions across a
 		// loop (each cvtsi2sd waits on the prior one via the reused register). Break
 		// it with a zeroing idiom so the conversions/downstream ops pipeline.
-		f.a.VPxor(xmm, xmm, xmm)
+		f.scalarZero(xmm)
 		f.a.Cvtsi2f(xmm, gpr, f64, true)
 		f.release(gpr)
 		f.pushFReg(xmm, mtOf2(f64))
@@ -690,7 +723,7 @@ func (f *fn) i2fU(f64, srcWide bool) {
 	gpr := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(gpr)
 	xmm := f.allocFReg(0)
-	f.a.VPxor(xmm, xmm, xmm) // break CVTSI2SD's false dep on xmm (both branches below)
+	f.scalarZero(xmm) // break CVTSI2SD's false dep on xmm (both branches below)
 	f.a.TestSelf(gpr, true)
 	big := f.a.JccPlaceholder(condS)
 	f.a.Cvtsi2f(xmm, gpr, f64, true)
@@ -989,7 +1022,12 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 
 // helpers
 
-func (f *fn) loadFMemRef(dst Reg, st storage) {
+func (f *fn) loadFMemRef(dst Reg, e *elem) {
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		previous := f.enterProfileNode(e)
+		defer f.switchProfileOrigin(previous)
+	}
+	st := e.st
 	f.a.FLoadIdx(dst, RBX, st.reg, st.memDisp(), st.typ == mtF64)
 }
 

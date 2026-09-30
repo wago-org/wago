@@ -121,8 +121,8 @@ func TestAuxPackUnpackRoundTrips(t *testing.T) {
 		t.Fatalf("packKindType round trip failed: kind=%d type=%s", auxKind(kt), auxType(kt))
 	}
 	mem := packMem(MemI64Load32U, 3, 2, 0xabcdef)
-	if memKind(mem) != MemI64Load32U || memAlign(mem) != 3 || memIndex(mem) != 2 || memOffset(mem) != 0xabcdef {
-		t.Fatalf("packMem round trip failed: kind=%d align=%d mem=%d off=%x", memKind(mem), memAlign(mem), memIndex(mem), memOffset(mem))
+	if memKind(mem) != MemI64Load32U || memAlign(mem) != 3 || memIndex(mem) != 2 || memOffset(mem, 0) != 0xabcdef {
+		t.Fatalf("packMem round trip failed: kind=%d align=%d mem=%d off=%x", memKind(mem), memAlign(mem), memIndex(mem), memOffset(mem, 0))
 	}
 	ci := packCallIndirect(123, 456)
 	if callIndirectType(ci) != 123 || callIndirectTable(ci) != 456 {

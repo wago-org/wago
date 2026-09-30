@@ -32,26 +32,22 @@ func (pluginGCWideBoundaryTestPlugin) Register(reg *Registrar) error {
 	if err != nil {
 		return err
 	}
-	module, err := imports.Module("plugin_gc_wide")
-	if err != nil {
-		return err
-	}
-	module.Func("wide_result", func(_ HostModule, _, results []uint64) {
+	testRegisterHostFunc(imports, "plugin_gc_wide", "wide_result", func(_ HostModule, _, results []uint64) {
 		results[0] = 0
 		results[1] = 1
 		results[2] = 2
 		results[3] = 3
 		results[4] = 4
 	}).Results(ValAnyRef, ValI32, ValI64, ValI32, ValI32)
-	module.Func("null_result", func(_ HostModule, _, results []uint64) {
+	testRegisterHostFunc(imports, "plugin_gc_wide", "null_result", func(_ HostModule, _, results []uint64) {
 		results[0] = 0
 	}).Results(ValAnyRef)
 	params := make([]ValType, 11)
 	for i := range params {
 		params[i] = ValI32
 	}
-	module.Func("scalar_11", func(HostModule, []uint64, []uint64) {}).Params(params...)
-	module.Func("wide_scalar_results", func(_ HostModule, params, results []uint64) {
+	testRegisterHostFunc(imports, "plugin_gc_wide", "scalar_11", func(HostModule, []uint64, []uint64) {}).Params(params...)
+	testRegisterHostFunc(imports, "plugin_gc_wide", "wide_scalar_results", func(_ HostModule, params, results []uint64) {
 		for i := range results {
 			results[i] = uint64(i) + params[0]
 		}
@@ -199,7 +195,7 @@ func TestPluginGCWideScalarHostImportUsesSynchronousABI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	values, err := in.Call(context.Background(), "run")
+	values, err := in.InvokeValues(context.Background(), "run")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +226,7 @@ func TestPluginGCWideScalarCallerUsesSynchronousABI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	values, err := in.Call(context.Background(), "run")
+	values, err := in.InvokeValues(context.Background(), "run")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +293,7 @@ func TestPluginGCHostBoundaryWideWrapperABI(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			values, err := in.Call(context.Background(), "run")
+			values, err := in.InvokeValues(context.Background(), "run")
 			if err != nil {
 				t.Fatal(err)
 			}

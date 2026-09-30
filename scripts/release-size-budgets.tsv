@@ -1,5 +1,6 @@
+# Go 1.27.1 / TinyGo 0.42.0 release toolchains; linux/amd64 stripped bytes.
 # profile	max_linux_amd64_bytes
-manager	9000000
-runtime-standard	8870000
-runtime-minimal	8560000
-runtime-minimal-tiny	2317000
+manager	9950000
+runtime-standard	9480000
+runtime-minimal	9110000
+runtime-minimal-tiny	2720000

@@ -142,6 +142,7 @@ func BenchmarkCompileLoadPairArm64(b *testing.B) {
 }
 
 func TestLoadPairFiresAndNearMissesArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	var stats ModuleStats
 	paired, err := CompileModuleWith(loadPairModuleARM64(t, 4), CompileOptions{Stats: &stats, Optimizations: map[string]bool{"load-pair": true}})
 	if err != nil {

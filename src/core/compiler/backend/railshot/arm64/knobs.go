@@ -13,6 +13,8 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
+	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
+	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
 	optimization.Bind("leaf-scratch-memsize", &leafScratchMemSizeEnabled),
 	optimization.Bind("loop-trap-cell", &loopTrapCellEnabled),
@@ -39,9 +41,12 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("uxtw-add", &uxtwAddEnabled),
 	optimization.Bind("shifted-register-alu", &shiftedRegisterALUEnabled),
 	optimization.Bind("fp-immediate-const", &fpImmediateConstEnabled),
+	optimization.Bind("fp-literal-pool", &floatLiteralPoolEnabled),
 	optimization.Bind("value-facts", &valueFactsEnabled),
 	optimization.Bind("load-pair", &loadPairEnabled),
 	optimization.Bind("merge-next-use", &mergeNextUseEnabled),
+	optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
+	optimization.Bind("callfree-loop-cold-exit", &callFreeLoopColdExitEnabled),
 	optimization.Bind("weighted-scalar-merge", &weightedScalarMergeEnabled),
 	optimization.Bind("entry-param-pairs", &entryParamPairsEnabled),
 	optimization.Bind("entry-zero-pairs", &entryZeroPairsEnabled),
@@ -59,6 +64,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("mul-add-fuse", &mulAddFuseEnabled),
 	optimization.Bind("entry-init-elision", &entryInitElisionEnabled),
 	optimization.Bind("v128-direct-results", &v128DirectResultEnabled),
+	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
@@ -70,6 +76,8 @@ var (
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
 	optSIMDSuperopt         = optimizationBindings.Option("simd-superopt")
 	optIntervalRegionPins   = optimizationBindings.Option("interval-region-pins")
+	optIntervalNextUse      = optimizationBindings.Option("interval-next-use")
+	optLinearSumLoop        = optimizationBindings.Option("linear-sum-loop")
 	optMultiBoundsCert      = optimizationBindings.Option("multi-bounds-cert")
 	optLeafScratchMemSize   = optimizationBindings.Option("leaf-scratch-memsize")
 	optLoopTrapCell         = optimizationBindings.Option("loop-trap-cell")
@@ -96,9 +104,12 @@ var (
 	optUXTWAdd              = optimizationBindings.Option("uxtw-add")
 	optShiftedRegisterALU   = optimizationBindings.Option("shifted-register-alu")
 	optFPImmediateConst     = optimizationBindings.Option("fp-immediate-const")
+	optFPLiteralPool        = optimizationBindings.Option("fp-literal-pool")
 	optValueFacts           = optimizationBindings.Option("value-facts")
 	optLoadPair             = optimizationBindings.Option("load-pair")
 	optMergeNextUse         = optimizationBindings.Option("merge-next-use")
+	optCountedLoopLatch     = optimizationBindings.Option("counted-loop-latch")
+	optCallFreeLoopColdExit = optimizationBindings.Option("callfree-loop-cold-exit")
 	optWeightedScalarMerge  = optimizationBindings.Option("weighted-scalar-merge")
 	optEntryParamPairs      = optimizationBindings.Option("entry-param-pairs")
 	optEntryZeroPairs       = optimizationBindings.Option("entry-zero-pairs")
@@ -116,6 +127,7 @@ var (
 	optMulAddFuse           = optimizationBindings.Option("mul-add-fuse")
 	optEntryInitElision     = optimizationBindings.Option("entry-init-elision")
 	optV128DirectResults    = optimizationBindings.Option("v128-direct-results")
+	optV128ConstCache       = optimizationBindings.Option("v128-const-cache")
 	optV128Pins             = optimizationBindings.Option("v128-pins")
 	optRegABI               = optimizationBindings.Option("reg-abi")
 	optInline               = optimizationBindings.Option("inline")

@@ -31,11 +31,11 @@ func TestTypedFunctionReferenceMutableGlobalBoundaries(t *testing.T) {
 	}
 	defer producer.Close()
 
-	matching, err := producer.Call(context.Background(), "getF")
+	matching, err := producer.InvokeValues(context.Background(), "getF")
 	if err != nil || len(matching) != 1 {
 		t.Fatalf("getF = %v, %v", matching, err)
 	}
-	mismatch, err := producer.Call(context.Background(), "getG")
+	mismatch, err := producer.InvokeValues(context.Background(), "getG")
 	if err != nil || len(mismatch) != 1 {
 		t.Fatalf("getG = %v, %v", mismatch, err)
 	}

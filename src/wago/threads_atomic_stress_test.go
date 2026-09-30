@@ -26,7 +26,7 @@ func TestThreadsAtomicRMWContentionReturnsExactCounter(t *testing.T) {
 	defer memory.Close()
 	instances := make([]*Instance, goroutines)
 	for i := range instances {
-		instances[i], err = Instantiate(compiled, Imports{"env.memory": memory})
+		instances[i], err = Instantiate(compiled, testImports("env.memory", memory))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -76,7 +76,7 @@ func TestThreadsAtomicCmpxchgContentionReturnsExactCounter(t *testing.T) {
 	cell := (*uint32)(unsafe.Pointer(&memory.UnsafeBytes()[0]))
 	instances := make([]*Instance, goroutines)
 	for i := range instances {
-		instances[i], err = Instantiate(compiled, Imports{"env.memory": memory})
+		instances[i], err = Instantiate(compiled, testImports("env.memory", memory))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -135,12 +135,12 @@ func TestThreadsAtomicWaitNotifyBarrier(t *testing.T) {
 	type pair struct{ add, wait *Instance }
 	instances := make([]pair, participants)
 	for i := range instances {
-		instances[i].add, err = Instantiate(addCode, Imports{"env.memory": memory})
+		instances[i].add, err = Instantiate(addCode, testImports("env.memory", memory))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer instances[i].add.Close()
-		instances[i].wait, err = Instantiate(waitCode, Imports{"env.memory": memory})
+		instances[i].wait, err = Instantiate(waitCode, testImports("env.memory", memory))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -191,7 +191,7 @@ func TestThreadsRepeatedInstantiateCloseReclaimsImporterState(t *testing.T) {
 	defer compiled.Close()
 	memory, _ := NewSharedMemory(1, 1)
 	for i := 0; i < 250; i++ {
-		instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+		instance, err := Instantiate(compiled, testImports("env.memory", memory))
 		if err != nil {
 			t.Fatalf("cycle %d instantiate: %v", i, err)
 		}

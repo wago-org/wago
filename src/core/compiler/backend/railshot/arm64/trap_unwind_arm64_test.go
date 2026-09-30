@@ -12,7 +12,9 @@ import (
 func emitTwoTrapGroupsArm64(compact bool) (*fn, int) {
 	a := &a64.Asm{}
 	sc := &scratch{asm: a}
-	f := &fn{a: a, sc: sc, stats: &CodegenStats{}, policy: CodegenPolicy{CompactNative: compact}}
+	policy := currentCodegenPolicy()
+	policy.CompactNative = compact
+	f := &fn{a: a, sc: sc, stats: &CodegenStats{}, policy: policy}
 	sc.trapSites[trapUnreachable] = append(sc.trapSites[trapUnreachable], f.trapSite(a.Branch()|1))
 	sc.trapSites[trapMemOOB] = append(sc.trapSites[trapMemOOB], f.trapSite(a.Branch()|1))
 	f.emitTrapStubs()
@@ -20,6 +22,7 @@ func emitTwoTrapGroupsArm64(compact bool) (*fn, int) {
 }
 
 func TestModuleSharedTrapBodySeedsFromHostBoundaryArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	i32 := []wasm.ValType{wasm.I32}
 	callee := []byte{
 		0x00,
@@ -70,6 +73,7 @@ func TestCompactNativeSharedTrapUnwindExecutesArm64(t *testing.T) {
 }
 
 func TestCompactNativeSharesFunctionLocalTrapUnwindArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := sharedTrapBodyEnabled
 	sharedTrapBodyEnabled = false
 	t.Cleanup(func() { sharedTrapBodyEnabled = before })
@@ -87,6 +91,7 @@ func TestCompactNativeSharesFunctionLocalTrapUnwindArm64(t *testing.T) {
 }
 
 func TestCompactNativeSharesCompleteTrapBodyArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	before := sharedTrapBodyEnabled
 	sharedTrapBodyEnabled = true
 	t.Cleanup(func() { sharedTrapBodyEnabled = before })
@@ -104,6 +109,7 @@ func TestCompactNativeSharesCompleteTrapBodyArm64(t *testing.T) {
 }
 
 func TestCompactNativeSharesModuleTrapBodiesArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
 	oldInline := inlineEnabled
 	inlineEnabled = false
 	t.Cleanup(func() { inlineEnabled = oldInline })

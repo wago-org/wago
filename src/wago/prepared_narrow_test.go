@@ -16,7 +16,7 @@ func TestPreparedDirectDoesNotAllocateInvocationIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestPreparedDirectDoesNotAllocateInvocationIdentity(t *testing.T) {
 		t.Fatal("fixture must select isolated direct entry")
 	}
 	before := nextInvocationID.Load()
-	out, err := fn.Invoke1(41)
+	out, err := fn.Invoke(41)
 	if err != nil || len(out) != 1 || out[0] != 42 {
 		t.Fatalf("call = %v, %v", out, err)
 	}
@@ -38,7 +38,7 @@ func TestPreparedDirectDoesNotAllocateInvocationIdentity(t *testing.T) {
 	}
 }
 
-func narrowPreparedFixture(t *testing.T) (*Instance, *PreparedFunction) {
+func narrowPreparedFixture(t *testing.T) (*Instance, *WasmFunc) {
 	t.Helper()
 	c := MustCompile(benchAddOneModule())
 	t.Cleanup(func() { c.Close() })
@@ -47,7 +47,7 @@ func narrowPreparedFixture(t *testing.T) (*Instance, *PreparedFunction) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { in.Close() })
-	fn, err := in.PrepareFunction("f")
+	fn, err := in.WasmFunc("f")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestPreparedDirectSharesInvocationGate(t *testing.T) {
 		t.Fatal("direct entry bypassed general owner")
 	}
 	gate.Unlock()
-	out, err := fn.Invoke1(41)
+	out, err := fn.Invoke(41)
 	if err != nil || len(out) != 1 || out[0] != 42 {
 		t.Fatalf("call after conflict = %v, %v", out, err)
 	}
@@ -109,12 +109,57 @@ func TestPreparedDirectRevocation(t *testing.T) {
 		t.Fatal("revoked instance admitted direct entry")
 	}
 	before := nextInvocationID.Load()
-	out, err := fn.Invoke1(41)
+	out, err := fn.Invoke(41)
 	if err != nil || len(out) != 1 || out[0] != 42 {
 		t.Fatalf("fallback = %v, %v", out, err)
 	}
 	if nextInvocationID.Load() == before {
 		t.Fatal("fallback omitted general identity")
+	}
+}
+
+func TestInvocationGateFastUnlockPreservesRevocationAndHandsOffWaiter(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		initial uint32
+		want    uint32
+		waiter  bool
+	}{
+		{"uncontended", invocationGateHeld | invocationGateFast, 0, false},
+		{"revoked", invocationGateHeld | invocationGateFast | invocationGateRevoked, invocationGateRevoked, false},
+		{"waiting", invocationGateHeld | invocationGateFast | invocationGateWaiters, invocationGateHeld | invocationGateHandoff, true},
+		{"waiting revoked", invocationGateHeld | invocationGateFast | invocationGateWaiters | invocationGateRevoked, invocationGateHeld | invocationGateRevoked | invocationGateHandoff, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var gate invocationGate
+			gate.state.Store(tc.initial)
+			var waiter *invocationGateWaiter
+			if tc.waiter {
+				waiter = &invocationGateWaiter{ready: make(chan struct{}), queued: true}
+				gate.slow = &invocationGateSlowState{head: waiter, tail: waiter}
+			}
+			gate.Unlock()
+			if got := gate.state.Load(); got != tc.want {
+				t.Fatalf("gate state = %d, want %d", got, tc.want)
+			}
+			if tc.waiter {
+				select {
+				case <-waiter.ready:
+				default:
+					t.Fatal("waiter was not handed the gate")
+				}
+				if !waiter.granted || waiter.queued {
+					t.Fatalf("waiter state = granted %v, queued %v", waiter.granted, waiter.queued)
+				}
+				if !gate.tryAcquireHandoff() || gate.state.Load() != tc.want&^invocationGateHandoff {
+					t.Fatal("notified waiter could not claim exclusive ownership")
+				}
+				gate.Unlock()
+				if got := gate.state.Load(); got != tc.initial&invocationGateRevoked {
+					t.Fatalf("released handoff state = %d", got)
+				}
+			}
+		})
 	}
 }
 
@@ -156,18 +201,18 @@ func TestPreparedDirectLifetimeDuringClose(t *testing.T) {
 			} else {
 				in, _ = narrowPreparedFixture(t)
 			}
-			fn, err := in.PrepareFunction("f")
+			fn, err := in.WasmFunc("f")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := in.beginInvocation(); err != nil {
+			if err := in.beginDirectInvocation(); err != nil {
 				t.Fatal(err)
 			}
 			if !in.tryPreparedDirect() {
 				t.Fatal("private reservation rejected")
 			}
 			var once sync.Once
-			release := func() { once.Do(func() { in.ensurePluginState().invokeMu.Unlock(); in.endInvocation() }) }
+			release := func() { once.Do(func() { in.ensurePluginState().invokeMu.Unlock(); in.endDirectInvocation() }) }
 			defer release()
 			done := make(chan error, 1)
 			go func() {
@@ -200,7 +245,7 @@ func TestPreparedDirectLifetimeDuringClose(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Fatal("close did not finish")
 			}
-			if _, err := fn.Invoke1(41); err == nil {
+			if _, err := fn.Invoke(41); err == nil {
 				t.Fatal("closed instance accepted prepared call")
 			}
 		})
