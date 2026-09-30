@@ -55,7 +55,11 @@ func (f *fn) materializeV128(e *elem) Reg {
 		// cannot corrupt the local — mirrors arm64 materializeV128 and the scalar
 		// materializeF stLocalReg copy.
 		x := f.allocFReg(0)
+		before := f.a.Len()
 		f.mov128(x, e.st.reg)
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "vector-borrow-copy")
+		}
 		f.occupyF(e, x)
 		return x
 	}
@@ -487,35 +491,35 @@ func (f *fn) v128Const(lo, hi uint64) {
 
 func (f *fn) v128UnaryNot() {
 	a := f.popValue()
-	x := f.materializeV128(a)
-	m := f.allocFReg(maskOf(x))
+	x, src := f.v128OutputOperand(a)
+	m := f.allocFReg(maskOf(x, src))
 	opVPcmpeqb.emit(f, m, m, m)
-	opVPxor.emit(f, x, x, m)
+	opVPxor.emit(f, x, src, m)
 	f.releaseF(m)
 	f.pushVReg(x)
 }
 
 func (f *fn) v128IntegerNeg(op simdBinaryOp) {
 	a := f.popValue()
-	x := f.materializeV128(a)
-	z := f.allocFReg(maskOf(x))
+	x, src := f.v128OutputOperand(a)
+	z := f.allocFReg(maskOf(x, src))
 	opVPxor.emit(f, z, z, z)
-	op.emit(f, x, z, x)
+	op.emit(f, x, z, src)
 	f.releaseF(z)
 	f.pushVReg(x)
 }
 
 func (f *fn) v128Unary(op simdUnaryOp) {
 	a := f.popValue()
-	x := f.materializeV128(a)
-	op.emit(f, x, x)
+	x, src := f.v128OutputOperand(a)
+	op.emit(f, x, src)
 	f.pushVReg(x)
 }
 
 func (f *fn) v128FloatRound(f64 bool, mode byte) {
 	a := f.popValue()
-	x := f.materializeV128(a)
-	f.emitVFRoundPacked(x, x, f64, mode)
+	x, src := f.v128OutputOperand(a)
+	f.emitVFRoundPacked(x, src, f64, mode)
 	f.pushVReg(x)
 }
 
@@ -712,6 +716,10 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 		}
 	}
 
+	if simdOutputBorrowEnabled {
+		f.v128BorrowedShuffle(aElem, bElem, aMask, bMask)
+		return
+	}
 	xa := f.materializeV128(aElem)
 	f.fpinned = f.fpinned.add(xa)
 	xb := f.materializeV128(bElem)
@@ -1092,7 +1100,16 @@ func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 		return
 	}
 	srcElem := f.popValue()
-	src := f.materializeV128(srcElem)
+	var src Reg
+	owned := true
+	if simdOutputBorrowEnabled {
+		src, owned = f.operandRegV128(srcElem)
+		if !owned {
+			f.stats.peep("simd-convert-input-borrow")
+		}
+	} else {
+		src = f.materializeV128(srcElem)
+	}
 	f.fpinned = f.fpinned.add(src)
 
 	if f64dst {
@@ -1113,7 +1130,9 @@ func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 		f.releaseF(magic)
 		f.fpinned = f.fpinned.remove(zx)
 		f.fpinned = f.fpinned.remove(src)
-		f.releaseF(src)
+		if owned {
+			f.releaseF(src)
+		}
 		f.pushVReg(zx)
 		return
 	}
@@ -1142,7 +1161,9 @@ func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 	f.releaseF(hi)
 	f.fpinned = f.fpinned.remove(lo)
 	f.fpinned = f.fpinned.remove(src)
-	f.releaseF(src)
+	if owned {
+		f.releaseF(src)
+	}
 	f.pushVReg(lo)
 }
 
@@ -1153,8 +1174,8 @@ func (f *fn) v128Shift(op simdBinaryOp, opImm simdShiftImmediate, countMask int3
 
 func (f *fn) v128ShiftCount(countElem *elem, op simdBinaryOp, opImm simdShiftImmediate, countMask int32) {
 	if countElem.isValue() && countElem.st.kind == stConst {
-		x := f.materializeV128(f.popValue())
-		opImm.emit(f, x, x, byte(countElem.st.cval&int64(countMask)))
+		x, src := f.v128OutputOperand(f.popValue())
+		opImm.emit(f, x, src, byte(countElem.st.cval&int64(countMask)))
 		f.stats.peep("simd-shift-imm")
 		f.pushVReg(x)
 		return
@@ -1163,12 +1184,12 @@ func (f *fn) v128ShiftCount(countElem *elem, op simdBinaryOp, opImm simdShiftImm
 	f.a.AluRI(4, count, countMask, false) // Wasm shifts use count modulo lane width.
 
 	value := f.popValue()
-	x := f.materializeV128(value)
-	countX := f.allocFReg(maskOf(x))
+	x, src := f.v128OutputOperand(value)
+	countX := f.allocFReg(maskOf(x, src))
 	f.a.MovGprToXmm(countX, count, false)
 	f.release(count)
 
-	op.emit(f, x, x, countX)
+	op.emit(f, x, src, countX)
 	f.releaseF(countX)
 	f.pushVReg(x)
 }

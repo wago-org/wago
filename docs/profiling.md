@@ -478,6 +478,9 @@ and materialized reloads, plus custom-value spill stores and linear-memory bound
 branches. AMD64 also records `fp-local-load`, `fp-local-store`,
 `vector-local-load`, and `vector-local-store` for direct scalar FP and vector
 frame-local transfers, including local recovery and call argument loads.
+AMD64 records `fp-borrow-copy` and `vector-borrow-copy` for register copies
+that protect a borrowed local before destructive materialization. These sites
+exclude register allocation and represent neither spills nor reloads.
 AMD64 records `gp-local-load` and `gp-local-store` for direct
 integer local-frame transfers, including initialization, parameter homing,
 pinned-local writebacks, and call synchronization. These are separate from

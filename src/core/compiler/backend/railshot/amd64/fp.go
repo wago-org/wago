@@ -191,7 +191,11 @@ func (f *fn) materializeF(e *elem) Reg {
 		// Borrowed pinned float local: copy into an owned XMM so the caller may
 		// clobber it without corrupting the local.
 		x := f.allocFReg(0)
+		before := f.a.Len()
 		f.a.FMov(x, e.st.reg, e.st.typ == mtF64)
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "fp-borrow-copy")
+		}
 		f.occupyF(e, x)
 		return x
 	case stMemRef:
