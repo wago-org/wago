@@ -274,16 +274,54 @@ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	f.a.AluRI(cmpDigit, counterReg, 4, false)
 	toRemainder := f.a.JccPlaceholder(condB)
 
+	mt, _ := f.m.MemoryType(0)
+	mayWrap := !mt.Limits.HasMax || mt.Limits.Max >= 65536
+	toWrapping := -1
+	if mayWrap {
+		// Select the exceptional loop once; ordinary groups keep native addresses.
+		// Both inputs are zero-extended i32, so this widened end cannot overflow.
+		f.a.MovRegReg32(p1, counterReg)
+		f.a.ShiftImm(4, p1, 3, true)
+		f.a.Add64(p1, addrReg)
+		f.a.ShiftImm(5, p1, 32, true)
+		f.a.MovImm64(p1, 0) // MOV preserves the SHR zero flag.
+		toWrapping = f.a.JccPlaceholder(condNE)
+	}
+	emitGroup := func() {
+		for i, reg := range [4]Reg{accReg, p1, p2, p3} {
+			f.a.AluIdx(aluTable[opAdd].rm, reg, RBX, addrReg, int32(i*8), true)
+		}
+		f.a.AluRI(aluTable[opAdd].digit, addrReg, 32, false)
+		f.a.AluRI(aluTable[opSub].digit, counterReg, 4, false)
+		f.a.AluRI(cmpDigit, counterReg, 4, false)
+	}
 	group := f.a.Len()
-	f.a.AluIdx(aluTable[opAdd].rm, accReg, RBX, addrReg, 0, true)
-	f.a.AluIdx(aluTable[opAdd].rm, p1, RBX, addrReg, 8, true)
-	f.a.AluIdx(aluTable[opAdd].rm, p2, RBX, addrReg, 16, true)
-	f.a.AluIdx(aluTable[opAdd].rm, p3, RBX, addrReg, 24, true)
-	f.a.AluRI(aluTable[opAdd].digit, addrReg, 32, false)
-	f.a.AluRI(aluTable[opSub].digit, counterReg, 4, false)
-	f.a.AluRI(cmpDigit, counterReg, 4, false)
+	emitGroup()
 	moreGroups := f.a.JccPlaceholder(condAE)
 	f.a.PatchRel32(moreGroups, group)
+	if mayWrap {
+		toTail := f.a.JmpPlaceholder()
+		wrapping := f.a.Len()
+		f.a.PatchRel32(toWrapping, wrapping)
+		// An aligned group at or below ffffffe0 fits. Consume at most three
+		// scalar elements at the boundary, then resume four-load groups.
+		f.a.AluRI(cmpDigit, addrReg, -32, false)
+		toSafeGroup := f.a.JccPlaceholder(condBE)
+		transition := f.a.Len()
+		f.a.AluIdx(aluTable[opAdd].rm, accReg, RBX, addrReg, 0, true)
+		f.a.AluRI(aluTable[opSub].digit, counterReg, 1, false)
+		f.a.AluRI(aluTable[opAdd].digit, addrReg, 8, false)
+		moreTransition := f.a.JccPlaceholder(condNE)
+		f.a.PatchRel32(moreTransition, transition)
+		f.a.AluRI(cmpDigit, counterReg, 4, false)
+		toTailAfterWrap := f.a.JccPlaceholder(condB)
+		f.a.PatchRel32(toSafeGroup, f.a.Len())
+		emitGroup()
+		moreWrapping := f.a.JccPlaceholder(condAE)
+		f.a.PatchRel32(moreWrapping, wrapping)
+		f.a.PatchRel32(toTail, f.a.Len())
+		f.a.PatchRel32(toTailAfterWrap, f.a.Len())
+	}
 
 	f.a.PatchRel32(toRemainder, f.a.Len())
 	f.a.TestSelf(counterReg, false)

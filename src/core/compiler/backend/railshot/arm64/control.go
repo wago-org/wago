@@ -311,20 +311,58 @@ func (f *fn) tryUnrolledLinearSumLatch(counter int) bool {
 	f.a.CmpImm32(counterReg, 4)
 	toRemainder := f.a.Bcond(condB)
 
+	mt, _ := f.m.MemoryType(0)
+	mayWrap := !mt.Limits.HasMax || mt.Limits.Max >= 65536
+	toWrapping := -1
+	if mayWrap {
+		// Select the exceptional loop once; ordinary groups keep native addresses.
+		// Both inputs are zero-extended i32, so this widened end cannot overflow.
+		f.a.MovReg32(p1, counterReg)
+		f.a.LslImm(p1, p1, 3, false)
+		f.a.Add64(p1, p1, addrReg)
+		f.a.MovImm64(X16, 1<<32)
+		f.cmpRR(p1, X16, true)
+		f.a.MovImm64(p1, 0)
+		toWrapping = f.a.Bcond(condAE)
+	}
+	emitGroup := func() {
+		for i, reg := range [4]Reg{accReg, p1, p2, p3} {
+			f.a.LoadIdx(X16, linMemReg, addrReg, int32(i*8), 8, false, true)
+			f.a.Add64(reg, reg, X16)
+		}
+		f.a.AddImm32(addrReg, addrReg, 32)
+		f.a.SubImm32(counterReg, counterReg, 4)
+		f.a.CmpImm32(counterReg, 4)
+	}
 	group := f.a.Len()
-	f.a.LoadIdx(X16, linMemReg, addrReg, 0, 8, false, true)
-	f.a.Add64(accReg, accReg, X16)
-	f.a.LoadIdx(X16, linMemReg, addrReg, 8, 8, false, true)
-	f.a.Add64(p1, p1, X16)
-	f.a.LoadIdx(X16, linMemReg, addrReg, 16, 8, false, true)
-	f.a.Add64(p2, p2, X16)
-	f.a.LoadIdx(X16, linMemReg, addrReg, 24, 8, false, true)
-	f.a.Add64(p3, p3, X16)
-	f.a.AddImm32(addrReg, addrReg, 32)
-	f.a.SubImm32(counterReg, counterReg, 4)
-	f.a.CmpImm32(counterReg, 4)
+	emitGroup()
 	moreGroups := f.a.Bcond(condAE)
-	_ = f.a.PatchBranch19(moreGroups, group)
+	f.patchBranch19(moreGroups, group)
+	if mayWrap {
+		toTail := f.a.Branch()
+		wrapping := f.a.Len()
+		f.patchBranch19(toWrapping, wrapping)
+		// An aligned group at or below ffffffe0 fits. Consume at most three
+		// scalar elements at the boundary, then resume four-load groups.
+		f.a.MovImm64(X16, 0xffffffe0)
+		f.cmpRR(addrReg, X16, false)
+		toSafeGroup := f.a.Bcond(condBE)
+		transition := f.a.Len()
+		f.a.LoadIdx(X16, linMemReg, addrReg, 0, 8, false, true)
+		f.a.Add64(accReg, accReg, X16)
+		f.a.SubImm32(counterReg, counterReg, 1)
+		f.a.AddImm32(addrReg, addrReg, 8)
+		moreTransition := f.a.Cbnz32(addrReg)
+		f.patchBranch19(moreTransition, transition)
+		f.a.CmpImm32(counterReg, 4)
+		toTailAfterWrap := f.a.Bcond(condB)
+		f.patchBranch19(toSafeGroup, f.a.Len())
+		emitGroup()
+		moreWrapping := f.a.Bcond(condAE)
+		f.patchBranch19(moreWrapping, wrapping)
+		f.patchBranch26(toTail, f.a.Len())
+		f.patchBranch19(toTailAfterWrap, f.a.Len())
+	}
 
 	_ = f.a.PatchBranch19(toRemainder, f.a.Len())
 	noRemainder := f.a.Cbz32(counterReg)
