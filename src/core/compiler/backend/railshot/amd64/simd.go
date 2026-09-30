@@ -618,7 +618,16 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
 // clearV128LocalAliases invalidates stack annotations for the previous version
 // of x before local.set/tee installs a new version. The stack values themselves
 // remain valid expression operands; they simply no longer represent x.
+// Keep the filter on the platform qualified with native correctness and paired
+// compilation measurements. Zero retains the original scan as an oracle.
+var vectorAliasTypeFilterEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_VECTOR_ALIAS_TYPE_FILTER") != "0"
+
 func (f *fn) clearV128LocalAliases(x int) {
+	// Local types are fixed, including the rebased locals of an inline body.
+	// Only vector assignments can invalidate a vector-local alias.
+	if vectorAliasTypeFilterEnabled && f.localType[x] != mtV128 {
+		return
+	}
 	for e := f.s.back(); e != nil && e != f.s.head; e = e.prev {
 		if e.isValue() && e.st.kind == stReg && e.st.typ == mtV128 && e.st.cval == int64(x+1) {
 			e.st.cval = 0
