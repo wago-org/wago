@@ -2094,12 +2094,15 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	f.emitMixedRegisterCallVia(localIdx, regNone, ft)
 }
 
-// stageMixedCallSpills protects sources from the canonical stores in flushBelow.
-func (f *fn) stageMixedCallSpills(belowSlots int, belowRoots []*elem) {
+// stageCanonicalSpills protects sources from the canonical stores in flushBelow.
+func (f *fn) stageCanonicalSpills(belowSlots int, belowRoots []*elem) {
 	if belowSlots == 0 {
 		return
 	}
 	nextSlot := f.spillFloor
+	if belowSlots > nextSlot {
+		nextSlot = belowSlots
+	}
 	for pass := 0; pass < 2; pass++ {
 		rootIndex := 0
 		canonicalSlot := 0
@@ -2169,7 +2172,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
 	// Materializing arguments preserves these roots and does not reuse tmpRoots.
-	belowRoots, argRoots := allRoots[:d-p], allRoots[d-p:]
+	argRoots := allRoots[d-p:]
 	type deferredMixedArg struct {
 		target Reg
 		root   *elem
@@ -2224,11 +2227,12 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 			gp++
 		}
 	}
-	f.stageMixedCallSpills(belowSlots, belowRoots)
 	if p > 0 {
 		f.stats.addCallFlush()
 		f.flushBelow(argRoots[0])
 	} else {
+		// A full-stack flush still needs staging when there are no arguments.
+		f.stageCanonicalSpills(belowSlots, allRoots)
 		f.stats.addCallFlush()
 		f.flush()
 	}

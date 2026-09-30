@@ -78,13 +78,22 @@ func (f *fn) flushBelow(node *elem) int {
 	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	base := f.s.baseOfValentBlock(node)
-	var below []*elem
+	below := f.tmpBelow[:0]
+	belowSlots := 0
 	for cur := f.s.prev(base); cur != f.s.head; cur = f.s.prev(f.s.baseOfValentBlock(cur)) {
 		below = append(below, cur)
+		belowSlots += rootMachineType(cur).stackSlots()
 	}
+	f.tmpBelow = below
 	for i, j := 0, len(below)-1; i < j; i, j = i+1, j-1 {
 		below[i], below[j] = below[j], below[i]
 	}
+	oldSpillFloor := f.spillFloor
+	if belowSlots > f.spillFloor {
+		f.spillFloor = belowSlots
+	}
+	// Protect existing sources before stores, and new pressure spills afterward.
+	f.stageCanonicalSpills(belowSlots, below)
 	slot := 0
 	for _, root := range below {
 		typ := rootMachineType(root)
@@ -128,6 +137,7 @@ func (f *fn) flushBelow(node *elem) int {
 	if slot > f.maxSpill {
 		f.maxSpill = slot
 	}
+	f.spillFloor = oldSpillFloor
 	return len(below)
 }
 

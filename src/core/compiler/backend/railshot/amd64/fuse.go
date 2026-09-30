@@ -91,13 +91,21 @@ func (f *fn) flushBelow(node *elem) int {
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	base := baseOfValentBlock(node)
 	below := f.tmpBelow[:0]
+	belowSlots := 0
 	for cur := base.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
 		below = append(below, cur)
+		belowSlots += rootMachineType(cur).stackSlots()
 	}
 	f.tmpBelow = below
 	for i, j := 0, len(below)-1; i < j; i, j = i+1, j-1 {
 		below[i], below[j] = below[j], below[i]
 	}
+	oldSpillFloor := f.spillFloor
+	if belowSlots > f.spillFloor {
+		f.spillFloor = belowSlots
+	}
+	// Protect existing sources before stores, and new pressure spills afterward.
+	f.stageCanonicalSpills(belowSlots, below)
 	slot := 0
 	for _, root := range below {
 		typ := rootMachineType(root)
@@ -143,6 +151,7 @@ func (f *fn) flushBelow(node *elem) int {
 	if slot > f.maxSpill {
 		f.maxSpill = slot
 	}
+	f.spillFloor = oldSpillFloor
 	return len(below)
 }
 
@@ -323,4 +332,66 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		}
 	}
 	return nil
+}
+
+// stageCanonicalSpills protects sources from the canonical stores in flushBelow.
+func (f *fn) stageCanonicalSpills(belowSlots int, belowRoots []*elem) {
+	if belowSlots == 0 {
+		return
+	}
+	nextSlot := f.spillFloor
+	if belowSlots > nextSlot {
+		nextSlot = belowSlots
+	}
+	scratchSlot := -1
+	for pass := 0; pass < 2; pass++ {
+		if pass == 1 {
+			// R11 can hold a live value. Save it above every source before copying.
+			scratchSlot = nextSlot
+			nextSlot++
+			f.a.Store64(RSP, f.spillOff(scratchSlot), R11)
+		}
+		rootIndex := 0
+		canonicalSlot := 0
+		overlaps := false
+		for e := f.s.head.next; e != f.s.head; e = e.next {
+			canonical := false
+			if rootIndex < len(belowRoots) && e == belowRoots[rootIndex] {
+				canonical = e.isValue() && e.st.kind == stSlot && e.st.slotIndex() == canonicalSlot
+				canonicalSlot += rootMachineType(e).stackSlots()
+				rootIndex++
+			}
+			if !e.isValue() || e.st.kind != stSlot {
+				continue
+			}
+			from, width := e.st.slotIndex(), e.st.typ.stackSlots()
+			if pass == 0 && from+width > nextSlot {
+				nextSlot = from + width
+			}
+			// A complete root already at its destination is skipped by the flush.
+			// Deferred children and arguments never qualify for this exception.
+			if from >= belowSlots || canonical {
+				continue
+			}
+			overlaps = true
+			if pass == 0 {
+				continue
+			}
+			for i := 0; i < width; i++ {
+				f.a.Load64(R11, RSP, f.spillOff(from+i))
+				f.a.Store64(RSP, f.spillOff(nextSlot+i), R11)
+			}
+			e.st.slot = uint32(nextSlot)
+			nextSlot += width
+		}
+		if !overlaps {
+			return
+		}
+	}
+	if scratchSlot >= 0 {
+		f.a.Load64(R11, RSP, f.spillOff(scratchSlot))
+	}
+	if nextSlot > f.maxSpill {
+		f.maxSpill = nextSlot
+	}
 }

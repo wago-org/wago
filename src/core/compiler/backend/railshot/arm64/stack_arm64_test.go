@@ -182,6 +182,8 @@ func TestScratchClearNodeReferencesArm64(t *testing.T) {
 	sc.fnState.fregUser[0] = e
 	sc.transient.tmpRoots = make([]*elem, 1, 4)
 	sc.transient.tmpRoots[:cap(sc.transient.tmpRoots)][3] = e
+	sc.transient.tmpBelow = make([]*elem, 1, 4)
+	sc.transient.tmpBelow[:cap(sc.transient.tmpBelow)][3] = e
 	sc.transient.tmpDeferred = make([]deferredArg, 1, 4)
 	sc.transient.tmpDeferred[:cap(sc.transient.tmpDeferred)][3].root = e
 
@@ -190,6 +192,7 @@ func TestScratchClearNodeReferencesArm64(t *testing.T) {
 		t.Fatal("register-user table retained an operand node")
 	}
 	if sc.transient.tmpRoots[:cap(sc.transient.tmpRoots)][3] != nil ||
+		sc.transient.tmpBelow[:cap(sc.transient.tmpBelow)][3] != nil ||
 		sc.transient.tmpDeferred[:cap(sc.transient.tmpDeferred)][3].root != nil {
 		t.Fatal("pointer-bearing scratch capacity retained an operand node")
 	}

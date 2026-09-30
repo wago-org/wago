@@ -440,6 +440,7 @@ type transient struct {
 	inlineBasePool    map[int]int
 	endsPool          [][]uint32
 	tmpRoots          []*elem
+	tmpBelow          []*elem
 	tmpTypes          []machineType
 	tmpTypes2         []machineType
 	tmpGCRoots        []bool
@@ -917,6 +918,7 @@ func (sc *scratch) clearNodeReferences() {
 	clear(sc.fnState.regUser[:])
 	clear(sc.fnState.fregUser[:])
 	clear(sc.transient.tmpRoots[:cap(sc.transient.tmpRoots)])
+	clear(sc.transient.tmpBelow[:cap(sc.transient.tmpBelow)])
 	clear(sc.transient.tmpDeferred[:cap(sc.transient.tmpDeferred)])
 }
 

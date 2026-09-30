@@ -10,7 +10,7 @@ import (
 )
 
 func TestStageMixedCallSpillsARM64(t *testing.T) {
-	f := fn{a: &a64.Asm{B: make([]byte, 0, 64)}, s: newStack(), spillFloor: 4, maxSpill: 11}
+	f := fn{a: &a64.Asm{B: make([]byte, 0, 128)}, s: newStack(), spillFloor: 4, maxSpill: 11}
 	vector := f.pushValue(storage{kind: stSlot, typ: mtV128, slot: 3})
 	high := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 10})
 	left := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 0})
@@ -21,10 +21,11 @@ func TestStageMixedCallSpillsARM64(t *testing.T) {
 	if !deferred.isDeferred() {
 		t.Fatal("expected a deferred expression")
 	}
+	above := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 2})
 	live := f.pushReg(X0, mtI64)
 	f.pinned = maskOf(X0)
-	values := [...]*elem{vector, high, left, right, deferred, live}
-	original := [...]storage{vector.st, high.st, left.st, right.st, deferred.st, live.st}
+	values := [...]*elem{vector, high, left, right, deferred, above, live}
+	original := [...]storage{vector.st, high.st, left.st, right.st, deferred.st, above.st, live.st}
 	below := [...]*elem{vector, high, deferred}
 	wantSlots := [...]uint32{11, 10, 13, 14}
 
@@ -34,7 +35,7 @@ func TestStageMixedCallSpillsARM64(t *testing.T) {
 		}
 		f.a.B = f.a.B[:0]
 		f.maxSpill = 11
-		f.stageMixedCallSpills(4, below[:])
+		f.stageCanonicalSpills(4, below[:])
 	})
 	if allocs != 0 {
 		t.Fatalf("relocation allocations = %v, want zero", allocs)
@@ -44,18 +45,21 @@ func TestStageMixedCallSpillsARM64(t *testing.T) {
 		if i < len(wantSlots) {
 			want.slot = wantSlots[i]
 		}
+		if e == above {
+			want.slot = 15
+		}
 		if e.st != want {
 			t.Fatalf("value %d storage = %+v, want %+v", i, e.st, want)
 		}
 	}
-	if f.spillFloor != 4 || f.maxSpill != 15 {
-		t.Fatalf("floor/max = %d/%d, want 4/15", f.spillFloor, f.maxSpill)
+	if f.spillFloor != 4 || f.maxSpill != 16 {
+		t.Fatalf("floor/max = %d/%d, want 4/16", f.spillFloor, f.maxSpill)
 	}
 	if f.regUser[X0] != live || f.pinned != maskOf(X0) {
 		t.Fatal("relocation changed register ownership")
 	}
-	if len(f.a.B) != 32 {
-		t.Fatalf("copy code = %d bytes, want 32", len(f.a.B))
+	if len(f.a.B) != 40 {
+		t.Fatalf("copy code = %d bytes, want 40", len(f.a.B))
 	}
 	for off := 0; off < len(f.a.B); off += 4 {
 		if rt := binary.LittleEndian.Uint32(f.a.B[off:]) & 31; rt != uint32(X16) {
@@ -73,7 +77,7 @@ func TestStageMixedCallCanonicalSlotsARM64(t *testing.T) {
 		if alias {
 			arg.st = storage{kind: stSlot, typ: mtF64, slot: 0}
 		}
-		f.stageMixedCallSpills(3, []*elem{scalar, vector})
+		f.stageCanonicalSpills(3, []*elem{scalar, vector})
 		if scalar.st.slot != 0 || vector.st.slot != 1 {
 			t.Fatal("canonical roots moved")
 		}
@@ -100,7 +104,7 @@ func TestStageMixedCallConsumedDeferredSlotsARM64(t *testing.T) {
 	arg := f.s.back()
 	f.materialize(arg)
 	before := f.a.Len()
-	f.stageMixedCallSpills(2, []*elem{left, right})
+	f.stageCanonicalSpills(2, []*elem{left, right})
 	if f.a.Len() != before || f.maxSpill != 2 {
 		t.Fatal("consumed deferred children were relocated")
 	}
