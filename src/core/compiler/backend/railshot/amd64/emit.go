@@ -729,6 +729,12 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		L, ownL = f.materializeRead(left)
 	} else {
 		L = f.materialize(left)
+		// Evaluate left first, but keep it spillable while the right subtree
+		// reserves fixed registers. Reload its current location afterwards.
+		if node.arg1.isDeferred() {
+			f.condense(node.arg1, regNone)
+			L = f.materialize(left)
+		}
 	}
 	f.pinned = f.pinned.add(L)
 
@@ -739,10 +745,6 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	} else {
 		cc = condOf(node.deferredOp())
 		right := node.arg1
-		if right.isDeferred() {
-			// condense rewrites the existing operand node in place.
-			f.condense(right, regNone)
-		}
 		switch right.st.kind {
 		case stConst:
 			if fitsImm32(right.st.cval) {

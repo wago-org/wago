@@ -46,7 +46,7 @@ func gcCloneCycleModule() []byte {
 	)
 }
 
-func instantiateForeignCloneFixture(t *testing.T, cfg *RuntimeConfig, gcCfg GCConfig) (*Runtime, *HostFuncRef, *Module, *Instance) {
+func instantiateForeignCloneFixture(t testing.TB, cfg *RuntimeConfig, gcCfg GCConfig) (*Runtime, *HostFuncRef, *Module, *Instance) {
 	t.Helper()
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	owner, err := rt.NewGCHostFuncRef(slotHostFunc(func(_ HostModule, args, results []uint64) {

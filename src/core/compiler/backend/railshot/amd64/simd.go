@@ -2223,15 +2223,11 @@ func (f *fn) i16x8Bitmask() {
 	// Sign-saturate-pack the 8 words to 8 bytes (each byte keeps its word's sign),
 	// then VPMOVMSKB gives all 8 lane signs in the low byte.
 	v := f.popValue()
-	x, owned := f.reductionOperand(v)
-	packed := f.allocFReg(maskOf(x))
-	opVPacksswb.emit(f, packed, x, x)
-	if owned {
-		f.releaseF(x)
-	}
+	x := f.materializeV128(v)
+	opVPacksswb.emit(f, x, x, x)
 	r := f.allocReg(0)
-	opVPmovmskb.emit(f, r, packed)
-	f.releaseF(packed)
+	opVPmovmskb.emit(f, r, x)
+	f.releaseF(x)
 	f.a.AluRI(4, r, 0x00ff, false) // keep the low 8 lane bits
 	f.pushReg(r, mtI32)
 }
