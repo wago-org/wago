@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/automation"
 	managerplugin "github.com/wago-org/wago/cli/manager/internal/plugin"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -48,6 +49,8 @@ type Request struct {
 	Input, Output          string
 	Invoke                 string
 	Core                   int
+	Features               wago.CoreFeatures
+	FeaturesSet            bool
 	DeferredBoundsChecking bool
 	FunctionWorkers        int
 	Optimizations          map[string]bool
@@ -148,7 +151,7 @@ func Build(request Request) (Result, error) {
 		return Result{}, err
 	}
 	mainPath := filepath.Join(buildDir, "main.go")
-	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, false), 0o644); err != nil {
+	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet, false), 0o644); err != nil {
 		return Result{}, err
 	}
 	environment := append(os.Environ(),
@@ -159,7 +162,7 @@ func Build(request Request) (Result, error) {
 	if err := runGo(buildDir, environment, request.Verbose, "mod", "tidy"); err != nil {
 		return Result{}, err
 	}
-	if err := os.WriteFile(mainPath, artifactCompilerSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations), 0o644); err != nil {
+	if err := os.WriteFile(mainPath, artifactCompilerSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet), 0o644); err != nil {
 		return Result{}, err
 	}
 	helperArgs := []string{"run"}
@@ -173,7 +176,7 @@ func Build(request Request) (Result, error) {
 	if err := runGo(buildDir, environment, request.Verbose, helperArgs...); err != nil {
 		return Result{}, fmt.Errorf("precompile standalone artifact: %w", err)
 	}
-	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, true), 0o644); err != nil {
+	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet, true), 0o644); err != nil {
 		return Result{}, err
 	}
 	if request.TinyGo {
@@ -216,7 +219,7 @@ func requireToolchain(name string) error {
 Install %s and ensure %q is available on PATH: %s`, label, label, name, website)
 }
 
-func mainSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool, precompiled bool) []byte {
+func mainSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool, features wago.CoreFeatures, featuresSet bool, precompiled bool) []byte {
 	providerImports = append([]string(nil), providerImports...)
 	sort.Strings(providerImports)
 	var source bytes.Buffer
@@ -239,7 +242,7 @@ func mainSource(providerImports []string, selections []byte, invoke string, core
 		fmt.Fprintf(&source, "\tproviders = append(providers, provider%d.Providers()...)\n", index)
 	}
 	source.WriteString("\treturn wago.PluginSet{Providers: providers, Selections: selections}\n}\n\n")
-	fmt.Fprintf(&source, "var options = standalone.Options{Invoke: %q, Core: %d, DeferBoundsChecks: %t, FunctionWorkers: %d, OptimizationKnobs: map[string]bool{", invoke, core, deferredBoundsChecking, functionWorkers)
+	fmt.Fprintf(&source, "var options = standalone.Options{Invoke: %q, Core: %d, DeferBoundsChecks: %t, FunctionWorkers: %d, Features: %d, FeaturesSet: %t, OptimizationKnobs: map[string]bool{", invoke, core, deferredBoundsChecking, functionWorkers, features, featuresSet)
 	names := make([]string, 0, len(optimizations))
 	for name := range optimizations {
 		names = append(names, name)
@@ -253,8 +256,8 @@ func mainSource(providerImports []string, selections []byte, invoke string, core
 	return source.Bytes()
 }
 
-func artifactCompilerSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool) []byte {
-	source := mainSource(providerImports, selections, invoke, core, deferredBoundsChecking, functionWorkers, optimizations, false)
+func artifactCompilerSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool, features wago.CoreFeatures, featuresSet bool) []byte {
+	source := mainSource(providerImports, selections, invoke, core, deferredBoundsChecking, functionWorkers, optimizations, features, featuresSet, false)
 	source = bytes.Replace(source, []byte("\t\"os\"\n"), []byte("\t\"os\"\n\t\"fmt\"\n"), 1)
 	source = bytes.Replace(source,
 		[]byte("func main() { os.Exit(standalone.Run(module, pluginSet(), options, os.Args)) }"),

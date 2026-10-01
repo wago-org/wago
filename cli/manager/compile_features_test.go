@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -11,9 +12,13 @@ import (
 )
 
 func TestCompileUsesConfiguredFeatures(t *testing.T) {
+	outputName := "program"
+	if runtime.GOOS == "windows" {
+		outputName += ".exe"
+	}
 	if os.Getenv("WAGO_TEST_COMPILE_FEATURES") == "1" {
 		commandEnvironment{}.Compile(compilecmd.Options{
-			Input: "simd.wasm", Output: "program", Bare: true,
+			Input: "simd.wasm", Output: outputName, Bare: true,
 			Core: os.Getenv("WAGO_TEST_CORE"),
 		})
 		return
@@ -60,7 +65,7 @@ func TestCompileUsesConfiguredFeatures(t *testing.T) {
 			command := exec.Command(executable, "-test.run=^TestCompileUsesConfiguredFeatures$")
 			command.Dir = dir
 			output, err := command.CombinedOutput()
-			program := filepath.Join(dir, "program")
+			program := filepath.Join(dir, outputName)
 			if test.wantDisabled {
 				if err == nil || !strings.Contains(string(output), "simd disabled") {
 					t.Fatalf("compile with SIMD disabled: error=%v\n%s", err, output)
