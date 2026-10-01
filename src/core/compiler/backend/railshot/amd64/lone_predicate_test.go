@@ -27,8 +27,14 @@ func TestLonePredicateAdmissionAndFallback(t *testing.T) {
 				pred := f.pushReg(reg, mtI32)
 				f.flushBranchPredicate(pred)
 				want := enabled && !prefix && !pin
-				if (pred.st.kind == stReg) != want {
-					t.Fatalf("enabled=%v prefix=%v pin=%v storage=%v", enabled, prefix, pin, pred.st.kind)
+				// Full canonicalization may recycle the original arena node.
+				// Inspect the live root; the admitted path retains its identity.
+				root := f.s.back()
+				if want && root != pred {
+					t.Fatal("admitted predicate owner replaced")
+				}
+				if (root.st.kind == stReg) != want {
+					t.Fatalf("enabled=%v prefix=%v pin=%v storage=%v", enabled, prefix, pin, root.st.kind)
 				}
 				if want && f.a.Len() != 0 {
 					t.Fatalf("lone predicate emitted traffic: %x", f.a.B)
