@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && amd64 && wago_guardpage
 
 package amd64
 
@@ -11,6 +11,9 @@ import (
 
 func TestLinearSumSignalsRangeAndRemainders(t *testing.T) {
 	requireCompilerDiagnostics(t)
+	if err := coreruntime.InstallGuardTrapHandler(); err != nil {
+		t.Fatal(err)
+	}
 	saved := linearSumSignalsEnabled
 	defer func() { linearSumSignalsEnabled = saved }()
 	for _, signals := range []bool{false, true} {
@@ -32,7 +35,12 @@ func TestLinearSumSignalsRangeAndRemainders(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			jm, err := coreruntime.NewJobMemory(65536)
+			var jm *coreruntime.JobMemory
+			if signals {
+				jm, err = coreruntime.NewJobMemoryGuarded(65536, 65536)
+			} else {
+				jm, err = coreruntime.NewJobMemory(65536)
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -104,6 +112,9 @@ func TestLinearSumSignalsRejectsSharedAndInterruptible(t *testing.T) {
 
 func TestLinearSumSignalsMemory32WrappingGroups(t *testing.T) {
 	requireCompilerDiagnostics(t)
+	if err := coreruntime.InstallGuardTrapHandler(); err != nil {
+		t.Fatal(err)
+	}
 	saved := linearSumSignalsEnabled
 	defer func() { linearSumSignalsEnabled = saved }()
 	linearSumSignalsEnabled = true
@@ -122,7 +133,7 @@ func TestLinearSumSignalsMemory32WrappingGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer eng.Close()
-	jm, err := coreruntime.NewJobMemory(1 << 32)
+	jm, err := coreruntime.NewJobMemoryGuarded(1<<32, 1<<32)
 	if err != nil {
 		t.Fatal(err)
 	}
