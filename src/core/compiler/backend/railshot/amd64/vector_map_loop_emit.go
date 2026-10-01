@@ -664,6 +664,12 @@ func (e *regionLoopEmitter) body() {
 			f.a.Store64(RSP, e.off(19+i), e.gp[0])
 		}
 	}
+	// Every wide exit value is now in private scalar slots. Clear upper lanes
+	// before the first legacy SSE reconciliation instruction, while low lanes
+	// and all local register homes remain intact.
+	if p.wide {
+		f.a.VZeroUpper()
+	}
 	for order := 1; order <= regionLoopMaxOps; order++ {
 		for i, l := range p.locals[:p.localN] {
 			if !l.written || int(l.order) != order {
@@ -691,9 +697,6 @@ func (e *regionLoopEmitter) body() {
 				}
 			}
 		}
-	}
-	if p.wide {
-		f.a.VZeroUpper()
 	}
 	f.wasmPC = oldPC
 }
