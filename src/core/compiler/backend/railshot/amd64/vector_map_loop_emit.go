@@ -492,7 +492,7 @@ func (e *regionLoopEmitter) body() {
 				if id := p.reductionLoad[at]; id != 0 {
 					f.a.FMov(regs[id], regs[s.value], true)
 				} else {
-					f.a.FStoreIdx(regs[s.value], RBX, ea, e.streams[e.storeStream[at]].disp, true)
+					f.a.FStoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp, true)
 				}
 			} else {
 				f.mov128StoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp)
@@ -602,7 +602,7 @@ func (e *regionLoopEmitter) body() {
 		for i, id := range p.reductionLoad {
 			if id != 0 {
 				ea := e.address(e.storeStream[i])
-				f.a.FStoreIdx(regs[id], RBX, ea, e.streams[e.storeStream[i]].disp, true)
+				f.a.FStoreIdx(RBX, ea, regs[id], e.streams[e.storeStream[i]].disp, true)
 			}
 		}
 	}
