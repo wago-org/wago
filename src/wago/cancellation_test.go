@@ -154,6 +154,29 @@ func TestInvokeContextInterruptsHostCallLoop(t *testing.T) {
 	}
 }
 
+func TestInvokeContextReportsCancellationDuringHostReturn(t *testing.T) {
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("tick")...), 0x00, 0x00)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	in, err := Instantiate(MustCompile(mod), InstantiateOptions{Imports: testImports("env.tick", slotHostFunc(func(_ HostModule, _, _ []uint64) {
+		cancel()
+	}))})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.InvokeContext(ctx, "run"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("run error = %v, want context cancellation", err)
+	}
+}
+
 func TestInvokeContextHostPanicStopsCancellationWatch(t *testing.T) {
 	void := wasmtest.FuncType(nil, nil)
 	imp := append(append(wasmtest.Name("env"), wasmtest.Name("panic")...), 0x00, 0x00)
