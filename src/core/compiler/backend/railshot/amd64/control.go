@@ -2479,6 +2479,7 @@ func (f *fn) opReturn() error {
 		return nil
 	}
 	if f.singleRegResult {
+		f.materializePendingTraps()
 		f.placeSingleResult() // result straight to RAX/XMM0; epilogue does not reload
 		f.appendReturnSite(f.a.JmpPlaceholder())
 		f.unreachable = true

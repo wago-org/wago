@@ -1030,6 +1030,7 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
+	f.materializePendingTraps()
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
 	if memoryIndex != 0 {
