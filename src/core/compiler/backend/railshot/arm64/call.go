@@ -2081,6 +2081,11 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 // directCalleePreservesPins returns the module-precomputed leaf classification
 // for one direct target. This is compile-time only; execution stays a plain BL.
 func (f *fn) directCalleePreservesPins(localIdx int) bool {
+	// Even a pin-preserving leaf can throw. An active catch needs current local
+	// homes, so keep the spill-managed call path until this try_table ends.
+	if f.ehTryDepth != 0 {
+		return false
+	}
 	if localIdx < 0 || localIdx >= len(f.calleeHints) {
 		return false
 	}
