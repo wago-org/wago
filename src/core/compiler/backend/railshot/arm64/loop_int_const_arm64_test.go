@@ -54,7 +54,7 @@ func TestLoopIntConstUsesOnlyIdleRegistersArm64(t *testing.T) {
 		t.Fatalf("cached constants = %#v, want only X27", f.iconsts[:f.iconstN])
 	}
 
-	called := fn{usesCalls: true, policy: currentCodegenPolicy()}
+	called := fn{makesCalls: true, usesCalls: true, policy: currentCodegenPolicy()}
 	called.preloadLoopIntConsts(&h)
 	if called.iconstN != 0 {
 		t.Fatalf("call-making function cached %d constants", called.iconstN)

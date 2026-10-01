@@ -389,7 +389,7 @@ func (f *fn) pinnedV128LocalCount() int {
 // emulation constants (read-only masks/tables, never loop-carried) are still
 // reserved. Mirrors preloadFloatConsts / arm64 preloadV128Consts.
 func (f *fn) preloadV128Consts(code []byte) {
-	if f.usesCalls || f.syncHostCalls || !f.opt(optV128ConstCache) {
+	if f.makesCalls || f.syncHostCalls || !f.opt(optV128ConstCache) {
 		return
 	}
 	f.stats.peep("v128-preload-scan")
