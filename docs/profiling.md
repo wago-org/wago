@@ -122,8 +122,11 @@ with `LoadTrustedArtifact`. Executable mapping still occurs during instantiation
 `--reload-artifact` uses that same round trip with any capture phase, including
 `execute`. Only artifacts produced by the current run are loaded. The manifest
 records the artifact hash and byte size; it does not save the artifact implicitly.
-Current artifacts omit compiler/source metadata, so loaded bodies remain unknown
-and the manifest reports that limitation. Diffs reject mixed reloaded/direct
+Current executable artifacts omit compiler/source metadata. In a profiling build,
+the runner saves a separate `artifact.profile.json` diagnostic sidecar, validates
+its artifact and code digests, then attaches its compiler metadata to the loaded
+module before instantiation. The manifest records `diagnostic_sidecar: true`.
+Without the matching sidecar, loaded bodies remain unknown. Diffs reject mixed reloaded/direct
 compilation captures. Phase timestamps use Unix nanoseconds; `elapsed_ns` and
 execution duration use the monotonic clock. Blocking or nonterminating guest calls are not preempted by a
 workload duration; the measurement deadline is checked between iterations.
@@ -256,6 +259,56 @@ one pair. Samply observations are rejected as CPU-cost inputs. Use repeated,
 controlled captures before making performance claims. CPU affinity, power state,
 and other system activity remain the experimenter's responsibility.
 
+For repeated compiler experiments, record alternating baseline/candidate pairs
+and pass their saved bundles in that order:
+
+```sh
+/tmp/wagoprof experiment /tmp/base-1 /tmp/candidate-1 /tmp/base-2 /tmp/candidate-2
+/tmp/wagoprof experiment --json /tmp/base-1 /tmp/candidate-1 /tmp/base-2 /tmp/candidate-2
+```
+
+`experiment` requires at least two complete pairs, checks workload and collector
+compatibility within each pair and between pairs, and reports each pair plus the
+median paired change and range. It verifies alternating capture order when
+execution timestamps are available. These descriptive results are not a
+statistical-significance test. Use matched ordinary release builds for claims
+about production performance; profiling captures are diagnostic evidence.
+
+## Profiling an embedding application
+
+Build the application with `-tags=wago_profile` and use `profiling.Record` to
+run its actual imports, runtime configuration, and validated operation:
+
+```go
+err := profiling.Record(profiling.Options{
+    Out: "/tmp/app.wagoprof", Backend: "pprof", Iterations: 1000,
+    SourceMaps: true, WagoRevision: wagoRevision,
+}, profiling.Harness{
+    ID: "my-app", Contract: "request-v1", WorkUnit: "request",
+    Wasm: moduleBytes, Config: runtimeConfig,
+    Instantiate: wago.InstantiateOptions{Imports: appImports},
+    Initialize: func(in *wago.Instance) error { return initialize(in) },
+    Execute: func(in *wago.Instance) error {
+        result, err := in.Invoke("handle", 42)
+        if err != nil { return err }
+        return validate(result)
+    },
+})
+```
+
+The callback runs in the application process. Supported backends are `none`
+(metadata and timing), `pprof` (Go CPU), and `perf-map` for an externally
+started native collector. The API does not launch perf or Samply around a
+callback. `Contract` must change when the import behavior or validation changes;
+the workload hash also includes module bytes and the named work unit. The
+reported runtime configuration is the supplied effective configuration. Only
+successful `Execute` calls count as completed work. A duration limit is checked
+between calls, so a nonterminating guest call needs application-level supervision.
+Set `WagoRevision` from the linked Wago build; the embedding executable's VCS
+revision refers to the application and is not reported as Wago's revision.
+The ordinary build retains the API shape but returns an unavailable error;
+capture code and telemetry are removed by the release DCE gate.
+
 ## Embedding the metadata journal
 
 ```go
@@ -306,8 +359,14 @@ A load record with `preexisting: true` marks first observation during attachment
 not the original mapping creation time. It cannot symbolize historical samples
 from before attachment. Artifacts and unobserved compilations omit diagnostic
 metadata, so their bodies report an unknown region and unavailable original-module
-identity rather than guessed function ranges. Source-map requests cannot recover
-absent metadata; use recompilation for detailed regions and compiler counters.
+identity rather than guessed function ranges. A profiling build can save a
+sidecar with `Compiled.MarshalCodeProfileSidecar(artifact)` immediately after
+`MarshalBinary`, then join it to an exactly matching loaded artifact with
+`Compiled.AttachCodeProfileSidecar(session, artifact, sidecar)` before instantiation.
+The sidecar contains diagnostics only; it does not make an artifact trusted for
+execution. Missing or mismatched metadata remains unavailable. Source-map
+requests cannot recover absent metadata; compile with diagnostics and save the
+sidecar when artifact reload needs detailed regions and compiler counters.
 Thunk regions remain exact. Consumers use `Snapshot` plus its cursor to continue
 with subsequent events without an enumeration/subscription gap.
 
@@ -426,7 +485,7 @@ For library embedding, `CodeProfileOptions.TraceLifecycle` enables instance life
 
 `--source-maps` requests compiler-recorded opcode lowering, deferred-expression, and trap/check locations. The mapping joins a final native range to a full Wasm function index and a byte offset measured from that function's local declarations. Function compaction and module adapter removal transform the directory before publication; native code bytes are unchanged. `wagoprof annotate` prints a Wasm location when a sampled PC falls inside a recorded range.
 
-Coverage is recorded as `opcode-lowering-and-deferred-origins`. The bytecode driver scopes eager lowering, including calls and control flow, while deferred expressions and scalar memory loads retain their producer locations. Native instructions outside these scopes remain unmapped. This does not provide source-file lines, complete expression provenance, sampled call stacks, or unwind rules. Library applications opt in with `CodeProfileOptions.SourceMaps`; reloaded artifacts cannot reconstruct absent source metadata. Source directories are copied into the bounded session and survive mapping teardown.
+Coverage is recorded as `opcode-lowering-and-deferred-origins`. The bytecode driver scopes eager lowering, including calls and control flow, while deferred expressions and scalar memory loads retain their producer locations. Native instructions outside these scopes remain unmapped. This does not provide source-file lines, complete expression provenance, sampled call stacks, or unwind rules. Library applications opt in with `CodeProfileOptions.SourceMaps`; reloaded artifacts recover only metadata retained in a matching optional sidecar. Source directories are copied into the bounded session and survive mapping teardown.
 
 Deferred expression nodes retain their original Wasm location separately from the compiler stack payload. Scoped emission records generated arithmetic, conversions, and supporting instructions; nested scopes split the parent range and restore its origin afterward. Operand folding attributes the combined instruction to the expression that emits it, without inventing separate native instructions for eliminated operations. Tentative native-code rollback discards the corresponding ranges. Check branches are captured before shared-trap lowering repurposes scratch records, then remapped through final compaction. Runtime trap payloads and native code bytes remain unchanged. Scalar load/store checks and explicit `unreachable` branches are also qualified, and specific check origins override broader expression ranges. Standalone deferred scalar memory loads retain their load opcode location even when a later opcode forces materialization. A fused instruction has one principal lowering origin: an ALU instruction with a folded memory operand belongs to the consuming expression, and a paired load belongs to the opcode that emits the pair. The map does not claim independent native instructions for eliminated operations. Prologues and synthetic code outside an opcode scope remain gaps; additional trap families are not independently qualified.
 
