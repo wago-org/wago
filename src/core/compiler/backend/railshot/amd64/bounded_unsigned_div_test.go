@@ -88,3 +88,44 @@ func TestBoundedUnsignedDivNative(t *testing.T) {
 		}
 	}
 }
+
+func TestBoundedUnsignedDivNestedFixedRegisters(t *testing.T) {
+	saved := boundedUnsignedDivEnabled
+	defer func() { boundedUnsignedDivEnabled = saved }()
+	for _, mask := range []uint32{255, 65535} {
+		for _, innerRem := range []bool{false, true} {
+			for _, outerRem := range []bool{false, true} {
+				inner, outer := byte(0x6e), byte(0x6e)
+				if innerRem {
+					inner = 0x70
+				}
+				if outerRem {
+					outer = 0x70
+				}
+				b := []byte{0, 0x20, 0, 0x41, 13, inner, 0x41}
+				b = append(b, wasmtest.SLEB32(int32(mask))...)
+				b = append(b, 0x71, 0x41, 7, outer, 0x20, 0, 0x73, 0x0b)
+				for _, on := range []bool{false, true} {
+					boundedUnsignedDivEnabled = on
+					call, done := divInvoker(t, mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, b))
+					for _, n := range []uint32{0, 1, 6, 7, 13, 255, 65535, 65536, 0x7fffffff, 0x80000000, 0xffffffff} {
+						a := n / 13
+						if innerRem {
+							a = n % 13
+						}
+						a &= mask
+						q := a / 7
+						if outerRem {
+							q = a % 7
+						}
+						want := q ^ n
+						if got := call(uint64(n) | 0xabcd123400000000); uint32(got) != want {
+							t.Fatal(mask, innerRem, outerRem, on, n, got, want)
+						}
+					}
+					done()
+				}
+			}
+		}
+	}
+}
