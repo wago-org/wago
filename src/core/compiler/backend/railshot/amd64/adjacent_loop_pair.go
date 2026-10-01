@@ -149,7 +149,7 @@ func (p *regionLoopPlan) adjacentAddresses(left uint8, leftOffset uint64, right 
 	return delta <= 8 && uint64(delta)+rightOffset-leftOffset == 8
 }
 func (p *regionLoopPlan) iterationsPerVector() uint32 {
-	if p.adjacent {
+	if p.adjacent || p.scalar {
 		return 1
 	}
 	return 2

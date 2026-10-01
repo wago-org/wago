@@ -169,7 +169,7 @@ func (e *regionLoopEmitter) guards() {
 	}
 	// Pair only complete iterations. Odd or zero/negative trip counts use the
 	// original checked loop, including its original trap and exit semantics.
-	if !p.adjacent {
+	if !p.adjacent && !p.scalar {
 		f.a.TestImm(a, 1, false)
 		e.fail(condNE)
 	}
@@ -436,7 +436,9 @@ func (e *regionLoopEmitter) body() {
 		if l.typ == mtF64 && uses[l.initial] != 0 {
 			regs[l.initial] = e.fp[homes]
 			f.a.FLoadDisp(regs[l.initial], RSP, e.off(int(p.nodes[l.initial].bits)), true)
-			f.a.SseRR(0x66, 0x14, regs[l.initial], regs[l.initial], false)
+			if !p.scalar {
+				f.a.SseRR(0x66, 0x14, regs[l.initial], regs[l.initial], false)
+			}
 			homes++
 		}
 	}
@@ -467,7 +469,7 @@ func (e *regionLoopEmitter) body() {
 		f.a.Xor32(e.gp[0], e.gp[0])
 	}
 	f.a.Load32(e.gp[1], RSP, e.off(8))
-	if !p.adjacent {
+	if !p.adjacent && !p.scalar {
 		f.a.ShiftImm(5, e.gp[1], 1, false)
 	}
 	top := 0
@@ -482,8 +484,19 @@ func (e *regionLoopEmitter) body() {
 			s := p.stores[at]
 			f.wasmPC = f.tracePCBase + s.pos
 			previous := f.enterProfileInstruction()
-			ea := e.address(e.storeStream[at])
-			f.mov128StoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp)
+			var ea Reg
+			if !p.scalar || p.reductionLoad[at] == 0 {
+				ea = e.address(e.storeStream[at])
+			}
+			if p.scalar {
+				if id := p.reductionLoad[at]; id != 0 {
+					f.a.FMov(regs[id], regs[s.value], true)
+				} else {
+					f.a.FStoreIdx(regs[s.value], RBX, ea, e.streams[e.storeStream[at]].disp, true)
+				}
+			} else {
+				f.mov128StoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp)
+			}
 			release(s.value, regNone)
 			f.switchProfileOrigin(previous)
 			continue
@@ -501,13 +514,17 @@ func (e *regionLoopEmitter) body() {
 			binary.LittleEndian.PutUint64(raw[:], n.bits)
 			site := f.a.MovsRipPlaceholder(regs[event], true)
 			f.recordConst(raw[:], site)
-			f.a.SseRR(0x66, 0x14, regs[event], regs[event], false)
+			if !p.scalar {
+				f.a.SseRR(0x66, 0x14, regs[event], regs[event], false)
+			}
 		case 0x2b:
 			regs[event] = allocate()
 			ea := e.address(e.loadStream[event])
-			if p.stride(n.left) == 0 {
+			if p.scalar || p.stride(n.left) == 0 {
 				f.a.FLoadIdx(regs[event], RBX, ea, e.streams[e.loadStream[event]].disp, true)
-				f.a.SseRR(0x66, 0x14, regs[event], regs[event], false)
+				if !p.scalar {
+					f.a.SseRR(0x66, 0x14, regs[event], regs[event], false)
+				}
 			} else {
 				f.mov128LoadIdx(regs[event], RBX, ea, e.streams[e.loadStream[event]].disp)
 			}
@@ -541,9 +558,17 @@ func (e *regionLoopEmitter) body() {
 				release(source, out)
 			} else {
 				if out != regs[n.left] {
-					f.mov128(out, regs[n.left])
+					if p.scalar {
+						f.a.FMov(out, regs[n.left], true)
+					} else {
+						f.mov128(out, regs[n.left])
+					}
 				}
-				f.a.SseRR(0x66, opcode, out, regs[n.right], false)
+				prefix := byte(0x66)
+				if p.scalar {
+					prefix = 0xf2
+				}
+				f.a.SseRR(prefix, opcode, out, regs[n.right], false)
 				release(n.right, out)
 				release(n.left, out)
 			}
@@ -572,6 +597,15 @@ func (e *regionLoopEmitter) body() {
 	f.a.AluRI(aluTable[opSub].digit, e.gp[1], 1, false)
 	again := f.a.JccPlaceholder(condNE)
 	f.a.PatchRel32(again, top)
+	// Publish the final invariant cells before exit-register reconciliation.
+	if p.scalar {
+		for i, id := range p.reductionLoad {
+			if id != 0 {
+				ea := e.address(e.storeStream[i])
+				f.a.FStoreIdx(regs[id], RBX, ea, e.streams[e.storeStream[i]].disp, true)
+			}
+		}
+	}
 	// Only the final iteration publishes private outputs for exit reconciliation.
 	for i, l := range p.locals[:p.localN] {
 		if l.written && l.typ == mtF64 {
@@ -587,7 +621,9 @@ func (e *regionLoopEmitter) body() {
 				f.a.Store64(RSP, e.off(19+i), e.gp[0])
 			} else {
 				// The last scalar iteration is the upper lane of the last pair.
-				f.a.SseRR(0, 0x12, regs[l.value], regs[l.value], false)
+				if !p.scalar {
+					f.a.SseRR(0, 0x12, regs[l.value], regs[l.value], false)
+				}
 				f.a.FStoreDisp(RSP, e.off(19+i), regs[l.value], true)
 			}
 		}
@@ -660,7 +696,9 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 			return false, nil
 		}
 	} else if !regionAdjacentEnabled || !p.packAdjacentOutputs() {
-		return false, nil
+		if !scalarMemoryRecurrenceEnabled || !p.scalarMemoryRecurrence() {
+			return false, nil
+		}
 	}
 	// Scalar home commits below require every new FP version to own its result.
 	// Cross-home copies need a separate parallel-copy contract.
@@ -670,11 +708,18 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 		}
 	}
 	step := p.locals[p.counter].step
-	memoryForms := regionLoopMemForms && f.cpuHas(shared.AMD64AVX)
-	prefix, permanent := p.hoistConstants(regionConstantHoistEnabled, regionInvariantPrefixEnabled, memoryForms)
-	constantPrefix := prefix != 0
-	if prefix == 0 {
-		prefix, permanent = p.invariantPrefix(regionInvariantPrefixEnabled)
+	memoryForms := !p.scalar && regionLoopMemForms && f.cpuHas(shared.AMD64AVX)
+	var prefix uint8
+	var permanent [regionLoopMaxOps + 1]bool
+	constantPrefix := false
+	if p.scalar {
+		prefix, permanent = p.prepareMemoryRecurrence()
+	} else {
+		prefix, permanent = p.hoistConstants(regionConstantHoistEnabled, regionInvariantPrefixEnabled, memoryForms)
+		constantPrefix = prefix != 0
+		if prefix == 0 {
+			prefix, permanent = p.invariantPrefix(regionInvariantPrefixEnabled)
+		}
 	}
 	folded, memory := p.memoryForms(memoryForms)
 	need := p.scratchNeedPermanent(folded, permanent)
@@ -797,6 +842,9 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 			}
 			f.stats.peep("region-loop-invariant-prefix")
 		}
+		if p.scalar {
+			f.stats.peep("region-loop-scalar-memory-recurrence")
+		}
 		f.stats.peep("region-loop-fast")
 	} else {
 		f.a.JmpBack(fallback)
@@ -822,7 +870,7 @@ func (e *regionLoopEmitter) aliasGuards() {
 			f.a.Load64(a, RSP, e.off(9+int(destination)))
 			f.a.Load64(c, RSP, e.off(9+i))
 			equal := -1
-			if t.stride == s.stride {
+			if t.stride == s.stride && !(p.scalar && s.stride == 0) {
 				f.a.Cmp64(a, c)
 				equal = f.a.JccPlaceholder(condE)
 			}

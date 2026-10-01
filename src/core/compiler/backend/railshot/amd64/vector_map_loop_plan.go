@@ -62,6 +62,8 @@ type regionLoopPlan struct {
 	adjacent                     bool
 	exitHigh                     uint8
 	zeroTerminated               bool
+	scalar                       bool
+	reductionLoad                [2]uint8
 }
 
 func (p *regionLoopPlan) add(n regionLoopNode) uint8 {
