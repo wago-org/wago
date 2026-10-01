@@ -37,11 +37,9 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 			mult, shift, bounded = boundedUnsignedReciprocal(bound, uint32(c))
 		}
 	}
-	avoid := maskOf(RAX, RDX)
-	if bounded {
-		avoid = 0
-	}
-	res := f.allocReg(avoid)
+	// The dividend can itself contain a fixed-register division. Retain its
+	// original destination exclusions even when the final operation is bounded.
+	res := f.allocReg(maskOf(RAX, RDX))
 	f.pinned = f.pinned.add(res)
 	f.condenseInto(node.arg0, res) // res = n (dividend)
 
