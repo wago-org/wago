@@ -5,8 +5,9 @@ package amd64
 import (
 	"bytes"
 	"fmt"
-	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
 	"testing"
+
+	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
 func TestPartialFlushKeepsNewVectorSpillsAboveDestinations(t *testing.T) {
@@ -40,6 +41,48 @@ func TestPartialFlushKeepsNewVectorSpillsAboveDestinations(t *testing.T) {
 				if root.st.kind != stSlot || root.st.typ != mtV128 || root.st.slot != uint32(i*2) {
 					t.Fatalf("root%d is not canonical: %+v", i, root.st)
 				}
+			}
+		})
+	}
+}
+
+// Sources above the boundary, including deferred children, are still live after
+// the prefix has been stored. Their homes can overlap that prefix's destinations.
+func TestPartialFlushPreservesLiveSuffix(t *testing.T) {
+	for _, floor := range []int{0, 80} {
+		t.Run(fmt.Sprint(floor), func(t *testing.T) {
+			f := fn{a: &encoder.Asm{}, s: newStack(), spillFloor: floor, globalCellReg: regNone}
+			prefix := f.pushValue(storage{kind: stConst, typ: mtI64, cval: 53})
+			left := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 0})
+			right := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 1})
+			f.pushBinOp(opAdd, mtI64)
+			boundary := f.s.back()
+			vector := f.pushValue(storage{kind: stSlot, typ: mtV128, slot: 0})
+			live := f.pushReg(RAX, mtI64)
+			f.pinned = maskOf(RAX)
+			f.setStackGCRoot(left, true)
+			beforeBoundary, beforeRight, beforeLive := boundary.st, right.st, live.st
+			if got := f.flushBelow(boundary); got != 1 {
+				t.Fatalf("flushed %d roots, want 1", got)
+			}
+			if prefix.st.kind != stSlot || prefix.st.slot != 0 {
+				t.Fatal("prefix was not canonicalized")
+			}
+			if left.st.slot < uint32(max(floor, 2)) || vector.st.slot <= left.st.slot {
+				t.Fatalf("suffix sources not staged: scalar=%d vector=%d", left.st.slot, vector.st.slot)
+			}
+			if !left.st.hasGCRoot() || vector.st.typ != mtV128 || vector.st.kind != stSlot {
+				t.Fatal("staging changed suffix metadata")
+			}
+			if boundary.st != beforeBoundary || right.st != beforeRight || live.st != beforeLive ||
+				f.regUser[RAX] != live || f.pinned != maskOf(RAX) || f.spillFloor != floor {
+				t.Fatal("partial flush changed the live suffix or caller's floor")
+			}
+			if roots := f.rootsBottomToTop(); len(roots) != 4 || roots[1] != boundary || roots[2] != vector || roots[3] != live {
+				t.Fatal("partial flush changed the logical suffix")
+			}
+			if f.maxSpill < int(vector.st.slot)+2 {
+				t.Fatal("frame does not cover the staged vector")
 			}
 		})
 	}
