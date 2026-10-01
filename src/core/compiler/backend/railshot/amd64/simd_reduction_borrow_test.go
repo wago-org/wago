@@ -52,7 +52,10 @@ func TestSIMDReductionBorrowPreservesPinnedVector(t *testing.T) {
 						if cm.CodeImage != nil {
 							defer cm.CodeImage.Close()
 						}
-						if (stats.Funcs[0].Peephole["simd-reduction-borrow"] > 0) != enabled {
+						// i16x8.bitmask packs in place in an owned register so
+						// allocation cannot clobber a borrowed reduction scratch.
+						wantBorrow := enabled && sub != 132
+						if (stats.Funcs[0].Peephole["simd-reduction-borrow"] > 0) != wantBorrow {
 							t.Fatalf("borrow selection enabled=%v stats=%v", enabled, stats.Funcs[0].Peephole)
 						}
 						if stats.Funcs[0].PinnedLocals == 0 {
