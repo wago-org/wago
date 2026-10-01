@@ -105,7 +105,7 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 	result, err := managerstandalone.Build(managerstandalone.Request{
 		Input: options.Input, Output: output, Target: target, Invoke: options.Invoke, Core: selection.Core, Verbose: options.Verbose,
 		DeferredBoundsChecking: selection.DeferredBoundsChecking, FunctionWorkers: selection.FunctionWorkers, Optimizations: selection.Optimizations,
-		TinyGo: options.TinyGo,
+		Features: selection.CoreFeatures(), FeaturesSet: true, TinyGo: options.TinyGo,
 	})
 	if err != nil {
 		progress.Fail("Standalone build failed")

@@ -14,8 +14,12 @@ import (
 
 // Options is the compile-time runtime configuration baked into an executable.
 type Options struct {
-	Invoke            string
-	Core              int
+	Invoke string
+	Core   int
+	// Features replaces automatic defaults when FeaturesSet is true.
+	// An explicit Core selection takes precedence.
+	Features          wago.CoreFeatures
+	FeaturesSet       bool
 	DeferBoundsChecks bool
 	FunctionWorkers   int
 	OptimizationKnobs map[string]bool
@@ -117,6 +121,9 @@ func runtimeConfig(options Options) (*wago.RuntimeConfig, error) {
 	config = config.WithOptimizations(options.OptimizationKnobs)
 	switch options.Core {
 	case 0:
+		if options.FeaturesSet && config.CoreFeatures() != options.Features {
+			config = config.WithCoreFeatures(options.Features)
+		}
 	case 2:
 		config = config.WithCoreFeatures(wago.CoreFeaturesV2)
 	case 3:

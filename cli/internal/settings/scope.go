@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"sort"
 
@@ -37,7 +38,7 @@ type Target struct {
 	base       Config
 	config     Config
 	configured bool
-	manifest   map[string]any
+	layer      localLayer
 }
 
 type Override struct {
@@ -80,7 +81,7 @@ func Open(global, local bool) (*Target, error) {
 	applyLayer(&config, layer)
 	return &Target{
 		scope: ScopeLocal, path: project.DisplayPath("."), base: cloneConfig(globalConfig), config: config,
-		configured: globalConfigured || localConfigured, manifest: manifest,
+		configured: globalConfigured || localConfigured, layer: layer,
 	}, nil
 }
 
@@ -143,6 +144,9 @@ func (target *Target) Save() error {
 		if err != nil {
 			return err
 		}
+		if !target.layer.matches(manifest[localField]) {
+			return fmt.Errorf("%s settings changed since opening; reopen and retry", target.path)
+		}
 		if layerEmpty(layer) {
 			delete(manifest, localField)
 		} else {
@@ -152,9 +156,31 @@ func (target *Target) Save() error {
 		if err := mutation.PublishManifest(manifest); err != nil {
 			return err
 		}
-		target.manifest = manifest
+		target.layer = layer
 		return nil
 	})
+}
+
+// matches compares a snapshot with the current validated manifest settings.
+func (layer localLayer) matches(value any) bool {
+	current, _ := value.(map[string]any)
+	features, _ := current["features"].(map[string]any)
+	optimizations, _ := current["optimizations"].(map[string]any)
+	equalBool := func(value any, expected bool) bool { return value == expected }
+	if !maps.EqualFunc(features, layer.Features, equalBool) || !maps.EqualFunc(optimizations, layer.Optimizations, equalBool) {
+		return false
+	}
+	runtime, _ := current["runtime"].(map[string]any)
+	var parallel, deferred any
+	if layer.Runtime != nil {
+		if layer.Runtime.Parallel != nil {
+			parallel = *layer.Runtime.Parallel
+		}
+		if layer.Runtime.DeferredBoundsChecking != nil {
+			deferred = *layer.Runtime.DeferredBoundsChecking
+		}
+	}
+	return runtime["parallel"] == parallel && runtime["deferredBoundsChecking"] == deferred
 }
 
 func decodeLocalLayer(value any) (localLayer, bool, error) {

@@ -213,3 +213,78 @@ func tailCallStartModule() []byte {
 		10, 9, 2, 2, 0, 0x0b, 4, 0, 0x12, 0, 0x0b,
 	}
 }
+
+func BenchmarkRuntimeConfig(b *testing.B) {
+	for _, core := range []int{0, 2} {
+		name := "Default"
+		if core == 2 {
+			name = "Core2"
+		}
+		b.Run(name, func(b *testing.B) {
+			options := Options{Core: core, DeferBoundsChecks: true, Features: wago.NewRuntimeConfig().CoreFeatures(), FeaturesSet: true}
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				if _, err := runtimeConfig(options); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkCompileArtifact(b *testing.B) {
+	source := addModule()
+	options := Options{Features: wago.CoreFeaturesV2, FeaturesSet: true, DeferBoundsChecks: true}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, err := CompileArtifact(source, wago.PluginSet{}, options); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func TestRuntimeConfigUsesBakedFeatures(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		options Options
+		want    wago.CoreFeatures
+	}{
+		{"default", Options{}, wago.NewRuntimeConfig().CoreFeatures()},
+		{"unset mask", Options{Features: wago.CoreFeaturesV1}, wago.NewRuntimeConfig().CoreFeatures()},
+		{"empty mask", Options{FeaturesSet: true}, 0},
+		{"SIMD disabled", Options{FeaturesSet: true, Features: wago.CoreFeaturesV2 &^ wago.CoreFeatureSIMD}, wago.CoreFeaturesV2 &^ wago.CoreFeatureSIMD},
+		{"explicit core overrides mask", Options{Core: 2, FeaturesSet: true}, wago.CoreFeaturesV2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			config, err := runtimeConfig(test.options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := config.CoreFeatures(); got != test.want {
+				t.Fatalf("features = %s, want %s", got, test.want)
+			}
+		})
+	}
+	if _, err := runtimeConfig(Options{FeaturesSet: true, Features: wago.CoreFeatures(1 << 63)}); err == nil {
+		t.Fatal("unknown feature mask was accepted")
+	}
+	if _, err := runtimeConfig(Options{Core: 99, FeaturesSet: true}); err == nil {
+		t.Fatal("unknown Core selection was accepted")
+	}
+}
+
+func TestRuntimeConfigBakedDefaultsDoNotAllocateMore(t *testing.T) {
+	options := Options{DeferBoundsChecks: true}
+	measure := func() float64 {
+		return testing.AllocsPerRun(10, func() {
+			if _, err := runtimeConfig(options); err != nil {
+				panic(err)
+			}
+		})
+	}
+	before := measure()
+	options.Features, options.FeaturesSet = wago.NewRuntimeConfig().CoreFeatures(), true
+	if after := measure(); after > before {
+		t.Fatalf("baked default features allocate %g times, want at most %g", after, before)
+	}
+}
