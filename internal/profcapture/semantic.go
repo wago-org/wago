@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
-	"strconv"
+	"strings"
 
 	"github.com/wago-org/wago"
 )
@@ -54,7 +54,7 @@ func (s semanticCase) validate() error {
 		return fmt.Errorf("input: %w", err)
 	}
 	for _, value := range s.Expect.Return {
-		if _, err := strconv.ParseUint(value, 0, 64); err != nil {
+		if _, err := semanticReturn(value); err != nil {
 			return fmt.Errorf("return oracle: %w", err)
 		}
 	}
@@ -155,7 +155,7 @@ func prepareCheckedCalls(in *wago.Instance, w Workload) ([]checkedCall, error) {
 			call.Args = append(call.Args, wago.I32(a))
 		}
 		for _, v := range s.Expect.Return {
-			n, _ := strconv.ParseUint(v, 0, 64)
+			n, _ := semanticReturn(v)
 			call.Want = append(call.Want, n)
 		}
 		if s.Invoke.Input != "" {
@@ -182,4 +182,27 @@ func prepareCheckedCalls(in *wago.Instance, w Workload) ([]checkedCall, error) {
 		calls = append(calls, call)
 	}
 	return calls, nil
+}
+
+// Semantic return strings are hexadecimal ABI bits, including without 0x.
+func semanticReturn(value string) (uint64, error) {
+	value = strings.TrimPrefix(value, "0x")
+	if value == "" {
+		value = "0"
+	}
+	if len(value) > 16 {
+		return 0, fmt.Errorf("return oracle exceeds 64 bits")
+	}
+	if len(value)%2 != 0 {
+		value = "0" + value
+	}
+	data, err := hex.DecodeString(value)
+	if err != nil {
+		return 0, err
+	}
+	var result uint64
+	for _, b := range data {
+		result = result<<8 | uint64(b)
+	}
+	return result, nil
 }

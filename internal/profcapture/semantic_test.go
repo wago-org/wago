@@ -119,3 +119,19 @@ func TestSemanticInputsResetBetweenContracts(t *testing.T) {
 		}
 	}
 }
+
+func TestSemanticReturnUsesCatalogHexBits(t *testing.T) {
+	var s semanticCase
+	if err := json.Unmarshal([]byte(`{"id":"identity","abi":"core","invoke":{"export":"identity","args":[16]},"expect":{"return":["10"]}}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "capture")
+	if err := Run(Options{Out: out, Backend: "none", Phase: "execute", Mode: "prepared", Iterations: 2, Bounds: "explicit", Rate: 99}, Workload{ID: "identity", semantic: []semanticCase{s}}, fixtureModule()); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"10000000000000000", "+10", "xz"} {
+		if _, err := semanticReturn(value); err == nil {
+			t.Fatal("invalid bits accepted", value)
+		}
+	}
+}
