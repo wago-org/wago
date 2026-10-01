@@ -10,6 +10,8 @@ import (
 	"os"
 )
 
+var regionInvariantPrefixEnabled = os.Getenv("WAGO_AMD64_REGION_INVARIANT_PREFIX") == "1"
+
 // Exact adjacent outputs are the qualified default; zero permits diagnostic A/B.
 var regionAdjacentEnabled = os.Getenv("WAGO_AMD64_ADJACENT_LOOP_PAIR") != "0"
 
@@ -38,20 +40,22 @@ type regionMemoryStream struct {
 	disp    int32
 }
 type regionLoopEmitter struct {
-	f             *fn
-	p             *regionLoopPlan
-	gp            [4]Reg
-	fp            [10]Reg
-	slot          int
-	fails         [64]int
-	failN         int
-	streams       [10]regionMemoryStream
-	streamN       int
-	loadStream    [regionLoopMaxOps + 1]uint8
-	storeStream   [2]uint8
-	allCached     bool
-	folded        [regionLoopMaxOps + 1]bool
-	memoryOperand [regionLoopMaxOps + 1]uint8
+	f               *fn
+	p               *regionLoopPlan
+	gp              [4]Reg
+	fp              [10]Reg
+	slot            int
+	fails           [64]int
+	failN           int
+	streams         [10]regionMemoryStream
+	streamN         int
+	loadStream      [regionLoopMaxOps + 1]uint8
+	storeStream     [2]uint8
+	allCached       bool
+	folded          [regionLoopMaxOps + 1]bool
+	memoryOperand   [regionLoopMaxOps + 1]uint8
+	invariantPrefix uint8
+	permanent       [regionLoopMaxOps + 1]bool
 }
 
 func (e *regionLoopEmitter) off(i int) int32 { return e.f.spillOff(e.slot + i) }
@@ -257,6 +261,9 @@ func (p *regionLoopPlan) scratchNeed() int {
 	return p.scratchNeedFolded([regionLoopMaxOps + 1]bool{})
 }
 func (p *regionLoopPlan) scratchNeedFolded(folded [regionLoopMaxOps + 1]bool) int {
+	return p.scratchNeedPermanent(folded, [regionLoopMaxOps + 1]bool{})
+}
+func (p *regionLoopPlan) scratchNeedPermanent(folded [regionLoopMaxOps + 1]bool, permanent [regionLoopMaxOps + 1]bool) int {
 	uses := p.fpUses()
 	homes, live, peak := 0, 0, 0
 	for _, l := range p.locals[:p.localN] {
@@ -268,7 +275,7 @@ func (p *regionLoopPlan) scratchNeedFolded(folded [regionLoopMaxOps + 1]bool) in
 		if event&0x80 != 0 {
 			id := p.stores[event&0x7f].value
 			uses[id]--
-			if uses[id] == 0 && p.nodes[id].op != 0x20 {
+			if uses[id] == 0 && p.nodes[id].op != 0x20 && !permanent[id] {
 				live--
 			}
 			continue
@@ -277,7 +284,7 @@ func (p *regionLoopPlan) scratchNeedFolded(folded [regionLoopMaxOps + 1]bool) in
 			continue
 		}
 		n := p.nodes[event]
-		reuse := n.op >= 0xa0 && n.op <= 0xa3 && uses[n.left] == 1 && p.nodes[n.left].op != 0x20
+		reuse := n.op >= 0xa0 && n.op <= 0xa3 && uses[n.left] == 1 && p.nodes[n.left].op != 0x20 && !permanent[n.left]
 		if !reuse {
 			live++
 			if live > peak {
@@ -287,7 +294,7 @@ func (p *regionLoopPlan) scratchNeedFolded(folded [regionLoopMaxOps + 1]bool) in
 		if n.op >= 0xa0 && n.op <= 0xa3 {
 			for _, id := range []uint8{n.left, n.right} {
 				uses[id]--
-				if uses[id] == 0 && p.nodes[id].op != 0x20 && !folded[id] && !(reuse && id == n.left) {
+				if uses[id] == 0 && p.nodes[id].op != 0x20 && !permanent[id] && !folded[id] && !(reuse && id == n.left) {
 					live--
 				}
 			}
@@ -417,7 +424,7 @@ func (e *regionLoopEmitter) body() {
 			homes++
 		}
 	}
-	for _, r := range e.fp[homes:p.scratchNeedFolded(folded)] {
+	for _, r := range e.fp[homes:p.scratchNeedPermanent(folded, e.permanent)] {
 		scratch = scratch.add(r)
 	}
 	allocate := func() Reg {
@@ -431,7 +438,7 @@ func (e *regionLoopEmitter) body() {
 	}
 	release := func(id uint8, keep Reg) {
 		uses[id]--
-		if uses[id] == 0 && p.nodes[id].op != 0x20 && regs[id] != keep {
+		if uses[id] == 0 && p.nodes[id].op != 0x20 && !e.permanent[id] && regs[id] != keep {
 			scratch = scratch.add(regs[id])
 		}
 	}
@@ -447,10 +454,13 @@ func (e *regionLoopEmitter) body() {
 	if !p.adjacent {
 		f.a.ShiftImm(5, e.gp[1], 1, false)
 	}
-	f.a.AlignLoop()
-	top := f.a.Len()
+	top := 0
 	oldPC := f.wasmPC
-	for _, event := range p.events[:p.eventN] {
+	for at, event := range p.events[:p.eventN] {
+		if at == int(e.invariantPrefix) {
+			f.a.AlignLoop()
+			top = f.a.Len()
+		}
 		if event&0x80 != 0 {
 			at := event & 0x7f
 			s := p.stores[at]
@@ -489,7 +499,7 @@ func (e *regionLoopEmitter) body() {
 			source := n.left
 			memory := memoryOperand[event]
 			out := regNone
-			if uses[source] == 1 && p.nodes[source].op != 0x20 {
+			if uses[source] == 1 && p.nodes[source].op != 0x20 && !e.permanent[source] {
 				out = regs[source]
 			} else {
 				out = allocate()
@@ -645,7 +655,8 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 	}
 	step := p.locals[p.counter].step
 	folded, memory := p.memoryForms(regionLoopMemForms && f.cpuHas(shared.AMD64AVX))
-	need := p.scratchNeedFolded(folded)
+	prefix, permanent := p.invariantPrefix(regionInvariantPrefixEnabled)
+	need := p.scratchNeedPermanent(folded, permanent)
 	if step&(step-1) != 0 || need > 10 {
 		return false, nil
 	}
@@ -654,7 +665,7 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 	if err := f.opBlock(r, 0x03); err != nil {
 		return true, err
 	}
-	e := regionLoopEmitter{f: f, p: &p, folded: folded, memoryOperand: memory}
+	e := regionLoopEmitter{f: f, p: &p, folded: folded, memoryOperand: memory, invariantPrefix: prefix, permanent: permanent}
 	block := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
 	n := 0
 	for _, reg := range gpAlloc {
@@ -759,6 +770,9 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 			}
 		}
 		e.body()
+		if prefix != 0 {
+			f.stats.peep("region-loop-invariant-prefix")
+		}
 		f.stats.peep("region-loop-fast")
 	} else {
 		f.a.JmpBack(fallback)
