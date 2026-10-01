@@ -230,6 +230,9 @@ func TestWideAdjacentLoopInputAndLiteralBroadcast(t *testing.T) {
 							} else if got != want || !bytes.Equal(mem, expected) {
 								t.Fatal("broadcast changed result or memory", op, left, bits, input, n, mode)
 							}
+							if mode == 2 && regionWideBroadcastEnabled && stats.Funcs[0].Peephole["region-loop-wide-memory-broadcast"] == 0 {
+								t.Fatal("wide memory broadcast not selected", stats.Funcs[0].Peephole)
+							}
 							if mode == 2 && stats.Funcs[0].Peephole["region-loop-wide-paired-tail"]+stats.Funcs[0].Peephole["region-loop-wide-checked-tail"] != 1 {
 								t.Fatal("wide paired tail missing", stats.Funcs[0].Peephole)
 							}

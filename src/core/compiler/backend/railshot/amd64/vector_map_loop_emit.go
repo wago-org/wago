@@ -435,9 +435,14 @@ func (e *regionLoopEmitter) body() {
 	for _, l := range p.locals[:p.localN] {
 		if l.typ == mtF64 && uses[l.initial] != 0 {
 			regs[l.initial] = e.fp[homes]
-			f.a.FLoadDisp(regs[l.initial], RSP, e.off(int(p.nodes[l.initial].bits)), true)
-			if !p.scalar {
-				e.broadcastPair(regs[l.initial])
+			if p.wide && regionWideBroadcastEnabled {
+				f.a.YBroadcastSDLoadDisp(regs[l.initial], RSP, e.off(int(p.nodes[l.initial].bits)))
+				f.stats.peep("region-loop-wide-memory-broadcast")
+			} else {
+				f.a.FLoadDisp(regs[l.initial], RSP, e.off(int(p.nodes[l.initial].bits)), true)
+				if !p.scalar {
+					e.broadcastPair(regs[l.initial])
+				}
 			}
 			homes++
 		}
@@ -514,18 +519,29 @@ func (e *regionLoopEmitter) body() {
 			regs[event] = allocate()
 			var raw [8]byte
 			binary.LittleEndian.PutUint64(raw[:], n.bits)
-			site := f.a.MovsRipPlaceholder(regs[event], true)
-			f.recordConst(raw[:], site)
-			if !p.scalar {
-				e.broadcastPair(regs[event])
+			var site int
+			if p.wide && regionWideBroadcastEnabled {
+				site = f.a.YBroadcastSDRipPlaceholder(regs[event])
+				f.stats.peep("region-loop-wide-memory-broadcast")
+			} else {
+				site = f.a.MovsRipPlaceholder(regs[event], true)
+				if !p.scalar {
+					e.broadcastPair(regs[event])
+				}
 			}
+			f.recordConst(raw[:], site)
 		case 0x2b:
 			regs[event] = allocate()
 			ea := e.address(e.loadStream[event])
 			if p.scalar || p.stride(n.left) == 0 {
-				f.a.FLoadIdx(regs[event], RBX, ea, e.streams[e.loadStream[event]].disp, true)
-				if !p.scalar {
-					e.broadcastPair(regs[event])
+				if p.wide && regionWideBroadcastEnabled {
+					f.a.YBroadcastSDLoadIdx(regs[event], RBX, ea, e.streams[e.loadStream[event]].disp)
+					f.stats.peep("region-loop-wide-memory-broadcast")
+				} else {
+					f.a.FLoadIdx(regs[event], RBX, ea, e.streams[e.loadStream[event]].disp, true)
+					if !p.scalar {
+						e.broadcastPair(regs[event])
+					}
 				}
 			} else if p.wide {
 				f.a.YMovdquLoadIdx(regs[event], RBX, ea, e.streams[e.loadStream[event]].disp)

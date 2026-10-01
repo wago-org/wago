@@ -109,3 +109,6 @@ func (e *regionLoopEmitter) bodyWithCheckedTail(checkedTail int) {
 	f.a.PatchRel32(odd, checkedTail)
 	f.stats.peep("region-loop-wide-checked-tail")
 }
+
+// Preserve exact eight-byte memory accesses while defining all wide lanes.
+var regionWideBroadcastEnabled = os.Getenv("WAGO_AMD64_WIDE_LOOP_BROADCAST") == "1"

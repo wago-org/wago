@@ -834,3 +834,20 @@ func (a *Asm) YInsertF128(dst, src256, src128 Reg, lane byte) {
 func (a *Asm) YFPackedMemIdx(op byte, dst, src1, base, index Reg, disp int32, f64 bool) {
 	a.vex3MemIdxL(vexMap0F, packedPP(f64), op, dst, src1, true, base, index, disp, 1)
 }
+
+// YBroadcastSD memory forms read exactly eight bytes and require only AVX.
+// Register-source VBROADCASTSD requires AVX2 and is deliberately not used.
+func (a *Asm) YBroadcastSDLoadDisp(dst, base Reg, disp int32) {
+	a.vex3MemDispL(vexMap0F38, 1, 0x19, dst, 0, false, base, disp, 1)
+}
+func (a *Asm) YBroadcastSDLoadIdx(dst, base, index Reg, disp int32) {
+	a.vex3MemIdxL(vexMap0F38, 1, 0x19, dst, 0, false, base, index, disp, 1)
+}
+func (a *Asm) YBroadcastSDRipPlaceholder(dst Reg) int {
+	a.vex3MemPrefixL(vexMap0F38, 1, dst, 0, false, RAX, 0, false, 1)
+	a.emit(0x19, ((byte(dst)&7)<<3)|0x05)
+	a.recordRipAddress()
+	off := a.Len()
+	a.imm32(0)
+	return off
+}
