@@ -4,11 +4,13 @@ package amd64
 
 import "os"
 
-// Only exact adjacent output pairs qualify. Two original iterations map to
-// four lanes without reassociation; an odd final iteration uses a paired tail.
-// Existing 16-byte stream guards cover the exact extent of even groups: the
-// last 32-byte access starts one original iteration earlier. Invariant loads
-// remain scalar accesses followed by register broadcasts.
+// Four independent scalar iterations may share one AVX register. This is
+// opt-in; all remainder iterations use the original checked loop.
+var regionWideIndependentEnabled = os.Getenv("WAGO_AMD64_WIDE_INDEPENDENT_LOOP") == "1"
+
+// Two iterations of exact adjacent output pairs map to four lanes without
+// reassociation. Existing stream guards cover the complete access extent;
+// invariant loads remain exact scalar accesses followed by broadcasts.
 var regionWideAdjacentEnabled = os.Getenv("WAGO_AMD64_WIDE_ADJACENT_LOOP") != "0"
 
 // Reuse the original checked body only when its entry homes equal the fast
@@ -92,19 +94,20 @@ func (e *regionLoopEmitter) bodyWithWidths(checkedTail int) {
 
 func (e *regionLoopEmitter) bodyWithCheckedTail(checkedTail int) {
 	f := e.f
+	mask := int32(e.p.iterationsPerVector() - 1)
 	f.a.Load32(e.gp[0], RSP, e.off(8))
 	f.a.Store64(RSP, e.off(30), e.gp[0])
-	f.a.AluRI(aluTable[opAnd].digit, e.gp[0], -2, false)
+	f.a.AluRI(aluTable[opAnd].digit, e.gp[0], ^mask, false)
 	f.a.Store64(RSP, e.off(8), e.gp[0])
 	f.a.TestSelf(e.gp[0], false)
 	single := f.a.JccPlaceholder(condE)
 	f.a.PatchRel32(single, checkedTail)
 	e.body()
-	// The even prefix has committed its original scalar exit values, including
+	// The complete groups have committed their original scalar exit values, including
 	// every induction local. Matching entry/exit homes make those values the
-	// checked body's next input. Its original predicate stops after one tail.
+	// checked body's next input. Its original predicate consumes the remainder.
 	f.a.Load32(e.gp[0], RSP, e.off(30))
-	f.a.TestImm(e.gp[0], 1, false)
+	f.a.TestImm(e.gp[0], uint32(mask), false)
 	odd := f.a.JccPlaceholder(condNE)
 	f.a.PatchRel32(odd, checkedTail)
 	f.stats.peep("region-loop-wide-checked-tail")

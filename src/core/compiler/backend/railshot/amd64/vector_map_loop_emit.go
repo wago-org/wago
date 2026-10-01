@@ -167,9 +167,9 @@ func (e *regionLoopEmitter) guards() {
 		e.fail(condNE)
 		f.a.ShiftImm(5, a, uint8(bits.TrailingZeros32(step)), false)
 	}
-	// Pair only complete iterations. Odd or zero/negative trip counts use the
-	// original checked loop, including its original trap and exit semantics.
-	if !p.adjacent && !p.scalar {
+	// The two-lane path requires complete pairs. Wide groups instead leave
+	// zero to three iterations for the original checked body.
+	if !p.adjacent && !p.scalar && !p.wide {
 		f.a.TestImm(a, 1, false)
 		e.fail(condNE)
 	}
@@ -474,8 +474,8 @@ func (e *regionLoopEmitter) body() {
 		f.a.Xor32(e.gp[0], e.gp[0])
 	}
 	f.a.Load32(e.gp[1], RSP, e.off(8))
-	if (!p.adjacent && !p.scalar) || p.wide {
-		f.a.ShiftImm(5, e.gp[1], 1, false)
+	if count := p.iterationsPerVector(); count > 1 {
+		f.a.ShiftImm(5, e.gp[1], uint8(bits.TrailingZeros32(count)), false)
 	}
 	top := 0
 	oldPC := f.wasmPC
@@ -652,6 +652,12 @@ func (e *regionLoopEmitter) body() {
 				}
 				f.a.Load64(e.gp[0], RSP, e.off(26)+lane)
 				f.a.Store64(RSP, e.off(19+i), e.gp[0])
+			} else if p.wide {
+				// Preserve all shared vector values while selecting scalar
+				// iteration four, the final lane of the last complete group.
+				f.a.YMovdquStoreDisp(RSP, e.off(26), regs[l.value])
+				f.a.Load64(e.gp[0], RSP, e.off(26)+24)
+				f.a.Store64(RSP, e.off(19+i), e.gp[0])
 			} else {
 				// The last scalar iteration is the upper lane of the last pair.
 				if !p.scalar {
@@ -731,7 +737,7 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 		return false, nil
 	}
 	if p.independentLanes() {
-		if !regionLoopEnabled && !(regionZeroCounterEnabled && p.zeroTerminated) {
+		if !regionLoopEnabled && !(regionWideIndependentEnabled && f.cpuHas(shared.AMD64AVX)) && !(regionZeroCounterEnabled && p.zeroTerminated) {
 			return false, nil
 		}
 	} else if !regionAdjacentEnabled || !p.packAdjacentOutputs() {
@@ -746,7 +752,7 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 			return false, nil
 		}
 	}
-	p.wide = regionWideAdjacentEnabled && p.adjacent && f.cpuHas(shared.AMD64AVX)
+	p.wide = f.cpuHas(shared.AMD64AVX) && ((regionWideAdjacentEnabled && p.adjacent) || (regionWideIndependentEnabled && !p.adjacent && !p.scalar))
 	step := p.locals[p.counter].step
 	memoryForms := !p.scalar && regionLoopMemForms && f.cpuHas(shared.AMD64AVX)
 	var prefix uint8
@@ -812,11 +818,13 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 	for _, site := range e.fails[:e.failN] {
 		f.a.PatchRel32(site, fallback)
 	}
-	f.ctrl[len(f.ctrl)-1].controlSite = fallback
 	if regionLoopTestFast {
 		f.trapAlways(trapUnreachable)
 	}
 	checkedBody := f.a.Len()
+	// A checked remainder may take multiple iterations. Its backedge skips
+	// the diagnostic guard-failure trap, just like its initial tail entry.
+	f.ctrl[len(f.ctrl)-1].controlSite = checkedBody
 	if err := f.bodyLoop(r, depth); err != nil {
 		return true, err
 	}
@@ -849,6 +857,11 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 		if !written[x] && entry[x].reg != regNone && entry[x].reg != f.locals[x].reg {
 			valid = false
 		}
+	}
+	// A quad may have up to three scalar remainder iterations. Reuse the
+	// original body only when its register/home assumptions still hold.
+	if p.wide && !p.adjacent && !p.scalar && (!regionWideCheckedTailEnabled || !f.regionCheckedTailHomes(&entry)) {
+		valid = false
 	}
 	if valid {
 		e.prepareRegisterStreams(&entry)
@@ -895,7 +908,11 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 			f.stats.peep("region-loop-scalar-memory-recurrence")
 		}
 		if p.wide {
-			f.stats.peep("region-loop-wide-adjacent")
+			if p.adjacent {
+				f.stats.peep("region-loop-wide-adjacent")
+			} else {
+				f.stats.peep("region-loop-wide-independent")
+			}
 		}
 		f.stats.peep("region-loop-fast")
 	} else {
