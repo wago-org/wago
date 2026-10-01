@@ -135,6 +135,11 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	w := node.valueType().is64()
 	left := node.arg0
 	right := node.arg1
+	// Keep trapping children in bytecode order. The tracked left value stays
+	// spillable while the right subtree claims fixed registers.
+	if right.isDeferred() && !treeReorderSafe(right) && !treeReorderSafe(left) {
+		f.materialize(left)
+	}
 	if r := f.tryXorByteMask(node, left, right, dest); r != regNone {
 		return r
 	}
@@ -947,6 +952,10 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 		if r, ok := f.tryDivByConst(node, dest, right.st.cval); ok {
 			return r
 		}
+	}
+
+	if !treeReorderSafe(right) && !treeReorderSafe(left) {
+		f.materialize(left)
 	}
 
 	// Reserve RAX (dividend/quotient) and RDX (high half/remainder).

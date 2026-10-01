@@ -394,6 +394,8 @@ func (f *fn) callOp(r *wasm.Reader) error {
 			}
 		}
 	}
+	// Resolve trapping roots before register staging visits the arguments.
+	f.materializeTrapsBefore(f.s.head)
 	return f.callInternal(int(idx)-imported, ft, hint)
 }
 

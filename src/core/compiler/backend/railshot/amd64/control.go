@@ -943,13 +943,19 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 		return
 	}
 	gcRoots := f.tmpGCRoots[:0]
+	canonicalEnd := 0
 	for _, root := range roots {
+		canonicalEnd += rootMachineType(root).stackSlots()
 		gcRoots = append(gcRoots, root.isValue() && root.st.hasGCRoot())
 	}
 	f.tmpGCRoots = gcRoots
 	if f.flushWideStack(roots, gcRoots, stageRegisterPressure) {
 		return
 	}
+	// A deferred root can spill a later value during this loop. Its new home
+	// must stay above every canonical destination that is about to be written.
+	oldFloor := f.spillFloor
+	f.spillFloor = max(oldFloor, canonicalEnd)
 	types := f.tmpTypes[:0]
 	slot := 0
 	for _, root := range roots {
@@ -990,6 +996,7 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 		f.release(r)
 		slot++
 	}
+	f.spillFloor = oldFloor
 	f.tmpTypes = types
 	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
@@ -1494,6 +1501,23 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 	}
 }
 
+// popBranchCondition protects the condition through the remaining stack flush.
+// Variable shifts/division claim RCX/RAX/RDX, and wide slot copies use RAX.
+// A borrowed local must also stay pinned after its stack reference is removed.
+func (f *fn) popBranchCondition() (Reg, bool) {
+	reg, owned := f.materializeRead(f.popValue())
+	if f.depth() != 0 && (reg == RAX || reg == RDX || reg == RCX) {
+		safe := f.allocReg(maskOf(RAX, RDX, RCX))
+		f.a.MovRegReg32(safe, reg)
+		if owned {
+			f.release(reg)
+		}
+		reg, owned = safe, true
+	}
+	f.pinned = f.pinned.add(reg)
+	return reg, owned
+}
+
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	paramTypes, resultTypes, frameTypes, res0, err := f.blockType(r)
 	if err != nil {
@@ -1568,16 +1592,17 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			f.pushCtrl(&fr)
 			return nil
 		}
+		f.materializeTrapsBefore(cond)
 		if cond.isDeferred() {
 			f.condense(cond, regNone)
 		}
 		f.flushBelow(cond)
 		f.convergeFrameEntryState(&fr)
-		creg, cOwned := f.materializeRead(cond) // TEST only reads
-		f.erase(cond)
+		creg, cOwned := f.popBranchCondition()
 		fr.height = f.depth() - pN
 		f.setFrameBaseTypePrefix(&fr, fr.height)
 		f.captureGCFrameShape(&fr)
+		f.pinned = f.pinned.remove(creg)
 		f.a.TestSelf(creg, false)
 		if cOwned {
 			f.release(creg)
@@ -2262,6 +2287,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	var predicate *elem
 	if conditional {
 		predicate = f.s.back()
+		f.materializeTrapsBefore(predicate)
 		if predicate.isDeferred() {
 			f.condense(predicate, regNone)
 		}
@@ -2291,9 +2317,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	if !coldExit {
 		f.convergeBranchLocals(fr)
 	}
-	creg, cOwned := f.materializeRead(predicate) // TEST only reads
-	f.erase(predicate)
+	creg, cOwned := f.popBranchCondition()
 	a, d := fr.branchArity(), f.depth()
+	f.pinned = f.pinned.remove(creg)
 	f.a.TestSelf(creg, false)
 	if cOwned {
 		f.release(creg)

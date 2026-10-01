@@ -359,8 +359,8 @@ type fn struct {
 	vconsts  []v128ConstReg // repeated v128.const values cached in reserved XMM regs
 
 	maxSpill int // high-water number of operand spill slots used
-	// spillFloor temporarily reserves a low spill-slot range while wide-stack
-	// canonicalization stages values above both their old homes and destinations.
+	// spillFloor reserves canonical destinations while pending values are
+	// materialized, and the staging range used for existing overlapping homes.
 	spillFloor              int
 	subRspAt                int    // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
 	addRspAt                int    // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
