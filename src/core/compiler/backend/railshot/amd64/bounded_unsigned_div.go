@@ -4,8 +4,9 @@ package amd64
 
 import "os"
 
-// Retained only after native correctness and application timing qualification.
-var boundedUnsignedDivEnabled = os.Getenv("WAGO_AMD64_BOUNDED_UNSIGNED_DIV") == "1"
+// Native correctness and repeated application timing qualify this selection.
+// The zero override retains the ordinary constant-division path for comparison.
+var boundedUnsignedDivEnabled = os.Getenv("WAGO_AMD64_BOUNDED_UNSIGNED_DIV") != "0"
 
 // No per-value range state: inspect only the immediate deferred mask producer.
 // Losing that producer simply retains the ordinary constant-division lowering.
