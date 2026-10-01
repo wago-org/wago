@@ -859,9 +859,22 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 		}
 	}
 	// A quad may have up to three scalar remainder iterations. Reuse the
-	// original body only when its register/home assumptions still hold.
+	// original body only when its register/home assumptions still hold. If the
+	// original paired policy admits this loop, retain it when wide tails cannot
+	// be proven instead of losing the existing optimization.
 	if p.wide && !p.adjacent && !p.scalar && (!regionWideCheckedTailEnabled || !f.regionCheckedTailHomes(&entry)) {
-		valid = false
+		if valid && (regionLoopEnabled || (regionZeroCounterEnabled && p.zeroTerminated)) {
+			p.wide = false
+			// guards omitted this check for the initially planned quad. The
+			// paired path needs an even count; odd counts keep checked semantics.
+			f.a.Load32(e.gp[0], RSP, e.off(8))
+			f.a.TestImm(e.gp[0], 1, false)
+			odd := f.a.JccPlaceholder(condNE)
+			f.a.PatchRel32(odd, fallback)
+			f.stats.peep("region-loop-wide-retain-pair")
+		} else {
+			valid = false
+		}
 	}
 	if valid {
 		e.prepareRegisterStreams(&entry)

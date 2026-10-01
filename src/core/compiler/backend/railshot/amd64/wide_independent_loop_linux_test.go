@@ -101,3 +101,52 @@ func TestWideIndependentAliasAndTrapFallback(t *testing.T) {
 		}
 	}
 }
+
+func TestWideIndependentExistingPoliciesExecute(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	saved, whole, tail, force, zero := regionWideIndependentEnabled, regionLoopEnabled, regionWideCheckedTailEnabled, regionLoopTestFast, regionZeroCounterEnabled
+	defer func() {
+		regionWideIndependentEnabled, regionLoopEnabled, regionWideCheckedTailEnabled, regionLoopTestFast, regionZeroCounterEnabled = saved, whole, tail, force, zero
+	}()
+	regionZeroCounterEnabled = true
+	for _, zeroCount := range []bool{false, true} {
+		m := wideIndependentFixture(t, 0xa2, zeroCount)
+		m.Code[0].BodyBytes = m.Code[0].BodyBytes[4:] // original output-local initialization
+		regionLoopEnabled = !zeroCount
+		for _, tails := range []bool{false, true} {
+			regionWideCheckedTailEnabled = tails
+			for n := uint64(1); n <= 9; n++ {
+				for _, src := range []uint64{128, 256, 260, 65536 - 8*n} {
+					var want uint64
+					var expected []byte
+					for _, on := range []bool{false, true} {
+						regionWideIndependentEnabled = on
+						regionLoopTestFast = on && n%2 == 0
+						start, limit := uint64(0), n
+						if zeroCount {
+							start, limit = uint64(uint32(0-uint32(n))), 0
+						}
+						var stats ModuleStats
+						got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: &stats, AMD64FeaturesSet: true, AMD64Features: shared.AMD64ModernBaseline}, func(mem []byte) {
+							for i := uint64(0); i < n; i++ {
+								binary.LittleEndian.PutUint64(mem[src+8*i:], math.Float64bits(float64(i)+0.5))
+							}
+						}, 128, src, start, limit, math.Float64bits(2), math.Float64bits(1.5))
+						if err != nil {
+							t.Fatal(zeroCount, tails, n, src, on, err)
+						}
+						p := stats.Funcs[0].Peephole
+						if p["region-loop-fast"] != 1 || (!tails && p["region-loop-wide-independent"] != 0) || (on && !tails && p["region-loop-wide-retain-pair"] != 1) {
+							t.Fatal("retained pair not emitted", zeroCount, tails, on, p)
+						}
+						if !on {
+							want, expected = got, append([]byte(nil), mem...)
+						} else if got != want || !bytes.Equal(mem, expected) {
+							t.Fatal("retained pair changed result, memory or local exit state", zeroCount, tails, n, src)
+						}
+					}
+				}
+			}
+		}
+	}
+}

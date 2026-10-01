@@ -59,3 +59,35 @@ func TestWideIndependentPlanAndAdmission(t *testing.T) {
 		}
 	}
 }
+
+func TestWideIndependentKeepsExistingPairWithoutCheckedTail(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	saved, whole, tail, zero := regionWideIndependentEnabled, regionLoopEnabled, regionWideCheckedTailEnabled, regionZeroCounterEnabled
+	defer func() {
+		regionWideIndependentEnabled, regionLoopEnabled, regionWideCheckedTailEnabled, regionZeroCounterEnabled = saved, whole, tail, zero
+	}()
+	regionZeroCounterEnabled = true
+	regionWideCheckedTailEnabled = false
+	for _, zeroCount := range []bool{false, true} {
+		m := wideIndependentFixture(t, 0xa2, zeroCount)
+		// Use the original output-local initialization shape.
+		body := m.Code[0].BodyBytes
+		if len(body) < 4 || body[0] != 0x20 || body[1] != 4 || body[2] != 0x21 || body[3] != 6 {
+			t.Fatal("unexpected fixture initializer")
+		}
+		m.Code[0].BodyBytes = body[4:]
+		regionLoopEnabled = !zeroCount
+		for _, on := range []bool{false, true} {
+			regionWideIndependentEnabled = on
+			var stats ModuleStats
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, AMD64FeaturesSet: true, AMD64Features: shared.AMD64ModernBaseline})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cm.CodeImage.Close()
+			if stats.Funcs[0].Peephole["region-loop-fast"] != 1 || stats.Funcs[0].Peephole["region-loop-wide-independent"] != 0 {
+				t.Fatalf("lost existing pair: zero=%v wide=%v stats=%v", zeroCount, on, stats.Funcs[0].Peephole)
+			}
+		}
+	}
+}
