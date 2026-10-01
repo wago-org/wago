@@ -169,7 +169,7 @@ func (e *regionLoopEmitter) guards() {
 	}
 	// Pair only complete iterations. Odd or zero/negative trip counts use the
 	// original checked loop, including its original trap and exit semantics.
-	if (!p.adjacent && !p.scalar) || p.wide {
+	if !p.adjacent && !p.scalar {
 		f.a.TestImm(a, 1, false)
 		e.fail(condNE)
 	}
@@ -860,7 +860,7 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 				f.storeLocalReg(x, d.reg, d.isFloat)
 			}
 		}
-		e.body()
+		e.bodyWithWidths()
 		if prefix != 0 {
 			if constantPrefix {
 				f.stats.peep("region-loop-constant-hoist")

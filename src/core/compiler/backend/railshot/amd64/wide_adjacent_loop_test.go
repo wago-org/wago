@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 func TestWideAdjacentLoopArithmeticAndExitLanes(t *testing.T) {
@@ -33,7 +34,7 @@ func TestWideAdjacentLoopArithmeticAndExitLanes(t *testing.T) {
 						var want uint64
 						var expected []byte
 						for _, on := range []bool{false, true} {
-							regionAdjacentEnabled, regionLoopTestFast, regionLoopMemForms = on, on && (features&shared.AMD64AVX == 0 || n%2 == 0), on
+							regionAdjacentEnabled, regionLoopTestFast, regionLoopMemForms = on, on, on
 							init := func(mem []byte) {
 								for i := uint64(0); i < 2*n; i++ {
 									binary.LittleEndian.PutUint64(mem[128+8*i:], math.Float64bits(float64(i+3)))
@@ -138,7 +139,7 @@ func TestWideAdjacentLoopInvariantBroadcast(t *testing.T) {
 						regionAdjacentEnabled = mode != 0
 						regionInvariantPrefixEnabled = mode == 2
 						regionLoopMemForms = true
-						regionLoopTestFast = mode != 0 && tc.inv != tc.dst && !tc.trap && tc.n%2 == 0
+						regionLoopTestFast = mode != 0 && tc.inv != tc.dst && !tc.trap
 						init := func(mem []byte) {
 							for i := uint64(0); i < 2*tc.n; i++ {
 								if tc.src+8*i+8 <= uint64(len(mem)) {
@@ -159,6 +160,79 @@ func TestWideAdjacentLoopInvariantBroadcast(t *testing.T) {
 						}
 						if mode == 2 && stats.Funcs[0].Peephole["region-loop-invariant-prefix"] != 1 {
 							t.Fatal("prefix not emitted", stats.Funcs[0].Peephole)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func wideInputAdjacentFixture(t *testing.T, op byte, left bool) *wasm.Module {
+	body := []byte{1, 2, 0x7c, 0x03, 0x40}
+	for lane := byte(0); lane < 2; lane++ {
+		body = append(body, 0x20, 0)
+		load := []byte{0x20, 1, 0x2b, 0, lane * 8}
+		if left {
+			body = append(body, 0x20, 5)
+			body = append(body, load...)
+		} else {
+			body = append(body, load...)
+			body = append(body, 0x20, 5)
+		}
+		body = append(body, op, 0x22, 6+lane, 0x39, 0, lane*8)
+	}
+	for _, i := range []byte{0, 1} {
+		body = append(body, 0x20, i, 0x41, 16, 0x6a, 0x21, i)
+	}
+	body = append(body, 0x20, 3, 0x41, 1, 0x6a, 0x22, 3, 0x20, 4, 0x47, 0x0d, 0, 0x0b, 0x20, 6, 0xbd, 0x20, 7, 0xbd, 0x42, 17, 0x89, 0x85, 0x0b)
+	m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.F64}, []wasm.ValType{wasm.I64}, body)
+	m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+	return m
+}
+
+func TestWideAdjacentLoopInputAndLiteralBroadcast(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	oldWide, oldAdjacent, oldForce, oldLoop := regionWideAdjacentEnabled, regionAdjacentEnabled, regionLoopTestFast, regionLoopEnabled
+	defer func() {
+		regionWideAdjacentEnabled, regionAdjacentEnabled, regionLoopTestFast, regionLoopEnabled = oldWide, oldAdjacent, oldForce, oldLoop
+	}()
+	regionLoopEnabled = false
+	for op := byte(0xa0); op <= 0xa3; op++ {
+		for _, left := range []bool{false, true} {
+			for _, bits := range []uint64{0x8000000000000000, math.Float64bits(1.5), 0x7ff8000000001234, 0x7ff0000000004321} {
+				for _, input := range []bool{false, true} {
+					m := constantAdjacentFixture(t, bits, op, left)
+					if input {
+						m = wideInputAdjacentFixture(t, op, left)
+					}
+					for _, n := range []uint64{1, 2, 3, 4} {
+						var want uint64
+						var expected []byte
+						for mode := 0; mode < 3; mode++ {
+							regionAdjacentEnabled, regionWideAdjacentEnabled, regionLoopTestFast = mode != 0, mode == 2, mode != 0
+							init := func(mem []byte) {
+								for i := uint64(0); i < 2*n; i++ {
+									binary.LittleEndian.PutUint64(mem[132+8*i:], math.Float64bits(float64(i+2)))
+								}
+							}
+							args := []uint64{1024, 132, 0, 0, n}
+							if input {
+								args = append(args, bits)
+							}
+							var stats ModuleStats
+							got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: shared.AMD64AVX, Stats: &stats}, init, args...)
+							if err != nil {
+								t.Fatal(op, left, bits, input, n, mode, err)
+							}
+							if mode == 0 {
+								want, expected = got, append([]byte(nil), mem...)
+							} else if got != want || !bytes.Equal(mem, expected) {
+								t.Fatal("broadcast changed result or memory", op, left, bits, input, n, mode)
+							}
+							if mode == 2 && stats.Funcs[0].Peephole["region-loop-wide-odd-pair"] != 1 {
+								t.Fatal("wide odd dispatch missing", stats.Funcs[0].Peephole)
+							}
 						}
 					}
 				}
