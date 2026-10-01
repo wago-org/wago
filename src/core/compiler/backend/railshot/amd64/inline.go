@@ -975,6 +975,9 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	f.stats.call(callKindInline)
 	start := f.a.Len()
 	if t.isI32AddConst() {
+		if !treeReorderSafe(f.s.back()) {
+			f.materializeTrapsBefore(f.s.head)
+		}
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			previous := f.enterProfileInlineAdd(t)
 			defer f.leaveProfileInlineAdd(previous)
@@ -985,6 +988,9 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 		f.stats.addInlineSiteBytes(f.a.Len() - start)
 		return nil
 	}
+	// Parameter binding pops arguments before the live prefix. The add-constant
+	// fast path above only needs the walk when its argument can trap.
+	f.materializeTrapsBefore(f.s.head)
 	base := f.inlineBase[t.globalIdx]
 	f.bindInlineParams(t, base)
 

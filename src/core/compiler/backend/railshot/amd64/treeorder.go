@@ -57,8 +57,21 @@ func treeReorderSafe(e *elem) bool {
 	if !e.isDeferred() {
 		return false
 	}
-	if !(isBinALU(e.deferredOp()) || isShift(e.deferredOp()) || isCompare(e.deferredOp()) || isUnary(e.deferredOp()) || isConvert(e.deferredOp())) {
+	if !(isBinALU(e.deferredOp()) || isShift(e.deferredOp()) || isCompare(e.deferredOp()) || e.deferredOp() == opEqz || isUnary(e.deferredOp()) || isConvert(e.deferredOp())) {
 		return false
 	}
 	return treeReorderSafe(e.arg0) && (e.arg1 == nil || treeReorderSafe(e.arg1))
+}
+
+// materializeTrapsBefore preserves earlier trapping operands before a boundary
+// evaluates its condition or arguments. Leave pure trees deferred and keep the
+// existing nodes spillable; canonicalizing slots here could overwrite an
+// argument that still needs to be captured from a noncanonical spill slot.
+func (f *fn) materializeTrapsBefore(node *elem) {
+	base := baseOfValentBlock(node)
+	for e := f.s.head.next; e != base; e = e.next {
+		if e.st.hasLogicalRoot() && !treeReorderSafe(e) {
+			f.materializeByType(e)
+		}
+	}
 }
