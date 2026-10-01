@@ -1035,6 +1035,9 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		f.release(value)
 		return nil
 	}
+	// Do this before evaluating store operands; the alias-aware load pass below
+	// may run after the address and value have already claimed registers.
+	f.materializePendingTraps()
 	// A constant value stores as an immediate directly (StoreImmIdx materializes
 	// the constant into scratch and stores it) — no long-lived register, no
 	// load-then-store dependency chain. i64 needs two 4-byte immediate stores
@@ -1769,6 +1772,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.materializePendingTraps()
 	f.invalidateBoundsCert()
 	delta := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(delta)

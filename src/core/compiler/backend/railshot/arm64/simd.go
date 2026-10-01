@@ -1995,6 +1995,7 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.materializePendingTraps()
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
@@ -2084,6 +2085,7 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	}
 	size := simdLaneMemSize(sub)
 
+	f.materializePendingTraps()
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)

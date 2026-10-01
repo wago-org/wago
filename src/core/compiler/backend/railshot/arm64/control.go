@@ -2967,6 +2967,7 @@ func (f *fn) opReturn() error {
 		return nil
 	}
 	if f.singleRegResult {
+		f.materializePendingTraps()
 		f.placeSingleResult() // result straight to X0/V0; epilogue does not reload
 		f.appendReturnSite(f.a.Branch())
 		f.unreachable = true

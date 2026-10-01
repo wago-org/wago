@@ -161,6 +161,7 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("arm64: unknown global %d", x)
 	}
+	f.materializePendingTraps()
 	gtv := wasm.GlobalValueType(gt)
 	if wasm.EqualValType(gtv, wasm.V128) {
 		xmm := f.materializeV128(f.popValue())
