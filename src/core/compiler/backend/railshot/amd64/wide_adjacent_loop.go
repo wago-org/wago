@@ -9,11 +9,11 @@ import "os"
 // Existing 16-byte stream guards cover the exact extent of even groups: the
 // last 32-byte access starts one original iteration earlier. Invariant loads
 // remain scalar accesses followed by register broadcasts.
-var regionWideAdjacentEnabled = os.Getenv("WAGO_AMD64_WIDE_ADJACENT_LOOP") == "1"
+var regionWideAdjacentEnabled = os.Getenv("WAGO_AMD64_WIDE_ADJACENT_LOOP") != "0"
 
 // Reuse the original checked body only when its entry homes equal the fast
 // exit homes. Other loops keep the separately emitted paired tail.
-var regionWideCheckedTailEnabled = os.Getenv("WAGO_AMD64_WIDE_CHECKED_TAIL") == "1"
+var regionWideCheckedTailEnabled = os.Getenv("WAGO_AMD64_WIDE_CHECKED_TAIL") != "0"
 
 func (f *fn) regionCheckedTailHomes(entry *[256]regionEntryLocal) bool {
 	for i := 0; i < f.nLocals; i++ {
@@ -111,4 +111,4 @@ func (e *regionLoopEmitter) bodyWithCheckedTail(checkedTail int) {
 }
 
 // Preserve exact eight-byte memory accesses while defining all wide lanes.
-var regionWideBroadcastEnabled = os.Getenv("WAGO_AMD64_WIDE_LOOP_BROADCAST") == "1"
+var regionWideBroadcastEnabled = os.Getenv("WAGO_AMD64_WIDE_LOOP_BROADCAST") != "0"
