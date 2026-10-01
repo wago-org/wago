@@ -4,7 +4,7 @@ package amd64
 
 import "os"
 
-var scalarMemoryRecurrenceEnabled = os.Getenv("WAGO_AMD64_SCALAR_MEMORY_RECURRENCE") == "1"
+var scalarMemoryRecurrenceEnabled = os.Getenv("WAGO_AMD64_SCALAR_MEMORY_RECURRENCE") != "0"
 
 // Admit up to two invariant output cells whose old values are read exactly
 // once before their updates. Their direct snapshots must die by those updates.
