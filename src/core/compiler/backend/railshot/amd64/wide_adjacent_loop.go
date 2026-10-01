@@ -11,6 +11,19 @@ import "os"
 // remain scalar accesses followed by register broadcasts.
 var regionWideAdjacentEnabled = os.Getenv("WAGO_AMD64_WIDE_ADJACENT_LOOP") == "1"
 
+// Reuse the original checked body only when its entry homes equal the fast
+// exit homes. Other loops keep the separately emitted paired tail.
+var regionWideCheckedTailEnabled = os.Getenv("WAGO_AMD64_WIDE_CHECKED_TAIL") == "1"
+
+func (f *fn) regionCheckedTailHomes(entry *[256]regionEntryLocal) bool {
+	for i := 0; i < f.nLocals; i++ {
+		if entry[i].reg != f.locals[i].reg || entry[i].state != f.locals[i].state {
+			return false
+		}
+	}
+	return true
+}
+
 func (e *regionLoopEmitter) broadcastPair(reg Reg) {
 	e.f.a.SseRR(0x66, 0x14, reg, reg, false)
 	if e.p.wide {
@@ -21,9 +34,13 @@ func (e *regionLoopEmitter) broadcastPair(reg Reg) {
 // Complete wide groups use the original success-only range and alias proof.
 // The paired tail consumes the next input image and exact remaining addresses.
 // Emit each body once, with no bytecode rescan or second allocation pass.
-func (e *regionLoopEmitter) bodyWithWidths() {
+func (e *regionLoopEmitter) bodyWithWidths(checkedTail int) {
 	if !e.p.wide {
 		e.body()
+		return
+	}
+	if checkedTail >= 0 {
+		e.bodyWithCheckedTail(checkedTail)
 		return
 	}
 	f, p := e.f, e.p
@@ -71,4 +88,24 @@ func (e *regionLoopEmitter) bodyWithWidths() {
 	f.a.PatchRel32(done, f.a.Len())
 	f.stats.peep("region-loop-wide-odd-pair")
 	f.stats.peep("region-loop-wide-paired-tail")
+}
+
+func (e *regionLoopEmitter) bodyWithCheckedTail(checkedTail int) {
+	f := e.f
+	f.a.Load32(e.gp[0], RSP, e.off(8))
+	f.a.Store64(RSP, e.off(30), e.gp[0])
+	f.a.AluRI(aluTable[opAnd].digit, e.gp[0], -2, false)
+	f.a.Store64(RSP, e.off(8), e.gp[0])
+	f.a.TestSelf(e.gp[0], false)
+	single := f.a.JccPlaceholder(condE)
+	f.a.PatchRel32(single, checkedTail)
+	e.body()
+	// The even prefix has committed its original scalar exit values, including
+	// every induction local. Matching entry/exit homes make those values the
+	// checked body's next input. Its original predicate stops after one tail.
+	f.a.Load32(e.gp[0], RSP, e.off(30))
+	f.a.TestImm(e.gp[0], 1, false)
+	odd := f.a.JccPlaceholder(condNE)
+	f.a.PatchRel32(odd, checkedTail)
+	f.stats.peep("region-loop-wide-checked-tail")
 }

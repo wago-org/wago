@@ -800,6 +800,7 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 	if regionLoopTestFast {
 		f.trapAlways(trapUnreachable)
 	}
+	checkedBody := f.a.Len()
 	if err := f.bodyLoop(r, depth); err != nil {
 		return true, err
 	}
@@ -863,7 +864,11 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 				f.storeLocalReg(x, d.reg, d.isFloat)
 			}
 		}
-		e.bodyWithWidths()
+		checkedTail := -1
+		if p.wide && regionWideCheckedTailEnabled && f.regionCheckedTailHomes(&entry) {
+			checkedTail = checkedBody
+		}
+		e.bodyWithWidths(checkedTail)
 		if prefix != 0 {
 			if constantPrefix {
 				f.stats.peep("region-loop-constant-hoist")
