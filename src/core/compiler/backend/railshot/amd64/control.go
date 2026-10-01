@@ -199,7 +199,7 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
 }
 
 func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFrame) {
-	if !f.opt(optLinearSumLoop) || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.memSizeReg == regNone {
+	if !f.opt(optLinearSumLoop) || f.guardMode && !linearSumSignalsEnabled || f.threadedMemory0 || f.memoryAddr64(0) || !f.guardMode && f.memSizeReg == regNone {
 		return
 	}
 	addr, acc, loadPC, ok := f.inspectLinearSumLoop(r, counter)
@@ -219,7 +219,7 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFram
 	f.a.ShiftImm(4, t, 3, true)
 	f.a.MovRegReg32(addrReg, addrReg)
 	f.a.Add64(t, addrReg)
-	f.a.Cmp64(t, f.memSizeReg)
+	f.compareLinearSumSize(t)
 	savedPC := f.wasmPC
 	f.wasmPC = loadPC
 	mt, _ := f.m.MemoryType(0)
@@ -232,7 +232,7 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFram
 		// that modular Wasm behavior without giving up the unrolled fast path.
 		inBounds := f.a.JccPlaceholder(condBE)
 		f.a.MovImm64(t, 1<<32)
-		f.a.Cmp64(f.memSizeReg, t)
+		f.compareLinearSumSize(t) // equality is independent of comparison direction
 		f.trapIf(condNE, trapMemOOB)
 		f.a.TestImm(addrReg, 7, false)
 		f.trapIf(condNE, trapMemOOB)
@@ -243,6 +243,9 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFram
 	f.linearSumLoop = uint32(addr+1) | uint32(acc+1)<<16
 	f.linearSumLoopDepth = uint16(len(f.ctrl))
 	f.stats.peep("counted-loop-bounds-hoist")
+	if f.guardMode {
+		f.stats.peep("linear-sum-signals")
+	}
 }
 
 // tryUnrolledLinearSumLatch splits an exact i64 reduction across four native
