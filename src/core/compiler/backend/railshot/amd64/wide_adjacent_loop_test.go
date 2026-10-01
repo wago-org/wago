@@ -26,7 +26,7 @@ func TestWideAdjacentLoopArithmeticAndExitLanes(t *testing.T) {
 		m := adjacentLoopFixture(t, op)
 		for _, features := range []shared.AMD64Features{0, shared.AMD64AVX, shared.AMD64ModernBaseline} {
 			for _, src := range []uint64{512, 516, 65504} {
-				for _, n := range []uint64{1, 2, 3, 4} {
+				for _, n := range []uint64{1, 2, 3, 4, 5, 6, 7} {
 					if src == 65504 && n > 2 {
 						continue
 					}
@@ -206,7 +206,7 @@ func TestWideAdjacentLoopInputAndLiteralBroadcast(t *testing.T) {
 					if input {
 						m = wideInputAdjacentFixture(t, op, left)
 					}
-					for _, n := range []uint64{1, 2, 3, 4} {
+					for _, n := range []uint64{1, 2, 3, 4, 5, 6, 7} {
 						var want uint64
 						var expected []byte
 						for mode := 0; mode < 3; mode++ {
@@ -229,6 +229,9 @@ func TestWideAdjacentLoopInputAndLiteralBroadcast(t *testing.T) {
 								want, expected = got, append([]byte(nil), mem...)
 							} else if got != want || !bytes.Equal(mem, expected) {
 								t.Fatal("broadcast changed result or memory", op, left, bits, input, n, mode)
+							}
+							if mode == 2 && stats.Funcs[0].Peephole["region-loop-wide-paired-tail"] != 1 {
+								t.Fatal("wide paired tail missing", stats.Funcs[0].Peephole)
 							}
 							if mode == 2 && stats.Funcs[0].Peephole["region-loop-wide-odd-pair"] != 1 {
 								t.Fatal("wide odd dispatch missing", stats.Funcs[0].Peephole)

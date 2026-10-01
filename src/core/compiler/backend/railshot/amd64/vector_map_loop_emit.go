@@ -780,7 +780,7 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 	memSize, memLease := f.memSizeReg, f.memSizeRegionalLease
 	slots := regionLoopSlots
 	if p.wide {
-		slots += 2
+		slots += 3
 	}
 	e.slot = f.allocSpillSlots(slots)
 	e.guards()
