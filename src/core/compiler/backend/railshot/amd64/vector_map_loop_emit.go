@@ -10,7 +10,8 @@ import (
 	"os"
 )
 
-var regionInvariantPrefixEnabled = os.Getenv("WAGO_AMD64_REGION_INVARIANT_PREFIX") == "1"
+// Qualified bounded invariant prefixes are enabled by default; zero permits diagnostic A/B.
+var regionInvariantPrefixEnabled = os.Getenv("WAGO_AMD64_REGION_INVARIANT_PREFIX") != "0"
 
 // Exact adjacent outputs are the qualified default; zero permits diagnostic A/B.
 var regionAdjacentEnabled = os.Getenv("WAGO_AMD64_ADJACENT_LOOP_PAIR") != "0"
