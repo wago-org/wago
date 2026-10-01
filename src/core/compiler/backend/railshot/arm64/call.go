@@ -2105,13 +2105,16 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
 		return
 	}
 	nextSlot := f.spillFloor
+	direct := true
 	for pass := 0; pass < 2; pass++ {
 		rootIndex := 0
 		canonicalSlot := 0
 		overlaps := false
 		for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
 			canonical := false
+			destination := -1
 			if rootIndex < len(belowRoots) && e == belowRoots[rootIndex] {
+				destination = canonicalSlot
 				canonical = e.elemKind() == ekValue && e.st.kind == stSlot && e.st.slotIndex() == canonicalSlot
 				canonicalSlot += rootMachineType(e).stackSlots()
 				rootIndex++
@@ -2130,6 +2133,7 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
 			}
 			overlaps = true
 			if pass == 0 {
+				direct = direct && destination >= from
 				continue
 			}
 			for i := 0; i < width; i++ {
@@ -2142,9 +2146,38 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
 		if !overlaps {
 			return
 		}
+		if pass == 0 && direct {
+			f.canonicalizeFlushSpills(belowSlots, belowRoots)
+			break
+		}
 	}
 	if nextSlot > f.maxSpill {
 		f.maxSpill = nextSlot
+	}
+}
+
+// When every overlapping source is a complete prefix root at or below its own
+// destination, copy backwards directly to canonical homes. Each write then lies
+// above all earlier sources; no temporary spill range or second copy is needed.
+func (f *fn) canonicalizeFlushSpills(slot int, roots []*elem) {
+	limit := slot
+	for i := len(roots) - 1; i >= 0; i-- {
+		root := roots[i]
+		width := rootMachineType(root).stackSlots()
+		slot -= width
+		if root.elemKind() != ekValue || root.st.kind != stSlot {
+			continue
+		}
+		from := root.st.slotIndex()
+		if from >= limit || from == slot {
+			continue
+		}
+		// Copy both halves backwards when a vector overlaps its new home.
+		for j := width - 1; j >= 0; j-- {
+			f.ld64(X16, SP, f.spillOff(from+j))
+			f.st64(SP, f.spillOff(slot+j), X16)
+		}
+		root.st.slot = uint32(slot)
 	}
 }
 

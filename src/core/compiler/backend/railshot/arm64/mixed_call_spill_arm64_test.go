@@ -73,7 +73,7 @@ func TestMixedCallNoArgumentsStagesExistingSpillsARM64(t *testing.T) {
 	f.emitMixedRegisterCall(0, &wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.F64}})
 	want := fn{a: &a64.Asm{}}
 	want.ld64(X16, SP, f.spillOff(0))
-	want.st64(SP, f.spillOff(2), X16)
+	want.st64(SP, f.spillOff(1), X16)
 	if !bytes.HasPrefix(f.a.B, want.a.B) {
 		t.Fatalf("call did not stage the live float before the full flush: %x", f.a.B)
 	}

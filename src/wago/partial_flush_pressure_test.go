@@ -12,7 +12,7 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func partialFlushPressureModule(count int, f32 bool) []byte {
+func partialFlushPressureModule(count int, f32, allResults bool) []byte {
 	body := []byte{0, 0x42, 53} // lazy i64 prefix, before every eager floating-point value
 	typ := wasm.F64
 	for i := 0; i < count; i++ {
@@ -29,12 +29,17 @@ func partialFlushPressureModule(count int, f32 bool) []byte {
 	// A fused condition flushes only the prefix. Under pressure a later float
 	// already occupies slot0, which must survive the earlier i64's canonical store.
 	body = append(body, 0x20, 0, 0x45, 0x04, 0x40, 0x0b)
+	results := []wasm.ValType{wasm.I64, typ}
 	for i := 1; i < count; i++ {
-		body = append(body, 0x1a)
+		if allResults {
+			results = append(results, typ)
+		} else {
+			body = append(body, 0x1a)
+		}
 	}
 	body = append(body, 0x0b)
 	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64, typ}))),
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, results))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
@@ -47,7 +52,7 @@ func TestPartialFlushPreservesSpilledFloatPrefix(t *testing.T) {
 			for _, flags := range []bool{false, true} {
 				t.Run(fmt.Sprintf("f32=%t/values=%d/flags=%t", f32, count, flags), func(t *testing.T) {
 					cfg := NewRuntimeConfig().WithOptimization("st-flags", flags)
-					c, err := Compile(cfg, partialFlushPressureModule(count, f32))
+					c, err := Compile(cfg, partialFlushPressureModule(count, f32, false))
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -74,7 +79,7 @@ func TestPartialFlushPreservesSpilledFloatPrefix(t *testing.T) {
 }
 
 func BenchmarkCompilePartialFlushPressure(b *testing.B) {
-	data := partialFlushPressureModule(33, false)
+	data := partialFlushPressureModule(33, false, false)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		c, err := Compile(nil, data)
@@ -82,5 +87,39 @@ func BenchmarkCompilePartialFlushPressure(b *testing.B) {
 			b.Fatal(err)
 		}
 		c.Close()
+	}
+}
+
+func TestPartialFlushPreservesEverySpilledFloat(t *testing.T) {
+	for _, f32 := range []bool{false, true} {
+		for _, count := range []int{17, 33, 65} {
+			t.Run(fmt.Sprintf("f32=%t/values=%d", f32, count), func(t *testing.T) {
+				c, err := Compile(nil, partialFlushPressureModule(count, f32, true))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				in, err := Instantiate(c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer in.Close()
+				for _, condition := range []uint64{0, 1} {
+					got, err := in.Invoke("run", condition)
+					if err != nil || len(got) != count+1 || got[0] != 53 {
+						t.Fatalf("condition=%d: got %x, %v", condition, got, err)
+					}
+					for i, value := range got[1:] {
+						want := math.Float64bits(float64(i + 2))
+						if f32 {
+							want = uint64(math.Float32bits(float32(i + 2)))
+						}
+						if value != want {
+							t.Errorf("condition=%d result=%d: got %x, want %x", condition, i, value, want)
+						}
+					}
+				}
+			})
+		}
 	}
 }

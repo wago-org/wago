@@ -87,3 +87,82 @@ func TestPartialFlushPreservesLiveSuffix(t *testing.T) {
 		})
 	}
 }
+
+func TestStageFlushCopiesToCanonicalSlotsBackwards(t *testing.T) {
+	f := fn{a: &encoder.Asm{B: make([]byte, 0, 128)}, s: newStack(), spillFloor: 5, maxSpill: 10}
+	prefix := f.pushValue(storage{kind: stConst, typ: mtI64, cval: 53})
+	scalar := f.pushValue(storage{kind: stSlot, typ: mtF64, slot: 0})
+	vector := f.pushValue(storage{kind: stSlot, typ: mtV128, slot: 1})
+	tail := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 3})
+	tail.st.setGCRoot(true)
+	high := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 9})
+	live := f.pushReg(RAX, mtI64)
+	f.pinned = maskOf(RAX)
+	roots := [...]*elem{prefix, scalar, vector, tail}
+	original := [...]storage{prefix.st, scalar.st, vector.st, tail.st}
+	allocs := testing.AllocsPerRun(100, func() {
+		for i, e := range roots {
+			e.st = original[i]
+		}
+		f.a.B = f.a.B[:0]
+		f.maxSpill = 10
+		f.stageFlushSpills(5, roots[:])
+	})
+	if allocs != 0 {
+		t.Fatalf("direct copy allocations = %v, want zero", allocs)
+	}
+	wantSlots := [...]uint32{0, 1, 2, 4}
+	for i, root := range roots {
+		want := original[i]
+		want.slot = wantSlots[i]
+		if root.st != want {
+			t.Fatalf("root %d storage = %+v, want %+v", i, root.st, want)
+		}
+	}
+	if high.st.slot != 9 || f.regUser[RAX] != live || f.pinned != maskOf(RAX) || f.spillFloor != 5 || f.maxSpill != 11 {
+		t.Fatal("direct copy changed live suffix, register ownership, floor, or frame extent")
+	}
+	want := fn{a: &encoder.Asm{}}
+	want.a.Store64(RSP, f.spillOff(10), RAX)
+	// The vector shifts right one slot, so its high half must move first too.
+	for _, move := range [][2]int{{3, 4}, {2, 3}, {1, 2}, {0, 1}} {
+		want.a.Load64(RAX, RSP, f.spillOff(move[0]))
+		want.a.Store64(RSP, f.spillOff(move[1]), RAX)
+	}
+	want.a.Load64(RAX, RSP, f.spillOff(10))
+	if !bytes.Equal(f.a.B, want.a.B) {
+		t.Fatalf("direct copy code = %x, want backward moves %x", f.a.B, want.a.B)
+	}
+}
+
+func TestStageFlushKeepsPermutedSourcesDisjoint(t *testing.T) {
+	f := fn{a: &encoder.Asm{}, s: newStack(), spillFloor: 2}
+	left := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 1})
+	right := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 0})
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+	f.stageFlushSpills(2, []*elem{left, right})
+	if left.st.slot != 3 || right.st.slot != 3+1 || f.maxSpill != 3+2 {
+		t.Fatalf("permuted sources were not staged disjointly: %d %d max=%d", left.st.slot, right.st.slot, f.maxSpill)
+	}
+}
+
+func TestStageFlushDirectSkipsSafeSlots(t *testing.T) {
+	f := fn{a: &encoder.Asm{}, s: newStack(), spillFloor: 4, maxSpill: 6}
+	canonical := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 0})
+	prefix := f.pushValue(storage{kind: stConst, typ: mtI64, cval: 53})
+	moving := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 1})
+	high := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 5})
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+	f.stageFlushSpills(4, []*elem{canonical, prefix, moving, high})
+	if canonical.st.slot != 0 || moving.st.slot != 2 || high.st.slot != 5 || f.maxSpill != 7 {
+		t.Fatal("direct copy changed a safe source or staged an unnecessary range")
+	}
+	want := fn{a: &encoder.Asm{}}
+	want.a.Store64(RSP, f.spillOff(6), RAX)
+	want.a.Load64(RAX, RSP, f.spillOff(1))
+	want.a.Store64(RSP, f.spillOff(2), RAX)
+	want.a.Load64(RAX, RSP, f.spillOff(6))
+	if !bytes.Equal(f.a.B, want.a.B) {
+		t.Fatalf("copy code = %x, want only the unsafe source copied: %x", f.a.B, want.a.B)
+	}
+}
