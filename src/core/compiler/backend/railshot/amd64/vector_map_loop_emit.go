@@ -10,6 +10,9 @@ import (
 	"os"
 )
 
+// Bounded literal hoisting is enabled by default; zero permits diagnostic A/B.
+var regionConstantHoistEnabled = os.Getenv("WAGO_AMD64_LOOP_CONSTANT_HOIST") != "0"
+
 // Qualified bounded invariant prefixes are enabled by default; zero permits diagnostic A/B.
 var regionInvariantPrefixEnabled = os.Getenv("WAGO_AMD64_REGION_INVARIANT_PREFIX") != "0"
 
@@ -655,8 +658,13 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 		}
 	}
 	step := p.locals[p.counter].step
-	folded, memory := p.memoryForms(regionLoopMemForms && f.cpuHas(shared.AMD64AVX))
-	prefix, permanent := p.invariantPrefix(regionInvariantPrefixEnabled)
+	memoryForms := regionLoopMemForms && f.cpuHas(shared.AMD64AVX)
+	prefix, permanent := p.hoistConstants(regionConstantHoistEnabled, regionInvariantPrefixEnabled, memoryForms)
+	constantPrefix := prefix != 0
+	if prefix == 0 {
+		prefix, permanent = p.invariantPrefix(regionInvariantPrefixEnabled)
+	}
+	folded, memory := p.memoryForms(memoryForms)
 	need := p.scratchNeedPermanent(folded, permanent)
 	if step&(step-1) != 0 || need > 10 {
 		return false, nil
@@ -772,6 +780,9 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 		}
 		e.body()
 		if prefix != 0 {
+			if constantPrefix {
+				f.stats.peep("region-loop-constant-hoist")
+			}
 			f.stats.peep("region-loop-invariant-prefix")
 		}
 		f.stats.peep("region-loop-fast")
