@@ -559,8 +559,8 @@ func (s *stack) baseOfValentBlock(root *elem) *elem {
 }
 
 // pushBinOp pushes a deferred binary operation over the top two valent blocks:
-// the right operand is the current top block, the left is the block below it. No
-// machine code is emitted; the op condenses later when a sink forces it.
+// the right operand is the current top block, the left is the block below it.
+// Guard-mode div/rem resolves pending traps now; other ops wait for a sink.
 func (f *fn) pushBinOp(op wOp, typ machineType) {
 	rightID := f.s.head.prev
 	right := f.s.node(rightID)
@@ -626,6 +626,11 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	node.setChildren(leftID, rightID)
 	node.setDeferredDepth(1 + max16(deferDepthOf(left), deferDepthOf(right)))
 	f.s.push(id, node)
+	if f.guardMode && isDivRem(op) {
+		// A later guard-backed load can execute when its address is evicted.
+		// Emit this mandatory trap before such a load becomes a spill candidate.
+		f.materializePendingTraps()
+	}
 }
 
 func max16(a, b int16) int16 {
