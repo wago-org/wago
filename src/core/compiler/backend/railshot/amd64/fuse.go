@@ -221,13 +221,16 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	default:
 		L, ownedL = f.materialize(left), true
 	}
-	f.pinned = f.pinned.add(L)
 	right := node.arg1
 	if right.isDeferred() {
 		// condense rewrites the existing operand node in place; keep that owner
 		// instead of allocating a duplicate register-value node.
 		f.condense(right, regNone)
+		// Fixed-register operations may have spilled left. Recover its current
+		// location before pinning it, retaining borrowed-register ownership.
+		L, ownedL = f.materializeRead(left)
 	}
+	f.pinned = f.pinned.add(L)
 	switch right.st.kind {
 	case stConst:
 		if fitsImm32(right.st.cval) {
