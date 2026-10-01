@@ -138,7 +138,7 @@ func runAmd64(t *testing.T, m *wasm.Module, args ...int32) int32 {
 
 // modMem builds a one-function module that also declares a linear memory of
 // `pages` (so memory opcodes validate/decode).
-func modMem(t *testing.T, pages uint32, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
+func modMem(t testing.TB, pages uint32, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
 	t.Helper()
 	entry := append(wasmtest.ULEB(uint32(len(funcBody))), funcBody...)
 	memType := append([]byte{0x00}, wasmtest.ULEB(pages)...) // flags=0 (min only)

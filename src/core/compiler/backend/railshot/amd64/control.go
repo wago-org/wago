@@ -274,6 +274,19 @@ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	f.a.AluRI(cmpDigit, counterReg, 4, false)
 	toRemainder := f.a.JccPlaceholder(condB)
 
+	toWrapping := -1
+	mt, _ := f.m.MemoryType(0)
+	if !mt.Limits.HasMax || mt.Limits.Max >= 65536 {
+		// Native group offsets do not wrap at 2^32. Select the scalar tail
+		// once for wrapping ranges, keeping ordinary groups unchanged.
+		f.a.MovRegReg32(p1, counterReg)
+		f.a.ShiftImm(4, p1, 3, true)
+		f.a.Add64(p1, addrReg)
+		f.a.ShiftImm(5, p1, 32, true)
+		f.a.MovImm64(p1, 0) // Preserve the shift's zero flag.
+		toWrapping = f.a.JccPlaceholder(condNE)
+	}
+
 	group := f.a.Len()
 	f.a.AluIdx(aluTable[opAdd].rm, accReg, RBX, addrReg, 0, true)
 	f.a.AluIdx(aluTable[opAdd].rm, p1, RBX, addrReg, 8, true)
@@ -286,6 +299,9 @@ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	f.a.PatchRel32(moreGroups, group)
 
 	f.a.PatchRel32(toRemainder, f.a.Len())
+	if toWrapping >= 0 {
+		f.a.PatchRel32(toWrapping, f.a.Len())
+	}
 	f.a.TestSelf(counterReg, false)
 	noRemainder := f.a.JccPlaceholder(condE)
 	remainder := f.a.Len()

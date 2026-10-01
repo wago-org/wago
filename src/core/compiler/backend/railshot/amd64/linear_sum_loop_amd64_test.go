@@ -10,7 +10,7 @@ import (
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-func linearSumLoopModuleAMD64(t *testing.T) *wasm.Module {
+func linearSumLoopModuleAMD64(t testing.TB) *wasm.Module {
 	t.Helper()
 	// (param i32 counter) (result i64), locals: i32 addr, i64 acc.
 	body := []byte{
