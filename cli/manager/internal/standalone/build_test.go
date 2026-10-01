@@ -46,7 +46,7 @@ func TestRequireToolchainAcceptsVersionFoundOnPath(t *testing.T) {
 }
 
 func TestMainSourceBakesInvokeExport(t *testing.T) {
-	source := string(mainSource(nil, nil, "fib", 3, false, 4, map[string]bool{"inline": false}, false))
+	source := string(mainSource(nil, nil, "fib", 3, false, 4, map[string]bool{"inline": false}, 0, false, false))
 	if !strings.Contains(source, `Invoke: "fib", Core: 3, DeferBoundsChecks: false, FunctionWorkers: 4`) ||
 		!strings.Contains(source, `"inline": false`) ||
 		!strings.Contains(source, `standalone.Run(module, pluginSet(), options, os.Args)`) {
@@ -55,13 +55,13 @@ func TestMainSourceBakesInvokeExport(t *testing.T) {
 }
 
 func TestMainSourceEmbedsPrecompiledArtifact(t *testing.T) {
-	source := string(mainSource(nil, nil, "", 2, true, 0, nil, true))
+	source := string(mainSource(nil, nil, "", 2, true, 0, nil, 0, false, true))
 	if !strings.Contains(source, "//go:embed module.wago") ||
 		!strings.Contains(source, `standalone.RunArtifact(module, pluginSet(), options, os.Args)`) ||
 		strings.Contains(source, "module.wasm") {
 		t.Fatalf("generated main does not load the precompiled artifact:\n%s", source)
 	}
-	compiler := string(artifactCompilerSource(nil, nil, "", 2, true, 0, nil))
+	compiler := string(artifactCompilerSource(nil, nil, "", 2, true, 0, nil, 0, false))
 	if !strings.Contains(compiler, `standalone.CompileArtifact(module, pluginSet(), options)`) ||
 		!strings.Contains(compiler, `os.WriteFile("module.wago", artifact, 0o644)`) {
 		t.Fatalf("generated artifact compiler does not precompile the module:\n%s", compiler)
@@ -238,5 +238,17 @@ func emptyStartModule() []byte {
 		3, 2, 1, 0,
 		7, 10, 1, 6, '_', 's', 't', 'a', 'r', 't', 0, 0,
 		10, 4, 1, 2, 0, 0x0b,
+	}
+}
+
+func TestGeneratedSourcesBakeFeatures(t *testing.T) {
+	for _, source := range [][]byte{
+		mainSource(nil, nil, "", 0, true, 0, nil, 0, true, false),
+		mainSource(nil, nil, "", 0, true, 0, nil, 0, true, true),
+		artifactCompilerSource(nil, nil, "", 0, true, 0, nil, 0, true),
+	} {
+		if !strings.Contains(string(source), "Features: 0, FeaturesSet: true") {
+			t.Fatalf("generated source lost explicit empty feature mask:\n%s", source)
+		}
 	}
 }

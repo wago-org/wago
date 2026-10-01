@@ -112,11 +112,17 @@ func (selection CompilationSelection) RuntimeConfig() *wago.RuntimeConfig {
 		WithDeferBoundsChecks(selection.DeferredBoundsChecking).
 		WithFunctionWorkers(selection.FunctionWorkers).
 		WithOptimizations(selection.Optimizations)
+	return config.WithCoreFeatures(selection.CoreFeatures())
+}
+
+// CoreFeatures resolves the selected feature settings to a self-contained mask.
+func (selection CompilationSelection) CoreFeatures() wago.CoreFeatures {
+	config := *wago.NewRuntimeConfig()
 	switch selection.Core {
 	case 2:
-		config = config.WithCoreFeatures(wago.CoreFeaturesV2)
+		config = *config.WithCoreFeatures(wago.CoreFeaturesV2)
 	case 3:
-		config = config.WithCoreFeatures(wago.CoreFeaturesV3)
+		config = *config.WithCoreFeatures(wago.CoreFeaturesV3)
 	}
 	// Apply disables last: an explicit legacy extended-constant disable also
 	// disables the umbrella feature, independent of map iteration order.
@@ -126,11 +132,11 @@ func (selection CompilationSelection) RuntimeConfig() *wago.RuntimeConfig {
 				continue
 			}
 			if feature, ok := wago.FeatureInfoByName(name); ok && feature.Available {
-				config = config.WithFeature(feature.Feature, enabled)
+				config = *config.WithFeature(feature.Feature, enabled)
 			}
 		}
 	}
-	return config
+	return config.CoreFeatures()
 }
 
 func resolveCore(value string) (int, error) {
