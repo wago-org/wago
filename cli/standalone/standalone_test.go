@@ -213,3 +213,32 @@ func tailCallStartModule() []byte {
 		10, 9, 2, 2, 0, 0x0b, 4, 0, 0x12, 0, 0x0b,
 	}
 }
+
+func BenchmarkRuntimeConfig(b *testing.B) {
+	for _, core := range []int{0, 2} {
+		name := "Default"
+		if core == 2 {
+			name = "Core2"
+		}
+		b.Run(name, func(b *testing.B) {
+			options := Options{Core: core, DeferBoundsChecks: true}
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				if _, err := runtimeConfig(options); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkCompileArtifact(b *testing.B) {
+	source := addModule()
+	options := Options{Core: 2, DeferBoundsChecks: true}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, err := CompileArtifact(source, wago.PluginSet{}, options); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
