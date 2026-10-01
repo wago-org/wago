@@ -59,15 +59,25 @@ func (f *fn) fconstMask() regMask {
 	return m
 }
 
-// allocFReg returns a free XMM register, spilling the deepest float-resident stack
-// value if none is free.
-func (f *fn) allocFReg(avoid regMask) Reg {
+// freeFReg finds an unowned XMM register without spilling or relinquishing a
+// local pin. Function-persistent constants cannot borrow a local's register.
+func (f *fn) freeFReg(avoid regMask) Reg {
 	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
 	for r := Reg(0); r < 16; r++ {
 		if f.fregUser[r] == nil && !block.has(r) {
 			return r
 		}
 	}
+	return regNone
+}
+
+// allocFReg returns a free XMM register, spilling the deepest float-resident stack
+// value if none is free.
+func (f *fn) allocFReg(avoid regMask) Reg {
+	if r := f.freeFReg(avoid); r != regNone {
+		return r
+	}
+	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.isValue() && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
@@ -242,7 +252,10 @@ func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
 	if len(f.fconsts) >= 2 {
 		return regNone, false
 	}
-	x := f.allocFReg(0)
+	x := f.freeFReg(0)
+	if x == regNone {
+		return regNone, false
+	}
 	f.loadFConst(x, st)
 	f.fconsts = append(f.fconsts, floatConstReg{typ: st.typ, bits: st.cval, reg: x})
 	return x, true
