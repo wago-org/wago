@@ -160,7 +160,7 @@ func (f *fn) materializeF(e *elem) Reg {
 	case stReg:
 		return e.st.reg
 	case stConst:
-		if !f.usesCalls && !f.syncHostCalls {
+		if !f.makesCalls && !f.syncHostCalls {
 			if c, ok := f.floatConstReg(e.st); ok {
 				x := f.allocFReg(maskOf(c))
 				f.a.FMov(x, c, e.st.typ == mtF64)
@@ -214,7 +214,7 @@ func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
 	if e.isValue() && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
-	if e.isValue() && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls {
+	if e.isValue() && e.st.kind == stConst && e.st.typ.isFloat() && !f.makesCalls {
 		if r, ok := f.floatConstReg(e.st); ok {
 			return r, false
 		}
@@ -249,7 +249,7 @@ func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
 }
 
 func (f *fn) preloadFloatConsts(code []byte) {
-	if f.usesCalls || f.syncHostCalls {
+	if f.makesCalls || f.syncHostCalls {
 		return
 	}
 	f.stats.peep("float-preload-scan")

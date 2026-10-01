@@ -484,7 +484,7 @@ func (f *fn) emitTailFrameRelease() {
 	f.a.Movz64(X16, 0, 0)
 	f.a.Movk64(X16, 0, 1)
 	f.a.AddSPReg(X16)
-	if f.usesCalls {
+	if f.makesCalls {
 		f.a.LdpPost(FP, LR, SP, 16)
 	}
 }
@@ -2306,9 +2306,9 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		}
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
-	// Eager local reloads do not use the prologue's FP/LR frame record.
+	// Standalone emitter fixtures can omit a physical caller frame record.
 	lrSlot := -1
-	if !f.usesCalls {
+	if !f.makesCalls {
 		lrSlot = f.allocSpillSlot()
 		f.st64(SP, f.spillOff(lrSlot), LR)
 	}

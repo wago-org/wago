@@ -24,3 +24,15 @@ func TestCallPresencePreventsFrameElisionAMD64(t *testing.T) {
 		}
 	}
 }
+
+func TestCallPresenceDisablesConstantPreloadsAMD64(t *testing.T) {
+	f := fn{makesCalls: true, policy: currentCodegenPolicy()}
+	f.preloadFloatConsts([]byte{0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0x1a, 0x0b})
+	vector := append([]byte{0xfd, 12, 1}, make([]byte, 15)...)
+	f.preloadV128Consts(append(vector, 0x1a, 0x0b))
+	h := funcHintView{loopIntConsts: &loopIntConstHintEntry{bits: [2]int64{0x123456789abcdef}, count: 1}}
+	f.preloadLoopIntConsts(&h)
+	if len(f.fconsts) != 0 || len(f.vconsts) != 0 || f.iconstN != 0 {
+		t.Fatalf("call-making function reserved constants with STACK_REG disabled")
+	}
+}

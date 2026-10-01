@@ -287,6 +287,7 @@ type fn struct {
 	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
 	// Call-free functions keep locals permanently in registers (locals[].state unused).
+	makesCalls                 bool // physical calls, independent of the local spill policy
 	usesCalls                  bool
 	usesWide                   bool
 	callFreeLoopLookaheadBytes int
@@ -1418,7 +1419,7 @@ func (f *fn) frameSize() int {
 func (f *fn) elideRegisterOnlyFrame() bool {
 	voidResult := len(f.ft.Results) == 0
 	registerResult := f.singleRegResult || voidResult
-	if !f.opt(optFrameElide) || !registerResult || f.moduleEH || f.usesCalls || f.moduleGlobalRegionalLease != regNone || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+	if !f.opt(optFrameElide) || !registerResult || f.moduleEH || f.makesCalls || f.moduleGlobalRegionalLease != regNone || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
 	if !f.allLocalsRegisterHomed() {
@@ -3547,6 +3548,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// on the next read (WARP's model). #68 disabled this for memory functions as a
 	// workaround; the actual root cause was the opElse merge edge skipping
 	// reconcileLocals (fixed in control.go, TestExecIfElseLocalMerge).
+	f.makesCalls = hasCall
 	f.usesCalls = hasCall && f.opt(optStackReg)
 	// A call-free leaf extends the deepest checked stack by exactly one frame; the
 	// fence's 256 KiB margin (runtime stackFenceMargin) absorbs that when the frame

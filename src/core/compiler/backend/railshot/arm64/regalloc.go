@@ -21,7 +21,7 @@ func (f *fn) cachedIntConst(st storage) (Reg, bool) {
 }
 
 func (f *fn) preloadLoopIntConsts(h *funcHintView) {
-	if !f.opt(optLoopIntConst) || f.usesCalls || h.loopIntConstCount == 0 {
+	if !f.opt(optLoopIntConst) || f.makesCalls || h.loopIntConstCount == 0 {
 		return
 	}
 	for i := 0; i < int(h.loopIntConstCount) && i < len(f.iconsts); i++ {

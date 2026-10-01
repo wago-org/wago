@@ -209,7 +209,8 @@ type fn struct {
 	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
 	// Call-free functions keep locals permanently in registers (locals[].state unused).
-	usesCalls bool
+	makesCalls bool // physical calls, independent of the local spill policy
+	usesCalls  bool
 	// controlBaseTypeN partitions the fixed function-result scratch: function
 	// results occupy its prefix and open control-frame bases use the remaining tail.
 	controlBaseTypeN uint8
@@ -1251,7 +1252,7 @@ func (f *fn) frameSize() int {
 func (f *fn) elideRegisterOnlyFrame() bool {
 	voidResult := len(f.ft.Results) == 0
 	registerResult := f.singleRegResult || voidResult
-	if f.moduleEH || !registerResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+	if f.moduleEH || !registerResult || f.makesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
 	// The frame reserves slots for locals and operand spills. A call-free leaf with
@@ -1334,16 +1335,16 @@ func (f *fn) patchFrameAdjusts() error {
 }
 
 func (f *fn) validateFrameSize(size int) error {
-	headroom := nativeFrameStackFenceHeadroom(f.usesCalls)
+	headroom := nativeFrameStackFenceHeadroom(f.makesCalls)
 	if size < 0 || size > headroom {
 		return fmt.Errorf("arm64: native frame %d bytes exceeds stack-fence headroom %d", size, headroom)
 	}
 	return nil
 }
 
-func nativeFrameStackFenceHeadroom(usesCalls bool) int {
+func nativeFrameStackFenceHeadroom(makesCalls bool) int {
 	overhead := shared.MaxNativeInboundCallBytes
-	if usesCalls {
+	if makesCalls {
 		overhead += 16 // FP/LR record is stored before the body-frame fence check.
 	}
 	return shared.MaxNativeFrameBytes - overhead
@@ -3218,6 +3219,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// on the next read (WARP's model). #68 disabled this for memory functions as a
 	// workaround; the actual root cause was the opElse merge edge skipping
 	// reconcileLocals (fixed in control.go, TestExecIfElseLocalMerge).
+	f.makesCalls = hasCall
 	f.usesCalls = hasCall && policy.EnabledOption(optStackReg)
 	// A call-free leaf extends the deepest checked stack by exactly one frame; the
 	// fence's 256 KiB margin (runtime stackFenceMargin) absorbs that when the frame
@@ -3806,7 +3808,7 @@ func (f *fn) storePinnedGlobalsIn(regs regMask, dirtyOnly bool) {
 // params into their register or slot, zero declared locals.
 func (f *fn) prologue(localScores []uint32) {
 	a := f.a
-	if f.usesCalls {
+	if f.makesCalls {
 		a.StpPre(FP, LR, SP, -16) // save FP/LR frame record (BL clobbers LR)
 		a.AddImm64(FP, SP, 0)     // MOV X29, SP — frame pointer for backtraces
 	}
@@ -4166,7 +4168,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		}
 	}
 	internalOff := a.Len()
-	if f.usesCalls {
+	if f.makesCalls {
 		a.StpPre(FP, LR, SP, -16) // save FP/LR frame record (BL clobbers LR)
 		a.AddImm64(FP, SP, 0)     // MOV X29, SP
 	}
@@ -4297,7 +4299,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	a.Movz64(X16, 0, 0) // undo the frame; imm patched after body
 	a.Movk64(X16, 0, 1)
 	a.AddSPReg(X16)
-	if f.usesCalls {
+	if f.makesCalls {
 		a.LdpPost(FP, LR, SP, 16) // restore FP/LR
 	}
 	a.Ret()
@@ -4360,7 +4362,7 @@ func (f *fn) epilogue() {
 	a.Movz64(X16, 0, 0) // undo the frame; imm patched after body
 	a.Movk64(X16, 0, 1)
 	a.AddSPReg(X16)
-	if f.usesCalls {
+	if f.makesCalls {
 		a.LdpPost(FP, LR, SP, 16) // restore FP/LR
 	}
 	a.Ret()
