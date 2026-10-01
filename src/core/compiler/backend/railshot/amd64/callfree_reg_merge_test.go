@@ -45,11 +45,11 @@ func TestCallFreeRegionalMergeRestoresOnlyMissingPins(t *testing.T) {
 	if f.a.Len() != 0 {
 		t.Fatalf("resident loop-entry pins emitted %x", f.a.B)
 	}
-	f.hasCalls = true
+	f.makesCalls = true
 	if f.callFreeRegMerges() {
 		t.Fatal("call-making function admitted")
 	}
-	f.hasCalls, f.intervalControl = false, false
+	f.makesCalls, f.intervalControl = false, false
 	if f.callFreeRegMerges() {
 		t.Fatal("non-regional function admitted")
 	}

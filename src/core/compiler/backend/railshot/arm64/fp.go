@@ -138,7 +138,7 @@ func (f *fn) materializeF(e *elem) Reg {
 	case stReg:
 		return e.st.reg
 	case stConst:
-		if !f.usesCalls {
+		if !f.makesCalls {
 			if c, ok := f.floatConstReg(e.st); ok {
 				x := f.allocFReg(maskOf(c))
 				f.a.FmovReg(x, c, e.st.typ == mtF64)
@@ -192,7 +192,7 @@ func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
 	if e.elemKind() == ekValue && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
-	if e.elemKind() == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls {
+	if e.elemKind() == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.makesCalls {
 		if r, ok := f.floatConstReg(e.st); ok {
 			return r, false
 		}
@@ -225,7 +225,7 @@ func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
 }
 
 func (f *fn) preloadFloatConsts(code []byte) {
-	if f.usesCalls {
+	if f.makesCalls {
 		return
 	}
 	// Tally constants before reserving the two cache registers. The old first-seen
@@ -1030,6 +1030,7 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
+	f.materializePendingTraps()
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
 	if memoryIndex != 0 {

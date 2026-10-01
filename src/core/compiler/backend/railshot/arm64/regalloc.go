@@ -21,7 +21,7 @@ func (f *fn) cachedIntConst(st storage) (Reg, bool) {
 }
 
 func (f *fn) preloadLoopIntConsts(h *funcHintView) {
-	if !f.opt(optLoopIntConst) || f.usesCalls || h.loopIntConstCount == 0 {
+	if !f.opt(optLoopIntConst) || f.makesCalls || h.loopIntConstCount == 0 {
 		return
 	}
 	for i := 0; i < int(h.loopIntConstCount) && i < len(f.iconsts); i++ {
@@ -366,12 +366,25 @@ func (f *fn) materializeByType(e *elem) Reg {
 	return f.materialize(e)
 }
 
-// materializePendingLoads forces every deferred load on the operand stack to be
-// emitted. Called before a linear-memory write so a deferred load reads the
-// pre-write value (WARP's load-before-store ordering).
+// materializePendingLoads resolves deferred loads before a memory write and
+// preserves any intervening div/rem traps in bytecode order.
 func (f *fn) materializePendingLoads() {
+	f.materializePendingEffects(true)
+}
+
+// materializePendingTraps forces div/rem and guard-backed loads before an
+// observable effect or a return that discards the live operand prefix.
+func (f *fn) materializePendingTraps() {
+	f.materializePendingEffects(f.guardMode)
+}
+
+func (f *fn) materializePendingEffects(loads bool) {
+	// The physical stack is in postfix/bytecode order. Visit individual trapping
+	// nodes so pure ancestors stay deferred and nested traps cannot be reordered.
 	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
-		if e.elemKind() == ekValue && e.st.kind == stMemRef {
+		if e.isDeferred() && isDivRem(e.deferredOp()) {
+			f.materialize(e)
+		} else if loads && e.elemKind() == ekValue && e.st.kind == stMemRef {
 			f.stats.addForcedLoad()
 			f.materializeByType(e)
 		}

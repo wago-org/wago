@@ -146,7 +146,7 @@ func (f *fn) pinnedV128LocalCount() int {
 // the cached index at every dynamic invocation. The cache is withheld when
 // vector-local pressure is already high.
 func (f *fn) preloadV128Consts(code []byte) {
-	if !f.opt(optV128ConstCache) || f.usesCalls || f.syncHostCalls {
+	if !f.opt(optV128ConstCache) || f.makesCalls || f.syncHostCalls {
 		return
 	}
 	limit := maxV128Consts
@@ -1995,6 +1995,7 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.materializePendingTraps()
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
@@ -2084,6 +2085,7 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	}
 	size := simdLaneMemSize(sub)
 
+	f.materializePendingTraps()
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)

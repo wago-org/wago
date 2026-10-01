@@ -1609,6 +1609,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if cOwned {
 			f.release(creg)
 		}
+		f.restoreCallFreePins()
 		fr.controlSite = f.a.JccPlaceholder(condE) // jz else/end
 	} else {
 		fr.height = f.depth() - pN
@@ -2326,6 +2327,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	if cOwned {
 		f.release(creg)
 	}
+	f.restoreCallFreePins()
 	over := f.a.JccPlaceholder(condE)
 	if coldExit {
 		f.convergeBranchLocals(fr)
@@ -2354,15 +2356,21 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	if fi < 0 {
 		return errBadLabel
 	}
-	ref := f.materialize(f.popValue())
 	fr := &f.ctrl[fi]
-	f.convergeBranchLocals(fr)
+	if !f.usesCalls {
+		f.convergeBranchLocals(fr)
+	}
+	ref := f.materialize(f.popValue())
+	if f.usesCalls {
+		f.convergeBranchLocals(fr)
+	}
 	d := f.depth()
 	f.flush()
 	refSlot := f.allocSpillSlot()
 	f.a.Store64(RSP, f.spillOff(refSlot), ref)
 	f.a.TestSelf(ref, true)
 	f.release(ref)
+	f.restoreCallFreePins()
 	over := f.a.JccPlaceholder(condNE)
 	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
@@ -2387,11 +2395,16 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	if fi < 0 {
 		return errBadLabel
 	}
+	fr := &f.ctrl[fi]
+	if !f.usesCalls {
+		f.convergeBranchLocals(fr)
+	}
 	ref := f.materialize(f.popValue())
 	result := f.pushReg(ref, mtI64)
 	f.markGCReference(result)
-	fr := &f.ctrl[fi]
-	f.convergeBranchLocals(fr)
+	if f.usesCalls {
+		f.convergeBranchLocals(fr)
+	}
 	allTypes := append([]machineType(nil), f.currentLogicalTypes()...)
 	d := len(allTypes)
 	refSlot := slotsOfTypes(allTypes) - 1
@@ -2400,6 +2413,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	f.a.Load64(condition, RSP, f.spillOff(refSlot))
 	f.a.TestSelf(condition, true)
 	f.release(condition)
+	f.restoreCallFreePins()
 	over := f.a.JccPlaceholder(condE)
 	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
@@ -2419,22 +2433,25 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 // edge and fallthrough therefore retain the exact same 64-bit identity; only the
 // validator-visible refinement differs.
 func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
-	matched, owned := f.materializeRead(f.popValue())
 	fi := len(f.ctrl) - 1 - int(idx)
 	if fi < 0 {
-		if owned {
-			f.release(matched)
-		}
 		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
-	f.convergeBranchLocals(fr)
+	if !f.usesCalls {
+		f.convergeBranchLocals(fr)
+	}
+	matched, owned := f.materializeRead(f.popValue())
+	if f.usesCalls {
+		f.convergeBranchLocals(fr)
+	}
 	d := f.depth()
 	f.flush()
 	f.a.TestSelf(matched, false)
 	if owned {
 		f.release(matched)
 	}
+	f.restoreCallFreePins()
 	skipCond := condE
 	if !branchOnMatch {
 		skipCond = condNE
@@ -2497,6 +2514,16 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	f.erase(index)
 	d := f.depth()
 	f.pinned = f.pinned.add(ireg)
+	if !f.usesCalls && f.pinRelinquished {
+		if f.pinnedLocalMask.has(ireg) {
+			// Keep the dispatch index outside a relinquished local's home.
+			f.a.MovRegReg32(RDX, ireg)
+			f.release(ireg)
+			f.pinned = f.pinned.remove(ireg).add(RDX)
+			ireg = RDX
+		}
+		f.restoreCallFreePins()
+	}
 	// Every case starts with live pinned registers and canonical operands.
 	// Per-target convergence and transfers therefore need no pin reloads and
 	// case bodies can be emitted in any order and shared.
@@ -2664,6 +2691,7 @@ func (f *fn) opReturn() error {
 		return nil
 	}
 	if f.singleRegResult {
+		f.materializePendingTraps()
 		f.placeSingleResult() // result straight to RAX/XMM0; epilogue does not reload
 		f.appendReturnSite(f.a.JmpPlaceholder())
 		f.unreachable = true

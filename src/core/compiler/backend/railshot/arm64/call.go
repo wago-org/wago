@@ -484,7 +484,7 @@ func (f *fn) emitTailFrameRelease() {
 	f.a.Movz64(X16, 0, 0)
 	f.a.Movk64(X16, 0, 1)
 	f.a.AddSPReg(X16)
-	if f.usesCalls {
+	if f.makesCalls {
 		f.a.LdpPost(FP, LR, SP, 16)
 	}
 }
@@ -2081,6 +2081,11 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 // directCalleePreservesPins returns the module-precomputed leaf classification
 // for one direct target. This is compile-time only; execution stays a plain BL.
 func (f *fn) directCalleePreservesPins(localIdx int) bool {
+	// Even a pin-preserving leaf can throw. An active catch needs current local
+	// homes, so keep the spill-managed call path until this try_table ends.
+	if f.ehTryDepth != 0 {
+		return false
+	}
 	if localIdx < 0 || localIdx >= len(f.calleeHints) {
 		return false
 	}
@@ -2306,9 +2311,9 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		}
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
-	// Eager local reloads do not use the prologue's FP/LR frame record.
+	// Standalone emitter fixtures can omit a physical caller frame record.
 	lrSlot := -1
-	if !f.usesCalls {
+	if !f.makesCalls {
 		lrSlot = f.allocSpillSlot()
 		f.st64(SP, f.spillOff(lrSlot), LR)
 	}

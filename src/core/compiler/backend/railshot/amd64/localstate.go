@@ -20,9 +20,8 @@ import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 //   - a subsequent local.get reloads lazily (recoverLocal);
 //   - branches converge everything to lsStackReg so all edges agree.
 //
-// Regional caches can reclaim dedicated pins under pressure without a call.
-// They use the same edge reconciliation so loop headers and joins retain their
-// recorded homes. Other call-free functions keep the original eager model.
+// Regional caches use the recorded edge contracts even without calls. Other
+// call-free functions restore relinquished pins to a register-only invariant.
 
 type locState uint8
 
@@ -225,7 +224,7 @@ func (f *fn) recoverLocal(x int) {
 
 // markLocalDirty records that pinned local x was just written (value only in reg).
 func (f *fn) markLocalDirty(x int) {
-	if f.usesCalls || f.lazyZero || len(f.intervalReg) != 0 || f.locals[x].state == lsMem {
+	if f.usesCalls || f.lazyZero || f.pinRelinquished || len(f.intervalReg) != 0 || f.locals[x].state == lsMem {
 		f.locals[x].state = lsReg
 	}
 }
@@ -310,7 +309,7 @@ func (f *fn) reloadLocalsForCall() {
 // callFreeRegMerges uses the existing whole-function call classification. With
 // no calls, every edge can promise register homes without also storing locals.
 func (f *fn) callFreeRegMerges() bool {
-	return (f.intervalControl || f.vectorRegion.enabled) && !f.hasCalls && callFreeRegMergesEnabled
+	return (f.intervalControl || f.vectorRegion.enabled) && !f.makesCalls && callFreeRegMergesEnabled
 }
 
 // Callers materialize lazy zeros and finish deferred operand evaluation first.
@@ -327,6 +326,7 @@ func (f *fn) restorePinnedRegisters() {
 // locals are materialized before paths diverge so unpinned locals have a real
 // slot value on every edge. In call-making functions, pinned locals are also
 // converged to lsStackReg so branches and fall-through agree on storage.
+// Call-free edges restore relinquished pins and assume only registers are valid.
 // Used where an eager full converge is the right call: loop entries (hoisting
 // post-call reloads out of the body) and br_table (one state satisfying every
 // target). Other edges use convergeEdgeTo's lazier per-frame agreement.
@@ -343,6 +343,7 @@ func (f *fn) reconcileLocals() {
 		return
 	}
 	if !f.usesCalls {
+		f.restoreCallFreePins()
 		return
 	}
 	for _, x := range f.pinnedLocals {
@@ -353,6 +354,25 @@ func (f *fn) reconcileLocals() {
 			f.storeLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
 		}
 		f.locals[x].state = lsStackReg
+	}
+}
+
+// restoreCallFreePins restores the register-only edge invariant after operand
+// materialization, which can itself relinquish pins. Loads and spills preserve
+// flags, so this is also safe between a condition's comparison and branch.
+func (f *fn) restoreCallFreePins() {
+	if f.usesCalls || !f.pinRelinquished {
+		return
+	}
+	for _, x := range f.pinnedLocals {
+		if f.locals[x].state == lsConstZero {
+			continue // a conditional return need not materialize untouched zeros
+		}
+		if f.locals[x].state == lsMem {
+			f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+		}
+		// Another incoming edge need not have an up-to-date slot.
+		f.locals[x].state = lsReg
 	}
 }
 
@@ -446,6 +466,10 @@ func (f *fn) freeEndsBuf(b []uint32) {
 }
 
 func (f *fn) convergeEdgeTo(target *[]locState) {
+	if !f.usesCalls {
+		f.reconcileLocals()
+		return
+	}
 	// Lazy zeros always materialize to the slot so unpinned declared-zero locals
 	// have a real slot value on every edge (all locals — const-zero ones may be
 	// unpinned). materializeZeroLocal leaves a pinned local in lsStackReg, so the
@@ -458,7 +482,7 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 			}
 		}
 	}
-	if !f.usesCalls || len(f.pinnedLocals) == 0 {
+	if len(f.pinnedLocals) == 0 {
 		return
 	}
 	// A call-free regional function uses the same register-only contract at
@@ -510,7 +534,16 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 // setLocalsState installs a merge point's recorded target as the tracked state
 // (no code): every reaching edge guaranteed at least this much.
 func (f *fn) setLocalsState(t []locState) {
-	if !f.usesCalls || t == nil {
+	if !f.usesCalls {
+		if f.pinRelinquished {
+			for _, x := range f.pinnedLocals {
+				// Call-free edges guarantee registers, not path-specific slots.
+				f.locals[x].state = lsReg
+			}
+		}
+		return
+	}
+	if t == nil {
 		return
 	}
 	for i, x := range f.pinnedLocals {

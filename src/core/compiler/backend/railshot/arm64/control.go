@@ -1015,6 +1015,10 @@ func (f *fn) flush() {
 	if f.flushWideStack(roots, gcRoots) {
 		return
 	}
+	// New allocation spills must stay above the canonical destinations that
+	// this pass is still writing, including both halves of every v128.
+	oldFloor := f.spillFloor
+	f.spillFloor = max(oldFloor, slotsOfTypes(f.tmpFlushTypes))
 	types := f.tmpTypes[:0]
 	slot := 0
 	for _, root := range roots {
@@ -1056,6 +1060,7 @@ func (f *fn) flush() {
 		f.release(r)
 		slot++
 	}
+	f.spillFloor = oldFloor
 	f.tmpTypes = types
 	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
@@ -2078,6 +2083,10 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 		return fmt.Errorf("bounded exception handling payload stack underflow")
 	}
 	f.reconcileLocals()
+	if f.makesCalls && !f.usesCalls {
+		// Catch routes reload eager pins, including throws within this frame.
+		f.spillLocalsForCall()
+	}
 	f.flush()
 	noHandler := f.zeroBranch(ehReg, true, true)
 	f.ld64(X16, linMemReg, -int32(offEHTagDirPtr))
@@ -2110,6 +2119,10 @@ func (f *fn) opThrowRef() error {
 	}
 	refSlot := slotOfLogicalTypes(types, len(types)-1)
 	f.reconcileLocals()
+	if f.makesCalls && !f.usesCalls {
+		// Catch routes reload eager pins, including throws within this frame.
+		f.spillLocalsForCall()
+	}
 	f.flush()
 	f.ld64(X16, SP, f.spillOff(refSlot))
 	f.trapIfZero(X16, true, true, trapNullReference)
@@ -2169,6 +2182,11 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 		}
 	}
 
+	// A throw skips the ordinary post-call eager reload. Direct throws in this
+	// frame publish the same slots before unwinding; call-free pins stay live.
+	if f.makesCalls && !f.usesCalls {
+		f.reloadLocalsForCall()
+	}
 	// Use the same local-indexed snapshot as control-frame merges. Whole-function
 	// pins are only assigned within the range covered by packedLocStates; the
 	// combined GP/FP pin count is not bounded by sixteen.
@@ -2967,6 +2985,7 @@ func (f *fn) opReturn() error {
 		return nil
 	}
 	if f.singleRegResult {
+		f.materializePendingTraps()
 		f.placeSingleResult() // result straight to X0/V0; epilogue does not reload
 		f.appendReturnSite(f.a.Branch())
 		f.unreachable = true
