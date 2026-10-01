@@ -15,7 +15,8 @@ func workloadHash(w Workload) string {
 	b, _ := json.Marshal(struct {
 		Module, Init string
 		Calls        []Call
-	}{w.Hash, w.Init, w.Calls})
+		Semantic     []semanticCase `json:",omitempty"`
+	}{w.Hash, w.Init, w.Calls, w.semantic})
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }

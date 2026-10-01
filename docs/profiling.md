@@ -70,6 +70,14 @@ directories must be new; the runner never replaces an earlier capture.
 hash, initialization export, calls, arguments, and exact result oracle. JSON-AS
 is a preset using the same runner and result oracle as other workloads.
 
+Core `semantic_exec` workloads also use their existing catalog checks. Published
+vectors validate the output bytes after each call, and single-call cases validate
+their return slots and memory oracles. Input buffers are restored at each case
+group so overlapping buffers from different checks cannot affect one another.
+Captures record the semantic check IDs and whether input writes and memory
+validation occur inside the execution phase. Account for that host work when
+reading CPU samples; these captures are diagnostics, not execution benchmarks.
+
 For a custom module:
 
 ```sh

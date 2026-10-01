@@ -87,6 +87,9 @@ type Manifest struct {
 	Workload            string                 `json:"workload"`
 	ModuleHash          string                 `json:"module_sha256"`
 	WorkloadHash        string                 `json:"workload_contract_sha256"`
+	SemanticChecks      []string               `json:"semantic_checks,omitempty"`
+	SemanticInputWrites bool                   `json:"semantic_input_writes_in_execute,omitempty"`
+	MemoryValidation    bool                   `json:"memory_oracle_checks_in_execute,omitempty"`
 	Backend             string                 `json:"backend"`
 	CollectorVersion    string                 `json:"collector_version"`
 	Event               string                 `json:"event"`
@@ -202,6 +205,11 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		m.Diagnostics = append(m.Diagnostics, "raw stack memory is included in perf.data; bounded reads and unsupported unwind transitions may truncate call chains; complete guest stacks are not established and built-in reports remain flat")
 	}
 	m.WorkloadHash = workloadHash(w)
+	for _, check := range w.semantic {
+		m.SemanticChecks = append(m.SemanticChecks, check.ID)
+		m.SemanticInputWrites = m.SemanticInputWrites || check.Invoke.Input != "" || check.Invoke.Vectors != nil
+		m.MemoryValidation = m.MemoryValidation || len(check.Expect.Memory) > 0 || check.Invoke.Vectors != nil
+	}
 	m.CPUModel, m.OSVersion = hostIdentity()
 	m.RateAccounting = "requested rate only; raw collector samples retain actual observations"
 	if b, ok := debug.ReadBuildInfo(); ok {
@@ -458,7 +466,7 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		case "close":
 			p.WorkUnit = "teardown"
 		}
-		if p.WorkUnit != "" && name != "execute" && name != "warmup" && err == nil && (name != "initialize" || w.Init != "") {
+		if p.WorkUnit != "" && name != "execute" && name != "warmup" && err == nil && (name != "initialize" || w.Init != "" || len(w.semantic) > 0) {
 			p.Completed = 1
 		}
 		m.Phases = append(m.Phases, p)
@@ -524,18 +532,23 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 	}); err != nil {
 		return err
 	}
+	var calls []checkedCall
 	if err := phase("initialize", func() error {
 		if w.Init != "" {
 			_, err := instance.Invoke(w.Init)
-			return err
+			if err != nil {
+				return err
+			}
 		}
-		return nil
+		var err error
+		calls, err = prepareCheckedCalls(instance, w)
+		return err
 	}); err != nil {
 		return err
 	}
-	prepared := make([]*wago.WasmFunc, len(w.Calls))
+	prepared := make([]*wago.WasmFunc, len(calls))
 	if o.Mode == "prepared" {
-		for i, c := range w.Calls {
+		for i, c := range calls {
 			var err error
 			prepared[i], err = instance.WasmFunc(c.Export)
 			if err != nil {
@@ -544,7 +557,12 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		}
 	}
 	run := func(count bool) error {
-		for i, c := range w.Calls {
+		for i, c := range calls {
+			for _, input := range c.input {
+				if !instance.Write(input.offset, input.want) {
+					return fmt.Errorf("%s: input initialization outside memory", c.Export)
+				}
+			}
 			var out []uint64
 			var err error
 			if o.Mode == "prepared" {
@@ -557,6 +575,12 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 			}
 			if !slices.Equal(out, c.Want) {
 				return fmt.Errorf("%s: result validation failed", c.Export)
+			}
+			for _, check := range c.memory {
+				actual, ok := instance.Read(check.offset, uint32(len(check.want)))
+				if !ok || !slices.Equal(actual, check.want) {
+					return fmt.Errorf("%s: memory validation failed at %d", c.Export, check.offset)
+				}
 			}
 			if count {
 				m.Invocations++
