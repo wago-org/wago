@@ -63,6 +63,7 @@ type regionLoopPlan struct {
 	exitHigh                     uint8
 	zeroTerminated               bool
 	scalar                       bool
+	wide                         bool
 	reductionLoad                [2]uint8
 }
 

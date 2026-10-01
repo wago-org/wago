@@ -825,3 +825,12 @@ func (a *Asm) VMovdquIdx(op byte, xmm, base, index Reg, disp int32) {
 func (a *Asm) FAluDisp(op byte, dst, base Reg, disp int32, f64 bool) {
 	a.fmemDisp(op, dst, base, disp, f64)
 }
+
+// YInsertF128 is AVX's floating-domain insertion, requiring no AVX2.
+func (a *Asm) YInsertF128(dst, src256, src128 Reg, lane byte) {
+	a.vex3RRIMapL(vexMap0F3A, 1, 0x18, dst, src256, src128, lane, 1)
+}
+
+func (a *Asm) YFPackedMemIdx(op byte, dst, src1, base, index Reg, disp int32, f64 bool) {
+	a.vex3MemIdxL(vexMap0F, packedPP(f64), op, dst, src1, true, base, index, disp, 1)
+}

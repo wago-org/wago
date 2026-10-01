@@ -169,7 +169,7 @@ func (e *regionLoopEmitter) guards() {
 	}
 	// Pair only complete iterations. Odd or zero/negative trip counts use the
 	// original checked loop, including its original trap and exit semantics.
-	if !p.adjacent && !p.scalar {
+	if (!p.adjacent && !p.scalar) || p.wide {
 		f.a.TestImm(a, 1, false)
 		e.fail(condNE)
 	}
@@ -437,7 +437,7 @@ func (e *regionLoopEmitter) body() {
 			regs[l.initial] = e.fp[homes]
 			f.a.FLoadDisp(regs[l.initial], RSP, e.off(int(p.nodes[l.initial].bits)), true)
 			if !p.scalar {
-				f.a.SseRR(0x66, 0x14, regs[l.initial], regs[l.initial], false)
+				e.broadcastPair(regs[l.initial])
 			}
 			homes++
 		}
@@ -469,7 +469,7 @@ func (e *regionLoopEmitter) body() {
 		f.a.Xor32(e.gp[0], e.gp[0])
 	}
 	f.a.Load32(e.gp[1], RSP, e.off(8))
-	if !p.adjacent && !p.scalar {
+	if (!p.adjacent && !p.scalar) || p.wide {
 		f.a.ShiftImm(5, e.gp[1], 1, false)
 	}
 	top := 0
@@ -494,6 +494,8 @@ func (e *regionLoopEmitter) body() {
 				} else {
 					f.a.FStoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp, true)
 				}
+			} else if p.wide {
+				f.a.YMovdquStoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp)
 			} else {
 				f.mov128StoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp)
 			}
@@ -515,7 +517,7 @@ func (e *regionLoopEmitter) body() {
 			site := f.a.MovsRipPlaceholder(regs[event], true)
 			f.recordConst(raw[:], site)
 			if !p.scalar {
-				f.a.SseRR(0x66, 0x14, regs[event], regs[event], false)
+				e.broadcastPair(regs[event])
 			}
 		case 0x2b:
 			regs[event] = allocate()
@@ -523,8 +525,10 @@ func (e *regionLoopEmitter) body() {
 			if p.scalar || p.stride(n.left) == 0 {
 				f.a.FLoadIdx(regs[event], RBX, ea, e.streams[e.loadStream[event]].disp, true)
 				if !p.scalar {
-					f.a.SseRR(0x66, 0x14, regs[event], regs[event], false)
+					e.broadcastPair(regs[event])
 				}
+			} else if p.wide {
+				f.a.YMovdquLoadIdx(regs[event], RBX, ea, e.streams[e.loadStream[event]].disp)
 			} else {
 				f.mov128LoadIdx(regs[event], RBX, ea, e.streams[e.loadStream[event]].disp)
 			}
@@ -552,10 +556,18 @@ func (e *regionLoopEmitter) body() {
 			}
 			if memory != 0 {
 				ea := e.address(e.loadStream[memory])
-				f.a.VFPackedMemIdx(opcode, out, regs[source], RBX, ea, e.streams[e.loadStream[memory]].disp, true)
+				if p.wide {
+					f.a.YFPackedMemIdx(opcode, out, regs[source], RBX, ea, e.streams[e.loadStream[memory]].disp, true)
+				} else {
+					f.a.VFPackedMemIdx(opcode, out, regs[source], RBX, ea, e.streams[e.loadStream[memory]].disp, true)
+				}
 				f.stats.peep("region-loop-fold-load")
 				uses[memory]--
 				release(source, out)
+			} else if p.wide {
+				f.a.YSseRRR(1, opcode, out, regs[n.left], regs[n.right])
+				release(n.right, out)
+				release(n.left, out)
 			} else {
 				if out != regs[n.left] {
 					if p.scalar {
@@ -610,12 +622,17 @@ func (e *regionLoopEmitter) body() {
 	for i, l := range p.locals[:p.localN] {
 		if l.written && l.typ == mtF64 {
 			if p.adjacent {
-				// Use the final two scratch slots to publish either lane without
+				// Use the final scratch slots to publish a scalar lane without
 				// mutating a packed value shared by multiple scalar locals.
-				f.mov128StoreDisp(RSP, e.off(26), regs[l.value])
 				lane := int32(0)
+				if p.wide {
+					f.a.YMovdquStoreDisp(RSP, e.off(26), regs[l.value])
+					lane = 16 // final original iteration is the upper pair
+				} else {
+					f.mov128StoreDisp(RSP, e.off(26), regs[l.value])
+				}
 				if p.exitHigh&(1<<i) != 0 {
-					lane = 8
+					lane += 8
 				}
 				f.a.Load64(e.gp[0], RSP, e.off(26)+lane)
 				f.a.Store64(RSP, e.off(19+i), e.gp[0])
@@ -675,6 +692,9 @@ func (e *regionLoopEmitter) body() {
 			}
 		}
 	}
+	if p.wide {
+		f.a.VZeroUpper()
+	}
 	f.wasmPC = oldPC
 }
 
@@ -707,6 +727,7 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 			return false, nil
 		}
 	}
+	p.wide = regionWideAdjacentEnabled && p.adjacent && f.cpuHas(shared.AMD64AVX)
 	step := p.locals[p.counter].step
 	memoryForms := !p.scalar && regionLoopMemForms && f.cpuHas(shared.AMD64AVX)
 	var prefix uint8
@@ -754,7 +775,11 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 	}
 	reserved, pinned := f.reserved, f.pinned
 	memSize, memLease := f.memSizeReg, f.memSizeRegionalLease
-	e.slot = f.allocSpillSlots(regionLoopSlots)
+	slots := regionLoopSlots
+	if p.wide {
+		slots += 2
+	}
+	e.slot = f.allocSpillSlots(slots)
 	e.guards()
 	e.aliasGuards()
 	e.coalesceStreams()
@@ -844,6 +869,9 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 		}
 		if p.scalar {
 			f.stats.peep("region-loop-scalar-memory-recurrence")
+		}
+		if p.wide {
+			f.stats.peep("region-loop-wide-adjacent")
 		}
 		f.stats.peep("region-loop-fast")
 	} else {
