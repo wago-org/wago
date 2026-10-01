@@ -1015,6 +1015,10 @@ func (f *fn) flush() {
 	if f.flushWideStack(roots, gcRoots) {
 		return
 	}
+	// New allocation spills must stay above the canonical destinations that
+	// this pass is still writing, including both halves of every v128.
+	oldFloor := f.spillFloor
+	f.spillFloor = max(oldFloor, slotsOfTypes(f.tmpFlushTypes))
 	types := f.tmpTypes[:0]
 	slot := 0
 	for _, root := range roots {
@@ -1056,6 +1060,7 @@ func (f *fn) flush() {
 		f.release(r)
 		slot++
 	}
+	f.spillFloor = oldFloor
 	f.tmpTypes = types
 	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
