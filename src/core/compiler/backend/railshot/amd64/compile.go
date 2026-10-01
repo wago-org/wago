@@ -286,7 +286,7 @@ type fn struct {
 	// WARP STACK_REG lazy-spill model for pinned locals in CALL-MAKING functions
 	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
-	// Call-free functions keep locals permanently in registers (locals[].state unused).
+	// Call-free functions also track pressure spills, restoring pins at edges.
 	makesCalls                 bool // physical calls, independent of the local spill policy
 	usesCalls                  bool
 	usesWide                   bool
@@ -1419,7 +1419,7 @@ func (f *fn) frameSize() int {
 func (f *fn) elideRegisterOnlyFrame() bool {
 	voidResult := len(f.ft.Results) == 0
 	registerResult := f.singleRegResult || voidResult
-	if !f.opt(optFrameElide) || !registerResult || f.moduleEH || f.makesCalls || f.moduleGlobalRegionalLease != regNone || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+	if !f.opt(optFrameElide) || !registerResult || f.moduleEH || f.makesCalls || f.pinRelinquished || f.moduleGlobalRegionalLease != regNone || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
 	if !f.allLocalsRegisterHomed() {
@@ -1434,8 +1434,8 @@ func (f *fn) elideRegisterOnlyFrame() bool {
 }
 
 // allLocalsRegisterHomed reports whether every local lives in a register for the
-// whole activation (never uses its reserved frame slot). Only meaningful for
-// call-free functions, where locals never leave their registers. A v128 local is
+// whole activation (never uses its reserved frame slot). The caller must exclude
+// calls and relinquished pins, which can use local slots. A v128 local is
 // copied through its frame slot in the prologue, so it disqualifies elision.
 func (f *fn) allLocalsRegisterHomed() bool {
 	if len(f.locals) < f.nLocals {

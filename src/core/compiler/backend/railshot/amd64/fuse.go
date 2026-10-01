@@ -298,6 +298,7 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		loopHeader = false
 	}
 	cc := f.condenseToFlags(top)
+	f.restoreCallFreePins()
 	a := fr.branchArity()
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
 	if coldExit {
