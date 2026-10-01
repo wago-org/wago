@@ -61,6 +61,7 @@ type regionLoopPlan struct {
 	inputMask                    uint8
 	adjacent                     bool
 	exitHigh                     uint8
+	zeroTerminated               bool
 }
 
 func (p *regionLoopPlan) add(n regionLoopNode) uint8 {
@@ -259,6 +260,20 @@ func inspectRegionLoop(r wasm.Reader, types []machineType, classifier wasm.Modul
 				id = p.integer(op, a, b)
 			}
 		case 0x0d:
+			// A branch on an affine integer is exactly a comparison with zero.
+			// Guarded modular trip counting separately proves termination.
+			if regionZeroCounterEnabled && depth == 1 && p.nodes[stack[0]].op == 0 {
+				value := stack[0]
+				zero := p.add(regionLoopNode{})
+				if zero == 0 {
+					return false
+				}
+				pred := p.add(regionLoopNode{op: 0x47, left: value, right: zero, uses: p.nodes[value].uses})
+				if pred == 0 {
+					return false
+				}
+				stack[0], p.zeroTerminated = pred, true
+			}
 			if imm.Index != 0 || depth != 1 || p.storeN == 0 || p.nodes[stack[0]].op != 0x47 {
 				return false
 			}

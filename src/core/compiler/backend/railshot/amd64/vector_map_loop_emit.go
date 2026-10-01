@@ -21,7 +21,10 @@ var regionAdjacentEnabled = os.Getenv("WAGO_AMD64_ADJACENT_LOOP_PAIR") != "0"
 
 var regionLoopMemForms = os.Getenv("WAGO_AMD64_VECTOR_MAP_MEMFORMS") != "0"
 
-// Pairing whole scalar iterations remains an opt-in experiment.
+// Modular zero-counter loops use guarded trip counting and the original checked fallback.
+var regionZeroCounterEnabled = os.Getenv("WAGO_AMD64_ZERO_COUNTER_LOOP") != "0"
+
+// Pairing other whole scalar iterations remains an opt-in experiment.
 var regionLoopEnabled = os.Getenv("WAGO_AMD64_VECTOR_MAP_LOOP") == "1"
 
 // Diagnostic assertion for qualification only; ordinary timings leave it off.
@@ -146,8 +149,17 @@ func (e *regionLoopEmitter) guards() {
 	}
 	e.affine(p.limit, a, b)
 	f.a.Load32(b, RSP, e.off(int(p.counter)))
-	f.a.Cmp32(a, b)
-	e.fail(condBE)
+	if p.zeroTerminated {
+		// finish proves the limit is literal zero and the positive step is a
+		// power of two. Modular distance to zero gives the first terminating
+		// iteration iff it is nonzero and divisible by that step. Zero entry
+		// remains in the original do-while loop (it may execute 2^32 steps).
+		f.a.TestSelf(b, false)
+		e.fail(condE)
+	} else {
+		f.a.Cmp32(a, b)
+		e.fail(condBE)
+	}
 	f.a.Sub32(a, b)
 	step := p.locals[p.counter].step
 	if step != 1 {
@@ -644,7 +656,7 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 		return false, nil
 	}
 	if p.independentLanes() {
-		if !regionLoopEnabled {
+		if !regionLoopEnabled && !(regionZeroCounterEnabled && p.zeroTerminated) {
 			return false, nil
 		}
 	} else if !regionAdjacentEnabled || !p.packAdjacentOutputs() {
