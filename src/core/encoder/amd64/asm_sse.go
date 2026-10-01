@@ -234,6 +234,11 @@ func (a *Asm) VFMemIdx(op byte, dst, src1, base, index Reg, disp int32, f64 bool
 	a.vex3MemIdx(vexMap0F, vexPP(f64), op, dst, src1, true, base, index, disp)
 }
 
+// VFPackedMemIdx emits VEX.128 packed arithmetic with an indexed memory operand.
+func (a *Asm) VFPackedMemIdx(op byte, dst, src1, base, index Reg, disp int32, f64 bool) {
+	a.vex3MemIdx(vexMap0F, packedPP(f64), op, dst, src1, true, base, index, disp)
+}
+
 func packedPP(f64 bool) byte {
 	if f64 {
 		return 0b01 // 66 = packed double

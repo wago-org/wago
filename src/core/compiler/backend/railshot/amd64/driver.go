@@ -85,6 +85,13 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			}
 		case 0x01: // nop
 		case 0x02, 0x03, 0x04: // block / loop / if
+			if op == 0x03 && (regionLoopEnabled || regionAdjacentEnabled) {
+				var done bool
+				done, err = f.tryRegionLoop(r)
+				if done || err != nil {
+					break
+				}
+			}
 			err = f.opBlock(r, op)
 		case 0x1f: // try_table
 			err = f.opTryTable(r)
