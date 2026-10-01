@@ -72,8 +72,10 @@ is a preset using the same runner and result oracle as other workloads.
 
 Core `semantic_exec` workloads also use their existing catalog checks. Published
 vectors validate the output bytes after each call, and single-call cases validate
-their return slots and memory oracles. Input buffers are restored at each case
-group so overlapping buffers from different checks cannot affect one another.
+their return slots and memory oracles. Input buffers are restored before every call. Single-call input pointers are
+resolved before invocation and output pointers afterward. Vector pointers are
+resolved once per case group, matching the corpus runner, so moving buffers and
+guest input mutations retain the same contract.
 Captures record the semantic check IDs and whether input writes and memory
 validation occur inside the execution phase. Account for that host work when
 reading CPU samples; these captures are diagnostics, not execution benchmarks.

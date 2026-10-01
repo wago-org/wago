@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/wago-org/wago"
@@ -88,8 +89,20 @@ type memoryOracle struct {
 }
 type checkedCall struct {
 	Call
-	memory []memoryOracle
-	input  []memoryOracle
+	memory       []memoryOracle
+	input        []memoryOracle
+	inputExport  string
+	outputExport string
+	vector       *semanticVectorGroup
+	vectorFirst  bool
+}
+
+// Vector pointers are resolved once per contract execution, then retained for
+// its cases, matching the catalog runner's pointer lifetime.
+type semanticVectorGroup struct {
+	input, output                 uint32
+	inputFallback, outputFallback uint32
+	inputExport, outputExport     string
 }
 
 func semanticPointer(in *wago.Instance, fallback uint32, export string) (uint32, error) {
@@ -116,14 +129,7 @@ func prepareCheckedCalls(in *wago.Instance, w Workload) ([]checkedCall, error) {
 			return nil, err
 		}
 		if v := s.Invoke.Vectors; v != nil {
-			input, err := semanticPointer(in, v.InputOffset, v.InputPtrExport)
-			if err != nil {
-				return nil, err
-			}
-			output, err := semanticPointer(in, v.OutputOffset, v.OutputPtrExport)
-			if err != nil {
-				return nil, err
-			}
+			input, output := v.InputOffset, v.OutputOffset
 			maxLen := 0
 			for _, c := range v.Cases {
 				if c.Len > maxLen {
@@ -131,7 +137,7 @@ func prepareCheckedCalls(in *wago.Instance, w Workload) ([]checkedCall, error) {
 				}
 			}
 			// Check the range before allocating the input pattern.
-			if _, ok := in.Read(input, uint32(maxLen)); !ok {
+			if _, ok := in.Read(0, uint32(maxLen)); !ok {
 				return nil, fmt.Errorf("%s: input range outside memory", s.ID)
 			}
 			pattern := make([]byte, maxLen)
@@ -140,12 +146,13 @@ func prepareCheckedCalls(in *wago.Instance, w Workload) ([]checkedCall, error) {
 					pattern[i] = byte(i % v.Mod)
 				}
 			}
+			group := &semanticVectorGroup{inputFallback: v.InputOffset, outputFallback: v.OutputOffset, inputExport: v.InputPtrExport, outputExport: v.OutputPtrExport}
 			for i, c := range v.Cases {
 				want, _ := hex.DecodeString(c.Out)
 				call := checkedCall{Call: Call{Export: s.Invoke.Export, Args: []uint64{wago.I32(int32(input)), wago.I32(int32(c.Len)), wago.I32(int32(output))}, Want: []uint64{}}, memory: []memoryOracle{{output, want}}}
-				if i == 0 {
-					call.input = []memoryOracle{{input, pattern}}
-				}
+				call.input = []memoryOracle{{input, pattern[:c.Len]}}
+				call.vector = group
+				call.vectorFirst = i == 0
 				calls = append(calls, call)
 			}
 			continue
@@ -159,24 +166,16 @@ func prepareCheckedCalls(in *wago.Instance, w Workload) ([]checkedCall, error) {
 			call.Want = append(call.Want, n)
 		}
 		if s.Invoke.Input != "" {
-			input, err := semanticPointer(in, 0, s.Invoke.InputPtrExport)
-			if err != nil {
-				return nil, err
-			}
+			input := uint32(0)
 			data, _ := hex.DecodeString(s.Invoke.Input)
 			call.input = []memoryOracle{{input, data}}
+			call.inputExport = s.Invoke.InputPtrExport
 		}
 		if len(s.Expect.Memory) > 0 {
-			output, err := semanticPointer(in, 0, s.Invoke.OutputPtrExport)
-			if err != nil {
-				return nil, err
-			}
 			for _, m := range s.Expect.Memory {
-				if uint64(output)+uint64(m.Offset) > math.MaxUint32 {
-					return nil, fmt.Errorf("%s: output offset overflow", s.ID)
-				}
 				data, _ := hex.DecodeString(m.Hex)
-				call.memory = append(call.memory, memoryOracle{output + m.Offset, data})
+				call.memory = append(call.memory, memoryOracle{m.Offset, data})
+				call.outputExport = s.Invoke.OutputPtrExport
 			}
 		}
 		calls = append(calls, call)
@@ -205,4 +204,59 @@ func semanticReturn(value string) (uint64, error) {
 		result = result<<8 | uint64(b)
 	}
 	return result, nil
+}
+
+// initialize refreshes dynamic pointers and restores the exact input before
+// every call. Argument slices are private to each checked call.
+func (c *checkedCall) initialize(in *wago.Instance) error {
+	if g := c.vector; g != nil {
+		if c.vectorFirst {
+			var err error
+			g.input, err = semanticPointer(in, g.inputFallback, g.inputExport)
+			if err != nil {
+				return err
+			}
+			g.output, err = semanticPointer(in, g.outputFallback, g.outputExport)
+			if err != nil {
+				return err
+			}
+		}
+		c.Args[0], c.Args[2] = wago.I32(int32(g.input)), wago.I32(int32(g.output))
+		c.input[0].offset = g.input
+		c.memory[0].offset = g.output
+	} else if len(c.input) != 0 {
+		offset, err := semanticPointer(in, 0, c.inputExport)
+		if err != nil {
+			return err
+		}
+		c.input[0].offset = offset
+	}
+	for _, input := range c.input {
+		if !in.Write(input.offset, input.want) {
+			return fmt.Errorf("%s: input initialization outside memory", c.Export)
+		}
+	}
+	return nil
+}
+
+func (c *checkedCall) validateMemory(in *wago.Instance) error {
+	base := uint32(0)
+	if c.vector == nil && len(c.memory) != 0 {
+		var err error
+		base, err = semanticPointer(in, 0, c.outputExport)
+		if err != nil {
+			return err
+		}
+	}
+	for _, check := range c.memory {
+		offset := uint64(base) + uint64(check.offset)
+		if offset > math.MaxUint32 {
+			return fmt.Errorf("%s: output offset overflow", c.Export)
+		}
+		actual, ok := in.Read(uint32(offset), uint32(len(check.want)))
+		if !ok || !slices.Equal(actual, check.want) {
+			return fmt.Errorf("%s: memory validation failed at %d", c.Export, offset)
+		}
+	}
+	return nil
 }

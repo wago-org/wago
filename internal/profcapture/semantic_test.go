@@ -135,3 +135,87 @@ func TestSemanticReturnUsesCatalogHexBits(t *testing.T) {
 		}
 	}
 }
+
+// A vector guest may overwrite its input. Every case must receive the catalog
+// pattern again, including cases within the same contract execution.
+func TestSemanticVectorRestoresInputEveryCase(t *testing.T) {
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("copy", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 2, 0x20, 0, 0x2d, 0, 0, 0x20, 1, 0x6a, 0x3a, 0, 0,
+			0x20, 0, 0x41, 0x7f, 0x3a, 0, 0, 0x0b,
+		}))),
+	)
+	var s semanticCase
+	if err := json.Unmarshal([]byte(`{"id":"mutating-vector","abi":"core","invoke":{"export":"copy","vectors":{"input_offset":16,"output_offset":32,"output_len":1,"mod":251,"cases":[{"len":1,"out":"01"},{"len":2,"out":"02"}]}}}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"public", "prepared"} {
+		if err := Run(Options{Out: filepath.Join(t.TempDir(), "capture"), Backend: "none", Phase: "execute", Mode: mode, Iterations: 3, Warmup: 1, Bounds: "explicit", Rate: 99}, Workload{ID: s.ID, semantic: []semanticCase{s}}, data); err != nil {
+			t.Fatal(mode, err)
+		}
+	}
+}
+
+// The input getter changes between invocations, and the guest moves its output
+// before publishing it. Resolving either pointer only during preparation loses
+// the contract's actual input/output locations.
+func TestSemanticDynamicSingleCallPointers(t *testing.T) {
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x7f, 1, 0x41, 16, 0x0b}, []byte{0x7f, 1, 0x41, 32, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("move", 0, 0), wasmtest.ExportEntry("input", 0, 1), wasmtest.ExportEntry("output", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{
+				0x23, 1, 0x41, 8, 0x6a, 0x24, 1,
+				0x23, 1, 0x23, 0, 0x2d, 0, 0, 0x3a, 0, 0,
+				0x23, 0, 0x41, 1, 0x6a, 0x24, 0, 0x0b,
+			}),
+			wasmtest.Code([]byte{0x23, 0, 0x0b}), wasmtest.Code([]byte{0x23, 1, 0x0b}),
+		)),
+	)
+	var s semanticCase
+	if err := json.Unmarshal([]byte(`{"id":"moving-pointers","abi":"core","invoke":{"export":"move","input":"ab","input_ptr_export":"input","output_ptr_export":"output"},"expect":{"memory":[{"offset":0,"hex":"ab"}]}}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"public", "prepared"} {
+		if err := Run(Options{Out: filepath.Join(t.TempDir(), "capture"), Backend: "none", Phase: "execute", Mode: mode, Iterations: 3, Warmup: 1, Bounds: "explicit", Rate: 99}, Workload{ID: s.ID, semantic: []semanticCase{s}}, data); err != nil {
+			t.Fatal(mode, err)
+		}
+	}
+}
+
+func TestSemanticVectorPointersRefreshBetweenGroups(t *testing.T) {
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x7f, 1, 0x41, 16, 0x0b}, []byte{0x7f, 1, 0x41, 32, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("copy", 0, 0), wasmtest.ExportEntry("input", 0, 1), wasmtest.ExportEntry("output", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{
+				0x20, 0, 0x23, 0, 0x47, 0x04, 0x40, 0x00, 0x0b,
+				0x20, 2, 0x23, 1, 0x47, 0x04, 0x40, 0x00, 0x0b,
+				0x20, 2, 0x20, 0, 0x2d, 0, 0, 0x20, 1, 0x6a, 0x3a, 0, 0,
+				0x20, 0, 0x41, 0x7f, 0x3a, 0, 0,
+				0x20, 1, 0x41, 2, 0x46, 0x04, 0x40,
+				0x23, 0, 0x41, 1, 0x6a, 0x24, 0,
+				0x23, 1, 0x41, 8, 0x6a, 0x24, 1, 0x0b, 0x0b,
+			}), wasmtest.Code([]byte{0x23, 0, 0x0b}), wasmtest.Code([]byte{0x23, 1, 0x0b}),
+		)),
+	)
+	var s semanticCase
+	if err := json.Unmarshal([]byte(`{"id":"moving-vectors","abi":"core","invoke":{"export":"copy","vectors":{"input_ptr_export":"input","output_ptr_export":"output","output_len":1,"mod":251,"cases":[{"len":1,"out":"01"},{"len":2,"out":"02"}]}}}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"public", "prepared"} {
+		if err := Run(Options{Out: filepath.Join(t.TempDir(), "capture"), Backend: "none", Phase: "execute", Mode: mode, Iterations: 3, Warmup: 1, Bounds: "explicit", Rate: 99}, Workload{ID: s.ID, semantic: []semanticCase{s}}, data); err != nil {
+			t.Fatal(mode, err)
+		}
+	}
+}

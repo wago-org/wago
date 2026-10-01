@@ -557,11 +557,10 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		}
 	}
 	run := func(count bool) error {
-		for i, c := range calls {
-			for _, input := range c.input {
-				if !instance.Write(input.offset, input.want) {
-					return fmt.Errorf("%s: input initialization outside memory", c.Export)
-				}
+		for i := range calls {
+			c := &calls[i]
+			if err := c.initialize(instance); err != nil {
+				return err
 			}
 			var out []uint64
 			var err error
@@ -576,11 +575,8 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 			if !slices.Equal(out, c.Want) {
 				return fmt.Errorf("%s: result validation failed", c.Export)
 			}
-			for _, check := range c.memory {
-				actual, ok := instance.Read(check.offset, uint32(len(check.want)))
-				if !ok || !slices.Equal(actual, check.want) {
-					return fmt.Errorf("%s: memory validation failed at %d", c.Export, check.offset)
-				}
+			if err := c.validateMemory(instance); err != nil {
+				return err
 			}
 			if count {
 				m.Invocations++
