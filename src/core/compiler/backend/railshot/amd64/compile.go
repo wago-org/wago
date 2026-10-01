@@ -227,13 +227,13 @@ type storeForward struct {
 
 // mergeReg is the canonical register a single-int-result block's value is
 // reconciled into at every edge (fall-through, br, br_if, br_table) so the merge
-// needs no slot round trip. RBP is a plain allocatable GPR (frameless backend),
-// not a pinned-local (R12-R15) or fixed-role scratch.
+// needs no slot round trip. Register merges are disabled when RBP holds a
+// pinned local/global.
 const mergeReg = RBP
 
 // mergeFReg is mergeReg's float counterpart: the canonical XMM a single-float-
-// result block/if is reconciled into. XMM11 is in the operand pool (0-11), not a
-// pinned-float-local (12-15).
+// result block/if is reconciled into. XMM11 can also hold an extended float-local
+// pin, so register merges are disabled while either merge register is pinned.
 const mergeFReg Reg = 11
 
 type functionRepresentationLimit uint8
@@ -286,7 +286,7 @@ type fn struct {
 	// WARP STACK_REG lazy-spill model for pinned locals in CALL-MAKING functions
 	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
-	// Call-free functions keep locals permanently in registers (locals[].state unused).
+	// Call-free functions also track pressure spills, restoring pins at edges.
 	makesCalls                 bool // physical calls, independent of the local spill policy
 	usesCalls                  bool
 	usesWide                   bool
@@ -1419,7 +1419,7 @@ func (f *fn) frameSize() int {
 func (f *fn) elideRegisterOnlyFrame() bool {
 	voidResult := len(f.ft.Results) == 0
 	registerResult := f.singleRegResult || voidResult
-	if !f.opt(optFrameElide) || !registerResult || f.moduleEH || f.makesCalls || f.moduleGlobalRegionalLease != regNone || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+	if !f.opt(optFrameElide) || !registerResult || f.moduleEH || f.makesCalls || f.pinRelinquished || f.moduleGlobalRegionalLease != regNone || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
 	if !f.allLocalsRegisterHomed() {
@@ -1434,8 +1434,8 @@ func (f *fn) elideRegisterOnlyFrame() bool {
 }
 
 // allLocalsRegisterHomed reports whether every local lives in a register for the
-// whole activation (never uses its reserved frame slot). Only meaningful for
-// call-free functions, where locals never leave their registers. A v128 local is
+// whole activation (never uses its reserved frame slot). The caller must exclude
+// calls and relinquished pins, which can use local slots. A v128 local is
 // copied through its frame slot in the prologue, so it disqualifies elision.
 func (f *fn) allLocalsRegisterHomed() bool {
 	if len(f.locals) < f.nLocals {
@@ -3540,8 +3540,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			}
 		}
 	}
-	if f.pinnedLocalMask.has(RBP) {
-		f.regMerge = false // RBP now holds a pinned local/global
+	if f.pinnedLocalMask.has(mergeReg) || f.fpinnedLocalMask.has(mergeFReg) {
+		f.regMerge = false // A merge register already holds a pinned local/global.
 	}
 	// STACK_REG (lazy pinned-local spill) for every call-making function,
 	// including memory-touching ones: dirty-only stores before a call, lazy reload
