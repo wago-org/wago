@@ -55,60 +55,61 @@ type Phase struct {
 	Elapsed   int64  `json:"elapsed_ns"`
 }
 type Manifest struct {
-	ParentSupervised    bool                   `json:"parent_supervised,omitempty"`
-	CollectionTimeoutNS int64                  `json:"collection_timeout_ns"`
-	ConversionTimeoutNS int64                  `json:"conversion_timeout_ns"`
-	CompilerSites       bool                   `json:"native_compiler_sites"`
-	SiteCoverage        string                 `json:"compiler_site_coverage,omitempty"`
-	RawStackBytes       int                    `json:"raw_stack_bytes_limit"`
-	StackCollection     string                 `json:"stack_collection,omitempty"`
-	JITSymbolRoot       string                 `json:"jit_symbol_root,omitempty"`
-	UnwindMapsRequested bool                   `json:"unwind_maps_requested"`
-	UnwindMaps          bool                   `json:"native_unwind_maps"`
-	UnwindCoverage      string                 `json:"unwind_map_coverage,omitempty"`
-	ReloadArtifact      bool                   `json:"artifact_reloaded"`
-	ArtifactHash        string                 `json:"artifact_sha256,omitempty"`
-	ArtifactBytes       int                    `json:"artifact_bytes,omitempty"`
-	SourceMapsRequested bool                   `json:"source_maps_requested"`
-	SourceCoverage      string                 `json:"source_map_coverage,omitempty"`
-	TimelineCoverage    string                 `json:"timeline_coverage,omitempty"`
-	CPUModel            string                 `json:"cpu_model"`
-	OSVersion           string                 `json:"os_version"`
-	RateAccounting      string                 `json:"sampling_rate_accounting"`
-	Version             int                    `json:"version"`
-	Complete            bool                   `json:"complete"`
-	CollectorPending    bool                   `json:"collector_pending,omitempty"`
-	Diagnostics         []string               `json:"diagnostics,omitempty"`
-	Revision            string                 `json:"wago_revision"`
-	Dirty               string                 `json:"wago_dirty"`
-	GoVersion           string                 `json:"go_version"`
-	Target              string                 `json:"target"`
-	CPUs                int                    `json:"logical_cpus"`
-	Workload            string                 `json:"workload"`
-	ModuleHash          string                 `json:"module_sha256"`
-	WorkloadHash        string                 `json:"workload_contract_sha256"`
-	SemanticChecks      []string               `json:"semantic_checks,omitempty"`
-	SemanticInputWrites bool                   `json:"semantic_input_writes_in_execute,omitempty"`
-	MemoryValidation    bool                   `json:"memory_oracle_checks_in_execute,omitempty"`
-	Backend             string                 `json:"backend"`
-	CollectorVersion    string                 `json:"collector_version"`
-	Event               string                 `json:"event"`
-	RequestedRate       int                    `json:"requested_rate_hz"`
-	Phase               string                 `json:"capture_phase"`
-	PhaseIsolation      string                 `json:"phase_isolation"`
-	Mode                string                 `json:"invocation_mode"`
-	RequestedNS         int64                  `json:"requested_duration_ns"`
-	ActualNS            int64                  `json:"execution_duration_ns"`
-	Iterations          uint64                 `json:"completed_iterations"`
-	Invocations         uint64                 `json:"completed_invocations"`
-	Warmup              uint64                 `json:"warmup_iterations"`
-	Phases              []Phase                `json:"phases"`
-	Config              map[string]any         `json:"effective_configuration"`
-	CodeIncluded        bool                   `json:"native_code_included"`
-	GuestStacks         bool                   `json:"qualified_guest_stacks"`
-	InlineSources       bool                   `json:"static_inline_ancestry"`
-	SourceMaps          bool                   `json:"wasm_instruction_maps"`
-	Status              wago.CodeProfileStatus `json:"metadata_status"`
+	ParentSupervised     bool                   `json:"parent_supervised,omitempty"`
+	CollectionTimeoutNS  int64                  `json:"collection_timeout_ns"`
+	ConversionTimeoutNS  int64                  `json:"conversion_timeout_ns"`
+	CompilerSites        bool                   `json:"native_compiler_sites"`
+	SiteCoverage         string                 `json:"compiler_site_coverage,omitempty"`
+	RawStackBytes        int                    `json:"raw_stack_bytes_limit"`
+	StackCollection      string                 `json:"stack_collection,omitempty"`
+	JITSymbolRoot        string                 `json:"jit_symbol_root,omitempty"`
+	UnwindMapsRequested  bool                   `json:"unwind_maps_requested"`
+	UnwindMaps           bool                   `json:"native_unwind_maps"`
+	UnwindCoverage       string                 `json:"unwind_map_coverage,omitempty"`
+	ReloadArtifact       bool                   `json:"artifact_reloaded"`
+	ArtifactHash         string                 `json:"artifact_sha256,omitempty"`
+	ArtifactBytes        int                    `json:"artifact_bytes,omitempty"`
+	SourceMapsRequested  bool                   `json:"source_maps_requested"`
+	SourceCoverage       string                 `json:"source_map_coverage,omitempty"`
+	TimelineCoverage     string                 `json:"timeline_coverage,omitempty"`
+	CPUModel             string                 `json:"cpu_model"`
+	OSVersion            string                 `json:"os_version"`
+	RateAccounting       string                 `json:"sampling_rate_accounting"`
+	Version              int                    `json:"version"`
+	Complete             bool                   `json:"complete"`
+	CollectorPending     bool                   `json:"collector_pending,omitempty"`
+	Diagnostics          []string               `json:"diagnostics,omitempty"`
+	Revision             string                 `json:"wago_revision"`
+	Dirty                string                 `json:"wago_dirty"`
+	GoVersion            string                 `json:"go_version"`
+	Target               string                 `json:"target"`
+	CPUs                 int                    `json:"logical_cpus"`
+	Workload             string                 `json:"workload"`
+	ModuleHash           string                 `json:"module_sha256"`
+	WorkloadHash         string                 `json:"workload_contract_sha256"`
+	SemanticChecks       []string               `json:"semantic_checks,omitempty"`
+	SemanticReturnChecks []string               `json:"semantic_return_oracle_checks,omitempty"`
+	SemanticInputWrites  bool                   `json:"semantic_input_writes_in_execute,omitempty"`
+	MemoryValidation     bool                   `json:"memory_oracle_checks_in_execute,omitempty"`
+	Backend              string                 `json:"backend"`
+	CollectorVersion     string                 `json:"collector_version"`
+	Event                string                 `json:"event"`
+	RequestedRate        int                    `json:"requested_rate_hz"`
+	Phase                string                 `json:"capture_phase"`
+	PhaseIsolation       string                 `json:"phase_isolation"`
+	Mode                 string                 `json:"invocation_mode"`
+	RequestedNS          int64                  `json:"requested_duration_ns"`
+	ActualNS             int64                  `json:"execution_duration_ns"`
+	Iterations           uint64                 `json:"completed_iterations"`
+	Invocations          uint64                 `json:"completed_invocations"`
+	Warmup               uint64                 `json:"warmup_iterations"`
+	Phases               []Phase                `json:"phases"`
+	Config               map[string]any         `json:"effective_configuration"`
+	CodeIncluded         bool                   `json:"native_code_included"`
+	GuestStacks          bool                   `json:"qualified_guest_stacks"`
+	InlineSources        bool                   `json:"static_inline_ancestry"`
+	SourceMaps           bool                   `json:"wasm_instruction_maps"`
+	Status               wago.CodeProfileStatus `json:"metadata_status"`
 }
 
 func (o Options) Validate() error {
@@ -207,6 +208,9 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 	m.WorkloadHash = workloadHash(w)
 	for _, check := range w.semantic {
 		m.SemanticChecks = append(m.SemanticChecks, check.ID)
+		if len(check.Expect.Return) != 0 {
+			m.SemanticReturnChecks = append(m.SemanticReturnChecks, check.ID)
+		}
 		m.SemanticInputWrites = m.SemanticInputWrites || check.Invoke.Input != "" || check.Invoke.Vectors != nil
 		m.MemoryValidation = m.MemoryValidation || len(check.Expect.Memory) > 0 || check.Invoke.Vectors != nil
 	}
@@ -433,6 +437,10 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 		cfg = cfg.WithBoundsChecks(wago.BoundsChecksExplicit)
 	}
 	m.Config = map[string]any{"bounds": o.Bounds, "features": cfg.CoreFeatures(), "native_stack_bytes": cfg.NativeStackBytes(), "optimizations": cfg.OptimizationInfos(), "result_validation": "every invocation", "import_environment": "env.abort traps; all other imports must be supplied by module"}
+	if len(w.semantic) != 0 {
+		m.Config["result_validation"] = "catalog return and memory oracles after every invocation"
+		m.Config["invocation_count_scope"] = "workload calls; semantic pointer queries excluded"
+	}
 	var warmupCompleted uint64
 	phase := func(name string, fn func() error) error {
 		capture := o.Phase == name
@@ -572,7 +580,7 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 			if err != nil {
 				return fmt.Errorf("%s: %w", c.Export, err)
 			}
-			if !slices.Equal(out, c.Want) {
+			if c.returnOracle && !slices.Equal(out, c.Want) {
 				return fmt.Errorf("%s: result validation failed", c.Export)
 			}
 			if err := c.validateMemory(instance); err != nil {

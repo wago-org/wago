@@ -219,3 +219,38 @@ func TestSemanticVectorPointersRefreshBetweenGroups(t *testing.T) {
 		}
 	}
 }
+
+// Vector digests and single-call memory-only contracts do not specify return
+// slots. Status returns are accepted only when that return oracle is absent;
+// ordinary execution contracts and explicit semantic return oracles stay exact.
+func TestSemanticMemoryOraclesWithStatusReturn(t *testing.T) {
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("copy", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 2, 0x20, 0, 0x2d, 0, 0, 0x20, 1, 0x6a, 0x3a, 0, 0, 0x41, 7, 0x0b}))),
+	)
+	for _, contract := range []string{
+		`{"id":"vector-status","abi":"core","invoke":{"export":"copy","vectors":{"input_offset":16,"output_offset":32,"output_len":1,"mod":251,"cases":[{"len":1,"out":"01"},{"len":2,"out":"02"}]}}}`,
+		`{"id":"memory-status","abi":"core","invoke":{"export":"copy","args":[0,1,32],"input":"ab"},"expect":{"memory":[{"offset":32,"hex":"ac"}]}}`,
+	} {
+		var s semanticCase
+		if err := json.Unmarshal([]byte(contract), &s); err != nil {
+			t.Fatal(err)
+		}
+		for _, mode := range []string{"public", "prepared"} {
+			opts := Options{Out: filepath.Join(t.TempDir(), "capture"), Backend: "none", Phase: "execute", Mode: mode, Iterations: 2, Bounds: "explicit", Rate: 99}
+			if err := Run(opts, Workload{ID: s.ID, semantic: []semanticCase{s}}, data); err != nil {
+				t.Fatal(mode, err)
+			}
+		}
+	}
+	var s semanticCase
+	if err := json.Unmarshal([]byte(`{"id":"wrong-status","abi":"core","invoke":{"export":"copy","args":[0,1,32]},"expect":{"return":["8"],"memory":[{"offset":32,"hex":"01"}]}}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(Options{Out: filepath.Join(t.TempDir(), "capture"), Backend: "none", Phase: "execute", Mode: "prepared", Iterations: 1, Bounds: "explicit", Rate: 99}, Workload{ID: s.ID, semantic: []semanticCase{s}}, data); err == nil {
+		t.Fatal("explicit wrong status oracle accepted")
+	}
+}

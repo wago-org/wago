@@ -89,6 +89,7 @@ type memoryOracle struct {
 }
 type checkedCall struct {
 	Call
+	returnOracle bool
 	memory       []memoryOracle
 	input        []memoryOracle
 	inputExport  string
@@ -122,7 +123,7 @@ func semanticPointer(in *wago.Instance, fallback uint32, export string) (uint32,
 func prepareCheckedCalls(in *wago.Instance, w Workload) ([]checkedCall, error) {
 	calls := make([]checkedCall, 0, len(w.Calls))
 	for _, call := range w.Calls {
-		calls = append(calls, checkedCall{Call: call})
+		calls = append(calls, checkedCall{Call: call, returnOracle: true})
 	}
 	for _, s := range w.semantic {
 		if err := s.validate(); err != nil {
@@ -157,7 +158,7 @@ func prepareCheckedCalls(in *wago.Instance, w Workload) ([]checkedCall, error) {
 			}
 			continue
 		}
-		call := checkedCall{Call: Call{Export: s.Invoke.Export, Want: []uint64{}}}
+		call := checkedCall{Call: Call{Export: s.Invoke.Export, Want: []uint64{}}, returnOracle: len(s.Expect.Return) != 0}
 		for _, a := range s.Invoke.Args {
 			call.Args = append(call.Args, wago.I32(a))
 		}

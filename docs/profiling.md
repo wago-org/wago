@@ -72,7 +72,8 @@ is a preset using the same runner and result oracle as other workloads.
 
 Core `semantic_exec` workloads also use their existing catalog checks. Published
 vectors validate the output bytes after each call, and single-call cases validate
-their return slots and memory oracles. Input buffers are restored before every call. Single-call input pointers are
+their specified return slots and memory oracles. A status return without a catalog
+return oracle is not checked; manifest metadata identifies the return checks. Input buffers are restored before every call. Single-call input pointers are
 resolved before invocation and output pointers afterward. Vector pointers are
 resolved once per case group, matching the corpus runner, so moving buffers and
 guest input mutations retain the same contract.
