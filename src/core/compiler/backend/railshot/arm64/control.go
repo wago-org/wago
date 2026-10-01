@@ -311,6 +311,18 @@ func (f *fn) tryUnrolledLinearSumLatch(counter int) bool {
 	f.a.CmpImm32(counterReg, 4)
 	toRemainder := f.a.Bcond(condB)
 
+	toWrapping := -1
+	mt, _ := f.m.MemoryType(0)
+	if !mt.Limits.HasMax || mt.Limits.Max >= 65536 {
+		// Native group offsets do not wrap at 2^32. Select the scalar tail
+		// once for wrapping ranges, keeping ordinary groups unchanged.
+		f.a.MovReg32(X16, counterReg)
+		f.a.LslImm(X16, X16, 3, false)
+		f.a.Add64(X16, X16, addrReg)
+		f.a.LsrImm(X16, X16, 32, false)
+		toWrapping = f.a.Cbnz64(X16)
+	}
+
 	group := f.a.Len()
 	f.a.LoadIdx(X16, linMemReg, addrReg, 0, 8, false, true)
 	f.a.Add64(accReg, accReg, X16)
@@ -327,6 +339,9 @@ func (f *fn) tryUnrolledLinearSumLatch(counter int) bool {
 	_ = f.a.PatchBranch19(moreGroups, group)
 
 	_ = f.a.PatchBranch19(toRemainder, f.a.Len())
+	if toWrapping >= 0 {
+		f.patchBranch19(toWrapping, f.a.Len())
+	}
 	noRemainder := f.a.Cbz32(counterReg)
 	remainder := f.a.Len()
 	f.a.LoadIdx(X16, linMemReg, addrReg, 0, 8, false, true)
