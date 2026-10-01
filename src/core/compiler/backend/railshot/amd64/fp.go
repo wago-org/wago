@@ -292,6 +292,16 @@ func (f *fn) preloadFloatConsts(code []byte) {
 		return
 	}
 	f.stats.peep("float-preload-scan")
+	if floatConstRankingEnabled && len(f.fconsts) == 0 && len(code) <= floatConstRankingMaxBytes {
+		choice, count, changed := f.rankFloatConsts(code)
+		for _, st := range choice[:count] {
+			f.preloadFloatConst(st)
+		}
+		if changed {
+			f.stats.peep("float-preload-ranked")
+		}
+		return
+	}
 	r := wasm.NewReader(code)
 	var imm wasm.InstructionImmediate
 	for r.HasNext() && len(f.fconsts) < 2 {
