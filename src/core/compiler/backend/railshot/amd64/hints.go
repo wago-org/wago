@@ -1350,6 +1350,9 @@ func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline bool) {
 
 func (h funcHints) inlineCallSiteCount() uint8 { return h.inlineCallSites & 0x7f }
 
+// tailCallTarget reports whether any local return_call names this function.
+func (h funcHints) tailCallTarget() bool { return h.inlineCallSites&0x80 != 0 }
+
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
 	var err error
 	if s.m != nil {

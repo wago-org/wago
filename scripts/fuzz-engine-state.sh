@@ -14,7 +14,7 @@ fi
 
 mkdir -p "$worker_dir"
 cd "$repo_dir"
-go build -o "$worker" ./tests/fuzz/engine/worker
+go build -tags=wago_regalloccheck -o "$worker" ./tests/fuzz/engine/worker
 exec node scripts/fuzz-engine-state.mjs \
 	--worker "$worker" \
 	--starshine "$starshine_wasm" \

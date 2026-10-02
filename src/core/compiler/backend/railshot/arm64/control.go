@@ -1004,6 +1004,10 @@ func (f *fn) flush() {
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	roots := f.rootsBottomToTop()
+	if regallocCheckEnabled {
+		f.checkBeginFlush(roots)
+		defer f.checkEndFlush()
+	}
 	var gcRoots []bool
 	if f.tracksGCFrameRoots() {
 		gcRoots = f.tmpGCRoots[:0]
@@ -1196,6 +1200,11 @@ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 // moveSlots copies n canonical slots from [fromBase, fromBase+n) to
 // [toBase, toBase+n). Runs only right after flush, so X0 is free as scratch.
 func (f *fn) moveSlots(fromBase, toBase, n int) {
+	if regallocCheckEnabled {
+		done := f.checkBeginSlots(fromBase, toBase, n)
+		defer done()
+	}
+
 	if fromBase == toBase {
 		return
 	}
@@ -2050,12 +2059,14 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		f.ctrl[frame].set(ctrlRegMerge1, false)
 		eh.catches = append(eh.catches, clause)
 	}
-	fr.height = f.depth() - fr.paramN
-	f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
+	// An unreachable stack is polymorphic, so its depth may be below paramN.
+	// Like block/loop/if, open the frame without a base-type prefix.
 	if f.unreachable {
 		f.pushCtrl(&fr)
 		return nil
 	}
+	fr.height = f.depth() - fr.paramN
+	f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
 	if f.ehTryDepth >= maxEHTryRecords {
 		return fmt.Errorf("bounded exception handling supports at most %d nested try_table records", maxEHTryRecords)
 	}

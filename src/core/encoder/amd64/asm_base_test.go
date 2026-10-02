@@ -388,7 +388,7 @@ func TestRel32SiteCounting(t *testing.T) {
 	if got, want := unsafe.Sizeof(Rel32Site{}), uintptr(4); got != want {
 		t.Fatalf("rel32 site size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(Asm{}), uintptr(88); got != want {
+	if got, want := unsafe.Sizeof(Asm{}), uintptr(88)+unsafe.Sizeof(regallocState{}); got != want {
 		t.Fatalf("asm size = %d, want %d", got, want)
 	}
 }

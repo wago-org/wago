@@ -127,7 +127,8 @@ func TestCompileModuleHintLocalCountAllocationAndCodeIdentity(t *testing.T) {
 				benchCompiledSink = got
 			})
 			t.Logf("CompileModuleWith allocations = %.0f", allocs)
-			if allocs > tc.maxAllocs {
+			// Debug transfer verification intentionally allocates symbolic state.
+			if !regallocCheckEnabled && allocs > tc.maxAllocs {
 				t.Fatalf("CompileModuleWith allocations = %.0f, budget = %.0f", allocs, tc.maxAllocs)
 			}
 		})
@@ -198,10 +199,10 @@ func TestCompileParallelAllocationBudget(t *testing.T) {
 		serialBudget   = 5000.0
 		parallelBudget = 8000.0
 	)
-	if serial > serialBudget {
+	if !regallocCheckEnabled && serial > serialBudget {
 		t.Fatalf("serial allocations = %.1f, budget = %.1f", serial, serialBudget)
 	}
-	if parallel > parallelBudget {
+	if !regallocCheckEnabled && parallel > parallelBudget {
 		t.Fatalf("p4 allocations = %.1f, budget = %.1f (serial %.1f)", parallel, parallelBudget, serial)
 	}
 	if absurd := serial*3 + 512; parallel > absurd {

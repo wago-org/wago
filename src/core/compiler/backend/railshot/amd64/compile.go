@@ -270,6 +270,8 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
+	//lint:ignore U1000 debug-only fields; the ordinary placeholder is empty
+	regallocFnState
 	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
 	profileFnState
 	a             *amd64.Asm // the (reused) x86-64 encoder
@@ -1766,6 +1768,17 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	hostAdapters, err := shared.HostAdapterSet(m)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: host adapter analysis: %w", err)
+	}
+	// A wrapper-ABI caller tail-enters its target's offset-0 entry with the
+	// wrapper calling convention (arguments in the basedata tail bank). A
+	// direct-only register-ABI target has no such entry: its offset 0 is the
+	// internal body, which would read arguments from registers and return
+	// without storing module-pinned globals. Give every return_call target the
+	// adapter that implements the wrapper entry.
+	for i := range hostAdapters {
+		if allHints[i].tailCallTarget() {
+			hostAdapters[i] = true
+		}
 	}
 	if len(opts.CustomInstructions) != 0 {
 		// Custom lowerings may publish function identities through extension-owned

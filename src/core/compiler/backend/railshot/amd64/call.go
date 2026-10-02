@@ -959,11 +959,24 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	for _, move := range gpMoves[:gpN] {
 		f.pinned = f.pinned.remove(move.src)
 	}
+	var checkGPMoves func()
+	if regallocCheckEnabled {
+		checkGPMoves = f.checkBeginRegMoves(gpMoves[:gpN], false)
+		defer checkGPMoves()
+	}
 	resolveRegMovesWindow(gpMoves[:gpN], func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
+	if regallocCheckEnabled {
+		checkGPMoves()
+	}
 	for _, move := range fpMoves[:fpN] {
 		f.fpinned = f.fpinned.remove(move.src)
 	}
 	fpSwapSlot := -1
+	var checkFPMoves func()
+	if regallocCheckEnabled {
+		checkFPMoves = f.checkBeginRegMoves(fpMoves[:fpN], true)
+		defer checkFPMoves()
+	}
 	resolveRegMovesWindow(fpMoves[:fpN],
 		func(dst, src Reg) { f.a.FMov(dst, src, true) },
 		func(x, y Reg) {
@@ -975,6 +988,9 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			f.a.FMov(x, y, true)
 			f.a.FLoadDisp(y, RSP, off, true)
 		})
+	if regallocCheckEnabled {
+		checkFPMoves()
+	}
 	for _, arg := range deferred[:deferredN] {
 		if arg.float {
 			switch arg.root.st.kind {
@@ -1209,11 +1225,17 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	nativeAllocDone := -1
 	if nativeStructType != 0 {
 		typeIndex := nativeStructType - 1
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		site := f.a.CallRel32()
 		f.sc.gcStructAllocStubSites = append(f.sc.gcStructAllocStubSites, gcStructAllocStubSite{typeIndex: typeIndex, site: site})
 		f.stats.call("gcnative")
 		nativeAllocDone = f.a.JccPlaceholder(condNE) // stub returns ZF=0 on success
 	} else if nativeArray.mode != gcArrayNativeNone {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		site := f.a.CallRel32()
 		nativeArray.site = site
 		f.sc.gcArrayAllocStubSites = append(f.sc.gcArrayAllocStubSites, nativeArray)
@@ -1230,6 +1252,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
 	// trap unwinds the whole native tree in one jump (it never returns here).
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	f.a.CallMem(R8, hcTrampoline)
 	if recordRoots {
 		f.gcFrameRoots.RecordCallsite(uint32(len(f.a.B)), 0, rootOffsets)
@@ -1570,10 +1595,16 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 
 	stackAdjust := uint32(6 * 8)
 	if b.Dynamic {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		f.a.CallReg(R11)
 		stackAdjust += 2 * 8
 	} else {
 		f.a.MovImm64(RAX, b.CalleeEntry)
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		f.a.CallReg(RAX)
 	}
 	if recordRoots {
@@ -1769,6 +1800,9 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	}
 	f.stats.call(callKindWrapper)
 	f.emitWrapperCall(ft, func() {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		site := f.a.CallRel32()
 		f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, false))
 	})
@@ -1896,7 +1930,15 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	for _, m := range moves {
 		f.pinned = f.pinned.remove(m.src)
 	}
+	var checkMoves func()
+	if regallocCheckEnabled {
+		checkMoves = f.checkBeginRegMoves(moves, false)
+		defer checkMoves()
+	}
 	resolveRegMovesWindow(moves, func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
+	if regallocCheckEnabled {
+		checkMoves()
+	}
 	f.tmpMoves = moves[:0]
 	for _, da := range deferred {
 		switch da.root.st.kind {
@@ -1918,10 +1960,16 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
 	var returnOffset uint32
 	if localIdx >= 0 {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		site := f.a.CallRel32()
 		f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, true))
 		returnOffset = uint32(site + 4)
 	} else {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		f.a.CallReg(callTarget)
 		if callTarget != indirect {
 			f.pinned = f.pinned.remove(callTarget)
@@ -2106,11 +2154,24 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	for _, m := range gpMoves {
 		f.pinned = f.pinned.remove(m.src)
 	}
+	var checkGPMoves func()
+	if regallocCheckEnabled {
+		checkGPMoves = f.checkBeginRegMoves(gpMoves, false)
+		defer checkGPMoves()
+	}
 	resolveRegMovesWindow(gpMoves, func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
+	if regallocCheckEnabled {
+		checkGPMoves()
+	}
 	for _, m := range fpMoves {
 		f.fpinned = f.fpinned.remove(m.src)
 	}
 	fpSwapSlot := -1
+	var checkFPMoves func()
+	if regallocCheckEnabled {
+		checkFPMoves = f.checkBeginRegMoves(fpMoves, true)
+		defer checkFPMoves()
+	}
 	resolveRegMovesWindow(fpMoves,
 		func(dst, src Reg) { f.a.FMov(dst, src, true) },
 		func(x, y Reg) {
@@ -2122,6 +2183,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.a.FMov(x, y, true)
 			f.a.FLoadDisp(y, RSP, off, true)
 		})
+	if regallocCheckEnabled {
+		checkFPMoves()
+	}
 	for _, da := range deferred {
 		if da.float {
 			switch da.root.st.kind {
@@ -2145,6 +2209,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	site := f.a.CallRel32()
 	f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, true))
 
@@ -3067,6 +3134,10 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	jne := f.a.JccPlaceholder(condNE)
 	// Same instance: RSI = caller linMem, call the entry directly.
 	f.a.MovReg64(RSI, RBX)
+	if regallocCheckEnabled {
+		// A same-instance callee still clobbers immutable register caches.
+		f.checkCallClobber()
+	}
 	f.a.CallMem(RBX, -int32(offSpillRegion))
 	sameReturn = uint32(len(f.a.B))
 	jdone := f.a.JmpPlaceholder()
@@ -3089,6 +3160,11 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.a.Load64(RAX, RBX, -offTrapCellPtr)
 	f.a.Store64(R11, -offTrapCellPtr, RAX)
 	f.a.MovReg64(RSI, R11)
+	if regallocCheckEnabled {
+		// This runtime arm has its own call boundary; preserving the caller's
+		// instance registers does not preserve immutable value caches.
+		f.checkCallClobber()
+	}
 	f.a.CallMem(RBX, -int32(offSpillRegion)) // RBX unchanged by the pushes
 	crossReturn = uint32(len(f.a.B))
 	f.a.Pop(R10)

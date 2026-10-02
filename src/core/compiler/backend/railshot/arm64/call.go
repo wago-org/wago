@@ -567,6 +567,10 @@ func (f *fn) emitTailWrapperToRegisterJump(ft *wasm.CompType, emitJump func()) {
 	if len(ft.Results) > 1 {
 		f.st64(X3, 8, X1)
 	}
+	// The register-ABI target returns module pins in registers, but this
+	// trampoline returns in place of the wrapper-ABI caller's epilogue, whose
+	// callers expect coherent cells.
+	f.storeModuleGlobals(X16)
 	f.ld64(LR, SP, 0)
 	f.a.AddSP64(32)
 	f.a.Ret()
@@ -1386,6 +1390,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	f.ld64(X16, X11, hcTrampoline)
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	f.a.Blr(X16)
 	if recordRoots {
 		f.gcFrameRoots.RecordCallsite(uint32(f.a.Len()), 0, rootOffsets)
@@ -1732,9 +1739,15 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.st64(X1, -int32(offTrapCellPtr), X9)
 
 	if b.Dynamic {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		f.a.Blr(X17)
 	} else {
 		f.a.MovImm64(X9, b.CalleeEntry)
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		f.a.Blr(X9)
 	}
 	if recordRoots {
@@ -1804,6 +1817,9 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	}
 	f.stats.call(callKindWrapper)
 	f.emitWrapperCall(ft, func() {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		site := f.a.Bl()
 		f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, false))
 	})
@@ -1957,6 +1973,11 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.pinned = f.pinned.remove(m.src)
 	}
 	// AArch64 has no XCHG: a register swap goes through the backend scratch X16.
+	var checkMoves func()
+	if regallocCheckEnabled {
+		checkMoves = f.checkBeginRegMoves(moves, false)
+		defer checkMoves()
+	}
 	swapChains := resolveRegMovesWindow(moves,
 		func(dst, src Reg) { f.a.MovReg64(dst, src) },
 		func(x, y Reg) {
@@ -1970,6 +1991,9 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 			f.a.MovReg64(b, c)
 			f.a.MovReg64(c, X16)
 		})
+	if regallocCheckEnabled {
+		checkMoves()
+	}
 	f.stats.peepN("machine-swap-chain", swapChains)
 	f.tmpMoves = moves[:0]
 	for _, da := range deferred {
@@ -1991,10 +2015,16 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
 	var returnOffset uint32
 	if localIdx >= 0 {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		site := f.a.Bl()
 		f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, true))
 		returnOffset = uint32(site + 4)
 	} else {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		f.a.Blr(indirect)
 		returnOffset = uint32(f.a.Len())
 	}
@@ -2275,6 +2305,11 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	for _, m := range gpMoves {
 		f.pinned = f.pinned.remove(m.src)
 	}
+	var checkGPMoves func()
+	if regallocCheckEnabled {
+		checkGPMoves = f.checkBeginRegMoves(gpMoves, false)
+		defer checkGPMoves()
+	}
 	gpSwapChains := resolveRegMovesWindow(gpMoves,
 		func(dst, src Reg) { f.a.MovReg64(dst, src) },
 		func(x, y Reg) {
@@ -2288,11 +2323,19 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 			f.a.MovReg64(b, c)
 			f.a.MovReg64(c, X16)
 		})
+	if regallocCheckEnabled {
+		checkGPMoves()
+	}
 	f.stats.peepN("machine-swap-chain", gpSwapChains)
 	for _, m := range fpMoves {
 		f.fpinned = f.fpinned.remove(m.src)
 	}
 	fpSwapSlot := -1
+	var checkFPMoves func()
+	if regallocCheckEnabled {
+		checkFPMoves = f.checkBeginRegMoves(fpMoves, true)
+		defer checkFPMoves()
+	}
 	fpSwapChains := resolveRegMovesWindow(fpMoves,
 		func(dst, src Reg) { f.a.FmovReg(dst, src, true) },
 		func(x, y Reg) {
@@ -2314,6 +2357,9 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 			f.a.FmovReg(b, c, true)
 			f.fld(c, SP, off, true)
 		})
+	if regallocCheckEnabled {
+		checkFPMoves()
+	}
 	f.stats.peepN("machine-swap-chain", fpSwapChains)
 	for _, da := range deferred {
 		if da.float {
@@ -2354,10 +2400,16 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 
 	var returnOffset uint32
 	if localIdx >= 0 {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		site := f.a.Bl()
 		f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, true))
 		returnOffset = uint32(site + 4)
 	} else {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
 		f.a.Blr(indirect)
 		returnOffset = uint32(f.a.Len())
 	}
@@ -2808,6 +2860,9 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.a.MovReg64(X1, linMemReg)
 	f.ld64(X2, linMemReg, -int32(offTrapCellPtr))
 	f.ld64(X16, linMemReg, -int32(offSpillRegion))
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	f.a.Blr(X16)
 	if recordRoots {
 		f.gcFrameRoots.RecordCallsite(uint32(f.a.Len()), 0, rootOffsets)
@@ -2832,6 +2887,9 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.a.MovReg64(X1, X11)
 	f.ld64(X2, X11, -int32(offTrapCellPtr))
 	f.ld64(X16, linMemReg, -int32(offSpillRegion)) // linMemReg unchanged by the pushes
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	f.a.Blr(X16)
 	if recordRoots {
 		// Four 16-byte records preserve caller invariants while the foreign

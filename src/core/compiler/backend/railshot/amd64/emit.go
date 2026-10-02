@@ -60,6 +60,9 @@ const (
 // regNone to pick a fresh one. Returns the register now holding the value and
 // converts `node` into that value on the stack (its operands are consumed).
 func (f *fn) condense(node *elem, dest Reg) Reg {
+	if regallocCheckEnabled {
+		f.checkInputs(node)
+	}
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		previous := f.enterProfileNode(node)
 		defer f.switchProfileOrigin(previous)
@@ -594,6 +597,9 @@ func leaRightOK(right *elem) bool {
 // emitLeaAdd emits `dst = base + right` via LEA (base is a register-resident value
 // that must be preserved). Releases an owned register right.
 func (f *fn) emitLeaAdd(dst, base Reg, right *elem, w bool) {
+	if regallocCheckEnabled {
+		f.checkUse(right)
+	}
 	switch right.st.kind {
 	case stConst:
 		f.a.LeaDispW(dst, base, int32(right.st.cval), w)
@@ -750,6 +756,9 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	} else {
 		cc = condOf(node.deferredOp())
 		right := node.arg1
+		if regallocCheckEnabled {
+			f.checkUse(right)
+		}
 		switch right.st.kind {
 		case stConst:
 			if fitsImm32(right.st.cval) {
@@ -766,8 +775,14 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		case stLocalReg, stGlobReg:
 			f.cmpRR(L, right.st.reg, w) // pinned local/global; never release
 		case stSlot:
+			if regallocCheckEnabled {
+				f.checkFoldedUse(right)
+			}
 			f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slotIndex()), w)
 		case stLocalRef:
+			if regallocCheckEnabled {
+				f.checkFoldedUse(right)
+			}
 			f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.index()), w)
 		case stMemRef:
 			if memRefFoldable(right.st, w) {
@@ -1049,6 +1064,9 @@ func (f *fn) cmpIntMin(w bool) {
 // (the target-hint / in-place path — the left spine of an accumulator writes
 // straight into dest).
 func (f *fn) condenseInto(e *elem, dest Reg) {
+	if regallocCheckEnabled {
+		f.checkUse(e)
+	}
 	if e.isDeferred() {
 		f.condense(e, dest)
 		return
@@ -1077,11 +1095,17 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 		f.loadMemRef(dest, e) // emit the deferred load into dest
 		f.releaseMemRef(e.st)
 	}
+	if regallocCheckEnabled {
+		f.checkOccupy(e, dest, false)
+	}
 }
 
 // applyALU emits `dest = dest <op> right`, folding the right operand: constants
 // as immediates, memory-resident operands as an r/m read, registers as reg-reg.
 func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
+	if regallocCheckEnabled {
+		f.checkUse(right)
+	}
 	switch right.st.kind {
 	case stConst:
 		// `i64.and x, mask` for any mask confined to the low 32 bits is exactly
@@ -1119,8 +1143,14 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	case stLocalReg, stGlobReg:
 		f.a.AluRR(enc.rr, dest, right.st.reg, w) // pinned local/global; never release
 	case stSlot:
+		if regallocCheckEnabled {
+			f.checkFoldedUse(right)
+		}
 		f.a.AluRM(enc.rm, dest, RSP, f.spillOff(right.st.slotIndex()), w)
 	case stLocalRef:
+		if regallocCheckEnabled {
+			f.checkFoldedUse(right)
+		}
 		f.a.AluRM(enc.rm, dest, RSP, f.localAddr(right.st.index()), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
@@ -1171,6 +1201,9 @@ func (f *fn) tryMulConstThreeOp(node, left, right *elem, dest Reg, w bool) Reg {
 }
 
 func (f *fn) applyMul(dest Reg, right *elem, w bool) {
+	if regallocCheckEnabled {
+		f.checkUse(right)
+	}
 	switch right.st.kind {
 	case stConst:
 		// x*{3,5,9} → one-cycle LEA [x+x*{2,4,8}] (powers of two already became
@@ -1195,8 +1228,14 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	case stLocalReg, stGlobReg:
 		f.a.IMul(dest, right.st.reg, w) // pinned local/global; never release
 	case stSlot:
+		if regallocCheckEnabled {
+			f.checkFoldedUse(right)
+		}
 		f.a.ImulRM(dest, RSP, f.spillOff(right.st.slotIndex()), w)
 	case stLocalRef:
+		if regallocCheckEnabled {
+			f.checkFoldedUse(right)
+		}
 		f.a.ImulRM(dest, RSP, f.localAddr(right.st.index()), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {

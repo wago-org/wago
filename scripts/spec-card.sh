@@ -45,7 +45,7 @@ for v in 1.0 2.0 3.0; do
 		run_output=$(cat "$log")
 	else
 		run_output=$(WAGO_SPECTEST_DIR="$suite" WAGO_SPEC_VERSION="$v" \
-			go test -count=1 -run TestSpecSuiteExec -v ./src/wago/ 2>/dev/null || true)
+			go test -tags=wago_regalloccheck -count=1 -run TestSpecSuiteExec -v ./src/wago/ 2>/dev/null || true)
 	fi
 	line=$(printf '%s\n' "$run_output" \
 		| grep -oE "TOTAL\[$v\]: modules passed=[0-9]+ failed=[0-9]+ skipped=[0-9]+ \| assertions passed=[0-9]+ failed=[0-9]+ skipped=[0-9]+( \| gaps .*)?" || true)

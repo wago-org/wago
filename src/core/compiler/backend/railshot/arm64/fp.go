@@ -43,6 +43,10 @@ func floatBits(v float64, f64 bool) uint64 {
 // --- V (NEON) allocator ---
 
 func (f *fn) occupyF(e *elem, r Reg) {
+	if regallocCheckEnabled {
+		f.checkOccupy(e, r, true)
+	}
+
 	f.fregUser[r] = e
 	if e.isDeferred() {
 		f.s.removePendingDeferred()
@@ -134,6 +138,10 @@ func (f *fn) spillF(e *elem) {
 
 // materializeF ensures float value e lives in a V register and returns it.
 func (f *fn) materializeF(e *elem) Reg {
+	if regallocCheckEnabled {
+		f.checkUse(e)
+	}
+
 	switch e.st.kind {
 	case stReg:
 		return e.st.reg
@@ -221,6 +229,9 @@ func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
 	x := f.allocFReg(0)
 	f.loadFConst(x, st)
 	f.fconsts = append(f.fconsts, floatConstReg{typ: st.typ, bits: st.cval, reg: x})
+	if regallocCheckEnabled {
+		f.checkImmutable(x, true, checkSize(st.typ))
+	}
 	return x, true
 }
 

@@ -937,6 +937,10 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 		return
 	}
 	roots := f.rootsBottomToTop()
+	if regallocCheckEnabled {
+		f.checkBeginFlush(roots)
+		defer f.checkEndFlush()
+	}
 	// A storage replacement can conservatively invalidate the layout bit even
 	// when every logical operand still names its canonical slot. Recognize that
 	// case once; subsequent adjacent control boundaries then take the constant-
@@ -1176,6 +1180,11 @@ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 // moveSlots copies n canonical slots from [fromBase, fromBase+n) to
 // [toBase, toBase+n). Runs only right after flush, so RAX is free as scratch.
 func (f *fn) moveSlots(fromBase, toBase, n int) {
+	if regallocCheckEnabled {
+		done := f.checkBeginSlots(fromBase, toBase, n)
+		defer done()
+	}
+
 	if fromBase == toBase {
 		return
 	}
@@ -1830,13 +1839,15 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		f.ctrl[frame].set(ctrlRegMerge1, false)
 		eh.catches = append(eh.catches, clause)
 	}
-	fr.height = f.depth() - fr.paramN
-	f.setFrameBaseTypePrefix(&fr, fr.height)
-	f.captureGCFrameShape(&fr)
+	// An unreachable stack is polymorphic, so its depth may be below paramN.
+	// Like block/loop/if, open the frame without a base-type prefix.
 	if f.unreachable {
 		f.pushCtrl(&fr)
 		return nil
 	}
+	fr.height = f.depth() - fr.paramN
+	f.setFrameBaseTypePrefix(&fr, fr.height)
+	f.captureGCFrameShape(&fr)
 	if f.ehTryDepth >= maxEHTryRecords {
 		return fmt.Errorf("bounded exception handling supports at most %d nested try_table records", maxEHTryRecords)
 	}
@@ -2109,6 +2120,11 @@ func (f *fn) opEnd() error {
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
 	if fr.kind == cfLoop {
+		if regallocCheckEnabled {
+			for _, c := range f.fconsts[fr.floatConstBase:] {
+				f.checkReleaseImmutable(c.reg, true)
+			}
+		}
 		f.fconsts = f.fconsts[:fr.floatConstBase]
 	}
 	if fr.kind == cfLoop && f.linearSumLoopDepth == uint16(last+1) {

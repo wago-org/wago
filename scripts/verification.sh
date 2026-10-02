@@ -51,28 +51,28 @@ spec_total() {
 		's/.*assertions passed=([0-9]+) failed=([0-9]+) skipped=([0-9]+).*/\1	\2	\3/p'
 }
 
-go test -count=1 -json ./... >"$tmp/normal.json"
+go test -tags=wago_regalloccheck -count=1 -json ./... >"$tmp/normal.json"
 normal=$(count_tests "$tmp/normal.json")
 
-go test -count=1 -json -tags wago_guardpage ./src/wago/ >"$tmp/guard-root.json"
-(cd bench && go test -count=1 -json -tags wago_guardpage \
+go test -count=1 -json -tags wago_regalloccheck,wago_guardpage ./src/wago/ >"$tmp/guard-root.json"
+(cd bench && go test -count=1 -json -tags wago_regalloccheck,wago_guardpage \
 	-run '^(TestCorpus|TestJsonAsGuardCorrect)$' ./suite -args -wago.corpus=quick) >"$tmp/guard-bench.json"
 guard=$(count_tests "$tmp/guard-root.json" "$tmp/guard-bench.json")
 
 WAGO_SPECTEST_DIR="$root/tests/conformance/spec-v1" WAGO_SPEC_VERSION=1.0 \
-	go test -count=1 -run TestSpecSuiteExec -v ./src/wago/ >"$tmp/spec1.log"
+	go test -tags=wago_regalloccheck -count=1 -run TestSpecSuiteExec -v ./src/wago/ >"$tmp/spec1.log"
 spec1=$(spec_total 1.0 "$tmp/spec1.log")
 
-go test -count=1 -run '^TestCoreV2Validation$' -v \
+go test -tags=wago_regalloccheck -count=1 -run '^TestCoreV2Validation$' -v \
 	./src/core/compiler/wasm/ >"$tmp/spec2-validation.log"
 WAGO_SPECTEST_DIR="$root/tests/conformance/spec-v2" WAGO_SPEC_VERSION=2.0 \
-	go test -count=1 -run '^TestCoreV2SpecExecution$' -v \
+	go test -tags=wago_regalloccheck -count=1 -run '^TestCoreV2SpecExecution$' -v \
 	./src/wago/ >"$tmp/spec2-execution.log"
 spec2_validation=$(spec_total 2.0 "$tmp/spec2-validation.log")
 spec2_execution=$(spec_total 2.0 "$tmp/spec2-execution.log")
 
 WAGO_SPECTEST_DIR="$root/tests/conformance/spec-v1" WAGO_SPEC_VERSION=simd \
-	go test -count=1 -run TestSpecSuiteExec -v ./src/wago/ >"$tmp/simd.log"
+	go test -tags=wago_regalloccheck -count=1 -run TestSpecSuiteExec -v ./src/wago/ >"$tmp/simd.log"
 simd=$(spec_total simd "$tmp/simd.log")
 
 field() {

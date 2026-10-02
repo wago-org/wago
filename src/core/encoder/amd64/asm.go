@@ -31,6 +31,8 @@ const (
 )
 
 type Asm struct {
+	//lint:ignore U1000 debug-only observer; the ordinary placeholder is empty
+	regallocState
 	B                            []byte
 	EncodingStats                *EncodingStats
 	Rel32Sites                   []Rel32Site
@@ -477,6 +479,15 @@ func (a *Asm) recordLocalRef(base Reg, mod byte, modRMOff, dispOff int, disp int
 }
 
 func (a *Asm) memOp(opcode byte, regField byte, base Reg, disp int32, w bool) {
+	// Report only covered move forms, not inferred semantics for other opcodes.
+	if regallocCheckEnabled {
+		if opcode == 0x8B {
+			a.regallocLoad(Reg(regField), base, disp, false, regallocWidth(w))
+		} else if opcode == 0x89 {
+			a.regallocStore(base, disp, Reg(regField), false, regallocWidth(w))
+		}
+	}
+
 	rb := base >= 8
 	rr := regField >= 8
 	if w || rr || rb {
@@ -512,6 +523,10 @@ func (a *Asm) MovImm32(r Reg, v int32) {
 }
 
 func (a *Asm) MovRegReg32(dst, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocCopy(dst, src, false, 4)
+	}
+
 	rr := src >= 8
 	rb := dst >= 8
 	if rr || rb {
@@ -544,11 +559,19 @@ func (a *Asm) bitScan(opcode byte, dst, src Reg, w bool) {
 }
 
 func (a *Asm) MovReg64(dst, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocCopy(dst, src, false, 8)
+	}
+
 	a.emit(a.rex(true, src >= 8, false, dst >= 8), 0x89, 0xC0|((byte(src)&7)<<3)|byte(dst&7))
 }
 
 // Xchg64 exchanges the contents of two 64-bit registers (xchg r/m64, r64).
 func (a *Asm) Xchg64(x, y Reg) {
+	if regallocCheckEnabled {
+		a.regallocSwap(x, y, 8)
+	}
+
 	a.emit(a.rex(true, x >= 8, false, y >= 8), 0x87, 0xC0|((byte(x)&7)<<3)|byte(y&7))
 }
 
@@ -754,6 +777,9 @@ func (a *Asm) AluRR8(rrOpcode byte, dst, src Reg) {
 }
 
 func (a *Asm) AluRM(rmOpcode byte, dst, base Reg, disp int32, w bool) {
+	if regallocCheckEnabled {
+		a.regallocRead(base, disp, regallocWidth(w))
+	}
 	a.memOp(rmOpcode, byte(dst), base, disp, w)
 }
 
@@ -798,6 +824,9 @@ func (a *Asm) AluRI(digit byte, dst Reg, imm int32, w bool) {
 }
 
 func (a *Asm) ImulRM(dst, base Reg, disp int32, w bool) {
+	if regallocCheckEnabled {
+		a.regallocRead(base, disp, regallocWidth(w))
+	}
 	if w || dst >= 8 || base >= 8 {
 		a.emit(a.rex(w, dst >= 8, false, base >= 8))
 	}
@@ -909,6 +938,14 @@ func (a *Asm) MovImm64(r Reg, v uint64) {
 func (a *Asm) AddRsp(v int32) { a.emit(a.rexPrefix(0x48), 0x81, 0xC4); a.imm32(v) }
 
 func (a *Asm) rspMem(opcode byte, reg byte, disp int32, w bool) {
+	if regallocCheckEnabled {
+		if opcode == 0x8B {
+			a.regallocLoad(Reg(reg), RSP, disp, false, regallocWidth(w))
+		} else if opcode == 0x89 {
+			a.regallocStore(RSP, disp, Reg(reg), false, regallocWidth(w))
+		}
+	}
+
 	rr := reg >= 8
 	if w || rr {
 		a.emit(a.rex(w, rr, false, false))

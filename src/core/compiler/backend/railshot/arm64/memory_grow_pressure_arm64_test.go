@@ -45,7 +45,7 @@ func TestMemoryGrowFitsTransientRegisterFloor(t *testing.T) {
 					}
 				}
 				emit()
-				if got := testing.AllocsPerRun(20, emit); got != 0 {
+				if got := testing.AllocsPerRun(20, emit); !regallocCheckEnabled && got != 0 {
 					t.Fatalf("memory.grow lowering allocated %g times, want 0", got)
 				}
 			})

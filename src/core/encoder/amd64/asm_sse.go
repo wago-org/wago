@@ -41,6 +41,13 @@ func sseFormat(prefix, opcodeMap byte, w bool) uint32 {
 
 //go:noinline
 func (a *Asm) sseMapRR(format uint32, op byte, reg, rm Reg) {
+	// Only covered move opcodes establish transfers; arithmetic remains trusted.
+	if regallocCheckEnabled {
+		if byte(format>>8) == 0 && (op == 0x28 || op == 0x6f) {
+			a.regallocCopy(reg, rm, true, 16)
+		}
+	}
+
 	prefix, opcodeMap, w := byte(format), byte(format>>8), format&(1<<16) != 0
 	if prefix != 0 {
 		a.emit(prefix)
@@ -69,7 +76,12 @@ func (a *Asm) FMin(dst, src Reg, f64 bool)  { a.sseRR(sdPrefix(f64), 0x5D, dst, 
 func (a *Asm) FMax(dst, src Reg, f64 bool)  { a.sseRR(sdPrefix(f64), 0x5F, dst, src, false) }
 func (a *Asm) FSqrt(dst, src Reg, f64 bool) { a.sseRR(sdPrefix(f64), 0x51, dst, src, false) }
 
-func (a *Asm) FMov(dst, src Reg, f64 bool) { a.sseRR(sdPrefix(f64), 0x10, dst, src, false) }
+func (a *Asm) FMov(dst, src Reg, f64 bool) {
+	if regallocCheckEnabled {
+		a.regallocCopy(dst, src, true, regallocWidth(f64))
+	}
+	a.sseRR(sdPrefix(f64), 0x10, dst, src, false)
+}
 
 // --- VEX 3-operand (AVX) forms -------------------------------------------------
 //
@@ -329,9 +341,17 @@ func (a *Asm) Pmovmskb(dst, src Reg) {
 // Packed 128-bit integer SIMD VEX helpers. These expose x86 instructions used by
 // Wasm SIMD lowering while keeping Wasm-specific semantics in the backend.
 func (a *Asm) VMovdquLoadDisp(dst, base Reg, disp int32) {
+	if regallocCheckEnabled {
+		a.regallocLoad(dst, base, disp, true, 16)
+	}
+
 	a.vex3MemDisp(vexMap0F, 0b10, 0x6F, dst, 0, false, base, disp)
 }
 func (a *Asm) VMovdquStoreDisp(base Reg, disp int32, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocStore(base, disp, src, true, 16)
+	}
+
 	a.vex3MemDisp(vexMap0F, 0b10, 0x7F, src, 0, false, base, disp)
 }
 func (a *Asm) VMovdquLoadIdx(dst, base, index Reg, disp int32) {
@@ -341,6 +361,10 @@ func (a *Asm) VMovdquStoreIdx(base, index, src Reg, disp int32) {
 	a.vex3MemIdx(vexMap0F, 0b10, 0x7F, src, 0, false, base, index, disp)
 }
 func (a *Asm) VMovdqu(dst, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocCopy(dst, src, true, 16)
+	}
+
 	a.vex3RRReserved(vexMap0F, 0b10, 0x6F, dst, src)
 }
 
@@ -704,11 +728,35 @@ func (a *Asm) Cvtsi2f(xmm, gpr Reg, f64, w bool) { a.sseRR(sdPrefix(f64), 0x2A, 
 
 func (a *Asm) Cvttf2si(gpr, xmm Reg, f64, w bool) { a.sseRR(sdPrefix(f64), 0x2C, gpr, xmm, w) }
 
-func (a *Asm) MovGprToXmm(xmm, gpr Reg, w bool) { a.sseRR(0x66, 0x6E, xmm, gpr, w) }
+func (a *Asm) MovGprToXmm(xmm, gpr Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocCrossCopy(xmm, gpr, true, regallocWidth(w))
+	}
+	a.sseRR(0x66, 0x6E, xmm, gpr, w)
+}
 
-func (a *Asm) MovXmmToGpr(gpr, xmm Reg, w bool) { a.sseRR(0x66, 0x7E, xmm, gpr, w) }
+func (a *Asm) MovXmmToGpr(gpr, xmm Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocCrossCopy(gpr, xmm, false, regallocWidth(w))
+	}
+	a.sseRR(0x66, 0x7E, xmm, gpr, w)
+}
 
 func (a *Asm) fmemDisp(op byte, xmm, base Reg, disp int32, f64 bool) {
+	// Only covered move opcodes establish transfers; arithmetic remains trusted.
+	if regallocCheckEnabled {
+		switch op {
+		case 0x10:
+			a.regallocLoad(xmm, base, disp, true, regallocWidth(f64))
+		case 0x11:
+			a.regallocStore(base, disp, xmm, true, regallocWidth(f64))
+		case 0x6f:
+			a.regallocLoad(xmm, base, disp, true, 16)
+		case 0x7f:
+			a.regallocStore(base, disp, xmm, true, 16)
+		}
+	}
+
 	a.emit(sdPrefix(f64))
 	if xmm >= 8 || base >= 8 {
 		a.emit(a.rex(false, xmm >= 8, false, base >= 8))
@@ -732,6 +780,9 @@ func (a *Asm) fmemIdx(op byte, xmm, base, index Reg, disp int32, f64 bool) {
 }
 
 func (a *Asm) FLoadIdx(xmm, base, index Reg, disp int32, f64 bool) {
+	if regallocCheckEnabled {
+		a.regallocKillFP(xmm)
+	}
 	a.fmemIdx(0x10, xmm, base, index, disp, f64)
 }
 func (a *Asm) FStoreIdx(base, index, xmm Reg, disp int32, f64 bool) {
@@ -789,6 +840,13 @@ func (a *Asm) VexShiftImm(op, ext byte, dst, src Reg, imm byte) {
 // VexMapRR encodes a VEX.128 register instruction with reserved vvvv.
 // opcodeMap is zero for 0F, or 0x38/0x3A for those opcode maps.
 func (a *Asm) VexMapRR(opcodeMap, pp, op byte, dst, src Reg) {
+	// Only covered move opcodes establish transfers; arithmetic remains trusted.
+	if regallocCheckEnabled {
+		if opcodeMap == 0 && (op == 0x28 || op == 0x6f) {
+			a.regallocCopy(dst, src, true, 16)
+		}
+	}
+
 	m := byte(vexMap0F)
 	if opcodeMap == 0x38 {
 		m = vexMap0F38
@@ -812,6 +870,14 @@ func (a *Asm) MovdquDisp(op byte, xmm, base Reg, disp int32) {
 
 // VMovdquDisp is the VEX.128 form of MovdquDisp.
 func (a *Asm) VMovdquDisp(op byte, xmm, base Reg, disp int32) {
+	if regallocCheckEnabled {
+		if op == 0x6f {
+			a.regallocLoad(xmm, base, disp, true, 16)
+		} else if op == 0x7f {
+			a.regallocStore(base, disp, xmm, true, 16)
+		}
+	}
+
 	a.vex3MemDisp(vexMap0F, 2, op, xmm, 0, false, base, disp)
 }
 
