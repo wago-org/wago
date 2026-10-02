@@ -12,6 +12,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   a `try_table`/exnref migration hint instead of a generic invalid instruction.
 - Recovered backend panics now return a distinct `InternalCompilerError` with
   function/bytecode context and bounded diagnostics instead of ordinary rejection.
+- AMD64 and ARM64 preserve deferred division, remainder, and guard-page load
+  traps before tail-call target checks or callee side effects.
 - Preserve AMD64 `select` operands when deferred divisions, remainders, shifts,
   or rotates reclaim fixed registers, and report operand traps in WebAssembly
   evaluation order.

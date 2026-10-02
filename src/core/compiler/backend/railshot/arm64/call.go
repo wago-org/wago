@@ -411,6 +411,8 @@ func (f *fn) callOp(r *wasm.Reader) error {
 // tail bank and jump to the target wrapper. Both paths release the current native
 // frame before branching, so recursive tail chains remain stack bounded.
 func (f *fn) returnCall(r *wasm.Reader) error {
+	// Tail transfer discards the operand prefix; preserve its traps first.
+	f.materializePendingTraps()
 	idx, err := r.U32()
 	if err != nil {
 		return err
@@ -824,6 +826,8 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 }
 
 func (f *fn) returnCallRefType(typeIdx uint32) error {
+	// The target null/type checks are later observable traps.
+	f.materializePendingTraps()
 	ft, ok := f.m.TypeFunc(typeIdx)
 	if !ok {
 		return fmt.Errorf("return_call_ref: bad type %d", typeIdx)
@@ -1083,6 +1087,8 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 }
 
 func (f *fn) returnCallIndirect(r *wasm.Reader) error {
+	// Earlier operand traps precede table checks as well as callee effects.
+	f.materializePendingTraps()
 	typeIdx, err := r.U32()
 	if err != nil {
 		return err
