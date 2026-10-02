@@ -1,4 +1,4 @@
-//go:build arm64 && !tinygo && (linux || darwin || windows)
+//go:build arm64 && (linux || darwin || (windows && !tinygo))
 
 package wago
 
@@ -13,42 +13,49 @@ const preparedDirectIntSupported = true
 const preparedDirectIntPrivateSupported = true
 
 func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
-	in := fn.in
-	if in.isLogicallyClosed() {
-		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
-	}
 	var a0, a1, a2, a3 uint64
 	switch len(args) {
 	case 4:
 		a3 = args[3]
-		if fn.scalarWideMask&8 == 0 {
-			a3 = uint64(uint32(a3))
-		}
 		fallthrough
 	case 3:
 		a2 = args[2]
-		if fn.scalarWideMask&4 == 0 {
-			a2 = uint64(uint32(a2))
-		}
 		fallthrough
 	case 2:
 		a1 = args[1]
-		if fn.scalarWideMask&2 == 0 {
-			a1 = uint64(uint32(a1))
-		}
 		fallthrough
 	case 1:
 		a0 = args[0]
-		if fn.scalarWideMask&1 == 0 {
-			a0 = uint64(uint32(a0))
-		}
+	}
+	return fn.invokeDirectIntFixed(a0, a1, a2, a3)
+}
+
+func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
+	in := fn.in
+	if in.isLogicallyClosed() {
+		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
+	}
+	if fn.scalarWideMask&1 == 0 {
+		a0 = uint64(uint32(a0))
+	}
+	if fn.scalarWideMask&2 == 0 {
+		a1 = uint64(uint32(a1))
+	}
+	if fn.scalarWideMask&4 == 0 {
+		a2 = uint64(uint32(a2))
+	}
+	if fn.scalarWideMask&8 == 0 {
+		a3 = uint64(uint32(a3))
 	}
 	if !fn.isolatedFast {
 		nativeExecutionMu.Lock()
 		nativeExecutionEpoch++
 		defer nativeExecutionMu.Unlock()
 	}
-	result := in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	result, err := in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	if err != nil {
+		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
+	}
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
 		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
 	}

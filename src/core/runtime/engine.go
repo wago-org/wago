@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -19,8 +20,9 @@ import (
 
 // Engine owns a dedicated, off-heap execution stack for native wasm code.
 type Engine struct {
-	stack    []byte
-	stackTop uintptr
+	stack       []byte
+	stackTop    uintptr
+	preparedInt tinygoPreparedIntState
 
 	// Scratch for the common non-reentrant synchronous host-call path. Passing
 	// slices to HostCall makes stack-local arrays escape; keeping one bounded pair
@@ -287,7 +289,9 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 	}
 }
 
-func (e *Engine) Close() error { return munmap(e.stack) }
+func (e *Engine) Close() error {
+	return errors.Join(e.preparedInt.close(), munmap(e.stack))
+}
 
 // MapCode copies machine code into a fresh W^X executable mapping and returns
 // the mapping (keep it alive / Unmap to free) plus the entry-point pointer to

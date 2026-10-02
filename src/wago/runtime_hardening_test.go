@@ -272,6 +272,37 @@ func TestRuntimeCloseFromImportedStartIsReentrant(t *testing.T) {
 	}
 }
 
+func TestRuntimeCloseCallbackFreeFastPathCompletesInline(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-rt.Closed():
+	default:
+		t.Fatal("callback-free runtime shutdown did not complete inline")
+	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRuntimeCloseReferenceStoreWorkIsNotInline(t *testing.T) {
+	rt := NewRuntime()
+	if _, err := rt.NewExternRef("retained"); err != nil {
+		t.Fatal(err)
+	}
+	if rt.refStore.emptyForInlineClose() {
+		t.Fatal("reference store with an externref reported constant close work")
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRuntimeCloseContextPreCanceledHasNoSideEffects(t *testing.T) {
 	rt := NewRuntime()
 	ctx, cancel := context.WithCancel(context.Background())

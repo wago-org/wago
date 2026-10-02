@@ -1719,6 +1719,16 @@ func (s *referenceStore) closeRuntime() {
 	releaseReferenceEntries(release)
 }
 
+// emptyForInlineClose reports whether closing the store has constant work. The
+// caller has already published Runtime shutdown, so no new entries can arrive.
+func (s *referenceStore) emptyForInlineClose() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.liveInstances == 0 && s.liveObjects == 0 && len(s.instances) == 0 &&
+		len(s.instanceTypes) == 0 && len(s.byIdentity) == 0 && len(s.byToken) == 0 &&
+		len(s.gcByToken) == 0 && len(s.externrefs) == 0 && s.gcDomains == nil
+}
+
 func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, error) {
 	return s.issueMode(source, descriptor, false)
 }

@@ -43,6 +43,15 @@ func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	finalizing := make(chan struct{})
+	finishFinalizing := make(chan struct{})
+	rt.hooks.afterClose = append(rt.hooks.afterClose, func(event InstanceCloseEvent) {
+		if !sameInstance(event.Instance, writer) {
+			return
+		}
+		close(finalizing)
+		<-finishFinalizing
+	})
 	callDone := make(chan error, 1)
 	go func() {
 		result, err := writer.Invoke("use", token)
@@ -90,6 +99,14 @@ func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
 	}
 
 	close(resume)
+	<-finalizing
+	rt.mu.Lock()
+	activeOperations := rt.activeOperations
+	rt.mu.Unlock()
+	if activeOperations != 1 {
+		t.Fatalf("runtime operations during terminal finalization = %d, want 1", activeOperations)
+	}
+	close(finishFinalizing)
 	if err := <-callDone; err != nil && !strings.Contains(err.Error(), "interrupt") {
 		t.Fatalf("resumed descriptor use = %v; want result 42 or caller-close interruption", err)
 	}

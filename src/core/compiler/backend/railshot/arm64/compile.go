@@ -931,6 +931,13 @@ func CompileModule(m *wasm.Module) (*a64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule, error) {
+	compiled, err := compileModuleWith(m, opts)
+	runtime.KeepAlive(m)
+	runtime.KeepAlive(opts)
+	return compiled, err
+}
+
+func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule, error) {
 	selection, err := optimizationBindings.ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas)
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)

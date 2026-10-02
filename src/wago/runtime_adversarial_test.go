@@ -740,7 +740,10 @@ func TestRepeatedRuntimeCompileInstantiateDoesNotRetainHeap(t *testing.T) {
 			if err := table.Close(); err != nil {
 				t.Fatal(err)
 			}
-			if err := rt.Close(); err != nil {
+			// The heap assertion below must observe completed teardown. Close only
+			// publishes asynchronous shutdown, which can leave all n runtimes live
+			// until the cooperative TinyGo scheduler gets another yield.
+			if err := rt.CloseContext(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 		}

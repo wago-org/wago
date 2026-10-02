@@ -143,11 +143,11 @@ func (rt *Runtime) NewExternRefTable(minSize, maxSize uint32) (*Table, error) {
 	if rt == nil || rt.refStore == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
 	}
-	end, err := rt.beginOperation("NewExternRefTable", false)
+	operation, err := rt.beginOperation("NewExternRefTable", false)
 	if err != nil {
 		return nil, err
 	}
-	defer end()
+	defer operation.end()
 	return newHostTable(minSize, maxSize, ValExternRef, rt.refStore)
 }
 

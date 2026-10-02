@@ -131,7 +131,7 @@ func TestPreparedFunctionDirectIntArgumentsAndTrap(t *testing.T) {
 	if !fn.directIntFast {
 		t.Fatal("i64 add did not select direct integer entry")
 	}
-	got, err := fn.Invoke(0x1_0000_0000, 7)
+	got, err := fn.Invoke2(0x1_0000_0000, 7)
 	if err != nil || len(got) != 1 || got[0] != 0x1_0000_0007 {
 		t.Fatalf("direct i64 add = %v, %v", got, err)
 	}
@@ -161,12 +161,45 @@ func TestPreparedFunctionDirectIntArgumentsAndTrap(t *testing.T) {
 	if !fn.directIntFast {
 		t.Fatal("i32 div did not select direct integer entry")
 	}
-	if _, err := fn.Invoke(I32(7), I32(0)); err == nil {
+	if _, err := fn.Invoke2(I32(7), I32(0)); err == nil {
 		t.Fatal("direct division by zero did not trap")
 	}
-	got, err = fn.Invoke(I32(8), I32(2))
+	got, err = fn.Invoke2(I32(8), I32(2))
 	if err != nil || len(got) != 1 || AsI32(got[0]) != 4 {
 		t.Fatalf("direct i32 div after trap = %v, %v", got, err)
+	}
+}
+
+func TestPreparedFunctionFixedArityFourArguments(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
+			[]wasm.ValType{wasm.I64, wasm.I64, wasm.I64, wasm.I64},
+			[]wasm.ValType{wasm.I64},
+		))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("sum", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x20, 0x01, 0x7c,
+			0x20, 0x02, 0x7c,
+			0x20, 0x03, 0x7c,
+			0x0b,
+		}))),
+	)
+	in, err := Instantiate(MustCompile(module), InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareFunction("sum")
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	got, err := fn.Invoke4(1, 2, 4, 8)
+	if err != nil || len(got) != 1 || got[0] != 15 {
+		t.Fatalf("fixed four-argument sum = %v, %v; want 15", got, err)
+	}
+	if _, err := fn.Invoke3(1, 2, 4); err == nil || !strings.Contains(err.Error(), "expects 4") {
+		t.Fatalf("fixed arity mismatch error = %v", err)
 	}
 }
 
@@ -341,7 +374,7 @@ func BenchmarkPreparedInvokeAddOne(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		res, err := fn.Invoke(I32(int32(i)))
+		res, err := fn.Invoke1(I32(int32(i)))
 		if err != nil {
 			b.Fatal(err)
 		}

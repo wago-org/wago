@@ -4,8 +4,8 @@ package runtime
 
 func enterNativeInt(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
 
-func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) uint64 {
-	return uint64(enterNativeInt(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop))
+func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return uint64(enterNativeInt(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)), nil
 }
 
 func PreparedIntTrapCode(trap []byte) TrapCode {

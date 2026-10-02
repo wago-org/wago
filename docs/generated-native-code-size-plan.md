@@ -465,6 +465,7 @@ type CodegenPolicy struct {
 	FunctionAlignLog2 uint8
 	InternalAlignLog2 uint8
 	LoopAlignLog2 uint8
+	InlineGrowthBudget int32
 	MaxMachineWindow uint8
 	MaxRelaxIterations uint8
 }

@@ -326,13 +326,17 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
 				h.hasSIMD = true
 			}
-			if shared.InstructionNeedsEHFrame(0, in.Kind) {
+			switch in.Kind {
+			case wasm.InstrTryTable, wasm.InstrThrow, wasm.InstrThrowRef:
 				h.moduleEH = true
 			}
 			if gcOrAtomicInstructionMayCall(in.Kind, gcStructHelpers) {
 				h.hasCall, sub = true, true
 			}
-			if shared.InstructionNeedsInlineBoundary(0, in.Kind) {
+			// Inline-candidacy control-flow signals (matches scanInlineFactsAST).
+			switch in.Kind {
+			case wasm.InstrUnreachable, wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf, wasm.InstrTryTable,
+				wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn:
 				h.hasControlFlow = true
 				if in.Kind == wasm.InstrLoop {
 					h.hasLoop = true
@@ -633,10 +637,15 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		} else if op == 0xfd {
 			s.h.hasSIMD = true
 		}
-		if shared.InstructionNeedsEHFrame(op, wasm.InstrInvalid) {
+		switch op {
+		case 0x08, 0x0a, 0x1f: // throw, throw_ref, try_table
 			s.h.moduleEH = true
 		}
-		if shared.InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) {
+		// Inline-candidacy signals (folded in so buildInlineTargets needs no second
+		// walk). Exactly scanInlineFactsBytes's control-flow set — try_table (0x1f)
+		// is deliberately excluded to match it.
+		switch op {
+		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f:
 			s.h.hasControlFlow = true
 			s.entryPrefix = false
 			if op == 0x03 {
@@ -795,12 +804,6 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
-			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
-				s.h.hasControlFlow = true
-			}
-			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
-				s.h.moduleEH = true
-			}
 			if gcOrAtomicInstructionMayCall(imm.Kind, s.gcStructHelpers) {
 				s.h.hasCall, subHasCall = true, true
 			}
@@ -840,12 +843,6 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
-			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
-				s.h.hasControlFlow = true
-			}
-			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
-				s.h.moduleEH = true
-			}
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 			}
