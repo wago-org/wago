@@ -385,7 +385,13 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	totalFuncs := c.NumImports + len(c.Funcs)
 	validValues := func(refType ValType, values []RefInit) bool {
 		refType = normalizedElemRefType(refType)
-		for _, value := range values {
+		for k, value := range values {
+			if value.RepeatPrevious {
+				if k == 0 {
+					return false
+				}
+				continue
+			}
 			if len(value.Expr) != 0 {
 				if !c.usesGenericGCExecution() || (refType != ValAnyRef && refType != ValI31Ref) || value.Expr[len(value.Expr)-1] != 0x0b {
 					return false

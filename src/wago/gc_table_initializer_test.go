@@ -4,7 +4,6 @@ package wago
 
 import (
 	"encoding/hex"
-	"strings"
 	"testing"
 )
 
@@ -19,18 +18,35 @@ func TestGCTableInitializers(t *testing.T) {
 
 // Re-evaluating an allocating initializer per slot would break reference
 // identity, so multi-slot tables still reject it, with an explicit limit.
-func TestGCTableAllocatingInitializerRejectedClearly(t *testing.T) {
+// The spec evaluates a table initializer once and stores that reference in
+// every slot. An allocating initializer on a multi-entry table was rejected;
+// it must yield one object shared by all slots, also after an artifact round
+// trip.
+func TestGCTableAllocatingInitializerSharesOneObject(t *testing.T) {
 	data, err := hex.DecodeString(gcTableAllocMultiWasm)
 	if err != nil {
 		t.Fatal(err)
 	}
 	c, err := Compile(nil, data)
-	if err == nil {
-		c.Close()
-		t.Fatal("compile succeeded; want explicit allocating-initializer limit")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "allocating GC constant expressions") {
-		t.Fatalf("compile error = %v", err)
+	defer c.Close()
+	reloaded := publicArtifactRoundTrip(t, c)
+	defer reloaded.Close()
+	for _, compiled := range []*Compiled{c, reloaded} {
+		in, err := Instantiate(compiled, InstantiateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for export, want := range map[string]int32{"same": 1, "shared": 41} {
+			got, err := in.InvokeValues(nil, export)
+			if err != nil || len(got) != 1 || AsI32(got[0].Bits()) != want {
+				in.Close()
+				t.Fatalf("%s = %v, %v; want %d", export, got, err, want)
+			}
+		}
+		in.Close()
 	}
 }
 
@@ -65,7 +81,11 @@ const gcTableExprInitWasm = "0061736d010000000109025f017f006000017f0302010104230
 // gcTableAllocMultiWasm encodes:
 //
 //	(module
-//	  (type $s (struct (field i32)))
-//	  (table $many 2 eqref (struct.new $s (i32.const 6)))
-//	  (func (export "f") (result i32) (ref.eq (table.get $many (i32.const 0)) (table.get $many (i32.const 1)))))
-const gcTableAllocMultiWasm = "0061736d010000000109025f017f006000017f03020101040c0140006d00024106fb00000b070501016600000a0d010b004100250041012500d30b0014046e616d6504040100017305070100046d616e79"
+//	  (type $s (struct (field (mut i32))))
+//	  (table $many 3 eqref (struct.new $s (i32.const 6)))
+//	  (func (export "same") (result i32)
+//	    (ref.eq (table.get $many (i32.const 0)) (table.get $many (i32.const 2))))
+//	  (func (export "shared") (result i32)
+//	    (struct.set $s 0 (ref.cast (ref $s) (table.get $many (i32.const 0))) (i32.const 41))
+//	    (struct.get $s 0 (ref.cast (ref $s) (table.get $many (i32.const 1))))))
+const gcTableAllocMultiWasm = "0061736d010000000109025f017f016000017f0303020101040c0140006d00034106fb00000b0711020473616d6500000673686172656400010a28020b004100250041022500d30b1a0041002500fb16004129fb05000041012500fb1600fb0200000b0014046e616d6504040100017305070100046d616e79"

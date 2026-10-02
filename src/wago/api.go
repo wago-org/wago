@@ -2756,8 +2756,14 @@ func (c *Compiled) validateElementValues(kind string, seg int, elem ElemInit) er
 		return fmt.Errorf("compiled metadata invalid: %s element %d exact type: %w", kind, seg, err)
 	}
 	for k, value := range elem.Values {
+		if value.RepeatPrevious {
+			if k == 0 || value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 || len(value.Expr) != 0 {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has an invalid repeat", kind, seg, k)
+			}
+			continue
+		}
 		if len(value.Expr) != 0 {
-			if value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 {
+			if value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 || value.RepeatPrevious {
 				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has multiple initializer forms", kind, seg, k)
 			}
 			gcConstExpr := c.requiredFeatures.IsEnabled(CoreFeatureGC) || c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
