@@ -253,16 +253,13 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			if gcOrAtomicInstructionMayCall(in.Kind) {
 				sub, h.hasCall = true, true
 			}
-			switch in.Kind {
-			case wasm.InstrUnreachable, wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf, wasm.InstrTryTable,
-				wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn:
+			if shared.InstructionNeedsInlineBoundary(0, in.Kind) {
 				h.hasControlFlow = true
 				if in.Kind == wasm.InstrLoop {
 					h.hasLoop = true
 				}
 			}
-			switch in.Kind {
-			case wasm.InstrTryTable, wasm.InstrThrow, wasm.InstrThrowRef:
+			if shared.InstructionNeedsEHFrame(0, in.Kind) {
 				h.moduleEH = true
 			}
 			switch in.Kind {
@@ -535,8 +532,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		if err != nil {
 			return true, 0, err
 		}
-		switch op {
-		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f, 0x1f:
+		if shared.InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) {
 			s.h.hasControlFlow = true
 			s.entryPrefix = false
 			if op == 0x03 {
@@ -682,6 +678,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
+			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
+				s.h.hasControlFlow = true
+			}
+			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
+				s.h.moduleEH = true
+			}
 			if op == 0xfb {
 				// Collector-backed GC instructions may enter the synchronous Go
 				// helper bridge. Preserve LR and use call-safe local state for the
@@ -728,6 +730,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
+			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
+				s.h.hasControlFlow = true
+			}
+			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
+				s.h.moduleEH = true
+			}
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 				s.h.memOps++

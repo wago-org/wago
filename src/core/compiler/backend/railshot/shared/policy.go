@@ -26,7 +26,6 @@ type CodegenPolicy struct {
 	InternalAlignLog2 uint8
 	LoopAlignLog2     uint8
 
-	InlineGrowthBudget     int32
 	MaxMachineWindow       uint8
 	MaxRelaxIterations     uint8
 	MaxFinalizerDeletions  uint8

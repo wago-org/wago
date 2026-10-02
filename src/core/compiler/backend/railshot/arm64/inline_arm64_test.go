@@ -52,6 +52,42 @@ func TestInlineLeafExecAndStatsArm64(t *testing.T) {
 	}
 }
 
+func TestInlineBrOnNullRespectsCalleeBoundaryArm64(t *testing.T) {
+	saved := inlineEnabled
+	inlineEnabled = true
+	defer func() { inlineEnabled = saved }()
+
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x00, 0x10, 0x01, 0x1a, 0x41, 0x01, 0x0b}},
+		funcDef{body: []byte{0x00, 0xd0, 0x70, 0xd5, 0x00, 0x1a, 0x0b}},
+	)
+	hints, _, err := computeModuleHints(m, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := buildInlineTargets(m, hints, currentCodegenPolicy()).target(1)
+	if target == nil || !target.hasCtrl {
+		t.Fatalf("inline target = %#v, want synthetic control boundary", target)
+	}
+	if got := uint32(runArm64Internal2(t, m, 0, 0)); got != 1 {
+		t.Fatalf("caller result = %d, want 1", got)
+	}
+}
+
+func TestInlineTargetsRejectEHArm64(t *testing.T) {
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x10, 0x01, 0x41, 0x01, 0x0b}},
+		funcDef{body: []byte{0x00, 0x0b}},
+	)
+	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
+		policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, objective)
+		hints := []funcHints{{hasCall: true}, {moduleEH: true, inlineCallSites: 1}}
+		if target := buildInlineTargets(m, hints, policy).target(1); target != nil {
+			t.Fatalf("objective %v admitted EH inline target", objective)
+		}
+	}
+}
+
 func TestInlineRejectsRecursiveArm64(t *testing.T) {
 	caller := []byte{0x00, 0x41, 0x01, 0x10, 0x01, 0x0b}
 	recursive := []byte{0x00, 0x20, 0x00, 0x10, 0x01, 0x0b}

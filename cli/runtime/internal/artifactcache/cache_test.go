@@ -364,6 +364,8 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	bounds := base.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 	deferredOff := base.WithDeferBoundsChecks(false)
 	memoryLimit := base.WithMemoryLimitPages(base.MemoryLimitPages() - 1)
+	size := base.WithOptimizationObjective(wago.OptimizeSize)
+	embedded := base.WithOptimizationObjective(wago.OptimizeEmbedded)
 
 	basePath, ok := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, base)
 	if !ok {
@@ -375,6 +377,8 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	boundsPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, bounds)
 	deferredPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, deferredOff)
 	memoryPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, memoryLimit)
+	sizePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, size)
+	embeddedPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, embedded)
 	runtimePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-b")}).path(source, base)
 	sourcePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(append(source, 0), base)
 	if basePath == featurePath {
@@ -398,8 +402,62 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	if basePath == memoryPath {
 		t.Fatal("memory limit did not change artifact key")
 	}
+	if basePath == sizePath {
+		t.Fatal("optimization objective did not change artifact key")
+	}
+	if basePath == embeddedPath {
+		t.Fatal("embedded objective did not change artifact key")
+	}
 	if basePath == sourcePath {
 		t.Fatal("source bytes did not change artifact key")
+	}
+}
+
+func TestLoadOrCompileSeparatesOptimizationObjectives(t *testing.T) {
+	source := constantModule()
+	balanced := wago.NewRuntimeConfig().
+		WithBoundsChecks(wago.BoundsChecksExplicit).
+		WithOptimizationObjective(wago.OptimizeBalanced)
+	size := balanced.WithOptimizationObjective(wago.OptimizeSize)
+	for _, test := range []struct {
+		name  string
+		order []*wago.RuntimeConfig
+	}{
+		{name: "Balanced then Size", order: []*wago.RuntimeConfig{balanced, size}},
+		{name: "Size then Balanced", order: []*wago.RuntimeConfig{size, balanced}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+			for _, config := range test.order {
+				rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
+				module, err := cache.LoadOrCompile(source, config, rt)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := module.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := rt.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			balancedPath, ok := cache.path(source, balanced)
+			if !ok {
+				t.Fatal("Balanced cache key unavailable")
+			}
+			sizePath, ok := cache.path(source, size)
+			if !ok {
+				t.Fatal("Size cache key unavailable")
+			}
+			if balancedPath == sizePath {
+				t.Fatal("Balanced and Size artifacts share a cache path")
+			}
+			for _, path := range []string{balancedPath, sizePath} {
+				if _, err := os.Stat(path); err != nil {
+					t.Fatalf("objective-specific artifact %q was not published: %v", path, err)
+				}
+			}
+		})
 	}
 }
 
