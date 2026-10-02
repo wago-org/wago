@@ -3,10 +3,52 @@ package wasm
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"unsafe"
 )
+
+func TestValidateModuleEntryPointsRejectNil(t *testing.T) {
+	checkNilError := func(t *testing.T, err error) {
+		t.Helper()
+		var validationErr *ValidationError
+		if !errors.As(err, &validationErr) || validationErr.Code != ErrTypeMismatch || validationErr.Detail != "nil module" {
+			t.Fatalf("error = %v, want nil-module validation error", err)
+		}
+	}
+	tests := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "default", run: func() error { return ValidateModule(nil) }},
+		{name: "workers", run: func() error { return ValidateModuleWithWorkers(nil, 2) }},
+		{name: "features", run: func() error { return ValidateModuleWithFeatures(nil, ValidationFeatures{}) }},
+		{name: "features and workers", run: func() error { return ValidateModuleWithFeaturesAndWorkers(nil, ValidationFeatures{}, 2) }},
+		{name: "config", run: func() error { return ValidateModuleWithConfig(nil, ValidationFeatures{}, 2, ValidationLimits{}) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			checkNilError(t, test.run())
+		})
+	}
+	t.Run("analysis", func(t *testing.T) {
+		// Seed every retained field so this test proves nil validation clears stale
+		// proof facts instead of passing because the destination started empty.
+		analysis := ValidatedModuleAnalysis{
+			funcs:          []ValidatedFuncFacts{{Flags: ValidatedFuncUsesGC | ValidatedFuncMayCollect, BodyBytes: 123}},
+			flags:          ValidatedFuncUsesGC | ValidatedFuncMayCollect,
+			elemStateCount: 7,
+			dataStateCount: 9,
+			module:         &Module{Code: []Func{{}}},
+			valid:          true,
+		}
+		checkNilError(t, ValidateModuleWithAnalysis(nil, ValidationFeatures{}, 2, ValidationLimits{}, &analysis))
+		if zero := (ValidatedModuleAnalysis{}); !reflect.DeepEqual(analysis, zero) {
+			t.Fatalf("analysis after nil validation = %#v, want fully cleared %#v", analysis, zero)
+		}
+	})
+}
 
 func TestValidatorRejectsWrappedU32Indexes(t *testing.T) {
 	v := moduleValidator{m: &Module{
