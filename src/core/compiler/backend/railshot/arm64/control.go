@@ -2059,12 +2059,14 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		f.ctrl[frame].set(ctrlRegMerge1, false)
 		eh.catches = append(eh.catches, clause)
 	}
-	fr.height = f.depth() - fr.paramN
-	f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
+	// An unreachable stack is polymorphic, so its depth may be below paramN.
+	// Like block/loop/if, open the frame without a base-type prefix.
 	if f.unreachable {
 		f.pushCtrl(&fr)
 		return nil
 	}
+	fr.height = f.depth() - fr.paramN
+	f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
 	if f.ehTryDepth >= maxEHTryRecords {
 		return fmt.Errorf("bounded exception handling supports at most %d nested try_table records", maxEHTryRecords)
 	}
