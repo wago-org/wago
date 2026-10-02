@@ -1101,6 +1101,9 @@ func (f *fn) flushWideStack(roots []*elem, gcRoots []bool) bool {
 
 	slot := stageBase
 	for i, root := range roots {
+		if diagnosticsEnabled {
+			f.stats.addFlushRoot(root.elemKind() == ekDeferred)
+		}
 		typ := types[i]
 		switch {
 		case typ == mtV128:
