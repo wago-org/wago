@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/wago-org/wago"
@@ -111,6 +112,102 @@ func TestBuildPublicationBoundaryRejectsAccessACLChange(t *testing.T) {
 	}
 	assertNoAtomicBuildTemps(t, dir)
 }
+
+func TestBuildAccessACLFailureLeavesOutputIntact(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "artifact.wago")
+	original := []byte("existing runnable artifact")
+	if err := os.WriteFile(target, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	setLinuxTestAccessACL(t, target)
+	wantACL := readLinuxTestAccessACL(t, target)
+	info, err := os.Lstat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat := info.Sys().(*syscall.Stat_t)
+	metadata := buildOutputMetadata{
+		set: true, uid: int(stat.Uid), gid: int(stat.Gid),
+		accessACL: []byte("invalid POSIX ACL"), accessACLPresent: true,
+	}
+	err = atomicfile.ReplaceFile(target, atomicfile.Options{Mode: info.Mode().Perm(), ModeSet: true}, func(writer io.Writer) error {
+		if _, err := writer.Write([]byte("replacement")); err != nil {
+			return err
+		}
+		return applyBuildOutputMetadata(writer, metadata)
+	})
+	if err == nil || !strings.Contains(err.Error(), "preserve output access metadata") {
+		t.Fatalf("replace with invalid ACL = %v", err)
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("failed replacement changed artifact to %q", got)
+	}
+	if gotACL := readLinuxTestAccessACL(t, target); !bytes.Equal(gotACL, wantACL) {
+		t.Fatalf("failed replacement changed access ACL to %x, want %x", gotACL, wantACL)
+	}
+	temporary, err := filepath.Glob(filepath.Join(dir, ".wago-atomic-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(temporary) != 0 {
+		t.Fatalf("failed replacement left temporary files: %v", temporary)
+	}
+}
+
+func TestBuildAccessACLCaptureRejectsTargetReplacement(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "artifact.wago")
+	if err := os.WriteFile(target, []byte("first"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := inspectBuildOutput(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicationPath, _, _, info, err := snapshot.revalidate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(target, filepath.Join(dir, "original.wago")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("replacement"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := captureBuildOutputMetadata(publicationPath, info, snapshot.targetIdentity); err == nil || !strings.Contains(err.Error(), "changed during build") {
+		t.Fatalf("capture metadata for replaced output = %v", err)
+	}
+}
+
+func TestBuildAccessACLCaptureUsesOpenedDescriptor(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "artifact.wago")
+	if err := os.WriteFile(target, []byte("old artifact"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	setLinuxTestAccessACL(t, target)
+	snapshot, err := inspectBuildOutput(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicationPath, _, _, info, err := snapshot.revalidate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := captureBuildOutputMetadata(publicationPath, info, snapshot.targetIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !metadata.accessACLPresent || len(metadata.accessACL) == 0 {
+		t.Fatalf("captured ACL = %x, present=%t", metadata.accessACL, metadata.accessACLPresent)
+	}
+}
+
 func setLinuxTestAccessACL(t *testing.T, path string) {
 	t.Helper()
 	uid := uint32(65534)

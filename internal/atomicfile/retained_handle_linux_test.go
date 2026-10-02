@@ -59,6 +59,34 @@ func TestReplaceFileLinuxPinsStageThroughPublication(t *testing.T) {
 	}
 }
 
+func TestLinuxRetainedCleanupCannotUndoCommittedPublication(t *testing.T) {
+	dir := t.TempDir()
+	destination := filepath.Join(dir, "artifact.wago")
+	var privateDir, blocker string
+	t.Cleanup(func() {
+		_ = os.Remove(blocker)
+		_ = os.Remove(privateDir)
+	})
+	// A same-identity peer can keep the private directory nonempty. That cleanup
+	// problem must not make an already-published artifact look like a failed build.
+	options := Options{Mode: 0o600, Sync: true, BeforeReplace: func(string) error {
+		blocker = filepath.Join(privateDir, "cleanup-blocker")
+		return os.WriteFile(blocker, nil, 0o600)
+	}}
+	setOptionalAtomicfileTestOption(&options, "ModeSet", true)
+	setOptionalAtomicfileTestOption(&options, "RetainReplaceHandle", true)
+	if err := ReplaceFile(destination, options, func(writer io.Writer) error {
+		privateDir = filepath.Dir(writer.(*os.File).Name())
+		_, err := io.WriteString(writer, "complete artifact")
+		return err
+	}); err != nil {
+		t.Fatalf("replacement after committed publication = %v", err)
+	}
+	if got, err := os.ReadFile(destination); err != nil || string(got) != "complete artifact" {
+		t.Fatalf("published artifact = %q, %v", got, err)
+	}
+}
+
 // Keep the red test source compatible with the pre-fix Options shape.
 func setOptionalAtomicfileTestOption(options *Options, name string, value bool) {
 	field := reflect.ValueOf(options).Elem().FieldByName(name)

@@ -3,6 +3,7 @@
 package build
 
 import (
+	"encoding/binary"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,7 +12,62 @@ import (
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
+	"golang.org/x/sys/unix"
 )
+
+func TestParseDarwinAccessACL(t *testing.T) {
+	fileSecurity := func(entries uint32) []byte {
+		size := darwinFileSecuritySize
+		if entries != darwinFileSecurityNoACL {
+			size += int(entries) * darwinAccessACLEntrySize
+		}
+		data := make([]byte, size)
+		binary.NativeEndian.PutUint32(data[:4], darwinFileSecurityMagic)
+		binary.NativeEndian.PutUint32(data[36:40], entries)
+		return data
+	}
+	packed := func(data []byte, returned bool) []byte {
+		buffer := make([]byte, 32+len(data))
+		binary.NativeEndian.PutUint32(buffer[:4], uint32(len(buffer)))
+		if returned {
+			binary.NativeEndian.PutUint32(buffer[4:8], unix.ATTR_CMN_EXTENDED_SECURITY)
+		}
+		binary.NativeEndian.PutUint32(buffer[24:28], 8)
+		binary.NativeEndian.PutUint32(buffer[28:32], uint32(len(data)))
+		copy(buffer[32:], data)
+		return buffer
+	}
+	badMagic := packed(fileSecurity(0), true)
+	binary.NativeEndian.PutUint32(badMagic[32:36], 0)
+	unalignedOffset := packed(fileSecurity(0), true)
+	binary.NativeEndian.PutUint32(unalignedOffset[24:28], 9)
+	mismatchedSize := packed(fileSecurity(0), true)
+	binary.NativeEndian.PutUint32(mismatchedSize[32+36:32+40], 1)
+
+	for _, test := range []struct {
+		name    string
+		buffer  []byte
+		present bool
+		wantErr bool
+	}{
+		{name: "unsupported", buffer: packed(nil, false)},
+		{name: "no-acl", buffer: packed(fileSecurity(darwinFileSecurityNoACL), true)},
+		{name: "explicit-empty", buffer: packed(fileSecurity(0), true), present: true},
+		{name: "one-entry", buffer: packed(fileSecurity(1), true), present: true},
+		{name: "too-many-entries", buffer: packed(fileSecurity(darwinMaxAccessACLEntries+1), true), wantErr: true},
+		{name: "bad-magic", buffer: badMagic, wantErr: true},
+		{name: "unaligned-offset", buffer: unalignedOffset, wantErr: true},
+		{name: "mismatched-size", buffer: mismatchedSize, wantErr: true},
+		{name: "short-result", buffer: make([]byte, 12), wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, present, err := parseDarwinAccessACL(test.buffer)
+			if (err != nil) != test.wantErr || present != test.present {
+				t.Fatalf("parse ACL = present %v, error %v; want present %v, error %v", present, err, test.present, test.wantErr)
+			}
+		})
+	}
+}
 
 func TestBuildPreservesDarwinOutputAccessACL(t *testing.T) {
 	for _, throughSymlink := range []bool{false, true} {
