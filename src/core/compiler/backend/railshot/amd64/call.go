@@ -702,9 +702,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	f.a.Load64(R10, R8, disp+runtime.ImportDispatchTargetContextOffset)
 	f.a.Load64(R8, R8, disp+runtime.ImportDispatchCallerContextOffset)
 
-	frameSite := f.a.Len() + 3
-	f.a.AddRsp(0)
-	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.emitTailFrameRelease()
 
 	f.a.Load64(RAX, RSP, 0)
 	leaSite := f.a.LeaRipPlaceholder(RDX)
@@ -787,9 +785,7 @@ func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 		f.a.Store64(RDI, int32(i*8), RAX)
 	}
 
-	frameSite := f.a.Len() + 3
-	f.a.AddRsp(0)
-	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.emitTailFrameRelease()
 
 	f.a.Load64(RAX, RSP, 0)
 	leaSite := f.a.LeaRipPlaceholder(RDX)
@@ -872,9 +868,7 @@ func (f *fn) emitTailWrapperJumpVia(ft *wasm.CompType, emitJump func()) {
 	f.a.Load64(RCX, RSP, frResultsOff)
 	f.a.Load64(RDX, RBX, -int32(abi.TrapCellPtrOffset))
 	f.a.MovReg64(RSI, RBX)
-	frameSite := f.a.Len() + 3
-	f.a.AddRsp(0)
-	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.emitTailFrameRelease()
 	emitJump()
 }
 
@@ -888,6 +882,17 @@ type tailDeferredArg struct {
 // cannot leak into an argument's upper half.
 func (f *fn) loadCallLocalInt(dst Reg, st storage) {
 	f.loadFrameInt(dst, f.localAddr(st.index()), st.typ)
+}
+
+// emitTailFrameRelease discards this function's exception handlers and
+// releases its native frame before a tail transfer. Every tail path must use
+// it: a handler record left installed would route a later exception from the
+// tail target into this already-released frame.
+func (f *fn) emitTailFrameRelease() {
+	f.discardEHHandlersForTail()
+	frameSite := f.a.Len() + 3
+	f.a.AddRsp(0)
+	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
 }
 
 // discardEHHandlersForTail removes every handler owned by the current function.
@@ -1013,10 +1018,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 		}
 	}
 
-	f.discardEHHandlersForTail()
-	frameSite := f.a.Len() + 3
-	f.a.AddRsp(0)
-	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.emitTailFrameRelease()
 	emitJump()
 }
 
@@ -2630,9 +2632,7 @@ func (f *fn) emitTailHostWrapperJump(ft *wasm.CompType) {
 	f.a.Load64(R11, RBX, -int32(offFuncRefDescPtr))
 	f.a.Load64(R11, R11, runtime.FuncRefContextOffset)
 	f.a.Load64(R11, R11, runtime.InstanceContextTailCodeOffset)
-	frameSite := f.a.Len() + 3
-	f.a.AddRsp(0)
-	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.emitTailFrameRelease()
 	f.a.JmpReg(R11)
 }
 
@@ -2669,9 +2669,7 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 		f.a.Store64(RDI, int32(i*8), RAX)
 	}
 
-	frameSite := f.a.Len() + 3
-	f.a.AddRsp(0)
-	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.emitTailFrameRelease()
 
 	// The function's own adapter return identifies a wrapper/root context. Any
 	// other return address is an internal register-ABI caller in this module; it
