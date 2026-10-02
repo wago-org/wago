@@ -37,9 +37,9 @@ func exceptionPayloadRootKind(m *wasm.Module, typ wasm.ValType) (nativeabi.RootK
 	}
 }
 
-func catchAllPayloadRootKinds(m *wasm.Module) ([2]nativeabi.RootKind, [2]bool, error) {
-	var kinds [2]nativeabi.RootKind
-	var roots, scalars [2]bool
+func catchAllPayloadRootKinds(m *wasm.Module) ([ehMaxPayloadWords]nativeabi.RootKind, [ehMaxPayloadWords]bool, error) {
+	var kinds [ehMaxPayloadWords]nativeabi.RootKind
+	var roots, scalars [ehMaxPayloadWords]bool
 	for tag := uint32(0); tag < uint32(m.TagCount()); tag++ {
 		tagType, ok := moduleTagType(m, tag)
 		if !ok {
@@ -99,8 +99,8 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 		frameBytes := frameHdrBytes + 8*nLocals + (shape.TryRecords*ehRecordSlots+shape.RootRecords*ehRootSlots)*8
 		rootCount := 0
 		var slots []nativeabi.RootSlot
-		var catchAllKinds [2]nativeabi.RootKind
-		var catchAllRoots [2]bool
+		var catchAllKinds [ehMaxPayloadWords]nativeabi.RootKind
+		var catchAllRoots [ehMaxPayloadWords]bool
 		catchAllReady := false
 		r := wasm.NewReader(m.Code[function].BodyBytes)
 		var imm wasm.InstructionImmediate
@@ -151,7 +151,7 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 						return nil, fmt.Errorf("exception root map function %d tag %d is unavailable", function, tag)
 					}
 					var tagFunc wasm.CompType
-					if !m.ResolveTypeFunc(tagType.Type.Index, &tagFunc) || len(tagFunc.Params) > 2 {
+					if !m.ResolveTypeFunc(tagType.Type.Index, &tagFunc) || len(tagFunc.Params) > ehMaxPayloadWords {
 						return nil, fmt.Errorf("exception root map function %d tag %d payload is unsupported", function, tag)
 					}
 					for payload, typ := range tagFunc.Params {

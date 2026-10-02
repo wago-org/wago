@@ -8,8 +8,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// maxStagedEHTagParams bounds the payload words in the staged tag directory.
-const maxStagedEHTagParams = 2
+// maxStagedEHTagParams bounds the payload words in the staged tag directory; it
+// matches the backends' exception record payload capacity.
+const maxStagedEHTagParams = 8
 
 // Keep metadata construction separate from native compilation so its temporary
 // descriptors and validation paths do not inflate the native compile function.

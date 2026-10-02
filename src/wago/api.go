@@ -653,8 +653,8 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 	}
 	for i := uint32(0); i < uint32(m.TagCount()); i++ {
 		var ft wasm.CompType
-		if !stagedTagFuncType(m, i, &ft) || len(ft.Results) != 0 || len(ft.Params) > 2 {
-			return fmt.Errorf("bounded exception handling tag %d requires zero to two scalar payloads and no results", i)
+		if !stagedTagFuncType(m, i, &ft) || len(ft.Results) != 0 || len(ft.Params) > maxStagedEHTagParams {
+			return fmt.Errorf("bounded exception handling tag %d requires at most %d scalar payloads and no results", i, maxStagedEHTagParams)
 		}
 		for _, typ := range ft.Params {
 			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !hasFuncrefPayload {

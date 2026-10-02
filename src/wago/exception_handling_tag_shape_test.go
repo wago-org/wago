@@ -17,7 +17,7 @@ import (
 func TestUnusedWideTagRejectedAtCompile(t *testing.T) {
 	data := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil),
 			wasmtest.FuncType(nil, nil),
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
@@ -30,7 +30,7 @@ func TestUnusedWideTagRejectedAtCompile(t *testing.T) {
 		c.Close()
 		t.Fatal("compile succeeded; want bounded tag-parameter rejection")
 	}
-	if !strings.Contains(err.Error(), "at most 2 tag parameters") {
+	if !strings.Contains(err.Error(), "at most 8 tag parameters") {
 		t.Fatalf("compile error = %v, want bounded tag-parameter rejection", err)
 	}
 }

@@ -414,7 +414,7 @@ type ctrlFrameEH struct {
 	catches     []ehCatchClause
 	targetSite  uint32
 	recordIndex uint8
-	refResults  [3]bool // branch-result positions that carry rooted exception identities
+	refResults  uint16 // bit i: branch-result position i carries a rooted exception identity
 }
 
 func (f *fn) frameEH(fr *ctrlFrame) *ctrlFrameEH {
@@ -737,14 +737,16 @@ func (f *fn) convergeFrameEntryState(fr *ctrlFrame) {
 }
 
 type ehCatchClause struct {
-	tag         uint32
-	frame       uint32
-	matchSite   uint32
-	kind        wasm.CatchKind
-	scalarN     uint8
-	payloadN    uint8
-	rootIndex   uint8
-	payloadType [3]machineType
+	tag       uint32
+	frame     uint32
+	matchSite uint32
+	kind      wasm.CatchKind
+	scalarN   uint8
+	payloadN  uint8
+	rootIndex uint8
+	// firstType is the machine type of payload 0, the only one delivered in a
+	// register (single-result merge); wider payloads always go through slots.
+	firstType machineType
 }
 
 // --- operand-stack canonicalization ---
@@ -1541,8 +1543,12 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 }
 
 const (
-	ehRecordSlots = 7
-	ehRootSlots   = 3
+	// ehMaxPayloadWords bounds one exception's payload words. A record is
+	// [prev, saved RSP, handler target, saved RBX, tag, payload...] and a root
+	// slot mirrors its [tag, payload...] block, so both copy as one range.
+	ehMaxPayloadWords = 8
+	ehRecordSlots     = 5 + ehMaxPayloadWords
+	ehRootSlots       = 1 + ehMaxPayloadWords
 	// Historical fixed reservation, kept for modules built without body bytes.
 	legacyEHTryRecords  = 4
 	legacyEHRootRecords = 4
@@ -1551,11 +1557,9 @@ const (
 	maxEHCatches   = 1024
 	ehPrevOff      = 0
 	ehSavedRSPOff  = 8
-	ehTagOff       = 16
-	ehPayload0Off  = 24
-	ehPayload1Off  = 32
-	ehTargetOff    = 40
-	ehSavedRBXOff  = 48
+	ehTargetOff    = 16
+	ehSavedRBXOff  = 24
+	ehTagOff       = 32
 	offEHTagDirPtr = abi.EHTagDirPtrOffset
 )
 
@@ -1627,7 +1631,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 				return fmt.Errorf("bounded exception handling catch tag %d is unavailable", clause.tag)
 			}
 			var ft wasm.CompType
-			if !f.m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > 2 {
+			if !f.m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > ehMaxPayloadWords {
 				return fmt.Errorf("bounded exception handling catch tag %d signature unavailable", clause.tag)
 			}
 			clause.scalarN = uint8(len(ft.Params))
@@ -1637,7 +1641,9 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 				if !ok {
 					return fmt.Errorf("bounded exception handling requires scalar or non-null indexed-function tag payloads")
 				}
-				clause.payloadType[j] = mt
+				if j == 0 {
+					clause.firstType = mt
+				}
 			}
 			if kind == wasm.CatchRef {
 				if f.ehRootCount >= f.ehRootCap {
@@ -1645,7 +1651,9 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 				}
 				clause.rootIndex = uint8(f.ehRootCount)
 				f.ehRootCount++
-				clause.payloadType[clause.payloadN] = mtI64
+				if clause.payloadN == 0 {
+					clause.firstType = mtI64
+				}
 				clause.payloadN++
 			}
 		case wasm.CatchAll:
@@ -1655,7 +1663,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			}
 			clause.rootIndex = uint8(f.ehRootCount)
 			f.ehRootCount++
-			clause.payloadType[0] = mtI64
+			clause.firstType = mtI64
 			clause.payloadN = 1
 		default:
 			return fmt.Errorf("bounded exception handling rejects unknown catch kind %d", kind)
@@ -1673,7 +1681,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			return fmt.Errorf("bounded exception handler payload arity mismatch")
 		}
 		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
-			f.ensureFrameEH(&f.ctrl[frame]).refResults[clause.payloadN-1] = true
+			f.ensureFrameEH(&f.ctrl[frame]).refResults |= 1 << (clause.payloadN - 1)
 		}
 		// The exception edge can arrive with only the conservative local-fact state
 		// established before try_table. Intersect it at registration time just like
@@ -1733,7 +1741,7 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 		return fmt.Errorf("bounded exception handling throw tag %d is unavailable", tag)
 	}
 	var ft wasm.CompType
-	if !f.m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > 2 {
+	if !f.m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > ehMaxPayloadWords {
 		return fmt.Errorf("bounded exception handling tag signature unavailable")
 	}
 	types := f.currentLogicalTypes()
@@ -1752,11 +1760,7 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	for i := range ft.Params {
 		slot := slotOfLogicalTypes(types, base+i)
 		f.a.Load64(RAX, RSP, f.spillOff(slot))
-		off := int32(ehPayload0Off)
-		if i == 1 {
-			off = ehPayload1Off
-		}
-		f.a.Store64(R11, off, RAX)
+		f.a.Store64(R11, ehPayloadOff(i), RAX)
 	}
 	f.a.Load64(RSP, R11, ehSavedRSPOff)
 	f.a.Load64(RAX, R11, ehTargetOff)
@@ -1782,7 +1786,7 @@ func (f *fn) opThrowRef() error {
 	f.a.MovReg64(R11, RBP)
 	f.a.TestSelf(R11, true)
 	noHandler := f.a.JccPlaceholder(condE)
-	for _, off := range [...]int32{0, 8, 16} {
+	for off := int32(0); off < ehRootSlots*8; off += 8 {
 		f.a.Load64(RAX, R10, off)
 		f.a.Store64(R11, ehTagOff+off, RAX)
 	}
@@ -1802,9 +1806,9 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 	rootOff := int32(0)
 	if clause.kind == wasm.CatchRef || clause.kind == wasm.CatchAllRef {
 		rootOff = f.ehRootOff(int(clause.rootIndex))
-		for _, off := range [...]int32{ehTagOff, ehPayload0Off, ehPayload1Off} {
-			f.a.Load64(RAX, RSP, recordOff+off)
-			f.a.Store64(RSP, rootOff+off-ehTagOff, RAX)
+		for off := int32(0); off < ehRootSlots*8; off += 8 {
+			f.a.Load64(RAX, RSP, recordOff+ehTagOff+off)
+			f.a.Store64(RSP, rootOff+off, RAX)
 		}
 	}
 
@@ -1813,18 +1817,13 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 			f.a.LeaRsp(reg, rootOff)
 			return
 		}
-		off := recordOff + ehPayload0Off
-		if i == 1 {
-			off = recordOff + ehPayload1Off
-		}
-		f.a.Load64(reg, RSP, off)
+		f.a.Load64(reg, RSP, recordOff+ehPayloadOff(i))
 	}
 	if target.has(ctrlRegMerge1) && clause.payloadN == 1 {
 		if clause.scalarN == 0 {
 			f.a.LeaRsp(mergeReg, rootOff)
-		} else if clause.payloadType[0].isFloat() {
-			off := recordOff + ehPayload0Off
-			f.a.FLoadDisp(mergeFReg, RSP, off, clause.payloadType[0] == mtF64)
+		} else if clause.firstType.isFloat() {
+			f.a.FLoadDisp(mergeFReg, RSP, recordOff+ehPayloadOff(0), clause.firstType == mtF64)
 		} else {
 			loadPayload(mergeReg, 0)
 		}
@@ -1893,7 +1892,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	f.a.Load64(R11, R10, ehPrevOff)
 	f.a.TestSelf(R11, true)
 	noPrevious := f.a.JccPlaceholder(condE)
-	for _, off := range [...]int32{ehTagOff, ehPayload0Off, ehPayload1Off} {
+	for off := int32(ehTagOff); off < ehTagOff+ehRootSlots*8; off += 8 {
 		f.a.Load64(RAX, R10, off)
 		f.a.Store64(R11, off, RAX)
 	}
@@ -1919,7 +1918,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 	}
 	e := f.s.back()
 	for i := fr.resultN - 1; i >= 0; i-- {
-		if i < len(eh.refResults) && eh.refResults[i] {
+		if i < ehMaxPayloadWords+1 && eh.refResults&(1<<i) != 0 {
 			e.st.setEHRoot(true)
 		}
 		e = e.prev
@@ -2700,3 +2699,6 @@ func brTableSmallLabelsUnique(labels []uint32) bool {
 	}
 	return true
 }
+
+// ehPayloadOff is the record offset of exception payload word i.
+func ehPayloadOff(i int) int32 { return ehTagOff + 8 + int32(i)*8 }
