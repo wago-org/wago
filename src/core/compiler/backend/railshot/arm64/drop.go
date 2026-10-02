@@ -72,9 +72,13 @@ func (f *fn) discardTree(e *elem) {
 func (f *fn) releaseDroppedValue(e *elem) {
 	if e.st.hasEHRoot() {
 		root, owned := f.materializeRead(e)
+		// A catch-ref target is also reached by fallthrough with a null
+		// exnref, which owns no root record to clear.
+		skip := f.a.Cbz64(root)
 		for off := int32(0); off < ehRootSlots*8; off += 8 {
 			f.st64(root, off, ZR)
 		}
+		f.patchBranch19(skip, f.a.Len())
 		if owned {
 			f.release(root)
 		}
