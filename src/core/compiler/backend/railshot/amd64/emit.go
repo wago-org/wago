@@ -317,6 +317,17 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		f.spill(right)
 	}
 
+	// A deferred RHS can become an owned register only after the early operand
+	// selection above. Reconsider that newly available form without reordering
+	// either subtree: accumulate in its register and fold the private frame read.
+	// Guest-memory operands are excluded here; their trap order stays unchanged.
+	if lateFrameCommuteEnabled && dest == regNone && node.deferredOp().commutative() &&
+		left.isValue() && right.isValue() && right.st.kind == stReg &&
+		(left.st.kind == stSlot || left.st.kind == stLocalRef) {
+		left, right = right, left
+		f.stats.peep("late-frame-commute")
+	}
+
 	if dest == regNone {
 		// selectInstr forms (choose the cheapest emission):
 		//  - LEA add:  `lea dst, [local + reg|imm]` computes local+x in one insn

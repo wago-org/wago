@@ -118,7 +118,8 @@ var (
 	// commuteMemLeftEnabled gates swapping a commutative op's memory left operand
 	// with an owned-register right, to fold the memory as an r/m operand and
 	// accumulate in the register. WAGO_NO_COMMUTE_MEM=1 is the A/B oracle.
-	commuteMemLeftEnabled = os.Getenv("WAGO_NO_COMMUTE_MEM") != "1"
+	commuteMemLeftEnabled   = os.Getenv("WAGO_NO_COMMUTE_MEM") != "1"
+	lateFrameCommuteEnabled = os.Getenv("WAGO_AMD64_LATE_FRAME_COMMUTE") == "1"
 
 	// commuteFMemEnabled gates the float analogue: swapping a commutative float
 	// op's (add/mul) memRef left operand with a non-memRef right so the load folds
