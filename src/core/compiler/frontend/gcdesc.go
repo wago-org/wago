@@ -306,7 +306,8 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 		opaque := gc.StorageKind(0)
 		rt := v.Ref()
 		heap := rt.Heap()
-		if heap.Kind() == wasm.HeapTypeIndex {
+		switch heap.Kind() {
+		case wasm.HeapTypeIndex:
 			idx, err := resolver.resolve(heap.Type())
 			if err != nil {
 				return 0, fmt.Errorf("invalid referenced type index %d", heap.Type().Index)
@@ -314,7 +315,17 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 			if uint(idx) < uint(len(resolver.flat)) && resolver.flat[idx].Source.Comp.Kind == wasm.CompFunc {
 				opaque = gc.StorageFuncRef
 			}
-		} else {
+		case wasm.HeapDefType:
+			// Resolved definitions have no abstract heap code; classify their
+			// representation from the embedded component kind instead.
+			kind, valid := heap.DefCompKind()
+			if !valid {
+				return 0, fmt.Errorf("invalid defined heap type")
+			}
+			if kind == wasm.CompFunc {
+				opaque = gc.StorageFuncRef
+			}
+		case wasm.HeapAbs:
 			switch heap.Abs() {
 			case wasm.HeapFunc, wasm.HeapNoFunc:
 				opaque = gc.StorageFuncRef
