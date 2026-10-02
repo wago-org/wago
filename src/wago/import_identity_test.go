@@ -284,6 +284,18 @@ func TestRuntimeRetainsUndeclaredExactImport(t *testing.T) {
 	}
 }
 
+func TestRuntimeProvidedImportsSortsExactIdentities(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	rt.importMeta[importBindingMapKey("a", "z")] = &registeredImport{module: "a", name: "z"}
+	rt.importMeta[importBindingMapKey("a!", "z")] = &registeredImport{module: "a!", name: "z"}
+
+	imports := rt.ProvidedImports()
+	if len(imports) != 2 || imports[0].Module != "a" || imports[0].Name != "z" || imports[1].Module != "a!" || imports[1].Name != "z" {
+		t.Fatalf("ProvidedImports order = %#v, want exact identities [(a, z), (a!, z)]", imports)
+	}
+}
+
 func TestRuntimeReservedExactOverrideIgnoresCollidingIdentity(t *testing.T) {
 	const flatKey = "wago_timer.a.b"
 	rt := NewRuntime()
