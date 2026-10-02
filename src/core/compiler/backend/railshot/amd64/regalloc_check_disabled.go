@@ -2,6 +2,7 @@
 
 package amd64
 
+// Guard each hook with this constant so ordinary builds erase argument setup too.
 const regallocCheckEnabled = false
 
 // First in fn so the empty ordinary-build state does not change its layout.

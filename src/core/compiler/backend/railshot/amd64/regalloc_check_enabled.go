@@ -10,6 +10,9 @@ import (
 
 const regallocCheckEnabled = true
 
+// Transfer regions trust incoming locations and observe only covered transfers.
+// Immutable-cache admission is tracked separately across physical calls; neither
+// state is whole-function dataflow.
 type regallocFnState struct {
 	allocationCheck *allocationRegion
 	immutableCheck  regalloccheck.State
@@ -45,6 +48,8 @@ func checkReg(reg Reg, fp bool) regalloccheck.Location {
 	}
 	return regalloccheck.Register(bank, uint8(reg))
 }
+// Only register and frame homes provide input facts. Constants, deferred
+// results and non-frame loads rely on trusted semantic definitions instead.
 func (f *fn) checkLocation(e *elem) (regalloccheck.Location, bool) {
 	if e.isDeferred() {
 		return regalloccheck.Location{}, false
@@ -117,6 +122,9 @@ func (f *fn) checkBeginFlush(roots []*elem) bool {
 	c.previous = f.a.ObserveRegalloc(c.observe)
 	return true
 }
+// Restore the enclosing observer on every exit. Preserve an existing panic
+// rather than checking incomplete emission; otherwise verify the final image
+// and every protected suffix value still present on the physical stack.
 func (f *fn) checkEndFlush() {
 	c := f.allocationCheck
 	f.a.ObserveRegalloc(c.previous)
@@ -166,6 +174,8 @@ func (f *fn) checkFoldedUse(e *elem) {
 	}
 	c.pendingRead = c.values[e]
 }
+// Check concrete leaves before condensation consumes or rewrites the deferred
+// tree. The result identity must not hide a corrupted input.
 func (f *fn) checkInputs(e *elem) {
 	if f.allocationCheck == nil || e == nil {
 		return
@@ -190,6 +200,9 @@ func (f *fn) checkUse(e *elem) {
 		c.state.Expect(fmt.Sprintf("function %d pc %d materialize input", f.traceFuncIdx, f.wasmPC), loc, value)
 	}
 }
+// Run after emission but before storage or register ownership is rewritten.
+// Concrete inputs must already reach the emitted destination; only semantic
+// definitions may install an identity.
 func (f *fn) checkOccupy(e *elem, reg Reg, fp bool) {
 	c := f.allocationCheck
 	if c == nil {
@@ -251,6 +264,9 @@ func (f *fn) checkImmutable(reg Reg, fp bool, size int) {
 	f.immutableCheck.Put(loc, value)
 	f.immutableValues = append(f.immutableValues, allocationGoal{loc, value})
 }
+// Invoke at every physical call in a cache-bearing function, including helper
+// and alternate paths. Call-presence hints cannot prove preservation: this
+// rejects bad cache admission, not arbitrary non-call register clobbers.
 func (f *fn) checkCallClobber() {
 	f.immutableCheck.Apply(regalloccheck.Effect{Kind: regalloccheck.Call})
 	for _, goal := range f.immutableValues {
@@ -260,6 +276,8 @@ func (f *fn) checkCallClobber() {
 
 // checkBeginRegMoves snapshots the original parallel assignment, then observes
 // the actual encoder transfers. Requested resolver operations never update state.
+// Close immediately after the shuffle, before argument materialization or calls;
+// also defer the idempotent closer to restore the observer on failure.
 func (f *fn) checkBeginRegMoves(moves []regMove, fp bool) func() {
 	var state regalloccheck.State
 	for _, m := range moves {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compare exact generated guest bytes in ordinary and checked compiler builds.
+# Compare exact AMD64 fixture guest bytes in ordinary and checked builds.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 tmp=$(mktemp -d)

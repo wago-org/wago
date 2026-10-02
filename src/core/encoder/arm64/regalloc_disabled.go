@@ -4,6 +4,7 @@ package arm64
 
 import "github.com/wago-org/wago/internal/regalloccheck"
 
+// Guard each hook with this constant so ordinary builds erase argument setup too.
 const regallocCheckEnabled = false
 
 // Keep this first in Asm: an empty trailing field can grow a Go struct.

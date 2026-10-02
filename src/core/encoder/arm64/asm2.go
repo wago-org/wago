@@ -478,6 +478,8 @@ func (a *Asm) materializeBaseDisp(dst, base Reg, disp int32) {
 
 // LdrQ / StrQ are 128-bit spill load/store with a signed byte displacement,
 // matching the backend's amd64-legacy call shape (dst,base,disp)/(base,disp,src).
+// Report the requested frame transfer once across addressing fallbacks; scratch
+// address computation is not separately modeled as a value transfer.
 func (a *Asm) LdrQ(dst, base Reg, disp int32) {
 	if regallocCheckEnabled {
 		a.regallocLoad(dst, base, disp, true, 16)

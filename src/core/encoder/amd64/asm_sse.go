@@ -41,6 +41,7 @@ func sseFormat(prefix, opcodeMap byte, w bool) uint32 {
 
 //go:noinline
 func (a *Asm) sseMapRR(format uint32, op byte, reg, rm Reg) {
+	// Only covered move opcodes establish transfers; arithmetic remains trusted.
 	if regallocCheckEnabled {
 		if byte(format>>8) == 0 && (op == 0x28 || op == 0x6f) {
 			a.regallocCopy(reg, rm, true, 16)
@@ -737,6 +738,7 @@ func (a *Asm) MovXmmToGpr(gpr, xmm Reg, w bool) {
 }
 
 func (a *Asm) fmemDisp(op byte, xmm, base Reg, disp int32, f64 bool) {
+	// Only covered move opcodes establish transfers; arithmetic remains trusted.
 	if regallocCheckEnabled {
 		switch op {
 		case 0x10:
@@ -833,6 +835,7 @@ func (a *Asm) VexShiftImm(op, ext byte, dst, src Reg, imm byte) {
 // VexMapRR encodes a VEX.128 register instruction with reserved vvvv.
 // opcodeMap is zero for 0F, or 0x38/0x3A for those opcode maps.
 func (a *Asm) VexMapRR(opcodeMap, pp, op byte, dst, src Reg) {
+	// Only covered move opcodes establish transfers; arithmetic remains trusted.
 	if regallocCheckEnabled {
 		if opcodeMap == 0 && (op == 0x28 || op == 0x6f) {
 			a.regallocCopy(dst, src, true, 16)

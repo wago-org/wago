@@ -371,6 +371,7 @@ func (a *Asm) ldrStr(base uint32, sizeLog uint, rt, rn Reg, off uint32) bool {
 	if scaled<<sizeLog != off || scaled > 0xFFF {
 		return false
 	}
+	// Rejected addressing forms must not report a transfer that was never emitted.
 	if regallocCheckEnabled {
 		if base == 0xF9400000 || base == 0xB9400000 {
 			a.regallocLoad(rt, rn, int32(off), false, 1<<sizeLog)

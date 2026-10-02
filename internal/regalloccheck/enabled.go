@@ -123,6 +123,8 @@ func (s *State) Meet(other *State) {
 	}
 }
 
+// Clones share the identity counter so independent branch definitions cannot
+// acquire the same symbol before Meet.
 func (s *State) Clone() *State {
 	if s.next == nil {
 		s.next = new(uint64)

@@ -15,6 +15,7 @@ func TestRegallocCheckIndirectCallClobber(t *testing.T) {
 	newFn := func() *fn {
 		return &fn{a: &encoder.Asm{}, s: newStack(), globalCellReg: regNone, memSizeReg: regNone}
 	}
+	// Empty signatures isolate the two physical calls from argument shuffles.
 	emit := func(f *fn) (uint32, uint32) {
 		return f.emitIndirectCallHomeAware(&wasm.CompType{}, R10, R11)
 	}

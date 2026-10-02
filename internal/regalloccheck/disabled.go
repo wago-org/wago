@@ -2,6 +2,8 @@
 
 package regalloccheck
 
+// Ordinary builds retain API-compatible stubs; guarded callers must not prepare
+// or retain checker state. Layout and binary-symbol tests enforce that boundary.
 const Enabled = false
 
 type State struct{}

@@ -479,6 +479,7 @@ func (a *Asm) recordLocalRef(base Reg, mod byte, modRMOff, dispOff int, disp int
 }
 
 func (a *Asm) memOp(opcode byte, regField byte, base Reg, disp int32, w bool) {
+	// Report only covered move forms, not inferred semantics for other opcodes.
 	if regallocCheckEnabled {
 		if opcode == 0x8B {
 			a.regallocLoad(Reg(regField), base, disp, false, regallocWidth(w))

@@ -3134,6 +3134,10 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	jne := f.a.JccPlaceholder(condNE)
 	// Same instance: RSI = caller linMem, call the entry directly.
 	f.a.MovReg64(RSI, RBX)
+	if regallocCheckEnabled {
+		// A same-instance callee still clobbers immutable register caches.
+		f.checkCallClobber()
+	}
 	f.a.CallMem(RBX, -int32(offSpillRegion))
 	sameReturn = uint32(len(f.a.B))
 	jdone := f.a.JmpPlaceholder()
@@ -3156,6 +3160,11 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.a.Load64(RAX, RBX, -offTrapCellPtr)
 	f.a.Store64(R11, -offTrapCellPtr, RAX)
 	f.a.MovReg64(RSI, R11)
+	if regallocCheckEnabled {
+		// This runtime arm has its own call boundary; preserving the caller's
+		// instance registers does not preserve immutable value caches.
+		f.checkCallClobber()
+	}
 	f.a.CallMem(RBX, -int32(offSpillRegion)) // RBX unchanged by the pushes
 	crossReturn = uint32(len(f.a.B))
 	f.a.Pop(R10)
