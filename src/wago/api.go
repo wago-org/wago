@@ -3431,7 +3431,13 @@ func (c *Compiled) validateGlobalInitExpr(index int, g GlobalDef) error {
 		}
 		return nil
 	}
-	if err := validateCompiledScalarConstExpr(g.InitExpr, g.Type, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: index}); err != nil {
+	want := g.Type
+	if want == ValAnyRef {
+		// Without collector-backed GC execution, the only non-null value an
+		// any/eq global can hold is an i31.
+		want = ValI31Ref
+	}
+	if err := validateCompiledScalarConstExpr(g.InitExpr, want, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: index}); err != nil {
 		return fmt.Errorf("compiled metadata invalid: global %d extended initializer: %w", index, err)
 	}
 	return nil
