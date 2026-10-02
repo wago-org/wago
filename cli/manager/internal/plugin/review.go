@@ -321,13 +321,15 @@ func containsString(values []string, value string) bool {
 	return false
 }
 
-func pkgGrant(name string, useGlobal bool, requested []string, grantAll, denyAll bool, scopes map[string]map[string]project.AuthorityScope) {
+func pkgGrant(requestContext context.Context, name string, useGlobal bool, requested []string, grantAll, denyAll bool, scopes map[string]map[string]project.AuthorityScope) {
 	selection := capturePluginRuntime()
 	src, err := selection.depsSource(useGlobal)
 	if err != nil {
 		fatal("plugin grant: %v", err)
 	}
-	ctx := context.Background()
+	// Grant is a mutation like add/remove/update: retain its caller's deadline
+	// through lock acquisition, compilation, validation, and publication.
+	ctx := pluginContext(requestContext)
 	var warnings []string
 	err = withPluginMutationLock(ctx, src, func(mutation *project.Mutation) error {
 		manifest, readErr := mutation.ReadManifest()
@@ -355,7 +357,7 @@ func pkgGrant(name string, useGlobal bool, requested []string, grantAll, denyAll
 		if err != nil {
 			return err
 		}
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false, selection.config())
+		return stageAndPublishLockedState(ctx, mutation, src, buildDir, manifest, lock, false, selection.config())
 	})
 	if err != nil {
 		fatal("plugin grant: %v", err)

@@ -124,7 +124,7 @@ func Rebuild(request MaintenanceRequest) {
 		if err != nil {
 			return err
 		}
-		if err := verifyStagedRuntime(bin); err != nil {
+		if err := verifyStagedRuntimeContext(context.Background(), bin); err != nil {
 			return err
 		}
 		pluginCount = len(lock.Plugins)
