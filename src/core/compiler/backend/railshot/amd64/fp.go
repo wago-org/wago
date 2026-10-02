@@ -27,10 +27,10 @@ func floatBits(v float64, f64 bool) uint64 {
 
 func (f *fn) occupyF(e *elem, r Reg) {
 	f.fregUser[r] = e
-	if e.isDeferred() && e.valueType() != mtNone {
-		e.st.typ = e.valueType()
+	if e.kind == ekDeferred && e.typ != mtNone {
+		e.st.typ = e.typ
 	}
-	e.setElemKind(ekValue)
+	e.kind = ekValue
 	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
 }
 
@@ -64,50 +64,15 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 		}
 	}
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.isValue() && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
+		if e.kind == ekValue && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spillF(e)
 			return r
 		}
 	}
-	// Float and vector local pins are caches too. Home one at the exact pressure
-	// point instead of recompiling the function without pins.
-	if r := f.relinquishPinnedFLocal(avoid); r != regNone {
-		return r
-	}
-	panic(regExhausted{class: "FP/vector"})
-}
-
-func (f *fn) relinquishPinnedFLocal(avoid regMask) Reg {
-	block := avoid.union(f.fpinned).union(f.fconstMask()).union(f.v128ConstMask())
-	for i := len(f.pinnedLocals) - 1; i >= 0; i-- {
-		x := f.pinnedLocals[i]
-		d := f.locals[x]
-		if !d.isFloat || d.state == lsConstZero || block.has(d.reg) || f.fregUser[d.reg] != nil {
-			continue
-		}
-		borrowed := false
-		for e := f.s.head.next; e != f.s.head; e = e.next {
-			if subtreeRefsLocal(e, x) {
-				borrowed = true
-				break
-			}
-		}
-		if borrowed {
-			continue
-		}
-		if d.state == lsReg {
-			f.storeLocalReg(x, d.reg, true)
-		}
-		f.locals[x].state = lsMem
-		f.pinRelinquished = true
-		if f.stats != nil {
-			f.stats.PinRelinquishments++
-		}
-		f.stats.peep("fp-pin-relinquish")
-		return d.reg
-	}
-	return regNone
+	// Match GP exhaustion: compileFunc retries without local/global value pins,
+	// which frees the extended XMM pin pool under pathological expression pressure.
+	panic(regExhausted{})
 }
 
 // spillF evicts an XMM-resident float/vector value to a fresh frame slot.
@@ -116,27 +81,26 @@ func (f *fn) spillF(e *elem) {
 	defer func() { f.stats.addGCSpillReloadBytes(f.a.Len() - before) }()
 	r := e.st.reg
 	if e.st.typ == mtCustom {
-		cold := f.s.elemCold(e)
-		chunks := int((cold.custom.Size() + 31) / 32)
+		chunks := int((e.st.custom.Size() + 31) / 32)
 		slot := f.allocSpillSlots(chunks * 4)
-		for i, reg := range cold.vregs {
+		for i, reg := range e.st.vregs {
 			f.a.YMovdquStoreDisp(RSP, f.spillOff(slot+i*4), reg)
 			f.fregUser[reg] = nil
 		}
-		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: uint32(slot)})
+		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: slot, custom: e.st.custom})
 		return
 	}
 	if e.st.typ == mtV128 {
 		slot := f.allocSpillSlots(2)
 		f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), r)
 		f.fregUser[r] = nil
-		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
+		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
 		return
 	}
 	slot := f.allocSpillSlot()
 	f.a.FStoreDisp(RSP, f.spillOff(slot), r, true)
 	f.fregUser[r] = nil
-	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
+	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
 }
 
 // materializeF ensures float value e lives in an XMM register and returns it.
@@ -160,13 +124,13 @@ func (f *fn) materializeF(e *elem) Reg {
 	case stSlot:
 		x := f.allocFReg(0)
 		before := f.a.Len()
-		f.a.FLoadDisp(x, RSP, f.spillOff(e.st.slotIndex()), true) // 8B; f32 uses the low 4
+		f.a.FLoadDisp(x, RSP, f.spillOff(e.st.slot), true) // 8B; f32 uses the low 4
 		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
 		f.occupyF(e, x)
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.a.FLoadDisp(x, RSP, f.localAddr(e.st.index()), e.st.typ == mtF64)
+		f.a.FLoadDisp(x, RSP, f.localAddr(e.st.idx), e.st.typ == mtF64)
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:
@@ -193,10 +157,10 @@ func (f *fn) materializeF(e *elem) Reg {
 // This avoids the movsd-to-scratch that materializeF emits for a pinned local when
 // the value is only being read — the dominant per-op float overhead.
 func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
-	if e.isValue() && e.st.kind == stLocalReg {
+	if e.kind == ekValue && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
-	if e.isValue() && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls {
+	if e.kind == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls {
 		if r, ok := f.floatConstReg(e.st); ok {
 			return r, false
 		}
@@ -290,18 +254,8 @@ func (f *fn) loadFConst(r Reg, st storage) {
 	f.release(t)
 }
 
-// loadFMask materializes a 32/64-bit mask into XMM dst from the constant pool,
-// with the older GP-scratch sequence retained as the optimization control.
+// loadFMask materializes a 32/64-bit bit mask into XMM dst (via a GP scratch).
 func (f *fn) loadFMask(dst Reg, mask64 uint64, mask32 uint32, f64 bool) {
-	if f.opt(optV128ConstCache) {
-		bits := uint64(mask32)
-		if f64 {
-			bits = mask64
-		}
-		f.loadFConst(dst, storage{typ: mtOf2(f64), cval: int64(bits)})
-		f.stats.peep("float-mask-const-pool")
-		return
-	}
 	t := f.allocReg(0)
 	if f64 {
 		f.a.MovImm64(t, mask64)
@@ -343,7 +297,7 @@ func (f *fn) fconst(bits uint64, typ machineType) {
 // foldFloatMem reports whether e is a deferred float load of the given width that
 // can be folded directly as an SSE r/m operand (addsd/mulsd/subsd/divsd xmm, [mem]).
 func foldFloatMem(e *elem, f64 bool) bool {
-	return e.isValue() && e.st.kind == stMemRef && e.st.typ.isFloat() && e.st.memSize() == fsize(f64)
+	return e.kind == ekValue && e.st.kind == stMemRef && e.st.typ.isFloat() && e.st.memSize() == fsize(f64)
 }
 
 // fMemCommutable reports whether an SSE arithmetic memOp is commutative, so its
@@ -550,59 +504,29 @@ func (f *fn) fround(f64 bool, mode byte) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
-// fcopysign uses one mask through either of these equivalent identities:
-//
-//	b ^ ((a ^ b) & magnitudeMask)
-//	a ^ ((a ^ b) & signMask)
-//
-// Select the form that can reuse an owned operand. The VEX three-operand
-// sequence also reads pinned float locals directly instead of copying both.
+// fcopysign: (a & ~sign) | (b & sign).
 func (f *fn) fcopysign(f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
-	xa, xaOwned := f.operandRegF(a)
+	xa := f.materializeF(a)
 	f.fpinned = f.fpinned.add(xa)
-	xb, xbOwned := f.operandRegF(b)
+	xb := f.materializeF(b)
 	f.fpinned = f.fpinned.add(xb)
-
-	dst := regNone
-	useMagnitude := false
-	switch {
-	case xbOwned:
-		dst = xb // preserve a; finish with a ^ sign(a^b)
-	case xaOwned:
-		dst = xa
-		useMagnitude = true // preserve b; finish with b ^ magnitude(a^b)
-	default:
-		dst = f.allocFReg(maskOf(xa, xb))
-	}
-	m := f.allocFReg(maskOf(dst))
-	if useMagnitude {
-		f.loadFMask(m, fMagMask64, fMagMask32, f64)
-	} else {
-		f.loadFMask(m, fSignMask64, fSignMask32, f64)
-	}
-	var pp byte
+	var prefix byte
 	if f64 {
-		pp = 0b01
+		prefix = 0x66
 	}
-	f.a.VSseRRR(pp, 0x57, dst, xa, xb) // dst = a ^ b
-	f.a.VSseRRR(pp, 0x54, dst, dst, m) // retain magnitude or sign difference
-	if useMagnitude {
-		f.a.VSseRRR(pp, 0x57, dst, xb, dst) // dst = b ^ magnitude(a^b)
-	} else {
-		f.a.VSseRRR(pp, 0x57, dst, xa, dst) // dst = a ^ sign(a^b)
-	}
+	m := f.allocFReg(0)
+	f.loadFMask(m, fMagMask64, fMagMask32, f64)
+	f.a.SseRR(prefix, 0x54, xa, m, false) // xa = |a|
+	f.loadFMask(m, fSignMask64, fSignMask32, f64)
+	f.a.SseRR(prefix, 0x54, xb, m, false) // xb = sign(b)
 	f.releaseF(m)
-	f.fpinned = f.fpinned.remove(xa).remove(xb)
-	if xaOwned && xa != dst {
-		f.releaseF(xa)
-	}
-	if xbOwned && xb != dst {
-		f.releaseF(xb)
-	}
-	f.stats.peep("fcopysign-xor-mask")
-	f.pushFReg(dst, mtOf2(f64))
+	f.a.SseRR(prefix, 0x56, xa, xb, false) // xa |= xb
+	f.fpinned = f.fpinned.remove(xa)
+	f.fpinned = f.fpinned.remove(xb)
+	f.releaseF(xb)
+	f.pushFReg(xa, mtOf2(f64))
 }
 
 // fcmp lowers a NaN-correct float comparison to a 0/1 i32 result.
@@ -628,7 +552,7 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 // relational op, landing a 0/1 i32 boolean in dst. The ordered ops (gt/ge/lt/le)
 // use the CF-clear `above`/`above-equal` forms (via operand swap for lt/le) so
 // unordered (NaN) yields false; eq/ne combine the equal/parity bits. Shared by
-// fcmp (eager boolean).
+// fcmp (eager boolean) and condenseFCompareValue (deferred-node fallback).
 func (f *fn) emitFCmpSetcc(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
 	switch kind {
 	case opEq:
@@ -658,6 +582,100 @@ func (f *fn) emitFCmpSetcc(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
 		f.a.Ucomis(xb, xa, f64)
 		f.a.SetccReg(condAE, dst)
 	}
+}
+
+// pushFCompare pushes a DEFERRED float relational op (gt/ge/lt/le only) instead
+// of materializing a boolean, so the immediately-following if/br_if can fuse it
+// into UCOMIS + Jcc via condenseFCompareToFlags. The driver only defers when the
+// next opcode is if/br_if, so the node never lingers past its consumer. eq/ne are
+// never deferred (their branch form needs two Jccs), so they stay eager in fcmp.
+func (f *fn) pushFCompare(op wOp, f64 bool) {
+	typ := mtF32
+	if f64 {
+		typ = mtF64
+	}
+	right := f.s.back()
+	left := baseOfValentBlock(right).prev
+	node := f.s.alloc()
+	node.kind, node.op, node.typ = ekDeferred, op, typ
+	if f.opt(optValueFacts) {
+		node.st.facts = deferredResultFacts(op, typ)
+	}
+	node.arg0, node.arg1 = left, right
+	labelDeferredNode(node)
+	f.s.push(node)
+}
+
+// condenseFCompareToFlags lowers a deferred float relational node to UCOMIS (no
+// SETcc), consumes the node and its operands, and returns the branch condition
+// that is true when the comparison holds. Mirrors emitFCmpSetcc's operand
+// ordering. invert (from an eqz peel) flips the condition; that stays NaN-correct
+// because wasm's eqz(float-cmp) and the x86 CF/ZF-inverted condition both include
+// the unordered case on the negated side.
+func (f *fn) condenseFCompareToFlags(node *elem, invert bool) Cond {
+	f.stats.peep("fcmp-branch-fuse")
+	f64 := node.typ == mtF64
+	xa, xaOwned := f.operandRegF(node.arg0)
+	f.fpinned = f.fpinned.add(xa)
+	xb, xbOwned := f.operandRegF(node.arg1)
+	f.fpinned = f.fpinned.remove(xa)
+	var cc Cond
+	switch node.op {
+	case opGtS:
+		f.a.Ucomis(xa, xb, f64)
+		cc = condA
+	case opGeS:
+		f.a.Ucomis(xa, xb, f64)
+		cc = condAE
+	case opLtS:
+		f.a.Ucomis(xb, xa, f64)
+		cc = condA
+	case opLeS:
+		f.a.Ucomis(xb, xa, f64)
+		cc = condAE
+	}
+	if xaOwned {
+		f.releaseF(xa)
+	}
+	if xbOwned {
+		f.releaseF(xb)
+	}
+	if invert {
+		cc = invertCond(cc)
+	}
+	f.consumeBlockBelow(node)
+	f.erase(node)
+	return cc
+}
+
+// condenseFCompareValue materializes a deferred float relational node to a 0/1
+// boolean (the fcmp path applied to the node's operands). Defensive: the driver
+// only defers a float compare directly before its if/br_if consumer, so this is
+// normally unreachable, but it keeps a deferred float node correct on any path
+// that condenses it as a value rather than a branch.
+func (f *fn) condenseFCompareValue(node *elem, dest Reg) Reg {
+	f.stats.peep("fcmp-value-fallback")
+	f64 := node.typ == mtF64
+	xa, xaOwned := f.operandRegF(node.arg0)
+	f.fpinned = f.fpinned.add(xa)
+	xb, xbOwned := f.operandRegF(node.arg1)
+	f.fpinned = f.fpinned.remove(xa)
+	result := dest
+	if result == regNone {
+		result = f.allocReg(0)
+	}
+	f.emitFCmpSetcc(node.op, xa, xb, f64, result)
+	if xaOwned {
+		f.releaseF(xa)
+	}
+	if xbOwned {
+		f.releaseF(xb)
+	}
+	f.consumeBlockBelow(node)
+	f.occupy(node, result)
+	node.st.typ = mtI32
+	node.op = opNone
+	return result
 }
 
 // i2f converts a signed integer to float. srcWide selects an i64 source.

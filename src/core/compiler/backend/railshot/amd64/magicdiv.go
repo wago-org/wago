@@ -16,13 +16,13 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	if c == 0 {
 		return regNone, false // div/rem by zero traps — leave it to the idiv path
 	}
-	w := node.valueType().is64()
-	signed := node.deferredOp() == opDivS || node.deferredOp() == opRemS
-	wantRem := node.deferredOp() == opRemU || node.deferredOp() == opRemS
+	w := node.typ.is64()
+	signed := node.op == opDivS || node.op == opRemS
+	wantRem := node.op == opRemU || node.op == opRemS
 
 	// Decide whether we can handle this divisor before emitting anything, so a
 	// bail-out leaves the operand stack untouched for the idiv fallback.
-	if !strengthReducibleWithMagic(c, w, signed, f.opt(optMagicDiv)) {
+	if !strengthReducible(c, w, signed) {
 		return regNone, false
 	}
 
@@ -51,7 +51,7 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
-	node.setDeferredOp(opNone)
+	node.op = opNone
 	f.stats.peep("div-by-const")
 	return result, true
 }
@@ -65,19 +65,18 @@ var (
 )
 
 // strengthReducible reports whether div/rem by the constant c is lowered here
-// rather than via idiv. Signed -1 uses an explicit INT_MIN overflow check for
-// division and folds remainder to zero. Power-of-2 divisors are always reducible;
-// non-power-of-2 needs the (gated) magic path.
+// rather than via idiv. Signed ±1 stay on idiv (it handles the INT_MIN/-1 trap
+// and x%±1). Power-of-2 divisors are always reducible; non-power-of-2 needs the
+// (gated) magic path.
 func strengthReducible(c int64, w, signed bool) bool {
-	return strengthReducibleWithMagic(c, w, signed, magicDivEnabled)
-}
-
-func strengthReducibleWithMagic(c int64, w, signed, magic bool) bool {
 	if c == 0 {
 		return false
 	}
 	var ad uint64 // divisor magnitude, as an unsigned W-bit value
 	if signed {
+		if c == 1 || c == -1 {
+			return false
+		}
 		if c < 0 {
 			ad = uint64(-c)
 		} else {
@@ -93,9 +92,9 @@ func strengthReducibleWithMagic(c int64, w, signed, magic bool) bool {
 		return true // power of two (or, unsigned, d == 1)
 	}
 	if signed {
-		return magic && magicDivSignedEnabled
+		return magicDivSignedEnabled
 	}
-	return magic
+	return magicDivEnabled
 }
 
 // divConstUnsigned rewrites res (holding the W-bit dividend) to res / d or res % d
@@ -120,28 +119,8 @@ func (f *fn) divConstUnsigned(res Reg, d uint64, w, wantRem bool) {
 }
 
 // divConstSigned rewrites res (holding the W-bit dividend) to res / d or res % d
-// (signed, truncating toward zero) in place.
+// (signed, truncating toward zero) in place. Only called for |d| >= 2.
 func (f *fn) divConstSigned(res Reg, d int64, w, wantRem bool) {
-	if wantRem && (d == 1 || d == -1) {
-		f.a.XorSelf32(res) // x % ±1 == 0, including INT_MIN % -1
-		return
-	}
-	if d == 1 {
-		return // x / 1 == x
-	}
-	if d == -1 {
-		if w {
-			min := f.allocReg(maskOf(res))
-			f.a.MovImm64(min, 0x8000000000000000)
-			f.cmpRR(res, min, true)
-			f.release(min)
-		} else {
-			f.a.AluRI(7, res, int32(-2147483648), false)
-		}
-		f.trapIf(condE, trapDivOverflow)
-		f.a.Neg(res, w)
-		return
-	}
 	W := uint(32)
 	if w {
 		W = 64

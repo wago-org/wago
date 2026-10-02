@@ -25,11 +25,11 @@ func TestGCCollectFrameRootsUsesCurrentArchitecture(t *testing.T) {
 	if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
 		t.Skipf("native GC frame roots are unavailable on %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
-	wantLayout, wantExternal := uint8(gcNativeFrameLayoutAMD64), true
+	wantLayout, wantExternal := uint8(gcNativeFrameLayoutAMD64), false
 	switch runtime.GOARCH {
 	case "amd64":
 	case "arm64":
-		wantLayout = gcNativeFrameLayoutARM64
+		wantLayout, wantExternal = gcNativeFrameLayoutARM64, true
 	default:
 		t.Skipf("native GC frame roots are unavailable on %s", runtime.GOARCH)
 	}
@@ -140,100 +140,26 @@ func TestGCNativeFrameRootsARM64ForeignWrapperStackAdjustment(t *testing.T) {
 
 func TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall(t *testing.T) {
 	plan := &shared.GCFrameRootPlan{
-		Candidate:  true,
-		Exact:      true,
-		FrameBytes: 64,
-		Locals:     []shared.GCFrameLocal{{Index: 0, Offset: 16}},
+		Candidate:          true,
+		Exact:              true,
+		FrameBytes:         64,
+		LiveCallLocalMasks: []uint64{1},
+		LocalIndexes:       []uint32{0},
+		LocalOffsets:       []uint32{16},
+		Safepoints: []shared.GCFrameSafepointPlan{{
+			ID:      1,
+			Offsets: []uint32{16},
+		}},
+		LiveLocalMasks: []uint64{1},
+		Callsites: []shared.GCFrameCallsitePlan{
+			{ReturnOffset: 4, Offsets: []uint32{16}},
+			{ReturnOffset: 8, Offsets: []uint32{16}},
+			{ReturnOffset: 12, StackAdjust: 64, Offsets: []uint32{16}},
+		},
 	}
-	if !plan.SetLiveMasks([]uint64{1, 1}, 1, 1) {
-		t.Fatal("failed to set live masks")
-	}
-	for _, site := range [][2]uint32{{4, 0}, {8, 0}, {12, 64}} {
-		if !plan.AppendCallsite(site[0], site[1], []uint32{16}) {
-			t.Fatal("failed to append callsite")
-		}
-	}
-	if !plan.AppendSafepoint([]uint32{16}) {
-		t.Fatal("failed to append safepoint")
-	}
-	if !validGCModuleFrameRootPlan(gcModuleFrameRootPlanForTest(t, plan)) {
+	if !validGCModuleFrameRootPlan(&shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{plan}}) {
 		t.Fatal("one logical call with three native return paths was rejected")
 	}
-}
-
-func TestGCModuleFrameRootPlanRejectsPendingFunction(t *testing.T) {
-	module := shared.NewGCModuleFrameRootPlan(1)
-	if !module.MarkFunction(0) {
-		t.Fatal("failed to mark collecting function")
-	}
-	if validGCModuleFrameRootPlan(module) {
-		t.Fatal("module with an unpopulated collecting function was accepted")
-	}
-}
-
-func TestValidGCFrameLocalsRequiresStrictIndexOrder(t *testing.T) {
-	for _, locals := range [][]shared.GCFrameLocal{
-		{{Index: 2, Offset: 16}, {Index: 2, Offset: 24}},
-		{{Index: 3, Offset: 16}, {Index: 1, Offset: 24}},
-	} {
-		if validGCFrameLocals(locals, 64) {
-			t.Fatalf("validGCFrameLocals accepted unsorted indexes: %#v", locals)
-		}
-	}
-}
-
-func TestGCModuleFrameRootPlanDerivesDenseSafepointIDs(t *testing.T) {
-	plan := func(base uint32) *shared.GCFrameRootPlan {
-		plan := &shared.GCFrameRootPlan{
-			Candidate:     true,
-			Exact:         true,
-			FrameBytes:    8,
-			SafepointBase: base,
-		}
-		if !plan.SetLiveMasks([]uint64{0}, 1, 0) {
-			t.Fatal("failed to set live masks")
-		}
-		if !plan.AppendSafepoint(nil) {
-			t.Fatal("failed to append safepoint")
-		}
-		return plan
-	}
-	if !validGCModuleFrameRootPlan(gcModuleFrameRootPlanForTest(t, plan(shared.GCSafepointIDMax-1))) {
-		t.Fatal("maximum derived safepoint ID was rejected")
-	}
-	if validGCModuleFrameRootPlan(gcModuleFrameRootPlanForTest(t, plan(shared.GCSafepointIDMax))) {
-		t.Fatal("derived safepoint ID above the dispatch domain was accepted")
-	}
-	if validGCModuleFrameRootPlan(gcModuleFrameRootPlanForTest(t, plan(0), plan(0))) {
-		t.Fatal("overlapping derived safepoint ID ranges were accepted")
-	}
-}
-
-func gcModuleFrameRootPlanForTest(t testing.TB, plans ...*shared.GCFrameRootPlan) *shared.GCModuleFrameRootPlan {
-	t.Helper()
-	module := shared.NewGCModuleFrameRootPlan(len(plans))
-	count := 0
-	for function, plan := range plans {
-		if plan != nil {
-			if !module.MarkFunction(function) {
-				t.Fatalf("mark function root plan %d", function)
-			}
-			count++
-		}
-	}
-	if !module.ReserveFunctions(count) {
-		t.Fatalf("reserve %d function root plans", count)
-	}
-	for function, plan := range plans {
-		if plan != nil {
-			dst, ok := module.BeginFunction(function)
-			if !ok {
-				t.Fatalf("begin function root plan %d", function)
-			}
-			*dst = *plan
-		}
-	}
-	return module
 }
 
 func TestNormalizeAdapterReturnOffsets(t *testing.T) {
@@ -317,7 +243,7 @@ func (s *gcCountingRootRefSink) VisitRootRef(ref gc.Ref) bool {
 }
 
 func TestGCNativeFrameRootWideEnumerationIsAllocationFree(t *testing.T) {
-	const rootsN = 4096
+	const rootsN = shared.GCFrameRootLimit
 	frame, releaseFrame := newGCNativeTestFrame(t, shared.AMD64FrameHeaderBytes+rootsN*8)
 	defer releaseFrame()
 	offsets := make([]uint32, rootsN)

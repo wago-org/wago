@@ -36,6 +36,9 @@ const (
 // closure allocated once per collection.
 func (c *Collector) VisitRootRef(r Ref) bool {
 	if c.rootMarkMode == rootMarkTinyCount || c.rootMarkMode == rootMarkTinyBounded {
+		if uint32(c.tinyGC.lastStepWork.refSlots) >= tinyTransientRootLimit {
+			return false
+		}
 		c.tinyGC.lastStepWork.refSlots++
 		if c.rootMarkMode == rootMarkTinyCount {
 			return true
@@ -63,6 +66,9 @@ func (c *Collector) VisitClassifiedRootRef(class RootClass, r Ref) bool {
 		return c.VisitRootRef(r)
 	}
 	if c.rootMarkMode == rootMarkTinyCount || c.rootMarkMode == rootMarkTinyBounded {
+		if uint32(c.tinyGC.lastStepWork.refSlots) >= tinyTransientRootLimit {
+			return false
+		}
 		c.tinyGC.lastStepWork.refSlots++
 		if c.rootMarkMode == rootMarkTinyCount {
 			return true

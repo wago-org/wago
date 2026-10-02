@@ -1,9 +1,6 @@
 package version
 
-import (
-	"strconv"
-	"strings"
-)
+import "strings"
 
 // Compare does a numeric dotted comparison, ignoring a leading v.
 // Non-numeric components sort after numeric ones.
@@ -11,30 +8,21 @@ func Compare(a, b string) int {
 	as := strings.Split(strings.TrimPrefix(a, "v"), ".")
 	bs := strings.Split(strings.TrimPrefix(b, "v"), ".")
 	for i := 0; i < len(as) || i < len(bs); i++ {
-		if i >= len(as) {
-			return -1
+		var av, bv int
+		var aNumeric, bNumeric bool
+		if i < len(as) {
+			av, aNumeric = ParseNumeric(as[i])
 		}
-		if i >= len(bs) {
-			return 1
+		if i < len(bs) {
+			bv, bNumeric = ParseNumeric(bs[i])
 		}
-		av, aNumeric := numericComponent(as[i])
-		bv, bNumeric := numericComponent(bs[i])
 		if aNumeric && bNumeric {
-			if len(av) != len(bv) {
-				return sign(len(av) - len(bv))
-			}
-			if comparison := strings.Compare(av, bv); comparison != 0 {
-				return comparison
+			if av != bv {
+				return sign(av - bv)
 			}
 			continue
 		}
-		if aNumeric != bNumeric {
-			if aNumeric {
-				return -1
-			}
-			return 1
-		}
-		if comparison := strings.Compare(as[i], bs[i]); comparison != 0 {
+		if comparison := strings.Compare(component(as, i), component(bs, i)); comparison != 0 {
 			return comparison
 		}
 	}
@@ -42,26 +30,24 @@ func Compare(a, b string) int {
 }
 
 func ParseNumeric(value string) (int, bool) {
-	if _, ok := numericComponent(value); !ok {
+	if value == "" {
 		return 0, false
 	}
-	number, err := strconv.Atoi(value)
-	return number, err == nil
-}
-
-func numericComponent(value string) (string, bool) {
-	if value == "" {
-		return "", false
-	}
+	number := 0
 	for _, character := range value {
 		if character < '0' || character > '9' {
-			return "", false
+			return 0, false
 		}
+		number = number*10 + int(character-'0')
 	}
-	for len(value) > 1 && value[0] == '0' {
-		value = value[1:]
+	return number, true
+}
+
+func component(values []string, index int) string {
+	if index < len(values) {
+		return values[index]
 	}
-	return value, true
+	return ""
 }
 
 func sign(number int) int {

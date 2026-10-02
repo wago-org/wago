@@ -63,72 +63,6 @@ func TestValidatorCoverageCoreOpcodeFamilies(t *testing.T) {
 	}
 }
 
-func TestValidateFunctionLocalCountDefaultAndCustomLimits(t *testing.T) {
-	const aboveOldDefault = 4097
-	m := modWithFunc(nil, nil)
-	m.Code[0].Locals = Locals{Runs: []LocalRun{{Count: aboveOldDefault, Type: I32}}}
-	if err := ValidateModule(m); err != nil {
-		t.Fatalf("AST function above the old 4096-local limit: %v", err)
-	}
-
-	localRun := append(u32(aboveOldDefault), byte(0x7f))
-	body := append([]byte{0x01}, localRun...)
-	body = append(body, 0x0b)
-	code := append(u32(uint32(len(body))), body...)
-	data := module(
-		section(secType, 0x01, 0x60, 0x00, 0x00),
-		section(secFunction, 0x01, 0x00),
-		section(secCode, append([]byte{0x01}, code...)...),
-	)
-	if err := ValidateByteBackedModule(data); err != nil {
-		t.Fatalf("byte-backed function above the old 4096-local limit: %v", err)
-	}
-	limits := ValidationLimits{MaxFunctionLocals: 4096}
-	expectValidationCode(t, ValidateModuleWithConfig(m, ValidationFeatures{}, 1, limits), ErrInvalidLimitRange)
-	expectValidationCode(t, ValidateByteBackedModuleWithConfig(data, ValidationFeatures{}, 1, limits), ErrInvalidLimitRange)
-
-	for _, count := range []uint32{DefaultMaxFunctionLocals, MaximumFunctionLocals} {
-		limits := ValidationLimits{MaxFunctionLocals: count}
-		ast := modWithFunc(nil, nil)
-		ast.Code[0].Locals = Locals{Runs: []LocalRun{{Count: count, Type: I32}}}
-		if err := ValidateModuleWithConfig(ast, ValidationFeatures{}, 1, limits); err != nil {
-			t.Fatalf("AST local boundary %d: %v", count, err)
-		}
-		localRun := append(u32(count), byte(0x7f))
-		body := append([]byte{0x01}, localRun...)
-		body = append(body, 0x0b)
-		code := append(u32(uint32(len(body))), body...)
-		encoded := module(
-			section(secType, 0x01, 0x60, 0x00, 0x00),
-			section(secFunction, 0x01, 0x00),
-			section(secCode, append([]byte{0x01}, code...)...),
-		)
-		if err := ValidateByteBackedModuleWithConfig(encoded, ValidationFeatures{}, 1, limits); err != nil {
-			t.Fatalf("byte-backed local boundary %d: %v", count, err)
-		}
-	}
-	if err := ValidateModuleWithConfig(modWithFunc(nil, nil), ValidationFeatures{}, 1, ValidationLimits{MaxFunctionLocals: MaximumFunctionLocals + 1}); err == nil {
-		t.Fatal("validation accepted a configured local limit above uint16")
-	}
-}
-
-func TestValidateMemoryCountDefaultAndCustomLimits(t *testing.T) {
-	moduleWithMemories := func(count uint32) *Module {
-		return &Module{Memories: make([]MemType, count)}
-	}
-	features := ValidationFeatures{MultiMemory: true}
-	err := ValidateModuleWithFeatures(moduleWithMemories(DefaultMaxMemoriesPerModule+1), features)
-	expectValidationCode(t, err, ErrResourceLimitExceeded)
-
-	limits := ValidationLimits{MaxMemoriesPerModule: DefaultMaxMemoriesPerModule + 1}
-	if err := ValidateModuleWithConfig(moduleWithMemories(DefaultMaxMemoriesPerModule+1), features, 1, limits); err != nil {
-		t.Fatalf("custom memory count boundary: %v", err)
-	}
-	if err := ValidateModuleWithConfig(&Module{}, features, 1, ValidationLimits{MaxMemoriesPerModule: MaximumMemoriesPerModule + 1}); err == nil {
-		t.Fatal("validation accepted a configured memory count limit above 4096")
-	}
-}
-
 func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 	for _, effect := range simdLoads {
 		k := effect.kind
@@ -872,30 +806,6 @@ func TestDirectStartTryTableCatchPayloads(t *testing.T) {
 	}
 }
 
-func TestTryTableCatchValidationDoesNotCopyTagParameters(t *testing.T) {
-	params := make([]ValType, 256)
-	for i := range params {
-		params[i] = I32
-	}
-	m := &Module{Types: []RecType{ft(params, nil)}, Tags: []TagType{{Type: TypeIdx{Index: 0}}}}
-	fv := coverageFuncValidator(m, params)
-	catch := Catch{Kind: CatchTag, Tag: 0, Label: 0}
-	if err := fv.validateCatchPayload(catch); err != nil {
-		t.Fatalf("warm catch validation: %v", err)
-	}
-	var validationErr error
-	if allocs := testing.AllocsPerRun(100, func() {
-		for i := 0; i < 100; i++ {
-			validationErr = fv.validateCatchPayload(catch)
-		}
-	}); allocs != 0 {
-		t.Fatalf("catch validation allocations = %.2f, want 0", allocs)
-	}
-	if validationErr != nil {
-		t.Fatalf("catch validation: %v", validationErr)
-	}
-}
-
 func TestValidatorCoverageModuleLevelNegativeBranches(t *testing.T) {
 	t.Run("table init expression type mismatch", func(t *testing.T) {
 		m := &Module{Tables: []Table{{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}}, Init: &Expr{Instrs: []Instruction{{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapExtern)}}}}}}}
@@ -1239,7 +1149,7 @@ func TestValidatorCoverageProposalNegativeBranches(t *testing.T) {
 		for _, op := range []uint32{0, 72, 73, 74, 75, 76, 77, 78} {
 			_ = atomicCmpxchgEffect(op)
 		}
-		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Limits: Limits{Min: 1}}}}, nil), Instruction{Kind: InstrI32AtomicLoad}, ErrInvalidAlignment)
+		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Limits: Limits{Min: 1}}}}, nil), Instruction{Kind: InstrI32AtomicLoad}, ErrInvalidSharedMemory)
 		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: 1, HasMax: true}}}}, nil), Instruction{Kind: InstrI32AtomicLoad, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: 1, HasMax: true}}}}, nil), Instruction{Kind: InstrInvalid}, ErrUnsupportedValidationOpcode)
 	})
@@ -1572,8 +1482,8 @@ func TestValidatorCoverageLastPassBranches(t *testing.T) {
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32, I64), Instruction{Kind: InstrMemoryAtomicWait32, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64), Instruction{Kind: InstrI32AtomicStore, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32), Instruction{Kind: InstrAtomicCmpxchg, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
-		if _, err := coverageFuncValidator(shared, nil).checkAtomicMemArg(MemArg{Mem: ptr(MemIdx(0))}, 0); err != nil {
-			t.Fatalf("explicit memory atomic arg: %v", err)
+		if _, err := coverageFuncValidator(shared, nil).checkSharedMemArg(MemArg{Mem: ptr(MemIdx(0))}, 0); err != nil {
+			t.Fatalf("explicit memory shared arg: %v", err)
 		}
 		gm := &Module{Types: []RecType{arrayType(field(I32, Var)), structType([]FieldType{field(I32, Var)}, TypeMetadata{}), ft(nil, nil)}, DataCount: ptr(uint32(1)), Data: []Data{{Mode: DataMode{Kind: DataPassive}}}, Elements: []Elem{{Mode: ElemMode{Kind: ElemPassive}, Kind: ElemKind{Kind: ElemFuncExprs, Exprs: []Expr{{Instrs: []Instruction{{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapFunc)}}}}}}}}}
 		if err := coverageFuncValidatorWithStack(gm, I32).step(&Instruction{Kind: InstrStructNew, Index: 1}); err != nil {

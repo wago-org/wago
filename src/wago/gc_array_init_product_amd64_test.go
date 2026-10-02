@@ -38,7 +38,7 @@ func stagedGCArrayInitLeaderBytes(t testing.TB, filename string) []byte {
 func TestStagedGCArrayInitDataProductBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		filename string
-		roots    uint32
+		roots    uint8
 	}{
 		{filename: "array_init_data.2.wasm", roots: 3},
 		{filename: "array_init_data.3.wasm", roots: 0},
@@ -87,7 +87,7 @@ func TestStagedGCArrayInitDataProductBoundary(t *testing.T) {
 			}
 			defer in.Close()
 			state := in.pluginState.Load()
-			var roots uint32
+			var roots uint8
 			if state != nil {
 				roots = state.gcGlobalRootCount
 			}

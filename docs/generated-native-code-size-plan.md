@@ -1,10 +1,5 @@
 # Generated native-code size plan
 
-> Historical note: this plan records the experiments that introduced the
-> native-compaction machinery. The public optimization objectives described
-> below have since been removed. Current Wago has one ordinary compiler policy;
-> compaction is an internal benchmark and rollout path.
-
 Status: architecture and implementation plan
 
 Source baseline: `main` at `7f7a5f46f03578a7bc59c224e3ffe32f5e3eba47`
@@ -1191,11 +1186,8 @@ at every host-adapter boundary: subsequent adapter compaction can shift a whole
 cluster, but cannot change a branch displacement within it. This small seam
 avoids a whole-module code IR, a second image, per-function module records, and
 all heap allocation in the sharing decision. PC-relative and literal-load
-fragments fail closed. During qualification,
-`WAGO_ARM64_NO_MODULE_SHARED_TRAP_BODY=1` restored the exact preceding
-72,813,164-byte layout, including the body-before-groups order. That intermediate
-rollback and its body-before-groups emitter have since been retired; the public
-`shared-trap-body` policy remains the complete full-body-sharing oracle.
+fragments fail closed. `WAGO_ARM64_NO_MODULE_SHARED_TRAP_BODY=1` restores the
+exact preceding 72,813,164-byte layout, including the body-before-groups order.
 
 Measured on the checked-in ARM64 Size corpus:
 
@@ -1235,10 +1227,8 @@ The first exact body stays in its function's cold tail; each later internal
 function uses a five-byte `jmp rel32`. Functions with a trailing SIMD literal
 pool fail closed because their trap body is not the final fragment. The module
 literal and GC-stub islands remain separate and unchanged. The two-gigabyte
-near-jump range is checked before admission. During qualification,
-`WAGO_AMD64_NO_MODULE_SHARED_TRAP_BODY=1` restored the exact preceding layout.
-That intermediate rollback has since been retired; the public
-`shared-trap-body` policy remains the complete full-body-sharing oracle.
+near-jump range is checked before admission, and
+`WAGO_AMD64_NO_MODULE_SHARED_TRAP_BODY=1` restores the exact preceding layout.
 
 Measured on the checked-in AMD64 Size corpus on `hub`:
 

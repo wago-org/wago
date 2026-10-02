@@ -88,8 +88,8 @@ func TestGCCrossInstanceCallsWithSharedPersistentRoots(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			providerCandidate, consumerCandidate := providerCode, consumerCode
 			if codec {
-				providerCandidate = publicArtifactRoundTrip(t, providerCode)
-				consumerCandidate = publicArtifactRoundTrip(t, consumerCode)
+				providerCandidate = roundTripCompiled(t, providerCode)
+				consumerCandidate = roundTripCompiled(t, consumerCode)
 				defer providerCandidate.Close()
 				defer consumerCandidate.Close()
 			}

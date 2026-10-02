@@ -31,6 +31,7 @@ const (
 	gcArrayAllocDefaultNative  uint32 = 32
 	gcArrayAllocUniformNative  uint32 = 33
 	gcArrayAllocFixedNative    uint32 = 34
+	gcArrayFillNoBarrier       uint32 = 35
 	gcArrayCheckDefault        uint32 = 36
 	gcArrayCheckUniform        uint32 = 37
 	gcArrayCheckData           uint32 = 38
@@ -79,6 +80,9 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		state = in.publicGCState()
 		state.mu.Lock()
 		defer state.mu.Unlock()
+		if err := in.syncGenericGCGlobalRootsLocked(state); err != nil {
+			panic(gcStructHelperError{err: err})
+		}
 		frameRoots = in.gcHelperRoots(ctrl, state, safepoint)
 	}
 
@@ -292,35 +296,28 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 	case gcArrayAllocFixedV128Spill:
 		if len(args) != 3 || len(results) < 1 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed-spill helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed-v128-spill helper arity = %d/%d, want 3/at-least-1", len(args), len(results))})
 		}
 		ptr, count, typeID := uintptr(args[0]), uint32(args[1]), uint32(args[2])
-		kind := arrayElemKind(typeID)
-		valueSlots := uint64(1)
-		if kind == gc.StorageV128 {
-			valueSlots = 2
+		if arrayElemKind(typeID) != gc.StorageV128 {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed-v128-spill type %d is not v128", typeID)})
 		}
+		byteLen := uint64(count) * 16
 		if count != 0 && ptr == 0 {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed-spill has nil source")})
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed-v128-spill has nil source")})
 		}
-		slotCount := uint64(count) * valueSlots
-		if count != 0 && slotCount/valueSlots != uint64(count) || slotCount > uint64(maxInt()/8) {
-			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed-spill slot count overflows")})
+		if byteLen > uint64(^uint(0)>>1) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed-v128-spill byte length %d overflows int", byteLen)})
 		}
-		var slots []uint64
-		if slotCount != 0 {
-			slots = unsafe.Slice((*uint64)(offHeapPtr(ptr)), int(slotCount))
+		var data []byte
+		if byteLen != 0 {
+			data = unsafe.Slice((*byte)(offHeapPtr(ptr)), int(byteLen))
 		}
-		values, valueErr := state.constructorValues(count)
-		if valueErr != nil {
-			panic(gcStructHelperError{err: valueErr})
-		}
-		for i := uint32(0); i < count; i++ {
-			start := uint64(i) * valueSlots
-			values[i] = arrayStoredValue(typeID, slots[start:start+valueSlots])
-		}
-		ref, err := in.gc.NewArrayFixedWithRoots(in.requireGCDomainType(typeID), values, frameRoots)
+		ref, err := in.gc.NewArrayDefaultWithRoots(in.requireGCDomainType(typeID), count, frameRoots)
 		if err != nil {
+			panic(gcStructHelperError{err: err})
+		}
+		if err := in.gc.ArrayInitData(ref, 0, data, 0, count); err != nil {
 			panic(gcStructHelperError{err: err})
 		}
 		results[0] = uint64(ref)
@@ -403,7 +400,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			}
 			panic(gcStructHelperError{err: err})
 		}
-	case gcArrayFill:
+	case gcArrayFill, gcArrayFillNoBarrier:
 		if len(args) < 5 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array fill helper arity = %d, want at least 5", len(args))})
 		}
@@ -415,7 +412,12 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		ref, start := gc.Ref(uint32(args[0])), uint32(args[1])
 		checkArray(ref, typeID)
 		value := arrayStoredValue(typeID, args[2:2+valueSlots])
-		err := in.gc.ArrayFill(ref, start, value, uint32(args[2+valueSlots]))
+		var err error
+		if helper == gcArrayFillNoBarrier {
+			err = in.gc.ArrayFillNoBarrier(ref, start, value, uint32(args[2+valueSlots]))
+		} else {
+			err = in.gc.ArrayFill(ref, start, value, uint32(args[2+valueSlots]))
+		}
 		if err != nil {
 			if strings.Contains(err.Error(), "index out of range") {
 				panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})
@@ -502,21 +504,16 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		// product never has non-empty frameRoots. Any future broadening must
 		// combine them with these checked segment roots before allocation.
 		roots := &state.AllocRoots
-		if cap(roots.Values) < int(length) {
-			roots.Values = make([]gc.Root, length)
-		} else {
-			roots.Values = roots.Values[:length]
-			clear(roots.Values)
-		}
-		roots.Count = length
+		clear(roots.Values[:])
+		roots.Count = uint8(length)
 		defer func() {
-			clear(roots.Values)
+			clear(roots.Values[:])
 			roots.Count = 0
 		}()
-		for i := uint32(0); i < roots.Count; i++ {
-			rooted, err := in.gc.CheckedTableSlot(state.Slots[source+i])
+		for i := uint8(0); i < roots.Count; i++ {
+			rooted, err := in.gc.CheckedTableSlot(state.Slots[uint8(source)+i])
 			if err != nil || rooted.IsNull() {
-				panic(gcStructHelperError{err: fmt.Errorf("gc array element root %d is unavailable: %v", source+i, err)})
+				panic(gcStructHelperError{err: fmt.Errorf("gc array element root %d is unavailable: %v", uint32(source)+uint32(i), err)})
 			}
 			roots.Values[i] = gc.Root(rooted)
 			_ = arrayRefValue(typeID, uint64(rooted))
@@ -531,8 +528,8 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if err != nil {
 			panic(gcStructHelperError{err: err})
 		}
-		for i := uint32(0); i < roots.Count; i++ {
-			if err := in.gc.ArraySet(ref, i, arrayRefValue(typeID, uint64(roots.ref(i)))); err != nil {
+		for i := uint8(0); i < roots.Count; i++ {
+			if err := in.gc.ArraySet(ref, uint32(i), arrayRefValue(typeID, uint64(roots.ref(i)))); err != nil {
 				panic(gcStructHelperError{err: err})
 			}
 		}
@@ -616,10 +613,10 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if uint64(count)*uint64(valueSlots)+2 != uint64(len(args)) {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed count = %d, value slots = %d, args = %d", count, valueSlots, len(args))})
 		}
-		values, valueErr := state.constructorValues(count)
-		if valueErr != nil {
-			panic(gcStructHelperError{err: valueErr})
+		if count > uint32(len(state.values)) {
+			panic(gcStructHelperError{err: fmt.Errorf("gc array alloc-fixed count %d exceeds helper value bound %d", count, len(state.values))})
 		}
+		values := state.values[:count]
 		for i := uint32(0); i < count; i++ {
 			start := int(i) * valueSlots
 			values[i] = arrayStoredValue(typeID, args[start:start+valueSlots])

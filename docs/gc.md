@@ -11,21 +11,6 @@ The decision-grade collector measurement contract, canonical
 [benchmark review protocol](gc-benchmarks.md#benchmark-review-protocol), and
 roadmap-aligned matrix are documented in [gc-benchmarks.md](gc-benchmarks.md).
 
-## CLI heap sizing
-
-`wago run` uses the bounded Throughput collector defaults unless the invocation
-sets explicit capacities. Large compiler and build workloads can select the
-root instance's old/large-object heap and Eden nursery directly:
-
-```sh
-wago run --gc-heap 2GiB --gc-nursery 64MiB compiler.wasm
-```
-
-Both flags accept a positive byte count or a binary `KiB`, `MiB`, or `GiB`
-suffix. Values must fit the collector's 32-bit address space. Omitting the flags
-preserves the existing defaults. Collection remains enabled; heap sizing is not
-a substitute for exact native root admission.
-
 ## Current generated-payload boundary
 
 The mandatory pinned Core 3 corpus is complete, but that result is narrower than
@@ -61,7 +46,7 @@ The bounded linux/amd64 and Linux/Darwin arm64 products collect within admitted
 native invocations. They cover local and same-domain call graphs, host re-entry,
 module-local and shared GC globals/tables, direct and discarded-frame tail calls,
 exact GC-reference parameters/results, local start functions, EH payload records,
-and variable-size exact collector-reference root vectors in one frame. Imported starts and
+and up to 1,024 collector-reference roots in one frame. Imported starts and
 unknown host/cross-runtime ownership remain fail-closed. Local-only or proven
 same-domain `call_ref`/`return_call_ref` and direct/tail `call_indirect` retain
 their existing ownership restrictions.
@@ -81,7 +66,7 @@ call graphs and recursion. Throughput collect-every-allocation/forced-major veri
 Tiny collect/step-every-allocation preserve references in every recursive caller
 while the deepest frame performs 1,000 allocations. Dead locals are omitted,
 hidden operand roots survive control merges, and malformed IDs, offsets,
-call-sites, and adapter returns fail closed. Codec version 2 persists and revalidates
+call-sites, and adapter returns fail closed. Codec version 1 persists and revalidates
 safepoint, spill, callsite, frame-size, local-start, and adapter-return metadata;
 repeated offset vectors share immutable storage after compilation and reload.
 It never persists collector handles, liveness work arenas, or live frames.
@@ -100,23 +85,7 @@ and free-list metadata instead of growing metadata per cycle.
 Exact staged official products retain their existing collectors, roots, barriers,
 and stress coverage.
 
-The synchronous helper boundary keeps its original 64-slot inline control frame
-and derives a checked wider capacity for large struct constructors. Counts remain
-u16 on the parked-call wire; modules above 64 append off-heap argument/result
-areas, and capacities above 65,535 reject. The 403-field regression therefore
-uses 404 slots and adds 6,472 off-heap control bytes only to that instance. Its
-ordinary 64-slot frame size, generated small-call path, and `Compiled` size stay
-unchanged. Runtime presents the appended 6,464 argument/result bytes directly
-to the helper, so wide transitions add no Go allocation or copy scratch. Codec
-reload derives the same capacity from immutable GC descriptors and never
-persists live contents; the extension address is derived from the off-heap frame
-base, so native state retains no Go pointer. Only wide instances acquire a
-length-registry entry; the ordinary per-instance heap footprint is unchanged.
-Fully initialized reference
-constructors continue to classify every initializer word through the reusable
-typed root scratch before collection.
-
-A lazy
+The synchronous helper boundary is capped at 64 parameter/result slots. A lazy
 per-instance `gcPublicState` includes one mutex-protected 63-value constructor
 scratch, 64 reusable host-result roots, 64 reusable host-ingress roots, a bounded
 direct native-frame/root-chain adapter, one reusable foreign-clone handoff root,
@@ -131,17 +100,16 @@ ns/op for the basic struct product and 688.8-697.3 ns/op for the fixed numeric a
 product, both at 0 B/op and 0 allocs/op. On July 31, 2026, five 500 ms samples of `BenchmarkGCArrayV128Set` measured 439.5-476.8 ns/op
 with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host.
 
-AMD64 scalar struct/array get/set operations and defined struct/array type checks
-bypass the parked helper through native collector ABI version 1. Its 184-byte
-collector-owned stable view preserves the complete handle/space/generation/object-card
-and allocation-state prefix, then publishes the immutable packed subtype-interval
-pointer and count. Collection and relocating/large-space allocation republish the
-complete view; ordinary helper nursery allocation updates only handle metadata and
-generation, card append/remove/clear republishes card metadata, and canonical-domain
-type append republishes the interval backing. One instance-owned view publishes the
-immutable local-to-canonical type map at basedata offset 280.
+AMD64 final scalar struct/array get/set operations now bypass the parked helper
+through native collector ABI version 1. Its 168-byte collector-owned stable view preserves
+the complete handle/space/generation/object-card prefix and appends allocation-state,
+epoch, nursery-bump, and semantic-counter pointers. Collection and relocating/large-
+space allocation republish the complete view; ordinary helper nursery allocation
+updates only handle metadata and generation, while card append/remove/clear republishes
+card metadata. One instance-owned view publishes the immutable local-to-canonical type
+map at basedata offset 280.
 
-The Go/native structure layout is validated when a collector is created. Codec version 2
+The Go/native structure layout is validated when a collector is created. Codec version 1
 records the required native-GC ABI for generic struct/array execution and rejects a
 missing or mismatched requirement while loading. Instantiation then validates the
 immutable instance version, collector identity, local-type map pointer/count,
@@ -149,12 +117,8 @@ collector version, and handle stride before basedata publication. Production AMD
 operations do not reload those immutable guards per access; `-tags wagodebug` retains
 a coarse Go-to-native entry assertion. Dynamic semantic checks are unchanged:
 generated code reloads mutable handle/backing pointers and counts, then checks compact
-handle tag/range/liveness, space and backing extents, object extent, canonical type,
-array bounds, ownership/barrier state, and trap order before touching payload.
-Non-final defined `ref.cast` and `ref.test` reload the interval table and apply
-`required.pre <= actual.pre && actual.post <= required.post`; exact casts retain
-canonical ID equality. Neither path retains a raw object pointer across a call,
-allocation, helper, or safepoint.
+handle tag/range/liveness, space and backing extents, object extent, exact canonical
+type, array bounds, ownership/barrier state, and trap order before touching payload.
 Direct scalar/reference array paths zero-extend dynamic Wasm i32 indexes before
 native-width scaling; logical bounds failures use the builtin trap category, while
 physical object-extent hardening remains a cast-failure trap.
@@ -174,15 +138,39 @@ mutable-fact invalidation, and all unknown opcodes clear it before lowering. Con
 `WAGO_AMD64_NO_GC_SHARED_STUBS=1` and `WAGO_AMD64_NO_GC_RESOLVE_REUSE=1` restore
 inline/no-reuse differential paths.
 
-### GC roots, barriers, and resolved addresses
+### Structured semantic facts and late barriers
 
-The former AMD64 structured-reference fact experiment was retired after broad
-qualification found neutral execution and materially worse compile resources. GC
-references now carry only the root bit required by exact frame planning. Reference
-stores use the conservative barrier unless an independent native lowering proves a
-no-barrier case. A separate one-entry resolved-address certificate may reuse a native
-payload address only within a mechanically safepoint-free straight-line region; calls,
-allocations, control edges, local replacement, and unknown effects invalidate it.
+AMD64's structured fact engine stores no object address. A bounded
+`shared.GCRefFact` records nullability, abstract heap class or exact flattened type,
+a bounded identity, freshness/publication, generation, pointer-free layout, and an
+optional constant array length. The same compact fact moves through Valent stack
+storage and locals. Control frames snapshot and intersect local and stack facts at
+structured joins; loops reuse one shared-classifier prewalk of the existing body bytes
+so `try_table`, vector immediates, memory64 offsets, and malformed scans cannot create
+partial invariance claims. Loop parameters are rebuilt from declared ValTypes rather
+than first-entry identities. At every loop-header backedge join, modified locals are
+cleared, surviving fresh locals become published, and mutable field-forwarding windows
+are discarded; immutable field results survive only when both source and result locals
+are invariant. `try_table` and synthetic inline frames capture hidden operand-root
+shape before flushing, and every catch clause intersects its conservative local facts
+into the target just like an ordinary branch. Exact type and nullability remain
+independent: a nullable exact value can prove a nullable cast, but a non-null cast is
+elided only when the fact also proves non-null. Exact defined targets compare canonical
+structural identity rather than raw module-local indexes: equivalent duplicate types
+match, while proper subtypes still fail an exact cast. Private collectors create a
+canonical local map only when duplicate GC heap types require it; ordinary unique-type
+modules retain the identity-map footprint. `any` and `eq` heap classes are upper
+bounds rather than exact runtime families, so narrowing tests/casts remain dynamic
+until an i31/struct/array fact is exact. Distinct identities lose alias-sensitive
+state, and any multi-edge freshness merge is treated as published. Calls and
+allocating helpers may clear generation facts but do not invalidate compact identity.
+
+This semantic state is intentionally separate from the one-entry resolved-object
+certificate. The latter owns a native register containing a raw payload address and
+is invalidated at safepoints, helper/host/Wasm calls, allocations, control/EH/tail
+edges, loop edges, local replacement, and unknown effects. Collection may relocate an
+object without changing its compact handle, so retaining the semantic fact while
+dropping the address is required rather than optional.
 
 Dynamic subtype checks use the collector's validated descriptor forest. Each
 canonical type owns one packed DFS `[pre,post]` interval; a four-parent shallow walk
@@ -191,16 +179,29 @@ interval containment. Canonical representative remapping retains parent traversa
 The interval replaces the former `typeIndex` table byte-for-byte, keeping permanent
 per-type memory and the 1,120-byte collector layout unchanged.
 
-A former reference-fact experiment forwarded repeated dynamic `array.len` and
-immutable `struct.get` results and used constructor-known lengths to specialize
-constant-index array accesses. It was retired after broad measurement found neutral
-execution and materially worse compile resources. The general one-entry resolved-
-address cache remains and is invalidated at calls, allocations, merges, loop edges,
-and unknown effects. The loop-versioning experiment was
-removed after its broad execution benefit failed to justify duplicated lowering,
-native code, and compile-resource cost; all memory32 and memory64 loops now retain
-their ordinary per-access checks unless straight-line bounds facts or guard pages
-provide the existing explicit certificate.
+A repeated dynamic `array.len` or immutable `struct.get` can reuse the value only
+when the first result is captured by the immediately following local assignment and
+both source and result locals remain unchanged. This bounded result-local scheme adds
+no hidden frame slot or reserved register. Immutable field caches survive unrelated
+mutable stores and calls; mutable caches retain stricter alias/publication/unknown-
+effect invalidation. A constructor-known length plus constant index also selects a
+constant-displacement array get/set sequence. It validates the immutable Aux length
+against the semantic fact and asks the handle resolver for the complete constant
+extent, removing the scale and duplicate dynamic extent sequence without trusting
+malformed metadata. `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1` disables only repeated-load
+reuse, `WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1` disables the constant-index sequence, and
+`WAGO_AMD64_NO_GC_REF_FACTS=1` disables the semantic optimizer as a whole and avoids
+allocating its local/control fact tables. `WAGO_AMD64_NO_EXACT_GC_REF_FACTS=1` is
+accepted as a compatibility alias for review and older A/B commands. The permanent
+subprocess oracle also compares exact results and trap codes with facts, load
+forwarding, and loop prechecks independently enabled and disabled.
+
+Loop bounds versioning remains memory32-only: prechecks zero-extend invariant i32
+bases before native-width arithmetic, and memory64 loops retain their carry-safe
+per-access checks until `memAddr64` has an explicit elision certificate. Functions
+with candidate native GC frame-root plans are not versioned because duplicating a
+loop body would otherwise duplicate allocation/call sites without remapping the
+validated linear liveness streams.
 
 Dead allocation remains bounded and postfix. Direct struct/fixed-array drops can
 remove complete nested `struct.new`/`array.new_fixed` trees only while every reserved
@@ -233,12 +234,11 @@ nursery, existing-card, card-mark, and slow-helper cases from current collector
 metadata. This keeps card growth, foreign/stale refs, malformed metadata, unknown
 subtypes, and every required Tiny shade on the shared cold path.
 
-Reference `array.fill` uses the ordinary checked helper and retains its exact
-post-write destination range barrier. The guarded `Collector.ArrayFillNoBarrier`
-compatibility helper remains available to runtime callers that can prove a null or
-i31 child; it performs the same complete range, type, and value preflight and rejects
-an object child before the first write. Reference fill/copy/init operations retain
-overlap-safe copy and trap atomicity. Throughput `array.init_elem`
+Reference `array.fill` with a statically proven null/i31 child uses the guarded
+`Collector.ArrayFillNoBarrier` helper. It performs the same complete range, type, and
+value preflight as ordinary fill and rejects an object child before the first write.
+All other reference fill/copy/init operations retain exact post-write destination
+range barriers, overlap-safe copy, and trap atomicity. Throughput `array.init_elem`
 preflights the complete retained segment, then performs type-compatible prevalidated
 stores with a deferred barrier and publishes one exact destination range after all
 writes. No collection can occur between preflight and publication; explicit
@@ -269,9 +269,7 @@ A nursery child behind an unremembered old/large parent, a cardless old/large ar
 every Tiny parent, and malformed metadata retain the unchanged helper with the full
 remembered-set/card or incremental barrier. Conditional
 lowering preserves hot pinned registers and emits local reloads only on the fallback
-edge. Non-final declarations retain helper lowering. The former exact-reference-
-fact specialization for open `struct.get` was retired with its default-off alternate
-compiler path. Unknown dynamic subtypes, `v128`, bulk operations, and barrier states that require
+edge. Non-final types, `v128`, bulk operations, and barrier states that require
 metadata growth retain helper lowering. Current scalar
 end-to-end measurements are 227.9–229.4 ns/op for struct set/get, 218.2–219.9 ns/op
 for struct get, and 265.2–265.6 ns/op for array set/get; final cast/reference-struct
@@ -322,14 +320,13 @@ and 31.7 ms for linked instantiate/start. The cold Starshine link/JIT allocated
 166.2 MB in 565,697 allocations; this and the 74.8 MB/448,851-allocation compile
 front half are explicit optimization targets rather than footprint claims.
 
-Codec version 2 persists generic helper admission, the required native-GC ABI version,
+Codec version 1 persists generic helper admission, the required native-GC ABI version,
 vector layout, and bounded native root maps; compact handles remain process-local.
 
-Numeric host imports may re-enter the same instance: codec version 2 callsites carry
+Numeric host imports may re-enter the same instance: codec version 1 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control
-state, nested invocations borrow separate foreign stacks with the active Runtime's
-configured 512 KiB-through-1 GiB capacity, and suspended outer frames remain roots
-during boundary and helper collection. The default remains 4 MiB. A bounded
+state, nested invocations borrow separate 4 MiB foreign stacks, and suspended
+outer frames remain roots during boundary and helper collection. A bounded
 same-Runtime cross-instance product additionally canonicalizes recursive structural
 types across generic-GC modules and gives compatible reordered/additional local type
 graphs one collector. Exact GC-reference parameters/results retain
@@ -354,24 +351,13 @@ ordinary zero-valued constant expressions. Indexed function-identity lowering is
 selected only for function heap targets; GC struct casts continue through collector
 supertype metadata, including final concrete closure structs cast to non-final bases.
 Arm64 publishes liveness-exact locals and hidden
-spills from parked SP. Codec version 2 callsites carry caller frame size, return PC,
+spills from parked SP. Codec version 1 callsites carry caller frame size, return PC,
 stack adjustment, and exact roots; saved-LR walking spans direct/recursive calls,
 suspended direct-host activations (including sync-thunk records), and same-domain
 foreign instances. Mutable local GC globals synchronize checked collector slots,
 one private collector-reference table is scanned directly, and indirect/reference
 calls, function subtype checks, proper tails, and fixed EH payload records publish
-exact maps. AMD64 compact finalization does not apply `local-slot-order` to a
-function with exact GC frame-root metadata. The final local homes therefore stay
-identical to the offsets recorded by every safepoint and caller map. Wrapper calls
-stage any operand stack whose later spilled source sits
-below its canonical destination. This preserves leading arguments for wide
-reference signatures even below the 64-slot wide-stack threshold. It also stages
-before materialization when GP pressure would consume the scratch-register
-reserve or XMM pressure would exhaust the vector register file, so a deferred
-argument cannot create a new overlapping spill. The Dewdrop
-reproducer used one nullable reference followed by 17 non-null references and
-previously propagated the leading null through the first five non-null argument
-slots. Dynamic host and same-domain foreign direct tails discard the current
+exact maps. Dynamic host and same-domain foreign direct tails discard the current
 frame, so no dead caller roots are retained. A direct immutable-root visitor keeps
 warmed Throughput/Tiny recursive collection allocation-free. ARM64 polymorphic
 local `call_indirect` and same-domain foreign `call_ref` publish every possible
@@ -546,7 +532,7 @@ immutable decoded subtype declarations and is discarded after code generation; i
 not retained by `Compiled` or serialized. `Compiled.GCTypeDescs` stores the runtime
 descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type
 section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including
-function sentinels used only to preserve indexes. Codec version 2 retains the appended
+function sentinels used only to preserve indexes. Codec version 1 retains the appended
 `StorageV128` kind, the 16-byte layout contract, and validated native
 safepoint/callsite root maps; older codec versions are rejected.
 
@@ -558,7 +544,7 @@ Iteration 38 added a separate exact numeric-local helper product with one alloca
 and a proven empty live-ref set. Iteration 39 added two collector-owned immutable global
 slots, not frame roots: each slot is installed before a later initializer allocation. The native-frame publication slice now records function-relative safepoint IDs, exact
 structured-CFG local liveness, hidden operand spills, and direct self-call return-PC maps for
-linux/amd64 local functions. Codec version 2 persists and revalidates that metadata, including
+linux/amd64 local functions. Codec version 1 persists and revalidates that metadata, including
 caller stack adjustments, and the runtime walks cross-function, recursive, and suspended host
 activations through mutable off-heap slots. Mutable module-local global slots synchronize before
 allocation. Private local `call_indirect` and tail-indirect calls now participate in exact frame walking,
@@ -1761,8 +1747,7 @@ Objects promoted into old space are rounded into supported size classes.
 (`32` through `32768` bytes); unsupported values reject rather than round. The
 fixed 64-bit layouts are 20 bytes for `handleEntry`, 72 bytes for `Config`, and
 1,120 bytes for `Collector` in the ordinary build. The 16-byte increase is the
-native allocation state for contiguous handle runs and nursery chunks; ABI version 1
-now includes the 16-byte subtype-interval pointer/count suffix in the collector view.
+ABI version 1 native allocation state for contiguous handle runs and nursery chunks.
 
 Allocation-triggered minor collection treats old-space promotion exhaustion as a
 cold reclamation signal. Because promotion planning has published no move, the
@@ -1830,8 +1815,8 @@ Tiny collection is an incremental tri-color mark/sweep collector with states
 supplied `RootSet`, globals, and tables, then scans guest objects by `TypeDesc`.
 Before sweep, Tiny re-scans roots so stack/frame/local root stores that do not
 run object barriers are still observed. Transient roots are captured atomically
-at each safepoint through allocation-free direct visitors. The old 1,024-root
-semantic ceiling is removed; arbitrary callback-only root sets still require a bounded direct-enumeration interface.
+at each safepoint through allocation-free direct visitors and fail closed above
+1,024 references; arbitrary callback-only root sets are not admitted to Tiny.
 Collector-owned globals and tables resume through a stable index cursor at
 most 256 slots per `Step`, including both initial mark and remark. Sweep walks handle indexes and frees
 white Tiny objects back to the fixed-block allocator. Remark snapshots a finite
@@ -2444,9 +2429,8 @@ for future comparisons.
   roots and checked slots preserve barrier/card state. Multiple heterogeneous
   imported/exported GC tables participate with direct indexed alias roots,
   growth/close coverage, and attachment rollback.
-- Generic struct/array results may be retained as opaque `GCRef` tokens through a
-  64-slot inline fast path plus reusable dynamic overflow storage. Each token has
-  an independent checked root and retains exact Runtime/store
+- Generic struct/array results may be retained as up to 64 opaque `GCRef` tokens per
+  producer. Each token has an independent checked root, retains exact Runtime/store
   and producer ownership after producer close, rejects stale/cross-producer release,
   reuses released slots without reusing token identity, and must be released explicitly.
   Multi-result translation rolls back every token issued by the failing result boundary,

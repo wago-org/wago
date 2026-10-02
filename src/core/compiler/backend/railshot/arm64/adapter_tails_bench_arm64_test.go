@@ -18,14 +18,14 @@ func BenchmarkExecSharedAdapterTailArm64(b *testing.B) {
 	)
 	m.Exports = append(m.Exports, wasm.Export{Name: "g", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}})
 	for _, tc := range []struct {
-		name    string
-		compact bool
+		name      string
+		objective OptimizationObjective
 	}{
-		{"ordinary", false},
-		{"compact", true},
+		{"balanced", OptimizeBalanced},
+		{"size", OptimizeSize},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
-			cm, err := CompileModuleWith(m, CompileOptions{CompactNative: tc.compact})
+			cm, err := CompileModuleWith(m, CompileOptions{Objective: &tc.objective})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -49,7 +49,7 @@ func BenchmarkExecSharedAdapterTailArm64(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer coreruntime.Unmap(code)
-			results, trap := arena.Alloc(8), arena.Alloc(coreruntime.TrapBufferBytes)
+			results, trap := arena.Alloc(8), arena.Alloc(8)
 			b.ReportMetric(float64(len(cm.Code)), "code-B")
 			b.ReportAllocs()
 			b.ResetTimer()

@@ -15,76 +15,6 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-func TestCollectInlinedCalleesDeduplicatesPastStackSetArm64(t *testing.T) {
-	const targetsN = inlineLinearSeenTargets + 1
-	data := &inlineTargetData{slots: make([]uint32, targetsN), targets: make([]inlineTarget, targetsN)}
-	body := make([]byte, 0, 2*(targetsN+1)+1)
-	for i := range targetsN {
-		data.slots[i] = uint32(i + 1)
-		data.targets[i].globalIdx = i
-		body = append(body, 0x10, byte(i))
-	}
-	body = append(body, 0x10, 0, 0x0b)
-	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
-	got := collectInlinedCallees(&wasm.Func{BodyBytes: body}, targets)
-	if len(got) != targetsN {
-		t.Fatalf("distinct inline targets = %d, want %d", len(got), targetsN)
-	}
-	for i, target := range got {
-		if target.globalIdx != i {
-			t.Fatalf("inline target %d = %d, want %d", i, target.globalIdx, i)
-		}
-	}
-}
-
-func TestInlineBasePoolRetentionIsBoundedArm64(t *testing.T) {
-	targetsData := &inlineTargetData{targets: make([]inlineTarget, maxRetainedInlineBases+1)}
-	callees := make([]*inlineTarget, len(targetsData.targets))
-	for i := range targetsData.targets {
-		targetsData.targets[i].globalIdx = i
-		callees[i] = &targetsData.targets[i]
-	}
-	targets := inlineTargetTable{data: targetsData}
-	var f fn
-	f.reserveInlineLocals(callees[:1], targets)
-	if allocs := testing.AllocsPerRun(100, func() {
-		f.reserveInlineLocals(callees[:1], targets)
-	}); allocs != 0 {
-		t.Fatalf("reused inline base allocations = %.0f, want 0", allocs)
-	}
-	f.reserveInlineLocals(callees, targets)
-	if got := len(f.inlineBase); got != len(callees) {
-		t.Fatalf("ephemeral inline bases = %d, want %d", got, len(callees))
-	}
-	if got := len(f.inlineBasePool); got != 1 {
-		t.Fatalf("retained inline bases after oversized plan = %d, want 1", got)
-	}
-}
-
-func TestInlineTargetSizeArm64(t *testing.T) {
-	if got, want := unsafe.Sizeof(inlineTarget{}), uintptr(64); got != want {
-		t.Fatalf("inlineTarget size = %d, want %d", got, want)
-	}
-}
-
-func TestInlineTargetPlanWithoutCandidatesDoesNotAllocateArm64(t *testing.T) {
-	m := modFuncs(t,
-		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
-		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
-	)
-	hints := []funcHints{{flags: hintHasCall}, {flags: hintHasCall}}
-	policy := currentCodegenPolicy()
-	var targets inlineTargetTable
-	if allocs := testing.AllocsPerRun(100, func() {
-		targets = buildInlineTargets(m, hints, policy)
-	}); allocs != 0 {
-		t.Fatalf("candidate-free inline plan allocations = %.0f, want 0", allocs)
-	}
-	if !targets.empty() {
-		t.Fatal("candidate-free inline plan is not empty")
-	}
-}
-
 func TestAnalyzeInlineCandidatesMixedMemory64MemargArm64(t *testing.T) {
 	body := []byte{
 		0x00,       // no locals
@@ -154,7 +84,7 @@ func TestInlineBrOnNullRespectsCalleeBoundaryArm64(t *testing.T) {
 		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x00, 0x10, 0x01, 0x1a, 0x41, 0x01, 0x0b}},
 		funcDef{body: []byte{0x00, 0xd0, 0x70, 0xd5, 0x00, 0x1a, 0x0b}},
 	)
-	hints, _, _, err := computeModuleHints(m, 0, 0)
+	hints, _, err := computeModuleHints(m, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,10 +102,12 @@ func TestInlineTargetsRejectEHArm64(t *testing.T) {
 		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x10, 0x01, 0x41, 0x01, 0x0b}},
 		funcDef{body: []byte{0x00, 0x0b}},
 	)
-	policy := shared.DefaultCodegenPolicy(currentCodegenPolicy().Selection)
-	hints := []funcHints{{flags: hintHasCall}, {flags: hintModuleEH, inlineCallSites: 1}}
-	if target := buildInlineTargets(m, hints, policy).target(1); target != nil {
-		t.Fatal("ordinary policy admitted EH inline target")
+	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
+		policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, objective)
+		hints := []funcHints{{hasCall: true}, {moduleEH: true, inlineCallSites: 1}}
+		if target := buildInlineTargets(m, hints, policy).target(1); target != nil {
+			t.Fatalf("objective %v admitted EH inline target", objective)
+		}
 	}
 }
 
@@ -195,15 +127,16 @@ func TestInlineRejectsRecursiveArm64(t *testing.T) {
 	}
 }
 
-func TestCompactInlineRequiresNativeByteProofArm64(t *testing.T) {
+func TestInlineSizeObjectiveRequiresNativeByteProofArm64(t *testing.T) {
 	caller := []byte{0x00, 0x41, 0x05, 0x41, 0x07, 0x10, 0x01, 0x0b}
 	leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}
 	m := modFuncs(t,
 		funcDef{results: []wasm.ValType{wasm.I32}, body: caller},
 		funcDef{params: []wasm.ValType{wasm.I32, wasm.I32}, results: []wasm.ValType{wasm.I32}, body: leaf},
 	)
+	objective := OptimizeSize
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats})
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,22 +144,22 @@ func TestCompactInlineRequiresNativeByteProofArm64(t *testing.T) {
 		defer cm.CodeImage.Close()
 	}
 	if got := stats.Funcs[0].Calls["inline"]; got != 0 {
-		t.Fatalf("compact Calls[inline] = %d, want 0 without native-byte proof", got)
+		t.Fatalf("Size Calls[inline] = %d, want 0 without native-byte proof", got)
 	}
 }
 
-func TestCompactInlinePrunesTransitiveOmissionArm64(t *testing.T) {
+func TestInlineSizeObjectivePrunesTransitiveOmissionArm64(t *testing.T) {
 	m := modFuncs(t,
 		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x10, 0x02, 0x0b}},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 	)
-	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
-	policy.MaxCompactInlineBodyBytes = 12
+	policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize)
+	policy.MaxSizeInlineBodyBytes = 12
 	hints := []funcHints{
-		{flags: hintHasCall},
-		{localCount: 1, flags: hintHasCall, inlineCallSites: 1, directCallRefs: 1},
-		{localCount: 1, inlineCallSites: 1, directCallRefs: 1},
+		{hasCall: true},
+		{nLocals: 1, hasCall: true, inlineCallSites: 1, directCallRefs: 1},
+		{nLocals: 1, inlineCallSites: 1, directCallRefs: 1},
 	}
 	targets := buildInlineTargets(m, hints, policy)
 	if targets.target(1) != nil {
@@ -235,15 +168,9 @@ func TestCompactInlinePrunesTransitiveOmissionArm64(t *testing.T) {
 	if targets.target(2) == nil || !targets.omitStandaloneBody(2, false) {
 		t.Fatal("leaf child was not retained as an omittable inline target")
 	}
-	if got, want := len(targets.data.targets), 1; got != want {
-		t.Fatalf("retained inline target records = %d, want %d", got, want)
-	}
-	if got, want := len(targets.data.slots), len(m.Code); got != want {
-		t.Fatalf("inline target slots = %d, want %d", got, want)
-	}
 }
 
-func TestCompactInlineRetainsNestedCallPlanningArm64(t *testing.T) {
+func TestInlineSizeObjectiveRetainsNestedCallPlanningArm64(t *testing.T) {
 	m := modFuncs(t,
 		// Keep arg 0 live while the single-use helper returns its result.
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x05, 0x10, 0x01, 0x6a, 0x0b}},
@@ -252,8 +179,9 @@ func TestCompactInlineRetainsNestedCallPlanningArm64(t *testing.T) {
 		// A declared local keeps the nested callee out of the Size inline class.
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x01, 0x01, 0x7f, 0x20, 0x00, 0x41, 0x02, 0x6a, 0x0b}},
 	)
+	objective := OptimizeSize
 	var stats ModuleStats
-	got, err := runArm64WrapperWithOptions(t, m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1}, 40)
+	got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &objective, Stats: &stats, Workers: 1}, 40)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +193,7 @@ func TestCompactInlineRetainsNestedCallPlanningArm64(t *testing.T) {
 	}
 }
 
-func TestCompactInlineAdmitsTinySingleUseLeafArm64(t *testing.T) {
+func TestInlineSizeObjectiveAdmitsTinySingleUseLeafArm64(t *testing.T) {
 	caller := []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}
 	leaf := []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}
 	m := modFuncs(t,
@@ -274,10 +202,11 @@ func TestCompactInlineAdmitsTinySingleUseLeafArm64(t *testing.T) {
 	)
 	before := inlineDeadBodyEnabled
 	t.Cleanup(func() { inlineDeadBodyEnabled = before })
+	objective := OptimizeSize
 	compile := func(omit bool) (*a64.CompiledModule, *ModuleStats) {
 		inlineDeadBodyEnabled = omit
 		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
+		cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats, Workers: 1})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -292,7 +221,7 @@ func TestCompactInlineAdmitsTinySingleUseLeafArm64(t *testing.T) {
 		defer cm.CodeImage.Close()
 	}
 	if got := stats.Funcs[0].Calls["inline"]; got != 1 {
-		t.Fatalf("compact Calls[inline] = %d, want 1 for proved tiny single-use leaf", got)
+		t.Fatalf("Size Calls[inline] = %d, want 1 for proved tiny single-use leaf", got)
 	}
 	if len(cm.Code) >= len(rollback.Code) {
 		t.Fatalf("dead-body code = %d bytes, rollback = %d", len(cm.Code), len(rollback.Code))
@@ -312,7 +241,7 @@ func TestCompactInlineAdmitsTinySingleUseLeafArm64(t *testing.T) {
 	}
 	parallel, parallelStats := func() (*a64.CompiledModule, *ModuleStats) {
 		var stats ModuleStats
-		got, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 2})
+		got, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats, Workers: 2})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -336,12 +265,10 @@ func TestCompactInlineAdmitsTinySingleUseLeafArm64(t *testing.T) {
 }
 
 func TestFinalizeOmittedInlineEntriesRejectsResidualCallArm64(t *testing.T) {
-	targets := inlineTargetTable{data: &inlineTargetData{
-		slots: []uint32{0, 1}, targets: []inlineTarget{{globalIdx: 1, omitStandalone: true}},
-	}}
+	targets := inlineTargetTable{targets: []inlineTarget{{}, {valid: true, omitStandalone: true}}}
 	err := finalizeOmittedInlineEntries(
 		[]int{0, 12}, []int{4, 12},
-		testCallRelocTable(t, []callReloc{{target: 1, internal: true}}, nil),
+		[][]callReloc{{{target: 1, internal: true}}, nil},
 		[]bool{true, false}, targets,
 	)
 	if err == nil {
@@ -354,19 +281,19 @@ func TestInlineDeadBodyProofRejectsTailAndLoopReferencesArm64(t *testing.T) {
 		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 	)
-	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
-	base := []funcHints{{flags: hintHasCall}, {localCount: 1, inlineCallSites: 1, directCallRefs: 1}}
-	if targets := buildInlineTargets(m, base, policy); !targets.omitStandaloneBody(1, false) {
+	objective := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize)
+	base := []funcHints{{hasCall: true}, {nLocals: 1, inlineCallSites: 1, directCallRefs: 1}}
+	if targets := buildInlineTargets(m, base, objective); !targets.omitStandaloneBody(1, false) {
 		t.Fatal("single ordinary non-loop call did not prove standalone body dead")
 	}
 	tail := slices.Clone(base)
 	tail[1].directCallRefs = 2
-	if targets := buildInlineTargets(m, tail, policy); targets.omitStandaloneBody(1, false) {
+	if targets := buildInlineTargets(m, tail, objective); targets.omitStandaloneBody(1, false) {
 		t.Fatal("tail-call reference permitted standalone body omission")
 	}
 	loop := slices.Clone(base)
-	loop[1].flags.set(hintHasInlineLoopCall)
-	if targets := buildInlineTargets(m, loop, policy); targets.omitStandaloneBody(1, false) {
+	loop[1].hasInlineLoopCall = true
+	if targets := buildInlineTargets(m, loop, objective); targets.omitStandaloneBody(1, false) {
 		t.Fatal("ARM64 loop-site exclusion permitted standalone body omission")
 	}
 }
@@ -377,8 +304,9 @@ func TestInlineDeadBodyRetainsTailReferencedCalleeArm64(t *testing.T) {
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x12, 0x01, 0x0b}},
 	)
+	objective := OptimizeSize
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,8 +332,9 @@ func TestInlineDeadBodyRetainsArm64LoopSiteCallee(t *testing.T) {
 		funcDef{results: []wasm.ValType{wasm.I32}, body: caller},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 	)
+	objective := OptimizeSize
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

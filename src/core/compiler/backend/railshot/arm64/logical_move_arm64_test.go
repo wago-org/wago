@@ -9,7 +9,7 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
-func TestCompactLogicalMoveImmediateArm64(t *testing.T) {
+func TestSizeLogicalMoveImmediateArm64(t *testing.T) {
 	body := []byte{0x00, 0x42}
 	body = append(body, wasmtest.SLEB64(0x00ff00ff00ff00ff)...)
 	body = append(body, 0x0b)
@@ -17,10 +17,10 @@ func TestCompactLogicalMoveImmediateArm64(t *testing.T) {
 
 	before := logicalMoveImmediateEnabled
 	t.Cleanup(func() { logicalMoveImmediateEnabled = before })
-	compile := func(compact, enabled bool) *ModuleStats {
+	compile := func(objective OptimizationObjective, enabled bool) *ModuleStats {
 		logicalMoveImmediateEnabled = enabled
 		stats := &ModuleStats{}
-		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: compact, Stats: stats, Workers: 1})
+		cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: stats, Workers: 1})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -30,21 +30,22 @@ func TestCompactLogicalMoveImmediateArm64(t *testing.T) {
 		return stats
 	}
 
-	ordinary := compile(false, true).Funcs[0]
-	rollback := compile(true, false).Funcs[0]
-	compact := compile(true, true).Funcs[0]
-	if got := ordinary.Peephole["logical-move-immediate"]; got != 0 {
-		t.Fatalf("ordinary logical MOV hits = %d, want 0", got)
+	balanced := compile(OptimizeBalanced, true).Funcs[0]
+	rollback := compile(OptimizeSize, false).Funcs[0]
+	compact := compile(OptimizeSize, true).Funcs[0]
+	if got := balanced.Peephole["logical-move-immediate"]; got != 0 {
+		t.Fatalf("Balanced logical MOV hits = %d, want 0", got)
 	}
 	if got := compact.Peephole["logical-move-immediate"]; got != 1 {
-		t.Fatalf("compact logical MOV hits = %d, want 1", got)
+		t.Fatalf("Size logical MOV hits = %d, want 1", got)
 	}
 	if compact.CodeBytes >= rollback.CodeBytes {
 		t.Fatalf("logical MOV code = %d bytes, rollback = %d; want smaller", compact.CodeBytes, rollback.CodeBytes)
 	}
 
 	logicalMoveImmediateEnabled = true
-	got, err := runArm64WrapperWithOptions(t, m, CompileOptions{CompactNative: true})
+	size := OptimizeSize
+	got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,14 +54,14 @@ func TestCompactLogicalMoveImmediateArm64(t *testing.T) {
 	}
 }
 
-func TestCompactMoveImmediate32Arm64(t *testing.T) {
+func TestSizeCompactMoveImmediate32Arm64(t *testing.T) {
 	m := mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{0x00, 0x41, 0x7f, 0x0b})
 	before := compactMoveImmediate32Enabled
 	t.Cleanup(func() { compactMoveImmediate32Enabled = before })
-	compile := func(compact, enabled bool) *ModuleStats {
+	compile := func(objective OptimizationObjective, enabled bool) *ModuleStats {
 		compactMoveImmediate32Enabled = enabled
 		stats := &ModuleStats{}
-		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: compact, Stats: stats, Workers: 1})
+		cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: stats, Workers: 1})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,21 +71,22 @@ func TestCompactMoveImmediate32Arm64(t *testing.T) {
 		return stats
 	}
 
-	ordinary := compile(false, true).Funcs[0]
-	rollback := compile(true, false).Funcs[0]
-	compact := compile(true, true).Funcs[0]
-	if got := ordinary.Peephole["compact-move-immediate32"]; got != 0 {
-		t.Fatalf("ordinary compact MOV32 hits = %d, want 0", got)
+	balanced := compile(OptimizeBalanced, true).Funcs[0]
+	rollback := compile(OptimizeSize, false).Funcs[0]
+	compact := compile(OptimizeSize, true).Funcs[0]
+	if got := balanced.Peephole["compact-move-immediate32"]; got != 0 {
+		t.Fatalf("Balanced compact MOV32 hits = %d, want 0", got)
 	}
 	if got := compact.Peephole["compact-move-immediate32"]; got != 1 {
-		t.Fatalf("compact MOV32 hits = %d, want 1", got)
+		t.Fatalf("Size compact MOV32 hits = %d, want 1", got)
 	}
 	if compact.CodeBytes > rollback.CodeBytes {
 		t.Fatalf("compact MOV32 code = %d bytes, rollback = %d; want no growth", compact.CodeBytes, rollback.CodeBytes)
 	}
 
 	compactMoveImmediate32Enabled = true
-	got, err := runArm64WrapperWithOptions(t, m, CompileOptions{CompactNative: true})
+	size := OptimizeSize
+	got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size})
 	if err != nil {
 		t.Fatal(err)
 	}

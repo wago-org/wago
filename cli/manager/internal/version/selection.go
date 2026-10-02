@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/tui"
@@ -342,29 +343,19 @@ func releaseCommit(release string) string {
 }
 
 func vmUninstall(d wagopaths.Dirs, ver string) {
-	if err := removeInstalledVersion(d, ver); err != nil {
-		fatal("version uninstall: %v", err)
-	}
-	fmt.Printf("uninstalled wago %s\n", ver)
-}
-
-func removeInstalledVersion(d wagopaths.Dirs, ver string) error {
-	dir, err := versionDirectory(d, ver)
-	if err != nil {
-		return err
-	}
+	dir := filepath.Join(d.Versions, ver)
 	if _, err := os.Stat(dir); err != nil {
-		return fmt.Errorf("%s is not installed", ver)
+		fatal("version uninstall: %s is not installed", ver)
 	}
 	if err := os.RemoveAll(dir); err != nil {
-		return err
+		fatal("version uninstall: %v", err)
 	}
 	if activeVersion(d) == ver {
 		_ = os.Remove(d.ConfigFile("active-version"))
 		_ = os.Remove(d.ConfigFile("active-profile"))
 		_ = os.Remove(d.ConfigFile("active-build"))
 	}
-	return nil
+	fmt.Printf("uninstalled wago %s\n", ver)
 }
 
 func uninstallVersionPicker(d wagopaths.Dirs, versions []string) *tui.MultiSelect {

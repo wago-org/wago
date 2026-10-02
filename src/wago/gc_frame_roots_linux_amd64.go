@@ -4,31 +4,25 @@ package wago
 
 import (
 	"fmt"
+	"math"
 
 	railamd64 "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/nativeabi"
 )
 
-// newGCFrameRootPlan admits bounded exact native-root call graphs. Direct local
-// and synchronous host calls may use the wrapper ABI, while dynamic typed-
-// reference calls retain their smaller register-ABI proof. Functions retain a
-// one-word path through 64 tracked collector locals and use compact flat word
-// arenas for larger configured populations. Dead-at-all-sites locals are
-// removed before variable-sized per-site vectors are emitted. Each function
-// gets independent compile state so workers may populate maps in parallel.
-func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string) *shared.GCModuleFrameRootPlan {
-	if diagnostic != nil {
-		*diagnostic = ""
-	}
-	if !exactRoots {
+// newGCFrameRootPlan admits bounded local/cross-instance call graphs whose native
+// ABI is register-bounded. Functions retain a one-word path through 64 collector
+// roots and use compact flat word arenas up to shared.GCFrameRootLimit. Each
+// function gets independent compile state so railshot workers may populate maps
+// in parallel.
+func newGCFrameRootPlan(m *wasm.Module, genericGC bool) *shared.GCModuleFrameRootPlan {
+	if !genericGC {
 		return nil
 	}
 	reject := func(format string, args ...any) *shared.GCModuleFrameRootPlan {
-		if diagnostic != nil {
-			*diagnostic = fmt.Sprintf(format, args...)
-		}
-		return nil
+		return &shared.GCModuleFrameRootPlan{Diagnostic: fmt.Sprintf(format, args...)}
 	}
 	if m == nil || len(m.Code) == 0 {
 		return reject("generic GC module has no local function bodies")
@@ -39,30 +33,18 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string) *sh
 	if !gcFrameTablesSafe(m) {
 		return reject("table or element ownership is outside the exact native-root model")
 	}
-	collectorBoundary := moduleHasCollectorReferenceCallBoundary(m)
 	funcImport := uint32(0)
 	for i := range m.Imports {
 		switch m.Imports[i].Type.Kind {
 		case wasm.ExternFunc:
 			ft, ok := m.FuncSignature(funcImport)
 			funcImport++
-			if !ok {
-				return reject("function import %d has no validated signature", funcImport-1)
-			}
-			// Reference-free imports use the parked synchronous wrapper and need
-			// not also fit the internal register ABI. Preserve the existing
-			// collector-boundary path so reference ownership and root handling
-			// remain coupled to that module-level proof.
-			if collectorBoundary || wasmFuncTypeReferenceFree(ft) {
-				if !gcFrameHostCallABI(ft) {
-					return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
-				}
-			} else if !gcFrameReferenceCallABI(m, ft) {
+			if !ok || !gcFrameCallABI(m, ft) {
 				return reject("function import %d exceeds the exact native call ABI", funcImport-1)
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.GlobalType()
-			if !collectorBoundary && !collectorFrameRefType(m, global.Type) && !frameFunctionRefType(m, global.Type) {
+			if !collectorFrameRefType(m, global.Type) && !frameFunctionRefType(m, global.Type) {
 				return reject("global import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternTable:
@@ -86,25 +68,21 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string) *sh
 	if err != nil {
 		return reject("exception root maps: %v", err)
 	}
-	modulePlan, err := gcFramePrepareModuleRootPlan(m, &classifier)
-	if err != nil {
-		return reject("%v", err)
+	fixedRoots := make([][]uint32, len(m.Code))
+	for i := range ehMaps {
+		if int(ehMaps[i].LocalFunction) >= len(fixedRoots) {
+			return reject("exception root map function %d is out of range", ehMaps[i].LocalFunction)
+		}
+		for _, slot := range ehMaps[i].Slots {
+			if slot.Kind == nativeabi.RootGCRef {
+				fixedRoots[ehMaps[i].LocalFunction] = append(fixedRoots[ehMaps[i].LocalFunction], slot.Offset)
+			}
+		}
 	}
+	modulePlan := &shared.GCModuleFrameRootPlan{Functions: make([]*shared.GCFrameRootPlan, len(m.Code))}
 	var safepointBase uint32
-	ehMapIndex := 0
+functions:
 	for function := range m.Code {
-		hasFixedRoots := false
-		if ehMapIndex < len(ehMaps) && ehMaps[ehMapIndex].LocalFunction == uint32(function) {
-			hasFixedRoots = true
-			ehMapIndex++
-		}
-		if !modulePlan.FunctionPending(function) {
-			continue // RootNone: no safepoint can observe this frame.
-		}
-		var fixedOffsets []uint32
-		if hasFixedRoots {
-			fixedOffsets = gcFrameFixedOffsets(&ehMaps[ehMapIndex-1])
-		}
 		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), &classifier) {
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
@@ -112,21 +90,16 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string) *sh
 		if !ok {
 			return reject("function %d has no validated signature", function)
 		}
-		plan, ok := modulePlan.BeginFunction(function)
-		if !ok {
-			return reject("function %d root plan ownership is invalid", function)
-		}
-		*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase}
-		if !plan.SetFixedOffsets(fixedOffsets) {
-			return reject("function %d has invalid fixed root offsets", function)
-		}
+		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedRoots[function]}
+		mayCollect := gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, &classifier)
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if collectorFrameRefType(m, t) {
-				if len(plan.Locals) == shared.GCFrameTrackedLocalLimit {
+				if len(plan.LocalOffsets) == shared.GCFrameRootLimit || slot > (math.MaxUint32-shared.AMD64FrameHeaderBytes)/8 {
 					return false
 				}
-				plan.Locals = append(plan.Locals, shared.GCFrameLocal{Index: local, Offset: uint32(shared.AMD64FrameHeaderBytes + slot*8)})
+				plan.LocalIndexes = append(plan.LocalIndexes, local)
+				plan.LocalOffsets = append(plan.LocalOffsets, uint32(shared.AMD64FrameHeaderBytes+slot*8))
 			}
 			if wasm.EqualValType(t, wasm.V128) {
 				slot += 2
@@ -138,41 +111,44 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string) *sh
 		}
 		for _, t := range ft.Params {
 			if !add(t) {
-				return reject("function %d exceeds %d tracked collector locals", function, shared.GCFrameTrackedLocalLimit)
+				if !mayCollect {
+					continue functions
+				}
+				return reject("function %d exceeds %d collector roots or the frame-offset bound", function, shared.GCFrameRootLimit)
 			}
 		}
 		for _, run := range m.Code[function].Locals.Runs {
 			for i := uint32(0); i < run.Count; i++ {
 				if !add(run.Type) {
-					return reject("function %d exceeds %d tracked collector locals", function, shared.GCFrameTrackedLocalLimit)
+					if !mayCollect {
+						continue functions
+					}
+					return reject("function %d exceeds %d collector roots or the frame-offset bound", function, shared.GCFrameRootLimit)
 				}
 			}
 		}
-		var liveMasks gcFrameLiveMasks
+		var liveMasks, callMasks []uint64
+		var maskExtra gcFrameLivenessExtra
 		var err error
-		plan.Conservative = bodyUsesEH(m.Code[function].BodyBytes, &classifier) || gcFramePreferConservativeMasks(len(plan.Locals), len(m.Code[function].BodyBytes))
-		if plan.Conservative {
-			liveMasks, err = gcFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.Locals), &classifier)
+		if bodyUsesEH(m.Code[function].BodyBytes, &classifier) {
+			liveMasks, callMasks, err = gcFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.LocalIndexes), &maskExtra, &classifier)
 		} else {
-			liveMasks, err = gcFrameLocalLivenessArenaWithClassifier(m.Code[function].BodyBytes, plan.Locals, &classifier)
+			liveMasks, err = gcFrameLocalLivenessWithClassifier(m.Code[function].BodyBytes, plan.LocalIndexes, &callMasks, &maskExtra, &classifier)
 		}
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
-		plan.Locals, liveMasks, _, err = gcFrameCompactLiveLocalsArena(plan.Locals, liveMasks)
-		if err != nil {
-			return reject("function %d exact local liveness: %v", function, err)
+		if bodyUsesNativeCall(m.Code[function].BodyBytes, &classifier) && !gcFrameCallABI(m, ft) {
+			return reject("function %d exceeds the exact native caller ABI", function)
 		}
-		if uint64(safepointBase)+uint64(liveMasks.allocationN) > uint64(shared.GCSafepointIDMax) {
+		if uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
 			return reject("function %d exceeds the dense safepoint ID bound", function)
 		}
-		if !plan.SetLiveMasks(liveMasks.words, liveMasks.allocationN, liveMasks.callN) {
-			return reject("function %d has malformed exact local liveness masks", function)
-		}
-		safepointBase += uint32(liveMasks.allocationN)
-	}
-	if ehMapIndex != len(ehMaps) {
-		return reject("exception root map function %d is out of range", ehMaps[ehMapIndex].LocalFunction)
+		plan.LiveLocalMasks = liveMasks
+		plan.LiveCallLocalMasks = callMasks
+		plan.LiveMaskExtraWords = maskExtra.words
+		modulePlan.Functions[function] = plan
+		safepointBase += uint32(len(liveMasks))
 	}
 	return modulePlan
 }
@@ -240,6 +216,9 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
 		}
 		for _, expr := range e.Kind.Exprs {
 			if kind == 2 && e.Kind.Ref.Heap().Kind() == wasm.HeapAbs && e.Kind.Ref.Heap().Abs() == wasm.HeapI31 {
+				// Validation and compileElemValues already proved each expression is
+				// an exact immediate i31 or immutable global value; neither adds an
+				// independent collector root beyond the global root.
 				continue
 			}
 			ee, err := wasm.ParseElementExpr(expr)
@@ -280,7 +259,7 @@ func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctio
 		}
 		if op == 0x14 || op == 0x15 {
 			ft, ok := m.TypeFunc(imm.Index)
-			if !ok || !gcFrameReferenceCallABI(m, ft) {
+			if !ok || !gcFrameCallABI(m, ft) {
 				return true
 			}
 		}
@@ -307,37 +286,29 @@ func bodyUsesEH(body []byte, classifier *wasm.ModuleInstructionClassifier) bool 
 	return false
 }
 
-func gcFrameConservativeMasks(body []byte, localRoots int, classifier *wasm.ModuleInstructionClassifier) (gcFrameLiveMasks, error) {
-	return gcFrameAllLiveMasksArenaWithClassifier(body, localRoots, classifier)
+func gcFrameConservativeMasks(body []byte, localRoots int, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) (allocations, calls []uint64, err error) {
+	return gcFrameAllLiveMasksWithClassifier(body, localRoots, extra, classifier)
 }
 
-func gcFrameHostCallABI(ft *wasm.CompType) bool {
-	if ft == nil {
-		return false
-	}
-	slots := func(types []wasm.ValType) (int, bool) {
-		n := 0
-		for _, typ := range types {
-			switch {
-			case wasm.EqualValType(typ, wasm.V128):
-				n += 2
-			case wasm.EqualValType(typ, wasm.I32), wasm.EqualValType(typ, wasm.I64), wasm.EqualValType(typ, wasm.F32), wasm.EqualValType(typ, wasm.F64), typ.Kind() == wasm.ValRef:
-				n++
-			default:
-				return 0, false
-			}
+func bodyUsesNativeCall(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
+	r := wasm.NewReader(body)
+	var imm wasm.InstructionImmediate
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return true
 		}
-		return n, true
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+			return true
+		}
+		if op == 0x10 || op == 0x12 || op == 0x14 || op == 0x15 {
+			return true
+		}
 	}
-	params, ok := slots(ft.Params)
-	if !ok || params > 64 {
-		return false
-	}
-	results, ok := slots(ft.Results)
-	return ok && results <= 64
+	return false
 }
 
-func gcFrameReferenceCallABI(m *wasm.Module, ft *wasm.CompType) bool {
+func gcFrameCallABI(m *wasm.Module, ft *wasm.CompType) bool {
 	if ft == nil || len(ft.Results) > 2 {
 		return false
 	}
@@ -382,5 +353,39 @@ func frameFunctionRefType(m *wasm.Module, t wasm.ValType) bool {
 		return valid && kind == wasm.CompFunc
 	default:
 		return false
+	}
+}
+
+func collectorFrameRefType(m *wasm.Module, t wasm.ValType) bool {
+	if t.Kind() != wasm.ValRef {
+		return false
+	}
+	heap := t.Ref().Heap()
+	switch heap.Kind() {
+	case wasm.HeapAbs:
+		switch heap.Abs() {
+		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
+			return true
+		default:
+			return false
+		}
+	case wasm.HeapDefType:
+		kind, valid := heap.DefCompKind()
+		if !valid {
+			return true
+		}
+		return kind == wasm.CompStruct || kind == wasm.CompArray
+	case wasm.HeapTypeIndex:
+		index := heap.Type().Index
+		for _, group := range m.Types {
+			if index < uint32(len(group.SubTypes)) {
+				kind := group.SubTypes[index].Comp.Kind
+				return kind == wasm.CompStruct || kind == wasm.CompArray
+			}
+			index -= uint32(len(group.SubTypes))
+		}
+		return true
+	default:
+		return true
 	}
 }

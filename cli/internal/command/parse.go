@@ -7,9 +7,8 @@ import (
 	"github.com/wago-org/wago/cli/internal/automation"
 )
 
-// WantsHelp reports whether help appears before the explicit guest-argument
-// separator. Recognized command flags remain flags after positionals.
-func WantsHelp(args []string, _ bool, flags []Flag) bool {
+// WantsHelp reports whether help appears before positional pass-through begins.
+func WantsHelp(args []string, passThrough bool, flags []Flag) bool {
 	lookup := flagLookup(flags)
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
@@ -19,6 +18,9 @@ func WantsHelp(args []string, _ bool, flags []Flag) bool {
 		if arg == "-h" || arg == "--help" {
 			return true
 		}
+		if passThrough && (arg == "" || arg[0] != '-') {
+			return false
+		}
 		name, inline := splitFlag(arg)
 		if flag := lookup[name]; flag != nil && !flag.Bool && !inline && index+1 < len(args) {
 			index++
@@ -27,18 +29,16 @@ func WantsHelp(args []string, _ bool, flags []Flag) bool {
 	return false
 }
 
-// Parse accepts long and short flags, inline values, and a positional
-// terminator. Pass-through commands keep recognizing their own flags after the
-// first positional; unknown flags there belong to the guest. Use -- when a
-// guest argument intentionally collides with a command flag.
+// Parse accepts long and short flags, inline values, a positional terminator,
+// and first-positional pass-through for guest arguments.
 func (c *Cmd) Parse(path string, args []string) (*Ctx, error) {
 	ctx := &Ctx{Cmd: c, Path: path, input: append([]string(nil), args...), strs: map[string]string{}, bools: map[string]bool{}}
 	lookup := flagLookup(c.AllFlags())
-	raw, positional := false, false
+	raw, passThrough := false, false
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
 		switch {
-		case raw:
+		case raw || passThrough:
 			ctx.Args = append(ctx.Args, arg)
 			continue
 		case arg == "--":
@@ -46,16 +46,12 @@ func (c *Cmd) Parse(path string, args []string) (*Ctx, error) {
 			continue
 		case arg == "-" || arg == "" || arg[0] != '-':
 			ctx.Args = append(ctx.Args, arg)
-			positional = true
+			passThrough = c.PassThrough
 			continue
 		}
 		name, inlineValue, inline := splitFlagValue(arg)
 		flag := lookup[name]
 		if flag == nil {
-			if c.PassThrough && positional {
-				ctx.Args = append(ctx.Args, arg)
-				continue
-			}
 			return nil, fmt.Errorf("unknown flag %s", name)
 		}
 		if flag.Bool {
@@ -92,30 +88,27 @@ func (c *Cmd) Parse(path string, args []string) (*Ctx, error) {
 // ConfigureAutomation records automation flags from one command invocation
 // without executing it. Managers use this before handing runtime-owned commands
 // to another executable so pre-handoff errors honor --json and --no-input too.
-// For pass-through commands, recognized command flags remain active after the
-// first positional. Unknown flags there belong to the guest.
+// For pass-through commands, flags after the first positional belong to the
+// guest and are deliberately ignored.
 func ConfigureAutomation(c *Cmd, args []string) {
 	options := automation.Merge(automation.FromEnv())
 	lookup := flagLookup(c.AllFlags())
-	raw, positional := false, false
+	raw, passThrough := false, false
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
 		switch {
-		case raw:
+		case raw || passThrough:
 			continue
 		case arg == "--":
 			raw = true
 			continue
 		case arg == "-" || arg == "" || arg[0] != '-':
-			positional = true
+			passThrough = c.PassThrough
 			continue
 		}
 		name, _, inline := splitFlagValue(arg)
 		flag := lookup[name]
 		if flag == nil {
-			if c.PassThrough && positional {
-				continue
-			}
 			continue
 		}
 		switch flag.Name {

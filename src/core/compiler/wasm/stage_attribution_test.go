@@ -69,7 +69,7 @@ func BenchmarkCore3ValidationStages(b *testing.B) {
 						b.Fatal(err)
 					}
 					reportValidationStageShape(b, m)
-					v := &moduleValidator{m: m, funcIndex: -1, limits: defaultValidationLimits}
+					v := &moduleValidator{m: m, funcIndex: -1}
 					b.StartTimer()
 					if err := v.validateModule(); err != nil {
 						b.Fatal(err)
@@ -85,7 +85,7 @@ func BenchmarkCore3ValidationStages(b *testing.B) {
 						b.Fatal(err)
 					}
 					reportValidationStageShape(b, m)
-					v := &moduleValidator{m: m, funcIndex: -1, limits: defaultValidationLimits}
+					v := &moduleValidator{m: m, funcIndex: -1}
 					if err := v.validateModule(); err != nil {
 						b.Fatal(err)
 					}

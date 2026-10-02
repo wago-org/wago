@@ -12,14 +12,14 @@ import (
 func BenchmarkExecBrTableCompactTargetIDsAMD64(b *testing.B) {
 	m := brTableLabelsInRAX(b, []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}, 4)
 	for _, tc := range []struct {
-		name    string
-		compact bool
+		name      string
+		objective OptimizationObjective
 	}{
-		{"ordinary", false},
-		{"compact", true},
+		{"balanced", OptimizeBalanced},
+		{"size", OptimizeSize},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
-			cm, err := CompileModuleWith(m, CompileOptions{CompactNative: tc.compact})
+			cm, err := CompileModuleWith(m, CompileOptions{Objective: &tc.objective})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -44,7 +44,7 @@ func BenchmarkExecBrTableCompactTargetIDsAMD64(b *testing.B) {
 			}
 			defer coreruntime.Unmap(code)
 
-			args, results, trap := arena.Alloc(16), arena.Alloc(8), arena.Alloc(coreruntime.TrapBufferBytes)
+			args, results, trap := arena.Alloc(16), arena.Alloc(8), arena.Alloc(8)
 			binary.LittleEndian.PutUint64(args, 7)
 			binary.LittleEndian.PutUint64(args[8:], 1)
 			b.ResetTimer()

@@ -18,7 +18,7 @@ import (
 type testEnvironment struct{}
 
 func (testEnvironment) ProfileFlags() []command.Flag {
-	return []command.Flag{{Name: "local", Bool: true}, {Name: "global", Short: "g", Bool: true}}
+	return []command.Flag{{Name: "local", Bool: true}}
 }
 func (testEnvironment) LoadRuntime(cfg *wago.RuntimeConfig, guestArgs []string) *wago.Runtime {
 	return wago.NewRuntime(wago.WithRuntimeConfig(cfg), wago.WithGuestArguments(guestArgs))
@@ -77,11 +77,7 @@ func TestHelpCollapsesBooleanPairs(t *testing.T) {
 		t.Fatalf("run help did not collapse advanced optimization help:\n%s", text)
 	}
 	if !strings.Contains(text, "--parallel, -p [workers]") ||
-		!strings.Contains(text, "--native-stack <size>") ||
-		!strings.Contains(text, "--gc-heap <size>") ||
-		!strings.Contains(text, "--gc-nursery <size>") ||
-		!strings.Contains(text, "-p8 / -p 8 / --parallel=8") ||
-		!strings.Contains(text, "use -- before colliding guest flags") {
+		!strings.Contains(text, "-p8 / -p 8 / --parallel=8") {
 		t.Fatalf("run help did not document function parallelism:\n%s", text)
 	}
 	output.Reset()
@@ -103,108 +99,6 @@ func TestHelpRecognitionAfterSeparatedParallelism(t *testing.T) {
 	normalized, err := cmd.Normalize([]string{"-p", "8", "--help"})
 	if err != nil || !command.WantsHelp(normalized, cmd.PassThrough, cmd.Flags) {
 		t.Fatalf("help after separated parallelism was missed: normalized=%v err=%v", normalized, err)
-	}
-}
-
-func TestRunRecognizesFlagsAfterModulePath(t *testing.T) {
-	cmd := Command(testEnvironment{})
-	args, err := cmd.Normalize([]string{"module.wasm", "--global"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, err := cmd.Parse("wago run", args)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !ctx.Bool("global") || len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
-		t.Fatalf("file --global parsed as global=%v args=%v", ctx.Bool("global"), ctx.Args)
-	}
-}
-
-func TestRunNativeStackFlag(t *testing.T) {
-	cmd := Command(testEnvironment{})
-	for _, tc := range []struct {
-		value string
-		want  uint64
-	}{
-		{"512KiB", 512 << 10},
-		{"8MiB", 8 << 20},
-		{"1GiB", 1 << 30},
-		{"8388608B", 8 << 20},
-		{"8388608", 8 << 20},
-	} {
-		normalized, err := cmd.Normalize([]string{"module.wasm", "--native-stack", tc.value})
-		if err != nil {
-			t.Fatalf("normalize %q: %v", tc.value, err)
-		}
-		ctx, err := cmd.Parse("wago run", normalized)
-		if err != nil {
-			t.Fatalf("parse %q: %v", tc.value, err)
-		}
-		got, err := parseNativeStackBytes(ctx.Str("native-stack"))
-		if err != nil || got != tc.want {
-			t.Fatalf("native stack %q = %d, %v; want %d", tc.value, got, err, tc.want)
-		}
-		if len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
-			t.Fatalf("native stack flag consumed guest arguments: %v", ctx.Args)
-		}
-	}
-	for _, value := range []string{"", "511KiB", "524289", "2GiB", "1GB", "many"} {
-		if _, err := parseNativeStackBytes(value); err == nil {
-			t.Errorf("native stack %q was accepted", value)
-		}
-	}
-}
-
-func TestRunGCHeapFlags(t *testing.T) {
-	cmd := Command(testEnvironment{})
-	normalized, err := cmd.Normalize([]string{"module.wasm", "--gc-heap", "2GiB", "--gc-nursery=64MiB"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, err := cmd.Parse("wago run", normalized)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg, configured, err := gcConfiguration(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !configured || cfg.ThroughputHeapBytes != 2<<30 || cfg.NurseryBytes != 64<<20 {
-		t.Fatalf("GC config = %+v, configured=%v", cfg, configured)
-	}
-	if len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
-		t.Fatalf("GC flags consumed guest arguments: %v", ctx.Args)
-	}
-
-	for _, value := range []string{"0", "4GiB", "1GB", "many"} {
-		ctx := command.NewContext(nil, map[string]string{"gc-heap": value}, nil)
-		if _, _, err := gcConfiguration(ctx); err == nil {
-			t.Errorf("gc heap %q was accepted", value)
-		}
-	}
-	if _, configured, err := gcConfiguration(command.NewContext(nil, nil, nil)); err != nil || configured {
-		t.Fatalf("default GC config = configured %v, error %v", configured, err)
-	}
-}
-
-func TestRunParsesNativeArtifactOptInAsBoolean(t *testing.T) {
-	cmd := Command(testEnvironment{})
-	for _, args := range [][]string{
-		{"--allow-native-artifact", "module.wago"},
-		{"module.wago", "--allow-native-artifact"},
-	} {
-		normalized, err := cmd.Normalize(args)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ctx, err := cmd.Parse("wago run", normalized)
-		if err != nil {
-			t.Fatalf("parse %v: %v", args, err)
-		}
-		if !ctx.Bool("allow-native-artifact") || len(ctx.Args) != 1 || ctx.Args[0] != "module.wago" {
-			t.Fatalf("parse %v = opt-in %v, args %v", args, ctx.Bool("allow-native-artifact"), ctx.Args)
-		}
 	}
 }
 
@@ -254,7 +148,7 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	rt := wago.NewRuntime()
 	defer rt.Close()
 	config := wago.NewRuntimeConfig()
-	mod := mustLoadModule(path, config, rt, artifactcache.Cache{}, false)
+	mod := mustLoadModule(path, config, rt, artifactcache.Cache{})
 	if got := mustResolveExport(mod.Compiled(), ""); got != "f" {
 		t.Fatalf("default export = %q", got)
 	}
@@ -269,10 +163,7 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	if err := os.WriteFile(compiledPath, encoded, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if mod, err := loadModule(compiledPath, config, rt, artifactcache.Cache{}, false); err == nil || mod != nil || !strings.Contains(err.Error(), "--allow-native-artifact") {
-		t.Fatalf("untrusted artifact load = %v, %v; want explicit opt-in", mod, err)
-	}
-	if got := mustResolveExport(mustLoadModule(compiledPath, config, rt, artifactcache.Cache{}, true).Compiled(), "f"); got != "f" {
+	if got := mustResolveExport(mustLoadModule(compiledPath, config, rt, artifactcache.Cache{}).Compiled(), "f"); got != "f" {
 		t.Fatalf("loaded export = %q", got)
 	}
 }
@@ -333,20 +224,8 @@ func TestRunParallelFlagForms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ctx.Str("parallel") != "8" || len(ctx.Args) != 1 {
-		t.Fatalf("parallel after module was missed: parallel=%q args=%v", ctx.Str("parallel"), ctx.Args)
-	}
-
-	args, err = cmd.Normalize([]string{"module.wasm", "--", "-p8"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, err = cmd.Parse("wago run", args)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if ctx.Str("parallel") != "" || len(ctx.Args) != 2 || ctx.Args[1] != "-p8" {
-		t.Fatalf("guest -p8 after separator was consumed: parallel=%q args=%v", ctx.Str("parallel"), ctx.Args)
+		t.Fatalf("guest -p8 was consumed: parallel=%q args=%v", ctx.Str("parallel"), ctx.Args)
 	}
 }
 
@@ -363,30 +242,6 @@ func TestRunExecValueMode(t *testing.T) {
 	}
 	implementation{environment: testEnvironment{}}.Run(command.NewContext([]string{path}, nil, nil))
 	implementation{environment: testEnvironment{}}.Run(command.NewContext([]string{path}, nil, map[string]bool{"no-deferred-bounds-checking": true}))
-}
-
-func TestRunExecGCHeapOverride(t *testing.T) {
-	if wago.CoreFeaturesV3&^wago.SupportedFeatures() != 0 {
-		t.Skip("complete Core 3 execution is unavailable on this platform")
-	}
-	t.Setenv("WAGO_BARE", "1")
-	// (module (type (array (mut i8))) (func (export "_start")
-	//   i32.const 20971520 array.new_default 0 drop))
-	wasm := []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
-		0x01, 0x07, 0x02, 0x5e, 0x78, 0x01, 0x60, 0x00,
-		0x00, 0x03, 0x02, 0x01, 0x01, 0x07, 0x0a, 0x01,
-		0x06, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x00,
-		0x00, 0x0a, 0x0d, 0x01, 0x0b, 0x00, 0x41, 0x80,
-		0x80, 0x80, 0x0a, 0xfb, 0x07, 0x00, 0x1a, 0x0b}
-	path := filepath.Join(t.TempDir(), "large-array.wasm")
-	if err := os.WriteFile(path, wasm, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	implementation{environment: testEnvironment{}}.Run(command.NewContext(
-		[]string{path},
-		map[string]string{"core": "3", "gc-heap": "32MiB"},
-		nil,
-	))
 }
 
 func TestRunExecProgramMode(t *testing.T) {

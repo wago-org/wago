@@ -22,39 +22,25 @@ func compactI32FrameModule(t *testing.T) *wasm.Module {
 	return modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
 }
 
-func compactI32FrameOptions(enabled bool, stats *ModuleStats) CompileOptions {
-	return CompileOptions{
-		Stats: stats,
-		Optimizations: map[string]bool{
-			"compact-i32-frame": enabled,
-			"frame-elide":       false,
-		},
-	}
-}
-
-func compileCompactI32FrameStats(t *testing.T, m *wasm.Module, enabled bool) *CodegenStats {
-	t.Helper()
-	stats := &ModuleStats{}
-	cm, err := CompileModuleWith(m, compactI32FrameOptions(enabled, stats))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cm.CodeImage != nil {
-		t.Cleanup(func() { _ = cm.CodeImage.Close() })
-	}
-	return stats.Funcs[0]
-}
-
 func TestCompactI32Frame(t *testing.T) {
+	defer func(compact, control, elide bool) {
+		compactI32FrameEnabled = compact
+		compactI32ControlFlowEnabled = control
+		smallFrameElideEnabled = elide
+	}(compactI32FrameEnabled, compactI32ControlFlowEnabled, smallFrameElideEnabled)
+	smallFrameElideEnabled = false
+
 	m := compactI32FrameModule(t)
-	off := compileCompactI32FrameStats(t, m, false)
-	got, _, err := runMemAmd64WithOptions(t, m, compactI32FrameOptions(false, nil), nil)
+	compactI32FrameEnabled = false
+	off := compileWithStats(t, m, false).Funcs[0]
+	got, _, err := runMemAmd64(t, m, nil)
 	if err != nil || got != 100 {
 		t.Fatalf("unpacked result = %d, err=%v, want 100", got, err)
 	}
 
-	on := compileCompactI32FrameStats(t, m, true)
-	got, _, err = runMemAmd64WithOptions(t, m, compactI32FrameOptions(true, nil), nil)
+	compactI32FrameEnabled = true
+	on := compileWithStats(t, m, false).Funcs[0]
+	got, _, err = runMemAmd64(t, m, nil)
 	if err != nil || got != 100 {
 		t.Fatalf("packed result = %d, err=%v, want 100", got, err)
 	}
@@ -78,15 +64,23 @@ func TestCompactI32FrameThroughControlFlow(t *testing.T) {
 		0x20, 0x02, 0x6a, 0x20, 0x03, 0x6a,
 		0x0b}
 	m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
-	rollback := compileCompactI32FrameStats(t, m, false)
-	enabled := compileCompactI32FrameStats(t, m, true)
+	beforeCompact, beforeControl := compactI32FrameEnabled, compactI32ControlFlowEnabled
+	t.Cleanup(func() {
+		compactI32FrameEnabled = beforeCompact
+		compactI32ControlFlowEnabled = beforeControl
+	})
+	compactI32FrameEnabled = true
+	compactI32ControlFlowEnabled = false
+	rollback := compileWithStats(t, m, false).Funcs[0]
+	compactI32ControlFlowEnabled = true
+	enabled := compileWithStats(t, m, false).Funcs[0]
 	if enabled.FrameBytes >= rollback.FrameBytes {
 		t.Fatalf("packed control-flow frame = %d bytes, rollback = %d", enabled.FrameBytes, rollback.FrameBytes)
 	}
 	if enabled.Peephole["compact-i32-frame"] != 1 {
 		t.Fatalf("compact-i32-frame hits = %d, want 1", enabled.Peephole["compact-i32-frame"])
 	}
-	got, _, err := runMemAmd64WithOptions(t, m, compactI32FrameOptions(true, nil), nil)
+	got, _, err := runMemAmd64(t, m, nil)
 	if err != nil || got != 100 {
 		t.Fatalf("packed control-flow result = %d, err=%v, want 100", got, err)
 	}
@@ -108,16 +102,23 @@ func TestCompactI32FrameAcrossCall(t *testing.T) {
 		funcDef{results: []wasm.ValType{wasm.I32}, body: caller},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: callee},
 	)
-	rollback := compileCompactI32FrameStats(t, m, false)
-	enabled := compileCompactI32FrameStats(t, m, true)
+	beforeCompact, beforeCalls := compactI32FrameEnabled, compactI32CallsEnabled
+	t.Cleanup(func() {
+		compactI32FrameEnabled = beforeCompact
+		compactI32CallsEnabled = beforeCalls
+	})
+	compactI32FrameEnabled = true
+	compactI32CallsEnabled = false
+	rollback := compileWithStats(t, m, false).Funcs[0]
+	compactI32CallsEnabled = true
+	enabled := compileWithStats(t, m, false).Funcs[0]
 	if enabled.FrameBytes >= rollback.FrameBytes {
 		t.Fatalf("packed call frame = %d bytes, rollback = %d", enabled.FrameBytes, rollback.FrameBytes)
 	}
 	if enabled.Peephole["compact-i32-frame"] != 1 {
 		t.Fatalf("compact-i32-frame hits = %d, want 1", enabled.Peephole["compact-i32-frame"])
 	}
-	got, _, err := runMemAmd64WithOptions(t, m, compactI32FrameOptions(true, nil), nil)
-	if err != nil || got != 42 {
-		t.Fatalf("packed call result = %d, err=%v, want 42", got, err)
+	if got := runAmd64(t, m); got != 42 {
+		t.Fatalf("packed call result = %d, want 42", got)
 	}
 }

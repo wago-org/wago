@@ -38,16 +38,13 @@ const inlineMaxBodyBytes = 160
 // to estimate the saved bytes in the report, so an approximate constant is fine.
 const inlineCallSeqBytes = 24
 
-// Keep the common distinct-target set on the stack. The fixed bound caps
-// linear comparisons; callers above it retain exact behavior through a map.
-const inlineLinearSeenTargets = 8
-
-// Reuse ordinary caller base maps across functions without allowing one caller
-// with a very large inline plan to establish module-lifetime map high-water.
-const maxRetainedInlineBases = 64
+// inlineLoopCallees (WAGO_INLINE_LOOPCALLEE=1) re-enables inlining of leaf callees
+// that contain a loop. Off by default: loop-carrying bodies are a net-negative to
+// splice (see inlineClass).
+var inlineLoopCallees = os.Getenv("WAGO_INLINE_LOOPCALLEE") == "1"
 
 // inlineDeadBodyEnabled is the rollout/measurement oracle for module-layout
-// omission of fully spliced, non-addressable compact callees.
+// omission of fully spliced, non-addressable Size callees.
 var inlineDeadBodyEnabled = os.Getenv("WAGO_INLINE_DEAD_BODY") != "0"
 
 var inlineMaxBytes = func() int {
@@ -59,8 +56,8 @@ var inlineMaxBytes = func() int {
 	return inlineMaxBodyBytes
 }()
 
-var compactInlineMaxBytesOverride = func() int {
-	if v := os.Getenv("WAGO_COMPACT_INLINE_MAXBYTES"); v != "" {
+var sizeInlineMaxBytesOverride = func() int {
+	if v := os.Getenv("WAGO_SIZE_INLINE_MAXBYTES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
 			return n
 		}
@@ -68,11 +65,11 @@ var compactInlineMaxBytesOverride = func() int {
 	return -1
 }()
 
-func compactInlineBodyLimit(policy CodegenPolicy) int {
-	if compactInlineMaxBytesOverride >= 0 {
-		return compactInlineMaxBytesOverride
+func sizeInlineBodyLimit(policy CodegenPolicy) int {
+	if sizeInlineMaxBytesOverride >= 0 {
+		return sizeInlineMaxBytesOverride
 	}
-	return int(policy.MaxCompactInlineBodyBytes)
+	return int(policy.MaxSizeInlineBodyBytes)
 }
 
 // inlineFacts are the per-function facts the candidacy decision needs.
@@ -152,8 +149,8 @@ func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineRepor
 	}
 
 	maxBodyBytes := inlineMaxBytes
-	if policy.CompactNative {
-		maxBodyBytes = compactInlineBodyLimit(policy)
+	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+		maxBodyBytes = sizeInlineBodyLimit(policy)
 	}
 	rep := &InlineReport{MaxBodyBytes: maxBodyBytes}
 	rep.Funcs = make([]InlineCandidateInfo, n)
@@ -188,8 +185,8 @@ func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 	switch {
 	case f.moduleEH:
 		return false, "requires exception-handling frame"
-	case policy.CompactNative && !compactInlineOK(f, policy):
-		return false, "native compaction requires proved native-byte win"
+	case (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) && !sizeInlineOK(f, policy):
+		return false, "size objective requires proved native-byte win"
 	case f.hasControlCall:
 		return false, "has call_indirect/return_call"
 	case f.calleeCount > 0:
@@ -201,14 +198,15 @@ func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 		return false, fmt.Sprintf("non-leaf (%d call(s))", f.calleeCount)
 	case !f.regABIIntOnly:
 		return false, "signature not int-only reg-ABI"
-	case f.hasLoop:
+	case f.hasLoop && !policy.EnabledOption(optInlineLoopCallees):
 		// A leaf callee that contains a LOOP is a net-negative to splice: its loop
 		// body lands inside the caller's hot region and adds register pressure /
 		// code that outweighs the call it removes. Measured: excluding these speeds
 		// Impart's libinjection SQLi rule ~3% and sha256 ~2.7% (both big scan/hash
 		// functions), with no measurable regression elsewhere on the corpus (the
 		// straight-line and simple-branch leaf helpers — the real inline win, e.g.
-		// many_funcs, json serialize — are unaffected).
+		// many_funcs, json serialize — are unaffected). Opt back in for A/B with
+		// WAGO_INLINE_LOOPCALLEE=1.
 		return false, "leaf callee contains a loop"
 	case f.bodyBytes > inlineMaxBytes:
 		return false, fmt.Sprintf("too big (%dB > %dB)", f.bodyBytes, inlineMaxBytes)
@@ -221,11 +219,11 @@ func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	switch {
 	case f.moduleEH:
 		return false
-	case policy.CompactNative:
-		return compactInlineOK(f, policy)
+	case policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded:
+		return sizeInlineOK(f, policy)
 	case f.hasControlCall, f.calleeCount > 0, !f.regABIIntOnly:
 		return false
-	case f.hasLoop:
+	case f.hasLoop && !policy.EnabledOption(optInlineLoopCallees):
 		return false
 	case f.bodyBytes > inlineMaxBytes:
 		return false
@@ -234,9 +232,9 @@ func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	}
 }
 
-func compactInlineOK(f inlineFacts, policy CodegenPolicy) bool {
+func sizeInlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	return !f.moduleEH && !f.hasControlCall && f.calleeCount == 0 &&
-		f.callSites == 1 && f.straightLine() && f.bodyBytes <= compactInlineBodyLimit(policy) &&
+		f.callSites == 1 && f.straightLine() && f.bodyBytes <= sizeInlineBodyLimit(policy) &&
 		f.params <= 1 && f.results <= 1 && f.declaredLocals == 0 &&
 		!f.touchesMem && !f.touchesGlobal
 }
@@ -458,69 +456,40 @@ func envDefaultOn(v string) bool {
 // inlineTarget is a callee that will be spliced at its call sites: a straight-line
 // leaf with an int-only register-ABI signature and a small body.
 type inlineTarget struct {
-	body           []byte // the callee's expression bytecode (ends in the terminating `end`)
-	globalIdx      int    // global function index (what a `call` immediate names)
+	valid          bool
+	globalIdx      int // global function index (what a `call` immediate names)
 	localDeclBytes uint32
-	typeStart      uint32
-	localTypeEnd   uint32
-	resultTypeEnd  uint32
-	params         uint32 // param count (callee locals 0..params-1)
-	res0           machineType
-	touchesMem     bool // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
-	touchesGlob    bool // the body reads or writes a global
-	hasCtrl        bool // the body has control flow → splice through a synthetic boundary frame
-	omitStandalone bool // module layout may omit this unreachable standalone body
+	body           []byte        // the callee's expression bytecode (ends in the terminating `end`)
+	params         int           // param count (callee locals 0..params-1)
+	nLocals        int           // params + declared locals
+	localTypes     []machineType // length nLocals: the callee's local machine types
+	resultTypes    []machineType // the callee's result machine types
+	res0           machineType   // first result type (mtNone if none) — for the single-result merge
+	touchesMem     bool          // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
+	touchesGlob    bool          // the body reads or writes a global
+	hasCtrl        bool          // the body has control flow → splice through a synthetic boundary frame
+	omitStandalone bool          // module layout may omit this unreachable standalone body
 }
-
-// inlineTargetData keeps the dense local-function lookup separate from the
-// pointer-rich records for admitted callees. Most modules have many functions
-// but few inline targets, so one 32-bit slot per function is materially smaller
-// than one target (and three slice headers) per function.
-type inlineTargetData struct {
-	slots   []uint32 // local function index -> targets index + 1; zero is not admitted
-	targets []inlineTarget
-	types   []machineType
-}
-
-// inlineTargetInvalid marks a candidate pruned after construction. Keeping its
-// compact slot lets transitive omission analysis inspect the original candidate
-// without making it reachable to ordinary call-site lookup.
-const inlineTargetInvalid = uint32(1 << 31)
 
 type inlineTargetTable struct {
 	first      int
-	data       *inlineTargetData
+	targets    []inlineTarget
 	classifier wasm.ModuleInstructionClassifier
 }
 
 func (ts inlineTargetTable) target(globalIdx int) *inlineTarget {
 	localIdx := globalIdx - ts.first
-	if ts.data == nil || localIdx < 0 || localIdx >= len(ts.data.slots) {
+	if localIdx < 0 || localIdx >= len(ts.targets) || !ts.targets[localIdx].valid {
 		return nil
 	}
-	slot := ts.data.slots[localIdx]
-	if slot == 0 || slot&inlineTargetInvalid != 0 {
-		return nil
-	}
-	return &ts.data.targets[slot-1]
+	return &ts.targets[localIdx]
 }
 
-func (ts inlineTargetTable) empty() bool { return ts.data == nil || len(ts.data.targets) == 0 }
-
-func (ts inlineTargetTable) localTypes(t *inlineTarget) []machineType {
-	return ts.data.types[t.typeStart:t.localTypeEnd:t.localTypeEnd]
-}
-
-func (ts inlineTargetTable) resultTypes(t *inlineTarget) []machineType {
-	return ts.data.types[t.localTypeEnd:t.resultTypeEnd:t.resultTypeEnd]
-}
+func (ts inlineTargetTable) empty() bool { return len(ts.targets) == 0 }
 
 func (ts inlineTargetTable) omitStandaloneBody(localIdx int, hostAdapter bool) bool {
-	if !inlineDeadBodyEnabled || hostAdapter {
-		return false
-	}
-	t := ts.target(ts.first + localIdx)
-	return t != nil && t.omitStandalone
+	return inlineDeadBodyEnabled && !hostAdapter && localIdx >= 0 && localIdx < len(ts.targets) &&
+		ts.targets[localIdx].valid && ts.targets[localIdx].omitStandalone
 }
 
 // buildInlineTargets returns the straight-line leaf inline candidates keyed by
@@ -533,7 +502,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 	}
 	hasCall := false
 	for i := range allHints {
-		if allHints[i].flags.has(hintHasCall) {
+		if allHints[i].hasCall {
 			hasCall = true
 			break
 		}
@@ -542,109 +511,105 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		return inlineTargetTable{}
 	}
 	importedFuncs := m.ImportedFuncCount()
-	if uint64(len(m.Code)) > uint64(^uint32(0)) {
-		return inlineTargetTable{}
-	}
-	candidateCount, typeCount := 0, 0
+	targets := inlineTargetTable{classifier: wasm.NewModuleInstructionClassifier(m, true)}
+	var typeArena []machineType
 	for i := range m.Code {
-		ft, _, ok := inlineTargetFacts(m, allHints, i, policy)
-		if !ok {
-			continue
+		body := m.Code[i].BodyBytes
+		if len(body) == 0 {
+			continue // AST-only bodies are not spliced (the byte body drives the splice)
 		}
-		candidateCount++
-		add := int(allHints[i].localCount) + len(ft.Results)
-		if add < 0 || typeCount > int(^uint32(0))-add {
-			// Inlining is optional. Fall back to direct calls instead of retaining a
-			// sidecar whose compact 32-bit ranges cannot represent this module.
-			return inlineTargetTable{}
-		}
-		typeCount += add
-	}
-	if candidateCount == 0 || candidateCount >= int(inlineTargetInvalid) {
-		return inlineTargetTable{}
-	}
-	data := &inlineTargetData{
-		slots:   make([]uint32, len(m.Code)),
-		targets: make([]inlineTarget, 0, candidateCount),
-		types:   make([]machineType, 0, typeCount),
-	}
-	targets := inlineTargetTable{first: importedFuncs, data: data, classifier: wasm.NewModuleInstructionClassifier(m, true)}
-	for i := range m.Code {
-		ft, facts, ok := inlineTargetFacts(m, allHints, i, policy)
-		if !ok {
+		ft, ok := m.LocalFuncType(i)
+		if !ok || ft == nil {
 			continue
 		}
 		h := allHints[i]
-		localStart := len(data.types)
+		if h.moduleEH {
+			continue
+		}
+		touchesGlobal := false
+		for _, score := range h.globalScore {
+			if score != 0 {
+				touchesGlobal = true
+				break
+			}
+		}
+		facts := inlineFacts{
+			bodyBytes:      len(body),
+			hasLoop:        h.hasLoop,
+			hasControlFlow: h.hasControlFlow,
+			touchesGlobal:  touchesGlobal,
+			touchesMem:     h.touchesMemory || h.usesBulkMem,
+			params:         len(ft.Params),
+			results:        len(ft.Results),
+			declaredLocals: h.nLocals - len(ft.Params),
+			callSites:      int(h.inlineCallSites),
+			regABIIntOnly:  sigFitsRegABI(ft) && sigIsIntOnly(ft),
+		}
+		if h.hasCall {
+			facts.calleeCount = 1
+		}
+		// The transform class: a leaf (no calls, so non-recursive/acyclic) with an
+		// int-only reg-ABI signature and a small body. Memory/global ops and
+		// multi-slot (v128/float) declared locals are allowed. Control flow is
+		// allowed too: such a callee is spliced through a synthetic block frame that
+		// stands in for its function boundary (its `return`/`end` merge there), so
+		// the existing block/br/convergence machinery lowers it. A straight-line
+		// callee skips the frame entirely (the cheaper fast path).
+		if !inlineOK(facts, policy) {
+			continue
+		}
+		if targets.empty() {
+			targets.first = importedFuncs
+			targets.targets = make([]inlineTarget, len(m.Code))
+			typeCount := 0
+			for j := range m.Code {
+				if candidateType, ok := m.LocalFuncType(j); ok {
+					typeCount += allHints[j].nLocals + len(candidateType.Results)
+				}
+			}
+			typeArena = make([]machineType, 0, typeCount)
+		}
+		localStart := len(typeArena)
 		for _, p := range ft.Params {
-			data.types = append(data.types, mtOf(p))
+			typeArena = append(typeArena, mtOf(p))
 		}
 		for _, run := range m.Code[i].Locals.Runs {
 			for k := 0; k < int(run.Count); k++ {
-				data.types = append(data.types, mtOf(run.Type))
+				typeArena = append(typeArena, mtOf(run.Type))
 			}
 		}
-		localEnd := len(data.types)
+		localEnd := len(typeArena)
 		for _, result := range ft.Results {
-			data.types = append(data.types, mtOf(result))
+			typeArena = append(typeArena, mtOf(result))
 		}
-		resultEnd := len(data.types)
+		resultEnd := len(typeArena)
+		lt := typeArena[localStart:localEnd:localEnd]
+		rt := typeArena[localEnd:resultEnd:resultEnd]
 		res0 := mtNone
-		if len(ft.Results) > 0 {
-			res0 = data.types[localEnd]
+		if len(rt) > 0 {
+			res0 = rt[0]
 		}
-		data.targets = append(data.targets, inlineTarget{
-			body:           m.Code[i].BodyBytes,
+		targets.targets[i] = inlineTarget{
+			valid:          true,
 			globalIdx:      importedFuncs + i,
 			localDeclBytes: m.Code[i].LocalDeclBytes,
-			typeStart:      uint32(localStart),
-			localTypeEnd:   uint32(localEnd),
-			resultTypeEnd:  uint32(resultEnd),
-			params:         uint32(facts.params),
+			body:           body,
+			params:         facts.params,
+			nLocals:        len(lt),
+			localTypes:     lt,
+			resultTypes:    rt,
 			res0:           res0,
 			touchesMem:     facts.touchesMem,
 			touchesGlob:    facts.touchesGlobal,
 			hasCtrl:        facts.hasControlFlow,
-			omitStandalone: policy.CompactNative &&
-				h.inlineCallSites == 1 && h.directCallRefs == 1 && !h.flags.has(hintHasInlineLoopCall),
-		})
-		data.slots[i] = uint32(len(data.targets))
+			omitStandalone: (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) &&
+				h.inlineCallSites == 1 && h.directCallRefs == 1 && !h.hasInlineLoopCall,
+		}
 	}
-	if policy.CompactNative {
+	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
 		pruneNestedSizeInlineTargets(m, &targets)
 	}
 	return targets
-}
-
-func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy CodegenPolicy) (*wasm.CompType, inlineFacts, bool) {
-	body := m.Code[i].BodyBytes
-	if len(body) == 0 {
-		return nil, inlineFacts{}, false
-	}
-	ft, ok := m.LocalFuncType(i)
-	if !ok || ft == nil {
-		return nil, inlineFacts{}, false
-	}
-	h := allHints[i]
-	if h.flags.has(hintModuleEH) {
-		return nil, inlineFacts{}, false
-	}
-	facts := inlineFacts{
-		bodyBytes:      len(body),
-		hasLoop:        h.flags.has(hintHasLoop),
-		hasControlFlow: h.flags.has(hintHasControlFlow),
-		touchesGlobal:  h.globalCount != 0,
-		touchesMem:     h.flags.has(hintTouchesMemory | hintUsesBulkMem),
-		params:         len(ft.Params),
-		results:        len(ft.Results),
-		declaredLocals: int(h.localCount) - len(ft.Params),
-		callSites:      int(h.inlineCallSites),
-		regABIIntOnly:  sigFitsRegABI(ft) && sigIsIntOnly(ft),
-	}
-	if h.flags.has(hintHasCall) {
-		facts.calleeCount = 1
-	}
-	return ft, facts, inlineOK(facts, policy)
 }
 
 // pruneNestedSizeInlineTargets prevents transitive body omission without a
@@ -656,30 +621,26 @@ func pruneNestedSizeInlineTargets(m *wasm.Module, targets *inlineTargetTable) {
 	if targets.empty() {
 		return
 	}
-	for targetIndex := range targets.data.targets {
-		target := &targets.data.targets[targetIndex]
-		localIdx := target.globalIdx - targets.first
-		if len(m.Code[localIdx].BodyBytes) == 0 {
+	for i := range targets.targets {
+		target := &targets.targets[i]
+		if !target.valid || len(m.Code[i].BodyBytes) == 0 {
 			continue
 		}
-		r := wasm.NewReader(m.Code[localIdx].BodyBytes)
+		r := wasm.NewReader(m.Code[i].BodyBytes)
 		var imm wasm.InstructionImmediate
 		for r.HasNext() {
 			op, err := r.Byte()
 			if err != nil || targets.classifier.ClassifyInto(r, op, &imm) != nil {
-				targets.data.slots[localIdx] |= inlineTargetInvalid
+				target.valid = false
 				break
 			}
 			if imm.Kind != wasm.InstrCall {
 				continue
 			}
-			calleeLocal := int(imm.Index) - targets.first
-			if calleeLocal >= 0 && calleeLocal < len(targets.data.slots) {
-				slot := targets.data.slots[calleeLocal]
-				if slot != 0 && targets.data.targets[(slot&^inlineTargetInvalid)-1].omitStandalone {
-					targets.data.slots[localIdx] |= inlineTargetInvalid
-					break
-				}
+			callee := int(imm.Index) - targets.first
+			if callee >= 0 && callee < len(targets.targets) && targets.targets[callee].omitStandalone {
+				target.valid = false
+				break
 			}
 		}
 	}
@@ -690,7 +651,7 @@ func pruneNestedSizeInlineTargets(m *wasm.Module, targets *inlineTargetTable) {
 // synthetic local area in a caller loop. Keep the direct call in that case; it
 // still benefits from the call-preserving leaf ABI in call.go.
 func (t *inlineTarget) inlineInLoopIsRegressive() bool {
-	return int(t.localTypeEnd-t.typeStart) == int(t.params) && !t.touchesMem && !t.touchesGlob && !t.hasCtrl
+	return t.nLocals == t.params && !t.touchesMem && !t.touchesGlob && !t.hasCtrl
 }
 
 // reserveInlineLocals scans the caller body for calls to inline targets and, for
@@ -706,23 +667,12 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 		return
 	}
 	f.inlineTargets = targets
-	if len(callees) <= maxRetainedInlineBases {
-		clear(f.inlineBasePool)
-		if f.inlineBasePool == nil {
-			f.inlineBasePool = make(map[int]int, len(callees))
-		}
-		f.inlineBase = f.inlineBasePool
-	} else {
-		f.inlineBase = make(map[int]int, len(callees))
-	}
+	f.inlineBase = make(map[int]int, len(callees))
 	for _, t := range callees {
 		base := len(f.localType)
-		for _, lt := range targets.localTypes(t) {
+		for _, lt := range t.localTypes {
 			f.localType = append(f.localType, lt)
-			// compileFuncAttempt rejects the completed frame before any of these
-			// homes are consumed. Accepted native frames are far below uint32
-			// slots, so this representation is exact on every successful path.
-			f.localSlot = append(f.localSlot, uint32(f.nLocalSlots))
+			f.localSlot = append(f.localSlot, f.nLocalSlots)
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, state: lsMem})
 		}
@@ -739,9 +689,7 @@ func collectInlinedCallees(caller *wasm.Func, targets inlineTargetTable) []*inli
 		return nil
 	}
 	var out []*inlineTarget
-	var smallSeen [inlineLinearSeenTargets]int
-	seenN := 0
-	var largeSeen map[int]struct{}
+	var seen map[int]bool
 	r := wasm.NewReader(caller.BodyBytes)
 	var imm wasm.InstructionImmediate
 	for r.HasNext() {
@@ -756,35 +704,13 @@ func collectInlinedCallees(caller *wasm.Func, targets inlineTargetTable) []*inli
 			continue
 		}
 		t := targets.target(int(imm.Index))
-		if t == nil {
+		if t == nil || seen[t.globalIdx] {
 			continue
 		}
-		duplicate := false
-		if largeSeen != nil {
-			_, duplicate = largeSeen[t.globalIdx]
-		} else {
-			for _, globalIdx := range smallSeen[:seenN] {
-				if globalIdx == t.globalIdx {
-					duplicate = true
-					break
-				}
-			}
+		if seen == nil {
+			seen = map[int]bool{}
 		}
-		if duplicate {
-			continue
-		}
-		if largeSeen != nil {
-			largeSeen[t.globalIdx] = struct{}{}
-		} else if seenN < len(smallSeen) {
-			smallSeen[seenN] = t.globalIdx
-			seenN++
-		} else {
-			largeSeen = make(map[int]struct{}, 2*len(smallSeen))
-			for _, globalIdx := range smallSeen {
-				largeSeen[globalIdx] = struct{}{}
-			}
-			largeSeen[t.globalIdx] = struct{}{}
-		}
+		seen[t.globalIdx] = true
 		out = append(out, t)
 	}
 	return out
@@ -829,7 +755,7 @@ func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable, policy Cod
 		case wasm.InstrCall:
 			sawCall = true
 			t := targets.target(int(imm.Index))
-			if t == nil || (loopDepth != 0 && t.inlineInLoopIsRegressive()) {
+			if t == nil || (loopDepth != 0 && t.inlineInLoopIsRegressive() && !policy.EnabledOption(optInlineLoopCallees)) {
 				return false
 			}
 		case wasm.InstrReturnCall, wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef:
@@ -885,8 +811,7 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	// later splice of the same callee rebinds those slots, so realize any operand
 	// still referencing the reserved region into a register/value now. (The control-
 	// flow path already merged results into canonical slots, so this is a no-op there.)
-	nLocals := int(t.localTypeEnd - t.typeStart)
-	f.realizeInlineRange(base, base+nLocals)
+	f.realizeInlineRange(base, base+t.nLocals)
 	f.stats.addInlineSiteBytes(f.a.Len() - start)
 	return nil
 }
@@ -896,22 +821,19 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 // so a call in a loop or a second site always starts from zero). Each declared
 // local is cleared across its full slot width (a v128 local clears both halves).
 func (f *fn) bindInlineParams(t *inlineTarget, base int) {
-	nLocals := int(t.localTypeEnd - t.typeStart)
-	params := int(t.params)
 	// The p args are the top operands (deepest = param 0). Pop each into its param
 	// local. setLocal takes the absolute index (localBase is still 0 here).
-	for i := params - 1; i >= 0; i-- {
+	for i := t.params - 1; i >= 0; i-- {
 		f.setLocal(nil, base+i, false)
 	}
-	if nLocals > params {
+	if t.nLocals > t.params {
 		z := f.allocReg(0)
 		// arm64: zero a register via MOVZ #0 (no flag side-effect, unlike x86's
 		// xor-self). f.st64 hides the scaled-offset encodability fallback for the
 		// frame store (§6.1: never call the raw Store64, which returns ok bool).
 		f.a.MovImm64(z, 0)
-		localTypes := f.inlineTargets.localTypes(t)
-		for i := params; i < nLocals; i++ {
-			for s := 0; s < localTypes[i].stackSlots(); s++ {
+		for i := t.params; i < t.nLocals; i++ {
+			for s := 0; s < t.localTypes[i].stackSlots(); s++ {
 				f.st64(SP, f.localOff(base+i)+int32(8*s), z)
 			}
 			f.locals[base+i].state = lsMem
@@ -928,21 +850,20 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 // result merge are lowered by the existing control-flow machinery.
 func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
 	minCtrl := len(f.ctrl)
-	resultTypes := f.inlineTargets.resultTypes(t)
-	rN := len(resultTypes)
+	rN := len(t.resultTypes)
 	fr := ctrlFrame{
 		kind:        cfBlock,
 		resultN:     rN,
-		branchN:     uint32(rN),
-		types:       resultTypes,
+		branchN:     rN,
+		resultTypes: t.resultTypes,
 		res0:        t.res0,
-		controlSite: -1,
+		elseSite:    -1,
 		height:      f.depth(),
 	}
-	fr.set(ctrlRegMerge1, f.regMerge && rN == 1 && t.res0 != mtNone && t.res0 != mtV128)
-	f.setFrameBaseTypes(&fr, f.currentLogicalTypes())
+	fr.regMerge1 = f.regMerge && rN == 1 && t.res0 != mtNone && t.res0 != mtV128
+	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()...)
 	f.flush()
-	f.pushCtrl(&fr)
+	f.ctrl = append(f.ctrl, fr)
 
 	prevRet := f.inlineRetFrame
 	f.inlineRetFrame = len(f.ctrl) - 1
@@ -980,14 +901,14 @@ func (f *fn) inlineBody(body []byte) error {
 // slot's contents (mirrors realizeLocalRefs, over a range).
 func (f *fn) realizeInlineRange(lo, hi int) {
 	inRange := func(idx int) bool { return idx >= lo && idx < hi }
-	for e := f.s.next(f.s.head); e != f.s.head; {
-		next := f.s.next(e)
+	for e := f.s.head.next; e != f.s.head; {
+		next := e.next
 		switch {
-		case e.elemKind() == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && inRange(e.st.index()):
+		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && inRange(e.st.idx):
 			f.materializeByType(e)
-		case e.elemKind() == ekValue && e.st.kind == stMemRef && (inRange(e.st.memBorrow()) || inRange(e.st.memAliasLocal())):
+		case e.kind == ekValue && e.st.kind == stMemRef && (inRange(e.st.memBorrow()) || inRange(e.st.memAliasLocal())):
 			f.materializeByType(e)
-		case e.elemKind() == ekDeferred && subtreeRefsLocalRange(f.s, e, lo, hi):
+		case e.kind == ekDeferred && subtreeRefsLocalRange(e, lo, hi):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -996,15 +917,15 @@ func (f *fn) realizeInlineRange(lo, hi int) {
 
 // subtreeRefsLocalRange reports whether the valent block rooted at e reads any
 // local in [lo, hi).
-func subtreeRefsLocalRange(s *stack, e *elem, lo, hi int) bool {
+func subtreeRefsLocalRange(e *elem, lo, hi int) bool {
 	if e == nil {
 		return false
 	}
-	if e.elemKind() == ekValue {
-		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.index() >= lo && e.st.index() < hi
+	if e.kind == ekValue {
+		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx >= lo && e.st.idx < hi
 	}
-	if e.elemKind() == ekDeferred {
-		return subtreeRefsLocalRange(s, s.arg0(e), lo, hi) || subtreeRefsLocalRange(s, s.arg1(e), lo, hi)
+	if e.kind == ekDeferred {
+		return subtreeRefsLocalRange(e.arg0, lo, hi) || subtreeRefsLocalRange(e.arg1, lo, hi)
 	}
 	return false
 }

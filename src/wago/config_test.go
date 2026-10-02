@@ -4,7 +4,6 @@ package wago
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"errors"
 	"runtime"
@@ -249,41 +248,6 @@ func TestConfigImmutable(t *testing.T) {
 	}
 }
 
-func TestConfigMemoryCountLimit(t *testing.T) {
-	module := wasmtest.Module(
-		wasmtest.Section(5, wasmtest.Vec(
-			[]byte{0x00, 0x00},
-			[]byte{0x00, 0x00},
-		)),
-	)
-	if SupportedFeatures().IsEnabled(CoreFeatureMultiMemory) {
-		if _, err := Compile(NewRuntimeConfig().WithMaxMemoriesPerModule(1), module); err == nil || !strings.Contains(err.Error(), "memory count 2 exceeds configured limit 1") {
-			t.Fatalf("memory count limit error = %v", err)
-		}
-	}
-	base := NewRuntimeConfig()
-	derived := base.WithMaxMemoriesPerModule(4)
-	if base.MaxMemoriesPerModule() != DefaultMaxMemoriesPerModule || derived.MaxMemoriesPerModule() != 4 {
-		t.Fatalf("memory count configs = base %d derived %d", base.MaxMemoriesPerModule(), derived.MaxMemoriesPerModule())
-	}
-	for _, value := range []uint32{0, MaxMemoriesPerModuleLimit + 1} {
-		if err := base.WithMaxMemoriesPerModule(value).Validate(); err == nil {
-			t.Fatalf("Validate accepted max memories per module %d", value)
-		}
-	}
-	combined := base.WithInstanceLimits(2, 3).WithNativeMemoryMappingLimit(4)
-	if limits := combined.instanceLimits; limits.maxInstances != 2 || limits.maxMemoryBytes != 3 || limits.maxNativeMemoryMappings != 4 {
-		t.Fatalf("combined instance limits = %#v", limits)
-	}
-	updated := combined.WithInstanceLimits(5, 6)
-	if limits := updated.instanceLimits; limits.maxInstances != 5 || limits.maxMemoryBytes != 6 || limits.maxNativeMemoryMappings != 4 {
-		t.Fatalf("updated instance limits = %#v", limits)
-	}
-	if limits := combined.instanceLimits; limits.maxInstances != 2 || limits.maxMemoryBytes != 3 || limits.maxNativeMemoryMappings != 4 {
-		t.Fatalf("WithInstanceLimits mutated base limits = %#v", limits)
-	}
-}
-
 func TestCoreFeaturesV2ReleaseScope(t *testing.T) {
 	want := CoreFeaturesV1 |
 		CoreFeatureBulkMemoryOperations |
@@ -470,38 +434,33 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if err := NewRuntimeConfig().WithFunctionWorkers(-1).Validate(); err == nil || !strings.Contains(err.Error(), "non-negative") {
 		t.Fatalf("negative function workers should fail validation, got %v", err)
 	}
-	if got := NewRuntimeConfig().MaxFunctionLocals(); got != 65535 {
-		t.Fatalf("default max function locals = %d, want 65535", got)
-	}
-	if got := NewRuntimeConfig().MemoryLimitPages(); got != 0 {
-		t.Fatalf("default memory page quota = %d, want unbounded zero", got)
-	}
-	metadata := NewRuntimeConfig().WithMaxInstanceMetadataBytes(1234)
-	if metadata.MaxInstanceMetadataBytes() != 1234 || NewRuntimeConfig().MaxInstanceMetadataBytes() != 0 {
-		t.Fatal("instance metadata quota must be immutable and unbounded by default")
-	}
-	if err := NewRuntimeConfig().WithMaxFunctionLocals(0).Validate(); err == nil || !strings.Contains(err.Error(), "between 1 and 65535") {
-		t.Fatalf("zero max function locals should fail validation, got %v", err)
-	}
-	if err := NewRuntimeConfig().WithMaxFunctionLocals(MaxFunctionLocalsLimit + 1).Validate(); err == nil || !strings.Contains(err.Error(), "between 1 and 65535") {
-		t.Fatalf("oversized max function locals should fail validation, got %v", err)
-	}
-	maximumLocals := NewRuntimeConfig().WithMaxFunctionLocals(MaxFunctionLocalsLimit)
-	if maximumLocals.MaxFunctionLocals() != 65535 || NewRuntimeConfig().MaxFunctionLocals() != DefaultMaxFunctionLocals {
-		t.Fatal("WithMaxFunctionLocals must be immutable and accept the uint16 maximum")
-	}
 	workers := NewRuntimeConfig().WithFunctionWorkers(4)
 	if workers.FunctionWorkers() != 4 || NewRuntimeConfig().FunctionWorkers() != 1 {
 		t.Fatal("WithFunctionWorkers must be immutable and observable; default must remain serial")
 	}
-	stack := NewRuntimeConfig().WithNativeStackBytes(8 << 20)
-	if stack.NativeStackBytes() != 8<<20 || NewRuntimeConfig().NativeStackBytes() != DefaultNativeStackBytes {
-		t.Fatal("WithNativeStackBytes must be immutable and preserve the 4 MiB default")
+	baseObjective := NewRuntimeConfig()
+	sizeObjective := baseObjective.WithOptimizationObjective(OptimizeSize)
+	if baseObjective.OptimizationObjective() != OptimizeBalanced || sizeObjective.OptimizationObjective() != OptimizeSize {
+		t.Fatal("WithOptimizationObjective must be immutable and Balanced must remain the default")
 	}
-	for _, value := range []uint64{MinNativeStackBytes - 1, MinNativeStackBytes + 1, MaxNativeStackBytes + 1} {
-		if err := NewRuntimeConfig().WithNativeStackBytes(value).Validate(); err == nil || !strings.Contains(err.Error(), "native stack bytes") {
-			t.Fatalf("native stack size %d validation = %v", value, err)
-		}
+	if got := OptimizeEmbedded.String(); got != "embedded" {
+		t.Fatalf("embedded objective string = %q", got)
+	}
+	if err := baseObjective.WithOptimizationObjective(OptimizationObjective(255)).Validate(); err == nil || !strings.Contains(err.Error(), "optimization objective") {
+		t.Fatalf("invalid optimization objective validation = %v", err)
+	}
+	balancedCode, err := baseObjective.Compile(benchAddOneModule())
+	if err != nil {
+		t.Fatalf("compile Balanced objective: %v", err)
+	}
+	t.Cleanup(func() { _ = balancedCode.Close() })
+	sizeCode, err := sizeObjective.Compile(benchAddOneModule())
+	if err != nil {
+		t.Fatalf("compile Size objective: %v", err)
+	}
+	t.Cleanup(func() { _ = sizeCode.Close() })
+	if sizeCode.CodeSize() >= balancedCode.CodeSize() {
+		t.Fatalf("public objective did not reach layout policy: Size=%d, Balanced=%d", sizeCode.CodeSize(), balancedCode.CodeSize())
 	}
 	if got := NewRuntimeConfig().WithCompileWorkers(3); got.CompileWorkers() != 3 || got.FunctionWorkers() != 3 {
 		t.Fatal("deprecated compile-worker aliases must preserve the function-worker policy")
@@ -537,73 +496,8 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	}
 	// String is non-empty / informative. The default bounds mode depends on the
 	// build tag (explicit normally, signals-based under wago_guardpage).
-	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") || !strings.Contains(s, "maxFunctionLocals: 65535") || !strings.Contains(s, "nativeStackBytes: 4194304") {
-		t.Fatalf("config String missing bounds mode or serial default policy: %q", s)
-	}
-}
-
-func TestRuntimeRejectsInvalidNativeStackBeforeInstantiation(t *testing.T) {
-	compiled := MustCompile(wasmtest.Module())
-	defer compiled.Close()
-	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithNativeStackBytes(MinNativeStackBytes + 1)))
-	defer rt.Close()
-	module, err := rt.Module(compiled)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer module.Close()
-	if _, err := rt.Instantiate(context.Background(), module); err == nil || !strings.Contains(err.Error(), "16-byte aligned") {
-		t.Fatalf("invalid native stack instantiate = %v", err)
-	}
-}
-
-func TestRuntimeUsesConfiguredNativeStackCapacity(t *testing.T) {
-	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithNativeStackBytes(8 << 20)))
-	defer rt.Close()
-	module, err := rt.Compile(wasmtest.Module())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer module.Close()
-	instance, err := rt.Instantiate(context.Background(), module)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer instance.Close()
-	if got := instance.eng.StackBytes(); got != 8<<20 {
-		t.Fatalf("instance native stack = %d, want %d", got, uint64(8<<20))
-	}
-}
-
-func functionLocalLimitModule(params, locals uint32, typ wasm.ValType) []byte {
-	paramTypes := make([]wasm.ValType, params)
-	for i := range paramTypes {
-		paramTypes[i] = typ
-	}
-	body := []byte{0x01}
-	body = append(body, wasmtest.ULEB(locals)...)
-	body = append(body, wasm.MustEncodeValType(typ), 0x0b)
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(paramTypes, nil))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
-	)
-}
-
-func TestMaxFunctionLocalsCountsParametersAndPreservesStackFence(t *testing.T) {
-	module := functionLocalLimitModule(1, 1, wasm.I32)
-	if _, err := Compile(NewRuntimeConfig().WithMaxFunctionLocals(1), module); err == nil || !strings.Contains(err.Error(), "parameter and local count exceeds configured limit") {
-		t.Fatalf("combined parameter/local limit error = %v", err)
-	}
-	if compiled, err := Compile(NewRuntimeConfig().WithMaxFunctionLocals(2), module); err != nil {
-		t.Fatalf("combined parameter/local boundary: %v", err)
-	} else {
-		compiled.Close()
-	}
-
-	_, err := Compile(NewRuntimeConfig().WithMaxFunctionLocals(MaxFunctionLocalsLimit), functionLocalLimitModule(0, MaxFunctionLocalsLimit, wasm.V128))
-	if err == nil || !strings.Contains(err.Error(), "exceeds stack-fence headroom") {
-		t.Fatalf("uint16 maximum must retain native stack-fence rejection, got %v", err)
+	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") || !strings.Contains(s, "objective: balanced") {
+		t.Fatalf("config String missing bounds mode, objective, or serial default policy: %q", s)
 	}
 }
 
@@ -634,38 +528,14 @@ func TestConfigOptimizationSelectionIsImmutableAndValidated(t *testing.T) {
 	}
 }
 
-func TestRuntimeConfigRejectsDisabledStackFence(t *testing.T) {
-	cfg := NewRuntimeConfig().WithOptimization("stack-fence", false)
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "stack-fence is required") {
-		t.Fatalf("disabled stack-fence validation = %v", err)
-	}
-	if _, err := cfg.Compile(benchAddOneModule()); err == nil || !strings.Contains(err.Error(), "stack-fence is required") {
-		t.Fatalf("disabled stack-fence compile = %v", err)
-	}
-}
-
-func TestMeasuredLowValueOptimizationsAreRemoved(t *testing.T) {
-	for _, info := range NewRuntimeConfig().OptimizationInfos() {
-		switch info.Name {
-		case "inline-loop-callees", "deep-fp-pins", "affine-lea", "tee-spill-elide", "v128-sink", "loop-precheck":
-			t.Fatalf("removed optimization %s is still exposed", info.Name)
-		}
-	}
-}
-
 var defaultRuntimeConfigAllocationSink *RuntimeConfig
 
 func TestDefaultRuntimeConfigAllocationBudget(t *testing.T) {
-	maxConfigAllocs := 1.0
-	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-		// Go's Windows/ARM64 environment lookup currently adds two allocations.
-		maxConfigAllocs = 3
-	}
 	configAllocs := testing.AllocsPerRun(1000, func() {
 		defaultRuntimeConfigAllocationSink = NewRuntimeConfig()
 	})
-	if configAllocs > maxConfigAllocs {
-		t.Fatalf("NewRuntimeConfig allocations = %.0f, want <= %.0f", configAllocs, maxConfigAllocs)
+	if configAllocs > 1 {
+		t.Fatalf("NewRuntimeConfig allocations = %.0f, want <= 1", configAllocs)
 	}
 
 	module := benchAddOneModule()

@@ -17,17 +17,13 @@ type Policy struct {
 
 	// MaxMemoryBytes caps the module's maximum linear memory. 0 means unbounded.
 	MaxMemoryBytes uint64
-	// MaxMemories caps imported and local memories in the module. 0 means
-	// unbounded within the RuntimeConfig limit.
-	MaxMemories uint32
 	// MaxTableEntries caps the module's table size. 0 means unbounded.
 	MaxTableEntries uint32
 	// MaxTags caps the number of declared/imported exception tags. 0 means unbounded.
 	MaxTags uint32
 
-	// MaxInvokeDuration is retained for source compatibility.
-	// Deprecated: use Instance.Call or Runtime invocation APIs with a deadline on
-	// context.Context. Nonzero values return ErrUnsupported at admission.
+	// MaxInvokeDuration bounds a single invocation. Accepted but not yet enforced
+	// by the low-level call path; reserved.
 	MaxInvokeDuration time.Duration
 }
 
@@ -53,9 +49,6 @@ func (p Policy) allows(cap Capability) bool {
 // requires must be permitted, and its declared limits must fit. It returns an
 // error wrapping ErrPermissionDenied on violation. The zero Policy passes.
 func applyPolicy(mod *Module, p Policy) error {
-	if p.MaxInvokeDuration != 0 {
-		return fmt.Errorf("maximum invoke duration policy is unsupported; use a context deadline: %w", ErrUnsupported)
-	}
 	for _, cap := range mod.RequiredCapabilities() {
 		if !p.allows(cap) {
 			return fmt.Errorf("module requires capability %q which the policy does not allow: %w", cap, ErrPermissionDenied)
@@ -70,43 +63,16 @@ func applyPolicy(mod *Module, p Policy) error {
 			return fmt.Errorf("module maximum memory total %d bytes exceeds policy limit %d bytes: %w", maxBytes, p.MaxMemoryBytes, ErrPermissionDenied)
 		}
 	}
-	if p.MaxMemories > 0 && uint64(mod.c.memoryCount()) > uint64(p.MaxMemories) {
-		return fmt.Errorf("module memory count %d exceeds policy limit %d: %w", mod.c.memoryCount(), p.MaxMemories, ErrPermissionDenied)
-	}
 	if p.MaxTableEntries > 0 {
 		for i := 0; i < mod.c.tableCount(); i++ {
-			capacity := uint64(mod.c.tableRuntimeCapacity(i))
-			if declared, ok := mod.c.tableImportAt(i); ok {
-				// Imported tables allocate in their provider. Admission can charge
-				// only the minimum this module requires, not the provider's declared
-				// maximum, which may be sparse table64 metadata.
-				capacity = declared.Min
-			}
-			if capacity > uint64(p.MaxTableEntries) {
-				return fmt.Errorf("module table %d capacity %d exceeds policy limit %d: %w", i, capacity, p.MaxTableEntries, ErrPermissionDenied)
+			size := mod.c.tableMinimum(i)
+			if uint64(size) > uint64(p.MaxTableEntries) {
+				return fmt.Errorf("module table %d size %d exceeds policy limit %d: %w", i, size, p.MaxTableEntries, ErrPermissionDenied)
 			}
 		}
 	}
 	if p.MaxTags > 0 && mod.c.memoryDir != nil && uint32(len(mod.c.memoryDir.ehTags)) > p.MaxTags {
 		return fmt.Errorf("module tag count %d exceeds policy limit %d: %w", len(mod.c.memoryDir.ehTags), p.MaxTags, ErrPermissionDenied)
-	}
-	return nil
-}
-
-func applyResolvedTablePolicy(c *Compiled, imports Imports, p Policy) error {
-	if p.MaxTableEntries == 0 {
-		return nil
-	}
-	for i := 0; i < c.tableImportCount(); i++ {
-		declared, _ := c.tableImportAt(i)
-		table, ok := imports.table(declared.Key)
-		if !ok {
-			continue
-		}
-		capacity, ok := table.runtimeCapacity()
-		if ok && capacity > p.MaxTableEntries {
-			return fmt.Errorf("module imported table %d capacity %d exceeds policy limit %d: %w", i, capacity, p.MaxTableEntries, ErrPermissionDenied)
-		}
 	}
 	return nil
 }

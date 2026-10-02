@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-var benchFuncHints funcHintView
+var benchFuncHints funcHints
 
 func BenchmarkScanFuncHints(b *testing.B) {
 	bodyBytes := []byte{

@@ -1,26 +1,5 @@
 package wasm
 
-// beginBranchTable advances the generation used to stamp distinct target
-// frames. A decoded code section cannot contain enough instructions to exhaust
-// uint32. The overflow branch defensively resets the active frame set.
-func (v *funcValidator) beginBranchTable() {
-	v.branchTableEpoch++
-	if v.branchTableEpoch == 0 {
-		for i := range v.ctrls {
-			v.ctrls[i].branchTableEpoch = 0
-		}
-		v.branchTableEpoch = 1
-	}
-}
-
-// markBranchTableLabel is called only after label has been bounds-checked.
-func (v *funcValidator) markBranchTableLabel(label uint32) bool {
-	f := &v.ctrls[len(v.ctrls)-1-int(label)]
-	fresh := f.branchTableEpoch != v.branchTableEpoch
-	f.branchTableEpoch = v.branchTableEpoch
-	return fresh
-}
-
 // step validates one already-decoded instruction. in is taken by pointer: the
 // Instruction struct is ~56 bytes and this is the validator's innermost hot path,
 // so passing a value here shows up as runtime.duffcopy under profiling.
@@ -156,15 +135,10 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		payloadHeight := len(v.vals)
-		v.beginBranchTable()
-		v.markBranchTableLabel(in.Index)
 		for _, l := range in.Indices() {
 			lt, err := v.label(l)
 			if err != nil {
 				return err
-			}
-			if !v.markBranchTableLabel(l) {
-				continue
 			}
 			if len(lt) != len(dt) {
 				return v.verr(ErrTypeMismatch, "br_table label arity")
@@ -369,12 +343,9 @@ func (v *funcValidator) step(in *Instruction) error {
 		// non-null and remains a subtype of funcref for Release 2 consumers.
 		v.push(RefVal(Ref(false, IndexedHeap(typeIdx), false)))
 	case InstrRefIsNull:
-		x, err := v.pop()
+		_, err := v.pop()
 		if err != nil {
 			return err
-		}
-		if !x.unknown && x.t.Kind() != ValRef {
-			return v.verr(ErrTypeMismatch, "ref.is_null")
 		}
 		v.push(I32)
 	case InstrRefEq:
@@ -787,10 +758,19 @@ func (v *funcValidator) checkMemArg(ma MemArg, natural uint32) (ValType, error) 
 	return I32, nil
 }
 
-func (v *funcValidator) checkAtomicMemArg(ma MemArg, natural uint32) (ValType, error) {
+func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, error) {
 	addr, err := v.checkMemArg(ma, natural)
 	if err != nil {
 		return ValType{}, err
+	}
+	idx := uint32(0)
+	if ma.Mem != nil {
+		idx = uint32(*ma.Mem)
+	}
+	flags, _ := v.memoryProperties(idx) // existence was checked by checkMemArg above.
+	if flags&externTypeShared == 0 {
+		// Atomic memory instructions are valid only for shared memories.
+		return ValType{}, v.verr(ErrInvalidSharedMemory, "atomic memory instruction")
 	}
 	if ma.Align != natural {
 		return ValType{}, v.verr(ErrInvalidAlignment, "atomic memory instruction requires natural alignment")

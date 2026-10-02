@@ -53,7 +53,7 @@ func TestExtendedConstRespectsCoreFeatureConfiguration(t *testing.T) {
 func TestExtendedConstRequiredFeatureSurvivesCodecAndFailsClosed(t *testing.T) {
 	compiled := compileExplicitArtifact(t, extendedConstImportedGlobalModule())
 	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
+	loaded := roundTripCompiled(t, compiled)
 	if got := CoreFeatures(loaded.requiredFeatures); got != CoreFeatureExtendedConst {
 		t.Fatalf("loaded required features = %s, want %s", got, CoreFeatureExtendedConst)
 	}

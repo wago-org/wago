@@ -2,14 +2,6 @@
 
 package amd64
 
-func markGCReference(e *elem) {
-	if e != nil && e.isValue() {
-		e.st.setGCRoot(true)
-	}
-}
-
-func (f *fn) markTopGCReference() { markGCReference(f.s.back()) }
-
 // Stack values that alias mutable module state (locals/globals) are realized
 // before that state is overwritten by scanning the operand stack directly
 // (realizeLocalRefs in driver.go, realizeGlobalRefs in globals.go). Those scans
@@ -20,12 +12,11 @@ func (f *fn) markTopGCReference() { markGCReference(f.s.back()) }
 
 func (f *fn) replaceStorage(e *elem, st storage) {
 	// Replacements move the same semantic value between registers, locals, and
-	// spills. Preserve collector-root identity; raw resolved addresses live in
-	// separate function state and are never copied here.
-	st.setGCRoot(st.hasGCRoot() || e.st.hasGCRoot())
-	if st.typ == mtCustom {
-		st.cold = e.st.cold
-	}
+	// spills. Preserve collector-root identity and structured semantic facts;
+	// raw resolved addresses live in separate fn state and are never copied here.
+	fact := gcRefFact(e)
+	st.gcRoot = st.gcRoot || e.st.gcRoot
+	putGCRefFact(&st, fact)
 	e.st = st
 }
 
@@ -34,6 +25,5 @@ func (f *fn) pushValue(st storage) *elem {
 }
 
 func (f *fn) erase(e *elem) {
-	f.s.clearElemCold(e)
 	f.s.erase(e)
 }

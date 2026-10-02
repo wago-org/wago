@@ -10,9 +10,6 @@ import (
 )
 
 func TestInstanceContextBytesReserveNativeTailMetadata(t *testing.T) {
-	if InstanceContextBytes != 112 {
-		t.Fatalf("instance context bytes = %d, want hot-path layout size 112", InstanceContextBytes)
-	}
 	jm, err := NewJobMemory(65536)
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +74,7 @@ func TestInstanceContextRoundTripLeavesMemoryAndInvocationState(t *testing.T) {
 	defer jm.Close()
 
 	jm.SetStackFence(0x1111)
-	trap := make([]byte, TrapBufferBytes)
+	trap := make([]byte, 8)
 	if err := jm.BindTrapCell(trap); err != nil {
 		t.Fatal(err)
 	}

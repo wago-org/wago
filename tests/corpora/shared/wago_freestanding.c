@@ -76,12 +76,6 @@ strlen(const char *s)
 static uint8_t arena[WAGO_ARENA_SIZE];
 static size_t  arena_used;
 
-void
-wago_allocator_reset(void)
-{
-    arena_used = 0;
-}
-
 static size_t
 align_up(size_t n, size_t a)
 {

@@ -11,161 +11,9 @@ import (
 )
 
 func TestFuncHintsSizeArm64(t *testing.T) {
-	const want = 32
+	const want = 200
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
-	}
-}
-
-func TestSerialLocalScratchCapacityUsesTotalLocalCountArm64(t *testing.T) {
-	params := make([]wasm.ValType, 96)
-	for i := range params {
-		params[i] = wasm.I64
-	}
-	m := modFuncs(t,
-		funcDef{body: []byte{0x00, 0x0b}},
-		funcDef{params: params, body: []byte{0x01, 0x07, 0x7e, 0x0b}},
-		funcDef{params: params[:16], body: []byte{0x00, 0x0b}},
-	)
-	hints, _, _, err := computeModuleHints(m, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := serialLocalScratchCapacity(hints, inlineTargetTable{}, make([]bool, len(m.Code))), 103; got != want {
-		t.Fatalf("serial local scratch capacity = %d, want total parameter-plus-local count %d", got, want)
-	}
-}
-
-func TestTaglessExceptionHandlingOmitsIntervalSidecarsArm64(t *testing.T) {
-	body := []byte{0x01, 0x80, 0x01, 0x7f} // 128 i32 locals.
-	body = append(body, make([]byte, 128)...)
-	body = append(body, 0x1f, 0x40, 0x01, byte(wasm.CatchAll), 0x00, 0x0b, 0x0b)
-	m := modFuncs(t, funcDef{body: body})
-	hints, sidecar, _, err := computeModuleHints(m, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	view := sidecar.view(hints[0])
-	if !hints[0].flags.has(hintModuleEH) {
-		t.Fatal("tagless try_table module was not classified as exception handling")
-	}
-	if hints[0].flags.has(hintIntervalRegionStorage) || len(view.localLastGet) != 0 || len(view.localScore) != 64 {
-		t.Fatalf("tagless EH interval sidecars = interval:%v scores:%d last-gets:%d, want false/64/0", hints[0].flags.has(hintIntervalRegionStorage), len(view.localScore), len(view.localLastGet))
-	}
-}
-
-func TestDirectCalleePreservesPinsUsesRetainedHint(t *testing.T) {
-	hints := make([]funcHints, 2)
-	hints[1].flags.set(hintPreservesCallerPins)
-	f := fn{calleeHints: hints}
-	if f.directCalleePreservesPins(0) {
-		t.Fatal("unmarked callee preserves pins")
-	}
-	if !f.directCalleePreservesPins(1) {
-		t.Fatal("marked callee does not preserve pins")
-	}
-	if f.directCalleePreservesPins(-1) || f.directCalleePreservesPins(len(hints)) {
-		t.Fatal("out-of-range callee preserves pins")
-	}
-}
-
-func TestScanBodyBytesFloatConstHintArm64(t *testing.T) {
-	integer, err := scanBodyBytes([]byte{0x41, 0x00, 0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if integer.flags.has(hintHasFloatConst) {
-		t.Fatal("integer body reported a float constant")
-	}
-	for _, body := range [][]byte{
-		{0x43, 0, 0, 0, 0, 0x0b},
-		{0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0x0b},
-	} {
-		h, err := scanBodyBytes(body, 0, 0, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !h.flags.has(hintHasFloatConst) {
-			t.Fatalf("float body %x did not report a float constant", body)
-		}
-	}
-	decoded := scanBody(wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrF32Const}}}, 0, 0, 0)
-	if !decoded.flags.has(hintHasFloatConst) {
-		t.Fatal("decoded float body did not report a float constant")
-	}
-}
-
-func TestControlDepthHintCountsNestedFramesArm64(t *testing.T) {
-	h, err := scanBodyBytes([]byte{
-		0x02, 0x40, // block
-		0x04, 0x40, // if
-		0x03, 0x40, // loop
-		0x0e, 0x01, 0x00, 0x00, // br_table 0 0; does not open a frame
-		0x0b, 0x05, 0x0b, 0x0b, 0x0b,
-	}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.maxControlDepth != 3 {
-		t.Fatalf("max control depth = %d, want 3", h.maxControlDepth)
-	}
-}
-
-func TestControlDepthHintSaturatesArm64(t *testing.T) {
-	var h funcHints
-	h.noteControlDepth(254)
-	h.noteControlDepth(300)
-	if h.maxControlDepth != 255 {
-		t.Fatalf("saturated max control depth = %d, want 255", h.maxControlDepth)
-	}
-}
-
-func TestControlDepthHintLeavesStraightLineLazyArm64(t *testing.T) {
-	h, err := scanBodyBytes([]byte{0x41, 0x00, 0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.maxControlDepth != 0 {
-		t.Fatalf("max control depth = %d, want 0", h.maxControlDepth)
-	}
-}
-
-func TestModuleHintsCountLocalDirectCallRelocations(t *testing.T) {
-	m := &wasm.Module{
-		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
-		FuncTypes: []wasm.TypeIdx{
-			{Index: 0},
-			{Index: 0},
-		},
-		Code: []wasm.Func{
-			{BodyBytes: []byte{0x10, 0x01, 0x10, 0x01, 0x0b}},
-			{BodyBytes: []byte{0x0b}},
-		},
-	}
-	hints, _, _, err := computeModuleHints(m, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := hints[0].callRelocSites; got != 2 {
-		t.Fatalf("call relocation sites = %d, want 2", got)
-	}
-}
-
-func TestEntryInitializedSharesLocalScoreStorageArm64(t *testing.T) {
-	scores := make([]uint32, 2)
-	h := funcHintsWithStorage(scores)
-	h.markEntryInitialized(1)
-	if h.entryInitialized != uint64(1)<<1 {
-		t.Fatalf("scan-local entry initialized = %#x, want bit 1", h.entryInitialized)
-	}
-	addHotness(scores, 1, 7)
-	if got := localHotness(scores[1]); got != 7 {
-		t.Fatalf("local hotness = %d, want 7", got)
-	}
-	scores[1] = localScoreEntryInitialized | localScoreHotnessMask
-	addHotness(scores, 1, 1)
-	if got := scores[1]; got != localScoreEntryInitialized|localScoreHotnessMask {
-		t.Fatalf("saturated packed score = %#x", got)
 	}
 }
 
@@ -180,12 +28,12 @@ func TestTableMutationHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scanBodyBytes: %v", err)
 	}
-	if !h.flags.has(hintMutatesTable) {
+	if !h.mutatesTable {
 		t.Fatal("table.set was not recorded as a table mutation")
 	}
 
 	ast := wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableGrow}}}
-	if h := scanBody(ast, 0, 0, 0); !h.flags.has(hintMutatesTable) {
+	if h := scanBody(ast, 0, 0, 0); !h.mutatesTable {
 		t.Fatal("AST table.grow was not recorded as a table mutation")
 	}
 }
@@ -201,8 +49,8 @@ func TestGCHelperHintScannersMarkNativeCalls(t *testing.T) {
 		{Kind: wasm.InstrArrayNewDefault, Index: 0},
 		{Kind: wasm.InstrDrop},
 	}}, 0, 0, 0)
-	if !byteHints.flags.has(hintHasCall) || !astHints.flags.has(hintHasCall) {
-		t.Fatalf("array helper call hints byte/AST = %v/%v, want true/true", byteHints.flags.has(hintHasCall), astHints.flags.has(hintHasCall))
+	if !byteHints.hasCall || !astHints.hasCall {
+		t.Fatalf("array helper call hints byte/AST = %v/%v, want true/true", byteHints.hasCall, astHints.hasCall)
 	}
 }
 
@@ -212,8 +60,8 @@ func TestASTExceptionHintsReserveHandlerState(t *testing.T) {
 		{Kind: wasm.InstrArrayNewDefault, Index: 0},
 	}}
 	h := scanBody(ast, 0, 0, 0)
-	if !h.flags.has(hintModuleEH) || !h.flags.has(hintHasControlFlow) || !h.flags.has(hintHasCall) {
-		t.Fatalf("AST exception hints = EH:%v control:%v call:%v, want all true", h.flags.has(hintModuleEH), h.flags.has(hintHasControlFlow), h.flags.has(hintHasCall))
+	if !h.moduleEH || !h.hasControlFlow || !h.hasCall {
+		t.Fatalf("AST exception hints = EH:%v control:%v call:%v, want all true", h.moduleEH, h.hasControlFlow, h.hasCall)
 	}
 }
 
@@ -222,145 +70,15 @@ func TestLoopHintReservesLoopScratchPins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scanBodyBytes: %v", err)
 	}
-	if !h.flags.has(hintHasLoop) {
+	if !h.hasLoop {
 		t.Fatal("structured loop was not recorded")
 	}
 	straight, err := scanBodyBytes([]byte{0x01, 0x0b}, 0, 0, 0) // nop; end
 	if err != nil {
 		t.Fatalf("straight scanBodyBytes: %v", err)
 	}
-	if straight.flags.has(hintHasLoop) {
+	if straight.hasLoop {
 		t.Fatal("straight-line body was classified as a loop")
-	}
-}
-
-func TestScanBodyBytesStackArenaHintCountsAtomicsArm64(t *testing.T) {
-	for _, kind := range []wasm.InstrKind{wasm.InstrAtomicFence, wasm.InstrI32AtomicStore, wasm.InstrI64AtomicStore32} {
-		if stackArenaOpAllocates(0xfe, &wasm.InstructionImmediate{Kind: kind}) {
-			t.Fatalf("result-free atomic %v counted as arena allocation", kind)
-		}
-	}
-	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := []byte{
-		0x41, 0x00, // i32.const address
-		0xfe, 0x10, 0x02, 0x00, // i32.atomic.load align=4 offset=0
-		0x1a, 0x0b, // drop; end
-	}
-	h, err := scanBodyBytes(body, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := endOnly.stackArenaNodes + 2; h.stackArenaNodes != want {
-		t.Fatalf("atomic stack arena nodes = %d, want %d", h.stackArenaNodes, want)
-	}
-}
-
-func TestScanBodyBytesDiscountsAlgebraicIdentitiesArm64(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, 0x41, 0x00, 0x6a, 0x1a, // x + 0; drop
-		0x20, 0x00, 0x41, 0x01, 0x6a, 0x1a, // x + 1; drop (not an identity)
-		0x20, 0x00, 0x20, 0x00, 0x6b, 0x1a, // x - x; drop
-		0x20, 0x00, 0x41, 0x20, 0x74, 0x1a, // i32.shl by 32; drop
-		0x20, 0x00, 0x42, 0xc0, 0x00, 0x86, 0x1a, // i64.shl by 64; drop
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 1, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.stackArenaDiscount != 3 {
-		t.Fatalf("algebraic discount = %d, want 3", h.stackArenaDiscount)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("multibyte identity constant did not retain legacy sizing")
-	}
-}
-
-func TestScanBodyBytesDetectsDeadCodeAfterTerminatorArm64(t *testing.T) {
-	h, err := scanBodyBytes([]byte{0x00, 0x41, 0x00, 0x1a, 0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("dead instructions after unreachable were not detected")
-	}
-	terminalOnly, err := scanBodyBytes([]byte{0x00, 0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if terminalOnly.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("terminal unreachable was marked as followed by dead code")
-	}
-}
-
-func TestScanBodyBytesDiscountsSWARLookaheadCandidatesArm64(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, 0x42, 0x00, 0x83, 0x22, 0x01, 0x1a, // i64.and; local.tee
-		0x20, 0x00, 0x42, 0x20, 0x88, 0x22, 0x01, 0x1a, // i64.shr_u; local.tee
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 2, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.stackArenaDiscount != 44 {
-		t.Fatalf("SWAR lookahead discount = %d, want 44", h.stackArenaDiscount)
-	}
-}
-
-func TestScanBodyBytesDetectsSIMDFusionRiskArm64(t *testing.T) {
-	body := []byte{
-		0xfd, 0x0b, 0x04, 0x00, // v128.store align=16 offset=0
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("SIMD body did not select legacy arena sizing")
-	}
-}
-
-func TestScanBodyBytesDetectsStackSinkFusionArm64(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, // local.get 0
-		0x20, 0x01, // local.get 1
-		0x92,       // f32.add
-		0x21, 0x02, // local.set 2
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 3, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("float local sink fusion was not detected")
-	}
-}
-
-func TestScanBodyBytesStackArenaHintCountsReferenceResultsArm64(t *testing.T) {
-	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := []byte{
-		0x20, 0x00, // local.get 0
-		0xd4,       // ref.as_non_null
-		0x1a,       // drop
-		0x41, 0x00, // i32.const 0
-		0xfb, 0x1c, // ref.i31
-		0x1a, 0x0b, // drop; end
-	}
-	h, err := scanBodyBytes(body, 1, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := endOnly.stackArenaNodes + 4; h.stackArenaNodes != want {
-		t.Fatalf("reference stack arena nodes = %d, want %d", h.stackArenaNodes, want)
 	}
 }
 
@@ -461,8 +179,8 @@ func TestInlineBoundaryParityBytesArm64(t *testing.T) {
 		if err := scanInlineFactsBytes(body, &facts); err != nil {
 			t.Fatalf("inline scan opcode %#x: %v", op, err)
 		}
-		if !h.flags.has(hintHasControlFlow) || !facts.hasControlFlow {
-			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.flags.has(hintHasControlFlow), facts.hasControlFlow)
+		if !h.hasControlFlow || !facts.hasControlFlow {
+			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.hasControlFlow, facts.hasControlFlow)
 		}
 	}
 }
@@ -526,12 +244,14 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 	}
 
 	m.Exports = append(m.Exports, wasm.Export{Name: "table", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}})
-	hints, _, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
+	hints, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
 	if err != nil {
 		t.Fatalf("exported-table hints: %v", err)
 	}
-	if immutableTable := computeImmutableTableHint(m, hints, currentCodegenPolicy()); immutableTable.local {
-		t.Fatal("module specialized an externally mutable exported table")
+	for i := range hints {
+		if hints[i].immutableLocalTable {
+			t.Fatalf("function %d specialized an externally mutable exported table", i)
+		}
 	}
 }
 

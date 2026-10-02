@@ -30,8 +30,8 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	}
 	offsets := safepoint.offsets
 	frameBytes := safepoint.frameBytes
-	if state == nil || frameBytes < 8 || !validGCFrameOffsets(offsets, frameBytes) {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 frame-root metadata is unavailable or malformed")})
+	if state == nil || len(offsets) > gcNativeFrameRootLimit || frameBytes < 8 {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 frame-root metadata is unavailable or oversized")})
 	}
 	ctrlHead := unsafe.Slice((*byte)(offHeapPtr(ctrl+abi.SyncHostCallSavedNativeSPOffset)), 8)
 	base := uintptr(binary.LittleEndian.Uint64(ctrlHead))
@@ -53,8 +53,8 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	state.frameRoots.base = base
 	state.frameRoots.offsets = offsets
 	state.frameRoots.frameBytes = frameBytes
-	state.frameRoots.frameLayout = gcNativeFrameLayoutARM64 | gcNativeFrameSyncGlobalRoots // saved LR follows saved FP above the frame reserve
-	state.frameRoots.allowExternalReturn = true                                            // non-register public entries return directly to enterNative
+	state.frameRoots.frameLayout = gcNativeFrameLayoutARM64 // saved LR follows saved FP above the frame reserve
+	state.frameRoots.allowExternalReturn = true             // non-register public entries return directly to enterNative
 	state.frameRoots.codeBase = in.base
 	state.frameRoots.codeBytes = uintptr(len(in.c.code))
 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets

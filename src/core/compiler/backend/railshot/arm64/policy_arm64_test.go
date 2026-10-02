@@ -82,29 +82,7 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkArm64(t *testing.T) {
 	}
 }
 
-func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
-	names := []string{
-		"simd-superopt", "interval-region-pins", "magic-div",
-		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "entry-init-elision",
-		"v128-direct-results",
-	}
-	overrides := make(map[string]bool, len(names))
-	for _, name := range names {
-		overrides[name] = false
-	}
-	selection, err := optimizationBindings.ResolveSnapshot(overrides, OptimizationSnapshot{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	policy := shared.DefaultCodegenPolicy(selection)
-	for _, name := range names {
-		if policy.EnabledOption(optimizationBindings.Option(name)) {
-			t.Errorf("per-compile policy did not disable %s", name)
-		}
-	}
-}
-
-func TestNativeCompactionPolicyAndRollbackArm64(t *testing.T) {
+func TestNativeCompactionObjectiveAndRollbackArm64(t *testing.T) {
 	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
 	beforeLimitOverride := finalizerDeletionLimitOverride
 	nativeCompactionEnabled, nativeCompactionDisabled = false, false
@@ -114,82 +92,84 @@ func TestNativeCompactionPolicyAndRollbackArm64(t *testing.T) {
 	})
 
 	selection := currentCodegenPolicy().Selection
-	ordinary := fn{policy: shared.DefaultCodegenPolicy(selection)}
-	compact := fn{policy: shared.CompactCodegenPolicy(selection)}
-	if ordinary.compactNative() {
-		t.Fatal("ordinary policy unexpectedly enabled native compaction")
+	balanced := fn{policy: shared.CodegenPolicyForObjective(selection, OptimizeBalanced)}
+	size := fn{policy: shared.CodegenPolicyForObjective(selection, OptimizeSize)}
+	if balanced.compactNative() {
+		t.Fatal("Balanced unexpectedly enabled native compaction")
 	}
-	if !compact.compactNative() {
-		t.Fatal("compact policy did not enable native compaction")
+	if !size.compactNative() {
+		t.Fatal("Size did not enable native compaction")
 	}
-	if got := compact.finalizerDeletionLimit(); got != maxFinalizerDeletions {
-		t.Fatalf("compact finalizer deletion limit = %d, want %d", got, maxFinalizerDeletions)
+	if got := size.finalizerDeletionLimit(); got != maxFinalizerDeletions {
+		t.Fatalf("Size finalizer deletion limit = %d, want %d", got, maxFinalizerDeletions)
 	}
 	finalizerDeletionLimitOverride = 64
-	if got := compact.finalizerDeletionLimit(); got != 64 {
+	if got := size.finalizerDeletionLimit(); got != 64 {
 		t.Fatalf("finalizer deletion limit override = %d, want 64", got)
 	}
 	finalizerDeletionLimitOverride = 0
 
 	nativeCompactionEnabled = true
-	if !ordinary.compactNative() {
-		t.Fatal("WAGO_COMPACT=1 override did not enable compaction")
+	if !balanced.compactNative() {
+		t.Fatal("WAGO_COMPACT=1 override did not enable Balanced compaction")
 	}
 	nativeCompactionDisabled = true
-	if compact.compactNative() || ordinary.compactNative() {
+	if size.compactNative() || balanced.compactNative() {
 		t.Fatal("WAGO_COMPACT=0 rollback did not disable compaction")
 	}
 }
 
-func TestFunctionStartPaddingPolicyArm64(t *testing.T) {
+func TestFunctionStartPaddingObjectivesArm64(t *testing.T) {
 	selection := currentCodegenPolicy().Selection
-	ordinary := shared.DefaultCodegenPolicy(selection)
-	compact := shared.CompactCodegenPolicy(selection)
-	hot := funcHints{flags: hintHasLoop}
+	policy := func(objective OptimizationObjective) CodegenPolicy {
+		return shared.CodegenPolicyForObjective(selection, objective)
+	}
+	hot := funcHints{hasLoop: true}
 	for _, test := range []struct {
 		name      string
 		off       int
 		bodyBytes int
 		adapter   bool
 		hints     funcHints
-		policy    CodegenPolicy
+		objective OptimizationObjective
 		want      int
 	}{
-		{name: "ordinary tiny leaf", off: 4, bodyBytes: 12, policy: ordinary, want: 0},
-		{name: "ordinary adapter", off: 4, bodyBytes: 12, adapter: true, policy: ordinary, want: 12},
-		{name: "ordinary hot within budget", off: 12, bodyBytes: 64, hints: hot, policy: ordinary, want: 4},
-		{name: "ordinary hot over budget", off: 4, bodyBytes: 64, hints: hot, policy: ordinary, want: 0},
-		{name: "compact", off: 4, bodyBytes: 512, adapter: true, hints: hot, policy: compact, want: 0},
+		{name: "speed tiny", off: 4, bodyBytes: 12, objective: OptimizeSpeed, want: 12},
+		{name: "balanced tiny leaf", off: 4, bodyBytes: 12, objective: OptimizeBalanced, want: 0},
+		{name: "balanced adapter", off: 4, bodyBytes: 12, adapter: true, objective: OptimizeBalanced, want: 12},
+		{name: "balanced hot within budget", off: 12, bodyBytes: 64, hints: hot, objective: OptimizeBalanced, want: 4},
+		{name: "balanced hot over budget", off: 4, bodyBytes: 64, hints: hot, objective: OptimizeBalanced, want: 0},
+		{name: "size", off: 4, bodyBytes: 512, adapter: true, hints: hot, objective: OptimizeSize, want: 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := functionStartPadding(test.off, test.bodyBytes, test.adapter, test.hints, test.policy); got != test.want {
+			if got := functionStartPadding(test.off, test.bodyBytes, test.adapter, test.hints, policy(test.objective)); got != test.want {
 				t.Fatalf("padding = %d, want %d", got, test.want)
 			}
 		})
 	}
 }
 
-func TestCompactLayoutSerialParallelParityArm64(t *testing.T) {
+func TestObjectiveLayoutSerialParallelParityArm64(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	m := modFuncs(t,
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x02, 0x6a, 0x0b}},
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x03, 0x6a, 0x0b}},
 	)
-	compile := func(compact bool, workers int) []byte {
-		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: compact, Workers: workers})
+	compile := func(objective OptimizationObjective, workers int) []byte {
+		cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: workers})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return append([]byte(nil), cm.Code...)
 	}
-	ordinary := compile(false, 1)
-	compactSerial := compile(true, 1)
-	compactParallel := compile(true, 3)
-	if !bytes.Equal(compactSerial, compactParallel) {
-		t.Fatal("compact layout differs between serial and parallel compilation")
+	balanced := compile(OptimizeBalanced, 1)
+	sizeSerial := compile(OptimizeSize, 1)
+	sizeParallel := compile(OptimizeSize, 3)
+	if !bytes.Equal(sizeSerial, sizeParallel) {
+		t.Fatal("Size layout differs between serial and parallel compilation")
 	}
-	if len(compactSerial) >= len(ordinary) {
-		t.Fatalf("compact output = %d bytes, ordinary = %d; want smaller compact layout", len(compactSerial), len(ordinary))
+	if len(sizeSerial) >= len(balanced) {
+		t.Fatalf("Size output = %d bytes, Balanced = %d; want smaller Size layout", len(sizeSerial), len(balanced))
 	}
 }

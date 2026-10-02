@@ -1,10 +1,5 @@
 # Generated native-code size results
 
-> Historical note: objective names in this measurement log describe the
-> configurations used when the experiments were run. Those public optimization
-> objectives have since been removed. Current Wago has one ordinary compiler
-> policy; compaction is an internal benchmark and rollout path.
-
 This is the measurement ledger for
 [the generated native-code size plan](generated-native-code-size-plan.md). It
 records raw native bytes separately from compile latency, allocations, and
@@ -1561,10 +1556,9 @@ the Ryzen 7 7800X3D host.
 ARM64 frame elision previously required exactly one register result even though
 a call-free void register-ABI leaf has the same proof: with no spills, EH state,
 inlined-local extension, v128 frame traffic, or unpinned scalar local, no frame
-address is observed. During qualification,
-`WAGO_ARM64_NO_FRAME_ELIDE_VOID=1` restored the result-bearing-only rule; that
-subset rollback has since been retired while every semantic exclusion remains.
-Host adapters keep their independent LR/results-pointer record.
+address is observed. The proof now admits void leaves under
+`WAGO_ARM64_NO_FRAME_ELIDE_VOID=1` rollback while retaining every existing
+exclusion. Host adapters keep their independent LR/results-pointer record.
 
 The 36-module Size suite falls from 77,027,052 to 77,023,468 bytes. Exactly 448
 void functions elide one small ARM64 frame reservation, saving 3,584 bytes.
@@ -1576,10 +1570,8 @@ finalizer validation pass.
 
 ## AMD64 call-free void frame elision
 
-AMD64 applies the same register-only void-leaf proof. During qualification,
-`WAGO_AMD64_NO_FRAME_ELIDE_VOID=1` disabled only this result-shape subset; that
-rollback has since been retired, while the public `frame-elide` policy remains
-the complete per-compilation oracle. Its existing finalizer deletes the
+AMD64 applies the same register-only void-leaf proof under
+`WAGO_AMD64_NO_FRAME_ELIDE_VOID=1` rollback. Its existing finalizer deletes the
 zero-sized seven-byte frame adjustments and may unlock adjacent branch
 shortening; all call, spill, EH, v128, extended-inline-local, and unpinned-local
 exclusions remain unchanged.
@@ -1600,9 +1592,7 @@ their independent LR/X3 record, while direct internal calls return in registers.
 Wrapper-ABI functions retain the established header. EH functions and functions
 with a GC frame plan are conservatively excluded until their separately generated
 offset tables become explicitly header-relative.
-During qualification, `WAGO_ARM64_NO_COMPACT_REGABI_FRAME=1` restored the
-wrapper-sized header. That rollback has since been retired; the semantic wrapper,
-EH, and incompatible GC-plan exclusions remain.
+`WAGO_ARM64_NO_COMPACT_REGABI_FRAME=1` is the exact rollback oracle.
 
 Across the 36-module ARM64 Size suite, aggregate function-frame reservation falls
 from 2,183,536 to 1,778,416 bytes (-405,120, -18.55%). Raw native bytes fall from
@@ -1623,8 +1613,7 @@ AMD64 applies the same wrapper-header ownership rule, with an additional
 conservative exclusion for any function containing a tail call because its
 wrapper-transfer paths still consume `frResultsOff`. EH and GC-frame functions
 also retain the fixed header. `WAGO_AMD64_NO_COMPACT_REGABI_FRAME=1` is the exact
-rollback oracle used during qualification. That switch has since been retired;
-the semantic tail-call, wrapper, EH, and incompatible GC-plan exclusions remain.
+rollback oracle.
 
 Across the 36-module AMD64 Size suite, aggregate function-frame reservation falls
 from 2,351,952 to 1,947,072 bytes (-404,880, -17.21%). More importantly for the
@@ -1648,9 +1637,8 @@ control flow. Control joins and ordinary local traffic already use typed
 branches and loops. Call-making functions stay excluded: several argument-
 staging paths deliberately load a full machine word from a local home. EH and
 GC-frame layouts remain excluded as before.
-During qualification, `WAGO_AMD64_NO_COMPACT_I32_CONTROL=1` restored the
-previous straight-line-only admission rule. That narrower rollback has since
-been retired; the `compact-i32-frame` policy remains the complete oracle.
+`WAGO_AMD64_NO_COMPACT_I32_CONTROL=1` restores the previous straight-line-only
+admission rule.
 
 Across the 36-module AMD64 Size suite, aggregate function-frame reservation falls
 from 1,947,072 to 1,926,848 bytes (-20,224). Raw native bytes fall from 68,509,167
@@ -1670,10 +1658,8 @@ argument paths select `Load32` versus `Load64` from the local's machine type, so
 adjacent four-byte i32 homes cannot leak into an argument's upper half. Inline-
 reserved locals remain naturally word-sized beyond the packed caller region.
 EH and GC-frame functions retain their established layout.
-During qualification, `WAGO_AMD64_NO_COMPACT_I32_CALLS=1` restored both the
-former admission rule and the former full-width argument loads. That narrower
-rollback has since been retired; the `compact-i32-frame` policy remains the
-complete code-shape oracle.
+`WAGO_AMD64_NO_COMPACT_I32_CALLS=1` restores both the former admission rule and
+the former full-width argument loads as an exact code-shape oracle.
 
 Across the 36-module AMD64 Size suite, aggregate function-frame reservation falls
 from 1,926,848 to 1,429,168 bytes (-497,680, -25.83%). Raw native bytes fall from
@@ -2222,18 +2208,24 @@ B/op and allocation variation remains noise-level. A catalog optimization and
 rollback respectively. The full Size execution suite, AMD64 race suite, and
 compacted runtime corpus pass.
 
-## Removed objective API
+## Public immutable objectives and Size execution benchmark
 
-The public objective API and its execution benchmark were later removed as a
-deliberate breaking change. Ordinary compilation now has one
-performance-oriented policy. `BenchmarkCompileCompact` and `-compact` in the
-explain command retain direct access to the byte-oriented implementation for
-measurement without exposing a production runtime mode.
+`RuntimeConfig.WithOptimizationObjective` now carries Speed, Balanced, Size, or
+Embedded through the public compile pipeline into the same immutable backend
+policy used by direct compiler tests. Balanced remains the default; invalid
+values fail configuration validation. The generated top-level facade exports
+the type and constants, so callers can compile and instantiate a Size module
+without backend-internal APIs.
 
-The historical samples from the former compact configuration were bimodal on
-AMD64 `many_funcs` (roughly 7.50--8.07 ns/op), with a median around 7.53 ns/op.
-Those numbers are retained only as experimental evidence and are not a current
-mode comparison.
+`BenchmarkExecSize` mirrors the existing executable-corpus benchmark but
+compiles every module through that public Size configuration. This closes a
+validation gap: `BenchmarkCompileSize` previously measured Size code generation,
+while every standard execution benchmark still ran Balanced code. On AMD64,
+ten one-second `many_funcs` Size samples are bimodal (roughly 7.50--8.07 ns/op)
+with a median around 7.53 ns/op, versus about 7.57 ns/op for the corresponding
+current Balanced sample. The point is not a speed claim; it establishes the
+direct profile-specific runtime gate required before reviving any Size-only
+layout or instruction-selection experiment.
 
 ### Commands
 
@@ -2481,9 +2473,8 @@ Size and Embedded now lower Wasm integer add/sub by positive or negative one
 to the compact register `INC`/`DEC` forms. These instructions produce the same
 wrapped i32/i64 result and the same status flags except CF; the selection is
 restricted to ordinary Wasm arithmetic, where carry is not compiler state.
-Speed and Balanced retain `ADD/SUB imm8`. During qualification,
-`WAGO_AMD64_NO_INCDEC=1` restored the former Size encoding exactly; that mature
-rollback control has since been retired.
+Speed and Balanced retain `ADD/SUB imm8`. `WAGO_AMD64_NO_INCDEC=1` restores the
+former Size encoding exactly.
 
 The exact 36-module AMD64 Size suite selects 33,368 sites and falls from
 66,123,590 to 66,090,445 native bytes (-33,145, -0.050%). Ruby contributes
@@ -2520,9 +2511,8 @@ and Embedded, an empty edge replaces the just-emitted `CMP Wn,#0` plus
 `B.cond` with one `CBNZ Wn,target`; function-result fallbacks use `CBZ` around
 the existing result-transfer branch. Non-empty edges retain CMP because their
 reconciliation may overwrite the condition register while preserving NZCV.
-During qualification, `WAGO_ARM64_NO_EMPTY_ZERO_BRANCH=1` restored the first
-zero-branch checkpoint. That subset rollback has since been retired; the public
-`zero-branch` policy restores the complete older lowering per compilation.
+`WAGO_ARM64_NO_EMPTY_ZERO_BRANCH=1` restores the first zero-branch checkpoint,
+and the broader `WAGO_ARM64_NO_ZERO_BRANCH=1` restores both zero-branch slices.
 
 This extension selects another 128,552 sites. The exact 36-module Size image
 falls from 76,541,576 to 76,027,480 (-514,096, -0.672%). Ruby contributes
@@ -2552,9 +2542,7 @@ hands that register directly to `CBZ/CBNZ` at an `if` edge. Previously the
 fused-compare path emitted `CMP reg,#0` and a separate `B.cond`. Deferred
 arithmetic and mask trees remain on the established flag-based covers, so this
 change does not displace mask-test, relational, or floating-point fusion.
-During qualification, `WAGO_ARM64_NO_EQZ_ZERO_BRANCH=1` restored the preceding
-checkpoint. That subset rollback has since been retired; the public
-`zero-branch` policy remains the exact complete oracle.
+`WAGO_ARM64_NO_EQZ_ZERO_BRANCH=1` restores the preceding checkpoint exactly.
 
 The exact 36-module Size suite adds 178,159 zero-branch selections and falls
 from 76,027,480 to 75,339,552 native bytes (-687,928, -0.905%). Ruby contributes
@@ -2578,10 +2566,9 @@ counter sites whose carry flag is proved dead: the byte tails of dynamic
 `memory.copy` and `memory.fill`, two table-fill loops, and the asynchronous host
 call log counter. Loop sites consume only ZF in the following `JNE`; the host-log
 site stores the result before any later flag consumer. Speed and Balanced retain
-`ADD/SUB r,1`. During qualification, `WAGO_AMD64_NO_DIRECT_INCDEC=1` restored
-this slice without disabling the earlier Wasm arithmetic selection, while
-`WAGO_AMD64_NO_INCDEC=1` was the broad rollback. Both mature controls have since
-been retired.
+`ADD/SUB r,1`. `WAGO_AMD64_NO_DIRECT_INCDEC=1` restores this slice without
+disabling the earlier Wasm arithmetic selection, while
+`WAGO_AMD64_NO_INCDEC=1` remains the broad rollback.
 
 The exact 36-module AMD64 Size suite selects 7,710 direct sites and falls from
 66,090,445 to 66,082,735 native bytes (-7,710, -0.0117%). Esbuild contributes
@@ -2622,9 +2609,7 @@ polling, and conditional reference branches now emit `CBZ/CBNZ` directly. Each
 site is annotated where the semantic check is produced; no finalized-byte
 pattern matching is involved. The trap form records the `CBZ/CBNZ` imm19 site in
 the existing shared-stub patch list, so trap attribution and cold-stub sharing
-remain unchanged. During qualification,
-`WAGO_ARM64_NO_DIRECT_ZERO_BRANCH=1` restored `CMP+B.cond`; that rollback and
-its alternate helper branches have since been retired.
+remain unchanged. `WAGO_ARM64_NO_DIRECT_ZERO_BRANCH=1` restores `CMP+B.cond`.
 
 The exact 36-module ARM64 Size suite selects 24,531 sites and falls from
 75,339,552 to 75,241,428 native bytes (-98,124, -0.130%). Ruby contributes
@@ -2651,9 +2636,8 @@ targets and dead flags. Size and Embedded now emit `JECXZ rel8` there and close
 the adjacent byte loop with a checked short `JNE`. The fill skip is also a fixed
 short jump, leaving no finalizer-relaxable site inside the already-patched rel8
 interval. Far targets, non-ECX registers, Speed, and Balanced retain
-`TEST+Jcc`. During qualification, `WAGO_AMD64_NO_DIRECT_JECXZ=1` was
-byte-for-byte identical to the previous checkpoint; that mature rollback
-control has since been retired.
+`TEST+Jcc`. `WAGO_AMD64_NO_DIRECT_JECXZ=1` is byte-for-byte identical to the
+previous checkpoint.
 
 The exact 36-module AMD64 Size suite selects 3,152 sites and falls from
 66,082,735 to 66,055,508 native bytes (-27,227, -0.0412%). Esbuild contributes

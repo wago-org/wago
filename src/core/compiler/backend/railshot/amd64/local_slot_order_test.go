@@ -4,34 +4,10 @@ package amd64
 
 import (
 	"testing"
-	"unsafe"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
-
-func TestLocalSlotPackedDomain(t *testing.T) {
-	refs := encamd64.LocalRefRecorder{Locals: 1}
-	f := fn{a: &encamd64.Asm{LocalRefs: &refs}, localSlot: []uint32{0x12340}}
-	if got, want := unsafe.Sizeof(f.localSlot[0]), uintptr(4); got != want {
-		t.Fatalf("local slot width = %d, want %d", got, want)
-	}
-	wantOff := int32(f.frameHeaderBytes() + 0x12340)
-	for range 255 {
-		if got := f.localAddr(0); got != wantOff {
-			t.Fatalf("local offset = %#x, want %#x", got, wantOff)
-		}
-		refs.Pending = false // stand in for the encoder consuming this mark.
-	}
-	if got := f.localRefCount(0); got != 255 || refs.Overflow {
-		t.Fatalf("reference count/overflow = %d/%v, want 255/false", got, refs.Overflow)
-	}
-	f.localAddr(0)
-	if !refs.Overflow || f.localRefCount(0) != 255 {
-		t.Fatalf("saturated reference count/overflow = %d/%v, want 255/true", f.localRefCount(0), refs.Overflow)
-	}
-}
 
 func localSlotOrderModule(t *testing.T) *wasm.Module {
 	// Locals 8..27 are equally hot. The eight lowest indexes take the available
@@ -63,8 +39,9 @@ func TestLocalSlotOrderShrinksHotUnpinnedFrameRefs(t *testing.T) {
 	off := compileLocalSlotOrder(t, m, false).Funcs[0]
 	on := compileLocalSlotOrder(t, m, true).Funcs[0]
 
+	size := OptimizeSize
 	got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{
-		CompactNative: true,
+		Objective:     &size,
 		Optimizations: map[string]bool{"local-slot-order": true},
 	}, nil)
 	if err != nil || got != 160 {
@@ -81,10 +58,11 @@ func TestLocalSlotOrderShrinksHotUnpinnedFrameRefs(t *testing.T) {
 	}
 }
 
-func TestLocalSlotOrderDefaultsOnForCompaction(t *testing.T) {
+func TestLocalSlotOrderDefaultsOnForSize(t *testing.T) {
 	m := localSlotOrderModule(t)
+	size := OptimizeSize
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats})
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,30 +92,6 @@ func TestLocalSlotOrderDoesNotGrowMixedCompactFrame(t *testing.T) {
 	}
 }
 
-func TestLocalSlotOrderSkipsGCFrameRootFunctions(t *testing.T) {
-	refs := encamd64.LocalRefRecorder{
-		Sites:  []encamd64.LocalRefSite{{Local: 1}},
-		Limit:  1,
-		Locals: 2,
-	}
-	plan := &shared.GCFrameRootPlan{Candidate: true, Locals: []shared.GCFrameLocal{{Index: 1, Offset: 128}}}
-	f := fn{
-		a:                  &encamd64.Asm{LocalRefs: &refs},
-		nLocals:            2,
-		localType:          []machineType{mtI64, mtI64},
-		localSlot:          []uint32{0, uint32(1)<<localSlotRefShift | 128},
-		compactFrameHeader: true,
-		gcFrameRoots:       plan,
-		stats:              &CodegenStats{},
-	}
-	if got := f.packLocalSlots(1); got != 0 {
-		t.Fatalf("GC frame-root local slot swaps = %d, want 0", got)
-	}
-	if got := f.localOff(1); got != 128 || plan.Locals[0].Offset != 128 {
-		t.Fatalf("GC frame-root local home changed: frame=%d metadata=%d", got, plan.Locals[0].Offset)
-	}
-}
-
 func TestLocalSlotOrderExcludesMultiSlotHomes(t *testing.T) {
 	refs := encamd64.LocalRefRecorder{
 		Sites:  []encamd64.LocalRefSite{{Local: 1}},
@@ -149,7 +103,7 @@ func TestLocalSlotOrderExcludesMultiSlotHomes(t *testing.T) {
 		a:                  &a,
 		nLocals:            2,
 		localType:          []machineType{mtV128, mtV128},
-		localSlot:          []uint32{0, uint32(1)<<localSlotRefShift | 128},
+		localSlot:          []int{0, int(uint64(1)<<32 | 128)},
 		compactFrameHeader: true,
 	}
 	if got := f.packLocalSlots(1); got != 0 {
@@ -162,9 +116,10 @@ func TestLocalSlotOrderExcludesMultiSlotHomes(t *testing.T) {
 
 func compileLocalSlotOrder(t *testing.T, m *wasm.Module, enabled bool) *ModuleStats {
 	t.Helper()
+	size := OptimizeSize
 	var stats ModuleStats
 	cm, err := CompileModuleWith(m, CompileOptions{
-		CompactNative: true,
+		Objective:     &size,
 		Optimizations: map[string]bool{"local-slot-order": enabled},
 		Stats:         &stats,
 	})

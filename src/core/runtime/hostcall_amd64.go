@@ -18,9 +18,10 @@ import (
 // restores the saved register state and returns to the instruction after the
 // call. See docs/host-import-results-plan.md §2.
 
-// maxHostArity is the inline uint64 param/result capacity. Wider internal calls
-// use the checked extension described in hostcall_layout.go, leaving this common
-// control-frame layout and its memory cost unchanged.
+// maxHostArity bounds the uint64 param/result slots a single host import may
+// carry through the control frame. v128 values use two slots; host imports with
+// many scalar params also need more than eight. Changing it shifts hcResults, so
+// the hand-assembled stubs that hard-code that offset must move too.
 const maxHostArity = 64
 
 // Control-frame field offsets (bytes). Off-heap; the frame's address is

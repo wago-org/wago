@@ -28,10 +28,8 @@ func main() {
 	}
 	fmt.Printf("precompiled blob: %d bytes, is-wago-blob=%v\n", len(blob), wago.IsCompiled(blob))
 
-	// Later, in a fresh process: artifacts contain host-native code, so use the
-	// trusted loader only for authenticated or locally produced bytes. Load is
-	// intentionally reserved for untrusted raw Wasm.
-	loaded, err := wago.LoadTrustedArtifact(blob)
+	// Later, in a fresh process: Load accepts a blob or raw wasm transparently.
+	loaded, err := wago.Load(blob)
 	if err != nil {
 		panic(err)
 	}

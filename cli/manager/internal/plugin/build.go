@@ -65,7 +65,6 @@ func pkgAddMany(specs []string, options pkgOpts) {
 			progress.Begin("Fetching selected plugins")
 		}
 	}
-	var installedLock project.LockDocument
 	err = withPluginMutationLock(pluginContext(options.ctx), src, func(mutation *project.Mutation) error {
 		manifest, err := mutation.ReadManifest()
 		if err != nil {
@@ -94,18 +93,13 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		}
 		progress.Finish("Fetched plugins")
 		progress.Title("Checking permissions")
-		reviewed, err := reviewResolvedPluginPlan(plan, options)
+		lock, err := reviewResolution(plan, options)
 		if err != nil {
 			return err
 		}
-		printPluginPlanWarnings(reviewed.Warnings)
 		progress.Finish("Permissions checked")
 		progress.Begin("Building plugin runtime")
-		if err := stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose); err != nil {
-			return err
-		}
-		installedLock = reviewed.Lock
-		return nil
+		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, options.verbose)
 	})
 	if err != nil {
 		progress.Fail("Plugin install failed")
@@ -114,54 +108,7 @@ func pkgAddMany(specs []string, options pkgOpts) {
 	if !options.global {
 		project.EnsureGitignore(".wago/")
 	}
-	reportCompletedPluginInstalls(context.WithoutCancel(pluginContext(options.ctx)), specs, installedLock, registry.RecordInstallContext)
 	progress.Finish(fmt.Sprintf("Installed %d plugin%s in %s", len(specs), plural(len(specs)), time.Since(started).Round(time.Millisecond)))
-}
-
-func reportCompletedPluginInstalls(ctx context.Context, specs []string, lock project.LockDocument, record func(context.Context, string, string)) {
-	sources := make(map[string]project.PluginSource, len(specs))
-	seenPlugins := make(map[string]struct{}, len(lock.Plugins))
-	var visit func(string)
-	visit = func(id string) {
-		if _, seen := seenPlugins[id]; seen {
-			return
-		}
-		seenPlugins[id] = struct{}{}
-		entry, ok := lock.Plugins[id]
-		if !ok {
-			return
-		}
-		if entry.Source.Module != "" && entry.Source.Version != "" {
-			sources[entry.Source.Module] = entry.Source
-		}
-		dependencies := make([]string, 0, len(entry.Dependencies))
-		for dependency := range entry.Dependencies {
-			dependencies = append(dependencies, dependency)
-		}
-		for _, binding := range entry.Bindings {
-			dependencies = append(dependencies, binding.Providers...)
-		}
-		sort.Strings(dependencies)
-		for _, dependency := range dependencies {
-			visit(dependency)
-		}
-	}
-	for _, spec := range specs {
-		id, _, err := parsePluginSpec(spec)
-		if err != nil {
-			continue
-		}
-		visit(id)
-	}
-	modules := make([]string, 0, len(sources))
-	for module := range sources {
-		modules = append(modules, module)
-	}
-	sort.Strings(modules)
-	for _, module := range modules {
-		source := sources[module]
-		record(ctx, source.Module, source.Version)
-	}
 }
 
 func pkgRemove(name string, options pkgOpts) {
@@ -173,7 +120,7 @@ func pkgRemove(name string, options pkgOpts) {
 	if err != nil {
 		fatal("plugin remove: %v", err)
 	}
-	id := project.ExpandGitHubPluginID(name)
+	id := strings.TrimSpace(name)
 	if err := project.ValidatePluginID(id); err != nil {
 		fatal("plugin remove: %v", err)
 	}
@@ -203,12 +150,10 @@ func pkgRemove(name string, options pkgOpts) {
 			if err != nil {
 				return err
 			}
-			reviewed, err := reviewRemovalResolution(plan, options)
+			lock, err = reviewRemovalResolution(plan, options)
 			if err != nil {
 				return err
 			}
-			printPluginPlanWarnings(reviewed.Warnings)
-			lock = reviewed.Lock
 		}
 		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false)
 	})
@@ -218,11 +163,11 @@ func pkgRemove(name string, options pkgOpts) {
 	fmt.Printf("removed %s\n", dim(id))
 }
 
-func reviewRemovalResolution(plan ResolutionPlan, options pkgOpts) (reviewedPluginPlan, error) {
+func reviewRemovalResolution(plan ResolutionPlan, options pkgOpts) (project.LockDocument, error) {
 	if len(plan.Reviews) != 0 {
-		return reviewedPluginPlan{}, fmt.Errorf("removal changes authority requests; run `wago plugin update` to review the new graph")
+		return project.LockDocument{}, fmt.Errorf("removal changes authority requests; run `wago plugin update` to review the new graph")
 	}
-	return reviewResolvedPluginPlan(plan, options)
+	return reviewResolution(plan, options)
 }
 
 func pkgUpdate(target string, options pkgOpts) {
@@ -234,7 +179,6 @@ func pkgUpdate(target string, options pkgOpts) {
 	if err != nil {
 		fatal("plugin update: %v", err)
 	}
-	target = project.ExpandGitHubPluginID(target)
 	err = withPluginMutationLock(pluginContext(options.ctx), src, func(mutation *project.Mutation) error {
 		manifest, err := mutation.ReadManifest()
 		if err != nil {
@@ -245,6 +189,7 @@ func pkgUpdate(target string, options pkgOpts) {
 			return err
 		}
 		if target != "" {
+			target = strings.TrimSpace(target)
 			if err := project.ValidatePluginID(target); err != nil {
 				return err
 			}
@@ -264,12 +209,11 @@ func pkgUpdate(target string, options pkgOpts) {
 		if err != nil {
 			return err
 		}
-		reviewed, err := reviewResolvedPluginPlan(plan, options)
+		lock, err := reviewResolution(plan, options)
 		if err != nil {
 			return err
 		}
-		printPluginPlanWarnings(reviewed.Warnings)
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose)
+		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, options.verbose)
 	})
 	if err != nil {
 		fatal("plugin update: %v", err)
@@ -340,16 +284,13 @@ func verifyStagedRuntime(binary string) error {
 }
 
 func verifySourceChecksums(buildDir string, sources []project.PluginSource) error {
-	// Reconcile the generated module before listing it. Newer Go toolchains can
-	// require a harmless go.mod normalization (for example, `go 1.22` to
-	// `go 1.22.0`) before they will report its selected modules.
-	command := exec.Command("go", "list", "-mod=mod", "-m", "-json", "all")
+	command := exec.Command("go", "list", "-m", "-json", "all")
 	command.Dir = buildDir
 	command.Env = appendEnvironmentValue(os.Environ(), "GOWORK", "off")
 	automation.ConfigureCommand(command)
-	output, err := command.CombinedOutput()
+	output, err := command.Output()
 	if err != nil {
-		return fmt.Errorf("read selected module checksums: %w: %s", err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("read selected module checksums: %w", err)
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(output)))
 	selected := map[string]project.PluginSource{}
@@ -494,7 +435,6 @@ func pluginRuntimeBinary() (string, bool, error) {
 func parsePluginSpec(spec string) (string, string, error) {
 	spec = strings.TrimSpace(spec)
 	id, constraint := splitPluginSpec(spec)
-	id = project.ExpandGitHubPluginID(id)
 	if err := project.ValidatePluginID(id); err != nil {
 		return "", "", err
 	}

@@ -8,15 +8,17 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+const maxGCStructGlobalFields = 4
+
 // gcStructGlobalInit is compile-only metadata for the exact staged global
 // products. Codec reload deliberately drops it, so live collector admission
 // cannot be inherited from persisted metadata.
 type gcStructGlobalInit struct {
 	GlobalIndex uint32
 	TypeID      uint32
-	FieldCount  uint32
+	FieldCount  uint8
 	Default     bool
-	Bits        []uint64
+	Bits        [maxGCStructGlobalFields]uint64
 }
 
 type gcGlobalRootMapping struct {
@@ -53,6 +55,9 @@ func stagedGCStructGlobalInitializers(m *wasm.Module) ([]gcStructGlobalInit, err
 		}
 		out = append(out, init)
 	}
+	if len(out) > 2 {
+		return nil, fmt.Errorf("GC struct global count %d exceeds staged bound 2", len(out))
+	}
 	return out, nil
 }
 
@@ -66,7 +71,7 @@ func decodeStagedGCStructGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.G
 		body = encoded
 	}
 	r := wasm.NewReader(body)
-	values := make([]gcStructConstValue, 0)
+	values := make([]gcStructConstValue, 0, maxGCStructGlobalFields)
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -116,10 +121,10 @@ func decodeStagedGCStructGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.G
 			if !ok || st.Comp.Kind != wasm.CompStruct {
 				return gcStructGlobalInit{}, fmt.Errorf("type %d is not a struct", typeID)
 			}
-			if uint64(len(st.Comp.Fields)) > uint64(^uint32(0)) {
-				return gcStructGlobalInit{}, fmt.Errorf("type %d field count %d exceeds uint32 representation", typeID, len(st.Comp.Fields))
+			if len(st.Comp.Fields) > maxGCStructGlobalFields {
+				return gcStructGlobalInit{}, fmt.Errorf("type %d field count %d exceeds staged bound %d", typeID, len(st.Comp.Fields), maxGCStructGlobalFields)
 			}
-			init := gcStructGlobalInit{GlobalIndex: globalIndex, TypeID: typeID, FieldCount: uint32(len(st.Comp.Fields)), Default: subopcode == 1}
+			init := gcStructGlobalInit{GlobalIndex: globalIndex, TypeID: typeID, FieldCount: uint8(len(st.Comp.Fields)), Default: subopcode == 1}
 			if init.Default {
 				if len(values) != 0 {
 					return gcStructGlobalInit{}, fmt.Errorf("struct.new_default has %d operands", len(values))
@@ -128,7 +133,6 @@ func decodeStagedGCStructGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.G
 				if len(values) != len(st.Comp.Fields) {
 					return gcStructGlobalInit{}, fmt.Errorf("struct.new has %d operands, want %d", len(values), len(st.Comp.Fields))
 				}
-				init.Bits = make([]uint64, len(st.Comp.Fields))
 				for i, field := range st.Comp.Fields {
 					want := field.Storage().Val()
 					if field.Storage().Packed() {
@@ -147,6 +151,9 @@ func decodeStagedGCStructGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.G
 			return init, nil
 		default:
 			return gcStructGlobalInit{}, fmt.Errorf("unsupported GC constant operand opcode 0x%02x", op)
+		}
+		if len(values) > maxGCStructGlobalFields {
+			return gcStructGlobalInit{}, fmt.Errorf("GC struct constant operand count exceeds %d", maxGCStructGlobalFields)
 		}
 	}
 	return gcStructGlobalInit{}, fmt.Errorf("GC struct constant expression is missing struct.new")

@@ -364,11 +364,6 @@ func (b *Bindings) deltasMatchLocked(overrides, deltas map[string]bool) bool {
 
 var catalog = []Definition{
 	both("bounds-facts", "Bounds facts", "straight-line bounds-check elision"),
-	both("simd-superopt", "SIMD superoptimization", "recognize bounded multi-operation SIMD sequences"),
-	both("interval-region-pins", "Interval-region pins", "reuse registers across bounded straight-line local lifetimes"),
-	both("magic-div", "Magic division", "lower constant integer division through multiply-high sequences"),
-	both("shared-trap-body", "Shared trap bodies", "share repeated cold trap bodies in size-oriented code"),
-	both("shared-adapters", "Shared adapters", "share byte-identical host adapters in size-oriented code"),
 	both("st-flags", "Flags results", "keep comparison results in the flags register"),
 	amd64("store8-flags", "Byte-store flags", "sink comparison results directly into byte stores"),
 	both("reg-merge", "Register merge", "keep block results in registers across joins"),
@@ -385,8 +380,10 @@ var catalog = []Definition{
 	arm64("entry-zero-pairs", "Entry zero pairs", "pair adjacent declared-local zero stores in function prologues"),
 	both("entry-arg-pins", "Entry argument pins", "keep entry arguments in incoming registers"),
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
+	arm64("deep-fp-pins", "Deep float pins", "pin additional float locals in call-free functions"),
 	both("ext-fp-pins", "Extended float pins", "use the larger floating-point register pool"),
-	arm64("merge-next-use", "Merge next-use", "keep dead forward-merge locals lazy with bounded post-merge lookahead"),
+	amd64("call-next-use", "Call next-use", "skip dead pinned-local stores before calls"),
+	amd64("affine-lea", "Affine LEA", "fold bounded affine index trees into scaled addressing"),
 	amd64("tree-order", "Valent tree ordering", "schedule bounded commutative trees by register need"),
 	amd64("assoc-tree", "Associative tree cover", "cover high-pressure bounded associative trees with one accumulator"),
 	experimentalAMD64("bmi2-rorx", "BMI2 rotates", "use non-destructive immediate rotates on BMI2 hosts"),
@@ -401,21 +398,23 @@ var catalog = []Definition{
 	amd64("frame-elide", "Frame elision", "omit frames for small single-result functions"),
 	amd64("compact-i32-frame", "Compact i32 frames", "pack i32 locals in straight-line call-free functions"),
 	amd64("local-slot-order", "Symbolic local slot packing", "move exact referenced local homes into zero-reference compact slots"),
+	amd64("tee-spill-elide", "Reuse tee spill homes", "reuse a local.tee frame slot when spilling its still-live scalar result"),
 	amd64("commute-self-update", "Commute self-updates", "make non-fixed destinations accumulate commutative self-update expressions in place"),
 	amd64("i64-mask32", "Low-32 mask lowering", "lower i64 low-32 masks to zero-extending 32-bit ANDs"),
 	amd64("accumulator-immediate", "Accumulator immediates", "use ModRM-free RAX/EAX imm32 encodings in size objectives"),
 	arm64("frame-elide-reghomed", "Register-homed frames", "omit frames when locals remain in registers"),
 	arm64("small-frame", "Small frames", "use compact stack adjustment forms"),
-	arm64("zero-branch", "Zero branches", "select direct zero-test branches when flags are not live"),
-	arm64("mul-add-fuse", "Multiply-add fusion", "fuse multiply-add and multiply-subtract expressions"),
-	arm64("entry-init-elision", "Entry initialization elision", "skip initialization of locals overwritten before their first read"),
-	arm64("v128-direct-results", "Direct vector results", "write vector results directly into eligible pinned locals"),
-	amd64("dead-gc-new", "Dead GC constructors", "remove dropped GC constructor trees while preserving traps"),
-	amd64("gc-native-alloc", "Native GC allocation", "allocate admitted GC objects through native nursery fast paths"),
-	amd64("v128-const-cache", "AMD64 constant cache", "reserve vector constants and pool implicit scalar float masks"),
+	both("v128-const-cache", "Vector constant cache", "reserve vector registers for repeated constants"),
 	both("v128-pins", "Vector pins", "pin hot vector locals in registers"),
+	both("v128-sink", "Vector sinking", "sink vector operations into pinned locals"),
 	both("reg-abi", "Register ABI", "use Wago's internal register calling convention"),
 	both("inline", "Inlining", "inline eligible callees"),
+	experimentalBoth("inline-loop-callees", "Loop-call inlining", "inline callees invoked from inside loops"),
+	both("loop-precheck", "Loop prechecks", "hoist invariant bounds checks before loops"),
+	experimentalArm64("loop-region-pins", "Loop-region pins", "pin loop-carried values across loop regions"),
+	experimentalArm64("immutable-poly-fastpath", "Polymorphic table fast path", "specialize polymorphic immutable-table calls"),
+	experimentalArm64("legacy-fp-pins", "Legacy float pins", "use the legacy floating-point pin allocator"),
+	experimentalArm64("legacy-gp-pins", "Legacy integer pins", "use the legacy integer pin allocator"),
 	both("stack-fence", "Stack fence", "emit the stack-overflow guard fence"),
 	both("stack-reg", "Stack register", "keep the guest stack pointer in a register"),
 }
@@ -430,6 +429,14 @@ func amd64(name, label, description string) Definition {
 
 func arm64(name, label, description string) Definition {
 	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: []string{"arm64"}}
+}
+
+func experimentalBoth(name, label, description string) Definition {
+	return Definition{Name: name, Label: label, Description: description, Experimental: true, Architectures: []string{"amd64", "arm64"}}
+}
+
+func experimentalArm64(name, label, description string) Definition {
+	return Definition{Name: name, Label: label, Description: description, Experimental: true, Architectures: []string{"arm64"}}
 }
 
 func experimentalAMD64(name, label, description string) Definition {

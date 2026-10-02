@@ -46,12 +46,9 @@ type ManagedInstance struct {
 	memoryBytes uint64
 }
 
-var (
-	voidFuncType         = wasm.CompType{Kind: wasm.CompFunc}
-	voidFuncTypeKeyValue = wasm.StructuralFuncTypeKey(&voidFuncType)
-)
+var voidFuncType = wasm.CompType{Kind: wasm.CompFunc}
 
-func voidFuncTypeKey() uint64 { return voidFuncTypeKeyValue }
+func voidFuncTypeKey() uint64 { return wasm.StructuralFuncTypeKey(&voidFuncType) }
 
 func newPendingInstanceManager(owner string, budget AuthorityScope) *InstanceManager {
 	return &InstanceManager{owner: owner, budget: budget, instances: map[*ManagedInstance]struct{}{}, byInstance: map[*Instance]*ManagedInstance{}}
@@ -219,8 +216,7 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 	if hasGC {
 		gc = *state.gcConfig
 	}
-	pluginGCImports := parent.pluginGCImportSet()
-	child, err := rt.instantiateWithHooksOrigin(buildModule(parent.c, bindings), imports, pluginGCImports, gc, hasGC, false, InstantiateManaged, hooks, operation.reservation, nil)
+	child, err := rt.instantiateWithHooksOrigin(buildModule(parent.c, bindings), imports, gc, hasGC, false, InstantiateManaged, hooks, operation.reservation)
 	if err != nil {
 		m.mu.Lock()
 		m.live--
@@ -343,27 +339,13 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
-	if ctx.Done() == nil {
-		// Keep the common non-cancelable path identical to the original dispatch:
-		// Go 1.22 otherwise retains the context through the trap translation call
-		// and adds a heap allocation even though no watcher can ever fire.
-		if in.syncMode {
-			return in.callNativeSync(base)
-		}
-		if err := in.callNativeAsync(base, false); err != nil {
-			return err
-		}
-		return in.replayHostLog()
-	}
-	stopCancel := in.startCancellationWatch(ctx, in.trap)
-	defer stopCancel()
 	if in.syncMode {
-		return contextInterruptError(ctx, in.callNativeSyncWithTrapContext(base, in.trap, ctx))
+		return in.callNativeSync(base)
 	}
 	if err := in.callNativeAsync(base, false); err != nil {
-		return contextInterruptError(ctx, err)
+		return err
 	}
-	return contextInterruptError(ctx, in.replayHostLog())
+	return in.replayHostLog()
 }
 
 func (m *InstanceManager) ensureVoidDispatcher() (uintptr, error) {

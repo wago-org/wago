@@ -9,7 +9,7 @@ import (
 )
 
 // Memory is a linear-memory object the host can create and import into a module,
-// mirroring JS WebAssembly.Memory. The host owns it: access UnsafeBytes(), and
+// mirroring JS WebAssembly.Memory. The host owns it: read and write Bytes(), and
 // Close() it when no instance importing it is still in use.
 //
 // The handle stays two pointers wide. Ordinary instance-owned memories keep the
@@ -23,7 +23,7 @@ type Memory struct {
 type memoryState struct {
 	mu    sync.Mutex
 	owner *Instance // non-nil for an instance-owned exported memory
-	meta  uint64    // declared max u49 | inline importer count u8 | flags u7
+	meta  uint64    // declared max u32 | importer count u26 | flags u6
 }
 
 const (
@@ -54,29 +54,13 @@ func (s *memoryState) set(flag uint8, enabled bool) {
 	}
 }
 
-var memoryImporterOverflow sync.Map // map[*memoryState]uint32; only counts >= 255
-
 func (s *memoryState) importerCount() uint32 {
-	inline := uint32(s.meta>>memoryStateImporterShift) & uint32(memoryStateImporterMask)
-	if inline != uint32(memoryStateImporterMask) {
-		return inline
-	}
-	if count, ok := memoryImporterOverflow.Load(s); ok {
-		return count.(uint32)
-	}
-	return inline
+	return uint32(s.meta>>memoryStateImporterShift) & uint32(memoryStateImporterMask)
 }
 
 func (s *memoryState) setImporterCount(count uint32) {
-	inline := count
-	if inline >= uint32(memoryStateImporterMask) {
-		inline = uint32(memoryStateImporterMask)
-		memoryImporterOverflow.Store(s, count)
-	} else {
-		memoryImporterOverflow.Delete(s)
-	}
 	s.meta = s.meta&^(memoryStateImporterMask<<memoryStateImporterShift) |
-		uint64(inline)<<memoryStateImporterShift
+		(uint64(count)&memoryStateImporterMask)<<memoryStateImporterShift
 }
 
 func (s *memoryState) declaredMaximum() uint64 {
@@ -149,19 +133,13 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 	return m, nil
 }
 
-// UnsafeBytes returns the zero-copy linear-memory view shared with wasm, at the
-// current (possibly grown) size. The returned slice is valid only while the
-// Memory and its owner instance remain open, and Close must not race any access.
-// Retaining or using it after Close is unsafe because the off-heap mapping may
-// be recycled for another instance. Prefer Instance.Read and Instance.Write
-// when a retained or close-safe view is required.
-//
-// It uses the host-facing accessor so it stays valid after a memory.grow in
-// guard-page mode — where the Go-side j.mem slice is capped at the initial commit
-// while the grown pages live in the reservation. CurrentBytes would panic there
-// (slice bounds beyond the initial commit); this mirrors what Instance.Read/Write
-// already use via mem().
-func (m *Memory) UnsafeBytes() []byte {
+// Bytes returns the zero-copy linear-memory view shared with wasm, at the
+// current (possibly grown) size. It uses the host-facing accessor so it stays
+// valid after a memory.grow in guard-page mode — where the Go-side j.mem slice is
+// capped at the initial commit while the grown pages live in the reservation.
+// CurrentBytes would panic there (slice bounds beyond the initial commit); this
+// mirrors what Instance.Read/Write already use via mem().
+func (m *Memory) Bytes() []byte {
 	if m == nil {
 		return nil
 	}
@@ -231,8 +209,8 @@ func (m *Memory) attachImporter() error {
 	if !s.has(memoryStateShared) && count != 0 {
 		return fmt.Errorf("memory is already used by another instance")
 	}
-	if count == ^uint32(0) {
-		return fmt.Errorf("memory importer count overflows uint32")
+	if count == uint32(memoryStateImporterMask) {
+		return fmt.Errorf("memory has too many live importers")
 	}
 	if s.owner != nil && !s.owner.retainResourceRoot() {
 		return fmt.Errorf("memory owner instance is closed")
@@ -330,37 +308,15 @@ func (m *Memory) share(owner *Instance, def memoryDef) error {
 	return nil
 }
 
-func (m *Memory) instanceOwner() *Instance {
-	if m == nil {
-		return nil
-	}
-	s := m.state.Load()
-	if s == nil {
-		return nil
-	}
-	s.mu.Lock()
-	owner := s.owner
-	s.mu.Unlock()
-	return owner
-}
-
 func (m *Memory) validateLimits(min, max uint64, hasMax, addr64, shared bool) error {
-	if m == nil {
-		return fmt.Errorf("memory is nil")
-	}
 	s := m.state.Load()
 	if s == nil {
 		return fmt.Errorf("memory has not been exported for import")
 	}
 	s.mu.Lock()
-	if s.has(memoryStateClosed) || m.jm == nil {
-		s.mu.Unlock()
-		return fmt.Errorf("memory owner is closed")
-	}
 	providerAddr64, addrKnown := s.has(memoryStateAddr64), s.has(memoryStateAddrKnown)
 	providerShared := s.has(memoryStateWasmShared)
 	limitsKnown, providerHasMax, providerMax := s.has(memoryStateLimitsKnown), s.has(memoryStateDeclaredHasMax), s.declaredMaximum()
-	actualMin, actualMax := uint64(m.jm.CurrentPages()), uint64(m.jm.MaxPages())
 	s.mu.Unlock()
 	if shared && !providerShared {
 		return fmt.Errorf("import requires shared memory, but provider is not shared")
@@ -375,6 +331,11 @@ func (m *Memory) validateLimits(min, max uint64, hasMax, addr64, shared bool) er
 		}
 		return fmt.Errorf("address form mismatch: provider is memory%d, import requires memory%d", providerBits, importBits)
 	}
+	jm := m.jobMemory()
+	if jm == nil {
+		return fmt.Errorf("memory owner is closed")
+	}
+	actualMin, actualMax := uint64(jm.CurrentPages()), uint64(jm.MaxPages())
 	if actualMin < min {
 		return fmt.Errorf("memory current minimum %d pages is below required %d", actualMin, min)
 	}
@@ -396,45 +357,17 @@ func (m *Memory) importShape() (guarded, shared bool) {
 	if m == nil {
 		return false, false
 	}
-	s := m.state.Load()
-	if s == nil {
-		jm := m.jm
-		if jm != nil {
-			base, _ := jm.ReserveRange()
-			guarded = base != 0
-		}
-		return guarded, false
-	}
-	s.mu.Lock()
-	shared = s.has(memoryStateShared)
-	if !s.has(memoryStateClosed) && m.jm != nil {
-		base, _ := m.jm.ReserveRange()
+	jm := m.jobMemory()
+	if jm != nil {
+		base, _ := jm.ReserveRange()
 		guarded = base != 0
 	}
-	s.mu.Unlock()
-	return guarded, shared
-}
-
-func (m *Memory) currentPages() (uint32, bool) {
-	if m == nil {
-		return 0, false
-	}
-	s := m.state.Load()
-	if s == nil {
-		jm := m.jm
-		if jm == nil {
-			return 0, false
-		}
-		return jm.CurrentPages(), true
-	}
-	s.mu.Lock()
-	if s.has(memoryStateClosed) || m.jm == nil {
+	if s := m.state.Load(); s != nil {
+		s.mu.Lock()
+		shared = s.has(memoryStateShared)
 		s.mu.Unlock()
-		return 0, false
 	}
-	pages := m.jm.CurrentPages()
-	s.mu.Unlock()
-	return pages, true
+	return guarded, shared
 }
 
 func (m *Memory) jobMemory() *coreruntime.JobMemory {

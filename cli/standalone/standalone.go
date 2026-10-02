@@ -49,7 +49,7 @@ func executeArtifact(artifact []byte, plugins wago.PluginSet, options Options, a
 		return err
 	}
 	defer runtime.Close()
-	compiled, err := wago.LoadTrustedArtifact(artifact)
+	compiled, err := wago.Load(artifact)
 	if err != nil {
 		return err
 	}
@@ -81,9 +81,6 @@ func executeModule(runtime *wago.Runtime, module *wago.Module, options Options, 
 	}
 	params, results, err := module.Compiled().Signature(invoke)
 	if err != nil {
-		return err
-	}
-	if err := wasmcall.ValidateSignature(params, results); err != nil {
 		return err
 	}
 	values := []uint64(nil)

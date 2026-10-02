@@ -70,9 +70,6 @@ func (im Imports) global(key string) (GlobalImport, bool) {
 	case GlobalImport:
 		return g, true
 	case *Global:
-		if g == nil {
-			return GlobalImport{}, false
-		}
 		return GlobalImport{Type: g.Type, Mutable: g.Mutable, Global: g}, true
 	default:
 		return GlobalImport{}, false
@@ -106,16 +103,6 @@ type globalOwner struct {
 	// in this global's cell (funcref globals only). Each root preserves the writer's
 	// descriptor arena and transitive import attachments until overwrite or close.
 	retained map[*Instance]*retainedInstanceRoot
-}
-
-func (g *Global) instanceOwner() *Instance {
-	if g == nil || g.owner == nil {
-		return nil
-	}
-	g.owner.mu.Lock()
-	owner := g.owner.instance
-	g.owner.mu.Unlock()
-	return owner
 }
 
 // NewGlobalI32/I64/F32/F64/V128 construct a host-owned wasm global of the named
@@ -883,8 +870,6 @@ type RefInit struct {
 // destination, RefType selects the 32-byte funcref or 8-byte externref runtime
 // representation, Mode preserves active/passive/declarative semantics, and
 // Values carries structural null/ref.func payloads without live addresses.
-// HasValueType is false for the legacy function-index segment encoding, whose
-// exact element type is non-null (ref func).
 type ElemInit struct {
 	TableIndex     uint32
 	RefType        ValType
@@ -965,7 +950,7 @@ type compiledMemoryDirectory struct {
 
 	stagedMemory64  bool                   // internal bounded memory64 execution gate; never serialized
 	gcStructGlobals []gcStructGlobalInit   // exact staged GC constant initializers; never serialized
-	gcArrayGlobals  []gcArrayGlobalInit    // exact staged numeric array globals; never serialized
+	gcArrayGlobals  []gcArrayGlobalInit    // exact staged bounded numeric array globals; never serialized
 	gcArrayElement  *gcArrayElementInit    // exact passive GC element constructors; never serialized
 	gcI31TableInit  *gcI31TableInitializer // exact imported-global i31 table initializer; never serialized
 	ehTags          []compiledTagDef       // staged EH product metadata in tag-index order; never serialized
@@ -1081,7 +1066,7 @@ type Compiled struct {
 	memoryImport string
 
 	// tableImport preserves the direct table-0 API/runtime metadata. Additional
-	// imported tables occupy the leading extraTables entries, and codec version 2 writes
+	// imported tables occupy the leading extraTables entries, and codec version 1 writes
 	// every declaration in exact Wasm index order.
 	tableImport       string
 	tableImportMin    int
@@ -1124,7 +1109,6 @@ type Compiled struct {
 	requiresBMI2       bool
 	requiresAVX2       bool
 	requiresAVX512     bool
-	syncHostSlots      uint16
 	// independentInstances allows instances without cross-instance Wasm imports
 	// to use instance-local native execution leases. It is intentionally not
 	// serialized because it is runtime policy rather than a module property.
@@ -1160,12 +1144,6 @@ type validateMemo struct {
 	// zero entry retains the legacy first-dot interpretation for hand-built
 	// Compiled values; source compilation always records an exact nonzero end.
 	importModuleEnds []uint64
-
-	// Fresh low-level compilation records runtime-only quotas here for a later
-	// package-level Instantiate without growing Compiled. Decoded cache artifacts
-	// receive the destination Runtime's current policy through InstantiateOptions.
-	memoryLimitPages         uint32
-	maxInstanceMetadataBytes uint64
 }
 
 // validateCached returns the metadata-validation result, running the full check
@@ -1237,25 +1215,6 @@ func (c *Compiled) tableExactType(index int) (ValueTypeDescriptor, error) {
 }
 
 func (c *Compiled) elemExactType(elem ElemInit) (ValueTypeDescriptor, error) {
-	// The legacy function-index encoding declares a non-null (ref func) segment,
-	// but predates structural value-type metadata. Keep HasValueType false as its
-	// persisted marker so MVP artifacts remain feature-free while Core 3 can use
-	// the segment to initialize a non-null function table. A null initializer
-	// identifies older hand-built nullable metadata instead.
-	if !elem.HasValueType && normalizedElemRefType(elem.RefType) == ValFuncRef {
-		legacy := true
-		for _, value := range elem.Values {
-			if value.Null || value.HasGlobal || value.I31Wrap || len(value.Expr) != 0 {
-				legacy = false
-				break
-			}
-		}
-		if legacy {
-			exact, _ := valueTypeDescriptorFromValType(ValFuncRef)
-			exact.Ref.Nullable = false
-			return exact, nil
-		}
-	}
 	return exactValueType(normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, c.ValueTypes, c.Types)
 }
 

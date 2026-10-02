@@ -34,46 +34,16 @@ type Engine struct {
 	hostResults      [maxHostArity]uint64
 }
 
-const (
-	// DefaultNativeStackBytes preserves the historical 4 MiB foreign stack.
-	DefaultNativeStackBytes uint64 = 4 << 20
-	// MinNativeStackBytes leaves at least one fence margin of usable stack.
-	MinNativeStackBytes uint64 = 512 << 10
-	// MaxNativeStackBytes bounds retained virtual address space per Engine.
-	MaxNativeStackBytes uint64 = 1 << 30
-)
-
-func validateNativeStackBytes(stackBytes uint64) error {
-	if stackBytes < MinNativeStackBytes || stackBytes > MaxNativeStackBytes {
-		return fmt.Errorf("jit: native stack bytes must be between %d and %d, got %d", MinNativeStackBytes, MaxNativeStackBytes, stackBytes)
-	}
-	if stackBytes&15 != 0 {
-		return fmt.Errorf("jit: native stack bytes must be 16-byte aligned, got %d", stackBytes)
-	}
-	return nil
-}
+const defaultStackBytes = 4 << 20 // 4 MiB foreign execution stack
 
 func NewEngine() (*Engine, error) {
-	return NewEngineWithStackBytes(DefaultNativeStackBytes)
-}
-
-// NewEngineWithStackBytes creates an Engine with the selected bounded foreign
-// execution stack capacity.
-func NewEngineWithStackBytes(stackBytes uint64) (*Engine, error) {
-	if err := validateNativeStackBytes(stackBytes); err != nil {
-		return nil, err
-	}
-	st, err := mmapRW(int(stackBytes))
+	st, err := mmapRW(defaultStackBytes)
 	if err != nil {
 		return nil, err
 	}
 	top := uintptr(unsafe.Pointer(&st[0])) + uintptr(len(st))
 	top &^= 15 // 16-byte align (page-aligned already, but be explicit)
-	e := &Engine{stack: st, stackTop: top}
-	if err := e.initNativeEntry(); err != nil {
-		return nil, errors.Join(err, munmap(st))
-	}
-	return e, nil
+	return &Engine{stack: st, stackTop: top}, nil
 }
 
 var engineCache struct {
@@ -81,31 +51,19 @@ var engineCache struct {
 	e *Engine
 }
 
-// AcquireEngine returns a default-capacity Engine.
+// AcquireEngine returns an Engine, reusing one recently released by ReleaseEngine
+// when available. The cache is intentionally one slot: repeated instantiate/close
+// loops avoid stack mmap churn without retaining an unbounded number of 4 MiB
+// foreign stacks.
 func AcquireEngine() (*Engine, error) {
-	return AcquireEngineWithStackBytes(DefaultNativeStackBytes)
-}
-
-// AcquireEngineWithStackBytes returns an Engine with exactly the requested
-// capacity. The one-slot cache never substitutes a smaller stack or retains a
-// mismatched large stack after a later default-capacity request.
-func AcquireEngineWithStackBytes(stackBytes uint64) (*Engine, error) {
-	if err := validateNativeStackBytes(stackBytes); err != nil {
-		return nil, err
-	}
 	engineCache.Lock()
 	e := engineCache.e
 	engineCache.e = nil
 	engineCache.Unlock()
 	if e != nil {
-		if e.StackBytes() == stackBytes {
-			return e, nil
-		}
-		if err := e.Close(); err != nil {
-			return nil, err
-		}
+		return e, nil
 	}
-	return NewEngineWithStackBytes(stackBytes)
+	return NewEngine()
 }
 
 // ReleaseEngine returns e to the bounded cache or unmaps its stack if the cache
@@ -146,58 +104,38 @@ func (e *Engine) StackTop() uintptr {
 	return uintptr(unsafe.Pointer(&e.stack[0])) + uintptr(len(e.stack))
 }
 
-// StackBytes reports the mapped foreign execution stack capacity.
-func (e *Engine) StackBytes() uint64 {
-	if e == nil {
-		return 0
-	}
-	return uint64(len(e.stack))
-}
-
 // Call enters native code at code following WARP's WasmWrapper ABI. serArgs,
 // linMem, trap and results MUST be backed by off-heap memory (Arena/JobMemory)
-// so their addresses are stable across the call. trap must contain at least
-// TrapBufferBytes bytes because native trap stubs write the code and source
-// location. It returns a *TrapError if the wrapper set a non-zero trap code.
+// so their addresses are stable across the call. It returns a *TrapError if the
+// wrapper set a non-zero trap code.
 //
 // The trap cell is zeroed and its pointer installed in basedata here, once per
 // entry, so generated code never passes or clears it: emitTrap (the only
 // consumer, cold) reads [linMem-abi.TrapCellPtrOffset], and function returns
 // carry no trap protocol at all (WARP's model).
 func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error {
-	if err := validateTrapBuffer(trap); err != nil {
-		return err
-	}
 	installTrapCell(linMem, trap)
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
-	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
-		return trapErrorFromBuffer(tc, trap)
+	if len(trap) >= 4 {
+		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
+			return trapErrorFromBuffer(tc, trap)
+		}
 	}
 	return nil
 }
 
 // CallPrepared enters native code after JobMemory.BindTrapCell established a
-// stable trap pointer and a zero trap buffer of at least TrapBufferBytes bytes.
-// Successful native execution never writes that buffer, so repeated calls avoid
-// clearing/rebinding it. A cold trap is consumed and cleared before returning,
-// re-establishing the invariant for the next call.
+// stable trap pointer and a zero trap cell. Successful native execution never
+// writes that cell, so repeated calls avoid clearing/rebinding it. A cold trap
+// is consumed and cleared before returning, re-establishing the invariant for
+// the next call.
 func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, trap, results []byte) error {
-	if err := validateTrapBuffer(trap); err != nil {
-		return err
-	}
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
-	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
-		storeTrap(trap, 0)
-		return trapErrorFromBuffer(tc, trap)
-	}
-	return nil
-}
-
-var errIncompleteTrapBuffer = errors.New("jit: trap buffer needs at least 24 bytes")
-
-func validateTrapBuffer(trap []byte) error {
-	if len(trap) < TrapBufferBytes {
-		return errIncompleteTrapBuffer
+	if len(trap) >= 4 {
+		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
+			storeTrap(trap, 0)
+			return trapErrorFromBuffer(tc, trap)
+		}
 	}
 	return nil
 }
@@ -253,8 +191,8 @@ func (e *Engine) CallWithHostBase(code uintptr, serArgs []byte, linMemBase uintp
 	if linMemBase == 0 {
 		return fmt.Errorf("jit: host-call linear-memory base is zero")
 	}
-	if err := validateTrapBuffer(trap); err != nil {
-		return err
+	if len(trap) < TrapBufferBytes {
+		return fmt.Errorf("jit: host-call trap buffer has %d bytes, need %d", len(trap), TrapBufferBytes)
 	}
 	if err := InitHostCtrlFrame(ctrl); err != nil {
 		return err
@@ -282,22 +220,15 @@ func InitHostCtrlFrame(ctrl []byte) error {
 	if err != nil {
 		return fmt.Errorf("jit: host-call stub: %w", err)
 	}
-	if _, err := initHostCtrlExtension(ctrl); err != nil {
-		return err
-	}
 	binary.LittleEndian.PutUint64(ctrl[hcTrampoline:], uint64(stub))
 	return nil
 }
 
 func hostCtrlFrame(ptr uintptr) []byte {
-	if n, ok := registeredHostCtrlFrames.Load(ptr); ok {
-		return unsafe.Slice((*byte)(offHeapPointer(ptr)), n.(int))
-	}
 	return unsafe.Slice((*byte)(offHeapPointer(ptr)), ctrlFrameSize)
 }
 
 func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, ctrlPtr uintptr, host HostCall, argBuf, resBuf []uint64) error {
-	rootCtrl, rootCtrlPtr := ctrl, ctrlPtr
 	// The host-call re-entry loop is intentionally unbounded: a single guest
 	// invocation may legitimately make an arbitrary number of host calls (e.g. a
 	// long-running rule that polls Date.now()/Math.random() in a loop). A fixed
@@ -317,9 +248,8 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			if TrapCode(loadTrap(trap)) == TrapInterrupted {
 				return trapErrorFromBuffer(TrapInterrupted, trap)
 			}
-			stackTop := e.StackTop()
-			prepareHostResume(ctrl, trap, stackTop, e.StackLimit())
-			resumeNative(ctrlPtr, stackTop)
+			prepareHostResume(ctrl, trap, e.stackTop, e.StackLimit())
+			resumeNative(ctrlPtr, e.stackTop)
 		}
 		switch tc := loadTrap(trap); {
 		case tc == hostCallPending:
@@ -327,11 +257,7 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			if ctrlPtr == 0 {
 				return fmt.Errorf("jit: host call did not publish an active control frame")
 			}
-			if ctrlPtr == rootCtrlPtr {
-				ctrl = rootCtrl
-			} else {
-				ctrl = hostCtrlFrame(ctrlPtr)
-			}
+			ctrl = hostCtrlFrame(ctrlPtr)
 			imp := binary.LittleEndian.Uint32(ctrl[hcImportIdx:])
 			// hcNArgs packs the call's slot counts: low 16 bits = param slots
 			// (native->Go), high 16 bits = result slots (Go->native). Copying only
@@ -342,15 +268,7 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			n := int(raw & 0xffff)
 			nres := int(raw >> 16)
 			if n > maxHostArity || nres > maxHostArity {
-				argsArea, resultsArea, capacity, err := hostCtrlWideCallAreas(ctrl, n, nres)
-				if err != nil {
-					return err
-				}
-				args := unsafe.Slice((*uint64)(unsafe.Pointer(&argsArea[0])), capacity)
-				wideResults := unsafe.Slice((*uint64)(unsafe.Pointer(&resultsArea[0])), capacity)
-				clear(wideResults[:nres])
-				host(ctrlPtr, imp, args[:n], wideResults[:nres])
-				continue
+				return fmt.Errorf("jit: host call arity %d/%d exceeds %d", n, nres, maxHostArity)
 			}
 			for k := 0; k < n; k++ {
 				argBuf[k] = binary.LittleEndian.Uint64(ctrl[hcArgs+k*8:])

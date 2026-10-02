@@ -146,19 +146,26 @@ func TestTinyClassifiedTransientRootsCountOnceWithoutTelemetry(t *testing.T) {
 		return c, object
 	}
 
-	for _, count := range []int{1024, 4096} {
-		c, object := newCollector(t)
-		roots := make(classifiedOnlyTinyRoots, count)
-		for i := range roots {
-			roots[i] = Root(object)
-		}
-		if err := c.Step(roots); err != nil {
-			t.Fatalf("Step with %d classified roots: %v", len(roots), err)
-		}
+	c, object := newCollector(t)
+	roots := make(classifiedOnlyTinyRoots, tinyTransientRootLimit)
+	for i := range roots {
+		roots[i] = Root(object)
+	}
+	if err := c.Step(roots); err != nil {
+		t.Fatalf("Step with %d classified roots: %v", len(roots), err)
+	}
+
+	c, object = newCollector(t)
+	roots = make(classifiedOnlyTinyRoots, tinyTransientRootLimit+1)
+	for i := range roots {
+		roots[i] = Root(object)
+	}
+	if err := c.Step(roots); err == nil || !strings.Contains(err.Error(), "transient root") {
+		t.Fatalf("Step with %d classified roots error = %v, want bounded transient-root rejection", len(roots), err)
 	}
 }
 
-func TestTinyRejectsTransientRootsWithoutDirectEnumeration(t *testing.T) {
+func TestTinyRejectsUnboundedTransientRootWalk(t *testing.T) {
 	requireTinyIncrementalBuild(t)
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
@@ -172,8 +179,8 @@ func TestTinyRejectsTransientRootsWithoutDirectEnumeration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := c.Step(roots); err != nil {
-		t.Fatalf("direct transient roots above the old limit: %v", err)
+	if err := c.Step(roots); err == nil || !strings.Contains(err.Error(), "transient root") {
+		t.Fatalf("Step error = %v, want bounded transient-root rejection", err)
 	}
 
 	c2 := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}, []TypeDesc{leaf})

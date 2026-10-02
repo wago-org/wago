@@ -379,7 +379,7 @@ type PluginSet struct {
 	Providers []PluginProvider
 	Selections []PluginSelection
 }
-func InspectPluginPlan(PluginSet) (any, error) { return nil, nil }
+func ValidatePluginSet(PluginSet) error { return nil }
 `,
 		"cli/runtime/runtime.go": `package runtime
 import wago "github.com/wago-org/wago"

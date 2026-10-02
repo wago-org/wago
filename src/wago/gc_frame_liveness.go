@@ -2,8 +2,6 @@ package wago
 
 import (
 	"fmt"
-	"math/bits"
-	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -22,42 +20,6 @@ const (
 )
 
 const noGCLiveIndex = ^uint32(0)
-
-const maxGCFrameLivenessArenaBytes = 64 << 20
-
-const maxGCFrameBranchTargets = maxGCFrameLivenessArenaBytes / 4
-
-const maxGCFrameLivenessWorkWords = maxGCFrameLivenessArenaBytes / 8
-
-// Four conservative local roots and a 512 root-byte budget bound additional
-// guest retention and serialized offsets while avoiding a pointer-rich CFG and
-// backwards dataflow for common narrow-root functions. A root-free collecting
-// function has no retention cost and always uses the cheap site-counting path.
-// Fixed EH payload roots are accounted independently and remain always live.
-const (
-	gcFrameConservativeLocalLimit    = 4
-	gcFrameConservativeRootByteLimit = 512
-)
-
-func gcFramePreferConservativeMasks(localRoots, bodyBytes int) bool {
-	if localRoots < 0 || bodyBytes < 0 {
-		return false
-	}
-	if localRoots == 0 {
-		return true
-	}
-	return localRoots <= gcFrameConservativeLocalLimit && bodyBytes <= gcFrameConservativeRootByteLimit/localRoots
-}
-
-func gcFrameLivenessArenaFits(nodes, words int) bool {
-	return nodes >= 0 && words > 0 && (nodes == 0 || words <= maxGCFrameLivenessArenaBytes/8/nodes)
-}
-
-func gcFrameLivenessWorkFits(nodes, branchEdges, words int) bool {
-	units := nodes + branchEdges
-	return nodes >= 0 && branchEdges >= 0 && units >= nodes && words > 0 &&
-		(units == 0 || words <= maxGCFrameLivenessWorkWords/units)
-}
 
 type gcLiveNode struct {
 	use, def   uint32 // tracked-root indexes, or noGCLiveIndex
@@ -86,141 +48,28 @@ type gcLiveFrame struct {
 	endNode  int
 }
 
-type gcFrameLiveMasks struct {
-	words        []uint64 // site-major: allocation sites, then native calls
-	allocationN  int
-	callN        int
-	wordsPerSite int
-}
-
-func gcFrameLiveMaskArenaFits(allocationN, callN, wordsPerSite int) bool {
-	if allocationN < 0 || callN < 0 || wordsPerSite <= 0 || allocationN > int(^uint(0)>>1)-callN {
-		return false
-	}
-	sites := allocationN + callN
-	return sites == 0 || wordsPerSite <= maxGCFrameLivenessArenaBytes/8/sites
-}
-
-func newGCFrameLiveMasks(allocationN, callN, wordsPerSite int) gcFrameLiveMasks {
-	if !gcFrameLiveMaskArenaFits(allocationN, callN, wordsPerSite) {
-		return gcFrameLiveMasks{}
-	}
-	return gcFrameLiveMasks{
-		words:        make([]uint64, (allocationN+callN)*wordsPerSite),
-		allocationN:  allocationN,
-		callN:        callN,
-		wordsPerSite: wordsPerSite,
-	}
-}
-
-func (m gcFrameLiveMasks) site(site int) []uint64 {
-	start := site * m.wordsPerSite
-	return m.words[start : start+m.wordsPerSite]
-}
-
-// gcFrameCompactLiveLocals removes collector locals that are dead at every
-// collecting site and returns the maximum population live at any one site.
-// Masks remain site-major and exact; the returned local slice preserves its
-// original frame order.
-// Keep this large compile-time helper out of newGCFrameRootPlan. TinyGo's size
-// optimizer otherwise inlines it and grows the minimal runtime substantially.
-//
-//go:noinline
-func gcFrameCompactLiveLocalsArena(locals []shared.GCFrameLocal, masks gcFrameLiveMasks) ([]shared.GCFrameLocal, gcFrameLiveMasks, int, error) {
-	wordCount := (len(locals) + 63) / 64
-	if wordCount == 0 {
-		wordCount = 1
-	}
-	totalSites := masks.allocationN + masks.callN
-	if masks.wordsPerSite != wordCount || len(masks.words) != totalSites*wordCount {
-		return nil, gcFrameLiveMasks{}, 0, fmt.Errorf("GC local liveness mask arena has %d words at width %d, want %d at width %d", len(masks.words), masks.wordsPerSite, totalSites*wordCount, wordCount)
-	}
-	union := make([]uint64, wordCount)
-	maximum := 0
-	for site := 0; site < totalSites; site++ {
-		live := 0
-		for word, value := range masks.site(site) {
-			union[word] |= value
-			live += bits.OnesCount64(value)
-		}
-		if live > maximum {
-			maximum = live
-		}
-	}
-	// Every set bit in a site belongs to the union. Retain a direct old-to-new
-	// mapping so reconstruction visits arena words and live bits rather than
-	// rescanning the complete retained union at every site.
-	remap := make([]uint32, len(locals))
-	kept := 0
-	for root := range locals {
-		if union[root/64]&(uint64(1)<<uint(root%64)) != 0 {
-			remap[root] = uint32(kept)
-			kept++
-		}
-	}
-	compactedLocals := make([]shared.GCFrameLocal, kept)
-	compacted := 0
-	for root := range locals {
-		if union[root/64]&(uint64(1)<<uint(root%64)) != 0 {
-			compactedLocals[compacted] = locals[root]
-			compacted++
-		}
-	}
-	newWordCount := (kept + 63) / 64
-	if newWordCount == 0 {
-		newWordCount = 1
-	}
-	compactedMasks := masks
-	if newWordCount != wordCount || kept != len(locals) && wordCount > 1 {
-		if !gcFrameLiveMaskArenaFits(masks.allocationN, masks.callN, newWordCount) {
-			return nil, gcFrameLiveMasks{}, 0, fmt.Errorf("compacted GC local liveness mask arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
-		}
-		compactedMasks = newGCFrameLiveMasks(masks.allocationN, masks.callN, newWordCount)
-	}
-	for site := 0; site < totalSites; site++ {
-		oldWords := masks.site(site)
-		var newLow uint64
-		for word := 0; word < wordCount; word++ {
-			value := oldWords[word]
-			for value != 0 {
-				bit := bits.TrailingZeros64(value)
-				value &= value - 1
-				oldRoot := word*64 + bit
-				if oldRoot >= len(remap) { // Ignore unused padding bits in the final word.
-					continue
-				}
-				root := int(remap[oldRoot])
-				if root < 64 {
-					newLow |= uint64(1) << uint(root)
-				} else {
-					compactedMasks.site(site)[root/64] |= uint64(1) << uint(root%64)
-				}
-			}
-		}
-		compactedMasks.site(site)[0] = newLow
-	}
-	return compactedLocals, compactedMasks, maximum, nil
+type gcFrameLivenessExtra struct {
+	words []uint64 // allocation-site words followed by native-call words
 }
 
 // gcFrameLocalLiveness computes architecture-independent exact backwards local
-// liveness over the validated structured Wasm CFG. Every site occupies one or
-// more words in a single pointer-free site-major arena.
+// liveness over the validated structured Wasm CFG. The low word for each site is
+// returned directly. For functions wider than 64 collector locals, remaining
+// words are appended to one flat site-major arena in extra.
 // Small functions retain the one-word dataflow path; larger functions use one
-// bounded nodes-by-words arena rather than per-node heap bitsets. The tracked
-// population may exceed the final per-site root limit; compaction and admission
-// apply that limit after this exact analysis.
-func gcFrameLocalLivenessArena(body []byte, locals []shared.GCFrameLocal) (gcFrameLiveMasks, error) {
+// bounded nodes-by-words arena rather than per-node heap bitsets.
+func gcFrameLocalLiveness(body []byte, indexes []uint32, callMasks *[]uint64, extra *gcFrameLivenessExtra) ([]uint64, error) {
 	classifier := wasm.NewModuleInstructionClassifier(nil, true)
-	return gcFrameLocalLivenessArenaWithClassifier(body, locals, &classifier)
+	return gcFrameLocalLivenessWithClassifier(body, indexes, callMasks, extra, &classifier)
 }
 
-func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFrameLocal, classifier *wasm.ModuleInstructionClassifier) (gcFrameLiveMasks, error) {
-	if len(locals) > shared.GCFrameTrackedLocalLimit {
-		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness tracks %d locals, limit %d", len(locals), shared.GCFrameTrackedLocalLimit)
+func gcFrameLocalLivenessWithClassifier(body []byte, indexes []uint32, callMasks *[]uint64, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) ([]uint64, error) {
+	if len(indexes) > shared.GCFrameRootLimit {
+		return nil, fmt.Errorf("GC local liveness tracks %d roots, limit %d", len(indexes), shared.GCFrameRootLimit)
 	}
-	bits := make(map[uint32]uint32, len(locals))
-	for i, local := range locals {
-		bits[local.Index] = uint32(i)
+	bits := make(map[uint32]uint32, len(indexes))
+	for i, index := range indexes {
+		bits[index] = uint32(i)
 	}
 
 	r := wasm.NewReader(body)
@@ -232,21 +81,18 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
-			return gcFrameLiveMasks{}, err
+			return nil, err
 		}
 		node := gcLiveNode{flow: gcLiveNext, use: noGCLiveIndex, def: noGCLiveIndex, index: noGCLiveIndex}
 		var imm wasm.InstructionImmediate
 		if op == 0x0e { // br_table keeps every target, unlike the cheap classifier.
 			n, err := r.U32()
 			if err != nil {
-				return gcFrameLiveMasks{}, err
+				return nil, err
 			}
 			count := uint64(n) + 1 // the vector plus its default target
 			if count > uint64(^uint32(0)) || uint64(len(branchTargets))+count > uint64(^uint32(0)) {
-				return gcFrameLiveMasks{}, fmt.Errorf("GC liveness br_table target count exceeds implementation limit")
-			}
-			if count > uint64(maxGCFrameBranchTargets) || uint64(len(branchTargets))+count > uint64(maxGCFrameBranchTargets) {
-				return gcFrameLiveMasks{}, fmt.Errorf("GC liveness br_table target arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
+				return nil, fmt.Errorf("GC liveness br_table target count exceeds implementation limit")
 			}
 			node.flow = gcLiveBrTable
 			node.index = uint32(len(branchTargets))
@@ -254,17 +100,17 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 			for i := uint64(0); i < count; i++ {
 				depth, err := r.U32()
 				if err != nil {
-					return gcFrameLiveMasks{}, err
+					return nil, err
 				}
 				target, ok := gcLiveBranchFrame(stack, depth)
 				if !ok {
-					return gcFrameLiveMasks{}, fmt.Errorf("GC liveness br_table depth %d is out of range", depth)
+					return nil, fmt.Errorf("GC liveness br_table depth %d is out of range", depth)
 				}
 				branchTargets = append(branchTargets, uint32(target))
 			}
 			imm.Kind = wasm.InstrBrTable
 		} else if err := classifier.ClassifyInto(r, op, &imm); err != nil {
-			return gcFrameLiveMasks{}, err
+			return nil, err
 		}
 
 		switch imm.Kind {
@@ -278,19 +124,20 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 			}
 		}
 		node.nativeCall = imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect || imm.Kind == wasm.InstrCallRef
-		keep := node.use != noGCLiveIndex || node.def != noGCLiveIndex || node.nativeCall || node.flow == gcLiveBrTable
+		if node.nativeCall {
+			nativeCallN++
+		}
 		if op == 0xfb {
 			switch imm.Subopcode {
 			case 0, 1, 6, 7, 8, 9, 10: // struct.new*, array.new*
 				node.allocation = true
-				keep = true
+				allocationN++
 			}
 		}
 
 		nodeIndex := len(nodes)
 		switch op {
 		case 0x02, 0x03, 0x04: // block, loop, if
-			keep = true
 			frames = append(frames, gcLiveFrame{loop: op == 0x03, header: nodeIndex, elseNode: -1, endNode: -1})
 			node.index = uint32(len(frames) - 1)
 			stack = append(stack, int(node.index))
@@ -298,64 +145,48 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 				node.flow = gcLiveIf
 			}
 		case 0x05: // else
-			keep = true
 			if len(stack) <= 1 {
-				return gcFrameLiveMasks{}, fmt.Errorf("GC liveness else without if")
+				return nil, fmt.Errorf("GC liveness else without if")
 			}
 			top := stack[len(stack)-1]
 			frames[top].elseNode = nodeIndex
 			node.index, node.flow = uint32(top), gcLiveElse
 		case 0x0b: // end
-			keep = true
 			if len(stack) == 0 {
-				return gcFrameLiveMasks{}, fmt.Errorf("GC liveness end without frame")
+				return nil, fmt.Errorf("GC liveness end without frame")
 			}
 			top := stack[len(stack)-1]
 			frames[top].endNode = nodeIndex
 			stack = stack[:len(stack)-1]
 		case 0x0c: // br
-			keep = true
 			target, ok := gcLiveBranchFrame(stack, imm.Index)
 			if !ok {
-				return gcFrameLiveMasks{}, fmt.Errorf("GC liveness br depth %d is out of range", imm.Index)
+				return nil, fmt.Errorf("GC liveness br depth %d is out of range", imm.Index)
 			}
 			node.flow, node.index = gcLiveBr, uint32(target)
 		case 0x0d: // br_if
-			keep = true
 			target, ok := gcLiveBranchFrame(stack, imm.Index)
 			if !ok {
-				return gcFrameLiveMasks{}, fmt.Errorf("GC liveness br_if depth %d is out of range", imm.Index)
+				return nil, fmt.Errorf("GC liveness br_if depth %d is out of range", imm.Index)
 			}
 			node.flow, node.index = gcLiveBrIf, uint32(target)
 		case 0x00, 0x0f: // unreachable, return
-			keep = true
 			node.flow = gcLiveStop
 		}
 		switch imm.Kind {
 		case wasm.InstrBrOnNull, wasm.InstrBrOnNonNull, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail:
-			keep = true
 			target, ok := gcLiveBranchFrame(stack, imm.Index)
 			if !ok {
-				return gcFrameLiveMasks{}, fmt.Errorf("GC liveness reference branch depth %d is out of range", imm.Index)
+				return nil, fmt.Errorf("GC liveness reference branch depth %d is out of range", imm.Index)
 			}
 			node.flow, node.index = gcLiveBrIf, uint32(target)
 		case wasm.InstrThrow, wasm.InstrThrowRef, wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
-			keep = true
 			node.flow = gcLiveStop
-		}
-		if !keep {
-			continue
-		}
-		if node.nativeCall {
-			nativeCallN++
-		}
-		if node.allocation {
-			allocationN++
 		}
 		nodes = append(nodes, node)
 	}
 	if len(stack) != 0 || len(nodes) == 0 || frames[0].endNode < 0 {
-		return gcFrameLiveMasks{}, fmt.Errorf("GC liveness body has unterminated control frames")
+		return nil, fmt.Errorf("GC liveness body has unterminated control frames")
 	}
 
 	resolveTarget := func(frameIndex int) (int, bool, error) {
@@ -368,7 +199,6 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 		}
 		return target, target < len(nodes), nil
 	}
-	branchEdgeN := 0
 	for i := range nodes {
 		next := i + 1
 		addNext := func() {
@@ -404,12 +234,12 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 			}
 		case gcLiveBr:
 			if err := addTarget(int(nodes[i].index)); err != nil {
-				return gcFrameLiveMasks{}, err
+				return nil, err
 			}
 		case gcLiveBrIf:
 			addNext()
 			if err := addTarget(int(nodes[i].index)); err != nil {
-				return gcFrameLiveMasks{}, err
+				return nil, err
 			}
 		case gcLiveBrTable:
 			start := int(nodes[i].index)
@@ -419,33 +249,16 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 			for _, frameIndex := range targets {
 				target, ok, err := resolveTarget(int(frameIndex))
 				if err != nil {
-					return gcFrameLiveMasks{}, err
+					return nil, err
 				}
 				if ok {
 					targets[succN] = uint32(target)
 					succN++
 				}
 			}
-			// The liveness equation unions successors, so duplicate destinations
-			// carry no information. Compact them once before bitmap dataflow to
-			// keep repeated br_table labels from multiplying work by local width.
-			targets = targets[:succN]
-			slices.Sort(targets)
-			targets = slices.Compact(targets)
-			nodes[i].indexN = uint32(len(targets))
-			branchEdgeN += len(targets)
+			nodes[i].indexN = uint32(succN)
 		case gcLiveStop:
 		}
-	}
-	wordCount := (len(locals) + 63) / 64
-	if wordCount == 0 {
-		wordCount = 1
-	}
-	if !gcFrameLivenessArenaFits(len(nodes), wordCount) {
-		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
-	}
-	if !gcFrameLivenessWorkFits(len(nodes), branchEdgeN, wordCount) {
-		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness graph exceeds %d bitmap-word implementation limit", maxGCFrameLivenessWorkWords)
 	}
 
 	work := []int{0}
@@ -466,16 +279,9 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 			}
 		}
 	}
-	allocationN, nativeCallN = 0, 0
-	for i := range nodes {
-		if nodes[i].reachable {
-			if nodes[i].allocation {
-				allocationN++
-			}
-			if nodes[i].nativeCall {
-				nativeCallN++
-			}
-		}
+	wordCount := (len(indexes) + 63) / 64
+	if wordCount == 0 {
+		wordCount = 1
 	}
 	liveIn := make([]uint64, len(nodes)*wordCount)
 	changed := true
@@ -509,10 +315,13 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 			}
 		}
 	}
-	if !gcFrameLiveMaskArenaFits(allocationN, nativeCallN, wordCount) {
-		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness mask arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
+	liveMasks := make([]uint64, 0, allocationN)
+	calls := make([]uint64, 0, nativeCallN)
+	extraPerSite := wordCount - 1
+	var extraWords []uint64
+	if extraPerSite != 0 {
+		extraWords = make([]uint64, (allocationN+nativeCallN)*extraPerSite)
 	}
-	masks := newGCFrameLiveMasks(allocationN, nativeCallN, wordCount)
 	allocationIndex, callIndex := 0, 0
 	for i := range nodes {
 		if !nodes[i].reachable {
@@ -520,15 +329,23 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 		}
 		words := liveIn[i*wordCount : (i+1)*wordCount]
 		if nodes[i].allocation {
-			copy(masks.site(allocationIndex), words)
+			liveMasks = append(liveMasks, words[0])
+			copy(extraWords[allocationIndex*extraPerSite:], words[1:])
 			allocationIndex++
 		}
 		if nodes[i].nativeCall {
-			copy(masks.site(allocationN+callIndex), words)
+			calls = append(calls, words[0])
+			copy(extraWords[(allocationN+callIndex)*extraPerSite:], words[1:])
 			callIndex++
 		}
 	}
-	return masks, nil
+	if callMasks != nil {
+		*callMasks = calls
+	}
+	if extra != nil {
+		extra.words = extraWords
+	}
+	return liveMasks, nil
 }
 
 func gcFrameBodyMayCollect(body []byte) bool {
@@ -551,51 +368,24 @@ func gcFrameBodyMayCollectWithClassifier(body []byte, classifier *wasm.ModuleIns
 		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
 			return true
 		}
-		if gcFrameInstructionMayAllocate(op, imm) {
-			return true
+		if op == 0xfb {
+			switch imm.Subopcode {
+			case 0, 1, 6, 7, 8, 9, 10:
+				return true
+			}
 		}
 	}
 	return false
 }
 
-func gcFrameInstructionMayAllocate(op byte, imm wasm.InstructionImmediate) bool {
-	if op != 0xfb {
-		return false
-	}
-	switch imm.Subopcode {
-	case 0, 1, 6, 7, 8, 9, 10:
-		return true
-	default:
-		return false
-	}
-}
-
-func gcFrameBodyMayAllocateWithClassifier(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
-	r := wasm.NewReader(body)
-	for r.HasNext() {
-		op, err := r.Byte()
-		if err != nil {
-			return true
-		}
-		var imm wasm.InstructionImmediate
-		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
-			return true
-		}
-		if gcFrameInstructionMayAllocate(op, imm) {
-			return true
-		}
-	}
-	return false
-}
-
-func gcFrameAllLiveMasksArena(body []byte, localRoots int) (gcFrameLiveMasks, error) {
+func gcFrameAllLiveMasks(body []byte, localRoots int, extra *gcFrameLivenessExtra) (allocations, calls []uint64, err error) {
 	classifier := wasm.NewModuleInstructionClassifier(nil, true)
-	return gcFrameAllLiveMasksArenaWithClassifier(body, localRoots, &classifier)
+	return gcFrameAllLiveMasksWithClassifier(body, localRoots, extra, &classifier)
 }
 
-func gcFrameAllLiveMasksArenaWithClassifier(body []byte, localRoots int, classifier *wasm.ModuleInstructionClassifier) (gcFrameLiveMasks, error) {
-	if localRoots < 0 || localRoots > shared.GCFrameTrackedLocalLimit {
-		return gcFrameLiveMasks{}, fmt.Errorf("GC conservative liveness tracks %d locals, representation limit %d", localRoots, shared.GCFrameTrackedLocalLimit)
+func gcFrameAllLiveMasksWithClassifier(body []byte, localRoots int, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) (allocations, calls []uint64, err error) {
+	if localRoots < 0 || localRoots > shared.GCFrameRootLimit {
+		return nil, nil, fmt.Errorf("GC conservative liveness tracks %d roots, limit %d", localRoots, shared.GCFrameRootLimit)
 	}
 	wordCount := (localRoots + 63) / 64
 	if wordCount == 0 {
@@ -635,39 +425,44 @@ func gcFrameAllLiveMasksArenaWithClassifier(body []byte, localRoots int, classif
 	}
 	allocationN, callN, err := countSites()
 	if err != nil {
-		return gcFrameLiveMasks{}, err
+		return nil, nil, err
 	}
-	if !gcFrameLiveMaskArenaFits(allocationN, callN, wordCount) {
-		return gcFrameLiveMasks{}, fmt.Errorf("GC conservative liveness mask arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
+	extraPerSite := wordCount - 1
+	var extraWords []uint64
+	if extraPerSite != 0 {
+		extraWords = make([]uint64, (allocationN+callN)*extraPerSite)
 	}
-	masks := newGCFrameLiveMasks(allocationN, callN, wordCount)
 	allocationIndex, callIndex := 0, 0
-	appendMask := func(site int) {
-		copy(masks.site(site), words)
+	appendMask := func(low *[]uint64, site int) {
+		*low = append(*low, words[0])
+		copy(extraWords[site*extraPerSite:], words[1:])
 	}
 	r := wasm.NewReader(body)
 	for r.HasNext() {
 		op, readErr := r.Byte()
 		if readErr != nil {
-			return gcFrameLiveMasks{}, readErr
+			return nil, nil, readErr
 		}
 		var imm wasm.InstructionImmediate
 		if readErr := classifier.ClassifyInto(r, op, &imm); readErr != nil {
-			return gcFrameLiveMasks{}, readErr
+			return nil, nil, readErr
 		}
 		if op == 0xfb {
 			switch imm.Subopcode {
 			case 0, 1, 6, 7, 8, 9, 10:
-				appendMask(allocationIndex)
+				appendMask(&allocations, allocationIndex)
 				allocationIndex++
 			}
 		}
 		if imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect || imm.Kind == wasm.InstrCallRef {
-			appendMask(allocationN + callIndex)
+			appendMask(&calls, allocationN+callIndex)
 			callIndex++
 		}
 	}
-	return masks, nil
+	if extra != nil {
+		extra.words = extraWords
+	}
+	return allocations, calls, nil
 }
 
 func gcLiveBranchFrame(stack []int, depth uint32) (int, bool) {

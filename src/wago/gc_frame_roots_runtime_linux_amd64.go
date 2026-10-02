@@ -12,9 +12,7 @@ import (
 )
 
 func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoots {
-	// Public entries return through enterNative into Go after the outermost
-	// generated frame. That external return is the valid end of the root chain.
-	return gcCollectFrameRoots(in, public, gcNativeFrameLayoutAMD64, true)
+	return gcCollectFrameRoots(in, public, gcNativeFrameLayoutAMD64, false)
 }
 
 // gcHelperRoots publishes exact-typed collector-reference locals from the
@@ -33,8 +31,8 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	}
 	offsets := safepoint.offsets
 	frameBytes := safepoint.frameBytes
-	if state == nil || frameBytes < 8 || !validGCFrameOffsets(offsets, frameBytes) {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root metadata is unavailable or malformed")})
+	if state == nil || len(offsets) > gcNativeFrameRootLimit || frameBytes < 8 {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root metadata is unavailable or oversized")})
 	}
 	ctrlHead := unsafe.Slice((*byte)(offHeapPtr(ctrl+abi.SyncHostCallSavedNativeSPOffset)), 8)
 	savedRSP := uintptr(binary.LittleEndian.Uint64(ctrlHead))
@@ -57,7 +55,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	state.frameRoots.base = base
 	state.frameRoots.offsets = offsets
 	state.frameRoots.frameBytes = frameBytes
-	state.frameRoots.frameLayout = gcNativeFrameLayoutAMD64 | gcNativeFrameSyncGlobalRoots
+	state.frameRoots.frameLayout = gcNativeFrameLayoutAMD64
 	state.frameRoots.codeBase = in.base
 	state.frameRoots.codeBytes = uintptr(len(in.c.code))
 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets

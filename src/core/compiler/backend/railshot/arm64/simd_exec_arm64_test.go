@@ -19,6 +19,10 @@ func simdConst(v [16]byte) []byte {
 	return append(out, v[:]...)
 }
 
+func simdOp(sub uint32) []byte {
+	return append([]byte{0xfd}, wasmtest.ULEB(sub)...)
+}
+
 func i8x16Bytes(v ...int8) [16]byte {
 	var out [16]byte
 	for i, x := range v {
@@ -127,7 +131,7 @@ func runArm64Result(t *testing.T, m *wasm.Module, n int) []byte {
 
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(coreruntime.TrapBufferBytes)
+	trap := ar.Alloc(8)
 	if err := eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results); err != nil {
 		t.Fatalf("call: %v", err)
 	}

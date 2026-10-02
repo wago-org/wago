@@ -520,10 +520,7 @@ func BenchmarkGCDirtyPersistentRoots(b *testing.B) {
 	}
 	for _, slots := range []int{1, 64, 4096} {
 		b.Run(fmt.Sprintf("global-slots=%d", slots), func(b *testing.B) {
-			// This benchmark isolates dirty persistent-root scanning. Keep the
-			// survivor policy out of the fixture so one minor deterministically
-			// promotes the retained child before the cleanup full collection.
-			cfg := Config{NurseryBytes: 1 << 20, DisableMovingNursery: true}
+			cfg := Config{NurseryBytes: 1 << 20}
 			if collectorTelemetryEnabled {
 				cfg.Telemetry = new(Telemetry)
 			}

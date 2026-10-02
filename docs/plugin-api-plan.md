@@ -90,7 +90,6 @@ display only; granting a parent or wildcard is invalid.
 |---|---|
 | `host.import.define` | Define guest host functions in the named import modules. |
 | `host.caller.identify` | Resolve the exact active instance during a synchronous host call. |
-| `host.caller.invoke` | Synchronously invoke an export on the exact guest making the active host call. |
 | `host.arguments.read` | Read the guest argument vector exposed by the host. |
 | `runtime.close.observe` | Observe logical runtime shutdown. |
 | `module.source.transform` | Replace module bytes before compilation. |
@@ -123,9 +122,8 @@ carry an Authority Scope. `host.import.define` and
 `core.instance.instantiate` carry positive `maxInstances` and
 aggregate `maxMemoryBytes` across all live instances owned through that handle.
 Zero is never an implicit unlimited grant. A grant may equal
-or narrow a request but never widen it. `required` records that the plugin needs
-the Authority for its intended behavior, but users may still decline its grant
-or narrow its scope; an optional Authority may be omitted.
+or narrow a request but never widen it. A required Authority must have a grant,
+but its scope may still be narrowed; an optional Authority may be omitted.
 Registration fails clearly if a plugin cannot operate within a narrowed grant.
 New authorities are denied by old hosts and old lockfiles.
 

@@ -272,14 +272,13 @@ func TestResolveCatalogGraphNewOptionalWithProvidersRequiresReview(t *testing.T)
 		!reflect.DeepEqual(plan.ContractReviews[0].Available, []string{providerID}) || len(plan.ContractReviews[0].Proposed) != 0 {
 		t.Fatalf("new optional review = %#v", plan.ContractReviews)
 	}
-	if _, err := reviewResolvedPluginPlan(plan, pkgOpts{}); err == nil || !strings.Contains(err.Error(), "--accept-contracts") {
+	if _, err := reviewResolution(plan, pkgOpts{}); err == nil || !strings.Contains(err.Error(), "--accept-contracts") {
 		t.Fatalf("unaccepted optional contract review error = %v", err)
 	}
-	reviewed, err := reviewResolvedPluginPlan(plan, pkgOpts{acceptContracts: true})
+	accepted, err := reviewResolution(plan, pkgOpts{acceptContracts: true})
 	if err != nil {
 		t.Fatalf("accept optional no-provider proposal: %v", err)
 	}
-	accepted := reviewed.Lock
 	if got := accepted.Plugins[consumerID].Bindings[0].Providers; got == nil || len(got) != 0 {
 		t.Fatalf("accepted optional binding = %#v", got)
 	}
@@ -316,10 +315,10 @@ func TestContractChangesRequireExplicitNoninteractiveReview(t *testing.T) {
 	plan := ResolutionPlan{Lock: lock, ContractReviews: []ContractReview{{
 		PluginID: id, Request: entry.Contracts.Requires[0], Proposed: []string{}, Change: "new",
 	}}}
-	if _, err := reviewResolvedPluginPlan(plan, pkgOpts{}); err == nil || !strings.Contains(err.Error(), "--accept-contracts") {
+	if _, err := reviewResolution(plan, pkgOpts{}); err == nil || !strings.Contains(err.Error(), "--accept-contracts") {
 		t.Fatalf("unreviewed contract error = %v", err)
 	}
-	if _, err := reviewResolvedPluginPlan(plan, pkgOpts{acceptContracts: true}); err != nil {
+	if _, err := reviewResolution(plan, pkgOpts{acceptContracts: true}); err != nil {
 		t.Fatalf("explicit contract review: %v", err)
 	}
 }

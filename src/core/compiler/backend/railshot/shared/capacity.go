@@ -3,40 +3,9 @@
 // encoding remain in the architecture packages.
 package shared
 
-// MaxNativeFrameBytes matches the execution stack's fence margin. Inbound
-// cross-instance wrappers reserve 64 bytes and the target's offset-0 adapter
-// reserves another 16 bytes before entering the target body, so the generated
-// frame must leave both inside the checked headroom.
-const (
-	MaxNativeFrameBytes       = 256 << 10
-	MaxNativeInboundCallBytes = 64 + 16
-
-	// MaxInitialStackArenaCapacity bounds speculative operand-node storage in one
-	// serial compiler scratch. Larger functions use stable fallback chunks.
-	MaxInitialStackArenaCapacity = 2048
-
-	// MaxRetainedStackArenaBytes bounds reusable operand-node backing per compiler
-	// worker. Functions may grow past it for correctness, but the excess is
-	// released at the function boundary rather than becoming worker high-water.
-	MaxRetainedStackArenaBytes = 1 << 20
-
-	// MaxRetainedGCCallsiteOffsetBytes bounds the reusable temporary root-offset
-	// vector per compiler worker. An unusually wide callsite may grow past it for
-	// correctness, but that backing is released after the callsite is recorded.
-	MaxRetainedGCCallsiteOffsetBytes = 32 << 10
-)
-
-// NativeFrameFitsStackFence reports whether a body frame plus fixed entry
-// overhead fits inside the already-checked stack-fence headroom.
-func NativeFrameFitsStackFence(frameBytes, entryOverhead int) bool {
-	return frameBytes >= 0 && entryOverhead >= 0 && entryOverhead <= MaxNativeFrameBytes && frameBytes <= MaxNativeFrameBytes-entryOverhead
-}
-
 // StackArenaCapacity estimates operand nodes for one function. An opcode-based
-// hint avoids reserving nodes for immediate bytes while bounded slack covers
-// operations such as multi-value calls whose lowering may allocate more than one
-// node per opcode. A body-size floor keeps malformed or incomplete hints from
-// causing allocation cliffs.
+// hint avoids reserving nodes for immediate bytes while a body-size floor keeps
+// malformed or incomplete hints from causing allocation cliffs.
 func StackArenaCapacity(bodyLen, nLocals, nodeHint int) int {
 	legacy := bodyLen + nLocals/4 + 1
 	if nodeHint <= 0 {

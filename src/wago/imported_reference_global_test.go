@@ -341,7 +341,7 @@ func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
 		GlobalImports: []GlobalImportDef{{Module: "env", Name: "ref", Type: ValExternRef}},
 		Globals:       []GlobalDef{{Type: ValExternRef}},
 	}
-	_ = publicArtifactRoundTrip(t, c)
+	_ = roundTripCompiled(t, c)
 }
 
 func TestRelease2ImportedReferenceGlobalSourceGuard(t *testing.T) {

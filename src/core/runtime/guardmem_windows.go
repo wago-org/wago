@@ -21,9 +21,6 @@ const (
 var guardReserveBytes = uintptr(roundUpPage(int(uintptr(basedataSize) + maxLinMemBytes + offsetGuardBytes)))
 
 func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
-	if err := validateGuardedJobMemorySizes(linBytes, maxBytes); err != nil {
-		return nil, err
-	}
 	// VirtualAlloc reserves on 64 KiB allocation-granularity boundaries. Keep
 	// linMem on the same boundary so every lazy 64 KiB Wasm-page commit names an
 	// allocation-aligned subrange of the reservation on both Windows targets.
@@ -79,15 +76,9 @@ func init() {
 }
 
 func AcquireJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
-	if err := validateGuardedJobMemorySizes(linBytes, maxBytes); err != nil {
-		return nil, err
-	}
 	jobMemoryGuardedCache.Lock()
 	j := jobMemoryGuardedCache.j
 	jobMemoryGuardedCache.j = nil
-	if j != nil {
-		changeInterruptLinearMemoryCache(-1)
-	}
 	jobMemoryGuardedCache.Unlock()
 	if j == nil {
 		return NewJobMemoryGuarded(linBytes, maxBytes)
@@ -106,7 +97,6 @@ func releaseGuardedJobMemory(j *JobMemory) bool {
 	jobMemoryGuardedCache.Lock()
 	if jobMemoryGuardedCache.j == nil {
 		jobMemoryGuardedCache.j = j
-		changeInterruptLinearMemoryCache(1)
 		jobMemoryGuardedCache.Unlock()
 		return true
 	}
@@ -232,14 +222,15 @@ func (e *Engine) CallGuarded(code uintptr, serArgs []byte, linMemBase uintptr, t
 	if j.reserveBase == 0 || linMemBase == 0 {
 		return fmt.Errorf("CallGuarded requires NewJobMemoryGuarded")
 	}
-	if err := validateTrapBuffer(trap); err != nil {
-		return err
+	if len(trap) >= 4 {
+		clearTrapUnlessInterrupted(trap)
+		j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
 	}
-	clearTrapUnlessInterrupted(trap)
-	j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
-	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
-		return trapErrorFromBuffer(tc, trap)
+	if len(trap) >= 4 {
+		if tc := TrapCode(uint32(trap[0]) | uint32(trap[1])<<8 | uint32(trap[2])<<16 | uint32(trap[3])<<24); tc != TrapNone {
+			return trapErrorFromBuffer(tc, trap)
+		}
 	}
 	return nil
 }

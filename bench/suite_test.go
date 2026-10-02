@@ -30,14 +30,13 @@ type execEntry struct {
 }
 
 type corpusModule struct {
-	File         string      `json:"file"`
-	Path         string      `json:"path"`     // optional: reference a wasm in place (relative to bench/)
-	Category     string      `json:"category"` // micro/loop/.../real/real-large
-	Desc         string      `json:"desc"`
-	Stages       []string    `json:"stages"` // optional: stages this module supports (default: all)
-	Init         string      `json:"init"`   // optional: export to call once after instantiate, before exec (e.g. AssemblyScript's _initialize; wago has no start section)
-	Exec         []execEntry `json:"exec"`
-	SemanticExec []string    `json:"semantic_exec"` // exact case IDs from tests/corpora/MANIFEST.json
+	File     string      `json:"file"`
+	Path     string      `json:"path"`     // optional: reference a wasm in place (relative to bench/)
+	Category string      `json:"category"` // micro/loop/.../real/real-large
+	Desc     string      `json:"desc"`
+	Stages   []string    `json:"stages"` // optional: stages this module supports (default: all)
+	Init     string      `json:"init"`   // optional: export to call once after instantiate, before exec (e.g. AssemblyScript's _initialize; wago has no start section)
+	Exec     []execEntry `json:"exec"`
 
 	bytes []byte
 	avail bool // false when an optional referenced path is missing
@@ -229,9 +228,10 @@ func BenchmarkCompile(b *testing.B) {
 	})
 }
 
-// BenchmarkCompileCompact times serialized native codegen with the bounded
-// native-compaction path enabled.
-func BenchmarkCompileCompact(b *testing.B) {
+// BenchmarkCompileSize times serialized native codegen under the Size
+// objective. Keep it separate from BenchmarkCompile so the default Balanced
+// history remains directly comparable.
+func BenchmarkCompileSize(b *testing.B) {
 	eachModule(b, "Compile", func(b *testing.B, m corpusModule) {
 		mod := m.decoded(b)
 		if err := wasm.ValidateModule(mod); err != nil {
@@ -239,7 +239,7 @@ func BenchmarkCompileCompact(b *testing.B) {
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := benchCompileModuleCompact(mod); err != nil {
+			if _, err := benchCompileModuleSize(mod); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -388,12 +388,19 @@ func BenchmarkInstantiate(b *testing.B) {
 // BenchmarkExec times the host->wasm call for each module's manifest exec
 // entries, naming results Exec/<module>.<export>.
 func BenchmarkExec(b *testing.B) {
-	benchmarkExec(b, wago.NewRuntimeConfig())
+	benchmarkExecObjective(b, wago.NewRuntimeConfig())
 }
 
-func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
+// BenchmarkExecSize runs the same executable corpus through the public Size
+// objective. Keep it separate so Balanced history remains comparable and every
+// size-only codegen choice has a real instantiate/invoke performance gate.
+func BenchmarkExecSize(b *testing.B) {
+	benchmarkExecObjective(b, wago.NewRuntimeConfig().WithOptimizationObjective(wago.OptimizeSize))
+}
+
+func benchmarkExecObjective(b *testing.B, cfg *wago.RuntimeConfig) {
 	for _, m := range loadCorpus(b) {
-		if (len(m.Exec) == 0 && len(m.SemanticExec) == 0) || !m.supports("Exec") {
+		if len(m.Exec) == 0 || !m.supports("Exec") {
 			continue
 		}
 		c, err := cfg.Compile(m.bytes)
@@ -428,27 +435,6 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					if _, err := fn.Invoke(args...); err != nil {
-						b.Fatal(err)
-					}
-				}
-			})
-		}
-		for _, semantic := range semanticExecCases(b, m) {
-			if err := runSemanticOracle(semantic); err != nil {
-				b.Fatalf("%s oracle: %v", semantic.ID, err)
-			}
-			prepared, err := prepareWagoSemanticExec(in, semantic)
-			if err != nil {
-				b.Fatalf("%s prepare: %v", semantic.ID, err)
-			}
-			b.Run(m.name()+"."+semantic.Invoke.Export, func(b *testing.B) {
-				b.ReportAllocs()
-				if err := prepared.invoke(); err != nil {
-					b.Fatalf("warmup invoke: %v", err)
-				}
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					if err := prepared.invoke(); err != nil {
 						b.Fatal(err)
 					}
 				}

@@ -17,7 +17,7 @@ type moduleRequirements struct {
 }
 
 // moduleRequiredFeatures records optional core features that remain execution
-// dependencies of the compiled artifact. Codec version 2 stores the full public
+// dependencies of the compiled artifact. Codec version 1 stores the full public
 // CoreFeatures mask and rejects unknown bits. Compile-time-only features such as
 // extended constant expressions are folded into initializer metadata.
 func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
@@ -52,7 +52,15 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 			if sub.HasPrefix || len(sub.Supers) != 0 {
 				out |= CoreFeatureGC
 			}
-			out |= requiredFeaturesForCompositeType(sub.Comp)
+			if sub.Comp.Kind != wasm.CompFunc {
+				out |= CoreFeatureGC
+				continue
+			}
+			if len(sub.Comp.Results) > 1 {
+				out |= CoreFeatureMultiValue
+			}
+			out |= requiredFeaturesForValTypes(sub.Comp.Params)
+			out |= requiredFeaturesForValTypes(sub.Comp.Results)
 		}
 	}
 	for _, im := range m.Imports {
@@ -63,9 +71,10 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 				out |= CoreFeatureMutableGlobal
 			}
 		case wasm.ExternTable:
-			table := im.Type.TableType()
-			out |= requiredFeaturesForTableRef(table.Ref)
-			if table.Limits.Addr64 {
+			if wasm.EqualValType(wasm.RefVal(im.Type.TableType().Ref), wasm.ExternRef) {
+				out |= CoreFeatureReferenceTypes
+			}
+			if im.Type.TableType().Limits.Addr64 {
 				out |= CoreFeatureTable64
 			}
 		}
@@ -117,8 +126,7 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 		}
 	}
 	for _, table := range m.Tables {
-		out |= requiredFeaturesForTableRef(table.Type.Ref)
-		if table.Init != nil {
+		if wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.ExternRef) || table.Init != nil {
 			out |= CoreFeatureReferenceTypes
 		}
 		if table.Init != nil {
@@ -131,9 +139,6 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 	for i, elem := range m.Elements {
 		if elem.Mode.Kind == wasm.ElemActive {
 			out |= requiredFeaturesForConstExpr(elem.Mode.Offset, m.ImportedGlobalCount())
-		}
-		if elem.Kind.Kind == wasm.ElemTypedExprs {
-			out |= requiredFeaturesForValType(wasm.RefVal(elem.Kind.Ref))
 		}
 		for _, expr := range elem.Kind.Exprs {
 			features, usesRefFunc := analyzeConstExprRequirements(expr, m.ImportedGlobalCount())
@@ -252,42 +257,6 @@ func requiredFeaturesForValTypes(types []wasm.ValType) CoreFeatures {
 	return out
 }
 
-func requiredFeaturesForCompositeType(comp wasm.CompType) CoreFeatures {
-	switch comp.Kind {
-	case wasm.CompFunc:
-		out := requiredFeaturesForValTypes(comp.Params) | requiredFeaturesForValTypes(comp.Results)
-		if len(comp.Results) > 1 {
-			out |= CoreFeatureMultiValue
-		}
-		return out
-	case wasm.CompStruct:
-		out := CoreFeatureGC
-		for _, field := range comp.Fields {
-			if storage := field.Storage(); !storage.Packed() {
-				out |= requiredFeaturesForValType(storage.Val())
-			}
-		}
-		return out
-	case wasm.CompArray:
-		out := CoreFeatureGC
-		if storage := comp.Array.Storage(); !storage.Packed() {
-			out |= requiredFeaturesForValType(storage.Val())
-		}
-		return out
-	default:
-		return 0
-	}
-}
-
-func requiredFeaturesForTableRef(ref wasm.RefType) CoreFeatures {
-	// A nullable funcref table is an MVP shape. Every other declared table
-	// reference uses a post-MVP reference type and must survive artifact gating.
-	if wasm.EqualValType(wasm.RefVal(ref), wasm.FuncRef) {
-		return 0
-	}
-	return requiredFeaturesForValType(wasm.RefVal(ref))
-}
-
 func requiredFeaturesForValType(typ wasm.ValType) CoreFeatures {
 	switch typ.Kind() {
 	case wasm.ValRef:
@@ -300,8 +269,6 @@ func requiredFeaturesForValType(typ wasm.ValType) CoreFeatures {
 				out |= CoreFeatureGC
 			case wasm.HeapExn, wasm.HeapNoExn:
 				out |= CoreFeatureExceptionHandling
-			case wasm.HeapNoFunc, wasm.HeapNoExtern:
-				out |= CoreFeatureGC
 			}
 		}
 		if heap.Kind() == wasm.HeapTypeIndex || !rt.Nullable() || rt.Exact() {
@@ -314,21 +281,6 @@ func requiredFeaturesForValType(typ wasm.ValType) CoreFeatures {
 		}
 	}
 	return 0
-}
-
-func requiredFeaturesForBareValueTypeByte(encoded byte) (CoreFeatures, bool) {
-	switch encoded {
-	case 0x40, byte(wasm.NumI32), byte(wasm.NumI64), byte(wasm.NumF32), byte(wasm.NumF64):
-		return 0, true
-	case 0x7b:
-		return CoreFeatureSIMD, true
-	case byte(wasm.HeapExn), byte(wasm.HeapArray), byte(wasm.HeapStruct), byte(wasm.HeapI31),
-		byte(wasm.HeapEq), byte(wasm.HeapAny), byte(wasm.HeapExtern), byte(wasm.HeapFunc),
-		byte(wasm.HeapNone), byte(wasm.HeapNoExtern), byte(wasm.HeapNoFunc), byte(wasm.HeapNoExn):
-		return requiredFeaturesForValType(wasm.RefVal(wasm.AbsRef(wasm.AbsHeapType(encoded)))), true
-	default:
-		return 0, false
-	}
 }
 
 func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
@@ -432,15 +384,23 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 			if err != nil {
 				break
 			}
-			if features, ok := requiredFeaturesForBareValueTypeByte(first); ok {
-				out |= features
-			} else if first == 0x63 || first == 0x64 {
+			switch first {
+			case 0x40, 0x7f, 0x7e, 0x7d, 0x7c:
+			case 0x7b:
+				out |= CoreFeatureSIMD
+			case 0x70, 0x6f:
+				out |= CoreFeatureReferenceTypes
+			case 0x6e, 0x71:
+				out |= CoreFeatureReferenceTypes | CoreFeatureGC
+			case 0x69, 0x74:
+				out |= CoreFeatureReferenceTypes | CoreFeatureExceptionHandling
+			case 0x63, 0x64:
 				heap, readErr := r.S33()
 				if readErr != nil {
 					break
 				}
 				out |= requiredFeaturesForHeapImmediate(heap)
-			} else {
+			default:
 				out |= CoreFeatureMultiValue
 				for first&0x80 != 0 {
 					first, err = r.Byte()
@@ -469,9 +429,10 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 				if readErr != nil {
 					break
 				}
-				if features, ok := requiredFeaturesForBareValueTypeByte(b); ok {
-					out |= features
-				} else if b == 0x63 || b == 0x64 {
+				if b == 0x7b {
+					out |= CoreFeatureSIMD
+				}
+				if b == 0x63 || b == 0x64 {
 					heap, heapErr := r.S33()
 					if heapErr != nil {
 						break
@@ -615,12 +576,10 @@ func requiredFeaturesForInstructionKind(kind wasm.InstrKind) CoreFeatures {
 func requiredFeaturesForHeapImmediate(heap int64) CoreFeatures {
 	out := CoreFeatureReferenceTypes
 	switch heap {
-	case -22, -21, -20, -19, -18, -15: // array / struct / i31 / eq / any / none
+	case -18, -15: // any / none
 		out |= CoreFeatureGC
 	case -23, -12: // exn / noexn
 		out |= CoreFeatureExceptionHandling
-	case -14, -13: // noextern / nofunc
-		out |= CoreFeatureGC
 	default:
 		if heap >= 0 {
 			out |= CoreFeatureTypedFunctionReferences
@@ -637,18 +596,10 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	if compiledMetadataUsesSIMD(c) {
 		out |= CoreFeatureSIMD
 	}
-	out |= compiledAggregateStorageRequiredFeatures(c)
+	out |= requiredFeaturesForTypeDescriptors(c.ValueTypes)
 	for _, typ := range c.Types {
-		if !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.HasDescriptor || typ.Kind == CompositeTypeStruct || typ.Kind == CompositeTypeArray {
+		if !typ.Final || len(typ.Supers) != 0 || typ.Kind == CompositeTypeStruct || typ.Kind == CompositeTypeArray {
 			out |= CoreFeatureGC
-		}
-		switch typ.Kind {
-		case CompositeTypeFunction:
-			out |= requiredFeaturesForTypeDescriptors(typ.Params)
-			out |= requiredFeaturesForTypeDescriptors(typ.Results)
-			if len(typ.Results) > 1 {
-				out |= CoreFeatureMultiValue
-			}
 		}
 	}
 	for _, sig := range c.importFuncSigs {
@@ -674,14 +625,18 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		}
 	}
 	for _, g := range c.GlobalImports {
-		out |= requiredFeaturesForStoredType(c, g.Type, g.HasValueType, g.ValueTypeIndex, false)
+		if isReferenceValType(g.Type) {
+			out |= CoreFeatureReferenceTypes
+		}
 		if g.Mutable {
 			out |= CoreFeatureMutableGlobal
 		}
 	}
 	for _, g := range c.Globals {
 		out |= requiredFeaturesForConstExprBytes(g.InitExpr, len(c.GlobalImports))
-		out |= requiredFeaturesForStoredType(c, g.Type, g.HasValueType, g.ValueTypeIndex, false)
+		if isReferenceValType(g.Type) {
+			out |= CoreFeatureReferenceTypes
+		}
 	}
 	for _, index := range c.GlobalExports {
 		if index >= 0 && index < len(c.Globals) && c.Globals[index].Mutable {
@@ -700,26 +655,22 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 			out |= CoreFeatureThreads
 		}
 	}
-	if c.hasExternrefTable() || c.tableCount() > 1 {
+	if c.hasExternrefTable() || c.tableCount() > 1 || c.NeedsFuncRefDescs {
 		out |= CoreFeatureReferenceTypes
 	}
 	for i := 0; i < c.tableCount(); i++ {
-		def := c.tableDef(i)
-		out |= requiredFeaturesForStoredType(c, c.tableElementType(i), def.HasValueType, def.ValueTypeIndex, true)
 		if c.tableDef(i).Addr64 {
 			out |= CoreFeatureTable64
 		}
 	}
 	for _, elem := range c.Elems {
 		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
-		out |= requiredFeaturesForStoredType(c, normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, !elem.HasValueType)
 		if elem.RefType == ValExternRef || elem.TableIndex != 0 {
 			out |= CoreFeatureReferenceTypes
 		}
 	}
 	for _, elem := range c.passiveElems {
 		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
-		out |= requiredFeaturesForStoredType(c, normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, !elem.HasValueType)
 		if elem.RefType == ValExternRef {
 			out |= CoreFeatureReferenceTypes
 		}
@@ -733,69 +684,26 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	return out
 }
 
-func compiledAggregateStorageRequiredFeatures(c *Compiled) CoreFeatures {
-	if c == nil {
-		return 0
-	}
-	var out CoreFeatures
-	for _, typ := range c.Types {
-		switch typ.Kind {
-		case CompositeTypeStruct:
-			for _, field := range typ.Fields {
-				if !field.Storage.Packed {
-					out |= requiredFeaturesForTypeDescriptor(field.Storage.Value)
-				}
-			}
-		case CompositeTypeArray:
-			if !typ.Array.Storage.Packed {
-				out |= requiredFeaturesForTypeDescriptor(typ.Array.Storage.Value)
-			}
-		}
-	}
-	return out
-}
-
-func requiredFeaturesForStoredType(c *Compiled, abi ValType, hasExact bool, exactIndex uint32, mvpFuncref bool) CoreFeatures {
-	if hasExact && uint64(exactIndex) < uint64(len(c.ValueTypes)) {
-		exact := c.ValueTypes[exactIndex]
-		if mvpFuncref && exact.Kind == ValueTypeReference && exact.Ref.Nullable && !exact.Ref.Exact && !exact.Ref.Heap.Defined && exact.Ref.Heap.Abstract == AbstractHeapFunc {
-			return 0 // nullable funcref storage is an MVP shape
-		}
-		return requiredFeaturesForTypeDescriptor(exact)
-	}
-	if mvpFuncref && abi == ValFuncRef {
-		return 0
-	}
-	return requiredFeaturesForPublicValType(abi)
-}
-
 func requiredFeaturesForTypeDescriptors(types []ValueTypeDescriptor) CoreFeatures {
 	var out CoreFeatures
 	for _, typ := range types {
-		out |= requiredFeaturesForTypeDescriptor(typ)
-	}
-	return out
-}
-
-func requiredFeaturesForTypeDescriptor(typ ValueTypeDescriptor) CoreFeatures {
-	if typ.Kind == ValueTypeV128 {
-		return CoreFeatureSIMD
-	}
-	if typ.Kind != ValueTypeReference {
-		return 0
-	}
-	out := CoreFeatureReferenceTypes
-	if typ.Ref.Heap.Defined || !typ.Ref.Nullable || typ.Ref.Exact {
-		out |= CoreFeatureTypedFunctionReferences
-	}
-	if !typ.Ref.Heap.Defined {
-		switch typ.Ref.Heap.Abstract {
-		case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray, AbstractHeapNone:
-			out |= CoreFeatureGC
-		case AbstractHeapExn, AbstractHeapNoExn:
-			out |= CoreFeatureExceptionHandling
-		case AbstractHeapNoFunc, AbstractHeapNoExtern:
-			out |= CoreFeatureGC
+		if typ.Kind == ValueTypeV128 {
+			out |= CoreFeatureSIMD
+		}
+		if typ.Kind != ValueTypeReference {
+			continue
+		}
+		out |= CoreFeatureReferenceTypes
+		if typ.Ref.Heap.Defined || !typ.Ref.Nullable || typ.Ref.Exact {
+			out |= CoreFeatureTypedFunctionReferences
+		}
+		if !typ.Ref.Heap.Defined {
+			switch typ.Ref.Heap.Abstract {
+			case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray, AbstractHeapNone:
+				out |= CoreFeatureGC
+			case AbstractHeapExn, AbstractHeapNoExn:
+				out |= CoreFeatureExceptionHandling
+			}
 		}
 	}
 	return out
@@ -804,24 +712,18 @@ func requiredFeaturesForTypeDescriptor(typ ValueTypeDescriptor) CoreFeatures {
 func requiredFeaturesForPublicValTypes(types []ValType) CoreFeatures {
 	var out CoreFeatures
 	for _, typ := range types {
-		out |= requiredFeaturesForPublicValType(typ)
-	}
-	return out
-}
-
-func requiredFeaturesForPublicValType(typ ValType) CoreFeatures {
-	var out CoreFeatures
-	if isReferenceValType(typ) {
-		out |= CoreFeatureReferenceTypes
-	}
-	if typ == ValAnyRef || typ == ValI31Ref {
-		out |= CoreFeatureGC
-	}
-	if typ == ValExnRef {
-		out |= CoreFeatureExceptionHandling
-	}
-	if typ == ValV128 {
-		out |= CoreFeatureSIMD
+		if isReferenceValType(typ) {
+			out |= CoreFeatureReferenceTypes
+		}
+		if typ == ValAnyRef || typ == ValI31Ref {
+			out |= CoreFeatureGC
+		}
+		if typ == ValExnRef {
+			out |= CoreFeatureExceptionHandling
+		}
+		if typ == ValV128 {
+			out |= CoreFeatureSIMD
+		}
 	}
 	return out
 }

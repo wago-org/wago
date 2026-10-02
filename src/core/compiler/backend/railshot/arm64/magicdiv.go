@@ -17,13 +17,13 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	if c == 0 {
 		return regNone, false // div/rem by zero traps — leave it to the div path
 	}
-	w := node.st.typ.is64()
-	signed := node.deferredOp() == opDivS || node.deferredOp() == opRemS
-	wantRem := node.deferredOp() == opRemU || node.deferredOp() == opRemS
+	w := node.typ.is64()
+	signed := node.op == opDivS || node.op == opRemS
+	wantRem := node.op == opRemU || node.op == opRemS
 
 	// Decide whether we can handle this divisor before emitting anything, so a
 	// bail-out leaves the operand stack untouched for the div fallback.
-	if !strengthReducibleWithMagic(c, w, signed, f.opt(optMagicDiv)) {
+	if !strengthReducible(c, w, signed) {
 		return regNone, false
 	}
 
@@ -32,7 +32,7 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	// orthogonal, so no register needs to be avoided here.
 	res := f.allocReg(maskOf())
 	f.pinned = f.pinned.add(res)
-	f.condenseInto(f.s.arg0(node), res) // res = n (dividend)
+	f.condenseInto(node.arg0, res) // res = n (dividend)
 
 	if signed {
 		f.divConstSigned(res, c, w, wantRem)
@@ -53,6 +53,7 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
+	node.op = opNone
 	f.stats.peep("div-by-const")
 	return result, true
 }
@@ -70,10 +71,6 @@ var (
 // INT_MIN/-1 trap and x%±1). Power-of-2 divisors are always reducible;
 // non-power-of-2 needs the (gated) magic path.
 func strengthReducible(c int64, w, signed bool) bool {
-	return strengthReducibleWithMagic(c, w, signed, magicDivEnabled)
-}
-
-func strengthReducibleWithMagic(c int64, w, signed, magic bool) bool {
 	if c == 0 {
 		return false
 	}
@@ -97,9 +94,9 @@ func strengthReducibleWithMagic(c int64, w, signed, magic bool) bool {
 		return true // power of two (or, unsigned, d == 1)
 	}
 	if signed {
-		return magic && magicDivSignedEnabled
+		return magicDivSignedEnabled
 	}
-	return magic
+	return magicDivEnabled
 }
 
 // divConstUnsigned rewrites res (holding the W-bit dividend) to res / d or res % d

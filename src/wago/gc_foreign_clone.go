@@ -59,17 +59,13 @@ func cloneGCDescriptor(c *Compiled, id gc.TypeID) (gc.TypeDesc, bool) {
 // references, i31 immediates, numeric/v128 payloads, and null opaque references
 // are transferable. Non-null funcref/externref payloads reject because they have
 // independent store ownership. The returned token belongs to target and must be
-// released with target.ReleaseGCRef. Cloning fails with ErrPermissionDenied while
-// either instance has callback-scoped guest storage borrowed.
+// released with target.ReleaseGCRef.
 func (target *Instance) CloneGCRefFrom(source *Instance, value GCRef) (GCRef, error) {
 	if target == nil || source == nil || target == source {
 		return GCRef{}, fmt.Errorf("GC graph clone requires distinct source and target instances")
 	}
 	if value.token == 0 {
 		return GCRef{}, nil
-	}
-	if source.guestStorageBorrowed() || target.guestStorageBorrowed() {
-		return GCRef{}, fmt.Errorf("GC graph clone is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
 	if target.refStore == nil || source.refStore == nil || target.gc == nil || source.gc == nil || target.c == nil || source.c == nil {
 		return GCRef{}, fmt.Errorf("GC graph clone requires live collector-backed instances")
@@ -111,7 +107,7 @@ func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]
 	entry, ok := source.refStore.gcByToken[token]
 	_, registered := source.refStore.instances[source]
 	source.refStore.mu.Unlock()
-	if !ok || entry.owner != source || !registered || entry.ownerIndex >= state.resultRootsMade || state.resultToken(entry.ownerIndex) != token || state.resultRootSlot(entry.ownerIndex) != entry.slot {
+	if !ok || entry.owner != source || !registered || entry.ownerIndex >= state.resultRootsMade || state.resultTokens[entry.ownerIndex] != token || state.resultRootSlots[entry.ownerIndex] != entry.slot {
 		return nil, gcCloneRef{}, fmt.Errorf("invalid, stale, or foreign source GC reference token")
 	}
 	rootRef := source.gc.GlobalSlot(entry.slot)

@@ -2,6 +2,7 @@
 package run
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
-	"github.com/wago-org/wago/cli/internal/wasmcall"
 	"github.com/wago-org/wago/cli/runtime/internal/artifactcache"
 )
 
@@ -25,17 +25,12 @@ type Environment interface {
 }
 
 func Command(environment Environment) *command.Cmd {
-	flags := []command.Flag{
-		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
-		{Name: "allow-native-artifact", Bool: true, Help: "execute a trusted .wago native-code artifact"},
-	}
+	flags := []command.Flag{{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"}}
 	flags = append(flags, watchFlags()...)
 	flags = append(flags,
 		command.Flag{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
-		command.Flag{Name: "native-stack", Arg: "<size>", Help: "native execution stack capacity in bytes or KiB, MiB, GiB"},
+		ParallelFlag(),
 	)
-	flags = append(flags, gcFlags()...)
-	flags = append(flags, ParallelFlag())
 	flags = append(flags, environment.ProfileFlags()...)
 	knobs := append(DeferredBoundsCheckingFlags(), OptimizationFlags()...)
 	parserFlags := append(append([]command.Flag(nil), flags...), knobs...)
@@ -44,17 +39,14 @@ func Command(environment Environment) *command.Cmd {
 		Name: "run", Summary: "compile and execute a WebAssembly module (default)",
 		Args: "<file> [args...]", Flags: flags, Knobs: knobs, PassThrough: true,
 		Normalize: func(args []string) ([]string, error) {
-			return NormalizeParallelArgs(args, parserFlags, false)
+			return NormalizeParallelArgs(args, parserFlags, true)
 		},
-		Long: "<file> is raw .wasm. Trusted precompiled .wago native code requires --allow-native-artifact.\n" +
-			"Never enable that flag for an untrusted artifact. Args after the file are typed by the\n" +
+		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
-			"Wago flags may appear before or after <file>; use -- before colliding guest flags.\n" +
 			"Selected Core 3 features default on where supported; use --core 2 for strict Release 2\n" +
 			"or --core 3 for the complete release. Use -p for\n" +
 			"adaptive validation/compile parallelism, or -p8 / -p 8 / --parallel=8 to force a\n" +
-			"worker maximum. " + gcLongHelp() +
-			"Advanced compiler controls are listed in `wago run --help-optimizations`.",
+			"worker maximum. Advanced compiler controls are listed in `wago run --help-optimizations`.",
 		Run: implementation.Run,
 	}
 }
@@ -89,40 +81,20 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		}
 		ui.Usage("run: %v", err)
 	}
-	gc, configuredGC, err := gcConfiguration(ctx)
-	if err != nil {
-		ui.Usage("run: %v", err)
-	}
 	config := selection.RuntimeConfig()
-	if raw := ctx.Str("native-stack"); raw != "" {
-		stackBytes, err := parseNativeStackBytes(raw)
-		if err != nil {
-			ui.Usage("run: --native-stack: %v", err)
-		}
-		config = config.WithNativeStackBytes(stackBytes)
-		if err := config.Validate(); err != nil {
-			ui.Usage("run: --native-stack: %v", err)
-		}
-	}
 	runtime := cmd.environment.LoadRuntime(config, positionals)
 	defer runtime.Close()
-	module := mustLoadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache(), ctx.Bool("allow-native-artifact"))
+	module := mustLoadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache())
 	compiled := module.Compiled()
 	export := mustResolveExport(compiled, ctx.Str("invoke"))
 
 	if export == "_start" {
-		runStart(runtime, module, gc, configuredGC)
+		runStart(runtime, module)
 		return
 	}
-	params, results, err := compiled.Signature(export)
-	if err != nil {
-		ui.Fatal("run: %v", err)
-	}
-	if err := wasmcall.ValidateSignature(params, results); err != nil {
-		ui.Fatal("run: %v", err)
-	}
+	params, results, _ := compiled.Signature(export)
 	values := mustParseArgs(positionals[1:], params)
-	instance, err := instantiate(runtime, module, gc, configuredGC)
+	instance, err := runtime.Instantiate(context.Background(), module)
 	if err != nil {
 		ui.Fatal("%v", friendlyInstantiationError(err))
 	}
@@ -134,8 +106,8 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	fmt.Println(format(export, values, result, params, results))
 }
 
-func runStart(runtime *wago.Runtime, module *wago.Module, gc wago.GCConfig, configuredGC bool) {
-	instance, err := instantiate(runtime, module, gc, configuredGC)
+func runStart(runtime *wago.Runtime, module *wago.Module) {
+	instance, err := runtime.Instantiate(context.Background(), module)
 	if err != nil {
 		ui.Fatal("%v", friendlyInstantiationError(err))
 	}
@@ -166,45 +138,6 @@ func friendlyInstantiationError(err error) error {
 		return err
 	}
 	return fmt.Errorf("no installed plugin provides this host import\n\n  %s\n\nAdd a plugin that provides it", importName[:end])
-}
-
-func parseNativeStackBytes(raw string) (uint64, error) {
-	value := raw
-	multiplier := uint64(1)
-	switch {
-	case strings.HasSuffix(value, "GiB"):
-		value, multiplier = value[:len(value)-3], 1<<30
-	case strings.HasSuffix(value, "MiB"):
-		value, multiplier = value[:len(value)-3], 1<<20
-	case strings.HasSuffix(value, "KiB"):
-		value, multiplier = value[:len(value)-3], 1<<10
-	case strings.HasSuffix(value, "B"):
-		value = value[:len(value)-1]
-	}
-	if value == "" {
-		return 0, errors.New("size is empty")
-	}
-	limit := wago.MaxNativeStackBytes / multiplier
-	var count uint64
-	for i := 0; i < len(value); i++ {
-		digit := value[i]
-		if digit < '0' || digit > '9' {
-			return 0, fmt.Errorf("invalid size %q", raw)
-		}
-		digit -= '0'
-		if uint64(digit) > limit || count > (limit-uint64(digit))/10 {
-			return 0, fmt.Errorf("size %q exceeds %d bytes", raw, wago.MaxNativeStackBytes)
-		}
-		count = count*10 + uint64(digit)
-	}
-	bytes := count * multiplier
-	if bytes < wago.MinNativeStackBytes {
-		return 0, fmt.Errorf("size must be at least %d bytes", wago.MinNativeStackBytes)
-	}
-	if bytes&15 != 0 {
-		return 0, fmt.Errorf("size must be 16-byte aligned, got %d bytes", bytes)
-	}
-	return bytes, nil
 }
 
 func trapReason(err error) string {

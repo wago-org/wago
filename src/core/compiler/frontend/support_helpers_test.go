@@ -46,14 +46,9 @@ func TestInstructionFamilyClassification(t *testing.T) {
 }
 
 func TestReferenceAndBlockSupportHelpers(t *testing.T) {
-	for _, abs := range []wasm.AbsHeapType{wasm.HeapFunc, wasm.HeapExtern} {
+	for _, abs := range []wasm.AbsHeapType{wasm.HeapFunc, wasm.HeapExtern, wasm.HeapNoFunc, wasm.HeapNoExtern} {
 		if !isNullableAbsRef(wasm.AbsRef(abs)) {
 			t.Fatalf("%s null reference not accepted", abs)
-		}
-	}
-	for _, abs := range []wasm.AbsHeapType{wasm.HeapNoFunc, wasm.HeapNoExtern} {
-		if isNullableAbsRef(wasm.AbsRef(abs)) {
-			t.Fatalf("GC bottom %s accepted as a legacy nullable reference", abs)
 		}
 	}
 	if isNullableAbsRef(wasm.Ref(false, wasm.AbsHeap(wasm.HeapFunc), false)) ||
@@ -341,14 +336,6 @@ func TestElementExpressionSupportValidation(t *testing.T) {
 	if err := p.elementExpr(wasm.Expr{BodyBytes: []byte{0xd0, 0x70, 0x0b}}, "element expression"); err != nil {
 		t.Fatalf("valid element expression: %v", err)
 	}
-	bottom := wasm.Expr{BodyBytes: []byte{0xd0, 0x73, 0x0b}}
-	if err := p.elementExpr(bottom, "element expression"); err == nil {
-		t.Fatal("GC bottom reference element expression accepted with GC disabled")
-	}
-	p.feat.NullReferenceProducts = true
-	if err := p.elementExpr(bottom, "element expression"); err != nil {
-		t.Fatalf("GC bottom reference element expression: %v", err)
-	}
 	if err := p.elementExpr(wasm.Expr{BodyBytes: []byte{0x41, 0x00, 0x0b}}, "element expression"); err == nil {
 		t.Fatal("non-reference element expression accepted")
 	}
@@ -418,9 +405,7 @@ func TestExportSupportValidation(t *testing.T) {
 }
 
 func TestConstantExpressionSupportForms(t *testing.T) {
-	features := AllFeatures()
-	features.NullReferenceProducts = true
-	all := supportPass{m: &wasm.Module{}, feat: features}
+	all := supportPass{m: &wasm.Module{}, feat: AllFeatures()}
 	v128 := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
 	v128 = append(v128, 0x0b)
 	for _, body := range [][]byte{
@@ -610,9 +595,7 @@ func TestProgrammaticTableGrowAndConstExpressionSupport(t *testing.T) {
 		t.Fatal("programmatic table.grow module facts changed")
 	}
 
-	features := AllFeatures()
-	features.NullReferenceProducts = true
-	full := supportPass{m: &wasm.Module{}, feat: features}
+	full := supportPass{m: &wasm.Module{}, feat: AllFeatures()}
 	for _, body := range [][]byte{
 		{0x23, 0x00, 0x0b}, // global.get 0
 		{0x41, 0x00, 0x0b}, // i32.const 0

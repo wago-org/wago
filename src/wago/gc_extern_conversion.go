@@ -7,6 +7,8 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+const maxGCExternConversions = 8
+
 type gcExternConversionKind uint8
 
 const (
@@ -22,7 +24,7 @@ type gcExternConversionEntry struct {
 	publicExternWord uint64
 	ref              gc.Ref
 	rootSlot         uint32
-	uses             uint32
+	uses             uint8
 	hasRoot          bool
 }
 
@@ -36,8 +38,8 @@ type gcExternConversionState struct {
 	mu        sync.Mutex
 	store     *referenceStore
 	collector *gc.Collector
-	entries   []gcExternConversionEntry
-	count     uint32
+	entries   [maxGCExternConversions]gcExternConversionEntry
+	count     uint8
 	closed    bool
 }
 
@@ -83,6 +85,9 @@ func (s *gcExternConversionState) anyFromExternLocked(extern uint64) (uint64, er
 	if _, ok := s.store.resolveExternref(extern); !ok {
 		return 0, fmt.Errorf("invalid or foreign externref token")
 	}
+	if s.count == maxGCExternConversions {
+		return 0, fmt.Errorf("GC extern conversion capacity %d exhausted", maxGCExternConversions)
+	}
 	anyWord, err := s.newOpaqueWordLocked(extern)
 	if err != nil {
 		return 0, err
@@ -94,9 +99,7 @@ func (s *gcExternConversionState) anyFromExternLocked(extern uint64) (uint64, er
 			return anyWord, nil
 		}
 	}
-	s.entries = append(s.entries, gcExternConversionEntry{kind: gcExternConversionForeign, anyWord: anyWord, externWord: extern})
-	s.count++
-	return anyWord, nil
+	return 0, fmt.Errorf("GC extern conversion capacity %d exhausted", maxGCExternConversions)
 }
 
 func (s *gcExternConversionState) externFromAny(anyWord uint64) (uint64, error) {
@@ -142,6 +145,9 @@ func (s *gcExternConversionState) externFromAnyLocked(anyWord uint64) (uint64, e
 			return entry.externWord, nil
 		}
 	}
+	if s.count == maxGCExternConversions {
+		return 0, fmt.Errorf("GC extern conversion capacity %d exhausted", maxGCExternConversions)
+	}
 	externWord, err := s.newOpaqueWordLocked(anyWord)
 	if err != nil {
 		return 0, err
@@ -172,9 +178,10 @@ func (s *gcExternConversionState) externFromAnyLocked(anyWord uint64) (uint64, e
 			return externWord, nil
 		}
 	}
-	s.entries = append(s.entries, entry)
-	s.count++
-	return externWord, nil
+	if entry.hasRoot {
+		_ = s.collector.SetTableSlot(entry.rootSlot, gc.Null())
+	}
+	return 0, fmt.Errorf("GC extern conversion capacity %d exhausted", maxGCExternConversions)
 }
 
 func (s *gcExternConversionState) internalAnyFromPublic(word uint64) (uint64, error) {
@@ -330,7 +337,7 @@ func (s *gcExternConversionState) replaceExtern(oldWord, newWord uint64) error {
 		}
 	}
 	if newEntry != nil {
-		if newEntry.uses == ^uint32(0) {
+		if newEntry.uses == ^uint8(0) {
 			return fmt.Errorf("GC extern conversion ownership overflow")
 		}
 		newEntry.uses++

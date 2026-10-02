@@ -246,9 +246,6 @@ func TestHostFuncRefValidationAndLifecycleHelpers(t *testing.T) {
 	if _, ok := expired.ExternRefValue(ExternRef{}); ok {
 		t.Fatal("expired host module resolved externref")
 	}
-	if expired.ReleaseExternRef(ExternRef{}) {
-		t.Fatal("expired host module released externref")
-	}
 	if err := rt.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +265,7 @@ func TestHostCallWaitRegistrationLifecycle(t *testing.T) {
 		t.Fatal("scope end did not wake registered waiter")
 	}
 	h.unregisterWait(w)
-	if got := scope.state.Load().waiter.Load(); got != nil {
+	if got := scope.waiter.Load(); got != nil {
 		t.Fatalf("unregister retained waiter %p", got)
 	}
 	if h.registerWait(&hostCallWaiter{wake: make(chan struct{}, 1)}) {
@@ -284,10 +281,10 @@ func TestHostCallWaitRegistrationLifecycle(t *testing.T) {
 func TestHostReferenceTranslationSlotAndTokenValidation(t *testing.T) {
 	in := &Instance{}
 	var temps gcHostTempTokens
-	if err := in.translateHostReferenceArgs(nil, []ValType{ValV128}, nil, nil, &temps); err != nil {
+	if err := in.translateHostReferenceArgs(nil, []ValType{ValV128}, nil, &temps); err != nil {
 		t.Fatalf("v128 argument slots: %v", err)
 	}
-	if err := in.translateHostReferenceResults(0, nil, []ValType{ValV128}, nil, nil); err != nil {
+	if err := in.translateHostReferenceResults(0, nil, []ValType{ValV128}, nil); err != nil {
 		t.Fatalf("v128 result slots: %v", err)
 	}
 	funcrefType := []ValueTypeDescriptor{{
@@ -298,17 +295,13 @@ func TestHostReferenceTranslationSlotAndTokenValidation(t *testing.T) {
 		name string
 		fn   func() error
 	}{
-		{"missing argument", func() error { return in.translateHostReferenceArgs(nil, []ValType{ValI32}, nil, nil, &temps) }},
-		{"invalid externref argument", func() error {
-			return in.translateHostReferenceArgs([]uint64{1}, []ValType{ValExternRef}, nil, nil, &temps)
-		}},
-		{"missing result", func() error { return in.translateHostReferenceResults(0, nil, []ValType{ValI64}, nil, nil) }},
+		{"missing argument", func() error { return in.translateHostReferenceArgs(nil, []ValType{ValI32}, nil, &temps) }},
+		{"invalid externref argument", func() error { return in.translateHostReferenceArgs([]uint64{1}, []ValType{ValExternRef}, nil, &temps) }},
+		{"missing result", func() error { return in.translateHostReferenceResults(0, nil, []ValType{ValI64}, nil) }},
 		{"invalid funcref result", func() error {
-			return in.translateHostReferenceResults(0, []uint64{1}, []ValType{ValFuncRef}, funcrefType, nil)
+			return in.translateHostReferenceResults(0, []uint64{1}, []ValType{ValFuncRef}, funcrefType)
 		}},
-		{"invalid externref result", func() error {
-			return in.translateHostReferenceResults(0, []uint64{1}, []ValType{ValExternRef}, nil, nil)
-		}},
+		{"invalid externref result", func() error { return in.translateHostReferenceResults(0, []uint64{1}, []ValType{ValExternRef}, nil) }},
 	} {
 		if err := tc.fn(); err == nil {
 			t.Errorf("%s accepted invalid host reference values", tc.name)

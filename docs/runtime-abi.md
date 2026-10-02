@@ -6,12 +6,6 @@ backend code that emits loads from `JobMemory` basedata.
 
 ## JobMemory basedata
 
-`JobMemory` is one stable native mapping.
-It contains runtime control data and a linear memory reservation.
-A memoryless instance still needs one `JobMemory` for its control data.
-Additional local Wasm memories usually need additional mappings.
-Imported memories reuse the provider mapping.
-
 `JobMemory` reserves basedata immediately before the linear-memory base. Offsets
 are addressed as negative displacements from the linear-memory pointer used by
 JIT code. Existing offsets must not move without re-deriving the runtime ABI and
@@ -19,20 +13,6 @@ updating the guard tests. The current basedata size is 288 bytes. The fixed
 16-slot wrapper-tail bank remains `[linMem-272, linMem-144)`; the separately
 addressable native GC metadata pointer is at `[linMem-280]`, leaving the bank
 unchanged.
-
-The instance memory directory keeps its 24-byte entry layout. Each entry stores
-base and live-size caches at bytes 0 through 19 and the optional runtime page
-quota in the existing four-byte tail at byte 20. A single-memory instance gets a
-cold directory entry only when a runtime quota needs it; `memory.grow` treats a
-nil directory or a zero quota as unbounded. The already-captured memory-directory
-pointer carries this per-instance policy across context switches, so basedata
-stays 288 bytes and `runtime.InstanceContext` stays 112 bytes.
-
-On supported Linux hosts, each mapped linear-memory base is in the host interrupt
-registry. Close removes the base before it unmaps the memory.
-Close waits until active signal readers leave the registry.
-A cached `JobMemory` stays mapped and registered.
-See [Native memory limits](native-memory-limits.md) for the process limit.
 
 The globals pointer lives at basedata offset `112` (`abi.GlobalsPtrOffset`, used
 by runtime layout and backend codegen). Backend `global.get`/`global.set` code
@@ -72,15 +52,13 @@ collector-owned view, and an immutable local-type to canonical-domain `u32` map.
 The Go object retains that map through a typed trailing slice; native code sees
 only the fixed prefix.
 
-The shared collector view is 184 bytes. ABI version 1 contains the complete
+The shared collector view is 168 bytes. ABI version 1 contains the complete
 20-byte handle stride, current handle pointer/count, five directly indexed
 16-byte space descriptors `{base u64, bytes u32, pad}`, refresh generation,
-object-card pointer/count, Eden limit, and stable allocation pointers. Byte 160
-publishes the configured nursery-object maximum. Byte 168 publishes the immutable
-packed DFS subtype-interval table, and byte 176 publishes its canonical type
-count. Byte 124 remains `NurseryAllocBytes`, while the nursery descriptor covers
-Eden plus both survivor semispaces so moved handles remain directly resolvable.
-Space zero is invalid;
+object-card pointer/count, Eden limit, and stable allocation pointers. The new
+byte-160 word publishes the configured nursery-object maximum; byte 124 remains
+`NurseryAllocBytes`, while the nursery descriptor covers Eden plus both survivor
+semispaces so moved handles remain directly resolvable. Space zero is invalid;
 nursery, old, large, and Tiny match the stable one-byte `handleEntry.space`
 identity at byte 18. The remembered bit at byte 19 remains native-readable and
 is never mutated by generated code.
@@ -114,20 +92,9 @@ without mandatory boundary collection refill immediately.
 
 The Collector republishes handle and heap pointers/counts and increments the
 refresh generation after every helper allocation and collection, including
-handle-table relocation. Canonical-domain type append first quiesces the Runtime
-GC domain's native invocation lease, then rebuilds and republishes the subtype-
-interval pointer/count under collector serialization. Instance-view construction
-and validation take the same invocation lease, so they observe one complete
-published interval snapshot. Close zeros all published backing, allocation, and
-interval pointers before the view lifetime
-ends. Native execution and collector mutation remain serialized, so readers never
-observe a partially refreshed view.
-
-AMD64 defined struct/array `ref.cast` and `ref.test` resolve the compact handle,
-load the object's canonical type, and use interval containment for ordinary targets.
-Exact casts use canonical ID equality. The generated path reloads the interval
-pointer/count for each operation and retains no raw object address across a call,
-helper, allocation, or safepoint.
+handle-table relocation. Close zeros all published backing and allocation pointers
+before the view lifetime ends. Native execution and collector mutation remain
+serialized, so readers never observe a partially refreshed view.
 
 AMD64 direct final-scalar struct/array accesses reload the view for each operation
 and validate both version words, handle tag/index, 20-byte entry stride, space
@@ -139,7 +106,7 @@ all Tiny stores retain the synchronous helper ABI. Final abstract-reference arra
 stores may write an old/large parent only when remembered membership and a validated
 object-card slot already exist. Native code may widen that card's inclusive interval
 in place, but never appends or relocates card metadata. Cardless, unremembered, Tiny,
-unknown non-final, opaque-reference, `v128`, and bulk paths keep the helper ABI.
+non-final, opaque-reference, `v128`, and bulk paths keep the helper ABI. The
 basedata increase is 16 bytes per `JobMemory`;
 `Instance` grows by one eight-byte retained view pointer on current amd64 builds.
 
@@ -163,8 +130,8 @@ the exact type index against the target's declared subtype set. A same-Runtime
 foreign descriptor takes the cold synchronous fallback, which resolves its canonical
 owner and compares the full persisted structural type metadata. This keeps the local
 Dewdrop closure path collision-free and native while preserving cross-instance
-semantics without increasing the 40-byte descriptor. The former 1 MiB instance-arena
-value is now only the small-arena cache threshold. The descriptor path is selected only when the indexed cast/test target is a
+semantics without increasing the 40-byte descriptor or the strict 1 MiB instance-arena
+ceiling. The descriptor path is selected only when the indexed cast/test target is a
 function type; eqref-transported GC objects still use collector subtype metadata, so a
 concrete closure struct can cast to its declared non-final closure-base supertype.
 Abstract `eq`, `i31`, `struct`, and `array` null constant expressions remain ordinary
@@ -215,16 +182,6 @@ synchronous because the table may be mutated to contain a host descriptor. The
 old async log format remains an internal compatibility path but is not selected
 for these compositions.
 
-Each ordinary synchronous import has one immutable 24-byte binding. It stores
-the host function, exact type-descriptor pointer, import index, and a scalar or
-reference-bearing class. Scalar dispatch uses one predictable class branch and
-does not construct GC token scratch. GC invocation suspension uses an explicit
-stack value rather than an escaping resume closure. The existing `HostFunc` API
-still allocates one 112-byte callback-scoped `HostModule`; that immutable value
-is what keeps retained callers stale after the callback ends. A stored dynamic
-Go callback was measured slightly slower than the predictable class branch and
-is not used.
-
 The synchronous parked-Go transition restores callee-saved GPRs, but System V XMM
 registers are caller-saved. Before any synchronous host or internal GC helper
 call, amd64 copies all arguments to the 328-byte control frame and then spills
@@ -238,7 +195,7 @@ In guard-page mode, `memory.grow` raises the logical size before newly in-bounds
 pages are necessarily committed; native loads/stores commit them lazily through
 the fault handler. Host access uses `JobMemory.HostBytesChecked`, which mprotects
 and extends the stable-base Go view through the current logical size first. This
-is required for `Memory.UnsafeBytes`, typed host reads/writes, snapshot restore, and
+is required for `Memory.Bytes`, typed host reads/writes, snapshot restore, and
 active data initialization against an imported memory that grew before the new
 instance was created. `CurrentBytes` remains limited to the original committed
 Go slice and must not be used for that case.
@@ -599,8 +556,8 @@ reused after success or rollback. Throughput Eden now evacuates first survivors 
 two age bits occupy unused high `handleEntry.class` bits, and large young objects age in place. A fixed threshold starts
 at two survivals and adapts between one and three from survivor occupancy, old-space pressure, recent full collections,
 and an optional pause target. Useful object/root cards remain authoritative across survivor movement and clear when no
-young edge remains. The native collector view is ABI version 1 for shared struct/array handle runs, nursery chunks, the explicit
-nursery-object maximum, and immutable subtype intervals; `handleEntry` remains 20 bytes, `Config` is 72 bytes, and the current linux/amd64
+young edge remains. The native collector view is ABI version 1 for shared struct/array handle runs, nursery chunks, and the explicit
+nursery-object maximum; `handleEntry` remains 20 bytes, `Config` is 72 bytes, and the current linux/amd64
 `gc.Collector` is 1,120 bytes. Collector
 tests separately prove nullable/non-null storage compatibility, rejected-copy atomicity, sparse/dense card behavior,
 root bitmap consistency, failure fallback, promotion rollback, and Tiny remark preservation.
@@ -1035,8 +992,8 @@ starts remain closed because their host ownership graph is unknown. Admission is
 per function where provably safe: a function that cannot allocate or call may
 omit a frame plan without disabling exact collecting functions in the same
 module. Any collecting function with an unsupported call ABI, ownership shape,
-frame layout, malformed liveness graph, or incomplete backend map keeps the module
-fail-closed in bounded collection-disabled
+frame layout, malformed liveness graph, more than 1,024 roots, or incomplete
+backend map keeps the module fail-closed in bounded collection-disabled
 Throughput mode. `Compiled.GCNativeRootAdmission` exposes the decision and its
 specific reason without exposing executable pointers or live runtime state.
 

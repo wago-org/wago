@@ -16,7 +16,7 @@ func (c *Cmd) Dispatch(path string, args []string) {
 		if err != nil {
 			ui.Usage("%s: %v", c.Label(path), err)
 		}
-		if wantsLeadingHelp(args, c.Flags) {
+		if WantsHelp(args, true, c.Flags) {
 			c.PrintHelp(os.Stdout, path)
 			return
 		}

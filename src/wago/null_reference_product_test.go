@@ -115,8 +115,6 @@ func compileStagedNullReferenceProductForTest(data []byte) (*Compiled, error) {
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.NullReferenceProducts = true
-	features.ExceptionHandling = true
-	features.ExceptionReferences = true
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 
@@ -130,8 +128,6 @@ func TestStagedNullReferenceProductPlatformAndBoundsGate(t *testing.T) {
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.NullReferenceProducts = true
-	features.ExceptionHandling = true
-	features.ExceptionReferences = true
 	c, err := compileWithFrontendFeatures(cfg, stagedFirstNullReferenceModule(false), features)
 	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 		if err == nil || !strings.Contains(err.Error(), "unsupported null-reference product staged execution on") {

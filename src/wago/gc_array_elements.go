@@ -8,20 +8,22 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+const maxGCArrayElementValues = 2
+
 // gcArrayElementInit is compile-only metadata for the exact passive GC element
 // segment in the pinned reference-array product. It is deliberately separate
 // from ordinary table element metadata and immutable-global roots.
 type gcArrayElementInit struct {
 	SegmentIndex uint32
 	TypeID       uint32
-	Count        uint32
-	Values       []gcArrayElementValueInit
+	Count        uint8
+	Values       [maxGCArrayElementValues]gcArrayElementValueInit
 }
 
 type gcArrayElementValueInit struct {
 	Mode   gcArrayGlobalInitMode
 	Length uint32
-	Bits   []uint64
+	Bits   [maxGCArrayFixedElements]uint64
 }
 
 // gcArrayElementState is the bounded per-instance lifecycle for one passive GC
@@ -30,10 +32,10 @@ type gcArrayElementValueInit struct {
 // code and contains no Go pointer.
 type gcArrayElementState struct {
 	Descriptor []byte
-	Refs       []gc.Ref
-	Slots      []uint32
+	Refs       [maxGCArrayElementValues]gc.Ref
+	Slots      [maxGCArrayElementValues]uint32
 	AllocRoots gcArrayElementRoots
-	Count      uint32
+	Count      uint8
 }
 
 func stagedGCArrayElementInitializer(m *wasm.Module) (*gcArrayElementInit, error) {
@@ -44,8 +46,8 @@ func stagedGCArrayElementInitializer(m *wasm.Module) (*gcArrayElementInit, error
 		return nil, fmt.Errorf("reference array product requires one element segment, got %d", len(m.Elements))
 	}
 	e := &m.Elements[0]
-	if e.Mode.Kind != wasm.ElemPassive || e.Kind.Kind != wasm.ElemTypedExprs {
-		return nil, fmt.Errorf("reference array product requires one passive typed segment")
+	if e.Mode.Kind != wasm.ElemPassive || e.Kind.Kind != wasm.ElemTypedExprs || len(e.Kind.Exprs) != maxGCArrayElementValues {
+		return nil, fmt.Errorf("reference array product requires one passive typed segment with two expressions")
 	}
 	if e.Kind.Ref.Nullable() || e.Kind.Ref.Exact() || e.Kind.Ref.Heap().Kind() != wasm.HeapTypeIndex || e.Kind.Ref.Heap().Type().Index != 0 {
 		return nil, fmt.Errorf("reference array product segment type must be non-null type 0")
@@ -54,10 +56,7 @@ func stagedGCArrayElementInitializer(m *wasm.Module) (*gcArrayElementInit, error
 	if !ok || sub.Comp.Kind != wasm.CompArray || !sub.Comp.Array.Storage().Packed() || sub.Comp.Array.Storage().Pack() != wasm.PackI8 || sub.Comp.Array.Mut() != wasm.Const {
 		return nil, fmt.Errorf("reference array product type 0 must be immutable i8 array")
 	}
-	if uint64(len(e.Kind.Exprs)) > uint64(^uint32(0)) {
-		return nil, fmt.Errorf("reference array product expression count exceeds uint32")
-	}
-	init := &gcArrayElementInit{SegmentIndex: 0, TypeID: 0, Count: uint32(len(e.Kind.Exprs)), Values: make([]gcArrayElementValueInit, len(e.Kind.Exprs))}
+	init := &gcArrayElementInit{SegmentIndex: 0, TypeID: 0, Count: maxGCArrayElementValues}
 	for i := range e.Kind.Exprs {
 		value, err := decodeStagedGCArrayElementValue(e.Kind.Exprs[i], uint32(i))
 		if err != nil {
@@ -78,7 +77,7 @@ func decodeStagedGCArrayElementValue(expr wasm.Expr, index uint32) (gcArrayEleme
 		body = encoded
 	}
 	r := wasm.NewReader(body)
-	values := make([]uint64, 0)
+	values := make([]uint64, 0, maxGCArrayFixedElements)
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -90,6 +89,9 @@ func decodeStagedGCArrayElementValue(expr wasm.Expr, index uint32) (gcArrayEleme
 				return gcArrayElementValueInit{}, err
 			}
 			values = append(values, uint64(uint32(v)))
+			if len(values) > maxGCArrayFixedElements {
+				return gcArrayElementValueInit{}, fmt.Errorf("operand count exceeds %d", maxGCArrayFixedElements)
+			}
 			continue
 		}
 		if op != 0xfb {
@@ -109,23 +111,26 @@ func decodeStagedGCArrayElementValue(expr wasm.Expr, index uint32) (gcArrayEleme
 		var out gcArrayElementValueInit
 		switch subopcode {
 		case 6: // array.new: i32 value, i32 length
-			if len(values) != 2 {
-				return gcArrayElementValueInit{}, fmt.Errorf("array.new requires two i32 operands")
+			if index != 0 || len(values) != 2 {
+				return gcArrayElementValueInit{}, fmt.Errorf("array.new requires the first expression and two i32 operands")
 			}
 			out.Mode = gcArrayGlobalInitUniform
-			out.Bits, out.Length = []uint64{values[0]}, uint32(values[1])
+			out.Bits[0], out.Length = values[0], uint32(values[1])
 		case 8: // array.new_fixed: immediate count, then i32 values
 			count, err := r.U32()
 			if err != nil {
 				return gcArrayElementValueInit{}, err
 			}
-			if uint64(count) > uint64(maxInt()) || int(count) != len(values) {
+			if index != 1 || count > maxGCArrayFixedElements || int(count) != len(values) {
 				return gcArrayElementValueInit{}, fmt.Errorf("array.new_fixed count %d has %d operands", count, len(values))
 			}
 			out.Mode, out.Length = gcArrayGlobalInitFixed, count
-			out.Bits = append([]uint64(nil), values...)
+			copy(out.Bits[:], values)
 		default:
 			return gcArrayElementValueInit{}, fmt.Errorf("unsupported constructor 0xfb %d", subopcode)
+		}
+		if out.Length > maxGCArrayFixedElements {
+			return gcArrayElementValueInit{}, fmt.Errorf("array length %d exceeds staged bound %d", out.Length, maxGCArrayFixedElements)
 		}
 		end, err := r.Byte()
 		if err != nil || end != 0x0b || r.BytesLeft() != 0 {
@@ -137,7 +142,7 @@ func decodeStagedGCArrayElementValue(expr wasm.Expr, index uint32) (gcArrayEleme
 }
 
 func instantiateGCArrayElementSegment(collector *gc.Collector, mapping *gcTypeMapping, descs []gc.TypeDesc, init *gcArrayElementInit, descriptor []byte) (*gcArrayElementState, error) {
-	if collector == nil || init == nil || int(init.TypeID) >= len(descs) {
+	if collector == nil || init == nil || init.Count != maxGCArrayElementValues || int(init.TypeID) >= len(descs) {
 		return nil, fmt.Errorf("GC array element initializer is unavailable")
 	}
 	if len(descriptor) != 16 {
@@ -147,8 +152,8 @@ func instantiateGCArrayElementSegment(collector *gc.Collector, mapping *gcTypeMa
 	if desc.Kind != gc.KindArray || desc.Elem != gc.StorageI8 {
 		return nil, fmt.Errorf("GC array element type %d is not i8 array", init.TypeID)
 	}
-	state := &gcArrayElementState{Descriptor: descriptor, Count: init.Count, Refs: make([]gc.Ref, init.Count), Slots: make([]uint32, init.Count)}
-	for i := uint32(0); i < init.Count; i++ {
+	state := &gcArrayElementState{Descriptor: descriptor, Count: init.Count}
+	for i := uint8(0); i < init.Count; i++ {
 		value := init.Values[i]
 		domainType, mapErr := mappedGCType(mapping, init.TypeID)
 		if mapErr != nil {
@@ -191,15 +196,15 @@ func instantiateGCArrayElementSegment(collector *gc.Collector, mapping *gcTypeMa
 }
 
 type gcArrayElementRoots struct {
-	Values []gc.Root
-	Count  uint32
+	Values [maxGCArrayElementValues]gc.Root
+	Count  uint8
 }
 
 func (r *gcArrayElementRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 	if r == nil {
 		return
 	}
-	for i := uint32(0); i < r.Count; i++ {
+	for i := uint8(0); i < r.Count; i++ {
 		if !fn(&r.Values[i]) {
 			return
 		}
@@ -210,7 +215,7 @@ func (r *gcArrayElementRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefS
 	if r == nil || sink == nil {
 		return true
 	}
-	for i := uint32(0); i < r.Count; i++ {
+	for i := uint8(0); i < r.Count; i++ {
 		if !sink.VisitClassifiedRootRef(gc.RootSnapshotTemporary, gc.Ref(r.Values[i])) {
 			return false
 		}
@@ -218,7 +223,7 @@ func (r *gcArrayElementRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefS
 	return true
 }
 
-func (r *gcArrayElementRoots) ref(i uint32) gc.Ref { return gc.Ref(r.Values[i]) }
+func (r *gcArrayElementRoots) ref(i uint8) gc.Ref { return gc.Ref(r.Values[i]) }
 
 func (in *Instance) existingGCArrayElementState() *gcArrayElementState {
 	if in == nil {
@@ -238,7 +243,7 @@ func (s *gcArrayElementState) drop(collector *gc.Collector) {
 	if len(s.Descriptor) >= 12 {
 		binary.LittleEndian.PutUint32(s.Descriptor[8:], 0)
 	}
-	for i := uint32(0); i < s.Count; i++ {
+	for i := uint8(0); i < s.Count; i++ {
 		_ = collector.SetTableSlot(s.Slots[i], gc.Null())
 	}
 }

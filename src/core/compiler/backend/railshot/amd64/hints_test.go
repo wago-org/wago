@@ -12,104 +12,10 @@ import (
 )
 
 func TestFuncHintsSize(t *testing.T) {
-	const want = 32
+	const want = 200
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
 	}
-}
-
-func TestFuncHintPackedResolverAndRelocationCounts(t *testing.T) {
-	var h funcHints
-	for range 3 {
-		h.addGCResolverSite()
-	}
-	for range 5 {
-		h.addCallRelocSite()
-	}
-	if got := h.gcResolverSiteCount(); got != 3 {
-		t.Fatalf("resolver sites = %d, want 3", got)
-	}
-	if got := h.callRelocSiteCount(); got != 5 {
-		t.Fatalf("relocation sites = %d, want 5", got)
-	}
-	h.gcResolverAndRelocs = gcResolverSiteMask | uint32(^uint8(0))<<24
-	h.addGCResolverSite()
-	h.addCallRelocSite()
-	if got := h.gcResolverSiteCount(); got != gcResolverSiteMask {
-		t.Fatalf("saturated resolver sites = %d, want %d", got, gcResolverSiteMask)
-	}
-	if got := h.callRelocSiteCount(); got != ^uint8(0) {
-		t.Fatalf("saturated relocation sites = %d, want %d", got, ^uint8(0))
-	}
-}
-
-func TestEntryInitializedSharesLocalScoreStorage(t *testing.T) {
-	scores := make([]uint32, 2)
-	h := funcHintsWithStorage(scores)
-	h.markEntryInitialized(1)
-	if h.entryInitialized != uint64(1)<<1 {
-		t.Fatalf("scan-local entry initialized = %#x, want bit 1", h.entryInitialized)
-	}
-	addHotness(scores, 1, 7)
-	if got := localHotness(scores[1]); got != 7 {
-		t.Fatalf("local hotness = %d, want 7", got)
-	}
-	scores[1] = localScoreEntryInitialized | localScoreHotnessMask
-	addHotness(scores, 1, 1)
-	if got := scores[1]; got != localScoreEntryInitialized|localScoreHotnessMask {
-		t.Fatalf("saturated packed score = %#x", got)
-	}
-}
-
-func TestScanBodyBytesDetectsDeepVariableShiftPressure(t *testing.T) {
-	shiftChain := func(depth int, constantCount bool) []byte {
-		body := []byte{0x20, 0x00} // local.get 0: accumulator
-		for range depth {
-			if constantCount {
-				body = append(body, 0x41, 0x01) // i32.const 1
-			} else {
-				body = append(body, 0x20, 0x01) // local.get 1
-			}
-			body = append(body, 0x74) // i32.shl
-		}
-		return append(body, 0x0b)
-	}
-	for _, tc := range []struct {
-		name string
-		body []byte
-		want bool
-	}{
-		{name: "below cap", body: shiftChain(maxDeferDepth-1, false)},
-		{name: "at cap", body: shiftChain(maxDeferDepth, false), want: true},
-		{name: "constant counts", body: shiftChain(maxDeferDepth+2, true)},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			h, err := scanBodyBytes(tc.body, 2, 0, 0)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got := h.hasDeepVariableShift(); got != tc.want {
-				t.Fatalf("deep variable shift = %v, want %v", got, tc.want)
-			}
-		})
-	}
-
-	var h funcHints
-	h.addStackArenaDiscount(7)
-	h.noteDeepVariableShift()
-	h.addStackArenaDiscount(5)
-	if got := h.arenaDiscount(); got != 12 || !h.hasDeepVariableShift() {
-		t.Fatalf("packed discount/pressure = %d/%v, want 12/true", got, h.hasDeepVariableShift())
-	}
-}
-
-func globalHint(h funcHintView, index uint32) (score uint32, eligible bool) {
-	for _, hint := range h.sparseGlobals {
-		if hint.Index == index {
-			return hint.Score, hint.Eligible
-		}
-	}
-	return 0, false
 }
 
 func TestConstantPreloadHints(t *testing.T) {
@@ -119,21 +25,21 @@ func TestConstantPreloadHints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !h.flags.has(hintHasFloatConst) || !h.flags.has(hintHasSIMD) {
-		t.Fatalf("byte hints = float:%v SIMD:%v, want both", h.flags.has(hintHasFloatConst), h.flags.has(hintHasSIMD))
+	if !h.hasFloatConst || !h.hasSIMD {
+		t.Fatalf("byte hints = float:%v SIMD:%v, want both", h.hasFloatConst, h.hasSIMD)
 	}
 	ast := scanBody(wasm.Expr{Instrs: []wasm.Instruction{
 		{Kind: wasm.InstrF64Const}, {Kind: wasm.InstrV128Const},
 	}}, 0, 0, 0)
-	if !ast.flags.has(hintHasFloatConst) || !ast.flags.has(hintHasSIMD) {
-		t.Fatalf("AST hints = float:%v SIMD:%v, want both", ast.flags.has(hintHasFloatConst), ast.flags.has(hintHasSIMD))
+	if !ast.hasFloatConst || !ast.hasSIMD {
+		t.Fatalf("AST hints = float:%v SIMD:%v, want both", ast.hasFloatConst, ast.hasSIMD)
 	}
 	plain, err := scanBodyBytes([]byte{0x41, 0, 0x1a, 0x0b}, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plain.flags.has(hintHasFloatConst) || plain.flags.has(hintHasSIMD) {
-		t.Fatalf("integer hints = float:%v SIMD:%v, want neither", plain.flags.has(hintHasFloatConst), plain.flags.has(hintHasSIMD))
+	if plain.hasFloatConst || plain.hasSIMD {
+		t.Fatalf("integer hints = float:%v SIMD:%v, want neither", plain.hasFloatConst, plain.hasSIMD)
 	}
 }
 
@@ -151,13 +57,13 @@ func TestScanBodyHints(t *testing.T) {
 		{Kind: wasm.InstrCall, Index: 7},
 	}}
 	h := scanBody(callOnly, 1, 0, 7)
-	if !h.flags.has(hintHasCall) || h.flags.has(hintTouchesMemory) || !h.flags.has(hintCallsSelf) {
-		t.Fatalf("call-only body: hasCall=%v touchesMemory=%v callsSelf=%v", h.flags.has(hintHasCall), h.flags.has(hintTouchesMemory), h.flags.has(hintCallsSelf))
+	if !h.hasCall || h.touchesMemory || !h.callsSelf {
+		t.Fatalf("call-only body: hasCall=%v touchesMemory=%v callsSelf=%v", h.hasCall, h.touchesMemory, h.callsSelf)
 	}
 	if h.localScore[0] != 1 {
 		t.Fatalf("local 0 score = %d, want 1", h.localScore[0])
 	}
-	if h2 := scanBody(callOnly, 1, 0, 8); h2.flags.has(hintCallsSelf) {
+	if h2 := scanBody(callOnly, 1, 0, 8); h2.callsSelf {
 		t.Fatal("call to 7 should not count as self for index 8")
 	}
 
@@ -168,7 +74,7 @@ func TestScanBodyHints(t *testing.T) {
 		{Kind: wasm.InstrMemoryFill},
 	}}
 	h = scanBody(callMemory, 1, 0, 99)
-	if !h.flags.has(hintHasCall) || !h.flags.has(hintTouchesMemory) || !h.flags.has(hintUsesBulkMem) {
+	if !h.hasCall || !h.touchesMemory || !h.usesBulkMem {
 		t.Fatalf("call+memory body: %+v", h)
 	}
 }
@@ -178,7 +84,7 @@ func TestScanBodyBytesCallHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan self call: %v", err)
 	}
-	if !h.flags.has(hintHasCall) || !h.flags.has(hintCallsSelf) {
+	if !h.hasCall || !h.callsSelf {
 		t.Fatalf("self call hints = %+v, want hasCall and callsSelf", h)
 	}
 
@@ -186,7 +92,7 @@ func TestScanBodyBytesCallHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan call_indirect: %v", err)
 	}
-	if !h.flags.has(hintHasCall) || h.flags.has(hintCallsSelf) {
+	if !h.hasCall || h.callsSelf {
 		t.Fatalf("call_indirect hints = %+v, want hasCall without callsSelf", h)
 	}
 }
@@ -208,8 +114,8 @@ func TestBrTableJumpDataHintUsesBackendThreshold(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := h.flags.has(hintHasJumpTableData); got != test.want {
-				t.Fatalf("jump-table-data hint = %v, want %v", got, test.want)
+			if h.hasJumpTableData != test.want {
+				t.Fatalf("jump-table-data hint = %v, want %v", h.hasJumpTableData, test.want)
 			}
 		})
 	}
@@ -217,21 +123,21 @@ func TestBrTableJumpDataHintUsesBackendThreshold(t *testing.T) {
 
 func TestScanBodyExceptionHandlingHint(t *testing.T) {
 	ast := scanBody(wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrThrow}}}, 0, 0, 0)
-	if !ast.flags.has(hintModuleEH) {
+	if !ast.moduleEH {
 		t.Fatal("AST throw did not mark exception handling")
 	}
 	bytes, err := scanBodyBytes([]byte{0x08, 0x00, 0x0b}, 0, 0, 0) // throw tag 0; end
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.flags.has(hintModuleEH) {
+	if !bytes.moduleEH {
 		t.Fatal("bytecode throw did not mark exception handling")
 	}
 	plain, err := scanBodyBytes([]byte{0x41, 0x00, 0x1a, 0x0b}, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plain.flags.has(hintModuleEH) {
+	if plain.moduleEH {
 		t.Fatal("plain bytecode marked exception handling")
 	}
 }
@@ -256,9 +162,6 @@ func TestScanBodyBytesStackArenaHintSkipsSIMDStores(t *testing.T) {
 	if storeHints.stackArenaNodes != endOnly.stackArenaNodes {
 		t.Fatalf("SIMD store stack arena nodes = %d, want end-only baseline %d", storeHints.stackArenaNodes, endOnly.stackArenaNodes)
 	}
-	if !storeHints.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("SIMD body did not select legacy arena sizing")
-	}
 
 	body = []byte{
 		0xfd, 0x54, 0x00, 0x00, 0x0f, // v128.load8_lane align=1 offset=0 lane=15
@@ -270,122 +173,6 @@ func TestScanBodyBytesStackArenaHintSkipsSIMDStores(t *testing.T) {
 	}
 	if loadHints.stackArenaNodes != endOnly.stackArenaNodes+1 {
 		t.Fatalf("SIMD load-lane stack arena nodes = %d, want %d", loadHints.stackArenaNodes, endOnly.stackArenaNodes+1)
-	}
-}
-
-func TestScanBodyBytesStackArenaHintCountsAtomics(t *testing.T) {
-	for _, kind := range []wasm.InstrKind{wasm.InstrAtomicFence, wasm.InstrI32AtomicStore, wasm.InstrI64AtomicStore32} {
-		if stackArenaOpAllocates(0xfe, &wasm.InstructionImmediate{Kind: kind}) {
-			t.Fatalf("result-free atomic %v counted as arena allocation", kind)
-		}
-	}
-	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := []byte{
-		0x41, 0x00, // i32.const address
-		0xfe, 0x10, 0x02, 0x00, // i32.atomic.load align=4 offset=0
-		0x1a, 0x0b, // drop; end
-	}
-	h, err := scanBodyBytes(body, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := endOnly.stackArenaNodes + 2; h.stackArenaNodes != want {
-		t.Fatalf("atomic stack arena nodes = %d, want %d", h.stackArenaNodes, want)
-	}
-}
-
-func TestScanBodyBytesDiscountsAlgebraicIdentities(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, 0x41, 0x00, 0x6a, 0x1a, // x + 0; drop
-		0x20, 0x00, 0x41, 0x01, 0x6a, 0x1a, // x + 1; drop (not an identity)
-		0x20, 0x00, 0x20, 0x00, 0x6b, 0x1a, // x - x; drop
-		0x20, 0x00, 0x41, 0x20, 0x74, 0x1a, // i32.shl by 32; drop
-		0x20, 0x00, 0x42, 0xc0, 0x00, 0x86, 0x1a, // i64.shl by 64; drop
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 1, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.stackArenaDiscount != 3 {
-		t.Fatalf("algebraic discount = %d, want 3", h.stackArenaDiscount)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("multibyte identity constant did not retain legacy sizing")
-	}
-}
-
-func TestScanBodyBytesDetectsDeadCodeAfterTerminator(t *testing.T) {
-	h, err := scanBodyBytes([]byte{0x00, 0x41, 0x00, 0x1a, 0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("dead instructions after unreachable were not detected")
-	}
-	terminalOnly, err := scanBodyBytes([]byte{0x00, 0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if terminalOnly.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("terminal unreachable was marked as followed by dead code")
-	}
-}
-
-func TestScanBodyBytesDiscountsSWARLookaheadCandidates(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, 0x42, 0x00, 0x83, 0x22, 0x01, 0x1a, // i64.and; local.tee
-		0x20, 0x00, 0x42, 0x20, 0x88, 0x22, 0x01, 0x1a, // i64.shr_u; local.tee
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 2, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.stackArenaDiscount != 44 {
-		t.Fatalf("SWAR lookahead discount = %d, want 44", h.stackArenaDiscount)
-	}
-}
-
-func TestScanBodyBytesDetectsStackSinkFusion(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, // local.get 0
-		0x20, 0x01, // local.get 1
-		0x92,       // f32.add
-		0x21, 0x02, // local.set 2
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 3, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("float local sink fusion was not detected")
-	}
-}
-
-func TestScanBodyBytesStackArenaHintCountsReferenceResults(t *testing.T) {
-	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := []byte{
-		0x20, 0x00, // local.get 0
-		0xd4,       // ref.as_non_null
-		0x1a,       // drop
-		0x41, 0x00, // i32.const 0
-		0xfb, 0x1c, // ref.i31
-		0x1a, 0x0b, // drop; end
-	}
-	h, err := scanBodyBytes(body, 1, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := endOnly.stackArenaNodes + 4; h.stackArenaNodes != want {
-		t.Fatalf("reference stack arena nodes = %d, want %d", h.stackArenaNodes, want)
 	}
 }
 
@@ -404,8 +191,8 @@ func TestScanBodyBytesStackArenaHintSkipsSIMDImmediateBytes(t *testing.T) {
 		t.Fatalf("scanFuncBody: %v", err)
 	}
 	legacy := stackArenaCapForBody(len(m.Code[0].BodyBytes), nLocals)
-	hinted := stackArenaCapForHints(len(m.Code[0].BodyBytes), nLocals, int(h.stackArenaNodes))
-	if h.stackArenaNodes == 0 || int(h.stackArenaNodes) >= len(m.Code[0].BodyBytes)/2 {
+	hinted := stackArenaCapForHints(len(m.Code[0].BodyBytes), nLocals, h.stackArenaNodes)
+	if h.stackArenaNodes == 0 || h.stackArenaNodes >= len(m.Code[0].BodyBytes)/2 {
 		t.Fatalf("stack arena node hint = %d, body bytes = %d", h.stackArenaNodes, len(m.Code[0].BodyBytes))
 	}
 	if hinted >= legacy {
@@ -425,7 +212,7 @@ func TestScanBodyBytesMemoryHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan memory body: %v", err)
 	}
-	if !h.flags.has(hintTouchesMemory) || h.flags.has(hintUsesBulkMem) {
+	if !h.touchesMemory || h.usesBulkMem {
 		t.Fatalf("memory hints = %+v, want touchesMemory only", h)
 	}
 }
@@ -440,7 +227,7 @@ func TestScanBodyBytesBulkMemoryHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan bulk memory body: %v", err)
 	}
-	if !h.flags.has(hintTouchesMemory) || !h.flags.has(hintUsesBulkMem) {
+	if !h.touchesMemory || !h.usesBulkMem {
 		t.Fatalf("bulk memory hints = %+v, want touchesMemory and usesBulkMem", h)
 	}
 }
@@ -462,10 +249,11 @@ func TestScanBodyBytesLoopWeightedScoresAndEligibility(t *testing.T) {
 	if h.localScore[0] != 10 || h.localScore[1] != 20 {
 		t.Fatalf("local scores = %v, want [10 20]", h.localScore)
 	}
-	for index, wantScore := range map[uint32]uint32{1: 10, 2: 20} {
-		if score, eligible := globalHint(h, index); score != wantScore || !eligible {
-			t.Fatalf("global %d hint = (%d, %v), want (%d, true)", index, score, eligible, wantScore)
-		}
+	if h.globalScore[1] != 10 || h.globalScore[2] != 20 {
+		t.Fatalf("global scores = %v, want g1=10 g2=20", h.globalScore)
+	}
+	if !h.globalElig[1] || !h.globalElig[2] {
+		t.Fatalf("global eligibility = %v, want globals 1 and 2 eligible", h.globalElig)
 	}
 }
 
@@ -482,8 +270,11 @@ func TestScanBodyBytesRepeatedGlobalsAreEligibleOncePerCallFreeLoop(t *testing.T
 	if err != nil {
 		t.Fatalf("scan repeated global loop: %v", err)
 	}
-	if score, eligible := globalHint(h, 0); score != 40 || !eligible { // two gets + one set, all at loop weight 10
-		t.Fatalf("global hint = (%d, %v), want (40, true)", score, eligible)
+	if h.globalScore[0] != 40 { // two gets + one set, all at loop weight 10
+		t.Fatalf("global score = %d, want 40", h.globalScore[0])
+	}
+	if !h.globalElig[0] {
+		t.Fatalf("global eligibility = %v, want global 0 eligible", h.globalElig)
 	}
 }
 
@@ -500,11 +291,14 @@ func TestScanBodyBytesLoopWithCallDisablesGlobalEligibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan loop call body: %v", err)
 	}
-	if !h.flags.has(hintHasCall) {
+	if !h.hasCall {
 		t.Fatalf("hints = %+v, want hasCall", h)
 	}
-	if score, eligible := globalHint(h, 0); score == 0 || eligible {
-		t.Fatalf("global hint = (%d, %v), want nonzero and ineligible", score, eligible)
+	if h.globalScore[0] == 0 {
+		t.Fatalf("global scores = %v, want global 0 scored", h.globalScore)
+	}
+	if h.globalElig[0] {
+		t.Fatalf("global eligibility = %v, call-containing loop should not be eligible", h.globalElig)
 	}
 }
 
@@ -558,8 +352,8 @@ func TestModuleGlobalScoreScanMatchesFullHints(t *testing.T) {
 				if err != nil {
 					t.Fatalf("full scan body %x: %v", body, err)
 				}
-				for _, hint := range h.sparseGlobals {
-					want[hint.Index] += int64(hint.Score)
+				for g, score := range h.globalScore {
+					want[g] += int64(score)
 				}
 			}
 			if len(got) != len(want) {
@@ -594,9 +388,9 @@ func TestModuleGlobalScoreScanSupportsASTBodies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compute module global scores for ast body: %v", err)
 	}
-	want, _ := globalHint(scanBody(m.Code[0].Body, 0, 1, 0), 0)
-	if len(got) != 1 || got[0] != int64(want) || got[0] != 30 {
-		t.Fatalf("AST aggregate scores = %v, want %d", got, want)
+	want := scanBody(m.Code[0].Body, 0, 1, 0).globalScore
+	if len(got) != 1 || got[0] != int64(want[0]) || got[0] != 30 {
+		t.Fatalf("AST aggregate scores = %v, want %v", got, want)
 	}
 	pins := pickModuleGlobals(m, m.GlobalCount(), got)
 	if len(pins) != 1 || pins[0].global != 0 {
@@ -619,8 +413,8 @@ func TestGCHelperHintScannersMarkNativeCalls(t *testing.T) {
 		{Kind: wasm.InstrArrayNewDefault, Index: 0},
 		{Kind: wasm.InstrDrop},
 	}}, 0, 0, 0)
-	if !byteHints.flags.has(hintHasCall) || !astHints.flags.has(hintHasCall) {
-		t.Fatalf("array helper call hints byte/AST = %v/%v, want true/true", byteHints.flags.has(hintHasCall), astHints.flags.has(hintHasCall))
+	if !byteHints.hasCall || !astHints.hasCall {
+		t.Fatalf("array helper call hints byte/AST = %v/%v, want true/true", byteHints.hasCall, astHints.hasCall)
 	}
 }
 
@@ -639,8 +433,8 @@ func TestASTExceptionHintsReserveHandlerState(t *testing.T) {
 		{Kind: wasm.InstrArrayNewDefault, Index: 0},
 	}}
 	h := scanBody(ast, 0, 0, 0)
-	if !h.flags.has(hintModuleEH) || !h.flags.has(hintHasControlFlow) || !h.flags.has(hintHasCall) {
-		t.Fatalf("AST exception hints = EH:%v control:%v call:%v, want all true", h.flags.has(hintModuleEH), h.flags.has(hintHasControlFlow), h.flags.has(hintHasCall))
+	if !h.moduleEH || !h.hasControlFlow || !h.hasCall {
+		t.Fatalf("AST exception hints = EH:%v control:%v call:%v, want all true", h.moduleEH, h.hasControlFlow, h.hasCall)
 	}
 }
 
@@ -665,7 +459,7 @@ func TestComputeModuleHintsMatchesGlobalScoreOracle(t *testing.T) {
 		m.Code = append(m.Code, wasm.Func{BodyBytes: b, Locals: wasm.Locals{Runs: []wasm.LocalRun{{Count: 1, Type: wasm.I32}}}})
 	}
 
-	allHints, sidecar, agg, err := computeModuleHints(m, m.GlobalCount(), 0, nil, false)
+	allHints, agg, err := computeModuleHints(m, m.GlobalCount(), 0, nil, false)
 	if err != nil {
 		t.Fatalf("computeModuleHints: %v", err)
 	}
@@ -682,27 +476,23 @@ func TestComputeModuleHintsMatchesGlobalScoreOracle(t *testing.T) {
 		}
 	}
 	for i := range m.Code {
+		want, err := computeFuncHints(m, i, m.GlobalCount(), 0)
+		if err != nil {
+			t.Fatalf("computeFuncHints %d: %v", i, err)
+		}
+		if !intervalRegionHintStorageEligible(len(m.Code[i].BodyBytes), want.nLocals, false) {
+			want.localLastGet = nil
+		}
+		if !reflect.DeepEqual(allHints[i], want) {
+			t.Fatalf("func %d cached hints = %+v, want %+v", i, allHints[i], want)
+		}
 		ft, _ := m.LocalFuncType(i)
 		wantLocals, err := countLocals(ft.Params, m.Code[i].Locals)
 		if err != nil {
 			t.Fatalf("countLocals %d: %v", i, err)
 		}
-		want, err := scanBodyBytes(m.Code[i].BodyBytes, wantLocals, m.GlobalCount(), uint32(i))
-		if err != nil {
-			t.Fatalf("scanBodyBytes %d: %v", i, err)
-		}
-		if !intervalRegionHintStorageEligible(true, len(m.Code[i].BodyBytes), want.nLocals, false) {
-			want.localLastGet = nil
-		}
-		got := sidecar.view(allHints[i])
-		got.localStart = 0
-		got.lastGetStartPlus1 = 0
-		got.globalStart = 0
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("func %d cached hints = %+v, want %+v", i, got, want)
-		}
-		if allHints[i].localCount != uint16(wantLocals) {
-			t.Fatalf("func %d localCount = %d, want %d", i, allHints[i].localCount, wantLocals)
+		if allHints[i].nLocals != wantLocals {
+			t.Fatalf("func %d nLocals = %d, want %d", i, allHints[i].nLocals, wantLocals)
 		}
 	}
 }
@@ -720,8 +510,8 @@ func TestManyGlobalHintScoresEligibilityAndModulePinning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan many-global body: %v", err)
 	}
-	if score, eligible := globalHint(h, hotGlobal); score != 30 || !eligible {
-		t.Fatalf("hot global hint=(%d, %v), want (30, true)", score, eligible)
+	if h.globalScore[hotGlobal] != 30 || !h.globalElig[hotGlobal] {
+		t.Fatalf("hot global hints score=%d elig=%v, want score 30 and eligible", h.globalScore[hotGlobal], h.globalElig[hotGlobal])
 	}
 	globals := make([]wasm.Global, 256)
 	for i := range globals {
@@ -791,20 +581,17 @@ func TestScanFuncBodyUsesDecodedBodyBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan decoded body: %v", err)
 	}
-	if !h.flags.has(hintHasCall) || !h.flags.has(hintCallsSelf) {
+	if !h.hasCall || !h.callsSelf {
 		t.Fatalf("decoded recursive body hints = %+v, want call+self-call", h)
 	}
-	score0, _ := globalHint(h, 0)
-	score1, eligible1 := globalHint(h, 1)
-	score2, eligible2 := globalHint(h, 2)
-	if h.localScore[0] == 0 || score0 == 0 || score1 == 0 || score2 == 0 {
-		t.Fatalf("decoded byte-backed body produced missing scores: locals=%v globals=%v", h.localScore, h.sparseGlobals)
+	if h.localScore[0] == 0 || h.globalScore[0] == 0 || h.globalScore[1] == 0 || h.globalScore[2] == 0 {
+		t.Fatalf("decoded byte-backed body produced missing scores: locals=%v globals=%v", h.localScore, h.globalScore)
 	}
-	if !eligible1 {
-		t.Fatalf("decoded loop without call should mark global 1 eligible: %v", h.sparseGlobals)
+	if !h.globalElig[1] {
+		t.Fatalf("decoded loop without call should mark global 1 eligible: %v", h.globalElig)
 	}
-	if eligible2 {
-		t.Fatalf("decoded loop with self call should not mark global 2 eligible: %v", h.sparseGlobals)
+	if h.globalElig[2] {
+		t.Fatalf("decoded loop with self call should not mark global 2 eligible: %v", h.globalElig)
 	}
 }
 
@@ -826,10 +613,10 @@ func TestDecodedRecursiveBodyDoesNotSkipStackFence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan recursive body: %v", err)
 	}
-	if !h.flags.has(hintHasCall) || !h.flags.has(hintCallsSelf) {
+	if !h.hasCall || !h.callsSelf {
 		t.Fatalf("recursive decoded body hints = %+v, want hasCall and callsSelf", h)
 	}
-	if shouldSkipStackFence(h.flags.has(hintHasCall), 0, len(m.Code[0].BodyBytes)) {
+	if shouldSkipStackFence(h.hasCall, 0, len(m.Code[0].BodyBytes)) {
 		t.Fatalf("recursive call-making body was allowed to skip the stack fence")
 	}
 }

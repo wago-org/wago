@@ -191,10 +191,10 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 2 {
-		t.Fatalf("compiled codec version = %d, want native-resource-policy version 2", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 1 {
+		t.Fatalf("compiled codec version = %d, want initial public version 1", blob[4])
 	}
-	for _, version := range []byte{0, 1, 19, 35} {
+	for _, version := range []byte{0, 2, 19, 35} {
 		unsupportedVersion := append([]byte(nil), blob...)
 		unsupportedVersion[4] = version
 		var unsupported Compiled
@@ -326,7 +326,7 @@ func TestCompiledCodecAcceptsStructuralReferenceGlobalsAndRejectsLiveBits(t *tes
 			Globals:       []GlobalDef{{Type: ValExternRef}},
 		},
 	} {
-		_ = publicArtifactRoundTrip(t, c)
+		_ = roundTripCompiled(t, c)
 	}
 	if _, err := (&Compiled{Globals: []GlobalDef{{Type: ValExternRef, Bits: 0x1234}}}).MarshalBinary(); err == nil || !strings.Contains(err.Error(), "non-null externref") {
 		t.Fatalf("MarshalBinary live externref error = %v, want fail-closed rejection", err)

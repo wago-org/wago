@@ -49,10 +49,8 @@ func (f *fn) invalidateGlobalsCache() {
 // is value-pinned (a hot mutable int global in a call-free function). See
 // assignPinnedLocals / loadPinnedGlobals / storePinnedGlobals.
 func (f *fn) pinnedGlobalValueReg(x uint32) (Reg, bool) {
-	if int(x) < len(f.globalReg) {
-		if reg := globalRegValue(f.globalReg[x]); reg != regNone {
-			return reg, true
-		}
+	if int(x) < len(f.globalReg) && f.globalReg[x] != regNone {
+		return f.globalReg[x], true
 	}
 	return regNone, false
 }
@@ -76,7 +74,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		if wasm.EqualValType(gtv, wasm.I64) {
 			typ = mtI64
 		}
-		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, idx: x})
+		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, idx: int(x)})
 		return nil
 	}
 	cell := f.globalCellPtr(x) // cached, pinned — read the value into a separate reg
@@ -118,9 +116,9 @@ func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
 		}
 		next := e.next
 		switch {
-		case e.isValue() && e.st.kind == stGlobReg && e.st.idx == x:
+		case e.kind == ekValue && e.st.kind == stGlobReg && uint32(e.st.idx) == x:
 			f.materialize(e)
-		case e.isDeferred() && subtreeRefsGlobal(e, x):
+		case e.kind == ekDeferred && subtreeRefsGlobal(e, x):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -133,10 +131,10 @@ func subtreeRefsGlobal(e *elem, x uint32) bool {
 	if e == nil {
 		return false
 	}
-	if e.isValue() {
-		return e.st.kind == stGlobReg && e.st.idx == x
+	if e.kind == ekValue {
+		return e.st.kind == stGlobReg && uint32(e.st.idx) == x
 	}
-	if e.isDeferred() {
+	if e.kind == ekDeferred {
 		return subtreeRefsGlobal(e.arg0, x) || subtreeRefsGlobal(e.arg1, x)
 	}
 	return false
@@ -181,14 +179,14 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		// condenseInto consume the top expression straight into x's register instead
 		// of pre-copying its (global.get $x) operand (mirrors setLocal's skipFrom).
 		var skipFrom *elem
-		if e != nil && e.isDeferred() && isBinALU(e.deferredOp()) {
+		if e != nil && e.isDeferred() && isBinALU(e.op) {
 			skipFrom = baseOfValentBlock(e)
 		}
 		f.realizeGlobalRefs(x, skipFrom)
 		f.condenseInto(e, reg)
 		f.release(reg)
 		f.erase(e)
-		f.globalReg[x] |= globalRegDirty
+		f.globalDirty[x] = true
 		return nil
 	}
 	rg := f.materialize(f.popValue())

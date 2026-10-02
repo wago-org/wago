@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago"
-	"github.com/wago-org/wago/cli/internal/project"
 )
 
 type BoolSetting struct {
@@ -212,10 +211,6 @@ func SchemaNames() map[string][]string {
 		}
 		result[section] = append(result[section], setting.name)
 	}
-	// The URI remains v1, so its editor schema must continue to accept retired
-	// optimization properties even though they no longer appear in the active
-	// runtime catalog.
-	result["optimizations"] = append(result["optimizations"], project.RetiredOptimizationNames()...)
 	for section := range result {
 		sort.Strings(result[section])
 	}

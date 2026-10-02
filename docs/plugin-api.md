@@ -141,118 +141,9 @@ its reviewed limits. Public Runtime operations remain excluded until the whole
 Plugin Set has started, so unrelated callers cannot observe a partially started
 graph.
 
-Plugin loading and runtime shutdown also form one ordered transaction. Once
-loading begins, shutdown may publish the closing state immediately, but it
-defers its teardown snapshot until startup has stopped changing plugin teardown
-eligibility. A successful load publishes that boundary after every startup turn;
-a failed `Start` publishes it before rollback waits on the same shutdown result.
-Each plugin becomes eligible for `Stop` immediately before its startup turn,
-whether or not it defines a `Start` callback. Therefore a successful `Start`
-racing `Runtime.CloseContext` is stopped exactly once before closure completes,
-while a later plugin whose startup turn was never reached is not stopped.
-Neither callback runs while the runtime mutex is held.
-
 Configuration is opaque to Wago but not permissive: the registrar rejects
 unknown struct fields and trailing JSON, the provider validates its published
 JSON Schema, and `ValidateConfig` can enforce additional semantic rules.
-
-## Wasm GC host imports
-
-Declarative host imports registered through `HostImports` may use the public
-`ValAnyRef` and `ValI31Ref` ABI categories. Wago validates the plugin's declared
-ABI against each importing module, but it does not turn one plugin function into
-one `HostFuncRef`.
-
-A `HostFuncRef` remains one concrete Wasm function identity with one exact
-structural signature and, for `NewGCHostFuncRef`, one bound Runtime collector
-domain. A generic plugin `HostFunc` has different ownership:
-
-- the exact parameter and result descriptors come from the calling compiled
-  module;
-- module-local defined-type indexes remain local to that module;
-- the collector and GC domain come from the calling instance; and
-- two simultaneously live modules may call the same plugin import with
-  structurally different caller-defined GC types and different Runtime GC
-  domains.
-
-Collector objects never arrive as raw collector handles or object pointers.
-Non-null object parameters are translated to temporary opaque `uint64` tokens.
-Inside the active callback, the plugin resolves a token with
-`GuestStorage.GCRef` and receives a callback-scoped `GuestGCRef`. Null and i31
-values preserve their Wasm semantics. Results may be null, an allowed i31 value,
-or a callback-scoped token created through Wago's active host APIs, including
-`GuestGCArrayAllocatorHostModule.NewGCArrayResult`. Raw compact collector
-references are rejected.
-
-GC handles, result tokens, and borrowed slices expire at their documented
-callback or `WithGuestStorage` boundary. Wago checks the Runtime, instance,
-collector domain, exact caller type, and active view. Plugins must not retain or
-forge them. Scalar-only plugin imports remain ordinary `HostFunc` bindings and
-do not acquire GC root maps, a collector, or GC token bookkeeping.
-
-See [Host guest-storage access](host-guest-storage.md) for exact type inspection,
-array allocation, and zero-copy numeric array access. Wago intentionally exposes
-no raw GC pointer API.
-
-## Callback invocation context
-
-A plugin granted `host.caller.identify` may obtain the active guest invocation's
-cancellation and deadline inside one of its synchronous host callbacks:
-
-```go
-callers, err := reg.HostCallers()
-if err != nil {
-    return err
-}
-
-module.Func("fetch", func(caller wago.HostModule, _, _ []uint64) {
-    ctx, err := callers.InvocationContext(caller)
-    if err != nil {
-        panic(wago.HostTrap{Err: err})
-    }
-    // Use ctx only for work owned by this callback.
-})
-```
-
-The returned context is callback-scoped. Its `Done` channel closes when the
-parent invocation is canceled, its deadline expires, or the host callback
-returns. Retaining it is safe only for observing that terminal cancellation;
-it must not be used to extend callback-owned work. Repeated resolution during
-the same callback returns the same context. Nested re-entry receives a distinct
-context and does not shorten the outer callback's lifetime.
-
-Invocation contexts deliberately expose no parent context values. Plugins must
-pass explicit dependencies instead of using context values as ambient data.
-Calls without a cancellable public parent, including raw `Invoke`, prepared
-calls, and start-time callbacks, receive a live callback-scoped context without
-a deadline. Forged, expired, cross-Runtime, and low-level callers are rejected
-with `ErrPermissionDenied`.
-
-## Active caller re-entry
-
-A plugin granted `host.caller.invoke` may synchronously invoke an export on the
-exact guest making its active host call. This is intended for callback ABIs such
-as Emscripten trampolines; it does not grant instance discovery, retention,
-close, or invocation outside that callback:
-
-```go
-invoker, err := reg.HostCallerInvoker()
-if err != nil {
-    return err
-}
-
-module.Func("callback", func(caller wago.HostModule, params, results []uint64) {
-    nested, err := invoker.Invoke(context.Background(), caller, "host_callback", params...)
-    if err != nil {
-        panic(wago.HostTrap{Err: err})
-    }
-    copy(results, nested)
-})
-```
-
-The caller token expires when the host function returns. Re-entry uses Wago's
-isolated native stack and call buffers and remains subject to the outer
-invocation's cancellation and normal recursion limits.
 
 ## Exact authorities and scopes
 
@@ -262,8 +153,7 @@ parent, wildcard, descendant, or future authority.
 | Authority | Allows |
 |---|---|
 | `host.import.define` | Define host functions in specifically granted import modules. |
-| `host.caller.identify` | Resolve the exact active instance and its callback-scoped invocation cancellation/deadline during a synchronous host call. |
-| `host.caller.invoke` | Synchronously invoke an export on the exact guest making the active host call. |
+| `host.caller.identify` | Resolve the exact active instance during a synchronous host call. |
 | `host.arguments.read` | Read guest arguments exposed by the host. |
 | `runtime.close.observe` | Observe logical runtime close. |
 | `module.source.transform` | Replace module bytes before compilation. |
@@ -511,24 +401,3 @@ Privileged APIs expose bounded mechanisms, not product policy. Pools, workers,
 actors, routers, metrics aggregation, retries, and caching belong in plugins.
 Core mechanisms must be useful to more than one plugin category. An unlinked
 plugin must add no runtime goroutines or allocations.
-
-## Direct guest storage from host imports
-
-A synchronous host function that needs more than the `HostModule.Memory()`
-memory-0 convenience can opt into callback-scoped guest storage.
-
-`GuestStorageHostModule.WithGuestStorage` provides checked access to arbitrary
-linear-memory indexes, Memory32/Memory64 metadata, Wasm GC arrays, nested GC
-array references, and the importing module's exact structural parameter/result
-types. `GuestGCArrayAllocatorHostModule.NewGCArrayResult` allocates the exact
-caller-selected numeric or `v128` array result type and initializes it before
-publication.
-
-Every borrowed slice and callback-scoped GC reference expires when the storage
-callback returns. Wago rejects Wasm re-entry while a direct guest-storage borrow
-is active so memory growth or moving collection cannot invalidate a live host
-view.
-
-See [Host guest-storage access](host-guest-storage.md) for the complete API,
-lifetime rules, and examples. [Facet](https://github.com/jtenner/facet-spec) is
-one motivating consumer, but these interfaces are general Wago host APIs.

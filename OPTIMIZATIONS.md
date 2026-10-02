@@ -17,66 +17,7 @@ Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very hi
 
 ---
 
-## What's in place (updated 2026-08-30)
-
-**Benchmark-audit frontend wins (2026-08-30).** Indexed multi-memory memargs in
-allocation-free bytecode walks now decode directly into `InstructionImmediate`
-instead of constructing the AST pointer form. A 10,000-load mixed-width fixture
-improves **287.6→211.7 µs/op** (-26.4%), **42,183→1,915 B/op**, and
-**10,001→1 alloc/op**. Large function-import modules also avoid quadratic
-`ImportedFuncCount`, `FuncSignature`, and `FuncTypeIndex` rescans: GC-boundary,
-synchronous-host-slot, and imported-signature prepasses each range the import
-section once, while frontend diagnostics format only on failure. Ten-sample
-`benchstat` results improve the 10,000-import compile watchpoint
-**217.278→5.361 ms** (-97.53%), **6,364,072→5,486,008 B/op**, and
-**79,818→40,071 allocs/op**. Ten interleaved sqlite3, ruby, and esbuild corpus
-samples are statistically unchanged with a -0.43% geomean and identical
-allocation counts. The stripped manager size is unchanged; runtime-standard and
-runtime-minimal each grow 4,096 bytes. Stale resource-limit and survivor-policy
-benchmark fixtures were repaired.
-Adjacent import-name reuse and an inline mixed-memory width word were measured and
-rejected. See `docs/research/benchmark-audit-2026-08-30.md`.
-
-**Commutative self-updates and low-32 masks (2026-08-29).** AMD64 now
-accumulates every safe non-fixed `x = f(y) op x` form directly in `x` instead of
-spilling the old destination, including the first site in a function. The direct
-lowering avoids the generic relocation path and is default-on with
-`WAGO_AMD64_NO_COMMUTE_SELF_UPDATE=1` as the A/B oracle. A same-process seven-row
-corpus watchpoint improves **3.55% geomean**: scalar BLAKE3 improves
-**718.4→703.3 µs** (-2.1%), SIMD BLAKE3 **628.2→575.8 µs** (-8.3%), and the
-open-coded multiply-high loop **2.239→1.995 µs** (-10.9%); the worst row is
-spectral norm at +0.14%. Across the complete compile corpus, emitted code falls
-**69,708,236→69,675,415 bytes** (-32,821) and allocator spills fall
-**3,817→1,259** (-67.0%), with 2,556 retained sites. The nearby #438 mask
-experiment also generalizes `i64.and` to use a zero-extending 32-bit immediate
-for every mask through `0xffffffff`, not only the full low word. Runtime is flat
-in dependent loops, while 7,483 corpus sites remove 4,800 native bytes beyond
-the old exact-mask rule. `BenchmarkExecCommuteSelfUpdate`,
-`BenchmarkCompileCommuteSelfUpdate`, and `BenchmarkAMD64Low32MaskInstruction`
-are the permanent A/B watchpoints. Default-off float-compare fusion, vector
-sinking, loop prechecks, tee-spill reuse, call next-use, and affine LEA were
-remeasured and removed; BMI2 RORX remains rejected and opt-in.
-
-**Scalar float mask and copysign lowering (2026-08-29).** AMD64 implicit
-abs/neg/copysign masks now use the existing RIP-relative constant pool instead of
-a GPR rebuild. Focused dependent loops improve `f64.abs` **0.571→0.447 ns/op**
-(-21.8%) and `f64.neg` **0.564→0.449** (-20.4%). Copysign now uses one mask and
-three-operand VEX XOR/AND identities while borrowing pinned operands; the full
-change improves **1.179→0.898 ns/op** (-23.8%) and reduces the fixture from 157
-to 136 bytes. A min/max branch-layout rewrite was rejected after regressing every
-measured ordered path, and BMI2 RORX remains experimental after matching the
-baseline rotate while adding two bytes.
-
-**Signed unit-divisor lowering (2026-08-29).** AMD64 now lowers constant
-`div_s 1` to identity, `rem_s ±1` to zero, and `div_s -1` to an exact `INT_MIN`
-overflow check plus `neg`, avoiding IDIV while preserving the Wasm trap. Focused
-dependent guest loops on the Ryzen 7 8845HS improve `i64.div_s 1`
-**3.462→0.443 ns/op** (-87.2%), `i64.rem_s 1` **3.074→0.439** (-85.7%),
-`i64.rem_s -1` **0.657→0.446** (-32.1%), and `i64.div_s -1`
-**3.650→0.444** (-87.8%), all at 0 B/op and 0 allocs/op. Current constant versus
-dynamic fixture code sizes are 101/219, 103/172, and 158/219 bytes for divide by
-1, remainder by 1, and divide by -1. A three-operand immediate-IMUL remainder
-reconstruction was measured and rejected after slowing `i64.rem_u 3` about 3.6%.
+## What's in place (updated 2026-08-10)
 
 **High-pressure associative Valent covers (2026-08-10).** AMD64 deferred nodes
 now retain their Sethi--Ullman register-need label at construction. The
@@ -232,7 +173,7 @@ order is structured exact/non-null facts and bounded GC load forwarding, then na
 bump allocation for constructors that remain live. See
 `docs/wasmgc-v8-cranelift-research-2026-08.md`.
 
-**Structured WasmGC reference facts (2026-08-10, #314; retired 2026-09-03).** AMD64 experimented with a
+**Structured WasmGC reference facts (2026-08-10, #314).** AMD64 now carries a
 backend-neutral bounded two-word fact for compact GC references: nullability,
 abstract heap class or exact canonical type, bounded semantic identity,
 fresh/publication state, generation, pointer-free layout, and optional constant
@@ -246,10 +187,9 @@ call, allocation, difficult merge, loop edge, and unknown effect. No SSA, second
 optimizer IR, whole-function alias analysis, or raw-pointer retention was added.
 Constructor lengths now replace `array.len` with constants; null/exact tests and casts
 fold; constant fresh `struct.set` values can forward to a same-field get; and facts
-remain bounded to local tables plus one-entry load windows. The experiment and
-its public switches were later retired after broad measurement found neutral
-execution but materially worse compile resources. Required root tracking and the
-independent one-entry resolved-address cache remain. The earlier exact-only Dew result
+remain bounded to local tables plus one-entry load windows. The existing
+`WAGO_AMD64_NO_GC_REF_FACTS=1` differential switch disables semantic optimization
+while retaining required root tracking. The earlier exact-only Dew result
 (**7,158** cast eliminations and **50,101→42,943** `gcnative` sites) remains historical
 baseline evidence; the expanded fact set requires a fresh interleaved qualification
 before making an additional workload-speed claim.
@@ -261,10 +201,10 @@ runtime families; a complete class/target truth table keeps narrowing tests and 
 dynamic. Ordinary loop headers discard mutable field forwarding, publish surviving
 fresh locals, and retain immutable cached results only across invariant locals. Loop
 versioning is memory32-only, zero-extends host-produced i32 bases before precheck
-arithmetic. The later loop-versioning experiment was removed after its broad
-execution benefit failed to justify duplicated code generation and compile-resource
-cost. Facts and load-forwarding subprocess oracles continue to compare exact results
-and trap codes under both switch states.
+arithmetic, and is disabled for candidate native GC root plans because their validated
+allocation/call liveness streams are linear in original Wasm order. Facts, load
+forwarding, and loop-precheck subprocess oracles compare exact results and trap codes
+under both switch states.
 
 **Executed WasmGC helper counters (2026-08-02).** The diagnostic
 `wago_gcstats` build tag exposes `Instance.SetGCHelperStatsTracking(true)` and
@@ -341,26 +281,29 @@ call but made four-round fresh median-of-medians about 10% slower, added 800 B/o
 and two host allocations, increased fixed collector state by 128 bytes, and was
 neutral sustained. The retained 32-handle batch is the speed/footprint point.
 
-**Bounded WasmGC load/value forwarding (2026-08-10, #314; retired).** The former
-structured-fact path forwarded constructor lengths, repeated exact loads, and fresh
-object stores. It was removed with the broader fact experiment after qualification
-found neutral execution and materially worse compile resources. AMD64 retains only
-the independent one-entry resolved-address certificate; there is no load-forwarding
-or known-array-bounds policy switch.
-
-**Exact-final specialization for open `struct.get` (2026-08-29; retired).** AMD64's
-former reference-fact path lowered a scalar access declared through an open
-struct supertype to the checked native final-object path when the receiver has one
-proved exact final subtype, the subtype relation is valid, and both field layouts
-have the same offset and scalar representation. Unknown receivers retain the
-synchronous helper. On the Ryzen 7 8845HS focused guest-loop benchmark, seven
-samples changed from a **78.67 ns/op median** with default facts disabled to
-**2.680 ns/op** with facts enabled (**-96.6%**), at 0 B/op and 0 allocs/op. The
-helper count falls from constructor plus get to constructor only; focused generated
-code grows **749→906 bytes** (**+157, +21.0%**) for the complete checked resolver.
-The broad facts
-policy remains default-off pending compile-memory and real-workload qualification;
-this result does not change that default.
+**Bounded WasmGC load/value forwarding (2026-08-10, #314).** Constructor facts
+forward a constant length directly to `array.len`; a one-entry identity/type/field
+window recognizes repeated exact loads, and a fresh unpublished object's constant
+`struct.set` can forward to the immediately proven same-field `struct.get` without
+reloading. A dynamic `array.len` or immutable `struct.get` result captured by the
+immediately following `local.set`/`local.tee` is now reused from that unchanged local;
+this avoids a second object resolution and payload load without adding a hidden frame
+slot or permanently reserving a register. Immutable field values survive unrelated
+mutable stores and calls, while source/result local replacement, difficult joins, and
+unknown control invalidate the bounded window. Mutable values still invalidate on
+aliasing stores, calls, publication, and unknown effects. Constructor-known lengths
+also fuse constant-index final array get/set: one immutable-Aux equality guard and a
+constant displacement replace the logical index comparison, scale, and second extent
+sequence while retaining malformed-header detection. The independent controls are
+`WAGO_AMD64_NO_GC_LOAD_FORWARDING=1` and
+`WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1`. The permanent repeated-`array.len` fixture emits
+**353 bytes enabled versus 539 disabled**, with one rather than two handle
+resolutions; the paired constant-index set/get fixture emits **1,029 versus 1,084
+bytes**. The earlier count-only Dew scan reported 4,092 fused exact array
+accesses, 3,067 fused exact struct accesses, and 1,022 repeated lengths. The rejected
+runtime length cache (+8,208 generated bytes, neutral fresh and mostly slower
+sustained) and broad Heap2Local frame growth remain rejected; no unbounded cache,
+hidden frame slot, SSA, or second optimizer IR was added.
 
 **Constant-time WasmGC subtype intervals (2026-08-10, #314).** Validated collector
 `TypeDesc` supertype metadata is a forest, so the collector now stores one packed
@@ -413,9 +356,8 @@ creation, **34.28** large, and **28.50** Tiny parents. Five 200 ms samples of bo
 fact intersection measure **4.642 ns/op median**, 0 B/op, and 0 allocs/op.
 
 A seven-round `GOMAXPROCS=1`, 100-iteration real MoonBit WasmGC JSON workload A/B
-measured structured facts at **188.752 µs/op median** versus **191.401 µs/op**
-without them (-1.38%), with both at 208,779 B/op and 264 allocs/op. This focused
-result did not clear the later broad compile-resource and generality gates.
+measured structured facts at **188.752 µs/op median** versus **191.401 µs/op** with
+`WAGO_AMD64_NO_GC_REF_FACTS=1` (-1.38%), with both at 208,779 B/op and 264 allocs/op.
 One code-telemetry compile measured **294,341 versus 294,181 linked bytes** (+160,
 +0.054%) while GC barrier bytes fell **4,642→4,168** and helper-call bytes fell
 **74,202→72,500**. The retained external-fixture benchmark is
@@ -426,7 +368,7 @@ show the intended reduction without an allocation regression.
 
 **Trusted native-GC ABI boundaries and bounded resolver reuse (2026-08-10, #307).**
 Collector ABI version 1 is now validated against Go structure sizes/offsets at collector
-construction, recorded explicitly in codec version 2 generic-GC artifacts, rejected on
+construction, recorded explicitly in codec version 1 generic-GC artifacts, rejected on
 artifact mismatch, and validated with the immutable instance type-map/collector view
 before basedata publication. AMD64 no longer reloads instance/collector versions,
 local-map counts, or handle stride in every native GC access; mutable handle/backing,
@@ -678,10 +620,20 @@ see `docs/amd64-arm64-backend-status.md` for parity status. Landed, in rough ord
   (`const-fold` / `same-operand` counters), so no node/SETcc is emitted (`fold.go`).
 - **Packed-word mask tests** — Lamport-style `(word & laneMask) == 0` predicates
   lower directly to `TEST` (amd64) or `TST` (arm64), avoiding the temporary masked
-  value (`swar-mask-test`). The direct fusion has no solver, cache, persistent IR,
-  or tree walk; `WAGO_NO_SWAR_MASK_TEST=1` is its A/B oracle. Earlier recursive
-  known-bits analysis and producer-shaped SWAR widen/pack/parse and multiply-high
-  recognizers were removed after corpus censuses found no independent-producer hits.
+  value (`swar-mask-test`). The earlier recursive known-bits estimator was removed:
+  its four utf-as mask-elision hits blocked a second, more valuable `swar-widen4`
+  selection and added a general constant-RHS compile tax. The direct fusion has no
+  solver, cache, persistent IR, or tree walk; `WAGO_NO_SWAR_MASK_TEST=1` is its A/B
+  oracle.
+- **Curated broadword idioms** — Minotaur's offline-discovery/online-selection split is
+  adopted without putting an SMT solver or e-graph in the JIT. Exact, bounded bytecode
+  matchers recognize (1) utf-as's four-byte-to-four-u16 SWAR widening tree and lower it
+  to `UXTL` on arm64 or `VPUNPCKLBW` on amd64, (2) its inverse four-u16-low-byte pack
+  tree and lower it to `XTN` or `VPSHUFB`, and (3) xjb-as's function-tail unsigned
+  64x64 multiply-high expansion and lower it to `UMULH` or the native `RDX:RAX` `MUL`.
+  The widening matcher proves its overwritten temporary dead before rewriting; the
+  multiply matcher requires the final function `end`. `WAGO_NO_SWAR_IDIOMS=1` disables
+  both for correctness and performance A/B checks.
 - **Bounded SIMD superops** — the same offline-discovery/online-selection split now
   covers exact adjacent Wasm SIMD operations without retaining a SIMD IR. The first
   selectors fold `v128.not; v128.and` to one `VPANDN`/`BIC`, and fold
@@ -909,16 +861,19 @@ focused instruction-throughput result, not a whole-library claim: five matched 1
 The complete official SIMD proposal suite remains green at 470 modules and 24,325
 assertions with zero failures, skips, or gaps on linux/amd64.
 
-### Known-bits and producer-shaped SWAR removal (2026-09-03)
+### Known-bits and SWAR probe compile-cost removal (2026-08-05)
 
-The recursive known-bits mask simplifier was removed after it fired only four
-times in the representative corpus, all in utf-as. A later full-corpus census
-found the handwritten SWAR widen/pack/parse and multiply-high recognizers only in
-json-as, utf-as, their focused synthetic fixture, and the xjb-mulhi fixture. With
-no independent-producer hits, the recognizers, internal operations, emitters,
-public optimization flag, and focused tests were removed. Direct packed-mask
-`TEST`/`TST` fusion remains because it is a small general instruction-selection
-rule rather than a producer sequence.
+The recursive known-bits mask simplifier was removed after an exact PR-head A/B.
+It fired only four times in the representative corpus, all in utf-as, and those
+rewrites prevented a second `swar-widen4` selector from seeing its exact source
+shape. Direct packed-mask `TEST`/`TST` fusion remains; it does not recursively
+walk deferred trees.
+
+The SWAR pack/parse probes now inspect the two existing operands and allocate an
+arena node only after a match. Previously every candidate OR (and ARM64 shift)
+passed a temporary 112-byte `elem` through a non-inlined rewriting matcher, making
+the temporary escape even on a near miss. Focused tests require a non-matching pack
+probe to remain allocation-free on both backends.
 
 Backend compile measurements used exact `main`, PR-head, and optimized binaries
 with `GOMAXPROCS=1`. The Apple M4 Max rows are five interleaved 300 ms samples;
@@ -1122,8 +1077,8 @@ flushes ALL deferred loads — keep same-base provably-disjoint ones, plan P2.1)
 **pure-tree `drop` discard** (P2.2) · ~~**const-fold pack** — compares/eqz/clz/ctz/
 popcnt/extensions (P2.3)~~ ✅ DONE (including bounded narrow-load/shift mask elision) · ~~**same-operand
 int compare identities** (P2.4)~~ ✅ DONE. Then: **limited multi-result register ABI** (RAX,RDX / XMM0,XMM1 —
-unblocks multi-value, with `regMerge2`, P5.3) · **straight-line bounds facts**
-(P6.1; the measured hybrid loop-precheck experiment was later removed) · **store
+unblocks multi-value, with `regMerge2`, P5.3) · **straight-line bounds facts** +
+**hybrid loop precheck** (explicit mode; the TinyGo story, P6.1–.2) · **store
 combining** (explicit-only, cold-path sequential replay for trap semantics, P6.3) ·
 **CPUID probe** (JIT'd stub, zero deps) gating **BMI2 shifts** + `smallBulkMax`
 tuning (P6.5) · **immutable-global const folding** for locals; imported-global

@@ -68,8 +68,9 @@ func brTableLabelsInRAX(t testing.TB, labels []uint32, def uint32) *wasm.Module 
 func TestExecBrTableCompactTargetIDsAMD64(t *testing.T) {
 	labels := []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}
 	m := brTableLabelsInRAX(t, labels, 4)
+	size := OptimizeSize
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats})
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats})
 	if err != nil {
 		t.Fatalf("compile size: %v", err)
 	}

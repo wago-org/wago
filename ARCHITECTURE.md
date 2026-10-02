@@ -13,7 +13,7 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 2 -->
+<!-- artifact:codec-version 1 -->
 
 Compiled artifact version 1 is a strict ordered section stream: a fixed header
 and section count followed by length-delimited native-code and metadata sections.
@@ -75,7 +75,7 @@ callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
 size, adapter return, and recursive call return-PC maps. The synchronous helper
 control frame publishes parked RSP, and Go exposes validated off-heap slots from
 each walked frame directly as mutable collector roots. Throughput/Tiny stress
-collection and the root walker remain zero-allocation after warm-up. Codec version 2
+collection and the root walker remain zero-allocation after warm-up. Codec version 1
 persists and strictly revalidates the map, including dynamic-import stack
 adjustments. Direct tail calls discard their caller frame. Numeric host callbacks
 use a bounded suspended-activation stack plus separate nested foreign stacks, and
@@ -105,11 +105,11 @@ and foreign tokens reject. Explicit cross-Runtime transfer uses
 `target.CloneGCRefFrom(source, ref)`: a bounded stable-ID graph clone maps
 structurally equivalent target types, preserves cycles/internal sharing, assigns
 new target identity, and rejects non-null opaque store-owned payloads. Direct
-cross-Runtime compact-handle sharing remains impossible. Codec version 2 persists helper
+cross-Runtime compact-handle sharing remains impossible. Codec version 1 persists helper
 admission, the required native-GC ABI version, and the 16-byte `v128` storage
 contract, but never compact handles. AMD64 final scalar struct/array accesses and initialized final-struct
 allocation use collector native ABI version 1. Artifact loading validates the Go/native
-layout and codec version 2 records the required ABI; instantiation validates the immutable
+layout and codec version 1 records the required ABI; instantiation validates the immutable
 instance view, local canonical-type map, collector identity, collector version, and
 handle stride before publishing basedata offset 280. Native accesses then trust those
 immutable facts while reloading and validating mutable handle ranges/liveness, heap
@@ -313,12 +313,10 @@ read-only diagnostic stream; callers never receive a mutable alias:
 
 `Compiled` serializes to a compact versioned **`.wago` blob** through either the
 slice APIs (`MarshalBinary`/`UnmarshalBinary`) or bounded streaming APIs
-(`WriteTo`/`ReadFromWithLimits`). `Load` accepts untrusted raw Wasm and compiles
-it; `LoadTrustedArtifact` performs the fast native-code reload only for
-authenticated or locally produced `.wago` bytes. `IsCompiled` distinguishes the
-formats, but callers must choose the trust boundary explicitly. `validate()`
-hardens artifact metadata before mapping, but cannot sandbox hostile native code.
-The codec persists the
+(`WriteTo`/`ReadFromWithLimits`). `Load` accepts
+either a precompiled blob (fast reload, no recompile) or raw wasm (compiled on
+load); `IsCompiled` distinguishes them. `validate()` hardens every blob against
+malformed metadata before any memory is mapped. The codec persists the
 binding-independent imported-call shape, so modules with function imports can be
 serialized before host or instance targets are known; live addresses and store
 identity are installed only during instantiation. See the codec-version comment
@@ -483,7 +481,7 @@ same context slot.
 ## 12. Memory model
 
 Linear memory is the mmap-backed tail of JobMemory, exposed zero-copy via
-`Instance.Memory().UnsafeBytes()` — writes are visible in both directions without
+`Instance.Memory().Bytes()` — writes are visible in both directions without
 copying. Explicit mode checks the current size cached in basedata; supported
 platforms can instead use guard-page reservations. `memory.grow` raises the
 logical size within a stable pre-reserved mapping, preserving the native base.

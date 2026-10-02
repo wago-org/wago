@@ -9,10 +9,12 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// TestFloatCompareBranches covers ordered comparisons immediately consumed by
-// if and br_if, including unordered NaN inputs. Go's native <,>,<=,>= return
-// false on NaN, matching Wasm, so they are the oracle.
-func TestFloatCompareBranches(t *testing.T) {
+// TestFloatCompareBranchFusion exercises the fused float-compare→branch path
+// (fcmpMaybeDefer → condenseFCompareToFlags): an ordered float relation
+// (lt/le/gt/ge) placed directly before `if` or `br_if` lowers to UCOMIS + a
+// NaN-safe Jcc instead of materializing a boolean. Go's native <,>,<=,>= already
+// return false on NaN, matching wasm, so they are the oracle.
+func TestFloatCompareBranchFusion(t *testing.T) {
 	// opcodes: [lt, gt, le, ge] for f32 (0x5d..0x60) and f64 (0x63..0x66).
 	type opc struct {
 		name   string

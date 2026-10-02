@@ -20,8 +20,7 @@ const (
 
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
-	// low range; reserving the top nine bits avoids growing artifacts.
-	compiledGCExecutionI31Product         uint64 = 1 << 55
+	// low range; reserving the top eight bits avoids growing artifacts.
 	compiledFuncRefContextHeader          uint64 = 1 << 56
 	compiledDynamicFuncrefEscape          uint64 = 1 << 57
 	compiledRegisterABIDisabled           uint64 = 1 << 58
@@ -30,7 +29,7 @@ const (
 	compiledGCExecutionDynamicFuncRefTest uint64 = 1 << 61
 	compiledGCExecutionGenericStruct      uint64 = 1 << 62
 	compiledGCExecutionGenericArray       uint64 = 1 << 63
-	compiledGCExecutionMask                      = compiledGCExecutionI31Product | compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
+	compiledGCExecutionMask                      = compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
 
 	// Import names are attacker-controlled artifact metadata. Bound the decoded
 	// string headers plus exact-name sidecar independently of the encoded section
@@ -339,9 +338,6 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	w.tags(c)
 	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
-	if c.stagedGCI31Product() != 0 {
-		required |= compiledGCExecutionI31Product
-	}
 	if c.stagedGCStructProduct() == stagedGCStructGeneric {
 		required |= compiledGCExecutionGenericStruct
 	}
@@ -369,7 +365,7 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	w.u64(required)
 	sizes.Features += int64(len(w.buf) - start)
 	start = len(w.buf)
-	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.hasCollectorReferenceCallBoundary() {
+	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 {
 		w.u32(c.nativeGCABIRequirement())
 	}
 	w.gcTypeDescs(c.GCTypeDescs)
@@ -963,18 +959,13 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
 	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2))
-	genericNativeGC := gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0
-	if genericNativeGC || c.hasCollectorReferenceCallBoundary() {
-		label := "native GC call-boundary"
-		if genericNativeGC {
-			label = "generic GC native"
-		}
+	if gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 {
 		nativeGCABIVersion, readErr := r.u32()
 		if readErr != nil {
-			return fmt.Errorf("%s ABI version: %w", label, readErr)
+			return fmt.Errorf("generic GC native ABI version: %w", readErr)
 		}
 		if nativeGCABIVersion != gc.NativeABIVersion {
-			return fmt.Errorf("%s ABI version %d unsupported (want %d)", label, nativeGCABIVersion, gc.NativeABIVersion)
+			return fmt.Errorf("generic GC native ABI version %d unsupported (want %d)", nativeGCABIVersion, gc.NativeABIVersion)
 		}
 		c.ensureCodeCache()
 		c.codeCache.setNativeGCABIVersion(nativeGCABIVersion)
@@ -997,14 +988,6 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 		c.ensureCodeCache()
 		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
 		c.codeCache.flags |= compiledCacheDynamicFuncRefTest
-	}
-	if gcExecution&compiledGCExecutionI31Product != 0 {
-		if !c.requiredFeatures.IsEnabled(CoreFeatureGC) {
-			return fmt.Errorf("i31 execution product flag requires the recorded GC feature")
-		}
-		c.ensureCodeCache()
-		c.codeCache.stagedFeatures |= c.requiredFeatures & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
-		c.codeCache.gcI31Product = stagedGCI31ProductCore
 	}
 	if required&compiledAtomicWaitExecution != 0 {
 		if !c.requiredFeatures.IsEnabled(CoreFeatureThreads) {
@@ -2166,7 +2149,7 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 	if err != nil {
 		return nil, err
 	}
-	if uint64(n) > uint64(shared.GCSafepointIDMax) {
+	if n == 0 || uint64(n) > uint64(shared.GCSafepointIDMax) {
 		return nil, fmt.Errorf("GC frame safepoint count %d is invalid", n)
 	}
 	rootMap.safepoints = make([]compiledGCFrameSafepoint, n)
@@ -2183,6 +2166,9 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 		if err != nil {
 			return nil, err
 		}
+		if count > gcNativeFrameRootLimit {
+			return nil, fmt.Errorf("GC frame safepoint %d root count %d exceeds %d", rootMap.safepoints[i].id, count, gcNativeFrameRootLimit)
+		}
 		rootMap.safepoints[i].offsets = make([]uint32, count)
 		for j := range rootMap.safepoints[i].offsets {
 			rootMap.safepoints[i].offsets[j], err = r.u32()
@@ -2195,9 +2181,6 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 	callCount, err := r.countElements("GC frame callsites", 13)
 	if err != nil {
 		return nil, err
-	}
-	if n == 0 && callCount == 0 {
-		return nil, fmt.Errorf("GC frame metadata has no safepoints or callsites")
 	}
 	rootMap.callsites = make([]compiledGCFrameCallsite, callCount)
 	for i := range rootMap.callsites {
@@ -2216,6 +2199,9 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 		count, err := r.countElements("GC callsite root offsets", 4)
 		if err != nil {
 			return nil, err
+		}
+		if count > gcNativeFrameRootLimit {
+			return nil, fmt.Errorf("GC frame callsite %d root count %d exceeds %d", rootMap.callsites[i].returnOffset, count, gcNativeFrameRootLimit)
 		}
 		rootMap.callsites[i].offsets = make([]uint32, count)
 		for j := range rootMap.callsites[i].offsets {

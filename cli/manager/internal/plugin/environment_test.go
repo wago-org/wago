@@ -148,16 +148,8 @@ func TestRunPluginScopeOverrides(t *testing.T) {
 	t.Setenv("WAGO_LOCAL", "")
 	t.Setenv("WAGO_BARE", "")
 	applyTestPluginScope(t, []string{"run", "module.wasm", "--global"})
-	if !projectconfig.Truthy("WAGO_GLOBAL") {
-		t.Fatal("--global after module path did not select global plugins")
-	}
-
-	t.Setenv("WAGO_GLOBAL", "")
-	t.Setenv("WAGO_LOCAL", "")
-	t.Setenv("WAGO_BARE", "")
-	applyTestPluginScope(t, []string{"run", "module.wasm", "--", "--global"})
 	if projectconfig.Truthy("WAGO_GLOBAL") {
-		t.Fatal("guest --global after separator changed plugin scope")
+		t.Fatal("guest argument after module path changed plugin scope")
 	}
 
 	t.Setenv("WAGO_GLOBAL", "")
@@ -166,12 +158,6 @@ func TestRunPluginScopeOverrides(t *testing.T) {
 	applyTestPluginScope(t, []string{"run", "--invoke", "_start", "--global", "module.wasm"})
 	if !projectconfig.Truthy("WAGO_GLOBAL") {
 		t.Fatal("value-taking run flag hid --global")
-	}
-
-	t.Setenv("WAGO_GLOBAL", "")
-	applyTestPluginScope(t, []string{"run", "--native-stack", "8MiB", "--gc-heap", "2GiB", "--gc-nursery=64MiB", "--global", "module.wasm"})
-	if !projectconfig.Truthy("WAGO_GLOBAL") {
-		t.Fatal("GC sizing flag value hid --global")
 	}
 
 	t.Setenv("WAGO_GLOBAL", "")

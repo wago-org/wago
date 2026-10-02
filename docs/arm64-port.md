@@ -115,7 +115,7 @@ are on PATH; `qemu-aarch64-static` + binfmt let `GOARCH=arm64 go test` run nativ
    duplicated per-arch (the arm64 port has its own `stack.go`, `regalloc.go`, etc.).
    Full dedup is deferred.
 
-### arm64 register roles (from `archive/arm64-port-contract.md` §2 — the historical source)
+### arm64 register roles (from `_port/CONTRACT.md` §2 — the source of truth)
 
 | Role | arm64 | Notes |
 |---|---|---|
@@ -155,7 +155,7 @@ SSE/AVX.
 | Compare/branch fusion | Flags-resident compare/eqz for branch consumers | Same optimizer; arm64 emits `CMP`/`CMN` + `B.cond`, with mem refs materialized first |
 | Select fusion | `cmov` / flags-select forms | Same optimizer; arm64 uses `CSEL`/flag reuse where applicable |
 | Straight-line bounds facts | Explicit-bounds duplicate check elision | Same optimizer; arm64 caches mem bytes in `X27` and compares with `CMP` |
-| Loop precheck | Historical versioned-loop experiment | Removed on both targets after cost/benefit qualification |
+| Loop precheck | Versioned loop prechecks via `WAGO_LOOP_PRECHECK` | Same optimizer; arm64 emits precheck arithmetic with `ADD`/`CMP`/`B.cond` |
 | Guard-page bounds elision | Linux amd64 signal guard pages elide inline bounds checks | Linux and Darwin arm64 do the same via `X26` and AArch64 ucontext rewriting |
 | Deferred memory loads | x86 can fold pending loads into ALU/CMP r/m operands | Arm64 keeps deferred loads for dead-load/destination choice but always emits `LDR` before ALU/CMP because A64 has no memory operands |
 | Immediate stores | `mov [mem], imm` / split i64 stores | Arm64 store-immediate path materializes through scratch and stores; still avoids a long-lived value register |
@@ -213,9 +213,10 @@ earlier this session; not part of the arm64 branch.)
     extadd/extend/extmul/load-extend, q15/dot, f64/f32 demote/promote,
     i32-to-f32/f64 conversion, and packed float min/max/pmin/pmax have qemu coverage.
     Saturating float-to-int conversions remain scalar correctness baselines.
-- **Historical port notes**: `archive/arm64-port-contract.md` and
-  `archive/arm64-encoder-todo.md`. The superseded hand-written `_beachhead/`
-  implementation was removed after the production runtime path covered the ported backend.
+- **Held out** (in the Go-ignored `_port/` dir): `CONTRACT.md`, `ENCODER_TODO.md`.
+  Also `_beachhead/` holds the superseded hand-written
+  beachhead (`compile.go` + its tests) — delete once the production runtime path covers
+  the ported backend.
 - **Runtime spike**: `src/core/runtime/arm64spike/{spike.go,spike_arm64.s}` — `MapExec`,
   `Call2` (2-int-arg register-ABI caller), `enterNativeSpike` trampoline. Throwaway once
   the real `enterNative` twin lands.
@@ -228,8 +229,8 @@ earlier this session; not part of the arm64 branch.)
   architecture-independent: actual host bindings, transitive parked cross-instance
   targets, mutable imported funcref tables, GC helpers, dynamic ref tests, and atomic
   waits select the synchronous dispatcher; host-free modules retain direct native entry.
-- **Tests**: `arm64/compilesmoke_arm64_test.go` (codegen runs) and
-  `arm64/portexec_arm64_test.go` (ported code executes).
+- **Tests**: `arm64/compilesmoke_arm64_test.go` (codegen runs), `arm64/portexec_arm64_test.go`
+  (ported code executes), `arm64/_beachhead/exec_arm64_test.go` (hand-beachhead fib exec).
   Runtime arm64 native-call tests now build for both Linux and Darwin, so Apple Silicon
   runs will exercise `mmapExec`, wrapper calls, trap readback, zero-copy linear memory,
   and sync host-call re-entry. Darwin/arm64 guard-page tests cover native OOB

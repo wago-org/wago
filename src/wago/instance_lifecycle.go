@@ -158,9 +158,6 @@ func (in *Instance) beginInvocation() error {
 	if in == nil {
 		return fmt.Errorf("instance is nil")
 	}
-	if in.guestStorageBorrowed() {
-		return fmt.Errorf("instance access is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
-	}
 	if in.rt != nil {
 		in.rt.mu.Lock()
 		if in.rt.state == runtimeClosed || in.rt.state == runtimeClosing && in.instantiateOrigin() != InstantiateManaged {
@@ -320,6 +317,7 @@ func (in *Instance) releaseResources() {
 	detachImportedGlobals(in)
 	detachImportedTables(in)
 	detachImportedTags(in)
+	transferredImportAttachments.Delete(in)
 	if in.gc != nil {
 		closeCollector := func() {
 			if table := in.existingGCRefTestTableState(); table != nil {
@@ -361,14 +359,14 @@ func (in *Instance) releaseResources() {
 				memoryJM := memory.jobMemory()
 				memory.ownerClosed()
 				runtime.ReleaseJobMemory(memoryJM)
-			} else if detachedMemories.add(memory) && !in.ownsTransferredMemoryAttachment(memory) {
+			} else if detachedMemories.add(memory) {
 				memory.detachImporter()
 			}
 		}
 	}
 	if in.c.threadedMemory0() {
 		runtime.ReleaseJobMemory(in.jm)
-		if in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
+		if in.memory != nil && detachedMemories.add(in.memory) {
 			in.memory.detachImporter()
 		}
 	} else if in.ownsMem {
@@ -376,10 +374,9 @@ func (in *Instance) releaseResources() {
 			in.memory.ownerClosed()
 		}
 		runtime.ReleaseJobMemory(in.jm)
-	} else if in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
+	} else if in.memory != nil && detachedMemories.add(in.memory) {
 		in.memory.detachImporter()
 	}
-	transferredImportAttachments.Delete(in)
 	runtime.ReleaseEngine(in.eng)
 	if in.rt != nil {
 		in.rt.unregisterInstance(in)
@@ -406,9 +403,8 @@ func (in *Instance) releaseResources() {
 }
 
 // Memory returns the instance's linear-memory object (instance-owned or the
-// host-imported one). Use Memory().UnsafeBytes() for an explicitly unsafe
-// zero-copy byte view. A close that wins the acquisition race returns nil
-// instead of a dangling object.
+// host-imported one). Use Memory().Bytes() for the zero-copy byte view. A close
+// that wins the acquisition race returns nil instead of a dangling object.
 func (in *Instance) Memory() *Memory {
 	if in == nil || in.c == nil || in.c.memoryCount() == 0 || in.memory == nil || in.beginInvocation() != nil {
 		return nil

@@ -100,30 +100,12 @@ func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 }
 
 func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
-	if isFloat {
-		f.evictRelinquishedFReg(reg)
-	} else if f.pinRelinquished {
-		if f.regUser[reg] != nil {
-			f.spillIfUsed(reg)
-		}
-	}
 	if f.localType[x] == mtV128 {
 		f.a.VMovdquLoadDisp(reg, RSP, f.localAddr(x))
 	} else if isFloat {
 		f.a.FLoadDisp(reg, RSP, f.localAddr(x), f.localType[x] == mtF64)
 	} else {
 		f.loadFrameInt(reg, f.localAddr(x), f.localType[x])
-	}
-}
-
-// evictRelinquishedFReg preserves a live temporary that borrowed a dedicated
-// XMM local register after the local was homed under pressure. Every later
-// restoration or rewrite of that local must call this before clobbering reg.
-func (f *fn) evictRelinquishedFReg(reg Reg) {
-	if f.pinRelinquished {
-		if u := f.fregUser[reg]; u != nil {
-			f.spillF(u)
-		}
 	}
 }
 
@@ -163,7 +145,7 @@ func (f *fn) recoverLocal(x int) {
 		f.materializeZeroLocal(x, false)
 		return
 	}
-	if !f.usesCalls && f.locals[x].state != lsMem {
+	if !f.usesCalls {
 		return
 	}
 	if f.locals[x].state == lsMem {
@@ -174,7 +156,7 @@ func (f *fn) recoverLocal(x int) {
 
 // markLocalDirty records that pinned local x was just written (value only in reg).
 func (f *fn) markLocalDirty(x int) {
-	if f.usesCalls || f.lazyZero || len(f.intervalReg) != 0 || f.locals[x].state == lsMem {
+	if f.usesCalls || f.lazyZero || len(f.intervalReg) != 0 {
 		f.locals[x].state = lsReg
 	}
 }
@@ -201,8 +183,8 @@ func (f *fn) materializeAllGCFrameLocals() {
 	if f.gcFrameRoots == nil || !f.lazyZero {
 		return
 	}
-	for _, local := range f.gcFrameRoots.Locals {
-		f.materializeGCFrameLocal(local.Index)
+	for _, index := range f.gcFrameRoots.LocalIndexes {
+		f.materializeGCFrameLocal(index)
 	}
 }
 
@@ -210,10 +192,14 @@ func (f *fn) materializeGCFrameLocalsAt(site int, call bool) {
 	if f.gcFrameRoots == nil || !f.lazyZero {
 		return
 	}
-	if !f.gcFrameRoots.VisitLiveLocals(site, call, func(root int) {
-		f.materializeGCFrameLocal(f.gcFrameRoots.Locals[root].Index)
-	}) {
-		f.gcFrameRoots.Exact = false
+	for i, index := range f.gcFrameRoots.LocalIndexes {
+		live := f.gcFrameRoots.LocalLiveAt(site, i)
+		if call {
+			live = f.gcFrameRoots.CallLocalLiveAt(site, i)
+		}
+		if live {
+			f.materializeGCFrameLocal(index)
+		}
 	}
 }
 
@@ -239,10 +225,19 @@ func (f *fn) spillLocalsForCall() {
 			continue // a clobbered register does not change the wasm local's zero value
 		}
 		if f.locals[x].state == lsReg { // dirty: write it back
-			f.storeLocalReg(x, reg, isFloat)
+			dead := f.callDeadGP&(uint16(1)<<uint(reg)) != 0
+			if isFloat {
+				dead = f.callDeadFP&(uint16(1)<<uint(reg)) != 0
+			}
+			if dead {
+				f.stats.peep("call-dead-local-store")
+			} else {
+				f.storeLocalReg(x, reg, isFloat)
+			}
 		}
 		f.locals[x].state = lsMem // callee clobbers the register
 	}
+	f.callDeadGP, f.callDeadFP = 0, 0
 }
 
 // reloadLocalsForCall restores every pinned local after a call — only for the
@@ -312,63 +307,38 @@ func (f *fn) newLocStateBuf() []locState {
 		f.lsPool[i] = f.lsPool[last]
 		f.lsPool[last] = nil
 		f.lsPool = f.lsPool[:last]
-		f.lsPoolBytes -= cap(b)
 		return b[:n]
 	}
 	if last := len(f.lsPool) - 1; last >= 0 {
-		b := f.lsPool[last]
 		f.lsPool[last] = nil
 		f.lsPool = f.lsPool[:last]
-		f.lsPoolBytes -= cap(b)
 	}
 	return make([]locState, n)
 }
 
 func (f *fn) freeLocStateBuf(b []locState) {
-	if n := len(f.pinnedLocals); cap(b) >= n && n > 0 && len(f.lsPool) < maxRetainedLocStateBufs && f.lsPoolBytes+cap(b) <= maxRetainedLocStateBytes {
-		if len(f.lsPool) == cap(f.lsPool) {
-			newCap := min(max(16, 2*cap(f.lsPool)), maxRetainedLocStateBufs)
-			pool := make([][]locState, len(f.lsPool), newCap)
-			copy(pool, f.lsPool)
-			f.lsPool = pool
-		}
+	if n := len(f.pinnedLocals); cap(b) >= n && n > 0 {
 		f.lsPool = append(f.lsPool, b[:cap(b)])
-		f.lsPoolBytes += cap(b)
 	}
 }
 
-// frameAddEnd stores the first two forward-jump sites inline. Only overflow
-// draws backing from endsPool.
+// frameAddEnd appends a forward-jump site to a frame's end-patch list, drawing
+// the backing slice from endsPool on first use. Frames are LIFO, so returning the
+// slice on pop (freeEndsBuf) bounds live buffers by nesting depth rather than
+// total frame count.
 func (f *fn) frameAddEnd(fr *ctrlFrame, site int) {
-	if fr.kind == cfLoop {
-		panic("amd64: forward end site on loop frame")
-	}
-	if site < 0 || uint64(site) >= uint64(^uint32(0)) {
-		f.setRepresentationLimit(functionRepresentationFrameEnd)
-		return
-	}
-	cold := f.ensureCtrlMerge(fr)
-	packed := uint32(site + 1) // zero remains the inline-site sentinel
-	if cold.firstEndSite == 0 {
-		cold.firstEndSite = packed
-		return
-	}
-	if cold.secondEndSite == 0 {
-		cold.secondEndSite = packed
-		return
-	}
-	if cold.ends == nil {
+	if fr.ends == nil {
 		if n := len(f.endsPool); n > 0 {
-			cold.ends = f.endsPool[n-1][:0]
+			fr.ends = f.endsPool[n-1][:0]
 			f.endsPool[n-1] = nil
 			f.endsPool = f.endsPool[:n-1]
 		}
 	}
-	cold.ends = append(cold.ends, packed)
+	fr.ends = append(fr.ends, site)
 }
 
-func (f *fn) freeEndsBuf(b []uint32) {
-	if capacity := cap(b); capacity > 0 && capacity <= maxRetainedEndsBufSites && len(f.endsPool) < maxRetainedEndsBufs {
+func (f *fn) freeEndsBuf(b []int) {
+	if cap(b) > 0 {
 		f.endsPool = append(f.endsPool, b[:0])
 	}
 }

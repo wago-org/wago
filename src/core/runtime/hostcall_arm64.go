@@ -10,9 +10,8 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// Synchronous host-import re-entry on arm64 uses the same inline capacity and
-// checked wide extension policy as amd64, with the arm64 resume stub restoring
-// this architecture's saved-register prefix.
+// Synchronous host-import re-entry on arm64 uses the same public control-frame
+// constants as amd64, with the arm64 resume stub restoring this frame.
 const maxHostArity = 64
 
 const arm64TrapHandlerPtrOffset = 32 // reuses runtimePtr basedata slot; 16 overlaps max-pages cache

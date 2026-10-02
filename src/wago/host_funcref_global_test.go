@@ -226,7 +226,7 @@ func TestHostCreatedFuncRefGlobalPersistenceAndLayoutsStayFailClosed(t *testing.
 	}
 	compiled := MustCompile(importedReferenceGlobalModule(wasm.FuncRef, true))
 	defer compiled.Close()
-	_ = publicArtifactRoundTrip(t, compiled)
+	_ = roundTripCompiled(t, compiled)
 }
 
 func hostFuncRefGlobalProducerModule(t *testing.T) []byte {

@@ -1,7 +1,6 @@
 package wago
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"sync"
@@ -24,11 +23,6 @@ var hostControlInstances sync.Map // map[uintptr]*Instance
 type hostInvocationContext struct {
 	id          invocationID
 	reservation *pluginOperationReservation
-	parent      context.Context
-}
-
-func (c hostInvocationContext) empty() bool {
-	return c.id == 0 && c.reservation == nil && c.parent == nil
 }
 
 var hostInvocationContexts sync.Map // map[uintptr]hostInvocationContext
@@ -53,7 +47,7 @@ func activeHostInvocationContext(in *Instance) hostInvocationContext {
 }
 
 func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() {
-	if ctrl == 0 || next.empty() {
+	if ctrl == 0 || next.id == 0 {
 		return func() {}
 	}
 	previous, loaded := hostInvocationContexts.Load(ctrl)
@@ -67,20 +61,6 @@ func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() 
 	}
 }
 
-func bindHostInvocationParent(in *Instance, parent context.Context) func() {
-	if in == nil {
-		return func() {}
-	}
-	ctrl := offHeapSlicePtr(in.ctrl)
-	_, inherited := hostInvocationContexts.Load(ctrl)
-	if parent == nil && !inherited {
-		return func() {}
-	}
-	invocation := currentHostInvocationContext(ctrl, in)
-	invocation.parent = parent
-	return bindHostInvocationContext(ctrl, invocation)
-}
-
 func registerHostControl(in *Instance) error {
 	if in == nil || len(in.ctrl) < coreruntime.HostCtrlFrameBytes {
 		return fmt.Errorf("invalid synchronous host control frame")
@@ -88,10 +68,6 @@ func registerHostControl(in *Instance) error {
 	ptr := offHeapSlicePtr(in.ctrl)
 	if _, loaded := hostControlInstances.LoadOrStore(ptr, in); loaded {
 		return fmt.Errorf("duplicate synchronous host control frame %x", ptr)
-	}
-	if err := coreruntime.RegisterHostCtrlFrame(in.ctrl); err != nil {
-		hostControlInstances.Delete(ptr)
-		return fmt.Errorf("register runtime synchronous host control frame: %w", err)
 	}
 	return nil
 }
@@ -104,7 +80,6 @@ func unregisterHostControl(in *Instance) {
 	if current, ok := hostControlInstances.Load(ptr); ok && current == in {
 		hostControlInstances.Delete(ptr)
 	}
-	coreruntime.UnregisterHostCtrlFrame(in.ctrl)
 }
 
 func offHeapSlicePtr(b []byte) uintptr {
@@ -180,7 +155,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// owns the invocation identity and collector lease. Carry that identity into
 	// the producer's HostModule instead of reading its zero local invocation ID.
 	invocation := activeHostInvocationContext(root)
-	if invocation.empty() {
+	if invocation.id == 0 {
 		invocation = activeHostInvocationContext(active)
 	}
 	id := invocation.id
@@ -192,7 +167,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	if root != nil && root.executionFlags.Load()&executionFlagImportedGCDomain != 0 {
 		leaseOwner = root
 	}
-	gcSuspension := leaseOwner.suspendGCInvocation(id)
+	resumeGCInvocation := leaseOwner.suspendGCInvocation(id)
 	var localMu *sync.Mutex
 	var epoch uint64
 	if active.usesIndependentExecution() {
@@ -208,7 +183,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// between host result validation and the caller's resumed native frame.
 	defer active.popGCHostActivation(activation)
 	defer func() {
-		gcSuspension.resume()
+		resumeGCInvocation()
 		if localMu != nil {
 			localMu.Lock()
 		} else {
@@ -254,16 +229,12 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 func (in *Instance) prepareHostReentryState() (func(), error) {
 	in.lifeMu.Lock()
 	invocation := activeHostInvocationContext(in)
-	stackBytes := coreruntime.DefaultNativeStackBytes
-	if in.eng != nil && in.eng.StackBytes() != 0 {
-		stackBytes = in.eng.StackBytes()
-	}
-	eng, err := coreruntime.AcquireEngineWithStackBytes(stackBytes)
+	eng, err := coreruntime.AcquireEngine()
 	if err != nil {
 		in.lifeMu.Unlock()
 		return nil, fmt.Errorf("acquire host re-entry engine: %w", err)
 	}
-	ctrl := make([]byte, len(in.ctrl))
+	ctrl := make([]byte, coreruntime.HostCtrlFrameBytes)
 	if err := coreruntime.InitHostCtrlFrame(ctrl); err != nil {
 		_ = coreruntime.ReleaseEngine(eng)
 		in.lifeMu.Unlock()

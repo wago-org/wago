@@ -36,7 +36,7 @@ func TestRuntimeRegressionPortReusedMemoryIsZeroed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	memory := first.Memory().UnsafeBytes()
+	memory := first.Memory().Bytes()
 	for i := range memory {
 		memory[i] = 0xfe
 	}
@@ -53,7 +53,7 @@ func TestRuntimeRegressionPortReusedMemoryIsZeroed(t *testing.T) {
 	if second.jm != reused {
 		t.Fatalf("JobMemory cache did not reuse the dirtied mapping: first=%p second=%p", reused, second.jm)
 	}
-	for i, b := range second.Memory().UnsafeBytes() {
+	for i, b := range second.Memory().Bytes() {
 		if b != 0 {
 			t.Fatalf("reused memory byte %d = %#x, want zero", i, b)
 		}
@@ -136,7 +136,7 @@ func TestRuntimeRegressionPortFailedInstantiationMemoryDoesNotLeak(t *testing.T)
 	if after.jm != reused {
 		t.Fatalf("failed instantiation did not return the primed mapping: prime=%p after=%p", reused, after.jm)
 	}
-	for i, b := range after.Memory().UnsafeBytes() {
+	for i, b := range after.Memory().Bytes() {
 		if b != 0 {
 			t.Fatalf("memory byte %d after failed instantiation = %#x, want zero", i, b)
 		}
@@ -447,11 +447,7 @@ func TestRuntimeRegressionPortResourceFootprintRemainsBounded(t *testing.T) {
 			}
 		}
 	}
-	// Warm the runtime pools and the race detector's lazily mapped bookkeeping
-	// before taking the process-map baseline. Small code-size changes can otherwise
-	// make the detector add one shadow arena during the measured loop and look like
-	// a leaked Wago mapping.
-	run(64)
+	run(8)
 	runtime.GC()
 	baseGoroutines := runtime.NumGoroutine()
 	baseFDs, baseMaps := regressionProcessResourceCounts()
@@ -466,9 +462,7 @@ func TestRuntimeRegressionPortResourceFootprintRemainsBounded(t *testing.T) {
 	if baseFDs >= 0 && gotFDs > baseFDs+1 {
 		t.Fatalf("file descriptors grew from %d to %d after repeated instances", baseFDs, gotFDs)
 	}
-	// The race runtime adds shadow-memory mappings lazily. Their count is not a
-	// stable leak signal, so retain the mapping check in ordinary test binaries.
-	if !raceDetectorEnabled && baseMaps >= 0 && gotMaps > baseMaps+4 {
+	if baseMaps >= 0 && gotMaps > baseMaps+4 {
 		t.Fatalf("memory mappings grew from %d to %d after repeated instances", baseMaps, gotMaps)
 	}
 }

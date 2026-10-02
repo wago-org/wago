@@ -47,41 +47,6 @@ func Run(root string, mod Module) error {
 	return nil
 }
 
-// RunRepeated executes and checks the same semantic case repeatedly on one
-// instance. It catches porting layers that pass once but retain or exhaust
-// guest state when used as a steady-state workload.
-func RunRepeated(root string, mod Module, repetitions int) error {
-	if repetitions <= 0 {
-		return fmt.Errorf("repetitions must be positive")
-	}
-	timeout := time.Duration(mod.Limits.TimeoutMS) * time.Millisecond
-	wasm, err := readArtifact(root, mod)
-	if err != nil {
-		return err
-	}
-	compiled, err := wago.Compile(nil, wasm)
-	if err != nil {
-		return fmt.Errorf("compile: %w", err)
-	}
-	inst, err := wago.Instantiate(compiled, wago.InstantiateOptions{})
-	if err != nil {
-		return fmt.Errorf("instantiate: %w", err)
-	}
-	defer inst.Close()
-	for i := 0; i < repetitions; i++ {
-		if mod.Invoke.Vectors != nil {
-			if _, err := runVectorCasesOnInstance(inst, mod, mod.Invoke.Vectors, timeout); err != nil {
-				return fmt.Errorf("repetition %d: %w", i+1, err)
-			}
-			continue
-		}
-		if _, err := runOnInstance(inst, mod, timeout); err != nil {
-			return fmt.Errorf("repetition %d: %w", i+1, err)
-		}
-	}
-	return nil
-}
-
 type outcome struct {
 	results []uint64
 	memory  [][]byte
@@ -106,18 +71,11 @@ func runInstance(compiled *wago.Compiled, mod Module, timeout time.Duration) (*o
 		return nil, fmt.Errorf("instantiate: %w", err)
 	}
 	defer inst.Close()
-	return runOnInstance(inst, mod, timeout)
-}
-
-func runOnInstance(inst *wago.Instance, mod Module, timeout time.Duration) (*outcome, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	var err error
 
 	if mod.Invoke.Input != "" {
 		inputBase := uint32(0)
 		if mod.Invoke.InputPtrExport != "" {
-			inputBase, err = resolvePointerContext(ctx, inst, mod.Invoke.InputPtrExport)
+			inputBase, err = resolvePointer(inst, mod.Invoke.InputPtrExport)
 			if err != nil {
 				return nil, err
 			}
@@ -136,6 +94,8 @@ func runOnInstance(inst *wago.Instance, mod Module, timeout time.Duration) (*out
 		args[i] = wago.I32(a)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	results, err := inst.InvokeContext(ctx, mod.Invoke.Export, args...)
 	if err != nil {
 		return nil, fmt.Errorf("invoke %s: %w", mod.Invoke.Export, err)
@@ -144,7 +104,7 @@ func runOnInstance(inst *wago.Instance, mod Module, timeout time.Duration) (*out
 	if err := checkReturn(mod, results); err != nil {
 		return nil, err
 	}
-	mem, err := captureMemory(ctx, inst, mod)
+	mem, err := captureMemory(inst, mod)
 	if err != nil {
 		return nil, err
 	}
@@ -170,11 +130,11 @@ func checkReturn(mod Module, results []uint64) error {
 	return nil
 }
 
-func captureMemory(ctx context.Context, inst *wago.Instance, mod Module) ([][]byte, error) {
+func captureMemory(inst *wago.Instance, mod Module) ([][]byte, error) {
 	outputBase := uint32(0)
 	if mod.Invoke.OutputPtrExport != "" {
 		var err error
-		outputBase, err = resolvePointerContext(ctx, inst, mod.Invoke.OutputPtrExport)
+		outputBase, err = resolvePointer(inst, mod.Invoke.OutputPtrExport)
 		if err != nil {
 			return nil, err
 		}
@@ -226,24 +186,20 @@ func runVectorCases(compiled *wago.Compiled, mod Module, v *Vectors, timeout tim
 		return nil, fmt.Errorf("instantiate: %w", err)
 	}
 	defer inst.Close()
-	return runVectorCasesOnInstance(inst, mod, v, timeout)
-}
 
-func runVectorCasesOnInstance(inst *wago.Instance, mod Module, v *Vectors, timeout time.Duration) ([][]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	var err error
 
 	inputOffset := v.InputOffset
 	if v.InputPtrExport != "" {
-		inputOffset, err = resolvePointerContext(ctx, inst, v.InputPtrExport)
+		inputOffset, err = resolvePointer(inst, v.InputPtrExport)
 		if err != nil {
 			return nil, err
 		}
 	}
 	outputOffset := v.OutputOffset
 	if v.OutputPtrExport != "" {
-		outputOffset, err = resolvePointerContext(ctx, inst, v.OutputPtrExport)
+		outputOffset, err = resolvePointer(inst, v.OutputPtrExport)
 		if err != nil {
 			return nil, err
 		}
@@ -280,8 +236,8 @@ func runVectorCasesOnInstance(inst *wago.Instance, mod Module, v *Vectors, timeo
 	return outs, nil
 }
 
-func resolvePointerContext(ctx context.Context, inst *wago.Instance, export string) (uint32, error) {
-	results, err := inst.InvokeContext(ctx, export)
+func resolvePointer(inst *wago.Instance, export string) (uint32, error) {
+	results, err := inst.Invoke(export)
 	if err != nil {
 		return 0, fmt.Errorf("resolve pointer export %s: %w", export, err)
 	}

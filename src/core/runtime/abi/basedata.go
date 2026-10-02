@@ -30,16 +30,14 @@ const (
 
 // Basedata offsets are byte distances below the linear-memory base.
 const (
-	// MemoryDirPtrOffset points at indexed-memory entries. Ordinary memory-0
-	// accesses keep the direct RBX/basedata hot path; memory.grow also consults
-	// entry 0 when an optional per-instance quota directory is present. Offset 64
-	// was the unused WARP memory-helper slot.
-	MemoryDirPtrOffset            = 64
-	MemoryDirEntryBytes           = 24
-	MemoryDirBaseOffset           = 0
-	MemoryDirCurrentBytesOffset   = 8  // u64: permits the full 4-GiB memory32 size
-	MemoryDirCurrentPagesOffset   = 16 // u32
-	MemoryDirPolicyMaxPagesOffset = 20 // u32: zero means no instance quota
+	// MemoryDirPtrOffset points at indexed-memory entries. Memory 0 keeps the
+	// direct RBX/basedata hot path; native code consults this directory only for
+	// nonzero indexes. Offset 64 was the unused WARP memory-helper slot.
+	MemoryDirPtrOffset          = 64
+	MemoryDirEntryBytes         = 24
+	MemoryDirBaseOffset         = 0
+	MemoryDirCurrentBytesOffset = 8  // u64: permits the full 4-GiB memory32 size
+	MemoryDirCurrentPagesOffset = 16 // u32
 	// FuncRefDescPtrOffset is the basedata slot holding the per-instance canonical
 	// funcref descriptor array used by table.set/fill/grow/ref.func lowering.
 	FuncRefDescPtrOffset = 88
@@ -77,8 +75,6 @@ const (
 	// wrapper-ABI tail call tears down the current frame and enters the next one.
 	// The bank occupies [linMem-272, linMem-144), immediately below the import-
 	// dispatch pointer, and is reused by every tail step without allocation.
-	// TODO(runtime-resource-model): replace this temporary implementation limit
-	// with an instance-owned spill area that stays stable across context switches.
 	TailArgsOffset = 272
 	TailArgsSlots  = 16
 

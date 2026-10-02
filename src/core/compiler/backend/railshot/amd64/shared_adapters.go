@@ -222,14 +222,18 @@ func compactSharedAdaptersAMD64(code []byte, oldLen int, entry, internalEntry []
 			deleted := int(info.endOff) - thunkBytes
 			removed += deleted
 			for j := range relocs[i] {
-				if relocs[i][j].at >= info.endOff {
-					relocs[i][j].at -= uint32(deleted)
+				if relocs[i][j].at >= int(info.endOff) {
+					relocs[i][j].at -= deleted
 				}
 			}
 			remapModuleLiteralPlanAMD64(literalWords, literalOffsets, i, int(info.endOff), deleted)
 			if roots != nil {
 				if plan := roots.Function(i); plan != nil {
-					plan.ShiftCallsiteReturnOffsets(info.endOff, uint32(deleted))
+					for j := range plan.Callsites {
+						if plan.Callsites[j].ReturnOffset >= info.endOff {
+							plan.Callsites[j].ReturnOffset -= uint32(deleted)
+						}
+					}
 				}
 			}
 			if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {

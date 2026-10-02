@@ -122,47 +122,18 @@ var manifestFeatureNames = stringSet(
 )
 
 var manifestOptimizationNames = stringSet(
-	"assoc-tree", "bmi2-rorx", "bounds-facts", "branch-fold",
-	"commute-self-update", "compact-i32-frame",
-	"dead-gc-new", "entry-arg-pins", "entry-init-elision", "ext-fp-pins",
-	"frame-elide", "frame-elide-reghomed", "gc-native-alloc",
-	"immutable-table", "immutable-table-type", "inline",
-	"inline-callfree", "interval-region-pins", "leaf-scratch-pins",
-	"magic-div",
-	"mul-add-fuse", "multi-bounds-cert",
+	"affine-lea", "assoc-tree", "bmi2-rorx", "bounds-facts", "branch-fold",
+	"call-next-use", "commute-self-update", "compact-i32-frame", "deep-fp-pins",
+	"entry-arg-pins", "ext-fp-pins", "frame-elide", "frame-elide-reghomed",
+	"immutable-poly-fastpath", "immutable-table", "immutable-table-type", "inline",
+	"inline-callfree", "inline-loop-callees", "leaf-scratch-pins", "legacy-fp-pins",
+	"legacy-gp-pins", "loop-precheck", "loop-region-pins", "multi-bounds-cert",
 	"olddest-rhs-sink", "reg-abi", "reg-merge", "small-frame", "st-flags",
-	"shared-adapters", "shared-trap-body", "simd-superopt", "stack-fence", "stack-reg",
-	"store-forward", "store-load-fwd", "store8-flags", "tee-sink",
-	"three-op-sink", "tree-order", "unary-sink", "uxtw-add",
-	"v128-const-cache", "v128-direct-results", "v128-pins",
-	"vex-float-mem", "x8-pin", "zero-branch",
+	"stack-fence", "stack-reg", "store-forward", "store-load-fwd", "store8-flags",
+	"tee-sink", "tee-spill-elide", "three-op-sink", "tree-order", "unary-sink",
+	"uxtw-add", "v128-const-cache", "v128-pins", "v128-sink", "vex-float-mem",
+	"x8-pin",
 )
-
-var retiredManifestOptimizationNames = stringSet(
-	"affine-lea", "call-next-use", "fcmp-fuse", "gc-ref-facts",
-	"immutable-poly-fastpath", "legacy-fp-pins", "legacy-gp-pins",
-	"loop-precheck", "loop-region-pins", "swar-idioms", "tee-spill-elide",
-	"v128-sink",
-)
-
-// IsRetiredOptimizationName reports whether name was accepted by the v1
-// manifest contract but no longer selects compiler behavior. Retired names are
-// accepted as no-ops so existing projects remain readable under the same v1
-// schema URI.
-func IsRetiredOptimizationName(name string) bool {
-	_, ok := retiredManifestOptimizationNames[name]
-	return ok
-}
-
-// RetiredOptimizationNames returns the v1 compatibility names in stable order.
-func RetiredOptimizationNames() []string {
-	names := make([]string, 0, len(retiredManifestOptimizationNames))
-	for name := range retiredManifestOptimizationNames {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
 
 // ValidateManifest enforces the checked-in v1 schema before any project read
 // or transaction. The manifest remains a generic map so unrelated v1 fields
@@ -217,9 +188,7 @@ func validateManifestSettings(raw any) error {
 			return err
 		}
 		for name, rawValue := range values {
-			_, active := field.allowed[name]
-			retired := field.name == "optimizations" && IsRetiredOptimizationName(name)
-			if !active && !retired {
+			if _, ok := field.allowed[name]; !ok {
 				return fmt.Errorf("settings.%s contains unknown setting %q", field.name, name)
 			}
 			if _, ok := rawValue.(bool); !ok {

@@ -75,26 +75,22 @@ func applyRunScope(args []string, environment Environment) error {
 	global, local, bare := false, false, false
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
-		if arg == "--" {
+		if arg == "--" || arg == "-" || !strings.HasPrefix(arg, "-") {
 			break
 		}
-		if arg == "-" || !strings.HasPrefix(arg, "-") {
-			continue
-		}
-		name, _, inline := strings.Cut(arg, "=")
-		switch name {
+		switch arg {
 		case "--global", "-g":
 			global = true
 		case "--local":
 			local = true
 		case "--bare":
 			bare = true
-		case "--invoke", "-e", "--core", "--watch-interval", "--native-stack", "--gc-heap", "--gc-nursery":
-			if !inline && index+1 < len(args) {
+		case "--invoke", "-e":
+			if index+1 < len(args) {
 				index++
 			}
 		case "--parallel", "-p":
-			if !inline && index+1 < len(args) {
+			if index+1 < len(args) {
 				if _, err := strconv.Atoi(args[index+1]); err == nil {
 					index++
 				}

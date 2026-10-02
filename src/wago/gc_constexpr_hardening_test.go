@@ -50,7 +50,8 @@ func TestGCConstClassifiedRootsHonorDirectSinkStop(t *testing.T) {
 		t.Fatalf("classified direct stop visited %v", sink.refs)
 	}
 
-	elements := &gcArrayElementRoots{Count: 1, Values: []corergc.Root{corergc.Root(corergc.I31New(3))}}
+	elements := &gcArrayElementRoots{Count: 1}
+	elements.Values[0] = corergc.Root(corergc.I31New(3))
 	roots.extra = elements
 	sink = &gcConstStoppingClassifiedSink{limit: 1}
 	if roots.RangeClassifiedRootRefs(sink) {
@@ -139,7 +140,7 @@ func TestGCConstExprStoresFunctionReferences(t *testing.T) {
 		t.Fatalf("compile function-reference GC constants: %v", err)
 	}
 	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
+	loaded := roundTripCompiled(t, compiled)
 	defer loaded.Close()
 	for _, candidate := range []*Compiled{compiled, loaded} {
 		in, err := instantiateCore(candidate, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true}})

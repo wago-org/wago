@@ -18,20 +18,15 @@ type InstantiateOptions struct {
 	GC      GCConfig
 	store   *referenceStore
 
-	runtime                  *Runtime
-	origin                   InstantiateOrigin
-	pluginGC                 *GCConfig
-	pluginGCImports          map[uint32]struct{}
-	forceSyncHost            bool
-	afterCreate              func(*Instance) error
-	moduleIdentity           ModuleIdentity
-	operationReservation     *pluginOperationReservation
-	runtimeReservation       *runtimeInstanceReservation
-	independentInstances     bool
-	hasExecutionPolicy       bool
-	nativeStackBytes         uint64
-	memoryLimitPages         uint32
-	maxInstanceMetadataBytes uint64
+	runtime              *Runtime
+	origin               InstantiateOrigin
+	pluginGC             *GCConfig
+	forceSyncHost        bool
+	afterCreate          func(*Instance) error
+	moduleIdentity       ModuleIdentity
+	operationReservation *pluginOperationReservation
+	independentInstances bool
+	hasExecutionPolicy   bool
 }
 
 // Instantiable is the set of sources Instantiate accepts. The interface is
@@ -98,7 +93,6 @@ type instanceBuilder struct {
 
 	collector           *gc.Collector
 	collectorShared     bool
-	gcDomain            *gcStoreDomain
 	gcDomainID          uint64
 	gcTypeMap           *gcTypeMapping
 	success             bool
@@ -143,7 +137,7 @@ func (b *instanceBuilder) releaseModuleUse() {
 }
 
 func (b *instanceBuilder) validateCompiled() error {
-	if err := b.c.validateImportBindingsWithPluginGC(b.imports, b.opts.store, b.opts.pluginGCImports); err != nil {
+	if err := b.c.validateImportBindings(b.imports, b.opts.store); err != nil {
 		return err
 	}
 	return b.c.validateCached()
@@ -169,7 +163,7 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 	need := c.instantiateArenaNeed
 	baselineHostBytes := 0
 	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
-		baselineHostBytes = c.hostCtrlFrameBytes()
+		baselineHostBytes = runtime.HostCtrlFrameBytes
 	} else if len(c.Imports) > 0 {
 		baselineHostBytes = runtime.HostCallLogBytes
 	}
@@ -178,7 +172,7 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 		// Runtime instantiation always installs the synchronous control frame,
 		// including for modules without function imports: public funcref calls and
 		// nested runtime entry share the same parked-host context.
-		actualHostBytes = c.hostCtrlFrameBytes()
+		actualHostBytes = runtime.HostCtrlFrameBytes
 	} else {
 		for _, key := range c.Imports {
 			if _, cross := imports[key].(*InstanceExport); !cross {
@@ -190,41 +184,10 @@ func (c *Compiled) arenaNeedForImports(imports Imports, syncMode bool) int {
 	return need - baselineHostBytes + actualHostBytes
 }
 
-func enforceMemoryPageQuota(c *Compiled, imports Imports, limit uint32) error {
-	if c == nil || limit == 0 {
-		return nil
-	}
-	for i := 0; i < c.memoryCount(); i++ {
-		def := c.memoryDef(i)
-		pages := def.Min
-		if def.ImportKey != "" {
-			memory, ok := imports.memory(def.ImportKey)
-			if !ok {
-				continue // the normal linker reports the missing import.
-			}
-			currentPages, ok := memory.currentPages()
-			if !ok {
-				continue // the normal linker reports the closed owner.
-			}
-			pages = uint64(currentPages)
-		}
-		if pages > uint64(limit) {
-			return &runtime.ResourceLimitError{
-				Resource:  fmt.Sprintf("memory %d live pages", i),
-				Scope:     "instance",
-				Requested: pages,
-				Limit:     uint64(limit),
-			}
-		}
-	}
-	return nil
-}
-
 func (b *instanceBuilder) prepareCollector() error {
 	needsExternConversion := b.c.stagedGCStructProduct().requiresExternConversion()
 	needsHelpers := b.c.usesGCStructHelpers() || b.c.usesGCArrayHelpers()
-	needsRuntimeDomain := b.c.needsRuntimeGCCollectorDomain()
-	if !needsRuntimeDomain && !needsHelpers && ((!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.collectorFreeGCArrayMetadata()))) {
+	if !needsHelpers && ((!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.collectorFreeGCArrayMetadata()))) {
 		return nil
 	}
 	gcConfig := b.opts.GC
@@ -239,8 +202,8 @@ func (b *instanceBuilder) prepareCollector() error {
 	// Until their compiler callsites publish exact GC frame roots, keep GC+Threads
 	// modules in private collector domains so a same-memory notifier never waits
 	// behind the parked invocation's Runtime-wide collector lease.
-	if b.opts.store != nil && !b.opts.store.private && needsRuntimeDomain && b.c.sharedGCPersistentDomainSafe() && !b.c.usesAtomicWaitHelpers() {
-		preferred, err := preferredGCCollectorFromImports(b.c, b.imports, b.opts.store)
+	if b.opts.store != nil && !b.opts.store.private && b.c.usesGenericGCExecution() && b.c.sharedGCPersistentDomainSafe() && !b.c.usesAtomicWaitHelpers() {
+		preferred, err := preferredGCCollectorFromImports(b.imports, b.opts.store)
 		if err != nil {
 			return err
 		}
@@ -250,10 +213,7 @@ func (b *instanceBuilder) prepareCollector() error {
 		}
 		b.collector = collector
 		b.collectorShared = true
-		b.gcDomain = b.opts.store.gcDomainForCollector(collector)
-		if b.gcDomain != nil {
-			b.gcDomainID = b.gcDomain.id
-		}
+		b.gcDomainID = b.opts.store.gcDomainIdentity(collector)
 		if b.gcDomainID == 0 {
 			b.opts.store.releaseUnclaimedGCCollector(collector)
 			b.collector = nil
@@ -287,14 +247,6 @@ func (b *instanceBuilder) prepareCollector() error {
 	return nil
 }
 
-func (b *instanceBuilder) buildNativeGCInstanceView(localTypes []gc.TypeID) (*gc.NativeInstanceView, error) {
-	if b.gcDomain != nil {
-		b.gcDomain.invocationMu.Lock()
-		defer b.gcDomain.invocationMu.Unlock()
-	}
-	return gc.BuildNativeInstanceView(b.collector, localTypes)
-}
-
 func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
 	for i, key := range b.c.Imports {
 		switch value := b.imports[key].(type) {
@@ -306,7 +258,7 @@ func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
 			if i >= len(b.c.importFuncSigs) {
 				return nil, fmt.Errorf("imported host funcref %q has no signature", key)
 			}
-			if err := b.hostAttachments.attach(value, b.opts.store, b.c.importFuncSigs[i], b.collector, b.gcDomainID, b.c, i); err != nil {
+			if err := b.hostAttachments.attach(value, b.opts.store, b.c.importFuncSigs[i], b.collector, b.gcDomainID, b.c); err != nil {
 				return nil, fmt.Errorf("imported host funcref %q: %w", key, err)
 			}
 		}
@@ -363,37 +315,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if err := b.validateCompiled(); err != nil {
 		return nil, err
 	}
-	c, opts, imports := b.c, b.opts, b.imports
-	if !opts.hasExecutionPolicy && c.validateMemo != nil {
-		if opts.memoryLimitPages == 0 {
-			opts.memoryLimitPages = c.validateMemo.memoryLimitPages
-		}
-		if opts.maxInstanceMetadataBytes == 0 {
-			opts.maxInstanceMetadataBytes = c.validateMemo.maxInstanceMetadataBytes
-		}
-	}
-	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
-	arenaNeed := c.arenaNeedForImports(imports, syncMode)
-	if c.memoryCount() == 1 && (opts.memoryLimitPages != 0 || c.memoryImport != "" && c.threadedMemory0()) {
-		if arenaNeed > maxInt()-abi.MemoryDirEntryBytes {
-			return nil, fmt.Errorf("instance metadata footprint overflows memory policy directory")
-		}
-		arenaNeed += abi.MemoryDirEntryBytes
-	}
-	if opts.maxInstanceMetadataBytes != 0 && uint64(arenaNeed) > opts.maxInstanceMetadataBytes {
-		return nil, &runtime.ResourceLimitError{
-			Resource:  "instance metadata bytes",
-			Scope:     "instance",
-			Requested: uint64(arenaNeed),
-			Limit:     opts.maxInstanceMetadataBytes,
-		}
-	}
-	if err := enforceMemoryPageQuota(c, imports, opts.memoryLimitPages); err != nil {
-		return nil, err
-	}
 	if err := b.prepareCollector(); err != nil {
 		return nil, err
 	}
+	c, opts, imports := b.c, b.opts, b.imports
+	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
 	needsExternConversion := c.stagedGCStructProduct().requiresExternConversion()
 	var conversionStore *referenceStore
 	var gcExternConversion *gcExternConversionState
@@ -421,14 +347,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if err != nil {
 		return nil, err
 	}
-	stackBytes := opts.nativeStackBytes
-	if stackBytes == 0 {
-		stackBytes = c.nativeStackBytes()
-	}
-	if stackBytes == 0 {
-		stackBytes = runtime.DefaultNativeStackBytes
-	}
-	eng, err := runtime.AcquireEngineWithStackBytes(stackBytes)
+	eng, err := runtime.AcquireEngine()
 	if err != nil {
 		return nil, err
 	}
@@ -507,8 +426,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		memObj, ownsMem = &Memory{jm: jm}, true
 	}
 	memoryCount := c.memoryCount()
-	needsMemoryDir := memoryCount > 1 || threadedControl || memoryCount != 0 && opts.memoryLimitPages != 0
-	if needsMemoryDir {
+	if memoryCount > 1 || threadedControl {
 		memoryObjs = make([]*Memory, memoryCount)
 		memoryOwns = make([]bool, memoryCount)
 		memoryObjs[0], memoryOwns[0] = memObj, ownsMem
@@ -582,7 +500,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	var nativeMemoryDir []byte
 	var nativeTagIDs []byte
-	ar, err := runtime.AcquireArena(arenaNeed)
+	ar, err := runtime.AcquireArena(c.arenaNeedForImports(imports, syncMode))
 	if err != nil {
 		closeMem()
 		runtime.ReleaseEngine(eng)
@@ -590,7 +508,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
 	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
-	if needsMemoryDir {
+	if memoryCount > 1 || threadedControl {
 		nativeMemoryDir = ar.Alloc(memoryCount * abi.MemoryDirEntryBytes)
 		for i, memory := range memoryObjs {
 			memoryJM := memory.jobMemory()
@@ -604,7 +522,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			binary.LittleEndian.PutUint64(entry[abi.MemoryDirBaseOffset:], uint64(memoryJM.LinMemBase()))
 			binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(len(memoryJM.HostBytes())))
 			binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], memoryJM.CurrentPages())
-			binary.LittleEndian.PutUint32(entry[abi.MemoryDirPolicyMaxPagesOffset:], opts.memoryLimitPages)
 		}
 		jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&nativeMemoryDir[0])))
 	}
@@ -651,13 +568,13 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	// while this reference keeps its native mapping live.
 	b.releaseModuleUse()
 	var hostLog, ctrl []byte
-	var syncHosts []syncHostBinding
+	var syncHosts []HostFunc
 	if syncMode {
 		// Synchronous host-call path: install the control frame (not the async
 		// log) as the import ctx. Modules that accept public funcrefs and can call
 		// them indirectly also need this frame so an owned host descriptor remains
 		// callable after crossing from another instance.
-		ctrl = ar.AllocNoZero(c.hostCtrlFrameBytes())
+		ctrl = ar.AllocNoZero(runtime.HostCtrlFrameBytes)
 		if err := runtime.InitHostCtrlFrame(ctrl); err != nil {
 			return nil, fmt.Errorf("instantiate: initialize host control frame: %w", err)
 		}
@@ -1014,7 +931,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 		}
 		switch normalizedElemRefType(refType) {
-		case ValExternRef, ValExnRef, ValAnyRef:
+		case ValExternRef, ValExnRef:
 			if !value.Null {
 				return fmt.Errorf("externref element contains a non-null initializer")
 			}
@@ -1046,10 +963,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	var globals []byte
-	var gcGlobalRoots []gcGlobalRootMapping
-	var gcGlobalRootCount uint32
+	var gcGlobalRoots [3]gcGlobalRootMapping
+	var gcGlobalRootCount uint8
 	var genericGCGlobalRoots []gcGlobalRootMapping
-	runtimeGCExecution := c.needsRuntimeGCCollectorDomain()
+	genericGCExecution := c.usesGenericGCExecution()
 	globalCells = make([]*Global, len(c.Globals))
 	if len(c.Globals) > 0 {
 		globals = ar.Alloc(8 * len(c.Globals))
@@ -1071,29 +988,35 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			} else {
 				bits, vec := g.Bits, g.V128
 				if gcInit, ok := c.gcStructGlobalInit(i); ok {
+					if !genericGCExecution && int(gcGlobalRootCount) >= len(gcGlobalRoots) {
+						return nil, fmt.Errorf("global %d exceeds staged GC root mapping bound", i)
+					}
 					ref, slot, err := instantiateGCStructGlobal(b.collector, b.gcTypeMap, c.GCTypeDescs, gcInit)
 					if err != nil {
 						return nil, fmt.Errorf("global %d GC struct initializer: %w", i, err)
 					}
 					bits = uint64(ref)
 					mapping := gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
-					if runtimeGCExecution {
+					if genericGCExecution {
 						genericGCGlobalRoots = append(genericGCGlobalRoots, mapping)
 					} else {
-						gcGlobalRoots = append(gcGlobalRoots, mapping)
+						gcGlobalRoots[gcGlobalRootCount] = mapping
 						gcGlobalRootCount++
 					}
 				} else if gcInit, ok := c.gcArrayGlobalInit(i); ok {
+					if !genericGCExecution && int(gcGlobalRootCount) >= len(gcGlobalRoots) {
+						return nil, fmt.Errorf("global %d exceeds staged GC root mapping bound", i)
+					}
 					ref, slot, err := instantiateGCArrayGlobal(b.collector, b.gcTypeMap, c.GCTypeDescs, gcInit, funcRefDescs)
 					if err != nil {
 						return nil, fmt.Errorf("global %d GC array initializer: %w", i, err)
 					}
 					bits = uint64(ref)
 					mapping := gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
-					if runtimeGCExecution {
+					if genericGCExecution {
 						genericGCGlobalRoots = append(genericGCGlobalRoots, mapping)
 					} else {
-						gcGlobalRoots = append(gcGlobalRoots, mapping)
+						gcGlobalRoots[gcGlobalRootCount] = mapping
 						gcGlobalRootCount++
 					}
 				}
@@ -1139,7 +1062,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				// global/table root views.
 				instantiationRoots = append(instantiationRoots, compactRefRootSlot(cell.cell[:4]))
 			}
-			if b.collector != nil && runtimeGCExecution && i >= len(importGlobals) && isGCRefValType(g.Type) {
+			if b.collector != nil && genericGCExecution && i >= len(importGlobals) && isGCRefValType(g.Type) {
 				mapped := false
 				for _, mapping := range genericGCGlobalRoots {
 					if mapping.GlobalIndex == uint32(i) {
@@ -1461,7 +1384,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	var gcNativeTypes []gc.TypeID
 	var gcNativeView *gc.NativeInstanceView
-	if b.collector != nil && c.needsNativeGCABI() {
+	if b.collector != nil && (genericGCExecution || c.usesGCStructHelpers() || c.usesGCArrayHelpers()) {
 		gcNativeTypes = make([]gc.TypeID, len(c.Types))
 		for local := range gcNativeTypes {
 			domain, ok := b.gcTypeMap.domain(uint32(local))
@@ -1470,7 +1393,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			gcNativeTypes[local] = domain
 		}
-		gcNativeView, err = b.buildNativeGCInstanceView(gcNativeTypes)
+		gcNativeView, err = gc.BuildNativeInstanceView(b.collector, gcNativeTypes)
 		if err != nil {
 			return nil, fmt.Errorf("instantiate: native GC metadata view: %w", err)
 		}
@@ -1484,9 +1407,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
-		nativeContext:   nativeContextPtr,
-		moduleIdentity:  opts.moduleIdentity,
-		pluginGCImports: opts.pluginGCImports,
+		nativeContext:  nativeContextPtr,
+		moduleIdentity: opts.moduleIdentity,
 	}
 	independentInstances := c.independentInstances
 	if opts.hasExecutionPolicy {
@@ -1519,7 +1441,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		state.gcGlobalRoots = gcGlobalRoots
 		state.gcGlobalRootCount = gcGlobalRootCount
 	}
-	if b.collector != nil && runtimeGCExecution {
+	if b.collector != nil && genericGCExecution {
 		public := in.publicGCState()
 		public.globalRoots = genericGCGlobalRoots
 		for i, g := range c.Globals {
@@ -1573,7 +1495,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	if opts.runtime != nil {
 		in.beginConstruction(opts.operationReservation)
-		if err := opts.runtime.registerInstance(in, opts.runtimeReservation); err != nil {
+		if err := opts.runtime.registerInstance(in); err != nil {
 			in.endConstruction()
 			return nil, err
 		}
@@ -1831,16 +1753,15 @@ func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (map[uint3
 			if err != nil {
 				return nil, nil, fmt.Errorf("import %q wrapper results: %w", key, err)
 			}
+			if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
+				return nil, nil, fmt.Errorf("import %q uses %d param slot(s), %d result slot(s); synchronous host wrappers support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
+			}
 			dispatch := uint32(fidx)
 			owned := false
 			if owner, ok := imports[key].(*HostFuncRef); ok && owner != nil {
 				owner.mu.Lock()
-				dispatchIndex := owner.dispatchIndex
+				dispatch = hostFuncRefDispatchBit | owner.dispatchIndex
 				owner.mu.Unlock()
-				if binding, ok := owner.dispatchBinding(c, fidx); ok {
-					dispatchIndex = binding.dispatchIndex
-				}
-				dispatch = hostFuncRefDispatchBit | dispatchIndex
 				owned = true
 			}
 			offs[uint32(fidx)] = len(blob)

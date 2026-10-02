@@ -70,7 +70,7 @@ func btFreshRun(tb testing.TB, c *wago.Compiled, depth int) (lat time.Duration, 
 	}
 	checksum = uint32(res[0])
 	if m := in.Memory(); m != nil {
-		footprint = len(m.UnsafeBytes())
+		footprint = len(m.Bytes())
 	}
 	return lat, checksum, footprint
 }

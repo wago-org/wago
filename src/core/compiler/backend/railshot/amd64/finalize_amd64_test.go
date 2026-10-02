@@ -14,16 +14,6 @@ import (
 	amd64enc "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
-func TestFinalizerRejectsJumpTableFragmentOverflowAMD64(t *testing.T) {
-	before := nativeFinalizerEnabled
-	nativeFinalizerEnabled = true
-	t.Cleanup(func() { nativeFinalizerEnabled = before })
-	f := fn{sc: &scratch{fragmentOverflow: true}}
-	if _, err := f.finalizeNativeCode(0); err == nil {
-		t.Fatal("finalizer accepted an overflowing compact jump-table fragment offset")
-	}
-}
-
 func TestIdentityFinalizerPreservesBytesAndMetadata(t *testing.T) {
 	oldEnabled := nativeFinalizerEnabled
 	oldCompact := nativeCompactionEnabled
@@ -36,7 +26,10 @@ func TestIdentityFinalizerPreservesBytesAndMetadata(t *testing.T) {
 
 	code := []byte{0x48, 0x81, 0xec, 0, 0, 0, 0, 0xe8, 0, 0, 0, 0, 0xc3}
 	original := append([]byte(nil), code...)
-	plan := testGCPlanWithCallsites(t, 12, [2]uint32{12, 0})
+	plan := &shared.GCFrameRootPlan{
+		AdapterReturnOffset: 12,
+		Callsites:           []shared.GCFrameCallsitePlan{{ReturnOffset: 12}},
+	}
 	f := fn{
 		a:                &amd64enc.Asm{B: code},
 		relocs:           []callReloc{{at: 8}},
@@ -52,10 +45,10 @@ func TestIdentityFinalizerPreservesBytesAndMetadata(t *testing.T) {
 		t.Fatalf("identity finalizer changed bytes: %x != %x", f.a.B, original)
 	}
 	if internal != 7 || f.relocs[0].at != 8 || f.adapterReturnOff != 12 ||
-		plan.AdapterReturnOffset != 12 || testGCCallsiteReturn(t, plan, 0) != 12 {
+		plan.AdapterReturnOffset != 12 || plan.Callsites[0].ReturnOffset != 12 {
 		t.Fatalf("metadata changed: internal=%d reloc=%d adapter=%d gc-adapter=%d gc-call=%d",
 			internal, f.relocs[0].at, f.adapterReturnOff,
-			plan.AdapterReturnOffset, testGCCallsiteReturn(t, plan, 0))
+			plan.AdapterReturnOffset, plan.Callsites[0].ReturnOffset)
 	}
 }
 
@@ -67,8 +60,9 @@ func TestSizeCompactsBoundedLoopFrameReservationsAMD64(t *testing.T) {
 	})
 
 	m := modFuncs(t, funcDef{nil, nil, []byte{0x00, 0x03, 0x40, 0x0b, 0x0b}})
+	objective := OptimizeSize
 	stats := &ModuleStats{}
-	compact, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 1, Stats: stats})
+	compact, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: stats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +75,7 @@ func TestSizeCompactsBoundedLoopFrameReservationsAMD64(t *testing.T) {
 
 	loopCompactionEnabled = false
 	reservedStats := &ModuleStats{}
-	reserved, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 1, Stats: reservedStats})
+	reserved, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: reservedStats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +90,7 @@ func TestSizeCompactsBoundedLoopFrameReservationsAMD64(t *testing.T) {
 	}
 
 	loopCompactionEnabled = true
-	parallel, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 2})
+	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +103,7 @@ func TestSizeCompactsBoundedLoopFrameReservationsAMD64(t *testing.T) {
 
 	oldLimit := loopCompactionByteLimitOverride
 	t.Cleanup(func() { loopCompactionByteLimitOverride = oldLimit })
-	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
+	policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize)
 	loopCompactionByteLimitOverride = 16 << 10
 	if f := (&fn{a: &amd64enc.Asm{B: make([]byte, 16<<10)}, hasLoop: true, policy: policy}); !f.loopCompactionAdmitted() {
 		t.Fatal("loop function at rollback bound rejected")
@@ -227,7 +221,7 @@ func TestFinalizerCompactsBoundedSubsetOfBranchHoles(t *testing.T) {
 	f := fn{
 		a:        a,
 		sc:       sc,
-		policy:   shared.CompactCodegenPolicy(optimization.Selection{}),
+		policy:   shared.CodegenPolicyForObjective(optimization.Selection{}, shared.OptimizeSize),
 		subRspAt: subSite,
 		addRspAt: addSite,
 		stats:    stats,
@@ -444,7 +438,7 @@ func TestFinalizerRemapsJumpTableData(t *testing.T) {
 	sc := &scratch{
 		brFoldSites: []int{over},
 		jumpTableFragments: []jumpTableFragment{{
-			start: uint32(tablePos), end: uint32(tablePos + 4), kind: jumpTableFragmentDeltas,
+			start: tablePos, end: tablePos + 4, kind: jumpTableFragmentDeltas,
 		}},
 	}
 	f := fn{a: a, sc: sc, subRspAt: subSite, addRspAt: addSite, frameElided: true, hasJumpTableData: true}
@@ -488,7 +482,7 @@ func TestFinalizerRelaxesBranchAroundJumpTableData(t *testing.T) {
 	a.PatchRel32(branch, a.Len())
 	f := fn{
 		a:                  a,
-		sc:                 &scratch{jumpTableFragments: []jumpTableFragment{{start: uint32(tableStart), end: uint32(tableStart + 4), kind: jumpTableFragmentIDs}}},
+		sc:                 &scratch{jumpTableFragments: []jumpTableFragment{{start: tableStart, end: tableStart + 4, kind: jumpTableFragmentIDs}}},
 		nLocalSlots:        16,
 		hasJumpTableData:   true,
 		compactFrameHeader: true,
@@ -526,10 +520,11 @@ func TestSizeCompactsBranchesWithoutShrinkingLargeFrameAMD64(t *testing.T) {
 
 	body := []byte{0x01, 0x14, 0x7e, 0x20, 0x00, 0x04, 0x40, 0x01, 0x0b, 0x41, 0x01, 0x0b}
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	objective := OptimizeSize
 	compile := func(disabled bool) *CodegenStats {
 		nativeCompactionDisabled = disabled
 		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats})
+		cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats})
 		if err != nil {
 			t.Fatal(err)
 		}

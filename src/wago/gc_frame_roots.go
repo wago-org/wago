@@ -5,182 +5,9 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/nativeabi"
 )
 
-func gcFrameFixedOffsets(rootMap *nativeabi.FunctionRootMap) []uint32 {
-	gcRoots := 0
-	for _, slot := range rootMap.Slots {
-		if slot.Kind == nativeabi.RootGCRef {
-			gcRoots++
-		}
-	}
-	if gcRoots == 0 {
-		return nil
-	}
-	offsets := make([]uint32, 0, gcRoots)
-	for _, slot := range rootMap.Slots {
-		if slot.Kind == nativeabi.RootGCRef {
-			offsets = append(offsets, slot.Offset)
-		}
-	}
-	return offsets
-}
-
-func gcFramePrepareModuleRootPlan(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier) (*shared.GCModuleFrameRootPlan, error) {
-	module := shared.NewGCModuleFrameRootPlan(len(m.Code))
-	collectingFunctions := 0
-	for function := range m.Code {
-		if gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, classifier) {
-			if !module.MarkFunction(function) {
-				return nil, fmt.Errorf("function %d root plan ownership is invalid", function)
-			}
-			collectingFunctions++
-		}
-	}
-	if !module.ReserveFunctions(collectingFunctions) {
-		return nil, fmt.Errorf("root plan capacity %d is invalid", collectingFunctions)
-	}
-	return module, nil
-}
-
-// collectorFrameRefType classifies reference types represented by the Wasm GC
-// collector. It deliberately excludes funcref, externref, and exnref. Indexed
-// heap types are resolved in the containing module, including recursive groups;
-// unresolved shapes fail closed by requesting GC handling.
-func collectorFrameRefType(m *wasm.Module, t wasm.ValType) bool {
-	if t.Kind() != wasm.ValRef {
-		return false
-	}
-	heap := t.Ref().Heap()
-	switch heap.Kind() {
-	case wasm.HeapAbs:
-		switch heap.Abs() {
-		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
-			return true
-		default:
-			return false
-		}
-	case wasm.HeapDefType:
-		kind, valid := heap.DefCompKind()
-		if !valid {
-			return true
-		}
-		return kind == wasm.CompStruct || kind == wasm.CompArray
-	case wasm.HeapTypeIndex:
-		if m == nil {
-			return true
-		}
-		index := heap.Type().Index
-		for _, group := range m.Types {
-			if index < uint32(len(group.SubTypes)) {
-				kind := group.SubTypes[index].Comp.Kind
-				return kind == wasm.CompStruct || kind == wasm.CompArray
-			}
-			index -= uint32(len(group.SubTypes))
-		}
-		return true
-	default:
-		return true
-	}
-}
-
-func collectorObjectFrameRefType(m *wasm.Module, t wasm.ValType) bool {
-	if t.Kind() != wasm.ValRef {
-		return false
-	}
-	heap := t.Ref().Heap()
-	switch heap.Kind() {
-	case wasm.HeapAbs:
-		switch heap.Abs() {
-		case wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray:
-			return true
-		default:
-			return false
-		}
-	case wasm.HeapDefType:
-		kind, valid := heap.DefCompKind()
-		return !valid || kind == wasm.CompStruct || kind == wasm.CompArray
-	case wasm.HeapTypeIndex:
-		if m == nil {
-			return true
-		}
-		index := heap.Type().Index
-		for _, group := range m.Types {
-			if index < uint32(len(group.SubTypes)) {
-				kind := group.SubTypes[index].Comp.Kind
-				return kind == wasm.CompStruct || kind == wasm.CompArray
-			}
-			index -= uint32(len(group.SubTypes))
-		}
-		return true
-	default:
-		return true
-	}
-}
-
-func wasmFuncTypeTransfersCollectorRefs(m *wasm.Module, ft *wasm.CompType) bool {
-	if ft == nil {
-		return false
-	}
-	for _, typ := range ft.Params {
-		if collectorObjectFrameRefType(m, typ) {
-			return true
-		}
-	}
-	for _, typ := range ft.Results {
-		if collectorObjectFrameRefType(m, typ) {
-			return true
-		}
-	}
-	return false
-}
-
-func wasmFuncTypeReferenceFree(ft *wasm.CompType) bool {
-	if ft == nil {
-		return false
-	}
-	for _, typ := range ft.Params {
-		if typ.Kind() == wasm.ValRef {
-			return false
-		}
-	}
-	for _, typ := range ft.Results {
-		if typ.Kind() == wasm.ValRef {
-			return false
-		}
-	}
-	return true
-}
-
-func moduleHasCollectorReferenceCallBoundary(m *wasm.Module) bool {
-	if m == nil {
-		return false
-	}
-	for i := range m.Imports {
-		if m.Imports[i].Type.Kind != wasm.ExternFunc {
-			continue
-		}
-		ft, ok := m.ImportFuncType(i)
-		if !ok || wasmFuncTypeTransfersCollectorRefs(m, ft) {
-			return true
-		}
-	}
-	return false
-}
-
-func moduleHasGCAllocationSites(m *wasm.Module) bool {
-	if m == nil {
-		return false
-	}
-	classifier := wasm.NewModuleInstructionClassifier(m, true)
-	for i := range m.Code {
-		if gcFrameBodyMayAllocateWithClassifier(m.Code[i].BodyBytes, &classifier) {
-			return true
-		}
-	}
-	return false
-}
+const gcNativeFrameRootLimit = shared.GCFrameRootLimit
 
 // GCNativeRootAdmission describes whether a compiled generic-GC module can
 // collect while native frames are active. Reason is populated for fail-closed
@@ -199,7 +26,7 @@ type GCNativeRootAdmission struct {
 // GCNativeRootAdmission reports exact native-root coverage and actionable
 // fail-closed diagnostics without exposing live frames or process-local handles.
 func (c *Compiled) GCNativeRootAdmission() GCNativeRootAdmission {
-	status := GCNativeRootAdmission{Required: c != nil && c.needsExactNativeGCRoots()}
+	status := GCNativeRootAdmission{Required: c != nil && c.usesGenericGCExecution()}
 	if c == nil {
 		status.Reason = "nil compiled module"
 		return status
@@ -207,7 +34,7 @@ func (c *Compiled) GCNativeRootAdmission() GCNativeRootAdmission {
 	rootMap := c.genericGCFrameRoots()
 	if rootMap == nil {
 		if !status.Required {
-			status.Reason = "module does not require exact native GC roots"
+			status.Reason = "module does not require generic collector execution"
 		} else {
 			status.Reason = c.gcRootAdmissionFailure()
 		}
@@ -252,62 +79,51 @@ func gcFrameCollectorElementExprSafe(expr wasm.Expr) bool {
 }
 
 func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
-	if module == nil || module.FunctionCount() == 0 {
+	if module == nil || len(module.Functions) == 0 {
 		return false
 	}
-	totalSafepoints, totalCallsites := 0, 0
+	totalSafepoints := 0
 	var previousID uint32
-	for function := 0; function < module.FunctionCount(); function++ {
-		if module.FunctionPending(function) {
-			return false // fail closed if a producer omitted a collecting function
-		}
-		plan := module.Function(function)
+	for _, plan := range module.Functions {
 		if plan == nil {
 			continue // proven non-collecting function; no active-frame map is needed
 		}
-		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || plan.AllocationMaskCount() != plan.SafepointCount() || len(plan.Locals) > shared.GCFrameTrackedLocalLimit {
+		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || len(plan.LiveLocalMasks) != len(plan.Safepoints) || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > gcNativeFrameRootLimit {
 			return false
 		}
-		active := plan.SafepointCount() != 0 || plan.CallsiteCount() != 0
+		active := len(plan.Safepoints) != 0 || len(plan.Callsites) != 0
 		if active && plan.FrameBytes < 8 {
 			return false
 		}
-		if active && !validGCFrameLocals(plan.Locals, plan.FrameBytes) {
+		if active && !validGCFrameOffsets(plan.LocalOffsets, plan.FrameBytes) {
 			return false
 		}
 		var previousReturn uint32
-		if !plan.VisitCallsites(func(i int, callsite shared.GCFrameCallsite) bool {
-			returnOffset, stackAdjust := callsite.ReturnOffset(), callsite.StackAdjust()
-			if returnOffset == 0 || (i != 0 && returnOffset <= previousReturn) || stackAdjust%8 != 0 || stackAdjust > 1<<20 || !validGCFrameOffsets(callsite.Offsets(), plan.FrameBytes) {
+		for i := range plan.Callsites {
+			callsite := &plan.Callsites[i]
+			if callsite.ReturnOffset == 0 || (i != 0 && callsite.ReturnOffset <= previousReturn) || callsite.StackAdjust%8 != 0 || callsite.StackAdjust > 1<<20 || len(callsite.Offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.Offsets, plan.FrameBytes) {
 				return false
 			}
-			previousReturn = returnOffset
-			totalCallsites++
-			return true
-		}) {
-			return false
+			previousReturn = callsite.ReturnOffset
 		}
-		if !plan.VisitSafepoints(func(i int, offsets []uint32) bool {
-			id64 := uint64(plan.SafepointBase) + uint64(i) + 1
-			if id64 == 0 || id64 > uint64(shared.GCSafepointIDMax) || (totalSafepoints != 0 && uint32(id64) <= previousID) || !validGCFrameOffsets(offsets, plan.FrameBytes) {
+		for i := range plan.Safepoints {
+			safepoint := &plan.Safepoints[i]
+			if safepoint.ID == 0 || safepoint.ID > shared.GCSafepointIDMax || (totalSafepoints != 0 && safepoint.ID <= previousID) || len(safepoint.Offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(safepoint.Offsets, plan.FrameBytes) {
 				return false
 			}
-			previousID = uint32(id64)
+			previousID = safepoint.ID
 			totalSafepoints++
-			return true
-		}) {
-			return false
 		}
 	}
-	return totalSafepoints != 0 || totalCallsites != 0
+	return totalSafepoints != 0
 }
 
 func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) error {
 	if rootMap == nil {
 		return nil
 	}
-	if c == nil || !c.needsExactNativeGCRoots() {
-		return fmt.Errorf("GC frame-root metadata requires exact native GC roots")
+	if c == nil || !c.usesGenericGCExecution() {
+		return fmt.Errorf("GC frame-root metadata requires generic GC execution")
 	}
 	if !validCompiledGCFunctionTables(c) || len(c.Funcs) == 0 {
 		return fmt.Errorf("GC frame-root metadata requires a validated local call graph with private tables")
@@ -317,9 +133,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	}
 	for i := range c.GlobalImports {
 		global := c.GlobalImports[i]
-		switch global.Type {
-		case ValI32, ValI64, ValF32, ValF64, ValV128, ValFuncRef, ValExternRef, ValExnRef, ValAnyRef, ValI31Ref:
-		default:
+		if !isGCRefValType(global.Type) {
 			return fmt.Errorf("GC frame-root metadata rejects global import %d", i)
 		}
 	}
@@ -331,11 +145,8 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 			return fmt.Errorf("GC frame-root metadata rejects import %d signature", i)
 		}
 	}
-	if len(rootMap.safepoints) == 0 && len(rootMap.callsites) == 0 {
-		return fmt.Errorf("GC frame-root metadata has no safepoints or callsites")
-	}
-	if len(rootMap.safepoints) == 0 && c.usesGenericGCExecution() && !c.hasCollectorReferenceCallBoundary() {
-		return fmt.Errorf("generic GC frame-root metadata has no allocation safepoints")
+	if len(rootMap.safepoints) == 0 {
+		return fmt.Errorf("GC frame-root metadata has no safepoints")
 	}
 	var previousAdapter uint32
 	for i, off := range rootMap.adapterReturnOffsets {
@@ -347,7 +158,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	var previousReturn uint32
 	for i := range rootMap.callsites {
 		callsite := &rootMap.callsites[i]
-		if callsite.frameBytes < 8 || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.code)) || (i != 0 && callsite.returnOffset <= previousReturn) || callsite.stackAdjust%8 != 0 || callsite.stackAdjust > 1<<20 || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
+		if callsite.frameBytes < 8 || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.code)) || (i != 0 && callsite.returnOffset <= previousReturn) || callsite.stackAdjust%8 != 0 || callsite.stackAdjust > 1<<20 || len(callsite.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
 			return fmt.Errorf("GC frame-root callsite %d is malformed", callsite.returnOffset)
 		}
 		previousReturn = callsite.returnOffset
@@ -355,7 +166,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	var previousID uint32
 	for i := range rootMap.safepoints {
 		safepoint := &rootMap.safepoints[i]
-		if safepoint.frameBytes < 8 || safepoint.frameBytes > 1<<31-1 || safepoint.id == 0 || safepoint.id > shared.GCSafepointIDMax || (i != 0 && safepoint.id <= previousID) || !validGCFrameOffsets(safepoint.offsets, safepoint.frameBytes) {
+		if safepoint.frameBytes < 8 || safepoint.frameBytes > 1<<31-1 || safepoint.id == 0 || safepoint.id > shared.GCSafepointIDMax || (i != 0 && safepoint.id <= previousID) || len(safepoint.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(safepoint.offsets, safepoint.frameBytes) {
 			return fmt.Errorf("GC frame-root safepoint %d is malformed", safepoint.id)
 		}
 		previousID = safepoint.id
@@ -446,26 +257,32 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 }
 
 func gcFramePublicCallABI(sig FuncSig) bool {
-	slots := func(types []ValType) (int, bool) {
-		n := 0
-		for _, typ := range types {
-			switch typ {
-			case ValV128:
-				n += 2
-			case ValI32, ValI64, ValF32, ValF64, ValFuncRef, ValExternRef, ValAnyRef, ValExnRef, ValI31Ref:
-				n++
-			default:
-				return 0, false
-			}
-		}
-		return n, true
-	}
-	params, ok := slots(sig.Params)
-	if !ok || params > 64 {
+	if len(sig.Results) > 2 {
 		return false
 	}
-	results, ok := slots(sig.Results)
-	return ok && results <= 64
+	gp, fp := 0, 0
+	for _, t := range sig.Params {
+		switch t {
+		case ValI32, ValI64, ValAnyRef, ValI31Ref:
+			gp++
+		case ValF32, ValF64:
+			fp++
+		default:
+			return false
+		}
+	}
+	if gp > 7 || fp > 8 {
+		return false
+	}
+	integerResult := func(t ValType) bool {
+		return t == ValI32 || t == ValI64 || t == ValAnyRef || t == ValI31Ref
+	}
+	for _, t := range sig.Results {
+		if !integerResult(t) && t != ValF32 && t != ValF64 {
+			return false
+		}
+	}
+	return len(sig.Results) != 2 || (integerResult(sig.Results[0]) && integerResult(sig.Results[1]))
 }
 
 func validGCFrameOffsets(offsets []uint32, frameBytes uint32) bool {
@@ -478,22 +295,6 @@ func validGCFrameOffsets(offsets []uint32, frameBytes uint32) bool {
 			return false
 		}
 		previous = off
-	}
-	return true
-}
-
-func validGCFrameLocals(locals []shared.GCFrameLocal, frameBytes uint32) bool {
-	if len(locals) != 0 && frameBytes < 8 {
-		return false
-	}
-	var previousIndex, previousOffset uint32
-	for i, local := range locals {
-		off := local.Offset
-		if off%8 != 0 || off > frameBytes-8 ||
-			(i != 0 && (local.Index <= previousIndex || off <= previousOffset)) {
-			return false
-		}
-		previousIndex, previousOffset = local.Index, off
 	}
 	return true
 }

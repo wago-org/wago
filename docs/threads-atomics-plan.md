@@ -63,8 +63,7 @@ real instances and real shared memory through the same interface as callers.
 The initial threaded product admits only:
 
 - explicit bounds checks;
-- one memory32; shared memory must be an exact-maximum import, while unshared
-  memory may be local or imported;
+- shared memory32 with an exact declared maximum;
 - distinct concurrently executing instances, with same-instance calls
   serialized around reusable invocation state;
 - numeric globals, parameters, results, and functions, excluding mutable
@@ -362,11 +361,10 @@ memory, err := wago.NewSharedMemory(1, 1)
 instance, err := wago.Instantiate(compiled, wago.Imports{"env.memory": memory})
 ```
 
-The admitted module boundary is one memory32. Shared memory must be an imported
-memory with an exact maximum; unshared memory may be local or imported. Modules
-may contain numeric functions and globals but no mutable global imports, no
-function imports, no tables, tags, or segments, and memory operations are
-limited to the classic atomic family.
+The admitted module boundary is one imported shared memory32 with an exact
+maximum, numeric functions and globals but no mutable global imports, no
+function imports, no tables, tags, or segments, and memory operations limited
+to the classic atomic family.
 Memory growth, memory64, multi-memory, signal bounds, WasmGC, exceptions,
 snapshots, and shared-everything GC remain rejected before native code
 generation. Same-instance concurrent entry is accepted but serialized. The
@@ -391,14 +389,11 @@ memory sidecar is allocated lazily, keyed by exact memory identity and offset,
 stores only active waiters, and disappears after the last waiter leaves. It
 does not create a goroutine per waiter or memory. Timeout, cancellation,
 notification, instance close, and memory close converge on the same bounded
-removal path. On unshared memory, notify checks alignment and bounds and returns
-zero; wait checks alignment and then traps with `TrapExpectedSharedMemory`
-before reading memory.
+removal path.
 
-The compiled artifact persists the exact Threads requirement and
+Compiled artifact version 1 persists the exact Threads requirement and
 wait-helper admission. Direct-only atomic artifacts do not acquire helper
-admission, and artifacts with an unknown format version are rejected rather
-than reinterpreted.
+admission, and every non-version-1 blob is rejected rather than reinterpreted.
 
 ### Verification record
 

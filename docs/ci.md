@@ -36,13 +36,9 @@ per-case timeout and the official SIMD proposal corpus. Their guard-page cells
 additionally run `make test-guard`. A separate mandatory Linux amd64/arm64
 **Core v2 conformance** matrix initializes the pinned `tests/spec-v2` submodule
 and runs `make spec2`; it is included in the final `CI` aggregate, so it cannot
-be replaced by a skipped ordinary wrapper or an informational report. A separate
-mandatory **Core v3 conformance** matrix runs `make spec3` and
-`make spec3-signals` on Linux amd64, Linux arm64, and Darwin arm64. The final
-`CI` aggregate depends on the complete Core v3 matrix as well, so any failed or
-cancelled explicit- or signal-bounds cell makes the branch-protection check fail.
-This is a tooling distinction, not a second test suite: `make spec2` selects
-package tests that ordinary `go test ./...` also discovers. All six targets run the shared
+be replaced by a skipped ordinary wrapper or an informational report. This is a
+tooling distinction, not a second test suite: `make spec2` selects package tests
+that ordinary `go test ./...` also discovers. All six targets run the shared
 single-P, parallel-fault, unrelated-fault chaining, public API, and
 corpus-differential guard-page gates. Windows runs the equivalent Go commands
 directly from PowerShell rather than through Make.
@@ -79,13 +75,7 @@ reject incomplete Core 3 families before decoding or native lowering.
 The main-push coverage job runs the WebAssembly 1.0, 2.0, and 3.0 suites and
 uploads their report fragments with the merged coverage profile. The final `CI`
 aggregation job is the stable branch-protection check and fails if any required
-matrix cell or supporting job fails or is cancelled. Every top-level job in
-`.github/workflows/ci.yml` other than the aggregate itself must appear in its
-`needs` set; `tests/cipolicy` enforces that policy so a newly added qualification
-job cannot silently bypass branch protection. Path-gated jobs remain aggregate
-dependencies and may report `skipped` when their documented condition does not
-apply—for example, coverage on pull requests—but no independent top-level CI job
-is merely informational.
+matrix cell or supporting job fails.
 
 The change detector reports documentation and code changes independently. Every
 change runs `make docs-check`, because a code-only refactor can remove a source
@@ -96,7 +86,7 @@ repository files: it rejects missing relative targets, exact-case path
 mismatches, and missing Markdown heading fragments without contacting external
 sites. Run the same check locally with `make docs-check`.
 
-Nightly, canary, and stable release workflows require Linux, Darwin, and Windows
+Nightly, canary, and tagged release workflows require Linux, Darwin, and Windows
 CLI builds for both amd64 and arm64, then publish every successful binary with
 its SHA-256 checksum. A push to `main` becomes a canary only after that commit's
 `CI` workflow succeeds; failed or cancelled CI runs do not publish a canary.
@@ -104,36 +94,8 @@ Manual canary runs build the current `main` tip. Nightly and canary use unique
 never-retargeted prerelease tags; canary tags contain the full 40-hex commit ID,
 and both channels stamp binaries with their canonical full commit identity. The
 CLI resolves the newest `nightly-*` or `canary-*` tag when a channel is
-installed.
-
-Stable releases are not tag-triggered. Dispatch `Qualify and publish stable
-release` with an exact `vMAJOR.MINOR.PATCH` version and the full 40-character SHA
-of a commit reachable from `main`. The workflow locates a successful `CI` push
-run for that exact SHA and downloads its immutable qualification record. The
-record names every aggregate dependency and stable publication rejects missing,
-failed, cancelled, or skipped required jobs. This means a documentation-only CI
-run with skipped executable qualification cannot authorize a stable binary
-release. The CI policy test also requires every top-level job to remain in the
-aggregate dependency set.
-
-Only after source qualification does the stable workflow build the release
-files. Each native matrix cell verifies checksums and the embedded version,
-then executes a scalar Wasm module and reloads one generated `.wago` artifact
-with every Normal or Tiny runtime file that cell will publish. The manifest job
-records the source SHA, CI run ID and attempt, exact CI job results, and the
-name, byte size, and SHA-256 hash of every release file. Publication downloads
-those already tested files; it does not rebuild or replace them. It verifies the
-manifest again and creates or accepts
-only a lightweight version tag that points directly to the qualified SHA. A
-retry may overwrite this workflow run's internal per-target artifacts or resume
-a matching draft release, but it re-verifies the complete manifest and exact
-draft asset-name set before publication. An already published GitHub Release is
-never replaced. A manually created or moved `v*` tag does not start publication
-and cannot reuse
-a qualification record for another commit.
-
-Every target publishes a standard-Go CLI plus Normal builds of the Standard and
-Minimal runtimes.
+installed. Every target publishes a
+standard-Go CLI plus Normal builds of the Standard and Minimal runtimes.
 Linux also requires Tiny builds of both profiles; other platforms publish
 each feature-complete Tiny profile supported by their TinyGo port. Normal favors
 runtime speed; Tiny favors executable size. Windows uses a native Windows 11
@@ -177,7 +139,7 @@ do not contaminate `make lint`.
 ```sh
 make docs-check
 make lint
-make test  # includes release-manifest, tamper-rejection, and artifact-smoke policy tests
+make test
 make test-concurrency  # replay with WAGO_CONCURRENCY_SEED=<seed>[,<seed>...]
 make test-guard   # only on a supported guard-page target
 WAGO_CORPUS_TIMEOUT=20s make test-corpus

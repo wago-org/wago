@@ -248,53 +248,6 @@ func sharedAtomicWaitNotifyModule() []byte {
 	)
 }
 
-func unsharedAtomicWaitNotifyModule() []byte {
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
-			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I64}, []wasm.ValType{wasm.I32}),
-			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}),
-		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2))),
-		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x01})), // unshared memory32, min=1, max=1
-		wasmtest.Section(7, wasmtest.Vec(
-			wasmtest.ExportEntry("notify", 0, 0),
-			wasmtest.ExportEntry("wait32", 0, 1),
-			wasmtest.ExportEntry("wait64", 0, 2),
-			wasmtest.ExportEntry("memory", 2, 0),
-		)),
-		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0xfe, 0x00, 0x02, 0x00, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfe, 0x01, 0x02, 0x00, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfe, 0x02, 0x03, 0x00, 0x0b}),
-		)),
-	)
-}
-
-func importedUnsharedAtomicWaitNotifyModule() []byte {
-	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
-	memoryImport = append(memoryImport, 0x02, 0x01, 0x01, 0x01) // unshared memory32, min=1, max=1
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
-			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I64}, []wasm.ValType{wasm.I32}),
-			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}),
-		)),
-		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2))),
-		wasmtest.Section(7, wasmtest.Vec(
-			wasmtest.ExportEntry("notify", 0, 0),
-			wasmtest.ExportEntry("wait32", 0, 1),
-			wasmtest.ExportEntry("wait64", 0, 2),
-		)),
-		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0xfe, 0x00, 0x02, 0x00, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfe, 0x01, 0x02, 0x00, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfe, 0x02, 0x03, 0x00, 0x0b}),
-		)),
-	)
-}
-
 func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	compiled, err := Compile(config, sharedAtomicAddModule())
@@ -325,7 +278,7 @@ func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 	if old := AsI32(result[0]); old != 0 {
 		t.Fatalf("atomic add old value = %d, want 0", old)
 	}
-	if got := binary.LittleEndian.Uint32(memory.UnsafeBytes()[:4]); got != 7 {
+	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 7 {
 		t.Fatalf("shared memory value = %d, want 7", got)
 	}
 }
@@ -409,8 +362,8 @@ func TestThreadsHostGlobalAccessSerializesWithInvoke(t *testing.T) {
 			err   error
 		}{value, err}
 	}()
-	signal := (*uint32)(unsafe.Pointer(&memory.UnsafeBytes()[0]))
-	release := (*uint32)(unsafe.Pointer(&memory.UnsafeBytes()[4]))
+	signal := (*uint32)(unsafe.Pointer(&memory.Bytes()[0]))
+	release := (*uint32)(unsafe.Pointer(&memory.Bytes()[4]))
 	defer atomic.StoreUint32(release, 1)
 	deadline := time.Now().Add(5 * time.Second)
 	for atomic.LoadUint32(signal) == 0 && time.Now().Before(deadline) {
@@ -528,7 +481,7 @@ func TestThreadsAtomicLoadStoreAndFenceExecute(t *testing.T) {
 	if _, err := instance.Invoke("store", I32(-559038737)); err != nil { // 0xdeadbeef
 		t.Fatal(err)
 	}
-	if got := binary.LittleEndian.Uint32(memory.UnsafeBytes()[:4]); got != 0xdeadbeef {
+	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 0xdeadbeef {
 		t.Fatalf("host memory = %#x", got)
 	}
 	result, err := instance.Invoke("load")
@@ -569,7 +522,7 @@ func TestThreadsAtomicLoadStoreWidthAndExtensionMatrix(t *testing.T) {
 			defer memory.Close()
 			const initial = uint64(0xaabbccddeeff0011)
 			const value = uint64(0x1122334455667788)
-			binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], initial)
+			binary.LittleEndian.PutUint64(memory.Bytes()[:8], initial)
 			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
 			if err != nil {
 				t.Fatal(err)
@@ -579,7 +532,7 @@ func TestThreadsAtomicLoadStoreWidthAndExtensionMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantMemory := initial&^tc.mask | value&tc.mask
-			if got := binary.LittleEndian.Uint64(memory.UnsafeBytes()[:8]); got != wantMemory {
+			if got := binary.LittleEndian.Uint64(memory.Bytes()[:8]); got != wantMemory {
 				t.Fatalf("memory = %#x, want %#x", got, wantMemory)
 			}
 			result, err := instance.Invoke("load")
@@ -618,7 +571,7 @@ func TestThreadsAtomicRMWOperationAndWidthMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer memory.Close()
-			binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], tc.old)
+			binary.LittleEndian.PutUint64(memory.Bytes()[:8], tc.old)
 			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
 			if err != nil {
 				t.Fatal(err)
@@ -631,7 +584,7 @@ func TestThreadsAtomicRMWOperationAndWidthMatrix(t *testing.T) {
 			if got := result[0]; got != tc.old&tc.memMask {
 				t.Fatalf("old = %#x, want %#x", got, tc.old&tc.memMask)
 			}
-			if got := binary.LittleEndian.Uint64(memory.UnsafeBytes()[:8]) & tc.memMask; got != tc.want {
+			if got := binary.LittleEndian.Uint64(memory.Bytes()[:8]) & tc.memMask; got != tc.want {
 				t.Fatalf("memory = %#x, want %#x", got, tc.want)
 			}
 		})
@@ -663,7 +616,7 @@ func TestThreadsAtomicCmpxchgSuccessFailureAndWidths(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer memory.Close()
-			binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], tc.old)
+			binary.LittleEndian.PutUint64(memory.Bytes()[:8], tc.old)
 			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
 			if err != nil {
 				t.Fatal(err)
@@ -673,14 +626,14 @@ func TestThreadsAtomicCmpxchgSuccessFailureAndWidths(t *testing.T) {
 			if err != nil || result[0] != tc.old&tc.mask {
 				t.Fatalf("failed cmpxchg old = %v, %v", result, err)
 			}
-			if got := binary.LittleEndian.Uint64(memory.UnsafeBytes()[:8]) & tc.mask; got != tc.old&tc.mask {
+			if got := binary.LittleEndian.Uint64(memory.Bytes()[:8]) & tc.mask; got != tc.old&tc.mask {
 				t.Fatalf("failed cmpxchg changed memory to %#x", got)
 			}
 			result, err = instance.Invoke("cmpxchg", tc.old, 0x12345678)
 			if err != nil || result[0] != tc.old&tc.mask {
 				t.Fatalf("successful cmpxchg old = %v, %v", result, err)
 			}
-			if got := binary.LittleEndian.Uint64(memory.UnsafeBytes()[:8]) & tc.mask; got != 0x12345678&tc.mask {
+			if got := binary.LittleEndian.Uint64(memory.Bytes()[:8]) & tc.mask; got != 0x12345678&tc.mask {
 				t.Fatalf("successful cmpxchg memory = %#x", got)
 			}
 		})
@@ -709,7 +662,7 @@ func TestThreadsAtomicRMWRejectsUnalignedAddressBeforeWrite(t *testing.T) {
 	if !errors.As(err, &trap) || trap.Code != TrapAtomicUnaligned {
 		t.Fatalf("unaligned add error = %v, want atomic alignment trap", err)
 	}
-	if got := binary.LittleEndian.Uint32(memory.UnsafeBytes()[:4]); got != 0 {
+	if got := binary.LittleEndian.Uint32(memory.Bytes()[:4]); got != 0 {
 		t.Fatalf("memory changed on alignment trap: %d", got)
 	}
 }
@@ -762,10 +715,10 @@ func TestThreadsAtomicWriteMatrixTrapsBeforeMutation(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer memory.Close()
-			for i := range memory.UnsafeBytes() {
-				memory.UnsafeBytes()[i] = byte(i*131 + 17)
+			for i := range memory.Bytes() {
+				memory.Bytes()[i] = byte(i*131 + 17)
 			}
-			want := append([]byte(nil), memory.UnsafeBytes()...)
+			want := append([]byte(nil), memory.Bytes()...)
 			instance, err := Instantiate(compiled, Imports{"env.memory": memory})
 			if err != nil {
 				t.Fatal(err)
@@ -782,7 +735,7 @@ func TestThreadsAtomicWriteMatrixTrapsBeforeMutation(t *testing.T) {
 				if !errors.As(err, &trap) || (trap.Code != TrapLinMemOutOfBounds && trap.Code != TrapLinkedMemOutOfBounds) {
 					t.Fatalf("address %#x error = %v, want memory bounds trap", address, err)
 				}
-				if !bytes.Equal(memory.UnsafeBytes(), want) {
+				if !bytes.Equal(memory.Bytes(), want) {
 					t.Fatalf("address %#x mutated memory before trapping", address)
 				}
 			}
@@ -791,14 +744,6 @@ func TestThreadsAtomicWriteMatrixTrapsBeforeMutation(t *testing.T) {
 }
 
 func TestThreadsDistinctInstancesOverlapInNativeExecution(t *testing.T) {
-	// Generated native code does not participate in Go's asynchronous
-	// scheduler. Keep one P for each guest while both wait at the rendezvous.
-	previousProcs := goruntime.GOMAXPROCS(0)
-	if previousProcs < 2 {
-		goruntime.GOMAXPROCS(2)
-		t.Cleanup(func() { goruntime.GOMAXPROCS(previousProcs) })
-	}
-
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	compiled, err := Compile(config, sharedAtomicOverlapModule())
 	if err != nil {
@@ -817,10 +762,6 @@ func TestThreadsDistinctInstancesOverlapInNativeExecution(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Keep first-use plugin-state allocation and any Go GC it triggers out of
-		// the native-overlap window. A stop-the-world GC cannot suspend a guest
-		// that is deliberately spinning in generated code.
-		instances[i].ensurePluginState()
 		defer instances[i].Close()
 	}
 
@@ -845,10 +786,10 @@ func TestThreadsDistinctInstancesOverlapInNativeExecution(t *testing.T) {
 			t.Fatalf("concurrent native call: %v", err)
 		}
 	}
-	if arrivals := binary.LittleEndian.Uint32(memory.UnsafeBytes()[0:4]); arrivals != 2 {
+	if arrivals := binary.LittleEndian.Uint32(memory.Bytes()[0:4]); arrivals != 2 {
 		t.Fatalf("arrivals = %d, want 2", arrivals)
 	}
-	if completions := binary.LittleEndian.Uint32(memory.UnsafeBytes()[4:8]); completions != 2 {
+	if completions := binary.LittleEndian.Uint32(memory.Bytes()[4:8]); completions != 2 {
 		t.Fatalf("completions = %d, want 2", completions)
 	}
 }
@@ -908,86 +849,18 @@ func TestThreadsAtomicWaitNotifyExecutesAcrossInstances(t *testing.T) {
 		t.Fatal("notified Wasm wait did not resume")
 	}
 
-	binary.LittleEndian.PutUint32(memory.UnsafeBytes()[:4], 7)
+	binary.LittleEndian.PutUint32(memory.Bytes()[:4], 7)
 	if out, err = waiter.Invoke("wait32", I32(0), I32(8), I64(-1)); err != nil || AsI32(out[0]) != int32(memoryWaitNotEqual) {
 		t.Fatalf("mismatched wait32 = %v, %v", out, err)
 	}
 	if out, err = waiter.Invoke("wait32", I32(0), I32(7), I64(0)); err != nil || AsI32(out[0]) != int32(memoryWaitTimedOut) {
 		t.Fatalf("zero-timeout wait32 = %v, %v", out, err)
 	}
-	binary.LittleEndian.PutUint64(memory.UnsafeBytes()[8:16], 0x1122334455667788)
+	binary.LittleEndian.PutUint64(memory.Bytes()[8:16], 0x1122334455667788)
 	if out, err = waiter.Invoke("wait64", I32(8), I64(0x1122334455667788), I64(0)); err != nil || AsI32(out[0]) != int32(memoryWaitTimedOut) {
 		t.Fatalf("zero-timeout wait64 = %v, %v", out, err)
 	}
 	assertNoMemoryWaiters(t, memory)
-}
-
-func assertUnsharedAtomicWaitNotifySemantics(t *testing.T, instance *Instance) {
-	t.Helper()
-	assertTrap := func(t *testing.T, export string, want TrapCode, args ...uint64) {
-		t.Helper()
-		_, err := instance.Invoke(export, args...)
-		var trap *TrapError
-		if !errors.As(err, &trap) || trap.Code != want {
-			t.Fatalf("%s%v error = %v, want %s", export, args, err, want)
-		}
-	}
-	out, err := instance.Invoke("notify", I32(0), I32(0))
-	if err != nil || len(out) != 1 || AsI32(out[0]) != 0 {
-		t.Fatalf("notify = %v, %v; want 0", out, err)
-	}
-	assertTrap(t, "notify", TrapLinMemOutOfBounds, I32(65536), I32(0))
-	assertTrap(t, "notify", TrapAtomicUnaligned, I32(1), I32(0))
-
-	// Alignment is checked before the unshared-memory condition. Once aligned,
-	// wait traps for an unshared memory before loading or checking its bounds.
-	assertTrap(t, "wait32", TrapAtomicUnaligned, I32(1), I32(1), I64(0))
-	assertTrap(t, "wait32", TrapExpectedSharedMemory, I32(65536), I32(1), I64(0))
-	assertTrap(t, "wait32", TrapExpectedSharedMemory, I32(0), I32(1), I64(0))
-	assertTrap(t, "wait64", TrapAtomicUnaligned, I32(4), I64(1), I64(0))
-	assertTrap(t, "wait64", TrapExpectedSharedMemory, I32(65536), I64(1), I64(0))
-	assertTrap(t, "wait64", TrapExpectedSharedMemory, I32(0), I64(1), I64(0))
-}
-
-func TestThreadsAtomicWaitNotifyOnUnsharedMemory(t *testing.T) {
-	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
-	compiled, err := Compile(config, unsharedAtomicWaitNotifyModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	instance, err := Instantiate(compiled, InstantiateOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer instance.Close()
-
-	t.Run("local", func(t *testing.T) { assertUnsharedAtomicWaitNotifySemantics(t, instance) })
-	if _, err := instance.ExportedMemory("memory"); err != nil {
-		t.Fatalf("export memory: %v", err)
-	}
-	t.Run("exported", func(t *testing.T) { assertUnsharedAtomicWaitNotifySemantics(t, instance) })
-}
-
-func TestThreadsAtomicWaitNotifyOnImportedUnsharedMemory(t *testing.T) {
-	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
-	compiled, err := Compile(config, importedUnsharedAtomicWaitNotifyModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	memory, err := NewMemory(1, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer memory.Close()
-	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer instance.Close()
-
-	assertUnsharedAtomicWaitNotifySemantics(t, instance)
 }
 
 func TestThreadsAtomicWaitHelperAdmissionSurvivesArtifactRoundTrip(t *testing.T) {
@@ -997,7 +870,7 @@ func TestThreadsAtomicWaitHelperAdmissionSurvivesArtifactRoundTrip(t *testing.T)
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
+	loaded := roundTripCompiled(t, compiled)
 	if loaded != compiled {
 		defer loaded.Close()
 	}

@@ -38,5 +38,4 @@ const (
 	TrapCastFailure          = wruntime.TrapCastFailure
 	TrapTableOutOfBounds     = wruntime.TrapTableOutOfBounds
 	TrapAtomicUnaligned      = wruntime.TrapAtomicUnaligned
-	TrapExpectedSharedMemory = wruntime.TrapExpectedSharedMemory
 )

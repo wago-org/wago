@@ -165,8 +165,8 @@ func TestGCSharedGlobalCodecAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumerBase.Close()
-	providerCode := publicArtifactRoundTrip(t, providerBase)
-	consumerCode := publicArtifactRoundTrip(t, consumerBase)
+	providerCode := roundTripCompiled(t, providerBase)
+	consumerCode := roundTripCompiled(t, consumerBase)
 	defer providerCode.Close()
 	defer consumerCode.Close()
 	if providerCode.genericGCFrameRoots() == nil || consumerCode.genericGCFrameRoots() == nil {

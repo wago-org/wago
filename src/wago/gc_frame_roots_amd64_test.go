@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	goruntime "runtime"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -60,45 +61,6 @@ func gcHiddenOperandRootModule() []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
-}
-
-func gcDeepHiddenOperandRootModule(depth int) []byte {
-	body := append([]byte{0x41}, wasmtest.SLEB32(73)...)
-	body = append(body, 0xfb, 0x00, 0x00) // struct.new 0; keep the reference hidden on the operand stack.
-	for range depth {
-		body = append(body, 0x02, 0x40) // block
-	}
-	body = append(body, 0xfb, 0x01, 0x00, 0x1a) // collecting struct.new_default 0; drop
-	for range depth {
-		body = append(body, 0x0b)
-	}
-	body = append(body, 0xfb, 0x02, 0x00, 0x00, 0x0b) // hidden struct.get 0 0; end
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			[]byte{0x5f, 0x01, 0x7f, 0x01},
-			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
-		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
-	)
-}
-
-func BenchmarkGCDeepControlFrameRootCompilation(b *testing.B) {
-	data := gcDeepHiddenOperandRootModule(128)
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
-	b.ReportAllocs()
-	b.SetBytes(int64(len(data)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		compiled, err := Compile(cfg, data)
-		if err != nil {
-			b.Fatal(err)
-		}
-		if err := compiled.Close(); err != nil {
-			b.Fatal(err)
-		}
-	}
 }
 
 func gcTryTableHiddenOperandRootModule() []byte {
@@ -180,7 +142,7 @@ func TestGCEHNativeFrameRoots(t *testing.T) {
 	if compiled.genericGCFrameRoots() == nil {
 		t.Fatal("EH module lost native collection admission")
 	}
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -358,7 +320,7 @@ func TestGCTableRootsInsideInvocation(t *testing.T) {
 	if compiled.genericGCFrameRoots() == nil {
 		t.Fatal("collector table module lost native collection admission")
 	}
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -413,7 +375,7 @@ func TestGCIndirectNativeFrameRoots(t *testing.T) {
 	if plan == nil || len(plan.callsites) != 1 || len(plan.callsites[0].offsets) != 1 {
 		t.Fatalf("indirect native root map = %+v", plan)
 	}
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -570,7 +532,7 @@ func TestGCHostReentryNativeFrameRoots(t *testing.T) {
 		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
 		{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
 	}
-	reloaded := publicArtifactRoundTrip(t, compiled)
+	reloaded := roundTripCompiled(t, compiled)
 	defer reloaded.Close()
 	for _, candidate := range []*Compiled{compiled, reloaded} {
 		for _, cfg := range profiles {
@@ -640,7 +602,7 @@ func TestGCMultiFunctionNativeFrameRoots(t *testing.T) {
 		t.Fatalf("multi-function native root map = %+v", plan)
 	}
 	cfg := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -759,7 +721,7 @@ func TestGCRecursiveNativeFrameRoots(t *testing.T) {
 			}
 		})
 	}
-	loaded := publicArtifactRoundTrip(t, compiled)
+	loaded := roundTripCompiled(t, compiled)
 	defer loaded.Close()
 	if roots := loaded.genericGCFrameRoots(); roots == nil || len(roots.callsites) != 1 {
 		t.Fatalf("reloaded recursive root map = %+v", roots)
@@ -790,71 +752,6 @@ func gcFrameRootLimitModule(count uint32) []byte {
 	body = append(body, 0x0b)
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
-	)
-}
-
-func gcManyLiveObjectsFrameRootModule(count uint32) []byte {
-	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
-	locals := append([]byte{0x01}, wasmtest.ULEB(count)...)
-	locals = append(locals, 0x63, 0x00)
-	body := append([]byte{}, locals...)
-	for i := uint32(0); i < count; i++ {
-		body = append(body, 0x41)
-		body = append(body, wasmtest.SLEB32(int32(i))...)
-		body = append(body, 0xfb, 0x00, 0x00, 0x21)
-		body = append(body, wasmtest.ULEB(i)...)
-	}
-	body = append(body, 0xfb, 0x01, 0x00, 0x1a) // collecting site with every local live
-	for i := uint32(0); i < count; i++ {
-		body = append(body, 0x20)
-		body = append(body, wasmtest.ULEB(i)...)
-		body = append(body, 0xfb, 0x02, 0x00, 0x00, 0x1a)
-	}
-	body = append(body, 0x41, 0x07, 0x0b)
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
-	)
-}
-
-func gcSparseLiveFrameRootModule(count uint32) []byte {
-	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
-	locals := append([]byte{0x01}, wasmtest.ULEB(count)...)
-	locals = append(locals, 0x63, 0x00)
-	body := append(locals,
-		0xfb, 0x01, 0x00, 0x1a, // struct.new_default; drop
-		0x20, 0x00, 0x1a, // local.get 0; drop: only this local crosses collection
-		0x0b,
-	)
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, nil))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
-	)
-}
-
-func gcDisjointLiveFrameRootModule(count uint32) []byte {
-	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
-	locals := append([]byte{0x01}, wasmtest.ULEB(count)...)
-	locals = append(locals, 0x63, 0x00)
-	body := locals
-	for i := uint32(0); i < count; i++ {
-		body = append(body, 0xfb, 0x01, 0x00, 0x21) // new default; local.set i
-		body = append(body, wasmtest.ULEB(i)...)
-		body = append(body, 0xfb, 0x01, 0x00, 0x1a) // collect while only i is live
-		body = append(body, 0x20)
-		body = append(body, wasmtest.ULEB(i)...)
-		body = append(body, 0x1a) // local.get i; drop
-	}
-	body = append(body, 0x0b)
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
@@ -1054,7 +951,7 @@ func TestGCSingleNativeFrameRootWidths(t *testing.T) {
 			if plan == nil || len(plan.safepoints) != 1 || len(plan.safepoints[0].offsets) != int(roots) || plan.safepoints[0].offsets[0] != 16 || plan.safepoints[0].offsets[roots-1] != wantLast {
 				t.Fatalf("%d-root plan = %+v", roots, plan)
 			}
-			loaded := publicArtifactRoundTrip(t, compiled)
+			loaded := roundTripCompiled(t, compiled)
 			defer loaded.Close()
 			gcCfg := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
 			for _, candidate := range []*Compiled{compiled, loaded} {
@@ -1078,7 +975,7 @@ func TestGCRepeatedFrameRootMapsShareStorageAfterCodec(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -1096,7 +993,7 @@ func TestGCNativeRootAdmissionIsPerFunction(t *testing.T) {
 	if !hostSupportsSIMD() {
 		t.Skip("host SIMD unavailable")
 	}
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcPerFunctionFrameRootModule(1025))
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcPerFunctionFrameRootModule(shared.GCFrameRootLimit+1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1118,81 +1015,18 @@ func TestGCNativeRootAdmissionIsPerFunction(t *testing.T) {
 	}
 }
 
-func TestGCNativeRootAdmissionAcceptsMoreThan1024LiveRoots(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFrameRootLimitModule(1025))
+func TestGCNativeRootAdmissionDiagnostic(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFrameRootLimitModule(shared.GCFrameRootLimit+1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
 	status := compiled.GCNativeRootAdmission()
-	if !status.Required || !status.Exact || status.MaximumRoots != 1025 {
-		t.Fatalf("wide root admission = %+v", status)
+	if !status.Required || status.Exact || !strings.Contains(status.Reason, "exceeds 1024 collector roots") {
+		t.Fatalf("oversized root admission = %+v", status)
 	}
-	plan := compiled.genericGCFrameRoots()
-	if plan == nil || len(plan.safepoints) == 0 || len(plan.safepoints[0].offsets) != 1025 {
-		t.Fatalf("wide root map = %+v", plan)
-	}
-}
-
-func TestGCNativeFrameKeepsMoreThan1024LiveObjects(t *testing.T) {
-	if !hostSupportsSIMD() {
-		t.Skip("host SIMD unavailable")
-	}
-	const roots = 1025
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcManyLiveObjectsFrameRootModule(roots))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	status := compiled.GCNativeRootAdmission()
-	if !status.Exact || status.MaximumRoots < roots {
-		t.Fatalf("wide live-object root admission = %+v", status)
-	}
-	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 128 << 10, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	if got := invokeOne(t, in, "run"); got != 7 {
-		t.Fatalf("wide live-object collection result = %d, want 7", got)
-	}
-}
-
-func TestGCNativeRootAdmissionCompactsDeadDeclaredLocals(t *testing.T) {
-	const declaredRoots = 1138
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcSparseLiveFrameRootModule(declaredRoots))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	status := compiled.GCNativeRootAdmission()
-	if !status.Exact || status.Safepoints != 1 || status.MaximumRoots != 1 {
-		t.Fatalf("%d-declared-root admission = %+v", declaredRoots, status)
-	}
-	plan := compiled.genericGCFrameRoots()
-	if plan == nil || len(plan.safepoints) != 1 || len(plan.safepoints[0].offsets) != 1 {
-		t.Fatalf("compacted native root plan = %+v", plan)
-	}
-	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 32, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	if _, err := in.Invoke("run"); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestGCNativeRootAdmissionAllowsWideDisjointLiveUnion(t *testing.T) {
-	const declaredRoots = 1025
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcDisjointLiveFrameRootModule(declaredRoots))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	status := compiled.GCNativeRootAdmission()
-	if !status.Exact || status.Safepoints != 2*declaredRoots || status.MaximumRoots != 1 {
-		t.Fatalf("%d-root disjoint-union admission = %+v", declaredRoots, status)
+	if compiled.genericGCFrameRoots() != nil {
+		t.Fatal("oversized root module retained exact root maps")
 	}
 }
 
@@ -1205,7 +1039,7 @@ func TestGCLocalStartUsesExactNativeFrameRoots(t *testing.T) {
 	if plan := compiled.genericGCFrameRoots(); plan == nil || len(plan.safepoints) != 1 {
 		t.Fatalf("local-start root map = %+v", plan)
 	}
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -1233,7 +1067,7 @@ func TestGCWideCallerNativeFrameRootsRewrite(t *testing.T) {
 		t.Fatalf("wide caller root map = %+v", plan)
 	}
 	cfg := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -1259,8 +1093,8 @@ func TestGCSingleNativeFrameRootsCollectInsideInvocation(t *testing.T) {
 	}
 	defer compiled.Close()
 	plan := compiled.genericGCFrameRoots()
-	if plan == nil || len(plan.safepoints) != 2 || len(plan.safepoints[0].offsets) != 1 || plan.safepoints[0].offsets[0] != 24 || len(plan.safepoints[1].offsets) != 1 || plan.safepoints[1].offsets[0] != 24 || plan.safepoints[1].frameBytes == 0 {
-		t.Fatalf("native GC frame-root plan = %+v, want bounded conservative local offset 24 at both sites", plan)
+	if plan == nil || len(plan.safepoints) != 2 || len(plan.safepoints[0].offsets) != 0 || len(plan.safepoints[1].offsets) != 1 || plan.safepoints[1].offsets[0] != 24 || plan.safepoints[1].frameBytes == 0 {
+		t.Fatalf("native GC frame-root plan = %+v, want dead local omitted at site 1 and live local offset 24 at site 2", plan)
 	}
 	want := []uint64{0x0706050403020100, 0x0f0e0d0c0b0a0908}
 	profiles := []struct {
@@ -1337,7 +1171,6 @@ func BenchmarkGCSingleNativeFrameRoots(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	b.ReportMetric(float64(compiled.CodeSize()), "code-B")
 }
 
 func TestGCSingleNativeFrameRootsPublishHiddenOperandRoot(t *testing.T) {
@@ -1375,8 +1208,9 @@ func TestGCFrameRootCodecRejectsMalformedMetadata(t *testing.T) {
 		{name: "zero safepoint", module: gcSingleFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.safepoints[0].id = 0 }},
 		{name: "duplicate safepoint", module: gcSingleFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.safepoints[1].id = root.safepoints[0].id }},
 		{name: "unaligned root", module: gcSingleFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.safepoints[1].offsets[0]++ }},
-		{name: "root vector exceeds frame", module: gcFrameRootLimitModule(64), mutate: func(root *compiledGCFrameRoots) {
-			root.safepoints[0].offsets = make([]uint32, 1025)
+		{name: "oversized root vector", module: gcFrameRootLimitModule(64), mutate: func(root *compiledGCFrameRoots) {
+			root.safepoints[0].frameBytes = shared.AMD64FrameHeaderBytes + (shared.GCFrameRootLimit+1)*8
+			root.safepoints[0].offsets = make([]uint32, shared.GCFrameRootLimit+1)
 			for i := range root.safepoints[0].offsets {
 				root.safepoints[0].offsets[i] = shared.AMD64FrameHeaderBytes + uint32(i*8)
 			}
@@ -1408,7 +1242,7 @@ func TestGCSingleNativeFrameRootsPersistThroughCodec(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
+	loaded := roundTripCompiled(t, compiled)
 	defer loaded.Close()
 	if loaded.genericGCFrameRoots() == nil {
 		t.Fatal("codec reload lost validated native frame-root admission")

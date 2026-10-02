@@ -15,70 +15,6 @@ import (
 
 var vI32 = wasm.I32 // shorthand for the hand-built test bodies below
 
-func TestInlineTargetPlanWithoutCandidatesDoesNotAllocateAMD64(t *testing.T) {
-	m := modFuncs(t,
-		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
-		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
-	)
-	hints := []funcHints{{flags: hintHasCall}, {flags: hintHasCall}}
-	policy := currentCodegenPolicy()
-	var targets inlineTargetTable
-	if allocs := testing.AllocsPerRun(100, func() {
-		targets = buildInlineTargets(m, hints, policy)
-	}); allocs != 0 {
-		t.Fatalf("candidate-free inline plan allocations = %.0f, want 0", allocs)
-	}
-	if !targets.empty() {
-		t.Fatal("candidate-free inline plan is not empty")
-	}
-}
-
-func TestCollectInlinedCalleesDeduplicatesPastStackSetAMD64(t *testing.T) {
-	const targetsN = inlineLinearSeenTargets + 1
-	data := &inlineTargetData{slots: make([]uint32, targetsN), targets: make([]inlineTarget, targetsN)}
-	body := make([]byte, 0, 2*(targetsN+1)+1)
-	for i := range targetsN {
-		data.slots[i] = uint32(i + 1)
-		data.targets[i].globalIdx = i
-		body = append(body, 0x10, byte(i))
-	}
-	body = append(body, 0x10, 0, 0x0b)
-	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
-	got := collectInlinedCallees(&wasm.Func{BodyBytes: body}, targets)
-	if len(got) != targetsN {
-		t.Fatalf("distinct inline targets = %d, want %d", len(got), targetsN)
-	}
-	for i, target := range got {
-		if target.globalIdx != i {
-			t.Fatalf("inline target %d = %d, want %d", i, target.globalIdx, i)
-		}
-	}
-}
-
-func TestInlineBasePoolRetentionIsBoundedAMD64(t *testing.T) {
-	targetsData := &inlineTargetData{targets: make([]inlineTarget, maxRetainedInlineBases+1)}
-	callees := make([]*inlineTarget, len(targetsData.targets))
-	for i := range targetsData.targets {
-		targetsData.targets[i].globalIdx = i
-		callees[i] = &targetsData.targets[i]
-	}
-	targets := inlineTargetTable{data: targetsData}
-	var f fn
-	f.reserveInlineLocals(callees[:1], targets)
-	if allocs := testing.AllocsPerRun(100, func() {
-		f.reserveInlineLocals(callees[:1], targets)
-	}); allocs != 0 {
-		t.Fatalf("reused inline base allocations = %.0f, want 0", allocs)
-	}
-	f.reserveInlineLocals(callees, targets)
-	if got := len(f.inlineBase); got != len(callees) {
-		t.Fatalf("ephemeral inline bases = %d, want %d", got, len(callees))
-	}
-	if got := len(f.inlineBasePool); got != 1 {
-		t.Fatalf("retained inline bases after oversized plan = %d, want 1", got)
-	}
-}
-
 // TestAnalyzeInlineCandidates builds a small module exercising each candidacy
 // outcome: a tiny leaf (candidate, two call sites), a recursive function
 // (non-leaf via a self call), an oversized leaf (too big), and the caller.
@@ -276,7 +212,7 @@ func TestInlineBrOnNullRespectsCalleeBoundaryAMD64(t *testing.T) {
 			funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x00, 0x10, 0x01, 0x1a, 0x41, 0x01, 0x0b}},
 			funcDef{body: []byte{0x00, 0xd0, 0x70, 0xd5, 0x00, 0x1a, 0x0b}},
 		)
-		hints, _, _, err := computeModuleHints(m, 0, 0, nil, false)
+		hints, _, err := computeModuleHints(m, 0, 0, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -295,10 +231,12 @@ func TestInlineTargetsRejectEHAMD64(t *testing.T) {
 		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x10, 0x01, 0x41, 0x01, 0x0b}},
 		funcDef{body: []byte{0x00, 0x0b}},
 	)
-	policy := shared.DefaultCodegenPolicy(currentCodegenPolicy().Selection)
-	hints := []funcHints{{flags: hintHasCall}, {flags: hintModuleEH, inlineCallSites: 1}}
-	if target := buildInlineTargets(m, hints, policy).target(1); target != nil {
-		t.Fatal("ordinary policy admitted EH inline target")
+	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
+		policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, objective)
+		hints := []funcHints{{hasCall: true}, {moduleEH: true, inlineCallSites: 1}}
+		if target := buildInlineTargets(m, hints, policy).target(1); target != nil {
+			t.Fatalf("objective %v admitted EH inline target", objective)
+		}
 	}
 }
 
@@ -322,21 +260,22 @@ func TestInlineBoundaryParityAMD64(t *testing.T) {
 		if err := scanInlineFactsBytes(body, &facts); err != nil {
 			t.Fatalf("inline scan opcode %#x: %v", op, err)
 		}
-		if !h.flags.has(hintHasControlFlow) || !facts.hasControlFlow {
-			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.flags.has(hintHasControlFlow), facts.hasControlFlow)
+		if !h.hasControlFlow || !facts.hasControlFlow {
+			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.hasControlFlow, facts.hasControlFlow)
 		}
 	}
 }
 
-func TestCompactInlineRequiresNativeByteProofAMD64(t *testing.T) {
+func TestInlineSizeObjectiveRequiresNativeByteProofAMD64(t *testing.T) {
 	caller := []byte{0x00, 0x41, 0x05, 0x41, 0x07, 0x10, 0x01, 0x0b}
 	leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}
 	m := modFuncs(t,
 		funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
 		funcDef{params: []wasm.ValType{vI32, vI32}, results: []wasm.ValType{vI32}, body: leaf},
 	)
+	objective := OptimizeSize
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats})
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,18 +287,18 @@ func TestCompactInlineRequiresNativeByteProofAMD64(t *testing.T) {
 	}
 }
 
-func TestCompactInlinePrunesTransitiveOmissionAMD64(t *testing.T) {
+func TestInlineSizeObjectivePrunesTransitiveOmissionAMD64(t *testing.T) {
 	m := modFuncs(t,
 		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x10, 0x02, 0x0b}},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 	)
-	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
-	policy.MaxCompactInlineBodyBytes = 12
+	policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize)
+	policy.MaxSizeInlineBodyBytes = 12
 	hints := []funcHints{
-		{flags: hintHasCall},
-		{localCount: 1, flags: hintHasCall, inlineCallSites: 1},
-		{localCount: 1, inlineCallSites: 1},
+		{hasCall: true},
+		{nLocals: 1, hasCall: true, inlineCallSites: 1},
+		{nLocals: 1, inlineCallSites: 1},
 	}
 	targets := buildInlineTargets(m, hints, policy)
 	if targets.target(1) != nil {
@@ -368,15 +307,9 @@ func TestCompactInlinePrunesTransitiveOmissionAMD64(t *testing.T) {
 	if targets.target(2) == nil || !targets.omitStandaloneBody(2, false) {
 		t.Fatal("leaf child was not retained as an omittable inline target")
 	}
-	if got, want := len(targets.data.targets), 1; got != want {
-		t.Fatalf("retained inline target records = %d, want %d", got, want)
-	}
-	if got, want := len(targets.data.slots), len(m.Code); got != want {
-		t.Fatalf("inline target slots = %d, want %d", got, want)
-	}
 }
 
-func TestCompactInlineRetainsNestedCallPlanningAMD64(t *testing.T) {
+func TestInlineSizeObjectiveRetainsNestedCallPlanningAMD64(t *testing.T) {
 	m := modFuncs(t,
 		// Keep arg 0 live while the single-use helper returns its result.
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x05, 0x10, 0x01, 0x6a, 0x0b}},
@@ -385,8 +318,9 @@ func TestCompactInlineRetainsNestedCallPlanningAMD64(t *testing.T) {
 		// A declared local keeps the nested callee out of the Size inline class.
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x01, 0x01, 0x7f, 0x20, 0x00, 0x41, 0x02, 0x6a, 0x0b}},
 	)
+	objective := OptimizeSize
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +335,7 @@ func TestCompactInlineRetainsNestedCallPlanningAMD64(t *testing.T) {
 	}
 }
 
-func TestCompactInlineAdmitsTinySingleUseLeafAMD64(t *testing.T) {
+func TestInlineSizeObjectiveAdmitsTinySingleUseLeafAMD64(t *testing.T) {
 	caller := []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}
 	leaf := []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}
 	m := modFuncs(t,
@@ -410,9 +344,10 @@ func TestCompactInlineAdmitsTinySingleUseLeafAMD64(t *testing.T) {
 	)
 	before := inlineDeadBodyEnabled
 	t.Cleanup(func() { inlineDeadBodyEnabled = before })
+	objective := OptimizeSize
 	inlineDeadBodyEnabled = false
 	var rollbackStats ModuleStats
-	rollback, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &rollbackStats, Workers: 1})
+	rollback, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &rollbackStats, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +356,7 @@ func TestCompactInlineAdmitsTinySingleUseLeafAMD64(t *testing.T) {
 	}
 	inlineDeadBodyEnabled = true
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -444,7 +379,7 @@ func TestCompactInlineAdmitsTinySingleUseLeafAMD64(t *testing.T) {
 		t.Fatalf("inlined caller result = %d, want 6", got)
 	}
 	var parallelStats ModuleStats
-	parallel, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &parallelStats, Workers: 2})
+	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &parallelStats, Workers: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +392,7 @@ func TestCompactInlineAdmitsTinySingleUseLeafAMD64(t *testing.T) {
 
 	m.Exports = append(m.Exports, wasm.Export{Name: "g", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}})
 	var addressableStats ModuleStats
-	addressable, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &addressableStats, Workers: 1})
+	addressable, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &addressableStats, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -470,9 +405,7 @@ func TestCompactInlineAdmitsTinySingleUseLeafAMD64(t *testing.T) {
 }
 
 func TestFinalizeOmittedInlineEntriesRejectsResidualCallAMD64(t *testing.T) {
-	targets := inlineTargetTable{data: &inlineTargetData{
-		slots: []uint32{0, 1}, targets: []inlineTarget{{globalIdx: 1, omitStandalone: true}},
-	}}
+	targets := inlineTargetTable{targets: []inlineTarget{{}, {valid: true, omitStandalone: true}}}
 	err := finalizeOmittedInlineEntriesAMD64(
 		[]int{0, 12}, []int{4, 12},
 		[][]callReloc{{{target: 1, internal: true}}, nil},
@@ -488,8 +421,8 @@ func TestInlineDeadBodyProofRejectsTailReferenceAMD64(t *testing.T) {
 		funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 	)
-	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
-	base := []funcHints{{flags: hintHasCall}, {localCount: 1, inlineCallSites: 1}}
+	policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize)
+	base := []funcHints{{hasCall: true}, {nLocals: 1, inlineCallSites: 1}}
 	if targets := buildInlineTargets(m, base, policy); !targets.omitStandaloneBody(1, false) {
 		t.Fatal("single ordinary call did not prove standalone body dead")
 	}
@@ -506,8 +439,9 @@ func TestInlineDeadBodyRetainsTailReferencedCalleeAMD64(t *testing.T) {
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x12, 0x01, 0x0b}},
 	)
+	objective := OptimizeSize
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
+	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -649,6 +583,50 @@ func TestInlineExecReturnBare(t *testing.T) {
 		)
 		if got := runAmd64(t, m); got != 42 {
 			t.Errorf("inlined {return arg0}(42) = %d, want 42", got)
+		}
+	})
+}
+
+// TestInlineExecLoop inlines a control-flow leaf with a loop: sum(n) = n+(n-1)+…+1.
+// Loop-carrying leaves are excluded from inlining by default (net-negative to
+// splice), so this opts back in via inlineLoopCallees to exercise that path.
+func TestInlineExecLoop(t *testing.T) {
+	defer func(o bool) { inlineLoopCallees = o }(inlineLoopCallees)
+	inlineLoopCallees = true
+	withInlineEnabled(t, func() {
+		// func 1 (n)->i32, locals: (acc i32). loop { acc += n; n -= 1; if n>0 continue }
+		//   (local acc)
+		//   loop
+		//     local.get1; local.get0; i32.add; local.set1     ; acc += n
+		//     local.get0; i32.const 1; i32.sub; local.set0     ; n -= 1
+		//     local.get0; i32.const 0; i32.gt_s; br_if 0        ; if n>0 loop
+		//   end
+		//   local.get1                                          ; acc
+		leaf := []byte{
+			0x01, 0x01, 0x7f, // 1 local: acc i32
+			0x03, 0x40, // loop (void)
+			0x20, 0x01, 0x20, 0x00, 0x6a, 0x21, 0x01, // acc += n
+			0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, // n -= 1
+			0x20, 0x00, 0x41, 0x00, 0x4a, 0x0d, 0x00, // if n>0 br 0
+			0x0b,       // end loop
+			0x20, 0x01, // local.get acc
+			0x0b, // end func
+		}
+		// func 0 ()->i32: sum(5) = 5+4+3+2+1 = 15
+		caller := []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}
+		m := modFuncs(t,
+			funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
+			funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: leaf},
+		)
+		if got := runAmd64(t, m); got != 15 {
+			t.Errorf("inlined sum(5) = %d, want 15", got)
+		}
+		var ms ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		if ms.Funcs[0].Calls["inline"] != 1 {
+			t.Errorf("loop leaf should be inlined; Calls=%v", ms.Funcs[0].Calls)
 		}
 	})
 }
