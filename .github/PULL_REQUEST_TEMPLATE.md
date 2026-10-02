@@ -16,14 +16,12 @@
 * 
 *
 
-**Has this changed performance?**
+**Deltas**
 
-- [ ] Yes
-- [ ] No
-
-If yes, please include any performance metrics or benchmarks if applicable. Raw timings are not helpful. Give a delta table compared to main.
+If this has changed any deltas, please include any performance metrics or benchmarks if applicable. Raw timings are not helpful. Give a delta table compared to main.
 
 **Checklist:**
+- [ ] I've added proper tests. All fixed bugs have a corresponding test
 - [ ] I've read the [contributing guidelines](https://github.com/wago-org/wago/blob/main/CONTRIBUTING.md)
 - [ ] I've added my name and email to the [NOTICE](https://github.com/wago-org/wago/blob/main/NOTICE) file
 - [ ] I've updated the [CHANGELOG](https://github.com/wago-org/wago/blob/main/CHANGELOG.md)
