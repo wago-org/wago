@@ -76,8 +76,8 @@ parameters; exported function-reference escape surfaces; caller-only reference
 covariance; memory64 memargs and multi-memory indexes in byte-backed bodies;
 AST/byte-backed parity; and fuzz seeds.
 
-The runtime matrix executes direct, indirect, and reference proper tails across
-Balanced, Size, and Embedded objectives. Scalar, multivalue, SIMD,
+The runtime matrix executes direct, indirect, and reference proper tails through
+the ordinary policy and the compact laboratory path. Scalar, multivalue, SIMD,
 typed-global `return_call_ref`, and million-transfer frame-discard coverage run
 on amd64 and arm64 build products. The generic funcref-result egress matrix runs
 on amd64, while the transform fence's reference and recursive-GC contract tests

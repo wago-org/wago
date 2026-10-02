@@ -52,10 +52,10 @@ var (
 	// compactI32CallsEnabled admits call-making functions after every deferred
 	// local argument load has selected its width from the local's machine type.
 	compactI32CallsEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_I32_CALLS") != "1"
-	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings only
-	// under Size/Embedded. Balanced retains its measured layout exactly.
+	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings on
+	// the explicit native-compaction path.
 	accumulatorImmediateEnabled = os.Getenv("WAGO_AMD64_NO_ACCUMULATOR_IMMEDIATE") != "1"
-	// incDecEnabled selects compact INC/DEC for Size/Embedded Wasm add/sub by
+	// incDecEnabled selects compact INC/DEC for compact Wasm add/sub by
 	// one when CF is not a compiler value. The kill switch is the A/B oracle.
 	incDecEnabled = os.Getenv("WAGO_AMD64_NO_INCDEC") != "1"
 	// directIncDecEnabled extends the same encoding choice to compiler-authored
@@ -64,18 +64,18 @@ var (
 	// directJecxzEnabled selects JECXZ for bounded ECX byte-tail guards whose
 	// flags are dead and whose checked targets remain in rel8 range.
 	directJecxzEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_JECXZ") != "1"
-	// sharedTrapBodyEnabled lets Size/Embedded trap groups share the invariant
+	// sharedTrapBodyEnabled lets compact trap groups share the invariant
 	// trap-cell stores and native-stack unwind within one compiled function.
 	sharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_SHARED_TRAP_BODY") != "1"
 	// moduleSharedTrapBodyEnabled lets later internal functions replace an exact
 	// complete trap-body copy with one near jump to a retained cold body.
 	moduleSharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_MODULE_SHARED_TRAP_BODY") != "1"
 	// compactLowPinEnabled makes RBP the first integer-local pin only for
-	// call-free, straight-line Size/Embedded functions. The register set and pin
+	// call-free, straight-line compact functions. The register set and pin
 	// count stay unchanged; this is an encoded-size tie-break experiment.
 	compactLowPinEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_LOW_PIN") != "1"
 	// localSlotOrderEnabled records exact emitted local-home references and lets
-	// Size/Embedded swap referenced disp32 homes with equal-type zero-reference
+	// compact compilation swap referenced disp32 homes with equal-type zero-reference
 	// low homes during finalization. WAGO_LOCAL_SLOT_ORDER=0 is the rollback.
 	localSlotOrderEnabled = os.Getenv("WAGO_LOCAL_SLOT_ORDER") != "0"
 	// teeSpillElideEnabled reuses an unpinned scalar local.tee's canonical frame
@@ -102,7 +102,7 @@ var (
 	// WAGO_NO_SWAR_MASK_TEST=1 is the A/B oracle.
 	swarMaskTestEnabled = os.Getenv("WAGO_NO_SWAR_MASK_TEST") != "1"
 	// singleBitMaskTestEnabled selects BT for one-bit mask predicates in
-	// Size/Embedded. WAGO_AMD64_NO_SINGLE_BIT_MASK_TEST=1 is the A/B oracle.
+	// native compaction. WAGO_AMD64_NO_SINGLE_BIT_MASK_TEST=1 is the A/B oracle.
 	singleBitMaskTestEnabled = os.Getenv("WAGO_AMD64_NO_SINGLE_BIT_MASK_TEST") != "1"
 	// swarIdiomsEnabled gates exact, bounded recognition of open-coded packed-byte
 	// algorithms. WAGO_NO_SWAR_IDIOMS=1 is the A/B oracle.
@@ -174,7 +174,7 @@ type CodegenStats struct {
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
 	NativeSize    shared.NativeFunctionSizeReport
 	Encoding      encoderamd64.EncodingStats
-	// FinalizerFallback is the fail-closed reason a Size/Embedded function kept
+	// FinalizerFallback is the fail-closed reason a compact function kept
 	// its maximal-safe encoding instead of applying an available compaction plan.
 	FinalizerFallback string       `json:"finalizer_fallback,omitempty"`
 	literalKeys       []literalKey // stats-only keys for module-level duplicate accounting

@@ -60,9 +60,8 @@ func TestSizeCompactsBoundedLoopFrameReservationsAMD64(t *testing.T) {
 	})
 
 	m := modFuncs(t, funcDef{nil, nil, []byte{0x00, 0x03, 0x40, 0x0b, 0x0b}})
-	objective := OptimizeSize
 	stats := &ModuleStats{}
-	compact, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: stats})
+	compact, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 1, Stats: stats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +74,7 @@ func TestSizeCompactsBoundedLoopFrameReservationsAMD64(t *testing.T) {
 
 	loopCompactionEnabled = false
 	reservedStats := &ModuleStats{}
-	reserved, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: reservedStats})
+	reserved, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 1, Stats: reservedStats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +89,7 @@ func TestSizeCompactsBoundedLoopFrameReservationsAMD64(t *testing.T) {
 	}
 
 	loopCompactionEnabled = true
-	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 2})
+	parallel, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +102,7 @@ func TestSizeCompactsBoundedLoopFrameReservationsAMD64(t *testing.T) {
 
 	oldLimit := loopCompactionByteLimitOverride
 	t.Cleanup(func() { loopCompactionByteLimitOverride = oldLimit })
-	policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize)
+	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
 	loopCompactionByteLimitOverride = 16 << 10
 	if f := (&fn{a: &amd64enc.Asm{B: make([]byte, 16<<10)}, hasLoop: true, policy: policy}); !f.loopCompactionAdmitted() {
 		t.Fatal("loop function at rollback bound rejected")
@@ -221,7 +220,7 @@ func TestFinalizerCompactsBoundedSubsetOfBranchHoles(t *testing.T) {
 	f := fn{
 		a:        a,
 		sc:       sc,
-		policy:   shared.CodegenPolicyForObjective(optimization.Selection{}, shared.OptimizeSize),
+		policy:   shared.CompactCodegenPolicy(optimization.Selection{}),
 		subRspAt: subSite,
 		addRspAt: addSite,
 		stats:    stats,
@@ -520,11 +519,10 @@ func TestSizeCompactsBranchesWithoutShrinkingLargeFrameAMD64(t *testing.T) {
 
 	body := []byte{0x01, 0x14, 0x7e, 0x20, 0x00, 0x04, 0x40, 0x01, 0x0b, 0x41, 0x01, 0x0b}
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
-	objective := OptimizeSize
 	compile := func(disabled bool) *CodegenStats {
 		nativeCompactionDisabled = disabled
 		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats})
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats})
 		if err != nil {
 			t.Fatal(err)
 		}

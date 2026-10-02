@@ -72,7 +72,7 @@ func TestNativeSizeReportAccountsModuleAndFunctionBytesAMD64(t *testing.T) {
 	}
 }
 
-func TestSizeObjectiveSharesAdapterTailsAMD64(t *testing.T) {
+func TestCompactNativeSharesAdapterTailsAMD64(t *testing.T) {
 	before := sharedAdaptersEnabled
 	sharedAdaptersEnabled = false
 	t.Cleanup(func() { sharedAdaptersEnabled = before })
@@ -86,9 +86,8 @@ func TestSizeObjectiveSharesAdapterTailsAMD64(t *testing.T) {
 		wasm.Export{Name: "g", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}},
 		wasm.Export{Name: "h", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 2}},
 	)
-	size := OptimizeSize
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats})
+	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +97,7 @@ func TestSizeObjectiveSharesAdapterTailsAMD64(t *testing.T) {
 	if stats.NativeSize.AccountedBytes() != len(cm.Code) {
 		t.Fatalf("accounted bytes = %d, code = %d", stats.NativeSize.AccountedBytes(), len(cm.Code))
 	}
-	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &size, Workers: 2})
+	parallel, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +111,7 @@ func TestSizeObjectiveSharesAdapterTailsAMD64(t *testing.T) {
 	}
 }
 
-func TestSizeObjectiveSharesWholeAdaptersAMD64(t *testing.T) {
+func TestCompactNativeSharesWholeAdaptersAMD64(t *testing.T) {
 	before := sharedAdaptersEnabled
 	beforeStackDelta := stackDeltaAdapterThunkEnabled
 	t.Cleanup(func() {
@@ -133,12 +132,11 @@ func TestSizeObjectiveSharesWholeAdaptersAMD64(t *testing.T) {
 	m.Exports = append(m.Exports, wasm.Export{Name: "i", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 3}})
 	m.Exports = append(m.Exports, wasm.Export{Name: "j", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 4}})
 	m.Exports = append(m.Exports, wasm.Export{Name: "k", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 5}})
-	size := OptimizeSize
 
 	sharedAdaptersEnabled = true
 	stackDeltaAdapterThunkEnabled = true
 	var stats ModuleStats
-	shared, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats})
+	shared, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,14 +160,14 @@ func TestSizeObjectiveSharesWholeAdaptersAMD64(t *testing.T) {
 	if stats.NativeSize.AccountedBytes() != len(shared.Code) || stats.NativeSize.ModuleOtherBytes == 0 {
 		t.Fatalf("shared adapter accounting = %#v, code=%d", stats.NativeSize, len(shared.Code))
 	}
-	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &size, Workers: 2})
+	parallel, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(parallel.Code, shared.Code) {
 		t.Fatal("serial and parallel shared-adapter layouts differ")
 	}
-	cm, err := CompileModuleWith(m, CompileOptions{Objective: &size})
+	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +177,7 @@ func TestSizeObjectiveSharesWholeAdaptersAMD64(t *testing.T) {
 
 	stackDeltaAdapterThunkEnabled = false
 	var legacyStats ModuleStats
-	legacy, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &legacyStats})
+	legacy, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &legacyStats})
 	if err != nil {
 		t.Fatal(err)
 	}

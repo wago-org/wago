@@ -228,10 +228,9 @@ func BenchmarkCompile(b *testing.B) {
 	})
 }
 
-// BenchmarkCompileSize times serialized native codegen under the Size
-// objective. Keep it separate from BenchmarkCompile so the default Balanced
-// history remains directly comparable.
-func BenchmarkCompileSize(b *testing.B) {
+// BenchmarkCompileCompact times serialized native codegen with the bounded
+// native-compaction path enabled.
+func BenchmarkCompileCompact(b *testing.B) {
 	eachModule(b, "Compile", func(b *testing.B, m corpusModule) {
 		mod := m.decoded(b)
 		if err := wasm.ValidateModule(mod); err != nil {
@@ -239,7 +238,7 @@ func BenchmarkCompileSize(b *testing.B) {
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := benchCompileModuleSize(mod); err != nil {
+			if _, err := benchCompileModuleCompact(mod); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -388,17 +387,10 @@ func BenchmarkInstantiate(b *testing.B) {
 // BenchmarkExec times the host->wasm call for each module's manifest exec
 // entries, naming results Exec/<module>.<export>.
 func BenchmarkExec(b *testing.B) {
-	benchmarkExecObjective(b, wago.NewRuntimeConfig())
+	benchmarkExec(b, wago.NewRuntimeConfig())
 }
 
-// BenchmarkExecSize runs the same executable corpus through the public Size
-// objective. Keep it separate so Balanced history remains comparable and every
-// size-only codegen choice has a real instantiate/invoke performance gate.
-func BenchmarkExecSize(b *testing.B) {
-	benchmarkExecObjective(b, wago.NewRuntimeConfig().WithOptimizationObjective(wago.OptimizeSize))
-}
-
-func benchmarkExecObjective(b *testing.B, cfg *wago.RuntimeConfig) {
+func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 	for _, m := range loadCorpus(b) {
 		if len(m.Exec) == 0 || !m.supports("Exec") {
 			continue

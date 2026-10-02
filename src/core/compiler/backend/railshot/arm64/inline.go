@@ -39,7 +39,7 @@ const inlineMaxBodyBytes = 160
 const inlineCallSeqBytes = 24
 
 // inlineDeadBodyEnabled is the rollout/measurement oracle for module-layout
-// omission of fully spliced, non-addressable Size callees.
+// omission of fully spliced, non-addressable compact callees.
 var inlineDeadBodyEnabled = os.Getenv("WAGO_INLINE_DEAD_BODY") != "0"
 
 var inlineMaxBytes = func() int {
@@ -51,8 +51,8 @@ var inlineMaxBytes = func() int {
 	return inlineMaxBodyBytes
 }()
 
-var sizeInlineMaxBytesOverride = func() int {
-	if v := os.Getenv("WAGO_SIZE_INLINE_MAXBYTES"); v != "" {
+var compactInlineMaxBytesOverride = func() int {
+	if v := os.Getenv("WAGO_COMPACT_INLINE_MAXBYTES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
 			return n
 		}
@@ -60,11 +60,11 @@ var sizeInlineMaxBytesOverride = func() int {
 	return -1
 }()
 
-func sizeInlineBodyLimit(policy CodegenPolicy) int {
-	if sizeInlineMaxBytesOverride >= 0 {
-		return sizeInlineMaxBytesOverride
+func compactInlineBodyLimit(policy CodegenPolicy) int {
+	if compactInlineMaxBytesOverride >= 0 {
+		return compactInlineMaxBytesOverride
 	}
-	return int(policy.MaxSizeInlineBodyBytes)
+	return int(policy.MaxCompactInlineBodyBytes)
 }
 
 // inlineFacts are the per-function facts the candidacy decision needs.
@@ -144,8 +144,8 @@ func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineRepor
 	}
 
 	maxBodyBytes := inlineMaxBytes
-	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-		maxBodyBytes = sizeInlineBodyLimit(policy)
+	if policy.CompactNative {
+		maxBodyBytes = compactInlineBodyLimit(policy)
 	}
 	rep := &InlineReport{MaxBodyBytes: maxBodyBytes}
 	rep.Funcs = make([]InlineCandidateInfo, n)
@@ -180,8 +180,8 @@ func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 	switch {
 	case f.moduleEH:
 		return false, "requires exception-handling frame"
-	case (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) && !sizeInlineOK(f, policy):
-		return false, "size objective requires proved native-byte win"
+	case policy.CompactNative && !compactInlineOK(f, policy):
+		return false, "native compaction requires proved native-byte win"
 	case f.hasControlCall:
 		return false, "has call_indirect/return_call"
 	case f.calleeCount > 0:
@@ -213,8 +213,8 @@ func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	switch {
 	case f.moduleEH:
 		return false
-	case policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded:
-		return sizeInlineOK(f, policy)
+	case policy.CompactNative:
+		return compactInlineOK(f, policy)
 	case f.hasControlCall, f.calleeCount > 0, !f.regABIIntOnly:
 		return false
 	case f.hasLoop:
@@ -226,9 +226,9 @@ func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	}
 }
 
-func sizeInlineOK(f inlineFacts, policy CodegenPolicy) bool {
+func compactInlineOK(f inlineFacts, policy CodegenPolicy) bool {
 	return !f.moduleEH && !f.hasControlCall && f.calleeCount == 0 &&
-		f.callSites == 1 && f.straightLine() && f.bodyBytes <= sizeInlineBodyLimit(policy) &&
+		f.callSites == 1 && f.straightLine() && f.bodyBytes <= compactInlineBodyLimit(policy) &&
 		f.params <= 1 && f.results <= 1 && f.declaredLocals == 0 &&
 		!f.touchesMem && !f.touchesGlobal
 }
@@ -607,11 +607,11 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			touchesMem:     facts.touchesMem,
 			touchesGlob:    facts.touchesGlobal,
 			hasCtrl:        facts.hasControlFlow,
-			omitStandalone: (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) &&
+			omitStandalone: policy.CompactNative &&
 				h.inlineCallSites == 1 && h.directCallRefs == 1 && !h.hasInlineLoopCall,
 		}
 	}
-	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+	if policy.CompactNative {
 		pruneNestedSizeInlineTargets(m, &targets)
 	}
 	return targets

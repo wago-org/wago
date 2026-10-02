@@ -16,9 +16,9 @@ import (
 var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 var nativeFinalizerValidate = os.Getenv("WAGO_FINALIZE_VALIDATE") == "1"
 
-// WAGO_COMPACT=1 forces bounded shrinking for every objective. Size and
-// Embedded enable it through their immutable per-compilation policy;
-// WAGO_COMPACT=0 is the rollout oracle that disables it for every objective.
+// WAGO_COMPACT=1 forces bounded shrinking for measurement and rollout checks.
+// CompileOptions.CompactNative selects the same path for an individual
+// compilation; WAGO_COMPACT=0 disables it globally as a rollback oracle.
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
 var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
 var loopCompactionEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_COMPACTION") != "1"
@@ -39,7 +39,7 @@ var arm64LoopCompactionLimit = func() int {
 	}
 }()
 
-// WAGO_FINALIZER_DELETIONS selects an older bounded Size/Embedded policy for
+// WAGO_FINALIZER_DELETIONS selects an older bounded compaction policy for
 // exact rollout comparisons. It can only lower the immutable policy limit.
 var finalizerDeletionLimitOverride = func() int {
 	switch os.Getenv("WAGO_FINALIZER_DELETIONS") {
@@ -307,7 +307,7 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 
 func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.DeletedRange, int, bool) {
 	// Any deletion before an optionally aligned loop would move its body away
-	// from the emission-time alignment. Size and Embedded clamp loop alignment
+	// from the emission-time alignment. Native compaction clamps loop alignment
 	// to ARM64's mandatory four-byte instruction alignment, which every deletion
 	// preserves, so their loop-bearing functions are safe to compact.
 	if f.hasLoop && !loopCompactionEnabled {

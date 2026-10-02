@@ -203,9 +203,8 @@ func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
 	})
 
 	m := modFuncs(t, funcDef{nil, nil, []byte{0x00, 0x03, 0x40, 0x0b, 0x0b}})
-	objective := OptimizeSize
 	stats := &ModuleStats{}
-	compact, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: stats})
+	compact, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 1, Stats: stats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +214,7 @@ func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
 
 	loopCompactionEnabled = false
 	reservedStats := &ModuleStats{}
-	reserved, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: reservedStats})
+	reserved, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 1, Stats: reservedStats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +225,7 @@ func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
 		t.Fatalf("compacted loop code = %d bytes, rollback = %d", len(compact.Code), len(reserved.Code))
 	}
 	loopCompactionEnabled = true
-	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 2})
+	parallel, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +243,7 @@ func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
 		0x42, 0x2a, // i64.const 42
 		0x0b,
 	}})
-	if got, err := runArm64WrapperWithOptions(t, execModule, CompileOptions{Objective: &objective}); err != nil || got != 42 {
+	if got, err := runArm64WrapperWithOptions(t, execModule, CompileOptions{CompactNative: true}); err != nil || got != 42 {
 		t.Fatalf("compacted loop execution = %d, %v; want 42", got, err)
 	}
 }
@@ -258,7 +257,7 @@ func TestLoopCompactionHasFixedFunctionSizeBoundArm64(t *testing.T) {
 		a:       &a64.Asm{B: make([]byte, arm64LoopCompactionLimit+4)},
 		sc:      &scratch{},
 		hasLoop: true,
-		policy:  shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize),
+		policy:  shared.CompactCodegenPolicy(currentCodegenPolicy().Selection),
 		stats:   stats,
 	}
 	var storage [maxFinalizerDeletions]shared.DeletedRange
@@ -273,7 +272,7 @@ func TestLoopCompactionHasFixedFunctionSizeBoundArm64(t *testing.T) {
 func TestLoopCompactionLimitRespectsArchitectureAndPolicyBoundsArm64(t *testing.T) {
 	beforeLimit := arm64LoopCompactionLimit
 	t.Cleanup(func() { arm64LoopCompactionLimit = beforeLimit })
-	policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize)
+	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
 	f := fn{
 		a:       &a64.Asm{B: make([]byte, 20<<10)},
 		sc:      &scratch{},

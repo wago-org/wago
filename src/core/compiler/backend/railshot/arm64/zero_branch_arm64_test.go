@@ -56,11 +56,10 @@ func TestZeroBranchIfArm64(t *testing.T) {
 
 	before := zeroBranchEnabled
 	t.Cleanup(func() { zeroBranchEnabled = before })
-	compileSize := func(enabled bool) *CodegenStats {
+	compileCompact := func(enabled bool) *CodegenStats {
 		zeroBranchEnabled = enabled
-		size := OptimizeSize
 		stats := &ModuleStats{}
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: stats})
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: stats})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,8 +69,8 @@ func TestZeroBranchIfArm64(t *testing.T) {
 		return stats.Funcs[0]
 	}
 	zeroBranchEnabled = false
-	long := compileSize(false)
-	short := compileSize(true)
+	long := compileCompact(false)
+	short := compileCompact(true)
 	if got := long.CodeBytes - short.CodeBytes; got != 4 {
 		t.Fatalf("CMP+B.cond delta = %d bytes, want 4", got)
 	}
@@ -94,11 +93,10 @@ func TestZeroBranchBrIfArm64(t *testing.T) {
 
 	before := zeroBranchEnabled
 	t.Cleanup(func() { zeroBranchEnabled = before })
-	compileSize := func(enabled bool) *CodegenStats {
+	compileCompact := func(enabled bool) *CodegenStats {
 		zeroBranchEnabled = enabled
-		size := OptimizeSize
 		stats := &ModuleStats{}
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: stats})
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: stats})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -107,8 +105,8 @@ func TestZeroBranchBrIfArm64(t *testing.T) {
 		}
 		return stats.Funcs[0]
 	}
-	long := compileSize(false)
-	short := compileSize(true)
+	long := compileCompact(false)
+	short := compileCompact(true)
 	if got := long.CodeBytes - short.CodeBytes; got != 4 {
 		t.Fatalf("CMP+B.cond delta = %d bytes, want 4", got)
 	}

@@ -39,9 +39,8 @@ func TestLocalSlotOrderShrinksHotUnpinnedFrameRefs(t *testing.T) {
 	off := compileLocalSlotOrder(t, m, false).Funcs[0]
 	on := compileLocalSlotOrder(t, m, true).Funcs[0]
 
-	size := OptimizeSize
 	got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{
-		Objective:     &size,
+		CompactNative: true,
 		Optimizations: map[string]bool{"local-slot-order": true},
 	}, nil)
 	if err != nil || got != 160 {
@@ -58,11 +57,10 @@ func TestLocalSlotOrderShrinksHotUnpinnedFrameRefs(t *testing.T) {
 	}
 }
 
-func TestLocalSlotOrderDefaultsOnForSize(t *testing.T) {
+func TestLocalSlotOrderDefaultsOnForCompaction(t *testing.T) {
 	m := localSlotOrderModule(t)
-	size := OptimizeSize
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats})
+	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,10 +114,9 @@ func TestLocalSlotOrderExcludesMultiSlotHomes(t *testing.T) {
 
 func compileLocalSlotOrder(t *testing.T, m *wasm.Module, enabled bool) *ModuleStats {
 	t.Helper()
-	size := OptimizeSize
 	var stats ModuleStats
 	cm, err := CompileModuleWith(m, CompileOptions{
-		Objective:     &size,
+		CompactNative: true,
 		Optimizations: map[string]bool{"local-slot-order": enabled},
 		Stats:         &stats,
 	})

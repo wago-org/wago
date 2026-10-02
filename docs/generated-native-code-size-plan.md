@@ -1,5 +1,10 @@
 # Generated native-code size plan
 
+> Historical note: this plan records the experiments that introduced the
+> native-compaction machinery. The public optimization objectives described
+> below have since been removed. Current Wago has one ordinary compiler policy;
+> compaction is an internal benchmark and rollout path.
+
 Status: architecture and implementation plan
 
 Source baseline: `main` at `7f7a5f46f03578a7bc59c224e3ffe32f5e3eba47`

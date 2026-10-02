@@ -19,9 +19,8 @@ func TestFrameElidesRegisterOnlyVoidLeafAMD64(t *testing.T) {
 	compactRegABIFrameHeader = false
 	compile := func(enabled bool) (*ModuleStats, int) {
 		frameElideVoid = enabled
-		objective := OptimizeSize
 		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats, Workers: 1})
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -42,8 +41,7 @@ func TestFrameElidesRegisterOnlyVoidLeafAMD64(t *testing.T) {
 		t.Fatalf("enabled code = %d bytes, rollback = %d", enabledBytes, rollbackBytes)
 	}
 	frameElideVoid = true
-	objective := OptimizeSize
-	cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1})
+	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

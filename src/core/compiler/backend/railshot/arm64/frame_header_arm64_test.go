@@ -24,8 +24,7 @@ func TestRegisterABIElidesWrapperFrameHeaderArm64(t *testing.T) {
 	compile := func(enabled bool) (*ModuleStats, int) {
 		compactRegABIFrameHeader = enabled
 		var stats ModuleStats
-		objective := OptimizeSize
-		cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Stats: &stats, Workers: 1})
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
 		if err != nil {
 			t.Fatal(err)
 		}

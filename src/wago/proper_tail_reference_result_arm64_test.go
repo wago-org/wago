@@ -61,19 +61,15 @@ func TestARM64OrdinaryCallUsesFuncrefResultRegisterABI(t *testing.T) {
 			wasmtest.Code([]byte{0x10, 0x00, 0xd1, 0x0b}), // call 0; ref.is_null
 		)),
 	)
-	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
-		t.Run(objective.String(), func(t *testing.T) {
-			compiled := compileProperTailBehavior(t, module, objective, 2)
-			in, err := instantiateCore(compiled, InstantiateOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer in.Close()
-			got, err := in.Call(context.Background(), "run")
-			if err != nil || len(got) != 1 || got[0].I32() != 1 {
-				t.Fatalf("ordinary funcref-result call = %v, %v; want [1]", got, err)
-			}
-		})
+	compiled := compileProperTailBehavior(t, module, 2)
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	got, err := in.Call(context.Background(), "run")
+	if err != nil || len(got) != 1 || got[0].I32() != 1 {
+		t.Fatalf("ordinary funcref-result call = %v, %v; want [1]", got, err)
 	}
 }
 
@@ -113,21 +109,17 @@ func TestARM64OrdinaryDynamicCallsUseFuncrefResultRegisterABI(t *testing.T) {
 			wasmtest.Code(callIndirectBody),
 		)),
 	)
-	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
-		t.Run(objective.String(), func(t *testing.T) {
-			compiled := compileProperTailBehavior(t, module, objective, 3)
-			in, err := instantiateCore(compiled, InstantiateOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer in.Close()
-			for _, export := range []string{"run_ref", "run_indirect"} {
-				got, err := in.Call(context.Background(), export)
-				if err != nil || len(got) != 1 || got[0].I32() != 1 {
-					t.Fatalf("%s funcref-result dynamic call = %v, %v; want [1]", export, got, err)
-				}
-			}
-		})
+	compiled := compileProperTailBehavior(t, module, 3)
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	for _, export := range []string{"run_ref", "run_indirect"} {
+		got, err := in.Call(context.Background(), export)
+		if err != nil || len(got) != 1 || got[0].I32() != 1 {
+			t.Fatalf("%s funcref-result dynamic call = %v, %v; want [1]", export, got, err)
+		}
 	}
 	t.Run("register ABI disabled", func(t *testing.T) {
 		cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", false)
@@ -173,24 +165,20 @@ func TestARM64ProperTailReferenceResultContractsExecuteAcrossKinds(t *testing.T)
 	}
 	for _, kind := range []properTailBehaviorKind{properTailDirect, properTailIndirect, properTailRef} {
 		t.Run([]string{"direct", "indirect", "ref"}[kind], func(t *testing.T) {
-			for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
-				t.Run(objective.String(), func(t *testing.T) {
-					for _, tc := range cases {
-						t.Run(tc.name, func(t *testing.T) {
-							compiled := compileProperTailBehavior(t, properTailResultModule(kind, []wasm.ValType{wasm.FuncRef}, tc.body), objective, 2)
-							in, err := instantiateCore(compiled, InstantiateOptions{})
-							if err != nil {
-								t.Fatal(err)
-							}
-							defer in.Close()
-							got, err := in.Call(context.Background(), "run")
-							if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() != tc.null {
-								t.Fatalf("proper-tail funcref result = %v, %v; null=%v", got, err, tc.null)
-							}
-							if !tc.null && !in.FuncRefMatchesFunction(got[0].FuncRef(), tc.function) {
-								t.Fatalf("proper-tail funcref result lost function %d identity: %v", tc.function, got)
-							}
-						})
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					compiled := compileProperTailBehavior(t, properTailResultModule(kind, []wasm.ValType{wasm.FuncRef}, tc.body), 2)
+					in, err := instantiateCore(compiled, InstantiateOptions{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer in.Close()
+					got, err := in.Call(context.Background(), "run")
+					if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() != tc.null {
+						t.Fatalf("proper-tail funcref result = %v, %v; null=%v", got, err, tc.null)
+					}
+					if !tc.null && !in.FuncRefMatchesFunction(got[0].FuncRef(), tc.function) {
+						t.Fatalf("proper-tail funcref result lost function %d identity: %v", tc.function, got)
 					}
 				})
 			}
@@ -240,22 +228,18 @@ func TestARM64WideWrapperCallerTailsToNarrowFuncrefRegisterTarget(t *testing.T) 
 				wasmtest.Code(tail.body),
 			)))
 			module := wasmtest.Module(sections...)
-			for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
-				t.Run(objective.String(), func(t *testing.T) {
-					compiled := compileProperTailBehavior(t, module, objective, 2)
-					in, err := instantiateCore(compiled, InstantiateOptions{})
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer in.Close()
-					got, err := in.Call(context.Background(), "run", args...)
-					if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() {
-						t.Fatalf("mixed wrapper/register proper-tail result = %v, %v", got, err)
-					}
-					if !in.FuncRefMatchesFunction(got[0].FuncRef(), 1) {
-						t.Fatalf("mixed wrapper/register proper-tail result lost function identity: %v", got)
-					}
-				})
+			compiled := compileProperTailBehavior(t, module, 2)
+			in, err := instantiateCore(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			got, err := in.Call(context.Background(), "run", args...)
+			if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() {
+				t.Fatalf("mixed wrapper/register proper-tail result = %v, %v", got, err)
+			}
+			if !in.FuncRefMatchesFunction(got[0].FuncRef(), 1) {
+				t.Fatalf("mixed wrapper/register proper-tail result lost function identity: %v", got)
 			}
 		})
 	}
@@ -272,24 +256,20 @@ func TestARM64ProperTailReferenceResultWrapperFallbacks(t *testing.T) {
 	}
 	for _, kind := range []properTailBehaviorKind{properTailDirect, properTailIndirect, properTailRef} {
 		t.Run([]string{"direct", "indirect", "ref"}[kind], func(t *testing.T) {
-			for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
-				t.Run(objective.String(), func(t *testing.T) {
-					for _, tc := range cases {
-						t.Run(tc.name, func(t *testing.T) {
-							compiled := compileProperTailBehavior(t, arm64WideProperTailReferenceModule(kind, tc.body), objective, 2)
-							in, err := instantiateCore(compiled, InstantiateOptions{})
-							if err != nil {
-								t.Fatal(err)
-							}
-							defer in.Close()
-							got, err := in.Call(context.Background(), "run")
-							if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() != tc.null {
-								t.Fatalf("wide proper-tail funcref result = %v, %v; null=%v", got, err, tc.null)
-							}
-							if !tc.null && !in.FuncRefMatchesFunction(got[0].FuncRef(), 0) {
-								t.Fatalf("wide proper-tail funcref result lost identity: %v", got)
-							}
-						})
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					compiled := compileProperTailBehavior(t, arm64WideProperTailReferenceModule(kind, tc.body), 2)
+					in, err := instantiateCore(compiled, InstantiateOptions{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer in.Close()
+					got, err := in.Call(context.Background(), "run")
+					if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() != tc.null {
+						t.Fatalf("wide proper-tail funcref result = %v, %v; null=%v", got, err, tc.null)
+					}
+					if !tc.null && !in.FuncRefMatchesFunction(got[0].FuncRef(), 0) {
+						t.Fatalf("wide proper-tail funcref result lost identity: %v", got)
 					}
 				})
 			}

@@ -67,10 +67,9 @@ func TestSizeSharesTrapBodiesAcrossFunctionsAMD64(t *testing.T) {
 		funcDef{i32, i32, callee},
 		funcDef{i32, i32, callee},
 	)
-	size := OptimizeSize
 	for _, workers := range []int{1, 2} {
 		var stats ModuleStats
-		opts := CompileOptions{Objective: &size, Stats: &stats, Workers: workers}
+		opts := CompileOptions{CompactNative: true, Stats: &stats, Workers: workers}
 		if _, err := CompileModuleWith(m, opts); err != nil {
 			t.Fatal(err)
 		}
@@ -81,7 +80,7 @@ func TestSizeSharesTrapBodiesAcrossFunctionsAMD64(t *testing.T) {
 			t.Fatalf("workers=%d native ledger = %+v", workers, stats.NativeSize)
 		}
 		for _, arg := range []uint64{0, 1, 2} {
-			if _, _, err := runMemAmd64WithOptions(t, m, CompileOptions{Objective: &size, Workers: workers}, nil, arg); err == nil {
+			if _, _, err := runMemAmd64WithOptions(t, m, CompileOptions{CompactNative: true, Workers: workers}, nil, arg); err == nil {
 				t.Fatalf("workers=%d argument %d did not trap through shared body", workers, arg)
 			}
 		}
@@ -100,7 +99,7 @@ func TestSizeSharesCompleteTrapBodyAMD64(t *testing.T) {
 			a:      a,
 			sc:     sc,
 			stats:  stats,
-			policy: CodegenPolicy{Objective: OptimizeSize},
+			policy: CodegenPolicy{CompactNative: true},
 		}
 		for code := uint32(1); code <= 3; code++ {
 			branch := a.JccPlaceholder(condNE)

@@ -193,9 +193,9 @@ func (f *fn) trapSite(branch int) trapSite {
 func (f *fn) emitTrapStubs() {
 	before := f.a.Len()
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
-	sizeObjective := f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded
+	compact := f.policy.CompactNative
 	groups := 0
-	if (sharedTrapUnwindEnabled || f.opt(optSharedTrapBody)) && sizeObjective {
+	if (sharedTrapUnwindEnabled || f.opt(optSharedTrapBody)) && compact {
 		for code := uint32(1); code <= trapAtomicUnaligned; code++ {
 			sites := f.scratchState().trapSites[code]
 			if len(sites) == 0 {
@@ -214,7 +214,7 @@ func (f *fn) emitTrapStubs() {
 	// group-to-tail transfer inside B's signed imm26 range; otherwise retain the
 	// established local-record/shared-unwind path.
 	sharedBodyInRange := int64(f.a.Len())+int64(groups)*52+64 < 128<<20
-	if f.opt(optSharedTrapBody) && sizeObjective && groups >= 2 && sharedBodyInRange {
+	if f.opt(optSharedTrapBody) && compact && groups >= 2 && sharedBodyInRange {
 		if moduleSharedTrapBodyEnabled {
 			f.emitSharedTrapStubs()
 		} else {
@@ -225,7 +225,7 @@ func (f *fn) emitTrapStubs() {
 	}
 	// Two 16-byte unwind tails cost 32 bytes. Two B sites plus one tail cost 24,
 	// and the extra branch is confined to a terminal cold path.
-	shareUnwind := sharedTrapUnwindEnabled && sizeObjective && groups >= 2
+	shareUnwind := sharedTrapUnwindEnabled && compact && groups >= 2
 	sharedUnwind := -1
 	sharedTails := 0
 	if shareUnwind {

@@ -210,9 +210,8 @@ func brTableComputedLabelsArm64(t testing.TB, labels []uint32, def uint32) *wasm
 func TestExecBrTableCompactTargetIDsArm64(t *testing.T) {
 	labels := []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}
 	m := brTableComputedLabelsArm64(t, labels, 4)
-	size := OptimizeSize
 	var stats ModuleStats
-	if _, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats}); err != nil {
+	if _, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats}); err != nil {
 		t.Fatalf("compile size: %v", err)
 	}
 	if stats.Funcs[0].Peephole["br-table-compact"] == 0 {
@@ -221,7 +220,7 @@ func TestExecBrTableCompactTargetIDsArm64(t *testing.T) {
 	for _, c := range []struct{ index, want uint64 }{
 		{0, 1000}, {2, 1000}, {3, 1001}, {8, 1002}, {11, 1003}, {12, 1004},
 	} {
-		got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size}, c.index, 1)
+		got, err := runArm64WrapperWithOptions(t, m, CompileOptions{CompactNative: true}, c.index, 1)
 		if err != nil {
 			t.Fatalf("f(%d,1): %v", c.index, err)
 		}
@@ -232,20 +231,19 @@ func TestExecBrTableCompactTargetIDsArm64(t *testing.T) {
 }
 
 func TestExecBrTableCompactTargetIDsImmediateBoundaryArm64(t *testing.T) {
-	size := OptimizeSize
 	for _, labelN := range []int{4093, 4095} {
 		t.Run(fmt.Sprint(labelN), func(t *testing.T) {
 			labels := make([]uint32, labelN)
 			m := brTableComputedLabelsArm64(t, labels, 1)
 			var stats ModuleStats
-			if _, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &stats}); err != nil {
+			if _, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats}); err != nil {
 				t.Fatalf("compile size: %v", err)
 			}
 			if stats.Funcs[0].Peephole["br-table-compact"] != 0 {
 				t.Fatalf("%d-label table used compact IDs past the add-immediate boundary: %v", labelN, stats.Funcs[0].Peephole)
 			}
 			for _, c := range []struct{ index, want uint64 }{{0, 1000}, {uint64(labelN - 1), 1000}, {uint64(labelN), 1001}} {
-				got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size}, c.index, 1)
+				got, err := runArm64WrapperWithOptions(t, m, CompileOptions{CompactNative: true}, c.index, 1)
 				if err != nil {
 					t.Fatalf("f(%d,1): %v", c.index, err)
 				}
@@ -296,22 +294,20 @@ func TestExecBrTableComputedIndexArm64(t *testing.T) {
 	}
 }
 
-func TestExecBrTableSizeObjectiveUsesSmallerLinearFormArm64(t *testing.T) {
+func TestExecBrTableCompactNativeUsesSmallerLinearFormArm64(t *testing.T) {
 	m := brTableComputedIndexArm64(t)
-	balanced := OptimizeBalanced
-	size := OptimizeSize
 	var balancedStats, sizeStats ModuleStats
-	if _, err := CompileModuleWith(m, CompileOptions{Objective: &balanced, Stats: &balancedStats}); err != nil {
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &balancedStats}); err != nil {
 		t.Fatalf("compile balanced: %v", err)
 	}
-	if _, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: &sizeStats}); err != nil {
+	if _, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &sizeStats}); err != nil {
 		t.Fatalf("compile size: %v", err)
 	}
 	if balancedStats.Funcs[0].Peephole["br-table-jump"] == 0 {
-		t.Fatal("balanced objective did not retain jump-table dispatch")
+		t.Fatal("ordinary compilation did not retain jump-table dispatch")
 	}
 	if sizeStats.Funcs[0].Peephole["br-table-jump"] != 0 {
-		t.Fatal("size objective used a jump table for five unique cases")
+		t.Fatal("native compaction used a jump table for five unique cases")
 	}
 	if got, wantMax := sizeStats.NativeSize.TotalBytes, balancedStats.NativeSize.TotalBytes-8; got > wantMax {
 		t.Fatalf("size code = %d bytes, want at most balanced %d - 8 = %d", got, balancedStats.NativeSize.TotalBytes, wantMax)
@@ -319,7 +315,7 @@ func TestExecBrTableSizeObjectiveUsesSmallerLinearFormArm64(t *testing.T) {
 	for _, c := range []struct{ a, b, want uint64 }{
 		{0, 1, 1000}, {4, 1, 1004}, {5, 1, 1005}, {100, 1, 1005},
 	} {
-		got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Objective: &size}, c.a, c.b)
+		got, err := runArm64WrapperWithOptions(t, m, CompileOptions{CompactNative: true}, c.a, c.b)
 		if err != nil {
 			t.Fatalf("f(%d,%d): %v", c.a, c.b, err)
 		}

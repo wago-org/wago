@@ -11,12 +11,12 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// moduleLiteralIslandEnabled defers Size/Embedded function pools to one module
+// moduleLiteralIslandEnabled defers compact function pools to one module
 // island. WAGO_AMD64_NOMODULELITERALS=1 is the byte/performance rollback oracle.
 var moduleLiteralIslandEnabled = os.Getenv("WAGO_AMD64_NOMODULELITERALS") != "1"
 
 func moduleLiteralIsland(policy CodegenPolicy) bool {
-	return moduleLiteralIslandEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded)
+	return moduleLiteralIslandEnabled && policy.CompactNative
 }
 
 func (f *fn) materializeV128(e *elem) Reg {
@@ -250,8 +250,8 @@ func appendLiteralKey(dst []byte, key literalKey) []byte {
 }
 
 // buildModuleLiteralIsland lays out each key once, in deterministic
-// function-and-first-pool order. It runs only for Size/Embedded; nil relocation
-// input preserves the Balanced and Speed paths without an allocation.
+// function-and-first-pool order. It runs only during compaction; nil relocation
+// input preserves the ordinary path without an allocation.
 func literalPlanKey(words []uint64, index int) literalKey {
 	base := 1 + 3*index
 	return literalKey{lo: words[base], hi: words[base+1], size: uint8(words[base+2])}

@@ -76,7 +76,7 @@ var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "
 // for differential qualification and low-site-count crossover measurement.
 var gcSharedStubsEnabled = os.Getenv("WAGO_AMD64_NO_GC_SHARED_STUBS") != "1"
 
-// sharedAdaptersEnabled lets Size/Embedded replace byte-identical register-ABI
+// sharedAdaptersEnabled lets compact code replace byte-identical register-ABI
 // host adapters with compact function-local target thunks plus one cold
 // module copy. WAGO_AMD64_NO_SHARED_ADAPTERS=1 retains adapter-tail sharing.
 var sharedAdaptersEnabled = os.Getenv("WAGO_AMD64_NO_SHARED_ADAPTERS") != "1"
@@ -497,7 +497,7 @@ type transient struct {
 	tmpIntervalReg []Reg
 	v128Pool       []poolConst // reusable 4/8/16-byte trailing rip-relative constants
 	poolSites      []poolSite  // flat intrusive site lists; no per-constant allocation
-	literalWords   []uint64    // packed Size/Embedded island plan; reusable per worker
+	literalWords   []uint64    // packed compaction island plan; reusable per worker
 }
 
 // gpCand is a hot int local or global competing for a GP pin register, ranked by
@@ -556,12 +556,6 @@ func functionStartPaddingFlags(off, bodyBytes int, flags uint8, policy CodegenPo
 	if optional == 0 || policy.FunctionAlignLog2 < 4 {
 		return 0
 	}
-	switch policy.Objective {
-	case OptimizeSpeed:
-		return optional
-	case OptimizeSize, OptimizeEmbedded:
-		return 0
-	}
 	if flags&layoutHostAdapter != 0 {
 		return optional
 	}
@@ -579,14 +573,7 @@ func internalEntryShouldAlign(currentOff, bodyBytes int, policy CodegenPolicy) b
 	if pad == 0 || policy.InternalAlignLog2 < 4 {
 		return false
 	}
-	switch policy.Objective {
-	case OptimizeSpeed:
-		return true
-	case OptimizeSize, OptimizeEmbedded:
-		return false
-	default:
-		return pad <= min(15, bodyBytes/16)
-	}
+	return pad <= min(15, bodyBytes/16)
 }
 
 func asmCapForBody(bodyLen int) int {
@@ -609,7 +596,7 @@ func asmCapForBody(bodyLen int) int {
 
 func moduleCodeCapacityAMD64(bodyBytes, functions int, policy CodegenPolicy) int {
 	largeExpansionEighths := 37
-	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+	if policy.CompactNative {
 		largeExpansionEighths = 25
 	}
 	return shared.TaperedModuleCodeCapacity(bodyBytes, functions, 40, largeExpansionEighths, 1<<20)
@@ -988,9 +975,9 @@ type CompileOptions struct {
 	// selection while retaining the same compile lock and snapshot semantics.
 	OptimizationSnapshot OptimizationSnapshot
 	OptimizationDeltas   map[string]bool
-	// Objective selects the coherent speed/size tradeoff for this compilation.
-	// nil preserves the public Balanced default.
-	Objective *OptimizationObjective
+	// CompactNative enables the internal bounded native-compaction path. It is
+	// intended for measurements and rollout validation, not as a profile.
+	CompactNative bool
 
 	// Workers forces the maximum number of per-function compiler workers.
 	// Values <= 1 retain the exact serial fast path. Values > 1 are capped by
@@ -1136,14 +1123,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
-	objective := OptimizeBalanced
-	if opts.Objective != nil {
-		objective = *opts.Objective
-		if objective > OptimizeEmbedded {
-			return nil, fmt.Errorf("amd64: invalid optimization objective %d", objective)
-		}
+	policy := shared.DefaultCodegenPolicy(selection)
+	if !nativeCompactionDisabled && opts.CompactNative {
+		policy = shared.CompactCodegenPolicy(selection)
 	}
-	policy := shared.CodegenPolicyForObjective(selection, objective)
 	guardMode := opts.ElideBoundsChecks
 	// P6.1 elision is on unless disabled per-compile (opts) or globally (env).
 	boundsFacts := policy.EnabledOption(optBoundsFacts) && !opts.NoBoundsFacts
@@ -1272,7 +1255,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		var directPrepared []uint64
 		var adapterTails []adapterTailInfo
 		var adapters []sharedAdapterInfo
-		if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+		if policy.CompactNative {
 			if policy.EnabledOption(optSharedAdapters) {
 				adapters = make([]sharedAdapterInfo, 0, countHostAdaptersAMD64(hostAdapters))
 			} else {
@@ -1357,7 +1340,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				}
 				literalOffsets[i+1] = uint32(len(literalWords))
 			}
-			if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+			if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && policy.CompactNative {
 				fnCode = trapBodyCluster.shareFunction(hostAdapters[i], codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfoAMD64(), st)
 			}
 			if !codeBuffer.CommitTail(fnCode) {
@@ -1519,7 +1502,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				literalStart := len(ws.literals)
 				ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
 				result := funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: flags, directPrepared: ws.scratch.directPrepared, relocs: rl, literalStart: literalStart, literalEnd: len(ws.literals)}
-				if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+				if policy.CompactNative {
 					if policy.EnabledOption(optSharedAdapters) {
 						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
 					} else {
@@ -1550,7 +1533,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var directPrepared []uint64
 	var adapterTails []adapterTailInfo
 	var adapters []sharedAdapterInfo
-	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
+	if policy.CompactNative {
 		if policy.EnabledOption(optSharedAdapters) {
 			adapters = make([]sharedAdapterInfo, 0, countHostAdaptersAMD64(hostAdapters))
 		} else {
@@ -1591,7 +1574,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			literalOffsets[i+1] = uint32(len(literalWords))
 		}
 		fnCode := states[r.worker].arena[r.start:r.end]
-		if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+		if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && policy.CompactNative {
 			var st *CodegenStats
 			if ms != nil {
 				st = ms.Funcs[i]
@@ -2463,7 +2446,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	var gpPoolStorage [16]Reg
 	gpPool := gpPinPool(gpPoolStorage[:0], regABI, f.nParams, !hasCall, f.opt(optEntryArgPins))
-	if compactLowPinEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) && !hasCall && !hints.hasControlFlow {
+	if compactLowPinEnabled && f.policy.CompactNative && !hasCall && !hints.hasControlFlow {
 		preferPinReg(gpPool, RBP)
 	}
 	// Tiny prepared integer leaves can use a slimmer host trampoline when their
@@ -2660,11 +2643,11 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 }
 
 func compactAccumulatorImmediatePolicy(policy CodegenPolicy) bool {
-	return (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) && policy.EnabledOption(optAccumulatorImmediate)
+	return policy.CompactNative && policy.EnabledOption(optAccumulatorImmediate)
 }
 
 func symbolicLocalSlotPackingPolicy(policy CodegenPolicy) bool {
-	return compactNativePolicy(policy) && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) && policy.EnabledOption(optLocalSlotOrder)
+	return compactNativePolicy(policy) && policy.EnabledOption(optLocalSlotOrder)
 }
 
 // packLocalSlots uses exact emitted local-home references after the forward
@@ -2920,7 +2903,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 		} else {
 			f.locals[c.idx].reg = gpPool[k]
 			f.stats.addPinnedLocal()
-			if gpPool[k] == RBP && k == 0 && compactLowPinEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+			if gpPool[k] == RBP && k == 0 && compactLowPinEnabled && f.policy.CompactNative {
 				f.stats.peep("compact-low-local-pin")
 			}
 		}

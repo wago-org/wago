@@ -1,5 +1,10 @@
 # Generated native-code size results
 
+> Historical note: objective names in this measurement log describe the
+> configurations used when the experiments were run. Those public optimization
+> objectives have since been removed. Current Wago has one ordinary compiler
+> policy; compaction is an internal benchmark and rollout path.
+
 This is the measurement ledger for
 [the generated native-code size plan](generated-native-code-size-plan.md). It
 records raw native bytes separately from compile latency, allocations, and
@@ -2208,24 +2213,18 @@ B/op and allocation variation remains noise-level. A catalog optimization and
 rollback respectively. The full Size execution suite, AMD64 race suite, and
 compacted runtime corpus pass.
 
-## Public immutable objectives and Size execution benchmark
+## Removed objective API
 
-`RuntimeConfig.WithOptimizationObjective` now carries Speed, Balanced, Size, or
-Embedded through the public compile pipeline into the same immutable backend
-policy used by direct compiler tests. Balanced remains the default; invalid
-values fail configuration validation. The generated top-level facade exports
-the type and constants, so callers can compile and instantiate a Size module
-without backend-internal APIs.
+The public objective API and its execution benchmark were later removed as a
+deliberate breaking change. Ordinary compilation now has one
+performance-oriented policy. `BenchmarkCompileCompact` and `-compact` in the
+explain command retain direct access to the byte-oriented implementation for
+measurement without exposing a production runtime mode.
 
-`BenchmarkExecSize` mirrors the existing executable-corpus benchmark but
-compiles every module through that public Size configuration. This closes a
-validation gap: `BenchmarkCompileSize` previously measured Size code generation,
-while every standard execution benchmark still ran Balanced code. On AMD64,
-ten one-second `many_funcs` Size samples are bimodal (roughly 7.50--8.07 ns/op)
-with a median around 7.53 ns/op, versus about 7.57 ns/op for the corresponding
-current Balanced sample. The point is not a speed claim; it establishes the
-direct profile-specific runtime gate required before reviving any Size-only
-layout or instruction-selection experiment.
+The historical samples from the former compact configuration were bimodal on
+AMD64 `many_funcs` (roughly 7.50--8.07 ns/op), with a median around 7.53 ns/op.
+Those numbers are retained only as experimental evidence and are not a current
+mode comparison.
 
 ### Commands
 

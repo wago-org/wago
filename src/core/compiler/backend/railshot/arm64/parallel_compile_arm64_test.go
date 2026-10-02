@@ -45,12 +45,11 @@ func TestCompileWorkersDeterministicArm64(t *testing.T) {
 
 func TestCompileWorkersSizeSharedAdaptersDeterministicArm64(t *testing.T) {
 	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
-	size := OptimizeSize
 	for _, name := range []string{"many_funcs.wasm", "json-as-simd.wasm"} {
 		t.Run(name, func(t *testing.T) {
 			m := readParallelTestModuleArm64(t, filepath.Join(corpus, name))
-			want, wantStats := compileWorkerTestModuleObjectiveArm64(t, m, 1, &size)
-			got, gotStats := compileWorkerTestModuleObjectiveArm64(t, m, 4, &size)
+			want, wantStats := compileWorkerTestModuleCompactArm64(t, m, 1, true)
+			got, gotStats := compileWorkerTestModuleCompactArm64(t, m, 4, true)
 			assertCompiledModuleEqualArm64(t, got, want)
 			if !equalWorkerModuleStatsARM64(gotStats, wantStats) {
 				t.Fatalf("Size stats differ\n got: %#v\nwant: %#v", gotStats, wantStats)
@@ -122,13 +121,13 @@ func BenchmarkCompileModuleCompactionArm64(b *testing.B) {
 }
 
 func compileWorkerTestModuleArm64(t *testing.T, m *wasm.Module, workers int) (*encoder.CompiledModule, *ModuleStats) {
-	return compileWorkerTestModuleObjectiveArm64(t, m, workers, nil)
+	return compileWorkerTestModuleCompactArm64(t, m, workers, false)
 }
 
-func compileWorkerTestModuleObjectiveArm64(t *testing.T, m *wasm.Module, workers int, objective *OptimizationObjective) (*encoder.CompiledModule, *ModuleStats) {
+func compileWorkerTestModuleCompactArm64(t *testing.T, m *wasm.Module, workers int, compact bool) (*encoder.CompiledModule, *ModuleStats) {
 	t.Helper()
 	stats := &ModuleStats{}
-	cm, err := CompileModuleWith(m, CompileOptions{Workers: workers, Stats: stats, Objective: objective})
+	cm, err := CompileModuleWith(m, CompileOptions{Workers: workers, Stats: stats, CompactNative: compact})
 	if err != nil {
 		t.Fatalf("workers=%d: compile: %v", workers, err)
 	}

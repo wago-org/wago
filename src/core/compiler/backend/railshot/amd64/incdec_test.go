@@ -38,9 +38,8 @@ func TestSizeIncDecImmediateForms(t *testing.T) {
 				[]byte{0x00, 0x20, 0x00, test.constOp, test.imm, test.op, 0x0b})
 			compile := func(enabled bool) (*encoderamd64.CompiledModule, *ModuleStats) {
 				incDecEnabled = enabled
-				size := OptimizeSize
 				stats := &ModuleStats{}
-				cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: stats})
+				cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: stats})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -74,21 +73,25 @@ func TestSizeIncDecDirectAdjustments(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		objective OptimizationObjective
+		compact   bool
 		increment bool
 		want      []byte
 		wantHits  int
 	}{
-		{"size increment", OptimizeSize, true, []byte{0xff, 0xc1}, 1},
-		{"embedded decrement", OptimizeEmbedded, false, []byte{0xff, 0xc9}, 1},
-		{"balanced add", OptimizeBalanced, true, []byte{0x83, 0xc1, 0x01}, 0},
+		{"compact increment", true, true, []byte{0xff, 0xc1}, 1},
+		{"compact decrement", true, false, []byte{0xff, 0xc9}, 1},
+		{"ordinary add", false, true, []byte{0x83, 0xc1, 0x01}, 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			stats := &CodegenStats{}
+			policy := shared.DefaultCodegenPolicy(currentCodegenPolicy().Selection)
+			if test.compact {
+				policy = shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
+			}
 			f := fn{
 				a:      &encoderamd64.Asm{},
-				policy: shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, test.objective),
+				policy: policy,
 				stats:  stats,
 			}
 			f.unitAdjust(RCX, false, test.increment)
@@ -109,7 +112,7 @@ func TestSizeIncDecDirectRollback(t *testing.T) {
 	stats := &CodegenStats{}
 	f := fn{
 		a:      &encoderamd64.Asm{},
-		policy: shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize),
+		policy: shared.CompactCodegenPolicy(currentCodegenPolicy().Selection),
 		stats:  stats,
 	}
 	f.unitAdjust(RCX, false, false)

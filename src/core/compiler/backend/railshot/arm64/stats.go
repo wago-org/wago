@@ -74,7 +74,7 @@ var (
 	// of materializing NZCV with CMP before B.cond. The kill switch is the A/B
 	// oracle for the one-word lowering.
 	zeroBranchEnabled = os.Getenv("WAGO_ARM64_NO_ZERO_BRANCH") != "1"
-	// emptyZeroBranchEnabled extends zero-branch selection to Size/Embedded
+	// emptyZeroBranchEnabled extends zero-branch selection during native compaction
 	// br_if edges after codegen proves that no reconciliation bytes were emitted.
 	emptyZeroBranchEnabled  = os.Getenv("WAGO_ARM64_NO_EMPTY_ZERO_BRANCH") != "1"
 	eqzZeroBranchEnabled    = os.Getenv("WAGO_ARM64_NO_EQZ_ZERO_BRANCH") != "1"
@@ -86,9 +86,9 @@ var (
 	// sequences instead of constructing every i32 as a zero-extended i64.
 	compactMoveImmediate32Enabled = os.Getenv("WAGO_ARM64_NO_COMPACT_MOVE_IMMEDIATE32") != "1"
 	// shiftedAddSubImmediateEnabled selects the legal imm12 LSL #12 form for
-	// Size/Embedded add, sub, compare, and address displacement operations.
+	// compact add, sub, compare, and address displacement operations.
 	shiftedAddSubImmediateEnabled = os.Getenv("WAGO_ARM64_NO_SHIFTED_ADD_SUB_IMMEDIATE") != "1"
-	// sharedTrapBodyEnabled lets Size/Embedded trap groups share the complete
+	// sharedTrapBodyEnabled lets compact trap groups share the complete
 	// terminal trap record/writeback/unwind body within one function.
 	sharedTrapBodyEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_TRAP_BODY") != "1"
 	// moduleSharedTrapBodyEnabled lets internal functions replace byte-identical
@@ -145,7 +145,7 @@ type CodegenStats struct {
 	MaxSpillSlots int                      // high-water operand spill slots
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
 	NativeSize    shared.NativeFunctionSizeReport
-	// FinalizerFallback is the fail-closed reason a Size/Embedded function kept
+	// FinalizerFallback is the fail-closed reason a compact function kept
 	// its maximal-safe encoding instead of applying an available compaction plan.
 	FinalizerFallback string `json:"finalizer_fallback,omitempty"`
 	// InlineSiteBytes is the exact pre-finalization byte span emitted directly by

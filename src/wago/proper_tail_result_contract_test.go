@@ -46,9 +46,9 @@ func properTailResultModule(kind properTailBehaviorKind, results []wasm.ValType,
 	return wasmtest.Module(sections...)
 }
 
-func compileProperTailBehavior(t testing.TB, module []byte, objective OptimizationObjective, workers int) *Compiled {
+func compileProperTailBehavior(t testing.TB, module []byte, workers int) *Compiled {
 	t.Helper()
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).WithOptimizationObjective(objective).WithFunctionWorkers(workers)
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(workers)
 	compiled, err := cfg.Compile(module)
 	if err != nil {
 		t.Fatalf("compile proper-tail behavior module: %v", err)
@@ -83,19 +83,15 @@ func TestProperTailResultContractsExecuteAcrossKindsAndObjectives(t *testing.T) 
 			}
 			for _, kind := range kinds {
 				t.Run([]string{"direct", "indirect", "ref"}[kind], func(t *testing.T) {
-					for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
-						t.Run(objective.String(), func(t *testing.T) {
-							compiled := compileProperTailBehavior(t, properTailResultModule(kind, shape.results, shape.body), objective, 2)
-							in, err := instantiateCore(compiled, InstantiateOptions{})
-							if err != nil {
-								t.Fatal(err)
-							}
-							defer in.Close()
-							got, err := in.Invoke("run")
-							if err != nil || !reflect.DeepEqual(got, shape.wantSlot) {
-								t.Fatalf("proper-tail result slots = %#x, %v; want %#x", got, err, shape.wantSlot)
-							}
-						})
+					compiled := compileProperTailBehavior(t, properTailResultModule(kind, shape.results, shape.body), 2)
+					in, err := instantiateCore(compiled, InstantiateOptions{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer in.Close()
+					got, err := in.Invoke("run")
+					if err != nil || !reflect.DeepEqual(got, shape.wantSlot) {
+						t.Fatalf("proper-tail result slots = %#x, %v; want %#x", got, err, shape.wantSlot)
 					}
 				})
 			}
@@ -140,7 +136,7 @@ func recursiveProperTailResultModule(kind properTailBehaviorKind) []byte {
 func TestProperTailResultContractsDiscardFrames(t *testing.T) {
 	for _, kind := range []properTailBehaviorKind{properTailDirect, properTailIndirect, properTailRef} {
 		t.Run([]string{"direct", "indirect", "ref"}[kind], func(t *testing.T) {
-			compiled := compileProperTailBehavior(t, recursiveProperTailResultModule(kind), OptimizeSize, 2)
+			compiled := compileProperTailBehavior(t, recursiveProperTailResultModule(kind), 2)
 			in, err := instantiateCore(compiled, InstantiateOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -172,26 +168,22 @@ func typedGlobalReturnCallRefModule() []byte {
 }
 
 func TestProperTailTypedGlobalReturnCallRefPreservesAdapterResult(t *testing.T) {
-	for _, objective := range []OptimizationObjective{OptimizeBalanced, OptimizeSize, OptimizeEmbedded} {
-		t.Run(objective.String(), func(t *testing.T) {
-			compiled := compileProperTailBehavior(t, typedGlobalReturnCallRefModule(), objective, 2)
-			in, err := instantiateCore(compiled, InstantiateOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer in.Close()
-			got, err := in.Call(context.Background(), "run")
-			if err != nil || len(got) != 1 || got[0].Type() != ValI32 || got[0].I32() != 77 {
-				t.Fatalf("typed-global return_call_ref = %v, %v", got, err)
-			}
-		})
+	compiled := compileProperTailBehavior(t, typedGlobalReturnCallRefModule(), 2)
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	got, err := in.Call(context.Background(), "run")
+	if err != nil || len(got) != 1 || got[0].Type() != ValI32 || got[0].I32() != 77 {
+		t.Fatalf("typed-global return_call_ref = %v, %v", got, err)
 	}
 }
 
 func BenchmarkProperTailResultContracts(b *testing.B) {
 	for _, kind := range []properTailBehaviorKind{properTailDirect, properTailIndirect, properTailRef} {
 		b.Run([]string{"direct", "indirect", "ref"}[kind], func(b *testing.B) {
-			compiled := compileProperTailBehavior(b, properTailResultModule(kind, []wasm.ValType{wasm.I32, wasm.I64}, []byte{0x41, 0x2a, 0x42, 0x09, 0x0b}), OptimizeBalanced, 1)
+			compiled := compileProperTailBehavior(b, properTailResultModule(kind, []wasm.ValType{wasm.I32, wasm.I64}, []byte{0x41, 0x2a, 0x42, 0x09, 0x0b}), 1)
 			in, err := instantiateCore(compiled, InstantiateOptions{})
 			if err != nil {
 				b.Fatal(err)

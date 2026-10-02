@@ -8,59 +8,48 @@ func repeatedBrTableLabelsArm64(n int) []uint32 {
 	return make([]uint32, n)
 }
 
-func TestBrTableUseJumpObjectiveCostArm64(t *testing.T) {
-	policy := func(objective OptimizationObjective) CodegenPolicy {
-		p := CodegenPolicy{}
-		p.Objective = objective
-		return p
-	}
+func TestBrTableUseJumpCompactionCostArm64(t *testing.T) {
 	tests := []struct {
-		name      string
-		labels    []uint32
-		def       uint32
-		objective OptimizationObjective
-		want      bool
+		name    string
+		labels  []uint32
+		def     uint32
+		compact bool
+		want    bool
 	}{
-		{"balanced threshold", []uint32{0, 1, 2, 3, 4}, 5, OptimizeBalanced, true},
-		{"size unique five", []uint32{0, 1, 2, 3, 4}, 5, OptimizeSize, false},
-		{"size unique six", []uint32{0, 1, 2, 3, 4, 5}, 6, OptimizeSize, false},
-		{"size unique seven tie", []uint32{0, 1, 2, 3, 4, 5, 6}, 7, OptimizeSize, true},
-		{"size duplicate five pays", []uint32{0, 0, 1, 1, 2}, 3, OptimizeSize, true},
-		{"size one duplicate five insufficient", []uint32{0, 0, 1, 2, 3}, 4, OptimizeSize, false},
-		{"embedded follows size", []uint32{0, 1, 2, 3, 4}, 5, OptimizeEmbedded, false},
+		{"ordinary threshold", []uint32{0, 1, 2, 3, 4}, 5, false, true},
+		{"compact unique five", []uint32{0, 1, 2, 3, 4}, 5, true, false},
+		{"compact unique six", []uint32{0, 1, 2, 3, 4, 5}, 6, true, false},
+		{"compact unique seven tie", []uint32{0, 1, 2, 3, 4, 5, 6}, 7, true, true},
+		{"compact duplicate five pays", []uint32{0, 0, 1, 1, 2}, 3, true, true},
+		{"compact one duplicate five insufficient", []uint32{0, 0, 1, 2, 3}, 4, true, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := brTableUseJump(tc.labels, tc.def, policy(tc.objective)); got != tc.want {
-				t.Fatalf("brTableUseJump(%v, %d, %v) = %v, want %v", tc.labels, tc.def, tc.objective, got, tc.want)
+			if got := brTableUseJump(tc.labels, tc.def, CodegenPolicy{CompactNative: tc.compact}); got != tc.want {
+				t.Fatalf("brTableUseJump(%v, %d, compact=%v) = %v, want %v", tc.labels, tc.def, tc.compact, got, tc.want)
 			}
 		})
 	}
 }
 
 func TestBrTableCompactPlanArm64(t *testing.T) {
-	policy := func(objective OptimizationObjective) CodegenPolicy {
-		p := CodegenPolicy{}
-		p.Objective = objective
-		return p
-	}
 	tests := []struct {
-		name      string
-		labels    []uint32
-		objective OptimizationObjective
-		want      bool
-		unique    int
+		name    string
+		labels  []uint32
+		compact bool
+		want    bool
+		unique  int
 	}{
-		{"size duplicate", []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}, OptimizeSize, true, 4},
-		{"size unique", []uint32{0, 1, 2, 3, 4, 5, 6, 7}, OptimizeSize, false, 0},
-		{"balanced duplicate", []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}, OptimizeBalanced, false, 0},
-		{"size 4092 labels", repeatedBrTableLabelsArm64(4092), OptimizeSize, true, 1},
-		{"size 4093 labels", repeatedBrTableLabelsArm64(4093), OptimizeSize, false, 0},
-		{"size 4095 labels", repeatedBrTableLabelsArm64(4095), OptimizeSize, false, 0},
+		{"compact duplicate", []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}, true, true, 4},
+		{"compact unique", []uint32{0, 1, 2, 3, 4, 5, 6, 7}, true, false, 0},
+		{"ordinary duplicate", []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}, false, false, 0},
+		{"compact 4092 labels", repeatedBrTableLabelsArm64(4092), true, true, 1},
+		{"compact 4093 labels", repeatedBrTableLabelsArm64(4093), true, false, 0},
+		{"compact 4095 labels", repeatedBrTableLabelsArm64(4095), true, false, 0},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			f := fn{policy: policy(tc.objective), sc: &scratch{}, ctrl: make([]ctrlFrame, 9)}
+			f := fn{policy: CodegenPolicy{CompactNative: tc.compact}, sc: &scratch{}, ctrl: make([]ctrlFrame, 9)}
 			got, unique, _ := f.brTableCompactPlan(tc.labels, 8)
 			if got != tc.want || unique != tc.unique {
 				t.Fatalf("compact plan = %v, %d unique, want %v, %d", got, unique, tc.want, tc.unique)
