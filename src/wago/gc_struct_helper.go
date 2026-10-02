@@ -422,7 +422,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			in.gc.WriteBarrierRoot(ref)
 			break
 		}
-		if table >= uint64(state.TableCount) || index >= uint64(binary.LittleEndian.Uint32(state.Descriptors[table])) {
+		if table >= uint64(len(state.Descriptors)) || index >= uint64(binary.LittleEndian.Uint32(state.Descriptors[table])) {
 			panic(gcHelperTrap(coreruntime.TrapIndirectOutOfBounds))
 		}
 		if err := state.setTable(in.gc, table, index, args[1]); err != nil {

@@ -1238,7 +1238,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	var gcRefTestTable *gcRefTestTableState
-	var gcRefTestDescriptors [maxGCRefTestTables][]byte
+	var gcRefTestDescriptors [][]byte
+	if c.stagedGCStructProduct().requiresRefTableState() {
+		gcRefTestDescriptors = make([][]byte, c.tableCount())
+	}
 	// Table descriptors are [len u32][max u32][entry...]. Funcref entries retain
 	// their direct 32-byte call descriptor; externref entries are opaque 8-byte
 	// handles. Table 0 remains in the direct basedata slot. Multiple local tables
@@ -1393,24 +1396,16 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				break
 			}
 		}
-		if product := c.stagedGCStructProduct(); initErr == nil && product.requiresRefTableState() && !(product == stagedGCStructExtern && !c.hasCompactReferenceTable()) {
-			// Any extern conversion selects the extern product. Function tables
-			// hold descriptors, not collector references, so a module whose
-			// tables are all function tables keeps the conversion-only state
-			// created below, exactly like a module with no tables.
-			tableCount := c.tableCount()
-			valid := tableCount == 1 && c.tableEntryBytes(0) == 8
-			if product == stagedGCStructRefTestAbstract {
-				valid = tableCount == 3 && c.tableEntryBytes(0) == 8 && c.tableEntryBytes(1) == runtime.TableEntryBytes && c.tableEntryBytes(2) == 8
-			}
-			if !valid {
-				initErr = errors.New("GC ref.test product has an invalid mixed-table layout")
+		if product := c.stagedGCStructProduct(); initErr == nil && product.requiresRefTableState() && c.tableCount() != 0 {
+			specs, err := gcRefTestTableSpecs(c, gcRefTestDescriptors)
+			if err != nil {
+				initErr = err
 			} else {
 				canonicalTypes, err := b.gcTypeMap.canonicalTypes(product.refTestCanonicalTypes())
 				if err != nil {
 					initErr = err
 				} else {
-					gcRefTestTable, initErr = newGCRefTestTableState(b.collector, gcRefTestDescriptors[:tableCount], 0, canonicalTypes)
+					gcRefTestTable, initErr = newGCRefTestTableStateFor(b.collector, specs, canonicalTypes)
 				}
 			}
 		}

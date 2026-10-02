@@ -7,48 +7,100 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
-const maxGCRefTestTables = 3
+// gcRefTableKind is a ref-table state table's ownership class.
+type gcRefTableKind uint8
 
-// gcRefTestTableState couples exact local mixed-reference tables to their
-// distinct owners. The any/data table uses compact arena entries paired with
-// checked collector roots. The funcref table retains native descriptors only.
-// The externref table uses public store tokens or bounded conversion identities;
+const (
+	// gcRefTableOpaque tables (funcref descriptors, plain externref handles)
+	// carry no collector or conversion obligations of their own.
+	gcRefTableOpaque gcRefTableKind = iota
+	// gcRefTableRoot tables hold compact collector refs, each paired with a
+	// checked collector root slot, or verified foreign anyref words.
+	gcRefTableRoot
+	// gcRefTableExtern tables transfer conversion-identity ownership on writes.
+	gcRefTableExtern
+)
+
+// gcRefTestTableSpec describes one local table handed to the state.
+type gcRefTestTableSpec struct {
+	Descriptor []byte
+	EntryBytes int
+	Kind       gcRefTableKind
+}
+
+// gcRefTestTableState couples exact local reference tables to their distinct
+// owners. Collector-reference tables use compact arena entries paired with
+// checked collector roots. Funcref tables retain native descriptors only.
+// Externref tables use public store tokens or bounded conversion identities;
 // neither category is ever scanned as gc.Ref.
 type gcRefTestTableState struct {
+	// Descriptor, Slots and Count alias the first root table (RootTable), the
+	// one the single-table products and array element helpers address.
 	Descriptor    []byte
-	Descriptors   [maxGCRefTestTables][]byte
+	Descriptors   [][]byte
 	CanonicalType *gc.TypeCanonicalization
 	Conversion    *gcExternConversionState
 	Slots         []uint32
 	Count         uint32
 	TableCount    uint8
 	RootTable     uint8
+	kinds         []gcRefTableKind
+	entryBytes    []int
+	slots         [][]uint32
 }
 
+// newGCRefTestTableState builds the state for the historical fixed layouts:
+// one root table, or [root, funcref, externref].
 func newGCRefTestTableState(collector *gc.Collector, descriptors [][]byte, rootTable uint8, canonicalTypes []gc.TypeID) (*gcRefTestTableState, error) {
-	if collector == nil || len(descriptors) == 0 || len(descriptors) > maxGCRefTestTables || int(rootTable) >= len(descriptors) {
+	specs := make([]gcRefTestTableSpec, len(descriptors))
+	for i, descriptor := range descriptors {
+		specs[i] = gcRefTestTableSpec{Descriptor: descriptor, EntryBytes: 8}
+		switch {
+		case i == int(rootTable):
+			specs[i].Kind = gcRefTableRoot
+		case i == 1 && len(descriptors) == 3:
+			specs[i].EntryBytes = 32
+		case i == 2 && len(descriptors) == 3:
+			specs[i].Kind = gcRefTableExtern
+		}
+	}
+	if len(descriptors) == 0 || int(rootTable) >= len(descriptors) {
 		return nil, fmt.Errorf("GC ref.test table descriptors are unavailable")
 	}
-	state := &gcRefTestTableState{TableCount: uint8(len(descriptors)), RootTable: rootTable}
-	for i, descriptor := range descriptors {
-		if len(descriptor) < 8 {
+	return newGCRefTestTableStateFor(collector, specs, canonicalTypes)
+}
+
+// newGCRefTestTableStateFor builds the state for any number of local tables.
+// Root tables must start null or hold compact collector refs.
+func newGCRefTestTableStateFor(collector *gc.Collector, specs []gcRefTestTableSpec, canonicalTypes []gc.TypeID) (*gcRefTestTableState, error) {
+	if collector == nil || len(specs) == 0 || len(specs) > 255 {
+		return nil, fmt.Errorf("GC ref.test table descriptors are unavailable")
+	}
+	state := &gcRefTestTableState{
+		TableCount:  uint8(len(specs)),
+		RootTable:   uint8(len(specs)),
+		Descriptors: make([][]byte, len(specs)),
+		kinds:       make([]gcRefTableKind, len(specs)),
+		entryBytes:  make([]int, len(specs)),
+		slots:       make([][]uint32, len(specs)),
+	}
+	for i, spec := range specs {
+		descriptor := spec.Descriptor
+		if len(descriptor) < 8 || (spec.EntryBytes != 8 && spec.EntryBytes != 32) || (spec.Kind != gcRefTableOpaque && spec.EntryBytes != 8) {
 			return nil, fmt.Errorf("GC ref.test table %d descriptor is unavailable", i)
 		}
 		size := int(binary.LittleEndian.Uint32(descriptor))
 		capacity := int(binary.LittleEndian.Uint32(descriptor[4:]))
-		entryBytes := 8
-		if i == 1 && len(descriptors) == 3 {
-			entryBytes = 32
-		}
-		if size < 0 || capacity < size || 8+capacity*entryBytes > len(descriptor) {
+		if size < 0 || capacity < size || 8+capacity*spec.EntryBytes > len(descriptor) {
 			return nil, fmt.Errorf("GC ref.test table %d shape size=%d capacity=%d bytes=%d is invalid", i, size, capacity, len(descriptor))
 		}
 		state.Descriptors[i] = descriptor
+		state.kinds[i] = spec.Kind
+		state.entryBytes[i] = spec.EntryBytes
+		if spec.Kind == gcRefTableRoot && int(state.RootTable) == len(specs) {
+			state.RootTable = uint8(i)
+		}
 	}
-	state.Descriptor = state.Descriptors[rootTable]
-	size := int(binary.LittleEndian.Uint32(state.Descriptor))
-	state.Count = uint32(size)
-	state.Slots = make([]uint32, size)
 	if canonicalTypes != nil {
 		canonical, err := collector.NewTypeCanonicalization(canonicalTypes)
 		if err != nil {
@@ -56,24 +108,59 @@ func newGCRefTestTableState(collector *gc.Collector, descriptors [][]byte, rootT
 		}
 		state.CanonicalType = canonical
 	}
-	for i := 0; i < size; i++ {
-		off := 8 + i*8
-		if binary.LittleEndian.Uint64(state.Descriptor[off:off+8]) != 0 {
-			state.drop(collector)
-			return nil, fmt.Errorf("GC ref.test table slot %d is not initially null", i)
+	for i := range specs {
+		if state.kinds[i] != gcRefTableRoot {
+			continue
 		}
-		slot, err := collector.NewCheckedTableSlot(gc.Null())
-		if err != nil {
-			state.drop(collector)
-			return nil, err
+		descriptor := state.Descriptors[i]
+		size := int(binary.LittleEndian.Uint32(descriptor))
+		slots := make([]uint32, size)
+		state.slots[i] = slots
+		for j := 0; j < size; j++ {
+			off := 8 + j*8
+			word := binary.LittleEndian.Uint64(descriptor[off : off+8])
+			if word>>32 != 0 {
+				state.drop(collector)
+				return nil, fmt.Errorf("GC ref.test table %d slot %d holds a non-compact initial reference", i, j)
+			}
+			slot, err := collector.NewCheckedTableSlot(gc.Ref(uint32(word)))
+			if err != nil {
+				state.drop(collector)
+				return nil, err
+			}
+			slots[j] = slot
 		}
-		state.Slots[i] = slot
+	}
+	if root := int(state.RootTable); root < len(specs) {
+		state.Descriptor = state.Descriptors[root]
+		state.Slots = state.slots[root]
+		state.Count = uint32(len(state.Slots))
 	}
 	return state, nil
 }
 
+// gcRefTestTableSpecs classifies every local table of a ref-table product by
+// its element type: collector-reference tables are rooted, externref tables
+// carry conversion ownership, and funcref tables stay native.
+func gcRefTestTableSpecs(c *Compiled, descriptors [][]byte) ([]gcRefTestTableSpec, error) {
+	specs := make([]gcRefTestTableSpec, len(descriptors))
+	for i, descriptor := range descriptors {
+		if descriptor == nil {
+			return nil, fmt.Errorf("GC ref.test product table %d is imported or unavailable", i)
+		}
+		specs[i] = gcRefTestTableSpec{Descriptor: descriptor, EntryBytes: c.tableEntryBytes(i)}
+		switch typ := c.tableElementType(i); {
+		case isGCRefValType(typ):
+			specs[i].Kind = gcRefTableRoot
+		case typ == ValExternRef:
+			specs[i].Kind = gcRefTableExtern
+		}
+	}
+	return specs, nil
+}
+
 func (s *gcRefTestTableState) attachConversion(conversion *gcExternConversionState) error {
-	if s == nil || conversion == nil || (s.TableCount != 0 && s.TableCount != 1 && s.TableCount != 3) {
+	if s == nil || conversion == nil {
 		return fmt.Errorf("GC conversion table state is unavailable")
 	}
 	if s.Conversion != nil {
@@ -96,7 +183,8 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 	if index >= size {
 		return fmt.Errorf("GC ref.test table %d index %d out of bounds", table, index)
 	}
-	if table == uint64(s.RootTable) {
+	switch s.kinds[table] {
+	case gcRefTableRoot:
 		root := gc.Null()
 		if word>>32 != 0 {
 			if s.Conversion == nil {
@@ -112,10 +200,14 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 		} else {
 			root = gc.Ref(uint32(word))
 		}
-		if err := collector.SetTableSlot(s.Slots[index], root); err != nil {
+		slots := s.slots[table]
+		if index >= uint64(len(slots)) {
+			return fmt.Errorf("GC ref.test table %d index %d has no collector root", table, index)
+		}
+		if err := collector.SetTableSlot(slots[index], root); err != nil {
 			return err
 		}
-	} else if s.TableCount == 3 && table == 2 {
+	case gcRefTableExtern:
 		if s.Conversion == nil {
 			return fmt.Errorf("GC ref.test extern table has no conversion owner")
 		}
@@ -125,14 +217,10 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 			return err
 		}
 	}
-	entryBytes := 8
-	if s.TableCount == 3 && table == 1 {
-		entryBytes = 32
-	}
-	off := 8 + int(index)*entryBytes
-	if entryBytes != 8 {
+	if s.entryBytes[table] != 8 {
 		return fmt.Errorf("GC ref.test funcref table mutation must use native descriptor copying")
 	}
+	off := 8 + int(index)*8
 	binary.LittleEndian.PutUint64(descriptor[off:off+8], word)
 	return nil
 }
@@ -180,27 +268,25 @@ func (s *gcRefTestTableState) drop(collector *gc.Collector) {
 	if s == nil || collector == nil {
 		return
 	}
-	for i := uint32(0); i < s.Count; i++ {
-		_ = collector.SetTableSlot(s.Slots[i], gc.Null())
-		off := 8 + int(i)*8
-		if off+8 <= len(s.Descriptor) {
-			binary.LittleEndian.PutUint64(s.Descriptor[off:off+8], 0)
+	for table, slots := range s.slots {
+		descriptor := s.Descriptors[table]
+		for i, slot := range slots {
+			_ = collector.SetTableSlot(slot, gc.Null())
+			off := 8 + i*8
+			if off+8 <= len(descriptor) {
+				binary.LittleEndian.PutUint64(descriptor[off:off+8], 0)
+			}
 		}
 	}
 	if s.Conversion != nil {
 		_ = s.Conversion.close()
 	}
-	for table := uint8(0); table < s.TableCount; table++ {
-		descriptor := s.Descriptors[table]
+	for table, descriptor := range s.Descriptors {
 		if len(descriptor) < 8 {
 			continue
 		}
-		entryBytes := 8
-		if s.TableCount == 3 && table == 1 {
-			entryBytes = 32
-		}
 		size := int(binary.LittleEndian.Uint32(descriptor))
-		clear(descriptor[8 : 8+size*entryBytes])
+		clear(descriptor[8 : 8+size*s.entryBytes[table]])
 	}
 }
 
