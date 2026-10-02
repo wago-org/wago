@@ -3064,6 +3064,17 @@ func (c *Compiled) hasExternrefTable() bool {
 	return false
 }
 
+// hasCompactReferenceTable reports whether any table stores 8-byte reference
+// entries rather than function-table descriptors.
+func (c *Compiled) hasCompactReferenceTable() bool {
+	for i := 0; i < c.tableCount(); i++ {
+		if c.tableEntryBytes(i) == 8 {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Compiled) memoryExportMap() map[string]int {
 	if c == nil || c.memoryDir == nil {
 		return nil
