@@ -2328,11 +2328,16 @@ func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
 
 func (p supportPass) supportedNullReference(rt wasm.RefType) bool {
 	heap := rt.Heap()
-	if !p.feat.NullReferenceProducts || !rt.Nullable() || rt.Exact() || heap.Kind() != wasm.HeapAbs {
+	if !p.feat.NullReferenceProducts || rt.Exact() || heap.Kind() != wasm.HeapAbs {
 		return false
 	}
 	switch heap.Abs() {
-	case wasm.HeapAny, wasm.HeapNone, wasm.HeapExn, wasm.HeapNoExn, wasm.HeapNoFunc, wasm.HeapNoExtern:
+	case wasm.HeapAny, wasm.HeapExn:
+		return rt.Nullable()
+	case wasm.HeapNone, wasm.HeapNoExn, wasm.HeapNoFunc, wasm.HeapNoExtern:
+		// A non-null bottom reference is uninhabited: no value ever reaches it,
+		// so it shares the nullable representation and only appears in code
+		// that validation already proves unreachable at runtime.
 		return true
 	default:
 		return false
