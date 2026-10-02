@@ -1,0 +1,141 @@
+# git 43e18b07ffebd4887b11daa8e9cc71657c6fd392
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: Apple M4 Max
+BenchmarkCompile_wago                    	  143215	      8758 ns/op	   14593 B/op	      48 allocs/op
+BenchmarkCompile_wazero                  	   17092	     67986 ns/op	  302921 B/op	     265 allocs/op
+BenchmarkInstantiate_wago                	  519766	      2287 ns/op	    1600 B/op	       7 allocs/op
+BenchmarkInstantiate_wazero              	  131059	      8707 ns/op	    7386 B/op	      23 allocs/op
+BenchmarkExecFibLoop_wago                	30524738	        37.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecFibLoop_wazero              	26246384	        45.64 ns/op	      16 B/op	       2 allocs/op
+BenchmarkExecFibRec_wago                 	    4774	    254165 ns/op	       3 B/op	       0 allocs/op
+BenchmarkExecFibRec_wazero               	    3249	    371391 ns/op	     119 B/op	       2 allocs/op
+BenchmarkExecCallOverhead_wago           	39337383	        29.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecCallOverhead_wazero         	46210201	        26.91 ns/op	      16 B/op	       2 allocs/op
+BenchmarkExecTypedCall_wago              	217644088	         5.548 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecHostRoundtrip_wago          	 3255631	       370.6 ns/op	      64 B/op	       1 allocs/op
+BenchmarkExecHostCallback_wago           	 7770667	       153.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecHostRoundtrip_wazero        	 3607201	       328.0 ns/op	     112 B/op	       7 allocs/op
+BenchmarkExecGlobalGet_wago              	 8790478	       134.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecGlobalSet_wago              	 9107752	       134.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecLocalGet_wago               	 8792215	       135.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecMemoryLoad_wago             	 8984910	       133.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCommandExec/embench-crc32       	    2208	    514251 ns/op	   19160 B/op	     210 allocs/op
+BenchmarkCommandExec/embench-huffbench   	    3231	    385199 ns/op	   19216 B/op	     212 allocs/op
+BenchmarkCommandExec/embench-matmult-int 	    8204	    156355 ns/op	   19160 B/op	     210 allocs/op
+BenchmarkCommandExec/embench-nettle-aes  	    4294	    280018 ns/op	   19160 B/op	     210 allocs/op
+BenchmarkCommandExec/embench-nettle-sha256         	    6738	    191391 ns/op	   19216 B/op	     212 allocs/op
+BenchmarkCommandExec/embench-qrduino               	    4324	    287053 ns/op	   19160 B/op	     210 allocs/op
+BenchmarkCommandExec/sightglass-shootout-base64    	     490	   2442859 ns/op	   29456 B/op	     307 allocs/op
+BenchmarkCommandExec/sightglass-libsodium-hash     	    1980	    605878 ns/op	   32408 B/op	     324 allocs/op
+BenchmarkCommandExec/tacle-bsort                   	  116842	     10747 ns/op	    1921 B/op	      11 allocs/op
+BenchmarkWazeroCommandExec/embench-crc32           	    2235	    541343 ns/op	 1133640 B/op	      36 allocs/op
+BenchmarkWazeroCommandExec/embench-huffbench       	    2522	    477867 ns/op	 1133720 B/op	      38 allocs/op
+BenchmarkWazeroCommandExec/embench-matmult-int     	    4730	    283384 ns/op	 1133648 B/op	      36 allocs/op
+BenchmarkWazeroCommandExec/embench-nettle-aes      	    2989	    393725 ns/op	 1133704 B/op	      36 allocs/op
+BenchmarkWazeroCommandExec/embench-nettle-sha256   	    3762	    313977 ns/op	 1133744 B/op	      38 allocs/op
+BenchmarkWazeroCommandExec/embench-qrduino         	    2391	    488656 ns/op	 1133640 B/op	      36 allocs/op
+BenchmarkWazeroCommandExec/sightglass-shootout-base64         	     608	   1958592 ns/op	  153696 B/op	      81 allocs/op
+BenchmarkWazeroCommandExec/sightglass-libsodium-hash          	    1122	   1317345 ns/op	16866152 B/op	      95 allocs/op
+BenchmarkWazeroCommandExec/tacle-bsort                        	   41937	     36692 ns/op	  150552 B/op	      35 allocs/op
+BenchmarkWazeroCompile/tiny                                   	   20098	     60332 ns/op	       120.0 code-B	  280784 B/op	     183 allocs/op
+BenchmarkWazeroCompile/fib_rec                                	   19663	     62018 ns/op	       148.0 code-B	  283064 B/op	     225 allocs/op
+BenchmarkWazeroCompile/memory                                 	   13156	     95384 ns/op	       348.0 code-B	  308472 B/op	     275 allocs/op
+BenchmarkWazeroCompile/memory_tree                            	   10000	    107664 ns/op	       456.0 code-B	  313936 B/op	     336 allocs/op
+BenchmarkWazeroCompile/dispatch                               	   12301	    107316 ns/op	       556.0 code-B	  288016 B/op	     229 allocs/op
+BenchmarkWazeroCompile/many_funcs                             	    1194	   1000790 ns/op	     19360 code-B	  340808 B/op	     785 allocs/op
+BenchmarkWazeroCompile/linked_list                            	   12441	    107138 ns/op	       468.0 code-B	  328008 B/op	     345 allocs/op
+BenchmarkWazeroCompile/nbody                                  	    2820	    398792 ns/op	      5144 code-B	  717472 B/op	     926 allocs/op
+BenchmarkWazeroCompile/fannkuch                               	    1642	    695285 ns/op	      7068 code-B	 1039096 B/op	    2090 allocs/op
+BenchmarkWazeroCompile/matmul                                 	    3423	    353311 ns/op	      2668 code-B	  603952 B/op	    1155 allocs/op
+BenchmarkWazeroCompile/sha256                                 	    2328	    484915 ns/op	      6192 code-B	  828032 B/op	    1069 allocs/op
+BenchmarkWazeroCompile/raytrace                               	    1036	   1181255 ns/op	     11032 code-B	 1490857 B/op	    2594 allocs/op
+BenchmarkWazeroCompile/json-as                                	     205	   6071886 ns/op	     74244 code-B	 2619664 B/op	    6353 allocs/op
+BenchmarkWazeroCompile/blake-as                               	    1455	   1111409 ns/op	     10388 code-B	  890168 B/op	     997 allocs/op
+BenchmarkWazeroCompile/utf-as                                 	    1512	    814095 ns/op	      6472 code-B	 1189376 B/op	    2681 allocs/op
+BenchmarkWazeroCompile/json-as-simd                           	     165	   7105729 ns/op	     85060 code-B	 2319554 B/op	    5829 allocs/op
+BenchmarkWazeroCompile/blake-as-simd                          	     547	   2214432 ns/op	     42440 code-B	 1529240 B/op	    1189 allocs/op
+BenchmarkWazeroCompile/utf-as-simd                            	     555	   2125652 ns/op	     28496 code-B	 1193480 B/op	    2874 allocs/op
+BenchmarkWazeroCompile/coremark                               	     386	   3008810 ns/op	     28940 code-B	 2118720 B/op	    4983 allocs/op
+BenchmarkWazeroCompile/blake3                                 	     498	   2426345 ns/op	     37432 code-B	 1510888 B/op	    2124 allocs/op
+BenchmarkWazeroCompile/qoi                                    	    1264	    934233 ns/op	     10772 code-B	  852808 B/op	    1612 allocs/op
+BenchmarkWazeroCompile/lz4                                    	    1084	   1120611 ns/op	     10552 code-B	  968448 B/op	    2213 allocs/op
+BenchmarkWazeroCompile/zlib                                   	     159	   7339266 ns/op	     64924 code-B	 7593171 B/op	   13925 allocs/op
+BenchmarkWazeroCompile/zstd                                   	      39	  31068663 ns/op	    265680 code-B	24845992 B/op	   41191 allocs/op
+BenchmarkWazeroCompile/embench-crc32                          	    7095	    158227 ns/op	       892.0 code-B	  380184 B/op	     549 allocs/op
+BenchmarkWazeroCompile/embench-huffbench                      	     903	   1308258 ns/op	     11772 code-B	 1904408 B/op	    3654 allocs/op
+BenchmarkWazeroCompile/embench-matmult-int                    	    1803	    650787 ns/op	     10620 code-B	 1206936 B/op	    1091 allocs/op
+BenchmarkWazeroCompile/embench-nettle-aes                     	    1203	   1046084 ns/op	     15368 code-B	 1712696 B/op	    1750 allocs/op
+BenchmarkWazeroCompile/embench-nettle-sha256                  	    1164	   1053135 ns/op	     16884 code-B	 1464568 B/op	     851 allocs/op
+BenchmarkWazeroCompile/embench-qrduino                        	     190	   6193610 ns/op	     89264 code-B	 7791608 B/op	    8409 allocs/op
+BenchmarkWazeroCompile/sightglass-shootout-base64             	      99	  13052424 ns/op	    127604 code-B	 8759790 B/op	   22417 allocs/op
+BenchmarkWazeroCompile/sightglass-libsodium-hash              	     100	  14798450 ns/op	    187572 code-B	 9476694 B/op	   21244 allocs/op
+BenchmarkWazeroCompile/tacle-bsort                            	    5022	    230489 ns/op	      1732 code-B	  476768 B/op	     817 allocs/op
+BenchmarkWazeroCompile/polybench-2mm                          	    1281	    952180 ns/op	      8700 code-B	 1068888 B/op	    2291 allocs/op
+BenchmarkWazeroCompile/polybench-3mm                          	     961	   1439591 ns/op	     10464 code-B	 1432776 B/op	    3085 allocs/op
+BenchmarkWazeroCompile/polybench-adi                          	    1039	   1081677 ns/op	     11352 code-B	 1330016 B/op	    2378 allocs/op
+BenchmarkWazeroCompile/polybench-atax                         	    1683	    682419 ns/op	      7060 code-B	  819248 B/op	    1830 allocs/op
+BenchmarkWazeroCompile/polybench-bicg                         	    1659	    754981 ns/op	      7532 code-B	  881640 B/op	    1867 allocs/op
+BenchmarkWazeroCompile/polybench-cholesky                     	    1208	    997328 ns/op	      9472 code-B	 1105512 B/op	    2179 allocs/op
+BenchmarkWazeroCompile/polybench-correlation                  	    1321	    881445 ns/op	      8232 code-B	 1002216 B/op	    2114 allocs/op
+BenchmarkWazeroCompile/polybench-covariance                   	    1550	    794703 ns/op	      7380 code-B	  887096 B/op	    1895 allocs/op
+BenchmarkWazeroCompile/polybench-deriche                      	    1303	    949625 ns/op	      9300 code-B	 1098040 B/op	    2223 allocs/op
+BenchmarkWazeroCompile/polybench-doitgen                      	    1084	   1027344 ns/op	     13232 code-B	 1284320 B/op	    1902 allocs/op
+BenchmarkWazeroCompile/polybench-durbin                       	    1842	    693724 ns/op	      6992 code-B	  818344 B/op	    1750 allocs/op
+BenchmarkWazeroCompile/polybench-fdtd-2d                      	    1182	   1017508 ns/op	      9888 code-B	 1142240 B/op	    2140 allocs/op
+BenchmarkWazeroCompile/polybench-floyd-warshall               	    2208	    541120 ns/op	      5248 code-B	  649496 B/op	    1609 allocs/op
+BenchmarkWazeroCompile/polybench-gemm                         	    1693	    717925 ns/op	      7292 code-B	  876392 B/op	    1917 allocs/op
+BenchmarkWazeroCompile/polybench-gemver                       	    1144	   1094172 ns/op	     11224 code-B	 1329080 B/op	    2590 allocs/op
+BenchmarkWazeroCompile/polybench-gesummv                      	    1819	    679332 ns/op	      6724 code-B	  811312 B/op	    1801 allocs/op
+BenchmarkWazeroCompile/polybench-gramschmidt                  	    1348	    812482 ns/op	      8496 code-B	 1000488 B/op	    1966 allocs/op
+BenchmarkWazeroCompile/polybench-heat-3d                      	    1326	    973002 ns/op	     10736 code-B	 1201232 B/op	    2070 allocs/op
+BenchmarkWazeroCompile/polybench-jacobi-1d                    	    2103	    554102 ns/op	      5736 code-B	  681136 B/op	    1554 allocs/op
+BenchmarkWazeroCompile/polybench-jacobi-2d                    	    1938	    609453 ns/op	      6108 code-B	  761160 B/op	    1776 allocs/op
+BenchmarkWazeroCompile/polybench-lu                           	    1274	    931272 ns/op	      9424 code-B	 1111336 B/op	    2206 allocs/op
+BenchmarkWazeroCompile/polybench-ludcmp                       	     895	   1405901 ns/op	     12408 code-B	 1727216 B/op	    3602 allocs/op
+BenchmarkWazeroCompile/polybench-mvt                          	    1388	    825633 ns/op	      8396 code-B	  961232 B/op	    1956 allocs/op
+BenchmarkWazeroCompile/polybench-nussinov                     	    1848	    673774 ns/op	      6860 code-B	  816808 B/op	    1701 allocs/op
+BenchmarkWazeroCompile/polybench-seidel-2d                    	    2284	    540220 ns/op	      5256 code-B	  664080 B/op	    1631 allocs/op
+BenchmarkWazeroCompile/polybench-symm                         	    1455	    820287 ns/op	      8344 code-B	  981656 B/op	    2062 allocs/op
+BenchmarkWazeroCompile/polybench-syr2k                        	    1614	    721090 ns/op	      7168 code-B	  858240 B/op	    1926 allocs/op
+BenchmarkWazeroCompile/polybench-syrk                         	    1657	    739587 ns/op	      7056 code-B	  863216 B/op	    1916 allocs/op
+BenchmarkWazeroCompile/polybench-trisolv                      	    1965	    639047 ns/op	      6500 code-B	  767304 B/op	    1754 allocs/op
+BenchmarkWazeroCompile/polybench-trmm                         	    1656	    718383 ns/op	      7336 code-B	  864056 B/op	    1872 allocs/op
+BenchmarkWazeroInstantiate/tiny                               	  126703	      9354 ns/op	    7176 B/op	      21 allocs/op
+BenchmarkWazeroInstantiate/fib_rec                            	  124506	      9388 ns/op	    7176 B/op	      21 allocs/op
+BenchmarkWazeroInstantiate/memory                             	   68065	     17860 ns/op	   72872 B/op	      23 allocs/op
+BenchmarkWazeroInstantiate/memory_tree                        	   68380	     17744 ns/op	   72872 B/op	      23 allocs/op
+BenchmarkWazeroInstantiate/dispatch                           	  121948	      9630 ns/op	    7504 B/op	      32 allocs/op
+BenchmarkWazeroInstantiate/many_funcs                         	  126763	      9496 ns/op	    7176 B/op	      21 allocs/op
+BenchmarkWazeroInstantiate/linked_list                        	   62377	     18037 ns/op	  269480 B/op	      23 allocs/op
+BenchmarkWazeroInstantiate/nbody                              	   37744	     27075 ns/op	 1056128 B/op	      27 allocs/op
+BenchmarkWazeroInstantiate/fannkuch                           	   48265	     25754 ns/op	 1056128 B/op	      27 allocs/op
+BenchmarkWazeroInstantiate/matmul                             	   48237	     24198 ns/op	 1056128 B/op	      27 allocs/op
+BenchmarkWazeroInstantiate/sha256                             	   28441	     36040 ns/op	 1121689 B/op	      28 allocs/op
+BenchmarkWazeroInstantiate/raytrace                           	   50450	     24696 ns/op	 1056128 B/op	      27 allocs/op
+BenchmarkWazeroInstantiate/json-as                            	   57356	     19505 ns/op	   77544 B/op	      53 allocs/op
+BenchmarkWazeroInstantiate/blake-as                           	   71266	     17431 ns/op	   73856 B/op	      38 allocs/op
+BenchmarkWazeroInstantiate/utf-as                             	   56768	     21226 ns/op	   79472 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/json-as-simd                       	   57706	     20336 ns/op	   77928 B/op	      53 allocs/op
+BenchmarkWazeroInstantiate/blake-as-simd                      	   69530	     17956 ns/op	   73856 B/op	      38 allocs/op
+BenchmarkWazeroInstantiate/utf-as-simd                        	   59158	     22200 ns/op	   79976 B/op	      30 allocs/op
+BenchmarkWazeroInstantiate/coremark                           	   59790	     19441 ns/op	  138528 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/blake3                             	   46352	     26516 ns/op	 1056008 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/qoi                                	   27788	     38905 ns/op	 2104561 B/op	      25 allocs/op
+BenchmarkWazeroInstantiate/lz4                                	   41308	     34317 ns/op	 2104608 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/zlib                               	   35469	     35117 ns/op	 2104880 B/op	      34 allocs/op
+BenchmarkWazeroInstantiate/zstd                               	   33757	     36808 ns/op	 2105072 B/op	      29 allocs/op
+BenchmarkWazeroInstantiate/polybench-2mm                      	   72474	     16119 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-3mm                      	   78813	     16079 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-adi                      	   75271	     17739 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-atax                     	   67270	     17469 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-bicg                     	   66079	     16848 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-cholesky                 	   69016	     17143 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-correlation              	   69568	     17683 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-covariance               	   64563	     17042 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-deriche                  	   68830	     17239 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-doitgen                  	   73011	     17333 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-durbin                   	   79648	     17742 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-fdtd-2d                  	   66250	     16805 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-floyd-warshall           	

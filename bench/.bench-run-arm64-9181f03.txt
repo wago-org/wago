@@ -1,0 +1,814 @@
+# git 9181f039060be02b7d9d58032be16f39e14deee6
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: Apple M4 Max
+BenchmarkCompile_wago                    	  136003	      9012 ns/op	   15112 B/op	      48 allocs/op
+BenchmarkCompile_wazero                  	   17976	     66688 ns/op	  302921 B/op	     265 allocs/op
+BenchmarkInstantiate_wago                	  541502	      2342 ns/op	    1600 B/op	       7 allocs/op
+BenchmarkInstantiate_wazero              	  142074	      8666 ns/op	    7386 B/op	      23 allocs/op
+BenchmarkExecFibLoop_wago                	31907043	        38.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecFibLoop_wazero              	25587126	        46.96 ns/op	      16 B/op	       2 allocs/op
+BenchmarkExecFibRec_wago                 	    4623	    258203 ns/op	       4 B/op	       0 allocs/op
+BenchmarkExecFibRec_wazero               	    3130	    377559 ns/op	     123 B/op	       2 allocs/op
+BenchmarkExecCallOverhead_wago           	40209816	        30.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecCallOverhead_wazero         	46504266	        26.42 ns/op	      16 B/op	       2 allocs/op
+BenchmarkExecTypedCall_wago              	218559544	         5.555 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecHostRoundtrip_wago          	 3276402	       366.3 ns/op	      64 B/op	       1 allocs/op
+BenchmarkExecHostCallback_wago           	 7720588	       154.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecHostRoundtrip_wazero        	 3592317	       329.8 ns/op	     112 B/op	       7 allocs/op
+BenchmarkExecGlobalGet_wago              	 8935513	       139.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecGlobalSet_wago              	 8735280	       138.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecLocalGet_wago               	 8926338	       135.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecMemoryLoad_wago             	 8870074	       135.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCommandExec/embench-crc32       	    2490	    489498 ns/op	   19160 B/op	     210 allocs/op
+BenchmarkCommandExec/embench-huffbench   	    6193	    212357 ns/op	   19216 B/op	     212 allocs/op
+BenchmarkCommandExec/embench-matmult-int 	    9602	    125684 ns/op	   19160 B/op	     210 allocs/op
+BenchmarkCommandExec/embench-nettle-aes  	    5209	    211556 ns/op	   19160 B/op	     210 allocs/op
+BenchmarkCommandExec/embench-nettle-sha256         	    6766	    190485 ns/op	   19216 B/op	     212 allocs/op
+BenchmarkCommandExec/embench-qrduino               	    5533	    225918 ns/op	   19160 B/op	     210 allocs/op
+BenchmarkCommandExec/sightglass-shootout-base64    	     632	   1884579 ns/op	   29456 B/op	     307 allocs/op
+BenchmarkCommandExec/sightglass-libsodium-hash     	    1885	    613915 ns/op	   32408 B/op	     324 allocs/op
+BenchmarkCommandExec/tacle-bsort                   	  123247	      9757 ns/op	    1921 B/op	      11 allocs/op
+BenchmarkWazeroCommandExec/embench-crc32           	    2089	    542355 ns/op	 1133640 B/op	      36 allocs/op
+BenchmarkWazeroCommandExec/embench-huffbench       	    2428	    496579 ns/op	 1133720 B/op	      38 allocs/op
+BenchmarkWazeroCommandExec/embench-matmult-int     	    4806	    283591 ns/op	 1133648 B/op	      36 allocs/op
+BenchmarkWazeroCommandExec/embench-nettle-aes      	    2691	    411603 ns/op	 1133704 B/op	      36 allocs/op
+BenchmarkWazeroCommandExec/embench-nettle-sha256   	    3380	    303330 ns/op	 1133744 B/op	      38 allocs/op
+BenchmarkWazeroCommandExec/embench-qrduino         	    2216	    486664 ns/op	 1133640 B/op	      36 allocs/op
+BenchmarkWazeroCommandExec/sightglass-shootout-base64         	     622	   1940399 ns/op	  153696 B/op	      81 allocs/op
+BenchmarkWazeroCommandExec/sightglass-libsodium-hash          	    1224	    828872 ns/op	16866152 B/op	      95 allocs/op
+BenchmarkWazeroCommandExec/tacle-bsort                        	   37192	     29023 ns/op	  150552 B/op	      35 allocs/op
+BenchmarkWazeroCompile/tiny                                   	   17859	     60035 ns/op	       120.0 code-B	  280784 B/op	     183 allocs/op
+BenchmarkWazeroCompile/fib_rec                                	   21714	     56437 ns/op	       148.0 code-B	  283064 B/op	     225 allocs/op
+BenchmarkWazeroCompile/memory                                 	   13840	     83826 ns/op	       348.0 code-B	  308472 B/op	     275 allocs/op
+BenchmarkWazeroCompile/memory_tree                            	   12609	     95312 ns/op	       456.0 code-B	  313936 B/op	     336 allocs/op
+BenchmarkWazeroCompile/dispatch                               	   14886	     83372 ns/op	       556.0 code-B	  288016 B/op	     229 allocs/op
+BenchmarkWazeroCompile/many_funcs                             	    1336	    864143 ns/op	     19360 code-B	  340808 B/op	     785 allocs/op
+BenchmarkWazeroCompile/linked_list                            	   13084	     90528 ns/op	       468.0 code-B	  328008 B/op	     345 allocs/op
+BenchmarkWazeroCompile/nbody                                  	    3196	    377380 ns/op	      5144 code-B	  717472 B/op	     926 allocs/op
+BenchmarkWazeroCompile/fannkuch                               	    1790	    666386 ns/op	      7068 code-B	 1039096 B/op	    2090 allocs/op
+BenchmarkWazeroCompile/matmul                                 	    3655	    325088 ns/op	      2668 code-B	  603952 B/op	    1155 allocs/op
+BenchmarkWazeroCompile/sha256                                 	    2822	    444316 ns/op	      6192 code-B	  828032 B/op	    1069 allocs/op
+BenchmarkWazeroCompile/raytrace                               	    1136	   1085937 ns/op	     11032 code-B	 1490856 B/op	    2594 allocs/op
+BenchmarkWazeroCompile/json-as                                	     214	   5486657 ns/op	     74244 code-B	 2619664 B/op	    6353 allocs/op
+BenchmarkWazeroCompile/blake-as                               	    1544	    738906 ns/op	     10388 code-B	  890168 B/op	     997 allocs/op
+BenchmarkWazeroCompile/utf-as                                 	    1609	    768565 ns/op	      6472 code-B	 1189376 B/op	    2681 allocs/op
+BenchmarkWazeroCompile/json-as-simd                           	     174	   6350499 ns/op	     85060 code-B	 2319554 B/op	    5829 allocs/op
+BenchmarkWazeroCompile/blake-as-simd                          	     566	   2132556 ns/op	     42440 code-B	 1529240 B/op	    1189 allocs/op
+BenchmarkWazeroCompile/utf-as-simd                            	     602	   2037758 ns/op	     28496 code-B	 1193480 B/op	    2874 allocs/op
+BenchmarkWazeroCompile/coremark                               	     411	   2953552 ns/op	     28940 code-B	 2118720 B/op	    4983 allocs/op
+BenchmarkWazeroCompile/blake3                                 	     502	   2393545 ns/op	     37432 code-B	 1510888 B/op	    2124 allocs/op
+BenchmarkWazeroCompile/qoi                                    	    1396	    859275 ns/op	     10772 code-B	  852808 B/op	    1612 allocs/op
+BenchmarkWazeroCompile/lz4                                    	    1208	   1014702 ns/op	     10552 code-B	  968448 B/op	    2213 allocs/op
+BenchmarkWazeroCompile/zlib                                   	     174	   7023023 ns/op	     64924 code-B	 7593171 B/op	   13925 allocs/op
+BenchmarkWazeroCompile/zstd                                   	      42	  28412932 ns/op	    265680 code-B	24845994 B/op	   41191 allocs/op
+BenchmarkWazeroCompile/embench-crc32                          	    7798	    144068 ns/op	       892.0 code-B	  380184 B/op	     549 allocs/op
+BenchmarkWazeroCompile/embench-huffbench                      	     975	   1242986 ns/op	     11772 code-B	 1904408 B/op	    3654 allocs/op
+BenchmarkWazeroCompile/embench-matmult-int                    	    1915	    631828 ns/op	     10620 code-B	 1206936 B/op	    1091 allocs/op
+BenchmarkWazeroCompile/embench-nettle-aes                     	    1148	   1027556 ns/op	     15368 code-B	 1712696 B/op	    1750 allocs/op
+BenchmarkWazeroCompile/embench-nettle-sha256                  	    1152	   1021661 ns/op	     16884 code-B	 1464568 B/op	     851 allocs/op
+BenchmarkWazeroCompile/embench-qrduino                        	     199	   6141539 ns/op	     89264 code-B	 7791608 B/op	    8409 allocs/op
+BenchmarkWazeroCompile/sightglass-shootout-base64             	     100	  12436247 ns/op	    127604 code-B	 8759789 B/op	   22417 allocs/op
+BenchmarkWazeroCompile/sightglass-libsodium-hash              	      73	  14264991 ns/op	    187572 code-B	 9476693 B/op	   21244 allocs/op
+BenchmarkWazeroCompile/tacle-bsort                            	    5347	    219378 ns/op	      1732 code-B	  476768 B/op	     817 allocs/op
+BenchmarkWazeroCompile/polybench-2mm                          	    1406	    868483 ns/op	      8700 code-B	 1068888 B/op	    2291 allocs/op
+BenchmarkWazeroCompile/polybench-3mm                          	    1087	   1080873 ns/op	     10464 code-B	 1432776 B/op	    3085 allocs/op
+BenchmarkWazeroCompile/polybench-adi                          	    1138	   1126945 ns/op	     11352 code-B	 1330016 B/op	    2378 allocs/op
+BenchmarkWazeroCompile/polybench-atax                         	    1797	    737670 ns/op	      7060 code-B	  819248 B/op	    1830 allocs/op
+BenchmarkWazeroCompile/polybench-bicg                         	    1682	    705623 ns/op	      7532 code-B	  881640 B/op	    1867 allocs/op
+BenchmarkWazeroCompile/polybench-cholesky                     	    1334	    895893 ns/op	      9472 code-B	 1105512 B/op	    2179 allocs/op
+BenchmarkWazeroCompile/polybench-correlation                  	    1312	    852986 ns/op	      8232 code-B	 1002216 B/op	    2114 allocs/op
+BenchmarkWazeroCompile/polybench-covariance                   	    1633	    711269 ns/op	      7380 code-B	  887096 B/op	    1895 allocs/op
+BenchmarkWazeroCompile/polybench-deriche                      	    1338	    890450 ns/op	      9300 code-B	 1098040 B/op	    2223 allocs/op
+BenchmarkWazeroCompile/polybench-doitgen                      	    1278	    953384 ns/op	     13232 code-B	 1284320 B/op	    1902 allocs/op
+BenchmarkWazeroCompile/polybench-durbin                       	    1736	    648776 ns/op	      6992 code-B	  818344 B/op	    1750 allocs/op
+BenchmarkWazeroCompile/polybench-fdtd-2d                      	    1339	    905382 ns/op	      9888 code-B	 1142240 B/op	    2140 allocs/op
+BenchmarkWazeroCompile/polybench-floyd-warshall               	    2408	    514350 ns/op	      5248 code-B	  649496 B/op	    1609 allocs/op
+BenchmarkWazeroCompile/polybench-gemm                         	    1722	    697911 ns/op	      7292 code-B	  876392 B/op	    1917 allocs/op
+BenchmarkWazeroCompile/polybench-gemver                       	    1159	   1045453 ns/op	     11224 code-B	 1329080 B/op	    2590 allocs/op
+BenchmarkWazeroCompile/polybench-gesummv                      	    1893	    651557 ns/op	      6724 code-B	  811312 B/op	    1801 allocs/op
+BenchmarkWazeroCompile/polybench-gramschmidt                  	    1500	    789859 ns/op	      8496 code-B	 1000488 B/op	    1966 allocs/op
+BenchmarkWazeroCompile/polybench-heat-3d                      	    1342	    874872 ns/op	     10736 code-B	 1201232 B/op	    2070 allocs/op
+BenchmarkWazeroCompile/polybench-jacobi-1d                    	    2385	    529591 ns/op	      5736 code-B	  681136 B/op	    1554 allocs/op
+BenchmarkWazeroCompile/polybench-jacobi-2d                    	    2005	    602689 ns/op	      6108 code-B	  761160 B/op	    1776 allocs/op
+BenchmarkWazeroCompile/polybench-lu                           	    1359	    940575 ns/op	      9424 code-B	 1111336 B/op	    2206 allocs/op
+BenchmarkWazeroCompile/polybench-ludcmp                       	     892	   1375033 ns/op	     12408 code-B	 1727216 B/op	    3602 allocs/op
+BenchmarkWazeroCompile/polybench-mvt                          	    1542	    771092 ns/op	      8396 code-B	  961232 B/op	    1956 allocs/op
+BenchmarkWazeroCompile/polybench-nussinov                     	    1902	    646245 ns/op	      6860 code-B	  816808 B/op	    1701 allocs/op
+BenchmarkWazeroCompile/polybench-seidel-2d                    	    2337	    522381 ns/op	      5256 code-B	  664080 B/op	    1631 allocs/op
+BenchmarkWazeroCompile/polybench-symm                         	    1436	    836484 ns/op	      8344 code-B	  981656 B/op	    2062 allocs/op
+BenchmarkWazeroCompile/polybench-syr2k                        	    1519	    702289 ns/op	      7168 code-B	  858240 B/op	    1926 allocs/op
+BenchmarkWazeroCompile/polybench-syrk                         	    1729	    696377 ns/op	      7056 code-B	  863216 B/op	    1916 allocs/op
+BenchmarkWazeroCompile/polybench-trisolv                      	    1939	    619785 ns/op	      6500 code-B	  767304 B/op	    1754 allocs/op
+BenchmarkWazeroCompile/polybench-trmm                         	    1528	    695277 ns/op	      7336 code-B	  864056 B/op	    1872 allocs/op
+BenchmarkWazeroInstantiate/tiny                               	  141330	      9173 ns/op	    7176 B/op	      21 allocs/op
+BenchmarkWazeroInstantiate/fib_rec                            	  124812	      9126 ns/op	    7176 B/op	      21 allocs/op
+BenchmarkWazeroInstantiate/memory                             	   71503	     16630 ns/op	   72872 B/op	      23 allocs/op
+BenchmarkWazeroInstantiate/memory_tree                        	   69417	     16915 ns/op	   72872 B/op	      23 allocs/op
+BenchmarkWazeroInstantiate/dispatch                           	  136734	      9033 ns/op	    7504 B/op	      32 allocs/op
+BenchmarkWazeroInstantiate/many_funcs                         	  138295	      8580 ns/op	    7176 B/op	      21 allocs/op
+BenchmarkWazeroInstantiate/linked_list                        	   59824	     17144 ns/op	  269480 B/op	      23 allocs/op
+BenchmarkWazeroInstantiate/nbody                              	   51488	     24680 ns/op	 1056128 B/op	      27 allocs/op
+BenchmarkWazeroInstantiate/fannkuch                           	   55342	     25813 ns/op	 1056128 B/op	      27 allocs/op
+BenchmarkWazeroInstantiate/matmul                             	   49957	     26733 ns/op	 1056128 B/op	      27 allocs/op
+BenchmarkWazeroInstantiate/sha256                             	   35049	     33720 ns/op	 1121689 B/op	      28 allocs/op
+BenchmarkWazeroInstantiate/raytrace                           	   52800	     23870 ns/op	 1056128 B/op	      27 allocs/op
+BenchmarkWazeroInstantiate/json-as                            	   59264	     18980 ns/op	   77544 B/op	      53 allocs/op
+BenchmarkWazeroInstantiate/blake-as                           	   74402	     16583 ns/op	   73856 B/op	      38 allocs/op
+BenchmarkWazeroInstantiate/utf-as                             	   58146	     19815 ns/op	   79472 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/json-as-simd                       	   56949	     19426 ns/op	   77928 B/op	      53 allocs/op
+BenchmarkWazeroInstantiate/blake-as-simd                      	   73612	     15787 ns/op	   73856 B/op	      38 allocs/op
+BenchmarkWazeroInstantiate/utf-as-simd                        	   57940	     20171 ns/op	   79976 B/op	      30 allocs/op
+BenchmarkWazeroInstantiate/coremark                           	   74001	     17100 ns/op	  138528 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/blake3                             	   46617	     25360 ns/op	 1056008 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/qoi                                	   36196	     36368 ns/op	 2104561 B/op	      25 allocs/op
+BenchmarkWazeroInstantiate/lz4                                	   43279	     34752 ns/op	 2104608 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/zlib                               	   36525	     38476 ns/op	 2104881 B/op	      34 allocs/op
+BenchmarkWazeroInstantiate/zstd                               	   32694	     34947 ns/op	 2105072 B/op	      29 allocs/op
+BenchmarkWazeroInstantiate/polybench-2mm                      	   78140	     15688 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-3mm                      	   80683	     15600 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-adi                      	   72466	     16071 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-atax                     	   62394	     16266 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-bicg                     	   73662	     16592 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-cholesky                 	   76492	     16204 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-correlation              	   76438	     16278 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-covariance               	   70544	     16269 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-deriche                  	   79047	     16454 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-doitgen                  	   77360	     17688 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-durbin                   	   78459	     16737 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-fdtd-2d                  	   64702	     17163 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-floyd-warshall           	   61411	     16660 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-gemm                     	   69266	     17842 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-gemver                   	   66470	     17019 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-gesummv                  	   77904	     17251 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-gramschmidt              	   73839	     16845 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-heat-3d                  	   69686	     16779 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-jacobi-1d                	   66181	     17391 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-jacobi-2d                	   69309	     16875 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-lu                       	   68408	     16364 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-ludcmp                   	   65138	     17488 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-mvt                      	   69206	     16595 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-nussinov                 	   67060	     17084 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-seidel-2d                	   72966	     17079 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-symm                     	   66037	     16971 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-syr2k                    	   75152	     17157 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-syrk                     	   66646	     16730 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-trisolv                  	   68816	     16800 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroInstantiate/polybench-trmm                     	   76029	     15938 ns/op	  138504 B/op	      26 allocs/op
+BenchmarkWazeroExec/tiny.add                                  	     498	        23.42 ns/op	    104207 calls/batch	 1667312 B/op	  104207 allocs/op
+BenchmarkWazeroExec/fib_rec.fib                               	     380	   1592364 ns/op	         2.000 calls/batch	      16 B/op	       2 allocs/op
+BenchmarkWazeroExec/memory.sum                                	     601	       283.9 ns/op	      7069 calls/batch	   56552 B/op	    7069 allocs/op
+BenchmarkWazeroExec/memory_tree.run                           	     615	     12012 ns/op	       172.0 calls/batch	    2752 B/op	     172 allocs/op
+BenchmarkWazeroExec/dispatch.apply                            	     522	        26.50 ns/op	     96189 calls/batch	 2308536 B/op	   96189 allocs/op
+BenchmarkWazeroExec/many_funcs.run                            	     535	        23.65 ns/op	     96651 calls/batch	  773208 B/op	   96651 allocs/op
+BenchmarkWazeroExec/linked_list.sum                           	     576	      7454 ns/op	       285.0 calls/batch	    2280 B/op	     285 allocs/op
+BenchmarkWazeroExec/nbody.step                                	     572	    148682 ns/op	        14.00 calls/batch	     112 B/op	      14 allocs/op
+BenchmarkWazeroExec/fannkuch.run                              	     564	   1038876 ns/op	         2.000 calls/batch	      16 B/op	       2 allocs/op
+BenchmarkWazeroExec/matmul.run                                	     585	    225740 ns/op	         9.000 calls/batch	      72 B/op	       9 allocs/op
+BenchmarkWazeroExec/sha256.hashN                              	     601	     44565 ns/op	        46.00 calls/batch	     368 B/op	      46 allocs/op
+BenchmarkWazeroExec/raytrace.render                           	     548	    237597 ns/op	         9.000 calls/batch	      72 B/op	       9 allocs/op
+BenchmarkWazeroExec/json-as.serializeN                        	     621	     21528 ns/op	        96.00 calls/batch	     768 B/op	      96 allocs/op
+BenchmarkWazeroExec/json-as.deserializeN                      	     543	     43302 ns/op	        65.00 calls/batch	     520 B/op	      65 allocs/op
+BenchmarkWazeroExec/blake-as.hashN                            	     493	    399363 ns/op	         6.000 calls/batch	      48 B/op	       6 allocs/op
+BenchmarkWazeroExec/utf-as.convertN                           	     602	    104027 ns/op	        20.00 calls/batch	     160 B/op	      20 allocs/op
+BenchmarkWazeroExec/json-as-simd.serializeN                   	     591	     26898 ns/op	        87.00 calls/batch	     696 B/op	      87 allocs/op
+BenchmarkWazeroExec/json-as-simd.deserializeN                 	     507	     55581 ns/op	        39.00 calls/batch	     312 B/op	      39 allocs/op
+BenchmarkWazeroExec/blake-as-simd.hashN                       	     550	    437693 ns/op	         5.000 calls/batch	      40 B/op	       5 allocs/op
+BenchmarkWazeroExec/utf-as-simd.convertN                      	     549	     97969 ns/op	        21.00 calls/batch	     168 B/op	      21 allocs/op
+BenchmarkWazeroExec/utf-as-simd.validateN                     	     580	    158569 ns/op	        13.00 calls/batch	     104 B/op	      13 allocs/op
+BenchmarkWazeroExec/coremark.coremark_run                     	      27	  42429096 ns/op	         1.000 calls/batch	      16 B/op	       1 allocs/op
+BenchmarkWazeroExec/blake3.blake3_hash                        	     536	    253478 ns/op	         9.000 calls/batch	    7560 B/op	     315 allocs/op
+BenchmarkWazeroExec/blake3.blake3_keyed_hash                  	     590	    251592 ns/op	         8.000 calls/batch	    6720 B/op	     280 allocs/op
+BenchmarkWazeroExec/blake3.blake3_derive_key                  	     566	    262878 ns/op	         8.000 calls/batch	    6720 B/op	     280 allocs/op
+BenchmarkWazeroExec/qoi.qoi_encode_run                        	     585	      8586 ns/op	       237.0 calls/batch	    1896 B/op	     237 allocs/op
+BenchmarkWazeroExec/qoi.qoi_decode_run                        	     608	      7005 ns/op	       294.0 calls/batch	    2352 B/op	     294 allocs/op
+BenchmarkWazeroExec/lz4.lz4_compress_run                      	     562	     40668 ns/op	        51.00 calls/batch	     408 B/op	      51 allocs/op
+BenchmarkWazeroExec/lz4.lz4_decompress_run                    	     582	      5169 ns/op	       383.0 calls/batch	    3064 B/op	     383 allocs/op
+BenchmarkWazeroExec/zlib.zlib_inflate_run                     	     597	     11821 ns/op	       170.0 calls/batch	    1360 B/op	     170 allocs/op
+BenchmarkWazeroExec/zstd.zstd_decompress_run                  	     601	      6320 ns/op	       317.0 calls/batch	    2536 B/op	     317 allocs/op
+BenchmarkWazeroExec/polybench-2mm.polybench_run               	     584	    340434 ns/op	         6.000 calls/batch	      48 B/op	       6 allocs/op
+BenchmarkWazeroExec/polybench-3mm.polybench_run               	     549	    554586 ns/op	         4.000 calls/batch	      32 B/op	       4 allocs/op
+BenchmarkWazeroExec/polybench-adi.polybench_run               	     380	   1583654 ns/op	         2.000 calls/batch	      16 B/op	       2 allocs/op
+BenchmarkWazeroExec/polybench-atax.polybench_run              	     603	     39308 ns/op	        52.00 calls/batch	     416 B/op	      52 allocs/op
+BenchmarkWazeroExec/polybench-bicg.polybench_run              	     576	     40295 ns/op	        50.00 calls/batch	     400 B/op	      50 allocs/op
+BenchmarkWazeroExec/polybench-cholesky.polybench_run          	     334	   1789659 ns/op	         2.000 calls/batch	      16 B/op	       2 allocs/op
+BenchmarkWazeroExec/polybench-correlation.polybench_run       	     603	    392396 ns/op	         5.000 calls/batch	      40 B/op	       5 allocs/op
+BenchmarkWazeroExec/polybench-covariance.polybench_run        	     522	    386662 ns/op	         6.000 calls/batch	      48 B/op	       6 allocs/op
+BenchmarkWazeroExec/polybench-deriche.polybench_run           	     595	    507325 ns/op	         4.000 calls/batch	      32 B/op	       4 allocs/op
+BenchmarkWazeroExec/polybench-doitgen.polybench_run           	     560	    425227 ns/op	         5.000 calls/batch	      40 B/op	       5 allocs/op
+BenchmarkWazeroExec/polybench-durbin.polybench_run            	     676	     16554 ns/op	       121.0 calls/batch	     968 B/op	     121 allocs/op
+BenchmarkWazeroExec/polybench-fdtd-2d.polybench_run           	     470	    848197 ns/op	         3.000 calls/batch	      24 B/op	       3 allocs/op
+BenchmarkWazeroExec/polybench-floyd-warshall.polybench_run    	     216	   5577832 ns/op	         1.000 calls/batch	       8 B/op	       1 allocs/op
+BenchmarkWazeroExec/polybench-gemm.polybench_run              	     530	    378363 ns/op	         6.000 calls/batch	      48 B/op	       6 allocs/op
+BenchmarkWazeroExec/polybench-gemver.polybench_run            	     585	     56182 ns/op	        35.00 calls/batch	     280 B/op	      35 allocs/op
+BenchmarkWazeroExec/polybench-gesummv.polybench_run           	     595	     28816 ns/op	        75.00 calls/batch	     600 B/op	      75 allocs/op
+BenchmarkWazeroExec/polybench-gramschmidt.polybench_run       	     513	    470391 ns/op	         5.000 calls/batch	      40 B/op	       5 allocs/op
+BenchmarkWazeroExec/polybench-heat-3d.polybench_run           	     403	   1458866 ns/op	         2.000 calls/batch	      16 B/op	       2 allocs/op
+BenchmarkWazeroExec/polybench-jacobi-1d.polybench_run         	     598	     11348 ns/op	       179.0 calls/batch	    1432 B/op	     179 allocs/op
+BenchmarkWazeroExec/polybench-jacobi-2d.polybench_run         	     417	   1447074 ns/op	         2.000 calls/batch	      16 B/op	       2 allocs/op
+BenchmarkWazeroExec/polybench-lu.polybench_run                	     534	   2185318 ns/op	         1.000 calls/batch	       8 B/op	       1 allocs/op
+BenchmarkWazeroExec/polybench-ludcmp.polybench_run            	     606	   1947860 ns/op	         1.000 calls/batch	       8 B/op	       1 allocs/op
+BenchmarkWazeroExec/polybench-mvt.polybench_run               	     600	     37414 ns/op	        55.00 calls/batch	     440 B/op	      55 allocs/op
+BenchmarkWazeroExec/polybench-nussinov.polybench_run          	     548	   1076974 ns/op	         2.000 calls/batch	      16 B/op	       2 allocs/op
+BenchmarkWazeroExec/polybench-seidel-2d.polybench_run         	     380	   3136007 ns/op	         1.000 calls/batch	       8 B/op	       1 allocs/op
+BenchmarkWazeroExec/polybench-symm.polybench_run              	     582	    329019 ns/op	         6.000 calls/batch	      48 B/op	       6 allocs/op
+BenchmarkWazeroExec/polybench-syr2k.polybench_run             	     501	    477439 ns/op	         5.000 calls/batch	      40 B/op	       5 allocs/op
+BenchmarkWazeroExec/polybench-syrk.polybench_run              	     547	    271073 ns/op	         8.000 calls/batch	      64 B/op	       8 allocs/op
+BenchmarkWazeroExec/polybench-trisolv.polybench_run           	     696	     13887 ns/op	       147.0 calls/batch	    1176 B/op	     147 allocs/op
+BenchmarkWazeroExec/polybench-trmm.polybench_run              	     585	    200316 ns/op	        10.00 calls/batch	      80 B/op	      10 allocs/op
+BenchmarkDecode/tiny                                          	 1676226	       723.6 ns/op	    1546 B/op	      15 allocs/op
+BenchmarkDecode/fib_rec                                       	 2045683	       596.3 ns/op	    1208 B/op	      14 allocs/op
+BenchmarkDecode/memory                                        	 1226593	       979.8 ns/op	    1640 B/op	      19 allocs/op
+BenchmarkDecode/memory_tree                                   	 1000000	      1142 ns/op	    1656 B/op	      18 allocs/op
+BenchmarkDecode/dispatch                                      	 1000000	      1157 ns/op	    2312 B/op	      21 allocs/op
+BenchmarkDecode/many_funcs                                    	   70659	     17020 ns/op	   36531 B/op	      13 allocs/op
+BenchmarkDecode/linked_list                                   	 1413019	       848.2 ns/op	    1264 B/op	      16 allocs/op
+BenchmarkDecode/nbody                                         	  246964	      4843 ns/op	    2056 B/op	      28 allocs/op
+BenchmarkDecode/fannkuch                                      	  208926	      5866 ns/op	    3616 B/op	      41 allocs/op
+BenchmarkDecode/matmul                                        	  424446	      2874 ns/op	    2056 B/op	      28 allocs/op
+BenchmarkDecode/sha256                                        	  229293	      5166 ns/op	    4048 B/op	      43 allocs/op
+BenchmarkDecode/raytrace                                      	  100959	     11419 ns/op	    2464 B/op	      30 allocs/op
+BenchmarkDecode/json-as                                       	   21260	     55249 ns/op	   25048 B/op	      82 allocs/op
+BenchmarkDecode/blake-as                                      	   85222	     14237 ns/op	    4208 B/op	      31 allocs/op
+BenchmarkDecode/utf-as                                        	   58707	     20148 ns/op	   30568 B/op	      28 allocs/op
+BenchmarkDecode/json-as-simd                                  	   19604	     60249 ns/op	   27240 B/op	      90 allocs/op
+BenchmarkDecode/blake-as-simd                                 	   21772	     56573 ns/op	    5224 B/op	      34 allocs/op
+BenchmarkDecode/utf-as-simd                                   	   33211	     35969 ns/op	   35616 B/op	      43 allocs/op
+BenchmarkDecode/coremark                                      	   60282	     19236 ns/op	    2920 B/op	      34 allocs/op
+BenchmarkDecode/blake3                                        	   33390	     35274 ns/op	    6144 B/op	      53 allocs/op
+BenchmarkDecode/qoi                                           	  153802	      8032 ns/op	    3728 B/op	      37 allocs/op
+BenchmarkDecode/lz4                                           	  158704	      7517 ns/op	    2784 B/op	      35 allocs/op
+BenchmarkDecode/zlib                                          	   32635	     36791 ns/op	    4544 B/op	      49 allocs/op
+BenchmarkDecode/zstd                                          	    7755	    150896 ns/op	   10584 B/op	      75 allocs/op
+BenchmarkDecode/embench-crc32                                 	  201688	      5373 ns/op	   22208 B/op	      43 allocs/op
+BenchmarkDecode/embench-huffbench                             	  103872	     11815 ns/op	   23336 B/op	      46 allocs/op
+BenchmarkDecode/embench-matmult-int                           	  115669	     10091 ns/op	   23360 B/op	      43 allocs/op
+BenchmarkDecode/embench-nettle-aes                            	   93711	     12794 ns/op	   23000 B/op	      43 allocs/op
+BenchmarkDecode/embench-nettle-sha256                         	   69688	     17077 ns/op	   23792 B/op	      46 allocs/op
+BenchmarkDecode/embench-qrduino                               	   23568	     52652 ns/op	   25008 B/op	      53 allocs/op
+BenchmarkDecode/sightglass-shootout-base64                    	   10000	    102189 ns/op	  201664 B/op	     145 allocs/op
+BenchmarkDecode/sightglass-libsodium-hash                     	    9512	    132506 ns/op	   23712 B/op	     156 allocs/op
+BenchmarkDecode/tacle-bsort                                   	  587055	      2103 ns/op	    1728 B/op	      23 allocs/op
+BenchmarkDecode/polybench-2mm                                 	  179952	      6642 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-3mm                                 	  160047	      7638 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-adi                                 	  161936	      7616 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-atax                                	  237975	      4917 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-bicg                                	  226411	      5249 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-cholesky                            	  190545	      6331 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-correlation                         	  197295	      6078 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-covariance                          	  218973	      5480 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-deriche                             	  182044	      6798 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-doitgen                             	  164228	      7419 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-durbin                              	  262874	      4731 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-fdtd-2d                             	  129109	      9222 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-floyd-warshall                      	  302935	      4163 ns/op	    2144 B/op	      27 allocs/op
+BenchmarkDecode/polybench-gemm                                	  223317	      5366 ns/op	    2144 B/op	      27 allocs/op
+BenchmarkDecode/polybench-gemver                              	  169279	      7256 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-gesummv                             	  238842	      4911 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-gramschmidt                         	  215992	      5849 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-heat-3d                             	  183754	      6507 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-jacobi-1d                           	  302721	      4043 ns/op	    2144 B/op	      27 allocs/op
+BenchmarkDecode/polybench-jacobi-2d                           	  274657	      4546 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-lu                                  	  196474	      6205 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-ludcmp                              	  144852	      8201 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-mvt                                 	  212044	      5794 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-nussinov                            	  243631	      4974 ns/op	    2144 B/op	      27 allocs/op
+BenchmarkDecode/polybench-seidel-2d                           	  298898	      4129 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-symm                                	  188451	      6185 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-syr2k                               	  229302	      5366 ns/op	    2144 B/op	      27 allocs/op
+BenchmarkDecode/polybench-syrk                                	  229506	      5267 ns/op	    2144 B/op	      27 allocs/op
+BenchmarkDecode/polybench-trisolv                             	  246961	      4741 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkDecode/polybench-trmm                                	  227452	      5472 ns/op	    2168 B/op	      27 allocs/op
+BenchmarkValidate/tiny                                        	 1513154	       784.9 ns/op	    1560 B/op	      11 allocs/op
+BenchmarkValidate/fib_rec                                     	 1260122	       969.0 ns/op	    1664 B/op	      11 allocs/op
+BenchmarkValidate/memory                                      	  757842	      1638 ns/op	    2024 B/op	      13 allocs/op
+BenchmarkValidate/memory_tree                                 	  532107	      2242 ns/op	    2376 B/op	      16 allocs/op
+BenchmarkValidate/dispatch                                    	  815020	      1444 ns/op	    2408 B/op	      14 allocs/op
+BenchmarkValidate/many_funcs                                  	   49464	     24529 ns/op	    1552 B/op	      11 allocs/op
+BenchmarkValidate/linked_list                                 	  744993	      1763 ns/op	    1984 B/op	      12 allocs/op
+BenchmarkValidate/nbody                                       	   83305	     14141 ns/op	    3584 B/op	      15 allocs/op
+BenchmarkValidate/fannkuch                                    	   70826	     17357 ns/op	    4800 B/op	      15 allocs/op
+BenchmarkValidate/matmul                                      	  147873	      7988 ns/op	    3584 B/op	      15 allocs/op
+BenchmarkValidate/sha256                                      	   98835	     12549 ns/op	    3584 B/op	      15 allocs/op
+BenchmarkValidate/raytrace                                    	   33631	     35649 ns/op	    3784 B/op	      17 allocs/op
+BenchmarkValidate/json-as                                     	    7622	    165817 ns/op	    7600 B/op	      48 allocs/op
+BenchmarkValidate/blake-as                                    	   28972	     41489 ns/op	    4448 B/op	      21 allocs/op
+BenchmarkValidate/utf-as                                      	   37954	     31307 ns/op	    3648 B/op	      17 allocs/op
+BenchmarkValidate/json-as-simd                                	    6822	    185087 ns/op	   10688 B/op	      49 allocs/op
+BenchmarkValidate/blake-as-simd                               	    7114	    170571 ns/op	    4736 B/op	      25 allocs/op
+BenchmarkValidate/utf-as-simd                                 	   13189	     91302 ns/op	    5652 B/op	      26 allocs/op
+BenchmarkValidate/coremark                                    	   18562	     64558 ns/op	    5112 B/op	      21 allocs/op
+BenchmarkValidate/blake3                                      	   10000	    114355 ns/op	    6120 B/op	      39 allocs/op
+BenchmarkValidate/qoi                                         	   48003	     24622 ns/op	    5592 B/op	      26 allocs/op
+BenchmarkValidate/lz4                                         	   48243	     24060 ns/op	    4936 B/op	      17 allocs/op
+BenchmarkValidate/zlib                                        	    9650	    131329 ns/op	   15112 B/op	      33 allocs/op
+BenchmarkValidate/zstd                                        	    2302	    526900 ns/op	   13128 B/op	      84 allocs/op
+BenchmarkValidate/embench-crc32                               	  463029	      2725 ns/op	    3500 B/op	      15 allocs/op
+BenchmarkValidate/embench-huffbench                           	   47929	     25227 ns/op	    5100 B/op	      17 allocs/op
+BenchmarkValidate/embench-matmult-int                         	   76984	     15734 ns/op	    3500 B/op	      15 allocs/op
+BenchmarkValidate/embench-nettle-aes                          	   42511	     27804 ns/op	    5180 B/op	      20 allocs/op
+BenchmarkValidate/embench-nettle-sha256                       	   26655	     45563 ns/op	    3844 B/op	      18 allocs/op
+BenchmarkValidate/embench-qrduino                             	    7522	    165263 ns/op	    5668 B/op	      26 allocs/op
+BenchmarkValidate/sightglass-shootout-base64                  	    4524	    263306 ns/op	   13720 B/op	      77 allocs/op
+BenchmarkValidate/sightglass-libsodium-hash                   	    2638	    454936 ns/op	   15024 B/op	      94 allocs/op
+BenchmarkValidate/tacle-bsort                                 	  207132	      5749 ns/op	    4272 B/op	      14 allocs/op
+BenchmarkValidate/polybench-2mm                               	   60297	     20015 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-3mm                               	   49011	     23604 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-adi                               	   51158	     23625 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-atax                              	   79818	     15137 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-bicg                              	   72662	     16318 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-cholesky                          	   59210	     20492 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-correlation                       	   63535	     19031 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-covariance                        	   70314	     17141 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-deriche                           	   56486	     21482 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-doitgen                           	   49855	     23522 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-durbin                            	   81705	     14946 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-fdtd-2d                           	   44484	     27753 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-floyd-warshall                    	   97582	     12162 ns/op	    5928 B/op	      20 allocs/op
+BenchmarkValidate/polybench-gemm                              	   72994	     16721 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-gemver                            	   50380	     23637 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-gesummv                           	   78009	     14979 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-gramschmidt                       	   66214	     18153 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-heat-3d                           	   56894	     21406 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-jacobi-1d                         	   97681	     12261 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-jacobi-2d                         	   85057	     13940 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-lu                                	   60406	     20065 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-ludcmp                            	   44448	     27046 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-mvt                               	   67230	     17995 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-nussinov                          	   78622	     15524 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-seidel-2d                         	   96210	     12076 ns/op	    5928 B/op	      20 allocs/op
+BenchmarkValidate/polybench-symm                              	   61471	     19538 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-syr2k                             	   69859	     16990 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-syrk                              	   71662	     16647 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-trisolv                           	   82999	     14510 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidate/polybench-trmm                              	   70946	     17416 ns/op	    5544 B/op	      19 allocs/op
+BenchmarkValidateWorkers/tiny/p1                              	 1521513	       783.6 ns/op	    1560 B/op	      11 allocs/op
+BenchmarkValidateWorkers/tiny/p2                              	  540570	      2067 ns/op	    2576 B/op	      17 allocs/op
+BenchmarkValidateWorkers/tiny/p4                              	  557876	      2109 ns/op	    2576 B/op	      17 allocs/op
+BenchmarkValidateWorkers/tiny/p8                              	  557176	      2107 ns/op	    2576 B/op	      17 allocs/op
+BenchmarkValidateWorkers/many_funcs/p1                        	   50185	     24302 ns/op	    1552 B/op	      11 allocs/op
+BenchmarkValidateWorkers/many_funcs/p2                        	   48086	     25292 ns/op	    2568 B/op	      17 allocs/op
+BenchmarkValidateWorkers/many_funcs/p4                        	   45420	     26180 ns/op	    4264 B/op	      21 allocs/op
+BenchmarkValidateWorkers/many_funcs/p8                        	   42400	     27729 ns/op	    7656 B/op	      29 allocs/op
+BenchmarkValidateWorkers/json-as/p1                           	    7644	    163684 ns/op	    7600 B/op	      48 allocs/op
+BenchmarkValidateWorkers/json-as/p2                           	    7348	    166240 ns/op	    8624 B/op	      54 allocs/op
+BenchmarkValidateWorkers/json-as/p4                           	    7318	    165037 ns/op	   10320 B/op	      58 allocs/op
+BenchmarkValidateWorkers/json-as/p8                           	    7292	    168870 ns/op	   13712 B/op	      66 allocs/op
+BenchmarkCompile/tiny                                         	  205771	      6722 ns/op	   11550 B/op	      21 allocs/op
+BenchmarkCompile/fib_rec                                      	   84254	     13598 ns/op	   21996 B/op	      42 allocs/op
+BenchmarkCompile/memory                                       	   93091	     12209 ns/op	   14029 B/op	      26 allocs/op
+BenchmarkCompile/memory_tree                                  	   75710	     14391 ns/op	   15976 B/op	      37 allocs/op
+BenchmarkCompile/dispatch                                     	   78208	     15737 ns/op	   20192 B/op	      46 allocs/op
+BenchmarkCompile/many_funcs                                   	    5600	    237826 ns/op	   60120 B/op	      37 allocs/op
+BenchmarkCompile/linked_list                                  	   97786	     11565 ns/op	   15139 B/op	      27 allocs/op
+BenchmarkCompile/nbody                                        	   21754	     55929 ns/op	   43518 B/op	      56 allocs/op
+BenchmarkCompile/fannkuch                                     	   17632	     67771 ns/op	   42643 B/op	      50 allocs/op
+BenchmarkCompile/matmul                                       	   33871	     36235 ns/op	   23612 B/op	      43 allocs/op
+BenchmarkCompile/sha256                                       	   24015	     48164 ns/op	   23497 B/op	      40 allocs/op
+BenchmarkCompile/raytrace                                     	   10000	    131041 ns/op	   80184 B/op	      76 allocs/op
+BenchmarkCompile/json-as                                      	    1713	    694940 ns/op	   54120 B/op	      92 allocs/op
+BenchmarkCompile/blake-as                                     	    6820	    173635 ns/op	   39456 B/op	      66 allocs/op
+BenchmarkCompile/utf-as                                       	   16476	     73252 ns/op	   23864 B/op	      55 allocs/op
+BenchmarkCompile/json-as-simd                                 	    1526	    800474 ns/op	   57512 B/op	      93 allocs/op
+BenchmarkCompile/blake-as-simd                                	    2678	    464852 ns/op	  176568 B/op	      80 allocs/op
+BenchmarkCompile/utf-as-simd                                  	    4526	    266585 ns/op	   74848 B/op	      71 allocs/op
+BenchmarkCompile/coremark                                     	    4365	    277557 ns/op	   45352 B/op	      74 allocs/op
+BenchmarkCompile/blake3                                       	    2283	    523458 ns/op	   71016 B/op	      85 allocs/op
+BenchmarkCompile/qoi                                          	   10000	    101221 ns/op	   25712 B/op	      76 allocs/op
+BenchmarkCompile/lz4                                          	   13886	     88164 ns/op	   24120 B/op	      52 allocs/op
+BenchmarkCompile/zlib                                         	    2084	    596625 ns/op	  208424 B/op	     157 allocs/op
+BenchmarkCompile/zstd                                         	     544	   2270509 ns/op	  366184 B/op	     212 allocs/op
+BenchmarkCompile/embench-crc32                                	   77595	     14388 ns/op	   17000 B/op	      35 allocs/op
+BenchmarkCompile/embench-huffbench                            	   10000	    118408 ns/op	   42824 B/op	      58 allocs/op
+BenchmarkCompile/embench-matmult-int                          	   16623	     72406 ns/op	   25456 B/op	      44 allocs/op
+BenchmarkCompile/embench-nettle-aes                           	   10000	    115881 ns/op	   45728 B/op	      48 allocs/op
+BenchmarkCompile/embench-nettle-sha256                        	    7218	    167765 ns/op	   30264 B/op	      53 allocs/op
+BenchmarkCompile/embench-qrduino                              	    1728	    717202 ns/op	  200792 B/op	      81 allocs/op
+BenchmarkCompile/sightglass-shootout-base64                   	     970	   1254271 ns/op	  152240 B/op	     234 allocs/op
+BenchmarkCompile/sightglass-libsodium-hash                    	     626	   2014960 ns/op	  219560 B/op	     226 allocs/op
+BenchmarkCompile/tacle-bsort                                  	   49123	     24616 ns/op	   22616 B/op	      33 allocs/op
+BenchmarkCompile/polybench-2mm                                	   14547	     82844 ns/op	   41384 B/op	      62 allocs/op
+BenchmarkCompile/polybench-3mm                                	   12507	     96920 ns/op	   41440 B/op	      65 allocs/op
+BenchmarkCompile/polybench-adi                                	   10000	    101259 ns/op	   43848 B/op	      74 allocs/op
+BenchmarkCompile/polybench-atax                               	   20298	     59813 ns/op	   23664 B/op	      56 allocs/op
+BenchmarkCompile/polybench-bicg                               	   18397	     64823 ns/op	   24456 B/op	      55 allocs/op
+BenchmarkCompile/polybench-cholesky                           	   13641	     85640 ns/op	   41432 B/op	      64 allocs/op
+BenchmarkCompile/polybench-correlation                        	   15150	     79092 ns/op	   41384 B/op	      64 allocs/op
+BenchmarkCompile/polybench-covariance                         	   17172	     71242 ns/op	   41072 B/op	      61 allocs/op
+BenchmarkCompile/polybench-deriche                            	   13588	     87972 ns/op	   42096 B/op	      72 allocs/op
+BenchmarkCompile/polybench-doitgen                            	   10000	    101527 ns/op	   46032 B/op	      66 allocs/op
+BenchmarkCompile/polybench-durbin                             	   19065	     62338 ns/op	   24576 B/op	      60 allocs/op
+BenchmarkCompile/polybench-fdtd-2d                            	   10000	    104473 ns/op	   41512 B/op	      61 allocs/op
+BenchmarkCompile/polybench-floyd-warshall                     	   24013	     51627 ns/op	   23888 B/op	      59 allocs/op
+BenchmarkCompile/polybench-gemm                               	   16824	     70814 ns/op	   40712 B/op	      66 allocs/op
+BenchmarkCompile/polybench-gemver                             	   12232	     97332 ns/op	   42745 B/op	      66 allocs/op
+BenchmarkCompile/polybench-gesummv                            	   20742	     58482 ns/op	   23687 B/op	      57 allocs/op
+BenchmarkCompile/polybench-gramschmidt                        	   15391	     79307 ns/op	   41234 B/op	      61 allocs/op
+BenchmarkCompile/polybench-heat-3d                            	   13317	     87345 ns/op	   43052 B/op	      65 allocs/op
+BenchmarkCompile/polybench-jacobi-1d                          	   24182	     50509 ns/op	   24007 B/op	      59 allocs/op
+BenchmarkCompile/polybench-jacobi-2d                          	   21362	     56447 ns/op	   24588 B/op	      61 allocs/op
+BenchmarkCompile/polybench-lu                                 	   13423	     87514 ns/op	   42213 B/op	      64 allocs/op
+BenchmarkCompile/polybench-ludcmp                             	   10000	    115432 ns/op	   44032 B/op	      66 allocs/op
+BenchmarkCompile/polybench-mvt                                	   15766	     75030 ns/op	   42168 B/op	      59 allocs/op
+BenchmarkCompile/polybench-nussinov                           	   17750	     63848 ns/op	   25860 B/op	      62 allocs/op
+BenchmarkCompile/polybench-seidel-2d                          	   24672	     48410 ns/op	   24621 B/op	      59 allocs/op
+BenchmarkCompile/polybench-symm                               	   14900	     78782 ns/op	   41898 B/op	      64 allocs/op
+BenchmarkCompile/polybench-syr2k                              	   17052	     70775 ns/op	   40998 B/op	      66 allocs/op
+BenchmarkCompile/polybench-syrk                               	   16972	     70227 ns/op	   40858 B/op	      64 allocs/op
+BenchmarkCompile/polybench-trisolv                            	   21519	     57748 ns/op	   23770 B/op	      58 allocs/op
+BenchmarkCompile/polybench-trmm                               	   16646	     73094 ns/op	   41532 B/op	      64 allocs/op
+BenchmarkCompileCompact/tiny                                  	  164890	      7807 ns/op	   13936 B/op	      27 allocs/op
+BenchmarkCompileCompact/fib_rec                               	  133548	      9502 ns/op	   15896 B/op	      35 allocs/op
+BenchmarkCompileCompact/memory                                	   84315	     13277 ns/op	   16392 B/op	      32 allocs/op
+BenchmarkCompileCompact/memory_tree                           	   73298	     16329 ns/op	   18456 B/op	      42 allocs/op
+BenchmarkCompileCompact/dispatch                              	   76791	     16152 ns/op	   14704 B/op	      49 allocs/op
+BenchmarkCompileCompact/many_funcs                            	    5248	    236569 ns/op	   41672 B/op	      42 allocs/op
+BenchmarkCompileCompact/linked_list                           	   90560	     12564 ns/op	   17616 B/op	      32 allocs/op
+BenchmarkCompileCompact/nbody                                 	   19778	     62232 ns/op	   45784 B/op	      62 allocs/op
+BenchmarkCompileCompact/fannkuch                              	   16954	     72050 ns/op	   44176 B/op	      55 allocs/op
+BenchmarkCompileCompact/matmul                                	   32144	     39039 ns/op	   25120 B/op	      49 allocs/op
+BenchmarkCompileCompact/sha256                                	   22633	     55239 ns/op	   25768 B/op	      45 allocs/op
+BenchmarkCompileCompact/raytrace                              	    9496	    144696 ns/op	   82664 B/op	      82 allocs/op
+BenchmarkCompileCompact/json-as                               	    1612	    746837 ns/op	   56776 B/op	     103 allocs/op
+BenchmarkCompileCompact/blake-as                              	    6834	    180658 ns/op	   41832 B/op	      70 allocs/op
+BenchmarkCompileCompact/utf-as                                	   15398	     78310 ns/op	   26256 B/op	      59 allocs/op
+BenchmarkCompileCompact/json-as-simd                          	    1377	    850170 ns/op	   60144 B/op	     103 allocs/op
+BenchmarkCompileCompact/blake-as-simd                         	    2528	    486187 ns/op	  179056 B/op	      86 allocs/op
+BenchmarkCompileCompact/utf-as-simd                           	    4183	    291244 ns/op	   77384 B/op	      78 allocs/op
+BenchmarkCompileCompact/coremark                              	    4203	    288589 ns/op	   47848 B/op	      80 allocs/op
+BenchmarkCompileCompact/blake3                                	    2212	    552910 ns/op	   73312 B/op	      88 allocs/op
+BenchmarkCompileCompact/qoi                                   	   10000	    100633 ns/op	   27752 B/op	      75 allocs/op
+BenchmarkCompileCompact/lz4                                   	   12397	     96070 ns/op	   26672 B/op	      59 allocs/op
+BenchmarkCompileCompact/zlib                                  	    2058	    611477 ns/op	  209688 B/op	     162 allocs/op
+BenchmarkCompileCompact/zstd                                  	     548	   2235838 ns/op	  368416 B/op	     215 allocs/op
+BenchmarkCompileCompact/embench-crc32                         	   72476	     15895 ns/op	   19480 B/op	      40 allocs/op
+BenchmarkCompileCompact/embench-huffbench                     	   10000	    128914 ns/op	   45296 B/op	      63 allocs/op
+BenchmarkCompileCompact/embench-matmult-int                   	   14382	     82939 ns/op	   27944 B/op	      49 allocs/op
+BenchmarkCompileCompact/embench-nettle-aes                    	   10000	    122843 ns/op	   48248 B/op	      55 allocs/op
+BenchmarkCompileCompact/embench-nettle-sha256                 	    6676	    181160 ns/op	   32752 B/op	      58 allocs/op
+BenchmarkCompileCompact/embench-qrduino                       	    1612	    736738 ns/op	  203288 B/op	      87 allocs/op
+BenchmarkCompileCompact/sightglass-shootout-base64            	     867	   1331786 ns/op	  153608 B/op	     238 allocs/op
+BenchmarkCompileCompact/sightglass-libsodium-hash             	     567	   2126290 ns/op	  219088 B/op	     228 allocs/op
+BenchmarkCompileCompact/tacle-bsort                           	   44563	     27058 ns/op	   25096 B/op	      38 allocs/op
+BenchmarkCompileCompact/polybench-2mm                         	   12921	     94190 ns/op	   43912 B/op	      69 allocs/op
+BenchmarkCompileCompact/polybench-3mm                         	   10000	    107997 ns/op	   43968 B/op	      72 allocs/op
+BenchmarkCompileCompact/polybench-adi                         	   10000	    111713 ns/op	   46360 B/op	      81 allocs/op
+BenchmarkCompileCompact/polybench-atax                        	   17937	     68232 ns/op	   26192 B/op	      63 allocs/op
+BenchmarkCompileCompact/polybench-bicg                        	   17199	     71961 ns/op	   26968 B/op	      62 allocs/op
+BenchmarkCompileCompact/polybench-cholesky                    	   12476	     97845 ns/op	   43944 B/op	      71 allocs/op
+BenchmarkCompileCompact/polybench-correlation                 	   13939	     85558 ns/op	   43906 B/op	      71 allocs/op
+BenchmarkCompileCompact/polybench-covariance                  	   15594	     77746 ns/op	   43615 B/op	      68 allocs/op
+BenchmarkCompileCompact/polybench-deriche                     	   12624	     95418 ns/op	   44620 B/op	      79 allocs/op
+BenchmarkCompileCompact/polybench-doitgen                     	   10000	    106839 ns/op	   48576 B/op	      73 allocs/op
+BenchmarkCompileCompact/polybench-durbin                      	   18337	     69400 ns/op	   27137 B/op	      67 allocs/op
+BenchmarkCompileCompact/polybench-fdtd-2d                     	   10000	    115549 ns/op	   44089 B/op	      68 allocs/op
+BenchmarkCompileCompact/polybench-floyd-warshall              	   21355	     58777 ns/op	   26469 B/op	      66 allocs/op
+BenchmarkCompileCompact/polybench-gemm                        	   15585	     77675 ns/op	   43434 B/op	      73 allocs/op
+BenchmarkCompileCompact/polybench-gemver                      	   10000	    103914 ns/op	   45403 B/op	      73 allocs/op
+BenchmarkCompileCompact/polybench-gesummv                     	   18841	     64095 ns/op	   26436 B/op	      64 allocs/op
+BenchmarkCompileCompact/polybench-gramschmidt                 	   13707	     88760 ns/op	   44044 B/op	      68 allocs/op
+BenchmarkCompileCompact/polybench-heat-3d                     	   12438	     95520 ns/op	   45959 B/op	      72 allocs/op
+BenchmarkCompileCompact/polybench-jacobi-1d                   	   22153	     53666 ns/op	   27020 B/op	      66 allocs/op
+BenchmarkCompileCompact/polybench-jacobi-2d                   	   19552	     61260 ns/op	   27333 B/op	      68 allocs/op
+BenchmarkCompileCompact/polybench-lu                          	   12566	     92547 ns/op	   44890 B/op	      71 allocs/op
+BenchmarkCompileCompact/polybench-ludcmp                      	   10000	    122452 ns/op	   46478 B/op	      73 allocs/op
+BenchmarkCompileCompact/polybench-mvt                         	   14727	     78529 ns/op	   44782 B/op	      66 allocs/op
+BenchmarkCompileCompact/polybench-nussinov                    	   16671	     70929 ns/op	   28554 B/op	      69 allocs/op
+BenchmarkCompileCompact/polybench-seidel-2d                   	   21645	     54977 ns/op	   27525 B/op	      66 allocs/op
+BenchmarkCompileCompact/polybench-symm                        	   14362	     87208 ns/op	   44864 B/op	      71 allocs/op
+BenchmarkCompileCompact/polybench-syr2k                       	   15891	     79892 ns/op	   44287 B/op	      73 allocs/op
+BenchmarkCompileCompact/polybench-syrk                        	   16315	     78448 ns/op	   44027 B/op	      71 allocs/op
+BenchmarkCompileCompact/polybench-trisolv                     	   19138	     61091 ns/op	   26834 B/op	      65 allocs/op
+BenchmarkCompileCompact/polybench-trmm                        	   15343	     80391 ns/op	   44504 B/op	      71 allocs/op
+BenchmarkCompileWorkers/tiny/p1                               	  204760	      7435 ns/op	       128.0 code-B	   11546 B/op	      21 allocs/op
+BenchmarkCompileWorkers/tiny/p2                               	  216354	      7454 ns/op	       128.0 code-B	   11448 B/op	      21 allocs/op
+BenchmarkCompileWorkers/tiny/p4                               	  190718	      7699 ns/op	       128.0 code-B	   11448 B/op	      21 allocs/op
+BenchmarkCompileWorkers/tiny/p8                               	  215586	      7270 ns/op	       128.0 code-B	   11448 B/op	      21 allocs/op
+BenchmarkCompileWorkers/fib_rec/p1                            	  124344	     13409 ns/op	       356.0 code-B	   21800 B/op	      42 allocs/op
+BenchmarkCompileWorkers/fib_rec/p2                            	  117555	     13298 ns/op	       356.0 code-B	   21800 B/op	      42 allocs/op
+BenchmarkCompileWorkers/fib_rec/p4                            	  129350	     13204 ns/op	       356.0 code-B	   21800 B/op	      42 allocs/op
+BenchmarkCompileWorkers/fib_rec/p8                            	  131637	     13735 ns/op	       356.0 code-B	   21800 B/op	      42 allocs/op
+BenchmarkCompileWorkers/many_funcs/p1                         	    5700	    236319 ns/op	      9732 code-B	   60120 B/op	      37 allocs/op
+BenchmarkCompileWorkers/many_funcs/p2                         	    5434	    234740 ns/op	      9732 code-B	   60120 B/op	      37 allocs/op
+BenchmarkCompileWorkers/many_funcs/p4                         	    5319	    238567 ns/op	      9732 code-B	   60120 B/op	      37 allocs/op
+BenchmarkCompileWorkers/many_funcs/p8                         	    5577	    235576 ns/op	      9732 code-B	   60120 B/op	      37 allocs/op
+BenchmarkCompileWorkers/json-as/p1                            	    1741	    677776 ns/op	     63432 code-B	   54120 B/op	      92 allocs/op
+BenchmarkCompileWorkers/json-as/p2                            	    1693	    676456 ns/op	     63432 code-B	   54120 B/op	      92 allocs/op
+BenchmarkCompileWorkers/json-as/p4                            	    1736	    698667 ns/op	     63432 code-B	   54120 B/op	      92 allocs/op
+BenchmarkCompileWorkers/json-as/p8                            	    1526	    729009 ns/op	     63432 code-B	   54120 B/op	      92 allocs/op
+BenchmarkCompileWorkers/blake-as/p1                           	    7077	    178324 ns/op	     10416 code-B	   39456 B/op	      66 allocs/op
+BenchmarkCompileWorkers/blake-as/p2                           	    6970	    168487 ns/op	     10416 code-B	   39456 B/op	      66 allocs/op
+BenchmarkCompileWorkers/blake-as/p4                           	    7386	    167954 ns/op	     10416 code-B	   39456 B/op	      66 allocs/op
+BenchmarkCompileWorkers/blake-as/p8                           	    7124	    166585 ns/op	     10416 code-B	   39456 B/op	      66 allocs/op
+BenchmarkCompileFull/tiny                                     	  100549	     15584 ns/op	       128.0 code-B	   21712 B/op	      98 allocs/op
+BenchmarkCompileFull/fib_rec                                  	   68690	     18415 ns/op	       356.0 code-B	   30608 B/op	     108 allocs/op
+BenchmarkCompileFull/memory                                   	   69367	     20985 ns/op	       264.0 code-B	   25480 B/op	     109 allocs/op
+BenchmarkCompileFull/memory_tree                              	   47311	     26701 ns/op	       548.0 code-B	   28992 B/op	     125 allocs/op
+BenchmarkCompileFull/dispatch                                 	   41076	     27811 ns/op	       924.0 code-B	   37624 B/op	     153 allocs/op
+BenchmarkCompileFull/many_funcs                               	    3793	    338390 ns/op	      9732 code-B	  167632 B/op	     100 allocs/op
+BenchmarkCompileFull/linked_list                              	   91237	     18156 ns/op	       256.0 code-B	   23840 B/op	      94 allocs/op
+BenchmarkCompileFull/nbody                                    	   13708	     92726 ns/op	      3408 code-B	   62328 B/op	     149 allocs/op
+BenchmarkCompileFull/fannkuch                                 	   10000	    103324 ns/op	      4216 code-B	   60768 B/op	     159 allocs/op
+BenchmarkCompileFull/matmul                                   	   19897	     55334 ns/op	      2232 code-B	   37512 B/op	     141 allocs/op
+BenchmarkCompileFull/sha256                                   	   14749	     79105 ns/op	      3048 code-B	   42792 B/op	     154 allocs/op
+BenchmarkCompileFull/raytrace                                 	    5701	    236191 ns/op	      9056 code-B	  148040 B/op	     185 allocs/op
+BenchmarkCompileFull/json-as                                  	    1024	   1136180 ns/op	     61352 code-B	  210176 B/op	     371 allocs/op
+BenchmarkCompileFull/blake-as                                 	    4329	    293293 ns/op	     10064 code-B	  109064 B/op	     215 allocs/op
+BenchmarkCompileFull/utf-as                                   	    6356	    222661 ns/op	      3544 code-B	  146632 B/op	     158 allocs/op
+BenchmarkCompileFull/json-as-simd                             	     972	   1260544 ns/op	     71784 code-B	  230528 B/op	     389 allocs/op
+BenchmarkCompileFull/blake-as-simd                            	    1333	    915132 ns/op	     24320 code-B	  384680 B/op	     243 allocs/op
+BenchmarkCompileFull/utf-as-simd                              	    2318	    550215 ns/op	     18964 code-B	  287672 B/op	     236 allocs/op
+BenchmarkCompileFull/coremark                                 	    2853	    432206 ns/op	     15336 code-B	  123680 B/op	     194 allocs/op
+BenchmarkCompileFull/blake3                                   	    1526	    815500 ns/op	     26092 code-B	  231480 B/op	     262 allocs/op
+BenchmarkCompileFull/qoi                                      	    7923	    165118 ns/op	      5152 code-B	   70424 B/op	     200 allocs/op
+BenchmarkCompileFull/lz4                                      	    8088	    151193 ns/op	      5624 code-B	   66144 B/op	     165 allocs/op
+BenchmarkCompileFull/zlib                                     	    1376	    919012 ns/op	     33372 code-B	  398520 B/op	     322 allocs/op
+BenchmarkCompileFull/zstd                                     	     339	   3768956 ns/op	    156560 code-B	 1040800 B/op	     478 allocs/op
+BenchmarkCompileFull/embench-crc32                            	   25809	     50552 ns/op	       780.0 code-B	   50608 B/op	     144 allocs/op
+BenchmarkCompileFull/embench-huffbench                        	    6428	    214562 ns/op	      7340 code-B	  108624 B/op	     190 allocs/op
+BenchmarkCompileFull/embench-matmult-int                      	    9753	    135281 ns/op	      6412 code-B	   65584 B/op	     153 allocs/op
+BenchmarkCompileFull/embench-nettle-aes                       	    5793	    213971 ns/op	      6176 code-B	  122768 B/op	     168 allocs/op
+BenchmarkCompileFull/embench-nettle-sha256                    	    4184	    299612 ns/op	      7932 code-B	  114712 B/op	     182 allocs/op
+BenchmarkCompileFull/embench-qrduino                          	    1137	   1138314 ns/op	     38992 code-B	  418136 B/op	     227 allocs/op
+BenchmarkCompileFull/sightglass-shootout-base64               	     560	   2248647 ns/op	     82972 code-B	  503424 B/op	     629 allocs/op
+BenchmarkCompileFull/sightglass-libsodium-hash                	     360	   3315681 ns/op	    137628 code-B	  505904 B/op	     671 allocs/op
+BenchmarkCompileFull/tacle-bsort                              	   27942	     40119 ns/op	       864.0 code-B	   35160 B/op	     108 allocs/op
+BenchmarkCompileFull/polybench-2mm                            	    9822	    141585 ns/op	      4832 code-B	   84304 B/op	     166 allocs/op
+BenchmarkCompileFull/polybench-3mm                            	    8390	    167202 ns/op	      5720 code-B	   89224 B/op	     169 allocs/op
+BenchmarkCompileFull/polybench-adi                            	    8162	    167906 ns/op	      5504 code-B	   90976 B/op	     177 allocs/op
+BenchmarkCompileFull/polybench-atax                           	   10000	    101546 ns/op	      4260 code-B	   59584 B/op	     163 allocs/op
+BenchmarkCompileFull/polybench-bicg                           	   10000	    110611 ns/op	      4664 code-B	   63432 B/op	     161 allocs/op
+BenchmarkCompileFull/polybench-cholesky                       	    9650	    146283 ns/op	      5168 code-B	   84424 B/op	     171 allocs/op
+BenchmarkCompileFull/polybench-correlation                    	   10000	    133500 ns/op	      4696 code-B	   84032 B/op	     168 allocs/op
+BenchmarkCompileFull/polybench-covariance                     	   10000	    124324 ns/op	      4096 code-B	   80024 B/op	     165 allocs/op
+BenchmarkCompileFull/polybench-deriche                        	    9325	    151656 ns/op	      4928 code-B	   87176 B/op	     176 allocs/op
+BenchmarkCompileFull/polybench-doitgen                        	    8503	    163692 ns/op	      5756 code-B	   89192 B/op	     168 allocs/op
+BenchmarkCompileFull/polybench-durbin                         	   10000	    100061 ns/op	      4168 code-B	   58224 B/op	     167 allocs/op
+BenchmarkCompileFull/polybench-fdtd-2d                        	    7092	    182906 ns/op	      7576 code-B	   97600 B/op	     165 allocs/op
+BenchmarkCompileFull/polybench-floyd-warshall                 	   13905	     86278 ns/op	      3144 code-B	   56016 B/op	     165 allocs/op
+BenchmarkCompileFull/polybench-gemm                           	   10000	    123188 ns/op	      4216 code-B	   81160 B/op	     171 allocs/op
+BenchmarkCompileFull/polybench-gemver                         	    8392	    162148 ns/op	      5912 code-B	   88968 B/op	     169 allocs/op
+BenchmarkCompileFull/polybench-gesummv                        	   10000	    100000 ns/op	      3968 code-B	   59536 B/op	     162 allocs/op
+BenchmarkCompileFull/polybench-gramschmidt                    	   10000	    134216 ns/op	      4696 code-B	   80936 B/op	     167 allocs/op
+BenchmarkCompileFull/polybench-heat-3d                        	    9236	    146109 ns/op	      4776 code-B	   88424 B/op	     168 allocs/op
+BenchmarkCompileFull/polybench-jacobi-1d                      	   14107	     84881 ns/op	      3016 code-B	   55416 B/op	     164 allocs/op
+BenchmarkCompileFull/polybench-jacobi-2d                      	   12764	     92678 ns/op	      3360 code-B	   58256 B/op	     166 allocs/op
+BenchmarkCompileFull/polybench-lu                             	    9747	    145598 ns/op	      5064 code-B	   84168 B/op	     171 allocs/op
+BenchmarkCompileFull/polybench-ludcmp                         	    7216	    178530 ns/op	      6580 code-B	   92176 B/op	     172 allocs/op
+BenchmarkCompileFull/polybench-mvt                            	   10000	    132327 ns/op	      4632 code-B	   80728 B/op	     163 allocs/op
+BenchmarkCompileFull/polybench-nussinov                       	   10000	    106072 ns/op	      4032 code-B	   59984 B/op	     168 allocs/op
+BenchmarkCompileFull/polybench-seidel-2d                      	   14217	     88612 ns/op	      3060 code-B	   56056 B/op	     165 allocs/op
+BenchmarkCompileFull/polybench-symm                           	   10000	    139548 ns/op	      4560 code-B	   84528 B/op	     168 allocs/op
+BenchmarkCompileFull/polybench-syr2k                          	   10000	    124032 ns/op	      4048 code-B	   80496 B/op	     171 allocs/op
+BenchmarkCompileFull/polybench-syrk                           	   10000	    122789 ns/op	      3944 code-B	   80472 B/op	     169 allocs/op
+BenchmarkCompileFull/polybench-trisolv                        	   12195	     95560 ns/op	      3608 code-B	   58064 B/op	     163 allocs/op
+BenchmarkCompileFull/polybench-trmm                           	   10000	    127795 ns/op	      4076 code-B	   81232 B/op	     168 allocs/op
+BenchmarkCompileFullWorkers/tiny/p1                           	  113630	     15742 ns/op	       128.0 code-B	   21568 B/op	      97 allocs/op
+BenchmarkCompileFullWorkers/tiny/p2                           	  110829	     15196 ns/op	       128.0 code-B	   21568 B/op	      97 allocs/op
+BenchmarkCompileFullWorkers/tiny/p4                           	  110648	     15256 ns/op	       128.0 code-B	   21568 B/op	      97 allocs/op
+BenchmarkCompileFullWorkers/tiny/p8                           	  110782	     15272 ns/op	       128.0 code-B	   21568 B/op	      97 allocs/op
+BenchmarkCompileFullWorkers/tiny/auto                         	  108336	     15317 ns/op	       128.0 code-B	   21568 B/op	      97 allocs/op
+BenchmarkCompileFullWorkers/fib_rec/p1                        	   68703	     18502 ns/op	       356.0 code-B	   30464 B/op	     107 allocs/op
+BenchmarkCompileFullWorkers/fib_rec/p2                        	   70850	     18221 ns/op	       356.0 code-B	   30464 B/op	     107 allocs/op
+BenchmarkCompileFullWorkers/fib_rec/p4                        	   67678	     18625 ns/op	       356.0 code-B	   30464 B/op	     107 allocs/op
+BenchmarkCompileFullWorkers/fib_rec/p8                        	   69140	     18157 ns/op	       356.0 code-B	   30464 B/op	     107 allocs/op
+BenchmarkCompileFullWorkers/fib_rec/auto                      	   67909	     18556 ns/op	       356.0 code-B	   30464 B/op	     107 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/p1                     	    3831	    341448 ns/op	      9732 code-B	  167488 B/op	      99 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/p2                     	    3883	    344108 ns/op	      9732 code-B	  167488 B/op	      99 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/p4                     	    3866	    346850 ns/op	      9732 code-B	  167488 B/op	      99 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/p8                     	    3878	    346097 ns/op	      9732 code-B	  167488 B/op	      99 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/auto                   	    3870	    344720 ns/op	      9732 code-B	  167488 B/op	      99 allocs/op
+BenchmarkCompileFullWorkers/json-as/p1                        	    1065	   1098120 ns/op	     61352 code-B	  210032 B/op	     370 allocs/op
+BenchmarkCompileFullWorkers/json-as/p2                        	    1062	   1122434 ns/op	     61352 code-B	  210032 B/op	     370 allocs/op
+BenchmarkCompileFullWorkers/json-as/p4                        	    1080	   1115331 ns/op	     61352 code-B	  210032 B/op	     370 allocs/op
+BenchmarkCompileFullWorkers/json-as/p8                        	    1075	   1121802 ns/op	     61352 code-B	  210032 B/op	     370 allocs/op
+BenchmarkCompileFullWorkers/json-as/auto                      	    1054	   1124359 ns/op	     61352 code-B	  210032 B/op	     370 allocs/op
+BenchmarkCompileFullWorkers/blake-as/p1                       	    4249	    291378 ns/op	     10064 code-B	  108920 B/op	     214 allocs/op
+BenchmarkCompileFullWorkers/blake-as/p2                       	    4327	    289931 ns/op	     10064 code-B	  108920 B/op	     214 allocs/op
+BenchmarkCompileFullWorkers/blake-as/p4                       	    4089	    295124 ns/op	     10064 code-B	  108920 B/op	     214 allocs/op
+BenchmarkCompileFullWorkers/blake-as/p8                       	    4232	    290907 ns/op	     10064 code-B	  108920 B/op	     214 allocs/op
+BenchmarkCompileFullWorkers/blake-as/auto                     	    4306	    292848 ns/op	     10064 code-B	  108920 B/op	     214 allocs/op
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1           	    3867	    347421 ns/op	  167488 B/op	      99 allocs/op
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto         	    3774	    342758 ns/op	  167488 B/op	      99 allocs/op
+BenchmarkCompileMultiModuleThroughput/json-as/p1              	    1064	   1096313 ns/op	  210032 B/op	     370 allocs/op
+BenchmarkCompileMultiModuleThroughput/json-as/auto            	    1088	   1117859 ns/op	  210032 B/op	     370 allocs/op
+BenchmarkInstantiate/tiny                                     	  283216	      4614 ns/op	    1824 B/op	       8 allocs/op
+BenchmarkInstantiate/fib_rec                                  	  281060	      4722 ns/op	    1824 B/op	       8 allocs/op
+BenchmarkInstantiate/memory                                   	  228210	      4820 ns/op	    1824 B/op	       8 allocs/op
+BenchmarkInstantiate/memory_tree                              	  273171	      4817 ns/op	    1824 B/op	       8 allocs/op
+BenchmarkInstantiate/dispatch                                 	  254028	      5090 ns/op	    1824 B/op	       8 allocs/op
+BenchmarkInstantiate/many_funcs                               	  244393	      4713 ns/op	    1824 B/op	       8 allocs/op
+BenchmarkInstantiate/linked_list                              	  106620	     11435 ns/op	    1824 B/op	       8 allocs/op
+BenchmarkInstantiate/nbody                                    	   33790	     35777 ns/op	    1976 B/op	      10 allocs/op
+BenchmarkInstantiate/fannkuch                                 	   34540	     35884 ns/op	    1976 B/op	      10 allocs/op
+BenchmarkInstantiate/matmul                                   	   34562	     35404 ns/op	    1976 B/op	      10 allocs/op
+BenchmarkInstantiate/sha256                                   	   32338	     37942 ns/op	    1976 B/op	      10 allocs/op
+BenchmarkInstantiate/raytrace                                 	   32842	     35032 ns/op	    1976 B/op	      10 allocs/op
+BenchmarkInstantiate/json-as                                  	  116155	     11241 ns/op	    4344 B/op	      25 allocs/op
+BenchmarkInstantiate/blake-as                                 	  228835	      5257 ns/op	    2512 B/op	      10 allocs/op
+BenchmarkInstantiate/utf-as                                   	  175549	      7403 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/json-as-simd                             	   83961	     12669 ns/op	    4344 B/op	      25 allocs/op
+BenchmarkInstantiate/blake-as-simd                            	  253903	      5360 ns/op	    2512 B/op	      10 allocs/op
+BenchmarkInstantiate/utf-as-simd                              	   98458	     12548 ns/op	    3160 B/op	      25 allocs/op
+BenchmarkInstantiate/coremark                                 	  159818	      8148 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/blake3                                   	   34225	     35805 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/qoi                                      	   17941	     68059 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/lz4                                      	   17251	     68313 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/zlib                                     	   17696	     68075 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/zstd                                     	   17335	     69783 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-2mm                            	  158773	      8016 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-3mm                            	  154426	      7867 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-adi                            	  160717	      8044 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-atax                           	  161196	      8099 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-bicg                           	  155569	      7611 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-cholesky                       	  158902	      7659 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-correlation                    	  133930	      7931 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-covariance                     	  156440	      7605 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-deriche                        	  160435	      7716 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-doitgen                        	  157801	      7660 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-durbin                         	  155047	      7528 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-fdtd-2d                        	  157726	      7804 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-floyd-warshall                 	  162306	      7678 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-gemm                           	  146814	      7593 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-gemver                         	  160543	      7575 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-gesummv                        	  147894	      7782 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-gramschmidt                    	  153186	      7535 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-heat-3d                        	  144681	      8693 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-jacobi-1d                      	  140917	      8526 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-jacobi-2d                      	  135360	      8803 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-lu                             	  136390	      8590 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-ludcmp                         	  159518	      7870 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-mvt                            	  155143	      7911 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-nussinov                       	  159421	      7996 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-seidel-2d                      	  155556	      7574 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-symm                           	  139179	      8667 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-syr2k                          	  146739	      7909 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-syrk                           	  155332	      7583 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-trisolv                        	  151542	      7711 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkInstantiate/polybench-trmm                           	  151438	      7890 ns/op	    1880 B/op	      10 allocs/op
+BenchmarkExec/tiny.add                                        	     559	         5.913 ns/op	    334643 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fib_rec.fib                                     	     525	    571647 ns/op	         4.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/memory.sum                                      	     620	       217.7 ns/op	     10060 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/memory_tree.run                                 	     601	      4819 ns/op	       428.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/dispatch.apply                                  	     638	         8.826 ns/op	    232087 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/many_funcs.run                                  	     567	        17.23 ns/op	    116965 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                                 	     394	      5528 ns/op	       470.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/nbody.step                                      	     558	    136843 ns/op	        16.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fannkuch.run                                    	     630	    913286 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/matmul.run                                      	     556	     79697 ns/op	        27.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/sha256.hashN                                    	     594	     25132 ns/op	        83.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/raytrace.render                                 	     550	    243175 ns/op	         9.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.serializeN                              	     520	     15095 ns/op	       136.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.deserializeN                            	     570	     30078 ns/op	        73.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as.hashN                                  	     516	    389011 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as.convertN                                 	     573	     77490 ns/op	        29.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.serializeN                         	     582	     20615 ns/op	       101.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.deserializeN                       	     592	     40169 ns/op	        60.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN                             	     488	    403220 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN                            	     602	     35616 ns/op	        55.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN                           	     562	    133205 ns/op	        16.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/coremark.coremark_run                           	      42	  29205648 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_hash                              	     511	    233630 ns/op	         9.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_keyed_hash                        	     570	    233773 ns/op	         9.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_derive_key                        	     560	    239273 ns/op	         9.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/qoi.qoi_encode_run                              	     584	      4188 ns/op	       478.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/qoi.qoi_decode_run                              	     583	      4985 ns/op	       412.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/lz4.lz4_compress_run                            	     596	     24645 ns/op	        81.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/lz4.lz4_decompress_run                          	     598	      1929 ns/op	      1040 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/zlib.zlib_inflate_run                           	     579	      6837 ns/op	       292.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/zstd.zstd_decompress_run                        	     589	      5530 ns/op	       362.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-2mm.polybench_run                     	     546	    156532 ns/op	        14.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-3mm.polybench_run                     	     530	    256699 ns/op	         9.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-adi.polybench_run                     	     432	   1354668 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-atax.polybench_run                    	     608	     24562 ns/op	        82.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-bicg.polybench_run                    	     594	     22255 ns/op	        92.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-cholesky.polybench_run                	     466	    850556 ns/op	         3.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-correlation.polybench_run             	     540	    204333 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-covariance.polybench_run              	     576	    208428 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-deriche.polybench_run                 	     604	    396077 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-doitgen.polybench_run                 	     546	    273744 ns/op	         8.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-durbin.polybench_run                  	     595	      7932 ns/op	       269.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-fdtd-2d.polybench_run                 	     546	    368189 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-floyd-warshall.polybench_run          	     448	   2632709 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-gemm.polybench_run                    	     542	    147834 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-gemver.polybench_run                  	     561	     31596 ns/op	        66.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-gesummv.polybench_run                 	     621	     22423 ns/op	        90.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-gramschmidt.polybench_run             	     488	    347335 ns/op	         7.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-heat-3d.polybench_run                 	     472	    636909 ns/op	         4.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-jacobi-1d.polybench_run               	     597	      4425 ns/op	       457.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-jacobi-2d.polybench_run               	     522	    456565 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-lu.polybench_run                      	     525	   1141876 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-ludcmp.polybench_run                  	     458	    858722 ns/op	         3.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-mvt.polybench_run                     	     603	     21624 ns/op	        92.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-nussinov.polybench_run                	     494	    606052 ns/op	         4.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-seidel-2d.polybench_run               	     469	   2638258 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-symm.polybench_run                    	     547	    130271 ns/op	        17.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-syr2k.polybench_run                   	     576	    190336 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-syrk.polybench_run                    	     559	    127210 ns/op	        17.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-trisolv.polybench_run                 	     582	      6902 ns/op	       294.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-trmm.polybench_run                    	     579	    114974 ns/op	        19.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/tiny.add                    	46461429	        26.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/tiny.add                        	44184992	        26.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/fib_rec.fib                 	    2037	    588898 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/fib_rec.fib                     	    2068	    597728 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/memory.sum                  	 5160261	       233.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/memory.sum                      	 5200466	       232.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/memory_tree.run             	  249644	      4798 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/memory_tree.run                 	  246594	      4799 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/dispatch.apply              	41155555	        27.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/dispatch.apply                  	40880984	        27.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/many_funcs.run              	32467312	        36.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/many_funcs.run                  	33220866	        36.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/linked_list.sum             	  189904	      6183 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/linked_list.sum                 	  194805	      6198 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/nbody.step                  	    9135	    134546 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/nbody.step                      	    9264	    134466 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/fannkuch.run                	    1358	    887536 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/fannkuch.run                    	    1320	    893551 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/matmul.run                  	   15098	     79931 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/matmul.run                      	   15082	     80156 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/sha256.hashN                	   50371	     23687 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/sha256.hashN                    	   50521	     23872 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/raytrace.render             	    5024	    241854 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/raytrace.render                 	    5235	    243768 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/json-as.serializeN          	   75489	     15381 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/json-as.deserializeN        	   39628	     30227 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/json-as.serializeN              	   77139	     15491 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/json-as.deserializeN            	   39762	     30312 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/blake-as.hashN              	    3168	    386714 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/blake-as.hashN                  	    3020	    389539 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/utf-as.convertN             	   15352	     77852 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/utf-as.convertN                 	   15380	     77981 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/json-as-simd.serializeN     	   57667	     20688 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/json-as-simd.deserializeN   	   29502	     40549 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/json-as-simd.serializeN         	   57438	     20786 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/json-as-simd.deserializeN       	   29598	     40560 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/blake-as-simd.hashN         	    3001	    401240 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/blake-as-simd.hashN             	    2997	    398417 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/utf-as-simd.convertN        	   33360	     35881 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/utf-as-simd.validateN       	    9448	    133766 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/utf-as-simd.convertN            	   33705	     35783 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/utf-as-simd.validateN           	    9242	    133710 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-2mm.polybench_run 	    7776	    156865 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-2mm.polybench_run     	    7911	    156966 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-3mm.polybench_run 	    4887	    251495 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-3mm.polybench_run     	    4752	    251987 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-adi.polybench_run 	     919	   1309961 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-adi.polybench_run     	     924	   1330208 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-atax.polybench_run         	   48937	     24511 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-atax.polybench_run             	   48178	     24427 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-bicg.polybench_run         	   53750	     22260 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-bicg.polybench_run             	   54142	     22429 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-cholesky.polybench_run     	    1381	    854387 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-cholesky.polybench_run         	    1387	    851591 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-correlation.polybench_run  	    5953	    205427 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-correlation.polybench_run      	    6069	    204892 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-covariance.polybench_run   	    6004	    208404 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-covariance.polybench_run       	    5877	    209189 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-deriche.polybench_run      	    3066	    395896 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-deriche.polybench_run          	    3073	    395788 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-doitgen.polybench_run      	    4502	    273648 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-doitgen.polybench_run          	    4462	    274203 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-durbin.polybench_run       	  151551	      7880 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-durbin.polybench_run           	  148600	      7870 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-fdtd-2d.polybench_run      	    3325	    370787 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-fdtd-2d.polybench_run          	    3321	    369537 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-floyd-warshall.polybench_run         	     458	   2638089 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-floyd-warshall.polybench_run             	     452	   2633278 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-gemm.polybench_run                   	    8139	    149069 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-gemm.polybench_run                       	    8428	    147960 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-gemver.polybench_run                 	   38462	     31195 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-gemver.polybench_run                     	   38126	     31408 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-gesummv.polybench_run                	   54174	     22037 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-gesummv.polybench_run                    	   54694	     21821 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-gramschmidt.polybench_run            	    3506	    347670 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-gramschmidt.polybench_run                	    3436	    346408 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-heat-3d.polybench_run                	    1906	    638696 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-heat-3d.polybench_run                    	    1897	    637171 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-jacobi-1d.polybench_run              	  270735	      4487 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-jacobi-1d.polybench_run                  	  266875	      4461 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-jacobi-2d.polybench_run              	    2658	    459106 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-jacobi-2d.polybench_run                  	    2565	    457501 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-lu.polybench_run                     	    1017	   1139789 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-lu.polybench_run                         	    1053	   1137796 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-ludcmp.polybench_run                 	    1384	    857315 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-ludcmp.polybench_run                     	    1410	    858291 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-mvt.polybench_run                    	   55149	     21629 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-mvt.polybench_run                        	   55324	     21721 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-nussinov.polybench_run               	    1945	    611241 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-nussinov.polybench_run                   	    1999	    607321 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-seidel-2d.polybench_run              	     459	   2619337 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-seidel-2d.polybench_run                  	     468	   2637608 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-symm.polybench_run                   	    9516	    131074 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-symm.polybench_run                       	    9616	    129949 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-syr2k.polybench_run                  	    6543	    191453 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-syr2k.polybench_run                      	    6445	    191377 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-syrk.polybench_run                   	    9922	    126665 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-syrk.polybench_run                       	    9547	    126669 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-trisolv.polybench_run                	  173941	      6908 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-trisolv.polybench_run                    	  173078	      6864 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/independent/polybench-trmm.polybench_run                   	   10000	    116486 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExecParallel/process/polybench-trmm.polybench_run                       	   10000	    116710 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/wago-org/wago/bench/suite	1250.334s
