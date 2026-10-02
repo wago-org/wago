@@ -567,6 +567,10 @@ func (f *fn) emitTailWrapperToRegisterJump(ft *wasm.CompType, emitJump func()) {
 	if len(ft.Results) > 1 {
 		f.st64(X3, 8, X1)
 	}
+	// The register-ABI target returns module pins in registers, but this
+	// trampoline returns in place of the wrapper-ABI caller's epilogue, whose
+	// callers expect coherent cells.
+	f.storeModuleGlobals(X16)
 	f.ld64(LR, SP, 0)
 	f.a.AddSP64(32)
 	f.a.Ret()
