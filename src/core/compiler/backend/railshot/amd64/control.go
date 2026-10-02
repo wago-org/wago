@@ -2252,11 +2252,14 @@ func (f *fn) opEnd() error {
 	}
 	if fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
 		recordOff := f.ehRecordOff(int(f.ensureFrameEH(&fr).recordIndex))
-		if fallthroughReachable {
+		// Branch edges to this frame were patched to land here too, so they must
+		// also pop the handler record and skip the handler body, even when the
+		// body itself ends unreachable (for example after `br 0`).
+		if endReachable {
 			f.a.Load64(RBP, RSP, recordOff+ehPrevOff)
 		}
 		skip := -1
-		if fallthroughReachable {
+		if endReachable {
 			skip = f.a.JmpPlaceholder()
 		}
 		f.emitEHHandler(&fr)

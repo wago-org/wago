@@ -2381,7 +2381,7 @@ func (c *Compiled) validate() error {
 		staged |= CoreFeatureExceptionHandling
 		importCount := 0
 		for i, tag := range c.memoryDir.ehTags {
-			if int(tag.TypeIndex) >= len(c.Types) || c.Types[tag.TypeIndex].Kind != CompositeTypeFunction || len(c.Types[tag.TypeIndex].Results) != 0 || len(c.Types[tag.TypeIndex].Params) > 2 {
+			if int(tag.TypeIndex) >= len(c.Types) || c.Types[tag.TypeIndex].Kind != CompositeTypeFunction || len(c.Types[tag.TypeIndex].Results) != 0 || len(c.Types[tag.TypeIndex].Params) > maxStagedEHTagParams {
 				return errors.New("compiled metadata invalid: staged exception tag directory")
 			}
 			if tag.ImportKey != "" {
@@ -3058,6 +3058,17 @@ func (c *Compiled) hasFuncrefTable() bool {
 func (c *Compiled) hasExternrefTable() bool {
 	for i := 0; i < c.tableCount(); i++ {
 		if c.tableElementType(i) == ValExternRef {
+			return true
+		}
+	}
+	return false
+}
+
+// hasCompactReferenceTable reports whether any table stores 8-byte reference
+// entries rather than function-table descriptors.
+func (c *Compiled) hasCompactReferenceTable() bool {
+	for i := 0; i < c.tableCount(); i++ {
+		if c.tableEntryBytes(i) == 8 {
 			return true
 		}
 	}

@@ -97,6 +97,14 @@ func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidat
 }
 
 func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits, analysis *ValidatedModuleAnalysis) (err error) {
+	// Every exported module validator converges here; reject nil before deriving
+	// indexes or resetting analysis so invalid API input remains error-returning.
+	if m == nil {
+		if analysis != nil {
+			*analysis = ValidatedModuleAnalysis{}
+		}
+		return &ValidationError{Code: ErrTypeMismatch, Func: -1, Detail: "nil module"}
+	}
 	m.invalidateTypeAnalysisCaches()
 	if analysis != nil {
 		analysis.reset(m)

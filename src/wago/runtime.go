@@ -1274,7 +1274,13 @@ func (rt *Runtime) ProvidedImports() []ImportSpec {
 			Provided:      true,
 		})
 	}
-	sort.Slice(specs, func(i, j int) bool { return specs[i].Key() < specs[j].Key() })
+	sort.Slice(specs, func(i, j int) bool {
+		// Compare exact fields because the dotted display key is ambiguous.
+		if specs[i].Module != specs[j].Module {
+			return specs[i].Module < specs[j].Module
+		}
+		return specs[i].Name < specs[j].Name
+	})
 	return specs
 }
 

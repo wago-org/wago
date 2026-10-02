@@ -1381,7 +1381,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				break
 			}
 		}
-		if product := c.stagedGCStructProduct(); initErr == nil && product.requiresRefTableState() {
+		if product := c.stagedGCStructProduct(); initErr == nil && product.requiresRefTableState() && !(product == stagedGCStructExtern && !c.hasCompactReferenceTable()) {
+			// Any extern conversion selects the extern product. Function tables
+			// hold descriptors, not collector references, so a module whose
+			// tables are all function tables keeps the conversion-only state
+			// created below, exactly like a module with no tables.
 			tableCount := c.tableCount()
 			valid := tableCount == 1 && c.tableEntryBytes(0) == 8
 			if product == stagedGCStructRefTestAbstract {

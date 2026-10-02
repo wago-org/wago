@@ -8,6 +8,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+// maxStagedEHTagParams bounds the payload words in the staged tag directory.
+const maxStagedEHTagParams = 2
+
 // Keep metadata construction separate from native compilation so its temporary
 // descriptors and validation paths do not inflate the native compile function.
 //
@@ -133,6 +136,16 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 	if features.ExceptionHandling {
 		for i := range m.Tags {
 			c.memoryDir.ehTags = append(c.memoryDir.ehTags, compiledTagDef{TypeIndex: m.Tags[i].Type.Index})
+		}
+	}
+	// Code generation checks tag payloads only where a tag is thrown or caught.
+	// Reject every declared tag the bounded tag directory cannot represent here,
+	// so an unused one fails compilation clearly instead of instance validation.
+	for i, tag := range c.memoryDir.ehTags {
+		if int(tag.TypeIndex) < len(c.Types) && c.Types[tag.TypeIndex].Kind == CompositeTypeFunction {
+			if n := len(c.Types[tag.TypeIndex].Params); n > maxStagedEHTagParams {
+				return fmt.Errorf("bounded exception handling supports at most %d tag parameters; tag %d has %d", maxStagedEHTagParams, i, n)
+			}
 		}
 	}
 	funcABIValueCount := 0

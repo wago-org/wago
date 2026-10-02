@@ -3,6 +3,7 @@ package handoff
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -12,12 +13,10 @@ func RuntimeOwnsPluginCommand(args []string) bool {
 	if len(args) == 0 {
 		return false
 	}
-	switch args[0] {
-	case "list", "ls", "inspect":
-		return true
-	default:
-		return false
-	}
+	// The manager stores descriptor-only inspection commands and must hand them
+	// off before dispatch; use the command metadata's shared no-allocation tables.
+	return slices.Contains(pluginListCommandNames[:], args[0]) ||
+		slices.Contains(pluginInspectCommandNames[:], args[0])
 }
 
 // LooksLikeRuntimeTarget reports whether value should enter the runtime's

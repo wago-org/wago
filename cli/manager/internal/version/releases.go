@@ -15,6 +15,7 @@ type remoteRelease struct {
 	TargetCommitish string `json:"target_commitish"`
 	PublishedAt     string `json:"published_at"`
 	Draft           bool   `json:"draft"`
+	Prerelease      bool   `json:"prerelease"`
 }
 
 type remoteCommit struct {
@@ -86,6 +87,23 @@ func stableReleaseTag(tag string) bool {
 	return validReleaseCore(strings.ToLower(strings.TrimSpace(tag)))
 }
 
+// publishedStableRelease accepts only Wago's canonical remote spelling. The
+// required v keeps a discovered tag on the same identity as numeric CLI
+// shorthand ("1.2.3"), which is intentionally resolved as "v1.2.3".
+func publishedStableRelease(tag string) bool {
+	return strings.HasPrefix(tag, "v") && tag == strings.TrimSpace(tag) && tag == strings.ToLower(tag) && stableReleaseTag(tag)
+}
+
+// publishedChannelRelease validates remote metadata before the tolerant
+// channel parser is used. The parser remains lenient for legacy local stamps,
+// but GitHub tags must use their canonical lowercase, whitespace-free form.
+func publishedChannelRelease(tag string) string {
+	if tag == "" || tag != strings.TrimSpace(tag) || tag != strings.ToLower(tag) {
+		return ""
+	}
+	return channelRelease(tag)
+}
+
 func channelReleaseNames(tags []string, channel string) []string {
 	names := make([]string, 0, len(tags))
 	seen := make(map[string]bool, len(tags))
@@ -128,12 +146,15 @@ func releasePickerItems(releases []remoteRelease, channel string, now time.Time)
 			continue
 		}
 		if channel == "" {
-			if release.TagName == "" || isRollingChannel(release.TagName) || channelRelease(release.TagName) != "" {
+			if release.Prerelease || !publishedStableRelease(release.TagName) {
 				continue
 			}
-		} else if channelRelease(release.TagName) != channel {
+		} else if publishedChannelRelease(release.TagName) != channel {
 			continue
 		}
+		// Format only after validating externally supplied metadata. Besides
+		// avoiding misleading choices, this prevents malformed canary tags from
+		// reaching label code that expects a canonical commit suffix.
 		label := releasePickerLabel(release.TagName)
 		value := release.TagName
 		if channel != "" {
@@ -150,7 +171,16 @@ func releasePickerItems(releases []remoteRelease, channel string, now time.Time)
 		})
 	}
 	if channel == "" {
-		sort.Slice(items, func(i, j int) bool { return Compare(items[i].Label, items[j].Label) > 0 })
+		sort.SliceStable(items, func(i, j int) bool { return Compare(items[i].Label, items[j].Label) > 0 })
+		// GitHub should return each tag once, but compact duplicate metadata in
+		// place so the picker never presents two indistinguishable choices.
+		unique := items[:0]
+		for _, item := range items {
+			if len(unique) == 0 || unique[len(unique)-1].Value != item.Value {
+				unique = append(unique, item)
+			}
+		}
+		items = unique
 	}
 	return items
 }
@@ -198,7 +228,7 @@ func rollingCommitSHA(target string) (channel, sha string, found bool) {
 }
 
 func canonicalRollingRelease(release remoteRelease) (string, bool) {
-	if release.Draft || channelRelease(release.TagName) == "" {
+	if release.Draft || publishedChannelRelease(release.TagName) == "" {
 		return "", false
 	}
 	// GitHub reports target_commitish as the branch name when the immutable tag
@@ -253,7 +283,10 @@ func releasePickerLabel(tag string) string {
 	}
 	if channel := channelRelease(tag); channel != "" {
 		if channel == "canary" {
-			_, identity, _ := strings.Cut(tag, "-canary.g")
+			_, identity, found := strings.Cut(strings.ToLower(strings.TrimSpace(tag)), "-canary.g")
+			if !found || len(identity) < 7 {
+				return tag
+			}
 			return "canary-" + strings.ToLower(identity[:7])
 		}
 		return tag

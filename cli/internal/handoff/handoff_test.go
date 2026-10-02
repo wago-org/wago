@@ -78,7 +78,7 @@ func TestFromEnvironment(t *testing.T) {
 }
 
 func TestRuntimeOwnsPluginCommand(t *testing.T) {
-	for _, args := range [][]string{{"list"}, {"ls", "-g"}, {"inspect", "wasi"}} {
+	for _, args := range [][]string{{"list"}, {"ls", "-g"}, {"inspect", "wasi"}, {"info", "wasi"}, {"show", "wasi"}} {
 		if !RuntimeOwnsPluginCommand(args) {
 			t.Fatalf("RuntimeOwnsPluginCommand(%v) = false", args)
 		}
