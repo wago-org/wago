@@ -991,6 +991,13 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	if regallocCheckEnabled {
 		checkFPMoves()
 	}
+	// Register moves establish the integer ABI homes. Deferred float literals
+	// can still need a GPR when literal-pool loads are disabled; their scratch
+	// allocation must not reuse an already staged argument (including RDI).
+	argumentPins := f.pinned
+	for _, target := range intArgRegs[:gp] {
+		f.pinned = f.pinned.add(target)
+	}
 	for _, arg := range deferred[:deferredN] {
 		if arg.float {
 			switch arg.root.st.kind {
@@ -1012,6 +1019,8 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			f.loadCallLocalInt(arg.target, arg.root.st)
 		}
 	}
+
+	f.pinned = argumentPins
 
 	f.discardEHHandlersForTail()
 	frameSite := f.a.Len() + 3
@@ -2186,6 +2195,13 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	if regallocCheckEnabled {
 		checkFPMoves()
 	}
+	// Register moves establish the integer ABI homes. Deferred float literals
+	// can still need a GPR when literal-pool loads are disabled; their scratch
+	// allocation must not reuse an already staged argument (including RDI).
+	argumentPins := f.pinned
+	for _, target := range intArgRegs[:gp] {
+		f.pinned = f.pinned.add(target)
+	}
 	for _, da := range deferred {
 		if da.float {
 			switch da.root.st.kind {
@@ -2207,6 +2223,8 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.loadCallLocalInt(da.target, da.root.st)
 		}
 	}
+	f.pinned = argumentPins
+
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
 	if regallocCheckEnabled {
