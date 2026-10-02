@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-var floatConstRankingEnabled = os.Getenv("WAGO_AMD64_FLOAT_CONST_RANKING") == "1"
+var floatConstRankingEnabled = os.Getenv("WAGO_AMD64_FLOAT_CONST_RANKING") != "0"
 
 const floatConstRankingMaxBytes = 4096
 
