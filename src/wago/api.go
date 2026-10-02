@@ -4276,7 +4276,7 @@ func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []
 	stopped := make(chan struct{})
 	trap := (*uint32)(unsafe.Pointer(&activeTrap[0]))
 	clearDeadline := noOpCancellationWatch
-	if deadline, ok := cancel.Deadline(); ok {
+	if deadline, ok := cancel.Deadline(); ok && kernelDeadlineInterruptEnabled {
 		clearDeadline = wruntime.SetInterruptDeadline(activeTrap, deadline)
 	}
 	stopCallback := context.AfterFunc(cancel, func() {

@@ -41,6 +41,7 @@ func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 		linLen:      linBytes,
 		reserveBase: base,
 		reserveLen:  guardReserveBytes,
+		guardOwner:  base + uintptr(linOff),
 	}
 	j.putGuardedSizeCaches(linBytes, maxBytes)
 	if err := registerGuardRegion(base, base+guardReserveBytes, base+uintptr(linOff)); err != nil {

@@ -1,6 +1,9 @@
 package runtime
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // ErrPageSnapshotSizeChanged means linear memory grew after the snapshot was
 // bound. WebAssembly memory cannot shrink, so callers should discard that
@@ -144,10 +147,14 @@ func (j *JobMemory) validatePageSnapshot(s *PageSnapshot) error {
 		return errors.New("wago: nil page snapshot")
 	}
 	if j.curBytes() != s.size {
-		return ErrPageSnapshotSizeChanged
+		return fmt.Errorf("%w: current bytes %d, snapshot bytes %d", ErrPageSnapshotSizeChanged, j.curBytes(), s.size)
 	}
-	if s.size > j.linLen {
-		return ErrPageSnapshotSizeChanged
+	limit := j.linLen
+	if j.reserveBase != 0 {
+		limit = int(j.MaxPages()) * 65536
+	}
+	if s.size > limit {
+		return fmt.Errorf("%w: snapshot bytes %d exceed linear reservation %d", ErrPageSnapshotSizeChanged, s.size, limit)
 	}
 	return nil
 }

@@ -5,12 +5,15 @@ package runtime
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
+
+var exactHostResultSlice = os.Getenv("WAGO_EXACT_HOST_RESULTS") != "0"
 
 // enterNative switches to the engine's foreign stack, calls the WARP WasmWrapper
 // at code following the target's native argument mapping, then restores the Go
@@ -274,7 +277,11 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			for k := 0; k < nres; k++ {
 				resBuf[k] = 0
 			}
-			host(ctrlPtr, imp, argBuf[:n], resBuf)
+			if exactHostResultSlice {
+				host(ctrlPtr, imp, argBuf[:n], resBuf[:nres])
+			} else {
+				host(ctrlPtr, imp, argBuf[:n], resBuf)
+			}
 			for k := 0; k < nres; k++ {
 				binary.LittleEndian.PutUint64(ctrl[hcResults+k*8:], resBuf[k])
 			}

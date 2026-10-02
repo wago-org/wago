@@ -5,11 +5,14 @@ package runtime
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"sync"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
+
+var guardOwnerCacheEnabled = os.Getenv("WAGO_GUARD_OWNER_CACHE") != "0"
 
 // Basedata field offsets in bytes BELOW the linear-memory base — i.e. addressed
 // by native code as [linMem - off]. Verified against WARP
@@ -57,6 +60,7 @@ type JobMemory struct {
 	// the classic exactly-sized RW layout.
 	reserveBase uintptr
 	reserveLen  uintptr
+	guardOwner  uintptr
 }
 
 const (
@@ -123,6 +127,7 @@ func (j *JobMemory) reset(initialBytes, maxBytes, reserveBytes int, clearMem boo
 	j.linLen = reserveBytes
 	j.reserveBase = 0
 	j.reserveLen = 0
+	j.guardOwner = 0
 	j.putU32(offActualLinMemByteSize, uint32(initialBytes))
 	j.putU64(offActualLinMemByteSize64, uint64(initialBytes))
 	j.putU32(offLinMemWasmSize, uint32(initialBytes/65536))
@@ -453,9 +458,11 @@ func (j *JobMemory) ReserveRange() (base, length uintptr) { return j.reserveBase
 // to the invoking instance's primary linMem before native entry so a lazy-commit
 // fault can be authenticated without confusing the indexed base with RBX/X26.
 func (j *JobMemory) SetGuardOwner(ownerLinMem uintptr) {
-	if j != nil && j.reserveBase != 0 && guardOwnerHook != nil {
-		guardOwnerHook(j.reserveBase, ownerLinMem)
+	if j == nil || j.reserveBase == 0 || guardOwnerHook == nil || guardOwnerCacheEnabled && j.guardOwner == ownerLinMem {
+		return
 	}
+	guardOwnerHook(j.reserveBase, ownerLinMem)
+	j.guardOwner = ownerLinMem
 }
 
 // guardCloseHook, set by the wago_guardpage build, removes a guarded reservation

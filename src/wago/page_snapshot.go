@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -120,7 +119,7 @@ func capturePageSnapshot(
 		trackDirty:      trackDirty,
 		dataEnd:         dataEnd,
 		cursor:          cursor,
-		selectiveAt:     max(1, runtime.GOMAXPROCS(0)*2),
+		selectiveAt:     0,
 	}
 	binding, err := s.Bind(in)
 	if err != nil {

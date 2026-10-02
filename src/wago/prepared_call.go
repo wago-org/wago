@@ -35,3 +35,9 @@ var invokePrivateEntryEnabled = os.Getenv("WAGO_INVOKE_PRIVATE_ENTRY") != "0"
 // preparedDirectIntEnabled selects register-ABI entry for adapter-free integer
 // scalar leaves. WAGO_PREPARED_DIRECT_INT=0 restores the wrapper adapter.
 var preparedDirectIntEnabled = os.Getenv("WAGO_PREPARED_DIRECT_INT") != "0"
+
+// kernelDeadlineInterruptEnabled arms a per-invocation, per-thread kernel timer
+// so deadlines can interrupt native execution even while the Go runtime is
+// stopped. WAGO_KERNEL_DEADLINE=0 retains the context callback's asynchronous
+// OS-signal interruption while avoiding timer setup/teardown on every call.
+var kernelDeadlineInterruptEnabled = os.Getenv("WAGO_KERNEL_DEADLINE") != "0"

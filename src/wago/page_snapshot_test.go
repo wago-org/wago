@@ -73,6 +73,74 @@ func TestStubPageSnapshotRestoresBytesAndGlobalsExactly(t *testing.T) {
 	}
 }
 
+func TestStubPageSnapshotDiscoversCursorWithNewProbe(t *testing.T) {
+	tableTestForceExplicitBounds(t)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
+			[]wasm.ValType{wasm.I32, wasm.I32},
+			[]wasm.ValType{wasm.I32},
+		))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(5, []byte{0x01, 0x00, 0x02}),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x10, 0x0b}),
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("__new", 0, 0),
+			wasmtest.ExportEntry("memory", 2, 0),
+			wasmtest.ExportEntry("cursor", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{
+				0x41, 0x10, // i32.const 16
+				0x41, 0x2a, // i32.const 42
+				0x3a, 0x00, 0x00, // i32.store8
+				0x41, 0x20, 0x24, 0x00, // global.set 0 = 32
+				0x41, 0x10, 0x0b, // return 16
+			}),
+		)),
+	)
+	compiled, err := Compile(nil, mod)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	instance, err := Instantiate(compiled)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer instance.Close()
+
+	snapshot, binding, err := CaptureStubPageSnapshot(instance)
+	if err != nil {
+		t.Fatalf("CaptureStubPageSnapshot: %v", err)
+	}
+	defer snapshot.Close()
+	defer binding.Close()
+	if got := snapshot.Cursor(); got != 16 {
+		t.Fatalf("Cursor = %d, want 16", got)
+	}
+	if got := instance.Memory().Bytes()[16]; got != 0 {
+		t.Fatalf("probe byte after capture = %d, want 0", got)
+	}
+	if got, globalErr := instance.Global("cursor"); globalErr != nil || AsI32(got) != 16 {
+		t.Fatalf("cursor after capture = %v, %v; want 16", got, globalErr)
+	}
+
+	instance.Memory().Bytes()[16] = 99
+	if err = instance.SetGlobal("cursor", I32(77)); err != nil {
+		t.Fatalf("SetGlobal cursor: %v", err)
+	}
+	if err = binding.Reset(); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+	if got := instance.Memory().Bytes()[16]; got != 0 {
+		t.Fatalf("byte after reset = %d, want 0", got)
+	}
+	if got, globalErr := instance.Global("cursor"); globalErr != nil || AsI32(got) != 16 {
+		t.Fatalf("cursor after reset = %v, %v; want 16", got, globalErr)
+	}
+}
+
 func TestPageSnapshotRestoresPassiveElementDropState(t *testing.T) {
 	tableTestForceExplicitBounds(t)
 	mod := wasmtest.Module(

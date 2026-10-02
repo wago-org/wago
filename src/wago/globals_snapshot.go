@@ -30,17 +30,40 @@ func CaptureGlobals(in *Instance) (*GlobalsSnapshot, error) {
 }
 
 // CaptureStubGlobals captures globals and discovers AssemblyScript stub's
-// hidden bump cursor by invoking its exported __reset once, observing which
-// numeric global changed, and then restoring the post-initialization globals.
+// hidden bump cursor. Newer instrumented modules expose __host_reset_cursor;
+// ordinary --exportRuntime binaries expose __new, which can be used as an exact
+// one-allocation probe. The probe path restores both globals and linear memory
+// before returning, so capture remains byte-identical to post-initialization
+// state.
 func CaptureStubGlobals(in *Instance) (*GlobalsSnapshot, error) {
 	snapshot, err := CaptureGlobals(in)
 	if err != nil {
 		return nil, err
 	}
-	if _, err = in.Invoke("__host_reset_cursor"); err != nil {
-		return nil, fmt.Errorf("wago: invoke AssemblyScript cursor reset: %w", err)
+	memory := in.memory.Bytes()
+	memoryBefore := append([]byte(nil), memory...)
+	pagesBefore := in.jm.CurrentPages()
+	restore := func() {
+		_ = snapshot.Restore(in)
+		copy(memory, memoryBefore)
 	}
-	defer snapshot.Restore(in) //nolint:errcheck // best-effort restoration on the diagnostic path
+	defer restore()
+
+	if _, ok := in.c.Exports["__host_reset_cursor"]; ok {
+		if _, err = in.Invoke("__host_reset_cursor"); err != nil {
+			return nil, fmt.Errorf("wago: invoke AssemblyScript cursor reset: %w", err)
+		}
+	} else {
+		if _, ok = in.c.Exports["__new"]; !ok {
+			return nil, errors.New("wago: AssemblyScript stub cursor discovery requires __host_reset_cursor or __new")
+		}
+		if _, err = in.Invoke("__new", 0, 0); err != nil {
+			return nil, fmt.Errorf("wago: invoke AssemblyScript allocation probe: %w", err)
+		}
+		if in.jm.CurrentPages() != pagesBefore {
+			return nil, errors.New("wago: AssemblyScript allocation probe grew linear memory")
+		}
+	}
 
 	changed := 0
 	for i, snap := range snapshot.globals {
@@ -58,6 +81,7 @@ func CaptureStubGlobals(in *Instance) (*GlobalsSnapshot, error) {
 	if err = snapshot.Restore(in); err != nil {
 		return nil, err
 	}
+	copy(memory, memoryBefore)
 	return snapshot, nil
 }
 
