@@ -290,6 +290,29 @@ func (e *Engine) CallWithHostBaseScalar(code uintptr, serArgs []byte, linMemBase
 	return e.callWithHostBase(code, serArgs, linMemBase, trap, results, ctrl, host, scalar)
 }
 
+// CallWithHostBaseScalarPrepared enters a reservation-held host-capable call.
+// The caller has already initialized ctrl and bound the stable trap cell into
+// linMemBase, so the zero-trap fast path can go directly to the host loop.
+func (e *Engine) CallWithHostBaseScalarPrepared(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, host HostCall, scalar ScalarHostCall) error {
+	clearTrapUnlessInterrupted(trap)
+	ctrlPtr := slicePtr(ctrl)
+	var callErr error
+	if e.hostScratchInUse {
+		var argBuf, resBuf [maxHostArity]uint64
+		callErr = e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, scalar, argBuf[:], resBuf[:])
+	} else {
+		e.hostScratchInUse = true
+		defer func() { e.hostScratchInUse = false }()
+		callErr = e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, scalar, e.hostArgs[:], e.hostResults[:])
+	}
+	goruntime.KeepAlive(serArgs)
+	goruntime.KeepAlive(trap)
+	goruntime.KeepAlive(results)
+	goruntime.KeepAlive(ctrl)
+	goruntime.KeepAlive(e)
+	return callErr
+}
+
 // CallWithHostBaseScalarExpanded enables the fixed-slot portal for zero, one,
 // or two results. The separate entry keeps the established one-result loop's
 // register allocation and code layout unchanged.

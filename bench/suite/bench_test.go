@@ -27,6 +27,7 @@ var (
 	fibWasm         = mustRead("../../tests/fixtures/wasm/fib.wasm")           // iterative fib (loop)
 	recurWasm       = mustRead("../../tests/fixtures/wasm/recur.wasm")         // recursive fibrec (calls)
 	globalBenchWasm = mustRead("../../tests/fixtures/bench/global_bench.wasm") // globals/local/memory microbench fixture
+	callWasm        = mustRead("../../tests/fixtures/bench/call.wasm")         // boundary-only identity export (i32)->i32
 	hostcallWasm    = mustRead("../../tests/fixtures/bench/hostcall.wasm")     // returning host import env.host(i32)->i32
 )
 
@@ -205,12 +206,13 @@ func BenchmarkExecFibRec_wazero(b *testing.B) {
 	}
 }
 
-// BenchmarkExecCallOverhead measures the cross-boundary call cost (fib(1)).
+// BenchmarkExecCallOverhead measures a host -> Wasm boundary crossing through
+// an identity export, with no guest computation mixed into the result.
 func BenchmarkExecCallOverhead_wago(b *testing.B) {
-	call, cleanup := wagoSetup(b, fibWasm, "fib")
+	call, cleanup := wagoSetup(b, callWasm, "call")
 	defer cleanup()
 	if got := call(1); got != 1 {
-		b.Fatalf("fib(1) = %d, want 1", got)
+		b.Fatalf("call(1) = %d, want 1", got)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -220,12 +222,12 @@ func BenchmarkExecCallOverhead_wago(b *testing.B) {
 	}
 	b.StopTimer()
 	if got != 1 {
-		b.Fatalf("fib(1) = %d, want 1", got)
+		b.Fatalf("call(1) = %d, want 1", got)
 	}
 }
 
 func BenchmarkExecCallOverhead_wazero(b *testing.B) {
-	fn, cleanup := wazeroSetup(b, fibWasm, "fib")
+	fn, cleanup := wazeroSetup(b, callWasm, "call")
 	defer cleanup()
 	ctx := context.Background()
 	b.ReportAllocs()
@@ -234,11 +236,11 @@ func BenchmarkExecCallOverhead_wazero(b *testing.B) {
 	}
 }
 
-// BenchmarkExecTypedCall_wago measures the public specialized (i32) -> i32
-// entry path. Setup resolves the export and verifies its signature once; the
-// timed loop uses PreparedI32ToI32 rather than the arbitrary-slot Invoke API.
+// BenchmarkExecTypedCall_wago measures the public reservation-held (i32) -> i32
+// entry path. Setup resolves the export and opens the session once, matching
+// wazero's exported-function lookup outside the timed loop.
 func BenchmarkExecTypedCall_wago(b *testing.B) {
-	c, err := wago.Compile(nil, fibWasm)
+	c, err := wago.Compile(nil, callWasm)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -248,25 +250,30 @@ func BenchmarkExecTypedCall_wago(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareI32ToI32("fib")
+	fn, err := in.PrepareFunction("call")
 	if err != nil {
 		b.Fatal(err)
 	}
-	if got, err := fn.Call(1); err != nil || got != 1 {
-		b.Fatalf("fib(1) = %d, %v; want 1", got, err)
+	session, err := fn.OpenSession()
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer session.Close()
+	if got, err := session.Invoke1(1); err != nil || len(got) != 1 || got[0] != 1 {
+		b.Fatalf("call(1) = %v, %v; want 1", got, err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
-	var got int32
+	var got []uint64
 	for i := 0; i < b.N; i++ {
-		got, err = fn.Call(1)
+		got, err = session.Invoke1(1)
 		if err != nil {
 			b.Fatal(err)
 		}
 	}
 	b.StopTimer()
-	if got != 1 {
-		b.Fatalf("fib(1) = %d, want 1", got)
+	if len(got) != 1 || got[0] != 1 {
+		b.Fatalf("call(1) = %v, want 1", got)
 	}
 }
 
@@ -301,17 +308,22 @@ func BenchmarkExecHostCallback_wago(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer in.Close()
-	fn, err := in.PrepareI32ToI32("roundtrip")
+	fn, err := in.PrepareFunction("roundtrip")
 	if err != nil {
 		b.Fatal(err)
 	}
-	if got, err := fn.Call(1); err != nil || got != 2 {
-		b.Fatalf("roundtrip(1) = %d, %v; want 2", got, err)
+	session, err := fn.OpenSession()
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer session.Close()
+	if got, err := session.Invoke1(1); err != nil || len(got) != 1 || got[0] != 2 {
+		b.Fatalf("roundtrip(1) = %v, %v; want 2", got, err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := fn.Call(1); err != nil {
+		if _, err := session.Invoke1(1); err != nil {
 			b.Fatal(err)
 		}
 	}

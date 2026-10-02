@@ -181,6 +181,7 @@ type (
 	PreparedFunction                = impl.PreparedFunction
 	PreparedI32I32ToI32             = impl.PreparedI32I32ToI32
 	PreparedI32ToI32                = impl.PreparedI32ToI32
+	PreparedSession                 = impl.PreparedSession
 	ProviderCatalogDocument         = impl.ProviderCatalogDocument
 	ProviderCatalogEntry            = impl.ProviderCatalogEntry
 	RefInit                         = impl.RefInit
