@@ -728,6 +728,8 @@ func (w *compiledWriter) elems(v []ElemInit, c *Compiled) error {
 			switch {
 			case value.Null:
 				w.u8(0)
+			case value.RepeatPrevious:
+				w.u8(5)
 			case len(value.Expr) != 0:
 				w.u8(4)
 				w.bytes(value.Expr)
@@ -1954,6 +1956,11 @@ func (r *compiledReader) elems(pool []ValueTypeDescriptor, types []DefinedTypeDe
 				if len(out[i].Values[j].Expr) == 0 {
 					return nil, fmt.Errorf("empty GC element initializer expression")
 				}
+			case 5:
+				if j == 0 {
+					return nil, fmt.Errorf("element initializer repeats a missing previous value")
+				}
+				out[i].Values[j].RepeatPrevious = true
 			default:
 				return nil, fmt.Errorf("invalid element initializer tag %d", tag)
 			}

@@ -3,7 +3,6 @@
 package amd64
 
 import (
-	"strings"
 	"testing"
 	"unsafe"
 
@@ -65,15 +64,5 @@ func TestExceptionFuncrefRootsInitializeAndClear(t *testing.T) {
 	}
 	if got := stats.Funcs[2].Peephole["eh-root-clear"]; got != 1 {
 		t.Fatalf("EH root clears = %d, want 1", got)
-	}
-}
-
-func TestExceptionPayloadBackendRejectsNonFunctionReference(t *testing.T) {
-	m, err := wasm.DecodeModule(exceptionFuncrefRootLifetimeModule([]byte{0x6f}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := CompileModuleWith(m, CompileOptions{}); err == nil || !strings.Contains(err.Error(), "scalar or non-null indexed-function") {
-		t.Fatalf("externref EH payload compile = %v, want strict backend rejection", err)
 	}
 }

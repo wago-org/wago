@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
@@ -460,7 +461,7 @@ type ctrlFrameEH struct {
 	catches     []ehCatchClause
 	targetSite  uint32
 	recordIndex uint8
-	refResults  [3]bool
+	refResults  uint16 // bit i: branch-result position i carries a rooted exception identity
 }
 
 func (f *fn) frameEH(fr *ctrlFrame) *ctrlFrameEH {
@@ -802,14 +803,27 @@ func (f *fn) convergeFrameEntryState(fr *ctrlFrame) {
 }
 
 type ehCatchClause struct {
-	tag         uint32
-	frame       uint32
-	matchSite   uint32
-	kind        wasm.CatchKind
-	scalarN     uint8
-	payloadN    uint8
-	rootIndex   uint8
-	payloadType [3]machineType
+	tag       uint32
+	frame     uint32
+	matchSite uint32
+	kind      wasm.CatchKind
+	scalarN   uint8
+	payloadN  uint8
+	rootIndex uint8
+	// firstType is the machine type of payload 0, the only one delivered in a
+	// register (single-result merge); wider payloads always go through slots.
+	firstType machineType
+	// gcParams marks tag parameters that are collector references and so
+	// live in the GC lanes of the shared payload layout.
+	gcParams uint8
+}
+
+// lane returns the payload lane of the clause tag's parameter i.
+func (c *ehCatchClause) lane(i int) int {
+	if c.gcParams&(1<<i) != 0 {
+		return shared.EHGCLaneBase + i
+	}
+	return i
 }
 
 type coldEdge struct {
@@ -1924,36 +1938,37 @@ func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
 }
 
 const (
-	ehRecordSlots    = 7
-	ehRootSlots      = 3
-	maxEHTryRecords  = 4
-	maxEHRootRecords = 4
+	// A record is [prev, saved SP, handler target, saved linear memory, tag,
+	// lanes...] and a root slot mirrors its [tag, lanes...] block. Lanes
+	// follow the module-independent shared payload layout.
+	ehMaxPayloadWords = shared.MaxEHTagPayloadWords
+	ehRecordSlots     = 5 + shared.EHPayloadLanes
+	ehRootSlots       = 1 + shared.EHPayloadLanes
+	// Historical fixed reservation, kept for modules built without body bytes.
+	legacyEHTryRecords  = 4
+	legacyEHRootRecords = 4
 	// Catch clauses are a growable list dispatched with ordinary branches;
 	// the bound only keeps one try_table's dispatch within branch range.
 	maxEHCatches     = 1024
 	ehPrevOff        = 0
 	ehSavedSPOff     = 8
-	ehTagOff         = 16
-	ehPayload0Off    = 24
-	ehPayload1Off    = 32
-	ehTargetOff      = 40
-	ehSavedLinMemOff = 48
+	ehTargetOff      = 16
+	ehSavedLinMemOff = 24
+	ehTagOff         = 32
 	offEHTagDirPtr   = abi.EHTagDirPtrOffset
 	ehReg            = X22
 )
 
-func exceptionPayloadMachineType(m *wasm.Module, typ wasm.ValType) (machineType, bool) {
+func exceptionPayloadMachineType(typ wasm.ValType) (machineType, bool) {
 	if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) {
 		return mtOf(typ), true
 	}
-	if typ.Kind() != wasm.ValRef || typ.Ref().Nullable() || typ.Ref().Exact() || typ.Ref().Heap().Kind() != wasm.HeapTypeIndex {
-		return mtNone, false
+	if typ.Kind() == wasm.ValRef {
+		// One word; exception root maps decide which reference words the
+		// collector scans.
+		return mtI64, true
 	}
-	var ft wasm.CompType
-	if !m.ResolveTypeFunc(typ.Ref().Heap().Type().Index, &ft) {
-		return mtNone, false
-	}
-	return mtI64, true
+	return mtNone, false
 }
 
 func moduleTagType(m *wasm.Module, index uint32) (wasm.TagType, bool) {
@@ -2010,35 +2025,42 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 				return fmt.Errorf("bounded exception handling catch tag %d is unavailable", clause.tag)
 			}
 			var ft wasm.CompType
-			if !f.m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > 2 {
+			if !f.m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > ehMaxPayloadWords {
 				return fmt.Errorf("bounded exception handling catch tag %d signature unavailable", clause.tag)
 			}
 			clause.scalarN = uint8(len(ft.Params))
 			clause.payloadN = clause.scalarN
 			for j, typ := range ft.Params {
-				mt, ok := exceptionPayloadMachineType(f.m, typ)
+				mt, ok := exceptionPayloadMachineType(typ)
 				if !ok {
-					return fmt.Errorf("bounded exception handling requires scalar or non-null indexed-function tag payloads")
+					return fmt.Errorf("bounded exception handling requires scalar or reference tag payloads")
 				}
-				clause.payloadType[j] = mt
+				if j == 0 {
+					clause.firstType = mt
+				}
+				if shared.EHPayloadLane(f.m, typ, j) != j {
+					clause.gcParams |= 1 << j
+				}
 			}
 			if kind == wasm.CatchRef {
-				if f.ehRootCount >= maxEHRootRecords {
-					return fmt.Errorf("bounded exception handling supports at most %d rooted exception values per function", maxEHRootRecords)
+				if f.ehRootCount >= f.ehRootCap {
+					return fmt.Errorf("exception root %d exceeds the %d reserved for this function", f.ehRootCount, f.ehRootCap)
 				}
 				clause.rootIndex = uint8(f.ehRootCount)
 				f.ehRootCount++
-				clause.payloadType[clause.payloadN] = mtI64
+				if clause.payloadN == 0 {
+					clause.firstType = mtI64
+				}
 				clause.payloadN++
 			}
 		case wasm.CatchAll:
 		case wasm.CatchAllRef:
-			if f.ehRootCount >= maxEHRootRecords {
-				return fmt.Errorf("bounded exception handling supports at most %d rooted exception values per function", maxEHRootRecords)
+			if f.ehRootCount >= f.ehRootCap {
+				return fmt.Errorf("exception root %d exceeds the %d reserved for this function", f.ehRootCount, f.ehRootCap)
 			}
 			clause.rootIndex = uint8(f.ehRootCount)
 			f.ehRootCount++
-			clause.payloadType[0] = mtI64
+			clause.firstType = mtI64
 			clause.payloadN = 1
 		default:
 			return fmt.Errorf("bounded exception handling rejects unknown catch kind %d", kind)
@@ -2056,7 +2078,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			return fmt.Errorf("bounded exception handler payload arity mismatch")
 		}
 		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
-			f.ensureFrameEH(&f.ctrl[frame]).refResults[clause.payloadN-1] = true
+			f.ensureFrameEH(&f.ctrl[frame]).refResults |= 1 << (clause.payloadN - 1)
 		}
 		f.ctrl[frame].set(ctrlRegMerge1, false)
 		eh.catches = append(eh.catches, clause)
@@ -2069,8 +2091,8 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	}
 	fr.height = f.depth() - fr.paramN
 	f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
-	if f.ehTryDepth >= maxEHTryRecords {
-		return fmt.Errorf("bounded exception handling supports at most %d nested try_table records", maxEHTryRecords)
+	if f.ehTryDepth >= f.ehTryCap {
+		return fmt.Errorf("try_table record %d exceeds the %d reserved for this function", f.ehTryDepth, f.ehTryCap)
 	}
 	eh.recordIndex = uint8(f.ehTryDepth)
 	f.ehTryDepth++
@@ -2111,7 +2133,7 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 		return fmt.Errorf("bounded exception handling throw tag %d is unavailable", tag)
 	}
 	var ft wasm.CompType
-	if !f.m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > 2 {
+	if !f.m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > ehMaxPayloadWords {
 		return fmt.Errorf("bounded exception handling tag signature unavailable")
 	}
 	types := f.currentLogicalTypes()
@@ -2129,14 +2151,20 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	f.ld64(X16, X16, int32(tag*8))
 	f.st64(ehReg, ehTagOff, X16)
 	base := len(types) - len(ft.Params)
-	for i := range ft.Params {
+	var gcLanes uint32
+	for i, typ := range ft.Params {
 		slot := slotOfLogicalTypes(types, base+i)
+		lane := shared.EHPayloadLane(f.m, typ, i)
+		gcLanes |= 1 << lane
 		f.ld64(X16, SP, f.spillOff(slot))
-		off := int32(ehPayload0Off)
-		if i == 1 {
-			off = ehPayload1Off
+		f.st64(ehReg, ehPayloadOff(lane), X16)
+	}
+	// GC lanes this tag leaves unused may hold an earlier exception's
+	// references; clear them so a catch_all_ref root never scans a stale one.
+	for lane := shared.EHGCLaneBase; lane < shared.EHPayloadLanes; lane++ {
+		if gcLanes&(1<<lane) == 0 {
+			f.st64(ehReg, ehPayloadOff(lane), ZR)
 		}
-		f.st64(ehReg, off, X16)
 	}
 	f.ld64(X17, ehReg, ehSavedSPOff)
 	f.ld64(X16, ehReg, ehTargetOff)
@@ -2163,7 +2191,7 @@ func (f *fn) opThrowRef() error {
 	f.ld64(X16, SP, f.spillOff(refSlot))
 	f.trapIfZero(X16, true, true, trapNullReference)
 	noHandler := f.zeroBranch(ehReg, true, true)
-	for _, off := range [...]int32{0, 8, 16} {
+	for off := int32(0); off < ehRootSlots*8; off += 8 {
 		f.ld64(X17, X16, off)
 		f.st64(ehReg, ehTagOff+off, X17)
 	}
@@ -2184,9 +2212,9 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 	rootOff := int32(0)
 	if clause.kind == wasm.CatchRef || clause.kind == wasm.CatchAllRef {
 		rootOff = f.ehRootOff(int(clause.rootIndex))
-		for _, off := range [...]int32{ehTagOff, ehPayload0Off, ehPayload1Off} {
-			f.ld64(X16, SP, recordOff+off)
-			f.st64(SP, rootOff+off-ehTagOff, X16)
+		for off := int32(0); off < ehRootSlots*8; off += 8 {
+			f.ld64(X16, SP, recordOff+ehTagOff+off)
+			f.st64(SP, rootOff+off, X16)
 		}
 	}
 
@@ -2195,18 +2223,13 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 			f.leaDisp(reg, SP, rootOff, true)
 			return
 		}
-		off := recordOff + ehPayload0Off
-		if i == 1 {
-			off = recordOff + ehPayload1Off
-		}
-		f.ld64(reg, SP, off)
+		f.ld64(reg, SP, recordOff+ehPayloadOff(clause.lane(i)))
 	}
 	if target.has(ctrlRegMerge1) && clause.payloadN == 1 {
 		if clause.scalarN == 0 {
 			f.leaDisp(mergeReg, SP, rootOff, true)
-		} else if clause.payloadType[0].isFloat() {
-			off := recordOff + ehPayload0Off
-			f.fld(mergeFReg, SP, off, clause.payloadType[0] == mtF64)
+		} else if clause.firstType.isFloat() {
+			f.fld(mergeFReg, SP, recordOff+ehPayloadOff(0), clause.firstType == mtF64)
 		} else {
 			loadPayload(mergeReg, 0)
 		}
@@ -2279,7 +2302,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	f.leaDisp(X16, SP, recordOff, true)
 	f.ld64(X17, X16, ehPrevOff)
 	noPrevious := f.zeroBranch(X17, true, true)
-	for _, off := range [...]int32{ehTagOff, ehPayload0Off, ehPayload1Off} {
+	for off := int32(ehTagOff); off < ehTagOff+ehRootSlots*8; off += 8 {
 		f.ld64(X9, X16, off)
 		f.st64(X17, off, X9)
 	}
@@ -2309,7 +2332,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 	}
 	e := f.s.back()
 	for i := fr.resultN - 1; i >= 0; i-- {
-		if i < len(eh.refResults) && eh.refResults[i] {
+		if i < ehMaxPayloadWords+1 && eh.refResults&(1<<i) != 0 {
 			e.st.setEHRoot(true)
 		}
 		e = f.s.prev(e)
@@ -3236,3 +3259,6 @@ func brTableSmallLabelsUnique(labels []uint32) bool {
 	}
 	return true
 }
+
+// ehPayloadOff is the record offset of exception payload word i.
+func ehPayloadOff(i int) int32 { return ehTagOff + 8 + int32(i)*8 }

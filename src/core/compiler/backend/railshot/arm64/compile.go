@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"runtime"
@@ -359,8 +360,10 @@ type fn struct {
 	moduleGlobals []moduleGlobalPin
 	// Control-flow state (Phase 3).
 	ctrl                []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
-	ehTryDepth          int         // live reachable try_table records; bounded by maxEHTryRecords
+	ehTryDepth          int         // live reachable try_table records; bounded by ehTryCap
 	ehRootCount         int         // fixed exception-root records assigned in this function
+	ehTryCap            int         // this function's reserved try_table records (max nesting depth)
+	ehRootCap           int         // this function's reserved exception roots (catch_ref clauses)
 	branchHints         []wasm.BranchHint
 	branchHintLocalDecl uint32
 	branchHintUnlikely  bool
@@ -392,6 +395,9 @@ type fn struct {
 	// per-instance dispatch table; immediate bindings remain for low-level tests.
 	importBindings        []ImportBinding
 	stagedTailDescriptors bool
+	// adapterBacklink places the adapter backlink below the internal entry; see
+	// emitRegABI. Set for modules that may tail-enter descriptors.
+	adapterBacklink bool
 
 	// syncHostCalls is set when the module has any returning host import, so every
 	// host call in the module uses the synchronous control frame (callHostSync)
@@ -658,7 +664,31 @@ type scratch struct {
 	controlRootsPeak        int
 	controlRootsDiscarded   int
 	adapterTemplate         adapterTemplateCache
+	// adapterBacklink caches, for this scratch's single module, whether any
+	// function has a dynamic call (call_ref/return_call_ref and friends).
+	adapterBacklinkKnown bool
+	adapterBacklink      bool
 	transient
+}
+
+// moduleNeedsAdapterBacklink reports whether functions of this module carry the
+// adapter backlink: only a module with return_call_ref can tail-enter an
+// internal descriptor from a wrapper-ABI caller. The dynamic-call hint bit is a
+// cheap superset; without hints the backlink is emitted.
+func (sc *scratch) moduleNeedsAdapterBacklink(calleeHints []funcHints) bool {
+	if sc == nil || calleeHints == nil {
+		return true
+	}
+	if !sc.adapterBacklinkKnown {
+		for i := range calleeHints {
+			if calleeHints[i].hasUnsupportedDynamicCall() {
+				sc.adapterBacklink = true
+				break
+			}
+		}
+		sc.adapterBacklinkKnown = true
+	}
+	return sc.adapterBacklink
 }
 
 const maxCachedAdapterBytes = 256
@@ -1225,7 +1255,7 @@ func (f *fn) prepareCompactGCFrameHeader(plan *shared.GCFrameRootPlan) bool {
 func (f *fn) localOff(i int) int32 { return int32(f.frameHeaderBytes() + 8*int(f.localSlot[i])) }
 func (f *fn) ehFrameBytes() int {
 	if f.moduleEH {
-		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
+		return (f.ehTryCap*ehRecordSlots + f.ehRootCap*ehRootSlots) * 8
 	}
 	return 0
 }
@@ -1233,7 +1263,7 @@ func (f *fn) ehRecordOff(index int) int32 {
 	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + index*ehRecordSlots*8)
 }
 func (f *fn) ehRootOff(index int) int32 {
-	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + index*ehRootSlots*8)
+	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + f.ehTryCap*ehRecordSlots*8 + index*ehRootSlots*8)
 }
 func (f *fn) spillOff(k int) int32 {
 	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
@@ -2926,6 +2956,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	mt0, _ := m.MemoryType(0)
 	boundedMemcopy := len(c.BodyBytes) <= 4096 && hints.memOpCount() <= 128
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, memLimitReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
+	f.adapterBacklink = sc.moduleNeedsAdapterBacklink(calleeHints)
 	if f.nParams >= 64 {
 		f.localWritten = ^uint64(0)
 	} else if f.nParams != 0 {
@@ -2947,6 +2978,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		sc.transient = f.transient
 		sc.relocs = f.relocs
 	}()
+	if f.moduleEH {
+		shape, err := ehFrameShape(sc, c.BodyBytes)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("function %d: %w", funcIdx, err)
+		}
+		f.ehTryCap, f.ehRootCap = shape.TryRecords, shape.RootRecords
+	}
 	f.storeForwardOK = policy.EnabledOption(optStoreForward) && len(c.BodyBytes) <= 256 && nLocals <= 8
 	f.syncHostCalls = syncHostCalls
 	f.syncHostSlots = syncHostSlots
@@ -3953,6 +3991,7 @@ func (f *fn) flushWrapperParamHome(p pendingWrapperParamHome) {
 // where reads materialize zero on demand and control-flow reconciliation stores it
 // to the frame before paths diverge when required.
 func (f *fn) zeroDeclaredLocals(localScores []uint32) {
+	f.zeroEHGCRootLanes()
 	if f.nLocals <= f.nParams {
 		return
 	}
@@ -4174,7 +4213,24 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	// carries no environment setup at all (WARP's model). Args in GP/V regs.
 	if hostAdapter && !cachedAdapter {
 		beforeAlign := a.Len()
-		f.alignCode(f.policy.InternalAlignLog2)
+		if f.adapterBacklink {
+			// A 4-byte backlink directly below the internal entry holds its
+			// distance from this function's offset-0 adapter. An internal funcref
+			// descriptor names only the internal entry; a wrapper-ABI caller
+			// tail-enters such a target through the adapter (see
+			// emitTailWrapperToAdapterJump). The adapter ends in RET, so the word
+			// is never executed, and cached adapter templates carry it along.
+			log2 := f.policy.InternalAlignLog2
+			if log2 == 0 {
+				log2 = 4
+			}
+			for range alignmentPadding(a.Len()+4, log2) / 4 {
+				a.Nop()
+			}
+			a.B = binary.LittleEndian.AppendUint32(a.B, uint32(a.Len()+4))
+		} else {
+			f.alignCode(f.policy.InternalAlignLog2)
+		}
 		if diagnosticsEnabled && f.stats != nil {
 			f.stats.NativeSize.AdapterToInternalPaddingBytes = a.Len() - beforeAlign
 		}
@@ -4427,4 +4483,27 @@ func countLocals(params []wasm.ValType, locals wasm.Locals) (int, error) {
 		n += int(run.Count)
 	}
 	return n, nil
+}
+
+// ehFrameShape sizes one function's exception records from its body. Modules
+// built without body bytes keep the historical fixed reservation.
+func ehFrameShape(sc *scratch, body []byte) (shared.EHFrameShape, error) {
+	if len(body) == 0 {
+		return shared.EHFrameShape{TryRecords: legacyEHTryRecords, RootRecords: legacyEHRootRecords}, nil
+	}
+	return shared.ScanEHFrameShape(&sc.classifier, body)
+}
+
+// zeroEHGCRootLanes clears the GC lanes of every exception root slot at entry.
+// Those lanes are fixed collector roots at every safepoint of the frame, before
+// any try_table has initialized its slot.
+func (f *fn) zeroEHGCRootLanes() {
+	if f.ehRootCap == 0 || f.gcFrameRoots == nil || !f.gcFrameRoots.HasFixedOffsets() {
+		return
+	}
+	for root := 0; root < f.ehRootCap; root++ {
+		for lane := shared.EHGCLaneBase; lane < shared.EHPayloadLanes; lane++ {
+			f.st64(SP, f.ehRootOff(root)+8+int32(lane)*8, ZR)
+		}
+	}
 }

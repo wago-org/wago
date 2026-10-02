@@ -8,8 +8,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// maxStagedEHTagParams bounds the payload words in the staged tag directory.
-const maxStagedEHTagParams = 2
+// maxStagedEHTagParams bounds the payload words in the staged tag directory; it
+// matches the backends' exception record payload capacity.
+const maxStagedEHTagParams = 8
 
 // Keep metadata construction separate from native compilation so its temporary
 // descriptors and validation paths do not inflate the native compile function.
@@ -321,13 +322,11 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			end, endErr := r.Byte()
 			if opErr != nil || op != 0x23 || indexErr != nil || endErr != nil || end != 0x0b || r.BytesLeft() != 0 {
 				// Core 3 table initializers are general constant expressions. Reuse
-				// the element-segment evaluator; each slot re-evaluates the payload,
-				// which is only equivalent to the single evaluation the spec defines
-				// when the expression allocates no GC object.
+				// the element-segment evaluator. The spec evaluates the initializer
+				// once and stores that one reference in every slot, so an expression
+				// payload is evaluated for slot 0 only and repeated: an allocating
+				// initializer must yield one shared object, not one per slot.
 				def := c.tableDef(tableIndex)
-				if def.Size > 1 && constExprAllocatesGC(body) {
-					return fmt.Errorf("table %d initializer: allocating GC constant expressions are unsupported for tables with more than one entry", tableIndex)
-				}
 				seg := wasm.Elem{Kind: wasm.ElemKind{Kind: wasm.ElemTypedExprs, Ref: m.Tables[i].Type.Ref, Exprs: []wasm.Expr{*m.Tables[i].Init}}}
 				_, _, inits, exprErr := elementPayloads(m, c.Types, constExprCtx, &seg)
 				if exprErr != nil || len(inits) != 1 {
@@ -335,6 +334,10 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 				}
 				values := make([]RefInit, def.Size)
 				for j := range values {
+					if j > 0 && len(inits[0].Expr) != 0 {
+						values[j] = RefInit{RepeatPrevious: true}
+						continue
+					}
 					values[j] = inits[0]
 				}
 				c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
@@ -558,27 +561,4 @@ func isRefNullConstExpr(body []byte) bool {
 	}
 	end, err := r.Byte()
 	return err == nil && end == 0x0b && r.BytesLeft() == 0
-}
-
-// constExprAllocatesGC reports whether a constant expression contains a GC
-// allocation (struct.new*, array.new*), whose result has observable identity.
-// Unparseable input is treated as allocating so callers fail closed.
-func constExprAllocatesGC(body []byte) bool {
-	r := wasm.NewReader(body)
-	for r.BytesLeft() != 0 {
-		op, err := r.Byte()
-		if err != nil {
-			return true
-		}
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
-		if err != nil {
-			return true
-		}
-		switch imm.Kind {
-		case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructNewDesc, wasm.InstrStructNewDefaultDesc,
-			wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData, wasm.InstrArrayNewElem:
-			return true
-		}
-	}
-	return false
 }

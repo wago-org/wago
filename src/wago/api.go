@@ -653,8 +653,8 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 	}
 	for i := uint32(0); i < uint32(m.TagCount()); i++ {
 		var ft wasm.CompType
-		if !stagedTagFuncType(m, i, &ft) || len(ft.Results) != 0 || len(ft.Params) > 2 {
-			return fmt.Errorf("bounded exception handling tag %d requires zero to two scalar payloads and no results", i)
+		if !stagedTagFuncType(m, i, &ft) || len(ft.Results) != 0 || len(ft.Params) > maxStagedEHTagParams {
+			return fmt.Errorf("bounded exception handling tag %d requires at most %d scalar payloads and no results", i, maxStagedEHTagParams)
 		}
 		for _, typ := range ft.Params {
 			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !hasFuncrefPayload {
@@ -2756,8 +2756,14 @@ func (c *Compiled) validateElementValues(kind string, seg int, elem ElemInit) er
 		return fmt.Errorf("compiled metadata invalid: %s element %d exact type: %w", kind, seg, err)
 	}
 	for k, value := range elem.Values {
+		if value.RepeatPrevious {
+			if k == 0 || value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 || len(value.Expr) != 0 {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has an invalid repeat", kind, seg, k)
+			}
+			continue
+		}
 		if len(value.Expr) != 0 {
-			if value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 {
+			if value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 || value.RepeatPrevious {
 				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has multiple initializer forms", kind, seg, k)
 			}
 			gcConstExpr := c.requiredFeatures.IsEnabled(CoreFeatureGC) || c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
@@ -3058,17 +3064,6 @@ func (c *Compiled) hasFuncrefTable() bool {
 func (c *Compiled) hasExternrefTable() bool {
 	for i := 0; i < c.tableCount(); i++ {
 		if c.tableElementType(i) == ValExternRef {
-			return true
-		}
-	}
-	return false
-}
-
-// hasCompactReferenceTable reports whether any table stores 8-byte reference
-// entries rather than function-table descriptors.
-func (c *Compiled) hasCompactReferenceTable() bool {
-	for i := 0; i < c.tableCount(); i++ {
-		if c.tableEntryBytes(i) == 8 {
 			return true
 		}
 	}
@@ -3436,7 +3431,13 @@ func (c *Compiled) validateGlobalInitExpr(index int, g GlobalDef) error {
 		}
 		return nil
 	}
-	if err := validateCompiledScalarConstExpr(g.InitExpr, g.Type, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: index}); err != nil {
+	want := g.Type
+	if want == ValAnyRef {
+		// Without collector-backed GC execution, the only non-null value an
+		// any/eq global can hold is an i31.
+		want = ValI31Ref
+	}
+	if err := validateCompiledScalarConstExpr(g.InitExpr, want, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: index}); err != nil {
 		return fmt.Errorf("compiled metadata invalid: global %d extended initializer: %w", index, err)
 	}
 	return nil
