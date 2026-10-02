@@ -27,7 +27,7 @@ func TestLatestChannelRelease(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		_, _ = w.Write([]byte(`[{"tag_name":"v0.1.0-beta.2","target_commitish":"deadbee123456789012345678901234567890123"},{"tag_name":"v0.1.0-canary.gcafef00","target_commitish":"cafef00123456789012345678901234567890123"}]`))
+		_, _ = w.Write([]byte(`[{"tag_name":"0.1.0-beta.5"},{"tag_name":"V0.1.0-beta.4"},{"tag_name":" v0.1.0-beta.3"},{"tag_name":"v0.1.0-beta.2","target_commitish":"deadbee123456789012345678901234567890123"},{"tag_name":"v0.1.0-canary.gcafef00","target_commitish":"cafef00123456789012345678901234567890123"}]`))
 	}))
 	defer srv.Close()
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
@@ -35,6 +35,48 @@ func TestLatestChannelRelease(t *testing.T) {
 	got, err := latestChannelRelease("beta")
 	if err != nil || got != "v0.1.0-beta.2" {
 		t.Fatalf("latestChannelRelease(beta) = %q, %v", got, err)
+	}
+}
+
+func TestLatestStableReleaseAcceptsOnlyCanonicalStableTag(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		body    string
+		want    string
+		wantErr bool
+	}{
+		{name: "canonical", body: `{"tag_name":"v1.2.3"}`, want: "v1.2.3"},
+		{name: "missing v", body: `{"tag_name":"1.2.3"}`, wantErr: true},
+		{name: "uppercase v", body: `{"tag_name":"V1.2.3"}`, wantErr: true},
+		{name: "leading whitespace", body: `{"tag_name":" v1.2.3"}`, wantErr: true},
+		{name: "trailing whitespace", body: `{"tag_name":"v1.2.3 "}`, wantErr: true},
+		{name: "prerelease tag", body: `{"tag_name":"v2.0.0-rc.1"}`, wantErr: true},
+		{name: "prerelease metadata", body: `{"tag_name":"v2.0.0","prerelease":true}`, wantErr: true},
+		{name: "draft metadata", body: `{"tag_name":"v2.0.0","draft":true}`, wantErr: true},
+		{name: "non-semver", body: `{"tag_name":"nightly"}`, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/repos/wago-org/wago/releases/latest" {
+					http.NotFound(w, r)
+					return
+				}
+				_, _ = w.Write([]byte(test.body))
+			}))
+			defer server.Close()
+			t.Setenv("WAGO_RELEASE_API", server.URL)
+
+			got, err := latestStableReleaseContext(context.Background())
+			if test.wantErr {
+				if err == nil {
+					t.Fatalf("latest stable release accepted %q", got)
+				}
+				return
+			}
+			if err != nil || got != test.want {
+				t.Fatalf("latestStableReleaseContext() = %q, %v; want %q", got, err, test.want)
+			}
+		})
 	}
 }
 

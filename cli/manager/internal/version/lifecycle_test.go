@@ -2,6 +2,7 @@ package version
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -506,7 +507,7 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 	if got, want := []string{items[2].Children[0].Value, items[2].Children[1].Value, items[2].Children[2].Value}, []string{"canary", canaryCommitTarget(commits[0].SHA), canaryCommitTarget(commits[1].SHA)}; !slices.Equal(got, want) {
 		t.Fatalf("canary picker children = %v, want %v", got, want)
 	}
-	if got, want := []string{items[0].Children[0].Value, items[0].Children[1].Value, items[0].Children[2].Value, items[0].Children[3].Value}, []string{"latest", "v0.2.0", "v0.1.4", "0.1.0"}; !slices.Equal(got, want) {
+	if got, want := []string{items[0].Children[0].Value, items[0].Children[1].Value, items[0].Children[2].Value}, []string{"latest", "v0.2.0", "v0.1.4"}; !slices.Equal(got, want) {
 		t.Fatalf("latest picker children = %v, want %v", got, want)
 	}
 	beta := items[1].Children[1]
@@ -522,6 +523,57 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 	}
 	if got := releasePickerLabel("canary"); got != "canary" {
 		t.Fatalf("releasePickerLabel(canary) = %q", got)
+	}
+}
+
+func TestRemoteReleasePickerAcceptsOnlyCanonicalPublishedTags(t *testing.T) {
+	var releases []remoteRelease
+	if err := json.Unmarshal([]byte(`[
+		{"tag_name":"v1.2.3"},
+		{"tag_name":"v1.2.3"},
+		{"tag_name":"1.2.4"},
+		{"tag_name":"V1.2.5"},
+		{"tag_name":" v1.2.6"},
+		{"tag_name":"v1.2.7 "},
+		{"tag_name":"v2.0.0-rc.1"},
+		{"tag_name":"v3.0.0","prerelease":true},
+		{"tag_name":"v4.0.0","draft":true},
+		{"tag_name":"v2.0.0-BETA.3"},
+		{"tag_name":"v2.0.0-beta.2 "},
+		{"tag_name":"v2.0.0-beta.1"},
+		{"tag_name":"v0.1.0-CANARY.Gdeadbee"},
+		{"tag_name":"V0.1.0-canary.gcafef00"},
+		{"tag_name":"v0.1.0-canary.gcafef00"}
+	]`), &releases); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		channel string
+		want    []string
+	}{
+		{channel: "", want: []string{"v1.2.3"}},
+		{channel: "beta", want: []string{"v2.0.0-beta.1"}},
+		{channel: "canary", want: []string{"v0.1.0-canary.gcafef00"}},
+	} {
+		items := releasePickerItems(releases, test.channel, time.Time{})
+		got := make([]string, len(items))
+		for index := range items {
+			got[index] = items[index].Value
+		}
+		if !slices.Equal(got, test.want) {
+			t.Errorf("releasePickerItems(channel %q) = %q, want %q", test.channel, got, test.want)
+		}
+	}
+
+	resolved, sourceOnly, err := resolveRunnerVersion("1.2.2", nil)
+	if err != nil || sourceOnly || resolved != "v1.2.2" {
+		t.Fatalf("numeric CLI shorthand resolved to %q, source-only %v, error %v", resolved, sourceOnly, err)
+	}
+	const sha = "deadbee123456789012345678901234567890123"
+	resolved, sourceOnly, err = resolveRunnerVersion("canary@"+sha, nil)
+	if err != nil || !sourceOnly || resolved != "canary@"+sha {
+		t.Fatalf("rolling canary resolved to %q, source-only %v, error %v", resolved, sourceOnly, err)
 	}
 }
 

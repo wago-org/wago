@@ -27,11 +27,15 @@ func latestStableReleaseContext(ctx context.Context) (string, error) {
 	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("GitHub returned %s", response.Status)
 	}
-	var release struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.Unmarshal(response.Body, &release); err != nil || release.TagName == "" {
+	var release remoteRelease
+	if err := json.Unmarshal(response.Body, &release); err != nil {
 		return "", errors.New("GitHub returned an invalid latest release")
+	}
+	// /latest bypasses picker enumeration, so enforce the same canonical stable
+	// boundary here. In particular, rejecting no-v remote tags avoids aliasing
+	// numeric CLI shorthand, which deliberately resolves to the v-prefixed tag.
+	if release.Draft || release.Prerelease || !publishedStableRelease(release.TagName) {
+		return "", errors.New("GitHub returned an invalid latest stable release")
 	}
 	return release.TagName, nil
 }
@@ -631,7 +635,7 @@ func latestChannelReleaseContext(ctx context.Context, channel string) (string, e
 	var resolved string
 	err := forEachReleasePage(ctx, "release channel discovery", func(releases []remoteRelease) bool {
 		for _, release := range releases {
-			if release.Draft || channelRelease(release.TagName) != channel {
+			if release.Draft || publishedChannelRelease(release.TagName) != channel {
 				continue
 			}
 			resolved = release.TagName
@@ -653,7 +657,7 @@ func channelCommitReleaseContext(ctx context.Context, channel, sha string) (stri
 	var resolveErr error
 	err := forEachReleasePage(ctx, "release commit discovery", func(releases []remoteRelease) bool {
 		for _, release := range releases {
-			if release.Draft || channelRelease(release.TagName) != channel {
+			if release.Draft || publishedChannelRelease(release.TagName) != channel {
 				continue
 			}
 			target := strings.ToLower(strings.TrimSpace(release.TargetCommitish))
