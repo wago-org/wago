@@ -47,6 +47,7 @@ func checkReg(reg Reg, fp bool) regalloccheck.Location {
 	}
 	return regalloccheck.Register(bank, uint8(reg))
 }
+
 // Only register and frame homes provide input facts. Constants, deferred
 // results and non-frame loads rely on trusted semantic definitions instead.
 func (f *fn) checkLocation(e *elem) (regalloccheck.Location, bool) {
@@ -121,6 +122,7 @@ func (f *fn) checkBeginFlush(roots []*elem) bool {
 	c.previous = f.a.ObserveRegalloc(c.state.Apply)
 	return true
 }
+
 // Restore the enclosing observer on every exit. Preserve an existing panic
 // rather than checking incomplete emission; otherwise verify the final image
 // and every protected suffix value still present on the physical stack.
@@ -170,6 +172,7 @@ func (f *fn) checkUse(e *elem) {
 		c.state.Expect(fmt.Sprintf("function %d pc %d materialize input", f.traceFuncIdx, f.wasmPC), loc, value)
 	}
 }
+
 // Run after emission but before storage or register ownership is rewritten.
 // Concrete inputs must already reach the emitted destination; only semantic
 // definitions may install an identity.
@@ -231,6 +234,7 @@ func (f *fn) checkImmutable(reg Reg, fp bool, size int) {
 	f.immutableCheck.Put(loc, value)
 	f.immutableValues = append(f.immutableValues, allocationGoal{loc, value})
 }
+
 // Invoke at every physical call in a cache-bearing function, including helper
 // and alternate paths. Call-presence hints cannot prove preservation: this
 // rejects bad cache admission, not arbitrary non-call register clobbers.

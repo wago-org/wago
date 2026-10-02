@@ -21,6 +21,7 @@ func regallocBank(fp bool) regalloccheck.Bank {
 	}
 	return regalloccheck.GP
 }
+
 // Scalar FP register moves clear the remaining vector lanes, so they cannot
 // preserve a previous v128 identity.
 func (a *Asm) regallocCopy(dst, src Reg, fp bool, size int) {
@@ -32,6 +33,7 @@ func (a *Asm) regallocCopy(dst, src Reg, fp bool, size int) {
 		a.regallocObserver(e)
 	}
 }
+
 // Only direct stack-pointer-relative memory names tracked frame bytes. Other
 // loads destroy the old destination identity; pointer aliases and changing frame
 // bases are outside this model. Scalar FP loads also kill old upper lanes.
@@ -51,6 +53,7 @@ func (a *Asm) regallocLoad(dst, base Reg, offset int32, fp bool, size int) {
 	}
 	a.regallocObserver(e)
 }
+
 // Non-frame stores cannot establish or update facts about the tracked frame.
 func (a *Asm) regallocStore(base Reg, offset int32, src Reg, fp bool, size int) {
 	if a.regallocObserver != nil && base == SP {
@@ -79,6 +82,7 @@ func (a *Asm) regallocCrossCopy(dst, src Reg, dstFP bool, size int) {
 		Src:  regalloccheck.Register(regallocBank(!dstFP), uint8(src)),
 		Size: size, ClearTo: clearTo})
 }
+
 // An untracked FP definition invalidates the previous vector identity. The
 // backend installs a semantic result identity when its contract permits one.
 func (a *Asm) regallocKillFP(dst Reg) {
