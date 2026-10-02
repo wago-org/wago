@@ -775,6 +775,9 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, memOp byte, f64 bool) (bool, error)
 // stack holds a, then b, then cond on top. Lowered to test + cmove (if cond == 0,
 // move b into a). Materialized eagerly (select is a sink for its operands).
 func (f *fn) emitSelect() {
+	// Wasm evaluates a, b, and cond in that order, including the unselected
+	// branch. Force earlier traps before either select path evaluates cond;
+	// otherwise a condition's divide-by-zero can hide a branch's overflow.
 	f.materializeTrapsBefore(f.s.back())
 	// Flags-select: when the condition is a deferred relational/eqz compare and both
 	// branches are integers, emit the compare's CMP and a CMOV on its flags directly
@@ -783,11 +786,13 @@ func (f *fn) emitSelect() {
 	if top := f.s.back(); isFusableCompare(top) && !top.valueType().isFloat() && f.trySelectOnFlags(top) {
 		return
 	}
-	// Keep all operands linked until their deferred work is complete. Fixed-role
-	// operations can spill even pinned registers; linked values retain their spill
-	// slots and can be reloaded before the final TEST and move.
+	// Keep all operands linked until their deferred work is complete. Div/rem
+	// reclaim RAX/RDX and shifts/rotates reclaim RCX even if allocator pins are
+	// set, updating the displaced elem to stSlot. A cached register number is
+	// then stale. Linking also keeps that slot visible to curSpillSlot, so later
+	// spills cannot overwrite it before the operand is reloaded.
 	cond := f.s.back()
-	f.materialize(cond) // condition is i32
+	f.materialize(cond) // Resolve the i32 condition, but recover its register later.
 	b := cond.prev
 	a := baseOfValentBlock(b).prev
 	at, bt := rootMachineType(a), rootMachineType(b)
@@ -801,6 +806,8 @@ func (f *fn) emitSelect() {
 		aX := f.materializeV128(a)
 		f.fpinned = f.fpinned.add(aX)
 		bX := f.materializeV128(b)
+		// Condition recovery may allocate a GP register by realizing a pending
+		// load into XMM. Protect both vectors from that XMM allocation.
 		f.fpinned = f.fpinned.add(bX)
 		condReg := f.materialize(cond)
 		f.a.TestSelf(condReg, false)
@@ -829,6 +836,7 @@ func (f *fn) emitSelect() {
 		aX := f.materializeF(a)
 		f.fpinned = f.fpinned.add(aX)
 		bX := f.materializeF(b)
+		// As for v128, condition recovery can allocate XMM scratch for a load.
 		f.fpinned = f.fpinned.add(bX)
 		condReg := f.materialize(cond)
 		f.a.TestSelf(condReg, false)
@@ -847,8 +855,10 @@ func (f *fn) emitSelect() {
 	}
 
 	w := at.is64() || bt.is64()
-	// The true branch can reclaim b's register. Reload b after a's deferred
-	// work finishes, then recover the condition.
+	// Finish both branch trees before caching registers: a can reclaim b's or
+	// cond's register. The second materialize(b) reloads a displaced b; cond is
+	// recovered last. At that point only plain values remain, so allocator pins
+	// protect a and b while a reload obtains the condition's final register.
 	f.materialize(b)
 	aReg := f.materialize(a)
 	f.pinned = f.pinned.add(aReg)
