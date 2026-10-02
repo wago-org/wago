@@ -156,6 +156,10 @@ func TestSelectOperandsTrapInWasmOrder(t *testing.T) {
 			}
 			body = append(body, 0x1b, 0x0b)
 			m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+			trueCondition, falseCondition := uint64(1), uint64(0)
+			if flags {
+				trueCondition, falseCondition = falseCondition, trueCondition
+			}
 			for _, tc := range []struct {
 				name string
 				args []uint64
@@ -165,6 +169,12 @@ func TestSelectOperandsTrapInWasmOrder(t *testing.T) {
 				{"first_zero", []uint64{1, 0, 0x80000000, 0xffffffff, 1, 0}, runtime.TrapDivZero},
 				{"second_overflow", []uint64{1, 1, 0x80000000, 0xffffffff, 1, 0}, runtime.TrapDivOverflow},
 				{"condition_zero", []uint64{1, 1, 1, 1, 1, 0}, runtime.TrapDivZero},
+				// Here the condition and the selected branch are valid. The other
+				// branch still executes and must trap: select is not short-circuiting.
+				{"unselected_first_zero", []uint64{1, 0, 7, 1, falseCondition, 1}, runtime.TrapDivZero},
+				{"unselected_first_overflow", []uint64{0x80000000, 0xffffffff, 7, 1, falseCondition, 1}, runtime.TrapDivOverflow},
+				{"unselected_second_zero", []uint64{7, 1, 1, 0, trueCondition, 1}, runtime.TrapDivZero},
+				{"unselected_second_overflow", []uint64{7, 1, 0x80000000, 0xffffffff, trueCondition, 1}, runtime.TrapDivOverflow},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					_, _, err := runMemAmd64(t, m, nil, tc.args...)
