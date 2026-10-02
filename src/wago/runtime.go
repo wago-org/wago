@@ -581,6 +581,17 @@ func (rt *Runtime) prepareCompile(wasmBytes []byte, allowLoading bool) (*Prepare
 		// through plugin-owned storage.
 		source = append([]byte(nil), next...)
 	}
+	// Enforce source admission after transforms but before any caller can replace
+	// compilation with a cached artifact. This keeps warm and cold compilation
+	// under the same byte quota without making the quota part of cache identity.
+	if cfg.maxModuleBytes != 0 && uint64(len(source)) > cfg.maxModuleBytes {
+		return nil, finishPreparedCompileError(&operation, hooks, compilation, &coreruntime.ResourceLimitError{
+			Resource:  "module bytes",
+			Scope:     "compile",
+			Requested: uint64(len(source)),
+			Limit:     cfg.maxModuleBytes,
+		})
+	}
 	return &PreparedCompile{
 		rt: rt, operation: operation, compilation: compilation, source: source, cfg: cfg,
 		bindings: bindings, hooks: hooks, instructions: instructions,
