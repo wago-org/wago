@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Preserve AMD64 `select` operands when deferred divisions, remainders, shifts,
+  or rotates reclaim fixed registers, and report operand traps in WebAssembly
+  evaluation order.
 - ARM64 tail calls from a function with reference-typed parameters into a
   numeric register-ABI function no longer lose the callee's updates to
   register-pinned module globals.

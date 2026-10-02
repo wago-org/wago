@@ -775,6 +775,10 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, memOp byte, f64 bool) (bool, error)
 // stack holds a, then b, then cond on top. Lowered to test + cmove (if cond == 0,
 // move b into a). Materialized eagerly (select is a sink for its operands).
 func (f *fn) emitSelect() {
+	// Wasm evaluates a, b, and cond in that order, including the unselected
+	// branch. Force earlier traps before either select path evaluates cond;
+	// otherwise a condition's divide-by-zero can hide a branch's overflow.
+	f.materializeTrapsBefore(f.s.back())
 	// Flags-select: when the condition is a deferred relational/eqz compare and both
 	// branches are integers, emit the compare's CMP and a CMOV on its flags directly
 	// — skipping the SETcc + MOVZX + TEST that materializing the boolean costs. The
@@ -782,67 +786,95 @@ func (f *fn) emitSelect() {
 	if top := f.s.back(); isFusableCompare(top) && !top.valueType().isFloat() && f.trySelectOnFlags(top) {
 		return
 	}
-	cond := f.popValue()
-	condReg := f.materialize(cond) // condition is i32
-	f.pinned = f.pinned.add(condReg)
-	b := f.popValue()
-	a := f.popValue()
-	gcRoot := (a.isValue() && a.st.hasGCRoot()) || (b.isValue() && b.st.hasGCRoot())
+	// Keep all operands linked until their deferred work is complete. Div/rem
+	// reclaim RAX/RDX and shifts/rotates reclaim RCX even if allocator pins are
+	// set, updating the displaced elem to stSlot. A cached register number is
+	// then stale. Linking also keeps that slot visible to curSpillSlot, so later
+	// spills cannot overwrite it before the operand is reloaded.
+	cond := f.s.back()
+	f.materialize(cond) // Resolve the i32 condition, but recover its register later.
+	b := cond.prev
+	a := baseOfValentBlock(b).prev
+	at, bt := rootMachineType(a), rootMachineType(b)
+	gcRoot := a.st.hasGCRoot() || b.st.hasGCRoot()
 
 	// XMM operands have no cmov, so branch. Scalar floats use scalar moves;
 	// v128 uses a full-vector copy. Integer operands use cmov.
-	aV128 := a.isValue() && a.st.typ.isV128()
-	bV128 := b.isValue() && b.st.typ.isV128()
+	aV128 := at.isV128()
+	bV128 := bt.isV128()
 	if aV128 || bV128 {
 		aX := f.materializeV128(a)
 		f.fpinned = f.fpinned.add(aX)
 		bX := f.materializeV128(b)
-		f.pinned = f.pinned.remove(condReg)
+		// Condition recovery may allocate a GP register by realizing a pending
+		// load into XMM. Protect both vectors from that XMM allocation.
+		f.fpinned = f.fpinned.add(bX)
+		condReg := f.materialize(cond)
 		f.a.TestSelf(condReg, false)
 		skip := f.a.JccPlaceholder(condNE) // cond != 0 → keep a
 		f.mov128(aX, bX)                   // cond == 0 → a = b (all 128 bits)
 		f.a.PatchRel32(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
+		f.fpinned = f.fpinned.remove(bX)
 		f.releaseF(bX)
 		f.release(condReg)
+		f.erase(cond)
+		f.erase(b)
+		f.erase(a)
 		f.pushVReg(aX)
 		return
 	}
 
-	aFloat := a.isValue() && a.st.typ.isFloat()
-	bFloat := b.isValue() && b.st.typ.isFloat()
+	aFloat := at.isFloat()
+	bFloat := bt.isFloat()
 	if aFloat || bFloat {
-		typ := a.st.typ
+		typ := at
 		if !typ.isFloat() {
-			typ = b.st.typ
+			typ = bt
 		}
 		f64 := typ == mtF64
 		aX := f.materializeF(a)
 		f.fpinned = f.fpinned.add(aX)
 		bX := f.materializeF(b)
-		f.pinned = f.pinned.remove(condReg)
+		// As for v128, condition recovery can allocate XMM scratch for a load.
+		f.fpinned = f.fpinned.add(bX)
+		condReg := f.materialize(cond)
 		f.a.TestSelf(condReg, false)
 		skip := f.a.JccPlaceholder(condNE) // cond != 0 → keep a
 		f.a.FMov(aX, bX, f64)              // cond == 0 → a = b
 		f.a.PatchRel32(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
+		f.fpinned = f.fpinned.remove(bX)
 		f.releaseF(bX)
 		f.release(condReg)
+		f.erase(cond)
+		f.erase(b)
+		f.erase(a)
 		f.pushFReg(aX, typ)
 		return
 	}
 
-	w := (a.isValue() && a.st.typ.is64()) || (b.isValue() && b.st.typ.is64())
+	w := at.is64() || bt.is64()
+	// Finish both branch trees before caching registers: a can reclaim b's or
+	// cond's register. The second materialize(b) reloads a displaced b; cond is
+	// recovered last. At that point only plain values remain, so allocator pins
+	// protect a and b while a reload obtains the condition's final register.
+	f.materialize(b)
+	aReg := f.materialize(a)
+	f.pinned = f.pinned.add(aReg)
 	bReg := f.materialize(b)
 	f.pinned = f.pinned.add(bReg)
-	aReg := f.materialize(a)
+	condReg := f.materialize(cond)
 	f.stats.peep("select-cmov")
 	f.a.TestSelf(condReg, false)
 	f.a.Cmovcc(condE, aReg, bReg, w) // cond == 0 → a = b
-	f.pinned = f.pinned.remove(condReg)
+	f.pinned = f.pinned.remove(aReg)
 	f.pinned = f.pinned.remove(bReg)
 	f.release(condReg)
 	f.release(bReg)
+	f.erase(cond)
+	f.erase(b)
+	f.erase(a)
 	result := f.pushReg(aReg, mtI32OrWide(w))
 	f.setStackGCRoot(result, gcRoot)
 }
