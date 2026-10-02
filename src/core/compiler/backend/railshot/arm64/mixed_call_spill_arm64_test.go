@@ -3,9 +3,11 @@
 package arm64
 
 import (
+	"bytes"
 	"encoding/binary"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
@@ -34,7 +36,7 @@ func TestStageMixedCallSpillsARM64(t *testing.T) {
 		}
 		f.a.B = f.a.B[:0]
 		f.maxSpill = 11
-		f.stageMixedCallSpills(4, below[:])
+		f.stageFlushSpills(4, below[:])
 	})
 	if allocs != 0 {
 		t.Fatalf("relocation allocations = %v, want zero", allocs)
@@ -64,6 +66,19 @@ func TestStageMixedCallSpillsARM64(t *testing.T) {
 	}
 }
 
+func TestMixedCallNoArgumentsStagesExistingSpillsARM64(t *testing.T) {
+	f := fn{a: &a64.Asm{}, s: newStack(), m: &wasm.Module{}, memSizeReg: regNone, globalCellReg: regNone}
+	f.pushValue(storage{kind: stConst, typ: mtI64, cval: 53})
+	f.pushValue(storage{kind: stSlot, typ: mtF64, slot: 0})
+	f.emitMixedRegisterCall(0, &wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.F64}})
+	want := fn{a: &a64.Asm{}}
+	want.ld64(X16, SP, f.spillOff(0))
+	want.st64(SP, f.spillOff(1), X16)
+	if !bytes.HasPrefix(f.a.B, want.a.B) {
+		t.Fatalf("call did not stage the live float before the full flush: %x", f.a.B)
+	}
+}
+
 func TestStageMixedCallCanonicalSlotsARM64(t *testing.T) {
 	for _, alias := range []bool{false, true} {
 		f := fn{a: &a64.Asm{}, s: newStack(), spillFloor: 3, maxSpill: 3}
@@ -73,7 +88,7 @@ func TestStageMixedCallCanonicalSlotsARM64(t *testing.T) {
 		if alias {
 			arg.st = storage{kind: stSlot, typ: mtF64, slot: 0}
 		}
-		f.stageMixedCallSpills(3, []*elem{scalar, vector})
+		f.stageFlushSpills(3, []*elem{scalar, vector})
 		if scalar.st.slot != 0 || vector.st.slot != 1 {
 			t.Fatal("canonical roots moved")
 		}
@@ -100,7 +115,7 @@ func TestStageMixedCallConsumedDeferredSlotsARM64(t *testing.T) {
 	arg := f.s.back()
 	f.materialize(arg)
 	before := f.a.Len()
-	f.stageMixedCallSpills(2, []*elem{left, right})
+	f.stageFlushSpills(2, []*elem{left, right})
 	if f.a.Len() != before || f.maxSpill != 2 {
 		t.Fatal("consumed deferred children were relocated")
 	}

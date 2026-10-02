@@ -91,13 +91,21 @@ func (f *fn) flushBelow(node *elem) int {
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	base := baseOfValentBlock(node)
 	below := f.tmpBelow[:0]
+	belowSlots := 0
 	for cur := base.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
 		below = append(below, cur)
+		belowSlots += rootMachineType(cur).stackSlots()
 	}
 	f.tmpBelow = below
 	for i, j := 0, len(below)-1; i < j; i, j = i+1, j-1 {
 		below[i], below[j] = below[j], below[i]
 	}
+	// Canonical stores must not overwrite any live prefix, condition or argument
+	// source. New allocator spills during materialization need the same floor.
+	oldFloor := f.spillFloor
+	f.spillFloor = max(oldFloor, belowSlots)
+	f.stageFlushSpills(belowSlots, below)
+
 	slot := 0
 	for _, root := range below {
 		typ := rootMachineType(root)
@@ -143,6 +151,7 @@ func (f *fn) flushBelow(node *elem) int {
 	if slot > f.maxSpill {
 		f.maxSpill = slot
 	}
+	f.spillFloor = oldFloor
 	return len(below)
 }
 
