@@ -170,10 +170,15 @@ start_refreshed_shell() {
 	[ -f "$tmp/path-refresh" ] || return 0
 	shell=${SHELL:-/bin/sh}
 	[ -x "$shell" ] || die "could not start a refreshed shell: $shell"
+	# Piped bootstrap input may still contain unread shell source.
+	if ! ( : </dev/tty ) 2>/dev/null; then
+		printf 'wago: PATH refresh needs a terminal; open a new terminal to use Wago\n' >&2
+		return 0
+	fi
 	cleanup
 	tmp=""
 	trap - EXIT HUP INT TERM
-	exec "$shell" -i
+	exec "$shell" -i </dev/tty
 }
 
 run_go_fallback() {
