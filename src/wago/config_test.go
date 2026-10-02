@@ -227,6 +227,13 @@ func TestConfigValidationRejectsUnsupported(t *testing.T) {
 	}
 }
 
+func TestConfigValidationRejectsUnknownBoundsCheckMode(t *testing.T) {
+	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsCheckMode(99))
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "bounds-check mode") {
+		t.Fatalf("Validate unknown bounds-check mode = %v", err)
+	}
+}
+
 func TestEffectiveCompileBoundsModeZeroMemoryARM64Fallback(t *testing.T) {
 	zeroLocal := &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 0}}}}
 	want := BoundsChecksSignalsBased
