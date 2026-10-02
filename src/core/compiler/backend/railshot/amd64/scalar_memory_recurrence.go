@@ -6,6 +6,37 @@ import "os"
 
 var scalarMemoryRecurrenceEnabled = os.Getenv("WAGO_AMD64_SCALAR_MEMORY_RECURRENCE") != "0"
 
+var scalarLoopMemoryFormsEnabled = os.Getenv("WAGO_AMD64_SCALAR_LOOP_MEMORY_FORM") == "1"
+
+var scalarLoopDestinationEnabled = os.Getenv("WAGO_AMD64_SCALAR_LOOP_DESTINATION") == "1"
+
+// A recurrence result may overwrite its permanent home after the old value's
+// last use. AVX preserves left/right operand order even when this home is the
+// right input. The emitter must keep the new value out of the scratch pool too.
+func (p *regionLoopPlan) scalarRecurrenceDestination(event uint8, uses *[regionLoopMaxOps + 1]uint8) uint8 {
+	if !p.scalar {
+		return 0
+	}
+	n := p.nodes[event]
+	for i, store := range p.stores[:p.storeN] {
+		id := p.reductionLoad[i]
+		if id == 0 || store.value != event {
+			continue
+		}
+		var consumed uint8
+		if n.left == id {
+			consumed++
+		}
+		if n.right == id {
+			consumed++
+		}
+		if uses[id] == consumed {
+			return id
+		}
+	}
+	return 0
+}
+
 // Admit up to two invariant output cells whose old values are read exactly
 // once before their updates. Their direct snapshots must die by those updates.
 // Every other access remains ordered. Runtime range and strict alias guards

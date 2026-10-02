@@ -495,7 +495,9 @@ func (e *regionLoopEmitter) body() {
 			}
 			if p.scalar {
 				if id := p.reductionLoad[at]; id != 0 {
-					f.a.FMov(regs[id], regs[s.value], true)
+					if regs[id] != regs[s.value] {
+						f.a.FMov(regs[id], regs[s.value], true)
+					}
 				} else {
 					f.a.FStoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp, true)
 				}
@@ -552,7 +554,17 @@ func (e *regionLoopEmitter) body() {
 			source := n.left
 			memory := memoryOperand[event]
 			out := regNone
-			if uses[source] == 1 && p.nodes[source].op != 0x20 && !e.permanent[source] {
+			var destination uint8
+			if p.scalar && scalarLoopDestinationEnabled && f.opt(optVEXFloatMem) && f.cpuHas(shared.AMD64AVX) {
+				destination = p.scalarRecurrenceDestination(event, &uses)
+			}
+			if destination != 0 {
+				out = regs[destination]
+				// This result aliases a permanent accumulator. Its consumers may
+				// neither destructively reuse nor release that physical register.
+				e.permanent[event] = true
+				f.stats.peep("region-loop-scalar-destination")
+			} else if uses[source] == 1 && p.nodes[source].op != 0x20 && !e.permanent[source] {
 				out = regs[source]
 			} else {
 				out = allocate()
@@ -572,7 +584,19 @@ func (e *regionLoopEmitter) body() {
 			}
 			if memory != 0 {
 				ea := e.address(e.loadStream[memory])
-				if p.wide {
+				if p.scalar {
+					// Scalar recurrences retain the original eight-byte access and
+					// operand order. Their invariant accumulator loads never fold.
+					if f.opt(optVEXFloatMem) && f.cpuHas(shared.AMD64AVX) {
+						f.a.VFMemIdx(opcode, out, regs[source], RBX, ea, e.streams[e.loadStream[memory]].disp, true)
+					} else {
+						if out != regs[source] {
+							f.a.FMov(out, regs[source], true)
+						}
+						f.a.SseIdx(0xf2, opcode, out, RBX, ea, e.streams[e.loadStream[memory]].disp)
+					}
+					f.stats.peep("region-loop-scalar-fold-load")
+				} else if p.wide {
 					f.a.YFPackedMemIdx(opcode, out, regs[source], RBX, ea, e.streams[e.loadStream[memory]].disp, true)
 				} else {
 					f.a.VFPackedMemIdx(opcode, out, regs[source], RBX, ea, e.streams[e.loadStream[memory]].disp, true)
@@ -580,6 +604,10 @@ func (e *regionLoopEmitter) body() {
 				f.stats.peep("region-loop-fold-load")
 				uses[memory]--
 				release(source, out)
+			} else if destination != 0 {
+				f.a.VSseRRR(3, opcode, out, regs[n.left], regs[n.right]) // F2 scalar double
+				release(n.right, out)
+				release(n.left, out)
 			} else if p.wide {
 				f.a.YSseRRR(1, opcode, out, regs[n.left], regs[n.right])
 				release(n.right, out)
@@ -759,6 +787,7 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 	var permanent [regionLoopMaxOps + 1]bool
 	constantPrefix := false
 	if p.scalar {
+		memoryForms = scalarLoopMemoryFormsEnabled
 		prefix, permanent = p.prepareMemoryRecurrence()
 	} else {
 		prefix, permanent = p.hoistConstants(regionConstantHoistEnabled, regionInvariantPrefixEnabled, memoryForms)
