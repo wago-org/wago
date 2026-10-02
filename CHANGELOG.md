@@ -6,6 +6,12 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve AMD64 `select` operands when deferred divisions, remainders, shifts,
+  or rotates reclaim fixed registers, and report operand traps in WebAssembly
+  evaluation order.
+
 ## [v0.1.0-beta.10] - 2026-09-23
 
 ### Added

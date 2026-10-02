@@ -143,28 +143,36 @@ func TestSelectFixedRegisterConditionPreservesI64HighBits(t *testing.T) {
 func TestSelectOperandsTrapInWasmOrder(t *testing.T) {
 	// Both branches and the condition divide. The earliest trapping operand must
 	// win, even when that branch would not be selected by the condition.
-	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
-		0x00,
-		0x20, 0x00, 0x20, 0x01, 0x6d,
-		0x20, 0x02, 0x20, 0x03, 0x6d,
-		0x20, 0x04, 0x20, 0x05, 0x6d,
-		0x1b, 0x0b,
-	})
-	for _, tc := range []struct {
-		name string
-		args []uint64
-		want runtime.TrapCode
-	}{
-		{"first_overflow", []uint64{0x80000000, 0xffffffff, 1, 0, 1, 0}, runtime.TrapDivOverflow},
-		{"first_zero", []uint64{1, 0, 0x80000000, 0xffffffff, 1, 0}, runtime.TrapDivZero},
-		{"second_overflow", []uint64{1, 1, 0x80000000, 0xffffffff, 1, 0}, runtime.TrapDivOverflow},
-		{"condition_zero", []uint64{1, 1, 1, 1, 1, 0}, runtime.TrapDivZero},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := runMemAmd64(t, m, nil, tc.args...)
-			var trap *runtime.TrapError
-			if !errors.As(err, &trap) || trap.Code != tc.want {
-				t.Fatalf("trap = %v, want %v", err, tc.want)
+	for _, flags := range []bool{false, true} {
+		t.Run(fmt.Sprintf("flags=%v", flags), func(t *testing.T) {
+			body := []byte{
+				0x00,
+				0x20, 0x00, 0x20, 0x01, 0x6d,
+				0x20, 0x02, 0x20, 0x03, 0x6d,
+				0x20, 0x04, 0x20, 0x05, 0x6d,
+			}
+			if flags {
+				body = append(body, 0x45) // i32.eqz: flags-select control
+			}
+			body = append(body, 0x1b, 0x0b)
+			m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+			for _, tc := range []struct {
+				name string
+				args []uint64
+				want runtime.TrapCode
+			}{
+				{"first_overflow", []uint64{0x80000000, 0xffffffff, 1, 0, 1, 0}, runtime.TrapDivOverflow},
+				{"first_zero", []uint64{1, 0, 0x80000000, 0xffffffff, 1, 0}, runtime.TrapDivZero},
+				{"second_overflow", []uint64{1, 1, 0x80000000, 0xffffffff, 1, 0}, runtime.TrapDivOverflow},
+				{"condition_zero", []uint64{1, 1, 1, 1, 1, 0}, runtime.TrapDivZero},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					_, _, err := runMemAmd64(t, m, nil, tc.args...)
+					var trap *runtime.TrapError
+					if !errors.As(err, &trap) || trap.Code != tc.want {
+						t.Fatalf("trap = %v, want %v", err, tc.want)
+					}
+				})
 			}
 		})
 	}
