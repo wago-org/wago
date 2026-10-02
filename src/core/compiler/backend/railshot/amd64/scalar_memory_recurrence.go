@@ -8,7 +8,7 @@ var scalarMemoryRecurrenceEnabled = os.Getenv("WAGO_AMD64_SCALAR_MEMORY_RECURREN
 
 var scalarLoopMemoryFormsEnabled = os.Getenv("WAGO_AMD64_SCALAR_LOOP_MEMORY_FORM") == "1"
 
-var scalarLoopDestinationEnabled = os.Getenv("WAGO_AMD64_SCALAR_LOOP_DESTINATION") == "1"
+var scalarLoopDestinationEnabled = os.Getenv("WAGO_AMD64_SCALAR_LOOP_DESTINATION") != "0"
 
 // A recurrence result may overwrite its permanent home after the old value's
 // last use. AVX preserves left/right operand order even when this home is the

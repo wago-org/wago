@@ -7,7 +7,7 @@ import "os"
 // The exact linear sum has no observable effects before a memory trap. Its
 // existing proof covers the whole range and preserves modular memory32 wrap.
 // Signal mode reads the current descriptor without reserving another register.
-var linearSumSignalsEnabled = os.Getenv("WAGO_AMD64_LINEAR_SUM_SIGNALS") == "1"
+var linearSumSignalsEnabled = os.Getenv("WAGO_AMD64_LINEAR_SUM_SIGNALS") != "0"
 
 func (f *fn) compareLinearSumSize(end Reg) {
 	if f.memSizeReg != regNone {

@@ -4,9 +4,10 @@ package amd64
 
 import "os"
 
-// Four independent scalar iterations may share one AVX register. This is
-// opt-in; all remainder iterations use the original checked loop.
-var regionWideIndependentEnabled = os.Getenv("WAGO_AMD64_WIDE_INDEPENDENT_LOOP") == "1"
+// Four independent scalar iterations may share one feature-qualified AVX
+// register; remainder iterations use the original checked loop. Set the
+// environment switch to 0 to disable this lowering for comparisons.
+var regionWideIndependentEnabled = os.Getenv("WAGO_AMD64_WIDE_INDEPENDENT_LOOP") != "0"
 
 // Two iterations of exact adjacent output pairs map to four lanes without
 // reassociation. Existing stream guards cover the complete access extent;

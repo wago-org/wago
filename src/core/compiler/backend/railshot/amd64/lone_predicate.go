@@ -4,7 +4,7 @@ package amd64
 
 import "os"
 
-var lonePredicateEnabled = os.Getenv("WAGO_AMD64_LONE_PREDICATE") == "1"
+var lonePredicateEnabled = os.Getenv("WAGO_AMD64_LONE_PREDICATE") != "0"
 
 // Older operands require full staging: canonical destinations may overwrite
 // their existing spill homes. With one owned numeric root outside the local pin
