@@ -10,70 +10,49 @@ import (
 	"github.com/wago-org/wago/src/core/nativeabi"
 )
 
-func exceptionPayloadRootKind(m *wasm.Module, typ wasm.ValType) (nativeabi.RootKind, bool) {
-	if typ.Kind() != wasm.ValRef {
-		return 0, false
-	}
-	heap := typ.Ref().Heap()
-	switch heap.Kind() {
-	case wasm.HeapAbs:
-		if heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc {
-			return nativeabi.RootFuncRef, true
-		}
-		return nativeabi.RootGCRef, true
-	case wasm.HeapTypeIndex:
-		var ft wasm.CompType
-		if m.ResolveTypeFunc(heap.Type().Index, &ft) {
-			return nativeabi.RootFuncRef, true
-		}
-		return nativeabi.RootGCRef, true
-	case wasm.HeapDefType:
-		// DefType-backed references are recursive-group-local decoder products.
-		// Conservatively classify them as collector refs unless a later resolved
-		// absolute type index proves a function component.
-		return nativeabi.RootGCRef, true
-	default:
-		return 0, false
-	}
-}
-
-func catchAllPayloadRootKinds(m *wasm.Module) ([ehMaxPayloadWords]nativeabi.RootKind, [ehMaxPayloadWords]bool, error) {
-	var kinds [ehMaxPayloadWords]nativeabi.RootKind
-	var roots, scalars [ehMaxPayloadWords]bool
+// catchAllPayloadRootKinds merges every tag's lane ownership for a
+// catch_all_ref slot, which may hold any of them. Identity lanes must agree on
+// scalar versus funcref. GC lanes are only ever references or zero, and the
+// slot may hold a same-domain foreign exception whose tag this module never
+// declares, so every GC lane is reported.
+func catchAllPayloadRootKinds(m *wasm.Module) ([shared.EHPayloadLanes]nativeabi.RootKind, [shared.EHPayloadLanes]bool, error) {
+	var kinds [shared.EHPayloadLanes]nativeabi.RootKind
+	var roots, scalars [shared.EHPayloadLanes]bool
 	for tag := uint32(0); tag < uint32(m.TagCount()); tag++ {
 		tagType, ok := moduleTagType(m, tag)
 		if !ok {
 			return kinds, roots, fmt.Errorf("tag %d is unavailable", tag)
 		}
 		var ft wasm.CompType
-		if !m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > len(kinds) {
+		if !m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > ehMaxPayloadWords {
 			return kinds, roots, fmt.Errorf("tag %d payload is unsupported", tag)
 		}
 		for payload, typ := range ft.Params {
-			kind, isReference := exceptionPayloadRootKind(m, typ)
+			lane := shared.EHPayloadLane(m, typ, payload)
+			kind, isReference := shared.EHPayloadRootKind(m, typ)
 			if !isReference {
-				scalars[payload] = true
-				if roots[payload] {
+				scalars[lane] = true
+				if roots[lane] {
 					return kinds, roots, fmt.Errorf("payload %d mixes scalar and reference ownership", payload)
 				}
 				continue
 			}
-			if scalars[payload] {
+			if scalars[lane] {
 				return kinds, roots, fmt.Errorf("payload %d mixes scalar and reference ownership", payload)
 			}
-			if roots[payload] && kinds[payload] != kind {
-				return kinds, roots, fmt.Errorf("payload %d mixes GC and funcref ownership", payload)
-			}
-			kinds[payload], roots[payload] = kind, true
+			kinds[lane], roots[lane] = kind, true
 		}
+	}
+	for lane := shared.EHGCLaneBase; lane < shared.EHPayloadLanes; lane++ {
+		kinds[lane], roots[lane] = nativeabi.RootGCRef, true
 	}
 	return kinds, roots, nil
 }
 
-// BuildExceptionRootMaps describes reference payloads copied into the four fixed
-// exception-root records. It does not enable GC payload execution: callers must
-// still provide safepoint publication, root initialization, barriers/remark, and
-// funcref producer retention before trusting these maps at runtime.
+// BuildExceptionRootMaps describes reference payloads copied into each
+// function's exception root slots. GC lanes become fixed collector roots of the
+// frame; funcref lanes describe identities whose producers the instance keeps
+// alive and are not scanned by the collector.
 func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error) {
 	if m == nil || m.TagCount() == 0 {
 		return nil, nil
@@ -99,8 +78,8 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 		frameBytes := frameHdrBytes + 8*nLocals + (shape.TryRecords*ehRecordSlots+shape.RootRecords*ehRootSlots)*8
 		rootCount := 0
 		var slots []nativeabi.RootSlot
-		var catchAllKinds [ehMaxPayloadWords]nativeabi.RootKind
-		var catchAllRoots [ehMaxPayloadWords]bool
+		var catchAllKinds [shared.EHPayloadLanes]nativeabi.RootKind
+		var catchAllRoots [shared.EHPayloadLanes]bool
 		catchAllReady := false
 		r := wasm.NewReader(m.Code[function].BodyBytes)
 		var imm wasm.InstructionImmediate
@@ -155,9 +134,10 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 						return nil, fmt.Errorf("exception root map function %d tag %d payload is unsupported", function, tag)
 					}
 					for payload, typ := range tagFunc.Params {
-						rootKind, isReference := exceptionPayloadRootKind(m, typ)
+						rootKind, isReference := shared.EHPayloadRootKind(m, typ)
 						if isReference {
-							slots = append(slots, nativeabi.RootSlot{Offset: uint32(rootOff + 8 + payload*8), Kind: rootKind})
+							lane := shared.EHPayloadLane(m, typ, payload)
+							slots = append(slots, nativeabi.RootSlot{Offset: uint32(rootOff + 8 + lane*8), Kind: rootKind})
 						}
 					}
 				} else {
@@ -169,9 +149,9 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 						}
 						catchAllReady = true
 					}
-					for payload, isReference := range catchAllRoots {
+					for lane, isReference := range catchAllRoots {
 						if isReference {
-							slots = append(slots, nativeabi.RootSlot{Offset: uint32(rootOff + 8 + payload*8), Kind: catchAllKinds[payload]})
+							slots = append(slots, nativeabi.RootSlot{Offset: uint32(rootOff + 8 + lane*8), Kind: catchAllKinds[lane]})
 						}
 					}
 				}

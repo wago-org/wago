@@ -4269,6 +4269,7 @@ func (f *fn) prologue(localScores []uint32) {
 // where reads materialize zero on demand and control-flow reconciliation stores it
 // to the frame before paths diverge when required.
 func (f *fn) zeroDeclaredLocals(localScores []uint32) {
+	f.zeroEHGCRootLanes()
 	if f.nLocals <= f.nParams {
 		return
 	}
@@ -4295,6 +4296,21 @@ func (f *fn) zeroDeclaredLocals(localScores []uint32) {
 	}
 	for i := f.nParams; i < f.nLocals; i++ {
 		f.markDeclaredLocalZero(i)
+	}
+}
+
+// zeroEHGCRootLanes clears the GC lanes of every exception root slot at entry.
+// Those lanes are fixed collector roots at every safepoint of the frame, before
+// any try_table has initialized its slot.
+func (f *fn) zeroEHGCRootLanes() {
+	if f.ehRootCap == 0 || f.gcFrameRoots == nil || !f.gcFrameRoots.HasFixedOffsets() {
+		return
+	}
+	f.a.XorSelf32(RAX)
+	for root := 0; root < f.ehRootCap; root++ {
+		for lane := shared.EHGCLaneBase; lane < shared.EHPayloadLanes; lane++ {
+			f.a.Store64(RSP, f.ehRootOff(root)+8+int32(lane)*8, RAX)
+		}
 	}
 }
 

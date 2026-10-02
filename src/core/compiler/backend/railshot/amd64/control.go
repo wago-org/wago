@@ -5,6 +5,7 @@ package amd64
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
@@ -747,6 +748,17 @@ type ehCatchClause struct {
 	// firstType is the machine type of payload 0, the only one delivered in a
 	// register (single-result merge); wider payloads always go through slots.
 	firstType machineType
+	// gcParams marks tag parameters that are collector references and so
+	// live in the GC lanes of the shared payload layout.
+	gcParams uint8
+}
+
+// lane returns the payload lane of the clause tag's parameter i.
+func (c *ehCatchClause) lane(i int) int {
+	if c.gcParams&(1<<i) != 0 {
+		return shared.EHGCLaneBase + i
+	}
+	return i
 }
 
 // --- operand-stack canonicalization ---
@@ -1543,12 +1555,12 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 }
 
 const (
-	// ehMaxPayloadWords bounds one exception's payload words. A record is
-	// [prev, saved RSP, handler target, saved RBX, tag, payload...] and a root
-	// slot mirrors its [tag, payload...] block, so both copy as one range.
-	ehMaxPayloadWords = 8
-	ehRecordSlots     = 5 + ehMaxPayloadWords
-	ehRootSlots       = 1 + ehMaxPayloadWords
+	// A record is [prev, saved RSP, handler target, saved RBX, tag, lanes...]
+	// and a root slot mirrors its [tag, lanes...] block, so both copy as one
+	// range. Lanes follow the module-independent shared payload layout.
+	ehMaxPayloadWords = shared.MaxEHTagPayloadWords
+	ehRecordSlots     = 5 + shared.EHPayloadLanes
+	ehRootSlots       = 1 + shared.EHPayloadLanes
 	// Historical fixed reservation, kept for modules built without body bytes.
 	legacyEHTryRecords  = 4
 	legacyEHRootRecords = 4
@@ -1563,18 +1575,16 @@ const (
 	offEHTagDirPtr = abi.EHTagDirPtrOffset
 )
 
-func exceptionPayloadMachineType(m *wasm.Module, typ wasm.ValType) (machineType, bool) {
+func exceptionPayloadMachineType(typ wasm.ValType) (machineType, bool) {
 	if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) {
 		return mtOf(typ), true
 	}
-	if typ.Kind() != wasm.ValRef || typ.Ref().Nullable() || typ.Ref().Exact() || typ.Ref().Heap().Kind() != wasm.HeapTypeIndex {
-		return mtNone, false
+	if typ.Kind() == wasm.ValRef {
+		// One word; exception root maps decide which reference words the
+		// collector scans.
+		return mtI64, true
 	}
-	var ft wasm.CompType
-	if !m.ResolveTypeFunc(typ.Ref().Heap().Type().Index, &ft) {
-		return mtNone, false
-	}
-	return mtI64, true
+	return mtNone, false
 }
 
 func moduleTagType(m *wasm.Module, index uint32) (wasm.TagType, bool) {
@@ -1637,12 +1647,15 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			clause.scalarN = uint8(len(ft.Params))
 			clause.payloadN = clause.scalarN
 			for j, typ := range ft.Params {
-				mt, ok := exceptionPayloadMachineType(f.m, typ)
+				mt, ok := exceptionPayloadMachineType(typ)
 				if !ok {
-					return fmt.Errorf("bounded exception handling requires scalar or non-null indexed-function tag payloads")
+					return fmt.Errorf("bounded exception handling requires scalar or reference tag payloads")
 				}
 				if j == 0 {
 					clause.firstType = mt
+				}
+				if shared.EHPayloadLane(f.m, typ, j) != j {
+					clause.gcParams |= 1 << j
 				}
 			}
 			if kind == wasm.CatchRef {
@@ -1757,10 +1770,21 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	f.a.Load64(RAX, RAX, int32(tag*8))
 	f.a.Store64(R11, ehTagOff, RAX)
 	base := len(types) - len(ft.Params)
-	for i := range ft.Params {
+	var gcLanes uint32
+	for i, typ := range ft.Params {
 		slot := slotOfLogicalTypes(types, base+i)
+		lane := shared.EHPayloadLane(f.m, typ, i)
+		gcLanes |= 1 << lane
 		f.a.Load64(RAX, RSP, f.spillOff(slot))
-		f.a.Store64(R11, ehPayloadOff(i), RAX)
+		f.a.Store64(R11, ehPayloadOff(lane), RAX)
+	}
+	// GC lanes this tag leaves unused may hold an earlier exception's
+	// references; clear them so a catch_all_ref root never scans a stale one.
+	f.a.XorSelf32(RAX)
+	for lane := shared.EHGCLaneBase; lane < shared.EHPayloadLanes; lane++ {
+		if gcLanes&(1<<lane) == 0 {
+			f.a.Store64(R11, ehPayloadOff(lane), RAX)
+		}
 	}
 	f.a.Load64(RSP, R11, ehSavedRSPOff)
 	f.a.Load64(RAX, R11, ehTargetOff)
@@ -1817,7 +1841,7 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 			f.a.LeaRsp(reg, rootOff)
 			return
 		}
-		f.a.Load64(reg, RSP, recordOff+ehPayloadOff(i))
+		f.a.Load64(reg, RSP, recordOff+ehPayloadOff(clause.lane(i)))
 	}
 	if target.has(ctrlRegMerge1) && clause.payloadN == 1 {
 		if clause.scalarN == 0 {

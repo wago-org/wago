@@ -3962,6 +3962,7 @@ func (f *fn) flushWrapperParamHome(p pendingWrapperParamHome) {
 // where reads materialize zero on demand and control-flow reconciliation stores it
 // to the frame before paths diverge when required.
 func (f *fn) zeroDeclaredLocals(localScores []uint32) {
+	f.zeroEHGCRootLanes()
 	if f.nLocals <= f.nParams {
 		return
 	}
@@ -4445,4 +4446,18 @@ func ehFrameShape(sc *scratch, body []byte) (shared.EHFrameShape, error) {
 		return shared.EHFrameShape{TryRecords: legacyEHTryRecords, RootRecords: legacyEHRootRecords}, nil
 	}
 	return shared.ScanEHFrameShape(&sc.classifier, body)
+}
+
+// zeroEHGCRootLanes clears the GC lanes of every exception root slot at entry.
+// Those lanes are fixed collector roots at every safepoint of the frame, before
+// any try_table has initialized its slot.
+func (f *fn) zeroEHGCRootLanes() {
+	if f.ehRootCap == 0 || f.gcFrameRoots == nil || !f.gcFrameRoots.HasFixedOffsets() {
+		return
+	}
+	for root := 0; root < f.ehRootCap; root++ {
+		for lane := shared.EHGCLaneBase; lane < shared.EHPayloadLanes; lane++ {
+			f.st64(SP, f.ehRootOff(root)+8+int32(lane)*8, ZR)
+		}
+	}
 }

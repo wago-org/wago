@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/nativeabi"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -72,7 +73,7 @@ func TestBuildExceptionRootMapsCatchAllUsesModuleTagOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(maps) != 1 || len(maps[0].Slots) != 1 {
+	if len(maps) != 1 || len(maps[0].Slots) != 1+shared.MaxEHTagPayloadWords {
 		t.Fatalf("catch_all_ref root maps = %#v", maps)
 	}
 	if got := maps[0].Slots[0]; got.Offset != uint32(firstRootPayloadOffset) || got.Kind != nativeabi.RootFuncRef {
@@ -88,6 +89,29 @@ func TestBuildExceptionRootMapsRejectsCatchAllMixedOwnership(t *testing.T) {
 		}
 		if _, err := BuildExceptionRootMaps(m); err == nil || !strings.Contains(err.Error(), "mixes") {
 			t.Fatalf("catch_all_ref mixed ownership %v = %v, want strict rejection", params, err)
+		}
+	}
+}
+
+// GC payload words live in dedicated lanes, so a catch_all_ref slot over tags
+// that disagree on which parameter is a collector reference is still exact:
+// the GC lanes are scanned, never the i64 or externref word in lane 0.
+func TestBuildExceptionRootMapsCatchAllGCLanes(t *testing.T) {
+	m, err := wasm.DecodeModule(catchAllRootMapModule(wasm.I64, wasm.AnyRef, wasm.ExternRef))
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps, err := BuildExceptionRootMaps(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(maps) != 1 || len(maps[0].Slots) != shared.MaxEHTagPayloadWords {
+		t.Fatalf("catch_all_ref GC root maps = %#v", maps)
+	}
+	for i, got := range maps[0].Slots {
+		want := uint32(firstRootPayloadOffset + (shared.EHGCLaneBase+i)*8)
+		if got.Offset != want || got.Kind != nativeabi.RootGCRef {
+			t.Fatalf("catch_all_ref root slot %d = %#v, want offset %d/gc", i, got, want)
 		}
 	}
 }
