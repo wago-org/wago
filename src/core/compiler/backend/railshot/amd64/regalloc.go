@@ -44,6 +44,9 @@ func (f *fn) preloadLoopIntConsts(h *funcHintView) {
 		bits := h.loopIntConsts.bits[i]
 		f.loadConst(reg, storage{kind: stConst, typ: mtI64, cval: bits})
 		f.iconsts[f.iconstN] = intConstReg{bits: bits, reg: reg}
+		if regallocCheckEnabled {
+			f.checkImmutable(reg, false, 8)
+		}
 		f.iconstN++
 		f.reserved = f.reserved.add(reg)
 		f.stats.peep("wide-loop-int-const")
@@ -71,6 +74,10 @@ const regNone Reg = 0xFF
 // node, its storage inherits the node's result type so downstream consumers
 // (select width, result marshaling) see the correct machine type.
 func (f *fn) occupy(e *elem, r Reg) {
+	if regallocCheckEnabled {
+		f.checkOccupy(e, r, false)
+	}
+
 	f.s.canonicalSlots = false
 	local, hasLocal := gcLocalProvenance(e)
 	f.regUser[r] = e
@@ -296,6 +303,10 @@ func (f *fn) curSpillSlot() int {
 // materialize ensures value elem e lives in a register and returns it. A deferred
 // node is condensed; a constant/local/slot value is loaded/moved into a fresh reg.
 func (f *fn) materialize(e *elem) Reg {
+	if regallocCheckEnabled {
+		f.checkUse(e)
+	}
+
 	if e.st.typ == mtCustom {
 		panic("custom value escaped to an ordinary Wasm instruction")
 	}
@@ -375,6 +386,10 @@ func (f *fn) materialize(e *elem) Reg {
 // emitted before anything that could write the local (no deferral, no
 // local.set in between).
 func (f *fn) materializeRead(e *elem) (Reg, bool) {
+	if regallocCheckEnabled {
+		f.checkUse(e)
+	}
+
 	if e.isValue() && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) {
 		return e.st.reg, false
 	}

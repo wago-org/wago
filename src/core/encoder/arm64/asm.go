@@ -93,6 +93,8 @@ func (c Cond) Invert() Cond { return c ^ 1 }
 // Asm accumulates encoded instruction words as little-endian bytes. Its zero
 // value is ready to use. Mirrors amd64.Asm{ B []byte }.
 type Asm struct {
+	//lint:ignore U1000 debug-only observer; the ordinary placeholder is empty
+	regallocState
 	B                             []byte
 	DenseIdxDisp                  bool // prefer ADD base,index + immediate-offset load/store
 	ReuseIndexedBase              bool // reuse an adjacent proven X16=base+index address
@@ -183,8 +185,18 @@ func (a *Asm) AddSP64(imm uint32) { a.addSubImm(0x91000000, SP, SP, imm) }
 // --- Moves ---
 
 // MovReg64 is ORR Xd, XZR, Xm.
-func (a *Asm) MovReg64(rd, rm Reg) { a.word(0xAA000000 | r(rm)<<16 | r(XZR)<<5 | r(rd)) }
-func (a *Asm) MovReg32(rd, rm Reg) { a.word(0x2A000000 | r(rm)<<16 | r(XZR)<<5 | r(rd)) }
+func (a *Asm) MovReg64(rd, rm Reg) {
+	if regallocCheckEnabled {
+		a.regallocCopy(rd, rm, false, 8)
+	}
+	a.word(0xAA000000 | r(rm)<<16 | r(XZR)<<5 | r(rd))
+}
+func (a *Asm) MovReg32(rd, rm Reg) {
+	if regallocCheckEnabled {
+		a.regallocCopy(rd, rm, false, 4)
+	}
+	a.word(0x2A000000 | r(rm)<<16 | r(XZR)<<5 | r(rd))
+}
 
 // Ldaxr32 and Stlxr32 encode the acquire-load/release-store exclusive pair used
 // for sequentially consistent 32-bit atomic read-modify-write loops. Stlxr32
@@ -358,6 +370,15 @@ func (a *Asm) ldrStr(base uint32, sizeLog uint, rt, rn Reg, off uint32) bool {
 	scaled := off >> sizeLog
 	if scaled<<sizeLog != off || scaled > 0xFFF {
 		return false
+	}
+	// Rejected addressing forms must not report a transfer that was never emitted.
+	if regallocCheckEnabled {
+		if base == 0xF9400000 || base == 0xB9400000 {
+			a.regallocLoad(rt, rn, int32(off), false, 1<<sizeLog)
+		}
+		if base == 0xF9000000 || base == 0xB9000000 {
+			a.regallocStore(rn, int32(off), rt, false, 1<<sizeLog)
+		}
 	}
 	a.word(base | scaled<<10 | r(rn)<<5 | r(rt))
 	return true

@@ -209,9 +209,16 @@ func (a *Asm) Fmax(rd, rn, rm Reg, f64 bool) {
 // FmovReg copies V→V; FmovFromGpr copies GPR→V (also +0.0 from XZR/WZR);
 // FmovToGpr copies V→GPR (reinterpret bits).
 func (a *Asm) FmovReg(rd, rn Reg, f64 bool) {
+	if regallocCheckEnabled {
+		a.regallocCopy(rd, rn, true, regallocWidth(f64))
+	}
+
 	a.word(fbase(f64, 0x1E204000, 0x1E604000) | r(rn)<<5 | r(rd))
 }
 func (a *Asm) FmovFromGpr(rd, rn Reg, f64 bool) {
+	if regallocCheckEnabled {
+		a.regallocCrossCopy(rd, rn, true, regallocWidth(f64))
+	}
 	a.word(fbase(f64, 0x1E270000, 0x9E670000) | r(rn)<<5 | r(rd))
 }
 
@@ -219,9 +226,15 @@ func (a *Asm) FmovFromGpr(rd, rn Reg, f64 bool) {
 // floating-point immediate encoding. Callers are responsible for admitting only
 // values representable by VFPExpandImm.
 func (a *Asm) FmovImm(rd Reg, imm8 uint8, f64 bool) {
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 	a.word(fbase(f64, 0x1E201000, 0x1E601000) | uint32(imm8)<<13 | r(rd))
 }
 func (a *Asm) FmovToGpr(rd, rn Reg, f64 bool) {
+	if regallocCheckEnabled {
+		a.regallocCrossCopy(rd, rn, false, regallocWidth(f64))
+	}
 	a.word(fbase(f64, 0x1E260000, 0x9E660000) | r(rn)<<5 | r(rd))
 }
 
@@ -388,21 +401,37 @@ func (a *Asm) ldStrScaled(base uint32, shift uint, rt, rn Reg, off uint32) bool 
 }
 
 func (a *Asm) LdrS(dst, base Reg, disp int32) {
+	if regallocCheckEnabled {
+		a.regallocLoad(dst, base, disp, true, 4)
+	}
+
 	if !a.ldStrScaled(0xBD400000, 2, dst, base, uint32(disp)) {
 		panic("LdrS: bad offset")
 	}
 }
 func (a *Asm) LdrD(dst, base Reg, disp int32) {
+	if regallocCheckEnabled {
+		a.regallocLoad(dst, base, disp, true, 8)
+	}
+
 	if !a.ldStrScaled(0xFD400000, 3, dst, base, uint32(disp)) {
 		panic("LdrD: bad offset")
 	}
 }
 func (a *Asm) StrS(base Reg, disp int32, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocStore(base, disp, src, true, 4)
+	}
+
 	if !a.ldStrScaled(0xBD000000, 2, src, base, uint32(disp)) {
 		panic("StrS: bad offset")
 	}
 }
 func (a *Asm) StrD(base Reg, disp int32, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocStore(base, disp, src, true, 8)
+	}
+
 	if !a.ldStrScaled(0xFD000000, 3, src, base, uint32(disp)) {
 		panic("StrD: bad offset")
 	}
@@ -449,7 +478,13 @@ func (a *Asm) materializeBaseDisp(dst, base Reg, disp int32) {
 
 // LdrQ / StrQ are 128-bit spill load/store with a signed byte displacement,
 // matching the backend's amd64-legacy call shape (dst,base,disp)/(base,disp,src).
+// Report the requested frame transfer once across addressing fallbacks; scratch
+// address computation is not separately modeled as a value transfer.
 func (a *Asm) LdrQ(dst, base Reg, disp int32) {
+	if regallocCheckEnabled {
+		a.regallocLoad(dst, base, disp, true, 16)
+	}
+
 	if a.ldStrScaled(0x3DC00000, 4, dst, base, uint32(disp)) {
 		return
 	}
@@ -464,6 +499,10 @@ func (a *Asm) LdrQ(dst, base Reg, disp int32) {
 	a.ldStrQIndexed(0x3CE06800, dst, base, disp)
 }
 func (a *Asm) StrQ(base Reg, disp int32, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocStore(base, disp, src, true, 16)
+	}
+
 	if a.ldStrScaled(0x3D800000, 4, src, base, uint32(disp)) {
 		return
 	}
@@ -862,15 +901,31 @@ func (a *Asm) FStoreDisp(base Reg, disp int32, rt Reg, f64 bool) {
 // --- Unscaled signed-offset loads/stores (LDUR/STUR, off in -256..255) ---
 
 func (a *Asm) Ldur64(rt, rn Reg, off int32) {
+	if regallocCheckEnabled {
+		a.regallocLoad(rt, rn, off, false, 8)
+	}
+
 	a.word(0xF8400000 | (uint32(off)&0x1FF)<<12 | r(rn)<<5 | r(rt))
 }
 func (a *Asm) Ldur32(rt, rn Reg, off int32) {
+	if regallocCheckEnabled {
+		a.regallocLoad(rt, rn, off, false, 4)
+	}
+
 	a.word(0xB8400000 | (uint32(off)&0x1FF)<<12 | r(rn)<<5 | r(rt))
 }
 func (a *Asm) Stur64(rt, rn Reg, off int32) {
+	if regallocCheckEnabled {
+		a.regallocStore(rn, off, rt, false, 8)
+	}
+
 	a.word(0xF8000000 | (uint32(off)&0x1FF)<<12 | r(rn)<<5 | r(rt))
 }
 func (a *Asm) Stur32(rt, rn Reg, off int32) {
+	if regallocCheckEnabled {
+		a.regallocStore(rn, off, rt, false, 4)
+	}
+
 	a.word(0xB8000000 | (uint32(off)&0x1FF)<<12 | r(rn)<<5 | r(rt))
 }
 
@@ -915,6 +970,10 @@ func (a *Asm) Csel(rd, rn, rm Reg, c Cond, wide bool) {
 
 // NeonMov16b copies a full 128-bit vector: MOV Vd.16b, Vn.16b (ORR Vd,Vn,Vn).
 func (a *Asm) NeonMov16b(dst, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocCopy(dst, src, true, 16)
+	}
+
 	a.word(0x4EA01C00 | r(src)<<16 | r(src)<<5 | r(dst))
 }
 

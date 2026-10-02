@@ -166,6 +166,8 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
+	//lint:ignore U1000 debug-only fields; the ordinary placeholder is empty
+	regallocFnState
 	profileFnState
 	a             *a64.Asm // the (reused) AArch64 encoder
 	s             *stack   // the valent-block operand stack
@@ -4216,6 +4218,11 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 			gp++
 		}
 	}
+	var checkMoves func()
+	if regallocCheckEnabled {
+		checkMoves = f.checkBeginRegMoves(moves, false)
+		defer checkMoves()
+	}
 	swapChains := resolveRegMovesWindow(moves,
 		func(dst, src Reg) { a.MovReg64(dst, src) },
 		func(x, y Reg) {
@@ -4229,6 +4236,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 			f.a.MovReg64(b, c)
 			f.a.MovReg64(c, X16)
 		})
+	if regallocCheckEnabled {
+		checkMoves()
+	}
 	f.stats.peepN("machine-swap-chain", swapChains)
 	f.tmpMoves = moves[:0]
 	f.zeroDeclaredLocals(localScores)

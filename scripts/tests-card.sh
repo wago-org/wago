@@ -17,7 +17,7 @@ cd "$root"
 # count <dir>: run the suite as JSON and print "pass<TAB>fail<TAB>skip" over the
 # final per-test events (those carry a "Test" field; package-level events do not).
 count() {
-	(cd "$1" && go test -count=1 -json ./... 2>/dev/null) | awk -F'"' '
+	(cd "$1" && go test -tags=wago_regalloccheck -count=1 -json ./... 2>/dev/null) | awk -F'"' '
 		{ action=""; hastest=0
 		  for (i=1; i<NF; i++) { if ($i=="Action") action=$(i+2); if ($i=="Test") hastest=1 }
 		  if (hastest) { if (action=="pass") p++; else if (action=="fail") f++; else if (action=="skip") s++ } }

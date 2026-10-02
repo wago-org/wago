@@ -11,6 +11,17 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Preserve AMD64 `select` operands when deferred divisions, remainders, shifts,
   or rotates reclaim fixed registers, and report operand traps in WebAssembly
   evaluation order.
+- ARM64 tail calls from a function with reference-typed parameters into a
+  numeric register-ABI function no longer lose the callee's updates to
+  register-pinned module globals.
+- AMD64 tail calls from a function with reference-typed parameters into a
+  function that is only called directly now pass the correct arguments and
+  keep its updates to register-pinned module globals.
+- AMD64 and ARM64 compile a `try_table` that has parameters in unreachable
+  code instead of failing with an internal code-generation error.
+- Darwin/ARM64 cancellation and `Close` no longer hang behind a concurrent
+  garbage collection, and an interrupted call is no longer occasionally
+  reported as successful.
 
 ## [v0.1.0-beta.10] - 2026-09-23
 

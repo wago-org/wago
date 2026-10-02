@@ -39,26 +39,26 @@ measure() {
 	[ -f "$dir/tests/conformance/spec-v2/test/core/i32.wast" ] ||
 		git -C "$dir" submodule update --init tests/conformance/spec-v2 >/dev/null
 
-	(cd "$dir" && go test -count=1 -covermode=atomic -coverpkg=./... \
+	(cd "$dir" && go test -tags=wago_regalloccheck -count=1 -covermode=atomic -coverpkg=./... \
 		-coverprofile="$profiles/normal.out" ./... >/dev/null)
-	(cd "$dir" && go test -count=1 -tags wago_guardpage -covermode=atomic \
+	(cd "$dir" && go test -count=1 -tags wago_regalloccheck,wago_guardpage -covermode=atomic \
 		-coverpkg=./... -coverprofile="$profiles/guard-root.out" ./src/wago/ >/dev/null)
-	(cd "$dir/bench" && go test -count=1 -tags wago_guardpage \
+	(cd "$dir/bench" && go test -count=1 -tags wago_regalloccheck,wago_guardpage \
 		-run '^(TestCorpus|TestJsonAsGuardCorrect)$' -covermode=atomic \
 		-coverpkg=github.com/wago-org/wago/... \
 		-coverprofile="$profiles/guard-bench.out" ./suite -args -wago.corpus=quick >/dev/null)
 	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/conformance/spec-v1" WAGO_SPEC_VERSION=1.0 \
-		go test -count=1 -run TestSpecSuiteExec -covermode=atomic -coverpkg=./... \
+		go test -tags=wago_regalloccheck -count=1 -run TestSpecSuiteExec -covermode=atomic -coverpkg=./... \
 		-coverprofile="$profiles/spec1.out" ./src/wago/ >/dev/null)
-	(cd "$dir" && go test -count=1 -run '^TestCoreV2Validation$' \
+	(cd "$dir" && go test -tags=wago_regalloccheck -count=1 -run '^TestCoreV2Validation$' \
 		-covermode=atomic -coverpkg=./... -coverprofile="$profiles/spec2-validation.out" \
 		./src/core/compiler/wasm/ >/dev/null)
 	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/conformance/spec-v2" WAGO_SPEC_VERSION=2.0 \
-		go test -count=1 -run '^TestCoreV2SpecExecution$' \
+		go test -tags=wago_regalloccheck -count=1 -run '^TestCoreV2SpecExecution$' \
 		-covermode=atomic -coverpkg=./... -coverprofile="$profiles/spec2-execution.out" \
 		./src/wago/ >/dev/null)
 	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/conformance/spec-v1" WAGO_SPEC_VERSION=simd \
-		go test -count=1 -run TestSpecSuiteExec -covermode=atomic -coverpkg=./... \
+		go test -tags=wago_regalloccheck -count=1 -run TestSpecSuiteExec -covermode=atomic -coverpkg=./... \
 		-coverprofile="$profiles/simd.out" ./src/wago/ >/dev/null)
 
 	awk '

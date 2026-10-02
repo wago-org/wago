@@ -23,7 +23,7 @@ func TestMemoryCopyPatchScratchDoesNotAllocate(t *testing.T) {
 		}
 	}
 	emit() // Warm encoder, operand, and trap-site backing before measuring.
-	if got := testing.AllocsPerRun(20, emit); got != 0 {
+	if got := testing.AllocsPerRun(20, emit); !regallocCheckEnabled && got != 0 {
 		t.Fatalf("reused dynamic memory.copy lowering = %g allocations, want 0", got)
 	}
 }

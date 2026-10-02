@@ -212,23 +212,8 @@ func requestDarwinInterrupt(trapPtr uintptr) bool {
 			machPortDeallocate(task, thread)
 			continue
 		}
-		if machThreadSuspend(thread) != 0 {
-			machPortDeallocate(task, thread)
-			continue
-		}
-		matched := false
 		var state darwinARMThreadState64
-		stateCount := uint32(armThreadState64Count)
-		if machThreadGetState(thread, &state, &stateCount) == 0 && stateCount >= armThreadState64Count && darwinGeneratedPC(uintptr(state.PC)) {
-			linMem := uintptr(state.X[26])
-			if darwinTrapContextMatches(task, linMem, trapPtr) {
-				state.X[9] = uint64(linMem)
-				state.PC = uint64(darwinInterruptLandingPC)
-				state.Flags |= armThreadStateNoPtrauth
-				matched = machThreadSetState(thread, &state, armThreadState64Count) == 0
-			}
-		}
-		_ = machThreadResume(thread)
+		matched := redirectDarwinThread(task, thread, trapPtr, &state)
 		machPortDeallocate(task, thread)
 		if matched {
 			for _, remaining := range threads[i+1:] {
@@ -242,17 +227,60 @@ func requestDarwinInterrupt(trapPtr uintptr) bool {
 	return false
 }
 
+//go:linkname procPin runtime.procPin
+func procPin() int
+
+//go:linkname procUnpin runtime.procUnpin
+func procUnpin()
+
+// redirectDarwinThread suspends thread and, if it is executing generated code
+// for trapPtr, moves its PC to the interrupt landing pad. The PC sample taken
+// before suspension can be stale: the thread may already be back in Go code,
+// holding a P or runtime locks. The window therefore must not block, allocate,
+// or yield its P. A stop-the-world started meanwhile would otherwise wait on
+// the suspended thread's P while this goroutine waited in exitsyscall to
+// resume it. procPin disables preemption, and raw calls keep the P, so a
+// stop-the-world waits for the thread to be resumed instead.
+func redirectDarwinThread(task, thread uint32, trapPtr uintptr, state *darwinARMThreadState64) bool {
+	procPin()
+	defer procUnpin()
+	if r, _, _ := rawSyscall6(addrMachThreadSuspend(), uintptr(thread), 0, 0, 0, 0, 0); int32(r) != 0 {
+		return false
+	}
+	matched := false
+	count := uint32(armThreadState64Count)
+	r, _, _ := rawSyscall6(addrMachThreadGetState(), uintptr(thread), armThreadState64Flavor, uintptr(unsafe.Pointer(state)), uintptr(unsafe.Pointer(&count)), 0, 0)
+	if int32(r) == 0 && count >= armThreadState64Count && darwinGeneratedPC(uintptr(state.PC)) {
+		linMem := uintptr(state.X[26])
+		if darwinTrapContextMatches(task, linMem, trapPtr) {
+			// The requester's earlier trap store can be overwritten by a guest
+			// host-call status and then cleared by the host loop. Republish it
+			// while the thread is stopped, as the Linux handler does, so the
+			// landing pad never returns to Go with an empty trap cell.
+			atomic.StoreUint32((*uint32)(offHeapPointer(trapPtr)), uint32(TrapInterrupted))
+			state.X[9] = uint64(linMem)
+			state.PC = uint64(darwinInterruptLandingPC)
+			state.Flags |= armThreadStateNoPtrauth
+			r, _, _ = rawSyscall6(addrMachThreadSetState(), uintptr(thread), armThreadState64Flavor, uintptr(unsafe.Pointer(state)), armThreadState64Count, 0, 0)
+			matched = int32(r) == 0
+		}
+	}
+	_, _, _ = rawSyscall6(addrMachThreadResume(), uintptr(thread), 0, 0, 0, 0, 0)
+	return matched
+}
+
 // A PC inside a code image does not establish that X26 contains linear memory:
 // entry/exit adapters can be sampled before installing or after restoring it.
 // Ask the kernel to copy the candidate word so an invalid or unmapped register
 // value cannot fault the cancellation goroutine. This is a cold-path operation.
+// It runs inside redirectDarwinThread's pinned window, so it uses a raw call.
 func darwinTrapContextMatches(task uint32, linMem, trapPtr uintptr) bool {
 	if linMem < abi.TrapCellPtrOffset || trapPtr == 0 {
 		return false
 	}
 	var candidate uintptr
 	var copied uint64
-	result, _, _ := syscall6(addrMachVMReadOverwrite(), uintptr(task),
+	result, _, _ := rawSyscall6(addrMachVMReadOverwrite(), uintptr(task),
 		linMem-abi.TrapCellPtrOffset, unsafe.Sizeof(candidate),
 		uintptr(unsafe.Pointer(&candidate)), uintptr(unsafe.Pointer(&copied)), 0)
 	return int32(result) == 0 && copied == uint64(unsafe.Sizeof(candidate)) && candidate == trapPtr
@@ -273,23 +301,8 @@ func machTaskThreads(task uint32, list *unsafe.Pointer, count *uint32) int32 {
 	return int32(r)
 }
 
-func machThreadSuspend(thread uint32) int32 {
-	r, _, _ := syscall6(addrMachThreadSuspend(), uintptr(thread), 0, 0, 0, 0, 0)
-	return int32(r)
-}
-
-func machThreadResume(thread uint32) int32 {
-	r, _, _ := syscall6(addrMachThreadResume(), uintptr(thread), 0, 0, 0, 0, 0)
-	return int32(r)
-}
-
 func machThreadGetState(thread uint32, state *darwinARMThreadState64, count *uint32) int32 {
 	r, _, _ := syscall6(addrMachThreadGetState(), uintptr(thread), armThreadState64Flavor, uintptr(unsafe.Pointer(state)), uintptr(unsafe.Pointer(count)), 0, 0)
-	return int32(r)
-}
-
-func machThreadSetState(thread uint32, state *darwinARMThreadState64, count uint32) int32 {
-	r, _, _ := syscall6(addrMachThreadSetState(), uintptr(thread), armThreadState64Flavor, uintptr(unsafe.Pointer(state)), uintptr(count), 0, 0)
 	return int32(r)
 }
 
