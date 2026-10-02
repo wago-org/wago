@@ -176,7 +176,7 @@ func TestVectorMapTwoOrderedStores(t *testing.T) {
 	saved, force := regionLoopEnabled, regionLoopTestFast
 	defer func() { regionLoopEnabled, regionLoopTestFast = saved, force }()
 	body := []byte{2, 1, 0x7c, 1, 0x7f, 0x20, 0, 0x41}
-	body = append(body, sleb128(256)...)
+	body = append(body, 0x80, 0x02) // signed LEB128 256; keep this fixture portable.
 	body = append(body, 0x6a, 0x21, 7, 0x03, 0x40,
 		0x20, 0, 0x20, 1, 0x2b, 0, 0, 0x20, 4, 0xa2, 0x20, 5, 0xa0, 0x22, 6, 0x39, 0, 0,
 		0x20, 7, 0x20, 6, 0x20, 4, 0xa3, 0x39, 0, 0,
