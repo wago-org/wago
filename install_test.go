@@ -227,11 +227,11 @@ func TestShellBootstrapExplainsLegacyInstallerHandoff(t *testing.T) {
 	}
 }
 
-func TestShellBootstrapStartsRefreshedShellOnlyWhenRequested(t *testing.T) {
+func TestShellBootstrapDoesNotStartRefreshedShellWithoutRequest(t *testing.T) {
 	tmp := t.TempDir()
 	installer := filepath.Join(tmp, "installer")
 	shell := filepath.Join(tmp, "shell")
-	if err := os.WriteFile(installer, []byte("#!/bin/sh\nprintf 'native installer\\n'\nprintf 'refresh\\n' >\"$WAGO_PATH_REFRESH_FILE\"\n"), 0o755); err != nil {
+	if err := os.WriteFile(installer, []byte("#!/bin/sh\nprintf 'native installer\\n'\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(shell, []byte("#!/bin/sh\nprintf 'refreshed shell\\n'\n"), 0o755); err != nil {
@@ -240,19 +240,6 @@ func TestShellBootstrapStartsRefreshedShellOnlyWhenRequested(t *testing.T) {
 	command := exec.Command("sh", "install.sh")
 	command.Env = append(os.Environ(), "WAGO_INSTALLER="+installer, "SHELL="+shell)
 	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("refresh shell handoff: %v\n%s", err, output)
-	}
-	if got, want := string(output), "native installer\nrefreshed shell\n"; got != want {
-		t.Fatalf("refresh shell output = %q, want %q", got, want)
-	}
-
-	if err := os.WriteFile(installer, []byte("#!/bin/sh\nprintf 'native installer\\n'\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	command = exec.Command("sh", "install.sh")
-	command.Env = append(os.Environ(), "WAGO_INSTALLER="+installer, "SHELL="+shell)
-	output, err = command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("non-refresh shell handoff: %v\n%s", err, output)
 	}
