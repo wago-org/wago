@@ -1,0 +1,42 @@
+# git f83fb19eca300e65db1fa299f448bfe49f5b7d03
+--- FAIL: BenchmarkCommandExec/quickjs-script
+    command_corpus_test.go:649: wasm trap: linear memory access out of bounds
+--- FAIL: BenchmarkCommandExec
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: Apple M4 Max
+BenchmarkWazeroCommandExec/quickjs-script-16   	       2	 177827812 ns/op	 2882880 B/op	     505 allocs/op
+BenchmarkWazeroCommandExec/quickjs-script-16   	       2	 176027812 ns/op	 2882880 B/op	     505 allocs/op
+BenchmarkWazeroCommandExec/quickjs-script-16   	       2	 179819520 ns/op	 2882880 B/op	     505 allocs/op
+BenchmarkWazeroCompile/quickjs-script-16       	       2	 164327584 ns/op	   3020852 code-B	38715048 B/op	   71489 allocs/op
+BenchmarkWazeroCompile/quickjs-script-16       	       2	 171038250 ns/op	   3020852 code-B	38714992 B/op	   71489 allocs/op
+BenchmarkWazeroCompile/quickjs-script-16       	       2	 170665770 ns/op	   3020852 code-B	38715000 B/op	   71489 allocs/op
+BenchmarkWazeroInstantiate-16                  	1000000000	         0.0000005 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWazeroInstantiate-16                  	1000000000	         0.0000002 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWazeroInstantiate-16                  	1000000000	         0.0000003 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWazeroExec-16                         	1000000000	         0.0000001 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWazeroExec-16                         	1000000000	         0.0000001 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWazeroExec-16                         	1000000000	         0.0000000 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDecode/quickjs-script-16              	     100	   2053605 ns/op	  266169 B/op	    1008 allocs/op
+BenchmarkDecode/quickjs-script-16              	     100	   2037574 ns/op	  266170 B/op	    1008 allocs/op
+BenchmarkDecode/quickjs-script-16              	     120	   2029111 ns/op	  266170 B/op	    1008 allocs/op
+BenchmarkValidate/quickjs-script-16            	      39	   6247244 ns/op	  110824 B/op	     804 allocs/op
+BenchmarkValidate/quickjs-script-16            	      37	   6294011 ns/op	  110824 B/op	     804 allocs/op
+BenchmarkValidate/quickjs-script-16            	      38	   6169424 ns/op	  110824 B/op	     804 allocs/op
+BenchmarkCompile/quickjs-script-16             	       7	  29963786 ns/op	  827352 B/op	    1979 allocs/op
+BenchmarkCompile/quickjs-script-16             	       7	  31644119 ns/op	  827370 B/op	    1979 allocs/op
+BenchmarkCompile/quickjs-script-16             	       7	  31354327 ns/op	  827354 B/op	    1979 allocs/op
+BenchmarkCompileFull/quickjs-script-16         	       5	  43045717 ns/op	   1882068 code-B	 3979059 B/op	    4777 allocs/op
+BenchmarkCompileFull/quickjs-script-16         	       5	  45487508 ns/op	   1882068 code-B	 3979059 B/op	    4777 allocs/op
+BenchmarkCompileFull/quickjs-script-16         	       5	  44078658 ns/op	   1882068 code-B	 3978992 B/op	    4776 allocs/op
+BenchmarkInstantiate-16                        	1000000000	         0.0000004 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInstantiate-16                        	1000000000	         0.0000003 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInstantiate-16                        	1000000000	         0.0000002 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec-16                               	1000000000	         0.0000035 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec-16                               	1000000000	         0.0000006 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec-16                               	1000000000	         0.0000004 ns/op	       0 B/op	       0 allocs/op
+FAIL
+exit status 1
+FAIL	github.com/wago-org/wago/bench/suite	11.759s
+FAIL
