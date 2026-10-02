@@ -31,6 +31,17 @@ func getReleaseBytes(ctx context.Context, operation, address string, limit int64
 	return releaseMetadataHTTP.Bytes(ctx, request, limit)
 }
 
+func openReleaseMetadata(ctx context.Context, operation, address string) (*http.Response, error) {
+	if err := automation.RequireOnline(operation); err != nil {
+		return nil, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	if err != nil {
+		return nil, err
+	}
+	return releaseMetadataHTTP.Open(ctx, request)
+}
+
 func openReleaseStream(ctx context.Context, operation, address string) (*http.Response, error) {
 	if err := automation.RequireOnline(operation); err != nil {
 		return nil, err

@@ -182,7 +182,11 @@ func TestMissingManagerAssetFallsBackToSource(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	defer api.Close()
-	releases := httptest.NewServer(http.NotFoundHandler())
+	releases := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte(strings.Repeat("missing release asset", 1<<12)))
+	}))
 	defer releases.Close()
 	t.Setenv("WAGO_RELEASE_API", api.URL)
 	t.Setenv("WAGO_RELEASE_BASE", releases.URL)
