@@ -324,6 +324,7 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 	} else {
 		f.moveBranchValues(fr, k, a)
 	}
+	f.restoreBranchHandlers(fi)
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
 	if coldExit {
