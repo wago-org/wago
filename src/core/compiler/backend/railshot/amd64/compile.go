@@ -1743,6 +1743,17 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if err != nil {
 		return nil, fmt.Errorf("amd64: host adapter analysis: %w", err)
 	}
+	// A wrapper-ABI caller tail-enters its target's offset-0 entry with the
+	// wrapper calling convention (arguments in the basedata tail bank). A
+	// direct-only register-ABI target has no such entry: its offset 0 is the
+	// internal body, which would read arguments from registers and return
+	// without storing module-pinned globals. Give every return_call target the
+	// adapter that implements the wrapper entry.
+	for i := range hostAdapters {
+		if allHints[i].tailCallTarget() {
+			hostAdapters[i] = true
+		}
+	}
 	if len(opts.CustomInstructions) != 0 {
 		// Custom lowerings may publish function identities through extension-owned
 		// state. Until that interface reports exact addressability, fail closed.
