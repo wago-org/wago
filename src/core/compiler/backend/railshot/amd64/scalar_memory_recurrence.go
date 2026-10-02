@@ -6,6 +6,8 @@ import "os"
 
 var scalarMemoryRecurrenceEnabled = os.Getenv("WAGO_AMD64_SCALAR_MEMORY_RECURRENCE") != "0"
 
+var scalarLoopMemoryFormsEnabled = os.Getenv("WAGO_AMD64_SCALAR_LOOP_MEMORY_FORM") == "1"
+
 // Admit up to two invariant output cells whose old values are read exactly
 // once before their updates. Their direct snapshots must die by those updates.
 // Every other access remains ordered. Runtime range and strict alias guards

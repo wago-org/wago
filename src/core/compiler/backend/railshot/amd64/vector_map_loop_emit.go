@@ -572,7 +572,19 @@ func (e *regionLoopEmitter) body() {
 			}
 			if memory != 0 {
 				ea := e.address(e.loadStream[memory])
-				if p.wide {
+				if p.scalar {
+					// Scalar recurrences retain the original eight-byte access and
+					// operand order. Their invariant accumulator loads never fold.
+					if f.opt(optVEXFloatMem) && f.cpuHas(shared.AMD64AVX) {
+						f.a.VFMemIdx(opcode, out, regs[source], RBX, ea, e.streams[e.loadStream[memory]].disp, true)
+					} else {
+						if out != regs[source] {
+							f.a.FMov(out, regs[source], true)
+						}
+						f.a.SseIdx(0xf2, opcode, out, RBX, ea, e.streams[e.loadStream[memory]].disp)
+					}
+					f.stats.peep("region-loop-scalar-fold-load")
+				} else if p.wide {
 					f.a.YFPackedMemIdx(opcode, out, regs[source], RBX, ea, e.streams[e.loadStream[memory]].disp, true)
 				} else {
 					f.a.VFPackedMemIdx(opcode, out, regs[source], RBX, ea, e.streams[e.loadStream[memory]].disp, true)
@@ -759,6 +771,7 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 	var permanent [regionLoopMaxOps + 1]bool
 	constantPrefix := false
 	if p.scalar {
+		memoryForms = scalarLoopMemoryFormsEnabled
 		prefix, permanent = p.prepareMemoryRecurrence()
 	} else {
 		prefix, permanent = p.hoistConstants(regionConstantHoistEnabled, regionInvariantPrefixEnabled, memoryForms)
