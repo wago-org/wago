@@ -321,8 +321,11 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// selection above. Reconsider that newly available form without reordering
 	// either subtree: accumulate in its register and fold the private frame read.
 	// Guest-memory operands are excluded here; their trap order stays unchanged.
+	// Canonical frame carriers may retain a wider type than their consumer. Keep
+	// their existing materialization path so folded reads preserve input width.
 	if lateFrameCommuteEnabled && dest == regNone && node.deferredOp().commutative() &&
-		left.isValue() && right.isValue() && right.st.kind == stReg &&
+		left.isValue() && left.valueType() == node.valueType() &&
+		right.isValue() && right.st.kind == stReg &&
 		(left.st.kind == stSlot || left.st.kind == stLocalRef) {
 		left, right = right, left
 		f.stats.peep("late-frame-commute")
