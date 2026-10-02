@@ -169,11 +169,12 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	}
 	resumeGCInvocation := leaseOwner.suspendGCInvocation(id)
 	var localMu *sync.Mutex
-	epoch := nativeExecutionEpoch
+	var epoch uint64
 	if active.usesIndependentExecution() {
 		localMu = active.independentNativeExecutionMu()
 		localMu.Unlock()
 	} else {
+		epoch = nativeExecutionEpoch
 		nativeExecutionMu.Unlock()
 	}
 	// Keep the parked activation and any GC host-result roots published until the
