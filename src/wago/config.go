@@ -830,6 +830,10 @@ func (c *RuntimeConfig) Validate() error {
 	if c.codeProfile != nil && !codeProfileEnabled {
 		return fmt.Errorf("wago: profiling requires a build with -tags=wago_profile")
 	}
+	// Unknown modes must not silently inherit explicit-check behavior.
+	if c.boundsChecks != BoundsChecksExplicit && c.boundsChecks != BoundsChecksSignalsBased {
+		return fmt.Errorf("wago: invalid bounds-check mode %d", c.boundsChecks)
+	}
 	if c.maxFunctionLocals == 0 || c.maxFunctionLocals > MaxFunctionLocalsLimit {
 		return fmt.Errorf("wago: max function locals must be between 1 and %d, got %d", MaxFunctionLocalsLimit, c.maxFunctionLocals)
 	}
