@@ -198,6 +198,15 @@ func TestPluginCommandScopeOverrides(t *testing.T) {
 	if !projectconfig.Truthy("WAGO_LOCAL") {
 		t.Fatal("plugins inspect --local did not select project plugins")
 	}
+
+	for _, alias := range []string{"info", "show"} {
+		t.Setenv("WAGO_GLOBAL", "")
+		t.Setenv("WAGO_LOCAL", "")
+		applyTestPluginScope(t, []string{"plugin", alias, "github.com/wago-org/wasi", "--local"})
+		if !projectconfig.Truthy("WAGO_LOCAL") {
+			t.Fatalf("plugin %s --local did not select project plugins", alias)
+		}
+	}
 }
 
 func applyTestPluginScope(t *testing.T, args []string) {

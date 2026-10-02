@@ -38,7 +38,9 @@ func ApplyScope(args []string, environment Environment) error {
 		return nil
 	}
 	if args[0] == "plugin" || args[0] == "plugins" {
-		if len(args) < 2 || (args[1] != "list" && args[1] != "ls" && args[1] != "inspect") {
+		// Use the handoff router as the single alias list so every forwarded
+		// inspection command selects its plugin scope before runtime launch.
+		if len(args) < 2 || !handoff.RuntimeOwnsPluginCommand(args[1:]) {
 			return nil
 		}
 		if err := environment.SelectScope(
