@@ -43,6 +43,7 @@ const (
 	ctrlHasResultGCRoots
 	ctrlLoopCallFree
 	ctrlLoopPinExchange
+	ctrlIfDeferredPrefix
 )
 
 // ctrlFrame is one open control construct (or the implicit function frame).
@@ -97,7 +98,7 @@ type ctrlFrameMerge struct {
 	ends          []uint32 // overflow after two inline forward-end sites
 	branchState   []locState
 	entryState    []locState
-	baseTypeTop   *elem // cold control-base type prefix; immutable for the frame lifetime
+	baseTypeTop   *elem // cold type prefix, or detached numeric recipe under ctrlIfDeferredPrefix
 	firstEndSite  uint32
 	secondEndSite uint32
 	eh            *ctrlFrameEH
@@ -1619,6 +1620,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		return nil
 	}
 	if kind == cfIf {
+		f.deferIfPrefix(r, &fr)
 		cond := f.s.back()
 		if isFusableCompare(cond) {
 			f.flushBelow(cond)
@@ -2275,6 +2277,7 @@ func (f *fn) opEnd() error {
 			}
 		}
 		f.markEHReferenceResults(&fr)
+		f.restoreIfPrefix(&fr)
 	}
 	if fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
 		recordOff := f.ehRecordOff(int(f.ensureFrameEH(&fr).recordIndex))
