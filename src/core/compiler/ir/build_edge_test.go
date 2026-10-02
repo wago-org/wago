@@ -90,15 +90,19 @@ func TestBuildCallMultipleParamsAndResults(t *testing.T) {
 	}
 }
 
-func TestBuildCallIndirectCanonicalTypeID(t *testing.T) {
+func TestBuildCallIndirectStructuralTypeKey(t *testing.T) {
 	types := []wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}, {Results: []wasm.ValType{wasm.I32}}}
 	m := decodeValidate(t, module(types, []uint32{1}, []wasm.TableType{{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{wasmtest.Code(bytes(0x41, 0x00, 0x11, 0x01, 0x00, 0x0b))}))
 	f, dump := buildOne(t, m)
-	if !strings.Contains(dump, "call_indirect type=1 table=0 canon=0") {
+	if !strings.Contains(dump, "call_indirect type=1 table=0 key=0x") {
 		t.Fatalf("unexpected dump:\n%s", dump)
 	}
-	if got := f.Insts[len(f.Insts)-1].Aux2; got != 0 {
-		t.Fatalf("canonical type id = %d, want 0", got)
+	want, ok := m.StructuralTypeKeyChecked(1)
+	if !ok {
+		t.Fatal("structural type key generation failed")
+	}
+	if got := f.Insts[len(f.Insts)-1].Aux2; got != want {
+		t.Fatalf("structural type key = %#x, want %#x", got, want)
 	}
 }
 
@@ -137,6 +141,68 @@ func TestBuildCallIndirectTypeKeyStableAcrossModules(t *testing.T) {
 	}
 	if gotProvider != wantProvider || gotConsumer != wantConsumer {
 		t.Fatalf("call_indirect keys = provider %#x, consumer %#x; want shared structural key %#x", gotProvider, gotConsumer, wantProvider)
+	}
+}
+
+func TestBuildCachesRepeatedCallIndirectTypeKey(t *testing.T) {
+	types := []wasm.FuncType{{}, {Results: []wasm.ValType{wasm.I32}}}
+	body := wasmtest.Code(bytes(
+		0x41, 0x00, 0x11, 0x01, 0x00, 0x1a,
+		0x41, 0x00, 0x11, 0x01, 0x00, 0x1a,
+		0x0b,
+	))
+	m := decodeValidate(t, module(types, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{body}))
+	im, err := BuildModule(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyModule(im); err != nil {
+		t.Fatal(err)
+	}
+	if len(im.StructuralTypeKeys) != 1 {
+		t.Fatalf("structural type key entries = %d, want 1", len(im.StructuralTypeKeys))
+	}
+	want, ok := im.StructuralTypeKeys[1]
+	if !ok {
+		t.Fatal("call_indirect type 1 has no structural key")
+	}
+	for i := range im.Funcs[0].Insts {
+		if in := &im.Funcs[0].Insts[i]; in.Op == OpCallIndirect && in.Aux2 != want {
+			t.Fatalf("call_indirect key = %#x, want cached key %#x", in.Aux2, want)
+		}
+	}
+}
+
+func TestBuildCallIndirectRetainsRecursiveGroupIdentity(t *testing.T) {
+	target := wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32}}
+	m := &wasm.Module{
+		Types: []wasm.RecType{{SubTypes: []wasm.SubType{
+			{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}},
+			{Final: true, Comp: target},
+		}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Tables:    []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1}}}},
+		Code:      []wasm.Func{{BodyBytes: bytes(0x41, 0x00, 0x11, 0x01, 0x00, 0x1a, 0x0b)}},
+	}
+	im, err := BuildModule(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyModule(im); err != nil {
+		t.Fatal(err)
+	}
+	want, ok := m.StructuralTypeKeyChecked(1)
+	if !ok {
+		t.Fatal("recursive-group structural key unavailable")
+	}
+	if flat := wasm.StructuralFuncTypeKey(&target); flat == want {
+		t.Fatalf("fixture recursive-group key %#x unexpectedly equals flat signature key", want)
+	}
+	if got := im.StructuralTypeKeys[1]; got != want {
+		t.Fatalf("recursive-group structural key = %#x, want %#x", got, want)
+	}
+	if len(im.StructuralTypeGroups) != 1 || &im.StructuralTypeGroups[0] != &m.Types[0] {
+		t.Fatal("builder copied or omitted the lazily retained source type graph")
 	}
 }
 

@@ -204,6 +204,24 @@ func BuildFunc(m *wasm.Module, localFuncIdx int) (*Func, error) {
 	return b.buildFunc(uint32(localFuncIdx))
 }
 
+func (b *Builder) structuralTypeKey(typeIdx uint32) (uint64, error) {
+	if key, ok := b.out.StructuralTypeKeys[typeIdx]; ok {
+		return key, nil
+	}
+	key, ok := b.m.StructuralTypeKeyChecked(typeIdx)
+	if !ok {
+		return 0, fmt.Errorf("ir: structural type key unavailable for function type %d", typeIdx)
+	}
+	if b.out.StructuralTypeKeys == nil {
+		b.out.StructuralTypeKeys = make(map[uint32]uint64)
+		// Keep only the type graph needed to authenticate native dispatch keys.
+		// Modules without reachable indirect calls retain no extra source metadata.
+		b.out.StructuralTypeGroups = b.m.Types
+	}
+	b.out.StructuralTypeKeys[typeIdx] = key
+	return key, nil
+}
+
 func (b *Builder) buildFunc(localIdx uint32) (*Func, error) {
 	if uint(localIdx) >= uint(len(b.m.FuncTypes)) || uint(localIdx) >= uint(len(b.m.Code)) {
 		return nil, fmt.Errorf("ir: local function index %d out of range", localIdx)
@@ -761,7 +779,11 @@ func (b *Builder) lowerSimple(op byte) error {
 		}
 		args = append(args, callee)
 		if b.reachable {
-			res := b.addInst(OpCallIndirect, packCallIndirect(ti, tbl), uint64(b.m.CanonicalTypeID(ti)), args, ft.Results, EffectCanTrap|EffectCall|EffectReadTable)
+			key, err := b.structuralTypeKey(ti)
+			if err != nil {
+				return err
+			}
+			res := b.addInst(OpCallIndirect, packCallIndirect(ti, tbl), key, args, ft.Results, EffectCanTrap|EffectCall|EffectReadTable)
 			b.pushValues(res)
 		} else {
 			b.pushPoisons(ft.Results)

@@ -16,6 +16,43 @@ func TestBuildRejectsNilModule(t *testing.T) {
 	}
 }
 
+func TestBuildRejectsUnavailableStructuralTypeKey(t *testing.T) {
+	m := rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x11, 0x01, 0x00, 0x0b))
+	m.Types = append(m.Types, unavailableStructuralTypeGroup())
+	m.Tables = []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref()}}}
+	_, err := BuildFunc(m, 0)
+	if err == nil || !strings.Contains(err.Error(), "structural type key unavailable") {
+		t.Fatalf("BuildFunc error = %v, want structural type key unavailable", err)
+	}
+}
+
+func TestBuildSkipsUnusedStructuralTypeKeys(t *testing.T) {
+	m := rawModule(wasm.FuncType{}, bytes(0x0b))
+	m.Types = append(m.Types, unavailableStructuralTypeGroup())
+	im, err := BuildModule(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if im.StructuralTypeKeys != nil {
+		t.Fatalf("unused structural type metadata = %#v, want nil", im.StructuralTypeKeys)
+	}
+	if im.StructuralTypeGroups != nil {
+		t.Fatalf("unused structural type graph retained %d groups, want nil", len(im.StructuralTypeGroups))
+	}
+	if err := VerifyModule(im); err != nil {
+		t.Fatalf("VerifyModule without call_indirect: %v", err)
+	}
+}
+
+func unavailableStructuralTypeGroup() wasm.RecType {
+	badRef := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 99}), false))
+	badField := wasm.NewFieldType(wasm.StorageVal(badRef), wasm.Const)
+	return wasm.RecType{SubTypes: []wasm.SubType{
+		{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}},
+		{Final: true, Comp: wasm.CompType{Kind: wasm.CompStruct, Fields: []wasm.FieldType{badField}}},
+	}}
+}
+
 func TestBuildMalformedBodiesReturnErrors(t *testing.T) {
 	tests := []struct {
 		name string
