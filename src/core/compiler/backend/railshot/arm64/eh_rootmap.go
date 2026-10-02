@@ -5,6 +5,7 @@ package arm64
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/nativeabi"
 )
@@ -94,7 +95,15 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 		for _, run := range m.Code[function].Locals.Runs {
 			nLocalSlots += int(run.Count) * mtOf(run.Type).stackSlots()
 		}
-		frameBytes := frameHdrBytes + 8*nLocalSlots + (maxEHTryRecords*ehRecordSlots+maxEHRootRecords*ehRootSlots)*8
+		shape := shared.EHFrameShape{TryRecords: legacyEHTryRecords, RootRecords: legacyEHRootRecords}
+		if len(m.Code[function].BodyBytes) != 0 {
+			var err error
+			shape, err = shared.ScanEHFrameShape(&classifier, m.Code[function].BodyBytes)
+			if err != nil {
+				return nil, fmt.Errorf("exception root map function %d: %w", function, err)
+			}
+		}
+		frameBytes := frameHdrBytes + 8*nLocalSlots + (shape.TryRecords*ehRecordSlots+shape.RootRecords*ehRootSlots)*8
 		rootCount := 0
 		var slots []nativeabi.RootSlot
 		var catchAllKinds [2]nativeabi.RootKind
@@ -139,10 +148,10 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 				if kind != wasm.CatchRef && kind != wasm.CatchAllRef {
 					continue
 				}
-				if rootCount >= maxEHRootRecords {
-					return nil, fmt.Errorf("exception root map function %d exceeds %d fixed roots", function, maxEHRootRecords)
+				if rootCount >= shape.RootRecords {
+					return nil, fmt.Errorf("exception root map function %d exceeds %d reserved roots", function, shape.RootRecords)
 				}
-				rootOff := frameHdrBytes + 8*nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + rootCount*ehRootSlots*8
+				rootOff := frameHdrBytes + 8*nLocalSlots + shape.TryRecords*ehRecordSlots*8 + rootCount*ehRootSlots*8
 				if kind == wasm.CatchRef {
 					tagType, ok := moduleTagType(m, tag)
 					if !ok {

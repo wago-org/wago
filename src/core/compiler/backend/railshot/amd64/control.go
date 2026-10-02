@@ -1541,10 +1541,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 }
 
 const (
-	ehRecordSlots    = 7
-	ehRootSlots      = 3
-	maxEHTryRecords  = 4
-	maxEHRootRecords = 4
+	ehRecordSlots = 7
+	ehRootSlots   = 3
+	// Historical fixed reservation, kept for modules built without body bytes.
+	legacyEHTryRecords  = 4
+	legacyEHRootRecords = 4
 	// Catch clauses are a growable list dispatched with ordinary branches;
 	// the bound only keeps one try_table's dispatch within branch range.
 	maxEHCatches   = 1024
@@ -1639,8 +1640,8 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 				clause.payloadType[j] = mt
 			}
 			if kind == wasm.CatchRef {
-				if f.ehRootCount >= maxEHRootRecords {
-					return fmt.Errorf("bounded exception handling supports at most %d rooted exception values per function", maxEHRootRecords)
+				if f.ehRootCount >= f.ehRootCap {
+					return fmt.Errorf("exception root %d exceeds the %d reserved for this function", f.ehRootCount, f.ehRootCap)
 				}
 				clause.rootIndex = uint8(f.ehRootCount)
 				f.ehRootCount++
@@ -1649,8 +1650,8 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			}
 		case wasm.CatchAll:
 		case wasm.CatchAllRef:
-			if f.ehRootCount >= maxEHRootRecords {
-				return fmt.Errorf("bounded exception handling supports at most %d rooted exception values per function", maxEHRootRecords)
+			if f.ehRootCount >= f.ehRootCap {
+				return fmt.Errorf("exception root %d exceeds the %d reserved for this function", f.ehRootCount, f.ehRootCap)
 			}
 			clause.rootIndex = uint8(f.ehRootCount)
 			f.ehRootCount++
@@ -1691,8 +1692,8 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	fr.height = f.depth() - fr.paramN
 	f.setFrameBaseTypePrefix(&fr, fr.height)
 	f.captureGCFrameShape(&fr)
-	if f.ehTryDepth >= maxEHTryRecords {
-		return fmt.Errorf("bounded exception handling supports at most %d nested try_table records", maxEHTryRecords)
+	if f.ehTryDepth >= f.ehTryCap {
+		return fmt.Errorf("try_table record %d exceeds the %d reserved for this function", f.ehTryDepth, f.ehTryCap)
 	}
 	eh.recordIndex = uint8(f.ehTryDepth)
 	f.ehTryDepth++

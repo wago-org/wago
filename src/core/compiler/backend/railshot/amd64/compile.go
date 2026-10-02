@@ -447,8 +447,10 @@ type fn struct {
 	// Control-flow state (Phase 3).
 	ctrl        []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
 	unreachable bool        // in dead code after an unconditional branch/trap
-	ehTryDepth  int         // live reachable try_table records; bounded by maxEHTryRecords
-	ehRootCount int         // compile-time assigned fixed exception roots; bounded by maxEHRootRecords
+	ehTryDepth  int         // live reachable try_table records; bounded by ehTryCap
+	ehRootCount int         // compile-time assigned fixed exception roots; bounded by ehRootCap
+	ehTryCap    int         // this function's reserved try_table records (max nesting depth)
+	ehRootCap   int         // this function's reserved exception roots (catch_ref clauses)
 
 	// sc holds per-function scratch whose backing is reused across the module:
 	// The intrusive return chain, brFoldSites and trapSites live there so each
@@ -1378,7 +1380,7 @@ func (f *fn) localAddr(i int) int32 {
 }
 func (f *fn) ehFrameBytes() int {
 	if f.moduleEH {
-		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
+		return (f.ehTryCap*ehRecordSlots + f.ehRootCap*ehRootSlots) * 8
 	}
 	return 0
 }
@@ -1386,7 +1388,7 @@ func (f *fn) ehRecordOff(index int) int32 {
 	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + index*ehRecordSlots*8)
 }
 func (f *fn) ehRootOff(index int) int32 {
-	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + index*ehRootSlots*8)
+	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + f.ehTryCap*ehRecordSlots*8 + index*ehRootSlots*8)
 }
 func (f *fn) spillOff(k int) int32 {
 	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
@@ -3316,6 +3318,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		sc.transient = f.transient
 		sc.relocs = f.relocs
 	}()
+	if moduleEH {
+		shape, err := ehFrameShape(sc, c.BodyBytes)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("function %d: %w", funcIdx, err)
+		}
+		f.ehTryCap, f.ehRootCap = shape.TryRecords, shape.RootRecords
+	}
 	f.syncHostCalls = syncHostCalls
 	f.syncHostSlots = syncHostSlots
 	f.gcTypeSubtypingRefTest = gcTypeSubtypingRefTest
@@ -4671,4 +4680,13 @@ func countLocals(params []wasm.ValType, locals wasm.Locals) (int, error) {
 		n += int(run.Count)
 	}
 	return n, nil
+}
+
+// ehFrameShape sizes one function's exception records from its body. Modules
+// built without body bytes keep the historical fixed reservation.
+func ehFrameShape(sc *scratch, body []byte) (shared.EHFrameShape, error) {
+	if len(body) == 0 {
+		return shared.EHFrameShape{TryRecords: legacyEHTryRecords, RootRecords: legacyEHRootRecords}, nil
+	}
+	return shared.ScanEHFrameShape(&sc.classifier, body)
 }
