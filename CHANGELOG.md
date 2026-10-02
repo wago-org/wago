@@ -19,6 +19,17 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Darwin/ARM64 cancellation and `Close` no longer hang behind a concurrent
   garbage collection, and an interrupted call is no longer occasionally
   reported as successful.
+- AMD64 no longer skips code after a `try_table` that is exited by a branch to
+  its own end (for example `br 0`), which previously ran the exception handler
+  instead and could return early or report an unhandled exception.
+- Dropping a null `exnref` produced by the fallthrough of a `catch_ref` or
+  `catch_all_ref` target no longer crashes the process on AMD64 or ARM64.
+- GC modules that use `extern.convert_any` or `any.convert_extern` together with
+  a function table now instantiate instead of failing with a mixed-table layout
+  error.
+- A module declaring an unused exception tag with more than two parameters is
+  now rejected at compile time with a clear limit error instead of failing at
+  instantiation.
 
 ## [v0.1.0-beta.10] - 2026-09-23
 
