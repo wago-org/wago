@@ -4435,7 +4435,25 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	// carries no environment setup at all (WARP's model). Args in GP/XMM regs.
 	if hostAdapter {
 		beforeAlign := a.Len()
-		if internalEntryShouldAlign(a.Len(), len(c.BodyBytes), f.policy) {
+		align := internalEntryShouldAlign(a.Len(), len(c.BodyBytes), f.policy)
+		if f.stagedTailDescriptors {
+			// Tail-call modules place a 4-byte backlink directly below the internal
+			// entry: its distance from this function's offset-0 adapter. An internal
+			// funcref descriptor names only the internal entry, and a wrapper-ABI
+			// caller tail-enters such a target through the adapter (see
+			// emitTailWrapperToAdapterJump). The adapter ends in RET, so the
+			// backlink and its padding are never executed.
+			pad := 0
+			if align {
+				pad = (-(a.Len() + 4)) & 15
+			}
+			var link [4]byte
+			binary.LittleEndian.PutUint32(link[:], uint32(a.Len()+pad+4))
+			for range pad {
+				a.EmitBytes([]byte{0xcc})
+			}
+			a.EmitBytes(link[:])
+		} else if align {
 			a.Align16()
 		}
 		if diagnosticsEnabled && f.stats != nil {

@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"runtime"
@@ -394,6 +395,9 @@ type fn struct {
 	// per-instance dispatch table; immediate bindings remain for low-level tests.
 	importBindings        []ImportBinding
 	stagedTailDescriptors bool
+	// adapterBacklink places the adapter backlink below the internal entry; see
+	// emitRegABI. Set for modules that may tail-enter descriptors.
+	adapterBacklink bool
 
 	// syncHostCalls is set when the module has any returning host import, so every
 	// host call in the module uses the synchronous control frame (callHostSync)
@@ -660,7 +664,31 @@ type scratch struct {
 	controlRootsPeak        int
 	controlRootsDiscarded   int
 	adapterTemplate         adapterTemplateCache
+	// adapterBacklink caches, for this scratch's single module, whether any
+	// function has a dynamic call (call_ref/return_call_ref and friends).
+	adapterBacklinkKnown bool
+	adapterBacklink      bool
 	transient
+}
+
+// moduleNeedsAdapterBacklink reports whether functions of this module carry the
+// adapter backlink: only a module with return_call_ref can tail-enter an
+// internal descriptor from a wrapper-ABI caller. The dynamic-call hint bit is a
+// cheap superset; without hints the backlink is emitted.
+func (sc *scratch) moduleNeedsAdapterBacklink(calleeHints []funcHints) bool {
+	if sc == nil || calleeHints == nil {
+		return true
+	}
+	if !sc.adapterBacklinkKnown {
+		for i := range calleeHints {
+			if calleeHints[i].hasUnsupportedDynamicCall() {
+				sc.adapterBacklink = true
+				break
+			}
+		}
+		sc.adapterBacklinkKnown = true
+	}
+	return sc.adapterBacklink
 }
 
 const maxCachedAdapterBytes = 256
@@ -2928,6 +2956,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	mt0, _ := m.MemoryType(0)
 	boundedMemcopy := len(c.BodyBytes) <= 4096 && hints.memOpCount() <= 128
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, memLimitReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
+	f.adapterBacklink = sc.moduleNeedsAdapterBacklink(calleeHints)
 	if f.nParams >= 64 {
 		f.localWritten = ^uint64(0)
 	} else if f.nParams != 0 {
@@ -4184,7 +4213,24 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	// carries no environment setup at all (WARP's model). Args in GP/V regs.
 	if hostAdapter && !cachedAdapter {
 		beforeAlign := a.Len()
-		f.alignCode(f.policy.InternalAlignLog2)
+		if f.adapterBacklink {
+			// A 4-byte backlink directly below the internal entry holds its
+			// distance from this function's offset-0 adapter. An internal funcref
+			// descriptor names only the internal entry; a wrapper-ABI caller
+			// tail-enters such a target through the adapter (see
+			// emitTailWrapperToAdapterJump). The adapter ends in RET, so the word
+			// is never executed, and cached adapter templates carry it along.
+			log2 := f.policy.InternalAlignLog2
+			if log2 == 0 {
+				log2 = 4
+			}
+			for range alignmentPadding(a.Len()+4, log2) / 4 {
+				a.Nop()
+			}
+			a.B = binary.LittleEndian.AppendUint32(a.B, uint32(a.Len()+4))
+		} else {
+			f.alignCode(f.policy.InternalAlignLog2)
+		}
 		if diagnosticsEnabled && f.stats != nil {
 			f.stats.NativeSize.AdapterToInternalPaddingBytes = a.Len() - beforeAlign
 		}
