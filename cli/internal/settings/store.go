@@ -2,6 +2,7 @@ package settings
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/wago-org/wago/cli/internal/project"
 	"github.com/wago-org/wago/internal/atomicfile"
+	"github.com/wago-org/wago/internal/filelock"
 	"github.com/wago-org/wago/internal/jsonstrict"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
@@ -154,6 +156,14 @@ func Save(config Config) error { return SaveFile(Path(), config) }
 var replaceSettingsFile = atomicfile.ReplaceFile
 
 func SaveFile(path string, config Config) error {
+	lock, err := filelock.Acquire(context.Background(), path+".lock")
+	if err != nil {
+		return err
+	}
+	return errors.Join(saveFileLocked(path, config), lock.Close())
+}
+
+func saveFileLocked(path string, config Config) error {
 	if err := Validate(config); err != nil {
 		return err
 	}
