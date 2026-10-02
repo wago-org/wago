@@ -30,11 +30,6 @@ func (a *Asm) regallocCopy(dst, src Reg, fp bool, size int) {
 		a.regallocObserver(e)
 	}
 }
-func (a *Asm) regallocSwap(dst, src Reg, size int) {
-	if a.regallocObserver != nil {
-		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Swap, Dst: regalloccheck.Register(regalloccheck.GP, uint8(dst)), Src: regalloccheck.Register(regalloccheck.GP, uint8(src)), Size: size})
-	}
-}
 func (a *Asm) regallocLoad(dst, base Reg, offset int32, fp bool, size int) {
 	if a.regallocObserver == nil {
 		return

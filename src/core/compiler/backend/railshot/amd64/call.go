@@ -1252,6 +1252,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
 	// trap unwinds the whole native tree in one jump (it never returns here).
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	f.a.CallMem(R8, hcTrampoline)
 	if recordRoots {
 		f.gcFrameRoots.RecordCallsite(uint32(len(f.a.B)), 0, rootOffsets)

@@ -5,6 +5,7 @@ package regalloccheck
 const Enabled = false
 
 type State struct{}
+type cell struct{}
 
 func (*State) Fresh(int) Value                     { return nil }
 func (*State) Put(Location, Value)                 {}

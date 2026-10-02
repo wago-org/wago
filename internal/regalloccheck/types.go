@@ -22,20 +22,6 @@ type Location struct {
 func Register(bank Bank, index uint8) Location { return Location{Bank: bank, Index: int32(index)} }
 func Slot(offset int32) Location               { return Location{Bank: Frame, Index: offset} }
 
-func (l Location) next(n int) Location {
-	if l.Bank == Frame {
-		l.Index += int32(n)
-	} else {
-		l.Byte += uint8(n)
-	}
-	return l
-}
-
-type cell struct {
-	value uint64
-	byte  uint8
-}
-
 // Value is a snapshot of symbolic bytes. It is independent of allocator owners.
 type Value []cell
 

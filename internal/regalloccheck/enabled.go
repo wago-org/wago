@@ -6,6 +6,20 @@ import "fmt"
 
 const Enabled = true
 
+func (l Location) next(n int) Location {
+	if l.Bank == Frame {
+		l.Index += int32(n)
+	} else {
+		l.Byte += uint8(n)
+	}
+	return l
+}
+
+type cell struct {
+	value uint64
+	byte  uint8
+}
+
 // State is confined to checked transfer regions. Missing bytes are unknown,
 // never proof that a value is present. No state is rebuilt after a transfer.
 type State struct {
