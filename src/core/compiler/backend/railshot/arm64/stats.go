@@ -72,33 +72,6 @@ var (
 	// fcmpFuseEnabled gates float compare→branch fusion (FCMP + B.cond instead of
 	// FCMP + CSET + branch). WAGO_NO_FCMP_FUSE=1 is the A/B oracle.
 	fcmpFuseEnabled = os.Getenv("WAGO_NO_FCMP_FUSE") != "1"
-	// zeroBranchEnabled selects CBZ/CBNZ for flag-dead i32 control tests instead
-	// of materializing NZCV with CMP before B.cond. The kill switch is the A/B
-	// oracle for the one-word lowering.
-	zeroBranchEnabled = os.Getenv("WAGO_ARM64_NO_ZERO_BRANCH") != "1"
-	// emptyZeroBranchEnabled extends zero-branch selection to Size/Embedded
-	// br_if edges after codegen proves that no reconciliation bytes were emitted.
-	emptyZeroBranchEnabled  = os.Getenv("WAGO_ARM64_NO_EMPTY_ZERO_BRANCH") != "1"
-	eqzZeroBranchEnabled    = os.Getenv("WAGO_ARM64_NO_EQZ_ZERO_BRANCH") != "1"
-	directZeroBranchEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_ZERO_BRANCH") != "1"
-	// logicalMoveImmediateEnabled lets constant materialization use the one-word
-	// ORR-from-zero-register alias when the value is a logical immediate.
-	logicalMoveImmediateEnabled = os.Getenv("WAGO_ARM64_NO_LOGICAL_MOVE_IMMEDIATE") != "1"
-	// compactMoveImmediate32Enabled selects true W-register MOVZ/MOVN/MOVK
-	// sequences instead of constructing every i32 as a zero-extended i64.
-	compactMoveImmediate32Enabled = os.Getenv("WAGO_ARM64_NO_COMPACT_MOVE_IMMEDIATE32") != "1"
-	// shiftedAddSubImmediateEnabled selects the legal imm12 LSL #12 form for
-	// Size/Embedded add, sub, compare, and address displacement operations.
-	shiftedAddSubImmediateEnabled = os.Getenv("WAGO_ARM64_NO_SHIFTED_ADD_SUB_IMMEDIATE") != "1"
-	// sharedTrapBodyEnabled lets Size/Embedded trap groups share the complete
-	// terminal trap record/writeback/unwind body within one function.
-	sharedTrapBodyEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_TRAP_BODY") != "1"
-	// moduleSharedTrapBodyEnabled lets internal functions replace byte-identical
-	// complete trap bodies with one B thunk and one module cold-island copy.
-	moduleSharedTrapBodyEnabled = os.Getenv("WAGO_ARM64_NO_MODULE_SHARED_TRAP_BODY") != "1"
-	// singleBitBranchEnabled lets the bounded finalizer replace an explicitly
-	// recorded one-bit TST+B.cond with TBZ/TBNZ when the final target fits imm14.
-	singleBitBranchEnabled = os.Getenv("WAGO_ARM64_NO_SINGLE_BIT_BRANCH") != "1"
 
 	// mulAddFuseEnabled gates MADD/MSUB fusion of add(c, a*b)/sub(c, a*b) into a
 	// single multiply-add/-subtract. WAGO_NO_MULADD=1 is the A/B oracle.
@@ -144,9 +117,6 @@ type CodegenStats struct {
 	MaxSpillSlots int                      // high-water operand spill slots
 	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
 	NativeSize    shared.NativeFunctionSizeReport
-	// FinalizerFallback is the fail-closed reason a Size/Embedded function kept
-	// its maximal-safe encoding instead of applying an available compaction plan.
-	FinalizerFallback string `json:"finalizer_fallback,omitempty"`
 	// InlineSiteBytes is the exact pre-finalization byte span emitted directly by
 	// inline sites. Caller frame growth and shared cold tails are outside it.
 	InlineSiteBytes int
@@ -171,7 +141,6 @@ type CodegenStats struct {
 	BoundsChecksInLoop    int // subset emitted inside a loop on a keyable base (P6.2 loop-precheck ceiling; count-only)
 	BoundsChecksHoistable int // subset on a loop-INVARIANT local base (not set in the loop) â the P6.2 hoistable target; count-only
 	TrapStubs             int // shared cold trap stubs emitted (one per trap code used)
-	TrapGroups            int // distinct source-function groups across trap stubs
 
 	// Calls, by lowering kind: regabi / mixed / wrapper / host / indirect /
 	// crossinstance / importdispatch.
@@ -204,12 +173,6 @@ func resetFuncStats(s *CodegenStats) {
 func (s *CodegenStats) setUnpinnedRetry() {
 	if s != nil {
 		s.UnpinnedRetry = true
-	}
-}
-
-func (s *CodegenStats) setFinalizerFallback(reason string) {
-	if s != nil {
-		s.FinalizerFallback = reason
 	}
 }
 
@@ -274,11 +237,6 @@ func (s *CodegenStats) addForcedLoad() {
 func (s *CodegenStats) addTrapStub() {
 	if s != nil {
 		s.TrapStubs++
-	}
-}
-func (s *CodegenStats) addTrapGroup() {
-	if s != nil {
-		s.TrapGroups++
 	}
 }
 func (s *CodegenStats) addBoundsCheck() {
@@ -430,13 +388,6 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "native: total=%d functions=%d function-align=%d module-other=%d dead-reserved=%d\n",
 		ms.NativeSize.TotalBytes, ms.NativeSize.FunctionBytes, ms.NativeSize.FunctionAlignmentBytes,
 		ms.NativeSize.ModuleOtherBytes, ms.NativeSize.DeadReservationBytes())
-	arenaSlack := 0
-	if ms.NativeSize.CompilerCodeArenaBytes != 0 {
-		arenaSlack = ms.NativeSize.CompilerCodeArenaBytes - ms.NativeSize.TotalBytes
-	}
-	fmt.Fprintf(&b, "native-mapping: required=%d pages=%d compiler-arena=%d arena-slack=%d\n",
-		ms.NativeSize.ExecutableMappingBytes, ms.NativeSize.ExecutableMappingPages,
-		ms.NativeSize.CompilerCodeArenaBytes, arenaSlack)
 	fmt.Fprintf(&b, "native-regions: adapters=%d internal-pad=%d internal=%d\n",
 		ms.NativeSize.HostAdapterBytes, ms.NativeSize.AdapterToInternalPaddingBytes,
 		ms.NativeSize.InternalFunctionBytes)
@@ -452,30 +403,6 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "native-data: literals=%d module-unique-literals=%d cross-function-duplicates=%d\n",
 		ms.NativeSize.LiteralPoolBytes, ms.NativeSize.LiteralPoolUniqueBytes,
 		ms.NativeSize.LiteralPoolDuplicateBytes)
-	type fallbackTotal struct{ count, bytes int }
-	fallbacks := make(map[string]fallbackTotal)
-	for _, s := range ms.Funcs {
-		if s == nil || s.FinalizerFallback == "" {
-			continue
-		}
-		total := fallbacks[s.FinalizerFallback]
-		total.count++
-		total.bytes += s.NativeSize.DeadReservationBytes()
-		fallbacks[s.FinalizerFallback] = total
-	}
-	if len(fallbacks) != 0 {
-		keys := make([]string, 0, len(fallbacks))
-		for reason := range fallbacks {
-			keys = append(keys, reason)
-		}
-		sort.Strings(keys)
-		b.WriteString("native-finalizer-fallbacks:")
-		for _, reason := range keys {
-			total := fallbacks[reason]
-			fmt.Fprintf(&b, " %s=%d/%dB", reason, total.count, total.bytes)
-		}
-		b.WriteByte('\n')
-	}
 	if len(ms.ModuleGlobalPins) == 0 {
 		fmt.Fprintf(&b, "module-pinned globals: none (K=0)\n")
 	} else {
@@ -513,13 +440,10 @@ func (s *CodegenStats) report() string {
 		s.NativeSize.HostAdapterBytes, s.NativeSize.AdapterToInternalPaddingBytes,
 		s.NativeSize.InternalFunctionBytes, s.NativeSize.FrameAdjustmentBytes,
 		s.NativeSize.DeadReservationBytes(), s.NativeSize.LiteralPoolBytes)
-	if s.FinalizerFallback != "" {
-		fmt.Fprintf(&b, "    finalizer-fallback: %s\n", s.FinalizerFallback)
-	}
 	fmt.Fprintf(&b, "    alloc: flushes=%d roots=%d deferred=%d flushBelow=%d roots=%d deferred=%d callFlush=%d localSetDeferred=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushRoots, s.FlushDeferredRoots, s.FlushBelows, s.FlushBelowRoots, s.FlushBelowDeferred, s.CallFlushes, s.LocalSetDeferred, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
-	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
-		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)
+	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",
+		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.PinnedLocals, s.PinnedGlobalsValue)
 	if s.InlineSiteBytes != 0 {
 		fmt.Fprintf(&b, "    inline-site-bytes: %d\n", s.InlineSiteBytes)
 	}

@@ -97,10 +97,11 @@ func gcSharedImmutableGlobalConsumerModule(mutable bool) []byte {
 func sharedGlobalDomainCount(store *referenceStore) int {
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	if store.gcDomains == nil {
-		return 0
+	count := 0
+	for domain := store.gcDomains; domain != nil; domain = domain.next {
+		count++
 	}
-	return store.gcDomains.n
+	return count
 }
 
 func TestGCSharedImmutableGlobalSameDomainCollectionAndCloseOrder(t *testing.T) {

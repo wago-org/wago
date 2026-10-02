@@ -27,6 +27,7 @@ type (
 	Compatibility                  = impl.Compatibility
 	CompilationIdentity            = impl.CompilationIdentity
 	Compiled                       = impl.Compiled
+	CompilerEngine                 = impl.CompilerEngine
 	CompilerInstructionRegistrar   = impl.CompilerInstructionRegistrar
 	CompilerTypeRegistrar          = impl.CompilerTypeRegistrar
 	CompositeTypeKind              = impl.CompositeTypeKind
@@ -45,6 +46,7 @@ type (
 	DataInit                       = impl.DataInit
 	DefinedTypeDescriptor          = impl.DefinedTypeDescriptor
 	Dirs                           = impl.Dirs
+	DraglineUnavailableError       = impl.DraglineUnavailableError
 	ElemInit                       = impl.ElemInit
 	ElemMode                       = impl.ElemMode
 	ExitError                      = impl.ExitError
@@ -136,7 +138,6 @@ type (
 	OffsetInit                     = impl.OffsetInit
 	OperationIdentity              = impl.OperationIdentity
 	OptKnobInfo                    = impl.OptKnobInfo
-	OptimizationObjective          = impl.OptimizationObjective
 	PackedType                     = impl.PackedType
 	PassiveDataInit                = impl.PassiveDataInit
 	Plugin                         = impl.Plugin
@@ -229,6 +230,8 @@ const (
 	CapMetricsWrite                            = impl.CapMetricsWrite
 	CapNetworkOutbound                         = impl.CapNetworkOutbound
 	CapTimerRead                               = impl.CapTimerRead
+	CompilerDragline                           = impl.CompilerDragline
+	CompilerRailshot                           = impl.CompilerRailshot
 	CompositeTypeArray                         = impl.CompositeTypeArray
 	CompositeTypeFunction                      = impl.CompositeTypeFunction
 	CompositeTypeStruct                        = impl.CompositeTypeStruct
@@ -282,10 +285,6 @@ const (
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateManaged                         = impl.InstantiateManaged
 	NoPluginOverrides                          = impl.NoPluginOverrides
-	OptimizeBalanced                           = impl.OptimizeBalanced
-	OptimizeEmbedded                           = impl.OptimizeEmbedded
-	OptimizeSize                               = impl.OptimizeSize
-	OptimizeSpeed                              = impl.OptimizeSpeed
 	PackedTypeI16                              = impl.PackedTypeI16
 	PackedTypeI8                               = impl.PackedTypeI8
 	PluginPhaseAuthorize                       = impl.PluginPhaseAuthorize

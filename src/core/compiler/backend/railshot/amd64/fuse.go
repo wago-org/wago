@@ -2,8 +2,6 @@
 
 package amd64
 
-import "math/bits"
-
 // Compare→branch fusion: when a relational compare (or eqz) feeds directly into
 // br_if or if, emit the compare's CMP/TEST and branch on its flags, skipping the
 // SETcc + materialize + TEST that a standalone boolean would need. This is the
@@ -50,16 +48,7 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 	f.pinned = f.pinned.add(x)
 	w := inner.typ.is64()
 	c := inner.arg1.st.cval
-	mask := uint64(c)
-	if !w {
-		mask = uint64(uint32(c))
-	}
-	cc := condE
-	if singleBitMaskTestEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) && mask&(mask-1) == 0 {
-		f.a.BtImm(x, uint8(bits.TrailingZeros64(mask)), w)
-		cc = condAE // BT copies the selected bit to CF; AE means CF=0.
-		f.stats.peep("single-bit-mask-test")
-	} else if !w || fitsImm32(c) {
+	if !w || fitsImm32(c) {
 		f.a.TestImm(x, uint32(c), w)
 	} else {
 		t := f.allocReg(maskOf(x))
@@ -73,7 +62,7 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 	}
 	f.stats.peep("swar-mask-test")
 	f.consumeBlockBelow(node)
-	return cc, true
+	return condE, true
 }
 
 // flushBelow materializes every operand strictly below node's valent block into
@@ -245,7 +234,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	case stSlot:
 		f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slot), w)
 	case stLocalRef:
-		f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.idx), w)
+		f.a.AluRM(cmpRMcode, L, RSP, f.localOff(right.st.idx), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
 			f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)

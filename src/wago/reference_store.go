@@ -37,48 +37,22 @@ type referenceStore struct {
 	externKey     uint64
 	externSeed    uint32
 	externrefs    []externrefSlot
-	gcDomains     *gcDomainTopology
-}
-
-// gcDomainTopology keeps the globally ordered Runtime GC-domain list stable
-// across dynamic funcref invocations. It is a sidecar so scalar-only stores keep
-// the established referenceStore footprint. Host callbacks suspend the read
-// lease together with collector leases, allowing instantiation and teardown to
-// update the list before native resume.
-type gcDomainTopology struct {
-	sync.RWMutex
-	first *gcStoreDomain
-	last  *gcStoreDomain
-	n     int
-
-	funcrefMu       sync.Mutex
-	funcrefGCActive bool
-	funcrefTables   map[*Table]uint32
+	gcDomains     *gcStoreDomain
 }
 
 // gcStoreDomain gives Runtime-owned WasmGC instances one compact-reference
 // address space. Module-local type indexes are translated through canonical
 // recursive structural identities before they enter this collector.
 type gcStoreDomain struct {
-	mu sync.Mutex
-	// invocationMu covers the complete guest-call boundary, including compact
-	// reference result tokenization after native code returns. Native execution
-	// and helper locks alone leave a window where another tenant can collect an
-	// as-yet-unrooted result from this shared collector. Arbitrary host callbacks
-	// suspend this lease while exact parked roots remain published.
-	invocationMu    sync.Mutex
-	invocationState sync.Mutex
-	invocationOwner invocationID
-	id              uint64
-	collector       *gc.Collector
-	private         bool
-	config          gc.Config
-	types           []gc.TypeDesc
-	typeReps        []gcDomainTypeRepresentative
-	refs            uint32
-	claims          uint32 // prepared instantiations not yet registered
-	prev            *gcStoreDomain
-	next            *gcStoreDomain
+	mu        sync.Mutex
+	id        uint64
+	collector *gc.Collector
+	config    gc.Config
+	types     []gc.TypeDesc
+	typeReps  []gcDomainTypeRepresentative
+	refs      uint32
+	claims    uint32 // prepared instantiations not yet registered
+	next      *gcStoreDomain
 }
 
 var nextGCDomainIdentity atomic.Uint64
@@ -96,259 +70,6 @@ type referenceStoreInstance struct {
 	quiesced          bool
 	resourcesReleased bool
 	gcDomain          *gcStoreDomain
-	// invocationDomains is allocated only when direct/transitive function imports
-	// reach a GC domain other than this instance's own domain. The common local-GC
-	// case uses gcDomain directly and pays no sidecar allocation.
-	invocationDomains        *gcInvocationDomainSet
-	dynamicInvocationDomains bool
-}
-
-const inlineGCInvocationDomains = 4
-
-type gcInvocationDomainSet struct {
-	inline [inlineGCInvocationDomains]*gcStoreDomain
-	extra  []*gcStoreDomain
-	n      int
-}
-
-func (s *gcInvocationDomainSet) len() int {
-	if s == nil {
-		return 0
-	}
-	return s.n
-}
-
-func (s *gcInvocationDomainSet) at(i int) *gcStoreDomain {
-	if s == nil || i < 0 || i >= s.n {
-		return nil
-	}
-	if i < len(s.inline) {
-		return s.inline[i]
-	}
-	return s.extra[i-len(s.inline)]
-}
-
-func (s *gcInvocationDomainSet) set(i int, domain *gcStoreDomain) {
-	if i < len(s.inline) {
-		s.inline[i] = domain
-		return
-	}
-	s.extra[i-len(s.inline)] = domain
-}
-
-func (s *gcInvocationDomainSet) add(domain *gcStoreDomain) {
-	if domain == nil {
-		return
-	}
-	for i := 0; i < s.n; i++ {
-		if s.at(i) == domain {
-			return
-		}
-	}
-	if s.n < len(s.inline) {
-		s.inline[s.n] = domain
-	} else {
-		s.extra = append(s.extra, domain)
-	}
-	s.n++
-}
-
-func (s *gcInvocationDomainSet) sort() {
-	for i := 1; i < s.n; i++ {
-		domain := s.at(i)
-		j := i
-		for j > 0 && s.at(j-1).id > domain.id {
-			s.set(j, s.at(j-1))
-			j--
-		}
-		s.set(j, domain)
-	}
-}
-
-type gcInvocationDomainView struct {
-	local   *gcStoreDomain
-	set     *gcInvocationDomainSet
-	first   *gcStoreDomain
-	last    *gcStoreDomain
-	n       int
-	dynamic bool
-}
-
-type gcInvocationDomainIterator struct {
-	topology *gcStoreDomain
-	local    *gcStoreDomain
-	reverse  bool
-}
-
-func (v gcInvocationDomainView) iterator(reverse bool) gcInvocationDomainIterator {
-	it := gcInvocationDomainIterator{local: v.local, reverse: reverse}
-	if reverse {
-		it.topology = v.last
-	} else {
-		it.topology = v.first
-	}
-	return it
-}
-
-func (it *gcInvocationDomainIterator) next() *gcStoreDomain {
-	if it.local != nil && (it.topology == nil || (!it.reverse && it.local.id < it.topology.id) || (it.reverse && it.local.id > it.topology.id)) {
-		domain := it.local
-		it.local = nil
-		return domain
-	}
-	domain := it.topology
-	if domain == nil {
-		return nil
-	}
-	if it.reverse {
-		it.topology = domain.prev
-	} else {
-		it.topology = domain.next
-	}
-	return domain
-}
-
-func (v gcInvocationDomainView) len() int {
-	if v.dynamic {
-		if v.local != nil {
-			return v.n + 1
-		}
-		return v.n
-	}
-	if v.set != nil {
-		return v.set.len()
-	}
-	if v.local != nil {
-		return 1
-	}
-	return 0
-}
-
-func (v gcInvocationDomainView) at(i int) *gcStoreDomain {
-	if v.dynamic {
-		if i < 0 || i >= v.len() {
-			return nil
-		}
-		it := v.iterator(false)
-		var domain *gcStoreDomain
-		for ; i >= 0; i-- {
-			domain = it.next()
-		}
-		return domain
-	}
-	if v.set != nil {
-		return v.set.at(i)
-	}
-	if i == 0 {
-		return v.local
-	}
-	return nil
-}
-
-func (v gcInvocationDomainView) lock() {
-	if v.dynamic {
-		it := v.iterator(false)
-		for domain := it.next(); domain != nil; domain = it.next() {
-			domain.invocationMu.Lock()
-		}
-		return
-	}
-	for i := 0; i < v.len(); i++ {
-		v.at(i).invocationMu.Lock()
-	}
-}
-
-func (v gcInvocationDomainView) unlock() {
-	if v.dynamic {
-		it := v.iterator(true)
-		for domain := it.next(); domain != nil; domain = it.next() {
-			domain.invocationMu.Unlock()
-		}
-		return
-	}
-	for i := v.len() - 1; i >= 0; i-- {
-		v.at(i).invocationMu.Unlock()
-	}
-}
-
-func (v gcInvocationDomainView) ownedBy(owner invocationID) bool {
-	if owner == 0 {
-		return false
-	}
-	if v.dynamic {
-		it := v.iterator(false)
-		for domain := it.next(); domain != nil; domain = it.next() {
-			domain.invocationState.Lock()
-			owned := domain.invocationOwner == owner
-			domain.invocationState.Unlock()
-			if !owned {
-				return false
-			}
-		}
-		return true
-	}
-	for i := 0; i < v.len(); i++ {
-		domain := v.at(i)
-		domain.invocationState.Lock()
-		owned := domain.invocationOwner == owner
-		domain.invocationState.Unlock()
-		if !owned {
-			return false
-		}
-	}
-	return true
-}
-
-func (v gcInvocationDomainView) claim(owner invocationID) {
-	if v.dynamic {
-		it := v.iterator(false)
-		for domain := it.next(); domain != nil; domain = it.next() {
-			domain.invocationState.Lock()
-			if domain.invocationOwner != 0 {
-				domain.invocationState.Unlock()
-				panic("wago: occupied Runtime GC invocation lease")
-			}
-			domain.invocationOwner = owner
-			domain.invocationState.Unlock()
-		}
-		return
-	}
-	for i := 0; i < v.len(); i++ {
-		domain := v.at(i)
-		domain.invocationState.Lock()
-		if domain.invocationOwner != 0 {
-			domain.invocationState.Unlock()
-			panic("wago: occupied Runtime GC invocation lease")
-		}
-		domain.invocationOwner = owner
-		domain.invocationState.Unlock()
-	}
-}
-
-func (v gcInvocationDomainView) release(owner invocationID) {
-	if v.dynamic {
-		it := v.iterator(false)
-		for domain := it.next(); domain != nil; domain = it.next() {
-			domain.invocationState.Lock()
-			if domain.invocationOwner != owner {
-				domain.invocationState.Unlock()
-				panic("wago: invalid Runtime GC invocation lease")
-			}
-			domain.invocationOwner = 0
-			domain.invocationState.Unlock()
-		}
-		return
-	}
-	for i := 0; i < v.len(); i++ {
-		domain := v.at(i)
-		domain.invocationState.Lock()
-		if domain.invocationOwner != owner {
-			domain.invocationState.Unlock()
-			panic("wago: invalid Runtime GC invocation lease")
-		}
-		domain.invocationOwner = 0
-		domain.invocationState.Unlock()
-	}
 }
 
 type structuralTypeRegistration struct {
@@ -734,61 +455,15 @@ func newReferenceStore(private bool) *referenceStore {
 	return &referenceStore{private: private, runtimeClosed: private}
 }
 
-func (s *referenceStore) ensureGCTopology() *gcDomainTopology {
-	if s == nil {
-		return nil
-	}
-	s.mu.Lock()
-	if s.gcDomains == nil {
-		s.gcDomains = new(gcDomainTopology)
-	}
-	topology := s.gcDomains
-	s.mu.Unlock()
-	return topology
-}
-
-func (topology *gcDomainTopology) bindFuncrefTables(store *referenceStore) error {
-	for table := range topology.funcrefTables {
-		if table == nil || table.owner == nil {
-			continue
-		}
-		o := table.owner
-		o.mu.Lock()
-		foreign := o.hasForeignFuncrefStoreLocked(store)
-		bound := o.funcrefGCStore
-		if !foreign && (bound == nil || bound == store) {
-			o.funcrefGCStore = store
-		}
-		o.mu.Unlock()
-		if foreign || bound != nil && bound != store {
-			return fmt.Errorf("wago: Runtime GC domains cannot share a mutable funcref table across reference stores")
-		}
-	}
-	return nil
-}
-
-func (s *referenceStore) bindFuncrefGCStore() error {
-	topology := s.ensureGCTopology()
-	topology.funcrefMu.Lock()
-	defer topology.funcrefMu.Unlock()
-	if err := topology.bindFuncrefTables(s); err != nil {
-		return err
-	}
-	topology.funcrefGCActive = true
-	return nil
-}
-
 func (s *referenceStore) ownsGCCollector(collector *gc.Collector) bool {
 	if s == nil || collector == nil {
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if topology := s.gcDomains; topology != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
-			if domain.collector == collector {
-				return true
-			}
+	for domain := s.gcDomains; domain != nil; domain = domain.next {
+		if domain.collector == collector {
+			return true
 		}
 	}
 	return false
@@ -800,11 +475,9 @@ func (s *referenceStore) gcDomainIdentity(collector *gc.Collector) uint64 {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if topology := s.gcDomains; topology != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
-			if domain.collector == collector {
-				return domain.id
-			}
+	for domain := s.gcDomains; domain != nil; domain = domain.next {
+		if domain.collector == collector {
+			return domain.id
 		}
 	}
 	return 0
@@ -816,12 +489,10 @@ func (s *referenceStore) lockGCCollector(collector *gc.Collector) *gcStoreDomain
 	}
 	s.mu.Lock()
 	var found *gcStoreDomain
-	if topology := s.gcDomains; topology != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
-			if domain.collector == collector {
-				found = domain
-				break
-			}
+	for domain := s.gcDomains; domain != nil; domain = domain.next {
+		if domain.collector == collector {
+			found = domain
+			break
 		}
 	}
 	s.mu.Unlock()
@@ -841,189 +512,6 @@ func (in *Instance) lockGCCollector() *gcStoreDomain {
 func unlockGCCollector(domain *gcStoreDomain) {
 	if domain != nil {
 		domain.mu.Unlock()
-	}
-}
-
-type gcInvocationLease struct {
-	in       *Instance
-	topology *gcDomainTopology
-	domains  gcInvocationDomainView
-	owner    invocationID
-	acquired bool
-	dynamic  bool
-}
-
-func (in *Instance) gcInvocationDomainsForInspection() (gcInvocationDomainView, *gcDomainTopology) {
-	if in == nil || in.refStore == nil || in.executionFlags.Load()&executionFlagDynamicGCDomain == 0 {
-		return in.gcInvocationDomains(), nil
-	}
-	in.refStore.mu.Lock()
-	topology := in.refStore.gcDomains
-	in.refStore.mu.Unlock()
-	if topology != nil {
-		topology.RLock()
-	}
-	return in.gcInvocationDomains(), topology
-}
-
-func (in *Instance) reachesPrivateGCInvocationDomain() bool {
-	domains, topology := in.gcInvocationDomainsForInspection()
-	if topology != nil {
-		defer topology.RUnlock()
-	}
-	for i := 0; i < domains.len(); i++ {
-		if domains.at(i).private {
-			return true
-		}
-	}
-	return false
-}
-
-func (in *Instance) gcInvocationDomain() *gcStoreDomain {
-	if in == nil || in.refStore == nil || in.gc == nil {
-		return nil
-	}
-	in.refStore.mu.Lock()
-	entry := in.refStore.instances[in]
-	var domain *gcStoreDomain
-	if entry != nil {
-		domain = entry.gcDomain
-	}
-	in.refStore.mu.Unlock()
-	return domain
-}
-
-func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
-	if in == nil || in.refStore == nil || in.gc == nil && in.executionFlags.Load()&executionFlagImportedGCDomain == 0 {
-		return gcInvocationDomainView{}
-	}
-	store := in.refStore
-	store.mu.Lock()
-	entry := store.instances[in]
-	var domains gcInvocationDomainView
-	if entry != nil {
-		if entry.dynamicInvocationDomains {
-			if entry.gcDomain != nil && entry.gcDomain.private {
-				domains.local = entry.gcDomain
-			}
-			if topology := store.gcDomains; topology != nil {
-				domains.first, domains.last, domains.n = topology.first, topology.last, topology.n
-			}
-			domains.dynamic = true
-		} else {
-			domains = gcInvocationDomainView{local: entry.gcDomain, set: entry.invocationDomains}
-		}
-	}
-	store.mu.Unlock()
-	return domains
-}
-
-func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
-	if owner == 0 {
-		owner = newInvocationID()
-	}
-	dynamic := in != nil && in.refStore != nil && in.executionFlags.Load()&executionFlagDynamicGCDomain != 0
-	var topology *gcDomainTopology
-	if dynamic {
-		in.refStore.mu.Lock()
-		topology = in.refStore.gcDomains
-		in.refStore.mu.Unlock()
-		if topology == nil {
-			panic("wago: dynamic Runtime GC invocation has no topology")
-		}
-		topology.RLock()
-	}
-	domains := in.gcInvocationDomains()
-	if domains.len() == 0 {
-		if dynamic {
-			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}
-		}
-		return gcInvocationLease{}
-	}
-	// A native cross-instance call reuses the public root's invocation identity.
-	// The root pre-acquires the transitive, globally ordered domain set, so a
-	// target reached through its retained imports borrows the already-held lease
-	// instead of recursively locking the same non-reentrant mutexes.
-	first := domains.at(0)
-	first.invocationState.Lock()
-	borrowed := first.invocationOwner == owner
-	first.invocationState.Unlock()
-	if borrowed {
-		if !domains.ownedBy(owner) {
-			panic("wago: partial Runtime GC invocation lease ownership")
-		}
-		if dynamic {
-			topology.RUnlock()
-		}
-		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner}
-	}
-	domains.lock()
-	domains.claim(owner)
-	return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, dynamic: dynamic}
-}
-
-func (l gcInvocationLease) unlock() {
-	if !l.acquired {
-		return
-	}
-	domains := l.domains
-	if l.dynamic {
-		domains = l.in.gcInvocationDomains()
-	}
-	domains.release(l.owner)
-	domains.unlock()
-	if l.dynamic {
-		l.topology.RUnlock()
-	}
-}
-
-func (in *Instance) ownsGCInvocation(owner invocationID) bool {
-	domain := in.gcInvocationDomain()
-	if domain == nil || owner == 0 {
-		return false
-	}
-	domain.invocationState.Lock()
-	owned := domain.invocationOwner == owner
-	domain.invocationState.Unlock()
-	return owned
-}
-
-func (in *Instance) suspendGCInvocation(owner invocationID) func() {
-	dynamic := in != nil && in.refStore != nil && in.executionFlags.Load()&executionFlagDynamicGCDomain != 0
-	var topology *gcDomainTopology
-	if dynamic {
-		in.refStore.mu.Lock()
-		topology = in.refStore.gcDomains
-		in.refStore.mu.Unlock()
-		if topology == nil {
-			panic("wago: dynamic Runtime GC invocation has no topology")
-		}
-	}
-	domains := in.gcInvocationDomains()
-	if owner == 0 || domains.len() == 0 && !dynamic {
-		return func() {}
-	}
-	if !domains.ownedBy(owner) {
-		if !domains.dynamic && domains.set == nil {
-			// Start-function and construction callbacks can run before a public
-			// invocation lease exists. Their native entry is already serialized, so
-			// there is no complete-call lease to suspend or restore.
-			return func() {}
-		}
-		panic("wago: partial Runtime GC invocation lease ownership")
-	}
-	domains.release(owner)
-	domains.unlock()
-	if dynamic {
-		topology.RUnlock()
-	}
-	return func() {
-		if dynamic {
-			topology.RLock()
-			domains = in.gcInvocationDomains()
-		}
-		domains.lock()
-		domains.claim(owner)
 	}
 }
 
@@ -1114,15 +602,8 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 		return
 	}
 	s.mu.Lock()
-	topology := s.gcDomains
-	s.mu.Unlock()
-	if topology == nil {
-		return
-	}
-	topology.Lock()
-	defer topology.Unlock()
-	s.mu.Lock()
-	for domain := topology.first; domain != nil; domain = domain.next {
+	var prev *gcStoreDomain
+	for domain := s.gcDomains; domain != nil; domain = domain.next {
 		if domain.collector == collector {
 			if domain.claims > 0 {
 				domain.claims--
@@ -1131,24 +612,16 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 				s.mu.Unlock()
 				return
 			}
-			if domain.prev == nil {
-				topology.first = domain.next
+			if prev == nil {
+				s.gcDomains = domain.next
 			} else {
-				domain.prev.next = domain.next
-			}
-			if domain.next == nil {
-				topology.last = domain.prev
-			} else {
-				domain.next.prev = domain.prev
-			}
-			domain.prev, domain.next = nil, nil
-			if topology.n > 0 {
-				topology.n--
+				prev.next = domain.next
 			}
 			s.mu.Unlock()
 			collector.Close()
 			return
 		}
+		prev = domain
 	}
 	s.mu.Unlock()
 }
@@ -1167,17 +640,6 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 	if s == nil || s.private {
 		return nil, nil, fmt.Errorf("wago: shared WasmGC ownership requires an explicit Runtime")
 	}
-	topology := s.ensureGCTopology()
-	topology.Lock()
-	topologyLocked := true
-	defer func() {
-		if topologyLocked {
-			topology.Unlock()
-		}
-	}()
-	if err := s.bindFuncrefGCStore(); err != nil {
-		return nil, nil, err
-	}
 	s.mu.Lock()
 	if s.runtimeClosed {
 		s.mu.Unlock()
@@ -1185,7 +647,7 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 	}
 	var selected *gcStoreDomain
 	if preferred != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
+		for domain := s.gcDomains; domain != nil; domain = domain.next {
 			if domain.collector == preferred {
 				selected = domain
 				break
@@ -1204,7 +666,7 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 			return nil, nil, fmt.Errorf("wago: WasmGC telemetry recorder does not own the imported Runtime GC domain")
 		}
 	} else {
-		for domain := topology.first; domain != nil; domain = domain.next {
+		for domain := s.gcDomains; domain != nil; domain = domain.next {
 			if !gcModuleFitsDomain(c, domain) {
 				continue
 			}
@@ -1231,14 +693,8 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 			s.mu.Unlock()
 			return nil, nil, err
 		}
-		selected = &gcStoreDomain{id: newGCDomainIdentity(), collector: collector, config: config, types: types, typeReps: reps, claims: 1, prev: topology.last}
-		if topology.last == nil {
-			topology.first = selected
-		} else {
-			topology.last.next = selected
-		}
-		topology.last = selected
-		topology.n++
+		selected = &gcStoreDomain{id: newGCDomainIdentity(), collector: collector, config: config, types: types, typeReps: reps, claims: 1, next: s.gcDomains}
+		s.gcDomains = selected
 		s.mu.Unlock()
 		return collector, mapping, nil
 	}
@@ -1248,8 +704,6 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 	}
 	selected.claims++
 	s.mu.Unlock()
-	topology.Unlock()
-	topologyLocked = false
 
 	selected.mu.Lock()
 	mapping, types, reps, err := gcCanonicalTypePlan(c, selected.typeReps, selected.types, preferred != nil)
@@ -1268,35 +722,6 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 }
 
 func (s *referenceStore) registerInstance(in *Instance) error {
-	var importedInvocationDomains gcInvocationDomainSet
-	dynamicInvocationDomains := !s.private && in != nil && compiledHasDynamicFuncrefReachability(in.c)
-	importsPrivateInvocationDomain := false
-	if in != nil && in.c != nil {
-		for _, key := range in.c.Imports {
-			export, ok := in.imports[key].(*InstanceExport)
-			if !ok || export == nil || export.inst == nil {
-				continue
-			}
-			if export.inst.executionFlags.Load()&executionFlagDynamicGCDomain != 0 {
-				if export.inst.refStore != s {
-					return fmt.Errorf("wago: dynamic funcref import %q requires the same Runtime", key)
-				}
-				dynamicInvocationDomains = true
-				continue
-			}
-			domains := export.inst.gcInvocationDomains()
-			for i := 0; i < domains.len(); i++ {
-				domain := domains.at(i)
-				if domain.private {
-					importsPrivateInvocationDomain = true
-				}
-				importedInvocationDomains.add(domain)
-			}
-		}
-	}
-	if dynamicInvocationDomains && importsPrivateInvocationDomain {
-		return fmt.Errorf("wago: dynamic funcref imports cannot reach a private GC invocation domain")
-	}
 	if in != nil && in.c != nil {
 		if err := in.c.prepareStructuralCallIdentities(); err != nil {
 			return fmt.Errorf("wago: prepare structural call identities: %w", err)
@@ -1312,9 +737,6 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	}
 	if s.instances == nil {
 		s.instances = make(map[*Instance]*referenceStoreInstance)
-	}
-	if dynamicInvocationDomains && s.gcDomains == nil {
-		s.gcDomains = new(gcDomainTopology)
 	}
 	if _, exists := s.instances[in]; exists {
 		return nil
@@ -1369,11 +791,8 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 		s.typeKeys[key] = registered
 	}
 	var domain *gcStoreDomain
-	if topology := s.gcDomains; topology != nil {
-		for candidate := topology.first; candidate != nil; candidate = candidate.next {
-			if candidate.collector != in.gc {
-				continue
-			}
+	for candidate := s.gcDomains; candidate != nil; candidate = candidate.next {
+		if candidate.collector == in.gc {
 			domain = candidate
 			if domain.refs == ^uint32(0) {
 				return fmt.Errorf("wago: Runtime GC domain has too many instances")
@@ -1386,88 +805,10 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 			break
 		}
 	}
-	if domain == nil && in.gc != nil {
-		// Private collectors still need complete-call ownership through public
-		// result tokenization. Keep their invocation domain out of the Runtime
-		// topology so ownership, root scanning, and collector lifetime remain local.
-		domain = &gcStoreDomain{id: newGCDomainIdentity(), collector: in.gc, private: true}
-	}
-	invocationDomains := importedInvocationDomains
-	invocationDomains.add(domain)
-	invocationDomains.sort()
-	var storedInvocationDomains *gcInvocationDomainSet
-	if !dynamicInvocationDomains && invocationDomains.len() != 0 && (invocationDomains.len() != 1 || invocationDomains.at(0) != domain) {
-		storedInvocationDomains = new(gcInvocationDomainSet)
-		*storedInvocationDomains = invocationDomains
-	}
-	flagsToAdd := uint32(0)
-	if domain != nil && !domain.private {
-		flagsToAdd |= executionFlagStoreOwnedGCCollector
-	}
-	if dynamicInvocationDomains || storedInvocationDomains != nil {
-		flagsToAdd |= executionFlagImportedGCDomain
-		if dynamicInvocationDomains {
-			flagsToAdd |= executionFlagDynamicGCDomain
-		}
-	}
-	for flagsToAdd != 0 {
-		flags := in.executionFlags.Load()
-		if flags&flagsToAdd == flagsToAdd || in.executionFlags.CompareAndSwap(flags, flags|flagsToAdd) {
-			break
-		}
-	}
 	s.instanceTypes[in] = keys
-	s.instances[in] = &referenceStoreInstance{
-		gcDomain: domain, invocationDomains: storedInvocationDomains,
-		dynamicInvocationDomains: dynamicInvocationDomains,
-	}
+	s.instances[in] = &referenceStoreInstance{gcDomain: domain}
 	s.liveInstances++
 	return nil
-}
-
-func compiledHasDynamicFuncrefReachability(c *Compiled) bool {
-	if c == nil {
-		return false
-	}
-	// A funcref table or global can acquire a cross-instance descriptor after
-	// instantiation. Conservatively lease every live Runtime GC domain for these
-	// container-bearing modules; ordinary ref.func and direct-import modules keep
-	// their compact statically discovered domain sets.
-	if c.hasFuncrefTable() {
-		return true
-	}
-	for i := range c.Globals {
-		if c.Globals[i].Type == ValFuncRef {
-			return true
-		}
-	}
-	if c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) {
-		for i := range c.importFuncSigs {
-			if funcSigHasFuncref(c.importFuncSigs[i]) {
-				return true
-			}
-		}
-		for i := range c.Funcs {
-			if funcSigHasFuncref(c.Funcs[i]) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func funcSigHasFuncref(sig FuncSig) bool {
-	for _, typ := range sig.Params {
-		if typ == ValFuncRef {
-			return true
-		}
-	}
-	for _, typ := range sig.Results {
-		if typ == ValFuncRef {
-			return true
-		}
-	}
-	return false
 }
 
 func compiledFunctionSignature(c *Compiled, index int) (FuncSig, bool) {
@@ -1493,59 +834,25 @@ func (s *referenceStore) releaseGCDomainLocked(entry *referenceStoreInstance) *g
 	}
 	domain := entry.gcDomain
 	entry.gcDomain = nil
-	if domain.private {
-		return nil
-	}
 	if domain.refs > 0 {
 		domain.refs--
 	}
 	if domain.refs != 0 || domain.claims != 0 {
 		return nil
 	}
-	topology := s.gcDomains
-	if topology == nil {
-		return nil
-	}
-	for candidate := topology.first; candidate != nil; candidate = candidate.next {
+	var prev *gcStoreDomain
+	for candidate := s.gcDomains; candidate != nil; candidate = candidate.next {
 		if candidate == domain {
-			if candidate.prev == nil {
-				topology.first = candidate.next
+			if prev == nil {
+				s.gcDomains = candidate.next
 			} else {
-				candidate.prev.next = candidate.next
-			}
-			if candidate.next == nil {
-				topology.last = candidate.prev
-			} else {
-				candidate.next.prev = candidate.prev
-			}
-			candidate.prev, candidate.next = nil, nil
-			if topology.n > 0 {
-				topology.n--
+				prev.next = candidate.next
 			}
 			return domain.collector
 		}
+		prev = candidate
 	}
 	return nil
-}
-
-func (s *referenceStore) lockGCDomainTopology() *gcDomainTopology {
-	if s == nil {
-		return nil
-	}
-	s.mu.Lock()
-	topology := s.gcDomains
-	s.mu.Unlock()
-	if topology != nil {
-		topology.Lock()
-	}
-	return topology
-}
-
-func (s *referenceStore) lockGCDomainTopologyForInstance(in *Instance) *gcDomainTopology {
-	if in == nil || in.gc == nil {
-		return nil
-	}
-	return s.lockGCDomainTopology()
 }
 
 // abortRegisteredInstance terminates store membership for an instance whose
@@ -1553,7 +860,6 @@ func (s *referenceStore) lockGCDomainTopologyForInstance(in *Instance) *gcDomain
 func (s *referenceStore) abortRegisteredInstance(in *Instance) {
 	var release referenceTokenEntries
 	var collector *gc.Collector
-	topology := s.lockGCDomainTopologyForInstance(in)
 	s.mu.Lock()
 	if entry := s.instances[in]; entry != nil {
 		if !entry.closeAccounted && s.liveInstances > 0 {
@@ -1565,9 +871,6 @@ func (s *referenceStore) abortRegisteredInstance(in *Instance) {
 	}
 	release = s.maybeReleaseEntriesLocked()
 	s.mu.Unlock()
-	if topology != nil {
-		topology.Unlock()
-	}
 	if collector != nil {
 		collector.Close()
 	}
@@ -1577,7 +880,6 @@ func (s *referenceStore) abortRegisteredInstance(in *Instance) {
 func (s *referenceStore) advanceInstanceLifetime(in *Instance, event referenceLifetimeEvent) {
 	var release referenceTokenEntries
 	var collector *gc.Collector
-	topology := s.lockGCDomainTopologyForInstance(in)
 	s.mu.Lock()
 	if entry := s.instances[in]; entry != nil {
 		switch event {
@@ -1603,9 +905,6 @@ func (s *referenceStore) advanceInstanceLifetime(in *Instance, event referenceLi
 	}
 	release = s.maybeReleaseEntriesLocked()
 	s.mu.Unlock()
-	if topology != nil {
-		topology.Unlock()
-	}
 	if collector != nil {
 		collector.Close()
 	}
@@ -1693,40 +992,22 @@ func (s *referenceStore) hostFuncRef(dispatch uint32) *HostFuncRef {
 
 func (s *referenceStore) storeObjectClosed() {
 	var release referenceTokenEntries
-	topology := s.lockGCDomainTopology()
 	s.mu.Lock()
 	if s.liveObjects > 0 {
 		s.liveObjects--
 	}
 	release = s.maybeReleaseEntriesLocked()
 	s.mu.Unlock()
-	if topology != nil {
-		topology.Unlock()
-	}
 	releaseReferenceEntries(release)
 }
 
 func (s *referenceStore) closeRuntime() {
 	var release referenceTokenEntries
-	topology := s.lockGCDomainTopology()
 	s.mu.Lock()
 	s.runtimeClosed = true
 	release = s.maybeReleaseEntriesLocked()
 	s.mu.Unlock()
-	if topology != nil {
-		topology.Unlock()
-	}
 	releaseReferenceEntries(release)
-}
-
-// emptyForInlineClose reports whether closing the store has constant work. The
-// caller has already published Runtime shutdown, so no new entries can arrive.
-func (s *referenceStore) emptyForInlineClose() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.liveInstances == 0 && s.liveObjects == 0 && len(s.instances) == 0 &&
-		len(s.instanceTypes) == 0 && len(s.byIdentity) == 0 && len(s.byToken) == 0 &&
-		len(s.gcByToken) == 0 && len(s.externrefs) == 0 && s.gcDomains == nil
 }
 
 func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, error) {
@@ -1957,7 +1238,9 @@ func (s *referenceStore) releaseGCRef(source *Instance, token uint64) error {
 		return fmt.Errorf("GC reference token owner state is unavailable")
 	}
 	unlockNative := lockNativeExecutionForHostAccess()
+	defer unlockNative()
 	lockedDomain := source.lockGCCollector()
+	defer unlockGCCollector(lockedDomain)
 	state.mu.Lock()
 	s.mu.Lock()
 	entry, ok = s.gcByToken[token]
@@ -1965,22 +1248,16 @@ func (s *referenceStore) releaseGCRef(source *Instance, token uint64) error {
 	if !ok || entry.owner != source || state.resultTokenCount == 0 || ownerIndex >= state.resultRootsMade || state.resultTokens[ownerIndex] != token || state.resultRootSlots[ownerIndex] != entry.slot {
 		s.mu.Unlock()
 		state.mu.Unlock()
-		unlockGCCollector(lockedDomain)
-		unlockNative()
 		return fmt.Errorf("invalid or stale GC reference token")
 	}
 	if source.gc == nil {
 		s.mu.Unlock()
 		state.mu.Unlock()
-		unlockGCCollector(lockedDomain)
-		unlockNative()
 		return fmt.Errorf("GC reference token collector is unavailable")
 	}
 	if err := source.gc.SetGlobalSlot(entry.slot, gc.Null()); err != nil {
 		s.mu.Unlock()
 		state.mu.Unlock()
-		unlockGCCollector(lockedDomain)
-		unlockNative()
 		return fmt.Errorf("release GC reference token: %w", err)
 	}
 	delete(s.gcByToken, token)
@@ -1988,19 +1265,13 @@ func (s *referenceStore) releaseGCRef(source *Instance, token uint64) error {
 	state.resultTokenCount--
 	s.mu.Unlock()
 	state.mu.Unlock()
-	unlockGCCollector(lockedDomain)
-	unlockNative()
 	source.releaseResourceRoot()
 	var release referenceTokenEntries
-	topology := s.lockGCDomainTopology()
 	s.mu.Lock()
 	if s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 && len(s.gcByToken) == 0 {
 		release = s.releaseEntriesLocked()
 	}
 	s.mu.Unlock()
-	if topology != nil {
-		topology.Unlock()
-	}
 	releaseReferenceEntries(release)
 	return nil
 }
@@ -2509,17 +1780,10 @@ func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
 	s.externrefs = nil
 	s.externKey = 0
 	s.externSeed = 0
-	if topology := s.gcDomains; topology != nil {
-		for domain := topology.first; domain != nil; domain = domain.next {
-			entries.collectors = append(entries.collectors, domain.collector)
-		}
-		topology.first = nil
-		topology.last = nil
-		topology.n = 0
-		topology.funcrefMu.Lock()
-		topology.funcrefTables = nil
-		topology.funcrefMu.Unlock()
+	for domain := s.gcDomains; domain != nil; domain = domain.next {
+		entries.collectors = append(entries.collectors, domain.collector)
 	}
+	s.gcDomains = nil
 	return entries
 }
 

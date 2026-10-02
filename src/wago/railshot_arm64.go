@@ -1,4 +1,4 @@
-//go:build arm64 && !wago_precompiled
+//go:build arm64
 
 package wago
 
@@ -13,7 +13,6 @@ type railshotCompileOptions = railshot.CompileOptions
 type railshotCompiledModule = encoderarm64.CompiledModule
 type railshotKnobInfo = railshot.KnobInfo
 type railshotOptimizationSnapshot = railshot.OptimizationSnapshot
-type railshotOptimizationObjective = railshot.OptimizationObjective
 type railshotModuleStats = railshot.ModuleStats
 
 func railshotOptKnobs() []railshotKnobInfo { return railshot.OptKnobs() }

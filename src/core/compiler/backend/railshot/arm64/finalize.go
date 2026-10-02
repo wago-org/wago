@@ -16,47 +16,10 @@ import (
 var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 var nativeFinalizerValidate = os.Getenv("WAGO_FINALIZE_VALIDATE") == "1"
 
-// WAGO_COMPACT=1 forces bounded shrinking for every objective. Size and
-// Embedded enable it through their immutable per-compilation policy;
-// WAGO_COMPACT=0 is the rollout oracle that disables it for every objective.
+// Compaction remains opt-in while its bounded remapping cost is brought under
+// the Balanced compile-time gate. Loop-bearing functions also retain the old
+// size-stable path until their alignment fragments become relaxable.
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
-var nativeCompactionDisabled = os.Getenv("WAGO_COMPACT") == "0"
-var loopCompactionEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_COMPACTION") != "1"
-
-// WAGO_ARM64_LOOP_COMPACTION_LIMIT selects the measured rollback/experiment
-// bounds around the 32 KiB default. The immutable per-compilation policy remains
-// the upper bound.
-var arm64LoopCompactionLimit = func() int {
-	switch os.Getenv("WAGO_ARM64_LOOP_COMPACTION_LIMIT") {
-	case "16K":
-		return 16 << 10
-	case "24K":
-		return 24 << 10
-	case "64K":
-		return 64 << 10
-	default:
-		return 32 << 10
-	}
-}()
-
-// WAGO_FINALIZER_DELETIONS selects an older bounded Size/Embedded policy for
-// exact rollout comparisons. It can only lower the immutable policy limit.
-var finalizerDeletionLimitOverride = func() int {
-	switch os.Getenv("WAGO_FINALIZER_DELETIONS") {
-	case "8":
-		return 8
-	case "16":
-		return 16
-	case "32":
-		return 32
-	case "48":
-		return 48
-	case "64":
-		return 64
-	default:
-		return 0
-	}
-}()
 
 const maxFinalizerDeletions = shared.MaxOffsetMapDeletions
 
@@ -73,35 +36,6 @@ const (
 	markerOpaqueDataStart
 	markerOpaqueDataEnd
 )
-
-type finalizerFragmentKind uint8
-
-const (
-	fragmentJumpData finalizerFragmentKind = iota + 1
-	fragmentOpaqueData
-	fragmentPlugin
-)
-
-type finalizerFragment struct {
-	start int
-	end   int
-	kind  finalizerFragmentKind
-}
-
-type finalizerFragmentCursor struct {
-	fragments []finalizerFragment
-	index     int
-}
-
-func (c *finalizerFragmentCursor) at(pc int) (finalizerFragment, bool) {
-	for c.index < len(c.fragments) && pc >= c.fragments[c.index].end {
-		c.index++
-	}
-	if c.index == len(c.fragments) || pc < c.fragments[c.index].start {
-		return finalizerFragment{}, false
-	}
-	return c.fragments[c.index], true
-}
 
 func finalizerMarkerKey(off int, marker finalizerMarker) int {
 	return -((off << 4) | int(marker)) - 1
@@ -128,7 +62,6 @@ func (f *fn) recordFinalizerMarker(off int, marker finalizerMarker) {
 
 func (f *fn) recordJumpTableData(start, end int) {
 	f.opaqueFragments = true
-	f.recordFinalizerFragment(start, end, fragmentJumpData)
 	f.recordFinalizerMarker(start, markerJumpDataStart)
 	f.recordFinalizerMarker(end, markerJumpDataEnd)
 }
@@ -136,7 +69,6 @@ func (f *fn) recordJumpTableData(start, end int) {
 func (f *fn) recordOpaqueData(start, end int) {
 	if end > start {
 		f.opaqueFragments = true
-		f.recordFinalizerFragment(start, end, fragmentOpaqueData)
 		f.recordFinalizerMarker(start, markerOpaqueDataStart)
 		f.recordFinalizerMarker(end, markerOpaqueDataEnd)
 	}
@@ -145,74 +77,13 @@ func (f *fn) recordOpaqueData(start, end int) {
 func (f *fn) recordOpaquePlugin(start, end int) {
 	if end > start {
 		f.opaqueFragments = true
-		f.recordFinalizerFragment(start, end, fragmentPlugin)
 		f.recordFinalizerMarker(start, markerPluginStart)
 		f.recordFinalizerMarker(end, markerPluginEnd)
 	}
 }
 
-func (f *fn) recordFinalizerFragment(start, end int, kind finalizerFragmentKind) {
-	if !nativeFinalizerEnabled || !f.compactNative() || end <= start {
-		return
-	}
-	sc := f.scratchState()
-	sc.finalFragments = append(sc.finalFragments, finalizerFragment{start: start, end: end, kind: kind})
-}
-
 func (f *fn) recordPCRelative(off int) {
 	f.recordFinalizerMarker(off, markerPCRelative)
-}
-
-func (f *fn) recordBranchNext(off int) {
-	if !nativeFinalizerEnabled || !f.compactNative() {
-		return
-	}
-	sc := f.scratchState()
-	for i := range int(sc.branchNextN) {
-		if sc.branchNextSites[i] == off {
-			return
-		}
-	}
-	if int(sc.branchNextN) < len(sc.branchNextSites) {
-		sc.branchNextSites[sc.branchNextN] = off
-		sc.branchNextN++
-	} else {
-		largest := 0
-		for i := 1; i < len(sc.branchNextSites); i++ {
-			if sc.branchNextSites[i] > sc.branchNextSites[largest] {
-				largest = i
-			}
-		}
-		if off < sc.branchNextSites[largest] {
-			sc.branchNextSites[largest] = off
-		}
-	}
-	if nativeFinalizerValidate {
-		f.recordFinalizerMarker(off, markerBranchNext)
-	}
-}
-
-func (f *fn) compactNative() bool {
-	return !nativeCompactionDisabled && (nativeCompactionEnabled || f.policy.CompactNative)
-}
-
-func (f *fn) finalizerDeletionLimit() int {
-	limit := int(f.policy.MaxFinalizerDeletions)
-	if limit == 0 {
-		limit = 8
-	}
-	if finalizerDeletionLimitOverride != 0 && limit > finalizerDeletionLimitOverride {
-		limit = finalizerDeletionLimitOverride
-	}
-	return min(limit, maxFinalizerDeletions)
-}
-
-func loopCompactionLimitArm64(policy CodegenPolicy) int {
-	limit := int(policy.MaxLoopCompactionBytes)
-	if limit == 0 {
-		limit = 16 << 10
-	}
-	return min(arm64LoopCompactionLimit, limit)
 }
 
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
@@ -225,100 +96,86 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		}
 	}
 	oldLen := len(f.a.B)
-	code := f.a.B
-	offsets := &f.scratchState().offsetMap
+	var result shared.FinalizeResult
 	frameDeleted := 0
-	if f.compactNative() {
+	if nativeCompactionEnabled {
 		var storage [maxFinalizerDeletions]shared.DeletedRange
-		deletions, deletedFrames, ok := f.buildCompactionPlan(storage[:0:f.finalizerDeletionLimit()])
+		deletions, deletedFrames, ok := f.buildCompactionPlan(storage[:0])
 		if ok {
-			if err := offsets.Reset(oldLen, deletions); err != nil {
+			offsets, err := shared.NewOffsetMap(oldLen, deletions)
+			if err != nil {
 				return 0, fmt.Errorf("arm64 finalizer: %w", err)
 			}
-			var err error
-			code, err = f.compactNativeCode(offsets, deletions)
+			code, err := f.compactNativeCode(&offsets, deletions)
 			if err != nil {
 				return 0, err
 			}
+			result.Code = code
+			result.Offsets = offsets
 			frameDeleted = deletedFrames
 		} else {
-			if err := offsets.Reset(oldLen, nil); err != nil {
+			offsets, err := shared.NewOffsetMap(oldLen, nil)
+			if err != nil {
 				return 0, fmt.Errorf("arm64 finalizer: %w", err)
 			}
+			result = shared.FinalizeResult{Code: f.a.B, Offsets: offsets}
 		}
 	} else {
-		if err := offsets.Reset(oldLen, nil); err != nil {
+		var err error
+		result, err = shared.FinalizeIdentity(f.a.B, nil, nil, nil)
+		if err != nil {
 			return 0, fmt.Errorf("arm64 finalizer: %w", err)
 		}
 	}
-	f.a.B = code
+	f.a.B = result.Code
 
-	mappedInternal, err := mapFinalOffset(offsets, internalOff, len(code), "internal entry")
+	mappedInternal, err := mapFinalOffset(&result.Offsets, internalOff, len(result.Code), "internal entry")
 	if err != nil {
 		return 0, err
 	}
 	internalOff = mappedInternal
 	for i := range f.relocs {
-		mapped, err := mapFinalOffset(offsets, f.relocs[i].at, len(code), "call relocation")
+		mapped, err := mapFinalOffset(&result.Offsets, f.relocs[i].at, len(result.Code), "call relocation")
 		if err != nil {
 			return 0, err
 		}
 		f.relocs[i].at = mapped
 	}
 	if f.adapterReturnOff != 0 {
-		mapped, err := mapFinalOffset(offsets, f.adapterReturnOff, len(code), "adapter return")
+		mapped, err := mapFinalOffset(&result.Offsets, f.adapterReturnOff, len(result.Code), "adapter return")
 		if err != nil {
 			return 0, err
 		}
 		f.adapterReturnOff = mapped
 	}
-	if f.trapBodyEnd > f.trapBodyOff {
-		mappedOff, err := mapFinalOffset(offsets, f.trapBodyOff, len(code), "trap body start")
-		if err != nil {
-			return 0, err
-		}
-		mappedEnd, err := mapFinalOffset(offsets, f.trapBodyEnd, len(code), "trap body end")
-		if err != nil {
-			return 0, err
-		}
-		f.trapBodyOff, f.trapBodyEnd = mappedOff, mappedEnd
-	}
 	if plan := f.gcFrameRoots; plan != nil {
 		if plan.AdapterReturnOffset != 0 {
-			mapped, err := mapFinalOffset(offsets, int(plan.AdapterReturnOffset), len(code), "GC adapter return")
+			mapped, err := mapFinalOffset(&result.Offsets, int(plan.AdapterReturnOffset), len(result.Code), "GC adapter return")
 			if err != nil {
 				return 0, err
 			}
 			plan.AdapterReturnOffset = uint32(mapped)
 		}
 		for i := range plan.Callsites {
-			mapped, err := mapFinalOffset(offsets, int(plan.Callsites[i].ReturnOffset), len(code), "GC call return")
+			mapped, err := mapFinalOffset(&result.Offsets, int(plan.Callsites[i].ReturnOffset), len(result.Code), "GC call return")
 			if err != nil {
 				return 0, err
 			}
 			plan.Callsites[i].ReturnOffset = uint32(mapped)
 		}
 	}
-	if len(code) != oldLen {
-		f.remapNativeSizeStats(offsets, internalOff, frameDeleted)
+	if len(result.Code) != oldLen {
+		f.remapNativeSizeStats(&result.Offsets, internalOff, frameDeleted)
 	}
 	return internalOff, nil
 }
 
 func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.DeletedRange, int, bool) {
-	// Any deletion before an optionally aligned loop would move its body away
-	// from the emission-time alignment. Size and Embedded clamp loop alignment
-	// to ARM64's mandatory four-byte instruction alignment, which every deletion
-	// preserves, so their loop-bearing functions are safe to compact.
-	if f.hasLoop && !loopCompactionEnabled {
-		return f.rejectCompaction("loop-disabled")
-	}
-	if f.hasLoop && f.policy.LoopAlignLog2 > 2 {
-		return f.rejectCompaction("loop-alignment")
-	}
-	loopLimit := loopCompactionLimitArm64(f.policy)
-	if f.hasLoop && len(f.a.B) > loopLimit {
-		return f.rejectCompaction("loop-function-size")
+	// Any deletion before a loop would move its body away from alignment chosen
+	// against maximal offsets. Preserve the size-stable path until loop padding
+	// itself is an explicit relaxable fragment.
+	if f.hasLoop {
+		return nil, 0, false
 	}
 	add := func(off, length int) bool {
 		if len(deletions) == cap(deletions) {
@@ -327,22 +184,16 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 		deletions = append(deletions, shared.DeletedRange{Off: uint32(off), Len: uint32(length)})
 		return true
 	}
-	sc := f.scratchState()
-	for key := range sc.branchTargets {
-		_, marker, ok := decodeFinalizerMarker(key)
+	for key := range f.scratchState().branchTargets {
+		off, marker, ok := decodeFinalizerMarker(key)
 		if !ok {
 			continue
 		}
 		if marker == markerPluginStart || marker == markerPluginEnd {
-			return f.rejectCompaction("plugin-fragment")
+			return nil, 0, false
 		}
-	}
-	if sc.deadHoleOverflow {
-		return f.rejectCompaction("dead-hole-overflow")
-	}
-	for _, off := range sc.deadHoleSites[:sc.deadHoleN] {
-		if !add(off, 4) {
-			return f.rejectCompaction("dead-hole-budget")
+		if marker == markerDeadHole && !add(off, 4) {
+			return nil, 0, false
 		}
 	}
 
@@ -360,17 +211,17 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 	frameDeleted := 0
 	if frameDeleteLen != 0 {
 		if !add(f.subRspAt+frameDeleteDelta, frameDeleteLen) {
-			return f.rejectCompaction("frame-site-budget")
+			return nil, 0, false
 		}
 		frameDeleted += frameDeleteLen
 		for _, off := range f.tailFrameSites {
 			if !add(off+frameDeleteDelta, frameDeleteLen) {
-				return f.rejectCompaction("frame-site-budget")
+				return nil, 0, false
 			}
 			frameDeleted += frameDeleteLen
 		}
 		if !add(f.addRspAt+frameDeleteDelta, frameDeleteLen) {
-			return f.rejectCompaction("frame-site-budget")
+			return nil, 0, false
 		}
 		frameDeleted += frameDeleteLen
 	}
@@ -380,7 +231,11 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 	// larger frame/hole wins. If the bound fills, deterministically retain the
 	// earliest sites instead of depending on map iteration order.
 	branchStart := len(deletions)
-	for _, off := range sc.branchNextSites[:sc.branchNextN] {
+	for key := range f.scratchState().branchTargets {
+		off, marker, ok := decodeFinalizerMarker(key)
+		if !ok || marker != markerBranchNext {
+			continue
+		}
 		candidate := shared.DeletedRange{Off: uint32(off), Len: 4}
 		duplicate := false
 		for _, deletion := range deletions[:branchStart] {
@@ -427,18 +282,13 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 				continue
 			}
 			if deletion.Off < previous.Off+previous.Len {
-				return f.rejectCompaction("deletion-overlap")
+				return nil, 0, false
 			}
 		}
 		unique = append(unique, deletion)
 	}
 	deletions = unique
 	return deletions, frameDeleted, true
-}
-
-func (f *fn) rejectCompaction(reason string) ([]shared.DeletedRange, int, bool) {
-	f.stats.setFinalizerFallback(reason)
-	return nil, 0, false
 }
 
 func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.DeletedRange) ([]byte, error) {
@@ -454,10 +304,26 @@ func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.Del
 		copy(code[dst:], code[src:])
 		return code[:offsets.FinalLen()], nil
 	}
-	fragments := finalizerFragmentCursor{fragments: f.scratchState().finalFragments}
+	markers := f.scratchState().branchTargets
 	deletionIndex := 0
 	dst := 0
+	jumpData := false
+	opaqueData := false
+	jumpBase := 0
 	for src := 0; src < len(code); src += 4 {
+		if markers[finalizerMarkerKey(src, markerJumpDataEnd)] {
+			jumpData = false
+		}
+		if markers[finalizerMarkerKey(src, markerJumpDataStart)] {
+			jumpData = true
+			jumpBase = src
+		}
+		if markers[finalizerMarkerKey(src, markerOpaqueDataEnd)] {
+			opaqueData = false
+		}
+		if markers[finalizerMarkerKey(src, markerOpaqueDataStart)] {
+			opaqueData = true
+		}
 		if deletionIndex < len(deletions) && src == int(deletions[deletionIndex].Off) {
 			src += int(deletions[deletionIndex].Len) - 4
 			deletionIndex++
@@ -465,11 +331,10 @@ func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.Del
 		}
 		word := rdWord(code, src)
 		var err error
-		fragment, inFragment := fragments.at(src)
-		if inFragment && fragment.kind == fragmentOpaqueData {
+		if opaqueData {
 			// Compact target-ID bytes are data, not instructions or relocations.
-		} else if inFragment && fragment.kind == fragmentJumpData {
-			word, err = remapJumpTableWord(word, fragment.start, offsets)
+		} else if jumpData {
+			word, err = remapJumpTableWord(word, jumpBase, offsets)
 		} else if isPCRelativeWord(word) {
 			word, err = remapPCRelativeWord(word, src, dst, offsets)
 		}
@@ -580,7 +445,6 @@ func (f *fn) remapNativeSizeStats(offsets *shared.OffsetMap, newInternalOff, fra
 	s.FrameAdjustmentBytes -= frameDeleted
 	s.DeadFrameReservationBytes = 0
 	s.BranchFoldHoleBytes = 0
-	s.StoreLoadNopBytes = 0
 }
 
 func (f *fn) validateFinalizerInventory(internalOff int) error {

@@ -9,11 +9,11 @@ func (rt *Runtime) NewExternRef(value any) (ExternRef, error) {
 	if rt == nil || rt.refStore == nil {
 		return ExternRef{}, fmt.Errorf("wago: nil runtime")
 	}
-	operation, err := rt.beginOperation("NewExternRef", false)
+	end, err := rt.beginOperation("NewExternRef", false)
 	if err != nil {
 		return ExternRef{}, err
 	}
-	defer operation.end()
+	defer end()
 	token, err := rt.refStore.issueExternref(value)
 	if err != nil {
 		return ExternRef{}, err
@@ -30,11 +30,11 @@ func (rt *Runtime) ExternRefValue(ref ExternRef) (any, bool) {
 	if rt == nil || rt.refStore == nil {
 		return nil, false
 	}
-	operation, err := rt.beginOperation("ExternRefValue", false)
+	end, err := rt.beginOperation("ExternRefValue", false)
 	if err != nil {
 		return nil, false
 	}
-	defer operation.end()
+	defer end()
 	return rt.refStore.resolveExternref(ref.token)
 }
 

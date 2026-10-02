@@ -2,7 +2,6 @@ package settings
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -138,23 +137,13 @@ func (target *Target) Save() error {
 		return Save(target.config)
 	}
 	layer := diffLayer(target.config, target.base)
-	return project.WithMutation(context.Background(), ".", func(mutation *project.Mutation) error {
-		manifest, err := mutation.ReadManifest()
-		if err != nil {
-			return err
-		}
-		if layerEmpty(layer) {
-			delete(manifest, localField)
-		} else {
-			manifest[localField] = layer
-		}
-		project.EnsureMetadata(manifest)
-		if err := mutation.PublishManifest(manifest); err != nil {
-			return err
-		}
-		target.manifest = manifest
-		return nil
-	})
+	if layerEmpty(layer) {
+		delete(target.manifest, localField)
+	} else {
+		target.manifest[localField] = layer
+	}
+	project.EnsureMetadata(target.manifest)
+	return project.Write(".", target.manifest)
 }
 
 func decodeLocalLayer(value any) (localLayer, bool, error) {

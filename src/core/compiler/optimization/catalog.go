@@ -253,37 +253,9 @@ func (b *Bindings) Set(name string, on bool) bool {
 	return true
 }
 
-// Lease holds one installed optimization selection and its compile lock. It is
-// deliberately a value rather than a restore closure: that keeps compiler
-// inputs out of closure boxes under TinyGo's conservative collector.
-type Lease struct {
-	bindings *Bindings
-	changed  int // -1 restores the complete selection
-	active   bool
-}
-
-// Restore restores the process defaults and releases the compile lock.
-func (l *Lease) Restore() {
-	if l == nil || !l.active {
-		return
-	}
-	l.active = false
-	b := l.bindings
-	if l.changed < 0 {
-		for index, entry := range b.entries {
-			*entry.value = b.before[index]
-		}
-	} else {
-		for _, index := range b.changed[:l.changed] {
-			*b.entries[index].value = b.before[index]
-		}
-	}
-	b.mu.Unlock()
-}
-
-// Apply installs overrides for one compile and returns an explicit lease that
-// restores the process defaults and releases the compile lock.
-func (b *Bindings) Apply(overrides map[string]bool) (Lease, error) {
+// Apply installs overrides for one compile and returns a function that restores
+// the process defaults and releases the compile lock.
+func (b *Bindings) Apply(overrides map[string]bool) (func(), error) {
 	return b.ApplySnapshot(overrides, Snapshot{}, nil)
 }
 
@@ -293,10 +265,10 @@ func (b *Bindings) Apply(overrides map[string]bool) (Lease, error) {
 // validated and applied in full. The revision comparison, installation,
 // compilation lease, and restoration all share the same lock, so a concurrent
 // Set cannot invalidate the fast path.
-func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, deltas map[string]bool) (Lease, error) {
+func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, deltas map[string]bool) (func(), error) {
 	b.mu.Lock()
 	if overrides == nil {
-		return Lease{bindings: b, active: true}, nil
+		return b.mu.Unlock, nil
 	}
 	if snapshot.bindings == b && snapshot.revision == b.revision && b.deltasMatchLocked(overrides, deltas) {
 		changed := 0
@@ -314,7 +286,12 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 			b.before[index] = *entry.value
 			*entry.value = on
 		}
-		return Lease{bindings: b, changed: changed, active: true}, nil
+		return func() {
+			for _, index := range b.changed[:changed] {
+				*b.entries[index].value = b.before[index]
+			}
+			b.mu.Unlock()
+		}, nil
 	}
 	for index, entry := range b.entries {
 		b.before[index] = *entry.value
@@ -326,7 +303,7 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 				*entry.value = b.before[index]
 			}
 			b.mu.Unlock()
-			return Lease{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
+			return nil, fmt.Errorf("unknown %s optimization %q", b.arch, name)
 		}
 		entry := b.entries[index]
 		if entry.inverted {
@@ -334,7 +311,12 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 		}
 		*entry.value = on
 	}
-	return Lease{bindings: b, changed: -1, active: true}, nil
+	return func() {
+		for index, entry := range b.entries {
+			*entry.value = b.before[index]
+		}
+		b.mu.Unlock()
+	}, nil
 }
 
 // deltasMatchLocked reports whether deltas are a complete, coherent summary of
@@ -394,11 +376,10 @@ var catalog = []Definition{
 	both("store-forward", "Store forwarding", "forward straight-line stores into loads"),
 	amd64("frame-elide", "Frame elision", "omit frames for small single-result functions"),
 	amd64("compact-i32-frame", "Compact i32 frames", "pack i32 locals in straight-line call-free functions"),
-	amd64("local-slot-order", "Symbolic local slot packing", "move exact referenced local homes into zero-reference compact slots"),
+	experimentalAMD64("local-slot-order", "Local slot ordering", "place hot unpinned locals at compact frame offsets"),
 	amd64("tee-spill-elide", "Reuse tee spill homes", "reuse a local.tee frame slot when spilling its still-live scalar result"),
 	amd64("commute-self-update", "Commute self-updates", "make non-fixed destinations accumulate commutative self-update expressions in place"),
 	amd64("i64-mask32", "Low-32 mask lowering", "lower i64 low-32 masks to zero-extending 32-bit ANDs"),
-	amd64("accumulator-immediate", "Accumulator immediates", "use ModRM-free RAX/EAX imm32 encodings in size objectives"),
 	arm64("frame-elide-reghomed", "Register-homed frames", "omit frames when locals remain in registers"),
 	arm64("small-frame", "Small frames", "use compact stack adjustment forms"),
 	both("v128-const-cache", "Vector constant cache", "reserve vector registers for repeated constants"),

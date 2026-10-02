@@ -43,12 +43,10 @@ type funcHints struct {
 	// depth, excluding the implicit function frame. Byte-backed production
 	// modules populate it during the existing one-pass hint scan. The byte uses
 	// existing alignment padding; 255 is a saturated fallback sentinel.
-	maxControlDepth uint8
-	// inlineCallSites packs a saturated 7-bit ordinary-call count plus a high
-	// bit recording any return_call reference to this local function.
-	inlineCallSites  uint8
-	gcResolverSites  int  // conservative direct scalar/length resolver site count
-	gcSharedResolver bool // module decision: shared island beats one-site inline crossover
+	maxControlDepth  uint8
+	inlineCallSites  uint8 // saturated direct call sites targeting this local function
+	gcResolverSites  int   // conservative direct scalar/length resolver site count
+	gcSharedResolver bool  // module decision: shared island beats one-site inline crossover
 
 	// Inline-candidacy signals, gathered in the same pre-scan so buildInlineTargets
 	// needs no second body walk. hasControlFlow matches scanInlineFactsBytes's set
@@ -326,13 +324,17 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
 				h.hasSIMD = true
 			}
-			if shared.InstructionNeedsEHFrame(0, in.Kind) {
+			switch in.Kind {
+			case wasm.InstrTryTable, wasm.InstrThrow, wasm.InstrThrowRef:
 				h.moduleEH = true
 			}
 			if gcOrAtomicInstructionMayCall(in.Kind, gcStructHelpers) {
 				h.hasCall, sub = true, true
 			}
-			if shared.InstructionNeedsInlineBoundary(0, in.Kind) {
+			// Inline-candidacy control-flow signals (matches scanInlineFactsAST).
+			switch in.Kind {
+			case wasm.InstrUnreachable, wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf, wasm.InstrTryTable,
+				wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn:
 				h.hasControlFlow = true
 				if in.Kind == wasm.InstrLoop {
 					h.hasLoop = true
@@ -633,10 +635,15 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		} else if op == 0xfd {
 			s.h.hasSIMD = true
 		}
-		if shared.InstructionNeedsEHFrame(op, wasm.InstrInvalid) {
+		switch op {
+		case 0x08, 0x0a, 0x1f: // throw, throw_ref, try_table
 			s.h.moduleEH = true
 		}
-		if shared.InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) {
+		// Inline-candidacy signals (folded in so buildInlineTargets needs no second
+		// walk). Exactly scanInlineFactsBytes's control-flow set — try_table (0x1f)
+		// is deliberately excluded to match it.
+		switch op {
+		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f:
 			s.h.hasControlFlow = true
 			s.entryPrefix = false
 			if op == 0x03 {
@@ -733,7 +740,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if op == 0x10 && imm.Index == s.selfIdx {
 				s.h.callsSelf = true
 			}
-			s.noteDirectCallRef(imm.Index, op == 0x10)
+			if op == 0x10 {
+				s.noteInlineCallSite(imm.Index)
+			}
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -795,12 +804,6 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
-			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
-				s.h.hasControlFlow = true
-			}
-			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
-				s.h.moduleEH = true
-			}
 			if gcOrAtomicInstructionMayCall(imm.Kind, s.gcStructHelpers) {
 				s.h.hasCall, subHasCall = true, true
 			}
@@ -840,12 +843,6 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
-			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
-				s.h.hasControlFlow = true
-			}
-			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
-				s.h.moduleEH = true
-			}
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 			}
@@ -856,23 +853,15 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 	}
 }
 
-func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline bool) {
+func (s *byteBodyScanner) noteInlineCallSite(globalIdx uint32) {
 	local := int(globalIdx) - s.importedFuncs
 	if local < 0 || local >= len(s.moduleHints) {
 		return
 	}
-	target := &s.moduleHints[local]
-	if !inline {
-		target.inlineCallSites |= 0x80
-		return
-	}
-	count := target.inlineCallSites & 0x7f
-	if count != 0x7f {
-		target.inlineCallSites = target.inlineCallSites&0x80 | count + 1
+	if s.moduleHints[local].inlineCallSites != ^uint8(0) {
+		s.moduleHints[local].inlineCallSites++
 	}
 }
-
-func (h funcHints) inlineCallSiteCount() uint8 { return h.inlineCallSites & 0x7f }
 
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
 	if op >= 0x28 && op <= 0x3e {

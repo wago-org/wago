@@ -67,82 +67,39 @@ type CodeMark struct {
 // intentionally stores only the old length; later compacting forms can add a
 // bounded deletion/prefix-delta representation without changing callers.
 type OffsetMap struct {
-	oldLen      uint32
-	finalLen    uint32
-	deletionN   uint8
-	deletionOff [MaxOffsetMapDeletions]uint32
-	deleted     [MaxOffsetMapDeletions]uint32
+	oldLen    uint32
+	finalLen  uint32
+	deletionN uint8
+	deletions [MaxOffsetMapDeletions]DeletedRange
 }
 
-// WideOffsetMap is the AMD64 Size/Embedded map. Large x86 functions retain
-// substantially more five-byte branch-fold holes than ARM64 functions, so the
-// wider backend pays for a larger bounded map without imposing that stack cost
-// on ARM64 or the shared identity path.
-type WideOffsetMap struct {
-	oldLen      uint32
-	finalLen    uint32
-	deletionN   uint8
-	deletionOff [MaxWideOffsetMapDeletions]uint32
-	deleted     [MaxWideOffsetMapDeletions]uint32
-}
-
-// MaxOffsetMapDeletions is the fixed per-function deletion budget. Backends may
-// retain later candidates in their maximal-safe form; correctness never depends
-// on maximizing relaxation.
-const MaxOffsetMapDeletions = 128
-
-// MaxWideOffsetMapDeletions fits the immutable uint8 policy field while nearly
-// doubling AMD64's deletion inventory. Correctness never depends on filling it.
-const MaxWideOffsetMapDeletions = 255
+// MaxOffsetMapDeletions is the fixed per-function deletion budget. A backend
+// that discovers more sites leaves that function uncompressed; correctness
+// never depends on maximizing relaxation.
+const MaxOffsetMapDeletions = 8
 
 func (m *OffsetMap) Map(off int) (int, bool) {
-	return mapOffset(m.oldLen, m.deletionOff[:m.deletionN], m.deleted[:m.deletionN], off)
-}
-
-func (m *WideOffsetMap) Map(off int) (int, bool) {
-	return mapOffset(m.oldLen, m.deletionOff[:m.deletionN], m.deleted[:m.deletionN], off)
-}
-
-func mapOffset(oldLen uint32, deletionOff, deleted []uint32, off int) (int, bool) {
-	if off < 0 || uint64(off) > uint64(oldLen) {
+	if off < 0 || uint64(off) > uint64(m.oldLen) {
 		return 0, false
 	}
-	// Find the last deletion whose start is at or before off. The inventory is
-	// small and fixed-capacity, but branch-heavy functions map enough labels and
-	// relocation sites that a linear walk here becomes the finalizer's dominant
-	// cost as the deletion budget grows.
-	lo, hi := 0, len(deletionOff)
-	for lo < hi {
-		mid := int(uint(lo+hi) >> 1)
-		if int(deletionOff[mid]) <= off {
-			lo = mid + 1
-		} else {
-			hi = mid
+	delta := 0
+	for _, deletion := range m.deletions[:m.deletionN] {
+		start := int(deletion.Off)
+		end := start + int(deletion.Len)
+		if off < start {
+			break
+		}
+		if off > start && off < end {
+			return 0, false
+		}
+		if off >= end {
+			delta += int(deletion.Len)
 		}
 	}
-	i := lo - 1
-	if i < 0 {
-		return off, true
-	}
-	start := int(deletionOff[i])
-	previousDeleted := uint32(0)
-	if i > 0 {
-		previousDeleted = deleted[i-1]
-	}
-	length := deleted[i] - previousDeleted
-	end := start + int(length)
-	if off > start && off < end {
-		return 0, false
-	}
-	delta := deleted[i]
-	if off == start {
-		delta -= length
-	}
-	return off - int(delta), true
+	return off - delta, true
 }
 
-func (m *OffsetMap) FinalLen() int     { return int(m.finalLen) }
-func (m *WideOffsetMap) FinalLen() int { return int(m.finalLen) }
+func (m *OffsetMap) FinalLen() int { return int(m.finalLen) }
 
 // DeletedRange is one half-open maximal-encoding byte range removed by
 // compaction. Ranges passed to NewOffsetMap must be sorted and non-overlapping.
@@ -154,73 +111,26 @@ type DeletedRange struct {
 // NewOffsetMap validates a monotonic shrink plan and returns its old-to-new
 // mapping. The fixed-capacity result owns a copy of the deletion records.
 func NewOffsetMap(oldLen int, deletions []DeletedRange) (OffsetMap, error) {
-	var result OffsetMap
-	if err := result.Reset(oldLen, deletions); err != nil {
-		return OffsetMap{}, err
-	}
-	return result, nil
-}
-
-// Reset replaces m with the bounded mapping for oldLen and deletions. Backends
-// use this form with reusable worker scratch so large fixed maps are neither
-// allocated nor returned by value for every compiled function.
-func (m *OffsetMap) Reset(oldLen int, deletions []DeletedRange) error {
-	if err := validateOffsetMap(oldLen, deletions, MaxOffsetMapDeletions); err != nil {
-		return err
-	}
-	m.oldLen = uint32(oldLen)
-	m.deletionN = uint8(len(deletions))
-	m.finalLen = fillOffsetMap(oldLen, deletions, m.deletionOff[:], m.deleted[:])
-	return nil
-}
-
-// NewWideOffsetMap constructs the AMD64-only wider bounded mapping.
-func NewWideOffsetMap(oldLen int, deletions []DeletedRange) (WideOffsetMap, error) {
-	var result WideOffsetMap
-	if err := result.Reset(oldLen, deletions); err != nil {
-		return WideOffsetMap{}, err
-	}
-	return result, nil
-}
-
-// Reset is the reusable-storage form of NewWideOffsetMap.
-func (m *WideOffsetMap) Reset(oldLen int, deletions []DeletedRange) error {
-	if err := validateOffsetMap(oldLen, deletions, MaxWideOffsetMapDeletions); err != nil {
-		return err
-	}
-	m.oldLen = uint32(oldLen)
-	m.deletionN = uint8(len(deletions))
-	m.finalLen = fillOffsetMap(oldLen, deletions, m.deletionOff[:], m.deleted[:])
-	return nil
-}
-
-func validateOffsetMap(oldLen int, deletions []DeletedRange, maxDeletions int) error {
 	if oldLen < 0 || uint64(oldLen) > uint64(^uint32(0)) {
-		return fmt.Errorf("finalizer: invalid %d-byte function length", oldLen)
+		return OffsetMap{}, fmt.Errorf("finalizer: invalid %d-byte function length", oldLen)
 	}
-	if len(deletions) > maxDeletions {
-		return fmt.Errorf("finalizer: %d deletions exceed fixed budget %d", len(deletions), maxDeletions)
+	if len(deletions) > MaxOffsetMapDeletions {
+		return OffsetMap{}, fmt.Errorf("finalizer: %d deletions exceed fixed budget %d", len(deletions), MaxOffsetMapDeletions)
 	}
 	previousEnd := uint64(0)
+	deleted := uint64(0)
 	for i, deletion := range deletions {
 		start := uint64(deletion.Off)
 		end := start + uint64(deletion.Len)
 		if deletion.Len == 0 || end > uint64(oldLen) || i != 0 && start < previousEnd {
-			return fmt.Errorf("finalizer: invalid deletion %d at %d+%d for %d-byte function", i, deletion.Off, deletion.Len, oldLen)
+			return OffsetMap{}, fmt.Errorf("finalizer: invalid deletion %d at %d+%d for %d-byte function", i, deletion.Off, deletion.Len, oldLen)
 		}
 		previousEnd = end
-	}
-	return nil
-}
-
-func fillOffsetMap(oldLen int, deletions []DeletedRange, deletionOff, deletedPrefix []uint32) uint32 {
-	deleted := uint64(0)
-	for i, deletion := range deletions {
-		deletionOff[i] = deletion.Off
 		deleted += uint64(deletion.Len)
-		deletedPrefix[i] = uint32(deleted)
 	}
-	return uint32(uint64(oldLen) - deleted)
+	result := OffsetMap{oldLen: uint32(oldLen), finalLen: uint32(uint64(oldLen) - deleted), deletionN: uint8(len(deletions))}
+	copy(result.deletions[:], deletions)
+	return result, nil
 }
 
 type FinalizeResult struct {

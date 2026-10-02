@@ -776,17 +776,6 @@ type tailDeferredArg struct {
 	float  bool
 }
 
-// loadCallLocalInt selects a typed local load when call-making functions may
-// use packed i32 homes. The rollback path intentionally preserves the former
-// full-machine-word staging sequence as its exact code-shape oracle.
-func (f *fn) loadCallLocalInt(dst Reg, st storage) {
-	if compactI32CallsEnabled {
-		f.loadFrameInt(dst, f.localAddr(st.idx), st.typ)
-	} else {
-		f.a.Load64(dst, RSP, f.localAddr(st.idx))
-	}
-}
-
 // discardEHHandlersForTail removes every handler owned by the current function.
 // The outermost live record always occupies slot zero and retains the handler that
 // was active at function entry. True tail transfer discards the current frame, so
@@ -876,7 +865,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			case stSlot:
 				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slot), arg.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(arg.target, RSP, f.localAddr(arg.root.st.idx), arg.root.st.typ == mtF64)
+				f.a.FLoadDisp(arg.target, RSP, f.localOff(arg.root.st.idx), arg.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -886,7 +875,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 		case stSlot:
 			f.a.Load64(arg.target, RSP, f.spillOff(arg.root.st.slot))
 		case stLocalRef:
-			f.loadCallLocalInt(arg.target, arg.root.st)
+			f.a.Load64(arg.target, RSP, f.localOff(arg.root.st.idx))
 		}
 	}
 
@@ -921,7 +910,7 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.a.LeaScaled(RDX, R8, RCX, 3, 8)  // entry = log + count*8 + 8
 	f.a.StoreImm32Mem(RDX, 0, int32(importIdx))
 	f.a.Store32(RDX, 4, RAX)
-	f.unitAdjust(RCX, false, true) // count++
+	f.a.AluRI(0, RCX, 1, false) // count++ (digit 0 = add)
 	f.a.Store32(R8, 0, RCX)
 	f.setDepth(d - p)
 	return nil
@@ -1736,7 +1725,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		case stSlot:
 			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slot))
 		case stLocalRef:
-			f.loadCallLocalInt(da.target, da.root.st)
+			f.a.Load64(da.target, RSP, f.localOff(da.root.st.idx))
 		}
 	}
 	f.tmpDeferred = deferred[:0]
@@ -1932,7 +1921,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			case stSlot:
 				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slot), da.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(da.target, RSP, f.localAddr(da.root.st.idx), da.root.st.typ == mtF64)
+				f.a.FLoadDisp(da.target, RSP, f.localOff(da.root.st.idx), da.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -1942,7 +1931,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		case stSlot:
 			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slot))
 		case stLocalRef:
-			f.loadCallLocalInt(da.target, da.root.st)
+			f.a.Load64(da.target, RSP, f.localOff(da.root.st.idx))
 		}
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)

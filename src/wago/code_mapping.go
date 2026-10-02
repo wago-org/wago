@@ -90,15 +90,12 @@ func installCompiledFinalizer(c *Compiled) *Compiled {
 	c.ensureCodeCache()
 	// Give this compiler/deserialize-produced module its own validation memo so
 	// Instantiate validates immutable compiler-produced metadata once. Preserve
-	// codec-decoded immutable root and import-name sidecars while resetting the
-	// validation result.
+	// a codec-decoded immutable native root map while resetting validation state.
 	var gcFrameRoots *compiledGCFrameRoots
-	var importModuleEnds []uint64
 	if c.validateMemo != nil {
 		gcFrameRoots = c.validateMemo.gcFrameRoots
-		importModuleEnds = c.validateMemo.importModuleEnds
 	}
-	c.validateMemo = &validateMemo{gcFrameRoots: gcFrameRoots, importModuleEnds: importModuleEnds}
+	c.validateMemo = &validateMemo{gcFrameRoots: gcFrameRoots}
 	goruntime.SetFinalizer(c, func(c *Compiled) {
 		_ = c.Close()
 	})

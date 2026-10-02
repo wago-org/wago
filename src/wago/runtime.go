@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	goruntime "runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/semver"
 )
 
@@ -73,41 +73,6 @@ const (
 type runtimeCloseState struct {
 	done   chan struct{}
 	result error
-}
-
-// runtimeCloseTask owns every value consumed by one asynchronous shutdown.
-// TinyGo additionally roots active tasks explicitly; see
-// runtime_close_task_tinygo.go.
-type runtimeCloseTask struct {
-	rt            *Runtime
-	ctx           context.Context
-	state         *runtimeCloseState
-	loadingDone   <-chan struct{}
-	hooks         []func(RuntimeCloseEvent)
-	internalClose []func() error
-	pluginRuns    []registeredPluginRun
-	store         *referenceStore
-}
-
-func (task *runtimeCloseTask) run() {
-	defer releaseRuntimeCloseTask(task)
-	if task.loadingDone != nil {
-		task.rt.finishCloseAfterLoading(task.ctx, task.state, task.loadingDone)
-		return
-	}
-	task.rt.finishClose(task.ctx, task.state, task.hooks, task.internalClose, task.pluginRuns, task.store)
-}
-
-func (rt *Runtime) finishCloseAsync(ctx context.Context, state *runtimeCloseState, hooks []func(RuntimeCloseEvent), internalClose []func() error, pluginRuns []registeredPluginRun, store *referenceStore) {
-	task := &runtimeCloseTask{rt: rt, ctx: ctx, state: state, hooks: hooks, internalClose: internalClose, pluginRuns: pluginRuns, store: store}
-	retainRuntimeCloseTask(task)
-	go task.run()
-}
-
-func (rt *Runtime) finishCloseAfterLoadingAsync(ctx context.Context, state *runtimeCloseState, loadingDone <-chan struct{}) {
-	task := &runtimeCloseTask{rt: rt, ctx: ctx, state: state, loadingDone: loadingDone}
-	retainRuntimeCloseTask(task)
-	go task.run()
 }
 
 type registeredPluginRun struct {
@@ -206,82 +171,69 @@ func (rt *Runtime) storeHooks(hooks *hookRegistry) {
 // and leases the immutable plugin callback set through the operation. Loading
 // excludes public callers; committed authority handles may opt into the Start
 // phase after the complete plan has activated.
-type runtimeOperation struct {
-	rt          *Runtime
-	reservation *pluginOperationReservation
-	compile     bool
-	active      bool
-}
-
-func (operation *runtimeOperation) end() {
-	if operation == nil || !operation.active {
-		return
-	}
-	operation.active = false
-	operation.reservation.release()
-	rt := operation.rt
-	rt.mu.Lock()
-	if rt.activeOperations == 0 || operation.compile && rt.compileOperations == 0 {
-		rt.mu.Unlock()
-		panic("wago: runtime operation lease underflow")
-	}
-	rt.activeOperations--
-	if operation.compile {
-		rt.compileOperations--
-	}
-	rt.stateCond.Broadcast()
-	rt.mu.Unlock()
-}
-
-func (rt *Runtime) beginOperation(label string, allowLoading bool) (runtimeOperation, error) {
+func (rt *Runtime) beginOperation(label string, allowLoading bool) (func(), error) {
 	return rt.beginOperationKind(label, allowLoading, false)
 }
 
-func (rt *Runtime) beginOperationGeneration(label string, allowLoading bool) (*hookRegistry, runtimeOperation, error) {
+func (rt *Runtime) beginOperationGeneration(label string, allowLoading bool) (*hookRegistry, *pluginOperationReservation, func(), error) {
 	if rt == nil {
-		return nil, runtimeOperation{}, fmt.Errorf("wago: %s on a nil runtime", label)
+		return nil, nil, nil, fmt.Errorf("wago: %s on a nil runtime", label)
 	}
 	rt.mu.Lock()
 	switch rt.state {
 	case runtimeLoading:
 		if !allowLoading {
 			rt.mu.Unlock()
-			return nil, runtimeOperation{}, fmt.Errorf("wago: %s while plugins are loading", label)
+			return nil, nil, nil, fmt.Errorf("wago: %s while plugins are loading", label)
 		}
 	case runtimeClosing, runtimeClosed:
 		rt.mu.Unlock()
-		return nil, runtimeOperation{}, fmt.Errorf("wago: %s on a closed runtime", label)
+		return nil, nil, nil, fmt.Errorf("wago: %s on a closed runtime", label)
 	}
 	hooks := rt.loadHooks()
 	reservation, err := reservePluginOperation(hooks.operationGates)
 	if err != nil {
 		rt.mu.Unlock()
-		return nil, runtimeOperation{}, err
+		return nil, nil, nil, err
 	}
 	rt.operational = true
 	rt.activeOperations++
 	rt.mu.Unlock()
-	return hooks, runtimeOperation{rt: rt, reservation: reservation, active: true}, nil
+	var once sync.Once
+	end := func() {
+		once.Do(func() {
+			reservation.release()
+			rt.mu.Lock()
+			if rt.activeOperations == 0 {
+				rt.mu.Unlock()
+				panic("wago: runtime operation lease underflow")
+			}
+			rt.activeOperations--
+			rt.stateCond.Broadcast()
+			rt.mu.Unlock()
+		})
+	}
+	return hooks, reservation, end, nil
 }
 
-func (rt *Runtime) beginCompileOperation(label string, allowLoading bool) (runtimeOperation, error) {
+func (rt *Runtime) beginCompileOperation(label string, allowLoading bool) (func(), error) {
 	return rt.beginOperationKind(label, allowLoading, true)
 }
 
-func (rt *Runtime) beginOperationKind(label string, allowLoading, compile bool) (runtimeOperation, error) {
+func (rt *Runtime) beginOperationKind(label string, allowLoading, compile bool) (func(), error) {
 	if rt == nil {
-		return runtimeOperation{}, fmt.Errorf("wago: %s on a nil runtime", label)
+		return nil, fmt.Errorf("wago: %s on a nil runtime", label)
 	}
 	rt.mu.Lock()
 	switch rt.state {
 	case runtimeLoading:
 		if !allowLoading {
 			rt.mu.Unlock()
-			return runtimeOperation{}, fmt.Errorf("wago: %s while plugins are loading", label)
+			return nil, fmt.Errorf("wago: %s while plugins are loading", label)
 		}
 	case runtimeClosing, runtimeClosed:
 		rt.mu.Unlock()
-		return runtimeOperation{}, fmt.Errorf("wago: %s on a closed runtime", label)
+		return nil, fmt.Errorf("wago: %s on a closed runtime", label)
 	}
 	rt.operational = true
 	rt.activeOperations++
@@ -289,7 +241,22 @@ func (rt *Runtime) beginOperationKind(label string, allowLoading, compile bool) 
 		rt.compileOperations++
 	}
 	rt.mu.Unlock()
-	return runtimeOperation{rt: rt, compile: compile, active: true}, nil
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			rt.mu.Lock()
+			if rt.activeOperations == 0 || compile && rt.compileOperations == 0 {
+				rt.mu.Unlock()
+				panic("wago: runtime operation lease underflow")
+			}
+			rt.activeOperations--
+			if compile {
+				rt.compileOperations--
+			}
+			rt.stateCond.Broadcast()
+			rt.mu.Unlock()
+		})
+	}, nil
 }
 
 func (rt *Runtime) registerInstance(in *Instance) error {
@@ -394,7 +361,7 @@ func (rt *Runtime) compilePlugin(wasmBytes []byte) (*Module, error) {
 type PreparedCompile struct {
 	mu           sync.Mutex
 	rt           *Runtime
-	operation    runtimeOperation
+	end          func()
 	compilation  CompilationIdentity
 	source       []byte
 	cfg          *RuntimeConfig
@@ -412,8 +379,12 @@ func (rt *Runtime) PrepareCompile(wasmBytes []byte) (*PreparedCompile, error) {
 }
 
 func (rt *Runtime) prepareCompile(wasmBytes []byte, allowLoading bool) (*PreparedCompile, error) {
-	operation, err := rt.beginCompileOperation("Compile", allowLoading)
+	end, err := rt.beginCompileOperation("Compile", allowLoading)
 	if err != nil {
+		return nil, err
+	}
+	fail := func(err error) (*PreparedCompile, error) {
+		end()
 		return nil, err
 	}
 
@@ -427,8 +398,7 @@ func (rt *Runtime) prepareCompile(wasmBytes []byte, allowLoading bool) (*Prepare
 	}
 	rt.mu.Unlock()
 	if err := cfg.Validate(); err != nil {
-		operation.end()
-		return nil, err
+		return fail(err)
 	}
 
 	var compilation CompilationIdentity
@@ -446,8 +416,7 @@ func (rt *Runtime) prepareCompile(wasmBytes []byte, allowLoading bool) (*Prepare
 		var transformErr error
 		panicErr := callHookSafely("ModuleSourceTransformer", func() { next, transformErr = transform(ctx, source) })
 		if err := joinPrimary(transformErr, panicErr); err != nil {
-			operation.end()
-			return nil, emitCompileError(hooks, compilation, err)
+			return fail(emitCompileError(hooks, compilation, err))
 		}
 		if next == nil {
 			next = source
@@ -458,7 +427,7 @@ func (rt *Runtime) prepareCompile(wasmBytes []byte, allowLoading bool) (*Prepare
 		source = append([]byte(nil), next...)
 	}
 	return &PreparedCompile{
-		rt: rt, operation: operation, compilation: compilation, source: source, cfg: cfg,
+		rt: rt, end: end, compilation: compilation, source: source, cfg: cfg,
 		bindings: bindings, hooks: hooks, instructions: instructions,
 		cacheable: len(hooks.beforeCompile) == 0 && len(instructions) == 0,
 	}, nil
@@ -503,8 +472,12 @@ func (p *PreparedCompile) finish() {
 		return
 	}
 	p.finished = true
+	end := p.end
+	p.end = nil
 	p.mu.Unlock()
-	p.operation.end()
+	if end != nil {
+		end()
+	}
 }
 
 // Compile compiles the prepared source and adopts ownership into the returned
@@ -536,6 +509,7 @@ func (p *PreparedCompile) Adopt(c *Compiled) (*Module, error) {
 
 func (p *PreparedCompile) finishCompile(c *Compiled) (*Module, error) {
 	mod := buildModule(c, p.bindings)
+	p.rt.restoreStructuredImportNames(mod, p.source)
 	if len(p.hooks.afterCompile) != 0 {
 		event := ModuleCompiledEvent{Compilation: p.compilation, Module: moduleView(mod), SourceDigest: DigestModuleSource(p.source)}
 		for _, fn := range p.hooks.afterCompile {
@@ -578,6 +552,23 @@ func emitCompileError(hooks *hookRegistry, compilation CompilationIdentity, orig
 	return joinPrimary(original, hookErrs...)
 }
 
+func (rt *Runtime) restoreStructuredImportNames(mod *Module, source []byte) {
+	// The historical Imports key joins module and field with a dot. Both Wasm
+	// names may contain dots, so recover the exact pair from validated source.
+	if decoded, err := wasm.DecodeModule(source); err == nil {
+		funcIndex := 0
+		for i := range decoded.Imports {
+			im := &decoded.Imports[i]
+			if im.Type.Kind != wasm.ExternFunc || funcIndex >= len(mod.imports) {
+				continue
+			}
+			mod.imports[funcIndex].Module = im.Module
+			mod.imports[funcIndex].Name = im.Name
+			funcIndex++
+		}
+	}
+}
+
 func (rt *Runtime) compile(wasmBytes []byte, allowLoading bool) (*Module, error) {
 	prepared, err := rt.prepareCompile(wasmBytes, allowLoading)
 	if err != nil {
@@ -606,11 +597,11 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 	if rt == nil || c == nil {
 		return nil, fmt.Errorf("wago: nil runtime or compiled module")
 	}
-	operation, err := rt.beginCompileOperation("Module", false)
+	end, err := rt.beginCompileOperation("Module", false)
 	if err != nil {
 		return nil, err
 	}
-	defer operation.end()
+	defer end()
 	rt.mu.Lock()
 	hooks := rt.loadHooks()
 	bindings := rt.snapshotModuleBindingsLocked(hooks)
@@ -698,11 +689,11 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	if mod.rt != rt {
 		return nil, fmt.Errorf("wago: Instantiate: %w", ErrForeignModule)
 	}
-	hooks, operation, err := rt.beginOperationGeneration("Instantiate", allowLoading)
+	hooks, reservation, end, err := rt.beginOperationGeneration("Instantiate", allowLoading)
 	if err != nil {
 		return nil, err
 	}
-	defer operation.end()
+	defer end()
 	if !mod.beginUse() {
 		return nil, fmt.Errorf("wago: Instantiate: module is closed")
 	}
@@ -736,7 +727,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	// retained code ownership before start-time host callbacks.
 	mod.endUse()
 	usingModule = false
-	in, err := rt.instantiateWithHooksOrigin(mod, imports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin, hooks, operation.reservation)
+	in, err := rt.instantiateWithHooksOrigin(mod, imports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin, hooks, reservation)
 	if err == nil && rt.isClosed() {
 		err = joinPrimary(fmt.Errorf("wago: runtime closed during instantiation"), in.Close())
 		in = nil
@@ -779,9 +770,6 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports)
 			continue
 		}
 		value, provided := rt.imports[key]
-		if provided && spec.Kind == ImportFunc && !registeredImportMatches(rt.importMeta[key], spec.Module, spec.Name) {
-			provided = false
-		}
 		if !provided {
 			if spec.Kind == ImportFunc {
 				return nil, missingImportError(spec)
@@ -824,15 +812,7 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc G
 	if len(hooks.beforeInstantiate) == 0 && len(hooks.afterCreate) == 0 && len(hooks.afterInstantiate) == 0 && len(hooks.onInstantiateError) == 0 {
 		return instantiateCoreWithModuleUse(mod, iopts)
 	}
-	return instantiateWithLifecycleHooks(mod, iopts, origin, hooks, reservation)
-}
 
-// instantiateWithLifecycleHooks is kept separate from the ordinary no-hook
-// path. TinyGo boxes every value captured by a closure for the complete
-// containing function, even when execution returns before reaching that closure.
-// Keeping callbacks here prevents the default instantiation path's Runtime,
-// Module, hooks, and options from being routed through those heap boxes.
-func instantiateWithLifecycleHooks(mod *Module, iopts InstantiateOptions, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
 	request := InstantiationRequest{Module: moduleView(mod), Origin: origin, reservation: reservation}
 	emitError := func(original error) error {
 		var hookErrs []error
@@ -886,12 +866,7 @@ func instantiateCoreWithModuleUse(mod *Module, opts InstantiateOptions) (*Instan
 	if !mod.beginUse() {
 		return nil, fmt.Errorf("wago: Instantiate: module is closed")
 	}
-	inst, err := instantiateCoreWithModuleLease(mod.c, opts, mod)
-	// The compiled module owns metadata and backing slices consumed throughout
-	// instantiation. TinyGo needs an explicit final use to keep that owner rooted.
-	goruntime.KeepAlive(mod)
-	goruntime.KeepAlive(opts)
-	return inst, err
+	return instantiateCoreWithModuleLease(mod.c, opts, mod)
 }
 
 // Plugins returns immutable definitions in dependency-resolved activation order.
@@ -940,11 +915,11 @@ func (rt *Runtime) ProvidedImports() []ImportSpec {
 	return specs
 }
 
-// Close publishes shutdown and returns promptly. An empty callback-free Runtime
-// completes inline; all other teardown continues asynchronously so plugin
-// callbacks, host imports, contract calls, invoke hooks, and close observers may
-// initiate Runtime closure without self-deadlock. Use CloseContext or WaitClosed
-// when completion and the joined teardown error are required.
+// Close publishes shutdown and returns promptly. It never waits for teardown,
+// so plugin callbacks, host imports, contract calls, invoke hooks, and close
+// observers may initiate Runtime closure without self-deadlock. Use
+// CloseContext or WaitClosed when completion and the joined teardown error are
+// required.
 func (rt *Runtime) Close() error {
 	if rt == nil {
 		return nil
@@ -958,24 +933,12 @@ func (rt *Runtime) Close() error {
 	if rt.stateWasLoadingLocked() {
 		loadingDone := rt.loadingDone
 		rt.mu.Unlock()
-		rt.finishCloseAfterLoadingAsync(context.Background(), state, loadingDone)
+		go rt.finishCloseAfterLoading(context.Background(), state, loadingDone)
 		return nil
 	}
 	hooks, internalClose, pluginRuns, store := rt.snapshotCloseLocked()
-	// A callback-free Runtime with no admitted work or live instances has
-	// nothing that can block or re-enter shutdown. Finish that bounded path in
-	// place. Besides avoiding a needless goroutine, this prevents cooperative
-	// TinyGo builds from accumulating teardown tasks between short-lived runtime
-	// iterations.
-	finishInline := rt.activeOperations == 0 && len(rt.instances) == 0 &&
-		len(hooks) == 0 && len(internalClose) == 0 && len(pluginRuns) == 0 &&
-		store.emptyForInlineClose()
 	rt.mu.Unlock()
-	if finishInline {
-		rt.finishClose(context.Background(), state, hooks, internalClose, pluginRuns, store)
-		return nil
-	}
-	rt.finishCloseAsync(context.Background(), state, hooks, internalClose, pluginRuns, store)
+	go rt.finishClose(context.Background(), state, hooks, internalClose, pluginRuns, store)
 	return nil
 }
 
@@ -1038,11 +1001,11 @@ func (rt *Runtime) CloseContext(ctx context.Context) error {
 		if rt.stateWasLoadingLocked() {
 			loadingDone := rt.loadingDone
 			rt.mu.Unlock()
-			rt.finishCloseAfterLoadingAsync(ctx, state, loadingDone)
+			go rt.finishCloseAfterLoading(ctx, state, loadingDone)
 		} else {
 			hooks, internalClose, pluginRuns, store := rt.snapshotCloseLocked()
 			rt.mu.Unlock()
-			rt.finishCloseAsync(ctx, state, hooks, internalClose, pluginRuns, store)
+			go rt.finishClose(ctx, state, hooks, internalClose, pluginRuns, store)
 		}
 	} else {
 		rt.mu.Unlock()
@@ -1131,9 +1094,9 @@ func (rt *Runtime) finishClose(ctx context.Context, state *runtimeCloseState, ho
 
 	instances := rt.directInstancesSnapshot()
 	for i := len(instances) - 1; i >= 0; i-- {
-		// The close state below owns both the logical-close result and the
-		// terminal result published after admitted invocations quiesce.
-		_ = instances[i].Close()
+		if err := instances[i].Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	for i := len(pluginRuns) - 1; i >= 0; i-- {
 		errs = append(errs, closePluginRun(ctx, pluginRuns[i])...)
@@ -1156,9 +1119,8 @@ func (rt *Runtime) finishClose(ctx context.Context, state *runtimeCloseState, ho
 		closeState := instances[i].ensurePluginState().close.Load()
 		if closeState != nil {
 			<-closeState.done
-			<-closeState.quiesced
-			if err := joinPrimary(closeState.result, closeState.terminalResult); err != nil {
-				errs = append(errs, err)
+			if closeState.result != nil {
+				errs = append(errs, closeState.result)
 			}
 		}
 	}
@@ -1197,7 +1159,7 @@ func (rt *Runtime) rollbackCommittedPluginPlan(ctx context.Context) error {
 		var store *referenceStore
 		state, hooks, internalClose, pluginRuns, store = rt.startCloseLocked()
 		rt.mu.Unlock()
-		rt.finishCloseAsync(ctx, state, hooks, internalClose, pluginRuns, store)
+		go rt.finishClose(ctx, state, hooks, internalClose, pluginRuns, store)
 	} else {
 		rt.mu.Unlock()
 	}

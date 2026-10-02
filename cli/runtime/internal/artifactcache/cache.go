@@ -110,6 +110,7 @@ func (cache Cache) path(source []byte, config *wago.RuntimeConfig) (string, bool
 	encoded = append(encoded, runtime.GOOS...)
 	encoded = binary.LittleEndian.AppendUint64(encoded, uint64(len(runtime.GOARCH)))
 	encoded = append(encoded, runtime.GOARCH...)
+	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(config.Compiler()))
 	encoded = binary.LittleEndian.AppendUint64(encoded, uint64(config.CoreFeatures()))
 	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(config.BoundsChecks()))
 	encoded = append(encoded, 0)
@@ -117,7 +118,6 @@ func (cache Cache) path(source []byte, config *wago.RuntimeConfig) (string, bool
 		encoded[len(encoded)-1] = 1
 	}
 	encoded = binary.LittleEndian.AppendUint32(encoded, config.MemoryLimitPages())
-	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(config.OptimizationObjective()))
 
 	knobs := config.OptimizationInfos()
 	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(len(knobs)))

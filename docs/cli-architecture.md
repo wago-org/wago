@@ -60,8 +60,8 @@ runtime adapts strict locked selections into engine configuration. Manager and
 runtime code must not define separate `wago.json` or `wago-lock.json` models,
 and the shared project package must not import the runtime facade.
 
-`wago compile` is manager-owned because it orchestrates artifact generation and
-the Go toolchain. Its temporary helper embeds the Wasm command, imports the
+`wago compile` is manager-owned because it orchestrates the Go toolchain and
+cross-target builds. Its generated module embeds the Wasm command, imports the
 active plugins' explicit `/register` provider catalogs, and embeds their exact
 definition digests, Authority Grants, configuration, and Contract bindings. Each
 package exports an explicit provider catalog; none self-registers through
@@ -73,22 +73,10 @@ Go module and imported through their conventional `/register` package. Linked
 definitions must match the lockfile before activation. The resulting executable
 imports `cli/standalone`, not the runtime CLI. The manager
 reads the architecture-neutral settings and parallel-policy packages, while the
-generated helper applies the settings through the selected runtime backend. It
-runs once under standard Go to produce `module.wago`; the manager then replaces
-it with a `wago_precompiled` entry point and performs the final link with standard
-Go or, when `--tinygo` is set, TinyGo. The final binary embeds the artifact rather
-than the source Wasm and contains the artifact loader, runtime, selected plugins,
-and runtime-owned host-call thunk emitter, but no Railshot source compiler.
-`--watch` intentionally has no standalone equivalent because the embedded module
-cannot change.
-
-Because compilation policy is platform-sensitive, standalone compilation rejects
-non-native `--target` values instead of producing an artifact under the wrong OS
-or architecture assumptions. The helper environment pins that native target
-rather than inheriting ambient cross-compilation variables. For TinyGo links its
-`wago_target_tinygo` build tag also selects the final runtime's cooperative
-interruption policy, which is distinct from the standard-Go Linux helper's
-signal-based policy.
+generated target applies the settings through the selected runtime backend.
+GOOS/GOARCH select exactly one build-tagged Railshot backend, so an AMD64
+executable does not link ARM64 codegen and vice versa. `--watch` intentionally
+has no standalone equivalent because the embedded module cannot change.
 
 `cli/internal/handoff.Metadata` is the sole definition of launch metadata. It
 encodes and decodes the `WAGO_MANAGER_*` and `WAGO_RUNTIME_*` environment
@@ -222,34 +210,7 @@ packages; it does not become a third CLI role.
 
 `run --watch` is runtime-owned. It relaunches the same runtime executable when
 the input module changes, preserving guest arguments and plugin selection made
-by the manager handoff. The runtime supervises one child process tree at a time,
-keeps file polling active while the guest runs, and waits for stable content
-before a restart. On Linux, the runtime starts two provider-free manager
-processes as a guard and a subreaper worker. The worker starts the active runtime
-as its guest. The guard cleans the tree if the worker dies. Close-on-exec
-lifetime pipes make each supervisor clean the tree if its parent process dies.
-This places supervision before generated plugin providers can initialize. A
-runtime started directly, without the manager handoff, rejects Linux watch mode.
-A terminal-backed watcher and its direct guest stay in the shell's foreground
-job group, so both receive terminal interrupts. If a guest descendant creates a
-separate foreground group, the watcher restores that group after a stop and
-uses a provider-free helper in the group to relay terminal interrupts. It also
-records bounded process identities and checks each identity again before
-signaling it. Linux subreaper ownership keeps double-forked children tracked. On
-Windows, the extended process-start API
-puts the child in its kill-on-close job before its first instruction runs. The
-watcher mirrors terminal stop and
-continue events, and its status output remains safe when background terminal
-writes are disabled. It can find the controlling terminal through stdin,
-stdout, or stderr, including after a background job is foregrounded. Hangup,
-interrupt, quit, and termination signals stop the child tree before the watcher
-exits. Cheap file identity, size, modification, and change metadata gates full
-content hashing. A full scan after 25 poll intervals is the bound when a file
-system does not update that metadata. The hash still detects same-size rewrites
-when modification timestamps do not change. macOS does not provide a safe public
-API to track a process that double-forks before a process-table scan. macOS and
-the size-first `wago_lean` profile therefore do not include watch mode. Their
-parsers reject `--watch`.
+by the manager handoff.
 
 The manager is the default Go build. Runtime builds require the `wago_runtime`
 tag so an entrypoint cannot silently produce the wrong role:

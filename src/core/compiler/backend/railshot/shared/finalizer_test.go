@@ -3,21 +3,9 @@ package shared
 import (
 	"bytes"
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/optimization"
 )
-
-func TestOffsetMapCapacityGrowthDoesNotGrowTheMap(t *testing.T) {
-	// Deletion lengths are derived from adjacent prefix counts, so doubling the
-	// bound does not retain a third per-range array.
-	if got, want := unsafe.Sizeof(OffsetMap{}), uintptr(1036); got != want {
-		t.Fatalf("OffsetMap size = %d, want %d", got, want)
-	}
-	if got, want := unsafe.Sizeof(WideOffsetMap{}), uintptr(2052); got != want {
-		t.Fatalf("WideOffsetMap size = %d, want %d", got, want)
-	}
-}
 
 func TestFinalizeIdentityPreservesCodeAndMapsEveryOffset(t *testing.T) {
 	code := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
@@ -106,41 +94,6 @@ func TestOffsetMapAppliesSortedDeletions(t *testing.T) {
 	}
 }
 
-func TestOffsetMapBinaryLookupMatchesLinearReference(t *testing.T) {
-	deletions := []DeletedRange{
-		{Off: 0, Len: 2},
-		{Off: 5, Len: 3},
-		{Off: 11, Len: 1},
-		{Off: 17, Len: 5},
-		{Off: 29, Len: 2},
-	}
-	offsets, err := NewOffsetMap(40, deletions)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for off := 0; off <= 40; off++ {
-		delta := 0
-		wantOK := true
-		for _, deletion := range deletions {
-			start, end := int(deletion.Off), int(deletion.Off+deletion.Len)
-			if off < start {
-				break
-			}
-			if off > start && off < end {
-				wantOK = false
-				break
-			}
-			if off >= end {
-				delta += int(deletion.Len)
-			}
-		}
-		got, gotOK := offsets.Map(off)
-		if want := off - delta; gotOK != wantOK || wantOK && got != want {
-			t.Errorf("map(%d) = %d, %v; want %d, %v", off, got, gotOK, want, wantOK)
-		}
-	}
-}
-
 func TestOffsetMapRejectsInvalidDeletions(t *testing.T) {
 	for _, deletions := range [][]DeletedRange{
 		{{Off: 4}},
@@ -154,38 +107,19 @@ func TestOffsetMapRejectsInvalidDeletions(t *testing.T) {
 	}
 }
 
-func TestWideOffsetMapOwnsAMD64Capacity(t *testing.T) {
-	deletions := make([]DeletedRange, MaxOffsetMapDeletions+1)
-	for i := range deletions {
-		deletions[i] = DeletedRange{Off: uint32(2 * i), Len: 1}
-	}
-	if _, err := NewOffsetMap(2*len(deletions), deletions); err == nil {
-		t.Fatal("narrow offset map accepted AMD64-wide deletion inventory")
-	}
-	offsets, err := NewWideOffsetMap(2*len(deletions), deletions)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, ok := offsets.Map(2 * len(deletions)); !ok || got != len(deletions) {
-		t.Fatalf("wide final offset = %d, %v; want %d, true", got, ok, len(deletions))
-	}
-}
-
 func TestCodegenPolicyObjectiveOwnsAlignment(t *testing.T) {
 	for _, test := range []struct {
-		objective     OptimizationObjective
-		wantAlign     uint8
-		wantCompact   bool
-		wantDeletions uint8
+		objective OptimizationObjective
+		wantAlign uint8
 	}{
-		{OptimizeSpeed, 4, false, 8},
-		{OptimizeBalanced, 4, false, 8},
-		{OptimizeSize, 0, true, MaxWideOffsetMapDeletions},
-		{OptimizeEmbedded, 0, true, MaxWideOffsetMapDeletions},
+		{OptimizeSpeed, 4},
+		{OptimizeBalanced, 4},
+		{OptimizeSize, 0},
+		{OptimizeEmbedded, 0},
 	} {
 		policy := CodegenPolicyForObjective(optimization.Selection{}, test.objective)
-		if policy.Objective != test.objective || policy.FunctionAlignLog2 != test.wantAlign || policy.InternalAlignLog2 != test.wantAlign || policy.LoopAlignLog2 != test.wantAlign || policy.CompactNative != test.wantCompact || policy.MaxFinalizerDeletions != test.wantDeletions {
-			t.Errorf("objective %d policy = %#v, want alignment log2 %d, compact %v, deletions %d", test.objective, policy, test.wantAlign, test.wantCompact, test.wantDeletions)
+		if policy.Objective != test.objective || policy.FunctionAlignLog2 != test.wantAlign || policy.InternalAlignLog2 != test.wantAlign || policy.LoopAlignLog2 != test.wantAlign {
+			t.Errorf("objective %d policy = %#v, want alignment log2 %d", test.objective, policy, test.wantAlign)
 		}
 	}
 }

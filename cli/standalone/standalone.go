@@ -21,60 +21,38 @@ type Options struct {
 	OptimizationKnobs map[string]bool
 }
 
-// RunArtifact executes a precompiled module embedded in a native executable.
-// Unlike Run, it never invokes Wago's compiler.
-func RunArtifact(artifact []byte, plugins wago.PluginSet, options Options, args []string) int {
-	if err := executeArtifact(artifact, plugins, options, args); err != nil {
-		return reportError(err, args)
+// Run executes source as a command and returns its process exit code. Plugins
+// are handed in as one explicit, reviewed PluginSet.
+func Run(source []byte, plugins wago.PluginSet, options Options, args []string) int {
+	if err := execute(source, plugins, options, args); err != nil {
+		var exit *wago.ExitError
+		if errors.As(err, &exit) {
+			return int(exit.Code)
+		}
+		name := "program"
+		if len(args) != 0 {
+			name = filepath.Base(args[0])
+		}
+		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
+		return 1
 	}
 	return 0
 }
 
-func reportError(err error, args []string) int {
-	var exit *wago.ExitError
-	if errors.As(err, &exit) {
-		return int(exit.Code)
-	}
-	name := "program"
-	if len(args) != 0 {
-		name = filepath.Base(args[0])
-	}
-	fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
-	return 1
-}
-
-func executeArtifact(artifact []byte, plugins wago.PluginSet, options Options, args []string) error {
-	runtime, err := loadRuntime(plugins, options, args)
-	if err != nil {
-		return err
-	}
-	defer runtime.Close()
-	compiled, err := wago.Load(artifact)
-	if err != nil {
-		return err
-	}
-	module, err := runtime.AdoptModule(compiled)
-	if err != nil {
-		return err
-	}
-	return executeModule(runtime, module, options, args)
-}
-
-func loadRuntime(plugins wago.PluginSet, options Options, args []string) (*wago.Runtime, error) {
+func execute(source []byte, plugins wago.PluginSet, options Options, args []string) error {
 	config, err := runtimeConfig(options)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	runtime := wago.NewRuntime(wago.WithRuntimeConfig(config), wago.WithGuestArguments(args))
+	defer runtime.Close()
 	if err := runtime.LoadPlugins(context.Background(), plugins); err != nil {
-		_ = runtime.Close()
-		return nil, err
+		return err
 	}
-	return runtime, nil
-}
-
-func executeModule(runtime *wago.Runtime, module *wago.Module, options Options, args []string) error {
-	defer module.Close()
+	module, err := runtime.Compile(source)
+	if err != nil {
+		return err
+	}
 	invoke, err := wasmcall.ResolveExport(module.Compiled(), options.Invoke)
 	if err != nil {
 		return err

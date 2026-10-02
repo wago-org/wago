@@ -13,6 +13,7 @@ import (
 type CompilationRequest struct {
 	Arch                   string
 	Core                   string
+	Compiler               string
 	Parallel               string
 	DeferredBoundsChecking *bool
 	Optimizations          map[string]bool
@@ -22,6 +23,7 @@ type CompilationRequest struct {
 // settings precedence for one runtime compilation configuration.
 type CompilationSelection struct {
 	Core                   int
+	Compiler               wago.CompilerEngine
 	FunctionWorkers        int
 	DeferredBoundsChecking bool
 	Features               map[string]bool
@@ -55,6 +57,10 @@ func ResolveCompilation(request CompilationRequest) (CompilationSelection, error
 // surface for precedence; production callers normally use ResolveCompilation.
 func ResolveCompilationFrom(config Config, configured bool, request CompilationRequest) (CompilationSelection, error) {
 	core, err := resolveCore(request.Core)
+	if err != nil {
+		return CompilationSelection{}, err
+	}
+	compiler, err := resolveCompiler(request.Compiler)
 	if err != nil {
 		return CompilationSelection{}, err
 	}
@@ -99,7 +105,7 @@ func ResolveCompilationFrom(config Config, configured bool, request CompilationR
 		}
 	}
 	return CompilationSelection{
-		Core: core, FunctionWorkers: workers, DeferredBoundsChecking: deferred,
+		Core: core, Compiler: compiler, FunctionWorkers: workers, DeferredBoundsChecking: deferred,
 		Features: features, Optimizations: optimizations,
 	}, nil
 }
@@ -108,6 +114,7 @@ func ResolveCompilationFrom(config Config, configured bool, request CompilationR
 // all precedence and architecture filtering have completed.
 func (selection CompilationSelection) RuntimeConfig() *wago.RuntimeConfig {
 	config := wago.NewRuntimeConfig().
+		WithCompiler(selection.Compiler).
 		WithDeferBoundsChecks(selection.DeferredBoundsChecking).
 		WithFunctionWorkers(selection.FunctionWorkers).
 		WithOptimizations(selection.Optimizations)
@@ -123,6 +130,17 @@ func (selection CompilationSelection) RuntimeConfig() *wago.RuntimeConfig {
 		}
 	}
 	return config
+}
+
+func resolveCompiler(value string) (wago.CompilerEngine, error) {
+	switch value {
+	case "", "railshot":
+		return wago.CompilerRailshot, nil
+	case "dragline":
+		return wago.CompilerDragline, nil
+	default:
+		return 0, fmt.Errorf("unknown --compiler %q (want: railshot, dragline)", value)
+	}
 }
 
 func resolveCore(value string) (int, error) {

@@ -17,7 +17,7 @@ type gcHostActivationToken struct {
 	index uint8
 }
 
-func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, _ uintptr) gcHostActivationToken {
+func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32) gcHostActivationToken {
 	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
 		return gcHostActivationToken{}
 	}

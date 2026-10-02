@@ -199,7 +199,8 @@ func (f *fn) materialize(e *elem) Reg {
 	case stFuncRef:
 		r := f.allocReg(0)
 		f.ld64(r, linMemReg, -int32(offFuncRefDescPtr))
-		f.trapIfZero(r, true, true, trapIndirectOOB)
+		f.cmpImm(r, 0, true)
+		f.trapIf(condE, trapIndirectOOB)
 		f.leaDisp(r, r, int32((e.st.idx+1)*runtime.FuncRefDescBytes), true)
 		f.occupy(e, r)
 		return r
@@ -336,12 +337,14 @@ func (f *fn) materializePendingLoadsBeforeStore(base Reg, baseLocal int, baseLoc
 	}
 }
 
-// loadConst emits an immediate load of st's constant into r. A W-register move
-// zero-extends a 32-bit constant into the physical X register.
+// loadConst emits an immediate load of st's constant into r. A 32-bit constant is
+// materialized as its zero-extended uint32 value: a W-register write semantics is
+// achieved by MovImm64 of the zero-extended constant (the upper 32 bits are then
+// don't-cares / cleared), matching amd64's MovImm32.
 func (f *fn) loadConst(r Reg, st storage) {
 	if st.typ.is64() {
 		f.a.MovImm64(r, uint64(st.cval))
 	} else {
-		f.a.MovImm32(r, int32(st.cval))
+		f.a.MovImm64(r, uint64(uint32(st.cval)))
 	}
 }

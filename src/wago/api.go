@@ -14,10 +14,13 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/internal/functionworkers"
+	corecompiler "github.com/wago-org/wago/src/core/compiler"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
+	runtimeabi "github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
@@ -173,14 +176,7 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	compiled, err := compileWithFrontendFeaturesAndInstructions(cfg, wasmBytes, cfg.frontendFeatures(), instructions)
-	// TinyGo's conservative collector must not reclaim compiler inputs whose
-	// derived slices and pointers remain in use below this public boundary.
-	// Keep the complete owners live until decoding and code generation finish.
-	goruntime.KeepAlive(wasmBytes)
-	goruntime.KeepAlive(cfg)
-	goruntime.KeepAlive(instructions)
-	return compiled, err
+	return compileWithFrontendFeaturesAndInstructions(cfg, wasmBytes, cfg.frontendFeatures(), instructions)
 }
 
 func stagedTwoLocalTableOperation(k wasm.InstrKind) (allowed bool, tableOperation bool) {
@@ -1357,8 +1353,22 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if cfg.gcCodeTelemetry {
 		gcCodeStats = new(railshotModuleStats)
 	}
-	objective := railshotOptimizationObjective(cfg.optimizationObjective)
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Objective: &objective, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
+	railshotBackend := corecompiler.BackendFunc(func(input corecompiler.Input) (corecompiler.Output, error) {
+		cm, compileErr := railshotCompileModuleWith(input.Module, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
+		if compileErr != nil {
+			return corecompiler.Output{}, compileErr
+		}
+		return corecompiler.Output{
+			CodeImage: cm.CodeImage, Code: cm.Code, Entry: cm.Entry, InternalEntry: cm.InternalEntry,
+			DirectPrepared: cm.DirectPrepared, RequiresBMI2: cm.RequiresBMI2,
+			RequiresAVX2: cm.RequiresAVX2, RequiresAVX512: cm.RequiresAVX512,
+		}, nil
+	})
+	router := corecompiler.Router{Railshot: railshotBackend, Dragline: dragline.Compiler{}}
+	cm, err := router.Compile(cfg.compiler, corecompiler.Input{
+		Module: m, Runtime: corecompiler.RuntimeContract{ABIRevision: runtimeabi.Revision},
+		Target: corecompiler.Target{GOOS: goruntime.GOOS, GOARCH: goruntime.GOARCH},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1384,7 +1394,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if genericGCExecution || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{compiler: cm.Engine, code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry})
 	c.memoryDir.exactExports = true
 	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
 	c.memoryDir.stagedMemory64 = features.Memory64 && usesMemory64
@@ -1451,26 +1461,16 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	importedTables := m.ImportedTableCount()
-	importedMemories := m.ImportedMemCount()
-	importedTags := m.ImportedTagCount()
-	if importNameCount := importedFuncs + importedTables + importedMemories + importedTags; importNameCount != 0 {
-		c.validateMemo.importModuleEnds = make([]uint64, importNameCount)
-	}
 	var additionalTableImports []tableImportDef
 	if importedTables > 1 {
 		additionalTableImports = make([]tableImportDef, 0, importedTables-1)
 	}
 	tableImportIndex := 0
-	funcImportIndex := 0
-	memoryImportIndex := 0
-	tagImportIndex := 0
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
 			c.Imports = append(c.Imports, im.Module+"."+im.Name)
-			c.validateMemo.importModuleEnds[funcImportIndex] = exactImportModuleEnd(im.Module)
-			funcImportIndex++
 		case wasm.ExternGlobal:
 			exact, err := typeConverter.valueType(im.Type.GlobalType().Type, -1)
 			if err != nil {
@@ -1487,8 +1487,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		case wasm.ExternMem:
 			def := memoryDefFromWasm(im.Type.MemType())
 			def.ImportKey = im.Module + "." + im.Name
-			c.validateMemo.importModuleEnds[importedFuncs+importedTables+memoryImportIndex] = exactImportModuleEnd(im.Module)
-			memoryImportIndex++
 			c.memoryDir.defs = append(c.memoryDir.defs, def)
 			if c.memoryImport == "" {
 				c.memoryImport = def.ImportKey
@@ -1503,7 +1501,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 				return nil, fmt.Errorf("table import %q.%q ABI type: %w", im.Module, im.Name, err)
 			}
 			def := tableImportDef{Key: im.Module + "." + im.Name, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, Addr64: im.Type.TableType().Limits.Addr64}
-			c.validateMemo.importModuleEnds[importedFuncs+tableImportIndex] = exactImportModuleEnd(im.Module)
 			min := im.Type.TableType().Limits.Min
 			if min > uint64(maxInt()) {
 				return nil, fmt.Errorf("table import %q.%q minimum %d overflows int", im.Module, im.Name, min)
@@ -1529,8 +1526,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			tableImportIndex++
 		case wasm.ExternTag:
 			c.memoryDir.ehTags = append(c.memoryDir.ehTags, compiledTagDef{ImportKey: im.Module + "." + im.Name, TypeIndex: im.Type.TagType().Type.Index})
-			c.validateMemo.importModuleEnds[importedFuncs+importedTables+importedMemories+tagImportIndex] = exactImportModuleEnd(im.Module)
-			tagImportIndex++
 		}
 	}
 	if features.ExceptionHandling {
@@ -2257,11 +2252,6 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 // concrete targets into the per-instance dispatch table.
 func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore) error {
 	ehNativeCalls := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) && len(c.Imports) != 0
-	privateWaitGC := store != nil && !store.private && c.usesGenericGCExecution() && c.usesAtomicWaitHelpers()
-	dynamicFuncrefReachability := compiledHasDynamicFuncrefReachability(c)
-	if privateWaitGC && dynamicFuncrefReachability {
-		return fmt.Errorf("dynamic funcref reachability is unsupported for modules with atomic wait helpers")
-	}
 	moduleTransfersGC := false
 	for i := range c.Imports {
 		if i < len(c.importFuncSigs) && (hasValType(c.importFuncSigs[i].Params, ValAnyRef) || hasValType(c.importFuncSigs[i].Params, ValI31Ref) || hasValType(c.importFuncSigs[i].Results, ValAnyRef) || hasValType(c.importFuncSigs[i].Results, ValI31Ref)) {
@@ -2274,9 +2264,6 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 	gcSubtypeLinkProvider := gcSubtypeLinkProduct.linkProviderProduct()
 	for i, key := range c.Imports {
 		sigHasGCRefs := i < len(c.importFuncSigs) && (hasValType(c.importFuncSigs[i].Params, ValAnyRef) || hasValType(c.importFuncSigs[i].Params, ValI31Ref) || hasValType(c.importFuncSigs[i].Results, ValAnyRef) || hasValType(c.importFuncSigs[i].Results, ValI31Ref))
-		if privateWaitGC && sigHasGCRefs {
-			return fmt.Errorf("collector-reference import %q is unsupported for modules with atomic wait helpers", key)
-		}
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
 			if sigHasGCRefs {
@@ -2299,18 +2286,6 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 		}
 		if ex == nil || ex.inst == nil {
 			return fmt.Errorf("cross-instance import %q is nil", key)
-		}
-		if ex.inst.executionFlags.Load()&executionFlagDynamicGCDomain != 0 && ex.inst.refStore != store {
-			return fmt.Errorf("cross-instance import %q from a dynamic funcref producer requires the same Runtime", key)
-		}
-		if dynamicFuncrefReachability && ex.inst.refStore != store && (ex.inst.gc != nil || ex.inst.executionFlags.Load()&executionFlagImportedGCDomain != 0) {
-			return fmt.Errorf("dynamic funcref import %q from a GC-domain producer requires the same Runtime", key)
-		}
-		if dynamicFuncrefReachability && ex.inst.reachesPrivateGCInvocationDomain() {
-			return fmt.Errorf("dynamic funcref import %q cannot reach a private GC invocation domain", key)
-		}
-		if privateWaitGC && (ex.inst.gc != nil || ex.inst.executionFlags.Load()&executionFlagImportedGCDomain != 0) {
-			return fmt.Errorf("Runtime GC-domain import %q is unsupported for modules with atomic wait helpers", key)
 		}
 		if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
 			return fmt.Errorf("cross-instance import %q references an unavailable function", key)
@@ -2689,6 +2664,9 @@ func (c *Compiled) validate() error {
 	if c == nil {
 		return fmt.Errorf("compiled module is nil")
 	}
+	if !c.compiler.Valid() {
+		return fmt.Errorf("compiled artifact uses unknown compiler engine %d", uint8(c.compiler))
+	}
 	if c.NumImports < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative NumImports %d", c.NumImports)
 	}
@@ -2697,9 +2675,6 @@ func (c *Compiled) validate() error {
 	}
 	if len(c.importFuncSigs) != c.NumImports {
 		return fmt.Errorf("compiled metadata invalid: importFuncSigs length %d != NumImports %d", len(c.importFuncSigs), c.NumImports)
-	}
-	if err := c.validateImportModuleEnds(); err != nil {
-		return err
 	}
 	if c.dynamicImports != (c.NumImports > 0) {
 		return fmt.Errorf("compiled metadata invalid: dynamic import dispatch=%v with %d function import(s)", c.dynamicImports, c.NumImports)
@@ -3239,9 +3214,6 @@ func (c *Compiled) validateExactValueMetadata() error {
 }
 
 func (c *Compiled) validateCodecMetadata() error {
-	if err := c.validateImportModuleEnds(); err != nil {
-		return err
-	}
 	if err := validateDefinedTypeDescriptors(c.Types); err != nil {
 		return err
 	}
@@ -4088,9 +4060,6 @@ func (in *Instance) invokeEntry(export string, args []uint64, cancel context.Con
 func (in *Instance) invokeWithToken(export string, args []uint64, cancel context.Context, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {
 	reentry := !gateHeld && isNativeActive(in, id)
 	if !reentry && !gateHeld {
-		// Acquire the target instance gate before the shared collector lease. A
-		// parked same-domain callback must be able to reacquire the collector and
-		// finish releasing this gate while a second callback waits to enter.
 		state := in.ensurePluginState()
 		state.invokeMu.Lock()
 		state.invocationID = id
@@ -4099,29 +4068,18 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 			state.invokeMu.Unlock()
 		}()
 	}
-	if !alreadyAdmitted {
-		if err := in.beginInvocation(); err != nil {
-			return nil, fmt.Errorf("invoke %q: %w", export, err)
-		}
-		defer in.endInvocation()
-	}
-	gcLease := in.lockGCInvocation(id)
-	var reconcileAttached *Instance
-	defer func() {
-		gcLease.unlock()
-		if in.importsFuncrefStorage() || in.table != nil {
-			in.reconcileFuncrefRoots()
-		}
-		if reconcileAttached != nil && (reconcileAttached.importsFuncrefStorage() || reconcileAttached.table != nil) {
-			reconcileAttached.reconcileFuncrefRoots()
-		}
-	}()
 	if reentry {
 		restore, err := in.prepareHostReentryState()
 		if err != nil {
 			return nil, err
 		}
 		defer restore()
+	}
+	if !alreadyAdmitted {
+		if err := in.beginInvocation(); err != nil {
+			return nil, fmt.Errorf("invoke %q: %w", export, err)
+		}
+		defer in.endInvocation()
 	}
 	previousReservation := in.swapInvocationReservation(reservation)
 	defer in.swapInvocationReservation(previousReservation)
@@ -4143,14 +4101,13 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, importIdx)
 		}
 		if ex, ok := in.imports[in.c.Imports[importIdx]].(*InstanceExport); ok && ex != nil && ex.inst != nil {
-			reconcileAttached = ex.inst
 			// Native cross-instance calls carry only the caller's invocation lease and
 			// trap cell; the import attachment retains the producer's physical resources.
 			// Keep this Go-level re-export path identical so producer Close neither owns
 			// nor strands an invocation initiated through the relay.
 			return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, cancel, in.trap, true)
 		}
-		return in.invokeReexportedHost(export, importIdx, args, id)
+		return in.invokeReexportedHost(export, importIdx, args)
 	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
@@ -4180,6 +4137,9 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
+	if in.importsFuncrefStorage() || in.table != nil {
+		defer in.reconcileFuncrefRoots()
+	}
 	if cancel != nil {
 		stopCancel := in.startCancellationWatch(cancel, in.trap)
 		defer stopCancel()
@@ -4254,13 +4214,6 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel context.Con
 		return nil, fmt.Errorf("invoke function %d: %w", li, err)
 	}
 	defer in.endInvocation()
-	gcLease := in.lockGCInvocation(in.currentInvocationID())
-	defer func() {
-		gcLease.unlock()
-		if in.importsFuncrefStorage() || in.table != nil {
-			in.reconcileFuncrefRoots()
-		}
-	}()
 	return in.invokeAttachedLocalContext(li, args, cancel, activeTrap, false)
 }
 
@@ -4311,6 +4264,9 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 	entry := in.base + uintptr(in.c.Entry[li])
 	if len(activeTrap) < 4 {
 		activeTrap = in.trap
+	}
+	if in.importsFuncrefStorage() || in.table != nil {
+		defer in.reconcileFuncrefRoots()
 	}
 	stopCancel := noOpCancellationWatch
 	if cancel != nil {
@@ -4481,7 +4437,7 @@ func (in *Instance) replayHostLog() (err error) {
 	return nil
 }
 
-func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64, id invocationID) (results []uint64, err error) {
+func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64) (results []uint64, err error) {
 	if importIdx < 0 || importIdx >= len(in.syncHosts) || in.syncHosts[importIdx] == nil || importIdx >= len(in.c.importFuncSigs) {
 		return nil, fmt.Errorf("export %q is an imported function without a callable host owner", export)
 	}
@@ -4540,13 +4496,6 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 			}
 		}
 	}()
-	// This direct Go-level path does not pass through dispatchSynchronousHostCall,
-	// but the imported function is still arbitrary host code. Release the shared
-	// collector lease after scalar-only validation so same-domain InvokeFromHost
-	// and CollectGC calls can proceed, then restore it before returning results to
-	// the public invocation boundary.
-	resumeGCInvocation := in.suspendGCInvocation(id)
-	defer resumeGCInvocation()
 	fn := in.syncHosts[importIdx]
 	caller := in.beginHostCallScope()
 	defer caller.scope.end(caller.generation, caller.parentGeneration)

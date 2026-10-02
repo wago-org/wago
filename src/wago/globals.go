@@ -406,11 +406,11 @@ func (rt *Runtime) NewFuncRefGlobal(initial FuncRef, mutable bool) (*Global, err
 	if rt == nil || rt.refStore == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
 	}
-	operation, err := rt.beginOperation("NewFuncRefGlobal", false)
+	end, err := rt.beginOperation("NewFuncRefGlobal", false)
 	if err != nil {
 		return nil, err
 	}
-	defer operation.end()
+	defer end()
 	descriptor := uint64(0)
 	if initial.token != 0 {
 		var ok bool
@@ -439,11 +439,11 @@ func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global,
 	if rt == nil || rt.refStore == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
 	}
-	operation, err := rt.beginOperation("NewExternRefGlobal", false)
+	end, err := rt.beginOperation("NewExternRefGlobal", false)
 	if err != nil {
 		return nil, err
 	}
-	defer operation.end()
+	defer end()
 	if initial.token != 0 {
 		if _, ok := rt.refStore.resolveExternref(initial.token); !ok {
 			return nil, fmt.Errorf("wago: invalid externref token for global initializer")
@@ -1090,13 +1090,12 @@ type Compiled struct {
 	maxResultSlots       int
 	instantiateArenaNeed int
 
-	// validateMemo owns immutable validation sidecars and memoizes the
-	// instantiate-boundary metadata validation for modules produced by
-	// Compile/UnmarshalBinary: the full check (which loops all
-	// funcs/globals/exports/GC descs) then only runs once instead of on every
-	// Instantiate. A nil memo means "validate every time" — which is what a
-	// hand-constructed Compiled (exported fields, no memo) gets, preserving its
-	// first-use validation.
+	// validateMemo memoizes the instantiate-boundary metadata validation for
+	// modules produced by Compile/UnmarshalBinary, which are immutable: the full
+	// check (which loops all funcs/globals/exports/GC descs) then only runs once
+	// instead of on every Instantiate. A nil memo means "validate every time" —
+	// which is what a hand-constructed Compiled (exported fields,
+	// no memo) gets, preserving its first-use validation.
 	validateMemo *validateMemo
 
 	codeCache          *compiledCodeCache
@@ -1108,6 +1107,15 @@ type Compiled struct {
 	// to use instance-local native execution leases. It is intentionally not
 	// serialized because it is runtime policy rather than a module property.
 	independentInstances bool
+	compiler             CompilerEngine
+}
+
+// Compiler reports the engine that produced this native-code artifact.
+func (c *Compiled) Compiler() CompilerEngine {
+	if c == nil {
+		return CompilerRailshot
+	}
+	return c.compiler
 }
 
 // The sign bit of a fresh compilation's internal-entry offset carries the
@@ -1134,11 +1142,6 @@ type validateMemo struct {
 	err                      error
 	gcFrameRoots             *compiledGCFrameRoots // immutable compiled/codec native safepoint and callsite map
 	structuralCallIdentities *structuralCallIdentityCache
-	// importModuleEnds stores one plus the module-name byte length for each
-	// non-global import, grouped as functions, tables, memories, then tags. A
-	// zero entry retains the legacy first-dot interpretation for hand-built
-	// Compiled values; source compilation always records an exact nonzero end.
-	importModuleEnds []uint64
 }
 
 // validateCached returns the metadata-validation result, running the full check

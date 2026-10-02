@@ -53,40 +53,6 @@ const offTrapStackReentry = 24
 // chunk loops beat `rep movs/stos` startup latency.
 const smallBulkMax = 96
 
-type rcxZeroSite struct {
-	off     int
-	compact bool
-}
-
-func (f *fn) rcxZero32Placeholder() rcxZeroSite {
-	if directJecxzEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
-		f.stats.peep("direct-jecxz")
-		return rcxZeroSite{off: f.a.JcxzPlaceholder(false), compact: true}
-	}
-	f.a.TestSelf(RCX, false)
-	return rcxZeroSite{off: f.a.JccPlaceholder(condE)}
-}
-
-func (f *fn) closeRCXZero32Loop(site rcxZeroSite, loop int) {
-	if site.compact {
-		if !f.a.JccRel8(condNE, loop) {
-			panic("amd64: bounded byte-tail JNE exceeded rel8 range")
-		}
-		return
-	}
-	f.a.PatchRel32(f.a.JccPlaceholder(condNE), loop)
-}
-
-func (f *fn) patchRCXZero32(site rcxZeroSite) {
-	if site.compact {
-		if !f.a.PatchRel8(site.off, f.a.Len()) {
-			panic("amd64: bounded JECXZ target exceeded rel8 range")
-		}
-		return
-	}
-	f.a.PatchRel32(site.off, f.a.Len())
-}
-
 // offTrapCellPtr is the basedata slot holding the address of the trap cell
 // (runtime installTrapCell / abi.TrapCellPtrOffset). The trap pointer is NOT
 // part of any call ABI: only the cold trap path reads it, so calls and returns
@@ -165,26 +131,6 @@ func (f *fn) trapSite(branch int) trapSite {
 func (f *fn) emitTrapStubs() {
 	before := f.a.Len()
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
-	groups := 0
-	for code := uint32(1); code <= trapMax; code++ {
-		sites := f.sc.trapSites[code]
-		if len(sites) == 0 {
-			continue
-		}
-		sortTrapSitesByFunction(sites)
-		groups++
-		for i := 1; i < len(sites); i++ {
-			if sites[i].function != sites[i-1].function {
-				groups++
-			}
-		}
-	}
-	if sharedTrapBodyEnabled && groups >= 3 &&
-		(f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
-		f.emitSharedTrapStubs(groups)
-		f.stats.peep("shared-trap-body")
-		return
-	}
 	for code := uint32(1); code <= trapMax; code++ { // deterministic order
 		sites := f.sc.trapSites[code]
 		if len(sites) == 0 {
@@ -194,13 +140,13 @@ func (f *fn) emitTrapStubs() {
 		// Inlining can interleave sites attributed to many source functions. Sort
 		// once so grouping and patching are linear instead of repeatedly rescanning
 		// the complete site list for every distinct function.
+		sortTrapSitesByFunction(sites)
 		for start := 0; start < len(sites); {
 			end := start + 1
 			for end < len(sites) && sites[end].function == sites[start].function {
 				end++
 			}
 			group := sites[start:end]
-			f.stats.addTrapGroup()
 			first := group[0]
 			commonJump := -1
 			if len(group) == 1 {
@@ -220,69 +166,6 @@ func (f *fn) emitTrapStubs() {
 			f.emitTrap(code, first.function)
 			if commonJump >= 0 {
 				f.a.PatchRel32(commonJump, common)
-			}
-			start = end
-		}
-	}
-}
-
-func (f *fn) emitSharedTrapStubs(groupCount int) {
-	emitted := 0
-	for code := uint32(1); code <= trapMax; code++ {
-		sites := f.sc.trapSites[code]
-		if len(sites) == 0 {
-			continue
-		}
-		f.stats.addTrapStub()
-		for start := 0; start < len(sites); {
-			end := start + 1
-			for end < len(sites) && sites[end].function == sites[start].function {
-				end++
-			}
-			group := sites[start:end]
-			first := group[0]
-			pos := f.a.Len()
-			pc := int32(-1)
-			if len(group) == 1 {
-				pc = int32(first.pc)
-			}
-			f.a.MovImm32(RAX, pc)
-			f.a.MovImm32(RCX, int32(first.function+1))
-			f.a.MovImm32(RDX, int32(code))
-			for _, site := range group {
-				f.a.PatchRel32(site.branch, pos)
-			}
-			f.stats.addTrapGroup()
-			emitted++
-			if emitted < groupCount {
-				group[0].branch = f.a.JmpPlaceholder()
-			} else {
-				group[0].branch = -1
-			}
-			start = end
-		}
-	}
-
-	common := f.a.Len()
-	f.trapBodyOff = common
-	f.storeModuleGlobals(RSI)
-	f.a.Load64(RSI, RBX, -offTrapCellPtr)
-	f.a.Store32(RSI, 16, RCX)
-	f.a.Store32(RSI, 20, RAX)
-	f.a.Store32(RSI, 0, RDX)
-	f.a.Load64(RSP, RBX, -offTrapStackReentry)
-	f.a.Ret()
-	f.trapBodyEnd = f.a.Len()
-
-	for code := uint32(1); code <= trapMax; code++ {
-		sites := f.sc.trapSites[code]
-		for start := 0; start < len(sites); {
-			end := start + 1
-			for end < len(sites) && sites[end].function == sites[start].function {
-				end++
-			}
-			if sites[start].branch >= 0 {
-				f.a.PatchRel32(sites[start].branch, common)
 			}
 			start = end
 		}
@@ -1206,7 +1089,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	back1 := f.a.Len()
 	f.a.LoadIdx(RDX, RSI, RCX, -1, 1, false, false)
 	f.a.StoreIdx(RDI, RCX, RDX, -1, 1)
-	f.unitAdjust(RCX, false, false)
+	f.a.AluRI(5, RCX, 1, false)
 	f.a.PatchRel32(f.a.JccPlaceholder(condNE), back1)
 	joins = append(joins, f.a.JmpPlaceholder())
 
@@ -1228,7 +1111,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	fwd1 := f.a.Len()
 	f.a.LoadIdx(RDX, RSI, RCX, 0, 1, false, false)
 	f.a.StoreIdx(RDI, RCX, RDX, 0, 1)
-	f.unitAdjust(RCX, true, true)
+	f.a.AluRI(0, RCX, 1, true)
 	f.a.PatchRel32(f.a.JccPlaceholder(condNE), fwd1)
 	joins = append(joins, f.a.JmpPlaceholder())
 
@@ -1281,13 +1164,14 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.AluRI(5, RCX, 8, false)
 	f.a.JmpBack(backTail8)
 	f.a.PatchRel32(backTail1, f.a.Len())
-	backDone := f.rcxZero32Placeholder()
+	f.a.TestSelf(RCX, false)
+	backDone := f.a.JccPlaceholder(condE)
 	backByte := f.a.Len()
 	f.a.LoadIdx(RDX, RSI, RCX, -1, 1, false, false)
 	f.a.StoreIdx(RDI, RCX, RDX, -1, 1)
-	f.unitAdjust(RCX, false, false)
-	f.closeRCXZero32Loop(backDone, backByte)
-	f.patchRCXZero32(backDone)
+	f.a.AluRI(5, RCX, 1, false)
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), backByte)
+	f.a.PatchRel32(backDone, f.a.Len())
 	done := f.a.JmpPlaceholder()
 	f.a.PatchRel32(fwd, f.a.Len())
 	f.a.PatchRel32(fwdDisjoint, f.a.Len())
@@ -1346,27 +1230,17 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.a.AluRI(5, RCX, 8, false)
 	f.a.JmpBack(fill8)
 	f.a.PatchRel32(f8done, f.a.Len())
-	fillDone := f.rcxZero32Placeholder()
+	f.a.TestSelf(RCX, false)
+	fillDone := f.a.JccPlaceholder(condE)
 	fill1 := f.a.Len()
 	f.a.StoreIdx(RDI, RCX, RAX, -1, 1)
-	f.unitAdjust(RCX, false, false)
-	f.closeRCXZero32Loop(fillDone, fill1)
-	if fillDone.compact {
-		skipRep := f.a.JmpRel8Placeholder()
-		f.a.PatchRel32(bigF, f.a.Len())
-		f.a.RepStosb() // [RDI..] = AL, RCX times (DF=0)
-		if !f.a.PatchRel8(skipRep, f.a.Len()) {
-			panic("amd64: bounded memory.fill skip exceeded rel8 range")
-		}
-		f.patchRCXZero32(fillDone)
-		f.setDepth(d - 3)
-		return nil
-	}
+	f.a.AluRI(5, RCX, 1, false)
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), fill1)
 	skipRep := f.a.JmpPlaceholder()
 	f.a.PatchRel32(bigF, f.a.Len())
 	f.a.RepStosb() // [RDI..] = AL, RCX times (DF=0)
 	f.a.PatchRel32(skipRep, f.a.Len())
-	f.patchRCXZero32(fillDone)
+	f.a.PatchRel32(fillDone, f.a.Len())
 
 	f.setDepth(d - 3)
 	return nil

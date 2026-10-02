@@ -550,23 +550,28 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 	}
 	ref := f.materialize(refValue)
 	f.pinned = f.pinned.add(ref)
-	f.trapIfZero(ref, true, true, trapIndirectOOB)
+	f.cmpImm(ref, 0, true)
+	f.trapIf(condE, trapIndirectOOB)
 	code := f.allocReg(0)
 	f.ld64(code, ref, runtime.TableEntryCodePtrOffset)
-	f.trapIfZero(code, true, true, trapIndirectOOB)
+	f.cmpImm(code, 0, true)
+	f.trapIf(condE, trapIndirectOOB)
 	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
 	home := f.allocReg(maskOf(ref, code))
 	f.ld64(home, ref, runtime.TableEntryHomeLinMemOffset)
 	targetContext := f.allocReg(maskOf(ref, code, home))
 	f.ld64(targetContext, ref, runtime.FuncRefContextOffset)
-	f.trapIfZero(targetContext, true, true, trapTailUnsupported)
+	f.cmpImm(targetContext, 0, true)
+	f.trapIf(condE, trapTailUnsupported)
 	if arm64FuncTypeCarriesGCRefs(f.m, ft) {
 		targetDomain := f.allocReg(maskOf(ref, code, home, targetContext))
 		f.ld64(targetDomain, targetContext, runtime.InstanceContextGCDomainOffset)
-		f.trapIfZero(targetDomain, true, true, trapTailUnsupported)
+		f.cmpImm(targetDomain, 0, true)
+		f.trapIf(condE, trapTailUnsupported)
 		callerDesc := f.allocReg(maskOf(ref, code, home, targetContext, targetDomain))
 		f.ld64(callerDesc, linMemReg, -int32(offFuncRefDescPtr))
-		f.trapIfZero(callerDesc, true, true, trapTailUnsupported)
+		f.cmpImm(callerDesc, 0, true)
+		f.trapIf(condE, trapTailUnsupported)
 		f.ld64(callerDesc, callerDesc, runtime.FuncRefContextOffset)
 		f.ld64(callerDesc, callerDesc, runtime.InstanceContextGCDomainOffset)
 		f.cmpRR(targetDomain, callerDesc, true)
@@ -787,7 +792,8 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.release(tbl)
 	code := f.allocReg(maskOf(idx))
 	f.ld64(code, idx, 8)
-	f.trapIfZero(code, true, true, trapIndirectOOB)
+	f.cmpImm(code, 0, true)
+	f.trapIf(condE, trapIndirectOOB)
 	if !f.immutableTableTyped || f.immutableTableType != canon {
 		got := f.allocReg(maskOf(idx, code))
 		f.ld64(got, idx, 16)
@@ -1112,9 +1118,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 // a per-instance mapping; the same code is instance-independent (it reads the log
 // pointer from X1 at run time).
 func HostIndirectThunk(importIdx uint32) []byte {
-	// This standalone thunk has no compilation objective. Preserve the Balanced
-	// encoding; module functions opt into logical MOVs through their policy.
-	a := &a64.Asm{DisableLogicalMoveImmediate: true}
+	a := &a64.Asm{}
 	a.Load32(X9, X0, 0)               // X9 = first arg (i32; a harmless slot read for 0-param funcs)
 	a.SubImm64(X10, X1, offCustomCtx) // X10 = &host-call log (X1 = linMem in the wrapper ABI)
 	a.Load64(X10, X10, 0)
@@ -1148,9 +1152,7 @@ func HostIndirectOwnedSyncThunk(importIdx uint32, paramSlots, resultSlots int) [
 }
 
 func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHome bool) []byte {
-	// This standalone thunk has no compilation objective. Preserve the Balanced
-	// encoding; module functions opt into logical MOVs through their policy.
-	a := &a64.Asm{DisableLogicalMoveImmediate: true}
+	a := &a64.Asm{}
 	// The host-call round trip preserves only callee-saved registers recorded by
 	// hostCallStub. Save the caller's linMemReg (active linMem), the wrapper result
 	// pointer, and this thunk's incoming LR across the park/resume; set linMemReg to the
@@ -1885,16 +1887,19 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	ref := f.materialize(f.popValue())
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	f.pinned = f.pinned.add(ref)
-	f.trapIfZero(ref, true, true, trapIndirectOOB)
+	f.cmpImm(ref, 0, true)
+	f.trapIf(condE, trapIndirectOOB)
 	code := f.allocReg(0)
 	f.ld64(code, ref, runtime.TableEntryCodePtrOffset)
-	f.trapIfZero(code, true, true, trapIndirectOOB)
+	f.cmpImm(code, 0, true)
+	f.trapIf(condE, trapIndirectOOB)
 	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
 	home := f.allocReg(maskOf(ref, code))
 	f.ld64(home, ref, runtime.TableEntryHomeLinMemOffset)
 	targetContext := f.allocReg(maskOf(ref, code, home))
 	f.ld64(targetContext, ref, runtime.FuncRefContextOffset)
-	f.trapIfZero(targetContext, true, true, trapIndirectOOB)
+	f.cmpImm(targetContext, 0, true)
+	f.trapIf(condE, trapIndirectOOB)
 	f.pinned = f.pinned.remove(ref)
 	f.release(ref)
 
@@ -1996,8 +2001,9 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// +24 home linMem. Check null (uninitialized element) BEFORE the signature so a
 	// zero-initialized entry traps as an empty slot, not a type mismatch.
 	code := f.allocReg(0)
-	f.ld64(code, idxReg, 8)                         // entry code ptr (offset-0 entry)
-	f.trapIfZero(code, true, true, trapIndirectOOB) // null entry
+	f.ld64(code, idxReg, 8) // entry code ptr (offset-0 entry)
+	f.cmpImm(code, 0, true)
+	f.trapIf(condE, trapIndirectOOB) // null entry
 
 	if f.gcTypeSubtypingRefTest {
 		f.pinned = f.pinned.add(code)
@@ -2080,10 +2086,12 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.ld64(home, idxReg, 24) // entry home linMem base
 	canonical := f.allocReg(maskOf(idxReg, code, home))
 	f.ld64(canonical, idxReg, 32) // canonical descriptor pointer
-	f.trapIfZero(canonical, true, true, trapIndirectOOB)
+	f.cmpImm(canonical, 0, true)
+	f.trapIf(condE, trapIndirectOOB)
 	targetContext := f.allocReg(maskOf(idxReg, code, home, canonical))
 	f.ld64(targetContext, canonical, runtime.FuncRefContextOffset)
-	f.trapIfZero(targetContext, true, true, trapIndirectOOB)
+	f.cmpImm(targetContext, 0, true)
+	f.trapIf(condE, trapIndirectOOB)
 	f.release(canonical)
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)

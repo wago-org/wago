@@ -43,15 +43,6 @@ func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	finalizing := make(chan struct{})
-	finishFinalizing := make(chan struct{})
-	rt.hooks.afterClose = append(rt.hooks.afterClose, func(event InstanceCloseEvent) {
-		if !sameInstance(event.Instance, writer) {
-			return
-		}
-		close(finalizing)
-		<-finishFinalizing
-	})
 	callDone := make(chan error, 1)
 	go func() {
 		result, err := writer.Invoke("use", token)
@@ -65,22 +56,17 @@ func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
 		t.Fatal(err)
 	}
 	closeDone := make(chan error, 1)
-	go func() { closeDone <- rt.CloseContext(context.Background()) }()
+	go func() { closeDone <- rt.Close() }()
 
-	var closeAccounted, quiesced, resourcesReleased bool
+	var writerState *referenceStoreInstance
 	var tokens int
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		rt.refStore.mu.Lock()
-		writerState := rt.refStore.instances[writer]
-		if writerState != nil {
-			closeAccounted = writerState.closeAccounted
-			quiesced = writerState.quiesced
-			resourcesReleased = writerState.resourcesReleased
-		}
+		writerState = rt.refStore.instances[writer]
 		tokens = len(rt.refStore.byToken)
 		rt.refStore.mu.Unlock()
-		if closeAccounted {
+		if writerState != nil && writerState.closeAccounted {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -88,8 +74,8 @@ func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if !closeAccounted || quiesced || resourcesReleased {
-		t.Fatalf("writer store state before resume: closed=%v quiesced=%v released=%v", closeAccounted, quiesced, resourcesReleased)
+	if writerState == nil || !writerState.closeAccounted || writerState.quiesced || writerState.resourcesReleased {
+		t.Fatalf("writer store state before resume = %+v", writerState)
 	}
 	if tokens != 1 {
 		t.Fatalf("token entries before quiescence = %d, want 1", tokens)
@@ -99,14 +85,6 @@ func TestReferenceTokensWaitForClosingInvocationQuiescence(t *testing.T) {
 	}
 
 	close(resume)
-	<-finalizing
-	rt.mu.Lock()
-	activeOperations := rt.activeOperations
-	rt.mu.Unlock()
-	if activeOperations != 1 {
-		t.Fatalf("runtime operations during terminal finalization = %d, want 1", activeOperations)
-	}
-	close(finishFinalizing)
 	if err := <-callDone; err != nil && !strings.Contains(err.Error(), "interrupt") {
 		t.Fatalf("resumed descriptor use = %v; want result 42 or caller-close interruption", err)
 	}

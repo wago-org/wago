@@ -33,6 +33,19 @@ func TestResolveCompilationOwnsPrecedence(t *testing.T) {
 	}
 }
 
+func TestResolveCompilationSelectsCompilerEngine(t *testing.T) {
+	selection, err := ResolveCompilationFrom(Default(), false, CompilationRequest{Arch: "amd64", Compiler: "dragline"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := selection.RuntimeConfig().Compiler(); got != wago.CompilerDragline {
+		t.Fatalf("compiler = %v, want dragline", got)
+	}
+	if _, err := ResolveCompilationFrom(Default(), false, CompilationRequest{Arch: "amd64", Compiler: "unknown"}); err == nil {
+		t.Fatal("unknown compiler accepted")
+	}
+}
+
 func TestResolveCompilationFiltersTargetOptimizations(t *testing.T) {
 	config := Default()
 	selection, err := ResolveCompilationFrom(config, true, CompilationRequest{Arch: "amd64"})

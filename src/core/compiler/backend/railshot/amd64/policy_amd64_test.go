@@ -82,72 +82,6 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkAMD64(t *testing.T) {
 	}
 }
 
-func TestNativeCompactionObjectiveAndRollbackAMD64(t *testing.T) {
-	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
-	beforeLimitOverride := finalizerDeletionLimitOverride
-	beforeRel32Override := finalizerRel32SiteLimitOverride
-	beforeLoopOverride := loopCompactionByteLimitOverride
-	nativeCompactionEnabled, nativeCompactionDisabled = false, false
-	t.Cleanup(func() {
-		nativeCompactionEnabled, nativeCompactionDisabled = beforeEnabled, beforeDisabled
-		finalizerDeletionLimitOverride = beforeLimitOverride
-		finalizerRel32SiteLimitOverride = beforeRel32Override
-		loopCompactionByteLimitOverride = beforeLoopOverride
-	})
-
-	selection := currentCodegenPolicy().Selection
-	balanced := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)
-	size := shared.CodegenPolicyForObjective(selection, OptimizeSize)
-	if compactNativePolicy(balanced) {
-		t.Fatal("Balanced unexpectedly enabled native compaction")
-	}
-	if !compactNativePolicy(size) {
-		t.Fatal("Size did not enable native compaction")
-	}
-	f := fn{policy: size}
-	if got := f.finalizerDeletionLimit(); got != shared.MaxWideOffsetMapDeletions {
-		t.Fatalf("Size finalizer deletion limit = %d, want %d", got, shared.MaxWideOffsetMapDeletions)
-	}
-	finalizerDeletionLimitOverride = 64
-	if got := f.finalizerDeletionLimit(); got != 64 {
-		t.Fatalf("finalizer deletion limit override = %d, want 64", got)
-	}
-	finalizerDeletionLimitOverride = 0
-	if got := finalizerRel32Limit(size); got != 2048 {
-		t.Fatalf("Size rel32 site limit = %d, want 2048", got)
-	}
-	finalizerRel32SiteLimitOverride = 1536
-	if got := finalizerRel32Limit(size); got != 1536 {
-		t.Fatalf("rel32 experiment limit = %d, want 1536", got)
-	}
-	if got := loopCompactionLimit(size); got != 64<<10 {
-		t.Fatalf("Size loop compaction limit = %d, want 64 KiB", got)
-	}
-	if got := (&fn{policy: size}).jumpTableBranchRelaxationIterations(); got != 1 {
-		t.Fatalf("Size jump-table relaxation iterations = %d, want 1", got)
-	}
-	if got := (&fn{policy: size}).jumpTableBranchRelaxationLimit(); got != 32 {
-		t.Fatalf("Size jump-table branch budget = %d, want 32", got)
-	}
-	finalizerRel32SiteLimitOverride = 256
-	loopCompactionByteLimitOverride = 16 << 10
-	if got := finalizerRel32Limit(size); got != 256 {
-		t.Fatalf("rel32 rollback limit = %d, want 256", got)
-	}
-	if got := loopCompactionLimit(size); got != 16<<10 {
-		t.Fatalf("loop rollback limit = %d, want 16 KiB", got)
-	}
-
-	nativeCompactionEnabled = true
-	if !compactNativePolicy(balanced) {
-		t.Fatal("WAGO_COMPACT=1 override did not enable Balanced compaction")
-	}
-	nativeCompactionDisabled = true
-	if compactNativePolicy(size) || compactNativePolicy(balanced) {
-		t.Fatal("WAGO_COMPACT=0 rollback did not disable compaction")
-	}
-}
-
 func TestFunctionStartPaddingObjectivesAMD64(t *testing.T) {
 	selection := currentCodegenPolicy().Selection
 	policy := func(objective OptimizationObjective) CodegenPolicy {
@@ -211,41 +145,5 @@ func TestCompileModuleRejectsInvalidObjectiveAMD64(t *testing.T) {
 	objective := OptimizationObjective(255)
 	if _, err := CompileModuleWith(m, CompileOptions{Objective: &objective}); err == nil {
 		t.Fatal("invalid optimization objective was accepted")
-	}
-}
-
-func TestAccumulatorImmediateObjectiveAndRollbackAMD64(t *testing.T) {
-	selection := currentCodegenPolicy().Selection
-	balanced := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)
-	size := shared.CodegenPolicyForObjective(selection, OptimizeSize)
-	embedded := shared.CodegenPolicyForObjective(selection, OptimizeEmbedded)
-	if compactAccumulatorImmediatePolicy(balanced) {
-		t.Fatal("Balanced unexpectedly enabled accumulator immediates")
-	}
-	if !compactAccumulatorImmediatePolicy(size) || !compactAccumulatorImmediatePolicy(embedded) {
-		t.Fatal("Size/Embedded did not enable accumulator immediates")
-	}
-	disabled, err := optimizationBindings.ResolveSnapshot(map[string]bool{"accumulator-immediate": false}, OptimizationSnapshot{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sizeDisabled := shared.CodegenPolicyForObjective(disabled, OptimizeSize)
-	if compactAccumulatorImmediatePolicy(sizeDisabled) {
-		t.Fatal("per-compilation rollback did not disable accumulator immediates")
-	}
-}
-
-func TestModuleCodeCapacityIsObjectiveAwareAMD64(t *testing.T) {
-	selection := currentCodegenPolicy().Selection
-	balanced := shared.CodegenPolicyForObjective(selection, OptimizeBalanced)
-	size := shared.CodegenPolicyForObjective(selection, OptimizeSize)
-	const bodyBytes = 8 << 20
-	balancedCap := moduleCodeCapacityAMD64(bodyBytes, 1000, balanced)
-	sizeCap := moduleCodeCapacityAMD64(bodyBytes, 1000, size)
-	if sizeCap >= balancedCap {
-		t.Fatalf("Size module capacity = %d, want less than Balanced %d", sizeCap, balancedCap)
-	}
-	if got, want := moduleCodeCapacityAMD64(100, 3, size), moduleCodeCapacityAMD64(100, 3, balanced); got != want {
-		t.Fatalf("small-module Size capacity = %d, want Balanced %d", got, want)
 	}
 }

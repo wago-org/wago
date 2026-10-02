@@ -26,6 +26,7 @@ func Command(environment Environment) *command.Cmd {
 		{Name: "output", Short: "o", Arg: "<file>", Help: "output path (default: input name with .wago extension)"},
 		runcmd.ParallelFlag(),
 	}
+	flags = append(flags, runcmd.CompilerFlags()...)
 	flags = append(flags, environment.ProfileFlags()...)
 	knobs := append(runcmd.DeferredBoundsCheckingFlags(), runcmd.OptimizationFlags()...)
 	parserFlags := append(append([]command.Flag(nil), flags...), knobs...)
@@ -55,6 +56,10 @@ func (cmd implementation) Run(c *command.Ctx) {
 	if err != nil {
 		ui.Usage("build: %v", err)
 	}
+	compiler, err := runcmd.CompilerOverride(c)
+	if err != nil {
+		ui.Usage("build: %v", err)
+	}
 	input := singleFileArg(c.Args)
 	output := c.Str("output")
 	if output == "" {
@@ -62,7 +67,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 		output = strings.TrimSuffix(input, ext) + ".wago"
 	}
 	selection, err := settings.ResolveCompilation(settings.CompilationRequest{
-		Arch: runtime.GOARCH, Parallel: c.Str("parallel"), DeferredBoundsChecking: deferredBoundsChecking, Optimizations: optimizations,
+		Arch: runtime.GOARCH, Compiler: compiler, Parallel: c.Str("parallel"), DeferredBoundsChecking: deferredBoundsChecking, Optimizations: optimizations,
 	})
 	if err != nil {
 		if settings.IsCompilationSettingsError(err) {
@@ -73,7 +78,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 	if automation.DryRun() {
 		plan := map[string]any{
 			"input": input, "output": output, "parallel": c.Str("parallel"),
-			"functionWorkers": selection.FunctionWorkers, "deferredBoundsChecking": selection.DeferredBoundsChecking,
+			"compiler": selection.Compiler.String(), "functionWorkers": selection.FunctionWorkers, "deferredBoundsChecking": selection.DeferredBoundsChecking,
 		}
 		if len(selection.Optimizations) != 0 {
 			plan["optimizations"] = selection.Optimizations

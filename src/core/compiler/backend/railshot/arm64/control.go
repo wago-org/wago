@@ -679,27 +679,6 @@ func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
 	return false // cfFunc: the guarded form carries the singleRegResult load
 }
 
-// zeroBranchJump is condBranchJump for a materialized i32 condition whose
-// branch is taken when nonzero. It is used only after proving the edge emitted
-// no reconciliation code, so the condition register still holds the tested
-// value and no flags window is required.
-func (f *fn) zeroBranchJump(fr *ctrlFrame, condition Reg) bool {
-	switch fr.kind {
-	case cfLoop:
-		site := f.a.Cbnz32(condition)
-		if !f.a.PatchBranch19(site, fr.loopStart) {
-			f.a.B = f.a.B[:site]
-			return false
-		}
-		return true
-	case cfBlock, cfIf:
-		f.appendEndSite(&fr.condEnds, f.a.Cbnz32(condition))
-		fr.endReachable = true
-		return true
-	}
-	return false
-}
-
 const pollFreeLoopPhaseMaxLocals = 16
 
 // alignLoopHeader keeps poll-free loop bodies in the same half of a 32-byte
@@ -836,24 +815,6 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if isFusableCompare(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
-			if zeroBranchEnabled && eqzZeroBranchEnabled {
-				if creg, cOwned, wide, ok := f.condenseSimpleEqzOperand(cond); ok {
-					fr.height = f.depth() - pN
-					fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
-					f.captureGCFrameShape(&fr)
-					if wide {
-						fr.elseSite = f.a.Cbnz64(creg)
-					} else {
-						fr.elseSite = f.a.Cbnz32(creg)
-					}
-					if cOwned {
-						f.release(creg)
-					}
-					f.stats.peep("zero-branch")
-					f.ctrl = append(f.ctrl, fr)
-					return nil
-				}
-			}
 			cc := f.condenseToFlags(cond)
 			fr.height = f.depth() - pN
 			fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
@@ -867,16 +828,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
 		f.captureGCFrameShape(&fr)
 		f.flush()
-		if zeroBranchEnabled {
-			fr.elseSite = f.a.Cbz32(creg) // false edge; flags are dead at this control edge
-			f.stats.peep("zero-branch")
-		} else {
-			f.a.CmpImm32(creg, 0) // CMP creg, #0 — sets NZCV (no x86 test/flag side effect)
-			fr.elseSite = f.a.Bcond(condE)
-		}
+		f.a.CmpImm32(creg, 0) // CMP creg, #0 — sets NZCV (no x86 test/flag side effect)
 		if cOwned {
 			f.release(creg)
 		}
+		fr.elseSite = f.a.Bcond(condE) // B.EQ else/end (branch when condition is zero)
 	} else {
 		fr.height = f.depth() - pN
 		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
@@ -997,17 +953,11 @@ func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
 	}
 	f.realizeLocalRefs(x, baseOfValentBlock(cond))
 	creg, cOwned := f.materializeRead(f.popValue())
-	var toElse int
-	if zeroBranchEnabled {
-		toElse = f.a.Cbz32(creg)
-		f.stats.peep("zero-branch")
-	} else {
-		f.a.CmpImm32(creg, 0)
-		toElse = f.a.Bcond(condE)
-	}
+	f.a.CmpImm32(creg, 0)
 	if cOwned {
 		f.release(creg)
 	}
+	toElse := f.a.Bcond(condE)
 	if !f.aluImm3(thenArm.op, dest, dest, thenArm.imm, false) {
 		panic("arm64: prechecked if arm immediate became unencodable")
 	}
@@ -1208,7 +1158,8 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	}
 	f.reconcileLocals()
 	f.flush()
-	noHandler := f.zeroBranch(ehReg, true, true)
+	f.cmpImm(ehReg, 0, true)
+	noHandler := f.a.Bcond(condE)
 	f.ld64(X16, linMemReg, -int32(offEHTagDirPtr))
 	f.ld64(X16, X16, int32(tag*8))
 	f.st64(ehReg, ehTagOff, X16)
@@ -1241,8 +1192,10 @@ func (f *fn) opThrowRef() error {
 	f.reconcileLocals()
 	f.flush()
 	f.ld64(X16, SP, f.spillOff(refSlot))
-	f.trapIfZero(X16, true, true, trapNullReference)
-	noHandler := f.zeroBranch(ehReg, true, true)
+	f.cmpImm(X16, 0, true)
+	f.trapIf(condE, trapNullReference)
+	f.cmpImm(ehReg, 0, true)
+	noHandler := f.a.Bcond(condE)
 	for _, off := range [...]int32{0, 8, 16} {
 		f.ld64(X17, X16, off)
 		f.st64(ehReg, ehTagOff+off, X17)
@@ -1352,7 +1305,8 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 
 	f.leaDisp(X16, SP, recordOff, true)
 	f.ld64(X17, X16, ehPrevOff)
-	noPrevious := f.zeroBranch(X17, true, true)
+	f.cmpImm(X17, 0, true)
+	noPrevious := f.a.Bcond(condE)
 	for _, off := range [...]int32{ehTagOff, ehPayload0Off, ehPayload1Off} {
 		f.ld64(X9, X16, off)
 		f.st64(X17, off, X9)
@@ -1661,8 +1615,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	f.convergeBranchLocals(fr)
 	a, d := fr.branchN, f.depth()
 	f.flush()
-	testAt := f.a.Len()
-	f.a.CmpImm32(creg, 0) // retained for non-empty edges, which may rewrite creg
+	f.a.CmpImm32(creg, 0) // CMP creg, #0
 	if cOwned {
 		f.release(creg)
 	}
@@ -1677,18 +1630,6 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		f.moveBranchValues(fr, d, a)
 	}
 	if f.a.Len() == mark {
-		if zeroBranchEnabled && emptyZeroBranchEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
-			f.a.B = f.a.B[:testAt]
-			if f.opt(optBranchFold) && f.zeroBranchJump(fr, creg) {
-				f.stats.peep("zero-branch")
-				return nil
-			}
-			over := f.a.Cbz32(creg)
-			f.branchJump(fr)
-			f.a.PatchBranch19(over, f.a.Len())
-			f.stats.peep("zero-branch")
-			return nil
-		}
 		// Empty edge: one conditional branch straight to the target (taken when the
 		// condition holds, != 0), with no skip branch and no padding NOP.
 		if f.opt(optBranchFold) && f.condBranchJump(fr, condNE) {
@@ -1739,8 +1680,9 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	f.flush()
 	refSlot := f.allocSpillSlot()
 	f.st64(SP, f.spillOff(refSlot), ref)
+	f.cmpImm(ref, 0, true)
 	f.release(ref)
-	over := f.zeroBranch(ref, true, false)
+	over := f.a.Bcond(condNE)
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
@@ -1775,8 +1717,9 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	f.flush()
 	condition := f.allocReg(0)
 	f.ld64(condition, SP, f.spillOff(refSlot))
+	f.cmpImm(condition, 0, true)
 	f.release(condition)
-	over := f.zeroBranch(condition, true, true)
+	over := f.a.Bcond(condE)
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
@@ -1804,6 +1747,7 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 	f.convergeBranchLocals(fr)
 	d := f.depth()
 	f.flush()
+	f.cmpImm(matched, 0, false)
 	if owned {
 		f.release(matched)
 	}
@@ -1811,7 +1755,7 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 	if !branchOnMatch {
 		skipCond = condNE
 	}
-	over := f.zeroBranch(matched, false, skipCond == condE)
+	over := f.a.Bcond(skipCond)
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
@@ -2135,9 +2079,7 @@ func align4(n int) int { return (n + 3) &^ 3 }
 // intentionally Size/Embedded only: the compact form adds one predictable
 // direct branch after the indirect dispatch.
 func (f *fn) brTableCompactPlan(labels []uint32, def uint32) (bool, int, []int) {
-	// The aligned target-ID table precedes the branch vector and is added with
-	// an unshifted 12-bit immediate, so its offset must not exceed 4095.
-	if f.policy.Objective != OptimizeSize && f.policy.Objective != OptimizeEmbedded || align4(len(labels)) > 4095 {
+	if f.policy.Objective != OptimizeSize && f.policy.Objective != OptimizeEmbedded || len(labels) > 4095 {
 		return false, 0, nil
 	}
 	var seen [4]uint64

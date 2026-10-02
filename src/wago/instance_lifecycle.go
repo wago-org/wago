@@ -79,8 +79,6 @@ func (in *Instance) closeOnce() error {
 	activeInvocations := previousInvocations & instanceInvocationCount
 	in.lifeMu.Lock()
 	if activeInvocations != 0 && len(in.trap) >= 4 {
-		// Host re-entry swaps the trap slice under lifeMu, so Close observes one
-		// complete active slice header before requesting interruption.
 		in.ensurePluginState().close.Load().interruptStop = runtime.RequestInterruptAsync(in.trap)
 	}
 	in.lifeMu.Unlock()
@@ -128,14 +126,15 @@ func (in *Instance) closeAndWait() error {
 	if in == nil {
 		return nil
 	}
-	closeErr := in.Close()
+	if err := in.Close(); err != nil {
+		return err
+	}
 	state := in.ensurePluginState().close.Load()
 	if state != nil {
-		<-state.done
 		<-state.quiesced
 		return joinPrimary(state.result, state.terminalResult)
 	}
-	return closeErr
+	return nil
 }
 
 func (in *Instance) isLogicallyClosed() bool {
@@ -205,16 +204,6 @@ func (in *Instance) endInvocation() {
 		if !in.invocationState.CompareAndSwap(state, next) {
 			continue
 		}
-		if next == instanceInvocationClosed {
-			if closeState := in.ensurePluginState().close.Load(); closeState != nil {
-				closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
-			}
-			in.tryFinalize()
-		}
-		// Keep the Runtime operation admitted through terminal instance
-		// finalization. Runtime shutdown uses this count as its barrier, so
-		// publishing it earlier could let WaitClosed return before reference
-		// tokens and store membership were released.
 		if in.rt != nil {
 			in.rt.mu.Lock()
 			if in.rt.activeOperations == 0 {
@@ -224,6 +213,12 @@ func (in *Instance) endInvocation() {
 			in.rt.activeOperations--
 			in.rt.stateCond.Broadcast()
 			in.rt.mu.Unlock()
+		}
+		if next == instanceInvocationClosed {
+			if closeState := in.ensurePluginState().close.Load(); closeState != nil {
+				closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
+			}
+			in.tryFinalize()
 		}
 		return
 	}
@@ -323,7 +318,7 @@ func (in *Instance) releaseResources() {
 			if table := in.existingGCRefTestTableState(); table != nil {
 				table.drop(in.gc)
 			}
-			if in.executionFlags.Load()&executionFlagStoreOwnedGCCollector == 0 {
+			if in.refStore == nil || !in.refStore.ownsGCCollector(in.gc) {
 				in.gc.Close()
 			}
 		}

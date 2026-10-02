@@ -197,11 +197,7 @@ func (b *instanceBuilder) prepareCollector() error {
 		gcConfig.Profile = gc.ProfileThroughput
 		gcConfig.DisableCollection = true
 	}
-	// Atomic waits park while holding an instance-local native execution lease.
-	// Until their compiler callsites publish exact GC frame roots, keep GC+Threads
-	// modules in private collector domains so a same-memory notifier never waits
-	// behind the parked invocation's Runtime-wide collector lease.
-	if b.opts.store != nil && !b.opts.store.private && b.c.usesGenericGCExecution() && b.c.sharedGCPersistentDomainSafe() && !b.c.usesAtomicWaitHelpers() {
+	if b.opts.store != nil && !b.opts.store.private && b.c.usesGenericGCExecution() && b.c.sharedGCPersistentDomainSafe() {
 		preferred, err := preferredGCCollectorFromImports(b.imports, b.opts.store)
 		if err != nil {
 			return err
@@ -228,11 +224,6 @@ func (b *instanceBuilder) prepareCollector() error {
 		var err error
 		mapping, descs, _, err = gcCanonicalTypePlan(b.c, nil, nil, true)
 		if err != nil {
-			return err
-		}
-	}
-	if b.opts.store != nil && !b.opts.store.private {
-		if err := b.opts.store.bindFuncrefGCStore(); err != nil {
 			return err
 		}
 	}
@@ -1322,12 +1313,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if opts.hasExecutionPolicy {
 		independentInstances = opts.independentInstances
 	}
-	// Instances in one Runtime GC domain share a mutable collector. Keep their
-	// complete native activations under the process-wide execution lease: helper
-	// calls take the domain lock, but native allocation fast paths also mutate the
-	// collector and cannot safely overlap another tenant. Private collectors may
-	// retain instance-local execution.
-	if !b.collectorShared && c.allowsIndependentInstanceExecution(imports, independentInstances) {
+	if c.allowsIndependentInstanceExecution(imports, independentInstances) {
 		in.executionFlags.Store(executionFlagIndependent)
 	}
 	b.registeredInstance = in
@@ -1494,29 +1480,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
 			}
 			startEntry := base + uintptr(c.Entry[c.StartLocalFunc])
-			// A Runtime-owned local start executes after the instance joins its shared
-			// collector domain. Publish a normal invocation identity and hold the
-			// complete-call lease so start-time allocation cannot collect another
-			// tenant's native result before public tokenization. The instance gate is
-			// acquired first, matching Invoke and prepared-call lock ordering.
-			startErr := func() error {
-				state := in.ensurePluginState()
-				state.invokeMu.Lock()
-				id := newInvocationID()
-				state.invocationID = id
-				defer func() {
-					state.invocationID = 0
-					state.invokeMu.Unlock()
-				}()
-				gcLease := in.lockGCInvocation(id)
-				defer gcLease.unlock()
-				previousReservation := in.swapInvocationReservation(in.constructionReservationSnapshot())
-				defer in.swapInvocationReservation(previousReservation)
-				if in.syncMode {
-					return in.callNativeSync(startEntry)
-				}
-				return in.callNativeAsync(startEntry, false)
-			}()
+			var startErr error
+			if in.syncMode {
+				startErr = in.callNativeSync(startEntry)
+			} else {
+				startErr = in.callNativeAsync(startEntry, false)
+			}
 			if startErr != nil {
 				// Instantiation writes to imported tables are store side effects. If a
 				// local funcref remains installed when start traps, the shared table

@@ -153,147 +153,12 @@ func TestFinalizePeepholesRecordsBranchToNextArm64(t *testing.T) {
 	f := fn{a: sc.asm, sc: sc}
 	f.finalizePeepholes()
 	for _, pc := range []int{0, 8, 12, 16} {
-		if !slices.Contains(sc.branchNextSites[:sc.branchNextN], pc) {
+		if !sc.branchTargets[finalizerMarkerKey(pc, markerBranchNext)] {
 			t.Errorf("branch at %d was not recorded", pc)
 		}
 	}
-	if slices.Contains(sc.branchNextSites[:sc.branchNextN], 4) {
+	if sc.branchTargets[finalizerMarkerKey(4, markerBranchNext)] {
 		t.Error("BL-to-next was incorrectly recorded")
-	}
-}
-
-func TestFinalizerCandidateInventoryIsBoundedArm64(t *testing.T) {
-	beforeFinalizer, beforeCompaction := nativeFinalizerEnabled, nativeCompactionEnabled
-	beforeDisabled := nativeCompactionDisabled
-	nativeFinalizerEnabled, nativeCompactionEnabled, nativeCompactionDisabled = true, true, false
-	t.Cleanup(func() {
-		nativeFinalizerEnabled, nativeCompactionEnabled = beforeFinalizer, beforeCompaction
-		nativeCompactionDisabled = beforeDisabled
-	})
-
-	sc := &scratch{}
-	f := fn{sc: sc}
-	for off := 4 * (maxFinalizerDeletions + 3); off >= 0; off -= 4 {
-		f.recordBranchNext(off)
-	}
-	got := append([]int(nil), sc.branchNextSites[:sc.branchNextN]...)
-	slices.Sort(got)
-	want := make([]int, maxFinalizerDeletions)
-	for i := range want {
-		want[i] = i * 4
-	}
-	if !slices.Equal(got, want) {
-		t.Fatalf("bounded branch candidates = %v, want earliest %v", got, want)
-	}
-	for off := 0; off <= 4*maxFinalizerDeletions; off += 4 {
-		f.recordDeadHole(off)
-	}
-	if sc.deadHoleN != maxFinalizerDeletions || !sc.deadHoleOverflow {
-		t.Fatalf("dead-hole inventory = %d overflow=%v, want %d and overflow", sc.deadHoleN, sc.deadHoleOverflow, maxFinalizerDeletions)
-	}
-}
-
-func TestSizeCompactsLoopFrameReservationsArm64(t *testing.T) {
-	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
-	beforeLoops := loopCompactionEnabled
-	nativeCompactionEnabled, nativeCompactionDisabled, loopCompactionEnabled = false, false, true
-	t.Cleanup(func() {
-		nativeCompactionEnabled, nativeCompactionDisabled = beforeEnabled, beforeDisabled
-		loopCompactionEnabled = beforeLoops
-	})
-
-	m := modFuncs(t, funcDef{nil, nil, []byte{0x00, 0x03, 0x40, 0x0b, 0x0b}})
-	objective := OptimizeSize
-	stats := &ModuleStats{}
-	compact, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: stats})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := stats.NativeSize.DeadFrameReservationBytes; got != 0 {
-		t.Fatalf("Size loop dead frame bytes = %d, want 0", got)
-	}
-
-	loopCompactionEnabled = false
-	reservedStats := &ModuleStats{}
-	reserved, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1, Stats: reservedStats})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := reservedStats.NativeSize.DeadFrameReservationBytes; got == 0 {
-		t.Fatal("rollback loop retained no dead frame reservation; test cannot detect compaction")
-	}
-	if len(compact.Code) >= len(reserved.Code) {
-		t.Fatalf("compacted loop code = %d bytes, rollback = %d", len(compact.Code), len(reserved.Code))
-	}
-	loopCompactionEnabled = true
-	parallel, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(compact.Code, parallel.Code) || !slices.Equal(compact.Entry, parallel.Entry) || !slices.Equal(compact.InternalEntry, parallel.InternalEntry) {
-		t.Fatal("serial and parallel loop compaction differ")
-	}
-
-	execModule := modFuncs(t, funcDef{nil, []wasm.ValType{wasm.I64}, []byte{
-		0x00,       // locals
-		0x02, 0x40, // block
-		0x03, 0x40, // loop
-		0x0c, 0x01, // br 1: leave block
-		0x0b,       // end loop
-		0x0b,       // end block
-		0x42, 0x2a, // i64.const 42
-		0x0b,
-	}})
-	if got, err := runArm64WrapperWithOptions(t, execModule, CompileOptions{Objective: &objective}); err != nil || got != 42 {
-		t.Fatalf("compacted loop execution = %d, %v; want 42", got, err)
-	}
-}
-
-func TestLoopCompactionHasFixedFunctionSizeBoundArm64(t *testing.T) {
-	beforeLimit := arm64LoopCompactionLimit
-	arm64LoopCompactionLimit = 16 << 10
-	t.Cleanup(func() { arm64LoopCompactionLimit = beforeLimit })
-	stats := &CodegenStats{}
-	f := fn{
-		a:       &a64.Asm{B: make([]byte, arm64LoopCompactionLimit+4)},
-		sc:      &scratch{},
-		hasLoop: true,
-		policy:  shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize),
-		stats:   stats,
-	}
-	var storage [maxFinalizerDeletions]shared.DeletedRange
-	if _, _, ok := f.buildCompactionPlan(storage[:0]); ok {
-		t.Fatal("oversized loop function unexpectedly admitted to compaction")
-	}
-	if got, want := stats.FinalizerFallback, "loop-function-size"; got != want {
-		t.Fatalf("finalizer fallback = %q, want %q", got, want)
-	}
-}
-
-func TestLoopCompactionLimitRespectsArchitectureAndPolicyBoundsArm64(t *testing.T) {
-	beforeLimit := arm64LoopCompactionLimit
-	t.Cleanup(func() { arm64LoopCompactionLimit = beforeLimit })
-	policy := shared.CodegenPolicyForObjective(currentCodegenPolicy().Selection, OptimizeSize)
-	f := fn{
-		a:       &a64.Asm{B: make([]byte, 20<<10)},
-		sc:      &scratch{},
-		hasLoop: true,
-		policy:  policy,
-		stats:   &CodegenStats{},
-	}
-	var storage [maxFinalizerDeletions]shared.DeletedRange
-	arm64LoopCompactionLimit = 16 << 10
-	if _, _, ok := f.buildCompactionPlan(storage[:0]); ok {
-		t.Fatal("16 KiB architecture bound admitted 20 KiB function")
-	}
-	arm64LoopCompactionLimit = 32 << 10
-	f.stats.FinalizerFallback = ""
-	if _, _, ok := f.buildCompactionPlan(storage[:0]); !ok {
-		t.Fatalf("32 KiB architecture bound rejected 20 KiB function: %s", f.stats.FinalizerFallback)
-	}
-	f.policy.MaxLoopCompactionBytes = 16 << 10
-	if _, _, ok := f.buildCompactionPlan(storage[:0]); ok {
-		t.Fatal("16 KiB immutable policy bound admitted 20 KiB function")
 	}
 }
 
@@ -340,10 +205,7 @@ func TestCompactNativeCodeRemapsBranchesAndJumpTableArm64(t *testing.T) {
 			finalizerMarkerKey(8, markerJumpDataStart): true,
 			finalizerMarkerKey(16, markerJumpDataEnd):  true,
 		}
-		f := fn{a: &a64.Asm{B: code}, sc: &scratch{
-			branchTargets:  markers,
-			finalFragments: []finalizerFragment{{start: 8, end: 16, kind: fragmentJumpData}},
-		}}
+		f := fn{a: &a64.Asm{B: code}, sc: &scratch{branchTargets: markers}}
 		got, err := f.compactNativeCode(&offsets, deletions)
 		if err != nil {
 			t.Fatal(err)

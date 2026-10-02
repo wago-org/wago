@@ -49,11 +49,6 @@ var valueFactsEnabled = os.Getenv("WAGO_ARM64_NOPROVENANCE") != "1"
 // checks and the Speed/Balanced layouts are unchanged.
 var sharedTrapUnwindEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_TRAP_UNWIND") != "1"
 
-// sharedAdaptersEnabled lets Size/Embedded replace byte-identical register-ABI
-// host adapters with eight-byte function-local target thunks plus one cold
-// module copy. WAGO_ARM64_NO_SHARED_ADAPTERS=1 retains adapter-tail sharing.
-var sharedAdaptersEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_ADAPTERS") != "1"
-
 // smallFrameAdjustEnabled replaces the fixed MOVZ+MOVK+SUB/ADD frame sequences
 // with one immediate SP adjustment for the overwhelmingly common <=4095-byte
 // frames. The reserved trailing words become NOPs so code offsets stay stable.
@@ -65,13 +60,6 @@ var smallFrameAdjustEnabled = os.Getenv("WAGO_ARM64_NOSMALLFRAME") != "1"
 // never touched, so the SUB/ADD SP pair is dead. Off restores the old
 // preserveCallerPins-only gate for A/B and rollback checks.
 var frameElideRegHomed = os.Getenv("WAGO_ARM64_NO_FRAME_ELIDE_REGHOMED") != "1"
-var frameElideVoid = os.Getenv("WAGO_ARM64_NO_FRAME_ELIDE_VOID") != "1"
-
-// compactRegABIFrameHeader removes the wrapper-only spare/results-pointer
-// header from register-ABI internal frames. The host adapter preserves its
-// results pointer in its own LR/X3 record; wrapper-ABI functions retain the
-// header. Keep the switch for corpus A/B and immediate rollback.
-var compactRegABIFrameHeader = os.Getenv("WAGO_ARM64_NO_COMPACT_REGABI_FRAME") != "1"
 
 // inlineCallFreeHintsEnabled lets frame/register planning use the post-inline
 // fact that no native call remains. Disable only for A/B and rollback checks.
@@ -225,8 +213,6 @@ type fn struct {
 	adapterReturnOff        int    // register-ABI wrapper continuation used by cross-tail reuse
 	adapterEndOff           int    // end of the wrapper before internal-entry alignment
 	adapterReturnReferenced bool   // cross-tail reuse embeds the local return PC; keep that tail local
-	trapBodyOff             int    // complete shared trap body start; zero when not emitted
-	trapBodyEnd             int    // complete shared trap body end
 	guardMode               bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	boundsFacts             bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
 	interruptible           bool   // emit context-cancellation polls at entries and loop headers
@@ -358,7 +344,6 @@ type fn struct {
 	gcFrameRoots           *shared.GCFrameRootPlan
 	gcCallsiteIndex        int
 	moduleEH               bool // reserve the handler register and fixed EH frame area
-	compactFrameHeader     bool // register ABI: no wrapper results-pointer header
 
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
@@ -524,20 +509,11 @@ type scratch struct {
 	fnState        fn       // per-function compiler state, reused across the module
 	directPrepared bool
 
-	retSites         []int
-	ctrl             []ctrlFrame
-	trapSites        [trapAtomicUnaligned + 1][]trapSite
-	branchTargets    map[int]bool
-	brTableStubAt    []int // duplicate-heavy jump-table target positions by control depth
-	finalFragments   []finalizerFragment
-	deadHoleSites    [maxFinalizerDeletions]int
-	branchNextSites  [maxFinalizerDeletions]int
-	singleBitTests   [maxFinalizerDeletions]singleBitTestSite
-	deadHoleN        uint8
-	branchNextN      uint8
-	singleBitTestN   uint8
-	deadHoleOverflow bool
-	offsetMap        shared.OffsetMap
+	retSites      []int
+	ctrl          []ctrlFrame
+	trapSites     [trapAtomicUnaligned + 1][]trapSite
+	branchTargets map[int]bool
+	brTableStubAt []int // duplicate-heavy jump-table target positions by control depth
 	transient
 }
 
@@ -590,8 +566,6 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
-	sc.asm.LogicalMoveImmediates = 0
-	sc.asm.CompactMoveImmediates32 = 0
 	sc.directPrepared = false
 	sc.retSites = sc.retSites[:0]
 	sc.ctrl = sc.ctrl[:0]
@@ -599,11 +573,6 @@ func (sc *scratch) reset() {
 		sc.trapSites[i] = sc.trapSites[i][:0]
 	}
 	clear(sc.branchTargets)
-	sc.finalFragments = sc.finalFragments[:0]
-	sc.deadHoleN = 0
-	sc.branchNextN = 0
-	sc.singleBitTestN = 0
-	sc.deadHoleOverflow = false
 }
 
 // workerState owns every mutable buffer used by one parallel compiler worker.
@@ -626,10 +595,7 @@ type funcResult struct {
 	internalOff    int
 	directPrepared bool
 	adapterTail    adapterTailInfo
-	adapter        sharedAdapterInfo
-	trapBody       sharedTrapBodyInfo
 	relocs         []callReloc
-	omitted        bool
 	err            error
 }
 
@@ -674,36 +640,7 @@ const (
 	frResultsOff  = 8  // results buffer pointer
 )
 
-func (f *fn) frameHeaderBytes() int {
-	if f.compactFrameHeader {
-		return 0
-	}
-	return frameHdrBytes
-}
-
-// prepareCompactGCFrameHeader makes the frontend's collector-local offsets
-// consume this function's final local layout. The plan retains local identities
-// specifically so this rewrite is allocation-free. Fixed roots belong to the EH
-// layout and keep the stable header until those records become layout-relative.
-func (f *fn) prepareCompactGCFrameHeader(plan *shared.GCFrameRootPlan) bool {
-	if plan == nil {
-		return true
-	}
-	if !plan.Candidate || len(plan.FixedOffsets) != 0 || len(plan.LocalIndexes) != len(plan.LocalOffsets) {
-		return false
-	}
-	for _, index := range plan.LocalIndexes {
-		if int(index) >= f.nLocals {
-			return false
-		}
-	}
-	for i, index := range plan.LocalIndexes {
-		plan.LocalOffsets[i] = uint32(f.localOff(int(index)))
-	}
-	return true
-}
-
-func (f *fn) localOff(i int) int32 { return int32(f.frameHeaderBytes() + 8*f.localSlot[i]) }
+func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
 func (f *fn) ehFrameBytes() int {
 	if f.moduleEH {
 		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
@@ -711,13 +648,13 @@ func (f *fn) ehFrameBytes() int {
 	return 0
 }
 func (f *fn) ehRecordOff(index int) int32 {
-	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + index*ehRecordSlots*8)
+	return int32(frameHdrBytes + 8*f.nLocalSlots + index*ehRecordSlots*8)
 }
 func (f *fn) ehRootOff(index int) int32 {
-	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + index*ehRootSlots*8)
+	return int32(frameHdrBytes + 8*f.nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + index*ehRootSlots*8)
 }
 func (f *fn) spillOff(k int) int32 {
-	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
+	return int32(frameHdrBytes + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
 }
 
 // frameSize is a multiple of 16: AArch64 requires SP 16-byte aligned at all times.
@@ -729,13 +666,11 @@ func (f *fn) frameSize() int {
 	if f.frameElided {
 		return 0
 	}
-	return align16(f.frameHeaderBytes() + 8*f.nLocalSlots + f.ehFrameBytes() + 8*f.maxSpill)
+	return align16(frameHdrBytes + 8*f.nLocalSlots + f.ehFrameBytes() + 8*f.maxSpill)
 }
 
 func (f *fn) elideRegisterOnlyFrame() bool {
-	voidResult := len(f.ft.Results) == 0
-	registerResult := f.singleRegResult || frameElideVoid && voidResult
-	if f.moduleEH || !registerResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+	if f.moduleEH || !f.singleRegResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
 	// The frame reserves slots for locals and operand spills. A call-free leaf with
@@ -752,9 +687,6 @@ func (f *fn) elideRegisterOnlyFrame() bool {
 	}
 	f.frameElided = true
 	f.stats.peep("frame-adjust-elide")
-	if voidResult {
-		f.stats.peep("frame-adjust-elide-void")
-	}
 	return true
 }
 
@@ -931,13 +863,6 @@ func CompileModule(m *wasm.Module) (*a64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule, error) {
-	compiled, err := compileModuleWith(m, opts)
-	runtime.KeepAlive(m)
-	runtime.KeepAlive(opts)
-	return compiled, err
-}
-
-func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule, error) {
 	selection, err := optimizationBindings.ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas)
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
@@ -1039,27 +964,11 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		pressureDone := false
 		var directPrepared []uint64
 		var adapterTails []adapterTailInfo
-		var adapters []sharedAdapterInfo
 		if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-			if sharedAdaptersEnabled {
-				adapters = make([]sharedAdapterInfo, 0, countHostAdapters(hostAdapters))
-			} else {
-				adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
-			}
+			adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
 		}
-		var trapBodyCluster sharedTrapBodyCluster
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		for i := range m.Code {
-			var st *CodegenStats
-			if ms != nil {
-				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
-				ms.Funcs[i] = st
-			}
-			if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
-				st.peep("inline-dead-body")
-				allHints[i] = funcHints{}
-				continue
-			}
 			// Align and reserve before lowering so the assembler can emit straight
 			// into the module-owned image. If an unusually large function outgrows
 			// the mapping tail, CommitTail rejects the detached slice and Append
@@ -1077,6 +986,11 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 			sc.asm.B = tail
 			hints := allHints[i]
+			var st *CodegenStats
+			if ms != nil {
+				st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
+				ms.Funcs[i] = st
+			}
 			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, sc)
 			allHints[i] = funcHints{}
 			if err != nil {
@@ -1088,18 +1002,6 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 					info.function = uint32(i)
 					adapterTails = append(adapterTails, info)
 				}
-			}
-			if adapters != nil {
-				if info := sc.fnState.sharedAdapterInfo(); info.endOff != 0 {
-					info.function = uint32(i)
-					adapters = append(adapters, info)
-				}
-			}
-			if hostAdapters[i] {
-				trapBodyCluster.reset()
-			}
-			if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
-				fnCode = trapBodyCluster.share(codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfo(), st)
 			}
 			if sc.directPrepared {
 				directPrepared = markDirectPrepared(directPrepared, n, i)
@@ -1116,26 +1018,14 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 		}
 		moduleOther := 0
-		if adapters != nil {
-			var sharedBytes int
-			sharedBytes, err = shareAdaptersCodeBuffer(codeBuffer, entry, internalEntry, relocs, adapters, opts.GCFrameRoots, ms)
+		if adapterTails != nil {
+			moduleOther, err = shareAdapterTailsCodeBuffer(codeBuffer, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
 			if err != nil {
 				return nil, err
 			}
-			moduleOther += sharedBytes
-		} else if adapterTails != nil {
-			var sharedBytes int
-			sharedBytes, err = shareAdapterTailsCodeBuffer(codeBuffer, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
-			if err != nil {
-				return nil, err
-			}
-			moduleOther += sharedBytes
 		}
 		code := codeBuffer.Bytes()
-		if err := finalizeOmittedInlineEntries(entry, internalEntry, relocs, hostAdapters, inlineTargets); err != nil {
-			return nil, err
-		}
-		finalizeModuleNativeSize(ms, len(code), moduleOther, len(codeBuffer.Mapping()))
+		finalizeModuleNativeSize(ms, len(code), moduleOther)
 		if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
 			return nil, err
 		}
@@ -1184,12 +1074,6 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				if ms != nil {
 					st = ms.Funcs[i]
 				}
-				if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
-					st.peep("inline-dead-body")
-					allHints[i] = funcHints{}
-					results[i] = funcResult{omitted: true}
-					continue
-				}
 				layoutFlags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(allHints[i].hasLoop, layoutHasLoop) | boolFlag(allHints[i].hasCall, layoutHasCall) | boolFlag(allHints[i].callsSelf, layoutCallsSelf)
 				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], opts.ImportBindings, opts.SyncHostCalls, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, ws.scratch)
 				allHints[i] = funcHints{}
@@ -1201,14 +1085,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				ws.arena = append(ws.arena, fnCode...)
 				result := funcResult{worker: workerID, start: start, end: len(ws.arena), bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: layoutFlags, internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
 				if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-					if sharedAdaptersEnabled {
-						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
-					} else {
-						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
-					}
-					if moduleSharedTrapBodyEnabled {
-						result.trapBody = ws.scratch.fnState.sharedTrapBodyInfo()
-					}
+					result.adapterTail = ws.scratch.fnState.adapterTailInfo()
 				}
 				results[i] = result
 				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
@@ -1225,20 +1102,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	code := make([]byte, 0, codeCap)
 	var directPrepared []uint64
 	var adapterTails []adapterTailInfo
-	var adapters []sharedAdapterInfo
 	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-		if sharedAdaptersEnabled {
-			adapters = make([]sharedAdapterInfo, 0, countHostAdapters(hostAdapters))
-		} else {
-			adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
-		}
+		adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
 	}
-	var trapBodyCluster sharedTrapBodyCluster
 	for i := range results {
 		r := &results[i]
-		if r.omitted {
-			continue
-		}
 		if pad := functionStartPaddingFlags(len(code), r.bodyBytes, r.layoutFlags, policy); pad != 0 {
 			code = append(code, alignPad[:pad]...)
 		}
@@ -1252,87 +1120,24 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			r.adapterTail.function = uint32(i)
 			adapterTails = append(adapterTails, r.adapterTail)
 		}
-		if adapters != nil && r.adapter.endOff != 0 {
-			r.adapter.function = uint32(i)
-			adapters = append(adapters, r.adapter)
-		}
-		fnCode := states[r.worker].arena[r.start:r.end]
-		if r.layoutFlags&layoutHostAdapter != 0 {
-			trapBodyCluster.reset()
-		}
-		if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
-			var st *CodegenStats
-			if ms != nil {
-				st = ms.Funcs[i]
-			}
-			fnCode = trapBodyCluster.share(code, fnCode, entry[i], r.trapBody, st)
-		}
-		code = append(code, fnCode...)
+		code = append(code, states[r.worker].arena[r.start:r.end]...)
 	}
 	moduleOther := 0
-	if adapters != nil {
+	if adapterTails != nil {
 		var err error
-		var sharedBytes int
-		code, sharedBytes, err = shareAdapters(code, entry, internalEntry, relocs, adapters, opts.GCFrameRoots, ms)
+		code, moduleOther, err = shareAdapterTails(code, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
 		if err != nil {
 			return nil, err
 		}
-		moduleOther += sharedBytes
-	} else if adapterTails != nil {
-		var err error
-		var sharedBytes int
-		code, sharedBytes, err = shareAdapterTails(code, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
-		if err != nil {
-			return nil, err
-		}
-		moduleOther += sharedBytes
-	}
-	if err := finalizeOmittedInlineEntries(entry, internalEntry, relocs, hostAdapters, inlineTargets); err != nil {
-		return nil, err
 	}
 	if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
 		return nil, err
 	}
-	finalizeModuleNativeSize(ms, len(code), moduleOther, 0)
+	finalizeModuleNativeSize(ms, len(code), moduleOther)
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
 	return &a64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared}, nil
-}
-
-// finalizeOmittedInlineEntries closes the module-layout seam for standalone
-// bodies proved unreachable by Size inlining. Any surviving relocation fails
-// closed. Entry metadata remains structurally valid by aliasing omitted logical
-// functions to one retained internal entry; the proof guarantees it is never
-// observed by Wasm or the host.
-func finalizeOmittedInlineEntries(entry, internalEntry []int, relocs [][]callReloc, hostAdapters []bool, targets inlineTargetTable) error {
-	if len(entry) == 0 {
-		return nil
-	}
-	anchor := -1
-	for i := range entry {
-		if !targets.omitStandaloneBody(i, hostAdapters[i]) {
-			anchor = i
-			break
-		}
-	}
-	if anchor < 0 {
-		return fmt.Errorf("arm64: every local function was marked as an omitted inline body")
-	}
-	for caller := range relocs {
-		for _, rl := range relocs[caller] {
-			if rl.target >= 0 && rl.target < len(entry) && targets.omitStandaloneBody(rl.target, hostAdapters[rl.target]) {
-				return fmt.Errorf("arm64: function %d retains relocation to omitted inline body %d", caller, rl.target)
-			}
-		}
-	}
-	alias := internalEntry[anchor]
-	for i := range entry {
-		if targets.omitStandaloneBody(i, hostAdapters[i]) {
-			entry[i], internalEntry[i] = alias, alias
-		}
-	}
-	return nil
 }
 
 func patchCallRelocs(code []byte, entry, internalEntry []int, relocs [][]callReloc) error {
@@ -1356,7 +1161,7 @@ func firstFuncError(results []funcResult) (int, error) {
 	return shared.FirstErrorIndex(len(results), func(i int) error { return results[i].err })
 }
 
-func finalizeModuleNativeSize(ms *ModuleStats, codeLen, moduleOther, mappedBytes int) {
+func finalizeModuleNativeSize(ms *ModuleStats, codeLen, moduleOther int) {
 	if ms == nil {
 		return
 	}
@@ -1409,7 +1214,6 @@ func finalizeModuleNativeSize(ms *ModuleStats, codeLen, moduleOther, mappedBytes
 		native.FunctionAlignmentBytes = 0
 	}
 	ms.NativeSize = native
-	ms.NativeSize.SetExecutableMapping(codeLen, mappedBytes)
 }
 
 // moduleGlobalPinInfos converts the internal module-global pin assignments to the
@@ -1527,16 +1331,12 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
 		h.inlineCallSites = allHints[i].inlineCallSites
-		h.directCallRefs = allHints[i].directCallRefs
-		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
 		var err error
 		h, err = scanFuncBodyIntoModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), m.BranchHintsForFunc(uint32(importedFuncs+i)), h, &eligibilityTracker, m, allHints, importedFuncs)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
-		h.directCallRefs = allHints[i].directCallRefs
-		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
 		localAt += nLocals
 		moduleEH = moduleEH || h.moduleEH
 		h.globalAccum = nil
@@ -1822,10 +1622,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	sc.reset()
 	sc.asm.DenseIdxDisp = hints.memOps >= 8
-	sc.asm.DisableLogicalMoveImmediate = !logicalMoveImmediateEnabled ||
-		(policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded)
-	sc.asm.DisableCompactMoveImmediate32 = !compactMoveImmediate32Enabled ||
-		(policy.Objective != OptimizeSize && policy.Objective != OptimizeEmbedded)
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	globalIdx := m.ImportedFuncCount() + funcIdx
 	f := &sc.fnState
@@ -1907,17 +1703,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	regABI := policy.EnabledOption(optRegABI) && sigFitsRegABI(ft)
-	// Only wrapper-ABI code reads frResultsOff. Register-ABI adapters preserve X3
-	// below the internal frame, while direct internal and tail paths return in
-	// registers. EH and GC frame plans retain the established fixed layout until
-	// their independently generated offset tables become header-relative.
-	f.compactFrameHeader = compactRegABIFrameHeader && regABI && !f.moduleEH
-	if f.compactFrameHeader && !f.prepareCompactGCFrameHeader(gcFrameRoots) {
-		f.compactFrameHeader = false
-	}
-	if f.compactFrameHeader {
-		f.stats.peep("frame-header-elide")
-	}
 	var gpPoolStorage [24]Reg
 	gpPool := gpPinPoolWithPolicy(gpPoolStorage[:0], regABI, f.nParams, !hasCall, policy)
 	if f.moduleEH {
@@ -2148,8 +1933,6 @@ func (f *fn) finalizeStats(codeLen int) {
 	s.NativeSize.TotalBytes = codeLen
 	s.NativeSize.InternalFunctionBytes = codeLen - s.NativeSize.HostAdapterBytes - s.NativeSize.AdapterToInternalPaddingBytes
 	s.GCCodeBytes.Total = codeLen
-	s.peepN("logical-move-immediate", f.a.LogicalMoveImmediates)
-	s.peepN("compact-move-immediate32", f.a.CompactMoveImmediates32)
 	s.FrameBytes = f.frameSize()
 	s.MaxSpillSlots = f.maxSpill
 }

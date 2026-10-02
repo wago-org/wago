@@ -82,43 +82,6 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkArm64(t *testing.T) {
 	}
 }
 
-func TestNativeCompactionObjectiveAndRollbackArm64(t *testing.T) {
-	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
-	beforeLimitOverride := finalizerDeletionLimitOverride
-	nativeCompactionEnabled, nativeCompactionDisabled = false, false
-	t.Cleanup(func() {
-		nativeCompactionEnabled, nativeCompactionDisabled = beforeEnabled, beforeDisabled
-		finalizerDeletionLimitOverride = beforeLimitOverride
-	})
-
-	selection := currentCodegenPolicy().Selection
-	balanced := fn{policy: shared.CodegenPolicyForObjective(selection, OptimizeBalanced)}
-	size := fn{policy: shared.CodegenPolicyForObjective(selection, OptimizeSize)}
-	if balanced.compactNative() {
-		t.Fatal("Balanced unexpectedly enabled native compaction")
-	}
-	if !size.compactNative() {
-		t.Fatal("Size did not enable native compaction")
-	}
-	if got := size.finalizerDeletionLimit(); got != maxFinalizerDeletions {
-		t.Fatalf("Size finalizer deletion limit = %d, want %d", got, maxFinalizerDeletions)
-	}
-	finalizerDeletionLimitOverride = 64
-	if got := size.finalizerDeletionLimit(); got != 64 {
-		t.Fatalf("finalizer deletion limit override = %d, want 64", got)
-	}
-	finalizerDeletionLimitOverride = 0
-
-	nativeCompactionEnabled = true
-	if !balanced.compactNative() {
-		t.Fatal("WAGO_COMPACT=1 override did not enable Balanced compaction")
-	}
-	nativeCompactionDisabled = true
-	if size.compactNative() || balanced.compactNative() {
-		t.Fatal("WAGO_COMPACT=0 rollback did not disable compaction")
-	}
-}
-
 func TestFunctionStartPaddingObjectivesArm64(t *testing.T) {
 	selection := currentCodegenPolicy().Selection
 	policy := func(objective OptimizationObjective) CodegenPolicy {

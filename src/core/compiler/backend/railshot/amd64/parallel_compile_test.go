@@ -34,36 +34,13 @@ func TestCompileWorkersDeterministic(t *testing.T) {
 				for repeat := 0; repeat < 5; repeat++ {
 					got, gotStats := compileWorkerTestModule(t, m, workers)
 					assertCompiledModuleEqual(t, got, want)
-					if !equalWorkerModuleStatsAMD64(gotStats, wantStats) {
+					if !reflect.DeepEqual(gotStats, wantStats) {
 						t.Fatalf("workers=%d repeat=%d: stats differ\n got: %#v\nwant: %#v", workers, repeat, gotStats, wantStats)
 					}
 				}
 			}
 		})
 	}
-}
-
-func TestCompileWorkersSizeSharedAdaptersDeterministicAMD64(t *testing.T) {
-	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
-	size := OptimizeSize
-	for _, name := range []string{"many_funcs.wasm", "json-as-simd.wasm"} {
-		t.Run(name, func(t *testing.T) {
-			m := readParallelTestModule(t, filepath.Join(corpus, name))
-			want, wantStats := compileWorkerTestModuleObjective(t, m, 1, &size)
-			got, gotStats := compileWorkerTestModuleObjective(t, m, 4, &size)
-			assertCompiledModuleEqual(t, got, want)
-			if !equalWorkerModuleStatsAMD64(gotStats, wantStats) {
-				t.Fatalf("Size stats differ\n got: %#v\nwant: %#v", gotStats, wantStats)
-			}
-		})
-	}
-}
-
-func equalWorkerModuleStatsAMD64(a, b *ModuleStats) bool {
-	aCopy, bCopy := *a, *b
-	aCopy.NativeSize.CompilerCodeArenaBytes = 0
-	bCopy.NativeSize.CompilerCodeArenaBytes = 0
-	return reflect.DeepEqual(&aCopy, &bCopy)
 }
 
 func TestCompileWorkersLowestIndexError(t *testing.T) {
@@ -147,13 +124,9 @@ func readParallelTestModule(t testing.TB, path string) *wasm.Module {
 }
 
 func compileWorkerTestModule(t *testing.T, m *wasm.Module, workers int) (*encoder.CompiledModule, *ModuleStats) {
-	return compileWorkerTestModuleObjective(t, m, workers, nil)
-}
-
-func compileWorkerTestModuleObjective(t *testing.T, m *wasm.Module, workers int, objective *OptimizationObjective) (*encoder.CompiledModule, *ModuleStats) {
 	t.Helper()
 	stats := &ModuleStats{}
-	cm, err := CompileModuleWith(m, CompileOptions{Workers: workers, Stats: stats, Objective: objective})
+	cm, err := CompileModuleWith(m, CompileOptions{Workers: workers, Stats: stats})
 	if err != nil {
 		t.Fatalf("workers=%d: compile: %v", workers, err)
 	}

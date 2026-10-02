@@ -643,33 +643,28 @@ func TestManyFunctionRelocationLayout(t *testing.T) {
 	}
 	addBody = append(addBody, 0x20, 0x00, 0x0b)
 
+	funcs := make([][]byte, functionCount)
+	codes := make([][]byte, functionCount)
+	for i := range funcs {
+		funcs[i] = wasmtest.ULEB(0)
+	}
 	first := []byte{0x20, 0x00, 0x10}
 	first = append(first, wasmtest.ULEB(functionCount-2)...)
 	first = append(first, 0x0b)
-	last := []byte{0x20, 0x00, 0x10}
-	last = append(last, wasmtest.ULEB(functionCount-2)...)
-	last = append(last, 0x0b)
-
-	funcTypes := wasmtest.ULEB(functionCount)
-	funcTypes = append(funcTypes, make([]byte, functionCount)...)
-	identityBody := wasmtest.Code([]byte{0x20, 0x00, 0x0b})
-	addCode := wasmtest.Code(addBody)
-	codePayload := make([]byte, 0, len(identityBody)*functionCount+len(addCode))
-	codePayload = append(codePayload, wasmtest.ULEB(functionCount)...)
-	codePayload = append(codePayload, wasmtest.Code(first)...)
-	for i := 1; i < functionCount-2; i++ {
-		codePayload = append(codePayload, identityBody...)
+	funcsBody := wasmtest.Code(addBody)
+	codes[0] = wasmtest.Code(first)
+	for i := 1; i < functionCount-1; i++ {
+		codes[i] = funcsBody
 	}
-	codePayload = append(codePayload, addCode...)
-	codePayload = append(codePayload, wasmtest.Code(last)...)
+	codes[functionCount-1] = wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x01, 0x0b})
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(3, funcTypes),
+		wasmtest.Section(3, wasmtest.Vec(funcs...)),
 		wasmtest.Section(7, wasmtest.Vec(
 			wasmtest.ExportEntry("first", 0, 0),
 			wasmtest.ExportEntry("last", 0, functionCount-1),
 		)),
-		wasmtest.Section(10, codePayload),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
 	)
 	in := mustInstantiateAdversarial(t, mod, nil)
 	defer in.Close()
@@ -740,10 +735,7 @@ func TestRepeatedRuntimeCompileInstantiateDoesNotRetainHeap(t *testing.T) {
 			if err := table.Close(); err != nil {
 				t.Fatal(err)
 			}
-			// The heap assertion below must observe completed teardown. Close only
-			// publishes asynchronous shutdown, which can leave all n runtimes live
-			// until the cooperative TinyGo scheduler gets another yield.
-			if err := rt.CloseContext(context.Background()); err != nil {
+			if err := rt.Close(); err != nil {
 				t.Fatal(err)
 			}
 		}

@@ -1,9 +1,6 @@
 package wago
 
-import (
-	"fmt"
-	"sync"
-)
+import "fmt"
 
 func gcCollectFrameRoots(in *Instance, public *gcPublicState, frameLayout uint8, allowExternalReturn bool) gcNativeFrameRoots {
 	return gcNativeFrameRoots{
@@ -25,29 +22,12 @@ func (in *Instance) CollectGC() error {
 	if in == nil || in.gc == nil || in.c == nil {
 		return fmt.Errorf("wago: instance has no live WasmGC collector")
 	}
-	// Public collection is an independent operation, not a callback-scoped
-	// re-entry. Use a fresh identity instead of racing the instance's active
-	// invocation ID; GCHostModule.CollectGC handles lease ownership explicitly.
-	invocation := in.lockGCInvocation(newInvocationID())
-	defer invocation.unlock()
-	return in.collectGC()
-}
-
-func (in *Instance) collectGC() error {
 	public := in.existingPublicGCState()
 	if public == nil {
 		return errGenericGCRootState
 	}
-	var nativeMu *sync.Mutex
-	if in.usesIndependentExecution() {
-		nativeMu = in.independentNativeExecutionMu()
-	} else if in.c.threadedMemory0() {
-		nativeMu = &in.memoryDir.nativeMu
-	} else {
-		nativeMu = &nativeExecutionMu
-	}
-	nativeMu.Lock()
-	defer nativeMu.Unlock()
+	unlockNative := lockNativeExecutionForHostAccess()
+	defer unlockNative()
 	lockedDomain := in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
 	public.mu.Lock()

@@ -225,6 +225,40 @@ func TestRunParallelFlagForms(t *testing.T) {
 	}
 }
 
+func TestRunCompilerFlags(t *testing.T) {
+	cmd := Command(testEnvironment{})
+	for _, test := range []struct {
+		args    []string
+		want    string
+		wantErr bool
+	}{
+		{args: []string{"--compiler", "dragline", "module.wasm"}, want: "dragline"},
+		{args: []string{"--dragline", "module.wasm"}, want: "dragline"},
+		{args: []string{"--railshot", "module.wasm"}, want: "railshot"},
+		{args: []string{"--compiler=dragline", "--railshot", "module.wasm"}, wantErr: true},
+		{args: []string{"--dragline", "--railshot", "module.wasm"}, wantErr: true},
+	} {
+		args, err := cmd.Normalize(test.args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, err := cmd.Parse("wago run", args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := CompilerOverride(ctx)
+		if test.wantErr {
+			if err == nil {
+				t.Fatalf("CompilerOverride(%v) = %q, want error", test.args, got)
+			}
+			continue
+		}
+		if err != nil || got != test.want {
+			t.Fatalf("CompilerOverride(%v) = %q, %v; want %q", test.args, got, err, test.want)
+		}
+	}
+}
+
 func TestRunExecValueMode(t *testing.T) {
 	t.Setenv("WAGO_BARE", "1") // exercise the CLI execution path without project/global plugin handoff.
 	wasm := []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0,

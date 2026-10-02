@@ -36,12 +36,12 @@ func Configure(request ConfigRequest) error {
 	if err != nil {
 		return err
 	}
-	return withPluginMutationLock(pluginContext(request.Context), src, func(mutation *project.Mutation) error {
-		manifest, err := mutation.ReadManifest()
+	return withPluginMutationLock(pluginContext(request.Context), src, func() error {
+		manifest, err := project.Read(src)
 		if err != nil {
 			return err
 		}
-		lock, err := mutation.ReadLock()
+		lock, err := project.ReadLock(src)
 		if err != nil {
 			return err
 		}
@@ -54,6 +54,6 @@ func Configure(request ConfigRequest) error {
 		if err := project.ValidateLock(lock); err != nil {
 			return err
 		}
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false)
+		return stageAndPublishLockedState(src, buildDir, manifest, lock, false)
 	})
 }

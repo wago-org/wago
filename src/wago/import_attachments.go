@@ -260,8 +260,7 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) b
 }
 
 type tableImportAttachments struct {
-	set   importDedup[*Table]
-	store *referenceStore
+	set importDedup[*Table]
 }
 
 func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
@@ -274,19 +273,13 @@ func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact
 	if err := table.attachImporterWithCollector(elementType, exact, types, store, collector, addr64); err != nil {
 		return err
 	}
-	if a.set.n == 0 {
-		a.store = store
-	} else if a.store != store {
-		return fmt.Errorf("table import attachments use inconsistent reference stores")
-	}
 	a.set.push(table)
 	return nil
 }
 
 func (a *tableImportAttachments) detachAll() {
-	a.set.each(func(table *Table) { table.detachImporter(a.store) })
+	a.set.each((*Table).detachImporter)
 	a.set.reset()
-	a.store = nil
 }
 
 func (c *Compiled) preflightImportBindings(imports Imports) error {
@@ -327,7 +320,7 @@ func detachImportedTables(in *Instance) {
 			continue
 		}
 		if seen.add(table) && !in.ownsTransferredTableAttachment(table) {
-			table.detachImporter(in.refStore)
+			table.detachImporter()
 		}
 	}
 }
