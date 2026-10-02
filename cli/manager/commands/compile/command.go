@@ -51,7 +51,8 @@ func Command(environment Environment) *command.Cmd {
 			return internalparallel.NormalizeArgs(args, parserFlags, false)
 		},
 		Long: "The executable embeds the module and selected plugin configuration. By default it\n" +
-			"calls _start; use --invoke to bake in another exported function. Core features,\n" +
+			"calls _start, then main, then the sole exported function; use --invoke to select\n" +
+			"another export. Core features,\n" +
 			"parallelism, and optimization knobs are fixed at build time. Use --target\n" +
 			"linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64,\n" +
 			"or windows/arm64 to cross-compile with the matching Wago backend.",
