@@ -1825,6 +1825,24 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				return nil, 0, true, err
 			}
 			emitCalleeRestoreBefore(instructionID)
+			// A post-RA rewrite may skip the instruction at a fragment's first
+			// use. The fragment still owns its register at later uses, so reload
+			// it before deciding whether to emit this instruction.
+			for _, fragment := range plan.Allocation.Fragments {
+				if fragment.Start != nextPosition {
+					continue
+				}
+				dst := amd64RailMachPhysical(plan, fragment.Location)
+				if fragment.Victim != 0 {
+					slot := railmach.Location{Kind: railmach.LocationSpill, Bank: fragment.Location.Bank, Index: fragment.VictimSlot}
+					if err := amd64RailMachWriteLocation(&a, plan, fragment.Victim, slot, dst); err != nil {
+						return nil, 0, true, err
+					}
+				}
+				if _, err := readLocation(fragment.Reg, plan.Allocation.Locations[fragment.Reg], dst, 0); err != nil {
+					return nil, 0, true, err
+				}
+			}
 			instructionResult := plan.Machine.Insts[instructionID].Result
 			if skipInstruction.has(instructionID) || plan.PostRASkip.has(instructionID) || plan.AMD64DeadStoreSkip.has(instructionID) || plan.AMD64GlobalUpdateSkip.has(instructionID) || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 {
 				continue
@@ -1869,21 +1887,6 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			currentResultOverrideValid = edgeResultRename.valid && edgeResultRename.instruction == instructionID
 			if currentResultOverrideValid {
 				currentResultOverride = amd64RailMachPhysical(plan, edgeResultRename.destination)
-			}
-			for _, fragment := range plan.Allocation.Fragments {
-				if fragment.Start != currentPosition {
-					continue
-				}
-				dst := amd64RailMachPhysical(plan, fragment.Location)
-				if fragment.Victim != 0 {
-					slot := railmach.Location{Kind: railmach.LocationSpill, Bank: fragment.Location.Bank, Index: fragment.VictimSlot}
-					if err := amd64RailMachWriteLocation(&a, plan, fragment.Victim, slot, dst); err != nil {
-						return nil, 0, true, err
-					}
-				}
-				if _, err := readLocation(fragment.Reg, plan.Allocation.Locations[fragment.Reg], dst, 0); err != nil {
-					return nil, 0, true, err
-				}
 			}
 			foldedImmediateID, hasFoldedImmediate := immediateProducer.get(instructionID)
 			if semanticOp == wasm.InstrMemoryCopy || semanticOp == wasm.InstrMemoryFill {
