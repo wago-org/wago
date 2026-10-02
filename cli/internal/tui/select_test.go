@@ -37,6 +37,29 @@ func TestMultiSelectFrame(t *testing.T) {
 	}
 }
 
+func TestMultiSelectFrameGroupsAndIndentsRows(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	m := &MultiSelect{Items: []SelectItem{
+		{Label: "host.arguments.read", Group: "github.com/wago-org/wasi", On: true},
+		{Label: "host.import.define", Group: "github.com/wago-org/wasi", On: true},
+		{Label: "instance.manage", Group: "github.com/wago-org/workers", On: true},
+		{Label: "Reject all", Reject: true},
+	}}
+	frame := m.Frame()
+	for _, want := range []string{
+		"github.com/wago-org/wasi\n  › ◉ host.arguments.read",
+		"github.com/wago-org/workers\n    ◉ instance.manage",
+		"\n  ○ Reject all",
+	} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("grouped frame missing %q:\n%s", want, frame)
+		}
+	}
+	if strings.Count(frame, "github.com/wago-org/wasi\n") != 1 {
+		t.Fatalf("plugin heading repeated:\n%s", frame)
+	}
+}
+
 func TestMultiSelectMovementClamps(t *testing.T) {
 	m := newTestSelect()
 	m.apply(keyUp) // already at top
@@ -93,6 +116,14 @@ func TestMultiSelectDisabledPreviewCannotBeSelected(t *testing.T) {
 	}
 }
 
+func TestMultiSelectConfirmOffSubmitsImmediately(t *testing.T) {
+	m := &MultiSelect{Items: []SelectItem{{Label: "required", On: true, ConfirmOff: true}}}
+	done, cancelled := m.apply(keyToggle)
+	if !done || cancelled || m.Items[0].On {
+		t.Fatalf("required toggle = done %v, cancelled %v, row %#v", done, cancelled, m.Items[0])
+	}
+}
+
 func TestMultiSelectAcceptCancel(t *testing.T) {
 	m := newTestSelect()
 	if done, cancelled := m.apply(keyAccept); !done || cancelled {
@@ -110,7 +141,7 @@ func TestMultiSelectAcceptCancel(t *testing.T) {
 }
 
 func TestMultiSelectRejectKey(t *testing.T) {
-	m := &MultiSelect{Items: []SelectItem{{Label: "a", On: true}, {Label: "b", On: true}}}
+	m := &MultiSelect{Items: []SelectItem{{Label: "a", On: true}, {Label: "b", On: true}, {Label: "Reject all", Reject: true}}}
 	// r clears everything and submits (grant nothing), and is NOT a cancel.
 	done, cancelled := m.apply(keyReject)
 	if !done || cancelled {
@@ -119,11 +150,44 @@ func TestMultiSelectRejectKey(t *testing.T) {
 	if got := m.Chosen(); len(got) != 0 {
 		t.Fatalf("r must clear all selections, got %v", got)
 	}
+	if !m.Rejected() {
+		t.Fatal("r did not select the explicit reject row")
+	}
+}
+
+func TestMultiSelectRejectRowIsExclusive(t *testing.T) {
+	m := &MultiSelect{Items: []SelectItem{
+		{Label: "required", On: true},
+		{Label: "optional", On: true},
+		{Label: "Reject all", Reject: true},
+	}, Cursor: 2}
+	if done, cancelled := m.apply(keyToggle); !done || cancelled {
+		t.Fatalf("reject row should submit immediately: done=%v cancelled=%v", done, cancelled)
+	}
+	if got := m.Chosen(); got != nil || !m.Rejected() {
+		t.Fatalf("reject row left grants selected: chosen=%v rejected=%v", got, m.Rejected())
+	}
+	m.Cursor = 0
+	m.apply(keyToggle)
+	if got := m.Chosen(); !reflect.DeepEqual(got, []string{"required"}) || m.Rejected() {
+		t.Fatalf("grant row did not clear rejection: chosen=%v rejected=%v", got, m.Rejected())
+	}
+}
+
+func TestMultiSelectEnterOnRejectRowRejects(t *testing.T) {
+	m := &MultiSelect{Items: []SelectItem{
+		{Label: "required", On: true},
+		{Label: "Reject all", Reject: true},
+	}, Cursor: 1}
+	done, cancelled := m.apply(keyAccept)
+	if !done || cancelled || !m.Rejected() || m.Items[0].On {
+		t.Fatalf("enter on Reject all = done %v, cancelled %v, items %#v", done, cancelled, m.Items)
+	}
 }
 
 func TestMultiSelectEnterAccepts(t *testing.T) {
 	m := &MultiSelect{Items: []SelectItem{{Label: "a", On: true}, {Label: "b", On: false}}}
-	// Enter always submits the checked items (never rejects), wherever the cursor is.
+	// Enter on an ordinary row submits the checked items.
 	m.apply(keyDown) // cursor on the unchecked "b"
 	done, cancelled := m.apply(keyAccept)
 	if !done || cancelled {
@@ -152,6 +216,8 @@ func TestDecodeKey(t *testing.T) {
 		{[]byte{'a'}, keyAll},
 		{[]byte{'n'}, keyClear},
 		{[]byte{'r'}, keyReject},
+		{[]byte{'c'}, keyCopy},
+		{[]byte{'o'}, keyOpen},
 		{[]byte{'q'}, keyQuit},
 		{[]byte{3}, keyQuit},    // Ctrl-C
 		{[]byte{27}, keyCancel}, // bare ESC
@@ -171,6 +237,31 @@ func TestDecodeKey(t *testing.T) {
 	for _, tc := range cases {
 		if got := decodeKey(tc.in); got != tc.want {
 			t.Errorf("decodeKey(%v) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestActionPrompt(t *testing.T) {
+	for _, test := range []struct {
+		key       selectKey
+		action    Action
+		cancelled bool
+	}{
+		{keyCopy, ActionCopy, false},
+		{keyOpen, ActionOpen, false},
+		{keyAccept, ActionContinue, false},
+		{keyCancel, ActionNone, true},
+	} {
+		prompt := &ActionPrompt{Text: "Authorize on GitHub"}
+		done, cancelled := prompt.apply(test.key)
+		if !done || cancelled != test.cancelled || prompt.Action() != test.action {
+			t.Fatalf("action %d = done %v, cancelled %v, action %d", test.key, done, cancelled, prompt.Action())
+		}
+	}
+	frame := (&ActionPrompt{Text: "Authorize on GitHub"}).Frame()
+	for _, want := range []string{"Authorize on GitHub", "c copy code", "o open browser", "enter continue", "esc cancel"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("action frame missing %q:\n%s", want, frame)
 		}
 	}
 }

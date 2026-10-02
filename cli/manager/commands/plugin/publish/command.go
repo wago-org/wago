@@ -14,6 +14,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "publish", Summary: "publish a plugin from wago.json",
+		Long:       "Interactive publishing confirms an existing version tag or guides you through creating and pushing it from the default or another local branch.",
 		Automation: command.DryRun,
 		Flags: []command.Flag{
 			{Name: "manifest", Short: "m", Arg: "<p>", Help: "manifest path (default wago.json)"},

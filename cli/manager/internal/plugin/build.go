@@ -38,15 +38,15 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		progress.DisableAnimation()
 	}
 	progress.Title("Installing plugins")
-	progress.Begin("Resolving the complete plugin graph")
+	progress.Begin("Fetching plugins")
 	src, err := depsSource(options.global)
 	if err != nil {
-		progress.Fail("Plugin resolution failed")
+		progress.Fail("Plugin fetch failed")
 		fatal("add: %v", err)
 	}
 	buildDir, err := buildDirFor(options.global)
 	if err != nil {
-		progress.Fail("Plugin resolution failed")
+		progress.Fail("Plugin fetch failed")
 		fatal("add: %v", err)
 	}
 	err = withPluginMutationLock(pluginContext(options.ctx), src, func(mutation *project.Mutation) error {
@@ -75,10 +75,14 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		if err != nil {
 			return err
 		}
+		progress.Finish("Fetched plugins")
+		progress.Title("Checking permissions")
 		lock, err := reviewResolution(plan, options)
 		if err != nil {
 			return err
 		}
+		progress.Finish("Permissions checked")
+		progress.Begin("Building plugin runtime")
 		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, options.verbose)
 	})
 	if err != nil {

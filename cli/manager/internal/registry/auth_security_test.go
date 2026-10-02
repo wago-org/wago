@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/wago-org/wago/cli/internal/tui"
 )
 
 const (
@@ -132,6 +134,70 @@ func TestDeviceAuthorizationKeepsCredentialsOutOfURLs(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestInteractiveDeviceAuthorizationWaitsForBrowserAction(t *testing.T) {
+	server, _ := newDeviceFlowServer(t, `{"access_token":"`+testGitHubToken+`"}`,
+		http.StatusOK, `{"token":"`+testRegistryToken+`"}`)
+	var openedURL, copiedCode string
+	actions := []tui.Action{tui.ActionCopy, tui.ActionOpen}
+	hooks := deviceFlowTestHooks(t, server.URL, &openedURL)
+	hooks.copyCode = func(code string) error {
+		copiedCode = code
+		return nil
+	}
+	hooks.promptAction = func() (tui.Action, bool, bool) {
+		action := actions[0]
+		actions = actions[1:]
+		return action, true, false
+	}
+
+	token, err := githubDeviceTokenUsingContext(context.Background(), server.URL, true, hooks)
+	if err != nil || token != testRegistryToken {
+		t.Fatalf("device token = %q, %v", token, err)
+	}
+	if copiedCode != "short-lived-code" {
+		t.Fatalf("copied code = %q", copiedCode)
+	}
+	if openedURL == "" {
+		t.Fatal("browser was not opened after the explicit action")
+	}
+}
+
+func TestInteractiveDeviceAuthorizationContinuesWithoutOpeningBrowser(t *testing.T) {
+	server, _ := newDeviceFlowServer(t, `{"access_token":"`+testGitHubToken+`"}`,
+		http.StatusOK, `{"token":"`+testRegistryToken+`"}`)
+	var openedURL string
+	hooks := deviceFlowTestHooks(t, server.URL, &openedURL)
+	hooks.promptAction = func() (tui.Action, bool, bool) {
+		return tui.ActionContinue, true, false
+	}
+
+	token, err := githubDeviceTokenUsingContext(context.Background(), server.URL, true, hooks)
+	if err != nil || token != testRegistryToken {
+		t.Fatalf("device token = %q, %v", token, err)
+	}
+	if openedURL != "" {
+		t.Fatalf("browser opened without the explicit action: %q", openedURL)
+	}
+}
+
+func TestUnavailableDevicePromptDoesNotOpenBrowser(t *testing.T) {
+	server, _ := newDeviceFlowServer(t, `{"access_token":"`+testGitHubToken+`"}`,
+		http.StatusOK, `{"token":"`+testRegistryToken+`"}`)
+	var openedURL string
+	hooks := deviceFlowTestHooks(t, server.URL, &openedURL)
+	hooks.promptAction = func() (tui.Action, bool, bool) {
+		return tui.ActionNone, false, false
+	}
+
+	token, err := githubDeviceTokenUsingContext(context.Background(), server.URL, true, hooks)
+	if err != nil || token != testRegistryToken {
+		t.Fatalf("device token = %q, %v", token, err)
+	}
+	if openedURL != "" {
+		t.Fatalf("browser opened when the action prompt was unavailable: %q", openedURL)
 	}
 }
 

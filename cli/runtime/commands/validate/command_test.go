@@ -1,8 +1,13 @@
 package validate
 
 import (
+	"io"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/cli/internal/automation"
+	"github.com/wago-org/wago/cli/internal/command"
 )
 
 func TestModuleBytes(t *testing.T) {
@@ -12,6 +17,32 @@ func TestModuleBytes(t *testing.T) {
 	}
 	if err := ModuleBytes([]byte("not wasm")); err == nil || !strings.Contains(err.Error(), "decode:") {
 		t.Fatalf("malformed module error = %v", err)
+	}
+}
+
+func TestCommandConfirmsValidModule(t *testing.T) {
+	automation.Reset()
+	t.Cleanup(automation.Reset)
+	file := t.TempDir() + "/empty.wasm"
+	if err := os.WriteFile(file, []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = writer
+	t.Cleanup(func() { os.Stdout = old })
+	Command().Run(command.NewContext([]string{file}, nil, nil))
+	_ = writer.Close()
+	output, err := io.ReadAll(reader)
+	_ = reader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := string(output); !strings.Contains(text, "is valid") || !strings.Contains(text, file) {
+		t.Fatalf("validation confirmation = %q", text)
 	}
 }
 

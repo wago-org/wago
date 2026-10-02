@@ -102,6 +102,20 @@ func TestManagerCapturesForwardedAutomation(t *testing.T) {
 	t.Cleanup(automation.Reset)
 }
 
+func TestManagerRoutesRuntimeCommandsAndImplicitTargets(t *testing.T) {
+	t.Setenv("WAGO_HOME", t.TempDir())
+	for _, name := range []string{"run", "module", "build", "validate", "module.wasm", "--invoke"} {
+		if !shouldForwardToRuntime(name) {
+			t.Errorf("shouldForwardToRuntime(%q) = false", name)
+		}
+	}
+	for _, name := range []string{"bild", "publsh", "unknown"} {
+		if shouldForwardToRuntime(name) {
+			t.Errorf("shouldForwardToRuntime(%q) = true", name)
+		}
+	}
+}
+
 func TestManagerOwnsPluginLifecycleAndDelegatesIntrospection(t *testing.T) {
 	plugins := managerRoot.Child("plugin")
 	for _, name := range []string{"add", "remove", "grant", "update", "outdated", "tree", "rebuild", "catalog", "publish", "unpublish", "deprecate"} {

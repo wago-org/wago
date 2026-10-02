@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -219,4 +220,36 @@ func OpenBrowser(target string) error {
 		command = exec.Command("xdg-open", target)
 	}
 	return command.Start()
+}
+
+// CopyClipboard writes short user-facing text to the platform clipboard.
+func CopyClipboard(text string) error {
+	var command *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		command = exec.Command("pbcopy")
+	case "windows":
+		command = exec.Command("clip.exe")
+	default:
+		for _, candidate := range []struct {
+			name string
+			args []string
+		}{
+			{name: "wl-copy"},
+			{name: "xclip", args: []string{"-selection", "clipboard"}},
+			{name: "xsel", args: []string{"--clipboard", "--input"}},
+		} {
+			if _, err := exec.LookPath(candidate.name); err == nil {
+				command = exec.Command(candidate.name, candidate.args...)
+				break
+			}
+		}
+		if command == nil {
+			return errors.New("no clipboard command found")
+		}
+	}
+	command.Stdin = strings.NewReader(text)
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+	return command.Run()
 }

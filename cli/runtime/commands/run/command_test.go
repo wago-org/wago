@@ -69,24 +69,28 @@ func TestSettingsCatalogMatchesActiveBackendKnobs(t *testing.T) {
 }
 
 func TestHelpCollapsesBooleanPairs(t *testing.T) {
+	cmd := Command(testEnvironment{})
 	var output strings.Builder
-	Command(testEnvironment{}).PrintHelp(&output, "wago run")
+	cmd.PrintHelp(&output, "wago run")
 	text := output.String()
-	if !strings.Contains(text, "--<no->st-flags") ||
-		strings.Contains(text, "enable: keep comparison results") {
-		t.Fatalf("run help did not collapse optimization pair:\n%s", text)
+	if strings.Contains(text, "--<no->st-flags") || !strings.Contains(text, "--help-optimizations") {
+		t.Fatalf("run help did not collapse advanced optimization help:\n%s", text)
 	}
 	if !strings.Contains(text, "--parallel, -p [workers]") ||
 		!strings.Contains(text, "-p8 / -p 8 / --parallel=8") {
 		t.Fatalf("run help did not document function parallelism:\n%s", text)
 	}
-	profileIndex := strings.Index(text, "--local")
-	helpIndex := strings.Index(text, "--help, -h")
+	output.Reset()
+	cmd.PrintOptimizationHelp(&output, "wago run")
+	text = output.String()
+	if !strings.Contains(text, "--<no->st-flags") || strings.Contains(text, "enable: keep comparison results") {
+		t.Fatalf("optimization help did not collapse boolean pair:\n%s", text)
+	}
 	deferredIndex := strings.Index(text, "--<no->deferred-bounds-checking")
 	optimizationFlags := OptimizationFlags()
 	lastKnobIndex := strings.Index(text, "--<no->"+optimizationFlags[len(optimizationFlags)-2].Name)
-	if profileIndex < 0 || helpIndex < profileIndex || deferredIndex < helpIndex || lastKnobIndex < deferredIndex {
-		t.Fatalf("optimization knobs are not the trailing flag group:\n%s", text)
+	if deferredIndex < 0 || lastKnobIndex < deferredIndex {
+		t.Fatalf("optimization knobs are not ordered in advanced help:\n%s", text)
 	}
 }
 

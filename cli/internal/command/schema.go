@@ -73,6 +73,9 @@ func describeCommandFlags(cmd *Cmd) []FlagSpec {
 	flags := append([]Flag(nil), cmd.Flags...)
 	flags = append(flags, cmd.automationFlags()...)
 	flags = append(flags, Flag{Name: "help", Short: "h", Bool: true, Help: "show this help"})
+	if len(cmd.Knobs) != 0 {
+		flags = append(flags, Flag{Name: "help-optimizations", Bool: true, Help: "show advanced compiler optimization flags"})
+	}
 	result := describeFlags(flags)
 	for _, flag := range describeFlags(cmd.Knobs) {
 		flag.Category = "optimization"

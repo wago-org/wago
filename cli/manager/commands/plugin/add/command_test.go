@@ -28,6 +28,39 @@ func TestCommandForwardsNonInteractiveAuthorityChoice(t *testing.T) {
 	}
 }
 
+func TestCommandExpandsGitHubPluginShorthand(t *testing.T) {
+	environment := &testEnvironment{}
+	cmd := Command(environment)
+	context, err := cmd.Parse("wago add", []string{"wago-org/wasi", "wago-org/workers@^1.2.3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Run(context)
+
+	want := []string{"github.com/wago-org/wasi", "github.com/wago-org/workers@^1.2.3"}
+	if !reflect.DeepEqual(environment.options.Modules, want) {
+		t.Fatalf("modules = %q, want %q", environment.options.Modules, want)
+	}
+}
+
+func TestCommandPreservesQualifiedPluginIDs(t *testing.T) {
+	environment := &testEnvironment{}
+	Command(environment).Run(command.NewContext([]string{
+		"github.com/wago-org/wasi",
+		"gitlab.com/wago-org/wasi",
+		"gopkg.in/yaml.v3",
+	}, nil, nil))
+
+	want := []string{
+		"github.com/wago-org/wasi",
+		"gitlab.com/wago-org/wasi",
+		"gopkg.in/yaml.v3",
+	}
+	if !reflect.DeepEqual(environment.options.Modules, want) {
+		t.Fatalf("modules = %q, want %q", environment.options.Modules, want)
+	}
+}
+
 func TestCommandForwardsScopeOverridesForTheResolvedGraph(t *testing.T) {
 	environment := &testEnvironment{}
 	cmd := Command(environment)

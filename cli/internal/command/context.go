@@ -11,7 +11,6 @@ type Ctx struct {
 	Cmd   *Cmd
 	Path  string
 	Args  []string
-	input []string
 	strs  map[string]string
 	bools map[string]bool
 }
@@ -29,9 +28,6 @@ func NewContext(args []string, strs map[string]string, bools map[string]bool) *C
 
 func (c *Ctx) Str(name string) string { return c.strs[name] }
 func (c *Ctx) Bool(name string) bool  { return c.bools[name] }
-
-// Invocation returns the normalized arguments that produced this context.
-func (c *Ctx) Invocation() []string { return append([]string(nil), c.input...) }
 
 func (c *Ctx) One(what string) string {
 	if len(c.Args) != 1 {

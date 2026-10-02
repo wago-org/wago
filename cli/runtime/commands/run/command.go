@@ -25,12 +25,13 @@ type Environment interface {
 }
 
 func Command(environment Environment) *command.Cmd {
-	flags := []command.Flag{{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"}}
-	flags = append(flags, watchFlags()...)
-	flags = append(flags,
-		command.Flag{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
+	flags := []command.Flag{
+		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
+		{Name: "watch", Short: "w", Bool: true, Help: "rerun when the module changes"},
+		{Name: "watch-interval", Arg: "<duration>", Help: "watch polling interval (default 200ms)"},
+		{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
 		ParallelFlag(),
-	)
+	}
 	flags = append(flags, environment.ProfileFlags()...)
 	knobs := append(DeferredBoundsCheckingFlags(), OptimizationFlags()...)
 	parserFlags := append(append([]command.Flag(nil), flags...), knobs...)
@@ -46,7 +47,7 @@ func Command(environment Environment) *command.Cmd {
 			"Selected Core 3 features default on where supported; use --core 2 for strict Release 2\n" +
 			"or --core 3 for the complete release. Use -p for\n" +
 			"adaptive validation/compile parallelism, or -p8 / -p 8 / --parallel=8 to force a\n" +
-			"worker maximum. Optimization knobs are listed in `wago run --help`.",
+			"worker maximum. Advanced compiler controls are listed in `wago run --help-optimizations`.",
 		Run: implementation.Run,
 	}
 }
@@ -56,7 +57,11 @@ type implementation struct {
 }
 
 func (cmd implementation) Run(ctx *command.Ctx) {
-	if runWatch(ctx) {
+	if ctx.Bool("watch") {
+		if len(ctx.Args) == 0 {
+			ui.Usage("run: need a <file>")
+		}
+		watchModule(ctx.Args[0], ctx.Str("watch-interval"))
 		return
 	}
 	deferredBoundsChecking, err := DeferredBoundsOverride(ctx)
