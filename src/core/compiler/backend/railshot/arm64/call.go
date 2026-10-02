@@ -483,7 +483,9 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 
 func (f *fn) discardEHHandlersForTail() {
 	if f.ehTryDepth != 0 {
-		f.ld64(ehReg, SP, f.ehRecordOff(0)+ehPrevOff)
+		// A tail transfer discards every record in this frame. Use the shared
+		// large-frame-safe restore instead of addressing record zero from SP.
+		f.restorePreviousEHHandler(f.ehRecordOff(0))
 	}
 }
 
@@ -713,6 +715,9 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	for _, reg := range []Reg{X10, X11, X12, X17} {
 		f.pinned = f.pinned.add(reg)
 	}
+	// Publish the callee context once before staging and the root/nested split.
+	// Its tag-directory cell is immediately outside the wrapper argument bank.
+	f.copyInstanceContext(X10, X11)
 	f.a.MovReg64(X0, X10)
 	f.leaDisp(X0, X0, -int32(abi.TailArgsOffset), true)
 	argBase := len(types) - p
@@ -732,7 +737,6 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	f.emitTailFrameRelease()
 
 	transfer := func() {
-		f.copyInstanceContext(X10, X11)
 		f.ld64(X9, linMemReg, -int32(offTrapHandlerPtr))
 		f.st64(X10, -int32(offTrapHandlerPtr), X9)
 		f.ld64(X9, linMemReg, -int32(offTrapStackReentry))
@@ -965,6 +969,9 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 
 	f.ld64(X12, linMemReg, -int32(offFuncRefDescPtr))
 	f.ld64(X12, X12, runtime.FuncRefContextOffset)
+	// Publish the callee context once before staging and the root/nested split.
+	// Its tag-directory cell is immediately outside the wrapper argument bank.
+	f.copyInstanceContext(X10, X11)
 	f.a.MovReg64(X0, X10)
 	f.leaDisp(X0, X0, -int32(abi.TailArgsOffset), true)
 	argBase := len(types) - p
@@ -980,7 +987,6 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	}
 
 	transfer := func() {
-		f.copyInstanceContext(X10, X11)
 		f.ld64(X9, linMemReg, -int32(offTrapHandlerPtr))
 		f.st64(X10, -int32(offTrapHandlerPtr), X9)
 		f.ld64(X9, linMemReg, -int32(offTrapStackReentry))
@@ -1710,6 +1716,11 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 	f.a.LdpOffset(X8, X9, src, 56)
 	f.st64(dst, -int32(offMemoryDirPtr), X8)
 	f.st64(dst, -int32(offImportDispatchPtr), X9)
+	// Exception tag identities follow the callee instance, not shared Memory.
+	// This cell is immediately outside the wrapper tail bank so context and all
+	// staged arguments remain valid together during wrapper entry.
+	f.ld64(X9, src, runtime.InstanceContextEHTagDirOffset)
+	f.st64(dst, -int32(abi.EHTagDirPtrOffset), X9)
 	f.ld64(X9, src, runtime.InstanceContextGCNativeViewOffset)
 	f.a.SubImm64(X8, dst, uint32(abi.GCNativeViewPtrOffset))
 	f.a.Store64(X9, X8, 0)

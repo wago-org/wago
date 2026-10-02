@@ -42,7 +42,7 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 4 -->
+<!-- artifact:codec-version 5 -->
 
 Compiled artifacts use a strict ordered section stream. It has a fixed
 header and section count, followed by length-delimited native-code and metadata
@@ -58,10 +58,11 @@ dotted flat-key collisions from crossing module authority boundaries. Artifact
 decoding also caps the expanded function-import directory at 64 MiB, so compact
 empty names cannot produce an unbounded slice allocation. Version 2 replaced the
 initial version 1 format when generated `memory.grow` code and the native instance
-context gained a runtime memory-page quota. The current format is version 4,
-which records optional CPU requirements as well as exact native GC metadata.
-Wago rejects all earlier versions; there is no compatibility decoder or
-dual-format ambiguity.
+context gained a runtime memory-page quota. The current format is version 5,
+which rejects version-4 native code compiled with the former EH tag-directory
+basedata offset. Version 4 records optional CPU requirements as well as exact
+native GC metadata. Wago rejects all earlier versions; there is no compatibility
+decoder or dual-format ambiguity.
 
 ### CPU and SIMD baseline
 
@@ -541,19 +542,36 @@ WARP. Current offsets are defined in `src/core/runtime/abi`:
 | 112 | globals pointer table |
 | 120 / 128 | passive element/data descriptor arrays |
 | 136 | imported-function dispatch table |
+| 144 | exception tag-directory pointer |
 | 280 | versioned per-instance native GC metadata view |
 
-Memory-size/growth fields belong to the memory backing. Nine pointer fields from
-40 and 80–136 form the 72-byte Go `InstanceContext`. Each instance owns a 112-byte
-native context buffer: those nine pointers, an immutable numeric GC-domain identity,
-three process-serialized descriptor-tail scratch words, and the per-instance native
-GC-view pointer at byte 104. Binding copies the pointer prefix and GC-view pointer into
-basedata, so shared-memory context switches select the target module's canonical type
-map without aliasing EH tags or the wrapper argument bank. Shared-memory users serialize entry while rebinding, so one
-linear-memory mapping can safely serve instances with independent globals, tables,
-host state, segments, and import bindings. Direct and indirect cross-instance calls
-copy the target pointer context into its home basedata and restore the exact caller
-context on normal return.
+Memory-size/growth fields belong to the memory backing. The ten per-instance pointer
+fields form the 80-byte Go `InstanceContext`. Each instance owns a 120-byte native
+context buffer: nine legacy pointer words at bytes 0–64, an immutable numeric GC-domain
+identity at byte 72, three process-serialized descriptor-tail scratch words at bytes
+80–96, the per-instance native GC-view pointer at byte 104, and the exception
+tag-directory pointer at byte 112. Binding copies the pointer prefix, GC-view pointer,
+and tag-directory pointer into basedata, so shared-memory context switches select the
+target module's canonical type and tag maps without aliasing the wrapper argument bank.
+Shared-memory users serialize entry while rebinding, so one linear-memory mapping can
+safely serve instances with independent globals, tables, host state, segments, and
+import bindings. Direct and indirect cross-instance calls copy the target pointer
+context into its home basedata and restore the exact caller context on normal or
+exceptional return.
+
+Exception-enabled modules allocate the fixed funcref descriptor-zero header even
+when they contain no funcref operation or declared tag. Its trailing context cell
+is an arena-stable anchor for cold native exception restoration; artifact decoding
+also derives this requirement from the recorded exception-handling feature before
+validating the instance footprint. Descriptor zero publishes the stable home
+linear-memory pointer alongside its native-context pointer. Each handler record
+saves that descriptor anchor in its existing saved-context word. The otherwise
+unused first word of the ordinary frame header preserves the activation-dynamic
+host context; EH functions never omit that header. The per-function handler and
+reference-root capacities, shared sixteen-lane payload format, frame size, spill
+offsets, and collector root offsets are unchanged. The raw descriptor pointer is
+outside the root records and is never reported to the collector. ARM64 handler
+and root accesses rebase large offsets without consuming a live pinned register.
 
 Every native-visible address must be stable for the duration in which native code
 can consume it. Most runtime state is off-heap. Native GC ABI version 1 is the narrow

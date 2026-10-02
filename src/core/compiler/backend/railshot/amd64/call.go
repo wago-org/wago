@@ -702,6 +702,10 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	f.a.Load64(R8, RBX, -offImportDispatchPtr)
 	disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
 	f.a.Load64(R11, R8, disp+runtime.ImportDispatchHomeLinMemOffset)
+	f.a.Load64(R10, R8, disp+runtime.ImportDispatchTargetContextOffset)
+	// Publish the callee context once before staging and the root/nested split.
+	// Its tag-directory cell is immediately outside the wrapper argument bank.
+	f.copyInstanceContext(R11, R10)
 	f.a.MovReg64(RDI, R11)
 	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
 	argBase := len(types) - p
@@ -711,7 +715,6 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 		f.a.Store64(RDI, int32(i*8), RAX)
 	}
 	f.a.Load64(R9, R8, disp+runtime.ImportDispatchCodePtrOffset)
-	f.a.Load64(R10, R8, disp+runtime.ImportDispatchTargetContextOffset)
 	f.a.Load64(R8, R8, disp+runtime.ImportDispatchCallerContextOffset)
 
 	f.emitTailFrameRelease()
@@ -734,7 +737,6 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 		f.a.Load64(RAX, RBX, -offTrapCellPtr)
 		f.a.Store64(R11, -offTrapCellPtr, RAX)
 	}
-	f.copyInstanceContext(R11, R10)
 	copyControl()
 	f.a.MovReg64(RSI, R11)
 	f.a.AddRsp(16)
@@ -750,7 +752,6 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	f.a.Store64(RSP, 8, RBX)
 	f.a.Store64(RSP, 16, R8)
 	f.a.LeaDisp(RCX, RSP, 24)
-	f.copyInstanceContext(R11, R10)
 	copyControl()
 	f.a.MovReg64(RSI, R11)
 	f.a.JmpReg(R9)
@@ -1574,6 +1575,11 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 		f.a.Load64(RAX, src, int32(i*8))
 		f.a.Store64(dst, -off, RAX)
 	}
+	// Exception tag identities follow the callee instance, not shared Memory.
+	// This cell is immediately outside the wrapper tail bank so context and all
+	// staged arguments remain valid together during wrapper entry.
+	f.a.Load64(RAX, src, runtime.InstanceContextEHTagDirOffset)
+	f.a.Store64(dst, -int32(abi.EHTagDirPtrOffset), RAX)
 	f.a.Load64(RAX, src, runtime.InstanceContextGCNativeViewOffset)
 	f.a.Store64(dst, -int32(abi.GCNativeViewPtrOffset), RAX)
 }
@@ -2862,6 +2868,10 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	f.a.Load64(R11, R8, runtime.InstanceContextTailHomeOffset)
 	f.a.ShiftImm(4, R11, 3, true)
 	f.a.ShiftImm(5, R11, 3, true)
+	f.a.Load64(R10, R8, runtime.InstanceContextTailTargetCtxOffset)
+	// Publish the callee context once before staging and the root/nested split.
+	// Its tag-directory cell is immediately outside the wrapper argument bank.
+	f.copyInstanceContext(R11, R10)
 	f.a.MovReg64(RDI, R11)
 	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
 	f.storeTailBankArgs(ft, types, len(types)-p)
@@ -2881,11 +2891,9 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	nested := f.a.JccPlaceholder(condNE)
 	f.a.Load64(RCX, RSP, 8)
 
-	// Rebind the target instance's pointer context, then copy this execution's
-	// trap/fence words exactly like a non-tail cross-instance call before entering
-	// the target wrapper ABI.
-	f.a.Load64(R10, R8, runtime.InstanceContextTailTargetCtxOffset)
-	f.copyInstanceContext(R11, R10)
+	// With the target pointer context already published ahead of argument staging,
+	// copy this execution's trap/fence words exactly like a non-tail cross-instance
+	// call before entering the target wrapper ABI.
 	copyControl := func() {
 		f.a.Load64(RAX, RBX, -offTrapReentry)
 		f.a.Store64(R11, -offTrapReentry, RAX)

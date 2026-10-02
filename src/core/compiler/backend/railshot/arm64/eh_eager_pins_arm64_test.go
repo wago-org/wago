@@ -22,7 +22,7 @@ func TestEHCatchRouteRestoresEagerPinsARM64(t *testing.T) {
 			pinnedLocalMask: maskOf(X19), fpinnedLocalMask: maskOf(8),
 			ctrl: []ctrlFrame{{kind: cfBlock}},
 		}
-		f.emitEHCatchRoute(&ctrlFrame{}, &ehCatchClause{kind: wasm.CatchAll}, f.ehRecordOff(0))
+		f.emitEHCatchRoute(&ctrlFrame{}, &ehCatchClause{kind: wasm.CatchAll})
 		var loads a64.Asm
 		loads.Load64(X19, SP, uint32(f.localOff(0)))
 		loads.LdrD(8, SP, f.localOff(1))
