@@ -1874,7 +1874,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	dispatchN := len(eh.catches)
 	for i := range eh.catches {
 		clause := &eh.catches[i]
-		if clause.kind == wasm.CatchAll {
+		if clause.kind == wasm.CatchAll || clause.kind == wasm.CatchAllRef {
 			clause.matchSite = uint32(f.a.JmpPlaceholder())
 			dispatchN = i + 1
 			break
