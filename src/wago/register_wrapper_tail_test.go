@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"math"
 	"testing"
 )
@@ -29,7 +30,7 @@ func TestRegisterCallerTailCallsWrapperTarget(t *testing.T) {
 		{registerToWrapperIndirectTailWasm, "loop", []float64{1000001}, nil},
 	} {
 		inst := admissionModule(t, tc.module)
-		vals, err := inst.InvokeValues(nil, tc.export, tc.args...)
+		vals, err := inst.InvokeValues(context.Background(), tc.export, tc.args...)
 		if err != nil {
 			t.Fatalf("%s: %v", tc.export, err)
 		}
