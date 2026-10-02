@@ -10,7 +10,76 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
 )
+
+func TestSelectXMMReloadsPressureSpilledBranches(t *testing.T) {
+	for _, typ := range []machineType{mtF32, mtF64, mtV128} {
+		t.Run(fmt.Sprintf("type=%v", typ), func(t *testing.T) {
+			f := &fn{a: &encoder.Asm{}, s: newStack(), sc: newScratch(), localSlot: []uint32{0, 1}}
+			var prefix [14]*elem
+			for r := range prefix {
+				prefix[r] = f.pushFReg(Reg(r), typ)
+			}
+			// Both branches were displaced before select. Keep their slots live
+			// while reloading them requires spilling two of the XMM prefix values.
+			a := f.pushFReg(14, typ)
+			f.spillF(a)
+			aSlot := a.st.slot
+			b := f.pushFReg(15, typ)
+			f.spillF(b)
+			bSlot := b.st.slot
+			branchEnd := int(bSlot) + typ.stackSlots()
+			if a.st.kind != stSlot || b.st.kind != stSlot || aSlot+uint32(typ.stackSlots()) > bSlot {
+				t.Fatalf("branches were not displaced into distinct slots: a=%+v b=%+v", a.st, b.st)
+			}
+			// Model two pinned XMM locals: all remaining registers are occupied.
+			f.fpinnedLocalMask = maskOf(14, 15)
+			f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
+			divisor := f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
+			f.pushBinOp(opDivU, mtI32)
+			f.emitSelect()
+
+			// Check displacement itself, rather than aggregate counters: XMM
+			// spills/reloads aren't included in CodegenStats.Spills/Reloads.
+			for i, e := range prefix[:2] {
+				if e.st.kind != stSlot || e.st.slotIndex() < branchEnd {
+					t.Fatalf("prefix %d did not spill beyond live branch slots: %+v, branch end=%d", i, e.st, branchEnd)
+				}
+			}
+			if prefix[0].st.slotIndex()+typ.stackSlots() > prefix[1].st.slotIndex() {
+				t.Fatal("pressure spills overlap")
+			}
+			if a.st.kind != stReg || b.st.kind != stReg {
+				t.Fatalf("displaced branches were not reloaded: a=%+v b=%+v", a.st, b.st)
+			}
+			var divide encoder.Asm
+			divide.Div(divisor.st.reg, false)
+			if !bytes.Contains(f.a.B, divide.B) {
+				t.Fatal("runtime condition did not emit a divide")
+			}
+			for _, branch := range []struct {
+				e    *elem
+				slot uint32
+			}{{a, aSlot}, {b, bSlot}} {
+				var reload encoder.Asm
+				if typ == mtV128 {
+					// Use the same feature selection as the lowering under test.
+					loader := &fn{a: &reload, sc: f.sc}
+					loader.mov128LoadDisp(branch.e.st.reg, RSP, f.spillOff(int(branch.slot)))
+				} else {
+					reload.FLoadDisp(branch.e.st.reg, RSP, f.spillOff(int(branch.slot)), true)
+				}
+				if !bytes.Contains(f.a.B, reload.B) {
+					t.Fatalf("branch slot %d was not reloaded into XMM%d", branch.slot, branch.e.st.reg)
+				}
+			}
+			if f.depth() != len(prefix)+1 || f.pinned != 0 || f.fpinned != 0 {
+				t.Fatalf("select left depth=%d GP pins=%#x XMM pins=%#x", f.depth(), f.pinned, f.fpinned)
+			}
+		})
+	}
+}
 
 func TestSelectXMMRegisterPressure(t *testing.T) {
 	for _, typ := range []wasm.ValType{wasm.F32, wasm.F64, wasm.V128} {
@@ -38,16 +107,17 @@ func TestSelectXMMRegisterPressure(t *testing.T) {
 							t.Fatalf("fixture did not create register pressure: spills=%d slots=%d", stats.Spills, stats.MaxSpillSlots)
 						}
 					}
-					for _, condition := range []uint64{0, 1, 2} {
-						t.Run(fmt.Sprintf("condition=%d", condition), func(t *testing.T) {
+					const divisor = uint64(2)
+					for _, numerator := range []uint64{0, 1, 4} {
+						t.Run(fmt.Sprintf("numerator=%d/divisor=%d", numerator, divisor), func(t *testing.T) {
 							got, mem, err := runMemAmd64(t, m, func(mem []byte) {
 								copy(mem[64:], a[:])
 								copy(mem[80:], b[:])
-							}, condition)
+							}, numerator, divisor)
 							if err != nil {
 								t.Fatal(err)
 							}
-							chooseA := condition != 0
+							chooseA := numerator/divisor != 0
 							if flags {
 								chooseA = !chooseA
 							}
@@ -122,7 +192,7 @@ func selectXMMPressureModule(t testing.TB, typ wasm.ValType, typed, flags bool) 
 	body = append(body, load...)
 	body = append(body, 0x41, 0xd0, 0) // i32.const 80
 	body = append(body, load...)
-	body = append(body, 0x20, 0, 0x41, 1, 0x6e) // cond / 1: deferred fixed-register work
+	body = append(body, 0x20, 0, 0x20, 1, 0x6e) // Runtime numerator / divisor must reclaim RAX/RDX.
 	if flags {
 		body = append(body, 0x45) // eqz must fall back to scalar condition recovery for XMM.
 	}
@@ -131,15 +201,15 @@ func selectXMMPressureModule(t testing.TB, typ wasm.ValType, typed, flags bool) 
 	} else {
 		body = append(body, 0x1b)
 	}
-	body = append(body, 0x21, 1) // Save selected bits without doing floating arithmetic.
+	body = append(body, 0x21, 2) // Save selected bits without doing floating arithmetic.
 	for range pressure - 1 {
 		body = append(body, combine...)
 	}
-	body = append(body, 0x21, 2)
+	body = append(body, 0x21, 3)
 	for range pressure - 1 {
 		body = append(body, 0x6a) // Sum all live integer prefix values, too.
 	}
-	for _, output := range []struct{ address, local byte }{{0, 1}, {32, 2}} {
+	for _, output := range []struct{ address, local byte }{{0, 2}, {32, 3}} {
 		body = append(body, 0x41, output.address, 0x20, output.local)
 		if typ == wasm.V128 {
 			body = append(body, 0xfd)
@@ -147,5 +217,5 @@ func selectXMMPressureModule(t testing.TB, typ wasm.ValType, typed, flags bool) 
 		body = append(body, store, align, 0)
 	}
 	body = append(body, 0x0b)
-	return modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body), prefix
+	return modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body), prefix
 }

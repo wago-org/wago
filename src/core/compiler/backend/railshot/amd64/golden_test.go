@@ -48,6 +48,20 @@ func compileCode(t *testing.T, m *wasm.Module, guard bool) []byte {
 	return cm.Code
 }
 
+func TestGoldenSelectXMMPressureRuntimeDivision(t *testing.T) {
+	for _, typ := range []wasm.ValType{wasm.F32, wasm.F64, wasm.V128} {
+		for _, typed := range []bool{false, true} {
+			for _, flags := range []bool{false, true} {
+				m, _ := selectXMMPressureModule(t, typ, typed, flags)
+				d := disasm(t, compileCode(t, m, false))
+				if !strings.Contains(d, "\tdiv ") {
+					t.Fatalf("type=%v typed=%v flags=%v: runtime divide missing:\n%s", typ, typed, flags, d)
+				}
+			}
+		}
+	}
+}
+
 // TestGoldenImmediateStore: a constant store lowers to a `mov [mem],imm` — the
 // constant goes straight into the store as an immediate, no register load.
 func TestGoldenImmediateStore(t *testing.T) {
