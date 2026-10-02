@@ -19,6 +19,10 @@ func TestAMD64MatchesCompilerThunks(t *testing.T) {
 		{name: "indirect", got: hostthunk.Indirect(7), want: railshot.HostIndirectThunk(7)},
 		{name: "sync", got: hostthunk.IndirectSync(7, 3, 2), want: railshot.HostIndirectSyncThunk(7, 3, 2)},
 		{name: "owned sync", got: hostthunk.IndirectOwnedSync(7, 3, 2), want: railshot.HostIndirectOwnedSyncThunk(7, 3, 2)},
+		{name: "wide parameter sync", got: hostthunk.IndirectSync(7, 65, 2), want: railshot.HostIndirectSyncThunk(7, 65, 2)},
+		{name: "wide result sync", got: hostthunk.IndirectSync(7, 3, 65), want: railshot.HostIndirectSyncThunk(7, 3, 65)},
+		{name: "wide parameter owned sync", got: hostthunk.IndirectOwnedSync(7, 65, 2), want: railshot.HostIndirectOwnedSyncThunk(7, 65, 2)},
+		{name: "wide result owned sync", got: hostthunk.IndirectOwnedSync(7, 3, 65), want: railshot.HostIndirectOwnedSyncThunk(7, 3, 65)},
 	} {
 		if !bytes.Equal(test.got, test.want) {
 			t.Errorf("%s runtime thunk differs from compiler thunk", test.name)
