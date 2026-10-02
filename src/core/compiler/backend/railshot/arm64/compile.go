@@ -1568,6 +1568,16 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if err != nil {
 		return nil, fmt.Errorf("arm64: host adapter analysis: %w", err)
 	}
+	// A wrapper-ABI caller tail-enters a register-ABI target through its
+	// offset-zero adapter. When that target tails back to a wrapper, it discards
+	// the adapter record, so mixed register/wrapper tail cycles stay stack
+	// bounded. directCallRefs counts call and return_call references and
+	// inlineCallSites only calls; a saturated count conservatively keeps one.
+	for i := range hostAdapters {
+		if refs := allHints[i].directCallRefs; refs == ^uint8(0) || uint16(refs) > allHints[i].inlineCallSites {
+			hostAdapters[i] = true
+		}
+	}
 	if policy.EnabledOption(optRegABI) {
 		// A wrapper-ABI caller can tail-enter any exact-funcref result target.
 		// Retain offset-zero adapters for this staged register-ABI class so mixed

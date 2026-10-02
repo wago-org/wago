@@ -456,7 +456,17 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		if callerRegisterABI {
 			f.emitTailRegisterJump(ft, jump)
 		} else {
-			f.emitTailWrapperToRegisterJump(ft, jump)
+			// Every return_call target has an offset-zero adapter, so a wrapper
+			// caller enters it with the wrapper ABI and its own results buffer.
+			// Unlike a trampoline record, the adapter record is discarded when
+			// the target tails back to a wrapper, keeping tail cycles bounded.
+			if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
+				return fmt.Errorf("return_call: target %d requires %d wrapper argument slots, limit %d", idx, slots, abi.TailArgsSlots)
+			}
+			f.emitTailWrapperJump(ft, func() {
+				site := f.a.Branch()
+				f.relocs = append(f.relocs, f.newCallReloc(site, target, false))
+			})
 		}
 	} else {
 		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {

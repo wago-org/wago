@@ -645,7 +645,19 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		f.unreachable = true
 		return nil
 	}
-	return fmt.Errorf("return_call: register-ABI caller cannot tail-enter result-bearing wrapper target %d", idx)
+	if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
+		return fmt.Errorf("return_call: target %d requires %d wrapper argument slots, limit %d", idx, slots, abi.TailArgsSlots)
+	}
+	if len(ft.Results) > 2 {
+		return fmt.Errorf("return_call: register-ABI caller cannot tail-enter wrapper target %d with %d results", idx, len(ft.Results))
+	}
+	f.stats.call("tail-direct-register-wrapper")
+	f.emitTailRegisterToWrapperJump(ft, func() {
+		site := f.a.JmpPlaceholder()
+		f.relocs = append(f.relocs, f.newCallReloc(site, int(idx)-imported, false))
+	})
+	f.unreachable = true
+	return nil
 }
 
 // emitTailWrapperJump marshals arguments into the fixed basedata tail bank,
@@ -870,6 +882,84 @@ func (f *fn) emitTailWrapperJumpVia(ft *wasm.CompType, emitJump func()) {
 	f.a.MovReg64(RSI, RBX)
 	f.emitTailFrameRelease()
 	emitJump()
+}
+
+// emitTailRegisterToWrapperJump tail-enters a result-bearing wrapper-ABI
+// target from a register-ABI caller, which has no results buffer of its own.
+// When this function was entered through its own adapter, the adapter's
+// record is discarded and the target writes the adapter's results buffer
+// directly, keeping repeated tails stack-bounded. Otherwise a fixed record
+// [trampoline, result0, result1, pad] receives the wrapper results and the
+// trampoline returns them in the register-ABI result registers.
+func (f *fn) emitTailRegisterToWrapperJump(ft *wasm.CompType, emitJump func()) {
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(RDX)
+
+	f.a.MovReg64(RDI, RBX)
+	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
+	argBase := len(types) - p
+	dstSlot := 0
+	for i, param := range ft.Params {
+		srcSlot := slotOfLogicalTypes(types, argBase+i)
+		n := mtOf(param).stackSlots()
+		for slot := 0; slot < n; slot++ {
+			f.a.Load64(RAX, RSP, f.spillOff(srcSlot+slot))
+			f.a.Store64(RDI, int32((dstSlot+slot)*8), RAX)
+		}
+		dstSlot += n
+	}
+	f.a.Load64(RDX, RBX, -int32(abi.TrapCellPtrOffset))
+	f.a.MovReg64(RSI, RBX)
+	f.emitTailFrameRelease()
+
+	if f.adapterReturnOff != 0 {
+		// [RSP] is our return address; [RSP+8] is the results buffer the adapter
+		// pushed before calling the internal entry.
+		f.a.Load64(RAX, RSP, 0)
+		leaSite := f.a.LeaRipPlaceholder(R8)
+		f.a.PatchRel32(leaSite, f.adapterReturnOff)
+		if f.policy.CompactNative {
+			f.adapterReturnReferenced = true
+		}
+		f.a.Cmp64(RAX, R8)
+		nested := f.a.JccPlaceholder(condNE)
+		f.a.Load64(RCX, RSP, 8)
+		f.a.AddRsp(16)
+		emitJump()
+		f.a.PatchRel32(nested, f.a.Len())
+	}
+	// RSP is congruent to 8 mod 16 here, as at any function entry; a 32-byte
+	// record keeps the wrapper entry's alignment identical to a call.
+	f.a.SubRsp(32)
+	trampolineSite := f.a.LeaRipPlaceholder(RAX)
+	f.a.Store64(RSP, 0, RAX)
+	f.a.LeaDisp(RCX, RSP, 8)
+	emitJump()
+
+	trampoline := f.a.Len()
+	f.a.PatchRel32(trampolineSite, trampoline)
+	// The wrapper's RET popped the trampoline slot: results are at [RSP].
+	f.deriveModuleGlobals()
+	f.refreshCachedMemoryBoundAfterExternalCall()
+	gp, fp := 0, 0
+	for i, t := range ft.Results {
+		if isFloatValType(t) {
+			f.a.FLoadDisp(Reg(fp), RSP, int32(i*8), wasm.EqualValType(t, wasm.F64))
+			fp++
+		} else {
+			f.a.Load64([]Reg{RAX, RDX}[gp], RSP, int32(i*8))
+			gp++
+		}
+	}
+	f.a.AddRsp(24)
+	f.a.Ret()
 }
 
 type tailDeferredArg struct {
@@ -2765,7 +2855,11 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	targetRegisterTail := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
 	registerTail := callerRegisterTail && targetRegisterTail
 	wrapperTail := !callerRegisterTail && funcTypeSlots(ft.Params) <= abi.TailArgsSlots
-	if !registerTail && !wrapperTail {
+	// A register-ABI caller can enter a local wrapper target through the
+	// register-to-wrapper trampoline, which returns up to two results.
+	registerToWrapperTail := f.opt(optRegABI) && callerRegisterTail && !targetRegisterTail &&
+		funcTypeSlots(ft.Params) <= abi.TailArgsSlots && len(ft.Results) <= 2
+	if !registerTail && !wrapperTail && !registerToWrapperTail {
 		return fmt.Errorf("return_call_indirect: caller or type %d requires unsupported indirect tail ABI", typeIdx)
 	}
 	tableHint, immutableTable := f.immutableTable(tableIdx)
@@ -2851,6 +2945,11 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 		f.emitTailRegisterJump(ft, func() {
 			f.a.Load64(RSI, RBX, -int32(offSpillRegion))
 			f.a.JmpReg(RSI)
+		})
+	} else if registerToWrapperTail {
+		f.emitTailRegisterToWrapperJump(ft, func() {
+			f.a.Load64(RAX, RBX, -int32(offSpillRegion))
+			f.a.JmpReg(RAX)
 		})
 	} else {
 		f.emitTailWrapperJumpVia(ft, func() {
