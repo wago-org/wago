@@ -130,7 +130,7 @@ func (f *fn) materializeF(e *elem) Reg {
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.a.FLoadDisp(x, RSP, f.localOff(e.st.idx), e.st.typ == mtF64)
+		f.a.FLoadDisp(x, RSP, f.localAddr(e.st.idx), e.st.typ == mtF64)
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:
@@ -225,7 +225,7 @@ func (f *fn) pushFReg(r Reg, typ machineType) *elem {
 // loadFConst materializes a float constant's bits into XMM r (via a GP scratch).
 func (f *fn) loadFConst(r Reg, st storage) {
 	f64 := st.typ == mtF64
-	if v128ConstCacheEnabled {
+	if f.opt(optV128ConstCache) {
 		// Load from the trailing rip-relative constant pool with one MOVSD/MOVSS,
 		// instead of building the bit pattern through a GPR (movabs + movq). Float-
 		// heavy loops (float.run/spectralnorm/blake) otherwise rebuild every constant
@@ -371,11 +371,11 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 	dst := src
 	if !owned {
 		dst = f.allocFReg(maskOf(src))
-		if !vexFloatMemEnabled {
+		if !f.opt(optVEXFloatMem) {
 			f.a.FMov(dst, src, f64)
 		}
 	}
-	if vexFloatMemEnabled {
+	if f.opt(optVEXFloatMem) {
 		f.a.VFMemIdx(memOp, dst, src, RBX, b.st.reg, b.st.memDisp(), f64)
 	} else {
 		f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
@@ -386,10 +386,10 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 
 func (f *fn) fbinMemRightInto(dst Reg, a, b *elem, memOp byte, f64 bool) {
 	src, owned := f.operandRegF(a)
-	if !vexFloatMemEnabled && dst != src {
+	if !f.opt(optVEXFloatMem) && dst != src {
 		f.a.FMov(dst, src, f64)
 	}
-	if vexFloatMemEnabled {
+	if f.opt(optVEXFloatMem) {
 		f.a.VFMemIdx(memOp, dst, src, RBX, b.st.reg, b.st.memDisp(), f64)
 	} else {
 		f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
@@ -597,6 +597,9 @@ func (f *fn) pushFCompare(op wOp, f64 bool) {
 	left := baseOfValentBlock(right).prev
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
+	if f.opt(optValueFacts) {
+		node.st.facts = deferredResultFacts(op, typ)
+	}
 	node.arg0, node.arg1 = left, right
 	labelDeferredNode(node)
 	f.s.push(node)

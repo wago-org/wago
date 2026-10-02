@@ -74,7 +74,7 @@ func (f *fn) activateIntervalLocal(x, pos int, load bool) {
 	f.invalidateGlobalsCache()
 	f.invalidateStoreForward()
 	if load {
-		f.loadFrameInt(reg, f.localOff(x), f.localType[x])
+		f.loadFrameInt(reg, f.localAddr(x), f.localType[x])
 		f.locals[x].state = lsStackReg
 	}
 	f.locals[x].reg = reg
@@ -151,7 +151,7 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 	}
 	reg := f.locals[best].reg
 	if f.locals[best].state == lsReg {
-		f.storeFrameInt(f.localOff(best), reg, f.localType[best])
+		f.storeFrameInt(f.localAddr(best), reg, f.localType[best])
 	}
 	f.demoteIntervalLocalRefs(best)
 	f.locals[best].reg = regNone

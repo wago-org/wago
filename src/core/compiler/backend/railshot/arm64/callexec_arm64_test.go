@@ -16,7 +16,7 @@ type funcDef struct {
 	body            []byte
 }
 
-func modFuncs(t *testing.T, fns ...funcDef) *wasm.Module {
+func modFuncs(t testing.TB, fns ...funcDef) *wasm.Module {
 	t.Helper()
 	var types, funcs, codes [][]byte
 	for i, fn := range fns {

@@ -34,7 +34,7 @@ const (
 )
 
 type localDef struct {
-	typ     machineType
+	facts   valueFacts
 	reg     Reg
 	isFloat bool
 	state   locState

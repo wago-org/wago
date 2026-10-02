@@ -27,6 +27,11 @@ func swarMaskBranchBodyArm64() []byte {
 	return append(b, 0x04, 0x7f, 0x41, 0x01, 0x05, 0x41, 0x00, 0x0b, 0x0b)
 }
 
+func singleBitMaskBranchBodyArm64() []byte {
+	// (local.get 0 & 0x80) == 0 ? 1 : 0
+	return []byte{0x00, 0x20, 0x00, 0x42, 0x80, 0x01, 0x83, 0x50, 0x04, 0x7f, 0x41, 0x01, 0x05, 0x41, 0x00, 0x0b, 0x0b}
+}
+
 func swarWiden4BodyArm64() []byte {
 	b := []byte{0x01, 0x01, 0x7e, 0x20, 0x00, 0x42}
 	b = append(b, wasmtest.SLEB64(0xffffffff)...)
@@ -133,6 +138,38 @@ func TestSWARMaskBranchFusionArm64(t *testing.T) {
 	for x, want := range map[uint64]uint32{0: 1, 0x7f7f: 1, 0x80: 0} {
 		got := uint32(runArm64Internal2(t, m, uintptr(x), 0))
 		if got != want {
+			t.Fatalf("x=%#x: got %d, want %d", x, got, want)
+		}
+	}
+}
+
+func TestSingleBitMaskBranchCompactionArm64(t *testing.T) {
+	m := mod1(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}, singleBitMaskBranchBodyArm64())
+	before := singleBitBranchEnabled
+	t.Cleanup(func() { singleBitBranchEnabled = before })
+	compile := func(enabled bool) *CodegenStats {
+		singleBitBranchEnabled = enabled
+		size := OptimizeSize
+		stats := &ModuleStats{}
+		cm, err := CompileModuleWith(m, CompileOptions{Objective: &size, Stats: stats, Workers: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cm.CodeImage != nil {
+			t.Cleanup(func() { cm.CodeImage.Close() })
+		}
+		return stats.Funcs[0]
+	}
+	long := compile(false)
+	short := compile(true)
+	if got := long.CodeBytes - short.CodeBytes; got != 4 {
+		t.Fatalf("TST+B.cond delta = %d bytes, want 4", got)
+	}
+	if got := short.Peephole["single-bit-test-branch"]; got != 1 {
+		t.Fatalf("single-bit-test-branch hits = %d, want 1", got)
+	}
+	for x, want := range map[uint64]uint32{0: 1, 0x7f: 1, 0x80: 0, ^uint64(0): 0} {
+		if got := uint32(runArm64Internal2(t, m, uintptr(x), 0)); got != want {
 			t.Fatalf("x=%#x: got %d, want %d", x, got, want)
 		}
 	}

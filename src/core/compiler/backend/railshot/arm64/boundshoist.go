@@ -274,7 +274,7 @@ func (f *fn) enterLoopFrame(resultTypes []machineType, res0 machineType) {
 	f.reconcileLocals()
 	f.convergeEdgeTo(&fr.branchState)
 	f.flush()
-	f.a.Align16()
+	f.alignCode(f.policy.LoopAlignLog2)
 	fr.loopStart = f.a.Len()
 	f.ctrl = append(f.ctrl, fr)
 }

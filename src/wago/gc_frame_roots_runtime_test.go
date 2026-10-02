@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"runtime"
+	"slices"
 	"testing"
 	"unsafe"
 
@@ -158,6 +159,14 @@ func TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall(t *testing.T) {
 	}
 	if !validGCModuleFrameRootPlan(&shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{plan}}) {
 		t.Fatal("one logical call with three native return paths was rejected")
+	}
+}
+
+func TestNormalizeAdapterReturnOffsets(t *testing.T) {
+	got := normalizeAdapterReturnOffsets([]uint32{300, 100, 300, 200, 100})
+	want := []uint32{100, 200, 300}
+	if !slices.Equal(got, want) {
+		t.Fatalf("normalized adapter return offsets = %v, want %v", got, want)
 	}
 }
 

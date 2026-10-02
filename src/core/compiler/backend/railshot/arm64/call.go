@@ -200,7 +200,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// int result feeds a pinned local moves X0 straight into the local's
 	// register — no intermediate result register, no separate set lowering.
 	hint := -1
-	if regABIEnabled && sigFitsRegABI(ft) && sigIsIntOnly(ft) && len(ft.Results) == 1 {
+	if f.opt(optRegABI) && sigFitsRegABI(ft) && sigIsIntOnly(ft) && len(ft.Results) == 1 {
 		r2 := *r // peek past the call without committing
 		if b, err := r2.Byte(); err == nil && b == 0x21 {
 			if x, err := r2.U32(); err == nil {
@@ -259,7 +259,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	f.stats.call("tail-direct")
 	target := int(idx) - imported
-	if regABIEnabled && sigFitsRegABI(ft) {
+	if f.opt(optRegABI) && sigFitsRegABI(ft) {
 		f.emitTailRegisterJump(ft, func() {
 			site := f.a.Branch()
 			f.relocs = append(f.relocs, callReloc{at: site, target: target, internal: true})
@@ -436,7 +436,11 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	// A register-ABI function entered through its own wrapper can discard the
 	// wrapper record as well, preserving the outer LR/results destination.
 	adapterPC := f.a.Adr(X16)
+	f.recordPCRelative(adapterPC)
 	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
+	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+		f.adapterReturnReferenced = true
+	}
 	f.cmpRR(LR, X16, true)
 	nested := f.a.Bcond(condNE)
 	f.a.LdpPost(LR, X3, SP, 16)
@@ -450,6 +454,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	f.st64(SP, 16, X12)
 	f.a.LeaSP(X3, 32)
 	trampolineADR := f.a.Adr(LR)
+	f.recordPCRelative(trampolineADR)
 	transfer()
 
 	trampoline := f.a.Len()
@@ -545,28 +550,23 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 	}
 	ref := f.materialize(refValue)
 	f.pinned = f.pinned.add(ref)
-	f.cmpImm(ref, 0, true)
-	f.trapIf(condE, trapIndirectOOB)
+	f.trapIfZero(ref, true, true, trapIndirectOOB)
 	code := f.allocReg(0)
 	f.ld64(code, ref, runtime.TableEntryCodePtrOffset)
-	f.cmpImm(code, 0, true)
-	f.trapIf(condE, trapIndirectOOB)
+	f.trapIfZero(code, true, true, trapIndirectOOB)
 	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
 	home := f.allocReg(maskOf(ref, code))
 	f.ld64(home, ref, runtime.TableEntryHomeLinMemOffset)
 	targetContext := f.allocReg(maskOf(ref, code, home))
 	f.ld64(targetContext, ref, runtime.FuncRefContextOffset)
-	f.cmpImm(targetContext, 0, true)
-	f.trapIf(condE, trapTailUnsupported)
+	f.trapIfZero(targetContext, true, true, trapTailUnsupported)
 	if arm64FuncTypeCarriesGCRefs(f.m, ft) {
 		targetDomain := f.allocReg(maskOf(ref, code, home, targetContext))
 		f.ld64(targetDomain, targetContext, runtime.InstanceContextGCDomainOffset)
-		f.cmpImm(targetDomain, 0, true)
-		f.trapIf(condE, trapTailUnsupported)
+		f.trapIfZero(targetDomain, true, true, trapTailUnsupported)
 		callerDesc := f.allocReg(maskOf(ref, code, home, targetContext, targetDomain))
 		f.ld64(callerDesc, linMemReg, -int32(offFuncRefDescPtr))
-		f.cmpImm(callerDesc, 0, true)
-		f.trapIf(condE, trapTailUnsupported)
+		f.trapIfZero(callerDesc, true, true, trapTailUnsupported)
 		f.ld64(callerDesc, callerDesc, runtime.FuncRefContextOffset)
 		f.ld64(callerDesc, callerDesc, runtime.InstanceContextGCDomainOffset)
 		f.cmpRR(targetDomain, callerDesc, true)
@@ -598,7 +598,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 	f.release(targetContext)
 	f.release(kind)
 
-	registerTail := regABIEnabled && sigFitsRegABI(ft)
+	registerTail := f.opt(optRegABI) && sigFitsRegABI(ft)
 	if registerTail {
 		f.cmpImm(X13, uint32(abi.FuncRefInternalTagValue), true)
 		wrapper := f.a.Bcond(condNE)
@@ -680,7 +680,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	// original result destination from the frame header and tail-enter the target
 	// wrapper directly. Register-ABI callers still need the run-time adapter/direct
 	// distinction below because only adapter entry carries an outer X3 record.
-	if !regABIEnabled || !sigFitsRegABI(f.ft) {
+	if !f.opt(optRegABI) || !sigFitsRegABI(f.ft) {
 		f.ld64(X3, SP, frResultsOff)
 		f.emitTailFrameRelease()
 		transfer()
@@ -689,7 +689,11 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 
 	f.emitTailFrameRelease()
 	adapterPC := f.a.Adr(X16)
+	f.recordPCRelative(adapterPC)
 	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
+	if f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded {
+		f.adapterReturnReferenced = true
+	}
 	f.cmpRR(LR, X16, true)
 	nested := f.a.Bcond(condNE)
 	f.a.LdpPost(LR, X3, SP, 16)
@@ -702,6 +706,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	f.st64(SP, 16, X12)
 	f.a.LeaSP(X3, 32)
 	trampolineADR := f.a.Adr(LR)
+	f.recordPCRelative(trampolineADR)
 	transfer()
 
 	trampoline := f.a.Len()
@@ -782,8 +787,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.release(tbl)
 	code := f.allocReg(maskOf(idx))
 	f.ld64(code, idx, 8)
-	f.cmpImm(code, 0, true)
-	f.trapIf(condE, trapIndirectOOB)
+	f.trapIfZero(code, true, true, trapIndirectOOB)
 	if !f.immutableTableTyped || f.immutableTableType != canon {
 		got := f.allocReg(maskOf(idx, code))
 		f.ld64(got, idx, 16)
@@ -800,7 +804,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.stripDescriptorHomeTags(home)
 	f.cmpRR(home, linMemReg, true)
 	f.trapIf(condNE, trapTailUnsupported)
-	registerTail := regABIEnabled && sigFitsRegABI(ft)
+	registerTail := f.opt(optRegABI) && sigFitsRegABI(ft)
 	wantKind := uint32(abi.FuncRefLocalWrapperTagValue)
 	if registerTail {
 		wantKind = uint32(abi.FuncRefInternalTagValue)
@@ -830,7 +834,12 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 }
 
 func (f *fn) emitCustomInstruction(custom railcore.CustomInstruction, ft *wasm.CompType) error {
-	return f.emitPluginARM64(pluginARM64Lowering(custom), custom.InputWidths, custom.ResultWidth, len(ft.Results), custom.CustomInputs, custom.CustomOutput)
+	start := f.a.Len()
+	err := f.emitPluginARM64(pluginARM64Lowering(custom), custom.InputWidths, custom.ResultWidth, len(ft.Results), custom.CustomInputs, custom.CustomOutput)
+	if err == nil {
+		f.recordOpaquePlugin(start, f.a.Len())
+	}
+	return err
 }
 
 // inCallSiteLoop reports whether the current call site is nested in a Wasm loop.
@@ -1103,7 +1112,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 // a per-instance mapping; the same code is instance-independent (it reads the log
 // pointer from X1 at run time).
 func HostIndirectThunk(importIdx uint32) []byte {
-	a := &a64.Asm{}
+	// This standalone thunk has no compilation objective. Preserve the Balanced
+	// encoding; module functions opt into logical MOVs through their policy.
+	a := &a64.Asm{DisableLogicalMoveImmediate: true}
 	a.Load32(X9, X0, 0)               // X9 = first arg (i32; a harmless slot read for 0-param funcs)
 	a.SubImm64(X10, X1, offCustomCtx) // X10 = &host-call log (X1 = linMem in the wrapper ABI)
 	a.Load64(X10, X10, 0)
@@ -1137,7 +1148,9 @@ func HostIndirectOwnedSyncThunk(importIdx uint32, paramSlots, resultSlots int) [
 }
 
 func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHome bool) []byte {
-	a := &a64.Asm{}
+	// This standalone thunk has no compilation objective. Preserve the Balanced
+	// encoding; module functions opt into logical MOVs through their policy.
+	a := &a64.Asm{DisableLogicalMoveImmediate: true}
 	// The host-call round trip preserves only callee-saved registers recorded by
 	// hostCallStub. Save the caller's linMemReg (active linMem), the wrapper result
 	// pointer, and this thunk's incoming LR across the park/resume; set linMemReg to the
@@ -1381,7 +1394,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		}
 		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
 	}
-	if regABIEnabled && sigFitsRegABI(ft) {
+	if f.opt(optRegABI) && sigFitsRegABI(ft) {
 		if sigIsIntOnly(ft) {
 			f.stats.call(callKindRegisterABI)
 			preservesPins := f.directCalleePreservesPins(localIdx)
@@ -1540,13 +1553,20 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.pinned = f.pinned.remove(m.src)
 	}
 	// AArch64 has no XCHG: a register swap goes through the backend scratch X16.
-	resolveRegMoves(moves,
+	swapChains := resolveRegMovesWindow(moves,
 		func(dst, src Reg) { f.a.MovReg64(dst, src) },
 		func(x, y Reg) {
 			f.a.MovReg64(X16, x)
 			f.a.MovReg64(x, y)
 			f.a.MovReg64(y, X16)
+		},
+		func(a, b, c Reg) {
+			f.a.MovReg64(X16, a)
+			f.a.MovReg64(a, b)
+			f.a.MovReg64(b, c)
+			f.a.MovReg64(c, X16)
 		})
+	f.stats.peepN("machine-swap-chain", swapChains)
 	f.tmpMoves = moves[:0]
 	for _, da := range deferred {
 		switch da.root.st.kind {
@@ -1717,18 +1737,25 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	for _, m := range gpMoves {
 		f.pinned = f.pinned.remove(m.src)
 	}
-	resolveRegMoves(gpMoves,
+	gpSwapChains := resolveRegMovesWindow(gpMoves,
 		func(dst, src Reg) { f.a.MovReg64(dst, src) },
 		func(x, y Reg) {
 			f.a.MovReg64(X16, x)
 			f.a.MovReg64(x, y)
 			f.a.MovReg64(y, X16)
+		},
+		func(a, b, c Reg) {
+			f.a.MovReg64(X16, a)
+			f.a.MovReg64(a, b)
+			f.a.MovReg64(b, c)
+			f.a.MovReg64(c, X16)
 		})
+	f.stats.peepN("machine-swap-chain", gpSwapChains)
 	for _, m := range fpMoves {
 		f.fpinned = f.fpinned.remove(m.src)
 	}
 	fpSwapSlot := -1
-	resolveRegMoves(fpMoves,
+	fpSwapChains := resolveRegMovesWindow(fpMoves,
 		func(dst, src Reg) { f.a.FmovReg(dst, src, true) },
 		func(x, y Reg) {
 			if fpSwapSlot < 0 {
@@ -1738,7 +1765,18 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.fst(SP, off, x, true)
 			f.a.FmovReg(x, y, true)
 			f.fld(y, SP, off, true)
+		},
+		func(a, b, c Reg) {
+			if fpSwapSlot < 0 {
+				fpSwapSlot = f.allocSpillSlot()
+			}
+			off := f.spillOff(fpSwapSlot)
+			f.fst(SP, off, a, true)
+			f.a.FmovReg(a, b, true)
+			f.a.FmovReg(b, c, true)
+			f.fld(c, SP, off, true)
 		})
+	f.stats.peepN("machine-swap-chain", fpSwapChains)
 	for _, da := range deferred {
 		if da.float {
 			switch da.root.st.kind {
@@ -1847,19 +1885,16 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	ref := f.materialize(f.popValue())
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	f.pinned = f.pinned.add(ref)
-	f.cmpImm(ref, 0, true)
-	f.trapIf(condE, trapIndirectOOB)
+	f.trapIfZero(ref, true, true, trapIndirectOOB)
 	code := f.allocReg(0)
 	f.ld64(code, ref, runtime.TableEntryCodePtrOffset)
-	f.cmpImm(code, 0, true)
-	f.trapIf(condE, trapIndirectOOB)
+	f.trapIfZero(code, true, true, trapIndirectOOB)
 	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
 	home := f.allocReg(maskOf(ref, code))
 	f.ld64(home, ref, runtime.TableEntryHomeLinMemOffset)
 	targetContext := f.allocReg(maskOf(ref, code, home))
 	f.ld64(targetContext, ref, runtime.FuncRefContextOffset)
-	f.cmpImm(targetContext, 0, true)
-	f.trapIf(condE, trapIndirectOOB)
+	f.trapIfZero(targetContext, true, true, trapIndirectOOB)
 	f.pinned = f.pinned.remove(ref)
 	f.release(ref)
 
@@ -1961,9 +1996,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// +24 home linMem. Check null (uninitialized element) BEFORE the signature so a
 	// zero-initialized entry traps as an empty slot, not a type mismatch.
 	code := f.allocReg(0)
-	f.ld64(code, idxReg, 8) // entry code ptr (offset-0 entry)
-	f.cmpImm(code, 0, true)
-	f.trapIf(condE, trapIndirectOOB) // null entry
+	f.ld64(code, idxReg, 8)                         // entry code ptr (offset-0 entry)
+	f.trapIfZero(code, true, true, trapIndirectOOB) // null entry
 
 	if f.gcTypeSubtypingRefTest {
 		f.pinned = f.pinned.add(code)
@@ -2022,7 +2056,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// callee's offset-0 entry with the correct per-execution control words
 	// (including the stack fence). Verified: spec1 passes and spec2/3 no longer
 	// crash. Re-enable only with an entry pointer that preserves the fence.
-	if immutableLocalPolyFastPath && tableIdx == 0 && f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+	if f.opt(optImmutablePolyFastPath) && tableIdx == 0 && f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
 		home := f.allocReg(maskOf(idxReg, code))
 		f.ld64(home, idxReg, 24)
 		kind := f.descriptorEntryKind(home, maskOf(idxReg, code, home))
@@ -2046,12 +2080,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.ld64(home, idxReg, 24) // entry home linMem base
 	canonical := f.allocReg(maskOf(idxReg, code, home))
 	f.ld64(canonical, idxReg, 32) // canonical descriptor pointer
-	f.cmpImm(canonical, 0, true)
-	f.trapIf(condE, trapIndirectOOB)
+	f.trapIfZero(canonical, true, true, trapIndirectOOB)
 	targetContext := f.allocReg(maskOf(idxReg, code, home, canonical))
 	f.ld64(targetContext, canonical, runtime.FuncRefContextOffset)
-	f.cmpImm(targetContext, 0, true)
-	f.trapIf(condE, trapIndirectOOB)
+	f.trapIfZero(targetContext, true, true, trapIndirectOOB)
 	f.release(canonical)
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)

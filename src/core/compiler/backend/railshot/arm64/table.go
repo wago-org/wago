@@ -532,8 +532,7 @@ func (f *fn) refFunc(r *wasm.Reader) error {
 	}
 	ref := f.allocReg(0)
 	f.ld64(ref, linMemReg, -int32(offFuncRefDescPtr))
-	f.cmpImm(ref, 0, true) // was TestSelf — CMP ref,#0 (SUBS XZR,ref,#0)
-	f.trapIf(condE, trapIndirectOOB)
+	f.trapIfZero(ref, true, true, trapIndirectOOB)
 	f.leaDisp(ref, ref, int32((idx+1)*runtime.FuncRefDescBytes), true)
 	f.pushReg(ref, mtI64)
 	return nil
@@ -550,8 +549,7 @@ func (f *fn) refAsNonNull() {
 	value := f.popValue()
 	root := value.st.gcRoot
 	ref := f.materialize(value)
-	f.cmpImm(ref, 0, true)
-	f.trapIf(condE, trapNullReference)
+	f.trapIfZero(ref, true, true, trapNullReference)
 	f.pushReg(ref, mtI64).st.gcRoot = root
 }
 
@@ -567,12 +565,10 @@ func (f *fn) refEq() {
 }
 
 func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {
-	f.cmpImm(ref, 0, true)   // was TestSelf
-	null := f.a.Bcond(condE) // imm19
+	null := f.zeroBranch(ref, true, true)
 	tmp := f.allocReg(maskOf(ref))
 	f.ld64(tmp, ref, runtime.TableEntryCodePtrOffset)
-	f.cmpImm(tmp, 0, true)
-	f.trapIf(condE, trapIndirectOOB)
+	f.trapIfZero(tmp, true, true, trapIndirectOOB)
 	f.st64(SP, f.spillOff(slot), tmp)
 	for i, off := 1, int32(8); off < runtime.TableEntryBytes; i, off = i+1, off+8 {
 		f.ld64(tmp, ref, off)
@@ -589,8 +585,7 @@ func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {
 }
 
 func (f *fn) fillTableEntries(dst, count Reg, slot int) {
-	f.cmpImm(count, 0, true) // was TestSelf
-	done := f.a.Bcond(condE) // imm19
+	done := f.zeroBranch(count, true, true)
 	loop := f.a.Len()
 	tmp := f.allocReg(maskOf(dst).add(count))
 	for i, off := 0, int32(0); off < runtime.TableEntryBytes; i, off = i+1, off+8 {
@@ -605,8 +600,7 @@ func (f *fn) fillTableEntries(dst, count Reg, slot int) {
 }
 
 func (f *fn) fillExternrefEntries(dst, count, ref Reg) {
-	f.cmpImm(count, 0, true)
-	done := f.a.Bcond(condE)
+	done := f.zeroBranch(count, true, true)
 	loop := f.a.Len()
 	f.st64(dst, 0, ref)
 	f.leaDisp(dst, dst, 8, true)

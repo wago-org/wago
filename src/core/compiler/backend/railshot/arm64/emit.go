@@ -94,25 +94,6 @@ func (f *fn) condenseMulHighU(node *elem, dest Reg) Reg {
 // condenseConvert lowers the integer width conversions (wrap / sign- & zero-
 // extend). Each reads the source register and writes the converted value; the
 // source register can be reused when there is no target hint.
-// producesCleanI32 reports whether an i32-typed deferred op materializes into a
-// register whose upper 32 bits are guaranteed zero. All of these lower to 32-bit
-// instructions (ALU/shift/mul/div, bit counts) or a 0/1 cset, and a 32-bit
-// (W-register) write clears the upper half on AArch64, exactly as on x86-64. Loads
-// and local/global reads are excluded: they can surface dirty upper bits
-// (garbage-padded params, sign-extending loads).
-func producesCleanI32(op wOp) bool {
-	switch op {
-	case opAdd, opSub, opAnd, opOr, opXor,
-		opShl, opShrU, opShrS, opRotl, opRotr,
-		opMul, opDivU, opDivS, opRemU, opRemS,
-		opClz, opCtz, opPopcnt,
-		opEq, opNe, opLtS, opLtU, opGtS, opGtU, opLeS, opLeU, opGeS, opGeU, opEqz,
-		opWrap, opZExt32:
-		return true
-	}
-	return false
-}
-
 func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// i32.wrap_i64(i64.extend_i32_{s,u}(x)) is exactly x's low 32 bits. Keep the
 	// i32 carrier canonical with a W-register move, but skip the otherwise useless
@@ -139,11 +120,10 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 
 	// Redundant zero-extend elimination: i64.extend_i32_u of a value already in
 	// clean zero-upper form (an i32 produced by a 32-bit instruction, which zeroes
-	// the upper 32 bits on AArch64) is a no-op. Captured before materialize consumes
-	// the deferred node. NOT applied to i32 locals/params or sign-extending loads,
-	// which can carry dirty upper bits — hence the producer-op whitelist.
-	cleanZExt := node.op == opZExt32 && node.arg0.kind == ekDeferred &&
-		node.arg0.typ == mtI32 && producesCleanI32(node.arg0.op)
+	// the upper 32 bits on AArch64) is a no-op. The semantic fact survives bounded
+	// Valent materialization and spills, but local/global reads and signed loads
+	// begin unknown and therefore cannot trigger this consumer.
+	cleanZExt := node.op == opZExt32 && node.arg0.st.facts.has(factUpper32Zero)
 	src := f.materialize(node.arg0)
 	result := src
 	if dest != regNone && dest != src {
@@ -215,7 +195,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// the destination's local lifetime begins immediately afterwards.  Restrict
 	// it to concrete RHS values so we never change deferred evaluation order or
 	// register-pressure behavior.
-	if threeOperandSinkEnabled && dest != regNone && left.kind == ekValue &&
+	if f.opt(optThreeOpSink) && dest != regNone && left.kind == ekValue &&
 		(left.st.kind == stLocalReg || left.st.kind == stGlobReg) &&
 		(right.kind == ekValue || (right.isDeferred() && (isUnary(right.op) || isConvert(right.op)))) {
 		if f.tryThreeOperandLocalSink(node, dest, left, right, w) {
@@ -254,7 +234,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// overwrite it. Protecting x from allocation while the LHS condenses avoids
 	// both the store and reload without a scratch copy. This shape is pervasive in
 	// the unrolled BLAKE compression round.
-	if oldDestRHSSinkEnabled && dest != regNone && right.kind == ekValue &&
+	if f.opt(optOldDestRHSSink) && dest != regNone && right.kind == ekValue &&
 		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) &&
 		right.st.reg == dest {
 		f.pinned = f.pinned.add(dest)
@@ -508,7 +488,7 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 // register under pressure (the same hazard tryLeaScaledAdd guards against). Only
 // the 64-bit add matches (extend_i32_u produces i64).
 func (f *fn) tryUxtwAdd(node, left, right *elem, dest Reg) Reg {
-	if !uxtwAddEnabled || !node.typ.is64() {
+	if !f.opt(optUXTWAdd) || !node.typ.is64() {
 		return regNone
 	}
 	ext, other := right, left
@@ -657,6 +637,25 @@ func (f *fn) leaDisp(dst, base Reg, disp int32, w bool) {
 // the magnitude fits, else materializing the displacement in the backend scratch
 // X16 and using the register form.
 func (f *fn) addDisp(dst, base Reg, disp int32, w bool) {
+	if f.shiftedAddSubImmediate(int64(disp)) {
+		magnitude := int64(disp)
+		if magnitude < 0 {
+			magnitude = -magnitude
+		}
+		if disp >= 0 {
+			if w {
+				f.a.AddImm64LSL12(dst, base, uint32(magnitude))
+			} else {
+				f.a.AddImm32LSL12(dst, base, uint32(magnitude))
+			}
+		} else if w {
+			f.a.SubImm64LSL12(dst, base, uint32(magnitude))
+		} else {
+			f.a.SubImm32LSL12(dst, base, uint32(magnitude))
+		}
+		f.stats.peep("shifted-add-sub-immediate")
+		return
+	}
 	switch {
 	case disp >= 0 && disp <= 0xFFF:
 		if w {
@@ -875,7 +874,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		}
 		switch right.st.kind {
 		case stConst:
-			if fitsAddSubImm12(right.st.cval) {
+			if f.fitsAddSubImmediate(right.st.cval) {
 				f.cmpImmS(L, right.st.cval, w)
 			} else {
 				t := f.allocReg(maskOf(L))
@@ -1394,6 +1393,25 @@ func (f *fn) addFoldImm(dest Reg, v int64, w bool) bool {
 // addFoldImm3 emits `dest = base + v` when v fits AArch64's add/sub-immediate
 // encoding. The in-place addFoldImm wrapper retains existing callers.
 func (f *fn) addFoldImm3(dest, base Reg, v int64, w bool) bool {
+	if f.shiftedAddSubImmediate(v) {
+		magnitude := v
+		if magnitude < 0 {
+			magnitude = -magnitude
+		}
+		if v >= 0 {
+			if w {
+				f.a.AddImm64LSL12(dest, base, uint32(magnitude))
+			} else {
+				f.a.AddImm32LSL12(dest, base, uint32(magnitude))
+			}
+		} else if w {
+			f.a.SubImm64LSL12(dest, base, uint32(magnitude))
+		} else {
+			f.a.SubImm32LSL12(dest, base, uint32(magnitude))
+		}
+		f.stats.peep("shifted-add-sub-immediate")
+		return true
+	}
 	switch {
 	case v >= 0 && v <= 0xFFF:
 		if w {
@@ -1483,8 +1501,27 @@ func (f *fn) cmpImm(x Reg, imm uint32, w bool) {
 
 // cmpImmS emits a compare against a signed 12-bit immediate: a negative value uses
 // CMN (compare-negative, ADDS XZR,x,#|v|) so the flags match `cmp x,#v`. The caller
-// must have gated on fitsAddSubImm12.
+// must have gated on fitsAddSubImmediate.
 func (f *fn) cmpImmS(x Reg, cval int64, w bool) {
+	if f.shiftedAddSubImmediate(cval) {
+		magnitude := cval
+		if magnitude < 0 {
+			magnitude = -magnitude
+		}
+		if cval < 0 {
+			if w {
+				f.a.CmnImm64LSL12(x, uint32(magnitude))
+			} else {
+				f.a.CmnImm32LSL12(x, uint32(magnitude))
+			}
+		} else if w {
+			f.a.CmpImm64LSL12(x, uint32(magnitude))
+		} else {
+			f.a.CmpImm32LSL12(x, uint32(magnitude))
+		}
+		f.stats.peep("shifted-add-sub-immediate")
+		return
+	}
 	if cval < 0 {
 		if w {
 			f.a.CmnImm64(x, uint32(-cval))
@@ -1499,6 +1536,27 @@ func (f *fn) cmpImmS(x Reg, cval int64, w bool) {
 // fitsAddSubImm12 reports whether v fits the 12-bit add/sub (compare) immediate in
 // either sign — the AArch64 replacement for the amd64 fitsImm32 compare gate.
 func fitsAddSubImm12(v int64) bool { return v >= -0xFFF && v <= 0xFFF }
+
+func fitsShiftedAddSubImmediate(v int64) bool {
+	if v < 0 {
+		if v == -1<<63 {
+			return false
+		}
+		v = -v
+	}
+	u := uint64(v)
+	return u > 0xfff && u&0xfff == 0 && u>>12 <= 0xfff
+}
+
+func (f *fn) shiftedAddSubImmediate(v int64) bool {
+	return shiftedAddSubImmediateEnabled &&
+		(f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) &&
+		fitsShiftedAddSubImmediate(v)
+}
+
+func (f *fn) fitsAddSubImmediate(v int64) bool {
+	return fitsAddSubImm12(v) || f.shiftedAddSubImmediate(v)
+}
 
 // consumeBlockBelow unlinks every physical stack element of node's valent block
 // that sits below node (its operand sub-trees), leaving node as the top.

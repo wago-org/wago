@@ -111,6 +111,29 @@ func BenchmarkCTCodegen(b *testing.B) {
 	}
 }
 
+func BenchmarkCTCodegenSize(b *testing.B) {
+	objective := OptimizeSize
+	for _, name := range ctModules {
+		data := ctRead(b, name)
+		m, err := frontend.DecodeValidate(data)
+		if err != nil {
+			b.Skipf("%s: %v", name, err)
+		}
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(data)))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				cm, err := CompileModuleWith(m, CompileOptions{Objective: &objective, Workers: 1})
+				if err != nil {
+					b.Fatal(err)
+				}
+				ctSink = cm
+			}
+		})
+	}
+}
+
 func BenchmarkCTFull(b *testing.B) {
 	for _, name := range ctModules {
 		data := ctRead(b, name)

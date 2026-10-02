@@ -69,6 +69,25 @@ func (b *CodeBuffer) AppendSpace(n int) ([]byte, error) {
 	return b.mem[start:b.n:b.n], nil
 }
 
+// Truncate shortens the logical image without changing its mapping. It is used
+// by bounded finalization after compacting code toward the start of the buffer.
+func (b *CodeBuffer) Truncate(n int) error {
+	if b == nil {
+		return fmt.Errorf("jit: nil code buffer")
+	}
+	if b.closed {
+		return fmt.Errorf("jit: code buffer is closed")
+	}
+	if b.sealed {
+		return fmt.Errorf("jit: code buffer is sealed")
+	}
+	if n < 0 || n > b.n {
+		return fmt.Errorf("jit: invalid code length %d (current %d)", n, b.n)
+	}
+	b.n = n
+	return nil
+}
+
 // AppendTail returns a zero-length writable slice at the logical end of the
 // image with at least minCapacity bytes available. The caller may append into
 // the slice, then pass the result to CommitTail. Calling another mutating

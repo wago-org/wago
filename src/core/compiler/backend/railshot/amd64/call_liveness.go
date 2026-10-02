@@ -16,7 +16,7 @@ const maxCallNextUseOps = 64
 // conservatively.
 func (f *fn) planCallDeadLocals(r *wasm.Reader) {
 	f.callDeadGP, f.callDeadFP = 0, 0
-	if !callNextUseEnabled || !f.usesCalls {
+	if !f.opt(optCallNextUse) || !f.usesCalls {
 		return
 	}
 	var candGP, candFP regMask

@@ -2,6 +2,8 @@
 
 package arm64
 
+import "math/bits"
+
 // Compare→branch fusion: when a relational compare (or eqz) feeds directly into
 // br_if or if, emit the compare's CMP and branch on its NZCV flags, skipping the
 // Cset + materialize + CMP that a standalone boolean would need. This is the
@@ -33,6 +35,7 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 	f.pinned = f.pinned.add(x)
 	wide := inner.typ.is64()
 	c := uint64(inner.arg1.st.cval)
+	testOff := f.a.Len()
 	emitted := false
 	if wide {
 		emitted = f.a.TstImm64(x, c)
@@ -44,6 +47,8 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 		f.loadConst(t, storage{kind: stConst, typ: inner.typ, cval: int64(c)})
 		f.a.TstReg(x, t, !wide)
 		f.release(t)
+	} else if c&(c-1) == 0 {
+		f.recordSingleBitTest(testOff, x, uint8(bits.TrailingZeros64(c)))
 	}
 	f.pinned = f.pinned.remove(x)
 	if owned {
@@ -135,7 +140,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	// missed-fusion on branch-dense code (esbuild ~20k `relop;eqz;br` sites). Gated by
 	// the stFlags kill switch (WAGO_NO_STFLAGS) as the A/B oracle.
 	invert := false
-	if stFlagsEnabled {
+	if f.opt(optSTFlags) {
 		for node.op == opEqz && isFusableCompare(node.arg0) {
 			inner := node.arg0
 			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
@@ -264,6 +269,29 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	return cc
 }
 
+// condenseSimpleEqzOperand consumes an eqz whose operand is already a concrete
+// value and returns that value in a register. Branch consumers can then select
+// CBZ/CBNZ directly without materializing NZCV. Deferred arithmetic/mask trees
+// stay on condenseToFlags so their existing fused covers remain authoritative.
+func (f *fn) condenseSimpleEqzOperand(node *elem) (reg Reg, owned, wide, ok bool) {
+	if node == nil || node.op != opEqz || node.arg0 == nil || node.arg0.kind != ekValue {
+		return 0, false, false, false
+	}
+	a := node.arg0
+	switch {
+	case a.st.kind == stLocalReg || a.st.kind == stGlobReg:
+		reg = a.st.reg
+	case a.st.kind == stReg:
+		reg, owned = a.st.reg, true
+	default:
+		reg, owned = f.materialize(a), true
+	}
+	wide = node.typ.is64()
+	f.consumeBlockBelow(node)
+	f.erase(node)
+	return reg, owned, wide, true
+}
+
 // brIfFused lowers `<compare> br_if L` as CMP + conditional branch.
 func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	return f.brIfFusedSet(top, labelIdx, regNone)
@@ -298,7 +326,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	if f.a.Len() == mark {
 		// Empty edge: branch straight to the target when the compare holds — one
 		// instruction, no skip branch, no padding NOP in the loop body.
-		if branchFoldEnabled && f.condBranchJump(fr, cc) {
+		if f.opt(optBranchFold) && f.condBranchJump(fr, cc) {
 			return nil
 		}
 		over := f.a.Bcond(invertCond(cc))

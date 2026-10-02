@@ -60,6 +60,7 @@
           "type": "object",
           "propertyNames": {
             "enum": [
+              "accumulator-immediate",
               "addr-zext-elim",
               "affine-lea",
               "assoc-tree",
@@ -84,6 +85,7 @@
               "leaf-scratch-pins",
               "legacy-fp-pins",
               "legacy-gp-pins",
+              "local-slot-order",
               "loop-precheck",
               "loop-region-pins",
               "multi-bounds-cert",
@@ -106,6 +108,7 @@
               "v128-const-cache",
               "v128-pins",
               "v128-sink",
+              "value-facts",
               "vex-float-mem",
               "x8-pin"
             ]

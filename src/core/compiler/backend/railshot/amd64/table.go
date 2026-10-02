@@ -705,7 +705,7 @@ func (f *fn) fillTableEntries(dst, count Reg, slot int) {
 	}
 	f.release(tmp)
 	f.a.LeaDisp(dst, dst, runtime.TableEntryBytes)
-	f.a.AluRI(5, count, 1, true)
+	f.unitAdjust(count, true, false)
 	f.a.PatchRel32(f.a.JccPlaceholder(condNE), loop)
 	f.a.PatchRel32(done, f.a.Len())
 }
@@ -716,7 +716,7 @@ func (f *fn) fillExternrefEntries(dst, count, ref Reg) {
 	loop := f.a.Len()
 	f.a.Store64(dst, 0, ref)
 	f.a.LeaDisp(dst, dst, 8)
-	f.a.AluRI(5, count, 1, true)
+	f.unitAdjust(count, true, false)
 	f.a.PatchRel32(f.a.JccPlaceholder(condNE), loop)
 	f.a.PatchRel32(done, f.a.Len())
 }

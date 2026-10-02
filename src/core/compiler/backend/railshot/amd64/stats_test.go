@@ -24,6 +24,24 @@ func compileWithStats(t *testing.T, m *wasm.Module, guard bool) *ModuleStats {
 	return &ms
 }
 
+func TestModuleStatsReportsFinalizerFallbacks(t *testing.T) {
+	ms := ModuleStats{Funcs: []*CodegenStats{
+		{FinalizerFallback: "rel32-overflow", NativeSize: NativeFunctionSizeReport{BranchFoldHoleBytes: 5}, Rel32Sites: 1100, Rel32Recorded: 1024, Rel32Overflow: true},
+		{FinalizerFallback: "loop-function-size", NativeSize: NativeFunctionSizeReport{DeadFrameReservationBytes: 7}, Rel32Sites: 200, Rel32Recorded: 200},
+		{FinalizerFallback: "rel32-overflow", NativeSize: NativeFunctionSizeReport{DeadFrameReservationBytes: 7}, Rel32Sites: 1300, Rel32Recorded: 1024, Rel32Overflow: true},
+	}}
+	report := ms.String()
+	if !strings.Contains(report, "native-finalizer-fallbacks: loop-function-size=1/7B rel32-overflow=2/12B") {
+		t.Fatalf("module report missing sorted fallback totals:\n%s", report)
+	}
+	if got := strings.Count(report, "finalizer-fallback: rel32-overflow"); got != 2 {
+		t.Fatalf("per-function rel32 fallback reports = %d, want 2:\n%s", got, report)
+	}
+	if !strings.Contains(report, "amd64-rel32: sites=2600 recorded=2248 overflow-functions=2 overflow-sites=352 max-function-sites=1300") {
+		t.Fatalf("module report missing rel32 totals:\n%s", report)
+	}
+}
+
 // TestCodegenStatsPeepholes checks that each instruction-selection rewrite bumps
 // its named counter exactly once for a body built to trigger it precisely once,
 // and does not fire the others. This is the trustworthiness net the plan's exit
@@ -198,7 +216,7 @@ func TestModuleStatsReport(t *testing.T) {
 		"module-pinned globals (K=2): g2→r14 g4→r13",
 		`fn#0 "serialize"`,
 		"code=128B frame=48B spill_hi=2",
-		"bounds=4 elidable=0 inloop=0 hoistable=0 trapStubs=1",
+		"bounds=4 elidable=0 inloop=0 hoistable=0 trapStubs=1 trapGroups=0",
 		"calls: host=1 regabi=2", // sorted keys
 		"peep:  lea-scaled-index=2 store-imm=7",
 	} {

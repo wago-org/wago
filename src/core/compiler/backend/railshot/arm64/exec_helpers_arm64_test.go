@@ -17,8 +17,12 @@ import (
 // suites need. args are written as 8-byte little-endian words, matching the
 // serialized-args layout the wrapper prologue expects (mirrors amd64 runAmd64u).
 func runArm64Wrapper(t *testing.T, m *wasm.Module, args ...uint64) (uint64, error) {
+	return runArm64WrapperWithOptions(t, m, CompileOptions{}, args...)
+}
+
+func runArm64WrapperWithOptions(t *testing.T, m *wasm.Module, opts CompileOptions, args ...uint64) (uint64, error) {
 	t.Helper()
-	cm, err := CompileModule(m)
+	cm, err := CompileModuleWith(m, opts)
 	if err != nil {
 		t.Fatalf("arm64 compile: %v", err)
 	}

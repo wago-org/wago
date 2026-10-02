@@ -97,6 +97,30 @@ func TestScanBodyBytesCallHints(t *testing.T) {
 	}
 }
 
+func TestBrTableJumpDataHintUsesBackendThreshold(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		n    byte
+		want bool
+	}{
+		{"linear", brTableJumpMin - 1, false},
+		{"jump table", brTableJumpMin, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x0e, test.n}
+			body = append(body, make([]byte, int(test.n)+1)...)
+			body = append(body, 0x0b)
+			h, err := scanBodyBytes(body, 0, 0, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if h.hasJumpTableData != test.want {
+				t.Fatalf("jump-table-data hint = %v, want %v", h.hasJumpTableData, test.want)
+			}
+		})
+	}
+}
+
 func TestScanBodyExceptionHandlingHint(t *testing.T) {
 	ast := scanBody(wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrThrow}}}, 0, 0, 0)
 	if !ast.moduleEH {

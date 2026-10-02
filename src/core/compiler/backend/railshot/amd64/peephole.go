@@ -20,7 +20,7 @@ var branchFoldEnabled = os.Getenv("WAGO_AMD64_NOBRFOLD") != "1"
 // there instead, so it is not recorded. The jump's rel32 is patched later (block
 // ends), so the actual fold runs post-assembly in finalizeBranchFolds.
 func (f *fn) recordBrFold(over int) {
-	if !branchFoldEnabled {
+	if !f.opt(optBranchFold) {
 		return
 	}
 	if b := f.a.B; over+4 < len(b) && b[over+4] == 0xE9 {
@@ -39,7 +39,7 @@ func (f *fn) recordBrFold(over int) {
 // words must not be touched — so the pass reads and writes nothing it did not emit
 // as this precise pair.
 func (f *fn) finalizeBranchFolds() {
-	if !branchFoldEnabled {
+	if !f.opt(optBranchFold) {
 		return
 	}
 	b := f.a.B
@@ -60,6 +60,10 @@ func (f *fn) finalizeBranchFolds() {
 		b[over-1] ^= 1 // invert the condition (flip the tttn low bit)
 		binary.LittleEndian.PutUint32(b[over:], uint32(int32(jmpTarget-(over+4))))
 		copy(b[over+4:over+9], []byte{0x0F, 0x1F, 0x44, 0x00, 0x00}) // 5-byte NOP
+		f.a.ForgetRel32(over + 5)
 		f.stats.peep("br-pair-fold")
+		if f.stats != nil {
+			f.stats.NativeSize.BranchFoldHoleBytes += 5
+		}
 	}
 }

@@ -12,9 +12,10 @@ package arm64
 
 func (f *fn) replaceStorage(e *elem, st storage) {
 	// Replacements move the same semantic value between registers, locals, and
-	// spills. Preserve collector-root identity unless a producer explicitly marks
-	// a newly-created value.
+	// spills. Preserve collector-root identity and semantic provenance unless a
+	// producer explicitly marks a newly-created value.
 	st.gcRoot = st.gcRoot || e.st.gcRoot
+	st.facts |= e.st.facts
 	e.st = st
 }
 

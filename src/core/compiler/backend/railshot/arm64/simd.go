@@ -208,7 +208,7 @@ func (f *fn) v128ConstCached(lo, hi uint64) (Reg, bool) {
 // for call-making functions: a wasm→wasm call preserves only the low 64 bits of
 // the callee-saved V range, so a 128-bit reserved const could not survive a call.
 func (f *fn) preloadV128Consts(code []byte) {
-	if f.usesCalls || !v128ConstCacheEnabled {
+	if f.usesCalls || !f.opt(optV128ConstCache) {
 		return
 	}
 	// Register-pressure gate. Reserving a V register for a cached const is only a win
@@ -623,7 +623,7 @@ func (f *fn) v128BinInto(dst Reg, op func(dst, s1, s2 Reg)) {
 // (local.get-at-read-time). Returns done=true when it fired (and consumed the
 // local.set/tee), restoring the reader on any mismatch.
 func (f *fn) tryV128BinLocalSet(r *wasm.Reader, op func(dst, s1, s2 Reg)) (bool, error) {
-	if !v128LocalSinkEnabled {
+	if !f.opt(optV128Sink) {
 		return false, nil
 	}
 	save := r.Offset()
@@ -711,7 +711,7 @@ func (f *fn) v128UnaryInto(dst Reg, op func(dst, src Reg)) {
 
 // tryV128UnaryLocalSet is the unary companion to tryV128BinLocalSet.
 func (f *fn) tryV128UnaryLocalSet(r *wasm.Reader, op func(dst, src Reg)) (bool, error) {
-	if !v128LocalSinkEnabled {
+	if !f.opt(optV128Sink) {
 		return false, nil
 	}
 	save := r.Offset()
@@ -1453,7 +1453,7 @@ func (f *fn) i16x8Q15mulrSatS(r *wasm.Reader) error {
 // it realizes refs to $x below the two operand blocks and calls emit(pr) to sink
 // the op straight into $x's V register. Returns done=true when it fired.
 func (f *fn) tryV128Sink2LocalSet(r *wasm.Reader, emit func(dst Reg)) (bool, error) {
-	if !v128LocalSinkEnabled {
+	if !f.opt(optV128Sink) {
 		return false, nil
 	}
 	save := r.Offset()

@@ -3,12 +3,21 @@
 package amd64
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
+	"os"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+// moduleLiteralIslandEnabled defers Size/Embedded function pools to one module
+// island. WAGO_AMD64_NOMODULELITERALS=1 is the byte/performance rollback oracle.
+var moduleLiteralIslandEnabled = os.Getenv("WAGO_AMD64_NOMODULELITERALS") != "1"
+
+func moduleLiteralIsland(policy CodegenPolicy) bool {
+	return moduleLiteralIslandEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded)
+}
 
 func (f *fn) materializeV128(e *elem) Reg {
 	if e.isDeferred() {
@@ -31,7 +40,7 @@ func (f *fn) materializeV128(e *elem) Reg {
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.a.VMovdquLoadDisp(x, RSP, f.localOff(e.st.idx))
+		f.a.VMovdquLoadDisp(x, RSP, f.localAddr(e.st.idx))
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:
@@ -120,7 +129,7 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 		f.a.VMovdqu(x, c)
 		return x
 	}
-	if !v128ConstCacheEnabled {
+	if !f.opt(optV128ConstCache) {
 		f.buildV128Const(x, lo, hi) // A/B fallback: rebuild the immediate in-register
 		return x
 	}
@@ -134,11 +143,28 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 	return x
 }
 
-// poolConst is one constant (4, 8, or 16 bytes) in the function's trailing pool
-// and the disp32 field offsets of every rip-relative load that references it.
+// poolConst is one fixed-width constant in the function's trailing pool. Sites
+// form an intrusive list in transient.poolSites, avoiding a byte allocation and
+// a site-slice allocation for every distinct constant.
 type poolConst struct {
-	data  []byte
-	sites []int
+	lo, hi uint64
+	head   uint32 // poolSites index + 1; zero ends the list
+	size   uint8
+}
+
+type literalKey struct {
+	lo, hi uint64
+	size   uint8
+}
+
+type moduleLiteral struct {
+	key literalKey
+	off int
+}
+
+type poolSite struct {
+	off  uint32
+	next uint32
 }
 
 // recordV128Const registers a MOVDQU rip-load site for the 128-bit constant.
@@ -149,17 +175,23 @@ func (f *fn) recordV128Const(lo, hi uint64, site int) {
 	f.recordConst(b[:], site)
 }
 
-// recordConst registers a rip-load site for a constant, deduplicating by bytes so
-// each distinct constant occupies the pool once. The data is copied (callers pass
-// a reused scratch buffer).
+// recordConst registers a rip-load site for a constant, deduplicating by a fixed
+// comparable key. Callers pass 4, 8, or 16 bytes; no input storage is retained.
 func (f *fn) recordConst(data []byte, site int) {
+	var raw [16]byte
+	copy(raw[:], data)
+	lo := binary.LittleEndian.Uint64(raw[:8])
+	hi := binary.LittleEndian.Uint64(raw[8:])
+	size := uint8(len(data))
 	for i := range f.v128Pool {
-		if bytes.Equal(f.v128Pool[i].data, data) {
-			f.v128Pool[i].sites = append(f.v128Pool[i].sites, site)
+		if c := &f.v128Pool[i]; c.lo == lo && c.hi == hi && c.size == size {
+			f.poolSites = append(f.poolSites, poolSite{off: uint32(site), next: c.head})
+			c.head = uint32(len(f.poolSites))
 			return
 		}
 	}
-	f.v128Pool = append(f.v128Pool, poolConst{data: append([]byte(nil), data...), sites: []int{site}})
+	f.poolSites = append(f.poolSites, poolSite{off: uint32(site)})
+	f.v128Pool = append(f.v128Pool, poolConst{lo: lo, hi: hi, head: uint32(len(f.poolSites)), size: size})
 }
 
 // emitV128ConstPool lays the collected constants after the function code (never
@@ -169,14 +201,133 @@ func (f *fn) emitV128ConstPool() {
 	if len(f.v128Pool) == 0 {
 		return
 	}
+	if f.stats != nil {
+		for _, c := range f.v128Pool {
+			f.stats.literalKeys = append(f.stats.literalKeys, literalKey{lo: c.lo, hi: c.hi, size: c.size})
+		}
+	}
+	if moduleLiteralIsland(f.policy) {
+		f.literalWords = append(f.literalWords, uint64(len(f.v128Pool)))
+		for _, c := range f.v128Pool {
+			f.literalWords = append(f.literalWords, c.lo, c.hi, uint64(c.size))
+		}
+		for keyIndex, c := range f.v128Pool {
+			for head := c.head; head != 0; {
+				s := f.poolSites[head-1]
+				f.literalWords = append(f.literalWords, uint64(s.off)<<32|uint64(uint32(keyIndex)))
+				head = s.next
+			}
+		}
+		f.v128Pool = f.v128Pool[:0]
+		f.poolSites = f.poolSites[:0]
+		return
+	}
+	poolStart := f.a.Len()
+	var raw [16]byte
 	for _, c := range f.v128Pool {
 		off := f.a.Len()
-		f.a.EmitBytes(c.data)
-		for _, s := range c.sites {
-			f.a.PatchRel32(s, off)
+		binary.LittleEndian.PutUint64(raw[:8], c.lo)
+		binary.LittleEndian.PutUint64(raw[8:], c.hi)
+		f.a.EmitBytes(raw[:c.size])
+		for head := c.head; head != 0; {
+			s := f.poolSites[head-1]
+			f.a.PatchRel32(int(s.off), off)
+			head = s.next
 		}
 	}
 	f.v128Pool = f.v128Pool[:0]
+	f.poolSites = f.poolSites[:0]
+	if f.stats != nil {
+		f.stats.NativeSize.LiteralPoolBytes += f.a.Len() - poolStart
+	}
+}
+
+func appendLiteralKey(dst []byte, key literalKey) []byte {
+	var raw [16]byte
+	binary.LittleEndian.PutUint64(raw[:8], key.lo)
+	binary.LittleEndian.PutUint64(raw[8:], key.hi)
+	return append(dst, raw[:key.size]...)
+}
+
+// buildModuleLiteralIsland lays out each key once, in deterministic
+// function-and-first-pool order. It runs only for Size/Embedded; nil relocation
+// input preserves the Balanced and Speed paths without an allocation.
+func literalPlanKey(words []uint64, index int) literalKey {
+	base := 1 + 3*index
+	return literalKey{lo: words[base], hi: words[base+1], size: uint8(words[base+2])}
+}
+
+func buildModuleLiteralIsland(words []uint64, offsets []uint32) ([]byte, []moduleLiteral) {
+	if len(offsets) == 0 {
+		return nil, nil
+	}
+	var code []byte
+	var literals []moduleLiteral
+	for function := 0; function+1 < len(offsets); function++ {
+		plan := words[offsets[function]:offsets[function+1]]
+		if len(plan) == 0 {
+			continue
+		}
+		for keyIndex := 0; keyIndex < int(plan[0]); keyIndex++ {
+			key := literalPlanKey(plan, keyIndex)
+			found := false
+			for _, literal := range literals {
+				if literal.key == key {
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
+			}
+			literals = append(literals, moduleLiteral{key: key, off: len(code)})
+			code = appendLiteralKey(code, key)
+		}
+	}
+	return code, literals
+}
+
+func patchModuleLiteralRelocs(code []byte, entry []int, words []uint64, offsets []uint32, islandBase int, literals []moduleLiteral) error {
+	if len(offsets) == 0 {
+		return nil
+	}
+	if islandBase < 0 || len(literals) == 0 {
+		for function := 0; function+1 < len(offsets); function++ {
+			if offsets[function] != offsets[function+1] {
+				return fmt.Errorf("amd64: literal relocations without module island")
+			}
+		}
+		return nil
+	}
+	for function := 0; function+1 < len(offsets); function++ {
+		plan := words[offsets[function]:offsets[function+1]]
+		if len(plan) == 0 {
+			continue
+		}
+		keyCount := int(plan[0])
+		for _, encoded := range plan[1+3*keyCount:] {
+			site := uint32(encoded >> 32)
+			keyIndex := int(uint32(encoded))
+			at := entry[function] + int(site)
+			if at < 0 || at+4 > len(code) {
+				return fmt.Errorf("amd64: literal relocation out of range: function %d site %d", function, site)
+			}
+			key := literalPlanKey(plan, keyIndex)
+			target := -1
+			for _, literal := range literals {
+				if literal.key == key {
+					target = islandBase + literal.off
+					break
+				}
+			}
+			disp := int64(target) - int64(at+4)
+			if target < 0 || disp < math.MinInt32 || disp > math.MaxInt32 {
+				return fmt.Errorf("amd64: literal relocation out of rel32 range: function %d site %d", function, site)
+			}
+			binary.LittleEndian.PutUint32(code[at:], uint32(int32(disp)))
+		}
+	}
+	return nil
 }
 
 func (f *fn) buildV128Const(x Reg, lo, hi uint64) {
@@ -233,7 +384,7 @@ func (f *fn) pinnedV128LocalCount() int {
 // emulation constants (read-only masks/tables, never loop-carried) are still
 // reserved. Mirrors preloadFloatConsts / arm64 preloadV128Consts.
 func (f *fn) preloadV128Consts(code []byte) {
-	if f.usesCalls || f.syncHostCalls || !v128ConstCacheEnabled {
+	if f.usesCalls || f.syncHostCalls || !f.opt(optV128ConstCache) {
 		return
 	}
 	f.stats.peep("v128-preload-scan")
@@ -479,7 +630,7 @@ func (f *fn) i8x16Swizzle() {
 }
 
 func (f *fn) shuffleLocalSink(r *wasm.Reader) (dst Reg, local int, tee, ok bool) {
-	if !v128LocalSinkEnabled {
+	if !f.opt(optV128Sink) {
 		return
 	}
 	save := r.Offset()
@@ -665,7 +816,7 @@ func (f *fn) v128StackMem(e *elem) (int32, bool) {
 	}
 	switch e.st.kind {
 	case stLocalRef:
-		return f.localOff(e.st.idx), true
+		return f.localAddr(e.st.idx), true
 	case stSlot:
 		return f.spillOff(e.st.slot), true
 	default:
@@ -755,7 +906,7 @@ func (f *fn) v128BinInto(dst Reg, op func(dst, s1, s2 Reg)) {
 // returns false on any mismatch. Reader errors during lookahead fall back to the
 // eager path (the outer emitFD loop re-reads and surfaces them).
 func (f *fn) tryV128BinLocalSet(r *wasm.Reader, op func(dst, s1, s2 Reg)) bool {
-	if !v128LocalSinkEnabled {
+	if !f.opt(optV128Sink) {
 		return false
 	}
 	save := r.Offset()

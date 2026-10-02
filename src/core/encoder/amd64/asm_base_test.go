@@ -2,7 +2,9 @@ package amd64
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
+	"unsafe"
 )
 
 func TestScalarAndFrameEncodings(t *testing.T) {
@@ -26,6 +28,9 @@ func TestScalarAndFrameEncodings(t *testing.T) {
 		{"store rsp64", func(a *Asm) { a.StoreRsp64(12, R8) }, []byte{0x4c, 0x89, 0x44, 0x24, 12}},
 		{"load rsp64", func(a *Asm) { a.LoadRsp64(R9, 16) }, []byte{0x4c, 0x8b, 0x4c, 0x24, 16}},
 		{"mov from rsp", func(a *Asm) { a.MovFromRsp(RAX) }, []byte{0x48, 0x89, 0xe0}},
+		{"jecxz", func(a *Asm) { a.JcxzPlaceholder(false) }, []byte{0x67, 0xe3, 0x00}},
+		{"jrcxz", func(a *Asm) { a.JcxzPlaceholder(true) }, []byte{0xe3, 0x00}},
+		{"jmp rel8", func(a *Asm) { a.JmpRel8Placeholder() }, []byte{0xeb, 0x00}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -35,6 +40,199 @@ func TestScalarAndFrameEncodings(t *testing.T) {
 				t.Fatalf("encoding = %x, want %x", a.B, tc.want)
 			}
 		})
+	}
+}
+
+func TestPatchRel8(t *testing.T) {
+	var a Asm
+	at := a.JcxzPlaceholder(false)
+	for range 127 {
+		a.emit(0x90)
+	}
+	if !a.PatchRel8(at, len(a.B)) || a.B[at] != 127 {
+		t.Fatalf("forward rel8 = %d", int8(a.B[at]))
+	}
+	if a.PatchRel8(at, len(a.B)+1) {
+		t.Fatal("out-of-range rel8 accepted")
+	}
+}
+
+func TestEncodingStatsDisplacementForms(t *testing.T) {
+	var stats EncodingStats
+	a := Asm{EncodingStats: &stats}
+	a.Load64(RAX, RBX, 0)
+	a.Load64(RAX, RBX, 127)
+	a.Load64(RAX, RBX, 128)
+	a.Load64(RAX, RSP, 0)
+	a.Load64(RAX, RSP, -128)
+	a.Load64(RAX, RSP, -129)
+	a.ZMovdqu64LoadIdx(RAX, RBX, RCX, 64)
+	a.LeaRipPlaceholder(RAX)
+	a.MovdquRipPlaceholder(RAX)
+	a.MovsRipPlaceholder(RAX, true)
+	a.VPshufbRipPlaceholder(RAX, RCX)
+
+	want := EncodingStats{
+		MemoryDisp0:  2,
+		MemoryDisp8:  3,
+		MemoryDisp32: 6,
+		FrameDisp0:   1,
+		FrameDisp8:   1,
+		FrameDisp32:  1,
+		RexPrefixes:  7,
+		RexWPrefixes: 7,
+	}
+	if stats != want {
+		t.Fatalf("encoding stats = %#v, want %#v", stats, want)
+	}
+	if got, wantBytes := stats.MemoryDisplacementBytes(), uint64(27); got != wantBytes {
+		t.Fatalf("memory displacement bytes = %d, want %d", got, wantBytes)
+	}
+	if got, wantBytes := stats.FrameDisplacementBytes(), uint64(5); got != wantBytes {
+		t.Fatalf("frame displacement bytes = %d, want %d", got, wantBytes)
+	}
+}
+
+func TestEncodingStatsLocalFrameDisplacementForms(t *testing.T) {
+	var stats EncodingStats
+	stats.RecordLocalFrameAddress(0)
+	stats.RecordLocalFrameAddress(127)
+	stats.RecordLocalFrameAddress(128)
+	if stats.LocalDisp0 != 1 || stats.LocalDisp8 != 1 || stats.LocalDisp32 != 1 {
+		t.Fatalf("local frame displacement stats = %#v, want one of each form", stats)
+	}
+	if got, want := stats.LocalFrameDisplacementBytes(), uint64(5); got != want {
+		t.Fatalf("local frame displacement bytes = %d, want %d", got, want)
+	}
+}
+
+func TestLocalRefRecorderTracksExactLocalAndDisp32Site(t *testing.T) {
+	var refs LocalRefRecorder
+	storage := make([]byte, LocalRefScratchSize(1))
+	if !refs.BindStorage(storage, 1) || !refs.Reset(2, 1) {
+		t.Fatal("bind/reset local recorder failed")
+	}
+	a := Asm{LocalRefs: &refs}
+	refs.Mark(0)
+	a.Load64(RAX, RSP, 128)
+	refs.Mark(1)
+	a.Store64(RSP, 16, RAX)
+	if refs.Overflow || refs.Pending {
+		t.Fatalf("local recorder state = overflow:%v pending:%v", refs.Overflow, refs.Pending)
+	}
+	if len(refs.Sites) != 1 {
+		t.Fatalf("disp32 sites = %d, want 1", len(refs.Sites))
+	}
+	site := refs.Sites[0]
+	if site.Local != 0 || site.OldDisp != 128 || a.B[site.ModRMOff]&0xc0 != 0x80 || binary.LittleEndian.Uint32(a.B[site.DispOff:]) != 128 {
+		t.Fatalf("disp32 site = %#v in %x", site, a.B)
+	}
+}
+
+func TestLocalRefRecorderRetainsBoundedPrefix(t *testing.T) {
+	var refs LocalRefRecorder
+	storage := make([]byte, LocalRefScratchSize(1))
+	if !refs.BindStorage(storage, 1) || !refs.Reset(1, 1) {
+		t.Fatal("bind/reset local recorder failed")
+	}
+	a := Asm{LocalRefs: &refs}
+	for range 2 {
+		refs.Mark(0)
+		a.Load64(RAX, RSP, 128)
+	}
+	if refs.Overflow || refs.Pending || len(refs.Sites) != 1 || cap(refs.Sites) != 1 {
+		t.Fatalf("bounded local recorder = sites:%d/%d overflow:%v pending:%v", len(refs.Sites), cap(refs.Sites), refs.Overflow, refs.Pending)
+	}
+}
+
+func TestBindLocalRefTailSeparatesCodeAndScratch(t *testing.T) {
+	var refs LocalRefRecorder
+	a := Asm{B: make([]byte, 0, 64)}
+	if !a.BindLocalRefTail(&refs, 1) || !refs.Reset(1, 1) {
+		t.Fatal("bind local-reference tail failed")
+	}
+	a.LocalRefs = &refs
+	if got, want := cap(a.B), 48; got != want {
+		t.Fatalf("code capacity = %d, want %d", got, want)
+	}
+	refs.Mark(0)
+	a.Load64(RAX, RSP, 128)
+	a.B = append(a.B, make([]byte, cap(a.B)-len(a.B))...)
+	if got := refs.Sites; len(got) != 1 || got[0].Local != 0 || got[0].OldDisp != 128 {
+		t.Fatalf("tail-backed local sites corrupted by code writes: %+v", got)
+	}
+}
+
+func TestEncodingStatsRexPrefixes(t *testing.T) {
+	var stats EncodingStats
+	a := Asm{EncodingStats: &stats}
+	a.MovReg64(RAX, RCX)     // REX.W.
+	a.MovRegReg32(R8, RAX)   // Non-W register extension.
+	a.AluRR8(0x30, RSP, RAX) // Bare REX selects SPL rather than AH.
+	a.Prologue()             // Embedded REX.W after PUSH.
+
+	if got, want := stats.RexPrefixes, uint64(4); got != want {
+		t.Fatalf("REX prefixes = %d, want %d", got, want)
+	}
+	if got, want := stats.RexWPrefixes, uint64(2); got != want {
+		t.Fatalf("REX.W prefixes = %d, want %d", got, want)
+	}
+	if got, want := stats.RexBare, uint64(1); got != want {
+		t.Fatalf("bare REX prefixes = %d, want %d", got, want)
+	}
+	if got, want := stats.RexNonWExtensionPrefixes(), uint64(1); got != want {
+		t.Fatalf("non-W extension REX prefixes = %d, want %d", got, want)
+	}
+}
+
+func TestEncodingStatsMovImmediateForms(t *testing.T) {
+	var stats EncodingStats
+	a := Asm{EncodingStats: &stats}
+	a.MovImm64(RAX, 0x89abcdef)
+	a.MovImm64(RAX, ^uint64(0))
+	a.MovImm64(RAX, 0x1122334455667788)
+	if stats.MovImm32 != 1 || stats.MovImm32Sext != 1 || stats.MovImm64 != 1 || stats.MovImmNarrow != 2 || stats.MovImmSaved != 8 {
+		t.Fatalf("MOV immediate stats = %#v, want one of each form", stats)
+	}
+}
+
+func TestEncodingStatsShiftImmediateForms(t *testing.T) {
+	var stats EncodingStats
+	a := Asm{EncodingStats: &stats}
+	a.ShiftImm(4, R8, 0, true)
+	a.ShiftImm(4, R8, 1, true)
+	a.ShiftImm(4, R8, 2, true)
+	if stats.ShiftImmZero != 1 || stats.ShiftImmOne != 1 || stats.ShiftImm8 != 1 || stats.ShiftSaved != 5 {
+		t.Fatalf("shift immediate stats = %#v, want one of each form and five bytes saved", stats)
+	}
+}
+
+func TestCompactAccumulatorImmediateEncodings(t *testing.T) {
+	var stats EncodingStats
+	a := Asm{EncodingStats: &stats, CompactAccumulatorImmediates: true}
+	a.AluRI(0, RAX, 0x1234, false)
+	a.TestImm(RAX, 0x80808080, false)
+	a.AluRI(5, RAX, 0x1234, true)
+	a.TestImm(RAX, 0x80808080, true)
+	if got, want := a.B, []byte{
+		0x05, 0x34, 0x12, 0, 0,
+		0xa9, 0x80, 0x80, 0x80, 0x80,
+		0x48, 0x2d, 0x34, 0x12, 0, 0,
+		0x48, 0xa9, 0x80, 0x80, 0x80, 0x80,
+	}; !bytes.Equal(got, want) {
+		t.Fatalf("compact accumulator encodings = %x, want %x", got, want)
+	}
+	if stats.AluImm32Acc != 2 || stats.TestImm32Acc != 2 {
+		t.Fatalf("compact accumulator stats = %#v, want two ALU and two TEST", stats)
+	}
+}
+
+func TestAccumulatorImmediateEncodingsRemainOptIn(t *testing.T) {
+	var a Asm
+	a.AluRI(0, RAX, 0x1234, false)
+	a.TestImm(RAX, 0x80808080, false)
+	if got, want := a.B, []byte{0x81, 0xc0, 0x34, 0x12, 0, 0, 0xf7, 0xc0, 0x80, 0x80, 0x80, 0x80}; !bytes.Equal(got, want) {
+		t.Fatalf("default accumulator encodings = %x, want %x", got, want)
 	}
 }
 
@@ -98,6 +296,8 @@ func TestIntegerMemoryAndControlEncodings(t *testing.T) {
 		{"imul three operand", func(a *Asm) { a.ImulRRI(R8, R9, 7, true) }, []byte{0x4d, 0x6b, 0xc1, 7}},
 		{"shift cl", func(a *Asm) { a.ShiftCL(4, R8, true) }, []byte{0x49, 0xd3, 0xe0}},
 		{"mov immediate 64", func(a *Asm) { a.MovImm64(R8, 0x1122334455667788) }, []byte{0x49, 0xb8, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11}},
+		{"mov immediate 64 zero-extended", func(a *Asm) { a.MovImm64(R8, 0x89abcdef) }, []byte{0x41, 0xb8, 0xef, 0xcd, 0xab, 0x89}},
+		{"mov immediate 64 sign-extended", func(a *Asm) { a.MovImm64(R8, ^uint64(0)) }, []byte{0x49, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff}},
 		{"call memory", func(a *Asm) { a.CallMem(R12, 16) }, []byte{0x41, 0xff, 0x54, 0x24, 16}},
 		{"call register", func(a *Asm) { a.CallReg(R9) }, []byte{0x41, 0xff, 0xd1}},
 		{"lea scaled 32", func(a *Asm) { a.LeaScaledW(R8, R9, R10, 2, -4, false) }, []byte{0x47, 0x8d, 0x44, 0x91, 0xfc}},
@@ -156,6 +356,97 @@ func TestAssemblerPatchingAndAlignment(t *testing.T) {
 	}
 }
 
+func TestRel32SiteCounting(t *testing.T) {
+	a := Asm{Rel32SiteLimit: 1}
+	first := a.JmpPlaceholder()
+	a.PatchRel32(first, a.Len())
+	a.JmpBack(0)
+	if got, want := a.Rel32Count, uint32(2); got != want {
+		t.Fatalf("rel32 site count = %d, want %d", got, want)
+	}
+	if got, want := len(a.Rel32Sites), 1; got != want {
+		t.Fatalf("retained rel32 sites = %d, want %d", got, want)
+	}
+	if !a.Rel32Overflow {
+		t.Fatal("bounded rel32 recorder did not report overflow")
+	}
+	if got := a.Rel32Sites[0]; got.At() != first || got.Kind() != Rel32Jmp {
+		t.Fatalf("first rel32 site = %+v, want at=%d target=5", got, first)
+	}
+	if got, want := unsafe.Sizeof(Rel32Site{}), uintptr(4); got != want {
+		t.Fatalf("rel32 site size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(Asm{}), uintptr(88); got != want {
+		t.Fatalf("asm size = %d, want %d", got, want)
+	}
+}
+
+func TestRel32SiteRewrite(t *testing.T) {
+	a := Asm{Rel32SiteLimit: 4}
+	one := a.JmpPlaceholder()
+	a.PatchRel32(one, 20)
+	two := a.JmpPlaceholder()
+	a.PatchRel32(two, 30)
+	a.PatchU32(one, uint32(int32(40-(one+4))))
+	a.ForgetRel32(two)
+	a.KeepRel32Long(one)
+	if got := a.Rel32Sites; len(got) != 1 || got[0].At() != one || got[0].Kind() != Rel32Other {
+		t.Fatalf("rewritten sites = %+v", got)
+	}
+	a.Rel32Sites[0].SetShort(true)
+	if !a.Rel32Sites[0].Short() || a.Rel32Sites[0].At() != one || a.Rel32Sites[0].Kind() != Rel32Other {
+		t.Fatalf("short choice corrupted packed site: %+v", a.Rel32Sites[0])
+	}
+	if target := one + 4 + int(int32(binary.LittleEndian.Uint32(a.B[one:]))); target != 40 {
+		t.Fatalf("rewritten encoded target = %d, want 40", target)
+	}
+	overflow := Asm{B: []byte{0xe9, 0, 0, 0, 0}, Rel32SiteLimit: 1}
+	overflow.PatchRel32(1, int(rel32OffsetMask)+1)
+	if !overflow.Rel32Overflow {
+		t.Fatal("out-of-range packed target did not force identity fallback")
+	}
+}
+
+func TestBindRel32TailSeparatesCodeAndScratch(t *testing.T) {
+	a := Asm{B: make([]byte, 0, 64), Rel32SiteLimit: 2}
+	if !a.BindRel32Tail(2) {
+		t.Fatal("bind rel32 tail failed")
+	}
+	if got, want := cap(a.B), 56; got != want {
+		t.Fatalf("code capacity = %d, want %d", got, want)
+	}
+	if got, want := cap(a.Rel32Sites), 2; got != want {
+		t.Fatalf("site capacity = %d, want %d", got, want)
+	}
+	one := a.JmpPlaceholder()
+	a.PatchRel32(one, a.Len())
+	two := a.JccPlaceholder(CondE)
+	a.PatchRel32(two, a.Len())
+	a.B = append(a.B, make([]byte, cap(a.B)-len(a.B))...)
+	if got := a.Rel32Sites; len(got) != 2 || got[0].Kind() != Rel32Jmp || got[1].Kind() != Rel32Jcc {
+		t.Fatalf("tail-backed sites corrupted by code writes: %+v", got)
+	}
+}
+
+func TestResetRel32RecorderUsesInlineFallback(t *testing.T) {
+	a := Asm{}
+	a.ResetRel32Recorder(4)
+	if got, want := cap(a.Rel32Sites), 2; got != want {
+		t.Fatalf("inline site capacity = %d, want %d", got, want)
+	}
+	a.B = append(a.B, 0xe9)
+	site := a.Len()
+	a.B = append(a.B, 0, 0, 0, 0)
+	a.PatchRel32(site, a.Len())
+	if got := len(a.Rel32Sites); got != 1 {
+		t.Fatalf("inline site count = %d, want 1", got)
+	}
+	a.ResetRel32Recorder(0)
+	if a.Rel32Sites != nil {
+		t.Fatalf("disabled recorder retained inline storage")
+	}
+}
+
 func TestRemainingIntegerInstructionForms(t *testing.T) {
 	cases := []struct {
 		name string
@@ -168,8 +459,13 @@ func TestRemainingIntegerInstructionForms(t *testing.T) {
 		{"cmp32", func(a *Asm) { a.Cmp32(R8, R9) }, []byte{0x45, 0x39, 0xc8}},
 		{"imul", func(a *Asm) { a.IMul(R8, R9, true) }, []byte{0x4d, 0x0f, 0xaf, 0xc1}},
 		{"test self", func(a *Asm) { a.TestSelf(R8, true) }, []byte{0x4d, 0x85, 0xc0}},
+		{"inc32", func(a *Asm) { a.Inc(RAX, false) }, []byte{0xff, 0xc0}},
+		{"inc64 extended", func(a *Asm) { a.Inc(R8, true) }, []byte{0x49, 0xff, 0xc0}},
+		{"dec32", func(a *Asm) { a.Dec(RCX, false) }, []byte{0xff, 0xc9}},
+		{"dec64 extended", func(a *Asm) { a.Dec(R9, true) }, []byte{0x49, 0xff, 0xc9}},
 		{"test reg", func(a *Asm) { a.TestReg(R8, R9, true) }, []byte{0x4d, 0x85, 0xc8}},
 		{"test imm", func(a *Asm) { a.TestImm(R8, 0x80808080, false) }, []byte{0x41, 0xf7, 0xc0, 0x80, 0x80, 0x80, 0x80}},
+		{"bt imm", func(a *Asm) { a.BtImm(R8, 63, true) }, []byte{0x49, 0x0f, 0xba, 0xe0, 0x3f}},
 		{"return", func(a *Asm) { a.Ret() }, []byte{0xc3}},
 		{"sub rsp", func(a *Asm) { a.SubRsp(16) }, []byte{0x48, 0x81, 0xec, 16, 0, 0, 0}},
 		{"alu rr", func(a *Asm) { a.AluRR(0x01, R8, R9, true) }, []byte{0x4d, 0x01, 0xc8}},
@@ -178,6 +474,8 @@ func TestRemainingIntegerInstructionForms(t *testing.T) {
 		{"imul memory", func(a *Asm) { a.ImulRM(R8, R9, 4, true) }, []byte{0x4d, 0x0f, 0xaf, 0x41, 4}},
 		{"imul immediate", func(a *Asm) { a.ImulRI(R8, 0x1234, true) }, []byte{0x4d, 0x69, 0xc0, 0x34, 0x12, 0, 0}},
 		{"shift immediate", func(a *Asm) { a.ShiftImm(4, R8, 3, true) }, []byte{0x49, 0xc1, 0xe0, 3}},
+		{"shift immediate one", func(a *Asm) { a.ShiftImm(4, R8, 1, true) }, []byte{0x49, 0xd1, 0xe0}},
+		{"shift immediate zero", func(a *Asm) { a.ShiftImm(4, R8, 0, true) }, nil},
 		{"add rsp", func(a *Asm) { a.AddRsp(16) }, []byte{0x48, 0x81, 0xc4, 16, 0, 0, 0}},
 		{"lea rsp", func(a *Asm) { a.LeaRsp(R8, 4) }, []byte{0x4c, 0x8d, 0x44, 0x24, 4}},
 		{"lea scaled", func(a *Asm) { a.LeaScaled(R8, R9, R10, 1, 4) }, []byte{0x4f, 0x8d, 0x44, 0x51, 4}},

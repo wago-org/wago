@@ -62,6 +62,53 @@ type Snapshot struct {
 	revision uint64
 }
 
+// Selection is one immutable, architecture-specific optimization selection.
+// The bit index follows the owning Bindings' stable catalog order. It is safe to
+// copy into a compilation policy and read concurrently for the compilation's
+// lifetime.
+type Selection struct {
+	bindings *Bindings
+	bits     uint64
+}
+
+// Option is a pre-resolved flag owned by one architecture's Bindings. Backends
+// resolve these once during package initialization so hot lowering decisions
+// need only a pointer comparison and bit test, never a string/map lookup.
+type Option struct {
+	bindings *Bindings
+	mask     uint64
+}
+
+// Enabled reports whether name is enabled in this selection. Unknown names and
+// selections from another architecture report false.
+func (s Selection) Enabled(name string) bool {
+	if s.bindings == nil {
+		return false
+	}
+	index, ok := s.bindings.index[name]
+	return ok && s.bits&(uint64(1)<<index) != 0
+}
+
+// EnabledOption reports whether a pre-resolved option is enabled. An option
+// from another architecture is rejected just like an unknown string name.
+func (s Selection) EnabledOption(option Option) bool {
+	return s.bindings != nil && s.bindings == option.bindings && s.bits&option.mask != 0
+}
+
+// Valid reports whether the selection was resolved by a Bindings owner.
+func (s Selection) Valid() bool { return s.bindings != nil }
+
+// Option resolves name once for use on a backend's hot compile path. It panics
+// for an unknown name because backend option inventories are initialization
+// invariants already checked by NewBindings.
+func (b *Bindings) Option(name string) Option {
+	index, ok := b.index[name]
+	if !ok {
+		panic(fmt.Sprintf("unknown %s optimization %q", b.arch, name))
+	}
+	return Option{bindings: b, mask: uint64(1) << index}
+}
+
 // Bindings owns the complete, ordered set of bindings for one architecture.
 // NewBindings panics on missing, duplicate, unknown, or nil bindings so an
 // advertised optimization cannot reach execution without an implementation.
@@ -131,6 +178,43 @@ func (b *Bindings) CurrentSnapshot() Snapshot {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.snapshotLocked()
+}
+
+// ResolveSnapshot validates and captures one immutable selection without
+// installing it into package globals or retaining the Bindings lock. overrides
+// is expressed in public sense (on means enabled). A nil map captures current
+// process defaults. Snapshot and deltas are accepted for API compatibility; the
+// complete overrides map remains authoritative and makes resolution bounded by
+// the small optimization catalog.
+func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[string]bool) (Selection, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.entries) > 64 {
+		return Selection{}, fmt.Errorf("%s optimization catalog has %d entries, maximum is 64", b.arch, len(b.entries))
+	}
+	var bits uint64
+	for index, entry := range b.entries {
+		on := *entry.value
+		if entry.inverted {
+			on = !on
+		}
+		if on {
+			bits |= uint64(1) << index
+		}
+	}
+	for name, on := range overrides {
+		index, ok := b.index[name]
+		if !ok {
+			return Selection{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
+		}
+		mask := uint64(1) << index
+		if on {
+			bits |= mask
+		} else {
+			bits &^= mask
+		}
+	}
+	return Selection{bindings: b, bits: bits}, nil
 }
 
 func (b *Bindings) snapshotLocked() Snapshot {
@@ -272,6 +356,7 @@ var catalog = []Definition{
 	both("branch-fold", "Branch folding", "fold branch pairs into one conditional branch"),
 	arm64("store-load-fwd", "Store/load forwarding", "forward stores into loads after assembly"),
 	arm64("uxtw-add", "Extended adds", "fold zero-extension into ADD UXTW"),
+	both("value-facts", "Value facts", "propagate bounded upper-zero and boolean provenance"),
 	both("entry-arg-pins", "Entry argument pins", "keep entry arguments in incoming registers"),
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
 	arm64("deep-fp-pins", "Deep float pins", "pin additional float locals in call-free functions"),
@@ -291,9 +376,11 @@ var catalog = []Definition{
 	both("store-forward", "Store forwarding", "forward straight-line stores into loads"),
 	amd64("frame-elide", "Frame elision", "omit frames for small single-result functions"),
 	amd64("compact-i32-frame", "Compact i32 frames", "pack i32 locals in straight-line call-free functions"),
+	amd64("local-slot-order", "Symbolic local slot packing", "move exact referenced local homes into zero-reference compact slots"),
 	amd64("tee-spill-elide", "Reuse tee spill homes", "reuse a local.tee frame slot when spilling its still-live scalar result"),
 	amd64("commute-self-update", "Commute self-updates", "make non-fixed destinations accumulate commutative self-update expressions in place"),
 	amd64("i64-mask32", "Low-32 mask lowering", "lower i64 low-32 masks to zero-extending 32-bit ANDs"),
+	amd64("accumulator-immediate", "Accumulator immediates", "use ModRM-free RAX/EAX imm32 encodings in size objectives"),
 	arm64("frame-elide-reghomed", "Register-homed frames", "omit frames when locals remain in registers"),
 	arm64("small-frame", "Small frames", "use compact stack adjustment forms"),
 	both("v128-const-cache", "Vector constant cache", "reserve vector registers for repeated constants"),
