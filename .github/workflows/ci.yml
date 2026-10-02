@@ -492,6 +492,14 @@ jobs:
         if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: scripts/check-diagnostic-dce.sh
 
+      - name: Checked compiler tests on Windows
+        if: matrix.runtime && runner.os == 'Windows'
+        run: go test -count=1 -tags=wago_regalloccheck ./internal/regalloccheck ./src/core/encoder/... ./src/core/compiler/backend/railshot/... ./src/wago
+
+      - name: Allocation checker generated-code identity
+        if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: scripts/check-regalloc-code.sh
+
       - name: Compiler diagnostic tests
         if: matrix.runtime
         run: go test -count=1 -tags wago_codegenstats ./src/core/compiler/backend/railshot/... ./src/wago ./cli/runtime/internal/artifactcache
@@ -1175,12 +1183,14 @@ jobs:
         if: matrix.runtime
         run: just test tinygo
 
-      # Darwin/amd64 mirrors the Big Go matrix: the native JIT ABI is not yet
-      # implemented, but architecture-neutral compiler and encoder code must
-      # remain buildable and testable under TinyGo.
+      # TinyGo lacks the Darwin/amd64 JIT trampoline; ordinary Go supports it.
+      # Keep ordinary portable coverage and exercise the checker model and
+      # encoder negatives even where TinyGo cannot run the native JIT.
       - name: Portable compiler tests under TinyGo
         if: ${{ !matrix.runtime }}
-        run: tinygo test ./src/core/compiler/codegen ./src/core/compiler/ir ./src/core/encoder/amd64 ./src/core/encoder/arm64
+        run: |
+          tinygo test ./src/core/compiler/codegen ./src/core/compiler/ir ./src/core/encoder/amd64 ./src/core/encoder/arm64
+          tinygo test -tags=wago_regalloccheck ./internal/regalloccheck ./src/core/encoder/amd64 ./src/core/encoder/arm64
 
       # End-to-end smoke: the TinyGo-built JIT must execute a real module.
       - name: Smoke-run a real module

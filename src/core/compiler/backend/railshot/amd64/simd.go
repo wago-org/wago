@@ -21,6 +21,10 @@ func moduleLiteralIsland(policy CodegenPolicy) bool {
 }
 
 func (f *fn) materializeV128(e *elem) Reg {
+	if regallocCheckEnabled {
+		f.checkUse(e)
+	}
+
 	if e.isDeferred() {
 		panic("amd64: deferred v128 op not supported")
 	}
@@ -475,6 +479,9 @@ func (f *fn) preloadV128Consts(code []byte) {
 			}
 			f.buildV128Const(x, cand[i].lo, cand[i].hi)
 			f.vconsts = append(f.vconsts, v128ConstReg{lo: cand[i].lo, hi: cand[i].hi, reg: x})
+			if regallocCheckEnabled {
+				f.checkImmutable(x, true, 16)
+			}
 		}
 	}
 	reserve(true)

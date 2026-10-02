@@ -509,6 +509,9 @@ func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes ui
 	f.release(ref)
 	f.a.MovImm32(RDX, int32(localType))
 	f.a.MovImm32(RCX, int32(requiredBytes))
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	site := f.a.CallRel32()
 	f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubResolveObject))
 	f.stats.call("gcnative-leaf")
@@ -628,6 +631,9 @@ func (f *fn) emitNativeFinalCastArrayLen(typeIndex uint32, nullable bool) error 
 	} else {
 		f.a.MovImm32(RCX, 0)
 	}
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	site := f.a.CallRel32()
 	f.sc.gcArrayLenStubSites = append(f.sc.gcArrayLenStubSites, site)
 	f.stats.call("gcnative")
@@ -654,6 +660,9 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact bool) error
 	} else {
 		f.a.MovImm32(RSI, 0)
 	}
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	site := f.a.CallRel32()
 	f.sc.gcFinalCastStubSites = append(f.sc.gcFinalCastStubSites, site)
 	f.stats.call("gcnative")
@@ -677,6 +686,9 @@ func (f *fn) emitNativeDefinedTest(typeIndex uint32, nullable bool) error {
 		f.a.MovImm32(RCX, 0)
 	}
 	f.a.MovImm32(RSI, 0) // ref.test does not admit exact heap markers
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	site := f.a.CallRel32()
 	f.sc.gcDefinedTestStubSites = append(f.sc.gcDefinedTestStubSites, site)
 	f.stats.call("gcnative")
@@ -702,6 +714,9 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 		f.a.MovImm32(RSI, 1)
 	} else {
 		f.a.MovImm32(RSI, 0)
+	}
+	if regallocCheckEnabled {
+		f.checkCallClobber()
 	}
 	site := f.a.CallRel32()
 	f.sc.gcStructRefGetStubSites = append(f.sc.gcStructRefGetStubSites, site)
@@ -740,6 +755,9 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
 	}
 	f.a.MovImm32(RDX, int32(typeIndex))
 	f.a.MovImm32(RCX, int32(required))
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	site := f.a.CallRel32()
 	f.sc.gcStructRefSetStubSites = append(f.sc.gcStructRefSetStubSites, site)
 	f.stats.call("gcnative")
@@ -781,6 +799,9 @@ func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValT
 	f.a.Load64(RCX, RSP, f.spillOff(index.st.slotIndex()))
 	f.a.Load64(RSI, RSP, f.spillOff(value.st.slotIndex()))
 	f.a.MovImm32(RDX, int32(typeIndex))
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	site := f.a.CallRel32()
 	f.sc.gcArrayRefSetStubSites = append(f.sc.gcArrayRefSetStubSites, site)
 	f.stats.call("gcnative")
@@ -826,6 +847,9 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
 	f.release(index)
 	f.pinned = f.pinned.remove(RAX)
 	f.a.MovImm32(RDX, int32(typeIndex))
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
 	site := f.a.CallRel32()
 	f.sc.gcArrayRefGetSites = append(f.sc.gcArrayRefGetSites, site)
 	f.stats.call("gcnative")

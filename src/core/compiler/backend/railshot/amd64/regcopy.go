@@ -60,6 +60,7 @@ func (w *machineWindow) flush() {
 }
 
 func resolveRegMovesWindow(moves []regMove, emitMove func(dst, src Reg), emitSwap func(a, b Reg)) {
+
 	w := machineWindow{move: emitMove, swap: emitSwap}
 	resolveRegMoves(moves,
 		func(dst, src Reg) { w.append(machineOp{kind: machineMove, dst: dst, src: src}) },

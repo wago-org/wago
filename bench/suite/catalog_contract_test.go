@@ -365,7 +365,10 @@ func TestCatalogCIGates(t *testing.T) {
 				t.Fatal(err)
 			}
 			text := string(data)
-			if !strings.Contains(text, "go test -count=1 ./internal/semanticcorpus") {
+			// The local correctness recipe also enables the allocation checker; both
+			// command forms select the same manifest and provenance test package.
+			if !strings.Contains(text, "go test -count=1 ./internal/semanticcorpus") &&
+				!strings.Contains(text, "go test -tags=wago_regalloccheck -count=1 ./internal/semanticcorpus") {
 				t.Fatal("semantic manifest and provenance tests are not selected")
 			}
 			if file == ".just/test.just" && !strings.Contains(text, "quick corpus=env('CORPUS', 'all'):") {

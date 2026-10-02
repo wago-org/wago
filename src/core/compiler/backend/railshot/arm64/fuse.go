@@ -87,6 +87,10 @@ func (f *fn) flushBelow(node *elem) int {
 	for i, j := 0, len(below)-1; i < j; i, j = i+1, j-1 {
 		below[i], below[j] = below[j], below[i]
 	}
+	if regallocCheckEnabled {
+		f.checkBeginFlush(below)
+		defer f.checkEndFlush()
+	}
 	// Canonical stores must not overwrite any live prefix, condition or argument
 	// source. New allocator spills during materialization need the same floor.
 	oldFloor := f.spillFloor

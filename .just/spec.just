@@ -15,7 +15,7 @@ v1:
     set -euo pipefail
     command -v wast2json >/dev/null 2>&1 || { echo 'wast2json (wabt) not on PATH; install wabt'; exit 1; }
     test -f '{{ spec1 }}/i32.wast' || git submodule update --init tests/conformance/spec-v1
-    WAGO_SPECTEST_DIR='{{ spec1 }}' WAGO_SPEC_VERSION=1.0 go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
+    WAGO_SPECTEST_DIR='{{ spec1 }}' WAGO_SPEC_VERSION=1.0 go test -tags=wago_regalloccheck -count=1 -run TestSpecSuiteExec -v ./src/wago/
 
 # Run the pinned WebAssembly 2.0 core suite.
 v2:
@@ -23,8 +23,8 @@ v2:
     set -euo pipefail
     command -v wast2json >/dev/null 2>&1 || { echo 'wast2json (wabt) not on PATH; install wabt'; exit 1; }
     test -f '{{ spec2 }}/test/core/i32.wast' || git submodule update --init tests/conformance/spec-v2
-    go test -count=1 -run '^TestCoreV2Validation$' -v ./src/core/compiler/wasm/
-    go test -count=1 -run '^TestCoreV2SpecExecution$' -v ./src/wago/
+    go test -tags=wago_regalloccheck -count=1 -run '^TestCoreV2Validation$' -v ./src/core/compiler/wasm/
+    go test -tags=wago_regalloccheck -count=1 -run '^TestCoreV2SpecExecution$' -v ./src/wago/
 
 [private]
 wabt:
@@ -45,7 +45,7 @@ v3: wabt interpreter
     WAGO_WAST2JSON="$wast2json" WAGO_WABT_VERSION=1.0.41 \
     WAGO_SPEC_INTERPRETER="$interpreter" WAGO_SPEC_INTERPRETER_REVISION="$interpreter_revision" \
     WAGO_SPECTEST_DIR='{{ spec3 }}' WAGO_SPEC_VERSION=3.0 \
-      go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
+      go test -tags=wago_regalloccheck -count=1 -run TestSpecSuiteExec -v ./src/wago/
 
 # Run WebAssembly 3.0 with signal-backed bounds.
 v3-signals: wabt interpreter
@@ -58,7 +58,7 @@ v3-signals: wabt interpreter
     WAGO_BOUNDS=signals WAGO_WAST2JSON="$wast2json" WAGO_WABT_VERSION=1.0.41 \
     WAGO_SPEC_INTERPRETER="$interpreter" WAGO_SPEC_INTERPRETER_REVISION="$interpreter_revision" \
     WAGO_SPECTEST_DIR='{{ spec3 }}' WAGO_SPEC_VERSION=3.0 \
-      go test -tags wago_guardpage -count=1 -run TestSpecSuiteExec -v ./src/wago/
+      go test -tags wago_regalloccheck,wago_guardpage -count=1 -run TestSpecSuiteExec -v ./src/wago/
 
 # Refresh the committed WebAssembly 3.0 failure baseline.
 baseline:
@@ -70,4 +70,4 @@ simd:
     set -euo pipefail
     command -v wast2json >/dev/null 2>&1 || { echo 'wast2json (wabt) not on PATH; install wabt'; exit 1; }
     test -f '{{ spec1 }}/proposals/simd/simd_address.wast' || git submodule update --init tests/conformance/spec-v1
-    WAGO_SPECTEST_DIR='{{ spec1 }}' WAGO_SPEC_VERSION=simd go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
+    WAGO_SPECTEST_DIR='{{ spec1 }}' WAGO_SPEC_VERSION=simd go test -tags=wago_regalloccheck -count=1 -run TestSpecSuiteExec -v ./src/wago/
