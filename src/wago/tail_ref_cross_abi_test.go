@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/hex"
 	"testing"
 )
@@ -26,7 +27,7 @@ func TestReturnCallRefAcrossABIs(t *testing.T) {
 			{"loop_r", nil, 1234},
 			{"loop_w", nil, 1234},
 		} {
-			got, err := inst.InvokeValues(nil, tc.export, tc.args...)
+			got, err := inst.InvokeValues(context.Background(), tc.export, tc.args...)
 			if err != nil || len(got) != 1 || AsI32(got[0].Bits()) != tc.want {
 				t.Fatalf("%s = %v, %v; want %d", tc.export, got, err, tc.want)
 			}
@@ -60,7 +61,7 @@ func TestReturnCallRefWrapperCallerForeignTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumer.Close()
-	got, err := consumer.InvokeValues(nil, "cross")
+	got, err := consumer.InvokeValues(context.Background(), "cross")
 	if err != nil || len(got) != 1 || uint32(got[0].Bits()) != 3529314597 {
 		t.Fatalf("cross = %v, %v; want 3529314597", got, err)
 	}

@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/hex"
 	"testing"
 )
@@ -29,7 +30,7 @@ func TestExceptionRootSlotsZeroedAtFrameEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	got, err := in.InvokeValues(nil, "run")
+	got, err := in.InvokeValues(context.Background(), "run")
 	if err != nil || len(got) != 1 || AsI32(got[0].Bits()) != 180 {
 		t.Fatalf("run = %v, %v; want 180", got, err)
 	}

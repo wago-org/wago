@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/hex"
 	"testing"
 )
@@ -40,7 +41,7 @@ func TestGCTableAllocatingInitializerSharesOneObject(t *testing.T) {
 			t.Fatal(err)
 		}
 		for export, want := range map[string]int32{"same": 1, "shared": 41} {
-			got, err := in.InvokeValues(nil, export)
+			got, err := in.InvokeValues(context.Background(), export)
 			if err != nil || len(got) != 1 || AsI32(got[0].Bits()) != want {
 				in.Close()
 				t.Fatalf("%s = %v, %v; want %d", export, got, err, want)
