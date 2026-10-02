@@ -281,7 +281,10 @@ func (f *fn) materializeGCFrameLocal(index uint32) {
 func (f *fn) spillLocalsForCall() {
 	for _, x := range f.pinnedLocals {
 		reg, isFloat := f.locals[x].reg, f.locals[x].isFloat
-		if !f.usesCalls {
+		// Argument materialization may have reassigned a relinquished pin to a
+		// temporary. Its local already has a valid frame home; the eager model
+		// must honor that state too, instead of saving the temporary over it.
+		if !f.usesCalls && !f.pinRelinquished {
 			f.storeLocalReg(x, reg, isFloat) // old model: store all; reloaded after the call
 			continue
 		}
