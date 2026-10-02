@@ -391,7 +391,9 @@ func (b *Builder) readBlockType() (in, out []wasm.ValType, err error) {
 		}
 		return nil, []wasm.ValType{vt}, nil
 	}
-	x, err := b.r.I64()
+	// The block-type grammar is s33; a wider decoder would accept malformed
+	// overlong encodings before the index range check below.
+	x, err := b.r.S33()
 	if err != nil {
 		return nil, nil, err
 	}
