@@ -5,14 +5,19 @@ package build
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
+	"github.com/wago-org/wago/internal/atomicfile"
 	"golang.org/x/sys/unix"
 )
+
+const testLinuxSecurityLabelName = "user.wago-build-security-label"
 
 func TestBuildPreservesLinuxSELinuxLabel(t *testing.T) {
 	label := readOptionalLinuxTestXattr(t, "/bin/sh", "security.selinux")
@@ -64,6 +69,96 @@ func TestBuildPreservesLinuxSELinuxLabel(t *testing.T) {
 				requireTestSymlink(t, output)
 			}
 		})
+	}
+}
+
+func TestLinuxSecurityLabelMetadataRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source")
+	if err := os.WriteFile(source, []byte("source"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := []byte("access-domain:v1")
+	if err := unix.Setxattr(source, testLinuxSecurityLabelName, want, 0); err != nil {
+		if errors.Is(err, unix.ENOTSUP) || errors.Is(err, unix.EOPNOTSUPP) {
+			t.Skipf("extended attributes unavailable: %v", err)
+		}
+		t.Fatal(err)
+	}
+
+	fd, err := unix.Open(source, unix.O_WRONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { unix.Close(fd) })
+	labels, err := captureLinuxSecurityLabels(fd, []string{testLinuxSecurityLabelName})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(labels) != 1 || !labels[0].present || !bytes.Equal(labels[0].value, want) {
+		t.Fatalf("captured labels = %+v, want %q", labels, want)
+	}
+
+	stagedPath := filepath.Join(dir, "staged")
+	staged, err := os.OpenFile(stagedPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer staged.Close()
+	if err := applyBuildAccessMetadata(staged, nil, false, labels); err != nil {
+		t.Fatal(err)
+	}
+	if got := readOptionalLinuxTestXattr(t, stagedPath, testLinuxSecurityLabelName); !bytes.Equal(got, want) {
+		t.Fatalf("applied label = %q, want %q", got, want)
+	}
+
+	// A staged inode can inherit access metadata from its directory. Explicitly
+	// removing a label that was absent on the old output preserves that absence.
+	if err := applyBuildAccessMetadata(staged, nil, false, []buildOutputSecurityLabel{{name: testLinuxSecurityLabelName}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := unix.Getxattr(stagedPath, testLinuxSecurityLabelName, nil); !errors.Is(err, unix.ENODATA) {
+		t.Fatalf("removed label error = %v, want ENODATA", err)
+	}
+}
+
+func TestBuildSecurityLabelFailureLeavesOutputIntact(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "artifact.wago")
+	original := []byte("existing runnable artifact")
+	if err := os.WriteFile(target, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := buildOutputMetadata{
+		set: true, uid: os.Getuid(), gid: os.Getgid(),
+		securityLabels: []buildOutputSecurityLabel{{name: "invalid\x00label", value: []byte("value"), present: true}},
+	}
+	err = atomicfile.ReplaceFile(target, atomicfile.Options{Mode: info.Mode().Perm(), ModeSet: true}, func(writer io.Writer) error {
+		if _, err := writer.Write([]byte("replacement")); err != nil {
+			return err
+		}
+		return applyBuildOutputMetadata(writer, metadata)
+	})
+	if err == nil || !strings.Contains(err.Error(), "preserve output access metadata") {
+		t.Fatalf("replace with invalid security label = %v", err)
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("failed replacement changed artifact to %q", got)
+	}
+	temporary, err := filepath.Glob(filepath.Join(dir, ".wago-atomic-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(temporary) != 0 {
+		t.Fatalf("failed replacement left temporary files: %v", temporary)
 	}
 }
 

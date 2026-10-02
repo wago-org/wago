@@ -14,9 +14,27 @@ import (
 // Options controls construction and publication. Sync flushes file contents
 // before the atomic replacement; it does not promise parent-directory durability.
 type Options struct {
-	Mode  fs.FileMode
-	Sync  bool
-	Hooks *Hooks
+	Mode fs.FileMode
+	// ModeSet distinguishes an intentional mode 000 from an omitted Mode.
+	// Non-zero Mode values remain explicit for compatibility with existing callers.
+	ModeSet bool
+	// ApplyUmask derives the final Mode through the kernel's process umask while
+	// deferring that mode until the artifact-bearing temporary file is finalized.
+	ApplyUmask bool
+	Sync       bool
+	// RequireExistingParent prevents ReplaceFile from creating a missing parent.
+	// The default remains parent creation for compatibility with existing callers.
+	RequireExistingParent bool
+	// BeforeReplace validates caller-specific state after the temporary file is
+	// finalized and destination type is checked, immediately before replacement.
+	BeforeReplace func(destination string) error
+	// RetainReplaceHandle asks ReplaceFile to reserve platform-specific staging,
+	// publication, and cleanup authority when the temporary file is created. Build
+	// uses it for Windows DACL changes and Linux/Darwin private artifact staging.
+	// Linux isolates a mode-zero direct child before writing bytes; Darwin samples
+	// missing-output inheritance with a separate empty probe.
+	RetainReplaceHandle bool
+	Hooks               *Hooks
 }
 
 // Hooks supports deterministic failure testing at pre-commit boundaries.
@@ -27,17 +45,32 @@ type Hooks struct {
 	Replace func(source, destination string) error
 }
 
+// These helpers centralize cold failure construction. Atomic publication has
+// many deliberate checks; preventing compiler expansion at each call site keeps
+// their linked-code cost bounded without allocating on successful builds.
+//
+//go:noinline
+func joinErrors(values ...error) error { return errors.Join(values...) }
+
+//go:noinline
+func formatError(format string, values ...any) error { return fmt.Errorf(format, values...) }
+
+//go:noinline
+func newError(message string) error {
+	return errors.New(message)
+}
+
 // ReplaceFile writes a unique restrictive temporary file in the destination
 // directory, finalizes it, and atomically replaces destination. Existing
 // directories, symlinks, and non-regular files are rejected.
-func ReplaceFile(destination string, options Options, write func(io.Writer) error) error {
+func ReplaceFile(destination string, options Options, write func(io.Writer) error) (resultErr error) {
 	if write == nil {
-		return errors.New("atomic file writer is nil")
+		return newError("atomic file writer is nil")
 	}
 	if err := validateDestination(destination); err != nil {
 		return err
 	}
-	file, err := createTemp(destination)
+	file, finalizeOptions, reservation, err := createReplacementTemp(destination, options)
 	if err != nil {
 		return err
 	}
@@ -45,17 +78,36 @@ func ReplaceFile(destination string, options Options, write func(io.Writer) erro
 	closed := false
 	committed := false
 	defer func() {
+		var closeFileErr, cleanupErr error
 		if !closed {
-			_ = file.Close()
+			closeFileErr = file.Close()
 		}
 		if !committed {
-			_ = os.Remove(temporary)
+			if reservation.valid() {
+				cleanupErr = reservation.remove()
+			} else {
+				cleanupErr = os.Remove(temporary)
+			}
+		}
+		closeReservationErr := reservation.close()
+		if closeFileErr != nil {
+			resultErr = joinErrors(resultErr, formatError("close temporary file during cleanup: %w", closeFileErr))
+		}
+		if cleanupErr != nil {
+			resultErr = joinErrors(resultErr, formatError("remove temporary file during cleanup: %w", cleanupErr))
+		}
+		// Retained handles carry only publication and cleanup authority; the
+		// artifact writer was already finalized and closed before replacement.
+		// Once replacement commits, a close failure cannot invalidate the visible
+		// artifact and must not turn successful publication into a false failure.
+		if closeReservationErr != nil && !committed {
+			resultErr = joinErrors(resultErr, formatError("close retained replacement handle: %w", closeReservationErr))
 		}
 	}()
 	if err := write(file); err != nil {
-		return fmt.Errorf("write temporary file: %w", err)
+		return formatError("write temporary file: %w", err)
 	}
-	if err := finalize(file, options); err != nil {
+	if err := finalize(file, finalizeOptions); err != nil {
 		closed = true
 		return err
 	}
@@ -63,8 +115,11 @@ func ReplaceFile(destination string, options Options, write func(io.Writer) erro
 	if err := validateDestination(destination); err != nil {
 		return err
 	}
-	if err := replace(options, temporary, destination); err != nil {
-		return fmt.Errorf("replace %s: %w", destination, err)
+	if err := validateBeforeReplace(options, destination); err != nil {
+		return err
+	}
+	if err := replace(options, reservation, temporary, destination); err != nil {
+		return formatError("replace %s: %w", destination, err)
 	}
 	committed = true
 	return nil
@@ -85,13 +140,21 @@ func CreateTemp(destination string) (*os.File, error) {
 // pre-commit failure.
 func CommitTempFile(temporary, destination string, options Options) error {
 	committed := false
+	// Install cleanup before validating options because the caller transfers
+	// ownership of the staged pathname even when publication is rejected.
 	defer func() {
 		if !committed {
 			_ = os.Remove(temporary)
 		}
 	}()
+	if options.ApplyUmask {
+		return newError("atomic file ApplyUmask requires ReplaceFile")
+	}
+	if options.RetainReplaceHandle {
+		return newError("atomic file RetainReplaceHandle requires ReplaceFile")
+	}
 	if filepath.Clean(filepath.Dir(temporary)) != filepath.Clean(filepath.Dir(destination)) {
-		return errors.New("atomic temporary file must be in the destination directory")
+		return newError("atomic temporary file must be in the destination directory")
 	}
 	if err := validateDestination(destination); err != nil {
 		return err
@@ -113,8 +176,11 @@ func CommitTempFile(temporary, destination string, options Options) error {
 	if err := validateDestination(destination); err != nil {
 		return err
 	}
-	if err := replace(options, temporary, destination); err != nil {
-		return fmt.Errorf("replace %s: %w", destination, err)
+	if err := validateBeforeReplace(options, destination); err != nil {
+		return err
+	}
+	if err := replace(options, retainedReplaceHandle{}, temporary, destination); err != nil {
+		return formatError("replace %s: %w", destination, err)
 	}
 	committed = true
 	return nil
@@ -128,21 +194,29 @@ func ReplaceExisting(source, destination string) error {
 }
 
 func createTemp(destination string) (*os.File, error) {
+	return createTempWithParentPolicy(destination, false)
+}
+
+func createTempWithParentPolicy(destination string, requireExistingParent bool) (*os.File, error) {
 	directory := filepath.Dir(destination)
-	if err := os.MkdirAll(directory, 0o755); err != nil {
-		return nil, err
+	if !requireExistingParent {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			return nil, err
+		}
 	}
 	return os.CreateTemp(directory, ".wago-atomic-*")
 }
 
 func finalize(file *os.File, options Options) error {
-	mode := options.Mode.Perm()
-	if mode == 0 {
-		mode = 0o600
-	}
-	if err := file.Chmod(mode); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("set temporary file mode: %w", err)
+	if !options.ApplyUmask {
+		mode := options.Mode.Perm()
+		if !options.ModeSet && mode == 0 {
+			mode = 0o600
+		}
+		if err := file.Chmod(mode); err != nil {
+			_ = file.Close()
+			return formatError("set temporary file mode: %w", err)
+		}
 	}
 	if options.Sync {
 		syncFile := (*os.File).Sync
@@ -151,7 +225,7 @@ func finalize(file *os.File, options Options) error {
 		}
 		if err := syncFile(file); err != nil {
 			_ = file.Close()
-			return fmt.Errorf("sync temporary file: %w", err)
+			return formatError("sync temporary file: %w", err)
 		}
 	}
 	if options.Hooks != nil && options.Hooks.Close != nil {
@@ -160,18 +234,61 @@ func finalize(file *os.File, options Options) error {
 			// This matters on Windows, where an open temporary file cannot be
 			// removed or moved reliably during cleanup.
 			_ = file.Close()
-			return fmt.Errorf("close temporary file: %w", err)
+			return formatError("close temporary file: %w", err)
 		}
 	}
 	if err := file.Close(); err != nil {
-		return fmt.Errorf("close temporary file: %w", err)
+		return formatError("close temporary file: %w", err)
 	}
 	return nil
 }
 
-func replace(options Options, source, destination string) error {
+func createReplacementTemp(destination string, options Options) (*os.File, Options, retainedReplaceHandle, error) {
+	if !options.ApplyUmask {
+		file, reservation, err := createReplacementTempWithOptions(destination, options)
+		return file, options, reservation, err
+	}
+	if !options.ModeSet && options.Mode.Perm() == 0 {
+		return nil, options, retainedReplaceHandle{}, newError("atomic file ApplyUmask requires an explicit mode")
+	}
+	mode, err := probeUmaskMode(destination, options.Mode.Perm(), options.RequireExistingParent)
+	if err != nil {
+		return nil, options, retainedReplaceHandle{}, err
+	}
+	file, reservation, err := createReplacementTempWithOptions(destination, options)
+	if err != nil {
+		return nil, options, retainedReplaceHandle{}, err
+	}
+	// The empty probe obtains the process-umask result without exposing the real
+	// artifact temp. Restore that mode only after its complete contents are ready.
+	options.Mode, options.ModeSet, options.ApplyUmask = mode, true, false
+	return file, options, reservation, nil
+}
+
+func createReplacementTempWithOptions(destination string, options Options) (*os.File, retainedReplaceHandle, error) {
+	if options.RetainReplaceHandle {
+		return createRetainedReplacementTemp(destination, options.RequireExistingParent)
+	}
+	file, err := createTempWithParentPolicy(destination, options.RequireExistingParent)
+	return file, retainedReplaceHandle{}, err
+}
+
+func validateBeforeReplace(options Options, destination string) error {
+	if options.BeforeReplace == nil {
+		return nil
+	}
+	if err := options.BeforeReplace(destination); err != nil {
+		return formatError("validate destination before replace: %w", err)
+	}
+	return nil
+}
+
+func replace(options Options, reservation retainedReplaceHandle, source, destination string) error {
 	if options.Hooks != nil && options.Hooks.Replace != nil {
 		return options.Hooks.Replace(source, destination)
+	}
+	if reservation.valid() {
+		return reservation.replace(destination)
 	}
 	return replaceExisting(source, destination)
 }
@@ -182,13 +299,13 @@ func validateDestination(path string) error {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("inspect destination %s: %w", path, err)
+		return formatError("inspect destination %s: %w", path, err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("destination %s is a symlink", path)
+		return formatError("destination %s is a symlink", path)
 	}
 	if !info.Mode().IsRegular() {
-		return fmt.Errorf("destination %s is not a regular file", path)
+		return formatError("destination %s is not a regular file", path)
 	}
 	return nil
 }
@@ -199,7 +316,7 @@ func validateRegular(path, label string) error {
 		return err
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return fmt.Errorf("%s %s is not a regular file", label, path)
+		return formatError("%s %s is not a regular file", label, path)
 	}
 	return nil
 }
@@ -214,7 +331,7 @@ func validateOpenFile(file *os.File, path string) error {
 		return err
 	}
 	if !opened.Mode().IsRegular() || linked.Mode()&os.ModeSymlink != 0 || !os.SameFile(opened, linked) {
-		return fmt.Errorf("temporary file %s changed before publication", path)
+		return formatError("temporary file %s changed before publication", path)
 	}
 	return nil
 }
