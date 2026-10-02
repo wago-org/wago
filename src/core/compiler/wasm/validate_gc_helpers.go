@@ -111,7 +111,15 @@ func (v *moduleValidator) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int,
 
 func (v *moduleValidator) validateSubtypeMetadata() error {
 	flat := v.flattenedSubTypeRefs()
-	for _, cur := range flat {
+	for flatIdx, cur := range flat {
+		member := flatIdx - v.typeGroupBases[cur.recGroup]
+		// Most modules have no custom descriptors. Keep their validation path to
+		// two inline bit tests instead of calling the full metadata checker.
+		if cur.st.Metadata.Describes.Present() || cur.st.Metadata.Descriptor.Present() {
+			if err := v.validateDescriptorMetadata(cur.st, cur.recGroup, member); err != nil {
+				return err
+			}
+		}
 		for _, supIdx := range cur.st.Supers {
 			supFlat, ok := v.flatTypeIdxInRecGroup(supIdx, cur.recGroup)
 			if !ok {
@@ -126,6 +134,9 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 			}
 			if cur.st.Comp.Kind != sup.Comp.Kind {
 				return v.err(ErrTypeMismatch, "supertype kind")
+			}
+			if err := v.validateDescriptorSubtypeMetadata(cur.st, cur.recGroup, sup, supGroup); err != nil {
+				return err
 			}
 			if !v.compTypeSubtype(cur.st.Comp, cur.recGroup, sup.Comp, supGroup) {
 				return v.err(ErrTypeMismatch, "subtype does not match supertype")
@@ -158,6 +169,97 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 		if err := visit(i); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (v *moduleValidator) validateDescriptorMetadata(st *SubType, recGroup, member int) error {
+	describes, hasDescribes := st.Metadata.Describes.Get()
+	descriptor, hasDescriptor := st.Metadata.Descriptor.Get()
+	if !hasDescribes && !hasDescriptor {
+		return nil
+	}
+	if st.Comp.Kind != CompStruct {
+		return v.err(ErrTypeMismatch, "descriptor metadata requires struct type")
+	}
+
+	// Descriptor edges are reciprocal within one recursion group. Requiring
+	// describes to point backward also orients descriptor chains without cycles.
+	self := TypeIdx{Index: uint32(member), Rec: true}
+	checkLink := func(idx TypeIdx, describesEdge bool) error {
+		if !idx.Rec || idx.Index >= uint32(len(v.m.Types[recGroup].SubTypes)) {
+			return v.err(ErrTypeMismatch, "descriptor metadata crosses recursion group")
+		}
+		if describesEdge && idx.Index >= uint32(member) {
+			return v.err(ErrTypeMismatch, "describes must name an earlier type")
+		}
+		other := &v.m.Types[recGroup].SubTypes[idx.Index]
+		if other.Comp.Kind != CompStruct {
+			return v.err(ErrTypeMismatch, "descriptor type mismatch")
+		}
+		// Keep both ends equally extensible. If only one were final, the complete-
+		// square rule would make the declared-open end impossible to subtype.
+		if st.Final != other.Final {
+			return v.err(ErrTypeMismatch, "descriptor metadata finality mismatch")
+		}
+		var reverse OptionalTypeIdx
+		if describesEdge {
+			reverse = other.Metadata.Descriptor
+		} else {
+			reverse = other.Metadata.Describes
+		}
+		back, present := reverse.Get()
+		if !present || back != self {
+			return v.err(ErrTypeMismatch, "descriptor metadata is not reciprocal")
+		}
+		return nil
+	}
+	if hasDescribes {
+		if err := checkLink(describes, true); err != nil {
+			return err
+		}
+	}
+	if hasDescriptor {
+		if err := checkLink(descriptor, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (v *moduleValidator) validateDescriptorSubtypeMetadata(sub *SubType, subGroup int, sup *SubType, supGroup int) error {
+	// Each declared subtype edge must be mirrored by its descriptor and
+	// describes edges. This is the custom-descriptor "complete square" rule.
+	if err := v.validateDescriptorSubtypeEdge(sub.Metadata.Descriptor, subGroup, sup.Metadata.Descriptor, supGroup); err != nil {
+		return err
+	}
+	return v.validateDescriptorSubtypeEdge(sub.Metadata.Describes, subGroup, sup.Metadata.Describes, supGroup)
+}
+
+func (v *moduleValidator) validateDescriptorSubtypeEdge(sub OptionalTypeIdx, subGroup int, sup OptionalTypeIdx, supGroup int) error {
+	subIdx, subPresent := sub.Get()
+	supIdx, supPresent := sup.Get()
+	if subPresent != supPresent {
+		return v.err(ErrTypeMismatch, "descriptor metadata differs from supertype")
+	}
+	if !subPresent {
+		return nil
+	}
+	subFlat, subOK := v.flatTypeIdxInRecGroup(subIdx, subGroup)
+	supFlat, supOK := v.flatTypeIdxInRecGroup(supIdx, supGroup)
+	if !subOK || !supOK {
+		return v.err(ErrUnknownType, "descriptor subtype")
+	}
+	descriptor, descriptorGroup, ok := v.subtypeByFlatTypeIdx(subFlat)
+	if !ok || len(descriptor.Supers) != 1 {
+		return v.err(ErrTypeMismatch, "incomplete descriptor subtype square")
+	}
+	descriptorSuper, ok := v.flatTypeIdxInRecGroup(descriptor.Supers[0], descriptorGroup)
+	if !ok {
+		return v.err(ErrUnknownType, "descriptor supertype")
+	}
+	if descriptorSuper != supFlat {
+		return v.err(ErrTypeMismatch, "incomplete descriptor subtype square")
 	}
 	return nil
 }

@@ -471,10 +471,13 @@ func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 	mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(
 		wasmtest.FuncType(nil, nil),
 		[]byte{
-			0x4e, 0x03, // rec group with three struct subtypes; flattened base is type 1.
-			0x50, 0x00, 0x4d, 0x03, 0x5f, 0x00, // type 1: open struct, descriptor type 3.
-			0x50, 0x01, 0x01, 0x5f, 0x01, 0x7f, 0x00, // type 2: open struct <: type 1, i32 field.
-			0x4f, 0x01, 0x02, 0x5f, 0x02, 0x7f, 0x00, 0x63, 0x02, 0x00, // type 3: final struct <: type 2, i32 prefix plus (ref null type 2).
+			0x4e, 0x06, // rec group with three described types and their descriptors; flattened base is type 1.
+			0x50, 0x00, 0x4d, 0x04, 0x5f, 0x00, // type 1: open struct, descriptor type 4.
+			0x50, 0x01, 0x01, 0x4d, 0x05, 0x5f, 0x01, 0x7f, 0x00, // type 2: open struct <: type 1, descriptor type 5, i32 field.
+			0x4f, 0x01, 0x02, 0x4d, 0x06, 0x5f, 0x02, 0x7f, 0x00, 0x63, 0x02, 0x00, // type 3: final struct <: type 2, descriptor type 6, i32 prefix plus (ref null type 2).
+			0x50, 0x00, 0x4c, 0x01, 0x5f, 0x00, // type 4: open descriptor for type 1.
+			0x50, 0x01, 0x04, 0x4c, 0x02, 0x5f, 0x00, // type 5: open descriptor for type 2, subtype of type 4.
+			0x4f, 0x01, 0x05, 0x4c, 0x03, 0x5f, 0x00, // type 6: final descriptor for type 3, subtype of type 5.
 		},
 	)))
 	m, err := wasm.DecodeModule(mod)
@@ -482,8 +485,8 @@ func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 		t.Fatalf("DecodeModule: %v", err)
 	}
 	group := m.Types[1].SubTypes
-	if idx, ok := group[0].Metadata.Descriptor.Get(); !ok || !idx.Rec || idx.Index != 2 {
-		t.Fatalf("descriptor index = %#v, want rec 2", idx)
+	if idx, ok := group[0].Metadata.Descriptor.Get(); !ok || !idx.Rec || idx.Index != 3 {
+		t.Fatalf("descriptor index = %#v, want rec 3", idx)
 	}
 	if idx := group[1].Supers[0]; !idx.Rec || idx.Index != 0 {
 		t.Fatalf("middle super index = %#v, want rec 0", idx)
@@ -502,7 +505,7 @@ func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildGCTypeDescs: %v", err)
 	}
-	if len(descs) != 4 {
+	if len(descs) != 7 {
 		t.Fatalf("len(descs)=%d", len(descs))
 	}
 	if !descs[2].HasSuper || descs[2].Super != 1 {
