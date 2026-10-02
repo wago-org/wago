@@ -68,6 +68,11 @@ func (f *fn) checkSeed(e *elem) {
 		return
 	}
 	size := checkSize(e.st.typ)
+	// Deferred comparisons carry the operand width until condensation, but
+	// their result is an i32 even when both inputs are i64.
+	if e.isDeferred() && (isCompare(e.deferredOp()) || e.deferredOp() == opEqz) {
+		size = 4
+	}
 	if loc, ok := f.checkLocation(e); ok {
 		c.values[e] = c.state.Seed(loc, size)
 	} else {
