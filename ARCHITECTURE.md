@@ -381,6 +381,13 @@ shape, the backend then trusts it.
 
 ## 4. Back end — Valent-Block code generation (`src/core/compiler/backend/railshot`)
 
+Recovered AMD64/ARM64 code-generation panics are `wago.InternalCompilerError`
+values, so callers and fuzzers can distinguish compiler defects with `errors.As`
+from ordinary Wasm rejection. They preserve the backend, absolute function index,
+current bytecode offset when available, original panic, and a bounded 16 KiB Go
+stack snapshot. TinyGo omits the stack snapshot. `WAGO_DEBUG_PANIC=1` rethrows the
+original panic, including register exhaustion; ordinary compile errors are unchanged.
+
 Small operand arenas use half the body bytes plus local and immediate-free
 instruction allowances. The density counter saturates at 256 and occupies two
 padding bytes in each backend's 28-byte hint header. It is only a size hint:
