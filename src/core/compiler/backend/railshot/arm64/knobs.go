@@ -11,6 +11,13 @@ import (
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
+	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
+	optimization.Bind("swar-idioms", &swarIdiomsEnabled),
+	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
+	optimization.Bind("fcmp-fuse", &fcmpFuseEnabled),
+	optimization.Bind("magic-div", &magicDivEnabled),
+	optimization.Bind("shared-trap-body", &sharedTrapBodyEnabled),
+	optimization.Bind("shared-adapters", &sharedAdaptersEnabled),
 	optimization.Bind("st-flags", &stFlagsEnabled),
 	optimization.Bind("reg-merge", &regMergeEnabled),
 	optimization.Bind("tee-sink", &teeLocalSinkEnabled),
@@ -27,7 +34,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("entry-zero-pairs", &entryZeroPairsEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
 	optimization.Bind("x8-pin", &callFreeX8PinEnabled),
-	optimization.Bind("deep-fp-pins", &deepFPPinsEnabled),
 	optimization.Bind("ext-fp-pins", &extendedFPPinsEnabled),
 	optimization.Bind("leaf-scratch-pins", &leafScratchPinsEnabled),
 	optimization.Bind("immutable-table", &immutableLocalTableEnabled),
@@ -36,12 +42,13 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("store-forward", &linearStoreForwardEnabled),
 	optimization.Bind("frame-elide-reghomed", &frameElideRegHomed),
 	optimization.Bind("small-frame", &smallFrameAdjustEnabled),
-	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
+	optimization.Bind("zero-branch", &zeroBranchEnabled),
+	optimization.Bind("mul-add-fuse", &mulAddFuseEnabled),
+	optimization.Bind("entry-init-elision", &entryInitElisionEnabled),
+	optimization.Bind("v128-direct-results", &v128DirectResultEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
-	optimization.Bind("v128-sink", &v128LocalSinkEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
-	optimization.Bind("inline-loop-callees", &inlineLoopCallees),
 	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
 	optimization.Bind("loop-region-pins", &loopRegionPinsEnabled),
 	optimization.Bind("immutable-poly-fastpath", &immutableLocalPolyFastPath),
@@ -53,6 +60,13 @@ var optimizationBindings = optimization.NewBindings("arm64",
 
 var (
 	optBoundsFacts           = optimizationBindings.Option("bounds-facts")
+	optSIMDSuperopt          = optimizationBindings.Option("simd-superopt")
+	optSWARIdioms            = optimizationBindings.Option("swar-idioms")
+	optIntervalRegionPins    = optimizationBindings.Option("interval-region-pins")
+	optFCmpFuse              = optimizationBindings.Option("fcmp-fuse")
+	optMagicDiv              = optimizationBindings.Option("magic-div")
+	optSharedTrapBody        = optimizationBindings.Option("shared-trap-body")
+	optSharedAdapters        = optimizationBindings.Option("shared-adapters")
 	optSTFlags               = optimizationBindings.Option("st-flags")
 	optRegMerge              = optimizationBindings.Option("reg-merge")
 	optTeeSink               = optimizationBindings.Option("tee-sink")
@@ -69,7 +83,6 @@ var (
 	optEntryZeroPairs        = optimizationBindings.Option("entry-zero-pairs")
 	optEntryArgPins          = optimizationBindings.Option("entry-arg-pins")
 	optX8Pin                 = optimizationBindings.Option("x8-pin")
-	optDeepFPPins            = optimizationBindings.Option("deep-fp-pins")
 	optExtendedFPPins        = optimizationBindings.Option("ext-fp-pins")
 	optLeafScratchPins       = optimizationBindings.Option("leaf-scratch-pins")
 	optImmutableTable        = optimizationBindings.Option("immutable-table")
@@ -78,12 +91,13 @@ var (
 	optStoreForward          = optimizationBindings.Option("store-forward")
 	optFrameElideRegHomed    = optimizationBindings.Option("frame-elide-reghomed")
 	optSmallFrame            = optimizationBindings.Option("small-frame")
-	optV128ConstCache        = optimizationBindings.Option("v128-const-cache")
+	optZeroBranch            = optimizationBindings.Option("zero-branch")
+	optMulAddFuse            = optimizationBindings.Option("mul-add-fuse")
+	optEntryInitElision      = optimizationBindings.Option("entry-init-elision")
+	optV128DirectResults     = optimizationBindings.Option("v128-direct-results")
 	optV128Pins              = optimizationBindings.Option("v128-pins")
-	optV128Sink              = optimizationBindings.Option("v128-sink")
 	optRegABI                = optimizationBindings.Option("reg-abi")
 	optInline                = optimizationBindings.Option("inline")
-	optInlineLoopCallees     = optimizationBindings.Option("inline-loop-callees")
 	optLoopPrecheck          = optimizationBindings.Option("loop-precheck")
 	optLoopRegionPins        = optimizationBindings.Option("loop-region-pins")
 	optImmutablePolyFastPath = optimizationBindings.Option("immutable-poly-fastpath")

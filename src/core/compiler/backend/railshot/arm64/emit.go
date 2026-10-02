@@ -1161,7 +1161,7 @@ func isValueMul(e *elem) bool {
 // result register or regNone when the shape does not apply. Gated by
 // WAGO_NO_MULADD as the A/B oracle.
 func (f *fn) tryMulAddFuse(node *elem, dest Reg, w bool) Reg {
-	if !mulAddFuseEnabled {
+	if !f.opt(optMulAddFuse) {
 		return regNone
 	}
 	var mul, addend *elem

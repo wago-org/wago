@@ -1,0 +1,13 @@
+goos: darwin
+goarch: arm64
+pkg: wagobench
+cpu: Apple M4 Max
+BenchmarkMatrixCompileFull/json-as-simd         	     756	   1398218 ns/op	  385902 B/op	    1411 allocs/op
+BenchmarkMatrixCompileFull/blake-as-simd        	    1140	   1078731 ns/op	  495130 B/op	     329 allocs/op
+BenchmarkMatrixCompileFull/utf-as-simd          	    2115	    581719 ns/op	  313530 B/op	     398 allocs/op
+BenchmarkMatrixExec/json-as-simd.serializeN     	   52136	     23002 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/json-as-simd.deserializeN   	   24559	     48706 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/blake-as-simd.hashN         	    3020	    396550 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/utf-as-simd.convertN        	   21619	     55616 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/utf-as-simd.validateN       	    8652	    138766 ns/op	       0 B/op	       0 allocs/op
+PASS

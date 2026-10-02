@@ -1,0 +1,50 @@
+=== RUN   TestOptimizationMatrixInventory
+MATRIX_OPT	bounds-facts	true	false	Bounds facts	straight-line bounds-check elision
+MATRIX_OPT	simd-superopt	true	false	SIMD superoptimization	recognize bounded multi-operation SIMD sequences
+MATRIX_OPT	swar-idioms	true	false	SWAR idioms	recognize bounded open-coded packed-byte algorithms
+MATRIX_OPT	interval-region-pins	true	false	Interval-region pins	reuse registers across bounded straight-line local lifetimes
+MATRIX_OPT	fcmp-fuse	true	false	Float compare fusion	fuse ordered floating-point comparisons into conditional branches
+MATRIX_OPT	magic-div	true	false	Magic division	lower constant integer division through multiply-high sequences
+MATRIX_OPT	shared-trap-body	true	false	Shared trap bodies	share repeated cold trap bodies in size-oriented code
+MATRIX_OPT	shared-adapters	true	false	Shared adapters	share byte-identical host adapters in size-oriented code
+MATRIX_OPT	st-flags	true	false	Flags results	keep comparison results in the flags register
+MATRIX_OPT	store8-flags	true	false	Byte-store flags	sink comparison results directly into byte stores
+MATRIX_OPT	reg-merge	true	false	Register merge	keep block results in registers across joins
+MATRIX_OPT	tee-sink	true	false	Tee sinking	sink local.tee expressions into local registers
+MATRIX_OPT	unary-sink	true	false	Unary sinking	sink unary and conversion expressions in place
+MATRIX_OPT	branch-fold	true	false	Branch folding	fold branch pairs into one conditional branch
+MATRIX_OPT	value-facts	true	false	Value facts	propagate bounded upper-zero and boolean provenance
+MATRIX_OPT	entry-arg-pins	true	false	Entry argument pins	keep entry arguments in incoming registers
+MATRIX_OPT	ext-fp-pins	true	false	Extended float pins	use the larger floating-point register pool
+MATRIX_OPT	call-next-use	false	false	Call next-use	skip dead pinned-local stores before calls
+MATRIX_OPT	affine-lea	false	false	Affine LEA	fold bounded affine index trees into scaled addressing
+MATRIX_OPT	tree-order	true	false	Valent tree ordering	schedule bounded commutative trees by register need
+MATRIX_OPT	assoc-tree	true	false	Associative tree cover	cover high-pressure bounded associative trees with one accumulator
+MATRIX_OPT	bmi2-rorx	true	true	BMI2 rotates	use non-destructive immediate rotates on BMI2 hosts
+MATRIX_OPT	vex-float-mem	true	false	VEX memory operands	fold scalar float loads into AVX operations
+MATRIX_OPT	multi-bounds-cert	true	false	Multiple bounds proofs	retain independent proofs for interleaved arrays
+MATRIX_OPT	addr-zext-elim	true	false	Memory32 address cleanup	skip redundant zero-extension of proven-clean memory32 addresses
+MATRIX_OPT	immutable-table	true	false	Immutable tables	specialize calls through never-written tables
+MATRIX_OPT	immutable-table-type	true	false	Immutable table types	skip redundant immutable-table type checks
+MATRIX_OPT	inline-callfree	true	false	Call-free inline hints	prioritize call-free functions for inlining
+MATRIX_OPT	store-forward	true	false	Store forwarding	forward straight-line stores into loads
+MATRIX_OPT	frame-elide	true	false	Frame elision	omit frames for small single-result functions
+MATRIX_OPT	compact-i32-frame	true	false	Compact i32 frames	pack i32 locals in straight-line call-free functions
+MATRIX_OPT	local-slot-order	true	false	Symbolic local slot packing	move exact referenced local homes into zero-reference compact slots
+MATRIX_OPT	tee-spill-elide	false	false	Reuse tee spill homes	reuse a local.tee frame slot when spilling its still-live scalar result
+MATRIX_OPT	commute-self-update	false	false	Commute self-updates	make non-fixed destinations accumulate commutative self-update expressions in place
+MATRIX_OPT	i64-mask32	true	false	Low-32 mask lowering	lower i64 low-32 masks to zero-extending 32-bit ANDs
+MATRIX_OPT	accumulator-immediate	true	false	Accumulator immediates	use ModRM-free RAX/EAX imm32 encodings in size objectives
+MATRIX_OPT	dead-gc-new	true	false	Dead GC constructors	remove dropped GC constructor trees while preserving traps
+MATRIX_OPT	gc-ref-facts	true	false	GC reference facts	propagate exact reference facts and dependent bounded forwarding proofs
+MATRIX_OPT	gc-native-alloc	true	false	Native GC allocation	allocate admitted GC objects through native nursery fast paths
+MATRIX_OPT	v128-const-cache	true	false	Vector constant cache	reserve vector registers for repeated constants
+MATRIX_OPT	v128-pins	true	false	Vector pins	pin hot vector locals in registers
+MATRIX_OPT	v128-sink	false	false	Vector sinking	sink vector operations into pinned locals
+MATRIX_OPT	reg-abi	true	false	Register ABI	use Wago's internal register calling convention
+MATRIX_OPT	inline	true	false	Inlining	inline eligible callees
+MATRIX_OPT	loop-precheck	false	false	Loop prechecks	hoist invariant bounds checks before loops
+MATRIX_OPT	stack-fence	true	false	Stack fence	emit the stack-overflow guard fence
+MATRIX_OPT	stack-reg	true	false	Stack register	keep the guest stack pointer in a register
+--- PASS: TestOptimizationMatrixInventory (0.00s)
+PASS

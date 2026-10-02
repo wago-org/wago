@@ -15,6 +15,10 @@ import (
 // NaN-safe Jcc instead of materializing a boolean. Go's native <,>,<=,>= already
 // return false on NaN, matching wasm, so they are the oracle.
 func TestFloatCompareBranchFusion(t *testing.T) {
+	before := fcmpFuseEnabled
+	fcmpFuseEnabled = true
+	t.Cleanup(func() { fcmpFuseEnabled = before })
+
 	// opcodes: [lt, gt, le, ge] for f32 (0x5d..0x60) and f64 (0x63..0x66).
 	type opc struct {
 		name   string

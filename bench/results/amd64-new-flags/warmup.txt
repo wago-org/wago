@@ -1,0 +1,9 @@
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 7800X3D 8-Core Processor           
+BenchmarkMatrixCompileFull/tiny         	    1342	     21004 ns/op	   15227 B/op	      75 allocs/op
+BenchmarkMatrixCompileFull/fib_iter     	    1612	     23251 ns/op	   18292 B/op	      84 allocs/op
+BenchmarkMatrixExec/tiny.add            	 3766484	         8.013 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/fib_iter.fib        	 1481908	        20.18 ns/op	       0 B/op	       0 allocs/op
+PASS

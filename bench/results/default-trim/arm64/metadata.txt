@@ -1,0 +1,8 @@
+utc=2026-08-22T23:07:04Z
+commit=ef129fdbb8201048077eeea484637bd4a628d4cc
+go_version=go version go1.26.5 darwin/arm64
+uname=Darwin Jairus-Tanaka.local 25.5.0 Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:15 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6041 arm64
+gomaxprocs=1
+benchtime=100ms
+samples_per_profile=4
+old_default_overrides=deep-fp-pins=true,loop-precheck=true,v128-sink=true

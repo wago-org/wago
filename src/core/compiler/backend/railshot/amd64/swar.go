@@ -14,7 +14,7 @@ func (f *fn) trySWARPack4(root *elem) bool {
 	if root != nil && root.kind == ekDeferred && root.op == opSWARPack4 {
 		return true
 	}
-	if !swarIdiomsEnabled || root == nil || root.kind != ekDeferred || root.op != opOr || root.typ != mtI64 {
+	if !f.opt(optSWARIdioms) || root == nil || root.kind != ekDeferred || root.op != opOr || root.typ != mtI64 {
 		return false
 	}
 	source := matchSWARPack4(root.arg0, root.arg1)
@@ -28,9 +28,6 @@ func (f *fn) trySWARPack4(root *elem) bool {
 }
 
 func matchSWARPack4(left, right *elem) *elem {
-	if !swarIdiomsEnabled {
-		return nil
-	}
 	var terms [4]*elem
 	n := 0
 	var flatten func(*elem) bool
@@ -98,7 +95,7 @@ func matchSWARPack4(left, right *elem) *elem {
 // inputs and two scratch locals, so this first bounded form is deliberately
 // restricted to a function-tail expression where those writes are unobservable.
 func (f *fn) tryMulHighU(r *wasm.Reader, a1 int) (bool, error) {
-	if !swarIdiomsEnabled || a1 < f.localBase {
+	if !f.opt(optSWARIdioms) || a1 < f.localBase {
 		return false, nil
 	}
 	root := f.s.back()
@@ -167,7 +164,7 @@ func (f *fn) tryMulHighU(r *wasm.Reader, a1 int) (bool, error) {
 // trySWARWiden4 recognizes AssemblyScript's local.tee-separated four-byte
 // widening idiom. See the arm64 twin for the canonical expression.
 func (f *fn) trySWARWiden4(r *wasm.Reader, x int) (bool, error) {
-	if !swarIdiomsEnabled || x < f.localBase {
+	if !f.opt(optSWARIdioms) || x < f.localBase {
 		return false, nil
 	}
 	root := f.s.back()

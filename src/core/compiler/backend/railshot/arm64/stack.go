@@ -351,7 +351,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 		f.stats.peep("same-operand")
 		return
 	}
-	if op == opOr && typ == mtI64 {
+	if op == opOr && typ == mtI64 && f.opt(optSWARIdioms) {
 		if source := matchSWARPack4(left, right); source != nil {
 			node := f.s.alloc()
 			node.kind, node.op, node.typ = ekDeferred, opSWARPack4, mtI64
@@ -362,7 +362,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 			return
 		}
 	}
-	if op == opShrU && typ == mtI64 && swarIdiomsEnabled && isSWARConst(right, 32) {
+	if op == opShrU && typ == mtI64 && f.opt(optSWARIdioms) && isSWARConst(right, 32) {
 		if mul10 := matchSWARParse4(left); mul10 != nil {
 			node := f.s.alloc()
 			node.kind, node.op, node.typ = ekDeferred, opSWARParse4, mtI64

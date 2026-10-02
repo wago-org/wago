@@ -28,9 +28,6 @@ func TestCodegenStatsPeepholesArm64(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
 	v128x2 := []wasm.ValType{wasm.V128, wasm.V128}
-	shuffleSinkBody := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xfd, 0x0d}
-	shuffleSinkBody = append(shuffleSinkBody, i8x16Rotate16[:]...)
-	shuffleSinkBody = append(shuffleSinkBody, 0x21, 0x00, 0x20, 0x00, 0x0b)
 	cases := []struct {
 		name string
 		in   []wasm.ValType
@@ -124,13 +121,6 @@ func TestCodegenStatsPeepholesArm64(t *testing.T) {
 			name: "v128-three-operand-result", in: v128x2, out: []wasm.ValType{wasm.V128},
 			body: []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xfd, 0xae, 0x01, 0x0b},
 			peep: "v128-direct-result",
-		},
-		{
-			// A one-instruction rotate-by-16 shuffle consumed by local.set can
-			// write the pinned destination directly, including self-aliasing.
-			name: "v128-shuffle-local-sink", in: v128x2, out: []wasm.ValType{wasm.V128},
-			body: shuffleSinkBody,
-			peep: "v128-shuffle-sink",
 		},
 		{
 			name: "extend-wrap-elim", in: i32, out: i32,

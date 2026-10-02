@@ -594,7 +594,7 @@ func (f *fn) refNull(r *wasm.Reader) error {
 		}
 	}
 	if gcReference {
-		markGCRefFact(value, shared.NewGCRefFact(shared.GCKnownNull, gcHeap))
+		f.markGCRefFact(value, shared.NewGCRefFact(shared.GCKnownNull, gcHeap))
 	}
 	return nil
 }
@@ -623,7 +623,7 @@ func (f *fn) refFunc(r *wasm.Reader) error {
 }
 
 func (f *fn) refIsNull() {
-	fact := gcRefFact(f.s.back())
+	fact := f.gcRefFact(f.s.back())
 	switch fact.Nullability() {
 	case shared.GCKnownNull:
 		f.dropValue()
@@ -654,7 +654,7 @@ func (f *fn) refEq() {
 }
 
 func (f *fn) refAsNonNull() {
-	fact := gcRefFact(f.s.back())
+	fact := f.gcRefFact(f.s.back())
 	if fact.Nullability() == shared.GCKnownNonNull {
 		f.stats.peep("gc-null-check-elide")
 		return
@@ -662,14 +662,14 @@ func (f *fn) refAsNonNull() {
 	if fact.Nullability() == shared.GCKnownNull {
 		f.flush()
 		f.trapAlways(trapNullReference)
-		markGCRefFact(f.s.back(), fact.WithNullability(shared.GCKnownNonNull))
+		f.markGCRefFact(f.s.back(), fact.WithNullability(shared.GCKnownNonNull))
 		return
 	}
 	ref := f.materialize(f.popValue())
 	f.a.TestSelf(ref, true)
 	f.trapIf(condE, trapNullReference)
 	result := f.pushReg(ref, mtI64)
-	markGCRefFact(result, fact.WithNullability(shared.GCKnownNonNull))
+	f.markGCRefFact(result, fact.WithNullability(shared.GCKnownNonNull))
 }
 
 func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {

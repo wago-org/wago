@@ -1,0 +1,9 @@
+goos: darwin
+goarch: arm64
+pkg: wagobench
+cpu: Apple M4 Max
+BenchmarkMatrixCompileFull/tiny         	    2480	     10110 ns/op	   19041 B/op	      72 allocs/op
+BenchmarkMatrixCompileFull/fib_iter     	    2893	     11443 ns/op	   23456 B/op	      77 allocs/op
+BenchmarkMatrixExec/tiny.add            	 1576844	        18.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/fib_iter.fib        	 1000000	        26.09 ns/op	       0 B/op	       0 allocs/op
+PASS

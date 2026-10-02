@@ -155,12 +155,12 @@ The 43 registered definitions are:
 ```text
 bounds-facts, st-flags, store8-flags, reg-merge, tee-sink, unary-sink,
 three-op-sink, olddest-rhs-sink, branch-fold, store-load-fwd, uxtw-add,
-entry-arg-pins, x8-pin, deep-fp-pins, ext-fp-pins, call-next-use,
+entry-arg-pins, x8-pin, ext-fp-pins, call-next-use,
 affine-lea, tree-order, assoc-tree, bmi2-rorx, leaf-scratch-pins,
 vex-float-mem, multi-bounds-cert, immutable-table, immutable-table-type,
 inline-callfree, store-forward, frame-elide, frame-elide-reghomed,
 small-frame, v128-const-cache, v128-pins, v128-sink, reg-abi, inline,
-inline-loop-callees, loop-precheck, loop-region-pins,
+loop-precheck, loop-region-pins,
 immutable-poly-fastpath, legacy-fp-pins, legacy-gp-pins, stack-fence,
 stack-reg
 ```

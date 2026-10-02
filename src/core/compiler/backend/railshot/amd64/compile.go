@@ -41,8 +41,11 @@ var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 
 // exactGCRefFactsEnabled propagates exact non-null reference facts through
 // locals inside conservative straight-line structured regions. It removes only
-// casts already proved by a successful prior cast or exact constructor.
-var exactGCRefFactsEnabled = os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1" &&
+// casts already proved by a successful prior cast or exact constructor. It is
+// default-off after broad compile-resource measurement; WAGO_AMD64_GC_REF_FACTS=1
+// opts in, while the legacy NO variables remain rollback overrides.
+var exactGCRefFactsEnabled = envDefaultOff(os.Getenv("WAGO_AMD64_GC_REF_FACTS")) &&
+	os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1" &&
 	os.Getenv("WAGO_AMD64_NO_EXACT_GC_REF_FACTS") != "1"
 
 var frameElideVoid = os.Getenv("WAGO_AMD64_NO_FRAME_ELIDE_VOID") != "1"
@@ -151,9 +154,9 @@ var v128LocalPinsEnabled = os.Getenv("WAGO_AMD64_NO_V128_PINS") != "1"
 // v128LocalSinkEnabled peeps `local.set/tee $x (v128bin (local.get $x) …)` into a
 // pinned v128 local and computes the op straight into x's XMM register (one
 // 3-operand VEX instruction, no accumulator copy and no result-to-pin move) — the
-// amd64 analog of arm64's v128 local sink. Default ON; WAGO_AMD64_NO_V128_SINK=1
-// disables it for A/B.
-var v128LocalSinkEnabled = os.Getenv("WAGO_AMD64_NO_V128_SINK") != "1"
+// amd64 analog of arm64's v128 local sink. It is default-off after the broad
+// ARM64/AMD64 toggle matrix found no execution benefit. WAGO_V128_SINK=1 opts in.
+var v128LocalSinkEnabled = envDefaultOff(os.Getenv("WAGO_V128_SINK"))
 
 // v128ConstCacheEnabled reserves an XMM register for each repeated v128.const
 // value in a call-free function and materializes it once at entry, so a loop over
@@ -164,13 +167,14 @@ var v128LocalSinkEnabled = os.Getenv("WAGO_AMD64_NO_V128_SINK") != "1"
 var v128ConstCacheEnabled = os.Getenv("WAGO_AMD64_NO_V128_CONST_CACHE") != "1"
 
 // callNextUseEnabled skips stores of dirty pinned locals whose next bounded
-// post-call access overwrites the local before reading it.
-var callNextUseEnabled = os.Getenv("WAGO_AMD64_NO_CALL_NEXT_USE") != "1"
+// post-call access overwrites the local before reading it. It is default-off;
+// WAGO_AMD64_CALL_NEXT_USE=1 opts in for focused measurement.
+var callNextUseEnabled = envDefaultOff(os.Getenv("WAGO_AMD64_CALL_NEXT_USE"))
 
 // affineLeaEnabled extends scaled-index LEA selection across one-level affine
 // base/index subtrees, folding their constants into the LEA displacement.
-// WAGO_AMD64_NO_AFFINE_LEA=1 disables it for A/B.
-var affineLeaEnabled = os.Getenv("WAGO_AMD64_NO_AFFINE_LEA") != "1"
+// It is default-off; WAGO_AMD64_AFFINE_LEA=1 opts in for focused measurement.
+var affineLeaEnabled = envDefaultOff(os.Getenv("WAGO_AMD64_AFFINE_LEA"))
 
 // treeOrderEnabled lets commutative, non-trapping Valent trees choose which
 // child is evaluated first from a bounded register-need estimate. It adds no
@@ -1269,7 +1273,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		var adapterTails []adapterTailInfo
 		var adapters []sharedAdapterInfo
 		if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-			if sharedAdaptersEnabled {
+			if policy.EnabledOption(optSharedAdapters) {
 				adapters = make([]sharedAdapterInfo, 0, countHostAdaptersAMD64(hostAdapters))
 			} else {
 				adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
@@ -1353,7 +1357,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				}
 				literalOffsets[i+1] = uint32(len(literalWords))
 			}
-			if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+			if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
 				fnCode = trapBodyCluster.shareFunction(hostAdapters[i], codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfoAMD64(), st)
 			}
 			if !codeBuffer.CommitTail(fnCode) {
@@ -1516,12 +1520,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
 				result := funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: flags, directPrepared: ws.scratch.directPrepared, relocs: rl, literalStart: literalStart, literalEnd: len(ws.literals)}
 				if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-					if sharedAdaptersEnabled {
+					if policy.EnabledOption(optSharedAdapters) {
 						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
 					} else {
 						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
 					}
-					if moduleSharedTrapBodyEnabled {
+					if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled {
 						result.trapBody = ws.scratch.fnState.sharedTrapBodyInfoAMD64()
 					}
 				}
@@ -1547,7 +1551,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var adapterTails []adapterTailInfo
 	var adapters []sharedAdapterInfo
 	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-		if sharedAdaptersEnabled {
+		if policy.EnabledOption(optSharedAdapters) {
 			adapters = make([]sharedAdapterInfo, 0, countHostAdaptersAMD64(hostAdapters))
 		} else {
 			adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
@@ -1587,7 +1591,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			literalOffsets[i+1] = uint32(len(literalWords))
 		}
 		fnCode := states[r.worker].arena[r.start:r.end]
-		if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+		if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
 			var st *CodegenStats
 			if ms != nil {
 				st = ms.Funcs[i]
@@ -1910,7 +1914,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		}
 		allHints[i].nLocals = count
 		totalLocals += count
-		if intervalRegionHintStorageEligible(len(m.Code[i].BodyBytes), count, moduleEH) {
+		if intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), count, moduleEH) {
 			if count > int(^uint(0)>>1)-intervalLocals {
 				return nil, nil, fmt.Errorf("function hint interval locals overflow")
 			}
@@ -1959,7 +1963,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], nil, nil)
 			h.globalAccum = &sparseAccum
 		}
-		if intervalRegionHintStorageEligible(len(m.Code[i].BodyBytes), nLocals, moduleEH) {
+		if intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), nLocals, moduleEH) {
 			h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
 			intervalAt += nLocals
 		}
@@ -2364,7 +2368,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	} else {
 		f.localType = f.localType[:nLocals]
 	}
-	if exactGCRefFactsEnabled {
+	if policy.EnabledOption(optGCRefFacts) {
 		if cap(f.localGCRefFacts) < nLocals {
 			f.localGCRefFacts = make([]shared.GCRefFact, nLocals)
 		} else {

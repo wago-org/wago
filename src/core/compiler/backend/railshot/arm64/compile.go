@@ -115,7 +115,6 @@ var (
 	legacyGPPinsEnabled     = os.Getenv("WAGO_ARM64_LEGACY_GPPINS") == "1"
 	legacyFPPinsEnabled     = os.Getenv("WAGO_ARM64_LEGACY_FPPINS") == "1"
 	extendedFPPinsEnabled   = os.Getenv("WAGO_ARM64_NO_EXTFPPINS") != "1"
-	deepFPPinsEnabled       = os.Getenv("WAGO_ARM64_NO_DEEP_FPPINS") != "1"
 	threeOperandSinkEnabled = os.Getenv("WAGO_ARM64_NO3OPSINK") != "1"
 	oldDestRHSSinkEnabled   = os.Getenv("WAGO_ARM64_NO_OLDDEST_RHS") != "1"
 	callFreeX8PinEnabled    = os.Getenv("WAGO_ARM64_NO_X8PIN") != "1"
@@ -123,13 +122,6 @@ var (
 	entryArgPinsEnabled     = os.Getenv("WAGO_ARM64_NO_ENTRY_ARG_PINS") != "1"
 	unaryLocalSinkEnabled   = os.Getenv("WAGO_ARM64_NOUNARYSINK") != "1"
 	teeLocalSinkEnabled     = os.Getenv("WAGO_ARM64_NOTEESINK") != "1"
-	// v128LocalSinkEnabled peeps `local.set/tee $x (v128op … (local.get $x) …)` for a
-	// register-pinned v128 local $x and emits the single NEON op straight into $x's
-	// pinned V register — the SIMD twin of tryFbinLocalSet. It removes both the
-	// materializeV128 pre-copy of the accumulator and the setLocal result-to-pin
-	// copy, leaving one in-place vector instruction. Inert unless v128 pins are on
-	// (pinReg returns unpinned for v128 when WAGO_ARM64_NO_V128_PINS=1).
-	v128LocalSinkEnabled = os.Getenv("WAGO_ARM64_NO_V128_SINK") != "1"
 	// v128LocalPinsEnabled caches hot v128 locals in NEON V registers for the whole
 	// function, exactly like the scalar-float pin pool. Restricted to CALL-FREE
 	// functions: a wasm→wasm call only preserves the low 64 bits of the AAPCS64
@@ -138,11 +130,6 @@ var (
 	// register between the prologue init and the epilogue, so the full 128 bits stay
 	// live and every local.get/set becomes a register op instead of LdrQ/StrQ.
 	v128LocalPinsEnabled = os.Getenv("WAGO_ARM64_NO_V128_PINS") != "1"
-	// v128ConstCacheEnabled reserves a V register for each repeated v128.const value
-	// so its later uses copy (MOV.16b) instead of rebuilding the 128-bit immediate.
-	// A pure codegen optimization independent of the pin/sink machinery; the kill
-	// switch exists for A/B measurement and defensive fallback.
-	v128ConstCacheEnabled = os.Getenv("WAGO_ARM64_NO_V128_CONST_CACHE") != "1"
 )
 
 // mergeReg is the canonical register a single-int-result block's value is
@@ -223,12 +210,6 @@ type fn struct {
 	fregUser [32]*elem
 	fpinned  regMask
 	fconsts  []floatConstReg
-	// vconsts caches repeated 128-bit v128.const values in reserved V registers
-	// (like fconsts for scalar floats). A const that appears more than once in a
-	// straight-line-reachable body — e.g. the loop-invariant constant reduced 16×
-	// in the isa_simd_reduce corpus — is materialized once at entry, then each use
-	// copies it with a single MOV.16b instead of rebuilding it (MovImm×2/FMOV/INS).
-	vconsts []v128ConstReg
 
 	maxSpill int // high-water number of operand spill slots used
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
@@ -1072,7 +1053,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		var adapterTails []adapterTailInfo
 		var adapters []sharedAdapterInfo
 		if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-			if sharedAdaptersEnabled {
+			if policy.EnabledOption(optSharedAdapters) {
 				adapters = make([]sharedAdapterInfo, 0, countHostAdapters(hostAdapters))
 			} else {
 				adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
@@ -1129,7 +1110,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			if hostAdapters[i] {
 				trapBodyCluster.reset()
 			}
-			if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+			if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
 				fnCode = trapBodyCluster.share(codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfo(), st)
 			}
 			if sc.directPrepared {
@@ -1234,12 +1215,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				ws.arena = append(ws.arena, fnCode...)
 				result := funcResult{worker: workerID, start: start, end: len(ws.arena), bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: layoutFlags, internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
 				if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-					if sharedAdaptersEnabled {
+					if policy.EnabledOption(optSharedAdapters) {
 						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
 					} else {
 						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
 					}
-					if moduleSharedTrapBodyEnabled {
+					if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled {
 						result.trapBody = ws.scratch.fnState.sharedTrapBodyInfo()
 					}
 				}
@@ -1260,7 +1241,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var adapterTails []adapterTailInfo
 	var adapters []sharedAdapterInfo
 	if policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded {
-		if sharedAdaptersEnabled {
+		if policy.EnabledOption(optSharedAdapters) {
 			adapters = make([]sharedAdapterInfo, 0, countHostAdapters(hostAdapters))
 		} else {
 			adapterTails = make([]adapterTailInfo, 0, countHostAdapters(hostAdapters))
@@ -1293,7 +1274,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		if r.layoutFlags&layoutHostAdapter != 0 {
 			trapBodyCluster.reset()
 		}
-		if moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
+		if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && (policy.Objective == OptimizeSize || policy.Objective == OptimizeEmbedded) {
 			var st *CodegenStats
 			if ms != nil {
 				st = ms.Funcs[i]
@@ -1867,7 +1848,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, locals := f.localType, f.localSlot, f.locals
 	mt0, _ := m.MemoryType(0)
 	entryInitialized := hints.entryInitialized
-	if !entryInitElisionEnabled || gcFrameRoots != nil && gcFrameRoots.Candidate {
+	if !policy.EnabledOption(optEntryInitElision) || gcFrameRoots != nil && gcFrameRoots.Candidate {
 		entryInitialized = 0
 	}
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.hasLoop, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins, threadedMemory0: mt0.Shared, entryInitialized: entryInitialized, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.hasControlFlow}
@@ -2135,7 +2116,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	f.prologue()
 	f.preloadFloatConsts(c.BodyBytes)
-	f.preloadV128Consts(c.BodyBytes)
 	if err := f.runBody(c); err != nil {
 		return nil, nil, 0, err
 	}
@@ -2408,17 +2388,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 		// the full pool.
 		fpPinLimit = callFreePinnedFLocalRegs
 	} else if hasCall && fpPinLimit > 23 {
-		floatParams := 0
-		for _, pt := range f.ft.Params {
-			if mtOf(pt).isFloat() {
-				floatParams++
-			}
-		}
-		// V4-V7 overlap incoming FP arguments 5-8. Until the FP prologue uses a
-		// parallel mover, retain them as temporaries for that signature class.
-		if !f.opt(optDeepFPPins) || floatParams > 4 {
-			fpPinLimit = 23
-		}
+		fpPinLimit = 23
 	}
 	if !pinLocals || f.nLocals > 64 {
 		// Very wide signatures are cold ABI stress shapes, and an unpinned
@@ -2920,7 +2890,6 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool) (int, error) {
 	f.tmpMoves = moves[:0]
 	f.zeroDeclaredLocals()
 	f.preloadFloatConsts(c.BodyBytes)
-	f.preloadV128Consts(c.BodyBytes)
 	f.derivePinnedGlobals()
 	if err := f.runBody(c); err != nil {
 		return 0, err

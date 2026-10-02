@@ -6,8 +6,12 @@ import "testing"
 
 // TestV128LocalSinkFires checks that `local.set $x (v128bin (local.get $x) …)`
 // into a pinned v128 local sinks into one 3-operand op (the v128-local-sink
-// peephole), and that WAGO_AMD64_NO_V128_SINK-style gating leaves it available.
+// peephole) when the default-off optimization is selected explicitly.
 func TestV128LocalSinkFires(t *testing.T) {
+	saved := v128LocalSinkEnabled
+	v128LocalSinkEnabled = true
+	t.Cleanup(func() { v128LocalSinkEnabled = saved })
+
 	// (func (local $a v128) (local $b v128)
 	//   (local.set $a (v128.and (local.get $a) (local.get $b))))
 	body := []byte{

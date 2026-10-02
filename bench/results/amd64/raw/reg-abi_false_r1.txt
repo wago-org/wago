@@ -1,0 +1,80 @@
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 7800X3D 8-Core Processor           
+BenchmarkMatrixCompileFull/tiny         	    5323	     21935 ns/op	   15270 B/op	      79 allocs/op
+BenchmarkMatrixCompileFull/fib_iter     	    6488	     22754 ns/op	   18328 B/op	      88 allocs/op
+BenchmarkMatrixCompileFull/fib_rec      	    7065	     21729 ns/op	   16560 B/op	      94 allocs/op
+BenchmarkMatrixCompileFull/arith        	    6741	     23203 ns/op	   18936 B/op	      87 allocs/op
+BenchmarkMatrixCompileFull/float        	    6904	     22479 ns/op	   18968 B/op	      92 allocs/op
+BenchmarkMatrixCompileFull/memory       	    4842	     30239 ns/op	   20704 B/op	     115 allocs/op
+BenchmarkMatrixCompileFull/memory_tree  	    3552	     38818 ns/op	   29368 B/op	     134 allocs/op
+BenchmarkMatrixCompileFull/globals      	    5246	     25098 ns/op	   20048 B/op	     113 allocs/op
+BenchmarkMatrixCompileFull/dispatch     	    4812	     30409 ns/op	   20056 B/op	     129 allocs/op
+BenchmarkMatrixCompileFull/branches     	    7566	     22974 ns/op	   20192 B/op	      93 allocs/op
+BenchmarkMatrixCompileFull/many_funcs   	     247	    521371 ns/op	  220993 B/op	     687 allocs/op
+BenchmarkMatrixCompileFull/linked_list  	    4579	     34017 ns/op	   26304 B/op	     122 allocs/op
+BenchmarkMatrixCompileFull/mandelbrot   	    3744	     40460 ns/op	   39016 B/op	     133 allocs/op
+BenchmarkMatrixCompileFull/sieve        	    4027	     37807 ns/op	   32504 B/op	     124 allocs/op
+BenchmarkMatrixCompileFull/nbody        	     624	    205673 ns/op	  242638 B/op	     229 allocs/op
+BenchmarkMatrixCompileFull/spectralnorm 	    1002	    141341 ns/op	  114416 B/op	     237 allocs/op
+BenchmarkMatrixCompileFull/fannkuch     	     429	    283223 ns/op	  245850 B/op	     297 allocs/op
+BenchmarkMatrixCompileFull/matmul       	    1232	    120925 ns/op	  117061 B/op	     204 allocs/op
+BenchmarkMatrixCompileFull/quicksort    	    1149	    121243 ns/op	   67352 B/op	     251 allocs/op
+BenchmarkMatrixCompileFull/crc32        	    2035	     71657 ns/op	   52344 B/op	     158 allocs/op
+BenchmarkMatrixCompileFull/sha256       	     818	    164500 ns/op	  120064 B/op	     203 allocs/op
+BenchmarkMatrixCompileFull/raytrace     	     286	    415842 ns/op	  244075 B/op	     241 allocs/op
+BenchmarkMatrixCompileFull/regexmatch   	       2	  84968968 ns/op	 5599608 B/op	   23903 allocs/op
+BenchmarkMatrixCompileFull/wasm3        	       6	  20052604 ns/op	 2118996 B/op	   12026 allocs/op
+BenchmarkMatrixCompileFull/json-as      	      55	   2176882 ns/op	  353269 B/op	    2148 allocs/op
+BenchmarkMatrixCompileFull/blake-as     	     234	    473902 ns/op	  244969 B/op	     296 allocs/op
+BenchmarkMatrixCompileFull/utf-as       	     307	    354131 ns/op	  283562 B/op	     282 allocs/op
+BenchmarkMatrixCompileFull/xjb-mulhi    	    3860	     38014 ns/op	   27696 B/op	     110 allocs/op
+BenchmarkMatrixCompileFull/swar-pack-parse         	    3643	     39427 ns/op	   27600 B/op	     110 allocs/op
+BenchmarkMatrixCompileFull/json-as-simd            	      48	   2348267 ns/op	  378501 B/op	    2398 allocs/op
+BenchmarkMatrixCompileFull/blake-as-simd           	      74	   1722680 ns/op	  488204 B/op	     408 allocs/op
+BenchmarkMatrixCompileFull/utf-as-simd             	     100	   1049350 ns/op	  314201 B/op	     703 allocs/op
+BenchmarkMatrixCompileFull/lua                     	       3	  36135182 ns/op	 4460714 B/op	   19686 allocs/op
+BenchmarkMatrixCompileFull/sqlite3                 	       1	 119796030 ns/op	 7523640 B/op	   51776 allocs/op
+BenchmarkMatrixCompileFull/ruby                    	       1	1410545543 ns/op	42410832 B/op	  416401 allocs/op
+BenchmarkMatrixCompileFull/esbuild                 	       1	 893817334 ns/op	47142784 B/op	  115849 allocs/op
+BenchmarkMatrixExec/tiny.add                       	 7048794	        17.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/fib_iter.fib                   	 4568367	        26.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/fib_rec.fib                    	      78	   1531397 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/arith.run                      	   88856	      1349 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/float.run                      	   29818	      3994 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/memory.sum                     	  499555	       246.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/memory_tree.run                	   12568	      9620 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/globals.accumulate             	  130807	       907.0 ns/op	       0 B/op	       0 allocs/op
+--- FAIL: BenchmarkMatrixExec/dispatch.apply
+    optimization_matrix_bench_test.go:89: warmup invoke: wasm trap: tail call target requires an unsupported context switch
+            at apply (func[4])
+BenchmarkMatrixExec/branches.classify              	 7401944	        16.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/many_funcs.run                 	 7173187	        16.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/linked_list.sum                	   14509	      8242 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/mandelbrot.render              	     475	    248994 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/sieve.count                    	    1404	     86340 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/nbody.step                     	     427	    279751 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/spectralnorm.run               	     182	    656379 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/fannkuch.run                   	     100	   1103084 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/matmul.run                     	     814	    148047 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/quicksort.sortN                	    1730	     64913 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/crc32.hashN                    	    6870	     17163 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/sha256.hashN                   	    2937	     40977 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/raytrace.render                	     309	    383254 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/json-as.serializeN             	    2787	     40023 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/json-as.deserializeN           	    1418	     85435 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/blake-as.hashN                 	     156	    766875 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/utf-as.convertN                	     738	    163197 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/xjb-mulhi.mulhi                	 7433274	        16.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/xjb-mulhi.runN                 	   54525	      2190 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/swar-pack-parse.pack           	 7592066	        16.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/swar-pack-parse.parse4         	 7335138	        16.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/swar-pack-parse.runN           	   84598	      1430 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/json-as-simd.serializeN        	    1773	     63784 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/json-as-simd.deserializeN      	    1168	    103312 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/blake-as-simd.hashN            	     204	    583379 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/utf-as-simd.convertN           	    2192	     55140 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/utf-as-simd.validateN          	     752	    155668 ns/op	       0 B/op	       0 allocs/op
+--- FAIL: BenchmarkMatrixExec
+FAIL

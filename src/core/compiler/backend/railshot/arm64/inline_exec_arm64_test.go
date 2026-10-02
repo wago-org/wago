@@ -148,32 +148,6 @@ func TestInlineExecDeclaredLocalZeroArm64(t *testing.T) {
 	})
 }
 
-func TestInlineExecLoopArm64(t *testing.T) {
-	defer func(o bool) { inlineLoopCallees = o }(inlineLoopCallees)
-	inlineLoopCallees = true // loop-carrying leaves are excluded by default
-	withInlineEnabledArm64(t, func() {
-		// leaf sum(n) = n+(n-1)+…+1, via a loop with an accumulator local.
-		leaf := []byte{
-			0x01, 0x01, 0x7f, // 1 local: acc
-			0x03, 0x40, // loop (void)
-			0x20, 0x01, 0x20, 0x00, 0x6a, 0x21, 0x01, // acc += n
-			0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, // n -= 1
-			0x20, 0x00, 0x41, 0x00, 0x4a, 0x0d, 0x00, // if n>0 br 0
-			0x0b,       // end loop
-			0x20, 0x01, // acc
-			0x0b, // end func
-		}
-		caller := []byte{0x00, 0x41, 0x04, 0x10, 0x01, 0x0b} // sum(4) = 10
-		m := modFuncs(t,
-			funcDef{results: []wasm.ValType{wasm.I32}, body: caller},
-			funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: leaf},
-		)
-		if got := uint32(runArm64u(t, m)); got != 10 {
-			t.Errorf("inlined sum(4) = %d, want 10", got)
-		}
-	})
-}
-
 // TestInlineEligibilityArm64 covers the candidacy outcomes: a tiny leaf (candidate,
 // two sites), a recursive function (non-leaf), an oversized leaf (too big), and the
 // non-leaf caller.

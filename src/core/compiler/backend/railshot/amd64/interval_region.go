@@ -12,8 +12,8 @@ const (
 
 var intervalRegionOrder = [...]Reg{R12, R13, R14, R15, R9, R10, R11, RBP, RDI, RSI}
 
-func intervalRegionHintStorageEligible(bodyLen, nLocals int, moduleEH bool) bool {
-	return intervalRegionPinsEnabled && !moduleEH &&
+func intervalRegionHintStorageEligible(enabled bool, bodyLen, nLocals int, moduleEH bool) bool {
+	return enabled && !moduleEH &&
 		bodyLen >= minIntervalRegionBody && bodyLen <= maxIntervalRegionBody &&
 		nLocals >= minIntervalRegionLocals && nLocals <= maxIntervalRegionLocals
 }
@@ -22,7 +22,7 @@ func intervalRegionHintStorageEligible(bodyLen, nLocals int, moduleEH bool) bool
 // call-free straight-line body. Storage is worker scratch and capped by
 // locals/body size; unsupported shapes keep the existing lowering.
 func (f *fn) prepareIntervalRegion(body []byte, hints funcHints) bool {
-	if !intervalRegionHintStorageEligible(len(body), f.nLocals, f.moduleEH) ||
+	if !intervalRegionHintStorageEligible(f.opt(optIntervalRegionPins), len(body), f.nLocals, f.moduleEH) ||
 		len(hints.localScore) != f.nLocals || len(hints.localLastGet) != f.nLocals {
 		return false
 	}

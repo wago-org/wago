@@ -820,7 +820,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if isFusableCompare(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
-			if zeroBranchEnabled && eqzZeroBranchEnabled {
+			if f.opt(optZeroBranch) && eqzZeroBranchEnabled {
 				if creg, cOwned, wide, ok := f.condenseSimpleEqzOperand(cond); ok {
 					fr.height = f.depth() - pN
 					fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
@@ -851,7 +851,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
 		f.captureGCFrameShape(&fr)
 		f.flush()
-		if zeroBranchEnabled {
+		if f.opt(optZeroBranch) {
 			fr.elseSite = f.a.Cbz32(creg) // false edge; flags are dead at this control edge
 			f.stats.peep("zero-branch")
 		} else {
@@ -982,7 +982,7 @@ func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
 	f.realizeLocalRefs(x, baseOfValentBlock(cond))
 	creg, cOwned := f.materializeRead(f.popValue())
 	var toElse int
-	if zeroBranchEnabled {
+	if f.opt(optZeroBranch) {
 		toElse = f.a.Cbz32(creg)
 		f.stats.peep("zero-branch")
 	} else {
@@ -1671,7 +1671,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		f.moveBranchValues(fr, d, a)
 	}
 	if f.a.Len() == mark {
-		if zeroBranchEnabled && emptyZeroBranchEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
+		if f.opt(optZeroBranch) && emptyZeroBranchEnabled && (f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
 			f.a.B = f.a.B[:testAt]
 			if f.opt(optBranchFold) && f.zeroBranchJump(fr, creg) {
 				f.stats.peep("zero-branch")

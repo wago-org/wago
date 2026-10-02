@@ -15,6 +15,10 @@ import (
 // B.cond instead of materializing a boolean. Go's native <,>,<=,>= return false
 // on NaN, matching wasm, so they are the oracle.
 func TestFloatCompareBranchFusion(t *testing.T) {
+	before := fcmpFuseEnabled
+	fcmpFuseEnabled = true
+	t.Cleanup(func() { fcmpFuseEnabled = before })
+
 	fbits32 := func(v float32) uint64 { return uint64(math.Float32bits(v)) }
 	fbits64 := func(v float64) uint64 { return math.Float64bits(v) }
 

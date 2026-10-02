@@ -89,7 +89,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 // emits the eager 0/1 boolean. The node therefore never lingers on the operand
 // stack past its immediate branch consumer.
 func (f *fn) fcmpMaybeDefer(r *wasm.Reader, op wOp, f64 bool) {
-	if fcmpFuseEnabled {
+	if f.opt(optFCmpFuse) {
 		if next, ok := r.Peek(); ok && (next == 0x04 || next == 0x0d) {
 			f.pushFCompare(op, f64)
 			return

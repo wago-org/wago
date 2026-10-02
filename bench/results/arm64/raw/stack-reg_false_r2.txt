@@ -1,0 +1,104 @@
+goos: darwin
+goarch: arm64
+pkg: wagobench
+cpu: Apple M4 Max
+BenchmarkMatrixCompileFull/tiny         	   10000	     12071 ns/op	   18976 B/op	      72 allocs/op
+BenchmarkMatrixCompileFull/fib_iter     	   10000	     13749 ns/op	   23456 B/op	      77 allocs/op
+BenchmarkMatrixCompileFull/fib_rec      	   10000	     13813 ns/op	   20464 B/op	      77 allocs/op
+BenchmarkMatrixCompileFull/arith        	    9619	     14881 ns/op	   24184 B/op	      77 allocs/op
+BenchmarkMatrixCompileFull/float        	   10000	     14029 ns/op	   24112 B/op	      77 allocs/op
+BenchmarkMatrixCompileFull/memory       	    7203	     20179 ns/op	   25608 B/op	      97 allocs/op
+BenchmarkMatrixCompileFull/memory_tree  	    5714	     24633 ns/op	   33912 B/op	     108 allocs/op
+BenchmarkMatrixCompileFull/globals      	    9351	     16179 ns/op	   25336 B/op	      99 allocs/op
+BenchmarkMatrixCompileFull/dispatch     	    6490	     23250 ns/op	   23568 B/op	     127 allocs/op
+BenchmarkMatrixCompileFull/branches     	   10000	     14628 ns/op	   27648 B/op	      81 allocs/op
+BenchmarkMatrixCompileFull/many_funcs   	     316	    428836 ns/op	  201545 B/op	     380 allocs/op
+BenchmarkMatrixCompileFull/linked_list  	    6409	     21833 ns/op	   30408 B/op	      95 allocs/op
+BenchmarkMatrixCompileFull/mandelbrot   	    5659	     27455 ns/op	   43600 B/op	     102 allocs/op
+BenchmarkMatrixCompileFull/sieve        	    6003	     25706 ns/op	   39040 B/op	     101 allocs/op
+BenchmarkMatrixCompileFull/nbody        	     930	    143144 ns/op	  240817 B/op	     194 allocs/op
+BenchmarkMatrixCompileFull/spectralnorm 	    1357	     97111 ns/op	  118120 B/op	     171 allocs/op
+BenchmarkMatrixCompileFull/fannkuch     	     722	    191831 ns/op	  260065 B/op	     231 allocs/op
+BenchmarkMatrixCompileFull/matmul       	    1768	     79403 ns/op	  124864 B/op	     164 allocs/op
+BenchmarkMatrixCompileFull/quicksort    	    1737	     83347 ns/op	   73904 B/op	     183 allocs/op
+BenchmarkMatrixCompileFull/crc32        	    2961	     48629 ns/op	   58256 B/op	     137 allocs/op
+BenchmarkMatrixCompileFull/sha256       	    1196	    106247 ns/op	  126704 B/op	     186 allocs/op
+BenchmarkMatrixCompileFull/raytrace     	     483	    273369 ns/op	  239977 B/op	     186 allocs/op
+BenchmarkMatrixCompileFull/regexmatch   	       2	  63305042 ns/op	 4369820 B/op	   19456 allocs/op
+BenchmarkMatrixCompileFull/wasm3        	       7	  15268083 ns/op	 2008955 B/op	    9583 allocs/op
+BenchmarkMatrixCompileFull/json-as      	      84	   1450276 ns/op	  355347 B/op	    1214 allocs/op
+BenchmarkMatrixCompileFull/blake-as     	     355	    343990 ns/op	  256241 B/op	     229 allocs/op
+BenchmarkMatrixCompileFull/utf-as       	     594	    242123 ns/op	  287537 B/op	     213 allocs/op
+BenchmarkMatrixCompileFull/xjb-mulhi    	    5608	     25429 ns/op	   32440 B/op	      97 allocs/op
+BenchmarkMatrixCompileFull/swar-pack-parse         	    5380	     28435 ns/op	   32528 B/op	      96 allocs/op
+BenchmarkMatrixCompileFull/json-as-simd            	      75	   1606593 ns/op	  384491 B/op	    1369 allocs/op
+BenchmarkMatrixCompileFull/blake-as-simd           	      96	   1197656 ns/op	  496946 B/op	     328 allocs/op
+BenchmarkMatrixCompileFull/utf-as-simd             	     186	    644732 ns/op	  313249 B/op	     391 allocs/op
+BenchmarkMatrixCompileFull/lua                     	       5	  24679175 ns/op	 3263022 B/op	   11408 allocs/op
+BenchmarkMatrixCompileFull/sqlite3                 	       2	  83174854 ns/op	 6679140 B/op	   36415 allocs/op
+BenchmarkMatrixCompileFull/ruby                    	       1	 965020541 ns/op	38165672 B/op	  250803 allocs/op
+BenchmarkMatrixCompileFull/esbuild                 	       1	 651754917 ns/op	41769888 B/op	   71073 allocs/op
+BenchmarkMatrixExec/tiny.add                       	 5742267	        21.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/fib_iter.fib                   	 4075694	        29.92 ns/op	       0 B/op	       0 allocs/op
+runtime: newstack sp=0x12e473ff0 stack=[0x3fdf9f6b2000, 0x3fdf9f6b2800]
+	morebuf={pc:0x12db58094 sp:0x12e473ff0 lr:0x0}
+	sched={pc:0x1042e01bc sp:0x12e473ff0 lr:0x12db58094 ctxt:0x0}
+runtime: gp=0x3fdf9f671860, goid=86, gp->status=0x2
+ runtime: split stack overflow: 0x12e473ff0 < 0x3fdf9f6b2000
+fatal error: runtime: split stack overflow
+
+runtime stack:
+runtime.throw({0x1046e98a4?, 0x16bb9e990?})
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/panic.go:1229 +0x38 fp=0x16bb9e940 sp=0x16bb9e910 pc=0x1042ddfb8
+runtime.newstack()
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/stack.go:1119 +0x5dc fp=0x16bb9ea70 sp=0x16bb9e940 pc=0x1042c3edc
+runtime.morestack()
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/asm_arm64.s:507 +0x70 fp=0x16bb9ea70 sp=0x16bb9ea70 pc=0x1042e38a0
+
+goroutine 86 gp=0x3fdf9f671860 m=0 mp=0x104c2ada0 [running]:
+runtime.sigpanic()
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/signal_unix.go:912 +0x35c fp=0x12e473ff0 sp=0x12e473ff0 pc=0x1042e01bc
+runtime: g 86: unexpected return pc for runtime.sigpanic called from 0x12db58094
+stack: frame={sp:0x12e473ff0, fp:0x12e473ff0} stack=[0x3fdf9f6b2000,0x3fdf9f6b2800)
+fatal error: unsafe.Slice: len out of range
+panic during panic
+
+runtime stack:
+runtime.throw({0x1046ea833?, 0x1042bb354?})
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/panic.go:1229 +0x38 fp=0x16bb9e060 sp=0x16bb9e030 pc=0x1042ddfb8
+runtime.panicCheck1(0x100000002?, {0x1046ea833, 0x1e})
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/panic.go:59 +0xa4 fp=0x16bb9e080 sp=0x16bb9e060 pc=0x1042a48a4
+runtime.panicunsafeslicelen1(0x0?)
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/unsafe.go:101 +0x28 fp=0x16bb9e0b0 sp=0x16bb9e080 pc=0x1042d8228
+runtime.panicunsafeslicelen()
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/unsafe.go:96 +0x20 fp=0x16bb9e0d0 sp=0x16bb9e0b0 pc=0x1042d81e0
+runtime.hexdumpWords(0x3fdf9f6b2000, 0xffffc0218edc20f0, 0x16bb9e1a0)
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/hexdump.go:34 +0xf8 fp=0x16bb9e150 sp=0x16bb9e0d0 pc=0x104275bb8
+runtime.tracebackHexdump({0x1046dce74?, 0x1042a8a74?}, 0x16bb9e5b0, 0x0)
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/traceback.go:1383 +0x148 fp=0x16bb9e1c0 sp=0x16bb9e150 pc=0x1042d05b8
+runtime.(*unwinder).next(0x16bb9e5b0)
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/traceback.go:468 +0x25c fp=0x16bb9e250 sp=0x16bb9e1c0 pc=0x1042cd9cc
+runtime.traceback2(0x16bb9e5b0, 0x0, 0x0, 0x31)
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/traceback.go:968 +0xd4 fp=0x16bb9e4b0 sp=0x16bb9e250 pc=0x1042ced24
+runtime.traceback1.func1(0x0)
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/traceback.go:904 +0x4c fp=0x16bb9e580 sp=0x16bb9e4b0 pc=0x1042ceb5c
+runtime.traceback1(0x3fdf9f671860?, 0x1042a8ae8?, 0x1042e6494?, 0x3fdf9f671860, 0xf8?)
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/traceback.go:927 +0x17c fp=0x16bb9e790 sp=0x16bb9e580 pc=0x1042cea4c
+runtime.traceback(...)
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/traceback.go:804
+runtime.tracebacksomeothers(0x104c2a360, 0x104bdb168)
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/traceback.go:1302 +0xa4 fp=0x16bb9e800 sp=0x16bb9e790 pc=0x1042d02a4
+runtime.tracebackothers(...)
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/traceback.go:1291
+runtime.dopanic_m(0x104c2a360, 0x1042ddfb8, 0x16bb9e910, 0x0)
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/panic.go:1593 +0x2a4 fp=0x16bb9e880 sp=0x16bb9e800 pc=0x1042a6bb4
+runtime.fatalthrow.func1()
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/panic.go:1438 +0x5c fp=0x16bb9e8d0 sp=0x16bb9e880 pc=0x1042a65cc
+runtime.fatalthrow(0x6bb9e920?)
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/panic.go:1431 +0x48 fp=0x16bb9e910 sp=0x16bb9e8d0 pc=0x1042a6558
+runtime.throw({0x1046e98a4?, 0x16bb9e990?})
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/panic.go:1229 +0x38 fp=0x16bb9e940 sp=0x16bb9e910 pc=0x1042ddfb8
+runtime.newstack()
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/stack.go:1119 +0x5dc fp=0x16bb9ea70 sp=0x16bb9e940 pc=0x1042c3edc
+runtime.morestack()
+	/opt/homebrew/Cellar/go/1.26.5/libexec/src/runtime/asm_arm64.s:507 +0x70 fp=0x16bb9ea70 sp=0x16bb9ea70 pc=0x1042e38a0

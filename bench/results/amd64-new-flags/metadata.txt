@@ -1,0 +1,8 @@
+utc=2026-08-24T13:52:55Z
+commit=b2f30d71026dd8f4a1440e68735d01cb320fe124
+go_version=go version go1.22.2 linux/amd64
+uname=Linux hub 7.0.0-30-generic #30~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Aug  7 13:27:52 UTC 2 x86_64 x86_64 x86_64 GNU/Linux
+gomaxprocs=1
+benchtime=100ms
+samples_per_state=4
+cpu_affinity=0

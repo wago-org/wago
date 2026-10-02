@@ -1,0 +1,9 @@
+utc=2026-08-24T14:20:50Z
+commit=20936e8621bca2049b7a3d5a68d71e4e547f0e48
+go_version=go version go1.26.5 darwin/arm64
+uname=Darwin Jairus-Tanaka.local 25.5.0 Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:15 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6041 arm64
+gomaxprocs=1
+benchtime=100ms
+samples_per_profile=4
+bench_pattern=^BenchmarkMatrix(CompileFull|Exec)$
+old_default_overrides=fcmp-fuse=true

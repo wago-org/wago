@@ -51,18 +51,18 @@ func gcKnownI32Const(e *elem) (uint32, bool) {
 	return uint32(e.st.cval), true
 }
 
-func gcKnownArrayIndexInBounds(object, index *elem) (indexValue, length uint32, ok bool) {
-	if !gcKnownArrayBoundsEnabled {
+func (f *fn) gcKnownArrayIndexInBounds(object, index *elem) (indexValue, length uint32, ok bool) {
+	if !f.gcRefFactsEnabled() || !gcKnownArrayBoundsEnabled {
 		return 0, 0, false
 	}
 	i, constant := gcKnownI32Const(index)
-	fact := gcRefFact(object)
+	fact := f.gcRefFact(object)
 	length, known := fact.KnownArrayLength()
 	return i, length, constant && known && fact.Nullability() == shared.GCKnownNonNull && i < length
 }
 
 func gcRefFact(e *elem) shared.GCRefFact {
-	if !exactGCRefFactsEnabled || e == nil || e.kind != ekValue || !e.st.gcRoot {
+	if e == nil || e.kind != ekValue || !e.st.gcRoot {
 		return shared.GCRefFact{}
 	}
 	if e.st.kind == stConst && e.st.cval == 0 {
@@ -80,6 +80,19 @@ func gcRefFact(e *elem) shared.GCRefFact {
 		}
 	}
 	return shared.GCRefFactFromPacked(uint64(e.st.cval), arrayLen)
+}
+
+func (f *fn) gcRefFactsEnabled() bool { return f.opt(optGCRefFacts) }
+
+func (f *fn) gcLoadForwarding() bool {
+	return f.gcRefFactsEnabled() && gcLoadForwardingEnabled
+}
+
+func (f *fn) gcRefFact(e *elem) shared.GCRefFact {
+	if !f.gcRefFactsEnabled() {
+		return shared.GCRefFact{}
+	}
+	return gcRefFact(e)
 }
 
 func putGCRefFact(st *storage, fact shared.GCRefFact) {
@@ -116,12 +129,12 @@ func putGCRefFact(st *storage, fact shared.GCRefFact) {
 	}
 }
 
-func markGCRefFact(e *elem, fact shared.GCRefFact) {
+func (f *fn) markGCRefFact(e *elem, fact shared.GCRefFact) {
 	if e == nil || e.kind != ekValue {
 		return
 	}
 	e.st.gcRoot = true
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return
 	}
 	putGCRefFact(&e.st, fact)
@@ -285,7 +298,7 @@ func zeroGCRefFactForValType(m *wasm.Module, typ wasm.ValType) shared.GCRefFact 
 }
 
 func (f *fn) declaredGCRefFact(typ wasm.ValType) shared.GCRefFact {
-	if !exactGCRefFactsEnabled || typ.Kind() != wasm.ValRef {
+	if !f.gcRefFactsEnabled() || typ.Kind() != wasm.ValRef {
 		return shared.GCRefFact{}
 	}
 	nullability := shared.GCNullUnknown
@@ -364,28 +377,28 @@ func (f *fn) constructorGCRefFact(typeIndex uint32, arrayLength *uint32) shared.
 }
 
 func (f *fn) markTopConstructorGCRefFact(typeIndex uint32, arrayLength *uint32) {
-	if exactGCRefFactsEnabled {
+	if f.gcRefFactsEnabled() {
 		fact := f.constructorGCRefFact(typeIndex, arrayLength)
-		markGCRefFact(f.s.back(), fact)
+		f.markGCRefFact(f.s.back(), fact)
 		f.stats.peep("gc-fact-exact")
 	}
 }
 
-func markExactGCType(e *elem, typeIndex uint32) {
-	fact := gcRefFact(e)
+func (f *fn) markExactGCType(e *elem, typeIndex uint32) {
+	fact := f.gcRefFact(e)
 	fact = fact.WithExactType(typeIndex, fact.HeapClass()).WithNullability(shared.GCKnownNonNull)
-	markGCRefFact(e, fact)
+	f.markGCRefFact(e, fact)
 }
 
 func (f *fn) markTopExactGCType(typeIndex uint32) {
-	if exactGCRefFactsEnabled {
-		fact := gcRefFact(f.s.back()).WithExactType(typeIndex, f.gcHeapClassForType(typeIndex)).WithNullability(shared.GCKnownNonNull)
-		markGCRefFact(f.s.back(), fact)
+	if f.gcRefFactsEnabled() {
+		fact := f.gcRefFact(f.s.back()).WithExactType(typeIndex, f.gcHeapClassForType(typeIndex)).WithNullability(shared.GCKnownNonNull)
+		f.markGCRefFact(f.s.back(), fact)
 	}
 }
 
 func (f *fn) seedFinalGCParameterTypes(params []wasm.ValType, recBase, recLength uint32) {
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return
 	}
 	for local, typ := range params {
@@ -431,26 +444,26 @@ func (f *fn) seedFinalGCParameterTypes(params []wasm.ValType, recBase, recLength
 }
 
 func (f *fn) markLocalGetExactGCType(e *elem, local int) {
-	if !exactGCRefFactsEnabled || local < 0 || local >= len(f.localGCRefFacts) {
+	if !f.gcRefFactsEnabled() || local < 0 || local >= len(f.localGCRefFacts) {
 		return
 	}
 	if fact := f.localGCRefFacts[local]; !fact.IsZero() {
-		markGCRefFact(e, fact)
+		f.markGCRefFact(e, fact)
 	}
 }
 
 func (f *fn) setLocalExactGCType(local int, source *elem) (shared.GCRefFact, bool) {
-	if !exactGCRefFactsEnabled || local < 0 || local >= len(f.localGCRefFacts) {
+	if !f.gcRefFactsEnabled() || local < 0 || local >= len(f.localGCRefFacts) {
 		return shared.GCRefFact{}, false
 	}
-	fact := gcRefFact(source)
+	fact := f.gcRefFact(source)
 	f.localGCRefFacts[local] = fact
 	_, exact := fact.ExactType()
 	return fact, exact
 }
 
 func (f *fn) clearLocalExactGCTypes() {
-	if exactGCRefFactsEnabled {
+	if f.gcRefFactsEnabled() {
 		clear(f.localGCRefFacts)
 	}
 	f.gcLastArrayLen.valid = false
@@ -482,7 +495,7 @@ func (f *fn) freeGCRefFactBuf(b []shared.GCRefFact) {
 }
 
 func (f *fn) snapshotGCRefFacts() []shared.GCRefFact {
-	if !exactGCRefFactsEnabled || len(f.localGCRefFacts) == 0 {
+	if !f.gcRefFactsEnabled() || len(f.localGCRefFacts) == 0 {
 		return nil
 	}
 	b := f.newGCRefFactBuf()
@@ -491,7 +504,7 @@ func (f *fn) snapshotGCRefFacts() []shared.GCRefFact {
 }
 
 func (f *fn) mergeGCRefFactsInto(target *[]shared.GCRefFact) {
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return
 	}
 	if *target == nil {
@@ -504,7 +517,7 @@ func (f *fn) mergeGCRefFactsInto(target *[]shared.GCRefFact) {
 }
 
 func (f *fn) installGCRefFacts(source []shared.GCRefFact) {
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return
 	}
 	if source == nil {
@@ -531,7 +544,7 @@ func (f *fn) invalidateLoopModifiedGCRefFacts(modified map[uint32]bool) {
 		f.gcLastField.valid = false
 	}
 	f.invalidateGCResolvedObject()
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return
 	}
 	for local := range modified {
@@ -551,7 +564,7 @@ func (f *fn) invalidateLoopModifiedGCRefFacts(modified map[uint32]bool) {
 }
 
 func (f *fn) publishGCIdentity(identity uint32) {
-	if !exactGCRefFactsEnabled || identity == 0 {
+	if !f.gcRefFactsEnabled() || identity == 0 {
 		return
 	}
 	for i, fact := range f.localGCRefFacts {
@@ -561,7 +574,7 @@ func (f *fn) publishGCIdentity(identity uint32) {
 	}
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue {
-			fact := gcRefFact(e)
+			fact := f.gcRefFact(e)
 			if fact.Identity() == identity {
 				putGCRefFact(&e.st, fact.WithFreshness(shared.GCPublished))
 			}
@@ -572,11 +585,11 @@ func (f *fn) publishGCIdentity(identity uint32) {
 	}
 }
 
-func (f *fn) publishGCRef(e *elem) { f.publishGCIdentity(gcRefFact(e).Identity()) }
+func (f *fn) publishGCRef(e *elem) { f.publishGCIdentity(f.gcRefFact(e).Identity()) }
 
 func (f *fn) publishGCStoredChild(parent, child *elem) {
-	parentIdentity := gcRefFact(parent).Identity()
-	childIdentity := gcRefFact(child).Identity()
+	parentIdentity := f.gcRefFact(parent).Identity()
+	childIdentity := f.gcRefFact(child).Identity()
 	if childIdentity != 0 && childIdentity != parentIdentity {
 		f.publishGCIdentity(childIdentity)
 	}
@@ -600,7 +613,7 @@ func (f *fn) recordGCBarrierState(state shared.GCBarrierState) {
 }
 
 func (f *fn) publishAllFreshGCRefs() {
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return
 	}
 	for i, fact := range f.localGCRefFacts {
@@ -610,7 +623,7 @@ func (f *fn) publishAllFreshGCRefs() {
 	}
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue {
-			fact := gcRefFact(e)
+			fact := f.gcRefFact(e)
 			if fact.Freshness() == shared.GCFreshUnpublished {
 				putGCRefFact(&e.st, fact.WithFreshness(shared.GCPublished))
 			}
@@ -622,7 +635,7 @@ func (f *fn) publishAllFreshGCRefs() {
 }
 
 func (f *fn) invalidateGCGenerationFacts() {
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return
 	}
 	for i, fact := range f.localGCRefFacts {
@@ -630,7 +643,7 @@ func (f *fn) invalidateGCGenerationFacts() {
 	}
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue {
-			fact := gcRefFact(e)
+			fact := f.gcRefFact(e)
 			if !fact.IsZero() {
 				putGCRefFact(&e.st, fact.WithGeneration(shared.GCGenerationUnknown))
 			}
@@ -651,7 +664,7 @@ func (f *fn) invalidateGCLoadFactsForLocal(local int) {
 }
 
 func (f *fn) prepareGCLoadResultCapture(op byte) {
-	if !gcLoadForwardingEnabled {
+	if !f.gcLoadForwarding() {
 		f.gcLastArrayLen.pending = nil
 		f.gcLastField.pending = nil
 		return
@@ -664,7 +677,7 @@ func (f *fn) prepareGCLoadResultCapture(op byte) {
 }
 
 func (f *fn) captureGCLoadResultLocal(value *elem, local int) {
-	if !gcLoadForwardingEnabled {
+	if !f.gcLoadForwarding() {
 		f.invalidateGCLoadFactsForLocal(local)
 		return
 	}
@@ -759,7 +772,7 @@ func markGCLocalProvenance(e *elem, local int) {
 }
 
 func (f *fn) tryForwardGCArrayLen(typeIndex uint32) bool {
-	if !gcLoadForwardingEnabled {
+	if !f.gcLoadForwarding() {
 		return false
 	}
 	last := &f.gcLastArrayLen
@@ -791,13 +804,13 @@ func (f *fn) observeGCArrayLen(typeIndex uint32) {
 }
 
 func (f *fn) recordGCArrayLenResult() {
-	if gcLoadForwardingEnabled && f.gcLastArrayLen.valid {
+	if f.gcLoadForwarding() && f.gcLastArrayLen.valid {
 		f.gcLastArrayLen.pending = f.s.back()
 	}
 }
 
 func (f *fn) tryForwardGCImmutableStructGet(typeIndex, fieldIndex uint32) bool {
-	if !gcLoadForwardingEnabled {
+	if !f.gcLoadForwarding() {
 		return false
 	}
 	last := &f.gcLastField
@@ -833,7 +846,7 @@ func (f *fn) observeGCStructGet(typeIndex, fieldIndex uint32, immutable bool) {
 }
 
 func (f *fn) recordGCStructGetResult() {
-	if gcLoadForwardingEnabled && f.gcLastField.valid {
+	if f.gcLoadForwarding() && f.gcLastField.valid {
 		f.gcLastField.pending = f.s.back()
 	}
 }
@@ -863,7 +876,7 @@ func (f *fn) tryForwardGCStructSetGet(typeIndex, fieldIndex uint32) bool {
 	f.dropValue()
 	result := f.pushValue(storage{kind: stConst, typ: last.constType, cval: last.constBits})
 	if !last.constFact.IsZero() {
-		markGCRefFact(result, last.constFact)
+		f.markGCRefFact(result, last.constFact)
 	}
 	last.pending = result
 	f.stats.peep("gc-struct-set-get-forward")
@@ -874,14 +887,14 @@ func (f *fn) recordGCConstructorConstant(typeIndex, fieldIndex uint32, immutable
 	if value == nil || result == nil || value.kind != ekValue || value.st.kind != stConst {
 		return
 	}
-	identity := gcRefFact(result).Identity()
+	identity := f.gcRefFact(result).Identity()
 	if identity == 0 {
 		return
 	}
 	f.gcLastField = gcStructFieldFact{
 		valid: true, fromStore: true, immutable: immutable, hasConst: true, local: -1, resultLocal: -1, identity: identity,
 		typeIndex: typeIndex, fieldIndex: fieldIndex, constType: value.st.typ,
-		constBits: value.st.cval, constFact: gcRefFact(value),
+		constBits: value.st.cval, constFact: f.gcRefFact(value),
 	}
 }
 
@@ -893,7 +906,7 @@ func (f *fn) recordGCStructSetConstant(value *elem) {
 	last.hasConst = true
 	last.constType = value.st.typ
 	last.constBits = value.st.cval
-	last.constFact = gcRefFact(value)
+	last.constFact = f.gcRefFact(value)
 }
 
 func (f *fn) observeGCStructSet(object *elem, typeIndex, fieldIndex uint32) {
@@ -914,7 +927,7 @@ func (f *fn) observeGCStructSet(object *elem, typeIndex, fieldIndex uint32) {
 }
 
 func (f *fn) topGCLocalFact() (local int, fact shared.GCRefFact, ok bool) {
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return 0, shared.GCRefFact{}, false
 	}
 	e := f.s.back()
@@ -936,7 +949,7 @@ func (f *fn) topExactGCLocal() (local int, typeIndex uint32, ok bool) {
 }
 
 func (f *fn) refineGCDereferencedObject(object *elem) {
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return
 	}
 	local, ok := gcLocalProvenance(object)
@@ -945,12 +958,12 @@ func (f *fn) refineGCDereferencedObject(object *elem) {
 	}
 	fact := f.localGCRefFacts[local].WithNullability(shared.GCKnownNonNull)
 	f.localGCRefFacts[local] = fact
-	markGCRefFact(object, fact)
+	f.markGCRefFact(object, fact)
 	f.stats.peep("gc-deref-nonnull-refine")
 }
 
 func (f *fn) refineTopLocalExactGCType(typeIndex uint32) {
-	if !exactGCRefFactsEnabled {
+	if !f.gcRefFactsEnabled() {
 		return
 	}
 	e := f.s.back()

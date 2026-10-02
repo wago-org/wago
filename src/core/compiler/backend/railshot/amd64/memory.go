@@ -179,7 +179,7 @@ func (f *fn) emitTrapStubs() {
 			}
 		}
 	}
-	if sharedTrapBodyEnabled && groups >= 3 &&
+	if f.opt(optSharedTrapBody) && groups >= 3 &&
 		(f.policy.Objective == OptimizeSize || f.policy.Objective == OptimizeEmbedded) {
 		f.emitSharedTrapStubs(groups)
 		f.stats.peep("shared-trap-body")

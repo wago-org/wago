@@ -45,7 +45,15 @@ func exactGCRefFactModule(t testing.TB, controlBoundary bool) *wasm.Module {
 	return m
 }
 
+func enableGCRefFacts(t *testing.T) {
+	t.Helper()
+	before := exactGCRefFactsEnabled
+	exactGCRefFactsEnabled = true
+	t.Cleanup(func() { exactGCRefFactsEnabled = before })
+}
+
 func TestFinalGCParameterFactsResolveRecursiveGroupIndex(t *testing.T) {
+	enableGCRefFacts(t)
 	recParam := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0, Rec: true}), false))
 	m := &wasm.Module{Types: []wasm.RecType{
 		{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}},
@@ -62,6 +70,7 @@ func TestFinalGCParameterFactsResolveRecursiveGroupIndex(t *testing.T) {
 }
 
 func TestNullableFinalGCParameterRetainsNonNullCast(t *testing.T) {
+	enableGCRefFacts(t)
 	compile := func(nullableCast bool) *CodegenStats {
 		t.Helper()
 		cast := byte(0x16) // ref.cast (ref 0)
@@ -115,6 +124,7 @@ func TestNullableFinalGCParameterRetainsNonNullCast(t *testing.T) {
 }
 
 func TestGCHeapClassMatchTruthTable(t *testing.T) {
+	enableGCRefFacts(t)
 	targets := []wasm.AbsHeapType{wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapFunc, wasm.HeapExtern}
 	for _, tc := range []struct {
 		name   string
@@ -158,6 +168,7 @@ func TestGCHeapClassMatchTruthTable(t *testing.T) {
 }
 
 func TestExactGCReferenceFactUsesCanonicalTypeEquivalence(t *testing.T) {
+	enableGCRefFacts(t)
 	data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(
 		[]byte{0x5f, 0x00},
 		[]byte{0x5f, 0x00},
@@ -177,6 +188,7 @@ func TestExactGCReferenceFactUsesCanonicalTypeEquivalence(t *testing.T) {
 }
 
 func TestStructuredGCReferenceFactIntersectionAndLoopSubset(t *testing.T) {
+	enableGCRefFacts(t)
 	left := shared.ExactGCRefFact(3, 11, shared.GCHeapArray).
 		WithFreshness(shared.GCFreshUnpublished).
 		WithKnownArrayLength(7)
@@ -199,6 +211,7 @@ func TestStructuredGCReferenceFactIntersectionAndLoopSubset(t *testing.T) {
 }
 
 func TestLoopHeaderClearsMutableFieldForwarding(t *testing.T) {
+	enableGCRefFacts(t)
 	f := fn{
 		localGCRefFacts: []shared.GCRefFact{
 			shared.ExactGCRefFact(0, 1, shared.GCHeapStruct).WithFreshness(shared.GCFreshUnpublished),
@@ -243,6 +256,7 @@ func TestDisabledGCReferenceFactsDoNotAllocateSnapshots(t *testing.T) {
 }
 
 func TestExactGCReferenceFactsElideProvenCast(t *testing.T) {
+	enableGCRefFacts(t)
 	compile := func(m *wasm.Module) *CodegenStats {
 		var stats ModuleStats
 		if _, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, Stats: &stats}); err != nil {
@@ -283,6 +297,7 @@ func TestExactGCReferenceFactsElideProvenCast(t *testing.T) {
 }
 
 func TestTeeSpillElisionPreservesGCReferenceFacts(t *testing.T) {
+	enableGCRefFacts(t)
 	const n = 20
 	body := []byte{
 		0x02,             // two local declaration groups
@@ -335,6 +350,7 @@ func TestTeeSpillElisionPreservesGCReferenceFacts(t *testing.T) {
 }
 
 func TestTeeSpillElisionDoesNotReuseGCReferenceHome(t *testing.T) {
+	enableGCRefFacts(t)
 	savedFacts, savedTee := exactGCRefFactsEnabled, teeSpillElideEnabled
 	exactGCRefFactsEnabled, teeSpillElideEnabled = true, true
 	defer func() { exactGCRefFactsEnabled, teeSpillElideEnabled = savedFacts, savedTee }()
@@ -389,6 +405,7 @@ func gcReferenceFactStats(t *testing.T, composite, body []byte) *CodegenStats {
 }
 
 func TestGCNullAndTypeTestsFoldFromStructuredFacts(t *testing.T) {
+	enableGCRefFacts(t)
 	saved := exactGCRefFactsEnabled
 	defer func() { exactGCRefFactsEnabled = saved }()
 	exactGCRefFactsEnabled = true
@@ -444,6 +461,7 @@ func gcResolveReuseStats(t *testing.T, composite, funcType, body []byte) *Codege
 }
 
 func TestGCResolvedHandleReuseAndInvalidation(t *testing.T) {
+	enableGCRefFacts(t)
 	refTo0I32 := []byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x7f}
 	refTo0TwoI32 := []byte{0x60, 0x01, 0x64, 0x00, 0x02, 0x7f, 0x7f}
 	structBody := []byte{
@@ -497,6 +515,7 @@ func TestGCResolvedHandleReuseAndInvalidation(t *testing.T) {
 }
 
 func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
+	enableGCRefFacts(t)
 	module := func(sites int) *wasm.Module {
 		body := []byte{0x00}
 		for range sites {
@@ -650,6 +669,7 @@ func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
 }
 
 func TestGCImmutableLoadCacheSurvivesUnrelatedMutableEffects(t *testing.T) {
+	enableGCRefFacts(t)
 	f := fn{
 		gcLastField: gcStructFieldFact{valid: true, immutable: true, local: 0, resultLocal: 1, identity: 7},
 		gcResolved:  gcResolvedObject{valid: true, reg: R12},
@@ -675,6 +695,7 @@ func TestGCImmutableLoadCacheSurvivesUnrelatedMutableEffects(t *testing.T) {
 }
 
 func TestGCReferenceFactEliminatesRepeatedLoadsViaBoundedResultLocal(t *testing.T) {
+	enableGCRefFacts(t)
 	savedFacts, savedLoads := exactGCRefFactsEnabled, gcLoadForwardingEnabled
 	defer func() { exactGCRefFactsEnabled, gcLoadForwardingEnabled = savedFacts, savedLoads }()
 	exactGCRefFactsEnabled, gcLoadForwardingEnabled = true, true
@@ -719,6 +740,7 @@ func TestGCReferenceFactEliminatesRepeatedLoadsViaBoundedResultLocal(t *testing.
 }
 
 func TestGCConstructorKnownBoundsElideLogicalArrayChecks(t *testing.T) {
+	enableGCRefFacts(t)
 	savedFacts, savedBounds := exactGCRefFactsEnabled, gcKnownArrayBoundsEnabled
 	defer func() { exactGCRefFactsEnabled, gcKnownArrayBoundsEnabled = savedFacts, savedBounds }()
 	exactGCRefFactsEnabled, gcKnownArrayBoundsEnabled = true, true
@@ -748,6 +770,7 @@ func TestGCConstructorKnownBoundsElideLogicalArrayChecks(t *testing.T) {
 }
 
 func TestGCReferenceFactLoadOpportunityCounters(t *testing.T) {
+	enableGCRefFacts(t)
 	arrayBody := []byte{
 		0x01, 0x01, 0x63, 0x00, // one (ref null 0) local
 		0x41, 0x02, 0xfb, 0x07, 0x00, 0x21, 0x00, // array.new_default 0 -> local 0

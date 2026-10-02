@@ -587,50 +587,6 @@ func TestInlineExecReturnBare(t *testing.T) {
 	})
 }
 
-// TestInlineExecLoop inlines a control-flow leaf with a loop: sum(n) = n+(n-1)+…+1.
-// Loop-carrying leaves are excluded from inlining by default (net-negative to
-// splice), so this opts back in via inlineLoopCallees to exercise that path.
-func TestInlineExecLoop(t *testing.T) {
-	defer func(o bool) { inlineLoopCallees = o }(inlineLoopCallees)
-	inlineLoopCallees = true
-	withInlineEnabled(t, func() {
-		// func 1 (n)->i32, locals: (acc i32). loop { acc += n; n -= 1; if n>0 continue }
-		//   (local acc)
-		//   loop
-		//     local.get1; local.get0; i32.add; local.set1     ; acc += n
-		//     local.get0; i32.const 1; i32.sub; local.set0     ; n -= 1
-		//     local.get0; i32.const 0; i32.gt_s; br_if 0        ; if n>0 loop
-		//   end
-		//   local.get1                                          ; acc
-		leaf := []byte{
-			0x01, 0x01, 0x7f, // 1 local: acc i32
-			0x03, 0x40, // loop (void)
-			0x20, 0x01, 0x20, 0x00, 0x6a, 0x21, 0x01, // acc += n
-			0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, // n -= 1
-			0x20, 0x00, 0x41, 0x00, 0x4a, 0x0d, 0x00, // if n>0 br 0
-			0x0b,       // end loop
-			0x20, 0x01, // local.get acc
-			0x0b, // end func
-		}
-		// func 0 ()->i32: sum(5) = 5+4+3+2+1 = 15
-		caller := []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}
-		m := modFuncs(t,
-			funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
-			funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: leaf},
-		)
-		if got := runAmd64(t, m); got != 15 {
-			t.Errorf("inlined sum(5) = %d, want 15", got)
-		}
-		var ms ModuleStats
-		if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
-			t.Fatalf("compile: %v", err)
-		}
-		if ms.Funcs[0].Calls["inline"] != 1 {
-			t.Errorf("loop leaf should be inlined; Calls=%v", ms.Funcs[0].Calls)
-		}
-	})
-}
-
 // TestInlineExecNested feeds the result of one splice as an argument to another
 // splice of the same callee (add(add(1,2), add(3,4))), exercising the
 // result-decoupling in realizeInlineRange (the reserved region is rebound between

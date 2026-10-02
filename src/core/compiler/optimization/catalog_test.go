@@ -28,6 +28,129 @@ func TestCatalogRegistrationIsUniqueAndArchitectureScoped(t *testing.T) {
 	}
 }
 
+func TestMeasuredLowValueOptimizationsDefaultOff(t *testing.T) {
+	wantOff := map[string]map[string]bool{
+		"amd64": {
+			"affine-lea":          true,
+			"call-next-use":       true,
+			"commute-self-update": true,
+			"loop-precheck":       true,
+			"tee-spill-elide":     true,
+			"v128-sink":           true,
+		},
+		"arm64": {
+			"loop-precheck": true,
+		},
+	}
+	for arch, names := range wantOff {
+		seen := map[string]bool{}
+		for _, definition := range ForArch(arch) {
+			if definition.Name == "inline-loop-callees" {
+				t.Fatalf("%s still registers removed inline-loop-callees", arch)
+			}
+			if names[definition.Name] {
+				seen[definition.Name] = true
+				if definition.Default {
+					t.Errorf("%s %s defaults on", arch, definition.Name)
+				}
+			}
+		}
+		for name := range names {
+			if !seen[name] {
+				t.Errorf("%s default-off optimization %s is not registered", arch, name)
+			}
+		}
+	}
+}
+
+func TestV128SinkIsAMD64Only(t *testing.T) {
+	if _, ok := Lookup("arm64", "v128-sink"); ok {
+		t.Fatal("arm64 still exposes the measured-low-value vector sink")
+	}
+	definition, ok := Lookup("amd64", "v128-sink")
+	if !ok {
+		t.Fatal("amd64 vector sink was removed before native verification")
+	}
+	if definition.Default {
+		t.Fatal("amd64 vector sink unexpectedly defaults on")
+	}
+}
+
+func TestDeepFPPinsAreRemoved(t *testing.T) {
+	if _, ok := Lookup("arm64", "deep-fp-pins"); ok {
+		t.Fatal("arm64 still exposes measured-low-value deep float pins")
+	}
+}
+
+func TestV128ConstCacheIsAMD64Only(t *testing.T) {
+	if _, ok := Lookup("arm64", "v128-const-cache"); ok {
+		t.Fatal("arm64 still exposes the measured-low-value v128 constant cache")
+	}
+	definition, ok := Lookup("amd64", "v128-const-cache")
+	if !ok {
+		t.Fatal("amd64 lost its high-value v128 constant cache")
+	}
+	if !definition.Default {
+		t.Fatal("amd64 v128 constant cache no longer defaults on")
+	}
+}
+
+func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
+	wantDefaultOff := map[string]map[string]bool{
+		"amd64": {"fcmp-fuse": true, "gc-ref-facts": true},
+		"arm64": {"fcmp-fuse": true},
+	}
+	want := map[string][]string{
+		"amd64": {
+			"simd-superopt",
+			"swar-idioms",
+			"interval-region-pins",
+			"fcmp-fuse",
+			"magic-div",
+			"shared-trap-body",
+			"shared-adapters",
+			"dead-gc-new",
+			"gc-ref-facts",
+			"gc-native-alloc",
+		},
+		"arm64": {
+			"simd-superopt",
+			"swar-idioms",
+			"interval-region-pins",
+			"fcmp-fuse",
+			"magic-div",
+			"shared-trap-body",
+			"shared-adapters",
+			"zero-branch",
+			"mul-add-fuse",
+			"entry-init-elision",
+			"v128-direct-results",
+		},
+	}
+	for arch, names := range want {
+		for _, name := range names {
+			definition, ok := Lookup(arch, name)
+			if !ok {
+				t.Errorf("%s substantial optimization %q is not registered", arch, name)
+				continue
+			}
+			if definition.Default == wantDefaultOff[arch][name] {
+				t.Errorf("%s optimization %q default = %t, want %t", arch, name, definition.Default, !wantDefaultOff[arch][name])
+			}
+		}
+	}
+	for _, name := range []string{"dead-gc-new", "gc-ref-facts", "gc-native-alloc"} {
+		if _, ok := Lookup("arm64", name); ok {
+			t.Errorf("arm64 exposes amd64-only optimization %q", name)
+		}
+	}
+	for _, name := range []string{"zero-branch", "mul-add-fuse", "entry-init-elision", "v128-direct-results"} {
+		if _, ok := Lookup("amd64", name); ok {
+			t.Errorf("amd64 exposes arm64-only optimization %q", name)
+		}
+	}
+}
+
 func TestBindingsRequireEveryArchitectureDefinition(t *testing.T) {
 	value := true
 	definitions := ForArch("amd64")

@@ -1,0 +1,170 @@
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 7800X3D 8-Core Processor           
+BenchmarkMatrixCompileFull/tiny         	    5223	     22536 ns/op	   15232 B/op	      75 allocs/op
+BenchmarkMatrixCompileFull/fib_iter     	    6650	     23035 ns/op	   18288 B/op	      84 allocs/op
+BenchmarkMatrixCompileFull/fib_rec      	    7282	     22955 ns/op	   16416 B/op	      85 allocs/op
+BenchmarkMatrixCompileFull/arith        	    6636	     23214 ns/op	   18896 B/op	      83 allocs/op
+BenchmarkMatrixCompileFull/float        	    6952	     22961 ns/op	   18920 B/op	      87 allocs/op
+BenchmarkMatrixCompileFull/memory       	    4646	     30652 ns/op	   20704 B/op	     115 allocs/op
+BenchmarkMatrixCompileFull/memory_tree  	    3378	     41061 ns/op	   28984 B/op	     125 allocs/op
+BenchmarkMatrixCompileFull/globals      	    6063	     25520 ns/op	   20008 B/op	     108 allocs/op
+BenchmarkMatrixCompileFull/dispatch     	    4857	     30358 ns/op	   20024 B/op	     127 allocs/op
+BenchmarkMatrixCompileFull/branches     	    7987	     20798 ns/op	   20120 B/op	      87 allocs/op
+BenchmarkMatrixCompileFull/many_funcs   	     241	    508293 ns/op	  220985 B/op	     683 allocs/op
+BenchmarkMatrixCompileFull/linked_list  	    4530	     31573 ns/op	   26304 B/op	     122 allocs/op
+BenchmarkMatrixCompileFull/mandelbrot   	    3704	     38748 ns/op	   38968 B/op	     128 allocs/op
+BenchmarkMatrixCompileFull/sieve        	    4034	     39374 ns/op	   32504 B/op	     124 allocs/op
+BenchmarkMatrixCompileFull/nbody        	     624	    209612 ns/op	  242640 B/op	     229 allocs/op
+BenchmarkMatrixCompileFull/spectralnorm 	     997	    142706 ns/op	  114416 B/op	     237 allocs/op
+BenchmarkMatrixCompileFull/fannkuch     	     422	    280655 ns/op	  245849 B/op	     297 allocs/op
+BenchmarkMatrixCompileFull/matmul       	    1224	    122010 ns/op	  117061 B/op	     204 allocs/op
+BenchmarkMatrixCompileFull/quicksort    	    1202	    117877 ns/op	   66576 B/op	     234 allocs/op
+BenchmarkMatrixCompileFull/crc32        	    2025	     72759 ns/op	   52344 B/op	     158 allocs/op
+BenchmarkMatrixCompileFull/sha256       	     872	    159835 ns/op	  120066 B/op	     203 allocs/op
+BenchmarkMatrixCompileFull/raytrace     	     284	    417873 ns/op	  241114 B/op	     229 allocs/op
+BenchmarkMatrixCompileFull/regexmatch   	       2	  82693929 ns/op	 4676120 B/op	   23625 allocs/op
+BenchmarkMatrixCompileFull/wasm3        	       6	  19496288 ns/op	 2119712 B/op	   12065 allocs/op
+BenchmarkMatrixCompileFull/json-as      	      57	   2111266 ns/op	  351580 B/op	    2121 allocs/op
+BenchmarkMatrixCompileFull/blake-as     	     226	    493963 ns/op	  244433 B/op	     280 allocs/op
+BenchmarkMatrixCompileFull/utf-as       	     346	    358467 ns/op	  283394 B/op	     276 allocs/op
+BenchmarkMatrixCompileFull/xjb-mulhi    	    3736	     38270 ns/op	   27656 B/op	     106 allocs/op
+BenchmarkMatrixCompileFull/swar-pack-parse         	    3776	     38700 ns/op	   27560 B/op	     106 allocs/op
+BenchmarkMatrixCompileFull/json-as-simd            	      50	   2343083 ns/op	  377072 B/op	    2376 allocs/op
+BenchmarkMatrixCompileFull/blake-as-simd           	      69	   1761540 ns/op	  487748 B/op	     394 allocs/op
+BenchmarkMatrixCompileFull/utf-as-simd             	     100	   1040152 ns/op	  313403 B/op	     688 allocs/op
+BenchmarkMatrixCompileFull/lua                     	       3	  34926649 ns/op	 3534944 B/op	   19494 allocs/op
+BenchmarkMatrixCompileFull/sqlite3                 	       1	 117783894 ns/op	 7832696 B/op	   52374 allocs/op
+BenchmarkMatrixCompileFull/ruby                    	       1	1332871491 ns/op	42349600 B/op	  414773 allocs/op
+BenchmarkMatrixCompileFull/esbuild                 	       1	 861474703 ns/op	45821760 B/op	  108820 allocs/op
+BenchmarkMatrixExec/tiny.add                       	14562752	         8.405 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/fib_iter.fib                   	 5850544	        20.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/fib_rec.fib                    	      78	   1516863 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/arith.run                      	   89232	      1347 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/float.run                      	   29916	      3998 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatrixExec/memory.sum                     	  482554	       246.8 ns/op	       0 B/op	       0 allocs/op
+unexpected fault address 0x1800000008
+fatal error: fault
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x1800000008 pc=0x1800000008]
+
+goroutine 94 gp=0xc000007dc0 m=5 mp=0xc0023e2008 [running]:
+runtime.throw({0x9e4b15?, 0x6ff1?})
+	/usr/lib/go-1.22/src/runtime/panic.go:1023 +0x5c fp=0x7756da9fff50 sp=0x7756da9fff20 pc=0x43b9dc
+runtime.sigpanic()
+	/usr/lib/go-1.22/src/runtime/signal_unix.go:895 +0x285 fp=0x7756da9fffb0 sp=0x7756da9fff50 pc=0x454385
+runtime: g 94: unexpected return pc for runtime.sigpanic called from 0x1800000008
+stack: frame={sp:0x7756da9fff50, fp:0x7756da9fffb0} stack=[0xc00003f800,0xc000040000)
+
+created by testing.(*B).run1 in goroutine 81
+	/usr/lib/go-1.22/src/testing/benchmark.go:208 +0x90
+
+goroutine 1 gp=0xc0000061c0 m=nil [chan receive]:
+runtime.gopark(0x23?, 0xaf009ece00?, 0x13?, 0x0?, 0xdabdd188?)
+	/usr/lib/go-1.22/src/runtime/proc.go:402 +0xce fp=0xc0000ab880 sp=0xc0000ab860 pc=0x43e98e
+runtime.chanrecv(0xc002c02000, 0x0, 0x1)
+	/usr/lib/go-1.22/src/runtime/chan.go:583 +0x3bf fp=0xc0000ab8f8 sp=0xc0000ab880 pc=0x408f3f
+runtime.chanrecv1(0x40fb1e?, 0x775723bc4788?)
+	/usr/lib/go-1.22/src/runtime/chan.go:442 +0x12 fp=0xc0000ab920 sp=0xc0000ab8f8 pc=0x408b72
+testing.(*B).run1(0xc0000c8c88)
+	/usr/lib/go-1.22/src/testing/benchmark.go:217 +0xa6 fp=0xc0000aba10 sp=0xc0000ab920 pc=0x4ee386
+testing.(*B).Run(0xc0000c8288, {0x9ece20?, 0x4936af?}, 0xa1d530)
+	/usr/lib/go-1.22/src/testing/benchmark.go:682 +0x497 fp=0xc0000abb10 sp=0xc0000aba10 pc=0x4f0e97
+testing.runBenchmarks.func1(0xc0000c8288)
+	/usr/lib/go-1.22/src/testing/benchmark.go:543 +0x37 fp=0xc0000abb50 sp=0xc0000abb10 pc=0x4eff97
+testing.(*B).runN(0xc0000c8288, 0x1)
+	/usr/lib/go-1.22/src/testing/benchmark.go:193 +0xf8 fp=0xc0000abba0 sp=0xc0000abb50 pc=0x4ee1b8
+testing.runBenchmarks({0x9e6610, 0x9}, 0x0?, {0xde4c40, 0x27, 0x4db78e?})
+	/usr/lib/go-1.22/src/testing/benchmark.go:552 +0x605 fp=0xc0000abca0 sp=0xc0000abba0 pc=0x4efee5
+testing.(*M).Run(0xc00007e3c0)
+	/usr/lib/go-1.22/src/testing/testing.go:2043 +0x9f6 fp=0xc0000abed0 sp=0xc0000abca0 pc=0x4fc4b6
+main.main()
+	_testmain.go:145 +0x16c fp=0xc0000abf50 sp=0xc0000abed0 pc=0x90a2ac
+runtime.main()
+	/usr/lib/go-1.22/src/runtime/proc.go:271 +0x29d fp=0xc0000abfe0 sp=0xc0000abf50 pc=0x43e53d
+runtime.goexit({})
+	/usr/lib/go-1.22/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc0000abfe8 sp=0xc0000abfe0 pc=0x475721
+
+goroutine 2 gp=0xc000006c40 m=nil [force gc (idle)]:
+runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/usr/lib/go-1.22/src/runtime/proc.go:402 +0xce fp=0xc000040fa8 sp=0xc000040f88 pc=0x43e98e
+runtime.goparkunlock(...)
+	/usr/lib/go-1.22/src/runtime/proc.go:408
+runtime.forcegchelper()
+	/usr/lib/go-1.22/src/runtime/proc.go:326 +0xb3 fp=0xc000040fe0 sp=0xc000040fa8 pc=0x43e7f3
+runtime.goexit({})
+	/usr/lib/go-1.22/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc000040fe8 sp=0xc000040fe0 pc=0x475721
+created by runtime.init.6 in goroutine 1
+	/usr/lib/go-1.22/src/runtime/proc.go:314 +0x1a
+
+goroutine 3 gp=0xc000006e00 m=nil [GC sweep wait]:
+runtime.gopark(0x1?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/usr/lib/go-1.22/src/runtime/proc.go:402 +0xce fp=0xc000041780 sp=0xc000041760 pc=0x43e98e
+runtime.goparkunlock(...)
+	/usr/lib/go-1.22/src/runtime/proc.go:408
+runtime.bgsweep(0xc000060000)
+	/usr/lib/go-1.22/src/runtime/mgcsweep.go:318 +0xdf fp=0xc0000417c8 sp=0xc000041780 pc=0x4286df
+runtime.gcenable.gowrap1()
+	/usr/lib/go-1.22/src/runtime/mgc.go:203 +0x25 fp=0xc0000417e0 sp=0xc0000417c8 pc=0x41cfe5
+runtime.goexit({})
+	/usr/lib/go-1.22/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc0000417e8 sp=0xc0000417e0 pc=0x475721
+created by runtime.gcenable in goroutine 1
+	/usr/lib/go-1.22/src/runtime/mgc.go:203 +0x66
+
+goroutine 4 gp=0xc000006fc0 m=nil [GC scavenge wait]:
+runtime.gopark(0x802311?, 0x3b9aca00?, 0x0?, 0x0?, 0x0?)
+	/usr/lib/go-1.22/src/runtime/proc.go:402 +0xce fp=0xc000042f78 sp=0xc000042f58 pc=0x43e98e
+runtime.goparkunlock(...)
+	/usr/lib/go-1.22/src/runtime/proc.go:408
+runtime.(*scavengerState).park(0xded100)
+	/usr/lib/go-1.22/src/runtime/mgcscavenge.go:425 +0x49 fp=0xc000042fa8 sp=0xc000042f78 pc=0x426089
+runtime.bgscavenge(0xc000060000)
+	/usr/lib/go-1.22/src/runtime/mgcscavenge.go:658 +0x59 fp=0xc000042fc8 sp=0xc000042fa8 pc=0x426639
+runtime.gcenable.gowrap2()
+	/usr/lib/go-1.22/src/runtime/mgc.go:204 +0x25 fp=0xc000042fe0 sp=0xc000042fc8 pc=0x41cf85
+runtime.goexit({})
+	/usr/lib/go-1.22/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc000042fe8 sp=0xc000042fe0 pc=0x475721
+created by runtime.gcenable in goroutine 1
+	/usr/lib/go-1.22/src/runtime/mgc.go:204 +0xa5
+
+goroutine 5 gp=0xc000007880 m=nil [finalizer wait]:
+runtime.gopark(0x0?, 0xa1de98?, 0xf0?, 0x40?, 0x1000000010?)
+	/usr/lib/go-1.22/src/runtime/proc.go:402 +0xce fp=0xc000040620 sp=0xc000040600 pc=0x43e98e
+runtime.runfinq()
+	/usr/lib/go-1.22/src/runtime/mfinal.go:194 +0x107 fp=0xc0000407e0 sp=0xc000040620 pc=0x41c027
+runtime.goexit({})
+	/usr/lib/go-1.22/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc0000407e8 sp=0xc0000407e0 pc=0x475721
+created by runtime.createfing in goroutine 1
+	/usr/lib/go-1.22/src/runtime/mfinal.go:164 +0x3d
+
+goroutine 6 gp=0xc000007a40 m=nil [GC worker (idle)]:
+runtime.gopark(0x431c6eaff185?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/usr/lib/go-1.22/src/runtime/proc.go:402 +0xce fp=0xc000042750 sp=0xc000042730 pc=0x43e98e
+runtime.gcBgMarkWorker()
+	/usr/lib/go-1.22/src/runtime/mgc.go:1310 +0xe5 fp=0xc0000427e0 sp=0xc000042750 pc=0x41f0c5
+runtime.goexit({})
+	/usr/lib/go-1.22/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc0000427e8 sp=0xc0000427e0 pc=0x475721
+created by runtime.gcBgMarkStartWorkers in goroutine 1
+	/usr/lib/go-1.22/src/runtime/mgc.go:1234 +0x1c
+
+goroutine 81 gp=0xc000007c00 m=nil [chan receive]:
+runtime.gopark(0x23?, 0xc8040ac100?, 0x13?, 0x0?, 0x107698?)
+	/usr/lib/go-1.22/src/runtime/proc.go:402 +0xce fp=0xc000027648 sp=0xc000027628 pc=0x43e98e
+runtime.chanrecv(0xc002c02360, 0x0, 0x1)
+	/usr/lib/go-1.22/src/runtime/chan.go:583 +0x3bf fp=0xc0000276c0 sp=0xc000027648 pc=0x408f3f
+runtime.chanrecv1(0x40fb1e?, 0x775723bc4788?)
+	/usr/lib/go-1.22/src/runtime/chan.go:442 +0x12 fp=0xc0000276e8 sp=0xc0000276c0 pc=0x408b72
+testing.(*B).run1(0xc0000c8508)
+	/usr/lib/go-1.22/src/testing/benchmark.go:217 +0xa6 fp=0xc0000277d8 sp=0xc0000276e8 pc=0x4ee386
+testing.(*B).Run(0xc0000c8c88, {0xc004046340?, 0x3?}, 0xc002af42a0)
+	/usr/lib/go-1.22/src/testing/benchmark.go:682 +0x497 fp=0xc0000278d8 sp=0xc0000277d8 pc=0x4f0e97
+wagobench.BenchmarkMatrixExec(0xc0000c8c88)
+	/tmp/wago-opt-toggle-matrix-20260822.vbYxEp/bench/optimization_matrix_bench_test.go:86 +0x765 fp=0xc000027f50 sp=0xc0000278d8 pc=0x902ae5
+testing.(*B).runN(0xc0000c8c88, 0x1)
+	/usr/lib/go-1.22/src/testing/benchmark.go:193 +0xf8 fp=0xc000027fa0 sp=0xc000027f50 pc=0x4ee1b8
+testing.(*B).run1.func1()
+	/usr/lib/go-1.22/src/testing/benchmark.go:215 +0x4e fp=0xc000027fe0 sp=0xc000027fa0 pc=0x4ee7ee
+runtime.goexit({})
+	/usr/lib/go-1.22/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc000027fe8 sp=0xc000027fe0 pc=0x475721
+created by testing.(*B).run1 in goroutine 1
+	/usr/lib/go-1.22/src/testing/benchmark.go:208 +0x90

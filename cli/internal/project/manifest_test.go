@@ -106,6 +106,25 @@ func TestManifestValidationRejectsUnknownNestedAndMalformedFields(t *testing.T) 
 	}
 }
 
+func TestManifestValidationAcceptsCataloguedOptimizationFamilies(t *testing.T) {
+	optimizations := map[string]any{}
+	for _, name := range []string{
+		"simd-superopt", "swar-idioms", "interval-region-pins", "fcmp-fuse", "magic-div",
+		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse",
+		"entry-init-elision", "v128-direct-results", "dead-gc-new", "gc-ref-facts",
+		"gc-native-alloc",
+	} {
+		optimizations[name] = false
+	}
+	manifest := map[string]any{
+		"$schema":  SchemaURI,
+		"settings": map[string]any{"optimizations": optimizations},
+	}
+	if err := ValidateManifest(manifest); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func validTestPackage() map[string]any {
 	return map[string]any{
 		"module": "github.com/acme/example", "version": "1.2.3", "name": "Example",

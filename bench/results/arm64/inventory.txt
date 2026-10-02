@@ -1,0 +1,42 @@
+=== RUN   TestOptimizationMatrixInventory
+MATRIX_OPT	bounds-facts	true	false	Bounds facts	straight-line bounds-check elision
+MATRIX_OPT	st-flags	true	false	Flags results	keep comparison results in the flags register
+MATRIX_OPT	reg-merge	true	false	Register merge	keep block results in registers across joins
+MATRIX_OPT	tee-sink	true	false	Tee sinking	sink local.tee expressions into local registers
+MATRIX_OPT	unary-sink	true	false	Unary sinking	sink unary and conversion expressions in place
+MATRIX_OPT	three-op-sink	true	false	Three-operand sinking	sink binary operations into pinned locals
+MATRIX_OPT	olddest-rhs-sink	true	false	Old destination reuse	reuse an old destination register as the right operand
+MATRIX_OPT	branch-fold	true	false	Branch folding	fold branch pairs into one conditional branch
+MATRIX_OPT	store-load-fwd	true	false	Store/load forwarding	forward stores into loads after assembly
+MATRIX_OPT	uxtw-add	true	false	Extended adds	fold zero-extension into ADD UXTW
+MATRIX_OPT	value-facts	true	false	Value facts	propagate bounded upper-zero and boolean provenance
+MATRIX_OPT	load-pair	true	false	Adjacent load pairs	combine adjacent full-width scalar loads from one local address into LDP
+MATRIX_OPT	entry-param-pairs	true	false	Entry parameter pairs	pair adjacent serialized wrapper parameter homes in function prologues
+MATRIX_OPT	entry-zero-pairs	true	false	Entry zero pairs	pair adjacent declared-local zero stores in function prologues
+MATRIX_OPT	entry-arg-pins	true	false	Entry argument pins	keep entry arguments in incoming registers
+MATRIX_OPT	x8-pin	true	false	X8 scratch pin	pin a scratch value in call-free functions
+MATRIX_OPT	deep-fp-pins	true	false	Deep float pins	pin additional float locals in call-free functions
+MATRIX_OPT	ext-fp-pins	true	false	Extended float pins	use the larger floating-point register pool
+MATRIX_OPT	merge-next-use	true	false	Merge next-use	keep dead forward-merge locals lazy with bounded post-merge lookahead
+MATRIX_OPT	leaf-scratch-pins	true	false	Leaf scratch pins	pin scratch values in leaf functions
+MATRIX_OPT	immutable-table	true	false	Immutable tables	specialize calls through never-written tables
+MATRIX_OPT	immutable-table-type	true	false	Immutable table types	skip redundant immutable-table type checks
+MATRIX_OPT	inline-callfree	true	false	Call-free inline hints	prioritize call-free functions for inlining
+MATRIX_OPT	store-forward	true	false	Store forwarding	forward straight-line stores into loads
+MATRIX_OPT	frame-elide-reghomed	true	false	Register-homed frames	omit frames when locals remain in registers
+MATRIX_OPT	small-frame	true	false	Small frames	use compact stack adjustment forms
+MATRIX_OPT	v128-const-cache	true	false	Vector constant cache	reserve vector registers for repeated constants
+MATRIX_OPT	v128-pins	true	false	Vector pins	pin hot vector locals in registers
+MATRIX_OPT	v128-sink	true	false	Vector sinking	sink vector operations into pinned locals
+MATRIX_OPT	reg-abi	true	false	Register ABI	use Wago's internal register calling convention
+MATRIX_OPT	inline	true	false	Inlining	inline eligible callees
+MATRIX_OPT	inline-loop-callees	false	true	Loop-call inlining	inline callees invoked from inside loops
+MATRIX_OPT	loop-precheck	true	false	Loop prechecks	hoist invariant bounds checks before loops
+MATRIX_OPT	loop-region-pins	false	true	Loop-region pins	pin loop-carried values across loop regions
+MATRIX_OPT	immutable-poly-fastpath	false	true	Polymorphic table fast path	specialize polymorphic immutable-table calls
+MATRIX_OPT	legacy-fp-pins	false	true	Legacy float pins	use the legacy floating-point pin allocator
+MATRIX_OPT	legacy-gp-pins	false	true	Legacy integer pins	use the legacy integer pin allocator
+MATRIX_OPT	stack-fence	true	false	Stack fence	emit the stack-overflow guard fence
+MATRIX_OPT	stack-reg	true	false	Stack register	keep the guest stack pointer in a register
+--- PASS: TestOptimizationMatrixInventory (0.00s)
+PASS
