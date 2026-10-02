@@ -21,6 +21,7 @@ const (
 	ErrInvalidBlockType
 	ErrInstructionNestingLimitExceeded
 	ErrInvalidModule
+	ErrLegacyExceptionHandling
 )
 
 type DecodeError struct {
@@ -73,9 +74,21 @@ func (c DecodeErrorCode) String() string {
 		return "instruction nesting limit exceeded"
 	case ErrInvalidModule:
 		return "invalid module"
+	case ErrLegacyExceptionHandling:
+		return "legacy exception handling is not supported; recompile with try_table (exnref)"
 	default:
 		return fmt.Sprintf("decode error %d", int(c))
 	}
+}
+
+// Only unsupported opcode paths call this helper; valid decoding stays unchanged.
+func invalidInstructionError(op byte, offset int) *DecodeError {
+	code := ErrInvalidInstruction
+	switch op {
+	case 0x06, 0x07, 0x09, 0x18, 0x19: // legacy try, catch, rethrow, delegate, catch_all
+		code = ErrLegacyExceptionHandling
+	}
+	return &DecodeError{Code: code, Offset: offset}
 }
 
 type ValidationErrorCode int
