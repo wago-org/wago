@@ -456,6 +456,13 @@ control frames can retain immutable operand prefixes for cold merge state instea
 of copying the full stack at every nested block. These indexes reduce repeated
 scans while preserving exact branch types and root placement.
 
+The `wago_regalloccheck` build tag adds an independent symbolic transfer checker
+at canonical-stack, control-edge and ABI-shuffle seams, plus immutable-cache
+call-clobber checks. The ordinary build retains no checker state or work. This
+first version assumes correct window inputs and does not verify arbitrary
+instructions between windows or whole-CFG equivalence; see the
+[checker contract](docs/register-allocation-checker.md).
+
 The production compiler path is still single-pass: there is no separate
 register-allocation pass on the hot load path; Valent-Block is the compiler's
 middle and back end in one pass.

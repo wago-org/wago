@@ -38,6 +38,9 @@ var aluTable = [...]aluEnc{
 // regNone to pick a fresh one. Returns the register now holding the value and
 // converts `node` into that value on the stack (its operands are consumed).
 func (f *fn) condense(node *elem, dest Reg) Reg {
+	if regallocCheckEnabled {
+		f.checkInputs(node)
+	}
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		previous := f.enterProfileNode(node)
 		defer f.switchProfileOrigin(previous)
@@ -717,6 +720,9 @@ func leaRightOK(right *elem) bool {
 // materialized register for large displacements), a register via add-shifted with
 // scale 0 (a plain reg-reg ADD). Releases an owned register right.
 func (f *fn) emitLeaAdd(dst, base Reg, right *elem, w bool) {
+	if regallocCheckEnabled {
+		f.checkUse(right)
+	}
 	switch right.st.kind {
 	case stConst:
 		f.leaDisp(dst, base, int32(right.st.cval), w)
@@ -989,6 +995,9 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			// condense rewrites the existing operand node in place.
 			f.condense(right, regNone)
 		}
+		if regallocCheckEnabled {
+			f.checkUse(right)
+		}
 		switch right.st.kind {
 		case stConst:
 			if f.fitsAddSubImmediate(right.st.cval) {
@@ -1008,11 +1017,17 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		case stSlot:
 			t := f.allocReg(maskOf(L))
 			f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
+			if regallocCheckEnabled {
+				f.checkOccupy(right, t, false)
+			}
 			f.cmpRR(L, t, w)
 			f.release(t)
 		case stLocalRef:
 			t := f.allocReg(maskOf(L))
 			f.ld64(t, SP, f.localOff(right.st.index()))
+			if regallocCheckEnabled {
+				f.checkOccupy(right, t, false)
+			}
 			f.cmpRR(L, t, w)
 			f.release(t)
 		case stMemRef:
@@ -1306,6 +1321,9 @@ func (f *fn) cmpIntMin(dividend Reg, w bool) {
 // (the target-hint / in-place path — the left spine of an accumulator writes
 // straight into dest).
 func (f *fn) condenseInto(e *elem, dest Reg) {
+	if regallocCheckEnabled {
+		f.checkUse(e)
+	}
 	if e.isDeferred() {
 		f.condense(e, dest)
 		return
@@ -1330,6 +1348,9 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 		f.loadMemRef(dest, e) // emit the deferred load into dest
 		f.releaseMemRef(e.st)
 	}
+	if regallocCheckEnabled {
+		f.checkOccupy(e, dest, false)
+	}
 }
 
 // applyALU emits `dest = dest <op> right`, folding the right operand: constants as
@@ -1337,6 +1358,9 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 // materialized into a register; memory-resident operands are loaded first (no
 // AArch64 memory operands); registers are used directly.
 func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
+	if regallocCheckEnabled {
+		f.checkUse(right)
+	}
 	switch right.st.kind {
 	case stConst:
 		if !f.aluImm(enc.op, dest, right.st.cval, w) {
@@ -1354,11 +1378,17 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	case stSlot:
 		t := f.allocReg(maskOf(dest))
 		f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
+		if regallocCheckEnabled {
+			f.checkOccupy(right, t, false)
+		}
 		f.aluRR(enc.op, dest, t, w)
 		f.release(t)
 	case stLocalRef:
 		t := f.allocReg(maskOf(dest))
 		f.ld64(t, SP, f.localOff(right.st.index()))
+		if regallocCheckEnabled {
+			f.checkOccupy(right, t, false)
+		}
 		f.aluRR(enc.op, dest, t, w)
 		f.release(t)
 	case stMemRef:
@@ -1510,6 +1540,9 @@ func (f *fn) addFoldImm3(dest, base Reg, v int64, w bool) bool {
 // multiply-immediate, so a constant is either the {3,5,9} add-shifted special case
 // or materialized into a register; memory operands are loaded first.
 func (f *fn) applyMul(dest Reg, right *elem, w bool) {
+	if regallocCheckEnabled {
+		f.checkUse(right)
+	}
 	switch right.st.kind {
 	case stConst:
 		// x*{3,5,9} → one add-shifted [x+x*{2,4,8}] (powers of two already became
@@ -1532,11 +1565,17 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	case stSlot:
 		t := f.allocReg(maskOf(dest))
 		f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
+		if regallocCheckEnabled {
+			f.checkOccupy(right, t, false)
+		}
 		f.mulRR(dest, t, w)
 		f.release(t)
 	case stLocalRef:
 		t := f.allocReg(maskOf(dest))
 		f.ld64(t, SP, f.localOff(right.st.index()))
+		if regallocCheckEnabled {
+			f.checkOccupy(right, t, false)
+		}
 		f.mulRR(dest, t, w)
 		f.release(t)
 	case stMemRef:

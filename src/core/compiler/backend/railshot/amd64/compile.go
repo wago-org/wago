@@ -248,6 +248,8 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
+	//lint:ignore U1000 debug-only fields; the ordinary placeholder is empty
+	regallocFnState
 	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
 	profileFnState
 	a             *amd64.Asm // the (reused) x86-64 encoder

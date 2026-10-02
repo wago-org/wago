@@ -492,6 +492,14 @@ jobs:
         if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: scripts/check-diagnostic-dce.sh
 
+      - name: Checked compiler tests on Windows
+        if: matrix.runtime && runner.os == 'Windows'
+        run: go test -count=1 -tags=wago_regalloccheck ./internal/regalloccheck ./src/core/encoder/... ./src/core/compiler/backend/railshot/... ./src/wago
+
+      - name: Allocation checker generated-code identity
+        if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: scripts/check-regalloc-code.sh
+
       - name: Compiler diagnostic tests
         if: matrix.runtime
         run: go test -count=1 -tags wago_codegenstats ./src/core/compiler/backend/railshot/... ./src/wago ./cli/runtime/internal/artifactcache

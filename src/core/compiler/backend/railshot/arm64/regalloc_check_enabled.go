@@ -1,0 +1,255 @@
+//go:build arm64 && wago_regalloccheck
+
+package arm64
+
+import (
+	"fmt"
+
+	"github.com/wago-org/wago/internal/regalloccheck"
+)
+
+const regallocCheckEnabled = true
+
+type regallocFnState struct {
+	allocationCheck *allocationRegion
+	immutableCheck  regalloccheck.State
+	immutableValues []allocationGoal
+}
+type allocationGoal struct {
+	loc   regalloccheck.Location
+	value regalloccheck.Value
+}
+type allocationRegion struct {
+	state     regalloccheck.State
+	values    map[*elem]regalloccheck.Value
+	protected map[*elem]bool
+	goals     []allocationGoal
+	previous  func(regalloccheck.Effect)
+}
+
+func checkSize(typ machineType) int {
+	switch typ {
+	case mtI32, mtF32:
+		return 4
+	case mtV128:
+		return 16
+	default:
+		return 8
+	}
+}
+func checkReg(reg Reg, fp bool) regalloccheck.Location {
+	bank := regalloccheck.GP
+	if fp {
+		bank = regalloccheck.FP
+	}
+	return regalloccheck.Register(bank, uint8(reg))
+}
+func (f *fn) checkLocation(e *elem) (regalloccheck.Location, bool) {
+	if e.isDeferred() {
+		return regalloccheck.Location{}, false
+	}
+	switch e.st.kind {
+	case stReg, stLocalReg, stGlobReg:
+		return checkReg(e.st.reg, e.st.typ.isXMM()), true
+	case stSlot:
+		return regalloccheck.Slot(f.spillOff(e.st.slotIndex())), true
+	case stLocalRef:
+		return regalloccheck.Slot(f.localOff(e.st.index())), true
+	}
+	return regalloccheck.Location{}, false
+}
+func (f *fn) checkSeed(e *elem) {
+	if e == nil {
+		return
+	}
+	c := f.allocationCheck
+	if _, ok := c.values[e]; ok {
+		return
+	}
+	size := checkSize(e.st.typ)
+	if loc, ok := f.checkLocation(e); ok {
+		c.values[e] = c.state.Seed(loc, size)
+	} else {
+		c.values[e] = c.state.Fresh(size)
+	}
+	if e.isDeferred() {
+		f.checkSeed(f.s.arg0(e))
+		f.checkSeed(f.s.arg1(e))
+	}
+}
+
+// checkBeginFlush trusts the incoming value locations, then checks the whole
+// canonicalization without reseeding after spills, reloads or slot overwrites.
+// Arithmetic definitions are trusted; transfer effects come from the encoders.
+func (f *fn) checkBeginFlush(roots []*elem) bool {
+	if f.allocationCheck != nil {
+		panic("regalloccheck: nested canonicalization")
+	}
+	c := &allocationRegion{values: make(map[*elem]regalloccheck.Value)}
+	f.allocationCheck = c
+	for _, e := range roots {
+		f.checkSeed(e)
+	}
+	// Values above a flushed prefix can be evicted while its roots materialize.
+	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
+		f.checkSeed(e)
+	}
+	slot := 0
+	for _, e := range roots {
+		c.goals = append(c.goals, allocationGoal{regalloccheck.Slot(f.spillOff(slot)), c.values[e]})
+		slot += e.st.typ.stackSlots()
+	}
+	// A partial flush must also preserve the condition/argument suffix.
+	c.protected = make(map[*elem]bool)
+	first := f.s.next(f.s.head)
+	if len(roots) != 0 {
+		first = f.s.next(roots[len(roots)-1])
+	}
+	for e := first; e != f.s.head; e = f.s.next(e) {
+		c.protected[e] = true
+	}
+	c.previous = f.a.ObserveRegalloc(c.state.Apply)
+	return true
+}
+func (f *fn) checkEndFlush() {
+	c := f.allocationCheck
+	f.a.ObserveRegalloc(c.previous)
+	f.allocationCheck = nil
+	if failure := recover(); failure != nil {
+		panic(failure)
+	}
+	for _, goal := range c.goals {
+		c.state.Expect("canonical stack at join/call", goal.loc, goal.value)
+	}
+
+	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
+		if c.protected[e] {
+			if loc, ok := f.checkLocation(e); ok {
+				c.state.Expect("live suffix after partial flush", loc, c.values[e])
+			}
+		}
+	}
+}
+
+func (f *fn) checkInputs(e *elem) {
+	if f.allocationCheck == nil || e == nil {
+		return
+	}
+	if e.isDeferred() {
+		f.checkInputs(f.s.arg0(e))
+		f.checkInputs(f.s.arg1(e))
+	} else {
+		f.checkUse(e)
+	}
+}
+func (f *fn) checkUse(e *elem) {
+	c := f.allocationCheck
+	if c == nil {
+		return
+	}
+	value, ok := c.values[e]
+	if !ok {
+		panic("regalloccheck: unmodeled value in transfer region")
+	}
+	if loc, concrete := f.checkLocation(e); concrete {
+		c.state.Expect(fmt.Sprintf("function %d pc %d materialize input", f.traceFuncIdx, f.wasmPC), loc, value)
+	}
+}
+func (f *fn) checkOccupy(e *elem, reg Reg, fp bool) {
+	c := f.allocationCheck
+	if c == nil {
+		return
+	}
+	value, ok := c.values[e]
+	if !ok {
+		panic("regalloccheck: unmodeled definition in transfer region")
+	}
+	dst := checkReg(reg, fp)
+	if _, concrete := f.checkLocation(e); concrete {
+		c.state.Expect(fmt.Sprintf("function %d pc %d materialize transfer", f.traceFuncIdx, f.wasmPC), dst, value)
+	} else {
+		// Only semantic definitions introduce identities. Reloads and moves cannot.
+		c.state.Put(dst, value)
+	}
+}
+
+// checkBeginSlots verifies an edge's simultaneous slot assignment, including
+// overlap. A nested staged-flush copy inherits the existing physical state.
+func (f *fn) checkBeginSlots(from, to, n int) func() {
+	c := f.allocationCheck
+	owned := c == nil
+	if owned {
+		c = &allocationRegion{}
+		c.previous = f.a.ObserveRegalloc(c.state.Apply)
+	}
+	goals := make([]allocationGoal, n)
+	for i := range goals {
+		src := regalloccheck.Slot(f.spillOff(from + i))
+		var value regalloccheck.Value
+		if owned {
+			value = c.state.Seed(src, 8)
+		} else {
+			value = c.state.Read(src, 8)
+		}
+		// A scalar i32/f32 only promises its low four bytes. Preserve every known
+		// byte, rather than inventing identities for unspecified carrier high bits.
+		goals[i] = allocationGoal{regalloccheck.Slot(f.spillOff(to + i)), value}
+	}
+	return func() {
+		if owned {
+			f.a.ObserveRegalloc(c.previous)
+		}
+		for _, goal := range goals {
+			c.state.ExpectKnown("control-edge slot copy", goal.loc, goal.value)
+		}
+	}
+}
+
+// Immutable caches are defined at their actual preload, not seeded at a call.
+// They have no spill/reload protocol and must survive until function exit.
+func (f *fn) checkImmutable(reg Reg, fp bool, size int) {
+	loc := checkReg(reg, fp)
+	value := f.immutableCheck.Fresh(size)
+	f.immutableCheck.Put(loc, value)
+	f.immutableValues = append(f.immutableValues, allocationGoal{loc, value})
+}
+func (f *fn) checkCallClobber() {
+	f.immutableCheck.Apply(regalloccheck.Effect{Kind: regalloccheck.Call})
+	for _, goal := range f.immutableValues {
+		f.immutableCheck.Expect(fmt.Sprintf("function %d pc %d: immutable cache across physical call", f.traceFuncIdx, f.wasmPC), goal.loc, goal.value)
+	}
+}
+
+// checkBeginRegMoves snapshots the original parallel assignment, then observes
+// the actual encoder transfers. Requested resolver operations never update state.
+func (f *fn) checkBeginRegMoves(moves []regMove, fp bool) func() {
+	var state regalloccheck.State
+	for _, m := range moves {
+		state.Seed(checkReg(m.src, fp), 8)
+	}
+	goals := make([]allocationGoal, len(moves))
+	for i, m := range moves {
+		goals[i] = allocationGoal{checkReg(m.dst, fp), state.Read(checkReg(m.src, fp), 8)}
+	}
+	var previous func(regalloccheck.Effect)
+	previous = f.a.ObserveRegalloc(func(effect regalloccheck.Effect) {
+		state.Apply(effect)
+		if previous != nil {
+			previous(effect)
+		}
+	})
+	closed := false
+	return func() {
+		if closed {
+			return
+		}
+		closed = true
+		f.a.ObserveRegalloc(previous)
+		if failure := recover(); failure != nil {
+			panic(failure)
+		}
+		for _, goal := range goals {
+			state.Expect("parallel ABI move", goal.loc, goal.value)
+		}
+	}
+}
