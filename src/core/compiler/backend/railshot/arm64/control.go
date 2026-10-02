@@ -1065,21 +1065,26 @@ func (f *fn) flush() {
 	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
 
-// flushWideStack stages unusually wide operand stacks in a disjoint frame range
-// before copying them to canonical slots. This avoids overwriting earlier
-// allocation spills while the one-pass canonicalizer is still reloading them.
+// flushWideStack stages wide or overlapping operand stacks in a disjoint frame
+// range before copying them to canonical slots. Existing spilled roots and
+// deferred children must survive earlier canonical stores.
 func (f *fn) flushWideStack(roots []*elem, gcRoots []bool) bool {
 	const wideFlushSlots = 64
 
 	types := f.tmpFlushTypes[:0]
 	total := 0
+	needsStage := false
 	for _, root := range roots {
 		typ := rootMachineType(root)
 		types = append(types, typ)
+		if root.elemKind() == ekValue && root.st.kind == stSlot && root.st.slotIndex() < total ||
+			root.isDeferred() && f.flushSpillBefore(root, total) {
+			needsStage = true
+		}
 		total += typ.stackSlots()
 	}
 	f.tmpFlushTypes = types
-	if total <= wideFlushSlots {
+	if total <= wideFlushSlots && !needsStage {
 		return false
 	}
 
@@ -1118,6 +1123,21 @@ func (f *fn) flushWideStack(roots []*elem, gcRoots []bool) bool {
 	f.moveSlots(stageBase, 0, total)
 	f.setDepthTypesWithGCRoots(types, gcRoots)
 	return true
+}
+
+// flushSpillBefore finds existing deferred inputs that an earlier canonical
+// store would overwrite. New spills are separately protected by spillFloor.
+// Existing maxDeferDepth bounds this walk to maxDeferDepth+1 simultaneous calls
+// including the leaf, the same trees already traversed by materialization.
+func (f *fn) flushSpillBefore(root *elem, destination int) bool {
+	if root == nil || destination == 0 {
+		return false
+	}
+	if root.elemKind() == ekValue {
+		return root.st.kind == stSlot && root.st.slotIndex() < destination
+	}
+	return root.isDeferred() &&
+		(f.flushSpillBefore(f.s.arg0(root), destination) || f.flushSpillBefore(f.s.arg1(root), destination))
 }
 
 // setDepth consumes the top operands while preserving the exact machine types
