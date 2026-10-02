@@ -5,6 +5,7 @@ package wago
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -26,6 +27,21 @@ func stagedTypedTailCompile(t testing.TB, module []byte) *Compiled {
 	compiled, err := compileStagedTypedTail(module)
 	if err != nil {
 		t.Fatalf("staged typed-tail compile: %v", err)
+	}
+	t.Cleanup(func() { _ = compiled.Close() })
+	return compiled
+}
+
+func stagedTypedEHTailCompile(t testing.TB, module []byte) *Compiled {
+	t.Helper()
+	cfg := NewRuntimeConfig()
+	features := cfg.frontendFeatures()
+	features.TypedFunctionReferences = true
+	features.TypedTailCalls = true
+	features.ExceptionHandling = true
+	compiled, err := compileWithFrontendFeatures(cfg, module, features)
+	if err != nil {
+		t.Fatalf("staged typed EH-tail compile: %v", err)
 	}
 	t.Cleanup(func() { _ = compiled.Close() })
 	return compiled
@@ -286,5 +302,37 @@ func TestStagedTypedCrossInstanceReturnCallRefTwoResults(t *testing.T) {
 	}
 	if got, err := consumer.Invoke("run", I32(0)); err != nil || len(got) != 2 || got[0] != 7 || got[1] != 9 {
 		t.Fatalf("pair cross tail after producer close = %v, %v; want [7 9]", got, err)
+	}
+}
+
+func TestStagedTypedCrossInstanceReturnCallRefPreservesWideArguments(t *testing.T) {
+	for _, slots := range []int{15, 16} {
+		t.Run(fmt.Sprintf("slots=%d", slots), func(t *testing.T) {
+			// The target catches its own typed throw before returning slot 14. This
+			// proves tail staging preserves both the argument and the target EH context.
+			producerCompiled := stagedTypedEHTailCompile(t, wideCrossTailEHProducerModule(slots))
+			producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatalf("instantiate wide-tail producer: %v", err)
+			}
+			defer producer.Close()
+			exported, err := producer.ExportedFunc("pick")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			consumerCompiled := stagedTypedTailCompile(t, wideCrossTailConsumerModule(slots, true))
+			consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.pick", exported)})
+			if err != nil {
+				t.Fatalf("instantiate wide-tail consumer: %v", err)
+			}
+			defer consumer.Close()
+
+			args := wideCrossTailArgs(slots)
+			got, err := consumer.Invoke("run", args...)
+			if err != nil || len(got) != 1 || got[0] != args[14] {
+				t.Fatalf("cross-instance tail slot 14 = %v, %v; want %#x", got, err, args[14])
+			}
+		})
 	}
 }
