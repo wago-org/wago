@@ -1928,7 +1928,9 @@ const (
 	ehRootSlots      = 3
 	maxEHTryRecords  = 4
 	maxEHRootRecords = 4
-	maxEHCatches     = 8
+	// Catch clauses are a growable list dispatched with ordinary branches;
+	// the bound only keeps one try_table's dispatch within branch range.
+	maxEHCatches     = 1024
 	ehPrevOff        = 0
 	ehSavedSPOff     = 8
 	ehTagOff         = 16
