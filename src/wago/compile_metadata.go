@@ -304,6 +304,11 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
 			continue
 		}
+		if isRefNullConstExpr(initBody) {
+			// Table storage starts zeroed, which is null for every reference
+			// representation, so a null initializer of any heap type is a no-op.
+			continue
+		}
 		payload, err := funcrefExprPayload(*m.Tables[i].Init)
 		if err != nil {
 			body := m.Tables[i].Init.BodyBytes
@@ -315,7 +320,25 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			globalIndex, indexErr := r.U32()
 			end, endErr := r.Byte()
 			if opErr != nil || op != 0x23 || indexErr != nil || endErr != nil || end != 0x0b || r.BytesLeft() != 0 {
-				return fmt.Errorf("table %d initializer: %w", tableIndex, err)
+				// Core 3 table initializers are general constant expressions. Reuse
+				// the element-segment evaluator; each slot re-evaluates the payload,
+				// which is only equivalent to the single evaluation the spec defines
+				// when the expression allocates no GC object.
+				def := c.tableDef(tableIndex)
+				if def.Size > 1 && constExprAllocatesGC(body) {
+					return fmt.Errorf("table %d initializer: allocating GC constant expressions are unsupported for tables with more than one entry", tableIndex)
+				}
+				seg := wasm.Elem{Kind: wasm.ElemKind{Kind: wasm.ElemTypedExprs, Ref: m.Tables[i].Type.Ref, Exprs: []wasm.Expr{*m.Tables[i].Init}}}
+				_, _, inits, exprErr := elementPayloads(m, c.Types, constExprCtx, &seg)
+				if exprErr != nil || len(inits) != 1 {
+					return fmt.Errorf("table %d initializer: %w", tableIndex, err)
+				}
+				values := make([]RefInit, def.Size)
+				for j := range values {
+					values[j] = inits[0]
+				}
+				c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
+				continue
 			}
 			def := c.tableDef(tableIndex)
 			values := make([]RefInit, def.Size)
@@ -522,4 +545,40 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 		c.Data = append(c.Data, init)
 	}
 	return nil
+}
+
+// isRefNullConstExpr reports whether body is exactly `ref.null <heaptype> end`.
+func isRefNullConstExpr(body []byte) bool {
+	r := wasm.NewReader(body)
+	if op, err := r.Byte(); err != nil || op != 0xd0 {
+		return false
+	}
+	if _, err := r.S33(); err != nil {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && r.BytesLeft() == 0
+}
+
+// constExprAllocatesGC reports whether a constant expression contains a GC
+// allocation (struct.new*, array.new*), whose result has observable identity.
+// Unparseable input is treated as allocating so callers fail closed.
+func constExprAllocatesGC(body []byte) bool {
+	r := wasm.NewReader(body)
+	for r.BytesLeft() != 0 {
+		op, err := r.Byte()
+		if err != nil {
+			return true
+		}
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return true
+		}
+		switch imm.Kind {
+		case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructNewDesc, wasm.InstrStructNewDefaultDesc,
+			wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData, wasm.InstrArrayNewElem:
+			return true
+		}
+	}
+	return false
 }

@@ -165,7 +165,11 @@ func NewModuleFacts(tableCount, memoryCount int) *ModuleFacts {
 const (
 	minOnlyTableGrowCapacity          uint64 = 1024
 	minOnlyExternrefTableGrowCapacity uint64 = 1024
-	stagedTable64Max                  uint64 = 16384
+	// maxOnlyTableGrowHeadroom caps the extra entries reserved above a
+	// no-maximum table's minimum (2 MiB of 32-byte function-table entries).
+	maxOnlyTableGrowHeadroom uint64 = 1 << 16
+	maxTable32Entries        uint64 = 1<<32 - 1
+	stagedTable64Max         uint64 = 16384
 )
 
 // TableRuntimeShape is the instantiate-time size/capacity of one table.
@@ -322,6 +326,23 @@ func SupportedTableRuntimeShapesFromFacts(m *wasm.Module, facts *ModuleFacts) ([
 			}
 			if max < reserve {
 				max = reserve
+			}
+			if !m.Tables[i].Type.Limits.Addr64 {
+				// The reserve is a floor, not an absolute ceiling: a table that
+				// starts near or above it must still be able to grow. Allow the
+				// table to at least double, bounded so one table cannot reserve
+				// an unbounded native region. Small tables keep the reserve.
+				headroom := min
+				if headroom > maxOnlyTableGrowHeadroom {
+					headroom = maxOnlyTableGrowHeadroom
+				}
+				grown := min + headroom
+				if grown > maxTable32Entries {
+					grown = maxTable32Entries
+				}
+				if grown > max {
+					max = grown
+				}
 			}
 		}
 		if max > uint64(maxInt()) {
@@ -2307,11 +2328,16 @@ func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
 
 func (p supportPass) supportedNullReference(rt wasm.RefType) bool {
 	heap := rt.Heap()
-	if !p.feat.NullReferenceProducts || !rt.Nullable() || rt.Exact() || heap.Kind() != wasm.HeapAbs {
+	if !p.feat.NullReferenceProducts || rt.Exact() || heap.Kind() != wasm.HeapAbs {
 		return false
 	}
 	switch heap.Abs() {
-	case wasm.HeapAny, wasm.HeapNone, wasm.HeapExn, wasm.HeapNoExn, wasm.HeapNoFunc, wasm.HeapNoExtern:
+	case wasm.HeapAny, wasm.HeapExn:
+		return rt.Nullable()
+	case wasm.HeapNone, wasm.HeapNoExn, wasm.HeapNoFunc, wasm.HeapNoExtern:
+		// A non-null bottom reference is uninhabited: no value ever reaches it,
+		// so it shares the nullable representation and only appears in code
+		// that validation already proves unreachable at runtime.
 		return true
 	default:
 		return false

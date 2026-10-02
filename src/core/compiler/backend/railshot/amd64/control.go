@@ -1545,15 +1545,17 @@ const (
 	ehRootSlots      = 3
 	maxEHTryRecords  = 4
 	maxEHRootRecords = 4
-	maxEHCatches     = 8
-	ehPrevOff        = 0
-	ehSavedRSPOff    = 8
-	ehTagOff         = 16
-	ehPayload0Off    = 24
-	ehPayload1Off    = 32
-	ehTargetOff      = 40
-	ehSavedRBXOff    = 48
-	offEHTagDirPtr   = abi.EHTagDirPtrOffset
+	// Catch clauses are a growable list dispatched with ordinary branches;
+	// the bound only keeps one try_table's dispatch within branch range.
+	maxEHCatches   = 1024
+	ehPrevOff      = 0
+	ehSavedRSPOff  = 8
+	ehTagOff       = 16
+	ehPayload0Off  = 24
+	ehPayload1Off  = 32
+	ehTargetOff    = 40
+	ehSavedRBXOff  = 48
+	offEHTagDirPtr = abi.EHTagDirPtrOffset
 )
 
 func exceptionPayloadMachineType(m *wasm.Module, typ wasm.ValType) (machineType, bool) {

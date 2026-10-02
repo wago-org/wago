@@ -236,8 +236,16 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 			bits = token
 		}
 	}
-	if g.Type == ValExternRef && bits != 0 && !in.validExternrefToken(bits) {
-		return Value{}, fmt.Errorf("global %q: invalid externref value", name)
+	if g.Type == ValExternRef && bits != 0 {
+		public, handled, err := in.publicExternFromGlobal(bits)
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q: invalid externref value: %w", name, err)
+		}
+		if handled {
+			bits = public
+		} else if !in.validExternrefToken(bits) {
+			return Value{}, fmt.Errorf("global %q: invalid externref value", name)
+		}
 	}
 	return Value{typ: g.Type, bits: bits}, nil
 }
@@ -357,8 +365,16 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 		}
 		bits = descriptor
 	}
-	if g.Type == ValExternRef && bits != 0 && !in.validExternrefToken(bits) {
-		return fmt.Errorf("global %q: invalid externref token", name)
+	if g.Type == ValExternRef && bits != 0 {
+		internal, handled, err := in.internalExternForGlobal(bits)
+		if err != nil {
+			return fmt.Errorf("global %q: invalid externref token: %w", name, err)
+		}
+		if handled {
+			bits = internal
+		} else if !in.validExternrefToken(bits) {
+			return fmt.Errorf("global %q: invalid externref token", name)
+		}
 	}
 	if g.Type == ValV128 {
 		return fmt.Errorf("global %q is v128; use SetGlobalV128", name)

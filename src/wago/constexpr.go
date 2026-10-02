@@ -269,27 +269,47 @@ func evalNullExternConversionConstExpr(b []byte, want wasm.ValType) (constExprRe
 	if err != nil {
 		return constExprResult{}, true, err
 	}
-	prefix, err := r.Byte()
-	if err != nil || prefix != 0xfb {
-		return constExprResult{}, false, nil
-	}
-	sub, err := r.U32()
-	if err != nil {
-		return constExprResult{}, true, err
-	}
+	// A null converted any number of times between the any and extern
+	// hierarchies is still null; the last conversion decides the type.
+	// Validation has already proved each step well typed, but keep the
+	// hierarchy check so a malformed chain still fails closed.
 	got := constExprResult{GlobalIndex: -1, FuncIndex: -1}
-	switch sub {
-	case 26: // any.convert_extern
-		if heap != -17 {
-			return constExprResult{}, true, fmt.Errorf("any.convert_extern constant source heap %d is not extern", heap)
+	inExtern := heap == -17 || heap == -14 // extern / noextern
+	conversions := 0
+	for {
+		if r.BytesLeft() == 0 {
+			break
 		}
-		got.vtype = wasm.AnyRef
-	case 27: // extern.convert_any
-		if heap != -18 {
-			return constExprResult{}, true, fmt.Errorf("extern.convert_any constant source heap %d is not any", heap)
+		if b[len(b)-r.BytesLeft()] != 0xfb {
+			break
 		}
-		got.vtype = wasm.ExternRef
-	default:
+		if _, err := r.Byte(); err != nil {
+			return constExprResult{}, true, err
+		}
+		sub, err := r.U32()
+		if err != nil {
+			return constExprResult{}, true, err
+		}
+		switch sub {
+		case 26: // any.convert_extern
+			if !inExtern {
+				return constExprResult{}, true, fmt.Errorf("any.convert_extern constant source heap %d is not extern", heap)
+			}
+			got.vtype, inExtern = wasm.AnyRef, false
+		case 27: // extern.convert_any
+			if inExtern {
+				return constExprResult{}, true, fmt.Errorf("extern.convert_any constant source heap %d is not any", heap)
+			}
+			got.vtype, inExtern = wasm.ExternRef, true
+		default:
+			if conversions == 0 {
+				return constExprResult{}, false, nil
+			}
+			return constExprResult{}, true, fmt.Errorf("GC conversion constant expression has trailing instructions")
+		}
+		conversions++
+	}
+	if conversions == 0 {
 		return constExprResult{}, false, nil
 	}
 	end, err := r.Byte()
