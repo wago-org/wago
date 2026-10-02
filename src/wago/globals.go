@@ -613,6 +613,13 @@ func (g *Global) getValueNoLease() (Value, error) {
 		return Value{}, fmt.Errorf("global has no compatible reference store")
 	}
 	if typ == ValExternRef {
+		public, handled, err := source.publicExternFromGlobal(bits)
+		if err != nil {
+			return Value{}, fmt.Errorf("global contains an invalid externref value: %w", err)
+		}
+		if handled {
+			return Value{typ: ValExternRef, bits: public}, nil
+		}
 		if _, ok := store.resolveExternref(bits); !ok {
 			return Value{}, fmt.Errorf("global contains an invalid externref value")
 		}
@@ -670,7 +677,13 @@ func (g *Global) setValueNoLease(v Value) error {
 			return fmt.Errorf("global has no compatible reference store")
 		}
 		if typ == ValExternRef {
-			if _, ok := store.resolveExternref(bits); !ok {
+			internal, handled, err := containerOwner.internalExternForGlobal(bits)
+			if err != nil {
+				return fmt.Errorf("invalid externref token: %w", err)
+			}
+			if handled {
+				bits = internal
+			} else if _, ok := store.resolveExternref(bits); !ok {
 				return fmt.Errorf("invalid externref token")
 			}
 		} else {

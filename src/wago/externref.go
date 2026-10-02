@@ -109,3 +109,32 @@ func (in *Instance) validExternrefToken(token uint64) bool {
 	_, ok := in.refStore.resolveExternref(token)
 	return ok
 }
+
+// publicExternFromGlobal maps an externref global cell to its public token when
+// the instance converts GC references. Such cells hold the same internal word as
+// an externref result, so global reads must use the result conversion. handled
+// is false when ordinary host-issued tokens apply.
+func (in *Instance) publicExternFromGlobal(bits uint64) (public uint64, handled bool, err error) {
+	if in == nil || in.c == nil || in.c.stagedGCStructProduct() != stagedGCStructExtern {
+		return bits, false, nil
+	}
+	conversion := in.existingGCExternConversionState()
+	if conversion == nil {
+		return 0, true, fmt.Errorf("extern conversion state is unavailable")
+	}
+	public, err = conversion.publicExternFromInternal(bits)
+	return public, true, err
+}
+
+// internalExternForGlobal is the inverse of publicExternFromGlobal for writes.
+func (in *Instance) internalExternForGlobal(bits uint64) (internal uint64, handled bool, err error) {
+	if in == nil || in.c == nil || in.c.stagedGCStructProduct() != stagedGCStructExtern {
+		return bits, false, nil
+	}
+	conversion := in.existingGCExternConversionState()
+	if conversion == nil {
+		return 0, true, fmt.Errorf("extern conversion state is unavailable")
+	}
+	internal, err = conversion.internalExternFromPublic(bits)
+	return internal, true, err
+}
