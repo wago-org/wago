@@ -1,0 +1,61 @@
+# git f83fb19eca300e65db1fa299f448bfe49f5b7d03
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: Apple M4 Max
+BenchmarkCommandExec/embench-huffbench-16         	    1202	    210429 ns/op	   40524 B/op	     398 allocs/op
+BenchmarkCommandExec/embench-huffbench-16         	    1147	    205562 ns/op	   40520 B/op	     398 allocs/op
+BenchmarkCommandExec/embench-huffbench-16         	    1210	    196032 ns/op	   40520 B/op	     398 allocs/op
+BenchmarkCommandExec/sightglass-libsodium-hash-16 	     426	    580706 ns/op	   52208 B/op	     565 allocs/op
+BenchmarkCommandExec/sightglass-libsodium-hash-16 	     421	    580409 ns/op	   52208 B/op	     565 allocs/op
+BenchmarkCommandExec/sightglass-libsodium-hash-16 	     426	    567118 ns/op	   52208 B/op	     565 allocs/op
+BenchmarkWazeroCommandExec/embench-huffbench-16   	     606	    393148 ns/op	 1133840 B/op	      40 allocs/op
+BenchmarkWazeroCommandExec/embench-huffbench-16   	     614	    400124 ns/op	 1133837 B/op	      40 allocs/op
+BenchmarkWazeroCommandExec/embench-huffbench-16   	     572	    399761 ns/op	 1133841 B/op	      40 allocs/op
+BenchmarkWazeroCommandExec/sightglass-libsodium-hash-16         	    1156	    215984 ns/op	16866154 B/op	      95 allocs/op
+BenchmarkWazeroCommandExec/sightglass-libsodium-hash-16         	    1039	    221836 ns/op	16866155 B/op	      95 allocs/op
+BenchmarkWazeroCommandExec/sightglass-libsodium-hash-16         	     865	    307076 ns/op	16866168 B/op	      95 allocs/op
+BenchmarkWazeroCompile/embench-huffbench-16                     	     264	    820620 ns/op	     11772 code-B	 1904419 B/op	    3654 allocs/op
+BenchmarkWazeroCompile/embench-huffbench-16                     	     298	    827054 ns/op	     11772 code-B	 1904420 B/op	    3654 allocs/op
+BenchmarkWazeroCompile/embench-huffbench-16                     	     261	    977835 ns/op	     11772 code-B	 1904423 B/op	    3654 allocs/op
+BenchmarkWazeroCompile/sightglass-libsodium-hash-16             	      21	  10855659 ns/op	    187572 code-B	 9477186 B/op	   21244 allocs/op
+BenchmarkWazeroCompile/sightglass-libsodium-hash-16             	      20	  10736821 ns/op	    187572 code-B	 9476733 B/op	   21244 allocs/op
+BenchmarkWazeroCompile/sightglass-libsodium-hash-16             	      21	  10806262 ns/op	    187572 code-B	 9476749 B/op	   21244 allocs/op
+BenchmarkWazeroInstantiate-16                                   	1000000000	         0.0000008 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWazeroInstantiate-16                                   	1000000000	         0.0000010 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWazeroInstantiate-16                                   	1000000000	         0.0000010 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWazeroExec-16                                          	1000000000	         0.0000002 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWazeroExec-16                                          	1000000000	         0.0000001 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWazeroExec-16                                          	1000000000	         0.0000001 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDecode/embench-huffbench-16                            	   27228	      8433 ns/op	   23336 B/op	      46 allocs/op
+BenchmarkDecode/embench-huffbench-16                            	   28516	      8568 ns/op	   23336 B/op	      46 allocs/op
+BenchmarkDecode/embench-huffbench-16                            	   28424	      8788 ns/op	   23336 B/op	      46 allocs/op
+BenchmarkDecode/sightglass-libsodium-hash-16                    	    1683	    130345 ns/op	   23712 B/op	     156 allocs/op
+BenchmarkDecode/sightglass-libsodium-hash-16                    	    1893	    126955 ns/op	   23712 B/op	     156 allocs/op
+BenchmarkDecode/sightglass-libsodium-hash-16                    	    1876	    128412 ns/op	   23712 B/op	     156 allocs/op
+BenchmarkValidate/embench-huffbench-16                          	   10000	     23039 ns/op	    5100 B/op	      17 allocs/op
+BenchmarkValidate/embench-huffbench-16                          	   10000	     22460 ns/op	    5100 B/op	      17 allocs/op
+BenchmarkValidate/embench-huffbench-16                          	   10000	     22301 ns/op	    5100 B/op	      17 allocs/op
+BenchmarkValidate/sightglass-libsodium-hash-16                  	     576	    414975 ns/op	   15024 B/op	      94 allocs/op
+BenchmarkValidate/sightglass-libsodium-hash-16                  	     576	    416801 ns/op	   15024 B/op	      94 allocs/op
+BenchmarkValidate/sightglass-libsodium-hash-16                  	     554	    417968 ns/op	   15024 B/op	      94 allocs/op
+BenchmarkCompile/embench-huffbench-16                           	    2212	    103126 ns/op	   42840 B/op	      58 allocs/op
+BenchmarkCompile/embench-huffbench-16                           	    2389	    107206 ns/op	   42840 B/op	      58 allocs/op
+BenchmarkCompile/embench-huffbench-16                           	    2150	    104535 ns/op	   42840 B/op	      58 allocs/op
+BenchmarkCompile/sightglass-libsodium-hash-16                   	     120	   1862154 ns/op	  219320 B/op	     226 allocs/op
+BenchmarkCompile/sightglass-libsodium-hash-16                   	     127	   1890002 ns/op	  219320 B/op	     226 allocs/op
+BenchmarkCompile/sightglass-libsodium-hash-16                   	     126	   1947235 ns/op	  219320 B/op	     226 allocs/op
+BenchmarkCompileFull/embench-huffbench-16                       	    1239	    190943 ns/op	      7132 code-B	  108864 B/op	     190 allocs/op
+BenchmarkCompileFull/embench-huffbench-16                       	    1281	    196539 ns/op	      7132 code-B	  108852 B/op	     190 allocs/op
+BenchmarkCompileFull/embench-huffbench-16                       	    1249	    196689 ns/op	      7132 code-B	  108857 B/op	     190 allocs/op
+BenchmarkCompileFull/sightglass-libsodium-hash-16               	      66	   3436718 ns/op	    130572 code-B	  506368 B/op	     672 allocs/op
+BenchmarkCompileFull/sightglass-libsodium-hash-16               	      70	   3449058 ns/op	    130572 code-B	  506390 B/op	     672 allocs/op
+BenchmarkCompileFull/sightglass-libsodium-hash-16               	      67	   3407559 ns/op	    130572 code-B	  506400 B/op	     672 allocs/op
+BenchmarkInstantiate-16                                         	1000000000	         0.0000007 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInstantiate-16                                         	1000000000	         0.0000009 ns/op	       0 B/op	       0 allocs/op
+BenchmarkInstantiate-16                                         	1000000000	         0.0000015 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec-16                                                	1000000000	         0.0000008 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec-16                                                	1000000000	         0.0000007 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec-16                                                	1000000000	         0.0000005 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/wago-org/wago/bench/suite	12.835s
