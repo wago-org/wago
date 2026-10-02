@@ -39,6 +39,7 @@ func TestBuildMalformedBodiesReturnErrors(t *testing.T) {
 		}), "immutable global"},
 		{"invalid_block_type", rawModule(wasm.FuncType{}, bytes(0x02, 0x02, 0x0b, 0x0b)), "invalid block type"},
 		{"huge_block_type_index", rawModule(wasm.FuncType{}, bytes(0x02, 0x80, 0x80, 0x80, 0x80, 0x10, 0x0b, 0x0b)), "invalid block type index"},
+		{"overlong_s33_block_type", rawModule(wasm.FuncType{}, bytes(0x02, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00, 0x0b, 0x0b)), "malformed LEB128"},
 		{"block_fallthrough_leftover", rawModule(wasm.FuncType{}, bytes(0x02, 0x40, 0x41, 0x00, 0x0b, 0x0b)), "block fallthrough"},
 		{"block_ended_by_else", rawModule(wasm.FuncType{}, bytes(0x02, 0x40, 0x05, 0x0b)), "block ended by else"},
 		{"loop_ended_by_else", rawModule(wasm.FuncType{}, bytes(0x03, 0x40, 0x05, 0x0b)), "loop ended by else"},
