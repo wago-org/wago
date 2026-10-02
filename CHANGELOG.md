@@ -11,6 +11,20 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Preserve AMD64 `select` operands when deferred divisions, remainders, shifts,
   or rotates reclaim fixed registers, and report operand traps in WebAssembly
   evaluation order.
+- Tables with no declared maximum can grow past 1,024 entries; a table can
+  now at least double from its initial size.
+- GC tables accept Core 3 initializers such as `(ref.null any)`, `ref.i31` and
+  extended constants, and constant expressions accept chains of
+  `any.convert_extern`/`extern.convert_any` on null. Allocating initializers
+  on multi-entry tables are rejected with an explicit limit.
+- Non-nullable bottom reference types such as `(ref noextern)` are accepted.
+- `Global.GetValue`/`SetValue` work for `externref` globals holding converted
+  GC references.
+- AMD64 no longer crashes when a tail target throws after a wrapper-ABI tail
+  call made inside a `try_table`, and accepts tail calls from register-ABI to
+  result-bearing wrapper-ABI functions. ARM64 mixed register/wrapper tail
+  loops no longer grow the stack.
+- A `try_table` may have up to 1,024 catch clauses (previously 8).
 - ARM64 tail calls from a function with reference-typed parameters into a
   numeric register-ABI function no longer lose the callee's updates to
   register-pinned module globals.
