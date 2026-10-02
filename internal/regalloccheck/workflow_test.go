@@ -32,3 +32,18 @@ func TestLocalCorrectnessWorkflowsEnableChecker(t *testing.T) {
 		}
 	}
 }
+
+func TestTinyGoWorkflowsRunCheckerSuites(t *testing.T) {
+	for _, tc := range []struct{ path, command string }{
+		{"../../.just/test.just", "{{ compiler }} test -tags=wago_regalloccheck -v -scheduler='{{ scheduler }}' ./internal/regalloccheck ./src/core/encoder/amd64 ./src/core/encoder/arm64"},
+		{"../../.github/workflows/ci.yml", "tinygo test -tags=wago_regalloccheck ./internal/regalloccheck ./src/core/encoder/amd64 ./src/core/encoder/arm64"},
+	} {
+		data, err := os.ReadFile(tc.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), tc.command) {
+			t.Errorf("%s: missing tagged TinyGo checker suites", tc.path)
+		}
+	}
+}
