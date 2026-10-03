@@ -27,7 +27,7 @@ Wago is a pure-Go WebAssembly engine that compiles Wasm directly to native
 machine code.
 
 > [!NOTE]
-> Wago is still beta. If you'd like to have a hand in it's future, please join our [Discord](https://wago.sh/discord)
+> Wago is still beta. If you'd like to have a hand in its future, please join our [Discord](https://wago.sh/discord)
 
 ## Why Wago?
 
