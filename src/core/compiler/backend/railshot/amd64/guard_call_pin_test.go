@@ -69,6 +69,10 @@ func TestGuardCallPinPreservesArgumentsAndLocals(t *testing.T) {
 						if admitted != enabled {
 							t.Fatalf("admission=%v enabled=%v pins=%d", admitted, enabled, stats.Funcs[0].PinnedLocals)
 						}
+						second := stats.Funcs[0].Peephole["second-call-pin"] != 0
+						if second != (enabled && guardSecondCallPinEnabled) {
+							t.Fatalf("second admission=%v enabled=%v policy=%v pins=%d", second, enabled, guardSecondCallPinEnabled, stats.Funcs[0].PinnedLocals)
+						}
 						for _, seed := range []uint64{0, 1, 0x123456789abcdef0, ^uint64(0)} {
 							args := make([]uint64, 4)
 							var locals [10]uint64
@@ -98,4 +102,11 @@ func TestGuardCallPinPreservesArgumentsAndLocals(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestSecondCallPinPreservesArgumentsAndLocals(t *testing.T) {
+	old := guardSecondCallPinEnabled
+	defer func() { guardSecondCallPinEnabled = old }()
+	guardSecondCallPinEnabled = true
+	TestGuardCallPinPreservesArgumentsAndLocals(t)
 }

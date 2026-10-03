@@ -33,10 +33,15 @@ import (
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
-// Lend one argument register to guarded call-making local pins. R9/R10 remain
+// Lend one argument register to guarded call-making local pins. R9/R10 normally remain
 // staging scratch; current capture and spill contracts still apply.
 // WAGO_AMD64_GUARD_CALL_PIN=0 restores the previous pin pool for comparison.
 var guardCallPinEnabled = os.Getenv("WAGO_AMD64_GUARD_CALL_PIN") != "0"
+
+// Experimental second lease for numeric guarded callers. Keep existing local
+// homes first; R10 is appended only after the current pin choices. GC, EH, and
+// custom lowering retain their current scratch contracts.
+var guardSecondCallPinEnabled = os.Getenv("WAGO_AMD64_SECOND_CALL_PIN") == "1"
 
 // A small pin budget leaves transient capacity in loop functions with many
 // locals. Keep the default on the native qualification platform.
@@ -3521,6 +3526,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		gpPool = withoutReg(withoutReg(gpPool, R9), R10)
 		if !guardCallPinEnabled {
 			gpPool = withoutReg(gpPool, R11)
+		} else if guardSecondCallPinEnabled && (!regABI || f.nParams <= 4) &&
+			!moduleEH && len(custom) == 0 && len(gcTypeLayouts) == 0 && !gcTypeSubtypingRefTest &&
+			!gcStructHelpers && !gcArrayHelpers && gcFrameRoots == nil {
+			// Preserve current homes, then offer a second argument-register pin.
+			// Ordinary calls spill local homes before staging fixed R10 uses;
+			// GC, EH, and custom lowering have separate scratch contracts.
+			gpPool = append(gpPool, R10)
 		}
 	}
 	for _, mg := range modGlobals {
@@ -3619,6 +3631,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		for _, x := range f.pinnedLocals {
 			if !f.locals[x].isFloat && f.locals[x].reg == R11 {
 				f.stats.peep("guard-call-pin")
+			}
+			if guardSecondCallPinEnabled && !f.locals[x].isFloat && f.locals[x].reg == R10 {
+				f.stats.peep("second-call-pin")
 			}
 		}
 	}
