@@ -403,7 +403,8 @@ func (e *regionLoopEmitter) address(at uint8) Reg {
 	}
 	f := e.f
 	out, tmp := e.gp[2], e.gp[3]
-	f.a.Load64(out, RSP, e.off(9+int(at)))
+	// Callers add the child displacement; reconstruct the parent base here.
+	f.a.Load64(out, RSP, e.off(9+int(e.streams[at].parent)))
 	if s.stride != 0 {
 		f.a.MovReg64(tmp, e.gp[0])
 		if s.stride != 1 {
