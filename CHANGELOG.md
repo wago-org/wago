@@ -22,6 +22,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- ARM64 table64 bulk operations now trap when `start + count` wraps instead of
+  accepting the wrapped range and addressing outside the table allocation.
 - Preserve earlier call arguments when later deferred expressions use fixed
   registers for shifts or division, including mixed and tail calls.
 - Legacy exception-handling opcodes now report their unsupported encoding and
