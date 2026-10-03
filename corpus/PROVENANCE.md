@@ -9,6 +9,7 @@ workloads are rebuilt from `sources/` with the scripts in `build/`.
 | synthetic WAT | tiny, recursion, memory, indirect dispatch, function scale | reviewed files in `sources/wat` |
 | Rust compute | linked list, nbody, fannkuch, matmul, SHA-256, ray tracing | reviewed files in `sources/rust` |
 | AssemblyScript | json-as, blake-as, utf-as; scalar and SIMD | local adapters plus the corresponding upstream package checkout |
+| Grain stdlib | upstream Array and String assertion suites, statically linked with `--release --no-wasm-tail-call`; complete guest-source closure and original notices retained beside the binaries | `49829d7966b38b177291f7e91f5eb81c65ec07aa`, Grain 0.7.2 / Binaryen 124; official compiler and source bundle digests in `workloads/applications/grain-stdlib/` |
 | semantic | CoreMark, BLAKE3, QOI, LZ4, zlib, zstd | revisions and WASI SDK versions pinned per catalog check |
 | parsers/text | yyjson, cJSON, TinyXML-2, utf8proc, PCRE2, fast_float | revisions pinned in `catalog.json`, WASI SDK 34 |
 | numeric/crypto | xxHash, LibTomMath, KissFFT, Monocypher | revisions pinned in `catalog.json`, WASI SDK 34 |

@@ -1,0 +1,243 @@
+{
+  "repository": "https://github.com/grain-lang/grain",
+  "revision": "49829d7966b38b177291f7e91f5eb81c65ec07aa",
+  "archive": "source.tar.gz",
+  "archive_sha256": "66a7f38faab1852b1b1be98aa02b7ac0581cd683875d79205772492ca9a4eb71",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "8224a89fea46649b1ec4338c71a736d4a358e799ef239dfbe592a10bfb4df7ec",
+      "git_blob_sha1": "6b84cf536a2f40c76cc0c1a93fa2e6bfb1cfdd73"
+    },
+    {
+      "path": "compiler/test/stdlib/array.test.gr",
+      "sha256": "665cb292b772c20c168a84ed923296154f57e364c50e3eca1b8d3a8b846cf487",
+      "git_blob_sha1": "4908a1368c0bf29c8889479a0ca75e90258fb953"
+    },
+    {
+      "path": "compiler/test/stdlib/string.test.gr",
+      "sha256": "fd0320f46ecc0f12f702e79f6e86d25e97b8182aa1961eb2ad135dd5a934582c",
+      "git_blob_sha1": "558e9c2602be873359a3b230e38d1d59229b9e82"
+    },
+    {
+      "path": "stdlib/LICENSE",
+      "sha256": "7a7e23ff2b9f4a275793b20ef057195e11f4637d4e5cedaa0c64387eeb7ab30c",
+      "git_blob_sha1": "5abdd208d37ca7efee750a1b371a872f4ed779ed"
+    },
+    {
+      "path": "stdlib/array.gr",
+      "sha256": "41dd54c4087d12c8a7c8a7946ced10dabc643c9408ba7be03c50afb72a42c673",
+      "git_blob_sha1": "16330899a569f625b29d8dde29218ac5934fa337"
+    },
+    {
+      "path": "stdlib/bytes.gr",
+      "sha256": "52438b87b2456bd419f8b13d282108338d77accb0c1ff606488cba96eb2e140b",
+      "git_blob_sha1": "247ad6fa0381655bfd86db9a5dd4aebcee05c971"
+    },
+    {
+      "path": "stdlib/char.gr",
+      "sha256": "13a3ec6cec2b7775f6436ee7a6da4d3c95c06bef20a455eb9bdae7059039bfa1",
+      "git_blob_sha1": "a37c90d67db3b6205b7dc682ab06e8c82d2c049f"
+    },
+    {
+      "path": "stdlib/int32.gr",
+      "sha256": "5016c0b7b347136d52dd2dc1d38069750e770301465383917395604b51856ec7",
+      "git_blob_sha1": "100725f0eda91fd6f7250ace8a937a25f28264ed"
+    },
+    {
+      "path": "stdlib/list.gr",
+      "sha256": "3248025d7103e804e171ebdacf9128397b4d1732cb40271ccbaa7c8e4c6d4ed7",
+      "git_blob_sha1": "0933e9b8927f82d02855bfaef009e82781fe8b81"
+    },
+    {
+      "path": "stdlib/number.gr",
+      "sha256": "d615de0d4baaadb2977285dbe8de36c8f29a06f24bf7ef9147b4f59f5caebdb6",
+      "git_blob_sha1": "b6dcb7088cdc1ffaaddd9e0d2f6416a8af335396"
+    },
+    {
+      "path": "stdlib/pervasives.gr",
+      "sha256": "4f7f97930a45380e832f86dd69895505d075e53f6ba9397eff404b118145afbb",
+      "git_blob_sha1": "5ab250843c1ba21874594f78ce2a381316c48269"
+    },
+    {
+      "path": "stdlib/range.gr",
+      "sha256": "d0d5c89888fdb73a929ea5e6e2e8e36c88fa572d87b307c912d9012f5780ec1a",
+      "git_blob_sha1": "abdb300b5fc2ec4b9e2a0c4fd43611e32b7f8d6c"
+    },
+    {
+      "path": "stdlib/runtime/atof/common.gr",
+      "sha256": "dfce9ff4e1e74b32dc7d5c27b94bb1cf2f25446275390a13f664e63c87fe132c",
+      "git_blob_sha1": "ee0f79b2be7946fb0223f1fd22463018ae116336"
+    },
+    {
+      "path": "stdlib/runtime/atof/decimal.gr",
+      "sha256": "b3aa67a8ac68b9dbc35b455a8983f2aaf03145e0a6bf481e6cc72c73e5d3ea26",
+      "git_blob_sha1": "038ea474ae2187425cc11470a568c89783091fbb"
+    },
+    {
+      "path": "stdlib/runtime/atof/lemire.gr",
+      "sha256": "aac4b2a23de161e13f3964a33e84c563517b874d1fd9ec32918c5bb8b60c4227",
+      "git_blob_sha1": "ea9539ed58a5a563cfc529a25965f9602f42de0b"
+    },
+    {
+      "path": "stdlib/runtime/atof/parse.gr",
+      "sha256": "4ef17bd5bfcac36e0b67d1b7de3e6c861f136a31c241e5f31598b14ef0ed5e65",
+      "git_blob_sha1": "580bbe2f83a0c773d95b1c58a1496508a5d7b937"
+    },
+    {
+      "path": "stdlib/runtime/atof/slow.gr",
+      "sha256": "e22f94fcf46be56320e22f4b56964fe009d69572163db1dc836905d2e63a2938",
+      "git_blob_sha1": "12d76e2719e543dea3b466c3cf335563334ae564"
+    },
+    {
+      "path": "stdlib/runtime/atof/table.gr",
+      "sha256": "44ce2b3962a241d67969a879bbb9309ae283b37d7775f072dc85707725a53117",
+      "git_blob_sha1": "41090c72f750e4d062e3430815977b2261972641"
+    },
+    {
+      "path": "stdlib/runtime/atoi/parse.gr",
+      "sha256": "5951edd76c9d9fbf1d6d12ba445fc381a2b4e6260ca84fbab445c216570838ca",
+      "git_blob_sha1": "10c419488b093d6a3f69a3f2703f88670d79fb97"
+    },
+    {
+      "path": "stdlib/runtime/bigint.gr",
+      "sha256": "2216ce5c8c0280fd907466e6734407290476deb487c3ac2d28263d4337b4baf7",
+      "git_blob_sha1": "68f5bb2c3934bcfdb5784bc98144f8207bfae5e8"
+    },
+    {
+      "path": "stdlib/runtime/compare.gr",
+      "sha256": "8532d4a1518a912e5dd9eaa7ebace1cef1be54d3a84f27c3c82524b98804a52e",
+      "git_blob_sha1": "030ec35a1059fbd7a1b803a0499b687cc997aedf"
+    },
+    {
+      "path": "stdlib/runtime/dataStructures.gr",
+      "sha256": "89099e6fd7de5efab30292c6a3bdef08e10d03cae38382f86554ff983fd9ab4b",
+      "git_blob_sha1": "507c7ea7baa0a8138f1964cf175f6793aa823a79"
+    },
+    {
+      "path": "stdlib/runtime/equal.gr",
+      "sha256": "3ad7a4a05c4218ad6ba7bc801fde2e82b80236a4cbe37fee8a7b8e9413db0c25",
+      "git_blob_sha1": "17d74ff9c97146ad1bb08d52b20b140733923d5d"
+    },
+    {
+      "path": "stdlib/runtime/exception.gr",
+      "sha256": "097b6a34cc4de436fff6376098f0ca784439be182a4407e92205d693a566d282",
+      "git_blob_sha1": "7e9849398b0fad4381284662feaa63ffd12830e2"
+    },
+    {
+      "path": "stdlib/runtime/gc.gr",
+      "sha256": "2ed5a8d2ca3a06cb1b96e4b742796192939158f8a578b54d8c64f30d7739c42c",
+      "git_blob_sha1": "ae06a33e73a9c74f757d44748ad0ba6d61f1c427"
+    },
+    {
+      "path": "stdlib/runtime/malloc.gr",
+      "sha256": "f4e3f9631931ada88d2eef12d15f2885efacb1879855050c0ac71fba2d780570",
+      "git_blob_sha1": "8bbbb94dd10f9e22f3b140c214d62420a71c5574"
+    },
+    {
+      "path": "stdlib/runtime/math/kernel/cos.gr",
+      "sha256": "f13231d7358c04f9bd765bc4340651a6f580107e35b48d9f8363c466e37adf34",
+      "git_blob_sha1": "df2734b5bfeac699c6b4802e57bee2d967cfb0f4"
+    },
+    {
+      "path": "stdlib/runtime/math/kernel/sin.gr",
+      "sha256": "3752409a59eae0694414e0264fc2553a25b219b53e7f2479f300121e8551dd5f",
+      "git_blob_sha1": "e6b3ec552478f1de5468a4d00619e34bcca436c0"
+    },
+    {
+      "path": "stdlib/runtime/math/kernel/tan.gr",
+      "sha256": "7a4408b69f633f14aebb48178b6210770ddc0978193276b82a17d098bb73e0d4",
+      "git_blob_sha1": "316c09d1bf367d7055459906f3d653dc33e69f33"
+    },
+    {
+      "path": "stdlib/runtime/math/rempio2.gr",
+      "sha256": "ec1685f6723298ef4282361dd2e1f19fea2ebdbb7aaf5ff713d4946e501c9763",
+      "git_blob_sha1": "3c3a4fcbbacdbea7faad84ce28cb8820b5fa3258"
+    },
+    {
+      "path": "stdlib/runtime/math/trig.gr",
+      "sha256": "0cb02ac0df7ed8b3610c6aaf4c7fad4c7120d4821caf44092eab4b2c30d02cd7",
+      "git_blob_sha1": "dd6f59d5e47900ea59db013e84a7ab0cb063ff4a"
+    },
+    {
+      "path": "stdlib/runtime/math/umuldi.gr",
+      "sha256": "9a6d6f6c6cd9b6733015d283062ad93df94918775349cf43476a068a094ee625",
+      "git_blob_sha1": "c2b2a06a8d87a039d43f3391e29aa9b764343a36"
+    },
+    {
+      "path": "stdlib/runtime/numberUtils.gr",
+      "sha256": "69ed0e5bf5724877cd19e43cf93fbddf2a7b26b00daf07ed8ea8e1b560eb3f67",
+      "git_blob_sha1": "248645e230d94cfc5942fb6a8e7be1c9c0ea8f94"
+    },
+    {
+      "path": "stdlib/runtime/numbers.gr",
+      "sha256": "012ceab11a86dde0786f7a77505aca9dd55925971bd9d9d7a8ec7b33628de887",
+      "git_blob_sha1": "ed54d3da410da8a56b927e484c4a7127209ecea8"
+    },
+    {
+      "path": "stdlib/runtime/string.gr",
+      "sha256": "345749de61f6bdce902e64b625c48bcc0d57463b57fbb0348929402e298c5856",
+      "git_blob_sha1": "6659f922bf9dd107eb978d4e3d7f8cd069b401b4"
+    },
+    {
+      "path": "stdlib/runtime/unsafe/constants.gr",
+      "sha256": "e2add30375ef15d7ef24cffc1a5ac219417c34d746ed4f36f6a16e02e6027488",
+      "git_blob_sha1": "cb082b8d70519013eff84e22f34f94af4f75b5c8"
+    },
+    {
+      "path": "stdlib/runtime/unsafe/conv.gr",
+      "sha256": "d4b8227730d4adc602611b985d9a32124288bef589d97589f26ef49c32fa470b",
+      "git_blob_sha1": "27b1cdfe8fcb151f1e2de4fce84e4025b038c512"
+    },
+    {
+      "path": "stdlib/runtime/unsafe/memory.gr",
+      "sha256": "e51bb071c0feedec97fcdd9811386e2f3aa4dc4576199cbaae8decc3f50c739c",
+      "git_blob_sha1": "89ed18edd9ccaf4dcf7493bf792850b37c72792c"
+    },
+    {
+      "path": "stdlib/runtime/unsafe/offsets.gr",
+      "sha256": "7d4e7153b5c49675169086bcb1cad1ba4587bf68aabcc1c87aa49942424a2519",
+      "git_blob_sha1": "0b443d25bdb24de36211a15e22ffe8a85132aedf"
+    },
+    {
+      "path": "stdlib/runtime/unsafe/panic.gr",
+      "sha256": "0085f68829ea93987732a845c1d9c9d72ef7bd3059bad3a32792baa49b28ded8",
+      "git_blob_sha1": "8c64400b5c1d3322d0236f0fbcdbfe286565743c"
+    },
+    {
+      "path": "stdlib/runtime/unsafe/tags.gr",
+      "sha256": "aa40b4537201458fffa84cf43736c7f4f3003f371f6ff4dc142e85dcb7da4028",
+      "git_blob_sha1": "505df6b377335327e77d993c11d37849d5846435"
+    },
+    {
+      "path": "stdlib/runtime/unsafe/wasmf32.gr",
+      "sha256": "ddb84934164347b94b63ca1d3bc35b8bbff47a214fd8b92f29330082f0aa7fd8",
+      "git_blob_sha1": "d499e1177147db35935c14f467939566f529de17"
+    },
+    {
+      "path": "stdlib/runtime/unsafe/wasmf64.gr",
+      "sha256": "6b4fea9c2b66ad904f5838ec7c91aefbaa37f5de5da531f47cf016903aa0aab7",
+      "git_blob_sha1": "e920137fe971d81866365ef0fd69ca44c15d54eb"
+    },
+    {
+      "path": "stdlib/runtime/unsafe/wasmi32.gr",
+      "sha256": "2c197f3342a911a792d75d14d6c103ddd49d21f9348c957d2fd16aeb1c66bafb",
+      "git_blob_sha1": "68160a9462fd1470c0d59650af299f8f6f2d01bb"
+    },
+    {
+      "path": "stdlib/runtime/unsafe/wasmi64.gr",
+      "sha256": "8c7f18239c96e5b0c5ee1ba961786a589bc111705b6eaa8b877ff73077e85e00",
+      "git_blob_sha1": "8b3691921408f9996e06a479e3c4550c7bfec96c"
+    },
+    {
+      "path": "stdlib/runtime/utf8.gr",
+      "sha256": "271648409fa0c3685fd9b9b3e490bfea804e03a2648adaab244a0131ec7a9a76",
+      "git_blob_sha1": "3de977901a92c7fee0889ead8a6e4f8aefdfd697"
+    },
+    {
+      "path": "stdlib/string.gr",
+      "sha256": "ffc89371c696a743d853fc158f627005087c19e60098d5a29ab956e49ecd94b6",
+      "git_blob_sha1": "e268573940745db45e180718ba61cb6e94857cdd"
+    }
+  ]
+}
