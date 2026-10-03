@@ -10,6 +10,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+// Preserve an existing canonical home through a tee consumed by control flow.
+var teeSlotPredicateEnabled = os.Getenv("WAGO_AMD64_TEE_SLOT_PREDICATE") == "1"
+
 // body walks the function's expression bytecode once, driving the operand stack:
 // leaves (const, local.get) push lazily, binary ops push deferred nodes, and
 // sinks (local.set, drop, return) condense. This is the port of WARP's
@@ -1149,6 +1152,16 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		if f.pinRelinquished && f.regUser[pr] != nil {
 			f.spillIfUsed(pr)
 		}
+		// A stack-backed tee already has a valid independent copy. A following
+		// branch canonicalizes its predicate, so retaining that copy avoids
+		// writing the just-loaded value back to its original slot.
+		keepSlot := false
+		var originalSlot storage
+		if teeSlotPredicateEnabled && tee && reader != nil && e.isValue() && e.st.kind == stSlot && e.st.typ == mtI32 && !e.st.hasGCRoot() {
+			if op, ok := reader.Peek(); ok && (op == 0x04 || op == 0x0d) {
+				keepSlot, originalSlot = true, e.st
+			}
+		}
 		// The destination is a hard reservation until the assignment commits.
 		// Nested lowering may clear its temporary pin mask, so keep this lease
 		// separate from those expression-local pins.
@@ -1159,7 +1172,12 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.release(pr)
 		f.markLocalDirty(x) // value now lives (only) in the register
 		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)}) // borrowed ref stays
+			if keepSlot {
+				f.replaceStorage(e, originalSlot)
+				f.stats.peep("tee-slot-predicate")
+			} else {
+				f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)}) // borrowed ref stays
+			}
 		} else {
 			f.erase(e)
 		}
