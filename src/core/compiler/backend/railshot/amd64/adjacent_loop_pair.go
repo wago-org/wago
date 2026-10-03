@@ -4,7 +4,9 @@ package amd64
 
 import "os"
 
-var regionAdjacentMultiEnabled = os.Getenv("WAGO_AMD64_ADJACENT_MULTI_PAIR") == "1"
+// Up to two output pairs share the existing bounded loop plan. Zero retains
+// the original one-pair admission and range-only alias checks for comparison.
+var regionAdjacentMultiEnabled = os.Getenv("WAGO_AMD64_ADJACENT_MULTI_PAIR") != "0"
 
 // A bounded exact matcher joins two adjacent scalar outputs. It keeps operand
 // order and performs no FP reduction reassociation. Both original outputs are
