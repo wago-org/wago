@@ -376,7 +376,8 @@ func TestStagedGCArrayReferenceFootprint(t *testing.T) {
 		// monotonic callback/context versions. Retained host-session and
 		// ordinary-call cache pointers and optional overflow slots live here,
 		// not on every Instance.
-		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 272}[name]
+		// Profiling adds an instance ID; the ordinary profileState is empty.
+		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 272 + unsafe.Sizeof(profileInstanceState{})}[name]
 		if got != want {
 			t.Fatalf("%s size = %d, want %d", name, got, want)
 		}
