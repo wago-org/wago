@@ -19,6 +19,12 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Preserve earlier call arguments when later deferred expressions use fixed
   registers for shifts or division, including mixed and tail calls.
+- Local `wago-installer` builds no longer mistake a dirty tagged checkout for a
+  published release on Go 1.24 through 1.26.
+- Actions artifact downloads keep GitHub bearer tokens on the catalog origin
+  instead of forwarding them to a cross-origin archive URL.
+- Full uninstall removes a custom `WAGO_HOME` only when known Wago state cleanup
+  leaves it empty, preserving unrelated files in a shared directory.
 - Legacy exception-handling opcodes now report their unsupported encoding and
   a `try_table`/exnref migration hint instead of a generic invalid instruction.
 - Recovered backend panics now return a distinct `InternalCompilerError` with
