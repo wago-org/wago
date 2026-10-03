@@ -45,6 +45,9 @@ func (p *regionLoopPlan) scalarRecurrenceDestination(event uint8, uses *[regionL
 // Every other access remains ordered. Runtime range and strict alias guards
 // prove that postponing these stores cannot be observed on the fast path.
 func (p *regionLoopPlan) scalarMemoryRecurrence() bool {
+	if p.storeN > 2 {
+		return false
+	}
 	var selected [2]uint8
 	count := 0
 	for i, store := range p.stores[:p.storeN] {

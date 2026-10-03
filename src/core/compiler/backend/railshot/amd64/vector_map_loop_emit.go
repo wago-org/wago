@@ -764,7 +764,7 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 	if !inspectRegionLoop(look, f.localType, f.classifier, &p) {
 		return false, nil
 	}
-	if p.independentLanes() {
+	if p.storeN <= 2 && p.independentLanes() {
 		if !regionLoopEnabled && !(regionWideIndependentEnabled && f.cpuHas(shared.AMD64AVX)) && !(regionZeroCounterEnabled && p.zeroTerminated) {
 			return false, nil
 		}
@@ -781,6 +781,9 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 		}
 	}
 	p.wide = f.cpuHas(shared.AMD64AVX) && ((regionWideAdjacentEnabled && p.adjacent) || (regionWideIndependentEnabled && !p.adjacent && !p.scalar))
+	if p.adjacent && regionAdjacentMultiEnabled && !p.contiguousAdjacentIterations() {
+		p.wide = false
+	}
 	step := p.locals[p.counter].step
 	memoryForms := !p.scalar && regionLoopMemForms && f.cpuHas(shared.AMD64AVX)
 	var prefix uint8
@@ -957,6 +960,9 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 			}
 		}
 		f.stats.peep("region-loop-fast")
+		if p.adjacent && p.storeN == 2 {
+			f.stats.peep("region-loop-multi-pair")
+		}
 	} else {
 		f.a.JmpBack(fallback)
 		f.stats.peep("region-loop-exit-reject")
@@ -985,6 +991,20 @@ func (e *regionLoopEmitter) aliasGuards() {
 				f.a.Cmp64(a, c)
 				equal = f.a.JccPlaceholder(condE)
 			}
+			interleaved := -1
+			if regionAdjacentMultiEnabled && p.adjacent && s.stride == t.stride && s.stride != 0 && s.stride&(s.stride-1) == 0 && uint32(s.width)+uint32(t.width) == s.stride {
+				// The two streams occupy complementary portions of each stride.
+				// Their enclosing ranges may overlap, but their accesses cannot:
+				// (t.start-s.start) mod stride == s.width. A power-of-two stride
+				// divides host wraparound, so masked subtraction is exact even
+				// when t.start precedes s.start. Range checks already proved that
+				// neither guest address stream wraps or exceeds memory bounds.
+				f.a.MovReg64(b, c)
+				f.a.AluRR(aluTable[opSub].rr, b, a, true)
+				f.a.AluRI(aluTable[opAnd].digit, b, int32(s.stride-1), true)
+				f.a.AluRI(7, b, int32(s.width), true)
+				interleaved = f.a.JccPlaceholder(condE)
+			}
 			f.a.Load32(b, RSP, e.off(8))
 			f.a.AluRI(aluTable[opSub].digit, b, 1, true)
 			f.a.ImulRI(b, int32(s.stride), true)
@@ -1005,6 +1025,9 @@ func (e *regionLoopEmitter) aliasGuards() {
 			e.fail(condA)
 			if equal >= 0 {
 				f.a.PatchRel32(equal, f.a.Len())
+			}
+			if interleaved >= 0 {
+				f.a.PatchRel32(interleaved, f.a.Len())
 			}
 			f.a.PatchRel32(before, f.a.Len())
 		}

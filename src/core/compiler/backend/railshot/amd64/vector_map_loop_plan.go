@@ -51,7 +51,7 @@ type regionLoopLoad struct {
 type regionLoopPlan struct {
 	nodes                        [regionLoopMaxOps + 1]regionLoopNode
 	locals                       [regionLoopMaxLocals]regionLoopLocal
-	stores                       [2]regionLoopStore
+	stores                       [4]regionLoopStore
 	loads                        [regionLoopMaxLoads]regionLoopLoad
 	events                       [regionLoopMaxOps]uint8
 	eventN                       uint8
@@ -230,7 +230,7 @@ func inspectRegionLoop(r wasm.Reader, types []machineType, classifier wasm.Modul
 			}
 			id = p.add(regionLoopNode{op: op, left: a, bits: imm.MemOffset, uses: p.nodes[a].uses})
 		case 0x39:
-			if depth < 2 || p.storeN == 2 || imm.MemIndex != 0 || imm.MemOffset > uint64(^uint32(0)) {
+			if depth < 2 || p.storeN == 4 || (p.storeN == 2 && !regionAdjacentMultiEnabled) || imm.MemIndex != 0 || imm.MemOffset > uint64(^uint32(0)) {
 				return false
 			}
 			depth -= 2

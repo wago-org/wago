@@ -2,12 +2,16 @@
 
 package amd64
 
+import "os"
+
+var regionAdjacentMultiEnabled = os.Getenv("WAGO_AMD64_ADJACENT_MULTI_PAIR") == "1"
+
 // A bounded exact matcher joins two adjacent scalar outputs. It keeps operand
 // order and performs no FP reduction reassociation. Both original outputs are
 // represented by the low/high lanes of the left tree. Guards must subsequently
 // prove the full ranges and absence of cross-stream aliasing.
 func (p *regionLoopPlan) packAdjacentOutputs() bool {
-	if p.storeN != 2 {
+	if p.storeN != 2 && !(regionAdjacentMultiEnabled && p.storeN == 4) {
 		return false
 	}
 	for i, l := range p.locals[:p.localN] {
@@ -15,9 +19,12 @@ func (p *regionLoopPlan) packAdjacentOutputs() bool {
 			return false
 		}
 	}
-	first, second := p.stores[0], p.stores[1]
-	if p.stride(first.address) != 16 || !p.adjacentAddresses(first.address, first.offset, second.address, second.offset) {
-		return false
+	for i := uint8(0); i < p.storeN; i += 2 {
+		first, second := p.stores[i], p.stores[i+1]
+		stride := p.stride(first.address)
+		if stride < 16 || (!regionAdjacentMultiEnabled && stride != 16) || !p.adjacentAddresses(first.address, first.offset, second.address, second.offset) {
+			return false
+		}
 	}
 	var representative, lane [regionLoopMaxOps + 1]uint8
 	var match func(uint8, uint8) bool
@@ -57,7 +64,7 @@ func (p *regionLoopPlan) packAdjacentOutputs() bool {
 				if x.coeff != y.coeff || x.bits != y.bits || a.bits != b.bits {
 					return false
 				}
-			} else if stride != 16 || !p.adjacentAddresses(a.left, a.bits, b.left, b.bits) {
+			} else if (!regionAdjacentMultiEnabled && stride != 16) || !p.adjacentAddresses(a.left, a.bits, b.left, b.bits) {
 				return false
 			}
 		case 0xa0, 0xa1, 0xa2, 0xa3:
@@ -77,8 +84,10 @@ func (p *regionLoopPlan) packAdjacentOutputs() bool {
 		lane[right] |= 2
 		return true
 	}
-	if !match(first.value, second.value) {
-		return false
+	for i := uint8(0); i < p.storeN; i += 2 {
+		if !match(p.stores[i].value, p.stores[i+1].value) {
+			return false
+		}
 	}
 	// Every retained FP event must participate in the pair. Reject dead or
 	// unrelated loads rather than erase their possible traps or local effects.
@@ -100,8 +109,8 @@ func (p *regionLoopPlan) packAdjacentOutputs() bool {
 	at := 0
 	for _, event := range p.events[:p.eventN] {
 		if event&0x80 != 0 {
-			if event == 0x80 {
-				p.events[at] = 0x80
+			if event&1 == 0 {
+				p.events[at] = 0x80 | (event&0x7f)/2
 				at++
 			}
 		} else if representative[event] == event {
@@ -110,7 +119,10 @@ func (p *regionLoopPlan) packAdjacentOutputs() bool {
 		}
 	}
 	p.eventN = uint8(at)
-	p.storeN = 1
+	for i := uint8(0); i < p.storeN/2; i++ {
+		p.stores[i] = p.stores[2*i]
+	}
+	p.storeN /= 2
 	p.loadN = 0
 	for _, event := range p.events[:p.eventN] {
 		if event&0x80 != 0 {
@@ -134,6 +146,22 @@ func (p *regionLoopPlan) packAdjacentOutputs() bool {
 		}
 	}
 	p.adjacent = true
+	return true
+}
+
+// Combining two iterations into one YMM requires every moving pair to be
+// contiguous. Strided pairs remain XMM operations on one original iteration.
+func (p *regionLoopPlan) contiguousAdjacentIterations() bool {
+	for _, s := range p.stores[:p.storeN] {
+		if p.stride(s.address) != 16 {
+			return false
+		}
+	}
+	for _, l := range p.loads[:p.loadN] {
+		if l.stride != 0 && l.stride != 16 {
+			return false
+		}
+	}
 	return true
 }
 
