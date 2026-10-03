@@ -522,6 +522,49 @@ func TestGCMutableGlobalRootsInsideInvocation(t *testing.T) {
 	}
 }
 
+func gcGlobalGetHiddenOperandRootModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	funcType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	global := []byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b} // (mut (ref null 0)) = ref.null 0
+	body := []byte{
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x24, 0x00, // global = struct.new(42)
+		0x23, 0x00, // keep global.get on the operand stack
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x24, 0x00, // replace global with struct.new(7)
+		0xfb, 0x01, 0x00, 0x1a, // collect through struct.new_default; drop
+		0xfb, 0x02, 0x00, 0x00, 0x0b, // saved ref; struct.get 0 0; end
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(global)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func TestGCGlobalGetPreservesHiddenStackRoot(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcGlobalGetHiddenOperandRootModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	status := compiled.GCNativeRootAdmission()
+	if !status.Required || !status.Exact {
+		t.Fatalf("global.get root admission = %+v", status)
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{
+		Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16,
+		TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("run"); err != nil || !reflect.DeepEqual(got, []uint64{42}) {
+		t.Fatalf("run = %v, %v; want [42]", got, err)
+	}
+}
+
 func gcHostReentryFrameRootModule() []byte {
 	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
 	hostType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
