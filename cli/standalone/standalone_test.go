@@ -1,16 +1,194 @@
 package standalone
 
 import (
+	"context"
+	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago"
 )
 
+type teardownTestPlugin struct {
+	moduleClosed chan struct{}
+	stopStarted  chan struct{}
+	stopRelease  chan struct{}
+	stopped      chan struct{}
+}
+
+func (plugin *teardownTestPlugin) Register(registrar *wago.Registrar) error {
+	observer, err := registrar.ModuleCloseObserver()
+	if err != nil {
+		return err
+	}
+	if err := observer.Observe(func(wago.ModuleCloseEvent) { close(plugin.moduleClosed) }); err != nil {
+		return err
+	}
+	return registrar.Lifecycle(wago.PluginLifecycle{Stop: func(context.Context) error {
+		close(plugin.stopStarted)
+		<-plugin.stopRelease
+		close(plugin.stopped)
+		return nil
+	}})
+}
+
 func TestRunEmptyStartModule(t *testing.T) {
 	if code := Run(emptyStartModule(), wago.PluginSet{}, Options{DeferBoundsChecks: true}, []string{"hello"}); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
+	}
+}
+
+func TestReportErrorPreservesExitCodesWithoutHidingTeardownFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"zero exit", &wago.ExitError{Code: 0}, 0},
+		{"nonzero exit", &wago.ExitError{Code: 7}, 7},
+		{"zero exit with teardown failure", errors.Join(&wago.ExitError{Code: 0}, errors.New("forced teardown failure")), 1},
+		{"nonzero exit with teardown failure", errors.Join(&wago.ExitError{Code: 7}, errors.New("forced teardown failure")), 7},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := reportError(tc.err, []string{"program"}); got != tc.want {
+				t.Fatalf("reportError(%v) = %d, want %d", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+type exitTeardownPlugin struct{ code int32 }
+
+func (plugin exitTeardownPlugin) Register(registrar *wago.Registrar) error {
+	imports, err := registrar.HostImports()
+	if err != nil {
+		return err
+	}
+	imports.HostFunc("env", "exit", func() { panic(wago.HostExit{Code: plugin.code}) })
+	return registrar.Lifecycle(wago.PluginLifecycle{Stop: func(context.Context) error {
+		return errors.New("forced teardown failure")
+	}})
+}
+
+func TestRunAndRunArtifactReportZeroExitTeardownFailure(t *testing.T) {
+	// (module (import "env" "exit" (func))
+	//   (func (export "_start") (call 0)))
+	source := []byte{0, 'a', 's', 'm', 1, 0, 0, 0,
+		1, 4, 1, 0x60, 0, 0,
+		2, 12, 1, 3, 'e', 'n', 'v', 4, 'e', 'x', 'i', 't', 0, 0,
+		3, 2, 1, 0,
+		7, 10, 1, 6, '_', 's', 't', 'a', 'r', 't', 0, 1,
+		10, 6, 1, 4, 0, 0x10, 0, 0x0b}
+	artifact, err := CompileArtifact(source, wago.PluginSet{}, Options{DeferBoundsChecks: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []int32{0, 7} {
+		definition := wago.PluginDefinition{
+			ID: "example.com/cli/standalone-exit-teardown", Version: "1.0.0",
+			Provenance: wago.PluginProvenance{Repository: "https://example.com/cli/standalone-exit-teardown", License: "MIT"},
+			Authorities: []wago.AuthorityRequest{{
+				Name: wago.AuthorityHostImportDefine, Mode: wago.AuthorityRequired,
+				Reason: "request a guest exit", Scope: wago.AuthorityScope{Modules: []string{"env"}},
+			}},
+		}
+		digest, err := wago.DefinitionDigest(definition)
+		if err != nil {
+			t.Fatal(err)
+		}
+		set := wago.PluginSet{
+			Providers: []wago.PluginProvider{{Definition: definition, New: func() wago.Plugin { return exitTeardownPlugin{code: code} }}},
+			Selections: []wago.PluginSelection{{
+				ID: definition.ID, DefinitionDigest: digest, Direct: true,
+				Dependencies: map[string]string{},
+				Grants: []wago.AuthorityGrant{{
+					Name: wago.AuthorityHostImportDefine, Scope: wago.AuthorityScope{Modules: []string{"env"}},
+				}},
+			}},
+		}
+		want := int(code)
+		if code == 0 {
+			want = 1
+		}
+		for _, mode := range []struct {
+			name string
+			run  func() int
+		}{
+			{"source", func() int { return Run(source, set, Options{DeferBoundsChecks: true}, nil) }},
+			{"artifact", func() int { return RunArtifact(artifact, set, Options{DeferBoundsChecks: true}, nil) }},
+		} {
+			t.Run(mode.name+"/"+strconv.Itoa(int(code)), func(t *testing.T) {
+				if got := mode.run(); got != want {
+					t.Fatalf("exit code = %d, want %d", got, want)
+				}
+			})
+		}
+	}
+}
+
+func TestExecuteClosesModuleAndWaitsForRuntimeTeardown(t *testing.T) {
+	plugin := &teardownTestPlugin{
+		moduleClosed: make(chan struct{}), stopStarted: make(chan struct{}),
+		stopRelease: make(chan struct{}), stopped: make(chan struct{}),
+	}
+	definition := wago.PluginDefinition{
+		ID: "example.com/cli/teardown", Version: "1.0.0",
+		Provenance: wago.PluginProvenance{Repository: "https://example.com/cli/teardown", License: "MIT"},
+		Authorities: []wago.AuthorityRequest{{
+			Name: wago.AuthorityModuleCloseObserve, Mode: wago.AuthorityRequired, Reason: "verify CLI module teardown",
+		}},
+	}
+	digest, err := wago.DefinitionDigest(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := wago.PluginSet{
+		Providers: []wago.PluginProvider{{Definition: definition, New: func() wago.Plugin { return plugin }}},
+		Selections: []wago.PluginSelection{{
+			ID: definition.ID, DefinitionDigest: digest, Direct: true,
+			Dependencies: map[string]string{},
+			Grants:       []wago.AuthorityGrant{{Name: wago.AuthorityModuleCloseObserve}},
+		}},
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- execute(emptyStartModule(), set, Options{DeferBoundsChecks: true}, []string{"hello"})
+	}()
+
+	select {
+	case <-plugin.stopStarted:
+	case <-time.After(5 * time.Second):
+		close(plugin.stopRelease)
+		t.Fatal("execute did not start runtime teardown")
+	}
+	select {
+	case <-plugin.moduleClosed:
+	default:
+		close(plugin.stopRelease)
+		t.Fatal("execute began runtime teardown before closing the module")
+	}
+	select {
+	case err := <-done:
+		close(plugin.stopRelease)
+		t.Fatalf("execute returned before plugin teardown completed: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(plugin.stopRelease)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("execute did not return after teardown was released")
+	}
+	select {
+	case <-plugin.stopped:
+	default:
+		t.Fatal("execute returned without completing plugin teardown")
 	}
 }
 

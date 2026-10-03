@@ -13,12 +13,12 @@ func Run(source []byte, plugins wago.PluginSet, options Options, args []string) 
 	return 0
 }
 
-func execute(source []byte, plugins wago.PluginSet, options Options, args []string) error {
+func execute(source []byte, plugins wago.PluginSet, options Options, args []string) (err error) {
 	runtime, err := loadRuntime(plugins, options, args)
 	if err != nil {
 		return err
 	}
-	defer runtime.Close()
+	defer finishRuntime(runtime, &err)
 	module, err := runtime.Compile(source)
 	if err != nil {
 		return err
@@ -28,16 +28,16 @@ func execute(source []byte, plugins wago.PluginSet, options Options, args []stri
 
 // CompileArtifact applies the selected plugins and compilation options once and
 // returns the target-specific artifact embedded by standalone builds.
-func CompileArtifact(source []byte, plugins wago.PluginSet, options Options) ([]byte, error) {
+func CompileArtifact(source []byte, plugins wago.PluginSet, options Options) (artifact []byte, err error) {
 	runtime, err := loadRuntime(plugins, options, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer runtime.Close()
+	defer finishRuntime(runtime, &err)
 	module, err := runtime.Compile(source)
 	if err != nil {
 		return nil, err
 	}
-	defer module.Close()
+	defer finishModule(module, &err)
 	return module.Compiled().MarshalBinary()
 }

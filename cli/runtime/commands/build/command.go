@@ -2,6 +2,8 @@
 package build
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -107,14 +109,27 @@ func (cmd implementation) Run(c *command.Ctx) {
 	}
 	cfg := selection.RuntimeConfig()
 	rt := cmd.environment.LoadRuntime(cfg, nil)
-	defer rt.Close()
 	module, err := rt.Compile(source)
 	if err != nil {
+		_ = rt.CloseContext(context.Background())
 		ui.Fatal("build: %v", err)
+	}
+	// Close the Module before synchronously closing its Runtime so module-close
+	// observers finish while their plugin generation is still active.
+	finish := func() error {
+		return errors.Join(module.Close(), rt.CloseContext(context.Background()))
 	}
 	artifact, err := module.Compiled().MarshalBinary()
 	if err != nil {
+		_ = finish()
 		ui.Fatal("build: %v", err)
+	}
+	// Marshaling owns the artifact bytes, so finish teardown before writing the
+	// output. This preserves the old artifact on teardown failure; atomic
+	// protection against a later write failure belongs to the separate build
+	// publication change.
+	if err := finish(); err != nil {
+		ui.Fatal("build: teardown: %v", err)
 	}
 	if err := os.WriteFile(output, artifact, 0o644); err != nil {
 		ui.Fatal("build: %v", err)
