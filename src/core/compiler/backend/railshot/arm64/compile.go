@@ -167,6 +167,8 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
+	scalarSummary shared.ScalarSummary
+
 	//lint:ignore U1000 debug-only fields; the ordinary placeholder is empty
 	regallocFnState
 	profileFnState
@@ -621,6 +623,8 @@ func asmCapForBody(bodyLen int) int {
 // the next function runs — so reset-and-reuse replaces per-function allocation.
 // Compile is sequential, so a single scratch is shared safely.
 type scratch struct {
+	scalar shared.ScalarState
+
 	stack                 *stack   // the valent-block operand stack
 	asm                   *a64.Asm // the AArch64 encoder byte buffer
 	fnState               fn       // per-function compiler state, reused across the module
@@ -969,6 +973,8 @@ func (sc *scratch) finishStackFunction() {
 // worker's final function. The join needs only worker code arenas and scalar
 // metadata; operand nodes cannot be reused again.
 func (sc *scratch) finishStackWorker() {
+	sc.scalar.FinishWorker()
+
 	sc.clearNodeReferences()
 	_, retained := sc.stack.nodeMemory()
 	sc.nodeScratchDiscarded += retained
@@ -1282,6 +1288,10 @@ func (f *fn) frameSize() int {
 }
 
 func (f *fn) elideRegisterOnlyFrame() bool {
+	if f.scalarSummary.Eligible {
+		return false
+	}
+
 	voidResult := len(f.ft.Results) == 0
 	registerResult := f.singleRegResult || voidResult
 	if f.moduleEH || !registerResult || f.makesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
@@ -3126,6 +3136,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if f.compactFrameHeader {
 		f.stats.peep("frame-header-elide")
 	}
+	f.scalarSummary = f.admitScalar(c)
+	if f.scalarSummary.Eligible {
+		pinLocals = false
+	}
 	var gpPoolStorage [24]Reg
 	gpPool := gpPinPoolWithPolicy(gpPoolStorage[:0], regABI, f.nParams, !hasCall, policy)
 	if f.memLimitReg != regNone {
@@ -3278,7 +3292,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// internal-entry arg-to-local moves.  This is deliberately leaf-only: a
 	// callee that itself makes a call must retain the normal callee-saved local
 	// model for its own call boundaries.
-	if f.preserveCallerPins {
+	if f.preserveCallerPins && !f.scalarSummary.Eligible {
 		f.pinLeafRegABIIntParams()
 	}
 	if f.pinnedLocalMask.has(mergeReg) {
@@ -3416,6 +3430,11 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the current epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
+	if f.scalarSummary.Eligible {
+		f.ctrl = f.sc.ctrl[:0]
+		return f.scalarBody(c)
+	}
+
 	sc := f.scratchState()
 	resultTypes := lowerFunctionResultTypes(sc, f.ft.Results)
 	if len(resultTypes) <= len(sc.functionResultTypeArena) {
