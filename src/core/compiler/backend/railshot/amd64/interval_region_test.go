@@ -120,6 +120,9 @@ func intervalRegionModule(t *testing.T) *wasm.Module {
 }
 
 func TestIntervalRegionDynamicReuse(t *testing.T) {
+	savedRSI := intervalRSILeaseEnabled
+	intervalRSILeaseEnabled = false
+	defer func() { intervalRSILeaseEnabled = savedRSI }()
 	savedRegions, savedScratch, savedR8 := intervalRegionPinsEnabled, intervalScratchLeaseEnabled, intervalR8LeaseEnabled
 	defer func() {
 		intervalRegionPinsEnabled, intervalScratchLeaseEnabled, intervalR8LeaseEnabled = savedRegions, savedScratch, savedR8
@@ -466,5 +469,54 @@ func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 	}
 	if got, want := len(eligible.localLastGet), 100; got != want {
 		t.Fatalf("wide candidate last-get storage = %d, want %d", got, want)
+	}
+}
+
+func TestIntervalRSILease(t *testing.T) {
+	saved := intervalRSILeaseEnabled
+	defer func() { intervalRSILeaseEnabled = saved }()
+	m := intervalRegionModule(t)
+	for _, enabled := range []bool{false, true} {
+		intervalRSILeaseEnabled = enabled
+		var stats ModuleStats
+		got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{ElideBoundsChecks: true, Stats: optionalTestStats(&stats)}, nil)
+		if err != nil || got != 210 {
+			t.Fatalf("enabled=%v got=%d err=%v", enabled, got, err)
+		}
+		if diagnosticsEnabled {
+			if (stats.Funcs[0].Peephole["interval-rsi-lease"] != 0) != enabled {
+				t.Fatal("admission", stats.Funcs[0].Peephole)
+			}
+			want := 11
+			if enabled {
+				want++
+			}
+			if got := stats.Funcs[0].Residency.MaxActive; got != want {
+				t.Fatalf("max active=%d want=%d", got, want)
+			}
+		}
+	}
+}
+
+func TestIntervalRSIBodyProof(t *testing.T) {
+	f := fn{classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
+	for _, tc := range []struct {
+		name string
+		code []byte
+		want bool
+	}{
+		{"integer", []byte{0x20, 0, 0x41, 7, 0x77, 0x0b}, true},
+		{"variable-shift", []byte{0x20, 0, 0x20, 1, 0x74, 0x0b}, true},
+		{"load", []byte{0x20, 0, 0x28, 2, 0, 0x0b}, true},
+		{"divide", []byte{0x20, 0, 0x20, 1, 0x6d, 0x0b}, false},
+		{"float", []byte{0x20, 0, 0x20, 1, 0xa0, 0x0b}, false},
+		{"call", []byte{0x10, 0, 0x0b}, false},
+		{"global", []byte{0x23, 0, 0x0b}, false},
+		{"truncated", []byte{0x41, 0x80}, false},
+		{"nested", []byte{0x02, 0x40, 0x0b, 0x0b}, false},
+	} {
+		if got := f.intervalRSIBody(tc.code); got != tc.want {
+			t.Errorf("%s=%v want=%v", tc.name, got, tc.want)
+		}
 	}
 }

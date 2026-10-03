@@ -2,7 +2,46 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"os"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+var intervalRSILeaseEnabled = os.Getenv("WAGO_AMD64_INTERVAL_RSI_LEASE") == "1"
+
+// RSI has no implicit role in this integer-only, call-free instruction subset.
+// Keep RAX and RCX available for transient values and variable shifts. The
+// existing RDX admission excludes division; memory and module admission below
+// exclude helpers, shared memory, SIMD and nonzero descriptors.
+func (f *fn) intervalRSIBody(body []byte) bool {
+	r := wasm.ReaderFrom(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		switch {
+		case op == 0x0b:
+			return !r.HasNext()
+		case op == 0x01 || op == 0x1a || op == 0x1b,
+			op >= 0x20 && op <= 0x22,
+			op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x37,
+			op == 0x3a || op == 0x3b || op >= 0x3c && op <= 0x3e,
+			op >= 0x41 && op <= 0x42,
+			op >= 0x45 && op <= 0x5a,
+			op >= 0x67 && op <= 0x6c || op >= 0x71 && op <= 0x7e || op >= 0x83 && op <= 0x8a,
+			op == 0xa7 || op == 0xac || op == 0xad || op >= 0xc0 && op <= 0xc4:
+		default:
+			return false
+		}
+		var imm wasm.InstructionImmediate
+		if f.classifier.ClassifyInto(&r, op, &imm) != nil {
+			return false
+		}
+	}
+	return false
+}
 
 const (
 	noIntervalEvent   = ^uint32(0)
@@ -88,6 +127,10 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 	if f.intervalR8 {
 		f.intervalRegLimit++
 	}
+	f.intervalRSI = intervalRSILeaseEnabled && f.intervalScratch && f.intervalR8 && f.intervalRSIBody(body)
+	if f.intervalRSI {
+		f.intervalRegLimit++
+	}
 
 	assigned := resizeRegScratch(f.tmpIntervalReg, f.nLocals)
 	f.tmpIntervalReg = assigned
@@ -119,6 +162,9 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 	}
 	if f.intervalR8 {
 		f.stats.peep("interval-r8-lease")
+	}
+	if f.intervalRSI {
+		f.stats.peep("interval-rsi-lease")
 	}
 	f.noteResidencyCandidates(kept)
 	return true
@@ -271,6 +317,12 @@ func (f *fn) claimIntervalReg(x int) Reg {
 		}
 		if f.intervalR8 {
 			if reg := R8; !f.reserved.has(reg) && !f.pinned.has(reg) && !f.pinnedLocalMask.has(reg) &&
+				f.regUser[reg] == nil && f.intervalOwner[reg] < 0 {
+				return reg
+			}
+		}
+		if f.intervalRSI {
+			if reg := RSI; !f.reserved.has(reg) && !f.pinned.has(reg) && !f.pinnedLocalMask.has(reg) &&
 				f.regUser[reg] == nil && f.intervalOwner[reg] < 0 {
 				return reg
 			}

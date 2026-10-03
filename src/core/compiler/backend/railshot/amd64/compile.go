@@ -359,6 +359,7 @@ type fn struct {
 	intervalI64Weight bool
 	intervalScratch   bool
 	intervalR8        bool
+	intervalRSI       bool
 	intervalControl   bool
 	moduleHasSIMD     bool
 	localWritten      uint64 // conservative lexical write history for the first 64 locals
