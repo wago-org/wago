@@ -22,6 +22,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- AMD64 and ARM64 now report deferred division, remainder, and guard-page load
+  traps before later conversion, memory, table, reference, and indirect-call traps.
 - Preserve earlier call arguments when later deferred expressions use fixed
   registers for shifts or division, including mixed and tail calls.
 - Legacy exception-handling opcodes now report their unsupported encoding and

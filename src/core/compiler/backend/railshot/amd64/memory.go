@@ -420,6 +420,7 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // valid when the access is emitted immediately (stores), not deferred (loads);
 // eaOwned reports whether the caller must release ea.
 func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) (ea Reg, eaOwned bool, borrow int, disp int32) {
+	f.materializePendingTraps()
 	e := f.popValue()
 	cleanAddress := f.cleanMemory32Address(e)
 	// Bounds-certificate source: the address's stable value carrier (a local or
@@ -625,6 +626,7 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 // are full u64 values. Both additions are checked for carry before comparing against the
 // zero-extended byte-size cache, so wraparound cannot turn an OOB access valid.
 func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, disp int32) {
+	f.materializePendingTraps()
 	e := f.popValue()
 	ea, eaOwned = f.materialize(e), true
 	borrow, disp = -1, 0
@@ -774,6 +776,7 @@ func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex uint32, off uint64, err err
 }
 
 func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32) {
+	f.materializePendingTraps()
 	e := f.popValue()
 	cleanAddress := f.cleanMemory32Address(e)
 	ea = f.materialize(e)
