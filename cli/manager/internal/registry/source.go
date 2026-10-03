@@ -13,6 +13,34 @@ func UnpackedKB(dir string) int {
 	if total < 0 {
 		total = walkedSize(dir)
 	}
+	return roundedKB(total)
+}
+
+// unpackedArtifactKB deliberately walks every regular downloaded module file.
+// It neither applies checkout-only exclusions nor accepts a partial walk:
+// registry metadata must describe the complete checksum-pinned artifact.
+func unpackedArtifactKB(dir string) (int, error) {
+	var total int64
+	err := filepath.WalkDir(dir, func(_ string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode().IsRegular() {
+			total += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return roundedKB(total), nil
+}
+
+func roundedKB(total int64) int {
 	if total <= 0 {
 		return 0
 	}
