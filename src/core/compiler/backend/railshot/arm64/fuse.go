@@ -322,6 +322,10 @@ func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, er
 	if fi < 0 {
 		return false, errBadLabel
 	}
+	// A handler restore makes the edge nonempty; use the guarded fused path.
+	if f.branchHandlerRecord(fi) >= 0 {
+		return false, nil
+	}
 	fr := &f.ctrl[fi]
 	if fr.branchArity() != 0 || (fr.kind != cfLoop && fr.kind != cfBlock && fr.kind != cfIf) {
 		return false, nil
@@ -436,6 +440,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	} else {
 		f.moveBranchValues(fr, k, a)
 	}
+	f.restoreBranchHandlers(fi)
 	if len(coldEdgeCode) != 0 {
 		coldEdgeCode = append(coldEdgeCode, f.a.B[mark:]...)
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
