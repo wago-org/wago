@@ -32,6 +32,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   function/bytecode context and bounded diagnostics instead of ordinary rejection.
 - AMD64 and ARM64 preserve deferred division, remainder, and guard-page load
   traps before tail-call target checks or callee side effects.
+- AMD64 guest floating-point execution now uses WebAssembly's nearest-even,
+  masked-exception state and restores the host thread's MXCSR on every exit.
 - AMD64 and ARM64 discard exited `try_table` handlers on taken branches, so
   later exceptions cannot jump into an exited scope or a returned frame.
 - Preserve AMD64 `select` operands when deferred divisions, remainders, shifts,

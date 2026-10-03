@@ -13,7 +13,7 @@ import (
 )
 
 func readTestMXCSR() uint32
-func writeTestMXCSR(uint32)
+func writeTestMXCSR(value uint32)
 
 func mxcsrHostResumeModule() []byte {
 	body := []byte{0x44}
@@ -69,6 +69,7 @@ func TestGuestMXCSRIsolatedAcrossHostResume(t *testing.T) {
 	const (
 		initialHostMXCSR = uint32(0x1f81) // canonical control, invalid status set
 		resumedHostMXCSR = uint32(0x1f84) // canonical control, divide-by-zero status set
+		precisionStatus  = uint32(0x20)
 	)
 	var hostMXCSR uint32
 	instance, err := Instantiate(compiled, InstantiateOptions{Imports: testImports(
@@ -106,7 +107,9 @@ func TestGuestMXCSRIsolatedAcrossHostResume(t *testing.T) {
 	if err != nil || len(prepared) != 1 || AsI32(prepared[0]) != 0 {
 		t.Fatalf("prepared integer entry = %v, %v; want [0], nil", prepared, err)
 	}
-	if after := readTestMXCSR(); after != initialHostMXCSR {
+	// Go work before a raw entry can set the sticky precision flag. The runtime
+	// boundary test checks that flag exactly; this end-to-end test ignores only PE.
+	if after := readTestMXCSR(); after&^precisionStatus != initialHostMXCSR&^precisionStatus {
 		t.Fatalf("MXCSR after prepared entry = %#x; want caller state %#x", after, initialHostMXCSR)
 	}
 	writeTestMXCSR(initialHostMXCSR)
@@ -119,10 +122,10 @@ func TestGuestMXCSRIsolatedAcrossHostResume(t *testing.T) {
 	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("run = %#x; want nearest-even %#x", got, want)
 	}
-	if hostMXCSR != initialHostMXCSR {
+	if hostMXCSR&^precisionStatus != initialHostMXCSR&^precisionStatus {
 		t.Fatalf("host callback MXCSR = %#x; want caller state %#x", hostMXCSR, initialHostMXCSR)
 	}
-	if after := readTestMXCSR(); after != resumedHostMXCSR {
+	if after := readTestMXCSR(); after&^precisionStatus != resumedHostMXCSR&^precisionStatus {
 		t.Fatalf("MXCSR after invocation = %#x; want latest host state %#x", after, resumedHostMXCSR)
 	}
 }
