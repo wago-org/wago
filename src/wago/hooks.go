@@ -242,7 +242,7 @@ func (h *hookRegistry) appendGated(src *hookRegistry, gate *pluginCallGate) {
 	}
 	for _, fn := range src.afterClose {
 		fn := fn
-		h.afterClose = append(h.afterClose, func(event InstanceCloseEvent) { withPluginHook(gate, func() { fn(event) }) })
+		h.afterClose = append(h.afterClose, func(event InstanceCloseEvent) { withTerminalPluginHook(gate, func() { fn(event) }) })
 	}
 	for _, fn := range src.beforeInvoke {
 		fn := fn
@@ -261,6 +261,19 @@ func withPluginHook(gate *pluginCallGate, fn func()) {
 		return
 	}
 	defer gate.release()
+	fn()
+}
+
+func withTerminalPluginHook(gate *pluginCallGate, fn func()) {
+	terminal, err := gate.enterTerminalOrOrdinary(gate.enter)
+	if err != nil {
+		return
+	}
+	if terminal {
+		defer gate.releaseTerminal()
+	} else {
+		defer gate.release()
+	}
 	fn()
 }
 
