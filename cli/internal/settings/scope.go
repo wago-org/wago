@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/internal/filelock"
 )
 
 const (
@@ -39,6 +40,7 @@ type Target struct {
 	config     Config
 	configured bool
 	layer      localLayer
+	opened     Config
 }
 
 type Override struct {
@@ -66,6 +68,7 @@ func Open(global, local bool) (*Target, error) {
 	if global || (!local && !hasManifest) {
 		return &Target{
 			scope: ScopeGlobal, path: Path(), base: Default(), config: cloneConfig(globalConfig), configured: globalConfigured,
+			opened: cloneConfig(globalConfig),
 		}, nil
 	}
 
@@ -136,7 +139,23 @@ func (target *Target) Replace(config Config) error {
 
 func (target *Target) Save() error {
 	if target.scope == ScopeGlobal {
-		return Save(target.config)
+		// Atomic replacement protects bytes, while this lock makes the complete
+		// compare-and-save operation one cross-process config transaction.
+		lock, err := filelock.Acquire(context.Background(), target.path+".lock")
+		if err != nil {
+			return err
+		}
+		current, operationErr := LoadFile(target.path)
+		if operationErr == nil && !sameConfig(current, target.opened) {
+			operationErr = fmt.Errorf("%s settings changed since opening; reopen and retry", target.path)
+		}
+		if operationErr == nil {
+			operationErr = saveFileLocked(target.path, target.config)
+		}
+		if operationErr == nil {
+			target.opened = cloneConfig(target.config)
+		}
+		return errors.Join(operationErr, lock.Close())
 	}
 	layer := diffLayer(target.config, target.base)
 	return project.WithMutation(context.Background(), ".", func(mutation *project.Mutation) error {
@@ -159,6 +178,11 @@ func (target *Target) Save() error {
 		target.layer = layer
 		return nil
 	})
+}
+
+func sameConfig(left, right Config) bool {
+	return left.Version == right.Version && left.Runtime == right.Runtime &&
+		maps.Equal(left.Features, right.Features) && maps.Equal(left.Optimizations, right.Optimizations)
 }
 
 // matches compares a snapshot with the current validated manifest settings.
