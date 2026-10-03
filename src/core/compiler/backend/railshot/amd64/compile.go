@@ -43,9 +43,9 @@ var guardCallPinEnabled = os.Getenv("WAGO_AMD64_GUARD_CALL_PIN") != "0"
 // scratch contracts. Set WAGO_AMD64_SECOND_CALL_PIN=0 for comparison.
 var guardSecondCallPinEnabled = os.Getenv("WAGO_AMD64_SECOND_CALL_PIN") != "0"
 
-// R9 has fixed uses in bulk table lowering. Its experimental local lease is
-// limited by the existing bulk-memory and table-mutation hints.
-var guardThirdCallPinEnabled = os.Getenv("WAGO_AMD64_THIRD_CALL_PIN") == "1"
+// R9 has fixed uses in bulk table lowering. Its local lease excludes bulk
+// memory, table mutation, and inlined callees with unpropagated scratch uses.
+var guardThirdCallPinEnabled = os.Getenv("WAGO_AMD64_THIRD_CALL_PIN") != "0"
 
 func thirdCallPinEligible(flags funcHintFlags, inlineCallees int) bool {
 	return inlineCallees == 0 && !flags.has(hintUsesBulkMem|hintMutatesTable)
