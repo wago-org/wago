@@ -3,13 +3,13 @@ package build
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -68,6 +68,10 @@ type selectedBuildFile struct {
 // module resolution. cacheable is false when a selected source file cannot be
 // fingerprinted within the fixed work limits; callers must build in that case.
 func resolvedBuildHash(dir string, input Input, config Config) (digest string, cacheable bool, err error) {
+	return resolvedBuildHashContext(context.Background(), dir, input, config)
+}
+
+func resolvedBuildHashContext(ctx context.Context, dir string, input Input, config Config) (digest string, cacheable bool, err error) {
 	h := sha256.New()
 	fmt.Fprintf(h, "wago-resolved-build\x00%d\x00%s\x00", resolvedBuildIdentityVersion, Hash(input, config))
 	generatedMain, err := renderMain(input, config, "normalized-build-identity")
@@ -77,7 +81,7 @@ func resolvedBuildHash(dir string, input Input, config Config) (digest string, c
 	generatedMainHash := sha256.Sum256(generatedMain)
 	fmt.Fprintf(h, "generated-main\x00%x\x00go-build\x00-buildvcs=false\x00", generatedMainHash)
 
-	environment, err := selectedBuildEnvironment(dir)
+	environment, err := selectedBuildEnvironmentContext(ctx, dir)
 	if err != nil {
 		return "", false, err
 	}
@@ -110,7 +114,7 @@ func resolvedBuildHash(dir string, input Input, config Config) (digest string, c
 		cacheable = false
 		fmt.Fprint(h, "vendor-mode\x00")
 	} else {
-		modules, err := selectedModules(dir)
+		modules, err := selectedModulesContext(ctx, dir)
 		if err != nil {
 			return "", false, err
 		}
@@ -123,7 +127,7 @@ func resolvedBuildHash(dir string, input Input, config Config) (digest string, c
 		}
 	}
 
-	files, err := selectedBuildFiles(dir, config.BuildTag, environment["GOROOT"])
+	files, err := selectedBuildFilesContext(ctx, dir, config.BuildTag, environment["GOROOT"])
 	if err != nil {
 		return "", false, err
 	}
@@ -141,7 +145,20 @@ func resolvedBuildHash(dir string, input Input, config Config) (digest string, c
 		}
 	}
 	var totalBytes int64
+	cancelable := ctx.Done() != nil
+	var hashBuffer []byte
+	if cancelable {
+		// Reuse one buffer across the entire selected-file set; allocating one
+		// per file would amplify memory and GC cost for large plugin graphs.
+		hashBuffer = make([]byte, 32<<10)
+	}
 	for _, file := range files {
+		// Fingerprinting can walk many files after the go list subprocess exits.
+		// Stop between files so cancellation does not hold the build lock merely
+		// to finish a cache-key calculation that will never be published.
+		if err := ctx.Err(); err != nil {
+			return "", false, err
+		}
 		fmt.Fprintf(h, "file\x00%s\x00%s\x00%s\x00", file.ImportPath, file.Kind, filepath.ToSlash(file.Path))
 		info, statErr := os.Lstat(file.Path)
 		if statErr != nil {
@@ -176,8 +193,18 @@ func resolvedBuildHash(dir string, input Input, config Config) (digest string, c
 			continue
 		}
 		totalBytes += info.Size()
-		contentHash, readErr := hashBuildFile(file.Path)
+		// Keep the existing io.Copy fast path when no caller can cancel.
+		var contentHash string
+		var readErr error
+		if !cancelable {
+			contentHash, readErr = hashBuildFile(file.Path)
+		} else {
+			contentHash, readErr = hashBuildFileContext(ctx, file.Path, hashBuffer)
+		}
 		if readErr != nil {
+			if ctx.Err() != nil {
+				return "", false, ctx.Err()
+			}
 			cacheable = false
 			fmt.Fprintf(h, "read-error\x00%v\x00", readErr)
 			continue
@@ -201,8 +228,8 @@ func resolvedBuildHash(dir string, input Input, config Config) (digest string, c
 	return hex.EncodeToString(h.Sum(nil)), cacheable, nil
 }
 
-func selectedBuildEnvironment(dir string) (map[string]string, error) {
-	output, err := buildGoOutput(dir, "env", "-json")
+func selectedBuildEnvironmentContext(ctx context.Context, dir string) (map[string]string, error) {
+	output, err := buildGoOutputContext(ctx, dir, "env", "-json")
 	if err != nil {
 		return nil, err
 	}
@@ -231,10 +258,13 @@ func inspectVendorModules(dir string) (path string, present bool, err error) {
 	return path, false, nil
 }
 
-func selectedModules(dir string) ([]resolvedModuleIdentity, error) {
+func selectedModulesContext(ctx context.Context, dir string) ([]resolvedModuleIdentity, error) {
 	var modules []resolvedModuleIdentity
-	err := decodeBuildGoJSON(dir, []string{"list", "-m", "-json", "all"}, func(decoder *json.Decoder) error {
+	err := decodeBuildGoJSONContext(ctx, dir, []string{"list", "-m", "-json", "all"}, func(decoder *json.Decoder) error {
 		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			var module resolvedModuleIdentity
 			if err := decoder.Decode(&module); err != nil {
 				if err == io.EOF {
@@ -257,7 +287,7 @@ func selectedModules(dir string) ([]resolvedModuleIdentity, error) {
 	return modules, nil
 }
 
-func selectedBuildFiles(dir, buildTag, goRoot string) ([]selectedBuildFile, error) {
+func selectedBuildFilesContext(ctx context.Context, dir, buildTag, goRoot string) ([]selectedBuildFile, error) {
 	// Match the generated executable build: it has no VCS identity.
 	args := []string{"list", "-buildvcs=false", "-deps", "-json"}
 	if buildTag != "" {
@@ -270,8 +300,11 @@ func selectedBuildFiles(dir, buildTag, goRoot string) ([]selectedBuildFile, erro
 	}
 	generatedMain := filepath.Join(generatedDir, "main.go")
 	var files []selectedBuildFile
-	err = decodeBuildGoJSON(dir, args, func(decoder *json.Decoder) error {
+	err = decodeBuildGoJSONContext(ctx, dir, args, func(decoder *json.Decoder) error {
 		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			var pkg listedBuildPackage
 			if err := decoder.Decode(&pkg); err != nil {
 				if err == io.EOF {
@@ -455,14 +488,53 @@ func hashBuildFile(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func buildGoOutput(dir string, args ...string) ([]byte, error) {
-	command := exec.Command("go", args...)
+func hashBuildFileContext(ctx context.Context, path string, buffer []byte) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	var copyErr error
+	for {
+		if copyErr = ctx.Err(); copyErr != nil {
+			break
+		}
+		n, readErr := file.Read(buffer)
+		if n > 0 {
+			_, copyErr = h.Write(buffer[:n])
+			if copyErr != nil {
+				break
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			copyErr = readErr
+			break
+		}
+	}
+	closeErr := file.Close()
+	if copyErr != nil {
+		return "", copyErr
+	}
+	if closeErr != nil {
+		return "", closeErr
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func buildGoOutputContext(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	command := generatedModuleGoCommandContext(ctx, args...)
 	command.Dir = dir
-	configureGeneratedModuleGoCommand(command)
+	configureGeneratedModuleGoCommand(command.Cmd)
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	output, err := command.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		message := strings.TrimSpace(stderr.String())
 		if message != "" {
 			return nil, fmt.Errorf("go %s: %w: %s", strings.Join(args, " "), err, message)
@@ -472,10 +544,10 @@ func buildGoOutput(dir string, args ...string) ([]byte, error) {
 	return output, nil
 }
 
-func decodeBuildGoJSON(dir string, args []string, decode func(*json.Decoder) error) error {
-	command := exec.Command("go", args...)
+func decodeBuildGoJSONContext(ctx context.Context, dir string, args []string, decode func(*json.Decoder) error) error {
+	command := generatedModuleGoCommandContext(ctx, args...)
 	command.Dir = dir
-	configureGeneratedModuleGoCommand(command)
+	configureGeneratedModuleGoCommand(command.Cmd)
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	stdout, err := command.StdoutPipe()
@@ -485,12 +557,23 @@ func decodeBuildGoJSON(dir string, args []string, decode func(*json.Decoder) err
 	if err := command.Start(); err != nil {
 		return fmt.Errorf("go %s: %w", strings.Join(args, " "), err)
 	}
+	stopClose := func() bool { return true }
+	if ctx.Done() != nil {
+		// CommandContext kills the direct Go process, but a child can retain
+		// StdoutPipe's write end. Close our read end on cancellation so the
+		// streaming decoder can finish and Wait can reap the direct child.
+		stopClose = context.AfterFunc(ctx, func() { _ = stdout.Close() })
+	}
 	decodeErr := decode(json.NewDecoder(stdout))
+	stopClose()
 	if decodeErr != nil {
 		_ = stdout.Close()
 		_ = command.Process.Kill()
 	}
 	waitErr := command.Wait()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if decodeErr != nil {
 		return decodeErr
 	}

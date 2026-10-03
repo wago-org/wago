@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
 	pluginbuild "github.com/wago-org/wago/cli/manager/internal/plugin/build"
+	"github.com/wago-org/wago/cli/manager/internal/plugin/gocommand"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/cli/manager/internal/registry"
 )
@@ -281,6 +281,8 @@ func pkgUpdate(target string, options pkgOpts) {
 	fmt.Printf("%s updated the complete plugin graph\n", cyan("✓"))
 }
 
+// stageAndPublishLockedState retains one cancellation context across every Go
+// subprocess while the caller owns the project metadata mutation lock.
 func stageAndPublishLockedState(ctx context.Context, mutation *project.Mutation, manifestDir, buildDir string, manifest map[string]any, lock project.LockDocument, verbose bool, config pluginbuild.Config) error {
 	manifestData, err := project.EncodeManifest(manifest)
 	if err != nil {
@@ -302,28 +304,36 @@ func stageAndPublishLockedState(ctx context.Context, mutation *project.Mutation,
 		return err
 	}
 	defer os.RemoveAll(staged)
-	if err := pluginbuild.EnsureModule(staged); err != nil {
+	if err := pluginbuild.EnsureModuleContext(ctx, staged); err != nil {
 		return err
 	}
-	if err := pluginbuild.RejectLockedSourceReplacements(staged, input.Sources); err != nil {
+	if err := pluginbuild.RejectLockedSourceReplacementsContext(ctx, staged, input.Sources); err != nil {
 		return err
 	}
 	for _, source := range input.Sources {
-		if err := pluginbuild.Get(staged, source.Module+"@"+source.Version, verbose); err != nil {
+		if err := pluginbuild.GetContext(ctx, staged, source.Module+"@"+source.Version, verbose); err != nil {
 			return fmt.Errorf("fetch %s@%s: %w", source.Module, source.Version, err)
 		}
 	}
-	if err := pluginbuild.RunGo(staged, verbose, "mod", "verify"); err != nil {
+	if err := pluginbuild.RunGoContext(ctx, staged, verbose, "mod", "verify"); err != nil {
 		return fmt.Errorf("verify plugin checksums: %w", err)
 	}
-	if err := verifySourceChecksums(staged, input.Sources); err != nil {
+	if err := verifySourceChecksumsContext(ctx, staged, input.Sources); err != nil {
 		return err
 	}
-	bin, _, err := pluginbuild.EnsureBinary(staged, input, true, verbose, config)
+	bin, _, err := pluginbuild.EnsureBinaryContext(ctx, staged, input, true, verbose, config)
 	if err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := verifyStagedRuntimeContext(ctx, bin); err != nil {
+		return err
+	}
+	// Do not publish a build whose owner canceled while validation ran. This
+	// second check matters even if validation itself succeeded.
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	return publishPluginTransaction(mutation, buildDir, staged, manifestData, lockData)
@@ -396,15 +406,22 @@ func verifyStagedRuntimeContext(ctx context.Context, binary string) error {
 }
 
 func verifySourceChecksums(buildDir string, sources []project.PluginSource) error {
+	return verifySourceChecksumsContext(context.Background(), buildDir, sources)
+}
+
+func verifySourceChecksumsContext(ctx context.Context, buildDir string, sources []project.PluginSource) error {
 	// Reconcile the generated module before listing it. Newer Go toolchains can
 	// require a harmless go.mod normalization (for example, `go 1.22` to
 	// `go 1.22.0`) before they will report its selected modules.
-	command := exec.Command("go", "list", "-mod=mod", "-m", "-json", "all")
+	command := gocommand.New(ctx, "list", "-mod=mod", "-m", "-json", "all")
 	command.Dir = buildDir
 	command.Env = appendEnvironmentValue(os.Environ(), "GOWORK", "off")
-	automation.ConfigureCommand(command)
+	automation.ConfigureCommand(command.Cmd)
 	output, err := command.CombinedOutput()
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("read selected module checksums: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(output)))
@@ -422,11 +439,18 @@ func verifySourceChecksums(buildDir string, sources []project.PluginSource) erro
 		}
 	}
 	for _, source := range sources {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		// The generated runtime deliberately links the active Wago checkout during
 		// core development. Its complete local tree is part of the build hash; it
 		// is not a downloaded plugin artifact and therefore has no module h1.
 		if source.Module == "github.com/wago-org/wago" {
-			if _, local := pluginbuild.SourceDir(); local {
+			_, local := pluginbuild.SourceDirContext(ctx)
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if local {
 				continue
 			}
 		}
@@ -434,12 +458,15 @@ func verifySourceChecksums(buildDir string, sources []project.PluginSource) erro
 		if !ok || got.Version != source.Version {
 			return fmt.Errorf("locked source %s@%s is not the selected module version %s@%s", source.Module, source.Version, got.Module, got.Version)
 		}
-		download := exec.Command("go", "mod", "download", "-json", source.Module+"@"+source.Version)
+		download := gocommand.New(ctx, "mod", "download", "-json", source.Module+"@"+source.Version)
 		download.Dir = buildDir
 		download.Env = appendEnvironmentValue(os.Environ(), "GOWORK", "off")
-		automation.ConfigureCommand(download)
+		automation.ConfigureCommand(download.Cmd)
 		data, err := download.Output()
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return fmt.Errorf("download locked source %s@%s: %w", source.Module, source.Version, err)
 		}
 		var artifact struct {
