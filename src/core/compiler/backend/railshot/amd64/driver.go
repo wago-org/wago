@@ -10,8 +10,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// Preserve an existing canonical home through a tee consumed by control flow.
-var teeSlotPredicateEnabled = os.Getenv("WAGO_AMD64_TEE_SLOT_PREDICATE") == "1"
+// Preserve an independent stack copy of a pinned-local tee for an immediate
+// predicate. Set WAGO_AMD64_TEE_SLOT_PREDICATE=0 to compare the original path.
+var teeSlotPredicateEnabled = os.Getenv("WAGO_AMD64_TEE_SLOT_PREDICATE") != "0"
 
 // body walks the function's expression bytecode once, driving the operand stack:
 // leaves (const, local.get) push lazily, binary ops push deferred nodes, and
