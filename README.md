@@ -4,6 +4,7 @@
 
 <p align="center">
   a wonderfully quick, compact, and extensible webassembly runtime for go
+	wAh-goh
 </p>
 
 <p align="center">
