@@ -2,9 +2,10 @@ package wago
 
 import (
 	"bytes"
+	"testing"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"testing"
 )
 
 func TestGCProductRequirementGate(t *testing.T) {
@@ -46,10 +47,15 @@ func TestGCProductGatePreservesArtifacts(t *testing.T) {
 			if got := moduleRequiredFeatures(m).IsEnabled(CoreFeatureGC); got != tc.gc {
 				t.Fatalf("GC requirement=%v want=%v", got, tc.gc)
 			}
+			features := CoreFeaturesV1
+			if tc.gc {
+				requireCompleteCore3Backend(t)
+				features = CoreFeaturesV3
+			}
 			var want []byte
 			for _, on := range []bool{false, true} {
 				gcProductRequiredGateEnabled = on
-				c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).Compile(tc.data)
+				c, err := NewRuntimeConfig().WithCoreFeatures(features).WithBoundsChecks(BoundsChecksExplicit).Compile(tc.data)
 				if err != nil {
 					t.Fatal(err)
 				}
