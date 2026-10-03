@@ -22,6 +22,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Decode `0x64` consistently as the Core 3 non-null reference prefix, avoiding
+  cross-vector consumption when it appears at the end of a value-type vector.
 - Preserve earlier call arguments when later deferred expressions use fixed
   registers for shifts or division, including mixed and tail calls.
 - Legacy exception-handling opcodes now report their unsupported encoding and
