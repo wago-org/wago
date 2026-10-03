@@ -258,6 +258,32 @@ func TestChannelCommitReleaseResolvesBranchTargetTag(t *testing.T) {
 	}
 }
 
+func TestChannelCommitReleasePeelsAnnotatedTag(t *testing.T) {
+	const (
+		commitSHA = "deadbee123456789012345678901234567890123"
+		tagSHA    = "abcdeff123456789012345678901234567890123"
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/wago-org/wago/releases":
+			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "v0.1.0-beta.6", TargetCommitish: "main"}})
+		case "/repos/wago-org/wago/git/ref/tags/v0.1.0-beta.6":
+			_, _ = w.Write([]byte(`{"object":{"type":"tag","sha":"` + tagSHA + `"}}`))
+		case "/repos/wago-org/wago/git/tags/" + tagSHA:
+			_, _ = w.Write([]byte(`{"object":{"type":"commit","sha":"` + commitSHA + `"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	got, err := channelCommitReleaseContext(context.Background(), "beta", commitSHA)
+	if err != nil || got != "v0.1.0-beta.6" {
+		t.Fatalf("annotated tag release = %q, %v", got, err)
+	}
+}
+
 func TestChannelCommitReleaseRejectsInvalidTagRef(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

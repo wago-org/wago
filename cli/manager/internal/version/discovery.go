@@ -696,20 +696,51 @@ func releaseTagCommitContext(ctx context.Context, tag string) (string, error) {
 	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("GitHub returned %s for release tag %s", response.Status, tag)
 	}
-	var ref struct {
-		Object struct {
-			Type string `json:"type"`
-			SHA  string `json:"sha"`
-		} `json:"object"`
-	}
+	var ref gitObjectContainer
 	if err := json.Unmarshal(response.Body, &ref); err != nil {
 		return "", err
 	}
-	sha := strings.ToLower(strings.TrimSpace(ref.Object.SHA))
-	if ref.Object.Type != "commit" || !validCommitSHA(sha) {
-		return "", fmt.Errorf("GitHub returned an invalid commit for release tag %s", tag)
+	object := ref.Object
+	seen := map[string]bool{}
+	for depth := 0; depth < 8; depth++ {
+		sha := strings.ToLower(strings.TrimSpace(object.SHA))
+		switch object.Type {
+		case "commit":
+			if validCommitSHA(sha) {
+				return sha, nil
+			}
+		case "tag":
+			if !validCommitSHA(sha) || seen[sha] {
+				break
+			}
+			seen[sha] = true
+			// Exact rolling resolution must peel annotated tags to the commit;
+			// the bounded chain rejects cycles and pathological tag graphs.
+			address = releaseAPI() + "/repos/wago-org/wago/git/tags/" + url.PathEscape(sha)
+			response, err := getReleaseBytes(ctx, "annotated release tag discovery", address, releaseMetadataMaximum)
+			if err != nil {
+				return "", err
+			}
+			if response.StatusCode != http.StatusOK {
+				return "", fmt.Errorf("GitHub returned an invalid commit for release tag %s: annotated tag returned %s", tag, response.Status)
+			}
+			var annotated gitObjectContainer
+			if err := json.Unmarshal(response.Body, &annotated); err != nil {
+				return "", err
+			}
+			object = annotated.Object
+			continue
+		}
+		break
 	}
-	return sha, nil
+	return "", fmt.Errorf("GitHub returned an invalid commit for release tag %s", tag)
+}
+
+type gitObjectContainer struct {
+	Object struct {
+		Type string `json:"type"`
+		SHA  string `json:"sha"`
+	} `json:"object"`
 }
 
 var errNoPublishedRelease = errors.New("no published release")
