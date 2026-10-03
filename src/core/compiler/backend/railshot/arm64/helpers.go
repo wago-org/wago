@@ -8,6 +8,8 @@ package arm64
 // signed offset uses LDUR/STUR. Larger negative loads within the add/sub
 // immediate range materialize the address in the destination register; stores
 // must materialize an address explicitly so they cannot clobber a live source.
+// Large SP-relative offsets also need an address register when EH frames grow
+// beyond the scaled load/store immediate range.
 
 func (f *fn) ldst(store bool, size int, rt, base Reg, disp int32) {
 	switch {
@@ -40,6 +42,57 @@ func (f *fn) ldst(store bool, size int, rt, base Reg, disp int32) {
 			f.a.Load64(rt, rt, 0)
 		} else {
 			f.a.Load32(rt, rt, 0)
+		}
+	case base == SP && disp >= 0:
+		addr := rt
+		remaining := uint32(disp)
+		if store {
+			addr = X16
+			if rt == X16 {
+				// X17 can hold an exception root or indirect call target here.
+				// Preserve it across the address calculation without enlarging
+				// the function's permanent frame.
+				f.a.SubSP64(16)
+				previous := f.a.ObserveRegalloc(nil)
+				f.a.Store64(X17, SP, 0)
+				f.a.ObserveRegalloc(previous)
+				addr = X17
+				remaining += 16
+			}
+		}
+		from := SP
+		for remaining >= 0x1000 {
+			step := remaining &^ uint32(0xfff)
+			if step > 0xfff000 {
+				step = 0xfff000
+			}
+			f.a.AddImm64LSL12(addr, from, step)
+			remaining -= step
+			from = addr
+		}
+		if remaining != 0 {
+			f.a.AddImm64(addr, from, remaining)
+		}
+		switch {
+		case store && size == 8:
+			f.a.Store64(rt, addr, 0)
+		case store:
+			f.a.Store32(rt, addr, 0)
+		case size == 8:
+			f.a.Load64(rt, addr, 0)
+		default:
+			f.a.Load32(rt, addr, 0)
+		}
+		if store {
+			f.a.ObserveFrameStore(rt, disp, size)
+		} else {
+			f.a.ObserveFrameLoad(rt, disp, size)
+		}
+		if store && addr == X17 {
+			previous := f.a.ObserveRegalloc(nil)
+			f.a.Load64(X17, SP, 0)
+			f.a.ObserveRegalloc(previous)
+			f.a.AddSP64(16)
 		}
 	default:
 		panic("arm64 ldst: byte offset out of range for a single load/store")

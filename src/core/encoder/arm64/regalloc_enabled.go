@@ -60,6 +60,16 @@ func (a *Asm) regallocStore(base Reg, offset int32, src Reg, fp bool, size int) 
 		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Copy, Dst: regalloccheck.Slot(offset), Src: regalloccheck.Register(regallocBank(fp), uint8(src)), Size: size})
 	}
 }
+
+// ObserveFrameLoad and ObserveFrameStore name the original SP-relative slot
+// after the backend materializes a large displacement in a scratch register.
+func (a *Asm) ObserveFrameLoad(dst Reg, offset int32, size int) {
+	a.regallocLoad(dst, SP, offset, false, size)
+}
+func (a *Asm) ObserveFrameStore(src Reg, offset int32, size int) {
+	a.regallocStore(SP, offset, src, false, size)
+}
+
 func regallocWidth(wide bool) int {
 	if wide {
 		return 8
