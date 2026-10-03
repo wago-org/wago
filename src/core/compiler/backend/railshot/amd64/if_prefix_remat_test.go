@@ -38,7 +38,7 @@ func TestIfPrefixRematExecution(t *testing.T) {
 							for _, enabled := range []bool{false, true} {
 								ifPrefixRematEnabled = enabled
 								var stats ModuleStats
-								cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Profile: profileEnabled, SourceMaps: true, CompactNative: compact, AMD64FeaturesSet: true, AMD64Features: features, Optimizations: map[string]bool{"reg-merge": merge}})
+								cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Profile: profileEnabled, SourceMaps: profileEnabled, CompactNative: compact, AMD64FeaturesSet: true, AMD64Features: features, Optimizations: map[string]bool{"reg-merge": merge}})
 								if err != nil {
 									t.Fatal(err)
 								}
