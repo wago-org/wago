@@ -277,7 +277,7 @@ func (f *fn) emitPluginARM64(lowering *plugincodegen.Lowering, inputWidths []int
 	}
 	switch lowering.Compatibility {
 	case plugincodegen.CompatibilityManaged:
-		if err := lowering.Managed(ctx); err != nil {
+		if err := lowering.Managed((*managedPluginARM64Context)(ctx)); err != nil {
 			return err
 		}
 	case plugincodegen.CompatibilityFullAccess:
@@ -333,7 +333,7 @@ func (f *fn) emitPluginARM64Custom(lowering *plugincodegen.Lowering, inputWidths
 	}
 	switch lowering.Compatibility {
 	case plugincodegen.CompatibilityManaged:
-		if err := lowering.Managed(ctx); err != nil {
+		if err := lowering.Managed((*managedPluginARM64Context)(ctx)); err != nil {
 			return err
 		}
 	case plugincodegen.CompatibilityFullAccess:
