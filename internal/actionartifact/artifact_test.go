@@ -67,6 +67,42 @@ func TestDownloadExecutable(t *testing.T) {
 	}
 }
 
+func TestDownloadExecutableDoesNotForwardTokenAcrossOrigins(t *testing.T) {
+	const (
+		tag    = "v0.1.0-canary.gdeadbee"
+		target = "linux-amd64"
+		asset  = "wago-linux-amd64"
+	)
+	payload := []byte("manager")
+	archive := artifactZip(t, asset, payload, "")
+	archiveServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if got := request.Header.Get("Authorization"); got != "" {
+			t.Errorf("cross-origin archive authorization = %q, want empty", got)
+		}
+		writer.Header().Set("Content-Length", fmt.Sprint(len(archive)))
+		_, _ = writer.Write(archive)
+	}))
+	defer archiveServer.Close()
+
+	catalogServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if got := request.Header.Get("Authorization"); got != "Bearer secret" {
+			t.Errorf("catalog authorization = %q", got)
+		}
+		fmt.Fprintf(writer, `{"artifacts":[{"id":7,"name":%q,"expired":false,"created_at":"2026-09-10T00:00:00Z","archive_download_url":%q,"workflow_run":{"head_sha":%q}}]}`,
+			tag+"-"+target, archiveServer.URL+"/archive", testCommit)
+	}))
+	defer catalogServer.Close()
+
+	destination := filepath.Join(t.TempDir(), "wago")
+	err := DownloadExecutable(context.Background(), Config{CatalogURL: catalogServer.URL + "/artifacts", Token: "secret", HTTPClient: catalogServer.Client()}, tag, testCommit, target, asset, destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(destination); err != nil || !bytes.Equal(got, payload) {
+		t.Fatalf("downloaded payload = %q, %v", got, err)
+	}
+}
+
 func TestDownloadCanaryExecutableByCommit(t *testing.T) {
 	const target = "linux-amd64"
 	const asset = "wago-linux-amd64"
