@@ -200,7 +200,7 @@ func decodeInstructionWithMemargWidths(r *reader, depth int, widths memargWidths
 	case 0xfe:
 		return decodeFEWithMemargWidths(r, widths)
 	default:
-		return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+		return Instruction{}, invalidInstructionError(op, r.off()-1)
 	}
 }
 

@@ -176,6 +176,13 @@ This table covers later WebAssembly proposals and Wago platform capabilities.
 | Linux, macOS, and Windows on amd64 and arm64 | ✓ | ✅ done — all six release targets execute the encoder, backend, runtime/API, explicit bounds, corpus, and SIMD suites in native CI. Linux/amd64, Linux/arm64, and Darwin/arm64 additionally support signal-backed guard pages and Linux uses signal-context asynchronous cancellation; the other targets use compiler-emitted cooperative safepoints. |
 | Interpreter tier (native-code execution only) | ✗ | ❌ not planned |
 
+### Legacy exception handling
+
+Legacy EH encodings (`try`, `catch`, `catch_all`, `delegate`, and `rethrow`) are
+not supported. They fail decoding with `legacy exception handling is not
+supported; recompile with try_table (exnref)`. Configure the producer to emit
+Core 3 exception handling (`try_table`, `throw`, and `throw_ref`) when rebuilding.
+
 ## Historical completion boundaries
 
 ### Iteration 72 staged M8 boundary
