@@ -76,7 +76,9 @@ func TestIntervalNextUseShrinksBlakeKernel(t *testing.T) {
 	if next.Peephole["interval-dead-store-elide"] == 0 {
 		t.Fatalf("next-use planning found no dead local stores: %v", next.Peephole)
 	}
-	if nextBytes >= baseBytes || next.CodeBytes >= base.CodeBytes {
+	// Function alignment can absorb a small instruction reduction in the
+	// module total. Require the kernel to shrink and the module not to grow.
+	if nextBytes > baseBytes || next.CodeBytes >= base.CodeBytes {
 		t.Fatalf("next-use code size module/function = %d/%d, baseline %d/%d", nextBytes, next.CodeBytes, baseBytes, base.CodeBytes)
 	}
 }
