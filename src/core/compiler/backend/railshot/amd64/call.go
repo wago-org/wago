@@ -994,6 +994,20 @@ func registerCallArgNeedsCapture(root *elem) bool {
 	return root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef || root.st.kind == stSlot))
 }
 
+// materializeCallExpressions finishes calculations before recording argument
+// locations. Fixed-register instructions may spill RCX/RAX/RDX even when those
+// registers are pinned. Recording a move before a later shift or divide would
+// retain the displaced argument's stale register instead of its new spill slot.
+// Include the operand prefix: flushBelow must not evaluate such an instruction
+// after the call's argument move list has been frozen.
+func (f *fn) materializeCallExpressions(roots []*elem) {
+	for _, root := range roots {
+		if root.isDeferred() || root.isValue() && root.st.kind == stMemRef {
+			f.materializeByType(root)
+		}
+	}
+}
+
 // emitTailRegisterJump stages a register-ABI callee's arguments without
 // preserving any caller locals or operand values: a tail call has no continuation.
 // It then releases the current frame and emits the supplied direct/indirect jump.
@@ -1009,6 +1023,8 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			cur = baseOfValentBlock(cur).prev
 		}
 	}
+
+	f.materializeCallExpressions(roots[:p])
 
 	var gpMoves [8]regMove
 	var fpMoves [8]regMove
@@ -1976,6 +1992,8 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 
+	f.materializeCallExpressions(allRoots)
+
 	// Identify the p argument roots (top of stack), deepest first.
 	argRoots := f.tmpRoots[:0]
 	if cap(argRoots) < p {
@@ -2182,6 +2200,8 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
+
+	f.materializeCallExpressions(allRoots)
 
 	// Identify the p argument roots (top of stack), deepest first.
 	argRoots := f.tmpRoots[:0]
