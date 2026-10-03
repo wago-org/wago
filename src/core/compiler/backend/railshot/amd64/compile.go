@@ -3416,7 +3416,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// touchesMemory — otherwise the guard-page pin exclusion (which drops R9/R10/R11
 	// from the pool for a memory-touching call-making function) would be skipped for
 	// a caller whose own body never touched memory.
-	inlinePlan := buildInlineCallerPlan(c, inlineTargets)
+	var inlinePlan inlineCallerPlan
+	if hasCall {
+		inlinePlan = buildInlineCallerPlan(c, inlineTargets)
+	}
 	inlinedCallees := inlinePlan.callees
 	boundedSpecializedInline := inlinePlan.allCallsInline && len(inlinedCallees) != 0
 	for _, target := range inlinedCallees {

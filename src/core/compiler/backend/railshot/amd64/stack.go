@@ -233,13 +233,14 @@ func (e *elem) isDeferred() bool { return e.st.kind == deferredStorageKind }
 // stack is the operand stack: a sentinel-terminated doubly-linked list backed by
 // a chunked bump arena of elems. Each chunk is a fixed-capacity []elem that is
 // never reallocated once created, so every *elem handed out stays valid for the
-// life of the function even as the arena grows without bound. Sub-default hints
+// live range of each node even as the arena grows without bound. Sub-default hints
 // fill to a power-of-two total before doubling. At or above 256, growth fills to the next legacy
 // 256/512/... cumulative boundary and then resumes the capped geometric sequence,
 // so an underestimate cannot regress legacy retention. reset() reuses every chunk
 // across the module compile up to a fixed byte ceiling, so ordinary recurring
 // demand allocates once while giant-function overflow remains ephemeral. Nodes
-// are never freed mid-function — that matches single-pass usage.
+// can be reused at proven-empty top-level reader checkpoints; other node
+// pointers remain stable until the function finishes.
 type stack struct {
 	chunks           [][]elem
 	cold             []elemCold
