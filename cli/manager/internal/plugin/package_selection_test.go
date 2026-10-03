@@ -1,6 +1,15 @@
 package plugin
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"sync/atomic"
+	"time"
+
+	"github.com/wago-org/wago/cli/internal/automation"
 	"strings"
 	"testing"
 
@@ -61,5 +70,52 @@ func TestNoInputKeepsPackageRootForInstallEverything(t *testing.T) {
 	got, err := reviewPackageInstallChoices(specs, []packageInstallPrompt{{index: 0, constraint: "^0.2.0", pkg: testInstallPackage()}})
 	if err != nil || len(got) != 1 || got[0] != specs[0] {
 		t.Fatalf("choices = %q, %v", got, err)
+	}
+}
+
+func TestAllowAllSkipsPackageSelection(t *testing.T) {
+	if os.Getenv("WAGO_TEST_ALLOW_ALL_ADD") == "1" {
+		automation.Reset()
+		pkgAddMany([]string{"github.com/acme/tools@^1.2.0"}, pkgOpts{global: true, grantAll: true})
+		return
+	}
+	var packageRequests, catalogRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(output http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/packages/github.com/acme/tools":
+			packageRequests.Add(1)
+			_, _ = output.Write([]byte(`{"module":"github.com/acme/tools","displayName":"Acme Tools","subpackages":[{"module":"github.com/acme/tools/log","name":"Logging"},{"module":"github.com/acme/tools/metrics","name":"Metrics"}]}`))
+		case "/api/v1/plugins/candidates":
+			catalogRequests.Add(1)
+			if request.URL.Query().Get("id") != "github.com/acme/tools" || request.URL.Query().Get("range") != "^1.2.0" {
+				t.Errorf("root package or constraint changed: %s", request.URL)
+			}
+			// Stop before fetching code or building: reaching resolution proves that
+			// the package chooser was skipped without process-wide --no-input.
+			output.WriteHeader(http.StatusBadRequest)
+			_, _ = output.Write([]byte(`{"error":"allow-all catalog reached"}`))
+		default:
+			t.Errorf("unexpected request: %s", request.URL)
+			http.NotFound(output, request)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_TEST_ALLOW_ALL_ADD", "1")
+	t.Setenv("WAGO_HOME", t.TempDir())
+	t.Setenv("WAGO_REGISTRY", server.URL)
+	for _, name := range []string{"WAGO_NONINTERACTIVE", "WAGO_OFFLINE", "WAGO_JSON", "WAGO_DRY_RUN", "WAGO_LOCKED", "WAGO_BARE", "WAGO_GLOBAL"} {
+		t.Setenv(name, "")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestAllowAllSkipsPackageSelection$")
+	cmd.Dir = t.TempDir()
+	cmd.Stdin = strings.NewReader("")
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("add waited for input: %v\n%s", ctx.Err(), output)
+	}
+	if err == nil || !strings.Contains(string(output), "allow-all catalog reached") || packageRequests.Load() != 0 || catalogRequests.Load() != 1 {
+		t.Fatalf("add = %v; package requests=%d, catalog requests=%d\n%s", err, packageRequests.Load(), catalogRequests.Load(), output)
 	}
 }
