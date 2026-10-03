@@ -91,6 +91,13 @@ func TestMoreReferenceDecodeEdges(t *testing.T) {
 	})
 }
 
+func TestDecodeRejectsBareStringRefCollision(t *testing.T) {
+	data := module(section(secType, 0x01, 0x60, 0x00, 0x01, 0x64))
+	if _, err := DecodeModule(data); err == nil {
+		t.Fatal("DecodeModule accepted bare 0x64 as stringref in Core 3 grammar")
+	}
+}
+
 func TestMoreNameSectionEdges(t *testing.T) {
 	name := func(s string) []byte { return append(u32(uint32(len(s))), []byte(s)...) }
 	nameMap := func(entries ...NameAssoc) []byte {
