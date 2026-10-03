@@ -8,7 +8,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-var ifPrefixRematEnabled = os.Getenv("WAGO_AMD64_IF_PREFIX_REMAT") == "1"
+// Bounded immutable prefixes avoid control-edge frame traffic. Zero disables
+// the policy for comparisons.
+var ifPrefixRematEnabled = os.Getenv("WAGO_AMD64_IF_PREFIX_REMAT") != "0"
 
 // ifPrefixLocal admits one non-trapping local read, optionally plus an i32
 // constant. Every leaf is reconstructible; no owned register, frame operand,
