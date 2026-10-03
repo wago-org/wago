@@ -14,8 +14,6 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-const testPluginFeaturePOPCNT = amd64codegen.Features(1 << 9)
-
 func TestFullAccessPluginPOPCNTRequirementArtifact(t *testing.T) {
 	mockAMD64ArtifactCPU(t, shared.AMD64KnownFeatures)
 	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)
@@ -23,7 +21,7 @@ func TestFullAccessPluginPOPCNTRequirementArtifact(t *testing.T) {
 	defer rt.Close()
 	ext := instructionMachineExt{name: "popcnt.marker", output: []int32{32}, lowering: &amd64codegen.Lowering{
 		Compatibility: amd64codegen.CompatibilityFullAccess,
-		Features:      testPluginFeaturePOPCNT,
+		Features:      amd64codegen.FeaturePOPCNT,
 		Emit: func(ctx amd64codegen.Context) error {
 			r := ctx.AllocGP()
 			ctx.Encoder().MovImm32(r, 1)

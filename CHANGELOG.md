@@ -22,6 +22,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Full-access AMD64 plugins can declare every optional CPU feature exposed by
+  the encoder, and compiled artifacts preserve those admission requirements.
 - Preserve earlier call arguments when later deferred expressions use fixed
   registers for shifts or division, including mixed and tail calls.
 - Legacy exception-handling opcodes now report their unsupported encoding and

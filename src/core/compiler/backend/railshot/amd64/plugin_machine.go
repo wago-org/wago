@@ -390,7 +390,7 @@ func (f *fn) emitPluginAMD64(lowering *plugincodegen.Lowering, inputWidths []int
 	}
 	f.setDepthTypes(types[:base])
 	ctx.finish(resultWidth)
-	if lowering.Features&(plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512) != 0 {
+	if lowering.Features&(plugincodegen.FeatureAVX|plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512|plugincodegen.FeatureFMA) != 0 {
 		f.usesWide = true
 	}
 	f.stats.call("custom-machine-code")
@@ -485,7 +485,7 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
 			f.fregUser[reg] = e
 		}
 	}
-	if lowering.Features&(plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512) != 0 {
+	if lowering.Features&(plugincodegen.FeatureAVX|plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512|plugincodegen.FeatureFMA) != 0 {
 		f.usesWide = true
 	}
 	f.stats.call("custom-machine-code-custom")
@@ -493,15 +493,46 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
 }
 
 func pluginAMD64Requirements(features plugincodegen.Features) (shared.AMD64Features, error) {
-	if features & ^(plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512) != 0 {
+	const known = plugincodegen.FeatureAVX2 | plugincodegen.FeatureAVX512 |
+		plugincodegen.FeatureSSSE3 | plugincodegen.FeatureSSE41 | plugincodegen.FeatureSSE42 |
+		plugincodegen.FeatureAVX | plugincodegen.FeatureBMI1 | plugincodegen.FeatureBMI2 |
+		plugincodegen.FeatureLZCNT | plugincodegen.FeaturePOPCNT | plugincodegen.FeatureFMA
+	if features&^known != 0 {
 		return 0, fmt.Errorf("unknown plugin CPU requirements %#x", features)
 	}
 	var required shared.AMD64Features
+	if features&plugincodegen.FeatureSSSE3 != 0 {
+		required |= shared.AMD64SSSE3
+	}
+	if features&plugincodegen.FeatureSSE41 != 0 {
+		required |= shared.AMD64SSE41
+	}
+	if features&plugincodegen.FeatureSSE42 != 0 {
+		required |= shared.AMD64SSE42
+	}
+	if features&plugincodegen.FeatureAVX != 0 {
+		required |= shared.AMD64AVX
+	}
 	if features&plugincodegen.FeatureAVX2 != 0 {
 		required |= shared.AMD64AVX | shared.AMD64AVX2
 	}
 	if features&plugincodegen.FeatureAVX512 != 0 {
 		required |= shared.AMD64AVX | shared.AMD64AVX2 | shared.AMD64AVX512
+	}
+	if features&plugincodegen.FeatureBMI1 != 0 {
+		required |= shared.AMD64BMI1
+	}
+	if features&plugincodegen.FeatureBMI2 != 0 {
+		required |= shared.AMD64BMI2
+	}
+	if features&plugincodegen.FeatureLZCNT != 0 {
+		required |= shared.AMD64LZCNT
+	}
+	if features&plugincodegen.FeaturePOPCNT != 0 {
+		required |= shared.AMD64POPCNT
+	}
+	if features&plugincodegen.FeatureFMA != 0 {
+		required |= shared.AMD64AVX | shared.AMD64FMA
 	}
 	return required, nil
 }
