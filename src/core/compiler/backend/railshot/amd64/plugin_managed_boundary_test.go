@@ -9,7 +9,7 @@ import (
 )
 
 func TestManagedPluginContextDoesNotExposeFullAMD64Context(t *testing.T) {
-	var managed plugincodegen.ManagedContext = &pluginAMD64Context{}
+	var managed plugincodegen.ManagedContext = (*managedPluginAMD64Context)(&pluginAMD64Context{})
 	if _, ok := managed.(plugincodegen.Context); ok {
 		t.Fatal("managed plugin context exposes the full AMD64 encoder context")
 	}
