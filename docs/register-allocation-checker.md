@@ -52,6 +52,9 @@ addresses, rather than its mutable resolution graph or requested callbacks.
 Immutable cache identities start at the actual preload and are never reseeded at
 a physical call. They have no spill/reload protocol, so a call that destroys one
 is an error even if a call-presence hint says otherwise.
+AMD64 loop-scoped float caches retire their expectations at the loop's lexical
+end, when their registers stop being reserved. Outer cache expectations remain
+live; a physical call inside the scope still fails.
 
 ## Explicit boundaries and gaps
 

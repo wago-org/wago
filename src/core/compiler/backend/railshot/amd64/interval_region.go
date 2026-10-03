@@ -2,7 +2,47 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"os"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+// Set to zero for diagnostic A/B runs of the qualified extra integer lease.
+var intervalRSILeaseEnabled = os.Getenv("WAGO_AMD64_INTERVAL_RSI_LEASE") != "0"
+
+// RSI has no implicit role in this integer-only, call-free instruction subset.
+// Keep RAX and RCX available for transient values and variable shifts. The
+// existing RDX admission excludes division; memory and module admission below
+// exclude helpers, shared memory, SIMD and nonzero descriptors.
+func (f *fn) intervalRSIBody(body []byte) bool {
+	r := wasm.ReaderFrom(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		switch {
+		case op == 0x0b:
+			return !r.HasNext()
+		case op == 0x01 || op == 0x1a || op == 0x1b,
+			op >= 0x20 && op <= 0x22,
+			op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x37,
+			op == 0x3a || op == 0x3b || op >= 0x3c && op <= 0x3e,
+			op >= 0x41 && op <= 0x42,
+			op >= 0x45 && op <= 0x5a,
+			op >= 0x67 && op <= 0x6c || op >= 0x71 && op <= 0x7e || op >= 0x83 && op <= 0x8a,
+			op == 0xa7 || op == 0xac || op == 0xad || op >= 0xc0 && op <= 0xc4:
+		default:
+			return false
+		}
+		var imm wasm.InstructionImmediate
+		if f.classifier.ClassifyInto(&r, op, &imm) != nil {
+			return false
+		}
+	}
+	return false
+}
 
 const (
 	noIntervalEvent   = ^uint32(0)
@@ -66,6 +106,9 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		return false
 	}
 	f.intervalRegLimit = intervalRegionRegLimit(f.guardMode)
+	if f.intervalControl {
+		f.intervalRegLimit = 2
+	}
 	// SIMD lowering has fixed integer scratch uses which are not all represented
 	// by the scalar fixed-scratch scan. Keep RDX available throughout a SIMD
 	// module: scalar helper functions share its module register/pinning plan, and
@@ -85,6 +128,10 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 	if f.intervalR8 {
 		f.intervalRegLimit++
 	}
+	f.intervalRSI = intervalRSILeaseEnabled && f.intervalScratch && f.intervalR8 && f.intervalRSIBody(body)
+	if f.intervalRSI {
+		f.intervalRegLimit++
+	}
 
 	assigned := resizeRegScratch(f.tmpIntervalReg, f.nLocals)
 	f.tmpIntervalReg = assigned
@@ -99,7 +146,7 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		return false
 	}
 	f.intervalReg, f.intervalLast, f.intervalScore = assigned, hints.localLastGet, hints.localScore
-	f.intervalNext = f.opt(optIntervalNextUse)
+	f.intervalNext = !f.intervalControl && f.opt(optIntervalNextUse)
 	f.intervalI64Weight = f.opt(optIntervalI64Weight)
 	if f.intervalNext {
 		f.prepareIntervalEvents(body, hints.localEventCount())
@@ -108,11 +155,17 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		f.intervalOwner[i] = -1
 	}
 	f.stats.peep("interval-region")
+	if f.intervalControl {
+		f.stats.peep("interval-control")
+	}
 	if f.intervalScratch {
 		f.stats.peep("interval-scratch-lease")
 	}
 	if f.intervalR8 {
 		f.stats.peep("interval-r8-lease")
+	}
+	if f.intervalRSI {
+		f.stats.peep("interval-rsi-lease")
 	}
 	f.noteResidencyCandidates(kept)
 	return true
@@ -269,6 +322,12 @@ func (f *fn) claimIntervalReg(x int) Reg {
 				return reg
 			}
 		}
+		if f.intervalRSI {
+			if reg := RSI; !f.reserved.has(reg) && !f.pinned.has(reg) && !f.pinnedLocalMask.has(reg) &&
+				f.regUser[reg] == nil && f.intervalOwner[reg] < 0 {
+				return reg
+			}
+		}
 	}
 	scoreLimit := f.intervalResidencyScore(x)
 	if f.nextUsePolicy() {
@@ -292,7 +351,7 @@ func (f *fn) intervalResidencyScore(x int) int {
 // operand stack. Older borrowed references are realized first; no copy or frame
 // access is needed for the final get itself.
 func (f *fn) takeFinalIntervalGet(x, pos int) (Reg, bool) {
-	if x < 0 || x >= len(f.intervalReg) || f.intervalReg[x] == regNone ||
+	if f.intervalControl || x < 0 || x >= len(f.intervalReg) || f.intervalReg[x] == regNone ||
 		f.intervalLast[x] != uint32(pos) || f.locals[x].reg == regNone {
 		return regNone, false
 	}
@@ -307,6 +366,45 @@ func (f *fn) takeFinalIntervalGet(x, pos int) (Reg, bool) {
 		f.stats.Residency.FinalTransfers++
 	}
 	return reg, true
+}
+
+// Control edges and calls use canonical frame homes. The regional cache may
+// live within their straight-line stretches, but no cached register
+// ownership crosses those boundaries.
+func (f *fn) flushControlIntervals() {
+	if !f.intervalControl || f.intervalActive == 0 {
+		return
+	}
+	// Preserve the address carrier through reference copies below: spilling it
+	// under pressure would execute the deferred load too early.
+	protected := f.detachControlIntervalAddresses()
+	savedReserved := f.reserved
+	f.reserved = f.reserved.union(protected)
+	for reg, x := range f.intervalOwner {
+		if x < 0 {
+			continue
+		}
+		f.realizeLocalRefs(x, nil)
+		if f.locals[x].reg != Reg(reg) {
+			continue
+		}
+		if f.locals[x].state == lsReg {
+			f.storeFrameInt(f.localAddr(x), Reg(reg), f.localType[x])
+			if f.stats != nil {
+				f.stats.Residency.DirtyWritebacks++
+			}
+		}
+		f.demoteIntervalLocalRefs(x)
+		f.locals[x].reg = regNone
+		f.locals[x].state = lsMem
+		f.intervalOwner[reg] = -1
+		f.intervalActive--
+		f.pinnedLocalMask = f.pinnedLocalMask.remove(Reg(reg))
+	}
+	f.reserved = savedReserved
+	if f.intervalActive != 0 {
+		panic("amd64: regional locals survived control boundary")
+	}
 }
 
 // evictIntervalLocal turns one active regional pin back into its canonical frame
@@ -325,13 +423,26 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 	}
 	best, bestScore := -1, int(^uint(0)>>1)
 	bestNext, bestDead := uint32(0), false
-	borrowed := f.intervalBorrowedRegs()
+	var borrowed regMask
+	borrowedReady := !lazyIntervalBorrowsEnabled
+	if borrowedReady {
+		borrowed = f.intervalBorrowedRegs()
+	}
 	for reg, x := range f.intervalOwner {
-		if x < 0 || avoid.has(Reg(reg)) || f.pinned.has(Reg(reg)) || borrowed.has(Reg(reg)) {
+		if x < 0 || avoid.has(Reg(reg)) || f.pinned.has(Reg(reg)) || f.reserved.has(Reg(reg)) {
 			continue
 		}
 		s := f.intervalResidencyScore(x)
 		if s >= scoreLimit {
+			continue
+		}
+		// Borrow information matters only once there is an otherwise eligible
+		// victim. Compute it once and keep the original traversal and tie order.
+		if !borrowedReady {
+			borrowed = f.intervalBorrowedRegs()
+			borrowedReady = true
+		}
+		if borrowed.has(Reg(reg)) {
 			continue
 		}
 		if f.nextUsePolicy() {
@@ -446,24 +557,15 @@ func (f *fn) intervalLocalBorrowed(x int) bool {
 	return false
 }
 
-// intervalBorrowedRegs finds every resident local referenced by the pending
-// expression forest in one traversal. Victim selection used to rescan the whole
-// forest once per resident register, making exact next-use compilation
-// quadratic in both expression depth and cache occupancy.
+// intervalBorrowedRegs finds resident locals borrowed by pending values.
+// Deferred children remain on the physical list until they are consumed, so
+// visiting each value once also covers every pending expression tree. Recursing
+// from each physical node would revisit leaves through every ancestor.
 func (f *fn) intervalBorrowedRegs() regMask {
 	var borrowed regMask
-	var visit func(*elem)
-	visit = func(e *elem) {
-		if e == nil {
-			return
-		}
-		if e.isDeferred() {
-			visit(e.arg0)
-			visit(e.arg1)
-			return
-		}
+	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if !e.isValue() {
-			return
+			continue
 		}
 		x := -1
 		switch e.st.kind {
@@ -477,9 +579,6 @@ func (f *fn) intervalBorrowedRegs() regMask {
 				borrowed = borrowed.add(reg)
 			}
 		}
-	}
-	for e := f.s.head.next; e != f.s.head; e = e.next {
-		visit(e)
 	}
 	return borrowed
 }

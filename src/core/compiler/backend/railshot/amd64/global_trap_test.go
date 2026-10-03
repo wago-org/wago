@@ -17,6 +17,7 @@ func TestTrapExitStoresDirtyValuePin(t *testing.T) {
 			m:         &wasm.Module{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I64, Mutable: true}}}},
 			globalReg: []Reg{R12 | globalRegDirty},
 		}
+		f.recordGlobalPin(0)
 		f.trapAlways(trapUnreachable)
 		start := f.a.Len()
 		if shared {
@@ -38,6 +39,7 @@ func TestEntryTrapInitializesValuePinBeforeExit(t *testing.T) {
 		m:         &wasm.Module{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I64, Mutable: true}}}},
 		globalReg: []Reg{R12 | globalRegDirty},
 	}
+	f.recordGlobalPin(0)
 	f.trapAlways(trapInterrupted)
 	f.entryTrapEnd = f.a.Len()
 	entry := f.sc.trapSites[trapInterrupted][0].branch

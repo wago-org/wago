@@ -10,7 +10,8 @@ import (
 )
 
 type topReport struct {
-	ElapsedScope string `json:"elapsed_scope"`
+	SiteSamples  []siteSamples `json:"site_samples,omitempty"`
+	ElapsedScope string        `json:"elapsed_scope"`
 	profile.Report
 	Phase      string              `json:"capture_phase"`
 	WorkUnit   string              `json:"work_unit,omitempty"`
@@ -148,6 +149,24 @@ func writeTop(w io.Writer, r topReport, asJSON bool) error {
 		}
 		if _, err := fmt.Fprintln(w); err != nil {
 			return err
+		}
+	}
+	if len(r.SiteSamples) != 0 {
+		observation := "samples"
+		if r.Unit == "observations" {
+			observation = "observations"
+		}
+		if _, err := fmt.Fprintf(w, "Native %s at compiler sites (all functions; not dynamic operation counts):\n", observation); err != nil {
+			return err
+		}
+		for _, site := range r.SiteSamples {
+			name := site.Category
+			if site.Kind != "" {
+				name = site.Kind
+			}
+			if _, err := fmt.Fprintf(w, "  %7d %s  %12d %s  %s\n", site.Samples, observation, site.Weight, r.Unit, name); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

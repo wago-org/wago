@@ -163,3 +163,14 @@ func TestCompareCarriesBooleanFactAMD64(t *testing.T) {
 		t.Fatalf("compare facts = %#x, want upper-zero and boolean", got)
 	}
 }
+
+func TestSignedNarrowI32ExtensionsCarryUpperZeroFactAMD64(t *testing.T) {
+	for _, op := range []wOp{opSExt8, opSExt16} {
+		if got := deferredResultFacts(op, mtI32); !got.has(factUpper32Zero) {
+			t.Errorf("deferredResultFacts(%v, i32) = %#x, want upper-zero", op, got)
+		}
+		if got := deferredResultFacts(op, mtI64); got.has(factUpper32Zero) {
+			t.Errorf("deferredResultFacts(%v, i64) = %#x, unexpectedly claims upper-zero", op, got)
+		}
+	}
+}

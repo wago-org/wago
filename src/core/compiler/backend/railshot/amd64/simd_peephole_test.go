@@ -3,8 +3,11 @@
 package amd64
 
 import (
+	"encoding/binary"
+	"math/bits"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -71,5 +74,52 @@ func TestSIMDPeepholesFire(t *testing.T) {
 				t.Fatalf("%s did not fire (all: %v)", tc.peep, s.Peephole)
 			}
 		})
+	}
+}
+
+func TestAVX512PackedRotateFusionAMD64(t *testing.T) {
+	m := mod1(t, []wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}, []byte{
+		0x01, 0x01, 0x7b,
+		0x20, 0x00, 0x22, 0x01,
+		0x41, 0x07, 0xfd, 0xad, 0x01,
+		0x20, 0x01, 0x41, 0x19, 0xfd, 0xab, 0x01,
+		0xfd, 0x50, 0x0b,
+	})
+	optimizations := map[string]bool{"avx512-vrotate": true}
+	var input, want [16]byte
+	for i := 0; i < 4; i++ {
+		v := uint32(0x12345678) ^ uint32(i)*0x9e3779b9
+		binary.LittleEndian.PutUint32(input[i*4:], v)
+		binary.LittleEndian.PutUint32(want[i*4:], bits.RotateLeft32(v, -7))
+	}
+	features := shared.AMD64ModernBaseline | shared.AMD64AVX512
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{
+		Stats: optionalTestStats(&stats), AMD64FeaturesSet: true, AMD64Features: features,
+		Optimizations: optimizations,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cm.CodeImage.Close()
+	if !cm.RequiresAVX512 {
+		t.Fatal("packed rotate did not record AVX-512 requirement")
+	}
+	if diagnosticsEnabled {
+		if got := stats.Funcs[0].Peephole["simd-rotr-avx512"]; got != 1 {
+			t.Fatalf("rotate fusions=%d requiresAVX512=%v", got, cm.RequiresAVX512)
+		}
+	}
+	if got := runAmd64V128WithOptions(t, m, &input, CompileOptions{
+		AMD64FeaturesSet: true, AMD64Features: 0, Optimizations: optimizations,
+	}); got != want {
+		t.Fatalf("baseline result=%x, want %x", got, want)
+	}
+	if linuxHostHasAVX512VL() {
+		if got := runAmd64V128WithOptions(t, m, &input, CompileOptions{
+			AMD64FeaturesSet: true, AMD64Features: features, Optimizations: optimizations,
+		}); got != want {
+			t.Fatalf("AVX-512 result=%x, want %x", got, want)
+		}
 	}
 }

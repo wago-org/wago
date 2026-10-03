@@ -111,6 +111,7 @@ func TestAMD64BitCountPaths(t *testing.T) {
 }
 
 func TestAMD64BitCountArtifactRequirements(t *testing.T) {
+	mockAMD64ArtifactCPU(t, shared.AMD64BitCountRequirements(shared.BitCountLZCNT|shared.BitCountTZCNT|shared.BitCountPOPCNT))
 	actual := bitCountHostFeaturesSupported
 	defer func() { bitCountHostFeaturesSupported = actual }()
 	for _, tc := range []struct {
@@ -179,6 +180,7 @@ func TestAMD64BitCountArtifactRequirements(t *testing.T) {
 }
 
 func TestAMD64BitCountParallelArtifactUnion(t *testing.T) {
+	mockAMD64ArtifactCPU(t, shared.AMD64BitCountRequirements(shared.BitCountLZCNT|shared.BitCountTZCNT|shared.BitCountPOPCNT))
 	actual := bitCountHostFeaturesSupported
 	defer func() { bitCountHostFeaturesSupported = actual }()
 	all := selectedAMD64CompileFeatures(shared.AMD64BitCountRequirements(shared.BitCountLZCNT | shared.BitCountTZCNT | shared.BitCountPOPCNT)).BitCountCapabilities()

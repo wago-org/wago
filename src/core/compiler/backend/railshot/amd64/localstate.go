@@ -5,9 +5,9 @@ package amd64
 import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 
 // WARP's STACK_REG lazy local-spill model (Common.cpp saveLocalsAndParamsFor
-// FuncCall / recoverLocalToReg / recoverAllLocalsToRegBranch), for CALL-MAKING
-// functions. Each pinned local has a dedicated register AND a frame slot; the
-// live value is tracked in one of four states:
+// FuncCall / recoverLocalToReg / recoverAllLocalsToRegBranch), for call-making
+// functions and functions with regional local caches. Each pinned local has a
+// dedicated register AND a frame slot; its value is tracked in one of four states:
 //
 //	lsConstZero — declared local's initial zero; neither register nor slot is live
 //	lsReg       — value only in the register (register is dirty vs the slot)
@@ -20,9 +20,8 @@ import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 //   - a subsequent local.get reloads lazily (recoverLocal);
 //   - branches converge everything to lsStackReg so all edges agree.
 //
-// Call-free functions normally keep pinned locals in registers, but pressure may
-// relinquish a pin to its slot. Their edges restore a register-only invariant
-// without stores or merge snapshots, keeping ordinary compute loops fast.
+// Regional caches use the recorded edge contracts even without calls. Other
+// call-free functions restore relinquished pins to a register-only invariant.
 
 type locState uint8
 
@@ -62,10 +61,14 @@ func (f *fn) localConstZero(x int) bool {
 }
 
 func (f *fn) loadFrameInt(dst Reg, off int32, typ machineType) {
+	start := f.a.Len()
 	if typ == mtI32 {
 		f.a.Load32(dst, RSP, off)
 	} else {
 		f.a.Load64(dst, RSP, off)
+	}
+	if profileEnabled {
+		f.recordProfileCodeSite(start, "gp-local-load")
 	}
 }
 
@@ -78,10 +81,57 @@ func (f *fn) moveInt(dst, src Reg, typ machineType) {
 }
 
 func (f *fn) storeFrameInt(off int32, src Reg, typ machineType) {
+	start := f.a.Len()
 	if typ == mtI32 {
 		f.a.Store32(RSP, off, src)
 	} else {
 		f.a.Store64(RSP, off, src)
+	}
+	if profileEnabled {
+		f.recordProfileCodeSite(start, "gp-local-store")
+	}
+}
+
+// Frame-local transfers are distinct from operand-stack spills. Keep these
+// sites on the transfer instruction only, after any allocator work.
+func (f *fn) loadFrameFloat(dst Reg, off int32, f64 bool) {
+	start := 0
+	if profileEnabled {
+		start = f.a.Len()
+	}
+	f.a.FLoadDisp(dst, RSP, off, f64)
+	if profileEnabled {
+		f.recordProfileCodeSite(start, "fp-local-load")
+	}
+}
+func (f *fn) storeFrameFloat(off int32, src Reg, f64 bool) {
+	start := 0
+	if profileEnabled {
+		start = f.a.Len()
+	}
+	f.a.FStoreDisp(RSP, off, src, f64)
+	if profileEnabled {
+		f.recordProfileCodeSite(start, "fp-local-store")
+	}
+}
+func (f *fn) loadFrameVector(dst Reg, off int32) {
+	start := 0
+	if profileEnabled {
+		start = f.a.Len()
+	}
+	f.mov128LoadDisp(dst, RSP, off)
+	if profileEnabled {
+		f.recordProfileCodeSite(start, "vector-local-load")
+	}
+}
+func (f *fn) storeFrameVector(off int32, src Reg) {
+	start := 0
+	if profileEnabled {
+		start = f.a.Len()
+	}
+	f.mov128StoreDisp(RSP, off, src)
+	if profileEnabled {
+		f.recordProfileCodeSite(start, "vector-local-store")
 	}
 }
 
@@ -91,9 +141,9 @@ func (f *fn) markDeclaredLocalZero(x int) {
 
 func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 	if f.localType[x] == mtV128 {
-		f.mov128StoreDisp(RSP, f.localAddr(x), reg)
+		f.storeFrameVector(f.localAddr(x), reg)
 	} else if isFloat {
-		f.a.FStoreDisp(RSP, f.localAddr(x), reg, f.localType[x] == mtF64)
+		f.storeFrameFloat(f.localAddr(x), reg, f.localType[x] == mtF64)
 	} else {
 		f.storeFrameInt(f.localAddr(x), reg, f.localType[x])
 	}
@@ -108,9 +158,9 @@ func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
 		}
 	}
 	if f.localType[x] == mtV128 {
-		f.mov128LoadDisp(reg, RSP, f.localAddr(x))
+		f.loadFrameVector(reg, f.localAddr(x))
 	} else if isFloat {
-		f.a.FLoadDisp(reg, RSP, f.localAddr(x), f.localType[x] == mtF64)
+		f.loadFrameFloat(reg, f.localAddr(x), f.localType[x] == mtF64)
 	} else {
 		f.loadFrameInt(reg, f.localAddr(x), f.localType[x])
 	}
@@ -231,7 +281,10 @@ func (f *fn) materializeGCFrameLocal(index uint32) {
 func (f *fn) spillLocalsForCall() {
 	for _, x := range f.pinnedLocals {
 		reg, isFloat := f.locals[x].reg, f.locals[x].isFloat
-		if !f.usesCalls {
+		// Argument materialization may have reassigned a relinquished pin to a
+		// temporary. Its local already has a valid frame home; the eager model
+		// must honor that state too, instead of saving the temporary over it.
+		if !f.usesCalls && !f.pinRelinquished {
 			f.storeLocalReg(x, reg, isFloat) // old model: store all; reloaded after the call
 			continue
 		}
@@ -256,6 +309,22 @@ func (f *fn) reloadLocalsForCall() {
 	}
 }
 
+// callFreeRegMerges uses the existing whole-function call classification. With
+// no calls, every edge can promise register homes without also storing locals.
+func (f *fn) callFreeRegMerges() bool {
+	return (f.intervalControl || f.vectorRegion.enabled) && !f.makesCalls && callFreeRegMergesEnabled
+}
+
+// Callers materialize lazy zeros and finish deferred operand evaluation first.
+func (f *fn) restorePinnedRegisters() {
+	for _, x := range f.pinnedLocals {
+		if f.locals[x].state == lsMem {
+			f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+		}
+		f.locals[x].state = lsReg
+	}
+}
+
 // reconcileLocals converges local state at a control-flow boundary. Lazy zero
 // locals are materialized before paths diverge so unpinned locals have a real
 // slot value on every edge. In call-making functions, pinned locals are also
@@ -271,6 +340,10 @@ func (f *fn) reconcileLocals() {
 				f.materializeZeroLocal(x, true) // leaves pinned locals in lsStackReg
 			}
 		}
+	}
+	if f.callFreeRegMerges() {
+		f.restorePinnedRegisters()
+		return
 	}
 	if !f.usesCalls {
 		f.restoreCallFreePins()
@@ -308,7 +381,8 @@ func (f *fn) restoreCallFreePins() {
 
 // convergeEdgeTo converges pinned-local state for a control edge into the
 // per-frame target *target, RECORDING the target from the current state when
-// this is the frame's first edge. Targets are per-local, ∈ {lsStackReg, lsMem}:
+// this is the frame's first edge. Targets are per-local:
+//   - lsReg: only the register is guaranteed (a proved call-free contract);
 //   - lsStackReg: register AND slot valid at the merge;
 //   - lsMem: only the slot is guaranteed — a call-clobbered local stays
 //     unloaded across the merge until a read actually needs it (the lazy-merge
@@ -414,8 +488,31 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 	if len(f.pinnedLocals) == 0 {
 		return
 	}
-	// Dirty pinned registers materialize to the slot too.
-	for _, x := range f.pinnedLocals {
+	// A call-free regional function uses the same register-only contract at
+	// every merge. Reclaimed pins are restored; dirty live pins need no store.
+	if f.callFreeRegMerges() {
+		f.restorePinnedRegisters()
+		if *target == nil {
+			t := f.newLocStateBuf()
+			for i := range t {
+				t[i] = lsReg
+			}
+			*target = t
+		}
+		return
+	}
+	// A proved call-free loop can require register residency at its header.
+	// Its backedges keep the register live and avoid writing the frame slot on
+	// every iteration. If a pin was temporarily homed, reload it for the edge.
+	t := *target
+	for i, x := range f.pinnedLocals {
+		if t != nil && t[i] == lsReg {
+			if f.locals[x].state == lsMem {
+				f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+			}
+			f.locals[x].state = lsReg
+			continue
+		}
 		if f.locals[x].state == lsReg {
 			f.storeLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
 			f.locals[x].state = lsStackReg
@@ -429,7 +526,6 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 		*target = t
 		return
 	}
-	t := *target
 	for i, x := range f.pinnedLocals {
 		if t[i] == lsStackReg && f.locals[x].state == lsMem {
 			f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)

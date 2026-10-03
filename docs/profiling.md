@@ -70,6 +70,17 @@ directories must be new; the runner never replaces an earlier capture.
 hash, initialization export, calls, arguments, and exact result oracle. JSON-AS
 is a preset using the same runner and result oracle as other workloads.
 
+Core `semantic_exec` workloads also use their existing catalog checks. Published
+vectors validate the output bytes after each call, and single-call cases validate
+their specified return slots and memory oracles. A status return without a catalog
+return oracle is not checked; manifest metadata identifies the return checks. Input buffers are restored before every call. Single-call input pointers are
+resolved before invocation and output pointers afterward. Vector pointers are
+resolved once per case group, matching the corpus runner, so moving buffers and
+guest input mutations retain the same contract.
+Captures record the semantic check IDs and whether input writes and memory
+validation occur inside the execution phase. Account for that host work when
+reading CPU samples; these captures are diagnostics, not execution benchmarks.
+
 For a custom module:
 
 ```sh
@@ -469,15 +480,42 @@ sample totals instead of producing a truncated or misleading profile.
 function, and sampled `native_pcs` carry their exact `compiler_site` when present.
 Text annotations display the same kind beside the sample count and CPU weight.
 Use pprof's `compiler_site_kind` labels to select samples at these sites.
+`wagoprof top --sites CAPTURE` (or `--sites --json`) summarizes sample counts and
+weights by recorded site kind across all functions, independent of `--limit`.
+Unclassified guest samples and unknown/non-guest samples remain separate.
 
 Current kinds distinguish explicit GP, floating-point, and vector operand spills
 and materialized reloads, plus custom-value spill stores and linear-memory bounds
-branches. A bounds site covers the conditional failure branch; it does not claim
-the surrounding address or predicate instructions. Folded stack operands,
-pinned-local writebacks, and decisions without recorded sites stay unclassified.
+branches. AMD64 also records `fp-local-load`, `fp-local-store`,
+`vector-local-load`, and `vector-local-store` for direct scalar FP and vector
+frame-local transfers, including local recovery and call argument loads.
+AMD64 records `fp-borrow-copy` and `vector-borrow-copy` for register copies
+that protect a borrowed local before destructive materialization. These sites
+exclude register allocation and represent neither spills nor reloads.
+AMD64 records `gp-local-load` and `gp-local-store` for direct
+integer local-frame transfers, including initialization, parameter homing,
+pinned-local writebacks, and call synchronization. These are separate from
+operand spill counters. A bounds site covers the conditional failure branch; it does not claim
+the surrounding address or predicate instructions. Folded stack operands and
+decisions without recorded sites stay unclassified.
+AMD64 function decisions also report `fp-pressure-spill`,
+`fp-pressure-local-relinquish`, and `fp-pressure-exhaustion` when the XMM
+allocator has no free register. The accompanying
+`fp-pressure-scalar-constant-available` and
+`fp-pressure-vector-constant-available` decisions identify requests for which a
+constant reservation blocks an otherwise unused, unborrowed register;
+`fp-pressure-constant-available` counts their union. These are static compiler
+choices, including tentative emission, not surviving sites or dynamic operation
+counts. They do not prove that cache revocation is safe across backedges or that
+it would improve execution.
+
 The map is separate from existing function-level counters and need not have the
 same totals. It describes final surviving emission sites, not dynamic operation
 counts or a measured saving from a compiler optimization.
+Sample weight at a load or store is not a count of memory accesses or time spent
+waiting for memory; instruction-level sampling can include skid and surrounding
+dependencies. Use native disassembly and matched execution measurements to
+evaluate a proposed change.
 
 Sites follow tentative-code rollback, instruction shortening, frame compaction,
 and module adapter layout changes. Eliminated sites disappear; neighboring sites

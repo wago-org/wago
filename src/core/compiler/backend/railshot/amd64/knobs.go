@@ -12,6 +12,7 @@ import (
 var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
+	optimization.Bind("simd-reduction-borrow", &simdReductionBorrowEnabled),
 	optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
 	optimization.Bind("prepared-bounded-entry", &preparedBoundedEntryEnabled),
 	optimization.Bind("wide-loop-int-const", &wideLoopIntConstEnabled),
@@ -19,7 +20,9 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
 	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
 	optimization.Bind("callfree-loop-cold-exit", &callFreeLoopColdExitEnabled),
+	optimization.Bind("callfree-loop-reg-state", &callFreeLoopRegStateEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
+	optimization.Bind("interval-control", &intervalControlEnabled),
 	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
 	optimization.Bind("interval-scratch-lease", &intervalScratchLeaseEnabled),
 	optimization.Bind("interval-r8-lease", &intervalR8LeaseEnabled),
@@ -40,7 +43,14 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("tree-order", &treeOrderEnabled),
 	optimization.Bind("assoc-tree", &associativeTreeEnabled),
 	optimization.Bind("bmi2-rorx", &bmi2RorxEnabled),
+	optimization.Bind("avx512-ternary", &avx512TernaryEnabled),
+	optimization.Bind("avx512-vrotate", &avx512VRotateEnabled),
 	optimization.Bind("vex-float-mem", &vexFloatMemEnabled),
+	optimization.Bind("float-frame-mem", &floatFrameMemEnabled),
+	optimization.Bind("float-store-borrow", &floatStoreBorrowEnabled),
+	optimization.Bind("memory-compare-immediate", &memoryCompareEnabled),
+	optimization.Bind("wide-local-pins", &wideLocalPinsEnabled),
+	optimization.Bind("direct-int-branch-merge", &directIntBranchMergeEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
 	optimization.Bind("addr-zext-elim", &memory32AddrZExtElimEnabled),
 	optimization.Bind("canonical-i32", &canonicalI32CarriersEnabled),
@@ -69,6 +79,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 var (
 	optBoundsFacts             = optimizationBindings.Option("bounds-facts")
 	optSIMDSuperopt            = optimizationBindings.Option("simd-superopt")
+	optSIMDReductionBorrow     = optimizationBindings.Option("simd-reduction-borrow")
 	optPreparedDirectEntry     = optimizationBindings.Option("prepared-direct-entry")
 	optPreparedBoundedEntry    = optimizationBindings.Option("prepared-bounded-entry")
 	optWideLoopIntConst        = optimizationBindings.Option("wide-loop-int-const")
@@ -76,7 +87,9 @@ var (
 	optCountedLoopLatch        = optimizationBindings.Option("counted-loop-latch")
 	optLinearSumLoop           = optimizationBindings.Option("linear-sum-loop")
 	optCallFreeLoopColdExit    = optimizationBindings.Option("callfree-loop-cold-exit")
+	optLoopRegState            = optimizationBindings.Option("callfree-loop-reg-state")
 	optIntervalRegionPins      = optimizationBindings.Option("interval-region-pins")
+	optIntervalControl         = optimizationBindings.Option("interval-control")
 	optIntervalNextUse         = optimizationBindings.Option("interval-next-use")
 	optIntervalScratchLease    = optimizationBindings.Option("interval-scratch-lease")
 	optIntervalR8Lease         = optimizationBindings.Option("interval-r8-lease")
@@ -97,6 +110,13 @@ var (
 	optTreeOrder               = optimizationBindings.Option("tree-order")
 	optAssocTree               = optimizationBindings.Option("assoc-tree")
 	optBMI2Rorx                = optimizationBindings.Option("bmi2-rorx")
+	optAVX512Ternary           = optimizationBindings.Option("avx512-ternary")
+	optAVX512VRotate           = optimizationBindings.Option("avx512-vrotate")
+	optWideLocalPins           = optimizationBindings.Option("wide-local-pins")
+	optDirectIntBranchMerge    = optimizationBindings.Option("direct-int-branch-merge")
+	optFloatFrameMem           = optimizationBindings.Option("float-frame-mem")
+	optFloatStoreBorrow        = optimizationBindings.Option("float-store-borrow")
+	optMemoryCompareImmediate  = optimizationBindings.Option("memory-compare-immediate")
 	optVEXFloatMem             = optimizationBindings.Option("vex-float-mem")
 	optMultiBoundsCert         = optimizationBindings.Option("multi-bounds-cert")
 	optAddrZExtElim            = optimizationBindings.Option("addr-zext-elim")

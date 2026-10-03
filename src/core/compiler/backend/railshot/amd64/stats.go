@@ -92,7 +92,8 @@ var (
 	stFlagsEnabled = os.Getenv("WAGO_NO_STFLAGS") != "1"
 	// store8FlagsEnabled gates direct low-byte comparison results consumed by an
 	// i32.store8. WAGO_NO_STORE8_FLAGS=1 is the A/B oracle.
-	store8FlagsEnabled = os.Getenv("WAGO_NO_STORE8_FLAGS") != "1"
+	store8FlagsEnabled   = os.Getenv("WAGO_NO_STORE8_FLAGS") != "1"
+	setGetTeeFoldEnabled = os.Getenv("WAGO_AMD64_NO_SET_GET_TEE_FOLD") != "1"
 	// swarMaskTestEnabled gates direct packed-word mask-test fusion.
 	// WAGO_NO_SWAR_MASK_TEST=1 is the A/B oracle.
 	swarMaskTestEnabled = os.Getenv("WAGO_NO_SWAR_MASK_TEST") != "1"
@@ -102,6 +103,13 @@ var (
 	// simdSuperoptEnabled gates exact bounded selection of multi-op Wasm SIMD
 	// sequences. WAGO_NO_SIMD_SUPEROPT=1 is the A/B oracle.
 	simdSuperoptEnabled = os.Getenv("WAGO_NO_SIMD_SUPEROPT") != "1"
+	// AVX-512VL hosts can cover adjacent 128-bit boolean operations with one
+	// VPTERNLOGD. WAGO_AMD64_NO_AVX512_TERNARY=1 is the rollback switch.
+	avx512TernaryEnabled = os.Getenv("WAGO_AMD64_NO_AVX512_TERNARY") != "1"
+	// WAGO_AMD64_NO_AVX512_VROTATE=1 disables packed rotate selection.
+	avx512VRotateEnabled = os.Getenv("WAGO_AMD64_NO_AVX512_VROTATE") != "1"
+	// WAGO_AMD64_NO_CALLFREE_LOOP_REG_STATE=1 is the A/B rollback switch.
+	callFreeLoopRegStateEnabled = os.Getenv("WAGO_AMD64_NO_CALLFREE_LOOP_REG_STATE") != "1"
 
 	// mul3opEnabled gates three-operand IMUL (dest = src*imm) that folds a borrowed
 	// register source into a constant multiply. WAGO_NO_MUL3=1 is the A/B oracle.
@@ -110,7 +118,8 @@ var (
 	// commuteMemLeftEnabled gates swapping a commutative op's memory left operand
 	// with an owned-register right, to fold the memory as an r/m operand and
 	// accumulate in the register. WAGO_NO_COMMUTE_MEM=1 is the A/B oracle.
-	commuteMemLeftEnabled = os.Getenv("WAGO_NO_COMMUTE_MEM") != "1"
+	commuteMemLeftEnabled   = os.Getenv("WAGO_NO_COMMUTE_MEM") != "1"
+	lateFrameCommuteEnabled = os.Getenv("WAGO_AMD64_LATE_FRAME_COMMUTE") != "0"
 
 	// commuteFMemEnabled gates the float analogue: swapping a commutative float
 	// op's (add/mul) memRef left operand with a non-memRef right so the load folds

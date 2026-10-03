@@ -246,6 +246,11 @@ func (a *Asm) VFMemIdx(op byte, dst, src1, base, index Reg, disp int32, f64 bool
 	a.vex3MemIdx(vexMap0F, vexPP(f64), op, dst, src1, true, base, index, disp)
 }
 
+// VFPackedMemIdx emits VEX.128 packed arithmetic with an indexed memory operand.
+func (a *Asm) VFPackedMemIdx(op byte, dst, src1, base, index Reg, disp int32, f64 bool) {
+	a.vex3MemIdx(vexMap0F, packedPP(f64), op, dst, src1, true, base, index, disp)
+}
+
 func packedPP(f64 bool) byte {
 	if f64 {
 		return 0b01 // 66 = packed double
@@ -880,4 +885,35 @@ func (a *Asm) VMovdquDisp(op byte, xmm, base Reg, disp int32) {
 // op is 0x6F for loads and 0x7F for stores.
 func (a *Asm) VMovdquIdx(op byte, xmm, base, index Reg, disp int32) {
 	a.vex3MemIdx(vexMap0F, 2, op, xmm, 0, false, base, index, disp)
+}
+
+// FAluDisp emits legacy scalar SSE arithmetic with a base-displacement source.
+func (a *Asm) FAluDisp(op byte, dst, base Reg, disp int32, f64 bool) {
+	a.fmemDisp(op, dst, base, disp, f64)
+}
+
+// YInsertF128 is AVX's floating-domain insertion, requiring no AVX2.
+func (a *Asm) YInsertF128(dst, src256, src128 Reg, lane byte) {
+	a.vex3RRIMapL(vexMap0F3A, 1, 0x18, dst, src256, src128, lane, 1)
+}
+
+func (a *Asm) YFPackedMemIdx(op byte, dst, src1, base, index Reg, disp int32, f64 bool) {
+	a.vex3MemIdxL(vexMap0F, packedPP(f64), op, dst, src1, true, base, index, disp, 1)
+}
+
+// YBroadcastSD memory forms read exactly eight bytes and require only AVX.
+// Register-source VBROADCASTSD requires AVX2 and is deliberately not used.
+func (a *Asm) YBroadcastSDLoadDisp(dst, base Reg, disp int32) {
+	a.vex3MemDispL(vexMap0F38, 1, 0x19, dst, 0, false, base, disp, 1)
+}
+func (a *Asm) YBroadcastSDLoadIdx(dst, base, index Reg, disp int32) {
+	a.vex3MemIdxL(vexMap0F38, 1, 0x19, dst, 0, false, base, index, disp, 1)
+}
+func (a *Asm) YBroadcastSDRipPlaceholder(dst Reg) int {
+	a.vex3MemPrefixL(vexMap0F38, 1, dst, 0, false, RAX, 0, false, 1)
+	a.emit(0x19, ((byte(dst)&7)<<3)|0x05)
+	a.recordRipAddress()
+	off := a.Len()
+	a.imm32(0)
+	return off
 }

@@ -43,6 +43,8 @@ const (
 	ctrlHasParamGCRoots
 	ctrlHasResultGCRoots
 	ctrlLoopCallFree
+	ctrlLoopPinExchange
+	ctrlIfDeferredPrefix
 )
 
 // ctrlFrame is one open control construct (or the implicit function frame).
@@ -53,7 +55,7 @@ type ctrlFrame struct {
 	mergeIndex uint32 // index+1 into scratch.ctrlMerges; zero has no cold merge state
 	branchN    uint32 // values transferred on a branch to this label
 	baseTypes  uint16 // fixed-arena start in low byte, count in high byte
-	ehDepth    uint16 // installed handler count at this label (uses existing padding)
+	ehDepth    uint16 // installed handler count at this label
 
 	height             int // operand depth at the frame's result base
 	paramN, resultN    int
@@ -80,6 +82,22 @@ func (fr *ctrlFrame) setBaseTypeRange(start, count int) {
 	fr.baseTypes = uint16(uint8(start)) | uint16(uint8(count))<<8
 }
 
+// The constant-cache base occupies two unused flag bits so EH depth and loop
+// constant lifetime state both fit in the existing 80-byte control frame.
+const ctrlFloatConstBaseShift = 12
+const ctrlFloatConstBaseMask ctrlFlags = 3 << ctrlFloatConstBaseShift
+
+func (fr *ctrlFrame) floatConstBase() int {
+	return int(fr.flags & ctrlFloatConstBaseMask >> ctrlFloatConstBaseShift)
+}
+
+func (fr *ctrlFrame) setFloatConstBase(n int) {
+	if n < 0 || n > 3 {
+		panic("amd64: control float constant base exceeds packed storage")
+	}
+	fr.flags = fr.flags&^ctrlFloatConstBaseMask | ctrlFlags(n)<<ctrlFloatConstBaseShift
+}
+
 func (fr *ctrlFrame) has(flag ctrlFlags) bool { return fr.flags&flag != 0 }
 
 func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
@@ -97,10 +115,11 @@ type ctrlFrameMerge struct {
 	ends          []uint32 // overflow after two inline forward-end sites
 	branchState   []locState
 	entryState    []locState
-	baseTypeTop   *elem // cold control-base type prefix; immutable for the frame lifetime
+	baseTypeTop   *elem // cold type prefix, or detached numeric recipe under ctrlIfDeferredPrefix
 	firstEndSite  uint32
 	secondEndSite uint32
 	eh            *ctrlFrameEH
+	loopPinPlan   uint64
 }
 
 func (m *ctrlFrameMerge) setCountedLoop(counter, bodySite int) bool {
@@ -199,7 +218,7 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
 }
 
 func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFrame) {
-	if !f.opt(optLinearSumLoop) || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.memSizeReg == regNone {
+	if !f.opt(optLinearSumLoop) || f.guardMode && !linearSumSignalsEnabled || f.threadedMemory0 || f.memoryAddr64(0) || !f.guardMode && f.memSizeReg == regNone {
 		return
 	}
 	addr, acc, loadPC, ok := f.inspectLinearSumLoop(r, counter)
@@ -219,7 +238,7 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFram
 	f.a.ShiftImm(4, t, 3, true)
 	f.a.MovRegReg32(addrReg, addrReg)
 	f.a.Add64(t, addrReg)
-	f.a.Cmp64(t, f.memSizeReg)
+	f.compareLinearSumSize(t)
 	savedPC := f.wasmPC
 	f.wasmPC = loadPC
 	mt, _ := f.m.MemoryType(0)
@@ -232,7 +251,7 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFram
 		// that modular Wasm behavior without giving up the unrolled fast path.
 		inBounds := f.a.JccPlaceholder(condBE)
 		f.a.MovImm64(t, 1<<32)
-		f.a.Cmp64(f.memSizeReg, t)
+		f.compareLinearSumSize(t) // equality is independent of comparison direction
 		f.trapIf(condNE, trapMemOOB)
 		f.a.TestImm(addrReg, 7, false)
 		f.trapIf(condNE, trapMemOOB)
@@ -243,6 +262,9 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFram
 	f.linearSumLoop = uint32(addr+1) | uint32(acc+1)<<16
 	f.linearSumLoopDepth = uint16(len(f.ctrl))
 	f.stats.peep("counted-loop-bounds-hoist")
+	if f.guardMode {
+		f.stats.peep("linear-sum-signals")
+	}
 }
 
 // tryUnrolledLinearSumLatch splits an exact i64 reduction across four native
@@ -1401,46 +1423,140 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 // uncertainty conservatively rejects the proof.
 const maxCallFreeLoopLookaheadBytes = 64 << 10
 
-func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool, budget *int) bool {
+func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool, pinnedLocals []int) (bool, uint64) {
+	budget := 0
+	ok, writes, _, _ := scanLoopCallFreeDetails(r, classifier, gcStructHelpers, pinnedLocals, false, &budget)
+	return ok, writes
+}
+
+// scanLoopCallFreeDetails also picks one float constant while the
+// existing loop proof is walking the body. No second bytecode pass is needed.
+func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool, pinnedLocals []int, wantFloat bool, budget *int) (bool, uint64, storage, bool) {
 	if budget == nil || *budget >= maxCallFreeLoopLookaheadBytes {
-		return false
+		return false, 0, storage{}, false
 	}
 	r2 := *r
 	depth := 0
+	var writes uint64
+	brTable := false
+	nestedLoop := false
+	hasInnerControl := false
+	type candidate struct {
+		st    storage
+		score uint32
+	}
+	var candidates [16]candidate
+	n, steps := 0, 0
+	floatSafe := true
+	finish := func(writes uint64) (bool, uint64, storage, bool) {
+		if !wantFloat || !floatSafe || n == 0 {
+			return true, writes, storage{}, false
+		}
+		best := 0
+		for i := 1; i < n; i++ {
+			if candidates[i].score > candidates[best].score {
+				best = i
+			}
+		}
+		return true, writes, candidates[best].st, true
+	}
 	var imm wasm.InstructionImmediate
 	for {
 		before := r2.Offset()
 		op, err := r2.Byte()
+		constReader := r2
 		if err != nil {
-			return false
+			return false, 0, storage{}, false
 		}
 		if err = classifier.ClassifyInto(&r2, op, &imm); err != nil {
 			used := min(maxCallFreeLoopLookaheadBytes-*budget, r2.Offset()-before)
 			*budget += used
-			return false
+			return false, 0, storage{}, false
 		}
 		consumed := r2.Offset() - before
 		remaining := maxCallFreeLoopLookaheadBytes - *budget
 		if consumed > remaining {
 			*budget = maxCallFreeLoopLookaheadBytes
-			return false
+			return false, 0, storage{}, false
 		}
 		*budget += consumed
+		if wantFloat && steps < 256 && (op == 0x43 || op == 0x44) {
+			var st storage
+			if op == 0x43 {
+				bits, err := constReader.LEU32()
+				if err != nil {
+					return false, 0, storage{}, false
+				}
+				st = storage{kind: stConst, typ: mtF32, cval: int64(bits)}
+			} else {
+				bits, err := constReader.LEU64()
+				if err != nil {
+					return false, 0, storage{}, false
+				}
+				st = storage{kind: stConst, typ: mtF64, cval: int64(bits)}
+			}
+			weight := uint32(1) << min(depth*2, 8)
+			found := false
+			for i := 0; i < n; i++ {
+				if candidates[i].st.typ == st.typ && candidates[i].st.cval == st.cval {
+					candidates[i].score += weight
+					found = true
+					break
+				}
+			}
+			if !found && n < len(candidates) {
+				candidates[n] = candidate{st: st, score: weight}
+				n++
+			}
+		}
+		steps++
+		if op == 0x02 || op == 0x04 || op == 0x1f {
+			hasInnerControl = true
+		}
 		switch imm.Kind {
 		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrReturnCall,
 			wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef,
 			wasm.InstrMemoryGrow:
-			return false
+			return false, 0, storage{}, false
+		case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
+			wasm.InstrTableGrow, wasm.InstrTableFill:
+			floatSafe = false // GC table helpers may call even in a numeric loop.
+		case wasm.InstrLocalSet, wasm.InstrLocalTee:
+			for i, x := range pinnedLocals {
+				if uint32(x) == imm.Index {
+					writes |= uint64(1) << i
+					break
+				}
+			}
+		case wasm.InstrBrTable:
+			// br_table first reconciles every pin to its frame slot. Its
+			// per-target stubs then undo register-only loop state, often on
+			// the hot path. Keep the existing stack convergence there.
+			brTable = true
 		}
 		if gcOrAtomicInstructionMayCall(imm.Kind, gcStructHelpers) {
-			return false
+			return false, 0, storage{}, false
+		}
+		if imm.UsesBulkMemory {
+			floatSafe = false
 		}
 		switch op {
 		case 0x02, 0x03, 0x04, 0x1f:
+			if op == 0x03 {
+				nestedLoop = true
+			}
 			depth++
 		case 0x0b:
 			if depth == 0 {
-				return true
+				// Nested loop entries already reconcile their own pin state. An
+				// outer register-only header can add stores at that inner entry
+				// without removing stores on its hot backedge. Inner blocks and
+				// ifs likewise create merge edges where the weaker register-only
+				// state adds reconciliation outside the loop latch.
+				if brTable || nestedLoop || hasInnerControl {
+					return finish(0)
+				}
+				return finish(writes)
 			}
 			depth--
 		}
@@ -1480,6 +1596,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		kind = cfIf
 	}
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
+	fr.setFloatConstBase(len(f.fconsts))
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if kind == cfLoop {
 		fr.branchN = uint32(pN)
@@ -1490,10 +1607,31 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// → mergeFReg) carries that value in a register across all its edges (fall-
 	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
-	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
-	if kind == cfLoop && !f.unreachable && f.usesCalls && !f.moduleEH && len(f.customInstructions) == 0 && scanLoopCallFree(r, f.classifier, f.gcStructHelpers, &f.callFreeLoopLookaheadBytes) {
-		fr.set(ctrlLoopCallFree, true)
-		f.stats.peep("callfree-loop")
+	// The extended FP pin pool can own XMM11, the canonical FP merge register.
+	// Keep those results in stack slots while its local home is reserved.
+	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128 &&
+		(!res0.isFloat() || !f.fpinnedLocalMask.has(mergeFReg)))
+	var loopPinnedWrites uint64
+	loopRegState := false
+	var loopFloatConst storage
+	loopFloatConstOK := false
+	var loopPinPlan uint64
+	var loopPinWrites uint64
+	if kind == cfLoop && !f.unreachable && pN == 0 && rN == 0 && loopPinExchangeEnabled {
+		loopPinPlan, loopPinWrites = f.planLoopPinExchange(r)
+	}
+	if kind == cfLoop && !f.unreachable && f.usesCalls && !f.callFreeRegMerges() && !f.moduleEH && len(f.customInstructions) == 0 {
+		loopRegState = f.opt(optLoopRegState) && len(f.pinnedLocals) <= 64
+		var pins []int
+		if loopRegState {
+			pins = f.pinnedLocals
+		}
+		if callFree, writes, st, hasFloat := scanLoopCallFreeDetails(r, f.classifier, f.gcStructHelpers, pins, len(f.fconsts) < 2, &f.callFreeLoopLookaheadBytes); callFree {
+			fr.set(ctrlLoopCallFree, true)
+			loopPinnedWrites = writes
+			loopFloatConst, loopFloatConstOK = st, hasFloat
+			f.stats.peep("callfree-loop")
+		}
 	}
 	if f.unreachable {
 		f.pushCtrl(&fr)
@@ -1501,12 +1639,16 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		return nil
 	}
 	if kind == cfIf {
-		f.convergeFrameEntryState(&fr) // header snapshot: else entry / cond-false edge state
-		if isFusableCompare(f.s.back()) {
-			cond := f.s.back()
+		f.deferIfPrefix(r, &fr)
+		cond := f.s.back()
+		if isFusableCompare(cond) {
 			f.flushBelow(cond)
+			f.convergeFrameEntryState(&fr)
 			cc := f.condenseToFlags(cond)
-			f.restoreCallFreePins()
+			if f.pinRelinquished {
+				// Lazy zeros are already materialized; these reloads preserve flags.
+				f.convergeFrameEntryState(&fr)
+			}
 			fr.height = f.depth() - pN
 			f.setFrameBaseTypePrefix(&fr, fr.height)
 			f.captureGCFrameShape(&fr)
@@ -1514,12 +1656,18 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			f.pushCtrl(&fr)
 			return nil
 		}
-		f.materializeTrapsBefore(f.s.back())
+		f.materializeTrapsBefore(cond)
+		if cond.isDeferred() {
+			f.condense(cond, regNone)
+		}
+		// Preserve older spill homes; an isolated owned predicate can remain
+		// tracked without a canonical stack round trip.
+		f.flushBranchPredicate(cond)
+		f.convergeFrameEntryState(&fr)
 		creg, cOwned := f.popBranchCondition()
 		fr.height = f.depth() - pN
 		f.setFrameBaseTypePrefix(&fr, fr.height)
 		f.captureGCFrameShape(&fr)
-		f.flush()
 		f.pinned = f.pinned.remove(creg)
 		f.a.TestSelf(creg, false)
 		if cOwned {
@@ -1532,17 +1680,46 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		f.setFrameBaseTypePrefix(&fr, fr.height)
 		f.captureGCFrameShape(&fr)
 		if kind == cfLoop {
-			// Loop tops converge eagerly (all lsStackReg): hoists any post-call
-			// reload OUT of the body — a lazy (lsMem) loop target would push the
-			// reload into every iteration instead.
-			f.reconcileLocals()
-			f.convergeFrameBranchState(&fr) // records the all-lsStackReg target
+			// Finish deferred work before establishing loop-header homes. Eager
+			// restoration hoists missing-pin reloads out of the loop body.
 			f.flush()
-			f.restoreCallFreePins()
+			f.reconcileLocals()
+			if loopPinPlan != 0 {
+				f.applyLoopPinExchange(loopPinPlan)
+				f.ensureCtrlMerge(&fr).loopPinPlan = loopPinPlan
+				fr.set(ctrlLoopPinExchange, true)
+				f.stats.peep("loop-pin-exchange")
+				if fr.has(ctrlLoopCallFree) && loopRegState {
+					loopPinnedWrites = 0
+					for i, x := range f.pinnedLocals {
+						if loopPinWrites&(uint64(1)<<x) != 0 {
+							loopPinnedWrites |= uint64(1) << i
+						}
+					}
+				}
+			}
+			f.convergeFrameBranchState(&fr) // records the loop-header local homes
+			if fr.has(ctrlLoopCallFree) && loopRegState && loopPinnedWrites != 0 {
+				state := f.frameBranchState(&fr)
+				for i := range state {
+					if loopPinnedWrites&(uint64(1)<<i) != 0 {
+						state[i] = lsReg
+					}
+				}
+				// The initial edge has a clean slot, but a backedge may not.
+				// Compile the body against the weaker, register-only guarantee.
+				f.setLocalsState(state)
+				f.stats.peep("callfree-loop-reg-state")
+			}
 		} else {
 			f.flush()
 		}
 		if kind == cfLoop {
+			if loopFloatConstOK {
+				if _, ok := f.preloadFloatConst(loopFloatConst); ok {
+					f.stats.peep("callfree-loop-fconst")
+				}
+			}
 			if f.compactLoopAlign32 {
 				f.a.AlignLoop32()
 				f.stats.peep("compact-loop-align32")
@@ -2008,13 +2185,12 @@ func (f *fn) opElse() error {
 		// (#68's root cause was skipping this). Converge to the end's recorded
 		// state; as the chronologically first end edge it usually fixes it.
 		f.recordGCBranchResults(fr, fr.resultN)
-		f.convergeFrameBranchState(fr)
 		if fr.has(ctrlRegMerge1) {
 			f.reconcileMerge1(fr) // then-branch result → mergeReg
 		} else {
 			f.flush()
 		}
-		f.restoreCallFreePins()
+		f.convergeFrameBranchState(fr)
 		f.frameAddEnd(fr, f.a.JmpPlaceholder())
 		fr.set(ctrlEndReachable, true)
 	}
@@ -2034,6 +2210,14 @@ func (f *fn) opElse() error {
 func (f *fn) opEnd() error {
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
+	if fr.kind == cfLoop {
+		if regallocCheckEnabled {
+			for _, c := range f.fconsts[fr.floatConstBase():] {
+				f.checkReleaseImmutable(c.reg, true)
+			}
+		}
+		f.fconsts = f.fconsts[:fr.floatConstBase()]
+	}
 	if fr.kind == cfLoop && f.linearSumLoopDepth == uint16(last+1) {
 		f.linearSumLoop = 0
 		f.linearSumLoopDepth = 0
@@ -2065,20 +2249,18 @@ func (f *fn) opEnd() error {
 	if fallthroughReachable {
 		f.recordGCBranchResults(&fr, fr.resultN)
 		resultGCRoots = f.frameResultGCRoots(&fr)
-		if fr.kind != cfLoop {
-			// Merge edge: converge to the end's recorded state (or fix it).
-			// A loop end is NOT a merge — br edges target the loop TOP — so the
-			// fall-through's state simply flows out.
-			f.convergeFrameBranchState(&fr)
-			branchState = f.frameBranchState(&fr)
-		}
+
 		if fr.has(ctrlRegMerge1) {
 			f.reconcileMerge1(&fr) // result → mergeReg, operands below → slots
 		} else {
 			f.flush() // results at [height, height+resultN)
 		}
 		if fr.kind != cfLoop {
-			f.restoreCallFreePins()
+			// Merge edge: converge to the end's recorded state (or fix it).
+			// A loop end is NOT a merge — br edges target the loop TOP — so the
+			// fall-through's state simply flows out.
+			f.convergeFrameBranchState(&fr)
+			branchState = f.frameBranchState(&fr)
 		}
 	}
 	// An if without else: the cond-false path reaches end with params == results.
@@ -2158,6 +2340,7 @@ func (f *fn) opEnd() error {
 			}
 		}
 		f.markEHReferenceResults(&fr)
+		f.restoreIfPrefix(&fr)
 	}
 	if fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
 		recordOff := f.ehRecordOff(int(f.ensureFrameEH(&fr).recordIndex))
@@ -2176,6 +2359,9 @@ func (f *fn) opEnd() error {
 			f.a.PatchRel32(skip, f.a.Len())
 		}
 		f.ehTryDepth--
+	}
+	if fr.has(ctrlLoopPinExchange) {
+		f.restoreLoopPinExchange(f.ctrlMerge(&fr).loopPinPlan, endReachable)
 	}
 	// The frame is popped and its buffers are dead — recycle them for the next
 	// frame pushed at this or a shallower depth.
@@ -2206,18 +2392,26 @@ func (f *fn) restoreBranchHandlers(fi int) {
 	}
 }
 
-// branchToFrame emits an unconditional branch edge to control frame fi: converge
-// pinned locals, flush operands, move the branched values into the frame's
+// branchToFrame emits an unconditional branch edge to control frame fi: evaluate
+// operands, reconcile pinned locals, move the branched values into the frame's
 // canonical slots (or merge register), and jump. Shared by opBr's unconditional
 // path and opReturn's inlined-callee routing. The caller sets f.unreachable.
 func (f *fn) branchToFrame(fi int) {
 	fr := &f.ctrl[fi]
-	f.convergeBranchLocals(fr)
+	if f.opt(optDirectIntBranchMerge) && fr.has(ctrlRegMerge1) && !fr.res0.isFloat() {
+		// No fallthrough needs a stack copy. Preserve the base operands and
+		// deliver the result using the established merge-register contract.
+		f.recordGCBranchResults(fr, 1)
+		f.reconcileMerge1(fr)
+		f.convergeBranchLocals(fr)
+		f.stats.peep("direct-int-branch-merge")
+		f.restoreBranchHandlers(fi)
+		f.branchJump(fr)
+		return
+	}
 	a, d := fr.branchArity(), f.depth()
 	f.flush()
-	if fr.kind != cfFunc {
-		f.restoreCallFreePins()
-	}
+	f.convergeBranchLocals(fr)
 	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
@@ -2245,6 +2439,17 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		}
 		return f.brIfFused(r, top, idx)
 	}
+	var predicate *elem
+	if conditional {
+		predicate = f.s.back()
+		f.materializeTrapsBefore(predicate)
+		if predicate.isDeferred() {
+			f.condense(predicate, regNone)
+		}
+		// Keep the predicate tracked through local convergence, staging
+		// existing spill homes whenever there is an older operand.
+		f.flushBranchPredicate(predicate)
+	}
 	idx, err := r.U32()
 	if err != nil {
 		return err
@@ -2259,21 +2464,16 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		return nil
 	}
 	fr := &f.ctrl[fi]
-	if !f.usesCalls {
-		f.convergeBranchLocals(fr)
-	}
-	f.materializeTrapsBefore(f.s.back())
-	creg, cOwned := f.popBranchCondition()
 	coldExit := f.callFreeLoopExit(fi)
 	var saved localStateSnapshot
 	if coldExit {
 		saved, coldExit = f.snapshotLocalStates()
 	}
-	if !coldExit && f.usesCalls {
+	if !coldExit {
 		f.convergeBranchLocals(fr)
 	}
+	creg, cOwned := f.popBranchCondition()
 	a, d := fr.branchArity(), f.depth()
-	f.flush()
 	f.pinned = f.pinned.remove(creg)
 	f.a.TestSelf(creg, false)
 	if cOwned {
@@ -2437,8 +2637,10 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		}
 		return nil
 	}
-	f.reconcileLocals() // eager: one state (all lsStackReg) satisfies every target
-	ireg := f.materialize(f.popValue())
+	index := f.s.back()
+	if index.isDeferred() {
+		f.condense(index, regNone)
+	}
 	n, err := r.U32()
 	if err != nil {
 		return err
@@ -2462,12 +2664,15 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.flushBelow(index)
+	f.reconcileLocals() // establish every case's local homes before dispatch
+	ireg := f.materialize(index)
+	f.erase(index)
 	d := f.depth()
-	f.pinned = f.pinned.add(ireg) // survive the flush
-	f.flush()
+	f.pinned = f.pinned.add(ireg)
 	if !f.usesCalls && f.pinRelinquished {
 		if f.pinnedLocalMask.has(ireg) {
-			// RDX is free after the flush and is safe for table dispatch below.
+			// Keep the dispatch index outside a relinquished local's home.
 			f.a.MovRegReg32(RDX, ireg)
 			f.release(ireg)
 			f.pinned = f.pinned.remove(ireg).add(RDX)
@@ -2475,9 +2680,9 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		}
 		f.restoreCallFreePins()
 	}
-	// After the flush + reconcile, per-case edge code (converge / slot moves /
-	// merge-reg load) uses only fixed scratch and pinned registers and mutates no
-	// compile-time state — so case bodies can be emitted in any order and shared.
+	// Every case starts with live pinned registers and canonical operands.
+	// Per-target convergence and transfers therefore need no pin reloads and
+	// case bodies can be emitted in any order and shared.
 	emitCase := func(labelIdx uint32) {
 		fi := len(f.ctrl) - 1 - int(labelIdx)
 		fr := &f.ctrl[fi]

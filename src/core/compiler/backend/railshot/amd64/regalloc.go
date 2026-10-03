@@ -451,10 +451,18 @@ func (f *fn) materializePendingTraps() {
 	f.materializePendingEffects(f.guardMode)
 }
 
+func (f *fn) materializePendingLoadsBelow(limit *elem) {
+	f.materializePendingEffectsBelow(true, limit)
+}
+
 func (f *fn) materializePendingEffects(loads bool) {
+	f.materializePendingEffectsBelow(loads, f.s.head)
+}
+
+func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
 	// The physical stack is in postfix/bytecode order. Visit individual trapping
 	// nodes so pure ancestors stay deferred and nested traps cannot be reordered.
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.head.next; e != limit; e = e.next {
 		if e.isDeferred() && isDivRem(e.deferredOp()) {
 			f.materialize(e)
 		} else if loads && e.elemKind() == ekValue && e.st.kind == stMemRef {

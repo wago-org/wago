@@ -66,15 +66,23 @@ const (
 // tryDirectGate uses the gate resolved with the function. Resource publication
 // revokes this exact atomic word before sharing native state.
 func (fn *WasmFunc) tryDirectGate() bool {
+	held, valid := fn.tryDirectGateState()
+	if held && !valid {
+		fn.directGate.Unlock()
+	}
+	return valid
+}
+
+// tryDirectGateState separates inlineable acquisition from the uncommon
+// release of an invalid fast state. A held gate always belongs to the caller,
+// including when valid is false. Validate only after acquiring the same word
+// that resource publication revokes.
+func (fn *WasmFunc) tryDirectGateState() (held, valid bool) {
 	gate := fn.directGate
 	if gate == nil || !gate.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
-		return false
+		return false, false
 	}
-	if !fn.in.preparedFastStateValid() {
-		gate.Unlock()
-		return false
-	}
-	return true
+	return true, fn.in.preparedFastStateValid()
 }
 
 func (c *Compiled) directPreparedAt(local int) bool {

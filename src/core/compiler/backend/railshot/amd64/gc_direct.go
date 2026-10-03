@@ -962,7 +962,8 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		state := f.globalReg[global]
 		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
@@ -1254,7 +1255,8 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		state := f.globalReg[global]
 		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
@@ -1462,7 +1464,8 @@ func (f *fn) emitNativeFinalCastArrayLenStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		state := f.globalReg[global]
 		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
@@ -1558,7 +1561,8 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		state := f.globalReg[global]
 		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
@@ -1710,7 +1714,8 @@ func (f *fn) emitNativeFinalArrayRefGetStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		state := f.globalReg[global]
 		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
@@ -1802,7 +1807,8 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		state := f.globalReg[global]
 		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
@@ -1892,7 +1898,8 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		state := f.globalReg[global]
 		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
@@ -2033,7 +2040,8 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		state := f.globalReg[global]
 		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true

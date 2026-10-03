@@ -997,6 +997,20 @@ func registerCallArgNeedsCapture(root *elem) bool {
 	return root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef || root.st.kind == stSlot))
 }
 
+// materializeCallExpressions finishes calculations before recording argument
+// locations. Fixed-register instructions may spill RCX/RAX/RDX even when those
+// registers are pinned. Recording a move before a later shift or divide would
+// retain the displaced argument's stale register instead of its new spill slot.
+// Include the operand prefix: flushBelow must not evaluate such an instruction
+// after the call's argument move list has been frozen.
+func (f *fn) materializeCallExpressions(roots []*elem) {
+	for _, root := range roots {
+		if root.isDeferred() || root.isValue() && root.st.kind == stMemRef {
+			f.materializeByType(root)
+		}
+	}
+}
+
 // emitTailRegisterJump stages a register-ABI callee's arguments without
 // preserving any caller locals or operand values: a tail call has no continuation.
 // It then releases the current frame and emits the supplied direct/indirect jump.
@@ -1012,6 +1026,8 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			cur = baseOfValentBlock(cur).prev
 		}
 	}
+
+	f.materializeCallExpressions(roots[:p])
 
 	var gpMoves [8]regMove
 	var fpMoves [8]regMove
@@ -1084,6 +1100,13 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	if regallocCheckEnabled {
 		checkFPMoves()
 	}
+	// Register moves establish the integer ABI homes. Deferred float literals
+	// can still need a GPR when literal-pool loads are disabled; their scratch
+	// allocation must not reuse an already staged argument (including RDI).
+	argumentPins := f.pinned
+	for _, target := range intArgRegs[:gp] {
+		f.pinned = f.pinned.add(target)
+	}
 	for _, arg := range deferred[:deferredN] {
 		if arg.float {
 			switch arg.root.st.kind {
@@ -1092,7 +1115,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			case stSlot:
 				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slotIndex()), arg.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(arg.target, RSP, f.localAddr(arg.root.st.index()), arg.root.st.typ == mtF64)
+				f.loadFrameFloat(arg.target, f.localAddr(arg.root.st.index()), arg.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -1106,6 +1129,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 		}
 	}
 
+	f.pinned = argumentPins
 	f.emitTailFrameRelease()
 	emitJump()
 }
@@ -1976,6 +2000,8 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 
+	f.materializeCallExpressions(allRoots)
+
 	// Identify the p argument roots (top of stack), deepest first.
 	argRoots := f.tmpRoots[:0]
 	if cap(argRoots) < p {
@@ -2118,7 +2144,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		// register — after any eager post-call reload, which would otherwise
 		// overwrite it with the stale slot value.
 		pr, _, _ := f.pinReg(resHint)
-		f.a.MovReg64(pr, RAX)
+		f.moveInt(pr, RAX, mtOf(ft.Results[0]))
 		f.markLocalDirty(resHint)
 	}
 
@@ -2182,6 +2208,8 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
+
+	f.materializeCallExpressions(allRoots)
 
 	// Identify the p argument roots (top of stack), deepest first.
 	argRoots := f.tmpRoots[:0]
@@ -2281,6 +2309,13 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	if regallocCheckEnabled {
 		checkFPMoves()
 	}
+	// Register moves establish the integer ABI homes. Deferred float literals
+	// can still need a GPR when literal-pool loads are disabled; their scratch
+	// allocation must not reuse an already staged argument (including RDI).
+	argumentPins := f.pinned
+	for _, target := range intArgRegs[:gp] {
+		f.pinned = f.pinned.add(target)
+	}
 	for _, da := range deferred {
 		if da.float {
 			switch da.root.st.kind {
@@ -2289,7 +2324,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			case stSlot:
 				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(da.target, RSP, f.localAddr(da.root.st.index()), da.root.st.typ == mtF64)
+				f.loadFrameFloat(da.target, f.localAddr(da.root.st.index()), da.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -2302,6 +2337,8 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.loadCallLocalInt(da.target, da.root.st)
 		}
 	}
+	f.pinned = argumentPins
+
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
 	if regallocCheckEnabled {

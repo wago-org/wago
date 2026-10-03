@@ -261,12 +261,28 @@ func (f *fn) checkBeginSlots(from, to, n int) func() {
 }
 
 // Immutable caches are defined at their actual preload, not seeded at a call.
-// They have no spill/reload protocol and must survive until function exit.
+// They have no spill/reload protocol and must survive until their cache scope ends.
 func (f *fn) checkImmutable(reg Reg, fp bool, size int) {
 	loc := checkReg(reg, fp)
 	value := f.immutableCheck.Fresh(size)
 	f.immutableCheck.Put(loc, value)
 	f.immutableValues = append(f.immutableValues, allocationGoal{loc, value})
+}
+
+// A loop-scoped cache ceases to reserve its register at the loop's lexical end.
+// Retire only that location's expectation; outer caches retain their original
+// identities, and calls emitted before this boundary still reject clobbers.
+func (f *fn) checkReleaseImmutable(reg Reg, fp bool) {
+	loc := checkReg(reg, fp)
+	for i, goal := range f.immutableValues {
+		if goal.loc == loc {
+			copy(f.immutableValues[i:], f.immutableValues[i+1:])
+			f.immutableValues[len(f.immutableValues)-1] = allocationGoal{}
+			f.immutableValues = f.immutableValues[:len(f.immutableValues)-1]
+			return
+		}
+	}
+	panic("regalloccheck: retiring an unknown immutable cache")
 }
 
 // Invoke at every physical call in a cache-bearing function, including helper

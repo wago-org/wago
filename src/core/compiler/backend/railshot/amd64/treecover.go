@@ -14,6 +14,9 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 		if r := f.tryAffineAddTree(node, dest); r != regNone {
 			return r
 		}
+		if !associativeAddTreeEnabled {
+			return regNone
+		}
 	}
 	requestedDest := dest != regNone
 	need := treeRegisterNeed(node)

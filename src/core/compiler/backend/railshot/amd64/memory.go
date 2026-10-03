@@ -3,11 +3,44 @@
 package amd64
 
 import (
+	"os"
+
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
+
+// WAGO_AMD64_NO_STORE_VALUE_LOAD_FOLD=1 keeps the eager pre-store load path as
+// an exact A/B and correctness oracle.
+var storeValueLoadFoldEnabled = os.Getenv("WAGO_AMD64_NO_STORE_VALUE_LOAD_FOLD") != "1"
+
+// storeValueLastFoldableLoad returns the last deferred load in a pure integer
+// value tree. Earlier loads are forced in source order before condensation, so
+// only the final load may move among nontrapping operations.
+func storeValueLastFoldableLoad(top *elem) *elem {
+	if top == nil || !top.isDeferred() {
+		return nil
+	}
+	base := baseOfValentBlock(top)
+	var last *elem
+	for e := base; ; e = e.next {
+		if e.isValue() && e.st.kind == stMemRef {
+			last = e
+		}
+		if e.isDeferred() {
+			op := e.deferredOp()
+			if !isBinALU(op) && !isShift(op) && !isUnary(op) &&
+				!isConvert(op) && !isCompare(op) && op != opEqz {
+				return nil
+			}
+		}
+		if e == top {
+			break
+		}
+	}
+	return last
+}
 
 // memAccessSize returns the byte width of a plain scalar memory instruction.
 func memAccessSize(op byte) int {
@@ -198,7 +231,9 @@ func compactTrapBranch(branch int) uint32 {
 // pins before the common trap exit writes them back.
 func (f *fn) prepareEntryTrapPins() {
 	needed := false
-	for g, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		g := int(global)
+		state := f.globalReg[g]
 		needed = needed || (!f.isModuleGlobal(g) && globalRegIsDirty(state))
 	}
 	if !needed {
@@ -791,17 +826,24 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	return base, ea, disp
 }
 
-// cleanMemory32Address reports concrete storage forms whose materialization
-// necessarily writes a 32-bit destination. Regional i32 pins are loaded from
-// canonical frame homes; call-free whole-function pins are canonicalized at
-// ingress and only receive 32-bit writes; i32 spills reload at their value width.
-// Call-making whole-function pins, globals, and deferred operations remain
-// excluded because their carrier may still have nonzero high bits.
+// cleanMemory32Address reports i32 values whose storage shape or retained
+// provenance proves the upper half is already zero. Deferred arithmetic facts
+// are set only for operations that materialize a 32-bit result. Regional i32
+// pins are loaded from canonical frame homes; whole-function pins are
+// canonicalized at ingress and on call-result assignment, then only receive
+// 32-bit writes; i32 spills reload at their value width. Globals remain
+// excluded when they have no explicit upper-zero fact.
 func (f *fn) cleanMemory32Address(e *elem) bool {
 	if !f.opt(optAddrZExtElim) || e == nil {
 		return false
 	}
-	if !e.isValue() || e.st.typ != mtI32 {
+	if e.st.typ != mtI32 {
+		return false
+	}
+	if f.opt(optValueFacts) && e.st.valueFacts().has(factUpper32Zero) {
+		return true
+	}
+	if !e.isValue() {
 		return false
 	}
 	switch e.st.kind {
@@ -812,7 +854,10 @@ func (f *fn) cleanMemory32Address(e *elem) bool {
 			return f.opt(optCanonicalI32)
 		}
 		if f.usesCalls {
-			return false
+			// Wrapper parameters, internal register arguments, local writes,
+			// fused call results, and post-call frame reloads all enter an i32
+			// pin through a 32-bit destination when canonical carriers are on.
+			return f.opt(optCanonicalI32)
 		}
 		return f.profitableCanonicalI32Carrier()
 	case stSlot:
@@ -943,7 +988,20 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		return nil
 	}
 	off32 := uint32(off)
-	f.materializePendingLoads() // deferred loads must read pre-store memory
+	// Force all pending loads before the final load in a pure value tree. That
+	// preserves earlier trap order while the final load can fold into its consumer
+	// before this store writes memory.
+	top := f.s.back()
+	lastLoad := (*elem)(nil)
+	if storeValueLoadFoldEnabled &&
+		!(size == 1 && f.opt(optStore8Flags) && isFusableCompare(top) && !top.valueType().isFloat()) {
+		lastLoad = storeValueLastFoldableLoad(top)
+	}
+	if lastLoad != nil {
+		f.materializePendingLoadsBelow(lastLoad)
+	} else {
+		f.materializePendingLoads()
+	}
 	// A constant value stores as an immediate directly (selectInstr's `mov r/m,
 	// imm` form) — no register, no load-then-store dependency chain. i64 needs
 	// two 4-byte immediate stores (low32 at disp, high32 at disp+4): a single

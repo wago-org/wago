@@ -73,6 +73,8 @@ func (f *fn) condense(node *elem, dest Reg) Reg {
 		return f.condenseBinary(node, dest)
 	case isShift(node.deferredOp()):
 		return f.condenseShift(node, dest)
+	case isFloatCompare(node.deferredOp()):
+		return f.condenseFloatCompare(node, dest)
 	case isCompare(node.deferredOp()) || node.deferredOp() == opEqz:
 		return f.condenseCompare(node, dest)
 	case isUnary(node.deferredOp()):
@@ -313,6 +315,20 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		// touches no register, so it is safe on both counts and folds as an r/m
 		// operand. (The inflate/flush_block guard-page miscompile: `L11 = (…) | L11`.)
 		f.spill(right)
+	}
+
+	// A deferred RHS can become an owned register only after the early operand
+	// selection above. Reconsider that newly available form without reordering
+	// either subtree: accumulate in its register and fold the private frame read.
+	// Guest-memory operands are excluded here; their trap order stays unchanged.
+	// Canonical frame carriers may retain a wider type than their consumer. Keep
+	// their existing materialization path so folded reads preserve input width.
+	if lateFrameCommuteEnabled && dest == regNone && node.deferredOp().commutative() &&
+		left.isValue() && left.valueType() == node.valueType() &&
+		right.isValue() && right.st.kind == stReg &&
+		(left.st.kind == stSlot || left.st.kind == stLocalRef) {
+		left, right = right, left
+		f.stats.peep("late-frame-commute")
 	}
 
 	if dest == regNone {
@@ -649,15 +665,19 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 			return dest
 		}
 		if dest == regNone {
-			// Evaluate and protect the full source before allocating the distinct
-			// destructive destination. A deferred source can borrow several interval
-			// locals; reserving the destination first perturbs that condensation and
-			// may evict one before its use. Keeping the source distinct also matches
-			// the non-destructive BMI2 path's ownership contract.
-			src, _ := f.materializeRead(left)
-			f.pinned = f.pinned.add(src)
-			dest = f.allocReg(maskOf(src))
-			f.pinned = f.pinned.remove(src)
+			// Evaluate the full source before choosing the destructive destination.
+			// A deferred source can borrow several regional locals; reserving a
+			// destination first may evict one before its use. An owned result can
+			// be reused; a borrowed source still needs a protected copy.
+			src, owned := f.materializeRead(left)
+			if shiftOwnedDestinationEnabled && owned {
+				dest = src
+				f.stats.peep("shift-owned-destination")
+			} else {
+				f.pinned = f.pinned.add(src)
+				dest = f.allocReg(maskOf(src))
+				f.pinned = f.pinned.remove(src)
+			}
 		}
 		f.pinned = f.pinned.add(dest)
 		f.condenseInto(left, dest)
@@ -702,13 +722,17 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 // producing a 0/1 i32 result. (Fusing compares directly into branches is a later
 // optimization; Phase 1 materializes the boolean.)
 func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
-	if cc, ok := f.tryMaskedEqzToFlags(node); ok {
+	foldedCC, folded := f.tryMemoryCompareToFlags(node)
+	if !folded {
+		foldedCC, folded = f.tryMaskedEqzToFlags(node)
+	}
+	if folded {
 		result := dest
 		if result == regNone {
 			result = f.allocReg(0)
 		}
 		f.stats.peep("compare-setcc")
-		f.a.SetccReg(cc, result)
+		f.a.SetccReg(foldedCC, result)
 		f.occupy(node, result)
 		node.st.typ = mtI32
 		node.setDeferredOp(opNone)

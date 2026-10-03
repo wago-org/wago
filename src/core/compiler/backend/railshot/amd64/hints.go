@@ -76,8 +76,8 @@ func (f *funcHintFlags) assign(flag funcHintFlags, value bool) {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	// gcResolverAndRelocs packs a saturated 24-bit conservative GC resolver-site
-	// count plus an 8-bit outgoing local-call relocation reservation hint.
+	// gcResolverAndRelocs packs a saturated 21-bit GC resolver-site count, three
+	// exact flags, and an 8-bit outgoing call-relocation reservation hint.
 	gcResolverAndRelocs uint32
 	localStart          uint32
 	lastGetStartPlus1   uint32 // zero when interval-region side storage was not retained
@@ -102,13 +102,22 @@ type funcHints struct {
 }
 
 const (
-	// Four million resolver sites is already far beyond the validated function
-	// body limit. Spend the two high bits of the old 24-bit counter on exact
-	// dynamic-call classification without growing the 64-byte hint header.
-	gcResolverSiteMask         = uint32(1<<22 - 1)
+	// The resolver-site count is a saturated sizing hint. Its upper three bits
+	// record exact side-storage and dynamic-call facts without widening the header.
+	gcResolverSiteMask         = uint32(1<<21 - 1)
+	wideLocalScoreMask         = uint32(1 << 21)
 	nonDirectCallMask          = uint32(1 << 22)
 	unsupportedDynamicCallMask = uint32(1 << 23)
 )
+
+func (h funcHints) hasWideLocalScores() bool { return h.gcResolverAndRelocs&wideLocalScoreMask != 0 }
+func (h *funcHints) setWideLocalScores(enabled bool) {
+	if enabled {
+		h.gcResolverAndRelocs |= wideLocalScoreMask
+	} else {
+		h.gcResolverAndRelocs &^= wideLocalScoreMask
+	}
+}
 
 func (h *funcHints) addGCResolverSite() {
 	if h.gcResolverAndRelocs&gcResolverSiteMask != gcResolverSiteMask {
@@ -173,7 +182,7 @@ type funcHintSidecar struct {
 
 func retainedLocalScoreCount(h funcHints) int {
 	n := int(h.localCount)
-	if n > 64 && !h.flags.has(hintIntervalRegionStorage) {
+	if n > 64 && !h.flags.has(hintIntervalRegionStorage) && !h.hasWideLocalScores() {
 		return 64
 	}
 	return n

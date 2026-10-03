@@ -252,10 +252,17 @@ func (in *Instance) beginInstanceInvocation() error {
 }
 
 func (in *Instance) beginDirectInvocation() error {
-	if in.rt == nil && !in.guestStorageBorrowed() && in.invocationState.CompareAndSwap(0, 1) {
+	if in.tryBeginDirectInvocation() {
 		return nil
 	}
 	return in.beginInvocation()
+}
+
+// tryBeginDirectInvocation keeps the uncontended admission small enough to
+// inline. A false result acquired no lease; the caller must use beginInvocation
+// for Runtime accounting, contention, and the original error handling.
+func (in *Instance) tryBeginDirectInvocation() bool {
+	return in.rt == nil && !in.guestStorageBorrowed() && in.invocationState.CompareAndSwap(0, 1)
 }
 
 func (in *Instance) endInvocation() {

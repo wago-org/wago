@@ -12,6 +12,7 @@ import (
 )
 
 func TestBMI2OptimizationHostGateAndCodecRequirement(t *testing.T) {
+	mockAMD64ArtifactCPU(t, shared.AMD64BMI2)
 	original := bmi2HostFeaturesSupported
 	defer func() { bmi2HostFeaturesSupported = original }()
 

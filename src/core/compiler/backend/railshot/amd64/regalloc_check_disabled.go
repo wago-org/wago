@@ -14,6 +14,7 @@ func (*fn) checkUse(*elem)                       {}
 func (*fn) checkOccupy(*elem, Reg, bool)         {}
 func (*fn) checkBeginSlots(int, int, int) func() { return nil }
 func (*fn) checkImmutable(Reg, bool, int)        {}
+func (*fn) checkReleaseImmutable(Reg, bool)      {}
 func (*fn) checkCallClobber()                    {}
 func checkSize(machineType) int                  { return 0 }
 

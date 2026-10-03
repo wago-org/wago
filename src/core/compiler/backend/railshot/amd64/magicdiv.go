@@ -28,11 +28,24 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 
 	// Compute the dividend into an owned result register (kept clear of RAX/RDX so
 	// a magic multiply-high can use them without disturbing it).
+	var bound, mult uint32
+	var shift byte
+	bounded := false
+	if boundedUnsignedDivEnabled && !w && !signed {
+		if b, ok := boundedUnsignedDividend(node.arg0); ok {
+			bound = b
+			mult, shift, bounded = boundedUnsignedReciprocal(bound, uint32(c))
+		}
+	}
+	// The dividend can itself contain a fixed-register division. Retain its
+	// original destination exclusions even when the final operation is bounded.
 	res := f.allocReg(maskOf(RAX, RDX))
 	f.pinned = f.pinned.add(res)
 	f.condenseInto(node.arg0, res) // res = n (dividend)
 
-	if signed {
+	if bounded {
+		f.divConstUnsignedBounded(res, uint32(c), bound, mult, shift, wantRem)
+	} else if signed {
 		f.divConstSigned(res, c, w, wantRem)
 	} else {
 		ud := uint64(c)

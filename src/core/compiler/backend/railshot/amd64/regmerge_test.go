@@ -45,6 +45,39 @@ func TestRegMergeBlockResult(t *testing.T) {
 	}
 }
 
+func TestRecursiveFunctionUsesStackResultMerge(t *testing.T) {
+	body := []byte{
+		0x00,
+		0x20, 0x00, 0x45, // n == 0
+		0x04, 0x7f, // if (result i32)
+		0x41, 0x01, // then: 1
+		0x05, // else
+		0x20, 0x00, 0x20, 0x00, 0x41, 0x01, 0x6b,
+		0x10, 0x00, // recursive call with n-1
+		0x6c, // n * result
+		0x0b, 0x0b,
+	}
+	m := modFuncs(t, funcDef{[]wasm.ValType{i32}, []wasm.ValType{i32}, body})
+	stats := compileWithStats(t, m, false)
+	if got := stats.Funcs[0].Peephole["recursive-stack-merge"]; got != 1 {
+		t.Fatalf("recursive stack merge = %d, want 1", got)
+	}
+	for _, tc := range []struct{ n, want int32 }{{0, 1}, {1, 1}, {5, 120}, {6, 720}} {
+		if got := runAmd64(t, m, tc.n); got != tc.want {
+			t.Fatalf("fact(%d) = %d, want %d", tc.n, got, tc.want)
+		}
+	}
+	large := append([]byte(nil), body[:len(body)-1]...)
+	for range 64 {
+		large = append(large, 0x01) // nop before the function end
+	}
+	large = append(large, 0x0b)
+	largeStats := compileWithStats(t, modFuncs(t, funcDef{[]wasm.ValType{i32}, []wasm.ValType{i32}, large}), false)
+	if got := largeStats.Funcs[0].Peephole["recursive-stack-merge"]; got != 0 {
+		t.Fatalf("large recursive stack merge = %d, want 0", got)
+	}
+}
+
 // TestRegMergeIfElse exercises the phase-3 if/else register-merge: an if with a
 // single i32 result must produce identical, correct values with reg-merge on/off.
 //

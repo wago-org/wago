@@ -6,8 +6,19 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Changed
+
+- Improve AMD64 execution with bounded local and caller register reuse, direct
+  branch-result transfers, memory operands, and scalar/vector loop lowering.
+- Reduce compilation work by skipping GC conversion scans for validated non-GC
+  modules and synchronizing only the globals assigned to physical registers.
+- Reuse owned integer shift operands and an additional revocable local register
+  in admitted straight-line AMD64 functions.
+
 ### Fixed
 
+- Preserve earlier call arguments when later deferred expressions use fixed
+  registers for shifts or division, including mixed and tail calls.
 - Legacy exception-handling opcodes now report their unsupported encoding and
   a `try_table`/exnref migration hint instead of a generic invalid instruction.
 - Recovered backend panics now return a distinct `InternalCompilerError` with

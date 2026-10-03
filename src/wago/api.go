@@ -1185,7 +1185,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			gcTypeSubtypingProduct = product
 		}
 	}
-	if features.GCStructProducts {
+	if features.GCStructProducts && gcProductAnalysisNeeded(requiredByModule) {
 		product, ok := stagedGCStructExecutionProduct(wasmBytes)
 		if !ok && moduleUsesGenericGCStructHelpers(m) {
 			product, ok = stagedGCStructGeneric, true
@@ -1197,7 +1197,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			gcStructProduct = product
 		}
 	}
-	if features.GCArrayProducts && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
+	if features.GCArrayProducts && gcProductAnalysisNeeded(requiredByModule) && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
 		product, ok := stagedGCArrayExecutionProduct(wasmBytes)
 		if !ok {
 			product, ok = stagedGCArrayOpcodeProduct(m)
@@ -1209,7 +1209,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			gcArrayProduct = product
 		}
 	}
-	if features.GCI31Products && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructRefCastConcrete && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
+	if features.GCI31Products && gcProductAnalysisNeeded(requiredByModule) && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructRefCastConcrete && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
 		if product, ok := stagedGCI31ExecutionProduct(wasmBytes); ok {
 			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
 				return nil, fmt.Errorf("compile: unsupported i31 product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
@@ -1227,7 +1227,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			gcI31Product = stagedGCI31ProductCore
 		}
 	}
-	if features.GCStructProducts && moduleUsesGCExternConversion(m) && !gcStructProduct.requiresExternConversion() {
+	if features.GCStructProducts && gcProductAnalysisNeeded(requiredByModule) && !gcStructProduct.requiresExternConversion() && moduleUsesGCExternConversion(m) {
 		// Conversion identity is an orthogonal runtime obligation. The extern
 		// product uses the same complete struct/array helpers while additionally
 		// provisioning the bounded anyref/externref identity bridge.

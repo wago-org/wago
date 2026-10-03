@@ -77,6 +77,33 @@ func TestRegallocCheckRejectsShortFoldedI64Value(t *testing.T) {
 	})
 }
 
+// A canonical frame carrier can be wider than an i32 consumer. Late operand
+// selection must keep its full-width materialization instead of folding a
+// narrow read of a value whose transfer contract still covers eight bytes.
+func TestRegallocCheckLateFrameCarrierWidth(t *testing.T) {
+	saved := lateFrameCommuteEnabled
+	defer func() { lateFrameCommuteEnabled = saved }()
+	for _, enabled := range []bool{false, true} {
+		for _, typ := range []machineType{mtI32, mtI64} {
+			t.Run(fmt.Sprintf("enabled%v/type%d", enabled, typ), func(t *testing.T) {
+				lateFrameCommuteEnabled = enabled
+				f := fn{a: &encoder.Asm{}, s: newStack(), globalCellReg: regNone}
+				f.pushValue(storage{kind: stSlot, typ: typ, slot: 3})
+				f.pushValue(storage{kind: stSlot, typ: mtI32, slot: 4})
+				f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
+				f.pushBinOp(opAdd, mtI32)
+				f.pushBinOp(opXor, mtI32)
+				root := f.s.back()
+				f.checkBeginFlush([]*elem{root})
+				defer f.a.ObserveRegalloc(nil)
+				r := f.materialize(root)
+				f.a.Store64(RSP, f.spillOff(0), r)
+				f.checkEndFlush()
+			})
+		}
+	}
+}
+
 func TestRegallocCheckShiftedI64ComparisonResult(t *testing.T) {
 	for _, op := range []wOp{opEq, opLtU, opEqz} {
 		for _, corrupt := range []int{-1, 3, 4} {
@@ -116,8 +143,12 @@ func TestRegallocCheckShiftedI64ComparisonResult(t *testing.T) {
 				f.materialize(root)
 				f.spill(root)
 				f.checkEndFlush()
-				if narrowMoves != 1 {
-					t.Fatalf("target-hint 32-bit moves = %d, want 1", narrowMoves)
+				wantMoves := 1
+				if shiftOwnedDestinationEnabled {
+					wantMoves = 0 // the comparison's owned result is already i32
+				}
+				if narrowMoves != wantMoves {
+					t.Fatalf("target-hint 32-bit moves = %d, want %d", narrowMoves, wantMoves)
 				}
 			})
 		}

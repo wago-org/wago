@@ -18,12 +18,14 @@ type Call struct {
 	Want   []uint64 `json:"want"`
 }
 type Workload struct {
-	ID       string          `json:"id"`
-	Artifact string          `json:"artifact"`
-	Hash     string          `json:"artifact_sha256"`
-	Init     string          `json:"init"`
-	Calls    []Call          `json:"exec"`
-	Command  json.RawMessage `json:"command,omitempty"`
+	ID           string          `json:"id"`
+	Artifact     string          `json:"artifact"`
+	Hash         string          `json:"artifact_sha256"`
+	Init         string          `json:"init"`
+	Calls        []Call          `json:"exec"`
+	Command      json.RawMessage `json:"command,omitempty"`
+	SemanticExec []string        `json:"semantic_exec,omitempty"`
+	semantic     []semanticCase
 }
 
 func LoadWorkload(catalog, id, module, export, init, args, want string) (Workload, []byte, error) {
@@ -37,8 +39,9 @@ func LoadWorkload(catalog, id, module, export, init, args, want string) (Workloa
 			return w, nil, err
 		}
 		var c struct {
-			Schema     int        `json:"schema"`
-			Benchmarks []Workload `json:"benchmarks"`
+			Schema     int            `json:"schema"`
+			Benchmarks []Workload     `json:"benchmarks"`
+			Checks     []semanticCase `json:"checks"`
 		}
 		if err = json.Unmarshal(b, &c); err != nil {
 			return w, nil, err
@@ -57,8 +60,32 @@ func LoadWorkload(catalog, id, module, export, init, args, want string) (Workloa
 		if !found {
 			return w, nil, fmt.Errorf("unknown corpus workload %q", id)
 		}
-		if len(w.Command) > 0 || len(w.Calls) == 0 {
+		if len(w.Command) > 0 || (len(w.Calls) == 0 && len(w.SemanticExec) == 0) {
 			return w, nil, fmt.Errorf("workload %q needs an unsupported command/import environment", id)
+		}
+		if len(w.SemanticExec) != 0 {
+			if len(w.Calls) != 0 {
+				return w, nil, fmt.Errorf("workload cannot mix exec and semantic_exec")
+			}
+			for _, id := range w.SemanticExec {
+				var matches []semanticCase
+				for _, check := range c.Checks {
+					if check.ID == id {
+						matches = append(matches, check)
+					}
+				}
+				if len(matches) != 1 {
+					return w, nil, fmt.Errorf("semantic check %q needs exactly one contract", id)
+				}
+				check := matches[0]
+				if check.Artifact != w.Artifact || check.Hash != w.Hash {
+					return w, nil, fmt.Errorf("semantic check %q artifact differs from workload", id)
+				}
+				if err := check.validate(); err != nil {
+					return w, nil, fmt.Errorf("semantic check %q: %w", id, err)
+				}
+				w.semantic = append(w.semantic, check)
+			}
 		}
 		w.Artifact = filepath.Join(filepath.Dir(catalog), w.Artifact)
 	} else {
