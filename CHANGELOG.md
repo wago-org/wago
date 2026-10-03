@@ -6,8 +6,17 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Changed
+
+- Improve AMD64 execution with bounded local and caller register reuse, direct
+  branch-result transfers, memory operands, and scalar/vector loop lowering.
+- Reduce compilation work by skipping GC conversion scans for validated non-GC
+  modules and synchronizing only the globals assigned to physical registers.
+
 ### Fixed
 
+- Preserve earlier call arguments when later deferred expressions use fixed
+  registers for shifts or division, including mixed and tail calls.
 - Preserve AMD64 `select` operands when deferred divisions, remainders, shifts,
   or rotates reclaim fixed registers, and report operand traps in WebAssembly
   evaluation order.
