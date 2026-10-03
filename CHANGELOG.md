@@ -22,6 +22,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- ARM64 scalar `min`/`max` local sinking now preserves an aliased right operand
+  instead of overwriting it with the left operand before the comparison.
 - Preserve earlier call arguments when later deferred expressions use fixed
   registers for shifts or division, including mixed and tail calls.
 - Legacy exception-handling opcodes now report their unsupported encoding and
