@@ -8,7 +8,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-var intervalRSILeaseEnabled = os.Getenv("WAGO_AMD64_INTERVAL_RSI_LEASE") == "1"
+// Set to zero for diagnostic A/B runs of the qualified extra integer lease.
+var intervalRSILeaseEnabled = os.Getenv("WAGO_AMD64_INTERVAL_RSI_LEASE") != "0"
 
 // RSI has no implicit role in this integer-only, call-free instruction subset.
 // Keep RAX and RCX available for transient values and variable shifts. The
