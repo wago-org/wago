@@ -471,8 +471,10 @@ type fn struct {
 	// Control-flow state (Phase 3).
 	ctrl        []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
 	unreachable bool        // in dead code after an unconditional branch/trap
-	ehTryDepth  int         // live reachable try_table records; bounded by maxEHTryRecords
-	ehRootCount int         // compile-time assigned fixed exception roots; bounded by maxEHRootRecords
+	ehTryDepth  int         // live reachable try_table records; bounded by ehTryCap
+	ehRootCount int         // compile-time assigned fixed exception roots; bounded by ehRootCap
+	ehTryCap    int         // this function's reserved try_table records (max nesting depth)
+	ehRootCap   int         // this function's reserved exception roots (catch_ref clauses)
 
 	// sc holds per-function scratch whose backing is reused across the module:
 	// The intrusive return chain, brFoldSites and trapSites live there so each
@@ -1402,7 +1404,7 @@ func (f *fn) localAddr(i int) int32 {
 }
 func (f *fn) ehFrameBytes() int {
 	if f.moduleEH {
-		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
+		return (f.ehTryCap*ehRecordSlots + f.ehRootCap*ehRootSlots) * 8
 	}
 	return 0
 }
@@ -1410,7 +1412,7 @@ func (f *fn) ehRecordOff(index int) int32 {
 	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + index*ehRecordSlots*8)
 }
 func (f *fn) ehRootOff(index int) int32 {
-	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + maxEHTryRecords*ehRecordSlots*8 + index*ehRootSlots*8)
+	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + f.ehTryCap*ehRecordSlots*8 + index*ehRootSlots*8)
 }
 func (f *fn) spillOff(k int) int32 {
 	return int32(f.frameHeaderBytes() + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
@@ -3345,6 +3347,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		sc.transient = f.transient
 		sc.relocs = f.relocs
 	}()
+	if moduleEH {
+		shape, err := ehFrameShape(sc, c.BodyBytes)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("function %d: %w", funcIdx, err)
+		}
+		f.ehTryCap, f.ehRootCap = shape.TryRecords, shape.RootRecords
+	}
 	f.syncHostCalls = syncHostCalls
 	f.syncHostSlots = syncHostSlots
 	f.gcTypeSubtypingRefTest = gcTypeSubtypingRefTest
@@ -4335,6 +4344,7 @@ func (f *fn) prologue(localScores []uint32) {
 // where reads materialize zero on demand and control-flow reconciliation stores it
 // to the frame before paths diverge when required.
 func (f *fn) zeroDeclaredLocals(localScores []uint32) {
+	f.zeroEHGCRootLanes()
 	if f.nLocals <= f.nParams {
 		return
 	}
@@ -4361,6 +4371,21 @@ func (f *fn) zeroDeclaredLocals(localScores []uint32) {
 	}
 	for i := f.nParams; i < f.nLocals; i++ {
 		f.markDeclaredLocalZero(i)
+	}
+}
+
+// zeroEHGCRootLanes clears the GC lanes of every exception root slot at entry.
+// Those lanes are fixed collector roots at every safepoint of the frame, before
+// any try_table has initialized its slot.
+func (f *fn) zeroEHGCRootLanes() {
+	if f.ehRootCap == 0 || f.gcFrameRoots == nil || !f.gcFrameRoots.HasFixedOffsets() {
+		return
+	}
+	f.a.XorSelf32(RAX)
+	for root := 0; root < f.ehRootCap; root++ {
+		for lane := shared.EHGCLaneBase; lane < shared.EHPayloadLanes; lane++ {
+			f.a.Store64(RSP, f.ehRootOff(root)+8+int32(lane)*8, RAX)
+		}
 	}
 }
 
@@ -4485,7 +4510,25 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	// carries no environment setup at all (WARP's model). Args in GP/XMM regs.
 	if hostAdapter {
 		beforeAlign := a.Len()
-		if internalEntryShouldAlign(a.Len(), len(c.BodyBytes), f.policy) {
+		align := internalEntryShouldAlign(a.Len(), len(c.BodyBytes), f.policy)
+		if f.stagedTailDescriptors {
+			// Tail-call modules place a 4-byte backlink directly below the internal
+			// entry: its distance from this function's offset-0 adapter. An internal
+			// funcref descriptor names only the internal entry, and a wrapper-ABI
+			// caller tail-enters such a target through the adapter (see
+			// emitTailWrapperToAdapterJump). The adapter ends in RET, so the
+			// backlink and its padding are never executed.
+			pad := 0
+			if align {
+				pad = (-(a.Len() + 4)) & 15
+			}
+			var link [4]byte
+			binary.LittleEndian.PutUint32(link[:], uint32(a.Len()+pad+4))
+			for range pad {
+				a.EmitBytes([]byte{0xcc})
+			}
+			a.EmitBytes(link[:])
+		} else if align {
 			a.Align16()
 		}
 		if diagnosticsEnabled && f.stats != nil {
@@ -4746,4 +4789,13 @@ func countLocals(params []wasm.ValType, locals wasm.Locals) (int, error) {
 		n += int(run.Count)
 	}
 	return n, nil
+}
+
+// ehFrameShape sizes one function's exception records from its body. Modules
+// built without body bytes keep the historical fixed reservation.
+func ehFrameShape(sc *scratch, body []byte) (shared.EHFrameShape, error) {
+	if len(body) == 0 {
+		return shared.EHFrameShape{TryRecords: legacyEHTryRecords, RootRecords: legacyEHRootRecords}, nil
+	}
+	return shared.ScanEHFrameShape(&sc.classifier, body)
 }

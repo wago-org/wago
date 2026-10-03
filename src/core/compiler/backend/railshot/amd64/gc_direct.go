@@ -1435,6 +1435,19 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 	a.Ret()
 }
 
+// rejectForeignAnyref fails a defined struct/array test or cast whose operand
+// in RAX is not a compact collector reference. Such a word is a foreign anyref
+// (any.convert_extern of a host externref), which no defined type admits. The
+// stubs otherwise inspect only EAX, so its random low half could read as null,
+// alias a live handle, or fail handle validation with a trap in test mode.
+// Clobbers R10, which every caller preserves or treats as scratch.
+func (f *fn) rejectForeignAnyref(fail func(Cond)) {
+	f.a.MovReg64(R10, RAX)
+	f.a.ShiftImm(5, R10, 32, true) // shr r10, 32
+	f.a.TestSelf(R10, true)
+	fail(condNE)
+}
+
 // emitNativeFinalCastArrayLenStub emits one per-function checked native stub.
 // Inputs are EAX=compact reference, EDX=module-local final array type, and
 // ECX=cast-null flag. The result is returned in EAX. Only caller-saved registers
@@ -1460,6 +1473,7 @@ func (f *fn) emitNativeFinalCastArrayLenStub() {
 			a.Push(R9 + Reg(i))
 		}
 	}
+	f.rejectForeignAnyref(func(cond Cond) { f.trapIf(cond, trapCastFailure) })
 	a.TestSelf(RAX, false)
 	nonNull := a.JccPlaceholder(condNE)
 	a.TestSelf(RCX, false)
@@ -1565,6 +1579,7 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 		}
 	}
 
+	f.rejectForeignAnyref(failIf)
 	a.TestSelf(RAX, false)
 	nonNull := a.JccPlaceholder(condNE)
 	if test {
@@ -1799,6 +1814,7 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 		}
 	}
 	a.MovRegReg32(RDI, RCX) // preserve required extent
+	f.rejectForeignAnyref(func(cond Cond) { f.trapIf(cond, trapCastFailure) })
 	a.TestSelf(RAX, false)
 	nonNull := a.JccPlaceholder(condNE)
 	a.TestSelf(RSI, false)

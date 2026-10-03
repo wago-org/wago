@@ -269,27 +269,47 @@ func evalNullExternConversionConstExpr(b []byte, want wasm.ValType) (constExprRe
 	if err != nil {
 		return constExprResult{}, true, err
 	}
-	prefix, err := r.Byte()
-	if err != nil || prefix != 0xfb {
-		return constExprResult{}, false, nil
-	}
-	sub, err := r.U32()
-	if err != nil {
-		return constExprResult{}, true, err
-	}
+	// A null converted any number of times between the any and extern
+	// hierarchies is still null; the last conversion decides the type.
+	// Validation has already proved each step well typed, but keep the
+	// hierarchy check so a malformed chain still fails closed.
 	got := constExprResult{GlobalIndex: -1, FuncIndex: -1}
-	switch sub {
-	case 26: // any.convert_extern
-		if heap != -17 {
-			return constExprResult{}, true, fmt.Errorf("any.convert_extern constant source heap %d is not extern", heap)
+	inExtern := heap == -17 || heap == -14 // extern / noextern
+	conversions := 0
+	for {
+		if r.BytesLeft() == 0 {
+			break
 		}
-		got.vtype = wasm.AnyRef
-	case 27: // extern.convert_any
-		if heap != -18 {
-			return constExprResult{}, true, fmt.Errorf("extern.convert_any constant source heap %d is not any", heap)
+		if b[len(b)-r.BytesLeft()] != 0xfb {
+			break
 		}
-		got.vtype = wasm.ExternRef
-	default:
+		if _, err := r.Byte(); err != nil {
+			return constExprResult{}, true, err
+		}
+		sub, err := r.U32()
+		if err != nil {
+			return constExprResult{}, true, err
+		}
+		switch sub {
+		case 26: // any.convert_extern
+			if !inExtern {
+				return constExprResult{}, true, fmt.Errorf("any.convert_extern constant source heap %d is not extern", heap)
+			}
+			got.vtype, inExtern = wasm.AnyRef, false
+		case 27: // extern.convert_any
+			if inExtern {
+				return constExprResult{}, true, fmt.Errorf("extern.convert_any constant source heap %d is not any", heap)
+			}
+			got.vtype, inExtern = wasm.ExternRef, true
+		default:
+			if conversions == 0 {
+				return constExprResult{}, false, nil
+			}
+			return constExprResult{}, true, fmt.Errorf("GC conversion constant expression has trailing instructions")
+		}
+		conversions++
+	}
+	if conversions == 0 {
 		return constExprResult{}, false, nil
 	}
 	end, err := r.Byte()
@@ -683,37 +703,62 @@ func evalCompiledScalarConstExpr(b []byte, want ValType, globals []*Global, defs
 	return bits, err
 }
 
+// evalCompiledI31ConstExpr evaluates `<i32 extended constant> ref.i31 end`.
+// The i32 operand is any program the scalar evaluator accepts (constants,
+// immutable global.get, add/sub/mul), so compile-time admission and
+// instantiation agree on every valid i31 initializer. With nil globals it
+// only validates the shape.
 func evalCompiledI31ConstExpr(b []byte, globals []*Global, defs []GlobalDef, scope constExprGlobalScope) (uint64, error) {
 	r := wasm.NewReader(b)
-	op, err := r.Byte()
-	if err != nil || op != 0x23 {
-		return 0, fmt.Errorf("i31 initializer requires imported immutable i32 global.get")
+	last := -1
+	for {
+		start := len(b) - r.BytesLeft()
+		op, err := r.Byte()
+		if err != nil {
+			return 0, fmt.Errorf("i31 initializer has invalid end")
+		}
+		if op == 0x0b {
+			if r.BytesLeft() != 0 {
+				return 0, fmt.Errorf("i31 initializer has invalid end")
+			}
+			break
+		}
+		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+			return 0, fmt.Errorf("i31 initializer: %w", err)
+		}
+		last = start
 	}
-	index, err := r.U32()
-	if err != nil {
-		return 0, err
-	}
-	i := int(index)
-	if i < 0 || i >= scope.limit || i >= len(defs) || defs[i].Mutable || defs[i].Type != ValI32 {
-		return 0, fmt.Errorf("i31 initializer global.get %d is unavailable or not immutable i32", index)
-	}
-	prefix, err := r.Byte()
-	if err != nil || prefix != 0xfb {
+	if last < 0 || b[last] != 0xfb {
 		return 0, fmt.Errorf("i31 initializer missing ref.i31")
 	}
-	sub, err := r.U32()
-	if err != nil || sub != 28 {
+	tail := wasm.NewReader(b[last+1:])
+	if sub, err := tail.U32(); err != nil || sub != 28 {
 		return 0, fmt.Errorf("i31 initializer has unsupported 0xfb opcode %d", sub)
 	}
-	end, err := r.Byte()
-	if err != nil || end != 0x0b || r.BytesLeft() != 0 {
-		return 0, fmt.Errorf("i31 initializer has invalid end")
+	operand := append(append([]byte(nil), b[:last]...), 0x0b)
+	resolve := func(index uint32) (uint64, wasm.ValType, bool, bool) {
+		i := int(index)
+		if i < 0 || i >= scope.limit || i >= len(defs) {
+			return 0, wasm.ValType{}, false, false
+		}
+		typ, ok := wasmScalarValType(defs[i].Type)
+		if !ok {
+			return 0, wasm.ValType{}, defs[i].Mutable, false
+		}
+		if globals == nil {
+			return 0, typ, defs[i].Mutable, true
+		}
+		if i >= len(globals) || globals[i] == nil {
+			return 0, wasm.ValType{}, false, false
+		}
+		return readGlobalObject(globals[i], defs[i].Type), typ, defs[i].Mutable, true
+	}
+	bits, _, err := evalScalarConstExprProgram(operand, wasm.I32, resolve)
+	if err != nil {
+		return 0, fmt.Errorf("i31 initializer operand: %w", err)
 	}
 	if globals == nil {
 		return 0, nil
 	}
-	if i >= len(globals) || globals[i] == nil {
-		return 0, fmt.Errorf("i31 initializer global.get %d has no runtime cell", index)
-	}
-	return uint64(uint32(readGlobalObject(globals[i], ValI32))<<1 | 1), nil
+	return uint64(uint32(bits)<<1 | 1), nil
 }

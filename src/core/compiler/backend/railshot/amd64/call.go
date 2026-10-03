@@ -645,7 +645,19 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		f.unreachable = true
 		return nil
 	}
-	return fmt.Errorf("return_call: register-ABI caller cannot tail-enter result-bearing wrapper target %d", idx)
+	if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
+		return fmt.Errorf("return_call: target %d requires %d wrapper argument slots, limit %d", idx, slots, abi.TailArgsSlots)
+	}
+	if len(ft.Results) > 2 {
+		return fmt.Errorf("return_call: register-ABI caller cannot tail-enter wrapper target %d with %d results", idx, len(ft.Results))
+	}
+	f.stats.call("tail-direct-register-wrapper")
+	f.emitTailRegisterToWrapperJump(ft, func() {
+		site := f.a.JmpPlaceholder()
+		f.relocs = append(f.relocs, f.newCallReloc(site, int(idx)-imported, false))
+	})
+	f.unreachable = true
+	return nil
 }
 
 // emitTailWrapperJump marshals arguments into the fixed basedata tail bank,
@@ -702,9 +714,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	f.a.Load64(R10, R8, disp+runtime.ImportDispatchTargetContextOffset)
 	f.a.Load64(R8, R8, disp+runtime.ImportDispatchCallerContextOffset)
 
-	frameSite := f.a.Len() + 3
-	f.a.AddRsp(0)
-	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.emitTailFrameRelease()
 
 	f.a.Load64(RAX, RSP, 0)
 	leaSite := f.a.LeaRipPlaceholder(RDX)
@@ -780,16 +790,9 @@ func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 	f.a.MovImm64(R11, b.CalleeLinMem)
 	f.a.MovReg64(RDI, R11)
 	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
-	argBase := len(types) - p
-	for i := range ft.Params {
-		srcSlot := slotOfLogicalTypes(types, argBase+i)
-		f.a.Load64(RAX, RSP, f.spillOff(srcSlot))
-		f.a.Store64(RDI, int32(i*8), RAX)
-	}
+	f.storeTailBankArgs(ft, types, len(types)-p)
 
-	frameSite := f.a.Len() + 3
-	f.a.AddRsp(0)
-	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.emitTailFrameRelease()
 
 	f.a.Load64(RAX, RSP, 0)
 	leaSite := f.a.LeaRipPlaceholder(RDX)
@@ -872,10 +875,86 @@ func (f *fn) emitTailWrapperJumpVia(ft *wasm.CompType, emitJump func()) {
 	f.a.Load64(RCX, RSP, frResultsOff)
 	f.a.Load64(RDX, RBX, -int32(abi.TrapCellPtrOffset))
 	f.a.MovReg64(RSI, RBX)
-	frameSite := f.a.Len() + 3
-	f.a.AddRsp(0)
-	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.emitTailFrameRelease()
 	emitJump()
+}
+
+// emitTailRegisterToWrapperJump tail-enters a result-bearing wrapper-ABI
+// target from a register-ABI caller, which has no results buffer of its own.
+// When this function was entered through its own adapter, the adapter's
+// record is discarded and the target writes the adapter's results buffer
+// directly, keeping repeated tails stack-bounded. Otherwise a fixed record
+// [trampoline, result0, result1, pad] receives the wrapper results and the
+// trampoline returns them in the register-ABI result registers.
+func (f *fn) emitTailRegisterToWrapperJump(ft *wasm.CompType, emitJump func()) {
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(RDX)
+
+	f.a.MovReg64(RDI, RBX)
+	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
+	argBase := len(types) - p
+	dstSlot := 0
+	for i, param := range ft.Params {
+		srcSlot := slotOfLogicalTypes(types, argBase+i)
+		n := mtOf(param).stackSlots()
+		for slot := 0; slot < n; slot++ {
+			f.a.Load64(RAX, RSP, f.spillOff(srcSlot+slot))
+			f.a.Store64(RDI, int32((dstSlot+slot)*8), RAX)
+		}
+		dstSlot += n
+	}
+	f.a.Load64(RDX, RBX, -int32(abi.TrapCellPtrOffset))
+	f.a.MovReg64(RSI, RBX)
+	f.emitTailFrameRelease()
+
+	if f.adapterReturnOff != 0 {
+		// [RSP] is our return address; [RSP+8] is the results buffer the adapter
+		// pushed before calling the internal entry.
+		f.a.Load64(RAX, RSP, 0)
+		leaSite := f.a.LeaRipPlaceholder(R8)
+		f.a.PatchRel32(leaSite, f.adapterReturnOff)
+		if f.policy.CompactNative {
+			f.adapterReturnReferenced = true
+		}
+		f.a.Cmp64(RAX, R8)
+		nested := f.a.JccPlaceholder(condNE)
+		f.a.Load64(RCX, RSP, 8)
+		f.a.AddRsp(16)
+		emitJump()
+		f.a.PatchRel32(nested, f.a.Len())
+	}
+	// RSP is congruent to 8 mod 16 here, as at any function entry; a 32-byte
+	// record keeps the wrapper entry's alignment identical to a call.
+	f.a.SubRsp(32)
+	trampolineSite := f.a.LeaRipPlaceholder(RAX)
+	f.a.Store64(RSP, 0, RAX)
+	f.a.LeaDisp(RCX, RSP, 8)
+	emitJump()
+
+	trampoline := f.a.Len()
+	f.a.PatchRel32(trampolineSite, trampoline)
+	// The wrapper's RET popped the trampoline slot: results are at [RSP].
+	f.deriveModuleGlobals()
+	f.refreshCachedMemoryBoundAfterExternalCall()
+	gp, fp := 0, 0
+	for i, t := range ft.Results {
+		if isFloatValType(t) {
+			f.a.FLoadDisp(Reg(fp), RSP, int32(i*8), wasm.EqualValType(t, wasm.F64))
+			fp++
+		} else {
+			f.a.Load64([]Reg{RAX, RDX}[gp], RSP, int32(i*8))
+			gp++
+		}
+	}
+	f.a.AddRsp(24)
+	f.a.Ret()
 }
 
 type tailDeferredArg struct {
@@ -888,6 +967,17 @@ type tailDeferredArg struct {
 // cannot leak into an argument's upper half.
 func (f *fn) loadCallLocalInt(dst Reg, st storage) {
 	f.loadFrameInt(dst, f.localAddr(st.index()), st.typ)
+}
+
+// emitTailFrameRelease discards this function's exception handlers and
+// releases its native frame before a tail transfer. Every tail path must use
+// it: a handler record left installed would route a later exception from the
+// tail target into this already-released frame.
+func (f *fn) emitTailFrameRelease() {
+	f.discardEHHandlersForTail()
+	frameSite := f.a.Len() + 3
+	f.a.AddRsp(0)
+	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
 }
 
 // discardEHHandlersForTail removes every handler owned by the current function.
@@ -1021,11 +1111,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	}
 
 	f.pinned = argumentPins
-
-	f.discardEHHandlersForTail()
-	frameSite := f.a.Len() + 3
-	f.a.AddRsp(0)
-	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.emitTailFrameRelease()
 	emitJump()
 }
 
@@ -2503,10 +2589,11 @@ func (f *fn) returnCallRefType(typeIdx uint32, stat string) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_ref: type %d result shape differs from caller", typeIdx)
 	}
-	callerRegABI := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsTypedReferenceRegABI(f.ft))
-	targetRegABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsTypedReferenceRegABI(ft))
-	if !callerRegABI || !targetRegABI {
-		return fmt.Errorf("return_call_ref: caller or type %d requires unsupported reference tail ABI", typeIdx)
+	callerRegABI := f.opt(optRegABI) && (sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsTypedReferenceRegABI(f.ft)))
+	targetRegABI := f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsTypedReferenceRegABI(ft)))
+	// Wrapper-kind targets always receive their arguments in the tail bank.
+	if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
+		return fmt.Errorf("return_call_ref: type %d requires %d wrapper argument slots, limit %d", typeIdx, slots, abi.TailArgsSlots)
 	}
 	f.stats.call(stat)
 	canon, ok := f.m.StructuralTypeKeyChecked(typeIdx)
@@ -2581,25 +2668,39 @@ func (f *fn) returnCallRefType(typeIdx uint32, stat string) error {
 	f.a.MovReg64(RDX, RAX)
 	f.a.ShiftImm(5, RDX, abi.FuncRefEntryTagShift, true)
 	f.stripDescriptorHomeTags(RAX)
-	f.a.AluRI(cmpDigit, RDX, int32(abi.FuncRefInternalTagValue), true)
-	notInternal := f.a.JccPlaceholder(condNE)
-	f.a.Cmp64(RAX, RBX)
-	f.trapIf(condNE, trapTailUnsupported)
-	f.emitTailRegisterJump(ft, func() {
-		f.a.Load64(RSI, RBX, -int32(offFuncRefDescPtr))
-		f.a.Load64(RSI, RSI, runtime.FuncRefContextOffset)
-		f.a.Load64(RSI, RSI, runtime.InstanceContextTailCodeOffset)
-		f.a.JmpReg(RSI)
-	})
+	// Internal descriptors exist only for register-ABI signatures; for any other
+	// type an internal tag is malformed and traps with the wrapper-kind check.
+	if targetRegABI {
+		f.a.AluRI(cmpDigit, RDX, int32(abi.FuncRefInternalTagValue), true)
+		notInternal := f.a.JccPlaceholder(condNE)
+		f.a.Cmp64(RAX, RBX)
+		f.trapIf(condNE, trapTailUnsupported)
+		if callerRegABI {
+			f.emitTailRegisterJump(ft, func() {
+				f.a.Load64(RSI, RBX, -int32(offFuncRefDescPtr))
+				f.a.Load64(RSI, RSI, runtime.FuncRefContextOffset)
+				f.a.Load64(RSI, RSI, runtime.InstanceContextTailCodeOffset)
+				f.a.JmpReg(RSI)
+			})
+		} else {
+			f.emitTailWrapperToAdapterJump(ft)
+		}
+
+		f.a.PatchRel32(notInternal, f.a.Len())
+		f.locals = savedLocals
+		f.setDepthTypes(types)
+	}
 
 	// Wrapper kinds host=0, local=1, and cross-instance=2 all share the
 	// descriptor-driven wrapper transfer. Values 3..7 are malformed or internal
 	// descriptors that failed the branch above.
-	f.a.PatchRel32(notInternal, f.a.Len())
-	f.locals = savedLocals
-	f.setDepthTypes(types)
 	f.a.AluRI(cmpDigit, RDX, int32(abi.FuncRefCrossInstanceTagValue), true)
 	f.trapIf(condA, trapTailUnsupported)
+	if !callerRegABI {
+		f.emitTailWrapperCallerDescriptorJump(ft)
+		f.unreachable = true
+		return nil
+	}
 	if funcTypeCarriesGCRefs(f.m, ft) {
 		// Runtime-owned GC host thunks use the active caller context and can
 		// discard this frame without the cross-instance restoration record.
@@ -2615,6 +2716,108 @@ func (f *fn) returnCallRefType(typeIdx uint32, stat string) error {
 
 	f.unreachable = true
 	return nil
+}
+
+// storeTailBankArgs copies the top len(ft.Params) operands, starting at logical
+// operand argBase, into the wrapper argument bank at RDI using wrapper slot
+// widths (a v128 takes two slots).
+func (f *fn) storeTailBankArgs(ft *wasm.CompType, types []machineType, argBase int) {
+	dstSlot := 0
+	for i, param := range ft.Params {
+		srcSlot := slotOfLogicalTypes(types, argBase+i)
+		n := mtOf(param).stackSlots()
+		for slot := 0; slot < n; slot++ {
+			f.a.Load64(RAX, RSP, f.spillOff(srcSlot+slot))
+			f.a.Store64(RDI, int32((dstSlot+slot)*8), RAX)
+		}
+		dstSlot += n
+	}
+}
+
+// emitTailWrapperToAdapterJump tail-enters the internal descriptor target
+// staged in the caller context from a wrapper-ABI caller. The target's
+// register-ABI internal entry would return in registers to a caller that
+// expects a results buffer, so the transfer instead enters the target's offset-0
+// adapter, found through the backlink below the internal entry, exactly like a
+// direct wrapper-to-register return_call. The adapter's record is discarded by
+// the target's own later tails, so mixed tail loops stay stack-bounded.
+func (f *fn) emitTailWrapperToAdapterJump(ft *wasm.CompType) {
+	f.emitTailWrapperJumpVia(ft, func() {
+		f.a.Load64(RAX, RBX, -int32(offFuncRefDescPtr))
+		f.a.Load64(RAX, RAX, runtime.FuncRefContextOffset)
+		f.a.Load64(RAX, RAX, runtime.InstanceContextTailCodeOffset)
+		f.a.Load32(R8, RAX, -4)
+		f.a.AluRR(0x29, RAX, R8, true) // internal entry - backlink = adapter
+		f.a.JmpReg(RAX)
+	})
+}
+
+// emitTailWrapperCallerDescriptorJump transfers a wrapper-ABI activation to the
+// wrapper-kind descriptor target staged in the caller context. The target
+// writes this activation's results buffer. A same-instance target (local
+// wrapper or host thunk) returns straight to our caller. A foreign target
+// returns through one fixed record, [trampoline, caller linmem, caller context,
+// pad], whose trampoline restores the caller's instance registers as a non-tail
+// cross-instance call would, since our caller may be same-instance code that
+// relies on them.
+func (f *fn) emitTailWrapperCallerDescriptorJump(ft *wasm.CompType) {
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(RDX)
+
+	f.a.Load64(R8, RBX, -int32(offFuncRefDescPtr))
+	f.a.Load64(R8, R8, runtime.FuncRefContextOffset) // caller context + tail scratch
+	f.a.Load64(R11, R8, runtime.InstanceContextTailHomeOffset)
+	f.stripDescriptorHomeTags(R11)
+	f.a.MovReg64(RDI, R11)
+	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
+	f.storeTailBankArgs(ft, types, len(types)-p)
+	f.a.Load64(RCX, RSP, frResultsOff)
+	f.emitTailFrameRelease()
+
+	f.a.Cmp64(R11, RBX)
+	foreign := f.a.JccPlaceholder(condNE)
+	f.a.MovReg64(RSI, RBX)
+	f.a.Load64(RDX, RBX, -int32(abi.TrapCellPtrOffset))
+	f.a.Load64(RAX, R8, runtime.InstanceContextTailCodeOffset)
+	f.a.JmpReg(RAX)
+
+	f.a.PatchRel32(foreign, f.a.Len())
+	f.a.Load64(R10, R8, runtime.InstanceContextTailTargetCtxOffset)
+	f.copyInstanceContext(R11, R10)
+	f.a.Load64(RDX, RBX, -offTrapReentry)
+	f.a.Store64(R11, -offTrapReentry, RDX)
+	f.a.Load64(RDX, RBX, -offStackFence)
+	f.a.Store64(R11, -offStackFence, RDX)
+	f.a.Load64(RDX, RBX, -offTrapCellPtr)
+	f.a.Store64(R11, -offTrapCellPtr, RDX)
+	// RSP is congruent to 8 mod 16 after the frame release, as at any function
+	// entry; the 32-byte record keeps the wrapper entry's alignment of a call.
+	f.a.SubRsp(32)
+	trampolineSite := f.a.LeaRipPlaceholder(R9)
+	f.a.Store64(RSP, 0, R9)
+	f.a.Store64(RSP, 8, RBX)
+	f.a.Store64(RSP, 16, R8)
+	f.a.MovReg64(RSI, R11)
+	f.a.Load64(RAX, R8, runtime.InstanceContextTailCodeOffset) // copyInstanceContext clobbers RAX
+	f.a.JmpReg(RAX)
+
+	trampoline := f.a.Len()
+	f.a.PatchRel32(trampolineSite, trampoline)
+	// The foreign wrapper's RET popped the trampoline slot.
+	f.a.Load64(RBX, RSP, 0)
+	f.a.Load64(R10, RSP, 8)
+	f.copyInstanceContext(RBX, R10)
+	f.refreshCachedMemoryBoundAfterExternalCall()
+	f.deriveModuleGlobals()
+	f.a.AddRsp(24)
+	f.a.Ret()
 }
 
 // emitTailHostWrapperJump transfers a proper tail to a Runtime-owned host thunk.
@@ -2648,9 +2851,7 @@ func (f *fn) emitTailHostWrapperJump(ft *wasm.CompType) {
 	f.a.Load64(R11, RBX, -int32(offFuncRefDescPtr))
 	f.a.Load64(R11, R11, runtime.FuncRefContextOffset)
 	f.a.Load64(R11, R11, runtime.InstanceContextTailCodeOffset)
-	frameSite := f.a.Len() + 3
-	f.a.AddRsp(0)
-	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.emitTailFrameRelease()
 	f.a.JmpReg(R11)
 }
 
@@ -2680,16 +2881,9 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	f.a.ShiftImm(5, R11, 3, true)
 	f.a.MovReg64(RDI, R11)
 	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
-	argBase := len(types) - p
-	for i := range ft.Params {
-		srcSlot := slotOfLogicalTypes(types, argBase+i)
-		f.a.Load64(RAX, RSP, f.spillOff(srcSlot))
-		f.a.Store64(RDI, int32(i*8), RAX)
-	}
+	f.storeTailBankArgs(ft, types, len(types)-p)
 
-	frameSite := f.a.Len() + 3
-	f.a.AddRsp(0)
-	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	f.emitTailFrameRelease()
 
 	// The function's own adapter return identifies a wrapper/root context. Any
 	// other return address is an internal register-ABI caller in this module; it
@@ -2785,7 +2979,11 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	targetRegisterTail := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
 	registerTail := callerRegisterTail && targetRegisterTail
 	wrapperTail := !callerRegisterTail && funcTypeSlots(ft.Params) <= abi.TailArgsSlots
-	if !registerTail && !wrapperTail {
+	// A register-ABI caller can enter a local wrapper target through the
+	// register-to-wrapper trampoline, which returns up to two results.
+	registerToWrapperTail := f.opt(optRegABI) && callerRegisterTail && !targetRegisterTail &&
+		funcTypeSlots(ft.Params) <= abi.TailArgsSlots && len(ft.Results) <= 2
+	if !registerTail && !wrapperTail && !registerToWrapperTail {
 		return fmt.Errorf("return_call_indirect: caller or type %d requires unsupported indirect tail ABI", typeIdx)
 	}
 	tableHint, immutableTable := f.immutableTable(tableIdx)
@@ -2871,6 +3069,11 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 		f.emitTailRegisterJump(ft, func() {
 			f.a.Load64(RSI, RBX, -int32(offSpillRegion))
 			f.a.JmpReg(RSI)
+		})
+	} else if registerToWrapperTail {
+		f.emitTailRegisterToWrapperJump(ft, func() {
+			f.a.Load64(RAX, RBX, -int32(offSpillRegion))
+			f.a.JmpReg(RAX)
 		})
 	} else {
 		f.emitTailWrapperJumpVia(ft, func() {

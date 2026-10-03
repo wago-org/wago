@@ -995,13 +995,21 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	var globalCells []*Global
 	var instantiationRoots gc.Slots
-	writeElemEntry := func(entry []byte, refType ValType, value RefInit) (err error) {
+	// prev is the segment's previous entry (nil for its first value).
+	writeElemEntry := func(entry, prev []byte, refType ValType, value RefInit) (err error) {
 		rootCompactEntry := normalizedElemRefType(refType) == ValAnyRef || normalizedElemRefType(refType) == ValI31Ref
 		defer func() {
 			if err == nil && rootCompactEntry && len(entry) >= 4 {
 				instantiationRoots = append(instantiationRoots, compactRefRootSlot(entry[:4]))
 			}
 		}()
+		if value.RepeatPrevious {
+			if len(prev) != len(entry) {
+				return errors.New("repeated element value has no previous entry")
+			}
+			copy(entry, prev)
+			return nil
+		}
 		if len(value.Expr) != 0 {
 			if normalizedElemRefType(refType) != ValAnyRef && normalizedElemRefType(refType) != ValI31Ref && !(normalizedElemRefType(refType) == ValExternRef && needsExternConversion) {
 				return fmt.Errorf("GC element expression has incompatible destination %s", refType)
@@ -1230,7 +1238,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	var gcRefTestTable *gcRefTestTableState
-	var gcRefTestDescriptors [maxGCRefTestTables][]byte
+	var gcRefTestDescriptors [][]byte
+	if c.stagedGCStructProduct().requiresRefTableState() {
+		gcRefTestDescriptors = make([][]byte, c.tableCount())
+	}
 	// Table descriptors are [len u32][max u32][entry...]. Funcref entries retain
 	// their direct 32-byte call descriptor; externref entries are opaque 8-byte
 	// handles. Table 0 remains in the direct basedata slot. Multiple local tables
@@ -1372,7 +1383,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			for k, value := range el.Values {
 				slot := int(elemBase) + k
 				off := 8 + slot*entryBytes
-				if err := writeElemEntry(desc[off:off+entryBytes], el.RefType, value); err != nil {
+				var prev []byte
+				if k > 0 {
+					prev = desc[off-entryBytes : off]
+				}
+				if err := writeElemEntry(desc[off:off+entryBytes], prev, el.RefType, value); err != nil {
 					initErr = fmt.Errorf("active element segment %d value %d: %w", seg, k, err)
 					break
 				}
@@ -1381,24 +1396,16 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				break
 			}
 		}
-		if product := c.stagedGCStructProduct(); initErr == nil && product.requiresRefTableState() && !(product == stagedGCStructExtern && !c.hasCompactReferenceTable()) {
-			// Any extern conversion selects the extern product. Function tables
-			// hold descriptors, not collector references, so a module whose
-			// tables are all function tables keeps the conversion-only state
-			// created below, exactly like a module with no tables.
-			tableCount := c.tableCount()
-			valid := tableCount == 1 && c.tableEntryBytes(0) == 8
-			if product == stagedGCStructRefTestAbstract {
-				valid = tableCount == 3 && c.tableEntryBytes(0) == 8 && c.tableEntryBytes(1) == runtime.TableEntryBytes && c.tableEntryBytes(2) == 8
-			}
-			if !valid {
-				initErr = errors.New("GC ref.test product has an invalid mixed-table layout")
+		if product := c.stagedGCStructProduct(); initErr == nil && product.requiresRefTableState() && c.tableCount() != 0 {
+			specs, err := gcRefTestTableSpecs(c, gcRefTestDescriptors)
+			if err != nil {
+				initErr = err
 			} else {
 				canonicalTypes, err := b.gcTypeMap.canonicalTypes(product.refTestCanonicalTypes())
 				if err != nil {
 					initErr = err
 				} else {
-					gcRefTestTable, initErr = newGCRefTestTableState(b.collector, gcRefTestDescriptors[:tableCount], 0, canonicalTypes)
+					gcRefTestTable, initErr = newGCRefTestTableStateFor(b.collector, specs, canonicalTypes)
 				}
 			}
 		}
@@ -1418,7 +1425,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			entryBytes := elemEntryBytes(el.RefType)
 			entries := ar.Alloc(entryBytes * len(el.Values))
 			for k, value := range el.Values {
-				if err := writeElemEntry(entries[k*entryBytes:(k+1)*entryBytes], el.RefType, value); err != nil {
+				var prev []byte
+				if k > 0 {
+					prev = entries[(k-1)*entryBytes : k*entryBytes]
+				}
+				if err := writeElemEntry(entries[k*entryBytes:(k+1)*entryBytes], prev, el.RefType, value); err != nil {
 					initErr = fmt.Errorf("passive element segment %d value %d: %w", i, k, err)
 					break
 				}

@@ -8,8 +8,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// maxStagedEHTagParams bounds the payload words in the staged tag directory.
-const maxStagedEHTagParams = 2
+// maxStagedEHTagParams bounds the payload words in the staged tag directory; it
+// matches the backends' exception record payload capacity.
+const maxStagedEHTagParams = 8
 
 // Keep metadata construction separate from native compilation so its temporary
 // descriptors and validation paths do not inflate the native compile function.
@@ -304,6 +305,11 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
 			continue
 		}
+		if isRefNullConstExpr(initBody) {
+			// Table storage starts zeroed, which is null for every reference
+			// representation, so a null initializer of any heap type is a no-op.
+			continue
+		}
 		payload, err := funcrefExprPayload(*m.Tables[i].Init)
 		if err != nil {
 			body := m.Tables[i].Init.BodyBytes
@@ -315,7 +321,27 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			globalIndex, indexErr := r.U32()
 			end, endErr := r.Byte()
 			if opErr != nil || op != 0x23 || indexErr != nil || endErr != nil || end != 0x0b || r.BytesLeft() != 0 {
-				return fmt.Errorf("table %d initializer: %w", tableIndex, err)
+				// Core 3 table initializers are general constant expressions. Reuse
+				// the element-segment evaluator. The spec evaluates the initializer
+				// once and stores that one reference in every slot, so an expression
+				// payload is evaluated for slot 0 only and repeated: an allocating
+				// initializer must yield one shared object, not one per slot.
+				def := c.tableDef(tableIndex)
+				seg := wasm.Elem{Kind: wasm.ElemKind{Kind: wasm.ElemTypedExprs, Ref: m.Tables[i].Type.Ref, Exprs: []wasm.Expr{*m.Tables[i].Init}}}
+				_, _, inits, exprErr := elementPayloads(m, c.Types, constExprCtx, &seg)
+				if exprErr != nil || len(inits) != 1 {
+					return fmt.Errorf("table %d initializer: %w", tableIndex, err)
+				}
+				values := make([]RefInit, def.Size)
+				for j := range values {
+					if j > 0 && len(inits[0].Expr) != 0 {
+						values[j] = RefInit{RepeatPrevious: true}
+						continue
+					}
+					values[j] = inits[0]
+				}
+				c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
+				continue
 			}
 			def := c.tableDef(tableIndex)
 			values := make([]RefInit, def.Size)
@@ -522,4 +548,17 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 		c.Data = append(c.Data, init)
 	}
 	return nil
+}
+
+// isRefNullConstExpr reports whether body is exactly `ref.null <heaptype> end`.
+func isRefNullConstExpr(body []byte) bool {
+	r := wasm.NewReader(body)
+	if op, err := r.Byte(); err != nil || op != 0xd0 {
+		return false
+	}
+	if _, err := r.S33(); err != nil {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && r.BytesLeft() == 0
 }

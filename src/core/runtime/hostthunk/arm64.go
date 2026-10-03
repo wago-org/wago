@@ -18,6 +18,12 @@ const (
 	hcResults           = 704
 )
 
+const (
+	hcWideBase             = hcResults + maxSyncHostSlots*8
+	hcWideArgs       int32 = 8
+	maxSyncHostSlots       = 64
+)
+
 func Indirect(importIdx uint32) []byte {
 	a := &a64.Asm{DisableLogicalMoveImmediate: true}
 	a.Load32(a64.X9, a64.X0, 0)
@@ -66,9 +72,19 @@ func indirectSync(importIdx uint32, paramSlots, resultSlots int, useHome bool) [
 	}
 	a.SubImm64(a64.X10, linMem, offCustomCtx)
 	a.Load64(a64.X10, a64.X10, 0)
+	// A signature wider in either direction uses the appended exchange areas
+	// for both directions, matching the host loop's all-or-nothing selection.
+	wide := paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots
+	argBase := a64.X10
+	argOffset := uint32(hcArgs)
+	if wide {
+		argBase = a64.X11
+		argOffset = 0
+		a.AddImm64(a64.X11, a64.X10, uint32(hcWideBase+hcWideArgs))
+	}
 	for i := 0; i < paramSlots; i++ {
 		a.Load64(a64.X9, a64.X0, uint32(i*8))
-		a.Store64(a64.X9, a64.X10, uint32(hcArgs+i*8))
+		a.Store64(a64.X9, argBase, argOffset+uint32(i*8))
 	}
 	a.MovImm64(a64.X16, uint64(importIdx))
 	a.Store32(a64.X16, a64.X10, hcImportIdx)
@@ -79,8 +95,17 @@ func indirectSync(importIdx uint32, paramSlots, resultSlots int, useHome bool) [
 	a.SubImm64(a64.X10, linMem, offCustomCtx)
 	a.Load64(a64.X10, a64.X10, 0)
 	a.Load64(a64.X3, a64.SP, 8)
+	resultBase := a64.X10
+	resultOffset := uint32(hcResults)
+	if wide {
+		resultBase = a64.X11
+		resultOffset = 0
+		a.Load32(a64.X11, a64.X10, uint32(hcWideBase+4))
+		a.AddShifted(a64.X11, a64.X10, a64.X11, 3, false)
+		a.AddImm64(a64.X11, a64.X11, uint32(hcWideBase+hcWideArgs))
+	}
 	for i := 0; i < resultSlots; i++ {
-		a.Load64(a64.X9, a64.X10, uint32(hcResults+i*8))
+		a.Load64(a64.X9, resultBase, resultOffset+uint32(i*8))
 		a.Store64(a64.X9, a64.X3, uint32(i*8))
 	}
 	a.Load64(a64.LR, a64.SP, 16)

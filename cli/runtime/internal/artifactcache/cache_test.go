@@ -676,6 +676,41 @@ func TestCachedArtifactCannotBypassStricterMemoryPageQuota(t *testing.T) {
 	}
 }
 
+func TestCachedArtifactCannotBypassModuleByteQuota(t *testing.T) {
+	source := constantModule()
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	base := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	seed := wago.NewRuntime(wago.WithRuntimeConfig(base))
+	module, err := cache.LoadOrCompile(source, base, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	strict := base.WithMaxModuleBytes(uint64(len(source) - 1))
+	cold := wago.NewRuntime(wago.WithRuntimeConfig(strict))
+	if module, err := cold.Compile(source); module != nil || !errors.Is(err, wago.ErrResourceLimit) {
+		t.Fatalf("cold module-byte quota = %v, %v; want resource limit", module, err)
+	}
+	if err := cold.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	warm := wago.NewRuntime(wago.WithRuntimeConfig(strict))
+	defer warm.Close()
+	if module, err := cache.LoadOrCompile(source, strict, warm); module != nil || !errors.Is(err, wago.ErrResourceLimit) {
+		if module != nil {
+			module.Close()
+		}
+		t.Fatalf("warm module-byte quota = %v, %v; want resource limit", module, err)
+	}
+}
+
 func TestBuildIdentityRequiresStableSourceIdentity(t *testing.T) {
 	clean := &debug.BuildInfo{
 		GoVersion: "go1.25.0",

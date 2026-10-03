@@ -165,6 +165,30 @@ func TestLowerMixedStructRefOffsets(t *testing.T) {
 	}
 }
 
+func TestLowerDefinedFunctionReferencesUseOpaqueStorage(t *testing.T) {
+	functionGroup := wasm.RecType{SubTypes: []wasm.SubType{fn()}}
+	functionDef := &wasm.DefType{Rec: functionGroup, GroupIndex: 3, Index: 0}
+	definedFunc := func(nullable bool) wasm.StorageType {
+		return wasm.StorageVal(wasm.RefVal(wasm.Ref(nullable, wasm.DefinedHeap(functionDef), false)))
+	}
+	descs, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{
+		st(field(definedFunc(false)), field(definedFunc(true))),
+		arr(definedFunc(true)),
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := descs[0].Fields; len(got) != 2 || got[0].Kind != gc.StorageFuncRef || got[0].Offset != 0 || got[1].Kind != gc.StorageFuncRefNull || got[1].Offset != 8 {
+		t.Fatalf("defined function fields lowered incorrectly: %+v", got)
+	}
+	if descs[0].HasRefs || descs[0].Size != 16 {
+		t.Fatalf("defined function fields use collector layout: %+v", descs[0])
+	}
+	if descs[1].Elem != gc.StorageFuncRefNull || descs[1].ElemSize != 8 || descs[1].HasRefs {
+		t.Fatalf("defined function array lowered incorrectly: %+v", descs[1])
+	}
+}
+
 func TestLowerArraysPointerFreeAndPointerful(t *testing.T) {
 	types := []wasm.StorageType{packed(wasm.PackI8), packed(wasm.PackI16), val(wasm.I32), val(wasm.I64), val(wasm.F32), val(wasm.F64), val(wasm.V128)}
 	var subs []wasm.SubType

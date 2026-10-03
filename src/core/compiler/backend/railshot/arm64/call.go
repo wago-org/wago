@@ -456,7 +456,17 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		if callerRegisterABI {
 			f.emitTailRegisterJump(ft, jump)
 		} else {
-			f.emitTailWrapperToRegisterJump(ft, jump)
+			// Every return_call target has an offset-zero adapter, so a wrapper
+			// caller enters it with the wrapper ABI and its own results buffer.
+			// Unlike a trampoline record, the adapter record is discarded when
+			// the target tails back to a wrapper, keeping tail cycles bounded.
+			if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
+				return fmt.Errorf("return_call: target %d requires %d wrapper argument slots, limit %d", idx, slots, abi.TailArgsSlots)
+			}
+			f.emitTailWrapperJump(ft, func() {
+				site := f.a.Branch()
+				f.relocs = append(f.relocs, f.newCallReloc(site, target, false))
+			})
 		}
 	} else {
 		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
@@ -574,6 +584,21 @@ func (f *fn) emitTailWrapperToRegisterJump(ft *wasm.CompType, emitJump func()) {
 	f.ld64(LR, SP, 0)
 	f.a.AddSP64(32)
 	f.a.Ret()
+}
+
+// emitTailWrapperToAdapterJump tail-enters the internal descriptor target in
+// X17 from a wrapper-ABI caller. Its register-ABI internal entry would return in
+// registers to a caller that expects a results buffer, so the transfer enters
+// the target's offset-0 adapter instead, found through the backlink word below
+// the internal entry, exactly like a direct wrapper-to-register return_call.
+// The target's own later tails discard the adapter's record, so mixed
+// register/wrapper tail loops stay stack-bounded.
+func (f *fn) emitTailWrapperToAdapterJump(ft *wasm.CompType) {
+	f.emitTailWrapperJump(ft, func() {
+		f.ld32(X16, X17, -4)
+		f.a.Sub64(X17, X17, X16)
+		f.a.Br(X17)
+	})
 }
 
 func (f *fn) emitTailWrapperJump(ft *wasm.CompType, emitJump func()) {
@@ -898,7 +923,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 		if callerRegABI {
 			f.emitTailRegisterJump(ft, func() { f.a.Br(X17) })
 		} else {
-			f.emitTailWrapperToRegisterJump(ft, func() { f.a.Br(X17) })
+			f.emitTailWrapperToAdapterJump(ft)
 		}
 
 		f.patchBranch19(wrapper, f.a.Len())
@@ -978,7 +1003,36 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	if !f.tailCallerUsesRegisterABI() {
 		f.ld64(X3, SP, frResultsOff)
 		f.emitTailFrameRelease()
+		f.cmpRR(X10, linMemReg, true)
+		foreign := f.a.Bcond(condNE)
 		transfer()
+
+		// A foreign target would return to our caller with its instance state
+		// installed, and our caller may be same-instance code that relies on its
+		// own. One fixed record [LR, caller linmem, caller context, pad] returns
+		// through a trampoline that restores it, like a non-tail cross-instance
+		// call; the target still writes our caller's results buffer.
+		f.patchBranch19(foreign, f.a.Len())
+		f.a.SubSP64(32)
+		f.st64(SP, 0, LR)
+		f.st64(SP, 8, linMemReg)
+		f.st64(SP, 16, X12)
+		trampolineADR := f.a.Adr(LR)
+		f.recordPCRelative(trampolineADR)
+		transfer()
+
+		trampoline := f.a.Len()
+		f.a.PatchAdr(trampolineADR, trampoline)
+		f.ld64(LR, SP, 0)
+		f.ld64(X10, SP, 8)
+		f.ld64(X11, SP, 16)
+		f.copyInstanceContext(X10, X11)
+		f.a.MovReg64(linMemReg, X10)
+		f.refreshCachedMemoryBoundAfterExternalCall()
+		f.deriveModuleGlobals()
+		f.derivePinnedGlobals()
+		f.a.AddSP64(32)
+		f.a.Ret()
 		return
 	}
 

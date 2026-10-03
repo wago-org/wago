@@ -613,6 +613,13 @@ func (g *Global) getValueNoLease() (Value, error) {
 		return Value{}, fmt.Errorf("global has no compatible reference store")
 	}
 	if typ == ValExternRef {
+		public, handled, err := source.publicExternFromGlobal(bits)
+		if err != nil {
+			return Value{}, fmt.Errorf("global contains an invalid externref value: %w", err)
+		}
+		if handled {
+			return Value{typ: ValExternRef, bits: public}, nil
+		}
 		if _, ok := store.resolveExternref(bits); !ok {
 			return Value{}, fmt.Errorf("global contains an invalid externref value")
 		}
@@ -670,7 +677,13 @@ func (g *Global) setValueNoLease(v Value) error {
 			return fmt.Errorf("global has no compatible reference store")
 		}
 		if typ == ValExternRef {
-			if _, ok := store.resolveExternref(bits); !ok {
+			internal, handled, err := containerOwner.internalExternForGlobal(bits)
+			if err != nil {
+				return fmt.Errorf("invalid externref token: %w", err)
+			}
+			if handled {
+				bits = internal
+			} else if _, ok := store.resolveExternref(bits); !ok {
 				return fmt.Errorf("invalid externref token")
 			}
 		} else {
@@ -865,6 +878,10 @@ type RefInit struct {
 	Null        bool
 	HasGlobal   bool
 	I31Wrap     bool
+	// RepeatPrevious stores the same reference as the segment's previous value
+	// without evaluating anything. A table initializer is evaluated once and its
+	// result fills every slot, which this preserves for allocating expressions.
+	RepeatPrevious bool
 }
 
 // ElemInit is typed element-segment metadata. TableIndex names an active
@@ -1272,7 +1289,7 @@ func (c *Compiled) elemExactType(elem ElemInit) (ValueTypeDescriptor, error) {
 	if !elem.HasValueType && normalizedElemRefType(elem.RefType) == ValFuncRef {
 		legacy := true
 		for _, value := range elem.Values {
-			if value.Null || value.HasGlobal || value.I31Wrap || len(value.Expr) != 0 {
+			if value.Null || value.HasGlobal || value.I31Wrap || value.RepeatPrevious || len(value.Expr) != 0 {
 				legacy = false
 				break
 			}

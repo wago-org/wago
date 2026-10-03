@@ -291,6 +291,9 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		bits, typeID, fieldID, nullable, mode := args[0], uint32(args[1]), uint32(args[2]), args[3] != 0, uint32(args[4])
 		ref := gc.Ref(uint32(bits))
 		if bits != uint64(ref) {
+			if in.isForeignAnyref(bits) {
+				panic(gcHelperTrap(coreruntime.TrapCastFailure))
+			}
 			panic(gcHelperFailuref("gc final cast/get contains non-compact reference %#x", bits))
 		}
 		if ref.IsNull() {
@@ -364,6 +367,9 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		bits, typeID, nullable := args[0], uint32(args[1]), args[2] != 0
 		ref := gc.Ref(uint32(bits))
 		if bits != uint64(ref) {
+			if in.isForeignAnyref(bits) {
+				panic(gcHelperTrap(coreruntime.TrapCastFailure))
+			}
 			panic(gcHelperFailuref("gc final cast/array.len contains non-compact reference %#x", bits))
 		}
 		if ref.IsNull() {
@@ -416,7 +422,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			in.gc.WriteBarrierRoot(ref)
 			break
 		}
-		if table >= uint64(state.TableCount) || index >= uint64(binary.LittleEndian.Uint32(state.Descriptors[table])) {
+		if table >= uint64(len(state.Descriptors)) || index >= uint64(binary.LittleEndian.Uint32(state.Descriptors[table])) {
 			panic(gcHelperTrap(coreruntime.TrapIndirectOutOfBounds))
 		}
 		if err := state.setTable(in.gc, table, index, args[1]); err != nil {
@@ -473,6 +479,17 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 	default:
 		panic(gcHelperFailuref("unknown gc struct helper %d", helper))
 	}
+}
+
+// isForeignAnyref reports whether bits is the anyref word of a host externref
+// (any.convert_extern), which no defined struct/array type admits.
+func (in *Instance) isForeignAnyref(bits uint64) bool {
+	conversion := in.existingGCExternConversionState()
+	if conversion == nil {
+		return false
+	}
+	foreign, err := conversion.isForeignAny(bits)
+	return err == nil && foreign
 }
 
 // gcDefinedRefCast avoids descriptor/subtype walks when equality is the complete
