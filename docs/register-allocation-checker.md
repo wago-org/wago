@@ -90,6 +90,26 @@ semantic input/use/definition contract; do not seed a new symbol after a failed
 reload, infer correctness from matching allocator bookkeeping, or silently claim
 an unsupported instruction was checked.
 
+## Control-flow analysis foundation
+
+The checked-build-only `internal/regalloccheck.Graph` analyzes explicit semantic
+uses and definitions separately from machine effects. A physical byte can carry
+multiple semantic identities, so duplicate block arguments preserve aliases.
+Edge parameters check their actual outgoing carriers and rename identities
+simultaneously. Definitions invalidate old copies of their identity, including
+across loop iterations. Joins intersect facts; uses are checked only after the
+reachable graph converges, with entry assumptions retained as a separate incoming
+edge. Missing facts and conflicting provenance both reject a use; neither means
+that opaque identities have different numerical values.
+
+This core is not yet connected to backend whole-function emission and adds no
+new backend lifetime coverage. Its callers must provide bounded graph construction,
+complete physical effects, and independent semantic contracts. It does not infer
+missing edges or instruction effects. Reachable unsupported operations, malformed
+models, and analysis-budget exhaustion return an inconclusive result, never a
+successful check. Default limits bound blocks, values, operations, simultaneously
+retained facts (including temporary copies), and cumulative analysis work.
+
 ## Ordinary-build contract and qualification
 
 The tag selects the implementation and state. Ordinary compiler and encoder
