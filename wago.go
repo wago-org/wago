@@ -135,6 +135,7 @@ type (
 	InstructionHandler              = impl.InstructionHandler
 	InstructionLowerer              = impl.InstructionLowerer
 	InstructionSpec                 = impl.InstructionSpec
+	InternalCompilerError           = impl.InternalCompilerError
 	InvocationEvent                 = impl.InvocationEvent
 	InvocationRequest               = impl.InvocationRequest
 	LowerValue                      = impl.LowerValue
