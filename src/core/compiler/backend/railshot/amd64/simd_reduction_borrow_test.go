@@ -45,7 +45,7 @@ func TestSIMDReductionBorrowPreservesPinnedVector(t *testing.T) {
 					m := mod1(t, nil, []wasm.ValType{wasm.I32}, body)
 					for _, enabled := range []bool{false, true} {
 						var stats ModuleStats
-						cm, err := CompileModuleWith(m, CompileOptions{AMD64Features: features, AMD64FeaturesSet: true, Stats: &stats, Optimizations: map[string]bool{"v128-pins": true, "reg-abi": true, "simd-reduction-borrow": enabled}})
+						cm, err := CompileModuleWith(m, CompileOptions{AMD64Features: features, AMD64FeaturesSet: true, Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"v128-pins": true, "reg-abi": true, "simd-reduction-borrow": enabled}})
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -55,11 +55,15 @@ func TestSIMDReductionBorrowPreservesPinnedVector(t *testing.T) {
 						// i16x8.bitmask packs in place in an owned register so
 						// allocation cannot clobber a borrowed reduction scratch.
 						wantBorrow := enabled && sub != 132
-						if (stats.Funcs[0].Peephole["simd-reduction-borrow"] > 0) != wantBorrow {
-							t.Fatalf("borrow selection enabled=%v stats=%v", enabled, stats.Funcs[0].Peephole)
+						if diagnosticsEnabled {
+							if (stats.Funcs[0].Peephole["simd-reduction-borrow"] > 0) != wantBorrow {
+								t.Fatalf("borrow selection enabled=%v stats=%v", enabled, stats.Funcs[0].Peephole)
+							}
 						}
-						if stats.Funcs[0].PinnedLocals == 0 {
-							t.Fatal("fixture did not pin locals")
+						if diagnosticsEnabled {
+							if stats.Funcs[0].PinnedLocals == 0 {
+								t.Fatal("fixture did not pin locals")
+							}
 						}
 						if got := runCompiledAmd64u(t, cm); got != want {
 							t.Fatalf("enabled=%v got=%x want=%x input=%x/%x", enabled, got, want, binary.LittleEndian.Uint64(v[:8]), binary.LittleEndian.Uint64(v[8:]))

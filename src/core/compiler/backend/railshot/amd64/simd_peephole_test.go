@@ -95,15 +95,20 @@ func TestAVX512PackedRotateFusionAMD64(t *testing.T) {
 	features := shared.AMD64ModernBaseline | shared.AMD64AVX512
 	var stats ModuleStats
 	cm, err := CompileModuleWith(m, CompileOptions{
-		Stats: &stats, AMD64FeaturesSet: true, AMD64Features: features,
+		Stats: optionalTestStats(&stats), AMD64FeaturesSet: true, AMD64Features: features,
 		Optimizations: optimizations,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer cm.CodeImage.Close()
-	if got := stats.Funcs[0].Peephole["simd-rotr-avx512"]; got != 1 || !cm.RequiresAVX512 {
-		t.Fatalf("rotate fusions=%d requiresAVX512=%v", got, cm.RequiresAVX512)
+	if !cm.RequiresAVX512 {
+		t.Fatal("packed rotate did not record AVX-512 requirement")
+	}
+	if diagnosticsEnabled {
+		if got := stats.Funcs[0].Peephole["simd-rotr-avx512"]; got != 1 {
+			t.Fatalf("rotate fusions=%d requiresAVX512=%v", got, cm.RequiresAVX512)
+		}
 	}
 	if got := runAmd64V128WithOptions(t, m, &input, CompileOptions{
 		AMD64FeaturesSet: true, AMD64Features: 0, Optimizations: optimizations,

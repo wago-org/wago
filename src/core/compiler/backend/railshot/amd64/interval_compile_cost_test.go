@@ -26,15 +26,17 @@ func TestLazyIntervalBorrowsPreserveCode(t *testing.T) {
 			for _, lazy := range []bool{false, true} {
 				lazyIntervalBorrowsEnabled = lazy
 				var stats ModuleStats
-				cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, ElideBoundsChecks: signals, Workers: 1, Stats: &stats})
+				cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, ElideBoundsChecks: signals, Workers: 1, Stats: optionalTestStats(&stats)})
 				if err != nil {
 					t.Fatal(err)
 				}
 				if cm.CodeImage != nil {
 					defer cm.CodeImage.Close()
 				}
-				if stats.Funcs[0].Peephole["interval-region"] == 0 {
-					t.Fatal("fixture did not use regional locals")
+				if diagnosticsEnabled {
+					if stats.Funcs[0].Peephole["interval-region"] == 0 {
+						t.Fatal("fixture did not use regional locals")
+					}
 				}
 				if !lazy {
 					baseline = append([]byte(nil), cm.Code...)

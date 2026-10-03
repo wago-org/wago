@@ -35,7 +35,7 @@ func TestCallFreeLoopExitReconciliationIsColdAMD64(t *testing.T) {
 	compile := func(enabled bool) *ModuleStats {
 		var stats ModuleStats
 		cm, err := CompileModuleWith(m, CompileOptions{
-			Stats: &stats,
+			Stats: optionalTestStats(&stats),
 			Optimizations: map[string]bool{
 				"inline":                  false,
 				"callfree-loop-cold-exit": enabled,
@@ -48,8 +48,10 @@ func TestCallFreeLoopExitReconciliationIsColdAMD64(t *testing.T) {
 		return &stats
 	}
 	on, off := compile(true), compile(false)
-	if got := on.Funcs[0].Peephole["callfree-loop-exit-cold"]; got != 1 {
-		t.Fatalf("cold loop exits = %d, want 1 (all: %v)", got, on.Funcs[0].Peephole)
+	if diagnosticsEnabled {
+		if got := on.Funcs[0].Peephole["callfree-loop-exit-cold"]; got != 1 {
+			t.Fatalf("cold loop exits = %d, want 1 (all: %v)", got, on.Funcs[0].Peephole)
+		}
 	}
 	if got := off.Funcs[0].Peephole["callfree-loop-exit-cold"]; got != 0 {
 		t.Fatalf("disabled cold loop exits = %d, want 0", got)
@@ -72,7 +74,7 @@ func TestCallFreeLoopKeepsPinnedLocalsOnBackedgeAMD64(t *testing.T) {
 	compile := func(enabled bool) (*ModuleStats, *encoderamd64.CompiledModule) {
 		var stats ModuleStats
 		cm, err := CompileModuleWith(m, CompileOptions{
-			Stats: &stats,
+			Stats: optionalTestStats(&stats),
 			Optimizations: map[string]bool{
 				"inline":                  false,
 				"callfree-loop-reg-state": enabled,
@@ -87,8 +89,10 @@ func TestCallFreeLoopKeepsPinnedLocalsOnBackedgeAMD64(t *testing.T) {
 	defer offCode.CodeImage.Close()
 	on, onCode := compile(true)
 	defer onCode.CodeImage.Close()
-	if got := on.Funcs[0].Peephole["callfree-loop-reg-state"]; got != 1 {
-		t.Fatalf("register loop state = %d, want 1", got)
+	if diagnosticsEnabled {
+		if got := on.Funcs[0].Peephole["callfree-loop-reg-state"]; got != 1 {
+			t.Fatalf("register loop state = %d, want 1", got)
+		}
 	}
 	for _, n := range []uint64{0, 1, 2, 17, 255} {
 		for _, tc := range []struct {

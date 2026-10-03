@@ -45,7 +45,7 @@ func TestIntervalControlPreservesCallFreeLoopPins(t *testing.T) {
 					}
 					var stats ModuleStats
 					_, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{
-						CompactNative: true, ElideBoundsChecks: guard, Stats: &stats,
+						CompactNative: true, ElideBoundsChecks: guard, Stats: optionalTestStats(&stats),
 						Optimizations: map[string]bool{"interval-control": enabled},
 					}, nil)
 					if err != nil {
@@ -54,8 +54,10 @@ func TestIntervalControlPreservesCallFreeLoopPins(t *testing.T) {
 					if got := binary.LittleEndian.Uint32(mem[120:]); got != want {
 						t.Fatalf("loop output = %#x, want %#x", got, want)
 					}
-					if enabled && stats.Funcs[0].Peephole["interval-control"] == 0 {
-						t.Fatal("fixture did not exercise regional control caching")
+					if diagnosticsEnabled {
+						if enabled && stats.Funcs[0].Peephole["interval-control"] == 0 {
+							t.Fatal("fixture did not exercise regional control caching")
+						}
 					}
 				})
 			}

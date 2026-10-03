@@ -272,11 +272,17 @@ func TestAtomicSubUsesLockedXadd(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := atomicRMWModule(t, tc.sub, tc.align, tc.valueType, false)
 			var stats ModuleStats
-			if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: optionalTestStats(&stats)})
+			if err != nil {
 				t.Fatalf("compile: %v", err)
 			}
-			if got := stats.Funcs[0].Peephole["atomic-sub-xadd"]; got != 1 {
-				t.Fatalf("atomic-sub-xadd = %d, want 1 (all: %v)", got, stats.Funcs[0].Peephole)
+			if cm.CodeImage != nil {
+				defer cm.CodeImage.Close()
+			}
+			if diagnosticsEnabled {
+				if got := stats.Funcs[0].Peephole["atomic-sub-xadd"]; got != 1 {
+					t.Fatalf("atomic-sub-xadd = %d, want 1 (all: %v)", got, stats.Funcs[0].Peephole)
+				}
 			}
 			result, memory, err := runAtomicRMW(t, m, func(memory []byte) {
 				binary.LittleEndian.PutUint64(memory, initial)
@@ -326,11 +332,17 @@ func TestDroppedAtomicRMWUsesLockedALU(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := atomicRMWModule(t, tc.sub, tc.align, tc.valueType, true)
 			var stats ModuleStats
-			if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: optionalTestStats(&stats)})
+			if err != nil {
 				t.Fatalf("compile: %v", err)
 			}
-			if got := stats.Funcs[0].Peephole["atomic-rmw-dead-result"]; got != 1 {
-				t.Fatalf("atomic-rmw-dead-result = %d, want 1 (all: %v)", got, stats.Funcs[0].Peephole)
+			if cm.CodeImage != nil {
+				defer cm.CodeImage.Close()
+			}
+			if diagnosticsEnabled {
+				if got := stats.Funcs[0].Peephole["atomic-rmw-dead-result"]; got != 1 {
+					t.Fatalf("atomic-rmw-dead-result = %d, want 1 (all: %v)", got, stats.Funcs[0].Peephole)
+				}
 			}
 			_, memory, err := runAtomicRMW(t, m, func(memory []byte) {
 				binary.LittleEndian.PutUint64(memory, tc.initial)

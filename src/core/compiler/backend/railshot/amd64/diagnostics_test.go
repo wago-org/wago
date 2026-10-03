@@ -12,3 +12,12 @@ func requireCompilerDiagnostics(t testing.TB) {
 		t.Skip("compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)")
 	}
 }
+
+// optionalTestStats keeps semantic execution checks active in ordinary builds.
+// Callers guard only the counter assertions with diagnosticsEnabled.
+func optionalTestStats(stats *ModuleStats) *ModuleStats {
+	if diagnosticsEnabled {
+		return stats
+	}
+	return nil
+}

@@ -42,15 +42,17 @@ func TestFloatFrameMemoryOperands(t *testing.T) {
 				for _, features := range []shared.AMD64Features{0, shared.AMD64ModernBaseline} {
 					t.Run(fmt.Sprintf("f64=%t/op=%d/%s/features=%x", f64, op, shape, features), func(t *testing.T) {
 						var stats ModuleStats
-						cm, err := CompileModuleWith(m, CompileOptions{AMD64Features: features, AMD64FeaturesSet: true, Stats: &stats, CompactNative: true, Optimizations: map[string]bool{"reg-merge": false, "float-frame-mem": true}})
+						cm, err := CompileModuleWith(m, CompileOptions{AMD64Features: features, AMD64FeaturesSet: true, Stats: optionalTestStats(&stats), CompactNative: true, Optimizations: map[string]bool{"reg-merge": false, "float-frame-mem": true}})
 						if err != nil {
 							t.Fatal(err)
 						}
 						if cm.CodeImage != nil {
 							defer cm.CodeImage.Close()
 						}
-						if stats.Funcs[0].Peephole["float-frame-mem"] == 0 {
-							t.Fatalf("frame operand not folded: %v", stats.Funcs[0].Peephole)
+						if diagnosticsEnabled {
+							if stats.Funcs[0].Peephole["float-frame-mem"] == 0 {
+								t.Fatalf("frame operand not folded: %v", stats.Funcs[0].Peephole)
+							}
 						}
 						for _, pair := range [][2]float64{{6.5, 2.5}, {math.Copysign(0, -1), 0}, {math.Inf(1), 2}, {1, math.NaN()}} {
 							a, b := pair[0], pair[1]
@@ -85,15 +87,17 @@ func TestFloatFrameMemoryOption(t *testing.T) {
 	m := mod1(t, []wasm.ValType{wasm.F64, wasm.F64}, []wasm.ValType{wasm.F64}, []byte{1, 63, 0x7c, 0x20, 0, 0x20, 1, 0xa0, 0x0b})
 	for _, enabled := range []bool{false, true} {
 		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"float-frame-mem": enabled}})
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"float-frame-mem": enabled}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if cm.CodeImage != nil {
 			cm.CodeImage.Close()
 		}
-		if folded := stats.Funcs[0].Peephole["float-frame-mem"] != 0; folded != enabled {
-			t.Fatalf("enabled=%t: folded=%t", enabled, folded)
+		if diagnosticsEnabled {
+			if folded := stats.Funcs[0].Peephole["float-frame-mem"] != 0; folded != enabled {
+				t.Fatalf("enabled=%t: folded=%t", enabled, folded)
+			}
 		}
 	}
 }

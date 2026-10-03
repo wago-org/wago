@@ -32,15 +32,17 @@ func TestDirectUnconditionalMerge(t *testing.T) {
 		m := mod1(t, []wasm.ValType{typ}, []wasm.ValType{typ}, body)
 		for _, on := range []bool{false, true} {
 			var stats ModuleStats
-			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, CompactNative: true, Optimizations: map[string]bool{"reg-merge": true, "direct-int-branch-merge": on}})
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: optionalTestStats(&stats), CompactNative: true, Optimizations: map[string]bool{"reg-merge": true, "direct-int-branch-merge": on}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			if cm.CodeImage != nil {
 				defer cm.CodeImage.Close()
 			}
-			if (stats.Funcs[0].Peephole["direct-int-branch-merge"] != 0) != (on && (typ == wasm.I32 || typ == wasm.I64)) {
-				t.Fatalf("type=%v enabled=%t: missing expected admission", typ, on)
+			if diagnosticsEnabled {
+				if (stats.Funcs[0].Peephole["direct-int-branch-merge"] != 0) != (on && (typ == wasm.I32 || typ == wasm.I64)) {
+					t.Fatalf("type=%v enabled=%t: missing expected admission", typ, on)
+				}
 			}
 			if got := runCompiledAmd64u(t, cm, input); got != want {
 				t.Fatalf("type=%v enabled=%t: got=%x want=%x", typ, on, got, want)

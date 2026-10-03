@@ -41,7 +41,7 @@ func TestVectorMapIndependentLanesAndLastValue(t *testing.T) {
 						}
 					}
 					var stats ModuleStats
-					got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: &stats}, init, 128, src, 0, n, math.Float64bits(2), math.Float64bits(1.5))
+					got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: optionalTestStats(&stats)}, init, 128, src, 0, n, math.Float64bits(2), math.Float64bits(1.5))
 					// Partial overlap (132) must take fallback; exact overlap and disjoint
 					// arrays qualify. The forced-fast check is used only for those cases.
 					if err != nil {
@@ -197,7 +197,7 @@ func TestVectorMapTwoOrderedStores(t *testing.T) {
 				}
 			}
 			var stats ModuleStats
-			got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: &stats}, init, 128, src, 0, 8, math.Float64bits(2), math.Float64bits(1.5))
+			got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: optionalTestStats(&stats)}, init, 128, src, 0, 8, math.Float64bits(2), math.Float64bits(1.5))
 			if err != nil {
 				t.Fatal(src, on, err)
 			}
@@ -305,7 +305,7 @@ func TestVectorMapPackedMemoryArithmetic(t *testing.T) {
 							}
 						}
 						var stats ModuleStats
-						got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: &stats}, init, 1024, 128, src, 0, 2)
+						got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: optionalTestStats(&stats)}, init, 1024, 128, src, 0, 2)
 						if err != nil {
 							t.Fatal(op, features, src, rhs, on, err)
 						}

@@ -40,14 +40,16 @@ func TestCallFreeLoopFloatConstantScopeAMD64(t *testing.T) {
 	)
 	var stats ModuleStats
 	cm, err := CompileModuleWith(m, CompileOptions{
-		Stats: &stats, Optimizations: map[string]bool{"inline": false},
+		Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"inline": false},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer cm.CodeImage.Close()
-	if got := stats.Funcs[0].Peephole["callfree-loop-fconst"]; got == 0 {
-		t.Fatalf("call-free loop constant cache not used: %v", stats.Funcs[0].Peephole)
+	if diagnosticsEnabled {
+		if got := stats.Funcs[0].Peephole["callfree-loop-fconst"]; got == 0 {
+			t.Fatalf("call-free loop constant cache not used: %v", stats.Funcs[0].Peephole)
+		}
 	}
 	for _, n := range []uint64{0, 1, 2, 17} {
 		want := math.Float64bits(float64(n+1) * 1.5)

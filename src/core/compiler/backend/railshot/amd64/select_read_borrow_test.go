@@ -38,15 +38,17 @@ func TestSelectReadBorrowPreservesSource(t *testing.T) {
 				for _, on := range []bool{false, true} {
 					selectReadBorrowEnabled = on
 					var stats ModuleStats
-					cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"reg-abi": true}})
+					cm, err := CompileModuleWith(m, CompileOptions{Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"reg-abi": true}})
 					if err != nil {
 						t.Fatal(err)
 					}
 					if cm.CodeImage != nil {
 						defer cm.CodeImage.Close()
 					}
-					if (stats.Funcs[0].Peephole["select-read-borrow"] > 0) != on {
-						t.Fatalf("on=%v admission=%v", on, stats.Funcs[0].Peephole)
+					if diagnosticsEnabled {
+						if (stats.Funcs[0].Peephole["select-read-borrow"] > 0) != on {
+							t.Fatalf("on=%v admission=%v", on, stats.Funcs[0].Peephole)
+						}
 					}
 					for _, args := range [][4]uint64{{123, 17, 2, 3}, {123, 17, 100, 3}, {0, 0, 0, 1}, {0xfedcba9876543210, 0x80000000, 0xffffffff, 33}, {17, 0xffffffffffffffff, 0xfffffffffffffffe, 63}} {
 						for i := range args {
@@ -94,18 +96,22 @@ func TestSelectReadBorrowSurvivesPredicatePressure(t *testing.T) {
 		for _, on := range []bool{false, true} {
 			selectReadBorrowEnabled = on
 			var stats ModuleStats
-			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: optionalTestStats(&stats)})
 			if err != nil {
 				t.Fatal(err)
 			}
 			if cm.CodeImage != nil {
 				defer cm.CodeImage.Close()
 			}
-			if stats.Funcs[0].Spills == 0 || stats.Funcs[0].Reloads == 0 {
-				t.Fatal("fixture did not exercise spilling")
+			if diagnosticsEnabled {
+				if stats.Funcs[0].Spills == 0 || stats.Funcs[0].Reloads == 0 {
+					t.Fatal("fixture did not exercise spilling")
+				}
 			}
-			if (stats.Funcs[0].Peephole["select-read-borrow"] > 0) != on {
-				t.Fatalf("width=%d on=%v admission=%v", width, on, stats.Funcs[0].Peephole)
+			if diagnosticsEnabled {
+				if (stats.Funcs[0].Peephole["select-read-borrow"] > 0) != on {
+					t.Fatalf("width=%d on=%v admission=%v", width, on, stats.Funcs[0].Peephole)
+				}
 			}
 			for _, b := range []uint64{0, ^uint64(0)} {
 				args := []uint64{123, b, 0x8123456789abcdef, 3, 31, 0x63d27a19}

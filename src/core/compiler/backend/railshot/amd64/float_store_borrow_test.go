@@ -28,7 +28,7 @@ func TestFloatStoreBorrowsPinnedSource(t *testing.T) {
 					t.Run(fmt.Sprintf("wide=%v/features=%x/guard=%v/on=%v", wide, features, guard, enabled), func(t *testing.T) {
 						for _, value := range vals {
 							var stats ModuleStats
-							result, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{ElideBoundsChecks: guard, CompactNative: true, AMD64Features: features, AMD64FeaturesSet: true, Stats: &stats, Optimizations: map[string]bool{"float-store-borrow": enabled}}, func(mem []byte) {
+							result, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{ElideBoundsChecks: guard, CompactNative: true, AMD64Features: features, AMD64FeaturesSet: true, Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"float-store-borrow": enabled}}, func(mem []byte) {
 								for i := 0; i < 32; i++ {
 									mem[i] = 0xa5
 								}
@@ -41,8 +41,10 @@ func TestFloatStoreBorrowsPinnedSource(t *testing.T) {
 							if !bytes.Equal(mem[5:5+width], raw[:width]) || mem[4] != 0xa5 || mem[5+width] != 0xa5 {
 								t.Fatalf("wrong store width or bits: %x", mem[:20])
 							}
-							if (stats.Funcs[0].Peephole["float-store-borrow"] > 0) != enabled {
-								t.Fatalf("borrow not selected: %v", stats.Funcs[0].Peephole)
+							if diagnosticsEnabled {
+								if (stats.Funcs[0].Peephole["float-store-borrow"] > 0) != enabled {
+									t.Fatalf("borrow not selected: %v", stats.Funcs[0].Peephole)
+								}
 							}
 						}
 					})
@@ -70,15 +72,17 @@ func TestFloatStoreBorrowsCachedConstant(t *testing.T) {
 		body = append(body, 0x0b)
 		m := modMem(t, 1, nil, nil, body)
 		var stats ModuleStats
-		_, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"float-store-borrow": true}}, nil)
+		_, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"float-store-borrow": true}}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !bytes.Equal(mem[:width], raw[:width]) || !bytes.Equal(mem[16:16+width], raw[:width]) {
 			t.Fatalf("wide=%v constant altered: %x", wide, mem[:24])
 		}
-		if stats.Funcs[0].Peephole["float-store-borrow"] != 2 {
-			t.Fatalf("wide=%v constant was not cached: %v", wide, stats.Funcs[0].Peephole)
+		if diagnosticsEnabled {
+			if stats.Funcs[0].Peephole["float-store-borrow"] != 2 {
+				t.Fatalf("wide=%v constant was not cached: %v", wide, stats.Funcs[0].Peephole)
+			}
 		}
 	}
 }

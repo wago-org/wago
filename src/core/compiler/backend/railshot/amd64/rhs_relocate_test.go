@@ -58,8 +58,10 @@ func TestDeferredRHSRelocationRetainsArenaOwner(t *testing.T) {
 	root, right := resetRHSRelocateFixture(f)
 
 	result := f.condenseBinary(root, regNone)
-	if got := stats.Peephole["rhs-relocate"]; got != 1 {
-		t.Fatalf("RHS relocations = %d, want 1", got)
+	if diagnosticsEnabled {
+		if got := stats.Peephole["rhs-relocate"]; got != 1 {
+			t.Fatalf("RHS relocations = %d, want 1", got)
+		}
 	}
 	if result != RAX {
 		t.Fatalf("result register = %v, want RAX", result)
@@ -136,9 +138,11 @@ func TestExecDeferredRHSRelocation(t *testing.T) {
 	if _, err := CompileModuleWith(m, CompileOptions{Stats: stats}); err != nil {
 		t.Fatal(err)
 	}
-	if got := stats.Funcs[0].Peephole["rhs-relocate"]; got != 2 {
-		t.Fatalf("RHS relocations = %d, want 2 (pins=%d, peepholes=%v)", got,
-			stats.Funcs[0].PinnedLocals, stats.Funcs[0].Peephole)
+	if diagnosticsEnabled {
+		if got := stats.Funcs[0].Peephole["rhs-relocate"]; got != 2 {
+			t.Fatalf("RHS relocations = %d, want 2 (pins=%d, peepholes=%v)", got,
+				stats.Funcs[0].PinnedLocals, stats.Funcs[0].Peephole)
+		}
 	}
 	args := []uint64{100, 0, 10, 0, 20, 0, 30, 0, 31, 37}
 	if got := runAmd64u(t, m, args...); got != 40 {
@@ -194,8 +198,10 @@ func TestLocalSinkKeepsRegionalDestination(t *testing.T) {
 		if f.locals[0].reg != R12 || f.locals[0].state != lsReg || f.intervalOwner[R12] != 0 {
 			t.Fatalf("assignment lost its destination: local=%+v owner=%d", f.locals[0], f.intervalOwner[R12])
 		}
-		if stats.Residency.Evictions != 0 || stats.Spills == 0 {
-			t.Fatalf("expected RHS spill without destination eviction: %+v", stats)
+		if diagnosticsEnabled {
+			if stats.Residency.Evictions != 0 || stats.Spills == 0 {
+				t.Fatalf("expected RHS spill without destination eviction: %+v", stats)
+			}
 		}
 		if f.reserved != 0 {
 			t.Fatalf("temporary destination reservation leaked: %#x", f.reserved)

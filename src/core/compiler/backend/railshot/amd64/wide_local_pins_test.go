@@ -23,7 +23,7 @@ func TestWideLocalPins(t *testing.T) {
 	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
 	for _, enabled := range []bool{false, true} {
 		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, CompactNative: true, Optimizations: map[string]bool{"wide-local-pins": enabled}})
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: optionalTestStats(&stats), CompactNative: true, Optimizations: map[string]bool{"wide-local-pins": enabled}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -34,8 +34,10 @@ func TestWideLocalPins(t *testing.T) {
 		if enabled {
 			wantPins = 2
 		}
-		if (stats.Funcs[0].Peephole["wide-local-pins"] != 0) != enabled || stats.Funcs[0].PinnedLocals != wantPins {
-			t.Fatalf("pins not admitted: %+v", stats.Funcs[0])
+		if diagnosticsEnabled {
+			if (stats.Funcs[0].Peephole["wide-local-pins"] != 0) != enabled || stats.Funcs[0].PinnedLocals != wantPins {
+				t.Fatalf("pins not admitted: %+v", stats.Funcs[0])
+			}
 		}
 		for _, n := range []uint64{0, 1, 10, 100} {
 			got := runCompiledAmd64u(t, cm, n)
@@ -139,15 +141,17 @@ func TestWideFloatLocalPins(t *testing.T) {
 		m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{typ}, body)
 		for _, enabled := range []bool{false, true} {
 			var stats ModuleStats
-			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, CompactNative: true, Optimizations: map[string]bool{"wide-local-pins": enabled}})
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: optionalTestStats(&stats), CompactNative: true, Optimizations: map[string]bool{"wide-local-pins": enabled}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			if cm.CodeImage != nil {
 				defer cm.CodeImage.Close()
 			}
-			if (stats.Funcs[0].Peephole["wide-local-pins"] != 0) != enabled {
-				t.Fatalf("wide pins admission mismatch: %+v", stats.Funcs[0])
+			if diagnosticsEnabled {
+				if (stats.Funcs[0].Peephole["wide-local-pins"] != 0) != enabled {
+					t.Fatalf("wide pins admission mismatch: %+v", stats.Funcs[0])
+				}
 			}
 			for _, n := range []uint64{0, 1, 10, 100} {
 				bits := runCompiledAmd64u(t, cm, n)

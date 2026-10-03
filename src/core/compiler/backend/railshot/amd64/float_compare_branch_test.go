@@ -71,12 +71,14 @@ func TestFloatCompareBranchSemantics(t *testing.T) {
 											want = 17
 										}
 										var stats ModuleStats
-										got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{AMD64Features: features, AMD64FeaturesSet: true, Stats: &stats}, nil, a, b)
+										got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{AMD64Features: features, AMD64FeaturesSet: true, Stats: optionalTestStats(&stats)}, nil, a, b)
 										if err != nil || got != want {
 											t.Fatalf("a=%x b=%x got=%d want=%d err=%v", a, b, got, want, err)
 										}
-										if (stats.Funcs[0].Peephole["float-branch-fuse"] > 0) != on {
-											t.Fatalf("fusion mismatch: %+v", stats.Funcs[0].Peephole)
+										if diagnosticsEnabled {
+											if (stats.Funcs[0].Peephole["float-branch-fuse"] > 0) != on {
+												t.Fatalf("fusion mismatch: %+v", stats.Funcs[0].Peephole)
+											}
 										}
 									}
 								}
@@ -119,7 +121,7 @@ func TestFloatCompareBranchPreservesPressureAndMerge(t *testing.T) {
 		body = append(body, 0x0b)
 		m := mod1(t, nil, []wasm.ValType{wasm.F64}, body)
 		var stats ModuleStats
-		got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"ext-fp-pins": true, "reg-merge": true}}, nil)
+		got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"ext-fp-pins": true, "reg-merge": true}}, nil)
 		want := float64(469)
 		if cmp == 0x64 {
 			want = 470
@@ -127,8 +129,10 @@ func TestFloatCompareBranchPreservesPressureAndMerge(t *testing.T) {
 		if err != nil || math.Float64frombits(got) != want {
 			t.Fatalf("cmp=%x result=%g want=%g err=%v", cmp, math.Float64frombits(got), want, err)
 		}
-		if stats.Funcs[0].Peephole["float-branch-fuse"] != 1 {
-			t.Fatalf("missing fusion: %+v", stats.Funcs[0].Peephole)
+		if diagnosticsEnabled {
+			if stats.Funcs[0].Peephole["float-branch-fuse"] != 1 {
+				t.Fatalf("missing fusion: %+v", stats.Funcs[0].Peephole)
+			}
 		}
 	}
 }
@@ -142,7 +146,7 @@ func TestFloatCompareBranchLoop(t *testing.T) {
 	m := mod1(t, []wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}, body)
 	for _, target := range []float64{0, 1, 4, 9, math.NaN()} {
 		var stats ModuleStats
-		got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: &stats}, nil, math.Float64bits(target))
+		got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: optionalTestStats(&stats)}, nil, math.Float64bits(target))
 		want := target
 		if !(target > 1) {
 			want = 1
@@ -150,8 +154,10 @@ func TestFloatCompareBranchLoop(t *testing.T) {
 		if err != nil || math.Float64frombits(got) != want {
 			t.Fatalf("target=%g got=%g want=%g err=%v", target, math.Float64frombits(got), want, err)
 		}
-		if stats.Funcs[0].Peephole["float-branch-fuse"] != 1 {
-			t.Fatalf("missing loop fusion: %+v", stats.Funcs[0].Peephole)
+		if diagnosticsEnabled {
+			if stats.Funcs[0].Peephole["float-branch-fuse"] != 1 {
+				t.Fatalf("missing loop fusion: %+v", stats.Funcs[0].Peephole)
+			}
 		}
 	}
 }
@@ -195,7 +201,7 @@ func TestFloatCompareBranchMemoryOperands(t *testing.T) {
 		m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
 		for _, guard := range []bool{false, true} {
 			var stats ModuleStats
-			got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{ElideBoundsChecks: guard, Stats: &stats}, func(mem []byte) {
+			got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{ElideBoundsChecks: guard, Stats: optionalTestStats(&stats)}, func(mem []byte) {
 				if wide {
 					binary.LittleEndian.PutUint64(mem[:8], a)
 					binary.LittleEndian.PutUint64(mem[65536-width:], b)
@@ -207,8 +213,10 @@ func TestFloatCompareBranchMemoryOperands(t *testing.T) {
 			if err != nil || got != 17 {
 				t.Fatalf("wide=%v guard=%v got=%d err=%v", wide, guard, got, err)
 			}
-			if stats.Funcs[0].Peephole["float-branch-fuse"] != 1 {
-				t.Fatalf("missing memory fusion: %+v", stats.Funcs[0].Peephole)
+			if diagnosticsEnabled {
+				if stats.Funcs[0].Peephole["float-branch-fuse"] != 1 {
+					t.Fatalf("missing memory fusion: %+v", stats.Funcs[0].Peephole)
+				}
 			}
 		}
 	}

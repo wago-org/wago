@@ -1396,7 +1396,7 @@ func TestSIMDAVX512TernaryBoolean(t *testing.T) {
 
 				var stats ModuleStats
 				cm, err := CompileModuleWith(m, CompileOptions{
-					Stats: &stats, AMD64FeaturesSet: true, AMD64Features: features,
+					Stats: optionalTestStats(&stats), AMD64FeaturesSet: true, AMD64Features: features,
 					Optimizations: optimizations,
 				})
 				if err != nil {
@@ -1405,13 +1405,15 @@ func TestSIMDAVX512TernaryBoolean(t *testing.T) {
 				if !cm.RequiresAVX512 || !shared.AMD64Features(cm.RequiredAMD64Features).Has(shared.AMD64AVX512) {
 					t.Fatalf("fused module did not record AVX-512 requirement: required=%x bool=%v", cm.RequiredAMD64Features, cm.RequiresAVX512)
 				}
-				if got := stats.Funcs[0].Peephole["simd-ternary-boolean"]; got != 1 {
-					t.Fatalf("ternary fusion count = %d, want 1", got)
+				if diagnosticsEnabled {
+					if got := stats.Funcs[0].Peephole["simd-ternary-boolean"]; got != 1 {
+						t.Fatalf("ternary fusion count = %d, want 1", got)
+					}
 				}
 
 				var fallbackStats ModuleStats
 				fallback, err := CompileModuleWith(m, CompileOptions{
-					Stats: &fallbackStats, AMD64FeaturesSet: true, AMD64Features: 0,
+					Stats: optionalTestStats(&fallbackStats), AMD64FeaturesSet: true, AMD64Features: 0,
 					Optimizations: optimizations,
 				})
 				if err != nil {
@@ -1420,8 +1422,10 @@ func TestSIMDAVX512TernaryBoolean(t *testing.T) {
 				if fallback.RequiresAVX512 || shared.AMD64Features(fallback.RequiredAMD64Features).Has(shared.AMD64AVX512) {
 					t.Fatalf("baseline fallback unexpectedly requires AVX-512: %x", fallback.RequiredAMD64Features)
 				}
-				if got := fallbackStats.Funcs[0].Peephole["simd-ternary-boolean"]; got != 0 {
-					t.Fatalf("baseline emitted ternary fusion %d times", got)
+				if diagnosticsEnabled {
+					if got := fallbackStats.Funcs[0].Peephole["simd-ternary-boolean"]; got != 0 {
+						t.Fatalf("baseline emitted ternary fusion %d times", got)
+					}
 				}
 				if got := runAmd64V128WithOptions(t, m, nil, CompileOptions{
 					AMD64FeaturesSet: true, AMD64Features: 0, Optimizations: optimizations,
@@ -1453,14 +1457,19 @@ func TestSIMDAVX512TernaryBoolean(t *testing.T) {
 	bitselectModule := mod1(t, nil, []wasm.ValType{wasm.V128}, bitselectBody)
 	var bitselectStats ModuleStats
 	bitselectCompiled, err := CompileModuleWith(bitselectModule, CompileOptions{
-		Stats: &bitselectStats, AMD64FeaturesSet: true, AMD64Features: features,
+		Stats: optionalTestStats(&bitselectStats), AMD64FeaturesSet: true, AMD64Features: features,
 		Optimizations: optimizations,
 	})
 	if err != nil {
 		t.Fatalf("AVX-512 bitselect compile: %v", err)
 	}
-	if !bitselectCompiled.RequiresAVX512 || bitselectStats.Funcs[0].Peephole["simd-bitselect-ternary"] != 1 {
-		t.Fatalf("bitselect ternary not selected: required=%x stats=%v", bitselectCompiled.RequiredAMD64Features, bitselectStats.Funcs[0].Peephole)
+	if !bitselectCompiled.RequiresAVX512 {
+		t.Fatal("bitselect did not record AVX-512 requirement")
+	}
+	if diagnosticsEnabled {
+		if bitselectStats.Funcs[0].Peephole["simd-bitselect-ternary"] != 1 {
+			t.Fatalf("bitselect ternary not selected: required=%x stats=%v", bitselectCompiled.RequiredAMD64Features, bitselectStats.Funcs[0].Peephole)
+		}
 	}
 	if got := runAmd64V128WithOptions(t, bitselectModule, nil, CompileOptions{
 		AMD64FeaturesSet: true, AMD64Features: 0, Optimizations: optimizations,
@@ -1480,14 +1489,19 @@ func TestSIMDAVX512TernaryBoolean(t *testing.T) {
 	m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128BooleanChainBody(a, b, c, 78, 81))
 	var disabledStats ModuleStats
 	disabled, err := CompileModuleWith(m, CompileOptions{
-		Stats: &disabledStats, AMD64FeaturesSet: true, AMD64Features: features,
+		Stats: optionalTestStats(&disabledStats), AMD64FeaturesSet: true, AMD64Features: features,
 		Optimizations: map[string]bool{"avx512-ternary": false},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if disabled.RequiresAVX512 || disabledStats.Funcs[0].Peephole["simd-ternary-boolean"] != 0 {
-		t.Fatalf("disabled ternary optimization emitted AVX-512: required=%x stats=%v", disabled.RequiredAMD64Features, disabledStats.Funcs[0].Peephole)
+	if disabled.RequiresAVX512 {
+		t.Fatal("disabled ternary optimization requires AVX-512")
+	}
+	if diagnosticsEnabled {
+		if disabledStats.Funcs[0].Peephole["simd-ternary-boolean"] != 0 {
+			t.Fatalf("disabled ternary optimization emitted AVX-512: required=%x stats=%v", disabled.RequiredAMD64Features, disabledStats.Funcs[0].Peephole)
+		}
 	}
 }
 

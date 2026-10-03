@@ -129,8 +129,10 @@ func TestFPPinRelinquishmentAvoidsRetry(t *testing.T) {
 	if got := f.allocFReg(avoid); got != 12 {
 		t.Fatalf("relinquished register = %v, want XMM12", got)
 	}
-	if f.locals[local].state != lsMem || !f.pinRelinquished || stats.PinRelinquishments != 1 || stats.Peephole["fp-pin-relinquish"] != 1 {
-		t.Fatalf("relinquishment state = local:%v active:%v stats:%+v", f.locals[local].state, f.pinRelinquished, stats)
+	if diagnosticsEnabled {
+		if f.locals[local].state != lsMem || !f.pinRelinquished || stats.PinRelinquishments != 1 || stats.Peephole["fp-pin-relinquish"] != 1 {
+			t.Fatalf("relinquishment state = local:%v active:%v stats:%+v", f.locals[local].state, f.pinRelinquished, stats)
+		}
 	}
 }
 
@@ -199,13 +201,15 @@ func TestDeepFPPinsDoNotAliasMergeResult(t *testing.T) {
 		m := mod1(t, nil, []wasm.ValType{wasm.F64}, testBody)
 		var stats ModuleStats
 		got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{
-			Stats: &stats, Optimizations: map[string]bool{"ext-fp-pins": true, "reg-merge": true},
+			Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"ext-fp-pins": true, "reg-merge": true},
 		}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if stats.Funcs[0].PinnedLocals != 12 {
-			t.Fatalf("fixture pins = %d, want 12", stats.Funcs[0].PinnedLocals)
+		if diagnosticsEnabled {
+			if stats.Funcs[0].PinnedLocals != 12 {
+				t.Fatalf("fixture pins = %d, want 12", stats.Funcs[0].PinnedLocals)
+			}
 		}
 		want := float64(158 - condition)
 		if result := math.Float64frombits(got); result != want {

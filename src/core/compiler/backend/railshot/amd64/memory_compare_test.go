@@ -131,7 +131,7 @@ func TestMemoryCompareNative(t *testing.T) {
 				for _, on := range []bool{false, true} {
 					t.Run(fmt.Sprintf("load=%x/cmp=%x/c=%d/mode=%d/guard=%v/on=%v", tc.load, tc.compare, tc.constant, mode, guard, on), func(t *testing.T) {
 						var stats ModuleStats
-						got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: &stats, ElideBoundsChecks: guard, CompactNative: true, Optimizations: map[string]bool{"memory-compare-immediate": on}}, func(mem []byte) {
+						got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: optionalTestStats(&stats), ElideBoundsChecks: guard, CompactNative: true, Optimizations: map[string]bool{"memory-compare-immediate": on}}, func(mem []byte) {
 							for i := range mem {
 								mem[i] = 0xa5
 							}
@@ -146,8 +146,10 @@ func TestMemoryCompareNative(t *testing.T) {
 						if err != nil || got != want^9 {
 							t.Fatalf("got=%d want=%d err=%v", got, want^9, err)
 						}
-						if (stats.Funcs[0].Peephole["memory-compare-immediate"] > 0) != (on && tc.admit) {
-							t.Fatalf("wrong admission: %v", stats.Funcs[0].Peephole)
+						if diagnosticsEnabled {
+							if (stats.Funcs[0].Peephole["memory-compare-immediate"] > 0) != (on && tc.admit) {
+								t.Fatalf("wrong admission: %v", stats.Funcs[0].Peephole)
+							}
 						}
 					})
 				}

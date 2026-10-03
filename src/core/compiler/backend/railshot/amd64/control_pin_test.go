@@ -56,8 +56,10 @@ func TestBranchEmissionRestoresPinsAfterDeferredEvaluation(t *testing.T) {
 		} else {
 			f.branchToFrame(0)
 		}
-		if stats.PinRelinquishments == 0 {
-			t.Fatalf("conditional=%t: fixture did not reclaim a pin", conditional)
+		if diagnosticsEnabled {
+			if stats.PinRelinquishments == 0 {
+				t.Fatalf("conditional=%t: fixture did not reclaim a pin", conditional)
+			}
 		}
 		if f.locals[0].state != lsReg {
 			t.Errorf("conditional=%t: branch leaves local in state %v, want register home", conditional, f.locals[0].state)
@@ -122,8 +124,10 @@ func TestControlEdgesRestorePinsAfterDeferredEvaluation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if stats.PinRelinquishments == 0 {
-				t.Fatal("fixture did not reclaim a pin")
+			if diagnosticsEnabled {
+				if stats.PinRelinquishments == 0 {
+					t.Fatal("fixture did not reclaim a pin")
+				}
 			}
 			if edge == "if" {
 				state := f.frameEntryState(&f.ctrl[len(f.ctrl)-1])
