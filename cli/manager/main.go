@@ -414,29 +414,63 @@ func executablePath() string {
 
 func runActiveRunner(args []string) {
 	d := wagopaths.DirsFor(versionString())
-	path, active, profile, build, ok := managerversion.ActiveRunner(d)
+	base, active, profile, build, ok := managerversion.ActiveRunner(d)
 	if !ok {
 		ui.FatalHint("wago version install --latest --use", "no active runtime is selected")
 	}
-	path, err := managerplugin.Resolve(path, profile, args, commandEnvironment{})
+	environment := commandEnvironment{}
+	resolve := func() (string, error) {
+		return managerplugin.Resolve(base, profile, args, environment)
+	}
+	path, err := resolve()
 	if err != nil {
 		fatal("could not prepare plugins: %v", err)
 	}
-	cmd := exec.Command(path, args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Env = automation.Environment((handoff.Metadata{
+	childEnv := automation.Environment((handoff.Metadata{
 		ManagerVersion: versionString(), ManagerExecutable: executablePath(),
 		RuntimeChannel: active, RuntimeProfile: string(profile), RuntimeBuild: string(build),
 	}).Environment(os.Environ()))
-	err = cmd.Run()
+	launch := func(path string) error {
+		cmd := exec.Command(path, args...)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		cmd.Env = childEnv
+		return cmd.Run()
+	}
+	err = environment.runResolvedRunner(path, resolve, launch)
 	if err == nil {
 		return
 	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		os.Exit(exitErr.ExitCode())
+	if code, ok := environment.runnerExitCode(err); ok {
+		os.Exit(code)
 	}
 	fatal("could not launch %s %s/%s runtime: %v", active, profile, build, err)
+}
+
+func (commandEnvironment) runnerExitCode(err error) (int, bool) {
+	// cmd.Run returns a direct ExitError only after the runtime starts. Refresh
+	// failures may wrap a Go-tool ExitError and must retain their diagnostic.
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode(), true
+	}
+	return 0, false
+}
+
+func (commandEnvironment) runResolvedRunner(path string, resolve func() (string, error), launch func(string) error) error {
+	const publicationRaceAttempts = 3
+	for attempt := 0; ; attempt++ {
+		err := launch(path)
+		if err == nil || !errors.Is(err, os.ErrNotExist) || attempt+1 == publicationRaceAttempts {
+			return err
+		}
+		// Plugin publication briefly moves the active directory between resolution
+		// and process start. Retry every observed gap, but cap attempts so a genuinely
+		// missing runtime cannot turn launch into an unbounded failure-path loop.
+		var resolveErr error
+		path, resolveErr = resolve()
+		if resolveErr != nil {
+			return fmt.Errorf("refresh runner after concurrent plugin publication: %w", resolveErr)
+		}
+	}
 }
 
 func managerUsage(w *os.File) {
